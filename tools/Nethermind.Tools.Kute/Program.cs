@@ -1,9 +1,11 @@
+// SPDX-FileCopyrightText: 2023 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
+
 using App.Metrics.Formatters;
 using App.Metrics.Formatters.Ascii;
 using App.Metrics.Formatters.Json;
 using Microsoft.Extensions.DependencyInjection;
 using Nethermind.Tools.Kute.Auth;
-using Nethermind.Tools.Kute.FlowManager;
 using Nethermind.Tools.Kute.JsonRpcMethodFilter;
 using Nethermind.Tools.Kute.JsonRpcSubmitter;
 using Nethermind.Tools.Kute.JsonRpcValidator;
@@ -143,8 +145,6 @@ static class Program
                 _ => throw new ArgumentOutOfRangeException(),
             }
         );
-        collection.AddSingleton<IJsonRpcFlowManager>(new JsonRpcFlowManager(
-            parseResult.GetValue(Config.RequestsPerSecond), unwrapBatch));
 
         return collection.BuildServiceProvider();
     }

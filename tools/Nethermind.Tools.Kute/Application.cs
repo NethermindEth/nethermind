@@ -10,12 +10,10 @@ using Nethermind.Tools.Kute.JsonRpcValidator;
 using Nethermind.Tools.Kute.MetricsConsumer;
 using Nethermind.Tools.Kute.ProgressReporter;
 using Nethermind.Tools.Kute.ResponseTracer;
-using System.Collections.Concurrent;
-using Nethermind.Tools.Kute.FlowManager;
 
 namespace Nethermind.Tools.Kute;
 
-class Application
+public sealed class Application
 {
     private readonly Metrics _metrics = new();
 
@@ -26,7 +24,6 @@ class Application
     private readonly IProgressReporter _progressReporter;
     private readonly IMetricsConsumer _metricsConsumer;
     private readonly IJsonRpcMethodFilter _methodFilter;
-    private readonly IJsonRpcFlowManager _flowManager;
 
     public Application(
         IMessageProvider<JsonRpc?> msgProvider,
@@ -35,8 +32,7 @@ class Application
         IResponseTracer responseTracer,
         IProgressReporter progressReporter,
         IMetricsConsumer metricsConsumer,
-        IJsonRpcMethodFilter methodFilter,
-        IJsonRpcFlowManager flowManager
+        IJsonRpcMethodFilter methodFilter
     )
     {
         _msgProvider = msgProvider;
@@ -46,23 +42,12 @@ class Application
         _progressReporter = progressReporter;
         _metricsConsumer = metricsConsumer;
         _methodFilter = methodFilter;
-        _flowManager = flowManager;
     }
 
     public async Task Run()
     {
         _progressReporter.ReportStart();
 
-        BlockingCollection<(Task<HttpResponseMessage?>, JsonRpc)> responseTasks = new BlockingCollection<(Task<HttpResponseMessage?>, JsonRpc)>();
-        var responseHandlingTask = Task.Run(async () =>
-        {
-            await Parallel.ForEachAsync(responseTasks.GetConsumingEnumerable(), async (task, ct) =>
-            {
-                await AnalyzeRequest(task);
-            });
-        });
-
-        bool isSequentionalExecution = _flowManager.RequestsPerSecond <= 0;
         using (_metrics.TimeTotal())
         {
             await foreach (var (jsonRpc, n) in _msgProvider.Messages.Indexed(startingFrom: 1))
@@ -74,11 +59,26 @@ class Application
                 {
                     case JsonRpc.BatchJsonRpc batch:
                         {
-                            var requestTask = _submitter.Submit(batch);
-                            if (isSequentionalExecution)
-                                await AnalyzeRequest((requestTask, batch));
+                            HttpResponseMessage? content;
+                            using (_metrics.TimeBatch())
+                            {
+                                content = await _submitter.Submit(batch);
+                            }
+
+                            var deserialized = content is not null
+                                ? JsonSerializer.Deserialize<JsonDocument>(await content.Content.ReadAsStreamAsync())
+                                : null;
+
+                            if (_validator.IsInvalid(batch, deserialized))
+                            {
+                                _metrics.TickFailed();
+                            }
                             else
-                                responseTasks.Add((requestTask, batch));
+                            {
+                                _metrics.TickSucceeded();
+                            }
+
+                            await _responseTracer.TraceResponse(deserialized);
 
                             break;
                         }
@@ -89,14 +89,43 @@ class Application
                                 _metrics.TickResponses();
                                 continue;
                             }
-                            var requestTask = _submitter.Submit(single);
-                            if (isSequentionalExecution)
-                                await AnalyzeRequest((requestTask, single));
+
+                            if (single.MethodName is null)
+                            {
+                                _metrics.TickFailed();
+                                return;
+                            }
+
+                            if (_methodFilter.ShouldIgnore(single.MethodName))
+                            {
+                                _metrics.TickIgnoredRequests();
+                                return;
+                            }
+
+                            HttpResponseMessage? content;
+                            using (_metrics.TimeMethod(single.MethodName))
+                            {
+                                content = await _submitter.Submit(single);
+                            }
+
+                            var deserialized = content is not null
+                                ? JsonSerializer.Deserialize<JsonDocument>(await content.Content.ReadAsStreamAsync())
+                                : null;
+
+                            if (_validator.IsInvalid(single, deserialized))
+                            {
+                                _metrics.TickFailed();
+                            }
                             else
-                                responseTasks.Add((requestTask, single));
+                            {
+                                _metrics.TickSucceeded();
+                            }
+
+                            await _responseTracer.TraceResponse(deserialized);
 
                             break;
                         }
+
                     case null:
                         {
                             _metrics.TickFailed();
@@ -104,97 +133,10 @@ class Application
                             break;
                         }
                 }
-
-                if (_flowManager.RequestsPerSecond > 0)
-                {
-                    var delay = 1000 / _flowManager.RequestsPerSecond;
-                    await Task.Delay(delay);
-                }
             }
-
-            responseTasks.CompleteAdding();
-            await responseHandlingTask;
         }
 
         _progressReporter.ReportComplete();
         await _metricsConsumer.ConsumeMetrics(_metrics);
-    }
-
-    public async Task AnalyzeRequest((Task<HttpResponseMessage?>, JsonRpc) task)
-    {
-        switch (task.Item2)
-        {
-            case null:
-                {
-                    _metrics.TickFailed();
-
-                    break;
-                }
-            case JsonRpc.BatchJsonRpc batch:
-                {
-                    HttpResponseMessage? content;
-                    using (_metrics.TimeBatch())
-                    {
-                        content = await task.Item1;
-                    }
-                    var deserialized = content is not null
-                        ? JsonSerializer.Deserialize<JsonDocument>(await content.Content.ReadAsStreamAsync())
-                        : null;
-
-                    if (_validator.IsInvalid(batch, deserialized))
-                    {
-                        _metrics.TickFailed();
-                    }
-                    else
-                    {
-                        _metrics.TickSucceeded();
-                    }
-
-                    await _responseTracer.TraceResponse(deserialized);
-
-                    break;
-                }
-            case JsonRpc.SingleJsonRpc single:
-                {
-                    if (single.MethodName is null)
-                    {
-                        _metrics.TickFailed();
-                        return;
-                    }
-
-                    if (_methodFilter.ShouldIgnore(single.MethodName))
-                    {
-                        _metrics.TickIgnoredRequests();
-                        return;
-                    }
-
-                    HttpResponseMessage? content;
-                    using (_metrics.TimeMethod(single.MethodName))
-                    {
-                        content = await task.Item1;
-                    }
-
-                    var deserialized = content is not null
-                        ? JsonSerializer.Deserialize<JsonDocument>(await content.Content.ReadAsStreamAsync())
-                        : null;
-
-                    if (_validator.IsInvalid(single, deserialized))
-                    {
-                        _metrics.TickFailed();
-                    }
-                    else
-                    {
-                        _metrics.TickSucceeded();
-                    }
-
-                    await _responseTracer.TraceResponse(deserialized);
-
-                    break;
-                }
-            default:
-                {
-                    throw new ArgumentOutOfRangeException(nameof(task.Item2));
-                }
-        }
     }
 }
