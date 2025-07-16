@@ -269,8 +269,7 @@ public class HistoryPruner : IHistoryPruner
     private IEnumerable<Block> GetBlocksByNumber(long from, Predicate<Block> endSearch, Action<long> onFirstBlock)
     {
         bool firstBlock = true;
-        long headNumber = _blockTree.Head!.Number;
-        for (long i = from; i <= headNumber; i++)
+        for (long i = from; i <= _blockTree.SyncPivot.BlockNumber; i++)
         {
             ChainLevelInfo? chainLevelInfo = _chainLevelInfoRepository.LoadLevel(i);
             if (chainLevelInfo is null)
@@ -341,6 +340,7 @@ public class HistoryPruner : IHistoryPruner
         else
         {
             _deletePointer = val.AsRlpStream().DecodeLong();
+            Metrics.OldestStoredBlockNumber = _deletePointer;
         }
     }
 
