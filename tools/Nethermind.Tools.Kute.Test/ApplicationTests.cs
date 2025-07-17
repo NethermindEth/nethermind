@@ -68,7 +68,7 @@ public class ApplicationTests
     }
 
     [Test]
-    public async Task ProcessesMultipleJSONRpcMessages_NoFiltering()
+    public async Task NoFiltering()
     {
         var messageProvider = new JsonRpcMessageProvider(LinesProvider(TestInput));
         var jsonRpcSubmitter = ConstantSubmitter(ResponseOK);
@@ -95,7 +95,7 @@ public class ApplicationTests
     }
 
     [Test]
-    public async Task ProcessesMultipleJSONRpcMessages_NoFiltering_UnwrapBatches()
+    public async Task NoFiltering_UnwrapBatches()
     {
         var messageProvider = new UnwrapBatchJsonRpcMessageProvider(new JsonRpcMessageProvider(LinesProvider(TestInput)));
         var jsonRpcSubmitter = ConstantSubmitter(ResponseOK);
