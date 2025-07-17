@@ -29,6 +29,7 @@ using static Nethermind.Evm.VirtualMachine;
 using BenchmarkDotNet.Loggers;
 using Nethermind.Evm.CodeAnalysis;
 using Nethermind.Trie;
+using Nethermind.Evm.State;
 
 namespace Nethermind.Evm.Benchmark
 {
