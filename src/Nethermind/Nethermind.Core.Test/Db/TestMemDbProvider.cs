@@ -17,11 +17,7 @@ namespace Nethermind.Core.Test.Db
     {
         public static Task<IDbProvider> InitAsync()
         {
-            return Task.FromResult(new ContainerBuilder()
-                .AddModule(new DbModule(new InitConfig() { DiagnosticMode = DiagnosticMode.MemDb }, new ReceiptConfig(), new SyncConfig()))
-                .AddSingleton<IDbProvider, ContainerOwningDbProvider>()
-                .Build()
-                .Resolve<IDbProvider>());
+            return Task.FromResult(Init());
         }
 
         public static IDbProvider Init()

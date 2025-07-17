@@ -1,23 +1,27 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using Autofac;
+using Autofac.Core;
 using Nethermind.Api;
 using Nethermind.Api.Extensions;
 using Nethermind.Db;
 using Nethermind.Blockchain.Tracing.ParityStyle;
+using Nethermind.Core;
 using Nethermind.JsonRpc.Modules;
 using Nethermind.JsonRpc.Modules.Trace;
 using Nethermind.Logging;
+using Nethermind.Init.Modules;
 
 namespace Nethermind.JsonRpc.TraceStore;
 
 public class TraceStorePlugin(ITraceStoreConfig traceStoreConfig) : INethermindPlugin
 {
-    private const string DbName = "TraceStore";
+    public const string DbName = "TraceStore";
+
     private INethermindApi _api = null!;
     private IJsonRpcConfig _jsonRpcConfig = null!;
     private IDb? _db;
-    private TraceStorePruner? _pruner;
     private ILogManager _logManager = null!;
     private ILogger _logger;
     private ITraceSerializer<ParityLikeTxTrace>? _traceSerializer;
@@ -37,13 +41,12 @@ public class TraceStorePlugin(ITraceStoreConfig traceStoreConfig) : INethermindP
         _traceSerializer = new ParityLikeTraceSerializer(_logManager, traceStoreConfig.MaxDepth, traceStoreConfig.VerifySerialized);
 
         // Setup DB
-        _db = _api.DbFactory!.CreateDb(new DbSettings(DbName, DbName.ToLower()));
-        // _api.DbProvider!.RegisterDb(DbName, _db);
+        _db = _api.Context.ResolveKeyed<IDb>(DbName);
 
         //Setup pruning if configured
         if (traceStoreConfig.BlocksToKeep != 0)
         {
-            _pruner = new TraceStorePruner(_api.BlockTree!, _db, traceStoreConfig.BlocksToKeep, _logManager);
+            _api.Context.Resolve<TraceStorePruner>();
         }
 
         return Task.CompletedTask;
@@ -80,8 +83,15 @@ public class TraceStorePlugin(ITraceStoreConfig traceStoreConfig) : INethermindP
 
     public ValueTask DisposeAsync()
     {
-        _pruner?.Dispose();
-        _db?.Dispose();
         return default;
+    }
+
+    public IModule Module => new TracerStorePluginModule();
+
+    private class TracerStorePluginModule : Module
+    {
+        protected override void Load(ContainerBuilder builder) => builder
+            .AddDatabase(DbName)
+            .AddSingleton<TraceStorePruner>();
     }
 }

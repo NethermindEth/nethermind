@@ -4,7 +4,6 @@
 using System.Collections.Generic;
 using System.IO.Abstractions;
 using Autofac;
-using Nethermind.Abi;
 using Nethermind.Api.Extensions;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Blocks;
@@ -83,7 +82,6 @@ namespace Nethermind.Api
         public IConfigProvider ConfigProvider => _dependencies.ConfigProvider;
         public ICryptoRandom CryptoRandom => Context.Resolve<ICryptoRandom>();
         public IDbProvider DbProvider => Context.Resolve<IDbProvider>();
-        public IDbFactory DbFactory => Context.Resolve<IDbFactory>();
         public ISigner? EngineSigner { get; set; }
         public ISignerStore? EngineSignerStore { get; set; }
         public IEnode? Enode { get; set; }
