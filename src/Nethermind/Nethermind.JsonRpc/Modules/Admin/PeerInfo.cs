@@ -79,7 +79,7 @@ namespace Nethermind.JsonRpc.Modules.Admin
         public PeerInfo(Peer peer, bool includeDetails = false, NodeInfo nodeInfo = null)
         {
             PeerValidator.ValidatePeer(peer);
-            
+
             PopulateBasicInfo(peer);
             PopulateNetworkInfo(peer, nodeInfo);
             PopulateProtocolsInfo(peer);

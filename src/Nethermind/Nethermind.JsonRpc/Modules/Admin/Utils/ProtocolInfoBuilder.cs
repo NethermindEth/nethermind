@@ -22,7 +22,7 @@ namespace Nethermind.JsonRpc.Modules.Admin.Utils
         private static EthProtocolDetails CreateEthProtocolDetails(Peer peer)
         {
             var ethInfo = new EthProtocolDetails();
-            
+
             int version = EthVersionExtractor.ExtractEthVersion(peer);
             if (version > 0)
             {

@@ -25,7 +25,7 @@ namespace Nethermind.JsonRpc.Modules.Admin.Utils
             {
                 return p2pHandler.GetCapabilitiesForAdmin() ?? Enumerable.Empty<string>();
             }
-            
+
             return Enumerable.Empty<string>();
         }
     }

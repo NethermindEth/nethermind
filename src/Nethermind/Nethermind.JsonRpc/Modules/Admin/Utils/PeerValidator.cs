@@ -14,7 +14,7 @@ namespace Nethermind.JsonRpc.Modules.Admin.Utils
             {
                 throw new ArgumentNullException(nameof(peer));
             }
-            
+
             if (peer.Node is null)
             {
                 throw new ArgumentException("Peer must have a valid node", nameof(peer));

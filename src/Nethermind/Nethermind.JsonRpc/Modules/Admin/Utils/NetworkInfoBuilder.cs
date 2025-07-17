@@ -18,7 +18,7 @@ namespace Nethermind.JsonRpc.Modules.Admin.Utils
             }
 
             var session = peer.InSession ?? peer.OutSession;
-            
+
             var localAddress = GetLocalAddress(session, nodeInfo);
             var remoteAddress = GetRemoteAddress(session, peer.Node);
 
@@ -38,7 +38,7 @@ namespace Nethermind.JsonRpc.Modules.Admin.Utils
             {
                 return nodeInfo.ListenAddress;
             }
-            
+
             return string.Empty;
         }
 
@@ -48,7 +48,7 @@ namespace Nethermind.JsonRpc.Modules.Admin.Utils
             {
                 return $"{session.RemoteHost}:{session.RemotePort}";
             }
-            
+
             return node.Address.ToString();
         }
     }

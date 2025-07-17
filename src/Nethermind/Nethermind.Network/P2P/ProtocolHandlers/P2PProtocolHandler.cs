@@ -353,7 +353,7 @@ public class P2PProtocolHandler(
             ? _agreedCapabilities
             : _supportedCapabilities;
 
-        return capabilities?.Select(cap => $"{cap.ProtocolCode}/{cap.Version}") 
+        return capabilities?.Select(cap => $"{cap.ProtocolCode}/{cap.Version}")
             ?? Enumerable.Empty<string>();
     }
 }

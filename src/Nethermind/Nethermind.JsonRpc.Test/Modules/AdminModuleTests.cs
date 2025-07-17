@@ -560,9 +560,9 @@ public class AdminModuleTests
         // Arrange - Set up a peer with rich data
         Node testNode = new(TestItem.PublicKeyA, "192.168.1.100", 30303, true);
         testNode.ClientId = "Geth/v1.15.10-stable-2bf8a789/linux-amd64/go1.24.2";
-        
+
         Peer testPeer = new(testNode);
-        
+
         // Mock session with network details
         ISession mockSession = Substitute.For<ISession>();
         mockSession.RemoteHost.Returns("192.168.1.100");
@@ -570,41 +570,41 @@ public class AdminModuleTests
         mockSession.LocalPort.Returns(30303);
         mockSession.LastPingUtc.Returns(DateTime.UtcNow);
         mockSession.IsNetworkIdMatched.Returns(true);
-        
+
         // Mock protocol handler for capabilities
         IP2PProtocolHandler mockP2PHandler = Substitute.For<IP2PProtocolHandler>();
         mockP2PHandler.GetCapabilitiesForAdmin().Returns(new[] { "eth68", "snap1" });
         mockSession.TryGetProtocolHandler("p2p", out Arg.Any<IProtocolHandler>())
-            .Returns(x => 
+            .Returns(x =>
             {
                 x[1] = mockP2PHandler;
                 return true;
             });
-        
+
         testPeer.OutSession = mockSession;
-        
+
         // Set up peer pool
         ConcurrentDictionary<PublicKeyAsKey, Peer> peers = new();
         peers.TryAdd(TestItem.PublicKeyA, testPeer);
         _peerPool.ActivePeers.Returns(peers);
-        
+
         // Act
         string serialized = await RpcTest.TestSerializedRequest(_adminRpcModule, "admin_peers");
-        
+
         // Assert
         JsonRpcSuccessResponse response = _serializer.Deserialize<JsonRpcSuccessResponse>(serialized);
         var peerInfoList = ((JsonElement)response.Result!).Deserialize<List<PeerInfo>>(EthereumJsonSerializer.JsonOptions)!;
-        
+
         peerInfoList.Count.Should().Be(1);
         PeerInfo peerInfo = peerInfoList[0];
-        
+
         // Test standard fields (new format)
         peerInfo.Id.Should().Be(TestItem.PublicKeyA.Hash.ToString(false));
         peerInfo.Name.Should().Be("Geth/v1.15.10-stable-2bf8a789/linux-amd64/go1.24.2");
         peerInfo.Enode.Should().StartWith("enode://");
         peerInfo.Caps.Should().BeEquivalentTo(new[] { "eth68", "snap1" });
         peerInfo.Enr.Should().BeNull(); // Expected for now
-        
+
         // Test network object
         peerInfo.Network.Should().NotBeNull();
         peerInfo.Network.LocalAddress.Should().Be("127.0.0.1:30303");
@@ -612,20 +612,20 @@ public class AdminModuleTests
         peerInfo.Network.Inbound.Should().BeFalse();
         peerInfo.Network.Trusted.Should().BeFalse();
         peerInfo.Network.Static.Should().BeTrue();
-        
+
         // Test protocols object
         peerInfo.Protocols.Should().NotBeNull();
         peerInfo.Protocols.Should().ContainKey("eth");
-        
+
         var ethProtocol = peerInfo.Protocols["eth"];
         ethProtocol.Should().NotBeNull();
-        
+
         // Cast to JObject to inspect properties
         var ethProtocolElement = (JsonElement)ethProtocol;
         ethProtocolElement.GetProperty("version").GetInt32().Should().Be(68);
         ethProtocolElement.TryGetProperty("earliestBlock", out _).Should().BeFalse();
-        ethProtocolElement.TryGetProperty("latestBlock", out _).Should().BeFalse(); 
-        ethProtocolElement.TryGetProperty("latestBlockHash", out _).Should().BeFalse();        
+        ethProtocolElement.TryGetProperty("latestBlock", out _).Should().BeFalse();
+        ethProtocolElement.TryGetProperty("latestBlockHash", out _).Should().BeFalse();
         // Test legacy fields (backward compatibility)
         peerInfo.Host.Should().Be("192.168.1.100");
         peerInfo.Port.Should().Be(30303);
@@ -641,40 +641,40 @@ public class AdminModuleTests
     {
         // Arrange - Test capability extraction from different sources
         Node testNode = new(TestItem.PublicKeyA, "192.168.1.100", 30303, false);
-        
+
         Peer testPeer = new(testNode);
-        
+
         // Mock session WITHOUT protocol handler (should return empty capabilities)
         ISession mockSession = Substitute.For<ISession>();
         mockSession.RemoteHost.Returns("192.168.1.100");
         mockSession.RemotePort.Returns(30303);
         mockSession.LocalPort.Returns(30303);
         mockSession.IsNetworkIdMatched.Returns(true);
-        
+
         // Mock TryGetProtocolHandler to return false (no handler)
         mockSession.TryGetProtocolHandler("p2p", out Arg.Any<IProtocolHandler>())
             .Returns(false);
-        
+
         testPeer.OutSession = mockSession;
-        
+
         // Set up peer pool
         ConcurrentDictionary<PublicKeyAsKey, Peer> peers = new();
         peers.TryAdd(TestItem.PublicKeyA, testPeer);
         _peerPool.ActivePeers.Returns(peers);
-        
+
         // Act
         string serialized = await RpcTest.TestSerializedRequest(_adminRpcModule, "admin_peers");
-        
+
         // Assert
         JsonRpcSuccessResponse response = _serializer.Deserialize<JsonRpcSuccessResponse>(serialized);
         var peerInfoList = ((JsonElement)response.Result!).Deserialize<List<PeerInfo>>(EthereumJsonSerializer.JsonOptions)!;
-        
+
         peerInfoList.Count.Should().Be(1);
         PeerInfo peerInfo = peerInfoList[0];
-        
+
         // Should return empty capabilities when no protocol handler (no fallback)
         peerInfo.Caps.Should().BeEmpty();
-        
+
         // Protocol version should be 0 (no capabilities to parse)
         var ethProtocol = peerInfo.Protocols["eth"];
         var ethProtocolElement = (JsonElement)ethProtocol;
@@ -687,46 +687,46 @@ public class AdminModuleTests
         // Arrange - Test peer with multiple capabilities
         Node testNode = new(TestItem.PublicKeyA, "192.168.1.100", 30303, false);
         testNode.ClientId = "erigon/v3.0.12-39c6a6ff/linux-amd64/go1.23.10";
-        
+
         Peer testPeer = new(testNode);
-        
+
         // Mock session with multiple capabilities
         ISession mockSession = Substitute.For<ISession>();
         mockSession.RemoteHost.Returns("192.168.1.100");
         mockSession.RemotePort.Returns(30303);
         mockSession.LocalPort.Returns(30303);
         mockSession.IsNetworkIdMatched.Returns(true);
-        
+
         // Mock protocol handler with multiple capabilities
         IP2PProtocolHandler mockP2PHandler = Substitute.For<IP2PProtocolHandler>();
         mockP2PHandler.GetCapabilitiesForAdmin().Returns(new[] { "eth67", "eth68", "snap1" });
         mockSession.TryGetProtocolHandler("p2p", out Arg.Any<IProtocolHandler>())
-            .Returns(x => 
+            .Returns(x =>
             {
                 x[1] = mockP2PHandler;
                 return true;
             });
-        
+
         testPeer.OutSession = mockSession;
-        
+
         // Set up peer pool
         ConcurrentDictionary<PublicKeyAsKey, Peer> peers = new();
         peers.TryAdd(TestItem.PublicKeyA, testPeer);
         _peerPool.ActivePeers.Returns(peers);
-        
+
         // Act
         string serialized = await RpcTest.TestSerializedRequest(_adminRpcModule, "admin_peers");
-        
+
         // Assert
         JsonRpcSuccessResponse response = _serializer.Deserialize<JsonRpcSuccessResponse>(serialized);
         var peerInfoList = ((JsonElement)response.Result!).Deserialize<List<PeerInfo>>(EthereumJsonSerializer.JsonOptions)!;
-        
+
         peerInfoList.Count.Should().Be(1);
         PeerInfo peerInfo = peerInfoList[0];
-        
+
         // Should have all capabilities
         peerInfo.Caps.Should().BeEquivalentTo(new[] { "eth67", "eth68", "snap1" });
-        
+
         // Protocol version should be parsed from first eth capability
         var ethProtocol = peerInfo.Protocols["eth"];
         var ethProtocolElement = (JsonElement)ethProtocol;
@@ -738,35 +738,35 @@ public class AdminModuleTests
     {
         // Arrange - Test inbound peer
         Node testNode = new(TestItem.PublicKeyA, "192.168.1.100", 30303, false);
-        
+
         Peer testPeer = new(testNode);
-        
+
         // Mock INBOUND session
         ISession mockSession = Substitute.For<ISession>();
         mockSession.RemoteHost.Returns("192.168.1.100");
         mockSession.RemotePort.Returns(45678); // Different port for inbound
         mockSession.LocalPort.Returns(30303);
         mockSession.IsNetworkIdMatched.Returns(true);
-        
+
         // Set as inbound session
         testPeer.InSession = mockSession;
         testPeer.OutSession = null;
-        
+
         // Set up peer pool
         ConcurrentDictionary<PublicKeyAsKey, Peer> peers = new();
         peers.TryAdd(TestItem.PublicKeyA, testPeer);
         _peerPool.ActivePeers.Returns(peers);
-        
+
         // Act
         string serialized = await RpcTest.TestSerializedRequest(_adminRpcModule, "admin_peers");
-        
+
         // Assert
         JsonRpcSuccessResponse response = _serializer.Deserialize<JsonRpcSuccessResponse>(serialized);
         var peerInfoList = ((JsonElement)response.Result!).Deserialize<List<PeerInfo>>(EthereumJsonSerializer.JsonOptions)!;
-        
+
         peerInfoList.Count.Should().Be(1);
         PeerInfo peerInfo = peerInfoList[0];
-        
+
         // Should be marked as inbound
         peerInfo.Inbound.Should().BeTrue();
         peerInfo.Network.Inbound.Should().BeTrue();
