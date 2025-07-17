@@ -228,9 +228,6 @@ public class MainPruningTrieStoreFactory
 
         if (stateDb is IFullPruningDb fullPruningDb)
         {
-            // PruningTriggerPersistenceStrategy triggerPersistenceStrategy = new(fullPruningDb, logManager);
-            // disposeStack.Push(triggerPersistenceStrategy);
-            // persistenceStrategy = persistenceStrategy.Or(triggerPersistenceStrategy);
             pruningStrategy = new PruningTriggerPruningStrategy(fullPruningDb, pruningStrategy);
         }
 
