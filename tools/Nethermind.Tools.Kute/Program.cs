@@ -30,7 +30,6 @@ static class Program
             Config.HostAddress,
             Config.JwtSecretFilePath,
             Config.AuthTtl,
-            Config.DryRun,
             Config.ShowProgress,
             Config.MetricsOutputFormatter,
             Config.MethodFilters,
@@ -112,8 +111,10 @@ static class Program
                 var totalMessages = messagesProvider.Messages.ToEnumerable().Count();
                 return new ConsoleProgressReporter(totalMessages);
             }
-
-            return new NullProgressReporter();
+            else
+            {
+                return new NullProgressReporter();
+            }
         });
         collection.AddSingleton<IMetricsConsumer, ConsoleMetricsConsumer>();
         collection.AddSingleton<IMetricsOutputFormatter>(

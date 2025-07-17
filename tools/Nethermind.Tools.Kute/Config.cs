@@ -36,11 +36,6 @@ public static class Config
         HelpName = "value"
     };
 
-    public static Option<bool> DryRun { get; } = new("--dry", "-d")
-    {
-        Description = "Only log into console"
-    };
-
     public static Option<bool> ShowProgress { get; } = new("--progress", "-p")
     {
         Description = "Show progress"
