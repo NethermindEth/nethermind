@@ -35,10 +35,10 @@ namespace Nethermind.Db
     }
 
     /// <summary>
-    /// Like <see cref="AutofacDbProvider"/>, but also dispose lifetime scope. Useful for existing test to make sure
+    /// Like <see cref="DbProvider"/>, but also dispose lifetime scope. Useful for existing test to make sure
     /// container is disposed properly.
     /// </summary>
-    public class ContainerOwningDbProvider(ILifetimeScope ctx) : AutofacDbProvider(ctx), IDisposable
+    public class ContainerOwningDbProvider(ILifetimeScope ctx) : DbProvider(ctx), IDisposable
     {
         public override void Dispose()
         {

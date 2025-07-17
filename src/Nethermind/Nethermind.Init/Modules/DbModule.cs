@@ -26,7 +26,7 @@ public class DbModule(
     {
         builder
             .AddSingleton<IDbFactory, RocksDbFactory>()
-            .AddSingleton<IDbProvider, AutofacDbProvider>()
+            .AddSingleton<IDbProvider, DbProvider>()
             .AddScoped<IReadOnlyDbProvider, IDbProvider>((dbProvider) => dbProvider.AsReadOnly(false))
 
             .AddKeyedAdapter<IKeyValueStore, IDb>((db) => db)

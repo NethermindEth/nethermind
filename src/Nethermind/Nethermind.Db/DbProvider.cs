@@ -5,7 +5,7 @@ using Autofac;
 
 namespace Nethermind.Db
 {
-    public class AutofacDbProvider(IComponentContext ctx) : IDbProvider
+    public class DbProvider(IComponentContext ctx) : IDbProvider
     {
         public virtual void Dispose()
         {
