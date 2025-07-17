@@ -346,4 +346,15 @@ public class P2PProtocolHandler(
         ProtocolInitialized = null;
         SubprotocolRequested = null;
     }
+
+    public IEnumerable<string> GetCapabilitiesForAdmin()
+    {
+        // Use LINQ for more functional approach and better performance
+        var capabilities = _agreedCapabilities?.Any() == true
+            ? _agreedCapabilities
+            : _supportedCapabilities;
+
+        return capabilities?.Select(cap => $"{cap.ProtocolCode}{cap.Version}") 
+            ?? Enumerable.Empty<string>();
+    }
 }

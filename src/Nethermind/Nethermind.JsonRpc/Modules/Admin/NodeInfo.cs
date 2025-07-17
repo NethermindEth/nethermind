@@ -3,6 +3,9 @@
 
 using System.Collections.Generic;
 using System.Text.Json.Serialization;
+using Nethermind.JsonRpc.Modules.Admin.Models;
+using Nethermind.JsonRpc.Modules.Admin.Utils;
+
 
 namespace Nethermind.JsonRpc.Modules.Admin;
 
@@ -33,7 +36,7 @@ public class NodeInfo
     {
         Protocols = new Dictionary<string, EthProtocolInfo>
         {
-            { "eth", new EthProtocolInfo() }
+            { NetworkConstants.EthProtocolPrefix, new EthProtocolInfo() }
         };
         Ports = new PortsInfo();
     }
