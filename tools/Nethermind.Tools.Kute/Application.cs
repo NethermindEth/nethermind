@@ -125,13 +125,6 @@ public sealed class Application
 
                             break;
                         }
-
-                    case null:
-                        {
-                            _metrics.TickFailed();
-
-                            break;
-                        }
                 }
             }
         }

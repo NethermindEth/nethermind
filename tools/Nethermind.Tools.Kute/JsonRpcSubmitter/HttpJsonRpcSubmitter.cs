@@ -21,7 +21,7 @@ public sealed class HttpJsonRpcSubmitter : IJsonRpcSubmitter
         _uri = new Uri(hostAddress);
     }
 
-    public async Task<HttpResponseMessage?> Submit(JsonRpc rpc)
+    public async Task<HttpResponseMessage> Submit(JsonRpc rpc)
     {
         var request = new HttpRequestMessage(HttpMethod.Post, _uri)
         {
