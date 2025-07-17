@@ -3,7 +3,7 @@
 
 namespace Nethermind.Db.Rocks.Config;
 
-public class MemoryAdjustedRocksdbConfig(
+public class AdjustedRocksdbConfig(
     IRocksDbConfig baseConfig,
     string additionalRocksDbOptions,
     ulong writeBufferSize

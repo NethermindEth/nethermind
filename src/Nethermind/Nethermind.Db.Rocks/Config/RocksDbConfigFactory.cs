@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using Nethermind.Core;
 using Nethermind.Core.Extensions;
 using Nethermind.Logging;
@@ -23,25 +24,44 @@ public class RocksDbConfigFactory(IDbConfig dbConfig, IPruningConfig pruningConf
                 ulong writeBufferSize = rocksDbConfig.WriteBufferSize ?? 0;
                 if (writeBufferSize < dbConfig.StateDbArchiveModeWriteBufferSize) writeBufferSize = dbConfig.StateDbArchiveModeWriteBufferSize;
 
-                rocksDbConfig = new MemoryAdjustedRocksdbConfig(
+                rocksDbConfig = new AdjustedRocksdbConfig(
                     rocksDbConfig,
                     dbConfig.StateDbArchiveModeRocksDbOptions!,
                     writeBufferSize
                 );
             }
-            else if (hardwareInfo.AvailableMemoryBytes > IHardwareInfo.StateDbLargerMemoryThreshold)
+            else if (hardwareInfo.AvailableMemoryBytes >= IHardwareInfo.StateDbLargerMemoryThreshold)
             {
                 if (_logger.IsInfo) _logger.Info($"Detected {hardwareInfo.AvailableMemoryBytes / 1.GiB()} GB of available memory. Applying large memory State Db config.");
 
                 ulong writeBufferSize = rocksDbConfig.WriteBufferSize ?? 0;
                 if (writeBufferSize < dbConfig.StateDbLargeMemoryWriteBufferSize) writeBufferSize = dbConfig.StateDbLargeMemoryWriteBufferSize;
 
-                rocksDbConfig = new MemoryAdjustedRocksdbConfig(
+                rocksDbConfig = new AdjustedRocksdbConfig(
                     rocksDbConfig,
                     dbConfig.StateDbLargeMemoryRocksDbOptions!,
                     writeBufferSize
                 );
             }
+
+            if (pruningConfig.Mode.IsMemory())
+            {
+                ulong totalWriteBufferMb = rocksDbConfig.WriteBufferNumber!.Value * rocksDbConfig.WriteBufferSize!.Value / (ulong)1.MB();
+                double minimumWriteBufferMb = 0.2 * pruningConfig.DirtyCacheMb;
+                if (totalWriteBufferMb < minimumWriteBufferMb)
+                {
+                    ulong minimumWriteBufferSize = (uint)Math.Ceiling((minimumWriteBufferMb * 1.MB()) / rocksDbConfig.WriteBufferNumber!.Value);
+
+                    if (_logger.IsInfo) _logger.Info($"Adjust state DB write buffer size to {minimumWriteBufferSize / (ulong)1.MB()} MB to account for pruning cache.");
+
+                    rocksDbConfig = new AdjustedRocksdbConfig(
+                        rocksDbConfig,
+                        "",
+                        minimumWriteBufferSize
+                    );
+                }
+            }
+
         }
 
         return rocksDbConfig;
