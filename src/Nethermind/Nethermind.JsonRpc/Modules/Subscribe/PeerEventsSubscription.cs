@@ -132,7 +132,7 @@ namespace Nethermind.JsonRpc.Modules.Subscribe
         private (string localHost, string remoteAddress, string peerId) GetPeerEventInfo(Node node)
         {
             var peer = new Peer(node);
-            var peerInfo = new PeerInfo(peer, false, _nodeInfo); // Pass NodeInfo here!
+            var peerInfo = new PeerInfo(peer, false, _nodeInfo);
 
             return (
                 peerInfo.Network.LocalHost,
