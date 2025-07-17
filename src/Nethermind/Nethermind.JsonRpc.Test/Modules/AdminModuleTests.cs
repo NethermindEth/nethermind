@@ -905,7 +905,7 @@ public class AdminModuleTests
         mockSession.LocalPort.Returns(30303);
         mockSession.IsNetworkIdMatched.Returns(true);
 
-        // Mock protocol handler with older eth capability only
+        // Mock protocol handler with older eth capability
         IP2PProtocolHandler mockP2PHandler = Substitute.For<IP2PProtocolHandler>();
         mockP2PHandler.GetCapabilitiesForAdmin().Returns(new[] { "eth/66" });
         mockSession.TryGetProtocolHandler("p2p", out Arg.Any<IProtocolHandler>())
