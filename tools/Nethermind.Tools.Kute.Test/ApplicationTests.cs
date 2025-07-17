@@ -74,7 +74,7 @@ public class ApplicationTests
         var jsonRpcSubmitter = ConstantSubmitter(ResponseOK);
         var validator = new ComposedJsonRpcValidator([new NonErrorJsonRpcValidator(), new NewPayloadJsonRpcValidator()]);
         var responseTracer = Substitute.For<IResponseTracer>();
-        var reporter = Substitute.For<IProgressReporter>();
+        var reporter = new NullProgressReporter();
         var consumer = Substitute.For<IMetricsConsumer>();
         var filter = Substitute.For<IJsonRpcMethodFilter>();
 
@@ -101,7 +101,7 @@ public class ApplicationTests
         var jsonRpcSubmitter = ConstantSubmitter(ResponseOK);
         var validator = new ComposedJsonRpcValidator([new NonErrorJsonRpcValidator(), new NewPayloadJsonRpcValidator()]);
         var responseTracer = Substitute.For<IResponseTracer>();
-        var reporter = Substitute.For<IProgressReporter>();
+        var reporter = new NullProgressReporter();
         var consumer = Substitute.For<IMetricsConsumer>();
         var filter = Substitute.For<IJsonRpcMethodFilter>();
 
@@ -134,7 +134,7 @@ public class ApplicationTests
         var jsonRpcSubmitter = ConstantSubmitter(ResponseError);
         var validator = new ComposedJsonRpcValidator([new NonErrorJsonRpcValidator(), new NewPayloadJsonRpcValidator()]);
         var responseTracer = Substitute.For<IResponseTracer>();
-        var reporter = Substitute.For<IProgressReporter>();
+        var reporter = new NullProgressReporter();
         var consumer = Substitute.For<IMetricsConsumer>();
         var filter = new ComposedJsonRpcMethodFilter([new PatternJsonRpcMethodFilter("eth_.*")]);
 
