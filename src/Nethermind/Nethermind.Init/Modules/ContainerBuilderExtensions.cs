@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using Autofac;
 using Nethermind.Api;
 using Nethermind.Core;
@@ -41,4 +42,23 @@ public static class ContainerBuilderExtensions
                 return new NetworkStorage(db, logManager);
             });
     }
+
+    public static ContainerBuilder AddDatabase(this ContainerBuilder builder, string dbName) =>
+        builder
+            .AddKeyedSingleton<IDb>(dbName, (ctx) => ctx.Resolve<IDbFactory>()
+                .CreateDb(new DbSettings(GetTitleDbName(dbName), dbName)));
+
+    public static ContainerBuilder AddColumnDatabase<T>(this ContainerBuilder builder, string dbName) where T : struct, Enum =>
+        builder
+            .AddSingleton<IColumnsDb<T>>((ctx) => ctx.Resolve<IDbFactory>()
+                .CreateColumnsDb<T>(new DbSettings(GetTitleDbName(dbName), dbName)))
+
+            .AddKeyedSingleton<ITunableDb>(dbName, (ctx) =>
+            {
+                IColumnsDb<T> db = ctx.Resolve<IColumnsDb<T>>();
+                if (db is ITunableDb tunableDb) return tunableDb;
+                return new NoopTunableDb();
+            });
+
+    private static string GetTitleDbName(string dbName) => char.ToUpper(dbName[0]) + dbName[1..];
 }

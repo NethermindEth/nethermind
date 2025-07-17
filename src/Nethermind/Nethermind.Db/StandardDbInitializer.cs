@@ -8,6 +8,7 @@ using Nethermind.Db.FullPruning;
 
 namespace Nethermind.Db
 {
+    /*
     public class StandardDbInitializer : RocksDbInitializer
     {
         private readonly IFileSystem _fileSystem;
@@ -66,12 +67,12 @@ namespace Nethermind.Db
             }
         }
 
-        private static DbSettings BuildDbSettings(string dbName, bool deleteOnStart = false)
+        private static DbSettings BuildDbSettings(string dbName)
         {
             return new(GetTitleDbName(dbName), dbName)
             {
-                DeleteOnStart = deleteOnStart
             };
         }
     }
+    */
 }

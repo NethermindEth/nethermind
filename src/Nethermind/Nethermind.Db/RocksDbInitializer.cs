@@ -21,6 +21,7 @@ namespace Nethermind.Db
             DbFactory = dbFactory ?? NullDbFactory.Instance;
         }
 
+        /*
         protected void RegisterCustomDb(string dbName, Func<IDb> dbFunc)
         {
             void Action()
@@ -53,6 +54,7 @@ namespace Nethermind.Db
             _registrations.Add(() => _dbProvider.RegisterDb(dbName, dbCreation()));
         private void AddRegisterAction<T>(string dbName, Func<IColumnsDb<T>> dbCreation) =>
             _registrations.Add(() => _dbProvider.RegisterColumnDb(dbName, dbCreation()));
+            */
 
         private IDb CreateDb(DbSettings settings) => DbFactory.CreateDb(settings);
 

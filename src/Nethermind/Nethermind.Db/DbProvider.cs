@@ -5,9 +5,28 @@ using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.IO;
+using Autofac;
 
 namespace Nethermind.Db
 {
+    public class AutofacDbProvider(IComponentContext ctx) : IDbProvider
+    {
+        public void Dispose()
+        {
+        }
+
+        public T GetDb<T>(string dbName) where T : class, IDb
+        {
+            return (T)ctx.ResolveKeyed<IDb>(dbName);
+        }
+
+        public IColumnsDb<T> GetColumnDb<T>(string dbName)
+        {
+            return ctx.Resolve<IColumnsDb<T>>();
+        }
+    }
+
+    // TODO: Remove
     public class DbProvider : IDbProvider
     {
         private readonly ConcurrentDictionary<string, IDb> _registeredDbs =

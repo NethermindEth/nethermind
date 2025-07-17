@@ -61,7 +61,6 @@ public class PseudoNethermindModule(ChainSpec spec, IConfigProvider configProvid
                 initConfig.BackgroundTaskMaxNumber,
                 logManager))
             .AddSingleton<IFileSystem>(new FileSystem())
-            .AddSingleton<IDbProvider>(new DbProvider())
             .AddSingleton<IProcessExitSource>(new ProcessExitSource(default))
             .AddSingleton<IJsonSerializer, EthereumJsonSerializer>()
 

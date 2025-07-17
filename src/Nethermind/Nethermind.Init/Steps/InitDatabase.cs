@@ -31,11 +31,12 @@ namespace Nethermind.Init.Steps
             _api = api;
         }
 
-        public virtual async Task Execute(CancellationToken _)
+        public virtual Task Execute(CancellationToken _)
         {
+            return Task.CompletedTask;
+            /*
             ILogger logger = _api.LogManager.GetClassLogger();
 
-            /* sync */
             IDbConfig dbConfig = _api.Config<IDbConfig>();
             ISyncConfig syncConfig = _api.Config<ISyncConfig>();
             IInitConfig initConfig = _api.Config<IInitConfig>();
@@ -64,8 +65,10 @@ namespace Nethermind.Init.Steps
                 if (logger.IsError)
                     logger.Error("Failed loading RocksDB", ex);
             }
+            */
         }
 
+        /*
         private void InitDbApi(IInitConfig initConfig, IDbConfig dbConfig, bool storeReceipts)
         {
             switch (initConfig.DiagnosticMode)
@@ -91,5 +94,6 @@ namespace Nethermind.Init.Steps
                     break;
             }
         }
+        */
     }
 }
