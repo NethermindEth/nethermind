@@ -10,10 +10,8 @@ using Nethermind.Consensus.Producers;
 using Nethermind.Consensus.Transactions;
 using Nethermind.Consensus.Validators;
 using Nethermind.Core;
-using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Core.Test.Modules;
-using Nethermind.Specs;
 using NUnit.Framework;
 
 namespace Nethermind.Blockchain.Test.Producers;
@@ -23,22 +21,14 @@ public class DevBlockProducerTests
     [Test, MaxTime(Timeout.MaxTestTime)]
     public void Test()
     {
-        ISpecProvider specProvider = MainnetSpecProvider.Instance;
-        BlockTree blockTree = Build.A.BlockTree()
-            .WithoutSettingHead
-            .TestObject;
-
-        ManualTimestamper timestamper = new ManualTimestamper();
         using IContainer container = new ContainerBuilder()
             .AddModule(new TestNethermindModule())
-            .AddSingleton<ITimestamper>(timestamper)
             .AddSingleton<IBlockValidator>(Always.Valid)
             .AddSingleton<IBlockProducerTxSourceFactory, EmptyTxSourceFactory>()
             .AddScoped<IBlockProducerFactory, TestBlockProcessingModule.AutoBlockProducerFactory<DevBlockProducer>>()
-            .AddSingleton<ISpecProvider>(specProvider)
-            .AddSingleton<IBlockTree>(blockTree)
             .Build();
 
+        IBlockTree blockTree = container.Resolve<IBlockTree>();
         IManualBlockProductionTrigger trigger = container.Resolve<IManualBlockProductionTrigger>();
 
         container.Resolve<IMainProcessingContext>().BlockchainProcessor.Start();
