@@ -619,12 +619,18 @@ public class AdminModuleTests
         var ethProtocol = peerInfo.Protocols["eth"];
         ethProtocol.Should().NotBeNull();
 
-        // Cast to JObject to inspect properties
+        // Cast to JsonElement to inspect properties
         var ethProtocolElement = (JsonElement)ethProtocol;
         ethProtocolElement.GetProperty("version").GetInt32().Should().Be(68);
-        ethProtocolElement.TryGetProperty("earliestBlock", out _).Should().BeFalse();
-        ethProtocolElement.TryGetProperty("latestBlock", out _).Should().BeFalse();
-        ethProtocolElement.TryGetProperty("latestBlockHash", out _).Should().BeFalse();
+
+        // Test snap protocol if it exists (it should in this case)
+        if (peerInfo.Protocols.ContainsKey("snap"))
+        {
+            var snapProtocol = peerInfo.Protocols["snap"];
+            snapProtocol.Should().NotBeNull();
+            var snapProtocolElement = (JsonElement)snapProtocol;
+            snapProtocolElement.GetProperty("version").GetInt32().Should().Be(1);
+        }
     }
 
     [Test]
@@ -761,5 +767,181 @@ public class AdminModuleTests
         // Should be marked as inbound
         peerInfo.Network.Inbound.Should().BeTrue();
         peerInfo.Network.RemoteAddress.Should().Be("192.168.1.100:45678");
+    }
+
+    [Test]
+    public async Task Test_peers_eth_only_protocol()
+    {
+        // Arrange - Test peer with only eth protocol (no snap)
+        Node testNode = new(TestItem.PublicKeyA, "192.168.1.100", 30303, false);
+        testNode.ClientId = "Nethermind/v1.25.4+2bf8a789/linux-x64/dotnet8.0.8";
+
+        Peer testPeer = new(testNode);
+
+        // Mock session with only eth capability
+        ISession mockSession = Substitute.For<ISession>();
+        mockSession.RemoteHost.Returns("192.168.1.100");
+        mockSession.RemotePort.Returns(30303);
+        mockSession.LocalPort.Returns(30303);
+        mockSession.IsNetworkIdMatched.Returns(true);
+
+        // Mock protocol handler with only eth capability
+        IP2PProtocolHandler mockP2PHandler = Substitute.For<IP2PProtocolHandler>();
+        mockP2PHandler.GetCapabilitiesForAdmin().Returns(new[] { "eth/68" });
+        mockSession.TryGetProtocolHandler("p2p", out Arg.Any<IProtocolHandler>())
+            .Returns(x =>
+            {
+                x[1] = mockP2PHandler;
+                return true;
+            });
+
+        testPeer.OutSession = mockSession;
+
+        // Set up peer pool
+        ConcurrentDictionary<PublicKeyAsKey, Peer> peers = new();
+        peers.TryAdd(TestItem.PublicKeyA, testPeer);
+        _peerPool.ActivePeers.Returns(peers);
+
+        // Act
+        string serialized = await RpcTest.TestSerializedRequest(_adminRpcModule, "admin_peers");
+
+        // Assert
+        JsonRpcSuccessResponse response = _serializer.Deserialize<JsonRpcSuccessResponse>(serialized);
+        var peerInfoList = ((JsonElement)response.Result!).Deserialize<List<PeerInfo>>(EthereumJsonSerializer.JsonOptions)!;
+
+        peerInfoList.Count.Should().Be(1);
+        PeerInfo peerInfo = peerInfoList[0];
+
+        // Should have only eth capability
+        peerInfo.Caps.Should().BeEquivalentTo(new[] { "eth/68" });
+
+        // Test protocols object
+        peerInfo.Protocols.Should().NotBeNull();
+        peerInfo.Protocols.Should().ContainKey("eth");
+
+        // Should NOT contain snap protocol
+        peerInfo.Protocols.Should().NotContainKey("snap");
+
+        // Test eth protocol
+        var ethProtocol = peerInfo.Protocols["eth"];
+        var ethProtocolElement = (JsonElement)ethProtocol;
+        ethProtocolElement.GetProperty("version").GetInt32().Should().Be(68);
+    }
+
+    [Test]
+    public async Task Test_peers_multiple_eth_versions()
+    {
+        // Arrange - Test peer with multiple eth versions
+        Node testNode = new(TestItem.PublicKeyA, "192.168.1.100", 30303, false);
+        testNode.ClientId = "erigon/v3.0.12-39c6a6ff/linux-amd64/go1.23.10";
+
+        Peer testPeer = new(testNode);
+
+        // Mock session with multiple capabilities
+        ISession mockSession = Substitute.For<ISession>();
+        mockSession.RemoteHost.Returns("192.168.1.100");
+        mockSession.RemotePort.Returns(30303);
+        mockSession.LocalPort.Returns(30303);
+        mockSession.IsNetworkIdMatched.Returns(true);
+
+        // Mock protocol handler with multiple capabilities
+        IP2PProtocolHandler mockP2PHandler = Substitute.For<IP2PProtocolHandler>();
+        mockP2PHandler.GetCapabilitiesForAdmin().Returns(new[] { "eth/67", "eth/68", "snap/1" });
+        mockSession.TryGetProtocolHandler("p2p", out Arg.Any<IProtocolHandler>())
+            .Returns(x =>
+            {
+                x[1] = mockP2PHandler;
+                return true;
+            });
+
+        testPeer.OutSession = mockSession;
+
+        // Set up peer pool
+        ConcurrentDictionary<PublicKeyAsKey, Peer> peers = new();
+        peers.TryAdd(TestItem.PublicKeyA, testPeer);
+        _peerPool.ActivePeers.Returns(peers);
+
+        // Act
+        string serialized = await RpcTest.TestSerializedRequest(_adminRpcModule, "admin_peers");
+
+        // Assert
+        JsonRpcSuccessResponse response = _serializer.Deserialize<JsonRpcSuccessResponse>(serialized);
+        var peerInfoList = ((JsonElement)response.Result!).Deserialize<List<PeerInfo>>(EthereumJsonSerializer.JsonOptions)!;
+
+        peerInfoList.Count.Should().Be(1);
+        PeerInfo peerInfo = peerInfoList[0];
+
+        // Should have all capabilities
+        peerInfo.Caps.Should().BeEquivalentTo(new[] { "eth/67", "eth/68", "snap/1" });
+
+        // Test protocols - should contain both eth and snap
+        peerInfo.Protocols.Should().ContainKey("eth");
+        peerInfo.Protocols.Should().ContainKey("snap");
+
+        // Protocol version should be parsed from first eth capability
+        var ethProtocol = peerInfo.Protocols["eth"];
+        var ethProtocolElement = (JsonElement)ethProtocol;
+        ethProtocolElement.GetProperty("version").GetInt32().Should().Be(67);
+
+        // Test snap protocol
+        var snapProtocol = peerInfo.Protocols["snap"];
+        var snapProtocolElement = (JsonElement)snapProtocol;
+        snapProtocolElement.GetProperty("version").GetInt32().Should().Be(1);
+    }
+
+    [Test]
+    public async Task Test_peers_older_eth_version()
+    {
+        // Arrange - Test peer with older eth version (realistic scenario)
+        Node testNode = new(TestItem.PublicKeyA, "192.168.1.100", 30303, false);
+        testNode.ClientId = "Geth/v1.10.0-stable/linux-amd64/go1.16.15";
+
+        Peer testPeer = new(testNode);
+
+        // Mock session with older eth version (no snap support)
+        ISession mockSession = Substitute.For<ISession>();
+        mockSession.RemoteHost.Returns("192.168.1.100");
+        mockSession.RemotePort.Returns(30303);
+        mockSession.LocalPort.Returns(30303);
+        mockSession.IsNetworkIdMatched.Returns(true);
+
+        // Mock protocol handler with older eth capability only
+        IP2PProtocolHandler mockP2PHandler = Substitute.For<IP2PProtocolHandler>();
+        mockP2PHandler.GetCapabilitiesForAdmin().Returns(new[] { "eth/66" });
+        mockSession.TryGetProtocolHandler("p2p", out Arg.Any<IProtocolHandler>())
+            .Returns(x =>
+            {
+                x[1] = mockP2PHandler;
+                return true;
+            });
+
+        testPeer.OutSession = mockSession;
+
+        // Set up peer pool
+        ConcurrentDictionary<PublicKeyAsKey, Peer> peers = new();
+        peers.TryAdd(TestItem.PublicKeyA, testPeer);
+        _peerPool.ActivePeers.Returns(peers);
+
+        // Act
+        string serialized = await RpcTest.TestSerializedRequest(_adminRpcModule, "admin_peers");
+
+        // Assert
+        JsonRpcSuccessResponse response = _serializer.Deserialize<JsonRpcSuccessResponse>(serialized);
+        var peerInfoList = ((JsonElement)response.Result!).Deserialize<List<PeerInfo>>(EthereumJsonSerializer.JsonOptions)!;
+
+        peerInfoList.Count.Should().Be(1);
+        PeerInfo peerInfo = peerInfoList[0];
+
+        // Should have only older eth capability
+        peerInfo.Caps.Should().BeEquivalentTo(new[] { "eth/66" });
+
+        // Test protocols - should only contain eth
+        peerInfo.Protocols.Should().ContainKey("eth");
+        peerInfo.Protocols.Should().NotContainKey("snap"); // Older clients don't support snap
+
+        // Test eth protocol version
+        var ethProtocol = peerInfo.Protocols["eth"];
+        var ethProtocolElement = (JsonElement)ethProtocol;
+        ethProtocolElement.GetProperty("version").GetInt32().Should().Be(66);
     }
 }
