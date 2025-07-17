@@ -68,6 +68,48 @@ public class JsonRpcValidatorTests
         }
     }
 
+    public class NonErrorJsonRpcValidatorTests
+    {
+        private static readonly NonErrorJsonRpcValidator _validator = new();
+
+        [Test]
+        public void IsValid_When_RequestIsBatch()
+        {
+            var response = CreateResponse(isValid: true);
+            bool result = _validator.IsValid(CreateBatchRequest(CreateSingleRequest("engine_newPayload")), response);
+
+            result.Should().BeTrue();
+        }
+
+        [Test]
+        public void IsInvalid_When_ResponseIsNull()
+        {
+            JsonDocument? response = null;
+            bool result = _validator.IsValid(CreateSingleRequest("eth_getBlockByNumber"), response);
+
+            result.Should().BeFalse();
+        }
+
+        [TestCase(true)]
+        [TestCase(false)]
+        public void IsValid_When_ResponseHasNoError(bool isValid)
+        {
+            var response = CreateResponse(isValid);
+            bool result = _validator.IsValid(CreateSingleRequest("eth_getBlockByNumber"), response);
+
+            result.Should().BeTrue();
+        }
+
+        [Test]
+        public void IsInvalid_When_ResponseHasError()
+        {
+            var response = CreateErrorResponse();
+            bool result = _validator.IsValid(CreateSingleRequest("eth_getBlockByNumber"), response);
+
+            result.Should().BeFalse();
+        }
+    }
+
     private static JsonRpc.SingleJsonRpc CreateSingleRequest(string? method)
     {
         var methodJSON = method is null ? "null" : $"\"{method}\"";
@@ -96,6 +138,13 @@ public class JsonRpcValidatorTests
         string status = isValid ? "VALID" : "INVALID";
         return JsonDocument.Parse(
             $$$"""{"jsonrpc":"2.0","id": 1,"result":{"status": "{{{status}}}"}}"""
+        );
+    }
+
+    private static JsonDocument CreateErrorResponse()
+    {
+        return JsonDocument.Parse(
+            """{"jsonrpc":"2.0","id":1,"error":{"code":-32603,"message":"Internal error"}}"""
         );
     }
 }
