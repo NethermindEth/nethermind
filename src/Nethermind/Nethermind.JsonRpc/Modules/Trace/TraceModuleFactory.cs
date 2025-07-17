@@ -1,27 +1,32 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System.Collections.Generic;
 using Autofac;
 using Nethermind.Consensus.Processing;
 using Nethermind.Consensus.Rewards;
 using Nethermind.Consensus.Tracing;
 using Nethermind.Consensus.Validators;
 using Nethermind.Core;
-using Nethermind.Evm.State;
+using Nethermind.Core.Container;
 using Nethermind.State.OverridableEnv;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.State;
 
 namespace Nethermind.JsonRpc.Modules.Trace;
 
-public class TraceModuleFactory(IOverridableEnvFactory overridableEnvFactory, ILifetimeScope rootLifetimeScope) : ModuleFactoryBase<ITraceRpcModule>
+public class TraceModuleFactory(
+    IOverridableEnvFactory overridableEnvFactory,
+    ILifetimeScope rootLifetimeScope,
+    IReadOnlyList<IBlockValidationModule> validationBlockProcessingModules
+) : ModuleFactoryBase<ITraceRpcModule>
 {
-    protected virtual ContainerBuilder ConfigureCommonBlockProcessing<T>(ContainerBuilder builder) where T : ITransactionProcessorAdapter =>
+    private ContainerBuilder ConfigureCommonBlockProcessing<T>(ContainerBuilder builder) where T : ITransactionProcessorAdapter =>
         builder
+            .AddModule(validationBlockProcessingModules)
 
             // More or less standard except for configurable `ITransactionProcessorAdapter`.
             // Note: Not overriding `IReceiptStorage` to null.
-            .Bind<IBlockProcessor.IBlockTransactionsExecutor, IValidationTransactionExecutor>()
             .AddScoped<ITransactionProcessorAdapter, T>() // T can be trace or execute
             .AddDecorator<IBlockchainProcessor, OneTimeChainProcessor>()
             .AddScoped<BlockchainProcessor.Options>(BlockchainProcessor.Options.NoReceipts)
