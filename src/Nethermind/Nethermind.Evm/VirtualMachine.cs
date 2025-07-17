@@ -191,7 +191,7 @@ public sealed unsafe partial class VirtualMachine(
                     // Execute the regular EVM call if valid code is present; otherwise, mark as invalid.
                     if (_currentState.Env.CodeInfo is not null)
                     {
-                        callResult = _logger.IsTrace
+                        callResult = _txTracer.IsTracing
                             ? ExecuteCall<TTracingInst, OffFlag>(_previousCallResult, previousCallOutput, _previousCallOutputDestination)
                             : ExecuteCall<TTracingInst, OnFlag>(_previousCallResult, previousCallOutput, _previousCallOutputDestination);
                     }
