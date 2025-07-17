@@ -45,7 +45,6 @@ public class AlwaysCancelTxTracer : ITxTracer
     public bool IsTracingAccess => true;
     public bool IsTracingFees => true;
     public bool IsTracingLogs => true;
-    public bool IsTracingIlEvmCalls => true;
 
     public void MarkAsSuccess(Address recipient, GasConsumed gasSpent, byte[] output, LogEntry[] logs, Hash256? stateRoot = null) => throw new OperationCanceledException(ErrorMessage);
 
@@ -104,10 +103,4 @@ public class AlwaysCancelTxTracer : ITxTracer
     public void ReportAccess(IReadOnlyCollection<Address> accessedAddresses, IReadOnlyCollection<StorageCell> accessedStorageCells) => throw new OperationCanceledException(ErrorMessage);
     public void ReportFees(UInt256 fees, UInt256 burntFees) => throw new OperationCanceledException(ErrorMessage);
     public void Dispose() { }
-
-    public void ReportChunkExecutionStart(long gas, int pc, Type segmentID) => throw new OperationCanceledException(ErrorMessage);
-
-    public void ReportChunkExecutionEnd(long gas, int pc, Type segmentID) => throw new OperationCanceledException(ErrorMessage);
-
-    public void ReportIlEvmChunkExecution(long gas, int pc, string segmentId, in ExecutionEnvironment env) => throw new OperationCanceledException(ErrorMessage);
 }

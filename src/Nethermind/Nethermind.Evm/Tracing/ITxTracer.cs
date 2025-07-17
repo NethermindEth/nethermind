@@ -11,7 +11,7 @@ using Nethermind.Int256;
 
 namespace Nethermind.Evm.Tracing;
 
-public interface ITxTracer : IWorldStateTracer, IDisposable, IILVMTracer
+public interface ITxTracer : IWorldStateTracer, IDisposable
 {
     bool IsCancelable => false;
     bool IsCancelled => false;
@@ -149,15 +149,6 @@ public interface ITxTracer : IWorldStateTracer, IDisposable, IILVMTracer
                       || IsTracingAccess
                       || IsTracingFees
                       || IsTracingLogs;
-
-    bool IsTracingIlEvmCompatible =>
-        (
-            (IsTracingReceipt || IsTracingIlEvmCalls)
-            && !(IsTracing || IsTracingStorage || IsTracingState)
-        )
-        || !(
-            IsTracing || IsTracingStorage || IsTracingState
-        );
 
     /// <summary>
     /// Transaction completed successfully
