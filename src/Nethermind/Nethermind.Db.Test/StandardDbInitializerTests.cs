@@ -74,17 +74,6 @@ namespace Nethermind.Db.Test
 
         private Task<IDbProvider> InitializeStandardDb(bool useReceipts, bool useMemDb, string path)
         {
-            /*
-            IDbProvider dbProvider = new DbProvider();
-            IDbFactory dbFactory = useMemDb
-                ? new MemDbFactory()
-                : new RocksDbFactory(new DbConfig(), LimboLogs.Instance, Path.Combine(_folderWithDbs, path));
-
-            StandardDbInitializer initializer = new(dbProvider, dbFactory, Substitute.For<IFileSystem>());
-            await initializer.InitStandardDbsAsync(useReceipts);
-            return dbProvider;
-            */
-
             IInitConfig initConfig = new InitConfig()
             {
                 DiagnosticMode = useMemDb ? DiagnosticMode.MemDb : DiagnosticMode.None,
