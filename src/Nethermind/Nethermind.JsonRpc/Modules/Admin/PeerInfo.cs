@@ -124,7 +124,7 @@ namespace Nethermind.JsonRpc.Modules.Admin
 
         private void PopulateDetailedFields(Peer peer)
         {
-            ClientType = peer.Node.ClientType?.ToString();
+            ClientType = peer.Node.ClientType.ToString();
             EthDetails = peer.Node.EthDetails;
             ISession? session = peer.InSession ?? peer.OutSession;
             LastSignal = session?.LastPingUtc.ToString(CultureInfo.InvariantCulture);
