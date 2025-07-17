@@ -43,10 +43,12 @@ public static class ContainerBuilderExtensions
             });
     }
 
-    public static ContainerBuilder AddDatabase(this ContainerBuilder builder, string dbName) =>
-        builder
-            .AddKeyedSingleton<IDb>(dbName, (ctx) => ctx.Resolve<IDbFactory>()
-                .CreateDb(new DbSettings(GetTitleDbName(dbName), dbName)));
+    public static ContainerBuilder AddDatabase(this ContainerBuilder builder, string dbName) => builder
+        .AddDatabase(dbName, GetTitleDbName(dbName), dbName);
+
+    public static ContainerBuilder AddDatabase(this ContainerBuilder builder, string keyName, string dbName, string path) => builder
+        .AddKeyedSingleton<IDb>(keyName, (ctx) => ctx.Resolve<IDbFactory>()
+            .CreateDb(new DbSettings(dbName, path)));
 
     public static ContainerBuilder AddColumnDatabase<T>(this ContainerBuilder builder, string dbName) where T : struct, Enum =>
         builder
