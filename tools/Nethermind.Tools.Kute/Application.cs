@@ -93,13 +93,13 @@ public sealed class Application
                             if (single.MethodName is null)
                             {
                                 _metrics.TickFailed();
-                                return;
+                                continue;
                             }
 
                             if (_methodFilter.ShouldIgnore(single.MethodName))
                             {
                                 _metrics.TickIgnoredRequests();
-                                return;
+                                continue;
                             }
 
                             HttpResponseMessage? content;
