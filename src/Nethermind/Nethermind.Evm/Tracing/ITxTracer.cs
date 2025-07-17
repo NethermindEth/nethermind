@@ -150,6 +150,15 @@ public interface ITxTracer : IWorldStateTracer, IDisposable, IILVMTracer
                       || IsTracingFees
                       || IsTracingLogs;
 
+    bool IsTracingIlEvmCompatible =>
+        (
+            (IsTracingReceipt || IsTracingIlEvmCalls)
+            && !(IsTracing || IsTracingStorage || IsTracingState)
+        )
+        || !(
+            IsTracing || IsTracingStorage || IsTracingState
+        );
+
     /// <summary>
     /// Transaction completed successfully
     /// </summary>
