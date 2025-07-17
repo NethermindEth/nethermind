@@ -7,6 +7,7 @@ using System.Linq;
 using Nethermind.Network.P2P;
 using Nethermind.Network.P2P.ProtocolHandlers;
 using Nethermind.Network;
+using Nethermind.JsonRpc.Modules.Admin.Utils;
 
 namespace Nethermind.JsonRpc.Modules.Admin.Utils
 {
@@ -20,7 +21,7 @@ namespace Nethermind.JsonRpc.Modules.Admin.Utils
 
         public static IEnumerable<string> GetCapabilitiesFromSession(ISession? session)
         {
-            if (session?.TryGetProtocolHandler("p2p", out IProtocolHandler? handler) == true &&
+            if (session?.TryGetProtocolHandler(NetworkConstants.P2PPrefix, out IProtocolHandler? handler) == true &&
                 handler is IP2PProtocolHandler p2pHandler)
             {
                 return p2pHandler.GetCapabilitiesForAdmin() ?? Enumerable.Empty<string>();

@@ -560,7 +560,6 @@ public class AdminModuleTests
         // Arrange - Set up a peer with rich data
         Node testNode = new(TestItem.PublicKeyA, "192.168.1.100", 30303, true);
         testNode.ClientId = "Geth/v1.15.10-stable-2bf8a789/linux-amd64/go1.24.2";
-        testNode.EthDetails = "eth68";
         
         Peer testPeer = new(testNode);
         
@@ -642,11 +641,10 @@ public class AdminModuleTests
     {
         // Arrange - Test capability extraction from different sources
         Node testNode = new(TestItem.PublicKeyA, "192.168.1.100", 30303, false);
-        testNode.EthDetails = "eth67"; // Fallback capability
         
         Peer testPeer = new(testNode);
         
-        // Mock session WITHOUT protocol handler (should fall back to EthDetails)
+        // Mock session WITHOUT protocol handler (should return empty capabilities)
         ISession mockSession = Substitute.For<ISession>();
         mockSession.RemoteHost.Returns("192.168.1.100");
         mockSession.RemotePort.Returns(30303);
@@ -674,13 +672,13 @@ public class AdminModuleTests
         peerInfoList.Count.Should().Be(1);
         PeerInfo peerInfo = peerInfoList[0];
         
-        // Should fall back to EthDetails when no protocol handler
-        peerInfo.Caps.Should().BeEquivalentTo(new[] { "eth67" });
+        // Should return empty capabilities when no protocol handler (no fallback)
+        peerInfo.Caps.Should().BeEmpty();
         
-        // Protocol version should be parsed correctly
+        // Protocol version should be 0 (no capabilities to parse)
         var ethProtocol = peerInfo.Protocols["eth"];
         var ethProtocolElement = (JsonElement)ethProtocol;
-        ethProtocolElement.GetProperty("version").GetInt32().Should().Be(67);
+        ethProtocolElement.GetProperty("version").GetInt32().Should().Be(0);
     }
 
     [Test]
