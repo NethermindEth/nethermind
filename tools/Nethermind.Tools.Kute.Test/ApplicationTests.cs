@@ -151,5 +151,39 @@ public class ApplicationTests
         await app.Run();
 
         await jsonRpcSubmitter.Received(1).Submit(Arg.Any<JsonRpc.SingleJsonRpc>());
+        await jsonRpcSubmitter.Received(1).Submit(Arg.Any<JsonRpc.BatchJsonRpc>());
+    }
+
+    [Test]
+    public async Task WithFiltering_UnwrapBatches_InvalidResponses()
+    {
+        var lines = """
+        {"method": "engine_exchangeTransitionConfigurationV1"}
+        {"method": "eth_chainId"}
+        [{"method": "eth_getBlockByNumber"}, {"method": "engine_exchangeCapabilities"}]
+        """;
+
+        var messageProvider = new UnwrapBatchJsonRpcMessageProvider(new JsonRpcMessageProvider(LinesProvider(lines)));
+        var jsonRpcSubmitter = ConstantSubmitter(ResponseError);
+        var validator = new ComposedJsonRpcValidator([new NonErrorJsonRpcValidator(), new NewPayloadJsonRpcValidator()]);
+        var responseTracer = Substitute.For<IResponseTracer>();
+        var reporter = new NullProgressReporter();
+        var consumer = Substitute.For<IMetricsConsumer>();
+        var filter = new ComposedJsonRpcMethodFilter([new PatternJsonRpcMethodFilter("engine_.*")]);
+
+        var app = new Application(
+            messageProvider,
+            jsonRpcSubmitter,
+            validator,
+            responseTracer,
+            reporter,
+            consumer,
+            filter
+        );
+
+        await app.Run();
+
+        await jsonRpcSubmitter.Received(2).Submit(Arg.Any<JsonRpc.SingleJsonRpc>());
+        await jsonRpcSubmitter.Received(0).Submit(Arg.Any<JsonRpc.BatchJsonRpc>());
     }
 }
