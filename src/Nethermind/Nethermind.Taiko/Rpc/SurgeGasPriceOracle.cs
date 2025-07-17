@@ -115,9 +115,9 @@ public class SurgeGasPriceOracle : GasPriceOracle
         _gasPriceEstimation.Set(headBlockHash, adjustedGasPriceEstimate);
         _lastGasPriceCalculation = DateTime.UtcNow;
 
-        if (_logger.IsTrace)
+        if (_logger.IsDebug)
         {
-            _logger.Trace($"[{ClassName}] Calculated new gas price estimate: {adjustedGasPriceEstimate}, " +
+            _logger.Debug($"[{ClassName}] Calculated new gas price estimate: {adjustedGasPriceEstimate}, " +
                           $"L1 Base Fee: {l1BaseFee}, L1 Blob Base Fee: {l1BlobBaseFee}, " +
                           $"L1 Average Base Fee: {l1AverageBaseFee}, Average Gas Usage: {averageGasUsage}, " +
                           $"Adjusted with boost base fee percentage of {_surgeConfig.BoostBaseFeePercentage}% " +
