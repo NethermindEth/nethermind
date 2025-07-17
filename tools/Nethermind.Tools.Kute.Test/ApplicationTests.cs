@@ -44,12 +44,13 @@ public class ApplicationTests
     [{"method": "eth_getBlockByNumber"}, {"method": "eth_getLogs"}, {"method": "eth_syncing"}, {"method": "engine_forkchoiceUpdatedV2"}, {"method": "engine_exchangeTransitionConfigurationV1"}, {"method": "eth_chainId"}, {"method": "engine_newPayloadV3"}, {"method": "engine_exchangeCapabilities"}]
     """;
 
-    private const string ResponseValid = """{"jsonrpc":"2.0","id":1,"result":{"status":"VALID"}}""";
+    private const string ResponseOK = """{"jsonrpc":"2.0","id":1,"result":{"status":"VALID"}}""";
+    private const string ResponseError = """{"jsonrpc":"2.0","id":1,"error":{"code":-32603,"message":"Internal error"}}""";
 
-    private IMessageProvider<string> LinesProvider()
+    private IMessageProvider<string> LinesProvider(string lines)
     {
         var stringProvider = Substitute.For<IMessageProvider<string>>();
-        stringProvider.Messages.Returns(TestInput.Split('\n').ToAsyncEnumerable());
+        stringProvider.Messages.Returns(lines.Split('\n').ToAsyncEnumerable());
 
         return stringProvider;
     }
@@ -69,8 +70,8 @@ public class ApplicationTests
     [Test]
     public async Task ProcessesMultipleJSONRpcMessages_NoFiltering()
     {
-        var messageProvider = new JsonRpcMessageProvider(LinesProvider());
-        var jsonRpcSubmitter = ConstantSubmitter(ResponseValid);
+        var messageProvider = new JsonRpcMessageProvider(LinesProvider(TestInput));
+        var jsonRpcSubmitter = ConstantSubmitter(ResponseOK);
         var validator = new ComposedJsonRpcValidator([new NonErrorJsonRpcValidator(), new NewPayloadJsonRpcValidator()]);
         var responseTracer = Substitute.For<IResponseTracer>();
         var reporter = Substitute.For<IProgressReporter>();
@@ -96,8 +97,8 @@ public class ApplicationTests
     [Test]
     public async Task ProcessesMultipleJSONRpcMessages_NoFiltering_UnwrapBatches()
     {
-        var messageProvider = new UnwrapBatchJsonRpcMessageProvider(new JsonRpcMessageProvider(LinesProvider()));
-        var jsonRpcSubmitter = ConstantSubmitter(ResponseValid);
+        var messageProvider = new UnwrapBatchJsonRpcMessageProvider(new JsonRpcMessageProvider(LinesProvider(TestInput)));
+        var jsonRpcSubmitter = ConstantSubmitter(ResponseOK);
         var validator = new ComposedJsonRpcValidator([new NonErrorJsonRpcValidator(), new NewPayloadJsonRpcValidator()]);
         var responseTracer = Substitute.For<IResponseTracer>();
         var reporter = Substitute.For<IProgressReporter>();
@@ -118,5 +119,37 @@ public class ApplicationTests
 
         await jsonRpcSubmitter.Received(49).Submit(Arg.Any<JsonRpc.SingleJsonRpc>());
         await jsonRpcSubmitter.Received(0).Submit(Arg.Any<JsonRpc.BatchJsonRpc>());
+    }
+
+    [Test]
+    public async Task WithFiltering_InvalidResponses()
+    {
+        var lines = """
+        {"method": "engine_exchangeTransitionConfigurationV1"}
+        {"method": "eth_chainId"}
+        [{"method": "eth_getBlockByNumber"}, {"method": "engine_exchangeCapabilities"}]
+        """;
+
+        var messageProvider = new JsonRpcMessageProvider(LinesProvider(lines));
+        var jsonRpcSubmitter = ConstantSubmitter(ResponseError);
+        var validator = new ComposedJsonRpcValidator([new NonErrorJsonRpcValidator(), new NewPayloadJsonRpcValidator()]);
+        var responseTracer = Substitute.For<IResponseTracer>();
+        var reporter = Substitute.For<IProgressReporter>();
+        var consumer = Substitute.For<IMetricsConsumer>();
+        var filter = new ComposedJsonRpcMethodFilter([new PatternJsonRpcMethodFilter("eth_.*")]);
+
+        var app = new Application(
+            messageProvider,
+            jsonRpcSubmitter,
+            validator,
+            responseTracer,
+            reporter,
+            consumer,
+            filter
+        );
+
+        await app.Run();
+
+        await jsonRpcSubmitter.Received(1).Submit(Arg.Any<JsonRpc.SingleJsonRpc>());
     }
 }
