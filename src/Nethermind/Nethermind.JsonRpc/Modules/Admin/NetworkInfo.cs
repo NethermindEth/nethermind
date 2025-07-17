@@ -21,5 +21,8 @@ namespace Nethermind.JsonRpc.Modules.Admin
 
         [JsonPropertyName("static")]
         public bool Static { get; set; }
+
+        [JsonIgnore]
+        public string LocalHost { get; set; } = string.Empty;
     }
 }

@@ -36,7 +36,7 @@ public class NodeInfo
     {
         Protocols = new Dictionary<string, EthProtocolInfo>
         {
-            { NetworkConstants.EthProtocolPrefix, new EthProtocolInfo() }
+            { NetworkConstants.EthPrefix, new EthProtocolInfo() }
         };
         Ports = new PortsInfo();
     }

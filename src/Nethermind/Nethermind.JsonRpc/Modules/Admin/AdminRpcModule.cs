@@ -82,12 +82,12 @@ public class AdminRpcModule : IAdminRpcModule
 
     private void UpdateEthProtocolInfo()
     {
-        _nodeInfo.Protocols[NetworkConstants.EthProtocolPrefix].Difficulty = _blockTree.Head?.TotalDifficulty ?? 0;
-        _nodeInfo.Protocols[NetworkConstants.EthProtocolPrefix].NewtorkId = _blockTree.NetworkId;
-        _nodeInfo.Protocols[NetworkConstants.EthProtocolPrefix].ChainId = _blockTree.ChainId;
-        _nodeInfo.Protocols[NetworkConstants.EthProtocolPrefix].HeadHash = _blockTree.HeadHash;
-        _nodeInfo.Protocols[NetworkConstants.EthProtocolPrefix].GenesisHash = _blockTree.GenesisHash;
-        _nodeInfo.Protocols[NetworkConstants.EthProtocolPrefix].Config = _parameters;
+        _nodeInfo.Protocols[NetworkConstants.EthPrefix].Difficulty = _blockTree.Head?.TotalDifficulty ?? 0;
+        _nodeInfo.Protocols[NetworkConstants.EthPrefix].NewtorkId = _blockTree.NetworkId;
+        _nodeInfo.Protocols[NetworkConstants.EthPrefix].ChainId = _blockTree.ChainId;
+        _nodeInfo.Protocols[NetworkConstants.EthPrefix].HeadHash = _blockTree.HeadHash;
+        _nodeInfo.Protocols[NetworkConstants.EthPrefix].GenesisHash = _blockTree.GenesisHash;
+        _nodeInfo.Protocols[NetworkConstants.EthPrefix].Config = _parameters;
     }
 
     public async Task<ResultWrapper<string>> admin_addPeer(string enode, bool addToStaticNodes = false)

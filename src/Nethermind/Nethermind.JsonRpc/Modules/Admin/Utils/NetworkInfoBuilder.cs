@@ -18,13 +18,13 @@ namespace Nethermind.JsonRpc.Modules.Admin.Utils
             }
 
             var session = peer.InSession ?? peer.OutSession;
-
             var localAddress = GetLocalAddress(session, nodeInfo);
             var remoteAddress = GetRemoteAddress(session, peer.Node);
 
             return new NetworkInfo
             {
                 LocalAddress = localAddress,
+                LocalHost = nodeInfo?.Ip ?? string.Empty,  // Store local host directly from nodeInfo
                 RemoteAddress = remoteAddress,
                 Inbound = isInbound,
                 Trusted = peer.Node.IsTrusted,

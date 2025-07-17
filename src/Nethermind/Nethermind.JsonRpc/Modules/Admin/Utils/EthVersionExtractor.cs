@@ -15,7 +15,7 @@ namespace Nethermind.JsonRpc.Modules.Admin.Utils
             if (session != null)
             {
                 var capabilities = CapabilityExtractor.GetCapabilitiesFromSession(session);
-                var ethCapability = capabilities.FirstOrDefault(c => c.StartsWith(NetworkConstants.EthProtocolPrefix));
+                var ethCapability = capabilities.FirstOrDefault(c => c.StartsWith(NetworkConstants.EthPrefix + "/"));
                 return ParseEthVersion(ethCapability);
             }
 
@@ -24,13 +24,19 @@ namespace Nethermind.JsonRpc.Modules.Admin.Utils
 
         private static int ParseEthVersion(string? ethString)
         {
-            if (string.IsNullOrEmpty(ethString) || !ethString.StartsWith(NetworkConstants.EthProtocolPrefix))
+            if (string.IsNullOrEmpty(ethString))
             {
                 return 0;
             }
 
-            string versionString = ethString.Substring(NetworkConstants.EthProtocolPrefix.Length);
-            return int.TryParse(versionString, out int version) ? version : 0;
+            // Split "eth/68" into ["eth", "68"]
+            var parts = ethString.Split('/');
+            if (parts.Length == 2 && parts[0] == NetworkConstants.EthPrefix)
+            {
+                return int.TryParse(parts[1], out int version) ? version : 0;
+            }
+
+            return 0;
         }
     }
 }

@@ -5,7 +5,8 @@ namespace Nethermind.JsonRpc.Modules.Admin.Utils
 {
     public static class NetworkConstants
     {
-        public const string EthProtocolPrefix = "eth";
+        public const string EthPrefix = "eth";
         public const string P2PPrefix = "p2p";
+        public const string SNAPPrefix = "snap";
     }
 }

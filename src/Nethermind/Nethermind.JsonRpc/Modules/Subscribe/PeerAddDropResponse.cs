@@ -1,21 +1,17 @@
-// SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
-// SPDX-License-Identifier: LGPL-3.0-only
-
 using System.Text.Json.Serialization;
-using System.Runtime.CompilerServices;
 using Nethermind.JsonRpc.Modules.Admin;
 
 namespace Nethermind.JsonRpc.Modules.Subscribe;
 
 public class PeerAddDropResponse
 {
-    public PeerAddDropResponse(PeerInfo peerInfo, string subscripionType, string? e)
+    public PeerAddDropResponse(PeerInfo peerInfo, string subscriptionType, string? error)
     {
-        Type = subscripionType;
+        Type = subscriptionType;
         Peer = peerInfo.Id;
-        Local = peerInfo.Host;
-        Remote = peerInfo.Address;
-        Error = e;
+        Local = peerInfo.Network.LocalHost;
+        Remote = peerInfo.Network.RemoteAddress;
+        Error = error;
     }
 
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
