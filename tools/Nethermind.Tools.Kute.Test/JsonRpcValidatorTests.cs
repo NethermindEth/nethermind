@@ -141,9 +141,8 @@ public class JsonRpcValidatorTests
 
     private static JsonDocument CreateResponse(Status status)
     {
-        string str = status == Status.VALID ? "VALID" : "INVALID";
         return JsonDocument.Parse(
-            $$$"""{"jsonrpc":"2.0","id": 1,"result":{"status": "{{{str}}}"}}"""
+            $$$"""{"jsonrpc":"2.0","id": 1,"result":{"status": "{{{status}}}"}}"""
         );
     }
 
