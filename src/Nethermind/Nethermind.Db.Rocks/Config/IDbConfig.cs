@@ -93,6 +93,8 @@ public interface IDbConfig : IConfig
     double StateDbCompressibilityHint { get; set; }
     string StateDbRocksDbOptions { get; set; }
     string? StateDbAdditionalRocksDbOptions { get; set; }
+    string StateDbLargeMemoryAdditionalRocksDbOptions { get; set; }
+    ulong StateDbLargeMemoryWriteBufferSize { get; set; }
 
 
     string L1OriginDbRocksDbOptions { get; set; }

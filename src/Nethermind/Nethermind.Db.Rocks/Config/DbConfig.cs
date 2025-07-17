@@ -158,7 +158,7 @@ public class DbConfig : IDbConfig
 
     public ulong? CodeDbRowCacheSize { get; set; } = (ulong)16.MiB();
     public string CodeDbRocksDbOptions { get; set; } =
-        "write_buffer_size=4000000;" +
+        "write_buffer_size=16000000;" +
         "block_based_table_factory.block_cache=16000000;" +
         "optimize_filters_for_hits=false;" +
         "prefix_extractor=capped:8;" +
@@ -234,6 +234,12 @@ public class DbConfig : IDbConfig
         "max_write_batch_group_size_bytes=4000000;" +
 
         "";
+
+    public string StateDbLargeMemoryAdditionalRocksDbOptions { get; set; } =
+        "block_based_table_factory={index_type=kBinarySearch;partition_filters=0;};";
+
+    public ulong StateDbLargeMemoryWriteBufferSize { get; set; } = (ulong)128.MiB();
+
     public string? StateDbAdditionalRocksDbOptions { get; set; }
 
     public string L1OriginDbRocksDbOptions { get; set; } = "";
