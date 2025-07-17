@@ -12,7 +12,12 @@ using Autofac.Core.Registration;
 
 namespace Nethermind.Core.Container;
 
-// TODO: Unit
+/// <summary>
+/// Utility between two type that act on keyed service.
+/// </summary>
+/// <param name="mapper"></param>
+/// <typeparam name="TFrom"></typeparam>
+/// <typeparam name="TTo"></typeparam>
 public class KeyedMapperRegistrationSource<TFrom, TTo>(Func<TFrom, TTo> mapper) : IRegistrationSource where TFrom : notnull
 {
     public IEnumerable<IComponentRegistration> RegistrationsFor(Service service, Func<Service, IEnumerable<ServiceRegistration>> registrationAccessor)
