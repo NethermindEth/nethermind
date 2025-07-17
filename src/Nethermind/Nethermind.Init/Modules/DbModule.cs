@@ -9,6 +9,7 @@ using Nethermind.Blockchain.Synchronization;
 using Nethermind.Core;
 using Nethermind.Db;
 using Nethermind.Db.Rocks;
+using Nethermind.Db.Rocks.Config;
 using Nethermind.Db.Rpc;
 using Nethermind.JsonRpc.Client;
 using Nethermind.Logging;
@@ -35,6 +36,7 @@ public class DbModule(
     protected override void Load(ContainerBuilder builder)
     {
         builder
+            .AddSingleton<IRocksDbConfigFactory, RocksDbConfigFactory>()
             .AddSingleton<IDbFactory, RocksDbFactory>()
             .AddSingleton<IDbProvider, DbProvider>()
             .AddScoped<IReadOnlyDbProvider, IDbProvider>((dbProvider) => dbProvider.AsReadOnly(false))
