@@ -1,8 +1,6 @@
 // SPDX-FileCopyrightText: 2023 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System.Threading.Tasks;
-using FluentAssertions;
 using Nethermind.Tools.Kute.JsonRpcMethodFilter;
 using Nethermind.Tools.Kute.JsonRpcSubmitter;
 using Nethermind.Tools.Kute.JsonRpcValidator;
@@ -46,13 +44,18 @@ public class ApplicationTests
     [{"method": "eth_getBlockByNumber"}, {"method": "eth_getLogs"}, {"method": "eth_syncing"}, {"method": "engine_forkchoiceUpdatedV2"}, {"method": "engine_exchangeTransitionConfigurationV1"}, {"method": "eth_chainId"}, {"method": "engine_newPayloadV3"}, {"method": "engine_exchangeCapabilities"}]
     """;
 
-    [Test]
-    public async Task ProcessesMultipleJSONRpcMessages_NoFiltering()
+    private IMessageProvider<string> LinesProvider()
     {
         var stringProvider = Substitute.For<IMessageProvider<string>>();
         stringProvider.Messages.Returns(TestInput.Split('\n').ToAsyncEnumerable());
 
-        var messageProvider = new JsonRpcMessageProvider(stringProvider);
+        return stringProvider;
+    }
+
+    [Test]
+    public async Task ProcessesMultipleJSONRpcMessages_NoFiltering()
+    {
+        var messageProvider = new JsonRpcMessageProvider(LinesProvider());
         var jsonRpcSubmitter = Substitute.For<IJsonRpcSubmitter>();
         var validator = new ComposedJsonRpcValidator([new NonErrorJsonRpcValidator(), new NewPayloadJsonRpcValidator()]);
         var responseTracer = Substitute.For<IResponseTracer>();
@@ -74,5 +77,32 @@ public class ApplicationTests
 
         await jsonRpcSubmitter.Received(17).Submit(Arg.Any<JsonRpc.SingleJsonRpc>());
         await jsonRpcSubmitter.Received(4).Submit(Arg.Any<JsonRpc.BatchJsonRpc>());
+    }
+
+    [Test]
+    public async Task ProcessesMultipleJSONRpcMessages_NoFiltering_UnwrapBatches()
+    {
+        var messageProvider = new UnwrapBatchJsonRpcMessageProvider(new JsonRpcMessageProvider(LinesProvider()));
+        var jsonRpcSubmitter = Substitute.For<IJsonRpcSubmitter>();
+        var validator = new ComposedJsonRpcValidator([new NonErrorJsonRpcValidator(), new NewPayloadJsonRpcValidator()]);
+        var responseTracer = Substitute.For<IResponseTracer>();
+        var reporter = Substitute.For<IProgressReporter>();
+        var consumer = Substitute.For<IMetricsConsumer>();
+        var filter = Substitute.For<IJsonRpcMethodFilter>();
+
+        var app = new Application(
+            messageProvider,
+            jsonRpcSubmitter,
+            validator,
+            responseTracer,
+            reporter,
+            consumer,
+            filter
+        );
+
+        await app.Run();
+
+        await jsonRpcSubmitter.Received(49).Submit(Arg.Any<JsonRpc.SingleJsonRpc>());
+        await jsonRpcSubmitter.Received(0).Submit(Arg.Any<JsonRpc.BatchJsonRpc>());
     }
 }
