@@ -7,7 +7,6 @@ using System.Linq;
 using Nethermind.Network.P2P;
 using Nethermind.Network.P2P.ProtocolHandlers;
 using Nethermind.Network;
-using Nethermind.JsonRpc.Modules.Admin.Utils;
 
 namespace Nethermind.JsonRpc.Modules.Admin.Utils
 {
