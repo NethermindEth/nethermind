@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2023 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System.Text.Json;
 using Nethermind.Tools.Kute.JsonRpcMethodFilter;
 using Nethermind.Tools.Kute.JsonRpcSubmitter;
 using Nethermind.Tools.Kute.JsonRpcValidator;
@@ -47,7 +48,7 @@ public class ApplicationTests
     private const string ResponseOK = """{"jsonrpc":"2.0","id":1,"result":{"status":"VALID"}}""";
     private const string ResponseError = """{"jsonrpc":"2.0","id":1,"error":{"code":-32603,"message":"Internal error"}}""";
 
-    private IMessageProvider<string> LinesProvider(string lines)
+    private static IMessageProvider<string> LinesProvider(string lines)
     {
         var stringProvider = Substitute.For<IMessageProvider<string>>();
         stringProvider.Messages.Returns(lines.Split('\n').ToAsyncEnumerable());
@@ -55,7 +56,7 @@ public class ApplicationTests
         return stringProvider;
     }
 
-    private IJsonRpcSubmitter ConstantSubmitter(string jsonResponse)
+    private static IJsonRpcSubmitter ConstantSubmitter(string jsonResponse)
     {
         var submitter = Substitute.For<IJsonRpcSubmitter>();
         submitter.Submit(Arg.Any<JsonRpc>()).Returns((_) =>
@@ -67,6 +68,13 @@ public class ApplicationTests
         return submitter;
     }
 
+    private static IJsonRpcMethodFilter ConstantFilter(bool shouldSubmit)
+    {
+        var filter = Substitute.For<IJsonRpcMethodFilter>();
+        filter.ShouldSubmit(Arg.Any<string>()).Returns(shouldSubmit);
+        return filter;
+    }
+
     [Test]
     public async Task NoFiltering()
     {
@@ -76,7 +84,7 @@ public class ApplicationTests
         var responseTracer = Substitute.For<IResponseTracer>();
         var reporter = new NullProgressReporter();
         var consumer = Substitute.For<IMetricsConsumer>();
-        var filter = Substitute.For<IJsonRpcMethodFilter>();
+        var filter = ConstantFilter(shouldSubmit: true);
 
         var app = new Application(
             messageProvider,
@@ -92,6 +100,8 @@ public class ApplicationTests
 
         await jsonRpcSubmitter.Received(17).Submit(Arg.Any<JsonRpc.SingleJsonRpc>());
         await jsonRpcSubmitter.Received(4).Submit(Arg.Any<JsonRpc.BatchJsonRpc>());
+        await responseTracer.Received(21).TraceResponse(Arg.Any<JsonDocument?>());
+        await consumer.Received(1).ConsumeMetrics(Arg.Any<Metrics>());
     }
 
     [Test]
@@ -103,7 +113,7 @@ public class ApplicationTests
         var responseTracer = Substitute.For<IResponseTracer>();
         var reporter = new NullProgressReporter();
         var consumer = Substitute.For<IMetricsConsumer>();
-        var filter = Substitute.For<IJsonRpcMethodFilter>();
+        var filter = ConstantFilter(shouldSubmit: true);
 
         var app = new Application(
             messageProvider,
@@ -119,6 +129,8 @@ public class ApplicationTests
 
         await jsonRpcSubmitter.Received(49).Submit(Arg.Any<JsonRpc.SingleJsonRpc>());
         await jsonRpcSubmitter.Received(0).Submit(Arg.Any<JsonRpc.BatchJsonRpc>());
+        await responseTracer.Received(49).TraceResponse(Arg.Any<JsonDocument?>());
+        await consumer.Received(1).ConsumeMetrics(Arg.Any<Metrics>());
     }
 
     [Test]
@@ -152,6 +164,8 @@ public class ApplicationTests
 
         await jsonRpcSubmitter.Received(1).Submit(Arg.Any<JsonRpc.SingleJsonRpc>());
         await jsonRpcSubmitter.Received(1).Submit(Arg.Any<JsonRpc.BatchJsonRpc>());
+        await responseTracer.Received(2).TraceResponse(Arg.Any<JsonDocument?>());
+        await consumer.Received(1).ConsumeMetrics(Arg.Any<Metrics>());
     }
 
     [Test]
@@ -185,5 +199,7 @@ public class ApplicationTests
 
         await jsonRpcSubmitter.Received(2).Submit(Arg.Any<JsonRpc.SingleJsonRpc>());
         await jsonRpcSubmitter.Received(0).Submit(Arg.Any<JsonRpc.BatchJsonRpc>());
+        await responseTracer.Received(2).TraceResponse(Arg.Any<JsonDocument?>());
+        await consumer.Received(1).ConsumeMetrics(Arg.Any<Metrics>());
     }
 }
