@@ -64,12 +64,6 @@ Some typical usages are as follows:
 -i /rpc.0 -s keystore/jwt-secret -a http://192.168.1.100:8551 --ttl 30
 ```
 
-### Run in "dry" mode (no communication with the Nethermind Client)
-
-```
--i /rpc.0 -s keystore/jwt-secret -d
-```
-
 ### A note on "progress"
 
 Kute supports a `-p|--progress` flag that will show how many messages have been processed so far. This feature comes with a **big performance hit during startup** (it will not interfere with metrics though), so it's suggested to **not use it** unless it's required (ex. do not use it in automated environments like CI pipelines).

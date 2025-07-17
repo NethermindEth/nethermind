@@ -53,9 +53,7 @@ static class Program
 
     private static IServiceProvider BuildServiceProvider(ParseResult parseResult)
     {
-        bool dryRun = parseResult.GetValue(Config.DryRun);
         bool unwrapBatch = parseResult.GetValue(Config.UnwrapBatch);
-        string? responsesTraceFile = parseResult.GetValue(Config.ResponsesTraceFile);
         IServiceCollection collection = new ServiceCollection();
 
         collection.AddSingleton<Application>();
@@ -72,50 +70,31 @@ static class Program
                 TimeSpan.FromSeconds(parseResult.GetValue(Config.AuthTtl))
             )
         );
-        collection.AddSingleton<IMessageProvider<string>>(new FileMessageProvider(parseResult.GetValue(Config.MessagesFilePath)!));
         collection.AddSingleton<IMessageProvider<JsonRpc?>>(serviceProvider =>
         {
-            var messageProvider = serviceProvider.GetRequiredService<IMessageProvider<string>>();
+            var messageProvider = new FileMessageProvider(parseResult.GetValue(Config.MessagesFilePath)!);
             var jsonMessageProvider = new JsonRpcMessageProvider(messageProvider);
 
             return unwrapBatch ? new UnwrapBatchJsonRpcMessageProvider(jsonMessageProvider) : jsonMessageProvider;
         });
-        collection.AddSingleton<IJsonRpcValidator>(dryRun
-            ? new NullJsonRpcValidator()
-            : new ComposedJsonRpcValidator(new List<IJsonRpcValidator>
-            {
-                new NonErrorJsonRpcValidator(), new NewPayloadJsonRpcValidator(),
-            })
-        );
+        collection.AddSingleton<IJsonRpcValidator>(
+            new ComposedJsonRpcValidator(
+                [new NonErrorJsonRpcValidator(), new NewPayloadJsonRpcValidator()]));
         collection.AddSingleton<IJsonRpcMethodFilter>(
             new ComposedJsonRpcMethodFilter(
-                parseResult.GetValue(Config.MethodFilters)!
-                    .Select(pattern => new PatternJsonRpcMethodFilter(pattern) as IJsonRpcMethodFilter)
-                    .ToList()
+                [..parseResult
+                    .GetValue(Config.MethodFilters)!
+                    .Select(pattern => new PatternJsonRpcMethodFilter(pattern) as IJsonRpcMethodFilter)]
             )
         );
         collection.AddSingleton<IJsonRpcSubmitter>(provider =>
-        {
-            if (!dryRun)
-            {
-                return new HttpJsonRpcSubmitter(
-                    provider.GetRequiredService<HttpClient>(),
-                    provider.GetRequiredService<IAuth>(),
-                    parseResult.GetValue(Config.HostAddress)!
-                );
-            }
-
-            // For dry runs we still want to trigger the generation of an AuthToken
-            // This is to ensure that all parameters required for the generation are correct,
-            // and not require a real run to verify that this is the case.
-            string _ = provider.GetRequiredService<IAuth>().AuthToken;
-            return new NullJsonRpcSubmitter();
-        });
+            new HttpJsonRpcSubmitter(
+                provider.GetRequiredService<HttpClient>(),
+                provider.GetRequiredService<IAuth>(),
+                parseResult.GetValue(Config.HostAddress)!
+            ));
         collection.AddSingleton<IResponseTracer>(
-            !dryRun && responsesTraceFile is not null
-                ? new FileResponseTracer(responsesTraceFile)
-                : new NullResponseTracer()
-        );
+            new FileResponseTracer(parseResult.GetValue(Config.ResponsesTraceFile)!));
         collection.AddSingleton<IProgressReporter>(provider =>
         {
             if (parseResult.GetValue(Config.ShowProgress))
