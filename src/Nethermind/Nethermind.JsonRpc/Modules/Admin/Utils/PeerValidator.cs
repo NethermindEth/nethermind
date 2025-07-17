@@ -10,10 +10,14 @@ namespace Nethermind.JsonRpc.Modules.Admin.Utils
     {
         public static void ValidatePeer(Peer peer)
         {
-            if (peer?.Node is null)
+            if (peer is null)
             {
-                throw new ArgumentException(
-                    $"{nameof(PeerInfo)} cannot be created for a {nameof(Peer)} with an unknown node");
+                throw new ArgumentNullException(nameof(peer));
+            }
+            
+            if (peer.Node is null)
+            {
+                throw new ArgumentException("Peer must have a valid node", nameof(peer));
             }
         }
     }

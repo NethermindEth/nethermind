@@ -80,18 +80,18 @@ namespace Nethermind.JsonRpc.Modules.Admin
         {
             PeerValidator.ValidatePeer(peer);
             
-            SetBasicInfo(peer);
-            SetNetworkInfo(peer, nodeInfo);
-            SetProtocols(peer);
-            SetLegacyFields(peer);
+            PopulateBasicInfo(peer);
+            PopulateNetworkInfo(peer, nodeInfo);
+            PopulateProtocolsInfo(peer);
+            PopulateLegacyFields(peer);
 
             if (includeDetails)
             {
-                SetDetailedFields(peer);
+                PopulateDetailedFields(peer);
             }
         }
 
-        private void SetBasicInfo(Peer peer)
+        private void PopulateBasicInfo(Peer peer)
         {
             Id = peer.Node.Id.Hash.ToString(false);
             Name = peer.Node.ClientId;
@@ -100,21 +100,21 @@ namespace Nethermind.JsonRpc.Modules.Admin
             Enr = EnrExtractor.GetEnrFromPeer(peer);
         }
 
-        private void SetNetworkInfo(Peer peer, NodeInfo nodeInfo = null)
+        private void PopulateNetworkInfo(Peer peer, NodeInfo nodeInfo = null)
         {
             bool isInbound = peer.InSession is not null;
             Network = NetworkInfoBuilder.Build(peer, isInbound, nodeInfo);
             Inbound = isInbound;
         }
 
-        private void SetProtocols(Peer peer)
+        private void PopulateProtocolsInfo(Peer peer)
         {
             Protocols = ProtocolInfoBuilder.Build(peer);
         }
 
-        private void SetLegacyFields(Peer peer)
+        private void PopulateLegacyFields(Peer peer)
         {
-            Host = HostParser.TryParseHost(peer.Node.Host);
+            Host = HostParser.ParseHost(peer.Node.Host);
             Port = peer.Node.Port;
             Address = peer.Node.Address.ToString();
             IsBootnode = peer.Node.IsBootnode;
@@ -122,7 +122,7 @@ namespace Nethermind.JsonRpc.Modules.Admin
             IsTrusted = peer.Node.IsTrusted;
         }
 
-        private void SetDetailedFields(Peer peer)
+        private void PopulateDetailedFields(Peer peer)
         {
             ClientType = peer.Node.ClientType.ToString();
             EthDetails = peer.Node.EthDetails;

@@ -1,7 +1,6 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System.Collections.Generic;
 using System.Linq;
 using Nethermind.Network.P2P;
 using Nethermind.Network;
@@ -12,32 +11,15 @@ namespace Nethermind.JsonRpc.Modules.Admin.Utils
     {
         public static int ExtractEthVersion(Peer peer)
         {
-            // Try to get version from capabilities first
-            ISession? session = peer.InSession ?? peer.OutSession;
+            var session = peer.InSession ?? peer.OutSession;
             if (session != null)
             {
-                int versionFromCapabilities = GetVersionFromCapabilities(session);
-                if (versionFromCapabilities > 0)
-                {
-                    return versionFromCapabilities;
-                }
+                var capabilities = CapabilityExtractor.GetCapabilitiesFromSession(session);
+                var ethCapability = capabilities.FirstOrDefault(c => c.StartsWith(NetworkConstants.EthProtocolPrefix));
+                return ParseEthVersion(ethCapability);
             }
 
-            // Fallback to EthDetails
-            return GetVersionFromEthDetails(peer.Node.EthDetails);
-        }
-
-        private static int GetVersionFromCapabilities(ISession session)
-        {
-            IEnumerable<string> capabilities = CapabilityExtractor.GetCapabilitiesFromSession(session);
-            string? ethCapability = capabilities.FirstOrDefault(c => c.StartsWith(NetworkConstants.EthProtocolPrefix));
-            
-            return ParseEthVersion(ethCapability);
-        }
-
-        private static int GetVersionFromEthDetails(string? ethDetails)
-        {
-            return ParseEthVersion(ethDetails);
+            return 0; // No session = no version info
         }
 
         private static int ParseEthVersion(string? ethString)

@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using Nethermind.Network.P2P;
@@ -13,31 +14,18 @@ namespace Nethermind.JsonRpc.Modules.Admin.Utils
     {
         public static string[] ExtractCapabilities(Peer peer)
         {
-            var capabilities = new List<string>(capacity: 8);
-
-            ISession? session = peer.InSession ?? peer.OutSession;
-            if (session != null)
-            {
-                capabilities.AddRange(GetCapabilitiesFromSession(session));
-            }
-
-            // Fallback to EthDetails parsing if no capabilities found
-            if (capabilities.Count == 0 && !string.IsNullOrEmpty(peer.Node.EthDetails))
-            {
-                capabilities.Add(peer.Node.EthDetails);
-            }
-
-            return capabilities.ToArray();
+            var session = peer.InSession ?? peer.OutSession;
+            return GetCapabilitiesFromSession(session).ToArray();
         }
 
-        public static IEnumerable<string> GetCapabilitiesFromSession(ISession session)
+        public static IEnumerable<string> GetCapabilitiesFromSession(ISession? session)
         {
-            if (session.TryGetProtocolHandler("p2p", out IProtocolHandler? p2pHandler) &&
-                p2pHandler is IP2PProtocolHandler p2pProtocol)
+            if (session?.TryGetProtocolHandler("p2p", out IProtocolHandler? handler) == true &&
+                handler is IP2PProtocolHandler p2pHandler)
             {
-                return p2pProtocol.GetCapabilitiesForAdmin();
+                return p2pHandler.GetCapabilitiesForAdmin() ?? Enumerable.Empty<string>();
             }
-
+            
             return Enumerable.Empty<string>();
         }
     }

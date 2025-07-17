@@ -8,16 +8,26 @@ namespace Nethermind.JsonRpc.Modules.Admin.Utils
 {
     public static class HostParser
     {
-        public static string? TryParseHost(string? host)
+        public static string? ParseHost(string? host)
         {
             if (string.IsNullOrEmpty(host)) 
                 return null;
             
             try
             {
-                return IPAddress.Parse(host).MapToIPv4().ToString();
+                var ipAddress = IPAddress.Parse(host);
+                
+                // Handle IPv4 or IPv4-mapped IPv6
+                if (ipAddress.AddressFamily == System.Net.Sockets.AddressFamily.InterNetwork ||
+                    ipAddress.IsIPv4MappedToIPv6)
+                {
+                    return ipAddress.MapToIPv4().ToString();
+                }
+                
+                // Return IPv6 as-is
+                return ipAddress.ToString();
             }
-            catch (FormatException)
+            catch (Exception)
             {
                 return host; // Return original if parsing fails - might be hostname
             }

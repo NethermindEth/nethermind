@@ -349,7 +349,6 @@ public class P2PProtocolHandler(
 
     public IEnumerable<string> GetCapabilitiesForAdmin()
     {
-        // Use LINQ for more functional approach and better performance
         var capabilities = _agreedCapabilities?.Any() == true
             ? _agreedCapabilities
             : _supportedCapabilities;
