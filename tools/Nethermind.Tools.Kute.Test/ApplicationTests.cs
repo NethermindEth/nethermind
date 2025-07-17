@@ -16,7 +16,7 @@ namespace Nethermind.Tools.Kute.Test;
 
 public class ApplicationTests
 {
-    const string TestInput = """
+    private const string TestInput = """
     {"response": 0}
     {"response": 1}
     "a-string"
@@ -44,6 +44,8 @@ public class ApplicationTests
     [{"method": "eth_getBlockByNumber"}, {"method": "eth_getLogs"}, {"method": "eth_syncing"}, {"method": "engine_forkchoiceUpdatedV2"}, {"method": "engine_exchangeTransitionConfigurationV1"}, {"method": "eth_chainId"}, {"method": "engine_newPayloadV3"}, {"method": "engine_exchangeCapabilities"}]
     """;
 
+    private const string ResponseValid = """{"jsonrpc":"2.0","id":1,"result":{"status":"VALID"}}""";
+
     private IMessageProvider<string> LinesProvider()
     {
         var stringProvider = Substitute.For<IMessageProvider<string>>();
@@ -52,11 +54,23 @@ public class ApplicationTests
         return stringProvider;
     }
 
+    private IJsonRpcSubmitter ConstantSubmitter(string jsonResponse)
+    {
+        var submitter = Substitute.For<IJsonRpcSubmitter>();
+        submitter.Submit(Arg.Any<JsonRpc>()).Returns((_) =>
+        {
+            var content = new StringContent(jsonResponse, System.Text.Encoding.UTF8, "application/json");
+            return new HttpResponseMessage { Content = content };
+        });
+
+        return submitter;
+    }
+
     [Test]
     public async Task ProcessesMultipleJSONRpcMessages_NoFiltering()
     {
         var messageProvider = new JsonRpcMessageProvider(LinesProvider());
-        var jsonRpcSubmitter = Substitute.For<IJsonRpcSubmitter>();
+        var jsonRpcSubmitter = ConstantSubmitter(ResponseValid);
         var validator = new ComposedJsonRpcValidator([new NonErrorJsonRpcValidator(), new NewPayloadJsonRpcValidator()]);
         var responseTracer = Substitute.For<IResponseTracer>();
         var reporter = Substitute.For<IProgressReporter>();
@@ -83,7 +97,7 @@ public class ApplicationTests
     public async Task ProcessesMultipleJSONRpcMessages_NoFiltering_UnwrapBatches()
     {
         var messageProvider = new UnwrapBatchJsonRpcMessageProvider(new JsonRpcMessageProvider(LinesProvider()));
-        var jsonRpcSubmitter = Substitute.For<IJsonRpcSubmitter>();
+        var jsonRpcSubmitter = ConstantSubmitter(ResponseValid);
         var validator = new ComposedJsonRpcValidator([new NonErrorJsonRpcValidator(), new NewPayloadJsonRpcValidator()]);
         var responseTracer = Substitute.For<IResponseTracer>();
         var reporter = Substitute.For<IProgressReporter>();
