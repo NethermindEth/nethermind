@@ -11,6 +11,7 @@ using Nethermind.Api;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Core;
+using Nethermind.Core.Test.Db;
 using Nethermind.Db.FullPruning;
 using Nethermind.Db.Rocks;
 using Nethermind.Db.Rocks.Config;
@@ -92,7 +93,8 @@ namespace Nethermind.Db.Test
                 .AddSingleton<IDbConfig>(new DbConfig())
                 .AddSingleton<IInitConfig>(initConfig)
                 .AddSingleton<ILogManager>(LimboLogs.Instance)
-                .AddSingleton<IFileSystem,FileSystem>()
+                .AddSingleton<IFileSystem, FileSystem>()
+                .AddSingleton<IDbProvider, ContainerOwningDbProvider>()
                 .Build();
 
             return Task.FromResult(container.Resolve<IDbProvider>());

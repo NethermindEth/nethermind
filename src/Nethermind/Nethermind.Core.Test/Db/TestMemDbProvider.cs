@@ -8,10 +8,10 @@ using Autofac;
 using Nethermind.Api;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Blockchain.Synchronization;
-using Nethermind.Core;
+using Nethermind.Db;
 using Nethermind.Init.Modules;
 
-namespace Nethermind.Db
+namespace Nethermind.Core.Test.Db
 {
     public class TestMemDbProvider
     {
