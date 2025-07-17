@@ -13,7 +13,7 @@ using Autofac.Core.Registration;
 namespace Nethermind.Core.Container;
 
 /// <summary>
-/// Utility between two type that act on keyed service.
+/// Utility that map between two type that act on keyed service.
 /// </summary>
 /// <param name="mapper"></param>
 /// <typeparam name="TFrom"></typeparam>

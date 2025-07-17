@@ -3,12 +3,10 @@
 
 using System;
 using System.Collections.Generic;
-using Nethermind.Db;
 using NonBlocking;
 
-namespace Nethermind.Init.Modules;
+namespace Nethermind.Db;
 
-// TODO: Unit
 public class DbTracker
 {
     private readonly ConcurrentDictionary<string, IDbMeta> _createdDbs = new ConcurrentDictionary<string, IDbMeta>();

@@ -39,6 +39,7 @@ public class DbModule(
             .AddSingleton<IDbProvider, DbProvider>()
             .AddScoped<IReadOnlyDbProvider, IDbProvider>((dbProvider) => dbProvider.AsReadOnly(false))
 
+            // Allow requesting keyed specialization instead of `IDb`.
             .AddKeyedAdapter<IKeyValueStore, IDb>((db) => db)
             .AddKeyedAdapter<IDbMeta, IDb>((db) => db)
             .AddKeyedAdapter<ITunableDb, IDb>((db) =>
@@ -47,6 +48,11 @@ public class DbModule(
                 return new NoopTunableDb();
             })
             .AddKeyedAdapter<IReadOnlyKeyValueStore, IKeyValueStore>((kv) => kv)
+
+            // Monitoring use these to track active db. We intercept db factory to keep them lazy. Does not
+            // track db that is not created by db factory though...
+            .AddSingleton<DbTracker>()
+            .AddDecorator<IDbFactory, DbTracker.DbFactoryInterceptor>()
 
             .AddDatabase(DbNames.State)
             .AddDatabase(DbNames.Code)
@@ -77,13 +83,6 @@ public class DbModule(
                 builder.AddDecorator<IDbFactory, ReadOnlyDbFactory>();
                 break;
         }
-
-        // Monitoring uses this to provide metric. we dont use `IDbProvider` because
-        // we want to keep it lazy.
-        builder
-            .AddSingleton<DbTracker>()
-            .AddDecorator<IDbFactory, DbTracker.DbFactoryInterceptor>()
-            ;
 
         // Change receipt db to readonlycolumndb if receipt is disabled
         bool useReceiptsDb = receiptConfig.StoreReceipts || syncConfig.DownloadReceiptsInFastSync;
