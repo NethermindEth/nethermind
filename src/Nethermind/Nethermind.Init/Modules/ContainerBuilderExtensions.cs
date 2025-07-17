@@ -43,6 +43,9 @@ public static class ContainerBuilderExtensions
             });
     }
 
+    // Note: The convention for `dbName` is that it is camelCase.
+    // this is not necessarily true for plugin. More importantly, this is also the path. Use the second overload for a more
+    // explicit param.
     public static ContainerBuilder AddDatabase(this ContainerBuilder builder, string dbName) => builder
         .AddDatabase(dbName, GetTitleDbName(dbName), dbName);
 
