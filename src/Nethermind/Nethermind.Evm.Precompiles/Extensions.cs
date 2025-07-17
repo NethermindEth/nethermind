@@ -24,7 +24,7 @@ public static class Extensions
             AddPrecompile<ModExpPrecompile>();
         }
 
-        if (spec.Bn128Enabled)
+        if (spec.BN254Enabled)
         {
             AddPrecompile<BN254AddPrecompile>();
             AddPrecompile<BN254MulPrecompile>();
