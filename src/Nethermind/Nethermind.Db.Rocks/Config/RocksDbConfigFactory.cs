@@ -7,29 +7,41 @@ using Nethermind.Logging;
 
 namespace Nethermind.Db.Rocks.Config;
 
-public class RocksDbConfigFactory(IDbConfig dbConfig, IHardwareInfo hardwareInfo, ILogManager logManager) : IRocksDbConfigFactory
+public class RocksDbConfigFactory(IDbConfig dbConfig, IPruningConfig pruningConfig, IHardwareInfo hardwareInfo, ILogManager logManager) : IRocksDbConfigFactory
 {
     private readonly ILogger _logger = logManager.GetClassLogger<IRocksDbConfigFactory>();
-    private readonly long StateDbLargerMemoryThreshold = 32.GiB();
 
     public IRocksDbConfig GetForDatabase(string databaseName, string? columnName)
     {
         IRocksDbConfig rocksDbConfig = new PerTableDbConfig(dbConfig, databaseName, columnName);
-        if (databaseName.StartsWith("State") && hardwareInfo.AvailableMemoryBytes > StateDbLargerMemoryThreshold)
+        if (databaseName.StartsWith("State"))
         {
-            if (_logger.IsDebug) _logger.Debug($"Detected {hardwareInfo.AvailableMemoryBytes / 1.GiB()} GB of available memory. Applying large memory State Db config.");
-
-            ulong writeBufferSize = rocksDbConfig.WriteBufferSize ?? 0;
-            if (writeBufferSize < dbConfig.StateDbLargeMemoryWriteBufferSize)
+            if (!pruningConfig.Mode.IsMemory())
             {
-                writeBufferSize = dbConfig.StateDbLargeMemoryWriteBufferSize;
-            }
+                if (_logger.IsInfo) _logger.Info($"Using archive mode State Db config.");
 
-            rocksDbConfig = new MemoryAdjustedRocksdbConfig(
-                rocksDbConfig,
-                dbConfig.StateDbLargeMemoryAdditionalRocksDbOptions!,
-                writeBufferSize
-            );
+                ulong writeBufferSize = rocksDbConfig.WriteBufferSize ?? 0;
+                if (writeBufferSize < dbConfig.StateDbArchiveModeWriteBufferSize) writeBufferSize = dbConfig.StateDbArchiveModeWriteBufferSize;
+
+                rocksDbConfig = new MemoryAdjustedRocksdbConfig(
+                    rocksDbConfig,
+                    dbConfig.StateDbArchiveModeRocksDbOptions!,
+                    writeBufferSize
+                );
+            }
+            else if (hardwareInfo.AvailableMemoryBytes > IHardwareInfo.StateDbLargerMemoryThreshold)
+            {
+                if (_logger.IsInfo) _logger.Info($"Detected {hardwareInfo.AvailableMemoryBytes / 1.GiB()} GB of available memory. Applying large memory State Db config.");
+
+                ulong writeBufferSize = rocksDbConfig.WriteBufferSize ?? 0;
+                if (writeBufferSize < dbConfig.StateDbLargeMemoryWriteBufferSize) writeBufferSize = dbConfig.StateDbLargeMemoryWriteBufferSize;
+
+                rocksDbConfig = new MemoryAdjustedRocksdbConfig(
+                    rocksDbConfig,
+                    dbConfig.StateDbLargeMemoryRocksDbOptions!,
+                    writeBufferSize
+                );
+            }
         }
 
         return rocksDbConfig;

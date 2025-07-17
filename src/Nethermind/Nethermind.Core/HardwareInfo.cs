@@ -11,6 +11,8 @@ public class HardwareInfo : IHardwareInfo
 
     public HardwareInfo()
     {
+        // Note: Not the same as memory capacity. This take into account current system memory pressure such as
+        // other process as well as OS level limit such as rlimit. Eh, its good enough.
         AvailableMemoryBytes = GC.GetGCMemoryInfo().TotalAvailableMemoryBytes;
     }
 }

@@ -235,10 +235,30 @@ public class DbConfig : IDbConfig
 
         "";
 
-    public string StateDbLargeMemoryAdditionalRocksDbOptions { get; set; } =
+    public string StateDbLargeMemoryRocksDbOptions { get; set; } =
         "block_based_table_factory={index_type=kBinarySearch;partition_filters=0;};";
 
+    public string StateDbArchiveModeRocksDbOptions { get; set; } =
+        // For archive mode, we lowers back the level multiplier as very large database causes very high write amp.
+        "max_bytes_for_level_multiplier=10;" +
+        "max_bytes_for_level_base=350000000;" +
+
+        // Change back file size multiplier as we dont want ridiculous file size, making compaction uneven,
+        // but set high base size. This mean a lot of file, but you are using archive mode, so this should be expected.
+        "target_file_size_multiplier=1;" +
+        "target_file_size_base=256000000;" +
+
+        // Change back restart interval for (probably slight) database size reduction
+        "block_based_table_factory.block_restart_interval=16;" +
+
+        // slight adjustment to util ratio
+        "block_based_table_factory.data_block_hash_table_util_ratio=0.8;" +
+
+        // slight adjustment to block size
+        "block_based_table_factory.block_size=64000;";
+
     public ulong StateDbLargeMemoryWriteBufferSize { get; set; } = (ulong)128.MiB();
+    public ulong StateDbArchiveModeWriteBufferSize { get; set; } = (ulong)256.MiB();
 
     public string? StateDbAdditionalRocksDbOptions { get; set; }
 
