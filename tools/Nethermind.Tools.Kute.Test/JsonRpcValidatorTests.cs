@@ -4,6 +4,7 @@
 using System.Text;
 using System.Text.Json;
 using FluentAssertions;
+using Nethermind.Tools.Kute.JsonRpcValidator;
 using Nethermind.Tools.Kute.JsonRpcValidator.Eth;
 using NUnit.Framework;
 
@@ -11,102 +12,78 @@ namespace Nethermind.Tools.Kute.Test;
 
 public class JsonRpcValidatorTests
 {
-    public class NewPayloadValidatorTests
+    private static IJsonRpcValidator _validator = new ComposedJsonRpcValidator(
+            [new NonErrorJsonRpcValidator(), new NewPayloadJsonRpcValidator()]);
+
+    [Test]
+    public void IsInvalid_When_ResponseIsNull()
     {
-        private static readonly NewPayloadJsonRpcValidator _validator = new();
+        JsonDocument? response = null;
+        bool result = _validator.IsValid(CreateSingleRequest("eth_getBlockByNumber"), response);
 
-        [Test]
-        public void IsValid_When_RequestIsBatch()
-        {
-            var response = CreateResponse(status: Status.VALID);
-            bool result = _validator.IsValid(CreateBatchRequest(CreateSingleRequest("engine_newPayload")), response);
-
-            result.Should().BeTrue();
-        }
-
-        [Test]
-        public void IsValid_When_MethodNameIsNull()
-        {
-            var response = CreateResponse(status: Status.VALID);
-            bool result = _validator.IsValid(CreateSingleRequest(null), response);
-
-            result.Should().BeTrue();
-        }
-
-        [Test]
-        public void IsValid_When_MethodNameIsUnexpected()
-        {
-            var response = CreateResponse(status: Status.VALID);
-            bool result = _validator.IsValid(CreateSingleRequest("eth_getBlockByNumber"), response);
-
-            result.Should().BeTrue();
-        }
-
-        [Test]
-        // TODO: Are we sure that this is the correct behavior?
-        public void IsValid_When_ResposeIsNull()
-        {
-            JsonDocument? response = null;
-            bool result = _validator.IsValid(CreateSingleRequest("eth_getBlockByNumber"), response);
-
-            result.Should().BeTrue();
-        }
-
-        [Test]
-        public void Validates_When_ResponseIsNotNull()
-        {
-            foreach (var status in new[] { Status.VALID, Status.INVALID })
-            {
-                foreach (var methodName in new[] { "engine_newPayloadV2", "engine_newPayloadV3", "engine_newPayloadV4" })
-                {
-                    var response = CreateResponse(status);
-                    bool result = _validator.IsValid(CreateSingleRequest(methodName), response);
-
-                    result.Should().Be(status == Status.VALID);
-                }
-            }
-        }
+        result.Should().BeFalse();
     }
 
-    public class NonErrorJsonRpcValidatorTests
+    [Test]
+    public void IsInvalid_When_ResponseHasError()
     {
-        private static readonly NonErrorJsonRpcValidator _validator = new();
+        var response = CreateErrorResponse();
+        bool result = _validator.IsValid(CreateSingleRequest("eth_getBlockByNumber"), response);
 
-        [Test]
-        public void IsValid_When_RequestIsBatch()
-        {
-            var response = CreateResponse(status: Status.VALID);
-            bool result = _validator.IsValid(CreateBatchRequest(CreateSingleRequest("engine_newPayload")), response);
+        result.Should().BeFalse();
+    }
 
-            result.Should().BeTrue();
-        }
+    [Test]
+    public void IsValid_When_RequestIsBatch()
+    {
+        var response = CreateResponse(status: Status.VALID);
+        bool result = _validator.IsValid(CreateBatchRequest(CreateSingleRequest("engine_newPayload")), response);
 
-        [Test]
-        public void IsInvalid_When_ResponseIsNull()
-        {
-            JsonDocument? response = null;
-            bool result = _validator.IsValid(CreateSingleRequest("eth_getBlockByNumber"), response);
+        result.Should().BeTrue();
+    }
 
-            result.Should().BeFalse();
-        }
+    [Test]
+    public void IsValid_When_MethodNameIsNull()
+    {
+        var response = CreateResponse(status: Status.VALID);
+        bool result = _validator.IsValid(CreateSingleRequest(null), response);
 
-        [TestCase(Status.VALID)]
-        [TestCase(Status.INVALID)]
-        public void IsValid_When_ResponseHasNoError(Status status)
+        result.Should().BeTrue();
+    }
+
+    [Test]
+    public void IsValid_When_MethodNameIsUnexpected()
+    {
+        var response = CreateResponse(status: Status.VALID);
+        bool result = _validator.IsValid(CreateSingleRequest("eth_getBlockByNumber"), response);
+
+        result.Should().BeTrue();
+    }
+
+    [Test]
+    public void IsValid_NotNewPayload_When_ResponseHasNoError()
+    {
+        foreach (var status in new[] { Status.VALID, Status.INVALID })
         {
             var response = CreateResponse(status);
             bool result = _validator.IsValid(CreateSingleRequest("eth_getBlockByNumber"), response);
 
             result.Should().BeTrue();
         }
+    }
 
-        [Test]
-        public void IsInvalid_When_ResponseHasError()
+    [Test]
+    public void Validates_NewPayload_When_ResponseIsNotNull()
+    {
+        foreach (var status in new[] { Status.VALID, Status.INVALID })
         {
-            var response = CreateErrorResponse();
-            bool result = _validator.IsValid(CreateSingleRequest("eth_getBlockByNumber"), response);
+            foreach (var methodName in new[] { "engine_newPayloadV2", "engine_newPayloadV3", "engine_newPayloadV4" })
+            {
+                var response = CreateResponse(status);
+                bool result = _validator.IsValid(CreateSingleRequest(methodName), response);
 
-            result.Should().BeFalse();
+                result.Should().Be(status == Status.VALID);
+            }
         }
     }
 
