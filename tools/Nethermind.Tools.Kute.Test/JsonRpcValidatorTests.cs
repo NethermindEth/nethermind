@@ -18,7 +18,7 @@ public class JsonRpcValidatorTests
         [Test]
         public void IsValid_When_RequestIsBatch()
         {
-            var response = CreateResponse(isValid: true);
+            var response = CreateResponse(status: Status.VALID);
             bool result = _validator.IsValid(CreateBatchRequest(CreateSingleRequest("engine_newPayload")), response);
 
             result.Should().BeTrue();
@@ -27,7 +27,7 @@ public class JsonRpcValidatorTests
         [Test]
         public void IsValid_When_MethodNameIsNull()
         {
-            var response = CreateResponse(isValid: true);
+            var response = CreateResponse(status: Status.VALID);
             bool result = _validator.IsValid(CreateSingleRequest(null), response);
 
             result.Should().BeTrue();
@@ -36,7 +36,7 @@ public class JsonRpcValidatorTests
         [Test]
         public void IsValid_When_MethodNameIsUnexpected()
         {
-            var response = CreateResponse(isValid: true);
+            var response = CreateResponse(status: Status.VALID);
             bool result = _validator.IsValid(CreateSingleRequest("eth_getBlockByNumber"), response);
 
             result.Should().BeTrue();
@@ -55,14 +55,14 @@ public class JsonRpcValidatorTests
         [Test]
         public void Validates_When_ResponseIsNotNull()
         {
-            foreach (var isValid in new[] { true, false })
+            foreach (var status in new[] { Status.VALID, Status.INVALID })
             {
                 foreach (var methodName in new[] { "engine_newPayloadV2", "engine_newPayloadV3", "engine_newPayloadV4" })
                 {
-                    var response = CreateResponse(isValid);
+                    var response = CreateResponse(status);
                     bool result = _validator.IsValid(CreateSingleRequest(methodName), response);
 
-                    result.Should().Be(isValid);
+                    result.Should().Be(status == Status.VALID);
                 }
             }
         }
@@ -75,7 +75,7 @@ public class JsonRpcValidatorTests
         [Test]
         public void IsValid_When_RequestIsBatch()
         {
-            var response = CreateResponse(isValid: true);
+            var response = CreateResponse(status: Status.VALID);
             bool result = _validator.IsValid(CreateBatchRequest(CreateSingleRequest("engine_newPayload")), response);
 
             result.Should().BeTrue();
@@ -90,11 +90,11 @@ public class JsonRpcValidatorTests
             result.Should().BeFalse();
         }
 
-        [TestCase(true)]
-        [TestCase(false)]
-        public void IsValid_When_ResponseHasNoError(bool isValid)
+        [TestCase(Status.VALID)]
+        [TestCase(Status.INVALID)]
+        public void IsValid_When_ResponseHasNoError(Status status)
         {
-            var response = CreateResponse(isValid);
+            var response = CreateResponse(status);
             bool result = _validator.IsValid(CreateSingleRequest("eth_getBlockByNumber"), response);
 
             result.Should().BeTrue();
@@ -133,11 +133,17 @@ public class JsonRpcValidatorTests
         return new JsonRpc.BatchJsonRpc(JsonDocument.Parse(sb.ToString()));
     }
 
-    private static JsonDocument CreateResponse(bool isValid)
+    public enum Status
     {
-        string status = isValid ? "VALID" : "INVALID";
+        VALID,
+        INVALID
+    }
+
+    private static JsonDocument CreateResponse(Status status)
+    {
+        string str = status == Status.VALID ? "VALID" : "INVALID";
         return JsonDocument.Parse(
-            $$$"""{"jsonrpc":"2.0","id": 1,"result":{"status": "{{{status}}}"}}"""
+            $$$"""{"jsonrpc":"2.0","id": 1,"result":{"status": "{{{str}}}"}}"""
         );
     }
 
