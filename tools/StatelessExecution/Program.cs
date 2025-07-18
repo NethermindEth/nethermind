@@ -55,7 +55,7 @@ class Program
 
         suggestedBlockHeader.Hash = suggestedBlockHeader.CalculateHash();
 
-        if (witness.Headers[0].Hash != suggestedBlockHeader.ParentHash)
+        if (witness.DecodedHeaders[0].Hash != suggestedBlockHeader.ParentHash)
         {
             Console.WriteLine("Invalid witness headers");
             return;
@@ -71,7 +71,7 @@ class Program
 
         IBlockProcessor blockProcessor = blockProcessingEnv.GetProcessor(witness);
 
-        Block[] processed = blockProcessor.Process(witness.Headers[0], [suggestedBlock],
+        Block[] processed = blockProcessor.Process(witness.DecodedHeaders[0], [suggestedBlock],
             ProcessingOptions.ReadOnlyChain, NullBlockTracer.Instance);
 
         if (processed[0].Hash != suggestedBlock.Hash)
