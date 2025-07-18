@@ -270,8 +270,8 @@ public class ModExpPrecompile : IPrecompile<ModExpPrecompile>
 
         Gmp.mpz_powm(powmResult, baseInt, expInt, modulusInt);
 
-        nuint powmResultLen = (Gmp.mpz_sizeinbase(powmResult, 2) + 7) / 8;
-        nuint offset = modulusLength - powmResultLen;
+        nint powmResultLen = (nint)(Gmp.mpz_sizeinbase(powmResult, 2) + 7) / 8;
+        nint offset = (nint)modulusLength - powmResultLen;
 
         byte[] result = new byte[modulusLength];
         fixed (byte* ptr = &MemoryMarshal.GetArrayDataReference(result))
