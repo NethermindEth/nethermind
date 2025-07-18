@@ -20,12 +20,12 @@ public sealed class ConsoleProgressReporter : IMetricsReporter
     {
         if (_messageCount == 1)
         {
-            Console.Write($"Progress:  1{_suffix}");
+            Console.Write($"Progress: 1{_suffix}");
         }
 
         var sb = new StringBuilder();
 
-        sb.Append('\b', _messageCount.ToString().Length + _suffix.Length);
+        sb.Append('\b', (_messageCount - 1).ToString().Length + _suffix.Length);
         sb.Append(_messageCount);
         sb.Append(_suffix);
 
