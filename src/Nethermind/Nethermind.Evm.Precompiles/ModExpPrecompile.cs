@@ -26,7 +26,7 @@ public class ModExpPrecompile : IPrecompile<ModExpPrecompile>
     /// This constant defines the upper limit for the size of the input data that can be processed.
     /// For more details, see: https://eips.ethereum.org/EIPS/eip-7823
     /// </summary>
-    public const int ModExpMaxInputSizeEip7823 = 1024;
+    public const uint ModExpMaxInputSizeEip7823 = 1024;
 
     private const int LengthSize = 32;
     private const int StartBaseLength = 0;
@@ -112,8 +112,8 @@ public class ModExpPrecompile : IPrecompile<ModExpPrecompile>
     private static bool ExceedsMaxInputSize(IReleaseSpec releaseSpec, uint baseLength, uint expLength, uint modulusLength)
     {
         return releaseSpec.IsEip7823Enabled
-            ? baseLength > ModExpMaxInputSizeEip7823 | expLength > ModExpMaxInputSizeEip7823 | modulusLength > ModExpMaxInputSizeEip7823
-            : baseLength > int.MaxValue | modulusLength > int.MaxValue;
+            ? (baseLength > ModExpMaxInputSizeEip7823 | expLength > ModExpMaxInputSizeEip7823 | modulusLength > ModExpMaxInputSizeEip7823)
+            : (baseLength | modulusLength) > int.MaxValue;
     }
 
     [MethodImpl(MethodImplOptions.NoInlining)]
