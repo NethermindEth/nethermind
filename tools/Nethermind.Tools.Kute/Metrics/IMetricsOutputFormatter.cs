@@ -7,8 +7,3 @@ public interface IMetricsReportFormatter
 {
     Task WriteAsync(Stream stream, MetricsReport report);
 }
-
-public sealed class NullMetricsReportFormatter : IMetricsReportFormatter
-{
-    public Task WriteAsync(Stream stream, MetricsReport report) => Task.CompletedTask;
-}
