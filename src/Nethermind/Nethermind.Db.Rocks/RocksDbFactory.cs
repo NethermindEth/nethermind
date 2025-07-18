@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using Nethermind.Api;
 using Nethermind.Db.Rocks.Config;
 using Nethermind.Logging;
 
@@ -16,6 +17,12 @@ public class RocksDbFactory : IDbFactory
     private readonly string _basePath;
 
     private readonly IntPtr _sharedCache;
+
+    public RocksDbFactory(IDbConfig dbConfig, IInitConfig initConfig, ILogManager logManager)
+        : this(dbConfig, logManager, initConfig.BaseDbPath)
+    {
+
+    }
 
     public RocksDbFactory(IDbConfig dbConfig, ILogManager logManager, string basePath)
     {
