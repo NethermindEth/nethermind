@@ -9,7 +9,7 @@ public sealed class ConsoleProgressReporter : IMetricsReporter
 {
     private readonly string _suffix;
 
-    private int _messageCount;
+    private int _messageCount = 1;
 
     public ConsoleProgressReporter(int total)
     {
@@ -18,9 +18,9 @@ public sealed class ConsoleProgressReporter : IMetricsReporter
 
     public Task Message()
     {
-        if (_messageCount == 0)
+        if (_messageCount == 1)
         {
-            Console.Write($"Progress: 0{_suffix}");
+            Console.Write($"Progress:  1{_suffix}");
         }
 
         var sb = new StringBuilder();
