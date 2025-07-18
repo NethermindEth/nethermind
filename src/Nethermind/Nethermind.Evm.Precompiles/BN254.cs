@@ -3,6 +3,7 @@
 
 using System;
 using System.Runtime.CompilerServices;
+using System.Runtime.InteropServices;
 using Nethermind.MclBindings;
 
 namespace Nethermind.Evm.Precompiles;
@@ -50,7 +51,7 @@ internal static unsafe class BN254
 
         mclBnFr y = default;
 
-        fixed (byte* ptr = yData)
+        fixed (byte* ptr = &MemoryMarshal.GetReference(yData))
         {
             if (mclBnFr_setLittleEndianMod(ref y, (nint)ptr, 32) == -1 || mclBnFr_isValid(y) == 0)
                 return false;
@@ -121,7 +122,7 @@ internal static unsafe class BN254
         Span<byte> x = data[0..32];
         x.Reverse(); // To little-endian
 
-        fixed (byte* ptr = x)
+        fixed (byte* ptr = &MemoryMarshal.GetReference(x))
         {
             if (mclBnFp_deserialize(ref point.x, (nint)ptr, 32) == nuint.Zero)
                 return false;
@@ -130,7 +131,7 @@ internal static unsafe class BN254
         Span<byte> y = data[32..64];
         y.Reverse(); // To little-endian
 
-        fixed (byte* ptr = y)
+        fixed (byte* ptr = &MemoryMarshal.GetReference(y))
         {
             if (mclBnFp_deserialize(ref point.y, (nint)ptr, 32) == nuint.Zero)
                 return false;
@@ -154,8 +155,8 @@ internal static unsafe class BN254
         x0.Reverse(); // To little-endian
         x1.Reverse(); // To little-endian
 
-        fixed (byte* ptr0 = x0)
-        fixed (byte* ptr1 = x1)
+        fixed (byte* ptr0 = &MemoryMarshal.GetReference(x0))
+        fixed (byte* ptr1 = &MemoryMarshal.GetReference(x1))
         {
             if (mclBnFp_deserialize(ref point.x.d0, (nint)ptr0, 32) == nuint.Zero)
                 return false;
@@ -169,8 +170,8 @@ internal static unsafe class BN254
         y0.Reverse(); // To little-endian
         y1.Reverse(); // To little-endian
 
-        fixed (byte* ptr0 = y0)
-        fixed (byte* ptr1 = y1)
+        fixed (byte* ptr0 = &MemoryMarshal.GetReference(y0))
+        fixed (byte* ptr1 = &MemoryMarshal.GetReference(y1))
         {
             if (mclBnFp_deserialize(ref point.y.d0, (nint)ptr0, 32) == nuint.Zero)
                 return false;
@@ -188,7 +189,7 @@ internal static unsafe class BN254
     {
         Span<byte> x = output[0..32];
 
-        fixed (byte* ptr = x)
+        fixed (byte* ptr = &MemoryMarshal.GetReference(x))
         {
             if (mclBnFp_getLittleEndian((nint)ptr, 32, point.x) == nuint.Zero)
                 return false;
@@ -196,7 +197,7 @@ internal static unsafe class BN254
 
         Span<byte> y = output[32..64];
 
-        fixed (byte* ptr = y)
+        fixed (byte* ptr = &MemoryMarshal.GetReference(y))
         {
             if (mclBnFp_getLittleEndian((nint)ptr, 32, point.y) == nuint.Zero)
                 return false;
