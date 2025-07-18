@@ -18,7 +18,7 @@ namespace Nethermind.Init.Modules;
 
 /// <summary>
 /// Declares the default database and some classes for utility functions.
-/// Additional database can be added by plugin using the <see cref="ContainerBuilderExtensions.AddDatabase"/> or
+/// Additional databases can be added by plugin using the <see cref="ContainerBuilderExtensions.AddDatabase"/> or
 /// <see cref="ContainerBuilderExtensions.AddColumnDatabase{T}"/> DSL. These just create a keyed <see cref="IDb"/>,
 /// so plugins can override individual database separately. To override all, replace <see cref="IDbFactory"/>.
 /// These are all lazy as usual and no database is created until a service that require them is created.
