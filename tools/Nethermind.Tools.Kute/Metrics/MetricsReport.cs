@@ -5,7 +5,7 @@ namespace Nethermind.Tools.Kute.Metrics;
 
 public enum MetricsReportFormat
 {
-    Report, Json,
+    Pretty, Json,
 }
 
 public sealed record MetricsReport
@@ -18,6 +18,8 @@ public sealed record MetricsReport
     public required TimeSpan TotalTime { get; init; }
     public required IReadOnlyDictionary<int, TimeSpan> Singles { get; init; }
     public required IReadOnlyDictionary<int, TimeSpan> Batches { get; init; }
+
+    // TODO: Add methods to compute max, min, averages for Singles and Batches
 }
 
 public interface IMetricsReportProvider

@@ -100,15 +100,15 @@ static class Program
         });
         collection.AddSingleton<IMetricsReporter>(provider =>
         {
-            var formatter = parseResult.GetValue(Config.MetricsReportFormatter) switch
+            IMetricsReportFormatter formatter = parseResult.GetValue(Config.MetricsReportFormatter) switch
             {
-                MetricsReportFormat.Report => new NullMetricsReportFormatter(),
-                MetricsReportFormat.Json => new NullMetricsReportFormatter(),
+                MetricsReportFormat.Pretty => new PrettyMetricsReportFormatter(),
+                MetricsReportFormat.Json => new JsonMetricsReportFormatter(),
                 _ => throw new ArgumentOutOfRangeException(),
             };
 
             var memoryReporter = new MemoryMetricsReporter();
-            var consoleReporter = new ConsoleMetricsReporter(memoryReporter, formatter);
+            var consoleReporter = new ConsoleTotalReporter(memoryReporter, formatter);
 
             IMetricsReporter progresReporter;
             if (parseResult.GetValue(Config.ShowProgress))

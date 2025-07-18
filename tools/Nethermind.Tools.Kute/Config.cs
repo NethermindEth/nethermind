@@ -43,7 +43,7 @@ public static class Config
 
     public static Option<MetricsReportFormat> MetricsReportFormatter { get; } = new("--output", "-o")
     {
-        DefaultValueFactory = r => MetricsReportFormat.Report,
+        DefaultValueFactory = r => MetricsReportFormat.Pretty,
         Description = "Strategy to report metrics",
         HelpName = "value",
     };
