@@ -32,6 +32,7 @@ public class ModExpPrecompile : IPrecompile<ModExpPrecompile>
     private const int StartBaseLength = 0;
     private const int StartExpLength = 32;
     private const int StartModLength = 64;
+    private const int LengthsLengths = StartModLength + LengthSize;
 
     private ModExpPrecompile()
     {
@@ -65,7 +66,7 @@ public class ModExpPrecompile : IPrecompile<ModExpPrecompile>
         try
         {
             ReadOnlySpan<byte> span = inputData.Span;
-            return span.Length >= 96
+            return span.Length >= LengthsLengths
                 ? DataGasCostInternal(span, releaseSpec)
                 : DataGasCostShortInternal(span, releaseSpec);
         }
@@ -78,9 +79,9 @@ public class ModExpPrecompile : IPrecompile<ModExpPrecompile>
     [MethodImpl(MethodImplOptions.NoInlining)]
     private static long DataGasCostShortInternal(ReadOnlySpan<byte> inputData, IReleaseSpec releaseSpec)
     {
-        Debug.Assert(inputData.Length < 96);
+        Debug.Assert(inputData.Length < LengthsLengths);
 
-        Span<byte> extendedInput = stackalloc byte[96];
+        Span<byte> extendedInput = stackalloc byte[LengthsLengths];
         inputData.CopyTo(extendedInput);
 
         return DataGasCostInternal(extendedInput, releaseSpec);
@@ -96,8 +97,8 @@ public class ModExpPrecompile : IPrecompile<ModExpPrecompile>
 
         ulong complexity = MultComplexity(baseLength, modulusLength, releaseSpec.IsEip7883Enabled);
 
-        uint expLengthUpTo32 = Math.Min(32, expLength);
-        uint startIndex = 96 + baseLength; //+ expLength - expLengthUpTo32; // Geth takes head here, why?
+        uint expLengthUpTo32 = Math.Min(LengthSize, expLength);
+        uint startIndex = LengthsLengths + baseLength; //+ expLength - expLengthUpTo32; // Geth takes head here, why?
         UInt256 exp = new(inputData.SliceWithZeroPaddingEmptyOnError((int)startIndex, (int)expLengthUpTo32), isBigEndian: true);
         UInt256 iterationCount = CalculateIterationCount(expLength, exp, releaseSpec.IsEip7883Enabled);
 
@@ -118,9 +119,9 @@ public class ModExpPrecompile : IPrecompile<ModExpPrecompile>
     [MethodImpl(MethodImplOptions.NoInlining)]
     private (uint baseLength, uint expLength, uint modulusLength) GetInputLengthsShort(ReadOnlySpan<byte> inputData)
     {
-        Debug.Assert(inputData.Length < 96);
+        Debug.Assert(inputData.Length < LengthsLengths);
 
-        Span<byte> extendedInput = stackalloc byte[96];
+        Span<byte> extendedInput = stackalloc byte[LengthsLengths];
         inputData.CopyTo(extendedInput);
 
         return GetInputLengths(extendedInput);
@@ -226,7 +227,7 @@ public class ModExpPrecompile : IPrecompile<ModExpPrecompile>
         Metrics.ModExpPrecompile++;
 
         ReadOnlySpan<byte> inputSpan = inputData.Span;
-        (uint baseLength, uint expLength, uint modulusLength) = inputSpan.Length >= 96
+        (uint baseLength, uint expLength, uint modulusLength) = inputSpan.Length >= LengthsLengths
                 ? GetInputLengths(inputSpan)
                 : GetInputLengthsShort(inputSpan);
 
@@ -301,7 +302,7 @@ public class ModExpPrecompile : IPrecompile<ModExpPrecompile>
         // If EIP-7883 => small-case = 16, else 2*sq when max>32
         if (isEip7883Enabled)
         {
-            return max > 32
+            return max > LengthSize
                 ? (sq << 1)    // 2 * words * words
                 : 16UL;        // constant floor
         }
@@ -329,9 +330,10 @@ public class ModExpPrecompile : IPrecompile<ModExpPrecompile>
     private static UInt256 CalculateIterationCount(uint exponentLength, UInt256 exponent, bool isEip7883Enabled)
     {
         ulong iterationCount;
-        if (exponentLength <= 32)
+        uint overflow = 0;
+        if (exponentLength <= LengthSize)
         {
-            iterationCount = exponent.IsZero ? 0 : (uint)(exponent.BitLen - 1);
+            iterationCount = (uint)Math.Max(1, exponent.BitLen - 1);
         }
         else
         {
@@ -341,15 +343,20 @@ public class ModExpPrecompile : IPrecompile<ModExpPrecompile>
                 bitLength--;
             }
 
-            ulong multiplicationResult = (exponentLength - 32) * (isEip7883Enabled ? IterationCountMultiplierEip7883 : IterationCountMultiplierEip2565);
+            ulong multiplicationResult = (exponentLength - LengthSize) * (isEip7883Enabled ? IterationCountMultiplierEip7883 : IterationCountMultiplierEip2565);
             iterationCount = multiplicationResult + bitLength;
             if (iterationCount < multiplicationResult)
             {
                 // Overflowed
-                return new UInt256(iterationCount, 1, 0, 0);
+                overflow = 1;
+            }
+            else if (iterationCount < 1)
+            {
+                // Min 1 iteration
+                iterationCount = 1;
             }
         }
 
-        return iterationCount > 1 ? new UInt256(iterationCount) : UInt256.One;
+        return new UInt256(iterationCount, overflow);
     }
 }
