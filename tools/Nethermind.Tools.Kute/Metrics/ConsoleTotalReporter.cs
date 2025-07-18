@@ -3,12 +3,12 @@
 
 namespace Nethermind.Tools.Kute.Metrics;
 
-public sealed class ConsoleMetricsReporter : IMetricsReporter
+public sealed class ConsoleTotalReporter : IMetricsReporter
 {
     private readonly IMetricsReportProvider _provider;
     private readonly IMetricsReportFormatter _formatter;
 
-    public ConsoleMetricsReporter(IMetricsReportProvider provider, IMetricsReportFormatter formatter)
+    public ConsoleTotalReporter(IMetricsReportProvider provider, IMetricsReportFormatter formatter)
     {
         _provider = provider;
         _formatter = formatter;
