@@ -24,7 +24,6 @@ public class TraceStorePruner : IDisposable
     public TraceStorePruner(IBlockTree blockTree, [KeyFilter(TraceStorePlugin.DbName)] IDb db, ITraceStoreConfig traceStoreConfig, ILogManager logManager)
         : this(blockTree, db, traceStoreConfig.BlocksToKeep, logManager)
     {
-
     }
 
     public TraceStorePruner(IBlockTree blockTree, IDb db, int blockToKeep, ILogManager logManager)
