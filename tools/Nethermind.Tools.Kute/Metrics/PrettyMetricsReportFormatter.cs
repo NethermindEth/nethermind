@@ -7,7 +7,7 @@ public sealed class PrettyMetricsReportFormatter : IMetricsReportFormatter
 {
     public async Task WriteAsync(Stream stream, MetricsReport report)
     {
-        var writer = new StreamWriter(stream);
+        using var writer = new StreamWriter(stream);
         await writer.WriteLineAsync("=== Report ===");
         await writer.WriteLineAsync($"Total Messages: {report.TotalMessages}");
         await writer.WriteLineAsync($"Succeeded: {report.Succeeded}");
