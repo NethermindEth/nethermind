@@ -60,8 +60,8 @@ public class Eip7823Tests
 
         byte[] input = Bytes.FromHexString(inputHex);
 
-        Assert.Throws<OverflowException>(() => TestSuccess(input, specDisabled));
-        Assert.Throws<OverflowException>(() => TestSuccess(input, specEnabled));
+        Assert.That(TestSuccess(input, specDisabled), Is.EqualTo(false));
+        Assert.That(TestSuccess(input, specEnabled), Is.EqualTo(false));
 
         Assert.That(TestGas(input, specDisabled), Is.EqualTo(long.MaxValue));
         Assert.That(TestGas(input, specEnabled), Is.EqualTo(long.MaxValue));
