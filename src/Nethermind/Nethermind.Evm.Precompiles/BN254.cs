@@ -122,13 +122,19 @@ internal static unsafe class BN254
         x.Reverse(); // To little-endian
 
         fixed (byte* ptr = x)
-            mclBnFp_setLittleEndian(ref point.x, (nint)ptr, 32);
+        {
+            if (mclBnFp_deserialize(ref point.x, (nint)ptr, 32) == nuint.Zero)
+                return false;
+        }
 
         Span<byte> y = data[32..64];
         y.Reverse(); // To little-endian
 
         fixed (byte* ptr = y)
-            mclBnFp_setLittleEndian(ref point.y, (nint)ptr, 32);
+        {
+            if (mclBnFp_deserialize(ref point.y, (nint)ptr, 32) == nuint.Zero)
+                return false;
+        }
 
         mclBnFp_setInt32(ref point.z, 1);
 
@@ -151,8 +157,11 @@ internal static unsafe class BN254
         fixed (byte* ptr0 = x0)
         fixed (byte* ptr1 = x1)
         {
-            mclBnFp_setLittleEndian(ref point.x.d0, (nint)ptr0, 32);
-            mclBnFp_setLittleEndian(ref point.x.d1, (nint)ptr1, 32);
+            if (mclBnFp_deserialize(ref point.x.d0, (nint)ptr0, 32) == nuint.Zero)
+                return false;
+
+            if (mclBnFp_deserialize(ref point.x.d1, (nint)ptr1, 32) == nuint.Zero)
+                return false;
         }
 
         Span<byte> y0 = data[96..128];
@@ -163,8 +172,11 @@ internal static unsafe class BN254
         fixed (byte* ptr0 = y0)
         fixed (byte* ptr1 = y1)
         {
-            mclBnFp_setLittleEndian(ref point.y.d0, (nint)ptr0, 32);
-            mclBnFp_setLittleEndian(ref point.y.d1, (nint)ptr1, 32);
+            if (mclBnFp_deserialize(ref point.y.d0, (nint)ptr0, 32) == nuint.Zero)
+                return false;
+
+            if (mclBnFp_deserialize(ref point.y.d1, (nint)ptr1, 32) == nuint.Zero)
+                return false;
         }
 
         mclBnFp_setInt32(ref point.z.d0, 1);
@@ -178,9 +190,7 @@ internal static unsafe class BN254
 
         fixed (byte* ptr = x)
         {
-            var length = mclBnFp_getLittleEndian((nint)ptr, 32, point.x);
-
-            if (length == nuint.Zero)
+            if (mclBnFp_getLittleEndian((nint)ptr, 32, point.x) == nuint.Zero)
                 return false;
         }
 
@@ -188,9 +198,7 @@ internal static unsafe class BN254
 
         fixed (byte* ptr = y)
         {
-            var length = mclBnFp_getLittleEndian((nint)ptr, 32, point.y);
-
-            if (length == nuint.Zero)
+            if (mclBnFp_getLittleEndian((nint)ptr, 32, point.y) == nuint.Zero)
                 return false;
         }
 
