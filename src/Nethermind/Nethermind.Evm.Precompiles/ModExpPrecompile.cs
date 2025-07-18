@@ -244,7 +244,7 @@ public class ModExpPrecompile : IPrecompile<ModExpPrecompile>
         if (modulusDataSpan.Length > 0)
         {
             fixed (byte* modulusData = &MemoryMarshal.GetReference(modulusDataSpan))
-                Gmp.mpz_import(modulusInt, (nuint)modulusLength, 1, 1, 1, nuint.Zero, (nint)modulusData);
+                Gmp.mpz_import(modulusInt, modulusLength, 1, 1, 1, nuint.Zero, (nint)modulusData);
         }
 
         if (Gmp.mpz_sgn(modulusInt) == 0)
@@ -258,20 +258,20 @@ public class ModExpPrecompile : IPrecompile<ModExpPrecompile>
         if (baseDataSpan.Length > 0)
         {
             fixed (byte* baseData = &MemoryMarshal.GetReference(baseDataSpan))
-                Gmp.mpz_import(baseInt, (nuint)baseLength, 1, 1, 1, nuint.Zero, (nint)baseData);
+                Gmp.mpz_import(baseInt, baseLength, 1, 1, 1, nuint.Zero, (nint)baseData);
         }
 
         ReadOnlySpan<byte> expDataSpan = inputSpan.SliceWithZeroPaddingEmptyOnError(96 + (int)baseLength, (int)expLength);
         if (expDataSpan.Length > 0)
         {
             fixed (byte* expData = &MemoryMarshal.GetReference(expDataSpan))
-                Gmp.mpz_import(expInt, (nuint)expLength, 1, 1, 1, nuint.Zero, (nint)expData);
+                Gmp.mpz_import(expInt, expLength, 1, 1, 1, nuint.Zero, (nint)expData);
         }
 
         Gmp.mpz_powm(powmResult, baseInt, expInt, modulusInt);
 
         nint powmResultLen = (nint)(Gmp.mpz_sizeinbase(powmResult, 2) + 7) / 8;
-        nint offset = (nint)(int)modulusLength - powmResultLen;
+        nint offset = (int)modulusLength - powmResultLen;
 
         byte[] result = new byte[modulusLength];
         fixed (byte* ptr = &MemoryMarshal.GetArrayDataReference(result))
