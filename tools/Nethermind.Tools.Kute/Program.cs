@@ -65,7 +65,9 @@ static class Program
                 TimeSpan.FromSeconds(parseResult.GetValue(Config.AuthTtl))
             )
         );
-        collection.AddSingleton<IMessageProvider<JsonRpc?>>(serviceProvider =>
+        collection.AddSingleton<IMessageProvider<string>>(
+            new FileMessageProvider(parseResult.GetValue(Config.MessagesFilePath)!));
+        collection.AddSingleton<IMessageProvider<JsonRpc>>(serviceProvider =>
         {
             var messageProvider = new FileMessageProvider(parseResult.GetValue(Config.MessagesFilePath)!);
             var jsonMessageProvider = new JsonRpcMessageProvider(messageProvider);
@@ -121,7 +123,7 @@ static class Program
                 // only when we're not unwrapping batches. If we are, we need to parse.
                 // This optimization relies on implementation details.
                 IMessageProvider<object?> messagesProvider = unwrapBatch
-                    ? provider.GetRequiredService<IMessageProvider<JsonRpc?>>()
+                    ? provider.GetRequiredService<IMessageProvider<JsonRpc>>()
                     : provider.GetRequiredService<IMessageProvider<string>>();
                 var totalMessages = messagesProvider.Messages.ToEnumerable().Count();
 
