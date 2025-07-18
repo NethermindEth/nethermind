@@ -21,7 +21,6 @@ using Nethermind.Core.Specs;
 using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Crypto;
-using Nethermind.Db;
 using Nethermind.Evm;
 using Nethermind.Int256;
 using Nethermind.Logging;
@@ -30,7 +29,6 @@ using Nethermind.Specs.Forks;
 using Nethermind.Specs.Test;
 using Nethermind.Evm.State;
 using Nethermind.State;
-using Nethermind.Trie.Pruning;
 using Nethermind.TxPool.Filters;
 using NSubstitute;
 using NUnit.Framework;
@@ -1837,13 +1835,14 @@ namespace Nethermind.TxPool.Test
         }
 
 
-        private static object[] NonceAndRemovedCases =
+        private static readonly object[] NonceAndRemovedCases =
         {
             new object[]{ true, 1, AcceptTxResult.Accepted },
             new object[]{ true, 0, AcceptTxResult.Accepted},
             new object[]{ false, 0, AcceptTxResult.Accepted},
             new object[]{ false, 1, AcceptTxResult.NotCurrentNonceForDelegation},
         };
+
         [TestCaseSource(nameof(NonceAndRemovedCases))]
         public void Tx_with_conflicting_pending_delegation_is_rejected_then_is_accepted_after_delegation_removal(bool withRemoval, int secondNonce, AcceptTxResult expected)
         {
@@ -2196,7 +2195,7 @@ namespace Nethermind.TxPool.Test
             txStorage ??= new BlobTxStorage();
 
             _headInfo = chainHeadInfoProvider;
-            _headInfo ??= new ChainHeadInfoProvider(specProvider, _blockTree, _stateProvider, new CodeInfoRepository());
+            _headInfo ??= new ChainHeadInfoProvider(specProvider, _blockTree, _stateProvider, new EthereumCodeInfoRepository());
 
             return new TxPool(
                 _ethereumEcdsa,

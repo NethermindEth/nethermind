@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using Nethermind.Consensus.Validators;
+using Nethermind.Core.Test.Db;
 using Nethermind.Db;
 using Nethermind.Logging;
 using Nethermind.Evm.State;

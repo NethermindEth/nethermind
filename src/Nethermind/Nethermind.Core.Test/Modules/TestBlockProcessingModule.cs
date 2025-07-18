@@ -38,7 +38,7 @@ public class TestBlockProcessingModule : Module
             {
                 IWorldState worldState = ctx.Resolve<IWorldStateManager>().GlobalWorldState;
                 PreBlockCaches? preBlockCaches = (worldState as IPreBlockCaches)?.Caches;
-                return new CodeInfoRepository(preBlockCaches?.PrecompileCache);
+                return new EthereumCodeInfoRepository(preBlockCaches?.PrecompileCache);
             })
 
             .AddSingleton<ITxPool, TxPool.TxPool>()
@@ -87,7 +87,7 @@ public class TestBlockProcessingModule : Module
             processingCtxBuilder
                 // These are main block processing specific
                 .AddScoped<ICodeInfoRepository>(mainCodeInfoRepository)
-                .AddSingleton<IVisitingWorldState>(mainWorldState).AddSingleton<IWorldState>(mainWorldState)
+                .AddSingleton<IWorldState>(mainWorldState)
                 .Bind<IBlockProcessor.IBlockTransactionsExecutor, IValidationTransactionExecutor>()
                 .AddScoped<ITransactionProcessorAdapter, ExecuteTransactionProcessorAdapter>()
                 .AddScoped(new BlockchainProcessor.Options
@@ -115,7 +115,7 @@ public class TestBlockProcessingModule : Module
         return innerScope.Resolve<MainBlockProcessingContext>();
     }
 
-    private class AutoBlockProducerFactory<T>(ILifetimeScope rootLifetime, IBlockProducerEnvFactory producerEnvFactory) : IBlockProducerFactory where T : IBlockProducer
+    public class AutoBlockProducerFactory<T>(ILifetimeScope rootLifetime, IBlockProducerEnvFactory producerEnvFactory) : IBlockProducerFactory where T : IBlockProducer
     {
         public IBlockProducer InitBlockProducer()
         {
