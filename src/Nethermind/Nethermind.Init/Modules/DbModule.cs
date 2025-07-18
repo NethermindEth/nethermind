@@ -17,7 +17,7 @@ using Nethermind.Serialization.Json;
 namespace Nethermind.Init.Modules;
 
 /// <summary>
-/// Declares the default database and some class for utility function.
+/// Declares the default database and some classes for utility functions.
 /// Additional database can be added by plugin using the <see cref="ContainerBuilderExtensions.AddDatabase"/> or
 /// <see cref="ContainerBuilderExtensions.AddColumnDatabase{T}"/> DSL. These just create a keyed <see cref="IDb"/>,
 /// so plugins can override individual database separately. To override all, replace <see cref="IDbFactory"/>.
