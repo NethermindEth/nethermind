@@ -159,7 +159,7 @@ public class AdminRpcModule : IAdminRpcModule
     {
         var validatedPeers = _peerPool.ActivePeers
             .Where(p => IsValidatedPeer(p.Value))
-            .Select(p => new PeerInfo(p.Value, includeDetails, _nodeInfo))
+            .Select(p => new PeerInfo(p.Value, includeDetails))
             .ToArray();
 
         return ResultWrapper<PeerInfo[]>.Success(validatedPeers);

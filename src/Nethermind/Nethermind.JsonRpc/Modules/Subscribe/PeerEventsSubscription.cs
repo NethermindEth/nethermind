@@ -17,21 +17,18 @@ namespace Nethermind.JsonRpc.Modules.Subscribe
         private readonly IPeerPool _peerPool;
         private readonly IRlpxHost _rlpxHost;
         private readonly ISessionMonitor _sessionMonitor;
-        private readonly NodeInfo _nodeInfo;
 
         public PeerEventsSubscription(
             IJsonRpcDuplexClient jsonRpcDuplexClient,
             ILogManager? logManager,
             IPeerPool? peerPool,
-            IRlpxHost? rlpxHost,
-            NodeInfo? nodeInfo = null
+            IRlpxHost? rlpxHost
             )
             : base(jsonRpcDuplexClient)
         {
             _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
             _peerPool = peerPool ?? throw new ArgumentNullException(nameof(peerPool));
             _rlpxHost = rlpxHost ?? throw new ArgumentNullException(nameof(rlpxHost));
-            _nodeInfo = nodeInfo;
 
             _peerPool.PeerAdded += OnPeerAdded;
             _peerPool.PeerRemoved += OnPeerRemoved;
@@ -132,7 +129,7 @@ namespace Nethermind.JsonRpc.Modules.Subscribe
         private (string localHost, string remoteAddress, string peerId) GetPeerEventInfo(Node node)
         {
             var peer = new Peer(node);
-            var peerInfo = new PeerInfo(peer, false, _nodeInfo);
+            var peerInfo = new PeerInfo(peer, false);
 
             return (
                 peerInfo.Network.LocalHost,

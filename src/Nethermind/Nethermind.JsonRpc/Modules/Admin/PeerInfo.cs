@@ -52,12 +52,12 @@ namespace Nethermind.JsonRpc.Modules.Admin
         {
         }
 
-        public PeerInfo(Peer peer, bool includeDetails = false, NodeInfo nodeInfo = null)
+        public PeerInfo(Peer peer, bool includeDetails = false)
         {
             PeerValidator.ValidatePeer(peer);
 
             SetBasicInfo(peer);
-            SetNetworkInfo(peer, nodeInfo);
+            SetNetworkInfo(peer);
             SetProtocols(peer);
 
             if (includeDetails)
@@ -75,10 +75,10 @@ namespace Nethermind.JsonRpc.Modules.Admin
             Enr = EnrExtractor.GetEnrFromPeer(peer);
         }
 
-        private void SetNetworkInfo(Peer peer, NodeInfo nodeInfo = null)
+        private void SetNetworkInfo(Peer peer)
         {
             bool isInbound = peer.InSession is not null;
-            Network = NetworkInfoBuilder.Build(peer, isInbound, nodeInfo);
+            Network = NetworkInfoBuilder.Build(peer, isInbound);
         }
 
         private void SetProtocols(Peer peer)
