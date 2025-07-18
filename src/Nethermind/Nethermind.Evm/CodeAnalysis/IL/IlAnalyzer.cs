@@ -77,6 +77,7 @@ public static class IlAnalyzer
             Task[] taskPool = new Task[taskLimit];
             Array.Fill(taskPool, Task.CompletedTask);
 
+            await _channel.Reader.WaitToReadAsync(_cts.Token);
             await foreach (var codeInfo in _channel.Reader.ReadAllAsync(_cts.Token))
             {
                 int index = Task.WaitAny(taskPool);
