@@ -2,19 +2,22 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Buffers.Binary;
+using System.Diagnostics;
 using System.Numerics;
+using System.Runtime.CompilerServices;
+using System.Runtime.InteropServices;
+using System.Runtime.Intrinsics;
 using Nethermind.Core;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
-using Nethermind.Evm;
-using Nethermind.Evm.Precompiles;
 using Nethermind.GmpBindings;
 using Nethermind.Int256;
 
 namespace Nethermind.Evm.Precompiles;
 
 /// <summary>
-///     https://github.com/ethereum/EIPs/blob/vbuterin-patch-2/EIPS/bigint_modexp.md
+/// https://github.com/ethereum/EIPs/blob/vbuterin-patch-2/EIPS/bigint_modexp.md
 /// </summary>
 public class ModExpPrecompile : IPrecompile<ModExpPrecompile>
 {
@@ -25,6 +28,11 @@ public class ModExpPrecompile : IPrecompile<ModExpPrecompile>
     /// For more details, see: https://eips.ethereum.org/EIPS/eip-7823
     /// </summary>
     public const int ModExpMaxInputSizeEip7823 = 1024;
+
+    private const int LengthSize = 32;
+    private const int StartBaseLength = 0;
+    private const int StartExpLength = 32;
+    private const int StartModLength = 64;
 
     private ModExpPrecompile()
     {
@@ -57,9 +65,10 @@ public class ModExpPrecompile : IPrecompile<ModExpPrecompile>
 
         try
         {
-            return inputData.Length >= 96
-                ? DataGasCostInternal(inputData.Span.Slice(0, 96), inputData, releaseSpec)
-                : DataGasCostInternal(inputData, releaseSpec);
+            ReadOnlySpan<byte> span = inputData.Span;
+            return span.Length >= 96
+                ? DataGasCostInternal(span, releaseSpec)
+                : DataGasCostShortInternal(span, releaseSpec);
         }
         catch (OverflowException)
         {
@@ -67,32 +76,32 @@ public class ModExpPrecompile : IPrecompile<ModExpPrecompile>
         }
     }
 
-    private static long DataGasCostInternal(ReadOnlyMemory<byte> inputData, IReleaseSpec releaseSpec)
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    private static long DataGasCostShortInternal(ReadOnlySpan<byte> inputData, IReleaseSpec releaseSpec)
     {
-        Span<byte> extendedInput = stackalloc byte[96];
-        inputData[..Math.Min(96, inputData.Length)].Span
-            .CopyTo(extendedInput[..Math.Min(96, inputData.Length)]);
+        Debug.Assert(inputData.Length < 96);
 
-        return DataGasCostInternal(extendedInput, inputData, releaseSpec);
+        Span<byte> extendedInput = stackalloc byte[96];
+        inputData.CopyTo(extendedInput);
+
+        return DataGasCostInternal(extendedInput, releaseSpec);
     }
 
-    private static long DataGasCostInternal(ReadOnlySpan<byte> extendedInput, ReadOnlyMemory<byte> inputData, IReleaseSpec releaseSpec)
+    private static long DataGasCostInternal(ReadOnlySpan<byte> inputData, IReleaseSpec releaseSpec)
     {
-        UInt256 baseLength = new(extendedInput[..32], true);
-        UInt256 expLength = new(extendedInput.Slice(32, 32), true);
-        UInt256 modulusLength = new(extendedInput.Slice(64, 32), true);
-
+        (uint baseLength, uint expLength, uint modulusLength) = GetInputLengths(inputData);
         if (ExceedsMaxInputSize(releaseSpec, baseLength, expLength, modulusLength))
         {
             return long.MaxValue;
         }
 
-        UInt256 complexity = MultComplexity(baseLength, modulusLength, releaseSpec.IsEip7883Enabled);
+        ulong complexity = MultComplexity(baseLength, modulusLength, releaseSpec.IsEip7883Enabled);
 
-        UInt256 expLengthUpTo32 = UInt256.Min(32, expLength);
-        UInt256 startIndex = 96 + baseLength; //+ expLength - expLengthUpTo32; // Geth takes head here, why?
-        UInt256 exp = new(inputData.Span.SliceWithZeroPaddingEmptyOnError((int)startIndex, (int)expLengthUpTo32), true);
+        uint expLengthUpTo32 = Math.Min(32, expLength);
+        uint startIndex = 96 + baseLength; //+ expLength - expLengthUpTo32; // Geth takes head here, why?
+        UInt256 exp = new(inputData.SliceWithZeroPaddingEmptyOnError((int)startIndex, (int)expLengthUpTo32), true);
         UInt256 iterationCount = CalculateIterationCount(expLength, exp, releaseSpec.IsEip7883Enabled);
+
         bool overflow = UInt256.MultiplyOverflow(complexity, iterationCount, out UInt256 result);
         result /= 3;
         return result > long.MaxValue || overflow
@@ -100,31 +109,129 @@ public class ModExpPrecompile : IPrecompile<ModExpPrecompile>
             : Math.Max(releaseSpec.IsEip7883Enabled ? GasCostOf.MinModExpEip7883 : GasCostOf.MinModExpEip2565, (long)result);
     }
 
-    private static bool ExceedsMaxInputSize(IReleaseSpec releaseSpec, UInt256 baseLength, UInt256 expLength, UInt256 modulusLength)
-        => releaseSpec.IsEip7823Enabled &&
-            (baseLength > ModExpMaxInputSizeEip7823 || expLength > ModExpMaxInputSizeEip7823 || modulusLength > ModExpMaxInputSizeEip7823);
-
-    private static (int, int, int) GetInputLengths(ReadOnlyMemory<byte> inputData)
+    private static bool ExceedsMaxInputSize(IReleaseSpec releaseSpec, uint baseLength, uint expLength, uint modulusLength)
     {
+        return releaseSpec.IsEip7823Enabled
+            ? baseLength > ModExpMaxInputSizeEip7823 || expLength > ModExpMaxInputSizeEip7823 || modulusLength > ModExpMaxInputSizeEip7823
+            : baseLength == int.MaxValue || modulusLength == int.MaxValue;
+    }
+
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    private (uint baseLength, uint expLength, uint modulusLength) GetInputLengthsShort(ReadOnlySpan<byte> inputData)
+    {
+        Debug.Assert(inputData.Length < 96);
+
         Span<byte> extendedInput = stackalloc byte[96];
-        inputData[..Math.Min(96, inputData.Length)].Span
-            .CopyTo(extendedInput[..Math.Min(96, inputData.Length)]);
+        inputData.CopyTo(extendedInput);
 
-        int baseLength = (int)new UInt256(extendedInput[..32], true);
-        UInt256 expLengthUint256 = new(extendedInput.Slice(32, 32), true);
-        int expLength = expLengthUint256 > Array.MaxLength ? Array.MaxLength : (int)expLengthUint256;
-        int modulusLength = (int)new UInt256(extendedInput.Slice(64, 32), true);
+        return GetInputLengths(extendedInput);
+    }
 
+    private static (uint baseLength, uint expLength, uint modulusLength) GetInputLengths(ReadOnlySpan<byte> inputData)
+    {
+        // Test if too high
+        if (Vector256<byte>.IsSupported)
+        {
+            ref var firstByte = ref MemoryMarshal.GetReference(inputData);
+            Vector256<byte> mask = ~Vector256.Create(0, 0, 0, 0, 0, 0, 0, uint.MaxValue).AsByte();
+            if (Vector256.BitwiseAnd(
+                    Vector256.BitwiseOr(
+                        Vector256.BitwiseOr(
+                            Unsafe.ReadUnaligned<Vector256<byte>>(ref firstByte),
+                            Unsafe.ReadUnaligned<Vector256<byte>>(ref Unsafe.Add(ref firstByte, StartExpLength))),
+                        Unsafe.ReadUnaligned<Vector256<byte>>(ref Unsafe.Add(ref firstByte, 64))),
+                mask) != Vector256<byte>.Zero)
+            {
+                return GetInputLengthsMayOverflow(inputData);
+            }
+        }
+        else if (Vector128<byte>.IsSupported)
+        {
+            ref var firstByte = ref MemoryMarshal.GetReference(inputData);
+            Vector128<byte> mask = ~Vector128.Create(0, 0, 0, uint.MaxValue).AsByte();
+            if (Vector128.BitwiseOr(
+                    Vector128.BitwiseOr(
+                        Vector128.BitwiseOr(
+                            Unsafe.ReadUnaligned<Vector128<byte>>(ref firstByte),
+                            Unsafe.ReadUnaligned<Vector128<byte>>(ref Unsafe.Add(ref firstByte, StartExpLength))),
+                        Unsafe.ReadUnaligned<Vector128<byte>>(ref Unsafe.Add(ref firstByte, 64))),
+                    Vector128.BitwiseAnd(
+                        Vector128.BitwiseOr(
+                            Vector128.BitwiseOr(
+                                Unsafe.ReadUnaligned<Vector128<byte>>(ref Unsafe.Add(ref firstByte, 16)),
+                                Unsafe.ReadUnaligned<Vector128<byte>>(ref Unsafe.Add(ref firstByte, StartExpLength + 16))),
+                            Unsafe.ReadUnaligned<Vector128<byte>>(ref Unsafe.Add(ref firstByte, StartModLength + 16))),
+                        mask)
+                ) != Vector128<byte>.Zero)
+            {
+                return GetInputLengthsMayOverflow(inputData);
+            }
+        }
+        else if (inputData.Slice(StartBaseLength, LengthSize - sizeof(uint)).IndexOfAnyExcept((byte)0) >= 0 ||
+                inputData.Slice(StartExpLength, LengthSize - sizeof(uint)).IndexOfAnyExcept((byte)0) >= 0 ||
+                inputData.Slice(StartModLength, LengthSize - sizeof(uint)).IndexOfAnyExcept((byte)0) >= 0)
+        {
+            return GetInputLengthsMayOverflow(inputData);
+        }
+
+        uint baseLength = BinaryPrimitives.ReadUInt32BigEndian(inputData.Slice(32 - sizeof(uint), sizeof(uint)));
+        uint expLength = BinaryPrimitives.ReadUInt32BigEndian(inputData.Slice(64 - sizeof(uint), sizeof(uint)));
+        uint modulusLength = BinaryPrimitives.ReadUInt32BigEndian(inputData.Slice(96 - sizeof(uint), sizeof(uint)));
         return (baseLength, expLength, modulusLength);
+    }
+
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    private static (uint baseLength, uint expLength, uint modulusLength) GetInputLengthsMayOverflow(ReadOnlySpan<byte> inputData)
+    {
+        // Only valid if baseLength and modulusLength are zero; when expLength doesn't matter
+        if (Vector256<byte>.IsSupported)
+        {
+            ref var firstByte = ref MemoryMarshal.GetReference(inputData);
+            if (Vector256.BitwiseOr(
+                    Unsafe.ReadUnaligned<Vector256<byte>>(ref firstByte),
+                    Unsafe.ReadUnaligned<Vector256<byte>>(ref Unsafe.Add(ref firstByte, StartModLength)))
+                != Vector256<byte>.Zero)
+            {
+                // Overflow
+                return (uint.MaxValue, uint.MaxValue, uint.MaxValue);
+            }
+        }
+        else if (Vector128<byte>.IsSupported)
+        {
+            ref var firstByte = ref MemoryMarshal.GetReference(inputData);
+            if (Vector128.BitwiseOr(
+                    Vector128.BitwiseOr(
+                        Unsafe.ReadUnaligned<Vector128<byte>>(ref firstByte),
+                        Unsafe.ReadUnaligned<Vector128<byte>>(ref Unsafe.Add(ref firstByte, 16))),
+                    Vector128.BitwiseOr(
+                        Unsafe.ReadUnaligned<Vector128<byte>>(ref Unsafe.Add(ref firstByte, StartModLength)),
+                        Unsafe.ReadUnaligned<Vector128<byte>>(ref Unsafe.Add(ref firstByte, StartModLength + 16)))
+                ) != Vector128<byte>.Zero)
+            {
+                // Overflow
+                return (uint.MaxValue, uint.MaxValue, uint.MaxValue);
+            }
+        }
+        else if (inputData.Slice(StartBaseLength, LengthSize).IndexOfAnyExcept((byte)0) >= 0 ||
+                inputData.Slice(StartModLength, LengthSize).IndexOfAnyExcept((byte)0) >= 0)
+        {
+            // Overflow
+            return (uint.MaxValue, uint.MaxValue, uint.MaxValue);
+        }
+
+        return (0, uint.MaxValue, 0);
     }
 
     public unsafe (byte[], bool) Run(ReadOnlyMemory<byte> inputData, IReleaseSpec releaseSpec)
     {
         Metrics.ModExpPrecompile++;
 
-        (int baseLength, int expLength, int modulusLength) = GetInputLengths(inputData);
+        ReadOnlySpan<byte> inputSpan = inputData.Span;
+        (uint baseLength, uint expLength, uint modulusLength) = inputSpan.Length >= 96
+                ? GetInputLengths(inputSpan)
+                : GetInputLengthsShort(inputSpan);
 
-        if (ExceedsMaxInputSize(releaseSpec, (uint)baseLength, (uint)expLength, (uint)modulusLength))
+        if (ExceedsMaxInputSize(releaseSpec, baseLength, expLength, modulusLength))
             return IPrecompile.Failure;
 
         // if both are 0, then expLength can be huge, which leads to a potential buffer too big exception
@@ -133,7 +240,7 @@ public class ModExpPrecompile : IPrecompile<ModExpPrecompile>
 
         using var modulusInt = mpz_t.Create();
 
-        fixed (byte* modulusData = inputData.Span.SliceWithZeroPaddingEmptyOnError(96 + baseLength + expLength, modulusLength))
+        fixed (byte* modulusData = inputSpan.SliceWithZeroPaddingEmptyOnError(96 + (int)baseLength + (int)expLength, (int)modulusLength))
         {
             if (modulusData is not null)
                 Gmp.mpz_import(modulusInt, (nuint)modulusLength, 1, 1, 1, nuint.Zero, (nint)modulusData);
@@ -146,8 +253,8 @@ public class ModExpPrecompile : IPrecompile<ModExpPrecompile>
         using var expInt = mpz_t.Create();
         using var powmResult = mpz_t.Create();
 
-        fixed (byte* baseData = inputData.Span.SliceWithZeroPaddingEmptyOnError(96, baseLength))
-        fixed (byte* expData = inputData.Span.SliceWithZeroPaddingEmptyOnError(96 + baseLength, expLength))
+        fixed (byte* baseData = inputSpan.SliceWithZeroPaddingEmptyOnError(96, (int)baseLength))
+        fixed (byte* expData = inputSpan.SliceWithZeroPaddingEmptyOnError(96 + (int)baseLength, (int)expLength))
         {
             if (baseData is not null)
                 Gmp.mpz_import(baseInt, (nuint)baseLength, 1, 1, 1, nuint.Zero, (nint)baseData);
@@ -173,7 +280,7 @@ public class ModExpPrecompile : IPrecompile<ModExpPrecompile>
     {
         Metrics.ModExpPrecompile++;
 
-        (int baseLength, int expLength, int modulusLength) = GetInputLengths(inputData);
+        (int baseLength, int expLength, int modulusLength) = OldGetInputLengths(inputData);
 
         BigInteger modulusInt = inputData
             .SliceWithZeroPaddingEmptyOnError(96 + baseLength + expLength, modulusLength).ToUnsignedBigInteger();
@@ -189,6 +296,20 @@ public class ModExpPrecompile : IPrecompile<ModExpPrecompile>
         return (BigInteger.ModPow(baseInt, expInt, modulusInt).ToBigEndianByteArray(modulusLength), true);
     }
 
+    private static (int baseLength, int expLength, int modulusLength) OldGetInputLengths(ReadOnlySpan<byte> inputData)
+    {
+        Span<byte> extendedInput = stackalloc byte[96];
+        inputData[..Math.Min(96, inputData.Length)]
+            .CopyTo(extendedInput[..Math.Min(96, inputData.Length)]);
+
+        int baseLength = (int)new UInt256(extendedInput[..32], true);
+        UInt256 expLengthUint256 = new(extendedInput.Slice(32, 32), true);
+        int expLength = expLengthUint256 > Array.MaxLength ? Array.MaxLength : (int)expLengthUint256;
+        int modulusLength = (int)new UInt256(extendedInput.Slice(64, 32), true);
+
+        return (baseLength, expLength, modulusLength);
+    }
+
     /// <summary>
     /// def calculate_multiplication_complexity(base_length, modulus_length):
     /// max_length = max(base_length, modulus_length)
@@ -196,18 +317,28 @@ public class ModExpPrecompile : IPrecompile<ModExpPrecompile>
     /// return words**2
     /// </summary>
     /// <returns></returns>
-    private static UInt256 MultComplexity(in UInt256 baseLength, in UInt256 modulusLength, bool isEip7883Enabled)
+    private static ulong MultComplexity(uint baseLength, uint modulusLength, bool isEip7883Enabled)
     {
-        UInt256 maxLength = UInt256.Max(baseLength, modulusLength);
-        UInt256.Mod(maxLength, 8, out UInt256 mod8);
-        UInt256 words = (maxLength / 8) + (mod8.IsZero ? UInt256.Zero : UInt256.One);
+        // Pick the larger of the two  
+        uint max = baseLength > modulusLength ? baseLength : modulusLength;
 
+        // Compute ceil(max/8) via a single add + shift
+        // (max + 7) >> 3  ==  (max + 7) / 8, rounding up
+        ulong words = ((ulong)max + 7u) >> 3;
+
+        // Square it once
+        ulong sq = words * words;
+
+        // If EIP-7883 => small-case = 16, else 2*sq when max>32
         if (isEip7883Enabled)
         {
-            return maxLength > 32 ? 2 * words * words : 16;
+            return max > 32
+                ? (sq << 1)    // 2 * words * words
+                : 16UL;        // constant floor
         }
 
-        return words * words;
+        // Otherwise plain square
+        return sq;
     }
 
     static readonly UInt256 IterationCountMultiplierEip2565 = 8;

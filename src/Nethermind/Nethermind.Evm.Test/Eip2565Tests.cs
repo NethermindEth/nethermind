@@ -25,13 +25,14 @@ namespace Nethermind.Evm.Test
             string randomInput = string.Format("{0}{0}{0}{1}", Length64, data.ToHexString());
 
             Prepare input = Prepare.EvmCode.FromCode(randomInput);
+            byte[] inputData = input.Done.ToArray();
 
-            (ReadOnlyMemory<byte>, bool) gmpPair = ModExpPrecompile.Instance.Run(input.Done.ToArray(), Berlin.Instance);
+            (ReadOnlyMemory<byte>, bool) gmpPair = ModExpPrecompile.Instance.Run(inputData, Berlin.Instance);
 #pragma warning disable 618
-            (ReadOnlyMemory<byte>, bool) bigIntPair = ModExpPrecompile.OldRun(input.Done.ToArray());
+            (ReadOnlyMemory<byte>, bool) bigIntPair = ModExpPrecompile.OldRun(inputData);
 #pragma warning restore 618
 
-            Assert.That(bigIntPair.Item1.ToArray(), Is.EqualTo(gmpPair.Item1.ToArray()));
+            Assert.That(gmpPair.Item1.ToArray(), Is.EqualTo(bigIntPair.Item1.ToArray()));
         }
 
         [Test]
