@@ -54,7 +54,6 @@ public class CompositeTxTracer : ITxTracer
     public bool IsTracingAccess { get; }
     public bool IsTracingFees { get; }
     public bool IsTracingLogs { get; }
-    public bool IsTracingIlEvmCalls { get; }
 
     public void ReportBalanceChange(Address address, UInt256? before, UInt256? after)
     {
@@ -517,17 +516,6 @@ public class CompositeTxTracer : ITxTracer
         for (int index = 0; index < _txTracers.Count; index++)
         {
             _txTracers[index].Dispose();
-        }
-    }
-    public void ReportIlEvmChunkExecution(long gas, int pc, string segmentId, in ExecutionEnvironment env)
-    {
-        for (int index = 0; index < _txTracers.Count; index++)
-        {
-            ITxTracer innerTracer = _txTracers[index];
-            if (innerTracer.IsTracingIlEvmCalls)
-            {
-                innerTracer.ReportIlEvmChunkExecution(gas, pc, segmentId, in env);
-            }
         }
     }
 }

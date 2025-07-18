@@ -191,10 +191,9 @@ public sealed unsafe partial class VirtualMachine(
                     // Execute the regular EVM call if valid code is present; otherwise, mark as invalid.
                     if (_currentState.Env.CodeInfo is not null)
                     {
-                        callResult = ExecuteCall<TTracingInst>(
-                            _previousCallResult,
-                            previousCallOutput,
-                            _previousCallOutputDestination);
+                        callResult = _txTracer.IsTracing
+                            ? ExecuteCall<TTracingInst, OffFlag>(_previousCallResult, previousCallOutput, _previousCallOutputDestination)
+                            : ExecuteCall<TTracingInst, OnFlag>(_previousCallResult, previousCallOutput, _previousCallOutputDestination);
                     }
                     else
                     {
@@ -1052,7 +1051,7 @@ public sealed unsafe partial class VirtualMachine(
     /// of <c>TTracingInst.IsActive</c>.
     /// </remarks>
     [SkipLocalsInit]
-    private CallResult ExecuteCall<TTracingInst>(
+    private CallResult ExecuteCall<TTracingInst, TEnablePrecompilation>(
         ReadOnlyMemory<byte>? previousCallResult,
         ZeroPaddedSpan previousCallOutput,
         scoped in UInt256 previousCallOutputDestination)
@@ -1075,8 +1074,7 @@ public sealed unsafe partial class VirtualMachine(
                 _worldState.IncrementNonce(env.ExecutingAccount);
             }
 
-
-            if (_vmConfig.IlEvmEnabledMode is ILMode.AOT_MODE && _txTracer.IsTracingIlEvmCompatible && env.CodeInfo.CodeSpan.Length > 0 && env.CodeInfo.CodeHash is not null)
+            if(typeof(TEnablePrecompilation) == typeof(OnFlag))
             {
                 // IlAnalyzer.Analyse(env.CodeInfo as CodeInfo, ILMode.AOT_MODE, _vmConfig, _logger);
                 env.CodeInfo.NoticeExecution(_vmConfig, _logger, Spec);
@@ -1131,7 +1129,7 @@ public sealed unsafe partial class VirtualMachine(
             vmState.Memory.Save(in localPreviousDest, previousCallOutput);
         }
 
-        if (env.CodeInfo.IlMetadata.IsPrecompiled)
+        if (typeof(TEnablePrecompilation) == typeof(OnFlag) && env.CodeInfo.IlMetadata.IsPrecompiled)
         {
             Metrics.IlvmAotPrecompiledCalls++; // this will treat continuations as new calls
 

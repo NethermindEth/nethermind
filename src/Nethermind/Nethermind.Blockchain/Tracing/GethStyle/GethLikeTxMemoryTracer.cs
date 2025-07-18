@@ -80,33 +80,4 @@ public class GethLikeTxMemoryTracer : GethLikeTxTracer<GethTxMemoryTraceEntry>
         }
     }
 
-
-    public override void ReportIlEvmChunkExecution(long gas, int pc, string segmentID, in ExecutionEnvironment env)
-    {
-        var previousTraceEntry = CurrentTraceEntry;
-        var previousDepth = CurrentTraceEntry?.Depth ?? 0;
-
-        base.ReportIlEvmChunkExecution(gas, pc, segmentID, env);
-
-        if (CurrentTraceEntry.Depth > previousDepth)
-        {
-            CurrentTraceEntry.Storage = new Dictionary<string, string>();
-
-            Trace.StoragesByDepth.Push(previousTraceEntry is null ? new() : previousTraceEntry.Storage);
-        }
-        else if (CurrentTraceEntry.Depth < previousDepth)
-        {
-            if (previousTraceEntry is null)
-                throw new InvalidOperationException("Missing the previous trace on leaving the call.");
-
-            CurrentTraceEntry.Storage = new Dictionary<string, string>(Trace.StoragesByDepth.Pop());
-        }
-        else
-        {
-            if (previousTraceEntry is null)
-                throw new InvalidOperationException("Missing the previous trace on continuation.");
-
-            CurrentTraceEntry.Storage = new Dictionary<string, string>(previousTraceEntry.Storage);
-        }
-    }
 }
