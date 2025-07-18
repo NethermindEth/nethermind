@@ -10,7 +10,7 @@ using Nethermind.Core.Extensions;
 
 namespace Nethermind.Db.Rocks.Config;
 
-public class PerTableDbConfig: IRocksDbConfig
+public class PerTableDbConfig : IRocksDbConfig
 {
     private readonly string _tableName;
     private readonly string? _columnName;
