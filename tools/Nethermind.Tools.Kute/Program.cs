@@ -1,9 +1,6 @@
 // SPDX-FileCopyrightText: 2023 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using App.Metrics.Formatters;
-using App.Metrics.Formatters.Ascii;
-using App.Metrics.Formatters.Json;
 using Microsoft.Extensions.DependencyInjection;
 using Nethermind.Tools.Kute.Auth;
 using Nethermind.Tools.Kute.JsonRpcMethodFilter;
@@ -11,8 +8,7 @@ using Nethermind.Tools.Kute.JsonRpcSubmitter;
 using Nethermind.Tools.Kute.JsonRpcValidator;
 using Nethermind.Tools.Kute.JsonRpcValidator.Eth;
 using Nethermind.Tools.Kute.MessageProvider;
-using Nethermind.Tools.Kute.MetricsConsumer;
-using Nethermind.Tools.Kute.ProgressReporter;
+using Nethermind.Tools.Kute.Metrics;
 using Nethermind.Tools.Kute.ResponseTracer;
 using Nethermind.Tools.Kute.SecretProvider;
 using Nethermind.Tools.Kute.SystemClock;
@@ -31,7 +27,7 @@ static class Program
             Config.JwtSecretFilePath,
             Config.AuthTtl,
             Config.ShowProgress,
-            Config.MetricsOutputFormatter,
+            Config.MetricsReportFormatter,
             Config.MethodFilters,
             Config.ResponsesTraceFile,
             Config.RequestsPerSecond,
@@ -102,6 +98,19 @@ static class Program
 
             return new FileResponseTracer(tracesFilePath);
         });
+        collection.AddSingleton<IMetricsReporter>(provider =>
+        {
+            var formatter = parseResult.GetValue(Config.MetricsReportFormatter) switch
+            {
+                MetricsReportFormat.Report => new NullMetricsReportFormatter(),
+                MetricsReportFormat.Json => new NullMetricsReportFormatter(),
+                _ => throw new ArgumentOutOfRangeException(),
+            };
+
+            var memoryReporter = new MemoryMetricsReporter();
+            var consoleReporter = new ConsoleMetricsReporter(memoryReporter, formatter);
+
+            IMetricsReporter progresReporter;
             if (parseResult.GetValue(Config.ShowProgress))
             {
                 // NOTE:
@@ -115,22 +124,16 @@ static class Program
                     ? provider.GetRequiredService<IMessageProvider<JsonRpc?>>()
                     : provider.GetRequiredService<IMessageProvider<string>>();
                 var totalMessages = messagesProvider.Messages.ToEnumerable().Count();
-                return new ConsoleProgressReporter(totalMessages);
+
+                progresReporter = new ConsoleProgressReporter(totalMessages);
             }
             else
             {
-                return new NullProgressReporter();
+                progresReporter = new NullMetricsReporter();
             }
+
+            return new ComposedMetricsReporter([memoryReporter, consoleReporter, progresReporter]);
         });
-        collection.AddSingleton<IMetricsConsumer, ConsoleMetricsConsumer>();
-        collection.AddSingleton<IMetricsOutputFormatter>(
-            parseResult.GetValue(Config.MetricsOutputFormatter) switch
-            {
-                MetricsOutputFormatter.Report => new MetricsTextOutputFormatter(),
-                MetricsOutputFormatter.Json => new MetricsJsonOutputFormatter(),
-                _ => throw new ArgumentOutOfRangeException(),
-            }
-        );
 
         return collection.BuildServiceProvider();
     }

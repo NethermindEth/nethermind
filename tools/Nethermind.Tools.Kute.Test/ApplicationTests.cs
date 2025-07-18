@@ -7,8 +7,7 @@ using Nethermind.Tools.Kute.JsonRpcSubmitter;
 using Nethermind.Tools.Kute.JsonRpcValidator;
 using Nethermind.Tools.Kute.JsonRpcValidator.Eth;
 using Nethermind.Tools.Kute.MessageProvider;
-using Nethermind.Tools.Kute.MetricsConsumer;
-using Nethermind.Tools.Kute.ProgressReporter;
+using Nethermind.Tools.Kute.Metrics;
 using Nethermind.Tools.Kute.ResponseTracer;
 using NSubstitute;
 using NUnit.Framework;
@@ -83,8 +82,7 @@ public class ApplicationTests
         var jsonRpcSubmitter = ConstantSubmitter(ResponseOK);
         var validator = new ComposedJsonRpcValidator([new NonErrorJsonRpcValidator(), new NewPayloadJsonRpcValidator()]);
         var responseTracer = Substitute.For<IResponseTracer>();
-        var reporter = new NullProgressReporter();
-        var consumer = Substitute.For<IMetricsConsumer>();
+        var reporter = Substitute.For<IMetricsReporter>();
         var filter = ConstantFilter(shouldSubmit: true);
 
         var app = new Application(
@@ -93,7 +91,6 @@ public class ApplicationTests
             validator,
             responseTracer,
             reporter,
-            consumer,
             filter
         );
 
@@ -102,7 +99,7 @@ public class ApplicationTests
         await jsonRpcSubmitter.Received(17).Submit(Arg.Any<JsonRpc.Request.Single>());
         await jsonRpcSubmitter.Received(4).Submit(Arg.Any<JsonRpc.Request.Batch>());
         await responseTracer.Received(21).TraceResponse(Arg.Any<JsonRpc.Response>());
-        await consumer.Received(1).ConsumeMetrics(Arg.Any<Metrics>());
+        await reporter.Received(1).Total(Arg.Any<TimeSpan>());
     }
 
     [Test]
@@ -112,8 +109,7 @@ public class ApplicationTests
         var jsonRpcSubmitter = ConstantSubmitter(ResponseOK);
         var validator = new ComposedJsonRpcValidator([new NonErrorJsonRpcValidator(), new NewPayloadJsonRpcValidator()]);
         var responseTracer = Substitute.For<IResponseTracer>();
-        var reporter = new NullProgressReporter();
-        var consumer = Substitute.For<IMetricsConsumer>();
+        var reporter = Substitute.For<IMetricsReporter>();
         var filter = ConstantFilter(shouldSubmit: true);
 
         var app = new Application(
@@ -122,7 +118,6 @@ public class ApplicationTests
             validator,
             responseTracer,
             reporter,
-            consumer,
             filter
         );
 
@@ -131,7 +126,7 @@ public class ApplicationTests
         await jsonRpcSubmitter.Received(49).Submit(Arg.Any<JsonRpc.Request.Single>());
         await jsonRpcSubmitter.Received(0).Submit(Arg.Any<JsonRpc.Request.Batch>());
         await responseTracer.Received(49).TraceResponse(Arg.Any<JsonRpc.Response>());
-        await consumer.Received(1).ConsumeMetrics(Arg.Any<Metrics>());
+        await reporter.Received(1).Total(Arg.Any<TimeSpan>());
     }
 
     [Test]
@@ -147,8 +142,7 @@ public class ApplicationTests
         var jsonRpcSubmitter = ConstantSubmitter(ResponseError);
         var validator = new ComposedJsonRpcValidator([new NonErrorJsonRpcValidator(), new NewPayloadJsonRpcValidator()]);
         var responseTracer = Substitute.For<IResponseTracer>();
-        var reporter = new NullProgressReporter();
-        var consumer = Substitute.For<IMetricsConsumer>();
+        var reporter = Substitute.For<IMetricsReporter>();
         var filter = new ComposedJsonRpcMethodFilter([new PatternJsonRpcMethodFilter("eth_.*")]);
 
         var app = new Application(
@@ -157,7 +151,6 @@ public class ApplicationTests
             validator,
             responseTracer,
             reporter,
-            consumer,
             filter
         );
 
@@ -166,7 +159,7 @@ public class ApplicationTests
         await jsonRpcSubmitter.Received(1).Submit(Arg.Any<JsonRpc.Request.Single>());
         await jsonRpcSubmitter.Received(1).Submit(Arg.Any<JsonRpc.Request.Batch>());
         await responseTracer.Received(2).TraceResponse(Arg.Any<JsonRpc.Response>());
-        await consumer.Received(1).ConsumeMetrics(Arg.Any<Metrics>());
+        await reporter.Received(1).Total(Arg.Any<TimeSpan>());
     }
 
     [Test]
@@ -182,8 +175,7 @@ public class ApplicationTests
         var jsonRpcSubmitter = ConstantSubmitter(ResponseError);
         var validator = new ComposedJsonRpcValidator([new NonErrorJsonRpcValidator(), new NewPayloadJsonRpcValidator()]);
         var responseTracer = Substitute.For<IResponseTracer>();
-        var reporter = new NullProgressReporter();
-        var consumer = Substitute.For<IMetricsConsumer>();
+        var reporter = Substitute.For<IMetricsReporter>();
         var filter = new ComposedJsonRpcMethodFilter([new PatternJsonRpcMethodFilter("engine_.*")]);
 
         var app = new Application(
@@ -192,7 +184,6 @@ public class ApplicationTests
             validator,
             responseTracer,
             reporter,
-            consumer,
             filter
         );
 
@@ -201,6 +192,6 @@ public class ApplicationTests
         await jsonRpcSubmitter.Received(2).Submit(Arg.Any<JsonRpc.Request.Single>());
         await jsonRpcSubmitter.Received(0).Submit(Arg.Any<JsonRpc.Request.Batch>());
         await responseTracer.Received(2).TraceResponse(Arg.Any<JsonRpc.Response>());
-        await consumer.Received(1).ConsumeMetrics(Arg.Any<Metrics>());
+        await reporter.Received(1).Total(Arg.Any<TimeSpan>());
     }
 }

@@ -1,8 +1,8 @@
 // SPDX-FileCopyrightText: 2023 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using Nethermind.Tools.Kute.MetricsConsumer;
 using System.CommandLine;
+using Nethermind.Tools.Kute.Metrics;
 
 namespace Nethermind.Tools.Kute;
 
@@ -41,9 +41,9 @@ public static class Config
         Description = "Show progress"
     };
 
-    public static Option<MetricsOutputFormatter> MetricsOutputFormatter { get; } = new("--output", "-o")
+    public static Option<MetricsReportFormat> MetricsReportFormatter { get; } = new("--output", "-o")
     {
-        DefaultValueFactory = r => MetricsConsumer.MetricsOutputFormatter.Report,
+        DefaultValueFactory = r => MetricsReportFormat.Report,
         Description = "Strategy to report metrics",
         HelpName = "value",
     };

@@ -6,22 +6,18 @@ using Nethermind.Tools.Kute.MessageProvider;
 using Nethermind.Tools.Kute.JsonRpcMethodFilter;
 using Nethermind.Tools.Kute.JsonRpcSubmitter;
 using Nethermind.Tools.Kute.JsonRpcValidator;
-using Nethermind.Tools.Kute.MetricsConsumer;
-using Nethermind.Tools.Kute.ProgressReporter;
 using Nethermind.Tools.Kute.ResponseTracer;
+using Nethermind.Tools.Kute.Metrics;
 
 namespace Nethermind.Tools.Kute;
 
 public sealed class Application
 {
-    private readonly Metrics _metrics = new();
-
     private readonly IMessageProvider<JsonRpc?> _msgProvider;
     private readonly IJsonRpcSubmitter _submitter;
     private readonly IJsonRpcValidator _validator;
     private readonly IResponseTracer _responseTracer;
-    private readonly IProgressReporter _progressReporter;
-    private readonly IMetricsConsumer _metricsConsumer;
+    private readonly IMetricsReporter _reporter;
     private readonly IJsonRpcMethodFilter _methodFilter;
 
     public Application(
@@ -29,8 +25,7 @@ public sealed class Application
         IJsonRpcSubmitter submitter,
         IJsonRpcValidator validator,
         IResponseTracer responseTracer,
-        IProgressReporter progressReporter,
-        IMetricsConsumer metricsConsumer,
+        IMetricsReporter reporter,
         IJsonRpcMethodFilter methodFilter
     )
     {
@@ -38,46 +33,45 @@ public sealed class Application
         _submitter = submitter;
         _validator = validator;
         _responseTracer = responseTracer;
-        _progressReporter = progressReporter;
-        _metricsConsumer = metricsConsumer;
+        _reporter = reporter;
         _methodFilter = methodFilter;
     }
 
     public async Task Run()
     {
-        _progressReporter.ReportStart();
-
-        using (_metrics.TimeTotal())
+        var totalTimer = new Timer();
+        using (totalTimer.Time())
         {
             await foreach (var (jsonRpc, n) in _msgProvider.Messages.Indexed(startingFrom: 1))
             {
-                _progressReporter.ReportProgress(n);
-                _metrics.TickMessages();
+                await _reporter.Message();
 
                 switch (jsonRpc)
                 {
                     case JsonRpc.Response:
                         {
-                            _metrics.TickResponses();
+                            await _reporter.Response();
                             continue;
                         }
                     case JsonRpc.Request.Batch batch:
                         {
                             JsonRpc.Response response;
-                            using (_metrics.TimeBatch())
+
+                            var timer = new Timer();
+                            using (timer.Time())
                             {
                                 response = await _submitter.Submit(batch);
                             }
 
                             if (_validator.IsInvalid(batch, response))
                             {
-                                _metrics.TickFailed();
+                                await _reporter.Failed();
                             }
                             else
                             {
-                                _metrics.TickSucceeded();
+                                await _reporter.Succeeded();
                             }
-
+                            await _reporter.Batch(n, timer.Elapsed);
                             await _responseTracer.TraceResponse(response);
 
                             break;
@@ -86,31 +80,34 @@ public sealed class Application
                         {
                             if (single.MethodName is null)
                             {
-                                _metrics.TickFailed();
+                                await _reporter.Failed();
                                 continue;
                             }
 
                             if (_methodFilter.ShouldIgnore(single.MethodName))
                             {
-                                _metrics.TickIgnoredRequests();
+                                await _reporter.Ignored();
                                 continue;
                             }
 
                             JsonRpc.Response response;
-                            using (_metrics.TimeMethod(single.MethodName))
+
+                            var timer = new Timer();
+                            using (timer.Time())
                             {
                                 response = await _submitter.Submit(single);
                             }
 
                             if (_validator.IsInvalid(single, response))
                             {
-                                _metrics.TickFailed();
+                                await _reporter.Failed();
                             }
                             else
                             {
-                                _metrics.TickSucceeded();
+                                await _reporter.Succeeded();
                             }
 
+                            await _reporter.Single(n, timer.Elapsed);
                             await _responseTracer.TraceResponse(response);
 
                             break;
@@ -119,7 +116,6 @@ public sealed class Application
             }
         }
 
-        _progressReporter.ReportComplete();
-        await _metricsConsumer.ConsumeMetrics(_metrics);
+        await _reporter.Total(totalTimer.Elapsed);
     }
 }
