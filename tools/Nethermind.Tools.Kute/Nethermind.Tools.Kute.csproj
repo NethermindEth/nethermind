@@ -6,6 +6,7 @@
 
     <ItemGroup>
       <PackageReference Include="App.Metrics" />
+      <PackageReference Include="App.Metrics.Formatters.Prometheus" />
       <PackageReference Include="Microsoft.Extensions.DependencyInjection" />
       <PackageReference Include="Microsoft.IdentityModel.JsonWebTokens" />
       <PackageReference Include="System.CommandLine" />

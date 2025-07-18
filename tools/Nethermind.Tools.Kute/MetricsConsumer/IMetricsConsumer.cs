@@ -10,5 +10,5 @@ public interface IMetricsConsumer
 
 public enum MetricsOutputFormatter
 {
-    Report, Json,
+    Report, Json, Prometheus
 }
