@@ -99,7 +99,7 @@ public class ModExpPrecompile : IPrecompile<ModExpPrecompile>
 
         uint expLengthUpTo32 = Math.Min(32, expLength);
         uint startIndex = 96 + baseLength; //+ expLength - expLengthUpTo32; // Geth takes head here, why?
-        UInt256 exp = new(inputData.SliceWithZeroPaddingEmptyOnError((int)startIndex, (int)expLengthUpTo32), true);
+        UInt256 exp = new(inputData.SliceWithZeroPaddingEmptyOnError((int)startIndex, (int)expLengthUpTo32), isBigEndian: true);
         UInt256 iterationCount = CalculateIterationCount(expLength, exp, releaseSpec.IsEip7883Enabled);
 
         bool overflow = UInt256.MultiplyOverflow(complexity, iterationCount, out UInt256 result);
@@ -346,9 +346,9 @@ public class ModExpPrecompile : IPrecompile<ModExpPrecompile>
         return sq;
     }
 
-    static readonly UInt256 IterationCountMultiplierEip2565 = 8;
+    static readonly ulong IterationCountMultiplierEip2565 = 8;
 
-    static readonly UInt256 IterationCountMultiplierEip7883 = 16;
+    static readonly ulong IterationCountMultiplierEip7883 = 16;
 
     /// <summary>
     /// def calculate_iteration_count(exponent_length, exponent):
@@ -362,38 +362,30 @@ public class ModExpPrecompile : IPrecompile<ModExpPrecompile>
     /// <param name="exponent"></param>
     /// <param name="isEip7883Enabled"></param>
     /// <returns></returns>
-    private static UInt256 CalculateIterationCount(UInt256 exponentLength, UInt256 exponent, bool isEip7883Enabled)
+    private static UInt256 CalculateIterationCount(uint exponentLength, UInt256 exponent, bool isEip7883Enabled)
     {
-        try
+        ulong iterationCount;
+        if (exponentLength <= 32)
         {
-            UInt256 iterationCount;
-            if (exponentLength <= 32)
+            iterationCount = exponent.IsZero ? 0 : (uint)(exponent.BitLen - 1);
+        }
+        else
+        {
+            uint bitLength = (uint)exponent.BitLen;
+            if (bitLength > 0)
             {
-                iterationCount = exponent.IsZero ? UInt256.Zero : (UInt256)(exponent.BitLen - 1);
-            }
-            else
-            {
-                int bitLength = (exponent & UInt256.MaxValue).BitLen;
-                if (bitLength > 0)
-                {
-                    bitLength--;
-                }
-
-                bool overflow = UInt256.MultiplyOverflow(exponentLength - 32,
-                    isEip7883Enabled ? IterationCountMultiplierEip7883 : IterationCountMultiplierEip2565,
-                    out UInt256 multiplicationResult);
-                overflow |= UInt256.AddOverflow(multiplicationResult, (UInt256)bitLength, out iterationCount);
-                if (overflow)
-                {
-                    return UInt256.MaxValue;
-                }
+                bitLength--;
             }
 
-            return UInt256.Max(iterationCount, UInt256.One);
+            ulong multiplicationResult = (exponentLength - 32) * (isEip7883Enabled ? IterationCountMultiplierEip7883 : IterationCountMultiplierEip2565);
+            iterationCount = multiplicationResult + bitLength;
+            if (iterationCount < multiplicationResult)
+            {
+                // Overflowed
+                return new UInt256(iterationCount, 1, 0, 0);
+            }
         }
-        catch (OverflowException)
-        {
-            return UInt256.MaxValue;
-        }
+
+        return iterationCount > 1 ? new UInt256(iterationCount) : UInt256.One;
     }
 }
