@@ -4,7 +4,6 @@
 using System;
 using System.Buffers.Binary;
 using System.Diagnostics;
-using System.Numerics;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using System.Runtime.Intrinsics;
@@ -278,41 +277,6 @@ public class ModExpPrecompile : IPrecompile<ModExpPrecompile>
             Gmp.mpz_export((nint)(ptr + offset), out _, 1, 1, 1, nuint.Zero, powmResult);
 
         return (result, true);
-    }
-
-    [Obsolete("This is a previous implementation using BigInteger instead of GMP")]
-    public static (byte[], bool) OldRun(byte[] inputData)
-    {
-        Metrics.ModExpPrecompile++;
-
-        (int baseLength, int expLength, int modulusLength) = OldGetInputLengths(inputData);
-
-        BigInteger modulusInt = inputData
-            .SliceWithZeroPaddingEmptyOnError(96 + baseLength + expLength, modulusLength).ToUnsignedBigInteger();
-
-        if (modulusInt.IsZero)
-        {
-            return (new byte[modulusLength], true);
-        }
-
-        BigInteger baseInt = inputData.SliceWithZeroPaddingEmptyOnError(96, baseLength).ToUnsignedBigInteger();
-        BigInteger expInt = inputData.SliceWithZeroPaddingEmptyOnError(96 + baseLength, expLength)
-            .ToUnsignedBigInteger();
-        return (BigInteger.ModPow(baseInt, expInt, modulusInt).ToBigEndianByteArray(modulusLength), true);
-    }
-
-    private static (int baseLength, int expLength, int modulusLength) OldGetInputLengths(ReadOnlySpan<byte> inputData)
-    {
-        Span<byte> extendedInput = stackalloc byte[96];
-        inputData[..Math.Min(96, inputData.Length)]
-            .CopyTo(extendedInput[..Math.Min(96, inputData.Length)]);
-
-        int baseLength = (int)new UInt256(extendedInput[..32], true);
-        UInt256 expLengthUint256 = new(extendedInput.Slice(32, 32), true);
-        int expLength = expLengthUint256 > Array.MaxLength ? Array.MaxLength : (int)expLengthUint256;
-        int modulusLength = (int)new UInt256(extendedInput.Slice(64, 32), true);
-
-        return (baseLength, expLength, modulusLength);
     }
 
     /// <summary>
