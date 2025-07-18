@@ -35,8 +35,8 @@ public class StatelessBlockProcessingEnv(
     public IBlockProcessor GetProcessor(Witness witness)
     {
         WorldState state = new(CreateTrie(witness), CreateCodeDb(witness), logManager);
-        state.StateRoot = witness.Headers[0].StateRoot;
-        IBlockTree statelessBlockTree = new StatelessBlockTree(witness.Headers);
+        state.StateRoot = witness.DecodedHeaders[0].StateRoot;
+        IBlockTree statelessBlockTree = new StatelessBlockTree(witness.DecodedHeaders);
         ITransactionProcessor txProcessor = CreateTransactionProcessor(state, statelessBlockTree);
         IBlockProcessor.IBlockTransactionsExecutor txExecutor =
             new BlockProcessor.BlockValidationTransactionsExecutor(

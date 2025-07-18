@@ -20,11 +20,17 @@ using Nethermind.State;
 
 namespace Nethermind.Consensus.Stateless;
 
+public interface IWitnessGeneratingBlockProcessingEnv
+{
+    (IBlockProcessor, WitnessCollector) CreateWitnessGeneratingBlockProcessor();
+}
+
 public class WitnessGeneratingBlockProcessingEnv(
     ISpecProvider specProvider,
-    IBlockTree blockTree,
+    WorldState baseWorldState,
+    IReadOnlyBlockTree blockTree,
     ISealValidator sealValidator,
-    ILogManager logManager)
+    ILogManager logManager) : IWitnessGeneratingBlockProcessingEnv
 {
     private ITransactionProcessor CreateTransactionProcessor(IWorldState state, IBlockFinder blockFinder)
     {
@@ -33,7 +39,7 @@ public class WitnessGeneratingBlockProcessingEnv(
         return new TransactionProcessor(specProvider, state, vm, new EthereumCodeInfoRepository(), logManager);
     }
 
-    public (IBlockProcessor, WitnessCollector) CreateWitnessGeneratingBlockProcessor(WorldState baseWorldState)
+    public (IBlockProcessor, WitnessCollector) CreateWitnessGeneratingBlockProcessor()
     {
         WitnessGeneratingWorldState state = new(baseWorldState);
         WitnessGeneratingBlockFinder blockFinder = new(blockTree);

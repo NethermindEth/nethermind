@@ -1,13 +1,10 @@
 ﻿// See https://aka.ms/new-console-template for more information
 
 using System.Text.Json;
-using Nethermind.Blockchain;
 using Nethermind.Blockchain.Tracing;
-using Nethermind.Consensus;
 using Nethermind.Consensus.Processing;
 using Nethermind.Consensus.Validators;
 using Nethermind.Core;
-using Nethermind.Core.Crypto;
 using Nethermind.Crypto;
 using Nethermind.Facade.Eth;
 using Nethermind.Facade.Eth.RpcTransaction;
@@ -15,8 +12,6 @@ using Nethermind.Logging.NLog;
 using Nethermind.Serialization.Json;
 using Nethermind.Specs;
 using Nethermind.Consensus.Stateless;
-using Nethermind.Core.Specs;
-using Nethermind.Merge.Plugin;
 
 class Program
 {
@@ -59,6 +54,12 @@ class Program
         };
 
         suggestedBlockHeader.Hash = suggestedBlockHeader.CalculateHash();
+
+        if (witness.Headers[0].Hash != suggestedBlockHeader.ParentHash)
+        {
+            Console.WriteLine("Invalid witness headers");
+            return;
+        }
 
         Block suggestedBlock = new Block(suggestedBlockHeader,
             suggestedBlockForRpc.Transactions.Select(tx =>

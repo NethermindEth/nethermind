@@ -20,7 +20,7 @@ public class WitnessCollector(WitnessGeneratingBlockFinder blockFinder, WitnessG
         (byte[][] stateNodes, byte[][] codes) = worldState.GetStateWitness(parentStateRoot);
         return new Witness()
         {
-            _headers = blockFinder.GetWitnessHeaders(parentHash),
+            Headers = blockFinder.GetWitnessHeaders(parentHash),
             Codes = codes,
             State = stateNodes,
         };

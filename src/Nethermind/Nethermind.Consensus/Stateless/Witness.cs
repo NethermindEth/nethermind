@@ -18,16 +18,16 @@ public struct Witness
     [JsonPropertyName("keys")]
     public byte[][] Keys;
     [JsonPropertyName("headers")]
-    public byte[][] _headers;
+    public byte[][] Headers;
 
     [JsonIgnore]
-    public BlockHeader[] Headers => _decodedHeaders ??= DecodedHeaders();
+    public BlockHeader[] DecodedHeaders => _decodedHeaders ??= DecodeHeaders();
 
-    private BlockHeader[] DecodedHeaders()
+    private BlockHeader[] DecodeHeaders()
     {
-        List<BlockHeader> headers = new(_headers.Length);
+        List<BlockHeader> headers = new(Headers.Length);
         HeaderDecoder decoder = new();
-        foreach (var encodedHeader in _headers)
+        foreach (var encodedHeader in Headers)
         {
             RlpStream stream = new(encodedHeader);
             headers.Add(decoder.Decode(stream) ?? throw new ArgumentException());
