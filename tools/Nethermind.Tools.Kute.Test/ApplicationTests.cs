@@ -59,10 +59,11 @@ public class ApplicationTests
     private static IJsonRpcSubmitter ConstantSubmitter(string jsonResponse)
     {
         var submitter = Substitute.For<IJsonRpcSubmitter>();
-        submitter.Submit(Arg.Any<JsonRpc>()).Returns((_) =>
+        submitter.Submit(Arg.Any<JsonRpc.Request>()).Returns(async (_) =>
         {
             var content = new StringContent(jsonResponse, System.Text.Encoding.UTF8, "application/json");
-            return new HttpResponseMessage { Content = content };
+            var httpResponse = new HttpResponseMessage { Content = content };
+            return await JsonRpc.Response.FromHttpResponseAsync(httpResponse);
         });
 
         return submitter;
@@ -98,9 +99,9 @@ public class ApplicationTests
 
         await app.Run();
 
-        await jsonRpcSubmitter.Received(17).Submit(Arg.Any<JsonRpc.SingleJsonRpc>());
-        await jsonRpcSubmitter.Received(4).Submit(Arg.Any<JsonRpc.BatchJsonRpc>());
-        await responseTracer.Received(21).TraceResponse(Arg.Any<JsonDocument?>());
+        await jsonRpcSubmitter.Received(17).Submit(Arg.Any<JsonRpc.Request.Single>());
+        await jsonRpcSubmitter.Received(4).Submit(Arg.Any<JsonRpc.Request.Batch>());
+        await responseTracer.Received(21).TraceResponse(Arg.Any<JsonRpc.Response>());
         await consumer.Received(1).ConsumeMetrics(Arg.Any<Metrics>());
     }
 
@@ -127,9 +128,9 @@ public class ApplicationTests
 
         await app.Run();
 
-        await jsonRpcSubmitter.Received(49).Submit(Arg.Any<JsonRpc.SingleJsonRpc>());
-        await jsonRpcSubmitter.Received(0).Submit(Arg.Any<JsonRpc.BatchJsonRpc>());
-        await responseTracer.Received(49).TraceResponse(Arg.Any<JsonDocument?>());
+        await jsonRpcSubmitter.Received(49).Submit(Arg.Any<JsonRpc.Request.Single>());
+        await jsonRpcSubmitter.Received(0).Submit(Arg.Any<JsonRpc.Request.Batch>());
+        await responseTracer.Received(49).TraceResponse(Arg.Any<JsonRpc.Response>());
         await consumer.Received(1).ConsumeMetrics(Arg.Any<Metrics>());
     }
 
@@ -162,9 +163,9 @@ public class ApplicationTests
 
         await app.Run();
 
-        await jsonRpcSubmitter.Received(1).Submit(Arg.Any<JsonRpc.SingleJsonRpc>());
-        await jsonRpcSubmitter.Received(1).Submit(Arg.Any<JsonRpc.BatchJsonRpc>());
-        await responseTracer.Received(2).TraceResponse(Arg.Any<JsonDocument?>());
+        await jsonRpcSubmitter.Received(1).Submit(Arg.Any<JsonRpc.Request.Single>());
+        await jsonRpcSubmitter.Received(1).Submit(Arg.Any<JsonRpc.Request.Batch>());
+        await responseTracer.Received(2).TraceResponse(Arg.Any<JsonRpc.Response>());
         await consumer.Received(1).ConsumeMetrics(Arg.Any<Metrics>());
     }
 
@@ -197,9 +198,9 @@ public class ApplicationTests
 
         await app.Run();
 
-        await jsonRpcSubmitter.Received(2).Submit(Arg.Any<JsonRpc.SingleJsonRpc>());
-        await jsonRpcSubmitter.Received(0).Submit(Arg.Any<JsonRpc.BatchJsonRpc>());
-        await responseTracer.Received(2).TraceResponse(Arg.Any<JsonDocument?>());
+        await jsonRpcSubmitter.Received(2).Submit(Arg.Any<JsonRpc.Request.Single>());
+        await jsonRpcSubmitter.Received(0).Submit(Arg.Any<JsonRpc.Request.Batch>());
+        await responseTracer.Received(2).TraceResponse(Arg.Any<JsonRpc.Response>());
         await consumer.Received(1).ConsumeMetrics(Arg.Any<Metrics>());
     }
 }

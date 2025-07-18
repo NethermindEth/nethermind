@@ -1,24 +1,17 @@
 // SPDX-FileCopyrightText: 2023 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System.Text.Json;
-
 namespace Nethermind.Tools.Kute.JsonRpcValidator.Eth;
 
 public sealed class NonErrorJsonRpcValidator : IJsonRpcValidator
 {
-    public bool IsValid(JsonRpc request, JsonDocument? response)
+    public bool IsValid(JsonRpc.Request request, JsonRpc.Response response)
     {
-        if (response is null)
-        {
-            return false;
-        }
-
-        if (request is JsonRpc.BatchJsonRpc)
+        if (request is JsonRpc.Request.Batch)
         {
             return true;
         }
 
-        return !response.RootElement.TryGetProperty("error", out _);
+        return !response.Json.TryGetProperty("error", out _);
     }
 }

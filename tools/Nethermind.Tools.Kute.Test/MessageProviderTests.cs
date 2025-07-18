@@ -26,9 +26,9 @@ public class MessageProviderTests
         var jsonRpcs = await provider.Messages.ToListAsync();
 
         jsonRpcs.Should().HaveCount(3);
-        jsonRpcs[0].Should().BeOfType<JsonRpc.SingleJsonRpc>();
-        jsonRpcs[1].Should().BeOfType<JsonRpc.SingleJsonRpc>();
-        jsonRpcs[2].Should().BeOfType<JsonRpc.BatchJsonRpc>();
+        jsonRpcs[0].Should().BeOfType<JsonRpc.Request.Single>();
+        jsonRpcs[1].Should().BeOfType<JsonRpc.Request.Single>();
+        jsonRpcs[2].Should().BeOfType<JsonRpc.Request.Batch>();
     }
 
     [Test]
@@ -46,8 +46,8 @@ public class MessageProviderTests
         var jsonRpcs = await provider.Messages.ToListAsync();
 
         jsonRpcs.Should().HaveCount(3);
-        jsonRpcs[0].Should().BeOfType<JsonRpc.SingleJsonRpc>();
-        jsonRpcs[1].Should().BeOfType<JsonRpc.SingleJsonRpc>();
-        jsonRpcs[2].Should().BeOfType<JsonRpc.SingleJsonRpc>();
+        jsonRpcs[0].Should().BeOfType<JsonRpc.Request.Single>();
+        jsonRpcs[1].Should().BeOfType<JsonRpc.Request.Single>();
+        jsonRpcs[2].Should().BeOfType<JsonRpc.Request.Single>();
     }
 }

@@ -1,7 +1,6 @@
 // SPDX-FileCopyrightText: 2023 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System.Text.Json;
 using System.Text.RegularExpressions;
 
 namespace Nethermind.Tools.Kute.JsonRpcValidator.Eth;
@@ -10,7 +9,7 @@ public sealed class NewPayloadJsonRpcValidator : IJsonRpcValidator
 {
     private readonly Regex _pattern = new Regex("engine_newPayload", RegexOptions.Compiled);
 
-    public bool IsValid(JsonRpc request, JsonDocument? response)
+    public bool IsValid(JsonRpc.Request request, JsonRpc.Response response)
     {
         // If preconditions are not met, then mark it as Valid.
         if (!ShouldValidateRequest(request) || response is null)
@@ -18,7 +17,7 @@ public sealed class NewPayloadJsonRpcValidator : IJsonRpcValidator
             return true;
         }
 
-        if (!response.RootElement.TryGetProperty("result", out var result))
+        if (!response.Json.TryGetProperty("result", out var result))
         {
             return false;
         }
@@ -31,9 +30,9 @@ public sealed class NewPayloadJsonRpcValidator : IJsonRpcValidator
         return status.GetString() == "VALID";
     }
 
-    private bool ShouldValidateRequest(JsonRpc request)
+    private bool ShouldValidateRequest(JsonRpc.Request request)
     {
-        if (request is JsonRpc.SingleJsonRpc { MethodName: not null } single)
+        if (request is JsonRpc.Request.Single { MethodName: not null } single)
         {
             if (_pattern.IsMatch(single.MethodName))
             {

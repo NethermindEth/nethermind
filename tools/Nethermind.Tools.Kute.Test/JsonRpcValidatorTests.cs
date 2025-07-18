@@ -16,15 +16,6 @@ public class JsonRpcValidatorTests
             [new NonErrorJsonRpcValidator(), new NewPayloadJsonRpcValidator()]);
 
     [Test]
-    public void IsInvalid_When_ResponseIsNull()
-    {
-        JsonDocument? response = null;
-        bool result = _validator.IsValid(CreateSingleRequest("eth_getBlockByNumber"), response);
-
-        result.Should().BeFalse();
-    }
-
-    [Test]
     public void IsInvalid_When_ResponseHasError()
     {
         var response = CreateErrorResponse();
@@ -87,17 +78,17 @@ public class JsonRpcValidatorTests
         }
     }
 
-    private static JsonRpc.SingleJsonRpc CreateSingleRequest(string? method)
+    private static JsonRpc.Request.Single CreateSingleRequest(string? method)
     {
         var methodJSON = method is null ? "null" : $"\"{method}\"";
-        return new JsonRpc.SingleJsonRpc(
+        return new JsonRpc.Request.Single(
             JsonDocument.Parse(
                 $$"""{"jsonrpc":"2.0","id":1,"method":{{methodJSON}},"params":[]}"""
             )
         );
     }
 
-    private static JsonRpc.BatchJsonRpc CreateBatchRequest(params IEnumerable<JsonRpc.SingleJsonRpc> items)
+    private static JsonRpc.Request.Batch CreateBatchRequest(params IEnumerable<JsonRpc.Request> items)
     {
         var sb = new StringBuilder("[");
         foreach (var item in items)
@@ -107,7 +98,7 @@ public class JsonRpcValidatorTests
         sb.Remove(sb.Length - 1, 1); // Remove the last comma
         sb.Append("]");
 
-        return new JsonRpc.BatchJsonRpc(JsonDocument.Parse(sb.ToString()));
+        return new JsonRpc.Request.Batch(JsonDocument.Parse(sb.ToString()));
     }
 
     public enum Status
@@ -116,17 +107,19 @@ public class JsonRpcValidatorTests
         INVALID
     }
 
-    private static JsonDocument CreateResponse(Status status)
+    private static JsonRpc.Response CreateResponse(Status status)
     {
-        return JsonDocument.Parse(
-            $$$"""{"jsonrpc":"2.0","id": 1,"result":{"status": "{{{status}}}"}}"""
-        );
+        return new JsonRpc.Response(
+            JsonDocument.Parse(
+                $$$"""{"jsonrpc":"2.0","id": 1,"result":{"status": "{{{status}}}"}}"""
+        ));
     }
 
-    private static JsonDocument CreateErrorResponse()
+    private static JsonRpc.Response CreateErrorResponse()
     {
-        return JsonDocument.Parse(
-            """{"jsonrpc":"2.0","id":1,"error":{"code":-32603,"message":"Internal error"}}"""
-        );
+        return new JsonRpc.Response(
+            JsonDocument.Parse(
+                """{"jsonrpc":"2.0","id":1,"error":{"code":-32603,"message":"Internal error"}}"""
+        ));
     }
 }

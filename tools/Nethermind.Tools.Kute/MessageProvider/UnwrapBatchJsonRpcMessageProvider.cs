@@ -3,30 +3,37 @@
 
 namespace Nethermind.Tools.Kute.MessageProvider;
 
-public sealed class UnwrapBatchJsonRpcMessageProvider : IMessageProvider<JsonRpc?>
+public sealed class UnwrapBatchJsonRpcMessageProvider : IMessageProvider<JsonRpc>
 {
-    private readonly IMessageProvider<JsonRpc?> _provider;
+    private readonly IMessageProvider<JsonRpc> _provider;
 
-    public UnwrapBatchJsonRpcMessageProvider(IMessageProvider<JsonRpc?> provider)
+    public UnwrapBatchJsonRpcMessageProvider(IMessageProvider<JsonRpc> provider)
     {
         _provider = provider;
     }
 
-    public IAsyncEnumerable<JsonRpc?> Messages { get => MessagesImpl(); }
+    public IAsyncEnumerable<JsonRpc> Messages { get => MessagesImpl(); }
 
-    private async IAsyncEnumerable<JsonRpc?> MessagesImpl()
+    private async IAsyncEnumerable<JsonRpc> MessagesImpl()
     {
         await foreach (var jsonRpc in _provider.Messages)
         {
             switch (jsonRpc)
             {
-                case JsonRpc.SingleJsonRpc:
+                case JsonRpc.Request.Single:
                     yield return jsonRpc;
                     break;
-                case JsonRpc.BatchJsonRpc batch:
-                    foreach (JsonRpc.SingleJsonRpc? single in batch.Items())
+                case JsonRpc.Request.Batch batch:
+                    foreach (var single in batch.Items())
                     {
-                        yield return single;
+                        if (single is not null)
+                        {
+                            yield return single;
+                        }
+                        else
+                        {
+                            // TODO: Log potential error
+                        }
                     }
                     break;
             }

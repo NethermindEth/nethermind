@@ -5,7 +5,7 @@ using System.Text.Json;
 
 namespace Nethermind.Tools.Kute;
 
-public abstract record JsonRpc
+public abstract class JsonRpc
 {
     private readonly JsonDocument _document;
 
@@ -14,48 +14,60 @@ public abstract record JsonRpc
         _document = document;
     }
 
+    public JsonElement Json => _document.RootElement;
+
     public string ToJsonString() => _document.RootElement.ToString();
 
-    public record BatchJsonRpc : JsonRpc
+    public abstract class Request : JsonRpc
     {
-        public BatchJsonRpc(JsonDocument document) : base(document) { }
+        private Request(JsonDocument document) : base(document) { }
 
-        public override string ToString() => $"{nameof(BatchJsonRpc)} {ToJsonString()}";
-
-        public IEnumerable<SingleJsonRpc?> Items()
+        public class Single : Request
         {
-            foreach (var element in _document.RootElement.EnumerateArray())
+            private readonly Lazy<string?> _methodName;
+
+            public string? MethodName { get => _methodName.Value; }
+
+            public Single(JsonDocument document) : base(document)
             {
-                var document = JsonSerializer.Deserialize<JsonDocument>(element);
-                yield return document is null ? null : new SingleJsonRpc(document);
+                _methodName = new(() =>
+                {
+                    if (_document.RootElement.TryGetProperty("method", out var jsonMethodField))
+                    {
+                        return jsonMethodField.GetString();
+                    }
+
+                    return null;
+                });
             }
+
+            public override string ToString() => $"{nameof(Single)} {ToJsonString()}";
+        }
+        public class Batch(JsonDocument document) : Request(document)
+        {
+            public IEnumerable<Single?> Items()
+            {
+                foreach (var element in _document.RootElement.EnumerateArray())
+                {
+                    var document = JsonSerializer.Deserialize<JsonDocument>(element);
+                    yield return document is null ? null : new Single(document);
+                }
+            }
+
+            public override string ToString() => $"{nameof(Batch)} {ToJsonString()}";
         }
     }
 
-    public record SingleJsonRpc : JsonRpc
+    public class Response(JsonDocument document) : JsonRpc(document)
     {
-        private readonly Lazy<bool> _isResponse;
-        private readonly Lazy<string?> _methodName;
-
-        public SingleJsonRpc(JsonDocument document) : base(document)
+        public static async Task<Response> FromHttpResponseAsync(HttpResponseMessage response)
         {
-            _isResponse = new(() =>
-                _document.RootElement.TryGetProperty("response", out _)
-            );
-            _methodName = new(() =>
-            {
-                if (_document.RootElement.TryGetProperty("method", out var jsonMethodField))
-                {
-                    return jsonMethodField.GetString();
-                }
+            var content = await response.Content.ReadAsStreamAsync();
+            var document = await JsonDocument.ParseAsync(content);
 
-                return null;
-            });
+            return new Response(document);
         }
 
-        public bool IsResponse { get => _isResponse.Value; }
-        public string? MethodName { get => _methodName.Value; }
-
-        public override string ToString() => $"{nameof(SingleJsonRpc)} {ToJsonString()}";
+        public override string ToString() => $"{nameof(Response)} {ToJsonString()}";
     }
 }

@@ -1,8 +1,6 @@
 // SPDX-FileCopyrightText: 2023 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System.Text.Json;
-
 namespace Nethermind.Tools.Kute.ResponseTracer;
 
 public sealed class FileResponseTracer : IResponseTracer
@@ -14,12 +12,12 @@ public sealed class FileResponseTracer : IResponseTracer
         _tracesFilePath = tracesFilePath;
     }
 
-    public async Task TraceResponse(JsonDocument? response)
+    public async Task TraceResponse(JsonRpc.Response response)
     {
         await using StreamWriter sw = File.Exists(_tracesFilePath)
             ? File.AppendText(_tracesFilePath)
             : File.CreateText(_tracesFilePath);
 
-        await sw.WriteLineAsync(response?.RootElement.ToString() ?? "null");
+        await sw.WriteLineAsync(response.Json.ToString() ?? "null");
     }
 }

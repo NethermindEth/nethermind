@@ -7,5 +7,5 @@ namespace Nethermind.Tools.Kute.ResponseTracer;
 
 public interface IResponseTracer
 {
-    Task TraceResponse(JsonDocument? response);
+    Task TraceResponse(JsonRpc.Response response);
 }

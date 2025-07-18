@@ -1,8 +1,6 @@
 // SPDX-FileCopyrightText: 2023 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System.Text.Json;
-
 namespace Nethermind.Tools.Kute.JsonRpcValidator;
 
 public sealed class ComposedJsonRpcValidator : IJsonRpcValidator
@@ -14,5 +12,5 @@ public sealed class ComposedJsonRpcValidator : IJsonRpcValidator
         _validators = validators;
     }
 
-    public bool IsValid(JsonRpc request, JsonDocument? document) => _validators.All(validator => validator.IsValid(request, document));
+    public bool IsValid(JsonRpc.Request request, JsonRpc.Response response) => _validators.All(validator => validator.IsValid(request, response));
 }

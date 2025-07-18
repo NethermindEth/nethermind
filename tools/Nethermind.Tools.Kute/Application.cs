@@ -1,7 +1,6 @@
 // SPDX-FileCopyrightText: 2023 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System.Text.Json;
 using Nethermind.Tools.Kute.Extensions;
 using Nethermind.Tools.Kute.MessageProvider;
 using Nethermind.Tools.Kute.JsonRpcMethodFilter;
@@ -57,19 +56,20 @@ public sealed class Application
 
                 switch (jsonRpc)
                 {
-                    case JsonRpc.BatchJsonRpc batch:
+                    case JsonRpc.Response:
                         {
-                            HttpResponseMessage? content;
+                            _metrics.TickResponses();
+                            continue;
+                        }
+                    case JsonRpc.Request.Batch batch:
+                        {
+                            JsonRpc.Response response;
                             using (_metrics.TimeBatch())
                             {
-                                content = await _submitter.Submit(batch);
+                                response = await _submitter.Submit(batch);
                             }
 
-                            var deserialized = content is not null
-                                ? JsonSerializer.Deserialize<JsonDocument>(await content.Content.ReadAsStreamAsync())
-                                : null;
-
-                            if (_validator.IsInvalid(batch, deserialized))
+                            if (_validator.IsInvalid(batch, response))
                             {
                                 _metrics.TickFailed();
                             }
@@ -78,18 +78,12 @@ public sealed class Application
                                 _metrics.TickSucceeded();
                             }
 
-                            await _responseTracer.TraceResponse(deserialized);
+                            await _responseTracer.TraceResponse(response);
 
                             break;
                         }
-                    case JsonRpc.SingleJsonRpc single:
+                    case JsonRpc.Request.Single single:
                         {
-                            if (single.IsResponse)
-                            {
-                                _metrics.TickResponses();
-                                continue;
-                            }
-
                             if (single.MethodName is null)
                             {
                                 _metrics.TickFailed();
@@ -102,17 +96,13 @@ public sealed class Application
                                 continue;
                             }
 
-                            HttpResponseMessage? content;
+                            JsonRpc.Response response;
                             using (_metrics.TimeMethod(single.MethodName))
                             {
-                                content = await _submitter.Submit(single);
+                                response = await _submitter.Submit(single);
                             }
 
-                            var deserialized = content is not null
-                                ? JsonSerializer.Deserialize<JsonDocument>(await content.Content.ReadAsStreamAsync())
-                                : null;
-
-                            if (_validator.IsInvalid(single, deserialized))
+                            if (_validator.IsInvalid(single, response))
                             {
                                 _metrics.TickFailed();
                             }
@@ -121,7 +111,7 @@ public sealed class Application
                                 _metrics.TickSucceeded();
                             }
 
-                            await _responseTracer.TraceResponse(deserialized);
+                            await _responseTracer.TraceResponse(response);
 
                             break;
                         }
