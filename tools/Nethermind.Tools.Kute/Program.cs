@@ -92,10 +92,16 @@ static class Program
                 provider.GetRequiredService<IAuth>(),
                 parseResult.GetValue(Config.HostAddress)!
             ));
-        collection.AddSingleton<IResponseTracer>(
-            new FileResponseTracer(parseResult.GetValue(Config.ResponsesTraceFile)!));
-        collection.AddSingleton<IProgressReporter>(provider =>
+        collection.AddSingleton<IResponseTracer>(_ =>
         {
+            string? tracesFilePath = parseResult.GetValue(Config.ResponsesTraceFile);
+            if (tracesFilePath is null)
+            {
+                return new NullResponseTracer();
+            }
+
+            return new FileResponseTracer(tracesFilePath);
+        });
             if (parseResult.GetValue(Config.ShowProgress))
             {
                 // NOTE:
