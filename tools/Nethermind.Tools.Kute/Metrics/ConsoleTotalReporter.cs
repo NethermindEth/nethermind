@@ -14,7 +14,7 @@ public sealed class ConsoleTotalReporter : IMetricsReporter
         _formatter = formatter;
     }
 
-    public async Task Total()
+    public async Task Total(TimeSpan elapsed)
     {
         var report = _provider.Report();
         using (var stream = Console.OpenStandardOutput())

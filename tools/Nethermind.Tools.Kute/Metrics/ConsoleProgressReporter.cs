@@ -35,7 +35,7 @@ public sealed class ConsoleProgressReporter : IMetricsReporter
         return Task.CompletedTask;
     }
 
-    public Task Total()
+    public Task Total(TimeSpan elapsed)
     {
         Console.Write('\n');
         return Task.CompletedTask;
