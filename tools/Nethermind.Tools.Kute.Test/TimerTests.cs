@@ -37,4 +37,19 @@ public class TimerTests
         t.Elapsed.Should().BeGreaterThan(TimeSpan.FromMilliseconds(90));
         t.Elapsed.Should().BeLessThan(TimeSpan.FromMilliseconds(110));
     }
+
+    [Test]
+    public async Task Timer_IgnoresTimeOutsideOfUsing()
+    {
+        var t = new Timer();
+        using (t.Time())
+        {
+            await Task.Delay(TimeSpan.FromMilliseconds(50));
+        }
+
+        await Task.Delay(TimeSpan.FromMilliseconds(50));
+
+        t.Elapsed.Should().BeGreaterThan(TimeSpan.FromMilliseconds(40));
+        t.Elapsed.Should().BeLessThan(TimeSpan.FromMilliseconds(60));
+    }
 }
