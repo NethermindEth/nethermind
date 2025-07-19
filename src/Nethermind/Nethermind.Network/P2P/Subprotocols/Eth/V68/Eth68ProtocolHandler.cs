@@ -109,11 +109,16 @@ public class Eth68ProtocolHandler : Eth67ProtocolHandler
         }
         else
         {
+            tx.MarkBroadcasting();
+            if (tx.IsDisposed) return;
+
             SendMessage(
                 new ArrayPoolList<byte>(1) { (byte)tx.Type },
                 new ArrayPoolList<int>(1) { tx.GetLength() },
                 new ArrayPoolList<Hash256>(1) { tx.Hash }
             );
+
+            tx.UnmarkBroadcasting();
         }
     }
 
@@ -131,6 +136,9 @@ public class Eth68ProtocolHandler : Eth67ProtocolHandler
 
         foreach (Transaction tx in txs)
         {
+            tx.MarkBroadcasting();
+            if (tx.IsDisposed) continue;
+
             if (hashes.Count == NewPooledTransactionHashesMessage68.MaxCount)
             {
                 SendMessage(types, sizes, hashes);
@@ -146,6 +154,8 @@ public class Eth68ProtocolHandler : Eth67ProtocolHandler
                 hashes.Add(tx.Hash);
                 TxPool.Metrics.PendingTransactionsHashesSent++;
             }
+
+            tx.UnmarkBroadcasting();
         }
 
         if (hashes.Count != 0)

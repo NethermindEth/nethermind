@@ -8,10 +8,12 @@ using System.Diagnostics.CodeAnalysis;
 using System.Runtime.CompilerServices;
 using System.Text;
 using System.Text.Json.Serialization;
+using System.Threading;
 using Microsoft.Extensions.ObjectPool;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Eip2930;
 using Nethermind.Core.Extensions;
+using Nethermind.Core.Pooling;
 using Nethermind.Int256;
 
 [assembly: InternalsVisibleTo("Nethermind.Consensus")]
@@ -203,6 +205,13 @@ namespace Nethermind.Core
         public ulong PoolIndex { get; set; }
 
         protected int? _size = null;
+        private bool _disposed;
+        public bool IsDisposed => Volatile.Read(ref _disposed);
+
+        private int _broadcastCount;
+        public void MarkBroadcasting() => Interlocked.Increment(ref _broadcastCount);
+
+        public void UnmarkBroadcasting() => Interlocked.Decrement(ref _broadcastCount);
 
         /// <summary>
         /// Encoded transaction length
@@ -267,65 +276,103 @@ namespace Nethermind.Core
         {
             public Transaction Create()
             {
-                return new Transaction();
+                Transaction tx = new()
+                {
+                    _disposed = true
+                };
+                return tx;
             }
 
-            public bool Return(Transaction obj)
+            public bool Return(Transaction tx)
             {
-                obj.ClearPreHash();
-                obj.Hash = default;
-                obj.ChainId = default;
-                obj.Type = default;
-                obj.Nonce = default;
-                obj.GasPrice = default;
-                obj.GasBottleneck = default;
-                obj.DecodedMaxFeePerGas = default;
-                obj.GasLimit = default;
-                obj.To = default;
-                obj.Value = default;
-                obj.Data = default;
-                obj.SenderAddress = default;
-                obj.Signature = default;
-                obj.Timestamp = default;
-                obj.AccessList = default;
-                obj.MaxFeePerBlobGas = default;
-                obj.BlobVersionedHashes = default;
-                obj.NetworkWrapper = default;
-                obj.IsServiceTransaction = default;
-                obj.PoolIndex = default;
-                obj._size = default;
-                obj.AuthorizationList = default;
+                ObjectDisposedException.ThrowIf(tx._disposed, tx);
+                Volatile.Write(ref tx._disposed, true);
 
-                return true;
+                if (Volatile.Read(ref tx._broadcastCount) > 0)
+                {
+                    return false;
+                }
+
+                tx.SourceHash = default;
+                tx.To = default;
+                tx.SenderAddress = default;
+                tx.Signature = default;
+                tx.Hash = default;
+                tx.AccessList = default;
+                tx.BlobVersionedHashes = default;
+                if (tx.NetworkWrapper is ShardBlobNetworkWrapper wrapper)
+                {
+                    ByteBufferPool.PoolBlobs(wrapper.Blobs);
+                    ByteBufferPool.PoolProofs(wrapper.Proofs);
+                    ByteBufferPool.PoolProofs(wrapper.Commitments);
+                }
+                tx.NetworkWrapper = default;
+                tx.AuthorizationList = default;
+                tx.GasLimit = default;
+                tx.SpentGas = default;
+                tx.PoolIndex = default;
+                tx.Type = default;
+                tx.IsAnchorTx = default;
+                tx.IsOPSystemTransaction = default;
+                tx.IsServiceTransaction = default;
+                tx.ChainId = default;
+                tx.Mint = default;
+                tx.GasPrice = default;
+                tx.Nonce = default;
+                tx.GasBottleneck = default;
+                tx.DecodedMaxFeePerGas = default;
+                tx.Value = default;
+                tx.Data = default;
+                tx.Timestamp = default;
+                tx.MaxFeePerBlobGas = default;
+                tx._size = default;
+
+                return Volatile.Read(ref tx._broadcastCount) == 0;
             }
+        }
+
+        public Transaction Clone()
+        {
+            Transaction copy = new();
+            CopyTo(copy);
+            return copy;
         }
 
         public void CopyTo(Transaction tx)
         {
-            tx.ChainId = ChainId;
-            tx.Type = Type;
             tx.SourceHash = SourceHash;
-            tx.Mint = Mint;
-            tx.IsOPSystemTransaction = IsOPSystemTransaction;
-            tx.Nonce = Nonce;
-            tx.GasPrice = GasPrice;
-            tx.GasBottleneck = GasBottleneck;
-            tx.DecodedMaxFeePerGas = DecodedMaxFeePerGas;
-            tx.GasLimit = GasLimit;
             tx.To = To;
-            tx.Value = Value;
-            tx.Data = Data;
             tx.SenderAddress = SenderAddress;
             tx.Signature = Signature;
-            tx.Timestamp = Timestamp;
+            tx._hash = _hash;
             tx.AccessList = AccessList;
-            tx.MaxFeePerBlobGas = MaxFeePerBlobGas;
             tx.BlobVersionedHashes = BlobVersionedHashes;
             tx.NetworkWrapper = NetworkWrapper;
-            tx.IsServiceTransaction = IsServiceTransaction;
-            tx.PoolIndex = PoolIndex;
-            tx._size = _size;
             tx.AuthorizationList = AuthorizationList;
+            tx.GasLimit = GasLimit;
+            tx.SpentGas = SpentGas;
+            tx.PoolIndex = PoolIndex;
+            tx.Type = Type;
+            tx.IsAnchorTx = IsAnchorTx;
+            tx.IsOPSystemTransaction = IsOPSystemTransaction;
+            tx.IsServiceTransaction = IsServiceTransaction;
+            tx.ChainId = ChainId;
+            tx.Mint = Mint;
+            tx.GasPrice = GasPrice;
+            tx.Nonce = Nonce;
+            tx.GasBottleneck = GasBottleneck;
+            tx.DecodedMaxFeePerGas = DecodedMaxFeePerGas;
+            tx.Value = Value;
+            tx.Data = Data;
+            tx.Timestamp = Timestamp;
+            tx.MaxFeePerBlobGas = MaxFeePerBlobGas;
+            tx._size = _size;
+        }
+
+        public void Reset()
+        {
+            if (!_disposed) throw new InvalidOperationException("Not disposed");
+            _disposed = false;
         }
     }
 

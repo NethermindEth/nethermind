@@ -8,64 +8,72 @@ using DotNetty.Transport.Channels;
 using Nethermind.Logging;
 using Nethermind.Network.P2P.Messages;
 
-namespace Nethermind.Network.P2P
+namespace Nethermind.Network.P2P;
+
+public class PacketSender : ChannelHandlerAdapter, IPacketSender
 {
-    public class PacketSender : ChannelHandlerAdapter, IPacketSender
+    private readonly IMessageSerializationService _messageSerializationService;
+    private readonly ILogger _logger;
+    private IChannelHandlerContext _context;
+    private readonly TimeSpan _sendLatency;
+
+    public PacketSender(IMessageSerializationService messageSerializationService, ILogManager logManager,
+        TimeSpan sendLatency)
     {
-        private readonly IMessageSerializationService _messageSerializationService;
-        private readonly ILogger _logger;
-        private IChannelHandlerContext _context;
-        private readonly TimeSpan _sendLatency;
+        _messageSerializationService = messageSerializationService ?? throw new ArgumentNullException(nameof(messageSerializationService));
+        _logger = logManager?.GetClassLogger<PacketSender>() ?? throw new ArgumentNullException(nameof(logManager));
+        _sendLatency = sendLatency;
+    }
 
-        public PacketSender(IMessageSerializationService messageSerializationService, ILogManager logManager,
-            TimeSpan sendLatency)
+    public int Enqueue<T>(T message) where T : P2PMessage
+    {
+        if (!_context.Channel.IsWritable || !_context.Channel.Active)
         {
-            _messageSerializationService = messageSerializationService ?? throw new ArgumentNullException(nameof(messageSerializationService));
-            _logger = logManager?.GetClassLogger<PacketSender>() ?? throw new ArgumentNullException(nameof(logManager));
-            _sendLatency = sendLatency;
+            return 0;
         }
 
-        public int Enqueue<T>(T message) where T : P2PMessage
-        {
-            if (!_context.Channel.IsWritable || !_context.Channel.Active)
+        IByteBuffer buffer = _messageSerializationService.ZeroSerialize(message);
+        int length = buffer.ReadableBytes;
+
+        // Running in background
+        _ = (_sendLatency == TimeSpan.Zero)
+            ? SendBuffer(buffer)
+            : SendBufferDelay(buffer);
+
+        return length;
+    }
+
+    private async Task SendBufferDelay(IByteBuffer buffer)
+    {
+        await Task.Delay(_sendLatency);
+        await SendBuffer(buffer);
+    }
+
+    private Task SendBuffer(IByteBuffer buffer)
+    {
+        return _context.WriteAndFlushAsync(buffer)
+            .ContinueWith(static (Task t, object s) =>
             {
-                return 0;
-            }
+                if (!t.IsCompletedSuccessfully)
+                    ((PacketSender)s).LogException(t.Exception);
+            },
+            this);
+    }
 
-            IByteBuffer buffer = _messageSerializationService.ZeroSerialize(message);
-            int length = buffer.ReadableBytes;
-
-            // Running in background
-            _ = SendBuffer(buffer);
-
-            return length;
-        }
-
-        private async Task SendBuffer(IByteBuffer buffer)
+    private void LogException(Exception exception)
+    {
+        if (_context.Channel is { Active: false })
         {
-            try
-            {
-                if (_sendLatency != TimeSpan.Zero)
-                {
-                    // Tried to implement this as a pipeline handler. Got a lot of peering issue for some reason...
-                    await Task.Delay(_sendLatency);
-                }
-
-                await _context.WriteAndFlushAsync(buffer);
-            }
-            catch (Exception exception)
-            {
-                if (_context.Channel is { Active: false })
-                {
-                    if (_logger.IsTrace) _logger.Trace($"Channel is not active - {exception.Message}");
-                }
-                else if (_logger.IsError) _logger.Error("Channel is active", exception);
-            }
+            if (_logger.IsTrace) _logger.Trace($"Channel is not active - {exception.Message}");
         }
-
-        public override void HandlerAdded(IChannelHandlerContext context)
+        else if (_logger.IsError)
         {
-            _context = context;
+            _logger.Error("Channel is active", exception);
         }
+    }
+
+    public override void HandlerAdded(IChannelHandlerContext context)
+    {
+        _context = context;
     }
 }
