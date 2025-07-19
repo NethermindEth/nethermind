@@ -27,7 +27,7 @@ public class BlsPairingCheckPrecompileTests : PrecompileTests<BlsPairingCheckPre
     {
         foreach ((byte[] input, ReadOnlyMemory<byte> expectedResult) in Inputs)
         {
-            (ReadOnlyMemory<byte> output, bool success) = PairingCheckPrecompile.Instance.Run(input, MuirGlacier.Instance);
+            (ReadOnlyMemory<byte> output, bool success) = PairingCheckPrecompile.Instance.Run(input, MuirGlacier.Instance, isCacheable: false);
 
             output.ToArray().Should().BeEquivalentTo(expectedResult.ToArray());
             success.Should().BeTrue();

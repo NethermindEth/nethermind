@@ -77,6 +77,6 @@ namespace Nethermind.Precompiles.Benchmark
 
         [Benchmark(Baseline = true)]
         public (ReadOnlyMemory<byte>, bool) Baseline()
-            => Input.Precompile.Run(Input.Bytes, Cancun.Instance);
+            => Input.Precompile.Run(Input.Bytes, Cancun.Instance, false);
     }
 }

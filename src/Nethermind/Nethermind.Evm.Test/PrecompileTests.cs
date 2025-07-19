@@ -37,7 +37,7 @@ public abstract class PrecompileTests<T> where T : PrecompileTests<T>, IPrecompi
 
         IPrecompile precompile = T.Precompile();
         long gas = precompile.BaseGasCost(Prague.Instance) + precompile.DataGasCost(testCase.Input, Prague.Instance);
-        (byte[] output, bool success) = precompile.Run(testCase.Input, Prague.Instance);
+        (byte[] output, bool success) = precompile.Run(testCase.Input, Prague.Instance, isCacheable: false);
 
         using (Assert.EnterMultipleScope())
         {

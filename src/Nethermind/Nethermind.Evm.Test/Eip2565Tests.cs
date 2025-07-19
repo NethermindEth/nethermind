@@ -29,7 +29,7 @@ namespace Nethermind.Evm.Test
             Prepare input = Prepare.EvmCode.FromCode(randomInput);
             byte[] inputData = input.Done.ToArray();
 
-            (ReadOnlyMemory<byte>, bool) gmpPair = ModExpPrecompile.Instance.Run(inputData, Berlin.Instance);
+            (ReadOnlyMemory<byte>, bool) gmpPair = ModExpPrecompile.Instance.Run(inputData, Berlin.Instance, isCacheable: false);
             (ReadOnlyMemory<byte>, bool) bigIntPair = BigIntegerModExp(inputData);
 
             Assert.That(gmpPair.Item1.ToArray(), Is.EqualTo(bigIntPair.Item1.ToArray()));
@@ -48,7 +48,7 @@ namespace Nethermind.Evm.Test
         public void ModExp_run_should_not_throw_exception(string inputStr)
         {
             Prepare input = Prepare.EvmCode.FromCode(inputStr);
-            Assert.DoesNotThrow(() => ModExpPrecompile.Instance.Run(input.Done.ToArray(), London.Instance));
+            Assert.DoesNotThrow(() => ModExpPrecompile.Instance.Run(input.Done.ToArray(), London.Instance, isCacheable: false));
             long gas = ModExpPrecompile.Instance.DataGasCost(input.Done, London.Instance);
             gas.Should().Be(200);
         }

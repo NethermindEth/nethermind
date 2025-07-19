@@ -231,7 +231,7 @@ public class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadStatusV1
 
         using ThreadExtensions.Disposable handle = Thread.CurrentThread.BoostPriority();
         // Try to execute block
-        (ValidationResult result, string? message) = await ValidateBlockAndProcess(block, parentHeader, processingOptions);
+        (ValidationResult result, string? message) = await ValidateBlockAndProcess(block, parentHeader, processingOptions).ConfigureAwait(false);
 
         if (result == ValidationResult.Invalid)
         {
@@ -332,7 +332,7 @@ public class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadStatusV1
             return (TryCacheResult(ValidationResult.Invalid, validationMessage), validationMessage);
         }
 
-        TaskCompletionSource<ValidationResult?> blockProcessed = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        TaskCompletionSource<ValidationResult?> blockProcessed = new((!_processingQueue.IsMainProcessor || _processingQueue.IsProcessingBlock) ? TaskCreationOptions.RunContinuationsAsynchronously : TaskCreationOptions.None);
 
         void GetProcessingQueueOnBlockRemoved(object? o, BlockRemovedEventArgs e)
         {
@@ -403,8 +403,8 @@ public class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadStatusV1
                 // probably the block is already in the processing queue as a result
                 // of a previous newPayload or the block being discovered during syncing
                 // but add it to the processing queue just in case.
-                await _processingQueue.Enqueue(block, processingOptions);
-                result = await blockProcessed.Task.TimeoutOn(timeoutTask, cts);
+                await _processingQueue.Enqueue(block, processingOptions).ConfigureAwait(false);
+                result = await blockProcessed.Task.TimeoutOn(timeoutTask, cts).ConfigureAwait(false);
             }
         }
         catch (TimeoutException)

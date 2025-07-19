@@ -14,24 +14,29 @@ using Nethermind.State;
 
 namespace Nethermind.Blockchain;
 
-public class CachedCodeInfoRepository(
-    FrozenDictionary<AddressAsKey, PrecompileInfo> precompiles,
-    ConcurrentDictionary<PreBlockCaches.PrecompileCacheKey, (byte[], bool)>? precompileCache) : CodeInfoRepository(
-    precompileCache is null
-        ? precompiles
-        : precompiles.ToFrozenDictionary(kvp => kvp.Key, kvp => CreateCachedPrecompile(kvp, precompileCache)))
+public static class CachedCodeInfoRepository
 {
+    public static CodeInfoRepository CreateCodeInfoRepository(
+        FrozenDictionary<AddressAsKey, PrecompileInfo> precompiles,
+        ConcurrentDictionary<PreBlockCaches.PrecompileCacheKey, (byte[], bool)>? precompileCache = null)
+            => precompileCache is null
+                ? new CodeInfoRepository(precompiles)
+                : new CodeInfoRepository((FrozenDictionary<AddressAsKey, PrecompileInfo>)precompiles.ToFrozenDictionary(
+                    kvp => kvp.Key,
+                    kvp => CreateCachedPrecompile(kvp, precompileCache)));
+
     private static PrecompileInfo CreateCachedPrecompile(
         in KeyValuePair<AddressAsKey, PrecompileInfo> originalPrecompile,
         ConcurrentDictionary<PreBlockCaches.PrecompileCacheKey, (byte[], bool)> cache) =>
         new PrecompileInfo(new CachedPrecompile(originalPrecompile.Key.Value, originalPrecompile.Value.Precompile!, cache));
 
-    private class CachedPrecompile(
+    private sealed class CachedPrecompile(
         Address address,
         IPrecompile precompile,
         ConcurrentDictionary<PreBlockCaches.PrecompileCacheKey, (byte[], bool)> cache) : IPrecompile
     {
         public static Address Address => Address.Zero;
+        ConcurrentDictionary<PreBlockCaches.PrecompileCacheKey, (byte[], bool)>.AlternateLookup<PreBlockCaches.PrecompileAltCacheKey> lookUp = cache.GetAlternateLookup<PreBlockCaches.PrecompileAltCacheKey>();
 
         public static string Name => "";
 
@@ -39,15 +44,18 @@ public class CachedCodeInfoRepository(
 
         public long DataGasCost(ReadOnlyMemory<byte> inputData, IReleaseSpec releaseSpec) => precompile.DataGasCost(inputData, releaseSpec);
 
-        public (byte[], bool) Run(ReadOnlyMemory<byte> inputData, IReleaseSpec releaseSpec)
+        public (byte[], bool) Run(ReadOnlyMemory<byte> inputData, IReleaseSpec releaseSpec, bool isCacheable)
         {
-            PreBlockCaches.PrecompileCacheKey key = new(address, inputData);
-            if (!cache.TryGetValue(key, out (byte[], bool) result))
+            PreBlockCaches.PrecompileAltCacheKey altKey = new(address, inputData.Span);
+            if (!lookUp.TryGetValue(altKey, out (byte[], bool) result))
             {
-                result = precompile.Run(inputData, releaseSpec);
-                // we need to rebuild the key with data copy as the data can be changed by VM processing
-                key = new PreBlockCaches.PrecompileCacheKey(address, inputData.ToArray());
-                cache.TryAdd(key, result);
+                result = precompile.Run(inputData, releaseSpec, false);
+                if (isCacheable)
+                {
+                    // we need to rebuild the key with data copy as the data can be changed by VM processing
+                    PreBlockCaches.PrecompileCacheKey key = new(address, inputData.ToArray());
+                    cache.TryAdd(key, result);
+                }
             }
 
             return result;

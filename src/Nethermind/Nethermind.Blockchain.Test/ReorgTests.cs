@@ -73,7 +73,7 @@ public class ReorgTests
             .WithSpecProvider(specProvider)
             .TestObject;
 
-        EthereumCodeInfoRepository codeInfoRepository = new();
+        CodeInfoRepository codeInfoRepository = EthereumCodeInfoRepository.CreateCodeInfoRepository();
         TxPool.TxPool txPool = new(
             ecdsa,
             new BlobTxStorage(),

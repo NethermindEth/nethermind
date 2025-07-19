@@ -17,7 +17,6 @@ using Nethermind.Consensus.Rewards;
 using Nethermind.Consensus.Validators;
 using Nethermind.Consensus.Withdrawals;
 using Nethermind.Core;
-using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Threading;
@@ -214,15 +213,10 @@ public partial class BlockProcessor(
 
     private void QueueClearCaches(Task? preWarmTask)
     {
-        if (preWarmTask is not null)
-        {
-            // Can start clearing caches in background
-            _clearTask = preWarmTask.ContinueWith(_clearCaches, TaskContinuationOptions.RunContinuationsAsynchronously);
-        }
-        else if (preWarmer is not null)
-        {
-            _clearTask = Task.Run(preWarmer.ClearCaches);
-        }
+        // Can start clearing caches in background if we started filling it
+        _clearTask = preWarmTask is not null ?
+            preWarmTask.ContinueWith(_clearCaches, TaskContinuationOptions.RunContinuationsAsynchronously) :
+            Task.CompletedTask;
     }
 
     public event EventHandler<BlocksProcessingEventArgs>? BlocksProcessing;
@@ -342,7 +336,7 @@ public partial class BlockProcessor(
 
         _stateProvider.Commit(spec, commitRoots: true);
 
-        if (BlockchainProcessor.IsMainProcessingThread)
+        if (options.ContainsFlag(ProcessingOptions.MainProcessing))
         {
             // Get the accounts that have been changed
             block.AccountChanges = _stateProvider.GetAccountChanges();

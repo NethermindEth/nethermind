@@ -92,6 +92,7 @@ public sealed class EvmState : IDisposable // TODO: rename to CallState
     public bool IsStatic { get; private set; } // TODO: move to CallEnv
     public bool IsContinuation { get; set; } // TODO: move to CallEnv
     public bool IsCreateOnPreExistingAccount { get; private set; } // TODO: move to CallEnv
+    public bool IsCacheable { get; private set; } // TODO: move to CallEnv
 
     private bool _isDisposed = true;
 
@@ -112,7 +113,8 @@ public sealed class EvmState : IDisposable // TODO: rename to CallState
         ExecutionType executionType,
         in ExecutionEnvironment env,
         in StackAccessTracker accessedItems,
-        in Snapshot snapshot)
+        in Snapshot snapshot,
+        bool isCacheable)
     {
         EvmState state = Rent();
         state.Initialize(
@@ -123,9 +125,10 @@ public sealed class EvmState : IDisposable // TODO: rename to CallState
             isTopLevel: true,
             isStatic: false,
             isCreateOnPreExistingAccount: false,
-            env: env,
-            stateForAccessLists: accessedItems,
-            snapshot: snapshot);
+            isCacheable,
+            in env,
+            in accessedItems,
+            in snapshot);
         return state;
     }
 
@@ -139,6 +142,7 @@ public sealed class EvmState : IDisposable // TODO: rename to CallState
         ExecutionType executionType,
         bool isStatic,
         bool isCreateOnPreExistingAccount,
+        bool isCacheable,
         in ExecutionEnvironment env,
         in StackAccessTracker stateForAccessLists,
         in Snapshot snapshot)
@@ -150,11 +154,12 @@ public sealed class EvmState : IDisposable // TODO: rename to CallState
             outputLength,
             executionType,
             isTopLevel: false,
-            isStatic: isStatic,
-            isCreateOnPreExistingAccount: isCreateOnPreExistingAccount,
-            env: env,
-            stateForAccessLists: stateForAccessLists,
-            snapshot: snapshot);
+            isStatic,
+            isCreateOnPreExistingAccount,
+            isCacheable,
+            in env,
+            in stateForAccessLists,
+            in snapshot);
         return state;
     }
 
@@ -170,6 +175,7 @@ public sealed class EvmState : IDisposable // TODO: rename to CallState
         bool isTopLevel,
         bool isStatic,
         bool isCreateOnPreExistingAccount,
+        bool isCacheable,
         in ExecutionEnvironment env,
         in StackAccessTracker stateForAccessLists,
         in Snapshot snapshot)
@@ -196,6 +202,7 @@ public sealed class EvmState : IDisposable // TODO: rename to CallState
         IsStatic = isStatic;
         IsContinuation = false;
         IsCreateOnPreExistingAccount = isCreateOnPreExistingAccount;
+        IsCacheable = isCacheable;
 
         if (!_isDisposed)
         {

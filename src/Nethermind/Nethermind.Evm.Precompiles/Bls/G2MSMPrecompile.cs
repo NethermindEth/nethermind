@@ -39,7 +39,7 @@ public class G2MSMPrecompile : IPrecompile<G2MSMPrecompile>
     public const int ItemSize = 288;
 
     [SkipLocalsInit]
-    public (byte[], bool) Run(ReadOnlyMemory<byte> inputData, IReleaseSpec releaseSpec)
+    public (byte[], bool) Run(ReadOnlyMemory<byte> inputData, IReleaseSpec releaseSpec, bool isCacheable)
     {
         Metrics.BlsG2MSMPrecompile++;
 

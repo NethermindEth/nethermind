@@ -34,5 +34,9 @@ namespace Nethermind.Consensus.Processing
         int Count { get; }
 
         public bool IsEmpty => Count == 0;
+
+        bool IsMainProcessor { get; }
+
+        bool IsProcessingBlock { get; }
     }
 }

@@ -122,7 +122,7 @@ public class CliqueBlockProducerTests
             ITransactionComparerProvider transactionComparerProvider =
                 new TransactionComparerProvider(specProvider, blockTree);
 
-            EthereumCodeInfoRepository codeInfoRepository = new();
+            CodeInfoRepository codeInfoRepository = EthereumCodeInfoRepository.CreateCodeInfoRepository();
             TxPool.TxPool txPool = new(_ethereumEcdsa,
                 new BlobTxStorage(),
                 new ChainHeadInfoProvider(new FixedForkActivationChainHeadSpecProvider(SepoliaSpecProvider.Instance), blockTree, stateProvider, codeInfoRepository),

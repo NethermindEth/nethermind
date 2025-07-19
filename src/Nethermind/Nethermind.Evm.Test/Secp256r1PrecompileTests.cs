@@ -36,7 +36,7 @@ namespace Nethermind.Evm.Test
         public void Produces_Empty_Output_On_Invalid_Input(string input)
         {
             var bytes = Bytes.FromHexString(input);
-            (ReadOnlyMemory<byte> output, var success) = Precompile().Run(bytes, Prague.Instance);
+            (ReadOnlyMemory<byte> output, var success) = Precompile().Run(bytes, Prague.Instance, isCacheable: false);
 
             using (Assert.EnterMultipleScope())
             {
@@ -48,7 +48,7 @@ namespace Nethermind.Evm.Test
         [TestCaseSource(nameof(RandomECDsaInputs))]
         public void Verifies_random_valid_signature(byte[] input)
         {
-            (ReadOnlyMemory<byte> output, var success) = Secp256r1Precompile.Instance.Run(input, Prague.Instance);
+            (ReadOnlyMemory<byte> output, var success) = Secp256r1Precompile.Instance.Run(input, Prague.Instance, isCacheable: false);
             using (Assert.EnterMultipleScope())
             {
                 Assert.That(success, Is.True);

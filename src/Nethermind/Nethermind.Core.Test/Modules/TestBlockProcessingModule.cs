@@ -38,7 +38,7 @@ public class TestBlockProcessingModule : Module
             {
                 IWorldState worldState = ctx.Resolve<IWorldStateManager>().GlobalWorldState;
                 PreBlockCaches? preBlockCaches = (worldState as IPreBlockCaches)?.Caches;
-                return new EthereumCodeInfoRepository(preBlockCaches?.PrecompileCache);
+                return EthereumCodeInfoRepository.CreateCodeInfoRepository(preBlockCaches?.PrecompileCache);
             })
 
             .AddSingleton<ITxPool, TxPool.TxPool>()

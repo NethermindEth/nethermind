@@ -17,18 +17,17 @@ using Nethermind.Evm.State;
 
 namespace Nethermind.Evm;
 
-public class CodeInfoRepository : ICodeInfoRepository
+public sealed class CodeInfoRepository : ICodeInfoRepository
 {
     private static readonly CodeLruCache _codeCache = new();
     private readonly FrozenDictionary<AddressAsKey, PrecompileInfo> _localPrecompiles;
 
-    protected CodeInfoRepository(FrozenDictionary<AddressAsKey, PrecompileInfo> precompiles)
+    public CodeInfoRepository(FrozenDictionary<AddressAsKey, PrecompileInfo> precompiles)
     {
         _localPrecompiles = precompiles;
     }
 
-    public bool IsPrecompile(Address address, IReleaseSpec spec) =>
-        address.IsPrecompile(spec) && _localPrecompiles.ContainsKey(address);
+    public bool IsPrecompile(Address address, IReleaseSpec spec) => address.IsPrecompile(spec);
 
     public ICodeInfo GetCachedCodeInfo(IWorldState worldState, Address codeSource, bool followDelegation, IReleaseSpec vmSpec, out Address? delegationAddress)
     {

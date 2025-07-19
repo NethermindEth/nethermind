@@ -90,7 +90,7 @@ public class Eip7823Tests
 
     private static bool TestSuccess(byte[] input, IReleaseSpec spec)
     {
-        (_, bool result) = ModExpPrecompile.Instance.Run(input, spec);
+        (_, bool result) = ModExpPrecompile.Instance.Run(input, spec, isCacheable: false);
         return result;
     }
 

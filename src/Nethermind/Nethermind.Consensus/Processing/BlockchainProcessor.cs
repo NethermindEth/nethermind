@@ -33,9 +33,7 @@ public sealed class BlockchainProcessor : IBlockchainProcessor, IBlockProcessing
     public int SoftMaxRecoveryQueueSizeInTx = 10000; // adjust based on tx or gas
     public const int MaxProcessingQueueSize = 2048; // adjust based on tx or gas
 
-    private static readonly AsyncLocal<bool> _isMainProcessingThread = new();
-    public static bool IsMainProcessingThread => _isMainProcessingThread.Value;
-    public bool IsMainProcessor { get; init; }
+    private bool _isMainProcessor;
 
     public ITracerBag Tracers => _compositeBlockTracer;
 
@@ -94,7 +92,8 @@ public sealed class BlockchainProcessor : IBlockchainProcessor, IBlockProcessing
         IBlockPreprocessorStep? recoveryStep,
         IStateReader stateReader,
         ILogManager? logManager,
-        Options options)
+        Options options,
+        bool isMainProcessor = false)
     {
         _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
         _blockTree = blockTree ?? throw new ArgumentNullException(nameof(blockTree));
@@ -105,6 +104,7 @@ public sealed class BlockchainProcessor : IBlockchainProcessor, IBlockProcessing
 
         _stats = new ProcessingStats(stateReader, _logger);
         _loopCancellationSource = new CancellationTokenSource();
+        _isMainProcessor = isMainProcessor;
     }
 
     private void OnNewHeadBlock(object? sender, BlockEventArgs e)
@@ -154,7 +154,7 @@ public sealed class BlockchainProcessor : IBlockchainProcessor, IBlockProcessing
                         // Skip recovery queue if nothing in queue
                         if (!_blockQueue.Writer.TryWrite(blockRef))
                         {
-                            await _blockQueue.Writer.WriteAsync(blockRef);
+                            await _blockQueue.Writer.WriteAsync(blockRef).ConfigureAwait(false);
                         }
                     }
                 }
@@ -252,7 +252,7 @@ public sealed class BlockchainProcessor : IBlockchainProcessor, IBlockProcessing
     {
         if (_logger.IsDebug) _logger.Debug($"Starting recovery loop - {_blockQueue.Reader.Count} blocks waiting in the queue.");
         _lastProcessedBlock = DateTime.UtcNow;
-        await foreach (BlockRef blockRef in _recoveryQueue.Reader.ReadAllAsync(CancellationToken))
+        await foreach (BlockRef blockRef in _recoveryQueue.Reader.ReadAllAsync(CancellationToken).ConfigureAwait(false))
         {
             try
             {
@@ -290,8 +290,6 @@ public sealed class BlockchainProcessor : IBlockchainProcessor, IBlockProcessing
 
     private async Task RunProcessing()
     {
-        _isMainProcessingThread.Value = IsMainProcessor;
-
         try
         {
             await RunProcessingLoop();
@@ -307,7 +305,7 @@ public sealed class BlockchainProcessor : IBlockchainProcessor, IBlockProcessing
         }
     }
 
-    private bool IsProcessingBlock { get => _isProcessingBlock; set { _isProcessingBlock = value; _blockTree.IsProcessingBlock = value; } }
+    public bool IsProcessingBlock { get => _isProcessingBlock; private set { _isProcessingBlock = value; _blockTree.IsProcessingBlock = value; } }
 
     private async Task RunProcessingLoop()
     {
@@ -316,7 +314,7 @@ public sealed class BlockchainProcessor : IBlockchainProcessor, IBlockProcessing
         FireProcessingQueueEmpty();
 
         GCScheduler.Instance.SwitchOnBackgroundGC(0);
-        while (await _blockQueue.Reader.WaitToReadAsync(CancellationToken))
+        while (await _blockQueue.Reader.WaitToReadAsync(CancellationToken).ConfigureAwait(false))
         {
             using var handle = Thread.CurrentThread.SetHighestPriority();
             // Have block, switch off background GC timer
@@ -422,6 +420,8 @@ public sealed class BlockchainProcessor : IBlockchainProcessor, IBlockProcessing
     public bool IsEmpty => Volatile.Read(ref _queueCount) == 0;
     public int Count => Volatile.Read(ref _queueCount);
 
+    public bool IsMainProcessor => _isMainProcessor;
+
     public Block? Process(Block suggestedBlock, ProcessingOptions options, IBlockTracer tracer, CancellationToken token = default) =>
         Process(suggestedBlock, options, tracer, token, out _);
 
@@ -454,6 +454,10 @@ public sealed class BlockchainProcessor : IBlockchainProcessor, IBlockProcessing
         PrepareBlocksToProcess(suggestedBlock, options, processingBranch);
 
         _stopwatch.Restart();
+        if (_isMainProcessor)
+        {
+            options |= ProcessingOptions.MainProcessing;
+        }
         Block[]? processedBlocks = ProcessBranch(processingBranch, options, tracer, token, out error);
         _stopwatch.Stop();
         if (processedBlocks is null)

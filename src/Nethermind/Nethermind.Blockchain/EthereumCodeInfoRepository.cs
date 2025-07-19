@@ -5,6 +5,7 @@ using System.Collections.Concurrent;
 using System.Collections.Frozen;
 using System.Collections.Generic;
 using Nethermind.Core;
+using Nethermind.Evm;
 using Nethermind.Evm.CodeAnalysis;
 using Nethermind.Evm.Precompiles;
 using Nethermind.Evm.Precompiles.Bls;
@@ -12,11 +13,12 @@ using Nethermind.State;
 
 namespace Nethermind.Blockchain;
 
-public class EthereumCodeInfoRepository(
-    ConcurrentDictionary<PreBlockCaches.PrecompileCacheKey, (byte[], bool)>? precompileCache = null)
-    : CachedCodeInfoRepository(Precompiles, precompileCache)
+public static class EthereumCodeInfoRepository
 {
-    private static FrozenDictionary<AddressAsKey, PrecompileInfo> Precompiles
+    public static CodeInfoRepository CreateCodeInfoRepository(ConcurrentDictionary<PreBlockCaches.PrecompileCacheKey, (byte[], bool)>? precompileCache = null)
+        => CachedCodeInfoRepository.CreateCodeInfoRepository(Precompiles, precompileCache);
+
+    public static FrozenDictionary<AddressAsKey, PrecompileInfo> Precompiles
     {
         get => new Dictionary<AddressAsKey, PrecompileInfo>
         {

@@ -28,7 +28,7 @@ public class BlsG2MSMPrecompileTests : PrecompileTests<BlsG2MSMPrecompileTests>,
         foreach ((byte[] input, ReadOnlyMemory<byte> expectedResult) in Inputs)
         {
             IPrecompile precompile = G2MSMPrecompile.Instance;
-            (ReadOnlyMemory<byte> output, bool success) = precompile.Run(input, Prague.Instance);
+            (ReadOnlyMemory<byte> output, bool success) = precompile.Run(input, Prague.Instance, isCacheable: false);
             output.ToArray().Should().BeEquivalentTo(expectedResult.ToArray());
             success.Should().BeTrue();
         }
