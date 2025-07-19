@@ -321,15 +321,23 @@ public class ParallelUnbalancedWork : IThreadPoolWorkItem
         /// </summary>
         public void Execute()
         {
-            TLocal? value = _data.Init();
             try
             {
-                int i = _data.Index.GetNext();
-                while (i < _data.ToExclusive)
+                TLocal? value = _data.Init();
+                try
                 {
-                    if (_data.CancellationToken.IsCancellationRequested) return;
-                    value = _data.Action(i, value);
-                    i = _data.Index.GetNext();
+                    int i = _data.Index.GetNext();
+                    while (i < _data.ToExclusive)
+                    {
+                        if (_data.CancellationToken.IsCancellationRequested) return;
+                        value = _data.Action(i, value);
+                        i = _data.Index.GetNext();
+                    }
+                }
+                finally
+                {
+                    _data.Finally(value);
+                    _data.MarkThreadCompleted();
                 }
             }
             catch (Exception ex)
@@ -338,11 +346,6 @@ public class ParallelUnbalancedWork : IThreadPoolWorkItem
                 {
                     _exception = ExceptionDispatchInfo.Capture(ex);
                 }
-            }
-            finally
-            {
-                _data.Finally(value);
-                _data.MarkThreadCompleted();
             }
         }
 
