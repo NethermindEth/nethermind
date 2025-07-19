@@ -167,9 +167,6 @@ public partial class BlockProcessor(
                 }
 
                 preBlockBaseBlock = processedBlock.Header;
-                // Make sure the prewarm task is finished before we reset the state
-                preWarmTask?.GetAwaiter().GetResult();
-                preWarmTask = null;
                 _stateProvider.Reset();
 
                 // Calculate the transaction hashes in the background and release tx sequence memory
@@ -190,7 +187,6 @@ public partial class BlockProcessor(
             if (_logger.IsWarn) _logger.Warn($"Encountered exception {ex} while processing blocks.");
             CancellationTokenExtensions.CancelDisposeAndClear(ref prewarmCancellation);
             QueueClearCaches(preWarmTask);
-            preWarmTask?.GetAwaiter().GetResult();
             RestoreBranch(previousBranchStateRoot);
             throw;
         }

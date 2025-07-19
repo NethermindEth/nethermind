@@ -138,6 +138,10 @@ public sealed class BlockCachePreWarmer(
                     });
             }
         }
+        catch (ObjectDisposedException)
+        {
+            // Ignore, disposed object pool policy (cancelled in test DI)
+        }
         catch (OperationCanceledException)
         {
             // Ignore, block completed cancel
