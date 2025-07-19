@@ -58,14 +58,14 @@ namespace Nethermind.JsonRpc.Modules
                 : new SearchResult<BlockHeader>(header);
         }
 
-        public static SearchResult<Block> SearchForBlock(this IBlockFinder blockFinder, BlockParameter? blockParameter, bool allowNulls = false)
+        public static SearchResult<Block> SearchForBlock(this IBlockFinder blockFinder, BlockParameter? blockParameter, bool allowNulls = false, bool onlyTxHashes = false)
         {
             blockParameter ??= BlockParameter.Latest;
 
             Block block;
             if (blockParameter.RequireCanonical)
             {
-                block = blockFinder.FindBlock(blockParameter.BlockHash!, BlockTreeLookupOptions.RequireCanonical);
+                block = blockFinder.FindBlock(blockParameter.BlockHash!, BlockTreeLookupOptions.RequireCanonical | (onlyTxHashes ? BlockTreeLookupOptions.OnlyTxHashes : BlockTreeLookupOptions.None));
                 if (block is null && !allowNulls)
                 {
                     BlockHeader? header = blockFinder.FindHeader(blockParameter.BlockHash);

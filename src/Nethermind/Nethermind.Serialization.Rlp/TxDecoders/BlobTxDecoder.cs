@@ -41,7 +41,7 @@ public sealed class BlobTxDecoder<T>(Func<T>? transactionFactory = null)
             }
             else if ((rlpBehaviors & RlpBehaviors.ExcludeHashes) == 0)
             {
-                CalculateHash(transaction!, transactionSequence);
+                CalculateHash(transaction!, transactionSequence, forceHashes: rlpBehaviors.HasFlag(RlpBehaviors.OnlyHashes));
             }
         }
 
