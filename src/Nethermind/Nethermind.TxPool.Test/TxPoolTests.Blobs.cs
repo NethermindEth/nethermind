@@ -937,7 +937,7 @@ namespace Nethermind.TxPool.Test
             {
                 Params = new ChainSpecParamsJson
                 {
-                    Eip4844TransitionTimestamp = _blockTree.Head.Timestamp,
+                    Eip4844TransitionTimestamp = _blockTree.Head!.Timestamp,
                     Eip7002TransitionTimestamp = _blockTree.Head.Timestamp,
                     Eip7594TransitionTimestamp = _blockTree.Head.Timestamp + 1,
                 }

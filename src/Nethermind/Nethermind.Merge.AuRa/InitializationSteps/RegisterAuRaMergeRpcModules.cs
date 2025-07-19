@@ -54,7 +54,7 @@ public class AuRaMergeBlockProcessorFactory(
         WithdrawalContractFactory withdrawalContractFactory = new WithdrawalContractFactory(parameters, abiEncoder);
         IWithdrawalProcessor withdrawalProcessor = new AuraWithdrawalProcessor(withdrawalContractFactory.Create(transactionProcessor), logManager);
 
-        ITxFilter txFilter = txAuRaFilterBuilders.CreateAuRaTxFilter(new ServiceTxFilter(specProvider));
+        ITxFilter txFilter = txAuRaFilterBuilders.CreateAuRaTxFilter(new ServiceTxFilter());
 
         return new AuRaMergeBlockProcessor(
             specProvider,
