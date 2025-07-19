@@ -6,6 +6,7 @@ using System.Threading.Tasks;
 using Nethermind.Blockchain.Find;
 using Nethermind.Core.Crypto;
 using Nethermind.Blockchain.Tracing.GethStyle;
+using Nethermind.Consensus.Stateless;
 using Nethermind.Facade.Eth.RpcTransaction;
 using Nethermind.Facade.Proxy.Models.Simulate;
 using Nethermind.JsonRpc.Data;
@@ -120,4 +121,9 @@ public interface IDebugRpcModule : IRpcModule
     [JsonRpcMethod(Description = "Retrieves geth like traces of the simulated blocks")]
     ResultWrapper<IReadOnlyList<SimulateBlockResult<GethLikeTxTrace>>> debug_simulateV1(
         SimulatePayload<TransactionForRpc> payload, BlockParameter? blockParameter = null, GethTraceOptions? options = null);
+
+    [JsonRpcMethod(Description = "TODO")]
+    ResultWrapper<bool> debug_executeWitness(BlockParameter blockParameter, Witness witness);
+    [JsonRpcMethod(Description = "TODO")]
+    ResultWrapper<Witness> debug_executionWitness(BlockParameter blockParameter);
 }

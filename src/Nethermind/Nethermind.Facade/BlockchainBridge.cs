@@ -31,6 +31,7 @@ using Transaction = Nethermind.Core.Transaction;
 using Autofac;
 using Nethermind.Blockchain.Tracing;
 using Nethermind.Consensus;
+using Nethermind.Consensus.Stateless;
 using Nethermind.Evm.State;
 using Nethermind.State.OverridableEnv;
 
@@ -403,6 +404,21 @@ namespace Nethermind.Facade
             };
 
             return error is null ? null : $"err: {error} (supplied gas {gasLimit})";
+        }
+        public bool ExecuteWitness(Block blockParameter, Witness witness)
+        {
+            throw new NotImplementedException();
+        }
+
+        public Witness GenerateExecutionWitness(Block block, Block parent)
+        {
+            throw new NotImplementedException();
+            // RecoverTxSenders(block);
+            // (IBlockProcessor blockProcessor, WitnessCollector witnessCollector) =
+            //     witnessGeneratingEnv.CreateWitnessGeneratingBlockProcessor();
+            // blockProcessor.Process(parent.Header, [block],
+            //     ProcessingOptions.DoNotUpdateHead & ProcessingOptions.ReadOnlyChain, NullBlockTracer.Instance);
+            // return witnessCollector.GetWitness(parent.Hash, parent.StateRoot);
         }
 
         public record BlockProcessingComponents(
