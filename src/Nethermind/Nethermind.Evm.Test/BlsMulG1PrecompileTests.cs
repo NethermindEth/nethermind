@@ -29,14 +29,14 @@ public class BlsG1MulPrecompileTests : PrecompileTests<BlsG1MulPrecompileTests>,
 
         foreach ((byte[] input, ReadOnlyMemory<byte> expectedResult) in Inputs)
         {
-            (ReadOnlyMemory<byte> output, bool success) = precompile.Run(input, MuirGlacier.Instance);
+            (ReadOnlyMemory<byte> output, bool success) = precompile.Run(input, MuirGlacier.Instance, isCacheable: false);
             output.ToArray().Should().BeEquivalentTo(expectedResult.ToArray());
             success.Should().BeTrue();
         }
 
         foreach ((byte[] input, ReadOnlyMemory<byte> expectedResult) in BadInputs)
         {
-            (ReadOnlyMemory<byte> output, bool success) = precompile.Run(input, MuirGlacier.Instance);
+            (ReadOnlyMemory<byte> output, bool success) = precompile.Run(input, MuirGlacier.Instance, isCacheable: false);
             output.ToArray().Should().BeEquivalentTo(expectedResult.ToArray());
             success.Should().BeFalse();
         }

@@ -70,7 +70,7 @@ public class ModExpPrecompilePreEip2565 : IPrecompile<ModExpPrecompilePreEip2565
         return gas > long.MaxValue ? long.MaxValue : (long)gas;
     }
 
-    public (byte[], bool) Run(ReadOnlyMemory<byte> inputData, IReleaseSpec releaseSpec)
+    public (byte[], bool) Run(ReadOnlyMemory<byte> inputData, IReleaseSpec releaseSpec, bool isCacheable)
     {
         Metrics.ModExpPrecompile++;
 

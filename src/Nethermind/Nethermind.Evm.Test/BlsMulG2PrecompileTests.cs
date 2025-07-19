@@ -28,7 +28,7 @@ public class BlsMulG2PrecompileTests : PrecompileTests<BlsMulG2PrecompileTests>,
         foreach ((byte[] input, ReadOnlyMemory<byte> expectedResult) in Inputs)
         {
             IPrecompile precompile = G2MSMPrecompile.Instance;
-            (ReadOnlyMemory<byte> output, bool success) = precompile.Run(input, MuirGlacier.Instance);
+            (ReadOnlyMemory<byte> output, bool success) = precompile.Run(input, MuirGlacier.Instance, isCacheable: false);
             output.ToArray().Should().BeEquivalentTo(expectedResult.ToArray());
             success.Should().BeTrue();
         }

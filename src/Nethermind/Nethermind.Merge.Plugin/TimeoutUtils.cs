@@ -13,7 +13,7 @@ public static class TimeoutUtils
 {
     public static async Task<T> TimeoutOn<T>(this Task<T> task, Task timeoutTask, CancellationTokenSource? tcs = null)
     {
-        Task firstToComplete = await Task.WhenAny(timeoutTask, task);
+        Task firstToComplete = await Task.WhenAny(timeoutTask, task).ConfigureAwait(false);
         if (firstToComplete == timeoutTask)
         {
             ThrowTimeout();
@@ -21,7 +21,7 @@ public static class TimeoutUtils
 
         tcs?.Cancel();
 
-        return await task;
+        return await task.ConfigureAwait(false);
     }
 
     [StackTraceHidden, DoesNotReturn]

@@ -30,7 +30,7 @@ public class EcRecoverPrecompile : IPrecompile<EcRecoverPrecompile>
 
     private readonly byte[] _zero31 = new byte[31];
 
-    public (byte[], bool) Run(ReadOnlyMemory<byte> inputData, IReleaseSpec releaseSpec)
+    public (byte[], bool) Run(ReadOnlyMemory<byte> inputData, IReleaseSpec releaseSpec, bool isCacheable)
     {
         Metrics.EcRecoverPrecompile++;
         return inputData.Length >= 128 ? RunInternal(inputData.Span) : RunInternal(inputData);

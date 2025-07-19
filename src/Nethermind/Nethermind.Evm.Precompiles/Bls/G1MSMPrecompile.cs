@@ -39,7 +39,7 @@ public class G1MSMPrecompile : IPrecompile<G1MSMPrecompile>
     public const int ItemSize = 160;
 
     [SkipLocalsInit]
-    public (byte[], bool) Run(ReadOnlyMemory<byte> inputData, IReleaseSpec releaseSpec)
+    public (byte[], bool) Run(ReadOnlyMemory<byte> inputData, IReleaseSpec releaseSpec, bool isCacheable)
     {
         Metrics.BlsG1MSMPrecompile++;
 

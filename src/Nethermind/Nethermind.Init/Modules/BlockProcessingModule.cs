@@ -21,7 +21,6 @@ using Nethermind.State.OverridableEnv;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.JsonRpc.Modules.Eth.GasPrice;
 using Nethermind.Logging;
-using Nethermind.State;
 using Nethermind.TxPool;
 
 namespace Nethermind.Init.Modules;
@@ -37,10 +36,10 @@ public class BlockProcessingModule : Module
             .AddSingleton<IBlockValidator, BlockValidator>()
             .AddSingleton<IHeaderValidator, HeaderValidator>()
             .AddSingleton<IUnclesValidator, UnclesValidator>()
+            .AddSingleton<ICodeInfoRepository>((c) => EthereumCodeInfoRepository.CreateCodeInfoRepository())
 
             // Block processing components common between rpc, validation and production
             .AddScoped<ITransactionProcessor, TransactionProcessor>()
-            .AddScoped<ICodeInfoRepository, EthereumCodeInfoRepository>()
             .AddScoped<IVirtualMachine, VirtualMachine>()
             .AddScoped<IBlockhashProvider, BlockhashProvider>()
             .AddScoped<IBeaconBlockRootHandler, BeaconBlockRootHandler>()

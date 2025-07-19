@@ -244,6 +244,7 @@ internal static partial class EvmInstructions
             executionType: TOpCreate.ExecutionType,
             isStatic: vm.EvmState.IsStatic,
             isCreateOnPreExistingAccount: accountExists,
+            vm.EvmState.IsCacheable,
             env: in callEnv,
             stateForAccessLists: in vm.EvmState.AccessTracker,
             snapshot: in snapshot);

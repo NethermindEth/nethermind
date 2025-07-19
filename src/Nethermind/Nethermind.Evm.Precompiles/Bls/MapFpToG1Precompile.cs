@@ -30,7 +30,7 @@ public class MapFpToG1Precompile : IPrecompile<MapFpToG1Precompile>
     public long DataGasCost(ReadOnlyMemory<byte> inputData, IReleaseSpec releaseSpec) => 0L;
 
     [SkipLocalsInit]
-    public (byte[], bool) Run(ReadOnlyMemory<byte> inputData, IReleaseSpec releaseSpec)
+    public (byte[], bool) Run(ReadOnlyMemory<byte> inputData, IReleaseSpec releaseSpec, bool isCacheable)
     {
         Metrics.BlsMapFpToG1Precompile++;
 

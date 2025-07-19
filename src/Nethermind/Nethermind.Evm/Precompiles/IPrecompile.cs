@@ -18,7 +18,7 @@ namespace Nethermind.Evm.Precompiles
 
         // N.B. returns byte array so that inputData cannot be returned
         // this can lead to the wrong value being returned due to the cache modifying inputData
-        (byte[], bool) Run(ReadOnlyMemory<byte> inputData, IReleaseSpec releaseSpec);
+        (byte[], bool) Run(ReadOnlyMemory<byte> inputData, IReleaseSpec releaseSpec, bool isCacheable);
 
         protected static (byte[], bool) Failure { get; } = (Array.Empty<byte>(), false);
     }

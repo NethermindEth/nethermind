@@ -88,7 +88,7 @@ namespace Nethermind.Evm.Benchmark
             _stateProvider.Commit(_spec);
 
             Console.WriteLine(MuirGlacier.Instance);
-            EthereumCodeInfoRepository codeInfoRepository = new();
+            CodeInfoRepository codeInfoRepository = EthereumCodeInfoRepository.CreateCodeInfoRepository();
             _virtualMachine = new VirtualMachine(_blockhashProvider, MainnetSpecProvider.Instance, new OneLoggerLogManager(NullLogger.Instance));
             _virtualMachine.SetBlockExecutionContext(new BlockExecutionContext(_header, _spec));
             _virtualMachine.SetTxExecutionContext(new TxExecutionContext(Address.Zero, codeInfoRepository, null, 0));
@@ -104,7 +104,7 @@ namespace Nethermind.Evm.Benchmark
                 inputData: default
             );
 
-            _evmState = EvmState.RentTopLevel(100_000_000L, ExecutionType.TRANSACTION, _environment, new StackAccessTracker(), _stateProvider.TakeSnapshot());
+            _evmState = EvmState.RentTopLevel(100_000_000L, ExecutionType.TRANSACTION, _environment, new StackAccessTracker(), _stateProvider.TakeSnapshot(), false);
         }
 
         [Benchmark(Baseline = true)]

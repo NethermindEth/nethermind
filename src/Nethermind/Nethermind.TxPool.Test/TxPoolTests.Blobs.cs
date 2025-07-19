@@ -466,7 +466,7 @@ namespace Nethermind.TxPool.Test
             IChainHeadSpecProvider specProvider = Substitute.For<IChainHeadSpecProvider>();
             specProvider.GetCurrentHeadSpec().Returns(releaseSpec);
 
-            ChainHeadInfoProvider chainHeadInfoProvider = new(specProvider, _blockTree, _stateProvider, new EthereumCodeInfoRepository());
+            ChainHeadInfoProvider chainHeadInfoProvider = new(specProvider, _blockTree, _stateProvider, EthereumCodeInfoRepository.CreateCodeInfoRepository());
             _txPool = CreatePool(new TxPoolConfig() { BlobsSupport = BlobsSupportMode.InMemory, Size = 128 },
                 specProvider: specProvider, chainHeadInfoProvider: chainHeadInfoProvider);
 

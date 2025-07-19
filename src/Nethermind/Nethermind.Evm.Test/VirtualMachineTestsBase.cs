@@ -70,7 +70,7 @@ public abstract class VirtualMachineTestsBase
         TestState = worldStateManager.GlobalWorldState;
         _ethereumEcdsa = new EthereumEcdsa(SpecProvider.ChainId);
         IBlockhashProvider blockhashProvider = new TestBlockhashProvider(SpecProvider);
-        CodeInfoRepository = new EthereumCodeInfoRepository();
+        CodeInfoRepository = EthereumCodeInfoRepository.CreateCodeInfoRepository();
         Machine = new VirtualMachine(blockhashProvider, SpecProvider, logManager);
         _processor = new TransactionProcessor(SpecProvider, TestState, Machine, CodeInfoRepository, logManager);
     }

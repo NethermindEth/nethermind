@@ -222,7 +222,7 @@ public class ModExpPrecompile : IPrecompile<ModExpPrecompile>
         return (0, uint.MaxValue, 0);
     }
 
-    public unsafe (byte[], bool) Run(ReadOnlyMemory<byte> inputData, IReleaseSpec releaseSpec)
+    public unsafe (byte[], bool) Run(ReadOnlyMemory<byte> inputData, IReleaseSpec releaseSpec, bool isCacheable)
     {
         Metrics.ModExpPrecompile++;
 

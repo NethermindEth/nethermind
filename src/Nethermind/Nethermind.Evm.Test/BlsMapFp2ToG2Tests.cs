@@ -28,7 +28,7 @@ public class BlsMapFp2ToG2Tests : PrecompileTests<BlsMapFp2ToG2Tests>, IPrecompi
         foreach ((byte[] input, ReadOnlyMemory<byte> expectedResult) in Inputs)
         {
             IPrecompile precompile = MapFp2ToG2Precompile.Instance;
-            (ReadOnlyMemory<byte> output, bool success) = precompile.Run(input, MuirGlacier.Instance);
+            (ReadOnlyMemory<byte> output, bool success) = precompile.Run(input, MuirGlacier.Instance, isCacheable: false);
 
             output.ToArray().Should().BeEquivalentTo(expectedResult.ToArray());
             success.Should().BeTrue();

@@ -27,7 +27,7 @@ public class Sha256Precompile : IPrecompile<Sha256Precompile>
     public long DataGasCost(ReadOnlyMemory<byte> inputData, IReleaseSpec releaseSpec) =>
         12L * EvmInstructions.Div32Ceiling((ulong)inputData.Length);
 
-    public (byte[], bool) Run(ReadOnlyMemory<byte> inputData, IReleaseSpec releaseSpec)
+    public (byte[], bool) Run(ReadOnlyMemory<byte> inputData, IReleaseSpec releaseSpec, bool isCacheable)
     {
         Metrics.Sha256Precompile++;
 

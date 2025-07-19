@@ -756,18 +756,11 @@ public sealed unsafe partial class VirtualMachine(
         // Report the precompile action if tracing is enabled.
         if (isTracingActions)
         {
-            _txTracer.ReportAction(
-                currentState.GasAvailable,
-                currentState.Env.Value,
-                currentState.From,
-                currentState.To,
-                currentState.Env.InputData,
-                currentState.ExecutionType,
-                true);
+            TraceAction(currentState);
         }
 
         // Execute the precompile operation with the current state.
-        CallResult callResult = RunPrecompile(currentState);
+        CallResult callResult = RunPrecompile(currentState, _currentState.IsCacheable);
 
         // If the precompile did not succeed, handle the failure conditions.
         if (!callResult.PrecompileSuccess.Value)
@@ -797,8 +790,20 @@ public sealed unsafe partial class VirtualMachine(
     Failure:
         // Return the default CallResult to signal failure, with the failure exception set via the out parameter.
         return default;
-    }
 
+        [MethodImpl(MethodImplOptions.NoInlining)]
+        void TraceAction(EvmState currentState)
+        {
+            _txTracer.ReportAction(
+                currentState.GasAvailable,
+                currentState.Env.Value,
+                currentState.From,
+                currentState.To,
+                currentState.Env.InputData,
+                currentState.ExecutionType,
+                true);
+        }
+    }
 
     private void TraceTransactionActionStart(EvmState currentState)
     {
@@ -955,7 +960,7 @@ public sealed unsafe partial class VirtualMachine(
         SSTORE
     }
 
-    private CallResult RunPrecompile(EvmState state)
+    private CallResult RunPrecompile(EvmState state, bool cacheable)
     {
         ReadOnlyMemory<byte> callData = state.Env.InputData;
         UInt256 transferValue = state.Env.TransferValue;
@@ -994,7 +999,7 @@ public sealed unsafe partial class VirtualMachine(
 
         try
         {
-            (ReadOnlyMemory<byte> output, bool success) = precompile.Run(callData, spec);
+            (ReadOnlyMemory<byte> output, bool success) = precompile.Run(callData, spec, cacheable);
             CallResult callResult = new(output, precompileSuccess: success, fromVersion: 0, shouldRevert: !success);
             return callResult;
         }

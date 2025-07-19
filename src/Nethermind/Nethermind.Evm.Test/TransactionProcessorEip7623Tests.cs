@@ -33,7 +33,7 @@ public class TransactionProcessorEip7623Tests
         _specProvider = new TestSpecProvider(Prague.Instance);
         IWorldStateManager worldStateManager = TestWorldStateFactory.CreateForTest();
         _stateProvider = worldStateManager.GlobalWorldState;
-        EthereumCodeInfoRepository codeInfoRepository = new();
+        CodeInfoRepository codeInfoRepository = EthereumCodeInfoRepository.CreateCodeInfoRepository();
         VirtualMachine virtualMachine = new(new TestBlockhashProvider(_specProvider), _specProvider, LimboLogs.Instance);
         _transactionProcessor = new TransactionProcessor(_specProvider, _stateProvider, virtualMachine, codeInfoRepository, LimboLogs.Instance);
         _ethereumEcdsa = new EthereumEcdsa(_specProvider.ChainId);

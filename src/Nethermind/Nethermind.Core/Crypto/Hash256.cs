@@ -66,7 +66,7 @@ namespace Nethermind.Core.Crypto
 
         public override int GetHashCode() => GetChainedHashCode(s_instanceRandom);
 
-        public int GetChainedHashCode(uint previousHash) => Bytes.FastHash() ^ (int)previousHash;
+        public int GetChainedHashCode(uint previousHash) => Bytes.FastHash((int)previousHash);
 
         public int CompareTo(ValueHash256 other) => Extensions.Bytes.BytesComparer.Compare(Bytes, other.Bytes);
 

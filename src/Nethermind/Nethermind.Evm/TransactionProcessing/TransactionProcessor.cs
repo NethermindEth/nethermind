@@ -635,7 +635,7 @@ namespace Nethermind.Evm.TransactionProcessing
 
             ExecutionType executionType = tx.IsContractCreation ? ((spec.IsEofEnabled && tx.IsEofContractCreation) ? ExecutionType.TXCREATE : ExecutionType.CREATE) : ExecutionType.TRANSACTION;
 
-            using (EvmState state = EvmState.RentTopLevel(gasAvailable, executionType, in env, in accessedItems, in snapshot))
+            using (EvmState state = EvmState.RentTopLevel(gasAvailable, executionType, in env, in accessedItems, in snapshot, isCacheable: opts.HasFlag(ExecutionOptions.SkipValidation)))
             {
                 substate = VirtualMachine.ExecuteTransaction<TTracingInst>(state, WorldState, tracer);
                 gasAvailable = state.GasAvailable;

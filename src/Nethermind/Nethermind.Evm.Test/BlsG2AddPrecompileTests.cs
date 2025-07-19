@@ -28,7 +28,7 @@ public class BlsG2AddPrecompileTests : PrecompileTests<BlsG2AddPrecompileTests>,
         foreach ((byte[] input, ReadOnlyMemory<byte> expectedResult) in Inputs)
         {
             IPrecompile precompile = G2AddPrecompile.Instance;
-            (ReadOnlyMemory<byte> output, bool success) = precompile.Run(input, MuirGlacier.Instance);
+            (ReadOnlyMemory<byte> output, bool success) = precompile.Run(input, MuirGlacier.Instance, isCacheable: false);
             output.ToArray().Should().BeEquivalentTo(expectedResult.ToArray());
             success.Should().BeTrue();
         }
@@ -42,7 +42,7 @@ public class BlsG2AddPrecompileTests : PrecompileTests<BlsG2AddPrecompileTests>,
         byte[] input = new byte[512];
 
         G2AddPrecompile precompile = G2AddPrecompile.Instance;
-        (ReadOnlyMemory<byte> output, bool success) = precompile.Run(input, Prague.Instance);
+        (ReadOnlyMemory<byte> output, bool success) = precompile.Run(input, Prague.Instance, isCacheable: false);
 
         input[511] = 0xFF;
 

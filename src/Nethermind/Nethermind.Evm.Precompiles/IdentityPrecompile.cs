@@ -26,7 +26,7 @@ public class IdentityPrecompile : IPrecompile<IdentityPrecompile>
     public long DataGasCost(ReadOnlyMemory<byte> inputData, IReleaseSpec releaseSpec) =>
         3L * EvmInstructions.Div32Ceiling((ulong)inputData.Length);
 
-    public (byte[], bool) Run(ReadOnlyMemory<byte> inputData, IReleaseSpec releaseSpec)
+    public (byte[], bool) Run(ReadOnlyMemory<byte> inputData, IReleaseSpec releaseSpec, bool isCacheable)
     {
         return (inputData.ToArray(), true);
     }

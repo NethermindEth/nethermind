@@ -24,7 +24,7 @@ public class BN254AddPrecompileTests
     public void Test(string input, string output, bool status)
     {
         byte[] inputData = Convert.FromHexString(input);
-        (byte[] outputData, bool outcome) = BN254AddPrecompile.Instance.Run(inputData, MuirGlacier.Instance);
+        (byte[] outputData, bool outcome) = BN254AddPrecompile.Instance.Run(inputData, MuirGlacier.Instance, isCacheable: false);
 
         using (Assert.EnterMultipleScope())
         {

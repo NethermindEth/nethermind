@@ -226,11 +226,13 @@ namespace Nethermind.Evm.Test
                     ExecutionType.CALL,
                     new ExecutionEnvironment(),
                     new StackAccessTracker(),
-                    Snapshot.Empty)
+                    Snapshot.Empty,
+                    isCacheable: false)
                 : EvmState.RentFrame(10000,
                     0,
                     0,
                     ExecutionType.CALL,
+                    false,
                     false,
                     false,
                     new ExecutionEnvironment(),

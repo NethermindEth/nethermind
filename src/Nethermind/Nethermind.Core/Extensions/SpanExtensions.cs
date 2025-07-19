@@ -191,18 +191,18 @@ namespace Nethermind.Core.Extensions
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public static int FastHash(this Span<byte> input)
-            => FastHash((ReadOnlySpan<byte>)input);
+        public static int FastHash(this Span<byte> input, int seed = 0)
+            => FastHash((ReadOnlySpan<byte>)input, seed);
 
         [SkipLocalsInit]
-        public static int FastHash(this ReadOnlySpan<byte> input)
+        public static int FastHash(this ReadOnlySpan<byte> input, int seed = 0)
         {
             // Very fast hardware accelerated non-cryptographic hash function
             var length = input.Length;
             if (length == 0) return 0;
 
             ref var b = ref MemoryMarshal.GetReference(input);
-            uint hash = s_instanceRandom + (uint)length;
+            uint hash = (seed == 0 ? s_instanceRandom : (uint)seed) + (uint)length;
             if (length < sizeof(long))
             {
                 goto Short;

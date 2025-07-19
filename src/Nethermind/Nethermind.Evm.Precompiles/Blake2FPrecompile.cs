@@ -41,7 +41,7 @@ public class Blake2FPrecompile : IPrecompile<Blake2FPrecompile>
         return rounds;
     }
 
-    public (byte[], bool) Run(ReadOnlyMemory<byte> inputData, IReleaseSpec releaseSpec)
+    public (byte[], bool) Run(ReadOnlyMemory<byte> inputData, IReleaseSpec releaseSpec, bool isCacheable)
     {
         if (inputData.Length != RequiredInputLength)
         {
