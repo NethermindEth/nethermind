@@ -1862,6 +1862,7 @@ namespace Nethermind.Evm.Test.ILEVM
                 IlEvmEnabledMode = ILMode.AOT_MODE,
                 IlEvmAnalysisThreshold = 1,
                 IlEvmAnalysisQueueMaxSize = 1,
+                IlEvmAllowedContracts = [],
             }, Prague.Instance);
 
             byte[] bytecode =
