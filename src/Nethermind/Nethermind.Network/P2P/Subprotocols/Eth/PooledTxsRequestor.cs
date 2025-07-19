@@ -100,7 +100,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth
             for (int i = 0; i < hashes.Length; i++)
             {
                 Hash256 hash = hashes[i];
-                if (!txPool.IsKnown(hash) && _pendingHashes.Set(hash))
+                if (!txPool.IsKnown(hash) && !txPool.ContainsTx(hash) && _pendingHashes.Set(hash))
                 {
                     discoveredTxHashes.Add(hash);
                 }
