@@ -79,16 +79,17 @@ public static class IlAnalyzer
 
             while (await _channel.Reader.WaitToReadAsync(_cts.Token))
             {
-
-                await foreach (var codeInfo in _channel.Reader.ReadAllAsync(_cts.Token))
+                while (_channel.Reader.TryRead(out CodeInfo? codeInfo))
                 {
+                    if (codeInfo is null)
+                        break;
+
                     int index = Task.WaitAny(taskPool);
 
                     Metrics.DecrementIlvmAotQueueSize();
 
                     taskPool[index] = Task.Run(async () => await ProcessCodeInfoAsync(config, logger, codeInfo));
                 }
-
             }
         }
         catch (Exception ex)
