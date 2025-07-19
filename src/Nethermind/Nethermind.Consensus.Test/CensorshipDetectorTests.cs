@@ -259,7 +259,7 @@ public class CensorshipDetectorTests
         return new(
             _ethereumEcdsa,
             new BlobTxStorage(),
-            new ChainHeadInfoProvider(_specProvider, _blockTree, _stateProvider, new CodeInfoRepository()),
+            new ChainHeadInfoProvider(_specProvider, _blockTree, _stateProvider, new EthereumCodeInfoRepository()),
             new TxPoolConfig(),
             new TxValidator(_specProvider.ChainId),
             _logManager,

@@ -486,6 +486,11 @@ public static class ContainerBuilderExtensions
         reg.RegistrationData.Options |= RegistrationOptions.Fixed;
         return reg;
     }
+
+    public static ContainerBuilder AddKeyedAdapter<TTo, TFrom>(this ContainerBuilder builder, Func<TFrom, TTo> mapper) where TFrom : notnull
+    {
+        return builder.AddSource(new KeyedMapperRegistrationSource<TFrom, TTo>(mapper));
+    }
 }
 
 /// <summary>

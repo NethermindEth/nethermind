@@ -17,6 +17,7 @@ using Nethermind.Core;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
+using Nethermind.Core.Test.Db;
 using Nethermind.Crypto;
 using Nethermind.Db;
 using Nethermind.Evm;
@@ -73,7 +74,7 @@ public class ReorgTests
             .WithSpecProvider(specProvider)
             .TestObject;
 
-        CodeInfoRepository codeInfoRepository = new();
+        EthereumCodeInfoRepository codeInfoRepository = new();
         TxPool.TxPool txPool = new(
             ecdsa,
             new BlobTxStorage(),

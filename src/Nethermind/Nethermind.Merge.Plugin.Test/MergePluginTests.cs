@@ -71,7 +71,6 @@ public class MergePluginTests
                 Build.MockOutNethermindApi((NethermindApi)api);
 
                 api.BlockProcessingQueue?.IsEmpty.Returns(true);
-                api.DbFactory = new MemDbFactory();
             })
             .Build();
     }

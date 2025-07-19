@@ -10,6 +10,7 @@ using Nethermind.Core;
 using Nethermind.Core.ServiceStopper;
 using Nethermind.Db;
 using Nethermind.Facade.Eth;
+using Nethermind.Init.Modules;
 using Nethermind.Logging;
 using Nethermind.Monitoring;
 using Nethermind.Monitoring.Config;
@@ -21,7 +22,7 @@ namespace Nethermind.Init.Steps;
 [RunnerStepDependencies(typeof(InitializeBlockTree))]
 public class StartMonitoring(
     IEthSyncingInfo ethSyncingInfo,
-    IDbProvider dbProvider,
+    DbTracker dbTracker,
     IPruningConfig pruningConfig,
     ISyncConfig syncConfig,
     IServiceStopper serviceStopper,
@@ -86,7 +87,7 @@ public class StartMonitoring(
         {
             monitoringService.AddMetricsUpdateAction(() =>
             {
-                foreach (KeyValuePair<string, IDbMeta> kv in dbProvider.GetAllDbMeta())
+                foreach (KeyValuePair<string, IDbMeta> kv in dbTracker.GetAllDbMeta())
                 {
                     // Note: At the moment, the metric for a columns db is combined across column.
                     IDbMeta.DbMetric dbMetric = kv.Value.GatherMetric(includeSharedCache: kv.Key == DbNames.State); // Only include shared cache if state db

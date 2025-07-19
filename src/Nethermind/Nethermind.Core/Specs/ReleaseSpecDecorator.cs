@@ -112,7 +112,7 @@ public class ReleaseSpecDecorator(IReleaseSpec spec) : IReleaseSpec
     public virtual bool UseTxAccessLists => spec.UseTxAccessLists;
     public virtual bool AddCoinbaseToTxAccessList => spec.AddCoinbaseToTxAccessList;
     public virtual bool ModExpEnabled => spec.ModExpEnabled;
-    public virtual bool Bn128Enabled => spec.Bn128Enabled;
+    public virtual bool BN254Enabled => spec.BN254Enabled;
     public virtual bool BlakeEnabled => spec.BlakeEnabled;
     public virtual bool Bls381Enabled => spec.Bls381Enabled;
     public virtual bool ChargeForTopLevelCreate => spec.ChargeForTopLevelCreate;

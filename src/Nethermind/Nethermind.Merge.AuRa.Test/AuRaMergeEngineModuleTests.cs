@@ -144,7 +144,6 @@ public class AuRaMergeEngineModuleTests : EngineModuleTests
                 {
                     // Yes getting from `TestBlockchain` itself, since steps are not run
                     // and some of these are not from DI. you know... chicken and egg, but dont forgot about rooster.
-                    api.DbProvider = DbProvider;
                     api.TxPool = TxPool;
                     api.TransactionComparerProvider = TransactionComparerProvider;
                     api.FinalizationManager = Substitute.For<IAuRaBlockFinalizationManager>();

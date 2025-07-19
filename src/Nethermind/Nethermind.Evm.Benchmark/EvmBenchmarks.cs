@@ -20,7 +20,7 @@ using Nethermind.Evm.CodeAnalysis.IL;
 using Microsoft.Diagnostics.Runtime;
 using Nethermind.Evm.Config;
 using Microsoft.Diagnostics.Tracing.Parsers;
-using Nethermind.Evm.Tracing.GethStyle;
+using Nethermind.Blockchain.Tracing.GethStyle;
 using static System.Runtime.InteropServices.JavaScript.JSType;
 using System.Collections.Generic;
 using Nethermind.Blockchain;
@@ -31,7 +31,7 @@ using Microsoft.Extensions.Options;
 using BenchmarkDotNet.Running;
 using Nethermind.Specs.Forks;
 using Nethermind.Abi;
-using Nethermind.Evm.Tracing.GethStyle.Custom.JavaScript;
+using Nethermind.Blockchain.Tracing.GethStyle.Custom.JavaScript;
 using Nethermind.Evm.Test.ILEVM;
 using Nethermind.Crypto;
 using Nethermind.Evm.Test;
@@ -95,14 +95,16 @@ namespace Nethermind.Evm.Benchmark
 
             bytecode = _bytecode;
 
-            codeInfoRepository = new TestCodeInfoRepository();
 
             ILogManager logmanager = NullLogManager.Instance;
 
             _logger = logmanager.GetClassLogger();
 
-            _virtualMachine = new VirtualMachine(_blockhashProvider, MainnetSpecProvider.Instance, logmanager, vmConfig);
-
+            EthereumCodeInfoRepository _codeInfoRepository = new();
+            codeInfoRepository = new TestCodeInfoRepository();
+            _virtualMachine = new VirtualMachine(_blockhashProvider, MainnetSpecProvider.Instance, LimboLogs.Instance);
+            _virtualMachine.SetBlockExecutionContext(new BlockExecutionContext(_header, _spec));
+            _virtualMachine.SetTxExecutionContext(new TxExecutionContext(Address.Zero, codeInfoRepository, null, 0));
             var (address, targetCodeHash) = InsertCode(bytecode);
 
             var driver =
