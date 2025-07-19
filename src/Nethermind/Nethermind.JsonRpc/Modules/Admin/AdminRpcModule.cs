@@ -10,6 +10,7 @@ using Nethermind.Blockchain.Find;
 using Nethermind.Config;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.JsonRpc.Modules.Admin.Utils;
 using Nethermind.Network;
 using Nethermind.Network.Config;
 using Nethermind.Specs.ChainSpecStyle;
@@ -81,12 +82,12 @@ public class AdminRpcModule : IAdminRpcModule
 
     private void UpdateEthProtocolInfo()
     {
-        _nodeInfo.Protocols["eth"].Difficulty = _blockTree.Head?.TotalDifficulty ?? 0;
-        _nodeInfo.Protocols["eth"].NewtorkId = _blockTree.NetworkId;
-        _nodeInfo.Protocols["eth"].ChainId = _blockTree.ChainId;
-        _nodeInfo.Protocols["eth"].HeadHash = _blockTree.HeadHash;
-        _nodeInfo.Protocols["eth"].GenesisHash = _blockTree.GenesisHash;
-        _nodeInfo.Protocols["eth"].Config = _parameters;
+        _nodeInfo.Protocols[NetworkConstants.EthPrefix].Difficulty = _blockTree.Head?.TotalDifficulty ?? 0;
+        _nodeInfo.Protocols[NetworkConstants.EthPrefix].NewtorkId = _blockTree.NetworkId;
+        _nodeInfo.Protocols[NetworkConstants.EthPrefix].ChainId = _blockTree.ChainId;
+        _nodeInfo.Protocols[NetworkConstants.EthPrefix].HeadHash = _blockTree.HeadHash;
+        _nodeInfo.Protocols[NetworkConstants.EthPrefix].GenesisHash = _blockTree.GenesisHash;
+        _nodeInfo.Protocols[NetworkConstants.EthPrefix].Config = _parameters;
     }
 
     public async Task<ResultWrapper<string>> admin_addPeer(string enode, bool addToStaticNodes = false)
