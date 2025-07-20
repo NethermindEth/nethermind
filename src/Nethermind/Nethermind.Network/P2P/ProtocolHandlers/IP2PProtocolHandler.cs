@@ -13,6 +13,6 @@ namespace Nethermind.Network.P2P.ProtocolHandlers
         bool HasAvailableCapability(Capability capability);
         bool HasAgreedCapability(Capability capability);
         void AddSupportedCapability(Capability capability);
-        IEnumerable<string> GetCapabilitiesForAdmin();
+        IEnumerable<Capability> GetCapabilitiesForAdmin();
     }
 }

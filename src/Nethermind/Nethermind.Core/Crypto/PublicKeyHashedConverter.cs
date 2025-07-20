@@ -4,12 +4,11 @@
 using System;
 using System.Text.Json.Serialization;
 using System.Text.Json;
-
 using Nethermind.Core.Crypto;
 
 namespace Nethermind.Serialization.Json;
 
-public class PublicKeyConverter : JsonConverter<PublicKey>
+public class PublicKeyHashedConverter : JsonConverter<PublicKey>
 {
     public override PublicKey? Read(
         ref Utf8JsonReader reader,
@@ -32,11 +31,8 @@ public class PublicKeyConverter : JsonConverter<PublicKey>
         return new PublicKey(bytes);
     }
 
-    public override void Write(
-        Utf8JsonWriter writer,
-        PublicKey publicKey,
-        JsonSerializerOptions options)
+    public override void Write(Utf8JsonWriter writer, PublicKey publicKey, JsonSerializerOptions options)
     {
-        ByteArrayConverter.Convert(writer, publicKey.Bytes);
+        writer.WriteStringValue(publicKey.Hash.ToString(false));
     }
 }

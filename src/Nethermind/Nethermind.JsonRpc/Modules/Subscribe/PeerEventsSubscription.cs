@@ -9,6 +9,7 @@ using Nethermind.Network.P2P;
 using Nethermind.Network.Rlpx;
 using Nethermind.Network.P2P.EventArg;
 using Nethermind.Stats.Model;
+using Nethermind.Core.Crypto;
 
 namespace Nethermind.JsonRpc.Modules.Subscribe
 {
@@ -126,7 +127,7 @@ namespace Nethermind.JsonRpc.Modules.Subscribe
             });
         }
 
-        private (string localHost, string remoteAddress, string peerId) GetPeerEventInfo(Node node)
+        private (string localHost, string remoteAddress, PublicKey peerId) GetPeerEventInfo(Node node)
         {
             var peer = new Peer(node);
             var peerInfo = new PeerInfo(peer, false);

@@ -7,18 +7,14 @@ namespace Nethermind.JsonRpc.Modules.Admin.Models
 {
     public class EthProtocolDetails
     {
-        [JsonPropertyName("version")]
         public int Version { get; set; }
 
-        [JsonPropertyName("earliestBlock")]
         [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
         public string? EarliestBlock { get; set; }
 
-        [JsonPropertyName("latestBlock")]
         [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
         public string? LatestBlock { get; set; }
 
-        [JsonPropertyName("latestBlockHash")]
         [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
         public string? LatestBlockHash { get; set; }
     }

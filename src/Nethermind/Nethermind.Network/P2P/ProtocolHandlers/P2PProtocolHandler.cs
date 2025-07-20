@@ -347,13 +347,12 @@ public class P2PProtocolHandler(
         SubprotocolRequested = null;
     }
 
-    public IEnumerable<string> GetCapabilitiesForAdmin()
+    public IEnumerable<Capability> GetCapabilitiesForAdmin()
     {
         var capabilities = _agreedCapabilities?.Any() == true
             ? _agreedCapabilities
             : _supportedCapabilities;
 
-        return capabilities?.Select(cap => $"{cap.ProtocolCode}/{cap.Version}")
-            ?? Enumerable.Empty<string>();
+        return capabilities ?? Enumerable.Empty<Capability>();
     }
 }

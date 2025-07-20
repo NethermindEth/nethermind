@@ -7,19 +7,10 @@ namespace Nethermind.JsonRpc.Modules.Admin
 {
     public class NetworkInfo
     {
-        [JsonPropertyName("localAddress")]
         public string LocalAddress { get; set; } = string.Empty;
-
-        [JsonPropertyName("remoteAddress")]
         public string RemoteAddress { get; set; } = string.Empty;
-
-        [JsonPropertyName("inbound")]
         public bool Inbound { get; set; }
-
-        [JsonPropertyName("trusted")]
         public bool Trusted { get; set; }
-
-        [JsonPropertyName("static")]
         public bool Static { get; set; }
 
         [JsonIgnore]
