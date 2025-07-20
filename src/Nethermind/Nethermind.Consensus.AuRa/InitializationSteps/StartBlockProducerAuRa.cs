@@ -4,6 +4,7 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using Autofac;
 using Autofac.Features.AttributeFilters;
 using Nethermind.Abi;
 using Nethermind.Blockchain;
@@ -64,13 +65,14 @@ public class StartBlockProducerAuRa(
     ITxPool txPool,
     IStateReader apiStateReader,
     ITransactionComparerProvider transactionComparerProvider,
-    CompositeBlockPreprocessorStep compositeBlockPreprocessorStep,
     [KeyFilter(IProtectedPrivateKey.NodeKey)] IProtectedPrivateKey protectedPrivateKey,
     ICryptoRandom cryptoRandom,
     IBlockValidator blockValidator,
     IRewardCalculatorSource rewardCalculatorSource,
     IAuRaStepCalculator stepCalculator,
     AuRaGasLimitOverrideFactory gasLimitOverrideFactory,
+    IWorldStateManager worldStateManager,
+    ILifetimeScope lifetimeScope,
     ILogManager logManager)
 {
     private readonly AuRaChainSpecEngineParameters _parameters = chainSpec.EngineChainSpecParametersProvider
@@ -125,14 +127,14 @@ public class StartBlockProducerAuRa(
         return blockProducer;
     }
 
-    private BlockProcessor CreateBlockProcessor(IReadOnlyTxProcessingScope changeableTxProcessingEnv)
+    private BlockProcessor CreateBlockProcessor(ITransactionProcessor txProcessor, IWorldState worldState)
     {
         ITxFilter auRaTxFilter = apiTxAuRaFilterBuilders.CreateAuRaTxFilter(
             new LocalTxFilter(engineSigner));
 
         _validator = new AuRaValidatorFactory(abiEncoder,
-                changeableTxProcessingEnv.WorldState,
-                changeableTxProcessingEnv.TransactionProcessor,
+                worldState,
+                txProcessor,
                 blockTree,
                 readOnlyTxProcessingEnvFactory.Create(),
                 receiptStorage,
@@ -157,9 +159,6 @@ public class StartBlockProducerAuRa(
 
         IDictionary<long, IDictionary<Address, byte[]>> rewriteBytecode = _parameters.RewriteBytecode;
         ContractRewriter? contractRewriter = rewriteBytecode?.Count > 0 ? new ContractRewriter(rewriteBytecode) : null;
-
-        ITransactionProcessor txProcessor = changeableTxProcessingEnv.TransactionProcessor;
-        IWorldState worldState = changeableTxProcessingEnv.WorldState;
 
         var transactionExecutor = new BlockProcessor.BlockProductionTransactionsExecutor(
             new BuildUpTransactionProcessorAdapter(txProcessor),
@@ -258,24 +257,17 @@ public class StartBlockProducerAuRa(
         {
             ReadOnlyBlockTree readOnlyBlockTree = blockTree.AsReadOnly();
 
-            IReadOnlyTxProcessorSource txProcessingEnv = readOnlyTxProcessingEnvFactory.Create();
-            IReadOnlyTxProcessingScope scope = txProcessingEnv.Build(null);
-            BlockProcessor blockProcessor = CreateBlockProcessor(scope);
+            IWorldState worldState = worldStateManager.CreateResettableWorldState();
+            ILifetimeScope innerLifetime = lifetimeScope.BeginLifetimeScope((builder) => builder
+                .AddSingleton<IWorldState>(worldState)
+                .AddSingleton<BlockchainProcessor.Options>(BlockchainProcessor.Options.NoReceipts)
+                .AddSingleton<IBlockProcessor, ITransactionProcessor, IWorldState>(CreateBlockProcessor)
+                .AddDecorator<IBlockchainProcessor, OneTimeChainProcessor>());
+            lifetimeScope.Disposer.AddInstanceForAsyncDisposal(innerLifetime);
 
-            IBlockchainProcessor blockchainProcessor =
-                new BlockchainProcessor(
-                    readOnlyBlockTree,
-                    blockProcessor,
-                    compositeBlockPreprocessorStep,
-                    apiStateReader,
-                    logManager,
-                    BlockchainProcessor.Options.NoReceipts);
+            IBlockchainProcessor chainProcessor = innerLifetime.Resolve<IBlockchainProcessor>();
 
-            OneTimeChainProcessor chainProcessor = new(
-                scope.WorldState,
-                blockchainProcessor);
-
-            return new BlockProducerEnv(readOnlyBlockTree, chainProcessor, scope.WorldState, CreateTxSourceForProducer());
+            return new BlockProducerEnv(readOnlyBlockTree, chainProcessor, worldState, CreateTxSourceForProducer());
         }
 
         return _blockProducerContext ??= Create();
