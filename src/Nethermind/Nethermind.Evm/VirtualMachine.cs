@@ -1078,7 +1078,7 @@ public sealed unsafe partial class VirtualMachine(
 
             if(typeof(TEnablePrecompilation) == typeof(OnFlag))
             {
-                // IlAnalyzer.Analyse(env.CodeInfo as CodeInfo, ILMode.AOT_MODE, _vmConfig, _logger);
+                //if (env.CodeInfo.CodeHash is not null) IlAnalyzer.Analyse(env.CodeInfo as CodeInfo, ILMode.AOT_MODE, _vmConfig, _logger);
                 env.CodeInfo.NoticeExecution(_vmConfig, _logger, Spec);
             }
         }
