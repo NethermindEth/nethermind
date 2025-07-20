@@ -65,6 +65,7 @@ namespace Nethermind.Consensus.Clique
 
             Span<byte> signatureBytes = header.ExtraData.AsSpan(header.ExtraData.Length - extraSeal, extraSeal);
             Signature signature = new(signatureBytes);
+            signature.V += Signature.VOffset;
             ValueHash256 message = CalculateCliqueHeaderHash(header);
             Address address = _ecdsa.RecoverAddress(signature, in message);
             _signatures.Set(header.Hash, address);
