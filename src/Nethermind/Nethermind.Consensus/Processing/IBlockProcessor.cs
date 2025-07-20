@@ -13,7 +13,7 @@ using Nethermind.Evm.Tracing;
 
 namespace Nethermind.Consensus.Processing
 {
-    public interface IBlockProcessor
+    public interface IBlockProcessor : IAsyncDisposable
     {
         /// <summary>
         /// Processes a group of blocks starting with a state defined by the <paramref name="newBranchStateRoot"/>.

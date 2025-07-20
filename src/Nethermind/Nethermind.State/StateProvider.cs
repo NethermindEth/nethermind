@@ -54,6 +54,8 @@ namespace Nethermind.State
         internal readonly StateTree _tree;
         private readonly Func<AddressAsKey, Account> _getStateFromTrie;
 
+        private Task _codeFlushTask = Task.CompletedTask;
+
         private readonly bool _populatePreBlockCache;
         private bool _needsStateRootUpdate;
 
@@ -515,14 +517,17 @@ namespace Nethermind.State
             }
         }
 
+        public Task WaitForCodeCommit() => _codeFlushTask;
+
         public void Commit(IReleaseSpec releaseSpec, bool commitRoots, bool isGenesis)
             => Commit(releaseSpec, NullStateTracer.Instance, commitRoots, isGenesis);
 
         public void Commit(IReleaseSpec releaseSpec, IWorldStateTracer stateTracer, bool commitRoots, bool isGenesis)
         {
-            Task codeFlushTask = !commitRoots || _codeBatch is null || _codeBatch.Count == 0
-                ? Task.CompletedTask
-                : CommitCodeAsync();
+            if (commitRoots || _codeBatch?.Count > 0)
+            {
+                CommitCodeAsync();
+            }
 
             bool isTracing = _logger.IsTrace;
             int stepsBack = _changes.Count - 1;
@@ -652,15 +657,13 @@ namespace Nethermind.State
                 FlushToTree();
             }
 
-            codeFlushTask.GetAwaiter().GetResult();
-
-            Task CommitCodeAsync()
+            void CommitCodeAsync()
             {
                 Dictionary<Hash256AsKey, byte[]> dict = Interlocked.Exchange(ref _codeBatch, null);
-                if (dict is null) return Task.CompletedTask;
+                if (dict is null) return;
                 _codeBatchAlternate = default;
 
-                return Task.Run(() =>
+                _codeFlushTask = Task.Run(() =>
                 {
                     using (var batch = _codeDb.StartWriteBatch())
                     {

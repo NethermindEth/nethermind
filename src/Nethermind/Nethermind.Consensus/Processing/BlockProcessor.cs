@@ -51,7 +51,7 @@ public partial class BlockProcessor(
     : IBlockProcessor
 {
     private readonly ILogger _logger = logManager.GetClassLogger();
-    protected readonly WorldStateMetricsDecorator _stateProvider = new WorldStateMetricsDecorator(stateProvider);
+    protected readonly IWorldState _stateProvider = stateProvider;
     private readonly IReceiptsRootCalculator _receiptsRootCalculator = ReceiptsRootCalculator.Instance;
     private Task _clearTask = Task.CompletedTask;
 
@@ -150,7 +150,6 @@ public partial class BlockProcessor(
 
                 if (notReadOnly)
                 {
-                    Metrics.StateMerkleizationTime = _stateProvider.StateMerkleizationTime;
                     BlockProcessed?.Invoke(this, new BlockProcessedEventArgs(processedBlock, receipts));
                 }
 
@@ -213,11 +212,11 @@ public partial class BlockProcessor(
         if (preWarmTask is not null)
         {
             // Can start clearing caches in background
-            _clearTask = preWarmTask.ContinueWith(_clearCaches, TaskContinuationOptions.RunContinuationsAsynchronously);
+            _clearTask = preWarmTask.ContinueWith(_clearCaches).ContinueWith((t) => _stateProvider.WaitForCodeCommit()).Unwrap();
         }
         else if (preWarmer is not null)
         {
-            _clearTask = Task.Run(preWarmer.ClearCaches);
+            _clearTask = Task.Run(preWarmer.ClearCaches).ContinueWith((t) => _stateProvider.WaitForCodeCommit()).Unwrap();
         }
     }
 
@@ -499,6 +498,8 @@ public partial class BlockProcessor(
             }
         }
     }
+
+    public async ValueTask DisposeAsync() => await _clearTask;
 
     private class TxHashCalculator(Block suggestedBlock) : IThreadPoolWorkItem
     {

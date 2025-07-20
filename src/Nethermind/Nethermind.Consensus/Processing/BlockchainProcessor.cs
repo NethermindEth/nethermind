@@ -305,6 +305,10 @@ public sealed class BlockchainProcessor : IBlockchainProcessor, IBlockProcessing
         {
             if (_logger.IsError) _logger.Error($"{nameof(BlockchainProcessor)} encountered an exception.", ex);
         }
+        finally
+        {
+            await _blockProcessor.DisposeAsync();
+        }
     }
 
     private bool IsProcessingBlock { get => _isProcessingBlock; set { _isProcessingBlock = value; _blockTree.IsProcessingBlock = value; } }

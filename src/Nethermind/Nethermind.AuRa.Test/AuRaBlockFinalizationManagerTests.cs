@@ -5,6 +5,7 @@ using System;
 using System.Collections;
 using System.Collections.Generic;
 using System.Linq;
+using System.Threading.Tasks;
 using FluentAssertions;
 using Nethermind.Blockchain;
 using Nethermind.Consensus.AuRa;
@@ -38,6 +39,12 @@ namespace Nethermind.AuRa.Test
             _validSealerStrategy = Substitute.For<IValidSealerStrategy>();
 
             _validatorStore.GetValidators(Arg.Any<long?>()).Returns(new Address[] { TestItem.AddressA, TestItem.AddressB, TestItem.AddressC });
+        }
+
+        [TearDown]
+        public async Task TearDown()
+        {
+            await _blockProcessor.DisposeAsync();
         }
 
         [Test]

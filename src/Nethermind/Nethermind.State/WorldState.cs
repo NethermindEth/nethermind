@@ -3,6 +3,7 @@
 
 using System;
 using System.Runtime.CompilerServices;
+using System.Threading.Tasks;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
@@ -105,6 +106,8 @@ namespace Nethermind.State
         {
             _transientStorageProvider.Set(storageCell, newValue);
         }
+        public Task WaitForCodeCommit() => _stateProvider.WaitForCodeCommit();
+
         public void Reset(bool resetBlockChanges = true)
         {
             _stateProvider.Reset(resetBlockChanges);
