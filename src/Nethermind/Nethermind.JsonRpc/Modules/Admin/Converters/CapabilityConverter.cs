@@ -5,6 +5,8 @@ using System;
 using System.Buffers;
 using System.Buffers.Text;
 using System.Collections.Generic;
+using System.Diagnostics;
+using System.Diagnostics.CodeAnalysis;
 using System.Runtime.CompilerServices;
 using System.Text.Json;
 using System.Text.Json.Serialization;
@@ -14,18 +16,22 @@ namespace Nethermind.JsonRpc.Modules.Admin.Converters
 {
     public class CapabilityConverter : JsonConverter<IReadOnlyList<Capability>>
     {
-        public override bool HandleNull => false;
+        private static readonly IReadOnlyList<Capability> EmptyCapabilities = Array.Empty<Capability>();
 
-        [SkipLocalsInit]
         public override IReadOnlyList<Capability>? Read(ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options)
         {
+            if (reader.TokenType == JsonTokenType.Null)
+            {
+                return null;
+            }
+
             if (reader.TokenType != JsonTokenType.StartArray)
             {
-                ThrowInvalidToken("Expected StartArray token");
+                ThrowJsonException();
             }
 
             var capabilities = new List<Capability>();
-            var depth = reader.CurrentDepth;
+            int depth = reader.CurrentDepth;
 
             while (reader.Read())
             {
@@ -47,29 +53,34 @@ namespace Nethermind.JsonRpc.Modules.Admin.Converters
                 }
             }
 
-            return capabilities;
+            return capabilities.Count > 0 ? capabilities : EmptyCapabilities;
         }
 
         public override void Write(Utf8JsonWriter writer, IReadOnlyList<Capability> value, JsonSerializerOptions options)
         {
+            if (value is null)
+            {
+                writer.WriteNullValue();
+                return;
+            }
+
             writer.WriteStartArray();
 
             for (int i = 0; i < value.Count; i++)
             {
-                WriteCapabilityValue(writer, value[i]);
+                WriteCapability(writer, value[i]);
             }
 
             writer.WriteEndArray();
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        private static void WriteCapabilityValue(Utf8JsonWriter writer, Capability capability)
+        private static void WriteCapability(Utf8JsonWriter writer, Capability capability)
         {
             writer.WriteStringValue($"{capability.ProtocolCode}/{capability.Version}");
         }
 
         [SkipLocalsInit]
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
         private static bool TryParseCapability(ref Utf8JsonReader reader, out Capability capability)
         {
             capability = default;
@@ -90,22 +101,19 @@ namespace Nethermind.JsonRpc.Modules.Admin.Converters
             }
 
             ReadOnlySpan<byte> protocolSpan = valueSpan[..separatorIndex];
-            string protocolCode = System.Text.Encoding.UTF8.GetString(protocolSpan);
-
             ReadOnlySpan<byte> versionSpan = valueSpan[(separatorIndex + 1)..];
-            if (!Utf8Parser.TryParse(versionSpan, out int version, out _))
+
+            if (!Utf8Parser.TryParse(versionSpan, out int version, out _) || version < 0)
             {
                 return false;
             }
 
+            string protocolCode = System.Text.Encoding.UTF8.GetString(protocolSpan);
             capability = new Capability(protocolCode, version);
             return true;
         }
 
-        [MethodImpl(MethodImplOptions.NoInlining)]
-        private static void ThrowInvalidToken(string message)
-        {
-            throw new JsonException(message);
-        }
+        [DoesNotReturn, StackTraceHidden]
+        private static void ThrowJsonException() => throw new JsonException();
     }
 }
