@@ -6,7 +6,6 @@ using System.Numerics;
 using Nethermind.Core;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
-using Nethermind.Evm.Precompiles;
 using Nethermind.Int256;
 
 namespace Nethermind.Evm.Precompiles;
@@ -25,6 +24,8 @@ public class ModExpPrecompilePreEip2565 : IPrecompile<ModExpPrecompilePreEip2565
     }
 
     public static Address Address { get; } = Address.FromNumber(5);
+
+    public static string Name => "MODEXP";
 
     public long BaseGasCost(IReleaseSpec releaseSpec) => 0L;
 
@@ -60,7 +61,7 @@ public class ModExpPrecompilePreEip2565 : IPrecompile<ModExpPrecompilePreEip2565
 
         UInt256 complexity = MultComplexity(UInt256.Max(baseLength, modulusLength));
 
-        byte[] expSignificantBytes =
+        ReadOnlySpan<byte> expSignificantBytes =
             inputData.Span.SliceWithZeroPaddingEmptyOnError(96 + (int)baseLength, (int)UInt256.Min(expLength, 32));
 
         UInt256 lengthOver32 = expLength <= 32 ? 0 : expLength - 32;
@@ -107,13 +108,13 @@ public class ModExpPrecompilePreEip2565 : IPrecompile<ModExpPrecompilePreEip2565
         return adjustedExponentLength * adjustedExponentLength / 16 + 480 * adjustedExponentLength - 199680;
     }
 
-    private static UInt256 AdjustedExponentLength(in UInt256 lengthOver32, byte[] exponent)
+    private static UInt256 AdjustedExponentLength(in UInt256 lengthOver32, ReadOnlySpan<byte> exponent)
     {
         bool overflow = false;
         bool underflow = false;
         UInt256 result;
 
-        int leadingZeros = exponent.AsSpan().LeadingZerosCount();
+        int leadingZeros = exponent.LeadingZerosCount();
         if (leadingZeros == exponent.Length)
         {
             overflow |= UInt256.MultiplyOverflow(lengthOver32, Eight, out result);

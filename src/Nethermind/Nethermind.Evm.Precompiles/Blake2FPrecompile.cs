@@ -6,7 +6,6 @@ using Nethermind.Core;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.Crypto.Blake2;
-using Nethermind.Evm.Precompiles;
 
 namespace Nethermind.Evm.Precompiles;
 
@@ -19,6 +18,8 @@ public class Blake2FPrecompile : IPrecompile<Blake2FPrecompile>
     public static readonly Blake2FPrecompile Instance = new();
 
     public static Address Address { get; } = Address.FromNumber(9);
+
+    public static string Name => "BLAKE2F";
 
     public long BaseGasCost(IReleaseSpec releaseSpec) => 0;
 

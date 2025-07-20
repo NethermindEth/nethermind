@@ -25,6 +25,8 @@ public class PairingCheckPrecompile : IPrecompile<PairingCheckPrecompile>
 
     public static Address Address { get; } = Address.FromNumber(0xf);
 
+    public static string Name => "BLS12_PAIRING_CHECK";
+
     public long BaseGasCost(IReleaseSpec releaseSpec) => 37700L;
 
     public long DataGasCost(ReadOnlyMemory<byte> inputData, IReleaseSpec releaseSpec) => 32600L * (inputData.Length / PairSize);

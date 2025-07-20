@@ -23,6 +23,8 @@ public class MapFpToG1Precompile : IPrecompile<MapFpToG1Precompile>
 
     public static Address Address { get; } = Address.FromNumber(0x10);
 
+    public static string Name => "BLS12_MAP_FP_TO_G1";
+
     public long BaseGasCost(IReleaseSpec releaseSpec) => 5500L;
 
     public long DataGasCost(ReadOnlyMemory<byte> inputData, IReleaseSpec releaseSpec) => 0L;

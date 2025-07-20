@@ -8,7 +8,6 @@ using Nethermind.Core;
 using Nethermind.Evm.CodeAnalysis;
 using Nethermind.Evm.Precompiles;
 using Nethermind.Evm.Precompiles.Bls;
-using Nethermind.Evm.Precompiles.Snarks;
 using Nethermind.State;
 
 namespace Nethermind.Blockchain;
@@ -26,9 +25,9 @@ public class EthereumCodeInfoRepository(
             [Ripemd160Precompile.Address] = new(Ripemd160Precompile.Instance),
             [IdentityPrecompile.Address] = new(IdentityPrecompile.Instance),
 
-            [Bn254AddPrecompile.Address] = new(Bn254AddPrecompile.Instance),
-            [Bn254MulPrecompile.Address] = new(Bn254MulPrecompile.Instance),
-            [Bn254PairingPrecompile.Address] = new(Bn254PairingPrecompile.Instance),
+            [BN254AddPrecompile.Address] = new(BN254AddPrecompile.Instance),
+            [BN254MulPrecompile.Address] = new(BN254MulPrecompile.Instance),
+            [BN254PairingPrecompile.Address] = new(BN254PairingPrecompile.Instance),
             [ModExpPrecompile.Address] = new(ModExpPrecompile.Instance),
 
             [Blake2FPrecompile.Address] = new(Blake2FPrecompile.Instance),
