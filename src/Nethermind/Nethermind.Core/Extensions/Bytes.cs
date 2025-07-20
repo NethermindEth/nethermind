@@ -182,7 +182,7 @@ namespace Nethermind.Core.Extensions
             return bytes.IndexOfAnyExcept((byte)0) < 0;
         }
 
-        public static int LeadingZerosCount(this Span<byte> bytes, int startIndex = 0)
+        public static int LeadingZerosCount(this ReadOnlySpan<byte> bytes, int startIndex = 0)
         {
             int nonZeroIndex = bytes[startIndex..].IndexOfAnyExcept((byte)0);
             return nonZeroIndex < 0 ? bytes.Length - startIndex : nonZeroIndex;
