@@ -135,11 +135,12 @@ public sealed unsafe partial class VirtualMachine(
     /// <exception cref="EvmException">
     /// Thrown when an EVM-specific error occurs during execution.
     /// </exception>
-    public TransactionSubstate ExecuteTransaction<TTracingInst>(
+    public TransactionSubstate ExecuteTransaction<TTracingInst, TEnablePrecompilation>(
         EvmState evmState,
         IWorldState worldState,
         ITxTracer txTracer)
         where TTracingInst : struct, IFlag
+        where TEnablePrecompilation : struct, IFlag
     {
         // Initialize dependencies for transaction tracing and state access.
         _txTracer = txTracer;
@@ -191,9 +192,9 @@ public sealed unsafe partial class VirtualMachine(
                     // Execute the regular EVM call if valid code is present; otherwise, mark as invalid.
                     if (_currentState.Env.CodeInfo is not null)
                     {
-                        callResult = _txTracer.IsTracing
-                            ? ExecuteCall<TTracingInst, OffFlag>(_previousCallResult, previousCallOutput, _previousCallOutputDestination)
-                            : ExecuteCall<TTracingInst, OnFlag>(_previousCallResult, previousCallOutput, _previousCallOutputDestination);
+                        callResult = _vmConfig.IsVmOptimizationEnabled
+                            ? ExecuteCall<TTracingInst, TEnablePrecompilation>(_previousCallResult, previousCallOutput, _previousCallOutputDestination)
+                            : ExecuteCall<TTracingInst, OffFlag>(_previousCallResult, previousCallOutput, _previousCallOutputDestination);
                     }
                     else
                     {
@@ -1056,6 +1057,7 @@ public sealed unsafe partial class VirtualMachine(
         ZeroPaddedSpan previousCallOutput,
         scoped in UInt256 previousCallOutputDestination)
         where TTracingInst : struct, IFlag
+        where TEnablePrecompilation : struct, IFlag
     {
         EvmState vmState = _currentState;
         // Obtain a reference to the execution environment for convenience.
