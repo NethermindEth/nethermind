@@ -2,6 +2,8 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using Nethermind.Blockchain.Tracing;
+using Nethermind.Consensus.Processing;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 
@@ -9,18 +11,31 @@ namespace Nethermind.Consensus.Stateless;
 
 public interface IWitnessCollector
 {
-    Witness GetWitness(Hash256 parentHash, Hash256 parentStateRoot);
+    Witness GetWitness(BlockHeader parentHeader, Block block);
 }
 
 
-public class WitnessCollector(WitnessGeneratingBlockFinder blockFinder, WitnessGeneratingWorldState worldState) : IWitnessCollector
+public class WitnessCollector : IWitnessCollector
 {
-    public Witness GetWitness(Hash256 parentHash, Hash256 parentStateRoot)
+    private WitnessGeneratingWorldState _worldState;
+    private WitnessGeneratingBlockFinder _blockFinder;
+    private IBlockProcessor _blockProcessor;
+
+    internal WitnessCollector(WitnessGeneratingBlockFinder blockFinder, WitnessGeneratingWorldState worldState, IBlockProcessor blockProcessor)
     {
-        (byte[][] stateNodes, byte[][] codes) = worldState.GetStateWitness(parentStateRoot);
+        _worldState = worldState;
+        _blockFinder = blockFinder;
+        _blockProcessor = blockProcessor;
+    }
+
+    public Witness GetWitness(BlockHeader parentHeader, Block block)
+    {
+        _blockProcessor.Process(parentHeader, [block],
+            ProcessingOptions.DoNotUpdateHead & ProcessingOptions.ReadOnlyChain, NullBlockTracer.Instance);
+        (byte[][] stateNodes, byte[][] codes) = _worldState.GetStateWitness(parentHeader.StateRoot);
         return new Witness()
         {
-            Headers = blockFinder.GetWitnessHeaders(parentHash),
+            Headers = _blockFinder.GetWitnessHeaders(parentHeader.Hash),
             Codes = codes,
             State = stateNodes,
         };

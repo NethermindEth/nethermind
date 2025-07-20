@@ -22,7 +22,7 @@ namespace Nethermind.Consensus.Stateless;
 
 public interface IWitnessGeneratingBlockProcessingEnv
 {
-    (IBlockProcessor, WitnessCollector) CreateWitnessGeneratingBlockProcessor();
+    WitnessCollector CreateWitnessCollector();
 }
 
 public class WitnessGeneratingBlockProcessingEnv(
@@ -39,7 +39,7 @@ public class WitnessGeneratingBlockProcessingEnv(
         return new TransactionProcessor(specProvider, state, vm, new EthereumCodeInfoRepository(), logManager);
     }
 
-    public (IBlockProcessor, WitnessCollector) CreateWitnessGeneratingBlockProcessor()
+    public WitnessCollector CreateWitnessCollector()
     {
         WitnessGeneratingWorldState state = new(baseWorldState);
         WitnessGeneratingBlockFinder blockFinder = new(blockTree);
@@ -52,7 +52,7 @@ public class WitnessGeneratingBlockProcessingEnv(
         IBlockValidator blockValidator = new BlockValidator(new TxValidator(specProvider.ChainId), headerValidator,
             new UnclesValidator(blockTree, headerValidator, logManager), specProvider, logManager);
 
-        return (new BlockProcessor(
+        BlockProcessor blockProcessor = new(
             specProvider,
             blockValidator,
             NoBlockRewards.Instance, // TODO: pass block rewards
@@ -63,6 +63,7 @@ public class WitnessGeneratingBlockProcessingEnv(
             new BlockhashStore(specProvider, state),
             logManager,
             new WithdrawalProcessor(state, logManager),
-            new ExecutionRequestsProcessor(txProcessor)), new WitnessCollector(blockFinder, state));
+            new ExecutionRequestsProcessor(txProcessor));
+        return new WitnessCollector(blockFinder, state, blockProcessor);
     }
 }

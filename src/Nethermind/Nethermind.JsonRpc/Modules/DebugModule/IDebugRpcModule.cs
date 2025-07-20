@@ -123,7 +123,5 @@ public interface IDebugRpcModule : IRpcModule
         SimulatePayload<TransactionForRpc> payload, BlockParameter? blockParameter = null, GethTraceOptions? options = null);
 
     [JsonRpcMethod(Description = "TODO")]
-    ResultWrapper<bool> debug_executeWitness(BlockParameter blockParameter, Witness witness);
-    [JsonRpcMethod(Description = "TODO")]
     ResultWrapper<Witness> debug_executionWitness(BlockParameter blockParameter);
 }

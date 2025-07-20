@@ -51,8 +51,6 @@ namespace Nethermind.Facade
         bool TryGetLogs(int filterId, out IEnumerable<FilterLog> filterLogs, CancellationToken cancellationToken = default);
         void RunTreeVisitor<TCtx>(ITreeVisitor<TCtx> treeVisitor, Hash256 stateRoot) where TCtx : struct, INodeContext<TCtx>;
         bool HasStateForBlock(BlockHeader? baseBlock);
-
-        bool ExecuteWitness(Block block, Witness witness);
-        Witness GenerateExecutionWitness(Block block, Block parent);
+        Witness GenerateExecutionWitness(BlockHeader parent, Block block);
     }
 }

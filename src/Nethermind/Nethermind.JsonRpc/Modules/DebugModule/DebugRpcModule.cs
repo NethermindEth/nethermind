@@ -553,10 +553,6 @@ public class DebugRpcModule(
         error = default!;
         return block;
     }
-    public ResultWrapper<bool> debug_executeWitness(BlockParameter blockParameter, Witness witness)
-    {
-        throw new NotImplementedException();
-    }
 
     public ResultWrapper<Witness> debug_executionWitness(BlockParameter blockParameter)
     {
@@ -566,12 +562,12 @@ public class DebugRpcModule(
             return ResultWrapper<Witness>.Fail($"Unable to find block {blockParameter}");
         }
 
-        Block? parent = blockFinder.FindBlock(block.ParentHash);
+        BlockHeader? parent = blockFinder.FindHeader(block.ParentHash);
         if (parent is null)
         {
             return ResultWrapper<Witness>.Fail($"Unable to find parent for block {blockParameter}");
         }
         return ResultWrapper<Witness>.Success(
-            blockchainBridge.GenerateExecutionWitness(block, parent));
+            blockchainBridge.GenerateExecutionWitness(parent, block));
     }
 }
