@@ -241,6 +241,7 @@ public abstract class VirtualMachineTestsBase
         GetLogManager().GetClassLogger().Debug("Committing initial tree");
         TestState.CommitTree(0);
         GetLogManager().GetClassLogger().Debug("Committed initial tree");
+        TestState.WaitForCodeCommit().GetAwaiter().GetResult();
 
         transaction ??= Build.A.Transaction
             .WithGasLimit(gasLimit)

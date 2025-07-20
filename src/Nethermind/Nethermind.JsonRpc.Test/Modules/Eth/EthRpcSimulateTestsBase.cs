@@ -119,6 +119,8 @@ public class EthRpcSimulateTestsBase
             createContractTxReceipt = chain.Bridge.GetReceipt(hash);
         }
 
+        await chain.MainProcessingContext.WorldState.WaitForCodeCommit();
+
         createContractTxReceipt.ContractAddress.Should().NotBeNull($"Contract transaction {tx.Hash!} was not deployed.");
         return createContractTxReceipt.ContractAddress!;
     }

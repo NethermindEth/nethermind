@@ -4,7 +4,9 @@
 using System;
 using System.Collections.Generic;
 using System.IO;
+using System.Threading.Tasks;
 using Ethereum.Test.Base;
+using FluentAssertions;
 using NUnit.Framework;
 
 namespace Ethereum.Blockchain.Test
@@ -14,10 +16,7 @@ namespace Ethereum.Blockchain.Test
     public class BlockhashTests : GeneralStateTestBase
     {
         [TestCaseSource(nameof(LoadTests))]
-        public void Test(GeneralStateTest test)
-        {
-            Assert.That(RunTest(test).Pass, Is.True);
-        }
+        public async Task Test(GeneralStateTest test) => (await RunTest(test)).Pass.Should().BeTrue();
 
         public static IEnumerable<GeneralStateTest> LoadTests()
         {

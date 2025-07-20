@@ -141,7 +141,6 @@ public class BloomStorageTests
         }
 
         long[] expectedFoundBlocks = blocksSet.Where(b => b >= from && b <= to).ToArray();
-        TestContext.Out.WriteLine($"Expected found blocks: {string.Join(", ", expectedFoundBlocks)}");
         foundBlocks.Should().BeEquivalentTo(expectedFoundBlocks);
     }
 
@@ -203,8 +202,6 @@ public class BloomStorageTests
                 bloom.Should().Be(expectedBloom, $"blocks <{FromBlock}, {ToBlock}>");
                 blooms.TryGetBlockNumber(out _);
             }
-
-            TestContext.Out.WriteLine($"Checked {j} blooms");
         }
         finally
         {
@@ -254,8 +251,6 @@ public class BloomStorageTests
                 bloom.Should().Be(expectedBloom, $"blocks <{FromBlock}, {ToBlock}>");
                 blooms.TryGetBlockNumber(out _);
             }
-
-            TestContext.Out.WriteLine($"Checked {j} blooms");
         }
         finally
         {

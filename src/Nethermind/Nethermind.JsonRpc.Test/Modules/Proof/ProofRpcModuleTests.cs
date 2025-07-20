@@ -258,12 +258,13 @@ public class ProofRpcModuleTests
     [TestCase]
     public async Task Can_call()
     {
-        IWorldState stateProvider = CreateInitialState(null);
+        IWorldState stateProvider = await CreateInitialState(null);
 
         Hash256 root = stateProvider.StateRoot;
         Block block = Build.A.Block.WithParent(_blockTree.Head!).WithStateRoot(root).TestObject;
         BlockTreeBuilder.AddBlock(_blockTree, block);
 
+        await stateProvider.WaitForCodeCommit();
         // would need to setup state root somehow...
 
         TransactionForRpc tx = new LegacyTransactionForRpc
@@ -282,12 +283,13 @@ public class ProofRpcModuleTests
     [TestCase]
     public async Task Can_call_by_hash()
     {
-        IWorldState stateProvider = CreateInitialState(null);
+        IWorldState stateProvider = await CreateInitialState(null);
 
         Hash256 root = stateProvider.StateRoot;
         Block block = Build.A.Block.WithParent(_blockTree.Head!).WithStateRoot(root).TestObject;
         BlockTreeBuilder.AddBlock(_blockTree, block);
 
+        await stateProvider.WaitForCodeCommit();
         // would need to setup state root somehow...
 
         TransactionForRpc tx = new LegacyTransactionForRpc
@@ -782,7 +784,7 @@ public class ProofRpcModuleTests
 
     private async Task<CallResultWithProof> TestCallWithCode(byte[] code, Address? from = null)
     {
-        IWorldState stateProvider = CreateInitialState(code);
+        IWorldState stateProvider = await CreateInitialState(code);
 
         Hash256 root = stateProvider.StateRoot;
         Block block = Build.A.Block.WithParent(_blockTree.Head!).WithStateRoot(root).WithBeneficiary(TestItem.AddressD).TestObject;
@@ -799,6 +801,7 @@ public class ProofRpcModuleTests
             GasPrice = _useNonZeroGasPrice ? 10.GWei() : 0
         };
 
+        await stateProvider.WaitForCodeCommit();
         CallResultWithProof callResultWithProof = _proofRpcModule.proof_call(tx, new BlockParameter(blockOnTop.Number)).Data;
         Assert.That(callResultWithProof.Accounts.Length, Is.GreaterThan(0));
 
@@ -819,7 +822,7 @@ public class ProofRpcModuleTests
 
     private async Task TestCallWithStorageAndCode(byte[] code, UInt256 gasPrice, Address? from = null)
     {
-        IWorldState stateProvider = CreateInitialState(code);
+        IWorldState stateProvider = await CreateInitialState(code);
 
         for (int i = 0; i < 10000; i++)
         {
@@ -847,6 +850,7 @@ public class ProofRpcModuleTests
             Nonce = 1000
         };
 
+        await stateProvider.WaitForCodeCommit();
         CallResultWithProof callResultWithProof = _proofRpcModule.proof_call(tx, new BlockParameter(blockOnTop.Number)).Data;
         Assert.That(callResultWithProof.Accounts.Length, Is.GreaterThan(0));
 
@@ -889,7 +893,7 @@ public class ProofRpcModuleTests
         Assert.That(response.Contains("\"result\""), Is.True);
     }
 
-    private IWorldState CreateInitialState(byte[]? code)
+    private async Task<IWorldState> CreateInitialState(byte[]? code)
     {
         IWorldState stateProvider = _worldStateManager.GlobalWorldState;
         AddAccount(stateProvider, TestItem.AddressA, 1.Ether());
@@ -907,6 +911,7 @@ public class ProofRpcModuleTests
 
         stateProvider.CommitTree(0);
 
+        await stateProvider.WaitForCodeCommit();
         return stateProvider;
     }
 

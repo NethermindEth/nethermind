@@ -108,6 +108,11 @@ namespace Nethermind.Synchronization.ParallelSync
                     {
                         Update();
                     }
+                    catch (ObjectDisposedException od) when (od.ObjectName == "Nethermind.Db.Rocks.DbOnTheRocks")
+                    {
+                        // Calm down Nethermind.Blockchain.Test output (lots of Db disposed)
+                        break;
+                    }
                     catch (Exception exception)
                     {
                         if (_logger.IsError) _logger.Error("Sync mode update failed", exception);

@@ -11,14 +11,13 @@ using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Core.Test.Db;
 using Nethermind.Db;
-using Nethermind.Specs;
+using Nethermind.Evm.State;
 using Nethermind.Int256;
 using Nethermind.Logging;
+using Nethermind.Specs;
 using Nethermind.Specs.Forks;
-using Nethermind.Evm.State;
 using Nethermind.State;
 using Nethermind.Trie;
-using Nethermind.Trie.Pruning;
 using NSubstitute;
 using NUnit.Framework;
 
@@ -60,6 +59,7 @@ namespace Nethermind.Store.Test
             BlockHeader baseBlock3 = Build.A.BlockHeader.WithStateRoot(provider.StateRoot).TestObject;
 
             provider.CommitTree(0);
+            await provider.WaitForCodeCommit();
 
             IStateReader reader = worldStateManager.GlobalStateReader;
 
@@ -118,7 +118,7 @@ namespace Nethermind.Store.Test
             UpdateStorageValue(new byte[] { 4 });
             CommitEverything();
             BlockHeader baseBlock3 = Build.A.BlockHeader.WithStateRoot(provider.StateRoot).TestObject;
-
+            await provider.WaitForCodeCommit();
             IStateReader reader = worldStateManager.GlobalStateReader;
 
             Task a = StartStorageTask(reader, baseBlock0, storageCell, new byte[] { 1 });
@@ -130,7 +130,7 @@ namespace Nethermind.Store.Test
         }
 
         [Test]
-        public void Non_existing()
+        public async Task Non_existing()
         {
             StorageCell storageCell = new(_address1, UInt256.One);
             IReleaseSpec spec = MuirGlacier.Instance;
@@ -147,6 +147,7 @@ namespace Nethermind.Store.Test
             provider.CreateAccount(_address1, 1);
             provider.Set(storageCell, new byte[] { 1 });
             CommitEverything();
+            await provider.WaitForCodeCommit();
             Hash256 stateRoot0 = provider.StateRoot;
 
             IStateReader reader = worldStateManager.GlobalStateReader;
@@ -180,7 +181,7 @@ namespace Nethermind.Store.Test
         }
 
         [Test]
-        public void Get_storage()
+        public async Task Get_storage()
         {
             /* all testing will be touching just a single storage cell */
             StorageCell storageCell = new(_address1, UInt256.One);
@@ -200,6 +201,7 @@ namespace Nethermind.Store.Test
             state.Set(storageCell, initialValue);
             state.Commit(MuirGlacier.Instance);
             state.CommitTree(2);
+            await state.WaitForCodeCommit();
             BlockHeader baseBlock = Build.A.BlockHeader.WithNumber(2).WithStateRoot(state.StateRoot).TestObject;
 
             IStateReader reader = worldStateManager.GlobalStateReader;
@@ -223,6 +225,7 @@ namespace Nethermind.Store.Test
             processorStateProvider.Set(storageCell, newValue);
             processorStateProvider.Commit(MuirGlacier.Instance);
             processorStateProvider.CommitTree(3);
+            await processorStateProvider.WaitForCodeCommit();
             baseBlock = Build.A.BlockHeader.WithParent(baseBlock).WithStateRoot(state.StateRoot).TestObject;
 
             /* At this stage the DB should have the storage value updated to 5.
@@ -236,7 +239,7 @@ namespace Nethermind.Store.Test
 
 
         [Test]
-        public void Can_collect_stats()
+        public async Task Can_collect_stats()
         {
             IDbProvider dbProvider = TestMemDbProvider.Init();
             IWorldStateManager worldStateManager = TestWorldStateFactory.CreateForTest(dbProvider, LimboLogs.Instance);
@@ -244,6 +247,7 @@ namespace Nethermind.Store.Test
             provider.CreateAccount(TestItem.AddressA, 1.Ether());
             provider.Commit(MuirGlacier.Instance);
             provider.CommitTree(0);
+            await provider.WaitForCodeCommit();
 
             IStateReader stateReader = worldStateManager.GlobalStateReader;
             var stats = stateReader.CollectStats(provider.StateRoot, new MemDb(), Logger);
@@ -251,7 +255,7 @@ namespace Nethermind.Store.Test
         }
 
         [Test]
-        public void IsInvalidContractSender_AccountHasCode_ReturnsTrue()
+        public async Task IsInvalidContractSender_AccountHasCode_ReturnsTrue()
         {
             IReleaseSpec releaseSpec = Substitute.For<IReleaseSpec>();
             releaseSpec.IsEip3607Enabled.Returns(true);
@@ -263,6 +267,7 @@ namespace Nethermind.Store.Test
             sut.InsertCode(TestItem.AddressA, ValueKeccak.Compute(new byte[1]), new byte[1], releaseSpec, false);
             sut.Commit(MuirGlacier.Instance);
             sut.CommitTree(0);
+            await sut.WaitForCodeCommit();
 
             bool result = sut.IsInvalidContractSender(releaseSpec, TestItem.AddressA);
 
@@ -270,7 +275,7 @@ namespace Nethermind.Store.Test
         }
 
         [Test]
-        public void IsInvalidContractSender_AccountHasNoCode_ReturnsFalse()
+        public async Task IsInvalidContractSender_AccountHasNoCode_ReturnsFalse()
         {
             IReleaseSpec releaseSpec = Substitute.For<IReleaseSpec>();
             releaseSpec.IsEip3607Enabled.Returns(true);
@@ -281,6 +286,7 @@ namespace Nethermind.Store.Test
             sut.CreateAccount(TestItem.AddressA, 0);
             sut.Commit(MuirGlacier.Instance);
             sut.CommitTree(0);
+            await sut.WaitForCodeCommit();
 
             bool result = sut.IsInvalidContractSender(releaseSpec, TestItem.AddressA);
 
@@ -288,7 +294,7 @@ namespace Nethermind.Store.Test
         }
 
         [Test]
-        public void IsInvalidContractSender_AccountHasDelegatedCode_ReturnsFalse()
+        public async Task IsInvalidContractSender_AccountHasDelegatedCode_ReturnsFalse()
         {
             IReleaseSpec releaseSpec = Substitute.For<IReleaseSpec>();
             releaseSpec.IsEip3607Enabled.Returns(true);
@@ -301,6 +307,7 @@ namespace Nethermind.Store.Test
             sut.InsertCode(TestItem.AddressA, ValueKeccak.Compute(code), code, releaseSpec, false);
             sut.Commit(MuirGlacier.Instance);
             sut.CommitTree(0);
+            await sut.WaitForCodeCommit();
 
             bool result = sut.IsInvalidContractSender(releaseSpec, TestItem.AddressA);
 
@@ -308,7 +315,7 @@ namespace Nethermind.Store.Test
         }
 
         [Test]
-        public void IsInvalidContractSender_AccountHasCodeButDelegateReturnsTrue_ReturnsFalse()
+        public async Task IsInvalidContractSender_AccountHasCodeButDelegateReturnsTrue_ReturnsFalse()
         {
             IReleaseSpec releaseSpec = Substitute.For<IReleaseSpec>();
             releaseSpec.IsEip3607Enabled.Returns(true);
@@ -321,6 +328,7 @@ namespace Nethermind.Store.Test
             sut.InsertCode(TestItem.AddressA, ValueKeccak.Compute(code), code, releaseSpec, false);
             sut.Commit(MuirGlacier.Instance);
             sut.CommitTree(0);
+            await sut.WaitForCodeCommit();
 
             bool result = sut.IsInvalidContractSender(releaseSpec, TestItem.AddressA, static (_) => true);
 
@@ -328,7 +336,7 @@ namespace Nethermind.Store.Test
         }
 
         [Test]
-        public void IsInvalidContractSender_AccountHasDelegatedCodeBut7702IsNotEnabled_ReturnsTrue()
+        public async Task IsInvalidContractSender_AccountHasDelegatedCodeBut7702IsNotEnabled_ReturnsTrue()
         {
             IReleaseSpec releaseSpec = Substitute.For<IReleaseSpec>();
             releaseSpec.IsEip3607Enabled.Returns(true);
@@ -340,6 +348,7 @@ namespace Nethermind.Store.Test
             sut.InsertCode(TestItem.AddressA, ValueKeccak.Compute(code), code, releaseSpec, false);
             sut.Commit(MuirGlacier.Instance);
             sut.CommitTree(0);
+            await sut.WaitForCodeCommit();
 
             bool result = sut.IsInvalidContractSender(releaseSpec, TestItem.AddressA);
 
@@ -347,7 +356,7 @@ namespace Nethermind.Store.Test
         }
 
         [Test]
-        public void IsInvalidContractSender_AccountHasDelegatedCodeBut3807IsNotEnabled_ReturnsFalse()
+        public async Task IsInvalidContractSender_AccountHasDelegatedCodeBut3807IsNotEnabled_ReturnsFalse()
         {
             IReleaseSpec releaseSpec = Substitute.For<IReleaseSpec>();
             releaseSpec.IsEip7702Enabled.Returns(true);
@@ -359,6 +368,7 @@ namespace Nethermind.Store.Test
             sut.InsertCode(TestItem.AddressA, ValueKeccak.Compute(code), code, releaseSpec, false);
             sut.Commit(MuirGlacier.Instance);
             sut.CommitTree(0);
+            await sut.WaitForCodeCommit();
 
             bool result = sut.IsInvalidContractSender(releaseSpec, TestItem.AddressA);
 
@@ -366,26 +376,28 @@ namespace Nethermind.Store.Test
         }
 
         [Test]
-        public void Can_accepts_visitors()
+        public async Task Can_accepts_visitors()
         {
             WorldStateManager worldStateManager = TestWorldStateFactory.CreateForTest();
             IWorldState provider = worldStateManager.GlobalWorldState;
             provider.CreateAccount(TestItem.AddressA, 1.Ether());
             provider.Commit(MuirGlacier.Instance);
             provider.CommitTree(0);
+            await provider.WaitForCodeCommit();
 
             TrieStatsCollector visitor = new(new MemDb(), LimboLogs.Instance);
             worldStateManager.GlobalStateReader.RunTreeVisitor(visitor, provider.StateRoot);
         }
 
         [Test]
-        public void Can_dump_state()
+        public async Task Can_dump_state()
         {
             WorldStateManager worldStateManager = TestWorldStateFactory.CreateForTest();
             IWorldState provider = worldStateManager.GlobalWorldState;
             provider.CreateAccount(TestItem.AddressA, 1.Ether());
             provider.Commit(MuirGlacier.Instance);
             provider.CommitTree(0);
+            await provider.WaitForCodeCommit();
 
             string state = worldStateManager.GlobalStateReader.DumpState(provider.StateRoot);
             state.Should().NotBeEmpty();

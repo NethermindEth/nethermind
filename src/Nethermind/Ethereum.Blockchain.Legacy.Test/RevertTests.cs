@@ -3,7 +3,9 @@
 
 using System.Collections.Generic;
 using System.Linq;
+using System.Threading.Tasks;
 using Ethereum.Test.Base;
+using FluentAssertions;
 using NUnit.Framework;
 
 namespace Ethereum.Blockchain.Legacy.Test
@@ -13,10 +15,7 @@ namespace Ethereum.Blockchain.Legacy.Test
     public class RevertTests : GeneralStateTestBase
     {
         [TestCaseSource(nameof(LoadTests))]
-        public void Test(GeneralStateTest test)
-        {
-            Assert.That(RunTest(test).Pass, Is.True);
-        }
+        public async Task Test(GeneralStateTest test) => (await RunTest(test)).Pass.Should().BeTrue();
 
         public static IEnumerable<GeneralStateTest> LoadTests()
         {

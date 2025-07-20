@@ -403,7 +403,7 @@ public class TransactionProcessorTests
         GethLikeTxMemoryTracer gethTracer = new(tx, GethTraceOptions.Default);
         var blkCtx = new BlockExecutionContext(block.Header, _specProvider.GetSpec(block.Header));
         _transactionProcessor.CallAndRestore(tx, blkCtx, gethTracer);
-        TestContext.Out.WriteLine(new EthereumJsonSerializer().Serialize(gethTracer.BuildResult(), true));
+        gethTracer.BuildResult();
 
         EstimateGasTracer tracer = new();
         _transactionProcessor.CallAndRestore(tx, blkCtx, tracer);
@@ -449,7 +449,7 @@ public class TransactionProcessorTests
         GethLikeTxMemoryTracer gethTracer = new(tx, GethTraceOptions.Default);
         _transactionProcessor.CallAndRestore(tx, blkCtx, tracer);
         _transactionProcessor.CallAndRestore(tx, blkCtx, gethTracer);
-        TestContext.Out.WriteLine(new EthereumJsonSerializer().Serialize(gethTracer.BuildResult(), true));
+        gethTracer.BuildResult();
 
         BlocksConfig blocksConfig = new();
         GasEstimator estimator = new(_transactionProcessor, _stateProvider, _specProvider, blocksConfig);
@@ -469,7 +469,6 @@ public class TransactionProcessorTests
     {
         CallOutputTracer outputTracer = new();
         tx.GasLimit = estimate;
-        TestContext.Out.WriteLine(tx.GasLimit);
 
         GethLikeTxMemoryTracer gethTracer = new(tx, GethTraceOptions.Default);
         var blkCtx = new BlockExecutionContext(block.Header, _specProvider.GetSpec(block.Header));
@@ -481,13 +480,11 @@ public class TransactionProcessorTests
 
         outputTracer = new CallOutputTracer();
         tx.GasLimit = Math.Min(estimate - 1, estimate * 63 / 64);
-        TestContext.Out.WriteLine(tx.GasLimit);
 
         gethTracer = new GethLikeTxMemoryTracer(tx, GethTraceOptions.Default);
         _transactionProcessor.CallAndRestore(tx, blkCtx, gethTracer);
 
-        string traceOutOfGas = new EthereumJsonSerializer().Serialize(gethTracer.BuildResult(), true);
-        TestContext.Out.WriteLine(traceOutOfGas);
+        gethTracer.BuildResult();
 
         _transactionProcessor.CallAndRestore(tx, blkCtx, outputTracer);
 
@@ -514,7 +511,7 @@ public class TransactionProcessorTests
         GethLikeTxMemoryTracer gethTracer = new(tx, GethTraceOptions.Default);
         var blkCtx = new BlockExecutionContext(block.Header, releaseSpec);
         _transactionProcessor.CallAndRestore(tx, blkCtx, gethTracer);
-        TestContext.Out.WriteLine(new EthereumJsonSerializer().Serialize(gethTracer.BuildResult(), true));
+        gethTracer.BuildResult();
 
         EstimateGasTracer tracer = new();
         _transactionProcessor.CallAndRestore(tx, blkCtx, tracer);
@@ -558,7 +555,7 @@ public class TransactionProcessorTests
         GethLikeTxMemoryTracer gethTracer = new(tx, GethTraceOptions.Default);
         var blkCtx = new BlockExecutionContext(block.Header, releaseSpec);
         _transactionProcessor.CallAndRestore(tx, blkCtx, gethTracer);
-        TestContext.Out.WriteLine(new EthereumJsonSerializer().Serialize(gethTracer.BuildResult(), true));
+        gethTracer.BuildResult();
 
         EstimateGasTracer tracer = new();
         _transactionProcessor.CallAndRestore(tx, blkCtx, tracer);

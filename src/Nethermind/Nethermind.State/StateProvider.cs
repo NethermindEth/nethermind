@@ -524,7 +524,7 @@ namespace Nethermind.State
 
         public void Commit(IReleaseSpec releaseSpec, IWorldStateTracer stateTracer, bool commitRoots, bool isGenesis)
         {
-            if (commitRoots || _codeBatch?.Count > 0)
+            if (commitRoots && _codeBatch?.Count > 0)
             {
                 CommitCodeAsync();
             }
@@ -663,7 +663,7 @@ namespace Nethermind.State
                 if (dict is null) return;
                 _codeBatchAlternate = default;
 
-                _codeFlushTask = Task.Run(() =>
+                Task flushTask = Task.Run(() =>
                 {
                     using (var batch = _codeDb.StartWriteBatch())
                     {
@@ -681,6 +681,10 @@ namespace Nethermind.State
                         _codeBatchAlternate = _codeBatch.GetAlternateLookup<ValueHash256>();
                     }
                 });
+
+                _codeFlushTask = _codeFlushTask.IsCompleted ?
+                    flushTask :
+                    _codeFlushTask.ContinueWith((t) => flushTask).Unwrap();
             }
 
             [MethodImpl(MethodImplOptions.NoInlining)]
