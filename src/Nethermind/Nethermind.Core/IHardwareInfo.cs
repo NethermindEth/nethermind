@@ -7,6 +7,6 @@ namespace Nethermind.Core;
 
 public interface IHardwareInfo
 {
-    public static readonly long StateDbLargerMemoryThreshold = 32.GiB();
+    public static readonly long StateDbLargerMemoryThreshold = 20.GiB();
     long AvailableMemoryBytes { get; }
 }
