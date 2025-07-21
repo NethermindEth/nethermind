@@ -5,7 +5,6 @@ using System;
 using System.Collections.Generic;
 using System.Threading;
 using System.Threading.Tasks;
-using Nethermind.Blockchain.Blocks;
 using Nethermind.Blockchain.HistoryPruning;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Config;
@@ -58,7 +57,6 @@ public class HistoryPrunerTests
             testBlockchain.BlockTree,
             testBlockchain.ReceiptStorage,
             specProvider,
-            testBlockchain.BlockStore,
             testBlockchain.ChainLevelInfoRepository,
             testBlockchain.DbProvider.MetadataDb,
             historyConfig,
@@ -115,7 +113,6 @@ public class HistoryPrunerTests
             testBlockchain.BlockTree,
             testBlockchain.ReceiptStorage,
             specProvider,
-            testBlockchain.BlockStore,
             testBlockchain.ChainLevelInfoRepository,
             testBlockchain.DbProvider.MetadataDb,
             historyConfig,
@@ -174,7 +171,6 @@ public class HistoryPrunerTests
             testBlockchain.BlockTree,
             testBlockchain.ReceiptStorage,
             specProvider,
-            testBlockchain.BlockStore,
             testBlockchain.ChainLevelInfoRepository,
             testBlockchain.DbProvider.MetadataDb,
             historyConfig,
@@ -229,7 +225,6 @@ public class HistoryPrunerTests
             testBlockchain.BlockTree,
             testBlockchain.ReceiptStorage,
             specProvider,
-            testBlockchain.BlockStore,
             testBlockchain.ChainLevelInfoRepository,
             testBlockchain.DbProvider.MetadataDb,
             historyConfig,
@@ -263,7 +258,6 @@ public class HistoryPrunerTests
             Substitute.For<IBlockTree>(),
             Substitute.For<IReceiptStorage>(),
             Substitute.For<ISpecProvider>(),
-            Substitute.For<IBlockStore>(),
             Substitute.For<IChainLevelInfoRepository>(),
             new TestMemDb(),
             validHistoryConfig,
@@ -286,7 +280,6 @@ public class HistoryPrunerTests
             Substitute.For<IBlockTree>(),
             Substitute.For<IReceiptStorage>(),
             specProvider,
-            Substitute.For<IBlockStore>(),
             Substitute.For<IChainLevelInfoRepository>(),
             new TestMemDb(),
             invalidHistoryConfig,
