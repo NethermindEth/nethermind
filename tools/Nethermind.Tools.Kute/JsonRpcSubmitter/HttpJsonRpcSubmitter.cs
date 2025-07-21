@@ -21,7 +21,7 @@ public sealed class HttpJsonRpcSubmitter : IJsonRpcSubmitter
         _uri = new Uri(hostAddress);
     }
 
-    public async Task<JsonRpc.Response> Submit(JsonRpc.Request rpc)
+    public async Task<JsonRpc.Response> Submit(JsonRpc.Request rpc, CancellationToken token = default)
     {
         var request = new HttpRequestMessage(HttpMethod.Post, _uri)
         {
@@ -29,7 +29,7 @@ public sealed class HttpJsonRpcSubmitter : IJsonRpcSubmitter
             Content = new StringContent(rpc.ToJsonString(), Encoding.UTF8, MediaTypeNames.Application.Json),
         };
 
-        var httpResponse = await _httpClient.SendAsync(request);
-        return await JsonRpc.Response.FromHttpResponseAsync(httpResponse);
+        var httpResponse = await _httpClient.SendAsync(request, token);
+        return await JsonRpc.Response.FromHttpResponseAsync(httpResponse, token);
     }
 }

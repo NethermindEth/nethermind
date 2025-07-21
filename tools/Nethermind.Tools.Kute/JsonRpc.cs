@@ -60,10 +60,10 @@ public abstract class JsonRpc
 
     public class Response(JsonDocument document) : JsonRpc(document)
     {
-        public static async Task<Response> FromHttpResponseAsync(HttpResponseMessage response)
+        public static async Task<Response> FromHttpResponseAsync(HttpResponseMessage response, CancellationToken token = default)
         {
-            var content = await response.Content.ReadAsStreamAsync();
-            var document = await JsonDocument.ParseAsync(content);
+            var content = await response.Content.ReadAsStreamAsync(token);
+            var document = await JsonDocument.ParseAsync(content, cancellationToken: token);
 
             return new Response(document);
         }
