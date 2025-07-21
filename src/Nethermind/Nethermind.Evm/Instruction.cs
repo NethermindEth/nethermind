@@ -243,7 +243,7 @@ public struct OpcodeMetadata(long gasCost, byte additionalBytes, byte stackBehav
             [Instruction.STOP] = new(FREE, 0, 0, 0),
             [Instruction.PC] = new(GasCostOf.Base, 0, 0, 1),
 
-            [Instruction.CLZ] = new(GasCostOf.Low, 0, 1, 1),
+            [Instruction.CLZ] = new(GasCostOf.VeryLow, 0, 1, 1),
 
             [Instruction.PUSH0] = new(GasCostOf.Base, 0, 0, 1),
             [Instruction.PUSH1] = new(GasCostOf.VeryLow, 1, 0, 1),
