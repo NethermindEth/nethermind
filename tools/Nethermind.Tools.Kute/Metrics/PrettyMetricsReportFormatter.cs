@@ -30,6 +30,8 @@ public sealed class PrettyMetricsReportFormatter : IMetricsReportFormatter
 
 internal static class StreamWriterExt
 {
-    public static async Task WriteLineAsync(this StreamWriter writer, string value, CancellationToken token) =>
-        await writer.WriteAsync(MemoryExtensions.AsMemory(value), token);
+    public static async Task WriteLineAsync(this StreamWriter writer, string value, CancellationToken token)
+    {
+        await writer.WriteLineAsync(MemoryExtensions.AsMemory(value), token);
+    }
 }
