@@ -361,19 +361,19 @@ internal static class OpcodeEmitters
         method.EmitCheck(nameof(Word.IsZero));
         method.BranchIfTrue(argIsZero);
 
-        method.Call(Word.LeadingZeroProp);
-        method.StoreLocal(locals.uint32A);
+        method.Call(Word.LeadingZeroPropBits);
+        method.StoreLocal(locals.int64A);
         method.CleanAndLoadWord(locals.stackHeadRef, contractMetadata.StackOffsets.GetValueOrDefault(pc, (short)0), 1);
-        method.LoadLocal(locals.uint32A);
-        method.Call(Word.SetUInt0);
+        method.LoadLocal(locals.int64A);
         method.Branch(endOfOpcode);
 
         method.MarkLabel(argIsZero);
-        method.InitializeObject(typeof(Word));
+        method.Duplicate();
+        method.InitializeObject<Word>();
         method.LoadConstant(256);
-        method.Call(Word.SetUInt0);
 
         method.MarkLabel(endOfOpcode);
+        method.CallSetter(Word.SetUInt0, BitConverter.IsLittleEndian);
     }
     internal static void EmitChainIdInstruction<TDelegateType>(
         Emit<TDelegateType> method, ICodeInfo codeinfo, Instruction op, IVMConfig ilCompilerConfig, ContractCompilerMetadata contractMetadata, SubSegmentMetadata currentSubSegment, int pc, OpcodeMetadata opcodeMetadata, EnvirementLoader envLoader, Locals<TDelegateType> locals, Dictionary<EvmExceptionType, Label> evmExceptionLabels, (Label returnLabel, Label exitLabel) escapeLabels)
@@ -1364,7 +1364,7 @@ internal static class OpcodeEmitters
 
         method.StackLoadPrevious(locals.stackHeadRef, contractMetadata.StackOffsets.GetValueOrDefault(pc, (short)0), 2);
         method.Duplicate();
-        method.Call(Word.LeadingZeroProp);
+        method.Call(Word.LeadingZeroPropBytes);
         method.StoreLocal(locals.uint64A);
         method.LoadLocalAddress(locals.uint256B);
         method.Call(Word.GetUInt256ByRef);

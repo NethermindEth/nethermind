@@ -1,16 +1,18 @@
 // SPDX-FileCopyrightText: 2024 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using Nethermind.Core;
-using Nethermind.Core.Crypto;
-using Nethermind.Int256;
 using System;
 using System.Buffers.Binary;
+using System.Numerics;
 using System.Reflection;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using System.Runtime.Intrinsics;
 using System.Runtime.Intrinsics.X86;
+using Nethermind.Core;
+using Nethermind.Core.Crypto;
+using Nethermind.Int256;
+using Org.BouncyCastle.Utilities;
 
 namespace Nethermind.Evm.CodeAnalysis.IL;
 
@@ -316,26 +318,25 @@ public struct Word
         set => _ulong0 = value;
     }
 
-    public unsafe long LeadingZeros
+    public unsafe long LeadingZerosBytes
     {
         get
         {
-            // TODO: do the vectorized version with Extract leading bits
-            fixed (byte* ptr = _buffer)
-            {
-                byte* end = ptr + 32;
-                byte* current = ptr;
-                while (current < end && *current == 0)
-                {
-                    current++;
-                }
-
-                return current - ptr;
-            }
+            Vector256<byte> asVec = Vector256.Create(_ulong3, _ulong2, _ulong1, _ulong0).AsByte();
+            return Core.Extensions.Bytes.CountLeadingZeroBits(in asVec) / 8;
+        }
+    }
+    public unsafe long LeadingZerosBits
+    {
+        get
+        {
+            Vector256<byte> asVec = Vector256.Create(_ulong3, _ulong2, _ulong1, _ulong0).AsByte();
+            return Core.Extensions.Bytes.CountLeadingZeroBits(in asVec);
         }
     }
 
-    public static readonly MethodInfo LeadingZeroProp = typeof(Word).GetProperty(nameof(LeadingZeros))!.GetMethod;
+    public static readonly MethodInfo LeadingZeroPropBits = typeof(Word).GetProperty(nameof(LeadingZerosBits))!.GetMethod;
+    public static readonly MethodInfo LeadingZeroPropBytes = typeof(Word).GetProperty(nameof(LeadingZerosBytes))!.GetMethod;
 
     public static readonly MethodInfo GetByte0 = typeof(Word).GetProperty(nameof(Byte0))!.GetMethod;
     public static readonly MethodInfo SetByte0 = typeof(Word).GetProperty(nameof(Byte0))!.SetMethod;

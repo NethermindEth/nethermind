@@ -1173,7 +1173,7 @@ public sealed unsafe partial class VirtualMachine(
                 case ContractState.Failed:
                     return GetFailureReturn(gasAvailable, chunkExecutionState.ExceptionType);
                 default:
-                    return CallResult.Empty(0);
+                    return CallResult.Empty(vmState.Env.CodeInfo.Version);
             }
         }
         // Dispatch the bytecode interpreter.

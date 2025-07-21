@@ -12,6 +12,7 @@ using System.Linq;
 using FastEnumUtility;
 using Nethermind.Core.Specs;
 using Nethermind.Specs.Forks;
+using Nethermind.Evm.CodeAnalysis.IL;
 
 namespace Nethermind.Evm;
 
@@ -242,7 +243,7 @@ public struct OpcodeMetadata(long gasCost, byte additionalBytes, byte stackBehav
             [Instruction.STOP] = new(FREE, 0, 0, 0),
             [Instruction.PC] = new(GasCostOf.Base, 0, 0, 1),
 
-            [Instruction.CLZ] = new(GasCostOf.Base, 0, 1, 1),
+            [Instruction.CLZ] = new(GasCostOf.Low, 0, 1, 1),
 
             [Instruction.PUSH0] = new(GasCostOf.Base, 0, 0, 1),
             [Instruction.PUSH1] = new(GasCostOf.VeryLow, 1, 0, 1),
@@ -753,6 +754,7 @@ public static class IlvmInstructionExtensions
         Instruction.TLOAD => spec.TransientStorageEnabled,
         Instruction.TSTORE => spec.TransientStorageEnabled,
         Instruction.MCOPY => spec.MCopyIncluded,
+        Instruction.CLZ => spec.CLZEnabled,
         _ => false
     };
     public static string? GetName(this Instruction instruction, bool isPostMerge = false, IReleaseSpec? spec = null) =>

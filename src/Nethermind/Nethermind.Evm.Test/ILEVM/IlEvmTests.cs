@@ -1731,23 +1731,31 @@ namespace Nethermind.Evm.Test.ILEVM
                     .Done, EvmExceptionType.None);
 
                 yield return ([Instruction.CLZ], Prepare.EvmCode
+                    .PushData(UInt256.MinValue)
+                    .Op(Instruction.CLZ)
+                    .PushData(0)
+                    .Op(Instruction.SSTORE)
+                    .Done, EvmExceptionType.None);
+
+                yield return ([Instruction.CLZ], Prepare.EvmCode
                     .PushData(1)
                     .Op(Instruction.CLZ)
+                    .PushData(0)
+                    .Op(Instruction.SSTORE)
                     .Done, EvmExceptionType.None);
 
                 yield return ([Instruction.CLZ], Prepare.EvmCode
                     .PushData(UInt256.MaxValue)
                     .Op(Instruction.CLZ)
-                    .Done, EvmExceptionType.None);
-
-                yield return ([Instruction.CLZ], Prepare.EvmCode
-                    .PushData(UInt256.MinValue)
-                    .Op(Instruction.CLZ)
+                    .PushData(0)
+                    .Op(Instruction.SSTORE)
                     .Done, EvmExceptionType.None);
 
                 yield return ([Instruction.CLZ], Prepare.EvmCode
                     .PushData(TestItem.AddressA)
                     .Op(Instruction.CLZ)
+                    .PushData(0)
+                    .Op(Instruction.SSTORE)
                     .Done, EvmExceptionType.None);
 
                 yield return ([Instruction.INVALID], Prepare.EvmCode
@@ -1806,7 +1814,7 @@ namespace Nethermind.Evm.Test.ILEVM
 
             }
 
-            /*static IEnumerable<IReleaseSpec> GetAllFroksStarting<T>()
+            static IEnumerable<IReleaseSpec> GetAllForksStartingBy<T>()
             {
                 var baseType = typeof(T);
                 var assembly = Assembly.GetAssembly(baseType);
@@ -1815,15 +1823,12 @@ namespace Nethermind.Evm.Test.ILEVM
                                 .Where(t => t != baseType && baseType.IsAssignableFrom(t) && !t.IsAbstract)
                                 .Select(t => (IReleaseSpec)t.GetProperty("Instance", BindingFlags.Public | BindingFlags.Static).GetMethod.Invoke(null, []));
             }
-            */
-            IEnumerable<IReleaseSpec> forks = [Cancun.Instance]; //GetAllFroksStarting<Olympic>();
+
+            IReleaseSpec fork = GetAllForksStartingBy<Olympic>().Last();
 
             foreach (var sample in GetJitBytecodesSamplesGenerator())
             {
-                foreach (var fork in forks)
-                {
-                    yield return new($"[{String.Join(", ", sample.Item1.Select(op => op.ToString()))}]", sample.Item1, sample.Item2, sample.Item3, fork);
-                }
+                yield return new($"[{String.Join(", ", sample.Item1.Select(op => op.ToString()))}]", sample.Item1, sample.Item2, sample.Item3, fork);
             }
         }
 
@@ -1862,6 +1867,7 @@ namespace Nethermind.Evm.Test.ILEVM
                 IlEvmEnabledMode = ILMode.AOT_MODE,
                 IlEvmAnalysisThreshold = 1,
                 IlEvmAnalysisQueueMaxSize = 1,
+                IlEvmAllowedContracts = []
             }, Prague.Instance);
 
             byte[] bytecode =
@@ -1911,6 +1917,7 @@ namespace Nethermind.Evm.Test.ILEVM
             }
         }
 
+
         [Test, TestCaseSource(nameof(GetJitBytecodesSamples))]
         public void ILVM_AOT_Execution_Equivalence_Tests((string msg, Instruction[] opcode, byte[] bytecode, EvmExceptionType, IReleaseSpec spec) testcase)
         {
@@ -1927,8 +1934,6 @@ namespace Nethermind.Evm.Test.ILEVM
                 IlEvmAnalysisQueueMaxSize = 256,
                 IlEvmPersistPrecompiledContractsOnDisk = false,
             }, testcase.spec);
-
-            bool assertNoPreCompiledCalls = true;
 
             byte[][] blobVersionedHashes = null;
             switch (testcase.opcode[0])
@@ -1954,27 +1959,20 @@ namespace Nethermind.Evm.Test.ILEVM
                         .Done;
                     var callAddress = standardChain.InsertCode(returningCode);
                     enhancedChain.InsertCode(returningCode);
-                    enhancedChain.ForceRunAnalysis(callAddress, ILMode.AOT_MODE);
 
                     var callCode =
                         Prepare.EvmCode
                             .Call(callAddress, 10000)
                             .Done;
                     testcase.bytecode = Bytes.Concat(callCode, testcase.bytecode);
-
-                    assertNoPreCompiledCalls = false;
                     break;
             }
 
             var address = standardChain.InsertCode(testcase.bytecode);
             enhancedChain.InsertCode(testcase.bytecode);
 
-            standardChain.Execute(testcase.bytecode, NullTxTracer.Instance, blobVersionedHashes: blobVersionedHashes, forceAnalysis: false);
 
-            if (assertNoPreCompiledCalls)
-            {
-                Assert.That(Metrics.IlvmAotPrecompiledCalls, Is.EqualTo(0));
-            }
+            Assert.That(Metrics.IlvmAotPrecompiledCalls, Is.EqualTo(0));
 
             enhancedChain.Execute(testcase.bytecode, NullTxTracer.Instance, blobVersionedHashes: blobVersionedHashes, forceAnalysis: true);
 
