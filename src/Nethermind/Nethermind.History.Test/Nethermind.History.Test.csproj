@@ -1,0 +1,9 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <Import Project="../tests.props" />
+
+  <ItemGroup>
+    <ProjectReference Include="..\Nethermind.History\Nethermind.History.csproj" />
+  </ItemGroup>
+
+</Project>
