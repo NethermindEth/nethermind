@@ -72,25 +72,42 @@ public static class IlAnalyzer
 
     private static async Task WorkerLoop(int taskLimit, IVMConfig config, ILogger logger)
     {
+        Task[] taskPool = new Task[taskLimit];
+        Array.Fill(taskPool, Task.CompletedTask);
+
         try
         {
-            Task[] taskPool = new Task[taskLimit];
-            Array.Fill(taskPool, Task.CompletedTask);
-
-            await foreach(var codeinfo in _channel.Reader.ReadAllAsync(_cts.Token))
+            await foreach (var codeinfo in _channel.Reader.ReadAllAsync(_cts.Token))
             {
-                int index = Task.WaitAny(taskPool);
+                var completedTask = await Task.WhenAny(taskPool);
+                int index = Array.IndexOf(taskPool, completedTask);
 
                 Metrics.DecrementIlvmAotQueueSize();
 
-                taskPool[index] = Task.Run(async () => await ProcessCodeInfoAsync(config, logger, codeinfo));
-
+                taskPool[index] = Task.Run(async () =>
+                {
+                    try
+                    {
+                        await ProcessCodeInfoAsync(config, logger, codeinfo);
+                    }
+                    catch (Exception ex)
+                    {
+                       logger.Error("Unhandled exception in ProcessCodeInfoAsync" + ex);
+                    }
+                });
             }
+        }
+        catch (OperationCanceledException)
+        {
+            // Expected on shutdown — do nothing or log if needed
         }
         catch (Exception ex)
         {
-            logger.Error("Unhandled exception in ILVM background worker: " + ex);
+            logger.Error("Unhandled exception in ILVM background worker" + ex);
         }
+
+        // Optional: Wait for all tasks to complete before exiting
+        await Task.WhenAll(taskPool);
     }
 
     private static Task ProcessCodeInfoAsync(IVMConfig config, ILogger logger, CodeInfo worklet)
