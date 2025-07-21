@@ -9,22 +9,24 @@ public sealed class PrettyMetricsReportFormatter : IMetricsReportFormatter
     {
         using var writer = new StreamWriter(stream);
         await writer.WriteLineAsync("=== Report ===", token);
-        await writer.WriteLineAsync($"Total Messages: {report.TotalMessages}", token);
+        await writer.WriteLineAsync($"Total Time: {report.TotalTime.TotalSeconds} s", token);
+        await writer.WriteLineAsync($"Total Messages: {report.TotalMessages}\n", token);
         await writer.WriteLineAsync($"Succeeded: {report.Succeeded}", token);
         await writer.WriteLineAsync($"Failed: {report.Failed}", token);
         await writer.WriteLineAsync($"Ignored: {report.Ignored}", token);
         await writer.WriteLineAsync($"Responses: {report.Responses}\n", token);
-        await writer.WriteLineAsync($"Total Time: {report.TotalTime}", token);
         await writer.WriteLineAsync("Singles:", token);
-        foreach (var single in report.Singles)
-        {
-            await writer.WriteLineAsync($"  {single.Key}: {single.Value}", token);
-        }
+        await writer.WriteLineAsync($"  Count: {report.Singles.Count}", token);
+        await writer.WriteLineAsync($"  Max: {report.SinglesMetrics.Max.TotalMilliseconds} ms", token);
+        await writer.WriteLineAsync($"  Average: {report.SinglesMetrics.Average.TotalMilliseconds} ms", token);
+        await writer.WriteLineAsync($"  Min: {report.SinglesMetrics.Min.TotalMilliseconds} ms", token);
+        await writer.WriteLineAsync($"  Stddev: {report.SinglesMetrics.StandardDeviation.TotalMilliseconds} ms", token);
         await writer.WriteLineAsync("Batches:", token);
-        foreach (var batch in report.Batches)
-        {
-            await writer.WriteLineAsync($"  {batch.Key}: {batch.Value}", token);
-        }
+        await writer.WriteLineAsync($"  Count: {report.Batches.Count}", token);
+        await writer.WriteLineAsync($"  Max: {report.BatchesMetrics.Max.TotalMilliseconds} ms", token);
+        await writer.WriteLineAsync($"  Average: {report.BatchesMetrics.Average.TotalMilliseconds} ms", token);
+        await writer.WriteLineAsync($"  Min: {report.BatchesMetrics.Min.TotalMilliseconds} ms", token);
+        await writer.WriteLineAsync($"  Stddev: {report.BatchesMetrics.StandardDeviation.TotalMilliseconds} ms", token);
     }
 }
 

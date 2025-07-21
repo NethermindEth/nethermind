@@ -8,6 +8,44 @@ public enum MetricsReportFormat
     Pretty, Json,
 }
 
+public sealed record TimeMetrics
+{
+    public required TimeSpan Max { get; init; }
+    public required TimeSpan Min { get; init; }
+    public required TimeSpan Average { get; init; }
+    public required TimeSpan StandardDeviation { get; init; }
+
+    public static TimeMetrics From(List<TimeSpan> times)
+    {
+        if (times.Count == 0)
+        {
+            return new TimeMetrics
+            {
+                Max = TimeSpan.Zero,
+                Min = TimeSpan.Zero,
+                Average = TimeSpan.Zero,
+                StandardDeviation = TimeSpan.Zero
+            };
+        }
+
+        return new TimeMetrics
+        {
+            Max = times.Max(),
+            Min = times.Min(),
+            Average = TimeSpan.FromTicks((long)times.Average(t => t.Ticks)),
+            StandardDeviation = StdDev(times)
+        };
+
+        static TimeSpan StdDev(List<TimeSpan> times)
+        {
+            double average = times.Average(t => t.Ticks);
+            double sumOfSquares = times.Sum(t => Math.Pow(t.Ticks - average, 2));
+            var stdDev = Math.Sqrt(sumOfSquares / times.Count);
+            return TimeSpan.FromTicks((long)stdDev);
+        }
+    }
+}
+
 public sealed record MetricsReport
 {
     public required long TotalMessages { get; init; }
@@ -19,7 +57,11 @@ public sealed record MetricsReport
     public required IReadOnlyDictionary<int, TimeSpan> Singles { get; init; }
     public required IReadOnlyDictionary<int, TimeSpan> Batches { get; init; }
 
-    // TODO: Add methods to compute max, min, averages for Singles and Batches
+    // Computed properties
+    private TimeMetrics? _singlesMetrics;
+    private TimeMetrics? _batchesMetrics;
+    public TimeMetrics SinglesMetrics => _singlesMetrics ??= TimeMetrics.From(Singles.Values.ToList());
+    public TimeMetrics BatchesMetrics => _batchesMetrics ??= TimeMetrics.From(Batches.Values.ToList());
 }
 
 public interface IMetricsReportProvider
