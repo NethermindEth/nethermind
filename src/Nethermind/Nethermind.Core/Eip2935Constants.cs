@@ -8,6 +8,8 @@ namespace Nethermind.Core;
 /// </summary>
 public static class Eip2935Constants
 {
+    public const string ContractAddressKey = "HISTORY_STORAGE_ADDRESS";
+
     /// <summary>
     /// The <c>HISTORY_STORAGE_ADDRESS</c> parameter.
     /// </summary>

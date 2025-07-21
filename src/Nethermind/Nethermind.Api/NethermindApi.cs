@@ -67,7 +67,7 @@ namespace Nethermind.Api
             return Context.Resolve<IBlockchainBridgeFactory>().CreateBlockchainBridge();
         }
 
-        public IBlobTxStorage? BlobTxStorage { get; set; }
+        public IBlobTxStorage BlobTxStorage => Context.Resolve<IBlobTxStorage>();
         public CompositeBlockPreprocessorStep BlockPreprocessor { get; } = new();
         public IBlockProcessingQueue? BlockProcessingQueue { get; set; }
         public IBlockProducer? BlockProducer { get; set; }
@@ -78,8 +78,7 @@ namespace Nethermind.Api
         public IChainLevelInfoRepository? ChainLevelInfoRepository { get; set; }
         public IConfigProvider ConfigProvider => _dependencies.ConfigProvider;
         public ICryptoRandom CryptoRandom => Context.Resolve<ICryptoRandom>();
-        public IDbProvider? DbProvider { get; set; }
-        public IDbFactory? DbFactory { get; set; }
+        public IDbProvider DbProvider => Context.Resolve<IDbProvider>();
         public ISigner? EngineSigner { get; set; }
         public ISignerStore? EngineSignerStore { get; set; }
         public IEnode? Enode { get; set; }
