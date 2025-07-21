@@ -489,7 +489,12 @@ public static class ContainerBuilderExtensions
 
     public static ContainerBuilder AddKeyedAdapter<TTo, TFrom>(this ContainerBuilder builder, Func<TFrom, TTo> mapper) where TFrom : notnull
     {
-        return builder.AddSource(new KeyedMapperRegistrationSource<TFrom, TTo>(mapper));
+        return builder.AddSource(new KeyedMapperRegistrationSource<TFrom, TTo>(mapper, false));
+    }
+
+    public static ContainerBuilder AddKeyedAdapterWithNewService<TTo, TFrom>(this ContainerBuilder builder, Func<TFrom, TTo> mapper) where TFrom : notnull
+    {
+        return builder.AddSource(new KeyedMapperRegistrationSource<TFrom, TTo>(mapper, true));
     }
 }
 
