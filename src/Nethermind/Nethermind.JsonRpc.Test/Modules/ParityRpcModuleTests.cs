@@ -34,6 +34,7 @@ using Nethermind.TxPool;
 using NSubstitute;
 using NUnit.Framework;
 using System;
+using Nethermind.Core.Test.Db;
 using Nethermind.State;
 
 namespace Nethermind.JsonRpc.Test.Modules

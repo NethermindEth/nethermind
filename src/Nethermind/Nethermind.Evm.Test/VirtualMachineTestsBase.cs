@@ -16,6 +16,7 @@ using Nethermind.Db;
 using Nethermind.Int256;
 using Nethermind.Evm.Tracing;
 using Nethermind.Blockchain.Tracing.GethStyle;
+using Nethermind.Core.Test.Db;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Logging;
 using Nethermind.Evm.State;

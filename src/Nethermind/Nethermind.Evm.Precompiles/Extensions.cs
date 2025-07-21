@@ -1,23 +1,15 @@
-// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using Nethermind.Core;
 using Nethermind.Core.Specs;
 using Nethermind.Evm.Precompiles.Bls;
-using Nethermind.Evm.Precompiles.Snarks;
-using System;
 using System.Collections.Generic;
 
 namespace Nethermind.Evm.Precompiles;
 
 public static class Extensions
 {
-    public static void PrepareEthInput(this ReadOnlyMemory<byte> inputData, Span<byte> inputDataSpan)
-    {
-        inputData.Span[..Math.Min(inputDataSpan.Length, inputData.Length)]
-            .CopyTo(inputDataSpan[..Math.Min(inputDataSpan.Length, inputData.Length)]);
-    }
-
     public static OrderedDictionary<Address, string> ListPrecompiles(this IReleaseSpec spec)
     {
         OrderedDictionary<Address, string> precompiles = [];
@@ -32,11 +24,11 @@ public static class Extensions
             AddPrecompile<ModExpPrecompile>();
         }
 
-        if (spec.Bn128Enabled)
+        if (spec.BN254Enabled)
         {
-            AddPrecompile<Bn254AddPrecompile>();
-            AddPrecompile<Bn254MulPrecompile>();
-            AddPrecompile<Bn254PairingPrecompile>();
+            AddPrecompile<BN254AddPrecompile>();
+            AddPrecompile<BN254MulPrecompile>();
+            AddPrecompile<BN254PairingPrecompile>();
         }
 
         if (spec.BlakeEnabled)

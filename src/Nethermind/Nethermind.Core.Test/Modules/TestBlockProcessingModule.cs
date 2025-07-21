@@ -115,7 +115,7 @@ public class TestBlockProcessingModule : Module
         return innerScope.Resolve<MainBlockProcessingContext>();
     }
 
-    private class AutoBlockProducerFactory<T>(ILifetimeScope rootLifetime, IBlockProducerEnvFactory producerEnvFactory) : IBlockProducerFactory where T : IBlockProducer
+    public class AutoBlockProducerFactory<T>(ILifetimeScope rootLifetime, IBlockProducerEnvFactory producerEnvFactory) : IBlockProducerFactory where T : IBlockProducer
     {
         public IBlockProducer InitBlockProducer()
         {
