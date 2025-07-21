@@ -77,11 +77,6 @@ public class HistoryPruner : IHistoryPruner
 
     public async Task TryPruneHistory(CancellationToken cancellationToken)
     {
-        if (!ShouldPruneHistory())
-        {
-            return;
-        }
-
         lock (_pruneLock)
         {
             if (_pruneHistoryTask is not null && !_pruneHistoryTask.IsCompleted)
@@ -89,9 +84,30 @@ public class HistoryPruner : IHistoryPruner
                 return;
             }
 
-            _pruneHistoryTask = PruneHistory(cancellationToken);
+            if (_blockTree.Head is null)
+            {
+                return;
+            }
+
+            if (!ShouldPruneHistory(out ulong? cutoffTimestamp))
+            {
+                return;
+            }
+
+            if (_logger.IsInfo) _logger.Info($"Pruning historical blocks up to timestamp {cutoffTimestamp}");
+
+            _backgroundTaskScheduler.ScheduleTask(cutoffTimestamp!.Value,
+                (cutoffTimestamp, backgroundTaskToken) => {
+                    var cts = CancellationTokenSource.CreateLinkedTokenSource(backgroundTaskToken, cancellationToken);
+                    _pruneHistoryTask = Task.Run(() => PruneBlocksAndReceipts(cutoffTimestamp, cts.Token), cts.Token);
+                    return _pruneHistoryTask;
+                });
         }
-        await _pruneHistoryTask;
+
+        if (_pruneHistoryTask is not null)
+        {
+            await _pruneHistoryTask;
+        }
     }
 
     public long? CutoffBlockNumber
@@ -195,47 +211,22 @@ public class HistoryPruner : IHistoryPruner
         }
     }
 
-    private bool ShouldPruneHistory()
+    private bool ShouldPruneHistory(out ulong? cutoffTimestamp)
     {
         if (!_enabled)
         {
+            cutoffTimestamp = null;
             return false;
         }
 
-        ulong? cutoffTimestamp = CalculateCutoffTimestamp();
+        cutoffTimestamp = CalculateCutoffTimestamp();
         return cutoffTimestamp is not null && cutoffTimestamp > _lastPrunedTimestamp;
-    }
-
-    private async Task PruneHistory(CancellationToken cancellationToken)
-    {
-        if (_blockTree.Head is null)
-        {
-            return;
-        }
-
-        ulong? cutoffTimestamp = CalculateCutoffTimestamp();
-
-        if (cutoffTimestamp is null || cutoffTimestamp <= _lastPrunedTimestamp)
-        {
-            return;
-        }
-
-        if (_logger.IsInfo) _logger.Info($"Pruning historical blocks up to timestamp {cutoffTimestamp}");
-
-        _backgroundTaskScheduler.ScheduleTask(cutoffTimestamp.Value,
-            (cutoff, backgroundTaskToken) => {
-                var cts = CancellationTokenSource.CreateLinkedTokenSource(backgroundTaskToken, cancellationToken);
-                _pruneHistoryTask = Task.Run(() => PruneBlocksAndReceipts(cutoff, cts.Token), cts.Token);
-                return _pruneHistoryTask;
-            });
-
-        if (_logger.IsInfo) _logger.Info($"Pruned historical blocks up to timestamp {cutoffTimestamp}");
-        await _pruneHistoryTask!;
     }
 
     private void PruneBlocksAndReceipts(ulong cutoffTimestamp, CancellationToken cancellationToken)
     {
         int deletedBlocks = 0;
+        ulong? lastDeletedTimstamp = null;
         try
         {
             using BatchWrite batch = _chainLevelInfoRepository.StartBatch();
@@ -264,22 +255,22 @@ public class HistoryPruner : IHistoryPruner
                 _blockTree.DeleteBlock(number, hash, null!, batch, null, true);
                 _receiptStorage.RemoveReceipts(block);
                 _deletePointer = number;
+                lastDeletedTimstamp = block.Timestamp;
                 deletedBlocks++;
             }
         }
         finally
         {
-            if (_cutoffPointer < _deletePointer)
+            if (_cutoffPointer < _deletePointer && lastDeletedTimstamp is not null)
             {
                 _cutoffPointer = _deletePointer;
-                _cutoffTimestamp = cutoffTimestamp;
+                _cutoffTimestamp = lastDeletedTimstamp;
             }
             SaveDeletePointer();
-            if (_logger.IsInfo) _logger.Info($"Completed pruning operation up to timestamp {cutoffTimestamp}. Deleted {deletedBlocks} blocks up to #{_deletePointer}.");
 
-            // only update last pruned timestamp if operation completed
             if (!cancellationToken.IsCancellationRequested)
             {
+                if (_logger.IsInfo) _logger.Info($"Completed pruning operation up to timestamp {cutoffTimestamp}. Deleted {deletedBlocks} blocks up to #{_deletePointer}.");
                 _lastPrunedTimestamp = cutoffTimestamp;
             }
         }
