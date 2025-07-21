@@ -22,7 +22,7 @@ using Nethermind.Synchronization.ParallelSync;
 using Nethermind.Synchronization.Peers;
 using Nethermind.Synchronization.Reporting;
 using Nethermind.Stats.SyncLimits;
-using Nethermind.Blockchain.HistoryPruning;
+using Nethermind.History;
 
 [assembly: InternalsVisibleTo("Nethermind.Synchronization.Test")]
 

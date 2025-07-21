@@ -12,7 +12,6 @@ using Nethermind.Api;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.BeaconBlockRoot;
 using Nethermind.Blockchain.Blocks;
-using Nethermind.Blockchain.HistoryPruning;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Config;
 using Nethermind.Consensus;
@@ -47,6 +46,7 @@ using Nethermind.Synchronization.Peers;
 using Nethermind.TxPool;
 using NSubstitute;
 using NUnit.Framework;
+using Nethermind.History;
 
 namespace Nethermind.Merge.Plugin.Test;
 

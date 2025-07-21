@@ -3,13 +3,13 @@
 
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Blocks;
-using Nethermind.Blockchain.HistoryPruning;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Consensus;
 using Nethermind.Core;
 using Nethermind.Crypto;
 using Nethermind.Db.Blooms;
 using Nethermind.Facade.Find;
+using Nethermind.History;
 using Nethermind.State.Repositories;
 using Nethermind.TxPool;
 using Nethermind.Wallet;

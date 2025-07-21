@@ -41,7 +41,7 @@ using Nethermind.TxPool;
 using Nethermind.Wallet;
 using Nethermind.Consensus.Processing.CensorshipDetector;
 using Nethermind.Facade.Find;
-using Nethermind.Blockchain.HistoryPruning;
+using Nethermind.History;
 
 namespace Nethermind.Api
 {

@@ -32,7 +32,7 @@ using Nethermind.Synchronization.Peers;
 using Nethermind.Synchronization.Test.ParallelSync;
 using NSubstitute;
 using NUnit.Framework;
-using Nethermind.Blockchain.HistoryPruning;
+using Nethermind.History;
 
 namespace Nethermind.Synchronization.Test;
 

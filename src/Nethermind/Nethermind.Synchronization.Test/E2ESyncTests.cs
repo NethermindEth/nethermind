@@ -13,7 +13,6 @@ using DotNetty.Buffers;
 using FluentAssertions;
 using Nethermind.Api;
 using Nethermind.Blockchain;
-using Nethermind.Blockchain.HistoryPruning;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Config;
@@ -47,7 +46,6 @@ using Nethermind.State;
 using Nethermind.Stats.Model;
 using Nethermind.Synchronization.ParallelSync;
 using Nethermind.TxPool;
-using NSubstitute;
 using NUnit.Framework;
 using NUnit.Framework.Internal;
 

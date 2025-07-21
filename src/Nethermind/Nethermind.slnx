@@ -99,6 +99,7 @@
   <Project Path="Nethermind.Facade/Nethermind.Facade.csproj" />
   <Project Path="Nethermind.Grpc/Nethermind.Grpc.csproj" />
   <Project Path="Nethermind.HealthChecks/Nethermind.HealthChecks.csproj" />
+  <Project Path="Nethermind.History/Nethermind.History.csproj" />
   <Project Path="Nethermind.Init.Snapshot/Nethermind.Init.Snapshot.csproj" />
   <Project Path="Nethermind.Init/Nethermind.Init.csproj" />
   <Project Path="Nethermind.JsonRpc/Nethermind.JsonRpc.csproj" />

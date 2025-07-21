@@ -28,7 +28,7 @@ using Nethermind.Synchronization.Reporting;
 using NSubstitute;
 using NUnit.Framework;
 using Nethermind.Stats.SyncLimits;
-using Nethermind.Blockchain.HistoryPruning;
+using Nethermind.History;
 
 namespace Nethermind.Synchronization.Test.FastBlocks;
 
