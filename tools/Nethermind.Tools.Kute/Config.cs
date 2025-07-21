@@ -62,9 +62,9 @@ public static class Config
         HelpName = "path"
     };
 
-    public static Option<int> RequestsPerSecond { get; } = new("--rps", "-e")
+    public static Option<int> ConcurrentRequests { get; } = new("--concurrency", "-c")
     {
-        Description = "If set to higher than 0, then requests will be send in selected RPS (Requests per seconds) rate. If 0 (or lower) then requests will be sent sequentially",
+        Description = "If set to higher than 1, then requests will be processed concurrently",
         HelpName = "value"
     };
 

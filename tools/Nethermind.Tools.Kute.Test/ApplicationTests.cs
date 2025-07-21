@@ -1,7 +1,7 @@
 // SPDX-FileCopyrightText: 2023 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System.Text.Json;
+using Nethermind.Tools.Kute.AsyncProcessor;
 using Nethermind.Tools.Kute.JsonRpcMethodFilter;
 using Nethermind.Tools.Kute.JsonRpcSubmitter;
 using Nethermind.Tools.Kute.JsonRpcValidator;
@@ -75,8 +75,14 @@ public class ApplicationTests
         return filter;
     }
 
-    [Test]
-    public async Task NoFiltering()
+    private static IEnumerable<TestCaseData> Processors()
+    {
+        yield return new TestCaseData(new SequentialProcessor()).SetArgDisplayNames("Sequential");
+        yield return new TestCaseData(new ConcurrentProcessor(8)).SetArgDisplayNames("Concurrent - 8");
+    }
+
+    [TestCaseSource(nameof(Processors))]
+    public async Task NoFiltering(IAsyncProcessor processor)
     {
         var messageProvider = new JsonRpcMessageProvider(LinesProvider(TestInput));
         var jsonRpcSubmitter = ConstantSubmitter(ResponseOK);
@@ -86,6 +92,7 @@ public class ApplicationTests
         var filter = ConstantFilter(shouldSubmit: true);
 
         var app = new Application(
+            processor,
             messageProvider,
             jsonRpcSubmitter,
             validator,
@@ -102,8 +109,8 @@ public class ApplicationTests
         await reporter.Received(1).Total(Arg.Any<TimeSpan>());
     }
 
-    [Test]
-    public async Task NoFiltering_UnwrapBatches()
+    [TestCaseSource(nameof(Processors))]
+    public async Task NoFiltering_UnwrapBatches(IAsyncProcessor processor)
     {
         var messageProvider = new UnwrapBatchJsonRpcMessageProvider(new JsonRpcMessageProvider(LinesProvider(TestInput)));
         var jsonRpcSubmitter = ConstantSubmitter(ResponseOK);
@@ -113,6 +120,7 @@ public class ApplicationTests
         var filter = ConstantFilter(shouldSubmit: true);
 
         var app = new Application(
+            processor,
             messageProvider,
             jsonRpcSubmitter,
             validator,
@@ -129,8 +137,8 @@ public class ApplicationTests
         await reporter.Received(1).Total(Arg.Any<TimeSpan>());
     }
 
-    [Test]
-    public async Task WithFiltering_InvalidResponses()
+    [TestCaseSource(nameof(Processors))]
+    public async Task WithFiltering_InvalidResponses(IAsyncProcessor processor)
     {
         var lines = """
         {"method": "engine_exchangeTransitionConfigurationV1"}
@@ -146,6 +154,7 @@ public class ApplicationTests
         var filter = new ComposedJsonRpcMethodFilter([new PatternJsonRpcMethodFilter("eth_.*")]);
 
         var app = new Application(
+            processor,
             messageProvider,
             jsonRpcSubmitter,
             validator,
@@ -162,8 +171,8 @@ public class ApplicationTests
         await reporter.Received(1).Total(Arg.Any<TimeSpan>());
     }
 
-    [Test]
-    public async Task WithFiltering_UnwrapBatches_InvalidResponses()
+    [TestCaseSource(nameof(Processors))]
+    public async Task WithFiltering_UnwrapBatches_InvalidResponses(IAsyncProcessor processor)
     {
         var lines = """
         {"method": "engine_exchangeTransitionConfigurationV1"}
@@ -179,6 +188,7 @@ public class ApplicationTests
         var filter = new ComposedJsonRpcMethodFilter([new PatternJsonRpcMethodFilter("engine_.*")]);
 
         var app = new Application(
+            processor,
             messageProvider,
             jsonRpcSubmitter,
             validator,

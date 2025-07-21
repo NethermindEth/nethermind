@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using Microsoft.Extensions.DependencyInjection;
+using Nethermind.Tools.Kute.AsyncProcessor;
 using Nethermind.Tools.Kute.Auth;
 using Nethermind.Tools.Kute.JsonRpcMethodFilter;
 using Nethermind.Tools.Kute.JsonRpcSubmitter;
@@ -30,7 +31,7 @@ static class Program
             Config.MetricsReportFormatter,
             Config.MethodFilters,
             Config.ResponsesTraceFile,
-            Config.RequestsPerSecond,
+            Config.ConcurrentRequests,
             Config.UnwrapBatch
         ];
         rootCommand.SetAction(async (parseResult, cancellationToken) =>
@@ -135,6 +136,16 @@ static class Program
             }
 
             return new ComposedMetricsReporter([memoryReporter, progresReporter, consoleReporter]);
+        });
+        collection.AddSingleton<IAsyncProcessor>(provider =>
+        {
+            int requestsPerSecond = parseResult.GetValue(Config.ConcurrentRequests);
+            if (requestsPerSecond > 1)
+            {
+                return new ConcurrentProcessor(requestsPerSecond);
+            }
+
+            return new SequentialProcessor();
         });
 
         return collection.BuildServiceProvider();
