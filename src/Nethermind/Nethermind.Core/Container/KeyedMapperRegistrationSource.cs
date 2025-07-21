@@ -18,7 +18,7 @@ namespace Nethermind.Core.Container;
 /// <param name="mapper"></param>
 /// <typeparam name="TFrom"></typeparam>
 /// <typeparam name="TTo"></typeparam>
-public class KeyedMapperRegistrationSource<TFrom, TTo>(Func<TFrom, TTo> mapper) : IRegistrationSource where TFrom : notnull
+public class KeyedMapperRegistrationSource<TFrom, TTo>(Func<TFrom, TTo> mapper, bool isNewObject) : IRegistrationSource where TFrom : notnull
 {
     public IEnumerable<IComponentRegistration> RegistrationsFor(Service service, Func<Service, IEnumerable<ServiceRegistration>> registrationAccessor)
     {
@@ -37,8 +37,8 @@ public class KeyedMapperRegistrationSource<TFrom, TTo>(Func<TFrom, TTo> mapper) 
             }),
             new RootScopeLifetime(),
             InstanceSharing.Shared,
-            InstanceOwnership.OwnedByLifetimeScope,
-            new[] { service },
+            isNewObject ? InstanceOwnership.OwnedByLifetimeScope : InstanceOwnership.ExternallyOwned,
+            [service],
             new Dictionary<string, object?>());
 
         return [registration];
