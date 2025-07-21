@@ -141,15 +141,15 @@ namespace Nethermind.Network
 
         public ForkActivationsSummary GetForkActivationsSummary(BlockHeader? head)
         {
-            ForkActivation headActivation = new(head?.Number ?? 0, head.Number == 0 ? 0 : head?.Timestamp ?? 0);
+            ForkActivation headActivation = new(head?.Number ?? 0, head?.Number == 0 ? 0 : head?.Timestamp ?? 0);
 
             int indexOfActive = 0;
-            for (; indexOfActive < Forks.Length; indexOfActive++)
+            for (; ; indexOfActive++)
             {
                 ForkActivation fork = Forks[indexOfActive].Activation;
 
-                if (fork.Timestamp.HasValue ? fork.Timestamp >= headActivation.Timestamp :
-                                              fork.BlockNumber >= headActivation.BlockNumber)
+                if (indexOfActive >= Forks.Length - 1 ||
+                    (fork.Timestamp.HasValue ? fork.Timestamp >= headActivation.Timestamp : fork.BlockNumber >= headActivation.BlockNumber))
                 {
                     break;
                 }
@@ -160,7 +160,7 @@ namespace Nethermind.Network
             // The fix for post-merge genesis
             ForkActivation currentForkActivation = Forks[indexOfActive].Activation;
 
-            if (currentForkActivation.BlockNumber is 0)
+            if (currentForkActivation.BlockNumber is 0 && currentForkActivation.Timestamp is null)
             {
                 currentForkActivation = new ForkActivation(0, 0);
             }
