@@ -135,11 +135,12 @@ public sealed unsafe partial class VirtualMachine(
     /// <exception cref="EvmException">
     /// Thrown when an EVM-specific error occurs during execution.
     /// </exception>
-    public TransactionSubstate ExecuteTransaction<TTracingInst>(
+    public TransactionSubstate ExecuteTransaction<TTracingInst, TEnablePrecompilation>(
         EvmState evmState,
         IWorldState worldState,
         ITxTracer txTracer)
         where TTracingInst : struct, IFlag
+        where TEnablePrecompilation : struct, IFlag
     {
         // Initialize dependencies for transaction tracing and state access.
         _txTracer = txTracer;
@@ -191,9 +192,9 @@ public sealed unsafe partial class VirtualMachine(
                     // Execute the regular EVM call if valid code is present; otherwise, mark as invalid.
                     if (_currentState.Env.CodeInfo is not null)
                     {
-                        callResult = _txTracer.IsTracing
-                            ? ExecuteCall<TTracingInst, OffFlag>(_previousCallResult, previousCallOutput, _previousCallOutputDestination)
-                            : ExecuteCall<TTracingInst, OnFlag>(_previousCallResult, previousCallOutput, _previousCallOutputDestination);
+                        callResult = _vmConfig.IsVmOptimizationEnabled
+                            ? ExecuteCall<TTracingInst, TEnablePrecompilation>(_previousCallResult, previousCallOutput, _previousCallOutputDestination)
+                            : ExecuteCall<TTracingInst, OffFlag>(_previousCallResult, previousCallOutput, _previousCallOutputDestination);
                     }
                     else
                     {
@@ -974,7 +975,7 @@ public sealed unsafe partial class VirtualMachine(
 
         IReleaseSpec spec = BlockExecutionContext.Spec;
         long baseGasCost = precompile.BaseGasCost(spec);
-        long blobGasCost = precompile.DataGasCost(callData, spec);
+        long dataGasCost = precompile.DataGasCost(callData, spec);
 
         bool wasCreated = _worldState.AddToBalanceAndCreateIfNotExists(state.Env.ExecutingAccount, transferValue, spec);
 
@@ -994,7 +995,7 @@ public sealed unsafe partial class VirtualMachine(
             _parityTouchBugAccount.ShouldDelete = true;
         }
 
-        if (!UpdateGas(checked(baseGasCost + blobGasCost), ref gasAvailable))
+        if (!UpdateGas(checked(baseGasCost + dataGasCost), ref gasAvailable))
         {
             return new(default, false, 0, true, EvmExceptionType.OutOfGas);
         }
@@ -1056,6 +1057,7 @@ public sealed unsafe partial class VirtualMachine(
         ZeroPaddedSpan previousCallOutput,
         scoped in UInt256 previousCallOutputDestination)
         where TTracingInst : struct, IFlag
+        where TEnablePrecompilation : struct, IFlag
     {
         EvmState vmState = _currentState;
         // Obtain a reference to the execution environment for convenience.
@@ -1076,7 +1078,7 @@ public sealed unsafe partial class VirtualMachine(
 
             if(typeof(TEnablePrecompilation) == typeof(OnFlag))
             {
-                // IlAnalyzer.Analyse(env.CodeInfo as CodeInfo, ILMode.AOT_MODE, _vmConfig, _logger);
+                //if (env.CodeInfo.CodeHash is not null) IlAnalyzer.Analyse(env.CodeInfo as CodeInfo, ILMode.AOT_MODE, _vmConfig, _logger);
                 env.CodeInfo.NoticeExecution(_vmConfig, _logger, Spec);
             }
         }

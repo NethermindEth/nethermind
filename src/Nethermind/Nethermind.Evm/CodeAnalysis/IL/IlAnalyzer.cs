@@ -77,12 +77,19 @@ public static class IlAnalyzer
             Task[] taskPool = new Task[taskLimit];
             Array.Fill(taskPool, Task.CompletedTask);
 
-            await foreach (var codeInfo in _channel.Reader.ReadAllAsync(_cts.Token))
+            while (await _channel.Reader.WaitToReadAsync(_cts.Token))
             {
-                int index = Task.WaitAny(taskPool);
+                while (_channel.Reader.TryRead(out CodeInfo? codeInfo))
+                {
+                    if (codeInfo is null)
+                        break;
 
-                Metrics.DecrementIlvmAotQueueSize();
-                taskPool[index] = Task.Run(() => ProcessCodeInfoAsync(config, logger, codeInfo));
+                    int index = Task.WaitAny(taskPool);
+
+                    Metrics.DecrementIlvmAotQueueSize();
+
+                    taskPool[index] = Task.Run(async () => await ProcessCodeInfoAsync(config, logger, codeInfo));
+                }
             }
         }
         catch (Exception ex)

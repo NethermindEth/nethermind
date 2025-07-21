@@ -199,7 +199,11 @@ public class SyntheticTest(bool useIlEvm, string benchmarkName, ulong number, ul
     {
         var bytecode = ResolveBytecode(Number);
 
-        IlVirtualMachineTestsBase standardChain = new IlVirtualMachineTestsBase(new VMConfig(), Prague.Instance);
+        IlVirtualMachineTestsBase standardChain = new IlVirtualMachineTestsBase(new VMConfig()
+        {
+           IsILEvmEnabled = false,
+           IlEvmEnabledMode = ILMode.NO_ILVM
+        }, Prague.Instance);
         Path.Combine(Directory.GetCurrentDirectory(), "GeneratedContracts.dll");
 
         IlVirtualMachineTestsBase enhancedChain = new IlVirtualMachineTestsBase(new VMConfig
