@@ -3,11 +3,6 @@
     <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
     <Nullable>annotations</Nullable>
   </PropertyGroup>
-  <ItemGroup>
-    <Compile Remove="CodeAnalysis\IL\CompilerModes\**" />
-    <EmbeddedResource Remove="CodeAnalysis\IL\CompilerModes\**" />
-    <None Remove="CodeAnalysis\IL\CompilerModes\**" />
-  </ItemGroup>
 
   <ItemGroup>
     <ProjectReference Include="..\Nethermind.Core\Nethermind.Core.csproj" />
