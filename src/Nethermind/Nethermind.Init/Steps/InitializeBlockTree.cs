@@ -39,8 +39,8 @@ namespace Nethermind.Init.Steps
         {
             IInitConfig initConfig = _get.Config<IInitConfig>();
             IBloomConfig bloomConfig = _get.Config<IBloomConfig>();
-            IHistoryConfig historyConfig = _get.Config<IHistoryConfig>();
-            IBlocksConfig blocksConfig = _get.Config<IBlocksConfig>();
+            // IHistoryConfig historyConfig = _get.Config<IHistoryConfig>();
+            // IBlocksConfig blocksConfig = _get.Config<IBlocksConfig>();
 
             ILogManager logManager = _get.LogManager;
 

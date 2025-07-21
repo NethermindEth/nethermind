@@ -61,7 +61,7 @@ public class NethermindModule(ChainSpec chainSpec, IConfigProvider configProvide
             .AddSingleton<IBlobTxStorage, BlobTxStorage>()
 
             .AddKeyedSingleton<IProtectedPrivateKey>(IProtectedPrivateKey.NodeKey, (ctx) => ctx.Resolve<INethermindApi>().NodeKey!)
-            .AddSingleton<IAbiEncoder>(Nethermind.Abi.AbiEncoder.Instance)
+            .AddSingleton<IAbiEncoder>(AbiEncoder.Instance)
             .AddSingleton<IEciesCipher, EciesCipher>()
             .AddSingleton<ICryptoRandom, CryptoRandom>()
 
@@ -71,12 +71,11 @@ public class NethermindModule(ChainSpec chainSpec, IConfigProvider configProvide
             .AddSingleton<IEthereumEcdsa, ISpecProvider>((specProvider) => new EthereumEcdsa(specProvider.ChainId))
             .Bind<IEcdsa, IEthereumEcdsa>()
 
-            .AddSingleton<IHistoryPruner, IBlockTree, IReceiptStorage, ISpecProvider, IBlockStore, IChainLevelInfoRepository, IDbProvider>(
-                (blockTree, receiptStorage, specProvider, blockStore, chainLevelInfoRepository, dbProvider) => new HistoryPruner(
+            .AddSingleton<IHistoryPruner, IBlockTree, IReceiptStorage, ISpecProvider, IChainLevelInfoRepository, IDbProvider>(
+                (blockTree, receiptStorage, specProvider, chainLevelInfoRepository, dbProvider) => new HistoryPruner(
                 blockTree,
                 receiptStorage,
                 specProvider,
-                blockStore,
                 chainLevelInfoRepository,
                 dbProvider.MetadataDb,
                 configProvider.GetConfig<IHistoryConfig>(),

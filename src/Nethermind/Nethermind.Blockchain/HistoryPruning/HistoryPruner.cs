@@ -5,7 +5,6 @@ using System;
 using System.Collections.Generic;
 using System.Threading;
 using System.Threading.Tasks;
-using Nethermind.Blockchain.Blocks;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Config;
 using Nethermind.Core;
@@ -28,7 +27,7 @@ public class HistoryPruner : IHistoryPruner
     private readonly ILogger _logger;
     private readonly IBlockTree _blockTree;
     private readonly IReceiptStorage _receiptStorage;
-    private readonly IBlockStore _blockStore;
+    // private readonly IBlockStore _blockStore;
     private readonly IChainLevelInfoRepository _chainLevelInfoRepository;
     private readonly IDb _metadataDb;
     private readonly IHistoryConfig _historyConfig;
@@ -45,7 +44,7 @@ public class HistoryPruner : IHistoryPruner
         IBlockTree blockTree,
         IReceiptStorage receiptStorage,
         ISpecProvider specProvider,
-        IBlockStore blockStore,
+        // IBlockStore blockStore,
         IChainLevelInfoRepository chainLevelInfoRepository,
         IDb metadataDb,
         IHistoryConfig historyConfig,
@@ -56,7 +55,7 @@ public class HistoryPruner : IHistoryPruner
         _logger = logManager.GetClassLogger();
         _blockTree = blockTree;
         _receiptStorage = receiptStorage;
-        _blockStore = blockStore;
+        // _blockStore = blockStore;
         _chainLevelInfoRepository = chainLevelInfoRepository;
         _metadataDb = metadataDb;
         _historyConfig = historyConfig;
@@ -169,7 +168,7 @@ public class HistoryPruner : IHistoryPruner
             cutoffBlockNumber ??= BlockTree.BinarySearchBlockNumber(_deletePointer, _blockTree.SyncPivot.BlockNumber, (n, _) =>
             {
                 BlockInfo? blockInfo = _chainLevelInfoRepository.LoadLevel(n).MainChainBlock;
-                Block? block = blockInfo is null ? null : _blockStore.Get(blockInfo.BlockNumber, blockInfo.BlockHash);
+                Block? block = blockInfo is null ? null : _blockTree.FindBlock(blockInfo.BlockHash, BlockTreeLookupOptions.None, blockInfo.BlockNumber);
 
                 // find cutoff point
                 return block is not null && block.Timestamp >= cutoffTimestamp;
@@ -291,7 +290,7 @@ public class HistoryPruner : IHistoryPruner
             bool finished = false;
             foreach (BlockInfo blockInfo in chainLevelInfo.BlockInfos)
             {
-                Block? block = _blockStore.Get(blockInfo.BlockNumber, blockInfo.BlockHash);
+                Block? block = _blockTree.FindBlock(blockInfo.BlockHash, BlockTreeLookupOptions.None, blockInfo.BlockNumber);
                 if (block is null)
                 {
                     continue;
