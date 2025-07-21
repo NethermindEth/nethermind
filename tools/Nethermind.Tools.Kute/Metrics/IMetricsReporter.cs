@@ -5,14 +5,14 @@ namespace Nethermind.Tools.Kute.Metrics;
 
 public interface IMetricsReporter
 {
-    Task Message() => Task.CompletedTask;
-    Task Response() => Task.CompletedTask;
-    Task Succeeded() => Task.CompletedTask;
-    Task Failed() => Task.CompletedTask;
-    Task Ignored() => Task.CompletedTask;
-    Task Batch(int requestId, TimeSpan elapsed) => Task.CompletedTask;
-    Task Single(int requestId, TimeSpan elapsed) => Task.CompletedTask;
-    Task Total(TimeSpan elapsed) => Task.CompletedTask;
+    Task Message(CancellationToken token = default) => Task.CompletedTask;
+    Task Response(CancellationToken token = default) => Task.CompletedTask;
+    Task Succeeded(CancellationToken token = default) => Task.CompletedTask;
+    Task Failed(CancellationToken token = default) => Task.CompletedTask;
+    Task Ignored(CancellationToken token = default) => Task.CompletedTask;
+    Task Batch(int requestId, TimeSpan elapsed, CancellationToken token = default) => Task.CompletedTask;
+    Task Single(int requestId, TimeSpan elapsed, CancellationToken token = default) => Task.CompletedTask;
+    Task Total(TimeSpan elapsed, CancellationToken token = default) => Task.CompletedTask;
 }
 
 public sealed class NullMetricsReporter : IMetricsReporter;

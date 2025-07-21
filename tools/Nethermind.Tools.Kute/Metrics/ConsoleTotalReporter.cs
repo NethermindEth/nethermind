@@ -14,12 +14,12 @@ public sealed class ConsoleTotalReporter : IMetricsReporter
         _formatter = formatter;
     }
 
-    public async Task Total(TimeSpan elapsed)
+    public async Task Total(TimeSpan elapsed, CancellationToken token = default)
     {
         var report = _provider.Report();
         using (var stream = Console.OpenStandardOutput())
         {
-            await _formatter.WriteAsync(stream, report);
+            await _formatter.WriteAsync(stream, report, token);
         }
     }
 }

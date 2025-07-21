@@ -13,67 +13,67 @@ public sealed class ComposedMetricsReporter : IMetricsReporter
         _reporters = reporters;
     }
 
-    public async Task Message()
+    public async Task Message(CancellationToken token = default)
     {
         foreach (IMetricsReporter reporter in _reporters)
         {
-            await reporter.Message();
+            await reporter.Message(token);
         }
     }
 
-    public async Task Response()
+    public async Task Response(CancellationToken token = default)
     {
         foreach (IMetricsReporter reporter in _reporters)
         {
-            await reporter.Response();
+            await reporter.Response(token);
         }
     }
 
-    public async Task Succeeded()
+    public async Task Succeeded(CancellationToken token = default)
     {
         foreach (IMetricsReporter reporter in _reporters)
         {
-            await reporter.Succeeded();
+            await reporter.Succeeded(token);
         }
     }
 
-    public async Task Failed()
+    public async Task Failed(CancellationToken token = default)
     {
         foreach (IMetricsReporter reporter in _reporters)
         {
-            await reporter.Failed();
+            await reporter.Failed(token);
         }
     }
 
-    public async Task Ignored()
+    public async Task Ignored(CancellationToken token = default)
     {
         foreach (IMetricsReporter reporter in _reporters)
         {
-            await reporter.Ignored();
+            await reporter.Ignored(token);
         }
     }
 
-    public async Task Batch(int requestId, TimeSpan elapsed)
+    public async Task Batch(int requestId, TimeSpan elapsed, CancellationToken token = default)
     {
         foreach (IMetricsReporter reporter in _reporters)
         {
-            await reporter.Batch(requestId, elapsed);
+            await reporter.Batch(requestId, elapsed, token);
         }
     }
 
-    public async Task Single(int requestId, TimeSpan elapsed)
+    public async Task Single(int requestId, TimeSpan elapsed, CancellationToken token = default)
     {
         foreach (IMetricsReporter reporter in _reporters)
         {
-            await reporter.Single(requestId, elapsed);
+            await reporter.Single(requestId, elapsed, token);
         }
     }
 
-    public async Task Total(TimeSpan elapsed)
+    public async Task Total(TimeSpan elapsed, CancellationToken token = default)
     {
         foreach (IMetricsReporter reporter in _reporters)
         {
-            await reporter.Total(elapsed);
+            await reporter.Total(elapsed, token);
         }
     }
 }

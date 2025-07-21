@@ -19,22 +19,22 @@ public sealed class MemoryMetricsReporter
     private long _ignored;
     private long _responses;
 
-    public Task Message() => Task.FromResult(Interlocked.Increment(ref _messages));
-    public Task Response() => Task.FromResult(Interlocked.Increment(ref _responses));
-    public Task Succeeded() => Task.FromResult(Interlocked.Increment(ref _succeeded));
-    public Task Failed() => Task.FromResult(Interlocked.Increment(ref _failed));
-    public Task Ignored() => Task.FromResult(Interlocked.Increment(ref _ignored));
-    public Task Batch(int requestId, TimeSpan elapsed)
+    public Task Message(CancellationToken token = default) => Task.FromResult(Interlocked.Increment(ref _messages));
+    public Task Response(CancellationToken token = default) => Task.FromResult(Interlocked.Increment(ref _responses));
+    public Task Succeeded(CancellationToken token = default) => Task.FromResult(Interlocked.Increment(ref _succeeded));
+    public Task Failed(CancellationToken token = default) => Task.FromResult(Interlocked.Increment(ref _failed));
+    public Task Ignored(CancellationToken token = default) => Task.FromResult(Interlocked.Increment(ref _ignored));
+    public Task Batch(int requestId, TimeSpan elapsed, CancellationToken token = default)
     {
         _batches[requestId] = elapsed;
         return Task.CompletedTask;
     }
-    public Task Single(int requestId, TimeSpan elapsed)
+    public Task Single(int requestId, TimeSpan elapsed, CancellationToken token = default)
     {
         _singles[requestId] = elapsed;
         return Task.CompletedTask;
     }
-    public Task Total(TimeSpan elapsed)
+    public Task Total(TimeSpan elapsed, CancellationToken token = default)
     {
         _totalRunningTime = elapsed;
         return Task.CompletedTask;

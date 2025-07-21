@@ -16,7 +16,7 @@ public sealed class ConsoleProgressReporter : IMetricsReporter
         _suffix = $"/{total}";
     }
 
-    public Task Message()
+    public Task Message(CancellationToken token = default)
     {
         if (_messageCount == 1)
         {
@@ -35,7 +35,7 @@ public sealed class ConsoleProgressReporter : IMetricsReporter
         return Task.CompletedTask;
     }
 
-    public Task Total(TimeSpan elapsed)
+    public Task Total(TimeSpan elapsed, CancellationToken token = default)
     {
         Console.Write('\n');
         return Task.CompletedTask;
