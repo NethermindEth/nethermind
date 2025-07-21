@@ -39,8 +39,6 @@ namespace Nethermind.Init.Steps
         {
             IInitConfig initConfig = _get.Config<IInitConfig>();
             IBloomConfig bloomConfig = _get.Config<IBloomConfig>();
-            // IHistoryConfig historyConfig = _get.Config<IHistoryConfig>();
-            // IBlocksConfig blocksConfig = _get.Config<IBlocksConfig>();
 
             ILogManager logManager = _get.LogManager;
 
@@ -116,17 +114,6 @@ namespace Nethermind.Init.Steps
             {
                 _ = new ExitOnBlockNumberHandler(blockTree, _get.ProcessExit!, initConfig.ExitOnBlockNumber.Value, _get.LogManager);
             }
-
-            // _set.HistoryPruner = new HistoryPruner(
-            //     blockTree,
-            //     receiptStorage,
-            //     _get.SpecProvider!,
-            //     blockStore,
-            //     chainLevelInfoRepository,
-            //     _get.DbProvider.MetadataDb,
-            //     historyConfig,
-            //     (long)blocksConfig.SecondsPerSlot,
-            //     logManager);
 
             return Task.CompletedTask;
         }

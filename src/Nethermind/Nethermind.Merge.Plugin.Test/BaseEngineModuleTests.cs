@@ -47,7 +47,6 @@ using Nethermind.Synchronization.Peers;
 using Nethermind.TxPool;
 using NSubstitute;
 using NUnit.Framework;
-using k8s.KubeConfigModels;
 
 namespace Nethermind.Merge.Plugin.Test;
 
@@ -118,7 +117,7 @@ public abstract partial class BaseEngineModuleTests
                 setHeadResponse.Data.PayloadId.Should().Be(null);
             }
 
-            blocks.Add((getPayloadResult));
+            blocks.Add(getPayloadResult);
             parentBlock = getPayloadResult;
             block = parentBlock.TryGetBlock().Block!;
             block.Header.TotalDifficulty = parentHeader.TotalDifficulty + block.Header.Difficulty;
@@ -261,18 +260,6 @@ public abstract partial class BaseEngineModuleTests
             IBlockProducerEnv blockProducerEnv = BlockProducerEnvFactory.Create();
             PostMergeBlockProducer? postMergeBlockProducer = blockProducerFactory.Create(blockProducerEnv);
             BlockProducer = postMergeBlockProducer;
-
-            // need to resolve here?
-            // HistoryPruner = new HistoryPruner(
-            //     BlockTree,
-            //     ReceiptStorage,
-            //     SpecProvider,
-            //     BlockStore,
-            //     ChainLevelInfoRepository,
-            //     DbProvider.MetadataDb,
-            //     new HistoryConfig(),
-            //     (long)MergeConfig.SecondsPerSlot,
-            //     LogManager);
 
             return new MergeBlockProducer(preMergeBlockProducer, postMergeBlockProducer, PoSSwitcher);
         }

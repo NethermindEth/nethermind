@@ -61,6 +61,7 @@ public class HistoryPrunerTests
             testBlockchain.DbProvider.MetadataDb,
             historyConfig,
             SecondsPerSlot,
+            new ProcessExitSource(new()),
             LimboLogs.Instance);
 
         testBlockchain.BlockTree.SyncPivot = (1000, Hash256.Zero);
@@ -117,6 +118,7 @@ public class HistoryPrunerTests
             testBlockchain.DbProvider.MetadataDb,
             historyConfig,
             SecondsPerSlot,
+            new ProcessExitSource(new()),
             LimboLogs.Instance);
 
         testBlockchain.BlockTree.SyncPivot = (1000, Hash256.Zero);
@@ -175,6 +177,7 @@ public class HistoryPrunerTests
             testBlockchain.DbProvider.MetadataDb,
             historyConfig,
             SecondsPerSlot,
+            new ProcessExitSource(new()),
             LimboLogs.Instance);
 
         testBlockchain.BlockTree.SyncPivot = (SyncPivot, Hash256.Zero);
@@ -229,6 +232,7 @@ public class HistoryPrunerTests
             testBlockchain.DbProvider.MetadataDb,
             historyConfig,
             SecondsPerSlot,
+            new ProcessExitSource(new()),
             LimboLogs.Instance);
 
         await historyPruner.TryPruneHistory(CancellationToken.None);
@@ -262,6 +266,7 @@ public class HistoryPrunerTests
             new TestMemDb(),
             validHistoryConfig,
             SecondsPerSlot,
+            new ProcessExitSource(new()),
             LimboLogs.Instance));
     }
 
@@ -284,6 +289,7 @@ public class HistoryPrunerTests
             new TestMemDb(),
             invalidHistoryConfig,
             SecondsPerSlot,
+            new ProcessExitSource(new()),
             LimboLogs.Instance));
     }
 

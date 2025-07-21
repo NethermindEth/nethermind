@@ -27,9 +27,9 @@ public class HistoryPruner : IHistoryPruner
     private readonly ILogger _logger;
     private readonly IBlockTree _blockTree;
     private readonly IReceiptStorage _receiptStorage;
-    // private readonly IBlockStore _blockStore;
     private readonly IChainLevelInfoRepository _chainLevelInfoRepository;
     private readonly IDb _metadataDb;
+    private readonly IProcessExitSource _processExitSource;
     private readonly IHistoryConfig _historyConfig;
     private readonly bool _enabled;
     private readonly long _epochLength;
@@ -44,20 +44,20 @@ public class HistoryPruner : IHistoryPruner
         IBlockTree blockTree,
         IReceiptStorage receiptStorage,
         ISpecProvider specProvider,
-        // IBlockStore blockStore,
         IChainLevelInfoRepository chainLevelInfoRepository,
         IDb metadataDb,
         IHistoryConfig historyConfig,
         long secondsPerSlot,
+        IProcessExitSource processExitSource,
         ILogManager logManager)
     {
         _specProvider = specProvider;
         _logger = logManager.GetClassLogger();
         _blockTree = blockTree;
         _receiptStorage = receiptStorage;
-        // _blockStore = blockStore;
         _chainLevelInfoRepository = chainLevelInfoRepository;
         _metadataDb = metadataDb;
+        _processExitSource = processExitSource;
         _historyConfig = historyConfig;
         _enabled = historyConfig.Enabled;
         _epochLength = secondsPerSlot * 32;
@@ -68,7 +68,7 @@ public class HistoryPruner : IHistoryPruner
     }
 
     public void OnBlockProcessorQueueEmpty(object? sender, EventArgs e)
-        => _ = TryPruneHistory(CancellationToken.None);
+        => _ = TryPruneHistory(_processExitSource.Token);
 
     public async Task TryPruneHistory(CancellationToken cancellationToken)
     {
