@@ -20,8 +20,6 @@ brtrue.s j3
 ldarg.1
 call Boolean get_ShouldJump()
 brtrue.s j1
-
-j7:
 ldarg.0
 ldarg.1
 call Segment[17::31]
@@ -30,7 +28,7 @@ ldarg.1
 call Boolean get_ShouldJump()
 brtrue.s j1
 
-j8:
+j7:
 ldarg.0
 ldfld Nethermind.Evm.EvmState EvmState
 call Boolean get_IsStatic()
@@ -77,11 +75,8 @@ ldloc.0
 ldc.i4.s 11
 beq.s j6
 ldloc.0
-ldc.i4.s 17
-beq.s j7
-ldloc.0
 ldc.i4.s 32
-beq.s j8
+beq.s j7
 br.s InvalidJumpDestination
 
 StaticCallViolation:

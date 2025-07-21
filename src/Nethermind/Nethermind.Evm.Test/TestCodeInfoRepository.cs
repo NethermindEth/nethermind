@@ -9,7 +9,7 @@ using Nethermind.Evm.CodeAnalysis;
 using Nethermind.Evm.EvmObjectFormat;
 using Nethermind.Evm.Precompiles;
 using Nethermind.Evm.Precompiles.Bls;
-using Nethermind.Evm.Precompiles.Snarks;
+//using Nethermind.Evm.Precompiles.Snarks;
 using Nethermind.Evm.State;
 using Nethermind.State;
 using System;
@@ -28,6 +28,9 @@ public class TestCodeInfoRepository : ICodeInfoRepository
     private readonly CodeLruCache _codeCache = new();
     private readonly FrozenDictionary<AddressAsKey, PrecompileInfo> _localPrecompiles;
 
+    public bool IsPrecompile(Address address, IReleaseSpec spec) =>
+            address.IsPrecompile(spec) && _localPrecompiles.ContainsKey(address);
+
     private static FrozenDictionary<AddressAsKey, PrecompileInfo> InitializePrecompiledContracts()
     {
         return new Dictionary<AddressAsKey, PrecompileInfo>
@@ -37,9 +40,9 @@ public class TestCodeInfoRepository : ICodeInfoRepository
             [Ripemd160Precompile.Address] = new PrecompileInfo(Ripemd160Precompile.Instance),
             [IdentityPrecompile.Address] = new PrecompileInfo(IdentityPrecompile.Instance),
 
-            [Bn254AddPrecompile.Address] = new PrecompileInfo(Bn254AddPrecompile.Instance),
-            [Bn254MulPrecompile.Address] = new PrecompileInfo(Bn254MulPrecompile.Instance),
-            [Bn254PairingPrecompile.Address] = new PrecompileInfo(Bn254PairingPrecompile.Instance),
+            [BN254AddPrecompile.Address] = new PrecompileInfo(BN254AddPrecompile.Instance),
+            [BN254MulPrecompile.Address] = new PrecompileInfo(BN254MulPrecompile.Instance),
+            [BN254PairingPrecompile.Address] = new PrecompileInfo(BN254PairingPrecompile.Instance),
             [ModExpPrecompile.Address] = new PrecompileInfo(ModExpPrecompile.Instance),
 
             [Blake2FPrecompile.Address] = new PrecompileInfo(Blake2FPrecompile.Instance),

@@ -12,15 +12,18 @@ namespace Nethermind.Facade.Simulate;
 
 public class SimulateVirtualMachine(IVirtualMachine virtualMachine) : IVirtualMachine
 {
-    public TransactionSubstate ExecuteTransaction<TTracingInst>(EvmState state, IWorldState worldState, ITxTracer txTracer)
+    public TransactionSubstate ExecuteTransaction<TTracingInst, TEnablePrecompilation>(EvmState state, IWorldState worldState, ITxTracer txTracer)
             where TTracingInst : struct, IFlag
+            where TEnablePrecompilation : struct, IFlag
     {
         if (txTracer.IsTracingActions && TryGetLogsMutator(txTracer, out ITxLogsMutator logsMutator))
         {
             logsMutator.SetLogsToMutate(state.AccessTracker.Logs);
         }
 
-        return virtualMachine.ExecuteTransaction<TTracingInst>(state, worldState, txTracer);
+        return txTracer.IsIlEvmCompatible
+               ? virtualMachine.ExecuteTransaction<TTracingInst, OnFlag>(state, worldState, txTracer)
+               : virtualMachine.ExecuteTransaction<TTracingInst, OffFlag>(state, worldState, txTracer);
     }
 
     private static bool TryGetLogsMutator(ITxTracer txTracer, [NotNullWhen(true)] out ITxLogsMutator? txLogsMutator)
