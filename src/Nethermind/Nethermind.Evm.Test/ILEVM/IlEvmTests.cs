@@ -1863,7 +1863,6 @@ namespace Nethermind.Evm.Test.ILEVM
         {
             IlVirtualMachineTestsBase enhancedChain = new IlVirtualMachineTestsBase(new VMConfig
             {
-                IsILEvmEnabled = true,
                 IlEvmEnabledMode = ILMode.AOT_MODE,
                 IlEvmAnalysisThreshold = 1,
                 IlEvmAnalysisQueueMaxSize = 1,
@@ -1924,7 +1923,6 @@ namespace Nethermind.Evm.Test.ILEVM
             IlVirtualMachineTestsBase standardChain = new IlVirtualMachineTestsBase(new VMConfig
             {
                 IlEvmEnabledMode = ILMode.NO_ILVM,
-                IsILEvmEnabled = false,
             }, testcase.spec);
 
             IlVirtualMachineTestsBase enhancedChain = new IlVirtualMachineTestsBase(new VMConfig

@@ -201,7 +201,6 @@ public class SyntheticTest(bool useIlEvm, string benchmarkName, ulong number, ul
 
         IlVirtualMachineTestsBase standardChain = new IlVirtualMachineTestsBase(new VMConfig()
         {
-           IsILEvmEnabled = false,
            IlEvmEnabledMode = ILMode.NO_ILVM
         }, Prague.Instance);
         Path.Combine(Directory.GetCurrentDirectory(), "GeneratedContracts.dll");

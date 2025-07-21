@@ -14,9 +14,7 @@ using System.Threading.Tasks;
 namespace Nethermind.Evm.Config;
 public class VMConfig : IVMConfig
 {
-
-
-    public bool IsILEvmEnabled { get; set; } = true;
+    public bool IsILEvmEnabled => IlEvmEnabledMode is not ILMode.NO_ILVM;
     public ILMode IlEvmEnabledMode { get; set; } = ILMode.AOT_MODE;
     public int IlEvmAnalysisThreshold { get; set; } = 32;
     public int IlEvmAnalysisQueueMaxSize { get; set; } = 8;

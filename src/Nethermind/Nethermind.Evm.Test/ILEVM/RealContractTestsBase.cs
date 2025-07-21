@@ -62,7 +62,6 @@ public abstract class RealContractTestsBase : VirtualMachineTestsBase
         {
             _config = new VMConfig
             {
-                IsILEvmEnabled = false,
                 IlEvmEnabledMode = ILMode.NO_ILVM
             };
         }
