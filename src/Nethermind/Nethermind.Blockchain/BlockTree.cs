@@ -792,16 +792,7 @@ namespace Nethermind.Blockchain
             BestSuggestedHeader = Head?.Header;
             BestSuggestedBody = Head;
 
-            BlockAcceptingNewBlocks();
-
-            try
-            {
-                DeleteInvalidBranch(invalidBlock.Hash!);
-            }
-            finally
-            {
-                ReleaseAcceptingNewBlocks();
-            }
+            DeleteInvalidBranch(invalidBlock.Hash!);
         }
 
         public void DeleteBlock(long currentNumber, Hash256 currentHash, Hash256 nextHash, BatchWrite batch, ChainLevelInfo? currentLevel = null, bool isOldBlock = false)
@@ -836,7 +827,7 @@ namespace Nethermind.Blockchain
 
             _blockStore.Delete(currentNumber, currentHash);
             _headerStore.Delete(currentHash);
-            if (isOldBlock) _blockInfoDb.Delete(currentHash);
+            if (isOldBlock) _chainLevelInfoRepository.Delete(currentNumber, batch);
         }
 
         private void DeleteInvalidBranch(Hash256 deletePointer)
