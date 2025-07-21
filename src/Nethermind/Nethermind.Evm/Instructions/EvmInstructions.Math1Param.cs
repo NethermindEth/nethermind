@@ -98,7 +98,7 @@ public static partial class EvmInstructions
     /// </summary>
     public struct OpCLZ : IOpMath1Param
     {
-        static long GasCost => GasCostOf.Low;
+        public static long GasCost => GasCostOf.Low;
 
         public static Word Operation(Word value) => value == default
             ? Vector256.Create((byte)0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0)

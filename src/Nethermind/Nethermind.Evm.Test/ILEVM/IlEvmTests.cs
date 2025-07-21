@@ -1971,6 +1971,7 @@ namespace Nethermind.Evm.Test.ILEVM
             var address = standardChain.InsertCode(testcase.bytecode);
             enhancedChain.InsertCode(testcase.bytecode);
 
+            standardChain.Execute(testcase.bytecode, NullTxTracer.Instance, blobVersionedHashes: blobVersionedHashes, forceAnalysis: false);
 
             Assert.That(Metrics.IlvmAotPrecompiledCalls, Is.EqualTo(0));
 
