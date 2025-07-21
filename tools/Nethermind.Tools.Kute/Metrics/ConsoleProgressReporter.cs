@@ -8,6 +8,7 @@ namespace Nethermind.Tools.Kute.Metrics;
 public sealed class ConsoleProgressReporter : IMetricsReporter
 {
     private readonly string _suffix;
+    private readonly SemaphoreSlim _semaphore = new(1);
 
     private int _messageCount = 1;
 
@@ -16,23 +17,30 @@ public sealed class ConsoleProgressReporter : IMetricsReporter
         _suffix = $"/{total}";
     }
 
-    public Task Message(CancellationToken token = default)
+    public async Task Message(CancellationToken token = default)
     {
-        if (_messageCount == 1)
+        try
         {
-            Console.Write($"Progress: 1{_suffix}");
+            await _semaphore.WaitAsync(token);
+
+            if (_messageCount == 1)
+            {
+                Console.Write($"Progress: 1{_suffix}");
+            }
+
+            var sb = new StringBuilder();
+
+            sb.Append('\b', (_messageCount - 1).ToString().Length + _suffix.Length);
+            sb.Append(_messageCount);
+            sb.Append(_suffix);
+
+            Console.Write(sb);
+            _messageCount++;
         }
-
-        var sb = new StringBuilder();
-
-        sb.Append('\b', (_messageCount - 1).ToString().Length + _suffix.Length);
-        sb.Append(_messageCount);
-        sb.Append(_suffix);
-
-        Console.Write(sb);
-        Interlocked.Increment(ref _messageCount);
-
-        return Task.CompletedTask;
+        finally
+        {
+            _semaphore.Release();
+        }
     }
 
     public Task Total(TimeSpan elapsed, CancellationToken token = default)
