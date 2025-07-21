@@ -37,20 +37,20 @@ public sealed class Application
         _methodFilter = methodFilter;
     }
 
-    public async Task Run()
+    public async Task Run(CancellationToken token)
     {
         var totalTimer = new Timer();
         using (totalTimer.Time())
         {
-            await foreach (var (jsonRpc, n) in _msgProvider.Messages.Indexed(startingFrom: 1))
+            await foreach (var (jsonRpc, n) in _msgProvider.Messages(token).Indexed(startingFrom: 1))
             {
-                await _reporter.Message();
+                await _reporter.Message(token);
 
                 switch (jsonRpc)
                 {
                     case JsonRpc.Response:
                         {
-                            await _reporter.Response();
+                            await _reporter.Response(token);
                             continue;
                         }
                     case JsonRpc.Request.Batch batch:
@@ -60,19 +60,19 @@ public sealed class Application
                             var timer = new Timer();
                             using (timer.Time())
                             {
-                                response = await _submitter.Submit(batch);
+                                response = await _submitter.Submit(batch, token);
                             }
 
                             if (_validator.IsInvalid(batch, response))
                             {
-                                await _reporter.Failed();
+                                await _reporter.Failed(token);
                             }
                             else
                             {
-                                await _reporter.Succeeded();
+                                await _reporter.Succeeded(token);
                             }
-                            await _reporter.Batch(n, timer.Elapsed);
-                            await _responseTracer.TraceResponse(response);
+                            await _reporter.Batch(n, timer.Elapsed, token);
+                            await _responseTracer.TraceResponse(response, token);
 
                             break;
                         }
@@ -80,13 +80,13 @@ public sealed class Application
                         {
                             if (single.MethodName is null)
                             {
-                                await _reporter.Failed();
+                                await _reporter.Failed(token);
                                 continue;
                             }
 
                             if (_methodFilter.ShouldIgnore(single.MethodName))
                             {
-                                await _reporter.Ignored();
+                                await _reporter.Ignored(token);
                                 continue;
                             }
 
@@ -95,20 +95,20 @@ public sealed class Application
                             var timer = new Timer();
                             using (timer.Time())
                             {
-                                response = await _submitter.Submit(single);
+                                response = await _submitter.Submit(single, token);
                             }
 
                             if (_validator.IsInvalid(single, response))
                             {
-                                await _reporter.Failed();
+                                await _reporter.Failed(token);
                             }
                             else
                             {
-                                await _reporter.Succeeded();
+                                await _reporter.Succeeded(token);
                             }
 
-                            await _reporter.Single(n, timer.Elapsed);
-                            await _responseTracer.TraceResponse(response);
+                            await _reporter.Single(n, timer.Elapsed, token);
+                            await _responseTracer.TraceResponse(response, token);
 
                             break;
                         }
@@ -116,6 +116,6 @@ public sealed class Application
             }
         }
 
-        await _reporter.Total(totalTimer.Elapsed);
+        await _reporter.Total(totalTimer.Elapsed, token);
     }
 }

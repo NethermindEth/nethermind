@@ -33,12 +33,12 @@ static class Program
             Config.RequestsPerSecond,
             Config.UnwrapBatch
         ];
-        rootCommand.SetAction((parseResult, cancellationToken) =>
+        rootCommand.SetAction(async (parseResult, cancellationToken) =>
         {
             IServiceProvider serviceProvider = BuildServiceProvider(parseResult);
             Application app = serviceProvider.GetService<Application>()!;
 
-            return app.Run();
+            await app.Run(cancellationToken);
         });
 
         CommandLineConfiguration cli = new(rootCommand);
@@ -125,7 +125,7 @@ static class Program
                 IMessageProvider<object?> messagesProvider = unwrapBatch
                     ? provider.GetRequiredService<IMessageProvider<JsonRpc>>()
                     : provider.GetRequiredService<IMessageProvider<string>>();
-                var totalMessages = messagesProvider.Messages.ToEnumerable().Count();
+                var totalMessages = messagesProvider.Messages().ToEnumerable().Count();
 
                 progresReporter = new ConsoleProgressReporter(totalMessages);
             }
