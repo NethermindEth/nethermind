@@ -10,6 +10,7 @@ using Nethermind.Blockchain.Receipts;
 using Nethermind.Blockchain.Spec;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Config;
+using Nethermind.Consensus.Scheduler;
 using Nethermind.Core;
 using Nethermind.Core.ServiceStopper;
 using Nethermind.Core.Specs;
@@ -70,8 +71,8 @@ public class NethermindModule(ChainSpec chainSpec, IConfigProvider configProvide
             .AddSingleton<IEthereumEcdsa, ISpecProvider>((specProvider) => new EthereumEcdsa(specProvider.ChainId))
             .Bind<IEcdsa, IEthereumEcdsa>()
 
-            .AddSingleton<IHistoryPruner, IBlockTree, IReceiptStorage, ISpecProvider, IChainLevelInfoRepository, IDbProvider, IProcessExitSource>(
-                (blockTree, receiptStorage, specProvider, chainLevelInfoRepository, dbProvider, processExitSource) => new HistoryPruner(
+            .AddSingleton<IHistoryPruner, IBlockTree, IReceiptStorage, ISpecProvider, IChainLevelInfoRepository, IDbProvider, IProcessExitSource, IBackgroundTaskScheduler>(
+                (blockTree, receiptStorage, specProvider, chainLevelInfoRepository, dbProvider, processExitSource, backgroundTaskScheduler) => new HistoryPruner(
                 blockTree,
                 receiptStorage,
                 specProvider,
@@ -80,6 +81,7 @@ public class NethermindModule(ChainSpec chainSpec, IConfigProvider configProvide
                 configProvider.GetConfig<IHistoryConfig>(),
                 (long)configProvider.GetConfig<IBlocksConfig>().SecondsPerSlot,
                 processExitSource,
+                backgroundTaskScheduler,
                 logManager))
 
             .AddSingleton<IChainHeadSpecProvider, ChainHeadSpecProvider>()

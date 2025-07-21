@@ -8,6 +8,7 @@ using System.Threading.Tasks;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Config;
+using Nethermind.Consensus.Scheduler;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
@@ -31,6 +32,7 @@ public class HistoryPruner : IHistoryPruner
     private readonly IChainLevelInfoRepository _chainLevelInfoRepository;
     private readonly IDb _metadataDb;
     private readonly IProcessExitSource _processExitSource;
+    private readonly IBackgroundTaskScheduler _backgroundTaskScheduler;
     private readonly IHistoryConfig _historyConfig;
     private readonly bool _enabled;
     private readonly long _epochLength;
@@ -50,6 +52,7 @@ public class HistoryPruner : IHistoryPruner
         IHistoryConfig historyConfig,
         long secondsPerSlot,
         IProcessExitSource processExitSource,
+        IBackgroundTaskScheduler backgroundTaskScheduler,
         ILogManager logManager)
     {
         _specProvider = specProvider;
@@ -59,6 +62,7 @@ public class HistoryPruner : IHistoryPruner
         _chainLevelInfoRepository = chainLevelInfoRepository;
         _metadataDb = metadataDb;
         _processExitSource = processExitSource;
+        _backgroundTaskScheduler = backgroundTaskScheduler;
         _historyConfig = historyConfig;
         _enabled = historyConfig.Enabled;
         _epochLength = secondsPerSlot * 32;
@@ -218,10 +222,15 @@ public class HistoryPruner : IHistoryPruner
 
         if (_logger.IsInfo) _logger.Info($"Pruning historical blocks up to timestamp {cutoffTimestamp}");
 
-        await Task.Run(() => PruneBlocksAndReceipts(cutoffTimestamp.Value, cancellationToken), cancellationToken);
+        _backgroundTaskScheduler.ScheduleTask(cutoffTimestamp.Value,
+            (cutoff, backgroundTaskToken) => {
+                var cts = CancellationTokenSource.CreateLinkedTokenSource(backgroundTaskToken, cancellationToken);
+                _pruneHistoryTask = Task.Run(() => PruneBlocksAndReceipts(cutoff, cts.Token), cts.Token);
+                return _pruneHistoryTask;
+            });
 
-        _lastPrunedTimestamp = cutoffTimestamp.Value;
         if (_logger.IsInfo) _logger.Info($"Pruned historical blocks up to timestamp {cutoffTimestamp}");
+        await _pruneHistoryTask!;
     }
 
     private void PruneBlocksAndReceipts(ulong cutoffTimestamp, CancellationToken cancellationToken)
@@ -267,6 +276,12 @@ public class HistoryPruner : IHistoryPruner
             }
             SaveDeletePointer();
             if (_logger.IsInfo) _logger.Info($"Completed pruning operation up to timestamp {cutoffTimestamp}. Deleted {deletedBlocks} blocks up to #{_deletePointer}.");
+
+            // only update last pruned timestamp if operation completed
+            if (!cancellationToken.IsCancellationRequested)
+            {
+                _lastPrunedTimestamp = cutoffTimestamp;
+            }
         }
     }
 
