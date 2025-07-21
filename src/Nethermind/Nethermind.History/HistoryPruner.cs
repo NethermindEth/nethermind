@@ -347,14 +347,13 @@ public class HistoryPruner : IHistoryPruner
         else
         {
             _deletePointer = val.AsRlpStream().DecodeLong();
-            // todo: move metrics
-            Blockchain.Metrics.OldestStoredBlockNumber = _deletePointer;
+            Metrics.OldestStoredBlockNumber = _deletePointer;
         }
     }
 
     private void SaveDeletePointer()
     {
         _metadataDb.Set(MetadataDbKeys.HistoryPruningDeletePointer, Rlp.Encode(_deletePointer).Bytes);
-        Blockchain.Metrics.OldestStoredBlockNumber = _deletePointer;
+        Metrics.OldestStoredBlockNumber = _deletePointer;
     }
 }

@@ -86,10 +86,6 @@ public static class Metrics
     public static long BestKnownBlockNumber { get; set; }
 
     [GaugeMetric]
-    [Description("The number of the oldest block stored.")]
-    public static long OldestStoredBlockNumber { get; set; }
-
-    [GaugeMetric]
     [Description("Number of invalid blocks.")]
     public static long BadBlocks;
 
