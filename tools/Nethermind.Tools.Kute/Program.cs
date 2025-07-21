@@ -134,7 +134,7 @@ static class Program
                 progresReporter = new NullMetricsReporter();
             }
 
-            return new ComposedMetricsReporter([memoryReporter, consoleReporter, progresReporter]);
+            return new ComposedMetricsReporter([memoryReporter, progresReporter, consoleReporter]);
         });
 
         return collection.BuildServiceProvider();
