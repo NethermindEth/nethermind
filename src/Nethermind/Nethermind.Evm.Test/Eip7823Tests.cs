@@ -6,9 +6,9 @@ using System.Buffers.Binary;
 using System.Collections.Generic;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
+using Nethermind.Evm.Precompiles;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
-using Nethermind.Evm.Precompiles;
 using Nethermind.Int256;
 using Nethermind.Specs.Forks;
 using NUnit.Framework;
@@ -60,8 +60,8 @@ public class Eip7823Tests
 
         byte[] input = Bytes.FromHexString(inputHex);
 
-        Assert.Throws<OverflowException>(() => TestSuccess(input, specDisabled));
-        Assert.Throws<OverflowException>(() => TestSuccess(input, specEnabled));
+        Assert.That(TestSuccess(input, specDisabled), Is.EqualTo(false));
+        Assert.That(TestSuccess(input, specEnabled), Is.EqualTo(false));
 
         Assert.That(TestGas(input, specDisabled), Is.EqualTo(long.MaxValue));
         Assert.That(TestGas(input, specEnabled), Is.EqualTo(long.MaxValue));

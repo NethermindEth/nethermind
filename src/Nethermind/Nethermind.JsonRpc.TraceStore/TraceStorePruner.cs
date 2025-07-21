@@ -1,8 +1,10 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using Autofac.Features.AttributeFilters;
 using Nethermind.Blockchain;
 using Nethermind.Core;
+using Nethermind.Core.Container;
 using Nethermind.Db;
 using Nethermind.Logging;
 
@@ -17,6 +19,12 @@ public class TraceStorePruner : IDisposable
     private readonly IDb _db;
     private readonly int _blockToKeep;
     private readonly ILogger _logger;
+
+    [UseConstructorForDependencyInjection]
+    public TraceStorePruner(IBlockTree blockTree, [KeyFilter(TraceStorePlugin.DbName)] IDb db, ITraceStoreConfig traceStoreConfig, ILogManager logManager)
+        : this(blockTree, db, traceStoreConfig.BlocksToKeep, logManager)
+    {
+    }
 
     public TraceStorePruner(IBlockTree blockTree, IDb db, int blockToKeep, ILogManager logManager)
     {
