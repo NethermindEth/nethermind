@@ -57,7 +57,6 @@ public sealed class TxValidator : ITxValidator
             expectedChainIdTxValidator,
             GasFieldsTxValidator.Instance,
             ContractSizeTxValidator.Instance,
-            MaxBlobCountBlobTxValidator.Instance,
             BlobFieldsTxValidator.Instance,
             MempoolBlobTxValidator.Instance,
             MempoolBlobTxProofVersionValidator.Instance,
