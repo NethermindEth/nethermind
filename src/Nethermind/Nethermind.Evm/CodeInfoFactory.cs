@@ -5,7 +5,10 @@ using System;
 using System.Diagnostics.CodeAnalysis;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
+using Nethermind.Evm.CodeAnalysis.IL;
+using Nethermind.Evm.CodeAnalysis.IL.Delegates;
 using Nethermind.Evm.EvmObjectFormat;
+using Org.BouncyCastle.Asn1.Cms;
 
 namespace Nethermind.Evm.CodeAnalysis;
 
@@ -19,8 +22,15 @@ public static class CodeInfoFactory
         {
             return new EofCodeInfo(container.Value, codeHash);
         }
+
         CodeInfo codeInfo = new(code, codeHash);
         codeInfo.AnalyzeInBackgroundIfRequired();
+
+        if (AotContractsRepository.TryGetIledCode(codeHash.Value, out ILEmittedMethod iledCode))
+        {
+            codeInfo.SetIlPrecompile(iledCode);
+        }
+
         return codeInfo;
     }
 

@@ -57,7 +57,7 @@ namespace Nethermind.Evm.Benchmark
     {
         public string Name { get; init; }
 
-        private readonly ICodeInfoRepository codeInfoRepository;
+        private readonly ICodeInfoRepository _codeInfoRepository;
         private IReleaseSpec _spec = MainnetSpecProvider.Instance.GetSpec((ForkActivation)MainnetSpecProvider.IstanbulBlockNumber);
         private ITxTracer _txTracer = NullTxTracer.Instance;
         private ExecutionEnvironment _environment;
@@ -77,7 +77,6 @@ namespace Nethermind.Evm.Benchmark
 
             vmConfig = new VMConfig();
 
-            vmConfig.IsILEvmEnabled = typeof(TIsOptimizing) != typeof(OffFlag);
             vmConfig.IlEvmEnabledMode = typeof(TIsOptimizing) == typeof(OnFlag)
                 ? ILMode.AOT_MODE : ILMode.NO_ILVM;
 
@@ -100,10 +99,10 @@ namespace Nethermind.Evm.Benchmark
 
             _logger = logmanager.GetClassLogger();
 
-            EthereumCodeInfoRepository _codeInfoRepository = new();
+            _codeInfoRepository = new EthereumCodeInfoRepository();
             _virtualMachine = new VirtualMachine(_blockhashProvider, MainnetSpecProvider.Instance, LimboLogs.Instance);
             _virtualMachine.SetBlockExecutionContext(new BlockExecutionContext(_header, _spec));
-            _virtualMachine.SetTxExecutionContext(new TxExecutionContext(Address.Zero, codeInfoRepository, null, 0));
+            _virtualMachine.SetTxExecutionContext(new TxExecutionContext(Address.Zero, _codeInfoRepository, null, 0));
             var (address, targetCodeHash) = InsertCode(bytecode);
 
             var driver =
@@ -118,7 +117,7 @@ namespace Nethermind.Evm.Benchmark
             var driverCodehash = Keccak.Compute(driver);
 
             driverCodeInfo = new CodeInfo(driver, driverCodehash);
-            targetCodeInfo = (CodeInfo)codeInfoRepository.GetCachedCodeInfo(_stateProvider, address, Prague.Instance, out _);
+            targetCodeInfo = (CodeInfo)_codeInfoRepository.GetCachedCodeInfo(_stateProvider, address, Prague.Instance, out _);
         }
         private (Address, ValueHash256) InsertCode(byte[] bytecode, Address target = null)
         {
@@ -159,7 +158,7 @@ namespace Nethermind.Evm.Benchmark
             }
 
             _virtualMachine.SetBlockExecutionContext(new BlockExecutionContext(_header, _spec));
-            _virtualMachine.SetTxExecutionContext(new TxExecutionContext(Address.Zero, codeInfoRepository, null, 1));
+            _virtualMachine.SetTxExecutionContext(new TxExecutionContext(Address.Zero, _codeInfoRepository, null, 1));
 
             _evmState = EvmState.RentTopLevel(long.MaxValue, ExecutionType.TRANSACTION, _environment, new StackAccessTracker(), _stateProvider.TakeSnapshot());
         }

@@ -110,14 +110,14 @@ namespace Nethermind.Evm.Benchmark
         [Benchmark(Baseline = true)]
         public void ExecuteCode()
         {
-            _virtualMachine.ExecuteTransaction<OffFlag>(_evmState, _stateProvider, _txTracer);
+            _virtualMachine.ExecuteTransaction<OffFlag, OffFlag>(_evmState, _stateProvider, _txTracer);
             _stateProvider.Reset();
         }
 
         [Benchmark]
         public void ExecuteCodeNoTracing()
         {
-            _virtualMachine.ExecuteTransaction<OffFlag>(_evmState, _stateProvider, _txTracer);
+            _virtualMachine.ExecuteTransaction<OffFlag, OffFlag>(_evmState, _stateProvider, _txTracer);
             _stateProvider.Reset();
         }
 

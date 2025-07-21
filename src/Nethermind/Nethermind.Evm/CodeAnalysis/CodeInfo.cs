@@ -4,6 +4,7 @@
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
 using Nethermind.Evm.CodeAnalysis.IL;
+using Nethermind.Evm.CodeAnalysis.IL.Delegates;
 using Nethermind.Evm.Config;
 using Nethermind.Logging;
 using System;
@@ -79,5 +80,11 @@ public sealed class CodeInfo(ReadOnlyMemory<byte> code, ValueHash256? codeHash =
             return;
 
         IlAnalyzer.Enqueue(this, vmConfig, logger);
+    }
+
+    public void SetIlPrecompile(ILEmittedMethod iLEmittedMethod)
+    {
+        IlMetadata.PrecompiledContract = iLEmittedMethod;
+        IlMetadata.AnalysisPhase = AnalysisPhase.Completed;
     }
 }

@@ -30,6 +30,7 @@ using BenchmarkDotNet.Loggers;
 using Nethermind.Evm.CodeAnalysis;
 using Nethermind.Trie;
 using Nethermind.Evm.State;
+using Nethermind.Blockchain;
 
 namespace Nethermind.Evm.Benchmark
 {
@@ -59,7 +60,7 @@ namespace Nethermind.Evm.Benchmark
         private static readonly StorageCell AddressBBalanceCell = new(ContractAddress, AddressBStorage);
 
 
-        private ICodeInfoRepository codeInfoRepository;
+        private ICodeInfoRepository _codeInfoRepository;
         private IReleaseSpec _spec = MainnetSpecProvider.Instance.GetSpec((ForkActivation)MainnetSpecProvider.IstanbulBlockNumber);
         private ITxTracer _txTracer = NullTxTracer.Instance;
         private VirtualMachine _virtualMachine;
@@ -88,7 +89,6 @@ namespace Nethermind.Evm.Benchmark
 
             vmConfig = new VMConfig();
 
-            vmConfig.IsILEvmEnabled = typeof(TIsOptimizing) != typeof(OffFlag);
             vmConfig.IlEvmEnabledMode = typeof(TIsOptimizing) == typeof(OnFlag)
                 ? ILMode.AOT_MODE : ILMode.NO_ILVM;
 
@@ -105,7 +105,7 @@ namespace Nethermind.Evm.Benchmark
             _stateProvider.CreateAccount(Address.Zero, 1000.Ether());
             _stateProvider.Commit(_spec);
 
-            codeInfoRepository = new TestCodeInfoRepository();
+            _codeInfoRepository = new EthereumCodeInfoRepository();
 
             ILogManager logmanager = NullLogManager.Instance;
 
@@ -119,7 +119,7 @@ namespace Nethermind.Evm.Benchmark
                 _specProvider,
                 _stateProvider,
                 _virtualMachine,
-                codeInfoRepository,
+                _codeInfoRepository,
                 logmanager);
 
             InsertCode(bytecode, ContractAddress);
@@ -221,7 +221,7 @@ namespace Nethermind.Evm.Benchmark
         {
             if (vmConfig.IsILEvmEnabled)
             {
-                var targetCodeInfo = codeInfoRepository.GetCachedCodeInfo(_stateProvider, ContractAddress, Prague.Instance, out _);
+                var targetCodeInfo = _codeInfoRepository.GetCachedCodeInfo(_stateProvider, ContractAddress, Prague.Instance, out _);
                 IlAnalyzer.Analyse((CodeInfo)targetCodeInfo, vmConfig.IlEvmEnabledMode, vmConfig, Logging.NullLogger.Instance);
             }
 
@@ -246,8 +246,8 @@ namespace Nethermind.Evm.Benchmark
     [MemoryDiagnoser]
     public class WrapedEthBenchmarks
     {
-        private WrapedEthBenchmarksSetup<OffFlag> Setup_noIlvm = new();
         private WrapedEthBenchmarksSetup<OnFlag> Setup_ilvm = new();
+        private WrapedEthBenchmarksSetup<OffFlag> Setup_noIlvm = new();
 
         [GlobalSetup]
         public void GlobalSetup()
@@ -263,13 +263,13 @@ namespace Nethermind.Evm.Benchmark
             Setup_ilvm.IterationSetup();
         }
 
-        [Benchmark(Baseline = true, OperationsPerInvoke = 8)]
+        [Benchmark(Baseline = true, OperationsPerInvoke = 200)]
         public void ExecuteCode_No_Ilvm()
         {
             Setup_noIlvm.ExecuteCode();
         }
 
-        [Benchmark(OperationsPerInvoke = 8)]
+        [Benchmark(OperationsPerInvoke = 200)]
         public void ExecuteCode_Ilvm()
         {
             Setup_ilvm.ExecuteCode();
