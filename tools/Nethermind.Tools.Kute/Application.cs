@@ -13,7 +13,7 @@ namespace Nethermind.Tools.Kute;
 
 public sealed class Application
 {
-    private readonly IMessageProvider<JsonRpc?> _msgProvider;
+    private readonly IMessageProvider<JsonRpc> _msgProvider;
     private readonly IJsonRpcSubmitter _submitter;
     private readonly IJsonRpcValidator _validator;
     private readonly IResponseTracer _responseTracer;
@@ -21,7 +21,7 @@ public sealed class Application
     private readonly IJsonRpcMethodFilter _methodFilter;
 
     public Application(
-        IMessageProvider<JsonRpc?> msgProvider,
+        IMessageProvider<JsonRpc> msgProvider,
         IJsonRpcSubmitter submitter,
         IJsonRpcValidator validator,
         IResponseTracer responseTracer,
