@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2023 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System.Runtime.CompilerServices;
 using System.Text.Json;
 
 namespace Nethermind.Tools.Kute.MessageProvider;
@@ -14,11 +15,9 @@ public sealed class JsonRpcMessageProvider : IMessageProvider<JsonRpc>
         _provider = provider;
     }
 
-    public IAsyncEnumerable<JsonRpc> Messages { get => MessagesImpl(); }
-
-    private async IAsyncEnumerable<JsonRpc> MessagesImpl()
+    public async IAsyncEnumerable<JsonRpc> Messages([EnumeratorCancellation] CancellationToken token = default)
     {
-        await foreach (var msg in _provider.Messages)
+        await foreach (var msg in _provider.Messages(token))
         {
             var jsonDoc = JsonSerializer.Deserialize<JsonDocument>(msg);
 

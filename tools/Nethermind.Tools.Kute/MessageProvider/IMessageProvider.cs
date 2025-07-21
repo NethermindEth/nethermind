@@ -5,5 +5,5 @@ namespace Nethermind.Tools.Kute.MessageProvider;
 
 public interface IMessageProvider<out T>
 {
-    IAsyncEnumerable<T> Messages { get; }
+    IAsyncEnumerable<T> Messages(CancellationToken token = default);
 }

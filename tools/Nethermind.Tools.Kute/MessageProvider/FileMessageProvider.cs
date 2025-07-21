@@ -13,26 +13,23 @@ public sealed class FileMessageProvider : IMessageProvider<string>
     }
 
 
-    public IAsyncEnumerable<string> Messages
+    public IAsyncEnumerable<string> Messages(CancellationToken token = default)
     {
-        get
+        var pathInfo = new FileInfo(_filePath);
+        if (pathInfo.Attributes.HasFlag(FileAttributes.Directory))
         {
-            var pathInfo = new FileInfo(_filePath);
-            if (pathInfo.Attributes.HasFlag(FileAttributes.Directory))
-            {
-                return Directory.GetFiles(_filePath)
-                    .OrderBy(filePath => filePath, StringComparer.OrdinalIgnoreCase)
-                    .Select(filePath => new FileInfo(filePath))
-                    .ToAsyncEnumerable()
-                    .SelectMany(info => File.ReadLinesAsync(info.FullName));
-            }
-
-            if (pathInfo.Attributes.HasFlag(FileAttributes.Normal))
-            {
-                return File.ReadLinesAsync(_filePath);
-            }
-
-            throw new ArgumentException("Path is neither a Folder or a File", nameof(_filePath));
+            return Directory.GetFiles(_filePath)
+                .OrderBy(filePath => filePath, StringComparer.OrdinalIgnoreCase)
+                .Select(filePath => new FileInfo(filePath))
+                .ToAsyncEnumerable()
+                .SelectMany(info => File.ReadLinesAsync(info.FullName, token));
         }
+
+        if (pathInfo.Attributes.HasFlag(FileAttributes.Normal))
+        {
+            return File.ReadLinesAsync(_filePath, token);
+        }
+
+        throw new ArgumentException("Path is neither a Folder or a File", nameof(_filePath));
     }
 }

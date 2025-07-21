@@ -1,6 +1,8 @@
 // SPDX-FileCopyrightText: 2024 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System.Runtime.CompilerServices;
+
 namespace Nethermind.Tools.Kute.MessageProvider;
 
 public sealed class UnwrapBatchJsonRpcMessageProvider : IMessageProvider<JsonRpc>
@@ -12,11 +14,9 @@ public sealed class UnwrapBatchJsonRpcMessageProvider : IMessageProvider<JsonRpc
         _provider = provider;
     }
 
-    public IAsyncEnumerable<JsonRpc> Messages { get => MessagesImpl(); }
-
-    private async IAsyncEnumerable<JsonRpc> MessagesImpl()
+    public async IAsyncEnumerable<JsonRpc> Messages([EnumeratorCancellation] CancellationToken token = default)
     {
-        await foreach (var jsonRpc in _provider.Messages)
+        await foreach (var jsonRpc in _provider.Messages(token))
         {
             switch (jsonRpc)
             {
