@@ -150,7 +150,7 @@ namespace Nethermind.Evm.Test
 
         protected override ILogManager GetLogManager()
         {
-            _logManager ??= new TestLogManager(LogLevel.Trace);
+            _logManager ??= new TestLogManager(LogLevel.Warn);
             return _logManager;
         }
 
