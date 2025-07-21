@@ -7,8 +7,8 @@ namespace Nethermind.Tools.Kute.Metrics;
 
 public sealed class JsonMetricsReportFormatter : IMetricsReportFormatter
 {
-    public async Task WriteAsync(Stream stream, MetricsReport report)
+    public async Task WriteAsync(Stream stream, MetricsReport report, CancellationToken token = default)
     {
-        await JsonSerializer.SerializeAsync(stream, report);
+        await JsonSerializer.SerializeAsync(stream, report, cancellationToken: token);
     }
 }

@@ -5,5 +5,5 @@ namespace Nethermind.Tools.Kute.Metrics;
 
 public interface IMetricsReportFormatter
 {
-    Task WriteAsync(Stream stream, MetricsReport report);
+    Task WriteAsync(Stream stream, MetricsReport report, CancellationToken token = default);
 }
