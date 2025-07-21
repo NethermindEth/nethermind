@@ -103,7 +103,9 @@ public class SurgeGasPriceOracle : GasPriceOracle
 
         UInt256 proofPostingCost = _surgeConfig.ProofPostingGas * UInt256.Max(l1BaseFee, l1AverageBaseFee);
 
-        averageGasUsage = averageGasUsage * 80 / 100; // Reduce the average gas usage by 20% to prevent upward trend
+        // Reduce the average gas usage to prevent upward trend
+        averageGasUsage = averageGasUsage * (ulong)_surgeConfig.AverageGasUsagePercentage / 100;
+
         UInt256 gasPriceEstimate = (minProposingCost + proofPostingCost + _surgeConfig.ProvingCostPerL2Batch) /
                                    Math.Max(averageGasUsage, _surgeConfig.L2GasPerL2Batch);
 
@@ -198,9 +200,7 @@ public class SurgeGasPriceOracle : GasPriceOracle
                           $"startBlockId: {startBlockId}, endBlockId: {endBlockId}, " +
                           $"Average gas usage: {_gasUsageBuffer.Average}, " +
                           $"L2GasUsageWindowSize: {_surgeConfig.L2GasUsageWindowSize}, " +
-                          $"numBatches: {numBatches}, " +
-                          $"startBlockId: {startBlockId}, " +
-                          $"endBlockId: {endBlockId}");
+                          $"numBatches: {numBatches}");
         }
 
         return _gasUsageBuffer.Average;
