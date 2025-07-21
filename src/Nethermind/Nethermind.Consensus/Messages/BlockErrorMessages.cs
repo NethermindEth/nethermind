@@ -18,7 +18,7 @@ public static class BlockErrorMessages
     public static string InvalidLogsBloom(Bloom expected, Bloom actual) =>
         $"InvalidLogsBloom: Logs bloom in header does not match. Expected {expected}, got {actual}";
 
-    public static string InvalidTxRoot(Core.Crypto.Hash256 expected, Core.Crypto.Hash256 actual) =>
+    public static string InvalidTxRoot(Hash256 expected, Hash256 actual) =>
         $"InvalidTxRoot: Expected {expected}, got {actual}";
 
     public const string InvalidUncle =
@@ -27,7 +27,7 @@ public static class BlockErrorMessages
     public const string InvalidUnclesHash =
         "InvalidUnclesHash: Uncle header hash does not match.";
 
-    public static string InvalidWithdrawalsRoot(Core.Crypto.Hash256 expected, Core.Crypto.Hash256 actual) =>
+    public static string InvalidWithdrawalsRoot(Hash256 expected, Hash256 actual) =>
         $"InvalidWithdrawalsRoot: expected {expected}, got {actual}";
 
     public const string MissingWithdrawals =
@@ -39,7 +39,7 @@ public static class BlockErrorMessages
     public static string InvalidReceiptsRoot(Hash256 expected, Hash256 actual) =>
         $"InvalidReceiptsRoot: Receipts root in header does not match. Expected {expected}, got {actual}";
 
-    public static string InvalidStateRoot(Hash256 expected, Core.Crypto.Hash256 actual) =>
+    public static string InvalidStateRoot(Hash256 expected, Hash256 actual) =>
         $"InvalidStateRoot: State root in header does not match. Expected {expected}, got {actual}";
 
     public static string InvalidParentBeaconBlockRoot(Hash256 expected, Hash256 actual) =>
