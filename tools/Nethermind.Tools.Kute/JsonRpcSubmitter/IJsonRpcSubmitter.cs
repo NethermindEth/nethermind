@@ -7,4 +7,3 @@ public interface IJsonRpcSubmitter
 {
     Task<JsonRpc.Response> Submit(JsonRpc.Request rpc, CancellationToken token = default);
 }
-}
