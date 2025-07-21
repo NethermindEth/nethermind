@@ -12,12 +12,13 @@ public sealed class FileResponseTracer : IResponseTracer
         _tracesFilePath = tracesFilePath;
     }
 
-    public async Task TraceResponse(JsonRpc.Response response)
+    public async Task TraceResponse(JsonRpc.Response response, CancellationToken token = default)
     {
         await using StreamWriter sw = File.Exists(_tracesFilePath)
             ? File.AppendText(_tracesFilePath)
             : File.CreateText(_tracesFilePath);
 
-        await sw.WriteLineAsync(response.Json.ToString() ?? "null");
+        var content = response.Json.ToString() ?? "null";
+        await sw.WriteLineAsync(MemoryExtensions.AsMemory(content), token);
     }
 }

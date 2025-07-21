@@ -7,5 +7,5 @@ public sealed class NullResponseTracer : IResponseTracer
 {
     public NullResponseTracer() { }
 
-    public Task TraceResponse(JsonRpc.Response response) => Task.CompletedTask;
+    public Task TraceResponse(JsonRpc.Response response, CancellationToken token) => Task.CompletedTask;
 }
