@@ -101,7 +101,6 @@ namespace Nethermind.Evm.Benchmark
             _logger = logmanager.GetClassLogger();
 
             EthereumCodeInfoRepository _codeInfoRepository = new();
-            codeInfoRepository = new TestCodeInfoRepository();
             _virtualMachine = new VirtualMachine(_blockhashProvider, MainnetSpecProvider.Instance, LimboLogs.Instance);
             _virtualMachine.SetBlockExecutionContext(new BlockExecutionContext(_header, _spec));
             _virtualMachine.SetTxExecutionContext(new TxExecutionContext(Address.Zero, codeInfoRepository, null, 0));
@@ -167,7 +166,7 @@ namespace Nethermind.Evm.Benchmark
 
         public void Run()
         {
-            _virtualMachine.ExecuteTransaction<OffFlag>(_evmState, _stateProvider, _txTracer);
+            _virtualMachine.ExecuteTransaction<OffFlag, TIsOptimizing>(_evmState, _stateProvider, _txTracer);
         }
 
         public void Reset()
