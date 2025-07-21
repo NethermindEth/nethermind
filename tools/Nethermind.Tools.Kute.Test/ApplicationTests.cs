@@ -50,7 +50,7 @@ public class ApplicationTests
     private static IMessageProvider<string> LinesProvider(string lines)
     {
         var stringProvider = Substitute.For<IMessageProvider<string>>();
-        stringProvider.Messages.Returns(lines.Split('\n').ToAsyncEnumerable());
+        stringProvider.Messages().Returns(lines.Split('\n').ToAsyncEnumerable());
 
         return stringProvider;
     }

@@ -20,10 +20,10 @@ public class MessageProviderTests
         """;
 
         var stringProvider = Substitute.For<IMessageProvider<string>>();
-        stringProvider.Messages.Returns(lines.Split('\n').ToAsyncEnumerable());
+        stringProvider.Messages().Returns(lines.Split('\n').ToAsyncEnumerable());
 
         var provider = new JsonRpcMessageProvider(stringProvider);
-        var jsonRpcs = await provider.Messages.ToListAsync();
+        var jsonRpcs = await provider.Messages().ToListAsync();
 
         jsonRpcs.Should().HaveCount(3);
         jsonRpcs[0].Should().BeOfType<JsonRpc.Request.Single>();
@@ -40,10 +40,10 @@ public class MessageProviderTests
         """;
 
         var stringProvider = Substitute.For<IMessageProvider<string>>();
-        stringProvider.Messages.Returns(lines.Split('\n').ToAsyncEnumerable());
+        stringProvider.Messages().Returns(lines.Split('\n').ToAsyncEnumerable());
 
         var provider = new UnwrapBatchJsonRpcMessageProvider(new JsonRpcMessageProvider(stringProvider));
-        var jsonRpcs = await provider.Messages.ToListAsync();
+        var jsonRpcs = await provider.Messages().ToListAsync();
 
         jsonRpcs.Should().HaveCount(3);
         jsonRpcs[0].Should().BeOfType<JsonRpc.Request.Single>();

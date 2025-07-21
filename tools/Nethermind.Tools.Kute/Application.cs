@@ -37,7 +37,7 @@ public sealed class Application
         _methodFilter = methodFilter;
     }
 
-    public async Task Run(CancellationToken token)
+    public async Task Run(CancellationToken token = default)
     {
         var totalTimer = new Timer();
         using (totalTimer.Time())
