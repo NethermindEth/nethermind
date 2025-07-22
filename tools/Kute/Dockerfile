@@ -12,7 +12,7 @@ ARG TARGETOS
 COPY . .
 
 RUN arch=$([ "$TARGETARCH" = "amd64" ] && echo "x64" || echo "$TARGETARCH") && \
-    dotnet publish tools/Nethermind.Tools.Kute -c $BUILD_CONFIG -r $TARGETOS-$arch -o out --sc true \
+    dotnet publish tools/Kute/Nethermind.Tools.Kute -c $BUILD_CONFIG -r $TARGETOS-$arch -o out --sc true \
       -p:BuildTimestamp=$BUILD_TIMESTAMP -p:Commit=$COMMIT_HASH
 
 FROM ubuntu AS runtime
