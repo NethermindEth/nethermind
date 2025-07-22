@@ -12,7 +12,6 @@ using Nethermind.Consensus.Scheduler;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Timers;
 using Nethermind.Crypto;
-using Nethermind.Db;
 using Nethermind.Evm;
 using Nethermind.Evm.State;
 using Nethermind.Init.Modules;
@@ -46,9 +45,7 @@ public class PseudoNethermindModule(ChainSpec spec, IConfigProvider configProvid
 
         base.Load(builder);
         builder
-            .AddModule(new NethermindModule(spec, configProvider, logManager))
-
-            .AddModule(new PsudoNetworkModule())
+            .AddModule(new PseudoNetworkModule())
             .AddModule(new BlockTreeModule())
             .AddModule(new TestBlockProcessingModule())
 
@@ -74,7 +71,7 @@ public class PseudoNethermindModule(ChainSpec spec, IConfigProvider configProvid
 
             // Rpc
             .AddSingleton<IJsonRpcService, JsonRpcService>()
-
+            .AddModule(new NethermindModule(spec, configProvider, logManager))
             ;
 
 

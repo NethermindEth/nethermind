@@ -62,16 +62,11 @@ namespace Nethermind.Init.Steps
             {
                 cancellationToken.ThrowIfCancellationRequested();
 
-                Func<IStep> stepFactory = () =>
-                {
-                    return CreateStepInstance(stepInfo);
-                };
-
                 Debug.Assert(!stepInfoMap.ContainsKey(stepInfo.StepBaseType), "Resolve steps implementations should have deduplicated step by base type");
-                stepInfoMap.Add(stepInfo.StepBaseType, new StepWrapper(stepFactory, stepInfo));
+                stepInfoMap.Add(stepInfo.StepBaseType, new StepWrapper(() => CreateStepInstance(stepInfo), stepInfo));
             }
 
-            foreach (var kv in stepInfoMap)
+            foreach (KeyValuePair<Type, StepWrapper> kv in stepInfoMap)
             {
                 StepWrapper stepWrapper = kv.Value;
                 foreach (Type type in stepWrapper.StepInfo.Dependents)
@@ -89,7 +84,7 @@ namespace Nethermind.Init.Steps
             }
 
             if (_logger.IsDebug) _logger.Debug($"Ethereum steps dependency tree:\n{BuildStepDependencyTree(stepInfoMap)}");
-            List<Task> allRequiredSteps = new();
+            List<Task> allRequiredSteps = [];
             foreach (StepWrapper stepWrapper in stepInfoMap.Values)
             {
                 StepInfo stepInfo = stepWrapper.StepInfo;
@@ -175,7 +170,7 @@ namespace Nethermind.Init.Steps
             return false;
         }
 
-        private void ReviewFailedAndThrow(Task task)
+        private static void ReviewFailedAndThrow(Task task)
         {
             if (task?.IsFaulted == true && task?.Exception is not null)
                 ExceptionDispatchInfo.Capture(task.Exception.GetBaseException()).Throw();
@@ -184,7 +179,7 @@ namespace Nethermind.Init.Steps
         /// <summary>
         /// Recursively prints roots (steps with no dependencies) and their dependents.
         /// </summary>
-        private string BuildStepDependencyTree(Dictionary<Type, StepWrapper> stepInfoMap)
+        private static string BuildStepDependencyTree(Dictionary<Type, StepWrapper> stepInfoMap)
         {
             // Map each step to its direct dependencies
             var depsMap = stepInfoMap.ToDictionary(
@@ -194,13 +189,13 @@ namespace Nethermind.Init.Steps
 
             // Build children map for topological sorting (parent -> children)
             var dependentsMap = stepInfoMap.Keys.ToDictionary(t => t.Name, t => new List<string>());
-            foreach (var kv in stepInfoMap)
+            foreach (KeyValuePair<Type, StepWrapper> kv in stepInfoMap)
             {
                 var node = kv.Key.Name;
-                foreach (var dependency in kv.Value.Dependencies)
+                foreach (Type dependency in kv.Value.Dependencies)
                 {
-                    if (dependentsMap.ContainsKey(dependency.Name))
-                        dependentsMap[dependency.Name].Add(node);
+                    if (dependentsMap.TryGetValue(dependency.Name, out List<string>? value))
+                        value.Add(node);
                 }
             }
 
@@ -228,7 +223,7 @@ namespace Nethermind.Init.Steps
             var allCombinedDeps = new Dictionary<string, HashSet<string>>();
             foreach (var node in sorted)
             {
-                var deps = depsMap[node];
+                List<string> deps = depsMap[node];
                 depth[node] = deps.Count == 0
                     ? 0
                     : deps.Select(d => depth.GetValueOrDefault(d, 0)).Max() + 1;

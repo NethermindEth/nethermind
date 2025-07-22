@@ -72,7 +72,7 @@ public abstract partial class BaseEngineModuleTests
         IExecutionRequestsProcessor? mockedExecutionRequestsProcessor = null,
         Action<ContainerBuilder>? configurer = null)
     {
-        var bc = CreateBaseBlockchain(mergeConfig);
+        MergeTestBlockchain bc = CreateBaseBlockchain(mergeConfig);
         return await bc
             .BuildMergeTestBlockchain(configurer: (builder) =>
             {
@@ -142,7 +142,7 @@ public abstract partial class BaseEngineModuleTests
         return getPayloadResult.Data!;
     }
 
-    protected ExecutionPayload CreateParentBlockRequestOnHead(IBlockTree blockTree)
+    protected static ExecutionPayload CreateParentBlockRequestOnHead(IBlockTree blockTree)
     {
         Block? head = blockTree.Head ?? throw new NotSupportedException();
         return new ExecutionPayload()
