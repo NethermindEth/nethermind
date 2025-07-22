@@ -34,7 +34,7 @@ public class InitializeBlockchainAuRa : InitializeBlockchain
     private INethermindApi NethermindApi => _api;
 
     private readonly IAuRaBlockProcessorFactory _auRaBlockProcessorFactory;
-    private IAbiEncoder _abiEncoder;
+    private readonly IAbiEncoder _abiEncoder;
 
     public InitializeBlockchainAuRa(
         AuRaNethermindApi api,
@@ -174,7 +174,8 @@ public class InitializeBlockchainAuRa : InitializeBlockchain
             _api.LogManager,
             CreateTxPoolTxComparer(txPriorityContract, localDataSource),
             _api.TxGossipPolicy,
-            new TxFilterAdapter(_api.BlockTree, txPoolFilter, _api.LogManager),
+            new TxFilterAdapter(_api.BlockTree, txPoolFilter, _api.LogManager, _api.SpecProvider),
+            _api.HeadTxValidator,
             txPriorityContract is not null || localDataSource is not null);
     }
 
