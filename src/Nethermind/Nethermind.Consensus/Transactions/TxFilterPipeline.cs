@@ -5,14 +5,12 @@ using System.Collections.Generic;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
 using Nethermind.Logging;
-using Nethermind.TxPool;
-using Nethermind.TxPool.Filters;
 
 namespace Nethermind.Consensus.Transactions;
 
 public class TxFilterPipeline(ILogManager logManager) : ITxFilterPipeline
 {
-    private readonly List<ITxFilter> _filters = new();
+    private readonly List<ITxFilter> _filters = [];
     private readonly ILogger _logger = logManager.GetClassLogger();
 
     public void AddTxFilter(ITxFilter txFilter)
@@ -24,12 +22,12 @@ public class TxFilterPipeline(ILogManager logManager) : ITxFilterPipeline
     {
         if (_filters.Count == 0)
         {
-            return AcceptTxResult.Accepted;
+            return true;
         }
 
         foreach (ITxFilter filter in _filters)
         {
-            AcceptTxResult isAllowed = filter.IsAllowed(tx, parentHeader, currentSpec);
+            bool isAllowed = filter.IsAllowed(tx, parentHeader, currentSpec);
             if (!isAllowed)
             {
                 if (_logger.IsDebug) _logger.Debug($"Rejected tx ({isAllowed}) {tx.ToShortString()}");
@@ -37,6 +35,6 @@ public class TxFilterPipeline(ILogManager logManager) : ITxFilterPipeline
             }
         }
 
-        return AcceptTxResult.Accepted;
+        return true;
     }
 }

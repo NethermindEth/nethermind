@@ -201,7 +201,7 @@ public sealed class BlobFieldsTxValidator : ITxValidator
             _ => ValidateBlobFields(transaction, releaseSpec)
         };
 
-    private ValidationResult ValidateBlobFields(Transaction transaction, IReleaseSpec spec)
+    private static ValidationResult ValidateBlobFields(Transaction transaction, IReleaseSpec spec)
     {
         int blobCount = transaction.BlobVersionedHashes!.Length;
         ulong totalBlobGas = BlobGasCalculator.CalculateBlobGas(blobCount);
@@ -280,7 +280,7 @@ public sealed class MempoolBlobTxValidator : ITxValidator
 }
 
 /// <summary>
-/// Validate Blob transactions in mempool version.
+/// Validate tx proof version in mempool version.
 /// </summary>
 public sealed class MempoolBlobTxProofVersionValidator : ITxValidator
 {

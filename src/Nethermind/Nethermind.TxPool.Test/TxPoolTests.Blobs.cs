@@ -26,7 +26,6 @@ using NUnit.Framework;
 using System.Collections;
 using System.Collections.Generic;
 using System.Threading.Tasks;
-using Nethermind.State;
 
 namespace Nethermind.TxPool.Test
 {
@@ -933,18 +932,18 @@ namespace Nethermind.TxPool.Test
         [TestCaseSource(nameof(BlobScheduleActivationsTestCaseSource))]
         public async Task<int> should_evict_based_on_proof_version_and_fork(BlobsSupportMode poolMode, TestAction[] testActions)
         {
+            Block head = _blockTree.Head;
+            _blockTree.FindBestSuggestedHeader().Returns(head.Header);
+
             (ChainSpecBasedSpecProvider provider, _) = TestSpecHelper.LoadChainSpec(new ChainSpecJson
             {
                 Params = new ChainSpecParamsJson
                 {
-                    Eip4844TransitionTimestamp = _blockTree.Head!.Timestamp,
-                    Eip7002TransitionTimestamp = _blockTree.Head.Timestamp,
-                    Eip7594TransitionTimestamp = _blockTree.Head.Timestamp + 1,
+                    Eip4844TransitionTimestamp = head.Timestamp,
+                    Eip7002TransitionTimestamp = head.Timestamp,
+                    Eip7594TransitionTimestamp = head.Timestamp + 1,
                 }
             });
-
-            Block head = _blockTree.Head;
-            _blockTree.FindBestSuggestedHeader().Returns(head.Header);
 
             UInt256 nonce = 0;
 

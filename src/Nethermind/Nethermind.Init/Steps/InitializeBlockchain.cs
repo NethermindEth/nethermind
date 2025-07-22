@@ -30,7 +30,6 @@ using Nethermind.Evm.TransactionProcessing;
 using Nethermind.State;
 using Nethermind.TxPool;
 using Nethermind.Wallet;
-using Nethermind.Consensus.Validators;
 
 namespace Nethermind.Init.Steps
 {

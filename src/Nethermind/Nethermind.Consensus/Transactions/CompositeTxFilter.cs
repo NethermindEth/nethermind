@@ -3,27 +3,23 @@
 
 using Nethermind.Core;
 using Nethermind.Core.Specs;
-using System.Linq;
 using Nethermind.TxPool;
 
-namespace Nethermind.Consensus.Transactions
+namespace Nethermind.Consensus.Transactions;
+
+public class CompositeTxFilter(params ITxFilter[] txFilters) : ITxFilter
 {
-    public class CompositeTxFilter(params ITxFilter?[] txFilters) : ITxFilter
+    public AcceptTxResult IsAllowed(Transaction tx, BlockHeader parentHeader, IReleaseSpec currentSpec)
     {
-        private readonly ITxFilter[] _txFilters = txFilters.Where(static f => f is not null).ToArray();
-
-        public AcceptTxResult IsAllowed(Transaction tx, BlockHeader parentHeader, IReleaseSpec currentSpec)
+        for (int i = 0; i < txFilters.Length; i++)
         {
-            for (int i = 0; i < _txFilters.Length; i++)
+            AcceptTxResult isAllowed = txFilters[i].IsAllowed(tx, parentHeader, currentSpec);
+            if (!isAllowed)
             {
-                AcceptTxResult isAllowed = _txFilters[i].IsAllowed(tx, parentHeader, currentSpec);
-                if (!isAllowed)
-                {
-                    return isAllowed;
-                }
+                return isAllowed;
             }
-
-            return AcceptTxResult.Accepted;
         }
+
+        return AcceptTxResult.Accepted;
     }
 }

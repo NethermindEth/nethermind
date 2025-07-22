@@ -709,7 +709,7 @@ namespace Nethermind.TxPool
 
                     if (!valid)
                     {
-                        MarkForEviction(tx, valid.AllowReentrance);
+                        MarkForEviction(tx, valid.AllowTxPoolReentrance);
                         continue;
                     }
 
