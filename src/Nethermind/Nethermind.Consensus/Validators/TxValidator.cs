@@ -206,26 +206,41 @@ public sealed class BlobFieldsTxValidator : ITxValidator
         int blobCount = transaction.BlobVersionedHashes!.Length;
         ulong totalBlobGas = BlobGasCalculator.CalculateBlobGas(blobCount);
         ulong maxBlobGasPerBlock = spec.GetMaxBlobGasPerBlock();
-        ulong maxBlobGasPerTx = spec.GetMaxBlobGasPerTx();
-        return totalBlobGas > maxBlobGasPerBlock ? BlockErrorMessages.BlobGasUsedAboveBlockLimit(totalBlobGas, blobCount, maxBlobGasPerTx)
-            : totalBlobGas > maxBlobGasPerTx ? TxErrorMessages.BlobTxGasLimitExceeded(totalBlobGas, maxBlobGasPerTx)
-            : blobCount < Eip4844Constants.MinBlobsPerTransaction ? TxErrorMessages.BlobTxMissingBlobs
-            : ValidateBlobVersionedHashes();
 
-        ValidationResult ValidateBlobVersionedHashes()
+        if (totalBlobGas > maxBlobGasPerBlock)
         {
-            for (int i = 0; i < blobCount; i++)
-            {
-                switch (transaction.BlobVersionedHashes[i])
-                {
-                    case null: return TxErrorMessages.MissingBlobVersionedHash;
-                    case { Length: not KzgPolynomialCommitments.BytesPerBlobVersionedHash }: return TxErrorMessages.InvalidBlobVersionedHashSize;
-                    case { Length: KzgPolynomialCommitments.BytesPerBlobVersionedHash } when transaction.BlobVersionedHashes[i][0] != KzgPolynomialCommitments.KzgBlobHashVersionV1: return TxErrorMessages.InvalidBlobVersionedHashVersion;
-                }
-            }
-
-            return ValidationResult.Success;
+            return BlockErrorMessages.BlobGasUsedAboveBlockLimit(maxBlobGasPerBlock, blobCount, totalBlobGas);
         }
+
+        ValidationResult blobPerTxLimitValidationResult = ValidateBlobPerTxLimit(totalBlobGas, spec);
+
+        if (!blobPerTxLimitValidationResult)
+        {
+            return blobPerTxLimitValidationResult;
+        }
+
+        if (blobCount < Eip4844Constants.MinBlobsPerTransaction)
+        {
+            return TxErrorMessages.BlobTxMissingBlobs;
+        }
+
+        for (int i = 0; i < blobCount; i++)
+        {
+            switch (transaction.BlobVersionedHashes[i])
+            {
+                case null: return TxErrorMessages.MissingBlobVersionedHash;
+                case { Length: not KzgPolynomialCommitments.BytesPerBlobVersionedHash }: return TxErrorMessages.InvalidBlobVersionedHashSize;
+                case { Length: KzgPolynomialCommitments.BytesPerBlobVersionedHash } when transaction.BlobVersionedHashes[i][0] != KzgPolynomialCommitments.KzgBlobHashVersionV1: return TxErrorMessages.InvalidBlobVersionedHashVersion;
+            }
+        }
+
+        return ValidationResult.Success;
+    }
+
+    internal static ValidationResult ValidateBlobPerTxLimit(ulong txBlobGas, IReleaseSpec spec)
+    {
+        ulong maxBlobGasPerTx = spec.GetMaxBlobGasPerTx();
+        return txBlobGas > maxBlobGasPerTx ? TxErrorMessages.BlobTxGasLimitExceeded(txBlobGas, maxBlobGasPerTx) : ValidationResult.Success;
     }
 }
 
@@ -245,8 +260,7 @@ public sealed class MaxBlobCountBlobTxValidator : ITxValidator
     {
         int blobCount = transaction.BlobVersionedHashes?.Length ?? 0;
         ulong totalBlobGas = BlobGasCalculator.CalculateBlobGas(blobCount);
-        ulong maxBlobGasPerTx = spec.GetMaxBlobGasPerTx();
-        return totalBlobGas > maxBlobGasPerTx ? TxErrorMessages.BlobTxGasLimitExceeded(totalBlobGas, maxBlobGasPerTx) : ValidationResult.Success;
+        return BlobFieldsTxValidator.ValidateBlobPerTxLimit(totalBlobGas, spec);
     }
 }
 
