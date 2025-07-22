@@ -4,7 +4,7 @@ Kute - /kjuːt/ - is a benchmarking tool developed at Nethermind to simulate an 
 
 ## Prerequisites
 
-This is a C# project and as such, it requires the [dotnet 7](https://dotnet.microsoft.com/en-us/download) SDK. Once installed, just run:
+This is a C# project and as such, it requires the [dotnet 9](https://dotnet.microsoft.com/en-us/download) SDK. Once installed, just run:
 
 ```
 dotnet build [-c Release]
@@ -16,61 +16,57 @@ To get real JSON-RPC messages, run the Nethermind Client using the `RpcRecorderS
 
 ## Run
 
-> We'll assume that the JWT secret used by the Nethermind Client is stored in `keystore/jwt-secret`.
+> We'll assume that the JWT secret used by the Nethermind Client is stored in `/keystore/jwt-secret`.
 
 Kute includes a built in help that can be accessed by the options `-h | --help`.
 
 Some typical usages are as follows:
 
-### Use all messages in the folder `/rpc-logs`
+### Connect to a Nethermind Client running at a specific address using a single file
 
 ```
--i /rpc-logs -s keystore/jwt-secret
+-a http://localhost:8551 -s /keystore/jwt-secret -i /rpc.0
+```
+
+### Use all messages in the directory `/rpc-logs`
+
+```
+-a http://localhost:8551 -s /keystore/jwt-secret -i /rpc-logs
 ```
 
 ### Use a single messages file and emit results as JSON
 
 ```
--i /rpc.0 -s keystore/jwt-secret -o Json
+-a http://localhost:8551 -s /keystore/jwt-secret -i /rpc.0 -o Json
 ```
 
 ### Use a single messages file and record all responses into a new file
 
 ```
--i /rpc.0 -s keystore/jwt-secret -r rpc.responses.txt
+-a http://localhost:8551 -s /keystore/jwt-secret -i /rpc.0 -r rpc.responses.txt
 ```
 
 ### Use a single message file, using only `engine` and `eth` methods
 
 ```
--i /rpc.0 -s keystore/jwt-secret -f engine, eth
+-a http://localhost:8551 -s /keystore/jwt-secret -i /rpc.0 -f engine,eth
 ```
 
 ### Use a single message file, using only the first 100 methods
 
 ```
--i /rpc.0 -s keystore/jwt-secret -f .*=100
+-a http://localhost:8551 -s /keystore/jwt-secret -i /rpc.0 -f .*=100
 ```
 
 ### Use a single message file, using only the first 50 `engine_newPayloadV2` or `engine_newPayloadV3` methods
 
 ```
--i /rpc.0 -s keystore/jwt-secret -f engine_newPayloadV[23]=50
+-a http://localhost:8551 -s /keystore/jwt-secret -i /rpc.0 -f engine_newPayloadV[23]=50
 ```
-
-### Connect to a Nethermind Client running in a specific address and TTL
-
-```
--i /rpc.0 -s keystore/jwt-secret -a http://192.168.1.100:8551 --ttl 30
-```
-
-### A note on "progress"
-
-Kute supports a `-p|--progress` flag that will show how many messages have been processed so far. This feature comes with a **big performance hit during startup** (it will not interfere with metrics though), so it's suggested to **not use it** unless it's required (ex. do not use it in automated environments like CI pipelines).
 
 ### TODO
 
 There are some features that we might add in the future, if they end up being required:
 
 - Validate the responses from the Nethermind Client (a "pedantic" mode)
-- Other report outputs (ex. CSV)
+- Other report outputs (ex. CSV, Prometheus)

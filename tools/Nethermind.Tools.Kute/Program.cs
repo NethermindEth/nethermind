@@ -23,15 +23,15 @@ static class Program
     {
         RootCommand rootCommand =
         [
-            Config.MessagesFilePath,
             Config.HostAddress,
             Config.JwtSecretFilePath,
-            Config.AuthTtl,
-            Config.ShowProgress,
-            Config.MetricsReportFormatter,
-            Config.MethodFilters,
+            Config.MessagesFilePath,
             Config.ResponsesTraceFile,
+            Config.MethodFilters,
+            Config.MetricsReportFormatter,
+            Config.AuthTtl,
             Config.ConcurrentRequests,
+            Config.ShowProgress,
             Config.UnwrapBatch
         ];
         rootCommand.SetAction(async (parseResult, cancellationToken) =>
@@ -41,6 +41,7 @@ static class Program
 
             await app.Run(cancellationToken);
         });
+        rootCommand.Description = "Send JSON RPC messages to an Ethereum node and report metrics.";
 
         CommandLineConfiguration cli = new(rootCommand);
 
