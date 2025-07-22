@@ -18,8 +18,6 @@ using Type = System.Type;
 
 namespace Nethermind.Init.Steps;
 
-// change needed?
-// [RunnerStepDependencies(typeof(InitializeBlockTree))]
 [RunnerStepDependencies(typeof(InitializeBlockchain))]
 public class StartMonitoring(
     IEthSyncingInfo ethSyncingInfo,
