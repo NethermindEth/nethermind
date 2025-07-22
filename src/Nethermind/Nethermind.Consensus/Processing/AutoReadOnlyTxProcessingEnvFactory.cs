@@ -40,12 +40,12 @@ public class AutoReadOnlyTxProcessingEnvFactory(ILifetimeScope parentLifetime, I
         return childScope.Resolve<AutoReadOnlyTxProcessingEnv>();
     }
 
-    private class AutoReadOnlyTxProcessingEnv(ITransactionProcessor transactionProcessor, IWorldState worldState, ILifetimeScope lifetimeScope) : IReadOnlyTxProcessorSource, IDisposable
+    public class AutoReadOnlyTxProcessingEnv(ITransactionProcessor transactionProcessor, IWorldState worldState, ILifetimeScope lifetimeScope) : IReadOnlyTxProcessorSource, IDisposable
     {
         public IReadOnlyTxProcessingScope Build(BlockHeader? header)
         {
-            worldState.SetBaseBlock(header);
-            return new ReadOnlyTxProcessingScope(transactionProcessor, worldState);
+            IDisposable closer = worldState.BeginScope(header);
+            return new ReadOnlyTxProcessingScope(transactionProcessor, closer, worldState);
         }
 
         public void Dispose()

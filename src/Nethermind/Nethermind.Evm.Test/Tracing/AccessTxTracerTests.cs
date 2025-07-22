@@ -28,8 +28,6 @@ namespace Nethermind.Evm.Test.Tracing
                 .Op(Instruction.STOP)
                 .Done;
 
-            TestState.Commit(Berlin.Instance);
-
             (AccessTxTracer tracer, _, _) = ExecuteAndTraceAccessCall(SenderRecipientAndMiner.Default, code);
 
             IEnumerable<Address> addressesAccessed = tracer.AccessList!.Select(static tuples => tuples.Address);

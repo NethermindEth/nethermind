@@ -80,7 +80,10 @@ public class ContractBasedValidatorTests
         _stateProvider.IsContract(_contractAddress).Returns(true);
 
         _readOnlyTxProcessorSource = Substitute.For<IReadOnlyTxProcessorSource>();
-        _readOnlyTxProcessorSource.Build(Arg.Any<BlockHeader>()).Returns(new ReadOnlyTxProcessingScope(_transactionProcessor, _stateProvider));
+        _readOnlyTxProcessorSource.Build(Arg.Any<BlockHeader>()).Returns(new ReadOnlyTxProcessingScope(
+            _transactionProcessor,
+            new Reactive.AnonymousDisposable(() => { }),
+            _stateProvider));
         _blockTree.Head.Returns(_block);
 
         _abiEncoder
