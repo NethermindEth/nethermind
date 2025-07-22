@@ -70,6 +70,7 @@ using NUnit.Framework;
 using Build = Nethermind.Runner.Test.Ethereum.Build;
 using Nethermind.Api.Steps;
 using System.Linq;
+using Nethermind.Consensus.Scheduler;
 
 namespace Nethermind.Runner.Test;
 
@@ -212,6 +213,7 @@ public class EthereumRunnerTests
         api.BlockTree = Substitute.For<IBlockTree>();
         api.ReceiptStorage = Substitute.For<IReceiptStorage>();
         api.BlockProducerRunner = Substitute.For<IBlockProducerRunner>();
+        api.BackgroundTaskScheduler = Substitute.For<IBackgroundTaskScheduler>();
 
         if (api is AuRaNethermindApi auRaNethermindApi)
         {

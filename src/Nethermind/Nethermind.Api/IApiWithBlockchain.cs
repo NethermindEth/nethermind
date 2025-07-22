@@ -67,7 +67,7 @@ namespace Nethermind.Api
         IGasPriceOracle GasPriceOracle { get; }
 
         IBlockProductionPolicy? BlockProductionPolicy { get; set; }
-        BackgroundTaskScheduler BackgroundTaskScheduler { get; set; }
+        IBackgroundTaskScheduler BackgroundTaskScheduler { get; set; }
         ICensorshipDetector CensorshipDetector { get; set; }
     }
 }

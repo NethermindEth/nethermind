@@ -135,7 +135,7 @@ namespace Nethermind.Api
         public IBlockProducerEnvFactory BlockProducerEnvFactory => Context.Resolve<IBlockProducerEnvFactory>();
         public IGasPriceOracle GasPriceOracle => Context.Resolve<IGasPriceOracle>();
         public IBlockProductionPolicy? BlockProductionPolicy { get; set; }
-        public BackgroundTaskScheduler BackgroundTaskScheduler { get; set; } = null!;
+        public IBackgroundTaskScheduler BackgroundTaskScheduler { get; set; } = null!;
         public ICensorshipDetector CensorshipDetector { get; set; } = new NoopCensorshipDetector();
         public IWallet? Wallet { get; set; }
         public IBadBlockStore? BadBlocksStore { get; set; }

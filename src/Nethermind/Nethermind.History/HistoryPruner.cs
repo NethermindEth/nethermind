@@ -97,8 +97,7 @@ public class HistoryPruner : IHistoryPruner
             if (_logger.IsInfo) _logger.Info($"Pruning historical blocks up to timestamp {cutoffTimestamp}");
 
             _backgroundTaskScheduler.ScheduleTask(cutoffTimestamp!.Value,
-                (cutoffTimestamp, backgroundTaskToken) =>
-                {
+                (cutoffTimestamp, backgroundTaskToken) => {
                     var cts = CancellationTokenSource.CreateLinkedTokenSource(backgroundTaskToken, cancellationToken);
                     _pruneHistoryTask = Task.Run(() => PruneBlocksAndReceipts(cutoffTimestamp, cts.Token), cts.Token);
                     return _pruneHistoryTask;
