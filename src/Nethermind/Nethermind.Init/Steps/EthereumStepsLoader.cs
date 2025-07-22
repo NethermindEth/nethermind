@@ -4,7 +4,6 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
-using System.Reflection;
 using Nethermind.Api;
 using Nethermind.Api.Extensions;
 using Nethermind.Api.Steps;
@@ -32,7 +31,7 @@ namespace Nethermind.Init.Steps
 
             return _stepsInfo
                 .GroupBy(s => s.StepBaseType)
-                .Select(g => SelectImplementation(g.ToArray()))
+                .Select(g => SelectImplementation([.. g]))
                 .Where(s => s is not null)
                 .Select(s => s!);
         }
@@ -45,14 +44,12 @@ namespace Nethermind.Init.Steps
 
         private StepInfo? SelectImplementation(StepInfo[] stepsWithTheSameBase)
         {
-            StepInfo[] stepsWithMatchingApiType = stepsWithTheSameBase
-                .Where(t => HasConstructorWithParameter(t.StepType, _apiType)).ToArray();
+            StepInfo[] stepsWithMatchingApiType = [.. stepsWithTheSameBase.Where(t => HasConstructorWithParameter(t.StepType, _apiType))];
 
             if (stepsWithMatchingApiType.Length == 0)
             {
                 // base API type this time
-                stepsWithMatchingApiType = stepsWithTheSameBase
-                    .Where(t => HasConstructorWithParameter(t.StepType, _baseApiType)).ToArray();
+                stepsWithMatchingApiType = [.. stepsWithTheSameBase.Where(t => HasConstructorWithParameter(t.StepType, _baseApiType))];
             }
 
             if (stepsWithMatchingApiType.Length > 1)
