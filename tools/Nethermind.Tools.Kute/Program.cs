@@ -50,9 +50,6 @@ static class Program
 
     private static IServiceProvider BuildServiceProvider(ParseResult parseResult)
     {
-        bool unwrapBatch = parseResult.GetValue(Config.UnwrapBatch);
-        bool showProgress = parseResult.GetValue(Config.ShowProgress);
-
         IServiceCollection collection = new ServiceCollection();
 
         collection.AddSingleton<Application>();
@@ -73,7 +70,9 @@ static class Program
         {
             FileMessageProvider ofStrings = new FileMessageProvider(parseResult.GetValue(Config.MessagesFilePath)!);
             JsonRpcMessageProvider ofJsonRpc = new JsonRpcMessageProvider(ofStrings);
-            IMessageProvider<JsonRpc> provider = unwrapBatch ? new UnwrapBatchJsonRpcMessageProvider(ofJsonRpc) : ofJsonRpc;
+            IMessageProvider<JsonRpc> provider = parseResult.GetValue(Config.UnwrapBatch)
+                ? new UnwrapBatchJsonRpcMessageProvider(ofJsonRpc)
+                : ofJsonRpc;
 
             return provider;
         });
@@ -114,7 +113,9 @@ static class Program
 
             MemoryMetricsReporter memoryReporter = new MemoryMetricsReporter();
             ConsoleTotalReporter consoleReporter = new ConsoleTotalReporter(memoryReporter, formatter);
-            IMetricsReporter progresReporter = showProgress ? new ConsoleProgressReporter() : new NullMetricsReporter();
+            IMetricsReporter progresReporter = parseResult.GetValue(Config.ShowProgress)
+                ? new ConsoleProgressReporter()
+                : new NullMetricsReporter();
 
             return new ComposedMetricsReporter([memoryReporter, progresReporter, consoleReporter]);
         });
