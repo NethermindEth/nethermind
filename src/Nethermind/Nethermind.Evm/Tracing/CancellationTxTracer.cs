@@ -117,7 +117,6 @@ public class CancellationTxTracer(ITxTracer innerTracer, CancellationToken token
         init => _isTracingOpLevelLogs = value;
     }
 
-
     public void ReportBalanceChange(Address address, UInt256? before, UInt256? after)
     {
         token.ThrowIfCancellationRequested();

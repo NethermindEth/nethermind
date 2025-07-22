@@ -37,8 +37,10 @@ public ref struct EvmStack
     }
 
     private readonly ITxTracer _tracer;
-    private readonly Span<byte> _bytes;
+    internal readonly Span<byte> _bytes;
     public int Head;
+
+    public readonly Span<byte> UnderlyingSpan => _bytes;
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public ref byte PushBytesRef()

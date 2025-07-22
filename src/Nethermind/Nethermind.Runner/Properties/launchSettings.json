@@ -137,6 +137,13 @@
         "ASPNETCORE_ENVIRONMENT": "Development"
       },
       "distributionName": ""
+    },
+    "Profile 1": {
+      "commandName": "Executable"
+    },
+    "Profile 2": {
+      "commandName": "Project",
+      "commandLineArgs": "-c mainnet_archive --data-dir E:/ILVM/database/EL --jsonrpc-jwtsecretfile E:/ILVM/database/keystore/jwt.hex --Metrics.Enabled=true --Metrics.PushGatewayUrl=http://94.237.52.161:9000/metrics/nethermind-iudiy4raagaizaih1phuaShekighoJ2ixaecahvii7ohte3oozeeh0eTh7Aich1Shee9ceetuy3iGhexoh5naithoot8rebi7fee --Metrics.ExposePort=8008 --Metrics.NodeName=\"Demuirgos ILEvm local node\""
     }
   }
 }
