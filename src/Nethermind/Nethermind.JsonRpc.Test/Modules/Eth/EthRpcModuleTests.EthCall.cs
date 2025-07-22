@@ -124,14 +124,19 @@ public partial class EthRpcModuleTests
     {
         OverridableReleaseSpec releaseSpec = new(London.Instance) { Eip1559TransitionBlock = 1, IsEip3607Enabled = true };
         TestSpecProvider specProvider = new(releaseSpec) { AllowTestChainOverride = false };
-        using Context ctx = await Context.Create(specProvider);
+        using Context ctx = await Context.Create(specProvider, configurer: builder => builder.Intercept<TestBlockchain.Configuration>((cfg) =>
+        {
+            cfg.InitialStateMutator = (worldState) =>
+            {
+                worldState.InsertCode(TestItem.AddressA, "H"u8.ToArray(), London.Instance);
+            };
+        }));
 
         Transaction tx = Build.A.Transaction.SignedAndResolved(TestItem.PrivateKeyA).TestObject;
         LegacyTransactionForRpc transaction = new(tx, 1, Keccak.Zero, 1L)
         {
             To = TestItem.AddressB
         };
-        ctx.Test.WorldStateManager.GlobalWorldState.InsertCode(TestItem.AddressA, "H"u8.ToArray(), London.Instance);
 
         string serialized =
             await ctx.Test.TestEthRpc("eth_call", transaction, "latest");

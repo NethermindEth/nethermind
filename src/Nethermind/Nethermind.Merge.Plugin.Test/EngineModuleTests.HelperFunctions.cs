@@ -103,15 +103,15 @@ namespace Nethermind.Merge.Plugin.Test
             ExecutionPayload blockRequest = CreateBlockRequestInternal<ExecutionPayload>(parent, miner, withdrawals, blobGasUsed, excessBlobGas, transactions: transactions, parentBeaconBlockRoot: parentBeaconBlockRoot);
             Block? block = blockRequest.TryGetBlock().Block;
 
-            Snapshot before = chain.WorldStateManager.GlobalWorldState.TakeSnapshot();
-            chain.WithdrawalProcessor?.ProcessWithdrawals(block!, chain.SpecProvider.GenesisSpec);
-
             IWorldState globalWorldState = chain.WorldStateManager.GlobalWorldState;
+            using (globalWorldState.BeginScope(parent.TryGetBlock().Block!.Header))
+            {
+                chain.WithdrawalProcessor?.ProcessWithdrawals(block!, chain.SpecProvider.GenesisSpec);
 
-            globalWorldState.Commit(chain.SpecProvider.GenesisSpec);
-            globalWorldState.RecalculateStateRoot();
-            blockRequest.StateRoot = globalWorldState.StateRoot;
-            globalWorldState.Restore(before);
+                globalWorldState.Commit(chain.SpecProvider.GenesisSpec);
+                globalWorldState.RecalculateStateRoot();
+                blockRequest.StateRoot = globalWorldState.StateRoot;
+            }
 
             TryCalculateHash(blockRequest, out Hash256? hash);
             blockRequest.BlockHash = hash;
@@ -132,15 +132,16 @@ namespace Nethermind.Merge.Plugin.Test
             Block? block = blockRequestV3.TryGetBlock().Block;
 
             IWorldState globalWorldState = chain.WorldStateManager.GlobalWorldState;
-            Snapshot before = globalWorldState.TakeSnapshot();
-            var blockHashStore = new BlockhashStore(chain.SpecProvider, globalWorldState);
-            blockHashStore.ApplyBlockhashStateChanges(block!.Header);
-            chain.WithdrawalProcessor?.ProcessWithdrawals(block!, chain.SpecProvider.GenesisSpec);
+            using (globalWorldState.BeginScope(parent.TryGetBlock().Block!.Header))
+            {
+                var blockHashStore = new BlockhashStore(chain.SpecProvider, globalWorldState);
+                blockHashStore.ApplyBlockhashStateChanges(block!.Header);
+                chain.WithdrawalProcessor?.ProcessWithdrawals(block!, chain.SpecProvider.GenesisSpec);
 
-            globalWorldState.Commit(chain.SpecProvider.GenesisSpec);
-            globalWorldState.RecalculateStateRoot();
-            blockRequestV3.StateRoot = globalWorldState.StateRoot;
-            globalWorldState.Restore(before);
+                globalWorldState.Commit(chain.SpecProvider.GenesisSpec);
+                globalWorldState.RecalculateStateRoot();
+                blockRequestV3.StateRoot = globalWorldState.StateRoot;
+            }
 
             TryCalculateHash(blockRequestV3, out Hash256? hash);
             blockRequestV3.BlockHash = hash;

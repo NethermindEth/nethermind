@@ -28,6 +28,7 @@ internal class Create2DeployerContractRewriterTests
 
         IWorldStateManager worldStateManager = TestWorldStateFactory.CreateForTest();
         IWorldState ws = worldStateManager.GlobalWorldState;
+        using var _ = ws.BeginScope(null);
 
         Create2DeployerContractRewriter rewriter = new(specHelper, new TestSingleReleaseSpecProvider(Cancun.Instance), blockTree);
 
