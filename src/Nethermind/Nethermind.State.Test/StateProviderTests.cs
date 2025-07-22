@@ -34,16 +34,22 @@ public class StateProviderTests
     {
         WorldStateManager worldStateManager = TestWorldStateFactory.CreateForTest();
         IWorldState frontierProvider = worldStateManager.GlobalWorldState;
-        frontierProvider.CreateAccount(_address1, 0);
-        frontierProvider.Commit(Frontier.Instance);
-        frontierProvider.CommitTree(0);
+        BlockHeader baseBlock;
+        using (var _ = frontierProvider.BeginScope(null))
+        {
+            frontierProvider.CreateAccount(_address1, 0);
+            frontierProvider.Commit(Frontier.Instance);
+            frontierProvider.CommitTree(0);
+            baseBlock = Build.A.BlockHeader.WithStateRoot(frontierProvider.StateRoot).TestObject;
+        }
 
         IWorldState provider = worldStateManager.GlobalWorldState;
-        provider.SetBaseBlock(Build.A.BlockHeader.WithStateRoot(frontierProvider.StateRoot).TestObject);
-
-        provider.AddToBalance(_address1, 0, SpuriousDragon.Instance);
-        provider.Commit(SpuriousDragon.Instance);
-        Assert.That(provider.AccountExists(_address1), Is.False);
+        using (var _ = provider.BeginScope(baseBlock))
+        {
+            provider.AddToBalance(_address1, 0, SpuriousDragon.Instance);
+            provider.Commit(SpuriousDragon.Instance);
+            Assert.That(provider.AccountExists(_address1), Is.False);
+        }
     }
 
     [Test]
@@ -51,6 +57,7 @@ public class StateProviderTests
     {
         WorldStateManager worldStateManager = TestWorldStateFactory.CreateForTest();
         IWorldState provider = worldStateManager.GlobalWorldState;
+        using var _ = provider.BeginScope(null);
         var systemUser = Address.SystemUser;
 
         provider.CreateAccount(systemUser, 0);
@@ -68,6 +75,7 @@ public class StateProviderTests
     {
         WorldStateManager worldStateManager = TestWorldStateFactory.CreateForTest();
         IWorldState provider = worldStateManager.GlobalWorldState;
+        using var _ = provider.BeginScope(null);
         provider.Commit(Frontier.Instance);
         provider.Restore(Snapshot.Empty);
     }
@@ -77,6 +85,7 @@ public class StateProviderTests
     {
         WorldStateManager worldStateManager = TestWorldStateFactory.CreateForTest();
         IWorldState provider = worldStateManager.GlobalWorldState;
+        using var _ = provider.BeginScope(null);
         Assert.Throws<InvalidOperationException>(() => provider.AddToBalance(TestItem.AddressA, 1.Ether(), Olympic.Instance));
     }
 
@@ -85,6 +94,7 @@ public class StateProviderTests
     {
         WorldStateManager worldStateManager = TestWorldStateFactory.CreateForTest();
         IWorldState provider = worldStateManager.GlobalWorldState;
+        using var _ = provider.BeginScope(null);
         provider.CreateAccount(_address1, 0);
         provider.Commit(Frontier.Instance);
         bool isEmpty = !provider.TryGetAccount(_address1, out var account) || account.IsEmpty;
@@ -96,6 +106,7 @@ public class StateProviderTests
     {
         WorldStateManager worldStateManager = TestWorldStateFactory.CreateForTest();
         IWorldState provider = worldStateManager.GlobalWorldState;
+        using var _ = provider.BeginScope(null);
         byte[] code = provider.GetCode(TestItem.AddressA);
         code.Should().BeEmpty();
     }
@@ -105,6 +116,7 @@ public class StateProviderTests
     {
         WorldStateManager worldStateManager = TestWorldStateFactory.CreateForTest();
         IWorldState provider = worldStateManager.GlobalWorldState;
+        using var _ = provider.BeginScope(null);
         provider.CreateAccount(_address1, 0);
         provider.AddToBalance(_address1, 1, Frontier.Instance);
         provider.AddToBalance(_address1, 1, Frontier.Instance);
@@ -132,6 +144,7 @@ public class StateProviderTests
     {
         WorldStateManager worldStateManager = TestWorldStateFactory.CreateForTest();
         IWorldState provider = worldStateManager.GlobalWorldState;
+        using var _ = provider.BeginScope(null);
         provider.CreateAccount(_address1, 0);
         provider.Commit(Frontier.Instance);
         provider.GetBalance(_address1);
@@ -151,6 +164,7 @@ public class StateProviderTests
 
         WorldStateManager worldStateManager = TestWorldStateFactory.CreateForTest();
         IWorldState provider = worldStateManager.GlobalWorldState;
+        using var _ = provider.BeginScope(null);
         provider.CreateAccount(_address1, 1);
         provider.AddToBalance(_address1, 1, Frontier.Instance);
         provider.IncrementNonce(_address1);
@@ -191,6 +205,9 @@ public class StateProviderTests
 
         WorldStateManager worldStateManager = TestWorldStateFactory.CreateForTest();
         IWorldState provider = worldStateManager.GlobalWorldState;
+
+        using var _ = provider.BeginScope(null);
+
         provider.CreateAccount(_address1, 0);
         provider.TryGetAccount(_address1, out AccountStruct account);
 
@@ -198,24 +215,26 @@ public class StateProviderTests
         provider.Commit(Frontier.Instance); // commit empty account (before the empty account fix in Spurious Dragon)
         Assert.That(provider.AccountExists(_address1), Is.True);
 
-        provider.Reset(); // clear all caches
-
         provider.GetBalance(_address1); // justcache
         provider.AddToBalance(_address1, 0, SpuriousDragon.Instance); // touch
         Assert.DoesNotThrow(() => provider.Commit(SpuriousDragon.Instance, tracer));
     }
 
     [Test]
-    public void Does_not_require_recalculation_after_reset()
+    public void Does_not_allow_calling_stateroot_after_scope()
     {
         WorldStateManager worldStateManager = TestWorldStateFactory.CreateForTest();
         IWorldState provider = worldStateManager.GlobalWorldState;
-        provider.CreateAccount(TestItem.AddressA, 5);
 
         Action action = () => { _ = provider.StateRoot; };
-        action.Should().Throw<InvalidOperationException>();
+        {
+            using var _ = provider.BeginScope(null);
+            provider.CreateAccount(TestItem.AddressA, 5);
+            provider.CommitTree(0);
 
-        provider.Reset();
-        action.Should().NotThrow<InvalidOperationException>();
+            action.Should().NotThrow<InvalidOperationException>();
+        }
+
+        action.Should().Throw<InvalidOperationException>();
     }
 }

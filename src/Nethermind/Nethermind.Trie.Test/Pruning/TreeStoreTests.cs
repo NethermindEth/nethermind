@@ -594,6 +594,7 @@ namespace Nethermind.Trie.Test.Pruning
         {
             IWorldStateManager worldStateManager = TestWorldStateFactory.CreateForTest();
             IWorldState worldState = worldStateManager.GlobalWorldState;
+            using var _ = worldState.BeginScope(null);
             worldState.CreateAccount(TestItem.AddressA, 1000);
             worldState.CreateAccount(TestItem.AddressB, 1000);
         }
@@ -1064,10 +1065,12 @@ namespace Nethermind.Trie.Test.Pruning
             IScopedTrieStore storageTrieStore = fullTrieStore.GetTrieStore(address);
             storageTrieStore.FindCachedOrUnknown(TreePath.Empty, storageRoot.ToCommitment());
 
-            worldState.StateRoot = stateRoot;
-            worldState.IncrementNonce(address, 1);
-            worldState.Commit(MainnetSpecProvider.Instance.GenesisSpec);
-            worldState.CommitTree(2);
+            {
+                using var _ = worldState.BeginScope(Build.A.BlockHeader.WithNumber(1).WithStateRoot(stateRoot).TestObject);
+                worldState.IncrementNonce(address, 1);
+                worldState.Commit(MainnetSpecProvider.Instance.GenesisSpec);
+                worldState.CommitTree(2);
+            }
 
             fullTrieStore.PersistCache(default);
             nodeStorage.Get(address.ToAccountPath.ToCommitment(), TreePath.Empty, storageRoot).Should().NotBeNull();
@@ -1077,7 +1080,7 @@ namespace Nethermind.Trie.Test.Pruning
             (Hash256, ValueHash256) SetupStartingState()
             {
                 WorldState worldState = new WorldState(new TestRawTrieStore(nodeStorage), memDbProvider.CodeDb, LimboLogs.Instance);
-                worldState.StateRoot = Keccak.EmptyTreeHash;
+                using var _ = worldState.BeginScope(null);
                 worldState.CreateAccountIfNotExists(address, UInt256.One);
                 worldState.Set(new StorageCell(address, slot), TestItem.KeccakB.BytesToArray());
                 worldState.Commit(MainnetSpecProvider.Instance.GenesisSpec);
