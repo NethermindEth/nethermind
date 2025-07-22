@@ -43,6 +43,8 @@ public class TransactionProcessorTests
     private IEthereumEcdsa _ethereumEcdsa;
     private ITransactionProcessor _transactionProcessor;
     private IWorldState _stateProvider;
+    private BlockHeader _baseBlock = null!;
+    private IDisposable _stateCloser;
 
     public TransactionProcessorTests(bool eip155Enabled)
     {
@@ -57,14 +59,22 @@ public class TransactionProcessorTests
     {
         IWorldStateManager worldStateManager = TestWorldStateFactory.CreateForTest();
         _stateProvider = worldStateManager.GlobalWorldState;
+        _stateCloser = _stateProvider.BeginScope(null);
         _stateProvider.CreateAccount(TestItem.AddressA, AccountBalance);
         _stateProvider.Commit(_specProvider.GenesisSpec);
         _stateProvider.CommitTree(0);
+        _baseBlock = Build.A.BlockHeader.WithStateRoot(_stateProvider.StateRoot).TestObject;
 
         EthereumCodeInfoRepository codeInfoRepository = new();
         VirtualMachine virtualMachine = new(new TestBlockhashProvider(_specProvider), _specProvider, LimboLogs.Instance);
         _transactionProcessor = new TransactionProcessor(_specProvider, _stateProvider, virtualMachine, codeInfoRepository, LimboLogs.Instance);
         _ethereumEcdsa = new EthereumEcdsa(_specProvider.ChainId);
+    }
+
+    [TearDown]
+    public void Teardown()
+    {
+        _stateCloser.Dispose();
     }
 
     [TestCase(true, true)]
@@ -289,7 +299,7 @@ public class TransactionProcessorTests
         long gasLimit = 100000;
         Transaction tx = Build.A.Transaction.WithValue(UInt256.MaxValue).WithGasLimit(gasLimit)
             .WithSenderAddress(systemUser ? Address.SystemUser : TestItem.AddressA).TestObject;
-        Block block = Build.A.Block.WithNumber(1).WithTransactions(tx).WithGasLimit(gasLimit).TestObject;
+        Block block = Build.A.Block.WithParent(_baseBlock).WithTransactions(tx).WithGasLimit(gasLimit).TestObject;
 
         EstimateGasTracer tracer = new();
         Action action = () => _transactionProcessor.CallAndRestore(tx, new BlockExecutionContext(block.Header, _specProvider.GetSpec(block.Header)), tracer);
@@ -308,6 +318,7 @@ public class TransactionProcessorTests
     public long Should_not_estimate_tx_with_high_value(UInt256 txValue)
     {
         long gasLimit = 100000;
+
         Transaction tx = Build.A.Transaction
             .WithValue(txValue)
             .WithGasLimit(gasLimit)
@@ -368,11 +379,12 @@ public class TransactionProcessorTests
     {
         long gasLimit = 100000;
         Transaction tx = Build.A.Transaction.SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA, _isEip155Enabled).WithGasLimit(gasLimit).TestObject;
-        Block block = Build.A.Block.WithNumber(1).WithTransactions(tx).WithGasLimit(gasLimit).TestObject;
+        Block block = Build.A.Block.WithParent(_baseBlock).WithTransactions(tx).WithGasLimit(gasLimit).TestObject;
 
         EstimateGasTracer tracer = new();
         BlocksConfig blocksConfig = new();
         GasEstimator estimator = new(_transactionProcessor, _stateProvider, _specProvider, blocksConfig);
+
         _transactionProcessor.CallAndRestore(tx, new BlockExecutionContext(block.Header, _specProvider.GetSpec(block.Header)), tracer);
 
         tracer.GasSpent.Should().Be(21000);
@@ -621,6 +633,7 @@ public class TransactionProcessorTests
     public void Disables_Eip158_for_system_transactions()
     {
         long blockNumber = MainnetSpecProvider.SpuriousDragonBlockNumber + 1;
+
         _stateProvider.CreateAccount(TestItem.PrivateKeyA.Address, 0.Ether());
         IReleaseSpec spec = _specProvider.GetSpec((ForkActivation)blockNumber);
         _stateProvider.Commit(spec);

@@ -29,6 +29,7 @@ public class OptimismWithdrawalTests
     {
         IWorldStateManager worldStateManager = TestWorldStateFactory.CreateForTest();
         var state = worldStateManager.GlobalWorldState;
+        using var _ = state.BeginScope(null);
 
         var genesis = Build.A.BlockHeader
             .WithNumber(0)
@@ -81,6 +82,7 @@ public class OptimismWithdrawalTests
     {
         IWorldStateManager worldStateManager = TestWorldStateFactory.CreateForTest();
         var state = worldStateManager.GlobalWorldState;
+        using var _ = state.BeginScope(null);
         var processor = new OptimismWithdrawalProcessor(state, TestLogManager.Instance, Spec.Instance);
         var releaseSpec = Substitute.For<IReleaseSpec>();
 

@@ -1,27 +1,24 @@
 // SPDX-FileCopyrightText: 2024 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System;
 using System.Collections.Generic;
 using System.Threading.Tasks;
+using Autofac;
 using FluentAssertions;
 using Nethermind.Blockchain;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
-using Nethermind.Core.Test;
+using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Builders;
-using Nethermind.Core.Test.Db;
-using Nethermind.Db;
-using Nethermind.Evm.TransactionProcessing;
+using Nethermind.Core.Test.Modules;
 using Nethermind.Flashbots.Modules.Rbuilder;
 using Nethermind.Int256;
 using Nethermind.JsonRpc.Test;
-using Nethermind.Logging;
 using Nethermind.Specs;
 using Nethermind.Specs.Forks;
 using Nethermind.Evm.State;
+using Nethermind.JsonRpc;
 using Nethermind.State;
-using NSubstitute;
 using NUnit.Framework;
 using Bytes = Nethermind.Core.Extensions.Bytes;
 
@@ -30,22 +27,31 @@ namespace Nethermind.Flashbots.Test.Rbuilder;
 public class RbuilderRpcModuleTests
 {
     private IRbuilderRpcModule _rbuilderRpcModule;
-    private WorldStateManager _worldStateManager;
+    private IWorldStateManager _worldStateManager;
+    private IContainer _container;
 
     [SetUp]
-    public async Task Setup()
+    public void Setup()
     {
-        _worldStateManager = TestWorldStateFactory.CreateForTest(await TestMemDbProvider.InitAsync(), LimboLogs.Instance);
         IBlockTree blockTree = Build.A.BlockTree()
             .OfChainLength(10)
             .TestObject;
 
-        IShareableTxProcessorSource txProcessorSource = Substitute.For<IShareableTxProcessorSource>();
-        IReadOnlyTxProcessingScope scope = Substitute.For<IReadOnlyTxProcessingScope>();
-        scope.WorldState.Returns(_worldStateManager.CreateResettableWorldState());
-        txProcessorSource.Build(Arg.Any<BlockHeader>()).Returns(scope);
+        _container = new ContainerBuilder()
+            .AddModule(new TestNethermindModule())
+            .AddModule(new FlashbotsModule(new FlashbotsConfig(), new JsonRpcConfig()))
+            .AddSingleton<IBlockTree>(blockTree)
+            .AddSingleton<ISpecProvider>(MainnetSpecProvider.Instance)
+            .Build();
 
-        _rbuilderRpcModule = new RbuilderRpcModule(blockTree, MainnetSpecProvider.Instance, txProcessorSource, _worldStateManager.GlobalStateReader);
+        _worldStateManager = _container.Resolve<IWorldStateManager>();
+        _rbuilderRpcModule = _container.Resolve<IRbuilderRpcModule>();
+    }
+
+    [TearDown]
+    public async Task TearDown()
+    {
+        await _container.DisposeAsync();
     }
 
     [Test]
@@ -54,13 +60,15 @@ public class RbuilderRpcModuleTests
         string theCode = "01234567012345670123456701234567012345670123456701234567012345670123456701234567012345670123456701234567012345670123456701234567";
         byte[] theCodeBytes = Bytes.FromHexString(theCode);
         Hash256 theHash = Keccak.Compute(theCodeBytes);
-        Console.Error.WriteLine(theHash.ToString());
 
         IWorldState worldState = _worldStateManager.GlobalWorldState;
-        worldState.CreateAccount(TestItem.AddressA, 100000);
-        worldState.InsertCode(TestItem.AddressA, theCodeBytes, London.Instance);
-        worldState.Commit(London.Instance);
-        worldState.CommitTree(0);
+        using (worldState.BeginScope(null))
+        {
+            worldState.CreateAccount(TestItem.AddressA, 100000);
+            worldState.InsertCode(TestItem.AddressA, theCodeBytes, London.Instance);
+            worldState.Commit(London.Instance);
+            worldState.CommitTree(0);
+        }
 
         string response = await RpcTest.TestSerializedRequest(_rbuilderRpcModule, "rbuilder_getCodeByHash", theHash);
 

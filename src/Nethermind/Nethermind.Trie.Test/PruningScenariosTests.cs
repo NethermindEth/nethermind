@@ -37,6 +37,7 @@ namespace Nethermind.Trie.Test
             private BlockHeader? _baseBlock = Build.A.EmptyBlockHeader;
             private readonly Dictionary<string, BlockHeader?> _branchingPoints = new();
             private readonly IDbProvider _dbProvider;
+            private IDisposable? _worldStateCloser = null;
             private IWorldState _stateProvider;
             private IStateReader _stateReader;
             private readonly ILogManager _logManager;
@@ -60,6 +61,7 @@ namespace Nethermind.Trie.Test
                 _trieStore = new TrieStore(new NodeStorage(_dbProvider.StateDb), _pruningStrategy, _persistenceStrategy, _pruningConfig, _logManager);
                 _stateProvider = new WorldState(_trieStore, _dbProvider.CodeDb, _logManager);
                 _stateReader = new StateReader(_trieStore, _dbProvider.CodeDb, _logManager);
+                _worldStateCloser = _stateProvider.BeginScope(null);
             }
 
 
@@ -225,8 +227,9 @@ namespace Nethermind.Trie.Test
                 // This causes the root node to be reloaded instead of keeping old one
                 // The root hash will now be unresolved, which mean it will need to reload from trie store.
                 // `BlockProcessor.InitBranch` does this.
-                _stateProvider.Reset();
-                _stateProvider.SetBaseBlock(_baseBlock);
+                _worldStateCloser!.Dispose();
+                _worldStateCloser = _stateProvider.BeginScope(_baseBlock);
+
                 _trieStore.WaitForPruning();
                 Console.Error.WriteLine($"Commited block {_baseBlock.ToString(BlockHeader.Format.Short)} {_trieStore.CachedNodesCount} {_trieStore.PersistedNodesCount}");
                 return this;
@@ -319,8 +322,8 @@ namespace Nethermind.Trie.Test
             {
                 BlockHeader branchPoint = _branchingPoints[name];
                 _baseBlock = branchPoint;
-                _stateProvider.Reset();
-                _stateProvider.SetBaseBlock(branchPoint);
+                _worldStateCloser!.Dispose();
+                _worldStateCloser = _stateProvider.BeginScope(branchPoint);
                 return this;
             }
 

@@ -29,23 +29,29 @@ namespace Nethermind.Store.Test
             NodeStorage nodeStorage = new NodeStorage(stateDb);
             TestRawTrieStore trieStore = new(nodeStorage);
             WorldState stateProvider = new(trieStore, codeDb, LimboLogs.Instance);
+            StateReader stateReader = new StateReader(trieStore, codeDb, LimboLogs.Instance);
+            Hash256 stateRoot;
 
-            stateProvider.CreateAccount(TestItem.AddressA, 1);
-            stateProvider.InsertCode(TestItem.AddressA, new byte[] { 1, 2, 3 }, Istanbul.Instance);
-
-            stateProvider.CreateAccount(TestItem.AddressB, 1);
-            stateProvider.InsertCode(TestItem.AddressB, new byte[] { 1, 2, 3, 4 }, Istanbul.Instance);
-
-            for (int i = 0; i < 1000; i++)
+            using (var _ = stateProvider.BeginScope(null))
             {
-                StorageCell storageCell = new(TestItem.AddressA, (UInt256)i);
-                stateProvider.Set(storageCell, new byte[] { (byte)i });
+                stateProvider.CreateAccount(TestItem.AddressA, 1);
+                stateProvider.InsertCode(TestItem.AddressA, new byte[] { 1, 2, 3 }, Istanbul.Instance);
+
+                stateProvider.CreateAccount(TestItem.AddressB, 1);
+                stateProvider.InsertCode(TestItem.AddressB, new byte[] { 1, 2, 3, 4 }, Istanbul.Instance);
+
+                for (int i = 0; i < 1000; i++)
+                {
+                    StorageCell storageCell = new(TestItem.AddressA, (UInt256)i);
+                    stateProvider.Set(storageCell, new byte[] { (byte)i });
+                }
+
+                stateProvider.Commit(Istanbul.Instance);
+
+                stateProvider.CommitTree(0);
+                stateProvider.CommitTree(1);
+                stateRoot = stateProvider.StateRoot;
             }
-
-            stateProvider.Commit(Istanbul.Instance);
-
-            stateProvider.CommitTree(0);
-            stateProvider.CommitTree(1);
 
             codeDb.Delete(Keccak.Compute(new byte[] { 1, 2, 3, 4 })); // missing code
 
@@ -61,7 +67,7 @@ namespace Nethermind.Store.Test
                 MaxDegreeOfParallelism = parallel ? 0 : 1
             };
 
-            stateProvider.Accept(statsCollector, stateProvider.StateRoot, visitingOptions);
+            stateReader.RunTreeVisitor(statsCollector, stateRoot, visitingOptions);
             var stats = statsCollector.Stats;
 
             stats.CodeCount.Should().Be(1);

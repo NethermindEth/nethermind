@@ -61,6 +61,8 @@ public class GenesisLoaderTests
         specProvider.GetSpec(Arg.Any<ForkActivation>()).Returns(Berlin.Instance);
         ITransactionProcessor transactionProcessor = Substitute.For<ITransactionProcessor>();
         GenesisLoader genesisLoader = new(chainSpec, specProvider, worldStateManager.GlobalStateReader, stateProvider, transactionProcessor, LimboLogs.Instance);
+
+        using var _ = stateProvider.BeginScope(null);
         return genesisLoader.Load();
     }
 
