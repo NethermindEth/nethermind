@@ -9,7 +9,6 @@
       <PackageReference Include="Microsoft.IdentityModel.JsonWebTokens" />
       <PackageReference Include="System.CommandLine" />
       <PackageReference Include="System.Linq.Async" />
-      <PackageReference Include="Prometheus.Client.MetricPusher" />
     </ItemGroup>
 
 </Project>

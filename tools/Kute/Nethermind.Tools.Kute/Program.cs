@@ -86,13 +86,12 @@ static class Program
                     .Select(pattern => new PatternJsonRpcMethodFilter(pattern) as IJsonRpcMethodFilter)]
             )
         );
-        // collection.AddSingleton<IJsonRpcSubmitter>(provider =>
-        //     new HttpJsonRpcSubmitter(
-        //         provider.GetRequiredService<HttpClient>(),
-        //         provider.GetRequiredService<IAuth>(),
-        //         parseResult.GetValue(Config.HostAddress)!
-        //     ));
-        collection.AddSingleton<IJsonRpcSubmitter, NullJsonRpcSubmitter>();
+        collection.AddSingleton<IJsonRpcSubmitter>(provider =>
+            new HttpJsonRpcSubmitter(
+                provider.GetRequiredService<HttpClient>(),
+                provider.GetRequiredService<IAuth>(),
+                parseResult.GetValue(Config.HostAddress)!
+            ));
         collection.AddSingleton<IResponseTracer>(_ =>
         {
             string? tracesFilePath = parseResult.GetValue(Config.ResponsesTraceFile);
