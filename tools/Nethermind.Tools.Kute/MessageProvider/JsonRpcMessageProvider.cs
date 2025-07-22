@@ -24,7 +24,17 @@ public sealed class JsonRpcMessageProvider : IMessageProvider<JsonRpc>
             switch (jsonDoc?.RootElement.ValueKind)
             {
                 case JsonValueKind.Object:
-                    yield return new JsonRpc.Request.Single(jsonDoc);
+                    {
+                        var isResponse = jsonDoc.RootElement.TryGetProperty("response", out _);
+                        if (isResponse)
+                        {
+                            yield return new JsonRpc.Response(jsonDoc);
+                        }
+                        else
+                        {
+                            yield return new JsonRpc.Request.Single(jsonDoc);
+                        }
+                    }
                     break;
                 case JsonValueKind.Array:
                     yield return new JsonRpc.Request.Batch(jsonDoc);

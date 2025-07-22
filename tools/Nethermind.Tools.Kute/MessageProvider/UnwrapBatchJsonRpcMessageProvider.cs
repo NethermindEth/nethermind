@@ -20,9 +20,6 @@ public sealed class UnwrapBatchJsonRpcMessageProvider : IMessageProvider<JsonRpc
         {
             switch (jsonRpc)
             {
-                case JsonRpc.Request.Single:
-                    yield return jsonRpc;
-                    break;
                 case JsonRpc.Request.Batch batch:
                     foreach (var single in batch.Items())
                     {
@@ -35,6 +32,9 @@ public sealed class UnwrapBatchJsonRpcMessageProvider : IMessageProvider<JsonRpc
                             // TODO: Log potential error
                         }
                     }
+                    break;
+                default:
+                    yield return jsonRpc;
                     break;
             }
         }

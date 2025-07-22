@@ -106,6 +106,7 @@ public class ApplicationTests
         await jsonRpcSubmitter.Received(17).Submit(Arg.Any<JsonRpc.Request.Single>());
         await jsonRpcSubmitter.Received(4).Submit(Arg.Any<JsonRpc.Request.Batch>());
         await responseTracer.Received(21).TraceResponse(Arg.Any<JsonRpc.Response>());
+        await reporter.Received(2).Response();
         await reporter.Received(1).Total(Arg.Any<TimeSpan>());
     }
 
@@ -134,6 +135,7 @@ public class ApplicationTests
         await jsonRpcSubmitter.Received(49).Submit(Arg.Any<JsonRpc.Request.Single>());
         await jsonRpcSubmitter.Received(0).Submit(Arg.Any<JsonRpc.Request.Batch>());
         await responseTracer.Received(49).TraceResponse(Arg.Any<JsonRpc.Response>());
+        await reporter.Received(2).Response();
         await reporter.Received(1).Total(Arg.Any<TimeSpan>());
     }
 
