@@ -19,6 +19,7 @@ using Nethermind.Consensus.Withdrawals;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
+using Nethermind.Core.Specs;
 using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Db;
@@ -60,7 +61,7 @@ namespace Nethermind.AuRa.Test
         {
             ITxFilter txFilter = Substitute.For<ITxFilter>();
             txFilter
-                .IsAllowed(Arg.Any<Transaction>(), Arg.Any<BlockHeader>())
+                .IsAllowed(Arg.Any<Transaction>(), Arg.Any<BlockHeader>(), Arg.Any<IReleaseSpec>())
                 .Returns(AcceptTxResult.Accepted);
             AuRaBlockProcessor processor = CreateProcessor(txFilter).Processor;
 
@@ -73,7 +74,7 @@ namespace Nethermind.AuRa.Test
                 new List<Block> { block },
                 ProcessingOptions.None,
                 NullBlockTracer.Instance);
-            txFilter.Received().IsAllowed(Arg.Any<Transaction>(), Arg.Any<BlockHeader>());
+            txFilter.Received().IsAllowed(Arg.Any<Transaction>(), Arg.Any<BlockHeader>(), Arg.Any<IReleaseSpec>());
         }
 
         [Test]

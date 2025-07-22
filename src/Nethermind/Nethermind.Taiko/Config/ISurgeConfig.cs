@@ -34,6 +34,9 @@ public interface ISurgeConfig : IConfig
     [ConfigItem(Description = "The address of the TaikoInbox contract.", DefaultValue = "null")]
     string? TaikoInboxAddress { get; set; }
 
+    [ConfigItem(Description = "Percentage of the average gas usage to be used for gas price calculation.", DefaultValue = "80")]
+    int AverageGasUsagePercentage { get; set; }
+
     [ConfigItem(Description = "Percentage of the base fee that is shared with the L2 batch submitter.", DefaultValue = "75")]
     int SharingPercentage { get; set; }
 

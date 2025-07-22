@@ -39,7 +39,7 @@ namespace Ethereum.Test.Base;
 public abstract class BlockchainTestBase
 {
     private static ILogger _logger;
-    private static ILogManager _logManager = new TestLogManager(LogLevel.Info);
+    private static ILogManager _logManager = new TestLogManager(LogLevel.Warn);
     private static ISealValidator Sealer { get; }
     private static DifficultyCalculatorWrapper DifficultyCalculator { get; }
 
