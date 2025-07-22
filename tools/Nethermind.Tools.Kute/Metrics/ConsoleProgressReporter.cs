@@ -7,14 +7,12 @@ namespace Nethermind.Tools.Kute.Metrics;
 
 public sealed class ConsoleProgressReporter : IMetricsReporter
 {
-    private readonly string _suffix;
-    private readonly SemaphoreSlim _semaphore = new(1);
-
+    private readonly SemaphoreSlim _semaphore;
     private int _messageCount = 1;
 
-    public ConsoleProgressReporter(int total)
+    public ConsoleProgressReporter()
     {
-        _suffix = $"/{total}";
+        _semaphore = new SemaphoreSlim(1);
     }
 
     public async Task Message(CancellationToken token = default)
@@ -25,14 +23,13 @@ public sealed class ConsoleProgressReporter : IMetricsReporter
 
             if (_messageCount == 1)
             {
-                Console.Write($"Progress: 1{_suffix}");
+                Console.Write($"Progress: 1");
             }
 
             var sb = new StringBuilder();
 
-            sb.Append('\b', (_messageCount - 1).ToString().Length + _suffix.Length);
+            sb.Append('\b', (_messageCount - 1).ToString().Length);
             sb.Append(_messageCount);
-            sb.Append(_suffix);
 
             Console.Write(sb);
             _messageCount++;

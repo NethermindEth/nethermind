@@ -50,6 +50,8 @@ static class Program
     private static IServiceProvider BuildServiceProvider(ParseResult parseResult)
     {
         bool unwrapBatch = parseResult.GetValue(Config.UnwrapBatch);
+        bool showProgress = parseResult.GetValue(Config.ShowProgress);
+
         IServiceCollection collection = new ServiceCollection();
 
         collection.AddSingleton<Application>();
@@ -66,14 +68,13 @@ static class Program
                 TimeSpan.FromSeconds(parseResult.GetValue(Config.AuthTtl))
             )
         );
-        collection.AddSingleton<IMessageProvider<string>>(
-            new FileMessageProvider(parseResult.GetValue(Config.MessagesFilePath)!));
         collection.AddSingleton<IMessageProvider<JsonRpc>>(serviceProvider =>
         {
-            var messageProvider = new FileMessageProvider(parseResult.GetValue(Config.MessagesFilePath)!);
-            var jsonMessageProvider = new JsonRpcMessageProvider(messageProvider);
+            FileMessageProvider ofStrings = new FileMessageProvider(parseResult.GetValue(Config.MessagesFilePath)!);
+            JsonRpcMessageProvider ofJsonRpc = new JsonRpcMessageProvider(ofStrings);
+            IMessageProvider<JsonRpc> provider = unwrapBatch ? new UnwrapBatchJsonRpcMessageProvider(ofJsonRpc) : ofJsonRpc;
 
-            return unwrapBatch ? new UnwrapBatchJsonRpcMessageProvider(jsonMessageProvider) : jsonMessageProvider;
+            return provider;
         });
         collection.AddSingleton<IJsonRpcValidator>(
             new ComposedJsonRpcValidator(
@@ -107,33 +108,12 @@ static class Program
             {
                 MetricsReportFormat.Pretty => new PrettyMetricsReportFormatter(),
                 MetricsReportFormat.Json => new JsonMetricsReportFormatter(),
-                _ => throw new ArgumentOutOfRangeException(),
+                _ => throw new ArgumentOutOfRangeException(nameof(Config.MetricsReportFormatter)),
             };
 
-            var memoryReporter = new MemoryMetricsReporter();
-            var consoleReporter = new ConsoleTotalReporter(memoryReporter, formatter);
-
-            IMetricsReporter progresReporter;
-            if (parseResult.GetValue(Config.ShowProgress))
-            {
-                // NOTE:
-                // Terrible, terrible hack since it forces a double enumeration:
-                // - A first one to count the number of messages.
-                // - A second one to actually process each message.
-                // We can reduce the cost by not parsing each message on the first enumeration
-                // only when we're not unwrapping batches. If we are, we need to parse.
-                // This optimization relies on implementation details.
-                IMessageProvider<object?> messagesProvider = unwrapBatch
-                    ? provider.GetRequiredService<IMessageProvider<JsonRpc>>()
-                    : provider.GetRequiredService<IMessageProvider<string>>();
-                var totalMessages = messagesProvider.Messages().ToEnumerable().Count();
-
-                progresReporter = new ConsoleProgressReporter(totalMessages);
-            }
-            else
-            {
-                progresReporter = new NullMetricsReporter();
-            }
+            MemoryMetricsReporter memoryReporter = new MemoryMetricsReporter();
+            ConsoleTotalReporter consoleReporter = new ConsoleTotalReporter(memoryReporter, formatter);
+            IMetricsReporter progresReporter = showProgress ? new ConsoleProgressReporter() : new NullMetricsReporter();
 
             return new ComposedMetricsReporter([memoryReporter, progresReporter, consoleReporter]);
         });
