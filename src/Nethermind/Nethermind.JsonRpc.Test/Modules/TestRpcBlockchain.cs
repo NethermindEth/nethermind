@@ -43,6 +43,7 @@ using Nethermind.Network.P2P.Subprotocols.Eth;
 using Nethermind.Network.Rlpx;
 using Nethermind.Stats;
 using Nethermind.Synchronization.Peers;
+using System.Collections.Generic;
 
 namespace Nethermind.JsonRpc.Test.Modules
 {
@@ -205,7 +206,7 @@ namespace Nethermind.JsonRpc.Test.Modules
             @this.ForkInfo,
             @this.BlocksConfig.SecondsPerSlot);
 
-        protected override async Task<TestBlockchain> Build(Action<ContainerBuilder>? configurer = null)
+        protected override async Task<TestBlockchain> Build(Action<ContainerBuilder>? configurer = null, IEnumerable<IConfig>? configs = null)
         {
             await base.Build(builder =>
             {

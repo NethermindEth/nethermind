@@ -21,7 +21,7 @@ namespace Nethermind.History;
 
 public class HistoryPruner : IHistoryPruner
 {
-    private Task? _pruneHistoryTask;
+    // only one pruning and one searching thread at a time
     private readonly Lock _pruneLock = new();
     private readonly Lock _searchLock = new();
     private ulong _lastPrunedTimestamp;
@@ -74,41 +74,29 @@ public class HistoryPruner : IHistoryPruner
     }
 
     public void OnBlockProcessorQueueEmpty(object? sender, EventArgs e)
-        => _ = TryPruneHistory(_processExitSource.Token);
+        => SchedulePruneHistory(_processExitSource.Token);
 
-    public async Task TryPruneHistory(CancellationToken cancellationToken)
+    public void SchedulePruneHistory(CancellationToken cancellationToken)
+        => _backgroundTaskScheduler.ScheduleTask(1,
+            (_, backgroundTaskToken) =>
+            {
+                var cts = CancellationTokenSource.CreateLinkedTokenSource(backgroundTaskToken, cancellationToken);
+                return TryPruneHistory(cts.Token);
+            });
+
+    public Task TryPruneHistory(CancellationToken cancellationToken)
     {
         lock (_pruneLock)
         {
-            if (_pruneHistoryTask is not null && !_pruneHistoryTask.IsCompleted)
+            if (_blockTree.Head is null || !ShouldPruneHistory(out ulong? cutoffTimestamp))
             {
-                return;
-            }
-
-            if (_blockTree.Head is null)
-            {
-                return;
-            }
-
-            if (!ShouldPruneHistory(out ulong? cutoffTimestamp))
-            {
-                return;
+                return Task.CompletedTask;
             }
 
             if (_logger.IsInfo) _logger.Info($"Pruning historical blocks up to timestamp {cutoffTimestamp}");
 
-            _backgroundTaskScheduler.ScheduleTask(cutoffTimestamp!.Value,
-                (cutoffTimestamp, backgroundTaskToken) =>
-                {
-                    var cts = CancellationTokenSource.CreateLinkedTokenSource(backgroundTaskToken, cancellationToken);
-                    _pruneHistoryTask = Task.Run(() => PruneBlocksAndReceipts(cutoffTimestamp, cts.Token), cts.Token);
-                    return _pruneHistoryTask;
-                });
-        }
-
-        if (_pruneHistoryTask is not null)
-        {
-            await _pruneHistoryTask;
+            PruneBlocksAndReceipts(cutoffTimestamp!.Value, cancellationToken);
+            return Task.CompletedTask;
         }
     }
 
@@ -121,6 +109,7 @@ public class HistoryPruner : IHistoryPruner
     {
         lock (_searchLock)
         {
+            // lock prune lock since _deletePointer could be altered
             lock (_pruneLock)
             {
                 long? oldestBlockNumber = BlockTree.BinarySearchBlockNumber(1L, _blockTree.SyncPivot.BlockNumber, LevelExists);

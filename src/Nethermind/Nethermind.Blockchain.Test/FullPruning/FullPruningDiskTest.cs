@@ -20,7 +20,6 @@ using Nethermind.Core.Test.IO;
 using Nethermind.Db;
 using Nethermind.Db.FullPruning;
 using Nethermind.Db.Rocks;
-using Nethermind.Db.Rocks.Config;
 using Nethermind.Init;
 using Nethermind.Logging;
 using Nethermind.State;
@@ -50,7 +49,7 @@ public class FullPruningDiskTest
             TempDirectory = TempPath.GetTempDirectory();
         }
 
-        protected override async Task<TestBlockchain> Build(Action<ContainerBuilder>? containerBuilder = null)
+        protected override async Task<TestBlockchain> Build(Action<ContainerBuilder>? containerBuilder = null, IEnumerable<IConfig>? configs = null)
         {
             TestBlockchain chain = await base.Build(containerBuilder);
             PruningDb = (FullPruningDb)DbProvider.StateDb;

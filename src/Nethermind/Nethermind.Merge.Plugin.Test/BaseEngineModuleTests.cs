@@ -283,7 +283,7 @@ public abstract partial class BaseEngineModuleTests
             return new TestBlockProcessorInterceptor(processor, _blockProcessingThrottle);
         }
 
-        protected override async Task<TestBlockchain> Build(Action<ContainerBuilder>? configurer = null)
+        protected override async Task<TestBlockchain> Build(Action<ContainerBuilder>? configurer = null, IEnumerable<IConfig>? configs = null)
         {
             TestBlockchain bc = await base.Build(configurer);
             InvalidChainTracker.InvalidChainTracker invalidChainTracker = Container.Resolve<InvalidChainTracker.InvalidChainTracker>();
