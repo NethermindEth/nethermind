@@ -56,7 +56,11 @@ public partial class BlockProcessor(
     private Task _clearTask = Task.CompletedTask;
 
     private const int MaxUncommittedBlocks = 64;
-    private readonly Action<Task> _clearCaches = _ => preWarmer?.ClearCaches();
+    private readonly Action<Task> _clearCaches = (t) =>
+    {
+        stateProvider.Reset();
+        preWarmer?.ClearCaches();
+    };
 
     /// <summary>
     /// We use a single receipt tracer for all blocks. Internally receipt tracer forwards most of the calls
@@ -166,7 +170,6 @@ public partial class BlockProcessor(
                 }
 
                 preBlockBaseBlock = processedBlock.Header;
-                _stateProvider.Reset();
 
                 // Calculate the transaction hashes in the background and release tx sequence memory
                 // Hashes will be required for PersistentReceiptStorage in ForkchoiceUpdatedHandler
@@ -206,6 +209,11 @@ public partial class BlockProcessor(
     }
 
     private void WaitForCacheClear() => _clearTask.GetAwaiter().GetResult();
+    private void ClearCaches()
+    {
+        _stateProvider.Reset();
+        preWarmer?.ClearCaches();
+    }
 
     private void QueueClearCaches(Task? preWarmTask)
     {
@@ -214,9 +222,9 @@ public partial class BlockProcessor(
             // Can start clearing caches in background
             _clearTask = preWarmTask.ContinueWith(_clearCaches).ContinueWith((t) => _stateProvider.WaitForCodeCommit()).Unwrap();
         }
-        else if (preWarmer is not null)
+        else
         {
-            _clearTask = Task.Run(preWarmer.ClearCaches).ContinueWith((t) => _stateProvider.WaitForCodeCommit()).Unwrap();
+            _clearTask = Task.Run(ClearCaches).ContinueWith((t) => _stateProvider.WaitForCodeCommit()).Unwrap();
         }
     }
 
