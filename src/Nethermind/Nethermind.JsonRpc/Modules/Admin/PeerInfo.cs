@@ -106,12 +106,12 @@ namespace Nethermind.JsonRpc.Modules.Admin
             }
 
             // ETH protocol (always present)
-            protocols[Protocol.Eth] = new EthProtocolDetails { Version = ethVersion };
+            protocols[Protocol.Eth] = new { Version = ethVersion };
 
             // SNAP protocol (if supported)
             if (snapVersion > 0)
             {
-                protocols[Protocol.Snap] = new { version = snapVersion };
+                protocols[Protocol.Snap] = new { Version = snapVersion };
             }
 
             Protocols = protocols;
