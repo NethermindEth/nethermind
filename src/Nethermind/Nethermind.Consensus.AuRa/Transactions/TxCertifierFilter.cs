@@ -1,7 +1,6 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System;
 using System.Collections.Generic;
 using Nethermind.Abi;
 using Nethermind.Consensus.AuRa.Contracts;
@@ -13,67 +12,55 @@ using Nethermind.Core.Specs;
 using Nethermind.Logging;
 using Nethermind.TxPool;
 
-namespace Nethermind.Consensus.AuRa.Transactions
+namespace Nethermind.Consensus.AuRa.Transactions;
+
+public class TxCertifierFilter(ICertifierContract certifierContract, ITxFilter notCertifiedFilter, ILogManager logManager) : ITxFilter
 {
-    public class TxCertifierFilter : ITxFilter
+    private readonly ResettableDictionary<Address, bool> _certifiedCache = new(8);
+    private readonly ILogger _logger = logManager.GetClassLogger<TxCertifierFilter>();
+    private Hash256 _cachedBlock;
+
+    public AcceptTxResult IsAllowed(Transaction tx, BlockHeader parentHeader, IReleaseSpec currentSpec) =>
+        IsCertified(tx, parentHeader, currentSpec) ? AcceptTxResult.Accepted : notCertifiedFilter.IsAllowed(tx, parentHeader, currentSpec);
+
+    private bool IsCertified(Transaction tx, BlockHeader parentHeader, IReleaseSpec currentSpec)
     {
-        private readonly ICertifierContract _certifierContract;
-        private readonly ITxFilter _notCertifiedFilter;
-        private readonly ISpecProvider _specProvider;
-        private readonly ResettableDictionary<Address, bool> _certifiedCache = new ResettableDictionary<Address, bool>(8);
-        private readonly ILogger _logger;
-        private Hash256 _cachedBlock;
-
-        public TxCertifierFilter(ICertifierContract certifierContract, ITxFilter notCertifiedFilter, ISpecProvider specProvider, ILogManager logManager)
+        Address sender = tx.SenderAddress;
+        if (tx.IsZeroGasPrice(currentSpec) && sender is not null)
         {
-            _certifierContract = certifierContract ?? throw new ArgumentNullException(nameof(certifierContract));
-            _notCertifiedFilter = notCertifiedFilter ?? throw new ArgumentNullException(nameof(notCertifiedFilter));
-            _specProvider = specProvider ?? throw new ArgumentNullException(nameof(specProvider));
-            _logger = logManager?.GetClassLogger<TxCertifierFilter>() ?? throw new ArgumentNullException(nameof(logManager));
-        }
+            if (_logger.IsTrace) _logger.Trace($"Checking service transaction checker contract from {sender}.");
+            IDictionary<Address, bool> cache = GetCache(parentHeader.Hash);
 
-        public AcceptTxResult IsAllowed(Transaction tx, BlockHeader parentHeader) =>
-            IsCertified(tx, parentHeader) ? AcceptTxResult.Accepted : _notCertifiedFilter.IsAllowed(tx, parentHeader);
-
-        private bool IsCertified(Transaction tx, BlockHeader parentHeader)
-        {
-            Address sender = tx.SenderAddress;
-            if (tx.IsZeroGasPrice(parentHeader, _specProvider) && sender is not null)
+            if (cache.TryGetValue(sender, out bool isCertified))
             {
-                if (_logger.IsTrace) _logger.Trace($"Checking service transaction checker contract from {sender}.");
-                IDictionary<Address, bool> cache = GetCache(parentHeader.Hash);
-
-                if (cache.TryGetValue(sender, out bool isCertified))
-                {
-                    tx.IsServiceTransaction = isCertified;
-                    return isCertified;
-                }
-
-                try
-                {
-                    bool isCertifiedByContract = _certifierContract.Certified(parentHeader, sender);
-                    tx.IsServiceTransaction = isCertifiedByContract;
-                    return cache[sender] = isCertifiedByContract;
-                }
-                catch (AbiException e)
-                {
-                    if (_logger.IsError) _logger.Error($"Call to certifier contract failed on block {parentHeader.ToString(BlockHeader.Format.FullHashAndNumber)}.", e);
-                    return false;
-                }
+                tx.IsServiceTransaction = isCertified;
+                return isCertified;
             }
 
-            return false;
-        }
-
-        private IDictionary<Address, bool> GetCache(Hash256 blockHash)
-        {
-            if (blockHash != _cachedBlock)
+            try
             {
-                _certifiedCache.Reset();
-                _cachedBlock = blockHash;
+                bool isCertifiedByContract = certifierContract.Certified(parentHeader, sender);
+                tx.IsServiceTransaction = isCertifiedByContract;
+                return cache[sender] = isCertifiedByContract;
             }
-
-            return _certifiedCache;
+            catch (AbiException e)
+            {
+                if (_logger.IsError) _logger.Error($"Call to certifier contract failed on block {parentHeader.ToString(BlockHeader.Format.FullHashAndNumber)}.", e);
+                return false;
+            }
         }
+
+        return false;
+    }
+
+    private IDictionary<Address, bool> GetCache(Hash256 blockHash)
+    {
+        if (blockHash != _cachedBlock)
+        {
+            _certifiedCache.Reset();
+            _cachedBlock = blockHash;
+        }
+
+        return _certifiedCache;
     }
 }

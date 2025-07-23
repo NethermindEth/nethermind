@@ -206,8 +206,8 @@ public class CliqueBlockProducerTests
             {
                 MinGasPrice = 0
             };
-            ITxFilterPipeline txFilterPipeline = TxFilterPipelineBuilder.CreateStandardFilteringPipeline(nodeLogManager, specProvider, blocksConfig);
-            TxPoolTxSource txPoolTxSource = new(txPool, specProvider, transactionComparerProvider, nodeLogManager, txFilterPipeline);
+            ITxFilterPipeline txFilterPipeline = TxFilterPipelineBuilder.CreateStandardFilteringPipeline(nodeLogManager, blocksConfig);
+            TxPoolTxSource txPoolTxSource = new(txPool, specProvider, transactionComparerProvider, nodeLogManager, txFilterPipeline, blocksConfig);
             CliqueBlockProducer blockProducer = new(
                 txPoolTxSource,
                 minerProcessor,
