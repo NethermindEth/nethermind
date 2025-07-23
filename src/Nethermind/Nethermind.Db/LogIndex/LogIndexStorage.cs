@@ -188,10 +188,8 @@ namespace Nethermind.Db
             var batchMin = Math.Min(batchFirst, batchLast);
             var batchMax = Math.Max(batchFirst, batchLast);
 
-            if (lastMin is null)
-                lastMin = SaveBlockNumber(dbBatch, SpecialKey.MinBlockNum, batchMin);
-            if (lastMax is null)
-                lastMax = SaveBlockNumber(dbBatch, SpecialKey.MaxBlockNum, batchMax);
+            lastMin ??= SaveBlockNumber(dbBatch, SpecialKey.MinBlockNum, batchMin);
+            lastMax ??= SaveBlockNumber(dbBatch, SpecialKey.MaxBlockNum, batchMax);
 
             if (!isBackwardSync)
             {
@@ -207,14 +205,14 @@ namespace Nethermind.Db
             }
         }
 
-        private void UpdateAddressBlockNumbers(IWriteBatch dbBatch, BlockReceipts[] batch, bool isBackwardSync, bool isReorg = false) =>
-            UpdateBlockNumbers(dbBatch, batch[0].BlockNumber, batch[^1].BlockNumber, ref _addressMinBlock, ref _addressMaxBlock, isBackwardSync, isReorg);
+        private void UpdateAddressBlockNumbers(IWriteBatch dbBatch, LogIndexAggregate aggregate, bool isBackwardSync, bool isReorg = false) =>
+            UpdateBlockNumbers(dbBatch, aggregate.FirstBlockNum, aggregate.LastBlockNum, ref _addressMinBlock, ref _addressMaxBlock, isBackwardSync, isReorg);
 
         private void UpdateAddressBlockNumbers(IWriteBatch dbBatch, int block, bool isBackwardSync, bool isReorg = false) =>
             UpdateBlockNumbers(dbBatch, block, block, ref _addressMinBlock, ref _addressMaxBlock, isBackwardSync, isReorg);
 
-        private void UpdateTopicBlockNumbers(IWriteBatch dbBatch, BlockReceipts[] batch, bool isBackwardSync, bool isReorg = false) =>
-            UpdateBlockNumbers(dbBatch, batch[0].BlockNumber, batch[^1].BlockNumber, ref _topicMinBlock, ref _topicMaxBlock, isBackwardSync, isReorg);
+        private void UpdateTopicBlockNumbers(IWriteBatch dbBatch, LogIndexAggregate aggregate, bool isBackwardSync, bool isReorg = false) =>
+            UpdateBlockNumbers(dbBatch, aggregate.FirstBlockNum, aggregate.LastBlockNum, ref _topicMinBlock, ref _topicMaxBlock, isBackwardSync, isReorg);
 
         private void UpdateTopicBlockNumbers(IWriteBatch dbBatch, int block, bool isBackwardSync, bool isReorg = false) =>
             UpdateBlockNumbers(dbBatch, block, block, ref _topicMinBlock, ref _topicMaxBlock, isBackwardSync, isReorg);
@@ -361,37 +359,35 @@ namespace Nethermind.Db
         }
 
         // TODO: optimize allocations
-        private (Dictionary<Address, List<int>> address, Dictionary<Hash256, List<int>> topic)? Aggregate(
-            BlockReceipts[] batch, LogIndexUpdateStats stats, bool isBackwardSync
-        )
+        public LogIndexAggregate Aggregate(BlockReceipts[] batch, bool isBackwardSync, LogIndexUpdateStats? stats)
         {
             if (!IsBlockNewer(batch[^1].BlockNumber, isBackwardSync))
-                return null;
+                return new(batch);
 
             var timestamp = Stopwatch.GetTimestamp();
 
-            var maps = (address: new Dictionary<Address, List<int>>(), topic: new Dictionary<Hash256, List<int>>());
+            var aggregate = new LogIndexAggregate(batch);
             foreach ((var blockNumber, TxReceipt[] receipts) in batch)
             {
                 if (!IsBlockNewer(blockNumber, isBackwardSync))
                     continue;
 
-                stats.BlocksAdded++;
+                stats?.IncrementBlocks();
 
                 foreach (TxReceipt receipt in receipts)
                 {
-                    stats.TxAdded++;
+                    stats?.IncrementTx();
 
                     if (receipt.Logs == null)
                         continue;
 
                     foreach (LogEntry log in receipt.Logs)
                     {
-                        stats.LogsAdded++;
+                        stats?.IncrementLogs();
 
                         if (IsAddressBlockNewer(blockNumber, isBackwardSync))
                         {
-                            List<int> addressNums = maps.address.GetOrAdd(log.Address, _ => new(1));
+                            List<int> addressNums = aggregate.Address.GetOrAdd(log.Address, _ => new(1));
 
                             if (addressNums.Count == 0 || addressNums[^1] != blockNumber)
                                 addressNums.Add(blockNumber);
@@ -401,9 +397,9 @@ namespace Nethermind.Db
                         {
                             for (byte i = 0; i < log.Topics.Length; i++)
                             {
-                                stats.TopicsAdded++;
+                                stats?.IncrementTopics();
 
-                                var topicNums = maps.topic.GetOrAdd(log.Topics[i], _ => new(1));
+                                var topicNums = aggregate.Topic.GetOrAdd(log.Topics[i], _ => new(1));
                                 if (topicNums.Count == 0 || topicNums[^1] != blockNumber)
                                     topicNums.Add(blockNumber);
                             }
@@ -412,10 +408,10 @@ namespace Nethermind.Db
                 }
             }
 
-            stats.KeysCount.Include(maps.address.Count + maps.topic.Count);
-            stats.BuildingDictionary.Include(Stopwatch.GetElapsedTime(timestamp));
+            stats?.KeysCount.Include(aggregate.Address.Count + aggregate.Topic.Count);
+            stats?.Aggregating.Include(Stopwatch.GetElapsedTime(timestamp));
 
-            return maps;
+            return aggregate;
         }
 
         public Task CheckMigratedData()
@@ -441,13 +437,8 @@ namespace Nethermind.Db
 
         // Used for:
         // - blocking concurrent executions
-        // - ensuring current migration task is completed before stopping
+        // - ensuring the current migration task is completed before stopping
         private readonly SemaphoreSlim _setReceiptsSemaphore = new(1, 1);
-
-        public Task<LogIndexUpdateStats> SetReceiptsAsync(int blockNumber, TxReceipt[] receipts, bool isBackwardSync)
-        {
-            return SetReceiptsAsync([new(blockNumber, receipts)], isBackwardSync);
-        }
 
         public async Task ReorgFrom(BlockReceipts block)
         {
@@ -499,7 +490,7 @@ namespace Nethermind.Db
             }
         }
 
-        public async Task<CompactingStats> CompactAsync(bool flush)
+        public async Task CompactAsync(bool flush, LogIndexUpdateStats? stats = null)
         {
             if (!await _setReceiptsSemaphore.WaitAsync(TimeSpan.Zero, CancellationToken.None))
                 throw new InvalidOperationException($"{nameof(LogIndexStorage)} does not support concurrent invocations.");
@@ -513,7 +504,8 @@ namespace Nethermind.Db
                     _topicsDb.Flush();
                 }
 
-                return await _compactor.ForceAsync();
+                CompactingStats compactStats = await _compactor.ForceAsync();
+                stats?.Compacting.Combine(compactStats);
             }
             finally
             {
@@ -521,28 +513,25 @@ namespace Nethermind.Db
             }
         }
 
-        public async Task<LogIndexUpdateStats> RecompactAsync(int minLengthToCompress = -1)
+        public async Task RecompactAsync(int minLengthToCompress = -1, LogIndexUpdateStats? stats = null)
         {
             if (minLengthToCompress < 0)
                 minLengthToCompress = Compressor.MinLengthToCompress;
 
-            var stats = new LogIndexUpdateStats();
-            stats.Compacting.Combine(await CompactAsync(flush: true));
+            await CompactAsync(flush: true, stats);
 
             var timestamp = Stopwatch.GetTimestamp();
             var addressCount = await QueueLargeKeysCompression(_addressDb, minLengthToCompress);
-            stats.QueueingAddressCompression.Include(Stopwatch.GetElapsedTime(timestamp));
+            stats?.QueueingAddressCompression.Include(Stopwatch.GetElapsedTime(timestamp));
 
             timestamp = Stopwatch.GetTimestamp();
             var topicCount = await QueueLargeKeysCompression(_topicsDb, minLengthToCompress);
-            stats.QueueingTopicCompression.Include(Stopwatch.GetElapsedTime(timestamp));
+            stats?.QueueingTopicCompression.Include(Stopwatch.GetElapsedTime(timestamp));
 
             _logger.Info($"Queued keys for compaction: {addressCount:N0} address, {topicCount:N0} topic");
 
             _compressor.WaitUntilEmpty();
-            stats.Compacting.Combine(await CompactAsync(flush: true));
-
-            return stats;
+            await CompactAsync(flush: true, stats);
         }
 
         private async Task<int> QueueLargeKeysCompression(IDb db, int minLengthToCompress)
@@ -562,74 +551,77 @@ namespace Nethermind.Db
             return counter;
         }
 
-        // batch is expected to be sorted, TODO: validate this is the case
-        public async Task<LogIndexUpdateStats> SetReceiptsAsync(
-            BlockReceipts[] batch, bool isBackwardSync
-        )
+        public async Task SetReceiptsAsync(LogIndexAggregate aggregate, bool isBackwardSync, LogIndexUpdateStats? stats = null)
         {
             long totalTimestamp = Stopwatch.GetTimestamp();
 
             if (!await _setReceiptsSemaphore.WaitAsync(TimeSpan.Zero, CancellationToken.None))
                 throw new InvalidOperationException($"{nameof(LogIndexStorage)} does not support concurrent invocations.");
 
-            long timestamp;
-            var stats = new LogIndexUpdateStats();
-
             try
             {
                 var dbBatch = (address: _addressDb.StartWriteBatch(), topic: _topicsDb.StartWriteBatch());
 
                 // Add values to batches
-                if (Aggregate(batch, stats, isBackwardSync) is {} aggregate)
+                long timestamp;
+                if (!aggregate.IsEmpty)
                 {
                     timestamp = Stopwatch.GetTimestamp();
 
-                    foreach (var (address, blockNums) in aggregate.address)
+                    foreach (var (address, blockNums) in aggregate.Address)
                         SaveBlockNumbersByKey(dbBatch.address, address.Bytes, blockNums, isBackwardSync, stats);
 
-                    foreach (var (topic, blockNums) in aggregate.topic)
+                    foreach (var (topic, blockNums) in aggregate.Topic)
                         SaveBlockNumbersByKey(dbBatch.topic, topic.Bytes, blockNums, isBackwardSync, stats);
 
-                    stats.Processing.Include(Stopwatch.GetElapsedTime(timestamp));
+                    stats?.Processing.Include(Stopwatch.GetElapsedTime(timestamp));
                 }
 
                 // Update block numbers
                 timestamp = Stopwatch.GetTimestamp();
-                UpdateAddressBlockNumbers(dbBatch.address, batch, isBackwardSync);
-                UpdateTopicBlockNumbers(dbBatch.topic, batch, isBackwardSync);
-                stats.UpdatingMeta.Include(Stopwatch.GetElapsedTime(timestamp));
+                UpdateAddressBlockNumbers(dbBatch.address, aggregate, isBackwardSync);
+                UpdateTopicBlockNumbers(dbBatch.topic, aggregate, isBackwardSync);
+                stats?.UpdatingMeta.Include(Stopwatch.GetElapsedTime(timestamp));
 
                 // Notify we have the first block
-                if (batch.Length != 0)
-                    _firstBlockAddedSource.TrySetResult();
+                _firstBlockAddedSource.TrySetResult();
 
                 // Submit batches
                 // TODO: return batches in case of an error without writing anything
                 timestamp = Stopwatch.GetTimestamp();
                 dbBatch.address.Dispose();
                 dbBatch.topic.Dispose();
-                stats.WaitingBatch.Include(Stopwatch.GetElapsedTime(timestamp));
+                stats?.WaitingBatch.Include(Stopwatch.GetElapsedTime(timestamp));
 
                 // Enqueue compaction if needed
                 _compactor.TryEnqueue();
 
-                stats.MaxBlockNumber = GetMaxBlockNumber() ?? -1;
-                stats.MinBlockNumber = GetMinBlockNumber() ?? -1;
+                stats?.UpdateMaxBlockNumber(GetMaxBlockNumber());
+                stats?.UpdateMinBlockNumber(GetMinBlockNumber());
             }
             finally
             {
                 _setReceiptsSemaphore.Release();
             }
 
-            stats.Combine(_mergeOperator.GetAndResetStats());
-            stats.PostMergeProcessing.Combine(_compressor.GetAndResetStats());
-            stats.Compacting.Combine(_compactor.GetAndResetStats());
-            stats.Total.Include(Stopwatch.GetElapsedTime(totalTimestamp));
-            return stats;
+            stats?.Combine(_mergeOperator.GetAndResetStats());
+            stats?.PostMergeProcessing.Combine(_compressor.GetAndResetStats());
+            stats?.Compacting.Combine(_compactor.GetAndResetStats());
+            stats?.SetReceipts.Include(Stopwatch.GetElapsedTime(totalTimestamp));
+        }
+
+        // batch is expected to be sorted, TODO: validate this is the case
+        public Task SetReceiptsAsync(BlockReceipts[] batch, bool isBackwardSync, LogIndexUpdateStats? stats = null)
+        {
+            LogIndexAggregate aggregate = Aggregate(batch, isBackwardSync, stats);
+            return SetReceiptsAsync(aggregate, isBackwardSync, stats);
         }
 
         // TODO: optimize allocations
-        private static void SaveBlockNumbersByKey(IWriteBatch dbBatch, ReadOnlySpan<byte> key, IReadOnlyList<int> blockNums, bool isBackwardSync, LogIndexUpdateStats stats)
+        private static void SaveBlockNumbersByKey(
+            IWriteBatch dbBatch, ReadOnlySpan<byte> key, IReadOnlyList<int> blockNums,
+            bool isBackwardSync, LogIndexUpdateStats? stats
+        )
         {
             var dbKeyArray = _arrayPool.Rent(key.Length + SpecialPostfix.ForwardMergeLength);
 
@@ -649,7 +641,7 @@ namespace Nethermind.Db
                     throw ValidationException($"No block numbers to save for {Convert.ToHexString(key)}.");
 
                 dbBatch.Merge(dbKey, newValue);
-                stats.CallingMerge.Include(Stopwatch.GetElapsedTime(timestamp));
+                stats?.CallingMerge.Include(Stopwatch.GetElapsedTime(timestamp));
             }
             finally
             {
@@ -853,7 +845,7 @@ namespace Nethermind.Db
             if (GetValLastBlockNum(data) == target)
                 return right * BlockNumSize;
             if (GetValBlockNum(data) == target)
-                return left * BlockNumSize;
+                return 0;
 
             while (left <= right)
             {

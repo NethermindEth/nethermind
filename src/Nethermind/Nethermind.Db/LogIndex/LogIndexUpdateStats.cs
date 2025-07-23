@@ -2,21 +2,27 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Threading;
 
 namespace Nethermind.Db;
 
 public class LogIndexUpdateStats : IFormattable
 {
-    public long BlocksAdded { get; set; }
-    public long TxAdded { get; set; }
-    public long LogsAdded { get; set; }
-    public long TopicsAdded { get; set; }
+    private long _blocksAdded;
+    private long _txAdded;
+    private long _logsAdded;
+    private long _topicsAdded;
 
-    public long? MaxBlockNumber { get; set; } = int.MaxValue;
-    public long? MinBlockNumber { get; set; } = int.MaxValue;
+    public long BlocksAdded => _blocksAdded;
+    public long TxAdded => _txAdded;
+    public long LogsAdded => _logsAdded;
+    public long TopicsAdded => _topicsAdded;
 
-    public ExecTimeStats Total { get; } = new();
-    public ExecTimeStats BuildingDictionary { get; } = new();
+    public long? MaxBlockNumber { get; private set; }
+    public long? MinBlockNumber { get; private set; }
+
+    public ExecTimeStats SetReceipts { get; } = new();
+    public ExecTimeStats Aggregating { get; } = new();
     public ExecTimeStats Processing { get; } = new();
 
     public ExecTimeStats CallingMerge { get; } = new();
@@ -34,13 +40,13 @@ public class LogIndexUpdateStats : IFormattable
 
     public void Combine(LogIndexUpdateStats other)
     {
-        BlocksAdded += other.BlocksAdded;
-        TxAdded += other.TxAdded;
-        LogsAdded += other.LogsAdded;
-        TopicsAdded += other.TopicsAdded;
+        _blocksAdded += other._blocksAdded;
+        _txAdded += other._txAdded;
+        _logsAdded += other._logsAdded;
+        _topicsAdded += other._topicsAdded;
 
-        Total.Combine(other.Total);
-        BuildingDictionary.Combine(other.BuildingDictionary);
+        SetReceipts.Combine(other.SetReceipts);
+        Aggregating.Combine(other.Aggregating);
         Processing.Combine(other.Processing);
         UpdatingMeta.Combine(other.UpdatingMeta);
         CallingMerge.Combine(other.CallingMerge);
@@ -61,6 +67,24 @@ public class LogIndexUpdateStats : IFormattable
         Compacting.Combine(other.Compacting);
     }
 
+    // TODO: make thread safe?
+    public void UpdateMaxBlockNumber(long? blockNumber)
+    {
+        if (!blockNumber.HasValue) return;
+        MaxBlockNumber = Math.Max(MaxBlockNumber ?? blockNumber.Value, blockNumber.Value);
+    }
+
+    public void UpdateMinBlockNumber(long? blockNumber)
+    {
+        if (!blockNumber.HasValue) return;
+        MinBlockNumber = Math.Min(MinBlockNumber ?? blockNumber.Value, blockNumber.Value);
+    }
+
+    public void IncrementBlocks() => Interlocked.Increment(ref _blocksAdded);
+    public void IncrementTx() => Interlocked.Increment(ref _txAdded);
+    public void IncrementLogs() => Interlocked.Increment(ref _logsAdded);
+    public void IncrementTopics() => Interlocked.Increment(ref _topicsAdded);
+
     public string ToString(string? format, IFormatProvider? formatProvider)
     {
         const string tab = "\t";
@@ -69,13 +93,13 @@ public class LogIndexUpdateStats : IFormattable
             $"""
              {tab}Blocks: {MinBlockNumber:N0} - {MaxBlockNumber:N0}
 
-             {tab}Txs: +{TxAdded:N0}
-             {tab}Logs: +{LogsAdded:N0}
-             {tab}Topics: +{TopicsAdded:N0}
+             {tab}Txs: +{_txAdded:N0}
+             {tab}Logs: +{_logsAdded:N0}
+             {tab}Topics: +{_topicsAdded:N0}
 
              {tab}Keys per batch: {KeysCount:N0}
-             {tab}Total: {Total}
-             {tab}Building dictionary: {BuildingDictionary}
+             {tab}SetReceipts: {SetReceipts}
+             {tab}Aggregating: {Aggregating}
              {tab}Processing: {Processing}
 
              {tab}Merge call: {CallingMerge}

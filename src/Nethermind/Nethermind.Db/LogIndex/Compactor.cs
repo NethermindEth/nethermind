@@ -89,7 +89,7 @@ partial class LogIndexStorage
             await _compactionEndedEvent.WaitOneAsync(_cancellationSource.Token);
 
             _runOnceEvent.Set();
-            await _compactionStartedEvent.WaitOneAsync(_cancellationSource.Token);
+            await _compactionStartedEvent.WaitOneAsync(100, _cancellationSource.Token);
             await _compactionEndedEvent.WaitOneAsync(_cancellationSource.Token);
             return _stats;
         }

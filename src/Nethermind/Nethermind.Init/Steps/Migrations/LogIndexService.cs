@@ -113,9 +113,9 @@ public class LogIndexService : ILogIndexService
         _forwardProgressLogger.LogProgress();
         _backwardProgressLogger.LogProgress();
 
-        if (_updateStats is {} stats)
+        if (_stats is {} stats)
         {
-            _updateStats = null;
+            _stats = null;
             TempLog($"\n{stats}");
         }
     }
@@ -178,7 +178,7 @@ public class LogIndexService : ILogIndexService
         }
     }
 
-    private LogIndexUpdateStats? _updateStats;
+    private LogIndexUpdateStats? _stats;
 
     private async Task<int> ProcessQueued(bool isForward)
     {
@@ -210,9 +210,9 @@ public class LogIndexService : ILogIndexService
                 throw new Exception($"Non-sequential block numbers in log index queue, batch: ({batch[0]} -> {batch[^1]}).");
             }
 
-            LogIndexUpdateStats stats = await _logIndexStorage.SetReceiptsAsync(batch, isBackwardSync: !isForward);
-            if (_updateStats is null) _updateStats = stats;
-            else _updateStats.Combine(stats);
+            // TODO: do aggregation separately and in parallel
+            _stats ??= new();
+            await _logIndexStorage.SetReceiptsAsync(batch, isBackwardSync: !isForward, _stats);
 
             if (isForward)
             {

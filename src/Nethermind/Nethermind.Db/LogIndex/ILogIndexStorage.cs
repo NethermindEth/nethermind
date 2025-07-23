@@ -12,6 +12,21 @@ namespace Nethermind.Db;
 
 public readonly record struct BlockReceipts(int BlockNumber, TxReceipt[] Receipts);
 
+public struct LogIndexAggregate(int firstBlockNum, int lastBlockNum)
+{
+    private Dictionary<Address, List<int>> _address;
+    private Dictionary<Hash256, List<int>> _topic;
+
+    public int FirstBlockNum { get; } = firstBlockNum;
+    public int LastBlockNum { get; } = lastBlockNum;
+    public Dictionary<Address, List<int>> Address => _address ??= new();
+    public Dictionary<Hash256, List<int>> Topic => _topic ??= new();
+    public bool IsEmpty => Address.Count == 0 && Topic.Count == 0;
+
+    public LogIndexAggregate(BlockReceipts[] batch) : this(batch[0].BlockNumber, batch[^1].BlockNumber) { }
+}
+
+// TODO: remove testing methods
 public interface ILogIndexStorage : IAsyncDisposable, IStoppableService
 {
     int? GetMaxBlockNumber();
@@ -21,9 +36,11 @@ public interface ILogIndexStorage : IAsyncDisposable, IStoppableService
 
     IEnumerable<int> GetBlockNumbersFor(Hash256 topic, int from, int to);
     Task CheckMigratedData();
-    Task<LogIndexUpdateStats> SetReceiptsAsync(int blockNumber, TxReceipt[] receipts, bool isBackwardSync);
-    Task<LogIndexUpdateStats> SetReceiptsAsync(BlockReceipts[] batch, bool isBackwardSync);
+
+    LogIndexAggregate Aggregate(BlockReceipts[] batch, bool isBackwardSync, LogIndexUpdateStats? stats = null);
+    Task SetReceiptsAsync(BlockReceipts[] batch, bool isBackwardSync, LogIndexUpdateStats? stats = null);
+    Task SetReceiptsAsync(LogIndexAggregate aggregate, bool isBackwardSync, LogIndexUpdateStats? stats = null);
     Task ReorgFrom(BlockReceipts block);
-    Task<CompactingStats> CompactAsync(bool flush);
-    Task<LogIndexUpdateStats> RecompactAsync(int maxUncompressedLength = -1);
+    Task CompactAsync(bool flush, LogIndexUpdateStats? stats = null);
+    Task RecompactAsync(int maxUncompressedLength = -1, LogIndexUpdateStats? stats = null);
 }

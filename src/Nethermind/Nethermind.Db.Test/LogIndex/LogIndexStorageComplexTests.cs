@@ -411,8 +411,7 @@ namespace Nethermind.Db.Test.LogIndex
             {
                 count++;
                 length = batch.Length;
-                LogIndexUpdateStats stats = await logIndexStorage.SetReceiptsAsync(batch, isBackwardsSync);
-                totalStats.Combine(stats);
+                await logIndexStorage.SetReceiptsAsync(batch, isBackwardsSync, totalStats);
             }
 
             // Log statistics
@@ -571,7 +570,7 @@ namespace Nethermind.Db.Test.LogIndex
             const bool flush = true;
 
             var timestamp = Stopwatch.GetTimestamp();
-            CompactingStats stats = await logIndexStorage.CompactAsync(flush);
+            await logIndexStorage.CompactAsync(flush);
 
             // Log statistics
             await TestContext.Out.WriteLineAsync(
