@@ -25,7 +25,7 @@
     <PackageReference Include="Microsoft.NET.Test.Sdk" />
   </ItemGroup>
   <!-- Enable `NUnitRunner` only on Visual Studio or CI -->
-  <PropertyGroup Condition="$(ContinuousIntegrationBuild) != 'true' OR $(BuildingInsideVisualStudio) == 'true'">
+  <PropertyGroup Condition="$(ContinuousIntegrationBuild) == 'true' OR $(BuildingInsideVisualStudio) == 'true'">
     <EnableNUnitRunner>true</EnableNUnitRunner>
   </PropertyGroup>
 
