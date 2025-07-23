@@ -158,7 +158,7 @@ namespace Nethermind.Blockchain
         IOwnedReadOnlyList<BlockHeader> FindHeaders(Hash256 hash, int numberOfBlocks, int skip, bool reverse);
 
         void DeleteInvalidBlock(Block invalidBlock);
-        void DeleteBlock(long currentNumber, Hash256 currentHash, Hash256 nextHash, BatchWrite batch, ChainLevelInfo? currentLevel = null, bool isOldBlock = false);
+        void DeleteBlock(long currentNumber, Hash256 currentHash, Hash256? nextHash, BatchWrite batch, ChainLevelInfo? currentLevel = null, bool isOldBlock = false);
 
         void ForkChoiceUpdated(Hash256? finalizedBlockHash, Hash256? safeBlockBlockHash);
 

@@ -795,7 +795,7 @@ namespace Nethermind.Blockchain
             DeleteInvalidBranch(invalidBlock.Hash!);
         }
 
-        public void DeleteBlock(long currentNumber, Hash256 currentHash, Hash256 nextHash, BatchWrite batch, ChainLevelInfo? currentLevel = null, bool isOldBlock = false)
+        public void DeleteBlock(long currentNumber, Hash256 currentHash, Hash256? nextHash, BatchWrite batch, ChainLevelInfo? currentLevel = null, bool isOldBlock = false)
         {
             currentLevel ??= LoadLevel(currentNumber);
 
@@ -827,6 +827,8 @@ namespace Nethermind.Blockchain
 
             _blockStore.Delete(currentNumber, currentHash);
             _headerStore.Delete(currentHash);
+
+            // only remove block info when pruning old blocks, not recent invalid ones
             if (isOldBlock) _chainLevelInfoRepository.Delete(currentNumber, batch);
         }
 

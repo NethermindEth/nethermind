@@ -252,8 +252,7 @@ public class HistoryPruner : IHistoryPruner
 
                 // todo: change to debug after testing
                 if (_logger.IsInfo) _logger.Info($"Deleting old block {number} with hash {hash}.");
-                // passing null for nextHash?
-                _blockTree.DeleteBlock(number, hash, null!, batch, null, true);
+                _blockTree.DeleteBlock(number, hash, null, batch, null, true);
                 _receiptStorage.RemoveReceipts(block);
                 _deletePointer = number;
                 lastDeletedTimstamp = block.Timestamp;
