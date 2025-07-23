@@ -658,7 +658,7 @@ public partial class EngineModuleTests
     {
         using MergeTestBlockchain chain = await CreateBlockchain(mergeConfig: new MergeConfig()
         {
-            NewPayloadTimeout = 0.1
+            NewPayloadBlockProcessingTimeout = 100
         });
 
         IEngineRpcModule rpc = chain.EngineRpcModule;
@@ -684,8 +684,7 @@ public partial class EngineModuleTests
     {
         using MergeTestBlockchain? chain = await CreateBlockchain(mergeConfig: new MergeConfig()
         {
-            NewPayloadTimeout = 0.1,
-            NewPayloadCacheSize = 0
+            NewPayloadBlockProcessingTimeout = 100
         });
 
         IEngineRpcModule? rpc = chain.EngineRpcModule;
@@ -719,8 +718,7 @@ public partial class EngineModuleTests
     {
         using MergeTestBlockchain? chain = await CreateBlockchain(mergeConfig: new MergeConfig()
         {
-            NewPayloadTimeout = 0.1,
-            NewPayloadCacheSize = 10
+            NewPayloadBlockProcessingTimeout = 100
         });
 
         IEngineRpcModule? rpc = chain.EngineRpcModule;
