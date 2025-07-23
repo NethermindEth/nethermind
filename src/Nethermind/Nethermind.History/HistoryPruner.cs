@@ -189,6 +189,8 @@ public class HistoryPruner : IHistoryPruner
 
             _cutoffTimestamp = cutoffTimestamp;
             _cutoffPointer = cutoffBlockNumber ?? _cutoffPointer;
+            Metrics.PruningCutoffTimestamp = cutoffTimestamp;
+            Metrics.PruningCutoffBlocknumber = _cutoffPointer;
         }
 
         return cutoffBlockNumber;
@@ -252,7 +254,9 @@ public class HistoryPruner : IHistoryPruner
                 _receiptStorage.RemoveReceipts(block);
                 _deletePointer = number;
                 lastDeletedTimstamp = block.Timestamp;
+
                 deletedBlocks++;
+                Metrics.BlocksPruned++;
             }
         }
         finally
@@ -263,6 +267,8 @@ public class HistoryPruner : IHistoryPruner
             {
                 _cutoffPointer = _deletePointer;
                 _cutoffTimestamp = lastDeletedTimstamp;
+                Metrics.PruningCutoffBlocknumber = _cutoffPointer;
+                Metrics.PruningCutoffTimestamp = _cutoffTimestamp;
             }
             SaveDeletePointer();
 
