@@ -8,6 +8,7 @@ using Nethermind.Blockchain;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Config;
 using Nethermind.Consensus;
+using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.Crypto;
 using Nethermind.Db;
@@ -117,6 +118,8 @@ public class TestEnvironmentModule(PrivateKey nodeKey, string? networkGroup) : M
                 pruningConfig.DirtyNodeShardBit = 1;
                 return pruningConfig;
             })
+
+            .AddSingleton<IHardwareInfo>(new TestHardwareInfo(1.GiB()))
             ;
     }
 }
