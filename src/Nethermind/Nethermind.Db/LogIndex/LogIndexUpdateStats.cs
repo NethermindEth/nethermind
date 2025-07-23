@@ -12,8 +12,8 @@ public class LogIndexUpdateStats : IFormattable
     public long LogsAdded { get; set; }
     public long TopicsAdded { get; set; }
 
-    public long MaxBlockNumber { get; set; } = int.MinValue;
-    public long MinBlockNumber { get; set; } = int.MaxValue;
+    public long? MaxBlockNumber { get; set; } = int.MaxValue;
+    public long? MinBlockNumber { get; set; } = int.MaxValue;
 
     public ExecTimeStats Total { get; } = new();
     public ExecTimeStats BuildingDictionary { get; } = new();
@@ -47,8 +47,12 @@ public class LogIndexUpdateStats : IFormattable
         WaitingBatch.Combine(other.WaitingBatch);
         InMemoryMerging.Combine(other.InMemoryMerging);
         KeysCount.Combine(other.KeysCount);
-        MaxBlockNumber = Math.Max(MaxBlockNumber, other.MaxBlockNumber);
-        MinBlockNumber = Math.Min(MinBlockNumber, other.MinBlockNumber);
+        MaxBlockNumber = MaxBlockNumber is null || other.MaxBlockNumber is null
+            ? MaxBlockNumber ?? other.MaxBlockNumber
+            : Math.Max(MaxBlockNumber.Value, other.MaxBlockNumber.Value);
+        MinBlockNumber = MinBlockNumber is null || other.MinBlockNumber is null
+            ? MinBlockNumber ?? other.MinBlockNumber
+            : Math.Max(MinBlockNumber.Value, other.MinBlockNumber.Value);
 
         QueueingAddressCompression.Combine(other.QueueingAddressCompression);
         QueueingTopicCompression.Combine(other.QueueingTopicCompression);

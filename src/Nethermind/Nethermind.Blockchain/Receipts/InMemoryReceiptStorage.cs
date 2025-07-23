@@ -18,6 +18,7 @@ namespace Nethermind.Blockchain.Receipts
 
 #pragma warning disable CS0067
         public event EventHandler<BlockReplacementEventArgs> ReceiptsInserted;
+        public event EventHandler<ReceiptsEventArgs>? OldReceiptsInserted;
 #pragma warning restore CS0067
 
         public InMemoryReceiptStorage(bool allowReceiptIterator = true, IBlockTree? blockTree = null)
@@ -69,6 +70,8 @@ namespace Nethermind.Blockchain.Receipts
             {
                 EnsureCanonical(block);
             }
+
+            OldReceiptsInserted?.Invoke(this, new(block.Header, txReceipts));
         }
 
         public bool HasBlock(long blockNumber, Hash256 hash)
