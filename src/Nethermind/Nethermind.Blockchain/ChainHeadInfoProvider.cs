@@ -6,6 +6,7 @@ using System.Runtime.CompilerServices;
 using Nethermind.Blockchain.Spec;
 using Nethermind.Core;
 using Nethermind.Core.Container;
+using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
 using Nethermind.Evm;
 using Nethermind.Evm.State;
@@ -76,6 +77,7 @@ namespace Nethermind.Blockchain
         }
 
         public bool IsProcessingBlock => _blockTree.IsProcessingBlock;
+        public Hash256 StateRoot { get; private set; } = Keccak.EmptyTreeHash;
 
         public event EventHandler<BlockReplacementEventArgs>? HeadChanged;
 
@@ -90,6 +92,7 @@ namespace Nethermind.Blockchain
                     ? currentFeePerBlobGas
                     : UInt256.Zero;
             CurrentProofVersion = spec.BlobProofVersion;
+            StateRoot = e.Block.StateRoot;
             HeadChanged?.Invoke(sender, e);
         }
     }

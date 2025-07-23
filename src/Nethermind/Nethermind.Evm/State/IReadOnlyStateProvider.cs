@@ -8,8 +8,6 @@ namespace Nethermind.Evm.State;
 
 public interface IReadOnlyStateProvider : IAccountStateProvider
 {
-    Hash256 StateRoot { get; }
-
     byte[]? GetCode(Address address);
 
     byte[]? GetCode(in ValueHash256 codeHash);

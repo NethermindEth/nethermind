@@ -9,6 +9,7 @@ using Nethermind.Api;
 using Nethermind.Config;
 using Nethermind.Consensus;
 using Nethermind.Consensus.Scheduler;
+using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Timers;
 using Nethermind.Crypto;
@@ -101,6 +102,7 @@ public class PseudoNethermindModule(ChainSpec spec, IConfigProvider configProvid
         public ProofVersion CurrentProofVersion { get; }
         public bool IsSyncing { get => false; }
         public bool IsProcessingBlock { get; }
+        public Hash256 StateRoot => Keccak.EmptyTreeHash;
         public event EventHandler<BlockReplacementEventArgs> HeadChanged { add { } remove { } }
     }
 }

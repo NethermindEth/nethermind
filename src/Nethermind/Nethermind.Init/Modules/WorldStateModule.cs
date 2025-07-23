@@ -17,6 +17,7 @@ using Nethermind.JsonRpc.Modules.Admin;
 using Nethermind.Logging;
 using Nethermind.State;
 using Nethermind.Trie;
+using Nethermind.TxPool;
 
 namespace Nethermind.Init.Modules;
 
@@ -82,8 +83,6 @@ public class WorldStateModule(IInitConfig initConfig) : Module
             // Some admin rpc to trigger verify trie and pruning
             .Map<IPruningTrieStateAdminRpcModule, PruningTrieStateFactoryOutput>((m) => m.AdminRpcModule)
             .RegisterSingletonJsonRpcModule<IPruningTrieStateAdminRpcModule>()
-
-            .AddSingleton<IReadOnlyStateProvider, ChainHeadReadOnlyStateProvider>()
 
             // Prevent multiple concurrent verify trie.
             .AddSingleton<IVerifyTrieStarter, VerifyTrieStarter>()

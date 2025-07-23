@@ -3,6 +3,7 @@
 
 using System;
 using Nethermind.Core;
+using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
 using Nethermind.Evm;
 using Nethermind.Evm.State;
@@ -30,6 +31,7 @@ namespace Nethermind.TxPool
 
         bool IsSyncing { get; }
         bool IsProcessingBlock { get; }
+        Hash256 StateRoot { get; }
 
         event EventHandler<BlockReplacementEventArgs> HeadChanged;
     }
