@@ -125,7 +125,7 @@ public class CliqueBlockProducerTests
             EthereumCodeInfoRepository codeInfoRepository = new();
             TxPool.TxPool txPool = new(_ethereumEcdsa,
                 new BlobTxStorage(),
-                new ChainHeadInfoProvider(new FixedForkActivationChainHeadSpecProvider(SepoliaSpecProvider.Instance), blockTree, stateProvider, codeInfoRepository),
+                new ChainHeadInfoProvider(new FixedForkActivationChainHeadSpecProvider(SepoliaSpecProvider.Instance), blockTree, worldStateManager.GlobalStateReader, codeInfoRepository),
                 new TxPoolConfig(),
                 new TxValidator(testnetSpecProvider.ChainId),
                 _logManager,

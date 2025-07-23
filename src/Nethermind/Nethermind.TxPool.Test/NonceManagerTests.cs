@@ -11,14 +11,8 @@ using Nethermind.Core;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
-using Nethermind.Db;
-using Nethermind.Evm;
 using Nethermind.Int256;
-using Nethermind.Logging;
 using Nethermind.Specs;
-using Nethermind.Evm.State;
-using Nethermind.State;
-using Nethermind.Trie.Pruning;
 using NSubstitute;
 using NUnit.Framework;
 
@@ -27,7 +21,7 @@ namespace Nethermind.TxPool.Test;
 public class NonceManagerTests
 {
     private ISpecProvider _specProvider;
-    private IWorldState _stateProvider;
+    private TestReadOnlyStateProvider _stateProvider;
     private IBlockTree _blockTree;
     private ChainHeadInfoProvider _headInfo;
     private INonceManager _nonceManager;
@@ -36,8 +30,7 @@ public class NonceManagerTests
     public void Setup()
     {
         _specProvider = MainnetSpecProvider.Instance;
-        IWorldStateManager worldStateManager = TestWorldStateFactory.CreateForTest();
-        _stateProvider = worldStateManager.GlobalWorldState;
+        _stateProvider = new TestReadOnlyStateProvider();
         _blockTree = Substitute.For<IBlockTree>();
         Block block = Build.A.Block.WithNumber(0).TestObject;
         _blockTree.Head.Returns(block);

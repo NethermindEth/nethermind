@@ -77,7 +77,7 @@ public class ReorgTests
         TxPool.TxPool txPool = new(
             ecdsa,
             new BlobTxStorage(),
-            new ChainHeadInfoProvider(specProvider, _blockTree, stateProvider, codeInfoRepository),
+            new ChainHeadInfoProvider(specProvider, _blockTree, worldStateManager.GlobalStateReader, codeInfoRepository),
             new TxPoolConfig(),
             new TxValidator(specProvider.ChainId),
             LimboLogs.Instance,

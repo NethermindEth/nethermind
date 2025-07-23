@@ -34,7 +34,7 @@ namespace Nethermind.Consensus.Test;
 public class CensorshipDetectorTests
 {
     private ILogManager _logManager;
-    private IWorldState _stateProvider;
+    private TestReadOnlyStateProvider _stateProvider;
     private IBlockTree _blockTree;
     private IBlockProcessor _blockProcessor;
     private ISpecProvider _specProvider;
@@ -47,8 +47,7 @@ public class CensorshipDetectorTests
     public void Setup()
     {
         _logManager = LimboLogs.Instance;
-        IWorldStateManager worldStateManager = TestWorldStateFactory.CreateForTest();
-        _stateProvider = worldStateManager.GlobalWorldState;
+        _stateProvider = new TestReadOnlyStateProvider();
         _blockProcessor = Substitute.For<IBlockProcessor>();
     }
 
