@@ -26,16 +26,17 @@ partial class LogIndexStorage
         private int? _lastAtMin;
         private int? _lastAtMax;
 
-        // TODO: simplify concurrency handling
-        private readonly AutoResetEvent _runOnceEvent = new(false);
-        private readonly Task _compactionTask;
-        private readonly CancellationTokenSource _cancellationSource = new();
-        private TaskCompletionSource _completedOnceSource = new();
-
         private CompactingStats _stats = new();
         private readonly LogIndexStorage _storage;
         private readonly ILogger _logger;
         private readonly int _compactionDistance;
+
+        // TODO: simplify concurrency handling
+        private readonly AutoResetEvent _runOnceEvent = new(false);
+        private readonly CancellationTokenSource _cancellationSource = new();
+        private readonly ManualResetEvent _compactionStartedEvent = new(false);
+        private readonly ManualResetEvent _compactionEndedEvent = new(true);
+        private readonly Task _compactionTask;
 
         public Compactor(LogIndexStorage storage, ILogger logger, int compactionDistance)
         {
@@ -47,9 +48,8 @@ partial class LogIndexStorage
 
             _lastAtMin = storage.GetMinBlockNumber();
             _lastAtMax = storage.GetMaxBlockNumber();
-            _compactionTask = Task.CompletedTask;
+
             _compactionTask = DoCompactAsync();
-            _completedOnceSource.SetResult();
         }
 
         public CompactingStats GetAndResetStats() => Interlocked.Exchange(ref _stats, new());
@@ -80,14 +80,17 @@ partial class LogIndexStorage
         public async Task StopAsync()
         {
             await _cancellationSource.CancelAsync();
-            await _compactionTask;
+            await _compactionEndedEvent.WaitOneAsync(CancellationToken.None);
         }
 
         public async Task<CompactingStats> ForceAsync()
         {
-            await _completedOnceSource.Task;
+            // Wait for the previous one to finish
+            await _compactionEndedEvent.WaitOneAsync(_cancellationSource.Token);
+
             _runOnceEvent.Set();
-            await _completedOnceSource.Task; // TODO: handle race condition here
+            await _compactionStartedEvent.WaitOneAsync(_cancellationSource.Token);
+            await _compactionEndedEvent.WaitOneAsync(_cancellationSource.Token);
             return _stats;
         }
 
@@ -99,7 +102,9 @@ partial class LogIndexStorage
                 try
                 {
                     await _runOnceEvent.WaitOneAsync(cancellation);
-                    _completedOnceSource = new();
+
+                    _compactionEndedEvent.Reset();
+                    _compactionStartedEvent.Set();
 
                     if (_logger.IsTrace)
                         _logger.Trace("Compacting log index");
@@ -120,8 +125,6 @@ partial class LogIndexStorage
 
                     if (_logger.IsTrace)
                         _logger.Trace($"Compacted log index in {total}");
-
-                    _completedOnceSource.SetResult();
                 }
                 catch (TaskCanceledException ex) when (ex.CancellationToken == cancellation)
                 {
@@ -131,8 +134,11 @@ partial class LogIndexStorage
                 {
                     if (_logger.IsError)
                         _logger.Error("Failed to compact log index", ex);
-
-                    _completedOnceSource.SetException(ex);
+                }
+                finally
+                {
+                    _compactionStartedEvent.Reset();
+                    _compactionEndedEvent.Set();
                 }
             }
         }
