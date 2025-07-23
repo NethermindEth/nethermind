@@ -19,7 +19,7 @@ namespace Nethermind.JsonRpc
             Host = host;
             Port = port;
             RpcEndpoint = rpcEndpoint;
-            EnabledModules = new HashSet<string>(enabledModules, StringComparer.InvariantCultureIgnoreCase);
+            EnabledModules = new HashSet<string>(enabledModules, StringComparer.OrdinalIgnoreCase);
             IsAuthenticated = isAuthenticated;
             MaxRequestBodySize = maxRequestBodySize;
         }
@@ -82,7 +82,7 @@ namespace Nethermind.JsonRpc
         public string Host { get; set; }
         public int Port { get; set; }
         public RpcEndpoint RpcEndpoint { get; set; }
-        public IReadOnlyCollection<string> EnabledModules { get; set; }
+        public IReadOnlySet<string> EnabledModules { get; set; }
 
         public bool IsModuleEnabled(string moduleName) =>
             EnabledModules.Any(m => StringComparer.InvariantCultureIgnoreCase.Equals(m, moduleName));
