@@ -71,6 +71,12 @@ public class HistoryPruner : IHistoryPruner
 
         CheckConfig();
         LoadDeletePointer();
+
+        if (historyConfig.DropPreMerge)
+        {
+            Metrics.PruningCutoffBlocknumber = _specProvider.MergeBlockNumber?.BlockNumber;
+            Metrics.PruningCutoffTimestamp = _specProvider.BeaconChainGenesisTimestamp;
+        }
     }
 
     public void OnBlockProcessorQueueEmpty(object? sender, EventArgs e)
