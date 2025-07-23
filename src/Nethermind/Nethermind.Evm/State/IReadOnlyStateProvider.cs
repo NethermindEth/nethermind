@@ -17,8 +17,4 @@ public interface IReadOnlyStateProvider : IAccountStateProvider
     bool AccountExists(Address address);
 
     bool IsDeadAccount(Address address);
-
-    bool IsEmptyAccount(Address address);
-
-    bool HasStateForBlock(BlockHeader? baseBlock);
 }
