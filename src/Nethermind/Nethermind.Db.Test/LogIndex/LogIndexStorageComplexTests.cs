@@ -16,7 +16,6 @@ using Nethermind.Core.Crypto;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Db.Rocks;
 using Nethermind.Db.Rocks.Config;
-using Nethermind.Init.Steps.Migrations;
 using Nethermind.Logging;
 using NUnit.Framework;
 using NUnit.Framework.Interfaces;
@@ -27,6 +26,7 @@ namespace Nethermind.Db.Test.LogIndex
     // TODO: run internal state verification for each test
     // TODO: test for process crash via Thread.Abort
     // TODO: test for reorg out-of-order
+    // TODO: test for concurrent forward and backward sync after first block is added
     [TestFixtureSource(nameof(TestCases))]
     [Parallelizable(ParallelScope.All)]
     [FixtureLifeCycle(LifeCycle.InstancePerTestCase)]
@@ -420,7 +420,7 @@ namespace Nethermind.Db.Test.LogIndex
                 $"""
                  x{count} {nameof(LogIndexStorage.SetReceiptsAsync)}({length}) in {Stopwatch.GetElapsedTime(timestamp)}:
                  {totalStats}
-                 {'\t'}DB size: {LogIndexMigration.GetFolderSize(Path.Combine(_dbPath, DbNames.LogIndex))}
+                 {'\t'}DB size: {GetFolderSize(Path.Combine(_dbPath, DbNames.LogIndex))}
 
                  """
             );
@@ -577,10 +577,28 @@ namespace Nethermind.Db.Test.LogIndex
             await TestContext.Out.WriteLineAsync(
                 $"""
                  {nameof(LogIndexStorage.CompactAsync)}({flush}) in {Stopwatch.GetElapsedTime(timestamp)}:
-                 {'\t'}DB size: {LogIndexMigration.GetFolderSize(Path.Combine(_dbPath, DbNames.LogIndex))}
+                 {'\t'}DB size: {GetFolderSize(Path.Combine(_dbPath, DbNames.LogIndex))}
 
                  """
             );
+        }
+
+        private static readonly string[] SizeSuffixes = ["B", "KB", "MB", "GB", "TB", "PB"];
+
+        private static string GetFolderSize(string path)
+        {
+            var info = new DirectoryInfo(path);
+
+            double size = info.Exists ? info.GetFiles().Sum(f => f.Length) : 0;
+
+            int index = 0;
+            while (size >= 1024 && index < SizeSuffixes.Length - 1)
+            {
+                size /= 1024;
+                index++;
+            }
+
+            return $"{size:0.##} {SizeSuffixes[index]}";
         }
 
         public class TestData

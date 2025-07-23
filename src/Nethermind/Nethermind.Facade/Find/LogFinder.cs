@@ -174,7 +174,9 @@ namespace Nethermind.Facade.Find
 
         private bool CanUseLogIndex(LogFilter filter, BlockHeader fromBlock, BlockHeader toBlock)
         {
-            return _logIndexStorage != null && !filter.AcceptsAnyBlock && toBlock.Number <= _logIndexStorage.GetMaxBlockNumber();
+            return _logIndexStorage != null && !filter.AcceptsAnyBlock &&
+                fromBlock.Number >= _logIndexStorage.GetMinBlockNumber() &&
+                toBlock.Number <= _logIndexStorage.GetMaxBlockNumber();
         }
 
         private bool CanUseBloomDatabase(BlockHeader toBlock, BlockHeader fromBlock)

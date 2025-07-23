@@ -26,6 +26,9 @@ namespace Nethermind.Db
         {
             private static readonly int MaxCommonLength = Math.Max(Address.Size, Hash256.Size);
 
+            public static bool Is(ReadOnlySpan<byte> key) =>
+                key.Length == MaxCommonLength + 1 && (key.SequenceEqual(MinBlockNum) || key.SequenceEqual(MaxBlockNum));
+
             // Use values that we won't encounter during iterator Seek or SeekForPrev
             public static readonly byte[] MinBlockNum = Enumerable.Repeat(byte.MaxValue, MaxCommonLength)
                 .Concat(new byte[] { 1 }).ToArray();
@@ -162,7 +165,7 @@ namespace Nethermind.Db
             return value is { Length: > 1 } ? GetValBlockNum(value) : null;
         }
 
-        private static int SaveBlockNumber(IWriteBatch dbBatch, byte[] key, int value)
+        private static int SaveBlockNumber(IWriteOnlyKeyValueStore dbBatch, byte[] key, int value)
         {
             var bufferArr = _arrayPool.Rent(BlockNumSize);
             Span<byte> buffer = bufferArr.AsSpan(BlockNumSize);
@@ -179,7 +182,7 @@ namespace Nethermind.Db
             }
         }
 
-        private static void UpdateBlockNumbers(IWriteBatch dbBatch, int batchFirst, int batchLast,
+        private static void UpdateBlockNumbers(IWriteOnlyKeyValueStore dbBatch, int batchFirst, int batchLast,
             ref int? lastMin, ref int? lastMax, bool isBackwardSync, bool isReorg)
         {
             var batchMin = Math.Min(batchFirst, batchLast);
@@ -386,12 +389,12 @@ namespace Nethermind.Db
                     {
                         stats.LogsAdded++;
 
-                        List<int> addressNums = maps.address.GetOrAdd(log.Address, _ => new(1));
-
-                        if (IsAddressBlockNewer(blockNumber, isBackwardSync) &&
-                            (addressNums.Count == 0 || addressNums[^1] != blockNumber))
+                        if (IsAddressBlockNewer(blockNumber, isBackwardSync))
                         {
-                            addressNums.Add(blockNumber);
+                            List<int> addressNums = maps.address.GetOrAdd(log.Address, _ => new(1));
+
+                            if (addressNums.Count == 0 || addressNums[^1] != blockNumber)
+                                addressNums.Add(blockNumber);
                         }
 
                         if (IsTopicBlockNewer(blockNumber, isBackwardSync))
@@ -593,7 +596,7 @@ namespace Nethermind.Db
                 // Update block numbers
                 timestamp = Stopwatch.GetTimestamp();
                 UpdateAddressBlockNumbers(dbBatch.address, batch, isBackwardSync);
-                UpdateTopicBlockNumbers(dbBatch.address, batch, isBackwardSync);
+                UpdateTopicBlockNumbers(dbBatch.topic, batch, isBackwardSync);
                 stats.UpdatingMeta.Include(Stopwatch.GetElapsedTime(timestamp));
 
                 // Notify we have the first block
