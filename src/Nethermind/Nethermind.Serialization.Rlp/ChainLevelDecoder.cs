@@ -3,6 +3,8 @@
 
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
+using System.Diagnostics.CodeAnalysis;
 using System.Linq;
 using Nethermind.Core;
 
@@ -71,6 +73,7 @@ namespace Nethermind.Serialization.Rlp
                 stream.Encode(blockInfo);
             }
 
+            [StackTraceHidden, DoesNotReturn]
             static void ThrowHasNull()
                 => throw new InvalidOperationException($"{nameof(BlockInfo)} is null when encoding {nameof(ChainLevelInfo)}");
         }
