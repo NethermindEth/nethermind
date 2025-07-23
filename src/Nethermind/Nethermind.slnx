@@ -55,6 +55,7 @@
     <Project Path="Nethermind.Evm.Test/Nethermind.Evm.Test.csproj" />
     <Project Path="Nethermind.Facade.Test/Nethermind.Facade.Test.csproj" />
     <Project Path="Nethermind.HealthChecks.Test/Nethermind.HealthChecks.Test.csproj" />
+    <Project Path="Nethermind.History.Test/Nethermind.History.Test.csproj" />
     <Project Path="Nethermind.JsonRpc.Test/Nethermind.JsonRpc.Test.csproj" />
     <Project Path="Nethermind.KeyStore.Test/Nethermind.KeyStore.Test.csproj" />
     <Project Path="Nethermind.Merge.AuRa.Test/Nethermind.Merge.AuRa.Test.csproj" />

@@ -5,8 +5,12 @@ using System;
 using System.Collections.Generic;
 using System.Threading;
 using System.Threading.Tasks;
+using Autofac;
+using Nethermind.Blockchain;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Config;
+using Nethermind.Consensus.Scheduler;
+using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Test;
@@ -24,13 +28,25 @@ public class HistoryPrunerTests
     private const long SecondsPerSlot = 1;
     private const long BeaconGenesisBlockNumber = 50;
     private static readonly ulong BeaconGenesisTimestamp = (ulong)new DateTimeOffset(TestBlockchain.InitialTimestamp).ToUnixTimeSeconds() + (BeaconGenesisBlockNumber * SecondsPerSlot);
+    private static readonly IBlocksConfig BlocksConfig = new BlocksConfig()
+    {
+        SecondsPerSlot = SecondsPerSlot
+    };
 
     [Test]
     public async Task Can_prune_blocks_older_than_specified_epochs()
     {
         const int Blocks = 100;
 
-        using BasicTestBlockchain testBlockchain = await BasicTestBlockchain.Create();
+        // n.b. technically invalid, should be at least 82125 epochs
+        // however not feasible to test this
+        IHistoryConfig historyConfig = new HistoryConfig
+        {
+            HistoryRetentionEpochs = 2,
+            DropPreMerge = false
+        };
+
+        using BasicTestBlockchain testBlockchain = await BasicTestBlockchain.Create(BuildContainer(historyConfig, BlocksConfig));
 
         List<Hash256> blockHashes = [];
         blockHashes.Add(testBlockchain.BlockTree.Head!.Hash!);
@@ -40,28 +56,23 @@ public class HistoryPrunerTests
             blockHashes.Add(testBlockchain.BlockTree.Head!.Hash!);
         }
 
-        Core.Block head = testBlockchain.BlockTree.Head;
+        Block head = testBlockchain.BlockTree.Head;
         Assert.That(head, Is.Not.Null);
 
-        // n.b. technically invalid, should be at least 82125 epochs
-        // however not feasible to test this
-        IHistoryConfig historyConfig = new HistoryConfig
-        {
-            HistoryRetentionEpochs = 2,
-            DropPreMerge = false
-        };
-        ISpecProvider specProvider = Substitute.For<ISpecProvider>();
+        // ISpecProvider specProvider = Substitute.For<ISpecProvider>();
 
-        HistoryPruner historyPruner = new(
-            testBlockchain.BlockTree,
-            testBlockchain.ReceiptStorage,
-            specProvider,
-            testBlockchain.ChainLevelInfoRepository,
-            testBlockchain.DbProvider.MetadataDb,
-            historyConfig,
-            SecondsPerSlot,
-            new ProcessExitSource(new()),
-            LimboLogs.Instance);
+        // HistoryPruner historyPruner = new(
+        //     testBlockchain.BlockTree,
+        //     testBlockchain.ReceiptStorage,
+        //     specProvider,
+        //     testBlockchain.ChainLevelInfoRepository,
+        //     testBlockchain.DbProvider.MetadataDb,
+        //     historyConfig,
+        //     SecondsPerSlot,
+        //     new ProcessExitSource(new()),
+        //     LimboLogs.Instance);
+
+        IHistoryPruner historyPruner = testBlockchain.Container.Resolve<IHistoryPruner>();
 
         testBlockchain.BlockTree.SyncPivot = (1000, Hash256.Zero);
 
@@ -88,7 +99,12 @@ public class HistoryPrunerTests
     {
         const int Blocks = 100;
 
-        using BasicTestBlockchain testBlockchain = await BasicTestBlockchain.Create();
+        IHistoryConfig historyConfig = new HistoryConfig
+        {
+            HistoryRetentionEpochs = null,
+            DropPreMerge = true
+        };
+        using BasicTestBlockchain testBlockchain = await BasicTestBlockchain.Create(BuildContainer(historyConfig, BlocksConfig));
 
         List<Hash256> blockHashes = [];
         blockHashes.Add(testBlockchain.BlockTree.Head!.Hash!);
@@ -98,27 +114,23 @@ public class HistoryPrunerTests
             blockHashes.Add(testBlockchain.BlockTree.Head!.Hash!);
         }
 
-        Core.Block head = testBlockchain.BlockTree.Head;
+        Block head = testBlockchain.BlockTree.Head;
         Assert.That(head, Is.Not.Null);
 
-        IHistoryConfig historyConfig = new HistoryConfig
-        {
-            HistoryRetentionEpochs = null,
-            DropPreMerge = true
-        };
         ISpecProvider specProvider = Substitute.For<ISpecProvider>();
         specProvider.BeaconChainGenesisTimestamp.Returns(BeaconGenesisTimestamp);
 
-        HistoryPruner historyPruner = new(
-            testBlockchain.BlockTree,
-            testBlockchain.ReceiptStorage,
-            specProvider,
-            testBlockchain.ChainLevelInfoRepository,
-            testBlockchain.DbProvider.MetadataDb,
-            historyConfig,
-            SecondsPerSlot,
-            new ProcessExitSource(new()),
-            LimboLogs.Instance);
+        // HistoryPruner historyPruner = new(
+        //     testBlockchain.BlockTree,
+        //     testBlockchain.ReceiptStorage,
+        //     specProvider,
+        //     testBlockchain.ChainLevelInfoRepository,
+        //     testBlockchain.DbProvider.MetadataDb,
+        //     historyConfig,
+        //     SecondsPerSlot,
+        //     new ProcessExitSource(new()),
+        //     LimboLogs.Instance);
+        IHistoryPruner historyPruner = testBlockchain.Container.Resolve<IHistoryPruner>();
 
         testBlockchain.BlockTree.SyncPivot = (1000, Hash256.Zero);
 
@@ -147,7 +159,12 @@ public class HistoryPrunerTests
         const int Blocks = 100;
         const long SyncPivot = 20;
 
-        using BasicTestBlockchain testBlockchain = await BasicTestBlockchain.Create();
+        IHistoryConfig historyConfig = new HistoryConfig
+        {
+            HistoryRetentionEpochs = null,
+            DropPreMerge = true
+        };
+        using BasicTestBlockchain testBlockchain = await BasicTestBlockchain.Create(BuildContainer(historyConfig, BlocksConfig));
 
         List<Hash256> blockHashes = [];
         blockHashes.Add(testBlockchain.BlockTree.Head!.Hash!);
@@ -157,27 +174,23 @@ public class HistoryPrunerTests
             blockHashes.Add(testBlockchain.BlockTree.Head!.Hash!);
         }
 
-        Core.Block head = testBlockchain.BlockTree.Head;
+        Block head = testBlockchain.BlockTree.Head;
         Assert.That(head, Is.Not.Null);
 
-        IHistoryConfig historyConfig = new HistoryConfig
-        {
-            HistoryRetentionEpochs = null,
-            DropPreMerge = true
-        };
         ISpecProvider specProvider = Substitute.For<ISpecProvider>();
         specProvider.BeaconChainGenesisTimestamp.Returns(BeaconGenesisTimestamp);
 
-        HistoryPruner historyPruner = new(
-            testBlockchain.BlockTree,
-            testBlockchain.ReceiptStorage,
-            specProvider,
-            testBlockchain.ChainLevelInfoRepository,
-            testBlockchain.DbProvider.MetadataDb,
-            historyConfig,
-            SecondsPerSlot,
-            new ProcessExitSource(new()),
-            LimboLogs.Instance);
+        // HistoryPruner historyPruner = new(
+        //     testBlockchain.BlockTree,
+        //     testBlockchain.ReceiptStorage,
+        //     specProvider,
+        //     testBlockchain.ChainLevelInfoRepository,
+        //     testBlockchain.DbProvider.MetadataDb,
+        //     historyConfig,
+        //     SecondsPerSlot,
+        //     new ProcessExitSource(new()),
+        //     LimboLogs.Instance);
+        IHistoryPruner historyPruner = testBlockchain.Container.Resolve<IHistoryPruner>();
 
         testBlockchain.BlockTree.SyncPivot = (SyncPivot, Hash256.Zero);
 
@@ -223,16 +236,17 @@ public class HistoryPrunerTests
 
         ISpecProvider specProvider = Substitute.For<ISpecProvider>();
 
-        HistoryPruner historyPruner = new(
-            testBlockchain.BlockTree,
-            testBlockchain.ReceiptStorage,
-            specProvider,
-            testBlockchain.ChainLevelInfoRepository,
-            testBlockchain.DbProvider.MetadataDb,
-            historyConfig,
-            SecondsPerSlot,
-            new ProcessExitSource(new()),
-            LimboLogs.Instance);
+        // HistoryPruner historyPruner = new(
+        //     testBlockchain.BlockTree,
+        //     testBlockchain.ReceiptStorage,
+        //     specProvider,
+        //     testBlockchain.ChainLevelInfoRepository,
+        //     testBlockchain.DbProvider.MetadataDb,
+        //     historyConfig,
+        //     SecondsPerSlot,
+        //     new ProcessExitSource(new()),
+        //     LimboLogs.Instance);
+        IHistoryPruner historyPruner = testBlockchain.Container.Resolve<IHistoryPruner>();
 
         await historyPruner.TryPruneHistory(CancellationToken.None);
 
@@ -266,6 +280,7 @@ public class HistoryPrunerTests
             validHistoryConfig,
             SecondsPerSlot,
             new ProcessExitSource(new()),
+            Substitute.For<IBackgroundTaskScheduler>(),
             LimboLogs.Instance));
     }
 
@@ -289,6 +304,7 @@ public class HistoryPrunerTests
             invalidHistoryConfig,
             SecondsPerSlot,
             new ProcessExitSource(new()),
+            Substitute.For<IBackgroundTaskScheduler>(),
             LimboLogs.Instance));
     }
 
@@ -332,5 +348,16 @@ public class HistoryPrunerTests
             Assert.That(testBlockchain.BlockTree.FindCanonicalBlockInfo(blockNumber), Is.Null, $"Block info {blockNumber} should be pruned");
             Assert.That(testBlockchain.ReceiptStorage.HasBlock(blockNumber, blockHashes[blockNumber]), Is.False, $"Receipt for block {blockNumber} should be pruned");
         }
+    }
+
+    private static Action<ContainerBuilder> BuildContainer(IHistoryConfig historyConfig, IBlocksConfig blocksConfig)
+    {
+        ISpecProvider specProvider = Substitute.For<ISpecProvider>();
+        specProvider.BeaconChainGenesisTimestamp.Returns(BeaconGenesisTimestamp);
+
+        return (containerBuilder) => containerBuilder
+                .AddSingleton(historyConfig)
+                .AddSingleton(blocksConfig)
+                .AddSingleton(specProvider);
     }
 }
