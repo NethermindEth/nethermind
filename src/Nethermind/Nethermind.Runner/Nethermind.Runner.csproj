@@ -14,6 +14,13 @@
     <UserSecretsId>03db39d0-4200-473e-9ff8-4a48d496381f</UserSecretsId>
   </PropertyGroup>
 
+  <PropertyGroup Label="PackagesLock">
+    <DisableImplicitNuGetFallbackFolder>true</DisableImplicitNuGetFallbackFolder>
+    <RestoreLockedMode>true</RestoreLockedMode>
+    <RestorePackagesWithLockFile>true</RestorePackagesWithLockFile>
+    <RuntimeIdentifiers>linux-arm64;linux-x64;osx-arm64;osx-x64;win-x64;</RuntimeIdentifiers>
+  </PropertyGroup>
+
   <PropertyGroup Label="Containers">
     <ContainerDevelopmentMode>Fast</ContainerDevelopmentMode>
     <DockerDefaultTargetOS>Linux</DockerDefaultTargetOS>
