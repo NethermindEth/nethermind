@@ -6,12 +6,10 @@ using System.Threading;
 using Autofac;
 using Nethermind.Api;
 using Nethermind.Api.Steps;
-using Nethermind.Blockchain;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Core;
 using Nethermind.Db;
 using Nethermind.Db.FullPruning;
-using Nethermind.Evm.State;
 using Nethermind.JsonRpc.Modules;
 using Nethermind.JsonRpc.Modules.Admin;
 using Nethermind.Logging;
@@ -82,8 +80,6 @@ public class WorldStateModule(IInitConfig initConfig) : Module
             // Some admin rpc to trigger verify trie and pruning
             .Map<IPruningTrieStateAdminRpcModule, PruningTrieStateFactoryOutput>((m) => m.AdminRpcModule)
             .RegisterSingletonJsonRpcModule<IPruningTrieStateAdminRpcModule>()
-
-            .AddSingleton<IReadOnlyStateProvider, ChainHeadReadOnlyStateProvider>()
 
             // Prevent multiple concurrent verify trie.
             .AddSingleton<IVerifyTrieStarter, VerifyTrieStarter>()

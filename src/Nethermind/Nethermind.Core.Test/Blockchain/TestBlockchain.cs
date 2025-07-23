@@ -77,7 +77,8 @@ public class TestBlockchain : IDisposable
 
     public ILogFinder LogFinder => _fromContainer.LogFinder;
     public IJsonSerializer JsonSerializer { get; set; } = null!;
-    public IReadOnlyStateProvider ReadOnlyState => _fromContainer.ReadOnlyState;
+    public IReadOnlyStateProvider ReadOnlyState => ChainHeadInfoProvider.ReadOnlyStateProvider;
+    public IChainHeadInfoProvider ChainHeadInfoProvider => _fromContainer.ChainHeadInfoProvider;
     public IDb StateDb => DbProvider.StateDb;
     public IDb BlocksDb => DbProvider.BlocksDb;
     public IBlockProducer BlockProducer { get; protected set; } = null!;
@@ -146,7 +147,7 @@ public class TestBlockchain : IDisposable
         IBlockTree BlockTree,
         IBlockFinder BlockFinder,
         ILogFinder LogFinder,
-        IReadOnlyStateProvider ReadOnlyState,
+        IChainHeadInfoProvider ChainHeadInfoProvider,
         IDbProvider DbProvider,
         ISpecProvider SpecProvider,
         ISealEngine SealEngine,

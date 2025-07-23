@@ -60,7 +60,7 @@ public class TestEnvironmentModule(PrivateKey nodeKey, string? networkGroup) : M
 
             .AddSingleton<IChainHeadInfoProvider, IComponentContext>((ctx) =>
             {
-                ISpecProvider specProvider = ctx.Resolve<ISpecProvider>();
+                IChainHeadSpecProvider specProvider = ctx.Resolve<IChainHeadSpecProvider>();
                 IBlockTree blockTree = ctx.Resolve<IBlockTree>();
                 IStateReader stateReader = ctx.Resolve<IStateReader>();
                 ICodeInfoRepository codeInfoRepository = ctx.ResolveNamed<ICodeInfoRepository>(nameof(IWorldStateManager.GlobalWorldState));
