@@ -361,6 +361,6 @@ public class HistoryPruner : IHistoryPruner
     {
         _metadataDb.Set(MetadataDbKeys.HistoryPruningDeletePointer, Rlp.Encode(_deletePointer).Bytes);
         Metrics.OldestStoredBlockNumber = _deletePointer;
-        if (_logger.IsDebug) _logger.Debug($"Persisting oldest block known #{_deletePointer} to disk.");
+        if (_logger.IsDebug) _logger.Debug($"Persisting oldest block known = #{_deletePointer} to disk.");
     }
 }
