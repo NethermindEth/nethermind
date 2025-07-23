@@ -4,18 +4,14 @@
 FROM mcr.microsoft.com/dotnet/sdk:9.0-noble AS build
 
 ARG BUILD_CONFIG=release
-ARG BUILD_TIMESTAMP
-ARG COMMIT_HASH
 ARG TARGETARCH
-ARG TARGETOS
 
 COPY . .
 
 RUN arch=$([ "$TARGETARCH" = "amd64" ] && echo "x64" || echo "$TARGETARCH") && \
-    dotnet publish tools/Kute/Nethermind.Tools.Kute -c $BUILD_CONFIG -r $TARGETOS-$arch -o out --sc true \
-      -p:BuildTimestamp=$BUILD_TIMESTAMP -p:Commit=$COMMIT_HASH
+  dotnet publish tools/Kute/Nethermind.Tools.Kute -c $BUILD_CONFIG -a $arch -o out --sc true
 
-FROM ubuntu AS runtime
+FROM mcr.microsoft.com/dotnet/runtime-deps:9.0-noble
 
 WORKDIR /nethermind
 
