@@ -6,18 +6,15 @@ using System.Threading;
 using Autofac;
 using Nethermind.Api;
 using Nethermind.Api.Steps;
-using Nethermind.Blockchain;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Core;
 using Nethermind.Db;
 using Nethermind.Db.FullPruning;
-using Nethermind.Evm.State;
 using Nethermind.JsonRpc.Modules;
 using Nethermind.JsonRpc.Modules.Admin;
 using Nethermind.Logging;
 using Nethermind.State;
 using Nethermind.Trie;
-using Nethermind.TxPool;
 
 namespace Nethermind.Init.Modules;
 

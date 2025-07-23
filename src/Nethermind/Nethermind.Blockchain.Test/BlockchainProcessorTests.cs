@@ -524,7 +524,7 @@ public class BlockchainProcessorTests
                 return new ChainHeadInfoProvider(
                     new FixedForkActivationChainHeadSpecProvider(specProvider, fixedBlock: 10_000_000),
                     blockTree,
-                    stateReader,
+                    new ChainHeadReadOnlyStateProvider(blockTree, stateReader), // Need to use the non  ChainHeadSpecProvider constructor.
                     codeInfoRepository)
                 {
                     HasSynced = true

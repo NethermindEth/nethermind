@@ -8,6 +8,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using FluentAssertions;
 using Nethermind.Blockchain;
+using Nethermind.Blockchain.Spec;
 using Nethermind.Config;
 using Nethermind.Consensus;
 using Nethermind.Consensus.Comparers;
@@ -2192,7 +2193,11 @@ namespace Nethermind.TxPool.Test
             txStorage ??= new BlobTxStorage();
 
             _headInfo = chainHeadInfoProvider;
-            _headInfo ??= new ChainHeadInfoProvider(specProvider, _blockTree, _stateProvider, new EthereumCodeInfoRepository());
+            _headInfo ??= new ChainHeadInfoProvider(
+                new ChainHeadSpecProvider(specProvider, _blockTree),
+                _blockTree,
+                _stateProvider,
+                new EthereumCodeInfoRepository());
 
             return new TxPool(
                 _ethereumEcdsa,

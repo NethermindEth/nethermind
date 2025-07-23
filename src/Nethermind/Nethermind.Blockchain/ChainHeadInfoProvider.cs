@@ -26,13 +26,8 @@ namespace Nethermind.Blockchain
         public bool HasSynced { private get; init; }
 
         [UseConstructorForDependencyInjection]
-        public ChainHeadInfoProvider(ISpecProvider specProvider, IBlockTree blockTree, IStateReader stateReader, [KeyFilter(nameof(IWorldStateManager.GlobalWorldState))] ICodeInfoRepository codeInfoRepository)
-            : this(new ChainHeadSpecProvider(specProvider, blockTree), blockTree, new ChainHeadReadOnlyStateProvider(blockTree, stateReader), codeInfoRepository)
-        {
-        }
-
-        public ChainHeadInfoProvider(ISpecProvider specProvider, IBlockTree blockTree, IReadOnlyStateProvider stateProvider, ICodeInfoRepository codeInfoRepository)
-            : this(new ChainHeadSpecProvider(specProvider, blockTree), blockTree, stateProvider, codeInfoRepository)
+        public ChainHeadInfoProvider(IChainHeadSpecProvider specProvider, IBlockTree blockTree, IStateReader stateReader, [KeyFilter(nameof(IWorldStateManager.GlobalWorldState))] ICodeInfoRepository codeInfoRepository)
+            : this(specProvider, blockTree, new ChainHeadReadOnlyStateProvider(blockTree, stateReader), codeInfoRepository)
         {
         }
 

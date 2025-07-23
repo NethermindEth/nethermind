@@ -7,6 +7,7 @@ using System.Linq;
 using System.Threading.Tasks;
 using FluentAssertions;
 using Nethermind.Blockchain;
+using Nethermind.Blockchain.Spec;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Test;
@@ -36,7 +37,11 @@ public class NonceManagerTests
         _blockTree.Head.Returns(block);
         _blockTree.FindBestSuggestedHeader().Returns(Build.A.BlockHeader.WithNumber(10000000).TestObject);
 
-        _headInfo = new ChainHeadInfoProvider(_specProvider, _blockTree, _stateProvider, new EthereumCodeInfoRepository());
+        _headInfo = new ChainHeadInfoProvider(
+            new ChainHeadSpecProvider(_specProvider, _blockTree),
+            _blockTree,
+            _stateProvider,
+            new EthereumCodeInfoRepository());
         _nonceManager = new NonceManager(_headInfo.ReadOnlyStateProvider);
     }
 
