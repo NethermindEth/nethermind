@@ -106,7 +106,7 @@
   </Target>
 
   <Target Name="CopyPluginsAfterBuild" AfterTargets="AfterBuild" DependsOnTargets="CollectPlugins">
-    <Message Text="Copying plugins after build..." Importance="High" />
+    <Message Text="Copying plugins after build...$(RestoreLockedMode)" Importance="High" />
     <Copy SourceFiles="@(PluginsForBuild)" DestinationFolder="$(OutDir)\plugins" />
   </Target>
 
