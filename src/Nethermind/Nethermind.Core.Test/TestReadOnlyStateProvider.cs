@@ -34,27 +34,17 @@ public class TestReadOnlyStateProvider: IReadOnlyStateProvider
 
     public bool IsContract(Address address)
     {
-        throw new System.NotImplementedException();
+        return TryGetAccount(address, out AccountStruct account) && account.IsContract;
     }
 
     public bool AccountExists(Address address)
     {
-        throw new System.NotImplementedException();
+        return TryGetAccount(address, out AccountStruct _);
     }
 
     public bool IsDeadAccount(Address address)
     {
-        throw new System.NotImplementedException();
-    }
-
-    public bool IsEmptyAccount(Address address)
-    {
-        throw new System.NotImplementedException();
-    }
-
-    public bool HasStateForBlock(BlockHeader? baseBlock)
-    {
-        throw new System.NotImplementedException();
+        return !TryGetAccount(address, out AccountStruct account) || account.IsEmpty;
     }
 
     public void CreateAccount(Address address, UInt256 wei, UInt256 nonce = default)
