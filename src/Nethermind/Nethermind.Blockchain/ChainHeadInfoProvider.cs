@@ -3,6 +3,7 @@
 
 using System;
 using System.Runtime.CompilerServices;
+using Autofac.Features.AttributeFilters;
 using Nethermind.Blockchain.Spec;
 using Nethermind.Core;
 using Nethermind.Core.Container;
@@ -24,7 +25,8 @@ namespace Nethermind.Blockchain
         // For testing
         public bool HasSynced { private get; init; }
 
-        public ChainHeadInfoProvider(ISpecProvider specProvider, IBlockTree blockTree, IStateReader stateReader, ICodeInfoRepository codeInfoRepository)
+        [UseConstructorForDependencyInjection]
+        public ChainHeadInfoProvider(ISpecProvider specProvider, IBlockTree blockTree, IStateReader stateReader, [KeyFilter(nameof(IWorldStateManager.GlobalWorldState))] ICodeInfoRepository codeInfoRepository)
             : this(new ChainHeadSpecProvider(specProvider, blockTree), blockTree, new ChainHeadReadOnlyStateProvider(blockTree, stateReader), codeInfoRepository)
         {
         }
@@ -34,7 +36,6 @@ namespace Nethermind.Blockchain
         {
         }
 
-        [UseConstructorForDependencyInjection]
         public ChainHeadInfoProvider(IChainHeadSpecProvider specProvider, IBlockTree blockTree, IReadOnlyStateProvider stateProvider, ICodeInfoRepository codeInfoRepository)
         {
             SpecProvider = specProvider;
