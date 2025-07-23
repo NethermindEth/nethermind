@@ -120,8 +120,6 @@ public class WorldStateMetricsDecorator(IWorldState innerState) : IWorldState
 
     public bool IsDeadAccount(Address address) => innerState.IsDeadAccount(address);
 
-    public bool IsEmptyAccount(Address address) => innerState.IsEmptyAccount(address);
-
     public bool HasStateForBlock(BlockHeader? stateRoot) => innerState.HasStateForBlock(stateRoot);
 
     public void SetBaseBlock(BlockHeader? header) => innerState.SetBaseBlock(header);

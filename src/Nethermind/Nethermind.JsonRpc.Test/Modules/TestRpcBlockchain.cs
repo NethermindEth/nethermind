@@ -25,7 +25,6 @@ using Nethermind.Specs.Forks;
 using Nethermind.TxPool;
 using Nethermind.Wallet;
 using Nethermind.Config;
-using Nethermind.Evm.State;
 using Nethermind.Synchronization;
 using Nethermind.Synchronization.ParallelSync;
 using NSubstitute;
@@ -34,6 +33,7 @@ using Nethermind.Consensus.Rewards;
 using Autofac;
 using Nethermind.Consensus;
 using Nethermind.Consensus.Scheduler;
+using Nethermind.Consensus.Validators;
 using Nethermind.Core;
 using Nethermind.Core.Test.Container;
 using Nethermind.JsonRpc.Modules;
@@ -179,6 +179,8 @@ namespace Nethermind.JsonRpc.Test.Modules
                     if (_receiptFinderOverride is not null) builder.AddSingleton(_receiptFinderOverride);
                     if (_blockchainBridgeOverride is not null) builder.AddSingleton(_blockchainBridgeOverride);
                     if (_blocksConfigOverride is not null) builder.AddSingleton(_blocksConfigOverride);
+
+                    builder.AddKeyedSingleton<ITxValidator>(ITxValidator.HeadTxValidatorKey, new HeadTxValidator());
                 });
             }
         }
@@ -200,6 +202,7 @@ namespace Nethermind.JsonRpc.Test.Modules
             @this.FeeHistoryOracle ??
             new FeeHistoryOracle(@this.BlockTree, @this.ReceiptStorage, @this.SpecProvider),
             @this.ProtocolsManager,
+            @this.ForkInfo,
             @this.BlocksConfig.SecondsPerSlot);
 
         protected override async Task<TestBlockchain> Build(Action<ContainerBuilder>? configurer = null)

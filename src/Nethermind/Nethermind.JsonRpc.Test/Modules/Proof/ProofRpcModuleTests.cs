@@ -30,6 +30,7 @@ using Nethermind.Consensus.Processing;
 using Nethermind.Core.Buffers;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Test;
+using Nethermind.Core.Test.Db;
 using Nethermind.Core.Test.Modules;
 using Nethermind.Evm.Tracing.State;
 using Nethermind.Facade.Eth.RpcTransaction;

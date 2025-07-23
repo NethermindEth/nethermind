@@ -6,6 +6,7 @@ using System.Linq;
 using System.Threading.Tasks;
 using FluentAssertions;
 using Nethermind.Blockchain;
+using Nethermind.Blockchain.Spec;
 using Nethermind.Consensus.Comparers;
 using Nethermind.Consensus.Processing;
 using Nethermind.Consensus.Processing.CensorshipDetector;
@@ -34,7 +35,7 @@ namespace Nethermind.Consensus.Test;
 public class CensorshipDetectorTests
 {
     private ILogManager _logManager;
-    private IWorldState _stateProvider;
+    private TestReadOnlyStateProvider _stateProvider;
     private IBlockTree _blockTree;
     private IBlockProcessor _blockProcessor;
     private ISpecProvider _specProvider;
@@ -47,8 +48,7 @@ public class CensorshipDetectorTests
     public void Setup()
     {
         _logManager = LimboLogs.Instance;
-        IWorldStateManager worldStateManager = TestWorldStateFactory.CreateForTest();
-        _stateProvider = worldStateManager.GlobalWorldState;
+        _stateProvider = new TestReadOnlyStateProvider();
         _blockProcessor = Substitute.For<IBlockProcessor>();
     }
 
@@ -259,7 +259,11 @@ public class CensorshipDetectorTests
         return new(
             _ethereumEcdsa,
             new BlobTxStorage(),
-            new ChainHeadInfoProvider(_specProvider, _blockTree, _stateProvider, new CodeInfoRepository()),
+            new ChainHeadInfoProvider(
+                new ChainHeadSpecProvider(_specProvider, _blockTree),
+                _blockTree,
+                _stateProvider,
+                new EthereumCodeInfoRepository()),
             new TxPoolConfig(),
             new TxValidator(_specProvider.ChainId),
             _logManager,

@@ -209,8 +209,6 @@ public class EthereumRunnerTests
         api.FileSystem = Substitute.For<IFileSystem>();
         api.BlockTree = Substitute.For<IBlockTree>();
         api.ReceiptStorage = Substitute.For<IReceiptStorage>();
-        api.DbFactory = new MemDbFactory();
-        api.DbProvider = await TestMemDbProvider.InitAsync();
         api.BlockProducerRunner = Substitute.For<IBlockProducerRunner>();
 
         if (api is AuRaNethermindApi auRaNethermindApi)
@@ -303,6 +301,7 @@ public class EthereumRunnerTests
                 typeof(PublicKey),
                 typeof(IPrivateKeyGenerator),
                 typeof(ITracer), // Completely different construction on every case
+                typeof(IReadOnlyStateProvider), // For which block? Use IChainHeadInfoProvider, or preferably, IStateReader instead
                 typeof(string),
             ];
 

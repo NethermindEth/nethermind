@@ -8,14 +8,13 @@ using Nethermind.Blockchain;
 using Nethermind.Blockchain.Find;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Blockchain.Spec;
+using Nethermind.Blockchain.Synchronization;
 using Nethermind.Config;
 using Nethermind.Core;
 using Nethermind.Core.ServiceStopper;
 using Nethermind.Core.Specs;
 using Nethermind.Crypto;
-using Nethermind.Db;
 using Nethermind.Era1;
-using Nethermind.Facade.Simulate;
 using Nethermind.JsonRpc;
 using Nethermind.Logging;
 using Nethermind.Network.Config;
@@ -40,17 +39,22 @@ public class NethermindModule(ChainSpec chainSpec, IConfigProvider configProvide
             .AddModule(new AppInputModule(chainSpec, configProvider, logManager))
             .AddModule(new NetworkModule(configProvider))
             .AddModule(new DiscoveryModule(configProvider.GetConfig<IInitConfig>(), configProvider.GetConfig<INetworkConfig>()))
+            .AddModule(new DbModule(
+                configProvider.GetConfig<IInitConfig>(),
+                configProvider.GetConfig<IReceiptConfig>(),
+                configProvider.GetConfig<ISyncConfig>()
+            ))
             .AddModule(new WorldStateModule(configProvider.GetConfig<IInitConfig>()))
             .AddModule(new BuiltInStepsModule())
             .AddModule(new RpcModules(configProvider.GetConfig<IJsonRpcConfig>()))
             .AddModule(new EraModule())
             .AddSource(new ConfigRegistrationSource())
-            .AddModule(new DbModule())
             .AddModule(new BlockProcessingModule())
             .AddSingleton<ISpecProvider, ChainSpecBasedSpecProvider>()
 
             .Bind<IBlockFinder, IBlockTree>()
             .AddSingleton<IReadOnlyBlockTree, IBlockTree>((bt) => bt.AsReadOnly())
+            .AddSingleton<IBlobTxStorage, BlobTxStorage>()
 
             .AddKeyedSingleton<IProtectedPrivateKey>(IProtectedPrivateKey.NodeKey, (ctx) => ctx.Resolve<INethermindApi>().NodeKey!)
             .AddSingleton<IAbiEncoder>(Nethermind.Abi.AbiEncoder.Instance)
@@ -66,7 +70,14 @@ public class NethermindModule(ChainSpec chainSpec, IConfigProvider configProvide
             .AddSingleton<IChainHeadSpecProvider, ChainHeadSpecProvider>()
             .AddSingleton<IChainHeadInfoProvider, ChainHeadInfoProvider>()
             .Add<IDisposableStack, AutofacDisposableStack>() // Not a singleton so that dispose is registered to correct lifetime
+
+            .AddSingleton<IHardwareInfo, HardwareInfo>()
             ;
+
+        if (!configProvider.GetConfig<ITxPoolConfig>().BlobsSupport.IsPersistentStorage())
+        {
+            builder.AddSingleton<IBlobTxStorage>(NullBlobTxStorage.Instance);
+        }
     }
 
     // Just a wrapper to make it clear, these three are expected to be available at the time of configurations.

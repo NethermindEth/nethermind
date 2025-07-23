@@ -3,9 +3,11 @@
 
 using System;
 using System.Runtime.CompilerServices;
+using Autofac.Features.AttributeFilters;
 using Nethermind.Blockchain.Spec;
 using Nethermind.Core;
 using Nethermind.Core.Container;
+using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
 using Nethermind.Evm;
 using Nethermind.Evm.State;
@@ -23,17 +25,12 @@ namespace Nethermind.Blockchain
         // For testing
         public bool HasSynced { private get; init; }
 
-        public ChainHeadInfoProvider(ISpecProvider specProvider, IBlockTree blockTree, IStateReader stateReader, ICodeInfoRepository codeInfoRepository)
-            : this(new ChainHeadSpecProvider(specProvider, blockTree), blockTree, new ChainHeadReadOnlyStateProvider(blockTree, stateReader), codeInfoRepository)
-        {
-        }
-
-        public ChainHeadInfoProvider(ISpecProvider specProvider, IBlockTree blockTree, IReadOnlyStateProvider stateProvider, ICodeInfoRepository codeInfoRepository)
-            : this(new ChainHeadSpecProvider(specProvider, blockTree), blockTree, stateProvider, codeInfoRepository)
-        {
-        }
-
         [UseConstructorForDependencyInjection]
+        public ChainHeadInfoProvider(IChainHeadSpecProvider specProvider, IBlockTree blockTree, IStateReader stateReader, [KeyFilter(nameof(IWorldStateManager.GlobalWorldState))] ICodeInfoRepository codeInfoRepository)
+            : this(specProvider, blockTree, new ChainHeadReadOnlyStateProvider(blockTree, stateReader), codeInfoRepository)
+        {
+        }
+
         public ChainHeadInfoProvider(IChainHeadSpecProvider specProvider, IBlockTree blockTree, IReadOnlyStateProvider stateProvider, ICodeInfoRepository codeInfoRepository)
         {
             SpecProvider = specProvider;

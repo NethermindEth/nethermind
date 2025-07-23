@@ -402,7 +402,7 @@ namespace Nethermind.Core.Specs
 
         public bool ModExpEnabled => IsEip198Enabled;
 
-        public bool Bn128Enabled => IsEip196Enabled && IsEip197Enabled;
+        public bool BN254Enabled => IsEip196Enabled && IsEip197Enabled;
 
         public bool BlakeEnabled => IsEip152Enabled;
 
