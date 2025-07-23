@@ -45,6 +45,7 @@ public class PseudoNethermindModule(ChainSpec spec, IConfigProvider configProvid
 
         base.Load(builder);
         builder
+            .AddModule(new NethermindModule(spec, configProvider, logManager))
             .AddModule(new PseudoNetworkModule())
             .AddModule(new BlockTreeModule())
             .AddModule(new TestBlockProcessingModule())
@@ -71,7 +72,6 @@ public class PseudoNethermindModule(ChainSpec spec, IConfigProvider configProvid
 
             // Rpc
             .AddSingleton<IJsonRpcService, JsonRpcService>()
-            .AddModule(new NethermindModule(spec, configProvider, logManager))
             ;
 
 

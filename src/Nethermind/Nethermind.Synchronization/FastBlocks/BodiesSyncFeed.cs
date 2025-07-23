@@ -30,7 +30,6 @@ namespace Nethermind.Synchronization.FastBlocks
         {
             get
             {
-                // could take a long time to return, safe to do?
                 long? cutoffBlockNumber = _historyPruner.CutoffBlockNumber;
                 return cutoffBlockNumber is null ? _syncConfig.AncientBodiesBarrierCalc : long.Max(_syncConfig.AncientBodiesBarrierCalc, cutoffBlockNumber.Value);
             }
@@ -318,8 +317,6 @@ namespace Nethermind.Synchronization.FastBlocks
             {
                 bool hasBlock = blockTree.HasBlock(info.BlockNumber, info.BlockHash);
                 long? cutoff = historyPruner?.CutoffBlockNumber;
-                // needed?
-                // cutoff = cutoff is null ? null : long.Max(cutoff.Value, blockTree.BestSuggestedHeader.Number);
                 bool shouldDownload = hasBlock && (cutoff is null || info.BlockNumber >= cutoff);
                 if (shouldDownload) syncReport.FastBlocksBodies.IncrementSkipped();
                 return !shouldDownload;
