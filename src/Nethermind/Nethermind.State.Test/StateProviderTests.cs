@@ -87,7 +87,8 @@ public class StateProviderTests
         IWorldState provider = worldStateManager.GlobalWorldState;
         provider.CreateAccount(_address1, 0);
         provider.Commit(Frontier.Instance);
-        Assert.That(provider.IsEmptyAccount(_address1), Is.True);
+        bool isEmpty = !provider.TryGetAccount(_address1, out var account) || account.IsEmpty;
+        isEmpty.Should().BeTrue();
     }
 
     [Test]
