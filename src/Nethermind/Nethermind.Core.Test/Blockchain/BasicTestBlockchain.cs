@@ -2,8 +2,11 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Collections;
+using System.Collections.Generic;
 using System.Threading.Tasks;
 using Autofac;
+using Nethermind.Config;
 using Nethermind.Core.Test.Builders;
 
 namespace Nethermind.Core.Test.Blockchain;
@@ -13,10 +16,10 @@ namespace Nethermind.Core.Test.Blockchain;
 /// </summary>
 public class BasicTestBlockchain : TestBlockchain
 {
-    public static async Task<BasicTestBlockchain> Create(Action<ContainerBuilder>? configurer = null)
+    public static async Task<BasicTestBlockchain> Create(Action<ContainerBuilder>? configurer = null, IEnumerable<IConfig>? configs = null)
     {
         BasicTestBlockchain chain = new();
-        await chain.Build(configurer: configurer);
+        await chain.Build(configurer, configs);
         return chain;
     }
 

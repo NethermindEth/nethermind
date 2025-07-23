@@ -46,7 +46,7 @@ public class HistoryPrunerTests
             DropPreMerge = false
         };
 
-        using BasicTestBlockchain testBlockchain = await BasicTestBlockchain.Create(BuildContainer(historyConfig, BlocksConfig));
+        using BasicTestBlockchain testBlockchain = await BasicTestBlockchain.Create(BuildContainer(), [BlocksConfig, historyConfig]);
 
         List<Hash256> blockHashes = [];
         blockHashes.Add(testBlockchain.BlockTree.Head!.Hash!);
@@ -58,19 +58,6 @@ public class HistoryPrunerTests
 
         Block head = testBlockchain.BlockTree.Head;
         Assert.That(head, Is.Not.Null);
-
-        // ISpecProvider specProvider = Substitute.For<ISpecProvider>();
-
-        // HistoryPruner historyPruner = new(
-        //     testBlockchain.BlockTree,
-        //     testBlockchain.ReceiptStorage,
-        //     specProvider,
-        //     testBlockchain.ChainLevelInfoRepository,
-        //     testBlockchain.DbProvider.MetadataDb,
-        //     historyConfig,
-        //     SecondsPerSlot,
-        //     new ProcessExitSource(new()),
-        //     LimboLogs.Instance);
 
         IHistoryPruner historyPruner = testBlockchain.Container.Resolve<IHistoryPruner>();
 
@@ -104,7 +91,7 @@ public class HistoryPrunerTests
             HistoryRetentionEpochs = null,
             DropPreMerge = true
         };
-        using BasicTestBlockchain testBlockchain = await BasicTestBlockchain.Create(BuildContainer(historyConfig, BlocksConfig));
+        using BasicTestBlockchain testBlockchain = await BasicTestBlockchain.Create(BuildContainer(), [BlocksConfig, historyConfig]);
 
         List<Hash256> blockHashes = [];
         blockHashes.Add(testBlockchain.BlockTree.Head!.Hash!);
@@ -117,19 +104,6 @@ public class HistoryPrunerTests
         Block head = testBlockchain.BlockTree.Head;
         Assert.That(head, Is.Not.Null);
 
-        ISpecProvider specProvider = Substitute.For<ISpecProvider>();
-        specProvider.BeaconChainGenesisTimestamp.Returns(BeaconGenesisTimestamp);
-
-        // HistoryPruner historyPruner = new(
-        //     testBlockchain.BlockTree,
-        //     testBlockchain.ReceiptStorage,
-        //     specProvider,
-        //     testBlockchain.ChainLevelInfoRepository,
-        //     testBlockchain.DbProvider.MetadataDb,
-        //     historyConfig,
-        //     SecondsPerSlot,
-        //     new ProcessExitSource(new()),
-        //     LimboLogs.Instance);
         IHistoryPruner historyPruner = testBlockchain.Container.Resolve<IHistoryPruner>();
 
         testBlockchain.BlockTree.SyncPivot = (1000, Hash256.Zero);
@@ -164,7 +138,7 @@ public class HistoryPrunerTests
             HistoryRetentionEpochs = null,
             DropPreMerge = true
         };
-        using BasicTestBlockchain testBlockchain = await BasicTestBlockchain.Create(BuildContainer(historyConfig, BlocksConfig));
+        using BasicTestBlockchain testBlockchain = await BasicTestBlockchain.Create(BuildContainer(), [BlocksConfig, historyConfig]);
 
         List<Hash256> blockHashes = [];
         blockHashes.Add(testBlockchain.BlockTree.Head!.Hash!);
@@ -177,19 +151,6 @@ public class HistoryPrunerTests
         Block head = testBlockchain.BlockTree.Head;
         Assert.That(head, Is.Not.Null);
 
-        ISpecProvider specProvider = Substitute.For<ISpecProvider>();
-        specProvider.BeaconChainGenesisTimestamp.Returns(BeaconGenesisTimestamp);
-
-        // HistoryPruner historyPruner = new(
-        //     testBlockchain.BlockTree,
-        //     testBlockchain.ReceiptStorage,
-        //     specProvider,
-        //     testBlockchain.ChainLevelInfoRepository,
-        //     testBlockchain.DbProvider.MetadataDb,
-        //     historyConfig,
-        //     SecondsPerSlot,
-        //     new ProcessExitSource(new()),
-        //     LimboLogs.Instance);
         IHistoryPruner historyPruner = testBlockchain.Container.Resolve<IHistoryPruner>();
 
         testBlockchain.BlockTree.SyncPivot = (SyncPivot, Hash256.Zero);
@@ -218,7 +179,12 @@ public class HistoryPrunerTests
     {
         const int Blocks = 10;
 
-        using BasicTestBlockchain testBlockchain = await BasicTestBlockchain.Create();
+        IHistoryConfig historyConfig = new HistoryConfig
+        {
+            HistoryRetentionEpochs = null,
+            DropPreMerge = false
+        };
+        using BasicTestBlockchain testBlockchain = await BasicTestBlockchain.Create(BuildContainer(), [BlocksConfig, historyConfig]);
 
         List<Hash256> blockHashes = [];
         blockHashes.Add(testBlockchain.BlockTree.Head!.Hash!);
@@ -228,26 +194,7 @@ public class HistoryPrunerTests
             blockHashes.Add(testBlockchain.BlockTree.Head!.Hash!);
         }
 
-        IHistoryConfig historyConfig = new HistoryConfig
-        {
-            HistoryRetentionEpochs = null,
-            DropPreMerge = false
-        };
-
-        ISpecProvider specProvider = Substitute.For<ISpecProvider>();
-
-        // HistoryPruner historyPruner = new(
-        //     testBlockchain.BlockTree,
-        //     testBlockchain.ReceiptStorage,
-        //     specProvider,
-        //     testBlockchain.ChainLevelInfoRepository,
-        //     testBlockchain.DbProvider.MetadataDb,
-        //     historyConfig,
-        //     SecondsPerSlot,
-        //     new ProcessExitSource(new()),
-        //     LimboLogs.Instance);
         IHistoryPruner historyPruner = testBlockchain.Container.Resolve<IHistoryPruner>();
-
         await historyPruner.TryPruneHistory(CancellationToken.None);
 
         CheckGenesisPreserved(testBlockchain, blockHashes[0]);
@@ -350,14 +297,11 @@ public class HistoryPrunerTests
         }
     }
 
-    private static Action<ContainerBuilder> BuildContainer(IHistoryConfig historyConfig, IBlocksConfig blocksConfig)
+    private static Action<ContainerBuilder> BuildContainer()
     {
         ISpecProvider specProvider = Substitute.For<ISpecProvider>();
         specProvider.BeaconChainGenesisTimestamp.Returns(BeaconGenesisTimestamp);
 
-        return (containerBuilder) => containerBuilder
-                .AddSingleton(historyConfig)
-                .AddSingleton(blocksConfig)
-                .AddSingleton(specProvider);
+        return containerBuilder => containerBuilder.AddSingleton(specProvider);
     }
 }
