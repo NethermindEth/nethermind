@@ -31,6 +31,7 @@ public class SimulateTxExecutor<TTrace>(IBlockchainBridge blockchainBridge, IBlo
         {
             TraceTransfers = call.TraceTransfers,
             Validation = call.Validation,
+            ReturnFullTransactionObjects = call.ReturnFullTransactionObjects,
             BlockStateCalls = call.BlockStateCalls?.Select(blockStateCall =>
             {
                 if (blockStateCall.BlockOverrides?.GasLimit is not null)
@@ -53,6 +54,9 @@ public class SimulateTxExecutor<TTrace>(IBlockchainBridge blockchainBridge, IBlo
                         _gasCapBudget = Math.Max(0, _gasCapBudget);
 
                         Transaction tx = callTransactionModel.ToTransaction();
+
+                        // The RPC set SystemUser as default, but we want to set it to zero to follow hive test.
+                        if (tx.SenderAddress == Address.SystemUser) tx.SenderAddress = Address.Zero;
                         tx.ChainId = _blockchainBridge.GetChainId();
 
                         TransactionWithSourceDetails? result = new()
@@ -74,7 +78,7 @@ public class SimulateTxExecutor<TTrace>(IBlockchainBridge blockchainBridge, IBlo
     private static TransactionForRpc UpdateTxType(TransactionForRpc rpcTransaction)
     {
         // TODO: This is a bit messy since we're changing the transaction type
-        if (rpcTransaction is LegacyTransactionForRpc legacy)
+        if (rpcTransaction is LegacyTransactionForRpc legacy && rpcTransaction is not EIP1559TransactionForRpc)
         {
             rpcTransaction = new EIP1559TransactionForRpc
             {
@@ -196,7 +200,7 @@ public class SimulateTxExecutor<TTrace>(IBlockchainBridge blockchainBridge, IBlo
         Dictionary<Address, AccountOverride>? stateOverride,
         CancellationToken token)
     {
-        SimulateOutput<TTrace> results = _blockchainBridge.Simulate(header, tx, simulateBlockTracerFactory, token);
+        SimulateOutput<TTrace> results = _blockchainBridge.Simulate(header, tx, simulateBlockTracerFactory, _rpcConfig.GasCap!.Value, token);
 
         foreach (SimulateBlockResult<TTrace> item in results.Items)
         {
