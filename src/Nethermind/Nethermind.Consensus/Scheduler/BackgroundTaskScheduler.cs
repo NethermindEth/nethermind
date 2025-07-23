@@ -38,13 +38,13 @@ public class BackgroundTaskScheduler : IBackgroundTaskScheduler, IAsyncDisposabl
     private readonly ManualResetEventSlim _restartQueueSignal;
     private readonly Task[] _tasksExecutors;
     private readonly ILogger _logger;
-    private readonly IBlockProcessor _blockProcessor;
+    private readonly IBranchProcessor _branchProcessor;
     private readonly IChainHeadInfoProvider _headInfo;
 
     private CancellationTokenSource _blockProcessorCancellationTokenSource;
     private bool _disposed = false;
 
-    public BackgroundTaskScheduler(IBlockProcessor blockProcessor, IChainHeadInfoProvider headInfo, int concurrency, int capacity, ILogManager logManager)
+    public BackgroundTaskScheduler(IBranchProcessor branchProcessor, IChainHeadInfoProvider headInfo, int concurrency, int capacity, ILogManager logManager)
     {
         ArgumentOutOfRangeException.ThrowIfLessThan(concurrency, 1);
         ArgumentOutOfRangeException.ThrowIfLessThan(capacity, 1);
@@ -56,14 +56,14 @@ public class BackgroundTaskScheduler : IBackgroundTaskScheduler, IAsyncDisposabl
         // we know rest still have time left
         _taskQueue = Channel.CreateUnboundedPrioritized<IActivity>();
         _logger = logManager.GetClassLogger();
-        _blockProcessor = blockProcessor;
+        _branchProcessor = branchProcessor;
         _headInfo = headInfo;
         _restartQueueSignal = new ManualResetEventSlim(initialState: true);
         // As channel is unbounded (to be prioritized) we gate capacity with a semaphore
         _capacity = new SemaphoreSlim(initialCount: capacity);
 
-        _blockProcessor.BlocksProcessing += BlockProcessorOnBlocksProcessing;
-        _blockProcessor.BlockProcessed += BlockProcessorOnBlockProcessed;
+        _branchProcessor.BlocksProcessing += BranchProcessorOnBranchesProcessing;
+        _branchProcessor.BlockProcessed += BranchProcessorOnBranchProcessed;
 
         // TaskScheduler to run tasks at BelowNormal priority
         _scheduler = new BelowNormalPriorityTaskScheduler(
@@ -76,7 +76,7 @@ public class BackgroundTaskScheduler : IBackgroundTaskScheduler, IAsyncDisposabl
         _tasksExecutors = [.. Enumerable.Range(0, concurrency).Select(_ => factory.StartNew(StartChannel).Unwrap())];
     }
 
-    private void BlockProcessorOnBlocksProcessing(object? sender, BlocksProcessingEventArgs e)
+    private void BranchProcessorOnBranchesProcessing(object? sender, BlocksProcessingEventArgs e)
     {
         // If we are syncing we don't block background task processing
         // as there are potentially no gaps between blocks
@@ -89,7 +89,7 @@ public class BackgroundTaskScheduler : IBackgroundTaskScheduler, IAsyncDisposabl
         }
     }
 
-    private void BlockProcessorOnBlockProcessed(object? sender, BlockProcessedEventArgs e)
+    private void BranchProcessorOnBranchProcessed(object? sender, BlockProcessedEventArgs e)
     {
         // Once block is processed, we replace the cancellation token with a fresh uncancelled one
         using CancellationTokenSource oldTokenSource = Interlocked.Exchange(
@@ -180,8 +180,8 @@ public class BackgroundTaskScheduler : IBackgroundTaskScheduler, IAsyncDisposabl
     {
         if (!Interlocked.CompareExchange(ref _disposed, true, false)) return;
 
-        _blockProcessor.BlocksProcessing -= BlockProcessorOnBlocksProcessing;
-        _blockProcessor.BlockProcessed -= BlockProcessorOnBlockProcessed;
+        _branchProcessor.BlocksProcessing -= BranchProcessorOnBranchesProcessing;
+        _branchProcessor.BlockProcessed -= BranchProcessorOnBranchProcessed;
 
         _taskQueue.Writer.Complete();
         await _mainCancellationTokenSource.CancelAsync();

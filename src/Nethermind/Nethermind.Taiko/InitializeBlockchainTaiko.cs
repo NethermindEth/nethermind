@@ -62,8 +62,7 @@ public class InitializeBlockchainTaiko(TaikoNethermindApi api) : InitializeBlock
             new BlockhashStore(_api.SpecProvider, worldState),
             _api.LogManager,
             new WithdrawalProcessor(worldState, _api.LogManager),
-            new ExecutionRequestsProcessor(transactionProcessor),
-            preWarmer: preWarmer);
+            new ExecutionRequestsProcessor(transactionProcessor));
     }
 
     protected override IBlockProductionPolicy CreateBlockProductionPolicy() => NeverStartBlockProductionPolicy.Instance;

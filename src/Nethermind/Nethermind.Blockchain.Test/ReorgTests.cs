@@ -108,9 +108,16 @@ public class ReorgTests
             LimboLogs.Instance,
             new WithdrawalProcessor(stateProvider, LimboLogs.Instance),
             new ExecutionRequestsProcessor(transactionProcessor));
+        BranchProcessor branchProcessor = new BranchProcessor(
+            blockProcessor,
+            MainnetSpecProvider.Instance,
+            stateProvider,
+            new BeaconBlockRootHandler(transactionProcessor, stateProvider),
+            LimboLogs.Instance);
+
         _blockchainProcessor = new BlockchainProcessor(
             _blockTree,
-            blockProcessor,
+            branchProcessor,
             new RecoverSignatures(
                 ecdsa,
                 specProvider,

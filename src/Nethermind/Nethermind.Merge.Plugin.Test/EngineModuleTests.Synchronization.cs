@@ -808,7 +808,7 @@ public partial class EngineModuleTests
 
         Block? bestBeaconBlock = bestBeaconBlockRequest.TryGetBlock().Block;
         SemaphoreSlim bestBlockProcessed = new(0);
-        chain.BlockProcessor.BlockProcessed += (s, e) =>
+        chain.BranchProcessor.BlockProcessed += (s, e) =>
         {
             if (e.Block.Hash == bestBeaconBlock!.Hash)
                 bestBlockProcessed.Release(1);
