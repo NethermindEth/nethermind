@@ -40,6 +40,7 @@ public class HistoryPruner : IHistoryPruner
     private long _deletePointer = 1;
     private long? _cutoffPointer;
     private ulong? _cutoffTimestamp;
+    private const int DeleteBatchSize = 64;
 
     public class HistoryPrunerException(string message, Exception? innerException = null) : Exception(message, innerException);
 
@@ -228,10 +229,9 @@ public class HistoryPruner : IHistoryPruner
     {
         int deletedBlocks = 0;
         ulong? lastDeletedTimstamp = null;
+        BatchWrite? batch = null;
         try
         {
-            using BatchWrite batch = _chainLevelInfoRepository.StartBatch();
-
             IEnumerable<Block> blocks = GetBlocksBeforeTimestamp(cutoffTimestamp);
             foreach (Block block in blocks)
             {
@@ -250,9 +250,15 @@ public class HistoryPruner : IHistoryPruner
                     continue;
                 }
 
+                if (deletedBlocks % DeleteBatchSize == 0)
+                {
+                    batch?.Dispose();
+                    batch = _chainLevelInfoRepository.StartBatch();
+                }
+
                 // todo: change to debug after testing
                 if (_logger.IsInfo) _logger.Info($"Deleting old block {number} with hash {hash}.");
-                _blockTree.DeleteBlock(number, hash, null, batch, null, true);
+                _blockTree.DeleteBlock(number, hash, null, batch!, null, true);
                 _receiptStorage.RemoveReceipts(block);
                 _deletePointer = number;
                 lastDeletedTimstamp = block.Timestamp;
@@ -261,6 +267,8 @@ public class HistoryPruner : IHistoryPruner
         }
         finally
         {
+            batch?.Dispose();
+
             if (_cutoffPointer < _deletePointer && lastDeletedTimstamp is not null)
             {
                 _cutoffPointer = _deletePointer;
