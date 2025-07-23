@@ -347,7 +347,7 @@ public class P2PProtocolHandler(
         SubprotocolRequested = null;
     }
 
-    public IEnumerable<Capability> GetCapabilitiesForAdmin()
+    public IEnumerable<Capability> GetCapabilities()
     {
         var capabilities = _agreedCapabilities?.Any() == true
             ? _agreedCapabilities

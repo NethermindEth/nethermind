@@ -602,7 +602,7 @@ public class AdminModuleTests
         if (capabilities.Length > 0)
         {
             var protocolHandler = Substitute.For<IP2PProtocolHandler>();
-            protocolHandler.GetCapabilitiesForAdmin().Returns(capabilities);
+            protocolHandler.GetCapabilities().Returns(capabilities);
             session.TryGetProtocolHandler("p2p", out Arg.Any<IProtocolHandler>())
                 .Returns(x => { x[1] = protocolHandler; return true; });
         }

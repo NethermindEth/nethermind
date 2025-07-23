@@ -8,14 +8,5 @@ namespace Nethermind.JsonRpc.Modules.Admin.Models
     public class EthProtocolDetails
     {
         public int Version { get; set; }
-
-        [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
-        public string? EarliestBlock { get; set; }
-
-        [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
-        public string? LatestBlock { get; set; }
-
-        [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
-        public string? LatestBlockHash { get; set; }
     }
 }

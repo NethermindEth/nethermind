@@ -53,7 +53,7 @@ namespace Nethermind.JsonRpc.Modules.Admin
 
         public PeerInfo(Peer peer, bool includeDetails = false)
         {
-            PeerValidator.ValidatePeer(peer);
+            ValidatePeer(peer);
 
             var capabilities = ExtractCapabilities(peer);
 
@@ -125,13 +125,26 @@ namespace Nethermind.JsonRpc.Modules.Admin
             LastSignal = session?.LastPingUtc;
         }
 
+        private void ValidatePeer(Peer peer)
+        {
+            if (peer is null)
+            {
+                throw new ArgumentNullException(nameof(peer));
+            }
+
+            if (peer.Node is null)
+            {
+                throw new ArgumentException("Peer must have a valid node", nameof(peer));
+            }
+        }
+
         private static IReadOnlyList<Capability> ExtractCapabilities(Peer peer)
         {
             var session = peer.InSession ?? peer.OutSession;
             if (session?.TryGetProtocolHandler(Protocol.P2P, out IProtocolHandler? handler) == true &&
                 handler is IP2PProtocolHandler p2pHandler)
             {
-                var capabilities = p2pHandler.GetCapabilitiesForAdmin();
+                var capabilities = p2pHandler.GetCapabilities();
                 return capabilities is IReadOnlyList<Capability> readOnlyList ? readOnlyList : capabilities.ToArray();
             }
 
