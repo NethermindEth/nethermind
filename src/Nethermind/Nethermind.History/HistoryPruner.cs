@@ -90,10 +90,11 @@ public class HistoryPruner : IHistoryPruner
         {
             if (_blockTree.Head is null || !ShouldPruneHistory(out ulong? cutoffTimestamp))
             {
+                if (_logger.IsDebug) _logger.Debug($"Skipping historical block pruning.");
                 return Task.CompletedTask;
             }
 
-            if (_logger.IsInfo) _logger.Info($"Pruning historical blocks up to timestamp {cutoffTimestamp}");
+            if (_logger.IsInfo) _logger.Info($"Pruning historical blocks up to timestamp {cutoffTimestamp} (#{CutoffBlockNumber})");
 
             PruneBlocksAndReceipts(cutoffTimestamp!.Value, cancellationToken);
             return Task.CompletedTask;
@@ -237,6 +238,7 @@ public class HistoryPruner : IHistoryPruner
                 // should never happen
                 if (number == 0 || number >= _blockTree.SyncPivot.BlockNumber)
                 {
+                    if (_logger.IsWarn) _logger.Warn($"Encountered unexepected block #{number} while pruning history, this block will not be deleted. Should be in range (0, {_blockTree.SyncPivot.BlockNumber}).");
                     continue;
                 }
 
@@ -246,8 +248,7 @@ public class HistoryPruner : IHistoryPruner
                     batch = _chainLevelInfoRepository.StartBatch();
                 }
 
-                // todo: change to debug after testing
-                if (_logger.IsInfo) _logger.Info($"Deleting old block {number} with hash {hash}.");
+                if (_logger.IsDebug) _logger.Debug($"Deleting old block {number} with hash {hash}.");
                 _blockTree.DeleteBlock(number, hash, null, batch!, null, true);
                 _receiptStorage.RemoveReceipts(block);
                 _deletePointer = number;
@@ -353,11 +354,14 @@ public class HistoryPruner : IHistoryPruner
             _deletePointer = val.AsRlpStream().DecodeLong();
             Metrics.OldestStoredBlockNumber = _deletePointer;
         }
+
+        if (_logger.IsDebug) _logger.Debug($"Discovered oldest block stored #{_deletePointer}.");
     }
 
     private void SaveDeletePointer()
     {
         _metadataDb.Set(MetadataDbKeys.HistoryPruningDeletePointer, Rlp.Encode(_deletePointer).Bytes);
         Metrics.OldestStoredBlockNumber = _deletePointer;
+        if (_logger.IsDebug) _logger.Debug($"Persisting oldest block known = #{_deletePointer} to disk.");
     }
 }
