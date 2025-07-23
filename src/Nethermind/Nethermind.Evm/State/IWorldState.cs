@@ -20,7 +20,6 @@ public interface IWorldState : IJournal<Snapshot>, IReadOnlyStateProvider
     void SetBaseBlock(BlockHeader? header);
     new ref readonly UInt256 GetBalance(Address address);
     new ref readonly ValueHash256 GetCodeHash(Address address);
-    Hash256 StateRoot { get; }
     bool HasStateForBlock(BlockHeader? baseBlock);
 
     /// <summary>

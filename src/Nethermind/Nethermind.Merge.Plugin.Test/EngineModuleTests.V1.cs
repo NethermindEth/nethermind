@@ -1055,7 +1055,8 @@ public partial class EngineModuleTests
             {
                 ForkchoiceStateV1 forkChoiceUpdatedRequest = new(executePayloadRequest.BlockHash, executePayloadRequest.BlockHash, executePayloadRequest.BlockHash);
                 await rpc.engine_forkchoiceUpdatedV1(forkChoiceUpdatedRequest);
-                chain.ChainHeadInfoProvider.StateRoot.Should().Be(executePayloadRequest.StateRoot);
+                chain.ReadOnlyState.StateRoot.Should().Be(executePayloadRequest.StateRoot);
+                chain.ReadOnlyState.StateRoot.Should().NotBe(parentHeader.StateRoot!);
             }
         }
     }

@@ -31,7 +31,6 @@ namespace Nethermind.TxPool
 
         bool IsSyncing { get; }
         bool IsProcessingBlock { get; }
-        Hash256 StateRoot { get; }
 
         event EventHandler<BlockReplacementEventArgs> HeadChanged;
     }

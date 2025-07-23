@@ -73,7 +73,6 @@ namespace Nethermind.Blockchain
         }
 
         public bool IsProcessingBlock => _blockTree.IsProcessingBlock;
-        public Hash256 StateRoot { get; private set; } = Keccak.EmptyTreeHash;
 
         public event EventHandler<BlockReplacementEventArgs>? HeadChanged;
 
@@ -88,7 +87,6 @@ namespace Nethermind.Blockchain
                     ? currentFeePerBlobGas
                     : UInt256.Zero;
             CurrentProofVersion = spec.BlobProofVersion;
-            StateRoot = e.Block.StateRoot;
             HeadChanged?.Invoke(sender, e);
         }
     }
