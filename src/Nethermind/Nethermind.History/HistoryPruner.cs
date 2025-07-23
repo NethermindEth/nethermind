@@ -198,7 +198,8 @@ public class HistoryPruner : IHistoryPruner
         if (_historyConfig.HistoryRetentionEpochs is not null &&
             _historyConfig.HistoryRetentionEpochs < _minHistoryRetentionEpochs)
         {
-            throw new HistoryPrunerException($"HistoryRetentionEpochs must be at least {_minHistoryRetentionEpochs}.");
+            _logger.Error($"HistoryRetentionEpochs must be at least {_minHistoryRetentionEpochs}.");
+            // throw new HistoryPrunerException($"HistoryRetentionEpochs must be at least {_minHistoryRetentionEpochs}.");
         }
     }
 
