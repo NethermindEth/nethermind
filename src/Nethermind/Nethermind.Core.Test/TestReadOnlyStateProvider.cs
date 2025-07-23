@@ -10,7 +10,7 @@ using Nethermind.Int256;
 
 namespace Nethermind.Core.Test;
 
-public class TestReadOnlyStateProvider: IReadOnlyStateProvider
+public class TestReadOnlyStateProvider : IReadOnlyStateProvider
 {
     private Dictionary<Address, AccountStruct> _accounts = new();
     private Dictionary<ValueHash256, byte[]> _codes = new();
@@ -53,7 +53,7 @@ public class TestReadOnlyStateProvider: IReadOnlyStateProvider
     }
 
 
-    public void InsertCode(Address address, Memory<byte>code, IReleaseSpec spec)
+    public void InsertCode(Address address, Memory<byte> code, IReleaseSpec spec)
     {
         InsertCode(code.ToArray(), address);
     }
