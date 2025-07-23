@@ -41,6 +41,7 @@ using Nethermind.Specs;
 using Nethermind.Specs.ChainSpecStyle;
 using Nethermind.Specs.Test;
 using Nethermind.Evm.State;
+using Nethermind.Network;
 using Nethermind.State;
 using Nethermind.State.Repositories;
 using Nethermind.TxPool;
@@ -58,6 +59,7 @@ public class TestBlockchain : IDisposable
     public IMainProcessingContext MainProcessingContext => _fromContainer.MainProcessingContext;
     public IReceiptStorage ReceiptStorage => _fromContainer.ReceiptStorage;
     public ITxPool TxPool => _fromContainer.TxPool;
+    public IForkInfo ForkInfo => _fromContainer.ForkInfo;
     public IWorldStateManager WorldStateManager => _fromContainer.WorldStateManager;
     public IReadOnlyTxProcessingEnvFactory ReadOnlyTxProcessingEnvFactory => _fromContainer.ReadOnlyTxProcessingEnvFactory;
     public IShareableTxProcessorSource ShareableTxProcessorSource => _fromContainer.ShareableTxProcessorSource;
@@ -75,7 +77,8 @@ public class TestBlockchain : IDisposable
 
     public ILogFinder LogFinder => _fromContainer.LogFinder;
     public IJsonSerializer JsonSerializer { get; set; } = null!;
-    public IReadOnlyStateProvider ReadOnlyState => _fromContainer.ReadOnlyState;
+    public IReadOnlyStateProvider ReadOnlyState => ChainHeadInfoProvider.ReadOnlyStateProvider;
+    public IChainHeadInfoProvider ChainHeadInfoProvider => _fromContainer.ChainHeadInfoProvider;
     public IDb StateDb => DbProvider.StateDb;
     public IDb BlocksDb => DbProvider.BlocksDb;
     public IBlockProducer BlockProducer { get; protected set; } = null!;
@@ -144,7 +147,7 @@ public class TestBlockchain : IDisposable
         IBlockTree BlockTree,
         IBlockFinder BlockFinder,
         ILogFinder LogFinder,
-        IReadOnlyStateProvider ReadOnlyState,
+        IChainHeadInfoProvider ChainHeadInfoProvider,
         IDbProvider DbProvider,
         ISpecProvider SpecProvider,
         ISealEngine SealEngine,
@@ -162,7 +165,8 @@ public class TestBlockchain : IDisposable
         ManualTimestamper ManualTimestamper,
         IManualBlockProductionTrigger BlockProductionTrigger,
         IShareableTxProcessorSource ShareableTxProcessorSource,
-        ISealer Sealer
+        ISealer Sealer,
+        IForkInfo ForkInfo
     )
     {
     }

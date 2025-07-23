@@ -519,12 +519,13 @@ public class BlockchainProcessorTests
             {
                 ISpecProvider specProvider = ctx.Resolve<ISpecProvider>();
                 IBlockTree blockTree = ctx.Resolve<IBlockTree>();
-                IReadOnlyStateProvider readOnlyState = ctx.Resolve<IReadOnlyStateProvider>();
+                IStateReader stateReader = ctx.Resolve<IStateReader>();
+                ICodeInfoRepository codeInfoRepository = ctx.ResolveKeyed<ICodeInfoRepository>(nameof(IWorldStateManager.GlobalWorldState));
                 return new ChainHeadInfoProvider(
                     new FixedForkActivationChainHeadSpecProvider(specProvider, fixedBlock: 10_000_000),
                     blockTree,
-                    readOnlyState,
-                    new CodeInfoRepository())
+                    new ChainHeadReadOnlyStateProvider(blockTree, stateReader), // Need to use the non  ChainHeadSpecProvider constructor.
+                    codeInfoRepository)
                 {
                     HasSynced = true
                 };

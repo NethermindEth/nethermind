@@ -29,6 +29,7 @@ using Nethermind.Specs.ChainSpecStyle;
 using Nethermind.Serialization.Rlp;
 using Autofac;
 using Autofac.Core;
+using Nethermind.Init.Modules;
 using Nethermind.JsonRpc.Modules.Eth.GasPrice;
 using Nethermind.Serialization.Json;
 using Nethermind.Taiko.BlockTransactionExecutors;
@@ -103,8 +104,7 @@ public class TaikoModule : Module
 
             // L1 origin store
             .AddSingleton<IRlpStreamDecoder<L1Origin>, L1OriginDecoder>()
-            .AddKeyedSingleton<IDb>(L1OriginStore.L1OriginDbName, ctx => ctx
-                .Resolve<IDbFactory>().CreateDb(new DbSettings(L1OriginStore.L1OriginDbName, L1OriginStore.L1OriginDbName.ToLower())))
+            .AddDatabase(L1OriginStore.L1OriginDbName, L1OriginStore.L1OriginDbName, L1OriginStore.L1OriginDbName.ToLower())
             .AddSingleton<IL1OriginStore, L1OriginStore>()
 
             // Sync modification

@@ -56,20 +56,5 @@ namespace Nethermind.Db
                     .GetColumnDb<T>(dbName)
                     .CreateReadOnly(_createInMemoryWriteStore));
         }
-
-        public void RegisterDb<T>(string dbName, T db) where T : class, IDb
-        {
-            _wrappedProvider.RegisterDb(dbName, db);
-        }
-
-        public void RegisterColumnDb<T>(string dbName, IColumnsDb<T> db)
-        {
-            _wrappedProvider.RegisterColumnDb(dbName, db);
-        }
-
-        public IEnumerable<KeyValuePair<string, IDbMeta>> GetAllDbMeta()
-        {
-            return _wrappedProvider.GetAllDbMeta();
-        }
     }
 }

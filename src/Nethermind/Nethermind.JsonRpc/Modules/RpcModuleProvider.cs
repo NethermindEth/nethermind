@@ -152,7 +152,7 @@ namespace Nethermind.JsonRpc.Modules
 
             if (context.Url is not null)
             {
-                return context.Url.EnabledModules.Contains(result.ModuleType, StringComparer.OrdinalIgnoreCase)
+                return context.Url.EnabledModules.Contains(result.ModuleType)
                     ? ModuleResolution.Enabled
                     : ModuleResolution.Disabled;
             }
