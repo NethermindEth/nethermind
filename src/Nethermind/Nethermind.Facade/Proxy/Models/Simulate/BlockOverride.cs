@@ -2,11 +2,8 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using Nethermind.Config;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
-using Nethermind.Core.ExecutionRequest;
-using Nethermind.Core.Specs;
 using Nethermind.Int256;
 
 namespace Nethermind.Facade.Proxy.Models.Simulate;
@@ -21,45 +18,21 @@ public class BlockOverride
     public UInt256? BaseFeePerGas { get; set; }
     public UInt256? BlobBaseFee { get; set; }
 
-    public BlockHeader GetBlockHeader(BlockHeader parent, IBlocksConfig cfg, IReleaseSpec spec)
+    public void ApplyOverrides(BlockHeader result)
     {
-        ulong newTime = Time ?? checked(parent.Timestamp + cfg.SecondsPerSlot);
-
-        long newGasLimit = GasLimit switch
+        if (Time is not null) result.Timestamp = Time.Value;
+        if (GasLimit is not null)
         {
-            null => parent.GasLimit,
-            <= long.MaxValue => (long)GasLimit,
-            _ => throw new OverflowException($"GasLimit value is too large, max value {ulong.MaxValue}")
-        };
+            if (GasLimit > long.MaxValue)
+            {
+                throw new OverflowException($"GasLimit value is too large, max value {ulong.MaxValue}");
+            }
+            result.GasLimit = (long)GasLimit.Value;
+        }
 
-        long newBlockNumber = Number switch
-        {
-            null => checked(parent.Number + 1),
-            <= long.MaxValue => (long)Number,
-            _ => throw new OverflowException($"Block Number value is too large, max value {ulong.MaxValue}")
-        };
-
-        Address newFeeRecipientAddress = FeeRecipient ?? parent.Beneficiary!;
-        UInt256 newDifficulty = parent.Difficulty == 0 ? 0 : parent.Difficulty + 1;
-        BlockHeader result = new(
-            parent.Hash!,
-            Keccak.OfAnEmptySequenceRlp,
-            newFeeRecipientAddress,
-            newDifficulty,
-            newBlockNumber,
-            newGasLimit,
-            newTime,
-            [],
-            requestsHash: parent.RequestsHash)
-        {
-            BaseFeePerGas = BaseFeePerGas ?? BaseFeeCalculator.Calculate(parent, spec),
-            MixHash = PrevRandao,
-            IsPostMerge = parent.Difficulty == 0,
-            TotalDifficulty = parent.TotalDifficulty + newDifficulty,
-            SealEngineType = parent.SealEngineType,
-            RequestsHash = parent.RequestsHash,
-        };
-
-        return result;
+        if (Number is not null) result.Number = (long)Number.Value;
+        if (FeeRecipient is not null) result.Beneficiary = FeeRecipient;
+        if (BaseFeePerGas is not null) result.BaseFeePerGas = BaseFeePerGas.Value;
+        if (PrevRandao is not null && PrevRandao != Hash256.Zero) result.MixHash = PrevRandao;
     }
 }
