@@ -63,6 +63,7 @@ jobs:
           - Nethermind.Facade.Test
           - Nethermind.Flashbots.Test
           - Nethermind.HealthChecks.Test
+          - Nethermind.History.Test
           - Nethermind.Hive.Test
           - Nethermind.JsonRpc.Test
           - Nethermind.JsonRpc.TraceStore.Test
