@@ -1,6 +1,6 @@
 ﻿<Project Sdk="Microsoft.NET.Sdk">
 
-  <Import Project="../../tests.props" />
+  <Import Project="../../../src/Nethermind/tests.props" />
 
   <PropertyGroup>
     <Nullable>enable</Nullable>
