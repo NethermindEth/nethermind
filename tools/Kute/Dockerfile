@@ -9,13 +9,14 @@ ARG TARGETARCH
 COPY . .
 
 RUN arch=$([ "$TARGETARCH" = "amd64" ] && echo "x64" || echo "$TARGETARCH") && \
-  dotnet publish tools/Kute/Nethermind.Tools.Kute -c $BUILD_CONFIG -a $arch -o out --sc true
+  dotnet publish tools/Kute/Nethermind.Tools.Kute -c $BUILD_CONFIG -a $arch -o out --sc
 
 FROM mcr.microsoft.com/dotnet/runtime-deps:9.0-noble
 
 WORKDIR /nethermind
 
-COPY --from=build /out/ ./
+COPY --from=build /out .
 
-RUN apt update && apt-get install -y ca-certificates
+RUN apt-get update && apt-get install -y ca-certificates
+
 ENTRYPOINT ["./Nethermind.Tools.Kute"]
