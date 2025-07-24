@@ -82,7 +82,7 @@ public class ContractBasedValidatorTests
         _readOnlyTxProcessorSource = Substitute.For<IReadOnlyTxProcessorSource>();
         _readOnlyTxProcessorSource.Build(Arg.Any<BlockHeader>()).Returns(new ReadOnlyTxProcessingScope(
             _transactionProcessor,
-            new Reactive.AnonymousDisposable(() => {}),
+            new Reactive.AnonymousDisposable(() => { }),
             _stateProvider));
         _blockTree.Head.Returns(_block);
 

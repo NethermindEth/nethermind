@@ -200,13 +200,15 @@ public class StorageProviderTests
         BlockHeader newBase = Build.A.BlockHeader.WithStateRoot(stateRoot).TestObject;
 
         // block 2
-        using (var _ = storageProvider.BeginScope(newBase)) {
+        using (var _ = storageProvider.BeginScope(newBase))
+        {
             storageProvider.Set(new StorageCell(ctx.Address1, 1), _values[2]);
             storageProvider.Commit(Frontier.Instance);
             storageProvider.CommitTree(0);
         }
 
-        using (var _ = storageProvider.BeginScope(newBase)) {
+        using (var _ = storageProvider.BeginScope(newBase))
+        {
             storageProvider.AccountExists(ctx.Address1).Should().BeTrue();
 
             byte[] valueAfter = storageProvider.Get(new StorageCell(ctx.Address1, 1)).ToArray();

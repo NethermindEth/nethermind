@@ -27,7 +27,7 @@ public class OverridableWorldStateManager : IOverridableWorldScope
     public IWorldState WorldState { get; }
     public IDisposable BeginScope(BlockHeader? header)
     {
-        IDisposable closer =  WorldState.BeginScope(header);
+        IDisposable closer = WorldState.BeginScope(header);
         return new Reactive.AnonymousDisposable(() =>
         {
             closer.Dispose();

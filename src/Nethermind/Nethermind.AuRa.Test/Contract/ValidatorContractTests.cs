@@ -41,7 +41,7 @@ namespace Nethermind.AuRa.Test.Contract
             _readOnlyTxProcessorSource = Substitute.For<IReadOnlyTxProcessorSource>();
             _readOnlyTxProcessorSource.Build(_block.Header).Returns(new ReadOnlyTxProcessingScope(
                 _transactionProcessor,
-                new Reactive.AnonymousDisposable(() => {}),
+                new Reactive.AnonymousDisposable(() => { }),
                 _stateProvider));
         }
 

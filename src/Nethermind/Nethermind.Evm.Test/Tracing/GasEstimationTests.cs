@@ -375,7 +375,7 @@ namespace Nethermind.Evm.Test.Tracing
             }
         }
 
-        private class TestEnvironment: IDisposable
+        private class TestEnvironment : IDisposable
         {
             public ISpecProvider _specProvider;
             public IEthereumEcdsa _ethereumEcdsa;
