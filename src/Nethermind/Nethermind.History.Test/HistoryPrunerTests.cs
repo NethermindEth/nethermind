@@ -38,6 +38,7 @@ public class HistoryPrunerTests
     public async Task Can_prune_blocks_older_than_specified_epochs()
     {
         const int blocks = 100;
+        const int cutoff = 36;
 
         // n.b. technically invalid, should be at least 82125 epochs
         // however not feasible to test this
@@ -59,17 +60,19 @@ public class HistoryPrunerTests
 
         Block head = testBlockchain.BlockTree.Head;
         Assert.That(head, Is.Not.Null);
+        testBlockchain.BlockTree.SyncPivot = (blocks, Hash256.Zero);
 
         IHistoryPruner historyPruner = testBlockchain.Container.Resolve<IHistoryPruner>();
 
-        testBlockchain.BlockTree.SyncPivot = (1000, Hash256.Zero);
+
+        CheckOldestAndCutoff(1, cutoff, historyPruner);
 
         await historyPruner.TryPruneHistory(CancellationToken.None);
 
         CheckGenesisPreserved(testBlockchain, blockHashes[0]);
         for (int i = 1; i <= blocks; i++)
         {
-            if (i < blocks - 64)
+            if (i < cutoff)
             {
                 CheckBlockPruned(testBlockchain, blockHashes, i);
             }
@@ -80,6 +83,7 @@ public class HistoryPrunerTests
         }
 
         CheckHeadPreserved(testBlockchain, blocks);
+        CheckOldestAndCutoff(cutoff, cutoff, historyPruner);
     }
 
     [Test]
@@ -89,7 +93,7 @@ public class HistoryPrunerTests
 
         IHistoryConfig historyConfig = new HistoryConfig
         {
-            RetentionEpochs = null,
+            RetentionEpochs = 100, // should have no effect
             DropPreMerge = true
         };
         using BasicTestBlockchain testBlockchain = await BasicTestBlockchain.Create(BuildContainer(historyConfig));
@@ -104,10 +108,11 @@ public class HistoryPrunerTests
 
         Block head = testBlockchain.BlockTree.Head;
         Assert.That(head, Is.Not.Null);
+        testBlockchain.BlockTree.SyncPivot = (blocks, Hash256.Zero);
 
         IHistoryPruner historyPruner = testBlockchain.Container.Resolve<IHistoryPruner>();
 
-        testBlockchain.BlockTree.SyncPivot = (1000, Hash256.Zero);
+        CheckOldestAndCutoff(1, BeaconGenesisBlockNumber, historyPruner);
 
         await historyPruner.TryPruneHistory(CancellationToken.None);
 
@@ -126,6 +131,7 @@ public class HistoryPrunerTests
         }
 
         CheckHeadPreserved(testBlockchain, blocks);
+        CheckOldestAndCutoff(BeaconGenesisBlockNumber, BeaconGenesisBlockNumber, historyPruner);
     }
 
     [Test]
@@ -151,10 +157,11 @@ public class HistoryPrunerTests
 
         Block head = testBlockchain.BlockTree.Head;
         Assert.That(head, Is.Not.Null);
+        testBlockchain.BlockTree.SyncPivot = (syncPivot, Hash256.Zero);
 
         IHistoryPruner historyPruner = testBlockchain.Container.Resolve<IHistoryPruner>();
 
-        testBlockchain.BlockTree.SyncPivot = (syncPivot, Hash256.Zero);
+        CheckOldestAndCutoff(1, BeaconGenesisBlockNumber, historyPruner);
 
         await historyPruner.TryPruneHistory(CancellationToken.None);
 
@@ -173,6 +180,42 @@ public class HistoryPrunerTests
         }
 
         CheckHeadPreserved(testBlockchain, blocks);
+        CheckOldestAndCutoff(syncPivot, BeaconGenesisBlockNumber, historyPruner);
+    }
+
+    [Test]
+    public async Task Can_find_oldest_block()
+    {
+        const int blocks = 100;
+        const int cutoff = 36;
+
+        IHistoryConfig historyConfig = new HistoryConfig
+        {
+            RetentionEpochs = 2,
+            DropPreMerge = false
+        };
+        using BasicTestBlockchain testBlockchain = await BasicTestBlockchain.Create(BuildContainer(historyConfig));
+
+        List<Hash256> blockHashes = [];
+        blockHashes.Add(testBlockchain.BlockTree.Head!.Hash!);
+        for (int i = 0; i < blocks; i++)
+        {
+            await testBlockchain.AddBlock();
+            blockHashes.Add(testBlockchain.BlockTree.Head!.Hash!);
+        }
+
+        Block head = testBlockchain.BlockTree.Head;
+        Assert.That(head, Is.Not.Null);
+        testBlockchain.BlockTree.SyncPivot = (blocks, Hash256.Zero);
+
+        HistoryPruner historyPruner = (HistoryPruner)testBlockchain.Container.Resolve<IHistoryPruner>();
+
+        CheckOldestAndCutoff(1, cutoff, historyPruner);
+
+        await historyPruner.TryPruneHistory(CancellationToken.None);
+        historyPruner.FindOldestBlock(); // recalculate oldest block with binary search
+
+        CheckOldestAndCutoff(cutoff, cutoff, historyPruner);
     }
 
     [Test]
@@ -302,10 +345,20 @@ public class HistoryPrunerTests
         }
     }
 
+    private static void CheckOldestAndCutoff(long oldest, long cutoff, IHistoryPruner historyPruner)
+    {
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(historyPruner.CutoffBlockNumber, Is.EqualTo(cutoff));
+            Assert.That(historyPruner.OldestBlockNumber, Is.EqualTo(oldest));
+        }
+    }
+
     private static Action<ContainerBuilder> BuildContainer(IHistoryConfig historyConfig)
     {
         ISpecProvider specProvider = Substitute.For<ISpecProvider>();
         specProvider.BeaconChainGenesisTimestamp.Returns(BeaconGenesisTimestamp);
+        specProvider.MergeBlockNumber.Returns(new ForkActivation(BeaconGenesisBlockNumber, BeaconGenesisTimestamp));
 
         return containerBuilder => containerBuilder
             .AddSingleton(specProvider)

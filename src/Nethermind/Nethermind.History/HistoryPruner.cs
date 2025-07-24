@@ -3,6 +3,7 @@
 
 using System;
 using System.Collections.Generic;
+using System.Runtime.CompilerServices;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Blockchain;
@@ -16,6 +17,8 @@ using Nethermind.Db;
 using Nethermind.Logging;
 using Nethermind.Serialization.Rlp;
 using Nethermind.State.Repositories;
+
+[assembly: InternalsVisibleTo("Nethermind.History.Test")]
 
 namespace Nethermind.History;
 
@@ -112,14 +115,19 @@ public class HistoryPruner : IHistoryPruner
         get => FindCutoffBlockNumber();
     }
 
-    private void FindOldestBlock()
+    public long? OldestBlockNumber
+    {
+        get => _deletePointer;
+    }
+
+    internal void FindOldestBlock()
     {
         lock (_searchLock)
         {
             // lock prune lock since _deletePointer could be altered
             lock (_pruneLock)
             {
-                long? oldestBlockNumber = BlockTree.BinarySearchBlockNumber(1L, _blockTree.SyncPivot.BlockNumber, LevelExists);
+                long? oldestBlockNumber = BlockTree.BinarySearchBlockNumber(1L, _blockTree.SyncPivot.BlockNumber, LevelExists, BlockTree.BinarySearchDirection.Down);
 
                 if (oldestBlockNumber is not null)
                 {
@@ -191,7 +199,7 @@ public class HistoryPruner : IHistoryPruner
 
                 // find cutoff point
                 return block is not null && block.Timestamp >= cutoffTimestamp;
-            });
+            }, BlockTree.BinarySearchDirection.Down);
 
             _cutoffTimestamp = cutoffTimestamp;
             _cutoffPointer = cutoffBlockNumber ?? _cutoffPointer;
@@ -259,7 +267,7 @@ public class HistoryPruner : IHistoryPruner
                 if (_logger.IsInfo) _logger.Info($"Deleting old block {number} with hash {hash}.");
                 _blockTree.DeleteOldBlock(number, hash, batch!);
                 _receiptStorage.RemoveReceipts(block);
-                _deletePointer = number;
+                _deletePointer = number + 1;
                 lastDeletedTimstamp = block.Timestamp;
 
                 deletedBlocks++;
