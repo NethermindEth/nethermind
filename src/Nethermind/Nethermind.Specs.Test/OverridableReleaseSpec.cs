@@ -195,5 +195,6 @@ namespace Nethermind.Specs.Test
         Array? IReleaseSpec.EvmInstructionsTraced { get => spec.EvmInstructionsTraced; set => spec.EvmInstructionsTraced = value; }
         public bool IsEip7939Enabled => spec.IsEip7939Enabled;
         public bool IsEip7907Enabled => spec.IsEip7907Enabled;
+        public bool IsL1SloadEnabled => spec.IsL1SloadEnabled;
     }
 }
