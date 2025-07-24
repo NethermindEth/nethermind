@@ -312,11 +312,12 @@ public class HistoryPruner : IHistoryPruner
     }
 
     private IEnumerable<Block> GetBlocksBeforeTimestamp(ulong cutoffTimestamp)
-        => GetBlocksByNumber(_deletePointer, _blockTree.SyncPivot.BlockNumber, b => b.Timestamp >= cutoffTimestamp, i => _deletePointer = i);
+        => GetBlocksByNumber(_deletePointer, _blockTree.SyncPivot.BlockNumber, b => b.Timestamp >= cutoffTimestamp, _ => { });
 
     private IEnumerable<Block> GetBlocksByNumber(long from, long to, Predicate<Block> endSearch, Action<long> onFirstBlock)
     {
         bool firstBlock = true;
+        _logger.Info($"Searching for blocks in range {from}-{to}.");
         for (long i = from; i <= to; i++)
         {
             ChainLevelInfo? chainLevelInfo = _chainLevelInfoRepository.LoadLevel(i);
