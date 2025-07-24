@@ -56,11 +56,6 @@ public partial class BlockProcessor(
     private Task _clearTask = Task.CompletedTask;
 
     private const int MaxUncommittedBlocks = 64;
-    private readonly Action<Task> _clearCaches = (t) =>
-    {
-        stateProvider.Reset();
-        preWarmer?.ClearCaches();
-    };
 
     /// <summary>
     /// We use a single receipt tracer for all blocks. Internally receipt tracer forwards most of the calls
@@ -209,8 +204,15 @@ public partial class BlockProcessor(
     }
 
     private void WaitForCacheClear() => _clearTask.GetAwaiter().GetResult();
-    private void ClearCaches()
+
+    private async Task ClearCaches(Task? preWarmTask)
     {
+        if (preWarmTask is not null)
+        {
+            await preWarmTask;
+        }
+        await _stateProvider.WaitForCodeCommit();
+
         _stateProvider.Reset();
         preWarmer?.ClearCaches();
     }
@@ -220,11 +222,11 @@ public partial class BlockProcessor(
         if (preWarmTask is not null)
         {
             // Can start clearing caches in background
-            _clearTask = preWarmTask.ContinueWith(_clearCaches).ContinueWith((t) => _stateProvider.WaitForCodeCommit()).Unwrap();
+            _clearTask = ClearCaches(preWarmTask);
         }
         else
         {
-            _clearTask = Task.Run(ClearCaches).ContinueWith((t) => _stateProvider.WaitForCodeCommit()).Unwrap();
+            _clearTask = Task.Run(() => ClearCaches(null));
         }
     }
 
