@@ -47,7 +47,7 @@ public class HistoryPrunerTests
             DropPreMerge = false
         };
 
-        using BasicTestBlockchain testBlockchain = await BasicTestBlockchain.Create(BuildContainer(), [BlocksConfig, historyConfig]);
+        using BasicTestBlockchain testBlockchain = await BasicTestBlockchain.Create(BuildContainer(historyConfig));
 
         List<Hash256> blockHashes = [];
         blockHashes.Add(testBlockchain.BlockTree.Head!.Hash!);
@@ -92,7 +92,7 @@ public class HistoryPrunerTests
             RetentionEpochs = null,
             DropPreMerge = true
         };
-        using BasicTestBlockchain testBlockchain = await BasicTestBlockchain.Create(BuildContainer(), [BlocksConfig, historyConfig]);
+        using BasicTestBlockchain testBlockchain = await BasicTestBlockchain.Create(BuildContainer(historyConfig));
 
         List<Hash256> blockHashes = [];
         blockHashes.Add(testBlockchain.BlockTree.Head!.Hash!);
@@ -139,7 +139,7 @@ public class HistoryPrunerTests
             RetentionEpochs = null,
             DropPreMerge = true
         };
-        using BasicTestBlockchain testBlockchain = await BasicTestBlockchain.Create(BuildContainer(), [BlocksConfig, historyConfig]);
+        using BasicTestBlockchain testBlockchain = await BasicTestBlockchain.Create(BuildContainer(historyConfig));
 
         List<Hash256> blockHashes = [];
         blockHashes.Add(testBlockchain.BlockTree.Head!.Hash!);
@@ -185,7 +185,7 @@ public class HistoryPrunerTests
             RetentionEpochs = null,
             DropPreMerge = false
         };
-        using BasicTestBlockchain testBlockchain = await BasicTestBlockchain.Create(BuildContainer(), [BlocksConfig, historyConfig]);
+        using BasicTestBlockchain testBlockchain = await BasicTestBlockchain.Create(BuildContainer(historyConfig));
 
         List<Hash256> blockHashes = [];
         blockHashes.Add(testBlockchain.BlockTree.Head!.Hash!);
@@ -302,11 +302,14 @@ public class HistoryPrunerTests
         }
     }
 
-    private static Action<ContainerBuilder> BuildContainer()
+    private static Action<ContainerBuilder> BuildContainer(IHistoryConfig historyConfig)
     {
         ISpecProvider specProvider = Substitute.For<ISpecProvider>();
         specProvider.BeaconChainGenesisTimestamp.Returns(BeaconGenesisTimestamp);
 
-        return containerBuilder => containerBuilder.AddSingleton(specProvider);
+        return containerBuilder => containerBuilder
+            .AddSingleton(specProvider)
+            .AddSingleton(historyConfig)
+            .AddSingleton(BlocksConfig);
     }
 }

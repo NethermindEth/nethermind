@@ -184,11 +184,11 @@ public class TestBlockchain : IDisposable
     // Please don't add any new parameter to this method. Pass any customization via autofac's configuration
     // or override method or a utility function that wrap around the autofac configuration.
     // Try to use plugin's module where possible to make sure prod and test components are wired similarly.
-    protected virtual async Task<TestBlockchain> Build(Action<ContainerBuilder>? configurer = null, IEnumerable<IConfig>? configs = null)
+    protected virtual async Task<TestBlockchain> Build(Action<ContainerBuilder>? configurer = null)
     {
         JsonSerializer = new EthereumJsonSerializer();
 
-        IConfigProvider configProvider = new ConfigProvider([.. configs ?? CreateConfigs()]);
+        IConfigProvider configProvider = new ConfigProvider([.. CreateConfigs()]);
 
         ContainerBuilder builder = ConfigureContainer(new ContainerBuilder(), configProvider);
         ConfigureContainer(builder, configProvider);

@@ -206,7 +206,7 @@ namespace Nethermind.JsonRpc.Test.Modules
             @this.ForkInfo,
             @this.BlocksConfig.SecondsPerSlot);
 
-        protected override async Task<TestBlockchain> Build(Action<ContainerBuilder>? configurer = null, IEnumerable<IConfig>? configs = null)
+        protected override async Task<TestBlockchain> Build(Action<ContainerBuilder>? configurer = null)
         {
             await base.Build(builder =>
             {

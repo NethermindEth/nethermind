@@ -16,10 +16,10 @@ namespace Nethermind.Core.Test.Blockchain;
 /// </summary>
 public class BasicTestBlockchain : TestBlockchain
 {
-    public static async Task<BasicTestBlockchain> Create(Action<ContainerBuilder>? configurer = null, IEnumerable<IConfig>? configs = null)
+    public static async Task<BasicTestBlockchain> Create(Action<ContainerBuilder>? configurer = null)
     {
         BasicTestBlockchain chain = new();
-        await chain.Build(configurer, configs);
+        await chain.Build(configurer);
         return chain;
     }
 

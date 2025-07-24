@@ -49,7 +49,7 @@ public class FullPruningDiskTest
             TempDirectory = TempPath.GetTempDirectory();
         }
 
-        protected override async Task<TestBlockchain> Build(Action<ContainerBuilder>? containerBuilder = null, IEnumerable<IConfig>? configs = null)
+        protected override async Task<TestBlockchain> Build(Action<ContainerBuilder>? containerBuilder = null)
         {
             TestBlockchain chain = await base.Build(containerBuilder);
             PruningDb = (FullPruningDb)DbProvider.StateDb;
