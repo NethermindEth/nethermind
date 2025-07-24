@@ -44,6 +44,7 @@ public class HistoryPruner : IHistoryPruner
     private long? _cutoffPointer;
     private ulong? _cutoffTimestamp;
     private const int DeleteBatchSize = 64;
+    private readonly int LoggingInterval;
 
     public class HistoryPrunerException(string message, Exception? innerException = null) : Exception(message, innerException);
 
@@ -61,6 +62,7 @@ public class HistoryPruner : IHistoryPruner
     {
         _specProvider = specProvider;
         _logger = logManager.GetClassLogger();
+        LoggingInterval = _logger.IsDebug ? 5 : 100000;
         _blockTree = blockTree;
         _receiptStorage = receiptStorage;
         _chainLevelInfoRepository = chainLevelInfoRepository;
@@ -103,7 +105,11 @@ public class HistoryPruner : IHistoryPruner
                 return Task.CompletedTask;
             }
 
-            if (_logger.IsInfo) _logger.Info($"Pruning historical blocks up to timestamp {cutoffTimestamp} (#{CutoffBlockNumber})");
+            if (_logger.IsInfo)
+            {
+                long? cutoff = CutoffBlockNumber;
+                _logger.Info($"Pruning historical blocks up to timestamp {cutoffTimestamp} (#{(cutoff is null ? "unknown" : cutoff)}). SyncPivot={_blockTree.SyncPivot.BlockNumber}");
+            }
 
             PruneBlocksAndReceipts(cutoffTimestamp!.Value, cancellationToken);
             return Task.CompletedTask;
@@ -261,6 +267,14 @@ public class HistoryPruner : IHistoryPruner
                 {
                     batch?.Dispose();
                     batch = _chainLevelInfoRepository.StartBatch();
+                }
+
+                if (_logger.IsInfo && deletedBlocks % LoggingInterval == 0)
+                {
+                    long? cutoff = CutoffBlockNumber;
+                    cutoff = cutoff is null ? null : long.Min(cutoff!.Value, _blockTree.SyncPivot.BlockNumber) - _deletePointer;
+                    string suffix = cutoff is null ? "could not calculate cutoff." : $"with {cutoff} remaining.";
+                    _logger.Info($"Historical block pruning in progress... Deleted {deletedBlocks} blocks, " + suffix);
                 }
 
                 if (_logger.IsDebug) _logger.Debug($"Deleting old block {number} with hash {hash}.");
