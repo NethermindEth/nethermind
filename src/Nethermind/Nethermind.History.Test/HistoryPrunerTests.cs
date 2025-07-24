@@ -36,7 +36,7 @@ public class HistoryPrunerTests
     [Test]
     public async Task Can_prune_blocks_older_than_specified_epochs()
     {
-        const int Blocks = 100;
+        const int blocks = 100;
 
         // n.b. technically invalid, should be at least 82125 epochs
         // however not feasible to test this
@@ -50,7 +50,7 @@ public class HistoryPrunerTests
 
         List<Hash256> blockHashes = [];
         blockHashes.Add(testBlockchain.BlockTree.Head!.Hash!);
-        for (int i = 0; i < Blocks; i++)
+        for (int i = 0; i < blocks; i++)
         {
             await testBlockchain.AddBlock();
             blockHashes.Add(testBlockchain.BlockTree.Head!.Hash!);
@@ -66,9 +66,9 @@ public class HistoryPrunerTests
         await historyPruner.TryPruneHistory(CancellationToken.None);
 
         CheckGenesisPreserved(testBlockchain, blockHashes[0]);
-        for (int i = 1; i <= Blocks; i++)
+        for (int i = 1; i <= blocks; i++)
         {
-            if (i < Blocks - 64)
+            if (i < blocks - 64)
             {
                 CheckBlockPruned(testBlockchain, blockHashes, i);
             }
@@ -78,13 +78,13 @@ public class HistoryPrunerTests
             }
         }
 
-        CheckHeadPreserved(testBlockchain, Blocks);
+        CheckHeadPreserved(testBlockchain, blocks);
     }
 
     [Test]
     public async Task Can_prune_pre_merge_blocks()
     {
-        const int Blocks = 100;
+        const int blocks = 100;
 
         IHistoryConfig historyConfig = new HistoryConfig
         {
@@ -95,7 +95,7 @@ public class HistoryPrunerTests
 
         List<Hash256> blockHashes = [];
         blockHashes.Add(testBlockchain.BlockTree.Head!.Hash!);
-        for (int i = 0; i < Blocks; i++)
+        for (int i = 0; i < blocks; i++)
         {
             await testBlockchain.AddBlock();
             blockHashes.Add(testBlockchain.BlockTree.Head!.Hash!);
@@ -112,7 +112,7 @@ public class HistoryPrunerTests
 
         CheckGenesisPreserved(testBlockchain, blockHashes[0]);
 
-        for (int i = 1; i <= Blocks; i++)
+        for (int i = 1; i <= blocks; i++)
         {
             if (i < BeaconGenesisBlockNumber)
             {
@@ -124,14 +124,14 @@ public class HistoryPrunerTests
             }
         }
 
-        CheckHeadPreserved(testBlockchain, Blocks);
+        CheckHeadPreserved(testBlockchain, blocks);
     }
 
     [Test]
     public async Task Prunes_up_to_sync_pivot()
     {
-        const int Blocks = 100;
-        const long SyncPivot = 20;
+        const int blocks = 100;
+        const long syncPivot = 20;
 
         IHistoryConfig historyConfig = new HistoryConfig
         {
@@ -142,7 +142,7 @@ public class HistoryPrunerTests
 
         List<Hash256> blockHashes = [];
         blockHashes.Add(testBlockchain.BlockTree.Head!.Hash!);
-        for (int i = 0; i < Blocks; i++)
+        for (int i = 0; i < blocks; i++)
         {
             await testBlockchain.AddBlock();
             blockHashes.Add(testBlockchain.BlockTree.Head!.Hash!);
@@ -153,15 +153,15 @@ public class HistoryPrunerTests
 
         IHistoryPruner historyPruner = testBlockchain.Container.Resolve<IHistoryPruner>();
 
-        testBlockchain.BlockTree.SyncPivot = (SyncPivot, Hash256.Zero);
+        testBlockchain.BlockTree.SyncPivot = (syncPivot, Hash256.Zero);
 
         await historyPruner.TryPruneHistory(CancellationToken.None);
 
         CheckGenesisPreserved(testBlockchain, blockHashes[0]);
 
-        for (int i = 1; i <= Blocks; i++)
+        for (int i = 1; i <= blocks; i++)
         {
-            if (i < SyncPivot)
+            if (i < syncPivot)
             {
                 CheckBlockPruned(testBlockchain, blockHashes, i);
             }
@@ -171,13 +171,13 @@ public class HistoryPrunerTests
             }
         }
 
-        CheckHeadPreserved(testBlockchain, Blocks);
+        CheckHeadPreserved(testBlockchain, blocks);
     }
 
     [Test]
     public async Task Does_not_prune_when_disabled()
     {
-        const int Blocks = 10;
+        const int blocks = 10;
 
         IHistoryConfig historyConfig = new HistoryConfig
         {
@@ -188,7 +188,7 @@ public class HistoryPrunerTests
 
         List<Hash256> blockHashes = [];
         blockHashes.Add(testBlockchain.BlockTree.Head!.Hash!);
-        for (int i = 0; i < Blocks; i++)
+        for (int i = 0; i < blocks; i++)
         {
             await testBlockchain.AddBlock();
             blockHashes.Add(testBlockchain.BlockTree.Head!.Hash!);
@@ -199,12 +199,12 @@ public class HistoryPrunerTests
 
         CheckGenesisPreserved(testBlockchain, blockHashes[0]);
 
-        for (int i = 1; i <= Blocks; i++)
+        for (int i = 1; i <= blocks; i++)
         {
             CheckBlockPreserved(testBlockchain, blockHashes, i);
         }
 
-        CheckHeadPreserved(testBlockchain, Blocks);
+        CheckHeadPreserved(testBlockchain, blocks);
     }
 
     [Test]
