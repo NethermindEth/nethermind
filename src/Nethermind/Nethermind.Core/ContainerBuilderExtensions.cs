@@ -132,56 +132,6 @@ public static class ContainerBuilderExtensions
         return builder;
     }
 
-    public static ContainerBuilder AddSingleton<T, TArg0, TArg1, TArg2, TArg3, TArg4, TArg5>(this ContainerBuilder builder, Func<TArg0, TArg1, TArg2, TArg3, TArg4, TArg5, T> factoryMethod) where T : class where TArg0 : notnull where TArg1 : notnull where TArg2 : notnull where TArg3 : notnull where TArg4 : notnull where TArg5 : notnull
-    {
-        Func<IComponentContext, TArg0> param0 = CreateArgResolver<TArg0>(factoryMethod.Method, 0);
-        Func<IComponentContext, TArg1> param1 = CreateArgResolver<TArg1>(factoryMethod.Method, 1);
-        Func<IComponentContext, TArg2> param2 = CreateArgResolver<TArg2>(factoryMethod.Method, 2);
-        Func<IComponentContext, TArg3> param3 = CreateArgResolver<TArg3>(factoryMethod.Method, 3);
-        Func<IComponentContext, TArg4> param4 = CreateArgResolver<TArg4>(factoryMethod.Method, 4);
-        Func<IComponentContext, TArg5> param5 = CreateArgResolver<TArg5>(factoryMethod.Method, 5);
-
-        builder
-            .Register((ctx) => factoryMethod(
-                param0(ctx),
-                param1(ctx),
-                param2(ctx),
-                param3(ctx),
-                param4(ctx),
-                param5(ctx)
-            ))
-            .As<T>()
-            .SingleInstance();
-
-        return builder;
-    }
-
-    public static ContainerBuilder AddSingleton<T, TArg0, TArg1, TArg2, TArg3, TArg4, TArg5, TArg6>(this ContainerBuilder builder, Func<TArg0, TArg1, TArg2, TArg3, TArg4, TArg5, TArg6, T> factoryMethod) where T : class where TArg0 : notnull where TArg1 : notnull where TArg2 : notnull where TArg3 : notnull where TArg4 : notnull where TArg5 : notnull where TArg6 : notnull
-    {
-        Func<IComponentContext, TArg0> param0 = CreateArgResolver<TArg0>(factoryMethod.Method, 0);
-        Func<IComponentContext, TArg1> param1 = CreateArgResolver<TArg1>(factoryMethod.Method, 1);
-        Func<IComponentContext, TArg2> param2 = CreateArgResolver<TArg2>(factoryMethod.Method, 2);
-        Func<IComponentContext, TArg3> param3 = CreateArgResolver<TArg3>(factoryMethod.Method, 3);
-        Func<IComponentContext, TArg4> param4 = CreateArgResolver<TArg4>(factoryMethod.Method, 4);
-        Func<IComponentContext, TArg5> param5 = CreateArgResolver<TArg5>(factoryMethod.Method, 5);
-        Func<IComponentContext, TArg6> param6 = CreateArgResolver<TArg6>(factoryMethod.Method, 6);
-
-        builder
-            .Register((ctx) => factoryMethod(
-                param0(ctx),
-                param1(ctx),
-                param2(ctx),
-                param3(ctx),
-                param4(ctx),
-                param5(ctx),
-                param6(ctx)
-            ))
-            .As<T>()
-            .SingleInstance();
-
-        return builder;
-    }
-
     public static ContainerBuilder AddSingleton<T>(this ContainerBuilder builder, Func<IComponentContext, T> factory) where T : class
     {
         builder.Register(factory)

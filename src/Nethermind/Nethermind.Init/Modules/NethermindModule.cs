@@ -71,18 +71,7 @@ public class NethermindModule(ChainSpec chainSpec, IConfigProvider configProvide
             .AddSingleton<IEthereumEcdsa, ISpecProvider>((specProvider) => new EthereumEcdsa(specProvider.ChainId))
             .Bind<IEcdsa, IEthereumEcdsa>()
 
-            .AddSingleton<IHistoryPruner, IBlockTree, IReceiptStorage, ISpecProvider, IChainLevelInfoRepository, IDbProvider, IProcessExitSource, IBackgroundTaskScheduler>(
-                (blockTree, receiptStorage, specProvider, chainLevelInfoRepository, dbProvider, processExitSource, backgroundTaskScheduler) => new HistoryPruner(
-                blockTree,
-                receiptStorage,
-                specProvider,
-                chainLevelInfoRepository,
-                dbProvider.MetadataDb,
-                configProvider.GetConfig<IHistoryConfig>(),
-                (long)configProvider.GetConfig<IBlocksConfig>().SecondsPerSlot,
-                processExitSource,
-                backgroundTaskScheduler,
-                logManager))
+            .AddSingleton<IHistoryPruner, HistoryPruner>()
 
             .AddSingleton<IChainHeadSpecProvider, ChainHeadSpecProvider>()
             .AddSingleton<IChainHeadInfoProvider, ChainHeadInfoProvider>()

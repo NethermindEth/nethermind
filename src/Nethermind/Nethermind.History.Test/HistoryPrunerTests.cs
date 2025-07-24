@@ -15,6 +15,7 @@ using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Test;
 using Nethermind.Core.Test.Blockchain;
+using Nethermind.Db;
 using Nethermind.Logging;
 using Nethermind.Specs;
 using Nethermind.State.Repositories;
@@ -217,15 +218,17 @@ public class HistoryPrunerTests
         };
 
         ISpecProvider specProvider = new TestSpecProvider(new ReleaseSpec() { MinHistoryRetentionEpochs = 100 });
+        IDbProvider dbProvider = Substitute.For<IDbProvider>();
+        dbProvider.MetadataDb.Returns(new TestMemDb());
 
         Assert.DoesNotThrow(() => new HistoryPruner(
             Substitute.For<IBlockTree>(),
             Substitute.For<IReceiptStorage>(),
             Substitute.For<ISpecProvider>(),
             Substitute.For<IChainLevelInfoRepository>(),
-            new TestMemDb(),
+            dbProvider,
             validHistoryConfig,
-            SecondsPerSlot,
+            BlocksConfig,
             new ProcessExitSource(new()),
             Substitute.For<IBackgroundTaskScheduler>(),
             LimboLogs.Instance));
@@ -241,15 +244,17 @@ public class HistoryPrunerTests
         };
 
         ISpecProvider specProvider = new TestSpecProvider(new ReleaseSpec() { MinHistoryRetentionEpochs = 100 });
+        IDbProvider dbProvider = Substitute.For<IDbProvider>();
+        dbProvider.MetadataDb.Returns(new TestMemDb());
 
         Assert.Throws<HistoryPruner.HistoryPrunerException>(() => new HistoryPruner(
             Substitute.For<IBlockTree>(),
             Substitute.For<IReceiptStorage>(),
             specProvider,
             Substitute.For<IChainLevelInfoRepository>(),
-            new TestMemDb(),
+            dbProvider,
             invalidHistoryConfig,
-            SecondsPerSlot,
+            BlocksConfig,
             new ProcessExitSource(new()),
             Substitute.For<IBackgroundTaskScheduler>(),
             LimboLogs.Instance));

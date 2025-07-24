@@ -49,9 +49,9 @@ public class HistoryPruner : IHistoryPruner
         IReceiptStorage receiptStorage,
         ISpecProvider specProvider,
         IChainLevelInfoRepository chainLevelInfoRepository,
-        IDb metadataDb,
+        IDbProvider dbProvider,
         IHistoryConfig historyConfig,
-        long secondsPerSlot,
+        IBlocksConfig blocksConfig,
         IProcessExitSource processExitSource,
         IBackgroundTaskScheduler backgroundTaskScheduler,
         ILogManager logManager)
@@ -61,12 +61,12 @@ public class HistoryPruner : IHistoryPruner
         _blockTree = blockTree;
         _receiptStorage = receiptStorage;
         _chainLevelInfoRepository = chainLevelInfoRepository;
-        _metadataDb = metadataDb;
+        _metadataDb = dbProvider.MetadataDb;
         _processExitSource = processExitSource;
         _backgroundTaskScheduler = backgroundTaskScheduler;
         _historyConfig = historyConfig;
         _enabled = historyConfig.Enabled;
-        _epochLength = secondsPerSlot * 32;
+        _epochLength = (long)blocksConfig.SecondsPerSlot * 32;
         _minHistoryRetentionEpochs = specProvider.GenesisSpec.MinHistoryRetentionEpochs;
 
         CheckConfig();
