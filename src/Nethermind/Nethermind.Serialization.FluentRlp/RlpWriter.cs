@@ -109,21 +109,28 @@ public ref struct RlpWriter
         }
     }
 
-    private void LengthWrite(scoped ReadOnlySpan<byte> value)
+    private void LengthWrite(scoped ReadOnlySpan<byte> value) => UNSAFE_FixedLengthWrite(value.Length);
+
+    // TODO: Figure out how to make this method accessible only to the source generator
+    public bool UNSAFE_FixedLengthWrite(int length)
     {
-        if (value.Length < 55)
+        if (_mode != LengthMode) return false;
+
+        if (length < 55)
         {
             Length++;
         }
         else
         {
             Span<byte> binaryLength = stackalloc byte[sizeof(int)];
-            BinaryPrimitives.WriteInt32BigEndian(binaryLength, value.Length);
+            BinaryPrimitives.WriteInt32BigEndian(binaryLength, length);
             binaryLength = binaryLength.TrimStart((byte)0);
             Length += 1 + binaryLength.Length;
         }
 
-        Length += value.Length;
+        Length += length;
+
+        return true;
     }
 
     private void ContentWrite(scoped ReadOnlySpan<byte> value)
@@ -143,29 +150,6 @@ public ref struct RlpWriter
         }
 
         _buffer.Write(value);
-    }
-
-    // TODO: Figure out how to make this method accessible only to the source generator
-    public bool UNSAFE_FixedLength(int length)
-    {
-        if (_mode != LengthMode) return false;
-        if (length <= 0) throw new ArgumentOutOfRangeException(nameof(length));
-
-        if (length < 55)
-        {
-            Length++;
-        }
-        else
-        {
-            Span<byte> binaryLength = stackalloc byte[sizeof(int)];
-            BinaryPrimitives.WriteInt32BigEndian(binaryLength, length);
-            binaryLength = binaryLength.TrimStart((byte)0);
-            Length += 1 + binaryLength.Length;
-        }
-
-        Length += length;
-
-        return true;
     }
 
     public void WriteSequence(RefRlpWriterAction action)
