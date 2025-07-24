@@ -249,7 +249,7 @@ public class StateProviderTests
 
         action.Should().Throw<InvalidOperationException>();
 
-        using (var _ = provider.BeginScope(null))
+        using (provider.BeginScope(null))
         {
             action.Should().NotThrow<InvalidOperationException>();
         }

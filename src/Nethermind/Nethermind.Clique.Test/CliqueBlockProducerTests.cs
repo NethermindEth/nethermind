@@ -106,7 +106,7 @@ public class CliqueBlockProducerTests
             IReleaseSpec finalSpec = testnetSpecProvider.GetFinalSpec();
 
             IWorldState stateProvider = container.Resolve<IWorldStateManager>().GlobalWorldState;
-            using (var _ = stateProvider.BeginScope(null))
+            using (stateProvider.BeginScope(null))
             {
                 stateProvider.CreateAccount(TestItem.PrivateKeyD.Address, 100.Ether());
                 if (finalSpec.WithdrawalsEnabled)

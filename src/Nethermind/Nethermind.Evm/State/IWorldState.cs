@@ -15,7 +15,7 @@ namespace Nethermind.Evm.State;
 /// <summary>
 /// Represents state that can be anchored at specific state root, snapshot, committed, reverted.
 /// <see cref="BeginScope"/> must be called before any other operation, or it will throw. The returned <see cref="IDisposable"/>
-/// must be disposed to close the <see cref="IWorldState"/>.
+/// must be disposed to close the <see cref="IWorldState"/>. Multiple block can be executed or saved within the same scope.
 /// </summary>
 public interface IWorldState : IJournal<Snapshot>, IReadOnlyStateProvider
 {

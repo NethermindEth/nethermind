@@ -131,8 +131,8 @@ namespace Nethermind.AuRa.Test
                 CreateProcessor(contractRewriter: new ContractRewriter(contractOverrides));
 
             Hash256 stateRoot;
-            {
-                using var _ = stateProvider.BeginScope(null);
+
+            using (stateProvider.BeginScope(null)) {
                 stateProvider.CreateAccount(TestItem.AddressA, UInt256.One);
                 stateProvider.CreateAccount(TestItem.AddressB, UInt256.One);
                 stateProvider.Commit(London.Instance);
@@ -144,22 +144,24 @@ namespace Nethermind.AuRa.Test
             BlockHeader currentBlock = Build.A.BlockHeader.WithNumber(0).WithStateRoot(stateRoot).TestObject;
             currentBlock = Process(processor, currentBlock);
 
+            using (stateProvider.BeginScope(currentBlock))
             {
-                using var _ = stateProvider.BeginScope(currentBlock);
                 stateProvider.GetCode(TestItem.AddressA).Should().BeEquivalentTo(Array.Empty<byte>());
                 stateProvider.GetCode(TestItem.AddressB).Should().BeEquivalentTo(Array.Empty<byte>());
             }
 
             currentBlock = Process(processor, currentBlock);
+
+            using (stateProvider.BeginScope(currentBlock))
             {
-                using var _ = stateProvider.BeginScope(currentBlock);
                 stateProvider.GetCode(TestItem.AddressA).Should().BeEquivalentTo(Bytes.FromHexString("0x123"));
                 stateProvider.GetCode(TestItem.AddressB).Should().BeEquivalentTo(Bytes.FromHexString("0x321"));
             }
 
             currentBlock = Process(processor, currentBlock);
+
+            using (stateProvider.BeginScope(currentBlock))
             {
-                using var _ = stateProvider.BeginScope(currentBlock);
                 stateProvider.GetCode(TestItem.AddressA).Should().BeEquivalentTo(Bytes.FromHexString("0x456"));
                 stateProvider.GetCode(TestItem.AddressB).Should().BeEquivalentTo(Bytes.FromHexString("0x654"));
             }

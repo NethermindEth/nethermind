@@ -128,7 +128,7 @@ public class Era1ModuleTests
         UInt256 nonce = 0;
 
         List<Block> blocks = [];
-        using (var _ = worldState.BeginScope(genesis.Header))
+        using (worldState.BeginScope(genesis.Header))
         {
             worldState.AddToBalance(TestItem.AddressA, 10.Ether(), testBlockchain.SpecProvider.GenesisSpec);
             worldState.RecalculateStateRoot();
@@ -138,6 +138,7 @@ public class Era1ModuleTests
 
             blocks.Add(genesis);
         }
+
         BlockHeader uncle = Build.A.BlockHeader.TestObject;
 
         for (int i = 0; i < numOfBlocks; i++)

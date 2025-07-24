@@ -1065,8 +1065,8 @@ namespace Nethermind.Trie.Test.Pruning
             IScopedTrieStore storageTrieStore = fullTrieStore.GetTrieStore(address);
             storageTrieStore.FindCachedOrUnknown(TreePath.Empty, storageRoot.ToCommitment());
 
+            using (worldState.BeginScope(Build.A.BlockHeader.WithNumber(1).WithStateRoot(stateRoot).TestObject))
             {
-                using var _ = worldState.BeginScope(Build.A.BlockHeader.WithNumber(1).WithStateRoot(stateRoot).TestObject);
                 worldState.IncrementNonce(address, 1);
                 worldState.Commit(MainnetSpecProvider.Instance.GenesisSpec);
                 worldState.CommitTree(2);

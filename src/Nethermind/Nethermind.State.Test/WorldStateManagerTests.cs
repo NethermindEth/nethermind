@@ -90,8 +90,9 @@ public class WorldStateManagerTests
             IWorldState worldState = ctx.Resolve<IWorldStateManager>().GlobalWorldState;
 
             Hash256 stateRoot;
+
+            using (worldState.BeginScope(null))
             {
-                using IDisposable _ = worldState.BeginScope(null);
                 worldState.CreateAccount(TestItem.AddressA, 1, 2);
                 worldState.Commit(Cancun.Instance);
                 worldState.CommitTree(1);
@@ -100,14 +101,18 @@ public class WorldStateManagerTests
 
             for (int i = 2; i <= lastBlock; i++)
             {
-                using IDisposable _ = worldState.BeginScope(Build.A.BlockHeader
+                BlockHeader baseBlock = Build.A.BlockHeader
                     .WithStateRoot(stateRoot)
-                    .WithNumber(i-1)
-                    .TestObject);
-                worldState.IncrementNonce(TestItem.AddressA, 1);
-                worldState.Commit(Cancun.Instance);
-                worldState.CommitTree(i);
-                stateRoot = worldState.StateRoot;
+                    .WithNumber(i - 1)
+                    .TestObject;
+
+                using (worldState.BeginScope(baseBlock))
+                {
+                    worldState.IncrementNonce(TestItem.AddressA, 1);
+                    worldState.Commit(Cancun.Instance);
+                    worldState.CommitTree(i);
+                    stateRoot = worldState.StateRoot;
+                }
             }
         }
 
