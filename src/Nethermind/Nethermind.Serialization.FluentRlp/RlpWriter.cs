@@ -145,6 +145,29 @@ public ref struct RlpWriter
         _buffer.Write(value);
     }
 
+    // TODO: Figure out how to make this method accessible only to the source generator
+    public bool UNSAFE_FixedLength(int length)
+    {
+        if (_mode != LengthMode) return false;
+        if (length <= 0) throw new ArgumentOutOfRangeException(nameof(length));
+
+        if (length < 55)
+        {
+            Length++;
+        }
+        else
+        {
+            Span<byte> binaryLength = stackalloc byte[sizeof(int)];
+            BinaryPrimitives.WriteInt32BigEndian(binaryLength, length);
+            binaryLength = binaryLength.TrimStart((byte)0);
+            Length += 1 + binaryLength.Length;
+        }
+
+        Length += length;
+
+        return true;
+    }
+
     public void WriteSequence(RefRlpWriterAction action)
         => WriteSequence(action, static (ref RlpWriter w, RefRlpWriterAction action) => action(ref w));
 

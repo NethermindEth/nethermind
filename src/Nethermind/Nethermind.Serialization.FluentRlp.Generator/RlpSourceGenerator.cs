@@ -27,9 +27,10 @@ public enum RlpRepresentation : byte
 }
 
 [AttributeUsage(AttributeTargets.Class)]
-public sealed class RlpSerializable(RlpRepresentation representation = RlpRepresentation.Record) : Attribute
+public sealed class RlpSerializable(RlpRepresentation representation = RlpRepresentation.Record, int length = -1) : Attribute
 {
     public RlpRepresentation Representation { get; } = representation;
+    public int Length { get; } = length;
 }
 
 /// <summary>
@@ -90,6 +91,9 @@ public sealed class RlpSourceGenerator : IIncrementalGenerator
             // Get the `RlpRepresentation` mode
             var representation = (RlpRepresentation)(rlpSerializableAttribute.ConstructorArguments[0].Value ?? 0);
 
+            // Get the constant length if specified
+            var constLength = (int)(rlpSerializableAttribute.ConstructorArguments[1].Value ?? -1);
+
             // Gather recursively all members that are fields or primary constructor parameters
             // so we can read them in the same order they are declared.
             var parameters = GetRecordParameters(recordDecl);
@@ -108,7 +112,7 @@ public sealed class RlpSourceGenerator : IIncrementalGenerator
             }
 
             // Build the converter class source
-            var generatedCode = GenerateConverterClass(@namespace, usingDirectives, fullTypeName, recordName, parameters, representation);
+            var generatedCode = GenerateConverterClass(@namespace, usingDirectives, fullTypeName, recordName, parameters, representation, constLength);
 
             // Add to the compilation
             context.AddSource($"{recordName}RlpConverter.g.cs", SourceText.From(generatedCode, Encoding.UTF8));
@@ -144,7 +148,8 @@ public sealed class RlpSourceGenerator : IIncrementalGenerator
         string fullTypeName,
         string recordName,
         List<(string Name, TypeSyntax TypeName)> parameters,
-        RlpRepresentation representation)
+        RlpRepresentation representation,
+        int constLength)
     {
         List<string> defaultUsingDirectives =
         [
@@ -194,14 +199,18 @@ public sealed class RlpSourceGenerator : IIncrementalGenerator
               {
                   public static void Write(ref RlpWriter w, {{fullTypeName}} value)
                   {
-                        {{(representation == RlpRepresentation.Record
-                                ? $$"""
-                                    w.WriteSequence(value, static (ref RlpWriter w, {{fullTypeName}} value) =>
-                                    {
-                                        {{writeCalls}}
-                                    });
-                                    """
-                                : writeCalls)}}
+                    {{(constLength > 0
+                        ? $"if (w.UNSAFE_FixedLength({constLength})) return;"
+                        : "")}}
+
+                    {{(representation == RlpRepresentation.Record
+                            ? $$"""
+                                w.WriteSequence(value, static (ref RlpWriter w, {{fullTypeName}} value) =>
+                                {
+                                    {{writeCalls}}
+                                });
+                                """
+                            : writeCalls)}}
                   }
 
                   public static {{fullTypeName}} Read(ref RlpReader r)

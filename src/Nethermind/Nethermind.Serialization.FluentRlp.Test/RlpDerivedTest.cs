@@ -40,6 +40,9 @@ public record Address(string HexString);
 [RlpSerializable]
 public record AccessList(List<(Address, List<long>)> Entries);
 
+[RlpSerializable(representation: RlpRepresentation.Newtype, length: 10)]
+public record FixedString(string Value);
+
 public class RlpDerivedTest
 {
     [Test]
@@ -142,5 +145,16 @@ public class RlpDerivedTest
 
         var decoded = Rlp.Read(rlp, static (scoped ref RlpReader r) => r.ReadAccessList());
         decoded.Should().BeEquivalentTo(accessList);
+    }
+
+    [Test]
+    public void RecordWithFixedLength()
+    {
+        var fixedString = new FixedString("0xAAAAAAAA");
+
+        var rlp = Rlp.Write(fixedString, (ref RlpWriter writer, FixedString value) => writer.Write(value));
+
+        var decoded = Rlp.Read(rlp, static (scoped ref RlpReader r) => r.ReadFixedString());
+        decoded.Should().BeEquivalentTo(fixedString);
     }
 }
