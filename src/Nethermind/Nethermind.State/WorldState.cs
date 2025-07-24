@@ -229,8 +229,7 @@ namespace Nethermind.State
             return new Reactive.AnonymousDisposable(() =>
             {
                 Reset();
-                // This broke
-                // StateRoot = Keccak.EmptyTreeHash;
+                StateRoot = Keccak.EmptyTreeHash;
                 _isInScope = false;
             });
         }

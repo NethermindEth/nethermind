@@ -11,9 +11,11 @@ using Nethermind.Evm.Tracing.State;
 using Nethermind.Int256;
 
 namespace Nethermind.Evm.State;
+
 /// <summary>
 /// Represents state that can be anchored at specific state root, snapshot, committed, reverted.
-/// Current format is an intermittent form on the way to a better state management.
+/// <see cref="BeginScope"/> must be called before any other operation, or it will throw. The returned <see cref="IDisposable"/>
+/// must be disposed to close the <see cref="IWorldState"/>.
 /// </summary>
 public interface IWorldState : IJournal<Snapshot>, IReadOnlyStateProvider
 {
@@ -75,8 +77,11 @@ public interface IWorldState : IJournal<Snapshot>, IReadOnlyStateProvider
     Snapshot TakeSnapshot(bool newTransactionStart = false);
 
     Snapshot IJournal<Snapshot>.TakeSnapshot() => TakeSnapshot();
+
     void WarmUp(AccessList? accessList);
+
     void WarmUp(Address address);
+
     /// <summary>
     /// Clear all storage at specified address
     /// </summary>
@@ -127,7 +132,13 @@ public interface IWorldState : IJournal<Snapshot>, IReadOnlyStateProvider
 
     void Commit(IReleaseSpec releaseSpec, IWorldStateTracer tracer, bool isGenesis = false, bool commitRoots = true);
 
+    /// <summary>
+    /// Persist the underlying changes to the storage at the specified block number. This also recalculate state root.
+    /// </summary>
+    /// <param name="blockNumber"></param>
     void CommitTree(long blockNumber);
+
     ArrayPoolList<AddressAsKey>? GetAccountChanges();
+
     void ResetTransient();
 }
