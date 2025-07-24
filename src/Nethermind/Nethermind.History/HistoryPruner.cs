@@ -108,7 +108,8 @@ public class HistoryPruner : IHistoryPruner
             if (_logger.IsInfo)
             {
                 long? cutoff = CutoffBlockNumber;
-                _logger.Info($"Pruning historical blocks up to timestamp {cutoffTimestamp} (#{(cutoff is null ? "unknown" : cutoff)}). SyncPivot={_blockTree.SyncPivot.BlockNumber}");
+                long? toDelete = cutoff is null ? null : long.Min(cutoff!.Value, _blockTree.SyncPivot.BlockNumber) - _deletePointer;
+                _logger.Info($"Pruning historical blocks up to timestamp {cutoffTimestamp} (#{(cutoff is null ? "unknown" : cutoff)}). Estimated {(toDelete is null ? "unknown" : toDelete)} blocks will be deleted. SyncPivot={_blockTree.SyncPivot.BlockNumber}");
             }
 
             PruneBlocksAndReceipts(cutoffTimestamp!.Value, cancellationToken);
@@ -168,6 +169,7 @@ public class HistoryPruner : IHistoryPruner
         }
 
         long? cutoffBlockNumber = null;
+        long searchCutoff = _blockTree.Head is null ? _blockTree.SyncPivot.BlockNumber : _blockTree.Head.Number;
         lock (_searchLock)
         {
             // cutoff is unchanged, can reuse
@@ -180,7 +182,7 @@ public class HistoryPruner : IHistoryPruner
             if (_cutoffPointer is not null)
             {
                 int attempts = 0;
-                GetBlocksByNumber(_cutoffPointer.Value, b =>
+                GetBlocksByNumber(_cutoffPointer.Value, searchCutoff, b =>
                 {
                     if (attempts >= 5)
                     {
@@ -198,7 +200,7 @@ public class HistoryPruner : IHistoryPruner
             }
 
             // if linear search fails fallback to  binary search
-            cutoffBlockNumber ??= BlockTree.BinarySearchBlockNumber(_deletePointer, _blockTree.SyncPivot.BlockNumber, (n, _) =>
+            cutoffBlockNumber ??= BlockTree.BinarySearchBlockNumber(_deletePointer, searchCutoff, (n, _) =>
             {
                 BlockInfo? blockInfo = _chainLevelInfoRepository.LoadLevel(n)?.MainChainBlock;
                 Block? block = blockInfo is null ? null : _blockTree.FindBlock(blockInfo.BlockHash, BlockTreeLookupOptions.None, blockInfo.BlockNumber);
@@ -310,12 +312,12 @@ public class HistoryPruner : IHistoryPruner
     }
 
     private IEnumerable<Block> GetBlocksBeforeTimestamp(ulong cutoffTimestamp)
-        => GetBlocksByNumber(_deletePointer, b => b.Timestamp >= cutoffTimestamp, i => _deletePointer = i);
+        => GetBlocksByNumber(_deletePointer, _blockTree.SyncPivot.BlockNumber, b => b.Timestamp >= cutoffTimestamp, i => _deletePointer = i);
 
-    private IEnumerable<Block> GetBlocksByNumber(long from, Predicate<Block> endSearch, Action<long> onFirstBlock)
+    private IEnumerable<Block> GetBlocksByNumber(long from, long to, Predicate<Block> endSearch, Action<long> onFirstBlock)
     {
         bool firstBlock = true;
-        for (long i = from; i <= _blockTree.SyncPivot.BlockNumber; i++)
+        for (long i = from; i <= to; i++)
         {
             ChainLevelInfo? chainLevelInfo = _chainLevelInfoRepository.LoadLevel(i);
             if (chainLevelInfo is null)
