@@ -6,7 +6,7 @@ using Nethermind.Serialization.FluentRlp.Generator;
 
 namespace Nethermind.Serialization.Rlp.Benchmark;
 
-[RlpSerializable(RlpRepresentation.Newtype)]
+[RlpSerializable(representation: RlpRepresentation.Newtype, length: Size)]
 public record Address(byte[] Bytes)
 {
     public const int Size = 20;
