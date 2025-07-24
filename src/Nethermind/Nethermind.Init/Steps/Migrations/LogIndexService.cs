@@ -73,8 +73,8 @@ public class LogIndexService : ILogIndexService
         _receiptStorage = receiptStorage;
         _logger = api.LogManager.GetClassLogger<LogIndexService>();
 
-        _forwardProgressLogger = new("Log index initialization (Forward)", api.LogManager);
-        _backwardProgressLogger = new("Log index initialization (Backward)", api.LogManager);
+        _forwardProgressLogger = new("Log index sync (Forward)", api.LogManager);
+        _backwardProgressLogger = new("Log index sync (Backward)", api.LogManager);
 
         _logIndexStorage = api.LogIndexStorage;
         _receiptMonitor = api.ReceiptMonitor;
@@ -82,17 +82,18 @@ public class LogIndexService : ILogIndexService
 
     public Task StartAsync()
     {
+        _pivotNumber =
+            (_logIndexStorage.GetMaxBlockNumber() - _logIndexStorage.GetMinBlockNumber()) / 2
+            ?? (int)_blockTree.SyncPivot.BlockNumber;
+
+        UpdateProgress();
         _progressLoggerTimer.AutoReset = true;
         _progressLoggerTimer.Elapsed += OnLogProgress;
         _progressLoggerTimer.Start();
 
-        _pivotNumber = (int)_blockTree.SyncPivot.BlockNumber;
-        _forwardProgressLogger.TargetValue = GetMaxAvailableBlockNumber() ?? 0 - _pivotNumber;
-        _backwardProgressLogger.TargetValue = _pivotNumber;
-
         _receiptStorage.OldReceiptsInserted += OnReceiptsInserted;
 
-        //_queueForwardBlocksTask = Task.Run(() => DoQueueBlocks(isForward: true), CancellationToken);
+        _queueForwardBlocksTask = Task.Run(() => DoQueueBlocks(isForward: true), CancellationToken);
         _queueBackwardBlocksTask = Task.Run(() => DoQueueBlocks(isForward: false), CancellationToken);
         _processTask = Task.Run(DoProcess, CancellationToken);
 
@@ -113,9 +114,9 @@ public class LogIndexService : ILogIndexService
         _forwardProgressLogger.LogProgress();
         _backwardProgressLogger.LogProgress();
 
-        if (_stats is {} stats)
+        if (_stats is not null)
         {
-            _stats = null;
+            LogIndexUpdateStats stats = Interlocked.Exchange(ref _stats, new());
             TempLog($"\n{stats}");
         }
     }
@@ -210,28 +211,11 @@ public class LogIndexService : ILogIndexService
                 throw new Exception($"Non-sequential block numbers in log index queue, batch: ({batch[0]} -> {batch[^1]}).");
             }
 
-            // TODO: do aggregation separately and in parallel
+            // TODO: do aggregation separately and in parallel?
             _stats ??= new();
             await _logIndexStorage.SetReceiptsAsync(batch, isBackwardSync: !isForward, _stats);
 
-            if (isForward)
-            {
-                _forwardProgressLogger.Update(batch[^1].BlockNumber - _pivotNumber);
-                _forwardProgressLogger.CurrentQueued = queue.Count;
-                _forwardProgressLogger.TargetValue = GetMaxAvailableBlockNumber() ?? 0 - _pivotNumber;
-
-                if (batch[^1].BlockNumber == GetMaxAvailableBlockNumber())
-                    _forwardProgressLogger.MarkEnd();
-            }
-            else
-            {
-                _backwardProgressLogger.Update(_pivotNumber - batch[^1].BlockNumber);
-                _backwardProgressLogger.CurrentQueued = queue.Count;
-
-                if (batch[^1].BlockNumber == 0)
-                    _backwardProgressLogger.MarkEnd();
-            }
-
+            UpdateProgress();
             count++;
         }
 
@@ -314,7 +298,7 @@ public class LogIndexService : ILogIndexService
                 }
 
                 var end = isForward
-                    // TODO: do not stay MaxReorgDepth behind
+                    // TODO: do not stay MaxReorgDepth behind, handle reorgs instead
                     ? Math.Min(GetMaxAvailableBlockNumber() - MaxReorgDepth ?? int.MinValue, start + BatchSize - 1)
                     : Math.Max(start - BatchSize + 1, GetMinAvailableBlockNumber() ?? int.MaxValue);
 
@@ -372,6 +356,34 @@ public class LogIndexService : ILogIndexService
         {
             if (_logger.IsError)
                 _logger.Error("Log index block enumeration failed. Please restart the client.", ex);
+        }
+    }
+
+    private void UpdateProgress()
+    {
+        UpdateProgress(_forwardProgressLogger);
+        UpdateProgress(_backwardProgressLogger);
+    }
+
+    private void UpdateProgress(ProgressLogger progress)
+    {
+        if (progress == _forwardProgressLogger)
+        {
+            _forwardProgressLogger.TargetValue = GetMaxAvailableBlockNumber() ?? 0 - _pivotNumber;
+            _forwardProgressLogger.Update((_logIndexStorage.GetMaxBlockNumber() ?? _pivotNumber) - _pivotNumber);
+            _forwardProgressLogger.CurrentQueued = _forwardChannel.Reader.Count;
+
+            // if (_forwardProgressLogger.CurrentValue == _forwardProgressLogger.TargetValue)
+            //     _forwardProgressLogger.MarkEnd();
+        }
+        else if (progress == _backwardProgressLogger)
+        {
+            _backwardProgressLogger.TargetValue = _pivotNumber;
+            _backwardProgressLogger.Update(_pivotNumber - (_logIndexStorage.GetMinBlockNumber() ?? _pivotNumber));
+            _backwardProgressLogger.CurrentQueued = _backwardChannel.Reader.Count;
+
+            if (_backwardProgressLogger.CurrentValue == _backwardProgressLogger.TargetValue)
+                _backwardProgressLogger.MarkEnd();
         }
     }
 
