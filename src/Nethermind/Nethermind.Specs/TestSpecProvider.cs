@@ -11,8 +11,8 @@ namespace Nethermind.Specs
     {
         public TestSpecProvider(IReleaseSpec initialSpecToReturn)
         {
-            SpecToReturn = initialSpecToReturn;
             GenesisSpec = initialSpecToReturn;
+            NextForkSpec = initialSpecToReturn;
         }
 
         public void UpdateMergeTransitionInfo(long? blockNumber, UInt256? terminalTotalDifficulty = null)
@@ -30,8 +30,10 @@ namespace Nethermind.Specs
 
         public IReleaseSpec GenesisSpec { get; set; }
 
-        IReleaseSpec ISpecProvider.GetSpecInternal(ForkActivation forkActivation) => forkActivation.BlockNumber == 0 || forkActivation.BlockNumber < ForkOnBlockNumber ? GenesisSpec : SpecToReturn;
-        public IReleaseSpec SpecToReturn { get; set; }
+        IReleaseSpec ISpecProvider.GetSpecInternal(ForkActivation forkActivation) => forkActivation.BlockNumber == 0 || forkActivation.BlockNumber < ForkOnBlockNumber ? GenesisSpec : NextForkSpec;
+
+        public IReleaseSpec NextForkSpec { get; set; }
+        public long? ForkOnBlockNumber { get; set; }
 
         public long? DaoBlockNumber { get; set; }
         public ulong? BeaconChainGenesisTimestamp { get; set; }
@@ -43,8 +45,6 @@ namespace Nethermind.Specs
 
         public ForkActivation[] TransitionActivations { get; set; } = [(ForkActivation)0];
         public bool AllowTestChainOverride { get; set; } = true;
-
-        public long? ForkOnBlockNumber { get; set; }
 
         private TestSpecProvider() { }
 
