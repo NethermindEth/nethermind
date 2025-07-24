@@ -32,6 +32,7 @@ namespace Nethermind.State
         private readonly TransientStorageProvider _transientStorageProvider;
         private readonly ITrieStore _trieStore;
         private bool _isInScope = false;
+        private readonly ILogger _logger;
         private PreBlockCaches? PreBlockCaches { get; }
 
         public Hash256 StateRoot
@@ -67,6 +68,7 @@ namespace Nethermind.State
             _stateProvider = new StateProvider(trieStore.GetTrieStore(null), codeDb, logManager, stateTree, PreBlockCaches?.StateCache, populatePreBlockCache);
             _persistentStorageProvider = new PersistentStorageProvider(trieStore, _stateProvider, logManager, storageTreeFactory, PreBlockCaches?.StorageCache, populatePreBlockCache);
             _transientStorageProvider = new TransientStorageProvider(logManager);
+            _logger = logManager.GetClassLogger<WorldState>();
         }
 
         public WorldState(ITrieStore trieStore, IKeyValueStoreWithBatching? codeDb, ILogManager? logManager, PreBlockCaches? preBlockCaches, bool populatePreBlockCache = true)
@@ -224,6 +226,9 @@ namespace Nethermind.State
         {
             if (_isInScope) throw new InvalidOperationException("Cannot create nested worldstate scope.");
             _isInScope = true;
+
+            if (_logger.IsTrace) _logger.Trace($"Beginning WorldState scope with baseblock {baseBlock?.ToString(BlockHeader.Format.Short) ?? "null"} with stateroot {baseBlock?.StateRoot?.ToString() ?? "null"}.");
+
             StateRoot = baseBlock?.StateRoot ?? Keccak.EmptyTreeHash;
 
             return new Reactive.AnonymousDisposable(() =>
@@ -231,6 +236,7 @@ namespace Nethermind.State
                 Reset();
                 StateRoot = Keccak.EmptyTreeHash;
                 _isInScope = false;
+                if (_logger.IsTrace) _logger.Trace($"WorldState score for baseblock {baseBlock?.ToString(BlockHeader.Format.Short) ?? "null"} closed");
             });
         }
 
