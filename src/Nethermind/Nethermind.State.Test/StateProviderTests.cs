@@ -237,4 +237,23 @@ public class StateProviderTests
 
         action.Should().Throw<InvalidOperationException>();
     }
+
+
+    [Test]
+    public void Does_not_allow_calling_any_method_before_opening_scope()
+    {
+        WorldStateManager worldStateManager = TestWorldStateFactory.CreateForTest();
+        IWorldState provider = worldStateManager.GlobalWorldState;
+
+        Action action = () => provider.CreateAccountIfNotExists(TestItem.AddressA, 0, 0);
+
+        action.Should().Throw<InvalidOperationException>();
+
+        using (var _ = provider.BeginScope(null))
+        {
+            action.Should().NotThrow<InvalidOperationException>();
+        }
+
+        action.Should().Throw<InvalidOperationException>();
+    }
 }
