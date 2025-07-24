@@ -69,7 +69,6 @@ using NSubstitute;
 using NUnit.Framework;
 using Build = Nethermind.Runner.Test.Ethereum.Build;
 using Nethermind.Api.Steps;
-using System.Linq;
 using Nethermind.Consensus.Scheduler;
 
 namespace Nethermind.Runner.Test;

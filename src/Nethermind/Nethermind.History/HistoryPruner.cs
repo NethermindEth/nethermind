@@ -49,9 +49,9 @@ public class HistoryPruner : IHistoryPruner
         IReceiptStorage receiptStorage,
         ISpecProvider specProvider,
         IChainLevelInfoRepository chainLevelInfoRepository,
-        IDb metadataDb,
+        IDbProvider dbProvider,
         IHistoryConfig historyConfig,
-        long secondsPerSlot,
+        IBlocksConfig blocksConfig,
         IProcessExitSource processExitSource,
         IBackgroundTaskScheduler backgroundTaskScheduler,
         ILogManager logManager)
@@ -61,16 +61,22 @@ public class HistoryPruner : IHistoryPruner
         _blockTree = blockTree;
         _receiptStorage = receiptStorage;
         _chainLevelInfoRepository = chainLevelInfoRepository;
-        _metadataDb = metadataDb;
+        _metadataDb = dbProvider.MetadataDb;
         _processExitSource = processExitSource;
         _backgroundTaskScheduler = backgroundTaskScheduler;
         _historyConfig = historyConfig;
         _enabled = historyConfig.Enabled;
-        _epochLength = secondsPerSlot * 32;
+        _epochLength = (long)blocksConfig.SecondsPerSlot * 32;
         _minHistoryRetentionEpochs = specProvider.GenesisSpec.MinHistoryRetentionEpochs;
 
         CheckConfig();
         LoadDeletePointer();
+
+        if (historyConfig.DropPreMerge)
+        {
+            Metrics.PruningCutoffBlocknumber = _specProvider.MergeBlockNumber?.BlockNumber;
+            Metrics.PruningCutoffTimestamp = _specProvider.BeaconChainGenesisTimestamp;
+        }
     }
 
     public void OnBlockProcessorQueueEmpty(object? sender, EventArgs e)
@@ -135,7 +141,7 @@ public class HistoryPruner : IHistoryPruner
             return null;
         }
 
-        if (_historyConfig.DropPreMerge && _historyConfig.HistoryRetentionEpochs is null)
+        if (_historyConfig.DropPreMerge && _historyConfig.RetentionEpochs is null)
         {
             return _specProvider.MergeBlockNumber?.BlockNumber;
         }
@@ -198,8 +204,8 @@ public class HistoryPruner : IHistoryPruner
 
     private void CheckConfig()
     {
-        if (_historyConfig.HistoryRetentionEpochs is not null &&
-            _historyConfig.HistoryRetentionEpochs < _minHistoryRetentionEpochs)
+        if (_historyConfig.RetentionEpochs is not null &&
+            _historyConfig.RetentionEpochs < _minHistoryRetentionEpochs)
         {
             _logger.Error($"HistoryRetentionEpochs must be at least {_minHistoryRetentionEpochs}.");
             // throw new HistoryPrunerException($"HistoryRetentionEpochs must be at least {_minHistoryRetentionEpochs}.");
@@ -251,7 +257,7 @@ public class HistoryPruner : IHistoryPruner
                 }
 
                 if (_logger.IsInfo) _logger.Info($"Deleting old block {number} with hash {hash}.");
-                _blockTree.DeleteBlock(number, hash, null, batch!, null, true);
+                _blockTree.DeleteOldBlock(number, hash, batch!);
                 _receiptStorage.RemoveReceipts(block);
                 _deletePointer = number;
                 lastDeletedTimstamp = block.Timestamp;
@@ -331,9 +337,9 @@ public class HistoryPruner : IHistoryPruner
     {
         ulong? cutoffTimestamp = null;
 
-        if (_historyConfig.HistoryRetentionEpochs.HasValue && _blockTree.Head is not null)
+        if (_historyConfig.RetentionEpochs.HasValue && _blockTree.Head is not null)
         {
-            cutoffTimestamp = _blockTree.Head!.Timestamp - (ulong)(_historyConfig.HistoryRetentionEpochs.Value * _epochLength);
+            cutoffTimestamp = _blockTree.Head!.Timestamp - (ulong)(_historyConfig.RetentionEpochs.Value * _epochLength);
         }
 
         if (_historyConfig.DropPreMerge)

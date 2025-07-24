@@ -204,7 +204,7 @@ namespace Nethermind.Blockchain
 
         public long GetLowestBlock() => _wrapped.GetLowestBlock();
 
-        public void DeleteBlock(long currentNumber, Hash256 currentHash, Hash256 nextHash, BatchWrite batch, ChainLevelInfo? currentLevel = null, bool isOldBlock = false)
-            => _wrapped.DeleteBlock(currentNumber, currentHash, nextHash, batch, currentLevel, isOldBlock);
+        public void DeleteOldBlock(long currentNumber, Hash256 currentHash, BatchWrite batch)
+            => _wrapped.DeleteOldBlock(currentNumber, currentHash, batch);
     }
 }
