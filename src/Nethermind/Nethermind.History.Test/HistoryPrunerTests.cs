@@ -42,7 +42,7 @@ public class HistoryPrunerTests
         // however not feasible to test this
         IHistoryConfig historyConfig = new HistoryConfig
         {
-            HistoryRetentionEpochs = 2,
+            RetentionEpochs = 2,
             DropPreMerge = false
         };
 
@@ -88,7 +88,7 @@ public class HistoryPrunerTests
 
         IHistoryConfig historyConfig = new HistoryConfig
         {
-            HistoryRetentionEpochs = null,
+            RetentionEpochs = null,
             DropPreMerge = true
         };
         using BasicTestBlockchain testBlockchain = await BasicTestBlockchain.Create(BuildContainer(), [BlocksConfig, historyConfig]);
@@ -135,7 +135,7 @@ public class HistoryPrunerTests
 
         IHistoryConfig historyConfig = new HistoryConfig
         {
-            HistoryRetentionEpochs = null,
+            RetentionEpochs = null,
             DropPreMerge = true
         };
         using BasicTestBlockchain testBlockchain = await BasicTestBlockchain.Create(BuildContainer(), [BlocksConfig, historyConfig]);
@@ -181,7 +181,7 @@ public class HistoryPrunerTests
 
         IHistoryConfig historyConfig = new HistoryConfig
         {
-            HistoryRetentionEpochs = null,
+            RetentionEpochs = null,
             DropPreMerge = false
         };
         using BasicTestBlockchain testBlockchain = await BasicTestBlockchain.Create(BuildContainer(), [BlocksConfig, historyConfig]);
@@ -212,7 +212,7 @@ public class HistoryPrunerTests
     {
         IHistoryConfig validHistoryConfig = new HistoryConfig
         {
-            HistoryRetentionEpochs = 100000,
+            RetentionEpochs = 100000,
             DropPreMerge = false
         };
 
@@ -236,7 +236,7 @@ public class HistoryPrunerTests
     {
         IHistoryConfig invalidHistoryConfig = new HistoryConfig
         {
-            HistoryRetentionEpochs = 10,
+            RetentionEpochs = 10,
             DropPreMerge = false
         };
 

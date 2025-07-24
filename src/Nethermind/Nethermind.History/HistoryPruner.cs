@@ -141,7 +141,7 @@ public class HistoryPruner : IHistoryPruner
             return null;
         }
 
-        if (_historyConfig.DropPreMerge && _historyConfig.HistoryRetentionEpochs is null)
+        if (_historyConfig.DropPreMerge && _historyConfig.RetentionEpochs is null)
         {
             return _specProvider.MergeBlockNumber?.BlockNumber;
         }
@@ -204,8 +204,8 @@ public class HistoryPruner : IHistoryPruner
 
     private void CheckConfig()
     {
-        if (_historyConfig.HistoryRetentionEpochs is not null &&
-            _historyConfig.HistoryRetentionEpochs < _minHistoryRetentionEpochs)
+        if (_historyConfig.RetentionEpochs is not null &&
+            _historyConfig.RetentionEpochs < _minHistoryRetentionEpochs)
         {
             throw new HistoryPrunerException($"HistoryRetentionEpochs must be at least {_minHistoryRetentionEpochs}.");
         }
@@ -336,9 +336,9 @@ public class HistoryPruner : IHistoryPruner
     {
         ulong? cutoffTimestamp = null;
 
-        if (_historyConfig.HistoryRetentionEpochs.HasValue && _blockTree.Head is not null)
+        if (_historyConfig.RetentionEpochs.HasValue && _blockTree.Head is not null)
         {
-            cutoffTimestamp = _blockTree.Head!.Timestamp - (ulong)(_historyConfig.HistoryRetentionEpochs.Value * _epochLength);
+            cutoffTimestamp = _blockTree.Head!.Timestamp - (ulong)(_historyConfig.RetentionEpochs.Value * _epochLength);
         }
 
         if (_historyConfig.DropPreMerge)
