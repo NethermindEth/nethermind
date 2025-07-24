@@ -256,7 +256,7 @@ public class HistoryPruner : IHistoryPruner
                 if (cancellationToken.IsCancellationRequested)
                 {
                     if (_logger.IsInfo) _logger.Info($"Pruning operation timed out at timestamp {cutoffTimestamp}. Deleted {deletedBlocks} blocks.");
-                    break;
+                    // break;
                 }
 
                 // should never happen
