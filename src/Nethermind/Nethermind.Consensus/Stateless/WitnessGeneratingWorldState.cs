@@ -20,16 +20,14 @@ namespace Nethermind.Consensus.Stateless;
 
 public class WitnessGeneratingWorldState(WorldState inner) : IWorldState
 {
-    public Dictionary<Address, HashSet<UInt256>> StorageSlots { get; } = new();
+    private readonly Dictionary<Address, HashSet<UInt256>> _storageSlots = new();
 
-    public byte[][] Keys => StorageSlots.Keys.Select(addr => addr.Bytes)
-        .Concat(StorageSlots.Values.SelectMany(arr => arr.Select(slot => slot.ToBigEndian()))).ToArray();
-
-    public (byte[][] StateNodes, byte[][] Codes) GetStateWitness(Hash256 parentStateRoot)
+    public (byte[][] StateNodes, byte[][] Codes, byte[][] Keys) GetStateWitness(Hash256 parentStateRoot)
     {
         HashSet<byte[]> stateNodes = new(Bytes.EqualityComparer);
         HashSet<byte[]> codes = new(Bytes.EqualityComparer);
-        foreach ((Address account, HashSet<UInt256> slots) in StorageSlots)
+        HashSet<byte[]> keys = new(Bytes.EqualityComparer);
+        foreach ((Address account, HashSet<UInt256> slots) in _storageSlots)
         {
             AccountProofCollector accountProofCollector = new(account, slots.ToArray());
             inner.Accept(accountProofCollector, parentStateRoot);
@@ -37,8 +35,10 @@ public class WitnessGeneratingWorldState(WorldState inner) : IWorldState
             codes.Add(GetCode(accountProof.CodeHash));
             stateNodes.AddRange(accountProof.Proof);
             stateNodes.AddRange(accountProof.StorageProofs.SelectMany(storageProof => storageProof.Proof));
+            keys.Add(account.Bytes);
+            keys.AddRange(_storageSlots.Values.SelectMany(arr => arr.Select(slot => slot.ToBigEndian())));
         }
-        return (stateNodes.ToArray(), codes.ToArray());
+        return (stateNodes.ToArray(), codes.ToArray(), keys.ToArray());
     }
 
     public bool HasStateForBlock(BlockHeader? baseBlock) => inner.HasStateForBlock(baseBlock);
@@ -52,7 +52,7 @@ public class WitnessGeneratingWorldState(WorldState inner) : IWorldState
 
     public bool TryGetAccount(Address address, out AccountStruct account)
     {
-        StorageSlots.TryAdd(address, []);
+        _storageSlots.TryAdd(address, []);
         return ((IWorldState)inner).TryGetAccount(address, out account);
     }
 
@@ -60,7 +60,7 @@ public class WitnessGeneratingWorldState(WorldState inner) : IWorldState
 
     public byte[]? GetCode(Address address)
     {
-        StorageSlots.TryAdd(address, []);
+        _storageSlots.TryAdd(address, []);
         return inner.GetCode(address);
     }
 
@@ -71,49 +71,49 @@ public class WitnessGeneratingWorldState(WorldState inner) : IWorldState
 
     public bool IsContract(Address address)
     {
-        StorageSlots.TryAdd(address, []);
+        _storageSlots.TryAdd(address, []);
         return inner.IsContract(address);
     }
 
     public bool AccountExists(Address address)
     {
-        StorageSlots.TryAdd(address, []);
+        _storageSlots.TryAdd(address, []);
         return inner.AccountExists(address);
     }
 
     public bool IsDeadAccount(Address address)
     {
-        StorageSlots.TryAdd(address, []);
+        _storageSlots.TryAdd(address, []);
         return inner.IsDeadAccount(address);
     }
 
     public bool IsEmptyAccount(Address address)
     {
-        StorageSlots.TryAdd(address, []);
+        _storageSlots.TryAdd(address, []);
         return inner.IsEmptyAccount(address);
     }
 
     public ref readonly UInt256 GetBalance(Address address)
     {
-        StorageSlots.TryAdd(address, []);
+        _storageSlots.TryAdd(address, []);
         return ref inner.GetBalance(address);
     }
 
     public ref readonly ValueHash256 GetCodeHash(Address address)
     {
-        StorageSlots.TryAdd(address, []);
+        _storageSlots.TryAdd(address, []);
         return ref inner.GetCodeHash(address);
     }
 
     public byte[] GetOriginal(in StorageCell storageCell)
     {
-        if (StorageSlots.ContainsKey(storageCell.Address))
+        if (_storageSlots.ContainsKey(storageCell.Address))
         {
-            StorageSlots[storageCell.Address].Add(storageCell.Index);
+            _storageSlots[storageCell.Address].Add(storageCell.Index);
         }
         else
         {
-            StorageSlots.Add(storageCell.Address, new HashSet<UInt256>{storageCell.Index});
+            _storageSlots.Add(storageCell.Address, new HashSet<UInt256>{storageCell.Index});
         }
 
         return inner.GetOriginal(in storageCell);
@@ -121,52 +121,52 @@ public class WitnessGeneratingWorldState(WorldState inner) : IWorldState
 
     public ReadOnlySpan<byte> Get(in StorageCell storageCell)
     {
-        if (StorageSlots.ContainsKey(storageCell.Address))
+        if (_storageSlots.ContainsKey(storageCell.Address))
         {
-            StorageSlots[storageCell.Address].Add(storageCell.Index);
+            _storageSlots[storageCell.Address].Add(storageCell.Index);
         }
         else
         {
-            StorageSlots.Add(storageCell.Address, new HashSet<UInt256>{storageCell.Index});
+            _storageSlots.Add(storageCell.Address, new HashSet<UInt256>{storageCell.Index});
         }
         return inner.Get(in storageCell);
     }
 
     public void Set(in StorageCell storageCell, byte[] newValue)
     {
-        if (StorageSlots.ContainsKey(storageCell.Address))
+        if (_storageSlots.ContainsKey(storageCell.Address))
         {
-            StorageSlots[storageCell.Address].Add(storageCell.Index);
+            _storageSlots[storageCell.Address].Add(storageCell.Index);
         }
         else
         {
-            StorageSlots.Add(storageCell.Address, new HashSet<UInt256>{storageCell.Index});
+            _storageSlots.Add(storageCell.Address, new HashSet<UInt256>{storageCell.Index});
         }
         inner.Set(in storageCell, newValue);
     }
 
     public ReadOnlySpan<byte> GetTransientState(in StorageCell storageCell)
     {
-        if (StorageSlots.ContainsKey(storageCell.Address))
+        if (_storageSlots.ContainsKey(storageCell.Address))
         {
-            StorageSlots[storageCell.Address].Add(storageCell.Index);
+            _storageSlots[storageCell.Address].Add(storageCell.Index);
         }
         else
         {
-            StorageSlots.Add(storageCell.Address, new HashSet<UInt256>{storageCell.Index});
+            _storageSlots.Add(storageCell.Address, new HashSet<UInt256>{storageCell.Index});
         }
         return inner.GetTransientState(in storageCell);
     }
 
     public void SetTransientState(in StorageCell storageCell, byte[] newValue)
     {
-        if (StorageSlots.ContainsKey(storageCell.Address))
+        if (_storageSlots.ContainsKey(storageCell.Address))
         {
-            StorageSlots[storageCell.Address].Add(storageCell.Index);
+            _storageSlots[storageCell.Address].Add(storageCell.Index);
         }
         else
         {
-            StorageSlots.Add(storageCell.Address, new HashSet<UInt256>{storageCell.Index});
+            _storageSlots.Add(storageCell.Address, new HashSet<UInt256>{storageCell.Index});
         }
         inner.SetTransientState(in storageCell, newValue);
     }
@@ -193,7 +193,7 @@ public class WitnessGeneratingWorldState(WorldState inner) : IWorldState
 
     public void ClearStorage(Address address)
     {
-        StorageSlots.TryAdd(address, []);
+        _storageSlots.TryAdd(address, []);
         inner.ClearStorage(address);
     }
 
@@ -204,68 +204,68 @@ public class WitnessGeneratingWorldState(WorldState inner) : IWorldState
 
     public void DeleteAccount(Address address)
     {
-        StorageSlots.TryAdd(address, []);
+        _storageSlots.TryAdd(address, []);
         inner.DeleteAccount(address);
     }
 
     public void CreateAccount(Address address, in UInt256 balance, in UInt256 nonce = default)
     {
-        StorageSlots.TryAdd(address, []);
+        _storageSlots.TryAdd(address, []);
         inner.CreateAccount(address, in balance, in nonce);
     }
 
     public void CreateAccountIfNotExists(Address address, in UInt256 balance, in UInt256 nonce = default)
     {
-        StorageSlots.TryAdd(address, []);
+        _storageSlots.TryAdd(address, []);
         inner.CreateAccountIfNotExists(address, in balance, in nonce);
     }
 
     public bool InsertCode(Address address, in ValueHash256 codeHash, ReadOnlyMemory<byte> code, IReleaseSpec spec,
         bool isGenesis = false)
     {
-        StorageSlots.TryAdd(address, []);
+        _storageSlots.TryAdd(address, []);
         return inner.InsertCode(address, in codeHash, code, spec, isGenesis);
     }
 
     public void AddToBalance(Address address, in UInt256 balanceChange, IReleaseSpec spec)
     {
-        StorageSlots.TryAdd(address, []);
+        _storageSlots.TryAdd(address, []);
         inner.AddToBalance(address, in balanceChange, spec);
     }
 
     public bool AddToBalanceAndCreateIfNotExists(Address address, in UInt256 balanceChange, IReleaseSpec spec)
     {
-        StorageSlots.TryAdd(address, []);
+        _storageSlots.TryAdd(address, []);
         return inner.AddToBalanceAndCreateIfNotExists(address, in balanceChange, spec);
     }
 
     public void SubtractFromBalance(Address address, in UInt256 balanceChange, IReleaseSpec spec)
     {
-        StorageSlots.TryAdd(address, []);
+        _storageSlots.TryAdd(address, []);
         inner.SubtractFromBalance(address, in balanceChange, spec);
     }
 
     public void UpdateStorageRoot(Address address, Hash256 storageRoot)
     {
-        StorageSlots.TryAdd(address, []);
+        _storageSlots.TryAdd(address, []);
         inner.UpdateStorageRoot(address, storageRoot);
     }
 
     public void IncrementNonce(Address address, UInt256 delta)
     {
-        StorageSlots.TryAdd(address, []);
+        _storageSlots.TryAdd(address, []);
         inner.IncrementNonce(address, delta);
     }
 
     public void DecrementNonce(Address address, UInt256 delta)
     {
-        StorageSlots.TryAdd(address, []);
+        _storageSlots.TryAdd(address, []);
         inner.DecrementNonce(address, delta);
     }
 
     public void SetNonce(Address address, in UInt256 nonce)
     {
-        StorageSlots.TryAdd(address, []);
+        _storageSlots.TryAdd(address, []);
         inner.SetNonce(address, nonce);
     }
 

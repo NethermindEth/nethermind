@@ -30,6 +30,7 @@ public class WitnessGeneratingBlockProcessingEnv(
     WorldState baseWorldState,
     IReadOnlyBlockTree blockTree,
     ISealValidator sealValidator,
+    IRewardCalculator rewardCalculator,
     ILogManager logManager) : IWitnessGeneratingBlockProcessingEnv
 {
     private ITransactionProcessor CreateTransactionProcessor(IWorldState state, IBlockFinder blockFinder)
@@ -55,7 +56,7 @@ public class WitnessGeneratingBlockProcessingEnv(
         BlockProcessor blockProcessor = new(
             specProvider,
             blockValidator,
-            NoBlockRewards.Instance, // TODO: pass block rewards
+            rewardCalculator,
             txExecutor,
             state,
             NullReceiptStorage.Instance,
@@ -64,6 +65,6 @@ public class WitnessGeneratingBlockProcessingEnv(
             logManager,
             new WithdrawalProcessor(state, logManager),
             new ExecutionRequestsProcessor(txProcessor));
-        return new WitnessCollector(blockFinder, state, blockProcessor);
+        return new WitnessCollector(blockFinder, state, blockProcessor, logManager.GetClassLogger());
     }
 }

@@ -72,10 +72,24 @@ public class WitnessGeneratingBlockFinder(IBlockFinder inner) : IBlockFinder
         => throw new NotSupportedException();
 
     public bool IsMainChain(BlockHeader blockHeader)
-        => throw new NotSupportedException();
+    {
+        BlockHeader? header = inner.FindHeader(blockHeader.Hash);
+        if (header is not null && (_lowestRequestedHeader ?? long.MaxValue) > header.Number)
+        {
+            _lowestRequestedHeader = header.Number;
+        }
+        return inner.IsMainChain(blockHeader);
+    }
 
     public bool IsMainChain(Hash256 blockHash, bool throwOnMissingHash = true)
-        => throw new NotSupportedException();
+    {
+        BlockHeader? header = inner.FindHeader(blockHash);
+        if (header is not null && (_lowestRequestedHeader ?? long.MaxValue) > header.Number)
+        {
+            _lowestRequestedHeader = header.Number;
+        }
+        return inner.IsMainChain(blockHash, throwOnMissingHash);
+    }
 
     public BlockHeader FindBestSuggestedHeader()
         => throw new NotSupportedException();
