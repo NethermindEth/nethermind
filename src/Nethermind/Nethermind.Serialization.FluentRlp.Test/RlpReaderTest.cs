@@ -1,6 +1,8 @@
 // SPDX-FileCopyrightText: 2024 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
+using NUnit.Framework;
 using FluentAssertions;
 using Nethermind.Serialization.FluentRlp.Instances;
 

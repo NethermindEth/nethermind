@@ -1,29 +1,18 @@
 ﻿<Project Sdk="Microsoft.NET.Sdk">
 
+    <Import Project="../tests.props" />
+
     <PropertyGroup>
-        <TargetFramework>net9.0</TargetFramework>
-        <LangVersion>preview</LangVersion>
-        <ImplicitUsings>enable</ImplicitUsings>
         <Nullable>enable</Nullable>
-        <IsPackable>false</IsPackable>
     </PropertyGroup>
 
     <ItemGroup>
-        <PackageReference Include="coverlet.collector"/>
         <PackageReference Include="FluentAssertions" />
-        <PackageReference Include="Microsoft.NET.Test.Sdk"/>
-        <PackageReference Include="NUnit"/>
-        <PackageReference Include="NUnit.Analyzers"/>
-        <PackageReference Include="NUnit3TestAdapter"/>
     </ItemGroup>
 
     <ItemGroup>
-        <Using Include="NUnit.Framework"/>
-    </ItemGroup>
-
-    <ItemGroup>
-      <ProjectReference Include="..\Nethermind.Serialization.FluentRlp\Nethermind.Serialization.FluentRlp.csproj" />
-      <ProjectReference Include="..\Nethermind.Serialization.FluentRlp.Generator\Nethermind.Serialization.FluentRlp.Generator.csproj" OutputItemType="Analyzer" />
+        <ProjectReference Include="..\Nethermind.Serialization.FluentRlp\Nethermind.Serialization.FluentRlp.csproj" />
+        <ProjectReference Include="..\Nethermind.Serialization.FluentRlp.Generator\Nethermind.Serialization.FluentRlp.Generator.csproj" OutputItemType="Analyzer" />
     </ItemGroup>
 
 </Project>

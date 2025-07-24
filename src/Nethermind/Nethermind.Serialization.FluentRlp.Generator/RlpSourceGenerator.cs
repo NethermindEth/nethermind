@@ -335,5 +335,5 @@ public sealed class RlpSourceGenerator : IIncrementalGenerator
 
 public static class StringExt
 {
-    public static string Capitalize(this string str) => str[0].ToString().ToUpper() + str[1..];
+    public static string Capitalize(this string str) => str[0].ToString().ToUpper() + str.Substring(1);
 }
