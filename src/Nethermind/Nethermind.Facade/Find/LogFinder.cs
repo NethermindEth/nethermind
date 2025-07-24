@@ -58,18 +58,20 @@ namespace Nethermind.Facade.Find
 
         public IEnumerable<FilterLog> FindLogs(LogFilter filter, CancellationToken cancellationToken = default)
         {
-            BlockHeader FindHeader(BlockParameter blockParameter, string name, bool headLimit) =>
-                _blockFinder.FindHeader(blockParameter, headLimit) ?? throw new ResourceNotFoundException($"Block not found: {name} {blockParameter}");
-
             cancellationToken.ThrowIfCancellationRequested();
-            BlockHeader toBlock = FindHeader(filter.ToBlock, nameof(filter.ToBlock), false);
+            BlockHeader toBlock = FindHeader(filter.ToBlock, nameof(filter.ToBlock));
             cancellationToken.ThrowIfCancellationRequested();
             BlockHeader fromBlock = filter.ToBlock == filter.FromBlock ?
                 toBlock :
-                FindHeader(filter.FromBlock, nameof(filter.FromBlock), false);
+                FindHeader(filter.FromBlock, nameof(filter.FromBlock));
 
             return FindLogs(filter, fromBlock, toBlock, cancellationToken);
         }
+
+        private BlockHeader FindHeader(BlockParameter blockParameter, string name) =>
+            _blockFinder.FindHeader(blockParameter) ?? throw new ResourceNotFoundException($"Block not found: {name} {blockParameter}");
+
+        private BlockHeader FindHeader(int number) => FindHeader(new(number), $"{number}");
 
         public IEnumerable<FilterLog> FindLogs(LogFilter filter, BlockHeader fromBlock, BlockHeader toBlock, CancellationToken cancellationToken = default)
         {
@@ -93,9 +95,31 @@ namespace Nethermind.Facade.Find
             }
             cancellationToken.ThrowIfCancellationRequested();
 
-            if (filter.UseIndex && CanUseLogIndex(filter, fromBlock, toBlock))
-                return FilterLogsUsingIndex(filter, fromBlock, toBlock, cancellationToken);
+            if (CanUseLogIndex(filter, fromBlock, toBlock) is not { } indexRange)
+                return FilterLogsWithoutIndex(filter, fromBlock, toBlock, cancellationToken);
 
+            // Combine results from regular scanning and index
+            IEnumerable<FilterLog>? result = [];
+
+            if (indexRange.from > fromBlock.Number)
+                result = result.Concat(FilterLogsWithoutIndex(filter, fromBlock, FindHeader(indexRange.from - 1), cancellationToken));
+
+            cancellationToken.ThrowIfCancellationRequested();
+
+            result = result.Concat(FilterLogsUsingIndex(filter, FindHeader(indexRange.from), FindHeader(indexRange.to), cancellationToken));
+
+            cancellationToken.ThrowIfCancellationRequested();
+
+            if (indexRange.to < toBlock.Number)
+                result = result.Concat(FilterLogsWithoutIndex(filter, FindHeader(indexRange.to + 1), toBlock, cancellationToken));
+
+            return result;
+
+        }
+
+        private IEnumerable<FilterLog> FilterLogsWithoutIndex(LogFilter filter, BlockHeader fromBlock, BlockHeader toBlock,
+            CancellationToken cancellationToken)
+        {
             bool shouldUseBloom = ShouldUseBloomDatabase(fromBlock, toBlock);
             bool canUseBloom = CanUseBloomDatabase(toBlock, fromBlock);
             bool useBloom = shouldUseBloom && canUseBloom;
@@ -172,11 +196,18 @@ namespace Nethermind.Facade.Find
                 .SelectMany(blockNumber => FindLogsInBlock(filter, FindBlockHash(blockNumber, cancellationToken), blockNumber, cancellationToken));
         }
 
-        private bool CanUseLogIndex(LogFilter filter, BlockHeader fromBlock, BlockHeader toBlock)
+        private (int from, int to)? CanUseLogIndex(LogFilter filter, BlockHeader fromBlock, BlockHeader toBlock)
         {
-            return _logIndexStorage != null && !filter.AcceptsAnyBlock &&
-                fromBlock.Number >= _logIndexStorage.GetMinBlockNumber() &&
-                toBlock.Number <= _logIndexStorage.GetMaxBlockNumber();
+            if (_logIndexStorage == null || filter.AcceptsAnyBlock)
+                return null;
+
+            if (_logIndexStorage.GetMinBlockNumber() is not {} indexFrom || _logIndexStorage.GetMaxBlockNumber() is not {} indexTo)
+                return null;
+
+            return (
+                Math.Max((int)fromBlock.Number, indexFrom),
+                Math.Min((int)toBlock.Number, indexTo)
+            );
         }
 
         private bool CanUseBloomDatabase(BlockHeader toBlock, BlockHeader fromBlock)
