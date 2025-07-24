@@ -6,15 +6,15 @@ using System.Linq;
 using System.Text.Json;
 using FluentAssertions;
 using Nethermind.Core.Extensions;
-using Nethermind.Evm.Tracing.GethStyle;
+using Nethermind.Blockchain.Tracing.GethStyle;
 using NUnit.Framework;
 using Nethermind.Specs;
 using Nethermind.Core.Test.Builders;
-using Nethermind.Evm.Tracing.GethStyle.Custom.JavaScript;
+using Nethermind.Blockchain.Tracing.GethStyle.Custom.JavaScript;
 using Nethermind.Int256;
 using Nethermind.Serialization.Json;
 using Nethermind.Specs.Forks;
-using Nethermind.State;
+using Nethermind.Evm.State;
 
 namespace Nethermind.Evm.Test.Tracing;
 
@@ -44,7 +44,7 @@ public class GethLikeJavaScriptTracerTests : VirtualMachineTestsBase
                 GetTracer(userTracer),
                 MStore(),
                 MainnetSpecProvider.CancunActivation);
-        GethLikeTxTrace traces = tracer.BuildResult().First();
+        using GethLikeTxTrace traces = tracer.BuildResult().First();
         string[] expectedStrings = { "0:PUSH32:0:79000:0", "33:PUSH1:0:78997:0", "35:MSTORE:0:78994:0", "36:PUSH32:0:78988:0", "69:PUSH1:0:78985:0", "71:MSTORE:0:78982:0", "72:STOP:0:78976:0" };
         traces.CustomTracerResult?.Value.Should().BeEquivalentTo(expectedStrings);
     }
@@ -65,7 +65,7 @@ public class GethLikeJavaScriptTracerTests : VirtualMachineTestsBase
                 GetTracer(userTracer),
                 MStore(),
                 MainnetSpecProvider.CancunActivation);
-        GethLikeTxTrace traces = tracer.BuildResult().First();
+        using GethLikeTxTrace traces = tracer.BuildResult().First();
         string[] expectedStrings = { "PUSH32 : 127 : true", "PUSH1 : 96 : true", "MSTORE : 82 : false", "PUSH32 : 127 : true", "PUSH1 : 96 : true", "MSTORE : 82 : false", "STOP : 0 : false" };
         traces.CustomTracerResult?.Value.Should().BeEquivalentTo(expectedStrings);
     }
@@ -83,7 +83,7 @@ public class GethLikeJavaScriptTracerTests : VirtualMachineTestsBase
                 GetTracer(userTracer),
                 MStore(),
                 MainnetSpecProvider.CancunActivation);
-        GethLikeTxTrace traces = tracer.BuildResult().First();
+        using GethLikeTxTrace traces = tracer.BuildResult().First();
         int[] expected = { 0, 1, 2, 0, 1, 2, 0 };
         traces.CustomTracerResult?.Value.Should().BeEquivalentTo(expected);
     }
@@ -107,7 +107,7 @@ public class GethLikeJavaScriptTracerTests : VirtualMachineTestsBase
                 GetTracer(userTracer),
                 MStore(),
                 MainnetSpecProvider.CancunActivation);
-        GethLikeTxTrace traces = tracer.BuildResult().First();
+        using GethLikeTxTrace traces = tracer.BuildResult().First();
         int[] expectedResult = { 0, 32, 64 };
         traces.CustomTracerResult?.Value.Should().BeEquivalentTo(expectedResult);
     }
@@ -125,7 +125,7 @@ public class GethLikeJavaScriptTracerTests : VirtualMachineTestsBase
                 GetTracer(userTracer),
                 MStore(),
                 MainnetSpecProvider.CancunActivation);
-        GethLikeTxTrace traces = tracer.BuildResult().First();
+        using GethLikeTxTrace traces = tracer.BuildResult().First();
         traces.CustomTracerResult?.Value.Should().BeEquivalentTo("942921b14f1b1c385cd7e0cc2ef7abe5598c8358:b7705ae4c6f81b66cdb323c65f4e8133690fc099:");
     }
 
@@ -144,7 +144,7 @@ public class GethLikeJavaScriptTracerTests : VirtualMachineTestsBase
                 GetTracer(userTracer),
                 MStore(),
                 MainnetSpecProvider.CancunActivation);
-        GethLikeTxTrace traces = tracer.BuildResult().First();
+        using GethLikeTxTrace traces = tracer.BuildResult().First();
         string[] expectedStrings = { "0:PUSH32", "33:PUSH1", "35:MSTORE", "36:PUSH32", "69:PUSH1", "71:MSTORE", "72:STOP" };
         Assert.That(traces.CustomTracerResult?.Value, Is.EqualTo(expectedStrings));
     }
@@ -168,7 +168,7 @@ public class GethLikeJavaScriptTracerTests : VirtualMachineTestsBase
                 GetTracer(userTracer),
                 MStore(),
                 MainnetSpecProvider.CancunActivation);
-        GethLikeTxTrace traces = tracer.BuildResult().First();
+        using GethLikeTxTrace traces = tracer.BuildResult().First();
         string[] expectedStrings = { "33: PUSH1", "35: MSTORE", "69: PUSH1", "71: MSTORE" };
         Assert.That(traces.CustomTracerResult?.Value, Is.EqualTo(expectedStrings));
     }
@@ -197,7 +197,7 @@ public class GethLikeJavaScriptTracerTests : VirtualMachineTestsBase
                 GetTracer(userTracer),
                 SStore_double(),
                 MainnetSpecProvider.CancunActivation);
-        GethLikeTxTrace traces = tracer.BuildResult().First();
+        using GethLikeTxTrace traces = tracer.BuildResult().First();
         string[] expectedStrings = { "35: SSTORE 0", "71: SSTORE 20", "107: SLOAD 0", "108: STOP a01234 <- a01234" };
         Assert.That(traces.CustomTracerResult?.Value, Is.EqualTo(expectedStrings));
     }
@@ -233,7 +233,7 @@ public class GethLikeJavaScriptTracerTests : VirtualMachineTestsBase
                 GetTracer(userTracer),
                 SStore(),
                 MainnetSpecProvider.CancunActivation);
-        GethLikeTxTrace traces = tracer.BuildResult().First();
+        using GethLikeTxTrace traces = tracer.BuildResult().First();
         string[] expectedStrings = { "68 SSTORE 1 <- a01234", "104 SLOAD 1", "Result: a01234" };
         Assert.That(traces.CustomTracerResult?.Value, Is.EqualTo(expectedStrings));
     }
@@ -300,7 +300,7 @@ public class GethLikeJavaScriptTracerTests : VirtualMachineTestsBase
                 GetTracer(userTracer),
                 SStore(),
                 MainnetSpecProvider.CancunActivation);
-        GethLikeTxTrace traces = tracer.BuildResult().First();
+        using GethLikeTxTrace traces = tracer.BuildResult().First();
         string[] expectedStrings = { "68: SSTORE 942921b14f1b1c385cd7e0cc2ef7abe5598c8358:1 <- a01234", "104: SLOAD 942921b14f1b1c385cd7e0cc2ef7abe5598c8358:1", "Result: 1" };
         Assert.That(traces.CustomTracerResult?.Value, Is.EqualTo(expectedStrings));
     }
@@ -312,7 +312,7 @@ public class GethLikeJavaScriptTracerTests : VirtualMachineTestsBase
                 GetTracer("noopTracer"),
                 MStore(),
                 MainnetSpecProvider.CancunActivation);
-        GethLikeTxTrace traces = tracer.BuildResult().First();
+        using GethLikeTxTrace traces = tracer.BuildResult().First();
         Assert.That(traces.CustomTracerResult?.Value, Has.All.Empty);
     }
 
@@ -323,7 +323,7 @@ public class GethLikeJavaScriptTracerTests : VirtualMachineTestsBase
                 GetTracer("opcountTracer"),
                 MStore(),
                 MainnetSpecProvider.CancunActivation);
-        GethLikeTxTrace traces = tracer.BuildResult().First();
+        using GethLikeTxTrace traces = tracer.BuildResult().First();
         Assert.That(traces.CustomTracerResult?.Value, Is.EqualTo(7));
     }
 
@@ -334,7 +334,7 @@ public class GethLikeJavaScriptTracerTests : VirtualMachineTestsBase
                 GetTracer("prestateTracer_legacy"),
                 NestedCalls(),
                 MainnetSpecProvider.CancunActivation);
-        GethLikeTxTrace traces = tracer.BuildResult().First();
+        using GethLikeTxTrace traces = tracer.BuildResult().First();
 
         Assert.That(JsonSerializer.Serialize(traces.CustomTracerResult?.Value), Is.EqualTo("{\"942921b14f1b1c385cd7e0cc2ef7abe5598c8358\":{\"balance\":\"0x56bc75e2d63100000\",\"nonce\":0,\"code\":\"60006000600060007376e68a8696537e4141926f3e528733af9e237d6961c350f400\",\"storage\":{}},\"76e68a8696537e4141926f3e528733af9e237d69\":{\"balance\":\"0xde0b6b3a7640000\",\"nonce\":0,\"code\":\"7f7f000000000000000000000000000000000000000000000000000000000000006000527f0060005260036000f30000000000000000000000000000000000000000000000602052602960006000f000\",\"storage\":{}},\"89aa9b2ce05aaef815f25b237238c0b4ffff6ae3\":{\"balance\":\"0x0\",\"nonce\":0,\"code\":\"\",\"storage\":{}},\"b7705ae4c6f81b66cdb323c65f4e8133690fc099\":{\"balance\":\"0x56bc75e2d63100000\",\"nonce\":0,\"code\":\"\",\"storage\":{}}}"));
     }
@@ -346,7 +346,7 @@ public class GethLikeJavaScriptTracerTests : VirtualMachineTestsBase
                 GetTracer("callTracer_legacy"),
                 NestedCalls(),
                 MainnetSpecProvider.CancunActivation);
-        GethLikeTxTrace traces = tracer.BuildResult().First();
+        using GethLikeTxTrace traces = tracer.BuildResult().First();
 
         Assert.That(JsonSerializer.Serialize(traces.CustomTracerResult?.Value), Is.EqualTo("{\"type\":\"CALL\",\"from\":\"b7705ae4c6f81b66cdb323c65f4e8133690fc099\",\"to\":\"942921b14f1b1c385cd7e0cc2ef7abe5598c8358\",\"value\":\"0x1\",\"gas\":\"0x186a0\",\"gasUsed\":\"0xdbd1\",\"input\":\"\",\"output\":\"\",\"calls\":[{\"type\":\"DELEGATECALL\",\"from\":\"942921b14f1b1c385cd7e0cc2ef7abe5598c8358\",\"to\":\"76e68a8696537e4141926f3e528733af9e237d69\",\"gas\":\"0xc350\",\"gasUsed\":\"0x14d07\",\"input\":\"\",\"output\":\"\",\"calls\":[{\"type\":\"CREATE\",\"from\":\"942921b14f1b1c385cd7e0cc2ef7abe5598c8358\",\"to\":\"89aa9b2ce05aaef815f25b237238c0b4ffff6ae3\",\"value\":\"0x0\",\"gas\":\"0x4513\",\"gasUsed\":\"0x7f6e\",\"input\":\"7f000000000000000000000000000000000000000000000000000000000000000060005260036000f3\",\"output\":\"000000\"}]}]}"));
     }
@@ -358,7 +358,7 @@ public class GethLikeJavaScriptTracerTests : VirtualMachineTestsBase
                 GetTracer("4byteTracer_legacy"),
                 CallWithInput(),
                 MainnetSpecProvider.CancunActivation);
-        GethLikeTxTrace traces = tracer.BuildResult().First();
+        using GethLikeTxTrace traces = tracer.BuildResult().First();
 
         Assert.That(JsonSerializer.Serialize(traces.CustomTracerResult?.Value), Is.EqualTo("{\"00000000-1\":2,\"00000000-2\":1}"));
     }
@@ -455,7 +455,7 @@ public class GethLikeJavaScriptTracerTests : VirtualMachineTestsBase
                 GetTracer(ComplexTracer),
                 [],
                 MainnetSpecProvider.CancunActivation);
-        GethLikeTxTrace traces = tracer.BuildResult().First();
+        using GethLikeTxTrace traces = tracer.BuildResult().First();
 
         TestContext.Out.WriteLine(GetEthereumJsonSerializer().Serialize(traces.CustomTracerResult));
     }
@@ -467,7 +467,7 @@ public class GethLikeJavaScriptTracerTests : VirtualMachineTestsBase
                 GetTracer(ComplexTracer),
                 NestedCalls(),
                 MainnetSpecProvider.CancunActivation);
-        GethLikeTxTrace traces = tracer.BuildResult().First();
+        using GethLikeTxTrace traces = tracer.BuildResult().First();
 
         TestContext.Out.WriteLine(GetEthereumJsonSerializer().Serialize(traces.CustomTracerResult));
     }

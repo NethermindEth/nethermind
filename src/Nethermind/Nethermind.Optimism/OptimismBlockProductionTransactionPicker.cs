@@ -5,13 +5,13 @@ using System.Collections.Generic;
 using Nethermind.Consensus.Processing;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
-using Nethermind.State;
+using Nethermind.Evm.State;
 
 namespace Nethermind.Optimism;
 
 public class OptimismBlockProductionTransactionPicker : BlockProcessor.BlockProductionTransactionPicker
 {
-    public OptimismBlockProductionTransactionPicker(ISpecProvider specProvider) : base(specProvider)
+    public OptimismBlockProductionTransactionPicker(ISpecProvider specProvider, long maxTxLengthKilobytes) : base(specProvider, maxTxLengthKilobytes)
     {
     }
 

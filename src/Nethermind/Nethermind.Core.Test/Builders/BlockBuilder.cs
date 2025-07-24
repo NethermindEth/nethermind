@@ -3,6 +3,7 @@
 
 using System;
 using System.Linq;
+using Nethermind.Blockchain;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.ExecutionRequest;
 using Nethermind.Core.Specs;
@@ -97,7 +98,7 @@ namespace Nethermind.Core.Test.Builders
             }
 
             BlockBuilder result = WithTransactions(txs);
-            Hash256 receiptHash = ReceiptTrie<TxReceipt>.CalculateRoot(specProvider.GetSpec(TestObjectInternal.Header), receipts, Rlp.GetStreamDecoder<TxReceipt>()!);
+            Hash256 receiptHash = ReceiptTrie.CalculateRoot(specProvider.GetSpec(TestObjectInternal.Header), receipts, Rlp.GetStreamDecoder<TxReceipt>()!);
             TestObjectInternal.Header.ReceiptsRoot = receiptHash;
             return result;
         }
@@ -193,6 +194,7 @@ namespace Nethermind.Core.Test.Builders
         {
             TestObjectInternal = TestObjectInternal.WithReplacedBody(
                 TestObjectInternal.Body.WithChangedUncles(uncles));
+            TestObjectInternal.Header.UnclesHash = UnclesHash.Calculate(uncles);
             return this;
         }
 
@@ -286,6 +288,12 @@ namespace Nethermind.Core.Test.Builders
         public BlockBuilder WithParentBeaconBlockRoot(Hash256? parentBeaconBlockRoot)
         {
             TestObjectInternal.Header.ParentBeaconBlockRoot = parentBeaconBlockRoot;
+            return this;
+        }
+
+        public BlockBuilder WithEncodedSize(int? encodedSize)
+        {
+            TestObjectInternal.EncodedSize = encodedSize;
             return this;
         }
     }

@@ -14,15 +14,18 @@ on:
           - sepolia
           - chiado
           - holesky
+          - hoodi
           - op-mainnet
           - op-sepolia
           - base-mainnet
-          - base-sepolia
+          - base-sepolia          
+          - world-sepolia
+          - world-mainnet
           - joc-mainnet
           - joc-testnet
           - linea-mainnet
           - linea-sepolia
-          - taiko-mainnet
+          - taiko-alethia
           - taiko-hekla
           - energyweb
           - volta
@@ -247,8 +250,8 @@ jobs:
           REPO_NAME: ${{ env.REPO_NAME }}
           REF: ${{ inputs.nethermind_repo_ref || github.ref }}
         run: |
-          chmod +x scripts/wait-for-workflow-completed.sh
-          ./scripts/wait-for-workflow-completed.sh
+          chmod +x scripts/wait-for-workflow.sh
+          ./scripts/wait-for-workflow.sh
         working-directory: ${{ github.workspace }}
 
   trigger_node_and_vm_creation:
@@ -322,8 +325,8 @@ jobs:
           NAME_FILTER: ${{ env.BASE_TAG }}
           REF: "main"
         run: |
-          chmod +x scripts/wait-for-workflow-completed.sh
-          ./scripts/wait-for-workflow-completed.sh | tee script-output.txt
+          chmod +x scripts/wait-for-workflow.sh
+          ./scripts/wait-for-workflow.sh | tee script-output.txt
           run_id=$(grep -oP 'Run ID: \K\d+' script-output.txt)
           echo "Run ID extracted is: $run_id"
           echo "RUN_ID=$run_id" >> $GITHUB_ENV
@@ -343,7 +346,7 @@ jobs:
           echo "" >> $GITHUB_STEP_SUMMARY
           cat "downloaded-artifacts/machine-details/$FILE" >> $GITHUB_STEP_SUMMARY
           echo "</details>" >> $GITHUB_STEP_SUMMARY
-          
+
           cat "downloaded-artifacts/machine-details/$FILE" | tee spec-output.txt
           rpc_url=$(grep -oP '\s{2,3}RPC URL: \K.+' spec-output.txt)
           echo "RPC URL extracted is: $rpc_url"

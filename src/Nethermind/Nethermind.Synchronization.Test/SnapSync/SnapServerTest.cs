@@ -3,16 +3,18 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Threading;
 using FluentAssertions;
-using Nethermind.Blockchain.Synchronization;
-using Nethermind.Blockchain.Utils;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Db;
+using Nethermind.Int256;
+using Nethermind.Libp2p.Core.Enums;
 using Nethermind.Logging;
 using Nethermind.State;
 using Nethermind.State.Snap;
+using Nethermind.State.SnapServer;
 using Nethermind.Synchronization.FastSync;
 using Nethermind.Synchronization.SnapSync;
 using Nethermind.Trie;
@@ -32,13 +34,13 @@ public class SnapServerTest
         internal MemDb ClientStateDb { get; init; } = null!;
     }
 
-    private Context CreateContext(ILastNStateRootTracker? stateRootTracker = null)
+    private Context CreateContext(IStateReader? stateRootTracker = null, ILastNStateRootTracker? lastNStateRootTracker = null)
     {
         MemDb stateDbServer = new();
         MemDb codeDbServer = new();
-        TrieStore store = new(stateDbServer, LimboLogs.Instance);
+        TestRawTrieStore store = new TestRawTrieStore(stateDbServer);
         StateTree tree = new(store, LimboLogs.Instance);
-        SnapServer server = new(store.AsReadOnly(), codeDbServer, stateRootTracker ?? CreateConstantStateRootTracker(true), LimboLogs.Instance);
+        SnapServer server = new(store.AsReadOnly(), codeDbServer, stateRootTracker ?? CreateConstantStateRootTracker(true), LimboLogs.Instance, lastNStateRootTracker);
 
         MemDb clientStateDb = new();
         using ProgressTracker progressTracker = new(clientStateDb, new TestSyncConfig(), new StateSyncPivot(null!, new TestSyncConfig(), LimboLogs.Instance), LimboLogs.Instance);
@@ -120,25 +122,33 @@ public class SnapServerTest
         result.Count.Should().Be(1);
     }
 
-    [Test]
-    public void TestNoState()
+    [TestCase(true)]
+    [TestCase(false)]
+    public void TestNoState(bool withLastNStateTracker)
     {
-        Context context = CreateContext(stateRootTracker: CreateConstantStateRootTracker(false));
+        ILastNStateRootTracker? lastNStateTracker = null;
+        if (withLastNStateTracker)
+        {
+            lastNStateTracker = Substitute.For<ILastNStateRootTracker>();
+            lastNStateTracker.HasStateRoot(Arg.Any<Hash256>()).Returns(false);
+        }
+
+        Context context = CreateContext(stateRootTracker: CreateConstantStateRootTracker(withLastNStateTracker), lastNStateRootTracker: lastNStateTracker);
 
         (IOwnedReadOnlyList<PathWithAccount> accounts, IOwnedReadOnlyList<byte[]> accountProofs) =
             context.Server.GetAccountRanges(context.Tree.RootHash, Keccak.Zero, Keccak.MaxValue, 4000, CancellationToken.None);
 
         accounts.Count.Should().Be(0);
 
-        (IOwnedReadOnlyList<IOwnedReadOnlyList<PathWithStorageSlot>> storageSlots, IOwnedReadOnlyList<byte[]> proofs) =
-            context.Server.GetStorageRanges(context.Tree.RootHash, new PathWithAccount[] { TestItem.Tree.AccountsWithPaths[0] },
-                Keccak.Zero, Keccak.MaxValue, 10, CancellationToken.None);
+        (IOwnedReadOnlyList<IOwnedReadOnlyList<PathWithStorageSlot>> storageSlots, IOwnedReadOnlyList<byte[]>? proofs) =
+            context.Server.GetStorageRanges(context.Tree.RootHash, [TestItem.Tree.AccountsWithPaths[0]],
+                ValueKeccak.Zero, ValueKeccak.MaxValue, 10, CancellationToken.None);
 
         storageSlots.Count.Should().Be(0);
 
         accounts.Dispose();
         accountProofs.Dispose();
-        proofs.Dispose();
+        proofs?.Dispose();
         storageSlots.DisposeRecursive();
     }
 
@@ -253,35 +263,64 @@ public class SnapServerTest
     {
         MemDb stateDb = new MemDb();
         MemDb codeDb = new MemDb();
-        TrieStore store = new(stateDb, LimboLogs.Instance);
+        TestRawTrieStore store = new TestRawTrieStore(stateDb);
 
         (StateTree inputStateTree, StorageTree inputStorageTree, Hash256 _) = TestItem.Tree.GetTrees(store);
 
         SnapServer server = new(store.AsReadOnly(), codeDb, CreateConstantStateRootTracker(true), LimboLogs.Instance);
 
-        IDbProvider dbProviderClient = new DbProvider();
-        dbProviderClient.RegisterDb(DbNames.State, new MemDb());
-        dbProviderClient.RegisterDb(DbNames.Code, new MemDb());
+        IDb codeDb2 = new MemDb();
+        IDb stateDb2 = new MemDb();
 
-        using ProgressTracker progressTracker = new(dbProviderClient.StateDb, new TestSyncConfig(), new StateSyncPivot(null!, new TestSyncConfig(), LimboLogs.Instance), LimboLogs.Instance);
-        SnapProvider snapProvider = new(progressTracker, dbProviderClient.CodeDb, new NodeStorage(dbProviderClient.StateDb), LimboLogs.Instance);
+        using ProgressTracker progressTracker = new(stateDb2, new TestSyncConfig(), new StateSyncPivot(null!, new TestSyncConfig(), LimboLogs.Instance), LimboLogs.Instance);
+        SnapProvider snapProvider = new(progressTracker, codeDb2, new NodeStorage(stateDb2), LimboLogs.Instance);
 
-        (IOwnedReadOnlyList<IOwnedReadOnlyList<PathWithStorageSlot>> storageSlots, IOwnedReadOnlyList<byte[]> proofs) =
-            server.GetStorageRanges(inputStateTree.RootHash, new[] { TestItem.Tree.AccountsWithPaths[0] },
-                Keccak.Zero, Keccak.MaxValue, 10, CancellationToken.None);
+        (IOwnedReadOnlyList<IOwnedReadOnlyList<PathWithStorageSlot>> storageSlots, IOwnedReadOnlyList<byte[]>? proofs) =
+            server.GetStorageRanges(inputStateTree.RootHash, [TestItem.Tree.AccountsWithPaths[0]],
+                ValueKeccak.Zero, ValueKeccak.MaxValue, 10, CancellationToken.None);
 
         try
         {
-            AddRangeResult result = snapProvider.AddStorageRange(1, TestItem.Tree.AccountsWithPaths[0], inputStorageTree.RootHash, Keccak.Zero,
-                storageSlots[0], proofs);
+            var storageRangeRequest = new StorageRange()
+            {
+                StartingHash = Keccak.Zero,
+                Accounts = new ArrayPoolList<PathWithAccount>(1) { new(TestItem.Tree.AccountsWithPaths[0].Path, new Account(UInt256.Zero).WithChangedStorageRoot(inputStorageTree.RootHash)) }
+            };
+            AddRangeResult result = snapProvider.AddStorageRangeForAccount(storageRangeRequest, 0, storageSlots[0], proofs);
 
             result.Should().Be(AddRangeResult.OK);
         }
         finally
         {
             storageSlots.DisposeRecursive();
-            proofs.Dispose();
+            proofs?.Dispose();
         }
+    }
+
+    [Test]
+    public void TestGetStorageRange_NoSlotsForAccount()
+    {
+        MemDb stateDb = new MemDb();
+        MemDb codeDb = new MemDb();
+        TestRawTrieStore store = new TestRawTrieStore(stateDb);
+
+        (StateTree inputStateTree, StorageTree inputStorageTree, Hash256 _) = TestItem.Tree.GetTrees(store);
+
+        SnapServer server = new(store.AsReadOnly(), codeDb, CreateConstantStateRootTracker(true), LimboLogs.Instance);
+
+        ValueHash256 lastStorageHash = TestItem.Tree.SlotsWithPaths[^1].Path;
+        var asInt = lastStorageHash.ToUInt256();
+        ValueHash256 beyondLast = new ValueHash256((++asInt).ToBigEndian());
+
+        (IOwnedReadOnlyList<IOwnedReadOnlyList<PathWithStorageSlot>> storageSlots, IOwnedReadOnlyList<byte[]>? proofs) =
+            server.GetStorageRanges(inputStateTree.RootHash, [TestItem.Tree.AccountsWithPaths[0]],
+                beyondLast, ValueKeccak.MaxValue, 10, CancellationToken.None);
+
+        storageSlots.Count.Should().Be(0);
+        proofs?.Count.Should().BeGreaterThan(0); //in worst case should get at least root node
+
+        storageSlots.DisposeRecursive();
+        proofs?.Dispose();
     }
 
     [Test]
@@ -289,30 +328,33 @@ public class SnapServerTest
     {
         MemDb stateDb = new MemDb();
         MemDb codeDb = new MemDb();
-        TrieStore store = new(stateDb, LimboLogs.Instance);
+        TestRawTrieStore store = new TestRawTrieStore(stateDb);
 
         (StateTree inputStateTree, StorageTree inputStorageTree, Hash256 _) = TestItem.Tree.GetTrees(store, 10000);
 
         SnapServer server = new(store.AsReadOnly(), codeDb, CreateConstantStateRootTracker(true), LimboLogs.Instance);
 
-        IDbProvider dbProviderClient = new DbProvider();
-        dbProviderClient.RegisterDb(DbNames.State, new MemDb());
-        dbProviderClient.RegisterDb(DbNames.Code, new MemDb());
+        IDb stateDb2 = new MemDb();
+        IDb codeDb2 = new MemDb();
 
-        using ProgressTracker progressTracker = new(dbProviderClient.StateDb, new TestSyncConfig(), new StateSyncPivot(null!, new TestSyncConfig(), LimboLogs.Instance), LimboLogs.Instance);
-        SnapProvider snapProvider = new(progressTracker, dbProviderClient.CodeDb, new NodeStorage(dbProviderClient.StateDb), LimboLogs.Instance);
+        using ProgressTracker progressTracker = new(stateDb2, new TestSyncConfig(), new StateSyncPivot(null!, new TestSyncConfig(), LimboLogs.Instance), LimboLogs.Instance);
+        SnapProvider snapProvider = new(progressTracker, codeDb2, new NodeStorage(stateDb2), LimboLogs.Instance);
 
         Hash256 startRange = Keccak.Zero;
         while (true)
         {
-            (IOwnedReadOnlyList<IOwnedReadOnlyList<PathWithStorageSlot>> storageSlots, IOwnedReadOnlyList<byte[]> proofs) =
-                server.GetStorageRanges(inputStateTree.RootHash, new PathWithAccount[] { TestItem.Tree.AccountsWithPaths[0] },
-                    startRange, Keccak.MaxValue, 10000, CancellationToken.None);
+            (IOwnedReadOnlyList<IOwnedReadOnlyList<PathWithStorageSlot>> storageSlots, IOwnedReadOnlyList<byte[]>? proofs) =
+                server.GetStorageRanges(inputStateTree.RootHash, [TestItem.Tree.AccountsWithPaths[0]],
+                    startRange, ValueKeccak.MaxValue, 10000, CancellationToken.None);
 
             try
             {
-                AddRangeResult result = snapProvider.AddStorageRange(1, TestItem.Tree.AccountsWithPaths[0], inputStorageTree.RootHash, startRange,
-                    storageSlots[0], proofs);
+                var storageRangeRequest = new StorageRange()
+                {
+                    StartingHash = startRange,
+                    Accounts = new ArrayPoolList<PathWithAccount>(1) { new(TestItem.Tree.AccountsWithPaths[0].Path, new Account(UInt256.Zero).WithChangedStorageRoot(inputStorageTree.RootHash)) }
+                };
+                AddRangeResult result = snapProvider.AddStorageRangeForAccount(storageRangeRequest, 0, storageSlots[0], proofs);
 
                 result.Should().Be(AddRangeResult.OK);
                 if (startRange == storageSlots[0][^1].Path.ToCommitment())
@@ -325,7 +367,7 @@ public class SnapServerTest
             finally
             {
                 storageSlots.DisposeRecursive();
-                proofs.Dispose();
+                proofs?.Dispose();
             }
         }
     }
@@ -335,7 +377,7 @@ public class SnapServerTest
     {
         MemDb stateDb = new MemDb();
         MemDb codeDb = new MemDb();
-        TrieStore store = new(stateDb, LimboLogs.Instance);
+        TestRawTrieStore store = new TestRawTrieStore(stateDb);
 
         StateTree stateTree = new(store, LimboLogs.Instance);
 
@@ -350,7 +392,7 @@ public class SnapServerTest
         for (int i = 1000; i < 10000; i += 1000)
         {
             Address address = TestItem.GetRandomAddress();
-            StorageTree storageTree = new(store.GetTrieStore(address.ToAccountPath), LimboLogs.Instance);
+            StorageTree storageTree = new(store.GetTrieStore(address), LimboLogs.Instance);
             for (int j = 0; j < i; j += 1)
             {
                 storageTree.Set(TestItem.GetRandomKeccak(), TestItem.GetRandomKeccak().Bytes.ToArray());
@@ -398,55 +440,53 @@ public class SnapServerTest
         accountProofs.Dispose();
 
         var accountWithStorageArray = accountWithStorage.ToArray();
-        IOwnedReadOnlyList<IOwnedReadOnlyList<PathWithStorageSlot>> slots;
-        IOwnedReadOnlyList<byte[]> proofs;
 
-        (slots, proofs) = server.GetStorageRanges(stateTree.RootHash, accountWithStorageArray[..1], Keccak.Zero, Keccak.MaxValue, 10, CancellationToken.None);
+        (IOwnedReadOnlyList<IOwnedReadOnlyList<PathWithStorageSlot>> slots, IOwnedReadOnlyList<byte[]>? proofs) = server.GetStorageRanges(stateTree.RootHash, accountWithStorageArray[..1], ValueKeccak.Zero, ValueKeccak.MaxValue, 10, CancellationToken.None);
         slots.Count.Should().Be(1);
         slots[0].Count.Should().Be(1);
         proofs.Should().NotBeNull();
 
         slots.DisposeRecursive();
-        proofs.Dispose();
+        proofs?.Dispose();
 
-        (slots, proofs) = server.GetStorageRanges(stateTree.RootHash, accountWithStorageArray[..1], Keccak.Zero, Keccak.MaxValue, 1000000, CancellationToken.None);
+        (slots, proofs) = server.GetStorageRanges(stateTree.RootHash, accountWithStorageArray[..1], ValueKeccak.Zero, ValueKeccak.MaxValue, 1000000, CancellationToken.None);
         slots.Count.Should().Be(1);
         slots[0].Count.Should().Be(1000);
         proofs.Should().BeEmpty();
 
         slots.DisposeRecursive();
-        proofs.Dispose();
+        proofs?.Dispose();
 
-        (slots, proofs) = server.GetStorageRanges(stateTree.RootHash, accountWithStorageArray[..2], Keccak.Zero, Keccak.MaxValue, 10, CancellationToken.None);
+        (slots, proofs) = server.GetStorageRanges(stateTree.RootHash, accountWithStorageArray[..2], ValueKeccak.Zero, ValueKeccak.MaxValue, 10, CancellationToken.None);
         slots.Count.Should().Be(1);
         slots[0].Count.Should().Be(1);
         proofs.Should().NotBeNull();
         slots.DisposeRecursive();
-        proofs.Dispose();
+        proofs?.Dispose();
 
-        (slots, proofs) = server.GetStorageRanges(stateTree.RootHash, accountWithStorageArray[..2], Keccak.Zero, Keccak.MaxValue, 100000, CancellationToken.None);
+        (slots, proofs) = server.GetStorageRanges(stateTree.RootHash, accountWithStorageArray[..2], ValueKeccak.Zero, ValueKeccak.MaxValue, 100000, CancellationToken.None);
         slots.Count.Should().Be(2);
         slots[0].Count.Should().Be(1000);
         slots[1].Count.Should().Be(539);
         proofs.Should().NotBeNull();
         slots.DisposeRecursive();
-        proofs.Dispose();
+        proofs?.Dispose();
 
 
         // incomplete tree will be returned as the hard limit is 2000000
-        (slots, proofs) = server.GetStorageRanges(stateTree.RootHash, accountWithStorageArray, Keccak.Zero, Keccak.MaxValue, 3000000, CancellationToken.None);
+        (slots, proofs) = server.GetStorageRanges(stateTree.RootHash, accountWithStorageArray, ValueKeccak.Zero, ValueKeccak.MaxValue, 3000000, CancellationToken.None);
         slots.Count.Should().Be(8);
         slots[^1].Count.Should().BeLessThan(8000);
         proofs.Should().NotBeEmpty();
 
         slots.DisposeRecursive();
-        proofs.Dispose();
+        proofs?.Dispose();
     }
 
-    private ILastNStateRootTracker CreateConstantStateRootTracker(bool available)
+    private IStateReader CreateConstantStateRootTracker(bool available)
     {
-        ILastNStateRootTracker tracker = Substitute.For<ILastNStateRootTracker>();
-        tracker.HasStateRoot(Arg.Any<Hash256>()).Returns(available);
+        IStateReader tracker = Substitute.For<IStateReader>();
+        tracker.HasStateForBlock(Arg.Any<BlockHeader>()).Returns(available);
         return tracker;
     }
 }

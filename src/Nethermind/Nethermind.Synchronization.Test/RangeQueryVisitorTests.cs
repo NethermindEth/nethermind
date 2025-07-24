@@ -22,6 +22,7 @@ using FluentAssertions;
 using Nethermind.Core.Buffers;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Db;
 using Nethermind.Logging;
@@ -110,7 +111,7 @@ public class RangeQueryVisitorTests
         act.Should().NotThrow();
     }
 
-    private static VisitingOptions CreateVisitingOptions() => new() { ExpectAccounts = false };
+    private static VisitingOptions CreateVisitingOptions() => new() { };
 
     [Test]
     public void RangeFetchPartialLimit()
@@ -201,7 +202,7 @@ public class RangeQueryVisitorTests
     [Test]
     public void StorageRangeFetchVisitor()
     {
-        TrieStore store = new TrieStore(new MemDb(), LimboLogs.Instance);
+        TestRawTrieStore store = new TestRawTrieStore(new MemDb());
         (StateTree inputStateTree, StorageTree _, Hash256 account) = TestItem.Tree.GetTrees(store);
 
         RlpCollector leafCollector = new();
@@ -218,7 +219,7 @@ public class RangeQueryVisitorTests
     {
         public ArrayPoolList<(ValueHash256, byte[]?)> Leafs { get; } = new(0);
 
-        public int Collect(in ValueHash256 path, CappedArray<byte> value)
+        public int Collect(in ValueHash256 path, SpanSource value)
         {
             Leafs.Add((path, value.ToArray()));
             return 32 + Rlp.LengthOfByteString(value.Length, 0);

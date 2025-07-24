@@ -6,6 +6,7 @@ using Nethermind.Blockchain;
 using Nethermind.Blockchain.Find;
 using Nethermind.Consensus.Messages;
 using Nethermind.Core;
+using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.Crypto;
@@ -38,7 +39,13 @@ namespace Nethermind.Consensus.Validators
             _daoBlockNumber = specProvider.DaoBlockNumber;
         }
 
-        public static bool ValidateHash(BlockHeader header) => header.Hash == header.CalculateHash();
+        public static bool ValidateHash(BlockHeader header, out Hash256 actualHash)
+        {
+            actualHash = header.CalculateHash();
+            return header.Hash == actualHash;
+        }
+
+        public static bool ValidateHash(BlockHeader header) => ValidateHash(header, out _);
 
         private bool ValidateHash(BlockHeader header, ref string? error)
         {
@@ -47,7 +54,7 @@ namespace Nethermind.Consensus.Validators
             if (!hashAsExpected)
             {
                 if (_logger.IsWarn) _logger.Warn($"Invalid block header ({header.Hash}) - invalid block hash");
-                error = BlockErrorMessages.InvalidHeaderHash;
+                error = BlockErrorMessages.InvalidHeaderHash(header.Hash, header.CalculateHash());
                 return false;
             }
 
@@ -95,7 +102,7 @@ namespace Nethermind.Consensus.Validators
                 && ValidateRequestsHash(header, spec, ref error);
         }
 
-        private bool ValidateRequestsHash(BlockHeader header, IReleaseSpec spec, ref string? error)
+        protected virtual bool ValidateRequestsHash(BlockHeader header, IReleaseSpec spec, ref string? error)
         {
             if (spec.RequestsEnabled)
             {
@@ -127,7 +134,7 @@ namespace Nethermind.Consensus.Validators
                 if (expectedBaseFee != header.BaseFeePerGas)
                 {
                     if (_logger.IsWarn) _logger.Warn($"Invalid block header ({header.ToString(BlockHeader.Format.Short)}) incorrect base fee. Expected base fee: {expectedBaseFee}, Current base fee: {header.BaseFeePerGas} ");
-                    error = BlockErrorMessages.InvalidBaseFeePerGas;
+                    error = BlockErrorMessages.InvalidBaseFeePerGas(expectedBaseFee, header.BaseFeePerGas);
                     return false;
                 }
             }
@@ -177,6 +184,11 @@ namespace Nethermind.Consensus.Validators
                     error = BlockErrorMessages.InvalidGenesisBlock;
                     return false;
                 }
+            }
+            else if (parent.Hash != header.ParentHash)
+            {
+                error = BlockErrorMessages.MismatchedParent(header.Hash, header.ParentHash, parent.Hash);
+                return false;
             }
 
             return true;
@@ -264,7 +276,11 @@ namespace Nethermind.Consensus.Validators
                                      header.GasLimit >= spec.MinGasLimit;
             if (!gasLimitNotTooLow)
             {
-                if (_logger.IsWarn) _logger.Warn($"Invalid block header ({header.Hash}) - gas limit too low");
+                if (_logger.IsWarn) _logger.Warn($"Invalid block header ({header.Hash}) - gas limit too low. " +
+                                                 $"Gas limit: {header.GasLimit}, " +
+                                                 $"Adjusted parent gas limit: {adjustedParentGasLimit}, " +
+                                                 $"Max gas limit difference: {maxGasLimitDifference}, " +
+                                                 $"Spec min gas limit: {spec.MinGasLimit}");
                 error = BlockErrorMessages.InvalidGasLimit;
             }
 
@@ -357,7 +373,7 @@ namespace Nethermind.Consensus.Validators
                 if (header.ExcessBlobGas != expectedExcessBlobGas)
                 {
                     if (_logger.IsWarn) _logger.Warn($"ExcessBlobGas field is incorrect: {header.ExcessBlobGas}, should be {expectedExcessBlobGas}.");
-                    error = BlockErrorMessages.IncorrectExcessBlobGas;
+                    error = BlockErrorMessages.IncorrectExcessBlobGas(expectedExcessBlobGas, header.ExcessBlobGas);
                     return false;
                 }
             }

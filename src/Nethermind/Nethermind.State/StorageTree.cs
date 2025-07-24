@@ -20,7 +20,7 @@ namespace Nethermind.State
     {
         private const int LookupSize = 1024;
         private static readonly FrozenDictionary<UInt256, byte[]> Lookup = CreateLookup();
-        public static readonly byte[] EmptyBytes = [0];
+        public static readonly byte[] ZeroBytes = [0];
 
         private static FrozenDictionary<UInt256, byte[]> CreateLookup()
         {
@@ -42,7 +42,7 @@ namespace Nethermind.State
         }
 
         public StorageTree(IScopedTrieStore? trieStore, Hash256 rootHash, ILogManager? logManager)
-            : base(trieStore, rootHash, false, true, logManager)
+            : base(trieStore, rootHash, true, logManager)
         {
             TrieType = TrieType.Storage;
         }
@@ -80,18 +80,16 @@ namespace Nethermind.State
 
         public byte[] GetArray(ReadOnlySpan<byte> rawKey, Hash256? rootHash = null)
         {
-            ReadOnlySpan<byte> value = base.Get(rawKey, rootHash);
+            ReadOnlySpan<byte> value = Get(rawKey, rootHash);
 
             if (value.IsEmpty)
             {
-                return EmptyBytes;
+                return ZeroBytes;
             }
 
             Rlp.ValueDecoderContext rlp = value.AsRlpValueContext();
             return rlp.DecodeByteArray();
         }
-
-        public override ReadOnlySpan<byte> Get(ReadOnlySpan<byte> rawKey, Hash256? rootHash = null) => GetArray(rawKey, rootHash);
 
         [SkipLocalsInit]
         public void Set(in UInt256 index, byte[] value)

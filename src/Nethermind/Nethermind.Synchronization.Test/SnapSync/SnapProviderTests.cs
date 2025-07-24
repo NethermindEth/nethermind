@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using FluentAssertions;
-using Nethermind.Blockchain;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Logging;
@@ -16,8 +15,6 @@ using System.IO.Compression;
 using System.Linq;
 using System.Text.Json;
 using Autofac;
-using Nethermind.Blockchain.Synchronization;
-using Nethermind.Blockchain.Utils;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Test;
@@ -25,6 +22,7 @@ using Nethermind.Core.Test.Builders;
 using Nethermind.Db;
 using Nethermind.Serialization.Rlp;
 using Nethermind.State;
+using Nethermind.State.SnapServer;
 using Nethermind.Trie.Pruning;
 using AccountRange = Nethermind.State.Snap.AccountRange;
 
@@ -169,7 +167,7 @@ public class SnapProviderTests
         List<PathWithAccount> pathWithAccounts = accounts.Select((acc, idx) => new PathWithAccount(paths[idx], acc)).ToList();
         List<byte[]> proofs = asReq.Proofs.Select((str) => Bytes.FromHexString(str)).ToList();
 
-        StateTree stree = new StateTree(new TrieStore(new TestMemDb(), LimboLogs.Instance), LimboLogs.Instance);
+        StateTree stree = new StateTree(new TestRawTrieStore(new TestMemDb()), LimboLogs.Instance);
         SnapProviderHelper.AddAccountRange(
                 stree,
                 0,
@@ -192,16 +190,19 @@ public class SnapProviderTests
     private static (SnapServer, Hash256) BuildSnapServerFromEntries((Hash256, Account)[] entries)
     {
         TestMemDb stateDb = new TestMemDb();
-        TrieStore trieStore = new TrieStore(stateDb, LimboLogs.Instance);
+        TestRawTrieStore trieStore = new TestRawTrieStore(stateDb);
         StateTree st = new StateTree(trieStore, LimboLogs.Instance);
-        foreach (var entry in entries)
         {
-            st.Set(entry.Item1, entry.Item2);
+            using var _ = trieStore.BeginBlockCommit(0);
+            foreach (var entry in entries)
+            {
+                st.Set(entry.Item1, entry.Item2);
+            }
+            st.Commit();
         }
-        st.Commit();
 
-        ILastNStateRootTracker stateRootTracker = Substitute.For<ILastNStateRootTracker>();
-        stateRootTracker.HasStateRoot(st.RootHash).Returns(true);
+        IStateReader stateRootTracker = Substitute.For<IStateReader>();
+        stateRootTracker.HasStateForBlock(Build.A.BlockHeader.WithStateRoot(st.RootHash).TestObject).Returns(true);
         var ss = new SnapServer(trieStore.AsReadOnly(), new TestMemDb(), stateRootTracker, LimboLogs.Instance);
         return (ss, st.RootHash);
     }

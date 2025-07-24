@@ -196,7 +196,7 @@ public class TxBroadcasterTests
         _broadcaster.AddPeer(peer);
         _broadcaster.BroadcastPersistentTxs();
 
-        peer.Received(1).SendNewTransactions(Arg.Is<IEnumerable<Transaction>>(t => t.FirstOrDefault().GetLength() == size), false);
+        peer.Received(1).SendNewTransactions(Arg.Is<IEnumerable<Transaction>>(t => t.FirstOrDefault().GetLength(true) == size), false);
     }
 
     [Test]
@@ -518,7 +518,7 @@ public class TxBroadcasterTests
             Substitute.For<ITxPool>(),
             Substitute.For<IPooledTxsRequestor>(),
             Substitute.For<IGossipPolicy>(),
-            new ForkInfo(_specProvider, Keccak.Zero),
+            Substitute.For<IForkInfo>(),
             Substitute.For<ILogManager>());
         _broadcaster.AddPeer(eth68Handler);
 
@@ -546,7 +546,7 @@ public class TxBroadcasterTests
             Substitute.For<ITxPool>(),
             Substitute.For<IPooledTxsRequestor>(),
             Substitute.For<IGossipPolicy>(),
-            new ForkInfo(_specProvider, Keccak.Zero),
+            Substitute.For<IForkInfo>(),
             Substitute.For<ILogManager>());
 
         ISession session68 = Substitute.For<ISession>();
@@ -559,7 +559,7 @@ public class TxBroadcasterTests
             Substitute.For<ITxPool>(),
             Substitute.For<IPooledTxsRequestor>(),
             Substitute.For<IGossipPolicy>(),
-            new ForkInfo(_specProvider, Keccak.Zero),
+            Substitute.For<IForkInfo>(),
             Substitute.For<ILogManager>());
 
         Transaction localTx = Build.A.Transaction
@@ -600,7 +600,7 @@ public class TxBroadcasterTests
             Substitute.For<ITxPool>(),
             Substitute.For<IPooledTxsRequestor>(),
             Substitute.For<IGossipPolicy>(),
-            new ForkInfo(_specProvider, Keccak.Zero),
+            Substitute.For<IForkInfo>(),
             Substitute.For<ILogManager>());
 
         Transaction localTx = Build.A.Transaction
@@ -654,7 +654,7 @@ public class TxBroadcasterTests
             Substitute.For<ITxPool>(),
             Substitute.For<IPooledTxsRequestor>(),
             Substitute.For<IGossipPolicy>(),
-            new ForkInfo(_specProvider, Keccak.Zero),
+            Substitute.For<IForkInfo>(),
             Substitute.For<ILogManager>());
         _broadcaster.AddPeer(eth68Handler);
 

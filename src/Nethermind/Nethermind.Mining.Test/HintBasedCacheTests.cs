@@ -72,7 +72,7 @@ public class HintBasedCacheTests
             {
                 hintBasedCache.Hint(guid, i, i + 120000);
             }
-        };
+        }
 
         Task a = new(() => KeepHinting(_guidA, 100000));
         Task b = new(() => KeepHinting(_guidB, 0));

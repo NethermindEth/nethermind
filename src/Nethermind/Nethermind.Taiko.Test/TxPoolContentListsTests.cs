@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: 2024 Demerzel Solutions Limited
+// SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using Nethermind.Blockchain.Find;
@@ -18,6 +18,8 @@ using Nethermind.Evm.Tracing;
 using Nethermind.Evm;
 using System.Collections;
 using System.Linq;
+using Nethermind.Api;
+using Nethermind.Blockchain;
 using Nethermind.Merge.Plugin.Data;
 using Nethermind.Merge.Plugin.Handlers;
 using Nethermind.Consensus.Processing;
@@ -60,17 +62,15 @@ public class TxPoolContentListsTests
         IReadOnlyTxProcessingScope scope = Substitute.For<IReadOnlyTxProcessingScope>();
         scope.TransactionProcessor.Returns(transactionProcessor);
 
-        IReadOnlyTxProcessorSource txProcessorSource = Substitute.For<IReadOnlyTxProcessorSource>();
-        txProcessorSource.Build(Arg.Any<Hash256>()).Returns(scope);
+        IShareableTxProcessorSource shareableTxProcessor = Substitute.For<IShareableTxProcessorSource>();
+        shareableTxProcessor.Build(Arg.Any<BlockHeader?>()).Returns(scope);
 
-        IReadOnlyTxProcessingEnvFactory readOnlyTxProcessingEnvFactory = Substitute.For<IReadOnlyTxProcessingEnvFactory>();
-        readOnlyTxProcessingEnvFactory.Create().Returns(txProcessorSource);
-
-        TaikoEngineRpcModule taikoRpcModule = new(
+        TaikoEngineRpcModule taikoAuthRpcModule = new(
             Substitute.For<IAsyncHandler<byte[], ExecutionPayload?>>(),
             Substitute.For<IAsyncHandler<byte[], GetPayloadV2Result?>>(),
             Substitute.For<IAsyncHandler<byte[], GetPayloadV3Result?>>(),
             Substitute.For<IAsyncHandler<byte[], GetPayloadV4Result?>>(),
+            Substitute.For<IAsyncHandler<byte[], GetPayloadV5Result?>>(),
             Substitute.For<IAsyncHandler<ExecutionPayload, PayloadStatusV1>>(),
             Substitute.For<IForkchoiceUpdatedHandler>(),
             Substitute.For<IHandler<IReadOnlyList<Hash256>, IEnumerable<ExecutionPayloadBodyV1Result?>>>(),
@@ -78,16 +78,19 @@ public class TxPoolContentListsTests
             Substitute.For<IHandler<TransitionConfigurationV1, TransitionConfigurationV1>>(),
             Substitute.For<IHandler<IEnumerable<string>, IEnumerable<string>>>(),
             Substitute.For<IAsyncHandler<byte[][], IEnumerable<BlobAndProofV1?>>>(),
+            Substitute.For<IAsyncHandler<byte[][], IEnumerable<BlobAndProofV2>?>>(),
+            Substitute.For<IEngineRequestsTracker>(),
             Substitute.For<ISpecProvider>(),
             null!,
             Substitute.For<ILogManager>(),
             txPool,
             blockFinder,
-            readOnlyTxProcessingEnvFactory,
-            TxDecoder.Instance
+            shareableTxProcessor,
+            TxDecoder.Instance,
+            Substitute.For<IL1OriginStore>()
         );
 
-        ResultWrapper<PreBuiltTxList[]?> result = taikoRpcModule.taikoAuth_txPoolContent(
+        ResultWrapper<PreBuiltTxList[]?> result = taikoAuthRpcModule.taikoAuth_txPoolContent(
             Address.Zero,
             7,
             blockGasLimit,
@@ -118,7 +121,7 @@ public class TxPoolContentListsTests
                     maxBytesPerTxList,
                     maxTransactionsLists
                 ];
-            };
+            }
 
             yield return new TestCaseData(args: MakeTestData(new Dictionary<int, int[]> { { 1, [1] }, { 2, [2] }, { 3, [3] } }, [], 2 * Transaction.BaseTxGasCost, 1000, 2))
             {

@@ -32,10 +32,8 @@ namespace Nethermind.Core.Crypto
         public Span<byte> BytesAsSpan => MemoryMarshal.AsBytes(MemoryMarshal.CreateSpan(ref Unsafe.AsRef(in _bytes), 1));
         public ReadOnlySpan<byte> Bytes => MemoryMarshal.AsBytes(MemoryMarshal.CreateReadOnlySpan(ref Unsafe.AsRef(in _bytes), 1));
 
-        public static implicit operator ValueHash256(Hash256? keccak)
-        {
-            return keccak?.ValueHash256 ?? default;
-        }
+        public static implicit operator ValueHash256?(Hash256? keccak) => keccak?.ValueHash256;
+        public static implicit operator ValueHash256(Hash256? keccak) => keccak?.ValueHash256 ?? default;
 
         public ValueHash256(byte[] bytes)
         {
@@ -59,10 +57,6 @@ namespace Nethermind.Core.Crypto
             _bytes = Unsafe.As<byte, Vector256<byte>>(ref MemoryMarshal.GetReference(bytes));
         }
 
-        public ValueHash256(UInt256 uint256, bool isBigEndian = true) : this(isBigEndian ? uint256.ToBigEndian() : uint256.ToLittleEndian())
-        {
-        }
-
         public override bool Equals(object? obj) => obj is ValueHash256 keccak && Equals(keccak);
 
         public bool Equals(ValueHash256 other) => _bytes.Equals(other._bytes);
@@ -74,20 +68,11 @@ namespace Nethermind.Core.Crypto
 
         public int GetChainedHashCode(uint previousHash) => Bytes.FastHash() ^ (int)previousHash;
 
-        public int CompareTo(ValueHash256 other)
-        {
-            return Extensions.Bytes.BytesComparer.Compare(Bytes, other.Bytes);
-        }
+        public int CompareTo(ValueHash256 other) => Extensions.Bytes.BytesComparer.Compare(Bytes, other.Bytes);
 
-        public int CompareTo(in ValueHash256 other)
-        {
-            return Extensions.Bytes.BytesComparer.Compare(Bytes, other.Bytes);
-        }
+        public int CompareTo(in ValueHash256 other) => Extensions.Bytes.BytesComparer.Compare(Bytes, other.Bytes);
 
-        public override string ToString()
-        {
-            return ToString(true);
-        }
+        public override string ToString() => ToString(true);
 
         public string ToShortString(bool withZeroX = true)
         {
@@ -95,20 +80,11 @@ namespace Nethermind.Core.Crypto
             return $"{hash[..(withZeroX ? 8 : 6)]}...{hash[^6..]}";
         }
 
-        public string ToString(bool withZeroX)
-        {
-            return Bytes.ToHexString(withZeroX);
-        }
+        public string ToString(bool withZeroX) => Bytes.ToHexString(withZeroX);
 
-        public byte[] ToByteArray()
-        {
-            return Bytes.ToArray();
-        }
+        public byte[] ToByteArray() => Bytes.ToArray();
 
-        public Hash256 ToCommitment()
-        {
-            return new Hash256(this);
-        }
+        public Hash256 ToCommitment() => new(this);
 
         public static bool operator ==(in ValueHash256 left, in ValueHash256 right) => left.Equals(in right);
         public static bool operator !=(in ValueHash256 left, in ValueHash256 right) => !(left == right);
@@ -116,15 +92,18 @@ namespace Nethermind.Core.Crypto
         public static bool operator <(in ValueHash256 left, in ValueHash256 right) => left.CompareTo(in right) < 0;
         public static bool operator >=(in ValueHash256 left, in ValueHash256 right) => left.CompareTo(in right) >= 0;
         public static bool operator <=(in ValueHash256 left, in ValueHash256 right) => left.CompareTo(in right) <= 0;
-        public static implicit operator Hash256(in ValueHash256 keccak) => new(keccak);
+        public static explicit operator Hash256(in ValueHash256 keccak) => new(keccak);
+        public static bool operator ==(Hash256? a, in ValueHash256 b) => a is null ? b.IsZero : a.ValueHash256._bytes == b._bytes;
+        public static bool operator ==(in ValueHash256 a, Hash256? b) => b == a;
+        public static bool operator !=(Hash256? a, in ValueHash256 b) => !(a == b);
+        public static bool operator !=(in ValueHash256 a, Hash256? b) => !(a == b);
 
-        public UInt256 ToUInt256(bool isBigEndian = true)
-        {
-            return new UInt256(Bytes, isBigEndian: isBigEndian);
-        }
+        public UInt256 ToUInt256(bool isBigEndian = true) => new UInt256(Bytes, isBigEndian: isBigEndian);
+
+        private bool IsZero => _bytes == default;
     }
 
-    public readonly struct Hash256AsKey(Hash256 key) : IEquatable<Hash256AsKey>
+    public readonly struct Hash256AsKey(Hash256 key) : IEquatable<Hash256AsKey>, IComparable<Hash256AsKey>
     {
         private readonly Hash256 _key = key;
         public Hash256 Value => _key;
@@ -132,8 +111,10 @@ namespace Nethermind.Core.Crypto
         public static implicit operator Hash256(Hash256AsKey key) => key._key;
         public static implicit operator Hash256AsKey(Hash256 key) => new(key);
 
-        public bool Equals(Hash256AsKey other) => _key.Equals(other._key);
-        public override int GetHashCode() => _key.GetHashCode();
+        public bool Equals(Hash256AsKey other) => Equals(_key, other._key);
+        public override int GetHashCode() => _key?.GetHashCode() ?? 0;
+
+        public int CompareTo(Hash256AsKey other) => _key.CompareTo(other._key);
     }
 
     [JsonConverter(typeof(Hash256Converter))]
@@ -149,7 +130,7 @@ namespace Nethermind.Core.Crypto
 
         private readonly ValueHash256 _hash256;
 
-        [ThreadStatic] static byte[]? _threadStaticBuffer;
+        [ThreadStatic] private static byte[]? _threadStaticBuffer;
 
         public ref readonly ValueHash256 ValueHash256 => ref _hash256;
 
@@ -183,10 +164,19 @@ namespace Nethermind.Core.Crypto
             _hash256 = new ValueHash256(bytes);
         }
 
-        public override string ToString()
+        public static Hash256 FromBytesWithPadding(ReadOnlySpan<byte> bytes)
         {
-            return ToString(true);
+            if (bytes.Length != 32)
+            {
+                Span<byte> bytes32 = stackalloc byte[32];
+                bytes.CopyTo(bytes32.Slice(32 - bytes.Length));
+                return new Hash256(bytes32);
+            }
+
+            return new Hash256(bytes);
         }
+
+        public override string ToString() => ToString(true);
 
         public string ToShortString(bool withZeroX = true)
         {
@@ -194,55 +184,19 @@ namespace Nethermind.Core.Crypto
             return $"{hash[..(withZeroX ? 8 : 6)]}...{hash[^6..]}";
         }
 
-        public string ToString(bool withZeroX)
-        {
-            return Bytes.ToHexString(withZeroX);
-        }
+        public string ToString(bool withZeroX) => Bytes.ToHexString(withZeroX);
 
-        public bool Equals(Hash256? other)
-        {
-            if (other is null)
-            {
-                return false;
-            }
+        public bool Equals(Hash256? other) => other is not null && other._hash256 == _hash256;
 
-            return other._hash256 == _hash256;
-        }
+        public int CompareTo(Hash256? other) => other is null ? -1 : _hash256.CompareTo(other._hash256);
 
-        public int CompareTo(Hash256? other)
-        {
-            return other is null ? -1 : _hash256.CompareTo(other._hash256);
-        }
+        public override bool Equals(object? obj) => obj?.GetType() == typeof(Hash256) && Equals((Hash256)obj);
 
-        public override bool Equals(object? obj)
-        {
-            return obj?.GetType() == typeof(Hash256) && Equals((Hash256)obj);
-        }
+        public override int GetHashCode() => _hash256.GetHashCode();
 
-        public override int GetHashCode()
-        {
-            return _hash256.GetHashCode();
-        }
+        public static bool operator ==(Hash256? a, Hash256? b) => a is null ? b is null : b is not null && a._hash256 == b._hash256;
 
-        public static bool operator ==(Hash256? a, Hash256? b)
-        {
-            if (a is null)
-            {
-                return b is null;
-            }
-
-            if (b is null)
-            {
-                return false;
-            }
-
-            return a._hash256 == b._hash256;
-        }
-
-        public static bool operator !=(Hash256? a, Hash256? b)
-        {
-            return !(a == b);
-        }
+        public static bool operator !=(Hash256? a, Hash256? b) => !(a == b);
 
         public static bool operator >(Hash256? k1, Hash256? k2)
         {
@@ -280,10 +234,7 @@ namespace Nethermind.Core.Crypto
             return k1._hash256 <= k2._hash256;
         }
 
-        public byte[] BytesToArray()
-        {
-            return _hash256.ToByteArray();
-        }
+        public byte[] BytesToArray() => _hash256.ToByteArray();
 
         public byte[] ThreadStaticBytes()
         {
@@ -294,7 +245,7 @@ namespace Nethermind.Core.Crypto
 
         public Hash256StructRef ToStructRef() => new(Bytes);
 
-        public bool IsZero => Extensions.Bytes.IsZero(Bytes);
+        public bool IsZero => Bytes.IsZero();
     }
 
     public ref struct Hash256StructRef
@@ -315,10 +266,7 @@ namespace Nethermind.Core.Crypto
             Bytes = bytes;
         }
 
-        public override readonly string ToString()
-        {
-            return ToString(true);
-        }
+        public readonly override string ToString() => ToString(true);
 
         public readonly string ToShortString(bool withZeroX = true)
         {
@@ -326,72 +274,27 @@ namespace Nethermind.Core.Crypto
             return $"{hash[..(withZeroX ? 8 : 6)]}...{hash[^6..]}";
         }
 
-        public readonly string ToString(bool withZeroX)
-        {
-            return Bytes.ToHexString(withZeroX);
-        }
+        public readonly string ToString(bool withZeroX) => Bytes.ToHexString(withZeroX);
 
-        public readonly bool Equals(Hash256? other)
-        {
-            if (other is null)
-            {
-                return false;
-            }
-
-            return Extensions.Bytes.AreEqual(other.Bytes, Bytes);
-        }
+        public readonly bool Equals(Hash256? other) => other is not null && Extensions.Bytes.AreEqual(other.Bytes, Bytes);
 
         public readonly bool Equals(Hash256StructRef other) => Extensions.Bytes.AreEqual(other.Bytes, Bytes);
 
-        public override readonly bool Equals(object? obj)
-        {
-            return obj?.GetType() == typeof(Hash256) && Equals((Hash256)obj);
-        }
+        public readonly override bool Equals(object? obj) => obj?.GetType() == typeof(Hash256) && Equals((Hash256)obj);
 
-        public override readonly int GetHashCode()
-        {
-            return MemoryMarshal.Read<int>(Bytes);
-        }
+        public readonly override int GetHashCode() => MemoryMarshal.Read<int>(Bytes);
 
-        public static bool operator ==(Hash256StructRef a, Hash256? b)
-        {
-            if (b is null)
-            {
-                return false;
-            }
+        public static bool operator ==(Hash256StructRef a, Hash256? b) => b is not null && Extensions.Bytes.AreEqual(a.Bytes, b.Bytes);
 
-            return Extensions.Bytes.AreEqual(a.Bytes, b.Bytes);
-        }
+        public static bool operator ==(Hash256? a, Hash256StructRef b) => a is not null && Extensions.Bytes.AreEqual(a.Bytes, b.Bytes);
 
-        public static bool operator ==(Hash256? a, Hash256StructRef b)
-        {
-            if (a is null)
-            {
-                return false;
-            }
+        public static bool operator ==(Hash256StructRef a, Hash256StructRef b) => Extensions.Bytes.AreEqual(a.Bytes, b.Bytes);
 
-            return Extensions.Bytes.AreEqual(a.Bytes, b.Bytes);
-        }
+        public static bool operator !=(Hash256StructRef a, Hash256 b) => !(a == b);
 
-        public static bool operator ==(Hash256StructRef a, Hash256StructRef b)
-        {
-            return Extensions.Bytes.AreEqual(a.Bytes, b.Bytes);
-        }
+        public static bool operator !=(Hash256 a, Hash256StructRef b) => !(a == b);
 
-        public static bool operator !=(Hash256StructRef a, Hash256 b)
-        {
-            return !(a == b);
-        }
-
-        public static bool operator !=(Hash256 a, Hash256StructRef b)
-        {
-            return !(a == b);
-        }
-
-        public static bool operator !=(Hash256StructRef a, Hash256StructRef b)
-        {
-            return !(a == b);
-        }
+        public static bool operator !=(Hash256StructRef a, Hash256StructRef b) => !(a == b);
 
         public readonly Hash256 ToCommitment() => new(Bytes);
     }

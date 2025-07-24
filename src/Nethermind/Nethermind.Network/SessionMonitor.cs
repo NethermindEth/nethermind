@@ -8,7 +8,6 @@ using System.Linq;
 using System.Runtime.InteropServices;
 using System.Threading;
 using System.Threading.Tasks;
-
 using Nethermind.Core.Extensions;
 using Nethermind.Logging;
 using Nethermind.Network.Config;
@@ -48,6 +47,7 @@ namespace Nethermind.Network
         }
 
         private readonly ConcurrentDictionary<Guid, ISession> _sessions = new();
+        public IEnumerable<ISession> Sessions => _sessions.Values;
 
         public void AddSession(ISession session)
         {
@@ -148,7 +148,7 @@ namespace Nethermind.Network
 
         private void StartPingTimer()
         {
-            if (_logger.IsDebug) _logger.Debug("Starting session monitor");
+            if (_logger.IsTrace) _logger.Trace("Starting session monitor");
 
             _cancellationTokenSource = new CancellationTokenSource();
             _pingTimer = new PeriodicTimer(_pingInterval);
@@ -159,7 +159,7 @@ namespace Nethermind.Network
         {
             try
             {
-                if (_logger.IsDebug) _logger.Debug("Stopping session monitor");
+                if (_logger.IsTrace) _logger.Trace("Stopping session monitor");
                 CancellationTokenExtensions.CancelDisposeAndClear(ref _cancellationTokenSource);
             }
             catch (Exception e)

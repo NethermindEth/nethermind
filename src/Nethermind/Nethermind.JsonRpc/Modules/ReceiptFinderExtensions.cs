@@ -23,24 +23,24 @@ namespace Nethermind.JsonRpc.Modules
                 : new SearchResult<Hash256>(blockHash);
         }
 
-        public static ResultWrapper<ReceiptForRpc[]> GetBlockReceipts(this IReceiptFinder receiptFinder, BlockParameter blockParameter, IBlockFinder blockFinder, ISpecProvider specProvider)
+        public static ResultWrapper<ReceiptForRpc[]?> GetBlockReceipts(this IReceiptFinder receiptFinder, BlockParameter blockParameter, IBlockFinder blockFinder, ISpecProvider specProvider)
         {
             SearchResult<Block> searchResult = blockFinder.SearchForBlock(blockParameter);
             if (searchResult.IsError)
             {
-                return ResultWrapper<ReceiptForRpc[]>.Success(null);
+                return ResultWrapper<ReceiptForRpc[]?>.Success(null);
             }
 
             Block block = searchResult.Object;
             TxReceipt[] receipts = receiptFinder.Get(block) ?? new TxReceipt[block.Transactions.Length];
-            bool isEip1559Enabled = specProvider.GetSpec(block.Header).IsEip1559Enabled;
+            IReleaseSpec spec = specProvider.GetSpec(block.Header);
             IEnumerable<ReceiptForRpc> result = receipts
                 .Zip(block.Transactions, (r, t) =>
                 {
-                    return new ReceiptForRpc(t.Hash, r, t.GetGasInfo(isEip1559Enabled, block.Header), receipts.GetBlockLogFirstIndex(r.Index));
+                    return new ReceiptForRpc(t.Hash, r, t.GetGasInfo(spec, block.Header), receipts.GetBlockLogFirstIndex(r.Index));
                 });
             ReceiptForRpc[] resultAsArray = result.ToArray();
-            return ResultWrapper<ReceiptForRpc[]>.Success(resultAsArray);
+            return ResultWrapper<ReceiptForRpc[]?>.Success(resultAsArray);
         }
     }
 }

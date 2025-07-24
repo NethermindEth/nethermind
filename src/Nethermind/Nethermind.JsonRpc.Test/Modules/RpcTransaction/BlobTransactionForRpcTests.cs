@@ -123,10 +123,6 @@ public static class BlobTransactionForRpcTests
         json.GetProperty("r").GetString().Should().MatchRegex("^0x([1-9a-f]+[0-9a-f]*|0)$");
         json.GetProperty("s").GetString().Should().MatchRegex("^0x([1-9a-f]+[0-9a-f]*|0)$");
 
-        // Assert deprecated fields are no longer serialized
-        json.TryGetProperty("v", out _).Should().BeFalse();
-        json.TryGetProperty("gasPrice", out _).Should().BeFalse();
-
         // Assert deserialization-only are not serialized
         json.TryGetProperty("blobs", out _).Should().BeFalse();
     }

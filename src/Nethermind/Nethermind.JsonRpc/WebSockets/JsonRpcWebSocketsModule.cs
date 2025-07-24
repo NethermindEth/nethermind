@@ -27,6 +27,7 @@ public class JsonRpcWebSocketsModule : IWebSocketsModule
     private readonly IJsonRpcUrlCollection _jsonRpcUrlCollection;
     private readonly IRpcAuthentication _rpcAuthentication;
     private readonly long? _maxBatchResponseBodySize;
+    private readonly int _processingConcurrency;
 
     public string Name { get; } = "json-rpc";
 
@@ -37,7 +38,8 @@ public class JsonRpcWebSocketsModule : IWebSocketsModule
         IJsonSerializer jsonSerializer,
         IJsonRpcUrlCollection jsonRpcUrlCollection,
         IRpcAuthentication rpcAuthentication,
-        long? maxBatchResponseBodySize)
+        long? maxBatchResponseBodySize,
+        int processingConcurrency)
     {
         _jsonRpcProcessor = jsonRpcProcessor;
         _jsonRpcService = jsonRpcService;
@@ -47,6 +49,7 @@ public class JsonRpcWebSocketsModule : IWebSocketsModule
         _jsonRpcUrlCollection = jsonRpcUrlCollection;
         _rpcAuthentication = rpcAuthentication;
         _maxBatchResponseBodySize = maxBatchResponseBodySize;
+        _processingConcurrency = processingConcurrency;
     }
 
     public async ValueTask<ISocketsClient> CreateClient(WebSocket webSocket, string clientName, HttpContext context)
@@ -71,7 +74,8 @@ public class JsonRpcWebSocketsModule : IWebSocketsModule
             _jsonRpcLocalStats,
             _jsonSerializer,
             jsonRpcUrl,
-            _maxBatchResponseBodySize);
+            _maxBatchResponseBodySize,
+            _processingConcurrency);
 
         _clients.TryAdd(socketsClient.Id, socketsClient);
 

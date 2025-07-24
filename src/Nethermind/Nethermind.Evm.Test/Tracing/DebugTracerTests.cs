@@ -2,17 +2,19 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 #if DEBUG
-using Nethermind.Evm.Tracing.GethStyle;
+using Nethermind.Blockchain.Tracing.GethStyle;
 using NUnit.Framework;
 using System.Threading;
 using Nethermind.Core.Extensions;
+using Nethermind.Core.Test.Builders;
 using Nethermind.Evm.Tracing.Debugger;
+using Nethermind.Core;
 
 namespace Nethermind.Evm.Test;
 
 public class DebugTracerTests : VirtualMachineTestsBase
 {
-    public GethLikeTxMemoryTracer GethLikeTxTracer => new GethLikeTxMemoryTracer(GethTraceOptions.Default);
+    private GethLikeTxMemoryTracer GethLikeTxTracer => new(Build.A.Transaction.TestObject, GethTraceOptions.Default);
 
     [SetUp]
     public override void Setup()
@@ -276,9 +278,9 @@ public class DebugTracerTests : VirtualMachineTestsBase
             if (tracer.CanReadState)
             {
                 // we pop the condition and overwrite it with a false to force breaking out of the loop
-                EvmStack<VirtualMachine.IsTracing> stack = new(tracer.CurrentState.DataStackHead, tracer, tracer.CurrentState.DataStack);
-                stack.PopLimbo();
-                stack.PushByte(0x00);
+                EvmStack stack = new(tracer.CurrentState.DataStackHead, tracer, tracer.CurrentState.DataStack);
+                if (!stack.PopLimbo()) throw new EvmStackUnderflowException();
+                stack.PushByte<OffFlag>(0x00);
 
                 tracer.MoveNext();
             }

@@ -14,8 +14,6 @@ namespace Nethermind.Synchronization
 
         Hash256? PivotParentHash { get; }
 
-        UInt256? PivotTotalDifficulty { get; }
-
         long PivotDestinationNumber { get; }
     }
 }

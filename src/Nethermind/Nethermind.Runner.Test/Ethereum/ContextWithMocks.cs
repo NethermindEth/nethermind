@@ -1,8 +1,15 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
+using System.Collections.Generic;
 using System.IO.Abstractions;
+using System.Linq;
 using Autofac;
+using Autofac.Core;
+using Autofac.Core.Activators.Delegate;
+using Autofac.Core.Lifetime;
+using Autofac.Core.Registration;
 using Nethermind.Api;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Filters;
@@ -21,23 +28,12 @@ using Nethermind.Db;
 using Nethermind.Logging;
 using Nethermind.Network;
 using Nethermind.Db.Blooms;
-using Nethermind.Evm.TransactionProcessing;
-using Nethermind.Facade.Eth;
 using Nethermind.Grpc;
-using Nethermind.JsonRpc.Modules;
 using Nethermind.JsonRpc.Modules.Eth.GasPrice;
 using Nethermind.KeyStore;
-using Nethermind.Monitoring;
-using Nethermind.Network.Rlpx;
 using Nethermind.Serialization.Json;
 using Nethermind.Specs.ChainSpecStyle;
-using Nethermind.State;
 using Nethermind.State.Repositories;
-using Nethermind.Stats;
-using Nethermind.Synchronization;
-using Nethermind.Synchronization.ParallelSync;
-using Nethermind.Synchronization.Peers;
-using Nethermind.Trie.Pruning;
 using Nethermind.TxPool;
 using Nethermind.Wallet;
 using Nethermind.Sockets;
@@ -54,82 +50,84 @@ namespace Nethermind.Runner.Test.Ethereum
     {
         public static NethermindApi ContextWithMocks()
         {
-            var api = new NethermindApi(Substitute.For<IConfigProvider>(), Substitute.For<IJsonSerializer>(), LimboLogs.Instance,
-                new ChainSpec { Parameters = new ChainParameters(), })
-            {
-                Enode = Substitute.For<IEnode>(),
-                TxPool = Substitute.For<ITxPool>(),
-                Wallet = Substitute.For<IWallet>(),
-                BlockTree = Substitute.For<IBlockTree>(),
-                DbProvider = TestMemDbProvider.Init(),
-                PeerManager = Substitute.For<IPeerManager>(),
-                PeerPool = Substitute.For<IPeerPool>(),
-                SpecProvider = Substitute.For<ISpecProvider>(),
-                EthereumEcdsa = Substitute.For<IEthereumEcdsa>(),
-                MainBlockProcessor = Substitute.For<IBlockProcessor>(),
-                ReceiptStorage = Substitute.For<IReceiptStorage>(),
-                ReceiptFinder = Substitute.For<IReceiptFinder>(),
-                BlockValidator = Substitute.For<IBlockValidator>(),
-                RewardCalculatorSource = Substitute.For<IRewardCalculatorSource>(),
-                TxPoolInfoProvider = Substitute.For<ITxPoolInfoProvider>(),
-                StaticNodesManager = Substitute.For<IStaticNodesManager>(),
-                BloomStorage = Substitute.For<IBloomStorage>(),
-                Sealer = Substitute.For<ISealer>(),
-                BlockchainProcessor = Substitute.For<IBlockchainProcessor>(),
-                BlockProducer = Substitute.For<IBlockProducer>(),
-                DiscoveryApp = Substitute.For<IDiscoveryApp>(),
-                EngineSigner = Substitute.For<ISigner>(),
-                FileSystem = Substitute.For<IFileSystem>(),
-                FilterManager = Substitute.For<IFilterManager>(),
-                FilterStore = Substitute.For<IFilterStore>(),
-                GrpcServer = Substitute.For<IGrpcServer>(),
-                HeaderValidator = Substitute.For<IHeaderValidator>(),
-                IpResolver = Substitute.For<IIPResolver>(),
-                KeyStore = Substitute.For<IKeyStore>(),
-                LogFinder = Substitute.For<ILogFinder>(),
-                MonitoringService = Substitute.For<IMonitoringService>(),
-                ProtocolsManager = Substitute.For<IProtocolsManager>(),
-                ProtocolValidator = Substitute.For<IProtocolValidator>(),
-                RlpxPeer = Substitute.For<IRlpxHost>(),
-                SealValidator = Substitute.For<ISealValidator>(),
-                SessionMonitor = Substitute.For<ISessionMonitor>(),
-                WorldState = Substitute.For<IWorldState>(),
-                StateReader = Substitute.For<IStateReader>(),
-                TransactionProcessor = Substitute.For<ITransactionProcessor>(),
-                TxSender = Substitute.For<ITxSender>(),
-                BlockProcessingQueue = Substitute.For<IBlockProcessingQueue>(),
-                EngineSignerStore = Substitute.For<ISignerStore>(),
-                NodeStatsManager = Substitute.For<INodeStatsManager>(),
-                RpcModuleProvider = Substitute.For<IRpcModuleProvider>(),
-                WebSocketsManager = Substitute.For<IWebSocketsManager>(),
-                ChainLevelInfoRepository = Substitute.For<IChainLevelInfoRepository>(),
-                TrieStore = Substitute.For<ITrieStore>(),
-                BlockProducerEnvFactory = Substitute.For<IBlockProducerEnvFactory>(),
-                TransactionComparerProvider = Substitute.For<ITransactionComparerProvider>(),
-                GasPriceOracle = Substitute.For<IGasPriceOracle>(),
-                EthSyncingInfo = Substitute.For<IEthSyncingInfo>(),
-                HealthHintService = Substitute.For<IHealthHintService>(),
-                TxValidator = new TxValidator(MainnetSpecProvider.Instance.ChainId),
-                UnclesValidator = Substitute.For<IUnclesValidator>(),
-                BlockProductionPolicy = Substitute.For<IBlockProductionPolicy>(),
-                BetterPeerStrategy = Substitute.For<IBetterPeerStrategy>(),
-                ReceiptMonitor = Substitute.For<IReceiptMonitor>(),
-                BadBlocksStore = Substitute.For<IBadBlockStore>(),
+            NethermindApi.Dependencies apiDependencies = new NethermindApi.Dependencies(
+                Substitute.For<IConfigProvider>(),
+                Substitute.For<IJsonSerializer>(),
+                LimboLogs.Instance,
+                new ChainSpec { Parameters = new ChainParameters(), },
+                Substitute.For<ISpecProvider>(),
+                [],
+                Substitute.For<IProcessExitSource>(),
+                new ContainerBuilder()
+                    .AddSingleton<ITxValidator>(new TxValidator(MainnetSpecProvider.Instance.ChainId))
+                    .AddSource(new NSubstituteRegistrationSource())
+                    .Build()
+            );
 
-                ApiWithNetworkServiceContainer = new ContainerBuilder()
-                    .AddSingleton(Substitute.For<ISyncModeSelector>())
-                    .AddSingleton(Substitute.For<ISyncProgressResolver>())
-                    .AddSingleton(Substitute.For<ISyncPointers>())
-                    .AddSingleton(Substitute.For<ISynchronizer>())
-                    .AddSingleton(Substitute.For<ISyncPeerPool>())
-                    .AddSingleton(Substitute.For<IPeerDifficultyRefreshPool>())
-                    .AddSingleton(Substitute.For<ISyncServer>())
-                    .Build(),
-            };
-
-            api.WorldStateManager = new ReadOnlyWorldStateManager(api.DbProvider, Substitute.For<IReadOnlyTrieStore>(), LimboLogs.Instance);
-            api.NodeStorageFactory = new NodeStorageFactory(INodeStorage.KeyScheme.HalfPath, LimboLogs.Instance);
+            var api = new NethermindApi(apiDependencies);
+            MockOutNethermindApi(api);
             return api;
+        }
+
+        private class NSubstituteRegistrationSource : IRegistrationSource
+        {
+            public IEnumerable<IComponentRegistration> RegistrationsFor(Service service, Func<Service, IEnumerable<ServiceRegistration>> registrationAccessor)
+            {
+                if (registrationAccessor(service).Any())
+                {
+                    // Already have registration
+                    return [];
+                }
+
+                IServiceWithType swt = service as IServiceWithType;
+                if (registrationAccessor(service).Any() || swt == null || !swt.ServiceType.IsInterface)
+                {
+                    // It's not a request for the base handler type, so skip it.
+                    return [];
+                }
+
+                // Dynamically resolve any interface with nsubstitue
+                ComponentRegistration registration = new ComponentRegistration(
+                    Guid.NewGuid(),
+                    new DelegateActivator(swt.ServiceType, (c, p) =>
+                    {
+                        return Substitute.For([swt.ServiceType], []);
+                    }),
+                    new RootScopeLifetime(),
+                    InstanceSharing.Shared,
+                    InstanceOwnership.OwnedByLifetimeScope,
+                    new[] { service },
+                    new Dictionary<string, object>());
+
+                return [registration];
+            }
+
+            public bool IsAdapterForIndividualComponents => false;
+        }
+
+        public static void MockOutNethermindApi(NethermindApi api)
+        {
+            api.Enode = Substitute.For<IEnode>();
+            api.TxPool = Substitute.For<ITxPool>();
+            api.Wallet = Substitute.For<IWallet>();
+            api.BlockTree = Substitute.For<IBlockTree>();
+            api.ReceiptStorage = Substitute.For<IReceiptStorage>();
+            api.BloomStorage = Substitute.For<IBloomStorage>();
+            api.BlockProducer = Substitute.For<IBlockProducer>();
+            api.EngineSigner = Substitute.For<ISigner>();
+            api.FileSystem = Substitute.For<IFileSystem>();
+            api.KeyStore = Substitute.For<IKeyStore>();
+            api.LogFinder = Substitute.For<ILogFinder>();
+            api.ProtocolsManager = Substitute.For<IProtocolsManager>();
+            api.ProtocolValidator = Substitute.For<IProtocolValidator>();
+            api.MainProcessingContext = Substitute.For<IMainProcessingContext>();
+            api.TxSender = Substitute.For<ITxSender>();
+            api.BlockProcessingQueue = Substitute.For<IBlockProcessingQueue>();
+            api.EngineSignerStore = Substitute.For<ISignerStore>();
+            api.ChainLevelInfoRepository = Substitute.For<IChainLevelInfoRepository>();
+            api.TransactionComparerProvider = Substitute.For<ITransactionComparerProvider>();
+            api.BlockProductionPolicy = Substitute.For<IBlockProductionPolicy>();
+            api.BadBlocksStore = Substitute.For<IBadBlockStore>();
         }
     }
 }

@@ -9,7 +9,9 @@ using System.Linq;
 using System.Threading.Tasks;
 using FluentAssertions;
 using Nethermind.Core;
+using Nethermind.Core.Collections;
 using Nethermind.Core.Extensions;
+using Nethermind.Core.Test.IO;
 using Nethermind.Db;
 using Nethermind.Db.Blooms;
 using NUnit.Framework;
@@ -168,7 +170,8 @@ public class BloomStorageTests
     public void Can_safely_insert_concurrently(int maxBlock)
     {
         BloomConfig config = new() { IndexLevelBucketSizes = new[] { 16, 16, 16 } };
-        string basePath = Path.Combine(Path.GetTempPath(), DbNames.Bloom, maxBlock.ToString());
+        TempPath tempPath = TempPath.GetTempDirectory();
+        string basePath = tempPath.Path;
         try
         {
             FixedSizeFileStoreFactory fileStorageFactory = new(basePath, DbNames.Bloom, Core.Bloom.ByteLength);
@@ -182,6 +185,57 @@ public class BloomStorageTests
                     bloom.Set(i % Core.Bloom.BitLength);
                     storage.Store(i, bloom);
                 });
+
+            IBloomEnumeration blooms = storage.GetBlooms(0, maxBlock);
+            int j = 0;
+            foreach (Core.Bloom bloom in blooms)
+            {
+                j++;
+                (long FromBlock, long ToBlock) = blooms.CurrentIndices;
+                int fromBlock = (int)(FromBlock % Core.Bloom.BitLength);
+                int toBlock = (int)(Math.Min(ToBlock, maxBlock) % Core.Bloom.BitLength);
+                Core.Bloom expectedBloom = new();
+                for (int i = fromBlock; i <= toBlock; i++)
+                {
+                    expectedBloom.Set(i);
+                }
+
+                bloom.Should().Be(expectedBloom, $"blocks <{FromBlock}, {ToBlock}>");
+                blooms.TryGetBlockNumber(out _);
+            }
+
+            TestContext.Out.WriteLine($"Checked {j} blooms");
+        }
+        finally
+        {
+            Directory.Delete(basePath, true);
+        }
+    }
+
+    [MaxTime(Timeout.MaxTestTime)]
+    [TestCase(byte.MaxValue)]
+    [TestCase(ushort.MaxValue / 4)]
+    [TestCase(ushort.MaxValue, Explicit = true)]
+    [TestCase(ushort.MaxValue * 8 + 7, Explicit = true)]
+    [TestCase(ushort.MaxValue * 128 + 127, Explicit = true)]
+    public void Can_safely_insert_in_batch(int maxBlock)
+    {
+        BloomConfig config = new() { IndexLevelBucketSizes = new[] { 16, 16, 16 } };
+        TempPath tempPath = TempPath.GetTempDirectory();
+        string basePath = tempPath.Path;
+        try
+        {
+            FixedSizeFileStoreFactory fileStorageFactory = new(basePath, DbNames.Bloom, Core.Bloom.ByteLength);
+            using BloomStorage storage = new(config, new MemDb(), fileStorageFactory);
+
+            using ArrayPoolList<(long, Core.Bloom)> bloomInsertions = new(maxBlock);
+            for (int i = 0; i < maxBlock + 1; i++)
+            {
+                Core.Bloom bloom = new();
+                bloom.Set(i % Core.Bloom.BitLength);
+                bloomInsertions.Add((i, bloom));
+            }
+            storage.Store(bloomInsertions);
 
             IBloomEnumeration blooms = storage.GetBlooms(0, maxBlock);
             int j = 0;

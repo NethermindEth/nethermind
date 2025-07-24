@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using FluentAssertions;
+using Nethermind.Blockchain.Tracing;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
@@ -46,7 +47,7 @@ public class Eip2935Tests : VirtualMachineTestsBase
 
         (Block block, Transaction transaction) = PrepareTx(new ForkActivation(BlockNumber, timestamp), 100000, bytecode);
         CallOutputTracer callOutputTracer = new();
-        _processor.Execute(transaction, block.Header, callOutputTracer);
+        _processor.Execute(transaction, new BlockExecutionContext(block.Header, SpecProvider.GetSpec(new ForkActivation(BlockNumber, timestamp))), callOutputTracer);
 
         long expected = blockNumber;
         callOutputTracer.ReturnValue!.Should().BeEquivalentTo(Keccak.Compute(expected.ToString()).BytesToArray());

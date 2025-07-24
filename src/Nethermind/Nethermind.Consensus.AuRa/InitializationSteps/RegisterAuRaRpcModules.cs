@@ -1,18 +1,14 @@
 // SPDX-FileCopyrightText: 2024 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using System.Collections.Generic;
-using System.IO.Abstractions;
-using System.Linq;
-using Nethermind.Api;
+using Autofac;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.BeaconBlockRoot;
-using Nethermind.Blockchain.Blocks;
 using Nethermind.Blockchain.Find;
 using Nethermind.Blockchain.Receipts;
-using Nethermind.Config;
 using Nethermind.Consensus.AuRa.Config;
-using Nethermind.Consensus.AuRa.Contracts;
 using Nethermind.Consensus.AuRa.Transactions;
 using Nethermind.Consensus.AuRa.Validators;
 using Nethermind.Consensus.ExecutionRequests;
@@ -23,276 +19,116 @@ using Nethermind.Consensus.Validators;
 using Nethermind.Consensus.Withdrawals;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
-using Nethermind.Db;
+using Nethermind.Evm.State;
+using Nethermind.State.OverridableEnv;
 using Nethermind.Evm.TransactionProcessing;
-using Nethermind.Init.Steps;
-using Nethermind.Init.Steps.Migrations;
-using Nethermind.JsonRpc;
-using Nethermind.JsonRpc.Modules;
 using Nethermind.JsonRpc.Modules.DebugModule;
 using Nethermind.JsonRpc.Modules.Trace;
 using Nethermind.Logging;
-using Nethermind.State;
-using Nethermind.Synchronization.ParallelSync;
-using Nethermind.Trie.Pruning;
 
 namespace Nethermind.Consensus.AuRa.InitializationSteps;
 
-public class RegisterAuRaRpcModules : RegisterRpcModules
+public class AuRaTraceModuleFactory(IOverridableEnvFactory envFactory, ILifetimeScope rootLifetimeScope) : TraceModuleFactory(envFactory, rootLifetimeScope)
 {
-    public RegisterAuRaRpcModules(AuRaNethermindApi api) : base(api)
+    protected override ContainerBuilder ConfigureCommonBlockProcessing<T>(ContainerBuilder builder)
     {
-        _api = api;
-        _parameters = _api.ChainSpec.EngineChainSpecParametersProvider
-            .GetChainSpecParameters<AuRaChainSpecEngineParameters>();
-        _auraConfig = _api.Config<IAuraConfig>();
-        _factory = CreateFactory();
+        return base.ConfigureCommonBlockProcessing<T>(builder)
+            .AddScoped<IBlockProcessor, AuRaRpcBlockProcessorFactory>((env) => env.CreateBlockProcessor());
     }
+}
 
-    private static AuRaNethermindApi _api = null!;
-    private static AuRaChainSpecEngineParameters _parameters = null!;
-    private static IAuraConfig _auraConfig = null!;
-    private readonly IAuRaBlockProcessorFactory _factory;
-
-    protected virtual IAuRaBlockProcessorFactory CreateFactory() => new AuRaBlockProcessorFactory();
-
-    protected override void RegisterTraceRpcModule(IRpcModuleProvider rpcModuleProvider)
+public class AuRaRpcBlockProcessorFactory(
+    IWorldState worldState,
+    ITransactionProcessor transactionProcessor,
+    IBeaconBlockRootHandler beaconBlockRootHandler,
+    IExecutionRequestsProcessor executionRequestsProcessor,
+    IBlockValidator blockValidator,
+    IRewardCalculator rewardCalculator,
+    IReceiptStorage receiptStorage,
+    IBlockProcessor.IBlockTransactionsExecutor transactionsExecutor,
+    IAuRaBlockProcessorFactory factory)
+{
+    public IBlockProcessor CreateBlockProcessor()
     {
-        StepDependencyException.ThrowIfNull(_api.WorldStateManager);
-        StepDependencyException.ThrowIfNull(_api.DbProvider);
-        StepDependencyException.ThrowIfNull(_api.BlockTree);
-        StepDependencyException.ThrowIfNull(_api.RewardCalculatorSource);
-        StepDependencyException.ThrowIfNull(_api.ReceiptStorage);
-        StepDependencyException.ThrowIfNull(_api.SpecProvider);
-
-        AuRaTraceModuleFactory traceModuleFactory = new(
-            _api.WorldStateManager,
-            _api.BlockTree,
-            _jsonRpcConfig,
-            _api.BlockPreprocessor,
-            _api.RewardCalculatorSource,
-            _api.ReceiptStorage,
-            _api.SpecProvider,
-            _api.PoSSwitcher,
-            _api.LogManager,
-            _factory);
-
-        rpcModuleProvider.RegisterBoundedByCpuCount(traceModuleFactory, _jsonRpcConfig.Timeout);
+        return factory.Create(
+            blockValidator!,
+            rewardCalculator,
+            transactionsExecutor,
+            worldState,
+            receiptStorage,
+            beaconBlockRootHandler,
+            transactionProcessor,
+            executionRequestsProcessor,
+            auRaValidator: null
+        );
     }
+}
 
-    protected class AuRaTraceModuleFactory(
-        IWorldStateManager worldStateManager,
-        IBlockTree blockTree,
-        IJsonRpcConfig jsonRpcConfig,
-        IBlockPreprocessorStep recoveryStep,
-        IRewardCalculatorSource rewardCalculatorSource,
-        IReceiptStorage receiptFinder,
-        ISpecProvider specProvider,
-        IPoSSwitcher poSSwitcher,
-        ILogManager logManager,
-        IAuRaBlockProcessorFactory factory)
-        : TraceModuleFactory(worldStateManager, blockTree, jsonRpcConfig, recoveryStep, rewardCalculatorSource,
-            receiptFinder, specProvider, poSSwitcher, logManager)
+public class AuRaDebugModuleFactory(IOverridableEnvFactory envFactory, ILifetimeScope rootLifetimeScope) : DebugModuleFactory(envFactory, rootLifetimeScope)
+{
+    protected override ContainerBuilder ConfigureTracerContainer(ContainerBuilder builder)
     {
-        protected override ReadOnlyChainProcessingEnv CreateChainProcessingEnv(IOverridableWorldScope worldStateManager,
-            IBlockProcessor.IBlockTransactionsExecutor transactionsExecutor, IReadOnlyTxProcessingScope scope,
-            IRewardCalculator rewardCalculator)
-        {
-            return new AuRaReadOnlyChainProcessingEnv(
-                scope,
-                Always.Valid,
-                _recoveryStep,
-                rewardCalculator,
-                _receiptStorage,
-                _specProvider,
-                _blockTree,
-                worldStateManager.GlobalStateReader,
-                _logManager,
-                transactionsExecutor,
-                factory);
-        }
+        return base.ConfigureTracerContainer(builder)
+            .AddScoped<IBlockProcessor, AuRaRpcBlockProcessorFactory>((env) => env.CreateBlockProcessor());
     }
+}
 
-    protected class AuRaReadOnlyChainProcessingEnv(
-        IReadOnlyTxProcessingScope scope,
+public interface IAuRaBlockProcessorFactory
+{
+    public AuRaBlockProcessor Create(
         IBlockValidator blockValidator,
-        IBlockPreprocessorStep recoveryStep,
         IRewardCalculator rewardCalculator,
+        IBlockProcessor.IBlockTransactionsExecutor blockTransactionsExecutor,
+        IWorldState stateProvider,
         IReceiptStorage receiptStorage,
-        ISpecProvider specProvider,
-        IBlockTree blockTree,
-        IStateReader stateReader,
-        ILogManager logManager,
-        IBlockProcessor.IBlockTransactionsExecutor? blockTransactionsExecutor,
-        IAuRaBlockProcessorFactory factory)
-        : ReadOnlyChainProcessingEnv(scope, blockValidator, recoveryStep, rewardCalculator, receiptStorage,
-            specProvider, blockTree, stateReader, logManager, blockTransactionsExecutor)
-    {
-        protected override IBlockProcessor CreateBlockProcessor(IReadOnlyTxProcessingScope scope, IBlockTree blockTree,
-            IBlockValidator blockValidator, IRewardCalculator rewardCalculator, IReceiptStorage receiptStorage,
-            ISpecProvider specProvider, ILogManager logManager, IBlockProcessor.IBlockTransactionsExecutor transactionsExecutor)
-        {
-            ITxFilter auRaTxFilter = new ServiceTxFilter(specProvider);
+        IBeaconBlockRootHandler beaconBlockRootHandler,
+        ITransactionProcessor transactionProcessor,
+        IExecutionRequestsProcessor executionRequestsProcessor,
+        IAuRaValidator? auRaValidator,
+        IBlockCachePreWarmer? preWarmer = null);
+}
 
-            var chainSpecAuRa = _api.ChainSpec.EngineChainSpecParametersProvider.GetChainSpecParameters<AuRaChainSpecEngineParameters>();
-            IDictionary<long, IDictionary<Address, byte[]>> rewriteBytecode = chainSpecAuRa.RewriteBytecode;
-            ContractRewriter? contractRewriter = rewriteBytecode?.Count > 0 ? new ContractRewriter(rewriteBytecode) : null;
-
-            return factory.Create(
-                specProvider!,
-                blockValidator!,
-                rewardCalculator,
-                transactionsExecutor,
-                scope.WorldState,
-                receiptStorage,
-                new BeaconBlockRootHandler(scope.TransactionProcessor, scope.WorldState),
-                logManager,
-                blockTree,
-                NullWithdrawalProcessor.Instance,
-                scope.TransactionProcessor,
-                auRaValidator: null,
-                auRaTxFilter,
-                GetGasLimitCalculator(),
-                contractRewriter
-            );
-        }
-
-        private AuRaContractGasLimitOverride? GetGasLimitCalculator()
-        {
-            if (_api.ChainSpec is null) throw new StepDependencyException(nameof(_api.ChainSpec));
-            var blockGasLimitContractTransitions = _parameters.BlockGasLimitContractTransitions;
-
-            if (blockGasLimitContractTransitions?.Any() == true)
-            {
-                AuRaContractGasLimitOverride gasLimitCalculator = new(
-                    blockGasLimitContractTransitions.Select(static blockGasLimitContractTransition =>
-                            new BlockGasLimitContract(
-                                _api.AbiEncoder,
-                                blockGasLimitContractTransition.Value,
-                                blockGasLimitContractTransition.Key,
-                                _api.CreateReadOnlyTransactionProcessorSource()))
-                        .ToArray<IBlockGasLimitContract>(),
-                    _api.GasLimitCalculatorCache,
-                    _auraConfig.Minimum2MlnGasPerBlockWhenUsingBlockGasLimitContract,
-                    new TargetAdjustedGasLimitCalculator(_api.SpecProvider, _api.Config<IBlocksConfig>()),
-                    _api.LogManager);
-
-                return gasLimitCalculator;
-            }
-
-            // do not return target gas limit calculator here - this is used for validation to check if the override should have been used
-            return null;
-        }
-    }
-
-    protected override void RegisterDebugRpcModule(IRpcModuleProvider rpcModuleProvider)
-    {
-        StepDependencyException.ThrowIfNull(_api.DbProvider);
-        StepDependencyException.ThrowIfNull(_api.BlockPreprocessor);
-        StepDependencyException.ThrowIfNull(_api.BlockValidator);
-        StepDependencyException.ThrowIfNull(_api.RewardCalculatorSource);
-        StepDependencyException.ThrowIfNull(_api.KeyStore);
-        StepDependencyException.ThrowIfNull(_api.PeerPool);
-        StepDependencyException.ThrowIfNull(_api.BadBlocksStore);
-        StepDependencyException.ThrowIfNull(_api.WorldStateManager);
-        StepDependencyException.ThrowIfNull(_api.BlockTree);
-        StepDependencyException.ThrowIfNull(_api.ReceiptStorage);
-        StepDependencyException.ThrowIfNull(_api.SpecProvider);
-
-        AuRaDebugModuleFactory debugModuleFactory = new(
-            _api.WorldStateManager,
-            _api.DbProvider,
-            _api.BlockTree,
-            _jsonRpcConfig,
-            _api.BlockValidator,
-            _api.BlockPreprocessor,
-            _api.RewardCalculatorSource,
-            _api.ReceiptStorage,
-            new ReceiptMigration(_api),
-            _api.ConfigProvider,
-            _api.SpecProvider,
-            _api.SyncModeSelector,
-            _api.BadBlocksStore,
-            _api.FileSystem,
-            _api.LogManager,
-            _factory);
-
-        rpcModuleProvider.RegisterBoundedByCpuCount(debugModuleFactory, _jsonRpcConfig.Timeout);
-    }
-
-    protected class AuRaDebugModuleFactory(
-        IWorldStateManager worldStateManager,
-        IDbProvider dbProvider,
-        IBlockTree blockTree,
-        IJsonRpcConfig jsonRpcConfig,
+public class AuRaBlockProcessorFactory(
+    AuRaChainSpecEngineParameters parameters,
+    IBlockTree blockTree,
+    ISpecProvider specProvider,
+    AuRaGasLimitOverrideFactory gasLimitOverrideFactory,
+    TxAuRaFilterBuilders txAuRaFilterBuilders,
+    ILogManager logManager
+) : IAuRaBlockProcessorFactory
+{
+    public AuRaBlockProcessor Create(
         IBlockValidator blockValidator,
-        IBlockPreprocessorStep recoveryStep,
-        IRewardCalculatorSource rewardCalculator,
+        IRewardCalculator rewardCalculator,
+        IBlockProcessor.IBlockTransactionsExecutor blockTransactionsExecutor,
+        IWorldState stateProvider,
         IReceiptStorage receiptStorage,
-        IReceiptsMigration receiptsMigration,
-        IConfigProvider configProvider,
-        ISpecProvider specProvider,
-        ISyncModeSelector syncModeSelector,
-        IBadBlockStore badBlockStore,
-        IFileSystem fileSystem,
-        ILogManager logManager,
-        IAuRaBlockProcessorFactory factory)
-        : DebugModuleFactory(worldStateManager, dbProvider, blockTree, jsonRpcConfig, blockValidator, recoveryStep,
-            rewardCalculator, receiptStorage, receiptsMigration, configProvider, specProvider, syncModeSelector,
-            badBlockStore, fileSystem, logManager)
+        IBeaconBlockRootHandler beaconBlockRootHandler,
+        ITransactionProcessor transactionProcessor,
+        IExecutionRequestsProcessor executionRequestsProcessor,
+        IAuRaValidator? auRaValidator,
+        IBlockCachePreWarmer? preWarmer = null)
     {
-        protected override ReadOnlyChainProcessingEnv CreateReadOnlyChainProcessingEnv(IReadOnlyTxProcessingScope scope,
-            IOverridableWorldScope worldStateManager, BlockProcessor.BlockValidationTransactionsExecutor transactionsExecutor)
-        {
-            return new AuRaReadOnlyChainProcessingEnv(
-                scope,
-                Always.Valid,
-                _recoveryStep,
-                _rewardCalculatorSource.Get(scope.TransactionProcessor),
-                _receiptStorage,
-                _specProvider,
-                _blockTree,
-                worldStateManager.GlobalStateReader,
-                _logManager,
-                transactionsExecutor,
-                factory);
-        }
-    }
+        IDictionary<long, IDictionary<Address, byte[]>> rewriteBytecode = parameters.RewriteBytecode;
+        ContractRewriter? contractRewriter = rewriteBytecode?.Count > 0 ? new ContractRewriter(rewriteBytecode) : null;
 
-    protected interface IAuRaBlockProcessorFactory
-    {
-        public AuRaBlockProcessor Create(
-            ISpecProvider specProvider,
-            IBlockValidator blockValidator,
-            IRewardCalculator rewardCalculator,
-            IBlockProcessor.IBlockTransactionsExecutor blockTransactionsExecutor,
-            IWorldState stateProvider,
-            IReceiptStorage receiptStorage,
-            IBeaconBlockRootHandler beaconBlockRootHandler,
-            ILogManager logManager,
-            IBlockFinder blockTree,
-            IWithdrawalProcessor withdrawalProcessor,
-            ITransactionProcessor transactionProcessor,
-            IAuRaValidator? auRaValidator,
-            ITxFilter? txFilter = null,
-            AuRaContractGasLimitOverride? gasLimitOverride = null,
-            ContractRewriter? contractRewriter = null,
-            IBlockCachePreWarmer? preWarmer = null,
-            IExecutionRequestsProcessor? executionRequestsProcessor = null);
-    }
+        ITxFilter txFilter = txAuRaFilterBuilders.CreateAuRaTxFilter(new ServiceTxFilter());
 
-    private class AuRaBlockProcessorFactory : IAuRaBlockProcessorFactory
-    {
-        public AuRaBlockProcessor Create(ISpecProvider specProvider, IBlockValidator blockValidator,
-            IRewardCalculator rewardCalculator, IBlockProcessor.IBlockTransactionsExecutor blockTransactionsExecutor, IWorldState stateProvider,
-            IReceiptStorage receiptStorage, IBeaconBlockRootHandler beaconBlockRootHandler, ILogManager logManager,
-            IBlockFinder blockTree, IWithdrawalProcessor withdrawalProcessor, ITransactionProcessor transactionProcessor,
-            IAuRaValidator? auRaValidator, ITxFilter? txFilter = null, AuRaContractGasLimitOverride? gasLimitOverride = null,
-            ContractRewriter? contractRewriter = null, IBlockCachePreWarmer? preWarmer = null,
-            IExecutionRequestsProcessor? executionRequestsProcessor = null) =>
-            new(specProvider, blockValidator, rewardCalculator, blockTransactionsExecutor,
-                stateProvider, receiptStorage, beaconBlockRootHandler, logManager, blockTree, withdrawalProcessor,
-                transactionProcessor, auRaValidator, txFilter, gasLimitOverride, contractRewriter, preWarmer,
-                executionRequestsProcessor);
+        return new AuRaBlockProcessor(
+            specProvider,
+            blockValidator,
+            rewardCalculator,
+            blockTransactionsExecutor,
+            stateProvider,
+            receiptStorage,
+            beaconBlockRootHandler,
+            logManager,
+            blockTree,
+            NullWithdrawalProcessor.Instance,
+            executionRequestsProcessor,
+            auRaValidator,
+            txFilter,
+            gasLimitOverrideFactory.GetGasLimitCalculator(),
+            contractRewriter, preWarmer);
     }
 }

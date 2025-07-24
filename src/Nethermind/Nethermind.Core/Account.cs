@@ -1,6 +1,8 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
+using System.Numerics;
 using System.Runtime.CompilerServices;
 using System.Runtime.Intrinsics;
 using Nethermind.Core.Crypto;
@@ -8,12 +10,14 @@ using Nethermind.Int256;
 
 namespace Nethermind.Core
 {
-    public class Account
+    public class Account : IEquatable<Account>
     {
         public static readonly Account TotallyEmpty = new();
 
         private readonly Hash256? _codeHash;
         private readonly Hash256? _storageRoot;
+        public readonly UInt256 Nonce;
+        public readonly UInt256 Balance;
 
         public Account(in UInt256 balance)
         {
@@ -75,13 +79,32 @@ namespace Nethermind.Core
 
         public bool HasStorage => _storageRoot is not null;
 
-        public UInt256 Nonce { get; }
-        public UInt256 Balance { get; }
         public Hash256 StorageRoot => _storageRoot ?? Keccak.EmptyTreeHash;
         public Hash256 CodeHash => _codeHash ?? Keccak.OfAnEmptyString;
         public bool IsTotallyEmpty => _storageRoot is null && IsEmpty;
         public bool IsEmpty => _codeHash is null && Balance.IsZero && Nonce.IsZero;
         public bool IsContract => _codeHash is not null;
+        public bool Equals(Account? other)
+        {
+            if (other is null) return false;
+            if (ReferenceEquals(this, other)) return true;
+
+            return Nonce == other.Nonce &&
+                Balance == other.Balance &&
+                _codeHash == other._codeHash &&
+                _storageRoot == other._storageRoot;
+        }
+        public override bool Equals(object? obj) => Equals(obj as Account);
+        public static bool operator ==(Account? left, Account? right)
+        {
+            if (left is not null)
+            {
+                return left.Equals(right);
+            }
+            return right is null;
+        }
+        public override int GetHashCode() => (int)BitOperations.Crc32C((uint)CodeHash.GetHashCode(), (ulong)Nonce.GetHashCode() << 8 | (uint)Balance.GetHashCode()) ^ StorageRoot.GetHashCode();
+        public static bool operator !=(Account? left, Account? right) => !(left == right);
 
         public Account WithChangedBalance(in UInt256 newBalance)
         {
@@ -106,21 +129,21 @@ namespace Nethermind.Core
         public AccountStruct ToStruct() => new(Nonce, Balance, StorageRoot, CodeHash);
     }
 
-    public readonly struct AccountStruct
+    public readonly struct AccountStruct : IEquatable<AccountStruct>
     {
         private static readonly AccountStruct _totallyEmpty = Account.TotallyEmpty.ToStruct();
         public static ref readonly AccountStruct TotallyEmpty => ref _totallyEmpty;
 
         private readonly UInt256 _balance;
         private readonly UInt256 _nonce = default;
-        private readonly ValueHash256 _codeHash = Keccak.OfAnEmptyString.ValueHash256;
+        public readonly ValueHash256 CodeHash = Keccak.OfAnEmptyString.ValueHash256;
         private readonly ValueHash256 _storageRoot = Keccak.EmptyTreeHash.ValueHash256;
 
         public AccountStruct(in UInt256 nonce, in UInt256 balance, in ValueHash256 storageRoot, in ValueHash256 codeHash)
         {
             _balance = balance;
             _nonce = nonce;
-            _codeHash = codeHash;
+            CodeHash = codeHash;
             _storageRoot = storageRoot;
         }
 
@@ -135,17 +158,16 @@ namespace Nethermind.Core
             _balance = balance;
         }
 
-        public bool HasCode => _codeHash != Keccak.OfAnEmptyString.ValueHash256;
+        public bool HasCode => CodeHash != Keccak.OfAnEmptyString.ValueHash256;
 
         public bool HasStorage => _storageRoot != Keccak.EmptyTreeHash.ValueHash256;
 
         public UInt256 Nonce => _nonce;
         public UInt256 Balance => _balance;
         public ValueHash256 StorageRoot => _storageRoot;
-        public ValueHash256 CodeHash => _codeHash;
         public bool IsTotallyEmpty => IsEmpty && _storageRoot == Keccak.EmptyTreeHash.ValueHash256;
-        public bool IsEmpty => Balance.IsZero && Nonce.IsZero && _codeHash == Keccak.OfAnEmptyString.ValueHash256;
-        public bool IsContract => _codeHash != Keccak.OfAnEmptyString.ValueHash256;
+        public bool IsEmpty => Balance.IsZero && Nonce.IsZero && CodeHash == Keccak.OfAnEmptyString.ValueHash256;
+        public bool IsContract => CodeHash != Keccak.OfAnEmptyString.ValueHash256;
         public bool IsNull
         {
             get
@@ -172,9 +194,17 @@ namespace Nethermind.Core
 
                 return (Unsafe.As<UInt256, Vector256<byte>>(ref Unsafe.AsRef(in _balance)) |
                     Unsafe.As<UInt256, Vector256<byte>>(ref Unsafe.AsRef(in _nonce)) |
-                    Unsafe.As<ValueHash256, Vector256<byte>>(ref Unsafe.AsRef(in _codeHash)) |
+                    Unsafe.As<ValueHash256, Vector256<byte>>(ref Unsafe.AsRef(in CodeHash)) |
                     Unsafe.As<ValueHash256, Vector256<byte>>(ref Unsafe.AsRef(in _storageRoot))) == default;
             }
+        }
+
+        public bool Equals(AccountStruct other)
+        {
+            return _nonce == other.Nonce &&
+                   _balance == other.Balance &&
+                   CodeHash == other.CodeHash &&
+                   StorageRoot == other.StorageRoot;
         }
     }
 }

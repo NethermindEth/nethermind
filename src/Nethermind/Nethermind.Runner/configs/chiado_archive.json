@@ -4,7 +4,7 @@
     "MemoryHint": 768000000,
     "ChainSpecPath": "chainspec/chiado.json",
     "BaseDbPath": "nethermind_db/chiado_archive",
-    "LogFileName": "chiado_archive.logs.txt"
+    "LogFileName": "chiado_archive.log"
   },
   "TxPool": {
     "Size": 1024

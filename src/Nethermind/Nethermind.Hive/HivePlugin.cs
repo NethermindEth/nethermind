@@ -2,27 +2,18 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using System.Threading;
 using System.Threading.Tasks;
-using Nethermind.Api;
+using Autofac;
+using Autofac.Core;
 using Nethermind.Api.Extensions;
-using Nethermind.Logging;
+using Nethermind.Api.Steps;
+using Nethermind.Core;
 
 namespace Nethermind.Hive;
 
-public class HivePlugin : INethermindPlugin
+public class HivePlugin(IHiveConfig hiveConfig) : INethermindPlugin
 {
-    private INethermindApi _api = null!;
-    private IHiveConfig _hiveConfig = null!;
-    private ILogger _logger;
-    private readonly CancellationTokenSource _disposeCancellationToken = new();
-
-    public ValueTask DisposeAsync()
-    {
-        _disposeCancellationToken.Cancel();
-        _disposeCancellationToken.Dispose();
-        return ValueTask.CompletedTask;
-    }
+    public ValueTask DisposeAsync() => ValueTask.CompletedTask;
 
     public string Name => "Hive";
 
@@ -30,51 +21,14 @@ public class HivePlugin : INethermindPlugin
 
     public string Author => "Nethermind";
 
-    public Task Init(INethermindApi api)
-    {
-        _api = api ?? throw new ArgumentNullException(nameof(api));
-        _hiveConfig = _api.ConfigProvider.GetConfig<IHiveConfig>();
-        _logger = _api.LogManager.GetClassLogger();
+    public bool Enabled => hiveConfig.Enabled;
 
-        Enabled = _hiveConfig.Enabled;
+    public IModule Module => new HiveModule();
+}
 
-        return Task.CompletedTask;
-    }
-
-    public async Task InitNetworkProtocol()
-    {
-        if (Enabled)
-        {
-            if (_api.BlockTree is null) throw new ArgumentNullException(nameof(_api.BlockTree));
-            if (_api.BlockProcessingQueue is null) throw new ArgumentNullException(nameof(_api.BlockProcessingQueue));
-            if (_api.ConfigProvider is null) throw new ArgumentNullException(nameof(_api.ConfigProvider));
-            if (_api.LogManager is null) throw new ArgumentNullException(nameof(_api.LogManager));
-            if (_api.FileSystem is null) throw new ArgumentNullException(nameof(_api.FileSystem));
-            if (_api.BlockValidator is null) throw new ArgumentNullException(nameof(_api.BlockValidator));
-
-            _api.TxPool!.AcceptTxWhenNotSynced = true;
-
-            _api.TxGossipPolicy.Policies.Clear();
-
-            HiveRunner hiveRunner = new(
-                _api.BlockTree,
-                _api.BlockProcessingQueue,
-                _api.ConfigProvider,
-                _api.LogManager.GetClassLogger(),
-                _api.FileSystem,
-                _api.BlockValidator
-            );
-
-            if (_logger.IsInfo) _logger.Info("Hive is starting");
-
-            await hiveRunner.Start(_disposeCancellationToken.Token);
-        }
-    }
-
-    public Task InitRpcModules()
-    {
-        return Task.CompletedTask;
-    }
-
-    private bool Enabled { get; set; }
+public class HiveModule : Module
+{
+    protected override void Load(ContainerBuilder builder) => builder
+        .AddSingleton<HiveRunner>()
+        .AddStep(typeof(HiveStep));
 }

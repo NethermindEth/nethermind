@@ -179,7 +179,7 @@ namespace Nethermind.Core
 
         private static string GenerateReport(string prefix, long current, long total, long queue, decimal speed, decimal skippedPerSecond)
         {
-            float percentage = Math.Clamp(current / (float)(total + 1), 0, 1);
+            float percentage = Math.Clamp(current / (float)(Math.Max(total, 1)), 0, 1);
             string queuedStr = (queue >= 0 ? $" queue {queue,QueuePaddingLength:N0} | " : " ");
             string skippedStr = (skippedPerSecond >= 0 ? $"skipped {skippedPerSecond,SkippedPaddingLength:N0} Blk/s | " : "");
             string speedStr = $"current {speed,SpeedPaddingLength:N0} Blk/s";

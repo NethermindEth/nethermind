@@ -3,11 +3,11 @@
 
 using System;
 using System.Collections.Generic;
-using System.Linq;
 using Nethermind.Blockchain.Find;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
+using Nethermind.State;
 
 namespace Nethermind.Blockchain.Utils;
 
@@ -79,7 +79,8 @@ public class LastNStateRootTracker : ILastNStateRootTracker, IDisposable
         }
 
         _availableStateRoots = newStateRootSet;
-        _stateRootQueue = new Queue<Hash256>(stateRoots.Reverse());
+        stateRoots.Reverse();
+        _stateRootQueue = new Queue<Hash256>(stateRoots);
         _lastQueuedStateRoot = newHead.StateRoot;
     }
 

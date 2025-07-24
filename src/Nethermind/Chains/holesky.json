@@ -45,6 +45,14 @@
     "eip4844TransitionTimestamp": "0x65C36AC0",
     "eip5656TransitionTimestamp": "0x65C36AC0",
     "eip6780TransitionTimestamp": "0x65C36AC0",
+    "eip2537TransitionTimestamp": "0x67BCEAC0",
+    "eip2935TransitionTimestamp": "0x67BCEAC0",
+    "eip6110TransitionTimestamp": "0x67BCEAC0",
+    "eip7002TransitionTimestamp": "0x67BCEAC0",
+    "eip7251TransitionTimestamp": "0x67BCEAC0",
+    "eip7623TransitionTimestamp": "0x67BCEAC0",
+    "eip7702TransitionTimestamp": "0x67BCEAC0",
+    "depositContractAddress": "0x4242424242424242424242424242424242424242",
     "terminalTotalDifficulty": "0x0",
     "gasLimitBoundDivisor": "0x400",
     "maxCodeSize": "0x6000",
@@ -52,7 +60,16 @@
     "maximumExtraDataSize": "0xffff",
     "minGasLimit": "0x1388",
     "registrar": "0x0000000000000000000000000000000000000000",
-    "MergeForkIdTransition": "0x0"
+    "MergeForkIdTransition": "0x0",
+    "blobSchedule": [
+      {
+        "name": "prague",
+        "timestamp": "0x67bceac0",
+        "target": 6,
+        "max": 9,
+        "baseFeeUpdateFraction": "0x4c6964"
+      }
+    ]
   },
   "genesis": {
     "seal": {

@@ -5,7 +5,6 @@ using System.Collections.Generic;
 using System.Text.Json;
 using System.Threading.Tasks;
 using Nethermind.Logging;
-using Nethermind.Serialization.Json;
 using Websocket.Client;
 
 namespace Nethermind.EthStats.Senders
@@ -29,7 +28,7 @@ namespace Nethermind.EthStats.Senders
             }
 
             (EmitMessage? emitMessage, string? messageType) = CreateMessage(message, type);
-            string payload = JsonSerializer.Serialize(emitMessage, EthereumJsonSerializer.JsonOptions);
+            string payload = JsonSerializer.Serialize(emitMessage, JsonSerializerOptions.Web);
             if (_logger.IsTrace) _logger.Trace($"Sending ETH stats message '{messageType}': {payload}");
 
             client.Send(payload);

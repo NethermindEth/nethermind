@@ -78,22 +78,17 @@ public class MergeSynchronizerModule : Module
     protected override void Load(ContainerBuilder builder)
     {
         builder
-            .RegisterType<MergeBlockDownloader>()
-            .As<BlockDownloader>()
-            .As<ISyncDownloader<BlocksRequest>>()
-            .InstancePerLifetimeScope();
-
-        builder
             .AddSingleton<ISynchronizer, MergeSynchronizer>()
             .AddSingleton<IChainLevelHelper, ChainLevelHelper>()
-            .AddScoped<IPeerAllocationStrategyFactory<BlocksRequest>, MergeBlocksSyncPeerAllocationStrategyFactory>()
+            .AddSingleton<BlockDownloader, MergeBlockDownloader>()
+            .AddSingleton<IForwardHeaderProvider, PosForwardHeaderProvider>()
 
             .RegisterNamedComponentInItsOwnLifetime<SyncFeedComponent<HeadersSyncBatch>>(nameof(BeaconHeadersSyncFeed), ConfigureBeaconHeader);
     }
 
     private void ConfigureBeaconHeader(ContainerBuilder scopeConfig)
     {
-        scopeConfig.AddScoped<ISyncFeed<HeadersSyncBatch>, BeaconHeadersSyncFeed>()
+        scopeConfig.AddScoped<ISyncFeed<HeadersSyncBatch?>, BeaconHeadersSyncFeed>()
             .AddScoped<ISyncDownloader<HeadersSyncBatch>, BeaconHeadersSyncDownloader>();
     }
 }

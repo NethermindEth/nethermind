@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using Nethermind.Config;
+using Nethermind.Serialization.Json;
 
 namespace Nethermind.JsonRpc;
 
@@ -85,7 +86,7 @@ public interface IJsonRpcConfig : IConfig
         DefaultValue = "[]")]
     string[] AdditionalRpcUrls { get; set; }
 
-    [ConfigItem(Description = "The gas limit for `eth_call` and `eth_estimateGas`.", DefaultValue = "100000000")]
+    [ConfigItem(Description = "The maximum gas limit for `eth_call` and `eth_estimateGas`.", DefaultValue = "100000000")]
     long? GasCap { get; set; }
 
     [ConfigItem(
@@ -105,7 +106,6 @@ public interface IJsonRpcConfig : IConfig
 
     [ConfigItem(Description = "The max length of HTTP request body, in bytes.", DefaultValue = "30000000")]
     long? MaxRequestBodySize { get; set; }
-
 
     [ConfigItem(
         Description = "The max number of logs per response for the `eth_getLogs` JSON-RPC method. `0` to lift the limit.",
@@ -141,7 +141,7 @@ public interface IJsonRpcConfig : IConfig
 
     [ConfigItem(
         Description = "An array of the method names not to log.",
-        DefaultValue = "[engine_newPayloadV1,engine_newPayloadV2,engine_newPayloadV3,engine_forkchoiceUpdatedV1,engine_forkchoiceUpdatedV2]")]
+        DefaultValue = "[engine_newPayloadV1,engine_newPayloadV2,engine_newPayloadV3,engine_forkchoiceUpdatedV1,engine_forkchoiceUpdatedV2,flashbots_validateBuilderSubmissionV3]")]
     public string[]? MethodsLoggingFiltering { get; set; }
 
     [ConfigItem(Description = "The Engine API host.", DefaultValue = "127.0.0.1")]
@@ -158,6 +158,9 @@ public interface IJsonRpcConfig : IConfig
     [ConfigItem(Description = "The max number of JSON-RPC requests in a batch.", DefaultValue = "1024")]
     int MaxBatchSize { get; set; }
 
+    [ConfigItem(Description = "The maximum depth of JSON response object tree.", DefaultValue = "128")]
+    int JsonSerializationMaxDepth { get; set; }
+
     [ConfigItem(Description = "The max batch size limit for batched JSON-RPC calls.", DefaultValue = "33554432")]
     long? MaxBatchResponseBodySize { get; set; }
 
@@ -169,4 +172,19 @@ public interface IJsonRpcConfig : IConfig
 
     [ConfigItem(Description = "The JSON-RPC server CORS origins.", DefaultValue = "*")]
     string[] CorsOrigins { get; set; }
+
+    [ConfigItem(Description = "Concurrency level of websocket connection.", DefaultValue = "1")]
+    int WebSocketsProcessingConcurrency { get; set; }
+
+    [ConfigItem(Description = "Concurrency level of IPC connection.", DefaultValue = "1")]
+    int IpcProcessingConcurrency { get; set; }
+
+    [ConfigItem(Description = "Enable per-method call metric", DefaultValue = "false")]
+    bool EnablePerMethodMetrics { get; set; }
+
+    [ConfigItem(Description = "The eth_filters timeout, in milliseconds.", DefaultValue = "900000")]
+    int FiltersTimeout { get; set; }
+
+    [ConfigItem(Description = "Preload rpc modules. Useful in rpc provider to reduce latency on first request.", DefaultValue = "false")]
+    bool PreloadRpcModules { get; set; }
 }

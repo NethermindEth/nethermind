@@ -2,30 +2,27 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Reflection;
 using System.Threading;
 using System.Threading.Tasks;
+using Autofac;
 using Nethermind.Api;
 using Nethermind.Api.Extensions;
 using Nethermind.Core;
+using Nethermind.Core.ServiceStopper;
 using Nethermind.Init.Steps;
 using Nethermind.Logging;
 
 namespace Nethermind.Runner.Ethereum;
 
-public class EthereumRunner(INethermindApi api)
+public class EthereumRunner(INethermindApi api, EthereumStepsManager stepsManager, ILifetimeScope lifetimeScope, IServiceStopper serviceStopper)
 {
-    private readonly INethermindApi _api = api;
+    public INethermindApi Api => api;
+    public ILifetimeScope LifetimeScope => lifetimeScope;
     private readonly ILogger _logger = api.LogManager.GetClassLogger();
 
     public async Task Start(CancellationToken cancellationToken)
     {
         if (_logger.IsDebug) _logger.Debug("Starting Ethereum runner");
-
-        EthereumStepsLoader stepsLoader = new(GetStepsAssemblies(_api));
-        EthereumStepsManager stepsManager = new(stepsLoader, _api, _api.LogManager);
 
         await stepsManager.InitializeAll(cancellationToken);
 
@@ -34,63 +31,20 @@ public class EthereumRunner(INethermindApi api)
         if (_logger.IsInfo) _logger.Info(infoScreen);
     }
 
-    private IEnumerable<Assembly> GetStepsAssemblies(INethermindApi api)
-    {
-        yield return typeof(IStep).Assembly;
-        yield return GetType().Assembly;
-
-        IEnumerable<IInitializationPlugin> enabledInitializationPlugins =
-            _api.Plugins.OfType<IInitializationPlugin>().Where(p => p.ShouldRunSteps(api));
-
-        foreach (IInitializationPlugin initializationPlugin in enabledInitializationPlugins)
-        {
-            yield return initializationPlugin.GetType().Assembly;
-        }
-    }
-
     public async Task StopAsync()
     {
-        Stop(() => _api.SessionMonitor?.Stop(), "Stopping session monitor");
-        Stop(() => _api.SyncModeSelector?.Stop(), "Stopping session sync mode selector");
-        Task discoveryStopTask = Stop(() => _api.DiscoveryApp?.StopAsync(), "Stopping discovery app");
-        Task blockProducerTask = Stop(() => _api.BlockProducerRunner?.StopAsync(), "Stopping block producer");
-        Task peerPoolTask = Stop(() => _api.PeerPool?.StopAsync(), "Stopping peer pool");
-        Task peerManagerTask = Stop(() => _api.PeerManager?.StopAsync(), "Stopping peer manager");
-        Task blockchainProcessorTask = Stop(() => _api.BlockchainProcessor?.StopAsync(), "Stopping blockchain processor");
-        Task rlpxPeerTask = Stop(() => _api.RlpxPeer?.Shutdown(), "Stopping RLPx peer");
-        await Task.WhenAll(discoveryStopTask, rlpxPeerTask, peerManagerTask, peerPoolTask, blockchainProcessorTask, blockProducerTask);
+        await serviceStopper.StopAllServices();
 
-        foreach (INethermindPlugin plugin in _api.Plugins)
+        foreach (INethermindPlugin plugin in api.Plugins)
         {
             await Stop(async () => await plugin.DisposeAsync(), $"Disposing plugin {plugin.Name}");
         }
 
-        while (_api.DisposeStack.Count != 0)
-        {
-            IAsyncDisposable disposable = _api.DisposeStack.Pop();
-            await Stop(async () => await disposable.DisposeAsync(), $"Disposing {disposable}");
-        }
-
-        Stop(() => _api.DbProvider?.Dispose(), "Closing DBs");
-
+        await lifetimeScope.DisposeAsync();
         if (_logger.IsInfo)
         {
             _logger.Info("All DBs closed");
             _logger.Info("Ethereum runner stopped");
-        }
-    }
-
-    private void Stop(Action stopAction, string description)
-    {
-        try
-        {
-            if (_logger.IsInfo) _logger.Info(description);
-
-            stopAction();
-        }
-        catch (Exception e)
-        {
-            if (_logger.IsError) _logger.Error($"{description} shutdown error.", e);
         }
     }
 

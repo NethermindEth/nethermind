@@ -1,0 +1,130 @@
+<Solution>
+  <Folder Name="/Logging/">
+    <Project Path="Nethermind.Logging.Microsoft/Nethermind.Logging.Microsoft.csproj" />
+    <Project Path="Nethermind.Logging.NLog.Test/Nethermind.Logging.NLog.Test.csproj" />
+    <Project Path="Nethermind.Logging.NLog/Nethermind.Logging.NLog.csproj" />
+    <Project Path="Nethermind.Logging/Nethermind.Logging.csproj" />
+    <Project Path="Nethermind.Seq/Nethermind.Seq.csproj" />
+  </Folder>
+  <Folder Name="/Plugins/" />
+  <Folder Name="/Plugins/Analytics/">
+    <Project Path="Nethermind.Analytics/Nethermind.Analytics.csproj" />
+  </Folder>
+  <Folder Name="/Plugins/Hive/">
+    <Project Path="Nethermind.Hive.Test/Nethermind.Hive.Test.csproj" />
+    <Project Path="Nethermind.Hive/Nethermind.Hive.csproj" />
+  </Folder>
+  <Folder Name="/Plugins/Merge/">
+    <Project Path="Nethermind.Merge.Plugin.Test/Nethermind.Merge.Plugin.Test.csproj" />
+    <Project Path="Nethermind.Merge.Plugin/Nethermind.Merge.Plugin.csproj" />
+  </Folder>
+  <Folder Name="/Plugins/Flashbots/">
+    <Project Path="Nethermind.Flashbots.Test/Nethermind.Flashbots.Test.csproj" />
+    <Project Path="Nethermind.Flashbots/Nethermind.Flashbots.csproj" />
+  </Folder>
+  <Folder Name="/Plugins/Signer/">
+    <Project Path="Nethermind.ExternalSigner.Plugin/Nethermind.ExternalSigner.Plugin.csproj" />
+  </Folder>
+  <Folder Name="/Plugins/TraceStore/">
+    <Project Path="Nethermind.JsonRpc.TraceStore.Test/Nethermind.JsonRpc.TraceStore.Test.csproj" />
+    <Project Path="Nethermind.JsonRpc.TraceStore/Nethermind.JsonRpc.TraceStore.csproj" />
+  </Folder>
+  <Folder Name="/Plugins/UPnP/">
+    <Project Path="Nethermind.UPnP.Plugin/Nethermind.UPnP.Plugin.csproj" />
+  </Folder>
+  <Folder Name="/Solution Items/">
+    <File Path="Directory.Build.props" />
+    <File Path="../../Directory.Packages.props" />
+    <File Path="../../nuget.config" />
+    <File Path="testenvironments.json" />
+    <File Path="tests.props" />
+  </Folder>
+  <Folder Name="/Tests/">
+    <Project Path="Nethermind.Abi.Test/Nethermind.Abi.Test.csproj" />
+    <Project Path="Nethermind.Api.Test/Nethermind.Api.Test.csproj" />
+    <Project Path="Nethermind.AuRa.Test/Nethermind.AuRa.Test.csproj" />
+    <Project Path="Nethermind.Blockchain.Test/Nethermind.Blockchain.Test.csproj" />
+    <Project Path="Nethermind.Clique.Test/Nethermind.Clique.Test.csproj" />
+    <Project Path="Nethermind.Config.Test/Nethermind.Config.Test.csproj" />
+    <Project Path="Nethermind.Consensus.Test/Nethermind.Consensus.Test.csproj" />
+    <Project Path="Nethermind.Core.Test/Nethermind.Core.Test.csproj" />
+    <Project Path="Nethermind.Db.Test/Nethermind.Db.Test.csproj" />
+    <Project Path="Nethermind.Era.Test/Nethermind.Era1.Test.csproj" />
+    <Project Path="Nethermind.Ethash.Test/Nethermind.Ethash.Test.csproj" />
+    <Project Path="Nethermind.EthStats.Test/Nethermind.EthStats.Test.csproj" />
+    <Project Path="Nethermind.Evm.Test/Nethermind.Evm.Test.csproj" />
+    <Project Path="Nethermind.Facade.Test/Nethermind.Facade.Test.csproj" />
+    <Project Path="Nethermind.HealthChecks.Test/Nethermind.HealthChecks.Test.csproj" />
+    <Project Path="Nethermind.JsonRpc.Test/Nethermind.JsonRpc.Test.csproj" />
+    <Project Path="Nethermind.KeyStore.Test/Nethermind.KeyStore.Test.csproj" />
+    <Project Path="Nethermind.Merge.AuRa.Test/Nethermind.Merge.AuRa.Test.csproj" />
+    <Project Path="Nethermind.Mining.Test/Nethermind.Mining.Test.csproj" />
+    <Project Path="Nethermind.Monitoring.Test/Nethermind.Monitoring.Test.csproj" />
+    <Project Path="Nethermind.Network.Discovery.Test/Nethermind.Network.Discovery.Test.csproj" />
+    <Project Path="Nethermind.Network.Dns.Test/Nethermind.Network.Dns.Test.csproj" />
+    <Project Path="Nethermind.Network.Enr.Test/Nethermind.Network.Enr.Test.csproj" />
+    <Project Path="Nethermind.Network.Test/Nethermind.Network.Test.csproj" />
+    <Project Path="Nethermind.Optimism.Test/Nethermind.Optimism.Test.csproj" />
+    <Project Path="Nethermind.Overseer.Test/Nethermind.Overseer.Test.csproj" />
+    <Project Path="Nethermind.Runner.Test/Nethermind.Runner.Test.csproj" />
+    <Project Path="Nethermind.Serialization.Ssz.Test/Nethermind.Serialization.Ssz.Test.csproj" />
+    <Project Path="Nethermind.Serialization.SszGenerator.Test/Nethermind.Serialization.SszGenerator.Test.csproj" />
+    <Project Path="Nethermind.Shutter.Test/Nethermind.Shutter.Test.csproj" />
+    <Project Path="Nethermind.Sockets.Test/Nethermind.Sockets.Test.csproj" />
+    <Project Path="Nethermind.Specs.Test/Nethermind.Specs.Test.csproj" />
+    <Project Path="Nethermind.State.Test/Nethermind.State.Test.csproj" />
+    <Project Path="Nethermind.Synchronization.Test/Nethermind.Synchronization.Test.csproj" />
+    <Project Path="Nethermind.Taiko.Test/Nethermind.Taiko.Test.csproj" />
+    <Project Path="Nethermind.Trie.Test/Nethermind.Trie.Test.csproj" />
+    <Project Path="Nethermind.TxPool.Test/Nethermind.TxPool.Test.csproj" />
+    <Project Path="Nethermind.Wallet.Test/Nethermind.Wallet.Test.csproj" />
+  </Folder>
+  <Project Path="Nethermind.Abi/Nethermind.Abi.csproj" />
+  <Project Path="Nethermind.Api/Nethermind.Api.csproj" />
+  <Project Path="Nethermind.Blockchain/Nethermind.Blockchain.csproj" />
+  <Project Path="Nethermind.Config/Nethermind.Config.csproj" />
+  <Project Path="Nethermind.Consensus.AuRa/Nethermind.Consensus.AuRa.csproj" />
+  <Project Path="Nethermind.Consensus.Clique/Nethermind.Consensus.Clique.csproj" />
+  <Project Path="Nethermind.Consensus.Ethash/Nethermind.Consensus.Ethash.csproj" />
+  <Project Path="Nethermind.Consensus/Nethermind.Consensus.csproj" />
+  <Project Path="Nethermind.Core/Nethermind.Core.csproj" />
+  <Project Path="Nethermind.Crypto/Nethermind.Crypto.csproj" />
+  <Project Path="Nethermind.Db.Rocks/Nethermind.Db.Rocks.csproj" />
+  <Project Path="Nethermind.Db.Rpc/Nethermind.Db.Rpc.csproj" />
+  <Project Path="Nethermind.Db/Nethermind.Db.csproj" />
+  <Project Path="Nethermind.Era1/Nethermind.Era1.csproj" />
+  <Project Path="Nethermind.EthStats/Nethermind.EthStats.csproj" />
+  <Project Path="Nethermind.Evm/Nethermind.Evm.csproj" />
+  <Project Path="Nethermind.Evm.Precompiles/Nethermind.Evm.Precompiles.csproj" />
+  <Project Path="Nethermind.Facade/Nethermind.Facade.csproj" />
+  <Project Path="Nethermind.Grpc/Nethermind.Grpc.csproj" />
+  <Project Path="Nethermind.HealthChecks/Nethermind.HealthChecks.csproj" />
+  <Project Path="Nethermind.Init.Snapshot/Nethermind.Init.Snapshot.csproj" />
+  <Project Path="Nethermind.Init/Nethermind.Init.csproj" />
+  <Project Path="Nethermind.JsonRpc/Nethermind.JsonRpc.csproj" />
+  <Project Path="Nethermind.KeyStore/Nethermind.KeyStore.csproj" />
+  <Project Path="Nethermind.Merge.AuRa/Nethermind.Merge.AuRa.csproj" />
+  <Project Path="Nethermind.Merkleization/Nethermind.Merkleization.csproj" />
+  <Project Path="Nethermind.Monitoring/Nethermind.Monitoring.csproj" />
+  <Project Path="Nethermind.Network.Contract/Nethermind.Network.Contract.csproj" />
+  <Project Path="Nethermind.Network.Discovery/Nethermind.Network.Discovery.csproj" />
+  <Project Path="Nethermind.Network.Dns/Nethermind.Network.Dns.csproj" />
+  <Project Path="Nethermind.Network.Enr/Nethermind.Network.Enr.csproj" />
+  <Project Path="Nethermind.Network.Stats/Nethermind.Network.Stats.csproj" />
+  <Project Path="Nethermind.Network/Nethermind.Network.csproj" />
+  <Project Path="Nethermind.Optimism/Nethermind.Optimism.csproj" />
+  <Project Path="Nethermind.Runner/Nethermind.Runner.csproj" />
+  <Project Path="Nethermind.Serialization.Json/Nethermind.Serialization.Json.csproj" />
+  <Project Path="Nethermind.Serialization.Rlp/Nethermind.Serialization.Rlp.csproj" />
+  <Project Path="Nethermind.Serialization.Ssz/Nethermind.Serialization.Ssz.csproj" />
+  <Project Path="Nethermind.Serialization.SszGenerator/Nethermind.Serialization.SszGenerator.csproj" />
+  <Project Path="Nethermind.Shutter/Nethermind.Shutter.csproj" />
+  <Project Path="Nethermind.Sockets/Nethermind.Sockets.csproj" />
+  <Project Path="Nethermind.Specs/Nethermind.Specs.csproj" />
+  <Project Path="Nethermind.State/Nethermind.State.csproj" />
+  <Project Path="Nethermind.Synchronization/Nethermind.Synchronization.csproj" />
+  <Project Path="Nethermind.Taiko/Nethermind.Taiko.csproj" />
+  <Project Path="Nethermind.Trie/Nethermind.Trie.csproj" />
+  <Project Path="Nethermind.TxPool/Nethermind.TxPool.csproj" />
+  <Project Path="Nethermind.Wallet/Nethermind.Wallet.csproj" />
+</Solution>

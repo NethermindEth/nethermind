@@ -29,7 +29,7 @@ namespace Nethermind.JsonRpc.Modules.Subscribe
             SendChannel.Writer.Complete();
         }
 
-        protected JsonRpcResult CreateSubscriptionMessage(object result)
+        protected JsonRpcResult CreateSubscriptionMessage(object result, string methodName = SubscriptionMethodName.EthSubscription)
         {
             return JsonRpcResult.Single(
                 new JsonRpcSubscriptionResponse()
@@ -38,7 +38,8 @@ namespace Nethermind.JsonRpc.Modules.Subscribe
                     {
                         Result = result,
                         Subscription = Id
-                    }
+                    },
+                    MethodName = methodName
                 }, default);
         }
 

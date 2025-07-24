@@ -12,8 +12,16 @@ using Nethermind.Specs.Forks;
 
 namespace Nethermind.Evm.Test;
 
-public class BlsG2MSMPrecompileTests
+public class BlsG2MSMPrecompileTests : PrecompileTests<BlsG2MSMPrecompileTests>, IPrecompileTests
 {
+    public static IEnumerable<string> TestFiles()
+    {
+        yield return "Bls/multiexp_G2_bls.json";
+        yield return "Bls/fail-multiexp_G2_bls.json";
+    }
+
+    public static IPrecompile Precompile() => G2MSMPrecompile.Instance;
+
     [Test]
     public void Test()
     {

@@ -22,7 +22,10 @@ namespace Ethereum.Blockchain.Test
             "ref",
             "TestFiles",
             "Blockhash",
-            "Data"
+            "stEIP2537", // ToDo Remove this after updating tests
+            "Data",
+            "Log",
+            "TestResults"
         };
 
         [Test]

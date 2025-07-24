@@ -1,11 +1,9 @@
 // SPDX-FileCopyrightText: 2024 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using DotNetty.Buffers;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Int256;
-using System;
 using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
 
@@ -78,21 +76,11 @@ public class AuthorizationTupleDecoder : IRlpStreamDecoder<AuthorizationTuple>, 
         stream.Encode(item.CodeAddress);
         stream.Encode(item.Nonce);
         stream.Encode(item.AuthoritySignature.V - Signature.VOffset);
-        stream.Encode(new UInt256(item.AuthoritySignature.R, true));
-        stream.Encode(new UInt256(item.AuthoritySignature.S, true));
+        stream.Encode(new UInt256(item.AuthoritySignature.R.Span, true));
+        stream.Encode(new UInt256(item.AuthoritySignature.S.Span, true));
     }
 
-    public NettyRlpStream EncodeWithoutSignature(UInt256 chainId, Address codeAddress, ulong nonce)
-    {
-        int contentLength = GetContentLengthWithoutSig(chainId, codeAddress, nonce);
-        var totalLength = Rlp.LengthOfSequence(contentLength);
-        IByteBuffer byteBuffer = PooledByteBufferAllocator.Default.Buffer(totalLength);
-        NettyRlpStream stream = new(byteBuffer);
-        EncodeWithoutSignature(stream, chainId, codeAddress, nonce);
-        return stream;
-    }
-
-    public void EncodeWithoutSignature(RlpStream stream, UInt256 chainId, Address codeAddress, ulong nonce)
+    public static void EncodeWithoutSignature(RlpStream stream, UInt256 chainId, Address codeAddress, ulong nonce)
     {
         int contentLength = GetContentLengthWithoutSig(chainId, codeAddress, nonce);
         stream.StartSequence(contentLength);
@@ -106,15 +94,14 @@ public class AuthorizationTupleDecoder : IRlpStreamDecoder<AuthorizationTuple>, 
     private static int GetContentLength(AuthorizationTuple tuple) =>
         GetContentLengthWithoutSig(tuple.ChainId, tuple.CodeAddress, tuple.Nonce)
         + Rlp.LengthOf(tuple.AuthoritySignature.V - Signature.VOffset)
-        + Rlp.LengthOf(new UInt256(tuple.AuthoritySignature.R.AsSpan(), true))
-        + Rlp.LengthOf(new UInt256(tuple.AuthoritySignature.S.AsSpan(), true));
+        + Rlp.LengthOf(new UInt256(tuple.AuthoritySignature.R.Span, true))
+        + Rlp.LengthOf(new UInt256(tuple.AuthoritySignature.S.Span, true));
 
     private static int GetContentLengthWithoutSig(UInt256 chainId, Address codeAddress, ulong nonce) =>
         Rlp.LengthOf(chainId)
         + Rlp.LengthOf(codeAddress)
         + Rlp.LengthOf(nonce);
 
-    [DoesNotReturn]
-    [StackTraceHidden]
+    [DoesNotReturn, StackTraceHidden]
     private static void ThrowMissingCodeAddressException() => throw new RlpException("Missing code address for Authorization");
 }

@@ -23,7 +23,7 @@ namespace Nethermind.Shutter;
 public class ShutterBlockHandler : IShutterBlockHandler
 {
     private readonly ILogger _logger;
-    private readonly ShutterTime _time;
+    private readonly SlotTime _time;
     private readonly IShutterEon _eon;
     private readonly IReceiptFinder _receiptFinder;
     private readonly ShutterTxLoader _txLoader;
@@ -36,7 +36,7 @@ public class ShutterBlockHandler : IShutterBlockHandler
     private readonly IShutterConfig _cfg;
     private readonly TimeSpan _slotLength;
     private readonly TimeSpan _blockWaitCutoff;
-    private readonly ReadOnlyTxProcessingEnvFactory _envFactory;
+    private readonly IShareableTxProcessorSource _txProcessorSource;
     private bool _haveCheckedRegistered = false;
     private ulong _blockWaitTaskId = 0;
     private readonly Dictionary<ulong, Dictionary<ulong, BlockWaitTask>> _blockWaitTasks = [];
@@ -46,14 +46,14 @@ public class ShutterBlockHandler : IShutterBlockHandler
     public ShutterBlockHandler(
         ulong chainId,
         IShutterConfig cfg,
-        ReadOnlyTxProcessingEnvFactory envFactory,
+        IShareableTxProcessorSource txProcessorSource,
         IBlockTree blockTree,
         IAbiEncoder abiEncoder,
         IReceiptFinder receiptFinder,
         ShutterValidatorsInfo validatorsInfo,
         IShutterEon eon,
         ShutterTxLoader txLoader,
-        ShutterTime time,
+        SlotTime time,
         ILogManager logManager,
         TimeSpan slotLength,
         TimeSpan blockWaitCutoff)
@@ -70,7 +70,7 @@ public class ShutterBlockHandler : IShutterBlockHandler
         _readOnlyBlockTree = blockTree.AsReadOnly();
         _abiEncoder = abiEncoder;
         _logManager = logManager;
-        _envFactory = envFactory;
+        _txProcessorSource = txProcessorSource;
         _slotLength = slotLength;
         _blockWaitCutoff = blockWaitCutoff;
 
@@ -197,7 +197,7 @@ public class ShutterBlockHandler : IShutterBlockHandler
             return;
         }
 
-        IReadOnlyTxProcessingScope scope = _envFactory.Create().Build(parent.StateRoot!);
+        using IReadOnlyTxProcessingScope scope = _txProcessorSource.Build(parent);
         ITransactionProcessor processor = scope.TransactionProcessor;
 
         ValidatorRegistryContract validatorRegistryContract = new(processor, _abiEncoder, new(_cfg.ValidatorRegistryContractAddress!), _logManager, _chainId, _cfg.ValidatorRegistryMessageVersion!);

@@ -7,17 +7,18 @@ using Nethermind.Logging;
 using Nethermind.Consensus.Validators;
 using Nethermind.Consensus.Transactions;
 using Nethermind.TxPool;
+using Nethermind.Int256;
 
 namespace Nethermind.Shutter;
 
 public class ShutterTxFilter(
     ISpecProvider specProvider,
-    ILogManager logManager) : ITxFilter
+    ILogManager logManager)
 {
     private readonly TxValidator _txValidator = new(specProvider.ChainId);
     private readonly ILogger _logger = logManager.GetClassLogger();
 
-    public AcceptTxResult IsAllowed(Transaction tx, BlockHeader parentHeader)
+    public AcceptTxResult IsAllowed(Transaction tx, UInt256 gasLimit, BlockHeader parentHeader)
     {
         if (tx.Type == TxType.Blob)
         {
@@ -28,7 +29,17 @@ public class ShutterTxFilter(
         IReleaseSpec releaseSpec = specProvider.GetSpec(parentHeader);
         ValidationResult wellFormed = _txValidator.IsWellFormed(tx, releaseSpec);
 
-        if (_logger.IsDebug && !wellFormed) _logger.Debug($"Decrypted Shutter transaction was not well-formed: {wellFormed}");
+        if (!wellFormed)
+        {
+            _logger.Debug($"Decrypted Shutter transaction was not well-formed: {wellFormed}");
+            return AcceptTxResult.Invalid;
+        }
+
+        if (tx.GasLimit != gasLimit)
+        {
+            _logger.Debug($"Decrypted Shutter transaction gas limit {tx.GasLimit} did not match encrypted gas limit {gasLimit}.");
+            return AcceptTxResult.Invalid;
+        }
 
         return wellFormed ? AcceptTxResult.Accepted : AcceptTxResult.Invalid;
     }

@@ -4,7 +4,7 @@
 using System;
 using System.Collections.Generic;
 using Nethermind.Core;
-using Nethermind.State;
+using Nethermind.Evm.State;
 
 namespace Nethermind.Consensus.Processing;
 

@@ -23,7 +23,7 @@
     },
     "Energy Web": {
       "commandName": "Project",
-      "commandLineArgs": "-c energyweb --data-dir .data --jsonrpc-enabled true",
+      "commandLineArgs": "-c energyweb --data-dir .data --jsonrpc-enabled",
       "environmentVariables": {
         "ASPNETCORE_ENVIRONMENT": "Development"
       }
@@ -49,6 +49,13 @@
         "ASPNETCORE_ENVIRONMENT": "Development"
       }
     },
+    "Hoodi": {
+      "commandName": "Project",
+      "commandLineArgs": "-c hoodi --data-dir .data",
+      "environmentVariables": {
+        "ASPNETCORE_ENVIRONMENT": "Development"
+      }
+    },
     "JOC Mainnet": {
       "commandName": "Project",
       "commandLineArgs": "-c joc-mainnet -dd .data",
@@ -66,13 +73,6 @@
     "Mainnet": {
       "commandName": "Project",
       "commandLineArgs": "-c mainnet --data-dir .data",
-      "environmentVariables": {
-        "ASPNETCORE_ENVIRONMENT": "Development"
-      }
-    },
-    "Mekong": {
-      "commandName": "Project",
-      "commandLineArgs": "-c mekong --data-dir .data",
       "environmentVariables": {
         "ASPNETCORE_ENVIRONMENT": "Development"
       }
@@ -98,6 +98,20 @@
         "ASPNETCORE_ENVIRONMENT": "Development"
       }
     },
+    "Spaceneth": {
+      "commandName": "Project",
+      "commandLineArgs": "-c spaceneth --data-dir .data",
+      "environmentVariables": {
+        "ASPNETCORE_ENVIRONMENT": "Development"
+      }
+    },
+    "Taiko Alethia": {
+      "commandName": "Project",
+      "commandLineArgs": "-c taiko-alethia --data-dir .data",
+      "environmentVariables": {
+        "ASPNETCORE_ENVIRONMENT": "Development"
+      }
+    },
     "Taiko Hekla": {
       "commandName": "Project",
       "commandLineArgs": "-c taiko-hekla --data-dir .data",
@@ -105,16 +119,9 @@
         "ASPNETCORE_ENVIRONMENT": "Development"
       }
     },
-    "Taiko Mainnet": {
-      "commandName": "Project",
-      "commandLineArgs": "-c taiko-mainnet --data-dir .data",
-      "environmentVariables": {
-        "ASPNETCORE_ENVIRONMENT": "Development"
-      }
-    },
     "Volta": {
       "commandName": "Project",
-      "commandLineArgs": "-c volta --data-dir .data --jsonrpc-enabled true",
+      "commandLineArgs": "-c volta --data-dir .data --jsonrpc-enabled",
       "environmentVariables": {
         "ASPNETCORE_ENVIRONMENT": "Development"
       }

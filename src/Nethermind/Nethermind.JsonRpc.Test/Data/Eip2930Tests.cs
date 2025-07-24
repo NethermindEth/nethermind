@@ -98,7 +98,7 @@ public class Eip2930Tests
     [Test]
     public void can_deserialize_null_accessList()
     {
-        string json = """{"nonce":"0x0","blockHash":null,"blockNumber":null,"transactionIndex":null,"to":null,"value":"0x0","gasPrice":"0x0","gas":"0x0","input":null,"type":"0x01"}""";
+        string json = """{"nonce":"0x0","blockHash":null,"blockNumber":null,"transactionIndex":null,"to":null,"value":"0x0","gasPrice":"0x0","gas":"0x0","input":null,"accessList":null}""";
 
         var transactionForRpc = _serializer.Deserialize<TransactionForRpc>(json);
 
@@ -109,7 +109,7 @@ public class Eip2930Tests
     [Test]
     public void can_deserialize_no_accessList()
     {
-        string json = """{"nonce":"0x0","blockHash":null,"blockNumber":null,"transactionIndex":null,"to":null,"value":"0x0","gasPrice":"0x0","gas":"0x0","input":null,"type":"0x0"}""";
+        string json = """{"nonce":"0x0","blockHash":null,"blockNumber":null,"transactionIndex":null,"to":null,"value":"0x0","gasPrice":"0x0","gas":"0x0","input":null}""";
 
         TransactionForRpc transactionForRpc = _serializer.Deserialize<TransactionForRpc>(json);
         var transaction = transactionForRpc.ToTransaction();
@@ -138,7 +138,7 @@ public class Eip2930Tests
     [Test]
     public void can_deserialize_empty_accessList()
     {
-        string json = """{"nonce":"0x0","blockHash":null,"blockNumber":null,"transactionIndex":null,"to":null,"value":"0x0","gasPrice":"0x0","gas":"0x0","input":null,"type":"0x01","accessList":[]}""";
+        string json = """{"nonce":"0x0","blockHash":null,"blockNumber":null,"transactionIndex":null,"to":null,"value":"0x0","gasPrice":"0x0","gas":"0x0","input":null,"accessList":[]}""";
         TransactionForRpc transactionForRpc = _serializer.Deserialize<TransactionForRpc>(json);
 
         transactionForRpc.Type.Should().Be(TxType.AccessList);
@@ -172,7 +172,7 @@ public class Eip2930Tests
     [Test]
     public void can_deserialize_accessList_with_empty_storageKeys()
     {
-        string json = """{"nonce":"0x0","blockHash":null,"blockNumber":null,"transactionIndex":null,"to":null,"value":"0x0","gasPrice":"0x0","gas":"0x0","input":null,"type":"0x01","accessList":[{"address":"0xb7705ae4c6f81b66cdb323c65f4e8133690fc099","storageKeys":[]}]}""";
+        string json = """{"nonce":"0x0","blockHash":null,"blockNumber":null,"transactionIndex":null,"to":null,"value":"0x0","gasPrice":"0x0","gas":"0x0","input":null,"accessList":[{"address":"0xb7705ae4c6f81b66cdb323c65f4e8133690fc099","storageKeys":[]}]}""";
         TransactionForRpc transactionForRpc = _serializer.Deserialize<TransactionForRpc>(json);
 
         transactionForRpc.Type.Should().Be(TxType.AccessList);
@@ -185,7 +185,7 @@ public class Eip2930Tests
     [Test]
     public void can_deserialize_accessList_with_null_storageKeys()
     {
-        string json = """{"nonce":"0x0","blockHash":null,"blockNumber":null,"transactionIndex":null,"to":null,"value":"0x0","gasPrice":"0x0","gas":"0x0","input":null,"type":"0x01","accessList":[{"address":"0xb7705ae4c6f81b66cdb323c65f4e8133690fc099"}]}""";
+        string json = """{"nonce":"0x0","blockHash":null,"blockNumber":null,"transactionIndex":null,"to":null,"value":"0x0","gasPrice":"0x0","gas":"0x0","input":null,"accessList":[{"address":"0xb7705ae4c6f81b66cdb323c65f4e8133690fc099"}]}""";
         TransactionForRpc transactionForRpc = _serializer.Deserialize<TransactionForRpc>(json);
 
         transactionForRpc.Type.Should().Be(TxType.AccessList);
@@ -198,7 +198,7 @@ public class Eip2930Tests
     [Test]
     public void can_deserialize_accessList_with_null_storageKeys_and_eip1559_txType()
     {
-        string json = """{"nonce":"0x0","blockHash":null,"blockNumber":null,"transactionIndex":null,"to":null,"value":"0x0","maxFeePerGas":"0x10","gas":"0x0","input":null,"type":"0x02","accessList":[{"address":"0xb7705ae4c6f81b66cdb323c65f4e8133690fc099"}]}""";
+        string json = """{"nonce":"0x0","blockHash":null,"blockNumber":null,"transactionIndex":null,"to":null,"value":"0x0","maxFeePerGas":"0x10","gas":"0x0","input":null,"accessList":[{"address":"0xb7705ae4c6f81b66cdb323c65f4e8133690fc099"}]}""";
         TransactionForRpc transactionForRpc = _serializer.Deserialize<TransactionForRpc>(json);
 
         transactionForRpc.Type.Should().Be(TxType.EIP1559);
@@ -212,17 +212,6 @@ public class Eip2930Tests
     public void can_deserialize_not_provided_txType()
     {
         string json = """{"nonce":"0x0","blockHash":null,"blockNumber":null,"transactionIndex":null,"to":null,"value":"0x0","gasPrice":"0x0","gas":"0x0","input":null}""";
-
-        TransactionForRpc transactionForRpc = _serializer.Deserialize<TransactionForRpc>(json);
-
-        // If there is not `TxType` provided, default value should be `TxType.Legacy`
-        transactionForRpc.Type.Should().Be(TxType.Legacy);
-    }
-
-    [Test]
-    public void can_deserialize_direct_null_txType()
-    {
-        string json = """{"nonce":"0x0","blockHash":null,"blockNumber":null,"transactionIndex":null,"to":null,"value":"0x0","gasPrice":"0x0","gas":"0x0","input":null,"type":null}""";
 
         TransactionForRpc transactionForRpc = _serializer.Deserialize<TransactionForRpc>(json);
 

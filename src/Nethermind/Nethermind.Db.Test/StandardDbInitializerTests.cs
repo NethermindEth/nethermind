@@ -5,10 +5,18 @@ using System;
 using System.IO;
 using System.IO.Abstractions;
 using System.Threading.Tasks;
+using Autofac;
 using FluentAssertions;
+using Nethermind.Api;
+using Nethermind.Blockchain.Receipts;
+using Nethermind.Blockchain.Synchronization;
+using Nethermind.Core;
+using Nethermind.Core.Test;
+using Nethermind.Core.Test.Db;
 using Nethermind.Db.FullPruning;
 using Nethermind.Db.Rocks;
 using Nethermind.Db.Rocks.Config;
+using Nethermind.Init.Modules;
 using Nethermind.Logging;
 using NSubstitute;
 using NUnit.Framework;
@@ -66,16 +74,33 @@ namespace Nethermind.Db.Test
             dbProvider.StateDb.Should().BeOfType<FullPruningDb>();
         }
 
-        private async Task<IDbProvider> InitializeStandardDb(bool useReceipts, bool useMemDb, string path)
+        private Task<IDbProvider> InitializeStandardDb(bool useReceipts, bool useMemDb, string path)
         {
-            IDbProvider dbProvider = new DbProvider();
-            IDbFactory dbFactory = useMemDb
-                ? new MemDbFactory()
-                : new RocksDbFactory(new DbConfig(), LimboLogs.Instance, Path.Combine(_folderWithDbs, path));
+            IInitConfig initConfig = new InitConfig()
+            {
+                DiagnosticMode = useMemDb ? DiagnosticMode.MemDb : DiagnosticMode.None,
+                BaseDbPath = path
+            };
 
-            StandardDbInitializer initializer = new(dbProvider, dbFactory, Substitute.For<IFileSystem>());
-            await initializer.InitStandardDbsAsync(useReceipts);
-            return dbProvider;
+            IContainer container = new ContainerBuilder()
+                .AddModule(new DbModule(initConfig, new ReceiptConfig()
+                {
+                    StoreReceipts = useReceipts
+                }, new SyncConfig()
+                {
+                    DownloadReceiptsInFastSync = useReceipts
+                }))
+                .AddModule(new WorldStateModule(initConfig)) // For the full pruning db
+                .AddSingleton<IPruningConfig>(new PruningConfig())
+                .AddSingleton<IDbConfig>(new DbConfig())
+                .AddSingleton<IInitConfig>(initConfig)
+                .AddSingleton<ILogManager>(LimboLogs.Instance)
+                .AddSingleton<IFileSystem, FileSystem>()
+                .AddSingleton<IHardwareInfo>(new TestHardwareInfo(1))
+                .AddSingleton<IDbProvider, ContainerOwningDbProvider>()
+                .Build();
+
+            return Task.FromResult(container.Resolve<IDbProvider>());
         }
 
         private static Type GetReceiptsType(bool useReceipts, Type receiptType = null) => useReceipts ? receiptType ?? typeof(ColumnsDb<ReceiptsColumns>) : typeof(ReadOnlyColumnsDb<ReceiptsColumns>);

@@ -2,8 +2,9 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Runtime.CompilerServices;
+using System.Runtime.InteropServices;
 using System.Text.Json.Serialization;
-
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Serialization.Json;
@@ -17,10 +18,9 @@ namespace Nethermind.Core
         public const int BitLength = 2048;
         public const int ByteLength = BitLength / 8;
 
-        public Bloom()
-        {
-            Bytes = new byte[ByteLength];
-        }
+        private BloomData _bloomData;
+
+        public Bloom() { }
 
         public Bloom(Bloom?[] blooms) : this()
         {
@@ -34,24 +34,17 @@ namespace Nethermind.Core
 
         public Bloom(LogEntry[]? logEntries, Bloom? blockBloom = null)
         {
-            Bytes = new byte[ByteLength];
-
             if (logEntries is null) return;
 
             Add(logEntries, blockBloom);
         }
 
-        public Bloom(byte[] bytes)
-        {
-            Bytes = bytes;
-        }
-
         public Bloom(ReadOnlySpan<byte> bytes)
         {
-            Bytes = bytes.ToArray();
+            bytes.CopyTo(Bytes);
         }
 
-        public byte[] Bytes { get; }
+        public Span<byte> Bytes => _bloomData.AsSpan();
 
         public void Set(ReadOnlySpan<byte> sequence)
         {
@@ -119,7 +112,7 @@ namespace Nethermind.Core
             return Equals((Bloom)obj);
         }
 
-        public override int GetHashCode() => new ReadOnlySpan<byte>(Bytes).FastHash();
+        public override int GetHashCode() => Bytes.FastHash();
 
         public void Add(LogEntry[] logEntries, Bloom? blockBloom = null)
         {
@@ -144,7 +137,7 @@ namespace Nethermind.Core
                 return;
             }
 
-            Bytes.AsSpan().Or(bloom.Bytes);
+            Bytes.Or(bloom.Bytes);
         }
 
         public bool Matches(LogEntry logEntry)
@@ -223,8 +216,15 @@ namespace Nethermind.Core
         public Bloom Clone()
         {
             Bloom clone = new();
-            Bytes.CopyTo(clone.Bytes, 0);
+            Bytes.CopyTo(clone.Bytes);
             return clone;
+        }
+
+        [InlineArray(ByteLength)]
+        public struct BloomData
+        {
+            private byte _element0;
+            public Span<byte> AsSpan() => MemoryMarshal.CreateSpan(ref _element0, ByteLength);
         }
     }
 

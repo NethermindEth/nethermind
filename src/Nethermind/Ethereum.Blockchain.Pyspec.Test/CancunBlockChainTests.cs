@@ -20,7 +20,7 @@ public class CancunBlockchainTests : BlockchainTestBase
     private static IEnumerable<BlockchainTest> LoadTests()
     {
         TestsSourceLoader loader = new(new LoadPyspecTestsStrategy(), $"fixtures/blockchain_tests/cancun");
-        return loader.LoadTests().Cast<BlockchainTest>();
+        return loader.LoadTests<BlockchainTest>();
     }
 
 }

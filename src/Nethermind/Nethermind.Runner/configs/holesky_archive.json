@@ -4,7 +4,7 @@
     "ChainSpecPath": "chainspec/holesky.json",
     "GenesisHash": "0xb5f7f912443c940f21fd611f12828d75b534364ed9e95ca4e307729a4661bde4",
     "BaseDbPath": "nethermind_db/holesky_archive",
-    "LogFileName": "holesky_archive.logs.txt"
+    "LogFileName": "holesky_archive.log"
   },
   "TxPool": {
     "Size": 1024
@@ -13,7 +13,7 @@
     "NodeName": "Holesky Archive"
   },
   "Blocks": {
-    "TargetBlockGasLimit": 36000000
+    "TargetBlockGasLimit": 60000000
   },
   "Receipt": {
     "TxLookupLimit": 0

@@ -14,11 +14,16 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V63.Messages
     public class ReceiptsMessageSerializer : IZeroInnerMessageSerializer<ReceiptsMessage>
     {
         private readonly ISpecProvider _specProvider;
-        private static readonly IRlpStreamDecoder<TxReceipt> _decoder = Rlp.GetStreamDecoder<TxReceipt>();
+        private readonly IRlpStreamDecoder<TxReceipt> _decoder;
+        private readonly Func<RlpStream, TxReceipt[]> _decodeArrayFunc;
 
-        public ReceiptsMessageSerializer(ISpecProvider specProvider)
+        public ReceiptsMessageSerializer(ISpecProvider specProvider) : this(specProvider, Rlp.GetStreamDecoder<TxReceipt>()!) { }
+
+        protected ReceiptsMessageSerializer(ISpecProvider specProvider, IRlpStreamDecoder<TxReceipt> decoder)
         {
             _specProvider = specProvider ?? throw new ArgumentNullException(nameof(specProvider));
+            _decoder = decoder ?? throw new ArgumentNullException(nameof(decoder));
+            _decodeArrayFunc = ctx => ctx.DecodeArray(nestedContext => _decoder.Decode(nestedContext)) ?? [];
         }
 
         public void Serialize(IByteBuffer byteBuffer, ReceiptsMessage message)
@@ -28,6 +33,10 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V63.Messages
             byteBuffer.EnsureWritable(totalLength);
             NettyRlpStream stream = new(byteBuffer);
             stream.StartSequence(contentLength);
+
+            // Track last‐seen block number & its RLP behavior
+            long lastBlockNumber = -1;
+            RlpBehaviors behaviors = RlpBehaviors.None;
 
             foreach (TxReceipt?[]? txReceipts in message.TxReceipts)
             {
@@ -47,8 +56,16 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V63.Messages
                         continue;
                     }
 
-                    _decoder.Encode(stream, txReceipt,
-                        _specProvider.GetReceiptSpec(txReceipt.BlockNumber).IsEip658Enabled ? RlpBehaviors.Eip658Receipts : RlpBehaviors.None);
+                    // Only fetch a new spec when the block number changes
+                    if (txReceipt.BlockNumber != lastBlockNumber)
+                    {
+                        lastBlockNumber = txReceipt.BlockNumber;
+                        behaviors = _specProvider.GetReceiptSpec(lastBlockNumber).IsEip658Enabled
+                                    ? RlpBehaviors.Eip658Receipts
+                                    : RlpBehaviors.None;
+                    }
+
+                    _decoder.Encode(stream, txReceipt, behaviors);
                 }
             }
         }
@@ -72,8 +89,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V63.Messages
 
         public ReceiptsMessage Deserialize(RlpStream rlpStream)
         {
-            ArrayPoolList<TxReceipt[]> data = rlpStream.DecodeArrayPoolList(static itemContext =>
-                itemContext.DecodeArray(static nestedContext => _decoder.Decode(nestedContext)) ?? [], true);
+            ArrayPoolList<TxReceipt[]> data = rlpStream.DecodeArrayPoolList(_decodeArrayFunc, true);
             ReceiptsMessage message = new(data);
 
             return message;
@@ -101,18 +117,35 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V63.Messages
 
         private int GetInnerLength(TxReceipt?[]? txReceipts)
         {
+            if (txReceipts == null || txReceipts.Length == 0)
+                return 0;
+
             int contentLength = 0;
-            for (int j = 0; j < txReceipts.Length; j++)
+
+            // Track the last‐seen block number and its spec
+            long lastBlockNumber = -1;
+            RlpBehaviors behaviors = RlpBehaviors.None;
+
+            for (int i = 0; i < txReceipts.Length; i++)
             {
-                TxReceipt? txReceipt = txReceipts[j];
-                if (txReceipt is null)
+                TxReceipt? receipt = txReceipts[i];
+
+                if (receipt is null)
                 {
                     contentLength += Rlp.OfEmptySequence.Length;
+                    continue;
                 }
-                else
+
+                // Only fetch a new spec when block number changes
+                if (lastBlockNumber != receipt.BlockNumber)
                 {
-                    contentLength += _decoder.GetLength(txReceipt, _specProvider.GetSpec((ForkActivation)txReceipt.BlockNumber).IsEip658Enabled ? RlpBehaviors.Eip658Receipts : RlpBehaviors.None);
+                    lastBlockNumber = receipt.BlockNumber;
+                    behaviors = _specProvider.GetSpec((ForkActivation)receipt.BlockNumber).IsEip658Enabled
+                                ? RlpBehaviors.Eip658Receipts
+                                : RlpBehaviors.None;
                 }
+
+                contentLength += _decoder.GetLength(receipt, behaviors);
             }
 
             return contentLength;

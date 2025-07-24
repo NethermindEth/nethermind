@@ -19,6 +19,16 @@ namespace Nethermind.Core.Extensions
         // the performance of the network as a whole.
         private static readonly uint s_instanceRandom = (uint)System.Security.Cryptography.RandomNumberGenerator.GetInt32(int.MinValue, int.MaxValue);
 
+        public static string ToHexString(this in Memory<byte> memory, bool withZeroX = false)
+        {
+            return ToHexString(memory.Span, withZeroX, false, false);
+        }
+
+        public static string ToHexString(this in ReadOnlyMemory<byte> memory, bool withZeroX = false)
+        {
+            return ToHexString(memory.Span, withZeroX, false, false);
+        }
+
         public static string ToHexString(this in ReadOnlySpan<byte> span, bool withZeroX)
         {
             return ToHexString(span, withZeroX, false, false);
@@ -154,9 +164,16 @@ namespace Nethermind.Core.Extensions
             return result;
         }
 
-        public static ReadOnlySpan<byte> TakeAndMove(this ref ReadOnlySpan<byte> span, int length)
+        public static ReadOnlySpan<T> TakeAndMove<T>(this ref ReadOnlySpan<T> span, int length)
         {
-            ReadOnlySpan<byte> s = span[..length];
+            ReadOnlySpan<T> s = span[..length];
+            span = span[length..];
+            return s;
+        }
+
+        public static Span<T> TakeAndMove<T>(this ref Span<T> span, int length)
+        {
+            Span<T> s = span[..length];
             span = span[length..];
             return s;
         }
@@ -172,6 +189,10 @@ namespace Nethermind.Core.Extensions
             newList.AddRange(span);
             return newList;
         }
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public static int FastHash(this Span<byte> input)
+            => FastHash((ReadOnlySpan<byte>)input);
 
         [SkipLocalsInit]
         public static int FastHash(this ReadOnlySpan<byte> input)

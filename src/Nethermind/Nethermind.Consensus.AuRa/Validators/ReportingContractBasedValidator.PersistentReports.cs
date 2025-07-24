@@ -33,9 +33,11 @@ namespace Nethermind.Consensus.AuRa.Validators
         private readonly LinkedList<PersistentReport> _persistentReports;
         private long _sentReportsInBlock = 0;
 
-        public IEnumerable<Transaction> GetTransactions(BlockHeader parent, long gasLimit, PayloadAttributes? payloadAttributes = null)
+        public bool SupportsBlobs => false;
+
+        public IEnumerable<Transaction> GetTransactions(BlockHeader parent, long gasLimit, PayloadAttributes? payloadAttributes = null, bool filterSource = false)
         {
-            foreach (var transaction in _contractValidator.GetTransactions(parent, gasLimit, payloadAttributes))
+            foreach (var transaction in _contractValidator.GetTransactions(parent, gasLimit, payloadAttributes, filterSource))
             {
                 yield return transaction;
             }

@@ -4,7 +4,7 @@
 using FluentAssertions;
 using Nethermind.Core;
 using Nethermind.Core.Test.Builders;
-using Nethermind.Evm.Tracing.ParityStyle;
+using Nethermind.Blockchain.Tracing.ParityStyle;
 using Nethermind.Specs;
 using NUnit.Framework;
 
@@ -21,7 +21,7 @@ public class TransactionProcessorTraceTest : VirtualMachineTestsBase
     {
         (Block block, Transaction transaction) = PrepareTx(BlockNumber, gasLimit);
         ParityLikeTxTracer tracer = new(block, transaction, ParityTraceTypes.All);
-        _processor.Trace(transaction, block.Header, tracer);
+        _processor.Trace(transaction, new BlockExecutionContext(block.Header, Spec), tracer);
         var senderBalance = tracer.BuildResult().StateChanges[TestItem.AddressA].Balance;
         (senderBalance.Before - senderBalance.After).Should().Be(transaction.Value);
     }

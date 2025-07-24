@@ -6,6 +6,7 @@ using NUnit.Framework;
 using Nethermind.Logging;
 using Nethermind.Specs;
 using Nethermind.Core.Test.Builders;
+using Nethermind.Int256;
 
 namespace Nethermind.Shutter.Test;
 
@@ -20,6 +21,7 @@ class ShutterTxFilterTests
             .WithSenderAddress(TestItem.AddressA)
             .WithTo(TestItem.AddressA)
             .WithValue(100)
+            .WithGasLimit(21000)
             .Signed(TestItem.PrivateKeyA).TestObject;
 
         Transaction tx1 = Build.A.Transaction
@@ -34,8 +36,8 @@ class ShutterTxFilterTests
 
         Assert.Multiple(() =>
         {
-            Assert.That(IsAllowed(tx0));
-            Assert.That(IsAllowed(tx1));
+            Assert.That(IsAllowed(tx0, 21000));
+            Assert.That(IsAllowed(tx1, 21000));
         });
     }
 
@@ -49,9 +51,10 @@ class ShutterTxFilterTests
             .WithType(TxType.Blob)
             .WithMaxFeePerBlobGas(2)
             .WithBlobVersionedHashes(0)
+            .WithGasLimit(21000)
             .Signed(TestItem.PrivateKeyA).TestObject;
 
-        Assert.That(IsAllowed(tx), Is.False);
+        Assert.That(IsAllowed(tx, 21000), Is.False);
     }
 
     [Test]
@@ -62,9 +65,10 @@ class ShutterTxFilterTests
             .WithSenderAddress(TestItem.AddressA)
             .WithTo(TestItem.AddressA)
             .WithValue(100)
+            .WithGasLimit(21000)
             .Signed(TestItem.PrivateKeyA).TestObject;
 
-        Assert.That(IsAllowed(tx), Is.False);
+        Assert.That(IsAllowed(tx, 21000), Is.False);
     }
 
     [Test]
@@ -77,14 +81,29 @@ class ShutterTxFilterTests
             .WithSenderAddress(TestItem.AddressA)
             .WithTo(TestItem.AddressA)
             .WithValue(100)
+            .WithGasLimit(21000)
             .WithSignature(sig).TestObject;
 
-        Assert.That(IsAllowed(tx), Is.False);
+        Assert.That(IsAllowed(tx, 21000), Is.False);
     }
 
-    private static bool IsAllowed(Transaction tx)
+    [Test]
+    public void Rejects_bad_gas_limit()
+    {
+        Transaction tx = Build.A.Transaction
+            .WithChainId(BlockchainIds.Chiado)
+            .WithSenderAddress(TestItem.AddressA)
+            .WithTo(TestItem.AddressA)
+            .WithValue(100)
+            .WithGasLimit(21000)
+            .Signed(TestItem.PrivateKeyA).TestObject;
+
+        Assert.That(IsAllowed(tx, 100), Is.False);
+    }
+
+    private static bool IsAllowed(Transaction tx, UInt256 gasLimit)
     {
         ShutterTxFilter txFilter = new(ChiadoSpecProvider.Instance, LimboLogs.Instance);
-        return txFilter.IsAllowed(tx, Build.A.BlockHeader.TestObject);
+        return txFilter.IsAllowed(tx, gasLimit, Build.A.BlockHeader.TestObject);
     }
 }

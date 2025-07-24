@@ -9,6 +9,7 @@ using System.IO.Pipelines;
 using System.Text.Encodings.Web;
 using System.Text.Json;
 using System.Text.Json.Serialization;
+using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Core.Collections;
 
@@ -16,21 +17,20 @@ namespace Nethermind.Serialization.Json
 {
     public class EthereumJsonSerializer : IJsonSerializer
     {
+        public const int DefaultMaxDepth = 128;
         private readonly int? _maxDepth;
         private readonly JsonSerializerOptions _jsonOptions;
 
-        public EthereumJsonSerializer(IEnumerable<JsonConverter> converters, int? maxDepth = null)
+        public EthereumJsonSerializer(IEnumerable<JsonConverter> converters, int maxDepth = DefaultMaxDepth)
         {
             _maxDepth = maxDepth;
-            _jsonOptions = maxDepth.HasValue
-                ? CreateOptions(indented: false, maxDepth: maxDepth.Value, converters: converters)
-                : CreateOptions(indented: false, converters: converters);
+            _jsonOptions = CreateOptions(indented: false, maxDepth: maxDepth, converters: converters);
         }
 
-        public EthereumJsonSerializer(int? maxDepth = null)
+        public EthereumJsonSerializer(int maxDepth = DefaultMaxDepth)
         {
             _maxDepth = maxDepth;
-            _jsonOptions = maxDepth.HasValue ? CreateOptions(indented: false, maxDepth: maxDepth.Value) : JsonOptions;
+            _jsonOptions = maxDepth != DefaultMaxDepth ? CreateOptions(indented: false, maxDepth: maxDepth) : JsonOptions;
         }
 
         public object Deserialize(string json, Type type)
@@ -58,11 +58,12 @@ namespace Nethermind.Serialization.Json
             return JsonSerializer.Serialize<T>(value, indented ? JsonOptionsIndented : _jsonOptions);
         }
 
-        private static JsonSerializerOptions CreateOptions(bool indented, IEnumerable<JsonConverter> converters = null, int maxDepth = 64)
+        private static JsonSerializerOptions CreateOptions(bool indented, IEnumerable<JsonConverter> converters = null, int maxDepth = DefaultMaxDepth)
         {
             var options = new JsonSerializerOptions
             {
                 WriteIndented = indented,
+                NewLine = "\n",
                 IncludeFields = true,
                 DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull,
                 PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
@@ -140,10 +141,10 @@ namespace Nethermind.Serialization.Json
             return writerOptions;
         }
 
-        public async ValueTask<long> SerializeAsync<T>(Stream stream, T value, bool indented = false, bool leaveOpen = true)
+        public async ValueTask<long> SerializeAsync<T>(Stream stream, T value, CancellationToken cancellationToken, bool indented = false, bool leaveOpen = true)
         {
             var writer = GetPipeWriter(stream, leaveOpen);
-            await JsonSerializer.SerializeAsync(writer, value, indented ? JsonOptionsIndented : _jsonOptions);
+            await JsonSerializer.SerializeAsync(writer, value, indented ? JsonOptionsIndented : _jsonOptions, cancellationToken);
             await writer.CompleteAsync();
 
             long outputCount = writer.WrittenCount;

@@ -7,32 +7,31 @@ using Nethermind.Core.Specs;
 using Nethermind.Specs;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Crypto;
-using Nethermind.Db;
 using Nethermind.Int256;
 using Nethermind.Evm.Tracing;
 using Nethermind.Logging;
-using Nethermind.Specs.Forks;
-using Nethermind.State;
-using Nethermind.Trie.Pruning;
+using Nethermind.Evm.State;
 using NUnit.Framework;
 using System.Collections;
-using Nethermind.Specs.Test;
+using Nethermind.Blockchain;
+using Nethermind.Core.Test;
 using Nethermind.Evm;
-using Nethermind.Evm.Test;
+using Nethermind.State;
+using Nethermind.Taiko.TaikoSpec;
 
 namespace Nethermind.Taiko.Test;
 
 public class TransactionProcessorTests
 {
-    private readonly OverridableReleaseSpec _spec;
+    private readonly TaikoOntakeReleaseSpec _spec;
     private readonly ISpecProvider _specProvider;
     private readonly IEthereumEcdsa _ethereumEcdsa;
     private TaikoTransactionProcessor? _transactionProcessor;
-    private WorldState? _stateProvider;
+    private IWorldState? _stateProvider;
 
     public TransactionProcessorTests()
     {
-        _spec = new(Cancun.Instance);
+        _spec = new TaikoOntakeReleaseSpec();
         _specProvider = new TestSpecProvider(_spec);
         _ethereumEcdsa = new EthereumEcdsa(_specProvider.ChainId);
     }
@@ -43,17 +42,15 @@ public class TransactionProcessorTests
     public void Setup()
     {
         _spec.FeeCollector = TestItem.AddressB;
-        _spec.IsOntakeEnabled = true;
 
-        MemDb stateDb = new();
-        TrieStore trieStore = new(stateDb, LimboLogs.Instance);
-        _stateProvider = new WorldState(trieStore, new MemDb(), LimboLogs.Instance);
+        IWorldStateManager worldStateManager = TestWorldStateFactory.CreateForTest();
+        _stateProvider = worldStateManager.GlobalWorldState;
         _stateProvider.CreateAccount(TestItem.AddressA, AccountBalance);
         _stateProvider.Commit(_specProvider.GenesisSpec);
         _stateProvider.CommitTree(0);
 
-        CodeInfoRepository codeInfoRepository = new();
-        VirtualMachine virtualMachine = new(new TestBlockhashProvider(_specProvider), _specProvider, codeInfoRepository, LimboLogs.Instance);
+        EthereumCodeInfoRepository codeInfoRepository = new();
+        VirtualMachine virtualMachine = new(new TestBlockhashProvider(_specProvider), _specProvider, LimboLogs.Instance);
         _transactionProcessor = new TaikoTransactionProcessor(_specProvider, _stateProvider, virtualMachine, codeInfoRepository, LimboLogs.Instance);
     }
 
@@ -78,7 +75,8 @@ public class TransactionProcessorTests
             .WithExtraData(extraData)
             .WithBeneficiary(benefeciaryAddress).WithGasLimit(gasLimit).TestObject;
 
-        _transactionProcessor!.Execute(tx, block.Header, NullTxTracer.Instance);
+        _transactionProcessor!.SetBlockExecutionContext(new BlockExecutionContext(block.Header, _specProvider.GetSpec(block.Header)));
+        _transactionProcessor!.Execute(tx, NullTxTracer.Instance);
 
         Assert.Multiple(() =>
         {

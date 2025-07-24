@@ -6,7 +6,7 @@ using System.Collections.Generic;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Blockchain;
-using Nethermind.Blockchain.Synchronization;
+using Nethermind.Blockchain.Receipts;
 using Nethermind.Consensus;
 using Nethermind.Consensus.Processing;
 using Nethermind.Consensus.Validators;
@@ -18,6 +18,7 @@ using Nethermind.Crypto;
 using Nethermind.Int256;
 using Nethermind.JsonRpc;
 using Nethermind.Logging;
+using Nethermind.Merge.Plugin.BlockProduction;
 using Nethermind.Merge.Plugin.Data;
 using Nethermind.Merge.Plugin.InvalidChainTracker;
 using Nethermind.Merge.Plugin.Synchronization;
@@ -32,9 +33,9 @@ namespace Nethermind.Merge.Plugin.Handlers;
 /// </summary>
 public class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadStatusV1>
 {
+    private readonly IPayloadPreparationService _payloadPreparationService;
     private readonly IBlockValidator _blockValidator;
     private readonly IBlockTree _blockTree;
-    private readonly ISyncConfig _syncConfig;
     private readonly IPoSSwitcher _poSSwitcher;
     private readonly IBeaconSyncStrategy _beaconSyncStrategy;
     private readonly IBeaconPivot _beaconPivot;
@@ -49,11 +50,12 @@ public class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadStatusV1
 
     private long _lastBlockNumber;
     private long _lastBlockGasLimit;
+    private readonly bool _simulateBlockProduction;
 
     public NewPayloadHandler(
+        IPayloadPreparationService payloadPreparationService,
         IBlockValidator blockValidator,
         IBlockTree blockTree,
-        ISyncConfig syncConfig,
         IPoSSwitcher poSSwitcher,
         IBeaconSyncStrategy beaconSyncStrategy,
         IBeaconPivot beaconPivot,
@@ -61,14 +63,13 @@ public class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadStatusV1
         IBlockProcessingQueue processingQueue,
         IInvalidChainTracker invalidChainTracker,
         IMergeSyncController mergeSyncController,
-        ILogManager logManager,
-        TimeSpan? timeout = null,
-        bool storeReceipts = true,
-        int cacheSize = 50)
+        IMergeConfig mergeConfig,
+        IReceiptConfig receiptConfig,
+        ILogManager logManager)
     {
+        _payloadPreparationService = payloadPreparationService;
         _blockValidator = blockValidator ?? throw new ArgumentNullException(nameof(blockValidator));
         _blockTree = blockTree;
-        _syncConfig = syncConfig;
         _poSSwitcher = poSSwitcher;
         _beaconSyncStrategy = beaconSyncStrategy;
         _beaconPivot = beaconPivot;
@@ -77,10 +78,11 @@ public class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadStatusV1
         _invalidChainTracker = invalidChainTracker;
         _mergeSyncController = mergeSyncController;
         _logger = logManager.GetClassLogger();
-        _defaultProcessingOptions = storeReceipts ? ProcessingOptions.EthereumMerge | ProcessingOptions.StoreReceipts : ProcessingOptions.EthereumMerge;
-        _timeout = timeout ?? TimeSpan.FromSeconds(7);
-        if (cacheSize > 0)
-            _latestBlocks = new(cacheSize, 0, "LatestBlocks");
+        _defaultProcessingOptions = receiptConfig.StoreReceipts ? ProcessingOptions.EthereumMerge | ProcessingOptions.StoreReceipts : ProcessingOptions.EthereumMerge;
+        _timeout = TimeSpan.FromMilliseconds(mergeConfig.NewPayloadBlockProcessingTimeout);
+        if (mergeConfig.NewPayloadCacheSize > 0)
+            _latestBlocks = new(mergeConfig.NewPayloadCacheSize, 0, "LatestBlocks");
+        _simulateBlockProduction = mergeConfig.SimulateBlockProduction;
     }
 
     private string GetGasChange(long blockGasLimit)
@@ -101,10 +103,12 @@ public class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadStatusV1
     /// <returns></returns>
     public async Task<ResultWrapper<PayloadStatusV1>> HandleAsync(ExecutionPayload request)
     {
-        if (!request.TryGetBlock(out Block? block, _poSSwitcher.FinalTotalDifficulty))
+        BlockDecodingResult decodingResult = request.TryGetBlock(_poSSwitcher.FinalTotalDifficulty);
+        Block? block = decodingResult.Block;
+        if (block is null)
         {
-            if (_logger.IsWarn) _logger.Warn($"New Block Request Invalid: {request}.");
-            return NewPayloadV1Result.Invalid(null, $"Block {request} could not be parsed as a block");
+            if (_logger.IsTrace) _logger.Trace($"New Block Request Invalid: {decodingResult.Error} ; {request}.");
+            return NewPayloadV1Result.Invalid(null, $"Block {request} could not be parsed as a block: {decodingResult.Error}");
         }
 
         string requestStr = $"New Block:  {request}";
@@ -115,16 +119,16 @@ public class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadStatusV1
             _lastBlockGasLimit = block.Header.GasLimit;
         }
 
-        if (!HeaderValidator.ValidateHash(block!.Header))
+        if (!HeaderValidator.ValidateHash(block!.Header, out Hash256 actualHash))
         {
             if (_logger.IsWarn) _logger.Warn(InvalidBlockHelper.GetMessage(block, "invalid block hash"));
-            return NewPayloadV1Result.Invalid(null, $"Invalid block hash {request.BlockHash}");
+            return NewPayloadV1Result.Invalid(null, $"Invalid block hash {request.BlockHash} does not match calculated hash {actualHash}.");
         }
 
         _invalidChainTracker.SetChildParent(block.Hash!, block.ParentHash!);
         if (_invalidChainTracker.IsOnKnownInvalidChain(block.Hash!, out Hash256? lastValidHash))
         {
-            if (_logger.IsWarn) _logger.Warn(InvalidBlockHelper.GetMessage(block, $"block is a part of an invalid chain") + $"The last valid is {lastValidHash}");
+            if (_logger.IsWarn) _logger.Warn(InvalidBlockHelper.GetMessage(block, $"block is a part of an invalid chain") + $". The last valid is {lastValidHash}");
             return NewPayloadV1Result.Invalid(lastValidHash, $"Block {request} is known to be a part of an invalid chain.");
         }
 
@@ -134,7 +138,7 @@ public class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadStatusV1
         // because blocks would be ignored with this check:
         // block.Header.Number <= _syncConfig.PivotNumberParsed
         bool hasNeverBeenInSync = (_blockTree.Head?.Number ?? 0) == 0;
-        if (hasNeverBeenInSync && block.Header.Number <= _syncConfig.PivotNumberParsed)
+        if (hasNeverBeenInSync && block.Header.Number <= _blockTree.SyncPivot.BlockNumber)
         {
             if (_logger.IsInfo) _logger.Info($"Pre-pivot block, ignored and returned Syncing. Result of {requestStr}.");
             return NewPayloadV1Result.Syncing;
@@ -162,6 +166,12 @@ public class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadStatusV1
             if (_logger.IsInfo) _logger.Info($"Insert block into cache without parent {block}");
             _blockCacheService.BlockCache.TryAdd(block.Hash!, block);
             return NewPayloadV1Result.Syncing;
+        }
+
+        if (_simulateBlockProduction)
+        {
+            _payloadPreparationService.CancelBlockProduction(parentHeader.GenerateSimulatedPayload()
+                .GetPayloadId(parentHeader));
         }
 
         // we need to check if the head is greater than block.Number. In fast sync we could return Valid to CL without this if
@@ -219,7 +229,7 @@ public class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadStatusV1
         // Otherwise, we can just process this block and we don't need to do BeaconSync anymore.
         _mergeSyncController.StopSyncing();
 
-        using var handle = Thread.CurrentThread.BoostPriority();
+        using ThreadExtensions.Disposable handle = Thread.CurrentThread.BoostPriority();
         // Try to execute block
         (ValidationResult result, string? message) = await ValidateBlockAndProcess(block, parentHeader, processingOptions);
 
@@ -322,8 +332,7 @@ public class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadStatusV1
             return (TryCacheResult(ValidationResult.Invalid, validationMessage), validationMessage);
         }
 
-        TaskCompletionSource<ValidationResult?> blockProcessedTaskCompletionSource = new();
-        Task<ValidationResult?> blockProcessed = blockProcessedTaskCompletionSource.Task;
+        TaskCompletionSource<ValidationResult?> blockProcessed = new(TaskCreationOptions.RunContinuationsAsynchronously);
 
         void GetProcessingQueueOnBlockRemoved(object? o, BlockRemovedEventArgs e)
         {
@@ -333,8 +342,8 @@ public class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadStatusV1
 
                 if (e.ProcessingResult == ProcessingResult.Exception)
                 {
-                    BlockchainException? exception = new("Block processing threw exception.", e.Exception);
-                    blockProcessedTaskCompletionSource.SetException(exception);
+                    BlockchainException? exception = new(e.Exception?.Message ?? "Block processing threw exception.", e.Exception);
+                    blockProcessed.SetException(exception);
                     return;
                 }
 
@@ -353,14 +362,15 @@ public class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadStatusV1
                     _ => null
                 };
 
-                blockProcessedTaskCompletionSource.TrySetResult(validationResult);
+                blockProcessed.TrySetResult(validationResult);
             }
         }
 
         _processingQueue.BlockRemoved += GetProcessingQueueOnBlockRemoved;
         try
         {
-            Task timeoutTask = Task.Delay(_timeout);
+            CancellationTokenSource cts = new();
+            Task timeoutTask = Task.Delay(_timeout, cts.Token);
 
             AddBlockResult addResult = await _blockTree
                 .SuggestBlockAsync(block, BlockTreeSuggestOptions.ForceDontSetAsMain)
@@ -393,8 +403,8 @@ public class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadStatusV1
                 // probably the block is already in the processing queue as a result
                 // of a previous newPayload or the block being discovered during syncing
                 // but add it to the processing queue just in case.
-                _processingQueue.Enqueue(block, processingOptions);
-                result = await blockProcessed.TimeoutOn(timeoutTask);
+                await _processingQueue.Enqueue(block, processingOptions);
+                result = await blockProcessed.Task.TimeoutOn(timeoutTask, cts);
             }
         }
         catch (TimeoutException)

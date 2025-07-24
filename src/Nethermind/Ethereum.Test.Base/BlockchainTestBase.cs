@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
@@ -8,13 +8,11 @@ using System.Linq;
 using System.Numerics;
 using System.Threading;
 using System.Threading.Tasks;
+using Autofac;
 using Nethermind.Blockchain;
-using Nethermind.Blockchain.BeaconBlockRoot;
-using Nethermind.Blockchain.Blocks;
 using Nethermind.Blockchain.Find;
-using Nethermind.Blockchain.Receipts;
+using Nethermind.Config;
 using Nethermind.Consensus;
-using Nethermind.Consensus.Comparers;
 using Nethermind.Consensus.Ethash;
 using Nethermind.Consensus.Processing;
 using Nethermind.Consensus.Rewards;
@@ -23,19 +21,16 @@ using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
-using Nethermind.Core.Test;
-using Nethermind.Core.Test.Builders;
+using Nethermind.Core.Test.Modules;
 using Nethermind.Crypto;
-using Nethermind.Db;
 using Nethermind.Int256;
-using Nethermind.Evm;
-using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Logging;
 using Nethermind.Serialization.Rlp;
+using Nethermind.Specs;
 using Nethermind.Specs.Forks;
 using Nethermind.Specs.Test;
 using Nethermind.State;
-using Nethermind.Trie.Pruning;
+using Nethermind.Evm.State;
 using Nethermind.TxPool;
 using NUnit.Framework;
 
@@ -43,9 +38,8 @@ namespace Ethereum.Test.Base;
 
 public abstract class BlockchainTestBase
 {
-    private static InterfaceLogger _logger = new NUnitLogger(LogLevel.Trace);
-    // private static ILogManager _logManager = new OneLoggerLogManager(_logger);
-    private static ILogManager _logManager = LimboLogs.Instance;
+    private static ILogger _logger;
+    private static ILogManager _logManager = new TestLogManager(LogLevel.Warn);
     private static ISealValidator Sealer { get; }
     private static DifficultyCalculatorWrapper DifficultyCalculator { get; }
 
@@ -53,6 +47,9 @@ public abstract class BlockchainTestBase
     {
         DifficultyCalculator = new DifficultyCalculatorWrapper();
         Sealer = new EthashSealValidator(_logManager, DifficultyCalculator, new CryptoRandom(), new Ethash(_logManager), Timestamper.Default); // temporarily keep reusing the same one as otherwise it would recreate cache for each test
+
+        _logManager ??= LimboLogs.Instance;
+        _logger = _logManager.GetClassLogger();
     }
 
     [SetUp]
@@ -78,30 +75,24 @@ public abstract class BlockchainTestBase
 
     protected async Task<EthereumTestResult> RunTest(BlockchainTest test, Stopwatch? stopwatch = null, bool failOnInvalidRlp = true)
     {
-        TestContext.Out.WriteLine($"Running {test.Name}, Network: [{test.Network.Name}] at {DateTime.UtcNow:HH:mm:ss.ffffff}");
+        _logger.Info($"Running {test.Name}, Network: [{test.Network.Name}] at {DateTime.UtcNow:HH:mm:ss.ffffff}");
         if (test.NetworkAfterTransition is not null)
-            TestContext.Out.WriteLine($"Network after transition: [{test.NetworkAfterTransition.Name}] at {test.TransitionForkActivation}");
+            _logger.Info($"Network after transition: [{test.NetworkAfterTransition.Name}] at {test.TransitionForkActivation}");
         Assert.That(test.LoadFailure, Is.Null, "test data loading failure");
 
-        IDb stateDb = new MemDb();
-        IDb codeDb = new MemDb();
+        test.Network = ChainUtils.ResolveSpec(test.Network, test.ChainId);
+        test.NetworkAfterTransition = ChainUtils.ResolveSpec(test.NetworkAfterTransition, test.ChainId);
 
-        ISpecProvider specProvider;
+        List<(ForkActivation Activation, IReleaseSpec Spec)> transitions =
+            [((ForkActivation)0, test.GenesisSpec), ((ForkActivation)1, test.Network)]; // TODO: this thing took a lot of time to find after it was removed!, genesis block is always initialized with Frontier
         if (test.NetworkAfterTransition is not null)
         {
-            specProvider = new CustomSpecProvider(
-                ((ForkActivation)0, Frontier.Instance),
-                ((ForkActivation)1, test.Network),
-                (test.TransitionForkActivation!.Value, test.NetworkAfterTransition));
-        }
-        else
-        {
-            specProvider = new CustomSpecProvider(
-                ((ForkActivation)0, Frontier.Instance), // TODO: this thing took a lot of time to find after it was removed!, genesis block is always initialized with Frontier
-                ((ForkActivation)1, test.Network));
+            transitions.Add((test.TransitionForkActivation!.Value, test.NetworkAfterTransition));
         }
 
-        if (specProvider.GenesisSpec != Frontier.Instance)
+        ISpecProvider specProvider = new CustomSpecProvider(test.ChainId, test.ChainId, transitions.ToArray());
+
+        if (test.ChainId != GnosisSpecProvider.Instance.ChainId && specProvider.GenesisSpec != Frontier.Instance)
         {
             Assert.Fail("Expected genesis spec to be Frontier for blockchain tests");
         }
@@ -132,56 +123,22 @@ public abstract class BlockchainTestBase
             specProvider.UpdateMergeTransitionInfo(0, 0);
         }
 
-        IEthereumEcdsa ecdsa = new EthereumEcdsa(specProvider.ChainId);
+        IConfigProvider configProvider = new ConfigProvider();
+        // configProvider.GetConfig<IBlocksConfig>().PreWarmStateOnBlockProcessing = false;
+        await using IContainer container = new ContainerBuilder()
+            .AddModule(new TestNethermindModule(configProvider))
+            .AddSingleton(specProvider)
+            .AddSingleton(_logManager)
+            .AddSingleton(rewardCalculator)
+            .AddSingleton<IDifficultyCalculator>(DifficultyCalculator)
+            .AddSingleton<ITxPool>(NullTxPool.Instance)
+            .Build();
 
-        TrieStore trieStore = new(stateDb, _logManager);
-        IWorldState stateProvider = new WorldState(trieStore, codeDb, _logManager);
-        IBlockTree blockTree = Build.A.BlockTree()
-            .WithSpecProvider(specProvider)
-            .WithoutSettingHead
-            .TestObject;
-        ITransactionComparerProvider transactionComparerProvider = new TransactionComparerProvider(specProvider, blockTree);
-        IStateReader stateReader = new StateReader(trieStore, codeDb, _logManager);
-
-        IReceiptStorage receiptStorage = NullReceiptStorage.Instance;
-        IBlockhashProvider blockhashProvider = new BlockhashProvider(blockTree, specProvider, stateProvider, _logManager);
-        ITxValidator txValidator = new TxValidator(TestBlockchainIds.ChainId);
-        IHeaderValidator headerValidator = new HeaderValidator(blockTree, Sealer, specProvider, _logManager);
-        IUnclesValidator unclesValidator = new UnclesValidator(blockTree, headerValidator, _logManager);
-        IBlockValidator blockValidator = new BlockValidator(txValidator, headerValidator, unclesValidator, specProvider, _logManager);
-        CodeInfoRepository codeInfoRepository = new();
-        IVirtualMachine virtualMachine = new VirtualMachine(
-            blockhashProvider,
-            specProvider,
-            codeInfoRepository,
-            _logManager);
-
-        TransactionProcessor transactionProcessor = new(
-            specProvider,
-            stateProvider,
-            virtualMachine,
-            codeInfoRepository,
-            _logManager);
-
-        IBlockProcessor blockProcessor = new BlockProcessor(
-            specProvider,
-            blockValidator,
-            rewardCalculator,
-            new BlockProcessor.BlockValidationTransactionsExecutor(transactionProcessor, stateProvider),
-            stateProvider,
-            receiptStorage,
-            transactionProcessor,
-            new BeaconBlockRootHandler(transactionProcessor, stateProvider),
-            new BlockhashStore(specProvider, stateProvider),
-            _logManager);
-
-        IBlockchainProcessor blockchainProcessor = new BlockchainProcessor(
-            blockTree,
-            blockProcessor,
-            new RecoverSignatures(ecdsa, NullTxPool.Instance, specProvider, _logManager),
-            stateReader,
-            _logManager,
-            BlockchainProcessor.Options.NoReceipts);
+        MainBlockProcessingContext mainBlockProcessingContext = container.Resolve<MainBlockProcessingContext>();
+        IWorldState stateProvider = mainBlockProcessingContext.WorldState;
+        IBlockchainProcessor blockchainProcessor = mainBlockProcessingContext.BlockchainProcessor;
+        IBlockTree blockTree = container.Resolve<IBlockTree>();
+        IBlockValidator blockValidator = container.Resolve<IBlockValidator>();
 
         InitializeTestState(test, stateProvider, specProvider);
 
@@ -246,6 +203,13 @@ public abstract class BlockchainTestBase
 
         await blockchainProcessor.StopAsync(true);
         stopwatch?.Stop();
+
+        IBlockCachePreWarmer? preWarmer = container.Resolve<MainBlockProcessingContext>().LifetimeScope.ResolveOptional<IBlockCachePreWarmer>();
+        if (preWarmer is not null)
+        {
+            // Caches are cleared async, which is a problem as read for the MainWorldState with prewarmer is not correct if its not cleared.
+            preWarmer.ClearCaches();
+        }
 
         List<string> differences = RunAssertions(test, blockTree.RetrieveHeadBlock(), stateProvider);
 

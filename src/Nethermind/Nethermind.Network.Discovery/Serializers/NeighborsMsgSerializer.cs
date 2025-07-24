@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Net;
+using Autofac.Features.AttributeFilters;
 using DotNetty.Buffers;
 using Nethermind.Core.Crypto;
 using Nethermind.Crypto;
@@ -30,7 +31,7 @@ public class NeighborsMsgSerializer : DiscoveryMsgSerializerBase, IZeroInnerMess
     };
 
     public NeighborsMsgSerializer(IEcdsa ecdsa,
-        IPrivateKeyGenerator nodeKey,
+        [KeyFilter(IProtectedPrivateKey.NodeKey)] IPrivateKeyGenerator nodeKey,
         INodeIdResolver nodeIdResolver) : base(ecdsa, nodeKey, nodeIdResolver)
     {
     }
@@ -43,10 +44,10 @@ public class NeighborsMsgSerializer : DiscoveryMsgSerializerBase, IZeroInnerMess
         PrepareBufferForSerialization(byteBuffer, totalLength, (byte)msg.MsgType);
         NettyRlpStream stream = new(byteBuffer);
         stream.StartSequence(contentLength);
-        if (msg.Nodes.Length != 0)
+        if (msg.Nodes.Count != 0)
         {
             stream.StartSequence(nodesContentLength);
-            for (int i = 0; i < msg.Nodes.Length; i++)
+            for (int i = 0; i < msg.Nodes.Count; i++)
             {
                 Node node = msg.Nodes[i];
                 SerializeNode(stream, node.Address, node.Id.Bytes);
@@ -81,10 +82,10 @@ public class NeighborsMsgSerializer : DiscoveryMsgSerializerBase, IZeroInnerMess
         return rlpStream.DecodeArray<Node>(_decodeItem);
     }
 
-    private static int GetNodesLength(Node[] nodes, out int contentLength)
+    private static int GetNodesLength(ArraySegment<Node> nodes, out int contentLength)
     {
         contentLength = 0;
-        for (int i = 0; i < nodes.Length; i++)
+        for (int i = 0; i < nodes.Count; i++)
         {
             Node node = nodes[i];
             contentLength += Rlp.LengthOfSequence(GetLengthSerializeNode(node.Address, node.Id.Bytes));
@@ -102,7 +103,7 @@ public class NeighborsMsgSerializer : DiscoveryMsgSerializerBase, IZeroInnerMess
     {
         int nodesContentLength = 0;
         int contentLength = 0;
-        if (msg.Nodes.Length != 0)
+        if (msg.Nodes.Count != 0)
         {
             contentLength += GetNodesLength(msg.Nodes, out nodesContentLength);
         }

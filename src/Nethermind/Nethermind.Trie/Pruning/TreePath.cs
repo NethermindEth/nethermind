@@ -102,6 +102,13 @@ public struct TreePath : IEquatable<TreePath>
         return copy;
     }
 
+    public readonly TreePath Append(int nib, int repeat)
+    {
+        TreePath copy = this;
+        for (int i = 0; i < repeat; i++) copy.AppendMut(nib);
+        return copy;
+    }
+
     internal void AppendMut(ReadOnlySpan<byte> nibbles)
     {
         if (nibbles.Length == 0) return;
@@ -207,8 +214,7 @@ public struct TreePath : IEquatable<TreePath>
 
         Length = pathLength;
 
-        [DoesNotReturn]
-        [StackTraceHidden]
+        [DoesNotReturn, StackTraceHidden]
         static void ThrowPathMustBeLess()
         {
             throw new IndexOutOfRangeException("path length must be less than current length");
@@ -399,6 +405,11 @@ public struct TreePath : IEquatable<TreePath>
         0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0x00,
         0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xf0,
     };
+
+    public bool StartsWith(TreePath otherPath)
+    {
+        return Truncate(otherPath.Length) == otherPath;
+    }
 }
 
 public static class TreePathExtensions

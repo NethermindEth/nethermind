@@ -19,6 +19,6 @@ public class ArgsZeroOneBalanaceTests : GeneralStateTestBase
     public static IEnumerable<GeneralStateTest> LoadTests()
     {
         var loader = new TestsSourceLoader(new LoadLegacyGeneralStateTestsStrategy(), "stArgsZeroOneBalance");
-        return (IEnumerable<GeneralStateTest>)loader.LoadTests();
+        return loader.LoadTests<GeneralStateTest>();
     }
 }

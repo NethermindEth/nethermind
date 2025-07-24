@@ -3,13 +3,13 @@
 
 using System;
 using Nethermind.Abi;
+using Nethermind.Blockchain.Tracing;
 using Nethermind.Core;
 using Nethermind.Int256;
 using Nethermind.Evm;
-using Nethermind.Evm.Tracing;
+using Nethermind.Evm.State;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Specs.Forks;
-using Nethermind.State;
 
 namespace Nethermind.Blockchain.Contracts
 {
@@ -66,7 +66,7 @@ namespace Nethermind.Blockchain.Contracts
 
             try
             {
-                _transactionProcessor.Execute(transaction, new BlockExecutionContext(header), tracer);
+                _transactionProcessor.Execute(transaction, header, tracer);
                 result = tracer.ReturnValue;
                 return tracer.StatusCode == StatusCode.Success;
             }

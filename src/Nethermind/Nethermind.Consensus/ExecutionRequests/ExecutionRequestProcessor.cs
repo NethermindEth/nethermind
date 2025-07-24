@@ -1,11 +1,10 @@
-// SPDX-FileCopyrightText: 2024 Demerzel Solutions Limited
+// SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
 
-using System;
-using System.Collections.Generic;
-using System.Linq;
 using Nethermind.Abi;
+using Nethermind.Blockchain;
+using Nethermind.Consensus.Messages;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Core.ExecutionRequest;
@@ -15,20 +14,23 @@ using Nethermind.Evm;
 using Nethermind.Evm.Tracing;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Int256;
-using Nethermind.State;
+using System;
+using System.Linq;
+using Nethermind.Blockchain.Tracing;
+using Nethermind.Evm.State;
 
 namespace Nethermind.Consensus.ExecutionRequests;
 
 public class ExecutionRequestsProcessor : IExecutionRequestsProcessor
 {
-    private readonly AbiSignature _depositEventABI = new("DepositEvent", AbiType.DynamicBytes, AbiType.DynamicBytes, AbiType.DynamicBytes, AbiType.DynamicBytes, AbiType.DynamicBytes);
+    public static readonly AbiSignature DepositEventAbi = new("DepositEvent", AbiType.DynamicBytes, AbiType.DynamicBytes, AbiType.DynamicBytes, AbiType.DynamicBytes, AbiType.DynamicBytes);
     private readonly AbiEncoder _abiEncoder = AbiEncoder.Instance;
 
     private const long GasLimit = 30_000_000L;
 
     private readonly ITransactionProcessor _transactionProcessor;
 
-    private readonly Transaction _withdrawalTransaction = new()
+    private readonly SystemCall _withdrawalTransaction = new()
     {
         Value = UInt256.Zero,
         Data = Array.Empty<byte>(),
@@ -38,7 +40,7 @@ public class ExecutionRequestsProcessor : IExecutionRequestsProcessor
         GasPrice = UInt256.Zero,
     };
 
-    private readonly Transaction _consolidationTransaction = new()
+    private readonly SystemCall _consolidationTransaction = new()
     {
         Value = UInt256.Zero,
         Data = Array.Empty<byte>(),
@@ -55,7 +57,32 @@ public class ExecutionRequestsProcessor : IExecutionRequestsProcessor
         _consolidationTransaction.Hash = _consolidationTransaction.CalculateHash();
     }
 
-    public void ProcessDeposits(TxReceipt[] receipts, IReleaseSpec spec, ArrayPoolList<byte[]> requests)
+    public void ProcessExecutionRequests(Block block, IWorldState state, TxReceipt[] receipts, IReleaseSpec spec)
+    {
+        if (!spec.RequestsEnabled || block.IsGenesis)
+            return;
+
+        using ArrayPoolList<byte[]> requests = new(3);
+
+        ProcessDeposits(block, receipts, spec, requests);
+
+        if (spec.WithdrawalRequestsEnabled)
+        {
+            ReadRequests(block, state, spec.Eip7002ContractAddress, requests, _withdrawalTransaction, ExecutionRequestType.WithdrawalRequest,
+                BlockErrorMessages.WithdrawalsContractEmpty, BlockErrorMessages.WithdrawalsContractFailed);
+        }
+
+        if (spec.ConsolidationRequestsEnabled)
+        {
+            ReadRequests(block, state, spec.Eip7251ContractAddress, requests, _consolidationTransaction, ExecutionRequestType.ConsolidationRequest,
+                BlockErrorMessages.ConsolidationsContractEmpty, BlockErrorMessages.ConsolidationsContractFailed);
+        }
+
+        block.ExecutionRequests = [.. requests];
+        block.Header.RequestsHash = ExecutionRequestExtensions.CalculateHashFromFlatEncodedRequests(block.ExecutionRequests);
+    }
+
+    private void ProcessDeposits(Block block, TxReceipt[] receipts, IReleaseSpec spec, ArrayPoolList<byte[]> requests)
     {
         if (!spec.DepositsEnabled)
             return;
@@ -73,10 +100,10 @@ public class ExecutionRequestsProcessor : IExecutionRequestsProcessor
                 for (var j = 0; j < logEntries.Length; j++)
                 {
                     LogEntry log = logEntries[j];
-                    if (log.Address == spec.DepositContractAddress)
+                    if (log.Address == spec.DepositContractAddress && log.Topics.Length >= 1 && log.Topics[0] == DepositEventAbi.Hash)
                     {
                         Span<byte> depositRequestBuffer = new byte[ExecutionRequestExtensions.DepositRequestsBytesSize];
-                        DecodeDepositRequest(log, depositRequestBuffer);
+                        DecodeDepositRequest(block, log, depositRequestBuffer);
                         depositRequests.AddRange(depositRequestBuffer.ToArray());
                     }
                 }
@@ -87,9 +114,18 @@ public class ExecutionRequestsProcessor : IExecutionRequestsProcessor
             requests.Add(depositRequests.ToArray());
     }
 
-    private void DecodeDepositRequest(LogEntry log, Span<byte> buffer)
+    private void DecodeDepositRequest(Block block, LogEntry log, Span<byte> buffer)
     {
-        object[] result = _abiEncoder.Decode(AbiEncodingStyle.None, _depositEventABI, log.Data);
+        object[] result = null;
+        try
+        {
+            result = _abiEncoder.Decode(AbiEncodingStyle.None, DepositEventAbi, log.Data);
+        }
+        catch (Exception e) when (e is AbiException or OverflowException)
+        {
+            throw new InvalidBlockException(block, BlockErrorMessages.InvalidDepositEventLayout(e.Message));
+        }
+
         int offset = 0;
 
         foreach (var item in result)
@@ -101,56 +137,42 @@ public class ExecutionRequestsProcessor : IExecutionRequestsProcessor
             }
             else
             {
-                throw new InvalidOperationException("Decoded ABI result contains non-byte array elements.");
+                throw new InvalidBlockException(block, BlockErrorMessages.InvalidDepositEventLayout("Decoded ABI result contains non-byte array elements."));
             }
         }
 
         // make sure the flattened result is of the correct size
         if (offset != ExecutionRequestExtensions.DepositRequestsBytesSize)
         {
-            throw new InvalidOperationException($"Decoded ABI result has incorrect size. Expected {ExecutionRequestExtensions.DepositRequestsBytesSize} bytes, got {offset} bytes.");
+            throw new InvalidBlockException(block, BlockErrorMessages.InvalidDepositEventLayout($"Decoded ABI result has incorrect size. Expected {ExecutionRequestExtensions.DepositRequestsBytesSize} bytes, got {offset} bytes."));
         }
     }
 
-    private void ReadRequests(Block block, IWorldState state, IReleaseSpec spec, Address contractAddress, ArrayPoolList<byte[]> requests)
+    private void ReadRequests(Block block, IWorldState state, Address contractAddress, ArrayPoolList<byte[]> requests,
+        Transaction systemTx, ExecutionRequestType type, string contractEmptyError, string contractFailedError)
     {
-        bool isWithdrawalRequests = contractAddress == spec.Eip7002ContractAddress;
-
-        int requestsByteSize = isWithdrawalRequests ? ExecutionRequestExtensions.WithdrawalRequestsBytesSize : ExecutionRequestExtensions.ConsolidationRequestsBytesSize;
-
-        if (!(isWithdrawalRequests ? spec.WithdrawalRequestsEnabled : spec.ConsolidationRequestsEnabled) || !state.AccountExists(contractAddress))
-            return;
+        if (!state.HasCode(contractAddress))
+        {
+            throw new InvalidBlockException(block, contractEmptyError);
+        }
 
         CallOutputTracer tracer = new();
 
-        _transactionProcessor.Execute(isWithdrawalRequests ? _withdrawalTransaction : _consolidationTransaction, new BlockExecutionContext(block.Header), tracer);
+        _transactionProcessor.Execute(systemTx, tracer);
+
+        if (tracer.StatusCode == StatusCode.Failure)
+        {
+            throw new InvalidBlockException(block, contractFailedError);
+        }
 
         if (tracer.ReturnValue is null || tracer.ReturnValue.Length == 0)
         {
             return;
         }
 
-        int validLength = tracer.ReturnValue.Length - (tracer.ReturnValue.Length % requestsByteSize);
-
-        if (validLength == 0) return;
-
-        Span<byte> buffer = stackalloc byte[validLength + 1];
-        buffer[0] = isWithdrawalRequests ? (byte)ExecutionRequestType.WithdrawalRequest : (byte)ExecutionRequestType.ConsolidationRequest;
-        tracer.ReturnValue.AsSpan(0, validLength).CopyTo(buffer.Slice(1));
-        requests.Add(buffer.ToArray());
-    }
-
-    public void ProcessExecutionRequests(Block block, IWorldState state, TxReceipt[] receipts, IReleaseSpec spec)
-    {
-        if (!spec.RequestsEnabled)
-            return;
-
-        using ArrayPoolList<byte[]> requests = new(3);
-
-        ProcessDeposits(receipts, spec, requests);
-        ReadRequests(block, state, spec, spec.Eip7002ContractAddress, requests);
-        ReadRequests(block, state, spec, spec.Eip7251ContractAddress, requests);
-        block.ExecutionRequests = requests.ToArray();
-        block.Header.RequestsHash = ExecutionRequestExtensions.CalculateHashFromFlatEncodedRequests(block.ExecutionRequests);
+        byte[] buffer = new byte[tracer.ReturnValue.Length + 1];
+        buffer[0] = (byte)type;
+        tracer.ReturnValue.AsSpan().CopyTo(buffer.AsSpan(1));
+        requests.Add(buffer);
     }
 }

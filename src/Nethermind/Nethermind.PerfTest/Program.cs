@@ -241,7 +241,7 @@ namespace Nethermind.PerfTest
         private static async Task RunBenchmarkBlocks()
         {
             /* logging & instrumentation */
-            _logManager = new NLogManager("perfTest.logs.txt", null);
+            _logManager = new NLogManager("perfTest.log", null);
             _logger = _logManager.GetClassLogger();
 
             if (_logger.IsInfo) _logger.Info("Deleting state DBs");

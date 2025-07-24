@@ -4,11 +4,21 @@
 using System;
 using System.Collections.Generic;
 using System.Threading.Tasks;
+using FluentAssertions;
 using Nethermind.Blockchain.Find;
+using Nethermind.Config;
+using Nethermind.Core;
+using Nethermind.Core.Specs;
+using Nethermind.Core.Test.Blockchain;
+using Nethermind.Core.Test.Builders;
 using Nethermind.Facade.Eth.RpcTransaction;
 using Nethermind.Facade.Proxy.Models.Simulate;
+using Nethermind.Int256;
 using Nethermind.Serialization.Json;
+using Nethermind.Specs;
+using Nethermind.Specs.Forks;
 using NUnit.Framework;
+using static Nethermind.Core.Test.Blockchain.TestBlockchain;
 using ResultType = Nethermind.Core.ResultType;
 
 namespace Nethermind.JsonRpc.Test.Modules.Eth;
@@ -72,11 +82,67 @@ new object[] {"multicall-transaction-too-low-nonce-38010", "{\"blockStateCalls\"
         SimulatePayload<TransactionForRpc>? payload = serializer.Deserialize<SimulatePayload<TransactionForRpc>>(data);
         TestRpcBlockchain chain = await EthRpcSimulateTestsBase.CreateChain();
         Console.WriteLine($"current test: {name}");
-        ResultWrapper<IReadOnlyList<SimulateBlockResult>> result =
+        ResultWrapper<IReadOnlyList<SimulateBlockResult<SimulateCallResult>>> result =
             chain.EthRpcModule.eth_simulateV1(payload!, BlockParameter.Latest);
 
         Console.WriteLine();
         Assert.That(result.Result.ResultType, Is.EqualTo(ResultType.Success));
         Assert.That(result.Data, Is.Not.Null);
+    }
+
+    /// <remarks>
+    /// See: https://github.com/ethereum/execution-apis/blob/e56d3208789259d0b09fa68e9d8594aa4d73c725/docs/ethsimulatev1-notes.md?plain=1#L18
+    /// </remarks>
+    [Combinatorial]
+    public async Task TestSimulate_TimestampIsComputedCorrectly_WhenNoTimestampOverride(
+        [Values(2, 12)] int secondsPerSlot,
+        [Values(0, 1, 2, 5)] int blockNumber)
+    {
+        string data = $$"""
+                              {
+                                "blockStateCalls": [
+                                  {
+                                    "stateOverrides": {
+                                      "{{TestItem.AddressA}}": {
+                                        "balance": "0xf00000000"
+                                      }
+                                    },
+                                    "calls": [
+                                      {
+                                        "from": "{{TestItem.AddressA}}",
+                                        "to": "{{TestItem.AddressB}}",
+                                        "value": "0x1"
+                                      }
+                                    ]
+                                  }
+                                ]
+                              }
+                            """;
+        var serializer = new EthereumJsonSerializer();
+        var payload = serializer.Deserialize<SimulatePayload<TransactionForRpc>>(data);
+
+        var chain = await TestRpcBlockchain
+            .ForTest(new TestRpcBlockchain())
+            .WithBlocksConfig(new BlocksConfig
+            {
+                SecondsPerSlot = (ulong)secondsPerSlot
+            })
+            .Build((builder) => builder
+                .ConfigureTestConfiguration((config) => config.AddBlockOnStart = false)
+                .AddSingleton<ISpecProvider>(new TestSpecProvider(London.Instance)));
+
+        await chain.AddBlock();
+        await chain.AddBlock(BuildSimpleTransaction.WithNonce(0).TestObject);
+        await chain.AddBlock(BuildSimpleTransaction.WithNonce(1).TestObject, BuildSimpleTransaction.WithNonce(2).TestObject);
+        await chain.AddBlock(BuildSimpleTransaction.WithNonce(3).TestObject);
+        await chain.AddBlock(BuildSimpleTransaction.WithNonce(4).TestObject, BuildSimpleTransaction.WithNonce(5).TestObject);
+
+        var blockParameter = new BlockParameter(blockNumber);
+        var parent = chain.EthRpcModule.eth_getBlockByNumber(blockParameter).Data;
+        var simulated = chain.EthRpcModule.eth_simulateV1(payload, blockParameter).Data[0];
+
+        simulated.ParentHash.Should().Be(parent.Hash);
+        (simulated.Number - parent.Number).Should().Be(1);
+        (simulated.Timestamp - parent.Timestamp).Should().Be((UInt256)secondsPerSlot);
     }
 }

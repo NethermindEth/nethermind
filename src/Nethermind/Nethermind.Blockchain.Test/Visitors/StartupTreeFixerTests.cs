@@ -95,7 +95,7 @@ public class StartupTreeFixerTests
     [TestCase(65)]
     public async Task Suggesting_blocks_works_correctly_after_processor_restart(int suggestedBlocksAmount)
     {
-        TestRpcBlockchain testRpc = await TestRpcBlockchain.ForTest(SealEngineType.NethDev).Build();
+        TestRpcBlockchain testRpc = await TestRpcBlockchain.ForTest(SealEngineType.NethDev, testTimeout: Timeout.MaxTestTime * 4).Build();
         await testRpc.BlockchainProcessor.StopAsync();
         IBlockTree tree = testRpc.BlockTree;
         long startingBlockNumber = tree.Head!.Number;
@@ -108,15 +108,15 @@ public class StartupTreeFixerTests
         newBlockchainProcessor.Start();
         testRpc.BlockchainProcessor = newBlockchainProcessor;
 
+        Task waitTask = suggestedBlocksAmount != 0
+            ? testRpc.WaitForNewHeadWhere(b => b.Number == startingBlockNumber + suggestedBlocksAmount)
+            : Task.CompletedTask;
         // fixing after restart
         StartupBlockTreeFixer fixer = new(new SyncConfig(), tree, testRpc.StateReader, LimboNoErrorLogger.Instance, 5);
         await tree.Accept(fixer, CancellationToken.None);
 
         // waiting for N new heads
-        for (int i = 0; i < suggestedBlocksAmount; ++i)
-        {
-            await testRpc.WaitForNewHead();
-        }
+        await waitTask;
 
         // add a new block at the end
         await testRpc.AddBlock();

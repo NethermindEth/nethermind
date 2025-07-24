@@ -11,7 +11,7 @@ namespace Nethermind.Specs.ChainSpecStyle.Json
     [SuppressMessage("ReSharper", "ClassNeverInstantiated.Global")]
     [SuppressMessage("ReSharper", "UnusedAutoPropertyAccessor.Global")]
     [SuppressMessage("ReSharper", "MemberCanBePrivate.Global")]
-    internal class ChainSpecJson
+    public class ChainSpecJson
     {
         public string Name { get; set; }
         public string DataDir { get; set; }
@@ -22,8 +22,9 @@ namespace Nethermind.Specs.ChainSpecStyle.Json
         public string[] Nodes { get; set; }
         [JsonPropertyName("accounts")]
         public Dictionary<string, AllocationJson> Accounts { get; set; }
+        public Dictionary<string, byte[]>? CodeHashes { get; set; }
 
-        internal class EngineJson
+        public class EngineJson
         {
             [JsonExtensionData]
             public Dictionary<string, JsonElement> CustomEngineData { get; set; }

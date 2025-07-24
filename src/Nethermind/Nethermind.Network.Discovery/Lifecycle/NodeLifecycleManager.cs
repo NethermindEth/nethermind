@@ -170,7 +170,7 @@ public class NodeLifecycleManager : INodeLifecycleManager
             return;
         }
 
-        if (_lastNeighbourSize + msg.Nodes.Length == 16)
+        if (_lastNeighbourSize + msg.Nodes.Count == 16)
         {
             // Turns out, other client will split the neighbour msg to two msg, whose size sum up to 16.
             // Happens about 70% of the time.
@@ -181,7 +181,7 @@ public class NodeLifecycleManager : INodeLifecycleManager
             ProcessNodes(msg);
         }
 
-        _lastNeighbourSize = msg.Nodes.Length;
+        _lastNeighbourSize = msg.Nodes.Count;
         _isNeighborsExpected = false;
     }
 
@@ -190,6 +190,7 @@ public class NodeLifecycleManager : INodeLifecycleManager
         NodeStats.AddNodeStatsEvent(NodeStatsEventType.DiscoveryNeighboursIn);
         RefreshNodeContactTime();
 
+        IPAddress? externalIp = _discoveryManager.SelfNodeRecord?.GetObj<IPAddress>(EnrContentKey.Ip);
         foreach (Node node in msg.Nodes)
         {
             if (node.Address.Address == _localhost)
@@ -198,7 +199,18 @@ public class NodeLifecycleManager : INodeLifecycleManager
                     _logger.Trace($"Received localhost as node address from: {msg.FarPublicKey}, node: {node}");
                 continue;
             }
-
+            if (node.Address.Address == externalIp)
+            {
+                if (_logger.IsTrace)
+                    _logger.Trace($"Received self as node address from: {msg.FarPublicKey}, node: {node}");
+                // Ignore self
+                continue;
+            }
+            else if (!_discoveryManager.NodesFilter.Set(node.Address.Address))
+            {
+                // Already seen this node ip recently
+                continue;
+            }
             //If node is new it will create a new nodeLifecycleManager and will update state to New, which will trigger Ping
             _discoveryManager.GetNodeLifecycleManager(node);
         }
@@ -251,11 +263,11 @@ public class NodeLifecycleManager : INodeLifecycleManager
 
     private DateTime _lastPingSent = DateTime.MinValue;
 
-    public async Task SendPingAsync()
+    public Task SendPingAsync()
     {
         _lastPingSent = DateTime.UtcNow;
         _sentPing = true;
-        await CreateAndSendPingAsync(_discoveryConfig.PingRetryCount);
+        return CreateAndSendPingAsync(_discoveryConfig.PingRetryCount);
     }
 
     private long CalculateExpirationTime()
@@ -314,9 +326,7 @@ public class NodeLifecycleManager : INodeLifecycleManager
         if (newState == NodeLifecycleState.New)
         {
             //if node is just discovered we send ping to confirm it is active
-#pragma warning disable 4014
-            SendPingAsync();
-#pragma warning restore 4014
+            _ = SendPingAsync();
         }
         else if (newState == NodeLifecycleState.Active)
         {
@@ -344,9 +354,7 @@ public class NodeLifecycleManager : INodeLifecycleManager
 
             if (DateTime.UtcNow - _lastPingSent > TimeSpan.FromSeconds(5))
             {
-#pragma warning disable 4014
-                SendPingAsync();
-#pragma warning restore 4014
+                _ = SendPingAsync();
             }
             else
             {

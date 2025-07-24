@@ -8,15 +8,21 @@ namespace Nethermind.Api.Extensions
 {
     public interface IConsensusWrapperPlugin : INethermindPlugin
     {
-        IBlockProducer InitBlockProducer(IBlockProducerFactory baseBlockProducerFactory, ITxSource? txSource);
+        IBlockProducer InitBlockProducer(IBlockProducerFactory baseBlockProducerFactory);
 
-        IBlockProducerRunner InitBlockProducerRunner(IBlockProducerRunner baseRunner) => baseRunner;
+        /// <summary>
+        /// Initializes the <see cref="IBlockProducerRunner"/>.
+        /// </summary>
+        /// <remarks>
+        /// BE CAREFUL IF MORE THAN ONE <see cref="IConsensusWrapperPlugin"/> OVERRIDES THIS METHOD AT A TIME.
+        /// SEE <see cref="InitBlockProducer"/> FOR MORE DETAILS ON THE INITIALIZATION PROCESS.
+        /// </remarks>
+        IBlockProducerRunner InitBlockProducerRunner(IBlockProducerRunnerFactory baseRunnerFactory,
+            IBlockProducer blockProducer) => baseRunnerFactory.InitBlockProducerRunner(blockProducer);
 
         /// <summary>
         /// Priorities for ordering multiple plugin. Only used to determine the wrapping order of block production.
         /// </summary>
         int Priority => 0;
-
-        bool Enabled { get; }
     }
 }

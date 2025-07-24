@@ -1,23 +1,10 @@
 <Project Sdk="Microsoft.NET.Sdk">
 
-  <PropertyGroup>
-    <IsPackable>false</IsPackable>
-  </PropertyGroup>
+  <Import Project="../tests.props" />
 
   <ItemGroup>
-    <PackageReference Include="coverlet.collector">
-      <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
-      <PrivateAssets>all</PrivateAssets>
-    </PackageReference>
     <PackageReference Include="FluentAssertions" />
     <PackageReference Include="NSubstitute" />
-    <PackageReference Include="NUnit" />
-    <PackageReference Include="NUnit.Analyzers">
-      <PrivateAssets>all</PrivateAssets>
-      <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
-    </PackageReference>
-    <PackageReference Include="NUnit3TestAdapter" />
-    <PackageReference Include="Microsoft.NET.Test.Sdk" />
   </ItemGroup>
   <ItemGroup>
     <ProjectReference Include="..\Nethermind.Analytics\Nethermind.Analytics.csproj" />
@@ -37,9 +24,6 @@
     </Content>
     <Content Include="..\Chains\genesis.json" CopyToOutputDirectory="PreserveNewest">
       <Link>Chains\genesis.json</Link>
-    </Content>
-    <Content Include="..\Chains\hive.json" CopyToOutputDirectory="PreserveNewest">
-      <Link>Chains\hive.json</Link>
     </Content>
     <Content Include="..\Chains\poacore.json" CopyToOutputDirectory="PreserveNewest">
       <Link>Chains\poacore.json</Link>

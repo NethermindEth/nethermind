@@ -24,9 +24,9 @@ public static class AddressExtensions
                     0x03 => true,
                     0x04 => true,
                     0x05 => releaseSpec.ModExpEnabled,
-                    0x06 => releaseSpec.Bn128Enabled,
-                    0x07 => releaseSpec.Bn128Enabled,
-                    0x08 => releaseSpec.Bn128Enabled,
+                    0x06 => releaseSpec.BN254Enabled,
+                    0x07 => releaseSpec.BN254Enabled,
+                    0x08 => releaseSpec.BN254Enabled,
                     0x09 => releaseSpec.BlakeEnabled,
                     0x0a => releaseSpec.IsEip4844Enabled,
                     0x0b => releaseSpec.Bls381Enabled,
@@ -36,13 +36,11 @@ public static class AddressExtensions
                     0x0f => releaseSpec.Bls381Enabled,
                     0x10 => releaseSpec.Bls381Enabled,
                     0x11 => releaseSpec.Bls381Enabled,
-                    0x12 => releaseSpec.Bls381Enabled,
-                    0x13 => releaseSpec.Bls381Enabled,
                     _ => false
                 },
                 0x01 => (data[4] >>> 24) switch
                 {
-                    0x00 => releaseSpec.IsRip7212Enabled,
+                    0x00 => releaseSpec.IsEip7951Enabled || releaseSpec.IsRip7212Enabled,
                     _ => false
                 },
                 _ => false

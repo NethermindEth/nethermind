@@ -4,12 +4,12 @@
 using Nethermind.Core;
 using Nethermind.Core.Specs;
 using Nethermind.Evm.CodeAnalysis;
-using Nethermind.State;
+using Nethermind.Evm.State;
 
 namespace Nethermind.Evm;
 
 public interface IOverridableCodeInfoRepository : ICodeInfoRepository
 {
-    void SetCodeOverwrite(IWorldState worldState, IReleaseSpec vmSpec, Address key, CodeInfo value, Address? redirectAddress = null);
+    void SetCodeOverwrite(IWorldState worldState, IReleaseSpec vmSpec, Address key, ICodeInfo value, Address? redirectAddress = null);
     public void ResetOverrides();
 }

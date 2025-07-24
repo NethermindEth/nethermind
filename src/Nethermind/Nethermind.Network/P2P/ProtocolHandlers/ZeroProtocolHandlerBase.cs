@@ -15,6 +15,8 @@ namespace Nethermind.Network.P2P.ProtocolHandlers
     public abstract class ZeroProtocolHandlerBase(ISession session, INodeStatsManager nodeStats, IMessageSerializationService serializer, ILogManager logManager)
         : ProtocolHandlerBase(session, nodeStats, serializer, logManager), IZeroProtocolHandler
     {
+        protected readonly INodeStats _nodeStats = nodeStats.GetOrAdd(session.Node);
+
         public override void HandleMessage(Packet message)
         {
             ZeroPacket zeroPacket = new(message);
@@ -30,7 +32,7 @@ namespace Nethermind.Network.P2P.ProtocolHandlers
 
         public abstract void HandleMessage(ZeroPacket message);
 
-        protected async Task<TResponse> SendRequestGeneric<TRequest, TResponse>(
+        protected Task<TResponse> SendRequestGeneric<TRequest, TResponse>(
             MessageQueue<TRequest, TResponse> messageQueue,
             TRequest message,
             TransferSpeedType speedType,
@@ -41,7 +43,7 @@ namespace Nethermind.Network.P2P.ProtocolHandlers
             Request<TRequest, TResponse> request = new(message);
             messageQueue.Send(request);
 
-            return await HandleResponse(request, speedType, describeRequestFunc, token);
+            return HandleResponse(request, speedType, describeRequestFunc, token);
         }
 
         protected async Task<TResponse> HandleResponse<TRequest, TResponse>(

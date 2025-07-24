@@ -89,7 +89,7 @@ namespace Nethermind.JsonRpc.Modules.Subscribe
             });
         }
 
-        public override string Type => SubscriptionType.Syncing;
+        public override string Type => SubscriptionType.EthSubscription.Syncing;
         public override void Dispose()
         {
             _blockTree.NewBestSuggestedBlock -= OnConditionsChange;

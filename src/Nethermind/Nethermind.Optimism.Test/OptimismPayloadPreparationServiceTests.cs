@@ -6,7 +6,7 @@ using System.Collections.Generic;
 using System;
 using NUnit.Framework;
 using NSubstitute;
-using Nethermind.State;
+using Nethermind.Evm.State;
 using Nethermind.Optimism.Rpc;
 using Nethermind.Merge.Plugin.BlockProduction;
 using Nethermind.Logging;
@@ -24,6 +24,8 @@ using Nethermind.Config;
 using Nethermind.Blockchain;
 using FluentAssertions;
 using Nethermind.Crypto;
+using System.Threading;
+using Nethermind.TxPool;
 
 namespace Nethermind.Optimism.Test;
 
@@ -53,13 +55,13 @@ public class OptimismPayloadPreparationServiceTests
         specProvider.GetSpec(parent).Returns(releaseSpec);
 
         var stateProvider = Substitute.For<IWorldState>();
-        stateProvider.HasStateForRoot(Arg.Any<Hash256>()).Returns(true);
+        stateProvider.HasStateForBlock(Arg.Any<BlockHeader>()).Returns(true);
 
         var block = Build.A.Block
             .WithExtraData([])
             .TestObject;
         IBlockchainProcessor processor = Substitute.For<IBlockchainProcessor>();
-        processor.Process(Arg.Any<Block>(), ProcessingOptions.ProducingBlock, Arg.Any<IBlockTracer>()).Returns(block);
+        processor.Process(Arg.Any<Block>(), ProcessingOptions.ProducingBlock, Arg.Any<IBlockTracer>(), Arg.Any<CancellationToken>()).Returns(block);
 
         var service = new OptimismPayloadPreparationService(
             blockProducer: new PostMergeBlockProducer(
@@ -74,9 +76,13 @@ public class OptimismPayloadPreparationServiceTests
                 miningConfig: Substitute.For<IBlocksConfig>(),
                 logManager: TestLogManager.Instance
             ),
+            txPool: Substitute.For<ITxPool>(),
             specProvider: specProvider,
             blockImprovementContextFactory: NoBlockImprovementContextFactory.Instance,
-            timePerSlot: TimeSpan.FromSeconds(1),
+            blocksConfig: new BlocksConfig()
+            {
+                SecondsPerSlot = 1
+            },
             timerFactory: Substitute.For<ITimerFactory>(),
             logManager: TestLogManager.Instance
         );

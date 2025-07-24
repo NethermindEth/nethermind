@@ -4,7 +4,7 @@
     "ChainSpecPath": "chainspec/holesky.json",
     "GenesisHash": "0xb5f7f912443c940f21fd611f12828d75b534364ed9e95ca4e307729a4661bde4",
     "BaseDbPath": "nethermind_db/holesky",
-    "LogFileName": "holesky.logs.txt"
+    "LogFileName": "holesky.log"
   },
   "TxPool": {
     "Size": 1024
@@ -18,7 +18,7 @@
     "NodeName": "Holesky"
   },
   "Blocks": {
-    "TargetBlockGasLimit": 36000000
+    "TargetBlockGasLimit": 60000000
   },
   "JsonRpc": {
     "Enabled": true,
@@ -27,7 +27,7 @@
     "Port": 8545,
     "EngineHost": "127.0.0.1",
     "EnginePort": 8551,
-    "EngineEnabledModules": "net,eth,subscribe,engine,web3,client"
+    "EngineEnabledModules": "net,eth,subscribe,engine,web3,client,flashbots"
   },
   "Merge": {
     "Enabled": true

@@ -6,7 +6,7 @@
     "ChainSpecPath": "chainspec/clique.json",
     "GenesisHash": "",
     "BaseDbPath": "clique",
-    "LogFileName": "cliqueMiner.logs.txt"
+    "LogFileName": "cliqueMiner.log"
   },
   "Network": {
     "DiscoveryPort": 30303,

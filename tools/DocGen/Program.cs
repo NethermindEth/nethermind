@@ -5,20 +5,20 @@ using System.CommandLine;
 using Nethermind.DocGen;
 using Spectre.Console;
 
-CliOption<bool> configOption = new("--config") { Description = "Generate configuration options docs" };
-CliOption<bool> dbSizeOption = new("--dbsize") { Description = "Generate DB sizes" };
-CliOption<string> dbSizeSourceOption = new("--dbsize-src")
+Option<bool> configOption = new("--config") { Description = "Generate configuration options docs" };
+Option<bool> dbSizeOption = new("--dbsize") { Description = "Generate DB sizes" };
+Option<string> dbSizeSourceOption = new("--dbsize-src")
 {
     Description = "The path to the directory with DB size files",
     HelpName = "path"
 };
-CliArgument<string> docsDirArg = new("docs-dir")
+Argument<string> docsDirArg = new("docs-dir")
 {
     Description = "The path to the docs directory",
     HelpName = "path"
 };
-CliOption<bool> jsonRpcOption = new("--jsonrpc") { Description = "Generate JSON-RPC API docs" };
-CliOption<bool> metricsOption = new("--metrics") { Description = "Generate metrics options docs" };
+Option<bool> jsonRpcOption = new("--jsonrpc") { Description = "Generate JSON-RPC API docs" };
+Option<bool> metricsOption = new("--metrics") { Description = "Generate metrics options docs" };
 
 dbSizeOption.Validators.Add(optionResult =>
 {
@@ -26,7 +26,7 @@ dbSizeOption.Validators.Add(optionResult =>
         optionResult.AddError($"{dbSizeSourceOption.Name} must be specified when {dbSizeOption.Name} is set");
 });
 
-CliRootCommand rootCommand =
+RootCommand rootCommand =
 [
     configOption,
     dbSizeOption,
@@ -60,6 +60,6 @@ rootCommand.SetAction(parseResult =>
     return 0;
 });
 
-CliConfiguration cli = new(rootCommand);
+CommandLineConfiguration cli = new(rootCommand);
 
 return cli.Invoke(args);

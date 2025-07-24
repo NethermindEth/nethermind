@@ -15,11 +15,11 @@ using Nethermind.Core;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Crypto;
+using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Facade.Find;
 using Nethermind.KeyStore.Config;
 using Nethermind.Logging;
 using Nethermind.Shutter.Config;
-using Nethermind.State;
 using NSubstitute;
 
 namespace Nethermind.Shutter.Test;
@@ -34,14 +34,14 @@ public class ShutterApiSimulator(
     ILogManager logManager,
     ISpecProvider specProvider,
     ITimestamper timestamper,
-    IWorldStateManager worldStateManager,
     IFileSystem fileSystem,
     IKeyStoreConfig keyStoreConfig,
     IShutterConfig cfg,
+    IShareableTxProcessorSource shareableTxProcessorSource,
     ShutterValidatorsInfo validatorsInfo,
     Random rnd
         ) : ShutterApi(abiEncoder, blockTree, ecdsa, logFinder, receiptStorage,
-        logManager, specProvider, timestamper, worldStateManager, fileSystem,
+        logManager, specProvider, timestamper, shareableTxProcessorSource, fileSystem,
         keyStoreConfig, cfg, validatorsInfo, ShutterTestsCommon.SlotLength, IPAddress.None)
 {
     public int EonUpdateCalled = 0;
@@ -73,7 +73,6 @@ public class ShutterApiSimulator(
     {
         var receipts = new TxReceipt[logs.Length];
         block.Header.Bloom = new(logs);
-
         // one log per receipt
         for (int i = 0; i < logs.Length; i++)
         {
@@ -130,7 +129,7 @@ public class ShutterApiSimulator(
     }
 
     // set genesis unix timestamp to 1
-    protected override ShutterTime InitTime(ISpecProvider specProvider, ITimestamper timestamper)
+    protected override SlotTime InitTime(ISpecProvider specProvider, ITimestamper timestamper)
     {
         return new(1000, timestamper, _slotLength, _blockUpToDateCutoff);
     }

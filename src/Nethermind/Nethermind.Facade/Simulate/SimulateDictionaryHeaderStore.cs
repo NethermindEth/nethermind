@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2024 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using System.Collections.Generic;
 using Nethermind.Blockchain.Headers;
 using Nethermind.Core;
@@ -23,6 +24,14 @@ public class SimulateDictionaryHeaderStore(IHeaderStore readonlyBaseHeaderStore)
     {
         _headerDict[header.Hash] = header;
         InsertBlockNumber(header.Hash, header.Number);
+    }
+
+    public void BulkInsert(IReadOnlyList<BlockHeader> headers)
+    {
+        foreach (var header in headers)
+        {
+            Insert(header);
+        }
     }
 
     public BlockHeader? Get(Hash256 blockHash, bool shouldCache = false, long? blockNumber = null)

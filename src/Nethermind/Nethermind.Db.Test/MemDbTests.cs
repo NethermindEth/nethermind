@@ -2,8 +2,10 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Collections.Generic;
+using System.Linq;
 using FluentAssertions;
 using Nethermind.Core;
+using Nethermind.Core.Extensions;
 using Nethermind.Core.Test.Builders;
 using NUnit.Framework;
 
@@ -144,6 +146,29 @@ namespace Nethermind.Db.Test
         {
             MemDb memDb = new();
             memDb.Flush();
+        }
+
+        [Test]
+        public void Can_get_all_ordered()
+        {
+            MemDb memDb = new();
+
+            memDb.Set(TestItem.KeccakE, _sampleValue);
+            memDb.Set(TestItem.KeccakC, _sampleValue);
+            memDb.Set(TestItem.KeccakA, _sampleValue);
+            memDb.Set(TestItem.KeccakB, _sampleValue);
+            memDb.Set(TestItem.KeccakD, _sampleValue);
+
+            var orderedItems = memDb.GetAll(true);
+
+            orderedItems.Should().HaveCount(5);
+
+            byte[][] keys = [.. orderedItems.Select(kvp => kvp.Key)];
+            for (int i = 0; i < keys.Length - 1; i++)
+            {
+                Bytes.BytesComparer.Compare(keys[i], keys[i + 1]).Should().BeLessThan(0,
+                    $"Keys should be in ascending order at position {i}");
+            }
         }
     }
 }

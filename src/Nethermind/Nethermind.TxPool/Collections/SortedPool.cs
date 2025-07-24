@@ -24,7 +24,7 @@ namespace Nethermind.TxPool.Collections
         where TKey : notnull
         where TGroupKey : notnull
     {
-        protected McsPriorityLock Lock { get; } = new();
+        protected McsLock Lock { get; } = new();
 
         private readonly int _capacity;
         private readonly ILogger _logger;
@@ -134,14 +134,14 @@ namespace Nethermind.TxPool.Collections
         /// <summary>
         /// Gets all items in groups in supplied comparer order in groups.
         /// </summary>
-        public Dictionary<TGroupKey, TValue[]> GetBucketSnapshot(Predicate<TGroupKey>? where = null)
+        public Dictionary<TGroupKey, TValue[]> GetBucketSnapshot(Predicate<(TGroupKey key, TValue first)>? where = null)
         {
             using var lockRelease = Lock.Acquire();
 
             IEnumerable<KeyValuePair<TGroupKey, EnhancedSortedSet<TValue>>> buckets = _buckets;
             if (where is not null)
             {
-                buckets = buckets.Where(kvp => where(kvp.Key));
+                buckets = buckets.Where(kvp => kvp.Value.Count > 0 && where.Invoke((kvp.Key, kvp.Value.Min!)));
             }
             return buckets.ToDictionary(g => g.Key, g => g.Value.ToArray());
         }
@@ -153,7 +153,7 @@ namespace Nethermind.TxPool.Collections
         {
             using var lockRelease = Lock.Acquire();
 
-            if (group is null) throw new ArgumentNullException(nameof(group));
+            ArgumentNullException.ThrowIfNull(group);
             return _buckets.TryGetValue(group, out EnhancedSortedSet<TValue>? bucket) ? bucket.ToArray() : [];
         }
 
@@ -164,7 +164,7 @@ namespace Nethermind.TxPool.Collections
         {
             using var lockRelease = Lock.Acquire();
 
-            if (group is null) throw new ArgumentNullException(nameof(group));
+            ArgumentNullException.ThrowIfNull(group);
             return _buckets.TryGetValue(group, out EnhancedSortedSet<TValue>? bucket) ? bucket.Count : 0;
         }
 
@@ -530,6 +530,13 @@ namespace Nethermind.TxPool.Collections
             return false;
         }
 
+        public bool BucketAny(TGroupKey groupKey, Func<TValue, bool> predicate)
+        {
+            using var lockRelease = Lock.Acquire();
+            return _buckets.TryGetValue(groupKey, out EnhancedSortedSet<TValue>? bucket)
+                && bucket.Any(predicate);
+        }
+
         protected void EnsureCapacity(int? expectedCapacity = null)
         {
             expectedCapacity ??= _capacity; // expectedCapacity is added for testing purpose. null should be used in production code
@@ -585,7 +592,7 @@ namespace Nethermind.TxPool.Collections
         {
             using var lockRelease = Lock.Acquire();
 
-            if (groupKey is null) throw new ArgumentNullException(nameof(groupKey));
+            ArgumentNullException.ThrowIfNull(groupKey);
             if (_buckets.TryGetValue(groupKey, out EnhancedSortedSet<TValue>? bucket))
             {
                 Debug.Assert(bucket.Count > 0);

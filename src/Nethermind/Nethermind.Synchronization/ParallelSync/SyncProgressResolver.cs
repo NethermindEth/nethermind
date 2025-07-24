@@ -93,8 +93,9 @@ namespace Nethermind.Synchronization.ParallelSync
         public bool IsSnapGetRangesFinished() => _snapSyncFeed?.IsFinished ?? true;
 
         public void RecalculateProgressPointers() => _blockTree.RecalculateTreeLevels();
+        public (long BlockNumber, Hash256 BlockHash) SyncPivot => _blockTree.SyncPivot;
 
-        private bool IsFastBlocks() => _syncConfig.FastSync && _syncConfig.PivotNumberParsed != 0L; // if pivot number is 0 then it is equivalent to fast blocks disabled
+        private bool IsFastBlocks() => _syncConfig.FastSync && _blockTree.SyncPivot.BlockNumber != 0L; // if pivot number is 0 then it is equivalent to fast blocks disabled
 
 
     }

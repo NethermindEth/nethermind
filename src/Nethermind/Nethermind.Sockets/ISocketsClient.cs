@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Threading;
 using System.Threading.Tasks;
 
 namespace Nethermind.Sockets
@@ -14,7 +15,7 @@ namespace Nethermind.Sockets
     {
         string Id { get; }
         string ClientName { get; }
-        Task ReceiveLoopAsync();
+        Task ReceiveLoopAsync(CancellationToken cancellationToken = default);
         Task SendAsync(SocketsMessage message);
     }
 }

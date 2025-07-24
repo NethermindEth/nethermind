@@ -1,8 +1,6 @@
-// SPDX-FileCopyrightText: 2024 Demerzel Solutions Limited
+// SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System;
-using System.Linq;
 using Nethermind.Abi;
 using Nethermind.Consensus.ExecutionRequests;
 using Nethermind.Core;
@@ -11,6 +9,7 @@ using Nethermind.Core.Crypto;
 using Nethermind.Core.ExecutionRequest;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
+using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Db;
 using Nethermind.Evm;
@@ -19,10 +18,16 @@ using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.Specs;
-using Nethermind.State;
+using Nethermind.Specs.Forks;
+using Nethermind.Evm.State;
 using Nethermind.Trie.Pruning;
 using NSubstitute;
 using NUnit.Framework;
+using System;
+using System.Collections.Generic;
+using System.Linq;
+using Nethermind.Blockchain.Tracing;
+using Nethermind.State;
 
 namespace Nethermind.Consensus.Test;
 
@@ -30,7 +35,7 @@ public class ExecutionProcessorTests
 {
     private ISpecProvider _specProvider;
     private ITransactionProcessor _transactionProcessor;
-    private WorldState _stateProvider;
+    private IWorldState _stateProvider;
     private IReleaseSpec _spec;
     private static readonly UInt256 AccountBalance = 1.Ether();
     private static readonly Address DepositContractAddress = Eip6110Constants.MainnetDepositContractAddress;
@@ -65,12 +70,13 @@ public class ExecutionProcessorTests
     public void Setup()
     {
         _specProvider = MainnetSpecProvider.Instance;
-        MemDb stateDb = new();
-        TrieStore trieStore = new(stateDb, LimboLogs.Instance);
-
-        _stateProvider = new WorldState(trieStore, new MemDb(), LimboLogs.Instance);
+        IWorldStateManager worldStateManager = TestWorldStateFactory.CreateForTest();
+        _stateProvider = worldStateManager.GlobalWorldState;
         _stateProvider.CreateAccount(eip7002Account, AccountBalance);
         _stateProvider.CreateAccount(eip7251Account, AccountBalance);
+
+        _stateProvider.InsertCode(eip7002Account, Eip7002TestConstants.CodeHash, Eip7002TestConstants.Code, Prague.Instance);
+        _stateProvider.InsertCode(eip7251Account, Eip7251TestConstants.CodeHash, Eip7251TestConstants.Code, Prague.Instance);
         _stateProvider.Commit(_specProvider.GenesisSpec);
         _stateProvider.CommitTree(0);
 
@@ -87,20 +93,23 @@ public class ExecutionProcessorTests
 
         _transactionProcessor = Substitute.For<ITransactionProcessor>();
 
-        _transactionProcessor.Execute(Arg.Any<Transaction>(), Arg.Any<BlockExecutionContext>(), Arg.Any<CallOutputTracer>())
+        _transactionProcessor.Execute(Arg.Any<Transaction>(), Arg.Any<CallOutputTracer>())
             .Returns(ci =>
             {
                 Transaction transaction = ci.Arg<Transaction>();
                 CallOutputTracer tracer = ci.Arg<CallOutputTracer>();
+
+                tracer.StatusCode = StatusCode.Success;
+
                 if (transaction.To == eip7002Account)
                 {
-                    Span<byte> buffer = new byte[_executionWithdrawalRequests.GetRequestsByteSize()];
+                    Span<byte> buffer = new byte[GetRequestsByteSize(_executionWithdrawalRequests)];
                     FlatEncodeWithoutType(_executionWithdrawalRequests, buffer);
                     tracer.ReturnValue = buffer.ToArray();
                 }
                 else if (transaction.To == eip7251Account)
                 {
-                    Span<byte> buffer = new byte[_executionConsolidationRequests.GetRequestsByteSize()];
+                    Span<byte> buffer = new byte[GetRequestsByteSize(_executionConsolidationRequests)];
                     FlatEncodeWithoutType(_executionConsolidationRequests, buffer);
                     tracer.ReturnValue = buffer.ToArray();
                 }
@@ -109,11 +118,12 @@ public class ExecutionProcessorTests
                     tracer.ReturnValue = [];
                 }
                 return new TransactionResult();
+
+                static int GetRequestsByteSize(IEnumerable<ExecutionRequest> requests) => requests.Sum(r => r.RequestData.Length);
             });
     }
 
-
-    public static Hash256 CalculateHash(
+    private static Hash256 CalculateHash(
         TestExecutionRequest[] depositRequests,
         TestExecutionRequest[] withdrawalRequests,
         TestExecutionRequest[] consolidationRequests
@@ -124,9 +134,26 @@ public class ExecutionProcessorTests
     }
 
     [Test]
+    public void ShouldNotProcessExecutionRequestsForGenesisBlock()
+    {
+        Block block = Build.A.Block.WithNumber(0).TestObject;
+        ExecutionRequestsProcessor executionRequestsProcessor = new(_transactionProcessor);
+
+        TxReceipt[] txReceipts = [
+            Build.A.Receipt.WithLogs(
+                CreateLogEntry(TestItem.ExecutionRequestA.RequestDataParts)
+            ).TestObject
+        ];
+        _transactionProcessor.SetBlockExecutionContext(new BlockExecutionContext(block.Header, _spec));
+        executionRequestsProcessor.ProcessExecutionRequests(block, _stateProvider, txReceipts, _spec);
+
+        Assert.That(block.Header.RequestsHash, Is.Null);
+    }
+
+    [Test]
     public void ShouldProcessExecutionRequests()
     {
-        Block block = Build.A.Block.TestObject;
+        Block block = Build.A.Block.WithNumber(1).TestObject;
         ExecutionRequestsProcessor executionRequestsProcessor = new(_transactionProcessor);
 
         TxReceipt[] txReceipts = [
@@ -136,16 +163,22 @@ public class ExecutionProcessorTests
                 CreateLogEntry(TestItem.ExecutionRequestC.RequestDataParts)
             ).TestObject
         ];
+        _transactionProcessor.SetBlockExecutionContext(new BlockExecutionContext(block.Header, _spec));
         executionRequestsProcessor.ProcessExecutionRequests(block, _stateProvider, txReceipts, _spec);
 
         Assert.That(block.Header.RequestsHash, Is.EqualTo(
            CalculateHash(_executionDepositRequests, _executionWithdrawalRequests, _executionConsolidationRequests)
        ));
+    }
 
-
-        static LogEntry CreateLogEntry(byte[][] requestDataParts) =>
-            Build.A.LogEntry
-                .WithData(_abiEncoder.Encode(AbiEncodingStyle.None, _depositEventABI, requestDataParts!))
-                .WithAddress(DepositContractAddress).TestObject;
+    static LogEntry CreateLogEntry(byte[][] requestDataParts) =>
+        Build.A.LogEntry
+            .WithData(_abiEncoder.Encode(AbiEncodingStyle.None, _depositEventABI, requestDataParts!))
+            .WithTopics(ExecutionRequestsProcessor.DepositEventAbi.Hash)
+            .WithAddress(DepositContractAddress).TestObject;
+    [Test]
+    public void ShouldUseCorrectDepositTopic()
+    {
+        Assert.That(ExecutionRequestsProcessor.DepositEventAbi.Hash, Is.EqualTo(new Hash256("0x649bbc62d0e31342afea4e5cd82d4049e7e1ee912fc0889aa790803be39038c5")));
     }
 }

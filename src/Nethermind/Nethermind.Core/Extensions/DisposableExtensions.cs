@@ -11,15 +11,12 @@ public static class DisposableExtensions
 {
     public static void TryDispose<T>(this T item)
     {
-        if (item is IDisposable d)
-        {
-            d.Dispose();
-        }
+        (item as IDisposable)?.Dispose();
     }
 
-    public static void DisposeItems<T>(this IEnumerable<T> item) where T : IDisposable
+    public static void DisposeItems<T>(this IEnumerable<T> items) where T : IDisposable
     {
-        foreach (T disposable in item)
+        foreach (T disposable in items)
         {
             disposable.Dispose();
         }

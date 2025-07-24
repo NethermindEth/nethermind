@@ -5,6 +5,7 @@ using System.ComponentModel;
 using System.Runtime.CompilerServices;
 using Nethermind.Core.Threading;
 using Nethermind.Core.Attributes;
+using System.Threading;
 
 [assembly: InternalsVisibleTo("Nethermind.Consensus")]
 
@@ -12,6 +13,13 @@ namespace Nethermind.Evm;
 
 public class Metrics
 {
+    [CounterMetric]
+    [Description("Number of Code DB cache reads.")]
+    public static long CodeDbCache => _codeDbCache.GetTotalValue();
+    private static readonly ZeroContentionCounter _codeDbCache = new();
+    [Description("Number of Code DB cache reads on thread.")]
+    internal static long ThreadLocalCodeDbCache => _codeDbCache.ThreadLocalValue;
+    internal static void IncrementCodeDbCache() => _codeDbCache.Increment();
     [CounterMetric]
     [Description("Number of EVM exceptions thrown by contracts.")]
     public static long EvmExceptions { get; set; }
@@ -60,63 +68,6 @@ public class Metrics
     [Description("Number of EXP opcodes executed.")]
     public static long ExpOpcode { get; set; }
 
-    [Description("Number of BLOCKHASH opcodes executed.")]
-    public static long BlockhashOpcode { get; set; }
-
-    [Description("Number of BN254_MUL precompile calls.")]
-    public static long Bn254MulPrecompile { get; set; }
-
-    [Description("Number of BN254_ADD precompile calls.")]
-    public static long Bn254AddPrecompile { get; set; }
-
-    [Description("Number of BN254_PAIRING precompile calls.")]
-    public static long Bn254PairingPrecompile { get; set; }
-
-    [Description("Number of BLS12_G1ADD precompile calls.")]
-    public static long BlsG1AddPrecompile { get; set; }
-
-    [Description("Number of BLS12_G1MUL precompile calls.")]
-    public static long BlsG1MulPrecompile { get; set; }
-
-    [Description("Number of BLS12_G1MSM precompile calls.")]
-    public static long BlsG1MSMPrecompile { get; set; }
-
-    [Description("Number of BLS12_G2ADD precompile calls.")]
-    public static long BlsG2AddPrecompile { get; set; }
-
-    [Description("Number of BLS12_G2MUL precompile calls.")]
-    public static long BlsG2MulPrecompile { get; set; }
-
-    [Description("Number of BLS12_G2MSM precompile calls.")]
-    public static long BlsG2MSMPrecompile { get; set; }
-
-    [Description("Number of BLS12_PAIRING_CHECK precompile calls.")]
-    public static long BlsPairingCheckPrecompile { get; set; }
-
-    [Description("Number of BLS12_MAP_FP_TO_G1 precompile calls.")]
-    public static long BlsMapFpToG1Precompile { get; set; }
-
-    [Description("Number of BLS12_MAP_FP2_TO_G2 precompile calls.")]
-    public static long BlsMapFp2ToG2Precompile { get; set; }
-
-    [Description("Number of EC_RECOVERY precompile calls.")]
-    public static long EcRecoverPrecompile { get; set; }
-
-    [Description("Number of MODEXP precompile calls.")]
-    public static long ModExpPrecompile { get; set; }
-
-    [Description("Number of RIPEMD160 precompile calls.")]
-    public static long Ripemd160Precompile { get; set; }
-
-    [Description("Number of SHA256 precompile calls.")]
-    public static long Sha256Precompile { get; set; }
-
-    [Description("Number of Secp256r1 precompile calls.")]
-    public static long Secp256r1Precompile { get; set; }
-
-    [Description("Number of Point Evaluation precompile calls.")]
-    public static long PointEvaluationPrecompile { get; set; }
-
     [CounterMetric]
     [Description("Number of calls made to addresses without code.")]
     public static long EmptyCalls => _emptyCalls.GetTotalValue();
@@ -140,6 +91,16 @@ public class Metrics
     [Description("Number of contracts' code analysed for jump destinations on thread.")]
     public static long ThreadLocalContractsAnalysed => _contractsAnalysed.ThreadLocalValue;
     public static void IncrementContractsAnalysed() => _contractsAnalysed.Increment();
+
+    [GaugeMetric]
+    [Description("The number of tasks currently scheduled in the background.")]
+    public static long NumberOfBackgroundTasksScheduled { get; set; }
+
+    private static long _totalBackgroundTasksQueued;
+    [GaugeMetric]
+    [Description("Total number of tasks queued for background execution.")]
+    public static long TotalBackgroundTasksQueued => _totalBackgroundTasksQueued;
+    public static void IncrementTotalBackgroundTasksQueued() => Interlocked.Increment(ref _totalBackgroundTasksQueued);
 
     internal static long BlockTransactions { get; set; }
 

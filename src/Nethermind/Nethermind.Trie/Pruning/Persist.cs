@@ -7,7 +7,7 @@ namespace Nethermind.Trie.Pruning
     {
         public static IPersistenceStrategy EveryBlock = Archive.Instance;
 
-        public static IPersistenceStrategy IfBlockOlderThan(long length)
+        public static IPersistenceStrategy EveryNBlock(long length)
             => new ConstantInterval(length);
 
         public static IPersistenceStrategy Or(this IPersistenceStrategy strategy, IPersistenceStrategy otherStrategy)

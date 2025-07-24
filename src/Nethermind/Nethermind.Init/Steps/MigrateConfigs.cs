@@ -1,10 +1,12 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using System.Reflection;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Api;
+using Nethermind.Api.Steps;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Config;
 using Nethermind.Consensus;
@@ -48,6 +50,11 @@ namespace Nethermind.Init.Steps
             {
                 ConfigItemAttribute? attribute = propertyInfo.GetCustomAttribute<ConfigItemAttribute>();
                 string expectedDefaultValue = attribute?.DefaultValue.Trim('"') ?? "";
+                if (propertyInfo.Name == nameof(IBlocksConfig.ExtraData))
+                {
+                    expectedDefaultValue = BlocksConfig.DefaultExtraData;
+                }
+
                 object? valA = propertyInfo.GetValue(blocksConfig);
                 object? valB = propertyInfo.GetValue(value);
 

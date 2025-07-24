@@ -20,6 +20,7 @@ namespace Nethermind.Api
         public string LogFileName { get; set; } = "log.txt";
         public string? GenesisHash { get; set; }
         public string StaticNodesPath { get; set; } = "Data/static-nodes.json";
+        public string TrustedNodesPath { get; set; } = "Data/trusted-nodes.json";
         public string? KzgSetupPath { get; set; } = null;
         public string LogDirectory { get; set; } = "logs";
         public string? LogRules { get; set; } = null;
@@ -35,7 +36,9 @@ namespace Nethermind.Api
         public bool DisableMallocOpts { get; set; } = false;
         public INodeStorage.KeyScheme StateDbKeyScheme { get; set; } = INodeStorage.KeyScheme.Current;
         public long? ExitOnBlockNumber { get; set; } = null;
-        public int BackgroundTaskConcurrency { get; set; } = 1;
+        public int BackgroundTaskConcurrency { get; set; } = 2;
+        public int BackgroundTaskMaxNumber { get; set; } = 1024;
+        public bool InRunnerTest { get; set; } = false;
 
         [Obsolete("Use DiagnosticMode with MemDb instead")]
         public bool UseMemDb

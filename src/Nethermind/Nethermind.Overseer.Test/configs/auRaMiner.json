@@ -6,7 +6,7 @@
     "ChainSpecPath": "chainspec/auRa.json",
     "GenesisHash": "",
     "BaseDbPath": "aura",
-    "LogFileName": "auRaMiner.logs.txt"
+    "LogFileName": "auRaMiner.log"
   },
   "Network": {
     "DiscoveryPort": 30303,

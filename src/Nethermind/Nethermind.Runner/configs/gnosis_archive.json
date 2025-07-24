@@ -4,7 +4,7 @@
     "ChainSpecPath": "chainspec/gnosis.json",
     "GenesisHash": "0x4f1dd23188aab3a76b463e4af801b52b1248ef073c648cbdc4c9333d3da79756",
     "BaseDbPath": "nethermind_db/gnosis_archive",
-    "LogFileName": "gnosis_archive.logs.txt",
+    "LogFileName": "gnosis_archive.log",
     "MemoryHint": 1024000000
   },
   "JsonRpc": {

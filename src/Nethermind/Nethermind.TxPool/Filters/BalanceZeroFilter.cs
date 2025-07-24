@@ -35,7 +35,7 @@ namespace Nethermind.TxPool.Filters
                     AcceptTxResult.InsufficientFunds.WithMessage("Balance is zero, cannot pay gas");
             }
 
-            if (balance < tx.Value)
+            if (balance < tx.ValueRef)
             {
                 Metrics.PendingTransactionsBalanceBelowValue++;
                 return isNotLocal ?

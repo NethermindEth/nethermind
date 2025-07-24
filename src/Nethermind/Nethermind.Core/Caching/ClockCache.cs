@@ -14,10 +14,10 @@ using CollectionExtensions = Nethermind.Core.Collections.CollectionExtensions;
 
 namespace Nethermind.Core.Caching;
 
-public sealed class ClockCache<TKey, TValue>(int maxCapacity) : ClockCacheBase<TKey>(maxCapacity)
+public sealed class ClockCache<TKey, TValue>(int maxCapacity, int? lockPartition = null) : ClockCacheBase<TKey>(maxCapacity)
     where TKey : struct, IEquatable<TKey>
 {
-    private readonly ConcurrentDictionary<TKey, LruCacheItem> _cacheMap = new(CollectionExtensions.LockPartitions, maxCapacity);
+    private readonly ConcurrentDictionary<TKey, LruCacheItem> _cacheMap = new(lockPartition ?? CollectionExtensions.LockPartitions, maxCapacity);
     private readonly McsLock _lock = new();
 
     public TValue Get(TKey key)
@@ -58,11 +58,15 @@ public sealed class ClockCache<TKey, TValue>(int maxCapacity) : ClockCacheBase<T
 
         if (_cacheMap.TryGetValue(key, out LruCacheItem ov))
         {
-            _cacheMap[key] = new(val, ov.Offset);
-            MarkAccessed(ov.Offset);
-            return false;
+            // Fast path: atomic update using TryUpdate
+            if (_cacheMap.TryUpdate(key, new(val, ov.Offset), comparisonValue: ov))
+            {
+                MarkAccessed(ov.Offset);
+                return false;
+            }
         }
 
+        // Fallback to slow path with lock
         return SetSlow(key, val);
     }
 
@@ -167,9 +171,24 @@ public sealed class ClockCache<TKey, TValue>(int maxCapacity) : ClockCacheBase<T
     }
 
     [StructLayout(LayoutKind.Auto)]
-    private readonly struct LruCacheItem(TValue v, int offset)
+    private readonly struct LruCacheItem(TValue v, int offset) : IEquatable<LruCacheItem>
     {
         public readonly TValue Value = v;
         public readonly int Offset = offset;
+
+        public bool Equals(LruCacheItem other)
+        {
+            if (other.Offset != Offset)
+            {
+                return false;
+            }
+
+            if (typeof(TValue).IsValueType)
+            {
+                return EqualityComparer<TValue>.Default.Equals(other.Value, Value);
+            }
+
+            return ReferenceEquals(other.Value, Value);
+        }
     }
 }

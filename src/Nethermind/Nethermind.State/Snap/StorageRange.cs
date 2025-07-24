@@ -15,7 +15,7 @@ namespace Nethermind.State.Snap
         /// <summary>
         /// Root hash of the account trie to serve
         /// </summary>
-        public ValueHash256 RootHash { get; set; }
+        public Hash256 RootHash { get; set; }
 
         /// <summary>
         /// Accounts of the storage tries to serve

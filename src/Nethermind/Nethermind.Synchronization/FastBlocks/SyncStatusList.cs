@@ -90,77 +90,84 @@ namespace Nethermind.Synchronization.FastBlocks
         public bool TryGetInfosForBatch(int batchSize, Func<BlockInfo, bool> blockExist, out BlockInfo?[] infos)
         {
             ArrayPoolList<BlockInfo?> workingArray = new(batchSize, batchSize);
-
-            // Need to be a max attempt to update sync progress
-            const int maxAttempt = 8;
-            for (int attempt = 0; attempt < maxAttempt; attempt++)
+            try
             {
-                // Because the last clause of GetInfosForBatch increment the _lowestInsertWithoutGap need to be run
-                // sequentially, can't find an easy way to parallelize the checking for block exist part in the check
-                // So here we are...
-                GetInfosForBatch(workingArray.AsSpan());
-
-                (bool hasNonNull, bool hasInserted) = ClearExistingBlock();
-
-                if (hasNonNull || !hasInserted)
+                // Need to be a max attempt to update sync progress
+                const int maxAttempt = 8;
+                for (int attempt = 0; attempt < maxAttempt; attempt++)
                 {
-                    CompileOutput(out infos);
-                    return true;
-                }
+                    // Because the last clause of GetInfosForBatch increment the _lowestInsertWithoutGap need to be run
+                    // sequentially, can't find an easy way to parallelize the checking for block exist part in the check
+                    // So here we are...
+                    GetInfosForBatch(workingArray.AsSpan());
 
-                // At this point, hasNonNull is false and hasInserted is true, meaning all entry in workingArray
-                // already exist. We switch to a bigger array to improve parallelization throughput
-                if (workingArray.Count < ParallelExistCheckSize)
-                {
-                    workingArray = new ArrayPoolList<BlockInfo?>(ParallelExistCheckSize, ParallelExistCheckSize);
-                }
-            }
+                    (bool hasNonNull, bool hasInserted) = ClearExistingBlock();
 
-            infos = [];
-            return false;
-
-            (bool, bool) ClearExistingBlock()
-            {
-                bool hasNonNull = false;
-                bool hasInserted = false;
-                ParallelUnbalancedWork.For(0, workingArray.Count, (i) =>
-                {
-                    if (workingArray[i] is not null)
+                    if (hasNonNull || !hasInserted)
                     {
-                        if (blockExist(workingArray[i]))
+                        CompileOutput(out infos);
+                        return true;
+                    }
+
+                    // At this point, hasNonNull is false and hasInserted is true, meaning all entry in workingArray
+                    // already exist. We switch to a bigger array to improve parallelization throughput
+                    if (workingArray.Count < ParallelExistCheckSize)
+                    {
+                        workingArray.Dispose();
+                        workingArray = new ArrayPoolList<BlockInfo?>(ParallelExistCheckSize, ParallelExistCheckSize);
+                    }
+                }
+
+                infos = [];
+                return false;
+
+                (bool, bool) ClearExistingBlock()
+                {
+                    bool hasNonNull = false;
+                    bool hasInserted = false;
+                    ParallelUnbalancedWork.For(0, workingArray.Count, (i) =>
+                    {
+                        if (workingArray[i] is not null)
                         {
-                            MarkInserted(workingArray[i].BlockNumber);
-                            hasInserted = true;
-                            workingArray[i] = null;
+                            if (blockExist(workingArray[i]))
+                            {
+                                MarkInserted(workingArray[i].BlockNumber);
+                                hasInserted = true;
+                                workingArray[i] = null;
+                            }
+                            else
+                            {
+                                hasNonNull = true;
+                            }
+                        }
+                    });
+                    return (hasNonNull, hasInserted);
+                }
+
+                void CompileOutput(out BlockInfo?[] outputArray)
+                {
+                    int slot = 0;
+                    outputArray = new BlockInfo?[batchSize];
+                    for (int i = 0; i < workingArray.Count; i++)
+                    {
+                        if (workingArray[i] is null) continue;
+
+                        if (slot < outputArray.Length)
+                        {
+                            outputArray[slot] = workingArray[i];
+                            slot++;
                         }
                         else
                         {
-                            hasNonNull = true;
+                            // Not enough space in output we'll need to put back the block
+                            MarkPending(workingArray[i]);
                         }
                     }
-                });
-                return (hasNonNull, hasInserted);
-            }
-
-            void CompileOutput(out BlockInfo?[] outputArray)
-            {
-                int slot = 0;
-                outputArray = new BlockInfo?[batchSize];
-                for (int i = 0; i < workingArray.Count; i++)
-                {
-                    if (workingArray[i] is null) continue;
-
-                    if (slot < outputArray.Length)
-                    {
-                        outputArray[slot] = workingArray[i];
-                        slot++;
-                    }
-                    else
-                    {
-                        // Not enough space in output we'll need to put back the block
-                        MarkPending(workingArray[i]);
-                    }
                 }
+            }
+            finally
+            {
+                workingArray.Dispose();
             }
         }
 

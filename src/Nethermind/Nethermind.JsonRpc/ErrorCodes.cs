@@ -68,7 +68,7 @@ namespace Nethermind.JsonRpc
         public const int LimitExceeded = -32005;
 
         /// <summary>
-        /// 
+        ///
         /// </summary>
         public const int ExecutionError = -32015;
 
@@ -111,5 +111,15 @@ namespace Nethermind.JsonRpc
         /// Invalid RPC simulate call transaction
         /// </summary>
         public const int InvalidTransaction = -38014;
+
+        /// <summary>
+        /// Too many blocks for simulation
+        /// </summary>
+        public const int ClientLimitExceededError = -38026;
+
+        /// <summary>
+        /// Block is not available due to history expirty policy
+        /// </summary>
+        public const int PrunedHistoryUnavailable = 4444;
     }
 }

@@ -22,6 +22,6 @@ public class Eip3540Tests : GeneralStateTestBase
     public static IEnumerable<GeneralStateTest> LoadTests()
     {
         var loader = new TestsSourceLoader(new LoadGeneralStateTestsStrategy(), "stEIP3540");
-        return (IEnumerable<GeneralStateTest>)loader.LoadTests();
+        return loader.LoadTests<GeneralStateTest>();
     }
 }

@@ -6,6 +6,7 @@ using FluentAssertions;
 using Nethermind.Consensus.Ethash;
 using Nethermind.Core;
 using Nethermind.Core.Extensions;
+using Nethermind.Logging;
 using Nethermind.Serialization.Json;
 using Nethermind.Specs.ChainSpecStyle;
 using NUnit.Framework;
@@ -17,8 +18,8 @@ public class ChainSpecLoaderTests
 {
     private static ChainSpec LoadChainSpec(string path)
     {
-        ChainSpecLoader chainSpecLoader = new(new EthereumJsonSerializer());
-        ChainSpec chainSpec = chainSpecLoader.LoadFromFile(path);
+        var loader = new ChainSpecFileLoader(new EthereumJsonSerializer(), LimboTraceLogger.Instance);
+        var chainSpec = loader.LoadEmbeddedOrFromFile(path);
         return chainSpec;
     }
 
@@ -116,6 +117,32 @@ public class ChainSpecLoaderTests
         chainSpec.ShanghaiTimestamp.Should().Be(HoleskySpecProvider.ShanghaiTimestamp);
         chainSpec.ShanghaiTimestamp.Should().Be(HoleskySpecProvider.Instance.TimestampFork);
         // chainSpec.CancunTimestamp.Should().Be(HoleskySpecProvider.CancunTimestamp);
+    }
+
+
+    [Test]
+    public void Can_load_hoodi()
+    {
+        string path = Path.Combine(TestContext.CurrentContext.WorkDirectory, "../../../../", "Chains/hoodi.json");
+        ChainSpec chainSpec = LoadChainSpec(path);
+
+        Assert.That(chainSpec.NetworkId, Is.EqualTo(560048), $"{nameof(chainSpec.NetworkId)}");
+        Assert.That(chainSpec.Name, Is.EqualTo("Hoodi Testnet"), $"{nameof(chainSpec.Name)}");
+        Assert.That(chainSpec.DataDir, Is.EqualTo("hoodi"), $"{nameof(chainSpec.DataDir)}");
+        Assert.That(chainSpec.SealEngineType, Is.EqualTo(SealEngineType.Ethash), "engine");
+
+        chainSpec.DaoForkBlockNumber.Should().Be(null);
+        chainSpec.TangerineWhistleBlockNumber.Should().Be(0);
+        chainSpec.SpuriousDragonBlockNumber.Should().Be(0);
+        chainSpec.ByzantiumBlockNumber.Should().Be(0);
+        chainSpec.ConstantinopleBlockNumber.Should().Be(0);
+        chainSpec.ConstantinopleFixBlockNumber.Should().Be(0);
+        chainSpec.IstanbulBlockNumber.Should().Be(0);
+        chainSpec.BerlinBlockNumber.Should().Be(0);
+        chainSpec.LondonBlockNumber.Should().Be(0);
+        chainSpec.ShanghaiTimestamp.Should().Be(0);
+        chainSpec.CancunTimestamp.Should().Be(0);
+        chainSpec.PragueTimestamp.Should().Be(HoodiSpecProvider.PragueTimestamp);
     }
 
     [Test]

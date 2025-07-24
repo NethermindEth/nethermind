@@ -1,6 +1,7 @@
-// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System.Collections.Generic;
 using System.Runtime.CompilerServices;
 using System.Text.Json.Serialization;
 using Nethermind.Core;
@@ -8,9 +9,10 @@ using Nethermind.Core.Crypto;
 using Nethermind.Int256;
 
 [assembly: InternalsVisibleTo("Nethermind.Specs.Test")]
+[assembly: InternalsVisibleTo("Nethermind.TxPool.Test")]
 namespace Nethermind.Specs.ChainSpecStyle.Json;
 
-internal class ChainSpecParamsJson
+public class ChainSpecParamsJson
 {
     public ulong? ChainId { get; set; }
     public ulong? NetworkId { get; set; }
@@ -102,8 +104,6 @@ internal class ChainSpecParamsJson
     // we can disable it if needed, but its expected not to cause issues
     public long? Eip3607Transition { get; set; } = 0;
 
-    public long? OntakeTransition { get; set; }
-
     public UInt256? Eip1559BaseFeeInitialValue { get; set; }
 
     public UInt256? Eip1559BaseFeeMaxChangeDenominator { get; set; }
@@ -147,18 +147,31 @@ internal class ChainSpecParamsJson
     public ulong? Eip2935TransitionTimestamp { get; set; }
     public Address Eip2935ContractAddress { get; set; }
     public UInt256? Eip4844BlobGasPriceUpdateFraction { get; set; }
-    public ulong? Eip4844MaxBlobGasPerBlock { get; set; }
     public UInt256? Eip4844MinBlobGasPrice { get; set; }
-    public ulong? Eip4844TargetBlobGasPerBlock { get; set; }
     public ulong? Eip4844FeeCollectorTransitionTimestamp { get; set; }
     public ulong? Eip6110TransitionTimestamp { get; set; }
     public Address DepositContractAddress { get; set; }
     public ulong? Eip7002TransitionTimestamp { get; set; }
+    public ulong? Eip7623TransitionTimestamp { get; set; }
     public Address Eip7002ContractAddress { get; set; }
     public ulong? Eip7251TransitionTimestamp { get; set; }
     public Address Eip7251ContractAddress { get; set; }
+    public ulong? Eip7951TransitionTimestamp { get; set; }
     public ulong? Rip7212TransitionTimestamp { get; set; }
+    public ulong? Eip7692TransitionTimestamp { get; set; }
     public ulong? Eip7702TransitionTimestamp { get; set; }
+    public ulong? Eip7883TransitionTimestamp { get; set; }
+    public ulong? Eip7823TransitionTimestamp { get; set; }
+    public ulong? Eip7825TransitionTimestamp { get; set; }
+    public ulong? Eip7918TransitionTimestamp { get; set; }
+    public ulong? Eip7934TransitionTimestamp { get; set; }
+    public int? Eip7934MaxRlpBlockSize { get; set; }
+    public ulong? Eip7907TransitionTimestamp { get; set; }
+
     public ulong? OpGraniteTransitionTimestamp { get; set; }
     public ulong? OpHoloceneTransitionTimestamp { get; set; }
+    public ulong? OpIsthmusTransitionTimestamp { get; set; }
+    public SortedSet<BlobScheduleSettings> BlobSchedule { get; set; } = [];
+    public ulong? Eip7594TransitionTimestamp { get; set; }
+    public ulong? Eip7939TransitionTimestamp { get; set; }
 }

@@ -32,5 +32,7 @@ namespace Nethermind.Synchronization.ParallelSync
         UInt256? GetTotalDifficulty(Hash256 blockHash);
 
         void RecalculateProgressPointers();
+
+        (long BlockNumber, Hash256 BlockHash) SyncPivot { get; }
     }
 }

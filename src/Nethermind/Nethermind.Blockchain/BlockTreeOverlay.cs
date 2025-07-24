@@ -21,7 +21,11 @@ public class BlockTreeOverlay : IBlockTree
     {
         _baseTree = baseTree ?? throw new ArgumentNullException(nameof(baseTree));
         _overlayTree = overlayTree ?? throw new ArgumentNullException(nameof(overlayTree));
-        _overlayTree.UpdateMainChain(new[] { _baseTree.Head }, true, true);
+    }
+
+    public void ResetMainChain()
+    {
+        _overlayTree.UpdateMainChain(new[] { _baseTree.Head }, true, true); // Cannot be called until blocktree is ready.
     }
 
     public ulong NetworkId => _baseTree.NetworkId;
@@ -54,6 +58,10 @@ public class BlockTreeOverlay : IBlockTree
 
     public AddBlockResult Insert(BlockHeader header, BlockTreeInsertHeaderOptions headerOptions = BlockTreeInsertHeaderOptions.None) =>
         _overlayTree.Insert(header, headerOptions);
+
+    public void BulkInsertHeader(IReadOnlyList<BlockHeader> headers,
+        BlockTreeInsertHeaderOptions headerOptions = BlockTreeInsertHeaderOptions.None) =>
+        _overlayTree.BulkInsertHeader(headers, headerOptions);
 
     public AddBlockResult Insert(Block block,
         BlockTreeInsertBlockOptions insertBlockOptions = BlockTreeInsertBlockOptions.None,
@@ -222,6 +230,12 @@ public class BlockTreeOverlay : IBlockTree
         _overlayTree.UpdateBeaconMainChain(blockInfos, clearBeaconMainChainStartPoint);
 
     public void RecalculateTreeLevels() => _overlayTree.RecalculateTreeLevels();
+    public (long BlockNumber, Hash256 BlockHash) SyncPivot
+    {
+        get => _baseTree.SyncPivot;
+        set => _baseTree.SyncPivot = value;
+    }
+    public bool IsProcessingBlock { get => _baseTree.IsProcessingBlock; set => _baseTree.IsProcessingBlock = value; }
 
     public Block? FindBlock(Hash256 blockHash, BlockTreeLookupOptions options, long? blockNumber = null) =>
         _overlayTree.FindBlock(blockHash, options, blockNumber) ?? _baseTree.FindBlock(blockHash, options, blockNumber);
@@ -249,4 +263,7 @@ public class BlockTreeOverlay : IBlockTree
 
     public BlockHeader FindBestSuggestedHeader() =>
         _overlayTree.FindBestSuggestedHeader() ?? _baseTree.FindBestSuggestedHeader();
+
+
+    public long GetLowestBlock() => _baseTree.GetLowestBlock();
 }

@@ -1,14 +1,10 @@
 <Project>
 
+  <Import Project="../Directory.Build.props" />
+
   <PropertyGroup>
-    <Configuration Condition="'$(Configuration)' == ''">Debug</Configuration>
     <ImplicitUsings>enable</ImplicitUsings>
-    <LangVersion>latest</LangVersion>
-    <NuGetAuditMode>direct</NuGetAuditMode>
     <Nullable>enable</Nullable>
-    <TargetFramework>net9.0</TargetFramework>
-    <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
-    <UseArtifactsOutput>true</UseArtifactsOutput>
   </PropertyGroup>
 
 </Project>

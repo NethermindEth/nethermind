@@ -5,7 +5,8 @@ using System.Linq;
 using System.Numerics;
 using Nethermind.Core;
 using Nethermind.Core.Extensions;
-using Nethermind.Evm.Tracing.GethStyle;
+using Nethermind.Core.Test.Builders;
+using Nethermind.Blockchain.Tracing.GethStyle;
 using Nethermind.Int256;
 using NUnit.Framework;
 using Nethermind.Specs;
@@ -385,7 +386,7 @@ public class VirtualMachineTests : VirtualMachineTestsBase
     [Test]
     public void Or_0_0()
     {
-        TestAllTracerWithOutput receipt = Execute(
+        TestAllTracerWithOutput receipt = Execute((MainnetSpecProvider.ByzantiumBlockNumber, null),
             (byte)Instruction.PUSH1,
             0,
             (byte)Instruction.PUSH1,
@@ -438,7 +439,7 @@ public class VirtualMachineTests : VirtualMachineTestsBase
             .MCOPY(6, 0, 6)
             .STOP()
             .Done;
-        GethLikeTxTrace traces = Execute(new GethLikeTxMemoryTracer(GethTraceOptions.Default), code, MainnetSpecProvider.CancunActivation).BuildResult();
+        GethLikeTxTrace traces = Execute(new GethLikeTxMemoryTracer(Build.A.Transaction.TestObject, GethTraceOptions.Default), code, MainnetSpecProvider.CancunActivation).BuildResult();
 
         Assert.That(traces.Entries[^2].GasCost, Is.EqualTo(GasCostOf.VeryLow + GasCostOf.VeryLow * ((data.Length + 31) / 32) + GasCostOf.Memory * 0), "gas");
     }
@@ -453,7 +454,7 @@ public class VirtualMachineTests : VirtualMachineTestsBase
             .STOP()
             .Done;
         GethLikeTxTrace traces = Execute(
-            new GethLikeTxMemoryTracer(GethTraceOptions.Default with { EnableMemory = true }),
+            new GethLikeTxMemoryTracer(Build.A.Transaction.TestObject, GethTraceOptions.Default with { EnableMemory = true }),
             bytecode,
             MainnetSpecProvider.CancunActivation)
             .BuildResult();
@@ -477,7 +478,7 @@ public class VirtualMachineTests : VirtualMachineTestsBase
             .STOP()
             .Done;
         GethLikeTxTrace traces = Execute(
-            new GethLikeTxMemoryTracer(GethTraceOptions.Default with { EnableMemory = true }),
+            new GethLikeTxMemoryTracer(Build.A.Transaction.TestObject, GethTraceOptions.Default with { EnableMemory = true }),
             bytecode,
             MainnetSpecProvider.CancunActivation)
             .BuildResult();
@@ -498,7 +499,7 @@ public class VirtualMachineTests : VirtualMachineTestsBase
             .STOP()
             .Done;
         GethLikeTxTrace traces = Execute(
-            new GethLikeTxMemoryTracer(GethTraceOptions.Default with { EnableMemory = true }),
+            new GethLikeTxMemoryTracer(Build.A.Transaction.TestObject, GethTraceOptions.Default with { EnableMemory = true }),
             bytecode,
             MainnetSpecProvider.CancunActivation)
             .BuildResult();
@@ -518,7 +519,7 @@ public class VirtualMachineTests : VirtualMachineTestsBase
             .STOP()
             .Done;
         GethLikeTxTrace traces = Execute(
-            new GethLikeTxMemoryTracer(GethTraceOptions.Default with { EnableMemory = true }),
+            new GethLikeTxMemoryTracer(Build.A.Transaction.TestObject, GethTraceOptions.Default with { EnableMemory = true }),
             bytecode,
             MainnetSpecProvider.CancunActivation)
             .BuildResult();

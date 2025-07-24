@@ -4,7 +4,7 @@
     "ChainSpecPath": "chainspec/foundation.json",
     "GenesisHash": "0xd4e56740f876aef8c010b86a40d5f56745a118d0906a34e69aec8c0db1cb8fa3",
     "BaseDbPath": "nethermind_db/mainnet_archive",
-    "LogFileName": "mainnet_archive.logs.txt",
+    "LogFileName": "mainnet_archive.log",
     "MemoryHint": 4096000000
   },
   "Sync": {
@@ -18,7 +18,7 @@
     "NodeName": "Mainnet Archive"
   },
   "Blocks": {
-    "TargetBlockGasLimit": 36000000
+    "TargetBlockGasLimit": 45000000
   },
   "Receipt": {
     "TxLookupLimit": 0

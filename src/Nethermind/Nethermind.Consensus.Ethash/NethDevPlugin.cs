@@ -3,24 +3,19 @@
 
 using System;
 using System.Threading.Tasks;
+using Autofac;
+using Autofac.Core;
 using Nethermind.Api;
 using Nethermind.Api.Extensions;
-using Nethermind.Blockchain;
-using Nethermind.Blockchain.BeaconBlockRoot;
-using Nethermind.Blockchain.Blocks;
-using Nethermind.Blockchain.Receipts;
 using Nethermind.Config;
-using Nethermind.Consensus.Processing;
 using Nethermind.Consensus.Producers;
-using Nethermind.Consensus.Rewards;
-using Nethermind.Consensus.Transactions;
-using Nethermind.Core.Crypto;
-using Nethermind.Evm.TransactionProcessing;
+using Nethermind.Core;
 using Nethermind.Logging;
+using Nethermind.Specs.ChainSpecStyle;
 
 namespace Nethermind.Consensus.Ethash
 {
-    public class NethDevPlugin : IConsensusPlugin
+    public class NethDevPlugin(ChainSpec chainSpec) : IConsensusPlugin
     {
         public const string NethDev = "NethDev";
         private INethermindApi? _nethermindApi;
@@ -33,71 +28,26 @@ namespace Nethermind.Consensus.Ethash
 
         public string Author => "Nethermind";
 
+        public bool Enabled => chainSpec.SealEngineType == SealEngineType;
+
         public Task Init(INethermindApi nethermindApi)
         {
             _nethermindApi = nethermindApi;
             return Task.CompletedTask;
         }
 
-        public IBlockProducer InitBlockProducer(ITxSource? additionalTxSource = null)
+        public IBlockProducer InitBlockProducer()
         {
-            if (_nethermindApi!.SealEngineType != SealEngineType)
-            {
-                return null;
-            }
-
             var (getFromApi, _) = _nethermindApi!.ForProducer;
-
-            ReadOnlyBlockTree readOnlyBlockTree = getFromApi.BlockTree.AsReadOnly();
-
-            ITxFilterPipeline txFilterPipeline = new TxFilterPipelineBuilder(_nethermindApi.LogManager)
-                .WithBaseFeeFilter(getFromApi.SpecProvider)
-                .WithNullTxFilter()
-                .WithMinGasPriceFilter(_nethermindApi.Config<IBlocksConfig>(), getFromApi.SpecProvider)
-                .Build;
-
-            TxPoolTxSource txPoolTxSource = new(
-                getFromApi.TxPool,
-                getFromApi.SpecProvider,
-                getFromApi.TransactionComparerProvider!,
-                getFromApi.LogManager,
-                txFilterPipeline);
 
             ILogger logger = getFromApi.LogManager.GetClassLogger();
             if (logger.IsInfo) logger.Info("Starting Neth Dev block producer & sealer");
 
-            ReadOnlyTxProcessingEnv producerEnv = new(
-                _nethermindApi.WorldStateManager!,
-                readOnlyBlockTree,
-                getFromApi.SpecProvider,
-                getFromApi.LogManager);
-
-            IReadOnlyTxProcessingScope scope = producerEnv.Build(Keccak.EmptyTreeHash);
-
-            BlockProcessor producerProcessor = new(
-                getFromApi!.SpecProvider,
-                getFromApi!.BlockValidator,
-                NoBlockRewards.Instance,
-                new BlockProcessor.BlockProductionTransactionsExecutor(scope, getFromApi!.SpecProvider, getFromApi.LogManager),
-                scope.WorldState,
-                NullReceiptStorage.Instance,
-                scope.TransactionProcessor,
-                new BeaconBlockRootHandler(scope.TransactionProcessor, scope.WorldState),
-                new BlockhashStore(getFromApi.SpecProvider, scope.WorldState),
-                getFromApi.LogManager);
-
-            IBlockchainProcessor producerChainProcessor = new BlockchainProcessor(
-                readOnlyBlockTree,
-                producerProcessor,
-                getFromApi.BlockPreprocessor,
-                getFromApi.StateReader,
-                getFromApi.LogManager,
-                BlockchainProcessor.Options.NoReceipts);
-
+            IBlockProducerEnv env = getFromApi.BlockProducerEnvFactory.Create();
             IBlockProducer blockProducer = new DevBlockProducer(
-                additionalTxSource.Then(txPoolTxSource).ServeTxsOneByOne(),
-                producerChainProcessor,
-                scope.WorldState,
+                env.TxSource,
+                env.ChainProcessor,
+                env.ReadOnlyStateProvider,
                 getFromApi.BlockTree,
                 getFromApi.Timestamper,
                 getFromApi.SpecProvider,
@@ -109,7 +59,7 @@ namespace Nethermind.Consensus.Ethash
 
         public string SealEngineType => NethDev;
 
-        public IBlockProducerRunner CreateBlockProducerRunner()
+        public IBlockProducerRunner InitBlockProducerRunner(IBlockProducer blockProducer)
         {
             IBlockProductionTrigger trigger = new BuildBlocksRegularly(TimeSpan.FromMilliseconds(200))
                 .IfPoolIsNotEmpty(_nethermindApi.TxPool)
@@ -117,7 +67,21 @@ namespace Nethermind.Consensus.Ethash
             return new StandardBlockProducerRunner(
                 trigger,
                 _nethermindApi.BlockTree,
-                _nethermindApi.BlockProducer!);
+                blockProducer);
+        }
+
+        public IModule Module => new NethDevPluginModule();
+
+        private class NethDevPluginModule : Module
+        {
+            protected override void Load(ContainerBuilder builder)
+            {
+                base.Load(builder);
+
+                builder
+                    .AddSingleton<IBlockProducerTxSourceFactory, NethDevBlockProducerTxSourceFactory>()
+                    ;
+            }
         }
     }
 }

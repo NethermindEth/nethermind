@@ -122,6 +122,11 @@ public class Block
 
     [JsonIgnore]
     public ArrayPoolList<AddressAsKey>? AccountChanges { get; set; }
+
+    [JsonIgnore]
+    public int? EncodedSize { get; set; }
+
+
     [JsonIgnore]
     internal volatile int TransactionProcessed;
 
@@ -135,7 +140,8 @@ public class Block
         Format.HashNumberAndTx => Hash is null
             ? $"{Number} null, tx count: {Body.Transactions.Length}"
             : $"{Number} {TimestampDate:HH:mm:ss} ({Hash?.ToShortString()}), tx count: {Body.Transactions.Length}",
-        Format.HashNumberDiffAndTx => $"{ToShortHashAndNumber()}, diff: {Difficulty}, tx count: {Body.Transactions.Length}",
+        Format.HashNumberDiffAndTx => $"{ToShortHashAndNumber()}  diff {Difficulty} | txs {Body.Transactions.Length,7:N0}",
+        Format.HashNumberMGasAndTx => $"{ToShortHashAndNumber()}  {GasUsed / 1_000_000.0,9:N2} MGas | {Body.Transactions.Length,7:N0} txs",
         _ => ToShortHashAndNumber()
     };
 
@@ -184,6 +190,7 @@ public class Block
         FullHashNumberAndExtraData,
         HashNumberAndTx,
         HashNumberDiffAndTx,
+        HashNumberMGasAndTx,
         Short
     }
 }

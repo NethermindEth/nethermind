@@ -39,14 +39,29 @@ public class FilterManagerTests
         _logManager = LimboLogs.Instance;
     }
 
+    [TearDown]
+    public void TearDown()
+    {
+        _filterStore.Dispose();
+    }
+
+    [Test, MaxTime(Timeout.MaxTestTime)]
+    public void removing_filter_removes_data()
+    {
+        LogsShouldNotBeEmpty(static _ => { }, static _ => { });
+        _filterManager.GetLogs(0).Should().NotBeEmpty();
+        _filterStore.FilterRemoved += Raise.EventWith(new FilterEventArgs(0));
+        _filterManager.GetLogs(0).Should().BeEmpty();
+    }
+
     [Test, MaxTime(Timeout.MaxTestTime)]
     public void logs_should_not_be_empty_for_default_filter_parameters()
         => LogsShouldNotBeEmpty(static _ => { }, static _ => { });
 
     [Test, MaxTime(Timeout.MaxTestTime)]
     public void many_logs_should_not_be_empty_for_default_filters_parameters()
-        => LogsShouldNotBeEmpty(new Action<FilterBuilder>[] { static _ => { }, static _ => { }, static _ => { } },
-            new Action<ReceiptBuilder>[] { static _ => { }, static _ => { }, static _ => { } });
+        => LogsShouldNotBeEmpty([static _ => { }, static _ => { }, static _ => { }],
+            [static _ => { }, static _ => { }, static _ => { }]);
 
     [Test, MaxTime(Timeout.MaxTestTime)]
     public void logs_should_not_be_empty_for_from_block_earliest_type()
@@ -80,16 +95,16 @@ public class FilterManagerTests
     [Test, MaxTime(Timeout.MaxTestTime)]
     public void many_logs_should_not_be_empty_for_from_blocks_numbers_in_range()
         => LogsShouldNotBeEmpty(
-            new Action<FilterBuilder>[]
-            { static filter => filter.FromBlock(1L),
+            [
+                static filter => filter.FromBlock(1L),
                 static filter => filter.FromBlock(2L),
                 static filter => filter.FromBlock(3L)
-            },
-            new Action<ReceiptBuilder>[]
-            { static receipt => receipt.WithBlockNumber(1L),
+            ],
+            [
+                static receipt => receipt.WithBlockNumber(1L),
                 static receipt => receipt.WithBlockNumber(5L),
                 static receipt => receipt.WithBlockNumber(10L)
-            });
+            ]);
 
     [Test, MaxTime(Timeout.MaxTestTime)]
     public void logs_should_be_empty_for_from_block_number_not_in_range()
@@ -104,16 +119,16 @@ public class FilterManagerTests
     [Test, MaxTime(Timeout.MaxTestTime)]
     public void many_logs_should_not_be_empty_for_to_blocks_numbers_in_range()
         => LogsShouldNotBeEmpty(
-            new Action<FilterBuilder>[]
-            { static filter => filter.ToBlock(1L),
+            [
+                static filter => filter.ToBlock(1L),
                 static filter => filter.ToBlock(5L),
                 static filter => filter.ToBlock(10L)
-            },
-            new Action<ReceiptBuilder>[]
-            { static receipt => receipt.WithBlockNumber(1L),
+            ],
+            [
+                static receipt => receipt.WithBlockNumber(1L),
                 static receipt => receipt.WithBlockNumber(2L),
                 static receipt => receipt.WithBlockNumber(3L)
-            });
+            ]);
 
     [Test, MaxTime(Timeout.MaxTestTime)]
     public void logs_should_be_empty_for_to_block_number_not_in_range()
@@ -264,20 +279,16 @@ public class FilterManagerTests
     }
 
 
-    private void LogsShouldNotBeEmpty(Action<FilterBuilder> filterBuilder,
-        Action<ReceiptBuilder> receiptBuilder)
-        => LogsShouldNotBeEmpty(new[] { filterBuilder }, new[] { receiptBuilder });
+    private void LogsShouldNotBeEmpty(Action<FilterBuilder> filterBuilder, Action<ReceiptBuilder> receiptBuilder)
+        => LogsShouldNotBeEmpty([filterBuilder], [receiptBuilder]);
 
-    private void LogsShouldBeEmpty(Action<FilterBuilder> filterBuilder,
-        Action<ReceiptBuilder> receiptBuilder)
-        => LogsShouldBeEmpty(new[] { filterBuilder }, new[] { receiptBuilder });
+    private void LogsShouldBeEmpty(Action<FilterBuilder> filterBuilder, Action<ReceiptBuilder> receiptBuilder)
+        => LogsShouldBeEmpty([filterBuilder], [receiptBuilder]);
 
-    private void LogsShouldNotBeEmpty(IEnumerable<Action<FilterBuilder>> filterBuilders,
-        IEnumerable<Action<ReceiptBuilder>> receiptBuilders)
+    private void LogsShouldNotBeEmpty(IEnumerable<Action<FilterBuilder>> filterBuilders, IEnumerable<Action<ReceiptBuilder>> receiptBuilders)
         => Assert(filterBuilders, receiptBuilders, static logs => logs.Should().NotBeEmpty());
 
-    private void LogsShouldBeEmpty(IEnumerable<Action<FilterBuilder>> filterBuilders,
-        IEnumerable<Action<ReceiptBuilder>> receiptBuilders)
+    private void LogsShouldBeEmpty(IEnumerable<Action<FilterBuilder>> filterBuilders, IEnumerable<Action<ReceiptBuilder>> receiptBuilders)
         => Assert(filterBuilders, receiptBuilders, static logs => logs.Should().BeEmpty());
 
     private void Assert(Action<FilterBuilder, int> filterBuilder, int filterCount,

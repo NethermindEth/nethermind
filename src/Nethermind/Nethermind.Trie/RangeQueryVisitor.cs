@@ -47,6 +47,7 @@ public class RangeQueryVisitor : ITreeVisitor<TreePathContext>, IDisposable
     public bool StoppedEarly { get; set; } = false;
     public bool IsFullDbScan => false;
     public bool IsRangeScan => true;
+    public bool ExpectAccounts => false;
     private readonly CancellationToken _cancellationToken;
 
     public ReadFlags ExtraReadFlag { get; }
@@ -104,7 +105,7 @@ public class RangeQueryVisitor : ITreeVisitor<TreePathContext>, IDisposable
         return true;
     }
 
-    public bool ShouldVisit(in TreePathContext ctx, Hash256 nextNode)
+    public bool ShouldVisit(in TreePathContext ctx, in ValueHash256 nextNode)
     {
         return ShouldVisit(ctx.Path);
     }
@@ -144,29 +145,29 @@ public class RangeQueryVisitor : ITreeVisitor<TreePathContext>, IDisposable
         }
     }
 
-    public void VisitTree(in TreePathContext nodeContext, Hash256 rootHash, TrieVisitContext trieVisitContext)
+    public void VisitTree(in TreePathContext nodeContext, in ValueHash256 rootHash)
     {
     }
 
 
-    public void VisitMissingNode(in TreePathContext ctx, Hash256 nodeHash, TrieVisitContext trieVisitContext)
+    public void VisitMissingNode(in TreePathContext ctx, in ValueHash256 nodeHash)
     {
         throw new TrieException($"Missing node {ctx.Path} {nodeHash}");
     }
 
-    public void VisitBranch(in TreePathContext ctx, TrieNode node, TrieVisitContext trieVisitContext)
+    public void VisitBranch(in TreePathContext ctx, TrieNode node)
     {
         _leftmostNodes[ctx.Path.Length] ??= node;
         _rightmostNodes[ctx.Path.Length] = node;
     }
 
-    public void VisitExtension(in TreePathContext ctx, TrieNode node, TrieVisitContext trieVisitContext)
+    public void VisitExtension(in TreePathContext ctx, TrieNode node)
     {
         _leftmostNodes[ctx.Path.Length] ??= node;
         _rightmostNodes[ctx.Path.Length] = node;
     }
 
-    public void VisitLeaf(in TreePathContext ctx, TrieNode node, TrieVisitContext trieVisitContext, ReadOnlySpan<byte> value)
+    public void VisitLeaf(in TreePathContext ctx, TrieNode node)
     {
         _leftmostNodes[ctx.Path.Length] ??= node;
         _rightmostNodes[ctx.Path.Length] = node;
@@ -191,11 +192,11 @@ public class RangeQueryVisitor : ITreeVisitor<TreePathContext>, IDisposable
         _skipStarthashComparison = true;
     }
 
-    public void VisitCode(in TreePathContext nodeContext, Hash256 codeHash, TrieVisitContext trieVisitContext)
+    public void VisitAccount(in TreePathContext nodeContext, TrieNode node, in AccountStruct accountStruct)
     {
     }
 
-    private void CollectNode(in TreePath path, CappedArray<byte> value)
+    private void CollectNode(in TreePath path, SpanSource value)
     {
         int encodedSize = _valueCollector.Collect(path.Path, value);
         _currentBytesCount += encodedSize;
@@ -208,6 +209,6 @@ public class RangeQueryVisitor : ITreeVisitor<TreePathContext>, IDisposable
 
     public interface ILeafValueCollector
     {
-        int Collect(in ValueHash256 path, CappedArray<byte> value);
+        int Collect(in ValueHash256 path, SpanSource value);
     }
 }

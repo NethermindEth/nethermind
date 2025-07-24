@@ -5,7 +5,7 @@
     "ChainSpecPath": "chainspec/volta.json",
     "GenesisHash": "0xebd8b413ca7b7f84a8dd20d17519ce2b01954c74d94a0a739a3e416abe0e43e5",
     "BaseDbPath": "nethermind_db/volta",
-    "LogFileName": "volta.logs.txt",
+    "LogFileName": "volta.log",
     "MemoryHint": 768000000
   },
   "TxPool": {
@@ -16,9 +16,10 @@
   },
   "Sync": {
     "FastSync": true,
-    "PivotNumber": 30460000,
-    "PivotHash": "0x03df63df628a75b21087556f0178a84ee610a2007ce700e8bd2e923bb6c1b3b9",
-    "PivotTotalDifficulty": "10365000896411785597094390542371659720572358821",
+    "SnapSync": true,
+    "PivotNumber": 32800000,
+    "PivotHash": "0x11c0fc1fc1d8f0bb77adb515295e73f6b24dc568ca8a99a8ff92998d031cf52e",
+    "PivotTotalDifficulty": "11161261635006781601598687123761997335373551401",
     "UseGethLimitsInFastBlocks": false,
     "FastSyncCatchUpHeightDelta": 10000000000
   },

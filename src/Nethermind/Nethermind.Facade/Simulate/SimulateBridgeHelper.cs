@@ -4,6 +4,7 @@
 using Nethermind.Blockchain;
 using Nethermind.Config;
 using Nethermind.Consensus.Processing;
+using Nethermind.Consensus.Producers;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
@@ -20,11 +21,14 @@ using System.Collections.Generic;
 using System.Diagnostics.CodeAnalysis;
 using System.Linq;
 using System.Runtime.InteropServices;
+using System.Threading;
+using Nethermind.Evm.State;
+using Nethermind.State.OverridableEnv;
 using Transaction = Nethermind.Core.Transaction;
 
 namespace Nethermind.Facade.Simulate;
 
-public class SimulateBridgeHelper(SimulateReadOnlyBlocksProcessingEnvFactory simulateProcessingEnvFactory, IBlocksConfig blocksConfig)
+public class SimulateBridgeHelper(IBlocksConfig blocksConfig, ISpecProvider specProvider)
 {
     private const ProcessingOptions SimulateProcessingOptions =
         ProcessingOptions.ForceProcessing
@@ -32,14 +36,15 @@ public class SimulateBridgeHelper(SimulateReadOnlyBlocksProcessingEnvFactory sim
         | ProcessingOptions.MarkAsProcessed
         | ProcessingOptions.StoreReceipts;
 
-    private void PrepareState(BlockHeader blockHeader,
+    private void PrepareState(
+        BlockHeader blockHeader,
         BlockHeader parent,
         BlockStateCall<TransactionWithSourceDetails> blockStateCall,
         IWorldState stateProvider,
-        OverridableCodeInfoRepository codeInfoRepository,
+        IOverridableCodeInfoRepository codeInfoRepository,
         IReleaseSpec releaseSpec)
     {
-        stateProvider.StateRoot = parent.StateRoot!;
+        stateProvider.SetBaseBlock(parent);
         stateProvider.ApplyStateOverrides(codeInfoRepository, blockStateCall.StateOverrides, releaseSpec, blockHeader.Number);
 
         IEnumerable<Address> senders = blockStateCall.Calls?.Select(static details => details.Transaction.SenderAddress) ?? [];
@@ -56,21 +61,44 @@ public class SimulateBridgeHelper(SimulateReadOnlyBlocksProcessingEnvFactory sim
         blockHeader.StateRoot = stateProvider.StateRoot;
     }
 
-    public bool TrySimulate(
+    public SimulateOutput<TTrace> TrySimulate<TTrace>(
         BlockHeader parent,
         SimulatePayload<TransactionWithSourceDetails> payload,
-        SimulateBlockTracer simulateOutputTracer,
-        IBlockTracer tracer,
-        [NotNullWhen(false)] out string? error) =>
-        TrySimulate(parent, payload, simulateOutputTracer, tracer, simulateProcessingEnvFactory.Create(payload.Validation), out error);
+        IBlockTracer<TTrace> tracer,
+        SimulateReadOnlyBlocksProcessingScope env,
+        CancellationToken cancellationToken)
+    {
+        List<SimulateBlockResult<TTrace>> list = new();
+        SimulateOutput<TTrace> result = new SimulateOutput<TTrace>()
+        {
+            Items = list
+        };
 
+        try
+        {
+            if (!TrySimulate(parent, payload, tracer, env, list, cancellationToken, out string? error))
+            {
+                result.Error = error;
+            }
+        }
+        catch (InsufficientBalanceException ex)
+        {
+            result.Error = ex.Message;
+        }
+        catch (Exception ex)
+        {
+            result.Error = ex.ToString();
+        }
 
-    private bool TrySimulate(
-        BlockHeader parent,
+        return result;
+    }
+
+    private bool TrySimulate<TTrace>(BlockHeader parent,
         SimulatePayload<TransactionWithSourceDetails> payload,
-        SimulateBlockTracer simulateOutputTracer,
-        IBlockTracer tracer,
-        SimulateReadOnlyBlocksProcessingEnv env,
+        IBlockTracer<TTrace> tracer,
+        SimulateReadOnlyBlocksProcessingScope env,
+        List<SimulateBlockResult<TTrace>> output,
+        CancellationToken cancellationToken,
         [NotNullWhen(false)] out string? error)
     {
         IBlockTree blockTree = env.BlockTree;
@@ -82,6 +110,7 @@ public class SimulateBridgeHelper(SimulateReadOnlyBlocksProcessingEnvFactory sim
         {
             Dictionary<Address, UInt256> nonceCache = new();
             List<Block> suggestedBlocks = [null];
+            IBlockTracer cancellationBlockTracer = tracer.WithCancellation(cancellationToken);
 
             foreach (BlockStateCall<TransactionWithSourceDetails> blockCall in payload.BlockStateCalls)
             {
@@ -94,7 +123,7 @@ public class SimulateBridgeHelper(SimulateReadOnlyBlocksProcessingEnvFactory sim
                 callHeader.TxRoot = TxTrie.CalculateRoot(transactions);
                 callHeader.Hash = callHeader.CalculateHash();
 
-                if (!TryGetBlock(payload, env, callHeader, transactions, out Block currentBlock, out error))
+                if (!TryGetBlock(payload, env, callHeader, transactions, out Block callBlock, out error))
                 {
                     return false;
                 }
@@ -103,14 +132,23 @@ public class SimulateBridgeHelper(SimulateReadOnlyBlocksProcessingEnvFactory sim
                     ? SimulateProcessingOptions
                     : SimulateProcessingOptions | ProcessingOptions.NoValidation;
 
-                suggestedBlocks[0] = currentBlock;
+                suggestedBlocks[0] = callBlock;
 
-                IBlockProcessor processor = env.GetProcessor(payload.Validation, spec.IsEip4844Enabled ? blockCall.BlockOverrides?.BlobBaseFee : null);
-                Block processedBlock = processor.Process(stateProvider.StateRoot, suggestedBlocks, processingFlags, tracer)[0];
+                env.SimulateRequestState.Validate = payload.Validation;
+                env.SimulateRequestState.BlobBaseFeeOverride = spec.IsEip4844Enabled ? blockCall.BlockOverrides?.BlobBaseFee : null;
 
-                FinalizeStateAndBlock(stateProvider, processedBlock, spec, currentBlock, blockTree);
-                CheckMisssingAndSetTracedDefaults(simulateOutputTracer, processedBlock);
+                IBlockProcessor processor = env.BlockProcessor;
+                // Note: Weird behaviour where the call header is the same as the suggested blocks.
+                Block processedBlock = processor.Process(callHeader, suggestedBlocks, processingFlags, cancellationBlockTracer, cancellationToken)[0];
 
+                FinalizeStateAndBlock(stateProvider, processedBlock, spec, callBlock, blockTree);
+
+                SimulateBlockResult<TTrace> blockResult = new(processedBlock, payload.ReturnFullTransactionObjects, specProvider)
+                {
+                    Calls = [.. tracer.BuildResult()],
+                };
+                CheckMissingAndSetDefaults(blockResult, processedBlock);
+                output.Add(blockResult);
                 parent = processedBlock.Header;
             }
         }
@@ -119,21 +157,20 @@ public class SimulateBridgeHelper(SimulateReadOnlyBlocksProcessingEnvFactory sim
         return true;
     }
 
-    private static void CheckMisssingAndSetTracedDefaults(SimulateBlockTracer simulateOutputTracer, Block processedBlock)
+    private static void CheckMissingAndSetDefaults<TTrace>(SimulateBlockResult<TTrace> current, Block processedBlock)
     {
-        SimulateBlockResult current = simulateOutputTracer.Results.Last();
         current.StateRoot = processedBlock.StateRoot ?? Hash256.Zero;
         current.ParentBeaconBlockRoot = processedBlock.ParentBeaconBlockRoot ?? Hash256.Zero;
         current.TransactionsRoot = processedBlock.Header.TxRoot;
         current.WithdrawalsRoot = processedBlock.WithdrawalsRoot ?? Keccak.EmptyTreeHash;
         current.ExcessBlobGas = processedBlock.ExcessBlobGas ?? 0;
         current.Withdrawals = processedBlock.Withdrawals ?? [];
-        current.Author = null;
+        current.RequestsHash = processedBlock.RequestsHash;
     }
 
     private static void FinalizeStateAndBlock(IWorldState stateProvider, Block processedBlock, IReleaseSpec currentSpec, Block currentBlock, IBlockTree blockTree)
     {
-        stateProvider.StateRoot = processedBlock.StateRoot!;
+        stateProvider.SetBaseBlock(processedBlock.Header);
         stateProvider.Commit(currentSpec);
         stateProvider.CommitTree(currentBlock.Number);
         blockTree.SuggestBlock(processedBlock, BlockTreeSuggestOptions.ForceSetAsMain);
@@ -155,7 +192,7 @@ public class SimulateBridgeHelper(SimulateReadOnlyBlocksProcessingEnvFactory sim
         ulong lastKnown = (ulong)latestBlockNumber;
         if (firstBlock?.BlockOverrides?.Number > 0 && firstBlock.BlockOverrides?.Number < lastKnown)
         {
-            Block? searchResult = blockTree.FindBlock((long)firstBlock.BlockOverrides.Number);
+            Block? searchResult = blockTree.FindBlock((long)firstBlock.BlockOverrides.Number - 1);
             if (searchResult is not null)
             {
                 parent = searchResult.Header;
@@ -167,7 +204,7 @@ public class SimulateBridgeHelper(SimulateReadOnlyBlocksProcessingEnvFactory sim
 
     private static bool TryGetBlock(
         SimulatePayload<TransactionWithSourceDetails> payload,
-        SimulateReadOnlyBlocksProcessingEnv env,
+        SimulateReadOnlyBlocksProcessingScope env,
         BlockHeader callHeader,
         Transaction[] transactions,
         out Block currentBlock,
@@ -175,18 +212,19 @@ public class SimulateBridgeHelper(SimulateReadOnlyBlocksProcessingEnvFactory sim
     {
         IWorldState stateProvider = env.WorldState;
         Snapshot shoot = stateProvider.TakeSnapshot();
-        currentBlock = new Block(callHeader);
+        BlockToProduce block = new(callHeader);
+        currentBlock = block;
         LinkedHashSet<Transaction> testedTxs = new();
         for (int index = 0; index < transactions.Length; index++)
         {
             Transaction transaction = transactions[index];
-            BlockProcessor.AddingTxEventArgs? args = env.BlockTransactionPicker.CanAddTransaction(currentBlock, transaction, testedTxs, stateProvider);
+            //BlockProcessor.AddingTxEventArgs? args = env.BlockTransactionPicker.CanAddTransaction(block, transaction, testedTxs, stateProvider);
 
-            if (args.Action is BlockProcessor.TxAction.Stop or BlockProcessor.TxAction.Skip && payload.Validation)
-            {
-                error = $"invalid transaction index: {index} at block number: {callHeader.Number}, Reason: {args.Reason}";
-                return false;
-            }
+            //if (args.Action is BlockProcessor.TxAction.Stop or BlockProcessor.TxAction.Skip && payload.Validation)
+            //{
+            //    error = $"invalid transaction index: {index} at block number: {callHeader.Number}, Reason: {args.Reason}";
+            //    return false;
+            //}
 
             stateProvider.IncrementNonce(transaction.SenderAddress!);
             testedTxs.Add(transaction);
@@ -229,7 +267,6 @@ public class SimulateBridgeHelper(SimulateReadOnlyBlocksProcessingEnvFactory sim
     {
         Transaction? transaction = transactionDetails.Transaction;
         transaction.SenderAddress ??= Address.Zero;
-        transaction.Data ??= Memory<byte>.Empty;
 
         if (!transactionDetails.HadNonceInRequest)
         {
@@ -282,13 +319,15 @@ public class SimulateBridgeHelper(SimulateReadOnlyBlocksProcessingEnvFactory sim
                 UInt256.Zero,
                 parent.Number + 1,
                 parent.GasLimit,
-                parent.Timestamp + 1,
-                [])
+                parent.Timestamp + blocksConfig.SecondsPerSlot,
+                [],
+                requestsHash: parent.RequestsHash)
             {
                 MixHash = parent.MixHash,
                 IsPostMerge = parent.Difficulty == 0,
+                RequestsHash = parent.RequestsHash
             };
-        result.Timestamp = parent.Timestamp + 1;
+        result.Timestamp = parent.Timestamp + blocksConfig.SecondsPerSlot;
         result.BaseFeePerGas = block.BlockOverrides is { BaseFeePerGas: not null }
             ? block.BlockOverrides.BaseFeePerGas.Value
             : !payloadValidation

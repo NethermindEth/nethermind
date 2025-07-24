@@ -5,12 +5,12 @@ using System;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Api;
+using Nethermind.Api.Steps;
 using Nethermind.Blockchain;
 using Nethermind.Config;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Logging;
-using Nethermind.State;
 
 namespace Nethermind.Init.Steps
 {
@@ -32,43 +32,41 @@ namespace Nethermind.Init.Steps
         public async Task Execute(CancellationToken _)
         {
             _initConfig = _api.Config<IInitConfig>();
-            Hash256? expectedGenesisHash = string.IsNullOrWhiteSpace(_initConfig.GenesisHash) ? null : new Hash256(_initConfig.GenesisHash);
 
             if (_api.BlockTree is null)
             {
                 throw new StepDependencyException();
             }
 
-            IWorldState worldState = _api.WorldState!;
+            IMainProcessingContext mainProcessingContext = _api.MainProcessingContext!;
 
             // if we already have a database with blocks then we do not need to load genesis from spec
             if (_api.BlockTree.Genesis is null)
             {
-                Load(worldState);
+                Load(mainProcessingContext);
             }
-
-            ValidateGenesisHash(expectedGenesisHash, worldState);
 
             if (!_initConfig.ProcessingEnabled)
             {
                 if (_logger.IsWarn) _logger.Warn($"Shutting down the blockchain processor due to {nameof(InitConfig)}.{nameof(InitConfig.ProcessingEnabled)} set to false");
-                await (_api.BlockchainProcessor?.StopAsync() ?? Task.CompletedTask);
+                await (_api.MainProcessingContext!.BlockchainProcessor?.StopAsync() ?? Task.CompletedTask);
             }
         }
 
-        protected virtual void Load(IWorldState worldState)
+        protected virtual void Load(IMainProcessingContext mainProcessingContext)
         {
             if (_api.ChainSpec is null) throw new StepDependencyException(nameof(_api.ChainSpec));
             if (_api.BlockTree is null) throw new StepDependencyException(nameof(_api.BlockTree));
             if (_api.SpecProvider is null) throw new StepDependencyException(nameof(_api.SpecProvider));
-            if (_api.DbProvider is null) throw new StepDependencyException(nameof(_api.DbProvider));
-            if (_api.TransactionProcessor is null) throw new StepDependencyException(nameof(_api.TransactionProcessor));
 
             Block genesis = new GenesisLoader(
                 _api.ChainSpec,
                 _api.SpecProvider,
-                worldState,
-                _api.TransactionProcessor)
+                _api.StateReader!,
+                mainProcessingContext.WorldState,
+                mainProcessingContext.TransactionProcessor,
+                _api.LogManager,
+                string.IsNullOrWhiteSpace(_initConfig?.GenesisHash) ? null : new Hash256(_initConfig.GenesisHash))
                 .Load();
 
             ManualResetEventSlim genesisProcessedEvent = new(false);
@@ -88,29 +86,6 @@ namespace Nethermind.Init.Steps
             {
                 throw new TimeoutException($"Genesis block was not processed after {_genesisProcessedTimeout.TotalSeconds} seconds. If you are running custom chain with very big genesis file consider increasing {nameof(BlocksConfig)}.{nameof(IBlocksConfig.GenesisTimeoutMs)}.");
             }
-        }
-
-        /// <summary>
-        /// If <paramref name="expectedGenesisHash"/> is <value>null</value> then it means that we do not care about the genesis hash (e.g. in some quick testing of private chains)/>
-        /// </summary>
-        /// <param name="expectedGenesisHash"></param>
-        private void ValidateGenesisHash(Hash256? expectedGenesisHash, IWorldState worldState)
-        {
-            if (_api.BlockTree is null) throw new StepDependencyException(nameof(_api.BlockTree));
-
-            BlockHeader genesis = _api.BlockTree.Genesis ?? throw new NullReferenceException("Genesis block is null");
-            if (expectedGenesisHash is not null && genesis.Hash != expectedGenesisHash)
-            {
-                if (_logger.IsWarn) _logger.Warn(worldState.DumpState());
-                if (_logger.IsWarn) _logger.Warn(genesis.ToString(BlockHeader.Format.Full));
-                if (_logger.IsError) _logger.Error($"Unexpected genesis hash, expected {expectedGenesisHash}, but was {genesis.Hash}");
-            }
-            else
-            {
-                if (_logger.IsDebug) _logger.Info($"Genesis hash :  {genesis.Hash}");
-            }
-
-            ThisNodeInfo.AddInfo("Genesis hash :", $"{genesis.Hash}");
         }
     }
 }

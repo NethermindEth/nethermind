@@ -30,14 +30,14 @@ namespace Nethermind.Consensus
             SetSigner(key);
         }
 
-        public Signer(ulong chainId, ProtectedPrivateKey key, ILogManager logManager)
+        public Signer(ulong chainId, IProtectedPrivateKey key, ILogManager logManager)
         {
             _chainId = chainId;
             _logger = logManager?.GetClassLogger<Signer>() ?? throw new ArgumentNullException(nameof(logManager));
             SetSigner(key);
         }
 
-        public Signature Sign(Hash256 message)
+        public Signature Sign(in ValueHash256 message)
         {
             if (!CanSign) throw new InvalidOperationException("Cannot sign without provided key.");
             byte[] rs = SpanSecP256k1.SignCompact(message.Bytes, _key!.KeyBytes, out int v);
@@ -66,7 +66,7 @@ namespace Nethermind.Consensus
                 _key is not null ? $"Address {Address} is configured for signing blocks." : "No address is configured for signing blocks.");
         }
 
-        public void SetSigner(ProtectedPrivateKey? key)
+        public void SetSigner(IProtectedPrivateKey? key)
         {
             PrivateKey? pk = null;
             if (key is not null)

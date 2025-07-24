@@ -27,7 +27,7 @@ namespace Nethermind.Synchronization.Test.FastSync.SnapProtocolTests
 
         public async Task ExecuteDispatch(StateSyncBatch batch, int times)
         {
-            SyncPeerAllocation allocation = await Allocate(batch);
+            SyncPeerAllocation allocation = await Allocate(batch, default);
 
             for (int i = 0; i < times; i++)
             {

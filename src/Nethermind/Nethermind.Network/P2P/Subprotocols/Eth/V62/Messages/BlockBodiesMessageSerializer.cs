@@ -27,18 +27,25 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62.Messages
                 }
                 else
                 {
-                    _blockBodyDecoder.Serialize(stream, body);
+                    _blockBodyDecoder.Encode(stream, body);
                 }
             }
         }
 
         public int GetLength(BlockBodiesMessage message, out int contentLength)
         {
-            contentLength = message.Bodies.Bodies.Select(b => b is null
-                ? Rlp.OfEmptySequence.Length
-                : Rlp.LengthOfSequence(_blockBodyDecoder.GetBodyLength(b))
-            ).Sum();
-            return Rlp.LengthOfSequence(contentLength);
+            int length = 0;
+            foreach (BlockBody? body in message.Bodies.Bodies)
+            {
+                length += body switch
+                {
+                    null => Rlp.OfEmptySequence.Length,
+                    _ => Rlp.LengthOfSequence(_blockBodyDecoder.GetBodyLength(body))
+                };
+            }
+
+            contentLength = length;
+            return Rlp.LengthOfSequence(length);
         }
 
         public BlockBodiesMessage Deserialize(IByteBuffer byteBuffer)

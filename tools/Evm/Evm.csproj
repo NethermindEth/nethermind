@@ -1,20 +1,21 @@
 <Project Sdk="Microsoft.NET.Sdk">
 
-    <PropertyGroup>
-        <OutputType>Exe</OutputType>
-    </PropertyGroup>
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <IsTestingPlatformApplication>false</IsTestingPlatformApplication>
+  </PropertyGroup>
 
-    <ItemGroup>
-      <PackageReference Include="System.CommandLine" Version="2.0.0-beta4.24517.1" />
-      <ProjectReference Include="..\..\src\Nethermind\Ethereum.Test.Base\Ethereum.Test.Base.csproj" />
-      <ProjectReference Include="..\..\src\Nethermind\Nethermind.Core\Nethermind.Core.csproj" />
-      <ProjectReference Include="..\..\src\Nethermind\Nethermind.Evm\Nethermind.Evm.csproj" />
-      <ProjectReference Include="..\..\src\Nethermind\Nethermind.Db\Nethermind.Db.csproj" />
-      <ProjectReference Include="..\..\src\Nethermind\Nethermind.Specs\Nethermind.Specs.csproj" />
-      <ProjectReference Include="..\..\src\Nethermind\Nethermind.Trie\Nethermind.Trie.csproj" />
-      <ProjectReference Include="..\..\src\Nethermind\Nethermind.Consensus\Nethermind.Consensus.csproj" />
-      <ProjectReference Include="..\..\src\Nethermind\Nethermind.Consensus.AuRa\Nethermind.Consensus.AuRa.csproj" />
-      <ProjectReference Include="..\..\src\Nethermind\Nethermind.Logging.NLog\Nethermind.Logging.NLog.csproj" />
-    </ItemGroup>
+  <ItemGroup>
+    <PackageReference Include="System.CommandLine" />
+    <ProjectReference Include="..\..\src\Nethermind\Ethereum.Test.Base\Ethereum.Test.Base.csproj" />
+    <ProjectReference Include="..\..\src\Nethermind\Nethermind.Core\Nethermind.Core.csproj" />
+    <ProjectReference Include="..\..\src\Nethermind\Nethermind.Evm\Nethermind.Evm.csproj" />
+    <ProjectReference Include="..\..\src\Nethermind\Nethermind.Db\Nethermind.Db.csproj" />
+    <ProjectReference Include="..\..\src\Nethermind\Nethermind.Specs\Nethermind.Specs.csproj" />
+    <ProjectReference Include="..\..\src\Nethermind\Nethermind.Trie\Nethermind.Trie.csproj" />
+    <ProjectReference Include="..\..\src\Nethermind\Nethermind.Consensus\Nethermind.Consensus.csproj" />
+    <ProjectReference Include="..\..\src\Nethermind\Nethermind.Consensus.AuRa\Nethermind.Consensus.AuRa.csproj" />
+    <ProjectReference Include="..\..\src\Nethermind\Nethermind.Logging.NLog\Nethermind.Logging.NLog.csproj" />
+  </ItemGroup>
 
 </Project>

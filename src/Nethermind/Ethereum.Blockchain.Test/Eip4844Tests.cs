@@ -20,6 +20,6 @@ public class EIP4844blobtransactionsTests : GeneralStateTestBase
     public static IEnumerable<GeneralStateTest> LoadTests()
     {
         var loader = new TestsSourceLoader(new LoadGeneralStateTestsStrategy(), "stEIP4844-blobtransactions");
-        return (IEnumerable<GeneralStateTest>)loader.LoadTests();
+        return loader.LoadTests<GeneralStateTest>();
     }
 }

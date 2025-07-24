@@ -5,6 +5,7 @@ using System;
 using Nethermind.Config;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.ExecutionRequest;
 using Nethermind.Core.Specs;
 using Nethermind.Int256;
 
@@ -48,13 +49,15 @@ public class BlockOverride
             newBlockNumber,
             newGasLimit,
             newTime,
-            [])
+            [],
+            requestsHash: parent.RequestsHash)
         {
             BaseFeePerGas = BaseFeePerGas ?? BaseFeeCalculator.Calculate(parent, spec),
             MixHash = PrevRandao,
             IsPostMerge = parent.Difficulty == 0,
             TotalDifficulty = parent.TotalDifficulty + newDifficulty,
-            SealEngineType = parent.SealEngineType
+            SealEngineType = parent.SealEngineType,
+            RequestsHash = parent.RequestsHash,
         };
 
         return result;

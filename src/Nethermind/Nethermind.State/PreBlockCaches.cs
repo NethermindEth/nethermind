@@ -6,6 +6,7 @@ using System.Collections.Concurrent;
 using Nethermind.Core;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Collections;
+using Nethermind.Evm.State;
 using Nethermind.Trie;
 
 using CollectionExtensions = Nethermind.Core.Collections.CollectionExtensions;
@@ -22,7 +23,7 @@ public class PreBlockCaches
     private readonly ConcurrentDictionary<StorageCell, byte[]> _storageCache = new(LockPartitions, InitialCapacity);
     private readonly ConcurrentDictionary<AddressAsKey, Account> _stateCache = new(LockPartitions, InitialCapacity);
     private readonly ConcurrentDictionary<NodeKey, byte[]?> _rlpCache = new(LockPartitions, InitialCapacity);
-    private readonly ConcurrentDictionary<PrecompileCacheKey, (ReadOnlyMemory<byte>, bool)> _precompileCache = new(LockPartitions, InitialCapacity);
+    private readonly ConcurrentDictionary<PrecompileCacheKey, (byte[], bool)> _precompileCache = new(LockPartitions, InitialCapacity);
 
     public PreBlockCaches()
     {
@@ -38,7 +39,7 @@ public class PreBlockCaches
     public ConcurrentDictionary<StorageCell, byte[]> StorageCache => _storageCache;
     public ConcurrentDictionary<AddressAsKey, Account> StateCache => _stateCache;
     public ConcurrentDictionary<NodeKey, byte[]?> RlpCache => _rlpCache;
-    public ConcurrentDictionary<PrecompileCacheKey, (ReadOnlyMemory<byte>, bool)> PrecompileCache => _precompileCache;
+    public ConcurrentDictionary<PrecompileCacheKey, (byte[], bool)> PrecompileCache => _precompileCache;
 
     public CacheType ClearCaches()
     {

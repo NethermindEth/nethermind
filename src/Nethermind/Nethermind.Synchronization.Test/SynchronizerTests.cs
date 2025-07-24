@@ -10,7 +10,6 @@ using System.Threading;
 using System.Threading.Tasks;
 using Autofac;
 using Nethermind.Blockchain;
-using Nethermind.Blockchain.Blocks;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Config;
@@ -21,26 +20,18 @@ using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Builders;
-using Nethermind.Core.Timers;
+using Nethermind.Core.Test.Modules;
 using Nethermind.Db;
 using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.Specs;
-using Nethermind.Specs.Forks;
-using Nethermind.Stats;
 using Nethermind.Stats.Model;
 using Nethermind.Merge.Plugin;
-using Nethermind.Merge.Plugin.InvalidChainTracker;
-using Nethermind.Merge.Plugin.Synchronization;
-using Nethermind.Merge.Plugin.Test;
-using Nethermind.Specs.ChainSpecStyle;
-using Nethermind.State;
 using Nethermind.Synchronization.Blocks;
 using Nethermind.Synchronization.Peers;
-using Nethermind.Trie.Pruning;
+using Nethermind.Synchronization.Test.ParallelSync;
 using NSubstitute;
 using NUnit.Framework;
-using Nethermind.Trie;
 
 namespace Nethermind.Synchronization.Test;
 
@@ -53,6 +44,8 @@ namespace Nethermind.Synchronization.Test;
 [Parallelizable(ParallelScope.Self)]
 public class SynchronizerTests
 {
+    private const int SyncBatchSizeMax = 128;
+
     private readonly SynchronizerType _synchronizerType;
 
     public SynchronizerTests(SynchronizerType synchronizerType)
@@ -65,9 +58,9 @@ public class SynchronizerTests
         .WithDifficulty(100000)
         .WithTotalDifficulty((UInt256)100000).TestObject;
 
-    private class SyncPeerMock : ISyncPeer
+    private class SyncPeerMock : BaseSyncPeerMock
     {
-        public string Name => "Mock";
+        public override string Name => "Mock";
 
         private readonly bool _causeTimeoutOnInit;
         private readonly bool _causeTimeoutOnBlocks;
@@ -99,24 +92,14 @@ public class SynchronizerTests
             TotalDifficulty = HeadBlock.TotalDifficulty ?? 0;
         }
 
-        public Node Node { get; } = new Node(Build.A.PrivateKey.TestObject.PublicKey, "127.0.0.1", 1234);
+        public override Node Node { get; set; } = new Node(Build.A.PrivateKey.TestObject.PublicKey, "127.0.0.1", 1234);
 
-        public string ClientId { get; }
-        public Hash256 HeadHash { get; set; } = null!;
-        public byte ProtocolVersion { get; } = default;
-        public string ProtocolCode { get; } = null!;
-        public long HeadNumber { get; set; }
-        public UInt256 TotalDifficulty { get; set; }
-
-        public bool IsInitialized { get; set; }
-        public bool IsPriority { get; set; }
-
-        public void Disconnect(DisconnectReason reason, string details)
+        public override void Disconnect(DisconnectReason reason, string details)
         {
             Disconnected?.Invoke(this, EventArgs.Empty);
         }
 
-        public Task<OwnedBlockBodies> GetBlockBodies(IReadOnlyList<Hash256> blockHashes, CancellationToken token)
+        public override Task<OwnedBlockBodies> GetBlockBodies(IReadOnlyList<Hash256> blockHashes, CancellationToken token)
         {
             if (_causeTimeoutOnBlocks)
             {
@@ -138,7 +121,7 @@ public class SynchronizerTests
             return Task.FromResult(new OwnedBlockBodies(result));
         }
 
-        public Task<IOwnedReadOnlyList<BlockHeader>?> GetBlockHeaders(long number, int maxBlocks, int skip, CancellationToken token)
+        public override Task<IOwnedReadOnlyList<BlockHeader>?> GetBlockHeaders(long number, int maxBlocks, int skip, CancellationToken token)
         {
             if (_causeTimeoutOnHeaders)
             {
@@ -169,12 +152,7 @@ public class SynchronizerTests
             return Task.FromResult<IOwnedReadOnlyList<BlockHeader>?>(result);
         }
 
-        public Task<IOwnedReadOnlyList<BlockHeader>?> GetBlockHeaders(Hash256 startHash, int maxBlocks, int skip, CancellationToken token)
-        {
-            throw new NotImplementedException();
-        }
-
-        public async Task<BlockHeader?> GetHeadBlockHeader(Hash256? hash, CancellationToken token)
+        public override async Task<BlockHeader?> GetHeadBlockHeader(Hash256? hash, CancellationToken token)
         {
             if (_causeTimeoutOnInit)
             {
@@ -197,7 +175,7 @@ public class SynchronizerTests
             return header;
         }
 
-        public void NotifyOfNewBlock(Block block, SendBlockMode mode)
+        public override void NotifyOfNewBlock(Block block, SendBlockMode mode)
         {
             if (mode == SendBlockMode.FullBlock)
                 ReceivedBlocks.Push(block);
@@ -207,19 +185,9 @@ public class SynchronizerTests
 
         public event EventHandler? Disconnected;
 
-        public PublicKey Id => Node.Id;
+        public override PublicKey Id => Node.Id;
 
-        public void SendNewTransactions(IEnumerable<Transaction> txs, bool sendFullTx) { }
-
-        public Task<IOwnedReadOnlyList<TxReceipt[]?>> GetReceipts(IReadOnlyList<Hash256> blockHash, CancellationToken token)
-        {
-            throw new NotImplementedException();
-        }
-
-        public Task<IOwnedReadOnlyList<byte[]>> GetNodeData(IReadOnlyList<Hash256> hashes, CancellationToken token)
-        {
-            throw new NotImplementedException();
-        }
+        public override void SendNewTransactions(IEnumerable<Transaction> txs, bool sendFullTx) { }
 
         public void AddBlocksUpTo(int i, int branchStart = 0, byte branchIndex = 0)
         {
@@ -249,14 +217,9 @@ public class SynchronizerTests
             UpdateHead();
         }
 
-        public void RegisterSatelliteProtocol<T>(string protocol, T protocolHandler) where T : class
+        public override string ToString()
         {
-            throw new NotImplementedException();
-        }
-
-        public bool TryGetSatelliteProtocol<T>(string protocol, out T protocolHandler) where T : class
-        {
-            throw new NotImplementedException();
+            return $"SyncPeerMock:{ClientId}";
         }
     }
 
@@ -280,13 +243,23 @@ public class SynchronizerTests
         public static ConcurrentQueue<SyncingContext> AllInstances { get; } = new();
 
         private readonly Dictionary<string, ISyncPeer> _peers = new();
-        private BlockTree BlockTree { get; }
+        private IBlockTree BlockTree => FromContainer.BlockTree;
 
-        private ISyncServer SyncServer => Container.Resolve<ISyncServer>();
+        private ISyncServer SyncServer => FromContainer.SyncServer;
 
-        private ISynchronizer Synchronizer => Container.Resolve<ISynchronizer>();
-        private ISyncPeerPool SyncPeerPool => Container.Resolve<ISyncPeerPool>();
+        private ISynchronizer Synchronizer => FromContainer.Synchronizer;
+        private ISyncPeerPool SyncPeerPool => FromContainer.SyncPeerPool;
+
         private IContainer Container { get; }
+
+        // Its faster to resolve them all at once.
+        private ContainerDependencies FromContainer { get; }
+        private record ContainerDependencies(
+            IBlockTree BlockTree,
+            SyncServer SyncServer,
+            ISynchronizer Synchronizer,
+            ISyncPeerPool SyncPeerPool
+        );
 
         readonly ILogManager _logManager = LimboLogs.Instance;
 
@@ -308,78 +281,36 @@ public class SynchronizerTests
 
             _logger = _logManager.GetClassLogger();
             ISyncConfig syncConfig = GetSyncConfig();
-            syncConfig.MultiSyncModeSelectorLoopTimerMs = 1;
-            syncConfig.SyncDispatcherEmptyRequestDelayMs = 1;
-            syncConfig.SyncDispatcherAllocateTimeoutMs = 1;
-
-            IDbProvider dbProvider = TestMemDbProvider.Init();
-            IDb stateDb = new MemDb();
-            IDb codeDb = dbProvider.CodeDb;
-            IBlockStore blockStore = new BlockStore(dbProvider.BlocksDb);
-            BlockTree = Build.A.BlockTree()
-                .WithSpecProvider(new TestSingleReleaseSpecProvider(Constantinople.Instance))
-                .WithBlockStore(blockStore)
-                .WithoutSettingHead
-                .TestObject;
-
-            ITimerFactory timerFactory = Substitute.For<ITimerFactory>();
-            NodeStatsManager stats = new(timerFactory, _logManager);
-
-            MergeConfig mergeConfig = new();
+            IMergeConfig mergeConfig = new MergeConfig();
+            IPruningConfig pruningConfig = new PruningConfig()
+            {
+                Mode = PruningMode.Full, // Memory pruning is slow to start, relatively speaking
+            };
             if (WithTTD(synchronizerType))
             {
+                mergeConfig.Enabled = true;
                 mergeConfig.TerminalTotalDifficulty = UInt256.MaxValue.ToString(CultureInfo.InvariantCulture);
             }
-            PoSSwitcher poSSwitcher = new(mergeConfig, syncConfig, dbProvider.MetadataDb, BlockTree, new TestSingleReleaseSpecProvider(Constantinople.Instance), new ChainSpec(), _logManager);
-            IBeaconPivot beaconPivot = new BeaconPivot(syncConfig, dbProvider.MetadataDb, BlockTree, poSSwitcher, _logManager);
 
-            TrieStore trieStore = new(stateDb, LimboLogs.Instance);
-            TotalDifficultyBetterPeerStrategy totalDifficultyBetterPeerStrategy = new(LimboLogs.Instance);
-            IBetterPeerStrategy bestPeerStrategy = IsMerge(synchronizerType)
-                ? new MergeBetterPeerStrategy(totalDifficultyBetterPeerStrategy, poSSwitcher, beaconPivot, LimboLogs.Instance)
-                : totalDifficultyBetterPeerStrategy;
-
-            StateReader reader = new StateReader(trieStore, codeDb, LimboLogs.Instance);
-            INodeStorage nodeStorage = new NodeStorage(dbProvider.StateDb);
-
-            Pivot pivot = new(syncConfig);
-
-            IInvalidChainTracker invalidChainTracker = new NoopInvalidChainTracker();
-
+            IConfigProvider configProvider = new ConfigProvider(syncConfig, mergeConfig, pruningConfig);
             ContainerBuilder builder = new ContainerBuilder()
-                .AddModule(new DbModule())
-                .AddModule(new SynchronizerModule(syncConfig))
-                .AddSingleton<IReceiptConfig>(new ReceiptConfig())
-                .AddSingleton(dbProvider)
-                .AddSingleton(blockStore)
-                .AddSingleton(nodeStorage)
+                .AddModule(new TestNethermindModule(configProvider))
                 .AddSingleton<ISpecProvider>(MainnetSpecProvider.Instance)
-                .AddSingleton<IBlockTree>(BlockTree)
                 .AddSingleton<IReceiptStorage>(NullReceiptStorage.Instance)
-                .AddSingleton<INodeStatsManager>(stats)
-                .AddSingleton(syncConfig)
-                .AddSingleton<IPivot>(pivot)
-                .AddSingleton<IPoSSwitcher>(poSSwitcher)
-                .AddSingleton<IMergeConfig>(mergeConfig)
-                .AddSingleton(invalidChainTracker)
                 .AddSingleton(Substitute.For<IProcessExitSource>())
-                .AddSingleton<IBetterPeerStrategy>(bestPeerStrategy)
-                .AddSingleton(new ChainSpec())
-                .AddSingleton<IBeaconSyncStrategy>(No.BeaconSync)
-                .AddSingleton<IStateReader>(reader)
                 .AddSingleton<ISealValidator>(Always.Valid)
                 .AddSingleton<IBlockValidator>(Always.Valid)
-                .AddSingleton(beaconPivot)
-                .AddSingleton<IGossipPolicy>(Policy.FullGossip)
+                .AddSingleton<ContainerDependencies>()
                 .AddSingleton(_logManager);
 
             if (IsMerge(synchronizerType))
             {
-                builder.RegisterModule(new MergeSynchronizerModule());
+                builder.RegisterModule(new TestMergeModule(configProvider));
             }
 
             Container = builder.Build();
-            Container.Resolve<ISyncServer>(); // Need to be created once to register events.
+            FromContainer = Container.Resolve<ContainerDependencies>();
+            _ = FromContainer.SyncServer; // Need to be created once to register events.
             SyncPeerPool.Start();
             Synchronizer.Start();
             AllInstances.Enqueue(this);
@@ -403,7 +334,7 @@ public class SynchronizerTests
         {
             Assert.That(
                 () => BlockTree.BestSuggestedHeader,
-                Is.EqualTo(header).After(DynamicTimeout, 2), "header");
+                Is.EqualTo(header).After(DynamicTimeout, 10), "header");
 
             _blockHeader = BlockTree.BestSuggestedHeader!;
             return this;
@@ -415,7 +346,7 @@ public class SynchronizerTests
 
             Assert.That(
                 () => BlockTree.BestSuggestedHeader!.Number,
-                Is.EqualTo(number).After(DynamicTimeout, 2), "block number");
+                Is.EqualTo(number).After(DynamicTimeout, 10), "block number");
 
             _blockHeader = BlockTree.BestSuggestedHeader!;
             return this;
@@ -522,6 +453,12 @@ public class SynchronizerTests
         public async ValueTask DisposeAsync()
         {
             await StopAsync();
+        }
+
+        public SyncingContext WaitALittle()
+        {
+            Thread.Sleep(100);
+            return this;
         }
     }
 
@@ -661,8 +598,6 @@ public class SynchronizerTests
             .AfterNewBlockMessage(peerA.HeadBlock, peerA)
             .BestSuggestedHeaderIs(peerA.HeadHeader)
             .StopAsync();
-
-        Console.WriteLine("why?");
     }
 
     [Test, Retry(3)]
@@ -789,10 +724,10 @@ public class SynchronizerTests
     public async Task Can_reorg_on_add_peer()
     {
         SyncPeerMock peerA = new("A");
-        peerA.AddBlocksUpTo(SyncBatchSize.Max);
+        peerA.AddBlocksUpTo(SyncBatchSizeMax);
 
         SyncPeerMock peerB = new("B");
-        peerB.AddBlocksUpTo(SyncBatchSize.Max * 2, 0, 1);
+        peerB.AddBlocksUpTo(SyncBatchSizeMax * 2, 0, 1);
 
         await When.Syncing
             .AfterProcessingGenesis()
@@ -803,7 +738,7 @@ public class SynchronizerTests
             .StopAsync();
     }
 
-    [Test, Retry(3)]
+    [Test]
     public async Task Can_reorg_based_on_total_difficulty()
     {
         if (WithTTD(_synchronizerType)) { return; }
@@ -886,20 +821,21 @@ public class SynchronizerTests
             .StopAsync();
     }
 
-    [Test, Retry(3)]
+    [Test]
     public async Task Will_not_reorganize_more_than_max_reorg_length()
     {
         SyncPeerMock peerA = new("A");
-        peerA.AddBlocksUpTo(BlockDownloader.MaxReorganizationLength + 1);
+        peerA.AddBlocksUpTo(PowForwardHeaderProvider.MaxReorganizationLength + 1);
 
         SyncPeerMock peerB = new("B");
-        peerB.AddBlocksUpTo(BlockDownloader.MaxReorganizationLength + 2, 0, 1);
+        peerB.AddBlocksUpTo(PowForwardHeaderProvider.MaxReorganizationLength + 2, 0, 1);
 
         await When.Syncing
             .AfterProcessingGenesis()
             .AfterPeerIsAdded(peerA)
             .BestSuggestedHeaderIs(peerA.HeadHeader)
             .AfterPeerIsAdded(peerB)
+            .WaitALittle()
             .BestSuggestedHeaderIs(peerA.HeadHeader)
             .StopAsync();
     }
@@ -908,7 +844,7 @@ public class SynchronizerTests
     public async Task Can_sync_more_than_a_batch()
     {
         SyncPeerMock peerA = new("A");
-        peerA.AddBlocksUpTo(SyncBatchSize.Max * 3);
+        peerA.AddBlocksUpTo(SyncBatchSizeMax * 3);
 
         await When.Syncing
             .AfterProcessingGenesis()
@@ -921,7 +857,7 @@ public class SynchronizerTests
     public async Task Can_sync_exactly_one_batch()
     {
         SyncPeerMock peerA = new("A");
-        peerA.AddBlocksUpTo(SyncBatchSize.Max);
+        peerA.AddBlocksUpTo(SyncBatchSizeMax);
 
         await When.Syncing
             .AfterProcessingGenesis()
@@ -934,7 +870,7 @@ public class SynchronizerTests
     public async Task Can_stop()
     {
         SyncPeerMock peerA = new("A");
-        peerA.AddBlocksUpTo(SyncBatchSize.Max);
+        peerA.AddBlocksUpTo(SyncBatchSizeMax);
 
         await When.Syncing
             .StopAsync();

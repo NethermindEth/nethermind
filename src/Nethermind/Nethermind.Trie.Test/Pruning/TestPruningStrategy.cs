@@ -1,39 +1,36 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using Nethermind.Core;
 using Nethermind.Trie.Pruning;
 
 namespace Nethermind.Trie.Test.Pruning
 {
-    public class TestPruningStrategy : IPruningStrategy
+    public class TestPruningStrategy(
+        bool deleteObsoleteKeys,
+        bool shouldPrune = false,
+        int? pruneInterval = null)
+        : IPruningStrategy
     {
-        private readonly bool _pruningEnabled;
-        private readonly int _trackedPastKeyCount;
-
-        public TestPruningStrategy(bool pruningEnabled, bool shouldPrune = false, int? maxDepth = null, int trackedPastKeyCount = 0)
+        public bool DeleteObsoleteKeys => deleteObsoleteKeys;
+        public bool ShouldPruneDirtyNode(TrieStoreState state)
         {
-            _pruningEnabled = pruningEnabled;
-            ShouldPruneEnabled = shouldPrune;
-            _trackedPastKeyCount = trackedPastKeyCount;
-            MaxDepth = maxDepth ?? (int)Reorganization.MaxDepth;
+            if (pruneInterval is not null && state.LatestCommittedBlock % pruneInterval == 0)
+            {
+                Console.Error.WriteLine($"Prune trigger");
+                return true;
+            }
+            return (ShouldPruneEnabled || WithMemoryLimit is not null && state.DirtyCacheMemory > WithMemoryLimit);
         }
 
-        public bool PruningEnabled => _pruningEnabled;
-        public int MaxDepth { get; set; }
-        public bool ShouldPruneEnabled { get; set; }
+        public bool ShouldPrunePersistedNode(TrieStoreState state) => (ShouldPrunePersistedEnabled || WithPersistedMemoryLimit is not null && state.PersistedCacheMemory > WithPersistedMemoryLimit);
 
-        public int? WithMemoryLimit { get; set; }
+        public bool ShouldPruneEnabled { get; set; } = shouldPrune;
+        public bool ShouldPrunePersistedEnabled { get; set; } = shouldPrune;
 
-        public bool ShouldPrune(in long currentMemory)
-        {
-            if (!_pruningEnabled) return false;
-            if (ShouldPruneEnabled) return true;
-            if (WithMemoryLimit is not null && currentMemory > WithMemoryLimit) return true;
+        public long? WithMemoryLimit { get; set; }
+        public long? WithPersistedMemoryLimit { get; set; }
 
-            return false;
-        }
-
-        public int TrackedPastKeyCount => _trackedPastKeyCount;
     }
 }

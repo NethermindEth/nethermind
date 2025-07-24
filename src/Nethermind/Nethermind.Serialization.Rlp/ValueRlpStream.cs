@@ -13,9 +13,9 @@ using Nethermind.Core.Extensions;
 
 namespace Nethermind.Serialization.Rlp;
 
-public ref struct ValueRlpStream(in CappedArray<byte> data)
+public ref struct ValueRlpStream(SpanSource data)
 {
-    public readonly ReadOnlySpan<byte> Data = data.AsSpan();
+    public readonly ReadOnlySpan<byte> Data = data.Span;
     private int _position = 0;
 
     internal readonly string Description =>
@@ -134,15 +134,13 @@ public ref struct ValueRlpStream(in CappedArray<byte> data)
 
         return result;
 
-        [DoesNotReturn]
-        [StackTraceHidden]
+        [DoesNotReturn, StackTraceHidden]
         static void ThrowSequenceLengthTooLong()
         {
             throw new RlpException("Expected length of length less or equal 4");
         }
 
-        [DoesNotReturn]
-        [StackTraceHidden]
+        [DoesNotReturn, StackTraceHidden]
         static void ThrowLengthTooLong(int length)
         {
             throw new RlpException($"Expected length greater or equal 56 and was {length}");
@@ -386,8 +384,7 @@ public ref struct ValueRlpStream(in CappedArray<byte> data)
 
         return DecodeLargerByteArraySpan(prefix);
 
-        [DoesNotReturn]
-        [StackTraceHidden]
+        [DoesNotReturn, StackTraceHidden]
         static void ThrowUnexpectedValue(int buffer0)
         {
             throw new RlpException($"Unexpected byte value {buffer0}");
@@ -418,22 +415,19 @@ public ref struct ValueRlpStream(in CappedArray<byte> data)
         ThrowUnexpectedPrefix(prefix);
         return default;
 
-        [DoesNotReturn]
-        [StackTraceHidden]
+        [DoesNotReturn, StackTraceHidden]
         static void ThrowUnexpectedPrefix(int prefix)
         {
             throw new RlpException($"Unexpected prefix value of {prefix} when decoding a byte array.");
         }
 
-        [DoesNotReturn]
-        [StackTraceHidden]
+        [DoesNotReturn, StackTraceHidden]
         static void ThrowUnexpectedLength(int length)
         {
             throw new RlpException($"Expected length greater or equal 56 and was {length}");
         }
 
-        [DoesNotReturn]
-        [StackTraceHidden]
+        [DoesNotReturn, StackTraceHidden]
         static void ThrowUnexpectedLengthOfLength()
         {
             throw new RlpException("Expected length of length less or equal 4");

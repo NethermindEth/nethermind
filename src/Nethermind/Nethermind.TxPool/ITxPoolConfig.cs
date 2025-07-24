@@ -43,7 +43,28 @@ public interface ITxPoolConfig : IConfig
 
     long? GasLimit { get; set; }
 
+    [ConfigItem(DefaultValue = "131072",
+        Description = "The max transaction size allowed, in bytes.")]
+    long? MaxTxSize { get; set; }
+
+    [ConfigItem(DefaultValue = "1048576",
+        Description = "The max blob transaction size allowed, excluding blobs, in bytes.")]
+    long? MaxBlobTxSize { get; set; }
+
+    [ConfigItem(DefaultValue = "false",
+        Description = "Enable transformation of blob txs with network wrapper in version 0x0 (blob proof) to version 0x1 (cell proofs)",
+        HiddenFromDocs = true)]
+    bool ProofsTranslationEnabled { get; set; }
+
     [ConfigItem(DefaultValue = "null",
         Description = "The current transaction pool state reporting interval, in minutes.")]
     int? ReportMinutes { get; set; }
+
+    [ConfigItem(DefaultValue = "false",
+        Description = "Accept transactions when not synced.")]
+    bool AcceptTxWhenNotSynced { get; set; }
+
+    [ConfigItem(DefaultValue = "true",
+        Description = "Add local transactions to persistent broadcast.")]
+    bool PersistentBroadcastEnabled { get; set; }
 }

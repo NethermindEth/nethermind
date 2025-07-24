@@ -7,35 +7,36 @@ using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Int256;
 using Nethermind.Logging;
-using Nethermind.Serialization.Rlp;
 using Nethermind.Trie;
 
 namespace Nethermind.Analytics
 {
-    public class SupplyVerifier : ITreeVisitor
+    public class SupplyVerifier : ITreeVisitor<OldStyleTrieVisitContext>
     {
         private readonly ILogger _logger;
-        private readonly HashSet<Hash256> _ignoreThisOne = new HashSet<Hash256>();
+        private readonly HashSet<Hash256AsKey> _ignoreThisOne = new(Hash256AsKeyComparer.Instance);
+        private readonly HashSet<Hash256AsKey>.AlternateLookup<ValueHash256> _ignoreThisOneLookup;
         private int _accountsVisited;
         private int _nodesVisited;
 
         public SupplyVerifier(ILogger logger)
         {
             _logger = logger;
+            _ignoreThisOneLookup = _ignoreThisOne.GetAlternateLookup<ValueHash256>();
         }
 
         public UInt256 Balance { get; set; } = UInt256.Zero;
 
         public bool IsFullDbScan => false;
 
-        public bool ShouldVisit(Hash256 nextNode)
+        public bool ShouldVisit(in OldStyleTrieVisitContext _, in ValueHash256 nextNode)
         {
             if (_ignoreThisOne.Count > 16)
             {
                 _logger.Warn($"Ignore count leak -> {_ignoreThisOne.Count}");
             }
 
-            if (_ignoreThisOne.Remove(nextNode))
+            if (_ignoreThisOneLookup.Remove(nextNode))
             {
                 return false;
             }
@@ -43,16 +44,16 @@ namespace Nethermind.Analytics
             return true;
         }
 
-        public void VisitTree(Hash256 rootHash, TrieVisitContext trieVisitContext)
+        public void VisitTree(in OldStyleTrieVisitContext _, in ValueHash256 rootHash)
         {
         }
 
-        public void VisitMissingNode(Hash256 nodeHash, TrieVisitContext trieVisitContext)
+        public void VisitMissingNode(in OldStyleTrieVisitContext _, in ValueHash256 nodeHash)
         {
             _logger.Warn($"Missing node {nodeHash}");
         }
 
-        public void VisitBranch(TrieNode node, TrieVisitContext trieVisitContext)
+        public void VisitBranch(in OldStyleTrieVisitContext trieVisitContext, TrieNode node)
         {
             _logger.Info($"Balance after visiting {_accountsVisited} accounts and {_nodesVisited} nodes: {Balance}");
             _nodesVisited++;
@@ -70,7 +71,7 @@ namespace Nethermind.Analytics
             }
         }
 
-        public void VisitExtension(TrieNode node, TrieVisitContext trieVisitContext)
+        public void VisitExtension(in OldStyleTrieVisitContext trieVisitContext, TrieNode node)
         {
             _nodesVisited++;
             if (trieVisitContext.IsStorage)
@@ -79,26 +80,17 @@ namespace Nethermind.Analytics
             }
         }
 
-        public void VisitLeaf(TrieNode node, TrieVisitContext trieVisitContext, ReadOnlySpan<byte> value)
+        public void VisitLeaf(in OldStyleTrieVisitContext trieVisitContext, TrieNode node)
+        {
+        }
+
+        public void VisitAccount(in OldStyleTrieVisitContext _, TrieNode node, in AccountStruct account)
         {
             _nodesVisited++;
-
-            if (trieVisitContext.IsStorage)
-            {
-                return;
-            }
-
-            AccountDecoder accountDecoder = new AccountDecoder();
-            Account account = accountDecoder.Decode(node.Value.AsRlpStream());
             Balance += account.Balance;
             _accountsVisited++;
 
             _logger.Info($"Balance after visiting {_accountsVisited} accounts and {_nodesVisited} nodes: {Balance}");
-        }
-
-        public void VisitCode(Hash256 codeHash, TrieVisitContext trieVisitContext)
-        {
-            _nodesVisited++;
         }
     }
 }

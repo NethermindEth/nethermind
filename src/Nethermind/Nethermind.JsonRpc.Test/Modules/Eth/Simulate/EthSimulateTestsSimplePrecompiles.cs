@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Collections.Generic;
+using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Core;
@@ -56,12 +57,12 @@ public class EthSimulateTestsSimplePrecompiles : EthRpcSimulateTestsBase
             .Op(Instruction.RETURN).Done;
 
         // Step 1: Hash the message
-        Hash256 messageHash = Keccak.Compute("Hello, world!");
+        ValueHash256 messageHash = ValueKeccak.Compute("Hello, world!");
         // Step 2: Sign the hash
-        Signature signature = chain.EthereumEcdsa.Sign(TestItem.PrivateKeyA, messageHash);
+        Signature signature = chain.EthereumEcdsa.Sign(TestItem.PrivateKeyA, in messageHash);
 
         Address contractAddress = await DeployEcRecoverContract(chain, TestItem.PrivateKeyB, EcRecoverCallerContractBytecode);
-        byte[] transactionData = GenerateTransactionDataForEcRecover(messageHash, signature);
+        byte[] transactionData = GenerateTransactionDataForEcRecover(new Hash256(messageHash), signature);
 
         SystemTransaction tx = new()
         {
@@ -94,9 +95,9 @@ public class EthSimulateTestsSimplePrecompiles : EthRpcSimulateTestsBase
             TraceTransfers = true
         };
 
-        SimulateOutput result = chain.Bridge.Simulate(chain.BlockFinder.Head?.Header!, payload, CancellationToken.None);
+        SimulateOutput<SimulateCallResult> result = chain.Bridge.Simulate(chain.BlockFinder.Head?.Header!, payload, new SimulateBlockMutatorTracerFactory(), CancellationToken.None);
 
-        byte[] addressBytes = result.Items[0].Calls[0].ReturnData!.SliceWithZeroPaddingEmptyOnError(12, 20);
+        byte[] addressBytes = result.Items[0].Calls.First().ReturnData!.SliceWithZeroPaddingEmptyOnError(12, 20);
         Address resultingAddress = new(addressBytes);
         Assert.That(resultingAddress, Is.EqualTo(TestItem.AddressE));
 

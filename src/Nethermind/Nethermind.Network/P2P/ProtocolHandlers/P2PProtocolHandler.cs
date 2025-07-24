@@ -29,7 +29,6 @@ public class P2PProtocolHandler(
     PublicKey localNodeId,
     INodeStatsManager nodeStatsManager,
     IMessageSerializationService serializer,
-    Regex? clientIdPattern,
     ILogManager logManager)
     : ProtocolHandlerBase(session, nodeStatsManager, serializer, logManager), IPingSender, IP2PProtocolHandler
 {
@@ -219,13 +218,6 @@ public class P2PProtocolHandler(
                 $"capabilities: {string.Join(", ", capabilities)}");
         }
 
-        if (clientIdPattern?.IsMatch(hello.ClientId) == false)
-        {
-            Session.InitiateDisconnect(
-                DisconnectReason.ClientFiltered,
-                $"clientId: {hello.ClientId}");
-        }
-
         ReceivedProtocolInitMsg(hello);
 
         P2PProtocolInitializedEventArgs eventArgs = new(this)
@@ -298,14 +290,14 @@ public class P2PProtocolHandler(
     {
         if (Logger.IsTrace)
         {
-            Logger.Trace($"{Session} {Name} sending hello with Client ID {ProductInfo.ClientId}, " +
+            Logger.Trace($"{Session} {Name} sending hello with Client ID {ProductInfo.PublicClientId}, " +
                          $"protocol {Name}, listen port {ListenPort}");
         }
 
         HelloMessage helloMessage = new()
         {
             Capabilities = _supportedCapabilities.ToPooledList(),
-            ClientId = ProductInfo.ClientId,
+            ClientId = ProductInfo.PublicClientId,
             NodeId = LocalNodeId,
             ListenPort = ListenPort,
             P2PVersion = ProtocolVersion

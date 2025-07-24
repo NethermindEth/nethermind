@@ -1,34 +1,28 @@
-// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using System.IO.Abstractions;
 using System.Text.Json;
 using System.Threading.Tasks;
+using Autofac;
 using FluentAssertions;
 using FluentAssertions.Execution;
 using FluentAssertions.Json;
-using Nethermind.Blockchain.Blocks;
-using Nethermind.Blockchain.Receipts;
-using Nethermind.Config;
-using Nethermind.Consensus.Rewards;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
-using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Builders;
-using Nethermind.Evm.Tracing.GethStyle;
+using Nethermind.Blockchain.Tracing.GethStyle;
 using Nethermind.Int256;
+using Nethermind.JsonRpc.Modules;
 using Nethermind.JsonRpc.Modules.DebugModule;
-using Nethermind.Synchronization.ParallelSync;
 using Newtonsoft.Json.Linq;
-using NSubstitute;
 using NUnit.Framework;
 
 namespace Nethermind.JsonRpc.Test.Modules;
 
 [Parallelizable(ParallelScope.Self)]
-public class DebugRpcModuleTests
+public partial class DebugRpcModuleTests
 {
     private class Context : IDisposable
     {
@@ -41,32 +35,11 @@ public class DebugRpcModuleTests
             Blockchain = blockchain;
         }
 
-        public static async Task<Context> Create(ISpecProvider? specProvider = null, bool isAura = false)
+        public static async Task<Context> Create(bool isAura = false)
         {
-            TestRpcBlockchain blockchain = await TestRpcBlockchain.ForTest(isAura ? SealEngineType.AuRa : SealEngineType.NethDev).Build(specProvider);
+            TestRpcBlockchain blockchain = await TestRpcBlockchain.ForTest(isAura ? SealEngineType.AuRa : SealEngineType.NethDev).Build();
 
-            IConfigProvider configProvider = Substitute.For<IConfigProvider>();
-            IReceiptsMigration receiptsMigration = Substitute.For<IReceiptsMigration>();
-            ISyncModeSelector syncModeSelector = Substitute.For<ISyncModeSelector>();
-            var factory = new DebugModuleFactory(
-                blockchain.WorldStateManager,
-                blockchain.DbProvider,
-                blockchain.BlockTree,
-                blockchain.RpcConfig,
-                blockchain.BlockValidator,
-                blockchain.BlockPreprocessorStep,
-                NoBlockRewards.Instance,
-                blockchain.ReceiptStorage,
-                receiptsMigration,
-                configProvider,
-                blockchain.SpecProvider,
-                syncModeSelector,
-                new BadBlockStore(blockchain.BlocksDb, 100),
-                new FileSystem(),
-                blockchain.LogManager
-            );
-
-            IDebugRpcModule debugRpcModule = factory.Create();
+            IDebugRpcModule debugRpcModule = blockchain.DebugRpcModule;
 
             return new(blockchain, debugRpcModule);
         }

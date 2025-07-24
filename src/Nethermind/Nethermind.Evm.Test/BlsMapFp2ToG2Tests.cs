@@ -12,8 +12,16 @@ using NUnit.Framework;
 
 namespace Nethermind.Evm.Test;
 
-public class BlsMapFp2ToG2Tests
+public class BlsMapFp2ToG2Tests : PrecompileTests<BlsMapFp2ToG2Tests>, IPrecompileTests
 {
+    public static IEnumerable<string> TestFiles()
+    {
+        yield return "Bls/map_fp2_to_G2_bls.json";
+        yield return "Bls/fail-map_fp2_to_G2_bls.json";
+    }
+
+    public static IPrecompile Precompile() => MapFp2ToG2Precompile.Instance;
+
     [Test]
     public void Test()
     {

@@ -20,7 +20,7 @@ public class OptimismGetPayloadV3Result
     }
 
     public UInt256 BlockValue { get; }
-    public ExecutionPayload ExecutionPayload { get; }
+    public ExecutionPayloadV3 ExecutionPayload { get; }
 
     public BlobsBundleV1 BlobsBundle { get; }
 

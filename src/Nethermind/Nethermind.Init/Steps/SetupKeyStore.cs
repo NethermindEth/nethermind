@@ -1,10 +1,12 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System.Linq;
 using System.Net;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Api;
+using Nethermind.Api.Steps;
 using Nethermind.Config;
 using Nethermind.Consensus;
 using Nethermind.Crypto;
@@ -59,7 +61,7 @@ namespace Nethermind.Init.Steps
                     .OrReadFromConsole($"Provide password for validator account {keyStoreConfig.BlockAuthorAccount}");
 
                 INodeKeyManager nodeKeyManager = new NodeKeyManager(get.CryptoRandom, get.KeyStore, keyStoreConfig, get.LogManager, passwordProvider, get.FileSystem);
-                ProtectedPrivateKey? nodeKey = set.NodeKey = nodeKeyManager.LoadNodeKey();
+                IProtectedPrivateKey? nodeKey = set.NodeKey = nodeKeyManager.LoadNodeKey();
 
                 IMiningConfig miningConfig = get.Config<IMiningConfig>();
                 //Don't load the local key if an external signer is configured
@@ -72,6 +74,8 @@ namespace Nethermind.Init.Steps
                 IEnode enode = set.Enode = new Enode(nodeKey.PublicKey, ipAddress, networkConfig.P2PPort);
 
                 get.LogManager.SetGlobalVariable("enode", enode.ToString());
+
+                _api.ChainSpec.Bootnodes = _api.ChainSpec.Bootnodes?.Where(n => !n.NodeId?.Equals(nodeKey.PublicKey) ?? false).ToArray() ?? [];
             }, cancellationToken);
         }
     }

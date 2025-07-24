@@ -11,7 +11,7 @@ public class Prague : Cancun
 {
     private static IReleaseSpec _instance;
 
-    protected Prague()
+    public Prague()
     {
         Name = "Prague";
         IsEip2537Enabled = true;
@@ -20,7 +20,12 @@ public class Prague : Cancun
         IsEip6110Enabled = true;
         IsEip7002Enabled = true;
         IsEip7251Enabled = true;
+        IsEip7623Enabled = true;
         Eip2935ContractAddress = Eip2935Constants.BlockHashHistoryAddress;
+        MaxBlobCount = 9;
+        TargetBlobCount = 6;
+        BlobBaseFeeUpdateFraction = 5007716;
+        DepositContractAddress = Eip6110Constants.MainnetDepositContractAddress;
     }
 
     public new static IReleaseSpec Instance => LazyInitializer.EnsureInitialized(ref _instance, static () => new Prague());

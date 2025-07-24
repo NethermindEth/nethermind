@@ -4,6 +4,8 @@
 using System;
 using System.Buffers;
 using System.Buffers.Binary;
+using System.Collections.Generic;
+using System.IO;
 using System.Linq;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
@@ -14,6 +16,7 @@ using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
+using Nethermind.Serialization.Rlp;
 using Nethermind.Trie.Pruning;
 
 namespace Nethermind.Trie;
@@ -43,6 +46,7 @@ public class BatchedTrieVisitor<TNodeContext>
 {
     // Not using shared pool so GC can reclaim them later.
     private readonly ArrayPool<Job> _jobArrayPool = ArrayPool<Job>.Create();
+    private static readonly AccountDecoder _accountDecoder = new();
 
     private readonly ArrayPool<(TrieNode, TNodeContext, SmallTrieVisitContext)> _trieNodePool =
         ArrayPool<(TrieNode, TNodeContext, SmallTrieVisitContext)>.Create();
@@ -266,7 +270,7 @@ public class BatchedTrieVisitor<TNodeContext>
                 using ArrayPoolList<(TrieNode, TNodeContext, SmallTrieVisitContext)> recursiveResult = new(1);
                 trieNode.ResolveNode(_resolver, emptyPath);
                 Interlocked.Increment(ref _activeJobs);
-                trieNode.AcceptResolvedNode(_visitor, nodeContext, _resolver, ctx, recursiveResult);
+                AcceptResolvedNode(trieNode, nodeContext, _resolver, ctx, recursiveResult);
                 QueueNextNodes(recursiveResult);
                 continue;
             }
@@ -337,7 +341,7 @@ public class BatchedTrieVisitor<TNodeContext>
                 }
                 catch (TrieException)
                 {
-                    _visitor.VisitMissingNode(nodeContext, nodeToResolve.Keccak, ctx.ToVisitContext());
+                    _visitor.VisitMissingNode(nodeContext, nodeToResolve.Keccak);
                 }
             }
 
@@ -354,7 +358,7 @@ public class BatchedTrieVisitor<TNodeContext>
                     return; // missing node
                 }
 
-                nodeToResolve.AcceptResolvedNode(_visitor, nodeContext, _resolver, ctx, nextToProcesses);
+                AcceptResolvedNode(nodeToResolve, nodeContext, _resolver, ctx, nextToProcesses);
                 QueueNextNodes(nextToProcesses);
             }
 
@@ -366,7 +370,105 @@ public class BatchedTrieVisitor<TNodeContext>
         static void ThrowUnableToResolve(in SmallTrieVisitContext ctx)
         {
             throw new TrieException(
-                $"Unable to resolve node without Keccak. ctx: {ctx.Level}, {ctx.ExpectAccounts}, {ctx.IsStorage}, {ctx.BranchChildIndex}");
+                $"Unable to resolve node without Keccak. ctx: {ctx.Level}, {ctx.ExpectAccounts}, {ctx.IsStorage}");
+        }
+    }
+
+    /// <summary>
+    /// Like `Accept`, but does not execute its children. Instead it return the next trie to visit in the list
+    /// `nextToVisit`. Also, it assume the node is already resolved.
+    /// </summary>
+    internal void AcceptResolvedNode(TrieNode node, in TNodeContext nodeContext, ITrieNodeResolver nodeResolver, SmallTrieVisitContext trieVisitContext, IList<(TrieNode, TNodeContext, SmallTrieVisitContext)> nextToVisit)
+    {
+        // Note: The path is not maintained here, its just for a placeholder. This code is only used for BatchedTrieVisitor
+        // which should only be used with hash keys.
+        TreePath emptyPath = TreePath.Empty;
+        switch (node.NodeType)
+        {
+            case NodeType.Branch:
+                {
+                    _visitor.VisitBranch(nodeContext, node);
+                    trieVisitContext.Level++;
+
+                    for (int i = 0; i < TrieNode.BranchesCount; i++)
+                    {
+                        TrieNode child = node.GetChild(nodeResolver, ref emptyPath, i);
+                        if (child is not null)
+                        {
+                            child.ResolveKey(nodeResolver, ref emptyPath, false);
+                            TNodeContext childContext = nodeContext.Add((byte)i);
+
+                            if (_visitor.ShouldVisit(childContext, child.Keccak!))
+                            {
+                                SmallTrieVisitContext childCtx = trieVisitContext; // Copy
+                                nextToVisit.Add((child, childContext, childCtx));
+                            }
+
+                            if (child.IsPersisted)
+                            {
+                                node.UnresolveChild(i);
+                            }
+                        }
+                    }
+
+                    break;
+                }
+            case NodeType.Extension:
+                {
+                    _visitor.VisitExtension(nodeContext, node);
+                    TrieNode child = node.GetChild(nodeResolver, ref emptyPath, 0) ?? throw new InvalidDataException($"Child of an extension {node.Key} should not be null.");
+                    child.ResolveKey(nodeResolver, ref emptyPath, false);
+                    TNodeContext childContext = nodeContext.Add(node.Key!);
+                    if (_visitor.ShouldVisit(childContext, child.Keccak!))
+                    {
+                        trieVisitContext.Level++;
+
+
+                        nextToVisit.Add((child, childContext, trieVisitContext));
+                    }
+
+                    break;
+                }
+
+            case NodeType.Leaf:
+                {
+                    _visitor.VisitLeaf(nodeContext, node);
+
+                    if (!trieVisitContext.IsStorage && trieVisitContext.ExpectAccounts) // can combine these conditions
+                    {
+                        TNodeContext childContext = nodeContext.Add(node.Key!);
+
+                        Rlp.ValueDecoderContext decoderContext = new Rlp.ValueDecoderContext(node.Value.Span);
+                        if (!_accountDecoder.TryDecodeStruct(ref decoderContext, out AccountStruct account))
+                        {
+                            throw new InvalidDataException("Non storage leaf should be an account");
+                        }
+                        _visitor.VisitAccount(childContext, node, account);
+
+                        if (account.HasStorage && _visitor.ShouldVisit(childContext, account.StorageRoot))
+                        {
+                            trieVisitContext.IsStorage = true;
+                            TNodeContext storageContext = childContext.AddStorage(account.StorageRoot);
+                            trieVisitContext.Level++;
+
+                            if (node.TryResolveStorageRoot(nodeResolver, ref emptyPath, out TrieNode? storageRoot))
+                            {
+                                nextToVisit.Add((storageRoot!, storageContext, trieVisitContext));
+                            }
+                            else
+                            {
+                                _visitor.VisitMissingNode(storageContext, account.StorageRoot);
+                            }
+
+                            trieVisitContext.IsStorage = false;
+                        }
+                    }
+
+                    break;
+                }
+
+            default:
+                throw new TrieException($"An attempt was made to visit a node {node.Keccak} of type {node.NodeType}");
         }
     }
 

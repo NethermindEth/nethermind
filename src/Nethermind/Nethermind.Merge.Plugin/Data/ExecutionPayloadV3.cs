@@ -1,7 +1,6 @@
-// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System.Diagnostics.CodeAnalysis;
 using System.Text.Json.Serialization;
 using Nethermind.Core;
 using Nethermind.Core.ExecutionRequest;
@@ -26,22 +25,24 @@ public class ExecutionPayloadV3 : ExecutionPayload, IExecutionPayloadFactory<Exe
 
     public new static ExecutionPayloadV3 Create(Block block) => Create<ExecutionPayloadV3>(block);
 
-    public override bool TryGetBlock([NotNullWhen(true)] out Block? block, UInt256? totalDifficulty = null)
+    public override BlockDecodingResult TryGetBlock(UInt256? totalDifficulty = null)
     {
-        if (!base.TryGetBlock(out block, totalDifficulty))
+        BlockDecodingResult baseResult = base.TryGetBlock(totalDifficulty);
+        Block? block = baseResult.Block;
+        if (block is null)
         {
-            return false;
+            return baseResult;
         }
 
         block.Header.ParentBeaconBlockRoot = ParentBeaconBlockRoot;
         block.Header.BlobGasUsed = BlobGasUsed;
         block.Header.ExcessBlobGas = ExcessBlobGas;
         block.Header.RequestsHash = ExecutionRequests is not null ? ExecutionRequestExtensions.CalculateHashFromFlatEncodedRequests(ExecutionRequests) : null;
-        return true;
+        return baseResult;
     }
 
-    public override bool ValidateFork(ISpecProvider specProvider) =>
-        specProvider.GetSpec(BlockNumber, Timestamp).IsEip4844Enabled;
+    public override bool ValidateFork(ISpecProvider specProvider)
+         => specProvider.GetSpec(BlockNumber, Timestamp).IsEip4844Enabled;
 
     /// <summary>
     /// Gets or sets <see cref="Block.BlobGasUsed"/> as defined in

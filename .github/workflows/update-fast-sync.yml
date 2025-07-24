@@ -23,7 +23,7 @@ jobs:
           pip install setuptools
           pip install emoji
       - name: Update config files
-        run: python3 scripts/syncSettings.py ${{ secrets.ETHERSCAN_API_KEY }}
+        run: python3 scripts/sync-settings.py -k ${{ secrets.ETHERSCAN_API_KEY }}
       - name: Create GitHub app token
         id: gh-app
         uses: actions/create-github-app-token@v1

@@ -6,18 +6,11 @@ using Nethermind.Core.Crypto;
 
 namespace Nethermind.Core
 {
-    public class LogEntry : ILogEntry
+    public class LogEntry(Address address, byte[] data, Hash256[] topics) : ILogEntry
     {
-        public LogEntry(Address address, byte[] data, Hash256[] topics)
-        {
-            Address = address;
-            Data = data;
-            Topics = topics;
-        }
-
-        public Address Address { get; }
-        public Hash256[] Topics { get; }
-        public byte[] Data { get; }
+        public Address Address { get; } = address;
+        public Hash256[] Topics { get; } = topics;
+        public byte[] Data { get; } = data;
     }
 
     public ref struct LogEntryStructRef

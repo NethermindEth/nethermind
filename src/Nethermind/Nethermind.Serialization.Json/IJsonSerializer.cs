@@ -5,6 +5,7 @@ using System;
 using System.Buffers;
 using System.IO;
 using System.IO.Pipelines;
+using System.Threading;
 using System.Threading.Tasks;
 
 namespace Nethermind.Serialization.Json
@@ -16,7 +17,7 @@ namespace Nethermind.Serialization.Json
         T Deserialize<T>(string json);
         string Serialize<T>(T value, bool indented = false);
         long Serialize<T>(Stream stream, T value, bool indented = false, bool leaveOpen = true);
-        ValueTask<long> SerializeAsync<T>(Stream stream, T value, bool indented = false, bool leaveOpen = true);
+        ValueTask<long> SerializeAsync<T>(Stream stream, T value, CancellationToken cancellationToken, bool indented = false, bool leaveOpen = true);
         Task SerializeAsync<T>(PipeWriter writer, T value, bool indented = false);
     }
 }

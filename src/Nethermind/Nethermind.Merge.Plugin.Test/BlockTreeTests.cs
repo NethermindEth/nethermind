@@ -10,7 +10,6 @@ using Nethermind.Blockchain.Synchronization;
 using Nethermind.Consensus;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
-using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Crypto;
 using Nethermind.Db;
@@ -21,9 +20,6 @@ using Nethermind.Serialization.Rlp;
 using Nethermind.Specs;
 using Nethermind.Specs.ChainSpecStyle;
 using Nethermind.Specs.Forks;
-using Nethermind.Synchronization.Blocks;
-using Nethermind.Synchronization.Peers;
-using NSubstitute;
 using NUnit.Framework;
 
 namespace Nethermind.Merge.Plugin.Test;
@@ -266,21 +262,33 @@ public partial class BlockTreeTests
                 int splitVariant = 0,
                 int splitFrom = 0,
                 int syncedSplitVariant = 0,
-                int syncedSplitFrom = 0
+                int syncedSplitFrom = 0,
+                IReceiptStorage? receiptStorage = null
             )
             {
                 TestSpecProvider testSpecProvider = new TestSpecProvider(London.Instance);
                 if (ttd is not null) testSpecProvider.TerminalTotalDifficulty = ttd;
 
                 NotSyncedTreeBuilder = Build.A.BlockTree()
-                    .WithSpecProvider(testSpecProvider)
+                    .WithSpecProvider(testSpecProvider);
+                if (receiptStorage is not null)
+                {
+                    NotSyncedTreeBuilder = NotSyncedTreeBuilder.WithTransactions(receiptStorage);
+                }
+                NotSyncedTreeBuilder = NotSyncedTreeBuilder
                     .OfChainLength(notSyncedTreeSize, splitVariant: splitVariant, splitFrom: splitFrom);
                 NotSyncedTree = NotSyncedTreeBuilder.TestObject;
 
                 if (syncedTreeSize > 0)
                 {
                     _syncedTreeBuilder = Build.A.BlockTree()
-                        .WithSpecProvider(testSpecProvider)
+                        .WithSpecProvider(testSpecProvider);
+
+                    if (receiptStorage is not null)
+                    {
+                        _syncedTreeBuilder = _syncedTreeBuilder.WithTransactions(receiptStorage);
+                    }
+                    _syncedTreeBuilder = _syncedTreeBuilder
                         .OfChainLength(syncedTreeSize, splitVariant: syncedSplitVariant, splitFrom: syncedSplitFrom);
 
                     SyncedTree = _syncedTreeBuilder.TestObject;
@@ -340,29 +348,10 @@ public partial class BlockTreeTests
                 BlockHeader[] headers = _chainLevelHelper!.GetNextHeaders(maxCount, maxHeaderNumber, 0)!;
                 while (headers is not null && headers.Length > 1)
                 {
-                    BlockDownloadContext blockDownloadContext = new(
-                        Substitute.For<ISpecProvider>(),
-                        new PeerInfo(Substitute.For<ISyncPeer>()),
-                        headers,
-                        false,
-                        Substitute.For<IReceiptsRecovery>()
-                    );
-                    bool shouldSetBlocks = NotSyncedTree.FindBlock(headers[1].Hash,
-                        BlockTreeLookupOptions.TotalDifficultyNotNeeded) is not null;
-                    Assert.That(_chainLevelHelper.TrySetNextBlocks(maxCount, blockDownloadContext), Is.EqualTo(shouldSetBlocks));
                     for (int i = 1; i < headers.Length; ++i)
                     {
-                        Block? beaconBlock;
-                        if (shouldSetBlocks)
-                        {
-                            beaconBlock = blockDownloadContext.Blocks[i - 1];
-                        }
-                        else
-                        {
-                            beaconBlock =
-                                SyncedTree.FindBlock(headers[i].Hash!, BlockTreeLookupOptions.None);
-                            beaconBlock!.Header.TotalDifficulty = null;
-                        }
+                        Block? beaconBlock = SyncedTree.FindBlock(headers[i].Hash!, BlockTreeLookupOptions.None);
+                        beaconBlock!.Header.TotalDifficulty = null;
 
                         AddBlockResult insertResult = NotSyncedTree.SuggestBlock(beaconBlock, BlockTreeSuggestOptions.ShouldProcess | BlockTreeSuggestOptions.FillBeaconBlock | BlockTreeSuggestOptions.ForceSetAsMain);
                         Assert.That(AddBlockResult.Added == insertResult, Is.True, $"BeaconBlock {beaconBlock!.ToString(Block.Format.FullHashAndNumber)} result {insertResult}");
@@ -419,7 +408,7 @@ public partial class BlockTreeTests
                 return this;
             }
 
-            public ScenarioBuilder InsertFork(long low, long high, bool moveToBeaconMainChain = false)
+            public ScenarioBuilder InsertFork(long low, long high, bool moveToBeaconMainChain = false, bool moveSyncedTree = true, ulong nonce = 0)
             {
                 List<BlockInfo> blockInfos = new();
                 List<Block> blocks = new List<Block>();
@@ -427,7 +416,7 @@ public partial class BlockTreeTests
                 for (long i = low; i <= high; i++)
                 {
                     parent ??= SyncedTree.FindBlock(i - 1, BlockTreeLookupOptions.None)!;
-                    Block blockToInsert = Build.A.Block.WithNumber(i).WithParent(parent).WithNonce(0).TestObject;
+                    Block blockToInsert = Build.A.Block.WithNumber(i).WithParent(parent).WithNonce(nonce).TestObject;
                     NotSyncedTree.Insert(blockToInsert, BlockTreeInsertBlockOptions.SaveHeader, BlockTreeInsertHeaderOptions.BeaconBlockInsert);
                     SyncedTree.Insert(blockToInsert, BlockTreeInsertBlockOptions.SaveHeader, BlockTreeInsertHeaderOptions.NotOnMainChain);
 
@@ -440,7 +429,7 @@ public partial class BlockTreeTests
 
                 if (moveToBeaconMainChain)
                 {
-                    SyncedTree.UpdateMainChain(blocks, true, true);
+                    if (moveSyncedTree) SyncedTree.UpdateMainChain(blocks, true, true);
                     NotSyncedTree.UpdateBeaconMainChain(blockInfos.ToArray(), blockInfos[^1].BlockNumber);
                 }
 
@@ -552,6 +541,13 @@ public partial class BlockTreeTests
                 Assert.That(NotSyncedTree, Is.Not.Null);
                 Assert.That(NotSyncedTree.BestSuggestedBeaconBody, Is.Not.Null);
                 Assert.That(NotSyncedTree.BestSuggestedBeaconBody?.Number, Is.EqualTo(expected));
+                return this;
+            }
+
+            public ScenarioBuilder AssertChainLevelHelperLength(int count)
+            {
+                _chainLevelHelper!.GetNextHeaders(1000, 1000)!.Length.Should().Be(count);
+
                 return this;
             }
 
@@ -828,6 +824,17 @@ public partial class BlockTreeTests
             .InsertFork(6, 9, true)
             .SuggestBlocksUsingChainLevels()
             .AssertChainLevel(0, 9);
+    }
+
+    [Test]
+    public void Chain_level_helper_stop_on_partial_reorg()
+    {
+        _ = BlockTreeTestScenario.GoesLikeThis()
+            .WithBlockTrees(4, 10)
+            .InsertBeaconBlocks(4, 9)
+            .InsertFork(5, 9, true, moveSyncedTree: false, nonce: 1)
+            .InsertFork(7, 9, true, moveSyncedTree: false, nonce: 2)
+            .AssertChainLevelHelperLength(4); // From 3 to 7 where the third branch mismatch second branch
     }
 
     [Test]

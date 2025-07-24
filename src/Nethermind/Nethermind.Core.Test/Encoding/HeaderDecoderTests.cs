@@ -5,6 +5,7 @@ using System;
 using System.Collections.Generic;
 using FluentAssertions;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Extensions;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Crypto;
 using Nethermind.Int256;
@@ -178,6 +179,53 @@ public class HeaderDecoderTests
         BlockHeader header = Build.A.BlockHeader
             .WithTimestamp(ulong.MaxValue)
             .WithBaseFee(1)
+            .WithWithdrawalsRoot(Keccak.Zero)
+            .WithBlobGasUsed(0)
+            .WithExcessBlobGas(0)
+            .WithParentBeaconBlockRoot(TestItem.KeccakB)
+            .WithRequestsHash(Keccak.Zero).TestObject;
+
+        Rlp rlp = Rlp.Encode(header);
+        BlockHeader blockHeader = Rlp.Decode<BlockHeader>(rlp.Bytes.AsSpan());
+
+        blockHeader.Should().BeEquivalentTo(header);
+    }
+
+    [Test]
+    public void Can_encode_decode_with_missing_excess_blob_gass()
+    {
+        BlockHeader header = Build.A.BlockHeader
+                .WithHash(new Hash256("0x3d8b9cc98eee58243461bd5a83663384b50293cd1e459a6841cb005296305590"))
+                .WithNumber(1000)
+                .WithParentHash(new Hash256("0x793b1ee71748f4b1b70cf70a53e083e6d5d356bffee9946e15a13fed8d70d7d6"))
+                .WithBeneficiary(new Address("0xb7705ae4c6f81b66cdb323c65f4e8133690fc099"))
+                .WithGasLimit(100000000)
+                .WithGasUsed(299331)
+                .WithTimestamp(1736575828)
+                .WithExtraData(Bytes.FromHexString("4e65746865726d696e64"))
+                .WithDifficulty(1)
+                .WithMixHash(new Hash256("0x0000000000000000000000000000000000000000000000000000000000000000"))
+                .WithNonce(0)
+                .WithUnclesHash(new Hash256("0x1dcc4de8dec75d7aab85b567b6ccd41ad312451b948a7413f0a142fd40d49347"))
+                .WithTransactionsRoot(new Hash256("0x1dcc4de8dec75d7aab85b567b6ccd41ad312451b948a7413f0a142fd40d49347"))
+                .WithReceiptsRoot(new Hash256("0x1dcc4de8dec75d7aab85b567b6ccd41ad312451b948a7413f0a142fd40d49347"))
+                .WithStateRoot(new Hash256("0x1dcc4de8dec75d7aab85b567b6ccd41ad312451b948a7413f0a142fd40d49347"))
+                .WithBaseFee(8)
+                .WithWithdrawalsRoot(new Hash256("0x56e81f171bcc55a6ff8345e692c0f86e5b48e01b996cadc001622fb5e363b421"))
+                .WithBlobGasUsed(0)
+                .TestObject;
+        ;
+
+        Rlp rlp = Rlp.Encode(header);
+        _ = Rlp.Decode<BlockHeader>(rlp.Bytes.AsSpan());
+    }
+
+    [Test]
+    public void Can_encode_decode_with_zero_basefee_but_has_later_field()
+    {
+        BlockHeader header = Build.A.BlockHeader
+            .WithTimestamp(ulong.MaxValue)
+            .WithBaseFee(0)
             .WithWithdrawalsRoot(Keccak.Zero)
             .WithBlobGasUsed(0)
             .WithExcessBlobGas(0)

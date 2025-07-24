@@ -11,52 +11,52 @@ using Nethermind.Int256;
 namespace Nethermind.Serialization.Ssz;
 
 /// <summary>
-/// https://github.com/ethereum/eth2.0-specs/blob/dev/specs/simple-serialize.md#simpleserialize-ssz
+/// https://github.com/ethereum/consensus-specs/blob/dev/ssz/simple-serialize.md
 /// </summary>
 public static partial class Ssz
 {
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    private static void Encode(Span<byte> span, byte[] value, ref int offset)
+    public static void Encode(Span<byte> span, byte[] value, ref int offset)
     {
         Encode(span.Slice(offset, value.Length), value);
         offset += value.Length;
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    private static void Encode(Span<byte> span, int value, ref int offset)
+    public static void Encode(Span<byte> span, int value, ref int offset)
     {
         BinaryPrimitives.WriteInt32LittleEndian(span.Slice(offset, sizeof(int)), value);
         offset += sizeof(int);
     }
 
-    private static void Encode(Span<byte> span, uint value, ref int offset)
+    public static void Encode(Span<byte> span, uint value, ref int offset)
     {
         BinaryPrimitives.WriteUInt32LittleEndian(span.Slice(offset, sizeof(uint)), value);
         offset += sizeof(uint);
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    private static void Encode(Span<byte> span, ulong value, ref int offset)
+    public static void Encode(Span<byte> span, ulong value, ref int offset)
     {
         Encode(span.Slice(offset, sizeof(ulong)), value);
         offset += sizeof(ulong);
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    private static void Encode(Span<byte> span, UInt256 value, ref int offset)
+    public static void Encode(Span<byte> span, UInt256 value, ref int offset)
     {
         Encode(span.Slice(offset, 32), value);
         offset += 32;
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    private static void Encode(Span<byte> span, bool value, ref int offset)
+    public static void Encode(Span<byte> span, bool value, ref int offset)
     {
         Encode(span.Slice(offset, 1), value);
         offset++;
     }
 
-    private static bool DecodeBool(Span<byte> span, ref int offset)
+    public static bool DecodeBool(Span<byte> span, ref int offset)
     {
         return span[offset++] == 1;
     }
@@ -66,7 +66,7 @@ public static partial class Ssz
         span[0] = value;
     }
 
-    private static void Encode(Span<byte> span, byte value, ref int offset)
+    public static void Encode(Span<byte> span, byte value, ref int offset)
     {
         span[offset++] = value;
     }
@@ -93,6 +93,12 @@ public static partial class Ssz
     public static void Encode(Span<byte> span, ulong value)
     {
         BinaryPrimitives.WriteUInt64LittleEndian(span, value);
+    }
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public static void Encode(Span<byte> span, long value)
+    {
+        BinaryPrimitives.WriteInt64LittleEndian(span, value);
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
@@ -194,7 +200,7 @@ public static partial class Ssz
         MemoryMarshal.Cast<ushort, byte>(value).CopyTo(span);
     }
 
-    private static void Encode(Span<byte> span, Span<byte> value, ref int offset, ref int dynamicOffset)
+    public static void Encode(Span<byte> span, Span<byte> value, ref int offset, ref int dynamicOffset)
     {
         BinaryPrimitives.WriteInt32LittleEndian(span.Slice(offset, VarOffsetSize), dynamicOffset);
         offset += VarOffsetSize;
@@ -277,7 +283,7 @@ public static partial class Ssz
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    private static ulong DecodeULong(ReadOnlySpan<byte> span, ref int offset)
+    public static ulong DecodeULong(ReadOnlySpan<byte> span, ref int offset)
     {
         ulong result = BinaryPrimitives.ReadUInt64LittleEndian(span.Slice(offset, sizeof(ulong)));
         offset += sizeof(ulong);
@@ -335,7 +341,7 @@ public static partial class Ssz
         return result;
     }
 
-    private static byte[][] DecodeBytesArrays(ReadOnlySpan<byte> span, int itemsCount, int itemLength, ref int offset)
+    public static byte[][] DecodeBytesArrays(ReadOnlySpan<byte> span, int itemsCount, int itemLength, ref int offset)
     {
         byte[][] result = new byte[itemsCount][];
 
@@ -408,7 +414,7 @@ public static partial class Ssz
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    private static void ThrowTargetLength<T>(int targetLength, int expectedLength)
+    public static void ThrowTargetLength<T>(int targetLength, int expectedLength)
     {
         Type type = typeof(T);
         throw new InvalidDataException(
@@ -416,7 +422,7 @@ public static partial class Ssz
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    private static void ThrowSourceLength<T>(int sourceLength, int expectedLength)
+    public static void ThrowSourceLength<T>(int sourceLength, int expectedLength)
     {
         Type type = typeof(T);
         throw new InvalidDataException(
@@ -424,7 +430,7 @@ public static partial class Ssz
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    private static void ThrowInvalidSourceArrayLength<T>(int sourceLength, int expectedItemLength)
+    public static void ThrowInvalidSourceArrayLength<T>(int sourceLength, int expectedItemLength)
     {
         Type type = typeof(T);
         throw new InvalidDataException(

@@ -10,10 +10,8 @@ using Nethermind.Serialization.Rlp;
 
 namespace Ethereum.Test.Base
 {
-    public class BlockchainTest : IEthereumTest
+    public class BlockchainTest : EthereumTest
     {
-        public string? Category { get; set; }
-        public string? Name { get; set; }
         public IReleaseSpec? Network { get; set; }
         public IReleaseSpec? NetworkAfterTransition { get; set; }
         public ForkActivation? TransitionForkActivation { get; set; }
@@ -27,7 +25,6 @@ namespace Ethereum.Test.Base
         public Dictionary<Address, AccountState>? PostState { get; set; }
         public Hash256? PostStateRoot { get; set; }
         public bool SealEngineUsed { get; set; }
-        public string? LoadFailure { get; set; }
 
         public override string? ToString()
         {

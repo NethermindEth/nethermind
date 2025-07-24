@@ -3,7 +3,6 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using System.Collections.Generic;
 using System.IO.Abstractions;
 using Nethermind.Abi;
 using Nethermind.Blockchain;
@@ -11,15 +10,14 @@ using Nethermind.Blockchain.Receipts;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
 using Nethermind.Crypto;
+using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Facade.Find;
 using Nethermind.KeyStore.Config;
 using Nethermind.Logging;
+using Nethermind.Merge.Plugin.Test;
 using Nethermind.Shutter.Config;
 using Nethermind.Specs;
-using Nethermind.State;
 using NSubstitute;
-
-using static Nethermind.Merge.Plugin.Test.EngineModuleTests;
 
 namespace Nethermind.Shutter.Test;
 class ShutterTestsCommon
@@ -50,7 +48,6 @@ class ShutterTestsCommon
 
     public static ShutterApiSimulator InitApi(Random rnd, ITimestamper? timestamper = null, ShutterEventSimulator? eventSimulator = null)
     {
-        IWorldStateManager worldStateManager = Substitute.For<IWorldStateManager>();
         ILogFinder logFinder = Substitute.For<ILogFinder>();
         IBlockTree blockTree = Substitute.For<IBlockTree>();
         IReceiptStorage receiptStorage = Substitute.For<IReceiptStorage>();
@@ -58,17 +55,17 @@ class ShutterTestsCommon
             eventSimulator ?? InitEventSimulator(rnd),
             AbiEncoder, blockTree, Ecdsa, logFinder, receiptStorage,
             LogManager, SpecProvider, timestamper ?? Substitute.For<ITimestamper>(),
-            worldStateManager, Substitute.For<IFileSystem>(),
-            Substitute.For<IKeyStoreConfig>(), Cfg, new(), rnd
+            Substitute.For<IFileSystem>(), Substitute.For<IKeyStoreConfig>(), Cfg,
+            Substitute.For<IShareableTxProcessorSource>(), new(), rnd
         );
     }
 
-    public static ShutterApiSimulator InitApi(Random rnd, MergeTestBlockchain chain, ITimestamper? timestamper = null, ShutterEventSimulator? eventSimulator = null)
+    public static ShutterApiSimulator InitApi(Random rnd, BaseEngineModuleTests.MergeTestBlockchain chain, ITimestamper? timestamper = null, ShutterEventSimulator? eventSimulator = null)
         => new(
             eventSimulator ?? InitEventSimulator(rnd),
             AbiEncoder, chain.BlockTree.AsReadOnly(), chain.EthereumEcdsa, chain.LogFinder, chain.ReceiptStorage,
-            chain.LogManager, chain.SpecProvider, timestamper ?? chain.Timestamper, chain.WorldStateManager,
-            Substitute.For<IFileSystem>(), Substitute.For<IKeyStoreConfig>(), Cfg, new(), rnd
+            chain.LogManager, chain.SpecProvider, timestamper ?? chain.Timestamper,
+            Substitute.For<IFileSystem>(), Substitute.For<IKeyStoreConfig>(), Cfg, chain.ShareableTxProcessorSource, new(), rnd
         );
 
     public static ShutterEventSimulator InitEventSimulator(Random rnd)

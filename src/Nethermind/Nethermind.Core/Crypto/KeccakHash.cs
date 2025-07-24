@@ -435,6 +435,8 @@ namespace Nethermind.Core.Crypto
                     state256 = Vector512.Xor(state256, input256);
                 }
 
+                if (input.Length == vectorLength) return;
+
                 input = input[vectorLength..];
                 stateRef = ref Unsafe.Add(ref stateRef, vectorLength);
             }
@@ -452,6 +454,8 @@ namespace Nethermind.Core.Crypto
                     state256 = Vector256.Xor(state256, input256);
                 }
 
+                if (input.Length == vectorLength) return;
+
                 input = input[vectorLength..];
                 stateRef = ref Unsafe.Add(ref stateRef, vectorLength);
             }
@@ -467,11 +471,32 @@ namespace Nethermind.Core.Crypto
                     state128 = Vector128.Xor(state128, input128);
                 }
 
+                if (input.Length == vectorLength) return;
+
                 input = input[vectorLength..];
                 stateRef = ref Unsafe.Add(ref stateRef, vectorLength);
             }
 
-            // Handle remaining elements
+            // As 25 longs in state, 1 more to process after the vector sizes
+            if (input.Length >= sizeof(ulong))
+            {
+                int ulongLength = input.Length - (int)((uint)input.Length % sizeof(ulong));
+                ref byte inputRef = ref MemoryMarshal.GetReference(input);
+                for (int i = 0; i < ulongLength; i += sizeof(ulong))
+                {
+                    ref ulong state64 = ref Unsafe.As<byte, ulong>(ref Unsafe.Add(ref stateRef, i));
+                    ulong input64 = Unsafe.As<byte, ulong>(ref Unsafe.Add(ref inputRef, i));
+                    state64 ^= input64;
+                }
+
+                // Should exit here for 25 longs
+                if (input.Length == ulongLength) return;
+
+                input = input[ulongLength..];
+                stateRef = ref Unsafe.Add(ref stateRef, ulongLength);
+            }
+
+            // Handle remaining bytes
             for (int i = 0; i < input.Length; i++)
             {
                 Unsafe.Add(ref stateRef, i) ^= input[i];
@@ -554,6 +579,13 @@ namespace Nethermind.Core.Crypto
             _hash = output;
 
             // Return the result.
+            return output;
+        }
+
+        public ValueHash256 GenerateValueHash()
+        {
+            Unsafe.SkipInit(out ValueHash256 output);
+            UpdateFinalTo(output.BytesAsSpan);
             return output;
         }
 

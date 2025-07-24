@@ -1,16 +1,20 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using Autofac;
+using FluentAssertions;
+using FluentAssertions.Extensions;
+using Nethermind.Core;
+using Nethermind.Core.Test.Modules;
+using Nethermind.Core.Utils;
+using Nethermind.JsonRpc.Modules;
+using Nethermind.Serialization.Json;
+using System;
+using System.Diagnostics;
 using System.IO;
+using System.Reflection;
 using System.Text.Json;
 using System.Threading.Tasks;
-
-using FluentAssertions;
-
-using Nethermind.JsonRpc.Modules;
-using Nethermind.JsonRpc.Test.Modules;
-using Nethermind.Logging;
-using Nethermind.Serialization.Json;
 
 namespace Nethermind.JsonRpc.Test;
 
@@ -18,17 +22,22 @@ public static class RpcTest
 {
     public static async Task<JsonRpcResponse> TestRequest<T>(T module, string method, params object?[]? parameters) where T : class, IRpcModule
     {
-        IJsonRpcService service = BuildRpcService(module);
+        await using IContainer container = CreateContainerForModule<T>(module);
+
+        IJsonRpcService service = container.Resolve<IJsonRpcService>();
         JsonRpcRequest request = BuildJsonRequest(method, parameters);
         return await service.SendRequestAsync(request, new JsonRpcContext(RpcEndpoint.Http));
     }
 
     public static async Task<string> TestSerializedRequest<T>(T module, string method, params object?[]? parameters) where T : class, IRpcModule
     {
-        IJsonRpcService service = BuildRpcService(module);
+        using AutoCancelTokenSource cts = AutoCancelTokenSource.ThatCancelAfter(Debugger.IsAttached ? TimeSpan.FromMilliseconds(-1) : 10.Seconds());
+        await using IContainer container = CreateContainerForModule<T>(module);
+
+        IJsonRpcService service = container.Resolve<IJsonRpcService>();
         JsonRpcRequest request = BuildJsonRequest(method, parameters);
 
-        JsonRpcContext context = module is IContextAwareRpcModule { Context: not null } contextAwareModule
+        using JsonRpcContext context = module is IContextAwareRpcModule { Context: not null } contextAwareModule
             ? contextAwareModule.Context
             : new JsonRpcContext(RpcEndpoint.Http);
         using JsonRpcResponse response = await service.SendRequestAsync(request, context).ConfigureAwait(false);
@@ -36,11 +45,11 @@ public static class RpcTest
         EthereumJsonSerializer serializer = new();
 
         Stream stream = new MemoryStream();
-        long size = await serializer.SerializeAsync(stream, response).ConfigureAwait(false);
+        long size = await serializer.SerializeAsync(stream, response, cts.Token).ConfigureAwait(false);
 
         // for coverage (and to prove that it does not throw
         Stream indentedStream = new MemoryStream();
-        await serializer.SerializeAsync(indentedStream, response, true).ConfigureAwait(false);
+        await serializer.SerializeAsync(indentedStream, response, cts.Token, true).ConfigureAwait(false);
 
         stream.Seek(0, SeekOrigin.Begin);
         string serialized = await new StreamReader(stream).ReadToEndAsync().ConfigureAwait(false);
@@ -50,13 +59,16 @@ public static class RpcTest
         return serialized;
     }
 
-    private static IJsonRpcService BuildRpcService<T>(T module) where T : class, IRpcModule
+    private static IContainer CreateContainerForModule<T>(T module) where T : class, IRpcModule
     {
-        var moduleProvider = new TestRpcModuleProvider<T>(module);
-
-        moduleProvider.Register(new SingletonModulePool<T>(new TestSingletonFactory<T>(module), true));
-        IJsonRpcService service = new JsonRpcService(moduleProvider, LimboLogs.Instance, new JsonRpcConfig());
-        return service;
+        return new ContainerBuilder()
+            .AddModule(new TestNethermindModule(new JsonRpcConfig()
+            {
+                EnabledModules = [typeof(T).GetCustomAttribute<RpcModuleAttribute>()!.ModuleType]
+            }))
+            .RegisterBoundedJsonRpcModule<T, AutoRpcModuleFactory<T>>(1, new JsonRpcConfig().Timeout)
+            .AddScoped<T>(module)
+            .Build();
     }
 
     public static JsonRpcRequest BuildJsonRequest(string method, params object?[]? parameters)
@@ -75,7 +87,4 @@ public static class RpcTest
             Id = 67
         };
     }
-
-    private class TestSingletonFactory<T>(T module) : SingletonFactory<T>(module)
-        where T : IRpcModule;
 }

@@ -1,54 +1,52 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using Autofac;
+using Autofac.Core;
 using Nethermind.Api;
 using Nethermind.Api.Extensions;
 using Nethermind.Db;
-using Nethermind.Evm.Tracing.ParityStyle;
+using Nethermind.Blockchain.Tracing.ParityStyle;
+using Nethermind.Core;
 using Nethermind.JsonRpc.Modules;
 using Nethermind.JsonRpc.Modules.Trace;
 using Nethermind.Logging;
+using Nethermind.Init.Modules;
 
 namespace Nethermind.JsonRpc.TraceStore;
 
-public class TraceStorePlugin : INethermindPlugin
+public class TraceStorePlugin(ITraceStoreConfig traceStoreConfig) : INethermindPlugin
 {
-    private const string DbName = "TraceStore";
+    public const string DbName = "TraceStore";
+
     private INethermindApi _api = null!;
-    private ITraceStoreConfig _config = null!;
     private IJsonRpcConfig _jsonRpcConfig = null!;
     private IDb? _db;
-    private TraceStorePruner? _pruner;
     private ILogManager _logManager = null!;
     private ILogger _logger;
     private ITraceSerializer<ParityLikeTxTrace>? _traceSerializer;
     public string Name => DbName;
     public string Description => "Allows to serve traces without the block state, by saving historical traces to DB.";
     public string Author => "Nethermind";
-    private bool Enabled => _config?.Enabled == true;
+    public bool Enabled => traceStoreConfig.Enabled;
 
     public Task Init(INethermindApi nethermindApi)
     {
         _api = nethermindApi;
         _logManager = _api.LogManager;
-        _config = _api.Config<ITraceStoreConfig>();
         _jsonRpcConfig = _api.Config<IJsonRpcConfig>();
         _logger = _logManager.GetClassLogger<TraceStorePlugin>();
 
-        if (Enabled)
+        // Setup serialization
+        _traceSerializer = new ParityLikeTraceSerializer(_logManager, traceStoreConfig.MaxDepth, traceStoreConfig.VerifySerialized);
+
+        // Setup DB
+        _db = _api.Context.ResolveKeyed<IDb>(DbName);
+
+        //Setup pruning if configured
+        if (traceStoreConfig.BlocksToKeep != 0)
         {
-            // Setup serialization
-            _traceSerializer = new ParityLikeTraceSerializer(_logManager, _config.MaxDepth, _config.VerifySerialized);
-
-            // Setup DB
-            _db = _api.DbFactory!.CreateDb(new DbSettings(DbName, DbName.ToLower()));
-            _api.DbProvider!.RegisterDb(DbName, _db);
-
-            //Setup pruning if configured
-            if (_config.BlocksToKeep != 0)
-            {
-                _pruner = new TraceStorePruner(_api.BlockTree!, _db, _config.BlocksToKeep, _logManager);
-            }
+            _api.Context.Resolve<TraceStorePruner>();
         }
 
         return Task.CompletedTask;
@@ -56,16 +54,13 @@ public class TraceStorePlugin : INethermindPlugin
 
     public Task InitNetworkProtocol()
     {
-        if (Enabled)
-        {
-            if (_logger.IsInfo) _logger.Info($"Starting TraceStore with {_config.TraceTypes} traces.");
+        if (_logger.IsInfo) _logger.Info($"Starting TraceStore with {traceStoreConfig.TraceTypes} traces.");
 
-            // Setup tracing
-            ParityLikeBlockTracer parityTracer = new(_config.TraceTypes);
-            DbPersistingBlockTracer<ParityLikeTxTrace, ParityLikeTxTracer> dbPersistingTracer =
-                new(parityTracer, _db!, _traceSerializer!, _logManager);
-            _api.BlockchainProcessor!.Tracers.Add(dbPersistingTracer);
-        }
+        // Setup tracing
+        ParityLikeBlockTracer parityTracer = new(traceStoreConfig.TraceTypes);
+        DbPersistingBlockTracer<ParityLikeTxTrace, ParityLikeTxTracer> dbPersistingTracer =
+            new(parityTracer, _db!, _traceSerializer!, _logManager);
+        _api.MainProcessingContext!.BlockchainProcessor!.Tracers.Add(dbPersistingTracer);
 
         // Potentially we could add protocol for syncing traces.
         return Task.CompletedTask;
@@ -73,12 +68,12 @@ public class TraceStorePlugin : INethermindPlugin
 
     public Task InitRpcModules()
     {
-        if (Enabled && _jsonRpcConfig.Enabled)
+        if (_jsonRpcConfig.Enabled)
         {
             IRpcModuleProvider apiRpcModuleProvider = _api.RpcModuleProvider!;
-            if (apiRpcModuleProvider.GetPool(ModuleType.Trace) is IRpcModulePool<ITraceRpcModule> traceModulePool)
+            if (apiRpcModuleProvider.GetPoolForMethod(nameof(ITraceRpcModule.trace_call)) is IRpcModulePool<ITraceRpcModule> traceModulePool)
             {
-                TraceStoreModuleFactory traceModuleFactory = new(traceModulePool.Factory, _db!, _api.BlockTree!, _api.ReceiptFinder!, _traceSerializer!, _logManager, _config.DeserializationParallelization);
+                TraceStoreModuleFactory traceModuleFactory = new(traceModulePool.Factory, _db!, _api.BlockTree!, _api.ReceiptFinder!, _traceSerializer!, _logManager, traceStoreConfig.DeserializationParallelization);
                 apiRpcModuleProvider.RegisterBoundedByCpuCount(traceModuleFactory, _jsonRpcConfig.Timeout);
             }
         }
@@ -88,12 +83,15 @@ public class TraceStorePlugin : INethermindPlugin
 
     public ValueTask DisposeAsync()
     {
-        if (Enabled)
-        {
-            _pruner?.Dispose();
-            _db?.Dispose();
-        }
-
         return default;
+    }
+
+    public IModule Module => new TracerStorePluginModule();
+
+    private class TracerStorePluginModule : Module
+    {
+        protected override void Load(ContainerBuilder builder) => builder
+            .AddDatabase(DbName)
+            .AddSingleton<TraceStorePruner>();
     }
 }

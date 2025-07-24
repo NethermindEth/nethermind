@@ -34,11 +34,13 @@ using Nethermind.Sockets;
 
 namespace Nethermind.Runner.JsonRpc;
 
-public class Startup
+public class Startup : IStartup
 {
     private static ReadOnlySpan<byte> _jsonOpeningBracket => [(byte)'['];
     private static ReadOnlySpan<byte> _jsonComma => [(byte)','];
     private static ReadOnlySpan<byte> _jsonClosingBracket => [(byte)']'];
+
+    IServiceProvider IStartup.ConfigureServices(IServiceCollection services) => Build(services);
 
     public void ConfigureServices(IServiceCollection services)
     {
@@ -73,6 +75,19 @@ public class Startup
     }
 
     private static ServiceProvider Build(IServiceCollection services) => services.BuildServiceProvider();
+
+
+    public void Configure(IApplicationBuilder app)
+    {
+        var services = app.ApplicationServices;
+        Configure(
+            app,
+            services.GetRequiredService<IWebHostEnvironment>(),
+            services.GetRequiredService<IJsonRpcProcessor>(),
+            services.GetRequiredService<IJsonRpcService>(),
+            services.GetRequiredService<IJsonRpcLocalStats>(),
+            services.GetRequiredService<IJsonSerializer>());
+    }
 
     public void Configure(IApplicationBuilder app, IWebHostEnvironment env, IJsonRpcProcessor jsonRpcProcessor, IJsonRpcService jsonRpcService, IJsonRpcLocalStats jsonRpcLocalStats, IJsonSerializer jsonSerializer)
     {
@@ -143,6 +158,7 @@ public class Startup
             var method = ctx.Request.Method;
             if (method is not "POST" and not "GET")
             {
+                ctx.Response.StatusCode = (int)HttpStatusCode.MethodNotAllowed;
                 return;
             }
 
@@ -152,9 +168,9 @@ public class Startup
                 return;
             }
 
-            if (!jsonRpcUrlCollection.TryGetValue(ctx.Connection.LocalPort, out JsonRpcUrl jsonRpcUrl) ||
-                !jsonRpcUrl.RpcEndpoint.HasFlag(RpcEndpoint.Http))
+            if (!jsonRpcUrlCollection.TryGetValue(ctx.Connection.LocalPort, out JsonRpcUrl jsonRpcUrl) || !jsonRpcUrl.RpcEndpoint.HasFlag(RpcEndpoint.Http))
             {
+                ctx.Response.StatusCode = (int)HttpStatusCode.NotFound;
                 return;
             }
 
@@ -170,6 +186,10 @@ public class Startup
             if (method == "GET")
             {
                 await ctx.Response.WriteAsync("Nethermind JSON RPC");
+            }
+            else if (ctx.Request.ContentType?.Contains("application/json") == false)
+            {
+                await PushErrorResponse(StatusCodes.Status415UnsupportedMediaType, ErrorCodes.InvalidRequest, "Missing 'application/json' Content-Type header");
             }
             else
             {
@@ -298,13 +318,13 @@ public class Startup
     }
 
     /// <summary>
-    /// Check for IPv4 localhost (127.0.0.1) and IPv6 localhost (::1) 
+    /// Check for IPv4 localhost (127.0.0.1) and IPv6 localhost (::1)
     /// </summary>
     /// <param name="remoteIp">Request source</param>
     private static bool IsLocalhost(IPAddress remoteIp)
         => IPAddress.IsLoopback(remoteIp) || remoteIp.Equals(IPAddress.IPv6Loopback);
 
-    private static int GetStatusCode(JsonRpcResult result)
+    private static int GetStatusCode(in JsonRpcResult result)
     {
         if (result.IsCollection)
         {

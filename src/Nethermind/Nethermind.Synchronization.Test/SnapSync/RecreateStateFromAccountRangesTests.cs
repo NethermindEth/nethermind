@@ -8,9 +8,9 @@ using System.Collections.Generic;
 using System.Linq;
 using Autofac;
 using FluentAssertions;
-using Nethermind.Blockchain.Synchronization;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Db;
 using Nethermind.Int256;
@@ -52,8 +52,7 @@ public class RecreateStateFromAccountRangesTests
         byte[][] lastProof = CreateProofForPath(TestItem.Tree.AccountsWithPaths[5].Path.Bytes);
 
         MemDb db = new();
-        TrieStore fullStore = new(db, LimboLogs.Instance);
-        IScopedTrieStore store = fullStore.GetTrieStore(null);
+        IScopedTrieStore store = new RawScopedTrieStore(db);
         StateTree tree = new(store, LimboLogs.Instance);
 
         IList<TrieNode> nodes = new List<TrieNode>();
@@ -313,7 +312,7 @@ public class RecreateStateFromAccountRangesTests
         byte[][] lastProof = CreateProofForPath(TestItem.Tree.AccountsWithPaths[1].Path.Bytes);
         byte[][] proofs = firstProof.Concat(lastProof).ToArray();
 
-        StateTree newTree = new(new TrieStore(new MemDb(), LimboLogs.Instance), LimboLogs.Instance);
+        StateTree newTree = new(new TestRawTrieStore(new MemDb()), LimboLogs.Instance);
 
         PathWithAccount[] receiptAccounts = TestItem.Tree.AccountsWithPaths[0..2];
 
@@ -325,25 +324,25 @@ public class RecreateStateFromAccountRangesTests
         }
 
         HasMoreChildren(TestItem.Tree.AccountsWithPaths[1].Path).Should().BeFalse();
-        HasMoreChildren(TestItem.Tree.AccountsWithPaths[2].Path).Should().BeFalse();
+        HasMoreChildren(TestItem.Tree.AccountsWithPaths[2].Path).Should().BeTrue(); //expect leaves exactly at limit path to be included
         HasMoreChildren(TestItem.Tree.AccountsWithPaths[3].Path).Should().BeTrue();
         HasMoreChildren(TestItem.Tree.AccountsWithPaths[4].Path).Should().BeTrue();
 
-        UInt256 between2and3 = new UInt256(TestItem.Tree.AccountsWithPaths[1].Path.Bytes, true);
-        between2and3 += 5;
+        UInt256 between1and2 = new UInt256(TestItem.Tree.AccountsWithPaths[1].Path.Bytes, true);
+        between1and2 += 5;
 
-        HasMoreChildren(new Hash256(between2and3.ToBigEndian())).Should().BeFalse();
+        HasMoreChildren(new Hash256(between1and2.ToBigEndian())).Should().BeFalse();
 
-        between2and3 = new UInt256(TestItem.Tree.AccountsWithPaths[2].Path.Bytes, true);
+        UInt256 between2and3 = new UInt256(TestItem.Tree.AccountsWithPaths[2].Path.Bytes, true);
         between2and3 -= 1;
 
-        HasMoreChildren(new Hash256(between2and3.ToBigEndian())).Should().BeFalse();
+        HasMoreChildren(new Hash256(between2and3.ToBigEndian())).Should().BeTrue();
     }
 
     [Test]
     public void CorrectlyDetermineMaxKeccakExist()
     {
-        StateTree tree = new StateTree(new TrieStore(new MemDb(), LimboLogs.Instance), LimboLogs.Instance);
+        StateTree tree = new StateTree(new TestRawTrieStore(new MemDb()), LimboLogs.Instance);
 
         PathWithAccount ac1 = new PathWithAccount(Keccak.Zero, Build.An.Account.WithBalance(1).TestObject);
         PathWithAccount ac2 = new PathWithAccount(Keccak.Compute("anything"), Build.An.Account.WithBalance(2).TestObject);
@@ -361,7 +360,7 @@ public class RecreateStateFromAccountRangesTests
         byte[][] lastProof = CreateProofForPath(ac2.Path.Bytes, tree);
         byte[][] proofs = firstProof.Concat(lastProof).ToArray();
 
-        StateTree newTree = new(new TrieStore(new MemDb(), LimboLogs.Instance), LimboLogs.Instance);
+        StateTree newTree = new(new TestRawTrieStore(new MemDb()), LimboLogs.Instance);
 
         PathWithAccount[] receiptAccounts = { ac1, ac2 };
 

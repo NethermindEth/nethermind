@@ -29,7 +29,7 @@ namespace Nethermind.Synchronization.Test.FastSync
     [TestFixture(1, 100)]
     [TestFixture(4, 0)]
     [TestFixture(4, 100)]
-    [Parallelizable(ParallelScope.All)]
+    [Parallelizable(ParallelScope.Fixtures)]
     public class StateSyncFeedTests : StateSyncFeedTestsBase
     {
         // Useful for set and forget run. But this test is taking a long time to have it set to other than 1.
@@ -197,13 +197,11 @@ namespace Nethermind.Synchronization.Test.FastSync
         }
 
         [Test]
-        [Repeat(TestRepeatCount)]
-        public async Task When_saving_root_goes_asleep()
+        public async Task When_saving_root_goes_asleep_and_then_restart_to_new_tree_when_reactivated()
         {
             DbContext dbContext = new(_logger, _logManager);
             dbContext.RemoteStateTree.Set(TestItem.KeccakA, Build.An.Account.TestObject);
             dbContext.RemoteStateTree.Commit();
-
 
             dbContext.CompareTrees("BEGIN");
 
@@ -219,6 +217,7 @@ namespace Nethermind.Synchronization.Test.FastSync
         [Test]
         [TestCaseSource(nameof(Scenarios))]
         [Repeat(TestRepeatCount)]
+        [Retry(3)]
         public async Task Can_download_with_moving_target((string Name, Action<StateTree, ITrieStore, IDb> SetupTree) testCase)
         {
             DbContext dbContext = new(_logger, _logManager);
@@ -229,7 +228,7 @@ namespace Nethermind.Synchronization.Test.FastSync
             await using IContainer container = PrepareDownloader(dbContext, mock =>
                 mock.SetFilter(((MemDb)dbContext.RemoteStateDb).Keys.Take(((MemDb)dbContext.RemoteStateDb).Keys.Count - 1).Select(k => HashKey(k)).ToArray()));
             SafeContext ctx = container.Resolve<SafeContext>();
-            await ActivateAndWait(ctx, 1000);
+            await ActivateAndWait(ctx, TimeoutLength);
 
 
             dbContext.CompareTrees("AFTER FIRST SYNC");
@@ -247,18 +246,17 @@ namespace Nethermind.Synchronization.Test.FastSync
 
             dbContext.RemoteStateTree.Commit();
 
-            ctx.SuggestBlocksWithUpdatedRootHash(dbContext.RemoteStateTree.RootHash);
-
             ctx.Pool.WakeUpAll();
-
             ctx.Feed.FallAsleep();
+
+            ctx.SuggestBlocksWithUpdatedRootHash(dbContext.RemoteStateTree.RootHash);
 
             foreach (SyncPeerMock mock in ctx.SyncPeerMocks)
             {
                 mock.SetFilter(null);
             }
 
-            await ActivateAndWait(ctx, 2000);
+            await ActivateAndWait(ctx, TimeoutLength);
 
 
             dbContext.CompareTrees("END");
@@ -273,7 +271,7 @@ namespace Nethermind.Synchronization.Test.FastSync
             testCase.SetupTree(dbContext.RemoteStateTree, dbContext.RemoteTrieStore, dbContext.RemoteCodeDb);
 
 
-            StorageTree remoteStorageTree = new(dbContext.RemoteTrieStore.GetTrieStore(TestItem.AddressD.ToAccountPath), Keccak.EmptyTreeHash, LimboLogs.Instance);
+            StorageTree remoteStorageTree = new(dbContext.RemoteTrieStore.GetTrieStore(TestItem.AddressD), Keccak.EmptyTreeHash, LimboLogs.Instance);
             remoteStorageTree.Set(
                 Bytes.FromHexString("eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeb000"), new byte[] { 1 });
             remoteStorageTree.Set(
@@ -333,7 +331,7 @@ namespace Nethermind.Synchronization.Test.FastSync
 
             dbContext.RemoteCodeDb.Set(Keccak.Compute(TrieScenarios.Code0), TrieScenarios.Code0);
 
-            StorageTree remoteStorageTree = new(dbContext.RemoteTrieStore.GetTrieStore(TestItem.AddressD.ToAccountPath), Keccak.EmptyTreeHash, _logManager);
+            StorageTree remoteStorageTree = new(dbContext.RemoteTrieStore.GetTrieStore(TestItem.AddressD), Keccak.EmptyTreeHash, _logManager);
             remoteStorageTree.Set((UInt256)1, new byte[] { 1 });
             remoteStorageTree.Commit();
 
@@ -358,7 +356,7 @@ namespace Nethermind.Synchronization.Test.FastSync
             DbContext dbContext = new(_logger, _logManager);
             testCase.SetupTree(dbContext.RemoteStateTree, dbContext.RemoteTrieStore, dbContext.RemoteCodeDb);
 
-            StorageTree remoteStorageTree = new(dbContext.RemoteTrieStore.GetTrieStore(TestItem.AddressD.ToAccountPath), Keccak.EmptyTreeHash, _logManager);
+            StorageTree remoteStorageTree = new(dbContext.RemoteTrieStore.GetTrieStore(TestItem.AddressD), Keccak.EmptyTreeHash, _logManager);
             remoteStorageTree.Set((UInt256)1, new byte[] { 1 });
             remoteStorageTree.Commit();
 

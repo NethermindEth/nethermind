@@ -196,6 +196,12 @@ namespace Nethermind.Core
         /// <returns></returns>
         public string ToString(bool withZeroX, bool withEip55Checksum) => Bytes.ToHexString(withZeroX, false, withEip55Checksum);
 
+        public string ToShortString(bool withZeroX = true)
+        {
+            string address = Bytes.ToHexString(withZeroX);
+            return $"{address[..(withZeroX ? 8 : 6)]}...{address[^6..]}";
+        }
+
         public override bool Equals(object? obj)
         {
             if (obj is null)
@@ -246,14 +252,26 @@ namespace Nethermind.Core
                 destinationType == typeof(string) || base.CanConvertTo(context, destinationType);
         }
 
-        public Hash256 ToAccountPath => KeccakCache.Compute(Bytes);
+        public ValueHash256 ToAccountPath => KeccakCache.Compute(Bytes);
 
         [SkipLocalsInit]
         public ValueHash256 ToHash()
         {
-            Span<byte> addressBytes = stackalloc byte[Hash256.Size];
-            Bytes.CopyTo(addressBytes[(Hash256.Size - Address.Size)..]);
-            return new ValueHash256(addressBytes);
+            ref byte value = ref MemoryMarshal.GetArrayDataReference(Bytes);
+            // build the 4×8-byte lanes:
+            // - lane0 = 0UL
+            // - lane1 = first 4 bytes of 'value', shifted up into the high half
+            // - lane2 = bytes [4..11] of 'value'
+            // - lane3 = bytes [12..19] of 'value'
+            ulong lane1 = ((ulong)Unsafe.As<byte, uint>(ref value)) << 32;
+            ulong lane2 = Unsafe.As<byte, ulong>(ref Unsafe.Add(ref value, 4));
+            ulong lane3 = Unsafe.As<byte, ulong>(ref Unsafe.Add(ref value, 12));
+
+            Unsafe.SkipInit(out ValueHash256 result);
+            Unsafe.As<ValueHash256, Vector256<byte>>(ref result)
+                = Vector256.Create(default, lane1, lane2, lane3).AsByte();
+
+            return result;
         }
     }
 

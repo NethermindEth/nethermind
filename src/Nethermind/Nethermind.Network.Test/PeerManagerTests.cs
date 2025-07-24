@@ -648,7 +648,8 @@ namespace Nethermind.Network.Test
                 StaticNodesManager.DiscoverNodes(Arg.Any<CancellationToken>()).Returns(AsyncEnumerable.Empty<Node>());
                 TestNodeSource = new TestNodeSource();
                 CompositeNodeSource nodeSources = new(NodesLoader, DiscoveryApp, StaticNodesManager, TestNodeSource);
-                PeerPool = new PeerPool(nodeSources, Stats, Storage, NetworkConfig, LimboLogs.Instance);
+                ITrustedNodesManager trustedNodesManager = Substitute.For<ITrustedNodesManager>();
+                PeerPool = new PeerPool(nodeSources, Stats, Storage, NetworkConfig, LimboLogs.Instance, trustedNodesManager);
                 CreatePeerManager();
             }
 
@@ -749,6 +750,7 @@ namespace Nethermind.Network.Test
         private class RlpxMock : IRlpxHost
         {
             private readonly List<Session> _sessions;
+            public ISessionMonitor SessionMonitor { get; }
 
             public RlpxMock(List<Session> sessions)
             {

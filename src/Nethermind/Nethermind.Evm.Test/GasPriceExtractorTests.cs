@@ -1,8 +1,10 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using System.Linq;
 using FluentAssertions;
+using Nethermind.Blockchain.Tracing;
 using Nethermind.Core;
 using Nethermind.Specs;
 using Nethermind.Core.Test.Builders;
@@ -32,8 +34,9 @@ namespace Nethermind.Evm.Test
             Rlp rlp = BuildHeader();
 
             Transaction tx = Build.A.Transaction.WithData(rlp.Bytes).TestObject;
-            long gasCost = IntrinsicGasCalculator.Calculate(tx, Spec);
-            gasCost.Should().BeLessThan(21000 + 9600);
+            IntrinsicGas gasCost = IntrinsicGasCalculator.Calculate(tx, Spec);
+            gasCost.FloorGas.Should().Be(0);
+            gasCost.Standard.Should().BeLessThan(21000 + 9600);
         }
 
         [Test]
@@ -42,8 +45,9 @@ namespace Nethermind.Evm.Test
             Rlp rlp = BuildHeader();
 
             Transaction tx = Build.A.Transaction.WithData(rlp.Bytes).TestObject;
-            long gasCost = IntrinsicGasCalculator.Calculate(tx, Spec);
-            gasCost.Should().BeLessThan(21000 + 9600);
+            var gasCost = IntrinsicGasCalculator.Calculate(tx, Spec);
+            gasCost.FloorGas.Should().Be(0);
+            gasCost.Standard.Should().BeLessThan(21000 + 9600);
 
             byte[] bytecode =
                 Prepare.EvmCode
@@ -60,7 +64,7 @@ namespace Nethermind.Evm.Test
                 BlockNumber, 1000000, bytecode, rlp.Bytes, 0);
 
             CallOutputTracer callOutputTracer = new();
-            _processor.Execute(transaction, block.Header, callOutputTracer);
+            _processor.Execute(transaction, new BlockExecutionContext(block.Header, Spec), callOutputTracer);
             long minorCostsEstimate = 100;
             long keccakCostEstimate = 30 + 512 / 6;
             callOutputTracer.GasSpent.Should().BeLessThan(21000 + 9600 + minorCostsEstimate + keccakCostEstimate);
@@ -92,7 +96,7 @@ namespace Nethermind.Evm.Test
                 BlockNumber, 1000000, bytecode, rlp.Bytes, 0);
 
             CallOutputTracer callOutputTracer = new();
-            _processor.Execute(transaction, block.Header, callOutputTracer);
+            _processor.Execute(transaction, new BlockExecutionContext(block.Header, Spec), callOutputTracer);
             callOutputTracer.GasSpent.Should().BeLessThan(21000 + 9600 + 20000);
         }
 
@@ -117,7 +121,7 @@ namespace Nethermind.Evm.Test
                 BlockNumber, 1000000, bytecode, rlp.Bytes, 0);
 
             CallOutputTracer callOutputTracer = new();
-            _processor.Execute(transaction, block.Header, callOutputTracer);
+            _processor.Execute(transaction, new BlockExecutionContext(block.Header, Spec), callOutputTracer);
             callOutputTracer.GasSpent.Should().BeLessThan(21000 + 9600 + 20000);
         }
 

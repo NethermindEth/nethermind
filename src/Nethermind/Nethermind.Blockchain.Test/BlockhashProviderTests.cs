@@ -6,14 +6,14 @@ using Nethermind.Blockchain.Find;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
+using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
-using Nethermind.Db;
 using Nethermind.Logging;
 using Nethermind.Specs;
 using Nethermind.Specs.Forks;
 using Nethermind.Specs.Test;
+using Nethermind.Evm.State;
 using Nethermind.State;
-using Nethermind.Trie.Pruning;
 using NUnit.Framework;
 
 namespace Nethermind.Blockchain.Test;
@@ -23,8 +23,8 @@ public class BlockhashProviderTests
 {
     private static IWorldState CreateWorldState()
     {
-        var trieStore = new TrieStore(new MemDb(), LimboLogs.Instance);
-        var worldState = new WorldState(trieStore, new MemDb(), LimboLogs.Instance);
+        IWorldStateManager worldStateManager = TestWorldStateFactory.CreateForTest();
+        IWorldState worldState = worldStateManager.GlobalWorldState;
         worldState.CreateAccount(Eip2935Constants.BlockHashHistoryAddress, 0, 1);
         worldState.Commit(Frontier.Instance);
         return worldState;
@@ -285,5 +285,35 @@ public class BlockhashProviderTests
             Assert.That(result, Is.Null);
         else
             Assert.That(result, Is.EqualTo(genesisHash));
+    }
+
+    [Test, MaxTime(Timeout.MaxTestTime)]
+    public void Eip2935_poc_trimmed_hashes()
+    {
+        var chainLength = 42;
+        Block genesis = Build.A.Block.Genesis.TestObject;
+        BlockTree tree = Build.A.BlockTree(genesis).OfHeadersOnly.OfChainLength(chainLength).TestObject;
+
+        BlockHeader? head = tree.FindHeader(chainLength - 1, BlockTreeLookupOptions.None);
+        // number = chainLength
+        Block current = Build.A.Block.WithParent(head!).TestObject;
+        tree.SuggestHeader(current.Header);
+
+        IWorldState worldState = CreateWorldState();
+        var specProvider = new CustomSpecProvider(
+            (new ForkActivation(0, genesis.Timestamp), Frontier.Instance),
+            (new ForkActivation(0, current.Timestamp), Prague.Instance));
+        BlockhashStore store = new(specProvider, worldState);
+
+        // 1. Set some code to pass IsContract check
+        byte[] code = [1, 2, 3];
+        worldState.InsertCode(Eip2935Constants.BlockHashHistoryAddress, ValueKeccak.Compute(code), code, Prague.Instance);
+
+        current.Header.ParentHash = new Hash256("0x0011111111111111111111111111111111111111111111111111111111111111");
+        // 2. Store parent hash with leading zeros
+        store.ApplyBlockhashStateChanges(current.Header);
+        // 3. Try to retrieve the parent hash from the state
+        var result = store.GetBlockHashFromState(current.Header, current.Header.Number - 1);
+        Assert.That(result, Is.EqualTo(current.Header.ParentHash));
     }
 }

@@ -20,7 +20,7 @@ namespace Ethereum.Blockchain.Test
         public static IEnumerable<GeneralStateTest> LoadTests()
         {
             var loader = new TestsSourceLoader(new LoadGeneralStateTestsStrategy(), "stMemoryStressTest");
-            return (IEnumerable<GeneralStateTest>)loader.LoadTests();
+            return loader.LoadTests<GeneralStateTest>();
         }
     }
 }

@@ -12,12 +12,20 @@ using NUnit.Framework;
 
 namespace Nethermind.Evm.Test;
 
-public class BlsG1MulPrecompileTests
+public class BlsG1MulPrecompileTests : PrecompileTests<BlsG1MulPrecompileTests>, IPrecompileTests
 {
+    public static IEnumerable<string> TestFiles()
+    {
+        yield return "Bls/mul_G1_bls.json";
+        yield return "Bls/fail-mul_G1_bls.json";
+    }
+
+    public static IPrecompile Precompile() => G1MSMPrecompile.Instance;
+
     [Test]
     public void Test()
     {
-        IPrecompile precompile = G1MulPrecompile.Instance;
+        IPrecompile precompile = G1MSMPrecompile.Instance;
 
         foreach ((byte[] input, ReadOnlyMemory<byte> expectedResult) in Inputs)
         {

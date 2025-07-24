@@ -79,12 +79,12 @@ public class EthRpcSimulateTestsBase
     public static byte[] GetTxData(TestRpcBlockchain chain, PrivateKey account, string name = "recover")
     {
         // Step 1: Hash the message
-        Hash256 messageHash = Keccak.Compute("Hello, world!");
+        ValueHash256 messageHash = ValueKeccak.Compute("Hello, world!");
         // Step 2: Sign the hash
-        Signature signature = chain.EthereumEcdsa.Sign(account, messageHash);
+        Signature signature = chain.EthereumEcdsa.Sign(account, in messageHash);
 
         //Check real address
-        return GenerateTransactionDataForEcRecover(messageHash, signature, name);
+        return GenerateTransactionDataForEcRecover(new Hash256(messageHash), signature, name);
     }
 
     public static async Task<Address> DeployEcRecoverContract(TestRpcBlockchain chain, PrivateKey privateKey, string contractBytecode)
@@ -110,7 +110,7 @@ public class EthRpcSimulateTestsBase
 
         code?.Should().Be(AcceptTxResult.Accepted);
         Transaction[] txs = chain.TxPool.GetPendingTransactions();
-        await chain.AddBlock(true, txs);
+        await chain.AddBlock(txs);
 
         TxReceipt? createContractTxReceipt = null;
         while (createContractTxReceipt is null)
@@ -127,7 +127,7 @@ public class EthRpcSimulateTestsBase
     {
         AbiDefinition call = new AbiDefinitionParser().Parse(GetEcRecoverContractJsonAbi(name));
         AbiEncodingInfo functionInfo = call.GetFunction(name).GetCallInfo();
-        return AbiEncoder.Instance.Encode(functionInfo.EncodingStyle, functionInfo.Signature, keccak, signature.V, signature.R, signature.S);
+        return AbiEncoder.Instance.Encode(functionInfo.EncodingStyle, functionInfo.Signature, keccak, signature.V, signature.R.ToArray(), signature.S.ToArray());
     }
 
     private static Address? ParseEcRecoverAddress(byte[] data, string name = "recover")

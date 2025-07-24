@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using System.Collections.Generic;
 using System.Net;
 using DotNetty.Buffers;
 using FluentAssertions;
@@ -84,7 +83,7 @@ public class Eth68ProtocolHandlerTests
             _transactionPool,
             _pooledTxsRequestor,
             _gossipPolicy,
-            new ForkInfo(_specProvider, _genesisBlock.Header.Hash!),
+            new ForkInfo(_specProvider, _syncManager),
             LimboLogs.Instance,
             _txGossipPolicy);
         _handler.Init();
@@ -231,9 +230,9 @@ public class Eth68ProtocolHandlerTests
             _syncManager,
             RunImmediatelyScheduler.Instance,
             _transactionPool,
-            new PooledTxsRequestor(_transactionPool, new TxPoolConfig()),
+            new PooledTxsRequestor(_transactionPool, new TxPoolConfig() { MaxTxSize = sizeOfOneTx }, _specProvider),
             _gossipPolicy,
-            new ForkInfo(_specProvider, _genesisBlock.Header.Hash!),
+            new ForkInfo(_specProvider, _syncManager),
             LimboLogs.Instance,
             _txGossipPolicy);
 

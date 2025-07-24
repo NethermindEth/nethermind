@@ -7,7 +7,7 @@ using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
 using Nethermind.Int256;
 using Nethermind.Serialization.Rlp;
-using Nethermind.State;
+using Nethermind.Evm.State;
 
 namespace Nethermind.Evm
 {
@@ -25,15 +25,14 @@ namespace Nethermind.Evm
 
             return new Address(in contractAddressKeccak);
         }
-
         public static Address From(Address deployingAddress, ReadOnlySpan<byte> salt, ReadOnlySpan<byte> initCode)
         {
-            // sha3(0xff ++ msg.sender ++ salt ++ sha3(init_code)))
-            Span<byte> bytes = new byte[1 + Address.Size + 32 + salt.Length];
+            // sha3(0xff ++ msg.sender ++ salt ++ sha3(init_code) ++ sha3(aux_data))
+            Span<byte> bytes = new byte[1 + Address.Size + Keccak.Size + salt.Length];
             bytes[0] = 0xff;
-            deployingAddress.Bytes.CopyTo(bytes.Slice(1, 20));
-            salt.CopyTo(bytes.Slice(21, salt.Length));
-            ValueKeccak.Compute(initCode).BytesAsSpan.CopyTo(bytes.Slice(21 + salt.Length, 32));
+            deployingAddress.Bytes.CopyTo(bytes.Slice(1, Address.Size));
+            salt.CopyTo(bytes.Slice(1 + Address.Size, salt.Length));
+            ValueKeccak.Compute(initCode).BytesAsSpan.CopyTo(bytes.Slice(1 + Address.Size + salt.Length, Keccak.Size));
 
             ValueHash256 contractAddressKeccak = ValueKeccak.Compute(bytes);
             return new Address(in contractAddressKeccak);
@@ -42,7 +41,7 @@ namespace Nethermind.Evm
         // See https://eips.ethereum.org/EIPS/eip-7610
         public static bool IsNonZeroAccount(this Address contractAddress, IReleaseSpec spec, ICodeInfoRepository codeInfoRepository, IWorldState state)
         {
-            return codeInfoRepository.GetCachedCodeInfo(state, contractAddress, spec).MachineCode.Length != 0 ||
+            return codeInfoRepository.GetCachedCodeInfo(state, contractAddress, spec).CodeSpan.Length != 0 ||
                    state.GetNonce(contractAddress) != 0 ||
                    state.GetStorageRoot(contractAddress) != Keccak.EmptyTreeHash;
         }

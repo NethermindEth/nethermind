@@ -30,7 +30,7 @@ public class ByteArrayConverter : JsonConverter<byte[]>
         JsonTokenType tokenType = reader.TokenType;
         if (tokenType == JsonTokenType.None || tokenType == JsonTokenType.Null)
             return null;
-        else if (tokenType != JsonTokenType.String)
+        else if (tokenType != JsonTokenType.String && tokenType != JsonTokenType.PropertyName)
         {
             ThrowInvalidOperationException();
         }
@@ -58,8 +58,29 @@ public class ByteArrayConverter : JsonConverter<byte[]>
         return returnVal;
     }
 
-    [DoesNotReturn]
-    [StackTraceHidden]
+    public static void Convert(ref Utf8JsonReader reader, scoped Span<byte> span)
+    {
+        JsonTokenType tokenType = reader.TokenType;
+        if (tokenType == JsonTokenType.None || tokenType == JsonTokenType.Null)
+        {
+            return;
+        }
+
+        if (tokenType != JsonTokenType.String)
+        {
+            ThrowInvalidOperationException();
+        }
+
+        ReadOnlySpan<byte> hex = reader.ValueSpan;
+        if (hex.Length >= 2 && Unsafe.As<byte, ushort>(ref MemoryMarshal.GetReference(hex)) == _hexPrefix)
+        {
+            hex = hex[2..];
+        }
+
+        Bytes.FromUtf8HexString(hex, span);
+    }
+
+    [DoesNotReturn, StackTraceHidden]
     internal static void ThrowInvalidOperationException()
     {
         throw new InvalidOperationException();
@@ -74,11 +95,11 @@ public class ByteArrayConverter : JsonConverter<byte[]>
     }
 
     [SkipLocalsInit]
-    public static void Convert(Utf8JsonWriter writer, ReadOnlySpan<byte> bytes, bool skipLeadingZeros = true)
+    public static void Convert(Utf8JsonWriter writer, ReadOnlySpan<byte> bytes, bool skipLeadingZeros = true, bool addHexPrefix = true)
     {
         Convert(writer,
             bytes,
-            static (w, h) => w.WriteRawValue(h, skipInputValidation: true), skipLeadingZeros);
+            static (w, h) => w.WriteRawValue(h, skipInputValidation: true), skipLeadingZeros, addHexPrefix: addHexPrefix);
     }
 
     public delegate void WriteHex(Utf8JsonWriter writer, ReadOnlySpan<byte> hex);
@@ -89,7 +110,8 @@ public class ByteArrayConverter : JsonConverter<byte[]>
         ReadOnlySpan<byte> bytes,
         WriteHex writeAction,
         bool skipLeadingZeros = true,
-        bool addQuotations = true)
+        bool addQuotations = true,
+        bool addHexPrefix = true)
     {
         const int maxStackLength = 128;
         const int stackLength = 256;
@@ -103,7 +125,8 @@ public class ByteArrayConverter : JsonConverter<byte[]>
             return;
         }
 
-        var length = nibblesCount - leadingNibbleZeros + 2 + (addQuotations ? 2 : 0);
+        var prefixLength = addHexPrefix ? 2 : 0;
+        var length = nibblesCount - leadingNibbleZeros + prefixLength + (addQuotations ? 2 : 0);
 
         byte[]? array = null;
         if (length > maxStackLength)
@@ -119,8 +142,11 @@ public class ByteArrayConverter : JsonConverter<byte[]>
             hex[start++] = (byte)'"';
         }
 
-        hex[start++] = (byte)'0';
-        hex[start++] = (byte)'x';
+        if (addHexPrefix)
+        {
+            hex[start++] = (byte)'0';
+            hex[start++] = (byte)'x';
+        }
 
         Span<byte> output = hex[start..end];
 

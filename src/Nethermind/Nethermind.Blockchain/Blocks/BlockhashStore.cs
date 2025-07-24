@@ -7,8 +7,8 @@ using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
+using Nethermind.Evm.State;
 using Nethermind.Int256;
-using Nethermind.State;
 
 [assembly: InternalsVisibleTo("Nethermind.Blockchain.Test")]
 [assembly: InternalsVisibleTo("Nethermind.Merge.Plugin.Test")]
@@ -20,12 +20,14 @@ public class BlockhashStore(ISpecProvider specProvider, IWorldState worldState)
     private static readonly byte[] EmptyBytes = [0];
 
     public void ApplyBlockhashStateChanges(BlockHeader blockHeader)
+        => ApplyBlockhashStateChanges(blockHeader, specProvider.GetSpec(blockHeader));
+
+    public void ApplyBlockhashStateChanges(BlockHeader blockHeader, IReleaseSpec spec)
     {
-        IReleaseSpec spec = specProvider.GetSpec(blockHeader);
         if (!spec.IsEip2935Enabled || blockHeader.IsGenesis || blockHeader.ParentHash is null) return;
 
         Address? eip2935Account = spec.Eip2935ContractAddress ?? Eip2935Constants.BlockHashHistoryAddress;
-        if (!worldState.AccountExists(eip2935Account)) return;
+        if (!worldState.IsContract(eip2935Account)) return;
 
         Hash256 parentBlockHash = blockHeader.ParentHash;
         var parentBlockIndex = new UInt256((ulong)((blockHeader.Number - 1) % Eip2935Constants.RingBufferSize));
@@ -34,8 +36,10 @@ public class BlockhashStore(ISpecProvider specProvider, IWorldState worldState)
     }
 
     public Hash256? GetBlockHashFromState(BlockHeader currentHeader, long requiredBlockNumber)
+        => GetBlockHashFromState(currentHeader, requiredBlockNumber, specProvider.GetSpec(currentHeader));
+
+    public Hash256? GetBlockHashFromState(BlockHeader currentHeader, long requiredBlockNumber, IReleaseSpec? spec)
     {
-        IReleaseSpec? spec = specProvider.GetSpec(currentHeader);
         if (requiredBlockNumber >= currentHeader.Number ||
             requiredBlockNumber + Eip2935Constants.RingBufferSize < currentHeader.Number)
         {
@@ -45,6 +49,6 @@ public class BlockhashStore(ISpecProvider specProvider, IWorldState worldState)
         Address? eip2935Account = spec.Eip2935ContractAddress ?? Eip2935Constants.BlockHashHistoryAddress;
         StorageCell blockHashStoreCell = new(eip2935Account, blockIndex);
         ReadOnlySpan<byte> data = worldState.Get(blockHashStoreCell);
-        return data.SequenceEqual(EmptyBytes) ? null : new Hash256(data);
+        return data.SequenceEqual(EmptyBytes) ? null : Hash256.FromBytesWithPadding(data);
     }
 }

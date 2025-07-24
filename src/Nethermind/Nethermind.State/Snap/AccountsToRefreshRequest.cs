@@ -12,7 +12,7 @@ namespace Nethermind.State.Snap
         /// <summary>
         /// Root hash of the account trie to serve
         /// </summary>
-        public ValueHash256 RootHash { get; set; }
+        public Hash256 RootHash { get; set; }
 
         public IOwnedReadOnlyList<AccountWithStorageStartingHash> Paths { get; set; }
 
@@ -31,5 +31,6 @@ namespace Nethermind.State.Snap
     {
         public PathWithAccount PathAndAccount { get; set; }
         public ValueHash256 StorageStartingHash { get; set; }
+        public ValueHash256 StorageHashLimit { get; set; }
     }
 }

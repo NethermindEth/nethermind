@@ -189,7 +189,7 @@ public class DiscoveryMessageSerializerTests
         Assert.That(deserializedMessage.FarPublicKey, Is.EqualTo(message.FarPublicKey));
         Assert.That(deserializedMessage.ExpirationTime, Is.EqualTo(message.ExpirationTime));
 
-        for (int i = 0; i < message.Nodes.Length; i++)
+        for (int i = 0; i < message.Nodes.Count; i++)
         {
             Assert.That(deserializedMessage.Nodes[i].Host, Is.EqualTo(message.Nodes[i].Host));
             Assert.That(deserializedMessage.Nodes[i].Port, Is.EqualTo(message.Nodes[i].Port));

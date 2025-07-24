@@ -81,6 +81,7 @@ public class DbConfig : IDbConfig
     public bool? VerifyChecksum { get; set; } = true;
     public bool EnableFileWarmer { get; set; } = false;
     public double CompressibilityHint { get; set; } = 1.0;
+    public bool FlushOnExit { get; set; } = true;
 
     public string BadBlocksDbRocksDbOptions { get; set; } = "";
     public string? BadBlocksDbAdditionalRocksDbOptions { get; set; }
@@ -157,7 +158,7 @@ public class DbConfig : IDbConfig
 
     public ulong? CodeDbRowCacheSize { get; set; } = (ulong)16.MiB();
     public string CodeDbRocksDbOptions { get; set; } =
-        "write_buffer_size=4000000;" +
+        "write_buffer_size=16000000;" +
         "block_based_table_factory.block_cache=16000000;" +
         "optimize_filters_for_hits=false;" +
         "prefix_extractor=capped:8;" +
@@ -233,5 +234,40 @@ public class DbConfig : IDbConfig
         "max_write_batch_group_size_bytes=4000000;" +
 
         "";
+
+    public string StateDbLargeMemoryRocksDbOptions { get; set; } =
+        // In large memory, we disable the partitioned block index. This took around additional 2GB of memory, but
+        // pretty reasonable reduction in latency especially when blocks are already cached.
+        // Note: Not for archive mode as the index size is proportional to db size.
+        "block_based_table_factory={index_type=kBinarySearch;partition_filters=0;};";
+
+    public string StateDbArchiveModeRocksDbOptions { get; set; } =
+        // For archive mode, we are mainly concerned with write amplification due to very large database.
+
+        // Lowers back the level multiplier as very large database causes very high write amp.
+        "max_bytes_for_level_multiplier=10;" +
+        "max_bytes_for_level_base=350000000;" +
+
+        // Change back file size multiplier as we dont want ridiculous file size, making compaction uneven,
+        // but set high base size. This mean a lot of file, but you are using archive mode, so this should be expected.
+        "target_file_size_multiplier=1;" +
+        "target_file_size_base=256000000;" +
+
+        // Change back restart interval for (probably slight) database size reduction
+        "block_based_table_factory.block_restart_interval=16;" +
+
+        // slight adjustment to util ratio, for db size.
+        "block_based_table_factory.data_block_hash_table_util_ratio=0.8;" +
+
+        // slight adjustment to block size, for potentially better db size.
+        "block_based_table_factory.block_size=64000;";
+
+    public ulong StateDbLargeMemoryWriteBufferSize { get; set; } = (ulong)128.MiB();
+    public ulong StateDbArchiveModeWriteBufferSize { get; set; } = (ulong)256.MiB();
+
     public string? StateDbAdditionalRocksDbOptions { get; set; }
+
+    public string L1OriginDbRocksDbOptions { get; set; } = "";
+
+    public string? L1OriginDbAdditionalRocksDbOptions { get; set; }
 }

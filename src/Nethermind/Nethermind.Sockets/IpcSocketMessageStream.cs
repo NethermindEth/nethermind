@@ -5,7 +5,9 @@ using System;
 using System.Buffers;
 using System.Collections.Generic;
 using System.Net.Sockets;
+using System.Threading;
 using System.Threading.Tasks;
+using Nethermind.Core.Buffers;
 
 namespace Nethermind.Sockets;
 
@@ -16,10 +18,10 @@ public class IpcSocketMessageStream(Socket socket) : NetworkStream(socket), IMes
     private byte[] _bufferedData = [];
     private int _bufferedDataLength = 0;
 
-    public async Task<ReceiveResult?> ReceiveAsync(ArraySegment<byte> buffer)
+    public async ValueTask<ReceiveResult> ReceiveAsync(ArraySegment<byte> buffer, CancellationToken cancellationToken = default)
     {
         if (!Socket.Connected)
-            return null;
+            return default;
 
         if (_bufferedDataLength > 0)
         {
@@ -33,9 +35,18 @@ public class IpcSocketMessageStream(Socket socket) : NetworkStream(socket), IMes
             catch { }
         }
 
-        int read = _bufferedDataLength + await Socket.ReceiveAsync(buffer[_bufferedDataLength..], SocketFlags.None);
+        int delimiter = buffer[.._bufferedDataLength].AsSpan().IndexOf(Delimiter);
+        int read;
+        if (delimiter == -1)
+        {
+            read = _bufferedDataLength + await Socket.ReceiveAsync(buffer[_bufferedDataLength..], SocketFlags.None, cancellationToken);
+            delimiter = ((IList<byte>)buffer[..read]).IndexOf(Delimiter);
+        }
+        else
+        {
+            read = _bufferedDataLength;
+        }
 
-        int delimiter = ((IList<byte>)buffer[..read]).IndexOf(Delimiter);
         bool endOfMessage;
 
         if (delimiter != -1 && (delimiter + 1) < read)
@@ -64,8 +75,7 @@ public class IpcSocketMessageStream(Socket socket) : NetworkStream(socket), IMes
         {
             Closed = read == 0,
             Read = read > 0 && buffer[read - 1] == Delimiter ? read - 1 : read,
-            EndOfMessage = endOfMessage,
-            CloseStatusDescription = null
+            EndOfMessage = endOfMessage
         };
     }
 
@@ -78,9 +88,9 @@ public class IpcSocketMessageStream(Socket socket) : NetworkStream(socket), IMes
         base.Dispose(disposing);
     }
 
-    public Task<int> WriteEndOfMessageAsync()
+    public ValueTask<int> WriteEndOfMessageAsync()
     {
         WriteByte(Delimiter);
-        return Task.FromResult(1);
+        return ValueTask.FromResult(1);
     }
 }

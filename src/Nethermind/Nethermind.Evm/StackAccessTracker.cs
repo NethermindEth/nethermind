@@ -13,11 +13,11 @@ namespace Nethermind.Evm;
 
 public struct StackAccessTracker : IDisposable
 {
-    public readonly IReadOnlySet<Address> AccessedAddresses => _trackingState.AccessedAddresses;
-    public readonly IReadOnlySet<StorageCell> AccessedStorageCells => _trackingState.AccessedStorageCells;
-    public readonly ICollection<LogEntry> Logs => _trackingState.Logs;
-    public readonly IReadOnlySet<Address> DestroyList => _trackingState.DestroyList;
-    public readonly IReadOnlySet<AddressAsKey> CreateList => _trackingState.CreateList;
+    public readonly JournalSet<Address> AccessedAddresses => _trackingState.AccessedAddresses;
+    public readonly JournalSet<StorageCell> AccessedStorageCells => _trackingState.AccessedStorageCells;
+    public readonly JournalCollection<LogEntry> Logs => _trackingState.Logs;
+    public readonly JournalSet<Address> DestroyList => _trackingState.DestroyList;
+    public readonly HashSet<AddressAsKey> CreateList => _trackingState.CreateList;
 
     private TrackingState _trackingState;
 
@@ -25,11 +25,7 @@ public struct StackAccessTracker : IDisposable
     private int _storageKeysSnapshots;
     private int _destroyListSnapshots;
     private int _logsSnapshots;
-
-    public StackAccessTracker(in StackAccessTracker accessTracker)
-    {
-        _trackingState = accessTracker._trackingState;
-    }
+    private int _largeContractList;
 
     public StackAccessTracker()
     {
@@ -39,15 +35,14 @@ public struct StackAccessTracker : IDisposable
 
     public readonly bool IsCold(in StorageCell storageCell) => !_trackingState.AccessedStorageCells.Contains(storageCell);
 
-    public readonly void WarmUp(Address address)
-    {
-        _trackingState.AccessedAddresses.Add(address);
-    }
+    public readonly bool WarmUp(Address address)
+        => _trackingState.AccessedAddresses.Add(address);
 
-    public readonly void WarmUp(in StorageCell storageCell)
-    {
-        _trackingState.AccessedStorageCells.Add(storageCell);
-    }
+    public readonly bool WarmUp(in StorageCell storageCell)
+        => _trackingState.AccessedStorageCells.Add(storageCell);
+
+    public readonly bool WarmUpLargeContract(Address address)
+        => _trackingState.LargeContractList.Add(address);
 
     public readonly void WarmUp(AccessList? accessList)
     {
@@ -58,7 +53,7 @@ public struct StackAccessTracker : IDisposable
                 _trackingState.AccessedAddresses.Add(address);
                 foreach (UInt256 storage in storages)
                 {
-                    _trackingState.AccessedStorageCells.Add(new StorageCell(address, storage));
+                    _trackingState.AccessedStorageCells.Add(new StorageCell(address, in storage));
                 }
             }
         }
@@ -80,14 +75,16 @@ public struct StackAccessTracker : IDisposable
         _storageKeysSnapshots = _trackingState.AccessedStorageCells.TakeSnapshot();
         _destroyListSnapshots = _trackingState.DestroyList.TakeSnapshot();
         _logsSnapshots = _trackingState.Logs.TakeSnapshot();
+        _largeContractList = _trackingState.LargeContractList.TakeSnapshot();
     }
 
     public readonly void Restore()
     {
-        _trackingState.Logs.Restore(_logsSnapshots);
-        _trackingState.DestroyList.Restore(_destroyListSnapshots);
         _trackingState.AccessedAddresses.Restore(_addressesSnapshots);
         _trackingState.AccessedStorageCells.Restore(_storageKeysSnapshots);
+        _trackingState.DestroyList.Restore(_destroyListSnapshots);
+        _trackingState.Logs.Restore(_logsSnapshots);
+        _trackingState.LargeContractList.Restore(_largeContractList);
     }
 
     public void Dispose()
@@ -97,7 +94,7 @@ public struct StackAccessTracker : IDisposable
         TrackingState.ResetAndReturn(state);
     }
 
-    private class TrackingState
+    private sealed class TrackingState
     {
         private static readonly ConcurrentQueue<TrackingState> _trackerPool = new();
         public static TrackingState RentState() => _trackerPool.TryDequeue(out TrackingState tracker) ? tracker : new TrackingState();
@@ -113,6 +110,7 @@ public struct StackAccessTracker : IDisposable
         public JournalCollection<LogEntry> Logs { get; } = new();
         public JournalSet<Address> DestroyList { get; } = new();
         public HashSet<AddressAsKey> CreateList { get; } = new();
+        public JournalSet<AddressAsKey> LargeContractList { get; } = new();
 
         private void Clear()
         {
@@ -121,6 +119,7 @@ public struct StackAccessTracker : IDisposable
             Logs.Clear();
             DestroyList.Clear();
             CreateList.Clear();
+            LargeContractList.Clear();
         }
     }
 }

@@ -62,13 +62,13 @@ namespace Nethermind.Consensus.Clique
             }
 
             // Sign all the things!
-            Hash256 headerHash = SnapshotManager.CalculateCliqueHeaderHash(header);
+            ValueHash256 headerHash = SnapshotManager.CalculateCliqueHeaderHash(header);
             Signature signature;
             if (_signer is IHeaderSigner headerSigner)
             {
                 BlockHeader clone = header.Clone();
                 clone.ExtraData = SnapshotManager.SliceExtraSealFromExtraData(clone.ExtraData);
-                clone.Hash = headerHash;
+                clone.Hash = new Hash256(headerHash);
                 signature = headerSigner.Sign(clone);
             }
             else
@@ -77,8 +77,8 @@ namespace Nethermind.Consensus.Clique
             }
 
             // Copy signature bytes (R and S)
-            byte[] signatureBytes = signature.Bytes;
-            Array.Copy(signatureBytes, 0, header.ExtraData, header.ExtraData.Length - Clique.ExtraSealLength, signatureBytes.Length);
+            ReadOnlySpan<byte> signatureBytes = signature.Bytes;
+            signatureBytes.CopyTo(header.ExtraData.AsSpan(header.ExtraData.Length - Clique.ExtraSealLength));
             // Copy signature's recovery id (V)
             byte recoveryId = signature.RecoveryId;
             header.ExtraData[^1] = recoveryId;

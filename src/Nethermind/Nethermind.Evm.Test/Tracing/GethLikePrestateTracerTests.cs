@@ -3,13 +3,14 @@
 
 using System.Text.Json;
 using Nethermind.Core;
+using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Test.Builders;
-using Nethermind.Evm.Tracing.GethStyle;
-using Nethermind.Evm.Tracing.GethStyle.Custom.Native.Prestate;
+using Nethermind.Blockchain.Tracing.GethStyle;
+using Nethermind.Blockchain.Tracing.GethStyle.Custom.Native.Prestate;
 using Nethermind.Serialization.Json;
 using Nethermind.Specs;
-using Nethermind.State;
+using Nethermind.Evm.State;
 using NUnit.Framework;
 
 namespace Nethermind.Evm.Test.Tracing;
@@ -86,7 +87,7 @@ public class GethLikePrestateTracerTests : VirtualMachineTestsBase
         byte[] storageData = Bytes.FromHexString("123456789abcdef");
         TestState.Set(storageCell, storageData);
 
-        NativePrestateTracer tracer = new(TestState, GetGethTraceOptions(config), TestItem.AddressA, TestItem.AddressB, Address.Zero);
+        NativePrestateTracer tracer = new(TestState, GetGethTraceOptions(config), Hash256.Zero, TestItem.AddressA, TestItem.AddressB, Address.Zero);
         GethLikeTxTrace trace = Execute(
                 tracer,
                 SStore,
@@ -166,7 +167,7 @@ public class GethLikePrestateTracerTests : VirtualMachineTestsBase
         TestState.CreateAccount(TestItem.AddressC, 1.Ether());
         TestState.InsertCode(TestItem.AddressC, createCode, Spec);
 
-        NativePrestateTracer tracer = new(TestState, GetGethTraceOptions(config), TestItem.AddressA, TestItem.AddressB, Address.Zero);
+        NativePrestateTracer tracer = new(TestState, GetGethTraceOptions(config), Hash256.Zero, TestItem.AddressA, TestItem.AddressB, Address.Zero);
         GethLikeTxTrace trace = Execute(
                 tracer,
                 nestedCode,
@@ -250,7 +251,7 @@ public class GethLikePrestateTracerTests : VirtualMachineTestsBase
         TestState.CreateAccount(TestItem.AddressC, 1.Ether());
         TestState.InsertCode(TestItem.AddressC, createCode, Spec);
 
-        NativePrestateTracer tracer = new(TestState, GetGethTraceOptions(config), TestItem.AddressA, TestItem.AddressB, Address.Zero);
+        NativePrestateTracer tracer = new(TestState, GetGethTraceOptions(config), Hash256.Zero, TestItem.AddressA, TestItem.AddressB, Address.Zero);
         GethLikeTxTrace trace = Execute(
                 tracer,
                 code,
@@ -310,7 +311,7 @@ public class GethLikePrestateTracerTests : VirtualMachineTestsBase
         TestState.CreateAccount(TestItem.AddressC, 5.Ether());
         TestState.IncrementNonce(TestItem.AddressC);
 
-        NativePrestateTracer tracer = new(TestState, GetGethTraceOptions(config), TestItem.AddressA, TestItem.AddressB, Address.Zero);
+        NativePrestateTracer tracer = new(TestState, GetGethTraceOptions(config), Hash256.Zero, TestItem.AddressA, TestItem.AddressB, Address.Zero);
         GethLikeTxTrace trace = Execute(
                 tracer,
                 Balance,
@@ -360,7 +361,7 @@ public class GethLikePrestateTracerTests : VirtualMachineTestsBase
     {
         TestState.CreateAccount(Address.Zero, 100.Ether());
 
-        NativePrestateTracer tracer = new(TestState, GetGethTraceOptions(config), TestItem.AddressA, null, Address.Zero);
+        NativePrestateTracer tracer = new(TestState, GetGethTraceOptions(config), Hash256.Zero, TestItem.AddressA, null, Address.Zero);
         GethLikeTxTrace trace = Execute(
                 tracer,
                 Balance,
@@ -413,7 +414,7 @@ public class GethLikePrestateTracerTests : VirtualMachineTestsBase
     {
         TestState.CreateAccount(Address.Zero, 100.Ether());
 
-        NativePrestateTracer tracer = new(TestState, GetGethTraceOptions(config), TestItem.AddressA, null, Address.Zero);
+        NativePrestateTracer tracer = new(TestState, GetGethTraceOptions(config), Hash256.Zero, TestItem.AddressA, null, Address.Zero);
         GethLikeTxTrace trace = Execute(
                 tracer,
                 SelfDestruct,

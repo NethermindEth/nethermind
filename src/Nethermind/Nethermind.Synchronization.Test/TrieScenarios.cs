@@ -7,6 +7,7 @@ using System.Threading;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
+using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Db;
 using Nethermind.Int256;
@@ -40,7 +41,7 @@ namespace Nethermind.Synchronization.Test
             if (!Inited)
             {
                 // this setup is just for finding the storage root
-                StorageTree remoteStorageTree = SetStorage(new TrieStore(new MemDb(), LimboLogs.Instance), TestItem.AddressA);
+                StorageTree remoteStorageTree = SetStorage(new TestRawTrieStore(new MemDb()), TestItem.AddressA);
                 Hash256 storageRoot = remoteStorageTree.RootHash;
 
                 Empty = Build.An.Account.WithBalance(0).TestObject;
@@ -336,23 +337,20 @@ namespace Nethermind.Synchronization.Test
             };
         }
 
-        private static StorageTree SetStorage(ITrieStore trieStore, Address account)
-        {
-            return SetStorage(trieStore, account.ToAccountPath);
-        }
+        private static StorageTree SetStorage(ITrieStore trieStore, Address account) => SetStorage(trieStore, account.ToAccountPath.ToCommitment());
 
         private static StorageTree SetStorage(ITrieStore trieStore, Hash256 account)
         {
             StorageTree remoteStorageTree = new(trieStore.GetTrieStore(account), Keccak.EmptyTreeHash, LimboLogs.Instance);
 
-            remoteStorageTree.Set((UInt256)1, new byte[] { 1 });
-            remoteStorageTree.Set((UInt256)2, new byte[] { 2 });
-            remoteStorageTree.Set((UInt256)3, new byte[] { 3 });
-            remoteStorageTree.Set((UInt256)4, new byte[] { 4 });
-            remoteStorageTree.Set((UInt256)1005, new byte[] { 5 });
-            remoteStorageTree.Set((UInt256)1006, new byte[] { 6 });
-            remoteStorageTree.Set((UInt256)1007, new byte[] { 7 });
-            remoteStorageTree.Set((UInt256)1008, new byte[] { 8 });
+            remoteStorageTree.Set((UInt256)1, [1]);
+            remoteStorageTree.Set((UInt256)2, [2]);
+            remoteStorageTree.Set((UInt256)3, [3]);
+            remoteStorageTree.Set((UInt256)4, [4]);
+            remoteStorageTree.Set((UInt256)1005, [5]);
+            remoteStorageTree.Set((UInt256)1006, [6]);
+            remoteStorageTree.Set((UInt256)1007, [7]);
+            remoteStorageTree.Set((UInt256)1008, [8]);
 
             remoteStorageTree.Commit();
             return remoteStorageTree;
@@ -360,7 +358,7 @@ namespace Nethermind.Synchronization.Test
 
         private static void SetStorage(StateTree stateTree, ITrieStore trieStore, Address address, Account account)
         {
-            SetStorage(stateTree, trieStore, address.ToAccountPath, account);
+            SetStorage(stateTree, trieStore, address.ToAccountPath.ToCommitment(), account);
         }
 
         private static void SetStorage(StateTree stateTree, ITrieStore trieStore, Hash256 address, Account account)

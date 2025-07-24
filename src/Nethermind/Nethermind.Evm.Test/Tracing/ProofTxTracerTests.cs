@@ -4,7 +4,7 @@
 using System.Linq;
 using Nethermind.Core;
 using Nethermind.Core.Test.Builders;
-using Nethermind.Evm.Tracing.Proofs;
+using Nethermind.Blockchain.Tracing.Proofs;
 using NUnit.Framework;
 
 namespace Nethermind.Evm.Test.Tracing;
@@ -282,7 +282,7 @@ public class ProofTxTracerTests : VirtualMachineTestsBase
     {
         (Block block, Transaction transaction) = PrepareTx(BlockNumber, 100000, code, addresses);
         ProofTxTracer tracer = new(_treatSystemAccountDifferently);
-        _processor.Execute(transaction, block.Header, tracer);
+        _processor.Execute(transaction, new BlockExecutionContext(block.Header, Spec), tracer);
         return (tracer, block, transaction);
     }
 }

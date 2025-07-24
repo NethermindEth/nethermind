@@ -32,6 +32,7 @@ public interface IDbConfig : IConfig
     bool? VerifyChecksum { get; set; }
     bool EnableFileWarmer { get; set; }
     double CompressibilityHint { get; set; }
+    bool FlushOnExit { get; set; }
 
     string BadBlocksDbRocksDbOptions { get; set; }
     string? BadBlocksDbAdditionalRocksDbOptions { get; set; }
@@ -92,4 +93,12 @@ public interface IDbConfig : IConfig
     double StateDbCompressibilityHint { get; set; }
     string StateDbRocksDbOptions { get; set; }
     string? StateDbAdditionalRocksDbOptions { get; set; }
+    string StateDbLargeMemoryRocksDbOptions { get; set; }
+    string StateDbArchiveModeRocksDbOptions { get; set; }
+    ulong StateDbLargeMemoryWriteBufferSize { get; set; }
+    ulong StateDbArchiveModeWriteBufferSize { get; set; }
+
+
+    string L1OriginDbRocksDbOptions { get; set; }
+    string? L1OriginDbAdditionalRocksDbOptions { get; set; }
 }

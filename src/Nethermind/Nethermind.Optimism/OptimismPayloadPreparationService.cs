@@ -2,6 +2,10 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Threading;
+using Autofac.Features.AttributeFilters;
+using Nethermind.Config;
+using Nethermind.Consensus;
 using Nethermind.Consensus.Producers;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
@@ -11,6 +15,7 @@ using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.Merge.Plugin.BlockProduction;
 using Nethermind.Optimism.Rpc;
+using Nethermind.TxPool;
 
 namespace Nethermind.Optimism;
 
@@ -21,30 +26,26 @@ public class OptimismPayloadPreparationService : PayloadPreparationService
 
     public OptimismPayloadPreparationService(
         ISpecProvider specProvider,
-        PostMergeBlockProducer blockProducer,
+        IBlockProducer blockProducer,
+        ITxPool txPool,
         IBlockImprovementContextFactory blockImprovementContextFactory,
         ITimerFactory timerFactory,
         ILogManager logManager,
-        TimeSpan timePerSlot,
-        int slotsPerOldPayloadCleanup = SlotsPerOldPayloadCleanup,
-        TimeSpan? improvementDelay = null,
-        TimeSpan? minTimeForProduction = null)
+        IBlocksConfig blocksConfig)
         : base(
             blockProducer,
+            txPool,
             blockImprovementContextFactory,
             timerFactory,
             logManager,
-            timePerSlot,
-            slotsPerOldPayloadCleanup,
-            improvementDelay,
-            minTimeForProduction)
+            blocksConfig)
     {
         _specProvider = specProvider;
         _logger = logManager.GetClassLogger();
     }
 
     protected override void ImproveBlock(string payloadId, BlockHeader parentHeader,
-        PayloadAttributes payloadAttributes, Block currentBestBlock, DateTimeOffset startDateTime)
+        PayloadAttributes payloadAttributes, Block currentBestBlock, DateTimeOffset startDateTime, UInt256 currentBlockFees, CancellationTokenSource cts)
     {
         if (payloadAttributes is OptimismPayloadAttributes optimismPayload)
         {
@@ -81,7 +82,7 @@ public class OptimismPayloadPreparationService : PayloadPreparationService
         }
         else
         {
-            base.ImproveBlock(payloadId, parentHeader, payloadAttributes, currentBestBlock, startDateTime);
+            base.ImproveBlock(payloadId, parentHeader, payloadAttributes, currentBestBlock, startDateTime, currentBlockFees, cts);
         }
     }
 }

@@ -2,12 +2,13 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Threading.Tasks;
+using Nethermind.Blockchain.Find;
 using Nethermind.Blockchain.FullPruning;
 
 namespace Nethermind.JsonRpc.Modules.Admin;
 
 [RpcModule(ModuleType.Admin)]
-public interface IAdminRpcModule : IRpcModule
+public interface IAdminRpcModule : IContextAwareRpcModule
 {
     [JsonRpcMethod(Description = "Adds given node.",
         EdgeCaseHint = "",
@@ -57,14 +58,38 @@ public interface IAdminRpcModule : IRpcModule
         IsImplemented = true)]
     ResultWrapper<string> admin_dataDir();
 
-
     [JsonRpcMethod(Description = "[DEPRECATED]",
         IsImplemented = false)]
     ResultWrapper<bool> admin_setSolc();
 
-    [JsonRpcMethod(Description = "Runs full pruning if enabled.",
+    [JsonRpcMethod(Description = "True if state root for the block is available",
         EdgeCaseHint = "",
         ExampleResponse = "\"Starting\"",
         IsImplemented = true)]
-    ResultWrapper<PruningStatus> admin_prune();
+    ResultWrapper<bool> admin_isStateRootAvailable(BlockParameter block);
+
+    [JsonRpcMethod(Description = "Adds given node as a trusted peer, allowing the node to always connect even if slots are full.",
+        EdgeCaseHint = "",
+        ResponseDescription = "Boolean indicating success",
+        ExampleResponse = "true",
+        IsImplemented = true)]
+    Task<ResultWrapper<bool>> admin_addTrustedPeer(
+        [JsonRpcParameter(Description = "Given node", ExampleValue = "\"enode://...\"")]
+        string enode
+);
+
+    [JsonRpcMethod(Description = "Removes the given node from the trusted peers list.",
+        EdgeCaseHint = "",
+        ResponseDescription = "Boolean indicating success",
+        ExampleResponse = "true",
+        IsImplemented = true)]
+    Task<ResultWrapper<bool>> admin_removeTrustedPeer(
+        [JsonRpcParameter(Description = "Given node", ExampleValue = "\"enode://...\"")]
+        string enode
+);
+
+    [JsonRpcMethod(Description = "Subscribes to a particular event over WebSocket. For every event that matches the subscription, a notification with event details and subscription id is sent to a client.", IsImplemented = true, IsSharable = false, Availability = RpcEndpoint.All & ~RpcEndpoint.Http)]
+    ResultWrapper<string> admin_subscribe(string subscriptionName, string? args = null);
+    [JsonRpcMethod(Description = "Unsubscribes from a subscription.", IsImplemented = true, IsSharable = false, Availability = RpcEndpoint.All & ~RpcEndpoint.Http)]
+    ResultWrapper<bool> admin_unsubscribe(string subscriptionId);
 }

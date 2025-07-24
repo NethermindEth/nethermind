@@ -2,10 +2,8 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using System.Collections.Generic;
 using DotNetty.Buffers;
 using DotNetty.Common.Utilities;
-using Nethermind.Core.Collections;
 
 namespace Nethermind.Serialization.Rlp
 {
@@ -101,6 +99,8 @@ namespace Nethermind.Serialization.Rlp
         /// </summary>
         /// <returns></returns>
         public Span<byte> AsSpan() => _buffer.AsSpan(_initialPosition);
+
+        public Memory<byte> AsMemory() => _buffer.AsMemory(_initialPosition);
 
         public void Dispose()
         {

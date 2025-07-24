@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Collections.Generic;
-using System.Linq;
 using Ethereum.Test.Base;
 using NUnit.Framework;
 
@@ -22,7 +21,7 @@ namespace Ethereum.Blockchain.Test
         public static IEnumerable<GeneralStateTest> LoadTests()
         {
             var loader = new TestsSourceLoader(new LoadGeneralStateTestsStrategy(), "stBadOpcode");
-            return (IEnumerable<GeneralStateTest>)loader.LoadTests();
+            return loader.LoadTests<GeneralStateTest>();
         }
     }
 }

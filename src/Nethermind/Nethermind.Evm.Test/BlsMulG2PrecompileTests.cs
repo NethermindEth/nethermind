@@ -12,14 +12,22 @@ using NUnit.Framework;
 
 namespace Nethermind.Evm.Test;
 
-public class BlsMulG2PrecompileTests
+public class BlsMulG2PrecompileTests : PrecompileTests<BlsMulG2PrecompileTests>, IPrecompileTests
 {
+    public static IEnumerable<string> TestFiles()
+    {
+        yield return "Bls/mul_G2_bls.json";
+        yield return "Bls/fail-mul_G2_bls.json";
+    }
+
+    public static IPrecompile Precompile() => G2MSMPrecompile.Instance;
+
     [Test]
     public void Test()
     {
         foreach ((byte[] input, ReadOnlyMemory<byte> expectedResult) in Inputs)
         {
-            IPrecompile precompile = G2MulPrecompile.Instance;
+            IPrecompile precompile = G2MSMPrecompile.Instance;
             (ReadOnlyMemory<byte> output, bool success) = precompile.Run(input, MuirGlacier.Instance);
             output.ToArray().Should().BeEquivalentTo(expectedResult.ToArray());
             success.Should().BeTrue();

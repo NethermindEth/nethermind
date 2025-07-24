@@ -4,29 +4,29 @@
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Api;
+using Nethermind.Api.Steps;
+using Nethermind.Blockchain;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Blockchain.Visitors;
 using Nethermind.Logging;
+using Nethermind.State;
 
 namespace Nethermind.Init.Steps
 {
-    [RunnerStepDependencies(typeof(StartBlockProcessor), (typeof(InitializeNetwork)))]
-    public class ReviewBlockTree : IStep
+    [RunnerStepDependencies(typeof(LoadGenesisBlock))]
+    public class ReviewBlockTree(
+        IWorldStateManager worldStateManager,
+        IInitConfig initConfig,
+        ISyncConfig syncConfig,
+        IBlockTree blockTree,
+        ILogManager logManager
+    ) : IStep
     {
-        private readonly IApiWithBlockchain _api;
-        private readonly ILogger _logger;
-
-        public ReviewBlockTree(INethermindApi api)
-        {
-            _api = api;
-            _logger = _api.LogManager.GetClassLogger();
-        }
+        private readonly ILogger _logger = logManager.GetClassLogger();
 
         public Task Execute(CancellationToken cancellationToken)
         {
-            if (_api.BlockTree is null) throw new StepDependencyException(nameof(_api.DbProvider));
-
-            if (_api.Config<IInitConfig>().ProcessingEnabled)
+            if (initConfig.ProcessingEnabled)
             {
                 return RunBlockTreeInitTasks(cancellationToken);
             }
@@ -38,14 +38,10 @@ namespace Nethermind.Init.Steps
 
         private async Task RunBlockTreeInitTasks(CancellationToken cancellationToken)
         {
-            ISyncConfig syncConfig = _api.Config<ISyncConfig>();
-
-            if (_api.BlockTree is null) throw new StepDependencyException(nameof(_api.BlockTree));
-
             if (!syncConfig.FastSync)
             {
-                using DbBlocksLoader loader = new(_api.BlockTree, _logger);
-                await _api.BlockTree.Accept(loader, cancellationToken).ContinueWith(t =>
+                using DbBlocksLoader loader = new(blockTree, _logger);
+                await blockTree.Accept(loader, cancellationToken).ContinueWith(t =>
                 {
                     if (t.IsFaulted)
                     {
@@ -59,8 +55,8 @@ namespace Nethermind.Init.Steps
             }
             else
             {
-                using StartupBlockTreeFixer fixer = new(syncConfig, _api.BlockTree, _api.WorldStateManager!.GlobalStateReader, _logger!);
-                await _api.BlockTree.Accept(fixer, cancellationToken).ContinueWith(t =>
+                using StartupBlockTreeFixer fixer = new(syncConfig, blockTree, worldStateManager!.GlobalStateReader, _logger!);
+                await blockTree.Accept(fixer, cancellationToken).ContinueWith(t =>
                 {
                     if (t.IsFaulted)
                     {

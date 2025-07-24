@@ -8,10 +8,14 @@ using FluentAssertions;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Extensions;
+using Nethermind.Core.Test.Builders;
+using Nethermind.Core.Test.Db;
 using Nethermind.Db;
 using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.Specs.Forks;
+using Nethermind.Evm.State;
 using Nethermind.State;
 using Nethermind.Trie.Pruning;
 using Nethermind.Trie.Test.Pruning;
@@ -30,8 +34,8 @@ namespace Nethermind.Trie.Test
 
         public class PruningContext
         {
-            private long _blockNumber = 1;
-            private readonly Dictionary<string, (long blockNumber, Hash256 rootHash)> _branchingPoints = new();
+            private BlockHeader? _baseBlock = Build.A.EmptyBlockHeader;
+            private readonly Dictionary<string, BlockHeader?> _branchingPoints = new();
             private readonly IDbProvider _dbProvider;
             private IWorldState _stateProvider;
             private IStateReader _stateReader;
@@ -40,9 +44,10 @@ namespace Nethermind.Trie.Test
             private TrieStore _trieStore;
             private readonly IPersistenceStrategy _persistenceStrategy;
             private readonly TestPruningStrategy _pruningStrategy;
+            private readonly IPruningConfig _pruningConfig;
 
             [DebuggerStepThrough]
-            private PruningContext(TestPruningStrategy pruningStrategy, IPersistenceStrategy persistenceStrategy)
+            private PruningContext(TestPruningStrategy pruningStrategy, IPersistenceStrategy persistenceStrategy, IPruningConfig? pruningConfig = null)
             {
                 _logManager = LimboLogs.Instance;
                 //new TestLogManager(LogLevel.Trace);
@@ -50,7 +55,9 @@ namespace Nethermind.Trie.Test
                 _dbProvider = TestMemDbProvider.Init();
                 _persistenceStrategy = persistenceStrategy;
                 _pruningStrategy = pruningStrategy;
-                _trieStore = new TrieStore(_dbProvider.StateDb, _pruningStrategy, _persistenceStrategy, _logManager);
+
+                _pruningConfig = pruningConfig ?? new PruningConfig() { TrackPastKeys = false };
+                _trieStore = new TrieStore(new NodeStorage(_dbProvider.StateDb), _pruningStrategy, _persistenceStrategy, _pruningConfig, _logManager);
                 _stateProvider = new WorldState(_trieStore, _dbProvider.CodeDb, _logManager);
                 _stateReader = new StateReader(_trieStore, _dbProvider.CodeDb, _logManager);
             }
@@ -59,13 +66,20 @@ namespace Nethermind.Trie.Test
             public static PruningContext ArchiveWithManualPruning
             {
                 [DebuggerStepThrough]
-                get => new(new TestPruningStrategy(true), Persist.EveryBlock);
+                get => new(new TestPruningStrategy(false, true), Persist.EveryBlock, pruningConfig: new PruningConfig()
+                {
+                    PruningBoundary = 0
+                });
             }
 
             public static PruningContext SnapshotEveryOtherBlockWithManualPruning
             {
                 [DebuggerStepThrough]
-                get => new(new TestPruningStrategy(true), new ConstantInterval(2));
+                get => new(new TestPruningStrategy(false, pruneInterval: 2), No.Persistence, pruningConfig: new PruningConfig()
+                {
+                    PruningBoundary = 1,
+                    TrackPastKeys = false,
+                });
             }
 
             public static PruningContext InMemory
@@ -74,10 +88,22 @@ namespace Nethermind.Trie.Test
                 get => new(new TestPruningStrategy(true), No.Persistence);
             }
 
+            public static PruningContext InMemoryWithPastKeyTracking
+            {
+                [DebuggerStepThrough]
+                get => new(new TestPruningStrategy(true), No.Persistence, new PruningConfig()
+                {
+                    TrackPastKeys = true,
+                });
+            }
+
             public static PruningContext InMemoryAlwaysPrune
             {
                 [DebuggerStepThrough]
-                get => new(new TestPruningStrategy(true, true, 1000000), No.Persistence);
+                get => new(new TestPruningStrategy(true, true), No.Persistence, new PruningConfig()
+                {
+                    TrackPastKeys = true,
+                });
             }
 
             public static PruningContext SetupWithPersistenceEveryEightBlocks
@@ -87,6 +113,7 @@ namespace Nethermind.Trie.Test
             }
 
             public Hash256 CurrentStateRoot => _stateProvider.StateRoot;
+            public long TotalMemoryUsage => _trieStore.MemoryUsedByDirtyCache;
 
             public void VerifyNodeInCache(Hash256 root, bool hasStateRoot)
             {
@@ -116,8 +143,8 @@ namespace Nethermind.Trie.Test
 
             public PruningContext WithMaxDepth(int maxDepth)
             {
-                _pruningStrategy.MaxDepth = maxDepth;
-                return this;
+                _pruningConfig.PruningBoundary = maxDepth;
+                return new PruningContext(_pruningStrategy, _persistenceStrategy, _pruningConfig);
             }
 
             public PruningContext PruneOldBlock()
@@ -128,6 +155,13 @@ namespace Nethermind.Trie.Test
             public PruningContext TurnOnPrune()
             {
                 _pruningStrategy.ShouldPruneEnabled = true;
+                _pruningStrategy.ShouldPrunePersistedEnabled = true;
+                return this;
+            }
+
+            public PruningContext TurnOffAlwaysPrunePersistedNode()
+            {
+                _pruningStrategy.ShouldPrunePersistedEnabled = false;
                 return this;
             }
 
@@ -171,7 +205,7 @@ namespace Nethermind.Trie.Test
             public PruningContext ReadAccountViaStateReader(int accountIndex)
             {
                 _logger.Info($"READ   ACCOUNT {accountIndex}");
-                _stateReader.TryGetAccount(_stateProvider.StateRoot, Address.FromNumber((UInt256)accountIndex), out _);
+                _stateReader.TryGetAccount(_baseBlock, Address.FromNumber((UInt256)accountIndex), out _);
                 return this;
             }
 
@@ -185,31 +219,34 @@ namespace Nethermind.Trie.Test
             public PruningContext Commit()
             {
                 _stateProvider.Commit(MuirGlacier.Instance);
-                _stateProvider.CommitTree(_blockNumber);
-                _blockNumber++;
+                _stateProvider.CommitTree((_baseBlock?.Number ?? 0) + 1);
+                _baseBlock = Build.A.BlockHeader.WithParent(_baseBlock).WithStateRoot(_stateProvider.StateRoot).TestObject;
 
                 // This causes the root node to be reloaded instead of keeping old one
                 // The root hash will now be unresolved, which mean it will need to reload from trie store.
                 // `BlockProcessor.InitBranch` does this.
                 _stateProvider.Reset();
-                _stateProvider.StateRoot = _stateProvider.StateRoot;
+                _stateProvider.SetBaseBlock(_baseBlock);
+                _trieStore.WaitForPruning();
+                Console.Error.WriteLine($"Commited block {_baseBlock.ToString(BlockHeader.Format.Short)} {_trieStore.CachedNodesCount} {_trieStore.PersistedNodesCount}");
                 return this;
             }
 
             public PruningContext DisposeAndRecreate()
             {
                 _trieStore.Dispose();
-                _trieStore = new TrieStore(_dbProvider.StateDb, _pruningStrategy, _persistenceStrategy, _logManager);
+                _trieStore = new TrieStore(new NodeStorage(_dbProvider.StateDb), _pruningStrategy, _persistenceStrategy, _pruningConfig, _logManager);
                 _stateProvider = new WorldState(_trieStore, _dbProvider.CodeDb, _logManager);
                 _stateReader = new StateReader(_trieStore, _dbProvider.CodeDb, _logManager);
                 return this;
             }
 
-            public void WaitForPruning()
+            public PruningContext WaitForPruning()
             {
                 _trieStore.WaitForPruning();
                 _trieStore.Prune();
                 _trieStore.WaitForPruning();
+                return this;
             }
 
             public PruningContext CommitEmptyBlock()
@@ -248,6 +285,24 @@ namespace Nethermind.Trie.Test
                 return this;
             }
 
+            public PruningContext AssertThatCachedNodeCountIs(long cachedNodeCount)
+            {
+                _trieStore.CachedNodesCount.Should().Be(cachedNodeCount);
+                return this;
+            }
+
+            public PruningContext AssertThatCachedNodeCountMoreThan(long cachedNodeCount)
+            {
+                _trieStore.CachedNodesCount.Should().BeGreaterThan(cachedNodeCount);
+                return this;
+            }
+
+            public PruningContext AssertThatDirtyNodeCountIs(long dirtyNodeCount)
+            {
+                _trieStore.DirtyCachedNodesCount.Should().Be(dirtyNodeCount);
+                return this;
+            }
+
             public PruningContext DumpCache()
             {
                 _trieStore.Dump();
@@ -256,18 +311,41 @@ namespace Nethermind.Trie.Test
 
             public PruningContext SaveBranchingPoint(string name)
             {
-                _branchingPoints[name] = (_blockNumber, _stateProvider.StateRoot);
+                _branchingPoints[name] = _baseBlock;
                 return this;
             }
 
             public PruningContext RestoreBranchingPoint(string name)
             {
-                (long blockNumber, Hash256 rootHash) branchPoint = _branchingPoints[name];
-                _blockNumber = branchPoint.blockNumber;
-                Hash256 rootHash = branchPoint.rootHash;
+                BlockHeader branchPoint = _branchingPoints[name];
+                _baseBlock = branchPoint;
                 _stateProvider.Reset();
-                _stateProvider.StateRoot = rootHash;
+                _stateProvider.SetBaseBlock(branchPoint);
                 return this;
+            }
+
+            public PruningContext WithPersistedMemoryLimit(long persistedMemoryLimit)
+            {
+                _pruningStrategy.WithPersistedMemoryLimit = persistedMemoryLimit;
+                return this;
+            }
+
+            public PruningContext WithPrunePersistedNodeParameter(long minimumTarget, double portion)
+            {
+                _pruningConfig.PrunePersistedNodeMinimumTarget = minimumTarget;
+                _pruningConfig.PrunePersistedNodePortion = portion;
+
+                return new PruningContext(_pruningStrategy, _persistenceStrategy, _pruningConfig);
+            }
+
+            public void AssertThatTotalMemoryUsedIs(long memoryUsage)
+            {
+                _trieStore.MemoryUsedByDirtyCache.Should().Be(memoryUsage);
+            }
+
+            public void AssertThatTotalMemoryUsedIsNoLessThan(long memoryUsage)
+            {
+                _trieStore.MemoryUsedByDirtyCache.Should().BeGreaterThan(memoryUsage);
             }
         }
 
@@ -363,7 +441,7 @@ namespace Nethermind.Trie.Test
                 .CommitEmptyBlock()
                 .PruneOldBlock()
                 .PruneOldBlock()
-                .VerifyPersisted(1)
+                .VerifyPersisted(4)
                 .VerifyCached(5);
         }
 
@@ -401,7 +479,7 @@ namespace Nethermind.Trie.Test
                 .CommitEmptyBlock()
                 .PruneOldBlock()
                 .PruneOldBlock()
-                .VerifyPersisted(6)
+                .VerifyPersisted(9)
                 .VerifyCached(11);
         }
 
@@ -591,7 +669,7 @@ namespace Nethermind.Trie.Test
         public void Should_persist_all_block_of_same_level_on_dispose()
         {
             PruningContext.InMemory
-                .WithMaxDepth(3)
+                .WithMaxDepth(4)
                 .SetAccountBalance(1, 100)
                 .Commit()
                 .SetAccountBalance(2, 10)
@@ -813,6 +891,92 @@ namespace Nethermind.Trie.Test
                 .Commit()
 
                 .VerifyAccountBalance(4, 100);
+        }
+
+        [Test]
+        public void Keep_PersistedNode_EvenAfterPersist()
+        {
+            PruningContext ctx = PruningContext.InMemory
+                .WithMaxDepth(2)
+                .WithPersistedMemoryLimit(100.MiB())
+                .TurnOnPrune()
+                .TurnOffAlwaysPrunePersistedNode();
+
+            for (int i = 0; i < 256; i++)
+            {
+                ctx
+                    .SetAccountBalance(i, (UInt256)i)
+                    .Commit()
+                    .WaitForPruning();
+            }
+
+            ctx
+                .AssertThatDirtyNodeCountIs(9)
+                .AssertThatCachedNodeCountIs(951)
+                .AssertThatTotalMemoryUsedIs(822384);
+        }
+
+        [Test]
+        public void Keep_DeleteCachedPersistedNode_IfReplaced()
+        {
+            PruningContext ctx = PruningContext.InMemoryWithPastKeyTracking
+                .WithMaxDepth(2)
+                .WithPersistedMemoryLimit(100.MiB())
+                .TurnOnPrune()
+                .TurnOffAlwaysPrunePersistedNode();
+
+            ctx
+                .SetAccountBalance(0, (UInt256)1)
+                .Commit()
+                .WaitForPruning()
+                .AssertThatDirtyNodeCountIs(1)
+                .AssertThatCachedNodeCountIs(1);
+
+            for (int i = 1; i < 256; i++)
+            {
+                ctx
+                    .SetAccountBalance(0, (UInt256)(i + 1))
+                    .Commit()
+                    .WaitForPruning();
+            }
+
+            ctx
+                .AssertThatDirtyNodeCountIs(2)
+                .AssertThatCachedNodeCountIs(3)
+                .AssertThatTotalMemoryUsedIs(1584);
+        }
+
+        [Test]
+        public void Retain_Some_PersistedNodes()
+        {
+            PruningContext ctx = PruningContext.InMemory
+                .WithMaxDepth(2)
+                .WithPersistedMemoryLimit(200.KiB())
+                .WithPrunePersistedNodeParameter(1, 0.1)
+                .TurnOnPrune()
+                .TurnOffAlwaysPrunePersistedNode();
+
+            bool thresholdReached = false;
+            for (int i = 0; i < 256; i++)
+            {
+                ctx
+                    .SetAccountBalance(i, (UInt256)i)
+                    .Commit()
+                    .WaitForPruning();
+
+                if (thresholdReached)
+                {
+                    ctx.AssertThatTotalMemoryUsedIsNoLessThan((long)(200.KiB() * 0.1));
+                }
+                else if (ctx.TotalMemoryUsage > 190.KiB())
+                {
+                    thresholdReached = true;
+                }
+            }
+
+            ctx
+                .AssertThatDirtyNodeCountIs(9)
+                .AssertThatCachedNodeCountMoreThan(280);
         }
     }
 }

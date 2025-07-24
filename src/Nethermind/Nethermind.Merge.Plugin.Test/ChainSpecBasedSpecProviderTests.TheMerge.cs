@@ -4,6 +4,7 @@
 using System.IO;
 using Nethermind.Core.Specs;
 using Nethermind.Int256;
+using Nethermind.Logging;
 using Nethermind.Serialization.Json;
 using Nethermind.Specs.ChainSpecStyle;
 using Nethermind.Specs.Test.ChainSpecStyle;
@@ -34,9 +35,9 @@ public class ChainSpecBasedSpecProviderTestsTheMerge
     [Test]
     public void Correctly_read_merge_parameters_from_file()
     {
-        ChainSpecLoader loader = new(new EthereumJsonSerializer());
+        var loader = new ChainSpecFileLoader(new EthereumJsonSerializer(), LimboTraceLogger.Instance);
         string path = Path.Combine(TestContext.CurrentContext.WorkDirectory, "Specs/test_spec.json");
-        ChainSpec chainSpec = loader.LoadFromFile(path);
+        var chainSpec = loader.LoadEmbeddedOrFromFile(path);
 
         ChainSpecBasedSpecProvider provider = new(chainSpec);
         Assert.That(provider.MergeBlockNumber?.BlockNumber, Is.EqualTo(101));
@@ -67,9 +68,10 @@ public class ChainSpecBasedSpecProviderTestsTheMerge
     {
         long expectedTerminalPoWBlock = 100;
         long newMergeBlock = 50;
-        ChainSpecLoader loader = new(new EthereumJsonSerializer());
+
+        var loader = new ChainSpecFileLoader(new EthereumJsonSerializer(), LimboTraceLogger.Instance);
         string path = Path.Combine(TestContext.CurrentContext.WorkDirectory, "Specs/test_spec.json");
-        ChainSpec chainSpec = loader.LoadFromFile(path);
+        var chainSpec = loader.LoadEmbeddedOrFromFile(path);
 
         ChainSpecBasedSpecProvider provider = new(chainSpec);
         Assert.That(provider.MergeBlockNumber?.BlockNumber, Is.EqualTo(expectedTerminalPoWBlock + 1));

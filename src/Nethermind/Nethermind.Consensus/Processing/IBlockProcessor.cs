@@ -3,9 +3,12 @@
 
 using System;
 using System.Collections.Generic;
+using System.Threading;
+using Nethermind.Blockchain.Tracing;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
+using Nethermind.Evm;
 using Nethermind.Evm.Tracing;
 
 namespace Nethermind.Consensus.Processing
@@ -15,16 +18,17 @@ namespace Nethermind.Consensus.Processing
         /// <summary>
         /// Processes a group of blocks starting with a state defined by the <paramref name="newBranchStateRoot"/>.
         /// </summary>
-        /// <param name="newBranchStateRoot">Initial state for the processed branch.</param>
+        /// <param name="baseBlock">Block where the state the processed branch to be built on top.</param>
         /// <param name="suggestedBlocks">List of blocks to be processed.</param>
         /// <param name="processingOptions">Options to use for processor and transaction processor.</param>
         /// <param name="blockTracer">Block tracer to use. By default either <see cref="NullBlockTracer"/> or <see cref="BlockReceiptsTracer"/></param>
         /// <returns>List of processed blocks.</returns>
         Block[] Process(
-            Hash256 newBranchStateRoot,
-            List<Block> suggestedBlocks,
+            BlockHeader? baseBlock,
+            IReadOnlyList<Block> suggestedBlocks,
             ProcessingOptions processingOptions,
-            IBlockTracer blockTracer);
+            IBlockTracer blockTracer,
+            CancellationToken token = default);
 
         /// <summary>
         /// Fired when a branch is being processed.
@@ -48,8 +52,9 @@ namespace Nethermind.Consensus.Processing
 
         public interface IBlockTransactionsExecutor
         {
-            TxReceipt[] ProcessTransactions(Block block, ProcessingOptions processingOptions, BlockReceiptsTracer receiptsTracer, IReleaseSpec spec);
+            TxReceipt[] ProcessTransactions(Block block, ProcessingOptions processingOptions, BlockReceiptsTracer receiptsTracer, CancellationToken token = default);
             event EventHandler<TxProcessedEventArgs> TransactionProcessed;
+            void SetBlockExecutionContext(in BlockExecutionContext blockExecutionContext);
         }
     }
 }

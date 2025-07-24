@@ -22,7 +22,7 @@ namespace Ethereum.Blockchain.Test
         public static IEnumerable<GeneralStateTest> LoadTests()
         {
             var loader = new TestsSourceLoader(new LoadGeneralStateTestsStrategy(), Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "Blockhash"));
-            return (IEnumerable<GeneralStateTest>)loader.LoadTests();
+            return loader.LoadTests<GeneralStateTest>();
         }
     }
 }

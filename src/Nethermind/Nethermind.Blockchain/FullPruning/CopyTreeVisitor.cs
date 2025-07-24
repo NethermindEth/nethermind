@@ -48,34 +48,33 @@ namespace Nethermind.Blockchain.FullPruning
 
         public ReadFlags ExtraReadFlag => ReadFlags.SkipDuplicateRead;
 
-        public bool ShouldVisit(in TContext context, Hash256 nextNode) => !_cancellationToken.IsCancellationRequested;
+        public bool ShouldVisit(in TContext context, in ValueHash256 nextNode) => !_cancellationToken.IsCancellationRequested;
 
-        public void VisitTree(in TContext nodeContext, Hash256 rootHash, TrieVisitContext trieVisitContext)
+        public void VisitTree(in TContext nodeContext, in ValueHash256 rootHash)
         {
             _stopwatch.Start();
             if (_logger.IsInfo) _logger.Info($"Full Pruning Started on root hash {rootHash}: do not close the node until finished or progress will be lost.");
         }
 
-        [DoesNotReturn]
-        [StackTraceHidden]
-        public void VisitMissingNode(in TContext ctx, Hash256 nodeHash, TrieVisitContext trieVisitContext)
+        [DoesNotReturn, StackTraceHidden]
+        public void VisitMissingNode(in TContext ctx, in ValueHash256 nodeHash)
         {
             if (_logger.IsWarn)
             {
-                _logger.Warn($"Full Pruning Failed: Missing node {nodeHash} at level {trieVisitContext.Level}.");
+                _logger.Warn($"Full Pruning Failed: Missing node {nodeHash} at level {ctx.Storage}:{ctx.Path}.");
             }
 
             // if nodes are missing then state trie is not valid and we need to stop copying it
             throw new TrieException($"Trie {nodeHash} missing");
         }
 
-        public void VisitBranch(in TContext ctx, TrieNode node, TrieVisitContext trieVisitContext) => PersistNode(ctx.Storage, ctx.Path, node);
+        public void VisitBranch(in TContext ctx, TrieNode node) => PersistNode(ctx.Storage, ctx.Path, node);
 
-        public void VisitExtension(in TContext ctx, TrieNode node, TrieVisitContext trieVisitContext) => PersistNode(ctx.Storage, ctx.Path, node);
+        public void VisitExtension(in TContext ctx, TrieNode node) => PersistNode(ctx.Storage, ctx.Path, node);
 
-        public void VisitLeaf(in TContext ctx, TrieNode node, TrieVisitContext trieVisitContext, ReadOnlySpan<byte> value) => PersistNode(ctx.Storage, ctx.Path, node);
+        public void VisitLeaf(in TContext ctx, TrieNode node) => PersistNode(ctx.Storage, ctx.Path, node);
 
-        public void VisitCode(in TContext ctx, Hash256 codeHash, TrieVisitContext trieVisitContext) { }
+        public void VisitAccount(in TContext ctx, TrieNode node, in AccountStruct account) { }
 
         private void PersistNode(Hash256 storage, in TreePath path, TrieNode node)
         {

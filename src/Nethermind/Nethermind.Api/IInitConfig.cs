@@ -45,6 +45,9 @@ public interface IInitConfig : IConfig
     [ConfigItem(Description = "The path to the static nodes file.", DefaultValue = "Data/static-nodes.json")]
     string StaticNodesPath { get; set; }
 
+    [ConfigItem(Description = "The path to the trusted nodes file.", DefaultValue = "Data/trusted-nodes.json")]
+    string TrustedNodesPath { get; set; }
+
     [ConfigItem(Description = "The name of the log file.", DefaultValue = "log.txt")]
     string LogFileName { get; set; }
 
@@ -87,8 +90,14 @@ public interface IInitConfig : IConfig
     [ConfigItem(Description = "[TECHNICAL] Exit when block number is reached. Useful for scripting and testing.", DefaultValue = "null", HiddenFromDocs = true)]
     long? ExitOnBlockNumber { get; set; }
 
-    [ConfigItem(Description = "[TECHNICAL] Specify concurrency limit for background task.", DefaultValue = "1", HiddenFromDocs = true)]
+    [ConfigItem(Description = "[TECHNICAL] Specify concurrency limit for background task.", DefaultValue = "2", HiddenFromDocs = true)]
     int BackgroundTaskConcurrency { get; set; }
+
+    [ConfigItem(Description = "[TECHNICAL] Specify max number of background task.", DefaultValue = "1024", HiddenFromDocs = true)]
+    int BackgroundTaskMaxNumber { get; set; }
+
+    [ConfigItem(Description = "[TECHNICAL] True when in runner test. Disable some wait.", DefaultValue = "false", HiddenFromDocs = true)]
+    bool InRunnerTest { get; set; }
 }
 
 public enum DiagnosticMode

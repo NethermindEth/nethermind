@@ -59,7 +59,7 @@ namespace Nethermind.Db.FullPruning
             return value;
         }
 
-        public Span<byte> GetSpan(ReadOnlySpan<byte> key, ReadFlags flags = ReadFlags.None)
+        public Span<byte> GetSpan(scoped ReadOnlySpan<byte> key, ReadFlags flags = ReadFlags.None)
         {
             Span<byte> value = _currentDb.GetSpan(key, flags); // we are reading from the main DB
             if (!value.IsNull() && _pruningContext?.DuplicateReads == true && (flags & ReadFlags.SkipDuplicateRead) == 0)

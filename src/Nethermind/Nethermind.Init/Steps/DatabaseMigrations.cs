@@ -5,20 +5,16 @@ using System.Collections.Generic;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Api;
+using Nethermind.Api.Steps;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Init.Steps.Migrations;
 
 namespace Nethermind.Init.Steps
 {
     [RunnerStepDependencies(typeof(InitTxTypesAndRlp), typeof(InitDatabase), typeof(InitializeBlockchain), typeof(InitializeNetwork))]
-    public sealed class DatabaseMigrations : IStep
+    public sealed class DatabaseMigrations(INethermindApi api) : IStep
     {
-        private readonly IApiWithNetwork _api;
-
-        public DatabaseMigrations(INethermindApi api)
-        {
-            _api = api;
-        }
+        private readonly IApiWithNetwork _api = api;
 
         public async Task Execute(CancellationToken cancellationToken)
         {

@@ -97,13 +97,13 @@ public class CliqueSealEngineTests
 
     private CliqueSealer BuildSealer(int currentBlock, IDb db)
     {
-        IEthereumEcdsa ecdsa = new EthereumEcdsa(BlockchainIds.Goerli);
+        IEthereumEcdsa ecdsa = new EthereumEcdsa(BlockchainIds.Sepolia);
         CliqueConfig config = new();
         int currentSignerIndex = (currentBlock % _signers.Count);
         _currentSigner = _signers[currentSignerIndex];
         _snapshotManager = new SnapshotManager(config, db, _blockTree, ecdsa, LimboLogs.Instance);
         _sealValidator = new CliqueSealValidator(config, _snapshotManager, LimboLogs.Instance);
-        _clique = new CliqueSealer(new Signer(BlockchainIds.Goerli, _currentSigner, LimboLogs.Instance), config,
+        _clique = new CliqueSealer(new Signer(BlockchainIds.Sepolia, _currentSigner, LimboLogs.Instance), config,
             _snapshotManager, LimboLogs.Instance);
         return _clique;
     }

@@ -25,7 +25,7 @@ public class ProgressTrackerTests
     public async Task Did_not_have_race_issue()
     {
         using ProgressTracker progressTracker = CreateProgressTracker(accountRangePartition: 1);
-        progressTracker.EnqueueStorageRange(new StorageRange()
+        progressTracker.EnqueueNextSlot(new StorageRange()
         {
             Accounts = ArrayPoolList<PathWithAccount>.Empty(),
         });
@@ -37,7 +37,7 @@ public class ProgressTrackerTests
             {
                 bool finished = progressTracker.IsFinished(out SnapSyncBatch? snapSyncBatch);
                 finished.Should().BeFalse();
-                progressTracker.EnqueueStorageRange(snapSyncBatch!.StorageRangeRequest!);
+                progressTracker.EnqueueNextSlot(snapSyncBatch!.StorageRangeRequest!);
             }
         });
 
@@ -161,10 +161,77 @@ public class ProgressTrackerTests
         memDb[ProgressTracker.ACC_PROGRESS_KEY].Should().BeEquivalentTo(Keccak.MaxValue.BytesToArray());
     }
 
-    private ProgressTracker CreateProgressTracker(int accountRangePartition = 1)
+    [TestCase("0x0000000000000000000000000000000000000000000000000000000000000000", "0x2000000000000000000000000000000000000000000000000000000000000000", null, "0x8fffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff")]
+    [TestCase("0x2000000000000000000000000000000000000000000000000000000000000000", "0x4000000000000000000000000000000000000000000000000000000000000000", "0x8fffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff", "0x67ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff")]
+    [TestCase("0x8fffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff", "0xbfffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff", null, "0xdfffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff")]
+    public void Should_partition_storage_request_if_last_processed_less_than_threshold(string start, string lastProcessed, string? limit, string expectedSplit)
+    {
+        using ProgressTracker progressTracker = CreateProgressTracker(enableStorageSplits: true);
+
+        var lastProcessedHash = new ValueHash256(lastProcessed);
+        ValueHash256? limitHash = limit is null ? (ValueHash256?)null : new ValueHash256(limit);
+
+        StorageRange storageRange = new StorageRange()
+        {
+            Accounts = new ArrayPoolList<PathWithAccount>(1) { TestItem.Tree.AccountsWithPaths[0] },
+            StartingHash = new ValueHash256(start),
+            LimitHash = limitHash
+        };
+        progressTracker.EnqueueNextSlot(storageRange, 0, lastProcessedHash);
+
+        //ignore account range
+        bool isFinished = progressTracker.IsFinished(out _);
+
+        //expecting 2 batches
+        isFinished = progressTracker.IsFinished(out SnapSyncBatch? batch1);
+        isFinished.Should().BeFalse();
+        batch1.Should().NotBeNull();
+
+        isFinished = progressTracker.IsFinished(out SnapSyncBatch? batch2);
+        isFinished.Should().BeFalse();
+        batch2.Should().NotBeNull();
+
+        batch2?.StorageRangeRequest?.StartingHash.Should().Be(batch1?.StorageRangeRequest?.LimitHash);
+        batch1?.StorageRangeRequest?.StartingHash.Should().Be(lastProcessedHash);
+        batch2?.StorageRangeRequest?.LimitHash.Should().Be(limitHash ?? Keccak.MaxValue);
+
+        batch1?.StorageRangeRequest?.LimitHash.Should().Be(new ValueHash256(expectedSplit));
+    }
+
+
+    [TestCase("0x0000000000000000000000000000000000000000000000000000000000000000", "0xb100000000000000000000000000000000000000000000000000000000000000", null)]
+    [TestCase("0x8fffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff", "0xdfffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff", null)]
+    public void Should_not_partition_storage_request_if_last_processed_more_than_threshold(string start, string lastProcessed, string? limit)
+    {
+        using ProgressTracker progressTracker = CreateProgressTracker();
+
+        var lastProcessedHash = new ValueHash256(lastProcessed);
+        ValueHash256? limitHash = limit is null ? (ValueHash256?)null : new ValueHash256(limit);
+
+        StorageRange storageRange = new StorageRange()
+        {
+            Accounts = new ArrayPoolList<PathWithAccount>(1) { TestItem.Tree.AccountsWithPaths[0] },
+            StartingHash = new ValueHash256(start),
+            LimitHash = limitHash
+        };
+        progressTracker.EnqueueNextSlot(storageRange, 0, lastProcessedHash);
+
+        //ignore account range
+        bool isFinished = progressTracker.IsFinished(out _);
+
+        //expecting 1 batch
+        isFinished = progressTracker.IsFinished(out SnapSyncBatch? batch1);
+        isFinished.Should().BeFalse();
+        batch1.Should().NotBeNull();
+
+        batch1?.StorageRangeRequest?.StartingHash.Should().Be(lastProcessedHash);
+        batch1?.StorageRangeRequest?.LimitHash.Should().Be(limitHash ?? Keccak.MaxValue);
+    }
+
+    private ProgressTracker CreateProgressTracker(int accountRangePartition = 1, bool enableStorageSplits = false)
     {
         BlockTree blockTree = Build.A.BlockTree().WithStateRoot(Keccak.EmptyTreeHash).OfChainLength(2).TestObject;
-        SyncConfig syncConfig = new TestSyncConfig() { SnapSyncAccountRangePartitionCount = accountRangePartition };
+        SyncConfig syncConfig = new TestSyncConfig() { SnapSyncAccountRangePartitionCount = accountRangePartition, EnableSnapSyncStorageRangeSplit = enableStorageSplits };
         return new(new MemDb(), syncConfig, new StateSyncPivot(blockTree, syncConfig, LimboLogs.Instance), LimboLogs.Instance);
     }
 }

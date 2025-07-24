@@ -75,7 +75,7 @@ namespace Nethermind.Synchronization.SnapSync
 
             tree.UpdateRootHash();
 
-            if (tree.RootHash != expectedRootHash)
+            if (tree.RootHash.ValueHash256 != expectedRootHash)
             {
                 return (AddRangeResult.DifferentRootHash, true, null, null);
             }
@@ -112,10 +112,10 @@ namespace Nethermind.Synchronization.SnapSync
 
         public static (AddRangeResult result, bool moreChildrenToRight) AddStorageRange(
             StorageTree tree,
-            long blockNumber,
-            in ValueHash256? startingHash,
+            PathWithAccount account,
             IReadOnlyList<PathWithStorageSlot> slots,
-            in ValueHash256 expectedRootHash,
+            in ValueHash256? startingHash,
+            in ValueHash256? limitHash,
             IReadOnlyList<byte[]>? proofs = null
         )
         {
@@ -124,7 +124,7 @@ namespace Nethermind.Synchronization.SnapSync
             ValueHash256 lastHash = slots[^1].Path;
 
             (AddRangeResult result, List<(TrieNode, TreePath)> sortedBoundaryList, bool moreChildrenToRight) = FillBoundaryTree(
-                tree, startingHash, lastHash, ValueKeccak.MaxValue, expectedRootHash, proofs);
+                tree, startingHash, lastHash, limitHash ?? Keccak.MaxValue, account.Account.StorageRoot, proofs);
 
             if (result != AddRangeResult.OK)
             {
@@ -135,19 +135,24 @@ namespace Nethermind.Synchronization.SnapSync
             {
                 PathWithStorageSlot slot = slots[index];
                 Interlocked.Add(ref Metrics.SnapStateSynced, slot.SlotRlpValue.Length);
-                tree.Set(slot.Path, slot.SlotRlpValue, false);
+                tree.Set(in slot.Path, slot.SlotRlpValue, rlpEncode: false);
             }
 
             tree.UpdateRootHash();
 
-            if (tree.RootHash != expectedRootHash)
+            if (tree.RootHash.ValueHash256 != account.Account.StorageRoot)
             {
                 return (AddRangeResult.DifferentRootHash, true);
             }
 
-            StitchBoundaries(sortedBoundaryList, tree.TrieStore);
-
-            tree.Commit(writeFlags: WriteFlags.DisableWAL);
+            // This will work if all StorageRange requests share the same AccountWithPath object which seems to be the case.
+            // If this is not true, StorageRange request should be extended with a lock object.
+            // That lock object should be shared between all other StorageRange requests for same account.
+            lock (account.Account)
+            {
+                StitchBoundaries(sortedBoundaryList, tree.TrieStore);
+                tree.Commit(writeFlags: WriteFlags.DisableWAL);
+            }
 
             return (AddRangeResult.OK, moreChildrenToRight);
         }
@@ -229,7 +234,7 @@ namespace Nethermind.Synchronization.SnapSync
                     {
                         bool hasKeccak = node.GetChildHashAsValueKeccak(ci, out ValueHash256 childKeccak);
 
-                        moreChildrenToRight |= hasKeccak && (ci > right && (ci < limit || noLimit));
+                        moreChildrenToRight |= hasKeccak && (ci > right && (ci <= limit || noLimit));
 
                         if (ci >= left && ci <= right)
                         {
@@ -334,6 +339,17 @@ namespace Nethermind.Synchronization.SnapSync
                         }
 
                         node.IsBoundaryProofNode = isBoundaryProofNode;
+                    }
+
+                    //leaves as a part of boundary are only added if they are outside the processed range,
+                    //therefore they will not be persisted during current Commit. Still it is possible, they have already
+                    //been persisted when processing a range they belong, so it is needed to do a check here.
+                    //Without it, there is a risk that the whole dependant path (including root) will not be eventually stitched and persisted
+                    //leading to TrieNodeException after sync (as healing may not get to heal the particular storage trie)
+                    if (node.IsLeaf)
+                    {
+                        node.IsPersisted = store.IsPersisted(path, node.Keccak);
+                        node.IsBoundaryProofNode = !node.IsPersisted;
                     }
                 }
             }
