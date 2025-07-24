@@ -204,13 +204,13 @@ public sealed class RlpSourceGenerator : IIncrementalGenerator
                         : "")}}
 
                     {{(representation == RlpRepresentation.Record
-                            ? $$"""
-                                w.WriteSequence(value, static (ref RlpWriter w, {{fullTypeName}} value) =>
-                                {
-                                    {{writeCalls}}
-                                });
-                                """
-                            : writeCalls)}}
+                        ? $$"""
+                            w.WriteSequence(value, static (ref RlpWriter w, {{fullTypeName}} value) =>
+                            {
+                                {{writeCalls}}
+                            });
+                            """
+                        : writeCalls)}}
                   }
 
                   public static {{fullTypeName}} Read(ref RlpReader r)
