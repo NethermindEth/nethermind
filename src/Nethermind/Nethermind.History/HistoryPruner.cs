@@ -196,7 +196,7 @@ public class HistoryPruner : IHistoryPruner
                     }
                     attempts++;
                     return afterCutoff;
-                }, _ => { });
+                });
             }
 
             // if linear search fails fallback to  binary search
@@ -312,11 +312,10 @@ public class HistoryPruner : IHistoryPruner
     }
 
     private IEnumerable<Block> GetBlocksBeforeTimestamp(ulong cutoffTimestamp)
-        => GetBlocksByNumber(_deletePointer, _blockTree.SyncPivot.BlockNumber, b => b.Timestamp >= cutoffTimestamp, _ => { });
+        => GetBlocksByNumber(_deletePointer, _blockTree.SyncPivot.BlockNumber, b => b.Timestamp >= cutoffTimestamp);
 
-    private IEnumerable<Block> GetBlocksByNumber(long from, long to, Predicate<Block> endSearch, Action<long> onFirstBlock)
+    private IEnumerable<Block> GetBlocksByNumber(long from, long to, Predicate<Block> endSearch)
     {
-        bool firstBlock = true;
         _logger.Info($"Searching for blocks in range {from}-{to}.");
         for (long i = from; i <= to; i++)
         {
@@ -324,11 +323,6 @@ public class HistoryPruner : IHistoryPruner
             if (chainLevelInfo is null)
             {
                 continue;
-            }
-            else if (firstBlock)
-            {
-                onFirstBlock(i);
-                firstBlock = false;
             }
 
             bool finished = false;
