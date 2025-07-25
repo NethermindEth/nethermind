@@ -20,16 +20,29 @@ public abstract class JsonRpc
 
     public abstract class Request : JsonRpc
     {
+        public abstract string? Id { get; }
+
         private Request(JsonDocument document) : base(document) { }
 
         public class Single : Request
         {
+            private readonly Lazy<string?> _id;
             private readonly Lazy<string?> _methodName;
 
+            public override string? Id { get => _id.Value; }
             public string? MethodName { get => _methodName.Value; }
 
             public Single(JsonDocument document) : base(document)
             {
+                _id = new(() =>
+                {
+                    if (_document.RootElement.TryGetProperty("id", out var jsonIdField))
+                    {
+                        return jsonIdField.GetInt64().ToString();
+                    }
+
+                    return null;
+                });
                 _methodName = new(() =>
                 {
                     if (_document.RootElement.TryGetProperty("method", out var jsonMethodField))
@@ -43,8 +56,32 @@ public abstract class JsonRpc
 
             public override string ToString() => $"{nameof(Single)} {ToJsonString()}";
         }
-        public class Batch(JsonDocument document) : Request(document)
+
+        public class Batch : Request
         {
+            private readonly Lazy<string?> _id;
+
+            public override string? Id { get => _id.Value; }
+
+            public Batch(JsonDocument document) : base(document)
+            {
+                _id = new(() =>
+                {
+                    if (Items().Any())
+                    {
+                        var first = Items().First()?.Id?.ToString();
+                        var last = Items().Last()?.Id?.ToString();
+
+                        if (first is not null && last is not null)
+                        {
+                            return $"{first}:{last}";
+                        }
+                    }
+
+                    return null;
+                });
+            }
+
             public IEnumerable<Single?> Items()
             {
                 foreach (var element in _document.RootElement.EnumerateArray())
