@@ -45,6 +45,7 @@ public class HistoryPruner : IHistoryPruner
     private ulong? _cutoffTimestamp;
     private const int DeleteBatchSize = 64;
     private readonly int LoggingInterval;
+    private bool _tmp = false;
 
     public class HistoryPrunerException(string message, Exception? innerException = null) : Exception(message, innerException);
 
@@ -74,6 +75,7 @@ public class HistoryPruner : IHistoryPruner
         _epochLength = (long)blocksConfig.SecondsPerSlot * 32;
         _minHistoryRetentionEpochs = specProvider.GenesisSpec.MinHistoryRetentionEpochs;
 
+        _logger.Info("constructed history pruner");
         CheckConfig();
         LoadDeletePointer();
 
@@ -134,6 +136,7 @@ public class HistoryPruner : IHistoryPruner
             // lock prune lock since _deletePointer could be altered
             lock (_pruneLock)
             {
+                _logger.Info($"Searching for oldest block in range 1-{_blockTree.SyncPivot.BlockNumber}.");
                 long? oldestBlockNumber = BlockTree.BinarySearchBlockNumber(1L, _blockTree.SyncPivot.BlockNumber, LevelExists, BlockTree.BinarySearchDirection.Down);
 
                 if (oldestBlockNumber is not null)
@@ -149,7 +152,15 @@ public class HistoryPruner : IHistoryPruner
     }
 
     private bool LevelExists(long n, bool _)
-        => _chainLevelInfoRepository.LoadLevel(n) is not null;
+    {
+        ChainLevelInfo? info = _chainLevelInfoRepository.LoadLevel(n);
+        if (info?.MainChainBlock is null)
+        {
+            return false;
+        }
+        Block? b = _blockTree.FindBlock(info.MainChainBlock.BlockHash, info.MainChainBlock.BlockNumber);
+        return b is not null;
+    }
 
     private long? FindCutoffBlockNumber()
     {
@@ -247,6 +258,10 @@ public class HistoryPruner : IHistoryPruner
         int deletedBlocks = 0;
         ulong? lastDeletedTimstamp = null;
         BatchWrite? batch = null;
+        if (!_tmp)
+        {
+            _logger.Error("Have not searched for oldest block!");
+        }
         try
         {
             IEnumerable<Block> blocks = GetBlocksBeforeTimestamp(cutoffTimestamp);
@@ -387,6 +402,8 @@ public class HistoryPruner : IHistoryPruner
 
     private void LoadDeletePointer()
     {
+        _tmp = true;
+        if (_logger.IsInfo) _logger.Info($"Starting search for oldest block stored.");
         byte[]? val = _metadataDb.Get(MetadataDbKeys.HistoryPruningDeletePointer);
         if (val is null)
         {
