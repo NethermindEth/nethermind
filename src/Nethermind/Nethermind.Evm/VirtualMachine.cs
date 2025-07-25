@@ -20,6 +20,7 @@ using Nethermind.Evm.Tracing;
 using Nethermind.Logging;
 using Nethermind.Evm.State;
 
+
 using static Nethermind.Evm.EvmObjectFormat.EofValidator;
 
 #if DEBUG
@@ -40,8 +41,6 @@ public sealed unsafe class VirtualMachine(
 ) : VirtualMachineBase(blockHashProvider, specProvider, logManager)
 {
 }
-
-
 
 public unsafe partial class VirtualMachineBase(
     IBlockhashProvider? blockHashProvider,
@@ -117,7 +116,8 @@ public unsafe partial class VirtualMachineBase(
     /// </summary>
     public void SetTxExecutionContext(in TxExecutionContext txExecutionContext) => _txExecutionContext = txExecutionContext;
 
-    public EvmState EvmState { get => _currentState; private set => _currentState = value; }
+    private EvmState _vmState;
+    public EvmState EvmState { get => _vmState; private set => _vmState = value; }
     public int SectionIndex { get; set; }
 
     /// <summary>
