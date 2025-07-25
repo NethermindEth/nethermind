@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Api;
@@ -10,6 +11,7 @@ using Nethermind.Consensus.Processing;
 using Nethermind.Consensus.Producers;
 using Nethermind.JsonRpc.Modules;
 using Nethermind.JsonRpc.Modules.Evm;
+using Nethermind.Core.Events;
 
 namespace Nethermind.Init.Steps;
 
@@ -26,11 +28,14 @@ public class RegisterPluginRpcModules(
     {
         if (!initConfig.InRunnerTest)
         {
-            // Ugly temporary hack to not receive engine API messages before end of processing of all blocks after restart.
-            // Then we will wait 5s more to ensure everything is processed
-            while (!blockProcessingQueue!.IsEmpty)
-                await Task.Delay(100);
-            await Task.Delay(5000);
+            if (!blockProcessingQueue.IsEmpty)
+            {
+                await Wait.ForEvent(
+                    cancellationToken,
+                    h => blockProcessingQueue.ProcessingQueueEmpty += h,
+                    h => blockProcessingQueue.ProcessingQueueEmpty -= h
+                );
+            }
         }
 
         foreach (INethermindPlugin plugin in plugins)
