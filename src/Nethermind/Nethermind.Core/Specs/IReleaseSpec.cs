@@ -337,7 +337,7 @@ namespace Nethermind.Core.Specs
         /// <summary>
         /// Secp256r1 precompile
         /// </summary>
-        /// <remarks>Previously known as RIP-7212</remarks>
+        bool IsRip7212Enabled { get; }
         bool IsEip7951Enabled { get; }
 
         /// OP Granite
@@ -363,6 +363,12 @@ namespace Nethermind.Core.Specs
         ///  Increase ModExp Gas Cost
         /// </summary>
         bool IsEip7883Enabled { get; }
+
+        /// <summary>
+        ///  RLP Execution Block Size Limit
+        /// </summary>
+        bool IsEip7934Enabled { get; }
+        int Eip7934MaxRlpBlockSize { get; }
 
         /// <summary>
         /// Should transactions be validated against chainId.
@@ -396,7 +402,7 @@ namespace Nethermind.Core.Specs
 
         public bool ModExpEnabled => IsEip198Enabled;
 
-        public bool Bn128Enabled => IsEip196Enabled && IsEip197Enabled;
+        public bool BN254Enabled => IsEip196Enabled && IsEip197Enabled;
 
         public bool BlakeEnabled => IsEip152Enabled;
 

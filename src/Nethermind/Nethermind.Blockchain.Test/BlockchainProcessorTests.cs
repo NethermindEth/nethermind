@@ -9,6 +9,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using Autofac;
 using FluentAssertions;
+using Nethermind.Blockchain.Tracing;
 using Nethermind.Consensus.Processing;
 using Nethermind.Core;
 using Nethermind.Core.Attributes;
@@ -21,6 +22,7 @@ using Nethermind.Core.Test.Builders;
 using Nethermind.Evm;
 using Nethermind.Evm.Tracing;
 using Nethermind.Logging;
+using Nethermind.Evm.State;
 using Nethermind.State;
 using Nethermind.TxPool;
 using NSubstitute;
@@ -50,7 +52,7 @@ public class BlockchainProcessorTests
             public BlockProcessorMock(ILogManager logManager, IStateReader stateReader)
             {
                 _logger = logManager.GetClassLogger();
-                stateReader.HasStateForRoot(Arg.Any<Hash256>()).Returns(x => _rootProcessed.Contains(x[0]));
+                stateReader.HasStateForBlock(Arg.Any<BlockHeader>()).Returns(x => _rootProcessed.Contains(((BlockHeader?)x[0])?.StateRoot!));
             }
 
             public void Allow(Hash256 hash)
@@ -65,7 +67,7 @@ public class BlockchainProcessorTests
                 _allowedToFail.Add(hash);
             }
 
-            public Block[] Process(Hash256 newBranchStateRoot, IReadOnlyList<Block> suggestedBlocks, ProcessingOptions processingOptions, IBlockTracer blockTracer, CancellationToken token)
+            public Block[] Process(BlockHeader? baseBlock, IReadOnlyList<Block> suggestedBlocks, ProcessingOptions processingOptions, IBlockTracer blockTracer, CancellationToken token)
             {
                 if (blockTracer != NullBlockTracer.Instance)
                 {
@@ -426,7 +428,7 @@ public class BlockchainProcessorTests
 
         public ProcessingTestContext StateSyncedTo(Block block4D8)
         {
-            _stateReader.HasStateForRoot(block4D8.StateRoot!).Returns(true);
+            _stateReader.HasStateForBlock(block4D8.Header).Returns(true);
             return this;
         }
     }
@@ -517,12 +519,13 @@ public class BlockchainProcessorTests
             {
                 ISpecProvider specProvider = ctx.Resolve<ISpecProvider>();
                 IBlockTree blockTree = ctx.Resolve<IBlockTree>();
-                IReadOnlyStateProvider readOnlyState = ctx.Resolve<IReadOnlyStateProvider>();
+                IStateReader stateReader = ctx.Resolve<IStateReader>();
+                ICodeInfoRepository codeInfoRepository = ctx.ResolveKeyed<ICodeInfoRepository>(nameof(IWorldStateManager.GlobalWorldState));
                 return new ChainHeadInfoProvider(
                     new FixedForkActivationChainHeadSpecProvider(specProvider, fixedBlock: 10_000_000),
                     blockTree,
-                    readOnlyState,
-                    new CodeInfoRepository())
+                    new ChainHeadReadOnlyStateProvider(blockTree, stateReader), // Need to use the non  ChainHeadSpecProvider constructor.
+                    codeInfoRepository)
                 {
                     HasSynced = true
                 };

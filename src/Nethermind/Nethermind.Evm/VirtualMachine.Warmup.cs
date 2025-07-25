@@ -7,17 +7,14 @@ using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
-using Nethermind.Db;
 using Nethermind.Evm.CodeAnalysis;
+using Nethermind.Evm.State;
 using Nethermind.Evm.Tracing;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.Specs;
 using Nethermind.Specs.Forks;
-using Nethermind.State;
-using Nethermind.Trie;
-using Nethermind.Trie.Pruning;
 
 namespace Nethermind.Evm;
 
@@ -25,15 +22,12 @@ using unsafe OpCode = delegate*<VirtualMachineBase, ref EvmStack, ref long, ref 
 
 public unsafe partial class VirtualMachineBase
 {
-    public static void WarmUpEvmInstructions()
+    public static void WarmUpEvmInstructions(IWorldState state, ICodeInfoRepository codeInfoRepository)
     {
         IReleaseSpec spec = Fork.GetLatest();
         IBlockhashProvider hashProvider = new WarmupBlockhashProvider(MainnetSpecProvider.Instance);
         VirtualMachineBase vm = new(hashProvider, MainnetSpecProvider.Instance, LimboLogs.Instance);
         ILogManager lm = new OneLoggerLogManager(NullLogger.Instance);
-
-        IKeyValueStoreWithBatching db = new MemDb();
-        TrieStore trieStore = new(new NodeStorage(db), No.Pruning, Persist.EveryBlock, new PruningConfig(), lm);
 
         byte[] bytecode = new byte[64];
         bytecode.AsSpan().Fill((byte)Instruction.JUMPDEST);
@@ -41,10 +35,8 @@ public unsafe partial class VirtualMachineBase
         address[^1] = 0x1;
         Address addressOne = new(address);
 
-        WorldState state = new(trieStore, db, lm);
         state.CreateAccount(addressOne, 1000.Ether());
         state.Commit(spec);
-        CodeInfoRepository codeInfoRepository = new();
         BlockHeader _header = new(Keccak.Zero, Keccak.Zero, addressOne, UInt256.One, MainnetSpecProvider.PragueActivation.BlockNumber, Int64.MaxValue, 1UL, Bytes.Empty, 0, 0);
 
         vm.SetBlockExecutionContext(new BlockExecutionContext(_header, spec));
@@ -153,7 +145,7 @@ public unsafe partial class VirtualMachineBase
         codeToDeploy.Add((byte)Instruction.POP);
     }
 
-    private static void RunOpCodes<TTracingInst>(VirtualMachineBase vm, WorldState state, EvmState evmState, IReleaseSpec spec)
+    private static void RunOpCodes<TTracingInst>(VirtualMachineBase vm, IWorldState state, EvmState evmState, IReleaseSpec spec)
         where TTracingInst : struct, IFlag
     {
         const int WarmUpIterations = 40;
@@ -197,9 +189,9 @@ public unsafe partial class VirtualMachineBase
         public Hash256 GetBlockhash(BlockHeader currentBlock, long number)
             => GetBlockhash(currentBlock, number, specProvider.GetSpec(currentBlock));
 
-        public Hash256 GetBlockhash(BlockHeader currentBlock, long number, IReleaseSpec spec)
+        public Hash256 GetBlockhash(BlockHeader currentBlock, long number, IReleaseSpec? spec)
         {
-            return Keccak.Compute(spec.IsBlockHashInStateAvailable
+            return Keccak.Compute(spec!.IsBlockHashInStateAvailable
                 ? (Eip2935Constants.RingBufferSize + number).ToString()
                 : (number).ToString());
         }

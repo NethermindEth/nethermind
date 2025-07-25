@@ -7,6 +7,7 @@ using FluentAssertions;
 using Nethermind.Blockchain.BeaconBlockRoot;
 using Nethermind.Blockchain.Blocks;
 using Nethermind.Blockchain.Receipts;
+using Nethermind.Blockchain.Spec;
 using Nethermind.Consensus.Comparers;
 using Nethermind.Consensus.ExecutionRequests;
 using Nethermind.Consensus.Processing;
@@ -17,14 +18,15 @@ using Nethermind.Core;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
+using Nethermind.Core.Test.Db;
 using Nethermind.Crypto;
 using Nethermind.Db;
 using Nethermind.Evm;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Logging;
 using Nethermind.Specs;
+using Nethermind.Evm.State;
 using Nethermind.State;
-using Nethermind.Trie.Pruning;
 using Nethermind.TxPool;
 using NUnit.Framework;
 
@@ -72,11 +74,12 @@ public class ReorgTests
             .WithSpecProvider(specProvider)
             .TestObject;
 
-        CodeInfoRepository codeInfoRepository = new();
+        EthereumCodeInfoRepository codeInfoRepository = new();
         TxPool.TxPool txPool = new(
             ecdsa,
             new BlobTxStorage(),
-            new ChainHeadInfoProvider(specProvider, _blockTree, stateProvider, codeInfoRepository),
+            new ChainHeadInfoProvider(
+                new ChainHeadSpecProvider(specProvider, _blockTree), _blockTree, worldStateManager.GlobalStateReader, codeInfoRepository),
             new TxPoolConfig(),
             new TxValidator(specProvider.ChainId),
             LimboLogs.Instance,

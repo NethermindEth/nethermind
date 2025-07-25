@@ -11,7 +11,6 @@ using Nethermind.Config;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Logging;
-using Nethermind.State;
 
 namespace Nethermind.Init.Steps
 {
@@ -33,7 +32,6 @@ namespace Nethermind.Init.Steps
         public async Task Execute(CancellationToken _)
         {
             _initConfig = _api.Config<IInitConfig>();
-            Hash256? expectedGenesisHash = string.IsNullOrWhiteSpace(_initConfig.GenesisHash) ? null : new Hash256(_initConfig.GenesisHash);
 
             if (_api.BlockTree is null)
             {
@@ -47,8 +45,6 @@ namespace Nethermind.Init.Steps
             {
                 await Load(mainProcessingContext);
             }
-
-            ValidateGenesisHash(expectedGenesisHash, mainProcessingContext.WorldState);
 
             if (!_initConfig.ProcessingEnabled)
             {
@@ -66,8 +62,11 @@ namespace Nethermind.Init.Steps
             Block genesis = new GenesisLoader(
                 _api.ChainSpec,
                 _api.SpecProvider,
+                _api.StateReader!,
                 mainProcessingContext.WorldState,
-                mainProcessingContext.TransactionProcessor)
+                mainProcessingContext.TransactionProcessor,
+                _api.LogManager,
+                string.IsNullOrWhiteSpace(_initConfig?.GenesisHash) ? null : new Hash256(_initConfig.GenesisHash))
                 .Load();
 
             ManualResetEventSlim genesisProcessedEvent = new(false);
@@ -89,29 +88,6 @@ namespace Nethermind.Init.Steps
             }
 
             return Task.CompletedTask;
-        }
-
-        /// <summary>
-        /// If <paramref name="expectedGenesisHash"/> is <value>null</value> then it means that we do not care about the genesis hash (e.g. in some quick testing of private chains)/>
-        /// </summary>
-        /// <param name="expectedGenesisHash"></param>
-        protected virtual void ValidateGenesisHash(Hash256? expectedGenesisHash, IWorldState worldState)
-        {
-            if (_api.BlockTree is null) throw new StepDependencyException(nameof(_api.BlockTree));
-
-            BlockHeader genesis = _api.BlockTree.Genesis ?? throw new NullReferenceException("Genesis block is null");
-            if (expectedGenesisHash is not null && genesis.Hash != expectedGenesisHash)
-            {
-                if (_logger.IsTrace) _logger.Trace(worldState.DumpState());
-                if (_logger.IsWarn) _logger.Warn(genesis.ToString(BlockHeader.Format.Full));
-                if (_logger.IsError) _logger.Error($"Unexpected genesis hash, expected {expectedGenesisHash}, but was {genesis.Hash}");
-            }
-            else
-            {
-                if (_logger.IsDebug) _logger.Info($"Genesis hash :  {genesis.Hash}");
-            }
-
-            ThisNodeInfo.AddInfo("Genesis hash :", $"{genesis.Hash}");
         }
     }
 }

@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using Nethermind.Api;
 using Nethermind.Db.Rocks.Config;
 using Nethermind.Logging;
 
@@ -16,9 +17,17 @@ public class RocksDbFactory : IDbFactory
     private readonly string _basePath;
 
     private readonly IntPtr _sharedCache;
+    private readonly IRocksDbConfigFactory _rocksDbConfigFactory;
 
-    public RocksDbFactory(IDbConfig dbConfig, ILogManager logManager, string basePath)
+    public RocksDbFactory(IRocksDbConfigFactory rocksDbConfigFactory, IDbConfig dbConfig, IInitConfig initConfig, ILogManager logManager)
+        : this(rocksDbConfigFactory, dbConfig, logManager, initConfig.BaseDbPath)
     {
+
+    }
+
+    public RocksDbFactory(IRocksDbConfigFactory rocksDbConfigFactory, IDbConfig dbConfig, ILogManager logManager, string basePath)
+    {
+        _rocksDbConfigFactory = rocksDbConfigFactory;
         _dbConfig = dbConfig;
         _logManager = logManager;
         _basePath = basePath;
@@ -34,10 +43,10 @@ public class RocksDbFactory : IDbFactory
     }
 
     public IDb CreateDb(DbSettings dbSettings) =>
-        new DbOnTheRocks(_basePath, dbSettings, _dbConfig, _logManager, sharedCache: _sharedCache);
+        new DbOnTheRocks(_basePath, dbSettings, _dbConfig, _rocksDbConfigFactory, _logManager, sharedCache: _sharedCache);
 
     public IColumnsDb<T> CreateColumnsDb<T>(DbSettings dbSettings) where T : struct, Enum =>
-        new ColumnsDb<T>(_basePath, dbSettings, _dbConfig, _logManager, Array.Empty<T>(), sharedCache: _sharedCache);
+        new ColumnsDb<T>(_basePath, dbSettings, _dbConfig, _rocksDbConfigFactory, _logManager, Array.Empty<T>(), sharedCache: _sharedCache);
 
     public string GetFullDbPath(DbSettings dbSettings) => DbOnTheRocks.GetFullDbPath(dbSettings.DbPath, _basePath);
 }

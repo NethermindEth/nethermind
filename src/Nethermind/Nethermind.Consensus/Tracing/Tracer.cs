@@ -12,7 +12,7 @@ using Nethermind.Trie;
 namespace Nethermind.Consensus.Tracing
 {
     public class Tracer(
-        IWorldState worldState,
+        IStateReader stateReader,
         IBlockchainProcessor traceProcessor,
         IBlockchainProcessor executeProcessor,
         ProcessingOptions executeOptions = ProcessingOptions.Trace,
@@ -38,7 +38,7 @@ namespace Nethermind.Consensus.Tracing
             ArgumentNullException.ThrowIfNull(visitor);
             ArgumentNullException.ThrowIfNull(stateRoot);
 
-            worldState.Accept(visitor, stateRoot);
+            stateReader.RunTreeVisitor(visitor, stateRoot);
         }
     }
 }

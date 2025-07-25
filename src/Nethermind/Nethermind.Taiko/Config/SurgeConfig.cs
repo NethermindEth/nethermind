@@ -14,5 +14,8 @@ public class SurgeConfig : ISurgeConfig
     public int FeeHistoryBlockCount { get; set; } = 200;
     public int L2GasUsageWindowSize { get; set; } = 20;
     public string? TaikoInboxAddress { get; set; }
+    public int AverageGasUsagePercentage { get; set; } = 80;
     public int SharingPercentage { get; set; } = 75;
+    public int BoostBaseFeePercentage { get; set; } = 5;
+    public int GasPriceRefreshTimeoutSeconds { get; set; } = 12;
 }

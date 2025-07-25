@@ -3,6 +3,8 @@
 
 using System;
 using FluentAssertions;
+using Nethermind.Blockchain;
+using Nethermind.Blockchain.Tracing;
 using Nethermind.Config;
 using Nethermind.Core;
 using Nethermind.Core.Extensions;
@@ -10,14 +12,12 @@ using Nethermind.Core.Specs;
 using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Crypto;
-using Nethermind.Db;
-using Nethermind.Evm.Tracing;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.Specs;
+using Nethermind.Evm.State;
 using Nethermind.State;
-using Nethermind.Trie.Pruning;
 using NSubstitute;
 using NUnit.Framework;
 
@@ -393,7 +393,7 @@ namespace Nethermind.Evm.Test.Tracing
                 _stateProvider.Commit(_specProvider.GenesisSpec);
                 _stateProvider.CommitTree(0);
 
-                CodeInfoRepository codeInfoRepository = new();
+                EthereumCodeInfoRepository codeInfoRepository = new();
                 VirtualMachine virtualMachine = new(new TestBlockhashProvider(_specProvider), _specProvider, LimboLogs.Instance);
                 _transactionProcessor = new TransactionProcessor(_specProvider, _stateProvider, virtualMachine, codeInfoRepository, LimboLogs.Instance);
                 _ethereumEcdsa = new EthereumEcdsa(_specProvider.ChainId);

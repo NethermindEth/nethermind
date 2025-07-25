@@ -19,13 +19,12 @@ using Nethermind.Consensus.Validators;
 using Nethermind.Consensus.Withdrawals;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
-using Nethermind.Evm;
-using Nethermind.Evm.OverridableEnv;
+using Nethermind.Evm.State;
+using Nethermind.State.OverridableEnv;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.JsonRpc.Modules.DebugModule;
 using Nethermind.JsonRpc.Modules.Trace;
 using Nethermind.Logging;
-using Nethermind.State;
 
 namespace Nethermind.Consensus.AuRa.InitializationSteps;
 
@@ -113,7 +112,7 @@ public class AuRaBlockProcessorFactory(
         IDictionary<long, IDictionary<Address, byte[]>> rewriteBytecode = parameters.RewriteBytecode;
         ContractRewriter? contractRewriter = rewriteBytecode?.Count > 0 ? new ContractRewriter(rewriteBytecode) : null;
 
-        ITxFilter txFilter = txAuRaFilterBuilders.CreateAuRaTxFilter(new ServiceTxFilter(specProvider));
+        ITxFilter txFilter = txAuRaFilterBuilders.CreateAuRaTxFilter(new ServiceTxFilter());
 
         return new AuRaBlockProcessor(
             specProvider,

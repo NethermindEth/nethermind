@@ -12,8 +12,9 @@ using Nethermind.Specs.Forks;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Db;
 using Nethermind.Int256;
-using Nethermind.Evm.Tracing.ParityStyle;
+using Nethermind.Blockchain.Tracing.ParityStyle;
 using Nethermind.Logging;
+using Nethermind.Evm.State;
 using Nethermind.State;
 using Nethermind.Trie;
 using NUnit.Framework;
@@ -38,7 +39,7 @@ public class StateProviderTests
         frontierProvider.CommitTree(0);
 
         IWorldState provider = worldStateManager.GlobalWorldState;
-        provider.StateRoot = frontierProvider.StateRoot;
+        provider.SetBaseBlock(Build.A.BlockHeader.WithStateRoot(frontierProvider.StateRoot).TestObject);
 
         provider.AddToBalance(_address1, 0, SpuriousDragon.Instance);
         provider.Commit(SpuriousDragon.Instance);
@@ -60,32 +61,6 @@ public class StateProviderTests
         provider.Commit(releaseSpec);
 
         ((WorldState)provider).GetAccount(systemUser).Should().NotBeNull();
-    }
-
-    [Test]
-    public void Can_dump_state()
-    {
-        WorldStateManager worldStateManager = TestWorldStateFactory.CreateForTest();
-        IWorldState provider = worldStateManager.GlobalWorldState;
-        provider.CreateAccount(TestItem.AddressA, 1.Ether());
-        provider.Commit(MuirGlacier.Instance);
-        provider.CommitTree(0);
-
-        string state = provider.DumpState();
-        state.Should().NotBeEmpty();
-    }
-
-    [Test]
-    public void Can_accepts_visitors()
-    {
-        WorldStateManager worldStateManager = TestWorldStateFactory.CreateForTest();
-        IWorldState provider = worldStateManager.GlobalWorldState;
-        provider.CreateAccount(TestItem.AddressA, 1.Ether());
-        provider.Commit(MuirGlacier.Instance);
-        provider.CommitTree(0);
-
-        TrieStatsCollector visitor = new(new MemDb(), LimboLogs.Instance);
-        provider.Accept(visitor, provider.StateRoot);
     }
 
     [Test]
@@ -112,7 +87,8 @@ public class StateProviderTests
         IWorldState provider = worldStateManager.GlobalWorldState;
         provider.CreateAccount(_address1, 0);
         provider.Commit(Frontier.Instance);
-        Assert.That(provider.IsEmptyAccount(_address1), Is.True);
+        bool isEmpty = !provider.TryGetAccount(_address1, out var account) || account.IsEmpty;
+        isEmpty.Should().BeTrue();
     }
 
     [Test]

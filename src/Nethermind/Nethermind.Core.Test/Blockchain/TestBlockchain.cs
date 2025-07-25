@@ -3,6 +3,7 @@
 
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
@@ -39,6 +40,8 @@ using Nethermind.Serialization.Json;
 using Nethermind.Specs;
 using Nethermind.Specs.ChainSpecStyle;
 using Nethermind.Specs.Test;
+using Nethermind.Evm.State;
+using Nethermind.Network;
 using Nethermind.State;
 using Nethermind.State.Repositories;
 using Nethermind.TxPool;
@@ -56,8 +59,10 @@ public class TestBlockchain : IDisposable
     public IMainProcessingContext MainProcessingContext => _fromContainer.MainProcessingContext;
     public IReceiptStorage ReceiptStorage => _fromContainer.ReceiptStorage;
     public ITxPool TxPool => _fromContainer.TxPool;
+    public IForkInfo ForkInfo => _fromContainer.ForkInfo;
     public IWorldStateManager WorldStateManager => _fromContainer.WorldStateManager;
     public IReadOnlyTxProcessingEnvFactory ReadOnlyTxProcessingEnvFactory => _fromContainer.ReadOnlyTxProcessingEnvFactory;
+    public IShareableTxProcessorSource ShareableTxProcessorSource => _fromContainer.ShareableTxProcessorSource;
     public IBlockProcessor BlockProcessor { get; set; } = null!;
     public IBlockchainProcessor BlockchainProcessor { get; set; } = null!;
 
@@ -72,7 +77,8 @@ public class TestBlockchain : IDisposable
 
     public ILogFinder LogFinder => _fromContainer.LogFinder;
     public IJsonSerializer JsonSerializer { get; set; } = null!;
-    public IReadOnlyStateProvider ReadOnlyState => _fromContainer.ReadOnlyState;
+    public IReadOnlyStateProvider ReadOnlyState => ChainHeadInfoProvider.ReadOnlyStateProvider;
+    public IChainHeadInfoProvider ChainHeadInfoProvider => _fromContainer.ChainHeadInfoProvider;
     public IDb StateDb => DbProvider.StateDb;
     public IDb BlocksDb => DbProvider.BlocksDb;
     public IBlockProducer BlockProducer { get; protected set; } = null!;
@@ -141,7 +147,7 @@ public class TestBlockchain : IDisposable
         IBlockTree BlockTree,
         IBlockFinder BlockFinder,
         ILogFinder LogFinder,
-        IReadOnlyStateProvider ReadOnlyState,
+        IChainHeadInfoProvider ChainHeadInfoProvider,
         IDbProvider DbProvider,
         ISpecProvider SpecProvider,
         ISealEngine SealEngine,
@@ -158,7 +164,9 @@ public class TestBlockchain : IDisposable
         Lazy<PoWTestBlockchainUtil> PoWTestBlockchainUtil,
         ManualTimestamper ManualTimestamper,
         IManualBlockProductionTrigger BlockProductionTrigger,
-        ISealer Sealer
+        IShareableTxProcessorSource ShareableTxProcessorSource,
+        ISealer Sealer,
+        IForkInfo ForkInfo
     )
     {
     }
@@ -242,7 +250,7 @@ public class TestBlockchain : IDisposable
         BlockProducerRunner.Start();
         Suggester = new ProducedBlockSuggester(BlockTree, BlockProducerRunner);
 
-        _cts = AutoCancelTokenSource.ThatCancelAfter(TimeSpan.FromMilliseconds(TestTimout));
+        _cts = AutoCancelTokenSource.ThatCancelAfter(Debugger.IsAttached ? TimeSpan.FromMilliseconds(-1) : TimeSpan.FromMilliseconds(TestTimout));
 
         if (testConfiguration.SuggestGenesisOnStart)
         {
@@ -298,6 +306,7 @@ public class TestBlockchain : IDisposable
                 ctx.Resolve<Configuration>().SlotTime
             ))
 
+            .AddSingleton<IBlockProcessingQueue>((ctx) => this.BlockProcessingQueue)
     ;
 
     protected virtual IEnumerable<IConfig> CreateConfigs()
@@ -335,7 +344,7 @@ public class TestBlockchain : IDisposable
         return new StandardBlockProducerRunner(BlockProductionTrigger, BlockTree, BlockProducer);
     }
 
-    public virtual ILogManager LogManager { get; set; } = LimboLogs.Instance;
+    public ILogManager LogManager => Container.Resolve<ILogManager>();
 
     public BlockBuilder GenesisBlockBuilder { get; set; } = null!;
 
@@ -376,8 +385,29 @@ public class TestBlockchain : IDisposable
     protected virtual async Task AddBlocksOnStart()
     {
         await AddBlock();
-        await AddBlock(BuildSimpleTransaction.WithNonce(0).TestObject);
-        await AddBlock(BuildSimpleTransaction.WithNonce(1).TestObject, BuildSimpleTransaction.WithNonce(2).TestObject);
+        await AddBlock(CreateTransactionBuilder().WithNonce(0).TestObject);
+        await AddBlock(CreateTransactionBuilder().WithNonce(1).TestObject, CreateTransactionBuilder().WithNonce(2).TestObject);
+    }
+
+    private TransactionBuilder<Transaction> CreateTransactionBuilder()
+    {
+        TransactionBuilder<Transaction> txBuilder = BuildSimpleTransaction;
+
+        Block? head = BlockFinder.Head;
+        if (head is not null)
+        {
+            IReleaseSpec headReleaseSpec = SpecProvider.GetSpec(head.Header);
+
+            if (headReleaseSpec.IsEip1559Enabled && headReleaseSpec.Eip1559TransitionBlock <= head.Number)
+            {
+                UInt256 nextFee = headReleaseSpec.BaseFeeCalculator.Calculate(head.Header, headReleaseSpec);
+                txBuilder = txBuilder
+                    .WithType(TxType.EIP1559)
+                    .WithMaxFeePerGasIfSupports1559(nextFee * 2);
+            }
+        }
+
+        return txBuilder;
     }
 
     protected virtual IBlockProcessor CreateBlockProcessor(IWorldState state) =>
@@ -420,7 +450,12 @@ public class TestBlockchain : IDisposable
 
     public async Task AddBlock(params Transaction[] transactions)
     {
-        await TestUtil.AddBlockAndWaitForHead(_cts.Token, transactions);
+        await TestUtil.AddBlockAndWaitForHead(false, _cts.Token, transactions);
+    }
+
+    public async Task AddBlockMayMissTx(params Transaction[] transactions)
+    {
+        await TestUtil.AddBlockAndWaitForHead(true, _cts.Token, transactions);
     }
 
     public async Task AddBlockThroughPoW(params Transaction[] transactions)
@@ -430,7 +465,7 @@ public class TestBlockchain : IDisposable
 
     public async Task AddBlockDoNotWaitForHead(params Transaction[] transactions)
     {
-        await TestUtil.AddBlockDoNotWaitForHead(_cts.Token, transactions);
+        await TestUtil.AddBlockDoNotWaitForHead(false, _cts.Token, transactions);
     }
 
     public void AddTransactions(params Transaction[] txs)
@@ -455,7 +490,7 @@ public class TestBlockchain : IDisposable
     /// <param name="ether">Value of ether to add to the account</param>
     /// <returns></returns>
     public async Task AddFunds(Address address, UInt256 ether) =>
-        await AddBlock(GetFundsTransaction(address, ether));
+        await AddBlockMayMissTx(GetFundsTransaction(address, ether));
 
     public async Task AddFunds(params (Address address, UInt256 ether)[] funds) =>
         await AddBlock(funds.Select((f, i) => GetFundsTransaction(f.address, f.ether, (uint)i)).ToArray());
@@ -465,7 +500,7 @@ public class TestBlockchain : IDisposable
 
     private Transaction GetFundsTransaction(Address address, UInt256 ether, uint index = 0)
     {
-        UInt256 nonce = StateReader.GetNonce(BlockTree.Head!.StateRoot!, TestItem.AddressA);
+        UInt256 nonce = StateReader.GetNonce(BlockTree.Head!.Header, TestItem.AddressA);
         Transaction tx = Builders.Build.A.Transaction
             .SignedAndResolved(TestItem.PrivateKeyA)
             .To(address)
@@ -477,7 +512,7 @@ public class TestBlockchain : IDisposable
 
     private Transaction GetFunds1559Transaction(Address address, UInt256 ether, uint index = 0)
     {
-        UInt256 nonce = StateReader.GetNonce(BlockTree.Head!.StateRoot!, TestItem.AddressA);
+        UInt256 nonce = StateReader.GetNonce(BlockTree.Head!.Header, TestItem.AddressA);
         Transaction tx = Builders.Build.A.Transaction
             .SignedAndResolved(TestItem.PrivateKeyA)
             .To(address)

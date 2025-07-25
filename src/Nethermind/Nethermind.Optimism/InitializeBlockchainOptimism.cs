@@ -20,7 +20,7 @@ using Nethermind.Facade.Eth.RpcTransaction;
 using Nethermind.Init.Steps;
 using Nethermind.Merge.Plugin.InvalidChainTracker;
 using Nethermind.Optimism.Rpc;
-using Nethermind.State;
+using Nethermind.Evm.State;
 using Nethermind.TxPool;
 
 namespace Nethermind.Optimism;
@@ -58,7 +58,6 @@ public class InitializeBlockchainOptimism(OptimismNethermindApi api) : Initializ
 
     protected override BlockProcessor CreateBlockProcessor(BlockCachePreWarmer? preWarmer, ITransactionProcessor transactionProcessor, IWorldState worldState)
     {
-        if (api.DbProvider is null) throw new StepDependencyException(nameof(api.DbProvider));
         if (api.RewardCalculatorSource is null) throw new StepDependencyException(nameof(api.RewardCalculatorSource));
         if (api.SpecHelper is null) throw new StepDependencyException(nameof(api.SpecHelper));
         if (api.SpecProvider is null) throw new StepDependencyException(nameof(api.SpecProvider));

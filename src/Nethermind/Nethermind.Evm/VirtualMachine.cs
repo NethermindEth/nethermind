@@ -18,7 +18,7 @@ using Nethermind.Evm.EvmObjectFormat.Handlers;
 using Nethermind.Evm.Precompiles;
 using Nethermind.Evm.Tracing;
 using Nethermind.Logging;
-using Nethermind.State;
+using Nethermind.Evm.State;
 
 using static Nethermind.Evm.EvmObjectFormat.EofValidator;
 
@@ -523,7 +523,7 @@ public unsafe partial class VirtualMachineBase(
             callResult.Output,
             _currentState.Refund,
             _currentState.AccessTracker.DestroyList,
-            (IReadOnlyCollection<LogEntry>)_currentState.AccessTracker.Logs,
+            _currentState.AccessTracker.Logs,
             callResult.ShouldRevert,
             isTracerConnected: _txTracer.IsTracing,
             _logger);
@@ -977,7 +977,7 @@ public unsafe partial class VirtualMachineBase(
 
         IReleaseSpec spec = BlockExecutionContext.Spec;
         long baseGasCost = precompile.BaseGasCost(spec);
-        long blobGasCost = precompile.DataGasCost(callData, spec);
+        long dataGasCost = precompile.DataGasCost(callData, spec);
 
         bool wasCreated = _worldState.AddToBalanceAndCreateIfNotExists(state.Env.ExecutingAccount, transferValue, spec);
 
@@ -997,7 +997,7 @@ public unsafe partial class VirtualMachineBase(
             _parityTouchBugAccount.ShouldDelete = true;
         }
 
-        if (!UpdateGas(checked(baseGasCost + blobGasCost), ref gasAvailable))
+        if (!UpdateGas(checked(baseGasCost + dataGasCost), ref gasAvailable))
         {
             return new(default, false, 0, true, EvmExceptionType.OutOfGas);
         }

@@ -6,6 +6,7 @@ using System.Collections.Generic;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Blockchain;
+using Nethermind.Blockchain.Receipts;
 using Nethermind.Consensus;
 using Nethermind.Consensus.Processing;
 using Nethermind.Consensus.Validators;
@@ -17,6 +18,7 @@ using Nethermind.Crypto;
 using Nethermind.Int256;
 using Nethermind.JsonRpc;
 using Nethermind.Logging;
+using Nethermind.Merge.Plugin.BlockProduction;
 using Nethermind.Merge.Plugin.Data;
 using Nethermind.Merge.Plugin.InvalidChainTracker;
 using Nethermind.Merge.Plugin.Synchronization;
@@ -31,6 +33,7 @@ namespace Nethermind.Merge.Plugin.Handlers;
 /// </summary>
 public class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadStatusV1>
 {
+    private readonly IPayloadPreparationService _payloadPreparationService;
     private readonly IBlockValidator _blockValidator;
     private readonly IBlockTree _blockTree;
     private readonly IPoSSwitcher _poSSwitcher;
@@ -47,8 +50,10 @@ public class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadStatusV1
 
     private long _lastBlockNumber;
     private long _lastBlockGasLimit;
+    private readonly bool _simulateBlockProduction;
 
     public NewPayloadHandler(
+        IPayloadPreparationService payloadPreparationService,
         IBlockValidator blockValidator,
         IBlockTree blockTree,
         IPoSSwitcher poSSwitcher,
@@ -58,11 +63,11 @@ public class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadStatusV1
         IBlockProcessingQueue processingQueue,
         IInvalidChainTracker invalidChainTracker,
         IMergeSyncController mergeSyncController,
-        ILogManager logManager,
-        TimeSpan? timeout = null,
-        bool storeReceipts = true,
-        int cacheSize = 50)
+        IMergeConfig mergeConfig,
+        IReceiptConfig receiptConfig,
+        ILogManager logManager)
     {
+        _payloadPreparationService = payloadPreparationService;
         _blockValidator = blockValidator ?? throw new ArgumentNullException(nameof(blockValidator));
         _blockTree = blockTree;
         _poSSwitcher = poSSwitcher;
@@ -73,13 +78,12 @@ public class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadStatusV1
         _invalidChainTracker = invalidChainTracker;
         _mergeSyncController = mergeSyncController;
         _logger = logManager.GetClassLogger();
-        _defaultProcessingOptions = storeReceipts ? ProcessingOptions.EthereumMerge | ProcessingOptions.StoreReceipts : ProcessingOptions.EthereumMerge;
-        _timeout = timeout ?? TimeSpan.FromSeconds(7);
-        if (cacheSize > 0)
-            _latestBlocks = new(cacheSize, 0, "LatestBlocks");
+        _defaultProcessingOptions = receiptConfig.StoreReceipts ? ProcessingOptions.EthereumMerge | ProcessingOptions.StoreReceipts : ProcessingOptions.EthereumMerge;
+        _timeout = TimeSpan.FromMilliseconds(mergeConfig.NewPayloadBlockProcessingTimeout);
+        if (mergeConfig.NewPayloadCacheSize > 0)
+            _latestBlocks = new(mergeConfig.NewPayloadCacheSize, 0, "LatestBlocks");
+        _simulateBlockProduction = mergeConfig.SimulateBlockProduction;
     }
-
-    public event EventHandler<BlockHeader>? NewPayloadForParentReceived;
 
     private string GetGasChange(long blockGasLimit)
     {
@@ -164,7 +168,11 @@ public class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadStatusV1
             return NewPayloadV1Result.Syncing;
         }
 
-        NewPayloadForParentReceived?.Invoke(this, parentHeader);
+        if (_simulateBlockProduction)
+        {
+            _payloadPreparationService.CancelBlockProduction(parentHeader.GenerateSimulatedPayload()
+                .GetPayloadId(parentHeader));
+        }
 
         // we need to check if the head is greater than block.Number. In fast sync we could return Valid to CL without this if
         if (_blockTree.IsOnMainChainBehindOrEqualHead(block))
@@ -221,7 +229,7 @@ public class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadStatusV1
         // Otherwise, we can just process this block and we don't need to do BeaconSync anymore.
         _mergeSyncController.StopSyncing();
 
-        using var handle = Thread.CurrentThread.BoostPriority();
+        using ThreadExtensions.Disposable handle = Thread.CurrentThread.BoostPriority();
         // Try to execute block
         (ValidationResult result, string? message) = await ValidateBlockAndProcess(block, parentHeader, processingOptions);
 
@@ -324,7 +332,7 @@ public class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadStatusV1
             return (TryCacheResult(ValidationResult.Invalid, validationMessage), validationMessage);
         }
 
-        TaskCompletionSource<ValidationResult?> blockProcessed = new();
+        TaskCompletionSource<ValidationResult?> blockProcessed = new(TaskCreationOptions.RunContinuationsAsynchronously);
 
         void GetProcessingQueueOnBlockRemoved(object? o, BlockRemovedEventArgs e)
         {

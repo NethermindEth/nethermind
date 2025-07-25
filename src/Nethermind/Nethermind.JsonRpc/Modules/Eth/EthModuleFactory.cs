@@ -1,7 +1,6 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Config;
@@ -33,7 +32,8 @@ namespace Nethermind.JsonRpc.Modules.Eth
         IEthSyncingInfo ethSyncingInfo,
         IFeeHistoryOracle feeHistoryOracle,
         IProtocolsManager protocolsManager,
-        IBlocksConfig blocksConfig)
+        IBlocksConfig blocksConfig,
+        IForkInfo forkInfo)
         : ModuleFactoryBase<IEthRpcModule>
     {
         private readonly ulong _secondsPerSlot = blocksConfig.SecondsPerSlot;
@@ -56,6 +56,7 @@ namespace Nethermind.JsonRpc.Modules.Eth
                 ethSyncingInfo,
                 feeHistoryOracle,
                 protocolsManager,
+                forkInfo,
                 _secondsPerSlot);
         }
     }

@@ -1,7 +1,6 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System;
 using System.Collections.Generic;
 using System.Text.Unicode;
 using System.Threading;
@@ -12,9 +11,8 @@ using Nethermind.Api.Steps;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.BeaconBlockRoot;
 using Nethermind.Blockchain.Blocks;
-using Nethermind.Blockchain.Filters;
 using Nethermind.Blockchain.Receipts;
-using Nethermind.Blockchain.Services;
+using Nethermind.Blockchain.Spec;
 using Nethermind.Config;
 using Nethermind.Consensus;
 using Nethermind.Consensus.Comparers;
@@ -28,8 +26,8 @@ using Nethermind.Core;
 using Nethermind.Core.Attributes;
 using Nethermind.Core.ServiceStopper;
 using Nethermind.Evm;
+using Nethermind.Evm.State;
 using Nethermind.Evm.TransactionProcessing;
-using Nethermind.JsonRpc;
 using Nethermind.State;
 using Nethermind.TxPool;
 using Nethermind.Wallet;
@@ -74,7 +72,9 @@ namespace Nethermind.Init.Steps
             PreBlockCaches? preBlockCaches = (mainWorldState as IPreBlockCaches)?.Caches;
             ICodeInfoRepository codeInfoRepository = CreateCodeInfoRepository(preBlockCaches?.PrecompileCache);
             IChainHeadInfoProvider chainHeadInfoProvider =
-                new ChainHeadInfoProvider(getApi.SpecProvider!, getApi.BlockTree!, stateReader, codeInfoRepository);
+                new ChainHeadInfoProvider(
+                    new ChainHeadSpecProvider(getApi.SpecProvider!, getApi.BlockTree!),
+                    getApi.BlockTree!, stateReader, codeInfoRepository);
 
             _api.TxGossipPolicy.Policies.Add(new SpecDrivenTxGossipPolicy(chainHeadInfoProvider));
 
@@ -83,7 +83,7 @@ namespace Nethermind.Init.Steps
             _api.BlockPreprocessor.AddFirst(
                 new RecoverSignatures(getApi.EthereumEcdsa, getApi.SpecProvider, getApi.LogManager));
 
-            VirtualMachine.WarmUpEvmInstructions();
+            WarmupEvm();
             IVirtualMachine virtualMachine = CreateVirtualMachine(mainWorldState);
             ITransactionProcessor transactionProcessor = CreateTransactionProcessor(codeInfoRepository, virtualMachine, mainWorldState);
 
@@ -136,6 +136,7 @@ namespace Nethermind.Init.Steps
 
             BackgroundTaskScheduler backgroundTaskScheduler = new BackgroundTaskScheduler(
                 mainBlockProcessor,
+                chainHeadInfoProvider,
                 initConfig.BackgroundTaskConcurrency,
                 initConfig.BackgroundTaskMaxNumber,
                 _api.LogManager);
@@ -163,7 +164,14 @@ namespace Nethermind.Init.Steps
         protected virtual ICodeInfoRepository CreateCodeInfoRepository(
             ConcurrentDictionary<PrecompileCacheKey, (byte[], bool)>? precompileCache
         )
-            => new CodeInfoRepository(precompileCache);
+            => new EthereumCodeInfoRepository(precompileCache);
+
+        private void WarmupEvm()
+        {
+            IWorldState state = _api.WorldStateManager!.CreateResettableWorldState();
+            state.SetBaseBlock(null);
+            VirtualMachineBase.WarmUpEvmInstructions(state, new EthereumCodeInfoRepository());
+        }
 
         protected virtual ITransactionProcessor CreateTransactionProcessor(ICodeInfoRepository codeInfoRepository, IVirtualMachine virtualMachine, IWorldState worldState)
         {
@@ -207,7 +215,10 @@ namespace Nethermind.Init.Steps
                 _api.TxValidator!,
                 _api.LogManager,
                 CreateTxPoolTxComparer(),
-                _api.TxGossipPolicy);
+                _api.TxGossipPolicy,
+                null,
+                _api.HeadTxValidator
+            );
 
             _api.DisposeStack.Push(txPool);
             return txPool;
@@ -221,7 +232,6 @@ namespace Nethermind.Init.Steps
             ITransactionProcessor transactionProcessor,
             IWorldState worldState)
         {
-            if (_api.DbProvider is null) throw new StepDependencyException(nameof(_api.DbProvider));
             if (_api.RewardCalculatorSource is null) throw new StepDependencyException(nameof(_api.RewardCalculatorSource));
             if (_api.BlockTree is null) throw new StepDependencyException(nameof(_api.BlockTree));
             if (_api.WorldStateManager is null) throw new StepDependencyException(nameof(_api.WorldStateManager));

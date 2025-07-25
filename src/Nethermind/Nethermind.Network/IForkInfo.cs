@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using Nethermind.Core;
+using Nethermind.Core.Specs;
 
 namespace Nethermind.Network;
 
@@ -16,4 +17,16 @@ public interface IForkInfo
     /// <param name="head"></param>
     /// <returns></returns>
     ValidationResult ValidateForkId(ForkId peerId, BlockHeader? head);
+
+    ForkActivationsSummary GetForkActivationsSummary(BlockHeader? head);
+}
+
+public readonly ref struct ForkActivationsSummary
+{
+    public ForkActivation Current { get; init; }
+    public ForkId CurrentForkId { get; init; }
+    public ForkActivation? Next { get; init; }
+    public ForkId? NextForkId { get; init; }
+    public ForkActivation? Last { get; init; }
+    public ForkId? LastForkId { get; init; }
 }

@@ -10,14 +10,18 @@ using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
+using Nethermind.Core.Test.Db;
 using Nethermind.Db;
+using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Flashbots.Modules.Rbuilder;
 using Nethermind.Int256;
 using Nethermind.JsonRpc.Test;
 using Nethermind.Logging;
 using Nethermind.Specs;
 using Nethermind.Specs.Forks;
+using Nethermind.Evm.State;
 using Nethermind.State;
+using NSubstitute;
 using NUnit.Framework;
 using Bytes = Nethermind.Core.Extensions.Bytes;
 
@@ -36,7 +40,12 @@ public class RbuilderRpcModuleTests
             .OfChainLength(10)
             .TestObject;
 
-        _rbuilderRpcModule = new RbuilderRpcModule(blockTree, MainnetSpecProvider.Instance, _worldStateManager);
+        IShareableTxProcessorSource txProcessorSource = Substitute.For<IShareableTxProcessorSource>();
+        IReadOnlyTxProcessingScope scope = Substitute.For<IReadOnlyTxProcessingScope>();
+        scope.WorldState.Returns(_worldStateManager.CreateResettableWorldState());
+        txProcessorSource.Build(Arg.Any<BlockHeader>()).Returns(scope);
+
+        _rbuilderRpcModule = new RbuilderRpcModule(blockTree, MainnetSpecProvider.Instance, txProcessorSource, _worldStateManager.GlobalStateReader);
     }
 
     [Test]

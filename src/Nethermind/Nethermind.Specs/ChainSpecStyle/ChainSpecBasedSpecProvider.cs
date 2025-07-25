@@ -100,7 +100,7 @@ namespace Nethermind.Specs.ChainSpecStyle
 
                 foreach (BlobScheduleSettings settings in chainSpec.Parameters.BlobSchedule)
                 {
-                    if (settings.Timestamp == genesisTimestamp)
+                    if (settings.Timestamp <= genesisTimestamp)
                     {
                         continue;
                     }
@@ -244,6 +244,7 @@ namespace Nethermind.Specs.ChainSpecStyle
 
             releaseSpec.IsEip4844Enabled = (chainSpec.Parameters.Eip4844TransitionTimestamp ?? ulong.MaxValue) <= releaseStartTimestamp;
             releaseSpec.IsEip7951Enabled = (chainSpec.Parameters.Eip7951TransitionTimestamp ?? ulong.MaxValue) <= releaseStartTimestamp;
+            releaseSpec.IsRip7212Enabled = (chainSpec.Parameters.Rip7212TransitionTimestamp ?? ulong.MaxValue) <= releaseStartTimestamp;
             releaseSpec.IsOpGraniteEnabled = (chainSpec.Parameters.OpGraniteTransitionTimestamp ?? ulong.MaxValue) <= releaseStartTimestamp;
             releaseSpec.IsOpHoloceneEnabled = (chainSpec.Parameters.OpHoloceneTransitionTimestamp ?? ulong.MaxValue) <= releaseStartTimestamp;
             releaseSpec.IsOpIsthmusEnabled = (chainSpec.Parameters.OpIsthmusTransitionTimestamp ?? ulong.MaxValue) <= releaseStartTimestamp;
@@ -284,6 +285,9 @@ namespace Nethermind.Specs.ChainSpecStyle
             releaseSpec.FeeCollector = (eip1559FeeCollector || eip4844FeeCollector) ? chainSpec.Parameters.FeeCollector : null;
             releaseSpec.IsEip4844FeeCollectorEnabled = eip4844FeeCollector;
 
+            releaseSpec.IsEip7934Enabled = (chainSpec.Parameters.Eip7934TransitionTimestamp ?? ulong.MaxValue) <= releaseStartTimestamp;
+            releaseSpec.Eip7934MaxRlpBlockSize = chainSpec.Parameters.Eip7934MaxRlpBlockSize;
+
             releaseSpec.IsEip7939Enabled = (chainSpec.Parameters.Eip7939TransitionTimestamp ?? ulong.MaxValue) <= releaseStartTimestamp;
 
             foreach (IChainSpecEngineParameters item in _chainSpec.EngineChainSpecParametersProvider
@@ -303,16 +307,12 @@ namespace Nethermind.Specs.ChainSpecStyle
                     return;
                 }
 
-                BlobScheduleSettings? blobSchedule = chainSpec.Parameters.BlobSchedule.OrderByDescending(bs => bs).FirstOrDefault(bs => bs.Timestamp <= releaseStartTimestamp);
+                BlobScheduleSettings? blobSchedule = chainSpec.Parameters.BlobSchedule?.OrderByDescending(bs => bs).FirstOrDefault(bs => bs.Timestamp <= releaseStartTimestamp);
 
                 if (blobSchedule is not null)
                 {
                     releaseSpec.TargetBlobCount = blobSchedule.Target;
                     releaseSpec.MaxBlobCount = blobSchedule.Max;
-                    if (blobSchedule.MaxBlobsPerTx is not null)
-                    {
-                        releaseSpec.MaxBlobsPerTx = blobSchedule.MaxBlobsPerTx.Value;
-                    }
                     releaseSpec.BlobBaseFeeUpdateFraction = blobSchedule.BaseFeeUpdateFraction;
                 }
                 else if (releaseSpec.Eip4844TransitionTimestamp <= releaseStartTimestamp)

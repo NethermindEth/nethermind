@@ -9,8 +9,10 @@ using System.Runtime.ExceptionServices;
 using System.Threading;
 using System.Threading.Tasks;
 using Autofac;
+using Autofac.Core;
 using Nethermind.Api.Steps;
 using Nethermind.Core.Collections;
+using Nethermind.Core.Exceptions;
 using Nethermind.Logging;
 
 namespace Nethermind.Init.Steps
@@ -62,11 +64,7 @@ namespace Nethermind.Init.Steps
 
                 Func<IStep> stepFactory = () =>
                 {
-                    IStep? step = CreateStepInstance(stepInfo);
-                    if (step is null)
-                        throw new StepDependencyException(
-                            $"A step {stepInfo} could not be created and initialization cannot proceed.");
-                    return step;
+                    return CreateStepInstance(stepInfo);
                 };
 
                 Debug.Assert(!stepInfoMap.ContainsKey(stepInfo.StepBaseType), "Resolve steps implementations should have deduplicated step by base type");
@@ -143,19 +141,38 @@ namespace Nethermind.Init.Steps
             }
         }
 
-        private IStep? CreateStepInstance(StepInfo stepInfo)
+        private IStep CreateStepInstance(StepInfo stepInfo)
         {
-            IStep? step = null;
             try
             {
-                step = _ctx.Resolve(stepInfo.StepType) as IStep;
+                return (_ctx.Resolve(stepInfo.StepType) as IStep)!;
             }
             catch (Exception e)
             {
-                if (_logger.IsError) _logger.Error($"Failed to create instance of Ethereum runner step {stepInfo}", e);
+                if (TryUnwrapException(e, out Exception? unwrappedException))
+                {
+                    ExceptionDispatchInfo.Capture(unwrappedException!).Throw();
+                    throw;
+                }
+
+                throw new StepDependencyException($"A step {stepInfo} could not be created and initialization cannot proceed.", e);
+            }
+        }
+
+        private bool TryUnwrapException(Exception exception, out Exception? unwrapped)
+        {
+            unwrapped = exception;
+            while (unwrapped is DependencyResolutionException resolutionException)
+            {
+                unwrapped = resolutionException.InnerException;
             }
 
-            return step;
+            if (unwrapped is InvalidConfigurationException)
+            {
+                return true;
+            }
+
+            return false;
         }
 
         private void ReviewFailedAndThrow(Task task)

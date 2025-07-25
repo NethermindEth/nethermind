@@ -22,7 +22,7 @@ using Nethermind.Core.Specs;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Logging;
 using Nethermind.Merge.AuRa.Withdrawals;
-using Nethermind.State;
+using Nethermind.Evm.State;
 
 namespace Nethermind.Merge.AuRa.InitializationSteps;
 
@@ -54,7 +54,7 @@ public class AuRaMergeBlockProcessorFactory(
         WithdrawalContractFactory withdrawalContractFactory = new WithdrawalContractFactory(parameters, abiEncoder);
         IWithdrawalProcessor withdrawalProcessor = new AuraWithdrawalProcessor(withdrawalContractFactory.Create(transactionProcessor), logManager);
 
-        ITxFilter txFilter = txAuRaFilterBuilders.CreateAuRaTxFilter(new ServiceTxFilter(specProvider));
+        ITxFilter txFilter = txAuRaFilterBuilders.CreateAuRaTxFilter(new ServiceTxFilter());
 
         return new AuRaMergeBlockProcessor(
             specProvider,

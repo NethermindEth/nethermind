@@ -10,7 +10,7 @@ using Nethermind.Evm.CodeAnalysis;
 using Nethermind.Evm.EvmObjectFormat;
 using Nethermind.Evm.EvmObjectFormat.Handlers;
 using Nethermind.Evm.Tracing;
-using Nethermind.State;
+using Nethermind.Evm.State;
 
 using static Nethermind.Evm.VirtualMachineBase;
 

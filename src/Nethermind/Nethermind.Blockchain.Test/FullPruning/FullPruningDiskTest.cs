@@ -10,6 +10,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using Autofac;
 using FluentAssertions;
+using Nethermind.Api;
 using Nethermind.Blockchain.FullPruning;
 using Nethermind.Config;
 using Nethermind.Core;
@@ -75,16 +76,14 @@ public class FullPruningDiskTest
             return chain;
         }
 
-        protected override ContainerBuilder ConfigureContainer(ContainerBuilder builder, IConfigProvider configProvider)
-        {
-            IDbProvider dbProvider = new DbProvider();
-            RocksDbFactory rocksDbFactory = new(new DbConfig(), LogManager, TempDirectory.Path);
-            StandardDbInitializer standardDbInitializer = new(dbProvider, rocksDbFactory, new FileSystem());
-            standardDbInitializer.InitStandardDbs(true);
-
-            return base.ConfigureContainer(builder, configProvider)
-                .AddSingleton<IDbProvider>(dbProvider);
-        }
+        protected override ContainerBuilder ConfigureContainer(ContainerBuilder builder, IConfigProvider configProvider) =>
+            // Reenable rocksdb
+            base.ConfigureContainer(builder, configProvider)
+                .AddSingleton<IDbFactory, RocksDbFactory>()
+                .Intercept<IInitConfig>((initConfig) =>
+                {
+                    initConfig.BaseDbPath = TempDirectory.Path;
+                });
 
         public override void Dispose()
         {

@@ -10,7 +10,7 @@ namespace Nethermind.Evm
     public readonly struct TxExecutionContext(
         Address origin,
         ICodeInfoRepository codeInfoRepository,
-        byte[][] blobVersionedHashes,
+        byte[][]? blobVersionedHashes,
         in UInt256 gasPrice)
     {
         public readonly ValueHash256 Origin = origin.ToHash();

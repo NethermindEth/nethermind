@@ -12,10 +12,10 @@ using Nethermind.Consensus.Processing;
 using Nethermind.Consensus.Producers;
 using Nethermind.Consensus.Withdrawals;
 using Nethermind.Evm;
+using Nethermind.Evm.State;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Init.Steps;
 using Nethermind.Merge.Plugin.InvalidChainTracker;
-using Nethermind.State;
 using Nethermind.Taiko.BlockTransactionExecutors;
 
 namespace Nethermind.Taiko;
@@ -47,7 +47,6 @@ public class InitializeBlockchainTaiko(TaikoNethermindApi api) : InitializeBlock
 
     protected override BlockProcessor CreateBlockProcessor(BlockCachePreWarmer? preWarmer, ITransactionProcessor transactionProcessor, IWorldState worldState)
     {
-        if (_api.DbProvider is null) throw new StepDependencyException(nameof(_api.DbProvider));
         if (_api.RewardCalculatorSource is null) throw new StepDependencyException(nameof(_api.RewardCalculatorSource));
         if (_api.SpecProvider is null) throw new StepDependencyException(nameof(_api.SpecProvider));
         if (_api.BlockTree is null) throw new StepDependencyException(nameof(_api.BlockTree));

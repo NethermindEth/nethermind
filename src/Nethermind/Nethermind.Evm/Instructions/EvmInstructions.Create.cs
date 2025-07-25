@@ -8,7 +8,7 @@ using Nethermind.Core.Specs;
 using Nethermind.Evm.CodeAnalysis;
 using Nethermind.Evm.EvmObjectFormat;
 using Nethermind.Int256;
-using Nethermind.State;
+using Nethermind.Evm.State;
 
 using static Nethermind.Evm.VirtualMachineBase;
 
