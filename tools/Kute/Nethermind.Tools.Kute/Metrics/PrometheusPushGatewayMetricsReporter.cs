@@ -19,7 +19,7 @@ public sealed class PrometheusPushGatewayMetricsReporter : IMetricsReporter
     private readonly ICounter _ignoredCounter;
     private readonly ICounter _responseCounter;
     private readonly IMetricFamily<IHistogram, ValueTuple<string>> _singleDuration;
-    private readonly IHistogram _batchDuration;
+    private readonly IMetricFamily<IHistogram, ValueTuple<string>> _batchDuration;
 
     public PrometheusPushGatewayMetricsReporter(string endpoint)
     {
@@ -31,8 +31,8 @@ public sealed class PrometheusPushGatewayMetricsReporter : IMetricsReporter
         _failedCounter = factory.CreateCounter("failed", "");
         _ignoredCounter = factory.CreateCounter("ignored", "");
         _responseCounter = factory.CreateCounter("responses", "");
-        _singleDuration = factory.CreateHistogram("single_duration", "", labelName: "method_name");
-        _batchDuration = factory.CreateHistogram("batch_duration", "");
+        _singleDuration = factory.CreateHistogram("single_duration", "", labelName: "jsonrpc_id");
+        _batchDuration = factory.CreateHistogram("batch_duration", "", labelName: "jsonrpc_id");
 
         _endpoint = endpoint;
         _pusher = new MetricPusher(new MetricPusherOptions
@@ -77,16 +77,18 @@ public sealed class PrometheusPushGatewayMetricsReporter : IMetricsReporter
         return Task.CompletedTask;
     }
 
-    public Task Batch(int requestId, TimeSpan elapsed, CancellationToken token = default)
+    public Task Batch(JsonRpc.Request.Batch batch, TimeSpan elapsed, CancellationToken token = default)
     {
-        _batchDuration.Observe(elapsed.TotalSeconds);
+        _batchDuration
+            .WithLabels(batch.Id)
+            .Observe(elapsed.TotalSeconds);
         return Task.CompletedTask;
     }
 
-    public Task Single(int requestId, TimeSpan elapsed, CancellationToken token = default)
+    public Task Single(JsonRpc.Request.Single single, TimeSpan elapsed, CancellationToken token = default)
     {
         _singleDuration
-            .WithLabels(requestId.ToString())
+            .WithLabels(single.Id)
             .Observe(elapsed.TotalSeconds);
         return Task.CompletedTask;
     }
