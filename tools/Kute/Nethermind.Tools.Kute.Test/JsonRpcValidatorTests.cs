@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Text;
-using System.Text.Json;
+using System.Text.Json.Nodes;
 using FluentAssertions;
 using Nethermind.Tools.Kute.JsonRpcValidator;
 using Nethermind.Tools.Kute.JsonRpcValidator.Eth;
@@ -82,9 +82,9 @@ public class JsonRpcValidatorTests
     {
         var methodJSON = method is null ? "null" : $"\"{method}\"";
         return new JsonRpc.Request.Single(
-            JsonDocument.Parse(
+            JsonNode.Parse(
                 $$"""{"jsonrpc":"2.0","id":1,"method":{{methodJSON}},"params":[]}"""
-            )
+            )!
         );
     }
 
@@ -98,7 +98,7 @@ public class JsonRpcValidatorTests
         sb.Remove(sb.Length - 1, 1); // Remove the last comma
         sb.Append("]");
 
-        return new JsonRpc.Request.Batch(JsonDocument.Parse(sb.ToString()));
+        return new JsonRpc.Request.Batch(JsonNode.Parse(sb.ToString())!);
     }
 
     public enum Status
@@ -110,16 +110,16 @@ public class JsonRpcValidatorTests
     private static JsonRpc.Response CreateResponse(Status status)
     {
         return new JsonRpc.Response(
-            JsonDocument.Parse(
+            JsonNode.Parse(
                 $$$"""{"jsonrpc":"2.0","id": 1,"result":{"status": "{{{status}}}"}}"""
-        ));
+        )!);
     }
 
     private static JsonRpc.Response CreateErrorResponse()
     {
         return new JsonRpc.Response(
-            JsonDocument.Parse(
+            JsonNode.Parse(
                 """{"jsonrpc":"2.0","id":1,"error":{"code":-32603,"message":"Internal error"}}"""
-        ));
+        )!);
     }
 }

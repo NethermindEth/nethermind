@@ -5,7 +5,7 @@ using FluentAssertions;
 using NUnit.Framework;
 using Nethermind.Tools.Kute.Metrics;
 using NSubstitute;
-using System.Text.Json;
+using System.Text.Json.Nodes;
 
 namespace Nethermind.Tools.Kute.Test;
 
@@ -14,13 +14,13 @@ public class MetricsTests
     private static JsonRpc.Request.Single Single(int id)
     {
         var json = $$"""{ "id": {{id}}, "method": "test", "params": [] }""";
-        return new JsonRpc.Request.Single(JsonDocument.Parse(json));
+        return new JsonRpc.Request.Single(JsonNode.Parse(json)!);
     }
 
     private static JsonRpc.Request.Batch Batch(params JsonRpc.Request.Single[] singles)
     {
         var json = $$"""[{{string.Join(", ", singles.Select(s => s.ToJsonString()))}}]""";
-        return new JsonRpc.Request.Batch(JsonDocument.Parse(json));
+        return new JsonRpc.Request.Batch(JsonNode.Parse(json)!);
     }
 
     [Test]
