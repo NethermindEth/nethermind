@@ -20,6 +20,7 @@ using Timer = System.Timers.Timer;
 namespace Nethermind.Init.Steps.Migrations;
 
 // TODO: move to correct namespace
+// TODO: reduce periodic logging
 public class LogIndexService : ILogIndexService
 {
     private readonly IBlockTree _blockTree;
@@ -73,8 +74,8 @@ public class LogIndexService : ILogIndexService
         _receiptStorage = receiptStorage;
         _logger = api.LogManager.GetClassLogger<LogIndexService>();
 
-        _forwardProgressLogger = new("Log index sync (Forward)", api.LogManager);
-        _backwardProgressLogger = new("Log index sync (Backward)", api.LogManager);
+        _forwardProgressLogger = new(GetLogPrefix(isForward: true), api.LogManager);
+        _backwardProgressLogger = new(GetLogPrefix(isForward: false), api.LogManager);
 
         _logIndexStorage = api.LogIndexStorage;
         _receiptMonitor = api.ReceiptMonitor;
@@ -117,7 +118,9 @@ public class LogIndexService : ILogIndexService
         if (_stats is not null)
         {
             LogIndexUpdateStats stats = Interlocked.Exchange(ref _stats, new());
-            TempLog($"\n{stats}");
+
+            if (_logger.IsInfo)
+                _logger.Info($"{GetLogPrefix()}:\n{stats}");
         }
     }
 
@@ -140,7 +143,12 @@ public class LogIndexService : ILogIndexService
             _newForwardBlockEvent.Set();
     }
 
-    private int? GetMaxAvailableBlockNumber() => (int)Math.Max(_blockTree.BestKnownNumber, _blockTree.BestKnownBeaconNumber);
+    // TODO: figure out values that would be correct in all cases
+    private int? GetMaxAvailableBlockNumber() => (int)Math.Min(
+        _blockTree.Head?.Number ?? -1,
+        Math.Max(_blockTree.BestKnownNumber, _blockTree.BestKnownBeaconNumber)
+    ) - MaxReorgDepth; // TODO: do not stay MaxReorgDepth behind, handle reorgs instead
+
     private int? GetMinAvailableBlockNumber() => (int?)_blockTree.LowestInsertedHeader?.Number;
 
     private async Task DoProcess()
@@ -205,7 +213,7 @@ public class LogIndexService : ILogIndexService
             // if (!shouldAdd) continue;
 
             // TODO: remove check to save time?
-            if ((isForward && !IsAsc(batch)) || (!isForward && !IsDesc(batch)) ||
+            if ((isForward && !IsSeqAsc(batch)) || (!isForward && !IsSeqDesc(batch)) ||
                 batch[0].BlockNumber != (GetNextBlockNumber(isForward) ?? batch[0].BlockNumber))
             {
                 throw new Exception($"Non-sequential block numbers in log index queue, batch: ({batch[0]} -> {batch[^1]}).");
@@ -292,14 +300,13 @@ public class LogIndexService : ILogIndexService
                 if (!isForward && start < 0)
                 {
                     if (_logger.IsTrace)
-                        _logger.Trace("Queued last block for log index backward sync.");
+                        _logger.Trace($"{GetLogPrefix(isForward)}: queued last block");
 
                     return;
                 }
 
                 var end = isForward
-                    // TODO: do not stay MaxReorgDepth behind, handle reorgs instead
-                    ? Math.Min(GetMaxAvailableBlockNumber() - MaxReorgDepth ?? int.MinValue, start + BatchSize - 1)
+                    ? Math.Min(GetMaxAvailableBlockNumber() ?? int.MinValue, start + BatchSize - 1)
                     : Math.Max(start - BatchSize + 1, GetMinAvailableBlockNumber() ?? int.MaxValue);
 
                 // from - inclusive, to - exclusive
@@ -307,7 +314,15 @@ public class LogIndexService : ILogIndexService
 
                 if (to <= from)
                 {
-                    TempLog($"{to} <= {from} ({isForward}), waiting for new block");
+                    if (_logger.IsInfo)
+                    {
+                        var (last, available) = isForward
+                            ? (_logIndexStorage.GetMaxBlockNumber(), GetMaxAvailableBlockNumber())
+                            : (_logIndexStorage.GetMinBlockNumber(), GetMinAvailableBlockNumber());
+
+                        _logger.Info($"{GetLogPrefix(isForward)}: waiting for a new block, synced: {last:N0}, available: {available:N0}");
+                    }
+
                     await newBlockEvent.WaitOneAsync(NewBlockWaitTimeout, CancellationToken);
                     continue;
                 }
@@ -317,7 +332,12 @@ public class LogIndexService : ILogIndexService
 
                 if (buffer[0] == default)
                 {
-                    TempLog($"No new blocks fetched ({from} - {to}, {isForward}), waiting for new block");
+                    if (_logger.IsInfo)
+                    {
+                        var index = isForward ? from : to - 1;
+                        _logger.Info($"{GetLogPrefix(isForward)}: waiting for a new block, no receipts available for {index:N0}");
+                    }
+
                     await newBlockEvent.WaitOneAsync(NewBlockWaitTimeout, CancellationToken);
                     continue;
                 }
@@ -334,7 +354,7 @@ public class LogIndexService : ILogIndexService
                         if (_logger.IsError)
                         {
                             _logger.Error(
-                                $"Non-sequential block number {block.BlockNumber} in log index queue, previous block: {lastQueuedNum}. " +
+                                $"Non-sequential block number {block.BlockNumber:N0} in log index queue, previous block: {lastQueuedNum}. " +
                                 $"Please restart the client."
                             );
                         }
@@ -369,7 +389,7 @@ public class LogIndexService : ILogIndexService
     {
         if (progress == _forwardProgressLogger)
         {
-            _forwardProgressLogger.TargetValue = GetMaxAvailableBlockNumber() ?? 0 - _pivotNumber;
+            _forwardProgressLogger.TargetValue = (GetMaxAvailableBlockNumber() ?? 0) - _pivotNumber;
             _forwardProgressLogger.Update((_logIndexStorage.GetMaxBlockNumber() ?? _pivotNumber) - _pivotNumber);
             _forwardProgressLogger.CurrentQueued = _forwardChannel.Reader.Count;
 
@@ -402,6 +422,9 @@ public class LogIndexService : ILogIndexService
         if (to <= from)
             return;
 
+        if (to - from > buffer.Length)
+            throw new InvalidOperationException($"Buffer size is too small: {buffer.Length} / {to - from}");
+
         Parallel.For(from, to, new()
         {
             CancellationToken = token,
@@ -416,24 +439,26 @@ public class LogIndexService : ILogIndexService
         });
     }
 
-    private static bool IsAsc(BlockReceipts[] blocks)
+    private static bool IsSeqAsc(BlockReceipts[] blocks)
     {
         int j = blocks.Length - 1;
-        if (j < 1) return true;
-        int ai = blocks[0].BlockNumber, i = 1;
-        while (i <= j && ai < (ai = blocks[i].BlockNumber)) i++;
+        int i = 1, d = blocks[0].BlockNumber;
+        while (i <= j && blocks[i].BlockNumber - i == d) i++;
         return i > j;
     }
 
-    private static bool IsDesc(BlockReceipts[] blocks)
+    private static bool IsSeqDesc(BlockReceipts[] blocks)
     {
         int j = blocks.Length - 1;
-        if (j < 1) return true;
-        int ai = blocks[0].BlockNumber, i = 1;
-        while (i <= j && ai > (ai = blocks[i].BlockNumber)) i++;
+        int i = 1, d = blocks[0].BlockNumber;
+        while (i <= j && blocks[i].BlockNumber + i == d) i++;
         return i > j;
     }
 
-    // TODO: remove/revise!
-    private void TempLog(string message) => _logger.Warn($"LogIndexStorage: {message}");
+    private static string GetLogPrefix(bool? isForward = null) => isForward switch
+    {
+        true => "Log index sync (Forward)",
+        false => "Log index sync (Backward)",
+        _ => "Log index sync"
+    };
 }
