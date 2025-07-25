@@ -147,7 +147,7 @@ public class HistoryPruner : IHistoryPruner
     }
 
     private bool LevelExists(long n, bool _)
-        => _chainLevelInfoRepository.LoadLevel(n) is not null;
+        => _chainLevelInfoRepository.LoadLevel(n) is not null && _chainLevelInfoRepository.LoadLevel(n + 1) is not null;
 
     private long? FindCutoffBlockNumber()
     {
