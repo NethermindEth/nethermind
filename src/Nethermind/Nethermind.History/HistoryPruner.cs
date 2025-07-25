@@ -141,13 +141,15 @@ public class HistoryPruner : IHistoryPruner
                     _deletePointer = oldestBlockNumber.Value;
                 }
 
+                _logger.Info($"Found oldest block on disk #{oldestBlockNumber ?? -1}");
+
                 SaveDeletePointer();
             }
         }
     }
 
     private bool LevelExists(long n, bool _)
-        => _chainLevelInfoRepository.LoadLevel(n) is not null && _chainLevelInfoRepository.LoadLevel(n + 1) is not null;
+        => _chainLevelInfoRepository.LoadLevel(n) is not null;
 
     private long? FindCutoffBlockNumber()
     {
@@ -253,10 +255,12 @@ public class HistoryPruner : IHistoryPruner
                 long number = block.Number;
                 Hash256 hash = block.Hash!;
 
+                if (_logger.IsInfo) _logger.Info($"Scanning block {block.Number} for deletion");
+
                 if (cancellationToken.IsCancellationRequested)
                 {
                     if (_logger.IsInfo) _logger.Info($"Pruning operation timed out at timestamp {cutoffTimestamp}. Deleted {deletedBlocks} blocks.");
-                    // break;
+                    break;
                 }
 
                 // should never happen
@@ -270,6 +274,7 @@ public class HistoryPruner : IHistoryPruner
                 {
                     batch?.Dispose();
                     batch = _chainLevelInfoRepository.StartBatch();
+                    if (_logger.IsInfo) _logger.Info($"Starting new deletion batch");
                 }
 
                 if (_logger.IsInfo && deletedBlocks % LoggingInterval == 0)
@@ -308,6 +313,10 @@ public class HistoryPruner : IHistoryPruner
                 if (_logger.IsInfo) _logger.Info($"Completed pruning operation up to timestamp {cutoffTimestamp}. Deleted {deletedBlocks} blocks up to #{_deletePointer}.");
                 _lastPrunedTimestamp = cutoffTimestamp;
             }
+            else
+            {
+                if (_logger.IsInfo) _logger.Info($"Pruning operation terminated early");
+            }
         }
     }
 
@@ -322,6 +331,7 @@ public class HistoryPruner : IHistoryPruner
             ChainLevelInfo? chainLevelInfo = _chainLevelInfoRepository.LoadLevel(i);
             if (chainLevelInfo is null)
             {
+                _logger.Info($"Skipping empty level {i}.");
                 continue;
             }
 
@@ -331,12 +341,14 @@ public class HistoryPruner : IHistoryPruner
                 Block? block = _blockTree.FindBlock(blockInfo.BlockHash, BlockTreeLookupOptions.None, blockInfo.BlockNumber);
                 if (block is null)
                 {
+                    _logger.Info($"Skipping block which wasn't found {i}.");
                     continue;
                 }
 
                 // search entire chain level before finishing
                 if (endSearch(block))
                 {
+                    _logger.Info($"Ending search on level {i}, block hash {blockInfo.BlockHash}.");
                     finished = true;
                 }
                 else
