@@ -123,10 +123,10 @@ static class Program
         });
         collection.AddSingleton<IAsyncProcessor>(provider =>
         {
-            int requestsPerSecond = parseResult.GetValue(Config.ConcurrentRequests);
-            if (requestsPerSecond > 1)
+            int concurrentRequests = parseResult.GetValue(Config.ConcurrentRequests);
+            if (concurrentRequests > 1)
             {
-                return new ConcurrentProcessor(requestsPerSecond);
+                return new ConcurrentProcessor(concurrentRequests);
             }
 
             return new SequentialProcessor();
