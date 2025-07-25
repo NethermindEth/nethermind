@@ -78,9 +78,10 @@ static class Program
             return provider;
         });
         collection.AddSingleton<IJsonRpcValidator>(
-            new ComposedJsonRpcValidator(
-                new NonErrorJsonRpcValidator(),
-                new NewPayloadJsonRpcValidator()));
+            new BatchJsonRpcValidator(
+                new ComposedJsonRpcValidator(
+                    new NonErrorJsonRpcValidator(),
+                    new NewPayloadJsonRpcValidator())));
         collection.AddSingleton<IJsonRpcMethodFilter>(
             new ComposedJsonRpcMethodFilter(
                 [..parseResult
