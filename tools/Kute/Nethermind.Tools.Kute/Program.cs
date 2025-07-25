@@ -32,7 +32,8 @@ static class Program
             Config.AuthTtl,
             Config.ConcurrentRequests,
             Config.ShowProgress,
-            Config.UnwrapBatch
+            Config.UnwrapBatch,
+            Config.PrometheusPushGateway
         ];
         rootCommand.SetAction(async (parseResult, cancellationToken) =>
         {
