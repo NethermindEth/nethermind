@@ -119,7 +119,12 @@ static class Program
                 ? new ConsoleProgressReporter()
                 : new NullMetricsReporter();
 
-            return new ComposedMetricsReporter([memoryReporter, progresReporter, consoleReporter]);
+            string? prometheusGateway = parseResult.GetValue(Config.PrometheusPushGateway);
+            IMetricsReporter prometheusReporter = prometheusGateway is not null
+                ? new PrometheusPushGatewayMetricsReporter(prometheusGateway)
+                : new NullMetricsReporter();
+
+            return new ComposedMetricsReporter([memoryReporter, progresReporter, consoleReporter, prometheusReporter]);
         });
         collection.AddSingleton<IAsyncProcessor>(provider =>
         {
