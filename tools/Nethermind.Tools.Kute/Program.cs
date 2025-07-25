@@ -1,6 +1,8 @@
 using App.Metrics.Formatters;
 using App.Metrics.Formatters.Ascii;
 using App.Metrics.Formatters.Json;
+using App.Metrics.Formatters.Prometheus;
+using App.Metrics.Formatters.Prometheus.Internal;
 using Microsoft.Extensions.DependencyInjection;
 using Nethermind.Tools.Kute.Auth;
 using Nethermind.Tools.Kute.FlowManager;
@@ -34,7 +36,11 @@ static class Program
             Config.MethodFilters,
             Config.ResponsesTraceFile,
             Config.RequestsPerSecond,
-            Config.UnwrapBatch
+            Config.UnwrapBatch,
+            Config.Tags,
+            Config.PrometheusEndpoint,
+            Config.PrometheusBasicAuthUsername,
+            Config.PrometheusBasicAuthPassword
         ];
         rootCommand.SetAction((parseResult, cancellationToken) =>
         {
@@ -56,7 +62,19 @@ static class Program
         string? responsesTraceFile = parseResult.GetValue(Config.ResponsesTraceFile);
         IServiceCollection collection = new ServiceCollection();
 
-        collection.AddSingleton<Application>();
+        collection.AddSingleton(
+            provider => new Application(
+                provider.GetRequiredService<IMessageProvider<JsonRpc?>>(),
+                provider.GetRequiredService<IJsonRpcSubmitter>(),
+                provider.GetRequiredService<IJsonRpcValidator>(),
+                provider.GetRequiredService<IResponseTracer>(),
+                provider.GetRequiredService<IProgressReporter>(),
+                provider.GetRequiredService<IMetricsConsumer>(),
+                provider.GetRequiredService<IJsonRpcMethodFilter>(),
+                provider.GetRequiredService<IJsonRpcFlowManager>(),
+                parseResult.GetValue(Config.Tags)
+            )
+        );
         collection.AddSingleton<ISystemClock, RealSystemClock>();
         collection.AddSingleton<HttpClient>();
         collection.AddSingleton<ISecretProvider>(new FileSecretProvider(parseResult.GetValue(Config.JwtSecretFilePath)!));
@@ -134,12 +152,39 @@ static class Program
 
             return new NullProgressReporter();
         });
-        collection.AddSingleton<IMetricsConsumer, ConsoleMetricsConsumer>();
-        collection.AddSingleton<IMetricsOutputFormatter>(
+        collection.AddSingleton<IMetricsConsumer>(
+            provider =>
+            {
+                var endpoint = parseResult.GetValue(Config.PrometheusEndpoint);
+                if (endpoint is not null)
+                {
+                    return new PrometheusMetricsConsumer(
+                        provider.GetRequiredService<HttpClient>(),
+                        provider.GetRequiredService<MetricsPrometheusTextOutputFormatter>(),
+                        endpoint,
+                        parseResult.GetValue(Config.PrometheusBasicAuthUsername),
+                        parseResult.GetValue(Config.PrometheusBasicAuthPassword)
+                    );
+                }
+                return new ConsoleMetricsConsumer(
+                    provider.GetRequiredService<IMetricsOutputFormatter>()
+                );
+            }
+        );
+        collection.AddSingleton(
+            new MetricsPrometheusTextOutputFormatter(
+                new MetricsPrometheusOptions()
+                {
+                    MetricNameFormatter = (_, metricName) => PrometheusFormatterConstants.MetricNameFormatter("kute", metricName),
+                }
+            )
+        );
+        collection.AddSingleton<IMetricsOutputFormatter>(provider =>
             parseResult.GetValue(Config.MetricsOutputFormatter) switch
             {
                 MetricsOutputFormatter.Report => new MetricsTextOutputFormatter(),
                 MetricsOutputFormatter.Json => new MetricsJsonOutputFormatter(),
+                MetricsOutputFormatter.Prometheus => provider.GetRequiredService<MetricsPrometheusTextOutputFormatter>(),
                 _ => throw new ArgumentOutOfRangeException(),
             }
         );
