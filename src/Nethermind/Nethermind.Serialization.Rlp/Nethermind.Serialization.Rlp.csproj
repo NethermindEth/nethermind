@@ -6,11 +6,8 @@
   </PropertyGroup>
 
   <ItemGroup>
+    <ProjectReference Include="..\DotNetty\src\DotNetty.Buffers\DotNetty.Buffers.csproj" />
     <ProjectReference Include="..\Nethermind.Core\Nethermind.Core.csproj" />
-  </ItemGroup>
-
-  <ItemGroup>
-    <PackageReference Include="Nethermind.DotNetty.Buffers" />
   </ItemGroup>
 
 </Project>

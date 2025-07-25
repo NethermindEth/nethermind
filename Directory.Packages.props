@@ -50,9 +50,6 @@
     <PackageVersion Include="Nethermind.Crypto.Bls" Version="1.0.5" />
     <PackageVersion Include="Nethermind.Crypto.SecP256k1" Version="1.4.1" />
     <PackageVersion Include="Nethermind.Crypto.SecP256r1" Version="1.0.0-preview.6" />
-    <PackageVersion Include="Nethermind.DotNetty.Buffers" Version="1.0.1" />
-    <PackageVersion Include="Nethermind.DotNetty.Handlers" Version="1.0.1" />
-    <PackageVersion Include="Nethermind.DotNetty.Transport" Version="1.0.1" />
     <PackageVersion Include="Nethermind.GmpBindings" Version="1.0.2" />
     <PackageVersion Include="Nethermind.Libp2p" Version="1.0.0-preview.45" />
     <PackageVersion Include="Nethermind.Libp2p.Protocols.PubsubPeerDiscovery" Version="1.0.0-preview.45" />
@@ -87,5 +84,8 @@
     <PackageVersion Include="TestableIO.System.IO.Abstractions.Wrappers" Version="22.0.14" />
     <PackageVersion Include="Websocket.Client" Version="5.2.0" />
     <PackageVersion Include="ZstdSharp.Port" Version="0.8.5" />
+    <PackageVersion Include="Microsoft.SourceLink.GitHub" Version="1.1.1" />
+    <PackageVersion Include="System.Runtime.CompilerServices.Unsafe" Version="6.0.0" />
+    <PackageVersion Include="System.Collections.Immutable"  Version="1.5.0" />
   </ItemGroup>
 </Project>

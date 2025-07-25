@@ -1,0 +1,44 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup Label="NuGet">
+    <TargetFrameworks>net6.0</TargetFrameworks>
+    <IsPackable>true</IsPackable>
+    <!--<PackageId>DotNetty.Common</PackageId>
+    <Description>DotNetty common routines</Description>
+    <Copyright>© Microsoft Corporation. All rights reserved.</Copyright>-->
+    <AssemblyTitle>DotNetty: common routines</AssemblyTitle>
+    <NeutralLanguage>en-US</NeutralLanguage>
+    <!--<VersionPrefix>0.7.6</VersionPrefix>
+    <Authors>Microsoft</Authors>-->
+    <NoWarn>$(NoWarn);CS1591</NoWarn>
+    <AllowUnsafeBlocks>True</AllowUnsafeBlocks>
+    <GenerateAssemblyInfo>false</GenerateAssemblyInfo>
+    <GenerateDocumentationFile>true</GenerateDocumentationFile>
+    <AssemblyName>DotNetty.Common</AssemblyName>
+    <AssemblyOriginatorKeyFile>../../DotNetty.snk</AssemblyOriginatorKeyFile>
+    <SignAssembly>true</SignAssembly>
+    <PublicSign Condition=" '$(OS)' != 'Windows_NT' ">true</PublicSign>
+    <!--<PackageTags>socket;tcp;protocol;netty;dotnetty;network</PackageTags>
+    <PackageProjectUrl>https://github.com/Azure/DotNetty/</PackageProjectUrl>
+    <PackageLicenseExpression>MIT</PackageLicenseExpression>
+    <RequireLicenseAcceptance>true</RequireLicenseAcceptance>
+    <RepositoryType>git</RepositoryType>
+    <RepositoryUrl>https://github.com/Azure/DotNetty/</RepositoryUrl>-->
+    <NetStandardImplicitPackageVersion>2.0.3</NetStandardImplicitPackageVersion>
+  </PropertyGroup>
+
+  <PropertyGroup>
+    <Description>DotNetty common routines</Description>
+    <PackageId>Nethermind.DotNetty.Common</PackageId>
+    <PackageTags>socket tcp protocol netty dotnetty network</PackageTags>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <Compile Include="..\shared\SharedAssemblyInfo.cs" Link="Properties\SharedAssemblyInfo.cs" />
+  </ItemGroup>
+  <ItemGroup>
+    <PackageReference Include="Microsoft.Extensions.Logging" />
+    <PackageReference Include="Microsoft.SourceLink.GitHub" />
+    <PackageReference Include="System.Runtime.CompilerServices.Unsafe" />
+  </ItemGroup>
+</Project>
