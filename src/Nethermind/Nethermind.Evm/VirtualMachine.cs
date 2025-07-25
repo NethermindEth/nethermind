@@ -95,7 +95,6 @@ public unsafe partial class VirtualMachineBase(
     private ReadOnlyMemory<byte>? _previousCallResult;
     private UInt256 _previousCallOutputDestination;
 
-    public ILogger Logger => _logger;
     public ICodeInfoRepository CodeInfoRepository => _codeInfoRepository;
     public IReleaseSpec Spec => _blockExecutionContext.Spec;
     public ITxTracer TxTracer => _txTracer;
@@ -116,8 +115,7 @@ public unsafe partial class VirtualMachineBase(
     /// </summary>
     public void SetTxExecutionContext(in TxExecutionContext txExecutionContext) => _txExecutionContext = txExecutionContext;
 
-    private EvmState _vmState;
-    public EvmState EvmState { get => _vmState; private set => _vmState = value; }
+    public EvmState EvmState { get => _currentState; private set => _currentState = value; }
     public int SectionIndex { get; set; }
 
     /// <summary>
