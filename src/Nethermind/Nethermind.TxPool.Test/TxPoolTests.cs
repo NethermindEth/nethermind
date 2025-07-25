@@ -2397,6 +2397,10 @@ namespace Nethermind.TxPool.Test
 
             Transaction[] txsA = { GetTx(TestItem.PrivateKeyA), GetTx(TestItem.PrivateKeyB) };
             Transaction[] txsB = { GetTx(TestItem.PrivateKeyC) };
+            
+            Transaction[] txsAc = { txsA[0].Clone(), txsA[1].Clone() };
+            Transaction[] txsBc = { txsB[0].Clone() };
+
 
             _txPool.SubmitTx(txsA[0], TxHandlingOptions.None).Should().Be(AcceptTxResult.Accepted);
             _txPool.SubmitTx(txsA[1], TxHandlingOptions.None).Should().Be(AcceptTxResult.Accepted);
@@ -2411,26 +2415,26 @@ namespace Nethermind.TxPool.Test
 
             _txPool.GetPendingTransactionsCount().Should().Be(txsB.Length);
             _txPool.GetPendingBlobTransactionsCount().Should().Be(0);
-            _txPool.TryGetPendingTransaction(txsA[0].Hash!, out _).Should().BeFalse();
-            _txPool.TryGetPendingTransaction(txsA[1].Hash!, out _).Should().BeFalse();
-            _txPool.TryGetPendingTransaction(txsB[0].Hash!, out _).Should().BeTrue();
+            _txPool.TryGetPendingTransaction(txsAc[0].Hash!, out _).Should().BeFalse();
+            _txPool.TryGetPendingTransaction(txsAc[1].Hash!, out _).Should().BeFalse();
+            _txPool.TryGetPendingTransaction(txsBc[0].Hash!, out _).Should().BeTrue();
 
             // reorganized from block A to block B
-            Block blockB = Build.A.Block.WithNumber(blockNumber).WithTransactions(txsB).TestObject;
+            Block blockB = Build.A.Block.WithNumber(blockNumber).WithTransactions(txsBc).TestObject;
             await RaiseBlockAddedToMainAndWaitForNewHead(blockB, blockA);
 
             // tx from block B should be removed from tx pool
-            _txPool.TryGetPendingTransaction(txsB[0].Hash!, out _).Should().BeFalse();
+            _txPool.TryGetPendingTransaction(txsBc[0].Hash!, out _).Should().BeFalse();
 
             // txs from reorganized blockA should be readded to tx pool
             _txPool.GetPendingTransactionsCount().Should().Be(txsA.Length);
-            _txPool.TryGetPendingTransaction(txsA[0].Hash!, out Transaction tx1).Should().BeTrue();
-            _txPool.TryGetPendingTransaction(txsA[1].Hash!, out Transaction tx2).Should().BeTrue();
+            _txPool.TryGetPendingTransaction(txsAc[0].Hash!, out Transaction tx1).Should().BeTrue();
+            _txPool.TryGetPendingTransaction(txsAc[1].Hash!, out Transaction tx2).Should().BeTrue();
 
-            tx1.Should().BeEquivalentTo(txsA[0], static options => options
+            tx1.Should().BeEquivalentTo(txsAc[0], static options => options
                 .Excluding(static t => t.PoolIndex));      // ...as well as PoolIndex
 
-            tx2.Should().BeEquivalentTo(txsA[1], static options => options
+            tx2.Should().BeEquivalentTo(txsAc[1], static options => options
                 .Excluding(static t => t.PoolIndex));      // ...as well as PoolIndex
         }
 

@@ -136,6 +136,9 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V65
 
                 if (_txPool.TryGetPendingTransaction(hash, out Transaction tx))
                 {
+                    tx.MarkBroadcasting();
+                    if (tx.IsDisposed) continue;
+
                     int txSize = tx.GetLength();
 
                     if (txSize > packetSizeLeft && txsToSend.Count > 0)

@@ -27,7 +27,14 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62.Messages
         public override void Dispose()
         {
             base.Dispose();
-            Transactions?.Dispose();
+            if (Transactions is null) return;
+
+            foreach (Transaction tx in Transactions.AsSpan())
+            {
+                tx.UnmarkBroadcasting();
+            }
+
+            Transactions.Dispose();
         }
     }
 }
