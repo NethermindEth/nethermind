@@ -1,0 +1,47 @@
+﻿<?xml version="1.0" encoding="utf-8"?><Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup Label="NuGet">
+    <TargetFrameworks>net6.0</TargetFrameworks>
+    <IsPackable>true</IsPackable>
+    <!--<Description>Buffer management in DotNetty</Description>
+    <Copyright>© Microsoft Corporation. All rights reserved.</Copyright>-->
+    <AssemblyTitle>DotNetty: buffer management</AssemblyTitle>
+    <NeutralLanguage>en-US</NeutralLanguage>
+    <!--<VersionPrefix>0.7.6</VersionPrefix>
+    <Authors>Microsoft</Authors>-->
+    <NoWarn>$(NoWarn);CS1591</NoWarn>
+    <AllowUnsafeBlocks>True</AllowUnsafeBlocks>
+    <GenerateAssemblyInfo>false</GenerateAssemblyInfo>
+    <GenerateDocumentationFile>true</GenerateDocumentationFile>
+    <AssemblyName>DotNetty.Buffers</AssemblyName>
+    <AssemblyOriginatorKeyFile>../../DotNetty.snk</AssemblyOriginatorKeyFile>
+    <SignAssembly>true</SignAssembly>
+    <PublicSign Condition=" '$(OS)' != 'Windows_NT' ">true</PublicSign>
+    <!--<PackageId>DotNetty.Buffers</PackageId>
+    <PackageTags>socket;tcp;protocol;netty;dotnetty;network</PackageTags>
+    <PackageProjectUrl>https://github.com/Azure/DotNetty/</PackageProjectUrl>
+    <PackageLicenseExpression>MIT</PackageLicenseExpression>
+    <RequireLicenseAcceptance>true</RequireLicenseAcceptance>
+    <RepositoryUrl>https://github.com/Azure/DotNetty/</RepositoryUrl>-->
+    <NetStandardImplicitPackageVersion Condition=" '$(TargetFramework)' == 'netstandard2.0' ">2.0.3</NetStandardImplicitPackageVersion>
+  </PropertyGroup>
+
+  <PropertyGroup>
+    <Description>Buffer management in DotNetty</Description>
+    <PackageId>Nethermind.DotNetty.Buffers</PackageId>
+    <PackageTags>socket tcp protocol netty dotnetty network</PackageTags>
+  </PropertyGroup>
+  
+  <ItemGroup>
+    <Compile Include="..\shared\SharedAssemblyInfo.cs" Link="Properties\SharedAssemblyInfo.cs" />
+  </ItemGroup>
+  <ItemGroup>
+    <PackageReference Include="Microsoft.SourceLink.GitHub" >
+      <PrivateAssets>all</PrivateAssets>
+      <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
+    </PackageReference>
+    <PackageReference Include="System.Runtime.CompilerServices.Unsafe"/>
+  </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\DotNetty.Common\DotNetty.Common.csproj" />
+  </ItemGroup>
+</Project>
