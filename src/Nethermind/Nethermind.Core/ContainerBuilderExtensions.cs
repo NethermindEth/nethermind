@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Collections.Generic;
 using System.Linq;
 using System.Reflection;
 using Autofac;
@@ -386,9 +387,12 @@ public static class ContainerBuilderExtensions
         return builder;
     }
 
-    public static ContainerBuilder AddModule(this ContainerBuilder builder, IModule module)
+    public static ContainerBuilder AddModule(this ContainerBuilder builder, params IReadOnlyList<IModule> modules)
     {
-        builder.RegisterModule(module);
+        foreach (IModule module in modules)
+        {
+            builder.RegisterModule(module);
+        }
 
         return builder;
     }

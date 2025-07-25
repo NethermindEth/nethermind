@@ -178,12 +178,12 @@ namespace Nethermind.Consensus.AuRa
 
             return args;
         }
+    }
 
-        private class NullAuRaValidator : IAuRaValidator
-        {
-            public Address[] Validators => [];
-            public void OnBlockProcessingStart(Block block, ProcessingOptions options = ProcessingOptions.None) { }
-            public void OnBlockProcessingEnd(Block block, TxReceipt[] receipts, ProcessingOptions options = ProcessingOptions.None) { }
-        }
+    public class NullAuRaValidator : IAuRaValidator
+    {
+        public Address[] Validators => [];
+        public void OnBlockProcessingStart(Block block, ProcessingOptions options = ProcessingOptions.None) { }
+        public void OnBlockProcessingEnd(Block block, TxReceipt[] receipts, ProcessingOptions options = ProcessingOptions.None) { }
     }
 }

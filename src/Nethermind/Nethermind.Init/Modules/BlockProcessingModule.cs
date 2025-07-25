@@ -15,6 +15,7 @@ using Nethermind.Consensus.Rewards;
 using Nethermind.Consensus.Validators;
 using Nethermind.Consensus.Withdrawals;
 using Nethermind.Core;
+using Nethermind.Core.Container;
 using Nethermind.Core.Specs;
 using Nethermind.Evm;
 using Nethermind.State.OverridableEnv;
@@ -58,8 +59,9 @@ public class BlockProcessingModule : Module
             .AddSingleton<IOverridableEnvFactory, OverridableEnvFactory>()
             .AddScopedOpenGeneric(typeof(IOverridableEnv<>), typeof(DisposableScopeOverridableEnv<>))
 
-            // Transaction executor used by main block validation and rpc.
-            .AddScoped<IValidationTransactionExecutor, BlockProcessor.BlockValidationTransactionsExecutor>()
+            // Some configuration that applies to validation and rpc but not to block producer. Plugins can add
+            // modules in case they have special case where it only apply to validation and rpc but not block producer.
+            .AddSingleton<IBlockValidationModule, StandardBlockValidationModule>()
 
             // Block production components
             .AddSingleton<IRewardCalculatorSource>(NoBlockRewards.Instance)
@@ -78,5 +80,12 @@ public class BlockProcessingModule : Module
                     blocksConfig.MinGasPrice
                 ))
             ;
+    }
+
+    private class StandardBlockValidationModule : Module, IBlockValidationModule
+    {
+        protected override void Load(ContainerBuilder builder) => builder
+            .AddScoped<IBlockProcessor.IBlockTransactionsExecutor, BlockProcessor.BlockValidationTransactionsExecutor>()
+            .AddScoped<ITransactionProcessorAdapter, ExecuteTransactionProcessorAdapter>();
     }
 }
