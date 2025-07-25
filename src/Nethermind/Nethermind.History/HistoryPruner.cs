@@ -109,7 +109,7 @@ public class HistoryPruner : IHistoryPruner
             {
                 long? cutoff = CutoffBlockNumber;
                 long? toDelete = cutoff is null ? null : long.Min(cutoff!.Value, _blockTree.SyncPivot.BlockNumber) - _deletePointer;
-                _logger.Info($"Pruning historical blocks up to timestamp {cutoffTimestamp} (#{(cutoff is null ? "unknown" : cutoff)}). Estimated {(toDelete is null ? "unknown" : toDelete)} blocks will be deleted. SyncPivot={_blockTree.SyncPivot.BlockNumber}");
+                _logger.Info($"Pruning historical blocks up to timestamp {cutoffTimestamp} (#{(cutoff is null ? "unknown" : cutoff)}). Estimated {(toDelete is null ? "unknown" : toDelete)} blocks will be deleted. SyncPivot={_blockTree.SyncPivot.BlockNumber} DeletePointer={_deletePointer}");
             }
 
             PruneBlocksAndReceipts(cutoffTimestamp!.Value, cancellationToken);
