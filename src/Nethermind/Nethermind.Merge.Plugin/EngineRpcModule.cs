@@ -3,6 +3,7 @@
 
 using System;
 using System.Collections.Generic;
+using Nethermind.Core.Collections;
 using Nethermind.Api;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
@@ -34,6 +35,8 @@ public partial class EngineRpcModule : IEngineRpcModule
         IHandler<TransitionConfigurationV1, TransitionConfigurationV1> transitionConfigurationHandler,
         IHandler<IEnumerable<string>, IEnumerable<string>> capabilitiesHandler,
         IAsyncHandler<byte[][], IEnumerable<BlobAndProofV1?>> getBlobsHandler,
+        IHandler<ArrayPoolList<byte[]>> getInclusionListTransactionsHandler,
+        IHandler<(string, byte[][]), string?> updatePayloadWithInclusionListHandler,
         IAsyncHandler<byte[][], IEnumerable<BlobAndProofV2>?> getBlobsHandlerV2,
         IEngineRequestsTracker engineRequestsTracker,
         ISpecProvider specProvider,
@@ -52,6 +55,8 @@ public partial class EngineRpcModule : IEngineRpcModule
         _executionGetPayloadBodiesByRangeV1Handler = executionGetPayloadBodiesByRangeV1Handler;
         _transitionConfigurationHandler = transitionConfigurationHandler;
         _getBlobsHandler = getBlobsHandler;
+        _getInclusionListTransactionsHandler = getInclusionListTransactionsHandler;
+        _updatePayloadWithInclusionListHandler = updatePayloadWithInclusionListHandler;
         _getBlobsHandlerV2 = getBlobsHandlerV2;
         _engineRequestsTracker = engineRequestsTracker;
         _specProvider = specProvider ?? throw new ArgumentNullException(nameof(specProvider));

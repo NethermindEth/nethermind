@@ -31,17 +31,91 @@ namespace Nethermind.Consensus.Processing
 
         public void RecoverData(Block block)
         {
-            Transaction[] txs = block.Transactions;
+            IReleaseSpec spec = _specProvider.GetSpec(block.Header);
+            RecoverData(block.Transactions, spec, true);
+            if (block.InclusionListTransactions is not null)
+            {
+                RecoverData(block.InclusionListTransactions, spec, false);
+            }
+        }
+
+        public void RecoverData(Transaction[] txs, IReleaseSpec releaseSpec, bool checkFirst)
+        {
             if (txs.Length == 0)
                 return;
 
             Transaction firstTx = txs[0];
-            if (firstTx.IsSigned && firstTx.SenderAddress is not null)
+            if (checkFirst && firstTx.IsSigned && firstTx.SenderAddress is not null)
                 // already recovered a sender for a signed tx in this block,
                 // so we assume the rest of txs in the block are already recovered
                 return;
 
-            IReleaseSpec releaseSpec = _specProvider.GetSpec(block.Header);
+            // ParallelUnbalancedWork.For(
+            //     0,
+            //     txs.Length,
+            //     ParallelUnbalancedWork.DefaultOptions,
+            //     txs,
+            //     static (i, txs) =>
+            // {
+            //     Transaction tx = txs[i];
+            //     if (!tx.IsHashCalculated)
+            //     {
+            //         tx.CalculateHashInternal();
+            //     }
+
+            //     return txs;
+            // });
+
+
+            // int recoverFromEcdsa = 0;
+            // // Don't access txPool in Parallel loop as increases contention
+            // foreach (Transaction tx in txs)
+            // {
+            //     if (!ShouldRecoverSignatures(tx))
+            //         continue;
+
+            //     Transaction? poolTx = null;
+            //     try
+            //     {
+            //         _txPool.TryGetPendingTransaction(tx.Hash, out poolTx);
+            //     }
+            //     catch (Exception e)
+            //     {
+            //         if (_logger.IsError) _logger.Error($"An error occurred while getting a pending transaction from TxPool, Transaction: {tx}", e);
+            //     }
+
+            //     Address sender = poolTx?.SenderAddress;
+            //     if (sender is not null)
+            //     {
+            //         tx.SenderAddress = sender;
+
+            //         if (_logger.IsTrace) _logger.Trace($"Recovered {tx.SenderAddress} sender for {tx.Hash} (tx pool cached value: {sender})");
+            //     }
+            //     else
+            //     {
+            //         recoverFromEcdsa++;
+            //     }
+
+            //     if (poolTx is not null && tx.HasAuthorizationList)
+            //     {
+            //         for (int i = 0; i < tx.AuthorizationList.Length; i++)
+            //         {
+            //             if (poolTx.AuthorizationList[i].Authority is not null)
+            //             {
+            //                 tx.AuthorizationList[i].Authority = poolTx.AuthorizationList[i].Authority;
+            //             }
+            //             else if (tx.AuthorizationList[i].Authority is null)
+            //             {
+            //                 recoverFromEcdsa++;
+            //             }
+            //         }
+            //     }
+            // }
+
+            // if (recoverFromEcdsa == 0)
+            //     return;
+
+            // IReleaseSpec releaseSpec = _specProvider.GetSpec(block.Header);
             bool useSignatureChainId = !releaseSpec.ValidateChainId;
             if (txs.Length > 3)
             {
