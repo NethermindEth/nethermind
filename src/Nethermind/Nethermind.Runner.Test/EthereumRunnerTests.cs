@@ -300,6 +300,8 @@ public class EthereumRunnerTests
                 typeof(IProtectedPrivateKey),
                 typeof(PublicKey),
                 typeof(IPrivateKeyGenerator),
+                typeof(INetworkStorage),
+                typeof(NetworkStorage),
                 typeof(ITracer), // Completely different construction on every case
                 typeof(IReadOnlyStateProvider), // For which block? Use IChainHeadInfoProvider, or preferably, IStateReader instead
                 typeof(string),

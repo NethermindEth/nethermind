@@ -279,7 +279,8 @@ namespace Nethermind.Network
 
             await foreach (Node node in _nodeSource.DiscoverNodes(token))
             {
-                while (PeerCount >= _networkConfig.MaxCandidatePeerCount && ActivePeerCount >= _networkConfig.MaxActivePeers)
+                while (PeerCount >= _networkConfig.CandidatePeerCountCleanupThreshold ||
+                       (PeerCount >= _networkConfig.MaxCandidatePeerCount && ActivePeerCount >= _networkConfig.MaxActivePeers))
                 {
                     if (_logger.IsDebug) _logger.Debug("Peer cleanup threshold reached. Throttling discovery.");
                     await Task.Delay(1000, token);
