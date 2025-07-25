@@ -196,7 +196,7 @@ public class HistoryPruner : IHistoryPruner
                     }
                     attempts++;
                     return afterCutoff;
-                }, _ => { });
+                });
             }
 
             // if linear search fails fallback to  binary search
@@ -311,22 +311,16 @@ public class HistoryPruner : IHistoryPruner
     }
 
     private IEnumerable<Block> GetBlocksBeforeTimestamp(ulong cutoffTimestamp)
-        => GetBlocksByNumber(_deletePointer, _blockTree.SyncPivot.BlockNumber, b => b.Timestamp >= cutoffTimestamp, i => _deletePointer = i);
+        => GetBlocksByNumber(_deletePointer, _blockTree.SyncPivot.BlockNumber, b => b.Timestamp >= cutoffTimestamp);
 
-    private IEnumerable<Block> GetBlocksByNumber(long from, long to, Predicate<Block> endSearch, Action<long> onFirstBlock)
+    private IEnumerable<Block> GetBlocksByNumber(long from, long to, Predicate<Block> endSearch)
     {
-        bool firstBlock = true;
         for (long i = from; i <= to; i++)
         {
             ChainLevelInfo? chainLevelInfo = _chainLevelInfoRepository.LoadLevel(i);
             if (chainLevelInfo is null)
             {
                 continue;
-            }
-            else if (firstBlock)
-            {
-                onFirstBlock(i);
-                firstBlock = false;
             }
 
             bool finished = false;
