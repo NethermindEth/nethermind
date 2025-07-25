@@ -4,8 +4,8 @@
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
+using System.Threading.Tasks;
 using Autofac;
-using NUnit.Framework;
 using Nethermind.Config;
 using Nethermind.Consensus.Validators;
 using Nethermind.Core;
@@ -14,17 +14,17 @@ using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Modules;
 using Nethermind.Crypto;
-using Nethermind.Int256;
 using Nethermind.Evm;
 using Nethermind.Evm.EvmObjectFormat;
-using Nethermind.Evm.Tracing;
 using Nethermind.Evm.State;
+using Nethermind.Evm.Tracing;
 using Nethermind.Evm.TransactionProcessing;
+using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.Specs;
 using Nethermind.Specs.Forks;
 using Nethermind.Specs.Test;
-using Nethermind.State;
+using NUnit.Framework;
 
 namespace Ethereum.Test.Base
 {
@@ -52,12 +52,12 @@ namespace Ethereum.Test.Base
             _logger = _logManager.GetClassLogger();
         }
 
-        protected EthereumTestResult RunTest(GeneralStateTest test)
+        protected Task<EthereumTestResult> RunTest(GeneralStateTest test)
         {
             return RunTest(test, NullTxTracer.Instance);
         }
 
-        protected EthereumTestResult RunTest(GeneralStateTest test, ITxTracer txTracer)
+        protected async Task<EthereumTestResult> RunTest(GeneralStateTest test, ITxTracer txTracer)
         {
             _logger.Info($"Running {test.Name} at {DateTime.UtcNow:HH:mm:ss.ffffff}");
             Assert.That(test.LoadFailure, Is.Null, "test data loading failure");
@@ -88,7 +88,7 @@ namespace Ethereum.Test.Base
             IWorldState stateProvider = mainBlockProcessingContext.WorldState;
             ITransactionProcessor transactionProcessor = mainBlockProcessingContext.TransactionProcessor;
 
-            InitializeTestState(test.Pre, stateProvider, specProvider);
+            await InitializeTestState(test.Pre, stateProvider, specProvider);
 
             BlockHeader header = new(
                 test.PreviousHash,
@@ -165,6 +165,7 @@ namespace Ethereum.Test.Base
             {
                 stateProvider.Reset();
             }
+            await stateProvider.WaitForCodeCommit();
 
             List<string> differences = RunAssertions(test, stateProvider);
             EthereumTestResult testResult = new(test.Name, test.ForkName, differences.Count == 0);
@@ -180,7 +181,7 @@ namespace Ethereum.Test.Base
             return testResult;
         }
 
-        public static void InitializeTestState(Dictionary<Address, AccountState> preState, IWorldState stateProvider, ISpecProvider specProvider)
+        public static async Task InitializeTestState(Dictionary<Address, AccountState> preState, IWorldState stateProvider, ISpecProvider specProvider)
         {
             foreach (KeyValuePair<Address, AccountState> accountState in preState)
             {
@@ -198,6 +199,7 @@ namespace Ethereum.Test.Base
             stateProvider.Commit(specProvider.GenesisSpec);
             stateProvider.CommitTree(0);
             stateProvider.Reset();
+            await stateProvider.WaitForCodeCommit();
         }
 
         private List<string> RunAssertions(GeneralStateTest test, IWorldState stateProvider)

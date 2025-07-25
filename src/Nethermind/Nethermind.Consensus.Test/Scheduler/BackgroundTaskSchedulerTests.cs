@@ -29,6 +29,12 @@ public class BackgroundTaskSchedulerTests
         _chainHeadInfo.IsSyncing.Returns(false);
     }
 
+    [TearDown]
+    public async Task TearDown()
+    {
+        await _blockProcessor.DisposeAsync();
+    }
+
     [Test]
     public async Task Test_task_will_execute()
     {

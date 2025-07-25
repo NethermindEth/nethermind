@@ -4,6 +4,7 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Threading.Tasks;
 using FluentAssertions;
 using Nethermind.Blockchain.Filters;
 using Nethermind.Blockchain.Test.Builders;
@@ -40,9 +41,10 @@ public class FilterManagerTests
     }
 
     [TearDown]
-    public void TearDown()
+    public async Task TearDown()
     {
         _filterStore.Dispose();
+        await _blockProcessor.DisposeAsync();
     }
 
     [Test, MaxTime(Timeout.MaxTestTime)]

@@ -26,6 +26,12 @@ namespace Nethermind.Consensus.Processing
             _processor = processor ?? throw new ArgumentNullException(nameof(processor));
         }
 
+        public event EventHandler<BlockRemovedEventArgs>? BlockRemoved
+        {
+            add => _processor.BlockRemoved += value;
+            remove => _processor.BlockRemoved -= value;
+        }
+
         public void Start()
         {
             _processor.Start();

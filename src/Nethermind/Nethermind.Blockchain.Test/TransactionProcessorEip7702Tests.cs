@@ -24,6 +24,7 @@ using Nethermind.Blockchain.Tracing;
 using Nethermind.Core.Test;
 using Nethermind.Int256;
 using Nethermind.State;
+using System.Threading.Tasks;
 
 namespace Nethermind.Evm.Test;
 
@@ -89,7 +90,7 @@ internal class TransactionProcessorEip7702Tests
         yield return new object[] { Prepare.EvmCode.Op(Instruction.GAS).Done, false };
     }
     [TestCaseSource(nameof(DelegatedAndNotDelegatedCodeCases))]
-    public void Execute_TxHasAuthorizationCodeButAuthorityHasCode_OnlyInsertIfExistingCodeIsDelegated(byte[] authorityCode, bool shouldInsert)
+    public async Task Execute_TxHasAuthorizationCodeButAuthorityHasCode_OnlyInsertIfExistingCodeIsDelegated(byte[] authorityCode, bool shouldInsert)
     {
         PrivateKey sender = TestItem.PrivateKeyA;
         PrivateKey signer = TestItem.PrivateKeyB;
@@ -117,6 +118,8 @@ internal class TransactionProcessorEip7702Tests
             .WithGasLimit(10000000).TestObject;
 
         _transactionProcessor.Execute(tx, new BlockExecutionContext(block.Header, _specProvider.GetSpec(block.Header)), NullTxTracer.Instance);
+        _stateProvider.Commit(Prague.Instance, true);
+        await _stateProvider.WaitForCodeCommit();
 
         ReadOnlySpan<byte> signerCode = _stateProvider.GetCode(signer.Address);
 
@@ -175,7 +178,7 @@ internal class TransactionProcessorEip7702Tests
     }
 
     [TestCaseSource(nameof(DifferentAuthorityTupleValues))]
-    public void Execute_AuthorityTupleHasDifferentData_EOACodeIsEmptyOrAsExpected(ulong chainId, ulong nonce, bool expectDelegation)
+    public async Task Execute_AuthorityTupleHasDifferentData_EOACodeIsEmptyOrAsExpected(ulong chainId, ulong nonce, bool expectDelegation)
     {
         PrivateKey sender = TestItem.PrivateKeyA;
         PrivateKey signer = TestItem.PrivateKeyB;
@@ -202,6 +205,8 @@ internal class TransactionProcessorEip7702Tests
             .WithGasLimit(10000000).TestObject;
 
         _transactionProcessor.Execute(tx, new BlockExecutionContext(block.Header, _specProvider.GetSpec(block.Header)), NullTxTracer.Instance);
+        _stateProvider.Commit(Prague.Instance, true);
+        await _stateProvider.WaitForCodeCommit();
 
         byte[]? actual = _stateProvider.GetCode(signer.Address);
         Assert.That(Eip7702Constants.IsDelegatedCode(actual), Is.EqualTo(expectDelegation));
@@ -209,7 +214,7 @@ internal class TransactionProcessorEip7702Tests
 
     [TestCase(ulong.MaxValue, false)]
     [TestCase(ulong.MaxValue - 1, true)]
-    public void Execute_AuthorityNonceHasMaxValueOrBelow_MaxValueNonceIsNotAllowed(ulong nonce, bool expectDelegation)
+    public async Task Execute_AuthorityNonceHasMaxValueOrBelow_MaxValueNonceIsNotAllowed(ulong nonce, bool expectDelegation)
     {
         PrivateKey sender = TestItem.PrivateKeyA;
         PrivateKey signer = TestItem.PrivateKeyB;
@@ -230,6 +235,8 @@ internal class TransactionProcessorEip7702Tests
             .WithGasLimit(10000000).TestObject;
 
         _transactionProcessor.Execute(tx, new BlockExecutionContext(block.Header, _specProvider.GetSpec(block.Header)), NullTxTracer.Instance);
+        _stateProvider.Commit(Prague.Instance, true);
+        await _stateProvider.WaitForCodeCommit();
 
         byte[]? actual = _stateProvider.GetCode(signer.Address);
         Assert.That(Eip7702Constants.IsDelegatedCode(actual), Is.EqualTo(expectDelegation));
@@ -313,7 +320,7 @@ internal class TransactionProcessorEip7702Tests
         yield return new object[] { revertExecution };
     }
     [TestCaseSource(nameof(EvmExecutionErrorCases))]
-    public void Execute_TxWithDelegationRunsOutOfGas_DelegationRefundIsStillApplied(byte[] executionErrorCode)
+    public async Task Execute_TxWithDelegationRunsOutOfGas_DelegationRefundIsStillApplied(byte[] executionErrorCode)
     {
         PrivateKey sender = TestItem.PrivateKeyA;
         Address codeSource = TestItem.AddressB;
@@ -321,6 +328,8 @@ internal class TransactionProcessorEip7702Tests
         _stateProvider.CreateAccount(codeSource, 0);
         _stateProvider.InsertCode(codeSource, executionErrorCode, Prague.Instance);
         _stateProvider.CreateAccount(sender.Address, 1.Ether());
+        _stateProvider.Commit(Prague.Instance, true);
+        await _stateProvider.WaitForCodeCommit();
 
         const long gasLimit = 10_000_000;
         Transaction tx = Build.A.Transaction
@@ -349,7 +358,7 @@ internal class TransactionProcessorEip7702Tests
     }
 
     [Test]
-    public void Execute_TxAuthorizationListWithBALANCE_WarmAccountReadGasIsCharged()
+    public async Task Execute_TxAuthorizationListWithBALANCE_WarmAccountReadGasIsCharged()
     {
         PrivateKey sender = TestItem.PrivateKeyA;
         PrivateKey signer = TestItem.PrivateKeyB;
@@ -361,6 +370,8 @@ internal class TransactionProcessorEip7702Tests
             .Op(Instruction.BALANCE)
             .Done;
         DeployCode(codeSource, code);
+        _stateProvider.Commit(Prague.Instance, true);
+        await _stateProvider.WaitForCodeCommit();
 
         Transaction tx = Build.A.Transaction
             .WithType(TxType.SetCode)
@@ -392,7 +403,7 @@ internal class TransactionProcessorEip7702Tests
 
     [TestCase(2)]
     [TestCase(1)]
-    public void Execute_AuthorizationListHasSameAuthorityButDifferentCode_OnlyLastInstanceIsUsed(int expectedStoredValue)
+    public async Task Execute_AuthorizationListHasSameAuthorityButDifferentCode_OnlyLastInstanceIsUsed(int expectedStoredValue)
     {
         PrivateKey sender = TestItem.PrivateKeyA;
         PrivateKey signer = TestItem.PrivateKeyB;
@@ -413,6 +424,8 @@ internal class TransactionProcessorEip7702Tests
             .Op(Instruction.SSTORE)
             .Done;
         DeployCode(secondCodeSource, secondCode);
+        _stateProvider.Commit(Prague.Instance, true);
+        await _stateProvider.WaitForCodeCommit();
 
         AuthorizationTuple[] authList = [
             _ethereumEcdsa.Sign(
@@ -439,6 +452,8 @@ internal class TransactionProcessorEip7702Tests
             .WithGasLimit(10000000).TestObject;
 
         _transactionProcessor.Execute(tx, new BlockExecutionContext(block.Header, _specProvider.GetSpec(block.Header)), NullTxTracer.Instance);
+        _stateProvider.Commit(Prague.Instance, true);
+        await _stateProvider.WaitForCodeCommit();
 
         Assert.That(_stateProvider.Get(new StorageCell(signer.Address, 0)).ToArray(), Is.EquivalentTo(new[] { expectedStoredValue }));
     }
@@ -776,7 +791,7 @@ internal class TransactionProcessorEip7702Tests
         };
     }
     [TestCaseSource(nameof(AccountAccessGasCases))]
-    public void Execute_DiffentAccountAccessOpcodes_ChargesCorrectAccountAccessGas(byte[] code, long expectedGas, bool isDelegated, long gasLimit, bool shouldRunOutOfGas)
+    public async Task Execute_DiffentAccountAccessOpcodes_ChargesCorrectAccountAccessGas(byte[] code, long expectedGas, bool isDelegated, long gasLimit, bool shouldRunOutOfGas)
     {
         PrivateKey signer = TestItem.PrivateKeyA;
         PrivateKey sender = TestItem.PrivateKeyB;
@@ -792,6 +807,8 @@ internal class TransactionProcessorEip7702Tests
         }
 
         DeployCode(codeSource, code);
+        _stateProvider.Commit(Prague.Instance, true);
+        await _stateProvider.WaitForCodeCommit();
 
         Transaction tx = Build.A.Transaction
             .WithType(TxType.EIP1559)
@@ -805,6 +822,8 @@ internal class TransactionProcessorEip7702Tests
             .WithGasLimit(10000000).TestObject;
         EstimateGasTracer estimateGasTracer = new();
         _ = _transactionProcessor.Execute(tx, new BlockExecutionContext(block.Header, _specProvider.GetSpec(block.Header)), estimateGasTracer);
+        _stateProvider.Commit(Prague.Instance, true);
+        await _stateProvider.WaitForCodeCommit();
 
         Assert.That(estimateGasTracer.GasSpent, Is.EqualTo(expectedGas));
         if (shouldRunOutOfGas)
@@ -914,7 +933,7 @@ internal class TransactionProcessorEip7702Tests
 
 
     [Test]
-    public void Execute_SetNormalDelegationAndThenSetDelegationWithZeroAddress_AccountCodeIsReset()
+    public async Task Execute_SetNormalDelegationAndThenSetDelegationWithZeroAddress_AccountCodeIsReset()
     {
         PrivateKey authority = TestItem.PrivateKeyA;
         PrivateKey sender = TestItem.PrivateKeyB;
@@ -941,6 +960,7 @@ internal class TransactionProcessorEip7702Tests
         var blkCtx = new BlockExecutionContext(block.Header, _specProvider.GetSpec(block.Header));
         _transactionProcessor.Execute(tx, blkCtx, NullTxTracer.Instance);
         _stateProvider.CommitTree(block.Number);
+        await _stateProvider.WaitForCodeCommit();
 
         byte[]? actual = _stateProvider.GetCode(authority.Address);
         Assert.That(Eip7702Constants.IsDelegatedCode(actual), Is.True);
@@ -959,6 +979,9 @@ internal class TransactionProcessorEip7702Tests
             .WithGasLimit(10000000).TestObject;
 
         _transactionProcessor.Execute(tx, blkCtx, NullTxTracer.Instance);
+        _stateProvider.Commit(Prague.Instance, true);
+        await _stateProvider.WaitForCodeCommit();
+
         actual = _stateProvider.GetCode(authority.Address);
 
         Assert.That(actual, Is.EqualTo(Array.Empty<byte>()));

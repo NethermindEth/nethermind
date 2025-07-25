@@ -97,6 +97,7 @@ public class EthSimulateTestsSimplePrecompiles : EthRpcSimulateTestsBase
 
         SimulateOutput<SimulateCallResult> result = chain.Bridge.Simulate(chain.BlockFinder.Head?.Header!, payload, new SimulateBlockMutatorTracerFactory(), CancellationToken.None);
 
+        Assert.That(result.Error, Is.Null);
         byte[] addressBytes = result.Items[0].Calls.First().ReturnData!.SliceWithZeroPaddingEmptyOnError(12, 20);
         Address resultingAddress = new(addressBytes);
         Assert.That(resultingAddress, Is.EqualTo(TestItem.AddressE));

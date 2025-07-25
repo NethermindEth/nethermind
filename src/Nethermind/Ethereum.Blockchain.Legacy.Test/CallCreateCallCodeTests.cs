@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Collections.Generic;
+using System.Threading.Tasks;
 using Ethereum.Test.Base;
 using NUnit.Framework;
 
@@ -12,9 +13,9 @@ namespace Ethereum.Blockchain.Legacy.Test
     public class CallCreateCallCodeTests : GeneralStateTestBase
     {
         [TestCaseSource(nameof(LoadTests))]
-        public void Test(GeneralStateTest test)
+        public async Task Test(GeneralStateTest test)
         {
-            Assert.That(RunTest(test).Pass, Is.True);
+            Assert.That((await RunTest(test)).Pass, Is.True);
         }
 
         public static IEnumerable<GeneralStateTest> LoadTests()

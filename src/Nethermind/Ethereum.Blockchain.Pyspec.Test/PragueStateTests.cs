@@ -1,5 +1,5 @@
 using System.Collections.Generic;
-using System.Linq;
+using System.Threading.Tasks;
 using Ethereum.Test.Base;
 using FluentAssertions;
 using NUnit.Framework;
@@ -11,7 +11,7 @@ namespace Ethereum.Blockchain.Pyspec.Test;
 public class PragueStateTests : GeneralStateTestBase
 {
     [TestCaseSource(nameof(LoadTests))]
-    public void Test(GeneralStateTest test) => RunTest(test).Pass.Should().BeTrue();
+    public async Task Test(GeneralStateTest test) => (await RunTest(test)).Pass.Should().BeTrue();
 
     private static IEnumerable<GeneralStateTest> LoadTests()
     {

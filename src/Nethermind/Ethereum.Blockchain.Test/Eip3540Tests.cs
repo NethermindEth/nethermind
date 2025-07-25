@@ -16,7 +16,7 @@ public class Eip3540Tests : GeneralStateTestBase
     // [TestCaseSource(nameof(LoadTests))]
     // public void Test(GeneralStateTest test)
     // {
-    //     Assert.That(RunTest(test).Pass, Is.True);
+    //     Assert.That((await RunTest(test)).Pass, Is.True);
     // }
 
     public static IEnumerable<GeneralStateTest> LoadTests()

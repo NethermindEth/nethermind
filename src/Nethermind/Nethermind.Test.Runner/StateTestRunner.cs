@@ -61,7 +61,7 @@ namespace Nethermind.Test.Runner
             Console.Error.WriteLine(_serializer.Serialize(txTrace.State));
         }
 
-        public IEnumerable<EthereumTestResult> RunTests()
+        public async Task<IEnumerable<EthereumTestResult>> RunTests()
         {
             List<EthereumTestResult> results = new();
             IEnumerable<GeneralStateTest> tests = _testsSource.LoadTests<GeneralStateTest>();
@@ -77,16 +77,16 @@ namespace Nethermind.Test.Runner
                     if (_enableWarmup)
                     {
                         // Warm up only when benchmarking
-                        Parallel.For(0, 30, (i, s) =>
+                        await Parallel.ForAsync(0, 30, async (i, s) =>
                         {
-                            _ = RunTest(test, NullTxTracer.Instance);
+                            _ = await RunTest(test, NullTxTracer.Instance);
                         });
 
                         // Give time to Jit optimized version
                         Thread.Sleep(20);
                         GC.Collect(GC.MaxGeneration);
                     }
-                    result = RunTest(test, NullTxTracer.Instance);
+                    result = await RunTest(test, NullTxTracer.Instance);
                 }
 
                 if (_whenTrace != WhenTrace.Never && !(result?.Pass ?? false))
@@ -94,7 +94,7 @@ namespace Nethermind.Test.Runner
                     StateTestTxTracer txTracer = new();
                     txTracer.IsTracingDetailedMemory = _traceMemory;
                     txTracer.IsTracingStack = _traceStack;
-                    result = RunTest(test, txTracer);
+                    result = await RunTest(test, txTracer);
 
                     var txTrace = txTracer.BuildResult();
                     txTrace.Result.Time = result.TimeInMs;

@@ -55,6 +55,8 @@ public class BlockchainProcessorTests
                 stateReader.HasStateForBlock(Arg.Any<BlockHeader>()).Returns(x => _rootProcessed.Contains(((BlockHeader?)x[0])?.StateRoot!));
             }
 
+            public ValueTask DisposeAsync() => default;
+
             public void Allow(Hash256 hash)
             {
                 _logger.Info($"Allowing {hash} to process");

@@ -4,6 +4,7 @@
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
+using System.Threading.Tasks;
 using Ethereum.Test.Base;
 using Ethereum.Test.Base.Interfaces;
 using Nethermind.Logging;
@@ -19,7 +20,7 @@ namespace Nethermind.Blockchain.Test.Runner
             _testsSource = testsSource ?? throw new ArgumentNullException(nameof(testsSource));
         }
 
-        public IEnumerable<EthereumTestResult> RunTests()
+        public async Task<IEnumerable<EthereumTestResult>> RunTests()
         {
             List<EthereumTestResult> results = new List<EthereumTestResult>();
             Console.WriteLine("RUNNING tests");
@@ -35,7 +36,7 @@ namespace Nethermind.Blockchain.Test.Runner
 
                 Setup(LimboLogs.Instance);
                 stopwatch.Restart();
-                EthereumTestResult result = RunTest(test);
+                EthereumTestResult result = await RunTest(test);
                 stopwatch.Stop();
                 results.Add(result);
 

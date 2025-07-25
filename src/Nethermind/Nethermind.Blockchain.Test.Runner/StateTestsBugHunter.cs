@@ -4,6 +4,7 @@
 using System;
 using System.Collections.Generic;
 using System.IO;
+using System.Threading.Tasks;
 using Ethereum.Test.Base;
 using Ethereum.Test.Base.Interfaces;
 using Nethermind.Logging;
@@ -22,7 +23,7 @@ namespace Nethermind.Blockchain.Test.Runner
             _defaultColour = Console.ForegroundColor;
         }
 
-        public IEnumerable<EthereumTestResult> RunTests()
+        public async Task<IEnumerable<EthereumTestResult>> RunTests()
         {
             List<EthereumTestResult> testResults = new List<EthereumTestResult>();
             string directoryName = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.Desktop), "FailingTests");
@@ -39,7 +40,7 @@ namespace Nethermind.Blockchain.Test.Runner
                 }
                 else
                 {
-                    EthereumTestResult result = RunTest(test);
+                    EthereumTestResult result = await RunTest(test);
                     testResults.Add(result);
 
                     if (result.Pass)
@@ -56,7 +57,7 @@ namespace Nethermind.Blockchain.Test.Runner
                         }
 
                         Setup(manager);
-                        RunTest(test);
+                        await RunTest(test);
                     }
                 }
             }

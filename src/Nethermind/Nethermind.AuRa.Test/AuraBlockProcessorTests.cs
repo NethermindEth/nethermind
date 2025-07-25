@@ -3,6 +3,7 @@
 
 using System;
 using System.Collections.Generic;
+using System.Threading.Tasks;
 using FluentAssertions;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.BeaconBlockRoot;
@@ -94,7 +95,7 @@ namespace Nethermind.AuRa.Test
         }
 
         [Test]
-        public void Should_rewrite_contracts()
+        public async Task Should_rewrite_contracts()
         {
             static BlockHeader Process(AuRaBlockProcessor auRaBlockProcessor, BlockHeader parent)
             {
@@ -138,14 +139,20 @@ namespace Nethermind.AuRa.Test
 
             BlockHeader currentBlock = Build.A.BlockHeader.WithNumber(0).WithStateRoot(stateProvider.StateRoot).TestObject;
             currentBlock = Process(processor, currentBlock);
+            await stateProvider.WaitForCodeCommit();
+
             stateProvider.GetCode(TestItem.AddressA).Should().BeEquivalentTo(Array.Empty<byte>());
             stateProvider.GetCode(TestItem.AddressB).Should().BeEquivalentTo(Array.Empty<byte>());
 
             currentBlock = Process(processor, currentBlock);
+            await stateProvider.WaitForCodeCommit();
+
             stateProvider.GetCode(TestItem.AddressA).Should().BeEquivalentTo(Bytes.FromHexString("0x123"));
             stateProvider.GetCode(TestItem.AddressB).Should().BeEquivalentTo(Bytes.FromHexString("0x321"));
 
             _ = Process(processor, currentBlock);
+            await stateProvider.WaitForCodeCommit();
+
             stateProvider.GetCode(TestItem.AddressA).Should().BeEquivalentTo(Bytes.FromHexString("0x456"));
             stateProvider.GetCode(TestItem.AddressB).Should().BeEquivalentTo(Bytes.FromHexString("0x654"));
         }

@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System.Threading.Tasks;
 using Nethermind.Core;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
@@ -23,7 +24,7 @@ namespace Nethermind.Evm.Test
         protected override ISpecProvider SpecProvider => MainnetSpecProvider.Instance;
 
         [Test]
-        public void Load_self_destruct()
+        public async Task Load_self_destruct()
         {
             TestState.CreateAccount(TestItem.PrivateKeyA.Address, 100.Ether());
             TestState.Commit(SpecProvider.GenesisSpec);
@@ -70,20 +71,20 @@ namespace Nethermind.Evm.Test
 
             ParityLikeTxTracer initTracer = new(block, initTx, ParityTraceTypes.Trace | ParityTraceTypes.StateDiff);
             var blCtx = new BlockExecutionContext(block.Header, Spec);
-            _processor.Execute(initTx, blCtx, initTracer);
+            await Execute(initTx, blCtx, initTracer);
             AssertStorage(new StorageCell(contractAddress, 1), 0);
 
             ParityLikeTxTracer tracer1 = new(block, tx1, ParityTraceTypes.Trace | ParityTraceTypes.StateDiff);
-            _processor.Execute(tx1, blCtx, tracer1);
+            await Execute(tx1, blCtx, tracer1);
             AssertStorage(new StorageCell(contractAddress, 1), 1);
 
             ParityLikeTxTracer tracer2 = new(block, tx2, ParityTraceTypes.Trace | ParityTraceTypes.StateDiff);
-            _processor.Execute(tx2, blCtx, tracer2);
+            await Execute(tx2, blCtx, tracer2);
             AssertStorage(new StorageCell(contractAddress, 1), 0);
         }
 
         [Test]
-        public void Destroy_restore_store()
+        public async Task Destroy_restore_store()
         {
             TestState.CreateAccount(TestItem.PrivateKeyA.Address, 100.Ether());
             TestState.Commit(SpecProvider.GenesisSpec);
@@ -159,37 +160,37 @@ namespace Nethermind.Evm.Test
 
             ParityLikeTxTracer tracer0 = new(block, tx0, ParityTraceTypes.Trace | ParityTraceTypes.StateDiff);
             var blCtx = new BlockExecutionContext(block.Header, Spec);
-            _processor.Execute(tx0, blCtx, tracer0);
+            await Execute(tx0, blCtx, tracer0);
             // AssertStorage(new StorageCell(deploymentAddress, 1), 0);
 
             ParityLikeTxTracer tracer = new(block, tx1, ParityTraceTypes.Trace | ParityTraceTypes.StateDiff);
-            _processor.Execute(tx1, blCtx, tracer);
+            await Execute(tx1, blCtx, tracer);
             // AssertStorage(new StorageCell(deploymentAddress, 1), 0);
             // AssertStorage(new StorageCell(deploymentAddress, 2), 2);
 
             tracer = new ParityLikeTxTracer(block, tx2, ParityTraceTypes.Trace | ParityTraceTypes.StateDiff);
-            _processor.Execute(tx2, blCtx, tracer);
+            await Execute(tx2, blCtx, tracer);
             // AssertStorage(new StorageCell(deploymentAddress, 1), 1);
             // AssertStorage(new StorageCell(deploymentAddress, 2), 2);
 
             tracer = new ParityLikeTxTracer(block, tx3, ParityTraceTypes.Trace | ParityTraceTypes.StateDiff);
-            _processor.Execute(tx3, blCtx, tracer);
+            await Execute(tx3, blCtx, tracer);
             // AssertStorage(new StorageCell(deploymentAddress, 1), 0);
             // AssertStorage(new StorageCell(deploymentAddress, 2), 0);
 
             tracer = new ParityLikeTxTracer(block, tx4, ParityTraceTypes.Trace | ParityTraceTypes.StateDiff);
-            _processor.Execute(tx4, blCtx, tracer);
+            await Execute(tx4, blCtx, tracer);
             // AssertStorage(new StorageCell(deploymentAddress, 1), 0);
             // AssertStorage(new StorageCell(deploymentAddress, 2), 2);
 
             tracer = new ParityLikeTxTracer(block, tx5, ParityTraceTypes.Trace | ParityTraceTypes.StateDiff);
-            _processor.Execute(tx5, blCtx, tracer);
+            await Execute(tx5, blCtx, tracer);
             AssertStorage(new StorageCell(deploymentAddress, 1), 1);
             AssertStorage(new StorageCell(deploymentAddress, 2), 2);
         }
 
         [Test]
-        public void Destroy_restore_store_different_cells()
+        public async Task Destroy_restore_store_different_cells()
         {
             TestState.CreateAccount(TestItem.PrivateKeyA.Address, 100.Ether());
             TestState.Commit(SpecProvider.GenesisSpec);
@@ -265,41 +266,41 @@ namespace Nethermind.Evm.Test
 
             ParityLikeTxTracer tracer0 = new(block, tx0, ParityTraceTypes.Trace | ParityTraceTypes.StateDiff);
             var blCtx = new BlockExecutionContext(block.Header, Spec);
-            _processor.Execute(tx0, blCtx, tracer0);
+            await Execute(tx0, blCtx, tracer0);
             AssertStorage(new StorageCell(deploymentAddress, 1), 0);
 
             ParityLikeTxTracer tracer = new(block, tx1, ParityTraceTypes.Trace | ParityTraceTypes.StateDiff);
-            _processor.Execute(tx1, blCtx, tracer);
+            await Execute(tx1, blCtx, tracer);
             // AssertStorage(new StorageCell(deploymentAddress, 1), 0);
             // AssertStorage(new StorageCell(deploymentAddress, 2), 2);
 
             tracer = new ParityLikeTxTracer(block, tx2, ParityTraceTypes.Trace | ParityTraceTypes.StateDiff);
-            _processor.Execute(tx2, blCtx, tracer);
+            await Execute(tx2, blCtx, tracer);
             // AssertStorage(new StorageCell(deploymentAddress, 1), 1);
             // AssertStorage(new StorageCell(deploymentAddress, 2), 2);
             // AssertStorage(new StorageCell(deploymentAddress, 3), 0);
 
             tracer = new ParityLikeTxTracer(block, tx3, ParityTraceTypes.Trace | ParityTraceTypes.StateDiff);
-            _processor.Execute(tx3, blCtx, tracer);
+            await Execute(tx3, blCtx, tracer);
             // AssertStorage(new StorageCell(deploymentAddress, 1), 0);
             // AssertStorage(new StorageCell(deploymentAddress, 2), 0);
             // AssertStorage(new StorageCell(deploymentAddress, 3), 0);
 
             tracer = new ParityLikeTxTracer(block, tx4, ParityTraceTypes.Trace | ParityTraceTypes.StateDiff);
-            _processor.Execute(tx4, blCtx, tracer);
+            await Execute(tx4, blCtx, tracer);
             // AssertStorage(new StorageCell(deploymentAddress, 1), 0);
             // AssertStorage(new StorageCell(deploymentAddress, 2), 0);
             // AssertStorage(new StorageCell(deploymentAddress, 3), 2);
 
             tracer = new ParityLikeTxTracer(block, tx5, ParityTraceTypes.Trace | ParityTraceTypes.StateDiff);
-            _processor.Execute(tx5, blCtx, tracer);
+            await Execute(tx5, blCtx, tracer);
             AssertStorage(new StorageCell(deploymentAddress, 1), 1);
             AssertStorage(new StorageCell(deploymentAddress, 2), 0);
             AssertStorage(new StorageCell(deploymentAddress, 3), 2);
         }
 
         [Test]
-        public void Destroy_restore_store_different_cells_previously_existing()
+        public async Task Destroy_restore_store_different_cells_previously_existing()
         {
             byte[] baseInitCodeStore = Prepare.EvmCode
                 .PushData(2)
@@ -381,23 +382,29 @@ namespace Nethermind.Evm.Test
 
             ParityLikeTxTracer tracer = new(block, tx0, ParityTraceTypes.Trace | ParityTraceTypes.StateDiff);
             var blCtx = new BlockExecutionContext(block.Header, Spec);
-            _processor.Execute(tx0, blCtx, tracer);
+            await Execute(tx0, blCtx, tracer);
 
             tracer = new ParityLikeTxTracer(block, tx1, ParityTraceTypes.Trace | ParityTraceTypes.StateDiff);
-            _processor.Execute(tx1, blCtx, tracer);
+            await Execute(tx1, blCtx, tracer);
             // AssertStorage(new StorageCell(deploymentAddress, 7), 7);
 
             tracer = new ParityLikeTxTracer(block, tx2, ParityTraceTypes.Trace | ParityTraceTypes.StateDiff);
-            _processor.Execute(tx2, blCtx, tracer);
+            await Execute(tx2, blCtx, tracer);
             // AssertStorage(new StorageCell(deploymentAddress, 7), 0);
 
             tracer = new ParityLikeTxTracer(block, tx3, ParityTraceTypes.Trace | ParityTraceTypes.StateDiff);
-            _processor.Execute(tx3, blCtx, tracer);
+            await Execute(tx3, blCtx, tracer);
             AssertStorage(new StorageCell(deploymentAddress, 7), 0);
 
             tracer = new ParityLikeTxTracer(block, tx4, ParityTraceTypes.Trace | ParityTraceTypes.StateDiff);
-            _processor.Execute(tx4, blCtx, tracer);
+            await Execute(tx4, blCtx, tracer);
             AssertStorage(new StorageCell(deploymentAddress, 7), 0);
+        }
+
+        private async Task Execute(Transaction initTx, BlockExecutionContext blCtx, ParityLikeTxTracer initTracer)
+        {
+            _processor.Execute(initTx, blCtx, initTracer);
+            await TestState.WaitForCodeCommit();
         }
     }
 }

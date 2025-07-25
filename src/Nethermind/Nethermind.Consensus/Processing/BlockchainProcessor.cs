@@ -220,6 +220,7 @@ public sealed class BlockchainProcessor : IBlockchainProcessor, IBlockProcessing
             _blockQueue.Writer.TryComplete();
         }
 
+        await _blockProcessor.DisposeAsync();
         await Task.WhenAll(_recoveryTask ?? Task.CompletedTask, _processorTask ?? Task.CompletedTask);
         if (isStarted && _logger.IsInfo) _logger.Info($"{nameof(BlockchainProcessor)} shutdown complete.");
     }
@@ -304,6 +305,10 @@ public sealed class BlockchainProcessor : IBlockchainProcessor, IBlockProcessing
         catch (Exception ex)
         {
             if (_logger.IsError) _logger.Error($"{nameof(BlockchainProcessor)} encountered an exception.", ex);
+        }
+        finally
+        {
+            await _blockProcessor.DisposeAsync();
         }
     }
 

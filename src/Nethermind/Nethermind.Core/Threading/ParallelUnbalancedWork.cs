@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Runtime.ExceptionServices;
 using System.Runtime.InteropServices;
 using System.Threading;
 using System.Threading.Tasks;
@@ -20,6 +21,7 @@ public class ParallelUnbalancedWork : IThreadPoolWorkItem
     };
 
     private readonly Data _data;
+    private ExceptionDispatchInfo? _exception;
 
     /// <summary>
     /// Executes a parallel for loop over a range of integers.
@@ -43,17 +45,26 @@ public class ParallelUnbalancedWork : IThreadPoolWorkItem
 
         Data data = new(threads, fromInclusive, toExclusive, action, parallelOptions.CancellationToken);
 
-        for (int i = 0; i < threads - 1; i++)
+        // Queue work items to the thread pool for all threads except the current one
+        var tasks = new ParallelUnbalancedWork[threads - 1];
+        for (int i = 0; i < tasks.Length; i++)
         {
-            ThreadPool.UnsafeQueueUserWorkItem(new ParallelUnbalancedWork(data), preferLocal: false);
+            ThreadPool.UnsafeQueueUserWorkItem((tasks[i] = new ParallelUnbalancedWork(data)), preferLocal: false);
         }
 
-        new ParallelUnbalancedWork(data).Execute();
+        var task = new ParallelUnbalancedWork(data);
+        task.Execute();
 
         // If there are still active threads, wait for them to complete
         if (data.ActiveThreads > 0)
         {
             data.Event.Wait();
+        }
+
+        task._exception?.Throw();
+        for (int i = 0; i < tasks.Length; i++)
+        {
+            tasks[i]._exception?.Throw();
         }
 
         parallelOptions.CancellationToken.ThrowIfCancellationRequested();
@@ -150,6 +161,13 @@ public class ParallelUnbalancedWork : IThreadPoolWorkItem
                 i = _data.Index.GetNext();
             }
         }
+        catch (Exception ex)
+        {
+            if (ex is not OperationCanceledException)
+            {
+                _exception = ExceptionDispatchInfo.Capture(ex);
+            }
+        }
         finally
         {
             // Signal that this thread has completed its work
@@ -237,6 +255,7 @@ public class ParallelUnbalancedWork : IThreadPoolWorkItem
     private class InitProcessor<TLocal> : IThreadPoolWorkItem
     {
         private readonly Data<TLocal> _data;
+        private ExceptionDispatchInfo? _exception;
 
         /// <summary>
         /// Executes a parallel for loop over a range of integers, with thread-local data initialization and finalization.
@@ -266,18 +285,26 @@ public class ParallelUnbalancedWork : IThreadPoolWorkItem
             var data = new Data<TLocal>(threads, fromInclusive, toExclusive, action, init, initValue, @finally, parallelOptions.CancellationToken);
 
             // Queue work items to the thread pool for all threads except the current one
-            for (int i = 0; i < threads - 1; i++)
+            var tasks = new InitProcessor<TLocal>[threads - 1];
+            for (int i = 0; i < tasks.Length; i++)
             {
-                ThreadPool.UnsafeQueueUserWorkItem(new InitProcessor<TLocal>(data), preferLocal: false);
+                ThreadPool.UnsafeQueueUserWorkItem((tasks[i] = new InitProcessor<TLocal>(data)), preferLocal: false);
             }
 
             // Execute work on the current thread
-            new InitProcessor<TLocal>(data).Execute();
+            var task = new InitProcessor<TLocal>(data);
+            task.Execute();
 
             // If there are still active threads, wait for them to complete
             if (data.ActiveThreads > 0)
             {
                 data.Event.Wait();
+            }
+
+            task._exception?.Throw();
+            for (int i = 0; i < tasks.Length; i++)
+            {
+                tasks[i]._exception?.Throw();
             }
 
             parallelOptions.CancellationToken.ThrowIfCancellationRequested();
@@ -294,21 +321,31 @@ public class ParallelUnbalancedWork : IThreadPoolWorkItem
         /// </summary>
         public void Execute()
         {
-            TLocal? value = _data.Init();
             try
             {
-                int i = _data.Index.GetNext();
-                while (i < _data.ToExclusive)
+                TLocal? value = _data.Init();
+                try
                 {
-                    if (_data.CancellationToken.IsCancellationRequested) return;
-                    value = _data.Action(i, value);
-                    i = _data.Index.GetNext();
+                    int i = _data.Index.GetNext();
+                    while (i < _data.ToExclusive)
+                    {
+                        if (_data.CancellationToken.IsCancellationRequested) return;
+                        value = _data.Action(i, value);
+                        i = _data.Index.GetNext();
+                    }
+                }
+                finally
+                {
+                    _data.Finally(value);
+                    _data.MarkThreadCompleted();
                 }
             }
-            finally
+            catch (Exception ex)
             {
-                _data.Finally(value);
-                _data.MarkThreadCompleted();
+                if (ex is not OperationCanceledException)
+                {
+                    _exception = ExceptionDispatchInfo.Capture(ex);
+                }
             }
         }
 

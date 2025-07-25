@@ -140,7 +140,7 @@ public abstract class BlockchainTestBase
         IBlockTree blockTree = container.Resolve<IBlockTree>();
         IBlockValidator blockValidator = container.Resolve<IBlockValidator>();
 
-        InitializeTestState(test, stateProvider, specProvider);
+        await InitializeTestState(test, stateProvider, specProvider);
 
         stopwatch?.Start();
         List<(Block Block, string ExpectedException)> correctRlp = DecodeRlps(test, failOnInvalidRlp);
@@ -150,21 +150,37 @@ public abstract class BlockchainTestBase
         Block genesisBlock = Rlp.Decode<Block>(test.GenesisRlp.Bytes);
         Assert.That(genesisBlock.Header.Hash, Is.EqualTo(new Hash256(test.GenesisBlockHeader.Hash)));
 
-        ManualResetEvent genesisProcessed = new(false);
+        TaskCompletionSource genesisCompletion = new TaskCompletionSource();
+        TaskCompletionSource exceptionCatcher = new TaskCompletionSource();
 
+        blockchainProcessor.BlockRemoved += (_, args) =>
+        {
+            if (args.ProcessingResult != ProcessingResult.Success && args.Exception is not null)
+            {
+                exceptionCatcher.TrySetException(args.Exception);
+            }
+        };
         blockTree.NewHeadBlock += (_, args) =>
         {
-            if (args.Block.Number == 0)
+            long processedBlock = args.Block.Number;
+            if (processedBlock == 0)
             {
-                Assert.That(stateProvider.StateRoot, Is.EqualTo(genesisBlock.Header.StateRoot));
-                genesisProcessed.Set();
+                if (stateProvider.StateRoot != genesisBlock.Header.StateRoot)
+                {
+                    exceptionCatcher.TrySetException(new InvalidOperationException($"Genesis root {genesisBlock.Header.StateRoot} is not state root {stateProvider.StateRoot}"));
+                }
+                genesisCompletion.TrySetResult();
             }
         };
 
         blockchainProcessor.Start();
         blockTree.SuggestBlock(genesisBlock);
 
-        genesisProcessed.WaitOne();
+        await genesisCompletion.Task;
+        if (exceptionCatcher.Task.IsCompleted)
+        {
+            await exceptionCatcher.Task;
+        }
         for (int i = 0; i < correctRlp.Count; i++)
         {
             if (correctRlp[i].Block.Hash is null)
@@ -203,12 +219,9 @@ public abstract class BlockchainTestBase
 
         await blockchainProcessor.StopAsync(true);
         stopwatch?.Stop();
-
-        IBlockCachePreWarmer? preWarmer = container.Resolve<MainBlockProcessingContext>().LifetimeScope.ResolveOptional<IBlockCachePreWarmer>();
-        if (preWarmer is not null)
+        if (exceptionCatcher.Task.IsCompleted)
         {
-            // Caches are cleared async, which is a problem as read for the MainWorldState with prewarmer is not correct if its not cleared.
-            preWarmer.ClearCaches();
+            await exceptionCatcher.Task;
         }
 
         List<string> differences = RunAssertions(test, blockTree.RetrieveHeadBlock(), stateProvider);
@@ -280,7 +293,7 @@ public abstract class BlockchainTestBase
         return correctRlp;
     }
 
-    private void InitializeTestState(BlockchainTest test, IWorldState stateProvider, ISpecProvider specProvider)
+    private async Task InitializeTestState(BlockchainTest test, IWorldState stateProvider, ISpecProvider specProvider)
     {
         foreach (KeyValuePair<Address, AccountState> accountState in
             ((IEnumerable<KeyValuePair<Address, AccountState>>)test.Pre ?? Array.Empty<KeyValuePair<Address, AccountState>>()))
@@ -297,6 +310,7 @@ public abstract class BlockchainTestBase
         stateProvider.Commit(specProvider.GenesisSpec);
 
         stateProvider.CommitTree(0);
+        await stateProvider.WaitForCodeCommit();
 
         stateProvider.Reset();
     }

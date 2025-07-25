@@ -51,12 +51,11 @@ public partial class BlockProcessor(
     : IBlockProcessor
 {
     private readonly ILogger _logger = logManager.GetClassLogger();
-    protected readonly WorldStateMetricsDecorator _stateProvider = new WorldStateMetricsDecorator(stateProvider);
+    protected readonly IWorldState _stateProvider = stateProvider;
     private readonly IReceiptsRootCalculator _receiptsRootCalculator = ReceiptsRootCalculator.Instance;
     private Task _clearTask = Task.CompletedTask;
 
     private const int MaxUncommittedBlocks = 64;
-    private readonly Action<Task> _clearCaches = _ => preWarmer?.ClearCaches();
 
     /// <summary>
     /// We use a single receipt tracer for all blocks. Internally receipt tracer forwards most of the calls
@@ -150,7 +149,6 @@ public partial class BlockProcessor(
 
                 if (notReadOnly)
                 {
-                    Metrics.StateMerkleizationTime = _stateProvider.StateMerkleizationTime;
                     BlockProcessed?.Invoke(this, new BlockProcessedEventArgs(processedBlock, receipts));
                 }
 
@@ -167,10 +165,6 @@ public partial class BlockProcessor(
                 }
 
                 preBlockBaseBlock = processedBlock.Header;
-                // Make sure the prewarm task is finished before we reset the state
-                preWarmTask?.GetAwaiter().GetResult();
-                preWarmTask = null;
-                _stateProvider.Reset();
 
                 // Calculate the transaction hashes in the background and release tx sequence memory
                 // Hashes will be required for PersistentReceiptStorage in ForkchoiceUpdatedHandler
@@ -190,7 +184,6 @@ public partial class BlockProcessor(
             if (_logger.IsWarn) _logger.Warn($"Encountered exception {ex} while processing blocks.");
             CancellationTokenExtensions.CancelDisposeAndClear(ref prewarmCancellation);
             QueueClearCaches(preWarmTask);
-            preWarmTask?.GetAwaiter().GetResult();
             RestoreBranch(previousBranchStateRoot);
             throw;
         }
@@ -212,16 +205,28 @@ public partial class BlockProcessor(
 
     private void WaitForCacheClear() => _clearTask.GetAwaiter().GetResult();
 
+    private async Task ClearCaches(Task? preWarmTask)
+    {
+        if (preWarmTask is not null)
+        {
+            await preWarmTask;
+        }
+        await _stateProvider.WaitForCodeCommit();
+
+        _stateProvider.Reset();
+        preWarmer?.ClearCaches();
+    }
+
     private void QueueClearCaches(Task? preWarmTask)
     {
         if (preWarmTask is not null)
         {
             // Can start clearing caches in background
-            _clearTask = preWarmTask.ContinueWith(_clearCaches, TaskContinuationOptions.RunContinuationsAsynchronously);
+            _clearTask = ClearCaches(preWarmTask);
         }
-        else if (preWarmer is not null)
+        else
         {
-            _clearTask = Task.Run(preWarmer.ClearCaches);
+            _clearTask = Task.Run(() => ClearCaches(null));
         }
     }
 
@@ -503,6 +508,8 @@ public partial class BlockProcessor(
             }
         }
     }
+
+    public async ValueTask DisposeAsync() => await _clearTask;
 
     private class TxHashCalculator(Block suggestedBlock) : IThreadPoolWorkItem
     {

@@ -57,6 +57,7 @@ public class CensorshipDetectorTests
     {
         await _txPool.DisposeAsync();
         _censorshipDetector.Dispose();
+        await _blockProcessor.DisposeAsync();
     }
 
     // Address Censorship is given to be false here since censorship is not being detected for any address.
