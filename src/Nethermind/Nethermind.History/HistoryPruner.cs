@@ -77,7 +77,7 @@ public class HistoryPruner : IHistoryPruner
 
         _logger.Info("constructed history pruner");
         CheckConfig();
-        LoadDeletePointer();
+        // LoadDeletePointer();
 
         if (historyConfig.DropPreMerge)
         {
@@ -260,7 +260,8 @@ public class HistoryPruner : IHistoryPruner
         BatchWrite? batch = null;
         if (!_tmp)
         {
-            _logger.Error("Have not searched for oldest block!");
+            LoadDeletePointer();
+            _tmp = true;
         }
         try
         {
@@ -356,7 +357,7 @@ public class HistoryPruner : IHistoryPruner
                 Block? block = _blockTree.FindBlock(blockInfo.BlockHash, BlockTreeLookupOptions.None, blockInfo.BlockNumber);
                 if (block is null)
                 {
-                    if (i % 100 == 0) _logger.Info($"Skipping block which wasn't found {i}.");
+                    if (i % 1000 == 0) _logger.Info($"Skipping block which wasn't found {i}.");
                     continue;
                 }
 
@@ -402,7 +403,6 @@ public class HistoryPruner : IHistoryPruner
 
     private void LoadDeletePointer()
     {
-        _tmp = true;
         if (_logger.IsInfo) _logger.Info($"Starting search for oldest block stored.");
         byte[]? val = _metadataDb.Get(MetadataDbKeys.HistoryPruningDeletePointer);
         if (val is null)
