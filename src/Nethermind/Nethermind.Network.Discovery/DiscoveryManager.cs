@@ -66,7 +66,7 @@ public class DiscoveryManager : IDiscoveryManager
             manager.OnStateChanged += ManagerOnOnStateChanged;
             if (!isPersisted)
             {
-                _discoveryStorage.UpdateNodes(new[] { new NetworkNode(manager.ManagedNode.Id, manager.ManagedNode.Host, manager.ManagedNode.Port, manager.NodeStats.NewPersistedNodeReputation(DateTime.UtcNow)) });
+                _discoveryStorage.UpdateNode(new NetworkNode(manager.ManagedNode.Id, manager.ManagedNode.Host, manager.ManagedNode.Port, manager.NodeStats.NewPersistedNodeReputation(DateTime.UtcNow)));
             }
 
             return manager;

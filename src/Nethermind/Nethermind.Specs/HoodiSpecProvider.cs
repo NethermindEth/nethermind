@@ -23,7 +23,7 @@ public class HoodiSpecProvider : ISpecProvider
 
     private HoodiSpecProvider() { }
 
-    public IReleaseSpec GetSpec(ForkActivation forkActivation)
+    IReleaseSpec ISpecProvider.GetSpecInternal(ForkActivation forkActivation)
     {
         return forkActivation.Timestamp switch
         {

@@ -40,7 +40,7 @@ public class PruningTrieStateAdminModuleTests
     public async Task Test_admin_verifyTrie()
     {
         (await RpcTest.TestSerializedRequest(_adminRpcModuleModule, "admin_verifyTrie", "latest")).Should().Contain("Unable to start verify trie");
-        _stateReader.HasStateForRoot(Arg.Any<Hash256>()).Returns(true);
+        _stateReader.HasStateForBlock(Arg.Any<BlockHeader>()).Returns(true);
         _verifyTrieStarter.TryStartVerifyTrie(Arg.Any<BlockHeader>()).Returns(true);
         (await RpcTest.TestSerializedRequest(_adminRpcModuleModule, "admin_verifyTrie", "latest")).Should().Contain("Starting");
     }

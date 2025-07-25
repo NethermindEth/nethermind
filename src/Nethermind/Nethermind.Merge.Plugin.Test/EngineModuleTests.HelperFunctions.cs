@@ -19,11 +19,12 @@ using Nethermind.Int256;
 using Nethermind.JsonRpc.Test.Modules;
 using Nethermind.Specs;
 using Nethermind.Specs.Forks;
-using Nethermind.State;
+using Nethermind.Evm.State;
 using Nethermind.Blockchain.BeaconBlockRoot;
 using Nethermind.Core.Specs;
 using Nethermind.Evm.Tracing;
 using Nethermind.Evm;
+using Nethermind.State;
 
 namespace Nethermind.Merge.Plugin.Test
 {
@@ -46,21 +47,33 @@ namespace Nethermind.Merge.Plugin.Test
             Transaction[] transactions = BuildTransactions(chain, executePayloadRequest.ParentHash, from, to, count, value, out AccountStruct accountFrom, out parentHeader);
             executePayloadRequest.SetTransactions(transactions);
             UInt256 totalValue = ((int)(count * value)).GWei();
-            return (accountFrom.Balance - totalValue, chain.StateReader.GetBalance(parentHeader.StateRoot!, to) + totalValue);
+            return (accountFrom.Balance - totalValue, chain.StateReader.GetBalance(parentHeader, to) + totalValue);
         }
 
         private Transaction[] BuildTransactions(MergeTestBlockchain chain, Hash256 parentHash, PrivateKey from,
-            Address to, uint count, int value, out AccountStruct accountFrom, out BlockHeader parentHeader, int blobCountPerTx = 0, IReleaseSpec? spec = null)
+            Address to, uint count, int value, out AccountStruct accountFrom, out BlockHeader parentHeader,
+            int blobCountPerTx = 0, IReleaseSpec? spec = null)
+        {
+            return BuildTransactions(chain.BlockTree, chain.SpecProvider, chain.StateReader, Timestamper, parentHash, from, to,
+                count, value, out accountFrom, out parentHeader, blobCountPerTx, spec);
+        }
+
+        private static Transaction[] BuildTransactions(
+            IBlockTree blockTree,
+            ISpecProvider specProvider,
+            IStateReader stateReader,
+            ITimestamper timestamper,
+            Hash256 parentHash, PrivateKey from, Address to, uint count, int value, out AccountStruct accountFrom, out BlockHeader parentHeader, int blobCountPerTx = 0, IReleaseSpec? spec = null)
         {
             Transaction BuildTransaction(uint index, AccountStruct senderAccount)
             {
                 TransactionBuilder<Transaction> builder = Build.A.Transaction
                     .WithNonce(senderAccount.Nonce + index)
-                    .WithTimestamp(Timestamper.UnixTime.Seconds)
+                    .WithTimestamp(timestamper.UnixTime.Seconds)
                     .WithTo(to)
                     .WithValue(value.GWei())
                     .WithGasPrice(1.GWei())
-                    .WithChainId(chain.SpecProvider.ChainId)
+                    .WithChainId(specProvider.ChainId)
                     .WithSenderAddress(from.Address);
 
                 if (blobCountPerTx != 0)
@@ -77,8 +90,8 @@ namespace Nethermind.Merge.Plugin.Test
                     .SignedAndResolved(from).TestObject;
             }
 
-            parentHeader = chain.BlockTree.FindHeader(parentHash, BlockTreeLookupOptions.None)!;
-            chain.StateReader.TryGetAccount(parentHeader.StateRoot!, from.Address, out AccountStruct account);
+            parentHeader = blockTree.FindHeader(parentHash, BlockTreeLookupOptions.None)!;
+            stateReader.TryGetAccount(parentHeader, from.Address, out AccountStruct account);
             accountFrom = account;
 
             return Enumerable.Range(0, (int)count).Select(i => BuildTransaction((uint)i, account)).ToArray();

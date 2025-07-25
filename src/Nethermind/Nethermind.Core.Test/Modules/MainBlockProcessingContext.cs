@@ -7,6 +7,7 @@ using Autofac;
 using Nethermind.Api;
 using Nethermind.Blockchain;
 using Nethermind.Consensus.Processing;
+using Nethermind.Evm.State;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.State;
 

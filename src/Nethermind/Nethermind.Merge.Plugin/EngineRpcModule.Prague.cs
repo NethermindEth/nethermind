@@ -19,10 +19,8 @@ public partial class EngineRpcModule : IEngineRpcModule
     /// <see href="https://eips.ethereum.org/EIPS/eip-7685">EIP-7685</see>.
     /// </summary>
     public Task<ResultWrapper<PayloadStatusV1>> engine_newPayloadV4(ExecutionPayloadV3 executionPayload, byte[]?[] blobVersionedHashes, Hash256? parentBeaconBlockRoot, byte[][]? executionRequests)
-    {
-        return NewPayload(new ExecutionPayloadParams<ExecutionPayloadV3>(executionPayload, blobVersionedHashes, parentBeaconBlockRoot, executionRequests), EngineApiVersions.Prague);
-    }
+        => NewPayload(new ExecutionPayloadParams<ExecutionPayloadV3>(executionPayload, blobVersionedHashes, parentBeaconBlockRoot, executionRequests), EngineApiVersions.Prague);
 
-    public async Task<ResultWrapper<GetPayloadV4Result?>> engine_getPayloadV4(byte[] payloadId) =>
-        await _getPayloadHandlerV4.HandleAsync(payloadId);
+    public Task<ResultWrapper<GetPayloadV4Result?>> engine_getPayloadV4(byte[] payloadId)
+        => _getPayloadHandlerV4.HandleAsync(payloadId);
 }

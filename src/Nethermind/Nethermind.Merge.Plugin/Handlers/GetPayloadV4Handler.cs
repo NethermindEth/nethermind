@@ -18,7 +18,7 @@ public class GetPayloadV4Handler(
     IPayloadPreparationService payloadPreparationService,
     ISpecProvider specProvider,
     ILogManager logManager,
-    CensorshipDetector? censorshipDetector = null)
+    ICensorshipDetector? censorshipDetector = null)
     : GetPayloadHandlerBase<GetPayloadV4Result>(4, payloadPreparationService, specProvider, logManager, censorshipDetector)
 {
     protected override GetPayloadV4Result GetPayloadResultFromBlock(IBlockProductionContext context)

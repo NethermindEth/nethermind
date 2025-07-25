@@ -5,7 +5,7 @@ using FluentAssertions;
 using Nethermind.Core;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Test.Builders;
-using Nethermind.State;
+using Nethermind.Evm.State;
 using NUnit.Framework;
 
 namespace Nethermind.Evm.Test

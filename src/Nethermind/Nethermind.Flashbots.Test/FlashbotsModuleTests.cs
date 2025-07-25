@@ -3,6 +3,7 @@
 
 using System;
 using System.Threading.Tasks;
+using Autofac;
 using FluentAssertions;
 using Nethermind.Consensus.Processing;
 using Nethermind.Core;
@@ -13,11 +14,12 @@ using Nethermind.Flashbots.Data;
 using Nethermind.Flashbots.Modules.Flashbots;
 using Nethermind.Int256;
 using Nethermind.JsonRpc;
+using Nethermind.JsonRpc.Modules;
 using Nethermind.JsonRpc.Test;
 using Nethermind.Merge.Plugin.Data;
 using Nethermind.Merge.Plugin.Test;
 using Nethermind.Specs.Forks;
-using Nethermind.State;
+using Nethermind.Evm.State;
 using NUnit.Framework;
 
 namespace Nethermind.Flashbots.Test;
@@ -28,7 +30,7 @@ public partial class FlashbotsModuleTests
     public virtual async Task TestValidateBuilderSubmissionV3()
     {
         using EngineModuleTests.MergeTestBlockchain chain = await CreateBlockChain(releaseSpec: Cancun.Instance);
-        IFlashbotsRpcModule rpc = CreateFlashbotsModule(chain);
+        IFlashbotsRpcModule rpc = chain.Container.Resolve<IRpcModuleFactory<IFlashbotsRpcModule>>().Create();
 
         Block block = CreateBlock(chain);
 
@@ -77,7 +79,7 @@ public partial class FlashbotsModuleTests
 
         Hash256 prevRandao = Keccak.Zero;
 
-        Hash256 expectedBlockHash = new("0x961f11bf7889f09f3ada48da02506d1459310c0386c328d8cf760a7a20d92dd5");
+        Hash256 expectedBlockHash = new("0xed7c356cda6ea2e7d79be86be2b11c24f97b6501bf5519a5826fd384a458a060");
         string stateRoot = "0xa272b2f949e4a0e411c9b45542bd5d0ef3c311b5f26c4ed6b7a8d4f605a91154";
 
         return new(

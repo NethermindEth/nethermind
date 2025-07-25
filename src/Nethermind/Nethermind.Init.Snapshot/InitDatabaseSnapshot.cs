@@ -19,7 +19,7 @@ public class InitDatabaseSnapshot : InitDatabase
     private readonly INethermindApi _api;
     private readonly ILogger _logger;
 
-    public InitDatabaseSnapshot(INethermindApi api) : base(api)
+    public InitDatabaseSnapshot(INethermindApi api) : base()
     {
         _api = api;
         _logger = _api.LogManager.GetClassLogger();

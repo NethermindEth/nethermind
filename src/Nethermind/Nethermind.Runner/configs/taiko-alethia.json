@@ -4,8 +4,7 @@
     "ChainSpecPath": "chainspec/taiko-alethia.json",
     "GenesisHash": "0x90bc60466882de9637e269e87abab53c9108cf9113188bc4f80bcfcb10e489b9",
     "BaseDbPath": "nethermind_db/taiko-alethia",
-    "LogFileName": "taiko-alethia.log",
-    "DisableGcOnNewPayload": false
+    "LogFileName": "taiko-alethia.log"
   },
   "TxPool": {
     "BlobsSupport": "Disabled"

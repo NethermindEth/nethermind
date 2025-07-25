@@ -6,16 +6,16 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Runtime.CompilerServices;
 using System.Threading;
-using Nethermind.Config;
+using Nethermind.Blockchain.Tracing;
 using Nethermind.Consensus.Producers;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Specs;
 using Nethermind.Evm;
+using Nethermind.Evm.State;
 using Nethermind.Evm.Tracing;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Logging;
-using Nethermind.State;
 using Nethermind.State.Proofs;
 using Nethermind.TxPool;
 using Nethermind.TxPool.Comparison;
@@ -27,38 +27,13 @@ namespace Nethermind.Consensus.Processing
     public partial class BlockProcessor
     {
         public class BlockProductionTransactionsExecutor(
-            ITransactionProcessor txProcessor,
+            ITransactionProcessorAdapter transactionProcessor,
             IWorldState stateProvider,
             IBlockProductionTransactionPicker txPicker,
             ILogManager logManager)
             : IBlockProductionTransactionsExecutor
         {
-            private readonly ITransactionProcessorAdapter _transactionProcessor = new BuildUpTransactionProcessorAdapter(txProcessor);
             private readonly ILogger _logger = logManager.GetClassLogger();
-
-            public BlockProductionTransactionsExecutor(
-                IReadOnlyTxProcessingScope readOnlyTxProcessingEnv,
-                ISpecProvider specProvider,
-                ILogManager logManager,
-                long maxTxLengthKilobytes = BlocksConfig.DefaultMaxTxKilobytes)
-                : this(
-                    readOnlyTxProcessingEnv.TransactionProcessor,
-                    readOnlyTxProcessingEnv.WorldState,
-                    specProvider,
-                    logManager,
-                    maxTxLengthKilobytes)
-            {
-            }
-
-            public BlockProductionTransactionsExecutor(
-                ITransactionProcessor transactionProcessor,
-                IWorldState stateProvider,
-                ISpecProvider specProvider,
-                ILogManager logManager,
-                long maxTxLengthKilobytes = BlocksConfig.DefaultMaxTxKilobytes) : this(transactionProcessor, stateProvider,
-                new BlockProductionTransactionPicker(specProvider, maxTxLengthKilobytes), logManager)
-            {
-            }
 
             protected EventHandler<TxProcessedEventArgs>? _transactionProcessed;
 
@@ -75,10 +50,10 @@ namespace Nethermind.Consensus.Processing
             }
 
             public void SetBlockExecutionContext(in BlockExecutionContext blockExecutionContext)
-                => _transactionProcessor.SetBlockExecutionContext(in blockExecutionContext);
+                => transactionProcessor.SetBlockExecutionContext(in blockExecutionContext);
 
             public virtual TxReceipt[] ProcessTransactions(Block block, ProcessingOptions processingOptions,
-                BlockReceiptsTracer receiptsTracer, IReleaseSpec spec, CancellationToken token = default)
+                BlockReceiptsTracer receiptsTracer, CancellationToken token = default)
             {
                 // We start with high number as don't want to resize too much
                 const int defaultTxCount = 512;
@@ -107,7 +82,7 @@ namespace Nethermind.Consensus.Processing
                         includedTx.Add(currentTx);
                         if (blockToProduce is not null)
                         {
-                            blockToProduce.TxByteLength += currentTx.GetLength();
+                            blockToProduce.TxByteLength += currentTx.GetLength(false);
                         }
                     }
                 }
@@ -136,7 +111,7 @@ namespace Nethermind.Consensus.Processing
                 }
                 else
                 {
-                    TransactionResult result = _transactionProcessor.ProcessTransaction(currentTx, receiptsTracer, processingOptions, stateProvider);
+                    TransactionResult result = transactionProcessor.ProcessTransaction(currentTx, receiptsTracer, processingOptions, stateProvider);
 
                     if (result)
                     {

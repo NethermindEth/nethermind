@@ -57,12 +57,12 @@ public class EthSimulateTestsSimplePrecompiles : EthRpcSimulateTestsBase
             .Op(Instruction.RETURN).Done;
 
         // Step 1: Hash the message
-        Hash256 messageHash = Keccak.Compute("Hello, world!");
+        ValueHash256 messageHash = ValueKeccak.Compute("Hello, world!");
         // Step 2: Sign the hash
-        Signature signature = chain.EthereumEcdsa.Sign(TestItem.PrivateKeyA, messageHash);
+        Signature signature = chain.EthereumEcdsa.Sign(TestItem.PrivateKeyA, in messageHash);
 
         Address contractAddress = await DeployEcRecoverContract(chain, TestItem.PrivateKeyB, EcRecoverCallerContractBytecode);
-        byte[] transactionData = GenerateTransactionDataForEcRecover(messageHash, signature);
+        byte[] transactionData = GenerateTransactionDataForEcRecover(new Hash256(messageHash), signature);
 
         SystemTransaction tx = new()
         {

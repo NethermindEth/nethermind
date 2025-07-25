@@ -5,8 +5,8 @@ using System;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
 using Nethermind.Evm;
+using Nethermind.Evm.State;
 using Nethermind.Int256;
-using Nethermind.State;
 
 namespace Nethermind.TxPool
 {
@@ -29,6 +29,7 @@ namespace Nethermind.TxPool
         ProofVersion CurrentProofVersion { get; }
 
         bool IsSyncing { get; }
+        bool IsProcessingBlock { get; }
 
         event EventHandler<BlockReplacementEventArgs> HeadChanged;
     }

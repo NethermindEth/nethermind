@@ -1,7 +1,6 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System.Linq;
 using Nethermind.Core;
 using Nethermind.Core.Eip2930;
 using Nethermind.Int256;
@@ -151,7 +150,7 @@ namespace Nethermind.Serialization.Rlp.Eip2930
                 //   Index2
                 //   ...
                 //   IndexN
-                AccessItemLengths lengths = new(storageKeys.Count());
+                AccessItemLengths lengths = new(storageKeys.Count);
                 stream.StartSequence(lengths.ContentLength);
                 {
                     stream.Encode(address);
@@ -199,9 +198,15 @@ namespace Nethermind.Serialization.Rlp.Eip2930
 
         private static int GetContentLength(AccessList accessList)
         {
-            return accessList
-                .Select(static entry => new AccessItemLengths(entry.StorageKeys.Count()))
-                .Sum(static lengths => lengths.SequenceLength);
+            int sum = 0;
+            foreach ((Address Address, AccessList.StorageKeysEnumerable StorageKeys) entry in accessList)
+            {
+                int indexesContentLength = entry.StorageKeys.Count * Rlp.LengthOfKeccakRlp;
+                int contentLength = Rlp.LengthOfSequence(indexesContentLength) + Rlp.LengthOfAddressRlp;
+                sum += Rlp.LengthOfSequence(contentLength);
+            }
+
+            return sum;
         }
     }
 }

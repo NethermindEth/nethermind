@@ -2,7 +2,10 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.IO.Abstractions;
+using Autofac;
 using FluentAssertions;
+using Nethermind.Core;
+using Nethermind.Core.Test.Modules;
 using Nethermind.Db.FullPruning;
 using Nethermind.Db.Rpc;
 using Nethermind.JsonRpc.Client;
@@ -31,9 +34,12 @@ namespace Nethermind.Db.Test.Rpc
             IJsonRpcClient jsonRpcClient = Substitute.For<IJsonRpcClient>();
             IDbFactory rpcDbFactory = new RpcDbFactory(new MemDbFactory(), jsonSerializer, jsonRpcClient, LimboLogs.Instance);
 
-            IDbProvider memDbProvider = new DbProvider();
-            StandardDbInitializer standardDbInitializer = new(memDbProvider, rpcDbFactory, Substitute.For<IFileSystem>());
-            standardDbInitializer.InitStandardDbs(true);
+            using IContainer container = new ContainerBuilder()
+                .AddModule(new TestNethermindModule())
+                .AddSingleton<IDbFactory>(rpcDbFactory)
+                .Build();
+
+            IDbProvider memDbProvider = container.Resolve<IDbProvider>();
 
             ValidateDb<ReadOnlyColumnsDb<ReceiptsColumns>>(
                 memDbProvider.ReceiptsDb);

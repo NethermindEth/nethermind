@@ -14,6 +14,7 @@ using Nethermind.Api.Steps;
 using Nethermind.Config;
 using Nethermind.Consensus.AuRa.InitializationSteps;
 using Nethermind.Core;
+using Nethermind.Core.Exceptions;
 using Nethermind.Core.Specs;
 using Nethermind.Init.Steps;
 using Nethermind.Logging;
@@ -80,6 +81,20 @@ namespace Nethermind.Runner.Test.Ethereum.Steps
                     throw new AssertionFailedException($"Exception should be {nameof(OperationCanceledException)}. Received {e}");
                 }
             }
+        }
+
+        [Test]
+        public async Task Should_Unwrap_InvalidConfigurationException()
+        {
+            await using IContainer container = CreateNethermindEnvironment(
+                new StepInfo(typeof(FailedConstructorWithInvalidConfigurationStep))
+            );
+
+            EthereumStepsManager stepsManager = container.Resolve<EthereumStepsManager>();
+            using CancellationTokenSource source = new CancellationTokenSource(TimeSpan.FromSeconds(1));
+
+            Func<Task> act = () => stepsManager.InitializeAll(source.Token);
+            await act.Should().ThrowAsync<InvalidConfigurationException>();
         }
 
         [Test]
@@ -305,6 +320,14 @@ namespace Nethermind.Runner.Test.Ethereum.Steps
     {
         public StepCStandard(NethermindApi runnerContext)
         {
+        }
+    }
+
+    public class FailedConstructorWithInvalidConfigurationStep : StepC
+    {
+        public FailedConstructorWithInvalidConfigurationStep()
+        {
+            throw new InvalidConfigurationException("Invalid config", -1);
         }
     }
 

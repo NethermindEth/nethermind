@@ -329,8 +329,7 @@ public static class InstructionExtensions
         }
     }
 
-    [DoesNotReturn]
-    [StackTraceHidden]
+    [DoesNotReturn, StackTraceHidden]
     private static (ushort InputCount, ushort OutputCount, ushort immediates) ThrowNotImplemented(Instruction instruction)
         => throw new NotImplementedException($"opcode {instruction} not implemented yet");
 

@@ -8,6 +8,8 @@ namespace Nethermind.Core;
 /// </summary>
 public static class Eip4788Constants
 {
+    public const string ContractAddressKey = "BEACON_ROOTS_ADDRESS";
+
     /// <summary>
     /// Gets the <c>BEACON_ROOTS_ADDRESS</c> parameter.
     /// </summary>

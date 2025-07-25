@@ -5,14 +5,13 @@ using System.IO;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Test;
-using Nethermind.Db;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Logging;
 using Nethermind.Serialization.Json;
 using Nethermind.Specs.ChainSpecStyle;
 using Nethermind.Specs.Forks;
+using Nethermind.Evm.State;
 using Nethermind.State;
-using Nethermind.Trie.Pruning;
 using NSubstitute;
 using NUnit.Framework;
 
@@ -61,7 +60,7 @@ public class GenesisLoaderTests
         ISpecProvider specProvider = Substitute.For<ISpecProvider>();
         specProvider.GetSpec(Arg.Any<ForkActivation>()).Returns(Berlin.Instance);
         ITransactionProcessor transactionProcessor = Substitute.For<ITransactionProcessor>();
-        GenesisLoader genesisLoader = new(chainSpec, specProvider, stateProvider, transactionProcessor);
+        GenesisLoader genesisLoader = new(chainSpec, specProvider, worldStateManager.GlobalStateReader, stateProvider, transactionProcessor, LimboLogs.Instance);
         return genesisLoader.Load();
     }
 

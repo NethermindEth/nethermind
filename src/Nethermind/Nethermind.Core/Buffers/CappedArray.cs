@@ -78,8 +78,7 @@ public readonly struct CappedArray<T>
         }
     }
 
-    [DoesNotReturn]
-    [StackTraceHidden]
+    [DoesNotReturn, StackTraceHidden]
     private static void ThrowArgumentOutOfRangeException()
     {
         throw new ArgumentOutOfRangeException();

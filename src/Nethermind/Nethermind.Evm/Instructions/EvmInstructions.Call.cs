@@ -7,7 +7,7 @@ using Nethermind.Core;
 using Nethermind.Core.Specs;
 using Nethermind.Evm.CodeAnalysis;
 using Nethermind.Int256;
-using Nethermind.State;
+using Nethermind.Evm.State;
 
 using static Nethermind.Evm.VirtualMachineBase;
 
@@ -176,6 +176,16 @@ internal static partial class EvmInstructions
             !UpdateGas(gasExtra, ref gasAvailable))
             goto OutOfGas;
 
+        // Retrieve code information for the call and schedule background analysis if needed.
+        ICodeInfo codeInfo = vm.CodeInfoRepository.GetCachedCodeInfo(state, codeSource, spec);
+
+        // If contract is large, charge for access
+        if (spec.IsEip7907Enabled)
+        {
+            uint excessContractSize = (uint)Math.Max(0, codeInfo.CodeSpan.Length - CodeSizeConstants.MaxCodeSizeEip170);
+            if (excessContractSize > 0 && !ChargeForLargeContractAccess(excessContractSize, codeSource, in vm.EvmState.AccessTracker, ref gasAvailable))
+                goto OutOfGas;
+        }
         // Apply the 63/64 gas rule if enabled.
         if (spec.Use63Over64Rule)
         {
@@ -232,8 +242,6 @@ internal static partial class EvmInstructions
         // Subtract the transfer value from the caller's balance.
         state.SubtractFromBalance(caller, in transferValue, spec);
 
-        // Retrieve code information for the call and schedule background analysis if needed.
-        ICodeInfo codeInfo = vm.CodeInfoRepository.GetCachedCodeInfo(state, codeSource, spec);
         // Fast-path for calls to externally owned accounts (non-contracts)
         if (codeInfo.IsEmpty && !TTracingInst.IsActive && !vm.TxTracer.IsTracingActions)
         {
@@ -294,6 +302,17 @@ internal static partial class EvmInstructions
         return EvmExceptionType.StackUnderflow;
     OutOfGas:
         return EvmExceptionType.OutOfGas;
+    }
+
+    private static bool ChargeForLargeContractAccess(uint excessContractSize, Address codeAddress, in StackAccessTracker accessTracer, ref long gasAvailable)
+    {
+        if (accessTracer.WarmUpLargeContract(codeAddress))
+        {
+            long largeContractCost = GasCostOf.InitCodeWord * Div32Ceiling(excessContractSize, out bool outOfGas);
+            if (outOfGas || !UpdateGas(largeContractCost, ref gasAvailable)) return false;
+        }
+
+        return true;
     }
 
     /// <summary>

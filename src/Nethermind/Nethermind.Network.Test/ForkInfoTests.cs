@@ -1,9 +1,6 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System.IO;
-using System.Reflection;
-using System.Text;
 using FluentAssertions;
 using Nethermind.Blockchain;
 using Nethermind.Core;
@@ -15,8 +12,14 @@ using Nethermind.Logging;
 using Nethermind.Serialization.Json;
 using Nethermind.Specs;
 using Nethermind.Specs.ChainSpecStyle;
+using Nethermind.Specs.ChainSpecStyle.Json;
+using Nethermind.Specs.Test;
+using Nethermind.Synchronization;
 using NSubstitute;
 using NUnit.Framework;
+using System.IO;
+using System.Reflection;
+using System.Text;
 
 namespace Nethermind.Network.Test;
 
@@ -332,7 +335,9 @@ public class ForkInfoTests
             specProvider = new ChainSpecBasedSpecProvider(spec);
         }
 
-        ForkInfo forkInfo = new(specProvider, KnownHashes.MainnetGenesis);
+        ISyncServer syncServer = Substitute.For<ISyncServer>();
+        syncServer.Genesis.Returns(Build.A.BlockHeader.WithHash(KnownHashes.MainnetGenesis).TestObject);
+        ForkInfo forkInfo = new(specProvider, syncServer);
 
         forkInfo.ValidateForkId(new ForkId(Bytes.ReadEthUInt32(Bytes.FromHexString(hash)), next), head.Header).Should().Be(result);
     }
@@ -375,11 +380,48 @@ public class ForkInfoTests
     {
         uint expectedForkHash = Bytes.ReadEthUInt32(Bytes.FromHexString(forkHashHex));
 
-        ForkId forkId = new ForkInfo(specProvider, genesisHash).GetForkId(head, headTimestamp);
+        ISyncServer syncServer = Substitute.For<ISyncServer>();
+        syncServer.Genesis.Returns(Build.A.BlockHeader.WithHash(genesisHash).TestObject);
+        ForkId forkId = new ForkInfo(specProvider, syncServer).GetForkId(head, headTimestamp);
         uint forkHash = forkId.ForkHash;
         forkHash.Should().Be(expectedForkHash);
 
         forkId.Next.Should().Be(next);
         forkId.ForkHash.Should().Be(expectedForkHash);
+    }
+
+    [Test]
+    public void Test_no_fork_is_created_before_genesis_time()
+    {
+        (ChainSpecBasedSpecProvider provider, _) = TestSpecHelper.LoadChainSpec(new ChainSpecJson
+        {
+            Params = new ChainSpecParamsJson
+            {
+                Eip4844TransitionTimestamp = 0,
+                BlobSchedule =
+                [
+                    new BlobScheduleSettings
+                    {
+                        Timestamp = 0,
+                        Max = 12,
+                        Target = 6,
+                        BaseFeeUpdateFraction = 1,
+                    }
+                ]
+            },
+            Genesis = new ChainSpecGenesisJson()
+            {
+                Timestamp = 1,
+
+            }
+        });
+
+        ISyncServer syncServer = Substitute.For<ISyncServer>();
+        syncServer.Genesis.Returns(Build.A.BlockHeader.WithHash(Hash256.Zero).TestObject);
+
+        ForkInfo fi = new(provider, syncServer);
+        fi.EnsureInitialized();
+
+        Assert.That(fi.Forks, Has.Length.EqualTo(1));
     }
 }

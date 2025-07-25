@@ -5,9 +5,9 @@ using System;
 using System.Collections.Generic;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Evm.Tracing.State;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Int256;
-using Nethermind.State.Tracing;
 
 namespace Nethermind.Evm.Tracing;
 

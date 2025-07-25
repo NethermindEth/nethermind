@@ -269,7 +269,7 @@ internal static partial class EvmInstructions
             goto StackUnderflow;
 
         // Pop the exponent as a 256-bit word.
-        Span<byte> bytes = stack.PopWord256();
+        ReadOnlySpan<byte> bytes = stack.PopWord256();
 
         // Determine the effective byte-length of the exponent.
         int leadingZeros = bytes.LeadingZerosCount();

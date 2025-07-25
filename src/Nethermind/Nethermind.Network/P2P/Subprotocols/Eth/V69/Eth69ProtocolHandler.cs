@@ -36,7 +36,7 @@ public class Eth69ProtocolHandler : Eth68ProtocolHandler, ISyncPeer
         ITxPool txPool,
         IPooledTxsRequestor pooledTxsRequestor,
         IGossipPolicy gossipPolicy,
-        ForkInfo forkInfo,
+        IForkInfo forkInfo,
         ILogManager logManager,
         ITxGossipPolicy? transactionsGossipPolicy = null)
         : base(session, serializer, nodeStatsManager, syncServer, backgroundTaskScheduler, txPool, pooledTxsRequestor, gossipPolicy, forkInfo, logManager, transactionsGossipPolicy)

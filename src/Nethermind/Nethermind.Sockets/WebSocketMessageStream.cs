@@ -70,8 +70,7 @@ public sealed class WebSocketMessageStream : Stream, IMessageBorderPreservingStr
         await _socket.SendAsync(buffer, WebSocketMessageType.Text, endOfMessage: false, cancellationToken);
     }
 
-    [DoesNotReturn]
-    [StackTraceHidden]
+    [DoesNotReturn, StackTraceHidden]
     private void ThrowSocketNotOpen() => throw new IOException($"WebSocket not open ({_socket.State})");
 
     public override void Flush() { }

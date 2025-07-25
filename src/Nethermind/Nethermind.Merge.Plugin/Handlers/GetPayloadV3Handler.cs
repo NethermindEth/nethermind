@@ -18,7 +18,7 @@ public class GetPayloadV3Handler(
     IPayloadPreparationService payloadPreparationService,
     ISpecProvider specProvider,
     ILogManager logManager,
-    CensorshipDetector? censorshipDetector = null)
+    ICensorshipDetector? censorshipDetector = null)
     : GetPayloadHandlerBase<GetPayloadV3Result>(3, payloadPreparationService, specProvider, logManager, censorshipDetector)
 {
     protected override GetPayloadV3Result GetPayloadResultFromBlock(IBlockProductionContext context)

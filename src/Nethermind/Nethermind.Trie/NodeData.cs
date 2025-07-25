@@ -86,8 +86,7 @@ public class ExtensionData : INodeWithKey
 
             return ref _value;
 
-            [DoesNotReturn]
-            [StackTraceHidden]
+            [DoesNotReturn, StackTraceHidden]
             static void ThrowArgumentOutOfRangeException(int index)
             {
                 throw new ArgumentOutOfRangeException(nameof(index), index, $"{index} is not 0 or 1");

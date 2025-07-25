@@ -126,8 +126,7 @@ namespace Nethermind.Trie
                 return data;
             }
 
-            [DoesNotReturn]
-            [StackTraceHidden]
+            [DoesNotReturn, StackTraceHidden]
             private static void ThrowNullKey(TrieNode node)
             {
                 throw new TrieException($"Hex prefix of a leaf node is null at node {node.Keccak}");

@@ -11,18 +11,11 @@ using Nethermind.Core.Threading;
 [assembly: InternalsVisibleTo("Nethermind.State")]
 [assembly: InternalsVisibleTo("Nethermind.Evm")]
 [assembly: InternalsVisibleTo("Nethermind.TxPool")]
+[assembly: InternalsVisibleTo("Nethermind.Blockchain")]
 namespace Nethermind.Db
 {
     public static class Metrics
     {
-        [CounterMetric]
-        [Description("Number of Code DB cache reads.")]
-        public static long CodeDbCache => _codeDbCache.GetTotalValue();
-        private static readonly ZeroContentionCounter _codeDbCache = new();
-        [Description("Number of Code DB cache reads on thread.")]
-        internal static long ThreadLocalCodeDbCache => _codeDbCache.ThreadLocalValue;
-        internal static void IncrementCodeDbCache() => _codeDbCache.Increment();
-
         [CounterMetric]
         [Description("Number of State Trie cache hits.")]
         public static long StateTreeCache => _stateTreeCacheHits.GetTotalValue();

@@ -23,16 +23,16 @@ namespace Nethermind.Merge.Plugin.Test;
 public partial class EngineModuleTests
 {
     [TestCase(
-        "0x9e205909311e6808bd7167e07bda30bda2b1061127e89e76167781214f3024bf",
-        "0x701f48fd56e6ded89a9ec83926eb99eebf9a38b15b4b8f0066574ac1dd9ff6df",
+        "0x0b2e24d802b4664b6f64f87a3e9498566080b2e9f8adf6e00896f89e4cc8a83b",
+        "0xf0444d3c2e8d725d7884803ff71b62a680fe9f96765a9f01b9c4e47dacb2f3b0",
         "0x73cecfc66bc1c8545aa3521e21be51c31bd2054badeeaa781f5fd5b871883f35",
-        "0x80ce7f68a5211b5d")]
+        "0xd814b750baa05a39")]
     public virtual async Task Should_process_block_as_expected_V4(string latestValidHash, string blockHash,
         string stateRoot, string payloadId)
     {
         using MergeTestBlockchain chain =
             await CreateBlockchain(Prague.Instance, new MergeConfig { TerminalTotalDifficulty = "0" });
-        IEngineRpcModule rpc = CreateEngineModule(chain);
+        IEngineRpcModule rpc = chain.EngineRpcModule;
         Hash256 startingHead = chain.BlockTree.HeadHash;
         Hash256 prevRandao = Keccak.Zero;
         Address feeRecipient = TestItem.AddressC;
@@ -168,8 +168,8 @@ public partial class EngineModuleTests
     public async Task NewPayloadV4_reject_payload_with_bad_authorization_list_rlp()
     {
         ExecutionRequestsProcessorMock executionRequestsProcessorMock = new();
-        using MergeTestBlockchain chain = await CreateBlockchain(Prague.Instance, null, null, null, executionRequestsProcessorMock);
-        IEngineRpcModule rpc = CreateEngineModule(chain);
+        using MergeTestBlockchain chain = await CreateBlockchain(Prague.Instance, null, null, executionRequestsProcessorMock);
+        IEngineRpcModule rpc = chain.EngineRpcModule;
         Hash256 lastHash = (await ProduceBranchV4(rpc, chain, 10, CreateParentBlockRequestOnHead(chain.BlockTree), true, withRequests: true))
             .LastOrDefault()?.BlockHash ?? Keccak.Zero;
 
@@ -203,8 +203,8 @@ public partial class EngineModuleTests
     public async Task NewPayloadV4_reject_payload_with_bad_execution_requests()
     {
         ExecutionRequestsProcessorMock executionRequestsProcessorMock = new();
-        using MergeTestBlockchain chain = await CreateBlockchain(Prague.Instance, null, null, null, executionRequestsProcessorMock);
-        IEngineRpcModule rpc = CreateEngineModule(chain);
+        using MergeTestBlockchain chain = await CreateBlockchain(Prague.Instance, null, null, executionRequestsProcessorMock);
+        IEngineRpcModule rpc = chain.EngineRpcModule;
         Hash256 lastHash = (await ProduceBranchV4(rpc, chain, 10, CreateParentBlockRequestOnHead(chain.BlockTree), true, withRequests: true))
             .LastOrDefault()?.BlockHash ?? Keccak.Zero;
 
@@ -236,7 +236,7 @@ public partial class EngineModuleTests
     public async Task can_progress_chain_one_by_one_v4(int count)
     {
         using MergeTestBlockchain chain = await CreateBlockchain(Prague.Instance);
-        IEngineRpcModule rpc = CreateEngineModule(chain);
+        IEngineRpcModule rpc = chain.EngineRpcModule;
         Hash256 lastHash = (await ProduceBranchV4(rpc, chain, count, CreateParentBlockRequestOnHead(chain.BlockTree), true))
             .LastOrDefault()?.BlockHash ?? Keccak.Zero;
         chain.BlockTree.HeadHash.Should().Be(lastHash);
@@ -249,8 +249,8 @@ public partial class EngineModuleTests
     public async Task can_progress_chain_one_by_one_v4_with_requests(int count)
     {
         ExecutionRequestsProcessorMock executionRequestsProcessorMock = new();
-        using MergeTestBlockchain chain = await CreateBlockchain(Prague.Instance, null, null, null, executionRequestsProcessorMock);
-        IEngineRpcModule rpc = CreateEngineModule(chain);
+        using MergeTestBlockchain chain = await CreateBlockchain(Prague.Instance, null, null, executionRequestsProcessorMock);
+        IEngineRpcModule rpc = chain.EngineRpcModule;
         Hash256 lastHash = (await ProduceBranchV4(rpc, chain, count, CreateParentBlockRequestOnHead(chain.BlockTree), true, withRequests: true))
             .LastOrDefault()?.BlockHash ?? Keccak.Zero;
         chain.BlockTree.HeadHash.Should().Be(lastHash);

@@ -83,7 +83,7 @@ public class Eth68ProtocolHandlerTests
             _transactionPool,
             _pooledTxsRequestor,
             _gossipPolicy,
-            new ForkInfo(_specProvider, _genesisBlock.Header.Hash!),
+            new ForkInfo(_specProvider, _syncManager),
             LimboLogs.Instance,
             _txGossipPolicy);
         _handler.Init();
@@ -232,7 +232,7 @@ public class Eth68ProtocolHandlerTests
             _transactionPool,
             new PooledTxsRequestor(_transactionPool, new TxPoolConfig() { MaxTxSize = sizeOfOneTx }, _specProvider),
             _gossipPolicy,
-            new ForkInfo(_specProvider, _genesisBlock.Header.Hash!),
+            new ForkInfo(_specProvider, _syncManager),
             LimboLogs.Instance,
             _txGossipPolicy);
 

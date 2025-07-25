@@ -165,8 +165,8 @@ namespace Nethermind.Consensus.AuRa
         {
             Signature signature = new Signature(header.AuRaSignature);
             signature.V += Signature.VOffset;
-            Hash256 message = header.CalculateHash(RlpBehaviors.ForSealing);
-            return _ecdsa.RecoverAddress(signature, message);
+            ValueHash256 message = header.CalculateValueHash(RlpBehaviors.ForSealing);
+            return _ecdsa.RecoverAddress(signature, in message);
         }
 
         private class ReceivedSteps

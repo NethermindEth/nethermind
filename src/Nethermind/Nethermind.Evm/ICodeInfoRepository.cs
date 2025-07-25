@@ -7,12 +7,13 @@ using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
 using Nethermind.Evm.CodeAnalysis;
-using Nethermind.State;
+using Nethermind.Evm.State;
 
 namespace Nethermind.Evm;
 
 public interface ICodeInfoRepository
 {
+    bool IsPrecompile(Address address, IReleaseSpec spec);
     ICodeInfo GetCachedCodeInfo(IWorldState worldState, Address codeSource, bool followDelegation, IReleaseSpec vmSpec, out Address? delegationAddress);
     ValueHash256 GetExecutableCodeHash(IWorldState worldState, Address address, IReleaseSpec spec);
     void InsertCode(IWorldState state, ReadOnlyMemory<byte> code, Address codeOwner, IReleaseSpec spec);

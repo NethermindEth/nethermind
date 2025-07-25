@@ -6,11 +6,11 @@ using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Test.Builders;
-using Nethermind.Evm.Tracing.GethStyle;
-using Nethermind.Evm.Tracing.GethStyle.Custom.Native.Prestate;
+using Nethermind.Blockchain.Tracing.GethStyle;
+using Nethermind.Blockchain.Tracing.GethStyle.Custom.Native.Prestate;
 using Nethermind.Serialization.Json;
 using Nethermind.Specs;
-using Nethermind.State;
+using Nethermind.Evm.State;
 using NUnit.Framework;
 
 namespace Nethermind.Evm.Test.Tracing;

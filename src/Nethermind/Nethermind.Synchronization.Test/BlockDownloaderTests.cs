@@ -39,6 +39,7 @@ using Autofac;
 using Autofac.Features.AttributeFilters;
 using Humanizer;
 using Nethermind.Config;
+using Nethermind.Consensus.Processing;
 using Nethermind.Core.Events;
 using Nethermind.Core.Test;
 using Nethermind.Core.Test.Modules;
@@ -48,6 +49,7 @@ using Nethermind.Stats;
 using Nethermind.Synchronization.ParallelSync;
 using Nethermind.Synchronization.Peers.AllocationStrategies;
 using NonBlocking;
+using NSubstitute.ExceptionExtensions;
 using IContainer = Autofac.IContainer;
 
 namespace Nethermind.Synchronization.Test;
@@ -183,6 +185,54 @@ public partial class BlockDownloaderTests
 
         Func<Task> act = async () => await ctx.FastSyncUntilNoRequest(peerInfo);
         await act.Should().NotThrowAsync();
+    }
+
+    [Test]
+    public async Task Catch_exception_from_forwardHeaderProvider()
+    {
+        IForwardHeaderProvider mockForwardHeaderProvider = Substitute.For<IForwardHeaderProvider>();
+        mockForwardHeaderProvider.GetBlockHeaders(Arg.Any<int>(), Arg.Any<int>(), Arg.Any<CancellationToken>())
+            .Throws(new Exception("test exception"));
+
+        await using IContainer node = CreateNode(configProvider: new ConfigProvider(new SyncConfig()
+        {
+            FastSync = true
+        }),
+            configurer: (builder) => builder.AddSingleton<IForwardHeaderProvider>(mockForwardHeaderProvider));
+
+        Context ctx = node.Resolve<Context>();
+        Func<Task<BlocksRequest?>> act = () => ctx.FastSyncFeedComponent.BlockDownloader.PrepareRequest(
+            DownloaderOptions.Insert,
+            0,
+            CancellationToken.None);
+
+        await act.Should().NotThrowAsync();
+    }
+
+    [Test]
+    public async Task Skit_spawning_request_when_block_processing_queue_is_high()
+    {
+        IForwardHeaderProvider mockForwardHeaderProvider = Substitute.For<IForwardHeaderProvider>();
+        IBlockProcessingQueue blockProcessingQueue = Substitute.For<IBlockProcessingQueue>();
+        blockProcessingQueue.Count.Returns(10000);
+
+        await using IContainer node = CreateNode(configProvider: new ConfigProvider(new SyncConfig()
+        {
+            FastSync = true
+        }),
+            configurer: (builder) => builder
+                .AddSingleton<IForwardHeaderProvider>(mockForwardHeaderProvider)
+                .AddSingleton<IBlockProcessingQueue>(blockProcessingQueue));
+
+        Context ctx = node.Resolve<Context>();
+        var request = await ctx.FastSyncFeedComponent.BlockDownloader.PrepareRequest(
+            DownloaderOptions.Insert,
+            0,
+            CancellationToken.None);
+
+        request.Should().BeNull();
+        await mockForwardHeaderProvider.DidNotReceive()
+            .GetBlockHeaders(Arg.Any<int>(), Arg.Any<int>(), Arg.Any<CancellationToken>());
     }
 
     [Test]
@@ -469,7 +519,7 @@ public partial class BlockDownloaderTests
         await using IContainer node = CreateNode(builder => builder
             .AddDecorator<ISyncConfig>((_, syncConfig) =>
             {
-                syncConfig.MaxTxInForwardSyncBuffer = 3200;
+                syncConfig.ForwardSyncDownloadBufferMemoryBudget = 3200000;
                 return syncConfig;
             })
             .AddSingleton<IBlockValidator>(Always.Invalid));
@@ -1402,7 +1452,7 @@ public partial class BlockDownloaderTests
 
                 _headers[blockHashes[i]].ReceiptsRoot = flags.HasFlag(Response.IncorrectReceiptRoot)
                     ? Keccak.EmptyTreeHash
-                    : ReceiptTrie<TxReceipt>.CalculateRoot(MainnetSpecProvider.Instance.GetSpec((ForkActivation)_headers[blockHashes[i]].Number), receipts[i], Rlp.GetStreamDecoder<TxReceipt>()!);
+                    : ReceiptTrie.CalculateRoot(MainnetSpecProvider.Instance.GetSpec((ForkActivation)_headers[blockHashes[i]].Number), receipts[i], Rlp.GetStreamDecoder<TxReceipt>()!);
             }
 
             using ReceiptsMessage message = new(receipts.ToPooledList());

@@ -18,6 +18,7 @@ using NSubstitute;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Merge.Plugin.Data;
 using Nethermind.JsonRpc;
+using Nethermind.Merge.Plugin;
 using Nethermind.Taiko.Rpc;
 
 namespace Nethermind.Taiko.Test;
@@ -47,8 +48,8 @@ public class TaikoEngineApiTests
             Substitute.For<IPeerRefresher>(),
             Substitute.For<ISpecProvider>(),
             Substitute.For<ISyncPeerPool>(),
-            Substitute.For<ILogManager>(),
-            false // simulateBlockProduction
+            new MergeConfig(),
+            Substitute.For<ILogManager>()
         );
 
         ResultWrapper<ForkchoiceUpdatedV1Result> beforeNewBlockAadded = await forkchoiceUpdatedHandler.Handle(new ForkchoiceStateV1(genesisBlock.Hash!, futureBlock.Hash!, futureBlock.Hash!), null, 2);
