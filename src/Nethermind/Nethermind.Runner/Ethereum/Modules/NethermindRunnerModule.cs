@@ -7,7 +7,6 @@ using System.Linq;
 using Autofac;
 using Nethermind.Api;
 using Nethermind.Api.Extensions;
-using Nethermind.Api.Steps;
 using Nethermind.Config;
 using Nethermind.Consensus.Processing;
 using Nethermind.Core;

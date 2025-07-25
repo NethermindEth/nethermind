@@ -158,7 +158,7 @@ public class E2ESyncTests(E2ESyncTests.DbMode dbMode, bool isPostMerge)
                 }
         }
 
-        var builder = new ContainerBuilder()
+        ContainerBuilder builder = new ContainerBuilder()
             .AddModule(new PseudoNethermindModule(spec, configProvider, new TestLogManager()))
             .AddModule(new TestEnvironmentModule(nodeKey, $"{nameof(E2ESyncTests)} {dbMode} {isPostMerge}"))
             .AddSingleton<IDisconnectsAnalyzer, ImmediateDisconnectFailure>()

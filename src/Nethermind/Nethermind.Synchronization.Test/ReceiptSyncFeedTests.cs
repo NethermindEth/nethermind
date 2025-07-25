@@ -13,6 +13,7 @@ using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Db;
+using Nethermind.History;
 using Nethermind.Logging;
 using Nethermind.Specs;
 using Nethermind.Stats;
@@ -28,14 +29,15 @@ namespace Nethermind.Synchronization.Test;
 
 public class ReceiptSyncFeedTests
 {
-    private IBlockTree _syncingFromBlockTree = null!;
-    private IBlockTree _syncingToBlockTree = null!;
-    private ReceiptsSyncFeed _feed = null!;
-    private ISyncConfig _syncConfig = null!;
-    private Block _pivotBlock = null!;
+    private IBlockTree _syncingFromBlockTree;
+    private IBlockTree _syncingToBlockTree;
+    private ReceiptsSyncFeed _feed;
+    private ISyncConfig _syncConfig;
+    private Block _pivotBlock;
     private InMemoryReceiptStorage _syncingFromReceiptStore;
     private IReceiptStorage _receiptStorage;
-    private ISyncPeerPool _syncPeerPool = null!;
+    private ISyncPeerPool _syncPeerPool;
+    private IHistoryPruner _historyPruner;
 
     [SetUp]
     public void Setup()
@@ -70,6 +72,7 @@ public class ReceiptSyncFeedTests
         _syncingToBlockTree.SyncPivot = (_pivotBlock.Number, _pivotBlock.Hash);
 
         _syncPeerPool = Substitute.For<ISyncPeerPool>();
+        _historyPruner = Substitute.For<IHistoryPruner>();
         _feed = new ReceiptsSyncFeed(
             MainnetSpecProvider.Instance,
             _syncingToBlockTree,
@@ -78,6 +81,7 @@ public class ReceiptSyncFeedTests
             _syncPeerPool,
             _syncConfig,
             new NullSyncReport(),
+            _historyPruner,
             new MemDb(),
             LimboLogs.Instance
         );

@@ -9,6 +9,7 @@ using Nethermind.Blockchain.Visitors;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
+using Nethermind.State.Repositories;
 
 namespace Nethermind.Blockchain;
 
@@ -266,4 +267,7 @@ public class BlockTreeOverlay : IBlockTree
 
 
     public long GetLowestBlock() => _baseTree.GetLowestBlock();
+
+    public void DeleteOldBlock(long currentNumber, Hash256 currentHash, BatchWrite batch)
+        => _baseTree.DeleteOldBlock(currentNumber, currentHash, batch);
 }

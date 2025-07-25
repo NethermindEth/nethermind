@@ -18,18 +18,13 @@ public class BlockStore([KeyFilter(DbNames.Blocks)] IDb blockDb) : IBlockStore
     private readonly BlockDecoder _blockDecoder = new();
     public const int CacheSize = 128 + 32;
 
-    private readonly ClockCache<ValueHash256, Block>
-        _blockCache = new(CacheSize);
+    private readonly ClockCache<ValueHash256, Block> _blockCache = new(CacheSize);
 
     public void SetMetadata(byte[] key, byte[] value)
-    {
-        blockDb.Set(key, value);
-    }
+        => blockDb.Set(key, value);
 
     public byte[]? GetMetadata(byte[] key)
-    {
-        return blockDb.Get(key);
-    }
+        => blockDb.Get(key);
 
     public bool HasBlock(long blockNumber, Hash256 blockHash)
     {
@@ -93,7 +88,5 @@ public class BlockStore([KeyFilter(DbNames.Blocks)] IDb blockDb) : IBlockStore
     }
 
     public void Cache(Block block)
-    {
-        _blockCache.Set(block.Hash, block);
-    }
+        => _blockCache.Set(block.Hash, block);
 }

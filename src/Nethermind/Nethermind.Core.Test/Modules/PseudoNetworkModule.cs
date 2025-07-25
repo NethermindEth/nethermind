@@ -5,19 +5,11 @@ using Autofac;
 using Autofac.Features.AttributeFilters;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Consensus;
-using Nethermind.Core.Specs;
-using Nethermind.Crypto;
 using Nethermind.Logging;
 using Nethermind.Network;
 using Nethermind.Network.Config;
 using Nethermind.Network.Contract.P2P;
-using Nethermind.Network.P2P.Analyzers;
-using Nethermind.Network.P2P.Messages;
 using Nethermind.Network.P2P.Subprotocols.Eth;
-using Nethermind.Network.P2P.Subprotocols.Eth.V63.Messages;
-using Nethermind.Network.Rlpx;
-using Nethermind.Network.Rlpx.Handshake;
-using Nethermind.Evm.State;
 using Nethermind.State;
 using Nethermind.State.SnapServer;
 using Nethermind.Stats.Model;
@@ -27,7 +19,7 @@ using Nethermind.TxPool;
 
 namespace Nethermind.Core.Test.Modules;
 
-public class PsudoNetworkModule() : Module
+public class PseudoNetworkModule() : Module
 {
     protected override void Load(ContainerBuilder builder)
     {
@@ -87,7 +79,6 @@ public class PsudoNetworkModule() : Module
                 Network.Metrics.PeerLimit = maxPeersCount;
                 return networkConfig;
             })
-
             ;
     }
 

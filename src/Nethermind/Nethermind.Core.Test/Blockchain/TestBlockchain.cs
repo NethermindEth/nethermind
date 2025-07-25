@@ -70,6 +70,7 @@ public class TestBlockchain : IDisposable
 
     public IBlockProcessingQueue BlockProcessingQueue { get; set; } = null!;
     public IBlockTree BlockTree => _fromContainer.BlockTree;
+    public IBlockStore BlockStore => _fromContainer.BlockStore;
 
     public Action<IWorldState>? InitialStateMutator { get; set; }
 
@@ -145,6 +146,7 @@ public class TestBlockchain : IDisposable
         IWorldStateManager WorldStateManager,
         IBlockPreprocessorStep BlockPreprocessorStep,
         IBlockTree BlockTree,
+        IBlockStore BlockStore,
         IBlockFinder BlockFinder,
         ILogFinder LogFinder,
         IChainHeadInfoProvider ChainHeadInfoProvider,
@@ -186,7 +188,7 @@ public class TestBlockchain : IDisposable
     {
         JsonSerializer = new EthereumJsonSerializer();
 
-        IConfigProvider configProvider = new ConfigProvider(CreateConfigs().ToArray());
+        IConfigProvider configProvider = new ConfigProvider([.. CreateConfigs()]);
 
         ContainerBuilder builder = ConfigureContainer(new ContainerBuilder(), configProvider);
         ConfigureContainer(builder, configProvider);
