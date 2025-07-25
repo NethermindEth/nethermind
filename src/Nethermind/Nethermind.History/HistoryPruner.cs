@@ -258,6 +258,11 @@ public class HistoryPruner : IHistoryPruner
         int deletedBlocks = 0;
         ulong? lastDeletedTimstamp = null;
         BatchWrite? batch = null;
+        if (_blockTree.SyncPivot.BlockNumber == 0)
+        {
+            _logger.Info("skipping pruning, no sync pivot");
+            return;
+        }
         if (!_tmp)
         {
             LoadDeletePointer();
