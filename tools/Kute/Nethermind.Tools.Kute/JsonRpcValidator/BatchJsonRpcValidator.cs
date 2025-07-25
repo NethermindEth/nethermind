@@ -52,7 +52,7 @@ public sealed class BatchJsonRpcValidator : IJsonRpcValidator
                     return true;
                 }
             default:
-                return false;
+                throw new ArgumentOutOfRangeException(nameof(request));
         }
     }
 }
