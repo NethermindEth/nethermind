@@ -32,14 +32,21 @@ public class MetricsTests
         using (totalTimer.Time())
         {
             var single = Single(42);
-            var requestTimer = new Timer();
+            var batch = Batch(Single(43), Single(44), Single(45));
 
-            using (requestTimer.Time())
+            var singleTimer = new Timer();
+            using (singleTimer.Time())
             {
-                await Task.Delay(TimeSpan.FromMilliseconds(100));
+                await Task.Delay(TimeSpan.FromMilliseconds(50));
             }
+            await reporter.Single(single, singleTimer.Elapsed);
 
-            await reporter.Single(single, requestTimer.Elapsed);
+            var batchTimer = new Timer();
+            using (batchTimer.Time())
+            {
+                await Task.Delay(TimeSpan.FromMilliseconds(50));
+            }
+            await reporter.Batch(batch, batchTimer.Elapsed);
         }
 
         await reporter.Total(totalTimer.Elapsed);
@@ -48,7 +55,12 @@ public class MetricsTests
 
         report.TotalTime.Should().BeGreaterThan(TimeSpan.FromMilliseconds(90));
         report.TotalTime.Should().BeLessThan(TimeSpan.FromMilliseconds(110));
+
         report.Singles.Should().HaveCount(1);
+        report.Singles.Should().ContainKey("42");
+
+        report.Batches.Should().HaveCount(1);
+        report.Batches.Should().ContainKey("43:45");
     }
 
     [Test]
