@@ -12,8 +12,10 @@ namespace Nethermind.Tools.Kute.Test;
 
 public class JsonRpcValidatorTests
 {
-    private static IJsonRpcValidator _validator = new ComposedJsonRpcValidator(
-            [new NonErrorJsonRpcValidator(), new NewPayloadJsonRpcValidator()]);
+    private static IJsonRpcValidator _validator =
+        new ComposedJsonRpcValidator(
+            new NonErrorJsonRpcValidator(),
+            new NewPayloadJsonRpcValidator());
 
     [Test]
     public void IsInvalid_When_ResponseHasError()

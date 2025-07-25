@@ -79,7 +79,8 @@ static class Program
         });
         collection.AddSingleton<IJsonRpcValidator>(
             new ComposedJsonRpcValidator(
-                [new NonErrorJsonRpcValidator(), new NewPayloadJsonRpcValidator()]));
+                new NonErrorJsonRpcValidator(),
+                new NewPayloadJsonRpcValidator()));
         collection.AddSingleton<IJsonRpcMethodFilter>(
             new ComposedJsonRpcMethodFilter(
                 [..parseResult
