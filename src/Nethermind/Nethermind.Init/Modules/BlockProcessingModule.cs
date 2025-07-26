@@ -2,6 +2,8 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using Autofac;
+using Nethermind.Api;
+using Nethermind.Api.Steps;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.BeaconBlockRoot;
 using Nethermind.Blockchain.Blocks;
@@ -20,6 +22,7 @@ using Nethermind.Core.Specs;
 using Nethermind.Evm;
 using Nethermind.State.OverridableEnv;
 using Nethermind.Evm.TransactionProcessing;
+using Nethermind.Init.Steps;
 using Nethermind.JsonRpc.Modules.Eth.GasPrice;
 using Nethermind.Logging;
 using Nethermind.State;
@@ -27,7 +30,7 @@ using Nethermind.TxPool;
 
 namespace Nethermind.Init.Modules;
 
-public class BlockProcessingModule : Module
+public class BlockProcessingModule(IInitConfig initConfig) : Module
 {
     protected override void Load(ContainerBuilder builder)
     {
@@ -80,6 +83,8 @@ public class BlockProcessingModule : Module
                     blocksConfig.MinGasPrice
                 ))
             ;
+
+        if (initConfig.ExitOnInvalidBlock) builder.AddStep(typeof(ExitOnInvalidBlock));
     }
 
     private class StandardBlockValidationModule : Module, IBlockValidationModule
