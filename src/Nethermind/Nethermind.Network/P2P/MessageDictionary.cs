@@ -4,6 +4,8 @@
 using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
+using System.Diagnostics;
+using System.Diagnostics.CodeAnalysis;
 using System.Threading.Tasks;
 using Nethermind.Core.Exceptions;
 using Nethermind.Core.Extensions;
@@ -37,7 +39,7 @@ public class MessageDictionary<T66Msg, TData>(Action<T66Msg> send, TimeSpan? old
         if (_requestCount >= MaxConcurrentRequest)
         {
             request.Message.TryDispose();
-            throw new ConcurrencyLimitReachedException($"Concurrent request limit reached. Message type: {typeof(T66Msg)}");
+            ThrowTooManyOutstandingRequests();
         }
 
 
@@ -55,6 +57,12 @@ public class MessageDictionary<T66Msg, TData>(Action<T66Msg> send, TimeSpan? old
         else
         {
             request.Message.TryDispose();
+        }
+
+        [StackTraceHidden, DoesNotReturn]
+        static void ThrowTooManyOutstandingRequests()
+        {
+            throw new ConcurrencyLimitReachedException($"Concurrent request limit reached. Message type: {typeof(T66Msg)}");
         }
     }
 
@@ -87,7 +95,7 @@ public class MessageDictionary<T66Msg, TData>(Action<T66Msg> send, TimeSpan? old
         {
             _requestCount--;
             request.ResponseSize = size;
-            request.CompletionSource.SetResult(data);
+            request.CompletionSource.TrySetResult(data);
         }
         else
         {
