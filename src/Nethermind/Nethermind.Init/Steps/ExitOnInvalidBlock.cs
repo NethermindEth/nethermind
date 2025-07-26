@@ -15,7 +15,7 @@ public class ExitOnInvalidBlock(
     IMainProcessingContext mainProcessingContext,
     IProcessExitSource processExitSource,
     ILogManager logManager
-): IStep
+) : IStep
 {
     public Task Execute(CancellationToken cancellationToken)
     {
