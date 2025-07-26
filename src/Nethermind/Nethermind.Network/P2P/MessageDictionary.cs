@@ -72,7 +72,7 @@ public class MessageDictionary<T66Msg, TData>(Action<T66Msg> send, TimeSpan? old
                     {
                         _requestCount--;
                         // Unblock waiting thread.
-                        request.CompletionSource.SetException(new TimeoutException("No response received"));
+                        request.CompletionSource.TrySetException(new TimeoutException("No response received"));
                     }
                 }
             }
