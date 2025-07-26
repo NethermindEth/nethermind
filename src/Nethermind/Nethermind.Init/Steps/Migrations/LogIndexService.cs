@@ -35,7 +35,7 @@ public class LogIndexService : ILogIndexService
     private const int BatchSize = 256;
     private const int MaxQueueSize = 4096;
     private static readonly int IOParallelism = Math.Max(Environment.ProcessorCount / 2, 1);
-    private static readonly TimeSpan NewBlockWaitTimeout = TimeSpan.FromSeconds(10);
+    private static readonly TimeSpan NewBlockWaitTimeout = TimeSpan.FromSeconds(30);
     private static readonly TimeSpan QueueSpinWaitTime = TimeSpan.FromSeconds(1);
 
     private readonly ILogIndexStorage _logIndexStorage;
@@ -314,7 +314,9 @@ public class LogIndexService : ILogIndexService
 
                 if (to <= from)
                 {
-                    if (_logger.IsInfo)
+                    var timedOut = !await newBlockEvent.WaitOneAsync(NewBlockWaitTimeout, CancellationToken);
+
+                    if (timedOut && _logger.IsInfo)
                     {
                         var (last, available) = isForward
                             ? (_logIndexStorage.GetMaxBlockNumber(), GetMaxAvailableBlockNumber())
@@ -323,7 +325,6 @@ public class LogIndexService : ILogIndexService
                         _logger.Info($"{GetLogPrefix(isForward)}: waiting for a new block, synced: {last:N0}, available: {available:N0}");
                     }
 
-                    await newBlockEvent.WaitOneAsync(NewBlockWaitTimeout, CancellationToken);
                     continue;
                 }
 
@@ -332,13 +333,14 @@ public class LogIndexService : ILogIndexService
 
                 if (buffer[0] == default)
                 {
-                    if (_logger.IsInfo)
+                    var timedOut = !await newBlockEvent.WaitOneAsync(NewBlockWaitTimeout, CancellationToken);
+
+                    if (timedOut && _logger.IsInfo)
                     {
                         var index = isForward ? from : to - 1;
                         _logger.Info($"{GetLogPrefix(isForward)}: waiting for a new block, no receipts available for {index:N0}");
                     }
 
-                    await newBlockEvent.WaitOneAsync(NewBlockWaitTimeout, CancellationToken);
                     continue;
                 }
 

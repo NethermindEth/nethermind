@@ -91,7 +91,7 @@ public class LogIndexUpdateStats : IFormattable
 
         return
             $"""
-             {tab}Blocks: {MinBlockNumber:N0} - {MaxBlockNumber:N0}
+             {tab}Blocks: {MinBlockNumber:N0} - {MaxBlockNumber:N0} (+{_blocksAdded:N0})
 
              {tab}Txs: +{_txAdded:N0}
              {tab}Logs: +{_logsAdded:N0}
