@@ -57,6 +57,11 @@ public static class Extensions
             AddPrecompile<Secp256r1Precompile>();
         }
 
+        if (spec.IsL1SloadEnabled)
+        {
+            AddPrecompile<L1SloadPrecompile>();
+        }
+
         return precompiles;
 
         void AddPrecompile<T>() where T : IPrecompile<T> => precompiles[T.Address] = T.Name;
