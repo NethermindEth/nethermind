@@ -69,7 +69,7 @@ namespace Nethermind.Network.P2P.ProtocolHandlers
 
                 Task firstTask = await Task.WhenAny(task, Task.Delay(Timeouts.Eth, compositeCancellation.Token));
 
-                if (firstTask == task)
+                if (ReferenceEquals(firstTask, task))
                 {
                     delayCancellation.Cancel();
 
