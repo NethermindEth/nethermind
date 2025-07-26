@@ -45,7 +45,7 @@ namespace Nethermind.Blockchain.Filters.Topics
             get { yield return _topic; }
         }
 
-        public override HashSet<int> FilterBlockNumbers(IReadOnlyDictionary<Hash256, List<int>> byTopic)
+        public override HashSet<int>? FilterBlockNumbers(IReadOnlyDictionary<Hash256, List<int>> byTopic)
         {
             return byTopic.GetValueOrDefault(_topic) is { } numbers ? [.. numbers] : new();
         }

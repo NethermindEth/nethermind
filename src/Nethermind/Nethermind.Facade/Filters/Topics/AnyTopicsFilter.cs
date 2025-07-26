@@ -102,7 +102,7 @@ namespace Nethermind.Blockchain.Filters.Topics
 
         public override HashSet<int> FilterBlockNumbers(IReadOnlyDictionary<Hash256, List<int>> byTopic)
         {
-            HashSet<int> result = null;
+            HashSet<int>? result = null;
             foreach (TopicExpression expression in _expressions)
             {
                 if (result == null)

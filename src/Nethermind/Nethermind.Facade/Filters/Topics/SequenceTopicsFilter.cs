@@ -109,13 +109,18 @@ namespace Nethermind.Blockchain.Filters.Topics
 
         public override HashSet<int> FilterBlockNumbers(IReadOnlyDictionary<Hash256, List<int>> byTopic)
         {
-            HashSet<int> result = null;
+            HashSet<int>? result = null;
             foreach (TopicExpression expression in _expressions)
             {
                 if (result == null)
                     result = expression.FilterBlockNumbers(byTopic);
-                else
-                    result.IntersectWith(expression.FilterBlockNumbers(byTopic));
+                else if (expression.FilterBlockNumbers(byTopic) is { } next)
+                {
+                    if (next.Count <= result.Count)
+                        (result, next) = (next, result);
+
+                    result.IntersectWith(next);
+                }
             }
 
             return result ?? [];

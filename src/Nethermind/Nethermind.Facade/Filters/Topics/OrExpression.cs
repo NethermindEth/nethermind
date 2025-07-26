@@ -74,15 +74,15 @@ namespace Nethermind.Blockchain.Filters.Topics
 
         public override IEnumerable<Hash256> Topics => _subexpressions.SelectMany(e => e.Topics);
 
-        public override HashSet<int> FilterBlockNumbers(IReadOnlyDictionary<Hash256, List<int>> byTopic)
+        public override HashSet<int>? FilterBlockNumbers(IReadOnlyDictionary<Hash256, List<int>> byTopic)
         {
-            HashSet<int> result = null;
+            HashSet<int>? result = null;
             foreach (TopicExpression subexpression in _subexpressions)
             {
                 if (result == null)
                     result = subexpression.FilterBlockNumbers(byTopic);
-                else
-                    result.UnionWith(subexpression.FilterBlockNumbers(byTopic));
+                else if (subexpression.FilterBlockNumbers(byTopic) is {} next)
+                    result.UnionWith(next);
             }
 
             return result ?? [];
