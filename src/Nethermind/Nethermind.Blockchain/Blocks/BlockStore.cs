@@ -3,6 +3,7 @@
 
 using System;
 using System.Buffers;
+using System.Runtime.CompilerServices;
 using Autofac.Features.AttributeFilters;
 using Nethermind.Core;
 using Nethermind.Core.Caching;
@@ -18,8 +19,7 @@ public class BlockStore([KeyFilter(DbNames.Blocks)] IDb blockDb) : IBlockStore
     private readonly BlockDecoder _blockDecoder = new();
     public const int CacheSize = 128 + 32;
 
-    private readonly ClockCache<ValueHash256, Block>
-        _blockCache = new(CacheSize);
+    private readonly ClockCache<ValueHash256, Block> _blockCache = new(CacheSize);
 
     public void SetMetadata(byte[] key, byte[] value)
     {
@@ -34,7 +34,7 @@ public class BlockStore([KeyFilter(DbNames.Blocks)] IDb blockDb) : IBlockStore
     public bool HasBlock(long blockNumber, Hash256 blockHash)
     {
         Span<byte> dbKey = stackalloc byte[40];
-        KeyValueStoreExtensions.GetBlockNumPrefixedKey(blockNumber, blockHash, dbKey);
+        KeyValueStoreExtensions.GetBlockNumPrefixedKey(blockNumber, in blockHash.ValueHash256, dbKey);
         return blockDb.KeyExists(dbKey);
     }
 
@@ -67,20 +67,22 @@ public class BlockStore([KeyFilter(DbNames.Blocks)] IDb blockDb) : IBlockStore
 
     public Block? Get(long blockNumber, Hash256 blockHash, RlpBehaviors rlpBehaviors = RlpBehaviors.None, bool shouldCache = false)
     {
-        Block? b = blockDb.Get(blockNumber, blockHash, _blockDecoder, _blockCache, rlpBehaviors, shouldCache);
+        Block? b = blockDb.Get(blockNumber, in blockHash.ValueHash256, _blockDecoder, _blockCache, rlpBehaviors, shouldCache);
         if (b is not null) return b;
-        return blockDb.Get(blockHash, _blockDecoder, _blockCache, rlpBehaviors, shouldCache);
+        return blockDb.Get(in blockHash.ValueHash256, _blockDecoder, _blockCache, rlpBehaviors, shouldCache);
     }
 
+    [SkipLocalsInit]
     public byte[]? GetRlp(long blockNumber, Hash256 blockHash)
     {
         Span<byte> dbKey = stackalloc byte[40];
-        KeyValueStoreExtensions.GetBlockNumPrefixedKey(blockNumber, blockHash, dbKey);
+        KeyValueStoreExtensions.GetBlockNumPrefixedKey(blockNumber, in blockHash.ValueHash256, dbKey);
         var b = blockDb.Get(dbKey);
         if (b is not null) return b;
         return blockDb.Get(blockHash);
     }
 
+    [SkipLocalsInit]
     public ReceiptRecoveryBlock? GetReceiptRecoveryBlock(long blockNumber, Hash256 blockHash)
     {
         Span<byte> keyWithBlockNumber = stackalloc byte[40];

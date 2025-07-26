@@ -228,7 +228,7 @@ public partial class EthRpcModule(
 
     public ResultWrapper<UInt256?> eth_getBlockTransactionCountByHash(Hash256 blockHash)
     {
-        SearchResult<Block> searchResult = _blockFinder.SearchForBlock(new BlockParameter(blockHash));
+        SearchResult<Block> searchResult = _blockFinder.SearchForBlock(new BlockParameter(blockHash), onlyTxHashes: true);
         return searchResult.IsError
             ? ResultWrapper<UInt256?>.Success(null)
             : ResultWrapper<UInt256?>.Success((UInt256)searchResult.Object!.Transactions.Length);
@@ -236,7 +236,7 @@ public partial class EthRpcModule(
 
     public ResultWrapper<UInt256?> eth_getBlockTransactionCountByNumber(BlockParameter blockParameter)
     {
-        SearchResult<Block> searchResult = _blockFinder.SearchForBlock(blockParameter);
+        SearchResult<Block> searchResult = _blockFinder.SearchForBlock(blockParameter, onlyTxHashes: true);
         return searchResult.IsError
             ? ResultWrapper<UInt256?>.Success(null)
             : ResultWrapper<UInt256?>.Success((UInt256)searchResult.Object!.Transactions.Length);
@@ -244,7 +244,7 @@ public partial class EthRpcModule(
 
     public ResultWrapper<UInt256?> eth_getUncleCountByBlockHash(Hash256 blockHash)
     {
-        SearchResult<Block> searchResult = _blockFinder.SearchForBlock(new BlockParameter(blockHash));
+        SearchResult<Block> searchResult = _blockFinder.SearchForBlock(new BlockParameter(blockHash), onlyTxHashes: true);
         return searchResult.IsError
             ? ResultWrapper<UInt256?>.Success(null)
             : ResultWrapper<UInt256?>.Success((UInt256)searchResult.Object!.Uncles.Length);
@@ -252,7 +252,7 @@ public partial class EthRpcModule(
 
     public ResultWrapper<UInt256?> eth_getUncleCountByBlockNumber(BlockParameter? blockParameter)
     {
-        SearchResult<Block> searchResult = _blockFinder.SearchForBlock(blockParameter);
+        SearchResult<Block> searchResult = _blockFinder.SearchForBlock(blockParameter, onlyTxHashes: true);
         return searchResult.IsError
             ? ResultWrapper<UInt256?>.Success(null)
             : ResultWrapper<UInt256?>.Success((UInt256)searchResult.Object!.Uncles.Length);
@@ -372,7 +372,7 @@ public partial class EthRpcModule(
 
     protected virtual ResultWrapper<BlockForRpc?> GetBlock(BlockParameter blockParameter, bool returnFullTransactionObjects)
     {
-        SearchResult<Block> searchResult = _blockFinder.SearchForBlock(blockParameter, true);
+        SearchResult<Block> searchResult = _blockFinder.SearchForBlock(blockParameter, allowNulls: true, onlyTxHashes: !returnFullTransactionObjects);
         if (searchResult.IsError)
         {
             return ResultWrapper<BlockForRpc?>.Success(null);

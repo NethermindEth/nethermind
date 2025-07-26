@@ -255,7 +255,7 @@ public class ForkchoiceUpdatedHandler : IForkchoiceUpdatedHandler
         bool shouldUpdateHead = !newHeadTheSameAsCurrentHead && blocks is not null;
         if (shouldUpdateHead)
         {
-            _blockTree.UpdateMainChain(blocks!, true, true);
+            _blockTree.UpdateMainChain(blocks!, wereProcessed: true, forceHeadBlock: true);
         }
 
         if (IsInconsistent(finalizedBlockHash))
