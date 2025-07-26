@@ -73,7 +73,7 @@ namespace Nethermind.Network.P2P.ProtocolHandlers
                 {
                     delayCancellation.Cancel();
 
-                    if (firstTask.IsCanceled)
+                    if (firstTask.IsCompletedSuccessfully)
                     {
                         long elapsed = request.FinishMeasuringTime();
                         long bytesPerMillisecond = (long)((decimal)request.ResponseSize / Math.Max(1, elapsed));
@@ -83,7 +83,8 @@ namespace Nethermind.Network.P2P.ProtocolHandlers
                         success = true;
                     }
                 }
-                else
+
+                if (!success)
                 {
                     if (Logger.IsDebug)
                     {
