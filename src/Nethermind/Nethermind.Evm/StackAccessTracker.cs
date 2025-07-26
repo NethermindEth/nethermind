@@ -25,6 +25,7 @@ public struct StackAccessTracker : IDisposable
     private int _storageKeysSnapshots;
     private int _destroyListSnapshots;
     private int _logsSnapshots;
+    private int _largeContractList;
 
     public StackAccessTracker()
     {
@@ -34,15 +35,14 @@ public struct StackAccessTracker : IDisposable
 
     public readonly bool IsCold(in StorageCell storageCell) => !_trackingState.AccessedStorageCells.Contains(storageCell);
 
-    public readonly void WarmUp(Address address)
-    {
-        _trackingState.AccessedAddresses.Add(address);
-    }
+    public readonly bool WarmUp(Address address)
+        => _trackingState.AccessedAddresses.Add(address);
 
-    public readonly void WarmUp(in StorageCell storageCell)
-    {
-        _trackingState.AccessedStorageCells.Add(storageCell);
-    }
+    public readonly bool WarmUp(in StorageCell storageCell)
+        => _trackingState.AccessedStorageCells.Add(storageCell);
+
+    public readonly bool WarmUpLargeContract(Address address)
+        => _trackingState.LargeContractList.Add(address);
 
     public readonly void WarmUp(AccessList? accessList)
     {
@@ -75,6 +75,7 @@ public struct StackAccessTracker : IDisposable
         _storageKeysSnapshots = _trackingState.AccessedStorageCells.TakeSnapshot();
         _destroyListSnapshots = _trackingState.DestroyList.TakeSnapshot();
         _logsSnapshots = _trackingState.Logs.TakeSnapshot();
+        _largeContractList = _trackingState.LargeContractList.TakeSnapshot();
     }
 
     public readonly void Restore()
@@ -83,6 +84,7 @@ public struct StackAccessTracker : IDisposable
         _trackingState.AccessedStorageCells.Restore(_storageKeysSnapshots);
         _trackingState.DestroyList.Restore(_destroyListSnapshots);
         _trackingState.Logs.Restore(_logsSnapshots);
+        _trackingState.LargeContractList.Restore(_largeContractList);
     }
 
     public void Dispose()
@@ -108,6 +110,7 @@ public struct StackAccessTracker : IDisposable
         public JournalCollection<LogEntry> Logs { get; } = new();
         public JournalSet<Address> DestroyList { get; } = new();
         public HashSet<AddressAsKey> CreateList { get; } = new();
+        public JournalSet<AddressAsKey> LargeContractList { get; } = new();
 
         private void Clear()
         {
@@ -116,6 +119,7 @@ public struct StackAccessTracker : IDisposable
             Logs.Clear();
             DestroyList.Clear();
             CreateList.Clear();
+            LargeContractList.Clear();
         }
     }
 }

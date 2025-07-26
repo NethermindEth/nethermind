@@ -25,6 +25,7 @@ using Nethermind.Network.P2P.Subprotocols.Eth.V62;
 using Nethermind.Network.P2P.Subprotocols.Eth.V62.Messages;
 using Nethermind.Network.Rlpx;
 using Nethermind.Specs;
+using Nethermind.Evm.State;
 using Nethermind.State;
 using Nethermind.State.SnapServer;
 using Nethermind.Stats;
@@ -106,7 +107,7 @@ public class ProtocolsManagerTests
             _blockTree.NetworkId.Returns((ulong)TestBlockchainIds.NetworkId);
             _blockTree.ChainId.Returns((ulong)TestBlockchainIds.ChainId);
             _blockTree.Genesis.Returns(Build.A.Block.Genesis.TestObject.Header);
-            ForkInfo forkInfo = new ForkInfo(MainnetSpecProvider.Instance, _syncServer.Genesis.Hash!);
+            ForkInfo forkInfo = new ForkInfo(MainnetSpecProvider.Instance, _syncServer);
             _peerManager = Substitute.For<IPeerManager>();
             _networkConfig = new NetworkConfig();
             _protocolValidator = new ProtocolValidator(_nodeStatsManager, _blockTree, forkInfo, _peerManager, _networkConfig, LimboLogs.Instance);

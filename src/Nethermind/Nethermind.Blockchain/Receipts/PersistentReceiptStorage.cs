@@ -249,8 +249,11 @@ namespace Nethermind.Blockchain.Receipts
             return result;
         }
 
-        [SkipLocalsInit]
         public void Insert(Block block, TxReceipt[]? txReceipts, bool ensureCanonical = true, WriteFlags writeFlags = WriteFlags.None, long? lastBlockNumber = null)
+            => Insert(block, txReceipts, _specProvider.GetSpec(block.Header), ensureCanonical, writeFlags, lastBlockNumber);
+
+        [SkipLocalsInit]
+        public void Insert(Block block, TxReceipt[]? txReceipts, IReleaseSpec spec, bool ensureCanonical = true, WriteFlags writeFlags = WriteFlags.None, long? lastBlockNumber = null)
         {
             txReceipts ??= [];
             int txReceiptsLength = txReceipts.Length;
@@ -265,7 +268,6 @@ namespace Nethermind.Blockchain.Receipts
             _receiptsRecovery.TryRecover(block, txReceipts, false);
 
             var blockNumber = block.Number;
-            var spec = _specProvider.GetSpec(block.Header);
             RlpBehaviors behaviors = spec.IsEip658Enabled ? RlpBehaviors.Eip658Receipts | RlpBehaviors.Storage : RlpBehaviors.Storage;
 
             using (NettyRlpStream stream = _storageDecoder.EncodeToNewNettyStream(txReceipts, behaviors))

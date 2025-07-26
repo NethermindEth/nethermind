@@ -152,14 +152,12 @@ namespace Nethermind.ExternalSigner.Plugin
             return false;
         }
 
-        [DoesNotReturn]
-        [StackTraceHidden]
+        [DoesNotReturn, StackTraceHidden]
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         private static void ThrowInvalidOperationSignFailed() =>
             throw new InvalidOperationException("Remote signer failed to sign the request.");
 
-        [DoesNotReturn]
-        [StackTraceHidden]
+        [DoesNotReturn, StackTraceHidden]
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         private static void ThrowNotSupportedException([CallerMemberName] string member = "") =>
             throw new NotSupportedException($"Clef remote signer does not support '{member}'");

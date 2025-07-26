@@ -8,10 +8,12 @@ using Nethermind.Config;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Test.Builders;
+using Nethermind.Core.Test.Db;
 using Nethermind.Core.Test.Modules;
 using Nethermind.Db;
 using Nethermind.Logging;
 using Nethermind.Specs.Forks;
+using Nethermind.Evm.State;
 using Nethermind.State;
 using Nethermind.Trie.Pruning;
 using NSubstitute;
@@ -86,7 +88,7 @@ public class WorldStateManagerTests
 
             IWorldState worldState = ctx.Resolve<IWorldStateManager>().GlobalWorldState;
 
-            worldState.StateRoot = Keccak.EmptyTreeHash;
+            worldState.SetBaseBlock(null);
 
             worldState.CreateAccount(TestItem.AddressA, 1, 2);
             worldState.Commit(Cancun.Instance);
@@ -100,6 +102,6 @@ public class WorldStateManagerTests
             }
         }
 
-        blockTree.Received().BestPersistedState = lastBlock - reorgDepth - 1;
+        blockTree.Received().BestPersistedState = lastBlock - reorgDepth;
     }
 }

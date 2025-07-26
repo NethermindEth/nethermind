@@ -18,10 +18,9 @@ using Nethermind.Consensus.Withdrawals;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
 using Nethermind.Crypto;
+using Nethermind.Evm.State;
 using Nethermind.Evm.Tracing;
-using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Logging;
-using Nethermind.State;
 using Nethermind.TxPool;
 
 namespace Nethermind.Consensus.AuRa
@@ -80,26 +79,25 @@ namespace Nethermind.Consensus.AuRa
 
         public IAuRaValidator AuRaValidator { get; }
 
-        protected override TxReceipt[] ProcessBlock(Block block, IBlockTracer blockTracer, ProcessingOptions options, CancellationToken token)
+        protected override TxReceipt[] ProcessBlock(Block block, IBlockTracer blockTracer, ProcessingOptions options, IReleaseSpec spec, CancellationToken token)
         {
             ValidateAuRa(block);
-            IReleaseSpec spec = _specProvider.GetSpec(block.Header);
             bool wereChanges = _contractRewriter?.RewriteContracts(block.Number, _stateProvider, spec) ?? false;
             if (wereChanges)
             {
                 _stateProvider.Commit(spec, commitRoots: true);
             }
             AuRaValidator.OnBlockProcessingStart(block, options);
-            TxReceipt[] receipts = base.ProcessBlock(block, blockTracer, options, token);
+            TxReceipt[] receipts = base.ProcessBlock(block, blockTracer, options, spec, token);
             AuRaValidator.OnBlockProcessingEnd(block, receipts, options);
             Metrics.AuRaStep = block.Header?.AuRaStep ?? 0;
             return receipts;
         }
 
         // After PoS switch we need to revert to standard block processing, ignoring AuRa customizations
-        protected TxReceipt[] PostMergeProcessBlock(Block block, IBlockTracer blockTracer, ProcessingOptions options, CancellationToken token)
+        protected TxReceipt[] PostMergeProcessBlock(Block block, IBlockTracer blockTracer, ProcessingOptions options, IReleaseSpec spec, CancellationToken token)
         {
-            return base.ProcessBlock(block, blockTracer, options, token);
+            return base.ProcessBlock(block, blockTracer, options, spec, token);
         }
 
         // This validations cannot be run in AuraSealValidator because they are dependent on state.
@@ -148,29 +146,29 @@ namespace Nethermind.Consensus.AuRa
 
         private AddingTxEventArgs CheckTxPosdaoRules(AddingTxEventArgs args)
         {
-            AcceptTxResult? TryRecoverSenderAddress(Transaction tx, BlockHeader header)
+            AcceptTxResult? TryRecoverSenderAddress(Transaction tx, BlockHeader parentHeader, IReleaseSpec currentSpec)
             {
                 if (tx.Signature is not null)
                 {
-                    IReleaseSpec spec = _specProvider.GetSpec(args.Block.Header);
                     EthereumEcdsa ecdsa = new(_specProvider.ChainId);
-                    Address txSenderAddress = ecdsa.RecoverAddress(tx, !spec.ValidateChainId);
+                    Address txSenderAddress = ecdsa.RecoverAddress(tx, !currentSpec.ValidateChainId);
                     if (tx.SenderAddress != txSenderAddress)
                     {
                         if (_logger.IsWarn) _logger.Warn($"Transaction {tx.ToShortString()} in block {args.Block.ToString(Block.Format.FullHashAndNumber)} had recovered sender address on validation.");
                         tx.SenderAddress = txSenderAddress;
-                        return _txFilter.IsAllowed(tx, header);
+                        return _txFilter.IsAllowed(tx, parentHeader, currentSpec);
                     }
                 }
 
                 return null;
             }
 
+            IReleaseSpec spec = _specProvider.GetSpec(args.Block.Header);
             BlockHeader parentHeader = GetParentHeader(args.Block);
-            AcceptTxResult isAllowed = _txFilter.IsAllowed(args.Transaction, parentHeader);
+            AcceptTxResult isAllowed = _txFilter.IsAllowed(args.Transaction, parentHeader, spec);
             if (!isAllowed)
             {
-                isAllowed = TryRecoverSenderAddress(args.Transaction, parentHeader) ?? isAllowed;
+                isAllowed = TryRecoverSenderAddress(args.Transaction, parentHeader, spec) ?? isAllowed;
             }
 
             if (!isAllowed)

@@ -43,8 +43,6 @@ namespace Nethermind.Trie
         public IScopedTrieStore TrieStore { get; }
         public ICappedArrayPool? _bufferPool;
 
-        private readonly bool _parallelBranches;
-
         private readonly bool _allowCommits;
 
         private int _isWriteInProgress;
@@ -75,36 +73,34 @@ namespace Nethermind.Trie
         }
 
         public PatriciaTree()
-            : this(NullTrieStore.Instance, EmptyTreeHash, false, true, NullLogManager.Instance)
+            : this(NullTrieStore.Instance, EmptyTreeHash, true, NullLogManager.Instance)
         {
         }
 
         public PatriciaTree(IKeyValueStoreWithBatching keyValueStore)
-            : this(keyValueStore, EmptyTreeHash, false, true, NullLogManager.Instance)
+            : this(keyValueStore, EmptyTreeHash, true, NullLogManager.Instance)
         {
         }
 
         public PatriciaTree(ITrieStore trieStore, ILogManager logManager, ICappedArrayPool? bufferPool = null)
-            : this(trieStore.GetTrieStore(null), EmptyTreeHash, false, true, logManager, bufferPool: bufferPool)
+            : this(trieStore.GetTrieStore(null), EmptyTreeHash, true, logManager, bufferPool: bufferPool)
         {
         }
 
         public PatriciaTree(IScopedTrieStore trieStore, ILogManager logManager, ICappedArrayPool? bufferPool = null)
-            : this(trieStore, EmptyTreeHash, false, true, logManager, bufferPool: bufferPool)
+            : this(trieStore, EmptyTreeHash, true, logManager, bufferPool: bufferPool)
         {
         }
 
         public PatriciaTree(
             IKeyValueStoreWithBatching keyValueStore,
             Hash256 rootHash,
-            bool parallelBranches,
             bool allowCommits,
             ILogManager logManager,
             ICappedArrayPool? bufferPool = null)
             : this(
                 new RawScopedTrieStore(new NodeStorage(keyValueStore), null),
                 rootHash,
-                parallelBranches,
                 allowCommits,
                 logManager,
                 bufferPool: bufferPool)
@@ -114,14 +110,12 @@ namespace Nethermind.Trie
         public PatriciaTree(
             IScopedTrieStore? trieStore,
             Hash256 rootHash,
-            bool parallelBranches,
             bool allowCommits,
             ILogManager? logManager,
             ICappedArrayPool? bufferPool = null)
         {
             _logger = logManager?.GetClassLogger<PatriciaTree>() ?? throw new ArgumentNullException(nameof(logManager));
             TrieStore = trieStore ?? throw new ArgumentNullException(nameof(trieStore));
-            _parallelBranches = parallelBranches;
             _allowCommits = allowCommits;
             RootHash = rootHash;
 
@@ -270,8 +264,7 @@ namespace Nethermind.Trie
                 if (_logger.IsTrace) TraceSkipInlineNode(node);
             }
 
-            [DoesNotReturn]
-            [StackTraceHidden]
+            [DoesNotReturn, StackTraceHidden]
             static void ThrowInvalidExtension() => throw new InvalidOperationException("An attempt to store an extension without a child.");
 
             [MethodImpl(MethodImplOptions.NoInlining)]
@@ -473,8 +466,7 @@ namespace Nethermind.Trie
                 _logger.Trace($"{(value.Length == 0 ? $"Deleting {rawKey.ToHexString(withZeroX: true)}" : $"Setting {rawKey.ToHexString(withZeroX: true)} = {value.Span.ToHexString(withZeroX: true)}")}");
             }
 
-            [DoesNotReturn]
-            [StackTraceHidden]
+            [DoesNotReturn, StackTraceHidden]
             static void ThrowNonConcurrentWrites()
             {
                 throw new InvalidOperationException("Only reads can be done in parallel on the Patricia tree");
@@ -576,8 +568,7 @@ namespace Nethermind.Trie
                 ThrowDecodingError(node, in path, rlpException);
             }
 
-            [DoesNotReturn]
-            [StackTraceHidden]
+            [DoesNotReturn, StackTraceHidden]
             static void ThrowDecodingError(TrieNode node, in TreePath path, RlpException rlpException)
             {
                 var exception = new TrieNodeException($"Error when decoding node {node.Keccak}", path, node.Keccak ?? Keccak.Zero, rlpException);
@@ -611,8 +602,7 @@ namespace Nethermind.Trie
                 _logger.Trace($"Traversing {node} to {(traverseContext.IsReadValue ? "READ" : traverseContext.IsDelete ? "DELETE" : "UPDATE")}");
             }
 
-            [DoesNotReturn]
-            [StackTraceHidden]
+            [DoesNotReturn, StackTraceHidden]
             static SpanSource TraverseInvalid(TrieNode node)
             {
                 switch (node.NodeType)
@@ -626,22 +616,19 @@ namespace Nethermind.Trie
                 }
             }
 
-            [DoesNotReturn]
-            [StackTraceHidden]
+            [DoesNotReturn, StackTraceHidden]
             static SpanSource TraverseBranch(TrieNode node)
             {
                 throw new InvalidOperationException($"Branch node {node.Keccak} should already be handled");
             }
 
-            [DoesNotReturn]
-            [StackTraceHidden]
+            [DoesNotReturn, StackTraceHidden]
             static SpanSource TraverseUnknown(TrieNode node)
             {
                 throw new InvalidOperationException($"Cannot traverse unresolved node {node.Keccak}");
             }
 
-            [DoesNotReturn]
-            [StackTraceHidden]
+            [DoesNotReturn, StackTraceHidden]
             static SpanSource ThrowNotSupported(TrieNode node)
             {
                 throw new NotSupportedException($"Unknown node type {node.NodeType}");
@@ -649,6 +636,21 @@ namespace Nethermind.Trie
         }
 
         private void ConnectNodes(TrieNode? node, in TraverseContext traverseContext)
+        {
+            // Fast tail-calls into generic
+            if (_logger.IsTrace)
+            {
+                ConnectNodes<OnFlag>(node, in traverseContext);
+            }
+            else
+            {
+                // branch eliminates _loggerTrace statements
+                ConnectNodes<OffFlag>(node, in traverseContext);
+            }
+        }
+
+        private void ConnectNodes<IsTrace>(TrieNode? node, in TraverseContext traverseContext)
+            where IsTrace : IFlag
         {
             TreePath path = traverseContext.UpdatePathTreePath;
             bool isRoot = IsNodeStackEmpty();
@@ -661,50 +663,36 @@ namespace Nethermind.Trie
                 path.TruncateMut(parentOnStack.PathLength);
 
                 isRoot = IsNodeStackEmpty();
-
-                if (node.IsLeaf)
+                // Use NodeType once to reduce virtual calls
+                // and switch statement to not add additional long lived local variable
+                switch (node.NodeType)
                 {
-                    ThrowTrieExceptionLeftCannotBeParent(node, nextNode);
-                }
-
-                if (node.IsBranch)
-                {
-                    if (!(nextNode is null && !node.IsValidWithOneNodeLess))
-                    {
-                        if (node.IsSealed)
+                    case NodeType.Branch:
+                        if (!(nextNode is null && !node.IsValidWithOneNodeLess))
                         {
-                            node = node.Clone();
-                        }
+                            if (node.IsSealed)
+                            {
+                                node = node.Clone();
+                            }
 
-                        node.SetChild(parentOnStack.PathIndex, nextNode);
-                        nextNode = node;
-                    }
-                    else
-                    {
-                        if (node.Value!.Length != 0)
-                        {
-                            // this only happens when we have branches with values
-                            // which is not possible in the Ethereum protocol where keys are of equal lengths
-                            // (it is possible in the more general trie definition)
-                            TrieNode leafFromBranch = TrieNodeFactory.CreateLeaf([], node.Value);
-                            if (_logger.IsTrace) _logger.Trace($"Converting {node} into {leafFromBranch}");
-                            nextNode = leafFromBranch;
+                            node.SetChild(parentOnStack.PathIndex, nextNode);
+                            nextNode = node;
                         }
                         else
                         {
                             /* all the cases below are when we have a branch that becomes something else
-                               as a result of deleting one of the last two children */
+                                as a result of deleting one of the last two children */
                             /* case 1) - extension from branch
-                               this is particularly interesting - we create an extension from
-                               the implicit path in the branch children positions (marked as P)
-                               P B B B B B B B B B B B B B B B
-                               B X - - - - - - - - - - - - - -
-                               case 2) - extended extension
-                               B B B B B B B B B B B B B B B B
-                               E X - - - - - - - - - - - - - -
-                               case 3) - extended leaf
-                               B B B B B B B B B B B B B B B B
-                               L X - - - - - - - - - - - - - - */
+                                this is particularly interesting - we create an extension from
+                                the implicit path in the branch children positions (marked as P)
+                                P B B B B B B B B B B B B B B B
+                                B X - - - - - - - - - - - - - -
+                                case 2) - extended extension
+                                B B B B B B B B B B B B B B B B
+                                E X - - - - - - - - - - - - - -
+                                case 3) - extended leaf
+                                B B B B B B B B B B B B B B B B
+                                L X - - - - - - - - - - - - - - */
 
                             int childNodeIndex = 0;
                             for (int i = 0; i < 16; i++)
@@ -721,172 +709,163 @@ namespace Nethermind.Trie
                             if (childNode is null)
                             {
                                 /* potential corrupted trie data state when we find a branch that has only one child */
-                                ThrowTrieExceptionCorruption();
+                                goto Corruption;
                             }
 
                             ResolveNode(childNode, in traverseContext, in path);
                             path.TruncateOne();
 
-                            if (childNode.IsBranch)
+                            NodeType childType = childNode.NodeType;
+                            if (childType == NodeType.Branch)
                             {
-                                TrieNode extensionFromBranch =
-                                    TrieNodeFactory.CreateExtension(_singleByteKeys[childNodeIndex], childNode);
-                                if (_logger.IsTrace)
-                                    _logger.Trace(
-                                        $"Extending child {childNodeIndex} {childNode} of {node} into {extensionFromBranch}");
+                                TrieNode extensionFromBranch = TrieNodeFactory.CreateExtension(_singleByteKeys[childNodeIndex], childNode);
+                                if (IsTrace.IsActive) _logger.Trace($"Extending child {childNodeIndex} {childNode} of {node} into {extensionFromBranch}");
 
                                 nextNode = extensionFromBranch;
                             }
-                            else if (childNode.IsExtension)
-                            {
-                                /* to test this case we need something like this initially */
-                                /* R
-                                   B B B B B B B B B B B B B B B B
-                                   E L - - - - - - - - - - - - - -
-                                   E - - - - - - - - - - - - - - -
-                                   B B B B B B B B B B B B B B B B
-                                   L L - - - - - - - - - - - - - - */
-
-                                /* then we delete the leaf (marked as X) */
-                                /* R
-                                   B B B B B B B B B B B B B B B B
-                                   E X - - - - - - - - - - - - - -
-                                   E - - - - - - - - - - - - - - -
-                                   B B B B B B B B B B B B B B B B
-                                   L L - - - - - - - - - - - - - - */
-
-                                /* and we end up with an extended extension (marked with +)
-                                   replacing what was previously a top-level branch */
-                                /* R
-                                   +
-                                   +
-                                   + - - - - - - - - - - - - - - -
-                                   B B B B B B B B B B B B B B B B
-                                   L L - - - - - - - - - - - - - - */
-
-                                byte[] newKey = Bytes.Concat((byte)childNodeIndex, childNode.Key);
-
-                                TrieNode extendedExtension = childNode.CloneWithChangedKey(newKey);
-                                if (_logger.IsTrace)
-                                    _logger.Trace(
-                                        $"Extending child {childNodeIndex} {childNode} of {node} into {extendedExtension}");
-                                nextNode = extendedExtension;
-                            }
-                            else if (childNode.IsLeaf)
+                            else if (childType == NodeType.Extension || childType == NodeType.Leaf)
                             {
                                 byte[] newKey = Bytes.Concat((byte)childNodeIndex, childNode.Key);
+                                TrieNode extendedNode = childNode.CloneWithChangedKey(newKey);
 
-                                TrieNode extendedLeaf = childNode.CloneWithChangedKey(newKey);
-                                if (_logger.IsTrace)
+                                if (IsTrace.IsActive)
                                 {
-                                    _logger.Trace($"Extending branch child {childNodeIndex} {childNode} into {extendedLeaf}");
-                                    _logger.Trace($"Decrementing ref on a leaf extended up to eat a branch {childNode}");
-                                    if (node.IsSealed)
+                                    if (childNode.IsExtension)
                                     {
-                                        _logger.Trace($"Decrementing ref on a branch replaced by a leaf {node}");
+                                        /* to test this case we need something like this initially */
+                                        /* R
+                                            B B B B B B B B B B B B B B B B
+                                            E L - - - - - - - - - - - - - -
+                                            E - - - - - - - - - - - - - - -
+                                            B B B B B B B B B B B B B B B B
+                                            L L - - - - - - - - - - - - - - */
+
+                                        /* then we delete the leaf (marked as X) */
+                                        /* R
+                                            B B B B B B B B B B B B B B B B
+                                            E X - - - - - - - - - - - - - -
+                                            E - - - - - - - - - - - - - - -
+                                            B B B B B B B B B B B B B B B B
+                                            L L - - - - - - - - - - - - - - */
+
+                                        /* and we end up with an extended extension (marked with +)
+                                            replacing what was previously a top-level branch */
+                                        /* R
+                                            +
+                                            +
+                                            + - - - - - - - - - - - - - - -
+                                            B B B B B B B B B B B B B B B B
+                                            L L - - - - - - - - - - - - - - */
+
+                                        _logger.Trace($"Extending child {childNodeIndex} {childNode} of {node} into {extendedNode}");
+                                    }
+                                    else if (childNode.IsLeaf)
+                                    {
+                                        _logger.Trace($"Extending branch child {childNodeIndex} {childNode} into {extendedNode}");
+                                        _logger.Trace($"Decrementing ref on a leaf extended up to eat a branch {childNode}");
+                                        if (node.IsSealed)
+                                        {
+                                            _logger.Trace($"Decrementing ref on a branch replaced by a leaf {node}");
+                                        }
                                     }
                                 }
-
-                                nextNode = extendedLeaf;
+                                nextNode = extendedNode;
                             }
                             else
                             {
-                                ThrowInvalidNodeType(childNode);
+                                node = childNode;
+                                goto InvalidNodeType;
                             }
                         }
-                    }
-                }
-                else if (node.IsExtension)
-                {
-                    if (nextNode is null)
-                    {
-                        ThrowInvalidNullNode(node);
-                    }
-
-                    if (nextNode.IsLeaf)
-                    {
-                        byte[] newKey = Bytes.Concat(node.Key, nextNode.Key);
-                        TrieNode extendedLeaf = nextNode.CloneWithChangedKey(newKey);
-                        if (_logger.IsTrace)
-                            _logger.Trace($"Combining {node} and {nextNode} into {extendedLeaf}");
-
-                        nextNode = extendedLeaf;
-                    }
-                    else if (nextNode.IsExtension)
-                    {
-                        /* to test this case we need something like this initially */
-                        /* R
-                           E - - - - - - - - - - - - - - -
-                           B B B B B B B B B B B B B B B B
-                           E L - - - - - - - - - - - - - -
-                           E - - - - - - - - - - - - - - -
-                           B B B B B B B B B B B B B B B B
-                           L L - - - - - - - - - - - - - - */
-
-                        /* then we delete the leaf (marked as X) */
-                        /* R
-                           B B B B B B B B B B B B B B B B
-                           E X - - - - - - - - - - - - - -
-                           E - - - - - - - - - - - - - - -
-                           B B B B B B B B B B B B B B B B
-                           L L - - - - - - - - - - - - - - */
-
-                        /* and we end up with an extended extension replacing what was previously a top-level branch*/
-                        /* R
-                           E
-                           E
-                           E - - - - - - - - - - - - - - -
-                           B B B B B B B B B B B B B B B B
-                           L L - - - - - - - - - - - - - - */
-
-                        byte[] newKey = Bytes.Concat(node.Key, nextNode.Key);
-                        TrieNode extendedExtension = nextNode.CloneWithChangedKey(newKey);
-                        if (_logger.IsTrace)
-                            _logger.Trace($"Combining {node} and {nextNode} into {extendedExtension}");
-
-                        nextNode = extendedExtension;
-                    }
-                    else if (nextNode.IsBranch)
-                    {
-                        if (node.IsSealed)
+                        break;
+                    case NodeType.Extension:
+                        if (nextNode is null)
                         {
-                            node = node.Clone();
+                            goto NullNode;
                         }
 
-                        if (_logger.IsTrace) _logger.Trace($"Connecting {node} with {nextNode}");
-                        node.SetChild(0, nextNode);
-                        nextNode = node;
-                    }
-                    else
-                    {
-                        ThrowInvalidNodeType(nextNode);
-                    }
-                }
-                else
-                {
-                    ThrowInvalidNodeType(node);
+                        NodeType nextType = nextNode.NodeType;
+                        if (nextType == NodeType.Branch)
+                        {
+                            if (node.IsSealed)
+                            {
+                                node = node.Clone();
+                            }
+
+                            if (IsTrace.IsActive) _logger.Trace($"Connecting {node} with {nextNode}");
+                            node.SetChild(0, nextNode);
+                            nextNode = node;
+                        }
+                        else if (nextType == NodeType.Extension || nextType == NodeType.Leaf)
+                        {
+                            /* to test the Extension case we need something like this initially */
+                            /* R
+                               E - - - - - - - - - - - - - - -
+                               B B B B B B B B B B B B B B B B
+                               E L - - - - - - - - - - - - - -
+                               E - - - - - - - - - - - - - - -
+                               B B B B B B B B B B B B B B B B
+                               L L - - - - - - - - - - - - - - */
+
+                            /* then we delete the leaf (marked as X) */
+                            /* R
+                               B B B B B B B B B B B B B B B B
+                               E X - - - - - - - - - - - - - -
+                               E - - - - - - - - - - - - - - -
+                               B B B B B B B B B B B B B B B B
+                               L L - - - - - - - - - - - - - - */
+
+                            /* and we end up with an extended extension replacing what was previously a top-level branch*/
+                            /* R
+                               E
+                               E
+                               E - - - - - - - - - - - - - - -
+                               B B B B B B B B B B B B B B B B
+                               L L - - - - - - - - - - - - - - */
+
+                            byte[] newKey = Bytes.Concat(node.Key, nextNode.Key);
+                            TrieNode extendedNode = nextNode.CloneWithChangedKey(newKey);
+                            if (IsTrace.IsActive) _logger.Trace($"Combining {node} and {nextNode} into {extendedNode}");
+                            nextNode = extendedNode;
+                        }
+                        else
+                        {
+                            node = nextNode;
+                            goto InvalidNodeType;
+                        }
+                        break;
+                    case NodeType.Leaf:
+                        goto LeafCannotBeParent;
+                    default:
+                        goto InvalidNodeType;
                 }
             }
 
             RootRef = nextNode;
+            return;
 
-            [DoesNotReturn]
-            [StackTraceHidden]
-            static void ThrowTrieExceptionLeftCannotBeParent(TrieNode node, TrieNode nextNode)
+        Corruption:
+            ThrowTrieExceptionCorruption();
+        InvalidNodeType:
+            ThrowInvalidNodeType(node);
+        NullNode:
+            ThrowInvalidNullNode(node);
+        LeafCannotBeParent:
+            ThrowTrieExceptionLeafCannotBeParent(node, nextNode);
+
+            [DoesNotReturn, StackTraceHidden]
+            static void ThrowTrieExceptionLeafCannotBeParent(TrieNode node, TrieNode nextNode)
                 => throw new TrieException($"{nameof(NodeType.Leaf)} {node} cannot be a parent of {nextNode}");
 
-            [DoesNotReturn]
-            [StackTraceHidden]
+            [DoesNotReturn, StackTraceHidden]
             static void ThrowTrieExceptionCorruption()
                 => throw new TrieException("Before updating branch should have had at least two non-empty children");
 
-            [DoesNotReturn]
-            [StackTraceHidden]
+            [DoesNotReturn, StackTraceHidden]
             static void ThrowInvalidNodeType(TrieNode node)
                 => throw new InvalidOperationException($"Unknown node type {node.NodeType}");
 
-            [DoesNotReturn]
-            [StackTraceHidden]
+            [DoesNotReturn, StackTraceHidden]
             static void ThrowInvalidNullNode(TrieNode node)
                 => throw new InvalidOperationException($"An attempt to set a null node as a child of the {node}");
         }
@@ -1356,33 +1335,28 @@ namespace Nethermind.Trie
 
             return stackedNodes.Pop();
 
-            [DoesNotReturn]
-            [StackTraceHidden]
+            [DoesNotReturn, StackTraceHidden]
             static void Throw() => throw new InvalidOperationException($"Nothing on {nameof(_nodeStack)}");
         }
 
-        [DoesNotReturn]
-        [StackTraceHidden]
+        [DoesNotReturn, StackTraceHidden]
         static void ThrowReadOnlyTrieException() => throw new TrieException("Commits are not allowed on this trie.");
 
-        [DoesNotReturn]
-        [StackTraceHidden]
+        [DoesNotReturn, StackTraceHidden]
         private static void ThrowInvalidDataException(TrieNode originalNode)
         {
             throw new InvalidDataException(
                 $"Extension {originalNode.Keccak} has no child.");
         }
 
-        [DoesNotReturn]
-        [StackTraceHidden]
+        [DoesNotReturn, StackTraceHidden]
         private static void ThrowMissingChildException(TrieNode node)
         {
             throw new TrieException(
                 $"Found an {nameof(NodeType.Extension)} {node.Keccak} that is missing a child.");
         }
 
-        [DoesNotReturn]
-        [StackTraceHidden]
+        [DoesNotReturn, StackTraceHidden]
         private static void ThrowMissingPrefixException()
         {
             throw new InvalidDataException("An attempt to visit a node without a prefix path.");

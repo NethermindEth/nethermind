@@ -11,6 +11,7 @@ using Nethermind.Blockchain;
 using Nethermind.Blockchain.BeaconBlockRoot;
 using Nethermind.Blockchain.Blocks;
 using Nethermind.Blockchain.Receipts;
+using Nethermind.Blockchain.Tracing;
 using Nethermind.Consensus.ExecutionRequests;
 using Nethermind.Consensus.Rewards;
 using Nethermind.Consensus.Validators;
@@ -22,12 +23,12 @@ using Nethermind.Core.Specs;
 using Nethermind.Core.Threading;
 using Nethermind.Crypto;
 using Nethermind.Evm;
+using Nethermind.Evm.State;
 using Nethermind.Evm.Tracing;
 using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.Specs.Forks;
 using Nethermind.State;
-
 using static Nethermind.Consensus.Processing.IBlockProcessor;
 
 using Metrics = Nethermind.Blockchain.Metrics;
@@ -72,25 +73,23 @@ public partial class BlockProcessor(
     }
 
     // TODO: move to branch processor
-    public Block[] Process(Hash256 newBranchStateRoot, IReadOnlyList<Block> suggestedBlocks, ProcessingOptions options, IBlockTracer blockTracer, CancellationToken token = default)
+    public Block[] Process(BlockHeader? baseBlock, IReadOnlyList<Block> suggestedBlocks, ProcessingOptions options, IBlockTracer blockTracer, CancellationToken token = default)
     {
         if (suggestedBlocks.Count == 0) return [];
 
-        /* We need to save the snapshot state root before reorganization in case the new branch has invalid blocks.
-           In case of invalid blocks on the new branch we will discard the entire branch and come back to
-           the previous head state.*/
-        Hash256 previousBranchStateRoot = CreateCheckpoint();
-        InitBranch(newBranchStateRoot);
+        BlockHeader? previousBranchStateRoot = baseBlock;
+        InitBranch(baseBlock);
 
         Block suggestedBlock = suggestedBlocks[0];
         // Start prewarming as early as possible
         WaitForCacheClear();
+        IReleaseSpec spec = specProvider.GetSpec(suggestedBlock.Header);
         (CancellationTokenSource? prewarmCancellation, Task? preWarmTask)
-            = PreWarmTransactions(suggestedBlock, newBranchStateRoot);
+            = PreWarmTransactions(suggestedBlock, baseBlock, spec);
 
         BlocksProcessing?.Invoke(this, new BlocksProcessingEventArgs(suggestedBlocks));
 
-        Hash256 preBlockStateRoot = newBranchStateRoot;
+        BlockHeader? preBlockBaseBlock = baseBlock;
 
         bool notReadOnly = !options.ContainsFlag(ProcessingOptions.ReadOnlyChain);
         int blocksCount = suggestedBlocks.Count;
@@ -101,11 +100,16 @@ public partial class BlockProcessor(
             {
                 WaitForCacheClear();
                 suggestedBlock = suggestedBlocks[i];
+                if (i > 0)
+                {
+                    // Refresh spec
+                    spec = specProvider.GetSpec(suggestedBlock.Header);
+                }
                 // If prewarmCancellation is not null it means we are in first iteration of loop
                 // and started prewarming at method entry, so don't start it again
                 if (prewarmCancellation is null)
                 {
-                    (prewarmCancellation, preWarmTask) = PreWarmTransactions(suggestedBlock, preBlockStateRoot);
+                    (prewarmCancellation, preWarmTask) = PreWarmTransactions(suggestedBlock, preBlockBaseBlock, spec);
                 }
 
                 if (blocksCount > 64 && i % 8 == 0)
@@ -123,7 +127,7 @@ public partial class BlockProcessor(
 
                 if (prewarmCancellation is not null)
                 {
-                    (processedBlock, receipts) = ProcessOne(suggestedBlock, options, blockTracer, token);
+                    (processedBlock, receipts) = ProcessOne(suggestedBlock, options, blockTracer, spec, token);
                     // Block is processed, we can cancel the prewarm task
                     CancellationTokenExtensions.CancelDisposeAndClear(ref prewarmCancellation);
                 }
@@ -135,13 +139,13 @@ public partial class BlockProcessor(
                     {
                         if (_logger.IsWarn) _logger.Warn($"Low txs, caches {result} are not empty. Clearing them.");
                     }
-                    (processedBlock, receipts) = ProcessOne(suggestedBlock, options, blockTracer, token);
+                    (processedBlock, receipts) = ProcessOne(suggestedBlock, options, blockTracer, spec, token);
                 }
 
                 processedBlocks[i] = processedBlock;
 
                 // be cautious here as AuRa depends on processing
-                PreCommitBlock(newBranchStateRoot, suggestedBlock.Number);
+                PreCommitBlock(suggestedBlock.Header);
                 QueueClearCaches(preWarmTask);
 
                 if (notReadOnly)
@@ -158,12 +162,11 @@ public partial class BlockProcessor(
                 if (isCommitPoint && notReadOnly)
                 {
                     if (_logger.IsInfo) _logger.Info($"Commit part of a long blocks branch {i}/{blocksCount}");
-                    previousBranchStateRoot = CreateCheckpoint();
-                    Hash256? newStateRoot = suggestedBlock.StateRoot;
-                    InitBranch(newStateRoot, false);
+                    previousBranchStateRoot = suggestedBlock.Header;
+                    InitBranch(suggestedBlock.Header, false);
                 }
 
-                preBlockStateRoot = processedBlock.StateRoot;
+                preBlockBaseBlock = processedBlock.Header;
                 // Make sure the prewarm task is finished before we reset the state
                 preWarmTask?.GetAwaiter().GetResult();
                 preWarmTask = null;
@@ -193,14 +196,14 @@ public partial class BlockProcessor(
         }
     }
 
-    private (CancellationTokenSource prewarmCancellation, Task preWarmTask) PreWarmTransactions(Block suggestedBlock, Hash256 preBlockStateRoot)
+    private (CancellationTokenSource prewarmCancellation, Task preWarmTask) PreWarmTransactions(Block suggestedBlock, BlockHeader preBlockBaseBlock, IReleaseSpec spec)
     {
         if (preWarmer is null || suggestedBlock.Transactions.Length < 3) return (null, null);
 
         CancellationTokenSource prewarmCancellation = new();
         Task preWarmTask = preWarmer.PreWarmCaches(suggestedBlock,
-            preBlockStateRoot,
-            specProvider.GetSpec(suggestedBlock.Header),
+            preBlockBaseBlock,
+            spec,
             prewarmCancellation.Token,
             beaconBlockRootHandler);
 
@@ -227,11 +230,11 @@ public partial class BlockProcessor(
     public event EventHandler<BlockEventArgs>? BlockProcessing;
 
     // TODO: move to branch processor
-    private void InitBranch(Hash256 branchStateRoot, bool incrementReorgMetric = true)
+    private void InitBranch(BlockHeader? baseBlock, bool incrementReorgMetric = true)
     {
         /* Please note that we do not reset the state if branch state root is null.
            That said, I do not remember in what cases we receive null here.*/
-        if (branchStateRoot is not null && _stateProvider.StateRoot != branchStateRoot)
+        if (baseBlock is not null && _stateProvider.StateRoot != baseBlock.StateRoot)
         {
             /* Discarding the other branch data - chain reorganization.
                We cannot use cached values any more because they may have been written
@@ -240,44 +243,38 @@ public partial class BlockProcessor(
             if (incrementReorgMetric)
                 Metrics.Reorganizations++;
             _stateProvider.Reset();
-            _stateProvider.StateRoot = branchStateRoot;
+            _stateProvider.SetBaseBlock(baseBlock);
         }
     }
 
-    // TODO: move to branch processor
-    private Hash256 CreateCheckpoint()
-    {
-        return _stateProvider.StateRoot;
-    }
-
     // TODO: move to block processing pipeline
-    private void PreCommitBlock(Hash256 newBranchStateRoot, long blockNumber)
+    private void PreCommitBlock(BlockHeader block)
     {
-        if (_logger.IsTrace) _logger.Trace($"Committing the branch - {newBranchStateRoot}");
-        _stateProvider.CommitTree(blockNumber);
+        if (_logger.IsTrace) _logger.Trace($"Committing the branch - {block.ToString(BlockHeader.Format.Short)} state root {block.StateRoot}");
+        _stateProvider.CommitTree(block.Number);
     }
 
     // TODO: move to branch processor
-    private void RestoreBranch(Hash256 branchingPointStateRoot)
+    private void RestoreBranch(BlockHeader? branchingPointHeader)
     {
-        if (_logger.IsTrace) _logger.Trace($"Restoring the branch checkpoint - {branchingPointStateRoot}");
+        if (_logger.IsTrace) _logger.Trace($"Restoring the branch checkpoint - {branchingPointHeader?.ToString(BlockHeader.Format.Short)}");
         _stateProvider.Reset();
-        _stateProvider.StateRoot = branchingPointStateRoot;
-        if (_logger.IsTrace) _logger.Trace($"Restored the branch checkpoint - {branchingPointStateRoot} | {_stateProvider.StateRoot}");
+        _stateProvider.SetBaseBlock(branchingPointHeader);
+        if (_logger.IsTrace) _logger.Trace($"Restored the branch checkpoint - {branchingPointHeader?.ToString(BlockHeader.Format.Short)} | {_stateProvider.StateRoot}");
     }
 
     // TODO: block processor pipeline
-    private (Block Block, TxReceipt[] Receipts) ProcessOne(Block suggestedBlock, ProcessingOptions options, IBlockTracer blockTracer, CancellationToken token)
+    private (Block Block, TxReceipt[] Receipts) ProcessOne(Block suggestedBlock, ProcessingOptions options, IBlockTracer blockTracer, IReleaseSpec spec, CancellationToken token)
     {
         if (_logger.IsTrace) _logger.Trace($"Processing block {suggestedBlock.ToString(Block.Format.Short)} ({options})");
 
         ApplyDaoTransition(suggestedBlock);
         Block block = PrepareBlockForProcessing(suggestedBlock);
-        TxReceipt[] receipts = ProcessBlock(block, blockTracer, options, token);
+        TxReceipt[] receipts = ProcessBlock(block, blockTracer, options, spec, token);
         ValidateProcessedBlock(suggestedBlock, options, block, receipts);
         if (options.ContainsFlag(ProcessingOptions.StoreReceipts))
         {
-            StoreTxReceipts(block, receipts);
+            StoreTxReceipts(block, receipts, spec);
         }
 
         return (block, receipts);
@@ -305,10 +302,10 @@ public partial class BlockProcessor(
         Block block,
         IBlockTracer blockTracer,
         ProcessingOptions options,
+        IReleaseSpec spec,
         CancellationToken token)
     {
         BlockHeader header = block.Header;
-        IReleaseSpec spec = specProvider.GetSpec(header);
 
         ReceiptsTracer.SetOtherTracer(blockTracer);
         ReceiptsTracer.StartNewBlockTrace(block);
@@ -316,10 +313,10 @@ public partial class BlockProcessor(
         blockTransactionsExecutor.SetBlockExecutionContext(new BlockExecutionContext(block.Header, spec));
 
         StoreBeaconRoot(block, spec);
-        blockHashStore.ApplyBlockhashStateChanges(header);
+        blockHashStore.ApplyBlockhashStateChanges(header, spec);
         _stateProvider.Commit(spec, commitRoots: false);
 
-        TxReceipt[] receipts = blockTransactionsExecutor.ProcessTransactions(block, options, ReceiptsTracer, spec, token);
+        TxReceipt[] receipts = blockTransactionsExecutor.ProcessTransactions(block, options, ReceiptsTracer, token);
 
         _stateProvider.Commit(spec, commitRoots: false);
 
@@ -395,10 +392,10 @@ public partial class BlockProcessor(
     }
 
     // TODO: block processor pipeline
-    private void StoreTxReceipts(Block block, TxReceipt[] txReceipts)
+    private void StoreTxReceipts(Block block, TxReceipt[] txReceipts, IReleaseSpec spec)
     {
         // Setting canonical is done when the BlockAddedToMain event is fired
-        receiptStorage.Insert(block, txReceipts, false);
+        receiptStorage.Insert(block, txReceipts, spec, false);
     }
 
     // TODO: block processor pipeline

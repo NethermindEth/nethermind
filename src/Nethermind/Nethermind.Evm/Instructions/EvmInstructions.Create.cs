@@ -8,7 +8,7 @@ using Nethermind.Core.Specs;
 using Nethermind.Evm.CodeAnalysis;
 using Nethermind.Evm.EvmObjectFormat;
 using Nethermind.Int256;
-using Nethermind.State;
+using Nethermind.Evm.State;
 
 using static Nethermind.Evm.VirtualMachine;
 
@@ -119,9 +119,9 @@ internal static partial class EvmInstructions
         // Calculate the gas cost for the creation, including fixed cost and per-word cost for init code.
         // Also include an extra cost for CREATE2 if applicable.
         long gasCost = GasCostOf.Create +
-                       (spec.IsEip3860Enabled ? GasCostOf.InitCodeWord * EvmPooledMemory.Div32Ceiling(in initCodeLength, out outOfGas) : 0) +
+                       (spec.IsEip3860Enabled ? GasCostOf.InitCodeWord * Div32Ceiling(in initCodeLength, out outOfGas) : 0) +
                        (typeof(TOpCreate) == typeof(OpCreate2)
-                           ? GasCostOf.Sha3Word * EvmPooledMemory.Div32Ceiling(in initCodeLength, out outOfGas)
+                           ? GasCostOf.Sha3Word * Div32Ceiling(in initCodeLength, out outOfGas)
                            : 0);
 
         // Check gas sufficiency: if outOfGas flag was set during gas division or if gas update fails.
@@ -200,7 +200,7 @@ internal static partial class EvmInstructions
         state.IncrementNonce(env.ExecutingAccount);
 
         // Analyze and compile the initialization code.
-        CodeInfoFactory.CreateInitCodeInfo(initCode.ToArray(), spec, out ICodeInfo codeinfo, out _);
+        CodeInfoFactory.CreateInitCodeInfo(initCode.ToArray(), spec, out ICodeInfo? codeInfo, out _);
 
         // Take a snapshot of the current state. This allows the state to be reverted if contract creation fails.
         Snapshot snapshot = state.TakeSnapshot();
@@ -227,7 +227,7 @@ internal static partial class EvmInstructions
         // Construct a new execution environment for the contract creation call.
         // This environment sets up the call frame for executing the contract's initialization code.
         ExecutionEnvironment callEnv = new(
-            codeInfo: codeinfo,
+            codeInfo: codeInfo,
             executingAccount: contractAddress,
             caller: env.ExecutingAccount,
             codeSource: null,

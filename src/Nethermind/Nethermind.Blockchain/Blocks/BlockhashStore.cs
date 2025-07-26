@@ -7,8 +7,8 @@ using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
+using Nethermind.Evm.State;
 using Nethermind.Int256;
-using Nethermind.State;
 
 [assembly: InternalsVisibleTo("Nethermind.Blockchain.Test")]
 [assembly: InternalsVisibleTo("Nethermind.Merge.Plugin.Test")]
@@ -20,8 +20,10 @@ public class BlockhashStore(ISpecProvider specProvider, IWorldState worldState)
     private static readonly byte[] EmptyBytes = [0];
 
     public void ApplyBlockhashStateChanges(BlockHeader blockHeader)
+        => ApplyBlockhashStateChanges(blockHeader, specProvider.GetSpec(blockHeader));
+
+    public void ApplyBlockhashStateChanges(BlockHeader blockHeader, IReleaseSpec spec)
     {
-        IReleaseSpec spec = specProvider.GetSpec(blockHeader);
         if (!spec.IsEip2935Enabled || blockHeader.IsGenesis || blockHeader.ParentHash is null) return;
 
         Address? eip2935Account = spec.Eip2935ContractAddress ?? Eip2935Constants.BlockHashHistoryAddress;
@@ -34,8 +36,10 @@ public class BlockhashStore(ISpecProvider specProvider, IWorldState worldState)
     }
 
     public Hash256? GetBlockHashFromState(BlockHeader currentHeader, long requiredBlockNumber)
+        => GetBlockHashFromState(currentHeader, requiredBlockNumber, specProvider.GetSpec(currentHeader));
+
+    public Hash256? GetBlockHashFromState(BlockHeader currentHeader, long requiredBlockNumber, IReleaseSpec? spec)
     {
-        IReleaseSpec? spec = specProvider.GetSpec(currentHeader);
         if (requiredBlockNumber >= currentHeader.Number ||
             requiredBlockNumber + Eip2935Constants.RingBufferSize < currentHeader.Number)
         {

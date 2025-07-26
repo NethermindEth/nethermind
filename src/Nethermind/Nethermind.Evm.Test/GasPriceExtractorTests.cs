@@ -4,6 +4,7 @@
 using System;
 using System.Linq;
 using FluentAssertions;
+using Nethermind.Blockchain.Tracing;
 using Nethermind.Core;
 using Nethermind.Specs;
 using Nethermind.Core.Test.Builders;

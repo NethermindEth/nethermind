@@ -18,9 +18,10 @@ using Nethermind.Consensus.Rewards;
 using Nethermind.Consensus.Validators;
 using Nethermind.Consensus.Withdrawals;
 using Nethermind.Core;
+using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Logging;
 using Nethermind.Specs.ChainSpecStyle;
-using Nethermind.State;
+using Nethermind.Evm.State;
 using NUnit.Framework;
 
 namespace Nethermind.AuRa.Test.Contract;
@@ -90,9 +91,7 @@ public class AuRaContractGasLimitOverrideTests
                 .First();
             BlockGasLimitContract gasLimitContract = new(AbiEncoder.Instance, blockGasLimitContractTransition.Value,
                 blockGasLimitContractTransition.Key,
-                new ReadOnlyTxProcessingEnv(
-                    WorldStateManager,
-                    BlockTree.AsReadOnly(), SpecProvider, LimboLogs.Instance));
+                ReadOnlyTxProcessingEnvFactory.Create());
 
             GasLimitOverrideCache = new AuRaContractGasLimitOverride.Cache();
             GasLimitCalculator = new AuRaContractGasLimitOverride(new[] { gasLimitContract }, GasLimitOverrideCache, false, new FollowOtherMiners(SpecProvider), LimboLogs.Instance);
@@ -101,7 +100,7 @@ public class AuRaContractGasLimitOverrideTests
                 SpecProvider,
                 Always.Valid,
                 new RewardCalculator(SpecProvider),
-                new BlockProcessor.BlockValidationTransactionsExecutor(TxProcessor, worldState),
+                new BlockProcessor.BlockValidationTransactionsExecutor(new ExecuteTransactionProcessorAdapter(TxProcessor), worldState),
                 worldState,
                 ReceiptStorage,
                 new BeaconBlockRootHandler(TxProcessor, worldState),

@@ -6,7 +6,7 @@ using System.Numerics;
 using Nethermind.Core;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Test.Builders;
-using Nethermind.Evm.Tracing.GethStyle;
+using Nethermind.Blockchain.Tracing.GethStyle;
 using Nethermind.Int256;
 using NUnit.Framework;
 using Nethermind.Specs;
@@ -386,7 +386,7 @@ public class VirtualMachineTests : VirtualMachineTestsBase
     [Test]
     public void Or_0_0()
     {
-        TestAllTracerWithOutput receipt = Execute(
+        TestAllTracerWithOutput receipt = Execute((MainnetSpecProvider.ByzantiumBlockNumber, null),
             (byte)Instruction.PUSH1,
             0,
             (byte)Instruction.PUSH1,

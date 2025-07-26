@@ -4,7 +4,7 @@
 using System.IO.Compression;
 
 using Nethermind.Core.Resettables;
-using Nethermind.Evm.Tracing.ParityStyle;
+using Nethermind.Blockchain.Tracing.ParityStyle;
 using Nethermind.Logging;
 using Nethermind.Serialization.Json;
 

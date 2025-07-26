@@ -54,6 +54,7 @@ public partial class DbOnTheRocks : IDb, ITunableDb, IReadOnlyNativeKeyValueStor
     internal ReadOptions? _readAheadReadOptions = null;
 
     internal DbOptions? DbOptions { get; private set; }
+    private readonly IRocksDbConfigFactory _rocksDbConfigFactory;
 
     public string Name { get; }
 
@@ -70,7 +71,7 @@ public partial class DbOnTheRocks : IDb, ITunableDb, IReadOnlyNativeKeyValueStor
     // TODO: find better way?
     private readonly ConcurrentBag<OptionsHandle> _doNotGcOptions = [];
 
-    private readonly PerTableDbConfig _perTableDbConfig;
+    private readonly IRocksDbConfig _perTableDbConfig;
     private ulong _maxBytesForLevelBase;
     private ulong _targetFileSizeBase;
     private int _minWriteBufferToMerge;
@@ -97,6 +98,7 @@ public partial class DbOnTheRocks : IDb, ITunableDb, IReadOnlyNativeKeyValueStor
         string basePath,
         DbSettings dbSettings,
         IDbConfig dbConfig,
+        IRocksDbConfigFactory rocksDbConfigFactory,
         ILogManager logManager,
         IList<string>? columnFamilies = null,
         RocksDbSharp.Native? rocksDbNative = null,
@@ -108,7 +110,8 @@ public partial class DbOnTheRocks : IDb, ITunableDb, IReadOnlyNativeKeyValueStor
         Name = _settings.DbName;
         _fileSystem = fileSystem ?? new FileSystem();
         _rocksDbNative = rocksDbNative ?? RocksDbSharp.Native.Instance;
-        _perTableDbConfig = new PerTableDbConfig(dbConfig, _settings);
+        _rocksDbConfigFactory = rocksDbConfigFactory;
+        _perTableDbConfig = rocksDbConfigFactory.GetForDatabase(Name, null);
         _db = Init(basePath, dbSettings.DbPath, dbConfig, logManager, columnFamilies, dbSettings.DeleteOnStart, sharedCache);
         _iteratorManager = new IteratorManager(_db, null, _readAheadReadOptions);
     }
@@ -156,7 +159,8 @@ public partial class DbOnTheRocks : IDb, ITunableDb, IReadOnlyNativeKeyValueStor
                     string columnFamily = enumColumnName;
 
                     ColumnFamilyOptions options = new();
-                    BuildOptions(new PerTableDbConfig(dbConfig, _settings, columnFamily), options, sharedCache);
+                    IRocksDbConfig columnConfig = _rocksDbConfigFactory.GetForDatabase(Name, columnFamily);
+                    BuildOptions(columnConfig, options, sharedCache);
 
                     // "default" is a special column name with rocksdb, which is what previously not specifying column goes to
                     if (columnFamily == "Default") columnFamily = "default";
@@ -295,6 +299,12 @@ public partial class DbOnTheRocks : IDb, ITunableDb, IReadOnlyNativeKeyValueStor
         {
             if (_logger.IsWarn) _logger.Warn($"Corrupted DB detected on path {_fullPath}. Please restart Nethermind to attempt repair.");
             _fileSystem.File.WriteAllText(CorruptMarkerPath, "marker");
+
+            // Don't kill tests checking corruption response
+            if (!rocksDbException.Message.Equals("Corruption: test corruption", StringComparison.Ordinal))
+            {
+                Environment.FailFast("Fast shutdown due to DB corruption. Please restart.");
+            }
         }
     }
 
@@ -429,7 +439,7 @@ public partial class DbOnTheRocks : IDb, ITunableDb, IReadOnlyNativeKeyValueStor
         return asDict;
     }
 
-    protected virtual void BuildOptions<T>(PerTableDbConfig dbConfig, Options<T> options, IntPtr? sharedCache) where T : Options<T>
+    protected virtual void BuildOptions<T>(IRocksDbConfig dbConfig, Options<T> options, IntPtr? sharedCache) where T : Options<T>
     {
         // This section is about the table factory.. and block cache apparently.
         // This effect the format of the SST files and usually require resync to take effect.
@@ -568,6 +578,7 @@ public partial class DbOnTheRocks : IDb, ITunableDb, IReadOnlyNativeKeyValueStor
         #endregion
 
         #region read-write options
+        // TODO: These are not applied to column family
         WriteOptions = CreateWriteOptions(dbConfig);
 
         _noWalWrite = CreateWriteOptions(dbConfig);
@@ -602,7 +613,7 @@ public partial class DbOnTheRocks : IDb, ITunableDb, IReadOnlyNativeKeyValueStor
         #endregion
     }
 
-    private static WriteOptions CreateWriteOptions(PerTableDbConfig dbConfig)
+    private static WriteOptions CreateWriteOptions(IRocksDbConfig dbConfig)
     {
         WriteOptions options = new();
         // potential fix for corruption on hard process termination, may cause performance degradation
@@ -707,8 +718,7 @@ public partial class DbOnTheRocks : IDb, ITunableDb, IReadOnlyNativeKeyValueStor
             Native.Instance.rocksdb_pinnableslice_destroy(handle);
         }
 
-        [DoesNotReturn]
-        [StackTraceHidden]
+        [DoesNotReturn, StackTraceHidden]
         static unsafe void ThrowRocksDbException(nint errPtr)
         {
             throw new RocksDbException(errPtr);
@@ -968,8 +978,7 @@ public partial class DbOnTheRocks : IDb, ITunableDb, IReadOnlyNativeKeyValueStor
             throw;
         }
 
-        [DoesNotReturn]
-        [StackTraceHidden]
+        [DoesNotReturn, StackTraceHidden]
         static unsafe void ThrowRocksDbException(nint errPtr)
         {
             throw new RocksDbException(errPtr);

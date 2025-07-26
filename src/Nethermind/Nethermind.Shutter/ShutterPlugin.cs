@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using System.Collections.Generic;
 using System.IO.Abstractions;
 using System.Threading.Tasks;
 using Nethermind.Api;
@@ -12,7 +11,6 @@ using Nethermind.Core;
 using Nethermind.Shutter.Config;
 using Nethermind.Merge.Plugin;
 using Nethermind.Logging;
-using System.Threading;
 using Autofac;
 using Autofac.Core;
 using Nethermind.Config;
@@ -20,10 +18,10 @@ using Nethermind.Abi;
 using Nethermind.Api.Steps;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Receipts;
-using Nethermind.Consensus.Processing;
 using Nethermind.Consensus.Producers;
 using Nethermind.Core.Specs;
 using Nethermind.Crypto;
+using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Facade.Find;
 using Nethermind.KeyStore.Config;
 using Nethermind.Network;
@@ -39,26 +37,20 @@ public class ShutterPlugin(IShutterConfig shutterConfig, IMergeConfig mergeConfi
     public bool Enabled => shutterConfig.Enabled && mergeConfig.Enabled && chainSpec.SealEngineType is SealEngineType.AuRa;
     public int Priority => PluginPriorities.Shutter;
 
-    private INethermindApi? _api;
-    private ShutterApi ShutterApi => _api!.Context.Resolve<ShutterApi>();
     private ILogger _logger;
 
     public class ShutterLoadingException(string message, Exception? innerException = null) : Exception(message, innerException);
 
     public Task Init(INethermindApi nethermindApi)
     {
-        _api = nethermindApi;
-        _logger = _api.LogManager.GetClassLogger();
+        _logger = nethermindApi.LogManager.GetClassLogger();
         if (_logger.IsInfo) _logger.Info($"Initializing Shutter plugin.");
         return Task.CompletedTask;
     }
 
     public Task InitRpcModules()
     {
-        if (_api!.BlockProducer is null) throw new ArgumentNullException(nameof(_api.BlockProducer));
-
         if (_logger.IsInfo) _logger.Info("Initializing Shutter block improvement.");
-        _api.BlockImprovementContextFactory = ShutterApi.GetBlockImprovementContextFactory(_api.BlockProducer);
         return Task.CompletedTask;
     }
 
@@ -70,11 +62,6 @@ public class ShutterPlugin(IShutterConfig shutterConfig, IMergeConfig mergeConfi
 
     public ValueTask DisposeAsync() => ValueTask.CompletedTask;
 
-    public IEnumerable<StepInfo> GetSteps()
-    {
-        yield return typeof(RunShutterP2P);
-    }
-
     public IModule? Module => new ShutterPluginModule();
 }
 
@@ -83,9 +70,12 @@ public class ShutterPluginModule : Module
     protected override void Load(ContainerBuilder builder)
     {
         builder
+            .AddStep(typeof(RunShutterP2P)) // Where it start the p2p
+
             .AddSingleton(CreateShutterApi)
             .Bind<IShutterApi, ShutterApi>()
             .AddDecorator<IBlockProducerTxSourceFactory, ShutterAdditionalBlockProductionTxSource>()
+            .AddSingleton<IBlockImprovementContextFactory, ShutterApi, IBlockProducer>((api, blockProducer) => api.GetBlockImprovementContextFactory(blockProducer))
             ;
     }
 
@@ -116,7 +106,7 @@ public class ShutterPluginModule : Module
             ctx.Resolve<ILogManager>(),
             ctx.Resolve<ISpecProvider>(),
             ctx.Resolve<ITimestamper>(),
-            ctx.Resolve<IReadOnlyTxProcessingEnvFactory>(),
+            ctx.Resolve<IShareableTxProcessorSource>(),
             ctx.Resolve<IFileSystem>(),
             ctx.Resolve<IKeyStoreConfig>(),
             shutterConfig,

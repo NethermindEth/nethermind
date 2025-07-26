@@ -29,7 +29,7 @@ public class NodeRecordSigner : INodeRecordSigner
     /// <param name="nodeRecord"></param>
     public void Sign(NodeRecord nodeRecord)
     {
-        nodeRecord.Signature = _ecdsa.Sign(_privateKey, nodeRecord.ContentHash);
+        nodeRecord.Signature = _ecdsa.Sign(_privateKey, in nodeRecord.ContentHash.ValueHash256);
     }
 
     /// <summary>
@@ -129,10 +129,10 @@ public class NodeRecordSigner : INodeRecordSigner
             throw new Exception("Cannot verify an ENR with an empty signature.");
         }
 
-        Hash256 contentHash;
+        ValueHash256 contentHash;
         if (nodeRecord.OriginalContentRlp is not null)
         {
-            contentHash = Keccak.Compute(nodeRecord.OriginalContentRlp);
+            contentHash = ValueKeccak.Compute(nodeRecord.OriginalContentRlp);
         }
         else
         {
@@ -140,10 +140,10 @@ public class NodeRecordSigner : INodeRecordSigner
         }
 
         CompressedPublicKey publicKeyA =
-            _ecdsa.RecoverCompressedPublicKey(nodeRecord.Signature!, contentHash)!;
+            _ecdsa.RecoverCompressedPublicKey(nodeRecord.Signature!, in contentHash)!;
         Signature sigB = new(nodeRecord.Signature!.Bytes, 1);
         CompressedPublicKey publicKeyB =
-            _ecdsa.RecoverCompressedPublicKey(sigB, contentHash)!;
+            _ecdsa.RecoverCompressedPublicKey(sigB, in contentHash)!;
 
         CompressedPublicKey? reportedKey =
             nodeRecord.GetObj<CompressedPublicKey>(EnrContentKey.Secp256K1);

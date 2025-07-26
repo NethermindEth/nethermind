@@ -9,7 +9,7 @@ using Nethermind.Era1;
 namespace Nethermind.Init.Steps;
 
 [RunnerStepDependencies(
-    dependencies: [typeof(InitializeBlockchain), typeof(LoadGenesisBlock)],
+    dependencies: [typeof(ReviewBlockTree)],
     dependents: [typeof(InitializeNetwork)]
 )]
 public class EraStep(EraCliRunner eraCliRunner) : IStep
