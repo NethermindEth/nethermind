@@ -1,4 +1,4 @@
-﻿// SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
+// SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
@@ -50,11 +50,11 @@ public sealed class LogIndexService : ILogIndexService
 
     private readonly Channel<BlockReceipts> _forwardChannel = Channel.CreateBounded<BlockReceipts>(MaxQueueSize);
     private readonly LruCache<int, BlockReceipts> _forwardBlockCache = new(MaxCacheSize, nameof(LogIndexService));
-    private readonly AutoResetEvent _newForwardBlockEvent = new (false);
+    private readonly AutoResetEvent _newForwardBlockEvent = new(false);
 
     private readonly Channel<BlockReceipts> _backwardChannel = Channel.CreateBounded<BlockReceipts>(MaxQueueSize);
     private readonly LruCache<int, BlockReceipts> _backwardBlockCache = new(MaxCacheSize, nameof(LogIndexService));
-    private readonly AutoResetEvent _newBackwardBlockEvent = new (false);
+    private readonly AutoResetEvent _newBackwardBlockEvent = new(false);
 
     // TODO: wait for when stopping?
     private Task? _processTask;
@@ -246,27 +246,27 @@ public sealed class LogIndexService : ILogIndexService
         {
             case true when nextBlock.BlockNumber <= lastBlockNum:
             case false when nextBlock.BlockNumber >= lastBlockNum:
-            {
-                if (_logger.IsWarn)
                 {
-                    _logger.Warn($"Skipping duplicate block number {nextBlock.BlockNumber} in log index queue, last added: {lastBlockNum}");
-                }
+                    if (_logger.IsWarn)
+                    {
+                        _logger.Warn($"Skipping duplicate block number {nextBlock.BlockNumber} in log index queue, last added: {lastBlockNum}");
+                    }
 
-                return (isValid: true, shouldAdd: false);
-            }
+                    return (isValid: true, shouldAdd: false);
+                }
             case true when nextBlock.BlockNumber > GetNextBlockNumber(true):
             case false when nextBlock.BlockNumber < GetNextBlockNumber(false):
-            {
-                if (_logger.IsError)
                 {
-                    _logger.Error(
-                        $"Non-sequential block number {nextBlock.BlockNumber} in log index queue, last added: {lastBlockNum}. " +
-                        $"Please restart the client."
-                    );
-                }
+                    if (_logger.IsError)
+                    {
+                        _logger.Error(
+                            $"Non-sequential block number {nextBlock.BlockNumber} in log index queue, last added: {lastBlockNum}. " +
+                            $"Please restart the client."
+                        );
+                    }
 
-                return (isValid: false, shouldAdd: false);
-            }
+                    return (isValid: false, shouldAdd: false);
+                }
             default:
                 return (isValid: true, shouldAdd: true);
         }
