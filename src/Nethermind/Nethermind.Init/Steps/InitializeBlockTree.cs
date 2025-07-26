@@ -4,6 +4,7 @@
 using System.IO;
 using System.Threading;
 using System.Threading.Tasks;
+using Autofac;
 using Nethermind.Api;
 using Nethermind.Api.Steps;
 using Nethermind.Blockchain;
@@ -98,13 +99,11 @@ namespace Nethermind.Init.Steps
             IReceiptFinder receiptFinder = _set.ReceiptFinder;
 
             ILogIndexStorage logIndexStorage = _set.LogIndexStorage = new LogIndexStorage(
-                _get.DbFactory!,
+                _get.Context.Resolve<IDbFactory>(),
                 _get.LogManager.GetClassLogger<LogIndexStorage>(),
                 receiptConfig.LogIndexIOParallelism,
                 receiptConfig.LogIndexCompactionDistance
             );
-            _stopper.AddStoppable(logIndexStorage);
-
             _get.DisposeStack.Push(logIndexStorage);
 
             LogFinder logFinder = new(

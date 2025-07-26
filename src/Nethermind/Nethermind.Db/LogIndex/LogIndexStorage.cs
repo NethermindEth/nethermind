@@ -116,6 +116,11 @@ namespace Nethermind.Db
         private bool _stopped;
         private bool _disposed;
 
+        // Used for:
+        // - blocking concurrent executions
+        // - ensuring the current migration task is completed before stopping
+        private readonly SemaphoreSlim _setReceiptsSemaphore = new(1, 1);
+
         public async Task StopAsync()
         {
             if (_stopped)
@@ -434,11 +439,6 @@ namespace Nethermind.Db
 
             return Task.CompletedTask;
         }
-
-        // Used for:
-        // - blocking concurrent executions
-        // - ensuring the current migration task is completed before stopping
-        private readonly SemaphoreSlim _setReceiptsSemaphore = new(1, 1);
 
         public async Task ReorgFrom(BlockReceipts block)
         {

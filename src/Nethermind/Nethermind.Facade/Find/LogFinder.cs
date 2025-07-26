@@ -114,7 +114,6 @@ namespace Nethermind.Facade.Find
                 result = result.Concat(FilterLogsWithoutIndex(filter, FindHeader(indexRange.to + 1), toBlock, cancellationToken));
 
             return result;
-
         }
 
         private IEnumerable<FilterLog> FilterLogsWithoutIndex(LogFilter filter, BlockHeader fromBlock, BlockHeader toBlock,
@@ -270,23 +269,18 @@ namespace Nethermind.Facade.Find
                         byTopic![tpc] = _logIndexStorage.GetBlockNumbersFor(tpc, (int)fromBlock, (int)toBlock).ToList();
                 });
 
-            HashSet<int> blockNumbers = null;
-            if (byAddress is not null)
-            {
-                blockNumbers = [.. byAddress.Values.SelectMany(x => x)];
-            }
+            if (byTopic is null) // TODO: optimize ordering by merging sorted lists
+                return byAddress?.SelectMany(x => x.Value).Distinct().Order() ?? Enumerable.Empty<int>();
 
-            if (byTopic is not null)
-            {
-                HashSet<int> topicNumbers = filter.TopicsFilter.FilterBlockNumbers(byTopic);
-                if (blockNumbers is null)
-                    blockNumbers = [.. topicNumbers];
-                else
-                    blockNumbers.IntersectWith(topicNumbers);
-            }
+            HashSet<int> blockNumbers = filter.TopicsFilter.FilterBlockNumbers(byTopic);
+
+            if (byAddress is null)
+                return blockNumbers.Order();
 
             // TODO: merge sorted lists (or enumerables) instead of sorting HashSet?
-            return blockNumbers?.Order() ?? Enumerable.Empty<int>();
+            blockNumbers.IntersectWith(byAddress.SelectMany(x => x.Value));
+
+            return blockNumbers.Order();
         }
 
         private IEnumerable<FilterLog> FilterLogsUsingIndex(LogFilter filter, BlockHeader fromBlock, BlockHeader toBlock,
@@ -307,11 +301,11 @@ namespace Nethermind.Facade.Find
                 return blockHash;
             }
 
-            IEnumerable<long> FilterBlocks(LogFilter f, long @from, long to, bool runParallel, CancellationToken token)
+            IEnumerable<long> FilterBlocks(LogFilter f, long from, long to, bool runParallel, CancellationToken token)
             {
                 try
                 {
-                    foreach (var blockNumber in GetBlockNumbersFor(f, @from, to, cancellationToken))
+                    foreach (var blockNumber in GetBlockNumbersFor(f, from, to, token))
                     {
                         token.ThrowIfCancellationRequested();
 

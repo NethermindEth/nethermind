@@ -21,7 +21,7 @@ namespace Nethermind.Init.Steps.Migrations;
 
 // TODO: move to correct namespace
 // TODO: reduce periodic logging
-public class LogIndexService : ILogIndexService
+public sealed class LogIndexService : ILogIndexService
 {
     private readonly IBlockTree _blockTree;
     private readonly ILogger _logger;
@@ -39,7 +39,6 @@ public class LogIndexService : ILogIndexService
     private static readonly TimeSpan QueueSpinWaitTime = TimeSpan.FromSeconds(1);
 
     private readonly ILogIndexStorage _logIndexStorage;
-    private readonly IReceiptMonitor _receiptMonitor;
     private readonly IReceiptFinder _receiptFinder;
     private readonly IReceiptStorage _receiptStorage;
     private readonly ProgressLogger _forwardProgressLogger;
@@ -66,7 +65,6 @@ public class LogIndexService : ILogIndexService
     public LogIndexService(IApiWithStores api, ISyncModeSelector syncModeSelector, IBlockTree blockTree, IReceiptFinder receiptFinder, IReceiptStorage receiptStorage)
     {
         ArgumentNullException.ThrowIfNull(api.LogIndexStorage);
-        ArgumentNullException.ThrowIfNull(api.ReceiptMonitor);
         ArgumentNullException.ThrowIfNull(api.LogManager);
 
         _blockTree = blockTree;
@@ -78,7 +76,6 @@ public class LogIndexService : ILogIndexService
         _backwardProgressLogger = new(GetLogPrefix(isForward: false), api.LogManager);
 
         _logIndexStorage = api.LogIndexStorage;
-        _receiptMonitor = api.ReceiptMonitor;
     }
 
     public Task StartAsync()
@@ -101,13 +98,20 @@ public class LogIndexService : ILogIndexService
         return Task.CompletedTask;
     }
 
-    public async Task StopAsync()
+    public async ValueTask DisposeAsync()
     {
-        await _cancellationSource.CancelAsync();
-        await (_queueForwardBlocksTask ?? Task.CompletedTask);
-        await (_queueBackwardBlocksTask ?? Task.CompletedTask);
-        await (_processTask ?? Task.CompletedTask);
-        await _logIndexStorage.StopAsync();
+        try
+        {
+            await _cancellationSource.CancelAsync();
+            await (_queueForwardBlocksTask ?? Task.CompletedTask);
+            await (_queueBackwardBlocksTask ?? Task.CompletedTask);
+            await (_processTask ?? Task.CompletedTask);
+            await _logIndexStorage.StopAsync();
+        }
+        catch (Exception exception)
+        {
+            GC.KeepAlive(exception);
+        }
     }
 
     private void OnLogProgress(object? sender, ElapsedEventArgs e)

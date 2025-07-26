@@ -27,7 +27,7 @@ namespace Nethermind.Init.Steps
         {
             await _logIndexService.StartAsync();
             // TODO: fix race condition on disposing both service and storage
-            _api.DisposeStack.Push(new Reactive.AnonymousDisposable(() => _logIndexService.StopAsync()));
+            _api.DisposeStack.Push(_logIndexService);
         }
 
         public bool MustInitialize => false;

@@ -13,6 +13,7 @@ using MathNet.Numerics.Random;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Db.Rocks;
 using Nethermind.Db.Rocks.Config;
@@ -69,7 +70,9 @@ namespace Nethermind.Db.Test.LogIndex
 
             Directory.CreateDirectory(_dbPath);
 
-            _dbFactory = new RocksDbFactory(new DbConfig(), new TestLogManager(), _dbPath);
+            var config = new DbConfig();
+            var configFactory = new RocksDbConfigFactory(new DbConfig(), new PruningConfig(), new TestHardwareInfo(0), LimboLogs.Instance);
+            _dbFactory = new RocksDbFactory(configFactory, config, new TestLogManager(), _dbPath);
         }
 
         [TearDown]

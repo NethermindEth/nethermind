@@ -107,8 +107,8 @@ namespace Nethermind.Blockchain.Filters.Topics
             {
                 if (result == null)
                     result = expression.FilterBlockNumbers(byTopic);
-                else
-                    result.UnionWith(expression.FilterBlockNumbers(byTopic));
+                else if (expression.FilterBlockNumbers(byTopic) is {} next)
+                    result.UnionWith(next);
             }
 
             return result ?? [];
