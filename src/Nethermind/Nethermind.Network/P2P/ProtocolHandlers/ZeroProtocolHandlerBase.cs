@@ -73,7 +73,7 @@ namespace Nethermind.Network.P2P.ProtocolHandlers
                 {
                     delayCancellation.Cancel();
 
-                    if (firstTask.IsCompletedSuccessfully)
+                    if (firstTask.IsCompleted)
                     {
                         long elapsed = request.FinishMeasuringTime();
                         long bytesPerMillisecond = (long)((decimal)request.ResponseSize / Math.Max(1, elapsed));
@@ -83,16 +83,14 @@ namespace Nethermind.Network.P2P.ProtocolHandlers
                         success = true;
                     }
                 }
-
-                if (!success)
+                else
                 {
+                    request.CompletionSource.TrySetCanceled(compositeCancellation.Token);
+                    StatsManager.ReportTransferSpeedEvent(Session.Node, speedType, 0L);
                     if (Logger.IsDebug)
                     {
                         Logger.Debug($"{Session} Request timeout in {describeRequestFunc(request.Message)}");
                     }
-
-                    StatsManager.ReportTransferSpeedEvent(Session.Node, speedType, 0L);
-                    request.CompletionSource.TrySetCanceled(CancellationToken.None);
                 }
 
                 return task;
