@@ -198,7 +198,7 @@ namespace Nethermind.Facade.Find
 
         private (int from, int to)? CanUseLogIndex(LogFilter filter, BlockHeader fromBlock, BlockHeader toBlock)
         {
-            if (_logIndexStorage == null || filter.AcceptsAnyBlock)
+            if (!filter.UseIndex || _logIndexStorage == null || filter.AcceptsAnyBlock)
                 return null;
 
             if (_logIndexStorage.GetMinBlockNumber() is not {} indexFrom || _logIndexStorage.GetMaxBlockNumber() is not {} indexTo)

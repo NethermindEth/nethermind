@@ -20,7 +20,7 @@ public class Filter : IJsonRpcParam
     public IEnumerable<object?>? Topics { get; set; }
 
     // TODO: remove after testing
-    public bool UseIndex { get; set; } = false;
+    public bool UseIndex { get; set; } = true;
 
     public void ReadJson(JsonElement filter, JsonSerializerOptions options)
     {
@@ -63,9 +63,14 @@ public class Filter : IJsonRpcParam
                 Topics = null;
             }
 
-            if (filter.TryGetProperty("useIndex"u8, out JsonElement useIndex) && useIndex.ValueKind == JsonValueKind.True)
+            if (filter.TryGetProperty("useIndex"u8, out JsonElement useIndex))
             {
-                UseIndex = true;
+                UseIndex = useIndex.ValueKind switch
+                {
+                    JsonValueKind.False => false,
+                    JsonValueKind.True => true,
+                    _ => UseIndex
+                };
             }
         }
         finally
