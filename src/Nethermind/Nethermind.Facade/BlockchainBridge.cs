@@ -31,6 +31,8 @@ using Transaction = Nethermind.Core.Transaction;
 using Autofac;
 using Nethermind.Blockchain.Tracing;
 using Nethermind.Consensus;
+using Nethermind.Consensus.Processing;
+using Nethermind.Consensus.Stateless;
 using Nethermind.Evm.State;
 using Nethermind.State.OverridableEnv;
 
@@ -40,6 +42,7 @@ namespace Nethermind.Facade
     public class BlockchainBridge(
         IOverridableEnv<BlockchainBridge.BlockProcessingComponents> processingEnv,
         Lazy<ISimulateReadOnlyBlocksProcessingEnv> lazySimulateProcessingEnv,
+        IWitnessGeneratingBlockProcessingEnv statelessBlocksProcessingEnv,
         IBlockTree blockTree,
         IStateReader stateReader,
         ITxPool txPool,
@@ -404,6 +407,17 @@ namespace Nethermind.Facade
 
             return error is null ? null : $"err: {error} (supplied gas {gasLimit})";
         }
+        public bool ExecuteWitness(Block blockParameter, Witness witness)
+        {
+            throw new NotImplementedException();
+        }
+
+        public Witness GenerateExecutionWitness( BlockHeader parent, Block block)
+        {
+            RecoverTxSenders(block);
+            WitnessCollector witnessCollector = statelessBlocksProcessingEnv.CreateWitnessCollector();
+            return witnessCollector.GetWitness(parent, block);
+        }
 
         public record BlockProcessingComponents(
             IStateReader StateReader,
@@ -419,6 +433,7 @@ namespace Nethermind.Facade
 
     public class BlockchainBridgeFactory(
         ISimulateReadOnlyBlocksProcessingEnvFactory simulateEnvFactory,
+        IWitnessGeneratingBlockProcessingEnvFactory witnessGeneratingEnvFactory,
         IOverridableEnvFactory envFactory,
         ILifetimeScope rootLifetimeScope
     ) : IBlockchainBridgeFactory
@@ -437,6 +452,7 @@ namespace Nethermind.Facade
 
             ILifetimeScope blockchainBridgeLifetime = rootLifetimeScope.BeginLifetimeScope((builder) => builder
                 .AddScoped<BlockchainBridge>()
+                .AddScoped<IWitnessGeneratingBlockProcessingEnv>(_ => witnessGeneratingEnvFactory.Create())
                 .AddScoped<ISimulateReadOnlyBlocksProcessingEnv>((_) => simulateEnvFactory.Create())
                 .AddScoped(blockProcessingEnv));
 
