@@ -88,7 +88,14 @@ namespace Nethermind.Synchronization.ParallelSync
 
         public bool IsFastBlocksBodiesFinished() => !IsFastBlocks() || !_syncConfig.DownloadBodiesInFastSync || _bodiesSyncFeed.IsFinished;
 
-        public bool IsFastBlocksReceiptsFinished() => !IsFastBlocks() || !_syncConfig.DownloadReceiptsInFastSync || _receiptsSyncFeed.IsFinished;
+        public bool IsFastBlocksReceiptsFinished()
+        {
+            bool cond = !IsFastBlocks() || !_syncConfig.DownloadReceiptsInFastSync || _receiptsSyncFeed.IsFinished;
+
+            Console.Error.WriteLine($"The barrier is {_syncConfig.AncientReceiptsBarrier}, is it finished {_receiptsSyncFeed.IsFinished}");
+
+            return cond;
+        }
 
         public bool IsSnapGetRangesFinished() => _snapSyncFeed?.IsFinished ?? true;
 
