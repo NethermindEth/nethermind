@@ -80,13 +80,12 @@ public sealed class LogIndexService : ILogIndexService
 
     public Task StartAsync()
     {
-        _pivotNumber =
-            (_logIndexStorage.GetMaxBlockNumber() - _logIndexStorage.GetMinBlockNumber()) / 2
-            ?? (int)_blockTree.SyncPivot.BlockNumber;
+        _pivotNumber = (int)_blockTree.SyncPivot.BlockNumber;
 
         UpdateProgress();
+        LogProgress();
         _progressLoggerTimer.AutoReset = true;
-        _progressLoggerTimer.Elapsed += OnLogProgress;
+        _progressLoggerTimer.Elapsed += (_, _) => LogProgress();
         _progressLoggerTimer.Start();
 
         _receiptStorage.OldReceiptsInserted += OnReceiptsInserted;
@@ -114,7 +113,7 @@ public sealed class LogIndexService : ILogIndexService
         }
     }
 
-    private void OnLogProgress(object? sender, ElapsedEventArgs e)
+    private void LogProgress()
     {
         _forwardProgressLogger.LogProgress();
         _backwardProgressLogger.LogProgress();
@@ -148,12 +147,27 @@ public sealed class LogIndexService : ILogIndexService
     }
 
     // TODO: figure out values that would be correct in all cases
-    private int? GetMaxAvailableBlockNumber() => (int)Math.Min(
-        _blockTree.Head?.Number ?? -1,
-        Math.Max(_blockTree.BestKnownNumber, _blockTree.BestKnownBeaconNumber)
-    ) - MaxReorgDepth; // TODO: do not stay MaxReorgDepth behind, handle reorgs instead
+    private int? GetMaxAvailableBlockNumber()
+    {
+        if (_blockTree.BestPersistedState is null || _blockTree.Head is not { } head)
+            return null;
 
-    private int? GetMinAvailableBlockNumber() => (int?)_blockTree.LowestInsertedHeader?.Number;
+        var res = Math.Min(
+            head.Number,
+            Math.Max(_blockTree.BestKnownNumber, _blockTree.BestKnownBeaconNumber)
+        );
+
+        res -= MaxReorgDepth; // TODO: do not stay MaxReorgDepth behind, handle reorgs instead
+        return res >= 0 ? (int)res : null;
+    }
+
+    private int? GetMinAvailableBlockNumber()
+    {
+        if (_blockTree.BestPersistedState is null || _blockTree.Head is null)
+            return null;
+
+        return (int?)_blockTree.LowestInsertedHeader?.Number;
+    }
 
     private async Task DoProcess()
     {
@@ -212,13 +226,10 @@ public sealed class LogIndexService : ILogIndexService
         // TODO: reuse buffer
         while (queue.ReadBatch(BatchSize) is { Length: > 0 } batch)
         {
-            // var (isValid, shouldAdd) = CheckNextBatch(batch, isForward);
-            // if (!isValid) return count;
-            // if (!shouldAdd) continue;
-
             // TODO: remove check to save time?
-            if ((isForward && !IsSeqAsc(batch)) || (!isForward && !IsSeqDesc(batch)) ||
-                batch[0].BlockNumber != (GetNextBlockNumber(isForward) ?? batch[0].BlockNumber))
+            if ((isForward && !IsSeqAsc(batch)) ||
+                (!isForward && !IsSeqDesc(batch)) ||
+                (GetNextBlockNumber(isForward) is { } next && next != batch[0].BlockNumber))
             {
                 throw new Exception($"Non-sequential block numbers in log index queue, batch: ({batch[0]} -> {batch[^1]}).");
             }
@@ -232,44 +243,6 @@ public sealed class LogIndexService : ILogIndexService
         }
 
         return count;
-    }
-
-    private (bool isValid, bool shouldAdd) CheckNextBatch(BlockReceipts[] batch, bool isForward)
-    {
-        var lastBlockOrNull = isForward ? _logIndexStorage.GetMaxBlockNumber() : _logIndexStorage.GetMinBlockNumber();
-
-        if (lastBlockOrNull is not { } lastBlockNum)
-            return (isValid: true, shouldAdd: true);
-
-        BlockReceipts nextBlock = batch[0];
-        switch (isForward)
-        {
-            case true when nextBlock.BlockNumber <= lastBlockNum:
-            case false when nextBlock.BlockNumber >= lastBlockNum:
-                {
-                    if (_logger.IsWarn)
-                    {
-                        _logger.Warn($"Skipping duplicate block number {nextBlock.BlockNumber} in log index queue, last added: {lastBlockNum}");
-                    }
-
-                    return (isValid: true, shouldAdd: false);
-                }
-            case true when nextBlock.BlockNumber > GetNextBlockNumber(true):
-            case false when nextBlock.BlockNumber < GetNextBlockNumber(false):
-                {
-                    if (_logger.IsError)
-                    {
-                        _logger.Error(
-                            $"Non-sequential block number {nextBlock.BlockNumber} in log index queue, last added: {lastBlockNum}. " +
-                            $"Please restart the client."
-                        );
-                    }
-
-                    return (isValid: false, shouldAdd: false);
-                }
-            default:
-                return (isValid: true, shouldAdd: true);
-        }
     }
 
     // TODO: aggregate to dictionary beforehand (in multiple threads?), should save a lot of time
@@ -289,10 +262,6 @@ public sealed class LogIndexService : ILogIndexService
                 }
                 else
                 {
-                    // Wait until we start updating index forward
-                    // Post-pivot forward-sync should start first
-                    //await _logIndexStorage.FirstBlockAdded;
-                    //start = GetNextBlockNumber(false)!.Value;
                     start = _pivotNumber - 1;
                 }
             }
@@ -322,11 +291,8 @@ public sealed class LogIndexService : ILogIndexService
 
                     if (timedOut && _logger.IsInfo)
                     {
-                        var (last, available) = isForward
-                            ? (_logIndexStorage.GetMaxBlockNumber(), GetMaxAvailableBlockNumber())
-                            : (_logIndexStorage.GetMinBlockNumber(), GetMinAvailableBlockNumber());
-
-                        _logger.Info($"{GetLogPrefix(isForward)}: waiting for a new block, synced: {last:N0}, available: {available:N0}");
+                        (int? synced, int? available) = GetStatus(isForward);
+                        _logger.Info($"{GetLogPrefix(isForward)}: waiting for a new block, synced: {synced:N0}, available: {available:N0}");
                     }
 
                     continue;
@@ -387,30 +353,19 @@ public sealed class LogIndexService : ILogIndexService
 
     private void UpdateProgress()
     {
-        UpdateProgress(_forwardProgressLogger);
-        UpdateProgress(_backwardProgressLogger);
-    }
+        _forwardProgressLogger.TargetValue = (GetMaxAvailableBlockNumber() ?? _pivotNumber) - _pivotNumber;
+        _forwardProgressLogger.Update((_logIndexStorage.GetMaxBlockNumber() ?? _pivotNumber) - _pivotNumber);
+        _forwardProgressLogger.CurrentQueued = _forwardChannel.Reader.Count;
 
-    private void UpdateProgress(ProgressLogger progress)
-    {
-        if (progress == _forwardProgressLogger)
-        {
-            _forwardProgressLogger.TargetValue = (GetMaxAvailableBlockNumber() ?? 0) - _pivotNumber;
-            _forwardProgressLogger.Update((_logIndexStorage.GetMaxBlockNumber() ?? _pivotNumber) - _pivotNumber);
-            _forwardProgressLogger.CurrentQueued = _forwardChannel.Reader.Count;
+        // if (_forwardProgressLogger.CurrentValue == _forwardProgressLogger.TargetValue)
+        //     _forwardProgressLogger.MarkEnd();
 
-            // if (_forwardProgressLogger.CurrentValue == _forwardProgressLogger.TargetValue)
-            //     _forwardProgressLogger.MarkEnd();
-        }
-        else if (progress == _backwardProgressLogger)
-        {
-            _backwardProgressLogger.TargetValue = _pivotNumber;
-            _backwardProgressLogger.Update(_pivotNumber - (_logIndexStorage.GetMinBlockNumber() ?? _pivotNumber));
-            _backwardProgressLogger.CurrentQueued = _backwardChannel.Reader.Count;
+        _backwardProgressLogger.TargetValue = _pivotNumber;
+        _backwardProgressLogger.Update(_pivotNumber - (_logIndexStorage.GetMinBlockNumber() ?? _pivotNumber));
+        _backwardProgressLogger.CurrentQueued = _backwardChannel.Reader.Count;
 
-            if (_backwardProgressLogger.CurrentValue == _backwardProgressLogger.TargetValue)
-                _backwardProgressLogger.MarkEnd();
-        }
+        if (_backwardProgressLogger.CurrentValue == _backwardProgressLogger.TargetValue)
+            _backwardProgressLogger.MarkEnd();
     }
 
     private int? GetNextBlockNumber(bool isForward)
@@ -422,6 +377,10 @@ public sealed class LogIndexService : ILogIndexService
     {
         return isForward ? last + 1 : last - 1;
     }
+
+    private (int? synced, int? available) GetStatus(bool isForward) => isForward
+        ? (_logIndexStorage.GetMaxBlockNumber(), GetMaxAvailableBlockNumber())
+        : (_logIndexStorage.GetMinBlockNumber(), GetMinAvailableBlockNumber());
 
     private void PopulateBlocks(int from, int to, BlockReceipts[] buffer, bool isForward, CancellationToken token)
     {
