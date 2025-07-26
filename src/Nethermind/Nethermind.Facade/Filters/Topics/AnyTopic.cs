@@ -24,7 +24,7 @@ namespace Nethermind.Blockchain.Filters.Topics
 
         public override IEnumerable<Hash256> Topics => [];
 
-        public override HashSet<int>? FilterBlockNumbers(IReadOnlyDictionary<Hash256, List<int>> byTopic) => null;
+        public override List<int>? FilterBlockNumbers(IReadOnlyDictionary<Hash256, List<int>> byTopic) => null;
 
         public override string ToString() => "null";
     }

@@ -8,6 +8,7 @@ using System.Linq;
 using System.Threading;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Filters;
+using Nethermind.Blockchain.Filters.Topics;
 using Nethermind.Blockchain.Find;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Core;
@@ -200,7 +201,7 @@ namespace Nethermind.Facade.Find
             if (!filter.UseIndex || _logIndexStorage == null || filter.AcceptsAnyBlock)
                 return null;
 
-            if (_logIndexStorage.GetMinBlockNumber() is not {} indexFrom || _logIndexStorage.GetMaxBlockNumber() is not {} indexTo)
+            if (_logIndexStorage.GetMinBlockNumber() is not { } indexFrom || _logIndexStorage.GetMaxBlockNumber() is not { } indexTo)
                 return null;
 
             return (
@@ -269,18 +270,17 @@ namespace Nethermind.Facade.Find
                         byTopic![tpc] = _logIndexStorage.GetBlockNumbersFor(tpc, (int)fromBlock, (int)toBlock).ToList();
                 });
 
-            if (byTopic is null) // TODO: optimize ordering by merging sorted lists
-                return byAddress?.SelectMany(x => x.Value).Distinct().Order() ?? Enumerable.Empty<int>();
+            if (byTopic is null) // TODO: avoid ToList call when single value
+                return AscListHelper.UnionAll(byAddress?.Values ?? []);
 
-            HashSet<int> blockNumbers = filter.TopicsFilter.FilterBlockNumbers(byTopic);
+            List<int> blockNumbers = filter.TopicsFilter.FilterBlockNumbers(byTopic);
 
             if (byAddress is null)
-                return blockNumbers.Order();
+                return blockNumbers;
 
-            // TODO: merge sorted lists (or enumerables) instead of sorting HashSet?
-            blockNumbers.IntersectWith(byAddress.SelectMany(x => x.Value));
+            blockNumbers = AscListHelper.IntersectAll(byAddress.Values.Concat([blockNumbers]));
 
-            return blockNumbers.Order();
+            return blockNumbers;
         }
 
         private IEnumerable<FilterLog> FilterLogsUsingIndex(LogFilter filter, BlockHeader fromBlock, BlockHeader toBlock,
