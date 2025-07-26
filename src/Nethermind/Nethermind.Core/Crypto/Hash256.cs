@@ -1,23 +1,24 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using Nethermind.Core.Extensions;
+using Nethermind.Int256;
+using Nethermind.Network.Discovery.Kademlia;
+using Nethermind.Serialization.Json;
 using System;
 using System.Diagnostics;
+using System.Numerics;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using System.Runtime.Intrinsics;
 using System.Text.Json.Serialization;
-
-using Nethermind.Core.Extensions;
-using Nethermind.Int256;
-using Nethermind.Serialization.Json;
 
 namespace Nethermind.Core.Crypto
 {
     [DebuggerStepThrough]
     [DebuggerDisplay("{ToString()}")]
     [JsonConverter(typeof(ValueHash256Converter))]
-    public readonly struct ValueHash256 : IEquatable<ValueHash256>, IComparable<ValueHash256>, IEquatable<Hash256>
+    public readonly struct ValueHash256 : IEquatable<ValueHash256>, IComparable<ValueHash256>, IEquatable<Hash256>, IKademiliaHash<ValueHash256>
     {
         // Ensure that hashes are different for every run of the node and every node, so if are any hash collisions on
         // one node they will not be the same on another node or across a restart so hash collision cannot be used to degrade
@@ -101,6 +102,103 @@ namespace Nethermind.Core.Crypto
         public UInt256 ToUInt256(bool isBigEndian = true) => new UInt256(Bytes, isBigEndian: isBigEndian);
 
         private bool IsZero => _bytes == default;
+
+
+
+        public static int CalculateLogDistance(ValueHash256 h1, ValueHash256 h2)
+        {
+            ValueHash256 xor = XorDistance(h1, h2);
+            int zeros = 0;
+            for (int i = 0; i < 32; i += 1)
+            {
+                byte xord = xor.Bytes[i];
+                if (xord == 0)
+                {
+                    zeros += 8;
+                    continue;
+                }
+
+                int nonZeroPostfix = 1;
+                while ((xord >>= 1) != 0)
+                {
+                    nonZeroPostfix++;
+                }
+                zeros += 8 - nonZeroPostfix;
+
+                break;
+            }
+            return MaxDistance - zeros;
+        }
+
+        public static int MaxDistance => 256;
+
+        public static ValueHash256 Zero => throw new NotImplementedException();
+
+        byte[] IKademiliaHash<ValueHash256>.Bytes => throw new NotImplementedException();
+
+        public static int Compare(ValueHash256 a, ValueHash256 b, ValueHash256 c)
+        {
+            ValueHash256 ac = XorDistance(a, c);
+            ValueHash256 bc = XorDistance(b, c);
+            return ac.CompareTo(bc);
+        }
+
+        public static ValueHash256 XorDistance(ValueHash256 hash1, ValueHash256 hash2)
+        {
+            ValueHash256 bc = new ValueHash256();
+            (new Vector<byte>(hash1.BytesAsSpan) ^ new Vector<byte>(hash2.BytesAsSpan)).CopyTo(bc.BytesAsSpan);
+            return bc;
+        }
+
+        public static ValueHash256 GetRandomHashAtDistance(ValueHash256 currentHash, int distance)
+        {
+            return GetRandomHashAtDistance(currentHash, distance, Random.Shared);
+        }
+
+        public static ValueHash256 GetRandomHashAtDistance(ValueHash256 currentHash, int distance, Random random)
+        {
+            // TODO: Just add a min/max range per bucket and randomized between them.
+            if (distance == MaxDistance)
+            {
+                return currentHash;
+            }
+
+            ValueHash256 randomized = new ValueHash256();
+            random.NextBytes(randomized.BytesAsSpan);
+            return CopyForRandom(currentHash, randomized, MaxDistance - distance);
+        }
+
+        public static ValueHash256 CopyForRandom(ValueHash256 currentHash, ValueHash256 randomizedHash, int distance)
+        {
+            if (distance >= 256) return currentHash;
+
+            currentHash.Bytes[0..(distance / 8)].CopyTo(randomizedHash.BytesAsSpan);
+
+            int remainingBit = distance % 8;
+            int remainingBitByte = distance / 8;
+            byte mask = (byte)(~((1 << (8 - remainingBit)) - 1));
+            byte randomized = randomizedHash.BytesAsSpan[remainingBitByte];
+            byte original = currentHash.BytesAsSpan[remainingBitByte];
+            randomizedHash.BytesAsSpan[remainingBitByte] = (byte)((original & mask) | (randomized & (~mask)));
+
+            if (distance <= 255)
+            {
+                // So it always assume that the next bucket (the closer one) is always populated and therefore,
+                // the bits here for that distance must not be the same as in currentHash.
+                int nextBit = distance % 8;
+                int nextBitByte = distance / 8;
+                mask = (byte)(1 << (7 - nextBit));
+                randomized = randomizedHash.BytesAsSpan[nextBitByte];
+                byte opposite = (byte)~(currentHash.BytesAsSpan[nextBitByte]);
+
+                byte final = (byte)((opposite & mask) | (randomized & ~(mask)));
+                randomizedHash.BytesAsSpan[nextBitByte] = final;
+            }
+
+            return randomizedHash;
+        }
+
+        public static ValueHash256 FromBytes(byte[] bytes) => new(bytes);
     }
 
     public readonly struct Hash256AsKey(Hash256 key) : IEquatable<Hash256AsKey>, IComparable<Hash256AsKey>

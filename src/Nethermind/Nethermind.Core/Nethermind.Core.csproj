@@ -19,5 +19,6 @@
   </ItemGroup>
   <ItemGroup>
     <ProjectReference Include="..\Nethermind.Logging\Nethermind.Logging.csproj" />
+    <ProjectReference Include="..\Nethermind.Network.Kademlia\Nethermind.Network.Discovery.Kademlia.csproj" />
   </ItemGroup>
 </Project>

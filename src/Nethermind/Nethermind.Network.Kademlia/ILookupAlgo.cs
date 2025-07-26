@@ -1,8 +1,6 @@
 // SPDX-FileCopyrightText: 2024 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using Nethermind.Core.Crypto;
-
 namespace Nethermind.Network.Discovery.Kademlia;
 
 /// <summary>
@@ -11,7 +9,7 @@ namespace Nethermind.Network.Discovery.Kademlia;
 /// Find closest-k is also used to determine which node should store a particular value which is used by
 /// store RPC (not implemented).
 /// </summary>
-public interface ILookupAlgo<TNode>
+public interface ILookupAlgo<THash, TNode> where THash : struct
 {
     /// <summary>
     /// The find neighbour operation here is configurable because the same algorithm is also used for finding
@@ -23,7 +21,7 @@ public interface ILookupAlgo<TNode>
     /// <param name="token"></param>
     /// <returns></returns>
     Task<TNode[]> Lookup(
-        ValueHash256 targetHash,
+        THash targetHash,
         int k,
         Func<TNode, CancellationToken, Task<TNode[]?>> findNeighbourOp,
         CancellationToken token

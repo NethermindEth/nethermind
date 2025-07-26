@@ -1,11 +1,9 @@
 // SPDX-FileCopyrightText: 2024 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using Microsoft.Extensions.Logging;
+using System.Collections.Concurrent;
 using System.Diagnostics.CodeAnalysis;
-using Nethermind.Core.Crypto;
-using Nethermind.Core.Threading;
-using Nethermind.Logging;
-using NonBlocking;
 
 namespace Nethermind.Network.Discovery.Kademlia;
 
@@ -17,47 +15,47 @@ namespace Nethermind.Network.Discovery.Kademlia;
 /// earlier as it converge to the content faster, but take more query for findnodes due to a more strict stop
 /// condition.
 /// </summary>
-public class LookupKNearestNeighbour<TKey, TNode>(
-    IRoutingTable<TNode> routingTable,
-    INodeHashProvider<TNode> nodeHashProvider,
+public class LookupKNearestNeighbour<THash, TNode>(
+    IRoutingTable<THash, TNode> routingTable,
+    INodeHashProvider<THash, TNode> nodeHashProvider,
     INodeHealthTracker<TNode> nodeHealthTracker,
     KademliaConfig<TNode> config,
-    ILogManager logManager) : ILookupAlgo<TNode> where TNode : notnull
+    ILoggerFactory logManager) : ILookupAlgo<THash, TNode> where TNode : notnull where THash : struct, IKademiliaHash<THash>
 {
     private readonly TimeSpan _findNeighbourHardTimeout = config.LookupFindNeighbourHardTimout;
-    private readonly ILogger _logger = logManager.GetClassLogger<LookupKNearestNeighbour<TKey, TNode>>();
+    private readonly ILogger _logger = logManager.CreateLogger<LookupKNearestNeighbour<THash, TNode>>();
 
     public async Task<TNode[]> Lookup(
-        ValueHash256 targetHash,
+        THash targetHash,
         int k,
         Func<TNode, CancellationToken, Task<TNode[]?>> findNeighbourOp,
         CancellationToken token
     )
     {
-        if (_logger.IsDebug) _logger.Debug($"Initiate lookup for hash {targetHash}");
+        if (_logger.IsEnabled(LogLevel.Debug)) _logger.LogDebug($"Initiate lookup for hash {targetHash}");
 
         using var cts = CancellationTokenSource.CreateLinkedTokenSource(token);
         token = cts.Token;
 
-        ConcurrentDictionary<ValueHash256, TNode> queried = new();
-        ConcurrentDictionary<ValueHash256, TNode> seen = new();
+        ConcurrentDictionary<THash, TNode> queried = new();
+        ConcurrentDictionary<THash, TNode> seen = new();
 
-        IComparer<ValueHash256> comparer = Comparer<ValueHash256>.Create((h1, h2) =>
-            Hash256XorUtils.Compare(h1, h2, targetHash));
-        IComparer<ValueHash256> comparerReverse = Comparer<ValueHash256>.Create((h1, h2) =>
-            Hash256XorUtils.Compare(h2, h1, targetHash));
+        IComparer<THash> comparer = Comparer<THash>.Create((h1, h2) =>
+            THash.Compare(h1, h2, targetHash));
+        IComparer<THash> comparerReverse = Comparer<THash>.Create((h1, h2) =>
+            THash.Compare(h2, h1, targetHash));
 
         McsLock queueLock = new McsLock();
 
         // Ordered by lowest distance. Will get popped for next round.
-        PriorityQueue<(ValueHash256, TNode), ValueHash256> bestSeen = new(comparer);
+        PriorityQueue<(THash, TNode), THash> bestSeen = new(comparer);
 
         // Ordered by highest distance. Added on result. Get popped as result.
-        PriorityQueue<(ValueHash256, TNode), ValueHash256> finalResult = new(comparerReverse);
+        PriorityQueue<(THash, TNode), THash> finalResult = new(comparerReverse);
 
         foreach (TNode node in routingTable.GetKNearestNeighbour(targetHash, default))
         {
-            ValueHash256 nodeHash = nodeHashProvider.GetHash(node);
+            THash nodeHash = nodeHashProvider.GetHash(node);
             seen.TryAdd(nodeHash, node);
             bestSeen.Enqueue((nodeHash, node), nodeHash);
         }
@@ -73,7 +71,7 @@ public class LookupKNearestNeighbour<TKey, TNode>(
             while (!finished)
             {
                 token.ThrowIfCancellationRequested();
-                if (!TryGetNodeToQuery(out (ValueHash256 hash, TNode node)? toQuery))
+                if (!TryGetNodeToQuery(out (THash hash, TNode node)? toQuery))
                 {
                     if (queryingTask > 0)
                     {
@@ -83,7 +81,7 @@ public class LookupKNearestNeighbour<TKey, TNode>(
                     }
 
                     // No node to query and running query.
-                    if (_logger.IsTrace) _logger.Trace("Stopping lookup. No node to query.");
+                    if (_logger.IsEnabled(LogLevel.Trace)) _logger.LogTrace("Stopping lookup. No node to query.");
                     break;
                 }
 
@@ -91,7 +89,7 @@ public class LookupKNearestNeighbour<TKey, TNode>(
                 {
                     if (ShouldStopDueToNoBetterResult(out var round))
                     {
-                        if (_logger.IsTrace) _logger.Trace("Stopping lookup. No better result.");
+                        if (_logger.IsEnabled(LogLevel.Trace)) _logger.LogTrace("Stopping lookup. No better result.");
                         break;
                     }
 
@@ -138,13 +136,13 @@ public class LookupKNearestNeighbour<TKey, TNode>(
             catch (Exception e)
             {
                 nodeHealthTracker.OnRequestFailed(node);
-                if (_logger.IsWarn) _logger.Warn($"Find neighbour op failed. {e}");
-                if (_logger.IsDebug) _logger.Debug($"Find neighbour op failed. {e}");
+                if (_logger.IsEnabled(LogLevel.Warning)) _logger.LogWarning($"Find neighbour op failed. {e}");
+                if (_logger.IsEnabled(LogLevel.Debug)) _logger.LogDebug($"Find neighbour op failed. {e}");
                 return (node, null);
             }
         }
 
-        bool TryGetNodeToQuery([NotNullWhen(true)] out (ValueHash256, TNode)? toQuery)
+        bool TryGetNodeToQuery([NotNullWhen(true)] out (THash, TNode)? toQuery)
         {
             using McsLock.Disposable _ = queueLock.Acquire();
             if (bestSeen.Count == 0)
@@ -160,7 +158,7 @@ public class LookupKNearestNeighbour<TKey, TNode>(
             return true;
         }
 
-        void ProcessResult(ValueHash256 hash, TNode toQuery, (TNode, TNode[]? neighbours)? valueTuple, int round)
+        void ProcessResult(THash hash, TNode toQuery, (TNode, TNode[]? neighbours)? valueTuple, int round)
         {
             using var _ = queueLock.Acquire();
 
@@ -175,7 +173,7 @@ public class LookupKNearestNeighbour<TKey, TNode>(
 
             foreach (TNode neighbour in neighbours)
             {
-                ValueHash256 neighbourHash = nodeHashProvider.GetHash(neighbour);
+                THash neighbourHash = nodeHashProvider.GetHash(neighbour);
 
                 // Already queried, we ignore
                 if (queried.ContainsKey(neighbourHash)) continue;
@@ -193,7 +191,7 @@ public class LookupKNearestNeighbour<TKey, TNode>(
                     }
 
                     // If the worst item in final result is worst that this neighbour, update closes node round
-                    if (finalResult.TryPeek(out (ValueHash256 hash, TNode node) worstResult, out ValueHash256 _) && comparer.Compare(neighbourHash, worstResult.hash) < 0)
+                    if (finalResult.TryPeek(out (THash hash, TNode node) worstResult, out THash _) && comparer.Compare(neighbourHash, worstResult.hash) < 0)
                     {
                         closestNodeRound = round;
                     }
@@ -220,7 +218,7 @@ public class LookupKNearestNeighbour<TKey, TNode>(
                 // Why not just _alpha?
                 // Because there could be currently running work that may increase closestNodeRound.
                 // So including this worker, assume no more
-                if (_logger.IsTrace) _logger.Trace($"No more closer node. Round: {round}, closestNodeRound {closestNodeRound}");
+                if (_logger.IsEnabled(LogLevel.Trace)) _logger.LogTrace($"No more closer node. Round: {round}, closestNodeRound {closestNodeRound}");
                 return true;
             }
 

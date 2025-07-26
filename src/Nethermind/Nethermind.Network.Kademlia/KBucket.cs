@@ -1,16 +1,13 @@
 // SPDX-FileCopyrightText: 2024 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System.Collections;
-using Nethermind.Core.Crypto;
-
 namespace Nethermind.Network.Discovery.Kademlia;
 
-public class KBucket<TNode> where TNode : notnull
+public class KBucket<THash, TNode> where TNode : notnull where THash : struct
 {
     private readonly int _k;
-    private DoubleEndedLru<TNode> _items;
-    private DoubleEndedLru<TNode> _replacement;
+    private DoubleEndedLru<TNode, THash> _items;
+    private DoubleEndedLru<TNode, THash> _replacement;
 
     public int Count => _items.Count;
 
@@ -19,8 +16,8 @@ public class KBucket<TNode> where TNode : notnull
     public KBucket(int k)
     {
         _k = k;
-        _items = new DoubleEndedLru<TNode>(k);
-        _replacement = new DoubleEndedLru<TNode>(k);  // Well, the replacement does not have to be k. Could be much lower.
+        _items = new DoubleEndedLru<TNode, THash>(k);
+        _replacement = new DoubleEndedLru<TNode, THash>(k);  // Well, the replacement does not have to be k. Could be much lower.
     }
 
     /// <summary>
@@ -30,7 +27,7 @@ public class KBucket<TNode> where TNode : notnull
     /// </summary>
     /// <param name="item"></param>
     /// <returns></returns>
-    public BucketAddResult TryAddOrRefresh(in ValueHash256 hash, TNode item, out TNode? toRefresh)
+    public BucketAddResult TryAddOrRefresh(in THash hash, TNode item, out TNode? toRefresh)
     {
         BucketAddResult addResult = _items.AddOrRefresh(hash, item);
         if (addResult == BucketAddResult.Added)
@@ -55,12 +52,12 @@ public class KBucket<TNode> where TNode : notnull
         return _cachedArray;
     }
 
-    public IEnumerable<(ValueHash256, TNode)> GetAllWithHash()
+    public IEnumerable<(THash, TNode)> GetAllWithHash()
     {
         return _items.GetAllWithHash();
     }
 
-    public bool RemoveAndReplace(in ValueHash256 hash)
+    public bool RemoveAndReplace(in THash hash)
     {
         if (!_items.Remove(hash)) return false;
 
@@ -75,17 +72,17 @@ public class KBucket<TNode> where TNode : notnull
 
     public void Clear()
     {
-        _items = new DoubleEndedLru<TNode>(_k);
-        _replacement = new DoubleEndedLru<TNode>(_k);
+        _items = new DoubleEndedLru<TNode, THash>(_k);
+        _replacement = new DoubleEndedLru<TNode, THash>(_k);
         _cachedArray = _items.GetAll();
     }
 
-    public bool ContainsNode(in ValueHash256 hash)
+    public bool ContainsNode(in THash hash)
     {
         return _items.Contains(hash);
     }
 
-    public TNode? GetByHash(ValueHash256 hash)
+    public TNode? GetByHash(THash hash)
     {
         return _items.GetByHash(hash);
     }

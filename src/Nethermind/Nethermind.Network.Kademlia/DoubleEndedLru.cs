@@ -1,21 +1,19 @@
 // SPDX-FileCopyrightText: 2024 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using Nethermind.Core.Crypto;
-using Nethermind.Core.Threading;
-using NonBlocking;
+using System.Collections.Concurrent;
 
 namespace Nethermind.Network.Discovery.Kademlia;
 
-public class DoubleEndedLru<TNode>(int capacity) where TNode : notnull
+public class DoubleEndedLru<TNode, THash>(int capacity) where TNode : notnull where THash : notnull
 {
     private McsLock _lock = new McsLock();
 
-    private LinkedList<(ValueHash256, TNode)> _queue = new();
-    private ConcurrentDictionary<ValueHash256, LinkedListNode<(ValueHash256, TNode)>> _hashMapping = new();
+    private LinkedList<(THash, TNode)> _queue = new();
+    private ConcurrentDictionary<THash, LinkedListNode<(THash, TNode)>> _hashMapping = new();
     public int Count => _queue.Count;
 
-    public BucketAddResult AddOrRefresh(in ValueHash256 hash, TNode node)
+    public BucketAddResult AddOrRefresh(in THash hash, TNode node)
     {
         using McsLock.Disposable _ = _lock.Acquire();
 
@@ -44,7 +42,7 @@ public class DoubleEndedLru<TNode>(int capacity) where TNode : notnull
     {
         using McsLock.Disposable _ = _lock.Acquire();
 
-        LinkedListNode<(ValueHash256, TNode)>? front = _queue.First;
+        LinkedListNode<(THash, TNode)>? front = _queue.First;
         if (front == null)
         {
             node = default;
@@ -62,7 +60,7 @@ public class DoubleEndedLru<TNode>(int capacity) where TNode : notnull
     {
         using McsLock.Disposable _ = _lock.Acquire();
 
-        LinkedListNode<(ValueHash256, TNode)>? lastNode = _queue.Last;
+        LinkedListNode<(THash, TNode)>? lastNode = _queue.Last;
         if (lastNode == null)
         {
             last = default;
@@ -73,7 +71,7 @@ public class DoubleEndedLru<TNode>(int capacity) where TNode : notnull
         return true;
     }
 
-    public bool Remove(ValueHash256 hash)
+    public bool Remove(THash hash)
     {
         using McsLock.Disposable _ = _lock.Acquire();
 
@@ -91,19 +89,19 @@ public class DoubleEndedLru<TNode>(int capacity) where TNode : notnull
         return _hashMapping.Select(kv => kv.Value.Value.Item2).ToArray();
     }
 
-    public IEnumerable<(ValueHash256, TNode)> GetAllWithHash()
+    public IEnumerable<(THash, TNode)> GetAllWithHash()
     {
         return _queue;
     }
 
-    public bool Contains(in ValueHash256 hash)
+    public bool Contains(in THash hash)
     {
         return _hashMapping.ContainsKey(hash);
     }
 
-    public TNode? GetByHash(ValueHash256 hash)
+    public TNode? GetByHash(THash hash)
     {
-        if (_hashMapping.TryGetValue(hash, out LinkedListNode<(ValueHash256, TNode)>? listNode))
+        if (_hashMapping.TryGetValue(hash, out LinkedListNode<(THash, TNode)>? listNode))
         {
             return listNode.Value.Item2;
         }

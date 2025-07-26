@@ -3,7 +3,7 @@
 
 namespace Nethermind.Network.Discovery.Kademlia;
 
-public interface IIteratorNodeLookup<TKey, TNode>
+public interface IIteratorNodeLookup<THash, TNode>
 {
-    IAsyncEnumerable<TNode> Lookup(TKey target, CancellationToken token);
+    IAsyncEnumerable<TNode> Lookup(THash target, CancellationToken token);
 }

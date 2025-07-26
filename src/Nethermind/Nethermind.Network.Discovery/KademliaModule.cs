@@ -4,8 +4,9 @@
 using Autofac;
 using Nethermind.Core;
 using Nethermind.Network.Discovery.Discv4;
+using Nethermind.Network.Discovery.Kademlia;
 
-namespace Nethermind.Network.Discovery.Kademlia;
+namespace Nethermind.Network.Discovery;
 
 /// <summary>
 /// A kademlia module.
@@ -20,20 +21,20 @@ namespace Nethermind.Network.Discovery.Kademlia;
 /// from the table and add new peer as they send message.
 /// Any authentication or session is handled externally.
 /// </summary>
-/// <typeparam name="TKey">Key is the type that represent the target or hash.</typeparam>
+/// <typeparam name="THash">Key is the type that represent the target or hash.</typeparam>
 /// <typeparam name="TNode">Type of the node.</typeparam>
-public class KademliaModule<TKey, TNode> : Module where TNode : notnull
+public class KademliaModule<TPublicKey, THash, TNode> : Module where TNode : notnull where THash : struct, IKademiliaHash<THash>
 {
     protected override void Load(ContainerBuilder builder)
     {
         base.Load(builder);
 
         builder
-            .AddSingleton<IKademlia<TKey, TNode>, Kademlia<TKey, TNode>>()
-            .AddSingleton<ILookupAlgo<TNode>, LookupKNearestNeighbour<TKey, TNode>>()
-            .AddSingleton<INodeHashProvider<TNode>, FromKeyNodeHashProvider<TKey, TNode>>()
-            .AddSingleton<IRoutingTable<TNode>, KBucketTree<TNode>>()
-            .AddSingleton<IIteratorNodeLookup<TKey, TNode>, IteratorNodeLookup<TKey, TNode>>()
-            .AddSingleton<INodeHealthTracker<TNode>, NodeHealthTracker<TKey, TNode>>();
+            .AddSingleton<IKademlia<TPublicKey, TNode>, Kademlia<TPublicKey, THash, TNode>>()
+            .AddSingleton<ILookupAlgo<THash, TNode>, LookupKNearestNeighbour<THash, TNode>>()
+            .AddSingleton<INodeHashProvider<THash, TNode>, FromKeyNodeHashProvider<TPublicKey, THash, TNode>>()
+            .AddSingleton<IRoutingTable<THash, TNode>, KBucketTree<THash, TNode>>()
+            .AddSingleton<IIteratorNodeLookup<TPublicKey, TNode>, IteratorNodeLookup<TPublicKey, THash, TNode>>()
+            .AddSingleton<INodeHealthTracker<TNode>, NodeHealthTracker<TPublicKey, THash, TNode>>();
     }
 }
