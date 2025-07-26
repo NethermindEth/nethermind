@@ -61,58 +61,44 @@ namespace Nethermind.Network.P2P.ProtocolHandlers
         )
         {
             Task<TResponse> task = request.CompletionSource.Task;
-            bool success = false;
-            try
+
+            using CancellationTokenSource delayCancellation = new();
+            using CancellationTokenSource compositeCancellation = CancellationTokenSource.CreateLinkedTokenSource(token, delayCancellation.Token);
+            CancellationToken cancellationToken = compositeCancellation.Token;
+
+            Task firstTask = await Task.WhenAny(task, Task.Delay(Timeouts.Eth, cancellationToken));
+
+            if (ReferenceEquals(firstTask, task))
             {
-                using CancellationTokenSource delayCancellation = new();
-                using CancellationTokenSource compositeCancellation = CancellationTokenSource.CreateLinkedTokenSource(token, delayCancellation.Token);
+                delayCancellation.Cancel();
 
-                Task firstTask = await Task.WhenAny(task, Task.Delay(Timeouts.Eth, compositeCancellation.Token));
-
-                if (ReferenceEquals(firstTask, task))
+                if (firstTask.IsCompleted)
                 {
-                    delayCancellation.Cancel();
-
-                    if (firstTask.IsCompleted)
-                    {
-                        long elapsed = request.FinishMeasuringTime();
-                        long bytesPerMillisecond = (long)((decimal)request.ResponseSize / Math.Max(1, elapsed));
-                        if (Logger.IsTrace) Logger.Trace($"{this} speed is {request.ResponseSize}/{elapsed} = {bytesPerMillisecond}");
-                        StatsManager.ReportTransferSpeedEvent(Session.Node, speedType, bytesPerMillisecond);
-
-                        success = true;
-                    }
-                }
-                else
-                {
-                    request.CompletionSource.TrySetCanceled(compositeCancellation.Token);
-                    StatsManager.ReportTransferSpeedEvent(Session.Node, speedType, 0L);
-                    if (Logger.IsDebug)
-                    {
-                        Logger.Debug($"{Session} Request timeout in {describeRequestFunc(request.Message)}");
-                    }
-                }
-
-                return task;
-            }
-            finally
-            {
-                if (!success)
-                {
-                    CleanupTimeoutTask(task);
+                    long elapsed = request.FinishMeasuringTime();
+                    long bytesPerMillisecond = (long)((decimal)request.ResponseSize / Math.Max(1, elapsed));
+                    if (Logger.IsTrace) Logger.Trace($"{this} speed is {request.ResponseSize}/{elapsed} = {bytesPerMillisecond}");
+                    StatsManager.ReportTransferSpeedEvent(Session.Node, speedType, bytesPerMillisecond);
                 }
             }
-        }
-
-        private static void CleanupTimeoutTask<TResponse>(Task<TResponse> task)
-        {
-            task.ContinueWith(static t =>
+            else
             {
-                if (t.IsCompletedSuccessfully)
+                _ = task.ContinueWith(static t =>
                 {
-                    t.Result.TryDispose();
+                    if (t.IsCompletedSuccessfully)
+                    {
+                        t.Result.TryDispose();
+                    }
+                });
+
+                request.CompletionSource.TrySetCanceled(cancellationToken);
+                StatsManager.ReportTransferSpeedEvent(Session.Node, speedType, 0L);
+                if (Logger.IsDebug)
+                {
+                    Logger.Debug($"{Session} Request timeout in {describeRequestFunc(request.Message)}");
                 }
-            });
+            }
+
+            return task;
         }
     }
 }
