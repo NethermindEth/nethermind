@@ -108,6 +108,9 @@ public sealed class LogIndexService : ILogIndexService
 
     public async ValueTask DisposeAsync()
     {
+        _progressLoggerTimer.Dispose();
+        _newForwardBlockEvent.Dispose();
+        _newBackwardBlockEvent.Dispose();
         await _logIndexStorage.DisposeAsync();
     }
 
@@ -222,7 +225,7 @@ public sealed class LogIndexService : ILogIndexService
 
         var count = 0;
         // TODO: reuse buffer
-        while (queue.ReadBatch(BatchSize) is { Length: > 0 } batch)
+        while (!CancellationToken.IsCancellationRequested && queue.ReadBatch(BatchSize) is { Length: > 0 } batch)
         {
             // TODO: remove check to save time?
             if ((isForward && !IsSeqAsc(batch)) ||
@@ -314,6 +317,8 @@ public sealed class LogIndexService : ILogIndexService
 
                 foreach (BlockReceipts block in buffer)
                 {
+                    CancellationToken.ThrowIfCancellationRequested();
+
                     if (block == default)
                     {
                         break;
