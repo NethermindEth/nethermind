@@ -125,6 +125,8 @@ namespace Nethermind.Stats.Model
             }
         }
 
+        public bool ValidatedProtocol { get; set; }
+
         private static IPEndPoint GetIPEndPoint(string host, int port)
         {
             return new IPEndPoint(IPAddress.Parse(host), port);

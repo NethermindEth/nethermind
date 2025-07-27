@@ -160,13 +160,14 @@ public class NodeTable : INodeTable
         {
             _sortedNodes = new ArrayPoolList<Node>(capacity: bucketSize);
             Hash256 idHash = Keccak.Compute(targetNodeId);
-            foreach (var bucket in buckets)
+            foreach (NodeBucket bucket in buckets)
             {
-                foreach (var item in bucket.BondedItems)
+                foreach (NodeBucketItem item in bucket.BondedItems)
                 {
-                    if (item.Node is not null && item.Node.IdHash != idHash)
+                    Node? node = item.Node;
+                    if (node is not null && node.IdHash != idHash && node.ValidatedProtocol)
                     {
-                        _sortedNodes.Add(item.Node);
+                        _sortedNodes.Add(node);
                     }
                 }
             }
