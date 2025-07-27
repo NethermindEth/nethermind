@@ -40,4 +40,13 @@ public static class TaskExtensions
         return exception.InnerException is TimeoutException
             || exception.InnerExceptions.Any(static ex => ex is TimeoutException);
     }
+
+    public static Task IgnoreException(this Task task)
+    {
+        return task.ContinueWith(_ => { });
+    }
+
+    public static T WaitResult<T>(this ValueTask<T> task) => task.Preserve().GetAwaiter().GetResult();
+
+    public static void Wait(this ValueTask task) => task.Preserve().GetAwaiter().GetResult();
 }

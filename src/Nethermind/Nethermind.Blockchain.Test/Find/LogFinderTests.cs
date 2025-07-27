@@ -35,6 +35,7 @@ public class LogFinderTests
     private IBloomStorage _bloomStorage = null!;
     private IReceiptsRecovery _receiptsRecovery = null!;
     private Block _headTestBlock = null!;
+    private ILogIndexStorage _logIndexStorage = null!;
 
     [SetUp]
     public void SetUp()
@@ -43,7 +44,11 @@ public class LogFinderTests
     }
 
     [TearDown]
-    public void TearDown() => _bloomStorage?.Dispose();
+    public async Task TearDown()
+    {
+        _bloomStorage?.Dispose();
+        await _logIndexStorage.DisposeAsync();
+    }
 
     private void SetUp(bool allowReceiptIterator)
     {
@@ -57,7 +62,8 @@ public class LogFinderTests
         _blockTree = _rawBlockTree;
         _bloomStorage = new BloomStorage(new BloomConfig(), new MemDb(), new InMemoryDictionaryFileStoreFactory());
         _receiptsRecovery = Substitute.For<IReceiptsRecovery>();
-        _logFinder = new LogFinder(_blockTree, _receiptStorage, _receiptStorage, _bloomStorage, LimboLogs.Instance, _receiptsRecovery);
+        _logIndexStorage = Substitute.For<ILogIndexStorage>();
+        _logFinder = new LogFinder(_blockTree, _receiptStorage, _receiptStorage, _bloomStorage, LimboLogs.Instance, _receiptsRecovery, _logIndexStorage);
     }
 
     private void SetupHeadWithNoTransaction()
@@ -145,7 +151,7 @@ public class LogFinderTests
     {
         StoreTreeBlooms(withBloomDb);
         _receiptStorage = NullReceiptStorage.Instance;
-        _logFinder = new LogFinder(_blockTree, _receiptStorage, _receiptStorage, _bloomStorage, LimboLogs.Instance, _receiptsRecovery);
+        _logFinder = new LogFinder(_blockTree, _receiptStorage, _receiptStorage, _bloomStorage, LimboLogs.Instance, _receiptsRecovery, _logIndexStorage);
 
         var logFilter = AllBlockFilter().Build();
 
@@ -158,7 +164,7 @@ public class LogFinderTests
     public void when_receipts_are_missing_and_header_has_no_receipt_root_do_not_throw_exception_()
     {
         _receiptStorage = NullReceiptStorage.Instance;
-        _logFinder = new LogFinder(_blockTree, _receiptStorage, _receiptStorage, _bloomStorage, LimboLogs.Instance, _receiptsRecovery);
+        _logFinder = new LogFinder(_blockTree, _receiptStorage, _receiptStorage, _bloomStorage, LimboLogs.Instance, _receiptsRecovery, _logIndexStorage);
 
         SetupHeadWithNoTransaction();
 
@@ -174,7 +180,7 @@ public class LogFinderTests
     {
         StoreTreeBlooms(withBloomDb);
         var blockFinder = Substitute.For<IBlockFinder>();
-        _logFinder = new LogFinder(blockFinder, _receiptStorage, _receiptStorage, _bloomStorage, LimboLogs.Instance, _receiptsRecovery);
+        _logFinder = new LogFinder(blockFinder, _receiptStorage, _receiptStorage, _bloomStorage, LimboLogs.Instance, _receiptsRecovery, _logIndexStorage);
         var logFilter = AllBlockFilter().Build();
         var action = new Func<IEnumerable<FilterLog>>(() => _logFinder.FindLogs(logFilter));
         action.Should().Throw<ResourceNotFoundException>();
@@ -277,7 +283,7 @@ public class LogFinderTests
     public void filter_by_blocks_with_limit([ValueSource(nameof(WithBloomValues))] bool withBloomDb)
     {
         StoreTreeBlooms(withBloomDb);
-        _logFinder = new LogFinder(_blockTree, _receiptStorage, _receiptStorage, _bloomStorage, LimboLogs.Instance, _receiptsRecovery, 2);
+        _logFinder = new LogFinder(_blockTree, _receiptStorage, _receiptStorage, _bloomStorage, LimboLogs.Instance, _receiptsRecovery, _logIndexStorage);
         var filter = FilterBuilder.New().FromLatestBlock().ToLatestBlock().Build();
         var logs = _logFinder.FindLogs(filter).ToArray();
 
@@ -323,7 +329,7 @@ public class LogFinderTests
         CancellationToken cancellationToken = cancellationTokenSource.Token;
 
         StoreTreeBlooms(true);
-        _logFinder = new LogFinder(_blockTree, _receiptStorage, _receiptStorage, _bloomStorage, LimboLogs.Instance, _receiptsRecovery);
+        _logFinder = new LogFinder(_blockTree, _receiptStorage, _receiptStorage, _bloomStorage, LimboLogs.Instance, _receiptsRecovery, _logIndexStorage);
         var logFilter = AllBlockFilter().Build();
         var logs = _logFinder.FindLogs(logFilter, cancellationToken);
 
