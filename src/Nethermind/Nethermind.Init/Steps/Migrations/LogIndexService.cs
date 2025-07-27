@@ -5,7 +5,6 @@ using System;
 using System.Threading;
 using System.Threading.Channels;
 using System.Threading.Tasks;
-using System.Timers;
 using Nethermind.Api;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Receipts;
@@ -58,7 +57,7 @@ public sealed class LogIndexService : ILogIndexService
 
     // TODO: wait for when stopping?
     private Task? _processTask;
-    private Task? _queueForwardBlocksTask = Task.CompletedTask;
+    private Task? _queueForwardBlocksTask;
     private Task? _queueBackwardBlocksTask;
     private int _pivotNumber;
 
@@ -80,7 +79,7 @@ public sealed class LogIndexService : ILogIndexService
 
     public Task StartAsync()
     {
-        _pivotNumber = (int)_blockTree.SyncPivot.BlockNumber;
+        _pivotNumber = _logIndexStorage.GetMaxBlockNumber() ?? (int)_blockTree.SyncPivot.BlockNumber;
 
         UpdateProgress();
         LogProgress();
@@ -97,20 +96,19 @@ public sealed class LogIndexService : ILogIndexService
         return Task.CompletedTask;
     }
 
+    public async Task StopAsync()
+    {
+        await _cancellationSource.CancelAsync();
+        _progressLoggerTimer.Stop();
+        await (_queueForwardBlocksTask ?? Task.CompletedTask);
+        await (_queueBackwardBlocksTask ?? Task.CompletedTask);
+        await (_processTask ?? Task.CompletedTask);
+        await _logIndexStorage.StopAsync();
+    }
+
     public async ValueTask DisposeAsync()
     {
-        try
-        {
-            await _cancellationSource.CancelAsync();
-            await (_queueForwardBlocksTask ?? Task.CompletedTask);
-            await (_queueBackwardBlocksTask ?? Task.CompletedTask);
-            await (_processTask ?? Task.CompletedTask);
-            await _logIndexStorage.StopAsync();
-        }
-        catch (Exception exception)
-        {
-            GC.KeepAlive(exception);
-        }
+        await _logIndexStorage.DisposeAsync();
     }
 
     private void LogProgress()
