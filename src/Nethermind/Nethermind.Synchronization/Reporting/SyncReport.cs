@@ -148,11 +148,11 @@ namespace Nethermind.Synchronization.Reporting
                 {
                     if (_nodeInfoType++ % 2 == 0)
                     {
-                        _logger.Info(_syncPeersReport.MakeSummaryReportForPeers(_syncPeerPool.InitializedPeers, $"Peers {_syncPeerPool.PeerCount} | with best block: {_syncPeerPool.InitializedPeersCount}"));
+                        _logger.Info(_syncPeersReport.MakeSummaryReportForPeers(_syncPeerPool.InitializedPeers, $"Peers: {_syncPeerPool.PeerCount} | with best block: {_syncPeerPool.InitializedPeersCount}"));
                     }
                     else
                     {
-                        _logger.Info(_syncPeersReport.MakeDiversityReportForPeers(_syncPeerPool.InitializedPeers, $"Peers {_syncPeerPool.PeerCount} | node diversity : "));
+                        _logger.Info(_syncPeersReport.MakeDiversityReportForPeers(_syncPeerPool.InitializedPeers, $"Peers: {_syncPeerPool.PeerCount} | node diversity : "));
                     }
                 }
             }
