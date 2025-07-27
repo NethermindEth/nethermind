@@ -1001,6 +1001,22 @@ public class BlockTreeTests
     }
 
     [Test, MaxTime(Timeout.MaxTestTime)]
+    public void When_deleting_invalid_block_deletes_its_descendant_up_to_a_limit()
+    {
+        BlockStore blockStore = new(new MemDb());
+        MemDb blockInfosDb = new();
+        BlockTree tree = Build.A.BlockTree()
+            .WithoutSettingHead
+            .WithBlockInfoDb(blockInfosDb)
+            .WithBlockStore(blockStore)
+            .OfChainLength(1000)
+            .TestObject;
+
+        tree.DeleteInvalidBlock(tree.FindBlock(1, BlockTreeLookupOptions.None)!);
+        blockInfosDb.Count.Should().Be(1000 - BlockTree.MaxInvalidBlockToDelete + 2);
+    }
+
+    [Test, MaxTime(Timeout.MaxTestTime)]
     public void When_deleting_invalid_block_deletes_its_descendants_even_if_not_first()
     {
         BlockStore blockStore = new(new MemDb());
