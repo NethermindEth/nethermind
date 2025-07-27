@@ -90,10 +90,8 @@ namespace Nethermind.Network.P2P.ProtocolHandlers
 
                 request.CompletionSource.TrySetCanceled(cancellationToken);
                 StatsManager.ReportTransferSpeedEvent(Session.Node, speedType, 0L);
-                if (Logger.IsDebug)
-                {
-                    Logger.Debug($"{Session} Request timeout in {describeRequestFunc(request.Message)}");
-                }
+
+                if (Logger.IsDebug) Logger.Debug($"{Session} Request timeout in {describeRequestFunc(request.Message)}");
             }
 
             return task;
