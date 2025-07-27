@@ -6,10 +6,12 @@ using System.Reflection;
 using System.Threading;
 using System.Threading.Tasks;
 using Autofac.Features.AttributeFilters;
+using Autofac;
 using Nethermind.Api;
 using Nethermind.Api.Extensions;
 using Nethermind.Api.Steps;
 using Nethermind.Blockchain.Synchronization;
+using Nethermind.Blockchain.Utils;
 using Nethermind.Core;
 using Nethermind.Crypto;
 using Nethermind.Db;
@@ -24,24 +26,23 @@ using Nethermind.Network.P2P.Subprotocols.Eth;
 using Nethermind.Network.P2P.Subprotocols.Eth.V63.Messages;
 using Nethermind.Network.Rlpx;
 using Nethermind.Network.Rlpx.Handshake;
+using Nethermind.Network.StaticNodes;
+using Nethermind.State.SnapServer;
 using Nethermind.Stats;
 using Nethermind.Stats.Model;
 using Nethermind.Synchronization;
 using Nethermind.Synchronization.ParallelSync;
 using Nethermind.Synchronization.Peers;
+using Nethermind.Synchronization.SnapSync;
+using Nethermind.Synchronization.Trie;
 using Nethermind.TxPool;
 
 namespace Nethermind.Init.Steps;
 
 public static class NettyMemoryEstimator
 {
+    // Environment.SetEnvironmentVariable("io.netty.allocator.pageSize", "8192");
     private const uint PageSize = 8192;
-
-    public static void SetPageSize()
-    {
-        // For some reason needs to be half page size to get page size
-        Environment.SetEnvironmentVariable("io.netty.allocator.pageSize", (PageSize / 2).ToString((IFormatProvider?)null));
-    }
 
     public static long Estimate(uint arenaCount, int arenaOrder)
     {

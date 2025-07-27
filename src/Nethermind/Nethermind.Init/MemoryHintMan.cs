@@ -202,11 +202,10 @@ namespace Nethermind.Init
         {
             ValidateCpuCount(cpuCount);
 
-            NettyMemory = Math.Min(256.MB(), (long)(0.2 * _remainingMemory));
+            NettyMemory = Math.Min(512.MB(), (long)(0.2 * _remainingMemory));
 
             uint arenaCount = (uint)Math.Min(cpuCount * 2, networkConfig.MaxNettyArenaCount);
 
-            NettyMemoryEstimator.SetPageSize();
             long estimate = NettyMemoryEstimator.Estimate(arenaCount, networkConfig.NettyArenaOrder);
 
             /* first of all we assume that the mainnet will be heavier than any other chain on the side */
