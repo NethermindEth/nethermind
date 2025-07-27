@@ -25,8 +25,8 @@ public class MessageDictionary<T66Msg, TData>(Action<T66Msg> send, TimeSpan? old
     // request. This is to prevent getting stuck on concurrent request limit and prevent potential memory leak.
     // The timeout is higher than Timeouts.Eth because it could be than the peer is delayed by only a few second.
     // If that is the case, and this throw due to unrecognized request id, the peer will get disconnected, which
-    // we don't want to do too much as that decrease number of peer.
-    private static readonly TimeSpan DefaultOldRequestThreshold = TimeSpan.FromSeconds(30);
+    // we don't want to do too much as that decrease number of peers.
+    private static readonly TimeSpan DefaultOldRequestThreshold = Timeouts.Cleanup;
 
     private readonly TimeSpan _oldRequestThreshold = oldRequestThreshold ?? DefaultOldRequestThreshold;
 
