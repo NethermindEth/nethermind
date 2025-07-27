@@ -42,10 +42,16 @@ public class ZeroNettyP2PHandler : SimpleChannelInboundHandler<ZeroPacket>
     protected override void ChannelRead0(IChannelHandlerContext ctx, ZeroPacket input)
     {
         IByteBuffer content = input.Content;
+        int readableBytes = content.ReadableBytes;
+        if (readableBytes > SnappyParameters.MaxSnappyLength)
+        {
+            _session.InitiateDisconnect(DisconnectReason.BreachOfProtocol, "Max message size exceeded");
+            return;
+        }
         if (SnappyEnabled)
         {
             int uncompressedLength = Snappy.GetUncompressedLength(
-                content.Array.AsSpan(content.ArrayOffset + content.ReaderIndex, content.ReadableBytes));
+                content.Array.AsSpan(content.ArrayOffset + content.ReaderIndex, readableBytes));
 
             if (uncompressedLength > SnappyParameters.MaxSnappyLength)
             {
@@ -53,22 +59,21 @@ public class ZeroNettyP2PHandler : SimpleChannelInboundHandler<ZeroPacket>
                 return;
             }
 
-            if (content.ReadableBytes > SnappyParameters.MaxSnappyLength / 4)
+            if (readableBytes > SnappyParameters.MaxSnappyLength / 4)
             {
-                if (_logger.IsTrace) _logger.Trace($"Big Snappy message of length {content.ReadableBytes}");
+                if (_logger.IsTrace) _logger.Trace($"Big Snappy message of length {readableBytes}");
             }
             else
             {
-                if (_logger.IsTrace) _logger.Trace($"Uncompressing with Snappy a message of length {content.ReadableBytes}");
+                if (_logger.IsTrace) _logger.Trace($"Uncompressing with Snappy a message of length {readableBytes}");
             }
-
 
             IByteBuffer output = ctx.Allocator.Buffer(uncompressedLength);
 
             try
             {
                 int length = Snappy.Decompress(
-                    content.Array.AsSpan(content.ArrayOffset + content.ReaderIndex, content.ReadableBytes),
+                    content.Array.AsSpan(content.ArrayOffset + content.ReaderIndex, readableBytes),
                     output.Array.AsSpan(output.ArrayOffset + output.WriterIndex));
                 output.SetWriterIndex(output.WriterIndex + length);
             }
@@ -81,12 +86,12 @@ public class ZeroNettyP2PHandler : SimpleChannelInboundHandler<ZeroPacket>
             }
             catch (Exception)
             {
-                content.SkipBytes(content.ReadableBytes);
+                content.SkipBytes(readableBytes);
                 output.SafeRelease();
                 throw;
             }
 
-            content.SkipBytes(content.ReadableBytes);
+            content.SkipBytes(readableBytes);
             ZeroPacket outputPacket = new(output);
             try
             {
