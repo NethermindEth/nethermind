@@ -7,15 +7,12 @@ using Nethermind.Api;
 using Nethermind.Core;
 using Nethermind.Crypto;
 using Nethermind.Db;
-using Nethermind.Init.Steps;
 using Nethermind.Logging;
 using Nethermind.Network;
 using Nethermind.Network.Config;
 using Nethermind.Network.Discovery;
 using Nethermind.Network.Discovery.Discv5;
-using Nethermind.Network.Discovery.Lifecycle;
 using Nethermind.Network.Discovery.Messages;
-using Nethermind.Network.Discovery.RoutingTable;
 using Nethermind.Network.Discovery.Serializers;
 using Nethermind.Network.Dns;
 using Nethermind.Network.Enr;
@@ -117,14 +114,6 @@ public class DiscoveryModule(IInitConfig initConfig, INetworkConfig networkConfi
 
                 .AddNetworkStorage(DbNames.DiscoveryNodes, "discoveryNodes")
                 .AddSingleton<DiscoveryV5App>()
-
-                .AddSingleton<INodeDistanceCalculator, NodeDistanceCalculator>()
-                .AddSingleton<INodeTable, NodeTable>()
-                .AddSingleton<IEvictionManager, EvictionManager>()
-                .AddSingleton<INodeLifecycleManagerFactory, NodeLifecycleManagerFactory>()
-                .AddSingleton<IDiscoveryManager, DiscoveryManager>()
-                .AddSingleton<INodesLocator, NodesLocator>()
-                .AddSingleton<DiscoveryPersistenceManager>()
                 .AddSingleton<DiscoveryApp>()
 
                 ;

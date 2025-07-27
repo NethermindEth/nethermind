@@ -3,9 +3,12 @@
 
 using Autofac.Features.AttributeFilters;
 using Nethermind.Config;
+using Nethermind.Core.Crypto;
 using Nethermind.Db;
 using Nethermind.Logging;
-using Nethermind.Network.Discovery.Lifecycle;
+using Nethermind.Network.Discovery.Discv4;
+using Nethermind.Network.Discovery.Kademlia;
+using Nethermind.Stats;
 using Nethermind.Stats.Model;
 
 namespace Nethermind.Network.Discovery
@@ -17,7 +20,9 @@ namespace Nethermind.Network.Discovery
     public class DiscoveryPersistenceManager
     {
         private readonly INetworkStorage _discoveryStorage;
-        private readonly IDiscoveryManager _discoveryManager;
+        private readonly INodeStatsManager _nodeStatsManager;
+        private readonly IKademliaDiscv4Adapter _discv4Adapter;
+        private readonly IKademlia<PublicKey, Node> _kademlia;
         private readonly ILogger _logger;
         private readonly int _persistenceInterval;
 
@@ -32,12 +37,16 @@ namespace Nethermind.Network.Discovery
         /// <exception cref="ArgumentNullException">Thrown if any required parameter is null.</exception>
         public DiscoveryPersistenceManager(
             [KeyFilter(DbNames.DiscoveryNodes)] INetworkStorage discoveryStorage,
-            IDiscoveryManager discoveryManager,
+            INodeStatsManager nodeStatsManager,
+            IKademliaDiscv4Adapter discv4Adapter,
+            IKademlia<PublicKey, Node> kademlia,
             IDiscoveryConfig discoveryConfig,
             ILogManager logManager)
         {
             _discoveryStorage = discoveryStorage;
-            _discoveryManager = discoveryManager;
+            _nodeStatsManager = nodeStatsManager;
+            _discv4Adapter = discv4Adapter;
+            _kademlia = kademlia;
             _logger = logManager.GetClassLogger();
             _persistenceInterval = discoveryConfig.DiscoveryPersistenceInterval;
         }
@@ -47,21 +56,12 @@ namespace Nethermind.Network.Discovery
         /// </summary>
         /// <param name="cancellationToken">Cancellation token to stop the operation.</param>
         /// <returns>A task representing the asynchronous operation.</returns>
-        public Task LoadPersistedNodes(CancellationToken cancellationToken)
+        public async Task LoadPersistedNodes(CancellationToken cancellationToken)
         {
             NetworkNode[] nodes = _discoveryStorage.GetPersistedNodes();
             foreach (NetworkNode networkNode in nodes)
             {
-                if (cancellationToken.IsCancellationRequested)
-                {
-                    break;
-                }
-
-                if (!_discoveryManager.NodesFilter.Set(networkNode.HostIp))
-                {
-                    // Already seen this node ip recently
-                    continue;
-                }
+                if (cancellationToken.IsCancellationRequested) break;
 
                 Node node;
                 try
@@ -76,26 +76,28 @@ namespace Nethermind.Network.Discovery
                     continue;
                 }
 
-                INodeLifecycleManager? manager = _discoveryManager.GetNodeLifecycleManager(node, true);
-                if (manager is null)
+                try
+                {
+                    // If when it receive Pong, it should automatically add to routing table if not full.
+                    await _discv4Adapter.Ping(node, cancellationToken);
+                }
+                catch (OperationCanceledException)
+                {
+                    continue;
+                }
+                catch (Exception)
                 {
                     if (_logger.IsDebug)
-                    {
-                        _logger.Debug(
-                            $"Skipping persisted node {networkNode.NodeId}@{networkNode.Host}:{networkNode.Port}, manager couldn't be created");
-                    }
-
+                        _logger.Error(
+                            $"ERROR/DEBUG error when pinging persisted node {networkNode.NodeId}@{networkNode.Host}:{networkNode.Port}");
                     continue;
                 }
 
-                manager.NodeStats.CurrentPersistedNodeReputation = networkNode.Reputation;
                 if (_logger.IsTrace)
                     _logger.Trace($"Adding persisted node {networkNode.NodeId}@{networkNode.Host}:{networkNode.Port}");
             }
 
             if (_logger.IsDebug) _logger.Debug($"Added persisted discovery nodes: {nodes.Length}");
-
-            return Task.CompletedTask;
         }
 
         /// <summary>
@@ -112,20 +114,13 @@ namespace Nethermind.Network.Discovery
             {
                 try
                 {
-                    IReadOnlyCollection<INodeLifecycleManager> managers = _discoveryManager.GetNodeLifecycleManagers();
-                    DateTime utcNow = DateTime.UtcNow;
-                    //we need to update all notes to update reputation
-                    _discoveryStorage.UpdateNodes(managers.Select(x => new NetworkNode(x.ManagedNode.Id, x.ManagedNode.Host,
-                        x.ManagedNode.Port, x.NodeStats.NewPersistedNodeReputation(utcNow))).ToArray());
+                    _discoveryStorage.StartBatch();
 
-                    if (!_discoveryStorage.AnyPendingChange())
-                    {
-                        if (_logger.IsTrace) _logger.Trace("No changes in discovery storage, skipping commit.");
-                        continue;
-                    }
+                    _discoveryStorage.UpdateNodes(_kademlia
+                        .IterateNodes()
+                        .Select(x => new NetworkNode(x.Id, x.Host, x.Port, _nodeStatsManager.GetNewPersistedReputation(x))));
 
                     _discoveryStorage.Commit();
-                    _discoveryStorage.StartBatch();
                 }
                 catch (Exception ex)
                 {
