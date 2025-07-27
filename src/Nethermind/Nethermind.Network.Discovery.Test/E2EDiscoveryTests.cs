@@ -44,7 +44,6 @@ public class E2EDiscoveryTests(DiscoveryVersion discoveryVersion)
 
         INetworkConfig networkConfig = configProvider.GetConfig<INetworkConfig>();
         int port = AssignDiscoveryPort();
-        networkConfig.LocalIp = networkConfig.ExternalIp = $"192.168.2.{AssignDiscoveryIp()}";
         networkConfig.DiscoveryPort = port;
         networkConfig.P2PPort = port;
 
@@ -61,11 +60,6 @@ public class E2EDiscoveryTests(DiscoveryVersion discoveryVersion)
     private int AssignDiscoveryPort()
     {
         return Interlocked.Increment(ref _discoveryPort);
-    }
-    int _discoveryIp = 1;
-    private int AssignDiscoveryIp()
-    {
-        return Interlocked.Increment(ref _discoveryIp);
     }
 
     [Test]

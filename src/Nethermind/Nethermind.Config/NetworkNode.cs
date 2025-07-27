@@ -63,7 +63,6 @@ namespace Nethermind.Config
 
         public PublicKey NodeId => _enode.PublicKey;
         public string Host => _enode.HostIp.ToString();
-        public IPAddress HostIp => _enode.HostIp;
         public int Port => _enode.Port;
         public long Reputation { get; set; }
     }

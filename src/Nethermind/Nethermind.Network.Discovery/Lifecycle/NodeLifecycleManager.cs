@@ -190,7 +190,6 @@ public class NodeLifecycleManager : INodeLifecycleManager
         NodeStats.AddNodeStatsEvent(NodeStatsEventType.DiscoveryNeighboursIn);
         RefreshNodeContactTime();
 
-        IPAddress? externalIp = _discoveryManager.SelfNodeRecord?.GetObj<IPAddress>(EnrContentKey.Ip);
         foreach (Node node in msg.Nodes)
         {
             if (node.Address.Address == _localhost)
@@ -199,18 +198,7 @@ public class NodeLifecycleManager : INodeLifecycleManager
                     _logger.Trace($"Received localhost as node address from: {msg.FarPublicKey}, node: {node}");
                 continue;
             }
-            if (node.Address.Address == externalIp)
-            {
-                if (_logger.IsTrace)
-                    _logger.Trace($"Received self as node address from: {msg.FarPublicKey}, node: {node}");
-                // Ignore self
-                continue;
-            }
-            else if (!_discoveryManager.NodesFilter.Set(node.Address.Address))
-            {
-                // Already seen this node ip recently
-                continue;
-            }
+
             //If node is new it will create a new nodeLifecycleManager and will update state to New, which will trigger Ping
             _discoveryManager.GetNodeLifecycleManager(node);
         }

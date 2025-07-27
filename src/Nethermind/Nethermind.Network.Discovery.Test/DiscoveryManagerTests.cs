@@ -75,7 +75,7 @@ namespace Nethermind.Network.Discovery.Test
             _nodes = new[] { new Node(TestItem.PublicKeyA, "192.168.1.18", 1), new Node(TestItem.PublicKeyB, "192.168.1.19", 2) };
 
             IFullDb nodeDb = new SimpleFilePublicKeyDb("Test", "test_db", logManager);
-            _discoveryManager = new DiscoveryManager(lifecycleFactory, _nodeTable, new NetworkStorage(nodeDb, logManager), discoveryConfig, null, logManager);
+            _discoveryManager = new DiscoveryManager(lifecycleFactory, _nodeTable, new NetworkStorage(nodeDb, logManager), discoveryConfig, logManager);
             _discoveryManager.MsgSender = _msgSender;
         }
 
