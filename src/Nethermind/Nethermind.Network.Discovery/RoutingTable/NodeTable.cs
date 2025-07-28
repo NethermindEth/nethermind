@@ -165,14 +165,31 @@ public class NodeTable : INodeTable
                 foreach (NodeBucketItem item in bucket.BondedItems)
                 {
                     Node? node = item.Node;
-                    if (node is not null && node.IdHash != idHash && node.ValidatedProtocol)
+                    if (node is not null && node.IdHash != idHash)
                     {
                         _sortedNodes.Add(node);
                     }
                 }
             }
 
-            _sortedNodes.Sort((a, b) => calculator.CalculateDistance(a.Id.Bytes, targetNodeId).CompareTo(calculator.CalculateDistance(b.Id.Bytes, targetNodeId)));
+            _sortedNodes.Sort((Node a, Node b) =>
+            {
+                if (a.ValidatedProtocol.HasValue == b.ValidatedProtocol.HasValue && a.ValidatedProtocol == b.ValidatedProtocol)
+                {
+                    return calculator.CalculateDistance(a.Id.Bytes, targetNodeId).CompareTo(calculator.CalculateDistance(b.Id.Bytes, targetNodeId));
+                }
+                else if (a.ValidatedProtocol.HasValue)
+                {
+                    // Prefer nodes validated on same protocol, network and fork
+                    return a.ValidatedProtocol == true ? int.MinValue : int.MaxValue;
+                }
+                else
+                {
+                    // b must have value; swap high and low from a
+                    return b.ValidatedProtocol == true ? int.MaxValue : int.MinValue;
+                }
+            });
+
             if (_sortedNodes.Count > bucketSize)
             {
                 _sortedNodes.ReduceCount(bucketSize);
