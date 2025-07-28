@@ -177,7 +177,7 @@ public class NodeTable : INodeTable
                 const int Closer = int.MinValue;
                 const int Further = int.MaxValue;
 
-                if (a.ValidatedProtocol.HasValue == b.ValidatedProtocol.HasValue && a.ValidatedProtocol == b.ValidatedProtocol)
+                if (Nullable.Equals(a.ValidatedProtocol, b.ValidatedProtocol))
                 {
                     return calculator.CalculateDistance(a.Id.Bytes, targetNodeId).CompareTo(calculator.CalculateDistance(b.Id.Bytes, targetNodeId));
                 }
