@@ -5,8 +5,6 @@ using System;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
-using System.Runtime.CompilerServices;
-using DotNetty.Buffers;
 using Nethermind.Core.Buffers;
 
 namespace Nethermind.Serialization.Rlp
@@ -92,6 +90,35 @@ namespace Nethermind.Serialization.Rlp
             rlpStream.StartSequence(totalLength);
 
             for (int i = 0; i < items.Length; i++)
+            {
+                decoder.Encode(rlpStream, items[i], behaviors);
+            }
+
+            return rlpStream;
+        }
+
+        public static NettyRlpStream EncodeToNewNettyStream<T>(this IRlpStreamDecoder<T> decoder, IList<T?>? items, RlpBehaviors behaviors = RlpBehaviors.None)
+        {
+            NettyRlpStream rlpStream;
+            if (items is null)
+            {
+                rlpStream = new NettyRlpStream(NethermindBuffers.Default.Buffer(1));
+                rlpStream.WriteByte(Rlp.NullObjectByte);
+                return rlpStream;
+            }
+
+            int totalLength = 0;
+            for (int i = 0; i < items.Count; i++)
+            {
+                totalLength += decoder.GetLength(items[i], behaviors);
+            }
+
+            int bufferLength = Rlp.LengthOfSequence(totalLength);
+
+            rlpStream = new NettyRlpStream(NethermindBuffers.Default.Buffer(bufferLength));
+            rlpStream.StartSequence(totalLength);
+
+            for (int i = 0; i < items.Count; i++)
             {
                 decoder.Encode(rlpStream, items[i], behaviors);
             }
