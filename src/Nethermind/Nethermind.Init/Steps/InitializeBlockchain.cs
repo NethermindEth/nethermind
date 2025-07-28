@@ -12,6 +12,7 @@ using Nethermind.Blockchain;
 using Nethermind.Blockchain.BeaconBlockRoot;
 using Nethermind.Blockchain.Blocks;
 using Nethermind.Blockchain.Receipts;
+using Nethermind.Blockchain.Spec;
 using Nethermind.Config;
 using Nethermind.Consensus;
 using Nethermind.Consensus.Comparers;
@@ -69,7 +70,9 @@ namespace Nethermind.Init.Steps
             PreBlockCaches? preBlockCaches = (mainWorldState as IPreBlockCaches)?.Caches;
             EthereumCodeInfoRepository codeInfoRepository = new(preBlockCaches?.PrecompileCache);
             IChainHeadInfoProvider chainHeadInfoProvider =
-                new ChainHeadInfoProvider(getApi.SpecProvider!, getApi.BlockTree!, stateReader, codeInfoRepository);
+                new ChainHeadInfoProvider(
+                    new ChainHeadSpecProvider(getApi.SpecProvider!, getApi.BlockTree!),
+                    getApi.BlockTree!, stateReader, codeInfoRepository);
 
             _api.TxGossipPolicy.Policies.Add(new SpecDrivenTxGossipPolicy(chainHeadInfoProvider));
 
@@ -205,7 +208,10 @@ namespace Nethermind.Init.Steps
                 _api.TxValidator!,
                 _api.LogManager,
                 CreateTxPoolTxComparer(),
-                _api.TxGossipPolicy);
+                _api.TxGossipPolicy,
+                null,
+                _api.HeadTxValidator
+            );
 
             _api.DisposeStack.Push(txPool);
             return txPool;
@@ -214,7 +220,7 @@ namespace Nethermind.Init.Steps
         protected IComparer<Transaction> CreateTxPoolTxComparer() => _api.TransactionComparerProvider!.GetDefaultComparer();
 
         // TODO: remove from here - move to consensus?
-        protected virtual BlockProcessor CreateBlockProcessor(
+        protected virtual IBlockProcessor CreateBlockProcessor(
             BlockCachePreWarmer? preWarmer,
             ITransactionProcessor transactionProcessor,
             IWorldState worldState)

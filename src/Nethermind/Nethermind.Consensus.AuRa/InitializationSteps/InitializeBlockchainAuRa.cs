@@ -5,8 +5,8 @@ using System;
 using System.Collections.Generic;
 using System.Threading.Tasks;
 using Nethermind.Abi;
+using Autofac;
 using Nethermind.Api;
-using Nethermind.Blockchain.BeaconBlockRoot;
 using Nethermind.Blockchain.Data;
 using Nethermind.Config;
 using Nethermind.Consensus.AuRa.Config;
@@ -15,10 +15,10 @@ using Nethermind.Consensus.AuRa.Contracts.DataStore;
 using Nethermind.Consensus.AuRa.Transactions;
 using Nethermind.Consensus.AuRa.Validators;
 using Nethermind.Consensus.Comparers;
-using Nethermind.Consensus.ExecutionRequests;
 using Nethermind.Consensus.Processing;
 using Nethermind.Consensus.Transactions;
 using Nethermind.Core;
+using Nethermind.Core.Container;
 using Nethermind.Evm.State;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Init.Steps;
@@ -33,17 +33,21 @@ public class InitializeBlockchainAuRa : InitializeBlockchain
     private readonly AuRaNethermindApi _api;
     private INethermindApi NethermindApi => _api;
 
-    private readonly IAuRaBlockProcessorFactory _auRaBlockProcessorFactory;
-    private IAbiEncoder _abiEncoder;
+    private readonly ILifetimeScope _rootLifetimeScope;
+    private readonly IBlockValidationModule[] _validationBlockProcessingModules;
+    private readonly IAbiEncoder _abiEncoder;
 
     public InitializeBlockchainAuRa(
         AuRaNethermindApi api,
-        IAbiEncoder abiEncoder,
-        IAuRaBlockProcessorFactory auRaBlockProcessorFactory) : base(api)
+        ILifetimeScope rootLifetimeScope,
+        IBlockValidationModule[] validationBlockProcessingModules,
+        IAbiEncoder abiEncoder
+    ) : base(api)
     {
         _api = api;
+        _rootLifetimeScope = rootLifetimeScope;
+        _validationBlockProcessingModules = validationBlockProcessingModules;
         _abiEncoder = abiEncoder;
-        _auRaBlockProcessorFactory = auRaBlockProcessorFactory;
     }
 
     protected override async Task InitBlockchain()
@@ -63,21 +67,20 @@ public class InitializeBlockchainAuRa : InitializeBlockchain
         _api.FinalizationManager.SetMainBlockProcessor(_api.MainProcessingContext!.BlockProcessor!);
     }
 
-    protected override BlockProcessor CreateBlockProcessor(BlockCachePreWarmer? preWarmer, ITransactionProcessor transactionProcessor, IWorldState worldState)
+    protected override IBlockProcessor CreateBlockProcessor(BlockCachePreWarmer? preWarmer, ITransactionProcessor transactionProcessor, IWorldState worldState)
     {
-        return _auRaBlockProcessorFactory.Create(
-            _api.BlockValidator!,
-            _api.RewardCalculatorSource!.Get(transactionProcessor),
-            new BlockProcessor.BlockValidationTransactionsExecutor(new ExecuteTransactionProcessorAdapter(transactionProcessor), worldState),
-            worldState,
-            _api.ReceiptStorage!,
-            new BeaconBlockRootHandler(transactionProcessor!, worldState),
-            transactionProcessor,
-            new ExecutionRequestsProcessor(transactionProcessor),
-            CreateAuRaValidator(worldState, transactionProcessor),
-            preWarmer: preWarmer);
+        return _rootLifetimeScope.BeginLifetimeScope((builder) =>
+            {
+                builder
+                    .AddModule(_validationBlockProcessingModules)
+                    .AddScoped(worldState)
+                    .AddScoped(transactionProcessor)
+                    .AddScoped<IAuRaValidator>(CreateAuRaValidator(worldState, transactionProcessor));
+                if (preWarmer is not null)
+                    builder.AddScoped(preWarmer);
+            })
+            .Resolve<IBlockProcessor>();
     }
-
 
     protected IAuRaValidator CreateAuRaValidator(IWorldState worldState, ITransactionProcessor transactionProcessor)
     {
@@ -174,7 +177,8 @@ public class InitializeBlockchainAuRa : InitializeBlockchain
             _api.LogManager,
             CreateTxPoolTxComparer(txPriorityContract, localDataSource),
             _api.TxGossipPolicy,
-            new TxFilterAdapter(_api.BlockTree, txPoolFilter, _api.LogManager),
+            new TxFilterAdapter(_api.BlockTree, txPoolFilter, _api.LogManager, _api.SpecProvider),
+            _api.HeadTxValidator,
             txPriorityContract is not null || localDataSource is not null);
     }
 
