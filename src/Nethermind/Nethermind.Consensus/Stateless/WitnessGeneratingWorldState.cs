@@ -87,12 +87,6 @@ public class WitnessGeneratingWorldState(WorldState inner) : IWorldState
         return inner.IsDeadAccount(address);
     }
 
-    public bool IsEmptyAccount(Address address)
-    {
-        _storageSlots.TryAdd(address, []);
-        return inner.IsEmptyAccount(address);
-    }
-
     public ref readonly UInt256 GetBalance(Address address)
     {
         _storageSlots.TryAdd(address, []);
