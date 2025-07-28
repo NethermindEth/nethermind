@@ -194,30 +194,32 @@ public class HistoryPruner : IHistoryPruner
             }
 
             // optimisticly search a few blocks from old pointer
-            if (_cutoffPointer is not null)
-            {
-                int attempts = 0;
-                GetBlocksByNumber(_cutoffPointer.Value, searchCutoff, b =>
-                {
-                    if (attempts >= 5)
-                    {
-                        return true;
-                    }
+            // if (_cutoffPointer is not null)
+            // {
+            //     int attempts = 0;
+            //     GetBlocksByNumber(_cutoffPointer.Value, searchCutoff, b =>
+            //     {
+            //         if (attempts >= 5)
+            //         {
+            //             return true;
+            //         }
 
-                    bool afterCutoff = b.Timestamp >= cutoffTimestamp;
-                    if (afterCutoff)
-                    {
-                        cutoffBlockNumber = b.Number;
-                    }
-                    attempts++;
-                    return afterCutoff;
-                });
-            }
+            //         bool afterCutoff = b.Timestamp >= cutoffTimestamp;
+            //         if (afterCutoff)
+            //         {
+            //             cutoffBlockNumber = b.Number;
+            //         }
+            //         attempts++;
+            //         return afterCutoff;
+            //     });
+            // }
 
-            if (cutoffBlockNumber is null)
-            {
-                _logger.Info($"[prune] Optimistic cutoff search failed.");
-            }
+            // if (cutoffBlockNumber is null)
+            // {
+            //     _logger.Info($"[prune] Optimistic cutoff search failed.");
+            // }
+
+            _logger.Info($"[prune] searching for cutoff block number in range {_deletePointer}-{searchCutoff}");
 
             // if linear search fails fallback to binary search
             cutoffBlockNumber ??= BlockTree.BinarySearchBlockNumber(_deletePointer, searchCutoff, (n, _) =>
@@ -225,6 +227,16 @@ public class HistoryPruner : IHistoryPruner
                 BlockInfo? blockInfo = _chainLevelInfoRepository.LoadLevel(n)?.MainChainBlock;
                 Block? block = blockInfo is null ? null : _blockTree.FindBlock(blockInfo.BlockHash, BlockTreeLookupOptions.None, blockInfo.BlockNumber);
 
+                _logger.Info($"[prune] scanning level {n} for cutoff block");
+                if (block is not null)
+                {
+                    _logger.Info($"[prune] found block at level {n} with timestamp {block.Timestamp}");
+                    _logger.Info($"[prune] endSearch={block.Timestamp >= cutoffTimestamp} cutoffTimestamp={cutoffTimestamp}");
+                }
+                else
+                {
+                    _logger.Info($"[prune] no block found at level {n}");
+                }
                 // find cutoff point
                 return block is not null && block.Timestamp >= cutoffTimestamp;
             }, BlockTree.BinarySearchDirection.Down);
@@ -383,10 +395,12 @@ public class HistoryPruner : IHistoryPruner
                 if (endSearch(block))
                 {
                     _logger.Info($"[prune] Ending search on level {i}, block hash {blockInfo.BlockHash}.");
+                    _logger.Info($"[prune] timestamp={block.Timestamp}.");
                     finished = true;
                 }
                 else
                 {
+                    _logger.Info($"[prune] found block #{block.Number} timestamp={block.Timestamp}.");
                     yield return block;
                 }
             }
