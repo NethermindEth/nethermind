@@ -156,12 +156,22 @@ public class HistoryPruner : IHistoryPruner
     private bool LevelExists(long n, bool _)
     {
         ChainLevelInfo? info = _chainLevelInfoRepository.LoadLevel(n);
-        if (info?.MainChainBlock is null)
+
+        if (info is null)
         {
             return false;
         }
-        Block? b = _blockTree.FindBlock(info.MainChainBlock.BlockHash, info.MainChainBlock.BlockNumber);
-        return b is not null;
+
+        foreach (BlockInfo blockInfo in info.BlockInfos)
+        {
+            Block? b = _blockTree.FindBlock(blockInfo.BlockHash, blockInfo.BlockNumber);
+            if (b is not null)
+            {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     private long? FindCutoffBlockNumber()
@@ -224,22 +234,32 @@ public class HistoryPruner : IHistoryPruner
             // if linear search fails fallback to binary search
             cutoffBlockNumber ??= BlockTree.BinarySearchBlockNumber(_deletePointer, searchCutoff, (n, _) =>
             {
-                BlockInfo? blockInfo = _chainLevelInfoRepository.LoadLevel(n)?.MainChainBlock;
-                Block? block = blockInfo is null ? null : _blockTree.FindBlock(blockInfo.BlockHash, BlockTreeLookupOptions.None, blockInfo.BlockNumber);
+                BlockInfo[]? blockInfos = _chainLevelInfoRepository.LoadLevel(n)?.BlockInfos;
 
                 _logger.Info($"[prune] scanning level {n} for cutoff block");
-                if (block is not null)
-                {
-                    _logger.Info($"[prune] found block at level {n} with timestamp {block.Timestamp}");
-                    _logger.Info($"[prune] continue?={block.Timestamp >= cutoffTimestamp} cutoffTimestamp={cutoffTimestamp}");
-                }
-                else
+
+                if (blockInfos is null || blockInfos.Length == 0)
                 {
                     _logger.Info($"[prune] no block found at level {n}");
-                    _logger.Info($"[prune] block infos at level {n} = {_chainLevelInfoRepository.LoadLevel(n)?.BlockInfos.Length}");
+                    _logger.Info($"[prune] block infos at level {n} = {blockInfos?.Length}");
+                    return false;
                 }
-                // find cutoff point
-                return block is not null && block.Timestamp >= cutoffTimestamp;
+
+                foreach (BlockInfo blockInfo in blockInfos)
+                {
+                    Block? b = _blockTree.FindBlock(blockInfo.BlockHash, BlockTreeLookupOptions.None, blockInfo.BlockNumber);
+                    if (b is not null)
+                    {
+                        _logger.Info($"[prune] found block at level {n} with timestamp {b.Timestamp}");
+                        _logger.Info($"[prune] continue?={b.Timestamp >= cutoffTimestamp} cutoffTimestamp={cutoffTimestamp}");
+                        if (b.Timestamp >= cutoffTimestamp)
+                        {
+                            return true;
+                        }
+                    }
+                }
+
+                return false;
             }, BlockTree.BinarySearchDirection.Down);
 
             _logger.Info($"[prune] Found cutoff block #{cutoffBlockNumber}");
