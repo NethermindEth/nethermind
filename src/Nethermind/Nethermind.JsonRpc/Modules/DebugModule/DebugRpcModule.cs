@@ -376,7 +376,7 @@ public class DebugRpcModule(
 
         RlpBehaviors encodingSettings = RlpBehaviors.SkipTypedWrapping | (transaction.IsInMempoolForm() ? RlpBehaviors.InMempoolForm : RlpBehaviors.None);
 
-        IByteBuffer buffer = PooledByteBufferAllocator.Default.Buffer(TxDecoder.Instance.GetLength(transaction, encodingSettings));
+        IByteBuffer buffer = NethermindBuffers.Default.Buffer(TxDecoder.Instance.GetLength(transaction, encodingSettings));
         using NettyRlpStream stream = new(buffer);
         TxDecoder.Instance.Encode(stream, transaction, encodingSettings);
 

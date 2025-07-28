@@ -87,7 +87,7 @@ namespace Nethermind.ExternalSigner.Plugin
         {
             ArgumentNullException.ThrowIfNull(header);
             int contentLength = _headerDecoder.GetLength(header, RlpBehaviors.None);
-            IByteBuffer buffer = PooledByteBufferAllocator.Default.Buffer(contentLength);
+            IByteBuffer buffer = NethermindBuffers.Default.Buffer(contentLength);
             try
             {
                 RlpStream rlpStream = new NettyRlpStream(buffer);

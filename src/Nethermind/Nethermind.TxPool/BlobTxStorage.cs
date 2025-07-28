@@ -142,7 +142,7 @@ public class BlobTxStorage : IBlobTxStorage
     private void EncodeAndSaveTx(Transaction transaction, IDb db, Span<byte> txHashPrefixed)
     {
         int length = _txDecoder.GetLength(transaction, RlpBehaviors.InMempoolForm);
-        IByteBuffer byteBuffer = PooledByteBufferAllocator.Default.Buffer(length);
+        IByteBuffer byteBuffer = NethermindBuffers.Default.Buffer(length);
         using NettyRlpStream rlpStream = new(byteBuffer);
         rlpStream.Encode(transaction, RlpBehaviors.InMempoolForm);
 
@@ -153,7 +153,7 @@ public class BlobTxStorage : IBlobTxStorage
     {
         int contentLength = GetLength(blockBlobTransactions);
 
-        IByteBuffer byteBuffer = PooledByteBufferAllocator.Default.Buffer(Rlp.LengthOfSequence(contentLength));
+        IByteBuffer byteBuffer = NethermindBuffers.Default.Buffer(Rlp.LengthOfSequence(contentLength));
         using NettyRlpStream rlpStream = new(byteBuffer);
         rlpStream.StartSequence(contentLength);
         foreach (Transaction transaction in blockBlobTransactions)

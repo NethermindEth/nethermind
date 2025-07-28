@@ -4,6 +4,7 @@
 using System;
 using System.IO;
 using DotNetty.Buffers;
+using DotNetty.Common.Internal;
 using Nethermind.Api;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Core.Extensions;
@@ -12,6 +13,7 @@ using Nethermind.Db.Rocks.Config;
 using Nethermind.Init.Steps;
 using Nethermind.Logging;
 using Nethermind.Network.Config;
+using Nethermind.Serialization.Rlp;
 using Nethermind.TxPool;
 
 namespace Nethermind.Init
@@ -264,6 +266,17 @@ namespace Nethermind.Init
             {
                 _logger.Warn("unable to set netty pooled byte buffer config");
             }
+
+            NethermindBuffers.Default = new PooledByteBufferAllocator(
+                preferDirect: PlatformDependent.DirectBufferPreferred,
+                nHeapArena: (int)arenaCount,
+                nDirectArena: (int)arenaCount,
+                pageSize: PooledByteBufferAllocator.DefaultPageSize,
+                maxOrder: networkConfig.NettyArenaOrder,
+                tinyCacheSize: PooledByteBufferAllocator.DefaultTinyCacheSize,
+                smallCacheSize: PooledByteBufferAllocator.DefaultSmallCacheSize,
+                normalCacheSize: PooledByteBufferAllocator.DefaultNormalCacheSize
+            );
         }
 
         private static void ValidateCpuCount(uint cpuCount)

@@ -9,7 +9,7 @@ namespace Nethermind.Network
 {
     public interface IMessageSerializationService
     {
-        IByteBuffer ZeroSerialize<T>(T message, AbstractByteBufferAllocator? allocator = null) where T : MessageBase;
+        IByteBuffer ZeroSerialize<T>(T message, IByteBufferAllocator? allocator = null) where T : MessageBase;
         T Deserialize<T>(ArraySegment<byte> bytes) where T : MessageBase;
         T Deserialize<T>(IByteBuffer buffer) where T : MessageBase;
     }
