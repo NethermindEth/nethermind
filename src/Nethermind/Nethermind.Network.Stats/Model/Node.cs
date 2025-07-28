@@ -125,7 +125,7 @@ namespace Nethermind.Stats.Model
             }
         }
 
-        public bool ValidatedProtocol { get; set; }
+        public bool? ValidatedProtocol { get; set; }
 
         private static IPEndPoint GetIPEndPoint(string host, int port)
         {
