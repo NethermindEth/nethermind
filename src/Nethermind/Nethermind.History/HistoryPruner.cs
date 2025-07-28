@@ -142,6 +142,7 @@ public class HistoryPruner : IHistoryPruner
                 if (oldestBlockNumber is not null)
                 {
                     _deletePointer = oldestBlockNumber.Value;
+                    _tmp = true;
                 }
 
                 _logger.Info($"Found oldest block on disk #{oldestBlockNumber ?? -1}");
@@ -266,7 +267,11 @@ public class HistoryPruner : IHistoryPruner
         if (!_tmp)
         {
             LoadDeletePointer();
-            _tmp = true;
+        }
+        else
+        {
+            _logger.Info("skipping pruning, not found oldest block yet");
+            return;
         }
         try
         {
@@ -425,6 +430,10 @@ public class HistoryPruner : IHistoryPruner
 
     private void SaveDeletePointer()
     {
+        if (!_tmp)
+        {
+            if (_logger.IsInfo) _logger.Info($"NOT Persisting oldest block known = #{_deletePointer} to disk.");
+        }
         _metadataDb.Set(MetadataDbKeys.HistoryPruningDeletePointer, Rlp.Encode(_deletePointer).Bytes);
         Metrics.OldestStoredBlockNumber = _deletePointer;
         if (_logger.IsInfo) _logger.Info($"Persisting oldest block known = #{_deletePointer} to disk.");
