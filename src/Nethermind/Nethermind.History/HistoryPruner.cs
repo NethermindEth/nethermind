@@ -111,7 +111,8 @@ public class HistoryPruner : IHistoryPruner
             {
                 long? cutoff = CutoffBlockNumber;
                 long? toDelete = cutoff is null ? null : long.Min(cutoff!.Value, _blockTree.SyncPivot.BlockNumber) - _deletePointer;
-                _logger.Info($"[prune] Pruning historical blocks up to timestamp {cutoffTimestamp} (#{(cutoff is null ? "unknown" : cutoff)}). Estimated {(toDelete is null ? "unknown" : toDelete)} blocks will be deleted. SyncPivot={_blockTree.SyncPivot.BlockNumber} DeletePointer={_deletePointer}");
+                _logger.Info($"[prune] Pruning historical blocks up to timestamp {cutoffTimestamp} (#{(cutoff is null ? "unknown" : cutoff)}). Estimated {(toDelete is null ? "unknown" : toDelete)} blocks will be deleted.");
+                _logger.Info($"[prune] SyncPivot={_blockTree.SyncPivot.BlockNumber} DeletePointer={_deletePointer}");
             }
 
             PruneBlocksAndReceipts(cutoffTimestamp!.Value, cancellationToken);
@@ -213,7 +214,12 @@ public class HistoryPruner : IHistoryPruner
                 });
             }
 
-            // if linear search fails fallback to  binary search
+            if (cutoffBlockNumber is null)
+            {
+                _logger.Info($"[prune] Optimistic cutoff search failed.");
+            }
+
+            // if linear search fails fallback to binary search
             cutoffBlockNumber ??= BlockTree.BinarySearchBlockNumber(_deletePointer, searchCutoff, (n, _) =>
             {
                 BlockInfo? blockInfo = _chainLevelInfoRepository.LoadLevel(n)?.MainChainBlock;
@@ -222,6 +228,8 @@ public class HistoryPruner : IHistoryPruner
                 // find cutoff point
                 return block is not null && block.Timestamp >= cutoffTimestamp;
             }, BlockTree.BinarySearchDirection.Down);
+
+            _logger.Info($"[prune] Found cutoff block #{cutoffBlockNumber}");
 
             _cutoffTimestamp = cutoffTimestamp;
             _cutoffPointer = cutoffBlockNumber ?? _cutoffPointer;
