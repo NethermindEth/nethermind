@@ -85,7 +85,7 @@ namespace Nethermind.Synchronization.FastBlocks
             _blocksDb = blocksDb;
             _historyPruner = historyPruner;
             _flushDbInterval = flushDbInterval;
-            _bodiesDownloadStrategy = new(_blockTree, _syncReport, _historyPruner);
+            _bodiesDownloadStrategy = new(_blockTree, _syncReport, _historyPruner, _logger);
 
             if (!_syncConfig.FastSync)
             {
@@ -311,7 +311,7 @@ namespace Nethermind.Synchronization.FastBlocks
             _syncReport.FastBlocksBodies.CurrentQueued = _syncStatusList.QueueSize;
         }
 
-        private class BodiesDownloadStrategy(IBlockTree blockTree, ISyncReport syncReport, IHistoryPruner? historyPruner) : IBlockDownloadStrategy
+        private class BodiesDownloadStrategy(IBlockTree blockTree, ISyncReport syncReport, IHistoryPruner? historyPruner, ILogger logger) : IBlockDownloadStrategy
         {
             public bool ShouldDownloadBlock(BlockInfo info)
             {
@@ -320,6 +320,7 @@ namespace Nethermind.Synchronization.FastBlocks
                 cutoff = cutoff is null ? null : long.Min(cutoff!.Value, blockTree.SyncPivot.BlockNumber);
                 bool shouldDownload = !hasBlock && (cutoff is null || info.BlockNumber >= cutoff);
                 if (!shouldDownload) syncReport.FastBlocksBodies.IncrementSkipped();
+                logger.Info($"[prune] shouldDownload #{info.BlockNumber}?={shouldDownload} hasBlock={hasBlock} cutoff={cutoff}");
                 return shouldDownload;
             }
         }
