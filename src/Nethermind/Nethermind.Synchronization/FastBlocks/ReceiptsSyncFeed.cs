@@ -84,7 +84,7 @@ namespace Nethermind.Synchronization.FastBlocks
             _syncReport = syncReport;
             _blockTree = blockTree;
             _historyPruner = historyPruner;
-            _receiptDownloadStrategy = new(_receiptStorage, _syncReport, _historyPruner);
+            _receiptDownloadStrategy = new(_blockTree, _receiptStorage, _syncReport, _historyPruner);
 
             if (!_syncConfig.FastSync)
             {
@@ -322,12 +322,13 @@ namespace Nethermind.Synchronization.FastBlocks
             _syncReport.FastBlocksReceipts.CurrentQueued = _syncStatusList.QueueSize;
         }
 
-        private class ReceiptDownloadStrategy(IReceiptStorage receiptStorage, ISyncReport syncReport, IHistoryPruner historyPruner) : IBlockDownloadStrategy
+        private class ReceiptDownloadStrategy(IBlockTree blockTree, IReceiptStorage receiptStorage, ISyncReport syncReport, IHistoryPruner historyPruner) : IBlockDownloadStrategy
         {
             public bool ShouldDownloadBlock(BlockInfo info)
             {
                 bool hasReceipt = receiptStorage.HasBlock(info.BlockNumber, info.BlockHash);
                 long? cutoff = historyPruner?.CutoffBlockNumber;
+                cutoff = cutoff is null ? null : long.Min(cutoff!.Value, blockTree.SyncPivot.BlockNumber);
                 bool shouldDownload = hasReceipt && (cutoff is null || info.BlockNumber >= cutoff);
                 if (shouldDownload) syncReport.FastBlocksBodies.IncrementSkipped();
                 return !shouldDownload;

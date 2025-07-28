@@ -317,6 +317,7 @@ namespace Nethermind.Synchronization.FastBlocks
             {
                 bool hasBlock = blockTree.HasBlock(info.BlockNumber, info.BlockHash);
                 long? cutoff = historyPruner?.CutoffBlockNumber;
+                cutoff = cutoff is null ? null : long.Min(cutoff!.Value, blockTree.SyncPivot.BlockNumber);
                 bool shouldDownload = hasBlock && (cutoff is null || info.BlockNumber >= cutoff);
                 if (shouldDownload) syncReport.FastBlocksBodies.IncrementSkipped();
                 return !shouldDownload;

@@ -367,7 +367,7 @@ public class HistoryPruner : IHistoryPruner
                 Block? block = _blockTree.FindBlock(blockInfo.BlockHash, BlockTreeLookupOptions.None, blockInfo.BlockNumber);
                 if (block is null)
                 {
-                    if (i % 1000 == 0) _logger.Info($"[prune] Skipping block which wasn't found {i}.");
+                    _logger.Info($"[prune] Skipping block which wasn't found {i}.");
                     continue;
                 }
 
