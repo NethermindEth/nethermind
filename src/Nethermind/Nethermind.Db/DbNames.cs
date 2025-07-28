@@ -18,6 +18,7 @@ namespace Nethermind.Db
         public const string Metadata = "metadata";
         public const string BlobTransactions = "blobTransactions";
         public const string DiscoveryNodes = "discoveryNodes";
+        public const string DiscoveryNodesV5= "discoveryNodesV5";
         public const string PeersDb = "peers";
     }
 }

@@ -116,6 +116,7 @@ public class DiscoveryModule(IInitConfig initConfig, INetworkConfig networkConfi
                 .AddSingleton<INodeRecordProvider, NodeRecordProvider>()
 
                 .AddNetworkStorage(DbNames.DiscoveryNodes, "discoveryNodes")
+                .AddNetworkStorage(DbNames.DiscoveryNodesV5, "discoveryNodesV5")
                 .AddSingleton<DiscoveryV5App>()
 
                 .AddSingleton<INodeDistanceCalculator, NodeDistanceCalculator>()
