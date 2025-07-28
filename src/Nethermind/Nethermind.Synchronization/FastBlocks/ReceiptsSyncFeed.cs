@@ -331,7 +331,7 @@ namespace Nethermind.Synchronization.FastBlocks
                 cutoff = cutoff is null ? null : long.Min(cutoff!.Value, blockTree.SyncPivot.BlockNumber);
                 bool shouldDownload = hasReceipt && (cutoff is null || info.BlockNumber >= cutoff);
                 if (shouldDownload) syncReport.FastBlocksBodies.IncrementSkipped();
-                return !shouldDownload;
+                return shouldDownload;
             }
         }
     }
