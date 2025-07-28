@@ -114,8 +114,12 @@ public class NodeLifecycleManager : INodeLifecycleManager
     {
         if (IsBonded)
         {
-            Rlp requestRlp = Rlp.Encode(Rlp.Encode(enrRequestMessage.ExpirationTime));
-            EnrResponseMsg msg = new(ManagedNode.Address, _nodeRecord, Keccak.Compute(requestRlp.Bytes));
+            if (enrRequestMessage.Hash is null)
+            {
+                throw new ArgumentNullException(nameof(enrRequestMessage.Hash));
+            }
+
+            EnrResponseMsg msg = new(ManagedNode.Address, _nodeRecord, new Hash256(enrRequestMessage.Hash.Value.Span));
             _discoveryManager.SendMessage(msg);
             NodeStats.AddNodeStatsEvent(NodeStatsEventType.DiscoveryEnrRequestIn);
             NodeStats.AddNodeStatsEvent(NodeStatsEventType.DiscoveryEnrResponseOut);

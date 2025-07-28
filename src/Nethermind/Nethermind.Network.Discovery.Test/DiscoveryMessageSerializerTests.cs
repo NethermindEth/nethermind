@@ -5,6 +5,7 @@ using System.Net;
 using DotNetty.Buffers;
 using DotNetty.Common.Utilities;
 using Nethermind.Core;
+using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Crypto;
@@ -105,6 +106,20 @@ public class DiscoveryMessageSerializerTests
         serialized.SafeRelease();
         Assert.That(deserialized.ExpirationTime, Is.EqualTo(msg.ExpirationTime));
         Assert.That(_privateKey.PublicKey, Is.EqualTo(deserialized.FarPublicKey));
+    }
+
+    [Test]
+    public void Enr_request_contains_hash()
+    {
+        EnrRequestMsg msg = new(TestItem.PublicKeyA, long.MaxValue);
+        IByteBuffer serialized = _messageSerializationService.ZeroSerialize(msg);
+        EnrRequestMsg deserialized = _messageSerializationService.Deserialize<EnrRequestMsg>(serialized);
+        serialized.SafeRelease();
+
+        Assert.That(deserialized.Hash, Is.Not.Null);
+        Hash256 hash = new(deserialized.Hash!.Value.Span);
+
+        Assert.That(hash, Is.EqualTo(new Hash256("0x64c2e38e89cdfca030166b7a271c301dd77cf043172966ab112d97fc3430fa16")));
     }
 
     [Test]
