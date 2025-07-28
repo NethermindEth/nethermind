@@ -17,7 +17,7 @@ using Nethermind.Logging;
 using Nethermind.Monitoring;
 using Nethermind.Monitoring.Config;
 using Nethermind.Monitoring.Metrics;
-using Nethermind.Serialization.Rlp.Buffers;
+using Nethermind.Serialization.Rlp;
 using Type = System.Type;
 
 namespace Nethermind.Init.Steps;
@@ -126,13 +126,13 @@ public class StartMonitoring(
         if (allocator is PooledByteBufferAllocator byteBufferAllocator)
         {
             PooledByteBufferAllocatorMetric metric = byteBufferAllocator.Metric;
-            Serialization.Rlp.Buffers.Metrics.AllocatorArenaCount[name] = metric.DirectArenas().Count;
-            Serialization.Rlp.Buffers.Metrics.AllocatorChunkSize[name] = metric.ChunkSize;
-            Serialization.Rlp.Buffers.Metrics.AllocatorUsedHeapMemory[name] = metric.UsedHeapMemory;
-            Serialization.Rlp.Buffers.Metrics.AllocatorUsedDirectMemory[name] = metric.UsedDirectMemory;
-            Serialization.Rlp.Buffers.Metrics.AllocatorActiveAllocations[name] = metric.HeapArenas().Sum((it) => it.NumActiveAllocations);
-            Serialization.Rlp.Buffers.Metrics.AllocatorActiveAllocationBytes[name] = metric.HeapArenas().Sum((it) => it.NumActiveBytes);
-            Serialization.Rlp.Buffers.Metrics.AllocatorAllocations[name] = metric.HeapArenas().Sum((it) => it.NumAllocations);
+            Serialization.Rlp.Metrics.AllocatorArenaCount[name] = metric.DirectArenas().Count;
+            Serialization.Rlp.Metrics.AllocatorChunkSize[name] = metric.ChunkSize;
+            Serialization.Rlp.Metrics.AllocatorUsedHeapMemory[name] = metric.UsedHeapMemory;
+            Serialization.Rlp.Metrics.AllocatorUsedDirectMemory[name] = metric.UsedDirectMemory;
+            Serialization.Rlp.Metrics.AllocatorActiveAllocations[name] = metric.HeapArenas().Sum((it) => it.NumActiveAllocations);
+            Serialization.Rlp.Metrics.AllocatorActiveAllocationBytes[name] = metric.HeapArenas().Sum((it) => it.NumActiveBytes);
+            Serialization.Rlp.Metrics.AllocatorAllocations[name] = metric.HeapArenas().Sum((it) => it.NumAllocations);
         }
     }
 

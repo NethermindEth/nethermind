@@ -7,7 +7,6 @@ using DotNetty.Codecs.Base64;
 using DotNetty.Common.Utilities;
 using Nethermind.Network.Enr;
 using Nethermind.Serialization.Rlp;
-using Nethermind.Serialization.Rlp.Buffers;
 
 namespace Nethermind.Network.Dns;
 

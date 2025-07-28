@@ -1,13 +1,12 @@
 // SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System.Collections;
 using System.Collections.Concurrent;
 using DotNetty.Buffers;
 using DotNetty.Common.Internal;
 using Nethermind.Core.Attributes;
 
-namespace Nethermind.Serialization.Rlp.Buffers;
+namespace Nethermind.Serialization.Rlp;
 
 public static class NethermindBuffers
 {

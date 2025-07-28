@@ -8,7 +8,6 @@ using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Crypto;
 using Nethermind.Serialization.Rlp;
-using Nethermind.Serialization.Rlp.Buffers;
 
 namespace Nethermind.Network.Enr;
 

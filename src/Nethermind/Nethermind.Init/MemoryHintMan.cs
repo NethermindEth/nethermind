@@ -14,7 +14,6 @@ using Nethermind.Init.Steps;
 using Nethermind.Logging;
 using Nethermind.Network.Config;
 using Nethermind.Serialization.Rlp;
-using Nethermind.Serialization.Rlp.Buffers;
 using Nethermind.TxPool;
 
 namespace Nethermind.Init

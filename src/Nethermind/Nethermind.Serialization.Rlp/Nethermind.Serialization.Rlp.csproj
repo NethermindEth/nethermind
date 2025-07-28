@@ -13,4 +13,8 @@
     <PackageReference Include="Nethermind.DotNetty.Buffers" />
   </ItemGroup>
 
+  <ItemGroup>
+    <Folder Include="Buffers\" />
+  </ItemGroup>
+
 </Project>

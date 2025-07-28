@@ -22,7 +22,6 @@ using Nethermind.Network.P2P.Analyzers;
 using Nethermind.Network.P2P.EventArg;
 using Nethermind.Network.Rlpx.Handshake;
 using Nethermind.Serialization.Rlp;
-using Nethermind.Serialization.Rlp.Buffers;
 using Nethermind.Stats.Model;
 using LogLevel = DotNetty.Handlers.Logging.LogLevel;
 
