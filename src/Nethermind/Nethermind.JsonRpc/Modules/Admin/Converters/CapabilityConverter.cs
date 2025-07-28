@@ -4,7 +4,6 @@
 using System;
 using System.Buffers;
 using System.Buffers.Text;
-using System.Collections.Generic;
 using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
 using System.Runtime.CompilerServices;
@@ -14,49 +13,30 @@ using Nethermind.Stats.Model;
 
 namespace Nethermind.JsonRpc.Modules.Admin.Converters
 {
-    public class CapabilityConverter : JsonConverter<IReadOnlyList<Capability>>
+    public class CapabilityConverter : JsonConverter<Capability>
     {
-        private static readonly IReadOnlyList<Capability> EmptyCapabilities = Array.Empty<Capability>();
-
-        public override IReadOnlyList<Capability>? Read(ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options)
+        public override Capability? Read(ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options)
         {
             if (reader.TokenType == JsonTokenType.Null)
             {
                 return null;
             }
 
-            if (reader.TokenType != JsonTokenType.StartArray)
+            if (reader.TokenType != JsonTokenType.String)
             {
                 ThrowJsonException();
             }
 
-            var capabilities = new List<Capability>();
-            int depth = reader.CurrentDepth;
-
-            while (reader.Read())
+            if (TryParseCapability(ref reader, out Capability capability))
             {
-                if (reader.TokenType == JsonTokenType.EndArray && reader.CurrentDepth == depth)
-                {
-                    break;
-                }
-
-                if (reader.TokenType == JsonTokenType.String)
-                {
-                    if (TryParseCapability(ref reader, out Capability capability))
-                    {
-                        capabilities.Add(capability);
-                    }
-                }
-                else
-                {
-                    reader.Skip();
-                }
+                return capability;
             }
 
-            return capabilities.Count > 0 ? capabilities : EmptyCapabilities;
+            ThrowJsonException();
+            return null;
         }
 
-        public override void Write(Utf8JsonWriter writer, IReadOnlyList<Capability> value, JsonSerializerOptions options)
+        public override void Write(Utf8JsonWriter writer, Capability value, JsonSerializerOptions options)
         {
             if (value is null)
             {
@@ -64,14 +44,7 @@ namespace Nethermind.JsonRpc.Modules.Admin.Converters
                 return;
             }
 
-            writer.WriteStartArray();
-
-            for (int i = 0; i < value.Count; i++)
-            {
-                WriteCapability(writer, value[i]);
-            }
-
-            writer.WriteEndArray();
+            WriteCapability(writer, value);
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]

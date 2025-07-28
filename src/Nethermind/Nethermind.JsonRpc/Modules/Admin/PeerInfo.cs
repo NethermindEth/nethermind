@@ -29,7 +29,6 @@ namespace Nethermind.JsonRpc.Modules.Admin
 
         public string? Name { get; set; }
 
-        [JsonConverter(typeof(CapabilityConverter))]
         public IReadOnlyList<Capability> Caps { get; set; } = EmptyCapabilities;
 
         public string? Enr { get; set; }
