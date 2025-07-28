@@ -68,7 +68,6 @@ public class BranchProcessor(
         }
     }
 
-    // TODO: move to block processing pipeline
     private void PreCommitBlock(BlockHeader block)
     {
         if (_logger.IsTrace) _logger.Trace($"Committing the branch - {block.ToString(BlockHeader.Format.Short)} state root {block.StateRoot}");
