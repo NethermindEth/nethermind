@@ -231,11 +231,12 @@ public class HistoryPruner : IHistoryPruner
                 if (block is not null)
                 {
                     _logger.Info($"[prune] found block at level {n} with timestamp {block.Timestamp}");
-                    _logger.Info($"[prune] endSearch={block.Timestamp >= cutoffTimestamp} cutoffTimestamp={cutoffTimestamp}");
+                    _logger.Info($"[prune] continue?={block.Timestamp >= cutoffTimestamp} cutoffTimestamp={cutoffTimestamp}");
                 }
                 else
                 {
                     _logger.Info($"[prune] no block found at level {n}");
+                    _logger.Info($"[prune] block infos at level {n} = {_chainLevelInfoRepository.LoadLevel(n)?.BlockInfos.Length}");
                 }
                 // find cutoff point
                 return block is not null && block.Timestamp >= cutoffTimestamp;
@@ -379,6 +380,15 @@ public class HistoryPruner : IHistoryPruner
             {
                 _logger.Info($"[prune] Skipping empty level {i}.");
                 continue;
+            }
+
+            if (chainLevelInfo.MainChainBlock is null)
+            {
+                _logger.Info($"[prune] No main chain block on level {i}.");
+            }
+            else
+            {
+                _logger.Info($"[prune] Main chain block on level {i}: {chainLevelInfo.MainChainBlock.BlockNumber}.");
             }
 
             bool finished = false;
