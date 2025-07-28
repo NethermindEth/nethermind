@@ -76,7 +76,7 @@
     <PackageVersion Include="RocksDB" Version="[9.10.0.55496]" />
     <PackageVersion Include="SCrypt" Version="2.0.0.2" />
     <PackageVersion Include="Shouldly" Version="4.3.0" />
-    <PackageVersion Include="Snappier" Version="1.2.0" />
+    <PackageVersion Include="Snappier" Version="1.1.6" />
     <PackageVersion Include="Spectre.Console" Version="0.50.0" />
     <PackageVersion Include="System.CommandLine" Version="2.0.0-beta5.25306.1" />
     <PackageVersion Include="System.Configuration.ConfigurationManager" Version="9.0.6" />
