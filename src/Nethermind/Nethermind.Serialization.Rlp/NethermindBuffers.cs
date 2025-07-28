@@ -10,9 +10,18 @@ public static class NethermindBuffers
 {
     /// <summary>
     /// General <see cref="IByteBufferAllocator"/> used for general purpose deserialization.
-    /// This is separate from discovery and devp2p buffer allocator.
     /// </summary>
     public static IByteBufferAllocator Default = PooledByteBufferAllocator.Default;
+
+    /// <summary>
+    /// Allocator used for serializing and deserializing rlpx messages
+    /// </summary>
+    public static IByteBufferAllocator RlpxAllocator = PooledByteBufferAllocator.Default;
+
+    /// <summary>
+    /// Similar to <see cref="RlpxAllocator"/> but for discovery messages.
+    /// </summary>
+    public static IByteBufferAllocator DiscoveryAllocator = PooledByteBufferAllocator.Default;
 
     public static IByteBufferAllocator CreateAllocator(int arenaOrder, uint arenaCount)
     {

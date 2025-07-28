@@ -241,6 +241,8 @@ namespace Nethermind.Init
             ConfigureDefaultPooledByteBufferAllocator(networkConfig.NettyArenaOrder, arenaCount);
 
             NethermindBuffers.Default = NethermindBuffers.CreateAllocator(networkConfig.NettyArenaOrder, arenaCount);
+            NethermindBuffers.RlpxAllocator = NethermindBuffers.CreateAllocator(networkConfig.NettyArenaOrder, networkConfig.MaxNettyArenaCount);
+            NethermindBuffers.DiscoveryAllocator = NethermindBuffers.CreateAllocator(networkConfig.NettyArenaOrder, networkConfig.MaxNettyArenaCount);
         }
 
         private void ConfigureDefaultPooledByteBufferAllocator(int arenaOrder, uint arenaCount)
