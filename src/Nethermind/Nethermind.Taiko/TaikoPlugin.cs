@@ -17,12 +17,14 @@ using Nethermind.Consensus.Validators;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
 using Nethermind.Db;
+using Nethermind.Evm.Precompiles;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.JsonRpc.Client;
 using Nethermind.JsonRpc.Modules;
 using Nethermind.Logging;
 using Nethermind.Merge.Plugin;
 using Nethermind.Merge.Plugin.BlockProduction;
+using Nethermind.Merge.Plugin.Data;
 using Nethermind.Merge.Plugin.Handlers;
 using Nethermind.Merge.Plugin.Synchronization;
 using Nethermind.Specs.ChainSpecStyle;
@@ -126,6 +128,19 @@ public class TaikoModule : Module
             .AddScoped<IValidationTransactionExecutor, TaikoBlockValidationTransactionExecutor>()
             .AddScoped<ITransactionProcessor, TaikoTransactionProcessor>()
             .AddScoped<IBlockProducerEnvFactory, TaikoBlockProductionEnvFactory>()
+
+            // Surge L1 storage provider to be used by the L1Sload precompile
+            .AddDecorator<IL1StorageProvider>((ctx, defaultProvider) =>
+            {
+                ISpecProvider specProvider = ctx.Resolve<ISpecProvider>();
+                var taikoSpec = (TaikoReleaseSpec)specProvider.GenesisSpec;
+
+                if (!taikoSpec.IsL1SloadEnabled)
+                    return defaultProvider;
+
+                var logManager = ctx.Resolve<ILogManager>();
+                return new SurgeL1StorageProvider(logManager);
+            })
 
             .AddSingleton<IRlpStreamDecoder<Transaction>>((_) => Rlp.GetStreamDecoder<Transaction>()!)
             .AddSingleton<IPayloadPreparationService, IBlockProducerEnvFactory, L1OriginStore, IRlpStreamDecoder<Transaction>, ILogManager>(CreatePayloadPreparationService)

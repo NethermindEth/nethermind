@@ -26,7 +26,7 @@ public class L1SloadPrecompileTests
     }
 
     [Test]
-    public void BaseGasCost_Should_Return_2000()
+    public void BaseGasCost_Should_Return_FixedGasCost()
     {
         Assert.That(_precompile.BaseGasCost(_spec), Is.EqualTo(L1SloadPrecompile.FixedGasCost));
     }
@@ -34,11 +34,11 @@ public class L1SloadPrecompileTests
     [Test]
     public void DataGasCost_With_Invalid_Input_Length_Should_Return_0()
     {
-        // Input too short (less than expected length)
+        // Input too short
         var input = new byte[L1SloadPrecompile.AddressBytes]; // Only address
         Assert.That(_precompile.DataGasCost(input, _spec), Is.EqualTo(0L));
 
-        // Input too long (more than expected length)
+        // Input too long
         var expectedLength = L1SloadPrecompile.AddressBytes + L1SloadPrecompile.StorageKeyBytes + L1SloadPrecompile.BlockNumberBytes;
         var longInput = new byte[expectedLength + 32]; // Extra 32 bytes
         Assert.That(_precompile.DataGasCost(longInput, _spec), Is.EqualTo(0L));

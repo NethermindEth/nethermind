@@ -6,6 +6,7 @@ using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Int256;
 using Nethermind.Merge.Plugin.Data;
+using Nethermind.Evm.Precompiles;
 
 namespace Nethermind.Taiko;
 
@@ -13,6 +14,12 @@ public class TaikoExecutionPayload : ExecutionPayload
 {
     public Hash256? WithdrawalsHash { get; set; } = null;
     public Hash256? TxHash { get; set; } = null;
+
+    /// <summary>
+    /// L1Sload precompile storage mappings.
+    /// Contains [(address, key, block) -> value] mappings for L1SLOAD calls.
+    /// </summary>
+    public L1StorageMapping[]? L1StorageMappings { get; set; }
 
     public new byte[][]? Transactions
     {
@@ -62,6 +69,32 @@ public class TaikoExecutionPayload : ExecutionPayload
 
             return new BlockDecodingResult(new Block(header, Array.Empty<Transaction>(), Array.Empty<BlockHeader>()));
         }
+
+        if (L1StorageMappings is not null)
+        {
+            SetL1StorageData();
+        }
+
         return base.TryGetBlock(totalDifficulty);
     }
+
+    /// <summary>
+    /// Sets L1 storage data to be used by the L1Sload precompile.
+    /// </summary>
+    private void SetL1StorageData()
+    {
+        var storageProvider = L1SloadPrecompile.L1StorageProvider as SurgeL1StorageProvider;
+        storageProvider?.SetBlockStorageData(L1StorageMappings);
+    }
+}
+
+/// <summary>
+/// Represents L1 storage mapping for L1SLOAD precompile.
+/// </summary>
+public class L1StorageMapping
+{
+    public required Address ContractAddress { get; set; }
+    public UInt256 StorageKey { get; set; }
+    public UInt256 BlockNumber { get; set; }
+    public UInt256 StorageValue { get; set; }
 }

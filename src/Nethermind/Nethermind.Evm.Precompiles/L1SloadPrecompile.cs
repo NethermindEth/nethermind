@@ -45,20 +45,8 @@ public class L1SloadPrecompile : IPrecompile<L1SloadPrecompile>
     public static string Name => "L1SLOAD";
     public static IL1StorageProvider? L1StorageProvider { get; set; }
 
-    /// <param name="releaseSpec">The release specification for the current chain</param>
-    /// <returns>The base gas cost (2000 gas)</returns>
     public long BaseGasCost(IReleaseSpec releaseSpec) => FixedGasCost;
 
-    /// <summary>
-    /// Calculates the gas cost based on the input data length.
-    ///
-    /// Gas cost calculation:
-    /// - Single storage slot read costs PerLoadGasCost (2000 gas)
-    /// - Invalid inputs (wrong length) return 0 gas cost
-    /// </summary>
-    /// <param name="inputData">The input data containing address, storage key, and block number</param>
-    /// <param name="releaseSpec">The release specification for the current chain</param>
-    /// <returns>The gas cost required to run the L1SLOAD precompile</returns>
     public long DataGasCost(ReadOnlyMemory<byte> inputData, IReleaseSpec releaseSpec)
     {
         if (inputData.Length != ExpectedInputLength)

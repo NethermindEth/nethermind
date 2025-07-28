@@ -14,8 +14,8 @@ using Nethermind.Evm.Precompiles;
 namespace Nethermind.Taiko;
 
 /// <summary>
-/// JsonRpc-based implementation of IL1StorageProvider that uses Ethereum RPC call
-/// to retrieve L1 storage values.
+/// JsonRpc-based implementation of IL1StorageProvider that uses eth_getStorageAt
+/// RPC to retrieve L1 storage values.
 /// </summary>
 public class JsonRpcL1StorageProvider : IL1StorageProvider
 {
