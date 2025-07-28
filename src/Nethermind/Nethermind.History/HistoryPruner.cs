@@ -261,16 +261,16 @@ public class HistoryPruner : IHistoryPruner
         BatchWrite? batch = null;
         if (_blockTree.SyncPivot.BlockNumber == 0)
         {
-            _logger.Info("skipping pruning, no sync pivot");
+            _logger.Info("[prune] skipping pruning, no sync pivot");
             return;
         }
         if (!_tmp)
         {
             LoadDeletePointer();
         }
-        else
+        if (!_tmp)
         {
-            _logger.Info("skipping pruning, not found oldest block yet");
+            _logger.Info("[prune] skipping pruning, not found oldest block yet");
             return;
         }
         try
