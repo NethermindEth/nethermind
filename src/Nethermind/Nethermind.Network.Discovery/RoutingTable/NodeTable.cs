@@ -174,6 +174,9 @@ public class NodeTable : INodeTable
 
             _sortedNodes.Sort((Node a, Node b) =>
             {
+                const int Closer = int.MinValue;
+                const int Further = int.MaxValue;
+
                 if (a.ValidatedProtocol.HasValue == b.ValidatedProtocol.HasValue && a.ValidatedProtocol == b.ValidatedProtocol)
                 {
                     return calculator.CalculateDistance(a.Id.Bytes, targetNodeId).CompareTo(calculator.CalculateDistance(b.Id.Bytes, targetNodeId));
@@ -181,12 +184,12 @@ public class NodeTable : INodeTable
                 else if (a.ValidatedProtocol.HasValue)
                 {
                     // Prefer nodes validated on same protocol, network and fork
-                    return a.ValidatedProtocol == true ? int.MinValue : int.MaxValue;
+                    return a.ValidatedProtocol == true ? Closer : Further;
                 }
                 else
                 {
                     // b must have value; swap high and low from a
-                    return b.ValidatedProtocol == true ? int.MaxValue : int.MinValue;
+                    return b.ValidatedProtocol == true ? Further : Closer;
                 }
             });
 
