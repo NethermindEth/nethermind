@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Collections.Concurrent;
+using System.ComponentModel;
 using DotNetty.Buffers;
 using DotNetty.Common.Internal;
 using Nethermind.Core.Attributes;
@@ -42,27 +43,31 @@ public static class NethermindBuffers
 
 public static class Metrics
 {
+    [Description("Arena count")]
     [KeyIsLabel("allocator")]
     public static ConcurrentDictionary<string, double> AllocatorArenaCount { get; } = new();
 
+    [Description("Chunk size of the allocator")]
     [KeyIsLabel("allocator")]
     public static ConcurrentDictionary<string, double> AllocatorChunkSize { get; } = new();
 
+    [Description("Used heap memory")]
     [KeyIsLabel("allocator")]
     public static ConcurrentDictionary<string, double> AllocatorUsedHeapMemory { get; } = new();
 
+    [Description("Used direct memory")]
     [KeyIsLabel("allocator")]
     public static ConcurrentDictionary<string, double> AllocatorUsedDirectMemory { get; } = new();
 
+    [Description("Active allocation count")]
     [KeyIsLabel("allocator")]
     public static ConcurrentDictionary<string, double> AllocatorActiveAllocations { get; } = new();
 
+    [Description("Active allocation bytes")]
     [KeyIsLabel("allocator")]
     public static ConcurrentDictionary<string, double> AllocatorActiveAllocationBytes { get; } = new();
 
+    [Description("Allocatioons")]
     [KeyIsLabel("allocator")]
     public static ConcurrentDictionary<string, double> AllocatorAllocations { get; } = new();
-
-    [KeyIsLabel("allocator")]
-    public static ConcurrentDictionary<string, double> AllocatorAllocationBytes { get; } = new();
 }
