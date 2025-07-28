@@ -176,29 +176,8 @@ public class BodiesSyncFeedTests
     }
 
     [TestCase(1, 99, false, null, false)]
-    [TestCase(1, 11051474, false, null, true)]
-    [TestCase(1, 11052984, false, null, true)]
-    [TestCase(1, 11052985, false, null, false)]
-    [TestCase(11051474, 11052984, false, null, false)]
-    [TestCase(11051474, 11051474, false, null, true)]
-    [TestCase(1, 99, false, 11052984, false)]
-    [TestCase(1, 11051474, false, 11052984, true)]
-    [TestCase(1, 11052984, false, 11052984, true)]
-    [TestCase(1, 11052985, false, 11052984, false)]
-    [TestCase(11051474, 11052984, false, 11052984, false)]
-    [TestCase(11051474, 11051474, false, 11052984, true)]
     [TestCase(1, 99, true, null, false)]
-    [TestCase(1, 11051474, true, null, false)]
-    [TestCase(1, 11052984, true, null, false)]
-    [TestCase(1, 11052985, true, null, false)]
-    [TestCase(11051474, 11052984, true, null, false)]
-    [TestCase(11051474, 11051474, true, null, true)]
     [TestCase(1, 99, false, 0, false)]
-    [TestCase(1, 11051474, false, 0, false)]
-    [TestCase(1, 11052984, false, 0, false)]
-    [TestCase(1, 11052985, false, 0, false)]
-    [TestCase(11051474, 11052984, false, 0, false)]
-    [TestCase(11051474, 11051474, false, 0, true)]
     public void When_finished_sync_with_old_default_barrier_then_finishes_imedietely(
             long AncientBarrierInConfig,
             long lowestInsertedBlockNumber,

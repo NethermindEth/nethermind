@@ -220,7 +220,7 @@ namespace Nethermind.Init.Steps
         protected IComparer<Transaction> CreateTxPoolTxComparer() => _api.TransactionComparerProvider!.GetDefaultComparer();
 
         // TODO: remove from here - move to consensus?
-        protected virtual BlockProcessor CreateBlockProcessor(
+        protected virtual IBlockProcessor CreateBlockProcessor(
             BlockCachePreWarmer? preWarmer,
             ITransactionProcessor transactionProcessor,
             IWorldState worldState)
