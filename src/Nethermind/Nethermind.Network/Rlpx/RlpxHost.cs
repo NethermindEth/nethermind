@@ -126,6 +126,7 @@ namespace Nethermind.Network.Rlpx
                     .Group(_bossGroup, _workerGroup)
                     .ChannelFactory(() => _channelFactory?.CreateServer() ?? new TcpServerSocketChannel())
                     .Option(ChannelOption.Allocator, NethermindBuffers.RlpxAllocator)
+                    .ChildOption(ChannelOption.Allocator, NethermindBuffers.RlpxAllocator)
                     .ChildOption(ChannelOption.SoBacklog, 100)
                     .ChildOption(ChannelOption.TcpNodelay, true)
                     .ChildOption(ChannelOption.SoTimeout, (int)_connectTimeout.TotalMilliseconds)
