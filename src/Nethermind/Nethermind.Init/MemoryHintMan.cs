@@ -238,10 +238,17 @@ namespace Nethermind.Init
 
             NettyMemory = estimate;
 
+            ConfigureDefaultPooledByteBufferAllocator(networkConfig.NettyArenaOrder, arenaCount);
+
+            NethermindBuffers.Default = NethermindBuffers.CreateAllocator(networkConfig.NettyArenaOrder, arenaCount);
+        }
+
+        private void ConfigureDefaultPooledByteBufferAllocator(int arenaOrder, uint arenaCount)
+        {
             // Need to set these early, or otherwise if the allocator is used ahead of these setting, these config
             // will not take affect
 
-            Environment.SetEnvironmentVariable("io.netty.allocator.maxOrder", networkConfig.NettyArenaOrder.ToString());
+            Environment.SetEnvironmentVariable("io.netty.allocator.maxOrder", arenaOrder.ToString());
 
             // Arena count is capped because if its too high, the memory budget per arena can get too low causing
             // a very small chunk size. Any allocation of size higher than a chunk will essentially be unpooled triggering LOH.
@@ -266,17 +273,6 @@ namespace Nethermind.Init
             {
                 _logger.Warn("unable to set netty pooled byte buffer config");
             }
-
-            NethermindBuffers.Default = new PooledByteBufferAllocator(
-                preferDirect: PlatformDependent.DirectBufferPreferred,
-                nHeapArena: (int)arenaCount,
-                nDirectArena: (int)arenaCount,
-                pageSize: PooledByteBufferAllocator.DefaultPageSize,
-                maxOrder: networkConfig.NettyArenaOrder,
-                tinyCacheSize: PooledByteBufferAllocator.DefaultTinyCacheSize,
-                smallCacheSize: PooledByteBufferAllocator.DefaultSmallCacheSize,
-                normalCacheSize: PooledByteBufferAllocator.DefaultNormalCacheSize
-            );
         }
 
         private static void ValidateCpuCount(uint cpuCount)

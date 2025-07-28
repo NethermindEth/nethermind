@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using System.Reflection;
 using DotNetty.Buffers;
 
 namespace Nethermind.Network
