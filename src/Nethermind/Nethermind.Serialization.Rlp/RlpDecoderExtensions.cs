@@ -8,6 +8,7 @@ using System.Diagnostics.CodeAnalysis;
 using System.Runtime.CompilerServices;
 using DotNetty.Buffers;
 using Nethermind.Core.Buffers;
+using Nethermind.Serialization.Rlp.Buffers;
 
 namespace Nethermind.Serialization.Rlp
 {

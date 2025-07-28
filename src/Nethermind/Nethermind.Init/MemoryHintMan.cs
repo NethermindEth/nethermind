@@ -14,6 +14,7 @@ using Nethermind.Init.Steps;
 using Nethermind.Logging;
 using Nethermind.Network.Config;
 using Nethermind.Serialization.Rlp;
+using Nethermind.Serialization.Rlp.Buffers;
 using Nethermind.TxPool;
 
 namespace Nethermind.Init
@@ -238,11 +239,15 @@ namespace Nethermind.Init
 
             NettyMemory = estimate;
 
-            ConfigureDefaultPooledByteBufferAllocator(networkConfig.NettyArenaOrder, arenaCount);
+            // Set PooledByteBufferAllocator.Default configuration.
+            // Set it to a fixed 1 MB, 1 arena. Code should prefer NethermindBuffers.Default instead as it is easier to override.
+            ConfigureDefaultPooledByteBufferAllocator(8, 1);
 
             NethermindBuffers.Default = NethermindBuffers.CreateAllocator(networkConfig.NettyArenaOrder, arenaCount);
-            NethermindBuffers.RlpxAllocator = NethermindBuffers.CreateAllocator(networkConfig.NettyArenaOrder, networkConfig.MaxNettyArenaCount);
-            NethermindBuffers.DiscoveryAllocator = NethermindBuffers.CreateAllocator(networkConfig.NettyArenaOrder, networkConfig.MaxNettyArenaCount);
+            NethermindBuffers.RlpxAllocator = NethermindBuffers.CreateAllocator(networkConfig.NettyArenaOrder, arenaCount);
+
+            // 1 MB chunk independent of memory hint as discovery should be fairly small and does not do much.
+            NethermindBuffers.DiscoveryAllocator = NethermindBuffers.CreateAllocator(8, arenaCount);
         }
 
         private void ConfigureDefaultPooledByteBufferAllocator(int arenaOrder, uint arenaCount)
@@ -270,7 +275,6 @@ namespace Nethermind.Init
             // We never use any direct arena, but it does not take up memory because of that.
             Environment.SetEnvironmentVariable("io.netty.allocator.numHeapArenas", arenaCount.ToString());
             Environment.SetEnvironmentVariable("io.netty.allocator.numDirectArenas", arenaCount.ToString());
-
             if (PooledByteBufferAllocator.Default.Metric.HeapArenas().Count != arenaCount)
             {
                 _logger.Warn("unable to set netty pooled byte buffer config");

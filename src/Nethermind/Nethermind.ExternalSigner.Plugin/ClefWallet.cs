@@ -16,6 +16,7 @@ using System.Runtime.CompilerServices;
 using System.Security;
 using System.Text;
 using System.Text.Unicode;
+using Nethermind.Serialization.Rlp.Buffers;
 
 namespace Nethermind.ExternalSigner.Plugin
 {

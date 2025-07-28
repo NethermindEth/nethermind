@@ -1,10 +1,13 @@
 // SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System.Collections;
+using System.Collections.Concurrent;
 using DotNetty.Buffers;
 using DotNetty.Common.Internal;
+using Nethermind.Core.Attributes;
 
-namespace Nethermind.Serialization.Rlp;
+namespace Nethermind.Serialization.Rlp.Buffers;
 
 public static class NethermindBuffers
 {
@@ -36,4 +39,31 @@ public static class NethermindBuffers
             normalCacheSize: PooledByteBufferAllocator.DefaultNormalCacheSize
         );
     }
+}
+
+public static class Metrics
+{
+    [KeyIsLabel("allocator")]
+    public static ConcurrentDictionary<string, double> AllocatorArenaCount { get; } = new();
+
+    [KeyIsLabel("allocator")]
+    public static ConcurrentDictionary<string, double> AllocatorChunkSize { get; } = new();
+
+    [KeyIsLabel("allocator")]
+    public static ConcurrentDictionary<string, double> AllocatorUsedHeapMemory { get; } = new();
+
+    [KeyIsLabel("allocator")]
+    public static ConcurrentDictionary<string, double> AllocatorUsedDirectMemory { get; } = new();
+
+    [KeyIsLabel("allocator")]
+    public static ConcurrentDictionary<string, double> AllocatorActiveAllocations { get; } = new();
+
+    [KeyIsLabel("allocator")]
+    public static ConcurrentDictionary<string, double> AllocatorActiveAllocationBytes { get; } = new();
+
+    [KeyIsLabel("allocator")]
+    public static ConcurrentDictionary<string, double> AllocatorAllocations { get; } = new();
+
+    [KeyIsLabel("allocator")]
+    public static ConcurrentDictionary<string, double> AllocatorAllocationBytes { get; } = new();
 }

@@ -12,6 +12,7 @@ using Nethermind.Core.Extensions;
 using Nethermind.Db;
 using Nethermind.Int256;
 using Nethermind.Serialization.Rlp;
+using Nethermind.Serialization.Rlp.Buffers;
 
 namespace Nethermind.TxPool;
 

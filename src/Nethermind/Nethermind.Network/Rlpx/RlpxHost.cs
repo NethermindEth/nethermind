@@ -22,6 +22,7 @@ using Nethermind.Network.P2P.Analyzers;
 using Nethermind.Network.P2P.EventArg;
 using Nethermind.Network.Rlpx.Handshake;
 using Nethermind.Serialization.Rlp;
+using Nethermind.Serialization.Rlp.Buffers;
 using Nethermind.Stats.Model;
 using LogLevel = DotNetty.Handlers.Logging.LogLevel;
 
@@ -47,7 +48,6 @@ namespace Nethermind.Network.Rlpx
         private readonly TimeSpan _sendLatency;
         private readonly TimeSpan _connectTimeout;
         private readonly IChannelFactory? _channelFactory;
-        private readonly IByteBufferAllocator _rlpxBufferAllocator;
 
         private readonly TimeSpan _shutdownQuietPeriod;
         private readonly TimeSpan _shutdownCloseTimeout;
@@ -100,7 +100,6 @@ namespace Nethermind.Network.Rlpx
             _channelFactory = channelFactory;
             _shutdownQuietPeriod = TimeSpan.FromMilliseconds(Math.Min(networkConfig.RlpxHostShutdownCloseTimeoutMs, 100));
             _shutdownCloseTimeout = TimeSpan.FromMilliseconds(networkConfig.RlpxHostShutdownCloseTimeoutMs);
-            _rlpxBufferAllocator = NethermindBuffers.RlpxAllocator;
         }
 
         public async Task Init()
@@ -126,7 +125,7 @@ namespace Nethermind.Network.Rlpx
                 bootstrap
                     .Group(_bossGroup, _workerGroup)
                     .ChannelFactory(() => _channelFactory?.CreateServer() ?? new TcpServerSocketChannel())
-                    .Option(ChannelOption.Allocator, _rlpxBufferAllocator)
+                    .Option(ChannelOption.Allocator, NethermindBuffers.RlpxAllocator)
                     .ChildOption(ChannelOption.SoBacklog, 100)
                     .ChildOption(ChannelOption.TcpNodelay, true)
                     .ChildOption(ChannelOption.SoTimeout, (int)_connectTimeout.TotalMilliseconds)
@@ -183,7 +182,7 @@ namespace Nethermind.Network.Rlpx
             clientBootstrap
                 .Group(_workerGroup)
                 .ChannelFactory(() => _channelFactory?.CreateClient() ?? new TcpSocketChannel())
-                .Option(ChannelOption.Allocator, _rlpxBufferAllocator)
+                .Option(ChannelOption.Allocator, NethermindBuffers.RlpxAllocator)
                 .Option(ChannelOption.TcpNodelay, true)
                 .Option(ChannelOption.SoTimeout, (int)_connectTimeout.TotalMilliseconds)
                 .Option(ChannelOption.SoKeepalive, true)

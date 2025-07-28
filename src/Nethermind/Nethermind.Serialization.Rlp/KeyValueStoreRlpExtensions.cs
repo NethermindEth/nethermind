@@ -8,6 +8,7 @@ using Nethermind.Core;
 using Nethermind.Core.Caching;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
+using Nethermind.Serialization.Rlp.Buffers;
 
 namespace Nethermind.Serialization.Rlp;
 

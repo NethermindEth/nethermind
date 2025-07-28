@@ -11,6 +11,7 @@ using Nethermind.Logging;
 using Nethermind.Network.Config;
 using Nethermind.Network.Discovery.Discv5;
 using Nethermind.Serialization.Rlp;
+using Nethermind.Serialization.Rlp.Buffers;
 using Nethermind.Stats.Model;
 
 namespace Nethermind.Network.Discovery;

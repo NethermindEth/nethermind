@@ -25,6 +25,7 @@ using Nethermind.TxPool;
 using Nethermind.Facade.Proxy.Models.Simulate;
 using Nethermind.Facade;
 using Nethermind.Facade.Simulate;
+using Nethermind.Serialization.Rlp.Buffers;
 
 namespace Nethermind.JsonRpc.Modules.DebugModule;
 
