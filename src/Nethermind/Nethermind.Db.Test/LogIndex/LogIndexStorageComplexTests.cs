@@ -29,26 +29,27 @@ namespace Nethermind.Db.Test.LogIndex
         private class FirstValueMergeOperator : IMergeOperator
         {
             public string Name { get; }
-            public static string LastResult { get; private set; }
 
             public ArrayPoolList<byte>? FullMerge(ReadOnlySpan<byte> key, RocksDbMergeEnumerator enumerator)
             {
-                LastResult = $"FullMerge: {Convert.ToHexString(key)} => {Convert.ToHexString(enumerator.Get(0))}\n{new StackTrace()}";
+                Console.WriteLine($"FullMerge: {Convert.ToHexString(key)} => {Convert.ToHexString(enumerator.Get(0))}\n{new StackTrace()}");
                 return new(enumerator.Get(0));
             }
 
             public ArrayPoolList<byte>? PartialMerge(ReadOnlySpan<byte> key, RocksDbMergeEnumerator enumerator)
             {
-                LastResult = $"PartialMerge: {Convert.ToHexString(key)} => {Convert.ToHexString(enumerator.Get(0))}\n{new StackTrace()}";
+                Console.WriteLine($"PartialMerge: {Convert.ToHexString(key)} => {Convert.ToHexString(enumerator.Get(0))}\n{new StackTrace()}");
                 return new(enumerator.Get(0));
             }
         }
+
+        private readonly StringWriter _output = new();
 
         [Test]
         public void Merge()
         {
             var prevOut = Console.Out;
-            Console.SetOut(TestContext.Out);
+            Console.SetOut(_output);
 
             try
             {
@@ -65,7 +66,7 @@ namespace Nethermind.Db.Test.LogIndex
                 var value = Enumerable.Range(0, 10).Select(i => (byte)i).ToArray();
                 db.Merge(key, value);
 
-                Assert.That(db.Get(key), Is.EqualTo(value), FirstValueMergeOperator.LastResult);
+                Assert.That(db.Get(key), Is.EqualTo(value), _output.ToString());
             }
             finally
             {

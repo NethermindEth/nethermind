@@ -32,10 +32,10 @@ internal class MergeOperatorAdapter(IMergeOperator inner) : MergeOperator
             data.AsSpan().CopyTo(result);
             Console.WriteLine($"Copied {Convert.ToHexString(data.AsSpan())} to {(IntPtr)resultPtr:x}");
 
-            resultLength = data.Count;
+            resultLength = new(result.Length);
             success = Convert.ToInt32(true);
+            Console.WriteLine($"Assigned ({resultLength}, {success})");
 
-            Console.WriteLine($"Returning ({resultLength}, {success})");
             return (IntPtr)resultPtr;
         }
     }
