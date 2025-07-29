@@ -43,6 +43,7 @@ public class BackgroundTaskScheduler : IBackgroundTaskScheduler, IAsyncDisposabl
     private readonly IBlockProcessor _blockProcessor;
     private readonly IChainHeadInfoProvider _headInfo;
     private readonly int _capacity;
+    private long _queueCount;
 
     private CancellationTokenSource _blockProcessorCancellationTokenSource;
     private bool _disposed = false;
@@ -115,6 +116,7 @@ public class BackgroundTaskScheduler : IBackgroundTaskScheduler, IAsyncDisposabl
                 CancellationToken token = cts.Token;
                 while (_taskQueue.Reader.TryRead(out IActivity activity))
                 {
+                    Interlocked.Decrement(ref _queueCount);
                     if (token.IsCancellationRequested)
                     {
                         // In case of task that is suppose to run when a block is being processed, if there is some time left
@@ -123,6 +125,7 @@ public class BackgroundTaskScheduler : IBackgroundTaskScheduler, IAsyncDisposabl
                         // its cancellation.
                         if (DateTimeOffset.UtcNow < activity.Deadline)
                         {
+                            Interlocked.Increment(ref _queueCount);
                             await _taskQueue.Writer.WriteAsync(activity);
                             UpdateQueueCount();
                             // Requeued, throttle to prevent infinite loop.
@@ -172,15 +175,21 @@ public class BackgroundTaskScheduler : IBackgroundTaskScheduler, IAsyncDisposabl
         bool success = false;
         lock (_queueLock)
         {
-            int currentCount = _taskQueue.Reader.Count;
-            if (currentCount < _capacity)
+            if (_queueCount + 1 < _capacity)
             {
                 success = _taskQueue.Writer.TryWrite(activity);
+                if (success)
+                {
+                    Interlocked.Increment(ref _queueCount);
+                }
             }
         }
 
-        UpdateQueueCount();
-        if (!success)
+        if (success)
+        {
+            UpdateQueueCount();
+        }
+        else
         {
             request.TryDispose();
             // This should never happen unless something goes very wrong.
@@ -193,7 +202,7 @@ public class BackgroundTaskScheduler : IBackgroundTaskScheduler, IAsyncDisposabl
     }
 
     private void UpdateQueueCount()
-        => Evm.Metrics.NumberOfBackgroundTasksScheduled = _taskQueue.Reader.Count;
+        => Evm.Metrics.NumberOfBackgroundTasksScheduled = Volatile.Read(ref _queueCount);
 
     public async ValueTask DisposeAsync()
     {
