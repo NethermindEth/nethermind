@@ -9,13 +9,12 @@ using System.Diagnostics.CodeAnalysis;
 using System.Runtime.CompilerServices;
 using System.Text.Json;
 using System.Text.Json.Serialization;
-using Nethermind.Stats.Model;
 
-namespace Nethermind.JsonRpc.Modules.Admin.Converters
+namespace Nethermind.Stats.Model
 {
     public class CapabilityConverter : JsonConverter<Capability>
     {
-        public override Capability? Read(ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options)
+        public override Capability Read(ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options)
         {
             if (reader.TokenType == JsonTokenType.Null)
             {
@@ -53,7 +52,6 @@ namespace Nethermind.JsonRpc.Modules.Admin.Converters
             writer.WriteStringValue($"{capability.ProtocolCode}/{capability.Version}");
         }
 
-        [SkipLocalsInit]
         private static bool TryParseCapability(ref Utf8JsonReader reader, out Capability capability)
         {
             capability = default;
