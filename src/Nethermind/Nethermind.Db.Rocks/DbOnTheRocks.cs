@@ -65,6 +65,11 @@ public partial class DbOnTheRocks : IDb, ITunableDb
 
     private readonly DbSettings _settings;
 
+    // ReSharper disable once CollectionNeverQueried.Local
+    // Need to keep options from GC in case of merge operator applied, as they are used in callback
+    // TODO: find better way?
+    private readonly ConcurrentBag<OptionsHandle> _doNotGcOptions = [];
+
     private readonly PerTableDbConfig _perTableDbConfig;
     private ulong _maxBytesForLevelBase;
     private ulong _targetFileSizeBase;
@@ -560,6 +565,12 @@ public partial class DbOnTheRocks : IDb, ITunableDb
             }
         }
 
+        if (_settings.MergeOperator is { } mergeOperator)
+        {
+            options.SetMergeOperator(new MergeOperatorAdapter(mergeOperator));
+            _doNotGcOptions.Add(options);
+        }
+
         #endregion
 
         #region read-write options
@@ -876,6 +887,40 @@ public partial class DbOnTheRocks : IDb, ITunableDb
         SetWithColumnFamily(key, null, value, writeFlags);
     }
 
+    public void Merge(ReadOnlySpan<byte> key, ReadOnlySpan<byte> value, WriteFlags flags = WriteFlags.None)
+    {
+        ObjectDisposedException.ThrowIf(_isDisposing, this);
+
+        UpdateWriteMetrics();
+
+        try
+        {
+            _db.Merge(key, value, null, WriteFlagsToWriteOptions(flags));
+        }
+        catch (RocksDbSharpException e)
+        {
+            CreateMarkerIfCorrupt(e);
+            throw;
+        }
+    }
+
+    internal void MergeWithColumnFamily(ReadOnlySpan<byte> key, ColumnFamilyHandle? cf, ReadOnlySpan<byte> value, WriteFlags flags = WriteFlags.None)
+    {
+        ObjectDisposedException.ThrowIf(_isDisposing, this);
+
+        UpdateWriteMetrics();
+
+        try
+        {
+            _db.Merge(key, value, cf, WriteFlagsToWriteOptions(flags));
+        }
+        catch (RocksDbSharpException e)
+        {
+            CreateMarkerIfCorrupt(e);
+            throw;
+        }
+    }
+
     public void DangerousReleaseMemory(in ReadOnlySpan<byte> span)
     {
         if (!span.IsNullOrEmpty())
@@ -909,10 +954,21 @@ public partial class DbOnTheRocks : IDb, ITunableDb
         return GetAllCore(iterator);
     }
 
-    protected internal Iterator CreateIterator(bool ordered = false, ColumnFamilyHandle? ch = null)
+    protected internal Iterator CreateIterator(bool isTailing, ColumnFamilyHandle? ch = null)
+    {
+        return CreateIterator(new IteratorOptions { IsTailing = isTailing }, ch);
+    }
+
+    protected internal Iterator CreateIterator(IteratorOptions options, ColumnFamilyHandle? ch = null)
     {
         ReadOptions readOptions = new();
-        readOptions.SetTailing(!ordered);
+        readOptions.SetTailing(!options.IsTailing);
+
+        if (options.LowerBound is { } lowerBound)
+            readOptions.SetIterateLowerBound(lowerBound);
+
+        if (options.UpperBound is { } upperBound)
+            readOptions.SetIterateUpperBound(upperBound);
 
         try
         {
@@ -1203,6 +1259,21 @@ public partial class DbOnTheRocks : IDb, ITunableDb
             Set(key, value, null, flags);
         }
 
+        public void Merge(ReadOnlySpan<byte> key, ReadOnlySpan<byte> value, WriteFlags flags = WriteFlags.None)
+        {
+            Merge(key, value, null, flags);
+        }
+
+        public void Merge(ReadOnlySpan<byte> key, ReadOnlySpan<byte> value, ColumnFamilyHandle? cf = null, WriteFlags flags = WriteFlags.None)
+        {
+            ObjectDisposedException.ThrowIf(_isDisposed, this);
+
+            _rocksBatch.Merge(key, value, cf);
+            _writeFlags = flags;
+
+            if ((flags & WriteFlags.DisableWAL) != 0) FlushOnTooManyWrites();
+        }
+
         private void FlushOnTooManyWrites()
         {
             if (Interlocked.Increment(ref _writeCount) % MaxWritesOnNoWal != 0) return;
@@ -1229,6 +1300,13 @@ public partial class DbOnTheRocks : IDb, ITunableDb
         InnerFlush(onlyWal);
     }
 
+    public void FlushWithColumnFamily(ColumnFamilyHandle familyHandle)
+    {
+        ObjectDisposedException.ThrowIf(_isDisposing, this);
+
+        InnerFlush(familyHandle);
+    }
+
     public virtual void Compact()
     {
         _db.CompactRange(Keccak.Zero.BytesToArray(), Keccak.MaxValue.BytesToArray());
@@ -1244,6 +1322,18 @@ public partial class DbOnTheRocks : IDb, ITunableDb
             {
                 _rocksDbNative.rocksdb_flush(_db.Handle, FlushOptions.DefaultFlushOptions.Handle);
             }
+        }
+        catch (RocksDbSharpException e)
+        {
+            CreateMarkerIfCorrupt(e);
+        }
+    }
+
+    private void InnerFlush(ColumnFamilyHandle columnFamilyHandle)
+    {
+        try
+        {
+            _rocksDbNative.rocksdb_flush_cf(_db.Handle, FlushOptions.DefaultFlushOptions.Handle, columnFamilyHandle.Handle);
         }
         catch (RocksDbSharpException e)
         {
@@ -1582,6 +1672,29 @@ public partial class DbOnTheRocks : IDb, ITunableDb
         };
     }
 
+    public IIterator<byte[], byte[]> GetIterator(bool isTailing = false)
+    {
+        var iterator = CreateIterator(isTailing);
+        return new RocksDbIteratorWrapper(iterator);
+    }
+
+    public IIterator<byte[], byte[]> GetIterator(ref IteratorOptions options)
+    {
+        return GetIterator(ref options, null);
+    }
+
+    public IIterator<byte[], byte[]> GetIterator(bool isTailing, ColumnFamilyHandle familyHandle)
+    {
+        var options = new IteratorOptions { IsTailing = isTailing };
+        return GetIterator(ref options, familyHandle);
+    }
+
+    public IIterator<byte[], byte[]> GetIterator(ref IteratorOptions options, ColumnFamilyHandle? familyHandle)
+    {
+        var iterator = CreateIterator(options, familyHandle);
+        return new RocksDbIteratorWrapper(iterator);
+    }
+
     /// <summary>
     /// Iterators should not be kept for long as it will pin some memory block and sst file. This would show up as
     /// temporary higher disk usage or memory usage.
@@ -1699,10 +1812,10 @@ public partial class DbOnTheRocks : IDb, ITunableDb
             public void ClearIterators()
             {
                 if (_disposed) return;
-                if (Values is null) return;
-                foreach (IteratorHolder iterator in Values)
+                if (Values is not { } values) return;
+                foreach (IteratorHolder iterator in values)
                 {
-                    iterator.Dispose();
+                    iterator?.Dispose();
                 }
             }
 

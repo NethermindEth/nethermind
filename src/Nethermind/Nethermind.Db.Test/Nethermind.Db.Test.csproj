@@ -2,6 +2,7 @@
   <PropertyGroup>
     <IsPackable>false</IsPackable>
     <Nullable>annotations</Nullable>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
   </PropertyGroup>
   <ItemGroup>
     <PackageReference Include="coverlet.collector">

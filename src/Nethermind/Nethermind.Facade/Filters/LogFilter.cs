@@ -13,6 +13,12 @@ namespace Nethermind.Blockchain.Filters
         public TopicsFilter TopicsFilter { get; }
         public BlockParameter FromBlock { get; }
         public BlockParameter ToBlock { get; }
+        public bool UseIndex { get; set; } = true; // TODO: remove after testing
+
+        public bool AcceptsAnyBlock =>
+            AddressFilter.Address == null &&
+            (AddressFilter.Addresses?.Count ?? 0) == 0 &&
+            TopicsFilter.AcceptsAnyBlock;
 
         public LogFilter(int id, BlockParameter fromBlock, BlockParameter toBlock,
             AddressFilter addressFilter, TopicsFilter topicsFilter) : base(id)

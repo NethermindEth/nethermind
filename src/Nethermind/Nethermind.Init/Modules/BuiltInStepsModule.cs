@@ -38,6 +38,7 @@ public class BuiltInStepsModule : Module
         typeof(StartBlockProducer),
         typeof(StartLogProducer),
         typeof(StartMonitoring),
+        typeof(StartLogIndexService)
     ];
 
     protected override void Load(ContainerBuilder builder)

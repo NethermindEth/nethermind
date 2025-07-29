@@ -19,5 +19,11 @@ namespace Nethermind.Blockchain.Receipts
         /// Receipts for a block are inserted
         /// </summary>
         event EventHandler<BlockReplacementEventArgs> ReceiptsInserted;
+
+        /// <summary>
+        /// Old receipts are inserted
+        /// </summary>
+        // TODO: check this only triggers for old ones
+        event EventHandler<ReceiptsEventArgs> OldReceiptsInserted;
     }
 }
