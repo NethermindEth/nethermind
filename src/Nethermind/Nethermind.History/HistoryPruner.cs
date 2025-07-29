@@ -248,8 +248,8 @@ public class HistoryPruner : IHistoryPruner
 
                 foreach (BlockInfo blockInfo in blockInfos)
                 {
-                    Block? b = _blockTree.FindBlock(blockInfo.BlockHash, BlockTreeLookupOptions.None, blockInfo.BlockNumber);
-                    _logger.Info($"[prune] scanning block #{blockInfo.BlockNumber}, found? {b is not null}. hash={blockInfo.BlockHash}");
+                    Block? b = _blockTree.FindBlock(blockInfo.BlockHash, BlockTreeLookupOptions.None, n);
+                    _logger.Info($"[prune] scanning block #{n}, found? {b is not null}. hash={blockInfo.BlockHash}");
                     if (b is not null)
                     {
                         _logger.Info($"[prune] found block at level {n} with timestamp {b.Timestamp}");
