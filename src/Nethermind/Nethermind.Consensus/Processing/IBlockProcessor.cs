@@ -24,7 +24,7 @@ namespace Nethermind.Consensus.Processing
             ProcessingOptions options,
             IBlockTracer blockTracer,
             IReleaseSpec spec,
-            CancellationToken token);
+            CancellationToken token = default);
 
         /// <summary>
         /// Fired after a transaction has been processed (even if inside the block).
