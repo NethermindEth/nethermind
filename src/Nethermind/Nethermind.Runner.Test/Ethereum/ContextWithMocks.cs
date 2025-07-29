@@ -117,6 +117,7 @@ namespace Nethermind.Runner.Test.Ethereum
             api.EngineSigner = Substitute.For<ISigner>();
             api.FileSystem = Substitute.For<IFileSystem>();
             api.KeyStore = Substitute.For<IKeyStore>();
+            api.LogIndexStorage = Substitute.For<ILogIndexStorage>();
             api.LogFinder = Substitute.For<ILogFinder>();
             api.ProtocolsManager = Substitute.For<IProtocolsManager>();
             api.ProtocolValidator = Substitute.For<IProtocolValidator>();
