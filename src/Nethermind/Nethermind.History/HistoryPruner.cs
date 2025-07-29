@@ -398,20 +398,20 @@ public class HistoryPruner : IHistoryPruner
         for (long i = from; i <= to; i++)
         {
             ChainLevelInfo? chainLevelInfo = _chainLevelInfoRepository.LoadLevel(i);
-            if (chainLevelInfo is null)
+            if (chainLevelInfo is null || chainLevelInfo.BlockInfos.Length == 0)
             {
                 _logger.Info($"[prune] Skipping empty level {i}.");
                 continue;
             }
 
-            if (chainLevelInfo.MainChainBlock is null)
-            {
-                _logger.Info($"[prune] No main chain block on level {i}.");
-            }
-            else
-            {
-                _logger.Info($"[prune] Main chain block on level {i}: {chainLevelInfo.MainChainBlock.BlockNumber}.");
-            }
+            // if (chainLevelInfo.MainChainBlock is null)
+            // {
+            //     _logger.Info($"[prune] No main chain block on level {i}.");
+            // }
+            // else
+            // {
+            //     _logger.Info($"[prune] Main chain block on level {i}: {chainLevelInfo.MainChainBlock.BlockNumber}.");
+            // }
 
             bool finished = false;
             foreach (BlockInfo blockInfo in chainLevelInfo.BlockInfos)
