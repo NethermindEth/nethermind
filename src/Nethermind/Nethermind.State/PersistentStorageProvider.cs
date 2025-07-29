@@ -36,9 +36,9 @@ internal sealed class PersistentStorageProvider : PartialStorageProviderBase
 
     private class PerContractState
     {
-        internal StorageTree StorageTree;
-        internal DefaultableDictionary BlockChange = new DefaultableDictionary();
-        private readonly Func<StorageCell, byte[]> _loadFromTree;
+        private StorageTree StorageTree;
+        private DefaultableDictionary BlockChange = new DefaultableDictionary();
+        private readonly Func<StorageCell, byte[]> _loadFromTreeStorageFunc;
         private readonly Address _address;
         private readonly PersistentStorageProvider _provider;
 
@@ -49,8 +49,10 @@ internal sealed class PersistentStorageProvider : PartialStorageProviderBase
             _address = address;
             _provider = provider;
             StorageTree = storageTree;
-            _loadFromTree = LoadFromTreeStorage;
+            _loadFromTreeStorageFunc = LoadFromTreeStorage;
         }
+
+        public Hash256 RootHash => StorageTree.RootHash;
 
         public void Commit()
         {
@@ -114,7 +116,7 @@ internal sealed class PersistentStorageProvider : PartialStorageProviderBase
             long priorReads = Db.Metrics.ThreadLocalStorageTreeReads;
 
             byte[] value = _provider._preBlockCache is not null
-                ? _provider._preBlockCache.GetOrAdd(storageCell, _loadFromTree)
+                ? _provider._preBlockCache.GetOrAdd(storageCell, _loadFromTreeStorageFunc)
                 : LoadFromTreeStorage(storageCell);
 
             if (Db.Metrics.ThreadLocalStorageTreeReads == priorReads)
@@ -159,6 +161,10 @@ internal sealed class PersistentStorageProvider : PartialStorageProviderBase
             return (writes, skipped);
         }
 
+        public void EmptyStorageOptimization()
+        {
+            BlockChange.ClearAndSetMissingAsDefault();
+        }
     }
 
     private readonly Dictionary<AddressAsKey, PerContractState> _storages = new(4_096);
@@ -315,7 +321,18 @@ internal sealed class PersistentStorageProvider : PartialStorageProviderBase
                     _logger.Trace($"  Update {change.StorageCell.Address}_{change.StorageCell.Index} V = {change.Value.ToHexString(true)}");
                 }
 
-                SaveChange(toUpdateRoots, change);
+                if (_originalValues.TryGetValue(change.StorageCell, out byte[] initialValue) &&
+                    initialValue.AsSpan().SequenceEqual(change.Value))
+                {
+                    // no need to update the tree if the value is the same
+                }
+                else
+                {
+                    toUpdateRoots.Add(change.StorageCell.Address);
+
+                    GetOrCreateStorage(change.StorageCell.Address)
+                        .SaveChange(change.StorageCell, change.Value);
+                }
 
                 if (isTracing)
                 {
@@ -381,12 +398,12 @@ internal sealed class PersistentStorageProvider : PartialStorageProviderBase
                     continue;
                 }
 
-                StorageTree storageTree = kvp.Value.StorageTree;
-                (int writes, int skipped) = kvp.Value.ProcessStorageChanges();
+                PerContractState contractState = kvp.Value;
+                (int writes, int skipped) = contractState.ProcessStorageChanges();
                 ReportMetrics(writes, skipped);
                 if (writes > 0)
                 {
-                    _stateProvider.UpdateStorageRoot(address: kvp.Key, storageTree.RootHash);
+                    _stateProvider.UpdateStorageRoot(address: kvp.Key, contractState.RootHash);
                 }
             }
         }
@@ -437,7 +454,7 @@ internal sealed class PersistentStorageProvider : PartialStorageProviderBase
                 }
 
                 // Update the storage root for the Account
-                _stateProvider.UpdateStorageRoot(address: kvp.Key, kvp.Value.StorageTree.RootHash);
+                _stateProvider.UpdateStorageRoot(address: kvp.Key, kvp.Value.RootHash);
             }
         }
 
@@ -452,21 +469,6 @@ internal sealed class PersistentStorageProvider : PartialStorageProviderBase
                 Db.Metrics.IncrementStorageTreeWrites(writes);
             }
         }
-    }
-
-    private void SaveChange(HashSet<AddressAsKey> toUpdateRoots, Change change)
-    {
-        if (_originalValues.TryGetValue(change.StorageCell, out byte[] initialValue) &&
-            initialValue.AsSpan().SequenceEqual(change.Value))
-        {
-            // no need to update the tree if the value is the same
-            return;
-        }
-
-        toUpdateRoots.Add(change.StorageCell.Address);
-
-        GetOrCreateStorage(change.StorageCell.Address)
-            .SaveChange(change.StorageCell, change.Value);
     }
 
     /// <summary>
@@ -511,7 +513,7 @@ internal sealed class PersistentStorageProvider : PartialStorageProviderBase
             value = new PerContractState(address, this, _storageTreeFactory.Create(address, _trieStore.GetTrieStore(address), storageRoot, StateRoot, _logManager));
             if (isEmpty)
             {
-                value.BlockChange.ClearAndSetMissingAsDefault();
+                value.EmptyStorageOptimization();
             }
         }
 
