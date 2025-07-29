@@ -55,8 +55,8 @@ public class PseudoNethermindModule(ChainSpec spec, IConfigProvider configProvid
 
             // Environments
             .AddSingleton<ITimerFactory, TimerFactory>()
-            .AddSingleton<IBackgroundTaskScheduler, MainBlockProcessingContext, IChainHeadInfoProvider>((blockProcessingContext, chainHeadInfoProvider) => new BackgroundTaskScheduler(
-                blockProcessingContext.BlockProcessor,
+            .AddSingleton<IBackgroundTaskScheduler, IMainProcessingContext, IChainHeadInfoProvider>((blockProcessingContext, chainHeadInfoProvider) => new BackgroundTaskScheduler(
+                blockProcessingContext.BranchProcessor,
                 chainHeadInfoProvider,
                 initConfig.BackgroundTaskConcurrency,
                 initConfig.BackgroundTaskMaxNumber,

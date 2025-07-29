@@ -105,10 +105,18 @@ namespace Nethermind.Init.Steps
                 : null;
 
             IBlockProcessor mainBlockProcessor = CreateBlockProcessor(preWarmer, transactionProcessor, mainWorldState);
+            IBranchProcessor mainBranchProcessor = new BranchProcessor(
+                mainBlockProcessor,
+                _api.SpecProvider!,
+                mainWorldState,
+                new BeaconBlockRootHandler(transactionProcessor, mainWorldState),
+                _api.LogManager!,
+                preWarmer
+            );
 
             BlockchainProcessor blockchainProcessor = new(
-                getApi.BlockTree,
-                mainBlockProcessor,
+                getApi.BlockTree!,
+                mainBranchProcessor,
                 _api.BlockPreprocessor,
                 stateReader,
                 getApi.LogManager,
@@ -125,6 +133,7 @@ namespace Nethermind.Init.Steps
 
             var mainProcessingContext = setApi.MainProcessingContext = new MainProcessingContext(
                 transactionProcessor,
+                mainBranchProcessor,
                 mainBlockProcessor,
                 blockchainProcessor,
                 mainWorldState);
@@ -133,7 +142,7 @@ namespace Nethermind.Init.Steps
             setApi.BlockProductionPolicy = CreateBlockProductionPolicy();
 
             BackgroundTaskScheduler backgroundTaskScheduler = new BackgroundTaskScheduler(
-                mainBlockProcessor,
+                mainBranchProcessor,
                 chainHeadInfoProvider,
                 initConfig.BackgroundTaskConcurrency,
                 initConfig.BackgroundTaskMaxNumber,
@@ -148,7 +157,7 @@ namespace Nethermind.Init.Steps
                     _api.BlockTree!,
                     txPool,
                     CreateTxPoolTxComparer(),
-                    mainBlockProcessor,
+                    mainBranchProcessor,
                     _api.LogManager,
                     censorshipDetectorConfig
                 );
@@ -220,7 +229,7 @@ namespace Nethermind.Init.Steps
         protected IComparer<Transaction> CreateTxPoolTxComparer() => _api.TransactionComparerProvider!.GetDefaultComparer();
 
         // TODO: remove from here - move to consensus?
-        protected virtual BlockProcessor CreateBlockProcessor(
+        protected virtual IBlockProcessor CreateBlockProcessor(
             BlockCachePreWarmer? preWarmer,
             ITransactionProcessor transactionProcessor,
             IWorldState worldState)
@@ -240,8 +249,7 @@ namespace Nethermind.Init.Steps
                 new BlockhashStore(_api.SpecProvider!, worldState),
                 _api.LogManager,
                 new WithdrawalProcessor(worldState, _api.LogManager),
-                new ExecutionRequestsProcessor(transactionProcessor),
-                preWarmer: preWarmer);
+                new ExecutionRequestsProcessor(transactionProcessor));
         }
     }
 }

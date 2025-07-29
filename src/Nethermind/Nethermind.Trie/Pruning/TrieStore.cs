@@ -1008,6 +1008,14 @@ public sealed class TrieStore : ITrieStore, IPruningTrieStore
         if (_commitSetQueue?.IsEmpty ?? true) return;
 
         using ArrayPoolList<BlockCommitSet> candidateSets = DetermineCommitSetToPersistInSnapshot(_commitSetQueue.Count);
+        if (candidateSets.Count == 0 && _commitSetQueue.TryDequeue(out BlockCommitSet anyCommmitSet))
+        {
+            // No commitset to persist, likely as not enough block was processed to reached prune boundary
+            // This happens when node is shutdown right after sync.
+            // we need to persist at least something or in case of fresh sync or the best persisted state will not be set
+            // at all. This come at a risk that this commitset is not canon though.
+            candidateSets.Add(anyCommmitSet);
+        }
 
         INodeStorage.IWriteBatch writeBatch = _nodeStorage.StartWriteBatch();
         for (int index = 0; index < candidateSets.Count; index++)

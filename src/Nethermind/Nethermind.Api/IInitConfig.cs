@@ -90,6 +90,9 @@ public interface IInitConfig : IConfig
     [ConfigItem(Description = "[TECHNICAL] Exit when block number is reached. Useful for scripting and testing.", DefaultValue = "null", HiddenFromDocs = true)]
     long? ExitOnBlockNumber { get; set; }
 
+    [ConfigItem(Description = "[TECHNICAL] Exit when invalid block is triggered. Useful for scripting and testing.", DefaultValue = "null", HiddenFromDocs = true)]
+    bool ExitOnInvalidBlock { get; set; }
+
     [ConfigItem(Description = "[TECHNICAL] Specify concurrency limit for background task.", DefaultValue = "2", HiddenFromDocs = true)]
     int BackgroundTaskConcurrency { get; set; }
 
