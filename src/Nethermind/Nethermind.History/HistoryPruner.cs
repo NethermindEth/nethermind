@@ -17,6 +17,7 @@ using Nethermind.Db;
 using Nethermind.Logging;
 using Nethermind.Serialization.Rlp;
 using Nethermind.State.Repositories;
+using ZstdSharp.Unsafe;
 
 [assembly: InternalsVisibleTo("Nethermind.History.Test")]
 
@@ -248,6 +249,7 @@ public class HistoryPruner : IHistoryPruner
                 foreach (BlockInfo blockInfo in blockInfos)
                 {
                     Block? b = _blockTree.FindBlock(blockInfo.BlockHash, BlockTreeLookupOptions.None, blockInfo.BlockNumber);
+                    _logger.Info($"[prune] scanning block #{blockInfo.BlockNumber}, found? {b is not null}. hash={blockInfo.BlockHash}");
                     if (b is not null)
                     {
                         _logger.Info($"[prune] found block at level {n} with timestamp {b.Timestamp}");
@@ -415,11 +417,14 @@ public class HistoryPruner : IHistoryPruner
             foreach (BlockInfo blockInfo in chainLevelInfo.BlockInfos)
             {
                 Block? block = _blockTree.FindBlock(blockInfo.BlockHash, BlockTreeLookupOptions.None, blockInfo.BlockNumber);
+                _logger.Info($"[prune] scanning blockinfo #{blockInfo.BlockNumber} found?={block is not null} hash={blockInfo.BlockHash}");
                 if (block is null)
                 {
                     _logger.Info($"[prune] Skipping block which wasn't found {i}.");
                     continue;
                 }
+
+                _logger.Info($"[prune] found block #{block.Number} timestamp={block.Timestamp}, hash={block.Hash}.");
 
                 // search entire chain level before finishing
                 if (endSearch(block))
@@ -430,7 +435,6 @@ public class HistoryPruner : IHistoryPruner
                 }
                 else
                 {
-                    _logger.Info($"[prune] found block #{block.Number} timestamp={block.Timestamp}.");
                     yield return block;
                 }
             }
