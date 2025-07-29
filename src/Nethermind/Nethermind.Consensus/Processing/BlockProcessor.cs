@@ -65,7 +65,6 @@ public partial class BlockProcessor(
         remove { blockTransactionsExecutor.TransactionProcessed -= value; }
     }
 
-    // TODO: block processor pipeline
     public (Block Block, TxReceipt[] Receipts) ProcessOne(Block suggestedBlock, ProcessingOptions options, IBlockTracer blockTracer, IReleaseSpec spec, CancellationToken token)
     {
         if (_logger.IsTrace) _logger.Trace($"Processing block {suggestedBlock.ToString(Block.Format.Short)} ({options})");
@@ -82,7 +81,6 @@ public partial class BlockProcessor(
         return (block, receipts);
     }
 
-    // TODO: block processor pipeline
     private void ValidateProcessedBlock(Block suggestedBlock, ProcessingOptions options, Block block, TxReceipt[] receipts)
     {
         if (!options.ContainsFlag(ProcessingOptions.NoValidation) && !blockValidator.ValidateProcessedBlock(block, receipts, suggestedBlock, out string? error))
@@ -99,7 +97,6 @@ public partial class BlockProcessor(
     private bool ShouldComputeStateRoot(BlockHeader header) =>
         !header.IsGenesis || !specProvider.GenesisStateUnavailable;
 
-    // TODO: block processor pipeline
     protected virtual TxReceipt[] ProcessBlock(
         Block block,
         IBlockTracer blockTracer,
@@ -188,14 +185,12 @@ public partial class BlockProcessor(
         }
     }
 
-    // TODO: block processor pipeline
     private void StoreTxReceipts(Block block, TxReceipt[] txReceipts, IReleaseSpec spec)
     {
         // Setting canonical is done when the BlockAddedToMain event is fired
         receiptStorage.Insert(block, txReceipts, spec, false);
     }
 
-    // TODO: block processor pipeline
     private Block PrepareBlockForProcessing(Block suggestedBlock)
     {
         if (_logger.IsTrace) _logger.Trace($"{suggestedBlock.Header.ToString(BlockHeader.Format.Full)}");
@@ -237,7 +232,6 @@ public partial class BlockProcessor(
         return suggestedBlock.WithReplacedHeader(headerForProcessing);
     }
 
-    // TODO: block processor pipeline
     private void ApplyMinerRewards(Block block, IBlockTracer tracer, IReleaseSpec spec)
     {
         if (_logger.IsTrace) _logger.Trace("Applying miner rewards:");
@@ -265,7 +259,6 @@ public partial class BlockProcessor(
         }
     }
 
-    // TODO: block processor pipeline (only where rewards needed)
     private void ApplyMinerReward(Block block, BlockReward reward, IReleaseSpec spec)
     {
         if (_logger.IsTrace) _logger.Trace($"  {(BigInteger)reward.Value / (BigInteger)Unit.Ether:N3}{Unit.EthSymbol} for account at {reward.Address}");
@@ -273,7 +266,6 @@ public partial class BlockProcessor(
         _stateProvider.AddToBalanceAndCreateIfNotExists(reward.Address, reward.Value, spec);
     }
 
-    // TODO: block processor pipeline
     private void ApplyDaoTransition(Block block)
     {
         long? daoBlockNumber = specProvider.DaoBlockNumber;
