@@ -13,6 +13,7 @@ using Nethermind.Core;
 using Nethermind.Core.Timers;
 using Nethermind.Facade;
 using Nethermind.Facade.Eth;
+using Nethermind.Facade.Find;
 using Nethermind.Facade.Simulate;
 using Nethermind.Init.Steps.Migrations;
 using Nethermind.JsonRpc;

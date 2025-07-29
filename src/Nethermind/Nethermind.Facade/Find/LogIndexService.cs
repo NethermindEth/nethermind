@@ -6,7 +6,6 @@ using System.Collections.Generic;
 using System.Threading;
 using System.Threading.Channels;
 using System.Threading.Tasks;
-using Nethermind.Api;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Core;
@@ -14,10 +13,9 @@ using Nethermind.Core.Caching;
 using Nethermind.Core.Extensions;
 using Nethermind.Db;
 using Nethermind.Logging;
-using Nethermind.Synchronization.ParallelSync;
 using Timer = System.Timers.Timer;
 
-namespace Nethermind.Init.Steps.Migrations;
+namespace Nethermind.Facade.Find;
 
 // TODO: move to correct namespace
 // TODO: reduce periodic logging
@@ -64,20 +62,23 @@ public sealed class LogIndexService : ILogIndexService
 
     public string Description => "log index service";
 
-    public LogIndexService(IApiWithStores api, ISyncModeSelector syncModeSelector, IBlockTree blockTree, IReceiptFinder receiptFinder, IReceiptStorage receiptStorage)
+    public LogIndexService(ILogIndexStorage logIndexStorage, IBlockTree blockTree,
+        IReceiptFinder receiptFinder, IReceiptStorage receiptStorage, ILogManager logManager)
     {
-        ArgumentNullException.ThrowIfNull(api.LogIndexStorage);
-        ArgumentNullException.ThrowIfNull(api.LogManager);
+        ArgumentNullException.ThrowIfNull(logIndexStorage);
+        ArgumentNullException.ThrowIfNull(blockTree);
+        ArgumentNullException.ThrowIfNull(receiptFinder);
+        ArgumentNullException.ThrowIfNull(receiptStorage);
+        ArgumentNullException.ThrowIfNull(logManager);
 
+        _logIndexStorage = logIndexStorage;
         _blockTree = blockTree;
         _receiptFinder = receiptFinder;
         _receiptStorage = receiptStorage;
-        _logger = api.LogManager.GetClassLogger<LogIndexService>();
+        _logger = logManager.GetClassLogger<LogIndexService>();
 
-        _forwardProgressLogger = new(GetLogPrefix(isForward: true), api.LogManager);
-        _backwardProgressLogger = new(GetLogPrefix(isForward: false), api.LogManager);
-
-        _logIndexStorage = api.LogIndexStorage;
+        _forwardProgressLogger = new(GetLogPrefix(isForward: true), logManager);
+        _backwardProgressLogger = new(GetLogPrefix(isForward: false), logManager);
     }
 
     public Task StartAsync()
