@@ -11,7 +11,6 @@ using Nethermind.Db;
 using Nethermind.Facade;
 using Nethermind.JsonRpc;
 using Nethermind.JsonRpc.Data;
-using Nethermind.JsonRpc.Modules.DebugModule;
 using Nethermind.JsonRpc.Test;
 using Nethermind.Logging;
 using Nethermind.Merge.Plugin.Data;
@@ -22,6 +21,7 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
+using DebugRpcModule = Nethermind.Merge.Plugin.DebugRpcModule;
 
 namespace Nethermind.Merge.Plugin.Test;
 
@@ -36,7 +36,7 @@ public class EngineDebugModuleTests
     private readonly IBlockchainBridge blockchainBridge = Substitute.For<IBlockchainBridge>();
     private readonly MemDb _blocksDb = new();
 
-    private EngineDebugRpcModule CreateDebugRpcModule(IEngineDebugBridge customDebugBridge)
+    private DebugRpcModule CreateDebugRpcModule(IEngineDebugBridge customDebugBridge)
     {
         return new(
             LimboLogs.Instance,
@@ -74,9 +74,9 @@ public class EngineDebugModuleTests
 
         debugBridge.CalculateBlockHash(Arg.Any<ExecutionPayload>()).Returns(value);
         _ = Substitute.For<IConfigProvider>();
-        EngineDebugRpcModule rpcModule = CreateDebugRpcModule(debugBridge);
+        DebugRpcModule rpcModule = CreateDebugRpcModule(debugBridge);
         using var response =
-            await RpcTest.TestRequest<IEngineDebugRpcModule>(rpcModule, "debug_calculateBlockHash", CreateExecutionPayload()) as JsonRpcSuccessResponse;
+            await RpcTest.TestRequest<IDebugRpcModule>(rpcModule, "debug_calculateBlockHash", CreateExecutionPayload()) as JsonRpcSuccessResponse;
 
         Hash256? result = response?.Result as Hash256;
         Assert.That(result, Is.Not.Null);
@@ -101,9 +101,9 @@ public class EngineDebugModuleTests
         blockFinder.FindBlock(Arg.Any<BlockParameter>()).Returns(block);
         debugBridge.GenerateNewPayload(Arg.Any<BlockParameter>()).Returns(value);
         _ = Substitute.For<IConfigProvider>();
-        EngineDebugRpcModule rpcModule = CreateDebugRpcModule(debugBridge);
+        DebugRpcModule rpcModule = CreateDebugRpcModule(debugBridge);
         using var response =
-            await RpcTest.TestRequest<IEngineDebugRpcModule>(rpcModule, "debug_generateNewPayload", new BlockParameter(block.Hash!)) as JsonRpcSuccessResponse;
+            await RpcTest.TestRequest<IDebugRpcModule>(rpcModule, "debug_generateNewPayload", new BlockParameter(block.Hash!)) as JsonRpcSuccessResponse;
 
         ExecutionPayloadForDebugRpc? result = response?.Result as ExecutionPayloadForDebugRpc;
         Assert.That(result, Is.Not.Null);

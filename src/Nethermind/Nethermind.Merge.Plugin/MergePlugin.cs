@@ -26,7 +26,6 @@ using Nethermind.HealthChecks;
 using Nethermind.Init.Steps.Migrations;
 using Nethermind.JsonRpc;
 using Nethermind.JsonRpc.Modules;
-using Nethermind.JsonRpc.Modules.DebugModule;
 using Nethermind.Logging;
 using Nethermind.Merge.Plugin.BlockProduction;
 using Nethermind.Merge.Plugin.BlockProduction.Boost;
@@ -47,6 +46,8 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Net.Http;
 using System.Threading.Tasks;
+using IDebugRpcModule = Nethermind.Merge.Plugin.IDebugRpcModule;
+using DebugRpcModule = Nethermind.Merge.Plugin.DebugRpcModule;
 
 namespace Nethermind.Merge.Plugin;
 
@@ -272,10 +273,10 @@ public class MergePluginModule : Module
             .AddDecorator<ISealValidator, MergeSealValidator>()
             .AddDecorator<ISealer, MergeSealer>()
 
-            .RegisterBoundedJsonRpcModule<IEngineDebugRpcModule, EngineDebugModuleFactory>(Environment.ProcessorCount, Int32.MaxValue)
+            .RegisterBoundedJsonRpcModule<IDebugRpcModule, DebugModuleFactory>(Environment.ProcessorCount, Int32.MaxValue)
                 .AddScoped<GethStyleTracer.BlockProcessingComponents>()
                 .AddScoped<IEngineDebugBridge, EngineDebugBridge>()
-                .AddScoped<IEngineDebugRpcModule, EngineDebugRpcModule>()
+                .AddScoped<IDebugRpcModule, DebugRpcModule>()
                 .AddScoped<IGethStyleTracer, GethStyleTracer>()
                 .AddScoped<IReceiptsMigration, ReceiptMigration>()
 

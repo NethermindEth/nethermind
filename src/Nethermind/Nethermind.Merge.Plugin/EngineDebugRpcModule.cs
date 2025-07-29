@@ -22,7 +22,8 @@ using System.Threading.Tasks;
 
 namespace Nethermind.Merge.Plugin
 {
-    public class EngineDebugRpcModule : IEngineDebugRpcModule
+    // same name as DebugRpcModule in Nethermind.JsonRpc.Modules.DebugModule so they both get activated by same name (Debug)
+    public class DebugRpcModule : IDebugRpcModule
     {
         private readonly IEngineDebugBridge _mergeDebugBridge;
         private readonly ILogManager _logManager;
@@ -32,7 +33,7 @@ namespace Nethermind.Merge.Plugin
         private readonly IBlocksConfig _blocksConfig;
         private readonly IBlockFinder _blockFinder;
 
-        public EngineDebugRpcModule(
+        public DebugRpcModule(
             ILogManager logManager,
             IEngineDebugBridge debugBridge,
             IJsonRpcConfig jsonRpcConfig,

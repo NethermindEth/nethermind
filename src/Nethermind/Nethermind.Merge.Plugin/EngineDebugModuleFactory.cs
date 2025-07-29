@@ -5,34 +5,36 @@ using Autofac;
 using Nethermind.Consensus.Processing;
 using Nethermind.Consensus.Tracing;
 using Nethermind.Core;
+using Nethermind.Core.Container;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.JsonRpc.Modules;
-using Nethermind.JsonRpc.Modules.DebugModule;
 using Nethermind.State.OverridableEnv;
 using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
+using IDebugRpcModule = Nethermind.Merge.Plugin.IDebugRpcModule;
 
 namespace Nethermind.Merge.Plugin;
-public class EngineDebugModuleFactory(IOverridableEnvFactory envFactory, ILifetimeScope rootLifetimeScope) : IRpcModuleFactory<IEngineDebugRpcModule>
+public class DebugModuleFactory(
+    IOverridableEnvFactory envFactory,
+    ILifetimeScope rootLifetimeScope,
+    IBlockValidationModule[] validationBlockProcessingModules
+) : IRpcModuleFactory<IDebugRpcModule>
 {
-    protected virtual ContainerBuilder ConfigureTracerContainer(ContainerBuilder builder)
-    {
-        return builder
-                // Standard configuration
-                // Note: Not overriding `IReceiptStorage` to null.
-                .Bind<IBlockProcessor.IBlockTransactionsExecutor, IValidationTransactionExecutor>()
-                .AddDecorator<IBlockchainProcessor, OneTimeChainProcessor>()
-                .AddScoped<BlockchainProcessor.Options>(BlockchainProcessor.Options.NoReceipts)
+    private ContainerBuilder ConfigureTracerContainer(ContainerBuilder builder) =>
+        builder
+            // Standard configuration
+            // Note: Not overriding `IReceiptStorage` to null.
+            .AddModule(validationBlockProcessingModules)
+            .AddDecorator<IBlockchainProcessor, OneTimeChainProcessor>()
+            .AddScoped<BlockchainProcessor.Options>(BlockchainProcessor.Options.NoReceipts)
 
-                // So the debug rpc change the adapter sometime.
-                .AddScoped<ITransactionProcessorAdapter, ChangeableTransactionProcessorAdapter>()
-            ;
-    }
+            // So the debug rpc change the adapter sometime.
+            .AddScoped<ITransactionProcessorAdapter, ChangeableTransactionProcessorAdapter>();
 
-    public IEngineDebugRpcModule Create()
+    public IDebugRpcModule Create()
     {
         IOverridableEnv env = envFactory.Create();
 
@@ -49,6 +51,6 @@ public class EngineDebugModuleFactory(IOverridableEnvFactory envFactory, ILifeti
         debugRpcModuleLifetime.Disposer.AddInstanceForAsyncDisposal(tracerLifecyccle);
         rootLifetimeScope.Disposer.AddInstanceForAsyncDisposal(debugRpcModuleLifetime);
 
-        return debugRpcModuleLifetime.Resolve<IEngineDebugRpcModule>();
+        return debugRpcModuleLifetime.Resolve<IDebugRpcModule>();
     }
 }
