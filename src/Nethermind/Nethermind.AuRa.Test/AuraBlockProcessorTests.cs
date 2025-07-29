@@ -42,7 +42,7 @@ namespace Nethermind.AuRa.Test
         [Test]
         public void Prepared_block_contains_author_field()
         {
-            AuRaBlockProcessor processor = CreateProcessor().Processor;
+            BranchProcessor processor = CreateProcessor().Processor;
 
             BlockHeader header = Build.A.BlockHeader.WithAuthor(TestItem.AddressD).TestObject;
             Block block = Build.A.Block.WithHeader(header).TestObject;
@@ -62,7 +62,7 @@ namespace Nethermind.AuRa.Test
             txFilter
                 .IsAllowed(Arg.Any<Transaction>(), Arg.Any<BlockHeader>(), Arg.Any<IReleaseSpec>())
                 .Returns(AcceptTxResult.Accepted);
-            AuRaBlockProcessor processor = CreateProcessor(txFilter).Processor;
+            BranchProcessor processor = CreateProcessor(txFilter).Processor;
 
             BlockHeader header = Build.A.BlockHeader.WithAuthor(TestItem.AddressD).WithNumber(3).TestObject;
             Transaction tx = Nethermind.Core.Test.Builders.Build.A.Transaction.WithData(new byte[] { 0, 1 })
@@ -79,7 +79,7 @@ namespace Nethermind.AuRa.Test
         [Test]
         public void For_normal_processing_it_should_not_fail_with_gas_remaining_rules()
         {
-            AuRaBlockProcessor processor = CreateProcessor().Processor;
+            BranchProcessor processor = CreateProcessor().Processor;
             int gasLimit = 10000000;
             BlockHeader header = Build.A.BlockHeader.WithAuthor(TestItem.AddressD).WithNumber(3).TestObject;
             Transaction tx = Nethermind.Core.Test.Builders.Build.A.Transaction.WithData(new byte[] { 0, 1 })
@@ -96,7 +96,7 @@ namespace Nethermind.AuRa.Test
         [Test]
         public void Should_rewrite_contracts()
         {
-            static BlockHeader Process(AuRaBlockProcessor auRaBlockProcessor, BlockHeader parent)
+            static BlockHeader Process(BranchProcessor auRaBlockProcessor, BlockHeader parent)
             {
                 BlockHeader header = Build.A.BlockHeader.WithAuthor(TestItem.AddressD).WithParent(parent).TestObject;
                 Block block = Build.A.Block.WithHeader(header).TestObject;
@@ -127,7 +127,7 @@ namespace Nethermind.AuRa.Test
                 },
             };
 
-            (AuRaBlockProcessor processor, IWorldState stateProvider) =
+            (BranchProcessor processor, IWorldState stateProvider) =
                 CreateProcessor(contractRewriter: new ContractRewriter(contractOverrides));
 
             stateProvider.CreateAccount(TestItem.AddressA, UInt256.One);
@@ -150,7 +150,7 @@ namespace Nethermind.AuRa.Test
             stateProvider.GetCode(TestItem.AddressB).Should().BeEquivalentTo(Bytes.FromHexString("0x654"));
         }
 
-        private (AuRaBlockProcessor Processor, IWorldState StateProvider) CreateProcessor(ITxFilter? txFilter = null, ContractRewriter? contractRewriter = null)
+        private (BranchProcessor Processor, IWorldState StateProvider) CreateProcessor(ITxFilter? txFilter = null, ContractRewriter? contractRewriter = null)
         {
             IWorldStateManager worldStateManager = TestWorldStateFactory.CreateForTest();
             IWorldState stateProvider = worldStateManager.GlobalWorldState;
@@ -171,7 +171,14 @@ namespace Nethermind.AuRa.Test
                 txFilter,
                 contractRewriter: contractRewriter);
 
-            return (processor, stateProvider);
+            BranchProcessor branchProcessor = new BranchProcessor(
+                processor,
+                HoleskySpecProvider.Instance,
+                stateProvider,
+                new BeaconBlockRootHandler(transactionProcessor, stateProvider),
+                LimboLogs.Instance);
+
+            return (branchProcessor, stateProvider);
         }
     }
 }

@@ -74,7 +74,7 @@ public class NettyDiscoveryHandler : NettyDiscoveryBaseHandler, IMsgSender
         try
         {
             if (_logger.IsTrace) _logger.Trace($"Sending message: {discoveryMsg}");
-            msgBuffer = Serialize(discoveryMsg, PooledByteBufferAllocator.Default);
+            msgBuffer = Serialize(discoveryMsg, _channel.Allocator);
         }
         catch (Exception e)
         {
@@ -203,7 +203,7 @@ public class NettyDiscoveryHandler : NettyDiscoveryBaseHandler, IMsgSender
         };
     }
 
-    private IByteBuffer Serialize(DiscoveryMsg msg, AbstractByteBufferAllocator? allocator)
+    private IByteBuffer Serialize(DiscoveryMsg msg, IByteBufferAllocator? allocator)
     {
         return msg.MsgType switch
         {
