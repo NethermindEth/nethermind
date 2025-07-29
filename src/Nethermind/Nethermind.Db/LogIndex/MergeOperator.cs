@@ -54,8 +54,8 @@ partial class LogIndexStorage
             try
             {
                 // Fast return in case of a single operand
-                // if (!enumerator.HasExistingValue && enumerator.OperandsCount == 1 && !MergeOps.IsAny(enumerator.GetOperand(0)))
-                //     return new(enumerator.GetOperand(0));
+                if (!enumerator.HasExistingValue && enumerator.OperandsCount == 1 && !MergeOps.IsAny(enumerator.GetOperand(0)))
+                    return new(enumerator.GetOperand(0));
 
                 bool isBackwards = UseBackwardSyncFor(key);
 
@@ -94,8 +94,8 @@ partial class LogIndexStorage
                     if (FindNext(MergeOp.ReorgOp, enumerator, ref iReorg) is { } reorgBlock)
                         operand = MergeOps.ApplyTo(operand, MergeOp.ReorgOp, reorgBlock, isBackwards);
 
-                    // if (truncateAggregate is { } truncateBlock)
-                    //     operand = MergeOps.ApplyTo(operand, MergeOp.TruncateOp, truncateBlock, isBackwards);
+                    if (truncateAggregate is { } truncateBlock)
+                        operand = MergeOps.ApplyTo(operand, MergeOp.TruncateOp, truncateBlock, isBackwards);
 
                     AddEnsureSorted(result, operand, isBackwards);
                 }
@@ -106,7 +106,6 @@ partial class LogIndexStorage
                 compressor.TryEnqueue(key, result.AsSpan());
 
                 success = true;
-                _stats.MergeResultSize.Include(result.Count);
                 return result;
             }
             finally

@@ -12,7 +12,6 @@ using System.Threading.Tasks;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
-using Nethermind.Core.Extensions;
 using Nethermind.Logging;
 #pragma warning disable CS0162 // Unreachable code detected
 
@@ -88,9 +87,8 @@ namespace Nethermind.Db
             _maxReorgDepth = maxReorgDepth ?? Defaults.MaxReorgDepth;
 
             _logger = logManager.GetClassLogger<LogIndexStorage>();
-            _compressor = new NoOpCompressor();
+            _compressor = new Compressor(this, _logger, ioParallelism ?? Defaults.IOParallelism);
             _compactor = compactionDistance.HasValue ? new Compactor(this, _logger, compactionDistance.Value) : new NoOpCompactor();
-            //_compactor = new NoOpCompactor();
             _columnsDb = dbFactory.CreateColumnsDb<LogIndexColumns>(new("logIndexStorage", DbNames.LogIndex)
             {
                 MergeOperator = _mergeOperator = new(_compressor)
@@ -599,25 +597,6 @@ namespace Nethermind.Db
                 dbBatch.topic.Dispose();
                 stats?.WaitingBatch.Include(Stopwatch.GetElapsedTime(timestamp));
 
-                foreach (var (address, _) in aggregate.Address)
-                {
-                    var dbKeyArray = new byte[Address.Size + SpecialPostfix.ForwardMergeLength];
-                    ReadOnlySpan<byte> dbKey = CreateMergeDbKey(address.Bytes, dbKeyArray, isBackwardSync);
-
-                    if (_addressDb.Get(dbKey) is not { Length: > 0 })
-                    {
-                        _addressDb.Merge(dbKey, 1.ToLittleEndianByteArray());
-                    }
-
-                    if (_addressDb.Get(dbKey) is not { Length: > 0 })
-                    {
-                        throw new InvalidOperationException(
-                            $"Invalid DB result value for {Convert.ToHexString(dbKey)} in {nameof(_addressDb)}" +
-                            $"Batch: {dbBatch.address.GetType()}"
-                        );
-                    }
-                }
-
                 // Enqueue compaction if needed
                 _compactor.TryEnqueue();
 
@@ -666,7 +645,6 @@ namespace Nethermind.Db
                     throw ValidationException($"No block numbers to save for {Convert.ToHexString(key)}.");
 
                 dbBatch.Merge(dbKey, newValue);
-                stats?.MergeSize.Include(newValue.Length);
                 stats?.CallingMerge.Include(Stopwatch.GetElapsedTime(timestamp));
             }
             finally
@@ -799,7 +777,13 @@ namespace Nethermind.Db
 
         private static int[] DecompressDbValue(ReadOnlySpan<byte> data)
         {
-            throw new NotImplementedException();
+            var len = ReadCompressionMarker(data);
+            if (len < 0)
+                throw new ValidationException("Data is not compressed");
+
+            var buffer = new int[len];
+            var result = Decompress(data[BlockNumSize..], buffer);
+            return result.ToArray();
         }
 
         private static void ReverseBlocksIfNeeded(Span<byte> data)

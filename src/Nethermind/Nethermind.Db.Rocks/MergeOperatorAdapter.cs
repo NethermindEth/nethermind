@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using Nethermind.Core.Collections;
 using RocksDbSharp;
@@ -26,15 +27,14 @@ internal class MergeOperatorAdapter(IMergeOperator inner) : MergeOperator
         using (data)
         {
             void* resultPtr = NativeMemory.Alloc((uint)data.Count);
-            Console.WriteLine($"Allocated {data.Count} bytes at {(IntPtr)resultPtr:x}");
-
             var result = new Span<byte>(resultPtr, data.Count);
             data.AsSpan().CopyTo(result);
-            Console.WriteLine($"Copied {Convert.ToHexString(data.AsSpan())} to {(IntPtr)resultPtr:x}");
 
-            success = Convert.ToInt32(true);
-            resultLength = new(result.Length);
-            Console.WriteLine($"Assigned ({resultLength}, {success})");
+            resultLength = result.Length;
+
+            // Fixing RocksDbSharp invalid callback signature, TODO: submit an issue/PR
+            Unsafe.SkipInit(out success);
+            Unsafe.As<IntPtr, byte>(ref success) = 1;
 
             return (IntPtr)resultPtr;
         }

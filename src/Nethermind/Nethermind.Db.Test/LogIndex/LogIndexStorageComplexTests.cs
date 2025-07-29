@@ -23,66 +23,13 @@ using NUnit.Framework.Interfaces;
 
 namespace Nethermind.Db.Test.LogIndex
 {
-    [Parallelizable(ParallelScope.None)]
-    public class MergeTest
-    {
-        private class FirstValueMergeOperator : IMergeOperator
-        {
-            public string Name { get; }
-
-            public ArrayPoolList<byte>? FullMerge(ReadOnlySpan<byte> key, RocksDbMergeEnumerator enumerator)
-            {
-                Console.WriteLine($"FullMerge: {Convert.ToHexString(key)} => {Convert.ToHexString(enumerator.Get(0))}\n{new StackTrace()}");
-                return new(enumerator.Get(0));
-            }
-
-            public ArrayPoolList<byte>? PartialMerge(ReadOnlySpan<byte> key, RocksDbMergeEnumerator enumerator)
-            {
-                Console.WriteLine($"PartialMerge: {Convert.ToHexString(key)} => {Convert.ToHexString(enumerator.Get(0))}\n{new StackTrace()}");
-                return new(enumerator.Get(0));
-            }
-        }
-
-        private readonly StringWriter _output = new();
-
-        [Test]
-        public void Merge()
-        {
-            var prevOut = Console.Out;
-            Console.SetOut(_output);
-
-            try
-            {
-                var config = new DbConfig();
-                var configFactory = new RocksDbConfigFactory(new DbConfig(), new PruningConfig(), new TestHardwareInfo(0), LimboLogs.Instance);
-                var dbPath = $"{nameof(MergeTest)}/{Guid.NewGuid():N}";
-                var dbFactory = new RocksDbFactory(configFactory, config, new TestLogManager(), dbPath);
-                IDb db = dbFactory.CreateDb(new(nameof(MergeTest), dbPath)
-                {
-                    MergeOperator = new FirstValueMergeOperator()
-                });
-
-                var key = Enumerable.Range(0, 5).Select(i => (byte)i).ToArray();
-                var value = Enumerable.Range(0, 10).Select(i => (byte)i).ToArray();
-                db.Merge(key, value);
-
-                Assert.That(db.Get(key), Is.EqualTo(value), _output.ToString());
-            }
-            finally
-            {
-                Console.SetOut(prevOut);
-            }
-        }
-    }
-
     // TODO: test for different block ranges intersection
     // TODO: run internal state verification for each test
     // TODO: test for process crash via Thread.Abort
     // TODO: test for reorg out-of-order
     // TODO: test for concurrent forward and backward sync after first block is added
-    [Ignore("Merge is broken on Ubuntu?.")]
     [TestFixtureSource(nameof(TestCases))]
-    [Parallelizable(ParallelScope.None)]
+    [Parallelizable(ParallelScope.All)]
     [FixtureLifeCycle(LifeCycle.InstancePerTestCase)]
     public class LogIndexStorageComplexTests(LogIndexStorageComplexTests.TestData testData)
     {
@@ -118,8 +65,8 @@ namespace Nethermind.Db.Test.LogIndex
             _logger = LimboLogs.Instance.GetClassLogger();
             _dbPath = $"{nameof(LogIndexStorageComplexTests)}/{Guid.NewGuid():N}";
 
-            // if (Directory.Exists(_dbPath))
-            //     Directory.Delete(_dbPath, true);
+            if (Directory.Exists(_dbPath))
+                Directory.Delete(_dbPath, true);
 
             Directory.CreateDirectory(_dbPath);
 
@@ -142,7 +89,7 @@ namespace Nethermind.Db.Test.LogIndex
 
             try
             {
-                //Directory.Delete(_dbPath, true);
+                Directory.Delete(_dbPath, true);
             }
             catch
             {
@@ -160,7 +107,7 @@ namespace Nethermind.Db.Test.LogIndex
 
             try
             {
-                //Directory.Delete(nameof(LogIndexStorageComplexTests), true);
+                Directory.Delete(nameof(LogIndexStorageComplexTests), true);
             }
             catch
             {
@@ -482,7 +429,7 @@ namespace Nethermind.Db.Test.LogIndex
             );
         }
 
-        private void VerifyReceipts(ILogIndexStorage logIndexStorage, TestData testData,
+        private static void VerifyReceipts(ILogIndexStorage logIndexStorage, TestData testData,
             Dictionary<Address, HashSet<int>>? excludedAddresses = null,
             Dictionary<Hash256, HashSet<int>>? excludedTopics = null,
             HashSet<int>? excludedBlockNums = null,
@@ -530,9 +477,9 @@ namespace Nethermind.Db.Test.LogIndex
                 foreach (var (from, to) in testData.Ranges)
                 {
                     Assert.That(
-                        logIndexStorage.GetBlockNumbersFor(address, from, to).ToArray(),
-                        Is.EqualTo(expectedNums.SkipWhile(i => i < from).TakeWhile(i => i <= to).ToArray()),
-                        $"Address: {address}, from {from} to {to} (endianness: {(BitConverter.IsLittleEndian ? "little" : "big")}, db: {_dbPath})"
+                        logIndexStorage.GetBlockNumbersFor(address, from, to),
+                        Is.EqualTo(expectedNums.SkipWhile(i => i < from).TakeWhile(i => i <= to)),
+                        $"Address: {address}, from {from} to {to}"
                     );
                 }
             }
@@ -571,7 +518,7 @@ namespace Nethermind.Db.Test.LogIndex
             }
         }
 
-        private void VerifyReceipts(ILogIndexStorage logIndexStorage, TestData testData,
+        private static void VerifyReceipts(ILogIndexStorage logIndexStorage, TestData testData,
             IEnumerable<BlockReceipts>? excludedBlocks, IEnumerable<BlockReceipts>? addedBlocks = null,
             int? minBlock = null, int? maxBlock = null,
             bool validateMinMax = true)
