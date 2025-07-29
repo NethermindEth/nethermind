@@ -68,7 +68,7 @@ namespace Nethermind.Db
         private readonly int _maxReorgDepth;
 
         private readonly MergeOperator _mergeOperator;
-        private readonly Compressor _compressor;
+        private readonly ICompressor _compressor;
         private readonly ICompactor _compactor;
 
         private int? _addressMaxBlock;
@@ -87,7 +87,7 @@ namespace Nethermind.Db
             _maxReorgDepth = maxReorgDepth ?? Defaults.MaxReorgDepth;
 
             _logger = logManager.GetClassLogger<LogIndexStorage>();
-            _compressor = new(this, _logger, ioParallelism ?? Defaults.IOParallelism);
+            _compressor = new Compressor(this, _logger, ioParallelism ?? Defaults.IOParallelism);
             _compactor = compactionDistance.HasValue ? new Compactor(this, _logger, compactionDistance.Value) : new NoOpCompactor();
             _columnsDb = dbFactory.CreateColumnsDb<LogIndexColumns>(new("logIndexStorage", DbNames.LogIndex)
             {

@@ -12,7 +12,7 @@ partial class LogIndexStorage
 {
     // TODO: check if success=false + paranoid_checks=true is better than throwing exception
     // TODO: tests for MergeOperator specifically?
-    private class MergeOperator(Compressor compressor) : IMergeOperator
+    private class MergeOperator(ICompressor compressor) : IMergeOperator
     {
         private LogIndexUpdateStats _stats = new();
         public LogIndexUpdateStats GetAndResetStats() => Interlocked.Exchange(ref _stats, new());

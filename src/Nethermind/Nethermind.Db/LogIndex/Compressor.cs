@@ -16,7 +16,17 @@ namespace Nethermind.Db;
 
 partial class LogIndexStorage
 {
-    private class Compressor
+    private interface ICompressor
+    {
+        PostMergeProcessingStats Stats { get; }
+        PostMergeProcessingStats GetAndResetStats();
+        bool TryEnqueue(ReadOnlySpan<byte> dbKey, ReadOnlySpan<byte> dbValue);
+        Task EnqueueAsync(byte[] dbKey);
+        void WaitUntilEmpty();
+        Task StopAsync();
+    }
+
+    private class Compressor : ICompressor
     {
         public const int MinLengthToCompress = 128 * BlockNumSize;
 
@@ -30,6 +40,7 @@ partial class LogIndexStorage
 
         private PostMergeProcessingStats _stats = new();
         public PostMergeProcessingStats Stats => _stats;
+
         public PostMergeProcessingStats GetAndResetStats()
         {
             _stats.QueueLength = _processingBlock.InputCount;
@@ -143,5 +154,15 @@ partial class LogIndexStorage
                     _queueEmptyEvent.Set();
             }
         }
+    }
+
+    public class NoOpCompressor : ICompressor
+    {
+        public PostMergeProcessingStats Stats { get; } = new();
+        public PostMergeProcessingStats GetAndResetStats() => Stats;
+        public bool TryEnqueue(ReadOnlySpan<byte> dbKey, ReadOnlySpan<byte> dbValue) => true;
+        public Task EnqueueAsync(byte[] dbKey) => Task.CompletedTask;
+        public void WaitUntilEmpty() { }
+        public Task StopAsync() => Task.CompletedTask;
     }
 }
