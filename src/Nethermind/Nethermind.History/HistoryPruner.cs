@@ -201,6 +201,7 @@ public class HistoryPruner : IHistoryPruner
             // cutoff is unchanged, can reuse
             if (_cutoffTimestamp is not null && cutoffTimestamp == _cutoffTimestamp)
             {
+                _logger.Info($"[prune] cuttoff pointer unchanged #{_cutoffPointer}");
                 return _cutoffPointer;
             }
 
@@ -208,6 +209,7 @@ public class HistoryPruner : IHistoryPruner
             if (_cutoffPointer is not null)
             {
                 int attempts = 0;
+                _logger.Info($"[prune] starting optimistic cutoff search in range {_cutoffPointer.Value}-{searchCutoff}");
                 GetBlocksByNumber(_cutoffPointer.Value, searchCutoff, b =>
                 {
                     if (attempts >= 5)
@@ -226,10 +228,14 @@ public class HistoryPruner : IHistoryPruner
                     return afterCutoff;
                 });
             }
+            else
+            {
+                _logger.Info($"[prune] skipping optimistic cutoff search");
+            }
 
             if (cutoffBlockNumber is null)
             {
-                _logger.Info($"[prune] Optimistic cutoff search failed.");
+                _logger.Info($"[prune] optimistic cutoff search failed.");
             }
 
             _logger.Info($"[prune] searching for cutoff block number in range {_deletePointer}-{searchCutoff}");
@@ -397,7 +403,7 @@ public class HistoryPruner : IHistoryPruner
     private IEnumerable<Block> GetBlocksByNumber(long from, long to, Predicate<Block> endSearch)
     {
         _logger.Info($"[prune] Searching for blocks in range {from}-{to}.");
-        for (long i = from; i <= to; i++)
+        for (long i = from; i < to; i++)
         {
             ChainLevelInfo? chainLevelInfo = _chainLevelInfoRepository.LoadLevel(i);
             if (chainLevelInfo is null || chainLevelInfo.BlockInfos.Length == 0)
