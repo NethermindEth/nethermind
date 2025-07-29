@@ -8,7 +8,6 @@ using Nethermind.Network;
 using Nethermind.Network.P2P;
 using Nethermind.Stats.Model;
 using Nethermind.Network.Enr;
-using Nethermind.JsonRpc.Modules.Admin.Converters;
 using Nethermind.Serialization.Json;
 using Nethermind.Network.Contract;
 using Nethermind.Network.Contract.P2P;
