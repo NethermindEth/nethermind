@@ -25,13 +25,18 @@ internal class MergeOperatorAdapter(IMergeOperator inner) : MergeOperator
 
         using (data)
         {
-            IntPtr resultPtr = Marshal.AllocHGlobal(data.Count);
-            var result = new Span<byte>(resultPtr.ToPointer(), data.Count);
+            void* resultPtr = NativeMemory.Alloc((uint)data.Count);
+            Console.WriteLine($"Allocated {data.Count} bytes at {(IntPtr)resultPtr:x}");
+
+            var result = new Span<byte>(resultPtr, data.Count);
             data.AsSpan().CopyTo(result);
+            Console.WriteLine($"Copied {Convert.ToHexString(data.AsSpan())} to {(IntPtr)resultPtr:x}");
 
             resultLength = data.Count;
             success = Convert.ToInt32(true);
-            return resultPtr;
+
+            Console.WriteLine($"Returning ({resultLength}, {success})");
+            return (IntPtr)resultPtr;
         }
     }
 
@@ -71,5 +76,5 @@ internal class MergeOperatorAdapter(IMergeOperator inner) : MergeOperator
         return GetResult(result, out resultLength, out successPtr);
     }
 
-    void MergeOperator.DeleteValue(IntPtr value, UIntPtr valueLength) => Marshal.FreeHGlobal(value);
+    unsafe void MergeOperator.DeleteValue(IntPtr value, UIntPtr valueLength) => NativeMemory.Free((void*)value);
 }
