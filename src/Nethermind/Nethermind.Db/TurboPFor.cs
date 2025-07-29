@@ -221,6 +221,9 @@ namespace Nethermind.Db
 
         private static IntPtr OnResolvingUnmanagedDll(Assembly context, string name)
         {
+            if (!LibraryName.Equals(name, StringComparison.Ordinal))
+                return nint.Zero;
+
             if (_libraryFallbackPath is null)
             {
                 string platform;
