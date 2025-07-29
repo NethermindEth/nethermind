@@ -829,10 +829,10 @@ namespace Nethermind.Blockchain
             }
 
             _blockStore.Delete(currentNumber, currentHash);
-            _headerStore.Delete(currentHash);
+            // _headerStore.Delete(currentHash);
 
             // only remove block info when pruning old blocks, not recent invalid ones
-            if (isOldBlock) _chainLevelInfoRepository.Delete(currentNumber, batch);
+            // if (isOldBlock) _chainLevelInfoRepository.Delete(currentNumber, batch);
         }
 
         private void DeleteInvalidBranch(Hash256 deletePointer)
