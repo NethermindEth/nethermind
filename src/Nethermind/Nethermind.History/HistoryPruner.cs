@@ -205,30 +205,32 @@ public class HistoryPruner : IHistoryPruner
             }
 
             // optimisticly search a few blocks from old pointer
-            // if (_cutoffPointer is not null)
-            // {
-            //     int attempts = 0;
-            //     GetBlocksByNumber(_cutoffPointer.Value, searchCutoff, b =>
-            //     {
-            //         if (attempts >= 5)
-            //         {
-            //             return true;
-            //         }
+            if (_cutoffPointer is not null)
+            {
+                int attempts = 0;
+                GetBlocksByNumber(_cutoffPointer.Value, searchCutoff, b =>
+                {
+                    if (attempts >= 5)
+                    {
+                        return true;
+                    }
 
-            //         bool afterCutoff = b.Timestamp >= cutoffTimestamp;
-            //         if (afterCutoff)
-            //         {
-            //             cutoffBlockNumber = b.Number;
-            //         }
-            //         attempts++;
-            //         return afterCutoff;
-            //     });
-            // }
+                    _logger.Info($"[prune] optimistic linear scanning level {b} for cutoff block");
 
-            // if (cutoffBlockNumber is null)
-            // {
-            //     _logger.Info($"[prune] Optimistic cutoff search failed.");
-            // }
+                    bool afterCutoff = b.Timestamp >= cutoffTimestamp;
+                    if (afterCutoff)
+                    {
+                        cutoffBlockNumber = b.Number;
+                    }
+                    attempts++;
+                    return afterCutoff;
+                });
+            }
+
+            if (cutoffBlockNumber is null)
+            {
+                _logger.Info($"[prune] Optimistic cutoff search failed.");
+            }
 
             _logger.Info($"[prune] searching for cutoff block number in range {_deletePointer}-{searchCutoff}");
 
