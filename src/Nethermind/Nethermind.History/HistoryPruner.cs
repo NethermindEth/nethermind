@@ -3,6 +3,7 @@
 
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using System.Runtime.CompilerServices;
 using System.Threading;
 using System.Threading.Tasks;
@@ -17,7 +18,6 @@ using Nethermind.Db;
 using Nethermind.Logging;
 using Nethermind.Serialization.Rlp;
 using Nethermind.State.Repositories;
-using ZstdSharp.Unsafe;
 
 [assembly: InternalsVisibleTo("Nethermind.History.Test")]
 
@@ -210,7 +210,7 @@ public class HistoryPruner : IHistoryPruner
             {
                 int attempts = 0;
                 _logger.Info($"[prune] starting optimistic cutoff search in range {_cutoffPointer.Value}-{searchCutoff}");
-                GetBlocksByNumber(_cutoffPointer.Value, searchCutoff, b =>
+                _ = GetBlocksByNumber(_cutoffPointer.Value, searchCutoff, b =>
                 {
                     if (attempts >= 5)
                     {
@@ -226,7 +226,7 @@ public class HistoryPruner : IHistoryPruner
                     }
                     attempts++;
                     return afterCutoff;
-                });
+                }).ToList();
             }
             else
             {
