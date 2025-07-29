@@ -155,6 +155,7 @@ namespace Nethermind.Api
         public IKeyStore? KeyStore { get; set; }
         public ILogFinder? LogFinder { get; set; }
         public ILogIndexStorage? LogIndexStorage { get; set; }
+        public ILogIndexService? LogIndexService { get; set; }
         public ILogManager LogManager => _dependencies.LogManager;
         public IMessageSerializationService MessageSerializationService => Context.Resolve<IMessageSerializationService>();
         public IGossipPolicy GossipPolicy { get; set; } = Policy.FullGossip;

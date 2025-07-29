@@ -14,7 +14,6 @@ using Nethermind.Blockchain.Receipts;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Consensus;
 using Nethermind.Core;
-using Nethermind.Core.ServiceStopper;
 using Nethermind.Db;
 using Nethermind.Db.Blooms;
 using Nethermind.Facade.Find;
@@ -26,13 +25,11 @@ namespace Nethermind.Init.Steps
     [RunnerStepDependencies(typeof(InitTxTypesAndRlp), typeof(InitDatabase), typeof(MigrateConfigs), typeof(SetupKeyStore))]
     public class InitializeBlockTree : IStep
     {
-        private readonly IServiceStopper _stopper;
         private readonly IBasicApi _get;
         private readonly IApiWithStores _set;
 
-        public InitializeBlockTree(INethermindApi api, IServiceStopper stopper)
+        public InitializeBlockTree(INethermindApi api)
         {
-            _stopper = stopper;
             (_get, _set) = api.ForInit;
         }
 
@@ -105,6 +102,15 @@ namespace Nethermind.Init.Steps
                 receiptConfig.LogIndexCompactionDistance
             );
             _get.DisposeStack.Push(logIndexStorage);
+
+            ILogIndexService logIndexService = _set.LogIndexService = new LogIndexService(
+                logIndexStorage,
+                blockTree,
+                receiptFinder,
+                receiptStorage,
+                _get.LogManager
+            );
+            _get.DisposeStack.Push(logIndexService);
 
             LogFinder logFinder = new(
                 blockTree,

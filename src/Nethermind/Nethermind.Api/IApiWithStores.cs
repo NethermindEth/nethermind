@@ -23,6 +23,7 @@ namespace Nethermind.Api
         IBloomStorage? BloomStorage { get; set; }
         IChainLevelInfoRepository? ChainLevelInfoRepository { get; set; }
         ILogFinder? LogFinder { get; set; }
+        ILogIndexService? LogIndexService { get; set; }
         ILogIndexStorage? LogIndexStorage { get; set; }
         ISigner? EngineSigner { get; set; }
         ISignerStore? EngineSignerStore { get; set; }

@@ -5,7 +5,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Api;
 using Nethermind.Api.Steps;
-using Nethermind.Init.Steps.Migrations;
+using Nethermind.Facade.Find;
 
 namespace Nethermind.Init.Steps
 {

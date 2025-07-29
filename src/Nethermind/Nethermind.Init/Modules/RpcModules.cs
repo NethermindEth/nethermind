@@ -4,7 +4,6 @@
 using Autofac;
 using Nethermind.Core;
 using Nethermind.Facade.Eth;
-using Nethermind.Init.Steps.Migrations;
 using Nethermind.JsonRpc.Modules;
 using Nethermind.JsonRpc.Modules.Net;
 using Nethermind.JsonRpc.Modules.Parity;
@@ -28,7 +27,6 @@ public class RpcModules : Module
             .RegisterSingletonJsonRpcModule<INetRpcModule, NetRpcModule>()
             .RegisterSingletonJsonRpcModule<IParityRpcModule, ParityRpcModule>()
             .RegisterSingletonJsonRpcModule<IWeb3RpcModule, Web3RpcModule>()
-            .AddSingleton<ILogIndexService, LogIndexService>() // TODO: relocate registration?
             ;
     }
 }

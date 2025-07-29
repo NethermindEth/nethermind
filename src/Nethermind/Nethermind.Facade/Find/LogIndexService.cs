@@ -13,7 +13,6 @@ using Nethermind.Core.Caching;
 using Nethermind.Core.Extensions;
 using Nethermind.Db;
 using Nethermind.Logging;
-using Nethermind.Synchronization.ParallelSync;
 using Timer = System.Timers.Timer;
 
 namespace Nethermind.Facade.Find;
@@ -66,9 +65,6 @@ public sealed class LogIndexService : ILogIndexService
     public LogIndexService(ILogIndexStorage logIndexStorage, IBlockTree blockTree,
         IReceiptFinder receiptFinder, IReceiptStorage receiptStorage, ILogManager logManager)
     {
-        ArgumentNullException.ThrowIfNull(logIndexStorage);
-        ArgumentNullException.ThrowIfNull(logIndexStorage);
-
         _logIndexStorage = logIndexStorage;
         _blockTree = blockTree;
         _receiptFinder = receiptFinder;

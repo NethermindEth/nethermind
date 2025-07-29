@@ -6,7 +6,6 @@ using System.Collections.Generic;
 using System.Threading.Tasks;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
-using Nethermind.Core.ServiceStopper;
 
 namespace Nethermind.Db;
 
@@ -27,7 +26,7 @@ public struct LogIndexAggregate(int firstBlockNum, int lastBlockNum)
 }
 
 // TODO: remove testing methods
-public interface ILogIndexStorage : IAsyncDisposable, IStoppableService
+public interface ILogIndexStorage : IAsyncDisposable
 {
     int? GetMaxBlockNumber();
     int? GetMinBlockNumber();
@@ -43,4 +42,5 @@ public interface ILogIndexStorage : IAsyncDisposable, IStoppableService
     Task ReorgFrom(BlockReceipts block);
     Task CompactAsync(bool flush, LogIndexUpdateStats? stats = null);
     Task RecompactAsync(int maxUncompressedLength = -1, LogIndexUpdateStats? stats = null);
+    Task StopAsync();
 }
