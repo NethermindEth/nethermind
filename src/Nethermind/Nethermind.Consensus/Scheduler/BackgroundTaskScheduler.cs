@@ -4,6 +4,8 @@
 using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
+using System.Diagnostics;
+using System.Diagnostics.CodeAnalysis;
 using System.Linq;
 using System.Threading;
 using System.Threading.Channels;
@@ -33,13 +35,15 @@ public class BackgroundTaskScheduler : IBackgroundTaskScheduler, IAsyncDisposabl
 
     private readonly CancellationTokenSource _mainCancellationTokenSource;
     private readonly Channel<IActivity> _taskQueue;
-    private readonly SemaphoreSlim _capacity;
+    private readonly Lock _queueLock = new();
     private readonly BelowNormalPriorityTaskScheduler _scheduler;
     private readonly ManualResetEventSlim _restartQueueSignal;
     private readonly Task[] _tasksExecutors;
     private readonly ILogger _logger;
     private readonly IBranchProcessor _branchProcessor;
     private readonly IChainHeadInfoProvider _headInfo;
+    private readonly int _capacity;
+    private long _queueCount;
 
     private CancellationTokenSource _blockProcessorCancellationTokenSource;
     private bool _disposed = false;
@@ -59,8 +63,7 @@ public class BackgroundTaskScheduler : IBackgroundTaskScheduler, IAsyncDisposabl
         _branchProcessor = branchProcessor;
         _headInfo = headInfo;
         _restartQueueSignal = new ManualResetEventSlim(initialState: true);
-        // As channel is unbounded (to be prioritized) we gate capacity with a semaphore
-        _capacity = new SemaphoreSlim(initialCount: capacity);
+        _capacity = capacity;
 
         _branchProcessor.BlocksProcessing += BranchProcessorOnBranchesProcessing;
         _branchProcessor.BlockProcessed += BranchProcessorOnBranchProcessed;
@@ -113,7 +116,7 @@ public class BackgroundTaskScheduler : IBackgroundTaskScheduler, IAsyncDisposabl
                 CancellationToken token = cts.Token;
                 while (_taskQueue.Reader.TryRead(out IActivity activity))
                 {
-                    _capacity.Release();
+                    Interlocked.Decrement(ref _queueCount);
                     if (token.IsCancellationRequested)
                     {
                         // In case of task that is suppose to run when a block is being processed, if there is some time left
@@ -122,7 +125,9 @@ public class BackgroundTaskScheduler : IBackgroundTaskScheduler, IAsyncDisposabl
                         // its cancellation.
                         if (DateTimeOffset.UtcNow < activity.Deadline)
                         {
+                            Interlocked.Increment(ref _queueCount);
                             await _taskQueue.Writer.WriteAsync(activity);
+                            UpdateQueueCount();
                             // Requeued, throttle to prevent infinite loop.
                             // The tasks are in priority order, so we know next is same deadline or longer
                             // And we want to exit inner loop to refresh CancellationToken
@@ -130,6 +135,7 @@ public class BackgroundTaskScheduler : IBackgroundTaskScheduler, IAsyncDisposabl
                         }
                     }
 
+                    UpdateQueueCount();
                     await activity.Do(token);
                 }
             }
@@ -165,16 +171,38 @@ public class BackgroundTaskScheduler : IBackgroundTaskScheduler, IAsyncDisposabl
         };
 
         Evm.Metrics.IncrementTotalBackgroundTasksQueued();
-        if (!_capacity.Wait(millisecondsTimeout: 0))
+
+        bool success = false;
+        lock (_queueLock)
+        {
+            if (_queueCount + 1 < _capacity)
+            {
+                success = _taskQueue.Writer.TryWrite(activity);
+                if (success)
+                {
+                    Interlocked.Increment(ref _queueCount);
+                }
+            }
+        }
+
+        if (success)
+        {
+            UpdateQueueCount();
+        }
+        else
         {
             request.TryDispose();
             // This should never happen unless something goes very wrong.
-            throw new InvalidOperationException("Unable to write to background task queue.");
+            UnableToWriteToTaskQueue();
         }
-        _taskQueue.Writer.TryWrite(activity);
 
-        Evm.Metrics.NumberOfBackgroundTasksScheduled = _taskQueue.Reader.Count;
+        [StackTraceHidden, DoesNotReturn]
+        static void UnableToWriteToTaskQueue()
+            => throw new InvalidOperationException("Unable to write to background task queue.");
     }
+
+    private void UpdateQueueCount()
+        => Evm.Metrics.NumberOfBackgroundTasksScheduled = Volatile.Read(ref _queueCount);
 
     public async ValueTask DisposeAsync()
     {
