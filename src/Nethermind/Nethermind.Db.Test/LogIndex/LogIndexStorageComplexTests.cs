@@ -29,7 +29,7 @@ namespace Nethermind.Db.Test.LogIndex
     // TODO: test for reorg out-of-order
     // TODO: test for concurrent forward and backward sync after first block is added
     [TestFixtureSource(nameof(TestCases))]
-    [Parallelizable(ParallelScope.All)]
+    [Parallelizable(ParallelScope.None)]
     [FixtureLifeCycle(LifeCycle.InstancePerTestCase)]
     public class LogIndexStorageComplexTests(LogIndexStorageComplexTests.TestData testData)
     {
@@ -477,9 +477,9 @@ namespace Nethermind.Db.Test.LogIndex
                 foreach (var (from, to) in testData.Ranges)
                 {
                     Assert.That(
-                        logIndexStorage.GetBlockNumbersFor(address, from, to),
-                        Is.EqualTo(expectedNums.SkipWhile(i => i < from).TakeWhile(i => i <= to)),
-                        $"Address: {address}, from {from} to {to}"
+                        logIndexStorage.GetBlockNumbersFor(address, from, to).ToArray(),
+                        Is.EqualTo(expectedNums.SkipWhile(i => i < from).TakeWhile(i => i <= to).ToArray()),
+                        $"Address: {address}, from {from} to {to} (endianness: {(BitConverter.IsLittleEndian ? "little" : "big")})"
                     );
                 }
             }

@@ -155,7 +155,7 @@ public class TurboPForTests
             resultLength = (int)(endPtr - (long)resultPtr);
         }
 
-        TestContext.Out.WriteLine($"Compressed: {resultLength} bytes");
+        //TestContext.Out.WriteLine($"Compressed: {resultLength} bytes");
         return buffer[..resultLength];
     }
 
@@ -183,7 +183,7 @@ public class TurboPForTests
             resultLength = compressFunc(inputPtr, values.Length, resultPtr);
         }
 
-        TestContext.Out.WriteLine($"Compressed: {resultLength} bytes");
+        //TestContext.Out.WriteLine($"Compressed: {resultLength} bytes");
         return buffer[..resultLength];
     }
 

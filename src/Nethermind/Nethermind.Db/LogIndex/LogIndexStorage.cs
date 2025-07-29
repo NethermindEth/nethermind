@@ -87,8 +87,9 @@ namespace Nethermind.Db
             _maxReorgDepth = maxReorgDepth ?? Defaults.MaxReorgDepth;
 
             _logger = logManager.GetClassLogger<LogIndexStorage>();
-            _compressor = new Compressor(this, _logger, ioParallelism ?? Defaults.IOParallelism);
+            _compressor = new NoOpCompressor();
             _compactor = compactionDistance.HasValue ? new Compactor(this, _logger, compactionDistance.Value) : new NoOpCompactor();
+            //_compactor = new NoOpCompactor();
             _columnsDb = dbFactory.CreateColumnsDb<LogIndexColumns>(new("logIndexStorage", DbNames.LogIndex)
             {
                 MergeOperator = _mergeOperator = new(_compressor)
@@ -645,6 +646,7 @@ namespace Nethermind.Db
                     throw ValidationException($"No block numbers to save for {Convert.ToHexString(key)}.");
 
                 dbBatch.Merge(dbKey, newValue);
+                stats?.MergeSize.Include(newValue.Length);
                 stats?.CallingMerge.Include(Stopwatch.GetElapsedTime(timestamp));
             }
             finally
@@ -777,13 +779,7 @@ namespace Nethermind.Db
 
         private static int[] DecompressDbValue(ReadOnlySpan<byte> data)
         {
-            var len = ReadCompressionMarker(data);
-            if (len < 0)
-                throw new ValidationException("Data is not compressed");
-
-            var buffer = new int[len];
-            var result = Decompress(data[BlockNumSize..], buffer);
-            return result.ToArray();
+            throw new NotImplementedException();
         }
 
         private static void ReverseBlocksIfNeeded(Span<byte> data)

@@ -160,7 +160,7 @@ partial class LogIndexStorage
     {
         public PostMergeProcessingStats Stats { get; } = new();
         public PostMergeProcessingStats GetAndResetStats() => Stats;
-        public bool TryEnqueue(ReadOnlySpan<byte> dbKey, ReadOnlySpan<byte> dbValue) => true;
+        public bool TryEnqueue(ReadOnlySpan<byte> dbKey, ReadOnlySpan<byte> dbValue) => false;
         public Task EnqueueAsync(byte[] dbKey) => Task.CompletedTask;
         public void WaitUntilEmpty() { }
         public Task StopAsync() => Task.CompletedTask;
