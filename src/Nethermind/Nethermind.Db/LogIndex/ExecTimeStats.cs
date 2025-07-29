@@ -6,7 +6,6 @@ using System.Threading;
 
 namespace Nethermind.Db;
 
-// TODO: get rid of after testing
 public class ExecTimeStats
 {
     private long _totalTicks;

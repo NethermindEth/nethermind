@@ -9,6 +9,7 @@ using System.Text;
 using System.Threading.Tasks;
 
 namespace Nethermind.Db.Rocks;
+
 public class RocksDbIteratorWrapper : IIterator<byte[], byte[]>
 {
     private readonly Iterator _iterator;

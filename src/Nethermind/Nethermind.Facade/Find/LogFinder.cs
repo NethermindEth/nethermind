@@ -261,7 +261,7 @@ namespace Nethermind.Facade.Find
             Enumerable.Empty<object>()
                 .Union(byAddress?.Keys ?? Enumerable.Empty<Address>())
                 .Union(byTopic?.Keys ?? Enumerable.Empty<Hash256>())
-                .AsParallel() // TODO utilize canRunParallel
+                .AsParallel() // TODO utilize canRunParallel?
                 .ForAll(x =>
                 {
                     if (x is Address addr)
@@ -270,7 +270,7 @@ namespace Nethermind.Facade.Find
                         byTopic![tpc] = _logIndexStorage.GetBlockNumbersFor(tpc, (int)fromBlock, (int)toBlock).ToList();
                 });
 
-            if (byTopic is null) // TODO: avoid ToList call when single value
+            if (byTopic is null)
                 return AscListHelper.UnionAll(byAddress?.Values ?? []);
 
             List<int> blockNumbers = filter.TopicsFilter.FilterBlockNumbers(byTopic);

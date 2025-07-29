@@ -24,7 +24,6 @@ partial class LogIndexStorage
 
         public ArrayPoolList<byte>? PartialMerge(ReadOnlySpan<byte> key, RocksDbMergeEnumerator enumerator) =>
             Merge(key, enumerator, isPartial: true);
-        //null;
 
         private static bool IsBlockNewer(int next, int? last, bool isBackwardSync) =>
             LogIndexStorage.IsBlockNewer(next, last, last, isBackwardSync);

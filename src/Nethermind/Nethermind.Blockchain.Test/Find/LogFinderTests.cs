@@ -26,6 +26,7 @@ using NUnit.Framework;
 
 namespace Nethermind.Blockchain.Test.Find;
 
+// TODO: tests with different LogIndexStorage states
 public class LogFinderTests
 {
     private IBlockTree _blockTree = null!;

@@ -10,7 +10,6 @@ using Nethermind.Logging;
 
 namespace Nethermind.Db;
 
-// Not thread-safe
 partial class LogIndexStorage
 {
     private interface ICompactor
@@ -54,6 +53,7 @@ partial class LogIndexStorage
 
         public CompactingStats GetAndResetStats() => Interlocked.Exchange(ref _stats, new());
 
+        // Not thread-safe
         public bool TryEnqueue()
         {
             _lastAtMin ??= _storage.GetMinBlockNumber();

@@ -5,29 +5,17 @@ using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Api;
 using Nethermind.Api.Steps;
-using Nethermind.Core;
 using Nethermind.Init.Steps.Migrations;
-using Nethermind.Serialization.Json.PubSub;
 
 namespace Nethermind.Init.Steps
 {
     [RunnerStepDependencies(typeof(StartBlockProcessor))]
-    public class StartLogIndexService : IStep
+    public class StartLogIndexService(IBasicApi api, ILogIndexService logIndexService) : IStep
     {
-        private readonly IBasicApi _api;
-        private readonly ILogIndexService _logIndexService;
-
-        public StartLogIndexService(IBasicApi api, ILogIndexService logIndexService)
-        {
-            _api = api;
-            _logIndexService = logIndexService;
-        }
-
         public async Task Execute(CancellationToken cancellationToken)
         {
-            await _logIndexService.StartAsync();
-            // TODO: fix race condition on disposing both service and storage
-            _api.DisposeStack.Push(_logIndexService);
+            await logIndexService.StartAsync();
+            api.DisposeStack.Push(logIndexService);
         }
 
         public bool MustInitialize => false;

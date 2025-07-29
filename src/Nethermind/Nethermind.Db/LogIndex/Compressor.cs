@@ -80,9 +80,7 @@ partial class LogIndexStorage
             return _processingBlock.Completion;
         }
 
-        // TODO: log errors
         // TODO: optimize allocations
-        // TODO: use WriteBatch for atomicity
         private void CompressValue(byte[] dbKey)
         {
             try
