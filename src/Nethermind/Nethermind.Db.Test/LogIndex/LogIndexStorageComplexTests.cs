@@ -592,7 +592,17 @@ namespace Nethermind.Db.Test.LogIndex
         {
             var info = new DirectoryInfo(path);
 
-            double size = info.Exists ? info.GetFiles().Sum(f => f.Length) : 0;
+            double size = info.Exists ? info.GetFiles().Sum(f =>
+            {
+                try
+                {
+                    return f.Length;
+                }
+                catch (FileNotFoundException)
+                {
+                    return 0;
+                }
+            }) : 0;
 
             int index = 0;
             while (size >= 1024 && index < SizeSuffixes.Length - 1)
