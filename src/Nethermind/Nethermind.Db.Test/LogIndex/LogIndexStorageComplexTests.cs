@@ -65,8 +65,8 @@ namespace Nethermind.Db.Test.LogIndex
             _logger = LimboLogs.Instance.GetClassLogger();
             _dbPath = $"{nameof(LogIndexStorageComplexTests)}/{Guid.NewGuid():N}";
 
-            if (Directory.Exists(_dbPath))
-                Directory.Delete(_dbPath, true);
+            // if (Directory.Exists(_dbPath))
+            //     Directory.Delete(_dbPath, true);
 
             Directory.CreateDirectory(_dbPath);
 
@@ -89,7 +89,7 @@ namespace Nethermind.Db.Test.LogIndex
 
             try
             {
-                Directory.Delete(_dbPath, true);
+                //Directory.Delete(_dbPath, true);
             }
             catch
             {
@@ -107,7 +107,7 @@ namespace Nethermind.Db.Test.LogIndex
 
             try
             {
-                Directory.Delete(nameof(LogIndexStorageComplexTests), true);
+                //Directory.Delete(nameof(LogIndexStorageComplexTests), true);
             }
             catch
             {
@@ -429,7 +429,7 @@ namespace Nethermind.Db.Test.LogIndex
             );
         }
 
-        private static void VerifyReceipts(ILogIndexStorage logIndexStorage, TestData testData,
+        private void VerifyReceipts(ILogIndexStorage logIndexStorage, TestData testData,
             Dictionary<Address, HashSet<int>>? excludedAddresses = null,
             Dictionary<Hash256, HashSet<int>>? excludedTopics = null,
             HashSet<int>? excludedBlockNums = null,
@@ -479,7 +479,7 @@ namespace Nethermind.Db.Test.LogIndex
                     Assert.That(
                         logIndexStorage.GetBlockNumbersFor(address, from, to).ToArray(),
                         Is.EqualTo(expectedNums.SkipWhile(i => i < from).TakeWhile(i => i <= to).ToArray()),
-                        $"Address: {address}, from {from} to {to} (endianness: {(BitConverter.IsLittleEndian ? "little" : "big")})"
+                        $"Address: {address}, from {from} to {to} (endianness: {(BitConverter.IsLittleEndian ? "little" : "big")}, db: {_dbPath})"
                     );
                 }
             }
@@ -518,7 +518,7 @@ namespace Nethermind.Db.Test.LogIndex
             }
         }
 
-        private static void VerifyReceipts(ILogIndexStorage logIndexStorage, TestData testData,
+        private void VerifyReceipts(ILogIndexStorage logIndexStorage, TestData testData,
             IEnumerable<BlockReceipts>? excludedBlocks, IEnumerable<BlockReceipts>? addedBlocks = null,
             int? minBlock = null, int? maxBlock = null,
             bool validateMinMax = true)
