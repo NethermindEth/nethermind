@@ -100,7 +100,7 @@ namespace Nethermind.Init.Steps
 
             ILogIndexStorage logIndexStorage = _set.LogIndexStorage = new LogIndexStorage(
                 _get.Context.Resolve<IDbFactory>(),
-                _get.LogManager.GetClassLogger<LogIndexStorage>(),
+                _get.LogManager,
                 receiptConfig.LogIndexIOParallelism,
                 receiptConfig.LogIndexCompactionDistance
             );

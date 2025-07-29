@@ -84,10 +84,7 @@ public class AscListHelperTests(int seed, int size, int delta)
 
         var p = 0;
         for (var i = 0; i < size; i++)
-        {
-            res[i] = p + random.Next(1, delta + 1);
-            p = res[i];
-        }
+            p = res[i] = p + random.Next(1, delta + 1);
 
         return res;
     }

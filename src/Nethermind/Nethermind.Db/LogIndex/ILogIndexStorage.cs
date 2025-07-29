@@ -23,7 +23,7 @@ public struct LogIndexAggregate(int firstBlockNum, int lastBlockNum)
     public Dictionary<Hash256, List<int>> Topic => _topic ??= new();
     public bool IsEmpty => Address.Count == 0 && Topic.Count == 0;
 
-    public LogIndexAggregate(BlockReceipts[] batch) : this(batch[0].BlockNumber, batch[^1].BlockNumber) { }
+    public LogIndexAggregate(IReadOnlyList<BlockReceipts> batch) : this(batch[0].BlockNumber, batch[^1].BlockNumber) { }
 }
 
 // TODO: remove testing methods
@@ -37,8 +37,8 @@ public interface ILogIndexStorage : IAsyncDisposable, IStoppableService
     IEnumerable<int> GetBlockNumbersFor(Hash256 topic, int from, int to);
     Task CheckMigratedData();
 
-    LogIndexAggregate Aggregate(BlockReceipts[] batch, bool isBackwardSync, LogIndexUpdateStats? stats = null);
-    Task SetReceiptsAsync(BlockReceipts[] batch, bool isBackwardSync, LogIndexUpdateStats? stats = null);
+    LogIndexAggregate Aggregate(IReadOnlyList<BlockReceipts> batch, bool isBackwardSync, LogIndexUpdateStats? stats = null);
+    Task SetReceiptsAsync(IReadOnlyList<BlockReceipts> batch, bool isBackwardSync, LogIndexUpdateStats? stats = null);
     Task SetReceiptsAsync(LogIndexAggregate aggregate, bool isBackwardSync, LogIndexUpdateStats? stats = null);
     Task ReorgFrom(BlockReceipts block);
     Task CompactAsync(bool flush, LogIndexUpdateStats? stats = null);

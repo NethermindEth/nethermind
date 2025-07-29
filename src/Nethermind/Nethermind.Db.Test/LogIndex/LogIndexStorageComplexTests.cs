@@ -54,7 +54,7 @@ namespace Nethermind.Db.Test.LogIndex
 
         private LogIndexStorage CreateLogIndexStorage(int compactionDistance = 262_144, int ioParallelism = 16, int maxReorgDepth = 32, IDbFactory? dbFactory = null)
         {
-            LogIndexStorage storage = new(dbFactory ?? _dbFactory, _logger, ioParallelism, compactionDistance, maxReorgDepth);
+            LogIndexStorage storage = new(dbFactory ?? _dbFactory, LimboLogs.Instance, ioParallelism, compactionDistance, maxReorgDepth);
             _createdStorages.Add(storage);
             return storage;
         }
@@ -97,8 +97,9 @@ namespace Nethermind.Db.Test.LogIndex
             }
         }
 
-        [OneTimeTearDown]
         [OneTimeSetUp]
+        // Causes DB error under some race condition, TODO: find & fix or remove
+        //[OneTimeTearDown]
         public static void RemoveRootFolder()
         {
             if (!Directory.Exists(nameof(LogIndexStorageComplexTests)))
@@ -308,7 +309,7 @@ namespace Nethermind.Db.Test.LogIndex
                     await CompactAsync(logIndexStorage);
             }
 
-            VerifyReceipts(logIndexStorage, testData, excludedBlocks: testBlocks.TakeLast(reorgDepths.Max()).ToArray());
+            VerifyReceipts(logIndexStorage, testData, maxBlock: testBlocks[^1].BlockNumber - reorgDepths.Max());
         }
 
         [Combinatorial]
@@ -675,12 +676,12 @@ namespace Nethermind.Db.Test.LogIndex
                     {
                         foreach (var log in txReceipt.Logs!)
                         {
-                            var addressMap = excludedAddresses.GetOrAdd(log.Address, _ => []);
+                            var addressMap = excludedAddresses.GetOrAdd(log.Address, static _ => []);
                             addressMap.Add(block.BlockNumber);
 
                             foreach (var topic in log.Topics)
                             {
-                                var topicMap = excludedTopics.GetOrAdd(topic, _ => []);
+                                var topicMap = excludedTopics.GetOrAdd(topic, static _ => []);
                                 topicMap.Add(block.BlockNumber);
                             }
                         }

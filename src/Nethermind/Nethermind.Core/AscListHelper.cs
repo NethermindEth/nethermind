@@ -86,6 +86,12 @@ public static class AscListHelper
     public static List<int> IntersectAll(IEnumerable<IReadOnlyList<int>> sources) =>
         sources.Aggregate<IReadOnlyList<int>, List<int>?>(null, (current, l) => current is null ? l.ToList() : Intersect(current, l)) ?? [];
 
+    public static List<int> IntersectAll(ICollection<List<int>> sources) =>
+        sources.Count == 1 ? sources.First() : IntersectAll(sources.AsEnumerable());
+
     public static List<int> UnionAll(IEnumerable<IReadOnlyList<int>> sources) =>
         sources.Aggregate<IReadOnlyList<int>, List<int>?>(null, (current, l) => current is null ? l.ToList() : Union(current, l)) ?? [];
+
+    public static List<int> UnionAll(ICollection<List<int>> sources) =>
+        sources.Count == 1 ? sources.First() : UnionAll(sources.AsEnumerable());
 }

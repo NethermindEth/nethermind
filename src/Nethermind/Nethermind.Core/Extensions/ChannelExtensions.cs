@@ -8,7 +8,7 @@ namespace Nethermind.Core.Extensions;
 
 public static class ChannelExtensions
 {
-    public static T[] ReadBatch<T>(this ChannelReader<T> channel, int batchSize)
+    public static List<T> ReadBatch<T>(this ChannelReader<T> channel, int batchSize)
     {
         if (!channel.TryPeek(out _))
             return [];
@@ -17,6 +17,6 @@ public static class ChannelExtensions
         while (result.Count < batchSize && channel.TryRead(out T? item))
             result.Add(item);
 
-        return result.ToArray();
+        return result;
     }
 }

@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Collections.Generic;
 using System.Threading;
 using System.Threading.Channels;
 using System.Threading.Tasks;
@@ -188,8 +189,6 @@ public sealed class LogIndexService : ILogIndexService
 
                 if (_logIndexStorage.GetMinBlockNumber() != 0)
                     count += await ProcessQueued(isForward: false);
-                else
-                    _backwardProgressLogger.MarkEnd();
 
                 if (count == 0)
                     await Task.Delay(QueueSpinWaitTime, CancellationToken);
@@ -225,7 +224,7 @@ public sealed class LogIndexService : ILogIndexService
 
         var count = 0;
         // TODO: reuse buffer
-        while (!CancellationToken.IsCancellationRequested && queue.ReadBatch(BatchSize) is { Length: > 0 } batch)
+        while (!CancellationToken.IsCancellationRequested && queue.ReadBatch(BatchSize) is { Count: > 0 } batch)
         {
             // TODO: remove check to save time?
             if ((isForward && !IsSeqAsc(batch)) ||
@@ -238,6 +237,9 @@ public sealed class LogIndexService : ILogIndexService
             // TODO: do aggregation separately and in parallel?
             _stats ??= new();
             await _logIndexStorage.SetReceiptsAsync(batch, isBackwardSync: !isForward, _stats);
+
+            if (_logIndexStorage.GetMinBlockNumber() == 0)
+                _receiptStorage.OldReceiptsInserted -= OnReceiptsInserted;
 
             UpdateProgress();
             count++;
@@ -407,17 +409,17 @@ public sealed class LogIndexService : ILogIndexService
         });
     }
 
-    private static bool IsSeqAsc(BlockReceipts[] blocks)
+    private static bool IsSeqAsc(List<BlockReceipts> blocks)
     {
-        int j = blocks.Length - 1;
+        int j = blocks.Count - 1;
         int i = 1, d = blocks[0].BlockNumber;
         while (i <= j && blocks[i].BlockNumber - i == d) i++;
         return i > j;
     }
 
-    private static bool IsSeqDesc(BlockReceipts[] blocks)
+    private static bool IsSeqDesc(List<BlockReceipts> blocks)
     {
-        int j = blocks.Length - 1;
+        int j = blocks.Count - 1;
         int i = 1, d = blocks[0].BlockNumber;
         while (i <= j && blocks[i].BlockNumber + i == d) i++;
         return i > j;

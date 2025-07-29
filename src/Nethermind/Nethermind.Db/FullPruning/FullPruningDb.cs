@@ -92,7 +92,12 @@ namespace Nethermind.Db.FullPruning
 
         public void Merge(ReadOnlySpan<byte> key, ReadOnlySpan<byte> value, WriteFlags flags = WriteFlags.None)
         {
-            throw new NotSupportedException();
+            _currentDb.Merge(key, value, flags); // we are writing to the main DB
+            IDb? cloningDb = _pruningContext?.CloningDb;
+            if (cloningDb is not null) // if pruning is in progress we are also writing to the secondary, copied DB
+            {
+                DuplicateMerge(cloningDb, key, value, flags);
+            }
         }
 
         private void Duplicate(IWriteOnlyKeyValueStore db, ReadOnlySpan<byte> key, byte[]? value, WriteFlags flags)
@@ -104,6 +109,12 @@ namespace Nethermind.Db.FullPruning
         private void Duplicate(IWriteOnlyKeyValueStore db, ReadOnlySpan<byte> key, ReadOnlySpan<byte> value, WriteFlags flags)
         {
             db.PutSpan(key, value, flags);
+            _updateDuplicateWriteMetrics?.Invoke();
+        }
+
+        private void DuplicateMerge(IDb db, ReadOnlySpan<byte> key, ReadOnlySpan<byte> value, WriteFlags flags)
+        {
+            db.Merge(key, value, flags);
             _updateDuplicateWriteMetrics?.Invoke();
         }
 

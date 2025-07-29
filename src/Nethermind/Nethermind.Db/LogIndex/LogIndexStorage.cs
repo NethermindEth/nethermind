@@ -49,6 +49,12 @@ namespace Nethermind.Db
             public const int ForwardMergeLength = BlockNumSize + 1;
         }
 
+        private static class Defaults
+        {
+            public const int IOParallelism = 1;
+            public const int MaxReorgDepth = 64;
+        }
+
         // TODO: consider using ArrayPoolList just for `using` syntax
         private static readonly ArrayPool<byte> _arrayPool = ArrayPool<byte>.Shared;
 
@@ -74,17 +80,15 @@ namespace Nethermind.Db
         public Task FirstBlockAdded => _firstBlockAddedSource.Task;
 
         // TODO: ensure class is singleton
-        // TODO: take parameters from log-index/chain config
-        public LogIndexStorage(IDbFactory dbFactory, ILogger logger,
-            int ioParallelism, int compactionDistance, int maxReorgDepth = 64)
+        public LogIndexStorage(IDbFactory dbFactory, ILogManager logManager,
+            int? ioParallelism = null, int? compactionDistance = null, int? maxReorgDepth = null)
         {
             if (maxReorgDepth < 0) throw new ArgumentException("Compaction distance must be a positive value.", nameof(compactionDistance));
-            _maxReorgDepth = maxReorgDepth;
+            _maxReorgDepth = maxReorgDepth ?? Defaults.MaxReorgDepth;
 
-            _logger = logger;
-            _compressor = new(this, logger, ioParallelism);
-            _compactor = new Compactor(this, logger, compactionDistance);
-            //_compactor = new NoOpCompactor();
+            _logger = logManager.GetClassLogger<LogIndexStorage>();
+            _compressor = new(this, _logger, ioParallelism ?? Defaults.IOParallelism);
+            _compactor = compactionDistance.HasValue ? new Compactor(this, _logger, compactionDistance.Value) : new NoOpCompactor();
             _columnsDb = dbFactory.CreateColumnsDb<LogIndexColumns>(new("logIndexStorage", DbNames.LogIndex)
             {
                 MergeOperator = _mergeOperator = new(_compressor)
@@ -364,7 +368,7 @@ namespace Nethermind.Db
         }
 
         // TODO: optimize allocations
-        public LogIndexAggregate Aggregate(BlockReceipts[] batch, bool isBackwardSync, LogIndexUpdateStats? stats)
+        public LogIndexAggregate Aggregate(IReadOnlyList<BlockReceipts> batch, bool isBackwardSync, LogIndexUpdateStats? stats)
         {
             if (!IsBlockNewer(batch[^1].BlockNumber, isBackwardSync))
                 return new(batch);
@@ -392,7 +396,7 @@ namespace Nethermind.Db
 
                         if (IsAddressBlockNewer(blockNumber, isBackwardSync))
                         {
-                            List<int> addressNums = aggregate.Address.GetOrAdd(log.Address, _ => new(1));
+                            List<int> addressNums = aggregate.Address.GetOrAdd(log.Address, static _ => new(1));
 
                             if (addressNums.Count == 0 || addressNums[^1] != blockNumber)
                                 addressNums.Add(blockNumber);
@@ -404,7 +408,7 @@ namespace Nethermind.Db
                             {
                                 stats?.IncrementTopics();
 
-                                var topicNums = aggregate.Topic.GetOrAdd(log.Topics[i], _ => new(1));
+                                var topicNums = aggregate.Topic.GetOrAdd(log.Topics[i], static _ => new(1));
                                 if (topicNums.Count == 0 || topicNums[^1] != blockNumber)
                                     topicNums.Add(blockNumber);
                             }
@@ -611,7 +615,7 @@ namespace Nethermind.Db
         }
 
         // batch is expected to be sorted, TODO: validate this is the case
-        public Task SetReceiptsAsync(BlockReceipts[] batch, bool isBackwardSync, LogIndexUpdateStats? stats = null)
+        public Task SetReceiptsAsync(IReadOnlyList<BlockReceipts> batch, bool isBackwardSync, LogIndexUpdateStats? stats = null)
         {
             LogIndexAggregate aggregate = Aggregate(batch, isBackwardSync, stats);
             return SetReceiptsAsync(aggregate, isBackwardSync, stats);
