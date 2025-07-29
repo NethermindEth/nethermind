@@ -12,6 +12,7 @@ using System.Threading.Tasks;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Extensions;
 using Nethermind.Logging;
 #pragma warning disable CS0162 // Unreachable code detected
 
@@ -602,6 +603,12 @@ namespace Nethermind.Db
                 {
                     var dbKeyArray = new byte[Address.Size + SpecialPostfix.ForwardMergeLength];
                     ReadOnlySpan<byte> dbKey = CreateMergeDbKey(address.Bytes, dbKeyArray, isBackwardSync);
+
+                    if (_addressDb.Get(dbKey) is not { Length: > 0 })
+                    {
+                        _addressDb.Merge(dbKey, 1.ToLittleEndianByteArray());
+                    }
+
                     if (_addressDb.Get(dbKey) is not { Length: > 0 })
                     {
                         throw new InvalidOperationException(
