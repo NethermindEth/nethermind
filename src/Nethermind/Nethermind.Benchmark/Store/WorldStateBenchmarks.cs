@@ -25,6 +25,7 @@ public class WorldStateBenchmarks
     private const int _accountCount = 1024 * 4;
     private const int _contractCount = 128;
     private const int _slotsCount = 1024 * 20;
+    private const int _loopSize = 1024 * 10;
 
     private Address[] _accounts;
     private Address[] _contracts;
@@ -91,7 +92,7 @@ public class WorldStateBenchmarks
         IWorldState worldState = _globalWorldState;
         worldState.SetBaseBlock(_baseBlock);
 
-        for (int i = 0; i < 1024; i++)
+        for (int i = 0; i < _loopSize; i++)
         {
             worldState.GetBalance(_accounts[rand.Next(0, _accounts.Length)]);
         }
@@ -106,7 +107,7 @@ public class WorldStateBenchmarks
         IWorldState worldState = _globalWorldState;
         worldState.SetBaseBlock(_baseBlock);
 
-        for (int i = 0; i < 1024; i++)
+        for (int i = 0; i < _loopSize; i++)
         {
             if (rand.NextDouble() < 0.5)
             {
@@ -130,7 +131,7 @@ public class WorldStateBenchmarks
         IWorldState worldState = _globalWorldState;
         worldState.SetBaseBlock(_baseBlock);
 
-        for (int i = 0; i < 1024; i++)
+        for (int i = 0; i < _loopSize; i++)
         {
             (Address Account, UInt256 Slot) slot = _slots[rand.Next(0, _slots.Length)];
             worldState.Get(new StorageCell(slot.Account, slot.Slot));
@@ -146,7 +147,7 @@ public class WorldStateBenchmarks
         worldState.SetBaseBlock(_baseBlock);
         byte[] randomBuffer = new byte[20];
 
-        for (int i = 0; i < 1024; i++)
+        for (int i = 0; i < _loopSize; i++)
         {
             (Address Account, UInt256 Slot) slot = _slots[rand.Next(0, _slots.Length)];
             if (rand.NextDouble() < 0.5)
