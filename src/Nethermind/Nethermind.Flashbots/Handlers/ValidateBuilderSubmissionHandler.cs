@@ -3,25 +3,23 @@
 
 using System;
 using System.Collections.Generic;
-using System.Linq;
 using System.Threading.Tasks;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Tracing;
-using Nethermind.Flashbots.Data;
 using Nethermind.Consensus;
 using Nethermind.Consensus.Processing;
 using Nethermind.Consensus.Validators;
 using Nethermind.Core;
+using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
 using Nethermind.Crypto;
 using Nethermind.Evm;
-using Nethermind.Evm.Tracing;
+using Nethermind.Evm.State;
+using Nethermind.Flashbots.Data;
 using Nethermind.Int256;
 using Nethermind.JsonRpc;
 using Nethermind.Logging;
 using Nethermind.Merge.Plugin.Data;
-using Nethermind.Core.Crypto;
-using Nethermind.Evm.State;
 using Nethermind.State.OverridableEnv;
 
 namespace Nethermind.Flashbots.Handlers;
@@ -147,7 +145,15 @@ public class ValidateSubmissionHandler
     private bool ValidateBlobsBundle(Transaction[] transactions, BlobsBundleV1 blobsBundle, out string? error)
     {
         // get sum of length of blobs of each transaction
-        int totalBlobsLength = transactions.Sum(t => t.BlobVersionedHashes is not null ? t.BlobVersionedHashes.Length : 0);
+        int totalBlobsLength = 0;
+        foreach (Transaction tx in transactions)
+        {
+            byte[]?[]? versionedHashes = tx.BlobVersionedHashes;
+            if (versionedHashes is not null)
+            {
+                totalBlobsLength += versionedHashes.Length;
+            }
+        }
 
         if (totalBlobsLength != blobsBundle.Blobs.Length)
         {
@@ -197,7 +203,7 @@ public class ValidateSubmissionHandler
 
         using var scope = _blockProcessorEnv.BuildAndOverride(parentHeader);
         IWorldState worldState = scope.Component.WorldState;
-        IBlockProcessor blockProcessor = scope.Component.BlockProcessor;
+        IBranchProcessor branchProcessor = scope.Component.BranchProcessor;
 
         IReleaseSpec spec = _specProvider.GetSpec(parentHeader);
 
@@ -213,7 +219,7 @@ public class ValidateSubmissionHandler
             {
                 ValidateSubmissionProcessingOptions |= ProcessingOptions.NoValidation;
             }
-            _ = blockProcessor.Process(parentHeader, suggestedBlocks, ValidateSubmissionProcessingOptions, blockReceiptsTracer)[0];
+            _ = branchProcessor.Process(parentHeader, suggestedBlocks, ValidateSubmissionProcessingOptions, blockReceiptsTracer)[0];
         }
         catch (Exception e)
         {
@@ -396,5 +402,5 @@ public class ValidateSubmissionHandler
         return true;
     }
 
-    public record ProcessingEnv(IBlockProcessor BlockProcessor, IWorldState WorldState);
+    public record ProcessingEnv(IBranchProcessor BranchProcessor, IWorldState WorldState);
 }

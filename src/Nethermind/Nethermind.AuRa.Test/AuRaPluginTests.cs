@@ -43,7 +43,6 @@ namespace Nethermind.AuRa.Test
                 Substitute.For<IProcessExitSource>(),
                 testNethermindContainer);
             AuRaNethermindApi api = new AuRaNethermindApi(apiDependencies);
-            api.DbProvider = TestMemDbProvider.Init();
             Action init = () => auRaPlugin.Init(api);
             init.Should().NotThrow();
         }

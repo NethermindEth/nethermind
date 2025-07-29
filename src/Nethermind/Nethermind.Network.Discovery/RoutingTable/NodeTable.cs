@@ -160,18 +160,39 @@ public class NodeTable : INodeTable
         {
             _sortedNodes = new ArrayPoolList<Node>(capacity: bucketSize);
             Hash256 idHash = Keccak.Compute(targetNodeId);
-            foreach (var bucket in buckets)
+            foreach (NodeBucket bucket in buckets)
             {
-                foreach (var item in bucket.BondedItems)
+                foreach (NodeBucketItem item in bucket.BondedItems)
                 {
-                    if (item.Node is not null && item.Node.IdHash != idHash)
+                    Node? node = item.Node;
+                    if (node is not null && node.IdHash != idHash)
                     {
-                        _sortedNodes.Add(item.Node);
+                        _sortedNodes.Add(node);
                     }
                 }
             }
 
-            _sortedNodes.Sort((a, b) => calculator.CalculateDistance(a.Id.Bytes, targetNodeId).CompareTo(calculator.CalculateDistance(b.Id.Bytes, targetNodeId)));
+            _sortedNodes.Sort((Node a, Node b) =>
+            {
+                const int Closer = int.MinValue;
+                const int Further = int.MaxValue;
+
+                if (Nullable.Equals(a.ValidatedProtocol, b.ValidatedProtocol))
+                {
+                    return calculator.CalculateDistance(a.Id.Bytes, targetNodeId).CompareTo(calculator.CalculateDistance(b.Id.Bytes, targetNodeId));
+                }
+                else if (a.ValidatedProtocol.HasValue)
+                {
+                    // Prefer nodes validated on same protocol, network and fork
+                    return a.ValidatedProtocol == true ? Closer : Further;
+                }
+                else
+                {
+                    // b must have value; swap high and low from a
+                    return b.ValidatedProtocol == true ? Further : Closer;
+                }
+            });
+
             if (_sortedNodes.Count > bucketSize)
             {
                 _sortedNodes.ReduceCount(bucketSize);
