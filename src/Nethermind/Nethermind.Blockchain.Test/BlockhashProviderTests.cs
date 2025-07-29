@@ -14,7 +14,7 @@ using Nethermind.Specs;
 using Nethermind.Specs.Forks;
 using Nethermind.Specs.Test;
 using Nethermind.State;
-using Nethermind.Trie.Pruning;
+
 using NUnit.Framework;
 
 namespace Nethermind.Blockchain.Test;

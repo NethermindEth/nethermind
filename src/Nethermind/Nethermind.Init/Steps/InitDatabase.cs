@@ -6,6 +6,7 @@ using System.IO;
 using System.Reflection;
 using System.Threading;
 using System.Threading.Tasks;
+
 using Nethermind.Api;
 using Nethermind.Api.Steps;
 using Nethermind.Blockchain.Receipts;
@@ -16,7 +17,6 @@ using Nethermind.Db.Rocks.Config;
 using Nethermind.Db.Rpc;
 using Nethermind.JsonRpc.Client;
 using Nethermind.Logging;
-using Nethermind.Trie;
 using Nethermind.TxPool;
 
 namespace Nethermind.Init.Steps

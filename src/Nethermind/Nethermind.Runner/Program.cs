@@ -38,10 +38,11 @@ using Nethermind.Runner.Ethereum.Api;
 using Nethermind.Runner.Logging;
 using Nethermind.Seq.Config;
 using Nethermind.Serialization.Json;
-using Nethermind.Specs.ChainSpecStyle;
 using Nethermind.UPnP.Plugin;
+
 using NLog;
 using NLog.Config;
+
 using ILogger = Nethermind.Logging.ILogger;
 using NullLogger = Nethermind.Logging.NullLogger;
 

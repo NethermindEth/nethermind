@@ -3,8 +3,8 @@
 
 using Nethermind.Merkleization;
 using Nethermind.Serialization.Ssz;
+
 using System.Collections;
-using System.ComponentModel;
 
 namespace Nethermind.Serialization.SszGenerator.Test
 {

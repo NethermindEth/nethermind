@@ -33,7 +33,6 @@ using Autofac;
 using Nethermind.Config;
 using Nethermind.Core.Test;
 using Nethermind.Core.Test.Modules;
-using Nethermind.Stats;
 using Nethermind.Synchronization.Peers.AllocationStrategies;
 
 

@@ -5,10 +5,10 @@ using System;
 using System.Reflection;
 using System.Threading;
 using System.Threading.Tasks;
+
 using Nethermind.Api;
 using Nethermind.Api.Extensions;
 using Nethermind.Api.Steps;
-using Nethermind.Consensus.Validators;
 using Nethermind.Core.Attributes;
 using Nethermind.Network;
 using Nethermind.Serialization.Rlp;

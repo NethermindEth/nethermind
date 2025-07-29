@@ -1,17 +1,19 @@
 // SPDX-FileCopyrightText: 2024 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System.Buffers;
 using System.Buffers.Binary;
 using System.IO.Compression;
 using System.Security.Cryptography;
+
 using CommunityToolkit.HighPerformance;
-using DotNetty.Buffers;
+
 using Microsoft.IO;
 using Microsoft.Win32.SafeHandles;
+
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Resettables;
+
 using Snappier;
 
 namespace Nethermind.Era1;

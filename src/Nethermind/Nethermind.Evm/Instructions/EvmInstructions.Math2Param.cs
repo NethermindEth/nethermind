@@ -6,7 +6,6 @@ using System.Runtime.CompilerServices;
 using Nethermind.Core;
 using Nethermind.Core.Extensions;
 using static Nethermind.Evm.VirtualMachine;
-using static System.Runtime.CompilerServices.Unsafe;
 
 namespace Nethermind.Evm;
 using Int256;
@@ -136,7 +135,7 @@ internal static partial class EvmInstructions
                 // Division by zero: result is zero.
                 result = default;
             }
-            else if (As<UInt256, Int256>(ref AsRef(in b)) == Int256.MinusOne && a == P255)
+            else if (Unsafe.As<UInt256, Int256>(ref Unsafe.AsRef(in b)) == Int256.MinusOne && a == P255)
             {
                 // Special overflow case: when a equals P255 (a specific constant) and divisor is -1.
                 result = P255;
@@ -144,12 +143,12 @@ internal static partial class EvmInstructions
             else
             {
                 // Prepare uninitialized result, so doesn't complain when passed by ref in As call.
-                SkipInit(out result);
+                Unsafe.SkipInit(out result);
                 // Convert operands to signed integers and perform division.
                 Int256.Divide(
-                    in As<UInt256, Int256>(ref AsRef(in a)),
-                    in As<UInt256, Int256>(ref AsRef(in b)),
-                    out As<UInt256, Int256>(ref result));
+                    in Unsafe.As<UInt256, Int256>(ref Unsafe.AsRef(in a)),
+                    in Unsafe.As<UInt256, Int256>(ref Unsafe.AsRef(in b)),
+                    out Unsafe.As<UInt256, Int256>(ref result));
             }
         }
     }
@@ -182,12 +181,12 @@ internal static partial class EvmInstructions
             else
             {
                 // Prepare uninitialized result, so doesn't complain when passed by ref in As call.
-                SkipInit(out result);
+                Unsafe.SkipInit(out result);
                 // Convert operands to signed integers and perform the modulo operation.
-                As<UInt256, Int256>(ref AsRef(in a))
+                Unsafe.As<UInt256, Int256>(ref Unsafe.AsRef(in a))
                     .Mod(
-                        in As<UInt256, Int256>(ref AsRef(in b)),
-                        out As<UInt256, Int256>(ref result));
+                        in Unsafe.As<UInt256, Int256>(ref Unsafe.AsRef(in b)),
+                        out Unsafe.As<UInt256, Int256>(ref result));
             }
         }
     }
@@ -224,8 +223,8 @@ internal static partial class EvmInstructions
     {
         public static void Operation(in UInt256 a, in UInt256 b, out UInt256 result)
         {
-            result = As<UInt256, Int256>(ref AsRef(in a))
-                .CompareTo(As<UInt256, Int256>(ref AsRef(in b))) < 0 ?
+            result = Unsafe.As<UInt256, Int256>(ref Unsafe.AsRef(in a))
+                .CompareTo(Unsafe.As<UInt256, Int256>(ref Unsafe.AsRef(in b))) < 0 ?
                 UInt256.One :
                 default;
         }
@@ -239,8 +238,8 @@ internal static partial class EvmInstructions
     {
         public static void Operation(in UInt256 a, in UInt256 b, out UInt256 result)
         {
-            result = As<UInt256, Int256>(ref AsRef(in a))
-                .CompareTo(As<UInt256, Int256>(ref AsRef(in b))) > 0 ?
+            result = Unsafe.As<UInt256, Int256>(ref Unsafe.AsRef(in a))
+                .CompareTo(Unsafe.As<UInt256, Int256>(ref Unsafe.AsRef(in b))) > 0 ?
                 UInt256.One :
                 default;
         }

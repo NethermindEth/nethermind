@@ -1,7 +1,6 @@
 using Nethermind.Api;
 using Nethermind.Api.Extensions;
 using Nethermind.Api.Steps;
-using Nethermind.Init.Steps;
 
 namespace Nethermind.Init.Snapshot;
 

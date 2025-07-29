@@ -1,9 +1,6 @@
 // SPDX-FileCopyrightText: 2024 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using Nethermind.Core;
-using Nethermind.Core.Crypto;
-
 namespace Nethermind.Trie.Pruning;
 
 internal class NullCommitter : ICommitter, IBlockCommitter

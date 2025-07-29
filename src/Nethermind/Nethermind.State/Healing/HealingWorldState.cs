@@ -3,7 +3,6 @@
 
 using Nethermind.Core;
 using Nethermind.Logging;
-using Nethermind.State.Snap;
 using Nethermind.Trie.Pruning;
 
 namespace Nethermind.State.Healing;

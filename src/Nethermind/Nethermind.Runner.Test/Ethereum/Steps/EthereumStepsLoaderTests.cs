@@ -5,9 +5,11 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Reflection;
+
 using Autofac;
-using Autofac.Core;
+
 using FluentAssertions;
+
 using Nethermind.Api.Extensions;
 using Nethermind.Api.Steps;
 using Nethermind.Consensus.AuRa;
@@ -24,6 +26,7 @@ using Nethermind.Shutter;
 using Nethermind.Shutter.Config;
 using Nethermind.Specs.ChainSpecStyle;
 using Nethermind.Taiko;
+
 using NUnit.Framework;
 
 namespace Nethermind.Runner.Test.Ethereum.Steps;

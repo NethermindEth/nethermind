@@ -5,7 +5,9 @@ using System;
 using System.Collections.Concurrent;
 using System.Linq;
 using System.Threading.Tasks;
+
 using FluentAssertions;
+
 using Nethermind.Blockchain;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
@@ -17,8 +19,9 @@ using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.Specs;
 using Nethermind.State;
-using Nethermind.Trie.Pruning;
+
 using NSubstitute;
+
 using NUnit.Framework;
 
 namespace Nethermind.TxPool.Test;

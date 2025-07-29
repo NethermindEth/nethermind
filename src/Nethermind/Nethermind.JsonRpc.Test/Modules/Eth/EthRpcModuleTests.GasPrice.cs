@@ -4,6 +4,7 @@
 using System;
 using System.Collections.Generic;
 using System.Threading.Tasks;
+
 using Nethermind.Blockchain;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
@@ -16,8 +17,9 @@ using Nethermind.JsonRpc.Modules.Eth.GasPrice;
 using Nethermind.Logging;
 using Nethermind.Specs;
 using Nethermind.Specs.Forks;
-using Nethermind.Specs.Test;
+
 using NUnit.Framework;
+
 using static Nethermind.JsonRpc.Test.Modules.GasPriceOracleTests;
 
 namespace Nethermind.JsonRpc.Test.Modules.Eth;

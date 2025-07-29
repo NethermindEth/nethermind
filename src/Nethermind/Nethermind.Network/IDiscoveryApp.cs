@@ -2,8 +2,9 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Threading.Tasks;
+
 using DotNetty.Transport.Channels;
-using Nethermind.Core.Crypto;
+
 using Nethermind.Stats.Model;
 
 namespace Nethermind.Network

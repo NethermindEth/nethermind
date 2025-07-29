@@ -2,13 +2,15 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+
 using FluentAssertions;
+
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Optimism.CL;
 using Nethermind.Optimism.CL.Derivation;
-using Nethermind.Specs;
+
 using NUnit.Framework;
 
 namespace Nethermind.Optimism.Test.CL;

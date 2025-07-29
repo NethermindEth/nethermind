@@ -3,10 +3,10 @@
 
 using System.Collections.Generic;
 using System.Diagnostics;
+
 using Nethermind.Config;
 using Nethermind.Core;
 using Nethermind.Int256;
-using Nethermind.Specs.ChainSpecStyle.Json;
 
 namespace Nethermind.Specs.ChainSpecStyle
 {

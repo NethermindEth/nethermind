@@ -6,7 +6,6 @@ using System.Runtime.CompilerServices;
 using System.Runtime.Intrinsics;
 using Nethermind.Core;
 using Nethermind.Int256;
-using static System.Runtime.CompilerServices.Unsafe;
 using static Nethermind.Evm.VirtualMachine;
 
 namespace Nethermind.Evm;
@@ -57,13 +56,13 @@ internal static partial class EvmInstructions
         // Peek at the top element of the stack without removing it.
         // This avoids an unnecessary pop/push sequence.
         ref byte bytesRef = ref stack.PeekBytesByRef();
-        if (IsNullRef(ref bytesRef)) goto StackUnderflow;
+        if (Unsafe.IsNullRef(ref bytesRef)) goto StackUnderflow;
 
         // Read a 256-bit value from unaligned memory on the stack.
-        Word result = TOpMath.Operation(ReadUnaligned<Word>(ref bytesRef));
+        Word result = TOpMath.Operation(Unsafe.ReadUnaligned<Word>(ref bytesRef));
 
         // Write the computed result directly back to the stack slot.
-        WriteUnaligned(ref bytesRef, result);
+        Unsafe.WriteUnaligned(ref bytesRef, result);
 
         return EvmExceptionType.None;
     // Label for error handling when the stack does not have the required element.

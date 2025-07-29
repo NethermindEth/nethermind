@@ -20,8 +20,6 @@ using Nethermind.Specs;
 using Nethermind.Specs.Forks;
 using Nethermind.State;
 using Nethermind.State.Proofs;
-using Nethermind.Trie.Pruning;
-using Nethermind.TxPool;
 using NUnit.Framework;
 using System.Threading.Tasks;
 using FluentAssertions;

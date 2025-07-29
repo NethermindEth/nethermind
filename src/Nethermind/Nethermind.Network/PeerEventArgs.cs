@@ -2,8 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using Nethermind.Network.P2P.Messages;
-using Nethermind.Network.Rlpx;
+
 using Nethermind.Stats.Model;
 
 namespace Nethermind.Network;

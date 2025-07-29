@@ -4,11 +4,11 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
-using System.Net;
 using System.Threading;
 using System.Threading.Tasks;
+
 using FluentAssertions;
-using Nethermind.Blockchain;
+
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Core.Buffers;
 using Nethermind.Core.Collections;
@@ -20,13 +20,14 @@ using Nethermind.Logging;
 using Nethermind.Network.Contract.P2P;
 using Nethermind.State.Healing;
 using Nethermind.State.Snap;
-using Nethermind.Stats;
 using Nethermind.Synchronization.Peers;
 using Nethermind.Synchronization.Peers.AllocationStrategies;
 using Nethermind.Synchronization.Trie;
 using Nethermind.Trie;
 using Nethermind.Trie.Pruning;
+
 using NSubstitute;
+
 using NUnit.Framework;
 
 namespace Nethermind.Synchronization.Test.Trie;

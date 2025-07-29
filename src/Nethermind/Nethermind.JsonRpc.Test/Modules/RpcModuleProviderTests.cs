@@ -3,9 +3,9 @@
 
 using System.IO.Abstractions;
 using System.Threading.Tasks;
+
 using FluentAssertions;
-using Nethermind.Core;
-using Nethermind.Core.Test.Modules;
+
 using Nethermind.Era1.JsonRpc;
 using Nethermind.JsonRpc.Modules;
 using Nethermind.JsonRpc.Modules.Admin;
@@ -13,7 +13,9 @@ using Nethermind.JsonRpc.Modules.Net;
 using Nethermind.JsonRpc.Modules.Proof;
 using Nethermind.Logging;
 using Nethermind.Serialization.Json;
+
 using NSubstitute;
+
 using NUnit.Framework;
 
 namespace Nethermind.JsonRpc.Test.Modules

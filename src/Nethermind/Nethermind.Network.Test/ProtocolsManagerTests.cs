@@ -2,8 +2,10 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Numerics;
+
 using DotNetty.Buffers;
 using DotNetty.Transport.Channels;
+
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Consensus;
@@ -25,14 +27,14 @@ using Nethermind.Network.P2P.Subprotocols.Eth.V62.Messages;
 using Nethermind.Network.Rlpx;
 using Nethermind.Specs;
 using Nethermind.State;
-using Nethermind.State.SnapServer;
 using Nethermind.Stats;
 using Nethermind.Stats.Model;
 using Nethermind.Synchronization;
 using Nethermind.Synchronization.Peers;
-using Nethermind.Synchronization.SnapSync;
 using Nethermind.TxPool;
+
 using NSubstitute;
+
 using NUnit.Framework;
 
 namespace Nethermind.Network.Test;

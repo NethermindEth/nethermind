@@ -9,7 +9,6 @@ using Nethermind.Network;
 using Nethermind.Consensus;
 using Nethermind.KeyStore.Config;
 using System.Configuration;
-using Nethermind.Wallet;
 
 namespace Nethermind.ExternalSigner.Plugin;
 

@@ -3,7 +3,6 @@
 
 using System.Runtime.CompilerServices;
 using Nethermind.Core;
-using static System.Runtime.CompilerServices.Unsafe;
 
 namespace Nethermind.Evm;
 using Int256;
@@ -106,7 +105,7 @@ internal static partial class EvmInstructions
         if (a >= 256)
         {
             // Convert the unsigned value to a signed integer to determine its sign.
-            if (As<UInt256, Int256>(ref b).Sign >= 0)
+            if (Unsafe.As<UInt256, Int256>(ref b).Sign >= 0)
             {
                 // Non-negative value: result is zero.
                 stack.PushZero<TTracingInst>();
@@ -120,9 +119,9 @@ internal static partial class EvmInstructions
         else
         {
             // For a valid shift amount (<256), perform an arithmetic right shift.
-            As<UInt256, Int256>(ref b).RightShift((int)a, out Int256 result);
+            Unsafe.As<UInt256, Int256>(ref b).RightShift((int)a, out Int256 result);
             // Convert the signed result back to unsigned representation.
-            stack.PushUInt256<TTracingInst>(in As<Int256, UInt256>(ref result));
+            stack.PushUInt256<TTracingInst>(in Unsafe.As<Int256, UInt256>(ref result));
         }
 
         return EvmExceptionType.None;

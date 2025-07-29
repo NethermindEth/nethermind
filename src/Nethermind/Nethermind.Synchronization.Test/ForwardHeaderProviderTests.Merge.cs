@@ -4,11 +4,13 @@
 using System;
 using System.Threading;
 using System.Threading.Tasks;
+
 using Autofac;
+
 using FluentAssertions;
+
 using Nethermind.Blockchain;
 using Nethermind.Config;
-using Nethermind.Consensus;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Test.Builders;
@@ -20,6 +22,7 @@ using Nethermind.Merge.Plugin.Synchronization;
 using Nethermind.Merge.Plugin.Test;
 using Nethermind.Synchronization.Blocks;
 using Nethermind.Synchronization.Peers;
+
 using NUnit.Framework;
 namespace Nethermind.Synchronization.Test;
 

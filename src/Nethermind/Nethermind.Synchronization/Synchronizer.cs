@@ -4,9 +4,10 @@
 using System;
 using System.Threading;
 using System.Threading.Tasks;
+
 using Autofac;
 using Autofac.Features.AttributeFilters;
-using Nethermind.Blockchain.Receipts;
+
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Config;
 using Nethermind.Consensus;

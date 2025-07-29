@@ -2,8 +2,8 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Threading.Tasks;
+
 using Nethermind.Blockchain.Find;
-using Nethermind.Blockchain.FullPruning;
 
 namespace Nethermind.JsonRpc.Modules.Admin;
 

@@ -1,10 +1,10 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System;
 using System.Net;
 using System.Net.Sockets;
 using System.Threading.Tasks;
+
 using Nethermind.Core.Test.Builders;
 using Nethermind.Core.Test.Modules;
 using Nethermind.Logging;
@@ -12,7 +12,9 @@ using Nethermind.Network.Config;
 using Nethermind.Network.P2P.Analyzers;
 using Nethermind.Network.Rlpx;
 using Nethermind.Network.Rlpx.Handshake;
+
 using NSubstitute;
+
 using NUnit.Framework;
 
 namespace Nethermind.Network.Test.Rlpx

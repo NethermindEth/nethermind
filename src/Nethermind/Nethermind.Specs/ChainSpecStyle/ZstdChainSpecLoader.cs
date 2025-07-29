@@ -2,8 +2,9 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.IO;
-using System.Reflection;
+
 using Nethermind.Config;
+
 using ZstdSharp;
 
 namespace Nethermind.Specs.ChainSpecStyle;

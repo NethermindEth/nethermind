@@ -6,12 +6,13 @@ using System.Net;
 using System.Net.Sockets;
 using System.Threading;
 using System.Threading.Tasks;
+
 using DotNetty.Buffers;
 using DotNetty.Common.Concurrency;
 using DotNetty.Handlers.Timeout;
 using DotNetty.Transport.Channels;
+
 using Nethermind.Core.Crypto;
-using Nethermind.Core.Extensions;
 using Nethermind.Logging;
 using Nethermind.Network.P2P;
 using Nethermind.Network.P2P.ProtocolHandlers;

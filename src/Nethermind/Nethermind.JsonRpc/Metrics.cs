@@ -1,8 +1,8 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System.Collections;
 using System.ComponentModel;
+
 using Nethermind.Core.Attributes;
 using Nethermind.Core.Metric;
 

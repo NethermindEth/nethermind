@@ -6,9 +6,9 @@ using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.GmpBindings;
 using Nethermind.Int256;
+
 using System;
 using System.Numerics;
-using System.Runtime.InteropServices;
 
 namespace Nethermind.Evm.Precompiles;
 

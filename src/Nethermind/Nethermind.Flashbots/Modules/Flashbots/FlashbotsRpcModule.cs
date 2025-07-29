@@ -2,10 +2,10 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Threading.Tasks;
+
 using Nethermind.Flashbots.Data;
 using Nethermind.Flashbots.Handlers;
 using Nethermind.JsonRpc;
-using Nethermind.Merge.Plugin.Data;
 
 namespace Nethermind.Flashbots.Modules.Flashbots;
 

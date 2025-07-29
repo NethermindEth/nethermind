@@ -15,7 +15,6 @@ using Nethermind.Wallet;
 using Nethermind.JsonRpc;
 using Nethermind.JsonRpc.Modules;
 using Nethermind.Blockchain.Find;
-using Nethermind.Core;
 using Nethermind.Crypto;
 using Nethermind.JsonRpc.Client;
 

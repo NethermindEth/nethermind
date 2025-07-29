@@ -3,9 +3,11 @@
 
 using System;
 using System.Reflection;
+
 using FluentAssertions;
+
 using Nethermind.Db.Rocks.Config;
-using NSubstitute.Extensions;
+
 using NUnit.Framework;
 
 namespace Nethermind.Db.Test.Config;

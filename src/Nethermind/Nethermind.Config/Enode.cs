@@ -6,9 +6,9 @@ using System;
 using System.Linq;
 using System.Net;
 using System.Net.Sockets;
+
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
-using Nethermind.Core.Exceptions;
 
 namespace Nethermind.Config
 {

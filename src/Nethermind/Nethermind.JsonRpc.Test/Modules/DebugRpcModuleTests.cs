@@ -5,9 +5,11 @@ using System;
 using System.IO.Abstractions;
 using System.Text.Json;
 using System.Threading.Tasks;
+
 using FluentAssertions;
 using FluentAssertions.Execution;
 using FluentAssertions.Json;
+
 using Nethermind.Blockchain.Blocks;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Config;
@@ -15,15 +17,17 @@ using Nethermind.Consensus.Rewards;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
-using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Evm.Tracing.GethStyle;
 using Nethermind.Facade;
 using Nethermind.Int256;
 using Nethermind.JsonRpc.Modules.DebugModule;
 using Nethermind.Synchronization.ParallelSync;
+
 using Newtonsoft.Json.Linq;
+
 using NSubstitute;
+
 using NUnit.Framework;
 
 namespace Nethermind.JsonRpc.Test.Modules;

@@ -9,9 +9,7 @@ using NSubstitute;
 using Nethermind.Crypto;
 using Nethermind.Core.Specs;
 using Nethermind.Logging;
-using Nethermind.TxPool;
 using System.Linq;
-using Nethermind.Core.Crypto;
 
 namespace Nethermind.Consensus.Test;
 [TestFixture]

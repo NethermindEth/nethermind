@@ -2,8 +2,8 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using Autofac;
+
 using FluentAssertions;
-using Nethermind.Core.Test.IO;
 
 namespace Nethermind.Era1.Test;
 

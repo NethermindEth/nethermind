@@ -4,11 +4,8 @@
 using System;
 using System.Linq;
 using System.Security;
-using System.Security.Cryptography;
-using Nethermind.Core;
-using Nethermind.Core.Crypto;
+
 using Nethermind.Crypto;
-using Nethermind.Serialization.Rlp;
 
 namespace Nethermind.Wallet
 {

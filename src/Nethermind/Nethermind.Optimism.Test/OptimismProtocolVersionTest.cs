@@ -3,10 +3,12 @@
 
 using System;
 using System.Collections.Generic;
+
 using FluentAssertions;
-using Nethermind.Core;
+
 using Nethermind.Core.Extensions;
 using Nethermind.Optimism.ProtocolVersion;
+
 using NUnit.Framework;
 
 namespace Nethermind.Optimism.Test;

@@ -4,7 +4,9 @@
 using System.Collections.Generic;
 using System.Linq;
 using System.Threading;
+
 using FluentAssertions;
+
 using Nethermind.Blockchain.FullPruning;
 using Nethermind.Core;
 using Nethermind.Core.Extensions;
@@ -15,8 +17,9 @@ using Nethermind.Db.FullPruning;
 using Nethermind.Logging;
 using Nethermind.State;
 using Nethermind.Trie;
-using Nethermind.Trie.Pruning;
+
 using NSubstitute;
+
 using NUnit.Framework;
 
 namespace Nethermind.Blockchain.Test.FullPruning;

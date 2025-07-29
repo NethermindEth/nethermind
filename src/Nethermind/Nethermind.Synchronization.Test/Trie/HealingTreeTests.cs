@@ -3,10 +3,12 @@
 
 using System;
 using System.Collections.Generic;
-using System.Linq.Expressions;
 using System.Threading.Tasks;
+
 using Autofac;
+
 using FluentAssertions;
+
 using Nethermind.Api;
 using Nethermind.Blockchain;
 using Nethermind.Config;
@@ -26,7 +28,9 @@ using Nethermind.State.Healing;
 using Nethermind.Synchronization.Peers;
 using Nethermind.Trie;
 using Nethermind.Trie.Pruning;
+
 using NSubstitute;
+
 using NUnit.Framework;
 
 namespace Nethermind.Synchronization.Test.Trie;

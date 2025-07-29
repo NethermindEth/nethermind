@@ -5,9 +5,9 @@ using System;
 using System.Security;
 using System.Security.Cryptography;
 using System.Text;
+
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
-using Nethermind.Core.Extensions;
 using Nethermind.Serialization.Rlp;
 
 namespace Nethermind.Wallet
