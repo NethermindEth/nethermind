@@ -94,8 +94,8 @@ partial class LogIndexStorage
                     if (FindNext(MergeOp.ReorgOp, enumerator, ref iReorg) is { } reorgBlock)
                         operand = MergeOps.ApplyTo(operand, MergeOp.ReorgOp, reorgBlock, isBackwards);
 
-                    if (truncateAggregate is { } truncateBlock)
-                        operand = MergeOps.ApplyTo(operand, MergeOp.TruncateOp, truncateBlock, isBackwards);
+                    // if (truncateAggregate is { } truncateBlock)
+                    //     operand = MergeOps.ApplyTo(operand, MergeOp.TruncateOp, truncateBlock, isBackwards);
 
                     AddEnsureSorted(result, operand, isBackwards);
                 }
