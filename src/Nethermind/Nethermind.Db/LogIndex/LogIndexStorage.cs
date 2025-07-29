@@ -598,6 +598,19 @@ namespace Nethermind.Db
                 dbBatch.topic.Dispose();
                 stats?.WaitingBatch.Include(Stopwatch.GetElapsedTime(timestamp));
 
+                foreach (var (address, _) in aggregate.Address)
+                {
+                    var dbKeyArray = new byte[Address.Size + SpecialPostfix.ForwardMergeLength];
+                    ReadOnlySpan<byte> dbKey = CreateMergeDbKey(address.Bytes, dbKeyArray, isBackwardSync);
+                    if (_addressDb.Get(dbKey) is not { Length: > 0 })
+                    {
+                        throw new InvalidOperationException(
+                            $"Invalid DB result value for {Convert.ToHexString(dbKey)} in {nameof(_addressDb)}" +
+                            $"Batch: {dbBatch.address.GetType()}"
+                        );
+                    }
+                }
+
                 // Enqueue compaction if needed
                 _compactor.TryEnqueue();
 
