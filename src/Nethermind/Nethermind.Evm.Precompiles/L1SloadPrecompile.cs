@@ -30,13 +30,6 @@ public class L1SloadPrecompile : IPrecompile<L1SloadPrecompile>
 {
     public static readonly L1SloadPrecompile Instance = new();
 
-    public const int AddressBytes = 20;
-    public const int StorageKeyBytes = 32;
-    public const int BlockNumberBytes = 32;
-    public const long FixedGasCost = 2000L;
-    public const long PerLoadGasCost = 2000L;
-    public const int ExpectedInputLength = AddressBytes + StorageKeyBytes + BlockNumberBytes;
-
     private L1SloadPrecompile()
     {
     }
@@ -45,16 +38,16 @@ public class L1SloadPrecompile : IPrecompile<L1SloadPrecompile>
     public static string Name => "L1SLOAD";
     public static IL1StorageProvider? L1StorageProvider { get; set; }
 
-    public long BaseGasCost(IReleaseSpec releaseSpec) => FixedGasCost;
+    public long BaseGasCost(IReleaseSpec releaseSpec) => L1PrecompileConstants.FixedGasCost;
 
     public long DataGasCost(ReadOnlyMemory<byte> inputData, IReleaseSpec releaseSpec)
     {
-        if (inputData.Length != ExpectedInputLength)
+        if (inputData.Length != L1PrecompileConstants.ExpectedInputLength)
         {
             return 0L;
         }
 
-        return PerLoadGasCost;
+        return L1PrecompileConstants.PerLoadGasCost;
     }
 
     public (byte[], bool) Run(ReadOnlyMemory<byte> inputData, IReleaseSpec releaseSpec)
@@ -64,14 +57,14 @@ public class L1SloadPrecompile : IPrecompile<L1SloadPrecompile>
             return IPrecompile.Failure;
         }
 
-        if (inputData.Length != ExpectedInputLength)
+        if (inputData.Length != L1PrecompileConstants.ExpectedInputLength)
         {
             return IPrecompile.Failure;
         }
 
-        var contractAddress = new Address(inputData.Span[..AddressBytes]);
-        var storageKey = new UInt256(inputData.Span[AddressBytes..(AddressBytes + StorageKeyBytes)], isBigEndian: true);
-        var blockNumber = new UInt256(inputData.Span[(AddressBytes + StorageKeyBytes)..], isBigEndian: true);
+        var contractAddress = new Address(inputData.Span[..L1PrecompileConstants.AddressBytes]);
+        var storageKey = new UInt256(inputData.Span[L1PrecompileConstants.AddressBytes..(L1PrecompileConstants.AddressBytes + L1PrecompileConstants.StorageKeyBytes)], isBigEndian: true);
+        var blockNumber = new UInt256(inputData.Span[(L1PrecompileConstants.AddressBytes + L1PrecompileConstants.StorageKeyBytes)..], isBigEndian: true);
 
         var storageValue = GetL1StorageValue(contractAddress, storageKey, blockNumber);
         if (storageValue == null)

@@ -111,6 +111,20 @@ public class TaikoEngineRpcModule(IAsyncHandler<byte[], ExecutionPayload?> getPa
     public ResultWrapper<PreBuiltTxList[]?> taikoAuth_txPoolContentWithMinTip(Address beneficiary, UInt256 baseFee, ulong blockMaxGasLimit,
        ulong maxBytesPerTxList, Address[]? localAccounts, int maxTransactionsLists, ulong minTip)
     {
+        var result = taikoAuth_txPoolContentWithMinTipInternal(beneficiary, baseFee, blockMaxGasLimit, maxBytesPerTxList, localAccounts, maxTransactionsLists, minTip, false);
+        return ResultWrapper<PreBuiltTxList[]?>.Success(result.TxLists);
+    }
+
+    public ResultWrapper<PreBuiltTxListWithL1Calls?> taikoAuth_txPoolContentWithMinTipTracing(Address beneficiary, UInt256 baseFee, ulong blockMaxGasLimit,
+       ulong maxBytesPerTxList, Address[]? localAccounts, int maxTransactionsLists, ulong minTip)
+    {
+        var result = taikoAuth_txPoolContentWithMinTipInternal(beneficiary, baseFee, blockMaxGasLimit, maxBytesPerTxList, localAccounts, maxTransactionsLists, minTip, true);
+        return ResultWrapper<PreBuiltTxListWithL1Calls?>.Success(result);
+    }
+
+    private PreBuiltTxListWithL1Calls taikoAuth_txPoolContentWithMinTipInternal(Address beneficiary, UInt256 baseFee, ulong blockMaxGasLimit,
+       ulong maxBytesPerTxList, Address[]? localAccounts, int maxTransactionsLists, ulong minTip, bool enableTracing)
+    {
         IEnumerable<KeyValuePair<AddressAsKey, Transaction[]>> pendingTxs = txPool.GetPendingTransactionsBySender();
 
         if (localAccounts is not null)
@@ -131,12 +145,12 @@ public class TaikoEngineRpcModule(IAsyncHandler<byte[], ExecutionPayload?> getPa
 
         if (txQueue.Length is 0 || head?.StateRoot is null)
         {
-            return ResultWrapper<PreBuiltTxList[]?>.Success([]);
+            return new PreBuiltTxListWithL1Calls([], []);
         }
 
         using IReadOnlyTxProcessingScope scope = txProcessorSource.Build(head);
 
-        return ResultWrapper<PreBuiltTxList[]?>.Success(ProcessTransactions(scope.TransactionProcessor, scope.WorldState, new BlockHeader(
+        return ProcessTransactions(scope.TransactionProcessor, scope.WorldState, new BlockHeader(
                 head.Hash!,
                 Keccak.OfAnEmptySequenceRlp,
                 beneficiary,
@@ -150,17 +164,18 @@ public class TaikoEngineRpcModule(IAsyncHandler<byte[], ExecutionPayload?> getPa
             BaseFeePerGas = baseFee,
             StateRoot = head.StateRoot,
             IsPostMerge = true,
-        }, txQueue, maxTransactionsLists, maxBytesPerTxList, minTip));
+        }, txQueue, maxTransactionsLists, maxBytesPerTxList, minTip, enableTracing);
     }
 
-    private PreBuiltTxList[] ProcessTransactions(ITransactionProcessor txProcessor, IWorldState worldState, BlockHeader blockHeader, Transaction[] txSource, int maxBatchCount, ulong maxBytesPerTxList, ulong minTip)
+    private PreBuiltTxListWithL1Calls ProcessTransactions(ITransactionProcessor txProcessor, IWorldState worldState, BlockHeader blockHeader, Transaction[] txSource, int maxBatchCount, ulong maxBytesPerTxList, ulong minTip, bool enableTracing = false)
     {
         if (txSource.Length is 0 || blockHeader.StateRoot is null || maxBatchCount is 0)
         {
-            return [];
+            return new PreBuiltTxListWithL1Calls([], []);
         }
 
         List<PreBuiltTxList> Batches = [];
+        L1SloadTracer? l1SloadTracer = enableTracing ? new L1SloadTracer() : null;
 
         void CommitAndDisposeBatch(Batch batch)
         {
@@ -184,7 +199,8 @@ public class TaikoEngineRpcModule(IAsyncHandler<byte[], ExecutionPayload?> getPa
 
                 try
                 {
-                    TransactionResult executionResult = txProcessor.Execute(tx, in blkCtx, NullTxTracer.Instance);
+                    ITxTracer tracer = enableTracing ? l1SloadTracer! : NullTxTracer.Instance;
+                    TransactionResult executionResult = txProcessor.Execute(tx, in blkCtx, tracer);
 
                     if (!executionResult)
                     {
@@ -196,7 +212,7 @@ public class TaikoEngineRpcModule(IAsyncHandler<byte[], ExecutionPayload?> getPa
 
                             if (maxBatchCount == Batches.Count)
                             {
-                                return [.. Batches];
+                                return new PreBuiltTxListWithL1Calls([.. Batches], l1SloadTracer?.Calls.ToArray() ?? []);
                             }
 
                             batch = new(maxBytesPerTxList, txSource.Length - i, txDecoder);
@@ -229,7 +245,7 @@ public class TaikoEngineRpcModule(IAsyncHandler<byte[], ExecutionPayload?> getPa
 
                     if (maxBatchCount == Batches.Count)
                     {
-                        return [.. Batches];
+                        return new PreBuiltTxListWithL1Calls([.. Batches], l1SloadTracer?.Calls.ToArray() ?? []);
                     }
 
                     batch = new(maxBytesPerTxList, txSource.Length - i, txDecoder);
@@ -250,7 +266,7 @@ public class TaikoEngineRpcModule(IAsyncHandler<byte[], ExecutionPayload?> getPa
             batch.Dispose();
         }
 
-        return [.. Batches];
+        return new PreBuiltTxListWithL1Calls([.. Batches], l1SloadTracer?.Calls.ToArray() ?? []);
     }
 
     struct Batch(ulong maxBytes, int transactionsListCapacity, IRlpStreamDecoder<Transaction> txDecoder) : IDisposable
