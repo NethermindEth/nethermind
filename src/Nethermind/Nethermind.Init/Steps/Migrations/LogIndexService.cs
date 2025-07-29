@@ -62,6 +62,8 @@ public sealed class LogIndexService : ILogIndexService
     private Task? _queueBackwardBlocksTask;
     private int _pivotNumber;
 
+    public string Description => "log index service";
+
     public LogIndexService(IApiWithStores api, ISyncModeSelector syncModeSelector, IBlockTree blockTree, IReceiptFinder receiptFinder, IReceiptStorage receiptStorage)
     {
         ArgumentNullException.ThrowIfNull(api.LogIndexStorage);
