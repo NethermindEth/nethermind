@@ -416,8 +416,8 @@ public class HistoryPruner : IHistoryPruner
             bool finished = false;
             foreach (BlockInfo blockInfo in chainLevelInfo.BlockInfos)
             {
-                Block? block = _blockTree.FindBlock(blockInfo.BlockHash, BlockTreeLookupOptions.None, blockInfo.BlockNumber);
-                _logger.Info($"[prune] scanning blockinfo #{blockInfo.BlockNumber} found?={block is not null} hash={blockInfo.BlockHash}");
+                Block? block = _blockTree.FindBlock(blockInfo.BlockHash, BlockTreeLookupOptions.None, i);
+                _logger.Info($"[prune] scanning blockinfo #{i} found?={block is not null} hash={blockInfo.BlockHash}");
                 if (block is null)
                 {
                     _logger.Info($"[prune] Skipping block which wasn't found {i}.");
