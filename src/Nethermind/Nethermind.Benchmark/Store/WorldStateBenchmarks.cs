@@ -24,12 +24,15 @@ public class WorldStateBenchmarks
 
     private const int _accountCount = 1024 * 4;
     private const int _contractCount = 128;
-    private const int _slotsCount = 1024 * 20;
+    private const int _slotsCount = _contractCount * 128;
+    private const int _bigContractSlotsCount = 1024 * 4;
     private const int _loopSize = 1024 * 10;
 
     private Address[] _accounts;
     private Address[] _contracts;
     private (Address Account, UInt256 Slot)[] _slots;
+    private Address _bigContract;
+    private UInt256[] _bigContractSlots;
     private IReleaseSpec _releaseSpec = new Prague();
     private BlockHeader _baseBlock;
 
@@ -71,6 +74,18 @@ public class WorldStateBenchmarks
             rand.NextBytes(randomBuffer);
             worldState.Set(new StorageCell(account, slot), randomBuffer.ToArray());
             _slots[i] = (account, slot);
+        }
+
+        rand.NextBytes(randomBuffer);
+        _bigContract = new Address(randomBuffer.ToArray());
+        worldState.AddToBalanceAndCreateIfNotExists(_bigContract, 1, _releaseSpec);
+        _bigContractSlots = new UInt256[_bigContractSlotsCount];
+        for (int i = 0; i < _bigContractSlotsCount; i++)
+        {
+            UInt256 slot = (UInt256)rand.NextLong();
+            rand.NextBytes(randomBuffer);
+            _bigContractSlots[i] = slot;
+            worldState.Set(new StorageCell(_bigContract, slot), randomBuffer.ToArray());
         }
 
         worldState.Commit(_releaseSpec);
@@ -136,6 +151,7 @@ public class WorldStateBenchmarks
             (Address Account, UInt256 Slot) slot = _slots[rand.Next(0, _slots.Length)];
             worldState.Get(new StorageCell(slot.Account, slot.Slot));
         }
+
         worldState.Reset();
     }
 
@@ -158,6 +174,49 @@ public class WorldStateBenchmarks
             {
                 rand.NextBytes(randomBuffer);
                 worldState.Set(new StorageCell(slot.Account, slot.Slot), randomBuffer.ToArray());
+            }
+        }
+
+        worldState.Commit(_releaseSpec);
+        worldState.CommitTree(1);
+        worldState.Reset();
+    }
+
+    [Benchmark]
+    public void SameContractRead()
+    {
+        Random rand = new Random(1);
+        IWorldState worldState = _globalWorldState;
+        worldState.SetBaseBlock(_baseBlock);
+
+        for (int i = 0; i < _loopSize; i++)
+        {
+            UInt256 slot = _bigContractSlots[rand.Next(0, _bigContractSlots.Length)];
+            worldState.Get(new StorageCell(_bigContract, slot));
+        }
+
+        worldState.Reset();
+    }
+
+    [Benchmark]
+    public void SameContractReadWrite()
+    {
+        Random rand = new Random(1);
+        IWorldState worldState = _globalWorldState;
+        worldState.SetBaseBlock(_baseBlock);
+        byte[] randomBuffer = new byte[20];
+
+        for (int i = 0; i < _loopSize; i++)
+        {
+            UInt256 slot = _bigContractSlots[rand.Next(0, _bigContractSlots.Length)];
+            if (rand.NextDouble() < 0.5)
+            {
+                worldState.Get(new StorageCell(_bigContract, slot));
+            }
+            else
+            {
+                rand.NextBytes(randomBuffer);
+                worldState.Set(new StorageCell(_bigContract, slot), randomBuffer.ToArray());
             }
         }
 
