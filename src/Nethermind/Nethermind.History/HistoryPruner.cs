@@ -410,7 +410,7 @@ public class HistoryPruner : IHistoryPruner
     private IEnumerable<Block> GetBlocksByNumber(long from, long to, Predicate<Block> endSearch)
     {
         _logger.Info($"[prune] Searching for blocks in range {from}-{to}.");
-        for (long i = from; i < to; i++)
+        for (long i = from; i <= to; i++)
         {
             ChainLevelInfo? chainLevelInfo = _chainLevelInfoRepository.LoadLevel(i);
             if (chainLevelInfo is null || chainLevelInfo.BlockInfos.Length == 0)
