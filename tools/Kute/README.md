@@ -40,6 +40,12 @@ Some typical usages are as follows:
 -a http://localhost:8551 -s /keystore/jwt-secret -i /rpc.0 -o Json
 ```
 
+### Use a single message file and emit results as JSON, while reporting metrics to a Prometheus Push Gateway (*)
+
+```
+-a http://localhost:8551 -s /keystore/jwt-secret -i /rpc.0 -o Json -g http://localhost:9091
+```
+
 ### Use a single messages file and record all responses into a new file
 
 ```
@@ -64,9 +70,13 @@ Some typical usages are as follows:
 -a http://localhost:8551 -s /keystore/jwt-secret -i /rpc.0 -f engine_newPayloadV[23]=50
 ```
 
+### Prometheus Push Gateway
+
+Since Kute is not a long-lived application it's unreasonable for Prometheus and similar tools to scrape for metrics. Instead, Kute leverages [Prometheus Push Gateway](https://github.com/prometheus/pushgateway), a service that is intended to be used for ephemeral and batch jobs. Once Kute finishes processing all requests, it will report the metrics to the Gateway, which later will be scraped by Prometheus or similar tools.
+
 ### TODO
 
 There are some features that we might add in the future, if they end up being required:
 
 - Validate the responses from the Nethermind Client (a "pedantic" mode)
-- Other report outputs (ex. CSV, Prometheus)
+- Other report outputs (ex. CSV, HTML)

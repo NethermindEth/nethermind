@@ -32,7 +32,8 @@ static class Program
             Config.AuthTtl,
             Config.ConcurrentRequests,
             Config.ShowProgress,
-            Config.UnwrapBatch
+            Config.UnwrapBatch,
+            Config.PrometheusPushGateway
         ];
         rootCommand.SetAction(async (parseResult, cancellationToken) =>
         {
@@ -77,8 +78,10 @@ static class Program
             return provider;
         });
         collection.AddSingleton<IJsonRpcValidator>(
-            new ComposedJsonRpcValidator(
-                [new NonErrorJsonRpcValidator(), new NewPayloadJsonRpcValidator()]));
+            new BatchJsonRpcValidator(
+                new ComposedJsonRpcValidator(
+                    new NonErrorJsonRpcValidator(),
+                    new NewPayloadJsonRpcValidator())));
         collection.AddSingleton<IJsonRpcMethodFilter>(
             new ComposedJsonRpcMethodFilter(
                 [..parseResult
@@ -117,14 +120,19 @@ static class Program
                 ? new ConsoleProgressReporter()
                 : new NullMetricsReporter();
 
-            return new ComposedMetricsReporter([memoryReporter, progresReporter, consoleReporter]);
+            string? prometheusGateway = parseResult.GetValue(Config.PrometheusPushGateway);
+            IMetricsReporter prometheusReporter = prometheusGateway is not null
+                ? new PrometheusPushGatewayMetricsReporter(prometheusGateway)
+                : new NullMetricsReporter();
+
+            return new ComposedMetricsReporter([memoryReporter, progresReporter, consoleReporter, prometheusReporter]);
         });
         collection.AddSingleton<IAsyncProcessor>(provider =>
         {
-            int requestsPerSecond = parseResult.GetValue(Config.ConcurrentRequests);
-            if (requestsPerSecond > 1)
+            int concurrentRequests = parseResult.GetValue(Config.ConcurrentRequests);
+            if (concurrentRequests > 1)
             {
-                return new ConcurrentProcessor(requestsPerSecond);
+                return new ConcurrentProcessor(concurrentRequests);
             }
 
             return new SequentialProcessor();
