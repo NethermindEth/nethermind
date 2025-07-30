@@ -54,8 +54,8 @@ public sealed record MetricsReport
     public required long Ignored { get; init; }
     public required long Responses { get; init; }
     public required TimeSpan TotalTime { get; init; }
-    public required IReadOnlyDictionary<int, TimeSpan> Singles { get; init; }
-    public required IReadOnlyDictionary<int, TimeSpan> Batches { get; init; }
+    public required IReadOnlyDictionary<string, TimeSpan> Singles { get; init; }
+    public required IReadOnlyDictionary<string, TimeSpan> Batches { get; init; }
 
     // Computed properties
     private TimeMetrics? _singlesMetrics;
