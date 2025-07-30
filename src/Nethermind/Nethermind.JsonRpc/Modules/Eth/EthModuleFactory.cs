@@ -32,7 +32,8 @@ namespace Nethermind.JsonRpc.Modules.Eth
         IEthSyncingInfo ethSyncingInfo,
         IFeeHistoryOracle feeHistoryOracle,
         IProtocolsManager protocolsManager,
-        IBlocksConfig blocksConfig)
+        IBlocksConfig blocksConfig,
+        IForkInfo forkInfo)
         : ModuleFactoryBase<IEthRpcModule>
     {
         private readonly ulong _secondsPerSlot = blocksConfig.SecondsPerSlot;
@@ -55,6 +56,7 @@ namespace Nethermind.JsonRpc.Modules.Eth
                 ethSyncingInfo,
                 feeHistoryOracle,
                 protocolsManager,
+                forkInfo,
                 _secondsPerSlot);
         }
     }

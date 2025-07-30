@@ -27,7 +27,7 @@ namespace Nethermind.Consensus.Processing
         public class BlockValidationTransactionsExecutor(
             ITransactionProcessorAdapter transactionProcessor,
             IWorldState stateProvider)
-            : IValidationTransactionExecutor
+            : IBlockProcessor.IBlockTransactionsExecutor
         {
             private readonly HashSet<Transaction> _transactionsInBlock = new(ByHashTxComparer.Instance);
 

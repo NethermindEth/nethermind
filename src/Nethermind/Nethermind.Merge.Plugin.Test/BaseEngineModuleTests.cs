@@ -264,7 +264,7 @@ public abstract partial class BaseEngineModuleTests
 
         public BeaconSync BeaconSync => Container.Resolve<BeaconSync>();
 
-        public IWithdrawalProcessor WithdrawalProcessor => ((MainBlockProcessingContext)MainProcessingContext).LifetimeScope.Resolve<IWithdrawalProcessor>();
+        public IWithdrawalProcessor WithdrawalProcessor => ((AutoMainProcessingContext)MainProcessingContext).LifetimeScope.Resolve<IWithdrawalProcessor>();
 
         public ISyncPeerPool SyncPeerPool => Container.Resolve<ISyncPeerPool>();
 
@@ -276,7 +276,7 @@ public abstract partial class BaseEngineModuleTests
         public MergeTestBlockchain ThrottleBlockProcessor(int delayMs)
         {
             _blockProcessingThrottle = delayMs;
-            if (BlockProcessor is TestBlockProcessorInterceptor testBlockProcessor)
+            if (Container is not null && BranchProcessor is TestBranchProcessorInterceptor testBlockProcessor)
             {
                 testBlockProcessor.DelayMs = delayMs;
             }
@@ -311,6 +311,7 @@ public abstract partial class BaseEngineModuleTests
             base.ConfigureContainer(builder, configProvider)
                 .AddScoped<IWithdrawalProcessor, WithdrawalProcessor>()
                 .AddModule(new TestMergeModule(configProvider))
+                .AddDecorator<IBranchProcessor>((ctx, branchProcessor) => new TestBranchProcessorInterceptor(branchProcessor, _blockProcessingThrottle))
                 .AddDecorator<IBlockImprovementContextFactory>((ctx, factory) =>
                 {
                     if (factory is StoringBlockImprovementContextFactory) return factory;
@@ -372,30 +373,9 @@ public abstract partial class BaseEngineModuleTests
             return new MergeBlockProducer(preMergeBlockProducer, postMergeBlockProducer, PoSSwitcher);
         }
 
-        protected override IBlockProcessor CreateBlockProcessor(IWorldState worldState)
-        {
-            IBlockProcessor processor = new BlockProcessor(
-                SpecProvider,
-                BlockValidator,
-                NoBlockRewards.Instance,
-                new BlockProcessor.BlockValidationTransactionsExecutor(new ExecuteTransactionProcessorAdapter(TxProcessor), worldState),
-                worldState,
-                ReceiptStorage,
-                new BeaconBlockRootHandler(TxProcessor, worldState),
-                new BlockhashStore(SpecProvider, worldState),
-                LogManager,
-                WithdrawalProcessor,
-                MainExecutionRequestsProcessor,
-                CreateBlockCachePreWarmer());
-
-            return new TestBlockProcessorInterceptor(processor, _blockProcessingThrottle);
-        }
-
         protected override async Task<TestBlockchain> Build(Action<ContainerBuilder>? configurer = null)
         {
             TestBlockchain bc = await base.Build(configurer);
-            InvalidChainTracker.InvalidChainTracker invalidChainTracker = Container.Resolve<InvalidChainTracker.InvalidChainTracker>();
-            invalidChainTracker.SetupBlockchainProcessorInterceptor(BlockchainProcessor);
             BeaconSync.AllowBeaconHeaderSync();
             _lazyEngineRpcModule = bc.Container.Resolve<Lazy<IEngineRpcModule>>();
             return bc;
@@ -407,7 +387,7 @@ public abstract partial class BaseEngineModuleTests
             Container.Resolve<IBlockImprovementContextFactory>();
 
         public async Task<MergeTestBlockchain> Build(ISpecProvider specProvider) =>
-            (MergeTestBlockchain)await Build(configurer: (builder) => builder.AddSingleton<ISpecProvider>(specProvider));
+            (MergeTestBlockchain)await Build(configurer: (builder) => builder.AddSingleton(specProvider));
 
         public async Task<MergeTestBlockchain> BuildMergeTestBlockchain(Action<ContainerBuilder> configurer) =>
             (MergeTestBlockchain)await Build(configurer: configurer);

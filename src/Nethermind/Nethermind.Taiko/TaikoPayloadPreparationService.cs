@@ -81,8 +81,6 @@ public class TaikoPayloadPreparationService(
             {
                 if (worldState.HasStateForBlock(parent))
                 {
-                    worldState.SetBaseBlock(parent);
-
                     return processor.Process(block, ProcessingOptions.ProducingBlock, NullBlockTracer.Instance, token)
                         ?? throw new InvalidOperationException("Block processing failed");
                 }

@@ -176,7 +176,6 @@ public class TaikoEngineRpcModule(IAsyncHandler<byte[], ExecutionPayload?> getPa
         }
 
         BlockExecutionContext blkCtx = new(blockHeader, _specProvider.GetSpec(blockHeader));
-        worldState.SetBaseBlock(blockHeader);
 
         Batch batch = new(maxBytesPerTxList, txSource.Length, txDecoder);
 

@@ -6,18 +6,17 @@ using System.Collections.Generic;
 using System.Threading;
 using Nethermind.Consensus.Processing;
 using Nethermind.Core;
-using Nethermind.Core.Crypto;
 using Nethermind.Evm.Tracing;
 
 namespace Nethermind.Merge.Plugin.Test;
 
-public class TestBlockProcessorInterceptor : IBlockProcessor
+public class TestBranchProcessorInterceptor : IBranchProcessor
 {
-    private readonly IBlockProcessor _blockProcessorImplementation;
+    private readonly IBranchProcessor _blockProcessorImplementation;
     public int DelayMs { get; set; }
     public Exception? ExceptionToThrow { get; set; }
 
-    public TestBlockProcessorInterceptor(IBlockProcessor baseBlockProcessor, int delayMs)
+    public TestBranchProcessorInterceptor(IBranchProcessor baseBlockProcessor, int delayMs)
     {
         _blockProcessorImplementation = baseBlockProcessor;
         DelayMs = delayMs;
@@ -38,8 +37,8 @@ public class TestBlockProcessorInterceptor : IBlockProcessor
         return _blockProcessorImplementation.Process(baseBlock, suggestedBlocks, processingOptions, blockTracer, token);
     }
 
-    public bool ValidateInclusionList(Block suggestedBlock, Block block, ProcessingOptions options)
-        => _blockProcessorImplementation.ValidateInclusionList(suggestedBlock, block, options);
+    // public bool ValidateInclusionList(Block suggestedBlock, Block block, ProcessingOptions options)
+    //     => _blockProcessorImplementation.ValidateInclusionList(suggestedBlock, block, options);
 
     public event EventHandler<BlocksProcessingEventArgs>? BlocksProcessing
     {

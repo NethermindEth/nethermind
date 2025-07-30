@@ -73,7 +73,7 @@ namespace Nethermind.Consensus.Processing
             _startSStoreOps = Evm.Metrics.ThreadLocalSStoreOpcode;
             _startCallOps = Evm.Metrics.ThreadLocalCalls;
             _startEmptyCalls = Evm.Metrics.ThreadLocalEmptyCalls;
-            _startCachedContractsUsed = Db.Metrics.ThreadLocalCodeDbCache;
+            _startCachedContractsUsed = Evm.Metrics.ThreadLocalCodeDbCache;
             _startContractsAnalyzed = Evm.Metrics.ThreadLocalContractsAnalysed;
             _startCreateOps = Evm.Metrics.ThreadLocalCreates;
             _startSelfDestructOps = Evm.Metrics.ThreadLocalSelfDestructs;
@@ -106,7 +106,7 @@ namespace Nethermind.Consensus.Processing
             blockData.CurrentSStoreOps = Evm.Metrics.ThreadLocalSStoreOpcode;
             blockData.CurrentCallOps = Evm.Metrics.ThreadLocalCalls;
             blockData.CurrentEmptyCalls = Evm.Metrics.ThreadLocalEmptyCalls;
-            blockData.CurrentCachedContractsUsed = Db.Metrics.ThreadLocalCodeDbCache;
+            blockData.CurrentCachedContractsUsed = Evm.Metrics.ThreadLocalCodeDbCache;
             blockData.CurrentContractsAnalyzed = Evm.Metrics.ThreadLocalContractsAnalysed;
             blockData.CurrentCreatesOps = Evm.Metrics.ThreadLocalCreates;
             blockData.CurrentSelfDestructOps = Evm.Metrics.ThreadLocalSelfDestructs;

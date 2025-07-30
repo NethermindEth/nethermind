@@ -9,6 +9,7 @@ using System.Numerics;
 using System.Threading;
 using System.Threading.Tasks;
 using Autofac;
+using Nethermind.Api;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Find;
 using Nethermind.Config;
@@ -39,7 +40,7 @@ namespace Ethereum.Test.Base;
 public abstract class BlockchainTestBase
 {
     private static ILogger _logger;
-    private static ILogManager _logManager = new TestLogManager(LogLevel.Info);
+    private static ILogManager _logManager = new TestLogManager(LogLevel.Warn);
     private static ISealValidator Sealer { get; }
     private static DifficultyCalculatorWrapper DifficultyCalculator { get; }
 
@@ -134,7 +135,7 @@ public abstract class BlockchainTestBase
             .AddSingleton<ITxPool>(NullTxPool.Instance)
             .Build();
 
-        MainBlockProcessingContext mainBlockProcessingContext = container.Resolve<MainBlockProcessingContext>();
+        IMainProcessingContext mainBlockProcessingContext = container.Resolve<IMainProcessingContext>();
         IWorldState stateProvider = mainBlockProcessingContext.WorldState;
         IBlockchainProcessor blockchainProcessor = mainBlockProcessingContext.BlockchainProcessor;
         IBlockTree blockTree = container.Resolve<IBlockTree>();
@@ -204,7 +205,7 @@ public abstract class BlockchainTestBase
         await blockchainProcessor.StopAsync(true);
         stopwatch?.Stop();
 
-        IBlockCachePreWarmer? preWarmer = container.Resolve<MainBlockProcessingContext>().LifetimeScope.ResolveOptional<IBlockCachePreWarmer>();
+        IBlockCachePreWarmer? preWarmer = container.Resolve<AutoMainProcessingContext>().LifetimeScope.ResolveOptional<IBlockCachePreWarmer>();
         if (preWarmer is not null)
         {
             // Caches are cleared async, which is a problem as read for the MainWorldState with prewarmer is not correct if its not cleared.
