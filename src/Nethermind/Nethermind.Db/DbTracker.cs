@@ -43,6 +43,6 @@ public class DbTracker
             return db;
         }
 
-        public string GetFullDbPath(DbSettings dbSettings) => baseFactory.GetFullDbPath(dbSettings); 
+        public string GetFullDbPath(DbSettings dbSettings) => baseFactory.GetFullDbPath(dbSettings);
     }
 }
