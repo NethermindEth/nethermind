@@ -111,6 +111,7 @@ static class Program
             {
                 MetricsReportFormat.Pretty => new PrettyMetricsReportFormatter(),
                 MetricsReportFormat.Json => new JsonMetricsReportFormatter(),
+                MetricsReportFormat.Html => new HtmlMetricsReportFormatter(),
                 _ => throw new ArgumentOutOfRangeException(nameof(Config.MetricsReportFormatter)),
             };
 
