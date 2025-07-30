@@ -105,7 +105,7 @@ public class HistoryPruner : IHistoryPruner
         {
             if (_blockTree.Head is null ||
                 _blockTree.SyncPivot.BlockNumber == 0 ||
-                !LoadDeletePointer() ||
+                !TryLoadDeletePointer() ||
                 !ShouldPruneHistory(out ulong? cutoffTimestamp))
             {
                 if (_logger.IsDebug) _logger.Debug($"Skipping historical block pruning.");
@@ -412,8 +412,13 @@ public class HistoryPruner : IHistoryPruner
         return cutoffTimestamp;
     }
 
-    private bool LoadDeletePointer()
+    private bool TryLoadDeletePointer()
     {
+        if (_hasLoadedDeletePointer)
+        {
+            return true;
+        }
+
         byte[]? val = _metadataDb.Get(MetadataDbKeys.HistoryPruningDeletePointer);
         if (val is null)
         {
