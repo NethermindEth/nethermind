@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Collections.Generic;
 using System.Threading.Tasks;
 using Nethermind.Api;
 using Nethermind.Api.Extensions;
@@ -138,8 +139,9 @@ public class TaikoModule : Module
                 if (!taikoSpec.IsL1SloadEnabled)
                     return defaultProvider;
 
-                var logManager = ctx.Resolve<ILogManager>();
-                return new SurgeL1StorageProvider(logManager);
+                ILogManager logManager = ctx.Resolve<ILogManager>();
+                HashSet<AddressAsKey>? restrictedAddresses = GetL1SloadRestrictedAddresses(taikoSpec);
+                return new SurgeL1StorageProvider(logManager, restrictedAddresses);
             })
 
             .AddSingleton<IRlpStreamDecoder<Transaction>>((_) => Rlp.GetStreamDecoder<Transaction>()!)
@@ -213,4 +215,21 @@ public class TaikoModule : Module
         return payloadPreparationService;
     }
 
+    private static HashSet<AddressAsKey>? GetL1SloadRestrictedAddresses(TaikoReleaseSpec taikoSpec)
+    {
+        if (taikoSpec.L1SloadRestrictedAddresses is null || taikoSpec.L1SloadRestrictedAddresses.Length == 0)
+            return null;
+
+        var validAddresses = new HashSet<AddressAsKey>();
+
+        foreach (string addressString in taikoSpec.L1SloadRestrictedAddresses)
+        {
+            if (Address.TryParse(addressString, out Address? address))
+            {
+                validAddresses.Add(new AddressAsKey(address!));
+            }
+        }
+
+        return validAddresses.Count > 0 ? validAddresses : null;
+    }
 }

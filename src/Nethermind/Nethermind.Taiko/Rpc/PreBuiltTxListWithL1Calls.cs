@@ -7,12 +7,11 @@ namespace Nethermind.Taiko.Rpc;
 
 /// <summary>
 /// Represents the result of transaction pool content with L1SLOAD calls tracing.
-/// Contains both the transaction lists and the L1SLOAD calls detected during execution.
 /// </summary>
 public sealed class PreBuiltTxListWithL1Calls(PreBuiltTxList[] txLists, L1SloadCall[] l1SloadCalls)
 {
     /// <summary>
-    /// The transaction lists that can be included in a block
+    /// The transaction lists that will be returned to the proposer
     /// </summary>
     public PreBuiltTxList[] TxLists { get; } = txLists;
 

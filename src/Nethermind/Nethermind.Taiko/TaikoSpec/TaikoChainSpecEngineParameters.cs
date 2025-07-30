@@ -13,6 +13,7 @@ public class TaikoChainSpecEngineParameters : IChainSpecEngineParameters
     public long? OntakeTransition { get; set; }
     public long? PacayaTransition { get; set; }
     public bool? UseSurgeGasPriceOracle { get; set; }
+    public string[]? L1SloadRestrictedAddresses { get; set; }
 
     public void AddTransitions(SortedSet<long> blockNumbers, SortedSet<ulong> timestamps)
     {

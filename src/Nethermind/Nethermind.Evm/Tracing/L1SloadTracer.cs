@@ -33,7 +33,9 @@ public class L1SloadTracer : TxTracer, IBlockTracer
     }
 
     public ITxTracer StartNewTxTrace(Transaction? tx) => this;
+
     public void EndTxTrace() { }
+
     public void EndBlockTrace() { }
 
     public override void ReportAction(long gas, UInt256 value, Address from, Address to,

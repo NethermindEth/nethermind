@@ -2,11 +2,13 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Collections.Generic;
 using System.Linq;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
 using Nethermind.Evm.Precompiles;
 using Nethermind.Int256;
+using Nethermind.Logging;
 using Nethermind.Specs;
 using NUnit.Framework;
 
@@ -140,6 +142,29 @@ public class L1SloadPrecompileTests
         }
     }
 
+    [Test]
+    public void Run_With_Restricted_Address_Should_Fail()
+    {
+        var restrictedAddress = Address.FromNumber(123);
+        L1SloadPrecompile.L1StorageProvider = MockL1StorageProvider.ReturningWithRestrictions(
+            (UInt256)0x123456789abcdef,
+            new[] { restrictedAddress });
+
+        try
+        {
+            var input = CreateValidInput(restrictedAddress, (UInt256)1, (UInt256)1000);
+
+            var (result, success) = _precompile.Run(input, _spec);
+
+            Assert.That(success, Is.False);
+            Assert.That(result, Is.Empty);
+        }
+        finally
+        {
+            L1SloadPrecompile.L1StorageProvider = null;
+        }
+    }
+
     private static byte[] CreateValidInput(Address contractAddress, UInt256 storageKey, UInt256 blockNumber)
     {
         var input = new byte[L1PrecompileConstants.AddressBytes + L1PrecompileConstants.StorageKeyBytes + L1PrecompileConstants.BlockNumberBytes];
@@ -154,13 +179,29 @@ public class L1SloadPrecompileTests
     private sealed class MockL1StorageProvider : IL1StorageProvider
     {
         private readonly UInt256? _returnValue;
+        private readonly HashSet<Address>? _restrictedAddresses;
 
-        private MockL1StorageProvider(UInt256? returnValue) => _returnValue = returnValue;
+        private MockL1StorageProvider(UInt256? returnValue, HashSet<Address>? restrictedAddresses = null)
+        {
+            _returnValue = returnValue;
+            _restrictedAddresses = restrictedAddresses;
+        }
 
-        public UInt256? GetStorageValue(Address contractAddress, UInt256 storageKey, UInt256 blockNumber) => _returnValue;
+        public UInt256? GetStorageValue(Address contractAddress, UInt256 storageKey, UInt256 blockNumber)
+        {
+            // Return null for restricted addresses
+            if (_restrictedAddresses?.Contains(contractAddress) == true)
+            {
+                return null;
+            }
+
+            return _returnValue;
+        }
 
         // Static factory methods for different scenarios
         public static MockL1StorageProvider Returning(UInt256 value) => new(value);
         public static MockL1StorageProvider ReturningNull() => new(null);
+        public static MockL1StorageProvider ReturningWithRestrictions(UInt256 value, Address[] restrictedAddresses) =>
+            new(value, new HashSet<Address>(restrictedAddresses));
     }
 }
