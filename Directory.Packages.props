@@ -72,7 +72,7 @@
     <PackageVersion Include="prometheus-net.AspNetCore" Version="8.2.1" />
     <PackageVersion Include="Pyroscope" Version="0.10.0" />
     <PackageVersion Include="RichardSzalay.MockHttp" Version="7.0.0" />
-    <PackageVersion Include="RocksDB" Version="[9.10.0.55496]" />
+    <PackageVersion Include="RocksDB" Version="[10.2.1.58549]" />
     <PackageVersion Include="SCrypt" Version="2.0.0.2" />
     <PackageVersion Include="Shouldly" Version="4.3.0" />
     <PackageVersion Include="Snappier" Version="1.2.0" />
