@@ -9,4 +9,5 @@ public class HistoryConfig : IHistoryConfig
 
     public long? RetentionEpochs { get; set; } = null;
     public bool DropPreMerge { get; set; } = false;
+    public int RunEvery { get; set; } = 1;
 }

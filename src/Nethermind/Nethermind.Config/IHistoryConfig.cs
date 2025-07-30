@@ -17,4 +17,9 @@ public interface IHistoryConfig : IConfig
         Description = "Whether to drop pre-merge blocks and receipts.",
         DefaultValue = "false")]
     bool DropPreMerge { get; set; }
+
+    [ConfigItem(
+        Description = "Run history pruner every x times.",
+        DefaultValue = "1")]
+    int RunEvery { get; set; }
 }
