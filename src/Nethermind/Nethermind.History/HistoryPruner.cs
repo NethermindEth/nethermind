@@ -431,6 +431,7 @@ public class HistoryPruner : IHistoryPruner
         {
             _deletePointer = val.AsRlpStream().DecodeLong();
             Metrics.OldestStoredBlockNumber = _deletePointer;
+            _lastSavedDeletePointer = _deletePointer;
             _hasLoadedDeletePointer = true;
         }
 
