@@ -1,0 +1,200 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Kute Report</title>
+</head>
+
+<body>
+  <h1>Kute Report</h1>
+  <div class="container">
+    <div id="singles" class="series-container"></div>
+    <div id="batches" class="series-container"></div>
+    <div class="split-container">
+      <div id="piechart" class="piechart-container"></div>
+      <div class="table-container">
+        <table>
+          <thead>
+            <tr>
+              <th>Series</th>
+              <th>Min (ms)</th>
+              <th>Average (ms)</th>
+              <th>Max (ms)</th>
+              <th>StdDev (ms)</th>
+            </tr>
+          </thead>
+          <tbody id="stats"></tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+</body>
+<style>
+  * {
+    font-family: Arial, sans-serif;
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
+  }
+
+  body {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    background-color: #f0f0f0;
+    padding: 2rem;
+  }
+
+  h1 {
+    margin-bottom: 1rem;
+  }
+
+  .container {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: center;
+    gap: 2rem;
+    width: 100%;
+    max-width: 80vw;
+  }
+
+  .series-container {
+    width: 100%;
+    background: #fff;
+    border: 1px solid #ddd;
+    border-radius: 8px;
+    padding: 1rem;
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+  }
+
+  .split-container {
+    display: flex;
+    gap: 2rem;
+    width: 100%;
+  }
+
+  .piechart-container {
+    height: 400px;
+    background: #fff;
+    border: 1px solid #ddd;
+    border-radius: 8px;
+    padding: 1rem;
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+  }
+
+  .table-container {
+    width: 100%;
+    background: #fff;
+    border: 1px solid #ddd;
+    border-radius: 8px;
+    padding: 1rem;
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+  }
+
+  table {
+    width: 100%;
+    border-collapse: collapse;
+    margin-top: 1rem;
+  }
+
+  th,
+  td {
+    border: 1px solid #ddd;
+    padding: 0.5rem;
+    text-align: center;
+  }
+
+  th {
+    background-color: #f4f4f4;
+  }
+</style>
+<script type="text/javascript" src="https://www.gstatic.com/charts/loader.js"></script>
+<script>
+  const anyBatches = Object.keys(input.Batches).length > 0;
+
+  function toMillis(value) {
+    return Number(value.split(".")[1]);
+  }
+
+  function formatSeries(data) {
+    const kv = Object.entries(data).map(([key, value]) => {
+      return [key, toMillis(value)];
+    });
+    kv.sort((a, b) => a[0].localeCompare(b[0]));
+
+    return kv;
+  }
+
+  function drawSeries(title, rows, to) {
+    const data = google.visualization.arrayToDataTable([
+      ["Id", "Execution time (ms)"],
+      ...rows
+    ])
+
+    const options = {
+      title: title,
+      bar: { groupWidth: "90%" },
+    };
+
+    const chart = new google.visualization.ColumnChart(to);
+
+    chart.draw(data, options);
+  }
+
+  function drawPies() {
+    const data = google.visualization.arrayToDataTable([
+      ["Status", "Count"],
+      ["Succeeded", input.Succeeded],
+      ["Failed", input.Failed],
+      ["Ignored", input.Ignored],
+      ["Responses", input.Responses]
+    ]);
+
+    const options = {
+      title: "Execution Status",
+      fontSize: 16,
+      tooltip: { ignoreBounds: true },
+      legend: { position: 'bottom' },
+      slices: [{ color: "green" }, { color: "red" }, { color: "blue" }, { color: "grey" }]
+    };
+
+    const chart = new google.visualization.PieChart(document.getElementById("piechart"));
+
+    chart.draw(data, options);
+  }
+
+  function drawStats() {
+    function buildRow(title, source) {
+      const row = document.createElement("tr");
+      row.innerHTML =
+        `<td style="font-style: italic;">${title}</td>
+        <td>${toMillis(source.Min).toLocaleString()}</td>
+        <td>${toMillis(source.Average).toLocaleString()}</td>
+        <td>${toMillis(source.Max).toLocaleString()}</td>
+        <td>${toMillis(source.StandardDeviation).toLocaleString()}</td>`;
+
+      return row;
+    }
+    const tableBody = document.getElementById("stats");
+
+    tableBody.appendChild(buildRow("Single", input.SinglesMetrics));
+    if (anyBatches) {
+      tableBody.appendChild(buildRow("Batch", input.BatchesMetrics));
+    }
+  }
+
+  google.charts.load("current", { packages: ["corechart", "bar"] });
+  google.charts.setOnLoadCallback(() => {
+    drawSeries("Single Requests", formatSeries(input.Singles), document.getElementById("singles"));
+    if (anyBatches) {
+      drawSeries("Batch Requests", formatSeries(input.Batches), document.getElementById("batches"));
+    }
+    drawPies();
+    drawStats();
+  });
+</script>
+
+</html>
