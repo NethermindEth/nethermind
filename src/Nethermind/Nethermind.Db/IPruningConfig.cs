@@ -80,7 +80,7 @@ public interface IPruningConfig : IConfig
     [ConfigItem(Description = "Enable tracking of past key to reduce database and pruning cache growth", DefaultValue = "true")]
     bool TrackPastKeys { get; set; }
 
-    [ConfigItem(Description = "The number of past states before the state gets pruned. Used to determine how old of a state to keep from the head.", DefaultValue = "128")]
+    [ConfigItem(Description = "The number of past states before the state gets pruned. Used to determine how old of a state to keep from the head.", DefaultValue = "64")]
     int PruningBoundary { get; set; }
 
     [ConfigItem(Description = "Dirty node shard count", DefaultValue = "8")]

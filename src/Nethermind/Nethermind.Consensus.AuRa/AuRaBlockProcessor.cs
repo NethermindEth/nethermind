@@ -48,8 +48,7 @@ namespace Nethermind.Consensus.AuRa
             IAuRaValidator? auRaValidator,
             ITxFilter? txFilter = null,
             AuRaContractGasLimitOverride? gasLimitOverride = null,
-            ContractRewriter? contractRewriter = null,
-            IBlockCachePreWarmer? preWarmer = null)
+            ContractRewriter? contractRewriter = null)
             : base(
                 specProvider,
                 blockValidator,
@@ -61,8 +60,7 @@ namespace Nethermind.Consensus.AuRa
                 new BlockhashStore(specProvider, stateProvider),
                 logManager,
                 withdrawalProcessor,
-                executionRequestsProcessor,
-                preWarmer: preWarmer)
+                executionRequestsProcessor)
         {
             _specProvider = specProvider;
             _blockTree = blockTree ?? throw new ArgumentNullException(nameof(blockTree));
@@ -178,12 +176,12 @@ namespace Nethermind.Consensus.AuRa
 
             return args;
         }
+    }
 
-        private class NullAuRaValidator : IAuRaValidator
-        {
-            public Address[] Validators => [];
-            public void OnBlockProcessingStart(Block block, ProcessingOptions options = ProcessingOptions.None) { }
-            public void OnBlockProcessingEnd(Block block, TxReceipt[] receipts, ProcessingOptions options = ProcessingOptions.None) { }
-        }
+    public class NullAuRaValidator : IAuRaValidator
+    {
+        public Address[] Validators => [];
+        public void OnBlockProcessingStart(Block block, ProcessingOptions options = ProcessingOptions.None) { }
+        public void OnBlockProcessingEnd(Block block, TxReceipt[] receipts, ProcessingOptions options = ProcessingOptions.None) { }
     }
 }

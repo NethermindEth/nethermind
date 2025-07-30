@@ -253,29 +253,8 @@ public class ReceiptsSyncFeedTests
     }
 
     [TestCase(1, 1024, false, null, false)]
-    [TestCase(1, 11051474, false, null, true)]
-    [TestCase(1, 11052984, false, null, true)]
-    [TestCase(11051474, 11052984, false, null, false)]
-    [TestCase(11051474, 11051474, false, null, true)]
-    [TestCase(1, 11052985, false, null, false)]
-    [TestCase(1, 1024, false, 11052984, false)]
-    [TestCase(1, 11051474, false, 11052984, true)]
-    [TestCase(1, 11052984, false, 11052984, true)]
-    [TestCase(11051474, 11052984, false, 11052984, false)]
-    [TestCase(11051474, 11051474, false, 11052984, true)]
-    [TestCase(1, 11052985, false, 11052984, false)]
     [TestCase(1, 1024, true, null, false)]
-    [TestCase(1, 11051474, true, null, false)]
-    [TestCase(1, 11052984, true, null, false)]
-    [TestCase(11051474, 11052984, true, null, false)]
-    [TestCase(11051474, 11051474, true, null, true)]
-    [TestCase(1, 11052985, true, null, false)]
     [TestCase(1, 1024, false, 0, false)]
-    [TestCase(1, 11051474, false, 0, false)]
-    [TestCase(1, 11052984, false, 0, false)]
-    [TestCase(11051474, 11052984, false, 0, false)]
-    [TestCase(11051474, 11051474, false, 0, true)]
-    [TestCase(1, 11052985, false, 0, false)]
     public void When_finished_sync_with_old_default_barrier_then_finishes_imedietely(
         long AncientBarrierInConfig,
         long? lowestInsertedReceiptBlockNumber,

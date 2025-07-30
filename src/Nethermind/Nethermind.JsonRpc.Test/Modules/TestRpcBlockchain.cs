@@ -7,7 +7,6 @@ using System.Threading.Tasks;
 using Nethermind.Blockchain.Filters;
 using Nethermind.Blockchain.Find;
 using Nethermind.Blockchain.Receipts;
-using Nethermind.Blockchain.Synchronization;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Blockchain;
 using Nethermind.Core.Test.Builders;
@@ -15,7 +14,6 @@ using Nethermind.Crypto;
 using Nethermind.Facade;
 using Nethermind.JsonRpc.Modules.Eth;
 using Nethermind.Logging;
-using Nethermind.Facade.Eth;
 using Nethermind.Int256;
 using Nethermind.JsonRpc.Modules.Eth.GasPrice;
 using Nethermind.JsonRpc.Modules.Eth.FeeHistory;
@@ -26,22 +24,25 @@ using Nethermind.TxPool;
 using Nethermind.Wallet;
 using Nethermind.Config;
 using Nethermind.Synchronization;
-using Nethermind.Synchronization.ParallelSync;
 using NSubstitute;
 using Nethermind.JsonRpc.Modules.DebugModule;
 using Nethermind.Consensus.Rewards;
 using Autofac;
+using Nethermind.Blockchain.Synchronization;
 using Nethermind.Consensus;
+using Nethermind.Consensus.Processing;
 using Nethermind.Consensus.Scheduler;
 using Nethermind.Consensus.Validators;
 using Nethermind.Core;
 using Nethermind.Core.Test.Container;
+using Nethermind.Facade.Eth;
 using Nethermind.JsonRpc.Modules;
 using Nethermind.JsonRpc.Modules.Trace;
 using Nethermind.Network;
 using Nethermind.Network.P2P.Subprotocols.Eth;
 using Nethermind.Network.Rlpx;
 using Nethermind.Stats;
+using Nethermind.Synchronization.ParallelSync;
 using Nethermind.Synchronization.Peers;
 using System.Collections.Generic;
 
@@ -174,7 +175,7 @@ namespace Nethermind.JsonRpc.Test.Modules
 
                     // Filter manager need the block processor, but the block processor is currently not completely DI, so need to patch it in.
                     builder.AddSingleton<IFilterManager, IFilterStore, ITxPool, ILogManager>((store, txPool, logManager) =>
-                            new FilterManager(store, _blockchain.BlockProcessor, txPool, logManager));
+                            new FilterManager(store, _blockchain.BranchProcessor, txPool, logManager));
 
                     if (_blockFinderOverride is not null) builder.AddSingleton(_blockFinderOverride);
                     if (_receiptFinderOverride is not null) builder.AddSingleton(_receiptFinderOverride);
@@ -248,5 +249,24 @@ namespace Nethermind.JsonRpc.Test.Modules
 
         public Task<string> TestEthRpc(string method, params object?[]? parameters) =>
             RpcTest.TestSerializedRequest(EthRpcModule, method, parameters);
+
+        private IBlockchainProcessor? _currentBlockchainProcessor;
+
+        public async Task RestartBlockchainProcessor()
+        {
+            if (_currentBlockchainProcessor is not null)
+            {
+                await _currentBlockchainProcessor.StopAsync();
+            }
+            else
+            {
+                await BlockchainProcessor.StopAsync();
+            }
+
+            // simulating restarts - we stopped the old blockchain processor and create the new one
+            _currentBlockchainProcessor = new BlockchainProcessor(BlockTree, BranchProcessor,
+                BlockPreprocessorStep, StateReader, LimboLogs.Instance, Nethermind.Consensus.Processing.BlockchainProcessor.Options.Default);
+            _currentBlockchainProcessor.Start();
+        }
     }
 }

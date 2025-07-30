@@ -2,8 +2,10 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Collections.Generic;
+using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
+using DotNetty.Buffers;
 using Nethermind.Api.Steps;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Core;
@@ -14,6 +16,7 @@ using Nethermind.Logging;
 using Nethermind.Monitoring;
 using Nethermind.Monitoring.Config;
 using Nethermind.Monitoring.Metrics;
+using Nethermind.Serialization.Rlp;
 using Type = System.Type;
 
 namespace Nethermind.Init.Steps;
@@ -100,10 +103,36 @@ public class StartMonitoring(
             });
         }
 
+        if (metricsConfig.EnableDetailedMetric)
+        {
+            monitoringService.AddMetricsUpdateAction(() =>
+            {
+                SetAllocatorMetrics(NethermindBuffers.RlpxAllocator, "rlpx");
+                SetAllocatorMetrics(NethermindBuffers.DiscoveryAllocator, "discovery");
+                SetAllocatorMetrics(NethermindBuffers.Default, "default");
+                SetAllocatorMetrics(PooledByteBufferAllocator.Default, "netty_default");
+            });
+        }
+
         monitoringService.AddMetricsUpdateAction(() =>
         {
             Synchronization.Metrics.SyncTime = (long?)ethSyncingInfo?.UpdateAndGetSyncTime().TotalSeconds ?? 0;
         });
+    }
+
+    public static void SetAllocatorMetrics(IByteBufferAllocator allocator, string name)
+    {
+        if (allocator is PooledByteBufferAllocator byteBufferAllocator)
+        {
+            PooledByteBufferAllocatorMetric metric = byteBufferAllocator.Metric;
+            Serialization.Rlp.Metrics.AllocatorArenaCount[name] = metric.DirectArenas().Count;
+            Serialization.Rlp.Metrics.AllocatorChunkSize[name] = metric.ChunkSize;
+            Serialization.Rlp.Metrics.AllocatorUsedHeapMemory[name] = metric.UsedHeapMemory;
+            Serialization.Rlp.Metrics.AllocatorUsedDirectMemory[name] = metric.UsedDirectMemory;
+            Serialization.Rlp.Metrics.AllocatorActiveAllocations[name] = metric.HeapArenas().Sum((it) => it.NumActiveAllocations);
+            Serialization.Rlp.Metrics.AllocatorActiveAllocationBytes[name] = metric.HeapArenas().Sum((it) => it.NumActiveBytes);
+            Serialization.Rlp.Metrics.AllocatorAllocations[name] = metric.HeapArenas().Sum((it) => it.NumAllocations);
+        }
     }
 
     private void PrepareProductInfoMetrics()

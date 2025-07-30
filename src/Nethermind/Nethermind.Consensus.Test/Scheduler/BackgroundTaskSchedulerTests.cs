@@ -18,13 +18,13 @@ namespace Nethermind.Consensus.Test.Scheduler;
 
 public class BackgroundTaskSchedulerTests
 {
-    private IBlockProcessor _blockProcessor;
+    private IBranchProcessor _branchProcessor;
     private IChainHeadInfoProvider _chainHeadInfo;
 
     [SetUp]
     public void Setup()
     {
-        _blockProcessor = Substitute.For<IBlockProcessor>();
+        _branchProcessor = Substitute.For<IBranchProcessor>();
         _chainHeadInfo = Substitute.For<IChainHeadInfoProvider>();
         _chainHeadInfo.IsSyncing.Returns(false);
     }
@@ -33,7 +33,7 @@ public class BackgroundTaskSchedulerTests
     public async Task Test_task_will_execute()
     {
         TaskCompletionSource tcs = new TaskCompletionSource();
-        await using BackgroundTaskScheduler scheduler = new BackgroundTaskScheduler(_blockProcessor, _chainHeadInfo, 1, 65536, LimboLogs.Instance);
+        await using BackgroundTaskScheduler scheduler = new BackgroundTaskScheduler(_branchProcessor, _chainHeadInfo, 1, 65536, LimboLogs.Instance);
 
         scheduler.ScheduleTask(1, (_, token) =>
         {
@@ -47,7 +47,7 @@ public class BackgroundTaskSchedulerTests
     [Test]
     public async Task Test_task_will_execute_concurrently_when_configured_so()
     {
-        await using BackgroundTaskScheduler scheduler = new BackgroundTaskScheduler(_blockProcessor, _chainHeadInfo, 2, 65536, LimboLogs.Instance);
+        await using BackgroundTaskScheduler scheduler = new BackgroundTaskScheduler(_branchProcessor, _chainHeadInfo, 2, 65536, LimboLogs.Instance);
 
         int counter = 0;
 
@@ -72,7 +72,7 @@ public class BackgroundTaskSchedulerTests
     [Test]
     public async Task Test_task_will_cancel_on_block_processing()
     {
-        await using BackgroundTaskScheduler scheduler = new BackgroundTaskScheduler(_blockProcessor, _chainHeadInfo, 2, 65536, LimboLogs.Instance);
+        await using BackgroundTaskScheduler scheduler = new BackgroundTaskScheduler(_branchProcessor, _chainHeadInfo, 2, 65536, LimboLogs.Instance);
 
         bool wasCancelled = false;
 
@@ -91,17 +91,17 @@ public class BackgroundTaskSchedulerTests
         });
 
         await waitSignal.WaitOneAsync(CancellationToken.None);
-        _blockProcessor.BlocksProcessing += Raise.EventWith(new BlocksProcessingEventArgs(null));
+        _branchProcessor.BlocksProcessing += Raise.EventWith(new BlocksProcessingEventArgs(null));
         await Task.Delay(10);
-        _blockProcessor.BlockProcessed += Raise.EventWith(new BlockProcessedEventArgs(null, null));
+        _branchProcessor.BlockProcessed += Raise.EventWith(new BlockProcessedEventArgs(null, null));
         Assert.That(() => wasCancelled, Is.EqualTo(true).After(10, 1));
     }
 
     [Test]
     public async Task Test_task_that_is_scheduled_during_block_processing_will_continue_after()
     {
-        await using BackgroundTaskScheduler scheduler = new BackgroundTaskScheduler(_blockProcessor, _chainHeadInfo, 2, 65536, LimboLogs.Instance);
-        _blockProcessor.BlocksProcessing += Raise.EventWith(new BlocksProcessingEventArgs(null));
+        await using BackgroundTaskScheduler scheduler = new BackgroundTaskScheduler(_branchProcessor, _chainHeadInfo, 2, 65536, LimboLogs.Instance);
+        _branchProcessor.BlocksProcessing += Raise.EventWith(new BlocksProcessingEventArgs(null));
 
         int executionCount = 0;
         for (int i = 0; i < 5; i++)
@@ -116,15 +116,15 @@ public class BackgroundTaskSchedulerTests
         await Task.Delay(10);
         executionCount.Should().Be(0);
 
-        _blockProcessor.BlockProcessed += Raise.EventWith(new BlockProcessedEventArgs(null, null));
+        _branchProcessor.BlockProcessed += Raise.EventWith(new BlockProcessedEventArgs(null, null));
         Assert.That(() => executionCount, Is.EqualTo(5).After(50, 1));
     }
 
     [Test]
     public async Task Test_task_that_is_scheduled_during_block_processing_but_deadlined_will_get_called_and_cancelled()
     {
-        await using BackgroundTaskScheduler scheduler = new BackgroundTaskScheduler(_blockProcessor, _chainHeadInfo, 2, 65536, LimboLogs.Instance);
-        _blockProcessor.BlocksProcessing += Raise.EventWith(new BlocksProcessingEventArgs(null));
+        await using BackgroundTaskScheduler scheduler = new BackgroundTaskScheduler(_branchProcessor, _chainHeadInfo, 2, 65536, LimboLogs.Instance);
+        _branchProcessor.BlocksProcessing += Raise.EventWith(new BlocksProcessingEventArgs(null));
 
         bool wasCancelled = false;
         ManualResetEvent waitSignal = new ManualResetEvent(false);
@@ -136,7 +136,7 @@ public class BackgroundTaskSchedulerTests
         }, TimeSpan.FromMilliseconds(1));
 
         await Task.Delay(10);
-        _blockProcessor.BlockProcessed += Raise.EventWith(new BlockProcessedEventArgs(null, null));
+        _branchProcessor.BlockProcessed += Raise.EventWith(new BlockProcessedEventArgs(null, null));
         (await waitSignal.WaitOneAsync(CancellationToken.None)).Should().BeTrue();
 
         wasCancelled.Should().BeTrue();
