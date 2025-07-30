@@ -116,7 +116,7 @@
   const anyBatches = Object.keys(input.Batches).length > 0;
 
   function toMillis(value) {
-    return Number(value.split(".")[1]);
+    return Number(value.split(".")[1]) / 10_000;
   }
 
   function formatSeries(data) {
