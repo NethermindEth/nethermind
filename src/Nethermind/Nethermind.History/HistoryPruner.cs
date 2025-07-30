@@ -3,6 +3,7 @@
 
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using System.Runtime.CompilerServices;
 using System.Threading;
 using System.Threading.Tasks;
@@ -24,6 +25,9 @@ namespace Nethermind.History;
 
 public class HistoryPruner : IHistoryPruner
 {
+    private const int DeleteBatchSize = 64;
+    private const int MaxOptimisticSearchAttempts = 3;
+
     // only one pruning and one searching thread at a time
     private readonly Lock _pruneLock = new();
     private readonly Lock _searchLock = new();
@@ -41,10 +45,11 @@ public class HistoryPruner : IHistoryPruner
     private readonly long _epochLength;
     private readonly long _minHistoryRetentionEpochs;
     private long _deletePointer = 1;
+    private long _lastSavedDeletePointer = 1;
     private long? _cutoffPointer;
     private ulong? _cutoffTimestamp;
-    private const int DeleteBatchSize = 64;
     private readonly int LoggingInterval;
+    private bool _hasLoadedDeletePointer = false;
 
     public class HistoryPrunerException(string message, Exception? innerException = null) : Exception(message, innerException);
 
@@ -71,11 +76,10 @@ public class HistoryPruner : IHistoryPruner
         _backgroundTaskScheduler = backgroundTaskScheduler;
         _historyConfig = historyConfig;
         _enabled = historyConfig.Enabled;
-        _epochLength = (long)blocksConfig.SecondsPerSlot * 32;
+        _epochLength = (long)blocksConfig.SecondsPerSlot * 32; // must be changed if slot length changes
         _minHistoryRetentionEpochs = specProvider.GenesisSpec.MinHistoryRetentionEpochs;
 
         CheckConfig();
-        LoadDeletePointer();
 
         if (historyConfig.DropPreMerge)
         {
@@ -99,7 +103,10 @@ public class HistoryPruner : IHistoryPruner
     {
         lock (_pruneLock)
         {
-            if (_blockTree.Head is null || !ShouldPruneHistory(out ulong? cutoffTimestamp))
+            if (_blockTree.Head is null ||
+                _blockTree.SyncPivot.BlockNumber == 0 ||
+                !LoadDeletePointer() ||
+                !ShouldPruneHistory(out ulong? cutoffTimestamp))
             {
                 if (_logger.IsDebug) _logger.Debug($"Skipping historical block pruning.");
                 return Task.CompletedTask;
@@ -108,8 +115,9 @@ public class HistoryPruner : IHistoryPruner
             if (_logger.IsInfo)
             {
                 long? cutoff = CutoffBlockNumber;
-                long? toDelete = cutoff is null ? null : long.Min(cutoff!.Value, _blockTree.SyncPivot.BlockNumber) - _deletePointer;
-                _logger.Info($"Pruning historical blocks up to timestamp {cutoffTimestamp} (#{(cutoff is null ? "unknown" : cutoff)}). Estimated {(toDelete is null ? "unknown" : toDelete)} blocks will be deleted. SyncPivot={_blockTree.SyncPivot.BlockNumber}");
+                cutoff = cutoff is null ? null : long.Min(cutoff!.Value, _blockTree.SyncPivot.BlockNumber);
+                long? toDelete = cutoff - _deletePointer;
+                _logger.Info($"Pruning historical blocks up to timestamp {cutoffTimestamp} (#{(cutoff is null ? "unknown" : cutoff)}). Estimated {(toDelete is null ? "unknown" : toDelete)} blocks will be deleted.");
             }
 
             PruneBlocksAndReceipts(cutoffTimestamp!.Value, cancellationToken);
@@ -127,27 +135,48 @@ public class HistoryPruner : IHistoryPruner
         get => _deletePointer;
     }
 
-    internal void FindOldestBlock()
+    internal bool FindOldestBlock()
     {
+        bool found = false;
         lock (_searchLock)
         {
             // lock prune lock since _deletePointer could be altered
             lock (_pruneLock)
             {
-                long? oldestBlockNumber = BlockTree.BinarySearchBlockNumber(1L, _blockTree.SyncPivot.BlockNumber, LevelExists, BlockTree.BinarySearchDirection.Down);
+                long? oldestBlockNumber = BlockTree.BinarySearchBlockNumber(1L, _blockTree.SyncPivot.BlockNumber, BlockExists, BlockTree.BinarySearchDirection.Down);
 
                 if (oldestBlockNumber is not null)
                 {
                     _deletePointer = oldestBlockNumber.Value;
+                    found = true;
                 }
 
                 SaveDeletePointer();
             }
         }
+        return found;
     }
 
-    private bool LevelExists(long n, bool _)
-        => _chainLevelInfoRepository.LoadLevel(n) is not null;
+    private bool BlockExists(long n, bool _)
+    {
+        ChainLevelInfo? info = _chainLevelInfoRepository.LoadLevel(n);
+
+        if (info is null)
+        {
+            return false;
+        }
+
+        foreach (BlockInfo blockInfo in info.BlockInfos)
+        {
+            Block? b = _blockTree.FindBlock(blockInfo.BlockHash, n);
+            if (b is not null)
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
 
     private long? FindCutoffBlockNumber()
     {
@@ -182,9 +211,9 @@ public class HistoryPruner : IHistoryPruner
             if (_cutoffPointer is not null)
             {
                 int attempts = 0;
-                GetBlocksByNumber(_cutoffPointer.Value, searchCutoff, b =>
+                _ = GetBlocksByNumber(_cutoffPointer.Value, searchCutoff, b =>
                 {
-                    if (attempts >= 5)
+                    if (attempts >= MaxOptimisticSearchAttempts)
                     {
                         return true;
                     }
@@ -196,17 +225,29 @@ public class HistoryPruner : IHistoryPruner
                     }
                     attempts++;
                     return afterCutoff;
-                });
+                }).ToList();
             }
 
             // if linear search fails fallback to  binary search
             cutoffBlockNumber ??= BlockTree.BinarySearchBlockNumber(_deletePointer, searchCutoff, (n, _) =>
             {
-                BlockInfo? blockInfo = _chainLevelInfoRepository.LoadLevel(n)?.MainChainBlock;
-                Block? block = blockInfo is null ? null : _blockTree.FindBlock(blockInfo.BlockHash, BlockTreeLookupOptions.None, blockInfo.BlockNumber);
+                BlockInfo[]? blockInfos = _chainLevelInfoRepository.LoadLevel(n)?.BlockInfos;
 
-                // find cutoff point
-                return block is not null && block.Timestamp >= cutoffTimestamp;
+                if (blockInfos is null)
+                {
+                    return false;
+                }
+
+                foreach (BlockInfo blockInfo in blockInfos)
+                {
+                    Block? b = _blockTree.FindBlock(blockInfo.BlockHash, BlockTreeLookupOptions.None, n);
+                    if (b is not null && b.Timestamp >= cutoffTimestamp)
+                    {
+                        return true;
+                    }
+                }
+
+                return false;
             }, BlockTree.BinarySearchDirection.Down);
 
             _cutoffTimestamp = cutoffTimestamp;
@@ -311,7 +352,7 @@ public class HistoryPruner : IHistoryPruner
     }
 
     private IEnumerable<Block> GetBlocksBeforeTimestamp(ulong cutoffTimestamp)
-        => GetBlocksByNumber(_deletePointer, _blockTree.SyncPivot.BlockNumber, b => b.Timestamp >= cutoffTimestamp);
+        => GetBlocksByNumber(_deletePointer, _blockTree.SyncPivot.BlockNumber - 1, b => b.Timestamp >= cutoffTimestamp);
 
     private IEnumerable<Block> GetBlocksByNumber(long from, long to, Predicate<Block> endSearch)
     {
@@ -326,7 +367,7 @@ public class HistoryPruner : IHistoryPruner
             bool finished = false;
             foreach (BlockInfo blockInfo in chainLevelInfo.BlockInfos)
             {
-                Block? block = _blockTree.FindBlock(blockInfo.BlockHash, BlockTreeLookupOptions.None, blockInfo.BlockNumber);
+                Block? block = _blockTree.FindBlock(blockInfo.BlockHash, BlockTreeLookupOptions.None, i);
                 if (block is null)
                 {
                     continue;
@@ -371,25 +412,36 @@ public class HistoryPruner : IHistoryPruner
         return cutoffTimestamp;
     }
 
-    private void LoadDeletePointer()
+    private bool LoadDeletePointer()
     {
         byte[]? val = _metadataDb.Get(MetadataDbKeys.HistoryPruningDeletePointer);
         if (val is null)
         {
-            FindOldestBlock();
+            if (FindOldestBlock())
+            {
+                _hasLoadedDeletePointer = true;
+            }
         }
         else
         {
             _deletePointer = val.AsRlpStream().DecodeLong();
             Metrics.OldestStoredBlockNumber = _deletePointer;
+            _hasLoadedDeletePointer = true;
         }
 
         if (_logger.IsDebug) _logger.Debug($"Discovered oldest block stored #{_deletePointer}.");
+        return _hasLoadedDeletePointer;
     }
 
     private void SaveDeletePointer()
     {
+        if (!_hasLoadedDeletePointer || _deletePointer == _lastSavedDeletePointer)
+        {
+            return;
+        }
+
         _metadataDb.Set(MetadataDbKeys.HistoryPruningDeletePointer, Rlp.Encode(_deletePointer).Bytes);
+        _lastSavedDeletePointer = _deletePointer;
         Metrics.OldestStoredBlockNumber = _deletePointer;
         if (_logger.IsDebug) _logger.Debug($"Persisting oldest block known = #{_deletePointer} to disk.");
     }
