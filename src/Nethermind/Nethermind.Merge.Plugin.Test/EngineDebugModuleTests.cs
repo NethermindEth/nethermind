@@ -29,23 +29,13 @@ namespace Nethermind.Merge.Plugin.Test;
 // Tests with mocked IDebugBridge
 public class EngineDebugModuleTests
 {
-    private readonly IJsonRpcConfig jsonRpcConfig = new JsonRpcConfig();
-    private readonly ISpecProvider specProvider = Substitute.For<ISpecProvider>();
     private readonly IEngineDebugBridge debugBridge = Substitute.For<IEngineDebugBridge>();
     private readonly IBlockFinder blockFinder = Substitute.For<IBlockFinder>();
-    private readonly IBlockchainBridge blockchainBridge = Substitute.For<IBlockchainBridge>();
-    private readonly MemDb _blocksDb = new();
 
     private DebugRpcModule CreateDebugRpcModule(IEngineDebugBridge customDebugBridge)
     {
         return new(
-            LimboLogs.Instance,
-            customDebugBridge,
-            jsonRpcConfig,
-            specProvider,
-            blockchainBridge,
-            new BlocksConfig(),
-            blockFinder
+            customDebugBridge
         );
     }
 

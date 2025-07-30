@@ -26,29 +26,10 @@ namespace Nethermind.Merge.Plugin
     public class DebugRpcModule : IDebugRpcModule
     {
         private readonly IEngineDebugBridge _mergeDebugBridge;
-        private readonly ILogManager _logManager;
-        private readonly IJsonRpcConfig _jsonRpcConfig;
-        private readonly ISpecProvider _specProvider;
-        private readonly IBlockchainBridge _blockchainBridge;
-        private readonly IBlocksConfig _blocksConfig;
-        private readonly IBlockFinder _blockFinder;
 
-        public DebugRpcModule(
-            ILogManager logManager,
-            IEngineDebugBridge debugBridge,
-            IJsonRpcConfig jsonRpcConfig,
-            ISpecProvider specProvider,
-            IBlockchainBridge blockchainBridge,
-            IBlocksConfig blocksConfig,
-            IBlockFinder blockFinder)
+        public DebugRpcModule(IEngineDebugBridge debugBridge)
         {
-            _logManager = logManager ?? throw new ArgumentNullException(nameof(logManager));
             _mergeDebugBridge = debugBridge ?? throw new ArgumentNullException(nameof(debugBridge));
-            _jsonRpcConfig = jsonRpcConfig ?? throw new ArgumentNullException(nameof(jsonRpcConfig));
-            _specProvider = specProvider ?? throw new ArgumentNullException(nameof(specProvider));
-            _blockchainBridge = blockchainBridge ?? throw new ArgumentNullException(nameof(blockchainBridge));
-            _blocksConfig = blocksConfig ?? throw new ArgumentNullException(nameof(blocksConfig));
-            _blockFinder = blockFinder ?? throw new ArgumentNullException(nameof(blockFinder));
         }
 
         public ResultWrapper<Hash256> debug_calculateBlockHash(ExecutionPayload executionPayload)

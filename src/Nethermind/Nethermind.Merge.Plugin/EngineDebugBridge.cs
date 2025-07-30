@@ -37,44 +37,20 @@ namespace Nethermind.Merge.Plugin
 {
     public class EngineDebugBridge : IEngineDebugBridge
     {
-        private readonly IWorldState _worldState;
-        private readonly IConfigProvider _configProvider;
-        private IReadOnlyDbProvider _dbProvider;
         private IGethStyleTracer _tracer;
         private IBlockTree _blockTree;
-        private IReceiptStorage _receiptStorage;
-        private IReceiptsMigration _receiptsMigration;
         private ISpecProvider _specProvider;
-        private ISyncModeSelector _syncModeSelector;
-        private IBadBlockStore _badBlockStore;
-        private IBlockProducer _blockProducer;
         private IJsonRpcConfig _jsonRpcConfig;
 
         public EngineDebugBridge(
-            IConfigProvider configProvider,
-            IReadOnlyDbProvider dbProvider,
             IGethStyleTracer tracer,
             IBlockTree blockTree,
-            IReceiptStorage receiptStorage,
-            IReceiptsMigration receiptsMigration,
             ISpecProvider specProvider,
-            ISyncModeSelector syncModeSelector,
-            IBadBlockStore badBlockStore,
-            IBlockProducer blockProducer,
-            IWorldState worldState,
             IJsonRpcConfig jsonRpcConfig)
         {
-            _worldState = worldState ?? throw new ArgumentNullException(nameof(worldState));
-            _configProvider = configProvider ?? throw new ArgumentNullException(nameof(configProvider));
-            _dbProvider = dbProvider ?? throw new ArgumentNullException(nameof(dbProvider));
             _tracer = tracer ?? throw new ArgumentNullException(nameof(tracer));
             _blockTree = blockTree ?? throw new ArgumentNullException(nameof(blockTree));
-            _receiptStorage = receiptStorage ?? throw new ArgumentNullException(nameof(receiptStorage));
-            _receiptsMigration = receiptsMigration ?? throw new ArgumentNullException(nameof(receiptsMigration));
             _specProvider = specProvider ?? throw new ArgumentNullException(nameof(specProvider));
-            _syncModeSelector = syncModeSelector ?? throw new ArgumentNullException(nameof(syncModeSelector));
-            _badBlockStore = badBlockStore ?? throw new ArgumentNullException(nameof(badBlockStore));
-            _blockProducer = blockProducer ?? throw new ArgumentNullException(nameof(blockProducer));
             _jsonRpcConfig = jsonRpcConfig ?? throw new ArgumentNullException(nameof(jsonRpcConfig));
         }
 
