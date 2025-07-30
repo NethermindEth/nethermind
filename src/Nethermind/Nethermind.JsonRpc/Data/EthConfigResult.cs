@@ -22,8 +22,8 @@ public class ForkConfig
     public required BlobScheduleSettingsForRpc? BlobSchedule { get; init; }
     public required ulong ChainId { get; init; }
     public byte[]? ForkId { get; init; }
-    public required OrderedDictionary<string, Address> Precompiles { get; init; }
-    public required OrderedDictionary<string, Address> SystemContracts { get; init; }
+    public required SortedDictionary<string, Address> Precompiles { get; init; }
+    public required SortedDictionary<string, Address> SystemContracts { get; init; }
 }
 
 public class BlobScheduleSettingsForRpc
