@@ -41,6 +41,7 @@ using Nethermind.Network;
 using Nethermind.State;
 using Nethermind.State.Repositories;
 using Nethermind.TxPool;
+using Nethermind.Blockchain.Blocks;
 
 namespace Nethermind.Core.Test.Blockchain;
 
