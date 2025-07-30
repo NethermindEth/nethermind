@@ -23,10 +23,7 @@ public interface IForkInfo
 
 public readonly ref struct ForkActivationsSummary
 {
-    public ForkActivation Current { get; init; }
-    public ForkId CurrentForkId { get; init; }
-    public ForkActivation? Next { get; init; }
-    public ForkId? NextForkId { get; init; }
-    public ForkActivation? Last { get; init; }
-    public ForkId? LastForkId { get; init; }
+    public (ForkActivation, ForkId) Current { get; init; }
+    public (ForkActivation, ForkId)? Next { get; init; }
+    public (ForkActivation, ForkId)? Last { get; init; }
 }

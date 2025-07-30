@@ -169,14 +169,9 @@ namespace Nethermind.Network
 
             return new ForkActivationsSummary
             {
-                Current = currentForkActivation,
-                CurrentForkId = Forks[indexOfActive].Id,
-
-                Next = isNextPresent ? Forks[indexOfActive + 1].Activation : null,
-                NextForkId = isNextPresent ? Forks[indexOfActive + 1].Id : null,
-
-                Last = isNextPresent ? Forks[^1].Activation : null,
-                LastForkId = isNextPresent ? Forks[^1].Id : null,
+                Current = (currentForkActivation, Forks[indexOfActive].Id),
+                Next = isNextPresent ? (Forks[indexOfActive + 1].Activation, Forks[indexOfActive + 1].Id) : null,
+                Last = isNextPresent ? (Forks[^1].Activation, Forks[^1].Id) : null,
             };
         }
     }
