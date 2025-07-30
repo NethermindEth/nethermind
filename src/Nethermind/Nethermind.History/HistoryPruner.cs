@@ -50,6 +50,7 @@ public class HistoryPruner : IHistoryPruner
     private ulong? _cutoffTimestamp;
     private readonly int LoggingInterval;
     private bool _hasLoadedDeletePointer = false;
+    private ulong _calledCounter = 0;
 
     public class HistoryPrunerException(string message, Exception? innerException = null) : Exception(message, innerException);
 
@@ -110,6 +111,13 @@ public class HistoryPruner : IHistoryPruner
                 !ShouldPruneHistory(out ulong? cutoffTimestamp))
             {
                 if (_logger.IsInfo) _logger.Debug($"[prune] Skipping historical block pruning.");
+                return Task.CompletedTask;
+            }
+
+            _calledCounter++;
+            if (_calledCounter % (ulong)_historyConfig.RunEvery != 0)
+            {
+                if (_logger.IsInfo) _logger.Debug($"[prune] Skipping historical block pruning counter={_calledCounter}.");
                 return Task.CompletedTask;
             }
 
