@@ -110,14 +110,14 @@ public class HistoryPruner : IHistoryPruner
                 !LoadDeletePointer() ||
                 !ShouldPruneHistory(out ulong? cutoffTimestamp))
             {
-                if (_logger.IsInfo) _logger.Debug($"[prune] Skipping historical block pruning.");
+                if (_logger.IsInfo) _logger.Info($"[prune] Skipping historical block pruning.");
                 return Task.CompletedTask;
             }
 
             _calledCounter++;
             if (_calledCounter % (ulong)_historyConfig.RunEvery != 0)
             {
-                if (_logger.IsInfo) _logger.Debug($"[prune] Skipping historical block pruning counter={_calledCounter}.");
+                if (_logger.IsInfo) _logger.Info($"[prune] Skipping historical block pruning counter={_calledCounter}.");
                 return Task.CompletedTask;
             }
 
@@ -484,6 +484,11 @@ public class HistoryPruner : IHistoryPruner
 
     private bool LoadDeletePointer()
     {
+        if (_hasLoadedDeletePointer)
+        {
+            return true;
+        }
+
         if (_logger.IsInfo) _logger.Info($"[prune] Starting search for oldest block stored.");
         byte[]? val = _metadataDb.Get(MetadataDbKeys.HistoryPruningDeletePointer);
         if (val is null)
@@ -500,7 +505,7 @@ public class HistoryPruner : IHistoryPruner
             _hasLoadedDeletePointer = true;
         }
 
-        if (_logger.IsDebug) _logger.Debug($"[prune] Discovered oldest block stored #{_deletePointer}.");
+        if (_logger.IsInfo) _logger.Info($"[prune] Discovered oldest block stored #{_deletePointer}.");
         return _hasLoadedDeletePointer;
     }
 
