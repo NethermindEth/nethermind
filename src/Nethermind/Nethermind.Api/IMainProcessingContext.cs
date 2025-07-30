@@ -19,6 +19,7 @@ namespace Nethermind.Api;
 public interface IMainProcessingContext : IStoppableService
 {
     ITransactionProcessor TransactionProcessor { get; }
+    IBranchProcessor BranchProcessor { get; }
     IBlockProcessor BlockProcessor { get; }
     IBlockchainProcessor BlockchainProcessor { get; }
     IWorldState WorldState { get; }

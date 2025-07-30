@@ -203,7 +203,7 @@ public class ValidateSubmissionHandler
 
         using var scope = _blockProcessorEnv.BuildAndOverride(parentHeader);
         IWorldState worldState = scope.Component.WorldState;
-        IBlockProcessor blockProcessor = scope.Component.BlockProcessor;
+        IBranchProcessor branchProcessor = scope.Component.BranchProcessor;
 
         IReleaseSpec spec = _specProvider.GetSpec(parentHeader);
 
@@ -219,7 +219,7 @@ public class ValidateSubmissionHandler
             {
                 ValidateSubmissionProcessingOptions |= ProcessingOptions.NoValidation;
             }
-            _ = blockProcessor.Process(parentHeader, suggestedBlocks, ValidateSubmissionProcessingOptions, blockReceiptsTracer)[0];
+            _ = branchProcessor.Process(parentHeader, suggestedBlocks, ValidateSubmissionProcessingOptions, blockReceiptsTracer)[0];
         }
         catch (Exception e)
         {
@@ -402,5 +402,5 @@ public class ValidateSubmissionHandler
         return true;
     }
 
-    public record ProcessingEnv(IBlockProcessor BlockProcessor, IWorldState WorldState);
+    public record ProcessingEnv(IBranchProcessor BranchProcessor, IWorldState WorldState);
 }

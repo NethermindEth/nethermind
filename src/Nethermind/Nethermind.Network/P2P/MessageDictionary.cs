@@ -4,6 +4,8 @@
 using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
+using System.Diagnostics;
+using System.Diagnostics.CodeAnalysis;
 using System.Threading.Tasks;
 using Nethermind.Core.Exceptions;
 using Nethermind.Core.Extensions;
@@ -23,8 +25,8 @@ public class MessageDictionary<T66Msg, TData>(Action<T66Msg> send, TimeSpan? old
     // request. This is to prevent getting stuck on concurrent request limit and prevent potential memory leak.
     // The timeout is higher than Timeouts.Eth because it could be than the peer is delayed by only a few second.
     // If that is the case, and this throw due to unrecognized request id, the peer will get disconnected, which
-    // we don't want to do too much as that decrease number of peer.
-    private static readonly TimeSpan DefaultOldRequestThreshold = TimeSpan.FromSeconds(30);
+    // we don't want to do too much as that decrease number of peers.
+    private static readonly TimeSpan DefaultOldRequestThreshold = Timeouts.Cleanup;
 
     private readonly TimeSpan _oldRequestThreshold = oldRequestThreshold ?? DefaultOldRequestThreshold;
 
@@ -37,7 +39,7 @@ public class MessageDictionary<T66Msg, TData>(Action<T66Msg> send, TimeSpan? old
         if (_requestCount >= MaxConcurrentRequest)
         {
             request.Message.TryDispose();
-            throw new ConcurrencyLimitReachedException($"Concurrent request limit reached. Message type: {typeof(T66Msg)}");
+            ThrowTooManyOutstandingRequests();
         }
 
 
@@ -56,6 +58,12 @@ public class MessageDictionary<T66Msg, TData>(Action<T66Msg> send, TimeSpan? old
         {
             request.Message.TryDispose();
         }
+
+        [StackTraceHidden, DoesNotReturn]
+        static void ThrowTooManyOutstandingRequests()
+        {
+            throw new ConcurrencyLimitReachedException($"Concurrent request limit reached. Message type: {typeof(T66Msg)}");
+        }
     }
 
     private async Task CleanOldRequests()
@@ -72,7 +80,7 @@ public class MessageDictionary<T66Msg, TData>(Action<T66Msg> send, TimeSpan? old
                     {
                         _requestCount--;
                         // Unblock waiting thread.
-                        request.CompletionSource.SetException(new TimeoutException("No response received"));
+                        request.CompletionSource.TrySetException(new TimeoutException("No response received"));
                     }
                 }
             }
@@ -87,7 +95,7 @@ public class MessageDictionary<T66Msg, TData>(Action<T66Msg> send, TimeSpan? old
         {
             _requestCount--;
             request.ResponseSize = size;
-            request.CompletionSource.SetResult(data);
+            request.CompletionSource.TrySetResult(data);
         }
         else
         {
