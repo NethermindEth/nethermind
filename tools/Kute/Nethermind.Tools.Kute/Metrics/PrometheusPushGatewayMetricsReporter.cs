@@ -39,8 +39,8 @@ public sealed class PrometheusPushGatewayMetricsReporter : IMetricsReporter
         {
             CollectorRegistry = registry,
             Endpoint = _endpoint,
-            Instance = "kute",
-            Job = $"{Guid.NewGuid()}",
+            Job = "kute",
+            Instance = $"{Guid.NewGuid()}",
         });
 
         _server = new MetricPushServer(_pusher);
