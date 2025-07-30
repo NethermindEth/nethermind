@@ -10,7 +10,6 @@ using Nethermind.Blockchain.Receipts;
 using Nethermind.Blockchain.Spec;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Config;
-using Nethermind.Consensus.Scheduler;
 using Nethermind.Core;
 using Nethermind.Core.ServiceStopper;
 using Nethermind.Core.Specs;
@@ -23,7 +22,6 @@ using Nethermind.Logging;
 using Nethermind.Network.Config;
 using Nethermind.Runner.Ethereum.Modules;
 using Nethermind.Specs.ChainSpecStyle;
-using Nethermind.State.Repositories;
 using Nethermind.TxPool;
 
 namespace Nethermind.Init.Modules;
