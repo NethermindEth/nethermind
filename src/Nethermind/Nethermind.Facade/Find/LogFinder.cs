@@ -235,7 +235,7 @@ namespace Nethermind.Facade.Find
             return true;
         }
 
-        private IEnumerable<int> GetBlockNumbersFor(LogFilter filter, long fromBlock, long toBlock, CancellationToken cancellationToken)
+        public List<int> GetBlockNumbersFor(LogFilter filter, long fromBlock, long toBlock, CancellationToken cancellationToken = default)
         {
             if (_logIndexStorage == null)
                 throw new InvalidOperationException("Log index storage is not provided.");
