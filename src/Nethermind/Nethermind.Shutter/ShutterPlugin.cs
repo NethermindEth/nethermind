@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using System.IO.Abstractions;
 using System.Threading.Tasks;
 using Nethermind.Api;
 using Nethermind.Api.Extensions;
@@ -13,18 +12,8 @@ using Nethermind.Merge.Plugin;
 using Nethermind.Logging;
 using Autofac;
 using Autofac.Core;
-using Nethermind.Config;
-using Nethermind.Abi;
 using Nethermind.Api.Steps;
-using Nethermind.Blockchain;
-using Nethermind.Blockchain.Receipts;
 using Nethermind.Consensus.Producers;
-using Nethermind.Core.Specs;
-using Nethermind.Crypto;
-using Nethermind.Evm.TransactionProcessing;
-using Nethermind.Facade.Find;
-using Nethermind.KeyStore.Config;
-using Nethermind.Network;
 using Nethermind.Specs.ChainSpecStyle;
 
 namespace Nethermind.Shutter;
@@ -70,49 +59,11 @@ public class ShutterPluginModule : Module
     protected override void Load(ContainerBuilder builder)
     {
         builder
-            .AddStep(typeof(RunShutterP2P)) // Where it start the p2p
+            .AddStep(typeof(RunShutterP2P)) // Starts p2p here
 
-            .AddSingleton(CreateShutterApi)
-            .Bind<IShutterApi, ShutterApi>()
+            .AddSingleton<IShutterApi, ShutterApi>()
             .AddDecorator<IBlockProducerTxSourceFactory, ShutterAdditionalBlockProductionTxSource>()
             .AddSingleton<IBlockImprovementContextFactory, ShutterApi, IBlockProducer>((api, blockProducer) => api.GetBlockImprovementContextFactory(blockProducer))
             ;
-    }
-
-    private ShutterApi CreateShutterApi(IComponentContext ctx)
-    {
-        IShutterConfig shutterConfig = ctx.Resolve<IShutterConfig>();
-        IBlocksConfig blocksConfig = ctx.Resolve<IBlocksConfig>();
-
-        ShutterValidatorsInfo validatorsInfo = new();
-        if (shutterConfig!.ValidatorInfoFile is not null)
-        {
-            try
-            {
-                validatorsInfo.Load(shutterConfig!.ValidatorInfoFile);
-            }
-            catch (Exception e)
-            {
-                throw new ShutterPlugin.ShutterLoadingException("Could not load Shutter validator info file", e);
-            }
-        }
-
-        return new ShutterApi(
-            ctx.Resolve<IAbiEncoder>(),
-            ctx.Resolve<IBlockTree>(),
-            ctx.Resolve<IEthereumEcdsa>(),
-            ctx.Resolve<ILogFinder>(),
-            ctx.Resolve<IReceiptFinder>(),
-            ctx.Resolve<ILogManager>(),
-            ctx.Resolve<ISpecProvider>(),
-            ctx.Resolve<ITimestamper>(),
-            ctx.Resolve<IShareableTxProcessorSource>(),
-            ctx.Resolve<IFileSystem>(),
-            ctx.Resolve<IKeyStoreConfig>(),
-            shutterConfig,
-            validatorsInfo,
-            TimeSpan.FromSeconds(blocksConfig!.SecondsPerSlot),
-            ctx.Resolve<IIPResolver>().ExternalIp
-        );
     }
 }

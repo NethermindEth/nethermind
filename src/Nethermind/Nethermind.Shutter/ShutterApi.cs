@@ -12,17 +12,16 @@ using Nethermind.Abi;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Find;
 using Nethermind.Blockchain.Receipts;
+using Nethermind.Config;
 using Nethermind.Consensus;
-using Nethermind.Consensus.Processing;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
 using Nethermind.Crypto;
-using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Facade.Find;
 using Nethermind.KeyStore.Config;
 using Nethermind.Logging;
+using Nethermind.Network;
 using Nethermind.Shutter.Config;
-using Nethermind.Evm.State;
 
 namespace Nethermind.Shutter;
 
@@ -63,24 +62,34 @@ public class ShutterApi : IShutterApi
         IShareableTxProcessorSource txProcessorSource,
         IFileSystem fileSystem,
         IKeyStoreConfig keyStoreConfig,
-        IShutterConfig cfg,
-        ShutterValidatorsInfo validatorsInfo,
-        TimeSpan slotLength,
-        IPAddress ip
-        )
+        IShutterConfig shutterConfig,
+        IBlocksConfig blocksConfig,
+        IIPResolver ipResolver)
     {
-        _cfg = cfg;
+        _cfg = shutterConfig;
         _blockTree = blockTree;
         _readOnlyBlockTree = blockTree.AsReadOnly();
         _abiEncoder = abiEncoder;
         _logManager = logManager;
-        _slotLength = slotLength;
+        _slotLength = TimeSpan.FromSeconds(blocksConfig.SecondsPerSlot);
         _fileSystem = fileSystem;
         _keyStoreConfig = keyStoreConfig;
-        _blockUpToDateCutoff = TimeSpan.FromMilliseconds(cfg.BlockUpToDateCutoff);
+        _blockUpToDateCutoff = TimeSpan.FromMilliseconds(_cfg.BlockUpToDateCutoff);
         _blockWaitCutoff = _slotLength / 3;
-
         _txProcessorSource = txProcessorSource;
+
+        ShutterValidatorsInfo validatorsInfo = new();
+        if (shutterConfig!.ValidatorInfoFile is not null)
+        {
+            try
+            {
+                validatorsInfo.Load(shutterConfig!.ValidatorInfoFile);
+            }
+            catch (Exception e)
+            {
+                throw new ShutterPlugin.ShutterLoadingException("Could not load Shutter validator info file", e);
+            }
+        }
 
         Time = InitTime(specProvider, timestamper);
         TxLoader = new(logFinder, _cfg, Time, specProvider, ecdsa, abiEncoder, logManager);
@@ -104,7 +113,7 @@ public class ShutterApi : IShutterApi
 
         KeyValidator = new ShutterKeyValidator(_cfg, Eon, logManager);
 
-        InitP2P(ip);
+        InitP2P(ipResolver.ExternalIp);
     }
 
     public Task StartP2P(IEnumerable<Multiaddress> bootnodeP2PAddresses, CancellationToken cancellationToken)

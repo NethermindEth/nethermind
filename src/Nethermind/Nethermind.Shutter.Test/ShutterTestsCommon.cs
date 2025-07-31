@@ -7,14 +7,15 @@ using System.IO.Abstractions;
 using Nethermind.Abi;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Receipts;
+using Nethermind.Config;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
 using Nethermind.Crypto;
-using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Facade.Find;
 using Nethermind.KeyStore.Config;
 using Nethermind.Logging;
 using Nethermind.Merge.Plugin.Test;
+using Nethermind.Network;
 using Nethermind.Shutter.Config;
 using Nethermind.Specs;
 using NSubstitute;
@@ -44,6 +45,10 @@ class ShutterTestsCommon
         EncryptedGasLimit = 21000 * 20,
         Validator = true
     };
+    public static readonly BlocksConfig BlocksCfg = new()
+    {
+        SecondsPerSlot = (ulong)SlotLength.TotalSeconds
+    };
     public static readonly TimeSpan BlockUpToDateCutoff = TimeSpan.FromMilliseconds(Cfg.BlockUpToDateCutoff);
 
     public static ShutterApiSimulator InitApi(Random rnd, ITimestamper? timestamper = null, ShutterEventSimulator? eventSimulator = null)
@@ -51,22 +56,31 @@ class ShutterTestsCommon
         ILogFinder logFinder = Substitute.For<ILogFinder>();
         IBlockTree blockTree = Substitute.For<IBlockTree>();
         IReceiptStorage receiptStorage = Substitute.For<IReceiptStorage>();
+        IFileSystem fileSystem = Substitute.For<IFileSystem>();
+        IKeyStoreConfig keyStoreConfig = Substitute.For<IKeyStoreConfig>();
+        IShareableTxProcessorSource txProcessorSource = Substitute.For<IShareableTxProcessorSource>();
+        IIPResolver ipResolver = Substitute.For<IIPResolver>();
         return new(
             eventSimulator ?? InitEventSimulator(rnd),
             AbiEncoder, blockTree, Ecdsa, logFinder, receiptStorage,
             LogManager, SpecProvider, timestamper ?? Substitute.For<ITimestamper>(),
-            Substitute.For<IFileSystem>(), Substitute.For<IKeyStoreConfig>(), Cfg,
-            Substitute.For<IShareableTxProcessorSource>(), new(), rnd
+            fileSystem, keyStoreConfig, Cfg,
+            BlocksCfg, txProcessorSource, ipResolver, rnd
         );
     }
 
     public static ShutterApiSimulator InitApi(Random rnd, BaseEngineModuleTests.MergeTestBlockchain chain, ITimestamper? timestamper = null, ShutterEventSimulator? eventSimulator = null)
-        => new(
+    {
+        IFileSystem fileSystem = Substitute.For<IFileSystem>();
+        IKeyStoreConfig keyStoreConfig = Substitute.For<IKeyStoreConfig>();
+        IIPResolver ipResolver = Substitute.For<IIPResolver>();
+        return new(
             eventSimulator ?? InitEventSimulator(rnd),
             AbiEncoder, chain.BlockTree.AsReadOnly(), chain.EthereumEcdsa, chain.LogFinder, chain.ReceiptStorage,
             chain.LogManager, chain.SpecProvider, timestamper ?? chain.Timestamper,
-            Substitute.For<IFileSystem>(), Substitute.For<IKeyStoreConfig>(), Cfg, chain.ShareableTxProcessorSource, new(), rnd
+            fileSystem, keyStoreConfig, Cfg, BlocksCfg, chain.ShareableTxProcessorSource, ipResolver, rnd
         );
+    }
 
     public static ShutterEventSimulator InitEventSimulator(Random rnd)
         => new(

@@ -3,7 +3,6 @@
 
 using System;
 using System.Collections.Generic;
-using Nethermind.Consensus.Processing;
 using Nethermind.Core;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Shutter.Contracts;
@@ -37,7 +36,7 @@ public class ShutterBlockHandler : IShutterBlockHandler
     private readonly TimeSpan _slotLength;
     private readonly TimeSpan _blockWaitCutoff;
     private readonly IShareableTxProcessorSource _txProcessorSource;
-    private bool _haveCheckedRegistered = false;
+    // private bool _haveCheckedRegistered = false;
     private ulong _blockWaitTaskId = 0;
     private readonly Dictionary<ulong, Dictionary<ulong, BlockWaitTask>> _blockWaitTasks = [];
     private readonly LruCache<ulong, Hash256?> _slotToBlockHash = new(5, "Slot to block hash mapping");
@@ -160,11 +159,11 @@ public class ShutterBlockHandler : IShutterBlockHandler
         {
             if (_logger.IsDebug) _logger.Debug($"Shutter block handler {head.Number}");
 
-            if (!_haveCheckedRegistered)
-            {
-                CheckAllValidatorsRegistered(head.Header, _validatorsInfo);
-                _haveCheckedRegistered = true;
-            }
+            // if (!_haveCheckedRegistered)
+            // {
+            //     CheckAllValidatorsRegistered(head.Header, _validatorsInfo);
+            //     _haveCheckedRegistered = true;
+            // }
             _eon.Update(head.Header);
             _txLoader.LoadFromReceipts(head, _receiptFinder.Get(head), _eon.GetCurrentEonInfo()!.Value.Eon);
 
