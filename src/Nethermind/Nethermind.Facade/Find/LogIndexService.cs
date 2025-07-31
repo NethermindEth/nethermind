@@ -125,7 +125,7 @@ public sealed class LogIndexService : ILogIndexService
 
         if (_stats is not null)
         {
-            LogIndexUpdateStats stats = Interlocked.Exchange(ref _stats, new());
+            LogIndexUpdateStats stats = Interlocked.Exchange(ref _stats, new(_logIndexStorage));
 
             if (_logger.IsInfo)
                 _logger.Info($"{GetLogPrefix()}:\n{stats}");
@@ -238,7 +238,7 @@ public sealed class LogIndexService : ILogIndexService
             }
 
             // TODO: do aggregation separately and in parallel?
-            _stats ??= new();
+            _stats ??= new(_logIndexStorage);
             await _logIndexStorage.SetReceiptsAsync(batch, isBackwardSync: !isForward, _stats);
 
             if (_logIndexStorage.GetMinBlockNumber() == 0)

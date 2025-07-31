@@ -409,7 +409,7 @@ namespace Nethermind.Db.Test.LogIndex
         private async Task SetReceiptsAsync(ILogIndexStorage logIndexStorage, IEnumerable<BlockReceipts[]> batches, bool isBackwardsSync = false)
         {
             var timestamp = Stopwatch.GetTimestamp();
-            var totalStats = new LogIndexUpdateStats();
+            var totalStats = new LogIndexUpdateStats(logIndexStorage);
             var (count, length) = (0, 0);
             foreach (BlockReceipts[] batch in batches)
             {
