@@ -108,6 +108,7 @@ public class HistoryPruner : IHistoryPruner
 
     public Task TryPruneHistory(CancellationToken cancellationToken)
     {
+        lock (BackgroundTaskScheduler.DbIntensiveBackgroundTaskLock)
         lock (_pruneLock)
         {
             if (_blockTree.Head is null ||

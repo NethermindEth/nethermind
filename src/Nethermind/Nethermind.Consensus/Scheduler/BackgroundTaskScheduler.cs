@@ -31,6 +31,8 @@ namespace Nethermind.Consensus.Scheduler;
 /// </summary>
 public class BackgroundTaskScheduler : IBackgroundTaskScheduler, IAsyncDisposable
 {
+    public static readonly Lock DbIntensiveBackgroundTaskLock = new();
+
     private static readonly TimeSpan DefaultTimeout = TimeSpan.FromSeconds(2);
 
     private readonly CancellationTokenSource _mainCancellationTokenSource;
