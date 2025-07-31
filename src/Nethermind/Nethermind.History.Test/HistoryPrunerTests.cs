@@ -9,6 +9,7 @@ using Autofac;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Config;
+using Nethermind.Consensus.Processing;
 using Nethermind.Consensus.Scheduler;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
@@ -274,6 +275,7 @@ public class HistoryPrunerTests
             BlocksConfig,
             new ProcessExitSource(new()),
             Substitute.For<IBackgroundTaskScheduler>(),
+            Substitute.For<IBlockProcessingQueue>(),
             LimboLogs.Instance));
     }
 
@@ -300,6 +302,7 @@ public class HistoryPrunerTests
             BlocksConfig,
             new ProcessExitSource(new()),
             Substitute.For<IBackgroundTaskScheduler>(),
+            Substitute.For<IBlockProcessingQueue>(),
             LimboLogs.Instance));
     }
 

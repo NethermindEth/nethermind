@@ -166,11 +166,6 @@ namespace Nethermind.Init.Steps
                 _api.DisposeStack.Push(censorshipDetector);
             }
 
-            if (historyConfig.Enabled)
-            {
-                blockchainProcessor.ProcessingQueueEmpty += _api.HistoryPruner!.OnBlockProcessorQueueEmpty;
-            }
-
             return Task.CompletedTask;
         }
 

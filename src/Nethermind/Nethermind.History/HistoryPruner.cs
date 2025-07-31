@@ -10,6 +10,7 @@ using System.Threading.Tasks;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Config;
+using Nethermind.Consensus.Processing;
 using Nethermind.Consensus.Scheduler;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
@@ -63,6 +64,7 @@ public class HistoryPruner : IHistoryPruner
         IBlocksConfig blocksConfig,
         IProcessExitSource processExitSource,
         IBackgroundTaskScheduler backgroundTaskScheduler,
+        IBlockProcessingQueue blockProcessingQueue,
         ILogManager logManager)
     {
         _specProvider = specProvider;
@@ -85,6 +87,11 @@ public class HistoryPruner : IHistoryPruner
         {
             Metrics.PruningCutoffBlocknumber = _specProvider.MergeBlockNumber?.BlockNumber;
             Metrics.PruningCutoffTimestamp = _specProvider.BeaconChainGenesisTimestamp;
+        }
+
+        if (historyConfig.Enabled)
+        {
+            blockProcessingQueue.ProcessingQueueEmpty += OnBlockProcessorQueueEmpty;
         }
     }
 
