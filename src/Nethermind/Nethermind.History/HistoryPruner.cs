@@ -143,7 +143,7 @@ public class HistoryPruner : IHistoryPruner
         }
     }
 
-    private bool SetDeletePointerToOldestBlock()
+    internal bool SetDeletePointerToOldestBlock()
     {
         bool found = false;
         lock (_searchLock)
