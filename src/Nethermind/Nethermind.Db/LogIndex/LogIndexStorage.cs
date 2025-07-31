@@ -91,7 +91,7 @@ namespace Nethermind.Db
             _compactor = compactionDistance.HasValue ? new Compactor(this, _logger, compactionDistance.Value) : new NoOpCompactor();
             _columnsDb = dbFactory.CreateColumnsDb<LogIndexColumns>(new("logIndexStorage", DbNames.LogIndex)
             {
-                MergeOperator = _mergeOperator = new(_compressor)
+                MergeOperator = _mergeOperator = new(this, _compressor)
             });
             _addressDb = _columnsDb.GetColumnDb(LogIndexColumns.Addresses);
             _topicsDb = _columnsDb.GetColumnDb(LogIndexColumns.Topics);
@@ -599,9 +599,6 @@ namespace Nethermind.Db
 
                 // Enqueue compaction if needed
                 _compactor.TryEnqueue();
-
-                stats?.UpdateMaxBlockNumber(GetMaxBlockNumber());
-                stats?.UpdateMinBlockNumber(GetMinBlockNumber());
             }
             finally
             {

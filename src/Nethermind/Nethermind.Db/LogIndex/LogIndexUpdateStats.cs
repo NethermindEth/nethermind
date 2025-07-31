@@ -6,7 +6,7 @@ using System.Threading;
 
 namespace Nethermind.Db;
 
-public class LogIndexUpdateStats : IFormattable
+public class LogIndexUpdateStats(ILogIndexStorage storage) : IFormattable
 {
     private long _blocksAdded;
     private long _txAdded;
@@ -18,8 +18,8 @@ public class LogIndexUpdateStats : IFormattable
     public long LogsAdded => _logsAdded;
     public long TopicsAdded => _topicsAdded;
 
-    public long? MaxBlockNumber { get; private set; }
-    public long? MinBlockNumber { get; private set; }
+    public long? MaxBlockNumber => storage.GetMaxBlockNumber();
+    public long? MinBlockNumber => storage.GetMinBlockNumber();
 
     public ExecTimeStats SetReceipts { get; } = new();
     public ExecTimeStats Aggregating { get; } = new();
@@ -53,31 +53,12 @@ public class LogIndexUpdateStats : IFormattable
         WaitingBatch.Combine(other.WaitingBatch);
         InMemoryMerging.Combine(other.InMemoryMerging);
         KeysCount.Combine(other.KeysCount);
-        MaxBlockNumber = MaxBlockNumber is null || other.MaxBlockNumber is null
-            ? MaxBlockNumber ?? other.MaxBlockNumber
-            : Math.Max(MaxBlockNumber.Value, other.MaxBlockNumber.Value);
-        MinBlockNumber = MinBlockNumber is null || other.MinBlockNumber is null
-            ? MinBlockNumber ?? other.MinBlockNumber
-            : Math.Max(MinBlockNumber.Value, other.MinBlockNumber.Value);
 
         QueueingAddressCompression.Combine(other.QueueingAddressCompression);
         QueueingTopicCompression.Combine(other.QueueingTopicCompression);
 
         PostMergeProcessing.Combine(other.PostMergeProcessing);
         Compacting.Combine(other.Compacting);
-    }
-
-    // TODO: make thread safe?
-    public void UpdateMaxBlockNumber(long? blockNumber)
-    {
-        if (!blockNumber.HasValue) return;
-        MaxBlockNumber = Math.Max(MaxBlockNumber ?? blockNumber.Value, blockNumber.Value);
-    }
-
-    public void UpdateMinBlockNumber(long? blockNumber)
-    {
-        if (!blockNumber.HasValue) return;
-        MinBlockNumber = Math.Min(MinBlockNumber ?? blockNumber.Value, blockNumber.Value);
     }
 
     public void IncrementBlocks() => Interlocked.Increment(ref _blocksAdded);
