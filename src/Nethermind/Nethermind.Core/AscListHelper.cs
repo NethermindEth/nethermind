@@ -10,6 +10,9 @@ namespace Nethermind.Core;
 /// <summary>
 /// Helper class for fast operations with strictly increasing lists of integers.
 /// </summary>
+/// <remarks>
+/// Can reuse parameters as return values to minimize allocations.
+/// </remarks>
 public static class AscListHelper
 {
     public static T IntersectTo<T>(T destination, IReadOnlyList<int> source1, IReadOnlyList<int> source2)
@@ -42,6 +45,13 @@ public static class AscListHelper
     {
         var destination = new List<int>(Math.Min(source1.Count, source2.Count));
         return IntersectTo(destination, source1, source2);
+    }
+
+    public static List<int> Intersect(List<int> source1, List<int> source2)
+    {
+        if (source1.Count == 0) return source2;
+        if (source2.Count == 0) return source1;
+        return Intersect((IReadOnlyList<int>)source1, source2);
     }
 
     public static T UnionTo<T>(T destination, IReadOnlyList<int> source1, IReadOnlyList<int> source2)
@@ -80,6 +90,13 @@ public static class AscListHelper
     {
         var destination = new List<int>(Math.Max(source1.Count, source2.Count));
         return UnionTo(destination, source1, source2);
+    }
+
+    public static List<int> Union(List<int> source1, List<int> source2)
+    {
+        if (source1.Count == 0) return source2;
+        if (source2.Count == 0) return source1;
+        return Union((IReadOnlyList<int>)source1, source2);
     }
 
     // TODO: optimize memory usage/copying in *All methods?
