@@ -143,7 +143,7 @@ public class HistoryPruner : IHistoryPruner
         get => _deletePointer;
     }
 
-    internal bool FindOldestBlock()
+    internal bool SetDeletePointerToOldestBlock()
     {
         bool found = false;
         lock (_searchLock)
@@ -155,7 +155,7 @@ public class HistoryPruner : IHistoryPruner
 
                 if (oldestBlockNumber is not null)
                 {
-                    _deletePointer = oldestBlockNumber.Value;
+                    UpdateDeletePointer(oldestBlockNumber.Value);
                     found = true;
                 }
 
@@ -331,9 +331,9 @@ public class HistoryPruner : IHistoryPruner
                 if (_logger.IsDebug) _logger.Debug($"Deleting old block {number} with hash {hash}.");
                 _blockTree.DeleteOldBlock(number, hash, batch!);
                 _receiptStorage.RemoveReceipts(block);
-                _deletePointer = number + 1;
-                lastDeletedTimstamp = block.Timestamp;
 
+                UpdateDeletePointer(number + 1);
+                lastDeletedTimstamp = block.Timestamp;
                 deletedBlocks++;
                 Metrics.BlocksPruned++;
             }
@@ -430,15 +430,14 @@ public class HistoryPruner : IHistoryPruner
         byte[]? val = _metadataDb.Get(MetadataDbKeys.HistoryPruningDeletePointer);
         if (val is null)
         {
-            if (FindOldestBlock())
+            if (SetDeletePointerToOldestBlock())
             {
                 _hasLoadedDeletePointer = true;
             }
         }
         else
         {
-            _deletePointer = val.AsRlpStream().DecodeLong();
-            Metrics.OldestStoredBlockNumber = _deletePointer;
+            UpdateDeletePointer(val.AsRlpStream().DecodeLong());
             _lastSavedDeletePointer = _deletePointer;
             _hasLoadedDeletePointer = true;
         }
@@ -456,7 +455,12 @@ public class HistoryPruner : IHistoryPruner
 
         _metadataDb.Set(MetadataDbKeys.HistoryPruningDeletePointer, Rlp.Encode(_deletePointer).Bytes);
         _lastSavedDeletePointer = _deletePointer;
-        Metrics.OldestStoredBlockNumber = _deletePointer;
         if (_logger.IsDebug) _logger.Debug($"Persisting oldest block known = #{_deletePointer} to disk.");
+    }
+
+    private void UpdateDeletePointer(long newDeletePointer)
+    {
+        _deletePointer = newDeletePointer;
+        Metrics.OldestStoredBlockNumber = _deletePointer;
     }
 }
