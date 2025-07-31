@@ -123,28 +123,28 @@ public class HistoryPruner : IHistoryPruner
     internal Task TryPruneHistory(CancellationToken cancellationToken)
     {
         lock (BackgroundTaskScheduler.DbIntensiveBackgroundTaskLock)
-        lock (_pruneLock)
-        {
-            if (_blockTree.Head is null ||
-                _blockTree.SyncPivot.BlockNumber == 0 ||
-                !TryLoadDeletePointer() ||
-                !ShouldPruneHistory(out ulong? cutoffTimestamp))
+            lock (_pruneLock)
             {
-                if (_logger.IsDebug) _logger.Debug($"Skipping historical block pruning.");
+                if (_blockTree.Head is null ||
+                    _blockTree.SyncPivot.BlockNumber == 0 ||
+                    !TryLoadDeletePointer() ||
+                    !ShouldPruneHistory(out ulong? cutoffTimestamp))
+                {
+                    if (_logger.IsDebug) _logger.Debug($"Skipping historical block pruning.");
+                    return Task.CompletedTask;
+                }
+
+                if (_logger.IsInfo)
+                {
+                    long? cutoff = CutoffBlockNumber;
+                    cutoff = cutoff is null ? null : long.Min(cutoff!.Value, _blockTree.SyncPivot.BlockNumber);
+                    long? toDelete = cutoff - _deletePointer;
+                    _logger.Info($"Pruning historical blocks up to timestamp {cutoffTimestamp} (#{(cutoff is null ? "unknown" : cutoff)}). Estimated {(toDelete is null ? "unknown" : toDelete)} blocks will be deleted.");
+                }
+
+                PruneBlocksAndReceipts(cutoffTimestamp!.Value, cancellationToken);
                 return Task.CompletedTask;
             }
-
-            if (_logger.IsInfo)
-            {
-                long? cutoff = CutoffBlockNumber;
-                cutoff = cutoff is null ? null : long.Min(cutoff!.Value, _blockTree.SyncPivot.BlockNumber);
-                long? toDelete = cutoff - _deletePointer;
-                _logger.Info($"Pruning historical blocks up to timestamp {cutoffTimestamp} (#{(cutoff is null ? "unknown" : cutoff)}). Estimated {(toDelete is null ? "unknown" : toDelete)} blocks will be deleted.");
-            }
-
-            PruneBlocksAndReceipts(cutoffTimestamp!.Value, cancellationToken);
-            return Task.CompletedTask;
-        }
     }
 
     internal bool SetDeletePointerToOldestBlock()
