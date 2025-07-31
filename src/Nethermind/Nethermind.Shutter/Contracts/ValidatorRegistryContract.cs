@@ -14,7 +14,7 @@ using Nethermind.Core.Extensions;
 using Nethermind.Crypto;
 using Nethermind.Shutter.Config;
 using System.Linq;
-
+using System.Threading;
 using Update = (byte[] Message, byte[] Signature);
 
 namespace Nethermind.Shutter.Contracts;
@@ -35,21 +35,31 @@ public class ValidatorRegistryContract(
     public Update GetUpdate(BlockHeader header, in UInt256 i)
         => (Update)Call(header, nameof(GetUpdate), Address.Zero, [i])[0];
 
-    public bool IsRegistered(in BlockHeader header, in ShutterValidatorsInfo validatorsInfo, out HashSet<ulong> unregistered)
-        => IsRegistered(GetUpdates(header), validatorsInfo, out unregistered);
+    public bool IsRegistered(in BlockHeader header, in ShutterValidatorsInfo validatorsInfo, out HashSet<ulong> unregistered, CancellationToken cancellationToken)
+        => IsRegistered(GetUpdates(header), validatorsInfo, out unregistered, cancellationToken);
 
-    internal bool IsRegistered(IEnumerable<(uint, Update)> updates, in ShutterValidatorsInfo validatorsInfo, out HashSet<ulong> unregistered)
+    internal bool IsRegistered(IEnumerable<(uint, Update)> updates, in ShutterValidatorsInfo validatorsInfo, out HashSet<ulong> unregistered, CancellationToken cancellationToken)
     {
         Dictionary<ulong, ulong?> nonces = [];
         unregistered = [];
         foreach (ulong index in validatorsInfo.ValidatorIndices)
         {
+            if (cancellationToken.IsCancellationRequested)
+            {
+                return false;
+            }
+
             nonces.Add(index, null);
             unregistered.Add(index);
         }
 
         foreach ((uint i, Update update) in updates)
         {
+            if (cancellationToken.IsCancellationRequested)
+            {
+                return false;
+            }
+
             if (!IsUpdateValid(update, validatorsInfo, out string err))
             {
                 if (_logger.IsDebug) _logger.Debug($"Update {i} was invalid: {err}");

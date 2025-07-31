@@ -15,6 +15,7 @@ using Nethermind.Blockchain.Receipts;
 using Nethermind.Config;
 using Nethermind.Consensus;
 using Nethermind.Consensus.Processing;
+using Nethermind.Consensus.Scheduler;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
 using Nethermind.Crypto;
@@ -61,6 +62,8 @@ public class ShutterApi : IShutterApi
         ISpecProvider specProvider,
         ITimestamper timestamper,
         IShareableTxProcessorSource txProcessorSource,
+        IBackgroundTaskScheduler backgroundTaskScheduler,
+        IProcessExitSource processExitSource,
         IFileSystem fileSystem,
         IBlockProcessingQueue blockProcessingQueue,
         IKeyStoreConfig keyStoreConfig,
@@ -112,6 +115,8 @@ public class ShutterApi : IShutterApi
             _cfg,
             blockTree,
             blockProcessingQueue,
+            backgroundTaskScheduler,
+            processExitSource,
             _txProcessorSource,
             abiEncoder,
             logManager

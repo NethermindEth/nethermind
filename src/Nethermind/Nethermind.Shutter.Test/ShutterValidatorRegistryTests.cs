@@ -4,11 +4,12 @@
 using NUnit.Framework;
 using Nethermind.Core;
 using System;
+using System.Collections.Generic;
+using System.Threading;
 using Nethermind.Shutter.Contracts;
 using NSubstitute;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Logging;
-using System.Collections.Generic;
 using Nethermind.Shutter.Config;
 using Nethermind.Crypto;
 using Nethermind.Core.Crypto;
@@ -61,11 +62,11 @@ class ShutterValidatorRegistryTests
         badUpdate.Signature[34] += 1;
         updates.Add((5, badUpdate));
 
-        Assert.Multiple(() =>
+        using (Assert.EnterMultipleScope())
         {
-            Assert.That(!contract.IsRegistered(updates, validatorsInfo, out HashSet<ulong> unregistered));
+            Assert.That(!contract.IsRegistered(updates, validatorsInfo, out HashSet<ulong> unregistered, CancellationToken.None));
             Assert.That(unregistered, Has.Count.EqualTo(4));
-        });
+        }
     }
 
     private static Update CreateUpdate(ulong startIndex, uint count, uint nonce, byte version, bool isRegistration)
