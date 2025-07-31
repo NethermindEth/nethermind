@@ -123,6 +123,7 @@ public class HistoryPruner : IHistoryPruner
     internal Task TryPruneHistory(CancellationToken cancellationToken)
     {
         lock (BackgroundTaskScheduler.DbIntensiveBackgroundTaskLock)
+        {
             lock (_pruneLock)
             {
                 if (_blockTree.Head is null ||
@@ -145,6 +146,7 @@ public class HistoryPruner : IHistoryPruner
                 PruneBlocksAndReceipts(cutoffTimestamp!.Value, cancellationToken);
                 return Task.CompletedTask;
             }
+        }
     }
 
     internal bool SetDeletePointerToOldestBlock()
