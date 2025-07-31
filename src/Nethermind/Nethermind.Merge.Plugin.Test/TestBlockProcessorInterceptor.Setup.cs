@@ -6,7 +6,6 @@ using System.Collections.Generic;
 using System.Threading;
 using Nethermind.Consensus.Processing;
 using Nethermind.Core;
-using Nethermind.Core.Crypto;
 using Nethermind.Evm.Tracing;
 
 namespace Nethermind.Merge.Plugin.Test;
@@ -37,6 +36,9 @@ public class TestBranchProcessorInterceptor : IBranchProcessor
 
         return _blockProcessorImplementation.Process(baseBlock, suggestedBlocks, processingOptions, blockTracer, token);
     }
+
+    // public bool ValidateInclusionList(Block suggestedBlock, Block block, ProcessingOptions options)
+    //     => _blockProcessorImplementation.ValidateInclusionList(suggestedBlock, block, options);
 
     public event EventHandler<BlocksProcessingEventArgs>? BlocksProcessing
     {

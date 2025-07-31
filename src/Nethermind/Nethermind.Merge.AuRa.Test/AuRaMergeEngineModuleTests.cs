@@ -33,6 +33,7 @@ using Nethermind.Specs.Test.ChainSpecStyle;
 using Nethermind.Evm.State;
 using NSubstitute;
 using NUnit.Framework;
+using Nethermind.Consensus.Transactions;
 
 namespace Nethermind.Merge.AuRa.Test;
 
@@ -54,6 +55,40 @@ public class AuRaMergeEngineModuleTests : EngineModuleTests
         => base.forkchoiceUpdatedV2_should_validate_withdrawals(input);
 
     [TestCase(
+        "0x67c4b87edb1ae82efc29a4b04c625ab7efd5ed681366c2f9ba672d7bd40e9bef",
+        "0x26b9598dd31cd520c6dcaf4f6fa13e279b4fa1f94d150357290df0e944f53115")]
+    public override Task NewPayloadV5_should_return_invalid_for_unsatisfied_inclusion_list_V5(string blockHash, string stateRoot)
+        => base.NewPayloadV5_should_return_invalid_for_unsatisfied_inclusion_list_V5(blockHash, stateRoot);
+
+    [TestCase(
+        "0x1f26afbef938a122f4f55d2f081ac81cd9c8851ca22452fa5baf58845e574fc6",
+        "0x18e34081587cde90ddac14e7d06ae141a22b42c57184464d82a5bc5e215a128f",
+        "0x1cdeda061d1ea1b3ed89a2ce9aafbd4a9502a2eed652f3feaa66b95e3898dcda",
+        "0x87a6172799c906f7",
+        "0x642cd2bcdba228efb3996bf53981250d3608289522b80754c4e3c085c93c806f",
+        "0x2632e314a000",
+        "0x5208")]
+    public override Task Should_build_block_with_inclusion_list_transactions_V5(
+        string latestValidHash,
+        string blockHash,
+        string stateRoot,
+        string payloadId,
+        string receiptsRoot,
+        string blockFees,
+        string gasUsed)
+        => base.Should_build_block_with_inclusion_list_transactions_V5(latestValidHash, blockHash, stateRoot, payloadId, receiptsRoot, blockFees, gasUsed);
+
+    [TestCase(
+        "0x1f26afbef938a122f4f55d2f081ac81cd9c8851ca22452fa5baf58845e574fc6",
+        "0x343ab3716f2475c9cdd993dc654dd0ea143379a62f0556180bff1869eb451858",
+        "0x26b9598dd31cd520c6dcaf4f6fa13e279b4fa1f94d150357290df0e944f53115",
+        "0x2de3ad8b5939b3b9")]
+    public override Task Should_process_block_as_expected_V5(string latestValidHash, string blockHash, string stateRoot, string payloadId)
+        => base.Should_process_block_as_expected_V5(latestValidHash, blockHash, stateRoot, payloadId);
+
+    [TestCase(
+        // "0x1f26afbef938a122f4f55d2f081ac81cd9c8851ca22452fa5baf58845e574fc6",
+        // "0x343ab3716f2475c9cdd993dc654dd0ea143379a62f0556180bff1869eb451858",
         "0xd6ac1db7fee77f895121329b5949ddfb5258c952868a3707bb1104d8f219df2e",
         "0x912ef8152bf54f81762e26d2a4f0793fb2a0a55b7ce5a9ff7f6879df6d94a6b3",
         "0x26b9598dd31cd520c6dcaf4f6fa13e279b4fa1f94d150357290df0e944f53115",
@@ -166,13 +201,34 @@ public class AuRaMergeEngineModuleTests : EngineModuleTests
                 LogManager,
                 targetAdjustedGasLimitCalculator);
 
-            IBlockProducerEnv blockProducerEnv = BlockProducerEnvFactory.Create();
+            // AuRaMergeBlockProducerEnvFactory blockProducerEnvFactory = new(
+            //     _api!.ChainSpec,
+            //     _api.AbiEncoder,
+            //     _api.CreateStartBlockProducer,
+            //     _api.ReadOnlyTxProcessingEnvFactory,
+            //     WorldStateManager,
+            //     BlockTree,
+            //     SpecProvider,
+            //     BlockValidator,
+            //     NoBlockRewards.Instance,
+            //     ReceiptStorage,
+            //     BlockPreprocessorStep,
+            //     TxPool,
+            //     transactionComparerProvider,
+            //     blocksConfig,
+            //     LogManager);
+            // blockProducerEnvFactory.ExecutionRequestsProcessorOverride = ExecutionRequestsProcessorOverride;
+            // this._blockProducerEnvFactory = blockProducerEnvFactory;
+
+            InclusionListTxSource = new InclusionListTxSource(EthereumEcdsa, SpecProvider, LogManager);
+            // BlockProducerEnv blockProducerEnv = blockProducerEnvFactory.Create(_additionalTxSource.Then(InclusionListTxSource));
+            IBlockProducerEnv blockProducerEnv = BlockProducerEnvFactory.Create(); // todo: pass in IL tx source?
             PostMergeBlockProducer postMergeBlockProducer = blockProducerFactory.Create(blockProducerEnv);
             BlockProducer = postMergeBlockProducer;
 
             IAuRaStepCalculator auraStepCalculator = Substitute.For<IAuRaStepCalculator>();
             auraStepCalculator.TimeToNextStep.Returns(TimeSpan.FromMilliseconds(0));
-            var env = BlockProducerEnvFactory.Create();
+            IBlockProducerEnv env = BlockProducerEnvFactory.Create(); // todo: pre and post block env?
             FollowOtherMiners gasLimitCalculator = new(MainnetSpecProvider.Instance);
             AuRaBlockProducer preMergeBlockProducer = new(
                 env.TxSource,

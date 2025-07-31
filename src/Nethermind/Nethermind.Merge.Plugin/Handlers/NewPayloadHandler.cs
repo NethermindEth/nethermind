@@ -3,6 +3,8 @@
 
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
+using System.Diagnostics.CodeAnalysis;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Blockchain;
@@ -49,7 +51,6 @@ public class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadStatusV1
     private readonly LruCache<ValueHash256, (bool valid, string? message)>? _latestBlocks;
     private readonly ProcessingOptions _defaultProcessingOptions;
     private readonly TimeSpan _timeout;
-
     private long _lastBlockNumber;
     private long _lastBlockGasLimit;
     private readonly bool _simulateBlockProduction;
@@ -237,22 +238,38 @@ public class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadStatusV1
         // Try to execute block
         (ValidationResult result, string? message) = await ValidateBlockAndProcess(block, parentHeader, processingOptions);
 
-        if (result == ValidationResult.Invalid)
+        switch (result)
         {
-            if (_logger.IsWarn) _logger.Warn(InvalidBlockHelper.GetMessage(block, $"{message}"));
-            _invalidChainTracker.OnInvalidBlock(block.Hash!, block.ParentHash);
-            return ResultWrapper<PayloadStatusV1>.Success(BuildInvalidPayloadStatusV1(request, message));
+            case ValidationResult.Syncing:
+                {
+                    if (_logger.IsInfo) _logger.Info($"Processing queue wasn't empty added to queue {requestStr}.");
+                    return NewPayloadV1Result.Syncing;
+                }
+            case ValidationResult.Invalid:
+                {
+                    if (_logger.IsWarn) _logger.Warn(InvalidBlockHelper.GetMessage(block, $"{message}"));
+                    _invalidChainTracker.OnInvalidBlock(block.Hash!, block.ParentHash);
+                    return ResultWrapper<PayloadStatusV1>.Success(BuildInvalidPayloadStatusV1(request, message));
+                }
+            case ValidationResult.InvalidInclusionList:
+                {
+                    if (_logger.IsInfo) _logger.Info($"Invalid inclusion list. Result of {requestStr}.");
+                    return NewPayloadV1Result.InvalidInclusionList(block.Hash);
+                }
+            case ValidationResult.Valid:
+                {
+                    if (_logger.IsDebug) _logger.Debug($"Valid. Result of {requestStr}.");
+                    return NewPayloadV1Result.Valid(block.Hash);
+                }
+            default:
+                return ThrowUnknownValidationResult(result);
         }
-
-        if (result == ValidationResult.Syncing)
-        {
-            if (_logger.IsInfo) _logger.Info($"Processing queue wasn't empty added to queue {requestStr}.");
-            return NewPayloadV1Result.Syncing;
-        }
-
-        if (_logger.IsDebug) _logger.Debug($"Valid. Result of {requestStr}.");
-        return NewPayloadV1Result.Valid(block.Hash);
     }
+
+    [DoesNotReturn]
+    [StackTraceHidden]
+    private ResultWrapper<PayloadStatusV1> ThrowUnknownValidationResult(ValidationResult result) =>
+        throw new InvalidOperationException($"Unknown validation result {result}.");
 
     /// <summary>
     /// Decides if we should process the block or try syncing to it. It also returns what options to process the block with.
@@ -355,6 +372,7 @@ public class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadStatusV1
                 {
                     ProcessingResult.Success => ValidationResult.Valid,
                     ProcessingResult.ProcessingError => ValidationResult.Invalid,
+                    ProcessingResult.InvalidInclusionList => ValidationResult.InvalidInclusionList,
                     _ => null
                 };
 
@@ -490,6 +508,7 @@ public class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadStatusV1
     {
         Invalid,
         Valid,
-        Syncing
+        Syncing,
+        InvalidInclusionList
     }
 }

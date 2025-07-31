@@ -46,6 +46,7 @@ using Nethermind.Synchronization.Peers;
 using Nethermind.TxPool;
 using NSubstitute;
 using NUnit.Framework;
+using Nethermind.Consensus.Transactions;
 
 namespace Nethermind.Merge.Plugin.Test;
 
@@ -71,7 +72,7 @@ public abstract partial class BaseEngineModuleTests
         IExecutionRequestsProcessor? mockedExecutionRequestsProcessor = null,
         Action<ContainerBuilder>? configurer = null)
     {
-        var bc = CreateBaseBlockchain(mergeConfig);
+        MergeTestBlockchain bc = CreateBaseBlockchain(mergeConfig);
         return await bc
             .BuildMergeTestBlockchain(configurer: (builder) =>
             {
@@ -84,6 +85,94 @@ public abstract partial class BaseEngineModuleTests
             });
     }
 
+    // protected async Task<MergeTestBlockchain> CreateBlockchain(ISpecProvider specProvider,
+    //     ILogManager? logManager = null)
+    //     => await CreateBaseBlockchain(logManager: logManager).Build(specProvider);
+
+    // protected IEngineRpcModule CreateEngineModule(MergeTestBlockchain chain, ISyncConfig? syncConfig = null, TimeSpan? newPayloadTimeout = null, int newPayloadCacheSize = 50)
+    // {
+    //     IPeerRefresher peerRefresher = Substitute.For<IPeerRefresher>();
+    //     var synchronizationConfig = syncConfig ?? new SyncConfig();
+
+    //     chain.BlockTree.SyncPivot = (
+    //         LongConverter.FromString(synchronizationConfig.PivotNumber),
+    //         synchronizationConfig.PivotHash is null ? Keccak.Zero : new Hash256(Bytes.FromHexString(synchronizationConfig.PivotHash))
+    //     );
+    //     chain.BeaconPivot = new BeaconPivot(synchronizationConfig, new MemDb(), chain.BlockTree, chain.PoSSwitcher, chain.LogManager);
+    //     BlockCacheService blockCacheService = new();
+    //     InvalidChainTracker.InvalidChainTracker invalidChainTracker = new(
+    //         chain.PoSSwitcher,
+    //         chain.BlockTree,
+    //         blockCacheService,
+    //         chain.LogManager);
+    //     invalidChainTracker.SetupBlockchainProcessorInterceptor(chain.BlockchainProcessor);
+    //     chain.BeaconSync = new BeaconSync(chain.BeaconPivot, chain.BlockTree, synchronizationConfig, blockCacheService, chain.PoSSwitcher, chain.LogManager);
+    //     chain.BeaconSync.AllowBeaconHeaderSync();
+    //     EngineRpcCapabilitiesProvider capabilitiesProvider = new(chain.SpecProvider);
+
+    //     return new EngineRpcModule(
+    //         new GetPayloadV1Handler(
+    //             chain.PayloadPreparationService!,
+    //             chain.SpecProvider!,
+    //             chain.LogManager),
+    //         new GetPayloadV2Handler(
+    //             chain.PayloadPreparationService!,
+    //             chain.SpecProvider!,
+    //             chain.LogManager),
+    //         new GetPayloadV3Handler(
+    //             chain.PayloadPreparationService!,
+    //             chain.SpecProvider!,
+    //             chain.LogManager),
+    //         new GetPayloadV4Handler(
+    //             chain.PayloadPreparationService!,
+    //             chain.SpecProvider!,
+    //             chain.LogManager),
+    //         new GetPayloadV5Handler(
+    //             chain.PayloadPreparationService!,
+    //             chain.SpecProvider!,
+    //             chain.LogManager),
+    //         new NewPayloadHandler(
+    //             chain.BlockValidator,
+    //             chain.BlockTree,
+    //             chain.PoSSwitcher,
+    //             chain.BeaconSync,
+    //             chain.BeaconPivot,
+    //             blockCacheService,
+    //             chain.BlockProcessingQueue,
+    //             invalidChainTracker,
+    //             chain.BeaconSync,
+    //             chain.LogManager,
+    //             chain.SpecProvider.ChainId,
+    //             newPayloadTimeout,
+    //             storeReceipts: true,
+    //             newPayloadCacheSize),
+    //         new ForkchoiceUpdatedHandler(
+    //             chain.BlockTree,
+    //             chain.BlockFinalizationManager,
+    //             chain.PoSSwitcher,
+    //             chain.PayloadPreparationService!,
+    //             chain.BlockProcessingQueue,
+    //             blockCacheService,
+    //             invalidChainTracker,
+    //             chain.BeaconSync,
+    //             chain.BeaconPivot,
+    //             peerRefresher,
+    //             chain.SpecProvider,
+    //             chain.SyncPeerPool,
+    //             chain.LogManager),
+    //         new GetPayloadBodiesByHashV1Handler(chain.BlockTree, chain.LogManager),
+    //         new GetPayloadBodiesByRangeV1Handler(chain.BlockTree, chain.LogManager),
+    //         new ExchangeTransitionConfigurationV1Handler(chain.PoSSwitcher, chain.LogManager),
+    //         new ExchangeCapabilitiesHandler(capabilitiesProvider, chain.LogManager),
+    //         new GetBlobsHandler(chain.TxPool),
+    //         new GetInclusionListTransactionsHandler(chain.TxPool),
+    //         new UpdatePayloadWithInclusionListHandler(chain.PayloadPreparationService!, chain.InclusionListTxSource, chain.SpecProvider),
+    //         new GetBlobsHandlerV2(chain.TxPool),
+    //         Substitute.For<IEngineRequestsTracker>(),
+    //         chain.SpecProvider,
+    //         new GCKeeper(NoGCStrategy.Instance, chain.LogManager),
+    //         chain.LogManager);
+    // }
     protected async Task<MergeTestBlockchain> CreateBlockchain(ISpecProvider specProvider)
         => await CreateBaseBlockchain().Build(specProvider);
 
@@ -203,6 +292,11 @@ public abstract partial class BaseEngineModuleTests
 
         protected override Task AddBlocksOnStart() => Task.CompletedTask;
 
+        // public sealed override ILogManager LogManager { get; set; } = LimboLogs.Instance;
+
+        // public IEthSyncingInfo? EthSyncingInfo { get; protected set; }
+        public InclusionListTxSource? InclusionListTxSource { get; set; }
+
         protected override ChainSpec CreateChainSpec()
         {
             return new ChainSpec() { Genesis = Core.Test.Builders.Build.A.Block.WithDifficulty(0).TestObject };
@@ -255,7 +349,24 @@ public abstract partial class BaseEngineModuleTests
                 LogManager,
                 targetAdjustedGasLimitCalculator);
 
-            IBlockProducerEnv blockProducerEnv = BlockProducerEnvFactory.Create();
+            // BlockProducerEnvFactory blockProducerEnvFactory = new(
+            //     WorldStateManager!,
+            //     ReadOnlyTxProcessingEnvFactory,
+            //     BlockTree,
+            //     SpecProvider,
+            //     BlockValidator,
+            //     NoBlockRewards.Instance,
+            //     ReceiptStorage,
+            //     BlockPreprocessorStep,
+            //     TxPool,
+            //     transactionComparerProvider,
+            //     blocksConfig,
+            //     LogManager);
+            // blockProducerEnvFactory.ExecutionRequestsProcessorOverride = ExecutionRequestsProcessorOverride;
+
+            InclusionListTxSource = new InclusionListTxSource(EthereumEcdsa, SpecProvider, LogManager);
+            // BlockProducerEnv blockProducerEnv = blockProducerEnvFactory.Create(InclusionListTxSource);
+            IBlockProducerEnv blockProducerEnv = BlockProducerEnvFactory.Create(); //todo: pass in IL tx source?
             PostMergeBlockProducer? postMergeBlockProducer = blockProducerFactory.Create(blockProducerEnv);
             BlockProducer = postMergeBlockProducer;
 

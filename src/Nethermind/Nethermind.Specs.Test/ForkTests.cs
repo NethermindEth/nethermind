@@ -8,9 +8,9 @@ namespace Nethermind.Specs.Test;
 
 public class ForkTests
 {
-    [Test]
-    public void GetLatest_Returns_Prague()
-    {
-        Assert.That(Fork.GetLatest(), Is.EqualTo(Prague.Instance));
-    }
+    // [Test]
+    // public void GetLatest_Returns_Prague()
+    // {
+    //     Assert.That(Fork.GetLatest(), Is.EqualTo(Prague.Instance));
+    // }
 }

@@ -22,7 +22,6 @@ using Nethermind.Core.Test.Builders;
 using Nethermind.Evm;
 using Nethermind.Evm.Tracing;
 using Nethermind.Logging;
-using Nethermind.Evm.State;
 using Nethermind.State;
 using Nethermind.TxPool;
 using NSubstitute;
@@ -126,6 +125,25 @@ public class BlockchainProcessorTests
             }
         }
 
+        private class BlockProcessorMock : IBlockProcessor
+        {
+            public event EventHandler<TxProcessedEventArgs>? TransactionProcessed
+            {
+                add { }
+                remove { }
+            }
+
+            public (Block Block, TxReceipt[] Receipts) ProcessOne(Block suggestedBlock, ProcessingOptions options, IBlockTracer blockTracer, IReleaseSpec spec, CancellationToken token = default)
+            {
+                throw new NotImplementedException();
+            }
+
+            public bool ValidateInclusionList(Block suggestedBlock, Block block, ProcessingOptions options)
+            {
+                throw new NotImplementedException();
+            }
+        }
+
         private class RecoveryStepMock : IBlockPreprocessorStep
         {
             private readonly ILogger _logger;
@@ -179,6 +197,7 @@ public class BlockchainProcessorTests
         private readonly AutoResetEvent _queueEmptyResetEvent;
         private readonly IStateReader _stateReader;
         private readonly BranchProcessorMock _branchProcessor;
+        private readonly BlockProcessorMock _blockProcessor;
         private readonly RecoveryStepMock _recoveryStep;
         private readonly BlockchainProcessor _processor;
         private readonly ILogger _logger;
@@ -196,8 +215,9 @@ public class BlockchainProcessorTests
                 .WithoutSettingHead
                 .TestObject;
             _branchProcessor = new BranchProcessorMock(_logManager, _stateReader);
+            _blockProcessor = new BlockProcessorMock();
             _recoveryStep = new RecoveryStepMock(_logManager);
-            _processor = new BlockchainProcessor(_blockTree, _branchProcessor, _recoveryStep, _stateReader, LimboLogs.Instance, BlockchainProcessor.Options.Default);
+            _processor = new BlockchainProcessor(_blockTree, _branchProcessor, _blockProcessor, _recoveryStep, _stateReader, LimboLogs.Instance, BlockchainProcessor.Options.Default);
             _resetEvent = new AutoResetEvent(false);
             _queueEmptyResetEvent = new AutoResetEvent(false);
 

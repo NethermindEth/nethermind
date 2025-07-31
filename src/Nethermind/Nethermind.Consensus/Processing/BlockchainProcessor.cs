@@ -40,6 +40,7 @@ public sealed class BlockchainProcessor : IBlockchainProcessor, IBlockProcessing
     public ITracerBag Tracers => _compositeBlockTracer;
 
     private readonly IBranchProcessor _branchProcessor;
+    private readonly IBlockProcessor _blockProcessor;
     private readonly IBlockPreprocessorStep _recoveryStep;
     private readonly IStateReader _stateReader;
     private readonly Options _options;
@@ -91,6 +92,7 @@ public sealed class BlockchainProcessor : IBlockchainProcessor, IBlockProcessing
     public BlockchainProcessor(
         IBlockTree blockTree,
         IBranchProcessor branchProcessor,
+        IBlockProcessor blockProcessor,
         IBlockPreprocessorStep recoveryStep,
         IStateReader stateReader,
         ILogManager logManager,
@@ -99,6 +101,7 @@ public sealed class BlockchainProcessor : IBlockchainProcessor, IBlockProcessing
         _logger = logManager.GetClassLogger();
         _blockTree = blockTree;
         _branchProcessor = branchProcessor;
+        _blockProcessor = blockProcessor;
         _recoveryStep = recoveryStep;
         _stateReader = stateReader;
         _options = options;
@@ -324,6 +327,38 @@ public sealed class BlockchainProcessor : IBlockchainProcessor, IBlockProcessing
             IsProcessingBlock = true;
             try
             {
+            //     if (blockRef.IsInDb || blockRef.Block is null)
+            //     {
+            //         BlockRemoved?.Invoke(this, new BlockRemovedEventArgs(blockRef.BlockHash, ProcessingResult.MissingBlock));
+            //         throw new InvalidOperationException("Block processing expects only resolved blocks");
+            //     }
+
+            //     Block block = blockRef.Block;
+
+            //     if (_logger.IsTrace) _logger.Trace($"Processing block {block.ToString(Block.Format.Short)}).");
+            //     _stats.Start();
+            //     Block processedBlock = Process(block, blockRef.ProcessingOptions, _compositeBlockTracer.GetTracer(), CancellationToken, out string? error);
+
+            //     if (processedBlock is null)
+            //     {
+            //         if (_logger.IsTrace) _logger.Trace($"Failed / skipped processing {block.ToString(Block.Format.Full)}");
+            //         BlockRemoved?.Invoke(this, new BlockRemovedEventArgs(blockRef.BlockHash, ProcessingResult.ProcessingError, error));
+            //     }
+            //     else if (!_blockProcessor.ValidateInclusionList(block, processedBlock, blockRef.ProcessingOptions))
+            //     {
+            //         if (_logger.IsTrace) _logger.Trace($"Invalid inclusion list for block {block.ToString(Block.Format.Full)}");
+            //         BlockRemoved?.Invoke(this, new BlockRemovedEventArgs(blockRef.BlockHash, ProcessingResult.InvalidInclusionList, error));
+            //     }
+            //     else
+            //     {
+            //         if (_logger.IsTrace) _logger.Trace($"Processed block {block.ToString(Block.Format.Full)}");
+            //         BlockRemoved?.Invoke(this, new BlockRemovedEventArgs(blockRef.BlockHash, ProcessingResult.Success));
+            //     }
+            // }
+            // catch (Exception exception) when (exception is not OperationCanceledException)
+            // {
+            //     if (_logger.IsWarn) _logger.Warn($"Processing block failed. Block: {blockRef}, Exception: {exception}");
+            //     BlockRemoved?.Invoke(this, new BlockRemovedEventArgs(blockRef.BlockHash, ProcessingResult.Exception, exception));
                 ProcessBlocks();
             }
             finally
@@ -365,6 +400,10 @@ public sealed class BlockchainProcessor : IBlockchainProcessor, IBlockProcessing
                 {
                     NotifyFailedOrSkipped(blockRef, block, error);
                 }
+                else if (!_blockProcessor.ValidateInclusionList(block, processedBlock, blockRef.ProcessingOptions))
+                {
+                    NotifyInvalidInclusionList(blockRef, block, error);
+                }
                 else
                 {
                     if (isTrace) TraceProcessed(block);
@@ -393,6 +432,13 @@ public sealed class BlockchainProcessor : IBlockchainProcessor, IBlockProcessing
         {
             if (_logger.IsTrace) _logger.Trace($"Failed / skipped processing {block.ToString(Block.Format.Full)}");
             BlockRemoved?.Invoke(this, new BlockRemovedEventArgs(blockRef.BlockHash, ProcessingResult.ProcessingError, error));
+        }
+
+        [MethodImpl(MethodImplOptions.NoInlining)]
+        void NotifyInvalidInclusionList(BlockRef blockRef, Block block, string error)
+        {
+            if (_logger.IsTrace) _logger.Trace($"Invalid inclusion list for block {block.ToString(Block.Format.Full)}");
+            BlockRemoved?.Invoke(this, new BlockRemovedEventArgs(blockRef.BlockHash, ProcessingResult.InvalidInclusionList, error));
         }
 
         [DoesNotReturn]

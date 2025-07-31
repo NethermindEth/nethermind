@@ -118,6 +118,7 @@ public class ReorgTests
         _blockchainProcessor = new BlockchainProcessor(
             _blockTree,
             branchProcessor,
+            blockProcessor,
             new RecoverSignatures(
                 ecdsa,
                 specProvider,
