@@ -21,7 +21,6 @@ public class TaikoChainSpecBasedSpecProvider(ChainSpec chainSpec,
         releaseSpec.IsOntakeEnabled = (chainSpecEngineParameters.OntakeTransition ?? long.MaxValue) <= releaseStartBlock;
         releaseSpec.IsPacayaEnabled = (chainSpecEngineParameters.PacayaTransition ?? long.MaxValue) <= releaseStartBlock;
         releaseSpec.UseSurgeGasPriceOracle = chainSpecEngineParameters.UseSurgeGasPriceOracle ?? false;
-        releaseSpec.L1SloadRestrictedAddresses = chainSpecEngineParameters.L1SloadRestrictedAddresses;
 
         return releaseSpec;
     }

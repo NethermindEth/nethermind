@@ -18,12 +18,10 @@ public class SurgeL1StorageProvider : IL1StorageProvider
 {
     private readonly ILogger _logger;
     private Dictionary<string, UInt256>? _currentBlockStorageData;
-    private readonly HashSet<AddressAsKey>? _restrictedAddresses;
 
-    public SurgeL1StorageProvider(ILogManager logManager, HashSet<AddressAsKey>? restrictedAddresses = null)
+    public SurgeL1StorageProvider(ILogManager logManager)
     {
         _logger = logManager.GetClassLogger<SurgeL1StorageProvider>();
-        _restrictedAddresses = restrictedAddresses;
     }
 
     public void SetBlockStorageData(L1StorageMapping[]? storageMappings)
@@ -46,13 +44,6 @@ public class SurgeL1StorageProvider : IL1StorageProvider
 
     public UInt256? GetStorageValue(Address contractAddress, UInt256 storageKey, UInt256 blockNumber)
     {
-        // Check if the address is restricted
-        if (_restrictedAddresses?.Contains(contractAddress) == true)
-        {
-            if (_logger.IsDebug) _logger.Debug($"L1SLOAD blocked: Restricted address {contractAddress}");
-            return null;
-        }
-
         if (_currentBlockStorageData == null)
         {
             // Missing injected data in the execution payload

@@ -22,31 +22,22 @@ public class JsonRpcL1StorageProvider : IL1StorageProvider
 {
     private readonly IJsonRpcClient _rpcClient;
     private readonly ILogger _logger;
-    private readonly HashSet<AddressAsKey>? _restrictedAddresses;
 
-    public JsonRpcL1StorageProvider(string l1EthApiEndpoint, IJsonSerializer jsonSerializer, ILogManager logManager, HashSet<AddressAsKey>? restrictedAddresses = null)
+    public JsonRpcL1StorageProvider(string l1EthApiEndpoint, IJsonSerializer jsonSerializer, ILogManager logManager)
     {
         _rpcClient = new BasicJsonRpcClient(new Uri(l1EthApiEndpoint), jsonSerializer, logManager);
         _logger = logManager.GetClassLogger<JsonRpcL1StorageProvider>();
-        _restrictedAddresses = restrictedAddresses;
     }
 
     public UInt256? GetStorageValue(Address contractAddress, UInt256 storageKey, UInt256 blockNumber)
     {
-        // Check if the address is restricted
-        if (_restrictedAddresses?.Contains(contractAddress) == true)
-        {
-            if (_logger.IsDebug) _logger.Debug($"L1SLOAD blocked: Restricted address {contractAddress}");
-            return null;
-        }
-
         try
         {
             var response = _rpcClient.Post<string>("eth_getStorageAt", new object[]
             {
                 contractAddress.ToString(),
-                storageKey.ToBigEndian().ToHexString(true),
-                blockNumber.ToString()
+                storageKey.ToHexString(true),
+                blockNumber.ToHexString(true)
             }).GetAwaiter().GetResult();
 
             if (response == null)
