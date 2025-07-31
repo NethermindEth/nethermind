@@ -45,11 +45,11 @@ public class HistoryPruner : IHistoryPruner
     private readonly bool _enabled;
     private readonly long _epochLength;
     private readonly long _minHistoryRetentionEpochs;
+    private readonly int _deletionProgressLoggingInterval;
     private long _deletePointer = 1;
     private long _lastSavedDeletePointer = 1;
     private long? _cutoffPointer;
     private ulong? _cutoffTimestamp;
-    private readonly int LoggingInterval;
     private bool _hasLoadedDeletePointer = false;
 
     public class HistoryPrunerException(string message, Exception? innerException = null) : Exception(message, innerException);
@@ -69,7 +69,7 @@ public class HistoryPruner : IHistoryPruner
     {
         _specProvider = specProvider;
         _logger = logManager.GetClassLogger();
-        LoggingInterval = _logger.IsDebug ? 5 : 100000;
+        _deletionProgressLoggingInterval = _logger.IsDebug ? 5 : 100000;
         _blockTree = blockTree;
         _receiptStorage = receiptStorage;
         _chainLevelInfoRepository = chainLevelInfoRepository;
@@ -319,7 +319,7 @@ public class HistoryPruner : IHistoryPruner
                     batch = _chainLevelInfoRepository.StartBatch();
                 }
 
-                if (_logger.IsInfo && deletedBlocks % LoggingInterval == 0)
+                if (_logger.IsInfo && deletedBlocks % _deletionProgressLoggingInterval == 0)
                 {
                     long? cutoff = CutoffBlockNumber;
                     cutoff = cutoff is null ? null : long.Min(cutoff!.Value, _blockTree.SyncPivot.BlockNumber) - _deletePointer;
