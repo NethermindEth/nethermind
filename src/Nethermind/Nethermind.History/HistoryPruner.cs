@@ -95,10 +95,20 @@ public class HistoryPruner : IHistoryPruner
         }
     }
 
-    public void OnBlockProcessorQueueEmpty(object? sender, EventArgs e)
+    public long? CutoffBlockNumber
+    {
+        get => FindCutoffBlockNumber();
+    }
+
+    public long? OldestBlockNumber
+    {
+        get => _deletePointer;
+    }
+
+    private void OnBlockProcessorQueueEmpty(object? sender, EventArgs e)
         => SchedulePruneHistory(_processExitSource.Token);
 
-    public void SchedulePruneHistory(CancellationToken cancellationToken)
+    private void SchedulePruneHistory(CancellationToken cancellationToken)
         => _backgroundTaskScheduler.ScheduleTask(1,
             (_, backgroundTaskToken) =>
             {
@@ -106,7 +116,7 @@ public class HistoryPruner : IHistoryPruner
                 return TryPruneHistory(cts.Token);
             });
 
-    public Task TryPruneHistory(CancellationToken cancellationToken)
+    internal Task TryPruneHistory(CancellationToken cancellationToken)
     {
         lock (BackgroundTaskScheduler.DbIntensiveBackgroundTaskLock)
         lock (_pruneLock)
@@ -133,17 +143,7 @@ public class HistoryPruner : IHistoryPruner
         }
     }
 
-    public long? CutoffBlockNumber
-    {
-        get => FindCutoffBlockNumber();
-    }
-
-    public long? OldestBlockNumber
-    {
-        get => _deletePointer;
-    }
-
-    internal bool SetDeletePointerToOldestBlock()
+    private bool SetDeletePointerToOldestBlock()
     {
         bool found = false;
         lock (_searchLock)
