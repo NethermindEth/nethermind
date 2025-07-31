@@ -14,6 +14,7 @@ using Nethermind.Blockchain.Find;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Config;
 using Nethermind.Consensus;
+using Nethermind.Consensus.Processing;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
 using Nethermind.Crypto;
@@ -61,6 +62,7 @@ public class ShutterApi : IShutterApi
         ITimestamper timestamper,
         IShareableTxProcessorSource txProcessorSource,
         IFileSystem fileSystem,
+        IBlockProcessingQueue blockProcessingQueue,
         IKeyStoreConfig keyStoreConfig,
         IShutterConfig shutterConfig,
         IBlocksConfig blocksConfig,
@@ -95,19 +97,25 @@ public class ShutterApi : IShutterApi
         TxLoader = new(logFinder, _cfg, Time, specProvider, ecdsa, abiEncoder, logManager);
         Eon = InitEon();
         BlockHandler = new ShutterBlockHandler(
-            specProvider.ChainId,
-            _cfg,
-            _txProcessorSource,
             blockTree,
-            abiEncoder,
             receiptFinder,
-            validatorsInfo,
             Eon,
             TxLoader,
             Time,
             logManager,
             _slotLength,
             BlockWaitCutoff);
+
+        _ = new ShutterKeyRegistrationChecker(
+            validatorsInfo,
+            specProvider.ChainId,
+            _cfg,
+            blockTree,
+            blockProcessingQueue,
+            _txProcessorSource,
+            abiEncoder,
+            logManager
+        );
 
         TxSource = new ShutterTxSource(TxLoader, _cfg, Time, logManager);
 

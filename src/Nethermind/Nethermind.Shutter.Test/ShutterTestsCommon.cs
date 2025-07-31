@@ -8,6 +8,7 @@ using Nethermind.Abi;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Config;
+using Nethermind.Consensus.Processing;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
 using Nethermind.Crypto;
@@ -60,12 +61,12 @@ class ShutterTestsCommon
         IKeyStoreConfig keyStoreConfig = Substitute.For<IKeyStoreConfig>();
         IShareableTxProcessorSource txProcessorSource = Substitute.For<IShareableTxProcessorSource>();
         IIPResolver ipResolver = Substitute.For<IIPResolver>();
+        IBlockProcessingQueue blockProcessingQueue = Substitute.For<IBlockProcessingQueue>();
         return new(
             eventSimulator ?? InitEventSimulator(rnd),
-            AbiEncoder, blockTree, Ecdsa, logFinder, receiptStorage,
-            LogManager, SpecProvider, timestamper ?? Substitute.For<ITimestamper>(),
-            fileSystem, keyStoreConfig, Cfg,
-            BlocksCfg, txProcessorSource, ipResolver, rnd
+            AbiEncoder, blockTree, Ecdsa, logFinder, receiptStorage, LogManager, SpecProvider,
+            timestamper ?? Substitute.For<ITimestamper>(), fileSystem, keyStoreConfig, Cfg,
+            BlocksCfg, txProcessorSource, ipResolver, blockProcessingQueue, rnd
         );
     }
 
@@ -74,11 +75,12 @@ class ShutterTestsCommon
         IFileSystem fileSystem = Substitute.For<IFileSystem>();
         IKeyStoreConfig keyStoreConfig = Substitute.For<IKeyStoreConfig>();
         IIPResolver ipResolver = Substitute.For<IIPResolver>();
+        IBlockProcessingQueue blockProcessingQueue = Substitute.For<IBlockProcessingQueue>();
         return new(
             eventSimulator ?? InitEventSimulator(rnd),
             AbiEncoder, chain.BlockTree.AsReadOnly(), chain.EthereumEcdsa, chain.LogFinder, chain.ReceiptStorage,
-            chain.LogManager, chain.SpecProvider, timestamper ?? chain.Timestamper,
-            fileSystem, keyStoreConfig, Cfg, BlocksCfg, chain.ShareableTxProcessorSource, ipResolver, rnd
+            chain.LogManager, chain.SpecProvider, timestamper ?? chain.Timestamper, fileSystem, keyStoreConfig, Cfg,
+            BlocksCfg, chain.ShareableTxProcessorSource, ipResolver, blockProcessingQueue, rnd
         );
     }
 
