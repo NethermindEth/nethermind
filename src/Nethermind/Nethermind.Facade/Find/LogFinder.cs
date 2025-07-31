@@ -8,7 +8,6 @@ using System.Linq;
 using System.Threading;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Filters;
-using Nethermind.Blockchain.Filters.Topics;
 using Nethermind.Blockchain.Find;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Core;
@@ -278,7 +277,10 @@ namespace Nethermind.Facade.Find
             if (byAddress is null)
                 return blockNumbers;
 
-            blockNumbers = AscListHelper.IntersectAll(byAddress.Values.Concat([blockNumbers]));
+            blockNumbers = AscListHelper.Intersect(
+                AscListHelper.UnionAll(byAddress.Values),
+                blockNumbers
+            );
 
             return blockNumbers;
         }
@@ -288,7 +290,7 @@ namespace Nethermind.Facade.Find
         {
             // TODO: merge common code with FilterLogsWithBloomsIndex
 
-            Hash256 FindBlockHash(long blockNumber, CancellationToken token)
+            Hash256? FindBlockHash(long blockNumber, CancellationToken token)
             {
                 token.ThrowIfCancellationRequested();
                 var blockHash = _blockFinder.FindBlockHash(blockNumber);
