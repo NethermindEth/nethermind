@@ -127,16 +127,16 @@ public class GasEstimator
     private bool TryExecutableTransaction(Transaction transaction, BlockHeader block, long gasLimit,
         CancellationToken token)
     {
-        OutOfGasTracer tracer = new();
+        EstimateGasTracer tracer = new();
 
         Transaction txClone = new Transaction();
         transaction.CopyTo(txClone);
         txClone.GasLimit = gasLimit;
 
         _transactionProcessor.SetBlockExecutionContext(new(block, _specProvider.GetSpec(block)));
-        TransactionResult result = _transactionProcessor.CallAndRestore(txClone, tracer.WithCancellation(token));
+        _transactionProcessor.CallAndRestore(txClone, tracer.WithCancellation(token));
 
-        return result.Success && !tracer.OutOfGas;
+        return tracer.StatusCode == StatusCode.Success;
     }
 
     private class OutOfGasTracer : TxTracer
