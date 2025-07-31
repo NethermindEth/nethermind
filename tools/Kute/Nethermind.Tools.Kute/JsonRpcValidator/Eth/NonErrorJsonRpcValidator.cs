@@ -12,6 +12,6 @@ public sealed class NonErrorJsonRpcValidator : IJsonRpcValidator
             return true;
         }
 
-        return !response.Json.TryGetProperty("error", out _);
+        return response.Json["error"] is null;
     }
 }

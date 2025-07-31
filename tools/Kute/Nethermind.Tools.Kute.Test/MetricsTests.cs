@@ -5,11 +5,24 @@ using FluentAssertions;
 using NUnit.Framework;
 using Nethermind.Tools.Kute.Metrics;
 using NSubstitute;
+using System.Text.Json.Nodes;
 
 namespace Nethermind.Tools.Kute.Test;
 
 public class MetricsTests
 {
+    private static JsonRpc.Request.Single Single(int id)
+    {
+        var json = $$"""{ "id": {{id}}, "method": "test", "params": [] }""";
+        return new JsonRpc.Request.Single(JsonNode.Parse(json)!);
+    }
+
+    private static JsonRpc.Request.Batch Batch(params JsonRpc.Request.Single[] singles)
+    {
+        var json = $$"""[{{string.Join(", ", singles.Select(s => s.ToJsonString()))}}]""";
+        return new JsonRpc.Request.Batch(JsonNode.Parse(json)!);
+    }
+
     [Test]
     public async Task MemoryMetricsReporter_GeneratesValidReport()
     {
@@ -18,15 +31,22 @@ public class MetricsTests
         var totalTimer = new Timer();
         using (totalTimer.Time())
         {
-            var id = 42;
-            var requestTimer = new Timer();
+            var single = Single(42);
+            var batch = Batch(Single(43), Single(44), Single(45));
 
-            using (requestTimer.Time())
+            var singleTimer = new Timer();
+            using (singleTimer.Time())
             {
-                await Task.Delay(TimeSpan.FromMilliseconds(100));
+                await Task.Delay(TimeSpan.FromMilliseconds(50));
             }
+            await reporter.Single(single, singleTimer.Elapsed);
 
-            await reporter.Single(id, requestTimer.Elapsed);
+            var batchTimer = new Timer();
+            using (batchTimer.Time())
+            {
+                await Task.Delay(TimeSpan.FromMilliseconds(50));
+            }
+            await reporter.Batch(batch, batchTimer.Elapsed);
         }
 
         await reporter.Total(totalTimer.Elapsed);
@@ -35,7 +55,12 @@ public class MetricsTests
 
         report.TotalTime.Should().BeGreaterThan(TimeSpan.FromMilliseconds(90));
         report.TotalTime.Should().BeLessThan(TimeSpan.FromMilliseconds(110));
+
         report.Singles.Should().HaveCount(1);
+        report.Singles.Should().ContainKey("42");
+
+        report.Batches.Should().HaveCount(1);
+        report.Batches.Should().ContainKey("43:45");
     }
 
     [Test]
@@ -43,6 +68,8 @@ public class MetricsTests
     {
         var A = Substitute.For<IMetricsReporter>();
         var B = Substitute.For<IMetricsReporter>();
+        var single = Single(1);
+        var batch = Batch(Single(2), Single(3));
         var reporter = new ComposedMetricsReporter(A, B);
 
         await reporter.Message();
@@ -50,8 +77,8 @@ public class MetricsTests
         await reporter.Succeeded();
         await reporter.Failed();
         await reporter.Ignored();
-        await reporter.Batch(1, TimeSpan.FromMilliseconds(100));
-        await reporter.Single(2, TimeSpan.FromMilliseconds(200));
+        await reporter.Single(single, TimeSpan.FromMilliseconds(100));
+        await reporter.Batch(batch, TimeSpan.FromMilliseconds(200));
         await reporter.Total(TimeSpan.FromMilliseconds(300));
 
         await A.Received().Message();
@@ -69,11 +96,11 @@ public class MetricsTests
         await A.Received().Ignored();
         await B.Received().Ignored();
 
-        await A.Received().Batch(1, Arg.Any<TimeSpan>());
-        await B.Received().Batch(1, Arg.Any<TimeSpan>());
+        await A.Received().Single(single, Arg.Any<TimeSpan>());
+        await B.Received().Single(single, Arg.Any<TimeSpan>());
 
-        await A.Received().Single(2, Arg.Any<TimeSpan>());
-        await B.Received().Single(2, Arg.Any<TimeSpan>());
+        await A.Received().Batch(batch, Arg.Any<TimeSpan>());
+        await B.Received().Batch(batch, Arg.Any<TimeSpan>());
 
         await A.Received().Total(Arg.Any<TimeSpan>());
         await B.Received().Total(Arg.Any<TimeSpan>());

@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Text;
-using System.Text.Json;
+using System.Text.Json.Nodes;
 using FluentAssertions;
 using Nethermind.Tools.Kute.JsonRpcValidator;
 using Nethermind.Tools.Kute.JsonRpcValidator.Eth;
@@ -12,8 +12,11 @@ namespace Nethermind.Tools.Kute.Test;
 
 public class JsonRpcValidatorTests
 {
-    private static IJsonRpcValidator _validator = new ComposedJsonRpcValidator(
-            [new NonErrorJsonRpcValidator(), new NewPayloadJsonRpcValidator()]);
+    private static IJsonRpcValidator _validator =
+        new BatchJsonRpcValidator(
+            new ComposedJsonRpcValidator(
+                new NonErrorJsonRpcValidator(),
+                new NewPayloadJsonRpcValidator()));
 
     [Test]
     public void IsInvalid_When_ResponseHasError()
@@ -22,15 +25,6 @@ public class JsonRpcValidatorTests
         bool result = _validator.IsValid(CreateSingleRequest("eth_getBlockByNumber"), response);
 
         result.Should().BeFalse();
-    }
-
-    [Test]
-    public void IsValid_When_RequestIsBatch()
-    {
-        var response = CreateResponse(status: Status.VALID);
-        bool result = _validator.IsValid(CreateBatchRequest(CreateSingleRequest("engine_newPayload")), response);
-
-        result.Should().BeTrue();
     }
 
     [Test]
@@ -78,13 +72,68 @@ public class JsonRpcValidatorTests
         }
     }
 
-    private static JsonRpc.Request.Single CreateSingleRequest(string? method)
+    [Test]
+    public void IsValid_When_AllBatchItemsAreValid()
+    {
+        var response = CreateBatchResponse(CreateResponse(status: Status.VALID));
+        bool result = _validator.IsValid(CreateBatchRequest(CreateSingleRequest("engine_newPayload")), response);
+
+        result.Should().BeTrue();
+    }
+
+    [Test]
+    public void IsInvalid_When_BatchResponseContainsInvalid()
+    {
+        var response = CreateBatchResponse(CreateResponse(status: Status.INVALID));
+        bool result = _validator.IsValid(CreateBatchRequest(CreateSingleRequest("engine_newPayload")), response);
+
+        result.Should().BeFalse();
+    }
+
+    [Test]
+    public void IsInvalid_When_BatchHasMissingResponses()
+    {
+        var response = CreateBatchResponse(CreateResponse(status: Status.VALID, 1));
+        bool result = _validator.IsValid(
+            CreateBatchRequest(CreateSingleRequest("engine_newPayload", 1), CreateSingleRequest("eth_logs", 2)), response);
+
+        result.Should().BeFalse();
+    }
+
+    [Test]
+    public void IsInvalid_When_BatchHasExtraResponses()
+    {
+        var response = CreateBatchResponse(CreateResponse(status: Status.VALID, 1), CreateResponse(status: Status.VALID, 2));
+        bool result = _validator.IsValid(CreateBatchRequest(CreateSingleRequest("engine_newPayload", 1)), response);
+
+        result.Should().BeFalse();
+    }
+
+    [Test]
+    public void IsInvalid_When_BatchHasMismatchedPairs()
+    {
+        var response = CreateBatchResponse(CreateResponse(status: Status.VALID, 2));
+        bool result = _validator.IsValid(CreateBatchRequest(CreateSingleRequest("engine_newPayload", 1)), response);
+
+        result.Should().BeFalse();
+    }
+
+    [Test]
+    public void IsInvalid_When_BatchHasSingleResponse()
+    {
+        var response = CreateResponse(status: Status.VALID, 1);
+        bool result = _validator.IsValid(CreateBatchRequest(CreateSingleRequest("engine_newPayload", 1)), response);
+
+        result.Should().BeFalse();
+    }
+
+    private static JsonRpc.Request.Single CreateSingleRequest(string? method, int id = 1)
     {
         var methodJSON = method is null ? "null" : $"\"{method}\"";
         return new JsonRpc.Request.Single(
-            JsonDocument.Parse(
-                $$"""{"jsonrpc":"2.0","id":1,"method":{{methodJSON}},"params":[]}"""
-            )
+            JsonNode.Parse(
+                $$"""{"jsonrpc":"2.0","id":{{id}},"method":{{methodJSON}},"params":[]}"""
+            )!
         );
     }
 
@@ -98,7 +147,9 @@ public class JsonRpcValidatorTests
         sb.Remove(sb.Length - 1, 1); // Remove the last comma
         sb.Append("]");
 
-        return new JsonRpc.Request.Batch(JsonDocument.Parse(sb.ToString()));
+        var json = sb.ToString();
+
+        return new JsonRpc.Request.Batch(JsonNode.Parse(json)!);
     }
 
     public enum Status
@@ -107,19 +158,34 @@ public class JsonRpcValidatorTests
         INVALID
     }
 
-    private static JsonRpc.Response CreateResponse(Status status)
+    private static JsonRpc.Response CreateResponse(Status status, int id = 1)
     {
         return new JsonRpc.Response(
-            JsonDocument.Parse(
-                $$$"""{"jsonrpc":"2.0","id": 1,"result":{"status": "{{{status}}}"}}"""
-        ));
+            JsonNode.Parse(
+                $$$"""{"jsonrpc":"2.0","id": {{{id}}},"result":{"status": "{{{status}}}"}}"""
+        )!);
+    }
+
+    private static JsonRpc.Response CreateBatchResponse(params IEnumerable<JsonRpc.Response> items)
+    {
+        var sb = new StringBuilder("[");
+        foreach (var item in items)
+        {
+            sb.Append(item.ToJsonString()).Append(",");
+        }
+        sb.Remove(sb.Length - 1, 1); // Remove the last comma
+        sb.Append("]");
+
+        var json = sb.ToString();
+
+        return new JsonRpc.Response(JsonNode.Parse(json)!);
     }
 
     private static JsonRpc.Response CreateErrorResponse()
     {
         return new JsonRpc.Response(
-            JsonDocument.Parse(
+            JsonNode.Parse(
                 """{"jsonrpc":"2.0","id":1,"error":{"code":-32603,"message":"Internal error"}}"""
-        ));
+        )!);
     }
 }

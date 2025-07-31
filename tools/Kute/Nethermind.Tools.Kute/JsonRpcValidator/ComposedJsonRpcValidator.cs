@@ -5,9 +5,9 @@ namespace Nethermind.Tools.Kute.JsonRpcValidator;
 
 public sealed class ComposedJsonRpcValidator : IJsonRpcValidator
 {
-    private readonly IEnumerable<IJsonRpcValidator> _validators;
+    private readonly List<IJsonRpcValidator> _validators;
 
-    public ComposedJsonRpcValidator(IEnumerable<IJsonRpcValidator> validators)
+    public ComposedJsonRpcValidator(params List<IJsonRpcValidator> validators)
     {
         _validators = validators;
     }
