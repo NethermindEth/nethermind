@@ -7,6 +7,7 @@ using System.Buffers.Text;
 using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
 using System.Runtime.CompilerServices;
+using System.Text;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 
@@ -14,6 +15,10 @@ namespace Nethermind.Stats.Model
 {
     public class CapabilityConverter : JsonConverter<Capability>
     {
+        private const int MaxIntegerDigits = 10; // int.MaxValue has 10 digits
+        private const byte SeparatorByte = (byte)'/';
+        private const int StackAllocThreshold = 256;
+
         public override Capability Read(ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options)
         {
             if (reader.TokenType == JsonTokenType.Null)
@@ -49,7 +54,42 @@ namespace Nethermind.Stats.Model
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         private static void WriteCapability(Utf8JsonWriter writer, Capability capability)
         {
-            writer.WriteStringValue($"{capability.ProtocolCode}/{capability.Version}");
+            int protocolByteCount = Encoding.UTF8.GetByteCount(capability.ProtocolCode);
+            int totalLength = protocolByteCount + 1 + MaxIntegerDigits;
+            
+            if (totalLength <= StackAllocThreshold)
+            {
+                Span<byte> buffer = stackalloc byte[totalLength];
+                WriteToBuffer(writer, capability, buffer, protocolByteCount);
+            }
+            else
+            {
+                byte[] rented = ArrayPool<byte>.Shared.Rent(totalLength);
+                try
+                {
+                    WriteToBuffer(writer, capability, rented.AsSpan(), protocolByteCount);
+                }
+                finally
+                {
+                    ArrayPool<byte>.Shared.Return(rented);
+                }
+            }
+        }
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        private static void WriteToBuffer(Utf8JsonWriter writer, Capability capability, Span<byte> buffer, int protocolByteCount)
+        {
+            Encoding.UTF8.GetBytes(capability.ProtocolCode, buffer);
+            buffer[protocolByteCount] = SeparatorByte;
+            
+            if (Utf8Formatter.TryFormat(capability.Version, buffer[(protocolByteCount + 1)..], out int versionBytes))
+            {
+                writer.WriteStringValue(buffer[..(protocolByteCount + 1 + versionBytes)]);
+            }
+            else
+            {
+                ThrowJsonException();
+            }
         }
 
         private static bool TryParseCapability(ref Utf8JsonReader reader, out Capability capability)
@@ -65,7 +105,7 @@ namespace Nethermind.Stats.Model
                 return false;
             }
 
-            int separatorIndex = valueSpan.IndexOf((byte)'/');
+            int separatorIndex = valueSpan.IndexOf(SeparatorByte);
             if (separatorIndex <= 0 || separatorIndex >= valueSpan.Length - 1)
             {
                 return false;
@@ -79,7 +119,7 @@ namespace Nethermind.Stats.Model
                 return false;
             }
 
-            string protocolCode = System.Text.Encoding.UTF8.GetString(protocolSpan);
+            string protocolCode = Encoding.UTF8.GetString(protocolSpan);
             capability = new Capability(protocolCode, version);
             return true;
         }
