@@ -4,9 +4,7 @@
 using Nethermind.Blockchain;
 using Nethermind.Config;
 using Nethermind.Consensus.Processing;
-using Nethermind.Consensus.Producers;
 using Nethermind.Core;
-using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
 using Nethermind.Crypto;
@@ -15,7 +13,6 @@ using Nethermind.Evm.Tracing;
 using Nethermind.Facade.Proxy.Models.Simulate;
 using Nethermind.Int256;
 using Nethermind.State;
-using Nethermind.State.Proofs;
 using System;
 using System.Collections.Generic;
 using System.Diagnostics.CodeAnalysis;
@@ -23,7 +20,6 @@ using System.Linq;
 using System.Runtime.InteropServices;
 using System.Threading;
 using Nethermind.Evm.State;
-using Nethermind.State.OverridableEnv;
 using Transaction = Nethermind.Core.Transaction;
 
 namespace Nethermind.Facade.Simulate;
@@ -37,28 +33,19 @@ public class SimulateBridgeHelper(IBlocksConfig blocksConfig, ISpecProvider spec
         | ProcessingOptions.StoreReceipts;
 
     private void PrepareState(
-        BlockHeader blockHeader,
-        BlockHeader parent,
         BlockStateCall<TransactionWithSourceDetails> blockStateCall,
         IWorldState stateProvider,
         IOverridableCodeInfoRepository codeInfoRepository,
         IReleaseSpec releaseSpec)
     {
-        stateProvider.SetBaseBlock(parent);
-        stateProvider.ApplyStateOverrides(codeInfoRepository, blockStateCall.StateOverrides, releaseSpec, blockHeader.Number);
+        stateProvider.ApplyStateOverridesNoCommit(codeInfoRepository, blockStateCall.StateOverrides, releaseSpec);
 
         IEnumerable<Address> senders = blockStateCall.Calls?.Select(static details => details.Transaction.SenderAddress) ?? [];
         IEnumerable<Address> targets = blockStateCall.Calls?.Select(static details => details.Transaction.To!) ?? [];
         foreach (Address address in senders.Union(targets).Where(static t => t is not null))
         {
-            stateProvider.CreateAccountIfNotExists(address, 0, 1);
+            stateProvider.CreateAccountIfNotExists(address, 0, 0);
         }
-
-        stateProvider.Commit(releaseSpec);
-        stateProvider.CommitTree(blockHeader.Number - 1);
-        stateProvider.RecalculateStateRoot();
-
-        blockHeader.StateRoot = stateProvider.StateRoot;
     }
 
     public SimulateOutput<TTrace> TrySimulate<TTrace>(
@@ -66,6 +53,7 @@ public class SimulateBridgeHelper(IBlocksConfig blocksConfig, ISpecProvider spec
         SimulatePayload<TransactionWithSourceDetails> payload,
         IBlockTracer<TTrace> tracer,
         SimulateReadOnlyBlocksProcessingScope env,
+        long gasCapLimit,
         CancellationToken cancellationToken)
     {
         List<SimulateBlockResult<TTrace>> list = new();
@@ -76,7 +64,7 @@ public class SimulateBridgeHelper(IBlocksConfig blocksConfig, ISpecProvider spec
 
         try
         {
-            if (!TrySimulate(parent, payload, tracer, env, list, cancellationToken, out string? error))
+            if (!TrySimulate(parent, payload, tracer, env, list, gasCapLimit, cancellationToken, out string? error))
             {
                 result.Error = error;
             }
@@ -98,55 +86,69 @@ public class SimulateBridgeHelper(IBlocksConfig blocksConfig, ISpecProvider spec
         IBlockTracer<TTrace> tracer,
         SimulateReadOnlyBlocksProcessingScope env,
         List<SimulateBlockResult<TTrace>> output,
+        long gasCapLimit,
         CancellationToken cancellationToken,
         [NotNullWhen(false)] out string? error)
     {
         IBlockTree blockTree = env.BlockTree;
         IWorldState stateProvider = env.WorldState;
         parent = GetParent(parent, payload, blockTree);
-        IReleaseSpec spec = env.SpecProvider.GetSpec(parent);
+
+        long globalGasCap = parent.GasLimit;
+        if (globalGasCap > gasCapLimit) globalGasCap = gasCapLimit;
+        env.SimulateRequestState.TotalGasLeft = globalGasCap;
 
         if (payload.BlockStateCalls is not null)
         {
             Dictionary<Address, UInt256> nonceCache = new();
-            List<Block> suggestedBlocks = [null];
             IBlockTracer cancellationBlockTracer = tracer.WithCancellation(cancellationToken);
 
             foreach (BlockStateCall<TransactionWithSourceDetails> blockCall in payload.BlockStateCalls)
             {
                 nonceCache.Clear();
 
-                BlockHeader callHeader = GetCallHeader(blockCall, parent, payload.Validation, spec); //currentSpec is still parent spec
-                spec = env.SpecProvider.GetSpec(callHeader);
-                PrepareState(callHeader, parent, blockCall, env.WorldState, env.CodeInfoRepository, spec);
-                Transaction[] transactions = CreateTransactions(payload, blockCall, callHeader, stateProvider, nonceCache);
-                callHeader.TxRoot = TxTrie.CalculateRoot(transactions);
+                (BlockHeader callHeader, IReleaseSpec spec) = GetCallHeader(env.SpecProvider, blockCall, parent, payload.Validation);
                 callHeader.Hash = callHeader.CalculateHash();
 
-                if (!TryGetBlock(payload, env, callHeader, transactions, out Block callBlock, out error))
-                {
-                    return false;
-                }
+                TransactionWithSourceDetails[] calls = blockCall.Calls ?? [];
+
+                env.SimulateRequestState.TxsWithExplicitGas = calls
+                    .Select((c) => c.HadGasLimitInRequest)
+                    .ToArray();
+
+                BlockBody body = AssembleBody(calls, stateProvider, nonceCache, spec);
+                Block callBlock = new Block(callHeader, body);
+
+                PrepareState(blockCall, env.WorldState, env.CodeInfoRepository, spec);
 
                 ProcessingOptions processingFlags = payload.Validation
                     ? SimulateProcessingOptions
                     : SimulateProcessingOptions | ProcessingOptions.NoValidation;
 
-                suggestedBlocks[0] = callBlock;
-
                 env.SimulateRequestState.Validate = payload.Validation;
                 env.SimulateRequestState.BlobBaseFeeOverride = spec.IsEip4844Enabled ? blockCall.BlockOverrides?.BlobBaseFee : null;
 
-                // Note: Weird behaviour where the call header is the same as the suggested blocks.
-                Block processedBlock = env.BranchProcessor.Process(callHeader, suggestedBlocks, processingFlags, cancellationBlockTracer, cancellationToken)[0];
+                (Block processedBlock, TxReceipt[] receipts) = env.BlockProcessor.ProcessOne(
+                    callBlock,
+                    processingFlags,
+                    cancellationBlockTracer,
+                    spec,
+                    cancellationToken);
 
-                FinalizeStateAndBlock(stateProvider, processedBlock, spec, callBlock, blockTree);
+                stateProvider.CommitTree(processedBlock.Number);
+                blockTree.SuggestBlock(processedBlock, BlockTreeSuggestOptions.ForceSetAsMain);
+                blockTree.UpdateHeadBlock(processedBlock.Hash!);
+
+                if (tracer is SimulateBlockMutatorTracer simulateTracer)
+                {
+                    simulateTracer.ReapplyBlockHash();
+                }
 
                 SimulateBlockResult<TTrace> blockResult = new(processedBlock, payload.ReturnFullTransactionObjects, specProvider)
                 {
                     Calls = [.. tracer.BuildResult()],
                 };
-                CheckMissingAndSetDefaults(blockResult, processedBlock);
+
                 output.Add(blockResult);
                 parent = processedBlock.Header;
             }
@@ -156,24 +158,24 @@ public class SimulateBridgeHelper(IBlocksConfig blocksConfig, ISpecProvider spec
         return true;
     }
 
-    private static void CheckMissingAndSetDefaults<TTrace>(SimulateBlockResult<TTrace> current, Block processedBlock)
+    private BlockBody AssembleBody(
+        TransactionWithSourceDetails[] calls,
+        IWorldState stateProvider,
+        Dictionary<Address, UInt256> nonceCache,
+        IReleaseSpec spec)
     {
-        current.StateRoot = processedBlock.StateRoot ?? Hash256.Zero;
-        current.ParentBeaconBlockRoot = processedBlock.ParentBeaconBlockRoot ?? Hash256.Zero;
-        current.TransactionsRoot = processedBlock.Header.TxRoot;
-        current.WithdrawalsRoot = processedBlock.WithdrawalsRoot ?? Keccak.EmptyTreeHash;
-        current.ExcessBlobGas = processedBlock.ExcessBlobGas ?? 0;
-        current.Withdrawals = processedBlock.Withdrawals ?? [];
-        current.RequestsHash = processedBlock.RequestsHash;
-    }
+        Transaction[] transactions = calls
+            .Select(t => CreateTransaction(t, stateProvider, nonceCache))
+            .ToArray();
 
-    private static void FinalizeStateAndBlock(IWorldState stateProvider, Block processedBlock, IReleaseSpec currentSpec, Block currentBlock, IBlockTree blockTree)
-    {
-        stateProvider.SetBaseBlock(processedBlock.Header);
-        stateProvider.Commit(currentSpec);
-        stateProvider.CommitTree(currentBlock.Number);
-        blockTree.SuggestBlock(processedBlock, BlockTreeSuggestOptions.ForceSetAsMain);
-        blockTree.UpdateHeadBlock(processedBlock.Hash!);
+        Withdrawal[]? withdrawals = null;
+        if (spec.WithdrawalsEnabled)
+        {
+            withdrawals = [];
+        }
+
+        BlockBody body = new BlockBody(transactions, null, withdrawals);
+        return body;
     }
 
     private static BlockHeader GetParent(BlockHeader parent, SimulatePayload<TransactionWithSourceDetails> payload, IBlockTree blockTree)
@@ -201,68 +203,10 @@ public class SimulateBridgeHelper(IBlocksConfig blocksConfig, ISpecProvider spec
         return parent;
     }
 
-    private static bool TryGetBlock(
-        SimulatePayload<TransactionWithSourceDetails> payload,
-        SimulateReadOnlyBlocksProcessingScope env,
-        BlockHeader callHeader,
-        Transaction[] transactions,
-        out Block currentBlock,
-        [NotNullWhen(false)] out string? error)
-    {
-        IWorldState stateProvider = env.WorldState;
-        Snapshot shoot = stateProvider.TakeSnapshot();
-        BlockToProduce block = new(callHeader);
-        currentBlock = block;
-        LinkedHashSet<Transaction> testedTxs = new();
-        for (int index = 0; index < transactions.Length; index++)
-        {
-            Transaction transaction = transactions[index];
-            //BlockProcessor.AddingTxEventArgs? args = env.BlockTransactionPicker.CanAddTransaction(block, transaction, testedTxs, stateProvider);
-
-            //if (args.Action is BlockProcessor.TxAction.Stop or BlockProcessor.TxAction.Skip && payload.Validation)
-            //{
-            //    error = $"invalid transaction index: {index} at block number: {callHeader.Number}, Reason: {args.Reason}";
-            //    return false;
-            //}
-
-            stateProvider.IncrementNonce(transaction.SenderAddress!);
-            testedTxs.Add(transaction);
-        }
-
-        stateProvider.Restore(shoot);
-        stateProvider.RecalculateStateRoot();
-
-        currentBlock = currentBlock.WithReplacedBody(currentBlock.Body.WithChangedTransactions(testedTxs.ToArray()));
-        error = null;
-        return true;
-    }
-
-    private Transaction[] CreateTransactions(SimulatePayload<TransactionWithSourceDetails> payload,
-        BlockStateCall<TransactionWithSourceDetails> callInputBlock,
-        BlockHeader callHeader,
+    private Transaction CreateTransaction(
+        TransactionWithSourceDetails transactionDetails,
         IWorldState stateProvider,
         Dictionary<Address, UInt256> nonceCache)
-    {
-        int notSpecifiedGasTxsCount = callInputBlock.Calls?.Count(details => !details.HadGasLimitInRequest) ?? 0;
-        long gasSpecified = callInputBlock.Calls?.Where(details => details.HadGasLimitInRequest).Sum(details => details.Transaction.GasLimit) ?? 0;
-        if (notSpecifiedGasTxsCount > 0)
-        {
-            long gasPerTx = callHeader.GasLimit - gasSpecified / notSpecifiedGasTxsCount;
-            IEnumerable<TransactionWithSourceDetails> notSpecifiedGasTxs = callInputBlock.Calls?.Where(details => !details.HadGasLimitInRequest) ?? [];
-            foreach (TransactionWithSourceDetails call in notSpecifiedGasTxs)
-            {
-                call.Transaction.GasLimit = gasPerTx;
-            }
-        }
-
-        return callInputBlock.Calls?.Select(t => CreateTransaction(t, callHeader, stateProvider, nonceCache, payload.Validation)).ToArray() ?? [];
-    }
-
-    private Transaction CreateTransaction(TransactionWithSourceDetails transactionDetails,
-        BlockHeader callHeader,
-        IWorldState stateProvider,
-        Dictionary<Address, UInt256> nonceCache,
-        bool validate)
     {
         Transaction? transaction = transactionDetails.Transaction;
         transaction.SenderAddress ??= Address.Zero;
@@ -286,55 +230,56 @@ public class SimulateBridgeHelper(IBlocksConfig blocksConfig, ISpecProvider spec
             transaction.Nonce = cachedNonce;
         }
 
-        if (validate)
-        {
-            if (transaction.GasPrice == 0)
-            {
-                transaction.GasPrice = callHeader.BaseFeePerGas;
-            }
-
-            if (transaction.Type == TxType.EIP1559 && transaction.DecodedMaxFeePerGas == 0)
-            {
-                transaction.DecodedMaxFeePerGas = transaction.GasPrice == 0
-                    ? callHeader.BaseFeePerGas + 1
-                    : transaction.GasPrice;
-            }
-        }
-
+        if (transaction.SupportsBlobs && transaction.BlobVersionedHashes is null) transaction.BlobVersionedHashes = [];
+        if (transaction.AccessList is not null && transaction.AccessList.IsEmpty) transaction.AccessList = null;
         transaction.Hash ??= transaction.CalculateHash();
-        callHeader.BlobGasUsed += BlobGasCalculator.CalculateBlobGas(transaction);
 
         return transaction;
     }
 
-    private BlockHeader GetCallHeader(BlockStateCall<TransactionWithSourceDetails> block, BlockHeader parent, bool payloadValidation, IReleaseSpec spec)
+    private (BlockHeader, IReleaseSpec) GetCallHeader(
+        ISpecProvider specProvider,
+        BlockStateCall<TransactionWithSourceDetails> block,
+        BlockHeader parent,
+        bool validate)
     {
-        BlockHeader result = block.BlockOverrides is not null
-            ? block.BlockOverrides.GetBlockHeader(parent, blocksConfig, spec)
-            : new BlockHeader(
-                parent.Hash!,
-                Keccak.OfAnEmptySequenceRlp,
-                Address.Zero,
-                UInt256.Zero,
-                parent.Number + 1,
-                parent.GasLimit,
-                parent.Timestamp + blocksConfig.SecondsPerSlot,
-                [],
-                requestsHash: parent.RequestsHash)
-            {
-                MixHash = parent.MixHash,
-                IsPostMerge = parent.Difficulty == 0,
-                RequestsHash = parent.RequestsHash
-            };
-        result.Timestamp = parent.Timestamp + blocksConfig.SecondsPerSlot;
-        result.BaseFeePerGas = block.BlockOverrides is { BaseFeePerGas: not null }
-            ? block.BlockOverrides.BaseFeePerGas.Value
-            : !payloadValidation
-                ? 0
-                : BaseFeeCalculator.Calculate(parent, spec);
+        BlockHeader result = new BlockHeader(
+            parent.Hash!,
+            Keccak.OfAnEmptySequenceRlp,
+            Address.Zero,
+            UInt256.Zero,
+            parent.Number + 1,
+            parent.GasLimit,
+            parent.Timestamp + blocksConfig.SecondsPerSlot,
+            [],
+            requestsHash: parent.RequestsHash)
+        {
+            MixHash = parent.MixHash,
+            IsPostMerge = parent.Difficulty == 0,
+            RequestsHash = parent.RequestsHash,
+        };
+
+        IReleaseSpec spec = specProvider.GetSpec(result);
+
+        if (spec.WithdrawalsEnabled) result.WithdrawalsRoot = Keccak.EmptyTreeHash;
+        if (spec.IsBeaconBlockRootAvailable) result.ParentBeaconBlockRoot = Hash256.Zero;
+
+        // In non-validation mode base fee is set to 0 if it is not overridden.
+        // This is because it creates an edge case in EVM where gasPrice < baseFee.
+        // Base fee could have been overridden.
+        if (validate)
+        {
+            result.BaseFeePerGas = spec.BaseFeeCalculator.Calculate(parent, spec);
+        }
+        else
+        {
+            result.BaseFeePerGas = 0;
+        }
 
         result.ExcessBlobGas = spec.IsEip4844Enabled ? BlobGasCalculator.CalculateExcessBlobGas(parent, spec) : (ulong?)0;
 
-        return result;
+        block.BlockOverrides?.ApplyOverrides(result);
+
+        return (result, spec);
     }
 }
