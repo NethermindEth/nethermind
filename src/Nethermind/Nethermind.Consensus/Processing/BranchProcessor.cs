@@ -94,7 +94,7 @@ public class BranchProcessor(
         // Start prewarming as early as possible
         WaitForCacheClear();
 
-        IReleaseSpec spec = forkName.Equals("fusaka")
+        IReleaseSpec spec = forkName is not null && forkName.Equals("fusaka")
             ? Osaka.Instance
             : specProvider.GetSpec(suggestedBlock.Header);
 
@@ -117,7 +117,7 @@ public class BranchProcessor(
                 if (i > 0)
                 {
                     // Refresh spec
-                    spec = forkName.Equals("fusaka")
+                    spec = forkName is not null && forkName.Equals("fusaka")
                         ? Osaka.Instance
                         : specProvider.GetSpec(suggestedBlock.Header);
                 }
