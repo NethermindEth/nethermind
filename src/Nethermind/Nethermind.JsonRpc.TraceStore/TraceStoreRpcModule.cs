@@ -149,7 +149,7 @@ public class TraceStoreRpcModule : ITraceRpcModule
         }
     }
 
-    public ResultWrapper<IEnumerable<ParityTxTraceFromStore>> trace_block(BlockParameter blockParameter)
+    public ResultWrapper<IEnumerable<ParityTxTraceFromStore>> trace_block(BlockParameter blockParameter, string? forkName = null)
     {
         SearchResult<BlockHeader> blockSearch = _blockFinder.SearchForHeader(blockParameter);
         if (blockSearch.IsError)
