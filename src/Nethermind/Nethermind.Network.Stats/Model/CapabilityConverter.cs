@@ -56,7 +56,7 @@ namespace Nethermind.Stats.Model
         {
             int protocolByteCount = Encoding.UTF8.GetByteCount(capability.ProtocolCode);
             int totalLength = protocolByteCount + 1 + MaxIntegerDigits;
-            
+
             if (totalLength <= StackAllocThreshold)
             {
                 Span<byte> buffer = stackalloc byte[totalLength];
@@ -81,7 +81,7 @@ namespace Nethermind.Stats.Model
         {
             Encoding.UTF8.GetBytes(capability.ProtocolCode, buffer);
             buffer[protocolByteCount] = SeparatorByte;
-            
+
             if (Utf8Formatter.TryFormat(capability.Version, buffer[(protocolByteCount + 1)..], out int versionBytes))
             {
                 writer.WriteStringValue(buffer[..(protocolByteCount + 1 + versionBytes)]);
