@@ -512,6 +512,6 @@ namespace Nethermind.Core.Specs
         /// <summary>
         /// RIP-7728: L1SLOAD precompile for reading L1 storage from L2
         /// </summary>
-        public bool IsL1SloadEnabled { get; }
+        public bool IsRip7728Enabled { get; }
     }
 }

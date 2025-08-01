@@ -24,7 +24,7 @@ public class L1SloadPrecompileTests
     public void Setup()
     {
         _precompile = L1SloadPrecompile.Instance;
-        _spec = new ReleaseSpec { IsL1SloadEnabled = true };
+        _spec = new ReleaseSpec { IsRip7728Enabled = true };
     }
 
     [Test]
@@ -100,7 +100,7 @@ public class L1SloadPrecompileTests
     [Test]
     public void Run_With_Disabled_Spec_Should_Fail()
     {
-        var disabledSpec = new ReleaseSpec { IsL1SloadEnabled = false };
+        var disabledSpec = new ReleaseSpec { IsRip7728Enabled = false };
 
         var input = CreateValidInput(Address.FromNumber(123), (UInt256)1, (UInt256)1000);
 

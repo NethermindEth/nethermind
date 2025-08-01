@@ -71,7 +71,7 @@ public class TaikoPlugin(ChainSpec chainSpec) : IConsensusPlugin
 
         var taikoSpec = (TaikoReleaseSpec)_api.SpecProvider.GenesisSpec;
 
-        if (!taikoSpec.IsL1SloadEnabled)
+        if (!taikoSpec.IsRip7728Enabled)
             return;
 
         ISurgeConfig surgeConfig = _api.Context.Resolve<ISurgeConfig>();

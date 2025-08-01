@@ -52,7 +52,7 @@ public class L1SloadPrecompile : IPrecompile<L1SloadPrecompile>
 
     public (byte[], bool) Run(ReadOnlyMemory<byte> inputData, IReleaseSpec releaseSpec)
     {
-        if (!releaseSpec.IsL1SloadEnabled)
+        if (!releaseSpec.IsRip7728Enabled)
         {
             return IPrecompile.Failure;
         }

@@ -57,7 +57,7 @@ public static class Extensions
             AddPrecompile<Secp256r1Precompile>();
         }
 
-        if (spec.IsL1SloadEnabled)
+        if (spec.IsRip7728Enabled)
         {
             AddPrecompile<L1SloadPrecompile>();
         }
