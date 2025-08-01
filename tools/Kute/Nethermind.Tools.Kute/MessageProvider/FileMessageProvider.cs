@@ -12,7 +12,6 @@ public sealed class FileMessageProvider : IMessageProvider<string>
         _filePath = filePath;
     }
 
-
     public IAsyncEnumerable<string> Messages(CancellationToken token = default)
     {
         var pathInfo = new FileInfo(_filePath);
