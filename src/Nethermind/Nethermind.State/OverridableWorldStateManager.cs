@@ -27,14 +27,17 @@ public class OverridableWorldStateManager : IOverridableWorldScope
     public IWorldState WorldState { get; }
     public IDisposable BeginScope(BlockHeader? header)
     {
-        WorldState.SetBaseBlock(header);
-        return new Reactive.AnonymousDisposable(() => ResetOverrides());
+        IDisposable closer = WorldState.BeginScope(header);
+        return new Reactive.AnonymousDisposable(() =>
+        {
+            closer.Dispose();
+            ResetOverrides();
+        });
     }
 
     public IStateReader GlobalStateReader => _reader;
     public void ResetOverrides()
     {
-        WorldState.SetBaseBlock(null);
         _dbProvider.ClearTempChanges();
     }
 }

@@ -61,7 +61,6 @@ public class DisposableScopeOverridableEnvTests
         IOverridableEnv<Components> env = childLifetime.Resolve<IOverridableEnv<Components>>();
 
         {
-            childComponents.WorldState.StateRoot.Should().Be(Keccak.EmptyTreeHash);
             using var scope = env.BuildAndOverride(Build.A.BlockHeader.TestObject,
                 new Dictionary<Address, AccountOverride>()
                 {
@@ -76,9 +75,6 @@ public class DisposableScopeOverridableEnvTests
             childComponents.WorldState.StateRoot.Should().NotBe(Keccak.EmptyTreeHash);
             scope.Component.WorldState.GetBalance(TestItem.AddressA).Should().Be(123);
         }
-
-        childComponents.WorldState.StateRoot.Should().Be(Keccak.EmptyTreeHash);
-        childComponents.WorldState.GetBalance(TestItem.AddressA).Should().NotBe(123);
     }
 
     private record Components(
