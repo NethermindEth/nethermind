@@ -9,6 +9,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Receipts;
+using Nethermind.Blockchain.Synchronization;
 using Nethermind.Config;
 using Nethermind.Consensus.Processing;
 using Nethermind.Consensus.Scheduler;
@@ -32,7 +33,7 @@ public class HistoryPruner : IHistoryPruner
     // only one pruning and one searching thread at a time
     private readonly Lock _pruneLock = new();
     private readonly Lock _searchLock = new();
-    private ulong _lastPrunedTimestamp;
+    private ulong? _lastPrunedTimestamp;
     private readonly ISpecProvider _specProvider;
     private readonly ILogger _logger;
     private readonly IBlockTree _blockTree;
@@ -46,6 +47,7 @@ public class HistoryPruner : IHistoryPruner
     private readonly long _epochLength;
     private readonly long _minHistoryRetentionEpochs;
     private readonly int _deletionProgressLoggingInterval;
+    private readonly long _ancientBarrier;
     private long _deletePointer = 1;
     private long _lastSavedDeletePointer = 1;
     private long? _cutoffPointer;
@@ -64,6 +66,7 @@ public class HistoryPruner : IHistoryPruner
         IDbProvider dbProvider,
         IHistoryConfig historyConfig,
         IBlocksConfig blocksConfig,
+        ISyncConfig syncConfig,
         IProcessExitSource processExitSource,
         IBackgroundTaskScheduler backgroundTaskScheduler,
         IBlockProcessingQueue blockProcessingQueue,
@@ -85,15 +88,17 @@ public class HistoryPruner : IHistoryPruner
 
         CheckConfig();
 
-        if (historyConfig.DropPreMerge)
-        {
-            Metrics.PruningCutoffBlocknumber = _specProvider.MergeBlockNumber?.BlockNumber;
-            Metrics.PruningCutoffTimestamp = _specProvider.BeaconChainGenesisTimestamp;
-        }
-
         if (historyConfig.Enabled)
         {
             blockProcessingQueue.ProcessingQueueEmpty += OnBlockProcessorQueueEmpty;
+
+            if (historyConfig.Pruning == PruningModes.UseAncientBarriers)
+            {
+                // should use syncConfig.AncientBodiesBarrierCalc?
+                _ancientBarrier = long.Min(syncConfig.AncientBodiesBarrier, syncConfig.AncientReceiptsBarrier);
+                Metrics.PruningCutoffBlocknumber = _ancientBarrier;
+                Metrics.PruningCutoffTimestamp = null;
+            }
         }
     }
 
@@ -138,7 +143,9 @@ public class HistoryPruner : IHistoryPruner
                     long? cutoff = CutoffBlockNumber;
                     cutoff = cutoff is null ? null : long.Min(cutoff!.Value, _blockTree.SyncPivot.BlockNumber);
                     long? toDelete = cutoff - _deletePointer;
-                    _logger.Info($"Pruning historical blocks up to timestamp {cutoffTimestamp} (#{(cutoff is null ? "unknown" : cutoff)}). Estimated {(toDelete is null ? "unknown" : toDelete)} blocks will be deleted.");
+
+                    string cutoffString = cutoffTimestamp is null ? $"#{(cutoff is null ? "unknown" : cutoff)}" : $"timestamp {cutoffTimestamp} (#{(cutoff is null ? "unknown" : cutoff)})";
+                    _logger.Info($"Pruning historical blocks up to {cutoffString}. Estimated {(toDelete is null ? "unknown" : toDelete)} blocks will be deleted.");
                 }
 
                 PruneBlocksAndReceipts(cutoffTimestamp!.Value, cancellationToken);
@@ -197,9 +204,9 @@ public class HistoryPruner : IHistoryPruner
             return null;
         }
 
-        if (_historyConfig.DropPreMerge && _historyConfig.RetentionEpochs is null)
+        if (_historyConfig.Pruning == PruningModes.UseAncientBarriers)
         {
-            return _specProvider.MergeBlockNumber?.BlockNumber;
+            return _ancientBarrier;
         }
 
         ulong? cutoffTimestamp = CalculateCutoffTimestamp();
@@ -273,8 +280,7 @@ public class HistoryPruner : IHistoryPruner
 
     private void CheckConfig()
     {
-        if (_historyConfig.RetentionEpochs is not null &&
-            _historyConfig.RetentionEpochs < _minHistoryRetentionEpochs)
+        if (_historyConfig.RetentionEpochs < _minHistoryRetentionEpochs)
         {
             throw new HistoryPrunerException($"HistoryRetentionEpochs must be at least {_minHistoryRetentionEpochs}.");
         }
@@ -282,24 +288,32 @@ public class HistoryPruner : IHistoryPruner
 
     private bool ShouldPruneHistory(out ulong? cutoffTimestamp)
     {
+        cutoffTimestamp = null;
+
         if (!_enabled)
         {
-            cutoffTimestamp = null;
             return false;
+        }
+
+        if (_historyConfig.Pruning == PruningModes.UseAncientBarriers)
+        {
+            return _deletePointer < _ancientBarrier;
         }
 
         cutoffTimestamp = CalculateCutoffTimestamp();
         return cutoffTimestamp is not null && cutoffTimestamp > _lastPrunedTimestamp;
     }
 
-    private void PruneBlocksAndReceipts(ulong cutoffTimestamp, CancellationToken cancellationToken)
+    private void PruneBlocksAndReceipts(ulong? cutoffTimestamp, CancellationToken cancellationToken)
     {
         int deletedBlocks = 0;
         ulong? lastDeletedTimstamp = null;
         BatchWrite? batch = null;
         try
         {
-            IEnumerable<Block> blocks = GetBlocksBeforeTimestamp(cutoffTimestamp);
+            IEnumerable<Block> blocks = _historyConfig.Pruning == PruningModes.UseAncientBarriers ?
+                GetBlocksBeforeAncientBarrier() :
+                GetBlocksBeforeTimestamp(cutoffTimestamp!.Value);
             foreach (Block block in blocks)
             {
                 long number = block.Number;
@@ -363,6 +377,9 @@ public class HistoryPruner : IHistoryPruner
         }
     }
 
+    private IEnumerable<Block> GetBlocksBeforeAncientBarrier()
+        => GetBlocksByNumber(_deletePointer, long.Min(_ancientBarrier, _blockTree.SyncPivot.BlockNumber) - 1, (_) => false);
+
     private IEnumerable<Block> GetBlocksBeforeTimestamp(ulong cutoffTimestamp)
         => GetBlocksByNumber(_deletePointer, _blockTree.SyncPivot.BlockNumber - 1, b => b.Timestamp >= cutoffTimestamp);
 
@@ -404,25 +421,9 @@ public class HistoryPruner : IHistoryPruner
     }
 
     private ulong? CalculateCutoffTimestamp()
-    {
-        ulong? cutoffTimestamp = null;
-
-        if (_historyConfig.RetentionEpochs.HasValue && _blockTree.Head is not null)
-        {
-            cutoffTimestamp = _blockTree.Head!.Timestamp - (ulong)(_historyConfig.RetentionEpochs.Value * _epochLength);
-        }
-
-        if (_historyConfig.DropPreMerge)
-        {
-            ulong? beaconGenesisTimestamp = _specProvider.BeaconChainGenesisTimestamp;
-            if (beaconGenesisTimestamp.HasValue && (cutoffTimestamp is null || beaconGenesisTimestamp.Value > cutoffTimestamp))
-            {
-                cutoffTimestamp = beaconGenesisTimestamp.Value;
-            }
-        }
-
-        return cutoffTimestamp;
-    }
+        => _historyConfig.Pruning == PruningModes.Rolling && _blockTree.Head is not null ?
+            _blockTree.Head!.Timestamp - (ulong)(_historyConfig.RetentionEpochs * _epochLength) :
+            null;
 
     private bool TryLoadDeletePointer()
     {

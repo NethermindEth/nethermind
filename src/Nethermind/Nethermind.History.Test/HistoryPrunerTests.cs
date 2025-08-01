@@ -8,6 +8,7 @@ using System.Threading.Tasks;
 using Autofac;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Receipts;
+using Nethermind.Blockchain.Synchronization;
 using Nethermind.Config;
 using Nethermind.Consensus.Processing;
 using Nethermind.Consensus.Scheduler;
@@ -29,10 +30,16 @@ public class HistoryPrunerTests
 {
     private const long SecondsPerSlot = 1;
     private const long BeaconGenesisBlockNumber = 50;
-    private static readonly ulong BeaconGenesisTimestamp = (ulong)new DateTimeOffset(TestBlockchain.InitialTimestamp).ToUnixTimeSeconds() + (BeaconGenesisBlockNumber * SecondsPerSlot);
+    // private static readonly ulong BeaconGenesisTimestamp = (ulong)new DateTimeOffset(TestBlockchain.InitialTimestamp).ToUnixTimeSeconds() + (BeaconGenesisBlockNumber * SecondsPerSlot);
     private static readonly IBlocksConfig BlocksConfig = new BlocksConfig()
     {
         SecondsPerSlot = SecondsPerSlot
+    };
+
+    private static readonly ISyncConfig SyncConfig = new SyncConfig()
+    {
+        AncientBodiesBarrier = BeaconGenesisBlockNumber,
+        AncientReceiptsBarrier = BeaconGenesisBlockNumber
     };
 
     [Test]
@@ -45,8 +52,8 @@ public class HistoryPrunerTests
         // however not feasible to test this
         IHistoryConfig historyConfig = new HistoryConfig
         {
+            Pruning = PruningModes.Rolling,
             RetentionEpochs = 2,
-            DropPreMerge = false
         };
 
         using BasicTestBlockchain testBlockchain = await BasicTestBlockchain.Create(BuildContainer(historyConfig));
@@ -88,14 +95,14 @@ public class HistoryPrunerTests
     }
 
     [Test]
-    public async Task Can_prune_pre_merge_blocks()
+    public async Task Can_prune_to_ancient_barriers()
     {
         const int blocks = 100;
 
         IHistoryConfig historyConfig = new HistoryConfig
         {
+            Pruning = PruningModes.UseAncientBarriers,
             RetentionEpochs = 100, // should have no effect
-            DropPreMerge = true
         };
         using BasicTestBlockchain testBlockchain = await BasicTestBlockchain.Create(BuildContainer(historyConfig));
 
@@ -143,8 +150,7 @@ public class HistoryPrunerTests
 
         IHistoryConfig historyConfig = new HistoryConfig
         {
-            RetentionEpochs = null,
-            DropPreMerge = true
+            Pruning = PruningModes.UseAncientBarriers,
         };
         using BasicTestBlockchain testBlockchain = await BasicTestBlockchain.Create(BuildContainer(historyConfig));
 
@@ -192,8 +198,8 @@ public class HistoryPrunerTests
 
         IHistoryConfig historyConfig = new HistoryConfig
         {
+            Pruning = PruningModes.Rolling,
             RetentionEpochs = 2,
-            DropPreMerge = false
         };
         using BasicTestBlockchain testBlockchain = await BasicTestBlockchain.Create(BuildContainer(historyConfig));
 
@@ -226,8 +232,7 @@ public class HistoryPrunerTests
 
         IHistoryConfig historyConfig = new HistoryConfig
         {
-            RetentionEpochs = null,
-            DropPreMerge = false
+            Pruning = PruningModes.Disabled,
         };
         using BasicTestBlockchain testBlockchain = await BasicTestBlockchain.Create(BuildContainer(historyConfig));
 
@@ -257,8 +262,8 @@ public class HistoryPrunerTests
     {
         IHistoryConfig validHistoryConfig = new HistoryConfig
         {
+            Pruning = PruningModes.Rolling,
             RetentionEpochs = 100000,
-            DropPreMerge = false
         };
 
         ISpecProvider specProvider = new TestSpecProvider(new ReleaseSpec() { MinHistoryRetentionEpochs = 100 });
@@ -273,6 +278,7 @@ public class HistoryPrunerTests
             dbProvider,
             validHistoryConfig,
             BlocksConfig,
+            SyncConfig,
             new ProcessExitSource(new()),
             Substitute.For<IBackgroundTaskScheduler>(),
             Substitute.For<IBlockProcessingQueue>(),
@@ -284,8 +290,8 @@ public class HistoryPrunerTests
     {
         IHistoryConfig invalidHistoryConfig = new HistoryConfig
         {
+            Pruning = PruningModes.Rolling,
             RetentionEpochs = 10,
-            DropPreMerge = false
         };
 
         ISpecProvider specProvider = new TestSpecProvider(new ReleaseSpec() { MinHistoryRetentionEpochs = 100 });
@@ -300,6 +306,7 @@ public class HistoryPrunerTests
             dbProvider,
             invalidHistoryConfig,
             BlocksConfig,
+            SyncConfig,
             new ProcessExitSource(new()),
             Substitute.For<IBackgroundTaskScheduler>(),
             Substitute.For<IBlockProcessingQueue>(),
@@ -359,12 +366,12 @@ public class HistoryPrunerTests
 
     private static Action<ContainerBuilder> BuildContainer(IHistoryConfig historyConfig)
     {
-        ISpecProvider specProvider = Substitute.For<ISpecProvider>();
-        specProvider.BeaconChainGenesisTimestamp.Returns(BeaconGenesisTimestamp);
-        specProvider.MergeBlockNumber.Returns(new ForkActivation(BeaconGenesisBlockNumber, BeaconGenesisTimestamp));
+        // ISpecProvider specProvider = Substitute.For<ISpecProvider>();
+        // specProvider.BeaconChainGenesisTimestamp.Returns(BeaconGenesisTimestamp);
+        // specProvider.MergeBlockNumber.Returns(new ForkActivation(BeaconGenesisBlockNumber, BeaconGenesisTimestamp));
 
         return containerBuilder => containerBuilder
-            .AddSingleton(specProvider)
+            // .AddSingleton(specProvider)
             .AddSingleton(historyConfig)
             .AddSingleton(BlocksConfig);
     }
