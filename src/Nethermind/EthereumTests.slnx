@@ -14,6 +14,7 @@
     <Project Path="Nethermind.Db.Rpc/Nethermind.Db.Rpc.csproj" />
     <Project Path="Nethermind.Db/Nethermind.Db.csproj" />
     <Project Path="Nethermind.Era1/Nethermind.Era1.csproj" />
+    <Project Path="Nethermind.Evm.Precompiles/Nethermind.Evm.Precompiles.csproj" />
     <Project Path="Nethermind.Evm.Test/Nethermind.Evm.Test.csproj" />
     <Project Path="Nethermind.Evm/Nethermind.Evm.csproj" />
     <Project Path="Nethermind.Facade/Nethermind.Facade.csproj" />
