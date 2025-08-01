@@ -134,9 +134,9 @@ public class GasEstimator
         txClone.GasLimit = gasLimit;
 
         _transactionProcessor.SetBlockExecutionContext(new(block, _specProvider.GetSpec(block)));
-        _transactionProcessor.CallAndRestore(txClone, tracer.WithCancellation(token));
+        TransactionResult result = _transactionProcessor.CallAndRestore(txClone, tracer.WithCancellation(token));
 
-        return !tracer.OutOfGas;
+        return result.Success && !tracer.OutOfGas;
     }
 
     private class OutOfGasTracer : TxTracer
