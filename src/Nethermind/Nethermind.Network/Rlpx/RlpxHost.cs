@@ -174,7 +174,7 @@ namespace Nethermind.Network.Rlpx
             }
         }
 
-        public async Task ConnectAsync(Node node)
+        public async Task<bool> ConnectAsync(Node node)
         {
             if (_logger.IsTrace) _logger.Trace($"|NetworkTrace| {node:s} initiating OUT connection");
 
@@ -211,7 +211,8 @@ namespace Nethermind.Network.Rlpx
                     }
                 });
 
-                throw new NetworkingException($"Failed to connect to {node:s} (timeout)", NetworkExceptionType.Timeout);
+                if (_logger.IsDebug) _logger.Debug($"Failed to connect to {node:s} (timeout)");
+                return false;
             }
 
             delayCancellation.Cancel();
@@ -222,10 +223,12 @@ namespace Nethermind.Network.Rlpx
                     _logger.Trace($"|NetworkTrace| {node:s} error when OUT connecting {connectTask.Exception}");
                 }
 
-                throw new NetworkingException($"Failed to connect to {node:s}", NetworkExceptionType.TargetUnreachable, connectTask.Exception);
+                if (_logger.IsDebug) _logger.Debug($"Failed to connect to {node:s}: {connectTask.Exception}");
+                return false;
             }
 
             if (_logger.IsTrace) _logger.Trace($"|NetworkTrace| {node:s} OUT connected");
+            return true;
         }
 
         public event EventHandler<SessionEventArgs> SessionCreated;
