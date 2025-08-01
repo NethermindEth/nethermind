@@ -38,8 +38,8 @@ public sealed class PrometheusPushGatewayMetricsReporter : IMetricsReporter
         _failedCounter = factory.CreateCounter(GetMetricName("messages_failed"), "");
         _ignoredCounter = factory.CreateCounter(GetMetricName("messages_ignored"), "");
         _responseCounter = factory.CreateCounter(GetMetricName("responses_total"), "");
-        _singleDuration = factory.CreateHistogram(GetMetricName("single_duration_seconds"), "", labelNames: new[] { "jsonrpc_id" });
-        _batchDuration = factory.CreateHistogram(GetMetricName("batch_duration_seconds"), "", labelNames: new[] { "jsonrpc_id", "method" });
+        _singleDuration = factory.CreateHistogram(GetMetricName("single_duration_seconds"), "", labelNames: new[] { "jsonrpc_id", "method" });
+        _batchDuration = factory.CreateHistogram(GetMetricName("batch_duration_seconds"), "", labelNames: new[] { "jsonrpc_id" });
 
         _endpoint = endpoint;
         string instanceLabel = labels.TryGetValue("instance", out var instance) ? instance : Guid.NewGuid().ToString();
