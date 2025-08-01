@@ -852,7 +852,7 @@ namespace Nethermind.Evm.TransactionProcessing
                 long totalToRefund = codeInsertRefund;
                 if (!substate.ShouldRevert)
                     totalToRefund += substate.Refund + substate.DestroyList.Count * RefundOf.Destroy(spec.IsEip3529Enabled);
-                long actualRefund = RefundHelper.CalculateClaimableRefund(spentGas, totalToRefund, spec);
+                long actualRefund = CalculateClaimableRefund(spentGas, totalToRefund, spec);
 
                 if (Logger.IsTrace)
                     Logger.Trace("Refunding unused gas of " + unspentGas + " and refund of " + actualRefund);
@@ -860,7 +860,7 @@ namespace Nethermind.Evm.TransactionProcessing
             }
             else if (codeInsertRefund > 0)
             {
-                long refund = RefundHelper.CalculateClaimableRefund(spentGas, codeInsertRefund, spec);
+                long refund = CalculateClaimableRefund(spentGas, codeInsertRefund, spec);
 
                 if (Logger.IsTrace)
                     Logger.Trace("Refunding delegations only: " + refund);
@@ -875,6 +875,11 @@ namespace Nethermind.Evm.TransactionProcessing
                 WorldState.AddToBalance(tx.SenderAddress!, (ulong)(tx.GasLimit - spentGas) * gasPrice, spec);
 
             return new GasConsumed(spentGas, operationGas);
+        }
+
+        protected virtual long CalculateClaimableRefund(long spentGas, long totalRefund, IReleaseSpec spec)
+        {
+            return RefundHelper.CalculateClaimableRefund(spentGas, totalRefund, spec);
         }
 
         [DoesNotReturn]
