@@ -25,7 +25,8 @@ public interface IBranchProcessor
         IReadOnlyList<Block> suggestedBlocks,
         ProcessingOptions processingOptions,
         IBlockTracer blockTracer,
-        CancellationToken token = default);
+        CancellationToken token = default,
+        string? forkName = null);
 
     /// <summary>
     /// Fired after a block has been processed.

@@ -19,19 +19,19 @@ namespace Nethermind.Consensus.Tracing
         ProcessingOptions traceOptions = ProcessingOptions.Trace)
         : ITracer
     {
-        private void Process(Block block, IBlockTracer blockTracer, IBlockchainProcessor processor, ProcessingOptions options)
+        private void Process(Block block, IBlockTracer blockTracer, IBlockchainProcessor processor, ProcessingOptions options, string? forkName = null)
         {
             /* We force process since we want to process a block that has already been processed in the past and normally it would be ignored.
                We also want to make it read only so the state is not modified persistently in any way. */
 
             blockTracer.StartNewBlockTrace(block);
-            processor.Process(block, options, blockTracer);
+            processor.Process(block, options, blockTracer, forkName: forkName);
             blockTracer.EndBlockTrace();
         }
 
         public void Trace(Block block, IBlockTracer tracer) => Process(block, tracer, traceProcessor, traceOptions);
 
-        public void Execute(Block block, IBlockTracer tracer) => Process(block, tracer, executeProcessor, executeOptions);
+        public void Execute(Block block, IBlockTracer tracer, string? forkName = null) => Process(block, tracer, executeProcessor, executeOptions, forkName: forkName);
 
         public void Accept<TCtx>(ITreeVisitor<TCtx> visitor, Hash256 stateRoot) where TCtx : struct, INodeContext<TCtx>
         {

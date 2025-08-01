@@ -422,10 +422,10 @@ public sealed class BlockchainProcessor : IBlockchainProcessor, IBlockProcessing
     public bool IsEmpty => Volatile.Read(ref _queueCount) == 0;
     public int Count => Volatile.Read(ref _queueCount);
 
-    public Block? Process(Block suggestedBlock, ProcessingOptions options, IBlockTracer tracer, CancellationToken token = default) =>
-        Process(suggestedBlock, options, tracer, token, out _);
+    public Block? Process(Block suggestedBlock, ProcessingOptions options, IBlockTracer tracer, CancellationToken token = default, string? forkName = null) =>
+        Process(suggestedBlock, options, tracer, token, out _, forkName: forkName);
 
-    public Block? Process(Block suggestedBlock, ProcessingOptions options, IBlockTracer tracer, CancellationToken token, out string? error)
+    public Block? Process(Block suggestedBlock, ProcessingOptions options, IBlockTracer tracer, CancellationToken token, out string? error, string? forkName = null)
     {
         error = null;
         if (!RunSimpleChecksAheadOfProcessing(suggestedBlock, options))
@@ -454,7 +454,7 @@ public sealed class BlockchainProcessor : IBlockchainProcessor, IBlockProcessing
         PrepareBlocksToProcess(suggestedBlock, options, processingBranch);
 
         _stopwatch.Restart();
-        Block[]? processedBlocks = ProcessBranch(processingBranch, options, tracer, token, out error);
+        Block[]? processedBlocks = ProcessBranch(processingBranch, options, tracer, token, out error, forkName);
         _stopwatch.Stop();
         if (processedBlocks is null)
         {
@@ -533,7 +533,7 @@ public sealed class BlockchainProcessor : IBlockchainProcessor, IBlockProcessing
         }
     }
 
-    private Block[]? ProcessBranch(in ProcessingBranch processingBranch, ProcessingOptions options, IBlockTracer tracer, CancellationToken token, out string? error)
+    private Block[]? ProcessBranch(in ProcessingBranch processingBranch, ProcessingOptions options, IBlockTracer tracer, CancellationToken token, out string? error, string? forkName = null)
     {
         void DeleteInvalidBlocks(in ProcessingBranch processingBranch, Hash256 invalidBlockHash)
         {
@@ -556,7 +556,8 @@ public sealed class BlockchainProcessor : IBlockchainProcessor, IBlockProcessing
                 processingBranch.BlocksToProcess,
                 options,
                 tracer,
-                token);
+                token,
+                forkName);
             error = null;
         }
         catch (InvalidBlockException ex)

@@ -18,6 +18,7 @@ using Nethermind.Core.Specs;
 using Nethermind.Evm.State;
 using Nethermind.Evm.Tracing;
 using Nethermind.Logging;
+using Nethermind.Specs.Forks;
 using Nethermind.State;
 using Metrics = Nethermind.Blockchain.Metrics;
 
@@ -82,7 +83,7 @@ public class BranchProcessor(
         if (_logger.IsTrace) _logger.Trace($"Restored the branch checkpoint - {branchingPointHeader?.ToString(BlockHeader.Format.Short)} | {_stateProvider.StateRoot}");
     }
 
-    public Block[] Process(BlockHeader? baseBlock, IReadOnlyList<Block> suggestedBlocks, ProcessingOptions options, IBlockTracer blockTracer, CancellationToken token = default)
+    public Block[] Process(BlockHeader? baseBlock, IReadOnlyList<Block> suggestedBlocks, ProcessingOptions options, IBlockTracer blockTracer, CancellationToken token = default, string? forkName = null)
     {
         if (suggestedBlocks.Count == 0) return [];
 
@@ -92,7 +93,11 @@ public class BranchProcessor(
         Block suggestedBlock = suggestedBlocks[0];
         // Start prewarming as early as possible
         WaitForCacheClear();
-        IReleaseSpec spec = specProvider.GetSpec(suggestedBlock.Header);
+
+        IReleaseSpec spec = forkName.Equals("fusaka")
+            ? Osaka.Instance
+            : specProvider.GetSpec(suggestedBlock.Header);
+
         (CancellationTokenSource? prewarmCancellation, Task? preWarmTask)
             = PreWarmTransactions(suggestedBlock, baseBlock, spec);
 
@@ -112,7 +117,9 @@ public class BranchProcessor(
                 if (i > 0)
                 {
                     // Refresh spec
-                    spec = specProvider.GetSpec(suggestedBlock.Header);
+                    spec = forkName.Equals("fusaka")
+                        ? Osaka.Instance
+                        : specProvider.GetSpec(suggestedBlock.Header);
                 }
                 // If prewarmCancellation is not null it means we are in first iteration of loop
                 // and started prewarming at method entry, so don't start it again
