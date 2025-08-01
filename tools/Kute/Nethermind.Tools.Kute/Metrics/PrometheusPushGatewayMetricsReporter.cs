@@ -21,7 +21,10 @@ public sealed class PrometheusPushGatewayMetricsReporter : IMetricsReporter
     private readonly IMetricFamily<IHistogram, ValueTuple<string>> _singleDuration;
     private readonly IMetricFamily<IHistogram, ValueTuple<string>> _batchDuration;
 
-    public PrometheusPushGatewayMetricsReporter(string endpoint)
+    public PrometheusPushGatewayMetricsReporter(
+        string endpoint,
+        Dictionary<string, string> labels
+    )
     {
         var registry = new CollectorRegistry();
         var factory = new MetricFactory(registry);
@@ -35,12 +38,15 @@ public sealed class PrometheusPushGatewayMetricsReporter : IMetricsReporter
         _batchDuration = factory.CreateHistogram("batch_duration", "", labelName: "jsonrpc_id");
 
         _endpoint = endpoint;
+        string instanceLabel = labels.TryGetValue("instance", out var instance) ? instance : Guid.NewGuid().ToString();
+        labels.Remove("instance");
         _pusher = new MetricPusher(new MetricPusherOptions
         {
             CollectorRegistry = registry,
             Endpoint = _endpoint,
             Job = "kute",
-            Instance = $"{Guid.NewGuid()}",
+            Instance = instanceLabel,
+            AdditionalLabels = labels,
         });
 
         _server = new MetricPushServer(_pusher);

@@ -120,9 +120,10 @@ static class Program
                 ? new ConsoleProgressReporter()
                 : new NullMetricsReporter();
 
+            Dictionary<string, string> labels = parseResult.GetValue(Config.Labels) ?? new();
             string? prometheusGateway = parseResult.GetValue(Config.PrometheusPushGateway);
             IMetricsReporter prometheusReporter = prometheusGateway is not null
-                ? new PrometheusPushGatewayMetricsReporter(prometheusGateway)
+                ? new PrometheusPushGatewayMetricsReporter(prometheusGateway, labels)
                 : new NullMetricsReporter();
 
             return new ComposedMetricsReporter([memoryReporter, progresReporter, consoleReporter, prometheusReporter]);
