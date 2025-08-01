@@ -46,6 +46,7 @@ using Nethermind.Synchronization.Peers;
 using Nethermind.TxPool;
 using NSubstitute;
 using NUnit.Framework;
+using Nethermind.History;
 
 namespace Nethermind.Merge.Plugin.Test;
 
@@ -71,7 +72,7 @@ public abstract partial class BaseEngineModuleTests
         IExecutionRequestsProcessor? mockedExecutionRequestsProcessor = null,
         Action<ContainerBuilder>? configurer = null)
     {
-        var bc = CreateBaseBlockchain(mergeConfig);
+        MergeTestBlockchain bc = CreateBaseBlockchain(mergeConfig);
         return await bc
             .BuildMergeTestBlockchain(configurer: (builder) =>
             {
@@ -116,7 +117,7 @@ public abstract partial class BaseEngineModuleTests
                 setHeadResponse.Data.PayloadId.Should().Be(null);
             }
 
-            blocks.Add((getPayloadResult));
+            blocks.Add(getPayloadResult);
             parentBlock = getPayloadResult;
             block = parentBlock.TryGetBlock().Block!;
             block.Header.TotalDifficulty = parentHeader.TotalDifficulty + block.Header.Difficulty;
@@ -141,7 +142,7 @@ public abstract partial class BaseEngineModuleTests
         return getPayloadResult.Data!;
     }
 
-    protected ExecutionPayload CreateParentBlockRequestOnHead(IBlockTree blockTree)
+    protected static ExecutionPayload CreateParentBlockRequestOnHead(IBlockTree blockTree)
     {
         Block? head = blockTree.Head ?? throw new NotSupportedException();
         return new ExecutionPayload()
@@ -181,6 +182,8 @@ public abstract partial class BaseEngineModuleTests
 
         public Lazy<IEngineRpcModule> _lazyEngineRpcModule = null!;
         public IEngineRpcModule EngineRpcModule => _lazyEngineRpcModule.Value;
+
+        public IHistoryPruner? HistoryPruner { get; set; }
 
         protected int _blockProcessingThrottle = 0;
 

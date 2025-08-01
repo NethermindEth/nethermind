@@ -59,6 +59,7 @@ namespace Nethermind.Init.Steps
             IInitConfig initConfig = getApi.Config<IInitConfig>();
             IBlocksConfig blocksConfig = getApi.Config<IBlocksConfig>();
             IReceiptConfig receiptConfig = getApi.Config<IReceiptConfig>();
+            IHistoryConfig historyConfig = getApi.Config<IHistoryConfig>();
 
             ThisNodeInfo.AddInfo("Gaslimit     :", $"{blocksConfig.TargetBlockGasLimit:N0}");
             ThisNodeInfo.AddInfo("ExtraData    :", Utf8.IsValid(blocksConfig.GetExtraDataBytes()) ?
@@ -131,7 +132,7 @@ namespace Nethermind.Init.Steps
 
             getApi.DisposeStack.Push(blockchainProcessor);
 
-            var mainProcessingContext = setApi.MainProcessingContext = new MainProcessingContext(
+            IMainProcessingContext mainProcessingContext = setApi.MainProcessingContext = new MainProcessingContext(
                 transactionProcessor,
                 mainBranchProcessor,
                 mainBlockProcessor,
@@ -141,7 +142,7 @@ namespace Nethermind.Init.Steps
             setApi.BlockProcessingQueue = blockchainProcessor;
             setApi.BlockProductionPolicy = CreateBlockProductionPolicy();
 
-            BackgroundTaskScheduler backgroundTaskScheduler = new BackgroundTaskScheduler(
+            BackgroundTaskScheduler backgroundTaskScheduler = new(
                 mainBranchProcessor,
                 chainHeadInfoProvider,
                 initConfig.BackgroundTaskConcurrency,

@@ -26,6 +26,7 @@ namespace Nethermind.Specs.Forks
             Eip1559TransitionBlock = long.MaxValue;
             ValidateChainId = true;
             ValidateReceipts = true;
+            MinHistoryRetentionEpochs = 82125;
 
             // The below addresses are added for all forks, but the given EIPs can be enabled at a specific timestamp or block.
             Eip7251ContractAddress = Eip7251Constants.ConsolidationRequestPredeployAddress;

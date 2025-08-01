@@ -28,6 +28,7 @@ using Nethermind.Synchronization.Reporting;
 using NSubstitute;
 using NUnit.Framework;
 using Nethermind.Stats.SyncLimits;
+using Nethermind.History;
 
 namespace Nethermind.Synchronization.Test.FastBlocks;
 
@@ -67,14 +68,15 @@ public class ReceiptsSyncFeedTests
     }
 
     private static readonly ISpecProvider _specProvider;
-    private IReceiptStorage _receiptStorage = null!;
-    private ISyncPointers _syncPointers = null!;
-    private ISyncPeerPool _syncPeerPool = null!;
-    private ReceiptsSyncFeed _feed = null!;
-    private ISyncConfig _syncConfig = null!;
-    private ISyncReport _syncReport = null!;
-    private IBlockTree _blockTree = null!;
-    private IDb _metadataDb = null!;
+    private IReceiptStorage _receiptStorage;
+    private ISyncPointers _syncPointers;
+    private ISyncPeerPool _syncPeerPool;
+    private ReceiptsSyncFeed _feed;
+    private ISyncConfig _syncConfig;
+    private ISyncReport _syncReport;
+    private IBlockTree _blockTree;
+    private IDb _metadataDb;
+    private IHistoryPruner _historyPruner;
 
     private static long _pivotNumber = 1024;
 
@@ -100,11 +102,15 @@ public class ReceiptsSyncFeedTests
         _receiptStorage = Substitute.For<IReceiptStorage>();
         _syncPointers = new MemorySyncPointers();
         _blockTree = Substitute.For<IBlockTree>();
+        _historyPruner = Substitute.For<IHistoryPruner>();
         _metadataDb = new TestMemDb();
 
-        _syncConfig = new TestSyncConfig { FastSync = true };
-        _syncConfig.PivotNumber = _pivotNumber.ToString();
-        _syncConfig.PivotHash = Keccak.Zero.ToString();
+        _syncConfig = new TestSyncConfig
+        {
+            FastSync = true,
+            PivotNumber = _pivotNumber.ToString(),
+            PivotHash = Keccak.Zero.ToString()
+        };
         _blockTree.SyncPivot.Returns((_pivotNumber, Keccak.Zero));
 
         _syncPeerPool = Substitute.For<ISyncPeerPool>();
@@ -135,6 +141,7 @@ public class ReceiptsSyncFeedTests
             _syncPeerPool,
             _syncConfig,
             _syncReport,
+            _historyPruner,
             _metadataDb,
             LimboLogs.Instance);
     }
@@ -152,6 +159,7 @@ public class ReceiptsSyncFeedTests
                 _syncPeerPool,
                 _syncConfig,
                 _syncReport,
+                _historyPruner,
                 _metadataDb,
                 LimboLogs.Instance));
     }
@@ -168,6 +176,7 @@ public class ReceiptsSyncFeedTests
             _syncPeerPool,
             _syncConfig,
             _syncReport,
+            _historyPruner,
             _metadataDb,
             LimboLogs.Instance);
         _feed.InitializeFeed();
@@ -286,6 +295,7 @@ public class ReceiptsSyncFeedTests
             _syncPeerPool,
             _syncConfig,
             _syncReport,
+            _historyPruner,
             _metadataDb,
             LimboLogs.Instance);
         _feed.InitializeFeed();
