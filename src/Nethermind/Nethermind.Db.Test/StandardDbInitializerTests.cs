@@ -11,6 +11,7 @@ using Nethermind.Api;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Core;
+using Nethermind.Core.Test;
 using Nethermind.Core.Test.Db;
 using Nethermind.Db.FullPruning;
 using Nethermind.Db.Rocks;
@@ -90,10 +91,12 @@ namespace Nethermind.Db.Test
                     DownloadReceiptsInFastSync = useReceipts
                 }))
                 .AddModule(new WorldStateModule(initConfig)) // For the full pruning db
+                .AddSingleton<IPruningConfig>(new PruningConfig())
                 .AddSingleton<IDbConfig>(new DbConfig())
                 .AddSingleton<IInitConfig>(initConfig)
                 .AddSingleton<ILogManager>(LimboLogs.Instance)
                 .AddSingleton<IFileSystem, FileSystem>()
+                .AddSingleton<IHardwareInfo>(new TestHardwareInfo(1))
                 .AddSingleton<IDbProvider, ContainerOwningDbProvider>()
                 .Build();
 

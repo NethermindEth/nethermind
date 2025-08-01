@@ -31,7 +31,7 @@ public class PerTableDbConfigTests
 
         foreach (string table in tables)
         {
-            PerTableDbConfig config = new PerTableDbConfig(dbConfig, new DbSettings(table, ""));
+            PerTableDbConfig config = new PerTableDbConfig(dbConfig, table);
 
             object _ = config.RocksDbOptions;
             _ = config.AdditionalRocksDbOptions;
@@ -49,7 +49,7 @@ public class PerTableDbConfigTests
         dbConfig.ReceiptsDbRocksDbOptions = "some_option=2;";
         dbConfig.ReceiptsBlocksDbRocksDbOptions = "some_option=3;";
 
-        PerTableDbConfig config = new PerTableDbConfig(dbConfig, new DbSettings(DbNames.Receipts, ""), "Blocks");
+        PerTableDbConfig config = new PerTableDbConfig(dbConfig, DbNames.Receipts, "Blocks");
         config.RocksDbOptions.Should().Be("some_option=1;some_option=2;some_option=3;");
     }
 
@@ -61,7 +61,7 @@ public class PerTableDbConfigTests
         dbConfig.ReceiptsDbRocksDbOptions = "some_option=2;";
         dbConfig.ReceiptsBlocksDbRocksDbOptions = "some_option=3;";
 
-        PerTableDbConfig config = new PerTableDbConfig(dbConfig, new DbSettings(DbNames.Receipts, ""));
+        PerTableDbConfig config = new PerTableDbConfig(dbConfig, DbNames.Receipts);
         config.RocksDbOptions.Should().Be("some_option=1;some_option=2;");
     }
 
@@ -71,7 +71,7 @@ public class PerTableDbConfigTests
         DbConfig dbConfig = new DbConfig();
         dbConfig.MaxOpenFiles = 2;
 
-        PerTableDbConfig config = new PerTableDbConfig(dbConfig, new DbSettings(DbNames.Receipts, ""));
+        PerTableDbConfig config = new PerTableDbConfig(dbConfig, DbNames.Receipts);
         config.MaxOpenFiles.Should().Be(2);
     }
 
