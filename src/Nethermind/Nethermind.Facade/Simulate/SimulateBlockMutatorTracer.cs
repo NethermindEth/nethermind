@@ -20,7 +20,7 @@ public class SimulateBlockMutatorTracer(bool isTracingLogs) : BlockTracerBase<Si
         if (tx?.Hash is not null)
         {
             ulong currentTxIndex = _txIndex++;
-            return new(isTracingLogs, tx, (ulong)_currentBlock!.Number, _currentBlock!.Hash!, currentTxIndex);
+            return new(isTracingLogs, tx, (ulong)_currentBlock!.Number, _currentBlock!.Hash!, ++_txIndex);
         }
         return (SimulateTxMutatorTracer)NullTxTracer.Instance;
     }
