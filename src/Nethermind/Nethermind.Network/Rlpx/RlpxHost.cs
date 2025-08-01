@@ -223,7 +223,7 @@ namespace Nethermind.Network.Rlpx
                     _logger.Trace($"|NetworkTrace| {node:s} error when OUT connecting {connectTask.Exception}");
                 }
 
-                if (_logger.IsDebug) _logger.Debug($"Failed to connect to {node:s}: {connectTask.Exception}");
+                if (_logger.IsDebug) _logger.Debug($"Failed to connect to {node:s}: {connectTask.Exception.Message}");
                 return false;
             }
 
