@@ -292,6 +292,7 @@ public class InitializeNetwork : IStep
             _forkInfo,
             _api.GossipPolicy,
             _api.WorldStateManager!,
+            _api.HistoryPruner!,
             _api.LogManager,
             _api.TxGossipPolicy);
 

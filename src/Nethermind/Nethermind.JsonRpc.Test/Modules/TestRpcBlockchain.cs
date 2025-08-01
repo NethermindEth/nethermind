@@ -44,6 +44,7 @@ using Nethermind.Network.Rlpx;
 using Nethermind.Stats;
 using Nethermind.Synchronization.ParallelSync;
 using Nethermind.Synchronization.Peers;
+using Nethermind.History;
 
 namespace Nethermind.JsonRpc.Test.Modules
 {
@@ -237,6 +238,7 @@ namespace Nethermind.JsonRpc.Test.Modules
                 Container.Resolve<IForkInfo>(),
                 Substitute.For<IGossipPolicy>(),
                 WorldStateManager,
+                Substitute.For<IHistoryPruner>(),
                 LimboLogs.Instance,
                 Substitute.For<ITxGossipPolicy>()
             );

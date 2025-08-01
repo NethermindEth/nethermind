@@ -3,13 +3,11 @@
 
 using System;
 using System.Collections.Generic;
-using System.Runtime.CompilerServices;
 using System.Threading;
 using System.Threading.Tasks;
 using Autofac;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Receipts;
-using Nethermind.Blockchain.Synchronization;
 using Nethermind.Config;
 using Nethermind.Consensus.Processing;
 using Nethermind.Consensus.Scheduler;
@@ -278,7 +276,6 @@ public class HistoryPrunerTests
             new ProcessExitSource(new()),
             Substitute.For<IBackgroundTaskScheduler>(),
             Substitute.For<IBlockProcessingQueue>(),
-            Substitute.For<ISyncPeer>(),
             LimboLogs.Instance));
     }
 
@@ -306,7 +303,6 @@ public class HistoryPrunerTests
             new ProcessExitSource(new()),
             Substitute.For<IBackgroundTaskScheduler>(),
             Substitute.For<IBlockProcessingQueue>(),
-            Substitute.For<ISyncPeer>(),
             LimboLogs.Instance));
     }
 

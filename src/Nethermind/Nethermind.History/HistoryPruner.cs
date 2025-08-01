@@ -9,7 +9,6 @@ using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Receipts;
-using Nethermind.Blockchain.Synchronization;
 using Nethermind.Config;
 using Nethermind.Consensus.Processing;
 using Nethermind.Consensus.Scheduler;
@@ -42,7 +41,6 @@ public class HistoryPruner : IHistoryPruner
     private readonly IDb _metadataDb;
     private readonly IProcessExitSource _processExitSource;
     private readonly IBackgroundTaskScheduler _backgroundTaskScheduler;
-    private readonly ISyncPeer _syncPeer;
     private readonly IHistoryConfig _historyConfig;
     private readonly bool _enabled;
     private readonly long _epochLength;
@@ -53,6 +51,8 @@ public class HistoryPruner : IHistoryPruner
     private long? _cutoffPointer;
     private ulong? _cutoffTimestamp;
     private bool _hasLoadedDeletePointer = false;
+
+    public event EventHandler<OnUpdateStoredBlockRangeArgs>? UpdateStoredBlockRange;
 
     public class HistoryPrunerException(string message, Exception? innerException = null) : Exception(message, innerException);
 
@@ -67,7 +67,6 @@ public class HistoryPruner : IHistoryPruner
         IProcessExitSource processExitSource,
         IBackgroundTaskScheduler backgroundTaskScheduler,
         IBlockProcessingQueue blockProcessingQueue,
-        ISyncPeer syncPeer,
         ILogManager logManager)
     {
         _specProvider = specProvider;
@@ -80,7 +79,6 @@ public class HistoryPruner : IHistoryPruner
         _processExitSource = processExitSource;
         _backgroundTaskScheduler = backgroundTaskScheduler;
         _historyConfig = historyConfig;
-        _syncPeer = syncPeer;
         _enabled = historyConfig.Enabled;
         _epochLength = (long)blocksConfig.SecondsPerSlot * 32; // must be changed if slot length changes
         _minHistoryRetentionEpochs = specProvider.GenesisSpec.MinHistoryRetentionEpochs;
@@ -470,10 +468,11 @@ public class HistoryPruner : IHistoryPruner
         Metrics.OldestStoredBlockNumber = _deletePointer;
         if (_blockTree.Head is not null)
         {
-            BlockHeader? oldestKnownHeader = _blockTree.FindBlock(_deletePointer)?.Header;
-            if (oldestKnownHeader is not null)
+            BlockHeader? oldest = _blockTree.FindBlock(_deletePointer)?.Header;
+            if (oldest is not null)
             {
-                _syncPeer.NotifyOfNewRange(oldestKnownHeader, _blockTree.Head.Header);
+                BlockHeader newest = _blockTree.Head.Header;
+                UpdateStoredBlockRange?.Invoke(this, new OnUpdateStoredBlockRangeArgs(oldest, newest));
             }
         }
     }

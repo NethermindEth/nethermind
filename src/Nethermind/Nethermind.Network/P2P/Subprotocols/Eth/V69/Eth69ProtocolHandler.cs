@@ -8,6 +8,7 @@ using Nethermind.Blockchain.Synchronization;
 using Nethermind.Consensus;
 using Nethermind.Consensus.Scheduler;
 using Nethermind.Core;
+using Nethermind.History;
 using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.Network.Contract.P2P;
@@ -37,10 +38,13 @@ public class Eth69ProtocolHandler : Eth68ProtocolHandler, ISyncPeer
         IPooledTxsRequestor pooledTxsRequestor,
         IGossipPolicy gossipPolicy,
         IForkInfo forkInfo,
+        IHistoryPruner historyPruner,
         ILogManager logManager,
         ITxGossipPolicy? transactionsGossipPolicy = null)
         : base(session, serializer, nodeStatsManager, syncServer, backgroundTaskScheduler, txPool, pooledTxsRequestor, gossipPolicy, forkInfo, logManager, transactionsGossipPolicy)
-    { }
+    {
+        historyPruner.UpdateStoredBlockRange += (_, r) => NotifyOfNewRange(r.OldestBlockHeader, r.NewestBlockHeader);
+    }
 
     public override string Name => "eth69";
 

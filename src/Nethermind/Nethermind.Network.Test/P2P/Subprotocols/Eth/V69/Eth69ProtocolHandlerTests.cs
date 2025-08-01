@@ -17,6 +17,7 @@ using Nethermind.Core.Specs;
 using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Core.Timers;
+using Nethermind.History;
 using Nethermind.Logging;
 using Nethermind.Network.P2P;
 using Nethermind.Network.P2P.Messages;
@@ -52,6 +53,7 @@ public class Eth69ProtocolHandlerTests
     private Eth69ProtocolHandler _handler = null!;
     private ITxGossipPolicy _txGossipPolicy = null!;
     private ITimerFactory _timerFactory = null!;
+    private IHistoryPruner _historyPruner = null!;
 
     [SetUp]
     public void Setup()
@@ -73,6 +75,7 @@ public class Eth69ProtocolHandlerTests
         _txGossipPolicy = Substitute.For<ITxGossipPolicy>();
         _txGossipPolicy.ShouldListenToGossipedTransactions.Returns(true);
         _txGossipPolicy.ShouldGossipTransaction(Arg.Any<Transaction>()).Returns(true);
+        _historyPruner = Substitute.For<IHistoryPruner>();
         _svc = Build.A.SerializationService().WithEth69(_specProvider).TestObject;
         _handler = new Eth69ProtocolHandler(
             _session,
@@ -84,6 +87,7 @@ public class Eth69ProtocolHandlerTests
             _pooledTxsRequestor,
             _gossipPolicy,
             new ForkInfo(_specProvider, _syncManager),
+            _historyPruner,
             LimboLogs.Instance,
             _txGossipPolicy);
         _handler.Init();

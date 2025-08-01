@@ -36,6 +36,7 @@ using Nethermind.Synchronization.SnapSync;
 using Nethermind.TxPool;
 using NSubstitute;
 using NUnit.Framework;
+using Nethermind.History;
 
 namespace Nethermind.Network.Test;
 
@@ -72,6 +73,7 @@ public class ProtocolsManagerTests
         private readonly IPacketSender _packetSender;
         private readonly IBlockTree _blockTree;
         private readonly IGossipPolicy _gossipPolicy;
+        private readonly IHistoryPruner _historyPruner;
         private readonly IPeerManager _peerManager;
         private readonly INetworkConfig _networkConfig;
 
@@ -114,6 +116,7 @@ public class ProtocolsManagerTests
             _peerStorage = Substitute.For<INetworkStorage>();
             _syncPeerPool = Substitute.For<ISyncPeerPool>();
             _gossipPolicy = Substitute.For<IGossipPolicy>();
+            _historyPruner = Substitute.For<IHistoryPruner>();
             _manager = new ProtocolsManager(
                 _syncPeerPool,
                 _syncServer,
@@ -129,6 +132,7 @@ public class ProtocolsManagerTests
                 forkInfo,
                 _gossipPolicy,
                 Substitute.For<IWorldStateManager>(),
+                _historyPruner,
                 LimboLogs.Instance);
         }
 
