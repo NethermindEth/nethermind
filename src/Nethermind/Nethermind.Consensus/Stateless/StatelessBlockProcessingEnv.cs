@@ -32,10 +32,10 @@ public class StatelessBlockProcessingEnv(
 {
     private readonly ILogger _logger = logManager.GetClassLogger();
 
-    public IBlockProcessor GetProcessor(Witness witness)
+    public IBlockProcessor GetProcessor(Witness witness, Hash256 stateRoot)
     {
         WorldState state = new(CreateTrie(witness), CreateCodeDb(witness), logManager);
-        state.StateRoot = witness.DecodedHeaders[0].StateRoot;
+        state.StateRoot = stateRoot;
         IBlockTree statelessBlockTree = new StatelessBlockTree(witness.DecodedHeaders);
         ITransactionProcessor txProcessor = CreateTransactionProcessor(state, statelessBlockTree);
         IBlockProcessor.IBlockTransactionsExecutor txExecutor =

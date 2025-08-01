@@ -13,6 +13,7 @@ using Nethermind.Core.Specs;
 using Nethermind.Evm.State;
 using Nethermind.Evm.Tracing.State;
 using Nethermind.Int256;
+using Nethermind.Serialization.Rlp;
 using Nethermind.State;
 using Nethermind.State.Proofs;
 
@@ -32,7 +33,7 @@ public class WitnessGeneratingWorldState(WorldState inner) : IWorldState
             AccountProofCollector accountProofCollector = new(account, slots.ToArray());
             inner.Accept(accountProofCollector, parentStateRoot);
             AccountProof accountProof = accountProofCollector.BuildResult();
-            codes.Add(GetCode(accountProof.CodeHash));
+            codes.Add(inner.GetCode(accountProof.CodeHash));
             stateNodes.AddRange(accountProof.Proof);
             stateNodes.AddRange(accountProof.StorageProofs.SelectMany(storageProof => storageProof.Proof));
             keys.Add(account.Bytes);
@@ -64,7 +65,7 @@ public class WitnessGeneratingWorldState(WorldState inner) : IWorldState
         return inner.GetCode(address);
     }
 
-    public byte[]? GetCode(in ValueHash256 codeHash)
+    public byte[]? GetCode(in ValueHash256 codeHash) // TODO: is this an account?
     {
         return inner.GetCode(in codeHash);
     }

@@ -42,10 +42,10 @@ public class StatelessBlockTree(BlockHeader[] headers) : IBlockTree
         => _numberToHeader.GetValueOrDefault(blockNumber)?.Hash;
 
     public bool IsMainChain(BlockHeader blockHeader)
-        => throw new NotSupportedException();
+        => blockHeader.Hash is not null && _hashToHeader.ContainsKey(blockHeader.Hash);
 
     public bool IsMainChain(Hash256 blockHash, bool throwOnMissingHash = true)
-        => throw new NotSupportedException();
+        => _hashToHeader.ContainsKey(blockHash) ? true : throw new InvalidOperationException();
 
     public BlockHeader FindBestSuggestedHeader()
         => throw new NotSupportedException();
