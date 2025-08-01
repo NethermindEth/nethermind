@@ -79,4 +79,4 @@ Since Kute is not a long-lived application it's unreasonable for Prometheus or s
 There are some features that we might add in the future, if they end up being required:
 
 - Validate the responses from the Nethermind Client (a "pedantic" mode)
-- Other report outputs (ex. CSV, HTML)
+- Other report outputs (ex. CSV)
