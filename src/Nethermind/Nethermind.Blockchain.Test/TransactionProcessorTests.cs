@@ -76,7 +76,7 @@ public class TransactionProcessorTests
         Transaction tx = Build.A.Transaction.SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA, _isEip155Enabled).WithGasLimit(100000).TestObject;
         Block block = Build.A.Block.WithNumber(1).WithTransactions(tx).TestObject;
         TransactionResult result = Execute(tx, block);
-        Assert.That(result.Success, Is.True);
+        Assert.That(result.TransactionExecuted, Is.True);
     }
 
     [TestCase(true, true)]
@@ -114,7 +114,7 @@ public class TransactionProcessorTests
         Transaction tx = Build.A.Transaction.SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA, _isEip155Enabled).WithGasLimit(20000).TestObject;
         Block block = Build.A.Block.WithNumber(1).WithTransactions(tx).TestObject;
         TransactionResult result = Execute(tx, block);
-        Assert.That(result.Fail, Is.True);
+        Assert.That(result.TransactionExecuted, Is.False);
     }
 
     [TestCase(true, true)]
@@ -126,7 +126,7 @@ public class TransactionProcessorTests
         Transaction tx = Build.A.Transaction.Signed(_ethereumEcdsa, TestItem.PrivateKeyA, _isEip155Enabled).WithGasLimit(100000).TestObject;
         Block block = Build.A.Block.WithNumber(1).WithTransactions(tx).TestObject;
         TransactionResult result = Execute(tx, block);
-        Assert.That(result.Fail, Is.True);
+        Assert.That(result.TransactionExecuted, Is.False);
     }
 
     [TestCase(true, true)]
@@ -138,7 +138,7 @@ public class TransactionProcessorTests
         Transaction tx = Build.A.Transaction.SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyB, _isEip155Enabled).WithGasLimit(100000).TestObject;
         Block block = Build.A.Block.WithNumber(1).WithTransactions(tx).TestObject;
         TransactionResult result = Execute(tx, block);
-        Assert.That(result.Fail, Is.True);
+        Assert.That(result.TransactionExecuted, Is.False);
     }
 
     [TestCase(true, true)]
@@ -150,7 +150,7 @@ public class TransactionProcessorTests
         Transaction tx = Build.A.Transaction.SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA, _isEip155Enabled).WithGasLimit(100000).WithNonce(100).TestObject;
         Block block = Build.A.Block.WithNumber(1).WithTransactions(tx).TestObject;
         TransactionResult result = Execute(tx, block);
-        Assert.That(result.Fail, Is.True);
+        Assert.That(result.TransactionExecuted, Is.False);
     }
 
     [TestCase(true, true)]
@@ -176,7 +176,7 @@ public class TransactionProcessorTests
         Block block = Build.A.Block.WithNumber(MainnetSpecProvider.BerlinBlockNumber).WithTransactions(tx).TestObject;
 
         TransactionResult result = Execute(tx, block);
-        Assert.That(result.Fail, Is.True);
+        Assert.That(result.TransactionExecuted, Is.False);
     }
 
     [TestCase(true, true)]
@@ -194,7 +194,7 @@ public class TransactionProcessorTests
 
         Block block = Build.A.Block.WithNumber(MainnetSpecProvider.BerlinBlockNumber).WithTransactions(tx).TestObject;
         TransactionResult result = Execute(tx, block);
-        Assert.That(result.Fail, Is.True);
+        Assert.That(result.TransactionExecuted, Is.False);
     }
 
     [TestCase(true, true)]
@@ -211,7 +211,7 @@ public class TransactionProcessorTests
 
         Block block = Build.A.Block.WithNumber(MainnetSpecProvider.LondonBlockNumber).WithTransactions(tx).TestObject;
         TransactionResult result = Execute(tx, block);
-        Assert.That(result.Fail, Is.True);
+        Assert.That(result.TransactionExecuted, Is.False);
     }
 
     [TestCase(true, true)]
@@ -223,7 +223,7 @@ public class TransactionProcessorTests
         Transaction tx = Build.A.Transaction.SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA, _isEip155Enabled).WithGasLimit(100000).TestObject;
         Block block = Build.A.Block.WithNumber(1).WithTransactions(tx).WithGasLimit(20000).TestObject;
         TransactionResult result = Execute(tx, block);
-        Assert.That(result.Fail, Is.True);
+        Assert.That(result.TransactionExecuted, Is.False);
     }
 
     [TestCase(true, true)]
@@ -235,7 +235,7 @@ public class TransactionProcessorTests
         Transaction tx = Build.A.Transaction.SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA, _isEip155Enabled).WithGasLimit(100000).TestObject;
         Block block = Build.A.Block.WithNumber(1).WithTransactions(tx).WithGasLimit(20000).TestObject;
         TransactionResult result = CallAndRestore(tx, block);
-        Assert.That(result.Success, Is.True);
+        Assert.That(result.TransactionExecuted, Is.True);
     }
 
     [Test]
@@ -360,7 +360,7 @@ public class TransactionProcessorTests
         long blockNumber = MainnetSpecProvider.LondonBlockNumber;
         Block block = Build.A.Block.WithNumber(blockNumber).WithTransactions(tx).TestObject;
         TransactionResult result = Execute(tx, block);
-        Assert.That(result.Fail, Is.True);
+        Assert.That(result.TransactionExecuted, Is.False);
     }
 
     [TestCase]
