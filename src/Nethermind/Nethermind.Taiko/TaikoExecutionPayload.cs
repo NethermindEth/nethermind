@@ -62,7 +62,6 @@ public class TaikoExecutionPayload : ExecutionPayload
 
             return new BlockDecodingResult(new Block(header, Array.Empty<Transaction>(), Array.Empty<BlockHeader>()));
         }
-
         return base.TryGetBlock(totalDifficulty);
     }
 }
