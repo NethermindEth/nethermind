@@ -52,6 +52,12 @@ Some typical usages are as follows:
 -a http://localhost:8551 -s /keystore/jwt-secret -i /rpc.0 -g http://localhost:9091 -l key1=value1,key2=value2 -l key3=value3
 ```
 
+### Use a single message file and report to a Prometheus Push Gateway with basic auth
+
+```bash
+-a http://localhost:8551 -s /keystore/jwt-secret -i /rpc.0 -g http://localhost:9091 --gateway-user user --gateway-pass pass
+```
+
 ### Use a single messages file and record all responses into a new file
 
 ```bash

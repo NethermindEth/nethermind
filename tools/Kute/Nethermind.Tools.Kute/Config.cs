@@ -77,6 +77,18 @@ public static class Config
         HelpName = "url",
     };
 
+    public static Option<string?> PrometheusPushGatewayUser { get; } = new("--gateway-user")
+    {
+        Description = "Prometheus Push Gateway username",
+        HelpName = "username",
+    };
+
+    public static Option<string?> PrometheusPushGatewayPassword { get; } = new("--gateway-pass")
+    {
+        Description = "Prometheus Push Gateway password",
+        HelpName = "password",
+    };
+
     public static Option<bool> UnwrapBatch { get; } = new("--unwrapBatch", "-u")
     {
         Description = "Batch requests will be unwraped to single requests"

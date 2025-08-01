@@ -1,6 +1,8 @@
 // SPDX-FileCopyrightText: 2023 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System.Net.Http.Headers;
+using System.Text;
 using Prometheus.Client;
 using Prometheus.Client.Collectors;
 using Prometheus.Client.MetricPusher;
@@ -23,30 +25,38 @@ public sealed class PrometheusPushGatewayMetricsReporter : IMetricsReporter
 
     public PrometheusPushGatewayMetricsReporter(
         string endpoint,
-        Dictionary<string, string> labels
+        Dictionary<string, string> labels,
+        string? user,
+        string? password
     )
     {
         var registry = new CollectorRegistry();
         var factory = new MetricFactory(registry);
 
-        _messageCounter = factory.CreateCounter("messages", "");
-        _succeededCounter = factory.CreateCounter("succeeded", "");
-        _failedCounter = factory.CreateCounter("failed", "");
-        _ignoredCounter = factory.CreateCounter("ignored", "");
-        _responseCounter = factory.CreateCounter("responses", "");
-        _singleDuration = factory.CreateHistogram("single_duration", "", labelName: "jsonrpc_id");
-        _batchDuration = factory.CreateHistogram("batch_duration", "", labelName: "jsonrpc_id");
+        _messageCounter = factory.CreateCounter(GetMetricName("messages_total"), "");
+        _succeededCounter = factory.CreateCounter(GetMetricName("messages_succeeded"), "");
+        _failedCounter = factory.CreateCounter(GetMetricName("messages_failed"), "");
+        _ignoredCounter = factory.CreateCounter(GetMetricName("messages_ignored"), "");
+        _responseCounter = factory.CreateCounter(GetMetricName("responses_total"), "");
+        _singleDuration = factory.CreateHistogram(GetMetricName("single_duration_seconds"), "", labelName: "jsonrpc_id");
+        _batchDuration = factory.CreateHistogram(GetMetricName("batch_duration_seconds"), "", labelName: "jsonrpc_id");
 
         _endpoint = endpoint;
         string instanceLabel = labels.TryGetValue("instance", out var instance) ? instance : Guid.NewGuid().ToString();
         labels.Remove("instance");
+        var httpClient = new HttpClient();
+        if (user is not null && password is not null)
+        {
+            httpClient.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Basic", Convert.ToBase64String(Encoding.UTF8.GetBytes($"{user}:{password}")));
+        }
         _pusher = new MetricPusher(new MetricPusherOptions
         {
             CollectorRegistry = registry,
             Endpoint = _endpoint,
-            Job = "kute",
+            Job = JobName,
             Instance = instanceLabel,
             AdditionalLabels = labels,
+            HttpClient = httpClient,
         });
 
         _server = new MetricPushServer(_pusher);
@@ -103,5 +113,13 @@ public sealed class PrometheusPushGatewayMetricsReporter : IMetricsReporter
     {
         await _pusher.PushAsync();
         _server.Stop();
+    }
+
+    public static string JobName => "kute";
+    public static string GetMetricName(string name)
+    {
+        var lowerName = name.ToLower();
+        var sanitizedName = lowerName.Replace(" ", "_").Replace("-", "_");
+        return $"{JobName}_{sanitizedName}";
     }
 }
