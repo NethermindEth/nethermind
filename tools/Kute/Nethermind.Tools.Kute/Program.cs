@@ -33,7 +33,8 @@ static class Program
             Config.ConcurrentRequests,
             Config.ShowProgress,
             Config.UnwrapBatch,
-            Config.PrometheusPushGateway
+            Config.PrometheusPushGateway,
+            Config.Labels,
         ];
         rootCommand.SetAction(async (parseResult, cancellationToken) =>
         {
