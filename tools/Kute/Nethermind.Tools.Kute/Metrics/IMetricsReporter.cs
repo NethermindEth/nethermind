@@ -10,8 +10,8 @@ public interface IMetricsReporter
     Task Succeeded(CancellationToken token = default) => Task.CompletedTask;
     Task Failed(CancellationToken token = default) => Task.CompletedTask;
     Task Ignored(CancellationToken token = default) => Task.CompletedTask;
-    Task Batch(int requestId, TimeSpan elapsed, CancellationToken token = default) => Task.CompletedTask;
-    Task Single(int requestId, TimeSpan elapsed, CancellationToken token = default) => Task.CompletedTask;
+    Task Batch(JsonRpc.Request.Batch batch, TimeSpan elapsed, CancellationToken token = default) => Task.CompletedTask;
+    Task Single(JsonRpc.Request.Single single, TimeSpan elapsed, CancellationToken token = default) => Task.CompletedTask;
     Task Total(TimeSpan elapsed, CancellationToken token = default) => Task.CompletedTask;
 }
 

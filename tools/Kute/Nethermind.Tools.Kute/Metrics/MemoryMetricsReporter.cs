@@ -9,8 +9,8 @@ public sealed class MemoryMetricsReporter
     : IMetricsReporter
     , IMetricsReportProvider
 {
-    private readonly ConcurrentDictionary<int, TimeSpan> _singles = new();
-    private readonly ConcurrentDictionary<int, TimeSpan> _batches = new();
+    private readonly ConcurrentDictionary<string, TimeSpan> _singles = new();
+    private readonly ConcurrentDictionary<string, TimeSpan> _batches = new();
 
     private TimeSpan _totalRunningTime;
     private long _messages;
@@ -24,14 +24,24 @@ public sealed class MemoryMetricsReporter
     public Task Succeeded(CancellationToken token = default) => Task.FromResult(Interlocked.Increment(ref _succeeded));
     public Task Failed(CancellationToken token = default) => Task.FromResult(Interlocked.Increment(ref _failed));
     public Task Ignored(CancellationToken token = default) => Task.FromResult(Interlocked.Increment(ref _ignored));
-    public Task Batch(int requestId, TimeSpan elapsed, CancellationToken token = default)
+    public Task Batch(JsonRpc.Request.Batch batch, TimeSpan elapsed, CancellationToken token = default)
     {
-        _batches[requestId] = elapsed;
+        var id = batch.Id?.ToString();
+        if (id is not null)
+        {
+            _batches[id] = elapsed;
+        }
+
         return Task.CompletedTask;
     }
-    public Task Single(int requestId, TimeSpan elapsed, CancellationToken token = default)
+    public Task Single(JsonRpc.Request.Single single, TimeSpan elapsed, CancellationToken token = default)
     {
-        _singles[requestId] = elapsed;
+        var id = single.Id?.ToString();
+        if (id is not null)
+        {
+            _singles[id] = elapsed;
+        }
+
         return Task.CompletedTask;
     }
     public Task Total(TimeSpan elapsed, CancellationToken token = default)
