@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using Autofac;
+using Nethermind.Api;
 using Nethermind.Blockchain;
 using Nethermind.Config;
 using Nethermind.Consensus;
@@ -29,7 +30,7 @@ public class TestMergeModule(ITxPoolConfig txPoolConfig) : Module
             .AddModule(new MergePluginModule())
 
             .AddSingleton<IBlockFinalizationManager, ManualBlockFinalizationManager>()
-            .OnActivate<MainBlockProcessingContext>(((context, componentContext) =>
+            .OnActivate<IMainProcessingContext>(((context, componentContext) =>
             {
                 componentContext.Resolve<InvalidChainTracker>().SetupBlockchainProcessorInterceptor(context.BlockchainProcessor);
             }))

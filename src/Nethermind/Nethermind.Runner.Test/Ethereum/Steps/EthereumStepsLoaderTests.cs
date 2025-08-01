@@ -40,7 +40,7 @@ public class EthereumStepsLoaderTests
         steps.AddRange(LoadStepInfoFromAssembly(typeof(InitializeBlockTree).Assembly));
         steps.AddRange(LoadStepInfoFromAssembly(typeof(EthereumRunner).Assembly));
 
-        HashSet<Type> optionalSteps = [typeof(RunVerifyTrie)];
+        HashSet<Type> optionalSteps = [typeof(RunVerifyTrie), typeof(ExitOnInvalidBlock)];
         steps = steps.Where((s) => !optionalSteps.Contains(s.StepBaseType)).ToHashSet();
 
         using IContainer container = new ContainerBuilder()

@@ -123,7 +123,7 @@ public static class KeyValueStoreRlpExtensions
             return null;
         }
 
-        IByteBuffer buff = PooledByteBufferAllocator.Default.Buffer(data.Length);
+        IByteBuffer buff = NethermindBuffers.Default.Buffer(data.Length);
         data.CopyTo(buff.Array.AsSpan(buff.ArrayOffset + buff.WriterIndex));
         buff.SetWriterIndex(buff.WriterIndex + data.Length);
 

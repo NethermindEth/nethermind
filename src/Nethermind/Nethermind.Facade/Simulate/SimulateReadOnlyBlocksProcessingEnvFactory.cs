@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2024 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System.Collections.Generic;
 using Autofac;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Blocks;
@@ -10,6 +11,7 @@ using Nethermind.Blockchain.Synchronization;
 using Nethermind.Consensus.Processing;
 using Nethermind.Consensus.Validators;
 using Nethermind.Core;
+using Nethermind.Core.Container;
 using Nethermind.Core.Specs;
 using Nethermind.Db;
 using Nethermind.Db.Blooms;
@@ -27,7 +29,8 @@ public class SimulateReadOnlyBlocksProcessingEnvFactory(
     IReadOnlyBlockTree baseBlockTree,
     IDbProvider dbProvider,
     ISpecProvider specProvider,
-    ILogManager logManager) : ISimulateReadOnlyBlocksProcessingEnvFactory
+    IReadOnlyList<IBlockValidationModule> validationModules,
+    ILogManager? logManager = null) : ISimulateReadOnlyBlocksProcessingEnvFactory
 {
     public ISimulateReadOnlyBlocksProcessingEnv Create()
     {
@@ -41,6 +44,7 @@ public class SimulateReadOnlyBlocksProcessingEnvFactory(
             .AddModule(overridableEnv) // worldstate related override here
             .AddSingleton<IBlockTree>(overrideBlockTree)
             .AddSingleton<BlockTreeOverlay>(overrideBlockTree)
+            .AddModule(validationModules)
             .AddDecorator<IBlockhashProvider, SimulateBlockhashProvider>()
             .AddDecorator<IVirtualMachine, SimulateVirtualMachine>()
             .AddDecorator<IBlockValidator, SimulateBlockValidatorProxy>()
@@ -48,7 +52,6 @@ public class SimulateReadOnlyBlocksProcessingEnvFactory(
             .AddSingleton<ITransactionProcessorAdapter, SimulateTransactionProcessorAdapter>()
             .AddSingleton<IReceiptStorage>(NullReceiptStorage.Instance)
 
-            .Bind<IBlockProcessor.IBlockTransactionsExecutor, IValidationTransactionExecutor>() // Depend on plugin
             .AddScoped<SimulateRequestState>()
             .AddScoped<SimulateReadOnlyBlocksProcessingEnv>());
 

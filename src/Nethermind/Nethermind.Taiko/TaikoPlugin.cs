@@ -17,7 +17,6 @@ using Nethermind.Consensus.Producers;
 using Nethermind.Consensus.Validators;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
-using Nethermind.Db;
 using Nethermind.Evm.Precompiles;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.JsonRpc.Client;
@@ -32,6 +31,7 @@ using Nethermind.Serialization.Rlp;
 using Autofac;
 using Autofac.Core;
 using Nethermind.Init.Modules;
+using Nethermind.Core.Container;
 using Nethermind.JsonRpc.Modules.Eth.GasPrice;
 using Nethermind.Serialization.Json;
 using Nethermind.Taiko.BlockTransactionExecutors;
@@ -149,7 +149,7 @@ public class TaikoModule : Module
             .AddSingleton<IUnclesValidator>(Always.Valid)
 
             // Blok processing
-            .AddScoped<IValidationTransactionExecutor, TaikoBlockValidationTransactionExecutor>()
+            .AddSingleton<IBlockValidationModule, TaikoBlockValidationModule>()
             .AddScoped<ITransactionProcessor, TaikoTransactionProcessor>()
             .AddScoped<IBlockProducerEnvFactory, TaikoBlockProductionEnvFactory>()
 
@@ -222,6 +222,14 @@ public class TaikoModule : Module
             txDecoder);
 
         return payloadPreparationService;
+    }
+
+    private class TaikoBlockValidationModule : Module, IBlockValidationModule
+    {
+        protected override void Load(ContainerBuilder builder)
+        {
+            builder.AddScoped<IBlockProcessor.IBlockTransactionsExecutor, TaikoBlockValidationTransactionExecutor>();
+        }
     }
 
 }
