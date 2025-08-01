@@ -245,7 +245,10 @@ namespace Nethermind.Network.Test
             if (firstDirection == ConnectionDirection.In)
             {
                 ctx.RlpxPeer.CreateIncoming(session1);
-                await ctx.RlpxPeer.ConnectAsync(session1.Node);
+                if (!await ctx.RlpxPeer.ConnectAsync(session1.Node))
+                {
+                    throw new NetworkingException($"Failed to connect to {session1.Node:s}", NetworkExceptionType.TargetUnreachable);
+                }
 
                 EnsureSession(ctx.PeerManager.ActivePeers.First().OutSession);
                 EnsureSession(ctx.PeerManager.ActivePeers.First().InSession);
@@ -256,7 +259,10 @@ namespace Nethermind.Network.Test
             else
             {
                 ctx.RlpxPeer.SessionCreated += HandshakeOnCreate;
-                await ctx.RlpxPeer.ConnectAsync(session1.Node);
+                if (!await ctx.RlpxPeer.ConnectAsync(session1.Node))
+                {
+                    throw new NetworkingException($"Failed to connect to {session1.Node:s}", NetworkExceptionType.TargetUnreachable);
+                }
                 ctx.RlpxPeer.SessionCreated -= HandshakeOnCreate;
                 ctx.RlpxPeer.CreateIncoming(session1);
 
@@ -762,7 +768,7 @@ namespace Nethermind.Network.Test
                 return Task.CompletedTask;
             }
 
-            public Task ConnectAsync(Node node)
+            public Task<bool> ConnectAsync(Node node)
             {
                 lock (this)
                 {
@@ -771,7 +777,7 @@ namespace Nethermind.Network.Test
 
                 if (_isFailing)
                 {
-                    throw new InvalidOperationException("making it fail");
+                    return Task.FromResult(false);
                 }
 
                 var session = new Session(30313, node, Substitute.For<IChannel>(), NullDisconnectsAnalyzer.Instance,
@@ -782,7 +788,7 @@ namespace Nethermind.Network.Test
                 }
 
                 SessionCreated?.Invoke(this, new SessionEventArgs(session));
-                return Task.CompletedTask;
+                return Task.FromResult(true);
             }
 
             public void CreateRandomIncoming()
