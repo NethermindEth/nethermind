@@ -6,6 +6,7 @@ using System.Net;
 using System.Threading;
 using System.Threading.Tasks;
 using Autofac.Features.AttributeFilters;
+using DotNetty.Buffers;
 using DotNetty.Common.Concurrency;
 using DotNetty.Handlers.Logging;
 using DotNetty.Transport.Bootstrapping;
@@ -20,6 +21,7 @@ using Nethermind.Network.P2P;
 using Nethermind.Network.P2P.Analyzers;
 using Nethermind.Network.P2P.EventArg;
 using Nethermind.Network.Rlpx.Handshake;
+using Nethermind.Serialization.Rlp;
 using Nethermind.Stats.Model;
 using LogLevel = DotNetty.Handlers.Logging.LogLevel;
 
@@ -122,6 +124,8 @@ namespace Nethermind.Network.Rlpx
                 bootstrap
                     .Group(_bossGroup, _workerGroup)
                     .ChannelFactory(() => _channelFactory?.CreateServer() ?? new TcpServerSocketChannel())
+                    .Option(ChannelOption.Allocator, NethermindBuffers.RlpxAllocator)
+                    .ChildOption(ChannelOption.Allocator, NethermindBuffers.RlpxAllocator)
                     .ChildOption(ChannelOption.SoBacklog, 100)
                     .ChildOption(ChannelOption.TcpNodelay, true)
                     .ChildOption(ChannelOption.SoTimeout, (int)_connectTimeout.TotalMilliseconds)
@@ -178,6 +182,7 @@ namespace Nethermind.Network.Rlpx
             clientBootstrap
                 .Group(_workerGroup)
                 .ChannelFactory(() => _channelFactory?.CreateClient() ?? new TcpSocketChannel())
+                .Option(ChannelOption.Allocator, NethermindBuffers.RlpxAllocator)
                 .Option(ChannelOption.TcpNodelay, true)
                 .Option(ChannelOption.SoTimeout, (int)_connectTimeout.TotalMilliseconds)
                 .Option(ChannelOption.SoKeepalive, true)

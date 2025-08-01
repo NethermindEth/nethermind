@@ -70,6 +70,7 @@
     <PackageVersion Include="PierTwo.Lantern.Discv5.WireProtocol" Version="1.0.0-preview.4" />
     <PackageVersion Include="Polly" Version="8.6.1" />
     <PackageVersion Include="prometheus-net.AspNetCore" Version="8.2.1" />
+    <PackageVersion Include="Prometheus.Client.MetricPusher" Version="3.3.0" />
     <PackageVersion Include="Pyroscope" Version="0.10.0" />
     <PackageVersion Include="RichardSzalay.MockHttp" Version="7.0.0" />
     <PackageVersion Include="RocksDB" Version="[9.10.0.55496]" />
