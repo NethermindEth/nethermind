@@ -13,6 +13,7 @@ using Nethermind.Core;
 using Nethermind.Core.Timers;
 using Nethermind.Facade;
 using Nethermind.Facade.Eth;
+using Nethermind.Facade.Find;
 using Nethermind.Facade.Simulate;
 using Nethermind.Init.Steps.Migrations;
 using Nethermind.JsonRpc;
@@ -59,6 +60,7 @@ public class RpcModules(IJsonRpcConfig jsonRpcConfig) : Module
             .RegisterSingletonJsonRpcModule<IWeb3RpcModule, Web3RpcModule>()
             .RegisterSingletonJsonRpcModule<IPersonalRpcModule, PersonalRpcModule>()
             .RegisterSingletonJsonRpcModule<IRpcRpcModule, RpcRpcModule>()
+            .AddSingleton<ILogIndexService, LogIndexService>() // TODO: relocate registration?
 
             // Txpool rpc
             .RegisterSingletonJsonRpcModule<ITxPoolRpcModule, TxPoolRpcModule>()
