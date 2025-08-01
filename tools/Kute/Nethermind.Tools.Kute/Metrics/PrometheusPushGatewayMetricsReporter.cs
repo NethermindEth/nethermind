@@ -20,8 +20,8 @@ public sealed class PrometheusPushGatewayMetricsReporter : IMetricsReporter
     private readonly ICounter _failedCounter;
     private readonly ICounter _ignoredCounter;
     private readonly ICounter _responseCounter;
-    private readonly IMetricFamily<IHistogram, ValueTuple<string>> _singleDuration;
-    private readonly IMetricFamily<IHistogram, ValueTuple<string>> _batchDuration;
+    private readonly IMetricFamily<IHistogram> _singleDuration;
+    private readonly IMetricFamily<IHistogram> _batchDuration;
 
     public PrometheusPushGatewayMetricsReporter(
         string endpoint,
@@ -38,8 +38,8 @@ public sealed class PrometheusPushGatewayMetricsReporter : IMetricsReporter
         _failedCounter = factory.CreateCounter(GetMetricName("messages_failed"), "");
         _ignoredCounter = factory.CreateCounter(GetMetricName("messages_ignored"), "");
         _responseCounter = factory.CreateCounter(GetMetricName("responses_total"), "");
-        _singleDuration = factory.CreateHistogram(GetMetricName("single_duration_seconds"), "", labelName: "jsonrpc_id");
-        _batchDuration = factory.CreateHistogram(GetMetricName("batch_duration_seconds"), "", labelName: "jsonrpc_id");
+        _singleDuration = factory.CreateHistogram(GetMetricName("single_duration_seconds"), "", labelNames: new[] { "jsonrpc_id" });
+        _batchDuration = factory.CreateHistogram(GetMetricName("batch_duration_seconds"), "", labelNames: new[] { "jsonrpc_id", "method" });
 
         _endpoint = endpoint;
         string instanceLabel = labels.TryGetValue("instance", out var instance) ? instance : Guid.NewGuid().ToString();
@@ -104,7 +104,7 @@ public sealed class PrometheusPushGatewayMetricsReporter : IMetricsReporter
     public Task Single(JsonRpc.Request.Single single, TimeSpan elapsed, CancellationToken token = default)
     {
         _singleDuration
-            .WithLabels(single.Id)
+            .WithLabels(single.Id, single.MethodName)
             .Observe(elapsed.TotalSeconds);
         return Task.CompletedTask;
     }
