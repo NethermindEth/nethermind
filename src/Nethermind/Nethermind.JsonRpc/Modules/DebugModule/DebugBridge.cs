@@ -17,6 +17,7 @@ using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
 using Nethermind.Db;
 using Nethermind.Blockchain.Tracing.GethStyle;
+using Nethermind.Crypto;
 using Nethermind.Serialization.Rlp;
 using Nethermind.Synchronization.ParallelSync;
 using Nethermind.Synchronization.Reporting;
@@ -168,7 +169,7 @@ public class DebugBridge : IDebugBridge
     {
         if (parameter.BlockNumber is long number)
         {
-            Hash256 hash = _blockTree.FindHash(number);
+            Hash256? hash = _blockTree.FindHash(number);
             if (hash is null) return null;
             return _blockStore.GetRlp(number, hash);
         }
@@ -176,7 +177,7 @@ public class DebugBridge : IDebugBridge
         {
             BlockHeader? header = _blockTree.FindHeader(parameter);
             if (header is null) return null;
-            return _blockStore.GetRlp(header.Number, header.Hash);
+            return _blockStore.GetRlp(header.Number, header.GetOrCalculateHash());
         }
     }
 
