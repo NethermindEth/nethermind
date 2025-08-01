@@ -86,6 +86,8 @@ namespace Nethermind.Blockchain
 
         void UpdateHeadBlock(Hash256 blockHash);
 
+        void UpdateOldestBlockStored(long oldestBlockStored);
+
         /// <summary>
         /// Suggests block for inclusion in the block tree.
         /// </summary>

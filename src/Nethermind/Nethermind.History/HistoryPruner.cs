@@ -466,6 +466,7 @@ public class HistoryPruner : IHistoryPruner
     {
         _deletePointer = newDeletePointer;
         Metrics.OldestStoredBlockNumber = _deletePointer;
+        _blockTree.UpdateOldestBlockStored(_deletePointer);
         if (_blockTree.Head is not null)
         {
             BlockHeader? oldest = _blockTree.FindBlock(_deletePointer)?.Header;

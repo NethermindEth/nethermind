@@ -103,6 +103,8 @@ namespace Nethermind.Blockchain
         private int _canAcceptNewBlocksCounter;
         public bool CanAcceptNewBlocks => _canAcceptNewBlocksCounter == 0;
 
+        private long _oldestBlockStored;
+
         private TaskCompletionSource? _taskCompletionSource;
 
         public BlockTree(
@@ -128,6 +130,7 @@ namespace Nethermind.Blockchain
             _syncConfig = syncConfig ?? throw new ArgumentNullException(nameof(syncConfig));
             _chainLevelInfoRepository = chainLevelInfoRepository ??
                                         throw new ArgumentNullException(nameof(chainLevelInfoRepository));
+            _oldestBlockStored = long.Min(syncConfig.AncientBodiesBarrierCalc, syncConfig.AncientReceiptsBarrierCalc);
 
             LoadSyncPivot();
 
@@ -1757,9 +1760,8 @@ namespace Nethermind.Blockchain
             TryUpdateSyncPivot();
         }
 
-        public long GetLowestBlock()
-        {
-            return _syncConfig.AncientReceiptsBarrierCalc < _syncConfig.AncientBodiesBarrierCalc ? _syncConfig.AncientReceiptsBarrierCalc : _syncConfig.AncientBodiesBarrierCalc;
-        }
+        public long GetLowestBlock() => _oldestBlockStored;
+
+        public void UpdateOldestBlockStored(long oldestBlockStored) => _oldestBlockStored = oldestBlockStored;
     }
 }
