@@ -5,7 +5,6 @@ using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Diagnostics.CodeAnalysis;
-using System.Linq;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using System.Runtime.Intrinsics;
@@ -472,7 +471,7 @@ internal sealed class PersistentStorageProvider : PartialStorageProviderBase
             Db.Metrics.IncrementStorageTreeCache();
         }
 
-        if (!storageCell.IsHash) PushToRegistryOnly(storageCell, valueChange.After);
+        PushToRegistryOnly(storageCell, valueChange.After);
         return valueChange.After;
     }
 
@@ -516,7 +515,7 @@ internal sealed class PersistentStorageProvider : PartialStorageProviderBase
         }
 
         Db.Metrics.IncrementStorageTreeReads();
-        return !storageCell.IsHash ? tree.Get(storageCell.Index) : tree.GetArray(storageCell.Hash.Bytes);
+        return tree.Get(storageCell.Index);
     }
 
     private void PushToRegistryOnly(in StorageCell cell, byte[] value)

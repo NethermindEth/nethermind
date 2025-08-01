@@ -16,20 +16,8 @@ namespace Nethermind.Core
     public readonly struct StorageCell : IEquatable<StorageCell>
     {
         private readonly UInt256 _index;
-        private readonly bool _isHash;
-
         public Address Address { get; }
-        public bool IsHash => _isHash;
         public UInt256 Index => _index;
-
-        public ValueHash256 Hash => _isHash ? Unsafe.As<UInt256, ValueHash256>(ref Unsafe.AsRef(in _index)) : GetHash();
-
-        private ValueHash256 GetHash()
-        {
-            Span<byte> key = stackalloc byte[32];
-            Index.ToBigEndian(key);
-            return KeccakCache.Compute(key);
-        }
 
         public StorageCell(Address address, in UInt256 index)
         {
@@ -41,11 +29,9 @@ namespace Nethermind.Core
         {
             Address = address;
             _index = Unsafe.As<ValueHash256, UInt256>(ref hash);
-            _isHash = true;
         }
 
         public bool Equals(StorageCell other) =>
-            _isHash == other._isHash &&
             Unsafe.As<UInt256, Vector256<byte>>(ref Unsafe.AsRef(in _index)) == Unsafe.As<UInt256, Vector256<byte>>(ref Unsafe.AsRef(in other._index)) &&
             Address.Equals(other.Address);
 
