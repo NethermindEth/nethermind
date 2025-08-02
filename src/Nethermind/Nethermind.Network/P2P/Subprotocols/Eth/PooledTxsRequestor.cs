@@ -15,17 +15,33 @@ using Nethermind.TxPool;
 
 namespace Nethermind.Network.P2P.Subprotocols.Eth
 {
-    public class PooledTxsRequestor(ITxPool txPool, ITxPoolConfig txPoolConfig, ISpecProvider specProvider) : IPooledTxsRequestor
+    public class PooledTxsRequestor : IPooledTxsRequestor, IDisposable
     {
         private const int MaxNumberOfTxsInOneMsg = 256;
-        private readonly bool _blobSupportEnabled = txPoolConfig.BlobsSupport.IsEnabled();
-        private readonly long _configuredMaxTxSize = txPoolConfig.MaxTxSize ?? long.MaxValue;
+        private readonly bool _blobSupportEnabled;
+        private readonly long _configuredMaxTxSize;
 
-        private readonly long _configuredMaxBlobTxSize = txPoolConfig.MaxBlobTxSize is null
+        private readonly long _configuredMaxBlobTxSize;
+
+        private readonly ClockKeyCache<ValueHash256> _pendingHashes = new(MemoryAllowance.RequestedTxHashCacheSize);
+        private readonly ITxPool _txPool;
+
+        public PooledTxsRequestor(ITxPool txPool, ITxPoolConfig txPoolConfig, ISpecProvider specProvider)
+        {
+            _txPool = txPool;
+            _blobSupportEnabled = txPoolConfig.BlobsSupport.IsEnabled();
+            _configuredMaxTxSize = txPoolConfig.MaxTxSize ?? long.MaxValue;
+            _configuredMaxBlobTxSize = txPoolConfig.MaxBlobTxSize is null
             ? long.MaxValue
             : txPoolConfig.MaxBlobTxSize.Value + (long)specProvider.GetFinalMaxBlobGasPerBlock();
 
-        private readonly ClockKeyCache<ValueHash256> _pendingHashes = new(MemoryAllowance.TxHashCacheSize);
+            _txPool.TxPoolHeadChanged += TxPoolHeadChanged;
+        }
+
+        private void TxPoolHeadChanged(object? sender, Block e)
+        {
+            _pendingHashes.Clear();
+        }
 
         public void RequestTransactions(Action<GetPooledTransactionsMessage> send, IOwnedReadOnlyList<Hash256> hashes)
         {
@@ -100,7 +116,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth
             for (int i = 0; i < hashes.Length; i++)
             {
                 Hash256 hash = hashes[i];
-                if (!txPool.IsKnown(hash) && _pendingHashes.Set(hash))
+                if (!_txPool.IsKnown(hash) && _pendingHashes.Set(hash))
                 {
                     discoveredTxHashes.Add(hash);
                 }
@@ -115,7 +131,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth
             for (int i = 0; i < hashes.Length; i++)
             {
                 Hash256 hash = hashes[i];
-                if (!txPool.IsKnown(hash) && !txPool.ContainsTx(hash, (TxType)types[i]) && _pendingHashes.Set(hash))
+                if (!_txPool.IsKnown(hash) && !_txPool.ContainsTx(hash, (TxType)types[i]) && _pendingHashes.Set(hash))
                 {
                     discoveredTxHashesAndSizes.Add((hash, types[i], sizes[i]));
                 }
@@ -141,5 +157,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth
                 hashesToRequest.Dispose();
             }
         }
+
+        public void Dispose() => _txPool.TxPoolHeadChanged -= TxPoolHeadChanged;
     }
 }
