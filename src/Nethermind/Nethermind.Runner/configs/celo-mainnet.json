@@ -1,10 +1,10 @@
 {
   "$schema": "https://raw.githubusercontent.com/NethermindEth/core-scripts/refs/heads/main/schemas/config.json",
   "Init": {
-    "ChainSpecPath": "chainspec/base-mainnet.json.zst",
-    "GenesisHash": "0xf712aa9241cc24369b143cf6dce85f0902a9731e70d66818a3a5845b296c73dd",
-    "BaseDbPath": "nethermind_db/base-mainnet",
-    "LogFileName": "base-mainnet.log"
+    "ChainSpecPath": "chainspec/celo-mainnet.json.zst",
+    "GenesisHash": "0x7586014e20c69b3fa7c9070baf1a7edd95833db57853126f32593b455da2e5c5",
+    "BaseDbPath": "nethermind_db/celo-mainnet",
+    "LogFileName": "celo-mainnet.log"
   },
   "TxPool": {
     "BlobsSupport": "Disabled"
@@ -12,9 +12,7 @@
   "Sync": {
     "FastSync": true,
     "SnapSync": true,
-    "FastSyncCatchUpHeightDelta": "10000000000",
-    "PivotNumber": 33500000,
-    "PivotHash": "0x8d87db0600696f14c66155abba7ff565fc60a08267ded607e4069913034cdce2"
+    "FastSyncCatchUpHeightDelta": "10000000000"
   },
   "Discovery": {
     "DiscoveryVersion": "V5"
@@ -28,12 +26,12 @@
     "PruningBoundary": 192
   },
   "Blocks": {
-    "SecondsPerSlot": 2
+    "SecondsPerSlot": 1
   },
   "Merge": {
     "Enabled": true
   },
   "Optimism": {
-    "SequencerUrl": "https://mainnet-sequencer.base.org"
+    "SequencerUrl": "https://cel2-sequencer.celo.org/"
   }
 }
