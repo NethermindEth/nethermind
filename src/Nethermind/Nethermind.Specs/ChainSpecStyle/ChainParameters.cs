@@ -170,4 +170,6 @@ public class ChainParameters
     public ulong? Eip7939TransitionTimestamp { get; set; }
 
     #endregion
+
+    public ulong? Rip7728TransitionTimestamp { get; set; }
 }
