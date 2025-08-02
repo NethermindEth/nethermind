@@ -88,7 +88,7 @@ public unsafe partial class VirtualMachineBase(
 
     private ICodeInfoRepository _codeInfoRepository;
 
-    private OpCode[] _opcodeMethods;
+    protected OpCode[] _opcodeMethods;
     private static long _txCount;
 
     private EvmState _currentState;
@@ -833,7 +833,7 @@ public unsafe partial class VirtualMachineBase(
     /// <returns>
     /// The prepared <see cref="IReleaseSpec"/> instance, with its associated opcode methods cached for execution.
     /// </returns>
-    private IReleaseSpec PrepareSpecAndOpcodes<TTracingInst>(BlockHeader header)
+    protected virtual IReleaseSpec PrepareSpecAndOpcodes<TTracingInst>(BlockHeader header)
         where TTracingInst : struct, IFlag
     {
         // Retrieve the release specification based on the block's number and timestamp.
