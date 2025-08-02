@@ -778,49 +778,30 @@ public partial class EthRpcModule(
         };
     }
 
-    public ResultWrapper<EthConfig> eth_config()
+    public ResultWrapper<JsonNode> eth_config()
     {
         ForkActivationsSummary forks = forkInfo.GetForkActivationsSummary(_blockFinder.Head?.Header);
 
-        ForkConfig current = GetForkConfig(forks.Current, _specProvider);
-        ForkConfig? next = GetForkConfig(forks.Next, _specProvider);
-        ForkConfig? last = GetForkConfig(forks.Last, _specProvider);
-
-        string serializedCurrent = JsonSerializer.Serialize(current, UnchangedDictionaryKeyOptions);
-        string? serializedNext = next is null ? null : JsonSerializer.Serialize(next, UnchangedDictionaryKeyOptions);
-        string? serializedLast = last is null ? null : JsonSerializer.Serialize(last, UnchangedDictionaryKeyOptions);
-
-        return ResultWrapper<EthConfig>.Success(new EthConfig
+        return ResultWrapper<JsonNode>.Success(JsonNode.Parse(JsonSerializer.Serialize((new EthConfig
         {
-            Current = JsonNode.Parse(serializedCurrent)!,
-            CurrentHash = GetCrc32FromJson(serializedCurrent).Value,
-            CurrentForkId = forks.CurrentForkId.HashBytes,
+            Current = GetForkConfig(forks.Current, _specProvider)!,
+            Next = GetForkConfig(forks.Next, _specProvider),
+            Last = GetForkConfig(forks.Last, _specProvider)
+        }), UnchangedDictionaryKeyOptions)));
 
-            Next = serializedNext is null ? null : JsonNode.Parse(serializedNext),
-            NextHash = GetCrc32FromJson(serializedNext),
-            NextForkId = forks.NextForkId?.HashBytes,
-
-            Last = serializedLast is null ? null : JsonNode.Parse(serializedLast),
-            LastHash = GetCrc32FromJson(serializedLast),
-            LastForkId = forks.LastForkId?.HashBytes,
-        });
-
-        [return: NotNullIfNotNull(nameof(json))]
-        static uint? GetCrc32FromJson(string? json) => json is null ? null : Crc32Algorithm.Compute(Encoding.UTF8.GetBytes(RemoveWhitespace().Replace(json, "")));
-
-        static ForkConfig? GetForkConfig(ForkActivation? forkActivation, ISpecProvider specProvider)
+        static ForkConfig? GetForkConfig((ForkActivation Activation, ForkId Id)? fork, ISpecProvider specProvider)
         {
-            if (forkActivation is null)
+            if (fork is null)
             {
                 return null;
             }
 
-            IReleaseSpec? spec = specProvider.GetSpec(forkActivation.Value.BlockNumber, forkActivation.Value.Timestamp);
+            IReleaseSpec? spec = specProvider.GetSpec(fork.Value.Activation.BlockNumber, fork.Value.Activation.Timestamp);
 
             return new ForkConfig
             {
-                ActivationTime = forkActivation.Value.Timestamp is not null ? (int)forkActivation.Value.Timestamp : null,
-                ActivationBlock = forkActivation.Value.Timestamp is null ? (int)forkActivation.Value.BlockNumber : null,
+                ActivationTime = fork.Value.Activation.Timestamp is not null ? (int)fork.Value.Activation.Timestamp : null,
+                ActivationBlock = fork.Value.Activation.Timestamp is null ? (int)fork.Value.Activation.BlockNumber : null,
                 BlobSchedule = spec.IsEip4844Enabled ? new BlobScheduleSettingsForRpc
                 {
                     BaseFeeUpdateFraction = (int)spec.BlobBaseFeeUpdateFraction,
@@ -828,6 +809,7 @@ public partial class EthRpcModule(
                     Target = (int)spec.TargetBlobCount,
                 } : null,
                 ChainId = specProvider.ChainId,
+                ForkId = fork.Value.Id.HashBytes,
                 Precompiles = spec.ListPrecompiles(),
                 SystemContracts = spec.ListSystemContracts(),
             };
@@ -836,7 +818,4 @@ public partial class EthRpcModule(
 
     private CancellationTokenSource BuildTimeoutCancellationTokenSource() =>
         _rpcConfig.BuildTimeoutCancellationToken();
-
-    [GeneratedRegex("\\s", RegexOptions.Compiled)]
-    private static partial Regex RemoveWhitespace();
 }
