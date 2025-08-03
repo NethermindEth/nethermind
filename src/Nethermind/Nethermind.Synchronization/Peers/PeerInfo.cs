@@ -46,6 +46,18 @@ namespace Nethermind.Synchronization.Peers
 
         public Hash256 HeadHash => SyncPeer.HeadHash;
 
+        private long _lastNotifiedHeadNumber;
+
+        [MethodImpl(MethodImplOptions.Synchronized)]
+        public bool ShouldNotifyHeadNumber(long headNumber)
+        {
+            // Also notify if same header as could be reorg with different hash
+            if (headNumber < _lastNotifiedHeadNumber)
+                return false;
+            _lastNotifiedHeadNumber = headNumber;
+            return true;
+        }
+
         [MethodImpl(MethodImplOptions.Synchronized)]
         public bool CanBeAllocated(AllocationContexts contexts)
         {
