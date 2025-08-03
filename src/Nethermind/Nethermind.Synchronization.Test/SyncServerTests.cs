@@ -668,7 +668,7 @@ public class SyncServerTests
     }
 
     [Test]
-    public async Task Broadcast_BlockRangeUpdate_when_latest_increased_enough()
+    public void Broadcast_BlockRangeUpdate_when_latest_increased_enough()
     {
         Context ctx = new();
 
@@ -697,16 +697,12 @@ public class SyncServerTests
         ctx.PeerPool.AllPeers.Returns(peers);
         ctx.PeerPool.PeerCount.Returns(peers.Length);
 
-        const int blocksCount = 35;
+        const int blocksCount = 100;
         var startBlock = (int)localBlockTree.Head!.Number;
+        localBlockTree.AddBranch(blocksCount / 3, splitBlockNumber: startBlock, splitVariant: 0);
         localBlockTree.AddBranch(blocksCount, splitBlockNumber: startBlock, splitVariant: 0);
-        await Task.Delay(10);
-        localBlockTree.AddBranch(blocksCount, splitBlockNumber: startBlock + blocksCount, splitVariant: 0);
-        await Task.Delay(10);
-        localBlockTree.AddBranch(blocksCount, splitBlockNumber: startBlock + blocksCount * 2, splitVariant: 0);
-        await Task.Delay(10);
 
-        var expectedUpdates = Enumerable.Range(startBlock + 1, blocksCount * 3)
+        var expectedUpdates = Enumerable.Range(startBlock + 1, blocksCount)
             .Where(x => x % frequency == 0)
             .Select(x => (earliest: localBlockTree.Genesis!.Number, latest: x))
             .ToArray();

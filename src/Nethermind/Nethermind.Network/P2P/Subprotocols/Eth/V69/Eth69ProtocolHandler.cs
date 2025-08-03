@@ -159,7 +159,7 @@ public class Eth69ProtocolHandler : Eth68ProtocolHandler, ISyncPeer
         if (earliest.Number > latest.Number)
             throw new ArgumentException($"Earliest block ({earliest.Number}) greater than latest ({latest.Number}) in BlockRangeUpdate.");
 
-        if (latest.Hash is null || latest.Hash == Hash256.Zero)
+        if (latest.Hash is null || latest.Hash.IsZero)
             throw new ArgumentException($"Latest block ({latest.Number}) hash is not provided.");
 
         if (Logger.IsTrace)
