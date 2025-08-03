@@ -3,6 +3,8 @@
 
 using System;
 using System.Buffers;
+using System.Diagnostics;
+using System.Diagnostics.CodeAnalysis;
 using Org.BouncyCastle.Crypto;
 using Org.BouncyCastle.Crypto.Digests;
 using Org.BouncyCastle.Crypto.Macs;
@@ -12,13 +14,14 @@ using Org.BouncyCastle.Utilities;
 namespace Nethermind.Crypto;
 
 /// <summary>
-///     Code adapted from ethereumJ (https://github.com/ethereum/ethereumj)
-///     Support class for constructing integrated encryption cipher
-///     for doing basic message exchanges on top of key agreement ciphers.
-///     Follows the description given in IEEE Std 1363a with a couple of changes
-///     specific to Ethereum:
-///     -Hash the MAC key before use
-///     -Include the encryption IV in the MAC computation
+/// Code adapted from ethereumJ (https://github.com/ethereum/ethereumj)
+/// Support class for constructing integrated encryption cipher
+/// for doing basic message exchanges on top of key agreement ciphers.
+/// 
+/// Follows the description given in IEEE Std 1363a with a couple of changes
+/// specific to Ethereum:
+///  * Hash the MAC key before use
+///  * Include the encryption IV in the MAC computation
 /// </summary>
 public sealed class EthereumIesEngine
 {
@@ -30,15 +33,12 @@ public sealed class EthereumIesEngine
     private IesWithCipherParameters _iesParameters;
     private byte[] _iv;
 
-    /**
-     * set up for use with stream mode, where the key derivation function
-     * is used to provide a stream of bytes to xor with the message.
-     *  @param agree the key agreement used as the basis for the encryption
-     * @param kdf    the key derivation function used for byte generation
-     * @param mac    the message authentication code generator for the message
-     * @param hash   hash ing function
-     * @param cipher the actual cipher
-     */
+    /// <summary>
+    /// Initializes a new instance of the <see cref="EthereumIesEngine"/> class.
+    /// </summary>
+    /// <param name="mac">The message authentication code generator for the message.</param>
+    /// <param name="hash">The hash function.</param>
+    /// <param name="cipher">The block cipher to use for encryption/decryption.</param>
     public EthereumIesEngine(HMac mac, Sha256Digest hash, BufferedBlockCipher cipher)
     {
         _mac = mac;
@@ -46,14 +46,13 @@ public sealed class EthereumIesEngine
         _cipher = cipher;
     }
 
-    /**
-     * Initialise the encryptor.
-     *
-     * @param forEncryption whether or not this is encryption/decryption.
-     * @param privParam     our private key parameters
-     * @param pubParam      the recipient's/sender's public key parameters
-     * @param params        encoding and derivation parameters, may be wrapped to include an IV for an underlying block cipher.
-     */
+    /// <summary>
+    /// Initializes the engine for encryption or decryption.
+    /// </summary>
+    /// <param name="forEncryption">True to initialize for encryption, false for decryption.</param>
+    /// <param name="kdfKey">The key derived from the key agreement protocol.</param>
+    /// <param name="parameters">The IES parameters, including cipher and MAC key sizes and optional encoding vector.</param>
+    /// <param name="iv">The initialization vector for the underlying block cipher.</param>
     public void Init(bool forEncryption, byte[] kdfKey, IesWithCipherParameters parameters, byte[] iv)
     {
         _kdfKey = kdfKey;
@@ -62,13 +61,20 @@ public sealed class EthereumIesEngine
         _iesParameters = parameters;
     }
 
+    /// <summary>
+    /// Processes a block of input data, performing encryption or decryption and authentication.
+    /// </summary>
+    /// <param name="input">The input data to encrypt or decrypt.</param>
+    /// <param name="macData">Additional data to include in the MAC computation (can be null or empty).</param>
+    /// <returns>The resulting encrypted or decrypted data, with authentication applied.</returns>
+    /// <exception cref="ArgumentNullException">Thrown if <paramref name="input"/> is null.</exception>
     public byte[] ProcessBlock(byte[] input, byte[] macData)
     {
         ArgumentNullException.ThrowIfNull(input);
 
         int outputSize = GetOutputSize(input.Length);
         byte[] output = new byte[outputSize];
-        int actualLength =  _forEncryption
+        int actualLength = _forEncryption
             ? EncryptBlock(input, output, macData)
             : DecryptBlock(input, output, macData);
 
@@ -99,7 +105,7 @@ public sealed class EthereumIesEngine
 
         if (output.Length < cipherOutputSize + macSize)
         {
-            throw new ArgumentException("Output buffer too small", nameof(output));
+            ThrowOutputBufferTooSmall();
         }
 
         // Rent temporary buffers from pool
@@ -119,7 +125,7 @@ public sealed class EthereumIesEngine
         _hash.DoFinal(k2A);
 
         _mac.Init(new KeyParameter(k2A));
-        _mac.BlockUpdate(_iv, 0, _iv.Length);
+        _mac.BlockUpdate(_iv);
         _mac.BlockUpdate(c.Slice(0, len));
 
         // Convert the length of the encoding vector into a byte array.
@@ -148,6 +154,10 @@ public sealed class EthereumIesEngine
         ArrayPool<byte>.Shared.Return(macOutputBuffer);
 
         return len + macSize;
+
+        [StackTraceHidden, DoesNotReturn]
+        static void ThrowOutputBufferTooSmall()
+            => throw new ArgumentException("Output buffer too small", nameof(output));
     }
 
     private int DecryptBlock(ReadOnlySpan<byte> input, Span<byte> output, ReadOnlySpan<byte> macData)
@@ -157,7 +167,7 @@ public sealed class EthereumIesEngine
         // Ensure that the length of the input is greater than the MAC in bytes
         if (input.Length <= _iesParameters.MacKeySize / 8)
         {
-            throw new InvalidCipherTextException("Length of input must be greater than the MAC");
+            ThrowInputTooShort();
         }
 
         int digestSize = _hash.GetDigestSize();
@@ -183,7 +193,7 @@ public sealed class EthereumIesEngine
         _hash.DoFinal(k2A);
 
         _mac.Init(new KeyParameter(k2A));
-        _mac.BlockUpdate(_iv, 0, _iv.Length);
+        _mac.BlockUpdate(_iv);
         _mac.BlockUpdate(input.Slice(0, cipherInputLength));
 
         // Convert the length of the encoding vector into a byte array.
@@ -203,7 +213,7 @@ public sealed class EthereumIesEngine
 
         if (!Arrays.FixedTimeEquals(t1, t2))
         {
-            throw new InvalidCipherTextException("Invalid MAC.");
+            ThrowInvalidMac();
         }
 
         // Decrypt the message
@@ -215,5 +225,13 @@ public sealed class EthereumIesEngine
         ArrayPool<byte>.Shared.Return(macOutputBuffer);
 
         return len;
+
+        [StackTraceHidden, DoesNotReturn]
+        static void ThrowInputTooShort()
+            => throw new InvalidCipherTextException("Length of input must be greater than the MAC");
+
+        [StackTraceHidden, DoesNotReturn]
+        static void ThrowInvalidMac()
+            => throw new InvalidCipherTextException("Invalid MAC.");
     }
 }
