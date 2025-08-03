@@ -268,6 +268,9 @@ public sealed class TrieStore : ITrieStore, IPruningTrieStore
     private TrieNode DirtyNodesGetOrAdd(in TrieStoreDirtyNodesCache.Key key, TrieNode node) =>
         GetDirtyNodeShard(key).GetOrAdd(key, node);
 
+    private void DirtyNodesReplace(in TrieStoreDirtyNodesCache.Key key, TrieNode node) =>
+        GetDirtyNodeShard(key).Replace(key, node);
+
     private bool DirtyNodesTryGetValue(in TrieStoreDirtyNodesCache.Key key, out TrieNode? node) =>
         GetDirtyNodeShard(key).TryGetValue(key, out node);
 
@@ -290,19 +293,32 @@ public sealed class TrieStore : ITrieStore, IPruningTrieStore
         if (!ReferenceEquals(cachedNodeCopy, node))
         {
             Metrics.LoadedFromCacheNodesCount++;
-            if (_logger.IsTrace) Trace(node, cachedNodeCopy);
-            cachedNodeCopy.ResolveKey(GetTrieStore(address), ref path, nodeCommitInfo.IsRoot);
-            if (node.Keccak != cachedNodeCopy.Keccak)
+            if (cachedNodeCopy.IsPersisted)
             {
-                ThrowNodeIsNotSame(node, cachedNodeCopy);
+                // If the cache node is persisted, we replace it completely.
+                // This is because it is possible that this node is persisted, but its child is not persisted.
+                // This can happen when a path is not replaced with another path, but its child is and hence, the child
+                // is removed, but the parent is not and remain in the cache as persisted node.
+                // Additionally, it may hold a reference to its child which is marked as persisted eventhough it was
+                // deleted.
+                DirtyNodesReplace(in key, node);
             }
-
-            if (!nodeCommitInfo.IsRoot)
+            else
             {
-                nodeCommitInfo.NodeParent!.ReplaceChildRef(nodeCommitInfo.ChildPositionAtParent, cachedNodeCopy);
-            }
+                if (_logger.IsTrace) Trace(node, cachedNodeCopy);
+                cachedNodeCopy.ResolveKey(GetTrieStore(address), ref path, nodeCommitInfo.IsRoot);
+                if (node.Keccak != cachedNodeCopy.Keccak)
+                {
+                    ThrowNodeIsNotSame(node, cachedNodeCopy);
+                }
 
-            node = cachedNodeCopy;
+                if (!nodeCommitInfo.IsRoot)
+                {
+                    nodeCommitInfo.NodeParent!.ReplaceChildRef(nodeCommitInfo.ChildPositionAtParent, cachedNodeCopy);
+                }
+
+                node = cachedNodeCopy;
+            }
             Metrics.ReplacedNodesCount++;
         }
         else
