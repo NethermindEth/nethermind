@@ -94,7 +94,7 @@ public class GasEstimator
             (long)((gasTracer.GasSpent + gasTracer.TotalRefund + GasCostOf.CallStipend) * marginWithDecimals);
         if (optimisticGasEstimate > leftBound && optimisticGasEstimate < rightBound)
         {
-            if (TryExecutableTransaction(tx, header, optimisticGasEstimate, token))
+            if (TryExecutableTransaction(tx, header, optimisticGasEstimate, token, gasTracer))
                 rightBound = optimisticGasEstimate;
             else
                 leftBound = optimisticGasEstimate;
@@ -106,7 +106,7 @@ public class GasEstimator
                && leftBound + 1 < rightBound)
         {
             long mid = (leftBound + rightBound) / 2;
-            if (!TryExecutableTransaction(tx, header, mid, token))
+            if (!TryExecutableTransaction(tx, header, mid, token, gasTracer))
             {
                 leftBound = mid;
             }
@@ -116,7 +116,7 @@ public class GasEstimator
             }
         }
 
-        if (rightBound == cap && !TryExecutableTransaction(tx, header, rightBound, token))
+        if (rightBound == cap && !TryExecutableTransaction(tx, header, rightBound, token, gasTracer))
         {
             return 0;
         }
@@ -125,18 +125,16 @@ public class GasEstimator
     }
 
     private bool TryExecutableTransaction(Transaction transaction, BlockHeader block, long gasLimit,
-        CancellationToken token)
+        CancellationToken token, EstimateGasTracer gasTracer) 
     {
-        OutOfGasTracer tracer = new();
-
         Transaction txClone = new Transaction();
         transaction.CopyTo(txClone);
         txClone.GasLimit = gasLimit;
-
+        
         _transactionProcessor.SetBlockExecutionContext(new(block, _specProvider.GetSpec(block)));
-        TransactionResult result = _transactionProcessor.CallAndRestore(txClone, tracer.WithCancellation(token));
-
-        return result.Success && !tracer.OutOfGas;
+        TransactionResult result = _transactionProcessor.CallAndRestore(txClone, gasTracer.WithCancellation(token));
+        
+        return result.Success && gasTracer.StatusCode == StatusCode.Success;
     }
 
     private class OutOfGasTracer : TxTracer
