@@ -40,6 +40,13 @@ public class ConcurrentWriteBatcher : IWriteBatch
         ReturnWriteBatch(currentBatch);
     }
 
+    public void Merge(ReadOnlySpan<byte> key, ReadOnlySpan<byte> value, WriteFlags flags = WriteFlags.None)
+    {
+        IWriteBatch currentBatch = RentWriteBatch();
+        currentBatch.Merge(key, value, flags);
+        ReturnWriteBatch(currentBatch);
+    }
+
     public void Set(ReadOnlySpan<byte> key, byte[]? value, WriteFlags flags = WriteFlags.None)
     {
         IWriteBatch currentBatch = RentWriteBatch();

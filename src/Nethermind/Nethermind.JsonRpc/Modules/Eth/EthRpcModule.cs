@@ -628,6 +628,10 @@ public partial class EthRpcModule(
         {
             LogFilter logFilter = _blockchainBridge.GetFilter(fromBlock, toBlock, filter.Address, filter.Topics);
 
+            // ReSharper disable once ConditionIsAlwaysTrueOrFalse - can be null in tests
+            if (logFilter is not null && filter is not null)
+                logFilter.UseIndex = filter.UseIndex;
+
             IEnumerable<FilterLog> filterLogs = _blockchainBridge.GetLogs(logFilter, fromBlockHeader, toBlockHeader, cancellationToken);
 
             ArrayPoolList<FilterLog> logs = new(_rpcConfig.MaxLogsPerResponse);
