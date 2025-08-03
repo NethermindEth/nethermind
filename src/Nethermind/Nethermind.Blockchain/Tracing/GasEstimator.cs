@@ -125,15 +125,15 @@ public class GasEstimator
     }
 
     private bool TryExecutableTransaction(Transaction transaction, BlockHeader block, long gasLimit,
-        CancellationToken token, EstimateGasTracer gasTracer) 
+        CancellationToken token, EstimateGasTracer gasTracer)
     {
         Transaction txClone = new Transaction();
         transaction.CopyTo(txClone);
         txClone.GasLimit = gasLimit;
-        
+
         _transactionProcessor.SetBlockExecutionContext(new(block, _specProvider.GetSpec(block)));
         TransactionResult result = _transactionProcessor.CallAndRestore(txClone, gasTracer.WithCancellation(token));
-        
+
         return result.Success && gasTracer.StatusCode == StatusCode.Success;
     }
 
