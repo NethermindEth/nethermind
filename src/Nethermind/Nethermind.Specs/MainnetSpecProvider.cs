@@ -1,13 +1,14 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System.Collections.Generic;
 using Nethermind.Core.Specs;
 using Nethermind.Int256;
 using Nethermind.Specs.Forks;
 
 namespace Nethermind.Specs;
 
-public class MainnetSpecProvider : ISpecProvider
+public class MainnetSpecProvider : IForkAwareSpecProvider
 {
     public const long HomesteadBlockNumber = 1_150_000;
     public const long DaoBlockNumberConst = 1_920_000;
@@ -92,6 +93,10 @@ public class MainnetSpecProvider : ISpecProvider
         PragueActivation,
         OsakaActivation,
     };
+
+    public IEnumerable<string> AvailableForks => ForkRegistry.All.Keys;
+
+    public bool TryGetForkSpec(string forkName, out IReleaseSpec? spec) => ForkRegistry.All.TryGetValue(forkName, out spec);
 
     public static MainnetSpecProvider Instance { get; } = new();
 }

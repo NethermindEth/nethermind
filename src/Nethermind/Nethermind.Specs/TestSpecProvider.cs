@@ -1,13 +1,14 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System.Collections.Generic;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
 using Nethermind.Int256;
 
 namespace Nethermind.Specs
 {
-    public class TestSpecProvider : ISpecProvider
+    public class TestSpecProvider : IForkAwareSpecProvider
     {
         public TestSpecProvider(IReleaseSpec initialSpecToReturn)
         {
@@ -45,6 +46,11 @@ namespace Nethermind.Specs
 
         public ForkActivation[] TransitionActivations { get; set; } = [(ForkActivation)0];
         public bool AllowTestChainOverride { get; set; } = true;
+
+
+        public IEnumerable<string> AvailableForks => ForkRegistry.All.Keys;
+
+        public bool TryGetForkSpec(string forkName, out IReleaseSpec? spec) => ForkRegistry.All.TryGetValue(forkName, out spec);
 
         private TestSpecProvider() { }
 

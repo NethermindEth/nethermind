@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Threading;
@@ -12,6 +13,7 @@ using Nethermind.Consensus.Tracing;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
+using Nethermind.Core.Specs;
 using Nethermind.Evm;
 using Nethermind.State.OverridableEnv;
 using Nethermind.Evm.Tracing;
@@ -43,11 +45,13 @@ namespace Nethermind.JsonRpc.Modules.Trace
         IJsonRpcConfig jsonRpcConfig,
         IStateReader stateReader,
         IBlockchainBridge blockchainBridge,
-        IBlocksConfig blocksConfig)
+        IBlocksConfig blocksConfig,
+        ISpecProvider specProvider)
         : ITraceRpcModule
     {
         private readonly TxDecoder _txDecoder = TxDecoder.Instance;
         private readonly ulong _secondsPerSlot = blocksConfig.SecondsPerSlot;
+        private readonly ISpecProvider _specProvider = specProvider;
 
         public static ParityTraceTypes GetParityTypes(string[] types) =>
             types.Select(static s => FastEnum.Parse<ParityTraceTypes>(s, true)).Aggregate(static (t1, t2) => t1 | t2);
@@ -237,7 +241,7 @@ namespace Nethermind.JsonRpc.Modules.Trace
             return ResultWrapper<IEnumerable<ParityTxTraceFromStore>>.Success(txTracerFilter.FilterTxTraces(txTracesResult));
         }
 
-        public ResultWrapper<IEnumerable<ParityTxTraceFromStore>> trace_block(BlockParameter blockParameter)
+        public ResultWrapper<IEnumerable<ParityTxTraceFromStore>> trace_block(BlockParameter blockParameter, ForkActivationParameter? forkActivation = null)
         {
             SearchResult<Block> blockSearch = blockFinder.SearchForBlock(blockParameter);
             if (blockSearch.IsError)
@@ -262,7 +266,9 @@ namespace Nethermind.JsonRpc.Modules.Trace
                 return GetStateFailureResult<IEnumerable<ParityTxTraceFromStore>>(parentSearch.Object);
             }
 
-            IReadOnlyCollection<ParityLikeTxTrace> txTraces = ExecuteBlock(parentSearch.Object, block, new(ParityTraceTypes.Trace | ParityTraceTypes.Rewards));
+            IReadOnlyCollection<ParityLikeTxTrace> txTraces = forkActivation != null
+                ? ExecuteBlockWithForkOverride(parentSearch.Object, block, new(ParityTraceTypes.Trace | ParityTraceTypes.Rewards), forkActivation)
+                : ExecuteBlock(parentSearch.Object, block, new(ParityTraceTypes.Trace | ParityTraceTypes.Rewards));
             return ResultWrapper<IEnumerable<ParityTxTraceFromStore>>.Success(txTraces.SelectMany(ParityTxTraceFromStore.FromTxTrace));
         }
 
@@ -351,6 +357,32 @@ namespace Nethermind.JsonRpc.Modules.Trace
             CancellationToken cancellationToken = timeout.Token;
             tracer2.Execute(block, tracer.WithCancellation(cancellationToken));
             return tracer.BuildResult();
+        }
+
+        private IReadOnlyCollection<ParityLikeTxTrace> ExecuteBlockWithForkOverride(BlockHeader parentHeader, Block block, ParityLikeBlockTracer tracer, ForkActivationParameter forkActivationParam)
+        {
+            (bool isSuccess, IReleaseSpec? resolvedSpec, ForkActivation activation, string? errorMessage) = forkActivationParam.TryResolve(_specProvider);
+            if (!isSuccess)
+            {
+                throw new ArgumentException($"Fork resolution failed: {errorMessage}");
+            }
+
+            IReleaseSpec effectiveSpec = resolvedSpec ?? _specProvider.GetSpec(activation);
+            IReleaseSpec isolatedSpec = new ReleaseSpecDecorator(effectiveSpec);
+
+            BlockHeader effectiveHeader = block.Header;
+            bool needsHeaderOverride = activation.Timestamp.HasValue || activation.BlockNumber != block.Number;
+
+            if (needsHeaderOverride)
+            {
+                effectiveHeader = block.Header.Clone();
+                effectiveHeader.Timestamp = activation.Timestamp ?? effectiveHeader.Timestamp;
+                effectiveHeader.Number = activation.BlockNumber;
+            }
+
+            block = new(effectiveHeader, block.Transactions, block.Uncles);
+
+            return ExecuteBlock(parentHeader, block, tracer);
         }
 
         private static ResultWrapper<TResult> GetStateFailureResult<TResult>(BlockHeader header) =>
