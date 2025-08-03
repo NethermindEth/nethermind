@@ -6,6 +6,7 @@ using System.Linq;
 using System.Threading.Tasks;
 using FluentAssertions;
 using Nethermind.Blockchain;
+using Nethermind.Blockchain.Spec;
 using Nethermind.Consensus.Comparers;
 using Nethermind.Consensus.Processing;
 using Nethermind.Consensus.Processing.CensorshipDetector;
@@ -34,9 +35,9 @@ namespace Nethermind.Consensus.Test;
 public class CensorshipDetectorTests
 {
     private ILogManager _logManager;
-    private IWorldState _stateProvider;
+    private TestReadOnlyStateProvider _stateProvider;
     private IBlockTree _blockTree;
-    private IBlockProcessor _blockProcessor;
+    private IBranchProcessor _branchProcessor;
     private ISpecProvider _specProvider;
     private IEthereumEcdsa _ethereumEcdsa;
     private IComparer<Transaction> _comparer;
@@ -47,9 +48,8 @@ public class CensorshipDetectorTests
     public void Setup()
     {
         _logManager = LimboLogs.Instance;
-        IWorldStateManager worldStateManager = TestWorldStateFactory.CreateForTest();
-        _stateProvider = worldStateManager.GlobalWorldState;
-        _blockProcessor = Substitute.For<IBlockProcessor>();
+        _stateProvider = new TestReadOnlyStateProvider();
+        _branchProcessor = Substitute.For<IBranchProcessor>();
     }
 
     [TearDown]
@@ -65,7 +65,7 @@ public class CensorshipDetectorTests
     public void Censorship_when_address_censorship_is_false_and_high_paying_tx_censorship_is_true_for_all_blocks_in_main_cache()
     {
         _txPool = CreatePool();
-        _censorshipDetector = new(_blockTree, _txPool, _comparer, _blockProcessor, _logManager, new CensorshipDetectorConfig() { });
+        _censorshipDetector = new(_blockTree, _txPool, _comparer, _branchProcessor, _logManager, new CensorshipDetectorConfig() { });
 
         Transaction tx1 = SubmitTxToPool(1, TestItem.PrivateKeyA, TestItem.AddressA);
         Transaction tx2 = SubmitTxToPool(2, TestItem.PrivateKeyB, TestItem.AddressA);
@@ -96,7 +96,7 @@ public class CensorshipDetectorTests
     public void No_censorship_when_address_censorship_is_false_and_high_paying_tx_censorship_is_false_for_some_blocks_in_main_cache()
     {
         _txPool = CreatePool();
-        _censorshipDetector = new(_blockTree, _txPool, _comparer, _blockProcessor, _logManager, new CensorshipDetectorConfig() { });
+        _censorshipDetector = new(_blockTree, _txPool, _comparer, _branchProcessor, _logManager, new CensorshipDetectorConfig() { });
 
         Transaction tx1 = SubmitTxToPool(1, TestItem.PrivateKeyA, TestItem.AddressA);
         Transaction tx2 = SubmitTxToPool(2, TestItem.PrivateKeyB, TestItem.AddressA);
@@ -135,7 +135,7 @@ public class CensorshipDetectorTests
             _blockTree,
             _txPool,
             _comparer,
-            _blockProcessor,
+            _branchProcessor,
             _logManager,
             new CensorshipDetectorConfig()
             {
@@ -191,7 +191,7 @@ public class CensorshipDetectorTests
             _blockTree,
             _txPool,
             _comparer,
-            _blockProcessor,
+            _branchProcessor,
             _logManager,
             new CensorshipDetectorConfig()
             {
@@ -259,7 +259,11 @@ public class CensorshipDetectorTests
         return new(
             _ethereumEcdsa,
             new BlobTxStorage(),
-            new ChainHeadInfoProvider(_specProvider, _blockTree, _stateProvider, new CodeInfoRepository()),
+            new ChainHeadInfoProvider(
+                new ChainHeadSpecProvider(_specProvider, _blockTree),
+                _blockTree,
+                _stateProvider,
+                new EthereumCodeInfoRepository()),
             new TxPoolConfig(),
             new TxValidator(_specProvider.ChainId),
             _logManager,
@@ -268,7 +272,7 @@ public class CensorshipDetectorTests
 
     private void BlockProcessingWorkflow(Block block)
     {
-        _blockProcessor.BlockProcessing += Raise.EventWith(new BlockEventArgs(block));
+        _branchProcessor.BlockProcessing += Raise.EventWith(new BlockEventArgs(block));
         Assert.That(() => _censorshipDetector.BlockPotentiallyCensored(block.Number, block.Hash), Is.EqualTo(true).After(10, 1));
 
         foreach (Transaction tx in block.Transactions)

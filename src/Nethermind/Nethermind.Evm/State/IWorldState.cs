@@ -20,6 +20,7 @@ public interface IWorldState : IJournal<Snapshot>, IReadOnlyStateProvider
     void SetBaseBlock(BlockHeader? header);
     new ref readonly UInt256 GetBalance(Address address);
     new ref readonly ValueHash256 GetCodeHash(Address address);
+    bool HasStateForBlock(BlockHeader? baseBlock);
 
     /// <summary>
     /// Return the original persistent storage value from the storage cell

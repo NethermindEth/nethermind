@@ -14,8 +14,9 @@ namespace Nethermind.Optimism;
 public class OptimismReceiptTrieDecoder() : OptimismReceiptMessageDecoder(true);
 
 [Rlp.Decoder]
-public class OptimismReceiptMessageDecoder(bool isEncodedForTrie = false) : IRlpStreamDecoder<TxReceipt>
+public class OptimismReceiptMessageDecoder(bool isEncodedForTrie = false, bool skipStateAndStatus = false) : IRlpStreamDecoder<TxReceipt>
 {
+    private readonly bool _skipStateAndStatus = skipStateAndStatus;
     public OptimismTxReceipt Decode(RlpStream rlpStream, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
     {
         OptimismTxReceipt txReceipt = new();
@@ -36,7 +37,6 @@ public class OptimismReceiptMessageDecoder(bool isEncodedForTrie = false) : IRlp
         else if (firstItem.Length is >= 1 and <= 4)
         {
             txReceipt.GasUsedTotal = (long)firstItem.ToUnsignedBigInteger();
-            txReceipt.SkipStateAndStatusInRlp = true;
         }
         else
         {
@@ -88,7 +88,7 @@ public class OptimismReceiptMessageDecoder(bool isEncodedForTrie = false) : IRlp
 
         bool isEip658Receipts = (rlpBehaviors & RlpBehaviors.Eip658Receipts) == RlpBehaviors.Eip658Receipts;
 
-        if (!item.SkipStateAndStatusInRlp)
+        if (!_skipStateAndStatus)
         {
             contentLength += isEip658Receipts
                 ? Rlp.LengthOf(item.StatusCode)
@@ -161,7 +161,7 @@ public class OptimismReceiptMessageDecoder(bool isEncodedForTrie = false) : IRlp
         }
 
         rlpStream.StartSequence(totalContentLength);
-        if (!item.SkipStateAndStatusInRlp)
+        if (!_skipStateAndStatus)
         {
             rlpStream.Encode(item.StatusCode);
         }

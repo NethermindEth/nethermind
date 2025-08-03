@@ -36,8 +36,7 @@ public class AuRaMergeBlockProcessor(
     IAuRaValidator? validator,
     ITxFilter? txFilter = null,
     AuRaContractGasLimitOverride? gasLimitOverride = null,
-    ContractRewriter? contractRewriter = null,
-    IBlockCachePreWarmer? preWarmer = null)
+    ContractRewriter? contractRewriter = null)
     : AuRaBlockProcessor(specProvider,
         blockValidator,
         rewardCalculator,
@@ -52,8 +51,7 @@ public class AuRaMergeBlockProcessor(
         validator,
         txFilter,
         gasLimitOverride,
-        contractRewriter,
-        preWarmer)
+        contractRewriter)
 {
     protected override TxReceipt[] ProcessBlock(Block block, IBlockTracer blockTracer, ProcessingOptions options, IReleaseSpec spec, CancellationToken token) =>
         block.IsPostMerge

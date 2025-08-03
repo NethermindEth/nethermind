@@ -35,6 +35,7 @@ using Nethermind.Merge.Plugin;
 using Nethermind.Merge.Plugin.BlockProduction;
 using Nethermind.Merge.Plugin.Handlers;
 using Nethermind.Merge.Plugin.Synchronization;
+using Nethermind.Network;
 using Nethermind.Network.Config;
 using Nethermind.Network.P2P.Analyzers;
 using Nethermind.Network.P2P.Subprotocols.Eth.V63.Messages;
@@ -441,7 +442,7 @@ public class E2ESyncTests(E2ESyncTests.DbMode dbMode, bool isPostMerge)
         IEthereumEcdsa ecdsa,
         IBlockTree blockTree,
         IReceiptStorage receiptStorage,
-        MainBlockProcessingContext mainBlockProcessingContext,
+        IBlockProcessingQueue blockProcessingQueue,
         ITestEnv testEnv,
         IRlpxHost rlpxHost,
         PseudoNethermindRunner runner,
@@ -468,7 +469,10 @@ public class E2ESyncTests(E2ESyncTests.DbMode dbMode, bool isPostMerge)
         {
             IEnode serverEnode = server.Resolve<IEnode>();
             Node serverNode = new Node(serverEnode.PublicKey, new IPEndPoint(serverEnode.HostIp, serverEnode.Port));
-            await rlpxHost.ConnectAsync(serverNode);
+            if (!await rlpxHost.ConnectAsync(serverNode))
+            {
+                throw new NetworkingException($"Failed to connect to {serverNode:s}", NetworkExceptionType.TargetUnreachable);
+            }
         }
 
         Dictionary<Address, UInt256> nonces = [];
@@ -494,12 +498,11 @@ public class E2ESyncTests(E2ESyncTests.DbMode dbMode, bool isPostMerge)
 
         private async Task VerifyHeadWith(IContainer server, CancellationToken cancellationToken)
         {
-            IBlockProcessingQueue queue = mainBlockProcessingContext.BlockProcessingQueue;
-            if (!queue.IsEmpty)
+            if (!blockProcessingQueue.IsEmpty)
             {
                 await Wait.ForEvent(cancellationToken,
-                    e => queue.ProcessingQueueEmpty += e,
-                    e => queue.ProcessingQueueEmpty -= e);
+                    e => blockProcessingQueue.ProcessingQueueEmpty += e,
+                    e => blockProcessingQueue.ProcessingQueueEmpty -= e);
             }
 
             IBlockTree otherBlockTree = server.Resolve<IBlockTree>();

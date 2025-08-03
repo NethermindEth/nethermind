@@ -217,10 +217,6 @@ namespace Nethermind.State
         {
             return _stateProvider.IsDeadAccount(address);
         }
-        public bool IsEmptyAccount(Address address)
-        {
-            return _stateProvider.IsEmptyAccount(address);
-        }
 
         public bool HasStateForBlock(BlockHeader? header)
         {

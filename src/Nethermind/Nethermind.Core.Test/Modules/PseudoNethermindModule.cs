@@ -9,6 +9,7 @@ using Nethermind.Api;
 using Nethermind.Config;
 using Nethermind.Consensus;
 using Nethermind.Consensus.Scheduler;
+using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Timers;
 using Nethermind.Crypto;
@@ -54,14 +55,13 @@ public class PseudoNethermindModule(ChainSpec spec, IConfigProvider configProvid
 
             // Environments
             .AddSingleton<ITimerFactory, TimerFactory>()
-            .AddSingleton<IBackgroundTaskScheduler, MainBlockProcessingContext>((blockProcessingContext) => new BackgroundTaskScheduler(
-                blockProcessingContext.BlockProcessor,
-                new ChainHeadInfoMock(),
+            .AddSingleton<IBackgroundTaskScheduler, IMainProcessingContext, IChainHeadInfoProvider>((blockProcessingContext, chainHeadInfoProvider) => new BackgroundTaskScheduler(
+                blockProcessingContext.BranchProcessor,
+                chainHeadInfoProvider,
                 initConfig.BackgroundTaskConcurrency,
                 initConfig.BackgroundTaskMaxNumber,
                 logManager))
             .AddSingleton<IFileSystem>(new FileSystem())
-            .AddSingleton<IDbProvider>(new DbProvider())
             .AddSingleton<IProcessExitSource>(new ProcessExitSource(default))
             .AddSingleton<IJsonSerializer, EthereumJsonSerializer>()
 
@@ -88,20 +88,5 @@ public class PseudoNethermindModule(ChainSpec spec, IConfigProvider configProvid
                 Rlp.RegisterDecoders(assembly, canOverrideExistingDecoders: true);
             }
         });
-    }
-
-    private class ChainHeadInfoMock : IChainHeadInfoProvider
-    {
-        public IChainHeadSpecProvider SpecProvider { get; } = null!;
-        public IReadOnlyStateProvider ReadOnlyStateProvider { get; } = null!;
-        public ICodeInfoRepository CodeInfoRepository { get; } = null!;
-        public long HeadNumber { get; }
-        public long? BlockGasLimit { get; }
-        public UInt256 CurrentBaseFee { get; }
-        public UInt256 CurrentFeePerBlobGas { get; }
-        public ProofVersion CurrentProofVersion { get; }
-        public bool IsSyncing { get => false; }
-        public bool IsProcessingBlock { get; }
-        public event EventHandler<BlockReplacementEventArgs> HeadChanged { add { } remove { } }
     }
 }

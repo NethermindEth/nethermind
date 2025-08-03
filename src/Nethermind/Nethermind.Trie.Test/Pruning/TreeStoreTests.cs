@@ -11,6 +11,7 @@ using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
+using Nethermind.Core.Test.Db;
 using Nethermind.Db;
 using Nethermind.Int256;
 using Nethermind.Logging;
@@ -1127,6 +1128,36 @@ namespace Nethermind.Trie.Test.Pruning
             memDb.Count.Should().Be(64);
             fullTrieStore.MemoryUsedByDirtyCache.Should().Be(0);
             return Task.CompletedTask;
+        }
+
+        [Test]
+        public void OnDispose_PersistAtLeastOneCommitSet()
+        {
+            MemDb memDb = new();
+
+            TrieStore fullTrieStore = CreateTrieStore(
+                kvStore: memDb,
+                pruningStrategy: new TestPruningStrategy(false, false),
+                persistenceStrategy: No.Persistence,
+                pruningConfig: new PruningConfig()
+                {
+                    PruningBoundary = 5,
+                    TrackPastKeys = true
+                });
+
+            TreePath emptyPath = TreePath.Empty;
+
+            for (int i = 0; i < 2; i++)
+            {
+                TrieNode node = new(NodeType.Leaf, TestItem.Keccaks[i % 4], new SpanSource(new byte[2]));
+                using (ICommitter committer = fullTrieStore.BeginStateBlockCommit(i + 1, node))
+                {
+                    committer.CommitNode(ref emptyPath, new NodeCommitInfo(node));
+                }
+            }
+
+            fullTrieStore.Dispose();
+            memDb.Count.Should().Be(1);
         }
     }
 }

@@ -3,12 +3,17 @@
 
 using System;
 using System.Collections.Generic;
+using System.Diagnostics.CodeAnalysis;
 using System.Linq;
 using System.Security;
 using System.Text;
+using System.Text.Json;
+using System.Text.Json.Nodes;
+using System.Text.RegularExpressions;
 using System.Threading;
 using System.Threading.Tasks;
 using DotNetty.Buffers;
+using Force.Crc32;
 using Nethermind.Blockchain.Filters;
 using Nethermind.Blockchain.Find;
 using Nethermind.Blockchain.Receipts;
@@ -18,6 +23,7 @@ using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.Evm;
+using Nethermind.Evm.Precompiles;
 using Nethermind.Facade;
 using Nethermind.Facade.Eth;
 using Nethermind.Facade.Eth.RpcTransaction;
@@ -31,6 +37,7 @@ using Nethermind.JsonRpc.Modules.Eth.GasPrice;
 using Nethermind.Logging;
 using Nethermind.Network;
 using Nethermind.Network.Contract.P2P;
+using Nethermind.Serialization.Json;
 using Nethermind.Serialization.Rlp;
 using Nethermind.State;
 using Nethermind.State.Proofs;
@@ -61,6 +68,7 @@ public partial class EthRpcModule(
     IEthSyncingInfo ethSyncingInfo,
     IFeeHistoryOracle feeHistoryOracle,
     IProtocolsManager protocolsManager,
+    IForkInfo forkInfo,
     ulong? secondsPerSlot) : IEthRpcModule
 {
     protected readonly Encoding _messageEncoding = Encoding.UTF8;
@@ -79,6 +87,7 @@ public partial class EthRpcModule(
     protected readonly IFeeHistoryOracle _feeHistoryOracle = feeHistoryOracle ?? throw new ArgumentNullException(nameof(feeHistoryOracle));
     protected readonly IProtocolsManager _protocolsManager = protocolsManager ?? throw new ArgumentNullException(nameof(protocolsManager));
     protected readonly ulong _secondsPerSlot = secondsPerSlot ?? throw new ArgumentNullException(nameof(secondsPerSlot));
+    readonly JsonSerializerOptions UnchangedDictionaryKeyOptions = new(EthereumJsonSerializer.JsonOptionsIndented) { DictionaryKeyPolicy = null };
 
     public ResultWrapper<string> eth_protocolVersion()
     {
@@ -339,7 +348,7 @@ public partial class EthRpcModule(
             .ExecuteTx(transactionCall, blockParameter, stateOverride);
 
     public ResultWrapper<IReadOnlyList<SimulateBlockResult<SimulateCallResult>>> eth_simulateV1(SimulatePayload<TransactionForRpc> payload, BlockParameter? blockParameter = null) =>
-        new SimulateTxExecutor<SimulateCallResult>(_blockchainBridge, _blockFinder, _rpcConfig, new SimulateBlockMutatorTracerFactory())
+        new SimulateTxExecutor<SimulateCallResult>(_blockchainBridge, _blockFinder, _rpcConfig, new SimulateBlockMutatorTracerFactory(), secondsPerSlot: _secondsPerSlot)
             .Execute(payload, blockParameter);
 
     public ResultWrapper<UInt256?> eth_estimateGas(TransactionForRpc transactionCall, BlockParameter? blockParameter, Dictionary<Address, AccountOverride>? stateOverride = null) =>
@@ -404,11 +413,8 @@ public partial class EthRpcModule(
 
         RlpBehaviors encodingSettings = RlpBehaviors.SkipTypedWrapping | (transaction.IsInMempoolForm() ? RlpBehaviors.InMempoolForm : RlpBehaviors.None);
 
-        IByteBuffer buffer = PooledByteBufferAllocator.Default.Buffer(TxDecoder.Instance.GetLength(transaction, encodingSettings));
-        using NettyRlpStream stream = new(buffer);
-        TxDecoder.Instance.Encode(stream, transaction, encodingSettings);
-
-        return ResultWrapper<string?>.Success(buffer.AsSpan().ToHexString(false));
+        using NettyRlpStream stream = TxDecoder.Instance.EncodeToNewNettyStream(transaction, encodingSettings);
+        return ResultWrapper<string?>.Success(stream.AsSpan().ToHexString(false));
     }
 
     public ResultWrapper<TransactionForRpc[]> eth_pendingTransactions()
@@ -772,6 +778,65 @@ public partial class EthRpcModule(
         };
     }
 
+    public ResultWrapper<EthConfig> eth_config()
+    {
+        ForkActivationsSummary forks = forkInfo.GetForkActivationsSummary(_blockFinder.Head?.Header);
+
+        ForkConfig current = GetForkConfig(forks.Current, _specProvider);
+        ForkConfig? next = GetForkConfig(forks.Next, _specProvider);
+        ForkConfig? last = GetForkConfig(forks.Last, _specProvider);
+
+        string serializedCurrent = JsonSerializer.Serialize(current, UnchangedDictionaryKeyOptions);
+        string? serializedNext = next is null ? null : JsonSerializer.Serialize(next, UnchangedDictionaryKeyOptions);
+        string? serializedLast = last is null ? null : JsonSerializer.Serialize(last, UnchangedDictionaryKeyOptions);
+
+        return ResultWrapper<EthConfig>.Success(new EthConfig
+        {
+            Current = JsonNode.Parse(serializedCurrent)!,
+            CurrentHash = GetCrc32FromJson(serializedCurrent).Value,
+            CurrentForkId = forks.CurrentForkId.HashBytes,
+
+            Next = serializedNext is null ? null : JsonNode.Parse(serializedNext),
+            NextHash = GetCrc32FromJson(serializedNext),
+            NextForkId = forks.NextForkId?.HashBytes,
+
+            Last = serializedLast is null ? null : JsonNode.Parse(serializedLast),
+            LastHash = GetCrc32FromJson(serializedLast),
+            LastForkId = forks.LastForkId?.HashBytes,
+        });
+
+        [return: NotNullIfNotNull(nameof(json))]
+        static uint? GetCrc32FromJson(string? json) => json is null ? null : Crc32Algorithm.Compute(Encoding.UTF8.GetBytes(RemoveWhitespace().Replace(json, "")));
+
+        static ForkConfig? GetForkConfig(ForkActivation? forkActivation, ISpecProvider specProvider)
+        {
+            if (forkActivation is null)
+            {
+                return null;
+            }
+
+            IReleaseSpec? spec = specProvider.GetSpec(forkActivation.Value.BlockNumber, forkActivation.Value.Timestamp);
+
+            return new ForkConfig
+            {
+                ActivationTime = forkActivation.Value.Timestamp is not null ? (int)forkActivation.Value.Timestamp : null,
+                ActivationBlock = forkActivation.Value.Timestamp is null ? (int)forkActivation.Value.BlockNumber : null,
+                BlobSchedule = spec.IsEip4844Enabled ? new BlobScheduleSettingsForRpc
+                {
+                    BaseFeeUpdateFraction = (int)spec.BlobBaseFeeUpdateFraction,
+                    Max = (int)spec.MaxBlobCount,
+                    Target = (int)spec.TargetBlobCount,
+                } : null,
+                ChainId = specProvider.ChainId,
+                Precompiles = spec.ListPrecompiles(),
+                SystemContracts = spec.ListSystemContracts(),
+            };
+        }
+    }
+
     private CancellationTokenSource BuildTimeoutCancellationTokenSource() =>
         _rpcConfig.BuildTimeoutCancellationToken();
+
+    [GeneratedRegex("\\s", RegexOptions.Compiled)]
+    private static partial Regex RemoveWhitespace();
 }

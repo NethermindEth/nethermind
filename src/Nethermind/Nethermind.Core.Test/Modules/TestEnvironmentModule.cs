@@ -8,6 +8,7 @@ using Nethermind.Blockchain;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Config;
 using Nethermind.Consensus;
+using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.Crypto;
 using Nethermind.Db;
@@ -39,7 +40,6 @@ public class TestEnvironmentModule(PrivateKey nodeKey, string? networkGroup) : M
         builder
             .AddSingleton<ILogManager>(new TestLogManager(LogLevel.Error)) // Limbologs actually have IsTrace set to true, so actually slow.
             .AddSingleton<IDbFactory>((_) => new MemDbFactory())
-            .AddSingleton<IDbProvider>(TestMemDbProvider.Init())
             // These two dont use db provider
             .AddKeyedSingleton<IFullDb>(DbNames.PeersDb, (_) => new MemDb())
             .AddKeyedSingleton<IFullDb>(DbNames.DiscoveryNodes, (_) => new MemDb())
@@ -61,7 +61,7 @@ public class TestEnvironmentModule(PrivateKey nodeKey, string? networkGroup) : M
 
             .AddSingleton<IChainHeadInfoProvider, IComponentContext>((ctx) =>
             {
-                ISpecProvider specProvider = ctx.Resolve<ISpecProvider>();
+                IChainHeadSpecProvider specProvider = ctx.Resolve<IChainHeadSpecProvider>();
                 IBlockTree blockTree = ctx.Resolve<IBlockTree>();
                 IStateReader stateReader = ctx.Resolve<IStateReader>();
                 ICodeInfoRepository codeInfoRepository = ctx.ResolveNamed<ICodeInfoRepository>(nameof(IWorldStateManager.GlobalWorldState));
@@ -118,6 +118,8 @@ public class TestEnvironmentModule(PrivateKey nodeKey, string? networkGroup) : M
                 pruningConfig.DirtyNodeShardBit = 1;
                 return pruningConfig;
             })
+
+            .AddSingleton<IHardwareInfo>(new TestHardwareInfo(1.GiB()))
             ;
     }
 }

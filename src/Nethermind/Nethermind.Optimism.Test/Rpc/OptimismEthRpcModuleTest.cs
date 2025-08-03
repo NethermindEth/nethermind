@@ -555,6 +555,7 @@ internal static class TestRpcBlockchainExt
             blockchain.FeeHistoryOracle ??
             new FeeHistoryOracle(blockchain.BlockTree, blockchain.ReceiptStorage, blockchain.SpecProvider),
             blockchain.ProtocolsManager,
+            blockchain.ForkInfo,
             new BlocksConfig().SecondsPerSlot,
 
             sequencerRpcClient, ecdsa, sealer, opSpecHelper

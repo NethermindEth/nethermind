@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Collections.Generic;
 using System.Linq;
 using System.Reflection;
 using Autofac;
@@ -272,7 +273,7 @@ public static class ContainerBuilderExtensions
             .CommonNethermindConfig()
             .InstancePerLifetimeScope();
 
-        builder.Bind<T, TImpl>();
+        builder.BindScoped<T, TImpl>();
 
         return builder;
     }
@@ -386,9 +387,12 @@ public static class ContainerBuilderExtensions
         return builder;
     }
 
-    public static ContainerBuilder AddModule(this ContainerBuilder builder, IModule module)
+    public static ContainerBuilder AddModule(this ContainerBuilder builder, params IReadOnlyList<IModule> modules)
     {
-        builder.RegisterModule(module);
+        foreach (IModule module in modules)
+        {
+            builder.RegisterModule(module);
+        }
 
         return builder;
     }
@@ -420,6 +424,19 @@ public static class ContainerBuilderExtensions
     {
         builder.Register(static (it) => it.Resolve<TFrom>())
             .As<TTo>()
+            .ExternallyOwned();
+
+        return builder;
+    }
+
+    /// <summary>
+    /// Like <see cref="Bind"/> but register as scoped. Make a difference with decorator. Otherwise, does not make a difference.
+    /// </summary>
+    public static ContainerBuilder BindScoped<TTo, TFrom>(this ContainerBuilder builder) where TFrom : TTo where TTo : notnull
+    {
+        builder.Register(static (it) => it.Resolve<TFrom>())
+            .As<TTo>()
+            .InstancePerLifetimeScope()
             .ExternallyOwned();
 
         return builder;
@@ -485,6 +502,16 @@ public static class ContainerBuilderExtensions
         // Fixed registration is one where it is always the default. Can't be overridden by later registration.
         reg.RegistrationData.Options |= RegistrationOptions.Fixed;
         return reg;
+    }
+
+    public static ContainerBuilder AddKeyedAdapter<TTo, TFrom>(this ContainerBuilder builder, Func<TFrom, TTo> mapper) where TFrom : notnull
+    {
+        return builder.AddSource(new KeyedMapperRegistrationSource<TFrom, TTo>(mapper, false));
+    }
+
+    public static ContainerBuilder AddKeyedAdapterWithNewService<TTo, TFrom>(this ContainerBuilder builder, Func<TFrom, TTo> mapper) where TFrom : notnull
+    {
+        return builder.AddSource(new KeyedMapperRegistrationSource<TFrom, TTo>(mapper, true));
     }
 }
 

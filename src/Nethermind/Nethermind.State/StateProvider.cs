@@ -114,15 +114,6 @@ namespace Nethermind.State
                 ? _changes[value.Peek()]!.ChangeType != ChangeType.Delete
                 : GetAndAddToCache(address) is not null;
 
-        public bool IsEmptyAccount(Address address)
-        {
-            Account? account = GetThroughCache(address);
-            return account?.IsEmpty ?? ThrowIfNull(address);
-
-            [DoesNotReturn, StackTraceHidden]
-            static bool ThrowIfNull(Address address) => throw new InvalidOperationException($"Account {address} is null when checking if empty");
-        }
-
         public Account GetAccount(Address address) => GetThroughCache(address) ?? Account.TotallyEmpty;
 
         public bool IsDeadAccount(Address address)

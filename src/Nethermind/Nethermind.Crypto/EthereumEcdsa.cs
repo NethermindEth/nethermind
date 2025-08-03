@@ -4,10 +4,8 @@
 using System;
 using System.Globalization;
 using System.Numerics;
-using System.Runtime.CompilerServices;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
-using Nethermind.Core.Specs;
 
 namespace Nethermind.Crypto
 {
@@ -27,15 +25,9 @@ namespace Nethermind.Crypto
 
         public ulong ChainId => chainId;
 
-        public EthereumEcdsa(ISpecProvider specProvider) : this(specProvider.ChainId)
-        {
-        }
-
         public Address? RecoverAddress(Signature signature, in ValueHash256 message) => RecoverAddress(signature.Bytes, signature.RecoveryId, message.Bytes);
 
-        public Address? RecoverAddress(Span<byte> signatureBytes65, in ValueHash256 message) => RecoverAddress(signatureBytes65[..64], signatureBytes65[64], message.Bytes);
-
-        public static Address? RecoverAddress(Span<byte> signatureBytes64, byte v, ReadOnlySpan<byte> message)
+        private static Address? RecoverAddress(Span<byte> signatureBytes64, byte v, ReadOnlySpan<byte> message)
         {
             Span<byte> publicKey = stackalloc byte[65];
             bool success = SpanSecP256k1.RecoverKeyFromCompact(
