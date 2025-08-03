@@ -403,5 +403,19 @@ namespace Nethermind.Evm.Test.Tracing
                 estimator = new(_transactionProcessor, _stateProvider, _specProvider, blocksConfig);
             }
         }
+
+        [Test]
+        public void EstimateGasTracer_should_set_status_code_correctly()
+        {
+            EstimateGasTracer tracer = new();
+
+            tracer.MarkAsSuccess(Address.Zero, 25000, [], []);
+            tracer.StatusCode.Should().Be(StatusCode.Success,
+                "MarkAsSuccess should set StatusCode to Success");
+
+            tracer.MarkAsFailed(Address.Zero, 25000, [], "execution reverted");
+            tracer.StatusCode.Should().Be(StatusCode.Failure,
+                "MarkAsFailed should set StatusCode to Failure");
+        }
     }
 }
