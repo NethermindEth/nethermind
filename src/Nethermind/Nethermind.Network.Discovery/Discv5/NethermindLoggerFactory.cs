@@ -26,15 +26,7 @@ public sealed class NethermindLoggerFactory(ILogManager logManager, bool lowerLo
         {
             if (lowerLogLevel)
             {
-                if (logLevel <= MsLogLevel.Information)
-                {
-                    // DotNetty outputs Trace level data at Info
-                    logLevel = MsLogLevel.Trace;
-                }
-                else
-                {
-                    logLevel = logLevel - 1;
-                }
+                logLevel = LowerLogLevel(logLevel);
             }
 
             return logLevel switch
@@ -53,14 +45,7 @@ public sealed class NethermindLoggerFactory(ILogManager logManager, bool lowerLo
         {
             if (lowerLogLevel)
             {
-                if (logLevel <= MsLogLevel.Information)
-                {
-                    logLevel = MsLogLevel.Trace;
-                }
-                else
-                {
-                    logLevel = logLevel - 1;
-                }
+                logLevel = LowerLogLevel(logLevel);
             }
 
             switch (logLevel)
@@ -87,6 +72,20 @@ public sealed class NethermindLoggerFactory(ILogManager logManager, bool lowerLo
                         logger.Trace(formatter(state, exception));
                     break;
             }
+        }
+
+        private static MsLogLevel LowerLogLevel(MsLogLevel logLevel)
+        {
+            // DotNetty outputs Trace level data at Info
+            return logLevel switch
+            {
+                MsLogLevel.Critical => MsLogLevel.Error,
+                MsLogLevel.Error => MsLogLevel.Warning,
+                MsLogLevel.Warning => MsLogLevel.Information,
+                MsLogLevel.Information => MsLogLevel.Trace,
+                MsLogLevel.Debug => MsLogLevel.Trace,
+                _ => logLevel,
+            };
         }
     }
 }
