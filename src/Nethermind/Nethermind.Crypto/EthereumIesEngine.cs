@@ -110,10 +110,8 @@ public sealed class EthereumIesEngine
 
         // Rent temporary buffers from pool
         byte[] cipherOutputBuffer = ArrayPool<byte>.Shared.Rent(cipherOutputSize);
-        byte[] k2ABuffer = ArrayPool<byte>.Shared.Rent(digestSize);
-        byte[] macOutputBuffer = ArrayPool<byte>.Shared.Rent(macSize);
-
         Span<byte> c = cipherOutputBuffer.AsSpan(0, cipherOutputSize);
+
         int len = _cipher.ProcessBytes(input, c);
         len += _cipher.DoFinal(c.Slice(len));
 
@@ -121,10 +119,12 @@ public sealed class EthereumIesEngine
         ReadOnlySpan<byte> k2 = _kdfKey.AsSpan(k1.Length, _iesParameters.MacKeySize / 8);
         _hash.BlockUpdate(k2);
 
+        byte[] k2ABuffer = ArrayPool<byte>.Shared.Rent(digestSize);
         Span<byte> k2A = k2ABuffer.AsSpan(0, digestSize);
         _hash.DoFinal(k2A);
 
         _mac.Init(new KeyParameter(k2A));
+
         _mac.BlockUpdate(_iv);
         _mac.BlockUpdate(c.Slice(0, len));
 
@@ -141,6 +141,7 @@ public sealed class EthereumIesEngine
         }
 
         // Apply the MAC.
+        byte[] macOutputBuffer = ArrayPool<byte>.Shared.Rent(macSize);
         Span<byte> T = macOutputBuffer.AsSpan(0, macSize);
         _mac.DoFinal(T);
 
@@ -149,8 +150,8 @@ public sealed class EthereumIesEngine
         T.CopyTo(output.Slice(len));
 
         // Return buffers to the pool
-        ArrayPool<byte>.Shared.Return(cipherOutputBuffer);
         ArrayPool<byte>.Shared.Return(k2ABuffer);
+        ArrayPool<byte>.Shared.Return(cipherOutputBuffer);
         ArrayPool<byte>.Shared.Return(macOutputBuffer);
 
         return len + macSize;
@@ -172,10 +173,6 @@ public sealed class EthereumIesEngine
 
         int digestSize = _hash.GetDigestSize();
 
-        // Rent temporary buffers from pool
-        byte[] k2ABuffer = ArrayPool<byte>.Shared.Rent(digestSize);
-        byte[] macOutputBuffer = ArrayPool<byte>.Shared.Rent(macSize);
-
         // Block cipher mode.
         ReadOnlySpan<byte> k1 = _kdfKey.AsSpan(0, _iesParameters.CipherKeySize / 8);
         _cipher.Init(false, new ParametersWithIV(new KeyParameter(k1), _iv));
@@ -189,6 +186,7 @@ public sealed class EthereumIesEngine
         ReadOnlySpan<byte> k2 = _kdfKey.AsSpan(k1.Length, _iesParameters.MacKeySize / 8);
         _hash.BlockUpdate(k2);
 
+        byte[] k2ABuffer = ArrayPool<byte>.Shared.Rent(digestSize);
         Span<byte> k2A = k2ABuffer.AsSpan(0, digestSize);
         _hash.DoFinal(k2A);
 
@@ -208,6 +206,7 @@ public sealed class EthereumIesEngine
             _mac.BlockUpdate(macData);
         }
 
+        byte[] macOutputBuffer = ArrayPool<byte>.Shared.Rent(macSize);
         Span<byte> t2 = macOutputBuffer.AsSpan(0, macSize);
         _mac.DoFinal(t2);
 
