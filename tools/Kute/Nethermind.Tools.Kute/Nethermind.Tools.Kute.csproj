@@ -12,4 +12,8 @@
       <PackageReference Include="Prometheus.Client.MetricPusher" />
     </ItemGroup>
 
+    <ItemGroup>
+      <EmbeddedResource Include="Assets/report.html" />
+    </ItemGroup>
+
 </Project>
