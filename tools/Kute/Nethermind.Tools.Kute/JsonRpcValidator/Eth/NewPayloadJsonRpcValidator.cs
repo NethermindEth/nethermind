@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2023 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System.Text.Json.Nodes;
 using System.Text.RegularExpressions;
 
 namespace Nethermind.Tools.Kute.JsonRpcValidator.Eth;
@@ -17,17 +18,12 @@ public sealed class NewPayloadJsonRpcValidator : IJsonRpcValidator
             return true;
         }
 
-        if (!response.Json.TryGetProperty("result", out var result))
+        if (response.Json["result"]?["status"] is JsonNode status)
         {
-            return false;
+            return (string?)status == "VALID";
         }
 
-        if (!result.TryGetProperty("status", out var status))
-        {
-            return false;
-        }
-
-        return status.GetString() == "VALID";
+        return false;
     }
 
     private bool ShouldValidateRequest(JsonRpc.Request request)

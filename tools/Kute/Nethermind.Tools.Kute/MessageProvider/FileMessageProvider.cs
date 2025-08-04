@@ -12,7 +12,6 @@ public sealed class FileMessageProvider : IMessageProvider<string>
         _filePath = filePath;
     }
 
-
     public IAsyncEnumerable<string> Messages(CancellationToken token = default)
     {
         var pathInfo = new FileInfo(_filePath);
@@ -24,12 +23,9 @@ public sealed class FileMessageProvider : IMessageProvider<string>
                 .ToAsyncEnumerable()
                 .SelectMany(info => File.ReadLinesAsync(info.FullName, token));
         }
-
-        if (pathInfo.Attributes.HasFlag(FileAttributes.Normal))
+        else
         {
             return File.ReadLinesAsync(_filePath, token);
         }
-
-        throw new ArgumentException("Path is neither a Folder or a File", nameof(_filePath));
     }
 }

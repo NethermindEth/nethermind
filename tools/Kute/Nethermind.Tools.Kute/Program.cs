@@ -32,7 +32,8 @@ static class Program
             Config.AuthTtl,
             Config.ConcurrentRequests,
             Config.ShowProgress,
-            Config.UnwrapBatch
+            Config.UnwrapBatch,
+            Config.PrometheusPushGateway
         ];
         rootCommand.SetAction(async (parseResult, cancellationToken) =>
         {
@@ -77,8 +78,10 @@ static class Program
             return provider;
         });
         collection.AddSingleton<IJsonRpcValidator>(
-            new ComposedJsonRpcValidator(
-                [new NonErrorJsonRpcValidator(), new NewPayloadJsonRpcValidator()]));
+            new BatchJsonRpcValidator(
+                new ComposedJsonRpcValidator(
+                    new NonErrorJsonRpcValidator(),
+                    new NewPayloadJsonRpcValidator())));
         collection.AddSingleton<IJsonRpcMethodFilter>(
             new ComposedJsonRpcMethodFilter(
                 [..parseResult
@@ -102,29 +105,35 @@ static class Program
 
             return new FileResponseTracer(tracesFilePath);
         });
-        collection.AddSingleton<IMetricsReporter>(provider =>
-        {
-            IMetricsReportFormatter formatter = parseResult.GetValue(Config.MetricsReportFormatter) switch
+        collection.AddSingleton<IMetricsReportFormatter>(_ =>
+            parseResult.GetValue(Config.MetricsReportFormatter) switch
             {
                 MetricsReportFormat.Pretty => new PrettyMetricsReportFormatter(),
                 MetricsReportFormat.Json => new JsonMetricsReportFormatter(),
+                MetricsReportFormat.Html => new HtmlMetricsReportFormatter(),
                 _ => throw new ArgumentOutOfRangeException(nameof(Config.MetricsReportFormatter)),
-            };
-
+            });
+        collection.AddSingleton<IMetricsReporter>(provider =>
+        {
             MemoryMetricsReporter memoryReporter = new MemoryMetricsReporter();
-            ConsoleTotalReporter consoleReporter = new ConsoleTotalReporter(memoryReporter, formatter);
+            ConsoleTotalReporter consoleReporter = new ConsoleTotalReporter(memoryReporter, provider.GetRequiredService<IMetricsReportFormatter>());
             IMetricsReporter progresReporter = parseResult.GetValue(Config.ShowProgress)
                 ? new ConsoleProgressReporter()
                 : new NullMetricsReporter();
 
-            return new ComposedMetricsReporter([memoryReporter, progresReporter, consoleReporter]);
+            string? prometheusGateway = parseResult.GetValue(Config.PrometheusPushGateway);
+            IMetricsReporter prometheusReporter = prometheusGateway is not null
+                ? new PrometheusPushGatewayMetricsReporter(prometheusGateway)
+                : new NullMetricsReporter();
+
+            return new ComposedMetricsReporter([memoryReporter, progresReporter, consoleReporter, prometheusReporter]);
         });
         collection.AddSingleton<IAsyncProcessor>(provider =>
         {
-            int requestsPerSecond = parseResult.GetValue(Config.ConcurrentRequests);
-            if (requestsPerSecond > 1)
+            int concurrentRequests = parseResult.GetValue(Config.ConcurrentRequests);
+            if (concurrentRequests > 1)
             {
-                return new ConcurrentProcessor(requestsPerSecond);
+                return new ConcurrentProcessor(concurrentRequests);
             }
 
             return new SequentialProcessor();

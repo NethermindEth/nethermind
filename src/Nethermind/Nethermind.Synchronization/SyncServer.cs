@@ -18,7 +18,9 @@ using Nethermind.Core.Attributes;
 using Nethermind.Core.Caching;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
+using Nethermind.Core.Threading;
 using Nethermind.Db;
 using Nethermind.History;
 using Nethermind.Int256;
@@ -54,6 +56,8 @@ namespace Nethermind.Synchronization
         private readonly long _pivotNumber;
         private readonly Hash256 _pivotHash;
         private BlockHeader? _pivotHeader;
+        private CancellationTokenSource _rangeBroadcastCts = new();
+        private Task _rangeBroadcastTask = Task.CompletedTask;
 
         private const int NewHeadBlockRangeUpdateFrequency = 32;
         private const int NewOldestBlockRangeUpdateFrequency = 10000;
@@ -463,20 +467,49 @@ namespace Nethermind.Synchronization
             if (_pool.PeerCount == 0)
                 return;
 
-            Task.Run(() =>
-                {
-                    var counter = 0;
+            CancellationTokenExtensions.CancelDisposeAndClear(ref _rangeBroadcastCts);
+            CancellationTokenSource cts = _rangeBroadcastCts = new();
 
-                    foreach (PeerInfo peerInfo in _pool.AllPeers)
+            if (_rangeBroadcastTask.IsCompleted)
+            {
+                _rangeBroadcastTask = Task.Run(() => RangeBroadcast(earliest, latest, cts), cts.Token);
+            }
+            else
+            {
+                _rangeBroadcastTask.ContinueWith(
+                    t => RangeBroadcast(earliest, latest, cts),
+                    TaskContinuationOptions.RunContinuationsAsynchronously);
+            }
+        }
+
+        private void RangeBroadcast(BlockHeader earliest, BlockHeader latest, CancellationTokenSource cts)
+        {
+            if (cts.IsCancellationRequested)
+            {
+                return;
+            }
+
+            using ArrayPoolList<PeerInfo> allPeers = _pool.AllPeers.ToPooledList(_pool.PeerCount);
+            var counter = 0;
+
+            ParallelUnbalancedWork.For(0, allPeers.Count,
+                (i) =>
+                {
+                    if (cts.IsCancellationRequested)
+                    {
+                        if (_logger.IsDebug) _logger.Debug("Cancelled broadcasting block range update due to cancellation request.");
+                        return;
+                    }
+                    PeerInfo peerInfo = allPeers[i];
+                    if (peerInfo.ShouldNotifyNewRange(earliest.Number, latest.Number))
                     {
                         NotifyOfNewRange(peerInfo, earliest, latest);
-                        counter++;
+                        Interlocked.Increment(ref counter);
                     }
+                });
 
-                    if (counter > 0 && _logger.IsDebug)
-                        _logger.Debug($"Broadcasting range update {earliest.Number}-{latest.Number} to {counter} peers.");
-                }
-            );
+            if (counter > 0 && _logger.IsDebug)
+                _logger.Debug($"Broadcasting range update {earliest.Number}-{latest.Number} to {counter} peers.");
         }
 
         private void NotifyOfNewBlock(PeerInfo? peerInfo, ISyncPeer syncPeer, Block broadcastedBlock, SendBlockMode mode)

@@ -155,7 +155,7 @@ namespace Nethermind.Blockchain
 
         BlockInfo FindCanonicalBlockInfo(long blockNumber);
 
-        Hash256 FindHash(long blockNumber);
+        Hash256? FindHash(long blockNumber);
 
         IOwnedReadOnlyList<BlockHeader> FindHeaders(Hash256 hash, int numberOfBlocks, int skip, bool reverse);
 
