@@ -5,9 +5,8 @@ namespace Nethermind.Config;
 
 public class HistoryConfig : IHistoryConfig
 {
-    public bool Enabled => RetentionEpochs is not null || DropPreMerge;
+    public bool Enabled => Pruning != PruningModes.Disabled;
 
-    public long? RetentionEpochs { get; set; } = null;
-    public bool DropPreMerge { get; set; } = false;
-    public int RunEvery { get; set; } = 1;
+    public PruningModes Pruning { get; set; } = PruningModes.UseAncientBarriers;
+    public long RetentionEpochs { get; set; } = 82125;
 }

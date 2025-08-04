@@ -16,7 +16,6 @@ using Nethermind.Core;
 using Nethermind.Db;
 using Nethermind.Db.Blooms;
 using Nethermind.Facade.Find;
-using Nethermind.Logging;
 using Nethermind.Serialization.Rlp;
 using Nethermind.State.Repositories;
 
@@ -37,8 +36,6 @@ namespace Nethermind.Init.Steps
         {
             IInitConfig initConfig = _get.Config<IInitConfig>();
             IBloomConfig bloomConfig = _get.Config<IBloomConfig>();
-
-            ILogManager logManager = _get.LogManager;
 
             IFileStoreFactory fileStoreFactory = initConfig.DiagnosticMode == DiagnosticMode.MemDb
                 ? new InMemoryDictionaryFileStoreFactory()
@@ -68,13 +65,13 @@ namespace Nethermind.Init.Steps
                 _get.SpecProvider,
                 bloomStorage,
                 _get.Config<ISyncConfig>(),
-                logManager);
+                _get.LogManager);
 
             ISigner signer = NullSigner.Instance;
             ISignerStore signerStore = NullSigner.Instance;
             if (_get.Config<IMiningConfig>().Enabled)
             {
-                Signer signerAndStore = new(_get.SpecProvider!.ChainId, _get.OriginalSignerKey!, logManager);
+                Signer signerAndStore = new(_get.SpecProvider!.ChainId, _get.OriginalSignerKey!, _get.LogManager);
                 signer = signerAndStore;
                 signerStore = signerAndStore;
             }
@@ -102,7 +99,7 @@ namespace Nethermind.Init.Steps
                 receiptFinder,
                 receiptStorage,
                 bloomStorage,
-                logManager,
+                _get.LogManager,
                 new ReceiptsRecovery(_get.EthereumEcdsa, _get.SpecProvider),
                 receiptConfig.MaxBlockDepth);
 
@@ -110,7 +107,7 @@ namespace Nethermind.Init.Steps
 
             if (initConfig.ExitOnBlockNumber is not null)
             {
-                _ = new ExitOnBlockNumberHandler(blockTree, _get.ProcessExit!, initConfig.ExitOnBlockNumber.Value, _get.LogManager);
+                new ExitOnBlockNumberHandler(blockTree, _get.ProcessExit!, initConfig.ExitOnBlockNumber.Value, _get.LogManager);
             }
 
             return Task.CompletedTask;

@@ -37,7 +37,7 @@ public class BuiltInStepsModule : Module
 
     protected override void Load(ContainerBuilder builder)
     {
-        foreach (StepInfo builtInStep in BuiltInSteps)
+        foreach (var builtInStep in BuiltInSteps)
         {
             builder.AddStep(builtInStep);
         }

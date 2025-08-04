@@ -268,6 +268,8 @@ public class BlockTreeOverlay : IBlockTree
 
     public long GetLowestBlock() => _baseTree.GetLowestBlock();
 
+    public void NewOldestBlock(long oldestBlock) => _baseTree.NewOldestBlock(oldestBlock);
+
     public void DeleteOldBlock(long currentNumber, Hash256 currentHash, BatchWrite batch)
         => _baseTree.DeleteOldBlock(currentNumber, currentHash, batch);
 }

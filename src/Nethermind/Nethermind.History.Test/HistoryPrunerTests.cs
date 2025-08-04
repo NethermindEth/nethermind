@@ -8,7 +8,9 @@ using System.Threading.Tasks;
 using Autofac;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Receipts;
+using Nethermind.Blockchain.Synchronization;
 using Nethermind.Config;
+using Nethermind.Consensus.Processing;
 using Nethermind.Consensus.Scheduler;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
@@ -28,10 +30,17 @@ public class HistoryPrunerTests
 {
     private const long SecondsPerSlot = 1;
     private const long BeaconGenesisBlockNumber = 50;
-    private static readonly ulong BeaconGenesisTimestamp = (ulong)new DateTimeOffset(TestBlockchain.InitialTimestamp).ToUnixTimeSeconds() + (BeaconGenesisBlockNumber * SecondsPerSlot);
     private static readonly IBlocksConfig BlocksConfig = new BlocksConfig()
     {
         SecondsPerSlot = SecondsPerSlot
+    };
+
+    private static readonly ISyncConfig SyncConfig = new SyncConfig()
+    {
+        AncientBodiesBarrier = BeaconGenesisBlockNumber,
+        AncientReceiptsBarrier = BeaconGenesisBlockNumber,
+        PivotNumber = "100",
+        SnapSync = true
     };
 
     [Test]
@@ -40,12 +49,10 @@ public class HistoryPrunerTests
         const int blocks = 100;
         const int cutoff = 36;
 
-        // n.b. technically invalid, should be at least 82125 epochs
-        // however not feasible to test this
         IHistoryConfig historyConfig = new HistoryConfig
         {
+            Pruning = PruningModes.Rolling,
             RetentionEpochs = 2,
-            DropPreMerge = false
         };
 
         using BasicTestBlockchain testBlockchain = await BasicTestBlockchain.Create(BuildContainer(historyConfig));
@@ -62,8 +69,7 @@ public class HistoryPrunerTests
         Assert.That(head, Is.Not.Null);
         testBlockchain.BlockTree.SyncPivot = (blocks, Hash256.Zero);
 
-        IHistoryPruner historyPruner = testBlockchain.Container.Resolve<IHistoryPruner>();
-
+        var historyPruner = (HistoryPruner)testBlockchain.Container.Resolve<IHistoryPruner>();
 
         CheckOldestAndCutoff(1, cutoff, historyPruner);
 
@@ -87,14 +93,14 @@ public class HistoryPrunerTests
     }
 
     [Test]
-    public async Task Can_prune_pre_merge_blocks()
+    public async Task Can_prune_to_ancient_barriers()
     {
         const int blocks = 100;
 
         IHistoryConfig historyConfig = new HistoryConfig
         {
+            Pruning = PruningModes.UseAncientBarriers,
             RetentionEpochs = 100, // should have no effect
-            DropPreMerge = true
         };
         using BasicTestBlockchain testBlockchain = await BasicTestBlockchain.Create(BuildContainer(historyConfig));
 
@@ -110,7 +116,7 @@ public class HistoryPrunerTests
         Assert.That(head, Is.Not.Null);
         testBlockchain.BlockTree.SyncPivot = (blocks, Hash256.Zero);
 
-        IHistoryPruner historyPruner = testBlockchain.Container.Resolve<IHistoryPruner>();
+        var historyPruner = (HistoryPruner)testBlockchain.Container.Resolve<IHistoryPruner>();
 
         CheckOldestAndCutoff(1, BeaconGenesisBlockNumber, historyPruner);
 
@@ -142,8 +148,7 @@ public class HistoryPrunerTests
 
         IHistoryConfig historyConfig = new HistoryConfig
         {
-            RetentionEpochs = null,
-            DropPreMerge = true
+            Pruning = PruningModes.UseAncientBarriers,
         };
         using BasicTestBlockchain testBlockchain = await BasicTestBlockchain.Create(BuildContainer(historyConfig));
 
@@ -159,7 +164,7 @@ public class HistoryPrunerTests
         Assert.That(head, Is.Not.Null);
         testBlockchain.BlockTree.SyncPivot = (syncPivot, Hash256.Zero);
 
-        IHistoryPruner historyPruner = testBlockchain.Container.Resolve<IHistoryPruner>();
+        var historyPruner = (HistoryPruner)testBlockchain.Container.Resolve<IHistoryPruner>();
 
         CheckOldestAndCutoff(1, BeaconGenesisBlockNumber, historyPruner);
 
@@ -191,8 +196,8 @@ public class HistoryPrunerTests
 
         IHistoryConfig historyConfig = new HistoryConfig
         {
+            Pruning = PruningModes.Rolling,
             RetentionEpochs = 2,
-            DropPreMerge = false
         };
         using BasicTestBlockchain testBlockchain = await BasicTestBlockchain.Create(BuildContainer(historyConfig));
 
@@ -208,12 +213,12 @@ public class HistoryPrunerTests
         Assert.That(head, Is.Not.Null);
         testBlockchain.BlockTree.SyncPivot = (blocks, Hash256.Zero);
 
-        HistoryPruner historyPruner = (HistoryPruner)testBlockchain.Container.Resolve<IHistoryPruner>();
+        var historyPruner = (HistoryPruner)testBlockchain.Container.Resolve<IHistoryPruner>();
 
         CheckOldestAndCutoff(1, cutoff, historyPruner);
 
         await historyPruner.TryPruneHistory(CancellationToken.None);
-        historyPruner.FindOldestBlock(); // recalculate oldest block with binary search
+        historyPruner.SetDeletePointerToOldestBlock(); // recalculate oldest block with binary search
 
         CheckOldestAndCutoff(cutoff, cutoff, historyPruner);
     }
@@ -225,8 +230,7 @@ public class HistoryPrunerTests
 
         IHistoryConfig historyConfig = new HistoryConfig
         {
-            RetentionEpochs = null,
-            DropPreMerge = false
+            Pruning = PruningModes.Disabled,
         };
         using BasicTestBlockchain testBlockchain = await BasicTestBlockchain.Create(BuildContainer(historyConfig));
 
@@ -238,7 +242,7 @@ public class HistoryPrunerTests
             blockHashes.Add(testBlockchain.BlockTree.Head!.Hash!);
         }
 
-        IHistoryPruner historyPruner = testBlockchain.Container.Resolve<IHistoryPruner>();
+        var historyPruner = (HistoryPruner)testBlockchain.Container.Resolve<IHistoryPruner>();
         await historyPruner.TryPruneHistory(CancellationToken.None);
 
         CheckGenesisPreserved(testBlockchain, blockHashes[0]);
@@ -256,8 +260,8 @@ public class HistoryPrunerTests
     {
         IHistoryConfig validHistoryConfig = new HistoryConfig
         {
+            Pruning = PruningModes.Rolling,
             RetentionEpochs = 100000,
-            DropPreMerge = false
         };
 
         ISpecProvider specProvider = new TestSpecProvider(new ReleaseSpec() { MinHistoryRetentionEpochs = 100 });
@@ -272,8 +276,10 @@ public class HistoryPrunerTests
             dbProvider,
             validHistoryConfig,
             BlocksConfig,
+            SyncConfig,
             new ProcessExitSource(new()),
             Substitute.For<IBackgroundTaskScheduler>(),
+            Substitute.For<IBlockProcessingQueue>(),
             LimboLogs.Instance));
     }
 
@@ -282,8 +288,8 @@ public class HistoryPrunerTests
     {
         IHistoryConfig invalidHistoryConfig = new HistoryConfig
         {
+            Pruning = PruningModes.Rolling,
             RetentionEpochs = 10,
-            DropPreMerge = false
         };
 
         ISpecProvider specProvider = new TestSpecProvider(new ReleaseSpec() { MinHistoryRetentionEpochs = 100 });
@@ -298,8 +304,10 @@ public class HistoryPrunerTests
             dbProvider,
             invalidHistoryConfig,
             BlocksConfig,
+            SyncConfig,
             new ProcessExitSource(new()),
             Substitute.For<IBackgroundTaskScheduler>(),
+            Substitute.For<IBlockProcessingQueue>(),
             LimboLogs.Instance));
     }
 
@@ -356,13 +364,17 @@ public class HistoryPrunerTests
 
     private static Action<ContainerBuilder> BuildContainer(IHistoryConfig historyConfig)
     {
-        ISpecProvider specProvider = Substitute.For<ISpecProvider>();
-        specProvider.BeaconChainGenesisTimestamp.Returns(BeaconGenesisTimestamp);
-        specProvider.MergeBlockNumber.Returns(new ForkActivation(BeaconGenesisBlockNumber, BeaconGenesisTimestamp));
+        // n.b. in prod MinHistoryRetentionEpochs should be 82125, however not feasible to test this
+        ISpecProvider specProvider = new TestSpecProvider(new ReleaseSpec() { MinHistoryRetentionEpochs = 0 });
+
+        // prevent pruner being triggered by empty queue
+        IBlockProcessingQueue blockProcessingQueue = Substitute.For<IBlockProcessingQueue>();
 
         return containerBuilder => containerBuilder
             .AddSingleton(specProvider)
+            .AddSingleton(blockProcessingQueue)
             .AddSingleton(historyConfig)
-            .AddSingleton(BlocksConfig);
+            .AddSingleton(BlocksConfig)
+            .AddSingleton(SyncConfig);
     }
 }
