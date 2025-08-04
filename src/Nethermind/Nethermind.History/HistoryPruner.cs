@@ -52,6 +52,7 @@ public class HistoryPruner : IHistoryPruner
     private long? _cutoffPointer;
     private ulong? _cutoffTimestamp;
     private bool _hasLoadedDeletePointer = false;
+    private ulong _calledCounter = 0;
 
     public event EventHandler<OnNewOldestBlockArgs>? NewOldestBlock;
 
@@ -118,7 +119,15 @@ public class HistoryPruner : IHistoryPruner
             (_, backgroundTaskToken) =>
             {
                 var cts = CancellationTokenSource.CreateLinkedTokenSource(backgroundTaskToken, cancellationToken);
-                return TryPruneHistory(cts.Token);
+                _calledCounter++;
+                if (_calledCounter % _historyConfig.RunEvery == 0)
+                {
+                    return TryPruneHistory(cts.Token);
+                }
+                else
+                {
+                    return Task.CompletedTask;
+                }
             });
 
     internal Task TryPruneHistory(CancellationToken cancellationToken)

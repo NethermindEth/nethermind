@@ -9,4 +9,5 @@ public class HistoryConfig : IHistoryConfig
 
     public PruningModes Pruning { get; set; } = PruningModes.UseAncientBarriers;
     public long RetentionEpochs { get; set; } = 82125;
+    public ulong RunEvery { get; set; } = 1;
 }
