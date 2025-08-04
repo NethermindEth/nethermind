@@ -311,6 +311,8 @@ public sealed class TrieStore : ITrieStore, IPruningTrieStore
             }
             else
             {
+                // If the cached not is not persisted, we try to replace it in its parent to reduce duplicated
+                // nodes.
                 if (_logger.IsTrace) Trace(node, cachedNodeCopy);
                 cachedNodeCopy.ResolveKey(GetTrieStore(address), ref path, nodeCommitInfo.IsRoot);
                 if (node.Keccak != cachedNodeCopy.Keccak)
