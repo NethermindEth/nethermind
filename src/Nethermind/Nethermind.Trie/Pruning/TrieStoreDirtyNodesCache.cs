@@ -158,6 +158,18 @@ internal class TrieStoreDirtyNodesCache
         ? _byHashObjectCache.GetOrAdd(key.Keccak, node)
         : _byKeyObjectCache.GetOrAdd(key, node);
 
+    public void Replace(in Key key, TrieNode node)
+    {
+        if (_storeByHash)
+        {
+            _byHashObjectCache[key.Keccak] = node;
+        }
+        else
+        {
+            _byKeyObjectCache[key] = node;
+        }
+    }
+
     public void IncrementMemory(TrieNode node)
     {
         long memoryUsage = node.GetMemorySize(false) + KeyMemoryUsage;

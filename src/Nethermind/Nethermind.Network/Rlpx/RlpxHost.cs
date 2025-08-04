@@ -125,10 +125,10 @@ namespace Nethermind.Network.Rlpx
                     .Group(_bossGroup, _workerGroup)
                     .ChannelFactory(() => _channelFactory?.CreateServer() ?? new TcpServerSocketChannel())
                     .Option(ChannelOption.Allocator, NethermindBuffers.RlpxAllocator)
+                    .Option(ChannelOption.SoBacklog, 100)
+                    .Option(ChannelOption.SoTimeout, (int)(_connectTimeout.TotalMilliseconds * 1.5))
                     .ChildOption(ChannelOption.Allocator, NethermindBuffers.RlpxAllocator)
-                    .ChildOption(ChannelOption.SoBacklog, 100)
                     .ChildOption(ChannelOption.TcpNodelay, true)
-                    .ChildOption(ChannelOption.SoTimeout, (int)_connectTimeout.TotalMilliseconds)
                     .ChildOption(ChannelOption.SoKeepalive, true)
                     .ChildOption(ChannelOption.WriteBufferHighWaterMark, (int)3.MB())
                     .ChildOption(ChannelOption.WriteBufferLowWaterMark, (int)1.MB())
@@ -174,7 +174,7 @@ namespace Nethermind.Network.Rlpx
             }
         }
 
-        public async Task ConnectAsync(Node node)
+        public async Task<bool> ConnectAsync(Node node)
         {
             if (_logger.IsTrace) _logger.Trace($"|NetworkTrace| {node:s} initiating OUT connection");
 
@@ -184,7 +184,6 @@ namespace Nethermind.Network.Rlpx
                 .ChannelFactory(() => _channelFactory?.CreateClient() ?? new TcpSocketChannel())
                 .Option(ChannelOption.Allocator, NethermindBuffers.RlpxAllocator)
                 .Option(ChannelOption.TcpNodelay, true)
-                .Option(ChannelOption.SoTimeout, (int)_connectTimeout.TotalMilliseconds)
                 .Option(ChannelOption.SoKeepalive, true)
                 .Option(ChannelOption.WriteBufferHighWaterMark, (int)3.MB())
                 .Option(ChannelOption.WriteBufferLowWaterMark, (int)1.MB())
@@ -211,7 +210,8 @@ namespace Nethermind.Network.Rlpx
                     }
                 });
 
-                throw new NetworkingException($"Failed to connect to {node:s} (timeout)", NetworkExceptionType.Timeout);
+                if (_logger.IsDebug) _logger.Debug($"Failed to connect to {node:s} (timeout)");
+                return false;
             }
 
             delayCancellation.Cancel();
@@ -222,10 +222,12 @@ namespace Nethermind.Network.Rlpx
                     _logger.Trace($"|NetworkTrace| {node:s} error when OUT connecting {connectTask.Exception}");
                 }
 
-                throw new NetworkingException($"Failed to connect to {node:s}", NetworkExceptionType.TargetUnreachable, connectTask.Exception);
+                if (_logger.IsDebug) _logger.Debug($"Failed to connect to {node:s}: {connectTask.Exception.Message}");
+                return false;
             }
 
             if (_logger.IsTrace) _logger.Trace($"|NetworkTrace| {node:s} OUT connected");
+            return true;
         }
 
         public event EventHandler<SessionEventArgs> SessionCreated;

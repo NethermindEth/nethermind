@@ -18,7 +18,9 @@ using Nethermind.Core.Attributes;
 using Nethermind.Core.Caching;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
+using Nethermind.Core.Threading;
 using Nethermind.Db;
 using Nethermind.Int256;
 using Nethermind.Logging;
@@ -53,6 +55,8 @@ namespace Nethermind.Synchronization
         private readonly long _pivotNumber;
         private readonly Hash256 _pivotHash;
         private BlockHeader? _pivotHeader;
+        private CancellationTokenSource _rangeBroadcastCts = new();
+        private Task _rangeBroadcastTask = Task.CompletedTask;
 
         private const int BlockRangeUpdateFrequency = 32;
 
@@ -439,22 +443,52 @@ namespace Nethermind.Synchronization
             if (latestBlock.Number % BlockRangeUpdateFrequency != 0)
                 return;
 
-            Task.Run(() =>
+            CancellationTokenExtensions.CancelDisposeAndClear(ref _rangeBroadcastCts);
+            CancellationTokenSource cts = _rangeBroadcastCts = new();
+
+            if (_rangeBroadcastTask.IsCompleted)
+            {
+                _rangeBroadcastTask = Task.Run(() => RangeBroadcast(latestBlock, cts), cts.Token);
+            }
+            else
+            {
+                _rangeBroadcastTask.ContinueWith(
+                    t => RangeBroadcast(latestBlock, cts),
+                    TaskContinuationOptions.RunContinuationsAsynchronously);
+            }
+        }
+
+        private void RangeBroadcast(Block latestBlock, CancellationTokenSource cts)
+        {
+            if (cts.IsCancellationRequested)
+            {
+                return;
+            }
+
+            using ArrayPoolList<PeerInfo> allPeers = _pool.AllPeers.ToPooledList(_pool.PeerCount);
+            var counter = 0;
+
+            // TODO: use actual earliest available block - once history expiry is implemented
+            (BlockHeader earliest, BlockHeader latest) = (Genesis, latestBlock.Header);
+
+            ParallelUnbalancedWork.For(0, allPeers.Count,
+                (i) =>
                 {
-                    var counter = 0;
-                    (BlockHeader earliest, BlockHeader latest) = (Genesis, latestBlock.Header);
-
-                    foreach (PeerInfo peerInfo in _pool.AllPeers)
+                    if (cts.IsCancellationRequested)
                     {
-                        // TODO: use actual earliest available block - once history expiry is implemented
-                        NotifyOfNewRange(peerInfo, Genesis, latest);
-                        counter++;
+                        if (_logger.IsDebug) _logger.Debug("Cancelled broadcasting block range update due to cancellation request.");
+                        return;
                     }
+                    PeerInfo peerInfo = allPeers[i];
+                    if (peerInfo.ShouldNotifyHeadNumber(latestBlock.Number))
+                    {
+                        NotifyOfNewRange(peerInfo, earliest, latestBlock.Header);
+                        Interlocked.Increment(ref counter);
+                    }
+                });
 
-                    if (counter > 0 && _logger.IsDebug)
-                        _logger.Debug($"Broadcasting range update {earliest.Number}-{latest.Number} to {counter} peers.");
-                }
-            );
+            if (counter > 0 && _logger.IsDebug)
+                _logger.Debug($"Broadcasting range update {earliest.Number}-{latest.Number} to {counter} peers.");
         }
 
         private void NotifyOfNewBlock(PeerInfo? peerInfo, ISyncPeer syncPeer, Block broadcastedBlock, SendBlockMode mode)
