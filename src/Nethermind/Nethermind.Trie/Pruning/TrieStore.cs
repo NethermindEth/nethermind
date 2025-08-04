@@ -292,15 +292,21 @@ public sealed class TrieStore : ITrieStore, IPruningTrieStore
         TrieNode cachedNodeCopy = DirtyNodesGetOrAdd(in key, node);
         if (!ReferenceEquals(cachedNodeCopy, node))
         {
+            // So what happen here is that the patricia trie was modified in a way that some of the trie nodes
+            // was re-generated, basically the value was modified back to a recently committed value that is still cached.
+            // This happen about 2.5% of the time at 4GB dirty cache and 16GB total cache.
+
             Metrics.LoadedFromCacheNodesCount++;
             if (cachedNodeCopy.IsPersisted)
             {
+                // This code path happens around 0.8% of the time at 4GB of dirty cache and 16GB total cache.
+                //
                 // If the cache node is persisted, we replace it completely.
-                // This is because it is possible that this node is persisted, but its child is not persisted.
-                // This can happen when a path is not replaced with another path, but its child is and hence, the child
-                // is removed, but the parent is not and remain in the cache as persisted node.
+                // This is because although very rare, it is possible that this node is persisted, but its child is not
+                // persisted. This can happen when a path is not replaced with another node, but its child is and hence,
+                // the child is removed, but the parent is not and remain in the cache as persisted node.
                 // Additionally, it may hold a reference to its child which is marked as persisted eventhough it was
-                // deleted.
+                // deleted from the cached map.
                 DirtyNodesReplace(in key, node);
             }
             else
