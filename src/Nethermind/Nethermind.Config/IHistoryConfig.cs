@@ -26,7 +26,6 @@ public enum PruningModes
     [Description("No history pruning.")]
     Disabled,
 
-
     [Description("Prune outside of rolling window.")]
     Rolling,
 
