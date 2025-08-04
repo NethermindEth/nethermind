@@ -71,6 +71,12 @@ public static class Config
         DefaultValueFactory = r => 1
     };
 
+    public static Option<string?> PrometheusPushGateway { get; } = new("--gateway", "-g")
+    {
+        Description = "Prometheus Push Gateway endpoint to report metrics",
+        HelpName = "url",
+    };
+
     public static Option<bool> UnwrapBatch { get; } = new("--unwrapBatch", "-u")
     {
         Description = "Batch requests will be unwraped to single requests"

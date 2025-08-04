@@ -53,19 +53,19 @@ public sealed class ComposedMetricsReporter : IMetricsReporter
         }
     }
 
-    public async Task Batch(int requestId, TimeSpan elapsed, CancellationToken token = default)
+    public async Task Batch(JsonRpc.Request.Batch batch, TimeSpan elapsed, CancellationToken token = default)
     {
         foreach (IMetricsReporter reporter in _reporters)
         {
-            await reporter.Batch(requestId, elapsed, token);
+            await reporter.Batch(batch, elapsed, token);
         }
     }
 
-    public async Task Single(int requestId, TimeSpan elapsed, CancellationToken token = default)
+    public async Task Single(JsonRpc.Request.Single single, TimeSpan elapsed, CancellationToken token = default)
     {
         foreach (IMetricsReporter reporter in _reporters)
         {
-            await reporter.Single(requestId, elapsed, token);
+            await reporter.Single(single, elapsed, token);
         }
     }
 
