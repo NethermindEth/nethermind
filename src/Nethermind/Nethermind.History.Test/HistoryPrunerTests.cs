@@ -368,6 +368,7 @@ public class HistoryPrunerTests
         return containerBuilder => containerBuilder
             .AddSingleton(specProvider)
             .AddSingleton(historyConfig)
-            .AddSingleton(BlocksConfig);
+            .AddSingleton(BlocksConfig)
+            .AddSingleton(SyncConfig);
     }
 }

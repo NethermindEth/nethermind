@@ -90,8 +90,6 @@ public class HistoryPruner : IHistoryPruner
 
         if (historyConfig.Enabled)
         {
-            blockProcessingQueue.ProcessingQueueEmpty += OnBlockProcessorQueueEmpty;
-
             if (historyConfig.Pruning == PruningModes.UseAncientBarriers)
             {
                 // should use syncConfig.AncientBodiesBarrierCalc?
@@ -99,6 +97,8 @@ public class HistoryPruner : IHistoryPruner
                 Metrics.PruningCutoffBlocknumber = _ancientBarrier;
                 Metrics.PruningCutoffTimestamp = null;
             }
+
+            blockProcessingQueue.ProcessingQueueEmpty += OnBlockProcessorQueueEmpty;
         }
     }
 
@@ -148,7 +148,7 @@ public class HistoryPruner : IHistoryPruner
                     _logger.Info($"Pruning historical blocks up to {cutoffString}. Estimated {(toDelete is null ? "unknown" : toDelete)} blocks will be deleted.");
                 }
 
-                PruneBlocksAndReceipts(cutoffTimestamp!.Value, cancellationToken);
+                PruneBlocksAndReceipts(cutoffTimestamp, cancellationToken);
                 return Task.CompletedTask;
             }
         }
@@ -301,7 +301,7 @@ public class HistoryPruner : IHistoryPruner
         }
 
         cutoffTimestamp = CalculateCutoffTimestamp();
-        return cutoffTimestamp is not null && cutoffTimestamp > _lastPrunedTimestamp;
+        return cutoffTimestamp is not null && (_lastPrunedTimestamp is null || cutoffTimestamp > _lastPrunedTimestamp);
     }
 
     private void PruneBlocksAndReceipts(ulong? cutoffTimestamp, CancellationToken cancellationToken)
