@@ -47,8 +47,6 @@ public class HistoryPrunerTests
         const int blocks = 100;
         const int cutoff = 36;
 
-        // n.b. technically invalid, should be at least 82125 epochs
-        // however not feasible to test this
         IHistoryConfig historyConfig = new HistoryConfig
         {
             Pruning = PruningModes.Rolling,
@@ -364,7 +362,12 @@ public class HistoryPrunerTests
     }
 
     private static Action<ContainerBuilder> BuildContainer(IHistoryConfig historyConfig)
-        => containerBuilder => containerBuilder
+    {
+        // n.b. in prod MinHistoryRetentionEpochs should be 82125, however not feasible to test this
+        ISpecProvider specProvider = new TestSpecProvider(new ReleaseSpec() { MinHistoryRetentionEpochs = 0 });
+        return containerBuilder => containerBuilder
+            .AddSingleton(specProvider)
             .AddSingleton(historyConfig)
             .AddSingleton(BlocksConfig);
+    }
 }
