@@ -36,7 +36,8 @@ public static class AddressExtensions
                     0x0f => releaseSpec.Bls381Enabled,
                     0x10 => releaseSpec.Bls381Enabled,
                     0x11 => releaseSpec.Bls381Enabled,
-                    0x12 => releaseSpec.IsRip7728Enabled,
+                    // L2 precompiles
+                    0x10001 => releaseSpec.IsRip7728Enabled,
                     _ => false
                 },
                 0x01 => (data[4] >>> 24) switch

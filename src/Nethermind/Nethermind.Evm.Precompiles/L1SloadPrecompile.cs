@@ -34,7 +34,7 @@ public class L1SloadPrecompile : IPrecompile<L1SloadPrecompile>
     {
     }
 
-    public static Address Address { get; } = Address.FromNumber(0x12);
+    public static Address Address { get; } = Address.FromNumber(0x10001);
     public static string Name => "L1SLOAD";
     public static IL1StorageProvider? L1StorageProvider { get; set; }
 
