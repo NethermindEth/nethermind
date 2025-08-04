@@ -34,7 +34,6 @@ public class HistoryPruner : IHistoryPruner
     private readonly Lock _pruneLock = new();
     private readonly Lock _searchLock = new();
     private ulong? _lastPrunedTimestamp;
-    private readonly ISpecProvider _specProvider;
     private readonly ILogger _logger;
     private readonly IBlockTree _blockTree;
     private readonly IReceiptStorage _receiptStorage;
@@ -72,7 +71,6 @@ public class HistoryPruner : IHistoryPruner
         IBlockProcessingQueue blockProcessingQueue,
         ILogManager logManager)
     {
-        _specProvider = specProvider;
         _logger = logManager.GetClassLogger();
         _deletionProgressLoggingInterval = _logger.IsDebug ? 5 : 100000;
         _blockTree = blockTree;
@@ -92,8 +90,7 @@ public class HistoryPruner : IHistoryPruner
         {
             if (historyConfig.Pruning == PruningModes.UseAncientBarriers)
             {
-                // should use syncConfig.AncientBodiesBarrierCalc?
-                _ancientBarrier = long.Min(syncConfig.AncientBodiesBarrier, syncConfig.AncientReceiptsBarrier);
+                _ancientBarrier = long.Min(syncConfig.AncientBodiesBarrierCalc, syncConfig.AncientReceiptsBarrierCalc);
                 Metrics.PruningCutoffBlocknumber = _ancientBarrier;
                 Metrics.PruningCutoffTimestamp = null;
             }

@@ -38,7 +38,9 @@ public class HistoryPrunerTests
     private static readonly ISyncConfig SyncConfig = new SyncConfig()
     {
         AncientBodiesBarrier = BeaconGenesisBlockNumber,
-        AncientReceiptsBarrier = BeaconGenesisBlockNumber
+        AncientReceiptsBarrier = BeaconGenesisBlockNumber,
+        PivotNumber = "100",
+        SnapSync = true
     };
 
     [Test]
@@ -68,7 +70,6 @@ public class HistoryPrunerTests
         testBlockchain.BlockTree.SyncPivot = (blocks, Hash256.Zero);
 
         var historyPruner = (HistoryPruner)testBlockchain.Container.Resolve<IHistoryPruner>();
-
 
         CheckOldestAndCutoff(1, cutoff, historyPruner);
 
@@ -365,8 +366,13 @@ public class HistoryPrunerTests
     {
         // n.b. in prod MinHistoryRetentionEpochs should be 82125, however not feasible to test this
         ISpecProvider specProvider = new TestSpecProvider(new ReleaseSpec() { MinHistoryRetentionEpochs = 0 });
+
+        // prevent pruner being triggered by empty queue
+        IBlockProcessingQueue blockProcessingQueue = Substitute.For<IBlockProcessingQueue>();
+
         return containerBuilder => containerBuilder
             .AddSingleton(specProvider)
+            .AddSingleton(blockProcessingQueue)
             .AddSingleton(historyConfig)
             .AddSingleton(BlocksConfig)
             .AddSingleton(SyncConfig);
