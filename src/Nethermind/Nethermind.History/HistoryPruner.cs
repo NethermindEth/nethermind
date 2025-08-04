@@ -126,6 +126,7 @@ public class HistoryPruner : IHistoryPruner
                 }
                 else
                 {
+                    _logger.Info($"[prune] counter = {_calledCounter}");
                     return Task.CompletedTask;
                 }
             });
@@ -141,7 +142,7 @@ public class HistoryPruner : IHistoryPruner
                     !TryLoadDeletePointer() ||
                     !ShouldPruneHistory(out ulong? cutoffTimestamp))
                 {
-                    _logger.Info($"Skipping historical block pruning.");
+                    _logger.Info($"[prune] Skipping historical block pruning.");
                     return Task.CompletedTask;
                 }
 
@@ -152,7 +153,7 @@ public class HistoryPruner : IHistoryPruner
                     long? toDelete = cutoff - _deletePointer;
 
                     string cutoffString = cutoffTimestamp is null ? $"#{(cutoff is null ? "unknown" : cutoff)}" : $"timestamp {cutoffTimestamp} (#{(cutoff is null ? "unknown" : cutoff)})";
-                    _logger.Info($"Pruning historical blocks up to {cutoffString}. Estimated {(toDelete is null ? "unknown" : toDelete)} blocks will be deleted.");
+                    _logger.Info($"[prune] Pruning historical blocks up to {cutoffString}. Estimated {(toDelete is null ? "unknown" : toDelete)} blocks will be deleted.");
                 }
 
                 PruneBlocksAndReceipts(cutoffTimestamp, cancellationToken);
@@ -389,7 +390,7 @@ public class HistoryPruner : IHistoryPruner
                 if (_logger.IsInfo && deletedBlocks % _deletionProgressLoggingInterval == 0)
                 {
                     string suffix = remaining is null ? "could not calculate cutoff." : $"with {remaining} remaining.";
-                    _logger.Info($"Historical block pruning in progress... Deleted {deletedBlocks} blocks, " + suffix);
+                    _logger.Info($"[prune] Historical block pruning in progress... Deleted {deletedBlocks} blocks, " + suffix);
                 }
 
                 if (_logger.IsInfo) _logger.Info($"[prune] Deleting old block {number} with hash {hash}.");
@@ -528,7 +529,7 @@ public class HistoryPruner : IHistoryPruner
 
         _metadataDb.Set(MetadataDbKeys.HistoryPruningDeletePointer, Rlp.Encode(_deletePointer).Bytes);
         _lastSavedDeletePointer = _deletePointer;
-        _logger.Info($"Persisting oldest block known = #{_deletePointer} to disk.");
+        _logger.Info($"[prune] Persisting oldest block known = #{_deletePointer} to disk.");
     }
 
     private void UpdateDeletePointer(long newDeletePointer, bool isFinalUpdate = true)
