@@ -6,7 +6,8 @@ using Nethermind.Core;
 
 namespace Nethermind.Blockchain;
 
-public class OnNewOldestBlockArgs(BlockHeader oldest) : EventArgs
+public class OnNewOldestBlockArgs(BlockHeader oldest, bool isFinalUpdate = true) : EventArgs
 {
     public BlockHeader OldestBlockHeader = oldest;
+    public bool isFinalUpdate = isFinalUpdate;
 }

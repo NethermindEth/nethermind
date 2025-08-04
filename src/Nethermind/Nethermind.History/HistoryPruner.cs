@@ -338,11 +338,11 @@ public class HistoryPruner : IHistoryPruner
                     batch = _chainLevelInfoRepository.StartBatch();
                 }
 
+                long? remaining = CutoffBlockNumber;
+                remaining = remaining is null ? null : long.Min(remaining!.Value, _blockTree.SyncPivot.BlockNumber) - _deletePointer;
                 if (_logger.IsInfo && deletedBlocks % _deletionProgressLoggingInterval == 0)
                 {
-                    long? cutoff = CutoffBlockNumber;
-                    cutoff = cutoff is null ? null : long.Min(cutoff!.Value, _blockTree.SyncPivot.BlockNumber) - _deletePointer;
-                    string suffix = cutoff is null ? "could not calculate cutoff." : $"with {cutoff} remaining.";
+                    string suffix = remaining is null ? "could not calculate cutoff." : $"with {remaining} remaining.";
                     _logger.Info($"Historical block pruning in progress... Deleted {deletedBlocks} blocks, " + suffix);
                 }
 
@@ -350,7 +350,7 @@ public class HistoryPruner : IHistoryPruner
                 _blockTree.DeleteOldBlock(number, hash, batch!);
                 _receiptStorage.RemoveReceipts(block);
 
-                UpdateDeletePointer(number + 1);
+                UpdateDeletePointer(number + 1, remaining is null || remaining == 0);
                 lastDeletedTimstamp = block.Timestamp;
                 deletedBlocks++;
                 Metrics.BlocksPruned++;
@@ -463,7 +463,7 @@ public class HistoryPruner : IHistoryPruner
         if (_logger.IsDebug) _logger.Debug($"Persisting oldest block known = #{_deletePointer} to disk.");
     }
 
-    private void UpdateDeletePointer(long newDeletePointer)
+    private void UpdateDeletePointer(long newDeletePointer, bool isFinalUpdate = true)
     {
         _deletePointer = newDeletePointer;
         Metrics.OldestStoredBlockNumber = _deletePointer;
@@ -471,7 +471,7 @@ public class HistoryPruner : IHistoryPruner
         BlockHeader? oldest = _blockTree.FindBlock(_deletePointer)?.Header;
         if (oldest is not null)
         {
-            NewOldestBlock?.Invoke(this, new OnNewOldestBlockArgs(oldest));
+            NewOldestBlock?.Invoke(this, new OnNewOldestBlockArgs(oldest, isFinalUpdate));
         }
     }
 }

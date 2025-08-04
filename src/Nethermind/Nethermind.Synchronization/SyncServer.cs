@@ -55,7 +55,8 @@ namespace Nethermind.Synchronization
         private readonly Hash256 _pivotHash;
         private BlockHeader? _pivotHeader;
 
-        private const int BlockRangeUpdateFrequency = 32;
+        private const int NewHeadBlockRangeUpdateFrequency = 32;
+        private const int NewOldestBlockRangeUpdateFrequency = 10000;
 
         public SyncServer(
             IWorldStateManager worldStateManager,
@@ -433,6 +434,13 @@ namespace Nethermind.Synchronization
             if (_blockTree.Head is null)
                 return;
 
+            // Don't send new range for every single deletion
+            if (!onNewOldestBlockArgs.isFinalUpdate &&
+                onNewOldestBlockArgs.OldestBlockHeader.Number % NewOldestBlockRangeUpdateFrequency != 0)
+            {
+                return;
+            }
+
             OnNewRange(onNewOldestBlockArgs.OldestBlockHeader, _blockTree.Head.Header);
         }
 
@@ -444,7 +452,7 @@ namespace Nethermind.Synchronization
             Block latestBlock = latestBlockEventArgs.Block;
 
             // Notify every 32 blocks
-            if (latestBlock.Number % BlockRangeUpdateFrequency != 0)
+            if (latestBlock.Number % NewHeadBlockRangeUpdateFrequency != 0)
                 return;
 
             OnNewRange(Genesis, latestBlock.Header);
