@@ -44,7 +44,6 @@ using Nethermind.Network.Rlpx;
 using Nethermind.Stats;
 using Nethermind.Synchronization.ParallelSync;
 using Nethermind.Synchronization.Peers;
-using Nethermind.History;
 
 namespace Nethermind.JsonRpc.Test.Modules
 {

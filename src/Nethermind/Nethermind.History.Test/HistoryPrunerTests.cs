@@ -30,7 +30,6 @@ public class HistoryPrunerTests
 {
     private const long SecondsPerSlot = 1;
     private const long BeaconGenesisBlockNumber = 50;
-    // private static readonly ulong BeaconGenesisTimestamp = (ulong)new DateTimeOffset(TestBlockchain.InitialTimestamp).ToUnixTimeSeconds() + (BeaconGenesisBlockNumber * SecondsPerSlot);
     private static readonly IBlocksConfig BlocksConfig = new BlocksConfig()
     {
         SecondsPerSlot = SecondsPerSlot
@@ -365,14 +364,7 @@ public class HistoryPrunerTests
     }
 
     private static Action<ContainerBuilder> BuildContainer(IHistoryConfig historyConfig)
-    {
-        // ISpecProvider specProvider = Substitute.For<ISpecProvider>();
-        // specProvider.BeaconChainGenesisTimestamp.Returns(BeaconGenesisTimestamp);
-        // specProvider.MergeBlockNumber.Returns(new ForkActivation(BeaconGenesisBlockNumber, BeaconGenesisTimestamp));
-
-        return containerBuilder => containerBuilder
-            // .AddSingleton(specProvider)
+        => containerBuilder => containerBuilder
             .AddSingleton(historyConfig)
             .AddSingleton(BlocksConfig);
-    }
 }
