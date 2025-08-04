@@ -32,6 +32,8 @@ namespace Nethermind.Merge.Plugin
                     : null;
                 _manualTimestamper ??= new ManualTimestamper();
 
+                // todo: pass in IL tx source
+                // BlockProducerEnv blockProducerEnv = _api.BlockProducerEnvFactory.Create(txSource.Then(_inclusionListTxSource));
                 IBlockProducerEnv blockProducerEnv = _api.BlockProducerEnvFactory.Create();
 
                 PostMergeBlockProducer postMergeBlockProducer = CreateBlockProducerFactory().Create(blockProducerEnv);

@@ -35,6 +35,32 @@ namespace Nethermind.Consensus.Processing
         {
             private readonly ILogger _logger = logManager.GetClassLogger();
 
+            // public BlockProductionTransactionsExecutor(
+            //     IReadOnlyTxProcessingScope readOnlyTxProcessingEnv,
+            //     ISpecProvider specProvider,
+            //     ILogManager logManager,
+            //     long maxTxLengthKilobytes = BlocksConfig.DefaultMaxTxKilobytes)
+            //     : this(
+            //         readOnlyTxProcessingEnv.TransactionProcessor,
+            //         readOnlyTxProcessingEnv.WorldState,
+            //         specProvider,
+            //         logManager,
+            //         maxTxLengthKilobytes)
+            // {
+            // }
+
+            // public BlockProductionTransactionsExecutor(
+            //     ITransactionProcessor transactionProcessor,
+            //     IWorldState stateProvider,
+            //     ISpecProvider specProvider,
+            //     ILogManager logManager,
+            //     long maxTxLengthKilobytes = BlocksConfig.DefaultMaxTxKilobytes) : this(transactionProcessor, stateProvider,
+            //     new BlockProductionTransactionPicker(specProvider, maxTxLengthKilobytes), logManager)
+            // {
+            // }
+
+            public bool IsTransactionInBlock(Transaction tx) => throw new NotImplementedException();
+
             protected EventHandler<TxProcessedEventArgs>? _transactionProcessed;
 
             event EventHandler<TxProcessedEventArgs>? IBlockProcessor.IBlockTransactionsExecutor.TransactionProcessed

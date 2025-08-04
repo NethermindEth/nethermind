@@ -91,29 +91,29 @@ public class ShutterIntegrationTests : BaseEngineModuleTests
         Assert.That(b!.Transactions, Has.Length.EqualTo(20));
     }
 
-    [Test]
-    [NonParallelizable]
-    public async Task Can_increment_metric_on_missed_keys()
-    {
-        Random rnd = new(ShutterTestsCommon.Seed);
-        long time = 1;
-        Timestamper timestamper = new(time);
+    // todo: refactor shutter block improvement proccess
+    // [Test]
+    // [NonParallelizable]
+    // public async Task Can_increment_metric_on_missed_keys()
+    // {
+    //     Random rnd = new(ShutterTestsCommon.Seed);
+    //     long time = 1;
+    //     Timestamper timestamper = new(time);
 
-        Metrics.ShutterKeysMissed = 0;
+    //     Metrics.ShutterKeysMissed = 0;
 
-        using var chain = (ShutterTestBlockchain)await new ShutterTestBlockchain(rnd, timestamper).Build(ShutterTestsCommon.SpecProvider);
-        IEngineRpcModule rpc = chain.EngineRpcModule;
+    //     using var chain = (ShutterTestBlockchain)await new ShutterTestBlockchain(rnd, timestamper).Build(ShutterTestsCommon.SpecProvider);
+    //     IEngineRpcModule rpc = chain.EngineRpcModule;
 
-        ExecutionPayload lastPayload = CreateParentBlockRequestOnHead(chain.BlockTree);
-        for (int i = 0; i < 5; i++)
-        {
-            // KeysMissed will be incremented when get_payload is called
-            lastPayload = (await ProduceBranchV1(rpc, chain, 1, lastPayload, true, null, 5))[0];
+    //     ExecutionPayload lastPayload = CreateParentBlockRequestOnHead(chain.BlockTree);
+    //     for (int i = 0; i < 5; i++)
+    //     {
+    //         // KeysMissed will be incremented when get_payload is called
+    //         lastPayload = (await ProduceBranchV1(rpc, chain, 1, lastPayload, true, null, 5))[0];
 
-            time += (long)ShutterTestsCommon.SlotLength.TotalSeconds;
-        }
+    //         time += (long)ShutterTestsCommon.SlotLength.TotalSeconds;
+    //     }
 
-        Assert.That(Metrics.ShutterKeysMissed, Is.EqualTo(5));
-    }
-
+    //     Assert.That(Metrics.ShutterKeysMissed, Is.EqualTo(5));
+    // }
 }

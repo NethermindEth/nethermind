@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using System.Diagnostics.CodeAnalysis;
 using System.Linq;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
@@ -12,7 +11,6 @@ using Nethermind.Merge.Plugin.Handlers;
 using Nethermind.Serialization.Rlp;
 using Nethermind.State.Proofs;
 using System.Text.Json.Serialization;
-using Microsoft.AspNetCore.Server.Kestrel.Transport.Quic;
 using Nethermind.Core.ExecutionRequest;
 
 namespace Nethermind.Merge.Plugin.Data;
@@ -106,6 +104,13 @@ public class ExecutionPayload : IForkValidator, IExecutionPayloadParams, IExecut
     [JsonIgnore]
     public Hash256? ParentBeaconBlockRoot { get; set; }
 
+    /// <summary>
+    /// Gets or sets <see cref="InclusionListTransactions"/> as defined in
+    /// <see href="https://eips.ethereum.org/EIPS/eip-7805">EIP-7805</see>.
+    /// </summary>
+    [JsonIgnore]
+    public virtual byte[][]? InclusionListTransactions { get; set; }
+
     public static ExecutionPayload Create(Block block) => Create<ExecutionPayload>(block);
 
     protected static TExecutionPayload Create<TExecutionPayload>(Block block) where TExecutionPayload : ExecutionPayload, new()
@@ -186,32 +191,18 @@ public class ExecutionPayload : IForkValidator, IExecutionPayloadParams, IExecut
     /// <returns>An RLP-decoded array of <see cref="Transaction"/>.</returns>
     public TransactionDecodingResult TryGetTransactions()
     {
-        if (_transactions is not null) return new TransactionDecodingResult(_transactions);
-
-        IRlpStreamDecoder<Transaction>? rlpDecoder = Rlp.GetStreamDecoder<Transaction>();
-        if (rlpDecoder is null) return new TransactionDecodingResult($"{nameof(Transaction)} decoder is not registered");
-
-        int i = 0;
-        try
+        if (_transactions is not null)
         {
-            byte[][] txData = Transactions;
-            Transaction[] transactions = new Transaction[txData.Length];
+            return new TransactionDecodingResult(_transactions);
+        }
 
-            for (i = 0; i < transactions.Length; i++)
-            {
-                transactions[i] = Rlp.Decode(txData[i].AsRlpStream(), rlpDecoder, RlpBehaviors.SkipTypedWrapping);
-            }
+        TransactionDecodingResult res = TxsDecoder.DecodeTxs(Transactions, false);
+        if (res.Error is null)
+        {
+            _transactions = res.Transactions;
+        }
 
-            return new TransactionDecodingResult(_transactions = transactions);
-        }
-        catch (RlpException e)
-        {
-            return new TransactionDecodingResult($"Transaction {i} is not valid: {e.Message}");
-        }
-        catch (ArgumentException)
-        {
-            return new TransactionDecodingResult($"Transaction {i} is not valid");
-        }
+        return res;
     }
 
     /// <summary>
@@ -262,23 +253,7 @@ public class ExecutionPayload : IForkValidator, IExecutionPayloadParams, IExecut
         !specProvider.GetSpec(BlockNumber, Timestamp).IsEip4844Enabled;
 }
 
-public struct TransactionDecodingResult
-{
-    public readonly string? Error;
-    public readonly Transaction[] Transactions = [];
-
-    public TransactionDecodingResult(Transaction[] transactions)
-    {
-        Transactions = transactions;
-    }
-
-    public TransactionDecodingResult(string error)
-    {
-        Error = error;
-    }
-}
-
-public struct BlockDecodingResult
+public readonly struct BlockDecodingResult
 {
     public readonly string? Error;
     public readonly Block? Block;

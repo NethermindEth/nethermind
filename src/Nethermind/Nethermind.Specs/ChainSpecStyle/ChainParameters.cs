@@ -142,8 +142,8 @@ public class ChainParameters
     public ulong? Eip7883TransitionTimestamp { get; set; }
     public ulong? Eip7825TransitionTimestamp { get; set; }
     public ulong? Eip7918TransitionTimestamp { get; set; }
+    public ulong? Eip7805TransitionTimestamp { get; set; }
     public ulong? Eip7907TransitionTimestamp { get; set; }
-
     public ulong? Eip7934TransitionTimestamp { get; set; }
     public int Eip7934MaxRlpBlockSize { get; set; }
 

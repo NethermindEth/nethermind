@@ -27,6 +27,7 @@ public class MainnetSpecProvider : ISpecProvider
     public const ulong ShanghaiBlockTimestamp = 0x64373057;
     public const ulong CancunBlockTimestamp = 0x65F1B057;
     public const ulong PragueBlockTimestamp = 0x681b3057;
+    public const ulong Fork7805BlockTimestamp = ulong.MaxValue - 2;
     public const ulong OsakaBlockTimestamp = ulong.MaxValue - 1;
 
     IReleaseSpec ISpecProvider.GetSpecInternal(ForkActivation forkActivation) =>
@@ -48,8 +49,8 @@ public class MainnetSpecProvider : ISpecProvider
             { Timestamp: null } or { Timestamp: < ShanghaiBlockTimestamp } => Paris.Instance,
             { Timestamp: < CancunBlockTimestamp } => Shanghai.Instance,
             { Timestamp: < PragueBlockTimestamp } => Cancun.Instance,
-            { Timestamp: < OsakaBlockTimestamp } => Prague.Instance,
-            _ => Osaka.Instance
+            { Timestamp: < Fork7805BlockTimestamp } => Prague.Instance,
+            _ => Fork7805.Instance
         };
 
     public void UpdateMergeTransitionInfo(long? blockNumber, UInt256? terminalTotalDifficulty = null)
@@ -72,7 +73,8 @@ public class MainnetSpecProvider : ISpecProvider
     public static ForkActivation ShanghaiActivation { get; } = (ParisBlockNumber + 1, ShanghaiBlockTimestamp);
     public static ForkActivation CancunActivation { get; } = (ParisBlockNumber + 2, CancunBlockTimestamp);
     public static ForkActivation PragueActivation { get; } = (ParisBlockNumber + 3, PragueBlockTimestamp);
-    public static ForkActivation OsakaActivation { get; } = (ParisBlockNumber + 4, OsakaBlockTimestamp);
+    public static ForkActivation Fork7805Activation { get; } = (ParisBlockNumber + 4, Fork7805BlockTimestamp);
+    public static ForkActivation OsakaActivation { get; } = (ParisBlockNumber + 5, OsakaBlockTimestamp);
     public ForkActivation[] TransitionActivations { get; } =
     {
         (ForkActivation)HomesteadBlockNumber,
@@ -90,7 +92,8 @@ public class MainnetSpecProvider : ISpecProvider
         ShanghaiActivation,
         CancunActivation,
         PragueActivation,
-        OsakaActivation,
+        Fork7805Activation,
+        OsakaActivation
     };
 
     public static MainnetSpecProvider Instance { get; } = new();

@@ -25,6 +25,7 @@ using Nethermind.Merge.Plugin.Handlers;
 using Nethermind.Consensus.Processing;
 using Nethermind.Facade.Eth.RpcTransaction;
 using Nethermind.Serialization.Rlp;
+using Nethermind.Core.Collections;
 
 namespace Nethermind.Taiko.Test;
 
@@ -78,6 +79,8 @@ public class TxPoolContentListsTests
             Substitute.For<IHandler<TransitionConfigurationV1, TransitionConfigurationV1>>(),
             Substitute.For<IHandler<IEnumerable<string>, IEnumerable<string>>>(),
             Substitute.For<IAsyncHandler<byte[][], IEnumerable<BlobAndProofV1?>>>(),
+            Substitute.For<IHandler<ArrayPoolList<byte[]>>>(),
+            Substitute.For<IHandler<(string, byte[][]), string?>>(),
             Substitute.For<IAsyncHandler<byte[][], IEnumerable<BlobAndProofV2>?>>(),
             Substitute.For<IEngineRequestsTracker>(),
             Substitute.For<ISpecProvider>(),

@@ -117,6 +117,7 @@ namespace Nethermind.Init.Steps
             BlockchainProcessor blockchainProcessor = new(
                 getApi.BlockTree!,
                 mainBranchProcessor,
+                mainBlockProcessor,
                 _api.BlockPreprocessor,
                 stateReader,
                 getApi.LogManager,

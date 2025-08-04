@@ -17,6 +17,8 @@ namespace Nethermind.Merge.Plugin.Data
 
         public static readonly PayloadStatusV1 Accepted = new() { Status = PayloadStatus.Accepted };
 
+        public static readonly PayloadStatusV1 InvalidInclusionList = new() { Status = PayloadStatus.InvalidInclusionList };
+
         public static PayloadStatusV1 Invalid(Hash256? latestValidHash, string? validationError = null) => new()
         {
             Status = PayloadStatus.Invalid,

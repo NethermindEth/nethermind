@@ -2,11 +2,9 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using System.Collections.Generic;
 using System.Numerics;
 using System.Runtime.CompilerServices;
 using System.Threading;
-using System.Threading.Tasks;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.BeaconBlockRoot;
 using Nethermind.Blockchain.Blocks;
@@ -17,8 +15,6 @@ using Nethermind.Consensus.Rewards;
 using Nethermind.Consensus.Validators;
 using Nethermind.Consensus.Withdrawals;
 using Nethermind.Core;
-using Nethermind.Core.Crypto;
-using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Threading;
 using Nethermind.Crypto;
@@ -30,8 +26,6 @@ using Nethermind.Logging;
 using Nethermind.Specs.Forks;
 using Nethermind.State;
 using static Nethermind.Consensus.Processing.IBlockProcessor;
-
-using Metrics = Nethermind.Blockchain.Metrics;
 
 namespace Nethermind.Consensus.Processing;
 
@@ -49,6 +43,8 @@ public partial class BlockProcessor(
     IExecutionRequestsProcessor executionRequestsProcessor)
     : IBlockProcessor
 {
+    private readonly IBlockTransactionsExecutor _blockTransactionsExecutor = blockTransactionsExecutor ?? throw new ArgumentNullException(nameof(blockTransactionsExecutor));
+    private readonly IInclusionListValidator _inclusionListValidator = new InclusionListValidator(specProvider, stateProvider);
     private readonly ILogger _logger = logManager.GetClassLogger();
     protected readonly WorldStateMetricsDecorator _stateProvider = new WorldStateMetricsDecorator(stateProvider);
     private readonly IReceiptsRootCalculator _receiptsRootCalculator = ReceiptsRootCalculator.Instance;
@@ -92,6 +88,17 @@ public partial class BlockProcessor(
         // Block is valid, copy the account changes as we use the suggested block not the processed one
         suggestedBlock.AccountChanges = block.AccountChanges;
         suggestedBlock.ExecutionRequests = block.ExecutionRequests;
+    }
+
+    public bool ValidateInclusionList(Block suggestedBlock, Block block, ProcessingOptions options)
+    {
+        if (options.ContainsFlag(ProcessingOptions.NoValidation))
+        {
+            return true;
+        }
+
+        block.InclusionListTransactions = suggestedBlock.InclusionListTransactions;
+        return _inclusionListValidator.ValidateInclusionList(block, _blockTransactionsExecutor.IsTransactionInBlock);
     }
 
     private bool ShouldComputeStateRoot(BlockHeader header) =>

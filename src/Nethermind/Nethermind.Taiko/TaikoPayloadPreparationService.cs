@@ -154,6 +154,15 @@ public class TaikoPayloadPreparationService(
         return ValueTask.FromResult<IBlockProductionContext?>(null);
     }
 
+    public void ForceRebuildPayload(string payloadId)
+    {
+        throw new NotImplementedException();
+    }
+
+    public BlockHeader? GetPayloadHeader(string payloadId)
+    {
+        throw new NotImplementedException();
+    }
     public void CancelBlockProduction(string payloadId)
     {
         _ = GetPayload(payloadId);

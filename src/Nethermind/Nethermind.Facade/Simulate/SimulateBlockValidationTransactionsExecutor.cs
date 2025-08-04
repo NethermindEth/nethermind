@@ -62,6 +62,11 @@ public class SimulateBlockValidationTransactionsExecutor(
         return result;
     }
 
+    public bool IsTransactionInBlock(Transaction tx)
+    {
+        throw new NotImplementedException();
+    }
+
     public event EventHandler<TxProcessedEventArgs>? TransactionProcessed
     {
         add => baseTransactionExecutor.TransactionProcessed += value;
