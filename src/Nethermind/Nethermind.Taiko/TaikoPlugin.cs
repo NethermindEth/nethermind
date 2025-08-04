@@ -67,9 +67,12 @@ public class TaikoPlugin(ChainSpec chainSpec) : IConsensusPlugin
 
     private void InitializeL1SloadIfEnabled()
     {
-        if (_api?.SpecProvider == null) return;
+        if (_api?.SpecProvider == null)
+        {
+            throw new InvalidOperationException("SpecProvider is not initialized");
+        }
 
-        var taikoSpec = (TaikoReleaseSpec)_api.SpecProvider.GenesisSpec;
+        var taikoSpec = (TaikoReleaseSpec)_api.SpecProvider.GetFinalSpec();
 
         if (!taikoSpec.IsRip7728Enabled)
             return;

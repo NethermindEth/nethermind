@@ -33,7 +33,7 @@ public class JsonRpcL1StorageProvider : IL1StorageProvider
     {
         try
         {
-            var response = _rpcClient.Post<string>("eth_getStorageAt", new object[]
+            string? response = _rpcClient.Post<string>("eth_getStorageAt", new object[]
             {
                 contractAddress.ToString(),
                 storageKey.ToHexString(true),
@@ -46,9 +46,7 @@ public class JsonRpcL1StorageProvider : IL1StorageProvider
                 return null;
             }
 
-            // Parse hex response
-            string hexValue = response.StartsWith("0x") ? response[2..] : response;
-            return UInt256.Parse(hexValue, NumberStyles.HexNumber);
+            return UInt256.Parse(response);
         }
         catch (Exception ex)
         {

@@ -52,28 +52,23 @@ public class L1SloadPrecompile : IPrecompile<L1SloadPrecompile>
 
     public (byte[], bool) Run(ReadOnlyMemory<byte> inputData, IReleaseSpec releaseSpec)
     {
-        if (!releaseSpec.IsRip7728Enabled)
-        {
-            return IPrecompile.Failure;
-        }
-
         if (inputData.Length != L1PrecompileConstants.ExpectedInputLength)
         {
             return IPrecompile.Failure;
         }
 
-        var contractAddress = new Address(inputData.Span[..L1PrecompileConstants.AddressBytes]);
-        var storageKey = new UInt256(inputData.Span[L1PrecompileConstants.AddressBytes..(L1PrecompileConstants.AddressBytes + L1PrecompileConstants.StorageKeyBytes)], isBigEndian: true);
-        var blockNumber = new UInt256(inputData.Span[(L1PrecompileConstants.AddressBytes + L1PrecompileConstants.StorageKeyBytes)..], isBigEndian: true);
+        Address contractAddress = new Address(inputData.Span[..L1PrecompileConstants.AddressBytes]);
+        UInt256 storageKey = new UInt256(inputData.Span[L1PrecompileConstants.AddressBytes..(L1PrecompileConstants.AddressBytes + L1PrecompileConstants.StorageKeyBytes)], isBigEndian: true);
+        UInt256 blockNumber = new UInt256(inputData.Span[(L1PrecompileConstants.AddressBytes + L1PrecompileConstants.StorageKeyBytes)..], isBigEndian: true);
 
-        var storageValue = GetL1StorageValue(contractAddress, storageKey, blockNumber);
+        UInt256? storageValue = GetL1StorageValue(contractAddress, storageKey, blockNumber);
         if (storageValue == null)
         {
             return IPrecompile.Failure; // L1 storage access failed
         }
 
         // Convert storage value to output bytes
-        var output = new byte[32];
+        byte[] output = new byte[32];
         storageValue.Value.ToBigEndian().CopyTo(output.AsSpan());
 
         return (output, true);
