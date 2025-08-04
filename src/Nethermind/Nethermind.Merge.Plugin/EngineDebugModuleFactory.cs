@@ -23,7 +23,7 @@ public class DebugModuleFactory(
     IBlockValidationModule[] validationBlockProcessingModules
 ) : IRpcModuleFactory<IDebugRpcModule>
 {
-    private ContainerBuilder ConfigureTracerContainer(ContainerBuilder builder) =>
+    private ContainerBuilder ConfigureProcessorContainer(ContainerBuilder builder) =>
         builder
             // Standard configuration
             // Note: Not overriding `IReceiptStorage` to null.
@@ -38,17 +38,15 @@ public class DebugModuleFactory(
     {
         IOverridableEnv env = envFactory.Create();
 
-        ILifetimeScope tracerLifecyccle = rootLifetimeScope.BeginLifetimeScope((builder) =>
-            ConfigureTracerContainer(builder)
+        ILifetimeScope processorLifecyccle = rootLifetimeScope.BeginLifetimeScope((builder) =>
+            ConfigureProcessorContainer(builder)
                 .AddModule(env));
 
-        // Pass only `IGethStyleTracer` into the debug rpc lifetime.
-        // This is to prevent leaking processor or world state accidentally.
-        // `GethStyleTracer` must be very careful to always dispose overridable env.
+        // Pass only `IBlockChainProcessor` into the debug rpc lifetime.
         ILifetimeScope debugRpcModuleLifetime = rootLifetimeScope.BeginLifetimeScope((builder) => builder
-            .AddScoped<IGethStyleTracer>(tracerLifecyccle.Resolve<IGethStyleTracer>()));
+            .AddScoped<IBlockchainProcessor>(processorLifecyccle.Resolve<IBlockchainProcessor>()));
 
-        debugRpcModuleLifetime.Disposer.AddInstanceForAsyncDisposal(tracerLifecyccle);
+        debugRpcModuleLifetime.Disposer.AddInstanceForAsyncDisposal(processorLifecyccle);
         rootLifetimeScope.Disposer.AddInstanceForAsyncDisposal(debugRpcModuleLifetime);
 
         return debugRpcModuleLifetime.Resolve<IDebugRpcModule>();

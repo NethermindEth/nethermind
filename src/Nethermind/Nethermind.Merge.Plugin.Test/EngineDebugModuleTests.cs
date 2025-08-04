@@ -77,7 +77,7 @@ public class EngineDebugModuleTests
     [Test]
     public async Task Generate_Payload_From_Block()
     {
-        ExecutionPayloadForDebugRpc value = new("engine_newPayloadV1", CreateExecutionPayload());
+        ExecutionPayloadForDebugRpc value = new("engine_newPayloadV1", new Params(CreateExecutionPayload()));
         Block block = new BlockBuilder()
             .WithHeader(
                 new BlockHeaderBuilder()

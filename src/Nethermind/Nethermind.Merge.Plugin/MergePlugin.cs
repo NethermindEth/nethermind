@@ -48,6 +48,7 @@ using System.Net.Http;
 using System.Threading.Tasks;
 using IDebugRpcModule = Nethermind.Merge.Plugin.IDebugRpcModule;
 using DebugRpcModule = Nethermind.Merge.Plugin.DebugRpcModule;
+using Nethermind.Consensus.Processing;
 
 namespace Nethermind.Merge.Plugin;
 
@@ -274,11 +275,8 @@ public class MergePluginModule : Module
             .AddDecorator<ISealer, MergeSealer>()
 
             .RegisterBoundedJsonRpcModule<IDebugRpcModule, DebugModuleFactory>(Environment.ProcessorCount, Int32.MaxValue)
-                .AddScoped<GethStyleTracer.BlockProcessingComponents>()
                 .AddScoped<IEngineDebugBridge, EngineDebugBridge>()
                 .AddScoped<IDebugRpcModule, DebugRpcModule>()
-                .AddScoped<IGethStyleTracer, GethStyleTracer>()
-                .AddScoped<IReceiptsMigration, ReceiptMigration>()
 
             .AddModule(new BaseMergePluginModule());
     }

@@ -5,10 +5,12 @@ using Nethermind.Blockchain;
 using Nethermind.Blockchain.Blocks;
 using Nethermind.Blockchain.Find;
 using Nethermind.Blockchain.Receipts;
+using Nethermind.Blockchain.Tracing;
 using Nethermind.Blockchain.Tracing.GethStyle;
 using Nethermind.Config;
 using Nethermind.Consensus;
 using Nethermind.Consensus.ExecutionRequests;
+using Nethermind.Consensus.Processing;
 using Nethermind.Consensus.Tracing;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
@@ -17,6 +19,7 @@ using Nethermind.Core.Specs;
 using Nethermind.Crypto;
 using Nethermind.Db;
 using Nethermind.Evm.State;
+using Nethermind.Evm.Tracing;
 using Nethermind.Facade.Eth.RpcTransaction;
 using Nethermind.JsonRpc;
 using Nethermind.JsonRpc.Data;
@@ -37,21 +40,18 @@ namespace Nethermind.Merge.Plugin
 {
     public class EngineDebugBridge : IEngineDebugBridge
     {
-        private IGethStyleTracer _tracer;
+        private IBlockchainProcessor _blockchainProcessor;
         private IBlockTree _blockTree;
         private ISpecProvider _specProvider;
-        private IJsonRpcConfig _jsonRpcConfig;
 
         public EngineDebugBridge(
-            IGethStyleTracer tracer,
+            IBlockchainProcessor blockchainProcessor,
             IBlockTree blockTree,
-            ISpecProvider specProvider,
-            IJsonRpcConfig jsonRpcConfig)
+            ISpecProvider specProvider)
         {
-            _tracer = tracer ?? throw new ArgumentNullException(nameof(tracer));
             _blockTree = blockTree ?? throw new ArgumentNullException(nameof(blockTree));
+            _blockchainProcessor = blockchainProcessor ?? throw new ArgumentNullException(nameof(blockchainProcessor));
             _specProvider = specProvider ?? throw new ArgumentNullException(nameof(specProvider));
-            _jsonRpcConfig = jsonRpcConfig ?? throw new ArgumentNullException(nameof(jsonRpcConfig));
         }
 
         public ExecutionPayloadForDebugRpc GenerateNewPayload(BlockParameter blockParameter)
@@ -68,10 +68,7 @@ namespace Nethermind.Merge.Plugin
 
         private bool GetExecutionRequestsFromReceiptsOfBlock(Block block)
         {
-            using CancellationTokenSource? timeout = _jsonRpcConfig.BuildTimeoutCancellationToken();
-            CancellationToken cancellationToken = timeout.Token;
-
-            ExecuteBlock(block, _tracer, cancellationToken);
+            ExecuteBlock(block);
             if (block.ExecutionRequests is not null && block.ExecutionRequests.Any())
             {
                 // If execution requests are already present, we don't need to process them again
@@ -81,9 +78,22 @@ namespace Nethermind.Merge.Plugin
             return true; // Execution requests were processed
         }
 
-        private void ExecuteBlock(Block block, IGethStyleTracer tracer, CancellationToken cancellationToken)
+        private void ExecuteBlock(Block block)
         {
-            _tracer.TraceBlock(block, GethTraceOptions.Default, cancellationToken);
+            ArgumentNullException.ThrowIfNull(block);
+
+            if (!block.IsGenesis)
+            {
+                BlockHeader? parent = _blockTree.FindParentHeader(block.Header, BlockTreeLookupOptions.None);
+                if (parent?.Hash is null)
+                {
+                    throw new InvalidOperationException("Cannot trace blocks with invalid parents");
+                }
+
+                if (!_blockTree.IsMainChain(parent.Hash)) throw new InvalidOperationException("Cannot trace orphaned blocks");
+            }
+
+            _blockchainProcessor.Process(block, ProcessingOptions.ReadOnlyChain, NullBlockTracer.Instance);
         }
 
         public ExecutionPayloadForDebugRpc GenerateNewPayloadWithTransactions(TransactionForRpc[] transactions)
@@ -114,16 +124,17 @@ namespace Nethermind.Merge.Plugin
                 }
             }
 
-            string engineEndpointVersion = executionPayload.GetExecutionPayloadVersion() switch
-            {
-                4 => "engine_newPayloadV4",
-                3 => "engine_newPayloadV3",
-                2 => "engine_newPayloadV2",
-                1 => "engine_newPayloadV1",
-                _ => throw new InvalidOperationException("Unsupported spec version")
-            };
+            string engineEndpointVersion = $"engine_newPayloadV{executionPayload.GetExecutionPayloadVersion()}";
 
-            return new ExecutionPayloadForDebugRpc(engineEndpointVersion, executionPayload);
+            byte[]?[]? blobVersionedHashes = executionPayload.TryGetTransactions().Transactions
+                .Where(t => t.BlobVersionedHashes is not null)
+                .SelectMany(t => t.BlobVersionedHashes!)
+                .ToArray();
+
+            Hash256? parentBeaconBlockRoot = block.ParentBeaconBlockRoot;
+            byte[][]? executionRequests = executionPayload.ExecutionRequests;
+
+            return new ExecutionPayloadForDebugRpc(engineEndpointVersion, new Params(executionPayload, blobVersionedHashes, parentBeaconBlockRoot, executionRequests));
         }
 
         public Hash256 CalculateBlockHash(ExecutionPayload executionPayload)
