@@ -20,6 +20,7 @@ using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
 using Nethermind.Db;
+using Nethermind.History;
 using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.State;
@@ -67,6 +68,7 @@ namespace Nethermind.Synchronization
             ISyncModeSelector syncModeSelector,
             ISyncConfig syncConfig,
             IGossipPolicy gossipPolicy,
+            IHistoryPruner historyPruner,
             ISpecProvider specProvider,
             ILogManager logManager)
         {
@@ -88,6 +90,7 @@ namespace Nethermind.Synchronization
             _blockTree.NewHeadBlock += OnNewHeadBlock;
             _blockTree.NewHeadBlock += OnNewRange;
             _pool.NotifyPeerBlock += OnNotifyPeerBlock;
+            historyPruner.NewOldestBlock += OnNewRange;
         }
 
         public ulong NetworkId => _blockTree.NetworkId;
@@ -425,12 +428,17 @@ namespace Nethermind.Synchronization
             }
         }
 
+        private void OnNewRange(object? sender, OnNewOldestBlockArgs onNewOldestBlockArgs)
+        {
+            if (_blockTree.Head is null)
+                return;
+
+            OnNewRange(onNewOldestBlockArgs.OldestBlockHeader, _blockTree.Head.Header);
+        }
+
         private void OnNewRange(object? sender, BlockEventArgs latestBlockEventArgs)
         {
             if (Genesis is null)
-                return;
-
-            if (_pool.PeerCount == 0)
                 return;
 
             Block latestBlock = latestBlockEventArgs.Block;
@@ -439,15 +447,21 @@ namespace Nethermind.Synchronization
             if (latestBlock.Number % BlockRangeUpdateFrequency != 0)
                 return;
 
+            OnNewRange(Genesis, latestBlock.Header);
+        }
+
+        private void OnNewRange(BlockHeader earliest, BlockHeader latest)
+        {
+            if (_pool.PeerCount == 0)
+                return;
+
             Task.Run(() =>
                 {
                     var counter = 0;
-                    (BlockHeader earliest, BlockHeader latest) = (Genesis, latestBlock.Header);
 
                     foreach (PeerInfo peerInfo in _pool.AllPeers)
                     {
-                        // TODO: use actual earliest available block - once history expiry is implemented
-                        NotifyOfNewRange(peerInfo, Genesis, latest);
+                        NotifyOfNewRange(peerInfo, earliest, latest);
                         counter++;
                     }
 

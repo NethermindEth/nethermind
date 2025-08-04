@@ -54,7 +54,7 @@ public class HistoryPruner : IHistoryPruner
     private ulong? _cutoffTimestamp;
     private bool _hasLoadedDeletePointer = false;
 
-    public event EventHandler<OnUpdateStoredBlockRangeArgs>? UpdateStoredBlockRange;
+    public event EventHandler<OnNewOldestBlockArgs>? NewOldestBlock;
 
     public class HistoryPrunerException(string message, Exception? innerException = null) : Exception(message, innerException);
 
@@ -467,15 +467,11 @@ public class HistoryPruner : IHistoryPruner
     {
         _deletePointer = newDeletePointer;
         Metrics.OldestStoredBlockNumber = _deletePointer;
-        _blockTree.UpdateOldestBlockStored(_deletePointer);
-        if (_blockTree.Head is not null)
+        _blockTree.NewOldestBlock(_deletePointer);
+        BlockHeader? oldest = _blockTree.FindBlock(_deletePointer)?.Header;
+        if (oldest is not null)
         {
-            BlockHeader? oldest = _blockTree.FindBlock(_deletePointer)?.Header;
-            if (oldest is not null)
-            {
-                BlockHeader newest = _blockTree.Head.Header;
-                UpdateStoredBlockRange?.Invoke(this, new OnUpdateStoredBlockRangeArgs(oldest, newest));
-            }
+            NewOldestBlock?.Invoke(this, new OnNewOldestBlockArgs(oldest));
         }
     }
 }

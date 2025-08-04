@@ -11,5 +11,5 @@ public interface IHistoryPruner
     public long? CutoffBlockNumber { get; }
     public long? OldestBlockNumber { get; }
 
-    event EventHandler<OnUpdateStoredBlockRangeArgs> UpdateStoredBlockRange;
+    event EventHandler<OnNewOldestBlockArgs> NewOldestBlock;
 }

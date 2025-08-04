@@ -87,7 +87,6 @@ public class Eth69ProtocolHandlerTests
             _pooledTxsRequestor,
             _gossipPolicy,
             new ForkInfo(_specProvider, _syncManager),
-            _historyPruner,
             LimboLogs.Instance,
             _txGossipPolicy);
         _handler.Init();

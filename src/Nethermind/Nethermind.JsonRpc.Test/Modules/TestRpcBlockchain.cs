@@ -238,7 +238,6 @@ namespace Nethermind.JsonRpc.Test.Modules
                 Container.Resolve<IForkInfo>(),
                 Substitute.For<IGossipPolicy>(),
                 WorldStateManager,
-                Substitute.For<IHistoryPruner>(),
                 LimboLogs.Instance,
                 Substitute.For<ITxGossipPolicy>()
             );
