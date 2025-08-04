@@ -67,10 +67,7 @@ public class TaikoPlugin(ChainSpec chainSpec) : IConsensusPlugin
 
     private void InitializeL1SloadIfEnabled()
     {
-        if (_api?.SpecProvider == null)
-        {
-            throw new InvalidOperationException("SpecProvider is not initialized");
-        }
+        ArgumentNullException.ThrowIfNull(_api?.SpecProvider);
 
         var taikoSpec = (TaikoReleaseSpec)_api.SpecProvider.GetFinalSpec();
 
@@ -80,7 +77,7 @@ public class TaikoPlugin(ChainSpec chainSpec) : IConsensusPlugin
         ISurgeConfig surgeConfig = _api.Context.Resolve<ISurgeConfig>();
 
         if (string.IsNullOrEmpty(surgeConfig.L1EthApiEndpoint))
-            throw new ArgumentException("L1EthApiEndpoint must be provided in the Surge configuration to use L1SLOAD precompile");
+            throw new ArgumentException($"{nameof(surgeConfig.L1EthApiEndpoint)} must be provided in the Surge configuration to use L1SLOAD precompile");
 
         var storageProvider = new JsonRpcL1StorageProvider(
             surgeConfig.L1EthApiEndpoint,
