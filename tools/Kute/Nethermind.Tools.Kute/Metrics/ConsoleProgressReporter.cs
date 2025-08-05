@@ -23,7 +23,7 @@ public sealed class ConsoleProgressReporter : IMetricsReporter
 
             if (_messageCount == 1)
             {
-                Console.Write($"Progress: 1");
+                Console.Error.Write($"Progress: 1");
             }
 
             var sb = new StringBuilder();
@@ -31,7 +31,7 @@ public sealed class ConsoleProgressReporter : IMetricsReporter
             sb.Append('\b', (_messageCount - 1).ToString().Length);
             sb.Append(_messageCount);
 
-            Console.Write(sb);
+            Console.Error.Write(sb);
             _messageCount++;
         }
         finally
@@ -42,7 +42,7 @@ public sealed class ConsoleProgressReporter : IMetricsReporter
 
     public Task Total(TimeSpan elapsed, CancellationToken token = default)
     {
-        Console.Write('\n');
+        Console.Error.Write('\n');
         return Task.CompletedTask;
     }
 }
