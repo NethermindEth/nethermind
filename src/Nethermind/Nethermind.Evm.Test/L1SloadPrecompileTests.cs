@@ -142,6 +142,21 @@ public class L1SloadPrecompileTests
         }
     }
 
+    [Test]
+    public void IsPrecompile_Active_With_Rip7728()
+    {
+        var enabledSpec = new ReleaseSpec { IsRip7728Enabled = true };
+        var disabledSpec = new ReleaseSpec { IsRip7728Enabled = false };
+
+        Address? precompileAddress = L1SloadPrecompile.Address;
+
+        Assert.That(precompileAddress.IsPrecompile(enabledSpec), Is.True,
+            "L1SloadPrecompile address should be identified as precompile when RIP-7728 is enabled");
+
+        Assert.That(precompileAddress.IsPrecompile(disabledSpec), Is.False,
+            "L1SloadPrecompile address should not be identified as precompile when RIP-7728 is disabled");
+    }
+
     private static byte[] CreateValidInput(Address contractAddress, UInt256 storageKey, UInt256 blockNumber)
     {
         var input = new byte[L1PrecompileConstants.AddressBytes + L1PrecompileConstants.StorageKeyBytes + L1PrecompileConstants.BlockNumberBytes];

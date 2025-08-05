@@ -16,9 +16,9 @@ public static class AddressExtensions
 
         return (data[4] & 0x000000ff) == 0
                && data[3] == 0 && data[2] == 0 && data[1] == 0 && data[0] == 0
-               && ((data[4] >>> 12) & 0xfff) switch
+               && ((data[4] >>> 8) & 0xffff) switch
                {
-                   0x000 => (data[4] >>> 24) switch
+                   0x0000 => (data[4] >>> 24) switch
                    {
                        0x01 => true,
                        0x02 => true,
@@ -39,14 +39,14 @@ public static class AddressExtensions
                        0x11 => releaseSpec.Bls381Enabled,
                        _ => false
                    },
-                   0x010 => (data[4] >>> 24) switch
-                   {
-                       0x00 => releaseSpec.IsEip7951Enabled || releaseSpec.IsRip7212Enabled,
-                       _ => false
-                   },
-                   0x100 => (data[4] >>> 24) switch // L2 precompiles, starts from 0x10001
+                   0x0001 => (data[4] >>> 24) switch // L2 precompiles, starts from 0x10001
                    {
                        0x01 => releaseSpec.IsRip7728Enabled,
+                       _ => false
+                   },
+                   0x0100 => (data[4] >>> 24) switch
+                   {
+                       0x00 => releaseSpec.IsEip7951Enabled || releaseSpec.IsRip7212Enabled,
                        _ => false
                    },
                    _ => false
