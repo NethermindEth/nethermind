@@ -358,7 +358,7 @@ public class HistoryPrunerTests
         using (Assert.EnterMultipleScope())
         {
             Assert.That(historyPruner.CutoffBlockNumber, Is.EqualTo(cutoff));
-            Assert.That(historyPruner.OldestBlockNumber, Is.EqualTo(oldest));
+            Assert.That(historyPruner.OldestBlockHeader.Number, Is.EqualTo(oldest));
         }
     }
 
