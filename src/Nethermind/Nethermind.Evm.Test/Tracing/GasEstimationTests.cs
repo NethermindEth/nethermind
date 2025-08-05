@@ -375,35 +375,6 @@ namespace Nethermind.Evm.Test.Tracing
             }
         }
 
-        private class TestEnvironment
-        {
-            public ISpecProvider _specProvider;
-            public IEthereumEcdsa _ethereumEcdsa;
-            public TransactionProcessor _transactionProcessor;
-            public IWorldState _stateProvider;
-            public EstimateGasTracer tracer;
-            public GasEstimator estimator;
-
-            public TestEnvironment()
-            {
-                _specProvider = MainnetSpecProvider.Instance;
-                IWorldStateManager worldStateManager = TestWorldStateFactory.CreateForTest();
-                _stateProvider = worldStateManager.GlobalWorldState;
-                _stateProvider.CreateAccount(TestItem.AddressA, 1.Ether());
-                _stateProvider.Commit(_specProvider.GenesisSpec);
-                _stateProvider.CommitTree(0);
-
-                EthereumCodeInfoRepository codeInfoRepository = new();
-                VirtualMachine virtualMachine = new(new TestBlockhashProvider(_specProvider), _specProvider, LimboLogs.Instance);
-                _transactionProcessor = new TransactionProcessor(_specProvider, _stateProvider, virtualMachine, codeInfoRepository, LimboLogs.Instance);
-                _ethereumEcdsa = new EthereumEcdsa(_specProvider.ChainId);
-
-                tracer = new();
-                BlocksConfig blocksConfig = new();
-                estimator = new(_transactionProcessor, _stateProvider, _specProvider, blocksConfig);
-            }
-        }
-
         [Test]
         public void Should_return_zero_when_out_of_gas_detected_during_estimation()
         {
@@ -462,6 +433,35 @@ namespace Nethermind.Evm.Test.Tracing
 
             estimate.Should().Be(0, "Should return 0 when StatusCode is Failure");
             testEnvironment.tracer.StatusCode.Should().Be(StatusCode.Failure);
+        }
+
+        private class TestEnvironment
+        {
+            public ISpecProvider _specProvider;
+            public IEthereumEcdsa _ethereumEcdsa;
+            public TransactionProcessor _transactionProcessor;
+            public IWorldState _stateProvider;
+            public EstimateGasTracer tracer;
+            public GasEstimator estimator;
+
+            public TestEnvironment()
+            {
+                _specProvider = MainnetSpecProvider.Instance;
+                IWorldStateManager worldStateManager = TestWorldStateFactory.CreateForTest();
+                _stateProvider = worldStateManager.GlobalWorldState;
+                _stateProvider.CreateAccount(TestItem.AddressA, 1.Ether());
+                _stateProvider.Commit(_specProvider.GenesisSpec);
+                _stateProvider.CommitTree(0);
+
+                EthereumCodeInfoRepository codeInfoRepository = new();
+                VirtualMachine virtualMachine = new(new TestBlockhashProvider(_specProvider), _specProvider, LimboLogs.Instance);
+                _transactionProcessor = new TransactionProcessor(_specProvider, _stateProvider, virtualMachine, codeInfoRepository, LimboLogs.Instance);
+                _ethereumEcdsa = new EthereumEcdsa(_specProvider.ChainId);
+
+                tracer = new();
+                BlocksConfig blocksConfig = new();
+                estimator = new(_transactionProcessor, _stateProvider, _specProvider, blocksConfig);
+            }
         }
     }
 }
