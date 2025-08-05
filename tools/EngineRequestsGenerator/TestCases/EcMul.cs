@@ -52,7 +52,7 @@ public static class EcMul
             case TestCase.EcMul32ByteCoordinates32ByteScalar:
                 x = "089142debb13c461f61523586a60732d8b69c5b38a3380a74da7b2961d867dbf".ToBytes();
                 y = "2d5fc7bbc013c16d7945f190b232eacc25da675c0eb093fe6b9f1b4b4e107b36".ToBytes();
-                scalar = "25f8c89ea3437f44f8fc8b6bfbb6312074dc6f983809a5e809ff4e1d076dd585".ToBytes();
+                scalar = "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff".ToBytes();
                 return PrepareCode(x, y, scalar);
             default:
                 throw new ArgumentOutOfRangeException(nameof(testCase), testCase, null);
@@ -88,8 +88,7 @@ public static class EcMul
         {
             codeToDeploy.Add((byte)Instruction.PUSH1);  // return size
             codeToDeploy.Add(0x40);
-            codeToDeploy.Add((byte)Instruction.PUSH1);  // return offset
-            codeToDeploy.Add(0x60);
+            codeToDeploy.Add((byte)Instruction.PUSH0);  // return offset
             codeToDeploy.Add((byte)Instruction.PUSH1);  // args size
             codeToDeploy.Add(0x60);
             codeToDeploy.Add((byte)Instruction.PUSH0);  // args offset
