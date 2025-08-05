@@ -21,9 +21,11 @@ public interface IForkInfo
     ForkActivationsSummary GetForkActivationsSummary(BlockHeader? head);
 }
 
+public readonly record struct Fork(ForkActivation Activation, ForkId Id);
+
 public readonly ref struct ForkActivationsSummary
 {
-    public (ForkActivation, ForkId) Current { get; init; }
-    public (ForkActivation, ForkId)? Next { get; init; }
-    public (ForkActivation, ForkId)? Last { get; init; }
+    public Fork Current { get; init; }
+    public Fork? Next { get; init; }
+    public Fork? Last { get; init; }
 }

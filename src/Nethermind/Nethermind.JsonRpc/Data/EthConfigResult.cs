@@ -4,7 +4,7 @@ using Nethermind.Core;
 
 namespace Nethermind.JsonRpc.Data;
 
-public class EthConfig
+public class ForkConfigSummary
 {
     public required ForkConfig Current { get; init; }
 
@@ -21,7 +21,7 @@ public class ForkConfig
     public int? ActivationBlock { get; init; }
     public required BlobScheduleSettingsForRpc? BlobSchedule { get; init; }
     public required ulong ChainId { get; init; }
-    public byte[]? ForkId { get; init; }
+    public required byte[] ForkId { get; init; }
     public required OrderedDictionary<string, Address> Precompiles { get; init; }
     public required OrderedDictionary<string, Address> SystemContracts { get; init; }
 }

@@ -782,14 +782,14 @@ public partial class EthRpcModule(
     {
         ForkActivationsSummary forks = forkInfo.GetForkActivationsSummary(_blockFinder.Head?.Header);
 
-        return ResultWrapper<JsonNode>.Success(JsonNode.Parse(JsonSerializer.Serialize((new EthConfig
+        return ResultWrapper<JsonNode>.Success(JsonNode.Parse(JsonSerializer.Serialize((new ForkConfigSummary
         {
             Current = GetForkConfig(forks.Current, _specProvider)!,
             Next = GetForkConfig(forks.Next, _specProvider),
             Last = GetForkConfig(forks.Last, _specProvider)
         }), UnchangedDictionaryKeyOptions)));
 
-        static ForkConfig? GetForkConfig((ForkActivation Activation, ForkId Id)? fork, ISpecProvider specProvider)
+        static ForkConfig? GetForkConfig(Fork? fork, ISpecProvider specProvider)
         {
             if (fork is null)
             {
