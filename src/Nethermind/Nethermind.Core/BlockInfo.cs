@@ -18,7 +18,7 @@ namespace Nethermind.Core
         BeaconMainChain = 16
     }
 
-    public class BlockInfo
+    public class BlockInfo : IEquatable<BlockInfo>
     {
         public BlockInfo(Hash256 blockHash, in UInt256 totalDifficulty, BlockMetadata metadata = BlockMetadata.None)
         {
@@ -84,5 +84,14 @@ namespace Nethermind.Core
             && BlockHash.Equals(other.BlockHash)
             && Metadata == other.Metadata
             && BlockNumber == other.BlockNumber;
+
+        public bool Equals(BlockInfo? other)
+        {
+            if (other is null) return false;
+            if (ReferenceEquals(this, other)) return true;
+
+            return EqualsIgnoringWasProcessed(other) &&
+                   WasProcessed == other.WasProcessed;
+        }
     }
 }

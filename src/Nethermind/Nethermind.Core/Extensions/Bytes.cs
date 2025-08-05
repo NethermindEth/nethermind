@@ -182,7 +182,7 @@ namespace Nethermind.Core.Extensions
             return bytes.IndexOfAnyExcept((byte)0) < 0;
         }
 
-        public static int LeadingZerosCount(this Span<byte> bytes, int startIndex = 0)
+        public static int LeadingZerosCount(this ReadOnlySpan<byte> bytes, int startIndex = 0)
         {
             int nonZeroIndex = bytes[startIndex..].IndexOfAnyExcept((byte)0);
             return nonZeroIndex < 0 ? bytes.Length - startIndex : nonZeroIndex;
@@ -614,34 +614,6 @@ namespace Nethermind.Core.Extensions
 
             public readonly byte[] Bytes;
             public readonly bool WithZeroX;
-        }
-
-        private readonly struct StateSmallMemory
-        {
-            public StateSmallMemory(Memory<byte> bytes, bool withZeroX)
-            {
-                Bytes = bytes;
-                WithZeroX = withZeroX;
-            }
-
-            public readonly Memory<byte> Bytes;
-            public readonly bool WithZeroX;
-        }
-
-        private struct StateOld
-        {
-            public StateOld(byte[] bytes, int leadingZeros, bool withZeroX, bool withEip55Checksum)
-            {
-                Bytes = bytes;
-                LeadingZeros = leadingZeros;
-                WithZeroX = withZeroX;
-                WithEip55Checksum = withEip55Checksum;
-            }
-
-            public int LeadingZeros;
-            public byte[] Bytes;
-            public bool WithZeroX;
-            public bool WithEip55Checksum;
         }
 
         private readonly struct State
@@ -1091,15 +1063,13 @@ namespace Nethermind.Core.Extensions
             }
         }
 
-        [DoesNotReturn]
-        [StackTraceHidden]
+        [DoesNotReturn, StackTraceHidden]
         private static void ThrowInvalidOperationException()
         {
             throw new InvalidOperationException();
         }
 
-        [DoesNotReturn]
-        [StackTraceHidden]
+        [DoesNotReturn, StackTraceHidden]
         private static void ThrowFormatException_IncorrectHexString()
         {
             throw new FormatException("Incorrect hex string");

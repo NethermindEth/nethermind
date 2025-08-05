@@ -1,8 +1,0 @@
-{
-  "profiles": {
-    "Test1": {
-      "commandName": "Project",
-      "commandLineArgs": "--trace -m -i statetest1.json"
-    }
-  }
-}

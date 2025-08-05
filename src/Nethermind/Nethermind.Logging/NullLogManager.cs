@@ -14,8 +14,6 @@ namespace Nethermind.Logging
 
         public static ILogManager Instance { get; } = new NullLogManager();
 
-        public ILogger GetClassLogger(Type type) => NullLogger.Instance;
-
         public ILogger GetClassLogger<T>() => NullLogger.Instance;
 
         public ILogger GetClassLogger([CallerFilePath] string filePath = "") => NullLogger.Instance;

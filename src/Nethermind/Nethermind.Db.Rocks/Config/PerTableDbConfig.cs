@@ -10,20 +10,18 @@ using Nethermind.Core.Extensions;
 
 namespace Nethermind.Db.Rocks.Config;
 
-public class PerTableDbConfig
+public class PerTableDbConfig : IRocksDbConfig
 {
     private readonly string _tableName;
     private readonly string? _columnName;
     private readonly IDbConfig _dbConfig;
-    private readonly DbSettings _settings;
     private readonly string[] _prefixes;
     private readonly string[] _reversedPrefixes;
 
-    public PerTableDbConfig(IDbConfig dbConfig, DbSettings dbSettings, string? columnName = null)
+    public PerTableDbConfig(IDbConfig dbConfig, string dbName, string? columnName = null)
     {
         _dbConfig = dbConfig;
-        _settings = dbSettings;
-        _tableName = _settings.DbName;
+        _tableName = dbName;
         _columnName = columnName;
         _prefixes = GetPrefixes();
         _reversedPrefixes = _prefixes.Reverse().ToArray();
@@ -104,7 +102,7 @@ public class PerTableDbConfig
                 string? valObj = (string?)propertyInfo.GetValue(dbConfig);
                 if (!string.IsNullOrEmpty(valObj))
                 {
-                    if (!valObj.EndsWith(";")) throw new InvalidConfigurationException($"Rocksdb config must end with `;`. Invalid property is {propertyName} in {prefixed}.", -1);
+                    if (!valObj.EndsWith(';')) throw new InvalidConfigurationException($"Rocksdb config must end with `;`. Invalid property is {propertyName} in {prefixed}.", -1);
                     val += valObj;
                 }
             }

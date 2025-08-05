@@ -22,18 +22,16 @@ namespace Nethermind.Api
 {
     public interface IBasicApi
     {
-        DisposableStack DisposeStack { get; }
+        IDisposableStack DisposeStack { get; }
 
-        IAbiEncoder AbiEncoder { get; }
         [SkipServiceCollection]
         ChainSpec ChainSpec { get; }
 
         [SkipServiceCollection]
         IConfigProvider ConfigProvider { get; }
         ICryptoRandom CryptoRandom { get; }
-        IDbProvider? DbProvider { get; set; }
-        IDbFactory? DbFactory { get; set; }
-        IEthereumEcdsa? EthereumEcdsa { get; set; }
+        IDbProvider DbProvider { get; }
+        IEthereumEcdsa EthereumEcdsa { get; }
         [SkipServiceCollection]
         IJsonSerializer EthereumJsonSerializer { get; }
         IFileSystem FileSystem { get; set; }

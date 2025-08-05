@@ -5,6 +5,7 @@ using System;
 using System.Threading;
 using Nethermind.Core;
 using Nethermind.Db;
+using Nethermind.Evm.State;
 using Nethermind.Logging;
 using Nethermind.State.Healing;
 using Nethermind.State.SnapServer;
@@ -16,7 +17,7 @@ namespace Nethermind.State;
 public class WorldStateManager : IWorldStateManager
 {
     private readonly IWorldState _worldState;
-    private readonly ITrieStore _trieStore;
+    private readonly IPruningTrieStore _trieStore;
     private readonly IReadOnlyTrieStore _readOnlyTrieStore;
     private readonly ILogManager _logManager;
     private readonly ReadOnlyDb _readaOnlyCodeCb;
@@ -26,7 +27,7 @@ public class WorldStateManager : IWorldStateManager
 
     public WorldStateManager(
         IWorldState worldState,
-        ITrieStore trieStore,
+        IPruningTrieStore trieStore,
         IDbProvider dbProvider,
         ILogManager logManager,
         ILastNStateRootTracker lastNStateRootTracker = null
@@ -43,14 +44,6 @@ public class WorldStateManager : IWorldStateManager
         GlobalStateReader = new StateReader(_readOnlyTrieStore, _readaOnlyCodeCb, _logManager);
         _blockingVerifyTrie = new BlockingVerifyTrie(trieStore, GlobalStateReader, _readaOnlyCodeCb!, logManager);
         _lastNStateRootTracker = lastNStateRootTracker;
-    }
-
-    public static WorldStateManager CreateForTest(IDbProvider dbProvider, ILogManager logManager)
-    {
-        ITrieStore trieStore = new TrieStore(dbProvider.StateDb, logManager);
-        IWorldState worldState = new WorldState(trieStore, dbProvider.CodeDb, logManager);
-
-        return new WorldStateManager(worldState, trieStore, dbProvider, logManager);
     }
 
     public IWorldState GlobalWorldState => _worldState;
@@ -100,14 +93,13 @@ public class WorldStateManager : IWorldStateManager
         return new OverridableWorldStateManager(_dbProvider, _readOnlyTrieStore, _logManager);
     }
 
-    public IWorldState CreateOverlayWorldState(IKeyValueStoreWithBatching overlayState, IKeyValueStoreWithBatching overlayCode)
-    {
-        OverlayTrieStore overlayTrieStore = new(overlayState, _readOnlyTrieStore, _logManager);
-        return new WorldState(overlayTrieStore, overlayCode, _logManager);
-    }
-
     public bool VerifyTrie(BlockHeader stateAtBlock, CancellationToken cancellationToken)
     {
         return _blockingVerifyTrie?.VerifyTrie(stateAtBlock, cancellationToken) ?? true;
+    }
+
+    public void FlushCache(CancellationToken cancellationToken)
+    {
+        _trieStore.PersistCache(cancellationToken);
     }
 }

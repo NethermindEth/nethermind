@@ -21,7 +21,7 @@ public static class Wait
     public static async Task<T> AnyWhere<T>(Func<T, bool> cond, params IEnumerable<Task<T>> tasks)
     {
         HashSet<Task<T>> taskSet = new HashSet<Task<T>>(tasks);
-        while (taskSet.Any())
+        while (taskSet.Count != 0)
         {
             Task<T> resolved = await Task.WhenAny<T>(taskSet);
             taskSet.Remove(resolved);
@@ -34,7 +34,7 @@ public static class Wait
                 return result;
             }
 
-            if (!taskSet.Any())
+            if (taskSet.Count == 0)
             {
                 // No more tasks, just return the last one.
                 return result;

@@ -34,6 +34,9 @@ public class OptimismReceiptForRpc : ReceiptForRpc
             L1BaseFeeScalar = l1GasInfo.L1BaseFeeScalar;
             L1BlobBaseFee = l1GasInfo.L1BlobBaseFee;
             L1BlobBaseFeeScalar = l1GasInfo.L1BlobBaseFeeScalar;
+
+            OperatorFeeScalar = l1GasInfo.OperatorFeeScalar;
+            OperatorFeeConstant = l1GasInfo.OperatorFeeConstant;
         }
     }
 
@@ -76,4 +79,11 @@ public class OptimismReceiptForRpc : ReceiptForRpc
 
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
     public UInt256? L1BlobBaseFeeScalar { get; set; }
+
+    // Isthmus fields
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public UInt256? OperatorFeeScalar { get; set; }
+
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public UInt256? OperatorFeeConstant { get; set; }
 }

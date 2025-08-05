@@ -2,8 +2,8 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using Nethermind.Specs;
-using Nethermind.Evm.Precompiles.Snarks;
 using NUnit.Framework;
+using Nethermind.Evm.Precompiles;
 
 namespace Nethermind.Evm.Test;
 
@@ -26,7 +26,7 @@ public class Eip1108Tests : VirtualMachineTestsBase
     {
         _blockNumberAdjustment = -1;
         byte[] code = Prepare.EvmCode
-            .CallWithInput(Bn254AddPrecompile.Address, 1000L, new byte[128])
+            .CallWithInput(BN254AddPrecompile.Address, 1000L, new byte[128])
             .Done;
         TestAllTracerWithOutput result = Execute(code);
         Assert.That(result.StatusCode, Is.EqualTo(StatusCode.Success));
@@ -37,7 +37,7 @@ public class Eip1108Tests : VirtualMachineTestsBase
     public void Test_add_after_istanbul()
     {
         byte[] code = Prepare.EvmCode
-            .CallWithInput(Bn254AddPrecompile.Address, 1000L, new byte[128])
+            .CallWithInput(BN254AddPrecompile.Address, 1000L, new byte[128])
             .Done;
         TestAllTracerWithOutput result = Execute(code);
         Assert.That(result.StatusCode, Is.EqualTo(StatusCode.Success));
@@ -49,7 +49,7 @@ public class Eip1108Tests : VirtualMachineTestsBase
     {
         _blockNumberAdjustment = -1;
         byte[] code = Prepare.EvmCode
-            .CallWithInput(Bn254MulPrecompile.Address, 50000L, new byte[128])
+            .CallWithInput(BN254MulPrecompile.Address, 50000L, new byte[128])
             .Done;
         TestAllTracerWithOutput result = Execute(code);
         Assert.That(result.StatusCode, Is.EqualTo(StatusCode.Success));
@@ -60,7 +60,7 @@ public class Eip1108Tests : VirtualMachineTestsBase
     public void Test_mul_after_istanbul()
     {
         byte[] code = Prepare.EvmCode
-            .CallWithInput(Bn254MulPrecompile.Address, 10000L, new byte[128])
+            .CallWithInput(BN254MulPrecompile.Address, 10000L, new byte[128])
             .Done;
         TestAllTracerWithOutput result = Execute(code);
         Assert.That(result.StatusCode, Is.EqualTo(StatusCode.Success));
@@ -72,7 +72,7 @@ public class Eip1108Tests : VirtualMachineTestsBase
     {
         _blockNumberAdjustment = -1;
         byte[] code = Prepare.EvmCode
-            .CallWithInput(Bn254PairingPrecompile.Address, 200000L, new byte[192])
+            .CallWithInput(BN254PairingPrecompile.Address, 200000L, new byte[192])
             .Done;
         TestAllTracerWithOutput result = Execute(BlockNumber, 1000000L, code);
         Assert.That(result.StatusCode, Is.EqualTo(StatusCode.Success));
@@ -83,7 +83,7 @@ public class Eip1108Tests : VirtualMachineTestsBase
     public void Test_pairing_after_istanbul()
     {
         byte[] code = Prepare.EvmCode
-            .CallWithInput(Bn254PairingPrecompile.Address, 200000L, new byte[192])
+            .CallWithInput(BN254PairingPrecompile.Address, 200000L, new byte[192])
             .Done;
         TestAllTracerWithOutput result = Execute(BlockNumber, 1000000L, code);
         Assert.That(result.StatusCode, Is.EqualTo(StatusCode.Success));

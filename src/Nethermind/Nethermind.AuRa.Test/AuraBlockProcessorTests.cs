@@ -8,7 +8,9 @@ using Nethermind.Blockchain;
 using Nethermind.Blockchain.BeaconBlockRoot;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Blockchain.Test.Validators;
+using Nethermind.Blockchain.Tracing;
 using Nethermind.Consensus.AuRa;
+using Nethermind.Consensus.ExecutionRequests;
 using Nethermind.Consensus.Processing;
 using Nethermind.Consensus.Rewards;
 using Nethermind.Consensus.Transactions;
@@ -16,8 +18,11 @@ using Nethermind.Consensus.Withdrawals;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
+using Nethermind.Core.Specs;
+using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Db;
+using Nethermind.Evm.State;
 using Nethermind.Evm.Tracing;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Int256;
@@ -37,12 +42,12 @@ namespace Nethermind.AuRa.Test
         [Test]
         public void Prepared_block_contains_author_field()
         {
-            AuRaBlockProcessor processor = CreateProcessor().Processor;
+            BranchProcessor processor = CreateProcessor().Processor;
 
             BlockHeader header = Build.A.BlockHeader.WithAuthor(TestItem.AddressD).TestObject;
             Block block = Build.A.Block.WithHeader(header).TestObject;
             Block[] processedBlocks = processor.Process(
-                Keccak.EmptyTreeHash,
+                null,
                 new List<Block> { block },
                 ProcessingOptions.None,
                 NullBlockTracer.Instance);
@@ -55,26 +60,26 @@ namespace Nethermind.AuRa.Test
         {
             ITxFilter txFilter = Substitute.For<ITxFilter>();
             txFilter
-                .IsAllowed(Arg.Any<Transaction>(), Arg.Any<BlockHeader>())
+                .IsAllowed(Arg.Any<Transaction>(), Arg.Any<BlockHeader>(), Arg.Any<IReleaseSpec>())
                 .Returns(AcceptTxResult.Accepted);
-            AuRaBlockProcessor processor = CreateProcessor(txFilter).Processor;
+            BranchProcessor processor = CreateProcessor(txFilter).Processor;
 
             BlockHeader header = Build.A.BlockHeader.WithAuthor(TestItem.AddressD).WithNumber(3).TestObject;
             Transaction tx = Nethermind.Core.Test.Builders.Build.A.Transaction.WithData(new byte[] { 0, 1 })
                 .SignedAndResolved().WithChainId(105).WithGasPrice(0).WithValue(0).TestObject;
             Block block = Build.A.Block.WithHeader(header).WithTransactions(new Transaction[] { tx }).TestObject;
             _ = processor.Process(
-                Keccak.EmptyTreeHash,
+                null,
                 new List<Block> { block },
                 ProcessingOptions.None,
                 NullBlockTracer.Instance);
-            txFilter.Received().IsAllowed(Arg.Any<Transaction>(), Arg.Any<BlockHeader>());
+            txFilter.Received().IsAllowed(Arg.Any<Transaction>(), Arg.Any<BlockHeader>(), Arg.Any<IReleaseSpec>());
         }
 
         [Test]
         public void For_normal_processing_it_should_not_fail_with_gas_remaining_rules()
         {
-            AuRaBlockProcessor processor = CreateProcessor().Processor;
+            BranchProcessor processor = CreateProcessor().Processor;
             int gasLimit = 10000000;
             BlockHeader header = Build.A.BlockHeader.WithAuthor(TestItem.AddressD).WithNumber(3).TestObject;
             Transaction tx = Nethermind.Core.Test.Builders.Build.A.Transaction.WithData(new byte[] { 0, 1 })
@@ -82,7 +87,7 @@ namespace Nethermind.AuRa.Test
             Block block = Build.A.Block.WithHeader(header).WithTransactions(new Transaction[] { tx })
                 .WithGasLimit(gasLimit).TestObject;
             Assert.DoesNotThrow(() => processor.Process(
-                Keccak.EmptyTreeHash,
+                null,
                 new List<Block> { block },
                 ProcessingOptions.None,
                 NullBlockTracer.Instance));
@@ -91,15 +96,15 @@ namespace Nethermind.AuRa.Test
         [Test]
         public void Should_rewrite_contracts()
         {
-            static void Process(AuRaBlockProcessor auRaBlockProcessor, int blockNumber, Hash256 stateRoot)
+            static BlockHeader Process(BranchProcessor auRaBlockProcessor, BlockHeader parent)
             {
-                BlockHeader header = Build.A.BlockHeader.WithAuthor(TestItem.AddressD).WithNumber(blockNumber).TestObject;
+                BlockHeader header = Build.A.BlockHeader.WithAuthor(TestItem.AddressD).WithParent(parent).TestObject;
                 Block block = Build.A.Block.WithHeader(header).TestObject;
-                auRaBlockProcessor.Process(
-                    stateRoot,
+                return auRaBlockProcessor.Process(
+                    parent,
                     new List<Block> { block },
                     ProcessingOptions.None,
-                    NullBlockTracer.Instance);
+                    NullBlockTracer.Instance)[0].Header;
             }
 
             Dictionary<long, IDictionary<Address, byte[]>> contractOverrides = new()
@@ -122,7 +127,7 @@ namespace Nethermind.AuRa.Test
                 },
             };
 
-            (AuRaBlockProcessor processor, IWorldState stateProvider) =
+            (BranchProcessor processor, IWorldState stateProvider) =
                 CreateProcessor(contractRewriter: new ContractRewriter(contractOverrides));
 
             stateProvider.CreateAccount(TestItem.AddressA, UInt256.One);
@@ -131,43 +136,49 @@ namespace Nethermind.AuRa.Test
             stateProvider.CommitTree(0);
             stateProvider.RecalculateStateRoot();
 
-            Process(processor, 1, stateProvider.StateRoot);
+            BlockHeader currentBlock = Build.A.BlockHeader.WithNumber(0).WithStateRoot(stateProvider.StateRoot).TestObject;
+            currentBlock = Process(processor, currentBlock);
             stateProvider.GetCode(TestItem.AddressA).Should().BeEquivalentTo(Array.Empty<byte>());
             stateProvider.GetCode(TestItem.AddressB).Should().BeEquivalentTo(Array.Empty<byte>());
 
-            Process(processor, 2, stateProvider.StateRoot);
+            currentBlock = Process(processor, currentBlock);
             stateProvider.GetCode(TestItem.AddressA).Should().BeEquivalentTo(Bytes.FromHexString("0x123"));
             stateProvider.GetCode(TestItem.AddressB).Should().BeEquivalentTo(Bytes.FromHexString("0x321"));
 
-            Process(processor, 3, stateProvider.StateRoot);
+            _ = Process(processor, currentBlock);
             stateProvider.GetCode(TestItem.AddressA).Should().BeEquivalentTo(Bytes.FromHexString("0x456"));
             stateProvider.GetCode(TestItem.AddressB).Should().BeEquivalentTo(Bytes.FromHexString("0x654"));
         }
 
-        private (AuRaBlockProcessor Processor, IWorldState StateProvider) CreateProcessor(ITxFilter? txFilter = null, ContractRewriter? contractRewriter = null)
+        private (BranchProcessor Processor, IWorldState StateProvider) CreateProcessor(ITxFilter? txFilter = null, ContractRewriter? contractRewriter = null)
         {
-            IDb stateDb = new MemDb();
-            IDb codeDb = new MemDb();
-            TrieStore trieStore = new(stateDb, LimboLogs.Instance);
-            IWorldState stateProvider = new WorldState(trieStore, codeDb, LimboLogs.Instance);
+            IWorldStateManager worldStateManager = TestWorldStateFactory.CreateForTest();
+            IWorldState stateProvider = worldStateManager.GlobalWorldState;
             ITransactionProcessor transactionProcessor = Substitute.For<ITransactionProcessor>();
             AuRaBlockProcessor processor = new AuRaBlockProcessor(
                 HoleskySpecProvider.Instance,
                 TestBlockValidator.AlwaysValid,
                 NoBlockRewards.Instance,
-                new BlockProcessor.BlockValidationTransactionsExecutor(transactionProcessor, stateProvider),
+                new BlockProcessor.BlockValidationTransactionsExecutor(new ExecuteTransactionProcessorAdapter(transactionProcessor), stateProvider),
                 stateProvider,
                 NullReceiptStorage.Instance,
                 new BeaconBlockRootHandler(transactionProcessor, stateProvider),
                 LimboLogs.Instance,
                 Substitute.For<IBlockTree>(),
                 new WithdrawalProcessor(stateProvider, LimboLogs.Instance),
-                transactionProcessor,
+                new ExecutionRequestsProcessor(transactionProcessor),
                 auRaValidator: null,
                 txFilter,
                 contractRewriter: contractRewriter);
 
-            return (processor, stateProvider);
+            BranchProcessor branchProcessor = new BranchProcessor(
+                processor,
+                HoleskySpecProvider.Instance,
+                stateProvider,
+                new BeaconBlockRootHandler(transactionProcessor, stateProvider),
+                LimboLogs.Instance);
+
+            return (branchProcessor, stateProvider);
         }
     }
 }

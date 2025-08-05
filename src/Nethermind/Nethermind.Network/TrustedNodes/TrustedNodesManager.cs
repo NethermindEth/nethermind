@@ -73,7 +73,7 @@ namespace Nethermind.Network
             {
                 _logger.Info($"Loaded {nodes.Count} trusted nodes from: {Path.GetFullPath(_trustedNodesPath)}");
             }
-            if (_logger.IsDebug && nodes.Any())
+            if (_logger.IsDebug && !nodes.IsEmpty)
             {
                 _logger.Debug("Trusted nodes:\n" + string.Join(Environment.NewLine, nodes.Values.Select(n => n.ToString())));
             }

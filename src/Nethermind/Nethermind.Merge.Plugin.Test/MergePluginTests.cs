@@ -9,10 +9,12 @@ using Nethermind.Api;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Config;
 using Nethermind.Consensus.Clique;
+using Nethermind.Consensus.Processing;
 using Nethermind.Consensus.Producers;
 using Nethermind.Core;
 using Nethermind.Core.Exceptions;
 using Nethermind.Db;
+using Nethermind.HealthChecks;
 using Nethermind.JsonRpc;
 using Nethermind.JsonRpc.Modules;
 using Nethermind.Logging;
@@ -62,25 +64,13 @@ public class MergePluginTests
                 [_consensusPlugin!, _plugin],
                 LimboLogs.Instance))
             .AddSingleton<IRpcModuleProvider>(Substitute.For<IRpcModuleProvider>())
+            .AddModule(new HealthCheckPluginModule()) // The merge RPC require it.
             .OnBuild((ctx) =>
             {
                 INethermindApi api = ctx.Resolve<INethermindApi>();
                 Build.MockOutNethermindApi((NethermindApi)api);
 
                 api.BlockProcessingQueue?.IsEmpty.Returns(true);
-                api.DbFactory = new MemDbFactory();
-                api.BlockProducerEnvFactory = new BlockProducerEnvFactory(
-                    api.WorldStateManager!,
-                    api.BlockTree!,
-                    api.SpecProvider!,
-                    api.BlockValidator!,
-                    api.RewardCalculatorSource!,
-                    api.ReceiptStorage!,
-                    api.BlockPreprocessor!,
-                    api.TxPool!,
-                    api.TransactionComparerProvider!,
-                    ctx.Resolve<IBlocksConfig>(),
-                    api.LogManager!);
             })
             .Build();
     }
@@ -113,8 +103,7 @@ public class MergePluginTests
         Assert.DoesNotThrowAsync(async () => await _consensusPlugin!.Init(api));
         Assert.DoesNotThrowAsync(async () => await _plugin.Init(api));
         Assert.DoesNotThrowAsync(async () => await _plugin.InitNetworkProtocol());
-        Assert.DoesNotThrow(() => _plugin.InitBlockProducer(_consensusPlugin!, null));
-        Assert.DoesNotThrowAsync(async () => await _plugin.InitRpcModules());
+        Assert.DoesNotThrow(() => _plugin.InitBlockProducer(_consensusPlugin!));
         Assert.DoesNotThrowAsync(async () => await _plugin.DisposeAsync());
     }
 
@@ -129,10 +118,8 @@ public class MergePluginTests
         ISyncConfig syncConfig = api.Config<ISyncConfig>();
         Assert.That(syncConfig.NetworkingEnabled, Is.True);
         Assert.That(api.GossipPolicy.CanGossipBlocks, Is.True);
-        _plugin.InitBlockProducer(_consensusPlugin!, null);
+        _plugin.InitBlockProducer(_consensusPlugin!);
         Assert.That(api.BlockProducer, Is.InstanceOf<MergeBlockProducer>());
-        await _plugin.InitRpcModules();
-        api.RpcModuleProvider!.Received().Register(Arg.Is<IRpcModulePool<IEngineRpcModule>>(m => m is SingletonModulePool<IEngineRpcModule>));
         await _plugin.DisposeAsync();
     }
 
@@ -194,7 +181,7 @@ public class MergePluginTests
 
     [TestCase(true, true, true)]
     [TestCase(true, false, false)]
-    [TestCase(false, true, true)]
+    [TestCase(false, true, false)]
     public async Task InitThrowExceptionIfBodiesAndReceiptIsDisabled(bool downloadBody, bool downloadReceipt, bool shouldPass)
     {
         ISyncConfig syncConfig = new SyncConfig()
@@ -214,11 +201,6 @@ public class MergePluginTests
         else
         {
             await invocation.Should().ThrowAsync<InvalidConfigurationException>();
-        }
-
-        if (!downloadBody && downloadReceipt)
-        {
-            syncConfig.DownloadBodiesInFastSync.Should().BeTrue(); // Modified by PruningTrieStateFactory
         }
     }
 }

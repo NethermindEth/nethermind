@@ -152,7 +152,7 @@ namespace Nethermind.Blockchain
 
         BlockInfo FindCanonicalBlockInfo(long blockNumber);
 
-        Hash256 FindHash(long blockNumber);
+        Hash256? FindHash(long blockNumber);
 
         IOwnedReadOnlyList<BlockHeader> FindHeaders(Hash256 hash, int numberOfBlocks, int skip, bool reverse);
 
@@ -195,5 +195,6 @@ namespace Nethermind.Blockchain
         /// Before sync pivot, there is no guarantee that blocks and receipts are available or continuous.
         /// </summary>
         (long BlockNumber, Hash256 BlockHash) SyncPivot { get; set; }
+        bool IsProcessingBlock { get; set; }
     }
 }

@@ -4,6 +4,7 @@
 using System;
 using System.Threading;
 using Nethermind.Core;
+using Nethermind.Evm.State;
 using Nethermind.State.Healing;
 using Nethermind.State.SnapServer;
 using Nethermind.Trie.Pruning;
@@ -32,9 +33,7 @@ public interface IWorldStateManager
 
     event EventHandler<ReorgBoundaryReached>? ReorgBoundaryReached;
 
-    // TODO: These two method can be combined
     IOverridableWorldScope CreateOverridableWorldScope();
-    IWorldState CreateOverlayWorldState(IKeyValueStoreWithBatching overlayState, IKeyValueStoreWithBatching overlayCode);
 
     void InitializeNetwork(IPathRecovery pathRecovery);
 
@@ -46,15 +45,16 @@ public interface IWorldStateManager
     /// <param name="cancellationToken"></param>
     /// <returns></returns>
     bool VerifyTrie(BlockHeader stateAtBlock, CancellationToken cancellationToken);
+
+    /// <summary>
+    /// Persist and clear cache. Used by some tests.
+    /// </summary>
+    void FlushCache(CancellationToken cancellationToken);
 }
 
 public interface IOverridableWorldScope
 {
-    IOverridableWorldState WorldState { get; }
+    IDisposable BeginScope(BlockHeader? header);
+    IWorldState WorldState { get; }
     IStateReader GlobalStateReader { get; }
-}
-
-public interface IOverridableWorldState : IWorldState
-{
-    void ResetOverrides();
 }

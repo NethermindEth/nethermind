@@ -2,12 +2,12 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Buffers.Binary;
-using System.IO.MemoryMappedFiles;
 using Autofac;
 using FluentAssertions;
 using Microsoft.Win32.SafeHandles;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Synchronization;
+using Nethermind.Blockchain.Tracing;
 using Nethermind.Consensus.Processing;
 using Nethermind.Consensus.Validators;
 using Nethermind.Core;
@@ -16,12 +16,10 @@ using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Blockchain;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Core.Test.IO;
-using Nethermind.Evm.Tracing;
 using Nethermind.Int256;
 using Nethermind.Specs.ChainSpecStyle;
-using Nethermind.State;
+using Nethermind.Evm.State;
 using NSubstitute;
-using NUnit.Framework.Constraints;
 
 namespace Nethermind.Era1.Test;
 public class Era1ModuleTests
@@ -153,7 +151,7 @@ public class Era1ModuleTests
                                     .WithParent(blocks[i]).TestObject);
         }
 
-        blocks = testBlockchain.BlockProcessor.Process(genesis.StateRoot!, blocks, ProcessingOptions.NoValidation | ProcessingOptions.StoreReceipts, new BlockReceiptsTracer()).ToList();
+        blocks = testBlockchain.BranchProcessor.Process(genesis.Header!, blocks, ProcessingOptions.NoValidation | ProcessingOptions.StoreReceipts, new BlockReceiptsTracer()).ToList();
         using EraWriter builder = new EraWriter(tmpFile.Path, testBlockchain.SpecProvider);
 
         foreach (var block in blocks)
@@ -175,7 +173,7 @@ public class Era1ModuleTests
         BasicTestBlockchain testBlockchain = await BasicTestBlockchain.Create();
         using var tmpFile = TempPath.GetTempFile();
         List<(Block, TxReceipt[])> toAddBlocks = new List<(Block, TxReceipt[])>();
-        testBlockchain.BlockProcessor.BlockProcessed += (sender, blockArgs) =>
+        testBlockchain.BranchProcessor.BlockProcessed += (sender, blockArgs) =>
         {
             toAddBlocks.Add((blockArgs.Block, blockArgs.TxReceipts));
         };
@@ -248,7 +246,7 @@ public class Era1ModuleTests
                                     .WithGasLimit(30_000_000).TestObject);
         }
 
-        testBlockchain.BlockProcessor.Process(genesis.StateRoot!, blocks, ProcessingOptions.NoValidation, new BlockReceiptsTracer());
+        testBlockchain.BranchProcessor.Process(genesis.Header!, blocks, ProcessingOptions.NoValidation, new BlockReceiptsTracer());
 
         foreach (var block in blocks)
         {

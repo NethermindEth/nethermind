@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
@@ -34,7 +34,7 @@ namespace Nethermind.Logging
                     {
                         foreach (string logEntry in _queuedEntries.GetConsumingEnumerable())
                         {
-                            Console.WriteLine(logEntry);
+                            Console.Error.WriteLine(logEntry);
 
                             if (_queuedEntries.IsAddingCompleted)
                             {
@@ -44,7 +44,7 @@ namespace Nethermind.Logging
                     }
                     catch (Exception e)
                     {
-                        Console.WriteLine(e);
+                        Console.Error.WriteLine(e);
                         throw;
                     }
                 },

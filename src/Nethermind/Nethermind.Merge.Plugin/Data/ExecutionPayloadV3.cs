@@ -1,7 +1,6 @@
-// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System.Diagnostics.CodeAnalysis;
 using System.Text.Json.Serialization;
 using Nethermind.Core;
 using Nethermind.Core.ExecutionRequest;
@@ -42,8 +41,8 @@ public class ExecutionPayloadV3 : ExecutionPayload, IExecutionPayloadFactory<Exe
         return baseResult;
     }
 
-    public override bool ValidateFork(ISpecProvider specProvider) =>
-        specProvider.GetSpec(BlockNumber, Timestamp).IsEip4844Enabled;
+    public override bool ValidateFork(ISpecProvider specProvider)
+         => specProvider.GetSpec(BlockNumber, Timestamp).IsEip4844Enabled;
 
     /// <summary>
     /// Gets or sets <see cref="Block.BlobGasUsed"/> as defined in

@@ -17,11 +17,12 @@ using Nethermind.Consensus.Processing;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
 using Nethermind.Crypto;
+using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Facade.Find;
 using Nethermind.KeyStore.Config;
 using Nethermind.Logging;
 using Nethermind.Shutter.Config;
-using Nethermind.State;
+using Nethermind.Evm.State;
 
 namespace Nethermind.Shutter;
 
@@ -42,7 +43,7 @@ public class ShutterApi : IShutterApi
     protected readonly TimeSpan _blockUpToDateCutoff;
     protected readonly IReadOnlyBlockTree _readOnlyBlockTree;
     protected readonly IBlockTree _blockTree;
-    private readonly ReadOnlyTxProcessingEnvFactory _txProcessingEnvFactory;
+    private readonly IShareableTxProcessorSource _txProcessorSource;
     private readonly IAbiEncoder _abiEncoder;
     private readonly ILogManager _logManager;
     private readonly IFileSystem _fileSystem;
@@ -59,7 +60,7 @@ public class ShutterApi : IShutterApi
         ILogManager logManager,
         ISpecProvider specProvider,
         ITimestamper timestamper,
-        IWorldStateManager worldStateManager,
+        IShareableTxProcessorSource txProcessorSource,
         IFileSystem fileSystem,
         IKeyStoreConfig keyStoreConfig,
         IShutterConfig cfg,
@@ -79,7 +80,7 @@ public class ShutterApi : IShutterApi
         _blockUpToDateCutoff = TimeSpan.FromMilliseconds(cfg.BlockUpToDateCutoff);
         _blockWaitCutoff = _slotLength / 3;
 
-        _txProcessingEnvFactory = new(worldStateManager, blockTree, specProvider, logManager);
+        _txProcessorSource = txProcessorSource;
 
         Time = InitTime(specProvider, timestamper);
         TxLoader = new(logFinder, _cfg, Time, specProvider, ecdsa, abiEncoder, logManager);
@@ -87,7 +88,7 @@ public class ShutterApi : IShutterApi
         BlockHandler = new ShutterBlockHandler(
             specProvider.ChainId,
             _cfg,
-            _txProcessingEnvFactory,
+            _txProcessorSource,
             blockTree,
             abiEncoder,
             receiptFinder,
@@ -106,8 +107,8 @@ public class ShutterApi : IShutterApi
         InitP2P(ip);
     }
 
-    public Task StartP2P(IEnumerable<Multiaddress> bootnodeP2PAddresses, CancellationTokenSource? cancellationTokenSource = null)
-        => P2P!.Start(bootnodeP2PAddresses, OnKeysReceived, cancellationTokenSource);
+    public Task StartP2P(IEnumerable<Multiaddress> bootnodeP2PAddresses, CancellationToken cancellationToken)
+        => P2P!.Start(bootnodeP2PAddresses, OnKeysReceived, cancellationToken);
 
     public ShutterBlockImprovementContextFactory GetBlockImprovementContextFactory(IBlockProducer blockProducer)
     {
@@ -155,7 +156,7 @@ public class ShutterApi : IShutterApi
     }
 
     protected virtual IShutterEon InitEon()
-        => new ShutterEon(_readOnlyBlockTree, _txProcessingEnvFactory, _abiEncoder, _cfg, _logManager);
+        => new ShutterEon(_readOnlyBlockTree, _txProcessorSource, _abiEncoder, _cfg, _logManager);
 
     protected virtual SlotTime InitTime(ISpecProvider specProvider, ITimestamper timestamper)
         => new(specProvider.BeaconChainGenesisTimestamp!.Value * 1000, timestamper, _slotLength, _blockUpToDateCutoff);

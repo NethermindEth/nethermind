@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Runtime.CompilerServices;
@@ -46,17 +46,17 @@ namespace Nethermind.TxPool
         {
             if (eip1559Enabled && tx.Supports1559)
             {
-                if (balance > tx.Value && tx.GasLimit > 0)
+                if (balance > tx.ValueRef && tx.GasLimit > 0)
                 {
                     UInt256 effectiveGasPrice = tx.CalculateEffectiveGasPrice(eip1559Enabled, baseFee);
                     effectiveGasPrice.Multiply((UInt256)tx.GasLimit, out UInt256 gasCost);
 
-                    if (balance >= tx.Value + gasCost)
+                    if (balance >= tx.ValueRef + gasCost)
                     {
                         return effectiveGasPrice;
                     }
 
-                    UInt256 balanceAvailableForFeePayment = balance - tx.Value;
+                    UInt256 balanceAvailableForFeePayment = balance - tx.ValueRef;
                     balanceAvailableForFeePayment.Divide((UInt256)tx.GasLimit, out UInt256 payablePricePerGasUnit);
                     return payablePricePerGasUnit;
                 }
@@ -64,7 +64,7 @@ namespace Nethermind.TxPool
                 return 0;
             }
 
-            return balance <= tx.Value ? default : tx.GasPrice;
+            return balance <= tx.ValueRef ? default : tx.GasPrice;
         }
 
         internal static bool CheckForNotEnoughBalance(this Transaction tx, UInt256 currentCost, UInt256 balance, out UInt256 cumulativeCost)
@@ -76,7 +76,7 @@ namespace Nethermind.TxPool
 
             overflow |= UInt256.MultiplyOverflow(tx.MaxFeePerGas, (UInt256)tx.GasLimit, out UInt256 maxTxCost);
             overflow |= UInt256.AddOverflow(currentCost, maxTxCost, out cumulativeCost);
-            overflow |= UInt256.AddOverflow(cumulativeCost, tx.Value, out cumulativeCost);
+            overflow |= UInt256.AddOverflow(in cumulativeCost, in tx.ValueRef, out cumulativeCost);
 
             if (tx.SupportsBlobs)
             {
@@ -93,5 +93,12 @@ namespace Nethermind.TxPool
             => IsOverflowWhenAddingTxCostToCumulative(tx, UInt256.Zero, out txCost);
 
         public static bool IsInMempoolForm(this Transaction tx) => tx.NetworkWrapper is not null;
+
+        public static ProofVersion GetProofVersion(this Transaction mempoolTx) => mempoolTx switch
+        {
+            LightTransaction lt => lt.ProofVersion,
+            { NetworkWrapper: ShardBlobNetworkWrapper { Version: ProofVersion v } } => v,
+            _ => ProofVersion.V0,
+        };
     }
 }

@@ -3,6 +3,7 @@
 
 using System;
 using System.Text.Json;
+using System.Threading;
 using System.Threading.Tasks;
 using Autofac;
 using FluentAssertions;
@@ -15,10 +16,11 @@ using Nethermind.Core.Test.Blockchain;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Evm;
 using Nethermind.Facade.Eth.RpcTransaction;
+using Nethermind.Init;
 using Nethermind.Specs;
 using Nethermind.Specs.Forks;
 using Nethermind.Specs.Test;
-using Nethermind.State;
+using Nethermind.Evm.State;
 using Nethermind.Trie.Pruning;
 using Newtonsoft.Json.Linq;
 using NUnit.Framework;
@@ -192,15 +194,15 @@ public partial class EthRpcModuleTests
     [Test]
     public async Task Eth_call_missing_state_after_fast_sync()
     {
-        using Context ctx = await Context.Create(configurer: builder => builder.ConfigureTrieStoreExposedWorldStateManager());
+        using Context ctx = await Context.Create();
         LegacyTransactionForRpc transaction = new(new Transaction(), 1, Keccak.Zero, 1L)
         {
             From = TestItem.AddressA,
             To = TestItem.AddressB
         };
 
+        ctx.Test.Container.Resolve<MainPruningTrieStoreFactory>().PruningTrieStore.PersistCache(CancellationToken.None);
         ctx.Test.StateDb.Clear();
-        ctx.Test.Container.Resolve<TrieStore>().ClearCache();
 
         string serialized =
             await ctx.Test.TestEthRpc("eth_call", transaction, "latest");
@@ -408,6 +410,27 @@ public partial class EthRpcModuleTests
         using Context ctx = await Context.Create();
         ctx.Test.RpcConfig.GasCap = 50000000;
         await TestEthCallOutOfGas(ctx, 300000000, 50000000);
+    }
+
+    [Test]
+    public async Task Eth_call_ignores_invalid_nonce()
+    {
+        using Context ctx = await Context.Create();
+        byte[] code = Prepare.EvmCode
+         .Op(Instruction.STOP)
+         .Done;
+        TransactionForRpc transaction = new EIP1559TransactionForRpc(Build.A.Transaction
+            .WithNonce(123)
+            .WithGasLimit(100000)
+            .WithData(code)
+            .SignedAndResolved(TestItem.PrivateKeyA)
+            .TestObject);
+
+        string serialized = await ctx.Test.TestEthRpc("eth_call", transaction);
+
+        Assert.That(
+            serialized, Is.EqualTo("{\"jsonrpc\":\"2.0\",\"result\":\"0x\",\"id\":67}"));
+
     }
 
     private static async Task TestEthCallOutOfGas(Context ctx, long? specifiedGasLimit, long expectedGasLimit)

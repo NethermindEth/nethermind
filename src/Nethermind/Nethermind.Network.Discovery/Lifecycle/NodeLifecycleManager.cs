@@ -114,8 +114,12 @@ public class NodeLifecycleManager : INodeLifecycleManager
     {
         if (IsBonded)
         {
-            Rlp requestRlp = Rlp.Encode(Rlp.Encode(enrRequestMessage.ExpirationTime));
-            EnrResponseMsg msg = new(ManagedNode.Address, _nodeRecord, Keccak.Compute(requestRlp.Bytes));
+            if (enrRequestMessage.Hash is null)
+            {
+                throw new ArgumentNullException(nameof(enrRequestMessage.Hash));
+            }
+
+            EnrResponseMsg msg = new(ManagedNode.Address, _nodeRecord, new Hash256(enrRequestMessage.Hash.Value.Span));
             _discoveryManager.SendMessage(msg);
             NodeStats.AddNodeStatsEvent(NodeStatsEventType.DiscoveryEnrRequestIn);
             NodeStats.AddNodeStatsEvent(NodeStatsEventType.DiscoveryEnrResponseOut);
@@ -170,7 +174,7 @@ public class NodeLifecycleManager : INodeLifecycleManager
             return;
         }
 
-        if (_lastNeighbourSize + msg.Nodes.Length == 16)
+        if (_lastNeighbourSize + msg.Nodes.Count == 16)
         {
             // Turns out, other client will split the neighbour msg to two msg, whose size sum up to 16.
             // Happens about 70% of the time.
@@ -181,7 +185,7 @@ public class NodeLifecycleManager : INodeLifecycleManager
             ProcessNodes(msg);
         }
 
-        _lastNeighbourSize = msg.Nodes.Length;
+        _lastNeighbourSize = msg.Nodes.Count;
         _isNeighborsExpected = false;
     }
 
@@ -263,11 +267,11 @@ public class NodeLifecycleManager : INodeLifecycleManager
 
     private DateTime _lastPingSent = DateTime.MinValue;
 
-    public async Task SendPingAsync()
+    public Task SendPingAsync()
     {
         _lastPingSent = DateTime.UtcNow;
         _sentPing = true;
-        await CreateAndSendPingAsync(_discoveryConfig.PingRetryCount);
+        return CreateAndSendPingAsync(_discoveryConfig.PingRetryCount);
     }
 
     private long CalculateExpirationTime()
@@ -326,9 +330,7 @@ public class NodeLifecycleManager : INodeLifecycleManager
         if (newState == NodeLifecycleState.New)
         {
             //if node is just discovered we send ping to confirm it is active
-#pragma warning disable 4014
-            SendPingAsync();
-#pragma warning restore 4014
+            _ = SendPingAsync();
         }
         else if (newState == NodeLifecycleState.Active)
         {
@@ -356,9 +358,7 @@ public class NodeLifecycleManager : INodeLifecycleManager
 
             if (DateTime.UtcNow - _lastPingSent > TimeSpan.FromSeconds(5))
             {
-#pragma warning disable 4014
-                SendPingAsync();
-#pragma warning restore 4014
+                _ = SendPingAsync();
             }
             else
             {

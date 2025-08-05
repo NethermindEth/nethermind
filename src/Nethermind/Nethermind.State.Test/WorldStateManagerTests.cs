@@ -8,10 +8,12 @@ using Nethermind.Config;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Test.Builders;
+using Nethermind.Core.Test.Db;
 using Nethermind.Core.Test.Modules;
 using Nethermind.Db;
 using Nethermind.Logging;
 using Nethermind.Specs.Forks;
+using Nethermind.Evm.State;
 using Nethermind.State;
 using Nethermind.Trie.Pruning;
 using NSubstitute;
@@ -25,7 +27,7 @@ public class WorldStateManagerTests
     public void ShouldProxyGlobalWorldState()
     {
         IWorldState worldState = Substitute.For<IWorldState>();
-        ITrieStore trieStore = Substitute.For<ITrieStore>();
+        IPruningTrieStore trieStore = Substitute.For<IPruningTrieStore>();
         IDbProvider dbProvider = TestMemDbProvider.Init();
         WorldStateManager worldStateManager = new WorldStateManager(worldState, trieStore, dbProvider, LimboLogs.Instance);
 
@@ -36,7 +38,7 @@ public class WorldStateManagerTests
     public void ShouldProxyReorgBoundaryEvent()
     {
         IWorldState worldState = Substitute.For<IWorldState>();
-        ITrieStore trieStore = Substitute.For<ITrieStore>();
+        IPruningTrieStore trieStore = Substitute.For<IPruningTrieStore>();
         IDbProvider dbProvider = TestMemDbProvider.Init();
         WorldStateManager worldStateManager = new WorldStateManager(worldState, trieStore, dbProvider, LimboLogs.Instance);
 
@@ -52,7 +54,7 @@ public class WorldStateManagerTests
     public void ShouldNotSupportHashLookupOnHalfpath(INodeStorage.KeyScheme keyScheme, bool hashSupported)
     {
         IWorldState worldState = Substitute.For<IWorldState>();
-        ITrieStore trieStore = Substitute.For<ITrieStore>();
+        IPruningTrieStore trieStore = Substitute.For<IPruningTrieStore>();
         IReadOnlyTrieStore readOnlyTrieStore = Substitute.For<IReadOnlyTrieStore>();
         trieStore.AsReadOnly().Returns(readOnlyTrieStore);
         trieStore.Scheme.Returns(keyScheme);
@@ -86,7 +88,7 @@ public class WorldStateManagerTests
 
             IWorldState worldState = ctx.Resolve<IWorldStateManager>().GlobalWorldState;
 
-            worldState.StateRoot = Keccak.EmptyTreeHash;
+            worldState.SetBaseBlock(null);
 
             worldState.CreateAccount(TestItem.AddressA, 1, 2);
             worldState.Commit(Cancun.Instance);
@@ -100,6 +102,6 @@ public class WorldStateManagerTests
             }
         }
 
-        blockTree.Received().BestPersistedState = lastBlock - reorgDepth - 1;
+        blockTree.Received().BestPersistedState = lastBlock - reorgDepth;
     }
 }

@@ -10,10 +10,12 @@ public class OptimismSpecHelper(OptimismChainSpecEngineParameters parameters) : 
     private readonly long? _bedrockBlockNumber = parameters.BedrockBlockNumber;
     private readonly ulong? _regolithTimestamp = parameters.RegolithTimestamp;
     private readonly ulong? _canyonTimestamp = parameters.CanyonTimestamp;
+    private readonly ulong? _deltaTimestamp = parameters.DeltaTimestamp;
     private readonly ulong? _ecotoneTimestamp = parameters.EcotoneTimestamp;
     private readonly ulong? _fjordTimestamp = parameters.FjordTimestamp;
     private readonly ulong? _graniteTimestamp = parameters.GraniteTimestamp;
     private readonly ulong? _holoceneTimestamp = parameters.HoloceneTimestamp;
+    private readonly ulong? _isthmusTimestamp = parameters.IsthmusTimestamp;
 
     public Address? L1FeeReceiver { get; init; } = parameters.L1FeeRecipient;
 
@@ -30,6 +32,11 @@ public class OptimismSpecHelper(OptimismChainSpecEngineParameters parameters) : 
     public bool IsCanyon(BlockHeader header)
     {
         return header.Timestamp >= _canyonTimestamp;
+    }
+
+    public bool IsDelta(BlockHeader header)
+    {
+        return header.Timestamp >= _deltaTimestamp;
     }
 
     public bool IsEcotone(BlockHeader header)
@@ -50,6 +57,11 @@ public class OptimismSpecHelper(OptimismChainSpecEngineParameters parameters) : 
     public bool IsHolocene(BlockHeader header)
     {
         return header.Timestamp >= _holoceneTimestamp;
+    }
+
+    public bool IsIsthmus(BlockHeader header)
+    {
+        return header.Timestamp >= _isthmusTimestamp;
     }
 
     public Address? Create2DeployerAddress { get; } = parameters.Create2DeployerAddress;

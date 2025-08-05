@@ -18,9 +18,6 @@ public interface IScopedTrieStore : ITrieNodeResolver
 
     // Only used by snap provider, so ValueHash instead of Hash
     bool IsPersisted(in TreePath path, in ValueHash256 keccak);
-
-    // Used for trie node recovery
-    void Set(in TreePath path, in ValueHash256 keccak, byte[] rlp);
 }
 
 public interface ICommitter : IDisposable

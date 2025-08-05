@@ -2,48 +2,52 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Collections.Generic;
+using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
-using Nethermind.Api;
+using DotNetty.Buffers;
 using Nethermind.Api.Steps;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Core;
+using Nethermind.Core.ServiceStopper;
 using Nethermind.Db;
+using Nethermind.Facade.Eth;
+using Nethermind.Init.Modules;
 using Nethermind.Logging;
 using Nethermind.Monitoring;
 using Nethermind.Monitoring.Config;
 using Nethermind.Monitoring.Metrics;
+using Nethermind.Serialization.Rlp;
 using Type = System.Type;
 
 namespace Nethermind.Init.Steps;
 
-[RunnerStepDependencies(typeof(InitializeNetwork))]
-public class StartMonitoring : IStep
+[RunnerStepDependencies(typeof(InitializeBlockTree))]
+public class StartMonitoring(
+    IEthSyncingInfo ethSyncingInfo,
+    DbTracker dbTracker,
+    IPruningConfig pruningConfig,
+    ISyncConfig syncConfig,
+    IServiceStopper serviceStopper,
+    ILogManager logManager,
+    IMetricsConfig metricsConfig
+) : IStep
 {
-    private readonly IApiWithNetwork _api;
-    private readonly ILogger _logger;
-    private readonly IMetricsConfig _metricsConfig;
-
-    public StartMonitoring(INethermindApi api)
-    {
-        _api = api;
-        _logger = _api.LogManager.GetClassLogger();
-        _metricsConfig = _api.Config<IMetricsConfig>();
-    }
+    private readonly ILogger _logger = logManager.GetClassLogger();
 
     public async Task Execute(CancellationToken cancellationToken)
     {
         // hacky
-        if (!string.IsNullOrEmpty(_metricsConfig.NodeName))
+        if (!string.IsNullOrEmpty(metricsConfig.NodeName))
         {
-            _api.LogManager.SetGlobalVariable("nodeName", _metricsConfig.NodeName);
+            logManager.SetGlobalVariable("nodeName", metricsConfig.NodeName);
         }
 
         MetricsController? controller = null;
-        if (_metricsConfig.Enabled || _metricsConfig.CountersEnabled)
+        if (metricsConfig.Enabled || metricsConfig.CountersEnabled)
         {
             PrepareProductInfoMetrics();
-            controller = new(_metricsConfig);
+            controller = new(metricsConfig);
 
             IEnumerable<Type> metrics = TypeDiscovery.FindNethermindBasedTypes(nameof(Metrics));
             foreach (Type metric in metrics)
@@ -52,9 +56,9 @@ public class StartMonitoring : IStep
             }
         }
 
-        if (_metricsConfig.Enabled)
+        if (metricsConfig.Enabled)
         {
-            IMonitoringService monitoringService = new MonitoringService(controller, _metricsConfig, _api.LogManager);
+            MonitoringService monitoringService = new MonitoringService(controller, metricsConfig, logManager);
 
             SetupMetrics(monitoringService);
 
@@ -64,7 +68,7 @@ public class StartMonitoring : IStep
                     _logger.Error("Error during starting a monitoring.", x.Exception);
             }, cancellationToken);
 
-            _api.DisposeStack.Push(new Reactive.AnonymousDisposable(() => monitoringService.StopAsync())); // do not await
+            serviceStopper.AddStoppable(monitoringService);
         }
         else
         {
@@ -74,7 +78,7 @@ public class StartMonitoring : IStep
 
         if (_logger.IsInfo)
         {
-            _logger.Info(_metricsConfig.CountersEnabled
+            _logger.Info(metricsConfig.CountersEnabled
                 ? "System.Diagnostics.Metrics enabled and will be collectable with dotnet-counters"
                 : "System.Diagnostics.Metrics disabled");
         }
@@ -82,17 +86,11 @@ public class StartMonitoring : IStep
 
     private void SetupMetrics(IMonitoringService monitoringService)
     {
-        if (_metricsConfig.EnableDbSizeMetrics)
+        if (metricsConfig.EnableDbSizeMetrics)
         {
             monitoringService.AddMetricsUpdateAction(() =>
             {
-                IDbProvider? dbProvider = _api.DbProvider;
-                if (dbProvider is null)
-                {
-                    return;
-                }
-
-                foreach (KeyValuePair<string, IDbMeta> kv in dbProvider.GetAllDbMeta())
+                foreach (KeyValuePair<string, IDbMeta> kv in dbTracker.GetAllDbMeta())
                 {
                     // Note: At the moment, the metric for a columns db is combined across column.
                     IDbMeta.DbMetric dbMetric = kv.Value.GatherMetric(includeSharedCache: kv.Key == DbNames.State); // Only include shared cache if state db
@@ -106,17 +104,40 @@ public class StartMonitoring : IStep
             });
         }
 
+        if (metricsConfig.EnableDetailedMetric)
+        {
+            monitoringService.AddMetricsUpdateAction(() =>
+            {
+                SetAllocatorMetrics(NethermindBuffers.RlpxAllocator, "rlpx");
+                SetAllocatorMetrics(NethermindBuffers.DiscoveryAllocator, "discovery");
+                SetAllocatorMetrics(NethermindBuffers.Default, "default");
+                SetAllocatorMetrics(PooledByteBufferAllocator.Default, "netty_default");
+            });
+        }
+
         monitoringService.AddMetricsUpdateAction(() =>
         {
-            Synchronization.Metrics.SyncTime = (long?)_api.EthSyncingInfo?.UpdateAndGetSyncTime().TotalSeconds ?? 0;
+            Synchronization.Metrics.SyncTime = (long?)ethSyncingInfo?.UpdateAndGetSyncTime().TotalSeconds ?? 0;
         });
+    }
+
+    public static void SetAllocatorMetrics(IByteBufferAllocator allocator, string name)
+    {
+        if (allocator is PooledByteBufferAllocator byteBufferAllocator)
+        {
+            PooledByteBufferAllocatorMetric metric = byteBufferAllocator.Metric;
+            Serialization.Rlp.Metrics.AllocatorArenaCount[name] = metric.DirectArenas().Count;
+            Serialization.Rlp.Metrics.AllocatorChunkSize[name] = metric.ChunkSize;
+            Serialization.Rlp.Metrics.AllocatorUsedHeapMemory[name] = metric.UsedHeapMemory;
+            Serialization.Rlp.Metrics.AllocatorUsedDirectMemory[name] = metric.UsedDirectMemory;
+            Serialization.Rlp.Metrics.AllocatorActiveAllocations[name] = metric.HeapArenas().Sum((it) => it.NumActiveAllocations);
+            Serialization.Rlp.Metrics.AllocatorActiveAllocationBytes[name] = metric.HeapArenas().Sum((it) => it.NumActiveBytes);
+            Serialization.Rlp.Metrics.AllocatorAllocations[name] = metric.HeapArenas().Sum((it) => it.NumAllocations);
+        }
     }
 
     private void PrepareProductInfoMetrics()
     {
-        IPruningConfig pruningConfig = _api.Config<IPruningConfig>();
-        IMetricsConfig metricsConfig = _api.Config<IMetricsConfig>();
-        ISyncConfig syncConfig = _api.Config<ISyncConfig>();
         ProductInfo.Instance = metricsConfig.NodeName;
 
         if (syncConfig.SnapSync)

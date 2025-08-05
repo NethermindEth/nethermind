@@ -1,31 +1,33 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System;
 using System.Collections.Generic;
 using System.Text.Unicode;
 using System.Threading;
 using System.Threading.Tasks;
+using Autofac;
 using Nethermind.Api;
 using Nethermind.Api.Steps;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.BeaconBlockRoot;
 using Nethermind.Blockchain.Blocks;
-using Nethermind.Blockchain.Filters;
 using Nethermind.Blockchain.Receipts;
-using Nethermind.Blockchain.Services;
+using Nethermind.Blockchain.Spec;
 using Nethermind.Config;
 using Nethermind.Consensus;
 using Nethermind.Consensus.Comparers;
+using Nethermind.Consensus.ExecutionRequests;
 using Nethermind.Consensus.Processing;
 using Nethermind.Consensus.Processing.CensorshipDetector;
 using Nethermind.Consensus.Producers;
 using Nethermind.Consensus.Scheduler;
+using Nethermind.Consensus.Withdrawals;
 using Nethermind.Core;
 using Nethermind.Core.Attributes;
+using Nethermind.Core.ServiceStopper;
 using Nethermind.Evm;
+using Nethermind.Evm.State;
 using Nethermind.Evm.TransactionProcessing;
-using Nethermind.JsonRpc.Modules.Eth.GasPrice;
 using Nethermind.State;
 using Nethermind.TxPool;
 using Nethermind.Wallet;
@@ -33,7 +35,6 @@ using Nethermind.Wallet;
 namespace Nethermind.Init.Steps
 {
     [RunnerStepDependencies(
-        typeof(InitializeStateDb),
         typeof(InitializePlugins),
         typeof(InitializeBlockTree),
         typeof(SetupKeyStore),
@@ -42,6 +43,7 @@ namespace Nethermind.Init.Steps
     public class InitializeBlockchain(INethermindApi api) : IStep
     {
         private readonly INethermindApi _api = api;
+        private readonly IServiceStopper _serviceStopper = api.Context.Resolve<IServiceStopper>();
 
         public async Task Execute(CancellationToken _)
         {
@@ -66,25 +68,24 @@ namespace Nethermind.Init.Steps
             IStateReader stateReader = setApi.StateReader!;
             IWorldState mainWorldState = _api.WorldStateManager!.GlobalWorldState;
             PreBlockCaches? preBlockCaches = (mainWorldState as IPreBlockCaches)?.Caches;
-            CodeInfoRepository codeInfoRepository = new(preBlockCaches?.PrecompileCache);
-            ITxPool txPool = _api.TxPool = CreateTxPool(codeInfoRepository);
+            EthereumCodeInfoRepository codeInfoRepository = new(preBlockCaches?.PrecompileCache);
+            IChainHeadInfoProvider chainHeadInfoProvider =
+                new ChainHeadInfoProvider(
+                    new ChainHeadSpecProvider(getApi.SpecProvider!, getApi.BlockTree!),
+                    getApi.BlockTree!, stateReader, codeInfoRepository);
 
-            ReceiptCanonicalityMonitor receiptCanonicalityMonitor = new(getApi.ReceiptStorage, _api.LogManager);
-            getApi.DisposeStack.Push(receiptCanonicalityMonitor);
-            _api.ReceiptMonitor = receiptCanonicalityMonitor;
+            _api.TxGossipPolicy.Policies.Add(new SpecDrivenTxGossipPolicy(chainHeadInfoProvider));
+
+            ITxPool txPool = _api.TxPool = CreateTxPool(chainHeadInfoProvider);
 
             _api.BlockPreprocessor.AddFirst(
-                new RecoverSignatures(getApi.EthereumEcdsa, txPool, getApi.SpecProvider, getApi.LogManager));
+                new RecoverSignatures(getApi.EthereumEcdsa, getApi.SpecProvider, getApi.LogManager));
 
-
-            VirtualMachine virtualMachine = CreateVirtualMachine(codeInfoRepository, mainWorldState);
+            WarmupEvm();
+            VirtualMachine virtualMachine = CreateVirtualMachine(mainWorldState);
             ITransactionProcessor transactionProcessor = CreateTransactionProcessor(codeInfoRepository, virtualMachine, mainWorldState);
 
-            InitSealEngine();
             if (_api.SealValidator is null) throw new StepDependencyException(nameof(_api.SealValidator));
-
-            IChainHeadInfoProvider chainHeadInfoProvider =
-                new ChainHeadInfoProvider(getApi.SpecProvider!, getApi.BlockTree!, stateReader, codeInfoRepository);
 
             // TODO: can take the tx sender from plugin here maybe
             ITxSigner txSigner = new WalletTxSigner(getApi.Wallet, getApi.SpecProvider!.ChainId);
@@ -94,26 +95,28 @@ namespace Nethermind.Init.Steps
             setApi.NonceManager = nonceManager;
             setApi.TxSender = new TxPoolSender(txPool, nonceReservingTxSealer, nonceManager, getApi.EthereumEcdsa!);
 
-            setApi.TxPoolInfoProvider = new TxPoolInfoProvider(chainHeadInfoProvider.ReadOnlyStateProvider, txPool);
-            setApi.GasPriceOracle = new GasPriceOracle(getApi.BlockTree!, getApi.SpecProvider, _api.LogManager, blocksConfig.MinGasPrice);
             BlockCachePreWarmer? preWarmer = blocksConfig.PreWarmStateOnBlockProcessing
-                ? new(new ReadOnlyTxProcessingEnvFactory(
-                        _api.WorldStateManager!,
-                        _api.BlockTree!.AsReadOnly(),
-                        _api.SpecProvider!,
-                        _api.LogManager),
+                ? new(
+                    _api.ReadOnlyTxProcessingEnvFactory,
                     mainWorldState,
-                    _api.SpecProvider!,
                     blocksConfig,
                     _api.LogManager,
                     preBlockCaches)
                 : null;
 
             IBlockProcessor mainBlockProcessor = CreateBlockProcessor(preWarmer, transactionProcessor, mainWorldState);
+            IBranchProcessor mainBranchProcessor = new BranchProcessor(
+                mainBlockProcessor,
+                _api.SpecProvider!,
+                mainWorldState,
+                new BeaconBlockRootHandler(transactionProcessor, mainWorldState),
+                _api.LogManager!,
+                preWarmer
+            );
 
             BlockchainProcessor blockchainProcessor = new(
-                getApi.BlockTree,
-                mainBlockProcessor,
+                getApi.BlockTree!,
+                mainBranchProcessor,
                 _api.BlockPreprocessor,
                 stateReader,
                 getApi.LogManager,
@@ -128,20 +131,19 @@ namespace Nethermind.Init.Steps
 
             getApi.DisposeStack.Push(blockchainProcessor);
 
-            setApi.MainProcessingContext = new MainProcessingContext(
+            var mainProcessingContext = setApi.MainProcessingContext = new MainProcessingContext(
                 transactionProcessor,
+                mainBranchProcessor,
                 mainBlockProcessor,
                 blockchainProcessor,
                 mainWorldState);
+            _serviceStopper.AddStoppable(mainProcessingContext);
             setApi.BlockProcessingQueue = blockchainProcessor;
-
-            IFilterStore filterStore = setApi.FilterStore = new FilterStore();
-            setApi.FilterManager = new FilterManager(filterStore, mainBlockProcessor, txPool, getApi.LogManager);
-            setApi.HealthHintService = CreateHealthHintService();
             setApi.BlockProductionPolicy = CreateBlockProductionPolicy();
 
             BackgroundTaskScheduler backgroundTaskScheduler = new BackgroundTaskScheduler(
-                mainBlockProcessor,
+                mainBranchProcessor,
+                chainHeadInfoProvider,
                 initConfig.BackgroundTaskConcurrency,
                 initConfig.BackgroundTaskMaxNumber,
                 _api.LogManager);
@@ -155,7 +157,7 @@ namespace Nethermind.Init.Steps
                     _api.BlockTree!,
                     txPool,
                     CreateTxPoolTxComparer(),
-                    mainBlockProcessor,
+                    mainBranchProcessor,
                     _api.LogManager,
                     censorshipDetectorConfig
                 );
@@ -166,7 +168,14 @@ namespace Nethermind.Init.Steps
             return Task.CompletedTask;
         }
 
-        protected virtual ITransactionProcessor CreateTransactionProcessor(CodeInfoRepository codeInfoRepository, IVirtualMachine virtualMachine, IWorldState worldState)
+        private void WarmupEvm()
+        {
+            IWorldState state = _api.WorldStateManager!.CreateResettableWorldState();
+            state.SetBaseBlock(null);
+            VirtualMachine.WarmUpEvmInstructions(state, new EthereumCodeInfoRepository());
+        }
+
+        protected virtual ITransactionProcessor CreateTransactionProcessor(ICodeInfoRepository codeInfoRepository, IVirtualMachine virtualMachine, IWorldState worldState)
         {
             if (_api.SpecProvider is null) throw new StepDependencyException(nameof(_api.SpecProvider));
 
@@ -178,7 +187,7 @@ namespace Nethermind.Init.Steps
                 _api.LogManager);
         }
 
-        protected VirtualMachine CreateVirtualMachine(CodeInfoRepository codeInfoRepository, IWorldState worldState)
+        protected VirtualMachine CreateVirtualMachine(IWorldState worldState)
         {
             if (_api.BlockTree is null) throw new StepDependencyException(nameof(_api.BlockTree));
             if (_api.SpecProvider is null) throw new StepDependencyException(nameof(_api.SpecProvider));
@@ -196,22 +205,22 @@ namespace Nethermind.Init.Steps
             return virtualMachine;
         }
 
-        protected virtual IHealthHintService CreateHealthHintService() =>
-            new HealthHintService(_api.ChainSpec!);
-
         protected virtual IBlockProductionPolicy CreateBlockProductionPolicy() =>
             new BlockProductionPolicy(_api.Config<IMiningConfig>());
 
-        protected virtual ITxPool CreateTxPool(CodeInfoRepository codeInfoRepository)
+        protected virtual ITxPool CreateTxPool(IChainHeadInfoProvider chainHeadInfoProvider)
         {
             TxPool.TxPool txPool = new(_api.EthereumEcdsa!,
                 _api.BlobTxStorage ?? NullBlobTxStorage.Instance,
-                new ChainHeadInfoProvider(_api.SpecProvider!, _api.BlockTree!, _api.StateReader!, codeInfoRepository),
+                chainHeadInfoProvider,
                 _api.Config<ITxPoolConfig>(),
                 _api.TxValidator!,
                 _api.LogManager,
                 CreateTxPoolTxComparer(),
-                _api.TxGossipPolicy);
+                _api.TxGossipPolicy,
+                null,
+                _api.HeadTxValidator
+            );
 
             _api.DisposeStack.Push(txPool);
             return txPool;
@@ -220,32 +229,27 @@ namespace Nethermind.Init.Steps
         protected IComparer<Transaction> CreateTxPoolTxComparer() => _api.TransactionComparerProvider!.GetDefaultComparer();
 
         // TODO: remove from here - move to consensus?
-        protected virtual BlockProcessor CreateBlockProcessor(BlockCachePreWarmer? preWarmer, ITransactionProcessor transactionProcessor, IWorldState worldState)
+        protected virtual IBlockProcessor CreateBlockProcessor(
+            BlockCachePreWarmer? preWarmer,
+            ITransactionProcessor transactionProcessor,
+            IWorldState worldState)
         {
-            if (_api.DbProvider is null) throw new StepDependencyException(nameof(_api.DbProvider));
             if (_api.RewardCalculatorSource is null) throw new StepDependencyException(nameof(_api.RewardCalculatorSource));
             if (_api.BlockTree is null) throw new StepDependencyException(nameof(_api.BlockTree));
             if (_api.WorldStateManager is null) throw new StepDependencyException(nameof(_api.WorldStateManager));
             if (_api.SpecProvider is null) throw new StepDependencyException(nameof(_api.SpecProvider));
 
-            return new BlockProcessor(
-                _api.SpecProvider,
+            return new BlockProcessor(_api.SpecProvider,
                 _api.BlockValidator,
                 _api.RewardCalculatorSource.Get(transactionProcessor),
-                new BlockProcessor.BlockValidationTransactionsExecutor(transactionProcessor, worldState),
+                new BlockProcessor.BlockValidationTransactionsExecutor(new ExecuteTransactionProcessorAdapter(transactionProcessor), worldState),
                 worldState,
-                _api.ReceiptStorage,
-                transactionProcessor,
+                _api.ReceiptStorage!,
                 new BeaconBlockRootHandler(transactionProcessor, worldState),
                 new BlockhashStore(_api.SpecProvider!, worldState),
                 _api.LogManager,
-                preWarmer: preWarmer
-            );
-        }
-
-        // TODO: remove from here - move to consensus?
-        protected virtual void InitSealEngine()
-        {
+                new WithdrawalProcessor(worldState, _api.LogManager),
+                new ExecutionRequestsProcessor(transactionProcessor));
         }
     }
 }

@@ -17,7 +17,7 @@ using Nethermind.Stats.Model;
 using Nethermind.Synchronization.ParallelSync;
 using Nethermind.Synchronization.Peers;
 using Nethermind.Synchronization.Reporting;
-using Nethermind.Synchronization.SyncLimits;
+using Nethermind.Stats.SyncLimits;
 
 namespace Nethermind.Synchronization.FastBlocks
 {
@@ -35,6 +35,7 @@ namespace Nethermind.Synchronization.FastBlocks
         private readonly long _flushDbInterval; // About every 10GB on mainnet
 
         private readonly IBlockTree _blockTree;
+        private readonly IBlockValidator _blockValidator;
         private readonly ISyncConfig _syncConfig;
         private readonly ISyncReport _syncReport;
         private readonly ISyncPeerPool _syncPeerPool;
@@ -44,13 +45,15 @@ namespace Nethermind.Synchronization.FastBlocks
         private SyncStatusList _syncStatusList;
 
         private bool ShouldFinish => !_syncConfig.DownloadBodiesInFastSync || AllDownloaded;
-        private bool AllDownloaded => (_syncPointers.LowestInsertedBodyNumber ?? long.MaxValue) <= _barrier
-            || WithinOldBarrierDefault;
+        private bool AllDownloaded => (_syncPointers.LowestInsertedBodyNumber ?? long.MaxValue) <= _barrier;
 
         public override bool IsFinished => AllDownloaded;
+        public override string FeedName => nameof(BodiesSyncFeed);
+
         public BodiesSyncFeed(
             ISpecProvider specProvider,
             IBlockTree blockTree,
+            IBlockValidator blockValidator,
             ISyncPointers syncPointers,
             ISyncPeerPool syncPeerPool,
             ISyncConfig syncConfig,
@@ -62,6 +65,7 @@ namespace Nethermind.Synchronization.FastBlocks
             : base(metadataDb, specProvider, logManager.GetClassLogger())
         {
             _blockTree = blockTree;
+            _blockValidator = blockValidator;
             _syncPointers = syncPointers;
             _syncPeerPool = syncPeerPool;
             _syncConfig = syncConfig;
@@ -214,7 +218,7 @@ namespace Nethermind.Synchronization.FastBlocks
         private bool TryPrepareBlock(BlockInfo blockInfo, BlockBody blockBody, out Block? block)
         {
             BlockHeader header = _blockTree.FindHeader(blockInfo.BlockHash, blockNumber: blockInfo.BlockNumber);
-            if (BlockValidator.ValidateBodyAgainstHeader(header, blockBody))
+            if (_blockValidator.ValidateBodyAgainstHeader(header, blockBody, out _))
             {
                 block = new Block(header, blockBody);
             }

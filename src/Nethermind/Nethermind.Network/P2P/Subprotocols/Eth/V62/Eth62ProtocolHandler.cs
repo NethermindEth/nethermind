@@ -26,7 +26,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62
 {
     public class Eth62ProtocolHandler : SyncPeerProtocolHandlerBase, IZeroProtocolHandler
     {
-        private bool _statusReceived;
+        protected bool _statusReceived;
         private readonly TxFloodController _floodController;
         protected readonly ITxPool _txPool;
         private readonly IGossipPolicy _gossipPolicy;
@@ -87,18 +87,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62
             }
 
             BlockHeader head = SyncServer.Head;
-            StatusMessage statusMessage = new()
-            {
-                NetworkId = SyncServer.NetworkId,
-                ProtocolVersion = ProtocolVersion,
-                TotalDifficulty = head.TotalDifficulty ?? head.Difficulty,
-                BestHash = head.Hash!,
-                GenesisHash = SyncServer.Genesis.Hash!
-            };
-
-            EnrichStatusMessage(statusMessage);
-
-            Send(statusMessage);
+            NotifyOfStatus(head);
 
             CheckProtocolInitTimeout().ContinueWith(x =>
             {
@@ -270,6 +259,15 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62
                 {
                     if (cancellationToken.IsCancellationRequested)
                     {
+                        if (i == startIdx)
+                        {
+                            // Timeout immediately on the first transaction. This indicate that this task spent too much
+                            // time in the queue as the queue is probably full. In this case, queuing again wont help
+                            // as it later will just take as much time in the queue, then timing out again.
+                            if (Logger.IsDebug) Logger.Debug("Background task queue full. Dropping transactions.");
+                            return ValueTask.CompletedTask;
+                        }
+
                         // Reschedule and with different start index
                         BackgroundTaskScheduler.ScheduleBackgroundTask((transactions, i), HandleSlow);
                         return ValueTask.CompletedTask;
@@ -330,6 +328,22 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62
                 if (Logger.IsDebug) Logger.Debug($"Handling {msg} from {Node:c} failed: " + e.Message);
                 throw;
             }
+        }
+
+        protected virtual void NotifyOfStatus(BlockHeader head)
+        {
+            StatusMessage statusMessage = new()
+            {
+                NetworkId = SyncServer.NetworkId,
+                ProtocolVersion = ProtocolVersion,
+                TotalDifficulty = head.TotalDifficulty ?? head.Difficulty,
+                BestHash = head.Hash!,
+                GenesisHash = SyncServer.Genesis.Hash!
+            };
+
+            EnrichStatusMessage(statusMessage);
+
+            Send(statusMessage);
         }
 
         public override void NotifyOfNewBlock(Block block, SendBlockMode mode)

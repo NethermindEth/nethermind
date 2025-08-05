@@ -24,16 +24,16 @@ namespace Nethermind.JsonRpc
             BatchedResponses = batchedResponses;
         }
 
-        private JsonRpcResult(Entry singleResult)
+        private JsonRpcResult(in Entry singleResult)
         {
             IsCollection = false;
             SingleResponse = singleResult;
         }
 
-        public static JsonRpcResult Single(JsonRpcResponse response, RpcReport report)
+        public static JsonRpcResult Single(JsonRpcResponse response, in RpcReport report)
             => new(new Entry(response, report));
 
-        public static JsonRpcResult Single(Entry entry)
+        public static JsonRpcResult Single(in Entry entry)
             => new(entry);
 
         public static JsonRpcResult Collection(IJsonRpcBatchResult responses)

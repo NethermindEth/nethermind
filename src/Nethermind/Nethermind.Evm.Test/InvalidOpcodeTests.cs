@@ -1,16 +1,13 @@
-// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
 using System.Collections.Generic;
 using System.Linq;
 using FluentAssertions;
-using Nethermind.Core.Collections;
 using Nethermind.Core.Specs;
-using Nethermind.Core.Test;
 using Nethermind.Logging;
 using Nethermind.Specs;
-using Nethermind.Specs.Forks;
 using NUnit.Framework;
 
 namespace Nethermind.Evm.Test
@@ -19,8 +16,6 @@ namespace Nethermind.Evm.Test
     [Parallelizable(ParallelScope.Self)]
     public class InvalidOpcodeTests : VirtualMachineTestsBase
     {
-        protected override long BlockNumber => MainnetSpecProvider.ConstantinopleFixBlockNumber;
-
         private static readonly Instruction[] FrontierInstructions =
         {
             Instruction.STOP, Instruction.ADD, Instruction.MUL, Instruction.SUB, Instruction.DIV, Instruction.SDIV,
@@ -155,7 +150,7 @@ namespace Nethermind.Evm.Test
 
         protected override ILogManager GetLogManager()
         {
-            _logManager ??= new OneLoggerLogManager(new(new NUnitLogger(LogLevel.Trace)));
+            _logManager ??= new TestLogManager(LogLevel.Warn);
             return _logManager;
         }
 

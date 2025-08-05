@@ -7,16 +7,17 @@ using Nethermind.Core.Specs;
 using Nethermind.Specs;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Crypto;
-using Nethermind.Db;
 using Nethermind.Int256;
 using Nethermind.Evm.Tracing;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Logging;
 using Nethermind.Specs.Forks;
-using Nethermind.State;
-using Nethermind.Trie.Pruning;
+using Nethermind.Evm.State;
 using NUnit.Framework;
 using System.Collections.Generic;
+using Nethermind.Blockchain;
+using Nethermind.Core.Test;
+using Nethermind.State;
 
 namespace Nethermind.Evm.Test;
 
@@ -25,17 +26,16 @@ internal class TransactionProcessorEip4844Tests
 {
     private ISpecProvider _specProvider = null!;
     private IEthereumEcdsa _ethereumEcdsa = null!;
-    private TransactionProcessor _transactionProcessor = null!;
+    private ITransactionProcessor _transactionProcessor = null!;
     private IWorldState _stateProvider = null!;
 
     [SetUp]
     public void Setup()
     {
-        MemDb stateDb = new();
         _specProvider = new TestSpecProvider(Cancun.Instance);
-        TrieStore trieStore = new(stateDb, LimboLogs.Instance);
-        _stateProvider = new WorldState(trieStore, new MemDb(), LimboLogs.Instance);
-        CodeInfoRepository codeInfoRepository = new();
+        IWorldStateManager worldStateManager = TestWorldStateFactory.CreateForTest();
+        _stateProvider = worldStateManager.GlobalWorldState;
+        EthereumCodeInfoRepository codeInfoRepository = new();
         VirtualMachine virtualMachine = new(new TestBlockhashProvider(_specProvider), _specProvider, LimboLogs.Instance);
         _transactionProcessor = new TransactionProcessor(_specProvider, _stateProvider, virtualMachine, codeInfoRepository, LimboLogs.Instance);
         _ethereumEcdsa = new EthereumEcdsa(_specProvider.ChainId);

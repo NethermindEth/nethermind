@@ -18,13 +18,16 @@ public class OsakaBlockChainTests : BlockchainTestBase
 
     private static IEnumerable<TestCaseData> LoadTests()
     {
-        TestsSourceLoader loader = new(new LoadPyspecTestsStrategy()
-        {
-            ArchiveName = "fixtures_eip7692.tar.gz",
-            ArchiveVersion = "eip7692@v2.3.0"
-        }, $"fixtures/blockchain_tests/osaka");
-        return loader.LoadTests().OfType<BlockchainTest>().Select(t => new TestCaseData(t)
-            .SetName(t.Name)
-            .SetCategory(t.Category));
+        return [];
+        // EOF tests
+        //
+        //TestsSourceLoader loader = new(new LoadPyspecTestsStrategy()
+        //{
+        //    ArchiveName = "fixtures_eip7692.tar.gz",
+        //    ArchiveVersion = "eip7692@v2.3.0"
+        //}, $"fixtures/blockchain_tests/osaka");
+        //return loader.LoadTests().OfType<BlockchainTest>().Select(t => new TestCaseData(t)
+        //    .SetName(t.Name)
+        //    .SetCategory(t.Category));
     }
 }

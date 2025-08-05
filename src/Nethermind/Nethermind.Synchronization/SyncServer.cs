@@ -18,7 +18,9 @@ using Nethermind.Core.Attributes;
 using Nethermind.Core.Caching;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
+using Nethermind.Core.Threading;
 using Nethermind.Db;
 using Nethermind.Int256;
 using Nethermind.Logging;
@@ -53,6 +55,10 @@ namespace Nethermind.Synchronization
         private readonly long _pivotNumber;
         private readonly Hash256 _pivotHash;
         private BlockHeader? _pivotHeader;
+        private CancellationTokenSource _rangeBroadcastCts = new();
+        private Task _rangeBroadcastTask = Task.CompletedTask;
+
+        private const int BlockRangeUpdateFrequency = 32;
 
         public SyncServer(
             IWorldStateManager worldStateManager,
@@ -84,6 +90,7 @@ namespace Nethermind.Synchronization
             _pivotHash = new Hash256(config.PivotHash ?? Keccak.Zero.ToString());
 
             _blockTree.NewHeadBlock += OnNewHeadBlock;
+            _blockTree.NewHeadBlock += OnNewRange;
             _pool.NotifyPeerBlock += OnNotifyPeerBlock;
         }
 
@@ -237,7 +244,7 @@ namespace Nethermind.Synchronization
 
         private void UpdatePeerInfoBasedOnBlockData(Block block, ISyncPeer syncPeer)
         {
-            if ((block.TotalDifficulty ?? 0) > syncPeer.TotalDifficulty)
+            if (syncPeer.TotalDifficulty is { } peerTD && (block.TotalDifficulty ?? UInt256.Zero) > peerTD)
             {
                 if (_logger.IsTrace) _logger.Trace($"ADD NEW BLOCK Updating header of {syncPeer} from {syncPeer.HeadNumber} {syncPeer.TotalDifficulty} to {block.Number} {block.TotalDifficulty}");
                 syncPeer.HeadNumber = block.Number;
@@ -422,6 +429,68 @@ namespace Nethermind.Synchronization
             }
         }
 
+        private void OnNewRange(object? sender, BlockEventArgs latestBlockEventArgs)
+        {
+            if (Genesis is null)
+                return;
+
+            if (_pool.PeerCount == 0)
+                return;
+
+            Block latestBlock = latestBlockEventArgs.Block;
+
+            // Notify every 32 blocks
+            if (latestBlock.Number % BlockRangeUpdateFrequency != 0)
+                return;
+
+            CancellationTokenExtensions.CancelDisposeAndClear(ref _rangeBroadcastCts);
+            CancellationTokenSource cts = _rangeBroadcastCts = new();
+
+            if (_rangeBroadcastTask.IsCompleted)
+            {
+                _rangeBroadcastTask = Task.Run(() => RangeBroadcast(latestBlock, cts), cts.Token);
+            }
+            else
+            {
+                _rangeBroadcastTask.ContinueWith(
+                    t => RangeBroadcast(latestBlock, cts),
+                    TaskContinuationOptions.RunContinuationsAsynchronously);
+            }
+        }
+
+        private void RangeBroadcast(Block latestBlock, CancellationTokenSource cts)
+        {
+            if (cts.IsCancellationRequested)
+            {
+                return;
+            }
+
+            using ArrayPoolList<PeerInfo> allPeers = _pool.AllPeers.ToPooledList(_pool.PeerCount);
+            var counter = 0;
+
+            // TODO: use actual earliest available block - once history expiry is implemented
+            (BlockHeader earliest, BlockHeader latest) = (Genesis, latestBlock.Header);
+
+            ParallelUnbalancedWork.For(0, allPeers.Count,
+                (i) =>
+                {
+                    if (cts.IsCancellationRequested)
+                    {
+                        if (_logger.IsDebug) _logger.Debug("Cancelled broadcasting block range update due to cancellation request.");
+                        return;
+                    }
+                    PeerInfo peerInfo = allPeers[i];
+                    if (peerInfo.ShouldNotifyHeadNumber(latestBlock.Number))
+                    {
+                        NotifyOfNewRange(peerInfo, earliest, latestBlock.Header);
+                        Interlocked.Increment(ref counter);
+                    }
+                });
+
+            if (counter > 0 && _logger.IsDebug)
+                _logger.Debug($"Broadcasting range update {earliest.Number}-{latest.Number} to {counter} peers.");
+        }
+
         private void NotifyOfNewBlock(PeerInfo? peerInfo, ISyncPeer syncPeer, Block broadcastedBlock, SendBlockMode mode)
         {
             if (!_gossipPolicy.CanGossipBlocks) return;
@@ -436,8 +505,19 @@ namespace Nethermind.Synchronization
             }
         }
 
-        private void OnNotifyPeerBlock(object? sender, PeerBlockNotificationEventArgs e) => NotifyOfNewBlock(null, e.SyncPeer, e.Block, SendBlockMode.FullBlock);
+        private void NotifyOfNewRange(PeerInfo peerInfo, BlockHeader earliest, BlockHeader latest)
+        {
+            try
+            {
+                peerInfo.SyncPeer.NotifyOfNewRange(earliest, latest);
+            }
+            catch (Exception e)
+            {
+                if (_logger.IsError) _logger.Error($"Error while broadcasting block range update: [{earliest.Number}, {latest.Number}, {latest.Hash}] to peer {peerInfo.SyncPeer}.", e);
+            }
+        }
 
+        private void OnNotifyPeerBlock(object? sender, PeerBlockNotificationEventArgs e) => NotifyOfNewBlock(null, e.SyncPeer, e.Block, SendBlockMode.FullBlock);
 
         public void StopNotifyingPeersAboutNewBlocks()
         {
@@ -449,9 +529,15 @@ namespace Nethermind.Synchronization
             }
         }
 
+        private void StopNotifyingPeersAboutBlockRangeUpdates()
+        {
+            _blockTree.NewHeadBlock -= OnNewRange;
+        }
+
         public void Dispose()
         {
             StopNotifyingPeersAboutNewBlocks();
+            StopNotifyingPeersAboutBlockRangeUpdates();
         }
     }
 }

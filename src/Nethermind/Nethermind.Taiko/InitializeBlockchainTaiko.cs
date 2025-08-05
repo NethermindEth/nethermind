@@ -6,17 +6,16 @@ using Autofac;
 using Nethermind.Api;
 using Nethermind.Blockchain.BeaconBlockRoot;
 using Nethermind.Blockchain.Blocks;
-using Nethermind.Blockchain.Services;
 using Nethermind.Config;
+using Nethermind.Consensus.ExecutionRequests;
 using Nethermind.Consensus.Processing;
 using Nethermind.Consensus.Producers;
-using Nethermind.Consensus.Validators;
 using Nethermind.Consensus.Withdrawals;
 using Nethermind.Evm;
+using Nethermind.Evm.State;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Init.Steps;
 using Nethermind.Merge.Plugin.InvalidChainTracker;
-using Nethermind.State;
 using Nethermind.Taiko.BlockTransactionExecutors;
 
 namespace Nethermind.Taiko;
@@ -33,7 +32,7 @@ public class InitializeBlockchainTaiko(TaikoNethermindApi api) : InitializeBlock
         _api.Context.Resolve<InvalidChainTracker>().SetupBlockchainProcessorInterceptor(_api.MainProcessingContext!.BlockchainProcessor);
     }
 
-    protected override ITransactionProcessor CreateTransactionProcessor(CodeInfoRepository codeInfoRepository, IVirtualMachine virtualMachine, IWorldState worldState)
+    protected override ITransactionProcessor CreateTransactionProcessor(ICodeInfoRepository codeInfoRepository, IVirtualMachine virtualMachine, IWorldState worldState)
     {
         if (_api.SpecProvider is null) throw new StepDependencyException(nameof(_api.SpecProvider));
 
@@ -48,29 +47,23 @@ public class InitializeBlockchainTaiko(TaikoNethermindApi api) : InitializeBlock
 
     protected override BlockProcessor CreateBlockProcessor(BlockCachePreWarmer? preWarmer, ITransactionProcessor transactionProcessor, IWorldState worldState)
     {
-        if (_api.DbProvider is null) throw new StepDependencyException(nameof(_api.DbProvider));
         if (_api.RewardCalculatorSource is null) throw new StepDependencyException(nameof(_api.RewardCalculatorSource));
         if (_api.SpecProvider is null) throw new StepDependencyException(nameof(_api.SpecProvider));
         if (_api.BlockTree is null) throw new StepDependencyException(nameof(_api.BlockTree));
         if (_api.EthereumEcdsa is null) throw new StepDependencyException(nameof(_api.EthereumEcdsa));
 
-        return new BlockProcessor(
-            _api.SpecProvider,
+        return new BlockProcessor(_api.SpecProvider,
             _api.BlockValidator,
             _api.RewardCalculatorSource.Get(transactionProcessor),
             new BlockInvalidTxExecutor(new ExecuteTransactionProcessorAdapter(transactionProcessor), worldState),
             worldState,
-            _api.ReceiptStorage,
-            transactionProcessor,
+            _api.ReceiptStorage!,
             new BeaconBlockRootHandler(transactionProcessor, worldState),
             new BlockhashStore(_api.SpecProvider, worldState),
             _api.LogManager,
-            new BlockProductionWithdrawalProcessor(new NullWithdrawalProcessor()),
-            preWarmer: preWarmer);
+            new WithdrawalProcessor(worldState, _api.LogManager),
+            new ExecutionRequestsProcessor(transactionProcessor));
     }
-
-    protected override IHealthHintService CreateHealthHintService() =>
-        new ManualHealthHintService(_blocksConfig.SecondsPerSlot * 6, HealthHintConstants.InfinityHint);
 
     protected override IBlockProductionPolicy CreateBlockProductionPolicy() => NeverStartBlockProductionPolicy.Instance;
 }

@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using Nethermind.Core;
+using Nethermind.Core.Crypto;
 using Nethermind.Specs.ChainSpecStyle;
 
 namespace Nethermind.Optimism.CL;
@@ -12,6 +13,7 @@ public class CLChainSpecEngineParameters : IChainSpecEngineParameters
     public ulong? L2BlockTime { get; init; }
     public ulong? SeqWindowSize { get; init; }
     public ulong? MaxSequencerDrift { get; init; }
+    public ulong? ChannelTimeoutBedrock { get; init; }
 
     // roles
     public Address? SystemConfigOwner { get; init; }
@@ -44,6 +46,10 @@ public class CLChainSpecEngineParameters : IChainSpecEngineParameters
     public Address SystemTransactionTo { get; init; } = new("0x4200000000000000000000000000000000000015");
     public string[]? Nodes { get; init; }
     public ulong? L1BeaconGenesisSlotTime { get; init; }
+    public ulong? L1ChainId { get; init; }
+    public ulong? L1GenesisNumber { get; init; }
+    public Hash256? L1GenesisHash { get; init; }
+    public OptimismSystemConfig? GenesisSystemConfig { get; init; }
     public string? EngineName => "OptimismCL";
     public string? SealEngineType => null;
 }

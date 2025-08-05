@@ -554,6 +554,8 @@ internal static class TestRpcBlockchainExt
                 new StaticSelector(SyncMode.All), Substitute.For<ISyncProgressResolver>(), blockchain.LogManager),
             blockchain.FeeHistoryOracle ??
             new FeeHistoryOracle(blockchain.BlockTree, blockchain.ReceiptStorage, blockchain.SpecProvider),
+            blockchain.ProtocolsManager,
+            blockchain.ForkInfo,
             new BlocksConfig().SecondsPerSlot,
 
             sequencerRpcClient, ecdsa, sealer, opSpecHelper

@@ -11,26 +11,25 @@ jobs:
       PACKAGE_DIR: pkg
       PACKAGE_RETENTION: 7
       PUB_DIR: pub
+      SCRIPTS_PATH: ${{ github.workspace }}/scripts/build
     steps:
       - name: Check out repository
         uses: actions/checkout@v4
       - name: Set up .NET
         uses: actions/setup-dotnet@v4
       - name: Build Nethermind.Runner
-        id: build-runner
+        id: build
         run: |
           build_timestamp=$(date '+%s')
           echo "build-timestamp=$build_timestamp" >> $GITHUB_OUTPUT
           echo "commit-hash=${GITHUB_SHA:0:8}" >> $GITHUB_OUTPUT
-          scripts/deployment/build-runner.sh $GITHUB_SHA $build_timestamp
-      - name: Build Nethermind.Cli
-        run: scripts/deployment/build-cli.sh $GITHUB_SHA ${{ steps.build-runner.outputs.build-timestamp }}
+          $SCRIPTS_PATH/build.sh $GITHUB_SHA $build_timestamp
       - name: Archive packages
         env:
-          PACKAGE_PREFIX: nethermind-preview-${{ steps.build-runner.outputs.commit-hash }}
+          PACKAGE_PREFIX: nethermind-preview-${{ steps.build.outputs.commit-hash }}
         run: |
           echo "PACKAGE_PREFIX=$PACKAGE_PREFIX" >> $GITHUB_ENV
-          scripts/deployment/archive-packages.sh
+          $SCRIPTS_PATH/archive.sh
       - name: Upload Nethermind Linux x64 package
         uses: actions/upload-artifact@v4
         with:
