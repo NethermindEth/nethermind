@@ -54,22 +54,6 @@ namespace Nethermind.Trie
         /// </summary>
         public bool IsSealed => !IsDirty;
 
-        public long LastSeen
-        {
-            get => (Volatile.Read(ref _blockAndFlags) >> _blockShift);
-            set
-            {
-                long previousValue = Volatile.Read(ref _blockAndFlags);
-                long currentValue;
-                do
-                {
-                    currentValue = previousValue;
-                    long newValue = (currentValue & _flagsMask) | (value << _blockShift);
-                    previousValue = Interlocked.CompareExchange(ref _blockAndFlags, newValue, currentValue);
-                } while (previousValue != currentValue);
-            }
-        }
-
         public bool IsPersisted
         {
             get => (Volatile.Read(ref _blockAndFlags) & _persistedMask) != 0;
@@ -342,7 +326,7 @@ namespace Nethermind.Trie
                 $"[{NodeType}({(FullRlp.IsNotNullOrEmpty ? FullRlp.Length : 0)}){(FullRlp.IsNotNullOrEmpty && FullRlp.Length < 32 ? $"{FullRlp.Span.ToHexString()}" : "")}" +
                 $"|{Id}|{Keccak}|{LastSeen}|D:{IsDirty}|S:{IsSealed}|P:{IsPersisted}|";
 #else
-            return $"[{NodeType}({(FullRlp.IsNotNullOrEmpty ? FullRlp.Length : 0)})|{Keccak?.ToShortString()}|{LastSeen}|D:{IsDirty}|S:{IsSealed}|P:{IsPersisted}|";
+            return $"[{NodeType}({(FullRlp.IsNotNullOrEmpty ? FullRlp.Length : 0)})|{Keccak?.ToShortString()}|D:{IsDirty}|S:{IsSealed}|P:{IsPersisted}|";
 #endif
         }
 
