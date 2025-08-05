@@ -136,7 +136,7 @@ public class DataFeed
         peers
     }
 
-    class ChannelEntry
+    private class ChannelEntry
     {
         public EntryType Type { get; set; }
         public byte[] Data { get; set; }
@@ -170,7 +170,7 @@ public class DataFeed
             JsonSerializerOptions.Web);
     }
 
-    TaskCompletionSource<byte[]> _txFlow = new();
+    private TaskCompletionSource<byte[]> _txFlow = new();
     private async Task StartTxFlowRefresh()
     {
         while (true)
@@ -183,9 +183,9 @@ public class DataFeed
         }
     }
 
-    Environment.ProcessCpuUsage _lastCpuUsage;
-    long _lastTimeStamp;
-    TaskCompletionSource<byte[]> _systemStats = new();
+    private Environment.ProcessCpuUsage _lastCpuUsage;
+    private long _lastTimeStamp;
+    private TaskCompletionSource<byte[]> _systemStats = new();
     private async Task SystemStatsRefresh()
     {
         _lastCpuUsage = Environment.CpuUsage;
@@ -208,7 +208,7 @@ public class DataFeed
 
         TimeSpan elapsed = Stopwatch.GetElapsedTime(_lastTimeStamp, timeStamp);
 
-        var stats = new SystemStats
+        SystemStats stats = new()
         {
             UserPercent = ((cpuUsage.UserTime - _lastCpuUsage.UserTime).TotalMicroseconds / elapsed.TotalMicroseconds) / Environment.ProcessorCount,
             PrivilegedPercent = ((cpuUsage.PrivilegedTime - _lastCpuUsage.PrivilegedTime).TotalMicroseconds / elapsed.TotalMicroseconds) / Environment.ProcessorCount,
@@ -221,7 +221,7 @@ public class DataFeed
         return JsonSerializer.SerializeToUtf8Bytes(stats, JsonSerializerOptions.Web);
     }
 
-    TaskCompletionSource<byte[]> _peers = new();
+    private TaskCompletionSource<byte[]> _peers = new();
     private async Task StartPeersRefresh()
     {
         _lastCpuUsage = Environment.CpuUsage;
@@ -291,7 +291,7 @@ public class DataFeed
             JsonSerializerOptions.Web);
     }
 
-    TaskCompletionSource<byte[]> _processing = new();
+    private TaskCompletionSource<byte[]> _processing = new();
     private void OnNewProcessingStatistics(object? sender, BlockStatistics stats)
     {
         TaskCompletionSource<byte[]> processing = _processing;
@@ -315,7 +315,7 @@ public class DataFeed
         });
     }
 
-    TaskCompletionSource<byte[]> _forkChoice = new();
+    private TaskCompletionSource<byte[]> _forkChoice = new();
     private void OnForkChoiceUpdated(IBlockTree.ForkChoice choice)
     {
         TaskCompletionSource<byte[]> forkChoice = _forkChoice;
@@ -450,7 +450,7 @@ public class DataFeed
         public long Head { get; set; }
     }
 
-    TaskCompletionSource<byte[]> _log = new();
+    private TaskCompletionSource<byte[]> _log = new();
     private void OnConsoleLineWritten(object? sender, string logLine)
     {
         TaskCompletionSource<byte[]> log = _log;
