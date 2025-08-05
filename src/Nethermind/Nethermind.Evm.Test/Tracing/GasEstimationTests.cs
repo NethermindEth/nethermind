@@ -417,5 +417,65 @@ namespace Nethermind.Evm.Test.Tracing
             tracer.StatusCode.Should().Be(StatusCode.Failure,
                 "MarkAsFailed should set StatusCode to Failure");
         }
+
+        [Test]
+        public void Should_return_zero_when_out_of_gas_detected_during_estimation()
+        {
+            TestEnvironment testEnvironment = new();
+            Transaction tx = Build.A.Transaction.WithGasLimit(1000).TestObject;
+            Block block = Build.A.Block.WithNumber(1).WithTransactions(tx).TestObject;
+
+            testEnvironment.tracer.ReportAction(1000, 0, Address.Zero, Address.Zero, Array.Empty<byte>(),
+                ExecutionType.TRANSACTION, false);
+
+            testEnvironment.tracer.ReportActionError(EvmExceptionType.OutOfGas);
+
+            testEnvironment.tracer.MarkAsSuccess(Address.Zero, 500, Array.Empty<byte>(), Array.Empty<LogEntry>());
+
+            long estimate = testEnvironment.estimator.Estimate(tx, block.Header, testEnvironment.tracer, out string? err);
+
+            estimate.Should().Be(0, "Should return 0 when OutOfGas is detected");
+            testEnvironment.tracer.OutOfGas.Should().BeTrue("OutOfGas should be set to true");
+        }
+
+        [Test]
+        public void Should_return_positive_estimate_when_no_failure_conditions()
+        {
+            TestEnvironment testEnvironment = new();
+            Transaction tx = Build.A.Transaction.WithGasLimit(128).TestObject;
+            Block block = Build.A.Block.WithNumber(1).WithTransactions(tx).TestObject;
+
+            testEnvironment.tracer.ReportAction(128, 0, Address.Zero, Address.Zero, Array.Empty<byte>(),
+                ExecutionType.TRANSACTION, false);
+            testEnvironment.tracer.ReportAction(100, 0, Address.Zero, Address.Zero, Array.Empty<byte>(), ExecutionType.CALL, false);
+            testEnvironment.tracer.ReportActionEnd(63, Array.Empty<byte>());
+            testEnvironment.tracer.ReportActionEnd(65, Array.Empty<byte>());
+
+            testEnvironment.tracer.MarkAsSuccess(Address.Zero, 63, Array.Empty<byte>(), Array.Empty<LogEntry>());
+
+            long estimate = testEnvironment.estimator.Estimate(tx, block.Header, testEnvironment.tracer, out string? err);
+            estimate.Should().Be(1, "Should match the Easy_one_level_case result");
+            err.Should().BeNull("No error should occur");
+            testEnvironment.tracer.OutOfGas.Should().BeFalse("No OutOfGas should be detected");
+            testEnvironment.tracer.StatusCode.Should().Be(StatusCode.Success, "StatusCode should be Success");
+        }
+
+        [Test]
+        public void Should_return_zero_when_status_code_is_failure()
+        {
+            TestEnvironment testEnvironment = new();
+            Transaction tx = Build.A.Transaction.WithGasLimit(1000).TestObject;
+            Block block = Build.A.Block.WithNumber(1).WithTransactions(tx).TestObject;
+
+            testEnvironment.tracer.ReportAction(1000, 0, Address.Zero, Address.Zero, Array.Empty<byte>(),
+                ExecutionType.TRANSACTION, false);
+
+            testEnvironment.tracer.MarkAsFailed(Address.Zero, 500, Array.Empty<byte>(), "execution failed");
+
+            long estimate = testEnvironment.estimator.Estimate(tx, block.Header, testEnvironment.tracer, out string? err);
+
+            estimate.Should().Be(0, "Should return 0 when StatusCode is Failure");
+            testEnvironment.tracer.StatusCode.Should().Be(StatusCode.Failure);
+        }
     }
 }
