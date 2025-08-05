@@ -1116,8 +1116,11 @@ namespace Nethermind.Trie.Test
                 addresses[i] = TestItem.GetRandomAddress(_random);
             }
 
+            BlockHeader? baseBlock = null;
             for (int blockNumber = 0; blockNumber < blocksCount; blockNumber++)
             {
+                using var _ = stateProvider.BeginScope(baseBlock);
+
                 bool isEmptyBlock = _random.Next(5) == 0;
                 if (!isEmptyBlock)
                 {
@@ -1171,11 +1174,12 @@ namespace Nethermind.Trie.Test
 
                 stateProvider.CommitTree(blockNumber);
 
+                baseBlock = Build.A.BlockHeader.WithStateRoot(stateProvider.StateRoot).WithNumber(blockNumber)
+                    .TestObject;
+
                 if (blockNumber > blocksCount - Reorganization.MaxDepth)
                 {
-                    rootQueue.Enqueue(
-                        Build.A.BlockHeader.WithStateRoot(stateProvider.StateRoot).WithNumber(blockNumber).TestObject
-                    );
+                    rootQueue.Enqueue(baseBlock);
                 }
             }
 
@@ -1184,11 +1188,11 @@ namespace Nethermind.Trie.Test
 
             int verifiedBlocks = 0;
 
-            while (rootQueue.TryDequeue(out BlockHeader baseBlock))
+            while (rootQueue.TryDequeue(out baseBlock))
             {
                 try
                 {
-                    stateProvider.SetBaseBlock(baseBlock);
+                    using var _ = stateProvider.BeginScope(baseBlock);
                     for (int i = 0; i < addresses.Length; i++)
                     {
                         if (stateProvider.AccountExists(addresses[i]))
