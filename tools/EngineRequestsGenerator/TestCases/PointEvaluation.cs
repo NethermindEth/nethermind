@@ -6,6 +6,7 @@ using Nethermind.Core.Extensions;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Crypto;
 using Nethermind.Evm;
+using Nethermind.Evm.Tracing.GethStyle.Custom.JavaScript;
 using Nethermind.Int256;
 
 namespace EngineRequestsGenerator.TestCases;
@@ -120,36 +121,38 @@ public static class PointEvaluation
             .TestObject;
 
         codeToDeploy.Add((byte)Instruction.PUSH32);                    // versioned hashes
-        codeToDeploy.AddRange(tx.BlobVersionedHashes.FirstOrDefault());
+        codeToDeploy.AddRange("014edfed8547661f6cb416eba53061a2f6dce872c0497e6dd485a876fe2567f1".ToBytes());
         codeToDeploy.Add((byte)Instruction.PUSH0);
         codeToDeploy.Add((byte)Instruction.MSTORE);
 
-        codeToDeploy.Add((byte)Instruction.PUSH0);                     // x
+        codeToDeploy.Add((byte)Instruction.PUSH32);                     // x
+        codeToDeploy.AddRange("564c0a11a0f704f4fc3e8acfe0f8245f0ad1347b378fbf96e206da11a5d36306".ToBytes());
         codeToDeploy.Add((byte)Instruction.PUSH1);
         codeToDeploy.Add((byte)32);
         codeToDeploy.Add((byte)Instruction.MSTORE);
 
-        codeToDeploy.Add((byte)Instruction.PUSH0);                     // y
+        codeToDeploy.Add((byte)Instruction.PUSH32);                     // y
+        codeToDeploy.AddRange("6d928e13fe443e957d82e3e71d48cb65d51028eb4483e719bf8efcdf12f7c321".ToBytes());
         codeToDeploy.Add((byte)Instruction.PUSH1);
         codeToDeploy.Add((byte)64);
         codeToDeploy.Add((byte)Instruction.MSTORE);
 
-        List<byte> commitmentAndProof = new();
-        commitmentAndProof.AddRange(((ShardBlobNetworkWrapper)tx.NetworkWrapper).Commitments.FirstOrDefault());
-        commitmentAndProof.AddRange(((ShardBlobNetworkWrapper)tx.NetworkWrapper).Proofs.FirstOrDefault());
+        // List<byte> commitmentAndProof = new();
+        // commitmentAndProof.AddRange(((ShardBlobNetworkWrapper)tx.NetworkWrapper).Commitments.FirstOrDefault());
+        // commitmentAndProof.AddRange(((ShardBlobNetworkWrapper)tx.NetworkWrapper).Proofs.FirstOrDefault());
 
         codeToDeploy.Add((byte)Instruction.PUSH32);                     // commitment and proof
-        codeToDeploy.AddRange(commitmentAndProof.Slice(0, 32));
+        codeToDeploy.AddRange("a421e229565952cfff4ef3517100a97da1d4fe57956fa50a442f92af03b1bf37".ToBytes());
         codeToDeploy.Add((byte)Instruction.PUSH1);
         codeToDeploy.Add((byte)96);
         codeToDeploy.Add((byte)Instruction.MSTORE);
         codeToDeploy.Add((byte)Instruction.PUSH32);
-        codeToDeploy.AddRange(commitmentAndProof.Slice(32, 32));
+        codeToDeploy.AddRange("adacc8ad4ed209b31287ea5bb94d9d06a444d6bb5aadc3ceb615b50d6606bd54".ToBytes());
         codeToDeploy.Add((byte)Instruction.PUSH1);
         codeToDeploy.Add((byte)128);
         codeToDeploy.Add((byte)Instruction.MSTORE);
         codeToDeploy.Add((byte)Instruction.PUSH32);
-        codeToDeploy.AddRange(commitmentAndProof.Slice(64, 32));
+        codeToDeploy.AddRange("bfe529f59247987cd1ab848d19de599a9052f1835fb0d0d44cf70183e19a68c9".ToBytes());
         codeToDeploy.Add((byte)Instruction.PUSH1);
         codeToDeploy.Add((byte)160);
         codeToDeploy.Add((byte)Instruction.MSTORE);
@@ -179,6 +182,7 @@ public static class PointEvaluation
         codeToDeploy.Add((byte)Instruction.JUMP);
 
         List<byte> byteCode = ContractFactory.GenerateCodeToDeployContract(codeToDeploy);
+        string code = byteCode.ToArray().ToHexString();
         return byteCode.ToArray();
     }
 }
