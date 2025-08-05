@@ -48,7 +48,7 @@ public class ShutterApiSimulator(
     IProcessExitSource processExitSource,
     Random rnd)
     : ShutterApi(abiEncoder, blockTree, ecdsa, logFinder, receiptStorage, logManager, specProvider,
-        timestamper, shareableTxProcessorSource, backgroundTaskScheduler, processExitSource, 
+        timestamper, shareableTxProcessorSource, backgroundTaskScheduler, processExitSource,
         fileSystem, blockProcessingQueue, keyStoreConfig, shutterConfig, blocksConfig, ipResolver)
 {
     public int EonUpdateCalled = 0;

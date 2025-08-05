@@ -62,7 +62,8 @@ public class ShutterKeyRegistrationChecker
 
     void OnBlockProcessorQueueEmpty(object? sender, EventArgs e)
     {
-        _backgroundTaskScheduler.ScheduleTask(1, (_, cancellationToken) => {
+        _backgroundTaskScheduler.ScheduleTask(1, (_, cancellationToken) =>
+        {
             var cts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, _processExitSource.Token);
             return CheckAllValidatorsRegistered(_, cts.Token);
         });
