@@ -12,6 +12,7 @@ using Nethermind.Logging.NLog;
 using Nethermind.Serialization.Json;
 using Nethermind.Specs;
 using Nethermind.Consensus.Stateless;
+using Nethermind.Core.Specs;
 using Nethermind.Trie;
 
 class Program
@@ -82,18 +83,20 @@ class Program
                     serializer.Deserialize<TransactionForRpc>(((JsonElement)tx).GetRawText()).ToTransaction()), [],
                 suggestedBlockForRpc.Withdrawals);
 
+            ISpecProvider specProvider = HoodiSpecProvider.Instance;
+
             StatelessBlockProcessingEnv blockProcessingEnv =
-                new(HoodiSpecProvider.Instance, Always.Valid, new NLogManager());
+                new(specProvider, Always.Valid, new NLogManager());
 
             IBlockProcessor blockProcessor = blockProcessingEnv.GetProcessor(witness, baseBlock.StateRoot!);
 
             try
             {
-                Block[] processed = blockProcessor.Process(baseBlock, [suggestedBlock],
-                    ProcessingOptions.ReadOnlyChain, NullBlockTracer.Instance);
-                if (processed[0].Hash != suggestedBlock.Hash)
+                (Block processed, TxReceipt[] _) = blockProcessor.ProcessOne(suggestedBlock,
+                    ProcessingOptions.ReadOnlyChain, NullBlockTracer.Instance, specProvider.GetSpec(suggestedBlock.Header));
+                if (processed.Hash != suggestedBlock.Hash)
                 {
-                    Console.WriteLine($"Invalid block. Expected {suggestedBlock.Hash}, but got {processed[0].Hash}");
+                    Console.WriteLine($"Invalid block. Expected {suggestedBlock.Hash}, but got {processed.Hash}");
                 }
                 else
                 {

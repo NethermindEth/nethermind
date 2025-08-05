@@ -65,6 +65,6 @@ public class WitnessGeneratingBlockProcessingEnv(
             logManager,
             new WithdrawalProcessor(state, logManager),
             new ExecutionRequestsProcessor(txProcessor));
-        return new WitnessCollector(blockFinder, state, blockProcessor, logManager.GetClassLogger());
+        return new WitnessCollector(blockFinder, state, blockProcessor, specProvider);
     }
 }
