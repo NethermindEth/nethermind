@@ -70,7 +70,7 @@ namespace Nethermind.State
         private void DebugGuardInScope()
         {
 #if DEBUG
-            if (!_isInScope) ThrowOutOfScope();
+            if (_currentScope is null) ThrowOutOfScope();
 #endif
         }
 
