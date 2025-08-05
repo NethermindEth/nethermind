@@ -272,8 +272,17 @@ public class TestCaseGenerator
                 return SimpleInstructionTwoContracts.GetTxs(Instruction.BLOBBASEFEE, privateKey, nonce, blockGasConsumptionTarget);
             case TestCase.BlobHashZero:
                 return SimpleInstructionTwoContracts.GetTxs([Instruction.PUSH0, Instruction.BLOBHASH], privateKey, nonce, blockGasConsumptionTarget);
+            case TestCase.Mod1:
+                return SimpleInstructionTwoContracts.GetTxs(Instruction.MOD, privateKey, nonce, blockGasConsumptionTarget);
             case TestCase.CodeCopy:
                 return CodeCopy.GetTxs(privateKey, nonce, blockGasConsumptionTarget);
+            case TestCase.Log0Empty:
+            case TestCase.Log01byte:
+            case TestCase.Log032bytes:
+            case TestCase.Log01KiB:
+            case TestCase.Log016KiB:
+            case TestCase.Log4WithoutData:
+                return Log.GetTxs(testCase, privateKey, nonce, blockGasConsumptionTarget);
             case TestCase.EcRecover:
                 return EcRecover.GetTxs(privateKey, nonce, blockGasConsumptionTarget);
             case TestCase.SHA2From1Byte:
@@ -301,6 +310,7 @@ public class TestCaseGenerator
             case TestCase.Blake1KRounds:
             case TestCase.Blake1MRounds:
             case TestCase.Blake10MRounds:
+            case TestCase.Blake1000MRounds:
                 return Blake2.GetTxs(testCase, privateKey, nonce, blockGasConsumptionTarget);
             case TestCase.ModexpMinGasBaseHeavy:
             case TestCase.ModexpMinGasExpHeavy:
@@ -327,6 +337,17 @@ public class TestCaseGenerator
             case TestCase.Modexp677GasBaseHeavy:
             case TestCase.Modexp765GasExpHeavy:
             case TestCase.Modexp1360GasBalanced:
+            case TestCase.ModexpMod8Exp648:
+            case TestCase.ModexpMod8Exp896:
+            case TestCase.ModexpMod32Exp32:
+            case TestCase.ModexpMod32Exp36:
+            case TestCase.ModexpMod32Exp40:
+            case TestCase.ModexpMod32Exp64:
+            case TestCase.ModexpMod32Exp65:
+            case TestCase.ModexpMod32Exp128:
+            case TestCase.ModexpMod256Exp2:
+            case TestCase.ModexpMod264Exp2:
+            case TestCase.ModexpMod1024Exp2:
                 return Modexp.GetTxs(testCase, privateKey, nonce, blockGasConsumptionTarget);
             case TestCase.ModexpVulnerabilityExample1:
             case TestCase.ModexpVulnerabilityExample2:
@@ -354,6 +375,7 @@ public class TestCaseGenerator
             case TestCase.ModexpVulnerabilityPawel2ExpHeavy:
             case TestCase.ModexpVulnerabilityPawel3ExpHeavy:
             case TestCase.ModexpVulnerabilityPawel4ExpHeavy:
+            case TestCase.ModexpVulnerabilityZkevmWorst:
             case TestCase.ModexpCommon1360n1:
             case TestCase.ModexpCommon1360n2:
             case TestCase.ModexpCommon1349n1:
@@ -375,6 +397,13 @@ public class TestCaseGenerator
                 return EcMul.GetTxs(testCase, privateKey, nonce, blockGasConsumptionTarget);
             case TestCase.EcPairing0Input:
             case TestCase.EcPairing2Sets:
+            case TestCase.EcPairing1Pair:
+            case TestCase.EcPairing2Pairs:
+            case TestCase.EcPairing3Pairs:
+            case TestCase.EcPairing4Pairs:
+            case TestCase.EcPairing5Pairs:
+            case TestCase.EcPairing10Pairs:
+            case TestCase.EcPairing2SetsUnique:
                 return EcPairing.GetTxs(testCase, privateKey, nonce, blockGasConsumptionTarget);
             case TestCase.PointEvaluationOneData:
                 return PointEvaluation.GetTxs(testCase, privateKey, nonce, blockGasConsumptionTarget);
