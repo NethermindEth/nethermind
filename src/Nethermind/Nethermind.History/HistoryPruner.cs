@@ -104,7 +104,8 @@ public class HistoryPruner : IHistoryPruner
 
     public long? CutoffBlockNumber
     {
-        get => FindCutoffBlockNumber();
+        // get => FindCutoffBlockNumber();
+        get => null;
     }
 
     public BlockHeader? OldestBlockHeader
