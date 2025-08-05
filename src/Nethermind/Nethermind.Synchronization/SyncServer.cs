@@ -48,6 +48,7 @@ namespace Nethermind.Synchronization
         private readonly IReadOnlyKeyValueStore _codeDb;
         private readonly IGossipPolicy _gossipPolicy;
         private readonly ISpecProvider _specProvider;
+        private readonly IHistoryPruner _historyPruner;
         private bool _gossipStopped = false;
         private readonly Random _broadcastRandomizer = new();
 
@@ -88,6 +89,7 @@ namespace Nethermind.Synchronization
             _blockTree = blockTree ?? throw new ArgumentNullException(nameof(blockTree));
             _receiptFinder = receiptFinder ?? throw new ArgumentNullException(nameof(receiptFinder));
             _blockValidator = blockValidator ?? throw new ArgumentNullException(nameof(blockValidator));
+            _historyPruner = historyPruner ?? throw new ArgumentNullException(nameof(historyPruner));
             _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
             _pivotNumber = _blockTree.SyncPivot.BlockNumber;
             _pivotHash = new Hash256(config.PivotHash ?? Keccak.Zero.ToString());
@@ -95,7 +97,7 @@ namespace Nethermind.Synchronization
             _blockTree.NewHeadBlock += OnNewHeadBlock;
             _blockTree.NewHeadBlock += OnNewRange;
             _pool.NotifyPeerBlock += OnNotifyPeerBlock;
-            historyPruner.NewOldestBlock += OnNewRange;
+            _historyPruner.NewOldestBlock += OnNewRange;
         }
 
         public ulong NetworkId => _blockTree.NetworkId;
@@ -459,7 +461,8 @@ namespace Nethermind.Synchronization
             if (latestBlock.Number % NewHeadBlockRangeUpdateFrequency != 0)
                 return;
 
-            OnNewRange(Genesis, latestBlock.Header);
+            BlockHeader oldestBlockHeader = _historyPruner.OldestBlockHeader ?? Genesis;
+            OnNewRange(oldestBlockHeader, latestBlock.Header);
         }
 
         private void OnNewRange(BlockHeader earliest, BlockHeader latest)

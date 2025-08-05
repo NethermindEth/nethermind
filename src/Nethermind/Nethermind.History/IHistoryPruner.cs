@@ -3,13 +3,14 @@
 
 using System;
 using Nethermind.Blockchain;
+using Nethermind.Core;
 
 namespace Nethermind.History;
 
 public interface IHistoryPruner
 {
     public long? CutoffBlockNumber { get; }
-    public long? OldestBlockNumber { get; }
+    public BlockHeader? OldestBlockHeader { get; }
 
     event EventHandler<OnNewOldestBlockArgs> NewOldestBlock;
 }

@@ -48,6 +48,7 @@ public class HistoryPruner : IHistoryPruner
     private readonly int _deletionProgressLoggingInterval;
     private readonly long _ancientBarrier;
     private long _deletePointer = 1;
+    private BlockHeader? _deletePointerHeader;
     private long _lastSavedDeletePointer = 1;
     private long? _cutoffPointer;
     private ulong? _cutoffTimestamp;
@@ -104,9 +105,17 @@ public class HistoryPruner : IHistoryPruner
         get => FindCutoffBlockNumber();
     }
 
-    public long? OldestBlockNumber
+    public BlockHeader? OldestBlockHeader
     {
-        get => _deletePointer;
+        get
+        {
+            if (!TryLoadDeletePointer())
+            {
+                return null;
+            }
+
+            return _deletePointerHeader;
+        }
     }
 
     private void OnBlockProcessorQueueEmpty(object? sender, EventArgs e)
@@ -468,6 +477,7 @@ public class HistoryPruner : IHistoryPruner
         BlockHeader? oldest = _blockTree.FindBlock(_deletePointer)?.Header;
         if (oldest is not null)
         {
+            _deletePointerHeader = oldest;
             NewOldestBlock?.Invoke(this, new OnNewOldestBlockArgs(oldest, isFinalUpdate));
         }
     }
