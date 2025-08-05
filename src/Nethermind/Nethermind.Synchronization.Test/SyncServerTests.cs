@@ -18,7 +18,6 @@ using Nethermind.Core.Specs;
 using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Db;
-using Nethermind.History;
 using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.Merge.Plugin;
@@ -105,7 +104,6 @@ public class SyncServerTests
             StaticSelector.Full,
             new TestSyncConfig(),
             Policy.FullGossip,
-            ctx.HistoryPruner,
             MainnetSpecProvider.Instance,
             LimboLogs.Instance);
 
@@ -148,7 +146,6 @@ public class SyncServerTests
             StaticSelector.Full,
             new TestSyncConfig(),
             Policy.FullGossip,
-            ctx.HistoryPruner,
             MainnetSpecProvider.Instance,
             LimboLogs.Instance);
 
@@ -186,7 +183,6 @@ public class SyncServerTests
             staticSelector,
             new TestSyncConfig(),
             Policy.FullGossip,
-            ctx.HistoryPruner,
             MainnetSpecProvider.Instance,
             LimboLogs.Instance);
 
@@ -255,7 +251,6 @@ public class SyncServerTests
             StaticSelector.Full,
             new TestSyncConfig(),
             Policy.FullGossip,
-            ctx.HistoryPruner,
             testSpecProvider,
             LimboLogs.Instance);
 
@@ -477,7 +472,6 @@ public class SyncServerTests
             StaticSelector.Full,
             new TestSyncConfig(),
             Policy.FullGossip,
-            ctx.HistoryPruner,
             testSpecProvider,
             LimboLogs.Instance);
         ctx.SpecProvider = testSpecProvider;
@@ -518,7 +512,6 @@ public class SyncServerTests
             StaticSelector.Full,
             new TestSyncConfig(),
             Policy.FullGossip,
-            ctx.HistoryPruner,
             MainnetSpecProvider.Instance,
             LimboLogs.Instance);
 
@@ -551,7 +544,6 @@ public class SyncServerTests
             StaticSelector.Full,
             new TestSyncConfig(),
             Policy.FullGossip,
-            ctx.HistoryPruner,
             MainnetSpecProvider.Instance,
             LimboLogs.Instance);
 
@@ -579,7 +571,6 @@ public class SyncServerTests
             StaticSelector.Full,
             new TestSyncConfig(),
             Policy.FullGossip,
-            ctx.HistoryPruner,
             MainnetSpecProvider.Instance,
             LimboLogs.Instance);
 
@@ -616,7 +607,6 @@ public class SyncServerTests
             StaticSelector.Full,
             new TestSyncConfig(),
             Policy.FullGossip,
-            ctx.HistoryPruner,
             MainnetSpecProvider.Instance,
             LimboLogs.Instance);
 
@@ -658,7 +648,6 @@ public class SyncServerTests
             StaticSelector.Full,
             new TestSyncConfig(),
             Policy.FullGossip,
-            ctx.HistoryPruner,
             MainnetSpecProvider.Instance,
             LimboLogs.Instance);
 
@@ -697,7 +686,6 @@ public class SyncServerTests
             StaticSelector.Full,
             new TestSyncConfig(),
             Policy.FullGossip,
-            ctx.HistoryPruner,
             MainnetSpecProvider.Instance,
             LimboLogs.Instance);
 
@@ -711,8 +699,6 @@ public class SyncServerTests
 
         const int blocksCount = 100;
         var startBlock = (int)localBlockTree.Head!.Number;
-        localBlockTree.AddBranch(blocksCount / 3, splitBlockNumber: startBlock, splitVariant: 0);
-        localBlockTree.AddBranch(blocksCount * 2 / 3, splitBlockNumber: startBlock, splitVariant: 0);
         localBlockTree.AddBranch(blocksCount, splitBlockNumber: startBlock, splitVariant: 0);
 
         var expectedUpdates = Enumerable.Range(startBlock + 1, blocksCount)
@@ -755,7 +741,6 @@ public class SyncServerTests
             StaticSelector.Full,
             new TestSyncConfig(),
             Policy.FullGossip,
-            ctx.HistoryPruner,
             MainnetSpecProvider.Instance,
             LimboLogs.Instance);
 
@@ -785,7 +770,6 @@ public class SyncServerTests
 
             BlockTree = Substitute.For<IBlockTree>();
             WorldStateManager = Substitute.For<IWorldStateManager>();
-            HistoryPruner = Substitute.For<IHistoryPruner>();
 
             StaticSelector selector = StaticSelector.Full;
             SyncServer = new SyncServer(
@@ -799,13 +783,11 @@ public class SyncServerTests
                 selector,
                 new TestSyncConfig(),
                 Policy.FullGossip,
-                HistoryPruner,
                 MainnetSpecProvider.Instance,
                 LimboLogs.Instance);
         }
 
         public IBlockTree BlockTree { get; }
-        public IHistoryPruner HistoryPruner { get; }
         public IWorldStateManager WorldStateManager { get; }
         public ISyncPeerPool PeerPool { get; }
         public SyncServer SyncServer { get; set; }

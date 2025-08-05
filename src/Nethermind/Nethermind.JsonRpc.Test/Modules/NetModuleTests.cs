@@ -59,7 +59,6 @@ namespace Nethermind.JsonRpc.Test.Modules
                 Substitute.For<ISyncModeSelector>(),
                 syncConfig,
                 Substitute.For<IGossipPolicy>(),
-                Substitute.For<IHistoryPruner>(),
                 Substitute.For<ISpecProvider>(),
                 Substitute.For<ILogManager>());
             NetBridge netBridge = new(enode, syncServer);
