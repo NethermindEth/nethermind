@@ -9,8 +9,6 @@ namespace Nethermind.Specs
 {
     public class TestSpecProvider : ISpecProvider
     {
-        private ForkActivation? _theMergeBlock = null;
-
         public TestSpecProvider(IReleaseSpec initialSpecToReturn)
         {
             SpecToReturn = initialSpecToReturn;
@@ -20,12 +18,13 @@ namespace Nethermind.Specs
         public void UpdateMergeTransitionInfo(long? blockNumber, UInt256? terminalTotalDifficulty = null)
         {
             if (blockNumber is not null)
-                _theMergeBlock = (ForkActivation)blockNumber;
+                MergeBlockNumber = (ForkActivation)blockNumber;
             if (terminalTotalDifficulty is not null)
                 TerminalTotalDifficulty = terminalTotalDifficulty;
         }
 
-        public ForkActivation? MergeBlockNumber => _theMergeBlock;
+        public ForkActivation? MergeBlockNumber { get; private set; }
+
         public ulong TimestampFork { get; set; } = ISpecProvider.TimestampForkNever;
         public UInt256? TerminalTotalDifficulty { get; set; }
 
@@ -39,10 +38,10 @@ namespace Nethermind.Specs
         public ulong? _networkId;
         public ulong NetworkId { get { return _networkId ?? TestBlockchainIds.NetworkId; } set { _networkId = value; } }
 
-        public ulong? _chainId;
+        private ulong? _chainId;
         public ulong ChainId { get { return _chainId ?? TestBlockchainIds.ChainId; } set { _chainId = value; } }
 
-        public ForkActivation[] TransitionActivations { get; set; } = new ForkActivation[] { (ForkActivation)0 };
+        public ForkActivation[] TransitionActivations { get; set; } = [(ForkActivation)0];
         public bool AllowTestChainOverride { get; set; } = true;
 
         public long? ForkOnBlockNumber { get; set; }
