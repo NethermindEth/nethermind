@@ -38,14 +38,11 @@ namespace Nethermind.Trie
         private static readonly Action<TrieNode, Hash256?, TreePath> _markPersisted = static (tn, _, _) =>
             tn.IsPersisted = true;
 
-        private const long _dirtyMask = 0b001;
-        private const long _persistedMask = 0b010;
-        private const long _boundaryProof = 0b100;
-        private const long _flagsMask = 0b111;
-        private const long _blockMask = ~_flagsMask;
-        private const int _blockShift = 3;
+        private const byte _dirtyMask = 0b001;
+        private const byte _persistedMask = 0b010;
+        private const byte _boundaryProof = 0b100;
 
-        private long _blockAndFlags = -1L & _blockMask;
+        private byte _blockAndFlags = 0;
         private SpanSource _rlp;
         private INodeData? _nodeData;
 
@@ -59,12 +56,12 @@ namespace Nethermind.Trie
             get => (Volatile.Read(ref _blockAndFlags) & _persistedMask) != 0;
             set
             {
-                long previousValue = Volatile.Read(ref _blockAndFlags);
-                long currentValue;
+                byte previousValue = Volatile.Read(ref _blockAndFlags);
+                byte currentValue;
                 do
                 {
                     currentValue = previousValue;
-                    long newValue = value ? (currentValue | _persistedMask) : (currentValue & ~_persistedMask);
+                    byte newValue = (byte)(value ? (currentValue | _persistedMask) : (currentValue & ~_persistedMask));
                     previousValue = Interlocked.CompareExchange(ref _blockAndFlags, newValue, currentValue);
                 } while (previousValue != currentValue);
             }
@@ -75,12 +72,12 @@ namespace Nethermind.Trie
             get => (Volatile.Read(ref _blockAndFlags) & _boundaryProof) != 0;
             set
             {
-                long previousValue = Volatile.Read(ref _blockAndFlags);
-                long currentValue;
+                byte previousValue = Volatile.Read(ref _blockAndFlags);
+                byte currentValue;
                 do
                 {
                     currentValue = previousValue;
-                    long newValue = value ? (currentValue | _boundaryProof) : (currentValue & ~_boundaryProof);
+                    byte newValue = (byte)(value ? (currentValue | _boundaryProof) : (currentValue & ~_boundaryProof));
                     previousValue = Interlocked.CompareExchange(ref _blockAndFlags, newValue, currentValue);
                 } while (previousValue != currentValue);
             }
@@ -93,8 +90,8 @@ namespace Nethermind.Trie
         /// </summary>
         public void Seal()
         {
-            long previousValue = Volatile.Read(ref _blockAndFlags);
-            long currentValue;
+            byte previousValue = Volatile.Read(ref _blockAndFlags);
+            byte currentValue;
             do
             {
                 if ((previousValue & _dirtyMask) == 0)
@@ -103,7 +100,7 @@ namespace Nethermind.Trie
                 }
 
                 currentValue = previousValue;
-                long newValue = currentValue & ~_dirtyMask;
+                byte newValue = (byte)(currentValue & ~_dirtyMask);
                 previousValue = Interlocked.CompareExchange(ref _blockAndFlags, newValue, currentValue);
             } while (previousValue != currentValue);
 
@@ -250,19 +247,19 @@ namespace Nethermind.Trie
 
         private TrieNode(TrieNode node)
         {
-            _blockAndFlags |= _dirtyMask;
+            _blockAndFlags = _dirtyMask;
             _nodeData = node._nodeData?.Clone();
         }
 
         public TrieNode(NodeType nodeType)
         {
-            _blockAndFlags |= _dirtyMask;
+            _blockAndFlags = _dirtyMask;
             _nodeData = CreateNodeData(nodeType);
         }
 
         public TrieNode(INodeData nodeData)
         {
-            _blockAndFlags |= _dirtyMask;
+            _blockAndFlags = _dirtyMask;
             _nodeData = nodeData;
         }
 
