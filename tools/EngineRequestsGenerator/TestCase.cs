@@ -92,6 +92,27 @@ public enum TestCase
     [TestCaseMetadata("CodeCopy", "Endlessly loading 32-bytes of code to the memory")]
     CodeCopy,
 
+    [TestCaseMetadata("Log0 opcode with empty input", "Endlessly emitting empty Log0")]
+    Log0Empty,
+
+    [TestCaseMetadata("Log0 opcode with 1-byte input", "Endlessly emitting 1byte Log0")]
+    Log01byte,
+
+    [TestCaseMetadata("Log0 opcode with 32-bytes input", "Endlessly emitting 32byte Log0")]
+    Log032bytes,
+
+    [TestCaseMetadata("Log0 opcode with 1024-bytes input", "Endlessly emitting 1024-bytes Log0")]
+    Log01KiB,
+
+    [TestCaseMetadata("Log0 opcode with 1024-bytes input", "Endlessly emitting 1024-bytes Log0")]
+    Log016KiB,
+
+    [TestCaseMetadata("Log4 opcode without data", "Endlessly emitting Log4 without additional data")]
+    Log4WithoutData,
+
+    [TestCaseMetadata("Mod1", "")]
+    Mod1,
+
     [TestCaseMetadata("EcRecover precompile", "EcRecover precompile calculations")]
     EcRecover,
 
@@ -224,6 +245,39 @@ public enum TestCase
     [TestCaseMetadata("Modexp 1360 gas, balanced", "Modexp precompile consuming 1360 gas, with base and modulo byte size equal 32 and exponent equal 2^256 - 1 (256x 1s in binary)")]
     Modexp1360GasBalanced,
 
+    [TestCaseMetadata("", "")]
+    ModexpMod8Exp648,
+
+    [TestCaseMetadata("", "")]
+    ModexpMod8Exp896,
+
+    [TestCaseMetadata("", "")]
+    ModexpMod32Exp32,
+
+    [TestCaseMetadata("", "")]
+    ModexpMod32Exp36,
+
+    [TestCaseMetadata("", "")]
+    ModexpMod32Exp40,
+
+    [TestCaseMetadata("", "")]
+    ModexpMod32Exp64,
+
+    [TestCaseMetadata("", "")]
+    ModexpMod32Exp65,
+
+    [TestCaseMetadata("", "")]
+    ModexpMod32Exp128,
+
+    [TestCaseMetadata("", "")]
+    ModexpMod256Exp2,
+
+    [TestCaseMetadata("", "")]
+    ModexpMod264Exp2,
+
+    [TestCaseMetadata("", "")]
+    ModexpMod1024Exp2,
+
     [TestCaseMetadata("Modexp \"eip_example1\"", "Modexp precompile test case \"eip_example1\" reported as potential vulnerability")]
     ModexpVulnerabilityExample1,
 
@@ -302,6 +356,9 @@ public enum TestCase
     [TestCaseMetadata("Modexp \"pawel-4-exp-heavy\"", "Modexp precompile test case \"pawel-4-exp-heavy\" reported as potential vulnerability")]
     ModexpVulnerabilityPawel4ExpHeavy,
 
+    [TestCaseMetadata("Modexp \"zkevm worst-modexp\"", "Modexp precompile test case \"zkevm worst-modexp\" reported as potential vulnerability")]
+    ModexpVulnerabilityZkevmWorst,
+
     [TestCaseMetadata("Modexp common 1360 1", "Modexp precompile test case collected from Mainnet, consuming 1360 gas (base and modulo byte size 32 and exponent bit length 256)")]
     ModexpCommon1360n1,
 
@@ -356,6 +413,27 @@ public enum TestCase
     [TestCaseMetadata("EcPairing with 2 sets of data", "EcPairing precompile with 2 sets of valid input data (6x 32-byte value)")]
     EcPairing2Sets,
 
+    [TestCaseMetadata("EcPairing with 2 sets of data", "EcPairing precompile with 2 sets of valid input data (6x 32-byte value)")]
+    EcPairing1Pair,
+
+    [TestCaseMetadata("EcPairing with 2 sets of data", "EcPairing precompile with 2 sets of valid input data (6x 32-byte value)")]
+    EcPairing2Pairs,
+
+    [TestCaseMetadata("EcPairing with 2 sets of data", "EcPairing precompile with 2 sets of valid input data (6x 32-byte value)")]
+    EcPairing3Pairs,
+
+    [TestCaseMetadata("EcPairing with 2 sets of data", "EcPairing precompile with 2 sets of valid input data (6x 32-byte value)")]
+    EcPairing4Pairs,
+
+    [TestCaseMetadata("EcPairing with 2 sets of data", "EcPairing precompile with 2 sets of valid input data (6x 32-byte value)")]
+    EcPairing5Pairs,
+
+    [TestCaseMetadata("EcPairing with 2 sets of data", "EcPairing precompile with 2 sets of valid input data (6x 32-byte value)")]
+    EcPairing10Pairs,
+
+    [TestCaseMetadata("EcPairing with 2 unique sets of data", "EcPairing precompile with 2 sets of valid input data (6x 32-byte value), different for every call")]
+    EcPairing2SetsUnique,
+
     [TestCaseMetadata("Blake2f 1 round", "Blake2f precompile with 1 round of computations")]
     Blake1Round,
 
@@ -367,6 +445,9 @@ public enum TestCase
 
     [TestCaseMetadata("Blake2f 10M rounds", "Blake2f precompile with 10_000_000 rounds of computations")]
     Blake10MRounds,
+
+    [TestCaseMetadata("Blake2f 1000M rounds", "Blake2f precompile with 1_000_000_000 rounds of computations")]
+    Blake1000MRounds,
 
     [TestCaseMetadata("Point evaluation - one data", "Point evaluation precompile repeating computations on the same data")]
     PointEvaluationOneData,
