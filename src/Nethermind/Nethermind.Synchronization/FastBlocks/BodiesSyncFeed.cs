@@ -314,13 +314,19 @@ namespace Nethermind.Synchronization.FastBlocks
         {
             public bool ShouldDownloadBlock(BlockInfo info)
             {
+                // bool hasBlock = blockTree.HasBlock(info.BlockNumber, info.BlockHash);
+                // long? cutoff = historyPruner?.CutoffBlockNumber;
+                // cutoff = cutoff is null ? null : long.Min(cutoff!.Value, blockTree.SyncPivot.BlockNumber);
+                // bool shouldDownload = !hasBlock && (cutoff is null || info.BlockNumber >= cutoff);
+                // if (!shouldDownload) syncReport.FastBlocksBodies.IncrementSkipped();
+                // logger.Info($"[prune] shouldDownload #{info.BlockNumber}?={shouldDownload} hasBlock={hasBlock} cutoff={cutoff}");
+                // return shouldDownload;
+                _ = historyPruner.CutoffBlockNumber;
+                logger.Info("shouldDownload");
+
                 bool hasBlock = blockTree.HasBlock(info.BlockNumber, info.BlockHash);
-                long? cutoff = historyPruner?.CutoffBlockNumber;
-                cutoff = cutoff is null ? null : long.Min(cutoff!.Value, blockTree.SyncPivot.BlockNumber);
-                bool shouldDownload = !hasBlock && (cutoff is null || info.BlockNumber >= cutoff);
-                if (!shouldDownload) syncReport.FastBlocksBodies.IncrementSkipped();
-                logger.Info($"[prune] shouldDownload #{info.BlockNumber}?={shouldDownload} hasBlock={hasBlock} cutoff={cutoff}");
-                return shouldDownload;
+                if (hasBlock) syncReport.FastBlocksBodies.IncrementSkipped();
+                return hasBlock;
             }
         }
     }
