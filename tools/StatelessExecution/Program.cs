@@ -17,20 +17,19 @@ using Nethermind.Trie;
 
 class Program
 {
-    static void Main(string[] args)
+    static int Main(string[] args)
     {
         for (int i = 0x249f0; i <= 0x24d74; ++i)
         {
             string witnessFileName = $"{args[0]}/reth/{i.ToString("x")}.json";
             string blockFileName = $"{args[0]}/blocks/{i.ToString("x")}.json";
-            Console.WriteLine($"Processing {i.ToString("X")}");
             var serializer = new EthereumJsonSerializer();
 
             Witness witness =
-                serializer.Deserialize<Witness>(File.ReadAllText(witnessFileName));
+                serializer.Deserialize<Witness>(witnessFileName);
 
             BlockForRpc suggestedBlockForRpc =
-                serializer.Deserialize<BlockForRpc>(File.ReadAllText(blockFileName))!;
+                serializer.Deserialize<BlockForRpc>(blockFileName)!;
 
             BlockHeader suggestedBlockHeader = new BlockHeader(
                 suggestedBlockForRpc.ParentHash,
@@ -73,15 +72,17 @@ class Program
 
             if (baseBlock is null)
             {
-                Console.WriteLine($"Invalid witness headers");
-                continue;
+                 // Invalid witness headers
+                return 1;
             }
-            Console.WriteLine($"Headers: {witness.DecodedHeaders.Length}, Base block: {baseBlock.Hash}");
 
-            Block suggestedBlock = new Block(suggestedBlockHeader,
-                suggestedBlockForRpc.Transactions.Select(tx =>
-                    serializer.Deserialize<TransactionForRpc>(((JsonElement)tx).GetRawText()).ToTransaction()), [],
-                suggestedBlockForRpc.Withdrawals);
+            Transaction[] transactions = new Transaction[suggestedBlockForRpc.Transactions.Length];
+            for (int j = 0; j < transactions.Length; j++)
+            {
+                JsonElement tx = (JsonElement)suggestedBlockForRpc.Transactions[j];
+                transactions[j] = serializer.Deserialize<TransactionForRpc>(tx.GetRawText()).ToTransaction();
+            }
+            Block suggestedBlock = new Block(suggestedBlockHeader, transactions, [], suggestedBlockForRpc.Withdrawals);
 
             ISpecProvider specProvider = HoodiSpecProvider.Instance;
 
@@ -96,17 +97,19 @@ class Program
                     ProcessingOptions.ReadOnlyChain, NullBlockTracer.Instance, specProvider.GetSpec(suggestedBlock.Header));
                 if (processed.Hash != suggestedBlock.Hash)
                 {
-                    Console.WriteLine($"Invalid block. Expected {suggestedBlock.Hash}, but got {processed.Hash}");
+                    // Invalid block
+                    return 1;
                 }
-                else
-                {
-                    Console.WriteLine("Block processed successfully");
-                }
+                // Block processed successfully
+
             }
-            catch (MissingTrieNodeException e)
+            catch (MissingTrieNodeException)
             {
-                Console.WriteLine($"Unable to process block: {e}");
+                // Invalid proof
+                return 1;
             }
         }
+
+        return 0;
     }
 }
