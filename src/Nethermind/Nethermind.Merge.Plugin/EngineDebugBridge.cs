@@ -124,7 +124,9 @@ namespace Nethermind.Merge.Plugin
                 }
             }
 
-            string engineEndpointVersion = $"engine_newPayloadV{executionPayload.GetExecutionPayloadVersion()}";
+            int payloadVersion = executionPayload.GetExecutionPayloadVersion();
+
+            string engineEndpointVersion = $"engine_newPayloadV{payloadVersion}";
 
             byte[]?[]? blobVersionedHashes = executionPayload.TryGetTransactions().Transactions
                 .Where(t => t.BlobVersionedHashes is not null)
@@ -134,7 +136,15 @@ namespace Nethermind.Merge.Plugin
             Hash256? parentBeaconBlockRoot = block.ParentBeaconBlockRoot;
             byte[][]? executionRequests = executionPayload.ExecutionRequests;
 
-            return new ExecutionPayloadForDebugRpc(engineEndpointVersion, new Params(executionPayload, blobVersionedHashes, parentBeaconBlockRoot, executionRequests));
+            Params arguments = payloadVersion switch
+            {
+                1 or 2 => new ParamsV1(executionPayload),
+                3 => new ParamsV3(executionPayload, blobVersionedHashes, parentBeaconBlockRoot),
+                4 => new ParamsV4(executionPayload, blobVersionedHashes, parentBeaconBlockRoot, executionRequests),
+                _ => throw new NotSupportedException($"Unsupported ExecutionPayload version: {payloadVersion}")
+            };
+
+            return new ExecutionPayloadForDebugRpc(engineEndpointVersion, arguments);
         }
 
         public Hash256 CalculateBlockHash(ExecutionPayload executionPayload)

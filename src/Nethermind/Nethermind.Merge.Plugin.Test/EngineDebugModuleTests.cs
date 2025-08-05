@@ -3,8 +3,10 @@
 
 using Nethermind.Blockchain.Find;
 using Nethermind.Config;
+using Nethermind.Consensus.Processing;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.ExecutionRequest;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Db;
@@ -18,6 +20,7 @@ using NSubstitute;
 using NUnit.Framework;
 using System;
 using System.Collections.Generic;
+using System.CommandLine;
 using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
@@ -31,6 +34,8 @@ public class EngineDebugModuleTests
 {
     private readonly IEngineDebugBridge debugBridge = Substitute.For<IEngineDebugBridge>();
     private readonly IBlockFinder blockFinder = Substitute.For<IBlockFinder>();
+    private readonly IBlockchainProcessor blockchainProcessor = Substitute.For<IBlockchainProcessor>();
+    private readonly ISpecProvider specProvider = Substitute.For<ISpecProvider>();
 
     private DebugRpcModule CreateDebugRpcModule(IEngineDebugBridge customDebugBridge)
     {
@@ -77,7 +82,7 @@ public class EngineDebugModuleTests
     [Test]
     public async Task Generate_Payload_From_Block()
     {
-        ExecutionPayloadForDebugRpc value = new("engine_newPayloadV1", new Params(CreateExecutionPayload()));
+        ExecutionPayloadForDebugRpc value = new("engine_newPayloadV1", new ParamsV1(CreateExecutionPayload()));
         Block block = new BlockBuilder()
             .WithHeader(
                 new BlockHeaderBuilder()
