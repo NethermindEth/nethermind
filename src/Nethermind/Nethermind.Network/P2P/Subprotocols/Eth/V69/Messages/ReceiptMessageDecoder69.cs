@@ -12,6 +12,12 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V69.Messages;
 [Rlp.SkipGlobalRegistration] // Created explicitly
 public class ReceiptMessageDecoder69 : IRlpStreamDecoder<TxReceipt>, IRlpValueDecoder<TxReceipt>
 {
+    private readonly bool _skipStateAndStatus;
+
+    public ReceiptMessageDecoder69(bool skipStateAndStatus = false)
+    {
+        _skipStateAndStatus = skipStateAndStatus;
+    }
     public TxReceipt? Decode(RlpStream rlpStream, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
     {
         Span<byte> span = rlpStream.PeekNextItem();
@@ -45,7 +51,6 @@ public class ReceiptMessageDecoder69 : IRlpStreamDecoder<TxReceipt>, IRlpValueDe
         else if (firstItem.Length is >= 1 and <= 4)
         {
             txReceipt.GasUsedTotal = (long)firstItem.ToUnsignedBigInteger();
-            txReceipt.SkipStateAndStatusInRlp = true;
         }
         else
         {
@@ -67,7 +72,7 @@ public class ReceiptMessageDecoder69 : IRlpStreamDecoder<TxReceipt>, IRlpValueDe
         return txReceipt;
     }
 
-    private static (int Total, int Logs) GetContentLength(TxReceipt? item, RlpBehaviors rlpBehaviors)
+    private (int Total, int Logs) GetContentLength(TxReceipt? item, RlpBehaviors rlpBehaviors)
     {
         if (item is null)
         {
@@ -83,7 +88,7 @@ public class ReceiptMessageDecoder69 : IRlpStreamDecoder<TxReceipt>, IRlpValueDe
 
         bool isEip658Receipts = (rlpBehaviors & RlpBehaviors.Eip658Receipts) == RlpBehaviors.Eip658Receipts;
 
-        if (!item.SkipStateAndStatusInRlp)
+        if (!_skipStateAndStatus)
         {
             contentLength += isEip658Receipts
                 ? Rlp.LengthOf(item.StatusCode)
@@ -124,7 +129,7 @@ public class ReceiptMessageDecoder69 : IRlpStreamDecoder<TxReceipt>, IRlpValueDe
 
         rlpStream.Encode((byte)item.TxType);
 
-        if (!item.SkipStateAndStatusInRlp)
+        if (!_skipStateAndStatus)
         {
             if ((rlpBehaviors & RlpBehaviors.Eip658Receipts) == RlpBehaviors.Eip658Receipts)
             {

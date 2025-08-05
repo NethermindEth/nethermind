@@ -348,7 +348,7 @@ public partial class EthRpcModule(
             .ExecuteTx(transactionCall, blockParameter, stateOverride);
 
     public ResultWrapper<IReadOnlyList<SimulateBlockResult<SimulateCallResult>>> eth_simulateV1(SimulatePayload<TransactionForRpc> payload, BlockParameter? blockParameter = null) =>
-        new SimulateTxExecutor<SimulateCallResult>(_blockchainBridge, _blockFinder, _rpcConfig, new SimulateBlockMutatorTracerFactory())
+        new SimulateTxExecutor<SimulateCallResult>(_blockchainBridge, _blockFinder, _rpcConfig, new SimulateBlockMutatorTracerFactory(), secondsPerSlot: _secondsPerSlot)
             .Execute(payload, blockParameter);
 
     public ResultWrapper<UInt256?> eth_estimateGas(TransactionForRpc transactionCall, BlockParameter? blockParameter, Dictionary<Address, AccountOverride>? stateOverride = null) =>
@@ -413,11 +413,8 @@ public partial class EthRpcModule(
 
         RlpBehaviors encodingSettings = RlpBehaviors.SkipTypedWrapping | (transaction.IsInMempoolForm() ? RlpBehaviors.InMempoolForm : RlpBehaviors.None);
 
-        IByteBuffer buffer = PooledByteBufferAllocator.Default.Buffer(TxDecoder.Instance.GetLength(transaction, encodingSettings));
-        using NettyRlpStream stream = new(buffer);
-        TxDecoder.Instance.Encode(stream, transaction, encodingSettings);
-
-        return ResultWrapper<string?>.Success(buffer.AsSpan().ToHexString(false));
+        using NettyRlpStream stream = TxDecoder.Instance.EncodeToNewNettyStream(transaction, encodingSettings);
+        return ResultWrapper<string?>.Success(stream.AsSpan().ToHexString(false));
     }
 
     public ResultWrapper<TransactionForRpc[]> eth_pendingTransactions()

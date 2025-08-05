@@ -447,7 +447,7 @@ public partial class EngineModuleTests
             .Build(new TestSingleReleaseSpecProvider(London.Instance));
         IEngineRpcModule rpc = chain.EngineRpcModule;
 
-        ((TestBlockProcessorInterceptor)chain.BlockProcessor).ExceptionToThrow =
+        ((TestBranchProcessorInterceptor)chain.BranchProcessor).ExceptionToThrow =
             new Exception("unxpected exception");
 
         ExecutionPayload executionPayload = CreateBlockRequest(chain, CreateParentBlockRequestOnHead(chain.BlockTree), TestItem.AddressD);

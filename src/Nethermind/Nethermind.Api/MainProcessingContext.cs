@@ -9,6 +9,7 @@ namespace Nethermind.Api;
 
 public record MainProcessingContext(
     ITransactionProcessor TransactionProcessor,
+    IBranchProcessor BranchProcessor,
     IBlockProcessor BlockProcessor,
     IBlockchainProcessor BlockchainProcessor,
     IWorldState WorldState

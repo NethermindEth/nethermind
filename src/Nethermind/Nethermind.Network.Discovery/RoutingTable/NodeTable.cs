@@ -45,7 +45,7 @@ public class NodeTable : INodeTable
         CheckInitialization();
 
         if (_logger.IsTrace) _logger.Trace($"Adding node to NodeTable: {node}");
-        int distanceFromMaster = _nodeDistanceCalculator.CalculateDistance(MasterNode!.IdHash.Bytes, node.IdHash.Bytes);
+        int distanceFromMaster = _nodeDistanceCalculator.CalculateDistance(MasterNode!.IdHash, node.IdHash);
         NodeBucket bucket = Buckets[distanceFromMaster > 0 ? distanceFromMaster - 1 : 0];
         return bucket.AddNode(node);
     }
@@ -54,7 +54,7 @@ public class NodeTable : INodeTable
     {
         CheckInitialization();
 
-        int distanceFromMaster = _nodeDistanceCalculator.CalculateDistance(MasterNode!.IdHash.Bytes, nodeToAdd.IdHash.Bytes);
+        int distanceFromMaster = _nodeDistanceCalculator.CalculateDistance(MasterNode!.IdHash, nodeToAdd.IdHash);
         NodeBucket bucket = Buckets[distanceFromMaster > 0 ? distanceFromMaster - 1 : 0];
         bucket.ReplaceNode(nodeToRemove, nodeToAdd);
     }
@@ -71,7 +71,7 @@ public class NodeTable : INodeTable
     {
         CheckInitialization();
 
-        int distanceFromMaster = _nodeDistanceCalculator.CalculateDistance(MasterNode!.IdHash.Bytes, node.IdHash.Bytes);
+        int distanceFromMaster = _nodeDistanceCalculator.CalculateDistance(MasterNode!.IdHash, node.IdHash);
         NodeBucket bucket = Buckets[distanceFromMaster > 0 ? distanceFromMaster - 1 : 0];
         bucket.RefreshNode(node);
     }
@@ -179,7 +179,7 @@ public class NodeTable : INodeTable
 
                 if (Nullable.Equals(a.ValidatedProtocol, b.ValidatedProtocol))
                 {
-                    return calculator.CalculateDistance(a.Id.Bytes, targetNodeId).CompareTo(calculator.CalculateDistance(b.Id.Bytes, targetNodeId));
+                    return calculator.CalculateDistance(a.Id.Hash, idHash).CompareTo(calculator.CalculateDistance(b.Id.Hash, idHash));
                 }
                 else if (a.ValidatedProtocol.HasValue)
                 {
