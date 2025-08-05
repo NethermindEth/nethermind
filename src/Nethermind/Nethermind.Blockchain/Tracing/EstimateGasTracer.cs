@@ -18,7 +18,6 @@ public class EstimateGasTracer : TxTracer
     public EstimateGasTracer()
     {
         _currentGasAndNesting.Push(new GasAndNesting(0, -1));
-        OutOfGas = false;
     }
 
     public override bool IsTracingReceipt => true;
@@ -41,15 +40,12 @@ public class EstimateGasTracer : TxTracer
 
     public bool OutOfGas { get; private set; }
 
-    private bool _isNewExecution = true;
-
     public override void MarkAsSuccess(Address recipient, GasConsumed gasSpent, byte[] output, LogEntry[] logs,
         Hash256? stateRoot = null)
     {
         GasSpent = gasSpent.SpentGas;
         ReturnValue = output;
         StatusCode = Evm.StatusCode.Success;
-        _isNewExecution = true;
     }
 
     public override void MarkAsFailed(Address recipient, GasConsumed gasSpent, byte[] output, string? error,
@@ -59,7 +55,6 @@ public class EstimateGasTracer : TxTracer
         Error = error;
         ReturnValue = output ?? [];
         StatusCode = Evm.StatusCode.Failure;
-        _isNewExecution = true;
     }
 
     private class GasAndNesting
@@ -110,15 +105,9 @@ public class EstimateGasTracer : TxTracer
     public override void ReportAction(long gas, UInt256 value, Address from, Address to, ReadOnlyMemory<byte> input,
         ExecutionType callType, bool isPrecompileCall = false)
     {
-
-        if (_isNewExecution)
-        {
-            OutOfGas = false;
-            _isNewExecution = false;
-        }
-
         if (_currentNestingLevel == -1)
         {
+            OutOfGas = false;
             IntrinsicGasAt = gas;
         }
 
