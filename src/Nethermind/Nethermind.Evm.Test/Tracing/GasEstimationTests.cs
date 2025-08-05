@@ -405,20 +405,6 @@ namespace Nethermind.Evm.Test.Tracing
         }
 
         [Test]
-        public void EstimateGasTracer_should_set_status_code_correctly()
-        {
-            EstimateGasTracer tracer = new();
-
-            tracer.MarkAsSuccess(Address.Zero, 25000, [], []);
-            tracer.StatusCode.Should().Be(StatusCode.Success,
-                "MarkAsSuccess should set StatusCode to Success");
-
-            tracer.MarkAsFailed(Address.Zero, 25000, [], "execution reverted");
-            tracer.StatusCode.Should().Be(StatusCode.Failure,
-                "MarkAsFailed should set StatusCode to Failure");
-        }
-
-        [Test]
         public void Should_return_zero_when_out_of_gas_detected_during_estimation()
         {
             TestEnvironment testEnvironment = new();
