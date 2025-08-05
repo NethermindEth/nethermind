@@ -28,7 +28,7 @@ namespace Nethermind.Store.Test
             MemDb stateDb = new MemDb();
             NodeStorage nodeStorage = new NodeStorage(stateDb);
             TestRawTrieStore trieStore = new(nodeStorage);
-            WorldState stateProvider = new(trieStore, codeDb, LimboLogs.Instance);
+            WorldState stateProvider = new(new TrieStoreBackend(trieStore, LimboLogs.Instance), codeDb, LimboLogs.Instance);
             StateReader stateReader = new StateReader(trieStore, codeDb, LimboLogs.Instance);
             Hash256 stateRoot;
 
