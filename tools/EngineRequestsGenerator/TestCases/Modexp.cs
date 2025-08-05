@@ -84,7 +84,29 @@ public static class Modexp
             case TestCase.Modexp765GasExpHeavy:
                 return PrepareCode(24, 256);
             case TestCase.Modexp1360GasBalanced:
-                return PrepareCode(32, 256);
+                return PrepareCode(256, 2);
+            case TestCase.ModexpMod8Exp648:
+                return PrepareCode(8, 648);
+            case TestCase.ModexpMod8Exp896:
+                return PrepareCode(8, 896);
+            case TestCase.ModexpMod32Exp32:
+                return PrepareCode(32, 32);
+            case TestCase.ModexpMod32Exp36:
+                return PrepareCode(32, 36);
+            case TestCase.ModexpMod32Exp40:
+                return PrepareCode(32, 40);
+            case TestCase.ModexpMod32Exp64:
+                return PrepareCode(32, 64);
+            case TestCase.ModexpMod32Exp65:
+                return PrepareCode(32, 65);
+            case TestCase.ModexpMod32Exp128:
+                return PrepareCode(32, 128);
+            case TestCase.ModexpMod256Exp2:
+                return PrepareCode(256, 2);
+            case TestCase.ModexpMod264Exp2:
+                return PrepareCode(264, 2);
+            case TestCase.ModexpMod1024Exp2:
+                return PrepareCode(1024, 2);
             default:
                 throw new ArgumentOutOfRangeException(nameof(testCase), testCase, null);
         }
@@ -208,11 +230,12 @@ public static class Modexp
         for (int i = 0; i < baseSize / 32; i++)
         {
             byte[] offsetInternal = offset.ToBigEndianByteArrayWithoutLeadingZeros();
-            codeToDeploy.Add((byte)Instruction.PUSH31);                         // modulo
+            codeToDeploy.Add((byte)Instruction.PUSH32);                         // modulo
             for (int j = 0; j < 31; j++)                                       // preparing worst case (0xFF..FF00)
             {
                 codeToDeploy.Add(0xFF);
             }
+            codeToDeploy.Add(0x00);
             codeToDeploy.Add((byte)(Instruction.PUSH1 + (byte)offsetInternal.Length - 1));
             codeToDeploy.AddRange(offsetInternal);
             codeToDeploy.Add((byte)Instruction.MSTORE);
@@ -237,7 +260,7 @@ public static class Modexp
         codeToDeploy.Add((byte)Instruction.JUMPDEST);
         Console.WriteLine($"jumpdest: {jumpDestPosition}");
 
-        byte[] argsSize = ((long)(32 + 32 + 32 + baseSize + exponentAsBytes.Length + baseSize - 1)).ToBigEndianByteArrayWithoutLeadingZeros();
+        byte[] argsSize = ((long)(32 + 32 + 32 + baseSize + exponentAsBytes.Length + baseSize)).ToBigEndianByteArrayWithoutLeadingZeros();
 
         for (int i = 0; i < 1000; i++)
         {
