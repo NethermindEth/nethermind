@@ -204,24 +204,12 @@ public sealed class BlobFieldsTxValidator : ITxValidator
     private static ValidationResult ValidateBlobFields(Transaction transaction, IReleaseSpec spec)
     {
         int blobCount = transaction.BlobVersionedHashes!.Length;
-        ulong totalBlobGas = BlobGasCalculator.CalculateBlobGas(blobCount);
-        ulong maxBlobGasPerBlock = spec.GetMaxBlobGasPerBlock();
 
-        if (totalBlobGas > maxBlobGasPerBlock)
-        {
-            return BlockErrorMessages.BlobGasUsedAboveBlockLimit(maxBlobGasPerBlock, blobCount, totalBlobGas);
-        }
-
-        ValidationResult blobPerTxLimitValidationResult = ValidateBlobPerTxLimit(totalBlobGas, spec);
+        ValidationResult blobPerTxLimitValidationResult = ValidateBlobGasLimits(blobCount, spec);
 
         if (!blobPerTxLimitValidationResult)
         {
             return blobPerTxLimitValidationResult;
-        }
-
-        if (blobCount < Eip4844Constants.MinBlobsPerTransaction)
-        {
-            return TxErrorMessages.BlobTxMissingBlobs;
         }
 
         for (int i = 0; i < blobCount; i++)
@@ -237,9 +225,24 @@ public sealed class BlobFieldsTxValidator : ITxValidator
         return ValidationResult.Success;
     }
 
-    internal static ValidationResult ValidateBlobPerTxLimit(ulong txBlobGas, IReleaseSpec spec)
+    internal static ValidationResult ValidateBlobGasLimits(int txBlobCount, IReleaseSpec spec)
     {
+        if (txBlobCount < Eip4844Constants.MinBlobsPerTransaction)
+        {
+            return TxErrorMessages.BlobTxMissingBlobs;
+        }
+
+        ulong txBlobGas = BlobGasCalculator.CalculateBlobGas(txBlobCount);
+
+        ulong maxBlobGasPerBlock = spec.GetMaxBlobGasPerBlock();
+
+        if (txBlobGas > maxBlobGasPerBlock)
+        {
+            return BlockErrorMessages.BlobGasUsedAboveBlockLimit(maxBlobGasPerBlock, txBlobCount, txBlobGas);
+        }
+
         ulong maxBlobGasPerTx = spec.GetMaxBlobGasPerTx();
+
         return txBlobGas > maxBlobGasPerTx ? TxErrorMessages.BlobTxGasLimitExceeded(txBlobGas, maxBlobGasPerTx) : ValidationResult.Success;
     }
 }
@@ -256,12 +259,8 @@ public sealed class MaxBlobCountBlobTxValidator : ITxValidator
             _ => ValidateBlobFields(transaction, releaseSpec)
         };
 
-    private static ValidationResult ValidateBlobFields(Transaction transaction, IReleaseSpec spec)
-    {
-        int blobCount = transaction.BlobVersionedHashes?.Length ?? 0;
-        ulong totalBlobGas = BlobGasCalculator.CalculateBlobGas(blobCount);
-        return BlobFieldsTxValidator.ValidateBlobPerTxLimit(totalBlobGas, spec);
-    }
+    private static ValidationResult ValidateBlobFields(Transaction transaction, IReleaseSpec spec) =>
+        BlobFieldsTxValidator.ValidateBlobGasLimits(transaction.BlobVersionedHashes?.Length ?? 0, spec);
 }
 
 /// <summary>
