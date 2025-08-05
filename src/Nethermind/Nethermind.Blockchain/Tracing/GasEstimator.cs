@@ -134,39 +134,6 @@ public class GasEstimator
         _transactionProcessor.SetBlockExecutionContext(new(block, _specProvider.GetSpec(block)));
         TransactionResult result = _transactionProcessor.CallAndRestore(txClone, gasTracer.WithCancellation(token));
 
-        return result.Success && gasTracer.StatusCode == StatusCode.Success;
-    }
-
-    private class OutOfGasTracer : TxTracer
-    {
-        public OutOfGasTracer()
-        {
-            OutOfGas = false;
-        }
-
-        public override bool IsTracingReceipt => true;
-        public override bool IsTracingInstructions => true;
-        public override bool IsTracingActions => true;
-        public bool OutOfGas { get; private set; }
-
-        public override void MarkAsSuccess(Address recipient, GasConsumed gasSpent, byte[] output, LogEntry[] logs,
-            Hash256? stateRoot = null)
-        {
-        }
-
-        public override void MarkAsFailed(Address recipient, GasConsumed gasSpent, byte[] output, string? error,
-            Hash256? stateRoot = null)
-        {
-        }
-
-        public override void ReportActionError(EvmExceptionType error)
-        {
-            OutOfGas |= error == EvmExceptionType.OutOfGas;
-        }
-
-        public override void ReportOperationError(EvmExceptionType error)
-        {
-            OutOfGas |= error == EvmExceptionType.OutOfGas;
-        }
+        return result.Success && gasTracer.StatusCode == StatusCode.Success && !gasTracer.OutOfGas;
     }
 }
