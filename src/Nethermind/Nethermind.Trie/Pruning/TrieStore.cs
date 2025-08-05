@@ -206,13 +206,7 @@ public sealed class TrieStore : ITrieStore, IPruningTrieStore
                 ThrowUnknownHash(node);
             }
 
-            if (node.LastSeen >= 0)
-            {
-                ThrowNodeHasBeenSeen(blockNumber, node);
-            }
-
-            node = SaveOrReplaceInDirtyNodesCache(address, ref path, nodeCommitInfo, node);
-            node.LastSeen = Math.Max(blockNumber, node.LastSeen);
+            SaveOrReplaceInDirtyNodesCache(address, ref path, nodeCommitInfo, node, blockNumber);
 
             IncrementCommittedNodesCount();
         }
@@ -225,9 +219,6 @@ public sealed class TrieStore : ITrieStore, IPruningTrieStore
 
         [DoesNotReturn, StackTraceHidden]
         static void ThrowUnknownHash(TrieNode node) => throw new TrieStoreException($"The hash of {node} should be known at the time of committing.");
-
-        [DoesNotReturn, StackTraceHidden]
-        static void ThrowNodeHasBeenSeen(long blockNumber, TrieNode node) => throw new TrieStoreException($"{nameof(TrieNode.LastSeen)} set on {node} committed at {blockNumber}.");
     }
 
     private int GetNodeShardIdx(in TreePath path, Hash256 hash)
@@ -265,11 +256,8 @@ public sealed class TrieStore : ITrieStore, IPruningTrieStore
         return count;
     }
 
-    private TrieNode DirtyNodesGetOrAdd(in TrieStoreDirtyNodesCache.Key key, TrieNode node) =>
-        GetDirtyNodeShard(key).GetOrAdd(key, node);
-
-    private void DirtyNodesReplace(in TrieStoreDirtyNodesCache.Key key, TrieNode node) =>
-        GetDirtyNodeShard(key).Replace(key, node);
+    private TrieNode DirtyNodesGetOrAdd(in TrieStoreDirtyNodesCache.Key key, TrieNode node, long blockNumber) =>
+        GetDirtyNodeShard(key).GetOrAdd(key, new TrieStoreDirtyNodesCache.NodeRecord(node, blockNumber)).Node;
 
     private bool DirtyNodesTryGetValue(in TrieStoreDirtyNodesCache.Key key, out TrieNode? node) =>
         GetDirtyNodeShard(key).TryGetValue(key, out node);
@@ -286,10 +274,10 @@ public sealed class TrieStore : ITrieStore, IPruningTrieStore
     private TrieNode DirtyNodesFindCachedOrUnknown(TrieStoreDirtyNodesCache.Key key) =>
         GetDirtyNodeShard(key).FindCachedOrUnknown(key);
 
-    private TrieNode SaveOrReplaceInDirtyNodesCache(Hash256? address, ref TreePath path, NodeCommitInfo nodeCommitInfo, TrieNode node)
+    private void SaveOrReplaceInDirtyNodesCache(Hash256? address, ref TreePath path, NodeCommitInfo nodeCommitInfo, TrieNode node, long blockNumber)
     {
         TrieStoreDirtyNodesCache.Key key = new(address, path, node.Keccak);
-        TrieNode cachedNodeCopy = DirtyNodesGetOrAdd(in key, node);
+        TrieNode cachedNodeCopy = DirtyNodesGetOrAdd(in key, node, blockNumber);
         if (!ReferenceEquals(cachedNodeCopy, node))
         {
             // So what happen here is that the patricia trie was modified in a way that some of the trie nodes
@@ -297,44 +285,26 @@ public sealed class TrieStore : ITrieStore, IPruningTrieStore
             // This happen about 2.5% of the time at 4GB dirty cache and 16GB total cache.
 
             Metrics.LoadedFromCacheNodesCount++;
-            if (cachedNodeCopy.IsPersisted)
+            // If the cached not is not persisted, we try to replace it in its parent to reduce duplicated
+            // nodes.
+            if (_logger.IsTrace) Trace(node, cachedNodeCopy);
+            cachedNodeCopy.ResolveKey(GetTrieStore(address), ref path, nodeCommitInfo.IsRoot);
+            if (node.Keccak != cachedNodeCopy.Keccak)
             {
-                // This code path happens around 0.8% of the time at 4GB of dirty cache and 16GB total cache.
-                //
-                // If the cache node is persisted, we replace it completely.
-                // This is because although very rare, it is possible that this node is persisted, but its child is not
-                // persisted. This can happen when a path is not replaced with another node, but its child is and hence,
-                // the child is removed, but the parent is not and remain in the cache as persisted node.
-                // Additionally, it may hold a reference to its child which is marked as persisted eventhough it was
-                // deleted from the cached map.
-                DirtyNodesReplace(in key, node);
+                ThrowNodeIsNotSame(node, cachedNodeCopy);
             }
-            else
+
+            if (!nodeCommitInfo.IsRoot)
             {
-                // If the cached not is not persisted, we try to replace it in its parent to reduce duplicated
-                // nodes.
-                if (_logger.IsTrace) Trace(node, cachedNodeCopy);
-                cachedNodeCopy.ResolveKey(GetTrieStore(address), ref path, nodeCommitInfo.IsRoot);
-                if (node.Keccak != cachedNodeCopy.Keccak)
-                {
-                    ThrowNodeIsNotSame(node, cachedNodeCopy);
-                }
-
-                if (!nodeCommitInfo.IsRoot)
-                {
-                    nodeCommitInfo.NodeParent!.ReplaceChildRef(nodeCommitInfo.ChildPositionAtParent, cachedNodeCopy);
-                }
-
-                node = cachedNodeCopy;
+                nodeCommitInfo.NodeParent!.ReplaceChildRef(nodeCommitInfo.ChildPositionAtParent, cachedNodeCopy);
             }
+
             Metrics.ReplacedNodesCount++;
         }
         else
         {
             DirtyNodesIncrementMemory(key, node);
         }
-
-        return node;
 
         [MethodImpl(MethodImplOptions.NoInlining)]
         void Trace(TrieNode node, TrieNode cachedNodeCopy)
@@ -971,14 +941,8 @@ public sealed class TrieStore : ITrieStore, IPruningTrieStore
         }
     }
 
-    public bool IsNoLongerNeeded(TrieNode node)
+    public bool IsNoLongerNeeded(long lastSeen)
     {
-        return IsNoLongerNeeded(node.LastSeen);
-    }
-
-    private bool IsNoLongerNeeded(long lastSeen)
-    {
-        Debug.Assert(lastSeen >= 0, $"Any node that is cache should have {nameof(TrieNode.LastSeen)} set.");
         return lastSeen < LastPersistedBlockNumber
                && lastSeen < LatestCommittedBlockNumber - _maxDepth;
     }
