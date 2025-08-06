@@ -3,7 +3,8 @@
   "engine": {
     "Taiko": {
       "ontakeTransition": "0x1",
-      "taikoL2Address": "0x7633750000000000000000000000000000010001"
+      "taikoL2Address": "0x7633750000000000000000000000000000010001",
+      "UseSurgeGasPriceOracle": false
     }
   },
   "params": {
