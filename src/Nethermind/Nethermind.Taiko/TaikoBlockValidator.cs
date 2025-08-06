@@ -45,14 +45,8 @@ public class TaikoBlockValidator(
             return true;
         }
 
-        if (block.TxRoot != Keccak.Zero)
+        if (block.Transactions.Length is not 0)
         {
-            if (block.Transactions.Length is 0)
-            {
-                errorMessage = "Missing required anchor transaction";
-                return false;
-            }
-
             if (!ValidateAnchorTransaction(block.Transactions[0], block, (ITaikoReleaseSpec)spec, out errorMessage))
                 return false;
         }
@@ -69,7 +63,7 @@ public class TaikoBlockValidator(
             return false;
         }
 
-        if (tx.To != spec.FeeCollector)
+        if (tx.To != spec.TaikoL2Address)
         {
             errorMessage = "Anchor transaction must target Taiko L2 address";
             return false;

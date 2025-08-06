@@ -2,7 +2,8 @@
   "version": "1",
   "engine": {
     "Taiko": {
-      "ontakeTransition": "0x1"
+      "ontakeTransition": "0x1",
+      "taikoL2Address": "0x1670000000000000000000000000000000010001"
     }
   },
   "params": {

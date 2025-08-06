@@ -4,7 +4,8 @@
   "engine": {
     "Taiko": {
       "ontakeTransition": "0xcd340",
-      "pacayaTransition": "0x13d5b0"
+      "pacayaTransition": "0x13d5b0",
+      "taikoL2Address": "0x1670000000000000000000000000000000010001"
     }
   },
   "params": {
