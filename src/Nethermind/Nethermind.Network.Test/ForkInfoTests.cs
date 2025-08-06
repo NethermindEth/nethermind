@@ -382,12 +382,37 @@ public class ForkInfoTests
 
         ISyncServer syncServer = Substitute.For<ISyncServer>();
         syncServer.Genesis.Returns(Build.A.BlockHeader.WithHash(genesisHash).TestObject);
-        ForkId forkId = new ForkInfo(specProvider, syncServer).GetForkId(head, headTimestamp);
-        uint forkHash = forkId.ForkHash;
-        forkHash.Should().Be(expectedForkHash);
+
+        ForkInfo forkInfo = new(specProvider, syncServer);
+        ForkId forkId = forkInfo.GetForkId(head, headTimestamp);
 
         forkId.Next.Should().Be(next);
         forkId.ForkHash.Should().Be(expectedForkHash);
+
+        // Validate fork info summary
+        BlockHeader header = Build.A.BlockHeader.WithNumber(head).WithTimestamp(headTimestamp).TestObject;
+        ForkActivationsSummary forkActivationsSummary = forkInfo.GetForkActivationsSummary(header);
+
+        forkActivationsSummary.Current.Id.ForkHash.Should().Be(expectedForkHash);
+        forkActivationsSummary.Current.Id.Next.Should().Be(next);
+
+        if (next is 0)
+        {
+            forkActivationsSummary.Next.Should().BeNull();
+            forkActivationsSummary.Last.Should().BeNull();
+            return;
+        }
+
+        ForkActivation nextActivation = forkActivationsSummary.Next!.Value.Activation;
+
+        if (nextActivation.Timestamp is not null)
+        {
+            nextActivation.Timestamp.Should().Be(next);
+        }
+        else
+        {
+            nextActivation.BlockNumber.Should().Be((long)next);
+        }
     }
 
     [Test]
