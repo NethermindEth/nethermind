@@ -98,7 +98,7 @@ public class HistoryPruner : IHistoryPruner
                 Metrics.PruningCutoffTimestamp = null;
             }
 
-            blockProcessingQueue.ProcessingQueueEmpty += OnBlockProcessorQueueEmpty;
+            // blockProcessingQueue.ProcessingQueueEmpty += OnBlockProcessorQueueEmpty;
         }
     }
 
