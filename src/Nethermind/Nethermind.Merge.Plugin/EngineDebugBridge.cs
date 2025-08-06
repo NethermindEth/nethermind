@@ -75,7 +75,7 @@ namespace Nethermind.Merge.Plugin
                 return true;
             }
 
-            return true; // Execution requests were processed
+            return false;
         }
 
         private void ExecuteBlock(Block block)
@@ -87,10 +87,10 @@ namespace Nethermind.Merge.Plugin
                 BlockHeader? parent = _blockTree.FindParentHeader(block.Header, BlockTreeLookupOptions.None);
                 if (parent?.Hash is null)
                 {
-                    throw new InvalidOperationException("Cannot trace blocks with invalid parents");
+                    throw new InvalidOperationException("Cannot replay blocks with invalid parents");
                 }
 
-                if (!_blockTree.IsMainChain(parent.Hash)) throw new InvalidOperationException("Cannot trace orphaned blocks");
+                if (!_blockTree.IsMainChain(parent.Hash)) throw new InvalidOperationException("Cannot replay orphaned blocks");
             }
 
             _blockchainProcessor.Process(block, ProcessingOptions.ReadOnlyChain, NullBlockTracer.Instance);
