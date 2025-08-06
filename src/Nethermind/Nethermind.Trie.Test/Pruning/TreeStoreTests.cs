@@ -1035,6 +1035,45 @@ namespace Nethermind.Trie.Test.Pruning
         }
 
         [Test]
+        public async Task Will_RePersist_PersistedReCommittedNode()
+        {
+            MemDb memDb = new();
+
+            using TrieStore fullTrieStore = CreateTrieStore(
+                kvStore: memDb,
+                pruningStrategy: new TestPruningStrategy(true, true),
+                persistenceStrategy: No.Persistence,
+                pruningConfig: new PruningConfig()
+                {
+                    PruningBoundary = 3,
+                    TrackPastKeys = true
+                });
+
+            TreePath emptyPath = TreePath.Empty;
+            PatriciaTree topTree = new PatriciaTree(fullTrieStore.GetTrieStore(null), LimboLogs.Instance);
+
+            byte[] key1 = Bytes.FromHexString("0000000000000000000000000000000000000000000000000000000000000000");
+            byte[] key2 = Bytes.FromHexString("0011000000000000000000000000000000000000000000000000000000000000");
+
+            for (int i = 0; i < 64; i++)
+            {
+                topTree.Set(key1, [1, 2]);
+                topTree.Set(key2, [4, (byte)(i % 4)]);
+
+                using (ICommitter committer = fullTrieStore.BeginStateBlockCommit(i, topTree.Root))
+                {
+                    topTree.Commit();
+                }
+
+                // Pruning is done in background
+                await Task.Delay(TimeSpan.FromMilliseconds(10));
+            }
+
+            memDb.Count.Should().Be(13);
+            memDb.WritesCount.Should().Be(184);
+        }
+
+        [Test]
         public void When_SomeKindOfNonResolvedNotInMainWorldState_OnPrune_DoNotDeleteNode()
         {
             IDbProvider memDbProvider = TestMemDbProvider.Init();
@@ -1128,6 +1167,36 @@ namespace Nethermind.Trie.Test.Pruning
             memDb.Count.Should().Be(64);
             fullTrieStore.MemoryUsedByDirtyCache.Should().Be(0);
             return Task.CompletedTask;
+        }
+
+        [Test]
+        public void OnDispose_PersistAtLeastOneCommitSet()
+        {
+            MemDb memDb = new();
+
+            TrieStore fullTrieStore = CreateTrieStore(
+                kvStore: memDb,
+                pruningStrategy: new TestPruningStrategy(false, false),
+                persistenceStrategy: No.Persistence,
+                pruningConfig: new PruningConfig()
+                {
+                    PruningBoundary = 5,
+                    TrackPastKeys = true
+                });
+
+            TreePath emptyPath = TreePath.Empty;
+
+            for (int i = 0; i < 2; i++)
+            {
+                TrieNode node = new(NodeType.Leaf, TestItem.Keccaks[i % 4], new SpanSource(new byte[2]));
+                using (ICommitter committer = fullTrieStore.BeginStateBlockCommit(i + 1, node))
+                {
+                    committer.CommitNode(ref emptyPath, new NodeCommitInfo(node));
+                }
+            }
+
+            fullTrieStore.Dispose();
+            memDb.Count.Should().Be(1);
         }
     }
 }

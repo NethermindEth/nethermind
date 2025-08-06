@@ -699,6 +699,8 @@ public class SyncServerTests
 
         const int blocksCount = 100;
         var startBlock = (int)localBlockTree.Head!.Number;
+        localBlockTree.AddBranch(blocksCount / 3, splitBlockNumber: startBlock, splitVariant: 0);
+        localBlockTree.AddBranch(blocksCount * 2 / 3, splitBlockNumber: startBlock, splitVariant: 0);
         localBlockTree.AddBranch(blocksCount, splitBlockNumber: startBlock, splitVariant: 0);
 
         var expectedUpdates = Enumerable.Range(startBlock + 1, blocksCount)

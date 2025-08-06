@@ -66,7 +66,7 @@ public class ChainSpecBasedSpecProviderTests
         expectedSpec.DifficultyBombDelay = 0;
         expectedSpec.IsEip3855Enabled = isEip3855Enabled;
         TestSpecProvider testProvider = TestSpecProvider.Instance;
-        testProvider.SpecToReturn = expectedSpec;
+        testProvider.NextForkSpec = expectedSpec;
         testProvider.TerminalTotalDifficulty = 0;
         testProvider.GenesisSpec = expectedSpec;
 

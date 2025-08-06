@@ -26,7 +26,6 @@ using NUnit.Framework;
 using System.Collections;
 using System.Collections.Generic;
 using System.Threading.Tasks;
-using Nethermind.State;
 
 namespace Nethermind.TxPool.Test
 {
@@ -933,18 +932,18 @@ namespace Nethermind.TxPool.Test
         [TestCaseSource(nameof(BlobScheduleActivationsTestCaseSource))]
         public async Task<int> should_evict_based_on_proof_version_and_fork(BlobsSupportMode poolMode, TestAction[] testActions)
         {
+            Block head = _blockTree.Head;
+            _blockTree.FindBestSuggestedHeader().Returns(head.Header);
+
             (ChainSpecBasedSpecProvider provider, _) = TestSpecHelper.LoadChainSpec(new ChainSpecJson
             {
                 Params = new ChainSpecParamsJson
                 {
-                    Eip4844TransitionTimestamp = _blockTree.Head.Timestamp,
-                    Eip7002TransitionTimestamp = _blockTree.Head.Timestamp,
-                    Eip7594TransitionTimestamp = _blockTree.Head.Timestamp + 1,
+                    Eip4844TransitionTimestamp = head.Timestamp,
+                    Eip7002TransitionTimestamp = head.Timestamp,
+                    Eip7594TransitionTimestamp = head.Timestamp + 1,
                 }
             });
-
-            Block head = _blockTree.Head;
-            _blockTree.FindBestSuggestedHeader().Returns(head.Header);
 
             UInt256 nonce = 0;
 
@@ -965,7 +964,7 @@ namespace Nethermind.TxPool.Test
                         _txPool.SubmitTx(CreateBlobTx(TestItem.PrivateKeyA, nonce++, releaseSpec: v1Spec), TxHandlingOptions.None);
                         break;
                     case TestAction.Fork:
-                        await AddBlock();
+                        await AddEmptyBlock();
                         break;
                     case TestAction.ResetNonce:
                         nonce = 0;
@@ -1002,7 +1001,7 @@ namespace Nethermind.TxPool.Test
             }
         }
 
-        private Task AddBlock()
+        private Task AddEmptyBlock()
         {
             BlockHeader bh = new(_blockTree.Head.Hash, Keccak.EmptyTreeHash, TestItem.AddressA, 0, _blockTree.Head.Number + 1, _blockTree.Head.GasLimit, _blockTree.Head.Timestamp + 1, []);
             _blockTree.FindBestSuggestedHeader().Returns(bh);
@@ -1021,7 +1020,7 @@ namespace Nethermind.TxPool.Test
         }
 
         [Test]
-        public async Task should_evict_txs_with_too_many_blobs_after_fork()
+        public async Task should_evict_txs_with_too_many_blobs_per_tx_after_fork()
         {
             const int regularMaxBlobCount = 9;
 
@@ -1031,13 +1030,13 @@ namespace Nethermind.TxPool.Test
                 MaxBlobCount = regularMaxBlobCount,
             })
             {
-                SpecToReturn = new ReleaseSpec
+                NextForkSpec = new ReleaseSpec
                 {
                     IsEip4844Enabled = true,
                     IsEip7594Enabled = true,
                     MaxBlobCount = regularMaxBlobCount,
                 },
-                ForkOnBlockNumber = _blockTree.Head.Number + 1,
+                ForkOnBlockNumber = _blockTree.Head!.Number + 1,
             };
 
             Block head = _blockTree.Head;
@@ -1049,7 +1048,41 @@ namespace Nethermind.TxPool.Test
             _txPool.SubmitTx(CreateBlobTx(TestItem.PrivateKeyA, 0, regularMaxBlobCount), TxHandlingOptions.None);
             Assert.That(_txPool.GetPendingBlobTransactionsCount(), Is.EqualTo(1));
 
-            await AddBlock();
+            await AddEmptyBlock();
+
+            Assert.That(_txPool.GetPendingBlobTransactionsCount(), Is.Zero);
+        }
+
+        [Test]
+        public async Task should_evict_txs_with_too_many_blobs_per_block_after_fork()
+        {
+            const int regularMaxBlobCount = 9;
+            const int decreasedMaxBlobCount = regularMaxBlobCount - 1;
+
+            TestSpecProvider provider = new(new ReleaseSpec
+            {
+                IsEip4844Enabled = true,
+                MaxBlobCount = regularMaxBlobCount,
+            })
+            {
+                NextForkSpec = new ReleaseSpec
+                {
+                    IsEip4844Enabled = true,
+                    MaxBlobCount = decreasedMaxBlobCount,
+                },
+                ForkOnBlockNumber = _blockTree.Head!.Number + 1,
+            };
+
+            Block head = _blockTree.Head;
+            _blockTree.FindBestSuggestedHeader().Returns(head.Header);
+
+            _txPool = CreatePool(specProvider: provider);
+            EnsureSenderBalance(TestItem.AddressA, UInt256.MaxValue);
+
+            _txPool.SubmitTx(CreateBlobTx(TestItem.PrivateKeyA, 0, regularMaxBlobCount), TxHandlingOptions.None);
+            Assert.That(_txPool.GetPendingBlobTransactionsCount(), Is.EqualTo(1));
+
+            await AddEmptyBlock();
 
             Assert.That(_txPool.GetPendingBlobTransactionsCount(), Is.Zero);
         }

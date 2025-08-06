@@ -27,12 +27,6 @@ public interface IDiscoveryConfig : IConfig
     int Concurrency { get; }
 
     /// <summary>
-    /// Kademlia - b
-    /// </summary>
-    [ConfigItem(DisabledForCli = true)]
-    int BitsPerHop { get; }
-
-    /// <summary>
     /// Max Discovery Rounds
     /// </summary>
     [ConfigItem(DefaultValue = "8")]

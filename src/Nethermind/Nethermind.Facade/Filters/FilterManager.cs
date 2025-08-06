@@ -33,7 +33,7 @@ namespace Nethermind.Blockchain.Filters
 
         public FilterManager(
             IFilterStore filterStore,
-            IBlockProcessor blockProcessor,
+            IBranchProcessor blockProcessor,
             ITxPool txPool,
             ILogManager logManager)
         {
