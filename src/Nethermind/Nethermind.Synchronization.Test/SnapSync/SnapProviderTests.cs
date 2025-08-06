@@ -158,7 +158,14 @@ public class SnapProviderTests
             new PathWithAccount(new ValueHash256("0x01"), TestItem.GenerateRandomAccount())
         };
 
-        var tree = new StateTree(new TrieStore(new TestMemDb(), LimboLogs.Instance), LimboLogs.Instance);
+        var trieStore = new TrieStore(
+            new TestMemDb(),
+            PruningStrategy.NoPruning,         
+            PersistenceStrategy.NoPersistence, 
+            PruningConfig.Default,             
+            LimboLogs.Instance
+        );
+        var tree = new StateTree(trieStore, LimboLogs.Instance);
 
         var result = SnapProviderHelper.AddAccountRange(
             tree,
@@ -182,7 +189,14 @@ public class SnapProviderTests
             new PathWithStorageSlot(new ValueHash256("0x01"), Bytes.FromHexString("02"))
         };
 
-        var store = (IScopedTrieStore)new TrieStore(new TestMemDb(), LimboLogs.Instance);
+        var trieStore = new TrieStore(
+            new TestMemDb(),
+            PruningStrategy.NoPruning,
+            PersistenceStrategy.NoPersistence,
+            PruningConfig.Default,
+            LimboLogs.Instance
+        );
+        var store = (IScopedTrieStore)trieStore;
         var tree = new StorageTree(store, LimboLogs.Instance);
         var account = new PathWithAccount(new ValueHash256("0x00"), TestItem.GenerateRandomAccount());
 
