@@ -37,7 +37,7 @@
     <PackageVersion Include="Microsoft.CodeAnalysis.CSharp" Version="4.14.0" />
     <PackageVersion Include="Microsoft.CodeAnalysis.Analyzers" Version="4.14.0" />
     <PackageVersion Include="Microsoft.Extensions.DependencyInjection" Version="9.0.6" />
-    <PackageVersion Include="Microsoft.Extensions.Logging" Version="8.0.0" />
+    <PackageVersion Include="Microsoft.Extensions.Logging" Version="9.0.6" />
     <PackageVersion Include="Microsoft.Extensions.Logging.Abstractions" Version="9.0.6" />
     <PackageVersion Include="Microsoft.Extensions.Logging.Console" Version="9.0.6" />
     <PackageVersion Include="Microsoft.Extensions.ObjectPool" Version="9.0.6" />
@@ -49,9 +49,6 @@
     <PackageVersion Include="Nethermind.Crypto.Bls" Version="1.0.5" />
     <PackageVersion Include="Nethermind.Crypto.SecP256k1" Version="1.4.1" />
     <PackageVersion Include="Nethermind.Crypto.SecP256r1" Version="1.0.0-preview.6" />
-    <PackageVersion Include="Nethermind.DotNetty.Buffers" Version="1.0.1" />
-    <PackageVersion Include="Nethermind.DotNetty.Handlers" Version="1.0.1" />
-    <PackageVersion Include="Nethermind.DotNetty.Transport" Version="1.0.1" />
     <PackageVersion Include="Nethermind.GmpBindings" Version="1.0.2" />
     <PackageVersion Include="Nethermind.Libp2p" Version="1.0.0-preview.45" />
     <PackageVersion Include="Nethermind.Libp2p.Protocols.PubsubPeerDiscovery" Version="1.0.0-preview.45" />
@@ -67,7 +64,6 @@
     <PackageVersion Include="NUnit.Analyzers" Version="4.9.2" />
     <PackageVersion Include="NUnit3TestAdapter" Version="5.0.0" />
     <PackageVersion Include="Open.NAT.Core" Version="2.1.0.5" />
-    <PackageVersion Include="PierTwo.Lantern.Discv5.WireProtocol" Version="1.0.0-preview.4" />
     <PackageVersion Include="Polly" Version="8.6.1" />
     <PackageVersion Include="prometheus-net.AspNetCore" Version="8.2.1" />
     <PackageVersion Include="Prometheus.Client.MetricPusher" Version="3.3.0" />
@@ -87,5 +83,18 @@
     <PackageVersion Include="TestableIO.System.IO.Abstractions.Wrappers" Version="22.0.14" />
     <PackageVersion Include="Websocket.Client" Version="5.2.0" />
     <PackageVersion Include="ZstdSharp.Port" Version="0.8.5" />
+    
+    <PackageVersion Include="coverlet.collector" Version="3.2.0" />
+    <PackageVersion Include="Keccak256" Version="1.0.0" />
+    <PackageVersion Include="Microsoft.Extensions.Options" Version="9.0.6" />
+    <PackageVersion Include="Multiformats.Base" Version="2.0.2" />
+    <PackageVersion Include="Multiformats.Hash" Version="1.5.0" />
+    <PackageVersion Include="NBitcoin.Secp256k1" Version="3.1.5" />
+    <PackageVersion Include="Microsoft.Extensions.Caching.Memory" Version="9.0.6" />
+    <PackageVersion Include="System.Threading.Tasks.Dataflow" Version="9.0.6" />
+
+    <PackageVersion Include="Nethermind.DotNetty.Buffers" Version="1.0.1" />
+    <PackageVersion Include="Nethermind.DotNetty.Handlers" Version="1.0.1" />
+    <PackageVersion Include="Nethermind.DotNetty.Transport" Version="1.0.1" />
   </ItemGroup>
 </Project>
