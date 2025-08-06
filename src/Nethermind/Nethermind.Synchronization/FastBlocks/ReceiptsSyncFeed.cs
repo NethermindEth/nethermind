@@ -35,11 +35,11 @@ namespace Nethermind.Synchronization.FastBlocks
         protected override int BarrierWhenStartedMetadataDbKey => MetadataDbKeys.ReceiptsBarrierWhenStarted;
         protected override long SyncConfigBarrierCalc
         {
-            get => _syncConfig.AncientReceiptsBarrierCalc;
-            // {
-            //     long? cutoffBlockNumber = _historyPruner.CutoffBlockNumber;
-            //     return cutoffBlockNumber is null ? _syncConfig.AncientBodiesBarrierCalc : long.Max(_syncConfig.AncientBodiesBarrierCalc, cutoffBlockNumber.Value);
-            // }
+            get
+            {
+                long? cutoffBlockNumber = _historyPruner.CutoffBlockNumber;
+                return cutoffBlockNumber is null ? _syncConfig.AncientBodiesBarrierCalc : long.Max(_syncConfig.AncientBodiesBarrierCalc, cutoffBlockNumber.Value);
+            }
         }
         protected override Func<bool> HasPivot =>
             () => _receiptStorage.HasBlock(_blockTree.SyncPivot.BlockNumber, _blockTree.SyncPivot.BlockHash);
@@ -325,18 +325,12 @@ namespace Nethermind.Synchronization.FastBlocks
         {
             public bool ShouldDownloadBlock(BlockInfo info)
             {
-                // bool hasReceipt = receiptStorage.HasBlock(info.BlockNumber, info.BlockHash);
-                // long? cutoff = historyPruner?.CutoffBlockNumber;
-                // cutoff = cutoff is null ? null : long.Min(cutoff!.Value, blockTree.SyncPivot.BlockNumber);
-                // bool shouldDownload = !hasReceipt && (cutoff is null || info.BlockNumber >= cutoff);
-                // if (!shouldDownload) syncReport.FastBlocksBodies.IncrementSkipped();
-                // return shouldDownload;
-                blockTree.AsReadOnly();
-                _ = historyPruner.CutoffBlockNumber;
-
                 bool hasReceipt = receiptStorage.HasBlock(info.BlockNumber, info.BlockHash);
-                if (hasReceipt) syncReport.FastBlocksReceipts.IncrementSkipped();
-                return !hasReceipt;
+                long? cutoff = historyPruner?.CutoffBlockNumber;
+                cutoff = cutoff is null ? null : long.Min(cutoff!.Value, blockTree.SyncPivot.BlockNumber);
+                bool shouldDownload = !hasReceipt && (cutoff is null || info.BlockNumber >= cutoff);
+                if (!shouldDownload) syncReport.FastBlocksBodies.IncrementSkipped();
+                return shouldDownload;
             }
         }
     }
