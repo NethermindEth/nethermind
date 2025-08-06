@@ -3,7 +3,8 @@
 
 import {
   formatUnixTimestamp, formatBytes, parseExtraData, getNetworkName,
-  getNetworkLogo, getNodeType, formatEth, formatDuration, format, formatDec
+  getNetworkLogo, getNodeType, formatEth, formatDuration, format, formatDec,
+  setGasToken
 } from './format';
 import { sparkline, Datum } from './sparkline';
 import { NodeData, INode, TxPool, ForkChoice, System, TransactionReceipt, Peer } from './types';
@@ -200,6 +201,7 @@ sse.addEventListener("nodeData", (e) => {
   (document.getElementById("network-logo") as HTMLImageElement).src = `logos/${getNetworkLogo(data.network)}`;
   // Update uptime text
   updateText(upTime, formatDuration(data.uptime));
+  setGasToken(data.gasToken);
 });
 sse.addEventListener("txNodes", (e) => {
   const data = JSON.parse(e.data) as INode[];

@@ -181,6 +181,7 @@ const networks = {
   "100": "Gnosis Mainnet",
   "480": "World Mainnet",
   "8453": "Base mainnet",
+  "10200": "Gnosis Chiado Testnet",
   "7032118028": "Ethereum Perfnet"
 }
 const logos = {
@@ -190,6 +191,7 @@ const logos = {
   "100": "gnosis.png",
   "480": "world-logo.svg",
   "8453": "base-logo.svg",
+  "10200": "gnosis.png",
   "7032118028": "perfnet.png"
 }
 
@@ -231,6 +233,12 @@ function trimDecimals(value: number, decimals: number): string {
   return fixed.replace(/(\.\d*?[1-9])0+$/g, '$1').replace(/\.0+$/, '');
 }
 
+let _gasToken: string = "ETH";
+export function setGasToken(gasToken: string) {
+  if (gasToken) {
+    _gasToken = gasToken;
+  }
+}
 /**
  * Formats a number (wei) into a string with the largest possible unit
  * (ETH, GWEI, or WEI) and up to 4 decimal digits.
@@ -249,14 +257,14 @@ export function formatEth(weiValue: number): string {
   else if (weiValue >= 100_000_000_000_000) {
     // Convert wei to ETH
     const ethValue = weiValue / WEI_IN_ETH;
-    result = `${trimDecimals(ethValue, 4)} ETH`;
+    result = `${trimDecimals(ethValue, 4)} ${_gasToken}`;
   } else if (weiValue >= 100_000) {
     // Convert wei to GWEI
     const gweiValue = weiValue / WEI_IN_GWEI;
-    result = `${trimDecimals(gweiValue, 4)} GWEI`;
+    result = `${trimDecimals(gweiValue, 4)} gwei`;
   } else {
     // Value is small enough to stay in wei
-    result = `${weiValue} WEI`;
+    result = `${weiValue} wei`;
   }
 
   return result;

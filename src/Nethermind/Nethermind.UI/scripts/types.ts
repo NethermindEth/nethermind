@@ -26,6 +26,7 @@ export interface NodeData {
   version: string;
   commit: string;
   runtime: string;
+  gasToken: string;
 }
 
 export interface Processed
