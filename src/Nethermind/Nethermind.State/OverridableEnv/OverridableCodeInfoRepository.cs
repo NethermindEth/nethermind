@@ -42,7 +42,7 @@ public class OverridableCodeInfoRepository(ICodeInfoRepository codeInfoRepositor
     {
         if (redirectAddress is not null)
         {
-            _codeOverwrites[redirectAddress] = this.GetCachedCodeInfo(worldState, key, vmSpec);
+            _codeOverwrites[redirectAddress] = this.GetCachedCodeInfo(worldState, key, vmSpec, out _);
         }
 
         _codeOverwrites[key] = value;

@@ -61,7 +61,6 @@ public class DebugTracer : ITxTracer, ITxTracerWrapper, IDisposable
     public bool IsTracingStorage => InnerTracer.IsTracingStorage;
 
     public bool IsTracingLogs => InnerTracer.IsTracingLogs;
-
     public bool IsBreakpoitnSet(int depth, int programCounter) => _breakPoints.ContainsKey((depth, programCounter));
 
     public void SetBreakPoint((int depth, int pc) point, Func<EvmState, bool> condition = null)
@@ -288,8 +287,6 @@ public class DebugTracer : ITxTracer, ITxTracerWrapper, IDisposable
         => InnerTracer.ReportStorageRead(storageCell);
 
     public void Dispose()
-    {
-        _autoResetEvent.Dispose();
-    }
+        => _autoResetEvent.Dispose();
 }
 #endif
