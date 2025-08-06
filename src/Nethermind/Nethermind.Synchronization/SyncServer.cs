@@ -22,6 +22,7 @@ using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Threading;
 using Nethermind.Db;
+using Nethermind.History;
 using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.State;
@@ -47,6 +48,7 @@ namespace Nethermind.Synchronization
         private readonly IReadOnlyKeyValueStore _codeDb;
         private readonly IGossipPolicy _gossipPolicy;
         private readonly ISpecProvider _specProvider;
+        private readonly IHistoryPruner _historyPruner;
         private bool _gossipStopped = false;
         private readonly Random _broadcastRandomizer = new();
 
@@ -71,6 +73,7 @@ namespace Nethermind.Synchronization
             ISyncModeSelector syncModeSelector,
             ISyncConfig syncConfig,
             IGossipPolicy gossipPolicy,
+            IHistoryPruner historyPruner,
             ISpecProvider specProvider,
             ILogManager logManager)
         {
@@ -85,6 +88,7 @@ namespace Nethermind.Synchronization
             _blockTree = blockTree ?? throw new ArgumentNullException(nameof(blockTree));
             _receiptFinder = receiptFinder ?? throw new ArgumentNullException(nameof(receiptFinder));
             _blockValidator = blockValidator ?? throw new ArgumentNullException(nameof(blockValidator));
+            _historyPruner = historyPruner ?? throw new ArgumentNullException(nameof(historyPruner));
             _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
             _pivotNumber = _blockTree.SyncPivot.BlockNumber;
             _pivotHash = new Hash256(config.PivotHash ?? Keccak.Zero.ToString());
@@ -92,6 +96,7 @@ namespace Nethermind.Synchronization
             _blockTree.NewHeadBlock += OnNewHeadBlock;
             _blockTree.NewHeadBlock += OnNewRange;
             _pool.NotifyPeerBlock += OnNotifyPeerBlock;
+            _historyPruner.NewOldestBlock += (x, y) => {};
         }
 
         public ulong NetworkId => _blockTree.NetworkId;
