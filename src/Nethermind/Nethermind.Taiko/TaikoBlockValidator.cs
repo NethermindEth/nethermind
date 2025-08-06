@@ -45,7 +45,7 @@ public class TaikoBlockValidator(
             return true;
         }
 
-        if (block.TxRoot == Keccak.Zero)
+        if (block.TxRoot != Keccak.Zero)
         {
             if (block.Transactions.Length is 0)
             {
