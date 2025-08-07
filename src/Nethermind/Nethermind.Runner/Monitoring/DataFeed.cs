@@ -344,7 +344,7 @@ public class DataFeed
                         BaseFeePerGas = head.BaseFeePerGas,
                         BlobGasUsed = head.BlobGasUsed ?? 0,
                         ExcessBlobGas = head.ExcessBlobGas ?? 0,
-                        Tx = head.Transactions.Select(t => new TransactionForWeb
+                        Tx = [.. head.Transactions.Select(t => new TransactionForWeb
                         {
                             Hash = t.Hash,
                             From = t.SenderAddress,
@@ -359,22 +359,22 @@ public class DataFeed
                             DataLength = t.DataLength,
                             Blobs = t.BlobVersionedHashes?.Length ?? 0,
                             Method = t.DataLength >= 4 ? t.Data.Span[..4].ToArray() : []
-                        }).ToArray(),
-                        Receipts = receipts.Select(r => new ReceiptForWeb
+                        })],
+                        Receipts = [.. receipts.Select(r => new ReceiptForWeb
                         {
                             GasUsed = r.GasUsed,
                             EffectiveGasPrice = r.EffectiveGasPrice ?? UInt256.Zero,
                             ContractAddress = r.ContractAddress,
-                            Logs = r.Logs.Select(l => new LogEntryForWeb
+                            Logs = [.. r.Logs.Select(l => new LogEntryForWeb
                             {
                                 Address = l.Address,
                                 Data = l.Data,
                                 Topics = l.Topics
-                            }).ToArray(),
+                            })],
                             Status = r.Status,
                             BlobGasPrice = r.BlobGasPrice ?? UInt256.Zero,
                             BlobGasUsed = r.BlobGasUsed ?? 0,
-                        }).ToArray()
+                        })]
                     },
                     Safe = choice.Safe,
                     Finalized = choice.Finalized
