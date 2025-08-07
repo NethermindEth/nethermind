@@ -39,19 +39,18 @@ namespace Nethermind.Evm.Test.Tracing
         public void Does_not_take_into_account_precompiles()
         {
             TestEnvironment testEnvironment = new();
-            Transaction tx = Build.A.Transaction.WithGasLimit(30000).WithSenderAddress(TestItem.AddressA).TestObject;
+            Transaction tx = Build.A.Transaction.WithGasLimit(1000).TestObject;
             Block block = Build.A.Block.WithNumber(1).WithTransactions(tx).TestObject;
 
-            testEnvironment.tracer.ReportAction(30000, 0, TestItem.AddressA, Address.Zero, Array.Empty<byte>(),
+            testEnvironment.tracer.ReportAction(1000, 0, Address.Zero, Address.Zero, Array.Empty<byte>(),
                 ExecutionType.TRANSACTION, false);
-            testEnvironment.tracer.ReportAction(28000, 0, TestItem.AddressA, Address.Zero, Array.Empty<byte>(),
+            testEnvironment.tracer.ReportAction(1000, 0, Address.Zero, Address.Zero, Array.Empty<byte>(),
                 ExecutionType.CALL, true);
-            testEnvironment.tracer.ReportActionEnd(26000, Array.Empty<byte>());
-            testEnvironment.tracer.ReportActionEnd(25000, Array.Empty<byte>());
+            testEnvironment.tracer.ReportActionEnd(400,
+                Array.Empty<byte>()); // this would not happen but we want to ensure that precompiles are ignored
+            testEnvironment.tracer.ReportActionEnd(600, Array.Empty<byte>());
 
-            long result = testEnvironment.estimator.Estimate(tx, block.Header, testEnvironment.tracer, out string? err);
-            result.Should().BeGreaterThan(0, "Should estimate positive gas, ignoring precompile costs");
-            Assert.That(err, Is.Null);
+            testEnvironment.estimator.Estimate(tx, block.Header, testEnvironment.tracer, out string? err).Should().Be(0);
         }
 
         [Test]
@@ -73,15 +72,14 @@ namespace Nethermind.Evm.Test.Tracing
         public void Handles_well_top_level()
         {
             TestEnvironment testEnvironment = new();
-            Transaction tx = Build.A.Transaction.WithGasLimit(30000).WithSenderAddress(TestItem.AddressA).TestObject;
+            Transaction tx = Build.A.Transaction.WithGasLimit(1000).TestObject;
             Block block = Build.A.Block.WithNumber(1).WithTransactions(tx).TestObject;
 
-            testEnvironment.tracer.ReportAction(30000, 0, TestItem.AddressA, Address.Zero, Array.Empty<byte>(),
+            testEnvironment.tracer.ReportAction(1000, 0, Address.Zero, Address.Zero, Array.Empty<byte>(),
                 ExecutionType.TRANSACTION, false);
-            testEnvironment.tracer.ReportActionEnd(28000, Array.Empty<byte>());
+            testEnvironment.tracer.ReportActionEnd(600, Array.Empty<byte>());
 
-            long result = testEnvironment.estimator.Estimate(tx, block.Header, testEnvironment.tracer, out string? err);
-            result.Should().BeGreaterThan(0, "Should estimate positive gas for successful transaction");
+            testEnvironment.estimator.Estimate(tx, block.Header, testEnvironment.tracer, out string? err).Should().Be(0);
             Assert.That(err, Is.Null);
         }
 
@@ -372,6 +370,41 @@ namespace Nethermind.Evm.Test.Tracing
                 Assert.That(err, Is.Null);
                 Assert.That(result, Is.EqualTo(totalGas));
             }
+        }
+
+        [Test]
+        public void Should_estimate_gas_successfully_ignoring_precompile_costs()
+        {
+            TestEnvironment testEnvironment = new();
+            Transaction tx = Build.A.Transaction.WithGasLimit(30000).WithSenderAddress(TestItem.AddressA).TestObject;
+            Block block = Build.A.Block.WithNumber(1).WithTransactions(tx).TestObject;
+
+            testEnvironment.tracer.ReportAction(30000, 0, TestItem.AddressA, Address.Zero, Array.Empty<byte>(),
+                ExecutionType.TRANSACTION, false);
+            testEnvironment.tracer.ReportAction(28000, 0, TestItem.AddressA, Address.Zero, Array.Empty<byte>(),
+                ExecutionType.CALL, true);
+            testEnvironment.tracer.ReportActionEnd(26000, Array.Empty<byte>());
+            testEnvironment.tracer.ReportActionEnd(25000, Array.Empty<byte>());
+
+            long result = testEnvironment.estimator.Estimate(tx, block.Header, testEnvironment.tracer, out string? err);
+            result.Should().BeGreaterThan(0, "Should estimate positive gas, ignoring precompile costs");
+            Assert.That(err, Is.Null);
+        }
+
+        [Test]
+        public void Should_estimate_gas_successfully_for_simple_transaction()
+        {
+            TestEnvironment testEnvironment = new();
+            Transaction tx = Build.A.Transaction.WithGasLimit(30000).WithSenderAddress(TestItem.AddressA).TestObject;
+            Block block = Build.A.Block.WithNumber(1).WithTransactions(tx).TestObject;
+
+            testEnvironment.tracer.ReportAction(30000, 0, TestItem.AddressA, Address.Zero, Array.Empty<byte>(),
+                ExecutionType.TRANSACTION, false);
+            testEnvironment.tracer.ReportActionEnd(28000, Array.Empty<byte>());
+
+            long result = testEnvironment.estimator.Estimate(tx, block.Header, testEnvironment.tracer, out string? err);
+            result.Should().BeGreaterThan(0, "Should estimate positive gas for successful transaction");
+            Assert.That(err, Is.Null);
         }
 
         private class TestEnvironment
