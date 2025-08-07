@@ -50,6 +50,123 @@ public class SnapProviderTests
     }
 
     [Test]
+    public void AddAccountRange_AccountsNotSorted_ReturnsInvalidOrder()
+    {
+        // Create accounts in wrong order (B before A)
+        var accounts = new List<PathWithAccount>
+        {
+            new(TestItem.KeccakB, TestItem.GenerateRandomAccount()),
+            new(TestItem.KeccakA, TestItem.GenerateRandomAccount())
+        };
+
+        using var trieStore = new TestRawTrieStore(new TestMemDb());
+        var stateTree = new StateTree(trieStore.GetTrieStore(null), LimboLogs.Instance);
+
+        // Don't actually add to tree, just test the validation logic
+        var result = SnapProviderHelper.AddAccountRange(
+            stateTree,
+            0,
+            Keccak.Zero,
+            Keccak.Zero,
+            Keccak.MaxValue,
+            accounts);
+
+        result.result.Should().Be(AddRangeResult.InvalidOrder);
+    }
+
+    [Test]
+    public void AddAccountRange_AccountsOutOfBounds_ReturnsOutOfBounds()
+    {
+        // Create accounts outside the specified range
+        var accounts = new List<PathWithAccount>
+        {
+            new(TestItem.KeccakA, TestItem.GenerateRandomAccount()),
+            new(TestItem.KeccakB, TestItem.GenerateRandomAccount())
+        };
+
+        using var trieStore = new TestRawTrieStore(new TestMemDb());
+        var stateTree = new StateTree(trieStore.GetTrieStore(null), LimboLogs.Instance);
+
+        // Test with startingHash after all accounts
+        var result = SnapProviderHelper.AddAccountRange(
+            stateTree,
+            0,
+            Keccak.Zero,
+            TestItem.KeccakC, // startingHash after accounts
+            Keccak.MaxValue,
+            accounts);
+
+        result.result.Should().Be(AddRangeResult.OutOfBounds);
+    }
+
+    [Test]
+    public void AddStorageRange_SlotsNotSorted_ReturnsInvalidOrder()
+    {
+        // Create slots in wrong order
+        var slots = new List<PathWithStorageSlot>
+        {
+            new(TestItem.KeccakB, new byte[] { 0x01 }),
+            new(TestItem.KeccakA, new byte[] { 0x02 })
+        };
+
+        var account = new PathWithAccount(TestItem.KeccakA, TestItem.GenerateRandomAccount());
+
+        using var trieStore = new TestRawTrieStore(new TestMemDb());
+        var storageTree = new StorageTree(trieStore.GetTrieStore(null), LimboLogs.Instance);
+
+        var result = SnapProviderHelper.AddStorageRange(
+            storageTree,
+            account,
+            slots,
+            null,
+            null);
+
+        result.result.Should().Be(AddRangeResult.InvalidOrder);
+    }
+
+    [Test]
+    public void AddStorageRange_SlotsOutOfBounds_ReturnsOutOfBounds()
+    {
+        // Create slots outside the specified range
+        var slots = new List<PathWithStorageSlot>
+        {
+            new(TestItem.KeccakA, new byte[] { 0x01 }),
+            new(TestItem.KeccakB, new byte[] { 0x02 })
+        };
+
+        var account = new PathWithAccount(TestItem.KeccakA, TestItem.GenerateRandomAccount());
+
+        using var trieStore = new TestRawTrieStore(new TestMemDb());
+        var storageTree = new StorageTree(trieStore.GetTrieStore(null), LimboLogs.Instance);
+
+        var result = SnapProviderHelper.AddStorageRange(
+            storageTree,
+            account,
+            slots,
+            TestItem.KeccakC, // startingHash after slots
+            Keccak.MaxValue);
+
+        result.result.Should().Be(AddRangeResult.OutOfBounds);
+    }
+
+    [Test]
+    public void AddStorageRange_EmptySlotsList_ThrowsArgumentException()
+    {
+        var account = new PathWithAccount(TestItem.KeccakA, TestItem.GenerateRandomAccount());
+
+        using var trieStore = new TestRawTrieStore(new TestMemDb());
+        var storageTree = new StorageTree(trieStore.GetTrieStore(null), LimboLogs.Instance);
+
+        Assert.That(
+            () => SnapProviderHelper.AddStorageRange(
+                storageTree,
+                account,
+                Array.Empty<PathWithStorageSlot>(),
+                null,
+                null), Throws.ArgumentException);
+    }
+
+    [Test]
     public void AddAccountRange_ResponseHasEmptyListOfAccountsAndOneProof_ReturnsExpiredRootHash()
     {
         using IContainer container = new ContainerBuilder()
@@ -147,69 +264,6 @@ public class SnapProviderTests
         snapProvider.AddAccountRange(batch?.AccountRangeRequest!, accountsAndProofs).Should().Be(AddRangeResult.OK);
 
         container.ResolveNamed<IDb>(DbNames.State).GetAllKeys().Count().Should().Be(6);
-    }
-
-    [Test]
-    public void AddAccountRange_ShouldReturnInvalidOrder_IfAccountsNotSorted()
-    {
-        var accounts = new List<PathWithAccount>
-        {
-            new PathWithAccount(new ValueHash256("0x02"), TestItem.GenerateRandomAccount()),
-            new PathWithAccount(new ValueHash256("0x01"), TestItem.GenerateRandomAccount())
-        };
-
-        var trieStore = new TrieStore(
-            new TestMemDb(),
-            PruningStrategy.NoPruning,         
-            PersistenceStrategy.NoPersistence, 
-            PruningConfig.Default,             
-            LimboLogs.Instance
-        );
-        var tree = new StateTree(trieStore, LimboLogs.Instance);
-
-        var result = SnapProviderHelper.AddAccountRange(
-            tree,
-            0,
-            Keccak.Zero,
-            Keccak.Zero,
-            Keccak.MaxValue,
-            accounts,
-            new List<byte[]>()
-        );
-
-        result.result.Should().Be(AddRangeResult.InvalidOrder);
-    }
-
-    [Test]
-    public void AddStorageRange_ShouldReturnInvalidOrder_IfSlotsNotSorted()
-    {
-        var slots = new List<PathWithStorageSlot>
-        {
-            new PathWithStorageSlot(new ValueHash256("0x02"), Bytes.FromHexString("01")),
-            new PathWithStorageSlot(new ValueHash256("0x01"), Bytes.FromHexString("02"))
-        };
-
-        var trieStore = new TrieStore(
-            new TestMemDb(),
-            PruningStrategy.NoPruning,
-            PersistenceStrategy.NoPersistence,
-            PruningConfig.Default,
-            LimboLogs.Instance
-        );
-        var store = (IScopedTrieStore)trieStore;
-        var tree = new StorageTree(store, LimboLogs.Instance);
-        var account = new PathWithAccount(new ValueHash256("0x00"), TestItem.GenerateRandomAccount());
-
-        var result = SnapProviderHelper.AddStorageRange(
-            tree,
-            account,
-            slots,
-            Keccak.Zero,
-            Keccak.MaxValue,
-            null
-        );
-
-        result.result.Should().Be(AddRangeResult.InvalidOrder);
     }
 
     [TestCase("badreq-roothash.zip")]
