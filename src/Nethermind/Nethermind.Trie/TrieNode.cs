@@ -321,7 +321,7 @@ namespace Nethermind.Trie
 #if DEBUG
             return
                 $"[{NodeType}({(FullRlp.IsNotNullOrEmpty ? FullRlp.Length : 0)}){(FullRlp.IsNotNullOrEmpty && FullRlp.Length < 32 ? $"{FullRlp.Span.ToHexString()}" : "")}" +
-                $"|{Id}|{Keccak}|{LastSeen}|D:{IsDirty}|S:{IsSealed}|P:{IsPersisted}|";
+                $"|{Id}|{Keccak}|D:{IsDirty}|S:{IsSealed}|P:{IsPersisted}|";
 #else
             return $"[{NodeType}({(FullRlp.IsNotNullOrEmpty ? FullRlp.Length : 0)})|{Keccak?.ToShortString()}|D:{IsDirty}|S:{IsSealed}|P:{IsPersisted}|";
 #endif
