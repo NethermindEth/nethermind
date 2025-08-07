@@ -173,6 +173,7 @@ export function updateTreemap<T>(
       const gEnter = enter
         .append("g")
         .attr("class", "node")
+        .attr("data-hash", (d: any) => d.data.name)
         // Start each group at final XY but with zero size + opacity=0
         .attr("transform", (d: any) => `translate(${d.x0},${d.y0})`)
         .attr("opacity", 0);

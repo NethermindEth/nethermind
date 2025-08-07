@@ -4,7 +4,7 @@
 import {
   formatUnixTimestamp, formatBytes, parseExtraData, getNetworkName,
   getNetworkLogo, getNodeType, formatEth, formatDuration, format, formatDec,
-  setGasToken
+  setGasToken, shortenHex
 } from './format';
 import { sparkline, Datum } from './sparkline';
 import { NodeData, INode, TxPool, ForkChoice, System, TransactionReceipt, Peer } from './types';
@@ -60,6 +60,25 @@ const boxPlotEGP = createRollingBoxPlot(
   36 // Keep up to 36 blocks
 );
 
+function findParent(element: HTMLElement, selector: string): HTMLElement {
+  do {
+    if (element.matches === undefined || !element.matches(selector)) continue;
+    return element;
+  } while ((element = element.parentElement));
+
+  return null;
+};
+
+function addDelegated(element: HTMLElement, type: string, selector: string, listener: EventListener, useCapture?: boolean) {
+  element.addEventListener(type, function (evt) {
+    try {
+      const element: HTMLElement = findParent(evt.target as HTMLElement, selector);
+      if (element !== null) {
+        listener.apply(element, arguments);
+      }
+    } catch (e) { }
+  }, useCapture);
+}
 
 // We reuse these arrays for the sparkline. The length = 60 means we store 60 historical points.
 let seriesHashes: Datum[] = [];
@@ -282,7 +301,85 @@ sse.addEventListener("forkChoice", (e) => {
   lastBlockTxs = txsToAdd.length;
 
   if (txsToAdd.length > 250000) txsToAdd.slice(txsToAdd.length - 25000);
+
+  blockTxs = mapByHash(mergedData)
 });
+
+let blockTxs: Record<string, TransactionReceipt>;
+let lastHash = "";
+
+addDelegated(document.getElementById("block"), "pointermove", "g.node", (evt: PointerEvent) => {
+  const element: HTMLElement = findParent(evt.target as HTMLElement, "g.node");
+  const hash = element.dataset.hash;
+  const tx = blockTxs[hash];
+
+  if (!tx) return;
+
+  const txDetails = document.getElementById("txDetails");
+  if (lastHash !== hash) {
+    txDetails.innerHTML = `
+  <div class="transaction-receipt">
+    <h2>Transaction ${shortenHex(tx.hash)}</h2>
+
+    <section>
+      <h3>General</h3>
+      <ul>
+        <li><strong>From:</strong> ${shortenHex(tx.from)}</li>
+        <li><strong>To:</strong> ${shortenHex(tx.to)}</li>
+        <li><strong>Nonce:</strong> ${parseInt(tx.nonce, 16)}</li>
+        <li><strong>Value:</strong> ${formatEth(parseInt(tx.value, 16))}</li>
+        <li><strong>Method:</strong> ${tx.method}</li>
+        <li><strong>Order in Block:</strong> ${tx.order}</li>
+        <li><strong>Status:</strong> ${tx.status}</li>
+        ${tx.logs.length > 0 ? `<li><strong>Logs:</strong> ${tx.logs.length}</li>` : ''}
+        ${tx.contractAddress ? `<li><strong>Contract Address:</strong> ${tx.contractAddress}</li>` : ''}
+      </ul>
+    </section>
+
+    <section>
+      <h3>Gas Details</h3>
+      <ul>
+        <li><strong>Gas Limit:</strong> ${parseInt(tx.gasLimit, 16)}</li>
+        <li><strong>Gas Used:</strong> ${parseInt(tx.gasUsed, 16)}</li>
+        <li><strong>Gas Price:</strong> ${formatEth(parseInt(tx.gasPrice, 16))}</li>
+        <li><strong>Priority Fee Per Gas:</strong> ${formatEth(parseInt(tx.maxPriorityFeePerGas, 16))}</li>
+        <li><strong>Max Fee Per Gas:</strong> ${formatEth(parseInt(tx.maxFeePerGas, 16))}</li>
+        <li><strong>Effective Gas Price:</strong> ${formatEth(parseInt(tx.effectiveGasPrice, 16))}</li>
+      </ul>
+    </section>
+
+    ${tx.blobs > 0 ? `
+      <section>
+        <h3>Blob Data</h3>
+        <ul>
+          <li><strong>Blobs:</strong> ${tx.blobs}</li>
+          <li><strong>Blob Gas Price:</strong> ${tx.blobGasPrice}</li>
+          <li><strong>Blob Gas Used:</strong> ${tx.blobGasUsed}</li>
+        </ul>
+      </section>
+    ` : ''}
+  </div>
+`;
+  }
+
+  txDetails.style.transform = `translate(${evt.clientX}px,${evt.clientY}px)`;
+  txDetails.classList.remove("hidden");
+
+  return true;
+}, false);
+document.getElementById("block").addEventListener("pointerleave", (event) => {
+  document.getElementById("txDetails").classList.add("hidden");
+  return true;
+});
+
+type WithHash = { hash: string }; // base type constraint
+
+function mapByHash<T extends WithHash>(arr: T[]): Record<string, T> {
+  return arr.reduce((acc, item) => {
+    acc[item.hash] = item;
+    return acc;
+  }, {} as Record<string, T>);
+}
 
 let lastBlockTxs:number = 0;
 let txsToAdd: TransactionReceipt[] = [];

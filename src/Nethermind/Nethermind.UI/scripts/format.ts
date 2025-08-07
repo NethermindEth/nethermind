@@ -269,3 +269,8 @@ export function formatEth(weiValue: number): string {
 
   return result;
 }
+
+export function shortenHex(hash: string): string {
+  if (!hash.startsWith('0x') || hash.length < 14) return hash; // too short to shorten
+  return `${hash.slice(0, 8)}...${hash.slice(-6)}`;
+}

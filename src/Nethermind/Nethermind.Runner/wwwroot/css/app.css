@@ -294,3 +294,6 @@ th {
 td.right, th.right {
   padding-right: 4px;
 }
+.hidden {
+  display:none;
+}
