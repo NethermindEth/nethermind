@@ -1,12 +1,15 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System.Diagnostics.CodeAnalysis;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Int256;
 
+
 namespace Nethermind.Serialization.Rlp
 {
+
     public class AccountDecoder : IRlpObjectDecoder<Account?>, IRlpStreamDecoder<Account?>, IRlpValueDecoder<Account?>
     {
         private readonly bool _slimFormat;
@@ -14,8 +17,10 @@ namespace Nethermind.Serialization.Rlp
         public static AccountDecoder Instance => new();
         public static AccountDecoder Slim => new(slimFormat: true);
 
+        [DynamicDependency(DynamicallyAccessedMemberTypes.PublicConstructors, typeof(AccountDecoder))]
         public AccountDecoder() { }
 
+        [DynamicDependency(DynamicallyAccessedMemberTypes.PublicConstructors, typeof(AccountDecoder))]
         public AccountDecoder(bool slimFormat = false)
         {
             _slimFormat = slimFormat;
