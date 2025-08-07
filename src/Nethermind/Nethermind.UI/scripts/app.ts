@@ -328,7 +328,7 @@ addDelegated(document.getElementById("block"), "pointermove", "g.node", (evt: Po
         <li><strong>To:</strong> ${shortenHex(tx.to)}</li>
         <li><strong>Nonce:</strong> ${parseInt(tx.nonce, 16)}</li>
         <li><strong>Value:</strong> ${formatEth(parseInt(tx.value, 16))}</li>
-        <li><strong>Method:</strong> ${tx.method}</li>
+        <li><strong>Method:</strong> ${getMethod(tx.method)}</li>
         <li><strong>Order in Block:</strong> ${tx.order}</li>
         <li><strong>Status:</strong> ${tx.status}</li>
         ${tx.logs.length > 0 ? `<li><strong>Logs:</strong> ${tx.logs.length}</li>` : ''}
