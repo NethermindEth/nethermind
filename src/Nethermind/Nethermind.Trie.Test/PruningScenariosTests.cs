@@ -4,13 +4,15 @@
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
+using System.Threading;
+using System.Threading.Tasks;
 using FluentAssertions;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
+using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
-using Nethermind.Core.Test.Db;
 using Nethermind.Db;
 using Nethermind.Int256;
 using Nethermind.Logging;
@@ -36,7 +38,9 @@ namespace Nethermind.Trie.Test
         {
             private BlockHeader? _baseBlock = Build.A.EmptyBlockHeader;
             private readonly Dictionary<string, BlockHeader?> _branchingPoints = new();
-            private readonly IDbProvider _dbProvider;
+            private readonly ManualResetEvent _stateDbBlocker = new ManualResetEvent(true);
+            private readonly TestMemDb _stateDb;
+            private readonly TestMemDb _codeDb;
             private IDisposable? _worldStateCloser = null;
             private IWorldState _stateProvider;
             private IStateReader _stateReader;
@@ -51,16 +55,22 @@ namespace Nethermind.Trie.Test
             private PruningContext(TestPruningStrategy pruningStrategy, IPersistenceStrategy persistenceStrategy, IPruningConfig? pruningConfig = null)
             {
                 _logManager = LimboLogs.Instance;
-                //new TestLogManager(LogLevel.Trace);
                 _logger = _logManager.GetClassLogger();
-                _dbProvider = TestMemDbProvider.Init();
+                _stateDb = new TestMemDb();
+                _stateDb.WriteFunc = (k, v) =>
+                {
+                    _stateDbBlocker.WaitOne();
+                    return true;
+                };
+
+                _codeDb = new TestMemDb();
                 _persistenceStrategy = persistenceStrategy;
                 _pruningStrategy = pruningStrategy;
 
                 _pruningConfig = pruningConfig ?? new PruningConfig() { TrackPastKeys = false };
-                _trieStore = new TrieStore(new NodeStorage(_dbProvider.StateDb), _pruningStrategy, _persistenceStrategy, _pruningConfig, _logManager);
-                _stateProvider = new WorldState(_trieStore, _dbProvider.CodeDb, _logManager);
-                _stateReader = new StateReader(_trieStore, _dbProvider.CodeDb, _logManager);
+                _trieStore = new TrieStore(new NodeStorage(_stateDb), _pruningStrategy, _persistenceStrategy, _pruningConfig, _logManager);
+                _stateProvider = new WorldState(_trieStore, _codeDb, _logManager);
+                _stateReader = new StateReader(_trieStore, _codeDb, _logManager);
                 _worldStateCloser = _stateProvider.BeginScope(IWorldState.PreGenesis);
             }
 
@@ -134,6 +144,11 @@ namespace Nethermind.Trie.Test
                 return this;
             }
 
+            public UInt256 GetAccountBalance(int accountIndex)
+            {
+                return _stateProvider.GetBalance(Address.FromNumber((UInt256)accountIndex));
+            }
+
             public PruningContext SetManyAccountWithSameBalance(int startNum, int numOfAccount, UInt256 balance)
             {
                 for (int i = 0; i < numOfAccount; i++)
@@ -145,7 +160,12 @@ namespace Nethermind.Trie.Test
 
             public PruningContext WithMaxDepth(int maxDepth)
             {
-                _pruningConfig.PruningBoundary = maxDepth;
+                return WithPruningConfig((cfg) => cfg.PruningBoundary = maxDepth);
+            }
+
+            public PruningContext WithPruningConfig(Action<IPruningConfig> configurer)
+            {
+                configurer(_pruningConfig);
                 return new PruningContext(_pruningStrategy, _persistenceStrategy, _pruningConfig);
             }
 
@@ -223,6 +243,18 @@ namespace Nethermind.Trie.Test
                 return this;
             }
 
+            public PruningContext ExitScope()
+            {
+                _worldStateCloser.Dispose();
+                return this;
+            }
+
+            public PruningContext EnterScope()
+            {
+                _worldStateCloser = _stateProvider.BeginScope(_baseBlock);
+                return this;
+            }
+
             public PruningContext CommitAndWaitForPruning()
             {
                 return Commit(waitForPruning: true);
@@ -232,9 +264,9 @@ namespace Nethermind.Trie.Test
             {
                 _worldStateCloser!.Dispose();
                 _trieStore.Dispose();
-                _trieStore = new TrieStore(new NodeStorage(_dbProvider.StateDb), _pruningStrategy, _persistenceStrategy, _pruningConfig, _logManager);
-                _stateProvider = new WorldState(_trieStore, _dbProvider.CodeDb, _logManager);
-                _stateReader = new StateReader(_trieStore, _dbProvider.CodeDb, _logManager);
+                _trieStore = new TrieStore(new NodeStorage(_stateDb), _pruningStrategy, _persistenceStrategy, _pruningConfig, _logManager);
+                _stateProvider = new WorldState(_trieStore, _codeDb, _logManager);
+                _stateReader = new StateReader(_trieStore, _codeDb, _logManager);
                 return this;
             }
 
@@ -335,6 +367,18 @@ namespace Nethermind.Trie.Test
             public void AssertThatTotalMemoryUsedIsNoLessThan(long memoryUsage)
             {
                 _trieStore.MemoryUsedByDirtyCache.Should().BeGreaterThan(memoryUsage);
+            }
+
+            public PruningContext BlockDatabase()
+            {
+                _stateDbBlocker.Reset();
+                return this;
+            }
+
+            public PruningContext UnblockDatabase()
+            {
+                _stateDbBlocker.Set();
+                return this;
             }
         }
 
@@ -955,6 +999,54 @@ namespace Nethermind.Trie.Test
             {
                 ctx.VerifyNodeInCache(stateRoots[i], i >= 255 - maxDepth);
             }
+        }
+
+        [TestCase(100, 50, false)]
+        [TestCase(100, 150, true)]
+        public async Task Can_ContinueEvenWhenPruningIsBlocked(int maxBufferedCommit, int blockCount, bool isBlocked)
+        {
+            PruningContext ctx = PruningContext.InMemory
+                .TurnOnPrune()
+                .WithPruningConfig((cfg) =>
+                {
+                    cfg.PruningBoundary = 2;
+                    cfg.MaxBufferedCommitCount = maxBufferedCommit;
+                })
+                .BlockDatabase()
+                .ExitScope()
+                ;
+
+            Task blockTask = Task.Run(() =>
+            {
+                ctx.EnterScope();
+                for (int i = 0; i < blockCount; i++)
+                {
+                    ctx
+                        .SetAccountBalance(i, (UInt256)i)
+                        .Commit();
+                }
+
+                for (int i = 0; i < blockCount; i++)
+                {
+                    ctx.GetAccountBalance(i).Should().Be((UInt256)i);
+                }
+                ctx.ExitScope();
+            });
+
+            if (!isBlocked)
+            {
+                await blockTask;
+            }
+            else
+            {
+                await Task.Delay(1000);
+                blockTask.IsCompleted.Should().BeFalse();
+
+                ctx.UnblockDatabase();
+
+                await blockTask;
+            }
+
         }
     }
 }
