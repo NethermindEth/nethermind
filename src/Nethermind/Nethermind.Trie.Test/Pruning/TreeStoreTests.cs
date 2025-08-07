@@ -89,21 +89,31 @@ namespace Nethermind.Trie.Test.Pruning
         }
 
         [Test]
-        public void Flush_ShouldBeCalledOnEachPersist()
+        public async Task Flush_ShouldBeCalledOnEachPersist()
         {
             TrieNode trieNode = new(NodeType.Leaf, Keccak.Zero);
 
             TestMemDb testMemDb = new TestMemDb();
-            using TrieStore fullTrieStore = CreateTrieStore(persistenceStrategy: Archive.Instance, pruningStrategy: new TestPruningStrategy(false, true), kvStore: testMemDb);
+            using TrieStore fullTrieStore = CreateTrieStore(persistenceStrategy: Archive.Instance, pruningStrategy: new TestPruningStrategy(shouldPrune: true), kvStore: testMemDb, pruningConfig: new PruningConfig()
+            {
+                PruningBoundary = 0
+            });
             PatriciaTree pt = new PatriciaTree(fullTrieStore.GetTrieStore(null), LimboLogs.Instance);
 
+            BlockHeader? baseBlock = null;
             for (int i = 0; i < 4; i++)
             {
-                pt.Set(TestItem.KeccakA.BytesToArray(), TestItem.Keccaks[i].BytesToArray());
-                using (ICommitter? committer = fullTrieStore.BeginStateBlockCommit(i + 1, trieNode))
+                using (var _ = fullTrieStore.BeginScope(baseBlock))
                 {
-                    pt.Commit();
+                    pt.Set(TestItem.KeccakA.BytesToArray(), TestItem.Keccaks[i].BytesToArray());
+                    using (ICommitter? committer = fullTrieStore.BeginStateBlockCommit(i + 1, trieNode))
+                    {
+                        pt.Commit();
+                    }
+
+                    baseBlock = Build.A.BlockHeader.WithParent(baseBlock).WithStateRoot(pt.RootHash).TestObject;
                 }
+                await Task.Yield();
                 fullTrieStore.WaitForPruning();
             }
 
