@@ -288,10 +288,7 @@ internal class TrieStoreDirtyNodesCache
             ? new ConcurrentNodeWriteBatcher(nodeStorage, 256) : null;
 
         long totalMemory, dirtyMemory, totalNode, dirtyNode;
-        using (AcquireMapLock())
-        {
-            (totalMemory, dirtyMemory, totalNode, dirtyNode) = PruneCacheUnlocked(prunePersisted, forceRemovePersistedNodes, persistedHashes, writeBatcher);
-        }
+        (totalMemory, dirtyMemory, totalNode, dirtyNode) = PruneCacheUnlocked(prunePersisted, forceRemovePersistedNodes, persistedHashes, writeBatcher);
 
         writeBatcher?.Dispose();
 
@@ -482,7 +479,6 @@ internal class TrieStoreDirtyNodesCache
         _byHashObjectCache.NoResizeClear();
         _byKeyObjectCache.NoResizeClear();
         Interlocked.Exchange(ref _count, 0);
-        _trieStore.MemoryUsedByDirtyCache = 0;
     }
 
     internal readonly struct Key : IEquatable<Key>
@@ -541,5 +537,11 @@ internal class TrieStoreDirtyNodesCache
                 _byKeyLock.Dispose();
             }
         }
+    }
+
+    public void CopyTo(TrieStoreDirtyNodesCache otherCache)
+    {
+        foreach (var kv in AllNodes) otherCache.GetOrAdd(kv.Key, kv.Value);
+        Clear();
     }
 }
