@@ -363,7 +363,7 @@ public sealed class TrieStore : ITrieStore, IPruningTrieStore
         // _dirtyNodesLock was not acquired, likely due to memory pruning.
         // Will continue with commit buffer.
         if (_commitBuffer is null) _commitBuffer = _commitBufferUnused ?? new CommitBuffer(this);
-        if (_commitBuffer.CommitCount > _maxBufferedCommitCount)
+        if (_commitBuffer.CommitCount >= _maxBufferedCommitCount)
         {
             // Prevent commit buffer from becoming too large.
             // This only happen if dirty cache size is very large and during forward sync.
