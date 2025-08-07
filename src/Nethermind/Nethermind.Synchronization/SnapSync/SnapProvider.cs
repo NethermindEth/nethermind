@@ -232,7 +232,7 @@ namespace Nethermind.Synchronization.SnapSync
             }
             else if (result == AddRangeResult.OutOfBounds)
             {
-                _logger.Trace($"SNAP - AddStorageRange failed, slots are out of bounds, startingHash:{request.StartingHash}");
+                if (_logger.IsTrace) _logger.Trace($"SNAP - AddStorageRange failed, slots are out of bounds, startingHash:{request.StartingHash}");
             }
 
             return result;
