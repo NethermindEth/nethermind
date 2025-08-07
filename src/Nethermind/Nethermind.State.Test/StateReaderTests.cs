@@ -32,7 +32,7 @@ namespace Nethermind.Store.Test
         private static readonly ILogManager Logger = LimboLogs.Instance;
 
         [Test]
-        public async Task Can_ask_about_balance_in_parallel()
+        public void Can_ask_about_balance_in_parallel()
         {
             IReleaseSpec spec = MainnetSpecProvider.Instance.GetSpec((ForkActivation)MainnetSpecProvider.ConstantinopleFixBlockNumber);
             IDbProvider dbProvider = TestMemDbProvider.Init();
@@ -71,11 +71,11 @@ namespace Nethermind.Store.Test
             Task c = StartTask(reader, baseBlock2, 3);
             Task d = StartTask(reader, baseBlock3, 4);
 
-            await Task.WhenAll(a, b, c, d);
+            Task.WhenAll(a, b, c, d).Wait();
         }
 
         [Test]
-        public async Task Can_ask_about_storage_in_parallel()
+        public void Can_ask_about_storage_in_parallel()
         {
             StorageCell storageCell = new(_address1, UInt256.One);
             IReleaseSpec spec = MuirGlacier.Instance;
@@ -130,7 +130,7 @@ namespace Nethermind.Store.Test
             Task c = StartStorageTask(reader, baseBlock2, storageCell, new byte[] { 3 });
             Task d = StartStorageTask(reader, baseBlock3, storageCell, new byte[] { 4 });
 
-            await Task.WhenAll(a, b, c, d);
+            Task.WhenAll(a, b, c, d).Wait();
         }
 
         [Test]

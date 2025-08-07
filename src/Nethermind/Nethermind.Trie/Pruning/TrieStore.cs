@@ -439,13 +439,10 @@ public sealed class TrieStore : ITrieStore, IPruningTrieStore
     {
         if (_currentBlockCommitter is not null) throw new InvalidOperationException("Cannot start a new block commit when an existing one is still not closed");
 
+        if (_logger.IsDebug) _logger.Debug($"Beginning new {nameof(BlockCommitSet)} - {blockNumber}");
         VerifyNewCommitSet(blockNumber);
 
-        BlockCommitSet commitSet = IsInCommitBufferMode
-            ? _commitBuffer.CreateCommitSet(blockNumber)
-            : CreateCommitSet(blockNumber);
-
-        _lastCommitSet = commitSet;
+        BlockCommitSet commitSet = new BlockCommitSet(blockNumber);
 
         _currentBlockCommitter = new BlockCommitter(this, commitSet);
         return _currentBlockCommitter;
@@ -458,8 +455,22 @@ public sealed class TrieStore : ITrieStore, IPruningTrieStore
         set.Prune();
 
         _currentBlockCommitter = null;
+        _lastCommitSet = set;
+
+        // Commit buffer mode would use the
+        if (IsInCommitBufferMode)
+            _commitBuffer.EnqueueCommitSet(set);
+        else
+            PushToMainCommitSetQueue(set);
 
         Prune();
+    }
+
+    private void PushToMainCommitSetQueue(BlockCommitSet set)
+    {
+        _commitSetQueue.Enqueue(set);
+        LatestCommittedBlockNumber = Math.Max(set.BlockNumber, LatestCommittedBlockNumber);
+        AnnounceReorgBoundaries();
     }
 
     public event EventHandler<ReorgBoundaryReached>? ReorgBoundaryReached;
@@ -895,21 +906,6 @@ public sealed class TrieStore : ITrieStore, IPruningTrieStore
                 if (_logger.IsInfo) _logger.Info($"Non consecutive block commit. This is likely a reorg. Last block commit: {_lastCommitSet.BlockNumber}. New block commit: {blockNumber}.");
             }
         }
-    }
-
-    private BlockCommitSet CreateCommitSet(long blockNumber)
-    {
-        if (_logger.IsDebug) _logger.Debug($"Beginning new {nameof(BlockCommitSet)} - {blockNumber}");
-
-        BlockCommitSet commitSet = new(blockNumber);
-        _commitSetQueue.Enqueue(commitSet);
-
-        LatestCommittedBlockNumber = Math.Max(blockNumber, LatestCommittedBlockNumber);
-        // Why are we announcing **before** committing next block??
-        // Should it be after commit?
-        AnnounceReorgBoundaries();
-
-        return commitSet;
     }
 
     /// <summary>
@@ -1431,11 +1427,9 @@ public sealed class TrieStore : ITrieStore, IPruningTrieStore
             }
         }
 
-        public BlockCommitSet CreateCommitSet(long blockNumber)
+        public void EnqueueCommitSet(BlockCommitSet set)
         {
-            BlockCommitSet commitSet = new(blockNumber);
-            _commitSetQueueBuffer.Enqueue(commitSet);
-            return commitSet;
+            _commitSetQueueBuffer.Enqueue(set);
         }
 
         public void FlushToDirtyNodes()
@@ -1451,6 +1445,7 @@ public sealed class TrieStore : ITrieStore, IPruningTrieStore
             while (_commitSetQueueBuffer.TryDequeue(out BlockCommitSet commitSet))
             {
                 _trieStore._commitSetQueue.Enqueue(commitSet);
+                _trieStore.PushToMainCommitSetQueue(commitSet);
                 count++;
             }
 
