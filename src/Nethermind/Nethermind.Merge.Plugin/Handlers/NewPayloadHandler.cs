@@ -344,10 +344,9 @@ public class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadStatusV1
             if (e.BlockHash == block.Hash)
             {
                 // Ensure we only unsubscribe once and handle completion atomically
-                if (eventHandlerSubscribed)
+                if (Interlocked.CompareExchange(ref eventHandlerSubscribed, false, true))
                 {
                     _processingQueue.BlockRemoved -= GetProcessingQueueOnBlockRemoved;
-                    eventHandlerSubscribed = false;
                 }
 
                 if (e.ProcessingResult == ProcessingResult.Exception)
@@ -426,10 +425,9 @@ public class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadStatusV1
         finally
         {
             // Ensure event handler is always unsubscribed to prevent memory leaks
-            if (eventHandlerSubscribed)
+            if (Interlocked.CompareExchange(ref eventHandlerSubscribed, false, true))
             {
                 _processingQueue.BlockRemoved -= GetProcessingQueueOnBlockRemoved;
-                eventHandlerSubscribed = false;
             }
         }
 
