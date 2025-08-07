@@ -1669,43 +1669,35 @@ namespace Nethermind.Blockchain
                 newHeadBlock = newHeadHash is null ? null : FindBlock(newHeadHash, BlockTreeLookupOptions.None, blockNumber: startNumber - 1);
             }
 
-            BlockAcceptingNewBlocks();
-            try
+            using (_chainLevelInfoRepository.StartBatch())
             {
-                using (_chainLevelInfoRepository.StartBatch())
+                for (long i = endNumber.Value; i >= startNumber; i--)
                 {
-                    for (long i = endNumber.Value; i >= startNumber; i--)
+                    ChainLevelInfo? chainLevelInfo = _chainLevelInfoRepository.LoadLevel(i);
+                    if (chainLevelInfo is null)
                     {
-                        ChainLevelInfo? chainLevelInfo = _chainLevelInfoRepository.LoadLevel(i);
-                        if (chainLevelInfo is null)
-                        {
-                            continue;
-                        }
+                        continue;
+                    }
 
-                        _chainLevelInfoRepository.Delete(i);
-                        deleted++;
+                    _chainLevelInfoRepository.Delete(i);
+                    deleted++;
 
-                        foreach (BlockInfo blockInfo in chainLevelInfo.BlockInfos)
-                        {
-                            Hash256 blockHash = blockInfo.BlockHash;
-                            _blockInfoDb.Delete(blockHash);
-                            _blockStore.Delete(i, blockHash);
-                            _headerStore.Delete(blockHash);
-                        }
+                    foreach (BlockInfo blockInfo in chainLevelInfo.BlockInfos)
+                    {
+                        Hash256 blockHash = blockInfo.BlockHash;
+                        _blockInfoDb.Delete(blockHash);
+                        _blockStore.Delete(i, blockHash);
+                        _headerStore.Delete(blockHash);
                     }
                 }
-
-                if (newHeadBlock is not null)
-                {
-                    UpdateHeadBlock(newHeadBlock);
-                }
-
-                return deleted;
             }
-            finally
+
+            if (newHeadBlock is not null)
             {
-                ReleaseAcceptingNewBlocks();
+                UpdateHeadBlock(newHeadBlock);
             }
+
+            return deleted;
         }
 
         internal void BlockAcceptingNewBlocks()
