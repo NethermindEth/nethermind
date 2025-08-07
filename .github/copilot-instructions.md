@@ -6,10 +6,48 @@ Nethermind is an industry-leading Ethereum execution client built on .NET, desig
 
 **Repository Characteristics:**
 - **Size:** Large-scale enterprise codebase with 100+ C# projects
-- **Language:** C# with .NET 9.0 target framework (LangVersion 13.0)
+- **Language:** C# with .NET 9.0 target framework
 - **Architecture:** Modular design with plugin-based extensibility
 - **Type:** High-performance blockchain execution client
 - **License:** LGPL-3.0-only
+
+## General
+
+- Make only high confidence suggestions when reviewing code changes.
+- Always use the latest version C#, currently C# 13 features.
+- Never change global.json unless explicitly asked to.
+- Never change package.json or package-lock.json files unless explicitly asked to.
+- Never change NuGet.config files unless explicitly asked to.
+- Always trim trailing whitespace, and do not have whitespace on otherwise empty lines.
+
+**Any code you commit SHOULD compile, and new and existing tests related to the change SHOULD pass.**
+
+You MUST make your best effort to ensure your changes satisfy those criteria before committing. If for any reason you were unable to build or test the changes, you MUST report that. You MUST NOT claim success unless all builds and tests pass as described above.
+
+You MUST follow all code-formatting and naming conventions defined in [`.editorconfig`](/.editorconfig).
+
+In addition to the rules enforced by `.editorconfig`, you SHOULD:
+
+- Prefer file-scoped namespace declarations and single-line using directives; however do not change the type of namespace format in an existing file unless specifically asked.
+- Ensure that the final return statement of a method is on its own line.
+- Use pattern matching and switch expressions wherever possible.
+- Use `nameof` instead of string literals when referring to member names.
+- Always use `is null` or `is not null` instead of `== null` or `!= null`.
+- Trust the C# null annotations and don't add null checks when the type system says a value cannot be null.
+- Prefer `?.` if applicable (e.g. `scope?.Dispose()`).
+- Use `ObjectDisposedException.ThrowIf` where applicable.
+- When adding new unit tests, strongly prefer to add them to existing test code files rather than creating new code files.
+- If you add new code files, ensure they are listed in the csproj file (if other files in that folder are listed there) so they build.
+- When running tests, if possible use filters and check test run counts, or look at test logs, to ensure they actually ran.
+- Do not finish work with any tests commented out or disabled that were not previously commented out or disabled.
+- When writing tests, do not emit "Act", "Arrange" or "Assert" comments.
+- Copy existing style in nearby files for test method names and capitalization.
+- Provide code comments when helpful to explain why something is being done; however do not comment what is obvious and just a repeation of the code line.
+- Ensure that XML doc comments are created for any public APIs.
+- Do NOT use #regions.
+- Perfer low allocation and higher performance code.
+
+---
 
 ## Build Requirements and Setup
 
