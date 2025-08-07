@@ -77,19 +77,16 @@ public class GasEstimator
 
         if (leftBound > rightBound)
         {
-            err = "Cannot estimate gas, gas spent exceeded transaction and block gas limit";
             return 0;
         }
 
         // Execute binary search to find the optimal gas estimation.
-        return BinarySearchEstimate(leftBound, rightBound, tx, header, gasTracer, errorMargin, token, out err);
+        return BinarySearchEstimate(leftBound, rightBound, tx, header, gasTracer, errorMargin, token);
     }
 
     private long BinarySearchEstimate(long leftBound, long rightBound, Transaction tx, BlockHeader header,
-        EstimateGasTracer gasTracer, int errorMargin, CancellationToken token, out string? err)
+        EstimateGasTracer gasTracer, int errorMargin, CancellationToken token)
     {
-        err = null;
-
         double marginWithDecimals = errorMargin == 0 ? 1 : errorMargin / 10000d + 1;
         //This approach is similar to Geth, by starting from an optimistic guess the number of iterations is greatly reduced in most cases
         long optimisticGasEstimate =
@@ -120,7 +117,6 @@ public class GasEstimator
 
         if (rightBound == cap && !TryExecutableTransaction(tx, header, rightBound, token, gasTracer))
         {
-            err = "Cannot estimate gas, gas spent exceeded transaction and block gas limit";
             return 0;
         }
 

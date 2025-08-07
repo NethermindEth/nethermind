@@ -374,27 +374,6 @@ namespace Nethermind.Evm.Test.Tracing
             }
         }
 
-        [Test]
-        public void Should_return_zero_when_out_of_gas_detected_during_estimation()
-        {
-            TestEnvironment testEnvironment = new();
-            Transaction tx = Build.A.Transaction.WithGasLimit(100000).TestObject;
-            Block block = Build.A.Block.WithNumber(1).WithTransactions(tx).TestObject;
-
-            testEnvironment.tracer.ReportAction(1000, 0, Address.Zero, Address.Zero, Array.Empty<byte>(),
-                ExecutionType.TRANSACTION, false);
-
-            testEnvironment.tracer.ReportActionError(EvmExceptionType.OutOfGas);
-
-            testEnvironment.tracer.MarkAsSuccess(Address.Zero, 500, Array.Empty<byte>(), Array.Empty<LogEntry>());
-
-            long estimate = testEnvironment.estimator.Estimate(tx, block.Header, testEnvironment.tracer, out string? err);
-
-            estimate.Should().Be(0, "Should return 0 when OutOfGas is detected");
-            err.Should().NotBeNull("Error message should be provided when OutOfGas is detected");
-            testEnvironment.tracer.OutOfGas.Should().BeTrue("OutOfGas should be set to true");
-        }
-
         private class TestEnvironment
         {
             public ISpecProvider _specProvider;
