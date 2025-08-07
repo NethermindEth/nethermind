@@ -77,6 +77,7 @@ public class GasEstimator
 
         if (leftBound > rightBound)
         {
+            err = "Cannot estimate gas, gas spent exceeded transaction and block gas limit";
             return 0;
         }
 
