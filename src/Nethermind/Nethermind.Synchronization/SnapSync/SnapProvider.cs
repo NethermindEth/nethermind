@@ -136,7 +136,7 @@ namespace Nethermind.Synchronization.SnapSync
             }
             else if (result == AddRangeResult.OutOfBounds)
             {
-                _logger.Trace($"SNAP - AddAccountRange failed, accounts are out of bounds, startingHash:{startingHash}");
+                if (_logger.IsTrace) _logger.Trace($"SNAP - AddAccountRange failed, accounts are out of bounds, startingHash:{startingHash}");
             }
 
             return result;
