@@ -581,7 +581,7 @@ namespace Nethermind.Trie.Test
                 .Commit()
 
                 // Storage root actually never got pruned even-though another parallel branch get persisted. This
-                // is because the condition `LastSeen < LastPersistedBlock` never turn to true.
+                // is because the condition `LastCommit < LastPersistedBlock` never turn to true.
                 .VerifyStorageValue(3, 1, 999);
         }
 
@@ -740,7 +740,7 @@ namespace Nethermind.Trie.Test
                 .Commit()
                 .SaveBranchingPoint("main")
 
-                // The storage root will now get reset at a lower LastSeen
+                // The storage root will now get reset at a lower LastCommit
                 .RestoreBranchingPoint("revert_main")
                 .CreateAccount(3)
                 .SetStorage(3, 1, 999)
@@ -779,7 +779,7 @@ namespace Nethermind.Trie.Test
                 .Commit()
                 .SaveBranchingPoint("main")
 
-                // This will result in the same state root, but it's `LastSeen` reduced.
+                // This will result in the same state root, but it's `LastCommit` reduced.
                 .RestoreBranchingPoint("revert_main")
                 .SetAccountBalance(1, 10)
                 .SetAccountBalance(2, 101)

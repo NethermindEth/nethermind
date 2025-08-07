@@ -1027,11 +1027,6 @@ public sealed class TrieStore : ITrieStore, IPruningTrieStore
 
         if (currentNode.Keccak is not null)
         {
-            // Note that the LastSeen value here can be 'in the future' (greater than block number
-            // if we replaced a newly added node with an older copy and updated the LastSeen value.
-            // Here we reach it from the old root so it appears to be out of place but it is correct as we need
-            // to prevent it from being removed from cache and also want to have it persisted.
-
             if (_logger.IsTrace) _logger.Trace($"Persisting {nameof(TrieNode)} {currentNode}.");
             writeBatch.Set(address, path, currentNode.Keccak, currentNode.FullRlp.Span, writeFlags);
             currentNode.IsPersisted = true;
@@ -1044,10 +1039,10 @@ public sealed class TrieStore : ITrieStore, IPruningTrieStore
         }
     }
 
-    public bool IsNoLongerNeeded(long lastSeen)
+    public bool IsNoLongerNeeded(long lastCommit)
     {
-        return lastSeen < LastPersistedBlockNumber
-               && lastSeen < LatestCommittedBlockNumber - _maxDepth;
+        return lastCommit < LastPersistedBlockNumber
+               && lastCommit < LatestCommittedBlockNumber - _maxDepth;
     }
 
     private void AnnounceReorgBoundaries()
