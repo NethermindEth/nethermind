@@ -130,6 +130,14 @@ namespace Nethermind.Synchronization.SnapSync
             {
                 _logger.Trace($"SNAP - AddAccountRange failed, expected {blockNumber}:{expectedRootHash} but was {tree.RootHash}, startingHash:{startingHash}");
             }
+            else if (result == AddRangeResult.InvalidOrder)
+            {
+                _logger.Trace($"SNAP - AddAccountRange failed, accounts are not in sorted order, startingHash:{startingHash}");
+            }
+            else if (result == AddRangeResult.OutOfBounds)
+            {
+                _logger.Trace($"SNAP - AddAccountRange failed, accounts are out of bounds, startingHash:{startingHash}");
+            }
 
             return result;
         }
@@ -217,6 +225,14 @@ namespace Nethermind.Synchronization.SnapSync
                 _logger.Trace($"SNAP - AddStorageRange failed, expected storage root hash:{pathWithAccount.Account.StorageRoot} but was {tree.RootHash}, startingHash:{request.StartingHash}");
 
                 _progressTracker.EnqueueAccountRefresh(pathWithAccount, request.StartingHash, request.LimitHash);
+            }
+            else if (result == AddRangeResult.InvalidOrder)
+            {
+                _logger.Trace($"SNAP - AddStorageRange failed, slots are not in sorted order, startingHash:{request.StartingHash}");
+            }
+            else if (result == AddRangeResult.OutOfBounds)
+            {
+                _logger.Trace($"SNAP - AddStorageRange failed, slots are out of bounds, startingHash:{request.StartingHash}");
             }
 
             return result;
