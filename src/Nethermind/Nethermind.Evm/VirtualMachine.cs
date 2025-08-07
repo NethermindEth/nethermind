@@ -966,7 +966,7 @@ public sealed unsafe partial class VirtualMachine(
 
         IReleaseSpec spec = BlockExecutionContext.Spec;
         long baseGasCost = precompile.BaseGasCost(spec);
-        long blobGasCost = precompile.DataGasCost(callData, spec);
+        long dataGasCost = precompile.DataGasCost(callData, spec);
 
         bool wasCreated = _worldState.AddToBalanceAndCreateIfNotExists(state.Env.ExecutingAccount, transferValue, spec);
 
@@ -986,7 +986,7 @@ public sealed unsafe partial class VirtualMachine(
             _parityTouchBugAccount.ShouldDelete = true;
         }
 
-        if (!UpdateGas(checked(baseGasCost + blobGasCost), ref gasAvailable))
+        if (!UpdateGas(checked(baseGasCost + dataGasCost), ref gasAvailable))
         {
             return new(default, false, 0, true, EvmExceptionType.OutOfGas);
         }

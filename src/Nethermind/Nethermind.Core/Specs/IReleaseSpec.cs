@@ -402,7 +402,7 @@ namespace Nethermind.Core.Specs
 
         public bool ModExpEnabled => IsEip198Enabled;
 
-        public bool Bn128Enabled => IsEip196Enabled && IsEip197Enabled;
+        public bool BN254Enabled => IsEip196Enabled && IsEip197Enabled;
 
         public bool BlakeEnabled => IsEip152Enabled;
 
@@ -508,5 +508,10 @@ namespace Nethermind.Core.Specs
         /// EIP-7907: Meter Contract Code Size And Increase Limit
         /// </summary>
         public bool IsEip7907Enabled { get; }
+
+        /// <summary>
+        /// RIP-7728: L1SLOAD precompile for reading L1 storage from L2
+        /// </summary>
+        public bool IsRip7728Enabled { get; }
     }
 }

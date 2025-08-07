@@ -268,6 +268,9 @@ public sealed class TrieStore : ITrieStore, IPruningTrieStore
     private TrieNode DirtyNodesGetOrAdd(in TrieStoreDirtyNodesCache.Key key, TrieNode node) =>
         GetDirtyNodeShard(key).GetOrAdd(key, node);
 
+    private void DirtyNodesReplace(in TrieStoreDirtyNodesCache.Key key, TrieNode node) =>
+        GetDirtyNodeShard(key).Replace(key, node);
+
     private bool DirtyNodesTryGetValue(in TrieStoreDirtyNodesCache.Key key, out TrieNode? node) =>
         GetDirtyNodeShard(key).TryGetValue(key, out node);
 
@@ -289,20 +292,41 @@ public sealed class TrieStore : ITrieStore, IPruningTrieStore
         TrieNode cachedNodeCopy = DirtyNodesGetOrAdd(in key, node);
         if (!ReferenceEquals(cachedNodeCopy, node))
         {
+            // So what happen here is that the patricia trie was modified in a way that some of the trie nodes
+            // was re-generated, basically the value was modified back to a recently committed value that is still cached.
+            // This happen about 2.5% of the time at 4GB dirty cache and 16GB total cache.
+
             Metrics.LoadedFromCacheNodesCount++;
-            if (_logger.IsTrace) Trace(node, cachedNodeCopy);
-            cachedNodeCopy.ResolveKey(GetTrieStore(address), ref path, nodeCommitInfo.IsRoot);
-            if (node.Keccak != cachedNodeCopy.Keccak)
+            if (cachedNodeCopy.IsPersisted)
             {
-                ThrowNodeIsNotSame(node, cachedNodeCopy);
+                // This code path happens around 0.8% of the time at 4GB of dirty cache and 16GB total cache.
+                //
+                // If the cache node is persisted, we replace it completely.
+                // This is because although very rare, it is possible that this node is persisted, but its child is not
+                // persisted. This can happen when a path is not replaced with another node, but its child is and hence,
+                // the child is removed, but the parent is not and remain in the cache as persisted node.
+                // Additionally, it may hold a reference to its child which is marked as persisted eventhough it was
+                // deleted from the cached map.
+                DirtyNodesReplace(in key, node);
             }
-
-            if (!nodeCommitInfo.IsRoot)
+            else
             {
-                nodeCommitInfo.NodeParent!.ReplaceChildRef(nodeCommitInfo.ChildPositionAtParent, cachedNodeCopy);
-            }
+                // If the cached not is not persisted, we try to replace it in its parent to reduce duplicated
+                // nodes.
+                if (_logger.IsTrace) Trace(node, cachedNodeCopy);
+                cachedNodeCopy.ResolveKey(GetTrieStore(address), ref path, nodeCommitInfo.IsRoot);
+                if (node.Keccak != cachedNodeCopy.Keccak)
+                {
+                    ThrowNodeIsNotSame(node, cachedNodeCopy);
+                }
 
-            node = cachedNodeCopy;
+                if (!nodeCommitInfo.IsRoot)
+                {
+                    nodeCommitInfo.NodeParent!.ReplaceChildRef(nodeCommitInfo.ChildPositionAtParent, cachedNodeCopy);
+                }
+
+                node = cachedNodeCopy;
+            }
             Metrics.ReplacedNodesCount++;
         }
         else
@@ -1008,6 +1032,14 @@ public sealed class TrieStore : ITrieStore, IPruningTrieStore
         if (_commitSetQueue?.IsEmpty ?? true) return;
 
         using ArrayPoolList<BlockCommitSet> candidateSets = DetermineCommitSetToPersistInSnapshot(_commitSetQueue.Count);
+        if (candidateSets.Count == 0 && _commitSetQueue.TryDequeue(out BlockCommitSet anyCommmitSet))
+        {
+            // No commitset to persist, likely as not enough block was processed to reached prune boundary
+            // This happens when node is shutdown right after sync.
+            // we need to persist at least something or in case of fresh sync or the best persisted state will not be set
+            // at all. This come at a risk that this commitset is not canon though.
+            candidateSets.Add(anyCommmitSet);
+        }
 
         INodeStorage.IWriteBatch writeBatch = _nodeStorage.StartWriteBatch();
         for (int index = 0; index < candidateSets.Count; index++)

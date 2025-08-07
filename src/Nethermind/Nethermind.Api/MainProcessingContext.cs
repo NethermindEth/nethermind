@@ -2,16 +2,17 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using Nethermind.Consensus.Processing;
+using Nethermind.Evm.State;
 using Nethermind.Evm.TransactionProcessing;
-using Nethermind.State;
 
 namespace Nethermind.Api;
 
 public record MainProcessingContext(
     ITransactionProcessor TransactionProcessor,
+    IBranchProcessor BranchProcessor,
     IBlockProcessor BlockProcessor,
     IBlockchainProcessor BlockchainProcessor,
-    IVisitingWorldState WorldState
+    IWorldState WorldState
 ) : IMainProcessingContext
 {
 }

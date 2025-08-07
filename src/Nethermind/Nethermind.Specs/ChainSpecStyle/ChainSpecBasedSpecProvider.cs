@@ -290,6 +290,8 @@ namespace Nethermind.Specs.ChainSpecStyle
 
             releaseSpec.IsEip7939Enabled = (chainSpec.Parameters.Eip7939TransitionTimestamp ?? ulong.MaxValue) <= releaseStartTimestamp;
 
+            releaseSpec.IsRip7728Enabled = (chainSpec.Parameters.Rip7728TransitionTimestamp ?? ulong.MaxValue) <= releaseStartTimestamp;
+
             foreach (IChainSpecEngineParameters item in _chainSpec.EngineChainSpecParametersProvider
                          .AllChainSpecParameters)
             {
@@ -313,10 +315,6 @@ namespace Nethermind.Specs.ChainSpecStyle
                 {
                     releaseSpec.TargetBlobCount = blobSchedule.Target;
                     releaseSpec.MaxBlobCount = blobSchedule.Max;
-                    if (blobSchedule.MaxBlobsPerTx is not null)
-                    {
-                        releaseSpec.MaxBlobsPerTx = blobSchedule.MaxBlobsPerTx.Value;
-                    }
                     releaseSpec.BlobBaseFeeUpdateFraction = blobSchedule.BaseFeeUpdateFraction;
                 }
                 else if (releaseSpec.Eip4844TransitionTimestamp <= releaseStartTimestamp)

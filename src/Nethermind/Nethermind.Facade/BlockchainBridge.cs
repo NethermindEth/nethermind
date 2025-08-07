@@ -80,9 +80,13 @@ namespace Nethermind.Facade
                 if (block is not null)
                 {
                     receipts = receiptStorage.Get(block);
-                    receipt = receipts.ForTransaction(txHash);
-                    transaction = block.Transactions[receipt.Index];
-                    return true;
+                    int txIndex = block.GetTransactionIndex(txHash.ValueHash256);
+                    if (txIndex != -1)
+                    {
+                        transaction = block.Transactions[txIndex];
+                        receipt = receipts.Length > txIndex && receipts[txIndex].TxHash == txHash ? receipts[txIndex] : null;
+                        return true;
+                    }
                 }
             }
 
@@ -135,12 +139,12 @@ namespace Nethermind.Facade
             };
         }
 
-        public SimulateOutput<TTrace> Simulate<TTrace>(BlockHeader header, SimulatePayload<TransactionWithSourceDetails> payload, ISimulateBlockTracerFactory<TTrace> simulateBlockTracerFactory, CancellationToken cancellationToken)
+        public SimulateOutput<TTrace> Simulate<TTrace>(BlockHeader header, SimulatePayload<TransactionWithSourceDetails> payload, ISimulateBlockTracerFactory<TTrace> simulateBlockTracerFactory, long gasCapLimit, CancellationToken cancellationToken)
         {
             using SimulateReadOnlyBlocksProcessingScope env = lazySimulateProcessingEnv.Value.Begin(header);
             env.SimulateRequestState.Validate = payload.Validation;
             IBlockTracer<TTrace> tracer = simulateBlockTracerFactory.CreateSimulateBlockTracer(payload.TraceTransfers, env.WorldState, specProvider, header);
-            return _simulateBridgeHelper.TrySimulate(header, payload, tracer, env, cancellationToken);
+            return _simulateBridgeHelper.TrySimulate(header, payload, tracer, env, gasCapLimit, cancellationToken);
         }
 
         public CallOutput EstimateGas(BlockHeader header, Transaction tx, int errorMargin, Dictionary<Address, AccountOverride>? stateOverride, CancellationToken cancellationToken)

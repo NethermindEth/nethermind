@@ -25,7 +25,7 @@ using Nethermind.Trie.Pruning;
 
 namespace Nethermind.State
 {
-    public class WorldState : IVisitingWorldState, IPreBlockCaches
+    public class WorldState : IWorldState, IPreBlockCaches
     {
         internal readonly StateProvider _stateProvider;
         internal readonly PersistentStorageProvider _persistentStorageProvider;
@@ -216,10 +216,6 @@ namespace Nethermind.State
         public bool IsDeadAccount(Address address)
         {
             return _stateProvider.IsDeadAccount(address);
-        }
-        public bool IsEmptyAccount(Address address)
-        {
-            return _stateProvider.IsEmptyAccount(address);
         }
 
         public bool HasStateForBlock(BlockHeader? header)
