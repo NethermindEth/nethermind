@@ -255,23 +255,6 @@ internal class TrieStoreDirtyNodesCache
         }
     }
 
-    private MapLock AcquireMapLock()
-    {
-        if (_storeByHash)
-        {
-            return new MapLock()
-            {
-                _storeByHash = _storeByHash,
-                _byHashLock = _byHashObjectCache.AcquireLock()
-            };
-        }
-        return new MapLock()
-        {
-            _storeByHash = _storeByHash,
-            _byKeyLock = _byKeyObjectCache.AcquireLock()
-        };
-    }
-
     /// <summary>
     /// This method is responsible for reviewing the nodes that are directly in the cache and
     /// removing ones that are either no longer referenced or already persisted.
@@ -447,16 +430,13 @@ internal class TrieStoreDirtyNodesCache
             }
         }
 
-        using (AcquireMapLock())
+        foreach (KeyValuePair<Key, NodeRecord> kv in AllNodes)
         {
-            foreach (KeyValuePair<Key, NodeRecord> kv in AllNodes)
-            {
-                if (cancellationToken.IsCancellationRequested) return persistedCount;
-                Key key = kv.Key;
-                TreePath path = key.Path;
-                Hash256? address = key.Address;
-                kv.Value.Node.CallRecursively(PersistNode, address, ref path, _trieStore.GetTrieStore(address), false, _logger, resolveStorageRoot: false);
-            }
+            if (cancellationToken.IsCancellationRequested) return persistedCount;
+            Key key = kv.Key;
+            TreePath path = key.Path;
+            Hash256? address = key.Address;
+            kv.Value.Node.CallRecursively(PersistNode, address, ref path, _trieStore.GetTrieStore(address), false, _logger, resolveStorageRoot: false);
         }
 
         return persistedCount;
@@ -517,25 +497,6 @@ internal class TrieStoreDirtyNodesCache
         public override string ToString()
         {
             return $"A:{Address} P:{Path} K:{Keccak}";
-        }
-    }
-
-    internal ref struct MapLock
-    {
-        public bool _storeByHash;
-        public ConcurrentDictionaryLock<Hash256AsKey, NodeRecord>.Lock _byHashLock;
-        public ConcurrentDictionaryLock<Key, NodeRecord>.Lock _byKeyLock;
-
-        public readonly void Dispose()
-        {
-            if (_storeByHash)
-            {
-                _byHashLock.Dispose();
-            }
-            else
-            {
-                _byKeyLock.Dispose();
-            }
         }
     }
 

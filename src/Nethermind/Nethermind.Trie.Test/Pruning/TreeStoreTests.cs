@@ -1046,7 +1046,7 @@ namespace Nethermind.Trie.Test.Pruning
         }
 
         [Test]
-        public async Task Will_RePersist_PersistedReCommittedNode()
+        public Task Will_RePersist_PersistedReCommittedNode()
         {
             MemDb memDb = new();
 
@@ -1060,28 +1060,33 @@ namespace Nethermind.Trie.Test.Pruning
                     TrackPastKeys = true
                 });
 
-            TreePath emptyPath = TreePath.Empty;
             PatriciaTree topTree = new PatriciaTree(fullTrieStore.GetTrieStore(null), LimboLogs.Instance);
 
             byte[] key1 = Bytes.FromHexString("0000000000000000000000000000000000000000000000000000000000000000");
             byte[] key2 = Bytes.FromHexString("0011000000000000000000000000000000000000000000000000000000000000");
 
+            BlockHeader? baseBlock = null;
             for (int i = 0; i < 64; i++)
             {
-                topTree.Set(key1, [1, 2]);
-                topTree.Set(key2, [4, (byte)(i % 4)]);
-
-                using (ICommitter committer = fullTrieStore.BeginStateBlockCommit(i, topTree.Root))
+                using (fullTrieStore.BeginScope(baseBlock))
                 {
-                    topTree.Commit();
+                    topTree.Set(key1, [1, 2]);
+                    topTree.Set(key2, [4, (byte)(i % 4)]);
+
+                    using (ICommitter committer = fullTrieStore.BeginStateBlockCommit(i, topTree.Root))
+                    {
+                        topTree.Commit();
+                    }
+
+                    baseBlock = Build.A.BlockHeader.WithParent(baseBlock).WithStateRoot(topTree.RootHash).TestObject;
                 }
 
-                // Pruning is done in background
-                await Task.Delay(TimeSpan.FromMilliseconds(10));
+                fullTrieStore.WaitForPruning();
             }
 
             memDb.Count.Should().Be(13);
             memDb.WritesCount.Should().Be(184);
+            return Task.CompletedTask;
         }
 
         [Test]
