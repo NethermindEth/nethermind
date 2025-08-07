@@ -113,7 +113,7 @@ src/Nethermind/
 
 ### Configuration Files
 
-- **`global.json`** - .NET SDK version requirement (9.0.2)
+- **`global.json`** - .NET SDK version requirement (9.0.x)
 - **`Directory.Build.props`** - MSBuild properties and compilation settings
 - **`.editorconfig`** - Code style rules (enforced in CI)
 - **`nuget.config`** - NuGet package source configuration
