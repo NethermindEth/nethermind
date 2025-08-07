@@ -228,7 +228,7 @@ namespace Nethermind.Synchronization.SnapSync
             }
             else if (result == AddRangeResult.InvalidOrder)
             {
-                _logger.Trace($"SNAP - AddStorageRange failed, slots are not in sorted order, startingHash:{request.StartingHash}");
+                if (_logger.IsTrace) _logger.Trace($"SNAP - AddStorageRange failed, slots are not in sorted order, startingHash:{request.StartingHash}");
             }
             else if (result == AddRangeResult.OutOfBounds)
             {
