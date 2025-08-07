@@ -132,7 +132,7 @@ namespace Nethermind.Synchronization.SnapSync
             }
             else if (result == AddRangeResult.InvalidOrder)
             {
-                _logger.Trace($"SNAP - AddAccountRange failed, accounts are not in sorted order, startingHash:{startingHash}");
+                if (_logger.IsTrace) _logger.Trace($"SNAP - AddAccountRange failed, accounts are not in sorted order, startingHash:{startingHash}");
             }
             else if (result == AddRangeResult.OutOfBounds)
             {
