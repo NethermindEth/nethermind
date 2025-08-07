@@ -246,11 +246,13 @@ namespace Nethermind.State
             if (_logger.IsTrace) _logger.Trace($"Beginning WorldState scope with baseblock {baseBlock?.ToString(BlockHeader.Format.Short) ?? "null"} with stateroot {baseBlock?.StateRoot?.ToString() ?? "null"}.");
 
             StateRoot = baseBlock?.StateRoot ?? Keccak.EmptyTreeHash;
+            IDisposable trieStoreCloser = _trieStore.BeginScope(baseBlock);
 
             return new Reactive.AnonymousDisposable(() =>
             {
                 Reset();
                 StateRoot = Keccak.EmptyTreeHash;
+                trieStoreCloser.Dispose();
                 _isInScope = false;
                 if (_logger.IsTrace) _logger.Trace($"WorldState scope for baseblock {baseBlock?.ToString(BlockHeader.Format.Short) ?? "null"} closed");
             });
