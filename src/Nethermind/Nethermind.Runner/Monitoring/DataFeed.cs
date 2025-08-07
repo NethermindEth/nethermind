@@ -28,6 +28,8 @@ using Nethermind.Stats.Model;
 using Nethermind.Synchronization.Peers;
 using Nethermind.TxPool;
 
+using DataCompletion = System.Threading.Tasks.TaskCompletionSource<byte[]>;
+
 namespace Nethermind.Runner.Monitoring;
 
 public class DataFeed
@@ -170,30 +172,30 @@ public class DataFeed
             JsonSerializerOptions.Web);
     }
 
-    private TaskCompletionSource<byte[]> _txFlow = new();
+    private DataCompletion _txFlow = new();
     private async Task StartTxFlowRefresh()
     {
         while (true)
         {
             byte[] data = await GetTxFlowTask(delayMs: 1000);
 
-            var txFlow = _txFlow;
-            _txFlow = new TaskCompletionSource<byte[]>();
+            DataCompletion txFlow = _txFlow;
+            _txFlow = new DataCompletion();
             txFlow.TrySetResult(data);
         }
     }
 
     private Environment.ProcessCpuUsage _lastCpuUsage;
     private long _lastTimeStamp;
-    private TaskCompletionSource<byte[]> _systemStats = new();
+    private DataCompletion _systemStats = new();
     private async Task SystemStatsRefresh()
     {
         _lastCpuUsage = Environment.CpuUsage;
         _lastTimeStamp = Stopwatch.GetTimestamp();
         while (true)
         {
-            var data = await GetStatsTask(delayMs: 1000);
-            var systemStats = _systemStats;
+            byte[] data = await GetStatsTask(delayMs: 1000);
+            DataCompletion systemStats = _systemStats;
             _systemStats = new();
             systemStats.TrySetResult(data);
         }
@@ -221,15 +223,15 @@ public class DataFeed
         return JsonSerializer.SerializeToUtf8Bytes(stats, JsonSerializerOptions.Web);
     }
 
-    private TaskCompletionSource<byte[]> _peers = new();
+    private DataCompletion _peers = new();
     private async Task StartPeersRefresh()
     {
         _lastCpuUsage = Environment.CpuUsage;
         _lastTimeStamp = Stopwatch.GetTimestamp();
         while (true)
         {
-            var data = await GetPeersTask(delayMs: 1000);
-            var peers = _peers;
+            byte[] data = await GetPeersTask(delayMs: 1000);
+            DataCompletion peers = _peers;
             _peers = new();
             peers.TrySetResult(data);
         }
@@ -239,9 +241,9 @@ public class DataFeed
     {
         await Task.Delay(delayMs);
 
-        var allPeers = _syncPeerPool.AllPeers;
+        IEnumerable<PeerInfo> allPeers = _syncPeerPool.AllPeers;
         List<PeerForWeb> peers = [];
-        foreach (PeerInfo peer in _syncPeerPool.AllPeers)
+        foreach (PeerInfo peer in allPeers)
         {
             peers.Add(new PeerForWeb
             {
@@ -291,11 +293,11 @@ public class DataFeed
             JsonSerializerOptions.Web);
     }
 
-    private TaskCompletionSource<byte[]> _processing = new();
+    private DataCompletion _processing = new();
     private void OnNewProcessingStatistics(object? sender, BlockStatistics stats)
     {
-        TaskCompletionSource<byte[]> processing = _processing;
-        _processing = new TaskCompletionSource<byte[]>();
+        DataCompletion processing = _processing;
+        _processing = new DataCompletion();
 
         processing.TrySetResult(JsonSerializer.SerializeToUtf8Bytes(stats, JsonSerializerOptions.Web));
     }
@@ -315,16 +317,16 @@ public class DataFeed
         });
     }
 
-    private TaskCompletionSource<byte[]> _forkChoice = new();
+    private DataCompletion _forkChoice = new();
     private void OnForkChoiceUpdated(IBlockTree.ForkChoice choice)
     {
-        TaskCompletionSource<byte[]> forkChoice = _forkChoice;
-        _forkChoice = new TaskCompletionSource<byte[]>();
+        DataCompletion forkChoice = _forkChoice;
+        _forkChoice = new DataCompletion();
 
-        var head = choice.Head;
+        Block head = choice.Head;
         Transaction[] txs = choice.Head.Transactions;
         IReleaseSpec spec = _specProvider.GetSpec(choice.Head.Header);
-        var receipts = _receiptFinder.Get(choice.Head).Select((r, i) => new ReceiptForRpc(txs[i].Hash, r, txs[i].GetGasInfo(spec, choice.Head.Header))).ToArray();
+        ReceiptForRpc[] receipts = _receiptFinder.Get(choice.Head).Select((r, i) => new ReceiptForRpc(txs[i].Hash, r, txs[i].GetGasInfo(spec, choice.Head.Header))).ToArray();
         forkChoice.TrySetResult(
             JsonSerializer.SerializeToUtf8Bytes(
                 new ForkData
@@ -450,11 +452,11 @@ public class DataFeed
         public long Head { get; set; }
     }
 
-    private TaskCompletionSource<byte[]> _log = new();
+    private DataCompletion _log = new();
     private void OnConsoleLineWritten(object? sender, string logLine)
     {
-        TaskCompletionSource<byte[]> log = _log;
-        _log = new TaskCompletionSource<byte[]>();
+        DataCompletion log = _log;
+        _log = new DataCompletion();
 
         log.TrySetResult(JsonSerializer.SerializeToUtf8Bytes(new[] { logLine }, JsonSerializerOptions.Web));
     }
