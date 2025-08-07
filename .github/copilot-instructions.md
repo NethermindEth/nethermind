@@ -42,9 +42,6 @@ In addition to the rules enforced by `.editorconfig`, you SHOULD:
 - Do not finish work with any tests commented out or disabled that were not previously commented out or disabled.
 - When writing tests, do not emit "Act", "Arrange" or "Assert" comments.
 - Copy existing style in nearby files for test method names and capitalization.
-- Ensure that the final return statement of a method is on its own line.
-- Use pattern matching and switch expressions wherever possible.
-- Use `nameof` instead of string literals when referring to member names.
 - Provide code comments when helpful to explain why something is being done; however do not comment what is obvious and just a repeation of the code line.
 - Ensure that XML doc comments are created for any public APIs.
 - Do NOT use #regions.
