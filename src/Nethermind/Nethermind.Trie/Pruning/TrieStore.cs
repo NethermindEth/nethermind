@@ -459,11 +459,14 @@ public sealed class TrieStore : ITrieStore, IPruningTrieStore
 
         // Commit buffer mode would use the
         if (IsInCommitBufferMode)
+        {
             _commitBuffer.EnqueueCommitSet(set);
+        }
         else
+        {
             PushToMainCommitSetQueue(set);
-
-        Prune();
+            Prune();
+        }
     }
 
     private void PushToMainCommitSetQueue(BlockCommitSet set)
