@@ -122,10 +122,10 @@ internal class TrieStoreDirtyNodesCache
         return _byKeyObjectCache.ContainsKey(key);
     }
 
-    public readonly struct NodeRecord(TrieNode node, long lastSeen)
+    public readonly struct NodeRecord(TrieNode node, long lastCommit)
     {
         public readonly TrieNode Node = node;
-        public readonly long LastSeen = lastSeen;
+        public readonly long LastCommit = lastCommit;
     }
 
     public IEnumerable<KeyValuePair<Key, NodeRecord>> AllNodes
@@ -189,10 +189,10 @@ internal class TrieStoreDirtyNodesCache
 
     private static NodeRecord RecordReplacementLogic(Hash256AsKey keyHash, NodeRecord current, NodeRecord arg)
     {
-        long lastSeen = current.LastSeen;
-        if (arg.LastSeen > lastSeen)
+        long lastCommit = current.LastCommit;
+        if (arg.LastCommit > lastCommit)
         {
-            lastSeen = arg.LastSeen;
+            lastCommit = arg.LastCommit;
         }
 
         TrieNode node = current.Node;
@@ -209,7 +209,7 @@ internal class TrieStoreDirtyNodesCache
             node = arg.Node;
         }
 
-        return new NodeRecord(node, lastSeen);
+        return new NodeRecord(node, lastCommit);
     }
 
     public void IncrementMemory(TrieNode node)
@@ -294,7 +294,7 @@ internal class TrieStoreDirtyNodesCache
         foreach ((Key key, NodeRecord nodeRecord) in AllNodes)
         {
             var node = nodeRecord.Node;
-            var lastSeen = nodeRecord.LastSeen;
+            var lastCommit = nodeRecord.LastCommit;
             if (node.IsPersisted)
             {
                 // Remove persisted node based on `persistedHashes` if available.
@@ -303,7 +303,7 @@ internal class TrieStoreDirtyNodesCache
                     HashAndTinyPath tinyKey = new(key.Address, new TinyTreePath(key.Path));
                     if (persistedHashes.TryGetValue(tinyKey, out Hash256? lastPersistedHash))
                     {
-                        if (CanDelete(key, lastSeen, lastPersistedHash))
+                        if (CanDelete(key, lastCommit, lastPersistedHash))
                         {
                             Delete(key, writeBatcher);
                             continue;
@@ -315,7 +315,7 @@ internal class TrieStoreDirtyNodesCache
                 {
                     // If its persisted and has last seen meaning it was recommitted,
                     // we keep it to prevent key removal from removing it from DB.
-                    if (lastSeen == -1 || forceRemovePersistedNodes)
+                    if (lastCommit == -1 || forceRemovePersistedNodes)
                     {
                         if (_logger.IsTrace) LogPersistedNodeRemoval(node);
 
@@ -324,14 +324,14 @@ internal class TrieStoreDirtyNodesCache
                         continue;
                     }
 
-                    if (_trieStore.IsNoLongerNeeded(lastSeen))
+                    if (_trieStore.IsNoLongerNeeded(lastCommit))
                     {
                         RemoveNodeFromCache(key, node, ref Metrics.PrunedPersistedNodesCount);
                         continue;
                     }
                 }
             }
-            else if (_trieStore.IsNoLongerNeeded(lastSeen))
+            else if (_trieStore.IsNoLongerNeeded(lastCommit))
             {
                 RemoveNodeFromCache(key, node, ref Metrics.DeepPrunedPersistedNodesCount);
                 continue;
@@ -398,7 +398,7 @@ internal class TrieStoreDirtyNodesCache
         writeBatch?.Set(key.Address, key.Path, key.Keccak, default, WriteFlags.DisableWAL);
     }
 
-    bool CanDelete(in Key key, long lastSeen, Hash256? currentlyPersistingKeccak)
+    bool CanDelete(in Key key, long lastCommit, Hash256? currentlyPersistingKeccak)
     {
         // Multiple current hash that we don't keep track for simplicity. Just ignore this case.
         if (currentlyPersistingKeccak is null) return false;
@@ -407,7 +407,7 @@ internal class TrieStoreDirtyNodesCache
         if (currentlyPersistingKeccak == key.Keccak) return false;
 
         // We have it in cache and it is still needed.
-        if (!_trieStore.IsNoLongerNeeded(lastSeen)) return false;
+        if (!_trieStore.IsNoLongerNeeded(lastCommit)) return false;
 
         return true;
     }
