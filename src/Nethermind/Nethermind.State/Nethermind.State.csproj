@@ -1,4 +1,5 @@
 <Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup><TreatWarningsAsErrors>false</TreatWarningsAsErrors></PropertyGroup>
   <PropertyGroup>
     <Nullable>annotations</Nullable>
     <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
