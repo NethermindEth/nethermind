@@ -104,7 +104,6 @@ public class TaikoTransactionProcessor(
             }
         }
 
-        TransactionResult result = base.Execute(tx, tracer, opts);
-        return result;
+        return base.Execute(tx, tracer, opts);
     }
 }
