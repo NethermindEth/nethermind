@@ -284,11 +284,11 @@ namespace Nethermind.Evm.Test.Tracing
             Assert.That(err, Is.Not.Null);
         }
 
-        [TestCase(Transaction.BaseTxGasCost, GasEstimator.DefaultErrorMargin, false)]
+        [TestCase(Transaction.BaseTxGasCost, GasEstimationConstants.DefaultErrorMargin, false)]
         [TestCase(Transaction.BaseTxGasCost, 100, false)]
         [TestCase(Transaction.BaseTxGasCost, 1000, false)]
-        [TestCase(Transaction.BaseTxGasCost + 10000, GasEstimator.DefaultErrorMargin, true)]
-        [TestCase(Transaction.BaseTxGasCost + 20000, GasEstimator.DefaultErrorMargin, true)]
+        [TestCase(Transaction.BaseTxGasCost + 10000, GasEstimationConstants.DefaultErrorMargin, true)]
+        [TestCase(Transaction.BaseTxGasCost + 20000, GasEstimationConstants.DefaultErrorMargin, true)]
         [TestCase(Transaction.BaseTxGasCost + 123456789, 123, true)]
         public void Estimate_DifferentAmountOfGasAndMargin_EstimationResultIsWithinMargin(int totalGas, int errorMargin, bool fail)
         {
@@ -340,7 +340,7 @@ namespace Nethermind.Evm.Test.Tracing
                 MainnetSpecProvider.Instance,
                 new BlocksConfig());
 
-            long result = sut.Estimate(tx, block.Header, tracer, out string? err, GasEstimator.DefaultErrorMargin);
+            long result = sut.Estimate(tx, block.Header, tracer, out string? err, GasEstimationConstants.DefaultErrorMargin);
 
             using (Assert.EnterMultipleScope())
             {
