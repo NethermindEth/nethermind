@@ -8,6 +8,7 @@ using System.Runtime.CompilerServices;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Blockchain;
+using Nethermind.Blockchain.Blocks;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Config;
@@ -27,7 +28,6 @@ namespace Nethermind.History;
 
 public class HistoryPruner : IHistoryPruner
 {
-    private const int DeleteBatchSize = 64;
     private const int MaxOptimisticSearchAttempts = 3;
     private const int LockWaitTimeoutMs = 100;
 
@@ -38,6 +38,7 @@ public class HistoryPruner : IHistoryPruner
     private ulong? _lastPrunedTimestamp;
     private readonly ILogger _logger;
     private readonly IBlockTree _blockTree;
+    private readonly IBlockStore _blockStore;
     private readonly IReceiptStorage _receiptStorage;
     private readonly IChainLevelInfoRepository _chainLevelInfoRepository;
     private readonly IDb _metadataDb;
@@ -63,6 +64,7 @@ public class HistoryPruner : IHistoryPruner
 
     public HistoryPruner(
         IBlockTree blockTree,
+        IBlockStore blockStore,
         IReceiptStorage receiptStorage,
         ISpecProvider specProvider,
         IChainLevelInfoRepository chainLevelInfoRepository,
@@ -78,6 +80,7 @@ public class HistoryPruner : IHistoryPruner
         _logger = logManager.GetClassLogger();
         _deletionProgressLoggingInterval = _logger.IsDebug ? 5 : 100000;
         _blockTree = blockTree;
+        _blockStore = blockStore;
         _receiptStorage = receiptStorage;
         _chainLevelInfoRepository = chainLevelInfoRepository;
         _metadataDb = dbProvider.MetadataDb;
@@ -394,12 +397,6 @@ public class HistoryPruner : IHistoryPruner
     {
         int deletedBlocks = 0;
         ulong? lastDeletedTimstamp = null;
-        BatchWrite? batch = null;
-        if (_blockTree.SyncPivot.BlockNumber == 0)
-        {
-            _logger.Info("[prune] skipping pruning, no sync pivot");
-            return;
-        }
         try
         {
             IEnumerable<Block> blocks = _historyConfig.Pruning == PruningModes.UseAncientBarriers ?
@@ -425,13 +422,6 @@ public class HistoryPruner : IHistoryPruner
                     continue;
                 }
 
-                if (deletedBlocks % DeleteBatchSize == 0)
-                {
-                    batch?.Dispose();
-                    batch = _chainLevelInfoRepository.StartBatch();
-                    if (_logger.IsInfo) _logger.Info($"[prune] Starting new deletion batch");
-                }
-
                 long? remaining = CutoffBlockNumber;
                 remaining = remaining is null ? null : long.Min(remaining!.Value, _blockTree.SyncPivot.BlockNumber) - _deletePointer;
                 if (_logger.IsInfo && deletedBlocks % _deletionProgressLoggingInterval == 0)
@@ -441,7 +431,7 @@ public class HistoryPruner : IHistoryPruner
                 }
 
                 if (_logger.IsInfo) _logger.Info($"[prune] Deleting old block {number} with hash {hash}.");
-                _blockTree.DeleteOldBlock(number, hash, batch!);
+                _blockStore.Delete(number, hash);
                 _receiptStorage.RemoveReceipts(block);
 
                 UpdateDeletePointer(number + 1, remaining is null || remaining == 0);
@@ -452,8 +442,6 @@ public class HistoryPruner : IHistoryPruner
         }
         finally
         {
-            batch?.Dispose();
-
             if (_cutoffPointer < _deletePointer && lastDeletedTimstamp is not null)
             {
                 _cutoffPointer = _deletePointer;
