@@ -810,6 +810,9 @@ namespace Nethermind.Blockchain
             }
         }
 
+        public void DeleteOldBlock(long blockNumber, Hash256 blockHash)
+            => _blockStore.Delete(blockNumber, blockHash);
+
         private void DeleteBlocks(Hash256 deletePointer)
         {
             BlockHeader? deleteHeader = FindHeader(deletePointer, BlockTreeLookupOptions.TotalDifficultyNotNeeded);

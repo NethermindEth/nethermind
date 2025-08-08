@@ -205,5 +205,7 @@ namespace Nethermind.Blockchain
         public long GetLowestBlock() => _wrapped.GetLowestBlock();
 
         public void NewOldestBlock(long oldestBlock) => throw new InvalidOperationException($"{nameof(ReadOnlyBlockTree)} does not expect {nameof(NewOldestBlock)} calls");
+
+        public void DeleteOldBlock(long blockNumber, Hash256 blockHash) => throw new InvalidOperationException($"{nameof(ReadOnlyBlockTree)} does not expect {nameof(DeleteOldBlock)} calls");
     }
 }

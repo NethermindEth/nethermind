@@ -271,7 +271,6 @@ public class HistoryPrunerTests
 
         Assert.DoesNotThrow(() => new HistoryPruner(
             Substitute.For<IBlockTree>(),
-            Substitute.For<IBlockStore>(),
             Substitute.For<IReceiptStorage>(),
             Substitute.For<ISpecProvider>(),
             Substitute.For<IChainLevelInfoRepository>(),
@@ -300,7 +299,6 @@ public class HistoryPrunerTests
 
         Assert.Throws<HistoryPruner.HistoryPrunerException>(() => new HistoryPruner(
             Substitute.For<IBlockTree>(),
-            Substitute.For<IBlockStore>(),
             Substitute.For<IReceiptStorage>(),
             specProvider,
             Substitute.For<IChainLevelInfoRepository>(),

@@ -38,7 +38,6 @@ public class HistoryPruner : IHistoryPruner
     private ulong? _lastPrunedTimestamp;
     private readonly ILogger _logger;
     private readonly IBlockTree _blockTree;
-    private readonly IBlockStore _blockStore;
     private readonly IReceiptStorage _receiptStorage;
     private readonly IChainLevelInfoRepository _chainLevelInfoRepository;
     private readonly IDb _metadataDb;
@@ -64,7 +63,6 @@ public class HistoryPruner : IHistoryPruner
 
     public HistoryPruner(
         IBlockTree blockTree,
-        IBlockStore blockStore,
         IReceiptStorage receiptStorage,
         ISpecProvider specProvider,
         IChainLevelInfoRepository chainLevelInfoRepository,
@@ -80,7 +78,6 @@ public class HistoryPruner : IHistoryPruner
         _logger = logManager.GetClassLogger();
         _deletionProgressLoggingInterval = _logger.IsDebug ? 5 : 100000;
         _blockTree = blockTree;
-        _blockStore = blockStore;
         _receiptStorage = receiptStorage;
         _chainLevelInfoRepository = chainLevelInfoRepository;
         _metadataDb = dbProvider.MetadataDb;
@@ -431,7 +428,7 @@ public class HistoryPruner : IHistoryPruner
                 }
 
                 if (_logger.IsInfo) _logger.Info($"[prune] Deleting old block {number} with hash {hash}.");
-                _blockStore.Delete(number, hash);
+                _blockTree.DeleteOldBlock(number, hash);
                 _receiptStorage.RemoveReceipts(block);
 
                 UpdateDeletePointer(number + 1, remaining is null || remaining == 0);
