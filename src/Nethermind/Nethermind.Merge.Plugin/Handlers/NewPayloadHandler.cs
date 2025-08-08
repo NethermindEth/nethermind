@@ -28,6 +28,8 @@ using Nethermind.Synchronization;
 
 namespace Nethermind.Merge.Plugin.Handlers;
 
+using ValidationCompletition = TaskCompletionSource<(NewPayloadHandler.ValidationResult? validationResult, string? validationMessage)>;
+
 /// <summary>
 /// Provides an execution payload handler as defined in Engine API
 /// <a href="https://github.com/ethereum/execution-apis/blob/main/src/engine/shanghai.md#engine_newpayloadv2">
@@ -50,6 +52,8 @@ public sealed class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadS
     private readonly LruCache<ValueHash256, (bool valid, string? message)>? _latestBlocks;
     private readonly ProcessingOptions _defaultProcessingOptions;
     private readonly TimeSpan _timeout;
+
+    private readonly ConcurrentDictionary<Hash256, ValidationCompletition> _blockValidationTasks = new();
 
     private long _lastBlockNumber;
     private long _lastBlockGasLimit;
@@ -307,8 +311,6 @@ public sealed class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadS
         return parentProcessed || processTerminalBlock;
     }
 
-    private ConcurrentDictionary<Hash256, TaskCompletionSource<(ValidationResult? validationResult, string? validationMessage)>> _blockValidationTasks = new();
-
     private async Task<(ValidationResult, string?)> ValidateBlockAndProcess(Block block, BlockHeader parent, ProcessingOptions processingOptions)
     {
         ValidationResult TryCacheResult(ValidationResult result, string? errorMessage)
@@ -340,7 +342,7 @@ public sealed class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadS
             return (TryCacheResult(ValidationResult.Invalid, validationMessage), validationMessage);
         }
 
-        TaskCompletionSource<(ValidationResult? validationResult, string? validationMessage)> blockProcessed =
+        ValidationCompletition blockProcessed =
             _blockValidationTasks.GetOrAdd(
                 block.Hash!,
                 static (k) => new(TaskCreationOptions.RunContinuationsAsynchronously));
@@ -491,7 +493,7 @@ public sealed class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadS
 
     public void Dispose() => _processingQueue.BlockRemoved -= GetProcessingQueueOnBlockRemoved;
 
-    private enum ValidationResult
+    internal enum ValidationResult
     {
         Invalid,
         Valid,
