@@ -1,9 +1,11 @@
 // SPDX-FileCopyrightText: 2024 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using System.Linq;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
+using Nethermind.Crypto;
 using Nethermind.Evm;
 using Nethermind.Evm.Tracing;
 using Nethermind.Evm.TransactionProcessing;
@@ -22,6 +24,8 @@ public class TaikoTransactionProcessor(
     ILogManager? logManager
     ) : TransactionProcessorBase(specProvider, worldState, virtualMachine, codeInfoRepository, logManager)
 {
+    private readonly ILogger _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
+
     protected override TransactionResult ValidateStatic(Transaction tx, BlockHeader header, IReleaseSpec spec, ExecutionOptions opts,
         in IntrinsicGas intrinsicGas)
         => base.ValidateStatic(tx, header, spec, tx.IsAnchorTx ? opts | ExecutionOptions.SkipValidationAndCommit : opts, in intrinsicGas);
@@ -74,5 +78,33 @@ public class TaikoTransactionProcessor(
             WorldState.CreateAccountIfNotExists(tx.SenderAddress!, UInt256.Zero, UInt256.Zero);
 
         return base.IncrementNonce(tx, header, spec, tracer, opts);
+    }
+
+    protected override TransactionResult Execute(Transaction tx, ITxTracer tracer, ExecutionOptions opts)
+    {
+        // Recover sender address if missing, before calling base.Execute
+        // This ensures validation doesn't fail due to missing sender
+        if (tx.SenderAddress is null && tx.Signature is not null)
+        {
+            try
+            {
+                tx.SenderAddress = Ecdsa.RecoverAddress(tx);
+
+                if (_logger.IsDebug)
+                {
+                    _logger.Debug($"TaikoTransactionProcessor Execute - Recovered sender {tx.SenderAddress} for transaction {tx.Hash}");
+                }
+            }
+            catch (Exception ex)
+            {
+                if (_logger.IsWarn)
+                {
+                    _logger.Warn($"TaikoTransactionProcessor Execute - Failed to recover sender for transaction {tx.Hash}: {ex.Message}");
+                }
+            }
+        }
+
+        TransactionResult result = base.Execute(tx, tracer, opts);
+        return result;
     }
 }
