@@ -290,8 +290,7 @@ public class GasEstimator
         _fundsChecker = new TransactionFundsChecker(stateProvider);
         _boundsCalculator = new EstimationBoundsCalculator();
 
-        var transactionExecutor = new TransactionExecutor(transactionProcessor, specProvider);
-        _estimationStrategy = new BinarySearchGasEstimationStrategy(transactionExecutor);
+        _estimationStrategy = new BinarySearchGasEstimationStrategy(new TransactionExecutor(transactionProcessor, specProvider));
     }
 
     public long Estimate(Transaction tx, BlockHeader header, EstimateGasTracer gasTracer, out string? err,
