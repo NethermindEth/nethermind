@@ -79,31 +79,4 @@ public class TaikoTransactionProcessor(
 
         return base.IncrementNonce(tx, header, spec, tracer, opts);
     }
-
-    protected override TransactionResult Execute(Transaction tx, ITxTracer tracer, ExecutionOptions opts)
-    {
-        // Recover sender address if missing, before calling base.Execute
-        // This ensures validation doesn't fail due to missing sender
-        if (tx.SenderAddress is null && tx.Signature is not null)
-        {
-            try
-            {
-                tx.SenderAddress = Ecdsa.RecoverAddress(tx);
-
-                if (_logger.IsDebug)
-                {
-                    _logger.Debug($"TaikoTransactionProcessor Execute - Recovered sender {tx.SenderAddress} for transaction {tx.Hash}");
-                }
-            }
-            catch (Exception ex)
-            {
-                if (_logger.IsWarn)
-                {
-                    _logger.Warn($"TaikoTransactionProcessor Execute - Failed to recover sender for transaction {tx.Hash}: {ex.Message}");
-                }
-            }
-        }
-
-        return base.Execute(tx, tracer, opts);
-    }
 }
