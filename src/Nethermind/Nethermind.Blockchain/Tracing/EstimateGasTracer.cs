@@ -146,7 +146,7 @@ public class EstimateGasTracer : TxTracer
 
     public override void ReportOperationError(EvmExceptionType error)
     {
-        OutOfGas |= error == EvmExceptionType.OutOfGas;
+        OutOfGas |= error == EvmExceptionType.OutOfGas || error == EvmExceptionType.Revert;
     }
 
     private void UpdateAdditionalGas(long? gasLeft = null)
