@@ -320,7 +320,16 @@ public class TransactionProcessorTests
         GasEstimator estimator = new(_transactionProcessor, _stateProvider, _specProvider, blocksConfig);
 
         long estimate = estimator.Estimate(tx, block.Header, tracer, out string? err, 0);
-        Assert.That(err, Is.Null);
+
+        if (txValue > AccountBalance)
+        {
+            Assert.That(err, Is.Not.Null); // Should have error
+            Assert.That(err, Is.EqualTo("Transaction execution fails"));
+        }
+        else
+        {
+            Assert.That(err, Is.Null); // Should succeed
+        }
 
         return estimate;
     }

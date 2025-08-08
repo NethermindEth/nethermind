@@ -170,7 +170,7 @@ namespace Nethermind.Facade
             {
                 Error = error,
                 GasSpent = estimate,
-                InputError = !tryCallResult.Success || err is not null
+                InputError = !tryCallResult.Success
             };
         }
 
