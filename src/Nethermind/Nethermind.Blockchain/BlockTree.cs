@@ -137,7 +137,7 @@ namespace Nethermind.Blockchain
             byte[]? deletePointer = _blockInfoDb.Get(DeletePointerAddressInDb);
             if (deletePointer is not null)
             {
-                DeleteInvalidBranch(new Hash256(deletePointer));
+                DeleteBlocks(new Hash256(deletePointer));
             }
 
             // Need to be here because it still need to run even if there are no genesis to store the null entry.
@@ -151,7 +151,7 @@ namespace Nethermind.Blockchain
                 {
                     // just for corrupted test bases
 
-                    genesisLevel.BlockInfos = new[] { genesisBlockInfo };
+                    genesisLevel.BlockInfos = [genesisBlockInfo];
                     _chainLevelInfoRepository.PersistLevel(0, genesisLevel);
                     //throw new InvalidOperationException($"Genesis level in DB has {genesisLevel.BlockInfos.Length} blocks");
                 }
@@ -169,12 +169,15 @@ namespace Nethermind.Blockchain
             }
 
             if (_logger.IsInfo)
+            {
                 _logger.Info($"Block tree initialized, " +
                              $"last processed is {Head?.Header.ToString(BlockHeader.Format.Short) ?? "0"}, " +
                              $"best queued is {BestSuggestedHeader?.Number.ToString() ?? "0"}, " +
                              $"best known is {BestKnownNumber}, " +
                              $"lowest inserted header {LowestInsertedHeader?.Number}, " +
                              $"lowest sync inserted block number {LowestInsertedBeaconHeader?.Number}");
+            }
+
             ProductInfo.Network = $"{(ChainId == NetworkId ? BlockchainIds.GetBlockchainName(NetworkId) : ChainId)}";
             ThisNodeInfo.AddInfo("Chain ID     :", ProductInfo.Network);
             ThisNodeInfo.AddInfo("Chain head   :", $"{Head?.Header.ToString(BlockHeader.Format.Short) ?? "0"}");
@@ -795,49 +798,19 @@ namespace Nethermind.Blockchain
             BestSuggestedHeader = Head?.Header;
             BestSuggestedBody = Head;
 
-            DeleteInvalidBranch(invalidBlock.Hash!);
+            BlockAcceptingNewBlocks();
+
+            try
+            {
+                DeleteBlocks(invalidBlock.Hash!);
+            }
+            finally
+            {
+                ReleaseAcceptingNewBlocks();
+            }
         }
 
-        public void DeleteOldBlock(long currentNumber, Hash256 currentHash, BatchWrite batch)
-            => DeleteBlock(currentNumber, currentHash, null, batch, null, true);
-
-        private void DeleteBlock(long currentNumber, Hash256 currentHash, Hash256? nextHash, BatchWrite batch, ChainLevelInfo? currentLevel = null, bool isOldBlock = false)
-        {
-            currentLevel ??= LoadLevel(currentNumber);
-
-            bool shouldRemoveLevel = false;
-            if (currentLevel is not null) // preparing update of the level (removal of the invalid branch block)
-            {
-                if (currentLevel.BlockInfos.Length == 1)
-                {
-                    shouldRemoveLevel = true;
-                }
-                else
-                {
-                    currentLevel.BlockInfos = currentLevel.BlockInfos.Where(bi => bi.BlockHash != currentHash).ToArray();
-                }
-            }
-
-            UpdateDeletePointer(nextHash);
-
-            if (shouldRemoveLevel)
-            {
-                // only need to update BestKnownNumber if we are deleting most recent block level
-                if (!isOldBlock) BestKnownNumber = Math.Min(BestKnownNumber, currentNumber - 1);
-                _chainLevelInfoRepository.Delete(currentNumber, batch);
-            }
-            else if (currentLevel is not null)
-            {
-                _chainLevelInfoRepository.PersistLevel(currentNumber, currentLevel, batch);
-            }
-
-            _blockStore.Delete(currentNumber, currentHash);
-            
-            // only delete header when removing invalid blocks, not old ones
-            if (!isOldBlock) _headerStore.Delete(currentHash);
-        }
-
-        private void DeleteInvalidBranch(Hash256 deletePointer)
+        private void DeleteBlocks(Hash256 deletePointer)
         {
             BlockHeader? deleteHeader = FindHeader(deletePointer, BlockTreeLookupOptions.TotalDifficultyNotNeeded);
             if (deleteHeader is null)
@@ -863,14 +836,40 @@ namespace Nethermind.Blockchain
                 ChainLevelInfo? currentLevel = nextLevel ?? LoadLevel(currentNumber);
                 nextLevel = LoadLevel(currentNumber + 1);
 
+                bool shouldRemoveLevel = false;
+                if (currentLevel is not null) // preparing update of the level (removal of the invalid branch block)
+                {
+                    if (currentLevel.BlockInfos.Length == 1)
+                    {
+                        shouldRemoveLevel = true;
+                    }
+                    else
+                    {
+                        currentLevel.BlockInfos = currentLevel.BlockInfos.Where(bi => bi.BlockHash != currentHash).ToArray();
+                    }
+                }
+
                 // just finding what the next descendant will be
                 if (nextLevel is not null)
                 {
                     nextHash = FindChild(nextLevel, currentHash);
                 }
 
+                UpdateDeletePointer(nextHash);
+
+                if (shouldRemoveLevel)
+                {
+                    BestKnownNumber = Math.Min(BestKnownNumber, currentNumber - 1);
+                    _chainLevelInfoRepository.Delete(currentNumber, batch);
+                }
+                else if (currentLevel is not null)
+                {
+                    _chainLevelInfoRepository.PersistLevel(currentNumber, currentLevel, batch);
+                }
+
                 if (_logger.IsInfo) _logger.Info($"Deleting invalid block {currentHash} at level {currentNumber}");
-                DeleteBlock(currentNumber, currentHash, nextHash, batch, currentLevel);
+                _blockStore.Delete(currentNumber, currentHash);
+                _headerStore.Delete(currentHash);
 
                 if (nextHash is null)
                 {
@@ -1467,7 +1466,7 @@ namespace Nethermind.Blockchain
                     // TODO: this is here because storing block data is not transactional
                     // TODO: would be great to remove it, he?
                     // TODO: we should remove it - readonly method modifies DB
-                    bool isSearchingForBeaconBlock = (BestKnownBeaconNumber > BestKnownNumber && block.Number > BestKnownNumber);  // if we're searching for beacon block we don't want to create level. We're creating it in different place with beacon metadata
+                    bool isSearchingForBeaconBlock = BestKnownBeaconNumber > BestKnownNumber && block.Number > BestKnownNumber;  // if we're searching for beacon block we don't want to create level. We're creating it in different place with beacon metadata
                     if (createLevelIfMissing == false || isSearchingForBeaconBlock)
                     {
                         if (_logger.IsInfo) _logger.Info($"Missing block info - ignoring creation of the level in {nameof(FindBlock)} scope when head is {Head?.ToString(Block.Format.Short)}. BlockHeader {block.ToString(Block.Format.FullHashAndNumber)}, CreateLevelIfMissing: {createLevelIfMissing}. BestKnownBeaconNumber: {BestKnownBeaconNumber}, BestKnownNumber: {BestKnownNumber}");
