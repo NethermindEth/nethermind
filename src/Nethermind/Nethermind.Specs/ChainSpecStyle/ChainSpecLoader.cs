@@ -88,6 +88,7 @@ public class ChainSpecLoader(IJsonSerializer serializer) : IChainSpecLoader
         }
 
         ValidateParams(chainSpecJson.Params);
+        ProcessNamedForks(chainSpecJson.Params);
 
         chainSpec.Parameters = new ChainParameters
         {
@@ -195,6 +196,14 @@ public class ChainSpecLoader(IJsonSerializer serializer) : IChainSpecLoader
             Eip7934MaxRlpBlockSize = chainSpecJson.Params.Eip7934MaxRlpBlockSize ?? Eip7934Constants.DefaultMaxRlpBlockSize,
 
             Rip7728TransitionTimestamp = chainSpecJson.Params.Rip7728TransitionTimestamp,
+
+            BerlinBlockNumber = chainSpecJson.Params.BerlinBlockNumber,
+            LondonBlockNumber = chainSpecJson.Params.LondonBlockNumber,
+            ShanghaiTimestamp = chainSpecJson.Params.ShanghaiTimestamp,
+            CancunTimestamp = chainSpecJson.Params.CancunTimestamp,
+            DencunTimestamp = chainSpecJson.Params.DencunTimestamp,
+            PragueTimestamp = chainSpecJson.Params.PragueTimestamp,
+            OsakaTimestamp = chainSpecJson.Params.OsakaTimestamp,
         };
 
         chainSpec.Parameters.Eip152Transition ??= GetTransitionForExpectedPricing("blake2_f", "price.blake2_f.gas_per_round", 1);
@@ -204,6 +213,180 @@ public class ChainSpecLoader(IJsonSerializer serializer) : IChainSpecLoader
         chainSpec.Parameters.Eip2565Transition ??= GetTransitionIfInnerPathExists("modexp", "price.modexp2565");
 
         Eip4844Constants.OverrideIfAny(chainSpec.Parameters.Eip4844MinBlobGasPrice);
+    }
+
+    internal void ProcessNamedForks(ChainSpecParamsJson parameters)
+    {
+        var conflicts = new List<string>();
+        var paramsType = typeof(ChainSpecParamsJson);
+
+        ProcessExplicitNamedForks(parameters, paramsType, conflicts);
+
+        AutoDetectNamedForks(parameters, paramsType);
+
+        ValidateForkChronology(parameters, conflicts);
+
+        if (conflicts.Count > 0)
+        {
+            throw new InvalidConfigurationException(
+                $"Fork configuration conflicts detected:\n{string.Join("\n", conflicts)}",
+                ExitCodes.MissingChainspecEipConfiguration);
+        }
+    }
+
+    private void ProcessExplicitNamedForks(ChainSpecParamsJson parameters, Type paramsType, List<string> conflicts)
+    {
+        foreach (var (forkName, forkDef) in ForkDefinitions.TimestampBasedForks)
+        {
+            var namedForkProperty = ForkDefinitions.GetNamedForkProperty(forkName);
+            var forkTimestamp = (ulong?)paramsType.GetProperty(namedForkProperty)?.GetValue(parameters);
+
+            if (!forkTimestamp.HasValue) continue;
+
+            foreach (string eipProperty in forkDef.EipProperties)
+            {
+                var eipProp = paramsType.GetProperty(eipProperty);
+                var existingValue = (ulong?)eipProp?.GetValue(parameters);
+
+                if (existingValue.HasValue)
+                {
+                    if (existingValue.Value != forkTimestamp.Value)
+                    {
+                        conflicts.Add($"Fork '{forkName}' timestamp 0x{forkTimestamp.Value:X} conflicts with {eipProperty} timestamp 0x{existingValue.Value:X}");
+                    }
+                }
+                else
+                {
+                    eipProp?.SetValue(parameters, forkTimestamp.Value);
+                }
+            }
+        }
+
+        // Process block-based forks
+        foreach (var (forkName, forkDef) in ForkDefinitions.BlockBasedForks)
+        {
+            var namedForkProperty = ForkDefinitions.GetNamedForkProperty(forkName);
+            var forkBlock = (long?)paramsType.GetProperty(namedForkProperty)?.GetValue(parameters);
+
+            if (!forkBlock.HasValue) continue;
+
+            foreach (string eipProperty in forkDef.EipProperties)
+            {
+                var eipProp = paramsType.GetProperty(eipProperty);
+                var existingValue = (long?)eipProp?.GetValue(parameters);
+
+                if (existingValue.HasValue)
+                {
+                    if (existingValue.Value != forkBlock.Value)
+                    {
+                        conflicts.Add($"Fork '{forkName}' block {forkBlock.Value} conflicts with {eipProperty} block {existingValue.Value}");
+                    }
+                }
+                else
+                {
+                    eipProp?.SetValue(parameters, forkBlock.Value);
+                }
+            }
+        }
+    }
+
+    private void AutoDetectNamedForks(ChainSpecParamsJson parameters, Type paramsType)
+    {
+        foreach (var (forkName, forkDef) in ForkDefinitions.TimestampBasedForks)
+        {
+            var namedForkProperty = ForkDefinitions.GetNamedForkProperty(forkName);
+            var existingForkValue = (ulong?)paramsType.GetProperty(namedForkProperty)?.GetValue(parameters);
+
+            if (existingForkValue.HasValue) continue;
+
+            var eipTimestamps = ForkDefinitions.GetEipTimestamps(parameters, forkDef.EipProperties);
+            if (eipTimestamps.Count == forkDef.EipProperties.Length &&
+                eipTimestamps.Values.Distinct().Count() == 1)
+            {
+                paramsType.GetProperty(namedForkProperty)?.SetValue(parameters, eipTimestamps.Values.First());
+            }
+        }
+
+        foreach (var (forkName, forkDef) in ForkDefinitions.BlockBasedForks)
+        {
+            var namedForkProperty = ForkDefinitions.GetNamedForkProperty(forkName);
+            var existingForkValue = (long?)paramsType.GetProperty(namedForkProperty)?.GetValue(parameters);
+
+            if (existingForkValue.HasValue) continue;
+
+            var eipBlockNumbers = ForkDefinitions.GetEipBlockNumbers(parameters, forkDef.EipProperties);
+            if (eipBlockNumbers.Count == forkDef.EipProperties.Length &&
+                eipBlockNumbers.Values.Distinct().Count() == 1)
+            {
+                paramsType.GetProperty(namedForkProperty)?.SetValue(parameters, eipBlockNumbers.Values.First());
+            }
+        }
+    }
+
+    private void ValidateForkChronology(ChainSpecParamsJson parameters, List<string> conflicts)
+    {
+        var activeForks = new Dictionary<string, object>();
+        var paramsType = typeof(ChainSpecParamsJson);
+
+        foreach (var forkName in ForkDefinitions.ForkOrder)
+        {
+            var namedForkProperty = ForkDefinitions.GetNamedForkProperty(forkName);
+            var property = paramsType.GetProperty(namedForkProperty);
+            var value = property?.GetValue(parameters);
+
+            if (value != null)
+            {
+                activeForks[forkName] = value;
+            }
+        }
+
+        ulong? lastTimestamp = null;
+        string lastTimestampFork = null;
+
+        foreach (string fork in ForkDefinitions.ForkOrder.Where(f => ForkDefinitions.IsTimestampBased(f)))
+        {
+            if (activeForks.TryGetValue(fork, out var value) && value is ulong timestamp)
+            {
+                if (lastTimestamp.HasValue && timestamp < lastTimestamp.Value)
+                {
+                    conflicts.Add($"Fork '{fork}' timestamp 0x{timestamp:X} is earlier than '{lastTimestampFork}' timestamp 0x{lastTimestamp.Value:X}. Fork timestamps must be in chronological order.");
+                }
+                lastTimestamp = timestamp;
+                lastTimestampFork = fork;
+            }
+        }
+
+        long? lastBlock = null;
+        string lastBlockFork = null;
+
+        foreach (string fork in ForkDefinitions.ForkOrder.Where(f => ForkDefinitions.IsBlockBased(f)))
+        {
+            if (activeForks.TryGetValue(fork, out var value) && value is long block)
+            {
+                if (lastBlock.HasValue && block < lastBlock.Value)
+                {
+                    conflicts.Add($"Fork '{fork}' block {block} is earlier than '{lastBlockFork}' block {lastBlock.Value}. Fork block numbers must be in chronological order.");
+                }
+                lastBlock = block;
+                lastBlockFork = fork;
+            }
+        }
+
+        if (parameters.DencunTimestamp.HasValue && parameters.CancunTimestamp.HasValue)
+        {
+            if (parameters.DencunTimestamp.Value != parameters.CancunTimestamp.Value)
+            {
+                conflicts.Add($"Dencun and Cancun timestamps must be identical as Dencun is an alias for Cancun");
+            }
+        }
+        else if (parameters.DencunTimestamp.HasValue && !parameters.CancunTimestamp.HasValue)
+        {
+            parameters.CancunTimestamp = parameters.DencunTimestamp.Value;
+        }
+        else if (parameters.CancunTimestamp.HasValue && !parameters.DencunTimestamp.HasValue)
+        {
+            parameters.DencunTimestamp = parameters.CancunTimestamp.Value;
+        }
     }
 
     private TValue? LoadDependentParam<TTransition, TValue>(

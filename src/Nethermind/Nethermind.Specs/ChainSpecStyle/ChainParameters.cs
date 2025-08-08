@@ -172,4 +172,13 @@ public class ChainParameters
     #endregion
 
     public ulong? Rip7728TransitionTimestamp { get; set; }
+
+    // Named fork timestamps
+    public long? BerlinBlockNumber { get; set; }
+    public long? LondonBlockNumber { get; set; }
+    public ulong? ShanghaiTimestamp { get; set; }
+    public ulong? CancunTimestamp { get; set; }
+    public ulong? DencunTimestamp { get; set; } // Alias for Cancun
+    public ulong? PragueTimestamp { get; set; }
+    public ulong? OsakaTimestamp { get; set; }
 }

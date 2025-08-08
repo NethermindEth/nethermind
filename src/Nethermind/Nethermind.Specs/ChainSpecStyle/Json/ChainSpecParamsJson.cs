@@ -175,4 +175,20 @@ public class ChainSpecParamsJson
     public ulong? Eip7594TransitionTimestamp { get; set; }
     public ulong? Eip7939TransitionTimestamp { get; set; }
     public ulong? Rip7728TransitionTimestamp { get; set; }
+
+    // Named fork timestamps
+    [JsonPropertyName("berlin")]
+    public long? BerlinBlockNumber { get; set; }
+    [JsonPropertyName("london")]
+    public long? LondonBlockNumber { get; set; }
+    [JsonPropertyName("shanghai")]
+    public ulong? ShanghaiTimestamp { get; set; }
+    [JsonPropertyName("cancun")]
+    public ulong? CancunTimestamp { get; set; }
+    [JsonPropertyName("dencun")]
+    public ulong? DencunTimestamp { get; set; } // Alias for Cancun
+    [JsonPropertyName("prague")]
+    public ulong? PragueTimestamp { get; set; }
+    [JsonPropertyName("osaka")]
+    public ulong? OsakaTimestamp { get; set; }
 }
