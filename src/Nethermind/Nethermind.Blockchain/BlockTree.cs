@@ -103,6 +103,8 @@ namespace Nethermind.Blockchain
         private int _canAcceptNewBlocksCounter;
         public bool CanAcceptNewBlocks => _canAcceptNewBlocksCounter == 0;
 
+        private long _oldestBlock;
+
         private TaskCompletionSource? _taskCompletionSource;
 
         public BlockTree(
@@ -128,6 +130,7 @@ namespace Nethermind.Blockchain
             _syncConfig = syncConfig ?? throw new ArgumentNullException(nameof(syncConfig));
             _chainLevelInfoRepository = chainLevelInfoRepository ??
                                         throw new ArgumentNullException(nameof(chainLevelInfoRepository));
+            _oldestBlock = long.Min(syncConfig.AncientBodiesBarrierCalc, syncConfig.AncientReceiptsBarrierCalc);
 
             LoadSyncPivot();
 
@@ -148,7 +151,7 @@ namespace Nethermind.Blockchain
                 {
                     // just for corrupted test bases
 
-                    genesisLevel.BlockInfos = new[] { genesisBlockInfo };
+                    genesisLevel.BlockInfos = [genesisBlockInfo];
                     _chainLevelInfoRepository.PersistLevel(0, genesisLevel);
                     //throw new InvalidOperationException($"Genesis level in DB has {genesisLevel.BlockInfos.Length} blocks");
                 }
@@ -166,12 +169,15 @@ namespace Nethermind.Blockchain
             }
 
             if (_logger.IsInfo)
+            {
                 _logger.Info($"Block tree initialized, " +
                              $"last processed is {Head?.Header.ToString(BlockHeader.Format.Short) ?? "0"}, " +
                              $"best queued is {BestSuggestedHeader?.Number.ToString() ?? "0"}, " +
                              $"best known is {BestKnownNumber}, " +
                              $"lowest inserted header {LowestInsertedHeader?.Number}, " +
                              $"lowest sync inserted block number {LowestInsertedBeaconHeader?.Number}");
+            }
+
             ProductInfo.Network = $"{(ChainId == NetworkId ? BlockchainIds.GetBlockchainName(NetworkId) : ChainId)}";
             ThisNodeInfo.AddInfo("Chain ID     :", ProductInfo.Network);
             ThisNodeInfo.AddInfo("Chain head   :", $"{Head?.Header.ToString(BlockHeader.Format.Short) ?? "0"}");
@@ -737,17 +743,6 @@ namespace Nethermind.Blockchain
             return result;
         }
 
-        private BlockHeader? GetAncestorAtNumber(BlockHeader header, long number)
-        {
-            BlockHeader? result = header;
-            while (result is not null && result.Number < number)
-            {
-                result = this.FindParentHeader(result, BlockTreeLookupOptions.TotalDifficultyNotNeeded);
-            }
-
-            return header;
-        }
-
         private Hash256? GetBlockHashOnMainOrBestDifficultyHash(long blockNumber)
         {
             if (blockNumber < 0)
@@ -814,6 +809,9 @@ namespace Nethermind.Blockchain
                 ReleaseAcceptingNewBlocks();
             }
         }
+
+        public void DeleteOldBlock(long blockNumber, Hash256 blockHash)
+            => _blockStore.Delete(blockNumber, blockHash);
 
         private void DeleteBlocks(Hash256 deletePointer)
         {
@@ -1471,7 +1469,7 @@ namespace Nethermind.Blockchain
                     // TODO: this is here because storing block data is not transactional
                     // TODO: would be great to remove it, he?
                     // TODO: we should remove it - readonly method modifies DB
-                    bool isSearchingForBeaconBlock = (BestKnownBeaconNumber > BestKnownNumber && block.Number > BestKnownNumber);  // if we're searching for beacon block we don't want to create level. We're creating it in different place with beacon metadata
+                    bool isSearchingForBeaconBlock = BestKnownBeaconNumber > BestKnownNumber && block.Number > BestKnownNumber;  // if we're searching for beacon block we don't want to create level. We're creating it in different place with beacon metadata
                     if (createLevelIfMissing == false || isSearchingForBeaconBlock)
                     {
                         if (_logger.IsInfo) _logger.Info($"Missing block info - ignoring creation of the level in {nameof(FindBlock)} scope when head is {Head?.ToString(Block.Format.Short)}. BlockHeader {block.ToString(Block.Format.FullHashAndNumber)}, CreateLevelIfMissing: {createLevelIfMissing}. BestKnownBeaconNumber: {BestKnownBeaconNumber}, BestKnownNumber: {BestKnownNumber}");
@@ -1755,9 +1753,8 @@ namespace Nethermind.Blockchain
             TryUpdateSyncPivot();
         }
 
-        public long GetLowestBlock()
-        {
-            return _syncConfig.AncientReceiptsBarrierCalc < _syncConfig.AncientBodiesBarrierCalc ? _syncConfig.AncientReceiptsBarrierCalc : _syncConfig.AncientBodiesBarrierCalc;
-        }
+        public long GetLowestBlock() => _oldestBlock;
+
+        public void NewOldestBlock(long oldestBlock) => _oldestBlock = oldestBlock;
     }
 }

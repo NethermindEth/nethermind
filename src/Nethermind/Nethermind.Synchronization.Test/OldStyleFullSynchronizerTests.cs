@@ -20,6 +20,7 @@ using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Core.Test.Modules;
 using Nethermind.Db;
+using Nethermind.History;
 using Nethermind.Synchronization.Peers;
 using NSubstitute;
 using NUnit.Framework;
@@ -52,6 +53,7 @@ namespace Nethermind.Synchronization.Test
 
             IContainer container = new ContainerBuilder()
                 .AddModule(new TestNethermindModule(configProvider))
+                .AddSingleton<IHistoryPruner>(Substitute.For<IHistoryPruner>())
                 .AddSingleton<IBlockTree>(_blockTree)
                 .AddSingleton<IBlockValidator>(Always.Valid)
                 .AddSingleton<ISealValidator>(Always.Valid)
