@@ -5,7 +5,6 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.ComponentModel;
-using System.Diagnostics;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Blockchain.Synchronization;
@@ -455,7 +454,7 @@ namespace Nethermind.Synchronization.ParallelSync
                           notInStateSync &&
                           notNeedToWaitForHeaders;
 
-            if (_logger.IsTrace)
+            if (_logger.IsInfo)
             {
                 LogDetailedSyncModeChecks("FULL",
                     (nameof(notInUpdatingPivot), notInUpdatingPivot),
@@ -777,7 +776,7 @@ namespace Nethermind.Synchronization.ParallelSync
 
             bool result = checks.All(static c => c.IsSatisfied);
             string text = $"{(result ? " * " : "   ")}{syncType,-20}: yes({string.Join(", ", matched)}), no({string.Join(", ", failed)})";
-            _logger.Trace(text);
+            _logger.Info(text);
         }
 
         private ref struct Snapshot

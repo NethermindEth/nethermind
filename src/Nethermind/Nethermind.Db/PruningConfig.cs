@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using Nethermind.Core;
 using Nethermind.Core.Extensions;
 
 namespace Nethermind.Db
@@ -39,7 +38,7 @@ namespace Nethermind.Db
         public bool AvailableSpaceCheckEnabled { get; set; } = true;
         public double TrackedPastKeyCountMemoryRatio { get; set; } = 0.1;
         public bool TrackPastKeys { get; set; } = true;
-        public int PruningBoundary { get; set; } = (int)Reorganization.MaxDepth;
+        public int PruningBoundary { get => 64; set { } }
 
         private int _dirtyNodeShardBit = 8;
 
