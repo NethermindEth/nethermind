@@ -62,6 +62,11 @@ public class TestRawTrieStore(INodeStorage nodeStorage, bool isReadOnly = false)
         return nodeStorage.KeyExists(null, TreePath.Empty, stateRoot);
     }
 
+    public IDisposable BeginScope(BlockHeader? baseBlock)
+    {
+        return new Reactive.AnonymousDisposable(() => { });
+    }
+
     public IScopedTrieStore GetTrieStore(Hash256? address)
     {
         return new RawScopedTrieStore(nodeStorage, address);

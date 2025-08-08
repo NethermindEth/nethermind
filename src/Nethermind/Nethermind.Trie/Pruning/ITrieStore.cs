@@ -15,6 +15,8 @@ namespace Nethermind.Trie.Pruning
     {
         bool HasRoot(Hash256 stateRoot);
 
+        IDisposable BeginScope(BlockHeader? baseBlock);
+
         IScopedTrieStore GetTrieStore(Hash256? address);
 
         /// <summary>

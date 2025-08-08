@@ -89,21 +89,31 @@ namespace Nethermind.Trie.Test.Pruning
         }
 
         [Test]
-        public void Flush_ShouldBeCalledOnEachPersist()
+        public async Task Flush_ShouldBeCalledOnEachPersist()
         {
             TrieNode trieNode = new(NodeType.Leaf, Keccak.Zero);
 
             TestMemDb testMemDb = new TestMemDb();
-            using TrieStore fullTrieStore = CreateTrieStore(persistenceStrategy: Archive.Instance, pruningStrategy: new TestPruningStrategy(false, true), kvStore: testMemDb);
+            using TrieStore fullTrieStore = CreateTrieStore(persistenceStrategy: Archive.Instance, pruningStrategy: new TestPruningStrategy(shouldPrune: true), kvStore: testMemDb, pruningConfig: new PruningConfig()
+            {
+                PruningBoundary = 0
+            });
             PatriciaTree pt = new PatriciaTree(fullTrieStore.GetTrieStore(null), LimboLogs.Instance);
 
+            BlockHeader? baseBlock = null;
             for (int i = 0; i < 4; i++)
             {
-                pt.Set(TestItem.KeccakA.BytesToArray(), TestItem.Keccaks[i].BytesToArray());
-                using (ICommitter? committer = fullTrieStore.BeginStateBlockCommit(i + 1, trieNode))
+                using (var _ = fullTrieStore.BeginScope(baseBlock))
                 {
-                    pt.Commit();
+                    pt.Set(TestItem.KeccakA.BytesToArray(), TestItem.Keccaks[i].BytesToArray());
+                    using (ICommitter? committer = fullTrieStore.BeginStateBlockCommit(i + 1, trieNode))
+                    {
+                        pt.Commit();
+                    }
+
+                    baseBlock = Build.A.BlockHeader.WithParent(baseBlock).WithStateRoot(pt.RootHash).TestObject;
                 }
+                await Task.Yield();
                 fullTrieStore.WaitForPruning();
             }
 
@@ -594,6 +604,7 @@ namespace Nethermind.Trie.Test.Pruning
         {
             IWorldStateManager worldStateManager = TestWorldStateFactory.CreateForTest();
             IWorldState worldState = worldStateManager.GlobalWorldState;
+            using var _ = worldState.BeginScope(null);
             worldState.CreateAccount(TestItem.AddressA, 1000);
             worldState.CreateAccount(TestItem.AddressB, 1000);
         }
@@ -1035,7 +1046,7 @@ namespace Nethermind.Trie.Test.Pruning
         }
 
         [Test]
-        public async Task Will_RePersist_PersistedReCommittedNode()
+        public Task Will_RePersist_PersistedReCommittedNode()
         {
             MemDb memDb = new();
 
@@ -1049,28 +1060,33 @@ namespace Nethermind.Trie.Test.Pruning
                     TrackPastKeys = true
                 });
 
-            TreePath emptyPath = TreePath.Empty;
             PatriciaTree topTree = new PatriciaTree(fullTrieStore.GetTrieStore(null), LimboLogs.Instance);
 
             byte[] key1 = Bytes.FromHexString("0000000000000000000000000000000000000000000000000000000000000000");
             byte[] key2 = Bytes.FromHexString("0011000000000000000000000000000000000000000000000000000000000000");
 
+            BlockHeader? baseBlock = null;
             for (int i = 0; i < 64; i++)
             {
-                topTree.Set(key1, [1, 2]);
-                topTree.Set(key2, [4, (byte)(i % 4)]);
-
-                using (ICommitter committer = fullTrieStore.BeginStateBlockCommit(i, topTree.Root))
+                using (fullTrieStore.BeginScope(baseBlock))
                 {
-                    topTree.Commit();
+                    topTree.Set(key1, [1, 2]);
+                    topTree.Set(key2, [4, (byte)(i % 4)]);
+
+                    using (ICommitter committer = fullTrieStore.BeginStateBlockCommit(i, topTree.Root))
+                    {
+                        topTree.Commit();
+                    }
+
+                    baseBlock = Build.A.BlockHeader.WithParent(baseBlock).WithStateRoot(topTree.RootHash).TestObject;
                 }
 
-                // Pruning is done in background
-                await Task.Delay(TimeSpan.FromMilliseconds(10));
+                fullTrieStore.WaitForPruning();
             }
 
             memDb.Count.Should().Be(13);
             memDb.WritesCount.Should().Be(184);
+            return Task.CompletedTask;
         }
 
         [Test]
@@ -1103,10 +1119,12 @@ namespace Nethermind.Trie.Test.Pruning
             IScopedTrieStore storageTrieStore = fullTrieStore.GetTrieStore(address);
             storageTrieStore.FindCachedOrUnknown(TreePath.Empty, storageRoot.ToCommitment());
 
-            worldState.StateRoot = stateRoot;
-            worldState.IncrementNonce(address, 1);
-            worldState.Commit(MainnetSpecProvider.Instance.GenesisSpec);
-            worldState.CommitTree(2);
+            using (worldState.BeginScope(Build.A.BlockHeader.WithNumber(1).WithStateRoot(stateRoot).TestObject))
+            {
+                worldState.IncrementNonce(address, 1);
+                worldState.Commit(MainnetSpecProvider.Instance.GenesisSpec);
+                worldState.CommitTree(2);
+            }
 
             fullTrieStore.PersistCache(default);
             nodeStorage.Get(address.ToAccountPath.ToCommitment(), TreePath.Empty, storageRoot).Should().NotBeNull();
@@ -1116,7 +1134,7 @@ namespace Nethermind.Trie.Test.Pruning
             (Hash256, ValueHash256) SetupStartingState()
             {
                 WorldState worldState = new WorldState(new TestRawTrieStore(nodeStorage), memDbProvider.CodeDb, LimboLogs.Instance);
-                worldState.StateRoot = Keccak.EmptyTreeHash;
+                using var _ = worldState.BeginScope(null);
                 worldState.CreateAccountIfNotExists(address, UInt256.One);
                 worldState.Set(new StorageCell(address, slot), TestItem.KeccakB.BytesToArray());
                 worldState.Commit(MainnetSpecProvider.Instance.GenesisSpec);
