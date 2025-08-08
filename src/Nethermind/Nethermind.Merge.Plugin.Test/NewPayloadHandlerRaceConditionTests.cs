@@ -3,14 +3,12 @@
 
 using System;
 using System.Collections.Generic;
-using System.Threading;
 using System.Threading.Tasks;
 using FluentAssertions;
 using Nethermind.Core;
 using Nethermind.Core.Test.Builders;
 using Nethermind.JsonRpc;
 using Nethermind.Merge.Plugin.Data;
-using Nethermind.Specs;
 using NUnit.Framework;
 
 namespace Nethermind.Merge.Plugin.Test;
@@ -41,7 +39,7 @@ public class NewPayloadHandlerRaceConditionTests : BaseEngineModuleTests
             .WithNonce(0)
             .WithExtraData(new byte[32])
             .TestObject;
-        
+
         block.Header.IsPostMerge = true;
 
         ExecutionPayload payload = ExecutionPayload.Create(block);
@@ -49,7 +47,7 @@ public class NewPayloadHandlerRaceConditionTests : BaseEngineModuleTests
         // Create multiple concurrent calls to simulate race condition
         List<Task<ResultWrapper<PayloadStatusV1>>> tasks = new();
         const int concurrentCalls = 10;
-        
+
         for (int i = 0; i < concurrentCalls; i++)
         {
             tasks.Add(Task.Run(async () =>
@@ -126,7 +124,7 @@ public class NewPayloadHandlerRaceConditionTests : BaseEngineModuleTests
         // This is a conceptual test - the main verification is that no exceptions are thrown
         // In the actual implementation, the fix ensures event handlers are always unsubscribed
         // in the finally block using Interlocked.CompareExchange to prevent double unsubscription
-        
+
         // If we reach here without exceptions, the event handler cleanup is working correctly
         Assert.Pass("Event handlers were properly cleaned up without race condition exceptions");
     }
@@ -154,7 +152,7 @@ public class NewPayloadHandlerRaceConditionTests : BaseEngineModuleTests
         ExecutionPayload payload = ExecutionPayload.Create(block);
 
         List<Task> concurrentTasks = new();
-        
+
         // Launch multiple concurrent operations that might try to complete the same task
         for (int i = 0; i < 5; i++)
         {
