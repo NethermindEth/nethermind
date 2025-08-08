@@ -29,10 +29,12 @@ public class HistoryPruner : IHistoryPruner
 {
     private const int DeleteBatchSize = 64;
     private const int MaxOptimisticSearchAttempts = 3;
+    private const int LockWaitTimeoutMs = 100;
 
     // only one pruning and one searching thread at a time
-    private readonly Lock _pruneLock = new();
-    private readonly Lock _searchLock = new();
+    private readonly object _pruneLock = new();
+    private readonly object _searchLock = new();
+
     private ulong? _lastPrunedTimestamp;
     private readonly ILogger _logger;
     private readonly IBlockTree _blockTree;
@@ -104,16 +106,154 @@ public class HistoryPruner : IHistoryPruner
 
     public long? CutoffBlockNumber
     {
-        get => FindCutoffBlockNumber();
+        get
+        {
+            if (!_enabled)
+            {
+                return null;
+            }
+
+            if (_historyConfig.Pruning == PruningModes.UseAncientBarriers)
+            {
+                return _ancientBarrier;
+            }
+
+            ulong? cutoffTimestamp = CalculateCutoffTimestamp();
+
+            if (cutoffTimestamp is null)
+            {
+                return null;
+            }
+
+            long? cutoffBlockNumber = null;
+            long searchCutoff = _blockTree.Head is null ? _blockTree.SyncPivot.BlockNumber : _blockTree.Head.Number;
+            bool lockTaken = false;
+            try
+            {
+                Monitor.TryEnter(_searchLock, LockWaitTimeoutMs, ref lockTaken);
+
+                if (lockTaken)
+                {
+                    // cutoff is unchanged, can reuse
+                    if (_cutoffTimestamp is not null && cutoffTimestamp == _cutoffTimestamp)
+                    {
+                        _logger.Info($"[prune] cuttoff pointer unchanged #{_cutoffPointer}");
+                        return _cutoffPointer;
+                    }
+
+                    // optimisticly search a few blocks from old pointer
+                    if (_cutoffPointer is not null)
+                    {
+                        int attempts = 0;
+                        _logger.Info($"[prune] starting optimistic cutoff search in range {_cutoffPointer.Value}-{searchCutoff}");
+                        _ = GetBlocksByNumber(_cutoffPointer.Value, searchCutoff, b =>
+                        {
+                            if (attempts >= MaxOptimisticSearchAttempts)
+                            {
+                                return true;
+                            }
+
+                            _logger.Info($"[prune] optimistic linear scanning level {b} for cutoff block");
+
+                            bool afterCutoff = b.Timestamp >= cutoffTimestamp;
+                            if (afterCutoff)
+                            {
+                                cutoffBlockNumber = b.Number;
+                            }
+                            attempts++;
+                            return afterCutoff;
+                        }).ToList();
+                    }
+                    else
+                    {
+                        _logger.Info($"[prune] skipping optimistic cutoff search");
+                    }
+
+                    if (cutoffBlockNumber is null)
+                    {
+                        _logger.Info($"[prune] optimistic cutoff search failed.");
+                    }
+
+                    _logger.Info($"[prune] searching for cutoff block number in range {_deletePointer}-{searchCutoff}");
+
+                    // if linear search fails fallback to  binary search
+                    cutoffBlockNumber ??= BlockTree.BinarySearchBlockNumber(_deletePointer, searchCutoff, (n, _) =>
+                    {
+                        BlockInfo[]? blockInfos = _chainLevelInfoRepository.LoadLevel(n)?.BlockInfos;
+
+                        if (blockInfos is null)
+                        {
+                            _logger.Info($"[prune] no block found at level {n}");
+                            _logger.Info($"[prune] block infos at level {n} = {blockInfos?.Length}");
+                            return false;
+                        }
+
+                        foreach (BlockInfo blockInfo in blockInfos)
+                        {
+                            Block? b = _blockTree.FindBlock(blockInfo.BlockHash, BlockTreeLookupOptions.None, n);
+                            _logger.Info($"[prune] scanning block #{n}, found? {b is not null}. hash={blockInfo.BlockHash}");
+                            if (b is not null && b.Timestamp >= cutoffTimestamp)
+                            {
+                                _logger.Info($"[prune] found block at level {n} with timestamp {b.Timestamp}");
+                                _logger.Info($"[prune] continue?={b.Timestamp >= cutoffTimestamp} cutoffTimestamp={cutoffTimestamp}");
+                                return true;
+                            }
+                        }
+
+                        return false;
+                    }, BlockTree.BinarySearchDirection.Down);
+
+                    _logger.Info($"[prune] Found cutoff block #{cutoffBlockNumber}");
+
+                    _cutoffTimestamp = cutoffTimestamp;
+                    _cutoffPointer = cutoffBlockNumber ?? _cutoffPointer;
+                    Metrics.PruningCutoffTimestamp = cutoffTimestamp;
+                    Metrics.PruningCutoffBlocknumber = _cutoffPointer;
+                }
+                else
+                {
+                    return null;
+                }
+            }
+            finally
+            {
+                if (lockTaken)
+                    Monitor.Exit(_searchLock);
+            }
+
+            return cutoffBlockNumber;
+        }
     }
 
     public BlockHeader? OldestBlockHeader
     {
         get
         {
-            if (!TryLoadDeletePointer())
+            if (!_hasLoadedDeletePointer)
             {
-                return null;
+                bool lockTaken = false;
+                // take lock before updating delete pointer
+                // avoids race conditions with pruning
+                try
+                {
+                    Monitor.TryEnter(_pruneLock, LockWaitTimeoutMs, ref lockTaken);
+                    if (lockTaken)
+                    {
+                        if (!TryLoadDeletePointer())
+                        {
+                            return null;
+                        }
+                    }
+                    else
+                    {
+                        return null;
+                    }
+                }
+                finally
+                {
+                    if (lockTaken)
+                        Monitor.Exit(_pruneLock);
+                }
             }
 
             return _deletePointerHeader;
@@ -142,9 +282,11 @@ public class HistoryPruner : IHistoryPruner
 
     internal Task TryPruneHistory(CancellationToken cancellationToken)
     {
-        lock (BackgroundTaskScheduler.DbIntensiveBackgroundTaskLock)
+        bool lockTaken = false;
+        try
         {
-            lock (_pruneLock)
+            Monitor.TryEnter(_pruneLock, LockWaitTimeoutMs, ref lockTaken);
+            if (lockTaken)
             {
                 if (_blockTree.Head is null ||
                     _blockTree.SyncPivot.BlockNumber == 0 ||
@@ -155,45 +297,49 @@ public class HistoryPruner : IHistoryPruner
                     return Task.CompletedTask;
                 }
 
-                if (_logger.IsInfo)
+                lock (BackgroundTaskScheduler.DbIntensiveBackgroundTaskLock)
                 {
-                    long? cutoff = CutoffBlockNumber;
-                    cutoff = cutoff is null ? null : long.Min(cutoff!.Value, _blockTree.SyncPivot.BlockNumber);
-                    long? toDelete = cutoff - _deletePointer;
+                    if (_logger.IsInfo)
+                    {
+                        long? cutoff = CutoffBlockNumber;
+                        cutoff = cutoff is null ? null : long.Min(cutoff!.Value, _blockTree.SyncPivot.BlockNumber);
+                        long? toDelete = cutoff - _deletePointer;
 
-                    string cutoffString = cutoffTimestamp is null ? $"#{(cutoff is null ? "unknown" : cutoff)}" : $"timestamp {cutoffTimestamp} (#{(cutoff is null ? "unknown" : cutoff)})";
-                    _logger.Info($"[prune] Pruning historical blocks up to {cutoffString}. Estimated {(toDelete is null ? "unknown" : toDelete)} blocks will be deleted.");
+                        string cutoffString = cutoffTimestamp is null ? $"#{(cutoff is null ? "unknown" : cutoff)}" : $"timestamp {cutoffTimestamp} (#{(cutoff is null ? "unknown" : cutoff)})";
+                        _logger.Info($"[prune] Pruning historical blocks up to {cutoffString}. Estimated {(toDelete is null ? "unknown" : toDelete)} blocks will be deleted.");
+                    }
+
+                    PruneBlocksAndReceipts(cutoffTimestamp, cancellationToken);
                 }
-
-                PruneBlocksAndReceipts(cutoffTimestamp, cancellationToken);
-                return Task.CompletedTask;
+            }
+            else if (_logger.IsDebug)
+            {
+                _logger.Debug("Skipping historical pruning, task already running.");
             }
         }
+        finally
+        {
+            if (lockTaken)
+                Monitor.Exit(_pruneLock);
+        }
+
+        return Task.CompletedTask;
     }
 
     internal bool SetDeletePointerToOldestBlock()
     {
-        bool found = false;
-        lock (_searchLock)
+        _logger.Info($"[prune] Searching for oldest block in range 1-{_blockTree.SyncPivot.BlockNumber}.");
+        long? oldestBlockNumber = BlockTree.BinarySearchBlockNumber(1L, _blockTree.SyncPivot.BlockNumber, BlockExists, BlockTree.BinarySearchDirection.Down);
+
+        if (oldestBlockNumber is not null)
         {
-            // lock prune lock since _deletePointer could be altered
-            lock (_pruneLock)
-            {
-                _logger.Info($"[prune] Searching for oldest block in range 1-{_blockTree.SyncPivot.BlockNumber}.");
-                long? oldestBlockNumber = BlockTree.BinarySearchBlockNumber(1L, _blockTree.SyncPivot.BlockNumber, BlockExists, BlockTree.BinarySearchDirection.Down);
-
-                if (oldestBlockNumber is not null)
-                {
-                    UpdateDeletePointer(oldestBlockNumber.Value);
-                    found = true;
-                }
-
-                _logger.Info($"[prune] Found oldest block on disk #{oldestBlockNumber ?? -1}");
-
-                SaveDeletePointer();
-            }
+            _logger.Info($"[prune] Found oldest block on disk #{oldestBlockNumber ?? -1}");
+            UpdateDeletePointer(oldestBlockNumber!.Value);
+            SaveDeletePointer();
+            return true;
         }
-        return found;
+
+        return false;
     }
 
     private bool BlockExists(long n, bool _)
@@ -215,114 +361,6 @@ public class HistoryPruner : IHistoryPruner
         }
 
         return false;
-    }
-
-    private long? FindCutoffBlockNumber()
-    {
-        if (!_enabled)
-        {
-            return null;
-        }
-
-        if (_historyConfig.Pruning == PruningModes.UseAncientBarriers)
-        {
-            return _ancientBarrier;
-        }
-
-        ulong? cutoffTimestamp = CalculateCutoffTimestamp();
-
-        if (cutoffTimestamp is null)
-        {
-            return null;
-        }
-
-        long? cutoffBlockNumber = null;
-        long searchCutoff = _blockTree.Head is null ? _blockTree.SyncPivot.BlockNumber : _blockTree.Head.Number;
-        lock (_searchLock)
-        {
-            // cutoff is unchanged, can reuse
-            if (_cutoffTimestamp is not null && cutoffTimestamp == _cutoffTimestamp)
-            {
-                _logger.Info($"[prune] cuttoff pointer unchanged #{_cutoffPointer}");
-                return _cutoffPointer;
-            }
-
-            // optimisticly search a few blocks from old pointer
-            if (_cutoffPointer is not null)
-            {
-                int attempts = 0;
-                _logger.Info($"[prune] starting optimistic cutoff search in range {_cutoffPointer.Value}-{searchCutoff}");
-                _ = GetBlocksByNumber(_cutoffPointer.Value, searchCutoff, b =>
-                {
-                    if (attempts >= MaxOptimisticSearchAttempts)
-                    {
-                        return true;
-                    }
-
-                    _logger.Info($"[prune] optimistic linear scanning level {b} for cutoff block");
-
-                    bool afterCutoff = b.Timestamp >= cutoffTimestamp;
-                    if (afterCutoff)
-                    {
-                        cutoffBlockNumber = b.Number;
-                    }
-                    attempts++;
-                    return afterCutoff;
-                }).ToList();
-            }
-            else
-            {
-                _logger.Info($"[prune] skipping optimistic cutoff search");
-            }
-
-            if (cutoffBlockNumber is null)
-            {
-                _logger.Info($"[prune] optimistic cutoff search failed.");
-            }
-
-            _logger.Info($"[prune] searching for cutoff block number in range {_deletePointer}-{searchCutoff}");
-
-            // if linear search fails fallback to binary search
-            cutoffBlockNumber ??= BlockTree.BinarySearchBlockNumber(_deletePointer, searchCutoff, (n, _) =>
-            {
-                BlockInfo[]? blockInfos = _chainLevelInfoRepository.LoadLevel(n)?.BlockInfos;
-
-                _logger.Info($"[prune] scanning level {n} for cutoff block");
-
-                if (blockInfos is null || blockInfos.Length == 0)
-                {
-                    _logger.Info($"[prune] no block found at level {n}");
-                    _logger.Info($"[prune] block infos at level {n} = {blockInfos?.Length}");
-                    return false;
-                }
-
-                foreach (BlockInfo blockInfo in blockInfos)
-                {
-                    Block? b = _blockTree.FindBlock(blockInfo.BlockHash, BlockTreeLookupOptions.None, n);
-                    _logger.Info($"[prune] scanning block #{n}, found? {b is not null}. hash={blockInfo.BlockHash}");
-                    if (b is not null)
-                    {
-                        _logger.Info($"[prune] found block at level {n} with timestamp {b.Timestamp}");
-                        _logger.Info($"[prune] continue?={b.Timestamp >= cutoffTimestamp} cutoffTimestamp={cutoffTimestamp}");
-                        if (b.Timestamp >= cutoffTimestamp)
-                        {
-                            return true;
-                        }
-                    }
-                }
-
-                return false;
-            }, BlockTree.BinarySearchDirection.Down);
-
-            _logger.Info($"[prune] Found cutoff block #{cutoffBlockNumber}");
-
-            _cutoffTimestamp = cutoffTimestamp;
-            _cutoffPointer = cutoffBlockNumber ?? _cutoffPointer;
-            Metrics.PruningCutoffTimestamp = cutoffTimestamp;
-            Metrics.PruningCutoffBlocknumber = _cutoffPointer;
-        }
-
-        return cutoffBlockNumber;
     }
 
     private void CheckConfig()
