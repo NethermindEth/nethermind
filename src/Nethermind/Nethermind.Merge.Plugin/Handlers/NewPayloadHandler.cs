@@ -33,7 +33,7 @@ namespace Nethermind.Merge.Plugin.Handlers;
 /// <a href="https://github.com/ethereum/execution-apis/blob/main/src/engine/shanghai.md#engine_newpayloadv2">
 /// Shanghai</a> specification.
 /// </summary>
-public class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadStatusV1>, IDisposable
+public sealed class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadStatusV1>, IDisposable
 {
     private readonly IPayloadPreparationService _payloadPreparationService;
     private readonly IBlockValidator _blockValidator;
