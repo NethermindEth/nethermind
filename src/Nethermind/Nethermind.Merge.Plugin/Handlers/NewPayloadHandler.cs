@@ -28,7 +28,7 @@ using Nethermind.Synchronization;
 
 namespace Nethermind.Merge.Plugin.Handlers;
 
-using ValidationCompletition = TaskCompletionSource<(NewPayloadHandler.ValidationResult? validationResult, string? validationMessage)>;
+using ValidationCompletion = TaskCompletionSource<(NewPayloadHandler.ValidationResult? validationResult, string? validationMessage)>;
 
 /// <summary>
 /// Provides an execution payload handler as defined in Engine API
@@ -53,7 +53,7 @@ public sealed class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadS
     private readonly ProcessingOptions _defaultProcessingOptions;
     private readonly TimeSpan _timeout;
 
-    private readonly ConcurrentDictionary<Hash256, ValidationCompletition> _blockValidationTasks = new();
+    private readonly ConcurrentDictionary<Hash256, ValidationCompletion> _blockValidationTasks = new();
 
     private long _lastBlockNumber;
     private long _lastBlockGasLimit;
@@ -342,7 +342,7 @@ public sealed class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadS
             return (TryCacheResult(ValidationResult.Invalid, validationMessage), validationMessage);
         }
 
-        ValidationCompletition blockProcessed =
+        ValidationCompletion blockProcessed =
             _blockValidationTasks.GetOrAdd(
                 block.Hash!,
                 static (k) => new(TaskCreationOptions.RunContinuationsAsynchronously));
@@ -398,7 +398,7 @@ public sealed class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadS
 
     private void GetProcessingQueueOnBlockRemoved(object? o, BlockRemovedEventArgs e)
     {
-        if (!_blockValidationTasks.TryRemove(e.BlockHash, out TaskCompletionSource<(ValidationResult? validationResult, string? validationMessage)>? blockProcessed))
+        if (!_blockValidationTasks.TryRemove(e.BlockHash, out ValidationCompletion? blockProcessed))
         {
             // If we don't have a task for this block, it means it was already processed or removed.
             return;
