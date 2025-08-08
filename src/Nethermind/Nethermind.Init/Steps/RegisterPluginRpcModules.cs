@@ -24,13 +24,17 @@ public class RegisterPluginRpcModules(
 {
     public virtual async Task Execute(CancellationToken cancellationToken)
     {
-        if (!initConfig.InRunnerTest)
+        if (!initConfig.InRunnerTest && !initConfig.EnableRpcDuringSyncStartup)
         {
-            // Ugly temporary hack to not receive engine API messages before end of processing of all blocks after restart.
-            // Then we will wait 5s more to ensure everything is processed
+            // Wait for block processing queue to be empty before starting RPC modules to prevent
+            // engine API messages before end of processing of all blocks after restart.
+            // This can be bypassed by setting EnableRpcDuringSyncStartup to true.
             while (!blockProcessingQueue!.IsEmpty)
-                await Task.Delay(100);
-            await Task.Delay(5000);
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+                await Task.Delay(100, cancellationToken);
+            }
+            await Task.Delay(5000, cancellationToken);
         }
 
         foreach (INethermindPlugin plugin in plugins)

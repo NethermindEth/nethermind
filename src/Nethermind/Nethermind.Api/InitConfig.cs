@@ -40,6 +40,7 @@ namespace Nethermind.Api
         public int BackgroundTaskConcurrency { get; set; } = 2;
         public int BackgroundTaskMaxNumber { get; set; } = 1024;
         public bool InRunnerTest { get; set; } = false;
+        public bool EnableRpcDuringSyncStartup { get; set; } = false;
 
         [Obsolete("Use DiagnosticMode with MemDb instead")]
         public bool UseMemDb

@@ -101,6 +101,9 @@ public interface IInitConfig : IConfig
 
     [ConfigItem(Description = "[TECHNICAL] True when in runner test. Disable some wait.", DefaultValue = "false", HiddenFromDocs = true)]
     bool InRunnerTest { get; set; }
+
+    [ConfigItem(Description = "Whether to enable RPC access during initial sync startup. If false, waits for block processing queue to be empty before starting RPC modules.", DefaultValue = "false")]
+    bool EnableRpcDuringSyncStartup { get; set; }
 }
 
 public enum DiagnosticMode

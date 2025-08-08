@@ -54,7 +54,7 @@ namespace Nethermind.Synchronization
 
         private readonly ILogger _logger = logManager.GetClassLogger<Synchronizer>();
 
-        private CancellationTokenSource? _syncCancellation = new();
+        private CancellationTokenSource? _syncCancellation;
 
         /* sync events are used mainly for managing sync peers reputation */
         public event EventHandler<SyncEventArgs>? SyncEvent;
@@ -67,6 +67,9 @@ namespace Nethermind.Synchronization
             {
                 return;
             }
+
+            // Create a cancellation token linked to the process exit source
+            _syncCancellation = CancellationTokenSource.CreateLinkedTokenSource(exitSource.Token);
 
             StartFullSyncComponents();
 
