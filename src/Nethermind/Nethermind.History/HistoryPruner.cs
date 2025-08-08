@@ -34,7 +34,6 @@ public class HistoryPruner : IHistoryPruner
     // only one pruning and one searching thread at a time
     private readonly object _pruneLock = new();
     private readonly object _searchLock = new();
-    [ThreadStatic] private static bool _lockTaken;
 
     private ulong? _lastPrunedTimestamp;
     private readonly ILogger _logger;
@@ -126,11 +125,12 @@ public class HistoryPruner : IHistoryPruner
 
             long? cutoffBlockNumber = null;
             long searchCutoff = _blockTree.Head is null ? _blockTree.SyncPivot.BlockNumber : _blockTree.Head.Number;
+            bool lockTaken = false;
             try
             {
-                Monitor.TryEnter(_searchLock, LockWaitTimeoutMs, ref _lockTaken);
+                Monitor.TryEnter(_searchLock, LockWaitTimeoutMs, ref lockTaken);
 
-                if (_lockTaken)
+                if (lockTaken)
                 {
                     // cutoff is unchanged, can reuse
                     if (_cutoffTimestamp is not null && cutoffTimestamp == _cutoffTimestamp)
@@ -193,7 +193,8 @@ public class HistoryPruner : IHistoryPruner
             }
             finally
             {
-                Monitor.Exit(_searchLock);
+                if (lockTaken)
+                    Monitor.Exit(_searchLock);
             }
 
             return cutoffBlockNumber;
@@ -206,12 +207,13 @@ public class HistoryPruner : IHistoryPruner
         {
             if (!_hasLoadedDeletePointer)
             {
+                bool lockTaken = false;
                 // take lock before updating delete pointer
                 // avoids race conditions with pruning
                 try
                 {
-                    Monitor.TryEnter(_pruneLock, LockWaitTimeoutMs, ref _lockTaken);
-                    if (_lockTaken)
+                    Monitor.TryEnter(_pruneLock, LockWaitTimeoutMs, ref lockTaken);
+                    if (lockTaken)
                     {
                         if (!TryLoadDeletePointer())
                         {
@@ -225,7 +227,8 @@ public class HistoryPruner : IHistoryPruner
                 }
                 finally
                 {
-                    Monitor.Exit(_pruneLock);
+                    if (lockTaken)
+                        Monitor.Exit(_pruneLock);
                 }
             }
 
@@ -246,10 +249,11 @@ public class HistoryPruner : IHistoryPruner
 
     internal Task TryPruneHistory(CancellationToken cancellationToken)
     {
+        bool lockTaken = false;
         try
         {
-            Monitor.TryEnter(_pruneLock, LockWaitTimeoutMs, ref _lockTaken);
-            if (_lockTaken)
+            Monitor.TryEnter(_pruneLock, LockWaitTimeoutMs, ref lockTaken);
+            if (lockTaken)
             {
                 if (_blockTree.Head is null ||
                     _blockTree.SyncPivot.BlockNumber == 0 ||
@@ -282,7 +286,8 @@ public class HistoryPruner : IHistoryPruner
         }
         finally
         {
-            Monitor.Exit(_pruneLock);
+            if (lockTaken)
+                Monitor.Exit(_pruneLock);
         }
 
         return Task.CompletedTask;
