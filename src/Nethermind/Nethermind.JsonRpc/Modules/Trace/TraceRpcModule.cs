@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Threading;
@@ -12,6 +13,7 @@ using Nethermind.Consensus.Tracing;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
+using Nethermind.Core.Specs;
 using Nethermind.Evm;
 using Nethermind.State.OverridableEnv;
 using Nethermind.Evm.Tracing;
@@ -43,11 +45,13 @@ namespace Nethermind.JsonRpc.Modules.Trace
         IJsonRpcConfig jsonRpcConfig,
         IStateReader stateReader,
         IBlockchainBridge blockchainBridge,
-        IBlocksConfig blocksConfig)
+        IBlocksConfig blocksConfig,
+        ISpecProvider specProvider)
         : ITraceRpcModule
     {
         private readonly TxDecoder _txDecoder = TxDecoder.Instance;
         private readonly ulong _secondsPerSlot = blocksConfig.SecondsPerSlot;
+        private readonly ISpecProvider _specProvider = specProvider;
 
         public static ParityTraceTypes GetParityTypes(string[] types) =>
             types.Select(static s => FastEnum.Parse<ParityTraceTypes>(s, true)).Aggregate(static (t1, t2) => t1 | t2);
@@ -215,7 +219,7 @@ namespace Nethermind.JsonRpc.Modules.Trace
             return ResultWrapper<IEnumerable<ParityTxTraceFromStore>>.Success(txTracerFilter.FilterTxTraces(txTracesResult));
         }
 
-        public ResultWrapper<IEnumerable<ParityTxTraceFromStore>> trace_block(BlockParameter blockParameter)
+        public ResultWrapper<IEnumerable<ParityTxTraceFromStore>> trace_block(BlockParameter blockParameter, ForkActivationParameter? forkActivation = null)
         {
             SearchResult<Block> blockSearch = blockFinder.SearchForBlock(blockParameter);
             if (blockSearch.IsError)
@@ -230,7 +234,9 @@ namespace Nethermind.JsonRpc.Modules.Trace
                 return GetStateFailureResult<IEnumerable<ParityTxTraceFromStore>>(block.Header);
             }
 
-            IReadOnlyCollection<ParityLikeTxTrace> txTraces = ExecuteBlock(block, new(ParityTraceTypes.Trace | ParityTraceTypes.Rewards));
+            IReadOnlyCollection<ParityLikeTxTrace> txTraces = forkActivation != null
+                ? ExecuteBlockWithForkOverride(block, new(ParityTraceTypes.Trace | ParityTraceTypes.Rewards), forkActivation)
+                : ExecuteBlock(block, new(ParityTraceTypes.Trace | ParityTraceTypes.Rewards));
             return ResultWrapper<IEnumerable<ParityTxTraceFromStore>>.Success(txTraces.SelectMany(ParityTxTraceFromStore.FromTxTrace));
         }
 
@@ -313,6 +319,42 @@ namespace Nethermind.JsonRpc.Modules.Trace
             using CancellationTokenSource timeout = BuildTimeoutCancellationTokenSource();
             CancellationToken cancellationToken = timeout.Token;
             tracer2.Execute(block, tracer.WithCancellation(cancellationToken));
+            return tracer.BuildResult();
+        }
+
+        private IReadOnlyCollection<ParityLikeTxTrace> ExecuteBlockWithForkOverride(Block block, ParityLikeBlockTracer tracer, ForkActivationParameter forkActivationParam)
+        {
+            var forkResult = forkActivationParam.TryResolve(_specProvider);
+            if (!forkResult.IsSuccess)
+            {
+                throw new ArgumentException($"Fork resolution failed: {forkResult.ErrorMessage}");
+            }
+
+            IReleaseSpec effectiveSpec = forkResult.ResolvedSpec ?? _specProvider.GetSpec(forkResult.Activation);
+            IReleaseSpec isolatedSpec = new ReleaseSpecDecorator(effectiveSpec);
+
+            BlockHeader effectiveHeader = block.Header;
+            bool needsHeaderOverride = forkResult.Activation.Timestamp.HasValue || forkResult.Activation.BlockNumber != block.Number;
+            
+            if (needsHeaderOverride)
+            {
+                effectiveHeader = block.Header.Clone();
+                if (forkResult.Activation.Timestamp.HasValue)
+                    effectiveHeader.Timestamp = forkResult.Activation.Timestamp.Value;
+                if (forkResult.Activation.BlockNumber != block.Number)
+                    effectiveHeader.Number = forkResult.Activation.BlockNumber;
+            }
+
+            Block effectiveBlock = needsHeaderOverride 
+                ? new(effectiveHeader, block.Transactions, block.Uncles)
+                : block;
+
+            using var env = tracerEnv.BuildAndOverride(effectiveHeader);
+            ITracer tracer2 = env.Component;
+
+            using CancellationTokenSource timeout = BuildTimeoutCancellationTokenSource();
+            CancellationToken cancellationToken = timeout.Token;
+            tracer2.Execute(effectiveBlock, tracer.WithCancellation(cancellationToken));
             return tracer.BuildResult();
         }
 
