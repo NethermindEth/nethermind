@@ -102,6 +102,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V66
         [TearDown]
         public void TearDown()
         {
+            _pooledTxsRequestor?.Dispose();
             _handler?.Dispose();
             _session?.Dispose();
             _syncManager?.Dispose();

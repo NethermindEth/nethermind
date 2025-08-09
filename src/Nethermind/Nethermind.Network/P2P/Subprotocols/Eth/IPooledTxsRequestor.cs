@@ -8,7 +8,7 @@ using Nethermind.Network.P2P.Subprotocols.Eth.V65.Messages;
 
 namespace Nethermind.Network.P2P.Subprotocols.Eth
 {
-    public interface IPooledTxsRequestor
+    public interface IPooledTxsRequestor : IDisposable
     {
         void RequestTransactions(Action<GetPooledTransactionsMessage> send, IOwnedReadOnlyList<Hash256> hashes);
         void RequestTransactionsEth66(Action<V66.Messages.GetPooledTransactionsMessage> send, IOwnedReadOnlyList<Hash256> hashes);
