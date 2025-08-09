@@ -221,6 +221,21 @@ public class BlockTreeOverlay : IBlockTree
         }
     }
 
+    public event EventHandler<IBlockTree.ForkChoice> OnForkChoiceUpdated
+    {
+        add
+        {
+            _baseTree.OnForkChoiceUpdated += value;
+            _overlayTree.OnForkChoiceUpdated += value;
+        }
+
+        remove
+        {
+            _baseTree.OnForkChoiceUpdated -= value;
+            _overlayTree.OnForkChoiceUpdated -= value;
+        }
+    }
+
     public int DeleteChainSlice(in long startNumber, long? endNumber = null, bool force = false) =>
         _overlayTree.DeleteChainSlice(startNumber, endNumber, force);
 

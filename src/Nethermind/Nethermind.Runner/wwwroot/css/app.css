@@ -1,0 +1,299 @@
+/* latin-ext */
+@font-face {
+  font-family: 'DM Sans';
+  font-style: normal;
+  font-weight: 100 1000;
+  font-display: swap;
+  src: url(../fonts/dm-sans-latin-ext.woff2) format('woff2');
+  unicode-range: U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF, U+0304, U+0308, U+0329, U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020, U+20A0-20AB, U+20AD-20C0, U+2113, U+2C60-2C7F, U+A720-A7FF;
+}
+/* latin */
+@font-face {
+  font-family: 'DM Sans';
+  font-style: normal;
+  font-weight: 100 1000;
+  font-display: swap;
+  src: url(../fonts/dm-sans-latin.woff2) format('woff2');
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+}
+
+/* latin-ext */
+@font-face {
+  font-family: 'DM Mono';
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url(../fonts/dm-mono-latin-ext.woff2) format('woff2');
+  unicode-range: U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF, U+0304, U+0308, U+0329, U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020, U+20A0-20AB, U+20AD-20C0, U+2113, U+2C60-2C7F, U+A720-A7FF;
+}
+/* latin */
+@font-face {
+  font-family: 'DM Mono';
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url(../fonts/dm-mono-latin.woff2) format('woff2');
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+}
+
+/* latin-ext */
+@font-face {
+  font-family: 'Exo';
+  font-style: normal;
+  font-weight: 600;
+  font-display: swap;
+  src: url(../fonts/exo-latin-ext.woff2) format('woff2');
+  unicode-range: U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF, U+0304, U+0308, U+0329, U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020, U+20A0-20AB, U+20AD-20C0, U+2113, U+2C60-2C7F, U+A720-A7FF;
+}
+/* latin */
+@font-face {
+  font-family: 'Exo';
+  font-style: normal;
+  font-weight: 600;
+  font-display: swap;
+  src: url(../fonts/exo-latin.woff2) format('woff2');
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+}
+
+
+
+
+
+html, body {
+  margin: 0;
+  padding: 10px;
+  overflow: hidden;
+  background: black;
+  color: white;
+  font-family: "DM Sans", serif;
+  font-optical-sizing: auto;
+  font-weight: 400;
+  font-style: normal;
+  font-size: 14px;
+}
+
+svg {
+  font-family: "DM Sans", serif;
+  font-optical-sizing: auto;
+  font-weight: 400;
+  font-style: normal;
+}
+.nowrap {
+  white-space: nowrap;
+}
+.number {
+  font-family: "DM Mono", monospace;
+  font-weight: 400;
+  font-style: normal;
+  font-size: 12px;
+}
+
+#nodeLog {
+  font-family: "DM Mono", monospace;
+  font-size: 11px;
+  white-space: pre;
+  overflow: hidden auto;
+  height: 450px;
+}
+
+#nodeLog > div {
+    min-height: 16px
+}
+
+  text {
+    fill: white;
+    text-shadow: 1px 1px 1px black;
+  }
+
+.link {
+  fill: none;
+  stroke: #000;
+  stroke-opacity: .2;
+}
+
+  .link:hover {
+    stroke-opacity: .5;
+  }
+
+
+#txPool {
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  width: 200px;
+  border-right: 1px solid #555;
+  border-top: 1px solid #555;
+  border-top-right-radius: 8px;
+  padding: 4px 8px 4px 8px;
+}
+
+#txTps {
+  position: absolute;
+  bottom: 0;
+  right: 0;
+  border-left: 1px solid #555;
+  border-top: 1px solid #555;
+  border-top-left-radius: 8px;
+  padding: 4px 8px 4px 6px;
+  display: flex;
+  flex-wrap: nowrap;
+}
+
+
+
+  #txTps > div {
+    width: 80px;
+    text-align: center;
+    border: 1px solid #333;
+    margin: 4px;
+    border-radius: 4px;
+  }
+
+table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+th {
+  text-align: left;
+}
+
+.right {
+  text-align: right;
+}
+
+.logo {
+  height: 32px;
+  width: 241px;
+}
+
+.container {
+  position: relative;
+  border: 1px solid #555;
+  padding: 0 0 0 8px;
+  margin-top: 8px;
+}
+.title {
+  font-family: "Exo", serif;
+  font-optical-sizing: auto;
+  font-weight: 600;
+  font-style: normal;
+  border-right: 1px solid #555;
+  border-bottom: 1px solid #555;
+  border-bottom-right-radius: 8px;
+  padding: 4px 8px 4px 6px;
+  position: absolute;
+  top: 0;
+  left: 0;
+  background: black;
+  box-shadow: 4px 4px 8px 4px rgba(0, 0, 0, 0.75);
+}
+
+#header {
+  display: flex;
+  flex-wrap: nowrap;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.max {
+  position: absolute;
+  top: 0;
+  right: 0;
+}
+.large {
+  font-size: 28px;
+  padding-top: 25px;
+  white-space: nowrap;
+  position: absolute;
+  left:8px;
+  top: 18px;
+}
+.large > .number {
+  font-size: 28px;
+}
+.product {
+  width: 240px;
+}
+.version {
+  text-align: right;
+  margin-top: -10px;
+}
+ .number.small {
+    font-size: 10px;
+  }
+
+.chainState td {
+  text-align: center
+}
+.chainState th {
+  width: 120px;
+  text-align: center
+}
+.chainGas th, .chainGas td {
+  width: 58px;
+  text-align: right;
+}
+.not-active svg {
+  display: none;
+}
+.not-active > div, .not-active > #txTps {
+  display: none;
+}
+.not-active > div.title {
+  display: block;
+}
+.container > .not-active-message {
+  text-align: center;
+  display: none;
+  padding: 4px;
+}
+.container.not-active > .not-active-message {
+  display: block;
+}
+.container.not-active {
+  display: block;
+  height: 26px !important;
+  overflow: hidden;
+}
+
+#network-logo {
+  float: left;
+  width: 42px;
+  height: 42px;
+  margin-left: -50px;
+}
+.title.gasPrices {
+  left: calc(50% - 35px);
+  width: 70px;
+  border-bottom-left-radius: 8px;
+  border-left: 1px solid #555;
+  text-align: center;
+}
+
+.output {
+  display: grid;
+  grid-template-columns: minmax(auto,968px) 1fr;
+  grid-template-rows: 1fr;
+  gap: 0px 0px;
+  grid-template-areas:
+    ". .";
+}
+.blockHeader {
+  border: 1px solid white;
+  padding: 4px;
+  background-color: #333;
+}
+.even {
+  background-color: #111;
+}
+#blockTxs td {
+  white-space:nowrap;
+}
+
+td.right, th.right {
+  padding-right: 4px;
+}
+.hidden {
+  display:none;
+}

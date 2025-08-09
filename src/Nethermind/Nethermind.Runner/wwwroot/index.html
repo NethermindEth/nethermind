@@ -1,0 +1,198 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8" />
+    <title>Nethermind</title>
+    <link rel="stylesheet" href="css/app.css">
+    <link rel="icon" href="favicon.webp" type="image/webp">
+</head>
+<body>
+    <div id="header">
+        <div class="product">
+            <img class="logo" src="./nethermind.svg">
+            <div class="version number small">v<span id="version" class="number small"></span></div>
+        </div>
+        <div>
+            <table class="chainState">
+                <thead>
+                    <tr>
+                        <th>Head</th>
+                        <th>Safe <span id="safeBlockDelta" class="number"></span></th>
+                        <th>Finalized <span id="finalizedBlockDelta" class="number"></span></th>
+                    </tr>
+                </thead>
+                <tr>
+                    <td id="headBlock" class="number">-</td>
+                    <td id="safeBlock" class="number">-</td>
+                    <td id="finalizedBlock" class="number">-</td>
+                </tr>
+            </table>
+        </div>
+        <div>
+            <table>
+                <thead>
+                    <tr>
+                        <th style="width: 88px;text-align: right;">Gas Limit</th>
+                        <th style="width: 24px;"> </th>
+                    </tr>
+                </thead>
+                <tr>
+                    <td id="gasLimit" class="number" style="text-align: right;"></td>
+                    <td id="gasLimitDelta" class="number"></td>
+                </tr>
+            </table>
+        </div>
+        <div>
+            <table class="chainGas">
+                <thead>
+                    <tr>
+                        <th>Min</th>
+                        <th>Med</th>
+                        <th>Ave</th>
+                        <th>Max</th>
+                        <th style="text-align:left">⛽</th>
+                    </tr>
+                </thead>
+                <tr>
+                    <td id="minGas" class="number">-</td>
+                    <td id="medianGas" class="number">-</td>
+                    <td id="aveGas" class="number">-</td>
+                    <td id="maxGas" class="number">-</td>
+                    <td></td>
+                </tr>
+            </table>
+        </div>
+        <div style="margin-left:50px">
+            <img id="network-logo" src="logos/unknown.png" />
+            <div>Verifying: <span id="network" class="number"></span></div>
+            <div>Uptime: <span id="upTime" class="number"></span></div>
+        </div>
+    </div>
+    <div style="display: flex;flex-wrap: nowrap;justify-content: space-between;">
+      <div class="container" style="width: 168px;padding: 0 8px;">
+        <div class="title">Cpu</div>
+        <div style="height: 100px; width: 150px;" id="sparkCpu"></div>
+        <div class="large">
+          <span id="cpuTime" class="number"></span> %
+        </div>
+        <div class="max">Max: <span id="maxCpuTime" class="number"></span> %</div>
+      </div>
+      <div class="container" id="boxplot-effectiveGasPrice" style=" width: calc(100vw - 600px); padding: 0 8px; max-width: calc(100vw - 600px); padding: 0 8px;">
+        <div class="title gasPrices">Gas Prices</div>
+      </div>
+      <div id="pie-chart" class="container" style="font-size:11px"></div>
+      <div class="container" style="width: 168px; padding: 0 8px;">
+        <div class="title">Memory</div>
+        <div style="height:100px;width: 150px;" id="sparkMemory"></div>
+        <div class="large">
+          <span id="memory" class="number"></span> MB
+        </div>
+        <div class="max">Max: <span id="maxMemory" class="number"></span> MB</div>
+      </div>
+    </div>
+    <div id="lastestBlock" class="container not-active" style="height:200px">
+        <div class="title">Lastest Block</div>
+        <div class="not-active-message">Not Synced</div>
+        <div style="left: calc(50% - 40px);position: absolute;top: 5px;width: 80px;text-align: center;color: #009CDD;">Gas Target</div>
+        <div style="left: 50%;position: absolute;height: 170px;border-left: 2px dashed #FFA726;top: 25px;"></div>
+        <div style="right: 8px;position:absolute;top: 8px;">Extra Data: <span id="blockExtraData" class="right number">0x</span></div>
+        <div id="blockData" style="right: 8px;position:absolute;background: rgba(0,0,0,0.25);top: 36px;padding: 4px 8px;">
+            <table>
+                <tr>
+                    <td>Timestamp</td>
+                    <td id="blockTimestamp" class="right number">0</td>
+                </tr>
+                <tr>
+                    <td>Gas Limit</td>
+                    <td id="blockGasLimit" class="right number">0</td>
+                </tr>
+                <tr>
+                    <td>Gas Used</td>
+                    <td id="blockGasUsed" class="right number">0</td>
+                </tr>
+                <tr>
+                    <td>Block Size</td>
+                    <td id="blockBlockSize" class="right number">0</td>
+                </tr>
+                <tr>
+                    <td>Transactions</td>
+                    <td id="blockTransactions" class="right number">0</td>
+                </tr>
+                <tr>
+                    <td>Blobs</td>
+                    <td id="blockBlobs" class="right number">0</td>
+                </tr>
+            </table>
+        </div>
+        <div id="block" style="margin-top: 35px;"></div>
+    </div>
+    <div id="txPoolFlow" class="container not-active">
+        <div class="title">Incoming Transactions</div>
+        <div class="not-active-message">Mempool Not Active</div>
+        <div id="txPool">
+            <table>
+                <thead>
+                    <tr>
+                        <th>Local Tx MemPool</th>
+                        <th class="right">Count</th>
+                    </tr>
+                </thead>
+                <tr>
+                    <td>Execution</td>
+                    <td id="txPoolValue" class="right number">0</td>
+                </tr>
+                <tr>
+                    <td>Blob</td>
+                    <td id="blobTxPoolValue" class="right number">0</td>
+                </tr>
+                <tr>
+                    <td>Total</td>
+                    <td id="totalValue" class="right number">0</td>
+                </tr>
+            </table>
+        </div>
+        <div id="txTps">
+            <div>
+                <div>p2p hashes</div>
+                <div style="height:44px" id="sparkHashesTps"></div>
+                <div class="nowrap"><span id="hashesReceivedTpsValue" class="number">0</span> tps</div>
+            </div>
+            <div>
+                <div>tx received</div>
+                <div style="height:44px" id="sparkReceivedTps"></div>
+                <div class="nowrap"><span id="receivedTpsValue" class="number">0</span> tps</div>
+            </div>
+            <div>
+                <div>duplicate tx</div>
+                <div style="height:44px" id="sparkDuplicateTps"></div>
+                <div class="nowrap"><span id="duplicateTpsValue" class="number">0</span> tps</div>
+            </div>
+            <div>
+                <div>txpool adds</div>
+                <div style="height:44px" id="sparkTxPoolTps"></div>
+                <div class="nowrap"><span id="txPoolTpsValue" class="number">0</span> tps</div>
+            </div>
+            <div>
+                <div>block adds</div>
+                <div style="height:44px" id="sparkBlockTps"></div>
+                <div class="nowrap"><span id="blockTpsValue" class="number">0</span> tps</div>
+            </div>
+        </div>
+    </div>
+    <div class="output">
+      <div class="container" style="max-width: 968px;">
+        <div class="title">Execution Logs</div>
+        <div id="nodeLog"></div>
+      </div>
+      <div id="txLog" class="container" style="overflow:hidden">
+        <div class="title">Block Transactions</div>
+        <table style="margin-top: 32px; font-family: 'DM Mono',monospace; font-size: 11px;width:100%">
+          <thead><tr><th style="width:16px"></th><th style="width: 100px;">From</th><th style="width: 100px;">To</th><th class="right">Value</th><th class="right">Gas Used</th><th>Method</th><th style="width:60px">Type</th></tr></thead>
+          <tbody id="blockTxs"></tbody>
+        </table>
+      </div>
+    </div>
+    <div id="txDetails" class="hidden" style="position: absolute; top: 0; left: 0; pointer-events: none; background-color: black; border: 1px solid white; box-shadow: 0 8px 32px rgba(0, 0, 0, 0.15);padding:4px"></div>
+    <script type="module" src="js/bundle.js"></script>
+</body>
+</html>
