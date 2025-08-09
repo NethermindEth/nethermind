@@ -384,10 +384,9 @@ public sealed class TrieStore : ITrieStore, IPruningTrieStore
 
     public event EventHandler<ReorgBoundaryReached>? ReorgBoundaryReached;
 
-    public byte[]? TryLoadRlp(Hash256? address, in TreePath path, Hash256 keccak, INodeStorage? nodeStorage, ReadFlags readFlags = ReadFlags.None)
+    public byte[]? TryLoadRlp(Hash256? address, in TreePath path, Hash256 keccak, ReadFlags readFlags = ReadFlags.None)
     {
-        nodeStorage ??= _nodeStorage;
-        byte[]? rlp = nodeStorage.Get(address, path, keccak, readFlags);
+        byte[]? rlp = _nodeStorage.Get(address, path, keccak, readFlags);
 
         if (rlp is not null)
         {
@@ -397,9 +396,9 @@ public sealed class TrieStore : ITrieStore, IPruningTrieStore
         return rlp;
     }
 
-    public byte[] LoadRlp(Hash256? address, in TreePath path, Hash256 keccak, INodeStorage? nodeStorage, ReadFlags readFlags = ReadFlags.None)
+    public byte[] LoadRlp(Hash256? address, in TreePath path, Hash256 keccak, ReadFlags readFlags = ReadFlags.None)
     {
-        byte[]? rlp = TryLoadRlp(address, path, keccak, nodeStorage, readFlags);
+        byte[]? rlp = TryLoadRlp(address, path, keccak, readFlags);
         if (rlp is null)
         {
             ThrowMissingNode(address, path, keccak);
@@ -413,9 +412,6 @@ public sealed class TrieStore : ITrieStore, IPruningTrieStore
             throw new MissingTrieNodeException($"Node A:{address} P:{path} H:{keccak} is missing from the DB", address, path, keccak);
         }
     }
-
-    public byte[]? LoadRlp(Hash256? address, in TreePath path, Hash256 hash, ReadFlags flags = ReadFlags.None) => LoadRlp(address, path, hash, null, flags);
-    public byte[]? TryLoadRlp(Hash256? address, in TreePath path, Hash256 hash, ReadFlags flags = ReadFlags.None) => TryLoadRlp(address, path, hash, null, flags);
 
     public bool IsPersisted(Hash256? address, in TreePath path, in ValueHash256 keccak)
     {
@@ -431,8 +427,7 @@ public sealed class TrieStore : ITrieStore, IPruningTrieStore
         return true;
     }
 
-    public IReadOnlyTrieStore AsReadOnly(INodeStorage? store = null) =>
-        new ReadOnlyTrieStore(this, store);
+    public IReadOnlyTrieStore AsReadOnly() => new ReadOnlyTrieStore(this);
 
     public bool IsNodeCached(Hash256? address, in TreePath path, Hash256? hash) => DirtyNodesIsNodeCached(new TrieStoreDirtyNodesCache.Key(address, path, hash));
 

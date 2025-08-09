@@ -40,7 +40,7 @@ namespace Nethermind.Trie.Pruning
     {
         public void PersistCache(CancellationToken cancellationToken);
 
-        IReadOnlyTrieStore AsReadOnly(INodeStorage? keyValueStore = null);
+        IReadOnlyTrieStore AsReadOnly();
 
         event EventHandler<ReorgBoundaryReached>? ReorgBoundaryReached;
 
