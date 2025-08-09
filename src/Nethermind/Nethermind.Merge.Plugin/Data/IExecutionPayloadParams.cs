@@ -108,7 +108,7 @@ public class ExecutionPayloadParams<TVersionedExecutionPayload>(
         return ValidationResult.Success;
     }
 
-    public static bool FlattenedHashesEqual(Transaction[] transactions, ReadOnlySpan<byte[]?> expected)
+    private static bool FlattenedHashesEqual(Transaction[] transactions, ReadOnlySpan<byte[]?> expected)
     {
         int expectedIndex = 0;
         for (int txIndex = 0; txIndex < transactions.Length; txIndex++)
