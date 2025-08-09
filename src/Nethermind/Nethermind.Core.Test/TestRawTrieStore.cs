@@ -76,7 +76,7 @@ public class TestRawTrieStore(INodeStorage nodeStorage, bool isReadOnly = false)
     {
     }
 
-    public IReadOnlyTrieStore AsReadOnly(INodeStorage? store = null) =>
+    public IReadOnlyTrieStore AsReadOnly() =>
         new TestRawTrieStore(nodeStorage, true);
 
     public event EventHandler<ReorgBoundaryReached>? ReorgBoundaryReached
