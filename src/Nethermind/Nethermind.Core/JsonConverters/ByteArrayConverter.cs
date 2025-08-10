@@ -1,7 +1,6 @@
 // SPDX-FileCopyrightText: 2024 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using Nethermind.Core.Extensions;
 using System;
 using System.Buffers;
 using System.Diagnostics;
@@ -10,6 +9,7 @@ using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using System.Text.Json;
 using System.Text.Json.Serialization;
+using Nethermind.Core.Extensions;
 
 namespace Nethermind.Serialization.Json;
 
@@ -35,27 +35,116 @@ public class ByteArrayConverter : JsonConverter<byte[]>
             ThrowInvalidOperationException();
         }
 
-        var length = reader.ValueSpan.Length;
-        byte[]? bytes = null;
-        if (length == 0)
+        if (reader.HasValueSequence)
         {
-            length = checked((int)reader.ValueSequence.Length);
-            if (length == 0)
-                return null;
-
-            bytes = ArrayPool<byte>.Shared.Rent(length);
-            reader.ValueSequence.CopyTo(bytes);
+            ReadOnlySequence<byte> valueSequence = reader.ValueSequence;
+            return checked((int)valueSequence.Length) > 0 ?
+                ConvertValueSequence(in valueSequence) :
+                null;
         }
 
-        ReadOnlySpan<byte> hex = bytes is null ? reader.ValueSpan : bytes.AsSpan(0, length);
+        int length = reader.ValueSpan.Length;
+        ReadOnlySpan<byte> hex = reader.ValueSpan;
         if (length >= 2 && Unsafe.As<byte, ushort>(ref MemoryMarshal.GetReference(hex)) == _hexPrefix)
             hex = hex[2..];
 
-        var returnVal = Bytes.FromUtf8HexString(hex);
-        if (bytes is not null)
-            ArrayPool<byte>.Shared.Return(bytes);
+        return Bytes.FromUtf8HexString(hex);
+    }
 
-        return returnVal;
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    private static byte[]? ConvertValueSequence(in ReadOnlySequence<byte> seq)
+    {
+        // Detect and skip 0x prefix even if split across segments
+        SequenceReader<byte> sr = new(seq);
+        bool hadPrefix = false;
+        if (sr.TryPeek(out byte b0))
+        {
+            if (b0 == (byte)'0')
+            {
+                sr.Advance(1);
+                if (sr.TryPeek(out byte b1) && (b1 == (byte)'x'))
+                {
+                    sr.Advance(1);
+                    hadPrefix = true;
+                }
+                else
+                {
+                    // rewind if not really a prefix
+                    sr.Rewind(1);
+                }
+            }
+        }
+
+        // Compute total hex digit count (after prefix)
+        long totalHexChars = seq.Length - (hadPrefix ? 2 : 0);
+        if (totalHexChars <= 0) return Array.Empty<byte>();
+
+        int odd = (int)(totalHexChars & 1);
+        int outLenFinal = (int)(totalHexChars >> 1) + odd;
+        if (outLenFinal == 0) return [];
+
+        byte[] result = GC.AllocateUninitializedArray<byte>(outLenFinal);
+        Span<byte> output = result;
+        if (odd == 1)
+        {
+            // If odd, we deal with the extra nibble, so we are left with an even number of nibbles
+            if (!sr.TryRead(out byte lastNibble))
+            {
+                ThrowInvalidOperationException();
+            }
+            lastNibble = (byte)HexConverter.FromLowerChar(lastNibble | 0x20);
+            if (lastNibble > 0x0F)
+            {
+                ThrowInvalidOperationException();
+            }
+            result[0] = lastNibble;
+            output = output[1..];
+        }
+
+        while (!sr.End)
+        {
+            ReadOnlySpan<byte> first = sr.UnreadSpan;
+            if (!first.IsEmpty)
+            {
+                // Decode the largest even-length slice of the current contiguous span without copying.
+                int evenLen = first.Length & ~1; // largest even
+                if (evenLen > 0)
+                {
+                    int outBytes = evenLen >> 1;
+                    Bytes.FromUtf8HexString(first.Slice(0, evenLen), output.Slice(0, outBytes));
+                    output = output.Slice(outBytes);
+                    sr.Advance(evenLen);
+                    continue;
+                }
+            }
+
+            // Either current span is empty or has exactly 1 trailing nibble; marshal an even-sized chunk.
+            long remaining = sr.Remaining;
+            if (remaining == 0) break;
+
+            // If remaining is even overall, remaining will be >= 2 here; be defensive just in case.
+            if (remaining == 1)
+            {
+                ThrowInvalidOperationException();
+            }
+
+            ushort twoNibbles = 0;
+            Span<byte> temp = MemoryMarshal.AsBytes(MemoryMarshal.CreateSpan(ref twoNibbles, 1));
+            if (!sr.TryCopyTo(temp))
+            {
+                // Should not happen since take <= remaining; treat as fatal.
+                ThrowInvalidOperationException();
+            }
+
+            Bytes.FromUtf8HexString(temp, output[..1]);
+            output = output[1..];
+            sr.Advance(2);
+        }
+
+        if (!output.IsEmpty)
+            ThrowInvalidOperationException();
+
+        return result;
     }
 
     public static void Convert(ref Utf8JsonReader reader, scoped Span<byte> span)
