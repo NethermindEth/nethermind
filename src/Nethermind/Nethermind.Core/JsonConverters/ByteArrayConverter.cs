@@ -35,9 +35,7 @@ public class ByteArrayConverter : JsonConverter<byte[]>
 
         if (reader.HasValueSequence)
         {
-            ReadOnlySequence<byte> valueSequence = reader.ValueSequence;
-            return checked((int)valueSequence.Length) > 0 ?
-                ConvertValueSequence(in valueSequence) : null;
+            return ConvertValueSequence(ref reader);
         }
 
         int length = reader.ValueSpan.Length;
@@ -49,11 +47,15 @@ public class ByteArrayConverter : JsonConverter<byte[]>
         return Bytes.FromUtf8HexString(hex);
     }
 
+    [SkipLocalsInit]
     [MethodImpl(MethodImplOptions.NoInlining)]
-    private static byte[]? ConvertValueSequence(in ReadOnlySequence<byte> seq)
+    private static byte[]? ConvertValueSequence(ref Utf8JsonReader reader)
     {
+        ReadOnlySequence<byte> valueSequence = reader.ValueSequence;
+        int length = checked((int)valueSequence.Length);
+        if (length == 0) return null;
         // Detect and skip 0x prefix even if split across segments
-        SequenceReader<byte> sr = new(seq);
+        SequenceReader<byte> sr = new(valueSequence);
         bool hadPrefix = false;
         if (sr.TryPeek(out byte b0))
         {
@@ -74,7 +76,7 @@ public class ByteArrayConverter : JsonConverter<byte[]>
         }
 
         // Compute total hex digit count (after prefix)
-        long totalHexChars = seq.Length - (hadPrefix ? 2 : 0);
+        long totalHexChars = length - (hadPrefix ? 2 : 0);
         if (totalHexChars <= 0) return [];
 
         int odd = (int)(totalHexChars & 1);
