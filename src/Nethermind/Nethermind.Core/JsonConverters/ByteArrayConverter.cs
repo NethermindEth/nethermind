@@ -31,20 +31,18 @@ public class ByteArrayConverter : JsonConverter<byte[]>
         if (tokenType == JsonTokenType.None || tokenType == JsonTokenType.Null)
             return null;
         else if (tokenType != JsonTokenType.String && tokenType != JsonTokenType.PropertyName)
-        {
             ThrowInvalidOperationException();
-        }
 
         if (reader.HasValueSequence)
         {
             ReadOnlySequence<byte> valueSequence = reader.ValueSequence;
             return checked((int)valueSequence.Length) > 0 ?
-                ConvertValueSequence(in valueSequence) :
-                null;
+                ConvertValueSequence(in valueSequence) : null;
         }
 
         int length = reader.ValueSpan.Length;
         ReadOnlySpan<byte> hex = reader.ValueSpan;
+        if (hex.Length == 0) return null;
         if (length >= 2 && Unsafe.As<byte, ushort>(ref MemoryMarshal.GetReference(hex)) == _hexPrefix)
             hex = hex[2..];
 
@@ -77,7 +75,7 @@ public class ByteArrayConverter : JsonConverter<byte[]>
 
         // Compute total hex digit count (after prefix)
         long totalHexChars = seq.Length - (hadPrefix ? 2 : 0);
-        if (totalHexChars <= 0) return Array.Empty<byte>();
+        if (totalHexChars <= 0) return [];
 
         int odd = (int)(totalHexChars & 1);
         int outLenFinal = (int)(totalHexChars >> 1) + odd;
@@ -95,7 +93,7 @@ public class ByteArrayConverter : JsonConverter<byte[]>
             lastNibble = (byte)HexConverter.FromLowerChar(lastNibble | 0x20);
             if (lastNibble > 0x0F)
             {
-                ThrowInvalidOperationException();
+                ThrowFormatException();
             }
             result[0] = lastNibble;
             output = output[1..];
@@ -170,10 +168,10 @@ public class ByteArrayConverter : JsonConverter<byte[]>
     }
 
     [DoesNotReturn, StackTraceHidden]
-    internal static void ThrowInvalidOperationException()
-    {
-        throw new InvalidOperationException();
-    }
+    private static void ThrowFormatException() => throw new FormatException();
+
+    [DoesNotReturn, StackTraceHidden]
+    private static void ThrowInvalidOperationException() => throw new InvalidOperationException();
 
     public override void Write(
         Utf8JsonWriter writer,
