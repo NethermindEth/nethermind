@@ -108,7 +108,7 @@ public static class T8nExecutor
 
             transactionExecutionReport.ValidTransactions.Add(transaction);
 
-            if (transactionResult.Success)
+            if (transactionResult.TransactionExecuted)
             {
                 transactionExecutionReport.SuccessfulTransactions.Add(transaction);
                 blockReceiptsTracer.LastReceipt.PostTransactionState = null;
