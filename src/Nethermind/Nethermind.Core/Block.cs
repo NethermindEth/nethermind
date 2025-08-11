@@ -116,6 +116,7 @@ public class Block
     public Hash256? ParentBeaconBlockRoot => Header.ParentBeaconBlockRoot; // do not add setter here
 
     public Hash256? RequestsHash => Header.RequestsHash; // do not add setter here
+    public byte[]? BlockAccessList => Body.BlockAccessList; // do not add setter here
 
     [JsonIgnore]
     public byte[][]? ExecutionRequests { get; set; }
