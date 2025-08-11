@@ -19,25 +19,19 @@ using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Http.Features;
 using Microsoft.AspNetCore.ResponseCompression;
 using Microsoft.AspNetCore.Server.Kestrel.Core;
-using Microsoft.AspNetCore.StaticFiles;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
+using Microsoft.Extensions.Hosting.Internal;
 using Nethermind.Api;
-using Nethermind.Blockchain;
-using Nethermind.Blockchain.Receipts;
 using Nethermind.Config;
-using Nethermind.Consensus.Processing;
 using Nethermind.Core.Authentication;
 using Nethermind.Core.Resettables;
-using Nethermind.Core.Specs;
 using Nethermind.HealthChecks;
 using Nethermind.JsonRpc;
 using Nethermind.JsonRpc.Modules;
 using Nethermind.Logging;
 using Nethermind.Serialization.Json;
 using Nethermind.Sockets;
-using Nethermind.Synchronization.Peers;
-using Nethermind.TxPool;
 
 namespace Nethermind.Runner.JsonRpc;
 
@@ -86,17 +80,18 @@ public class Startup : IStartup
 
     public void Configure(IApplicationBuilder app)
     {
-        var services = app.ApplicationServices;
+        IServiceProvider services = app.ApplicationServices;
         Configure(
             app,
             services.GetRequiredService<IWebHostEnvironment>(),
             services.GetRequiredService<IJsonRpcProcessor>(),
             services.GetRequiredService<IJsonRpcService>(),
             services.GetRequiredService<IJsonRpcLocalStats>(),
-            services.GetRequiredService<IJsonSerializer>());
+            services.GetRequiredService<IJsonSerializer>(),
+            services.GetRequiredService<ApplicationLifetime>());
     }
 
-    public void Configure(IApplicationBuilder app, IWebHostEnvironment env, IJsonRpcProcessor jsonRpcProcessor, IJsonRpcService jsonRpcService, IJsonRpcLocalStats jsonRpcLocalStats, IJsonSerializer jsonSerializer)
+    public void Configure(IApplicationBuilder app, IWebHostEnvironment env, IJsonRpcProcessor jsonRpcProcessor, IJsonRpcService jsonRpcService, IJsonRpcLocalStats jsonRpcLocalStats, IJsonSerializer jsonSerializer, ApplicationLifetime lifetime)
     {
         if (env.IsDevelopment())
         {
@@ -158,8 +153,8 @@ public class Startup : IStartup
                     if (logger.IsError) logger.Error("Unable to initialize health checks. Check if you have Nethermind.HealthChecks.dll in your plugins folder.", e);
                 }
 
-                var services = app.ApplicationServices;
-                endpoints.MapDataFeeds();
+                IServiceProvider services = app.ApplicationServices;
+                endpoints.MapDataFeeds(lifetime);
             }
         });
 
@@ -195,7 +190,8 @@ public class Startup : IStartup
                 }
             }
 
-            if (method == "GET" && ctx.Request.Headers.Accept.Count > 0 && !(ctx.Request.Headers.Accept[0].Contains("text/html", StringComparison.Ordinal)))
+            if (method == "GET" && ctx.Request.Headers.Accept.Count > 0 &&
+                !ctx.Request.Headers.Accept[0].Contains("text/html", StringComparison.Ordinal))
             {
                 await ctx.Response.WriteAsync("Nethermind JSON RPC");
             }
@@ -293,7 +289,7 @@ public class Startup : IStartup
                                 ? new RpcReport("# collection serialization #", handlingTimeMicroseconds, true)
                                 : result.Report.Value, handlingTimeMicroseconds, resultWriter.WrittenCount);
 
-                            Interlocked.Add(ref Nethermind.JsonRpc.Metrics.JsonRpcBytesSentHttp, resultWriter.WrittenCount);
+                            Interlocked.Add(ref Metrics.JsonRpcBytesSentHttp, resultWriter.WrittenCount);
 
                             // There should be only one response because we don't expect multiple JSON tokens in the request
                             break;

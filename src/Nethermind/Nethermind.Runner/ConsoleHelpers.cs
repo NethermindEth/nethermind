@@ -63,7 +63,6 @@ public static class ConsoleHelpers
     private static extern bool SetConsoleMode(IntPtr hConsoleHandle, uint dwMode);
 }
 
-
 public sealed class LineInterceptingTextWriter(TextWriter underlyingWriter) : TextWriter
 {
     // Event raised every time a full line ending with Environment.NewLine is written
@@ -73,7 +72,7 @@ public sealed class LineInterceptingTextWriter(TextWriter underlyingWriter) : Te
     private readonly TextWriter _underlyingWriter = underlyingWriter ?? throw new ArgumentNullException(nameof(underlyingWriter));
 
     // Buffer used to accumulate written data until we detect a new line
-    private readonly StringBuilder _buffer = new StringBuilder();
+    private readonly StringBuilder _buffer = new();
 
     // You must override Encoding, even if just forwarding
     public override Encoding Encoding => _underlyingWriter.Encoding;
@@ -122,16 +121,16 @@ public sealed class LineInterceptingTextWriter(TextWriter underlyingWriter) : Te
         _underlyingWriter.Flush();
     }
 
+    // Environment.NewLine might be "\r\n" or "\n" depending on platform
+    private readonly static string EnvironmentNewLine = Environment.NewLine;
+
     private void CheckForLines()
     {
-        // Environment.NewLine might be "\r\n" or "\n" depending on platform
-        // so let's find each occurrence and split it off
-        string newLine = Environment.NewLine;
-
+        // let's find each occurrence of new line and split it off
         while (true)
         {
             // Find the next index of the new line
-            int newLinePos = _buffer.ToString().IndexOf(newLine, StringComparison.Ordinal);
+            int newLinePos = _buffer.ToString().IndexOf(EnvironmentNewLine, StringComparison.Ordinal);
 
             // If there's no complete new line, break
             if (newLinePos < 0)
@@ -143,7 +142,7 @@ public sealed class LineInterceptingTextWriter(TextWriter underlyingWriter) : Te
             string line = _buffer.ToString(0, newLinePos);
 
             // Remove that portion (including the new line) from the buffer
-            _buffer.Remove(0, newLinePos + newLine.Length);
+            _buffer.Remove(0, newLinePos + EnvironmentNewLine.Length);
 
             // Raise the event
             OnLineWritten(line);
@@ -157,7 +156,7 @@ public sealed class LineInterceptingTextWriter(TextWriter underlyingWriter) : Te
         {
             lock (_messageLock)
             {
-                messages = (_messages ??= _recentMessages.ToArray());
+                messages = (_messages ??= [.. _recentMessages]);
             }
         }
 

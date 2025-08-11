@@ -5,6 +5,7 @@ using System;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Routing;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Hosting.Internal;
 using Nethermind.Api;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Receipts;
@@ -20,7 +21,7 @@ public static class DataFeedExtensions
 {
     private static DataFeed _dataFeed;
 
-    public static void MapDataFeeds(this IEndpointRouteBuilder endpoints)
+    public static void MapDataFeeds(this IEndpointRouteBuilder endpoints, ApplicationLifetime lifetime)
     {
         ArgumentNullException.ThrowIfNull(endpoints);
         IServiceProvider services = endpoints.ServiceProvider;
@@ -33,7 +34,7 @@ public static class DataFeedExtensions
         IMainProcessingContext mainProcessingContext = services.GetRequiredService<IMainProcessingContext>();
         ILogManager? logManager = services.GetService<ILogManager>() ?? NullLogManager.Instance;
 
-        _dataFeed = new DataFeed(txPool, specProvider, receiptFinder, blockTree, syncPeerPool, mainProcessingContext, logManager);
+        _dataFeed = new DataFeed(txPool, specProvider, receiptFinder, blockTree, syncPeerPool, mainProcessingContext, logManager, lifetime.ApplicationStopped);
 
         endpoints.MapGet("/data/events", _dataFeed.ProcessingFeedAsync);
     }

@@ -151,7 +151,7 @@ namespace Nethermind.Blockchain
             remove { }
         }
 
-        event EventHandler<IBlockTree.ForkChoice> IBlockTree.OnForkChoiceUpdated
+        event EventHandler<IBlockTree.ForkChoiceUpdateEventArgs> IBlockTree.OnForkChoiceUpdated
         {
             add { }
             remove { }

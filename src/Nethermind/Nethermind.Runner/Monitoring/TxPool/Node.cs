@@ -7,6 +7,6 @@ namespace Nethermind.Runner.Monitoring.TransactionPool;
 
 internal class Node(string name, bool inclusion = false)
 {
-    public string Name { get; set; } = name ?? throw new ArgumentNullException(nameof(name));
+    public string Name { get; set; } = name;
     public bool Inclusion { get; set; } = inclusion;
 }

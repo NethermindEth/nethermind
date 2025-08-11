@@ -4,16 +4,15 @@
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
+using System.Text.Json.Serialization;
 using System.Threading;
 using Microsoft.Extensions.ObjectPool;
 using Nethermind.Blockchain;
 using Nethermind.Config;
 using Nethermind.Core;
-using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Int256;
 using Nethermind.Logging;
-using Nethermind.Evm.State;
 using Nethermind.State;
 
 namespace Nethermind.Consensus.Processing
@@ -25,7 +24,8 @@ namespace Nethermind.Consensus.Processing
         public long BlockTo { get; internal set; }
         public double ProcessingMs { get; internal set; }
         public double SlotMs { get; internal set; }
-        public double MgasPerSecond { get; internal set; }
+        [JsonPropertyName("mgasPerSecond")]
+        public double MGasPerSecond { get; internal set; }
         public float MinGas { get; internal set; }
         public float MedianGas { get; internal set; }
         public float AveGas { get; internal set; }
@@ -241,7 +241,7 @@ namespace Nethermind.Consensus.Processing
                 if (_logger.IsError) _logger.Error("Error when calculating block rewards", ex);
             }
 
-            foreach (var tx in txs)
+            foreach (Transaction tx in txs)
             {
                 _chunkBlobs += tx.GetBlobCount();
             }
@@ -305,7 +305,7 @@ namespace Nethermind.Consensus.Processing
 
                 ProcessingMs = chunkMs,
                 SlotMs = runMs,
-                MgasPerSecond = mgasPerSecond,
+                MGasPerSecond = mgasPerSecond,
                 MinGas = Evm.Metrics.BlockMinGasPrice,
                 MedianGas = Math.Max(Evm.Metrics.BlockMinGasPrice, Evm.Metrics.BlockEstMedianGasPrice),
                 AveGas = Evm.Metrics.BlockAveGasPrice,

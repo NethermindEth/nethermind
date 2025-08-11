@@ -221,7 +221,7 @@ public class BlockTreeOverlay : IBlockTree
         }
     }
 
-    public event EventHandler<IBlockTree.ForkChoice> OnForkChoiceUpdated
+    public event EventHandler<IBlockTree.ForkChoiceUpdateEventArgs> OnForkChoiceUpdated
     {
         add
         {

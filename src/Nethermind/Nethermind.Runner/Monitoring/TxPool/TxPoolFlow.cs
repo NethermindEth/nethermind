@@ -74,8 +74,7 @@ internal class TxPoolFlow
         long reorged
     )
     {
-
-        var stateValidation = pendingTransactionsReceived
+        long stateValidation = pendingTransactionsReceived
                  - pendingTransactionsNotSupportedTxType
                  - pendingTransactionsSizeTooLarge
                  - pendingTransactionsGasLimitTooHigh
@@ -87,18 +86,18 @@ internal class TxPoolFlow
                  - pendingTransactionsUnresolvableSender
                  - pendingTransactionsConflictingTxType
                  - pendingTransactionsNonceTooFarInFuture;
-        var validationSuccess = stateValidation
+        long validationSuccess = stateValidation
                 - pendingTransactionsZeroBalance
                 - pendingTransactionsBalanceBelowValue
                 - pendingTransactionsTooLowBalance
                 - pendingTransactionsLowNonce
                 - pendingTransactionsNonceGap;
-        var addedToPool = validationSuccess
+        long addedToPool = validationSuccess
                 - pendingTransactionsPassedFiltersButCannotReplace
                 - pendingTransactionsPassedFiltersButCannotCompeteOnFees;
 
-        Links = new[]
-        {
+        Links =
+        [
             new Link(TxPoolStages.P2P, TxPoolStages.ReceivedTxs, pendingTransactionsReceived),
             new Link(TxPoolStages.ReceivedTxs, TxPoolStages.NotSupportedTxType, pendingTransactionsNotSupportedTxType),
             new Link(TxPoolStages.ReceivedTxs, TxPoolStages.TxTooLarge, pendingTransactionsSizeTooLarge),
@@ -133,6 +132,6 @@ internal class TxPoolFlow
             new Link(TxPoolStages.PrivateOrderFlow, TxPoolStages.AddedToBlock, memPoolFlow),
             new Link(TxPoolStages.AddedToBlock, TxPoolStages.ReorgedOut, reorged),
             new Link(TxPoolStages.ReorgedIn, TxPoolStages.ReceivedTxs, reorged)
-        };
+        ];
     }
 }

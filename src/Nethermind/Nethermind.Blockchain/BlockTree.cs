@@ -1623,7 +1623,7 @@ namespace Nethermind.Blockchain
         public event EventHandler<BlockEventArgs>? NewSuggestedBlock;
 
         public event EventHandler<BlockEventArgs>? NewHeadBlock;
-        public event EventHandler<IBlockTree.ForkChoice>? OnForkChoiceUpdated;
+        public event EventHandler<IBlockTree.ForkChoiceUpdateEventArgs>? OnForkChoiceUpdated;
 
         /// <summary>
         /// Can delete a slice of the chain (usually invoked when the chain is corrupted in the DB).

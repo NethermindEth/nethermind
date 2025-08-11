@@ -39,10 +39,10 @@ public class DataFeed
     private readonly ITxPool _txPool;
     private readonly ISpecProvider _specProvider;
     private readonly IReceiptFinder _receiptFinder;
-    private readonly IBlockTree _blockTree;
     private readonly ISyncPeerPool _syncPeerPool;
     private readonly BlockDecoder _blockDecoder = new();
     private readonly ILogger _logger;
+    private readonly CancellationToken _lifetime;
 
     public DataFeed(
         ITxPool txPool,
@@ -51,7 +51,8 @@ public class DataFeed
         IBlockTree blockTree,
         ISyncPeerPool syncPeerPool,
         IMainProcessingContext mainProcessingContext,
-        ILogManager logManager)
+        ILogManager logManager,
+        CancellationToken lifetime)
     {
         ArgumentNullException.ThrowIfNull(txPool);
         ArgumentNullException.ThrowIfNull(syncPeerPool);
@@ -60,10 +61,10 @@ public class DataFeed
         ArgumentNullException.ThrowIfNull(syncPeerPool);
         ArgumentNullException.ThrowIfNull(mainProcessingContext?.BlockchainProcessor);
 
+        _lifetime = lifetime;
         _txPool = txPool;
         _specProvider = specProvider;
         _receiptFinder = receiptFinder;
-        _blockTree = blockTree;
         _syncPeerPool = syncPeerPool;
 
         _logger = logManager.GetClassLogger();
@@ -97,17 +98,17 @@ public class DataFeed
         ctx.Response.ContentType = "text/event-stream";
         ctx.Response.Headers["X-Accel-Buffering"] = "no";
 
-        await ctx.Response.WriteAsync("event: nodeData\ndata: ", cancellationToken: ct);
-        await ctx.Response.Body.WriteAsync(GetNodeData(), cancellationToken: ct);
-        await ctx.Response.WriteAsync("\n\n", cancellationToken: ct);
+        await ctx.Response.WriteAsync("event: nodeData\ndata: ", ct);
+        await ctx.Response.Body.WriteAsync(GetNodeData(), ct);
+        await ctx.Response.WriteAsync("\n\n", ct);
 
-        await ctx.Response.WriteAsync("event: txNodes\ndata: ", cancellationToken: ct);
-        await ctx.Response.Body.WriteAsync(TxPoolFlow.NodeJson, cancellationToken: ct);
-        await ctx.Response.WriteAsync("\n\n", cancellationToken: ct);
+        await ctx.Response.WriteAsync("event: txNodes\ndata: ", ct);
+        await ctx.Response.Body.WriteAsync(TxPoolFlow.NodeJson, ct);
+        await ctx.Response.WriteAsync("\n\n", ct);
 
-        await ctx.Response.WriteAsync("event: log\ndata: ", cancellationToken: ct);
-        await ctx.Response.Body.WriteAsync(JsonSerializer.SerializeToUtf8Bytes(ConsoleHelpers.GetRecentMessages(), JsonSerializerOptions.Web), cancellationToken: ct);
-        await ctx.Response.WriteAsync("\n\n", cancellationToken: ct);
+        await ctx.Response.WriteAsync("event: log\ndata: ", ct);
+        await ctx.Response.Body.WriteAsync(JsonSerializer.SerializeToUtf8Bytes(ConsoleHelpers.GetRecentMessages(), JsonSerializerOptions.Web), ct);
+        await ctx.Response.WriteAsync("\n\n", ct);
 
         var channel = Channel.CreateUnbounded<ChannelEntry>();
 
@@ -115,18 +116,18 @@ public class DataFeed
 
         await foreach (ChannelEntry entry in channel.Reader.ReadAllAsync(ct))
         {
-            await ctx.Response.WriteAsync($"event: {entry.Type}\ndata: ", cancellationToken: ct);
-            await ctx.Response.Body.WriteAsync(entry.Data, cancellationToken: ct);
-            await ctx.Response.WriteAsync("\n\n", cancellationToken: ct);
+            await ctx.Response.WriteAsync($"event: {entry.Type}\ndata: ", ct);
+            await ctx.Response.Body.WriteAsync(entry.Data, ct);
+            await ctx.Response.WriteAsync("\n\n", ct);
 
             if (channel.Reader.Count == 0)
             {
-                await ctx.Response.Body.FlushAsync(cancellationToken: ct);
+                await ctx.Response.Body.FlushAsync(ct);
             }
         }
     }
 
-    enum EntryType
+    private enum EntryType
     {
         nodeData,
         txNodes,
@@ -165,17 +166,15 @@ public class DataFeed
         _ = ChannelSubscribe(EntryType.peers, () => _peers.Task, channel, ct);
     }
 
-    private byte[] GetNodeData()
-    {
-        return JsonSerializer.SerializeToUtf8Bytes(
-            new NethermindNodeData(uptime: Environment.TickCount64 - DataFeed.StartTime),
+    private static byte[] GetNodeData()
+        => JsonSerializer.SerializeToUtf8Bytes(
+            new NethermindNodeData(Environment.TickCount64 - StartTime),
             JsonSerializerOptions.Web);
-    }
 
     private DataCompletion _txFlow = new();
     private async Task StartTxFlowRefresh()
     {
-        while (true)
+        while (!_lifetime.IsCancellationRequested)
         {
             byte[] data = await GetTxFlowTask(delayMs: 1000);
 
@@ -192,7 +191,7 @@ public class DataFeed
     {
         _lastCpuUsage = Environment.CpuUsage;
         _lastTimeStamp = Stopwatch.GetTimestamp();
-        while (true)
+        while (!_lifetime.IsCancellationRequested)
         {
             byte[] data = await GetStatsTask(delayMs: 1000);
             DataCompletion systemStats = _systemStats;
@@ -212,10 +211,10 @@ public class DataFeed
 
         SystemStats stats = new()
         {
-            UserPercent = ((cpuUsage.UserTime - _lastCpuUsage.UserTime).TotalMicroseconds / elapsed.TotalMicroseconds) / Environment.ProcessorCount,
+            UserPercent = (cpuUsage.UserTime - _lastCpuUsage.UserTime).TotalMicroseconds / elapsed.TotalMicroseconds / Environment.ProcessorCount,
             PrivilegedPercent = ((cpuUsage.PrivilegedTime - _lastCpuUsage.PrivilegedTime).TotalMicroseconds / elapsed.TotalMicroseconds) / Environment.ProcessorCount,
             WorkingSet = Environment.WorkingSet,
-            Uptime = Environment.TickCount64 - DataFeed.StartTime
+            Uptime = Environment.TickCount64 - StartTime
         };
         _lastTimeStamp = timeStamp;
         _lastCpuUsage = cpuUsage;
@@ -228,7 +227,7 @@ public class DataFeed
     {
         _lastCpuUsage = Environment.CpuUsage;
         _lastTimeStamp = Stopwatch.GetTimestamp();
-        while (true)
+        while (!_lifetime.IsCancellationRequested)
         {
             byte[] data = await GetPeersTask(delayMs: 1000);
             DataCompletion peers = _peers;
@@ -241,18 +240,14 @@ public class DataFeed
     {
         await Task.Delay(delayMs);
 
-        IEnumerable<PeerInfo> allPeers = _syncPeerPool.AllPeers;
-        List<PeerForWeb> peers = [];
-        foreach (PeerInfo peer in allPeers)
-        {
-            peers.Add(new PeerForWeb
+        List<PeerForWeb> peers = [.. _syncPeerPool.AllPeers.Select(
+            static peer => new PeerForWeb
             {
                 Contexts = peer.AllocatedContexts,
                 ClientType = peer.PeerClientType,
                 Version = peer.SyncPeer.ProtocolVersion,
                 Head = peer.HeadNumber
-            });
-        }
+            })];
 
         return JsonSerializer.SerializeToUtf8Bytes(peers, JsonSerializerOptions.Web);
     }
@@ -302,7 +297,7 @@ public class DataFeed
         processing.TrySetResult(JsonSerializer.SerializeToUtf8Bytes(stats, JsonSerializerOptions.Web));
     }
 
-    private void OnForkChoiceUpdated(object? sender, IBlockTree.ForkChoice choice)
+    private void OnForkChoiceUpdated(object? sender, IBlockTree.ForkChoiceUpdateEventArgs choice)
     {
         Task.Run(() =>
         {
@@ -318,10 +313,9 @@ public class DataFeed
     }
 
     private DataCompletion _forkChoice = new();
-    private void OnForkChoiceUpdated(IBlockTree.ForkChoice choice)
+    private void OnForkChoiceUpdated(IBlockTree.ForkChoiceUpdateEventArgs choice)
     {
-        DataCompletion forkChoice = _forkChoice;
-        _forkChoice = new DataCompletion();
+        DataCompletion forkChoice = Interlocked.Exchange(ref _forkChoice, new DataCompletion());
 
         Block head = choice.Head;
         Transaction[] txs = choice.Head.Transactions;
@@ -358,7 +352,7 @@ public class DataFeed
                             Value = t.Value,
                             DataLength = t.DataLength,
                             Blobs = t.BlobVersionedHashes?.Length ?? 0,
-                            Method = t.DataLength >= 4 ? t.Data.Span[..4].ToArray() : []
+                            Method = t.DataLength >= 4 ? [.. t.Data.Span[..4]] : []
                         })],
                         Receipts = [.. receipts.Select(r => new ReceiptForWeb
                         {
