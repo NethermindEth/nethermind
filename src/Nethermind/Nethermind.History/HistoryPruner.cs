@@ -264,20 +264,17 @@ public class HistoryPruner : IHistoryPruner
                     return Task.CompletedTask;
                 }
 
-                lock (BackgroundTaskScheduler.DbIntensiveBackgroundTaskLock)
+                if (_logger.IsInfo)
                 {
-                    if (_logger.IsInfo)
-                    {
-                        long? cutoff = CutoffBlockNumber;
-                        cutoff = cutoff is null ? null : long.Min(cutoff!.Value, _blockTree.SyncPivot.BlockNumber);
-                        long? toDelete = cutoff - _deletePointer;
+                    long? cutoff = CutoffBlockNumber;
+                    cutoff = cutoff is null ? null : long.Min(cutoff!.Value, _blockTree.SyncPivot.BlockNumber);
+                    long? toDelete = cutoff - _deletePointer;
 
-                        string cutoffString = cutoffTimestamp is null ? $"#{(cutoff is null ? "unknown" : cutoff)}" : $"timestamp {cutoffTimestamp} (#{(cutoff is null ? "unknown" : cutoff)})";
-                        _logger.Info($"[prune] Pruning historical blocks up to {cutoffString}. Estimated {(toDelete is null ? "unknown" : toDelete)} blocks will be deleted.");
-                    }
-
-                    PruneBlocksAndReceipts(cutoffTimestamp, cancellationToken);
+                    string cutoffString = cutoffTimestamp is null ? $"#{(cutoff is null ? "unknown" : cutoff)}" : $"timestamp {cutoffTimestamp} (#{(cutoff is null ? "unknown" : cutoff)})";
+                    _logger.Info($"[prune] Pruning historical blocks up to {cutoffString}. Estimated {(toDelete is null ? "unknown" : toDelete)} blocks will be deleted.");
                 }
+
+                PruneBlocksAndReceipts(cutoffTimestamp, cancellationToken);
             }
             else if (_logger.IsDebug)
             {
