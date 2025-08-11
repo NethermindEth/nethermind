@@ -8,12 +8,12 @@ using Nethermind.Consensus.Validators;
 using Nethermind.Core;
 using Nethermind.Facade.Eth;
 using Nethermind.Facade.Eth.RpcTransaction;
-using Nethermind.Logging.NLog;
 using Nethermind.Serialization.Json;
 using Nethermind.Specs;
 using Nethermind.Consensus.Stateless;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
+using Nethermind.Logging;
 using Nethermind.Trie;
 
 class Program
@@ -338,7 +338,7 @@ class Program
         ISpecProvider specProvider = HoodiSpecProvider.Instance;
 
         StatelessBlockProcessingEnv blockProcessingEnv =
-            new(specProvider, Always.Valid, new NLogManager());
+            new(specProvider, Always.Valid, NullLogManager.Instance);
 
         IBlockProcessor blockProcessor = blockProcessingEnv.GetProcessor(witness, baseBlock.StateRoot!);
 
