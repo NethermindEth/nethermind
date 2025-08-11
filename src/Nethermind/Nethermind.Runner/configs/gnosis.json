@@ -18,7 +18,9 @@
     "PivotHash": "0x42dcc079831b74b4fbeb3ffbaf5b132deb9197f8b4e20760a17902b36db8955c",
     "PivotTotalDifficulty": "8626000110427538733349499292577475819600160930",
     "UseGethLimitsInFastBlocks": false,
-    "FastSyncCatchUpHeightDelta": 10000000000
+    "FastSyncCatchUpHeightDelta": 10000000000,
+    "AncientReceiptsBarrier": 25349537,
+    "AncientBodiesBarrier": 25349537
   },
   "Blocks": {
     "SecondsPerSlot": 5,

@@ -458,7 +458,7 @@ public class ProofRpcModuleTests
     [TestCase]
     public async Task Can_call_with_extcodehash()
     {
-        _specProvider.SpecToReturn = MuirGlacier.Instance;
+        _specProvider.NextForkSpec = MuirGlacier.Instance;
         byte[] code = Prepare.EvmCode
             .PushData(TestItem.AddressC)
             .Op(Instruction.EXTCODEHASH)
@@ -470,7 +470,7 @@ public class ProofRpcModuleTests
     [TestCase]
     public async Task Can_call_with_extcodehash_to_system_account()
     {
-        _specProvider.SpecToReturn = MuirGlacier.Instance;
+        _specProvider.NextForkSpec = MuirGlacier.Instance;
         byte[] code = Prepare.EvmCode
             .PushData(Address.SystemUser)
             .Op(Instruction.EXTCODEHASH)
@@ -482,7 +482,7 @@ public class ProofRpcModuleTests
     [TestCase]
     public async Task Can_call_with_just_basic_addresses()
     {
-        _specProvider.SpecToReturn = MuirGlacier.Instance;
+        _specProvider.NextForkSpec = MuirGlacier.Instance;
         byte[] code = Prepare.EvmCode
             .Op(Instruction.STOP)
             .Done;
@@ -493,7 +493,7 @@ public class ProofRpcModuleTests
     [TestCase]
     public async Task Can_call_with_balance()
     {
-        _specProvider.SpecToReturn = MuirGlacier.Instance;
+        _specProvider.NextForkSpec = MuirGlacier.Instance;
         byte[] code = Prepare.EvmCode
             .PushData(TestItem.AddressC)
             .Op(Instruction.BALANCE)
@@ -506,7 +506,7 @@ public class ProofRpcModuleTests
     [TestCase]
     public async Task Can_call_with_self_balance()
     {
-        _specProvider.SpecToReturn = MuirGlacier.Instance;
+        _specProvider.NextForkSpec = MuirGlacier.Instance;
         byte[] code = Prepare.EvmCode
             .Op(Instruction.SELFBALANCE)
             .Done;
@@ -518,7 +518,7 @@ public class ProofRpcModuleTests
     [TestCase]
     public async Task Can_call_with_balance_of_system_account()
     {
-        _specProvider.SpecToReturn = MuirGlacier.Instance;
+        _specProvider.NextForkSpec = MuirGlacier.Instance;
         byte[] code = Prepare.EvmCode
             .PushData(Address.SystemUser)
             .Op(Instruction.BALANCE)
@@ -530,7 +530,7 @@ public class ProofRpcModuleTests
     [TestCase]
     public async Task Can_call_with_call_to_system_account_with_zero_value()
     {
-        _specProvider.SpecToReturn = MuirGlacier.Instance;
+        _specProvider.NextForkSpec = MuirGlacier.Instance;
         byte[] code = Prepare.EvmCode
             .PushData(0)
             .PushData(0)
@@ -548,7 +548,7 @@ public class ProofRpcModuleTests
     [TestCase]
     public async Task Can_call_with_static_call_to_system_account()
     {
-        _specProvider.SpecToReturn = MuirGlacier.Instance;
+        _specProvider.NextForkSpec = MuirGlacier.Instance;
         byte[] code = Prepare.EvmCode
             .PushData(0)
             .PushData(0)
@@ -565,7 +565,7 @@ public class ProofRpcModuleTests
     [TestCase]
     public async Task Can_call_with_delegate_call_to_system_account()
     {
-        _specProvider.SpecToReturn = MuirGlacier.Instance;
+        _specProvider.NextForkSpec = MuirGlacier.Instance;
         byte[] code = Prepare.EvmCode
             .PushData(0)
             .PushData(0)
@@ -582,7 +582,7 @@ public class ProofRpcModuleTests
     [TestCase]
     public async Task Can_call_with_call_to_system_account_with_non_zero_value()
     {
-        _specProvider.SpecToReturn = MuirGlacier.Instance;
+        _specProvider.NextForkSpec = MuirGlacier.Instance;
         byte[] code = Prepare.EvmCode
             .PushData(0)
             .PushData(0)
@@ -600,7 +600,7 @@ public class ProofRpcModuleTests
     [TestCase]
     public async Task Can_call_with_call_with_zero_value()
     {
-        _specProvider.SpecToReturn = MuirGlacier.Instance;
+        _specProvider.NextForkSpec = MuirGlacier.Instance;
         byte[] code = Prepare.EvmCode
             .PushData(0)
             .PushData(0)
@@ -618,7 +618,7 @@ public class ProofRpcModuleTests
     [TestCase]
     public async Task Can_call_with_static_call()
     {
-        _specProvider.SpecToReturn = MuirGlacier.Instance;
+        _specProvider.NextForkSpec = MuirGlacier.Instance;
         byte[] code = Prepare.EvmCode
             .PushData(0)
             .PushData(0)
@@ -635,7 +635,7 @@ public class ProofRpcModuleTests
     [TestCase]
     public async Task Can_call_with_delegate_call()
     {
-        _specProvider.SpecToReturn = MuirGlacier.Instance;
+        _specProvider.NextForkSpec = MuirGlacier.Instance;
         byte[] code = Prepare.EvmCode
             .PushData(0)
             .PushData(0)
@@ -652,7 +652,7 @@ public class ProofRpcModuleTests
     [TestCase]
     public async Task Can_call_with_call_with_non_zero_value()
     {
-        _specProvider.SpecToReturn = MuirGlacier.Instance;
+        _specProvider.NextForkSpec = MuirGlacier.Instance;
         byte[] code = Prepare.EvmCode
             .PushData(0)
             .PushData(0)
@@ -670,7 +670,7 @@ public class ProofRpcModuleTests
     [TestCase]
     public async Task Can_call_with_self_destruct()
     {
-        _specProvider.SpecToReturn = MuirGlacier.Instance;
+        _specProvider.NextForkSpec = MuirGlacier.Instance;
         byte[] code = Prepare.EvmCode
             .PushData(TestItem.AddressC)
             .Op(Instruction.SELFDESTRUCT)
@@ -683,7 +683,7 @@ public class ProofRpcModuleTests
     [TestCase]
     public async Task Can_call_with_self_destruct_to_system_account()
     {
-        _specProvider.SpecToReturn = MuirGlacier.Instance;
+        _specProvider.NextForkSpec = MuirGlacier.Instance;
         byte[] code = Prepare.EvmCode
             .PushData(Address.SystemUser)
             .Op(Instruction.SELFDESTRUCT)
