@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System.Diagnostics.CodeAnalysis;
 using Nethermind.Core;
 using Nethermind.Core.Eip2930;
 using Nethermind.Int256;
@@ -9,6 +10,11 @@ namespace Nethermind.Serialization.Rlp.Eip2930
 {
     public class AccessListDecoder : IRlpStreamDecoder<AccessList?>, IRlpValueDecoder<AccessList?>
     {
+        [DynamicDependency(DynamicallyAccessedMemberTypes.PublicConstructors, typeof(AccessListDecoder))]
+        public AccessListDecoder()
+        {
+
+        }
         private const int IndexLength = 32;
 
         public static readonly AccessListDecoder Instance = new();

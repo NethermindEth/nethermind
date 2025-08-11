@@ -11,6 +11,12 @@ namespace Nethermind.Serialization.Rlp;
 
 public class AuthorizationTupleDecoder : IRlpStreamDecoder<AuthorizationTuple>, IRlpValueDecoder<AuthorizationTuple>
 {
+    [DynamicDependency(DynamicallyAccessedMemberTypes.PublicConstructors, typeof(AuthorizationTupleDecoder))]
+    public AuthorizationTupleDecoder()
+    {
+
+    }
+
     public static readonly AuthorizationTupleDecoder Instance = new();
 
     public AuthorizationTuple Decode(RlpStream stream, RlpBehaviors rlpBehaviors = RlpBehaviors.None)

@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Diagnostics.CodeAnalysis;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Int256;
@@ -10,6 +11,12 @@ namespace Nethermind.Serialization.Rlp
 {
     public class HeaderDecoder : IRlpValueDecoder<BlockHeader>, IRlpStreamDecoder<BlockHeader>
     {
+        [DynamicDependency(DynamicallyAccessedMemberTypes.PublicConstructors, typeof(HeaderDecoder))]
+        public HeaderDecoder()
+        {
+
+        }
+
         public const int NonceLength = 8;
 
         public BlockHeader? Decode(ref Rlp.ValueDecoderContext decoderContext,

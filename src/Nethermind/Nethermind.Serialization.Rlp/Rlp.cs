@@ -1932,7 +1932,7 @@ namespace Nethermind.Serialization.Rlp
 
         public bool Equals(RlpDecoderKey other) => _type.Equals(other._type) && _key.Equals(other._key);
 
-        public override int GetHashCode() => (int)BitOperations.Crc32C(
+        public override int GetHashCode() => (int)HashCode.Combine(
             (uint)_type.GetHashCode(),
             (uint)MemoryMarshal.AsBytes(_key.AsSpan()).FastHash());
 

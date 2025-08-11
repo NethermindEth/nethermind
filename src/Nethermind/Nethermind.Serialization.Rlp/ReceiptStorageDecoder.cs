@@ -3,6 +3,7 @@
 
 using System;
 using System.Collections.Generic;
+using System.Diagnostics.CodeAnalysis;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 
@@ -22,6 +23,7 @@ namespace Nethermind.Serialization.Rlp
         }
 
         // Used by Rlp decoders discovery
+        [DynamicDependency(DynamicallyAccessedMemberTypes.PublicConstructors, typeof(ReceiptStorageDecoder))]
         public ReceiptStorageDecoder() : this(true)
         {
         }
