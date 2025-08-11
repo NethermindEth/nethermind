@@ -141,16 +141,9 @@ public class GethStyleTracer(
         ArgumentNullException.ThrowIfNull(options);
 
         var block = blockTree.FindBlock(blockHash) ?? throw new InvalidOperationException($"No historical block found for {blockHash}");
+        var parent = FindParent(block);
 
-        if (!block.IsGenesis)
-        {
-            var parent = blockTree.FindParentHeader(block.Header, BlockTreeLookupOptions.None);
-
-            if (parent?.Hash is null)
-                throw new InvalidOperationException("Cannot trace blocks with invalid parents");
-        }
-
-        using var scope = blockProcessingEnv.BuildAndOverride(block.Header, options.StateOverrides);
+        using var scope = blockProcessingEnv.BuildAndOverride(parent, options.StateOverrides);
         var tracer = new GethLikeBlockFileTracer(block, options, fileSystem);
         scope.Component.BlockchainProcessor.Process(block, ProcessingOptions.Trace, tracer.WithCancellation(cancellationToken), cancellationToken);
 
@@ -166,8 +159,8 @@ public class GethStyleTracer(
                         .GetAll()
                         .FirstOrDefault(b => b.Hash == blockHash)
                     ?? throw new InvalidOperationException($"No historical block found for {blockHash}");
-
-        using var scope = blockProcessingEnv.BuildAndOverride(block.Header, options.StateOverrides);
+        var parent = FindParent(block);
+        using var scope = blockProcessingEnv.BuildAndOverride(parent, options.StateOverrides);
         var tracer = new GethLikeBlockFileTracer(block, options, fileSystem);
         scope.Component.BlockchainProcessor.Process(block, ProcessingOptions.Trace, tracer.WithCancellation(cancellationToken), cancellationToken);
 
@@ -179,7 +172,19 @@ public class GethStyleTracer(
     {
         ArgumentNullException.ThrowIfNull(txHash);
 
-        using var scope = blockProcessingEnv.BuildAndOverride(block.Header, options.StateOverrides);
+        // Previously, when the processing options is not `TraceTransaction`, the base block is the parent of the block
+        // which is set by the `BranchProcessor`, which mean the state override probably does not take affect.
+        // However, when it is `TraceTransactioon`, it apply `ForceSameBlock` to `BlockchainProcessor` which will send the same
+        // block as the baseBlock, which is important as the stateroot of the baseblock is modified in `BuildAndOverride`.
+        //
+        // Wild stuff!
+        BlockHeader baseBlockHeader = block.Header;
+        if ((processingOptions & ProcessingOptions.ForceSameBlock) == 0)
+        {
+            baseBlockHeader = FindParent(block);
+        }
+
+        using var scope = blockProcessingEnv.BuildAndOverride(baseBlockHeader, options.StateOverrides);
         IBlockTracer<GethLikeTxTrace> tracer = CreateOptionsTracer(block.Header, options with { TxHash = txHash }, scope.Component.WorldState, specProvider);
 
         try
@@ -206,18 +211,9 @@ public class GethStyleTracer(
     {
         ArgumentNullException.ThrowIfNull(block);
 
-        if (!block.IsGenesis)
-        {
-            BlockHeader? parent = blockTree.FindParentHeader(block.Header, BlockTreeLookupOptions.None);
-            if (parent?.Hash is null)
-            {
-                throw new InvalidOperationException("Cannot trace blocks with invalid parents");
-            }
+        var parent = FindParent(block);
+        using var scope = blockProcessingEnv.BuildAndOverride(parent, options.StateOverrides);
 
-            if (!blockTree.IsMainChain(parent.Hash)) throw new InvalidOperationException("Cannot trace orphaned blocks");
-        }
-
-        using var scope = blockProcessingEnv.BuildAndOverride(block.Header, options.StateOverrides);
         IBlockTracer<GethLikeTxTrace> tracer = CreateOptionsTracer(block.Header, options, scope.Component.WorldState, specProvider);
         try
         {
@@ -231,6 +227,21 @@ public class GethStyleTracer(
         }
     }
 
+    private BlockHeader? FindParent(Block block)
+    {
+        BlockHeader? parent = null;
+
+        if (!block.IsGenesis)
+        {
+            parent = blockTree.FindParentHeader(block.Header, BlockTreeLookupOptions.None);
+
+            if (parent?.Hash is null)
+                throw new InvalidOperationException("Cannot trace blocks with invalid parents");
+        }
+
+        return parent;
+    }
+
     private static Block GetBlockToTrace(Rlp blockRlp)
     {
         Block block = Rlp.Decode<Block>(blockRlp);
@@ -242,5 +253,5 @@ public class GethStyleTracer(
         return block;
     }
 
-    public record BlockProcessingComponents(IWorldState WorldState, IBlockchainProcessor BlockchainProcessor);
+    public record BlockProcessingComponents(IWorldState WorldState, BlockchainProcessorFacade BlockchainProcessor);
 }
