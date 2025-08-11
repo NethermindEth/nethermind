@@ -159,5 +159,7 @@ namespace Nethermind.Specs
         Array? IReleaseSpec.EvmInstructionsTraced { get; set; }
         public bool IsEip7939Enabled { get; set; }
         public bool IsRip7728Enabled { get; set; }
+
+        public bool IsEip7928Enabled { get; set; }
     }
 }
