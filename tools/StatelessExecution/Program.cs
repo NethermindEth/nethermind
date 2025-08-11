@@ -13,6 +13,7 @@ using Nethermind.Specs;
 using Nethermind.Consensus.Stateless;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
+using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.Trie;
 
@@ -323,7 +324,7 @@ class Program
         if (baseBlock is null)
         {
             // Invalid witness headers
-            return 1;
+            return 4;
         }
 
         Transaction[] transactions = new Transaction[suggestedBlockForRpc.Transactions.Length];
@@ -349,14 +350,14 @@ class Program
             if (processed.Hash != suggestedBlock.Hash)
             {
                 // Invalid block
-                return 1;
+                return 2;
             }
             // Block processed successfully
         }
         catch (MissingTrieNodeException)
         {
             // Invalid proof
-            return 1;
+            return 3;
         }
 
         return 0;
