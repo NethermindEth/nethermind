@@ -137,7 +137,7 @@ public unsafe partial class VirtualMachineBase(
     /// <exception cref="EvmException">
     /// Thrown when an EVM-specific error occurs during execution.
     /// </exception>
-    public TransactionSubstate ExecuteTransaction<TTracingInst>(
+    public virtual TransactionSubstate ExecuteTransaction<TTracingInst>(
         EvmState evmState,
         IWorldState worldState,
         ITxTracer txTracer)
