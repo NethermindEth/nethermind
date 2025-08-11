@@ -17,7 +17,7 @@ public class BlockBodyDecoder : IRlpValueDecoder<BlockBody>, IRlpStreamDecoder<B
     public static BlockBodyDecoder Instance => _instance ??= new BlockBodyDecoder();
 
     // Cant set to private because of `Rlp.RegisterDecoder`.
-    [DynamicDependency(DynamicallyAccessedMemberTypes.PublicConstructors, typeof(AccountDecoder))]
+    [DynamicDependency(DynamicallyAccessedMemberTypes.PublicConstructors, typeof(BlockBodyDecoder))]
     public BlockBodyDecoder()
     {
     }

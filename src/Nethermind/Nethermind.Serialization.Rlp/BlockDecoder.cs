@@ -3,6 +3,7 @@
 
 using System;
 using System.Buffers;
+using System.Diagnostics.CodeAnalysis;
 using Nethermind.Core;
 
 namespace Nethermind.Serialization.Rlp
@@ -12,6 +13,11 @@ namespace Nethermind.Serialization.Rlp
         private readonly HeaderDecoder _headerDecoder = new();
         private readonly BlockBodyDecoder _blockBodyDecoder = BlockBodyDecoder.Instance;
 
+        [DynamicDependency(DynamicallyAccessedMemberTypes.PublicConstructors, typeof(BlockDecoder))]
+        public BlockDecoder()
+        {
+
+        }
         public Block? Decode(RlpStream rlpStream, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
         {
             if (rlpStream.Length == 0)
