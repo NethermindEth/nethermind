@@ -73,13 +73,14 @@ public class BlockHeader
     public Hash256? WithdrawalsRoot { get; set; }
     public Hash256? ParentBeaconBlockRoot { get; set; }
     public Hash256? RequestsHash { get; set; }
+    public Hash256? BlockAccessListHash { get; set; }
     public ulong? BlobGasUsed { get; set; }
     public ulong? ExcessBlobGas { get; set; }
     public bool HasBody => (TxRoot is not null && TxRoot != Keccak.EmptyTreeHash)
                            || (UnclesHash is not null && UnclesHash != Keccak.OfAnEmptySequenceRlp)
                            || (WithdrawalsRoot is not null && WithdrawalsRoot != Keccak.EmptyTreeHash);
 
-    public bool HasTransactions => (TxRoot is not null && TxRoot != Keccak.EmptyTreeHash);
+    public bool HasTransactions => TxRoot is not null && TxRoot != Keccak.EmptyTreeHash;
 
     public string SealEngineType { get; set; } = Core.SealEngineType.Ethash;
     public bool IsPostMerge { get; set; }
@@ -121,6 +122,10 @@ public class BlockHeader
         if (RequestsHash is not null)
         {
             builder.AppendLine($"{indent}RequestsHash: {RequestsHash}");
+        }
+        if (BlockAccessListHash is not null)
+        {
+            builder.AppendLine($"{indent}BlockAccessListHash: {BlockAccessListHash}");
         }
 
         return builder.ToString();
