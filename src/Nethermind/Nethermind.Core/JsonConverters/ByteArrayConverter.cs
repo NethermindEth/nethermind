@@ -88,19 +88,21 @@ public class ByteArrayConverter : JsonConverter<byte[]>
         if (odd == 1)
         {
             // If odd, we deal with the extra nibble, so we are left with an even number of nibbles
-            if (!sr.TryRead(out byte lastNibble))
+            if (!sr.TryRead(out byte firstNibble))
             {
                 ThrowInvalidOperationException();
             }
-            lastNibble = (byte)HexConverter.FromLowerChar(lastNibble | 0x20);
-            if (lastNibble > 0x0F)
+            firstNibble = (byte)HexConverter.FromLowerChar(firstNibble | 0x20);
+            if (firstNibble > 0x0F)
             {
                 ThrowFormatException();
             }
-            result[0] = lastNibble;
+            result[0] = firstNibble;
             output = output[1..];
         }
 
+        // Stackalloc outside of the loop to avoid stackoverflow.
+        Span<byte> twoNibbles = stackalloc byte[2];
         while (!sr.End)
         {
             ReadOnlySpan<byte> first = sr.UnreadSpan;
@@ -128,17 +130,15 @@ public class ByteArrayConverter : JsonConverter<byte[]>
                 ThrowInvalidOperationException();
             }
 
-            ushort twoNibbles = 0;
-            Span<byte> temp = MemoryMarshal.AsBytes(MemoryMarshal.CreateSpan(ref twoNibbles, 1));
-            if (!sr.TryCopyTo(temp))
+            if (!sr.TryCopyTo(twoNibbles))
             {
-                // Should not happen since take <= remaining; treat as fatal.
+                // Should not happen since CopyTo should copy 2 hex chars and bridge the spans.
                 ThrowInvalidOperationException();
             }
 
-            Bytes.FromUtf8HexString(temp, output[..1]);
+            Bytes.FromUtf8HexString(twoNibbles, output[..1]);
             output = output[1..];
-            sr.Advance(2);
+            sr.Advance(twoNibbles.Length);
         }
 
         if (!output.IsEmpty)
