@@ -1621,6 +1621,7 @@ namespace Nethermind.Blockchain
         public event EventHandler<BlockEventArgs>? NewSuggestedBlock;
 
         public event EventHandler<BlockEventArgs>? NewHeadBlock;
+        public event EventHandler<IBlockTree.ForkChoiceUpdateEventArgs>? OnForkChoiceUpdated;
 
         /// <summary>
         /// Can delete a slice of the chain (usually invoked when the chain is corrupted in the DB).
@@ -1750,6 +1751,14 @@ namespace Nethermind.Blockchain
                 _metadataDb.Set(MetadataDbKeys.SafeBlockHash, Rlp.Encode(SafeHash!).Bytes);
             }
             TryUpdateSyncPivot();
+
+            OnForkChoiceUpdated?.Invoke(
+                this,
+                new(
+                    Head,
+                    FindHeader(safeBlockHash, BlockTreeLookupOptions.DoNotCreateLevelIfMissing)?.Number ?? 0,
+                    FindHeader(FinalizedHash, BlockTreeLookupOptions.DoNotCreateLevelIfMissing)?.Number ?? 0)
+                );
         }
 
         public long GetLowestBlock() => _oldestBlock;

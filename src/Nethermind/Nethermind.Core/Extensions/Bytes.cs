@@ -1036,13 +1036,16 @@ namespace Nethermind.Core.Extensions
         [DebuggerStepThrough]
         public static byte[] FromUtf8HexString(scoped ReadOnlySpan<byte> hexString)
         {
-            if (hexString.Length == 0)
+            uint length = (uint)hexString.Length;
+            if (length == 0)
             {
                 return [];
             }
 
-            int oddMod = hexString.Length % 2;
-            byte[] result = GC.AllocateUninitializedArray<byte>((hexString.Length >> 1) + oddMod);
+            // length is the number of hex characters, so we divide by 2 to get the byte length.
+            // If the length is odd, we add 1 to round up; as one hex character represents half a byte.
+            length = (length >> 1) + (length & 1);
+            byte[] result = GC.AllocateUninitializedArray<byte>((int)length);
             FromUtf8HexString(hexString, result);
             return result;
         }

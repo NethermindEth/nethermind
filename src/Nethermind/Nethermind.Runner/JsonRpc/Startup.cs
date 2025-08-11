@@ -21,6 +21,7 @@ using Microsoft.AspNetCore.ResponseCompression;
 using Microsoft.AspNetCore.Server.Kestrel.Core;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
+using Microsoft.Extensions.Hosting.Internal;
 using Nethermind.Api;
 using Nethermind.Config;
 using Nethermind.Core.Authentication;
@@ -79,17 +80,18 @@ public class Startup : IStartup
 
     public void Configure(IApplicationBuilder app)
     {
-        var services = app.ApplicationServices;
+        IServiceProvider services = app.ApplicationServices;
         Configure(
             app,
             services.GetRequiredService<IWebHostEnvironment>(),
             services.GetRequiredService<IJsonRpcProcessor>(),
             services.GetRequiredService<IJsonRpcService>(),
             services.GetRequiredService<IJsonRpcLocalStats>(),
-            services.GetRequiredService<IJsonSerializer>());
+            services.GetRequiredService<IJsonSerializer>(),
+            services.GetRequiredService<ApplicationLifetime>());
     }
 
-    public void Configure(IApplicationBuilder app, IWebHostEnvironment env, IJsonRpcProcessor jsonRpcProcessor, IJsonRpcService jsonRpcService, IJsonRpcLocalStats jsonRpcLocalStats, IJsonSerializer jsonSerializer)
+    public void Configure(IApplicationBuilder app, IWebHostEnvironment env, IJsonRpcProcessor jsonRpcProcessor, IJsonRpcService jsonRpcService, IJsonRpcLocalStats jsonRpcLocalStats, IJsonSerializer jsonSerializer, ApplicationLifetime lifetime)
     {
         if (env.IsDevelopment())
         {
@@ -150,10 +152,15 @@ public class Startup : IStartup
                 {
                     if (logger.IsError) logger.Error("Unable to initialize health checks. Check if you have Nethermind.HealthChecks.dll in your plugins folder.", e);
                 }
+
+                IServiceProvider services = app.ApplicationServices;
+                endpoints.MapDataFeeds(lifetime);
             }
         });
 
-        app.Run(async ctx =>
+        app.MapWhen(
+            (ctx) => ctx.Request.ContentType?.Contains("application/json") ?? false,
+            builder => builder.Run(async ctx =>
         {
             var method = ctx.Request.Method;
             if (method is not "POST" and not "GET")
@@ -183,7 +190,8 @@ public class Startup : IStartup
                 }
             }
 
-            if (method == "GET")
+            if (method == "GET" && ctx.Request.Headers.Accept.Count > 0 &&
+                !ctx.Request.Headers.Accept[0].Contains("text/html", StringComparison.Ordinal))
             {
                 await ctx.Response.WriteAsync("Nethermind JSON RPC");
             }
@@ -298,7 +306,7 @@ public class Startup : IStartup
                 }
                 finally
                 {
-                    Interlocked.Add(ref Metrics.JsonRpcBytesReceivedHttp, ctx.Request.ContentLength ?? request.Length);
+                    Interlocked.Add(ref Nethermind.JsonRpc.Metrics.JsonRpcBytesReceivedHttp, ctx.Request.ContentLength ?? request.Length);
                 }
             }
             Task SerializeTimeoutException(CountingWriter resultStream)
@@ -314,7 +322,13 @@ public class Startup : IStartup
                 await jsonSerializer.SerializeAsync(ctx.Response.BodyWriter, response);
                 await ctx.Response.CompleteAsync();
             }
-        });
+        }));
+
+        if (healthChecksConfig.Enabled)
+        {
+            app.UseDefaultFiles();
+            app.UseStaticFiles();
+        }
     }
 
     /// <summary>

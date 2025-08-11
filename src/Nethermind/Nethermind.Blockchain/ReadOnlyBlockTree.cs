@@ -147,6 +147,12 @@ namespace Nethermind.Blockchain
             remove { }
         }
 
+        event EventHandler<IBlockTree.ForkChoiceUpdateEventArgs> IBlockTree.OnForkChoiceUpdated
+        {
+            add { }
+            remove { }
+        }
+
         public int DeleteChainSlice(in long startNumber, long? endNumber = null, bool force = false)
         {
             var bestKnownNumber = BestKnownNumber;

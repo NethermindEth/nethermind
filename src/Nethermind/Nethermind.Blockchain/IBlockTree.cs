@@ -182,6 +182,7 @@ namespace Nethermind.Blockchain
         /// the whole branch.
         /// </summary>
         event EventHandler<OnUpdateMainChainArgs> OnUpdateMainChain;
+        event EventHandler<ForkChoiceUpdateEventArgs> OnForkChoiceUpdated;
 
         int DeleteChainSlice(in long startNumber, long? endNumber = null, bool force = false);
 
@@ -199,6 +200,13 @@ namespace Nethermind.Blockchain
         /// Before sync pivot, there is no guarantee that blocks and receipts are available or continuous.
         /// </summary>
         (long BlockNumber, Hash256 BlockHash) SyncPivot { get; set; }
+
+        public readonly struct ForkChoiceUpdateEventArgs(Block? head, long safe, long finalized)
+        {
+            public readonly Block? Head => head;
+            public readonly long Safe => safe;
+            public readonly long Finalized => finalized;
+        }
         bool IsProcessingBlock { get; set; }
     }
 }

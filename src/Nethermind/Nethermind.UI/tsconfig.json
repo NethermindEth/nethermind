@@ -1,0 +1,24 @@
+{
+  "compileOnSave": true,
+  "compilerOptions": {
+    "noImplicitAny": false,
+    "noEmitOnError": true,
+    "removeComments": false,
+    "sourceMap": true,
+    "module": "System",
+    "moduleResolution": "node",
+    "target": "ES2024",
+    "lib": [
+      "ES2024",
+      "dom"
+    ],
+    "outFile": "../Nethermind.Runner/wwwroot/js"
+  },
+  "include": [
+    "scripts/**/*"
+  ],
+  "exclude": [
+    "node_modules",
+    "wwwroot"
+  ]
+}

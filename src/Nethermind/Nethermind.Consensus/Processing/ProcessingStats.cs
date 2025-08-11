@@ -4,25 +4,40 @@
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
+using System.Text.Json.Serialization;
 using System.Threading;
 using Microsoft.Extensions.ObjectPool;
 using Nethermind.Blockchain;
 using Nethermind.Config;
 using Nethermind.Core;
-using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Int256;
 using Nethermind.Logging;
-using Nethermind.Evm.State;
 using Nethermind.State;
 
 namespace Nethermind.Consensus.Processing
 {
+    public class BlockStatistics
+    {
+        public long BlockCount { get; internal set; }
+        public long BlockFrom { get; internal set; }
+        public long BlockTo { get; internal set; }
+        public double ProcessingMs { get; internal set; }
+        public double SlotMs { get; internal set; }
+        [JsonPropertyName("mgasPerSecond")]
+        public double MGasPerSecond { get; internal set; }
+        public float MinGas { get; internal set; }
+        public float MedianGas { get; internal set; }
+        public float AveGas { get; internal set; }
+        public float MaxGas { get; internal set; }
+        public long GasLimit { get; internal set; }
+    }
     //TODO Consult on disabling of such metrics from configuration
     internal class ProcessingStats
     {
         private static readonly DefaultObjectPool<BlockData> _dataPool = new(new BlockDataPolicy(), 16);
         private readonly Action<BlockData> _executeFromThreadPool;
+        public event EventHandler<BlockStatistics>? NewProcessingStatistics;
         private readonly IStateReader _stateReader;
         private readonly ILogger _logger;
         private readonly Stopwatch _runStopwatch = new();
@@ -226,7 +241,7 @@ namespace Nethermind.Consensus.Processing
                 if (_logger.IsError) _logger.Error("Error when calculating block rewards", ex);
             }
 
-            foreach (var tx in txs)
+            foreach (Transaction tx in txs)
             {
                 _chunkBlobs += tx.GetBlobCount();
             }
@@ -281,6 +296,22 @@ namespace Nethermind.Consensus.Processing
             double runMs = (data.RunMicroseconds == 0 ? -1 : data.RunMicroseconds / 1000.0);
             string blockGas = Evm.Metrics.BlockMinGasPrice != float.MaxValue ? $"⛽ Gas gwei: {Evm.Metrics.BlockMinGasPrice:N2} .. {whiteText}{Math.Max(Evm.Metrics.BlockMinGasPrice, Evm.Metrics.BlockEstMedianGasPrice):N2}{resetColor} ({Evm.Metrics.BlockAveGasPrice:N2}) .. {Evm.Metrics.BlockMaxGasPrice:N2}" : "";
             string mgasColor = whiteText;
+
+            NewProcessingStatistics?.Invoke(this, new BlockStatistics()
+            {
+                BlockCount = chunkBlocks,
+                BlockFrom = block.Number - chunkBlocks + 1,
+                BlockTo = block.Number,
+
+                ProcessingMs = chunkMs,
+                SlotMs = runMs,
+                MGasPerSecond = mgasPerSecond,
+                MinGas = Evm.Metrics.BlockMinGasPrice,
+                MedianGas = Math.Max(Evm.Metrics.BlockMinGasPrice, Evm.Metrics.BlockEstMedianGasPrice),
+                AveGas = Evm.Metrics.BlockAveGasPrice,
+                MaxGas = Evm.Metrics.BlockMaxGasPrice,
+                GasLimit = block.GasLimit
+            });
 
             _lastElapsedRunningMicroseconds = data.RunningMicroseconds;
 

@@ -45,14 +45,8 @@ public class TaikoBlockValidator(
             return true;
         }
 
-        if (block.TxRoot == Keccak.Zero)
+        if (block.Transactions.Length is not 0)
         {
-            if (block.Transactions.Length is 0)
-            {
-                errorMessage = "Missing required anchor transaction";
-                return false;
-            }
-
             if (!ValidateAnchorTransaction(block.Transactions[0], block, (ITaikoReleaseSpec)spec, out errorMessage))
                 return false;
         }
@@ -69,7 +63,7 @@ public class TaikoBlockValidator(
             return false;
         }
 
-        if (tx.To != spec.FeeCollector)
+        if (tx.To != spec.TaikoL2Address)
         {
             errorMessage = "Anchor transaction must target Taiko L2 address";
             return false;
@@ -102,15 +96,17 @@ public class TaikoBlockValidator(
             return false;
         }
 
-        tx.SenderAddress ??= ecdsa.RecoverAddress(tx);
+        // We dont set the tx.SenderAddress here, as it will stop the rest of the transactions in the block
+        // from getting their sender address recovered
+        Address? senderAddress = tx.SenderAddress ?? ecdsa.RecoverAddress(tx);
 
-        if (tx.SenderAddress is null)
+        if (senderAddress is null)
         {
             errorMessage = "Anchor transaction sender address is not recoverable";
             return false;
         }
 
-        if (!tx.SenderAddress!.Equals(GoldenTouchAccount))
+        if (!senderAddress.Equals(GoldenTouchAccount))
         {
             errorMessage = "Anchor transaction must be sent by the golden touch account";
             return false;
