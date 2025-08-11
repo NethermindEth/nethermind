@@ -1758,8 +1758,8 @@ namespace Nethermind.Blockchain
                 this,
                 new(
                     Head,
-                    FindHeader(safeBlockHash, BlockTreeLookupOptions.DoNotCreateLevelIfMissing)?.Number ?? 0,
-                    FindHeader(FinalizedHash, BlockTreeLookupOptions.DoNotCreateLevelIfMissing)?.Number ?? 0)
+                    _headerStore.GetBlockNumber(safeBlockHash) ?? 0,
+                    _headerStore.GetBlockNumber(FinalizedHash) ?? 0)
                 );
         }
 
