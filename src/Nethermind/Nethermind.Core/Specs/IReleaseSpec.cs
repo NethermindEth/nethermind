@@ -466,6 +466,8 @@ namespace Nethermind.Core.Specs
 
         public bool RequestsEnabled => ConsolidationRequestsEnabled || WithdrawalRequestsEnabled || DepositsEnabled;
 
+        bool BlockLevelAccessListsEnabled => IsEip7928Enabled;
+
         public bool IsEip7594Enabled { get; }
 
         /// <summary>
