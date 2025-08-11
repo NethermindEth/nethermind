@@ -878,9 +878,7 @@ namespace Nethermind.Evm.TransactionProcessing
         }
 
         protected virtual long CalculateClaimableRefund(long spentGas, long totalRefund, IReleaseSpec spec)
-        {
-            return RefundHelper.CalculateClaimableRefund(spentGas, totalRefund, spec);
-        }
+            => RefundHelper.CalculateClaimableRefund(spentGas, totalRefund, spec);
 
         [DoesNotReturn]
         [StackTraceHidden]
