@@ -1,36 +1,35 @@
 // SPDX-FileCopyrightText: 2024 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using Nethermind.Core.Caching;
-using Nethermind.Core.Crypto;
-using Nethermind.Logging;
-using NonBlocking;
+using Microsoft.Extensions.Logging;
+using Nethermind.Network.Discovery.Discv4;
+using System.Collections.Concurrent;
 
 namespace Nethermind.Network.Discovery.Kademlia;
 
-public class NodeHealthTracker<TKey, TNode>(
+public class NodeHealthTracker<TPublicKey, THash, TNode>(
     KademliaConfig<TNode> config,
-    IRoutingTable<TNode> routingTable,
-    INodeHashProvider<TNode> nodeHashProvider,
-    IKademliaMessageSender<TKey, TNode> kademliaMessageSender,
-    ILogManager logManager
-) : INodeHealthTracker<TNode> where TNode : notnull
+    IRoutingTable<THash, TNode> routingTable,
+    INodeHashProvider<THash, TNode> nodeHashProvider,
+    IKademliaMessageSender<TPublicKey, TNode> kademliaMessageSender,
+    ILoggerFactory logManager
+) : INodeHealthTracker<TNode> where TNode : notnull where THash : struct, IKademiliaHash<THash>
 {
-    private readonly ILogger _logger = logManager.GetClassLogger<NodeHealthTracker<TKey, TNode>>();
+    private readonly ILogger _logger = logManager.CreateLogger<NodeHealthTracker<TPublicKey, THash, TNode>>();
 
-    private readonly ConcurrentDictionary<ValueHash256, bool> _isRefreshing = new();
-    private readonly LruCache<ValueHash256, int> _peerFailures = new(1024, "peer failure");
-    private readonly ValueHash256 _currentNodeIdAsHash = nodeHashProvider.GetHash(config.CurrentNodeId);
+    private readonly ConcurrentDictionary<THash, bool> _isRefreshing = new();
+    private readonly LruCache<THash, int> _peerFailures = new(1024, "peer failure");
+    private readonly THash _currentNodeIdAsHash = nodeHashProvider.GetHash(config.CurrentNodeId);
     private readonly TimeSpan _refreshPingTimeout = config.RefreshPingTimeout;
 
     private bool SameAsSelf(TNode node)
     {
-        return nodeHashProvider.GetHash(node) == _currentNodeIdAsHash;
+        return nodeHashProvider.GetHash(node).Equals(_currentNodeIdAsHash);
     }
 
     private void TryRefresh(TNode toRefresh)
     {
-        ValueHash256 nodeHash = nodeHashProvider.GetHash(toRefresh);
+        THash nodeHash = nodeHashProvider.GetHash(toRefresh);
         if (_isRefreshing.TryAdd(nodeHash, true))
         {
             Task.Run(async () =>
@@ -56,7 +55,7 @@ public class NodeHealthTracker<TKey, TNode>(
                 catch (Exception e)
                 {
                     OnRequestFailed(toRefresh);
-                    if (_logger.IsDebug) _logger.Debug($"Error while refreshing node {toRefresh}, {e}");
+                    if (_logger.IsEnabled(LogLevel.Debug)) _logger.LogDebug($"Error while refreshing node {toRefresh}, {e}");
                 }
 
                 if (_isRefreshing.TryRemove(nodeHash, out _))
@@ -97,7 +96,7 @@ public class NodeHealthTracker<TKey, TNode>(
     /// <param name="node"></param>
     public void OnRequestFailed(TNode node)
     {
-        ValueHash256 hash = nodeHashProvider.GetHash(node);
+        THash hash = nodeHashProvider.GetHash(node);
         if (!_peerFailures.TryGet(hash, out var currentFailure))
         {
             _peerFailures.Set(hash, 1);

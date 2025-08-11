@@ -1,13 +1,10 @@
 // SPDX-FileCopyrightText: 2024 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System.Runtime.CompilerServices;
-using Nethermind.Core.Caching;
-using Nethermind.Core.Crypto;
-using Nethermind.Core.Extensions;
-using Nethermind.Logging;
+using Microsoft.Extensions.Logging;
 using Nethermind.Network.Discovery.Kademlia;
-using NonBlocking;
+using System.Collections.Concurrent;
+using System.Runtime.CompilerServices;
 
 namespace Nethermind.Network.Discovery.Discv4;
 
@@ -18,18 +15,18 @@ namespace Nethermind.Network.Discovery.Discv4;
 /// is to reach all node. The lookup is not parallelized as it is expected to be parallelized at a higher level with
 /// each worker having different target to look into.
 /// </summary>
-public class IteratorNodeLookup<TKey, TNode>(
-    IRoutingTable<TNode> routingTable,
+public class IteratorNodeLookup<TPublicKey, THash, TNode>(
+    IRoutingTable<THash, TNode> routingTable,
     KademliaConfig<TNode> kademliaConfig,
-    IKademliaMessageSender<TKey, TNode> msgSender,
-    IKeyOperator<TKey, TNode> keyOperator,
-    ILogManager logManager) : IIteratorNodeLookup<TKey, TNode> where TNode : notnull
+    IKademliaMessageSender<TPublicKey, TNode> msgSender,
+    IKeyOperator<TPublicKey, THash, TNode> keyOperator,
+    ILoggerFactory logManager) : IIteratorNodeLookup<TPublicKey, TNode> where TNode : notnull where THash : struct, IKademiliaHash<THash>
 {
-    private readonly ILogger _logger = logManager.GetClassLogger<IteratorNodeLookup<TKey, TNode>>();
-    private readonly ValueHash256 _currentNodeIdAsHash = keyOperator.GetNodeHash(kademliaConfig.CurrentNodeId);
+    private readonly ILogger _logger = logManager.CreateLogger<IteratorNodeLookup<TPublicKey, THash, TNode>>();
+    private readonly THash _currentNodeIdAsHash = keyOperator.GetNodeHash(kademliaConfig.CurrentNodeId);
 
     // Small lru of unreachable nodes, prevent retrying. Pretty effective, although does not improve discovery overall.
-    private readonly LruCache<ValueHash256, DateTimeOffset> _unreacheableNodes = new(256, "");
+    private readonly LruCache<THash, DateTimeOffset> _unreacheableNodes = new(256, "");
 
     // The maximum round per lookup. Higher means that it will 'see' deeper into the network, but come at a latency
     // cost of trying many node for increasingly lower new node.
@@ -41,28 +38,28 @@ public class IteratorNodeLookup<TKey, TNode>(
 
     private bool SameAsSelf(TNode node)
     {
-        return keyOperator.GetNodeHash(node) == _currentNodeIdAsHash;
+        return keyOperator.GetNodeHash(node).Equals(_currentNodeIdAsHash);
     }
 
-    public async IAsyncEnumerable<TNode> Lookup(TKey target, [EnumeratorCancellation] CancellationToken token)
+    public async IAsyncEnumerable<TNode> Lookup(TPublicKey target, [EnumeratorCancellation] CancellationToken token)
     {
-        ValueHash256 targetHash = keyOperator.GetKeyHash(target);
-        if (_logger.IsDebug) _logger.Debug($"Initiate lookup for hash {targetHash}");
+        THash targetHash = keyOperator.GetKeyHash(target);
+        if (_logger.IsEnabled(LogLevel.Debug)) _logger.LogDebug($"Initiate lookup for hash {targetHash}");
 
         using var cts = token.CreateChildTokenSource();
         token = cts.Token;
 
-        ConcurrentDictionary<ValueHash256, TNode> queried = new();
-        ConcurrentDictionary<ValueHash256, TNode> seen = new();
+        ConcurrentDictionary<THash, TNode> queried = new();
+        ConcurrentDictionary<THash, TNode> seen = new();
 
-        IComparer<ValueHash256> comparer = Comparer<ValueHash256>.Create((h1, h2) =>
-            Hash256XorUtils.Compare(h1, h2, targetHash));
+        IComparer<THash> comparer = Comparer<THash>.Create((h1, h2) =>
+            THash.Compare(h1, h2, targetHash));
 
         // Ordered by lowest distance. Will get popped for next round.
-        PriorityQueue<(ValueHash256, TNode), ValueHash256> queryQueue = new(comparer);
+        PriorityQueue<(THash, TNode), THash> queryQueue = new(comparer);
 
         // Used to determine if the worker should stop
-        ValueHash256 bestNodeId = ValueKeccak.Zero;
+        THash bestNodeId = THash.Zero;
         int closestNodeRound = 0;
         int currentRound = 0;
         int totalResult = 0;
@@ -70,14 +67,14 @@ public class IteratorNodeLookup<TKey, TNode>(
         // Check internal table first
         foreach (TNode node in routingTable.GetKNearestNeighbour(targetHash, null))
         {
-            ValueHash256 nodeHash = keyOperator.GetNodeHash(node);
+            THash nodeHash = keyOperator.GetNodeHash(node);
             seen.TryAdd(nodeHash, node);
 
             queryQueue.Enqueue((nodeHash, node), nodeHash);
 
             yield return node;
 
-            if (bestNodeId == ValueKeccak.Zero || comparer.Compare(nodeHash, bestNodeId) < 0)
+            if (bestNodeId.Equals(THash.Zero) || comparer.Compare(nodeHash, bestNodeId) < 0)
             {
                 bestNodeId = nodeHash;
             }
@@ -86,22 +83,22 @@ public class IteratorNodeLookup<TKey, TNode>(
         while (true)
         {
             token.ThrowIfCancellationRequested();
-            if (!queryQueue.TryDequeue(out (ValueHash256 hash, TNode node) toQuery, out ValueHash256 hash256))
+            if (!queryQueue.TryDequeue(out (THash hash, TNode node) toQuery, out THash hash256))
             {
                 // No node to query and running query.
-                if (_logger.IsTrace) _logger.Trace("Stopping lookup. No node to query.");
+                if (_logger.IsEnabled(LogLevel.Trace)) _logger.LogTrace("Stopping lookup. No node to query.");
                 yield break;
             }
 
             if (SameAsSelf(toQuery.node)) continue;
 
             queried.TryAdd(toQuery.hash, toQuery.node);
-            if (_logger.IsTrace) _logger.Trace($"Query {toQuery.node} at round {currentRound}");
+            if (_logger.IsEnabled(LogLevel.Trace)) _logger.LogTrace($"Query {toQuery.node} at round {currentRound}");
 
             TNode[]? neighbours = await FindNeighbour(toQuery.node, target, token);
             if (neighbours == null || neighbours?.Length == 0)
             {
-                if (_logger.IsTrace) _logger.Trace("Empty result");
+                if (_logger.IsEnabled(LogLevel.Trace)) _logger.LogTrace("Empty result");
                 continue;
             }
 
@@ -109,7 +106,7 @@ public class IteratorNodeLookup<TKey, TNode>(
             int seenIgnored = 0;
             foreach (TNode neighbour in neighbours!)
             {
-                ValueHash256 neighbourHash = keyOperator.GetNodeHash(neighbour);
+                THash neighbourHash = keyOperator.GetNodeHash(neighbour);
 
                 // Already queried, we ignore
                 if (queried.ContainsKey(neighbourHash))
@@ -135,24 +132,24 @@ public class IteratorNodeLookup<TKey, TNode>(
                 // This causes `ShouldStopDueToNoBetterResult` to return false.
                 if (closestNodeRound < currentRound && foundBetter)
                 {
-                    if (_logger.IsTrace)
-                        _logger.Trace($"Found better neighbour {neighbour} at round {currentRound}.");
+                    if (_logger.IsEnabled(LogLevel.Trace))
+                        _logger.LogTrace($"Found better neighbour {neighbour} at round {currentRound}.");
                     bestNodeId = neighbourHash;
                     closestNodeRound = currentRound;
                 }
             }
 
-            if (_logger.IsTrace)
-                _logger.Trace($"Count {neighbours.Length}, queried {queryIgnored}, seen {seenIgnored}");
+            if (_logger.IsEnabled(LogLevel.Trace))
+                _logger.LogTrace($"Count {neighbours.Length}, queried {queryIgnored}, seen {seenIgnored}");
 
             if (ShouldStop())
             {
-                if (_logger.IsTrace) _logger.Trace("Stopping lookup. No better result.");
+                if (_logger.IsEnabled(LogLevel.Trace)) _logger.LogTrace("Stopping lookup. No better result.");
                 break;
             }
         }
 
-        if (_logger.IsTrace) _logger.Trace("Lookup operation finished.");
+        if (_logger.IsEnabled(LogLevel.Trace)) _logger.LogTrace("Lookup operation finished.");
         yield break;
 
         bool ShouldStop()
@@ -165,7 +162,7 @@ public class IteratorNodeLookup<TKey, TNode>(
                 // Why not just _alpha?
                 // Because there could be currently running work that may increase closestNodeRound.
                 // So including this worker, assume no more
-                if (_logger.IsTrace) _logger.Trace($"No more closer node. Round: {round}, closestNodeRound {closestNodeRound}");
+                if (_logger.IsEnabled(LogLevel.Trace)) _logger.LogTrace($"No more closer node. Round: {round}, closestNodeRound {closestNodeRound}");
                 return true;
             }
 
@@ -178,7 +175,7 @@ public class IteratorNodeLookup<TKey, TNode>(
         }
     }
 
-    async Task<TNode[]?> FindNeighbour(TNode node, TKey target, CancellationToken token)
+    async Task<TNode[]?> FindNeighbour(TNode node, TPublicKey target, CancellationToken token)
     {
         try
         {
@@ -197,9 +194,64 @@ public class IteratorNodeLookup<TKey, TNode>(
         }
         catch (Exception e)
         {
-            if (_logger.IsDebug) _logger.Debug($"Find neighbour op failed. {e}");
+            if (_logger.IsEnabled(LogLevel.Debug)) _logger.LogDebug($"Find neighbour op failed. {e}");
             return null;
         }
     }
 
+}
+
+
+public static class CancellationTokenExtensions
+{
+    public readonly struct AutoCancelTokenSource(CancellationTokenSource cancellationTokenSource) : IDisposable
+    {
+        public AutoCancelTokenSource()
+            : this(new CancellationTokenSource())
+        {
+        }
+
+        public CancellationToken Token => cancellationTokenSource.Token;
+
+        public static AutoCancelTokenSource ThatCancelAfter(TimeSpan delay)
+        {
+            CancellationTokenSource cancellationTokenSource = new();
+            cancellationTokenSource.CancelAfter(delay);
+            return new AutoCancelTokenSource(cancellationTokenSource);
+        }
+
+        public void Dispose()
+        {
+            cancellationTokenSource.Cancel();
+            cancellationTokenSource.Dispose();
+        }
+
+        public async Task WhenAllSucceed(params IReadOnlyList<Task> allTasks)
+        {
+            CancellationTokenSource source = cancellationTokenSource;
+
+            await Task.WhenAll(allTasks.Select(CancelTokenSourceOnError));
+
+            async Task CancelTokenSourceOnError(Task innerTask)
+            {
+                try
+                {
+                    await innerTask;
+                }
+                catch (Exception)
+                {
+                    await source.CancelAsync();
+                    throw;
+                }
+            }
+        }
+    }
+
+    internal static AutoCancelTokenSource CreateChildTokenSource(this CancellationToken parentToken, TimeSpan delay = default)
+    {
+        CancellationTokenSource cts = CancellationTokenSource.CreateLinkedTokenSource(parentToken);
+        if (delay != TimeSpan.Zero) cts.CancelAfter(delay);
+
+        return new AutoCancelTokenSource(cts);
+    }
 }

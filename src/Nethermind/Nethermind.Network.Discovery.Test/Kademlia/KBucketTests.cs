@@ -1,14 +1,10 @@
 // SPDX-FileCopyrightText: 2024 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System;
 using System.Linq;
-using System.Threading;
-using System.Threading.Tasks;
 using FluentAssertions;
 using Nethermind.Core.Crypto;
 using Nethermind.Network.Discovery.Kademlia;
-using NSubstitute;
 using NUnit.Framework;
 
 namespace Nethermind.Network.Discovery.Test.Kademlia;
@@ -18,7 +14,7 @@ public class KBucketTests
     [Test]
     public void TryAddOrRefresh_ShouldLimitToK()
     {
-        KBucket<ValueHash256> bucket = new(5);
+        KBucket<ValueHash256, ValueHash256> bucket = new(5);
 
         ValueHash256[] toAdd = Enumerable.Range(0, 10).Select((k) => ValueKeccak.Compute(k.ToString())).ToArray();
 
@@ -46,7 +42,7 @@ public class KBucketTests
     [Test]
     public void TryAddOrRefresh_ShouldKeepSameCachedArray_WhenAddingSameNode()
     {
-        KBucket<ValueHash256> bucket = new(5);
+        KBucket<ValueHash256, ValueHash256> bucket = new(5);
 
         ValueHash256[] toAdd = Enumerable.Range(0, 10).Select((k) => ValueKeccak.Compute(k.ToString())).ToArray();
 
@@ -68,7 +64,7 @@ public class KBucketTests
     [Test]
     public void RemoteAndReplace_ShouldReplaceNodeWithLatestInReplacementCache()
     {
-        KBucket<ValueHash256> bucket = new(5);
+        KBucket<ValueHash256, ValueHash256> bucket = new(5);
 
         ValueHash256[] toAdd = Enumerable.Range(0, 10).Select((k) => ValueKeccak.Compute(k.ToString())).ToArray();
 

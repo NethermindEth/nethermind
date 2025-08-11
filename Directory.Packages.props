@@ -39,7 +39,7 @@
     <PackageVersion Include="Microsoft.CodeAnalysis.Analyzers" Version="4.14.0" />
     <PackageVersion Include="Microsoft.Extensions.DependencyInjection" Version="9.0.6" />
     <PackageVersion Include="Microsoft.Extensions.Logging" Version="8.0.0" />
-    <PackageVersion Include="Microsoft.Extensions.Logging.Abstractions" Version="9.0.6" />
+    <PackageVersion Include="Microsoft.Extensions.Logging.Abstractions" Version="9.0.7" />
     <PackageVersion Include="Microsoft.Extensions.Logging.Console" Version="9.0.6" />
     <PackageVersion Include="Microsoft.Extensions.ObjectPool" Version="9.0.6" />
     <PackageVersion Include="Microsoft.IdentityModel.JsonWebTokens" Version="8.12.1" />

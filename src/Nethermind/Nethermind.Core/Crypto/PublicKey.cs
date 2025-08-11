@@ -1,12 +1,11 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using Nethermind.Core.Extensions;
+using Nethermind.Serialization.Json;
 using System;
 using System.Text.Json.Serialization;
 using System.Threading;
-
-using Nethermind.Core.Extensions;
-using Nethermind.Serialization.Json;
 
 namespace Nethermind.Core.Crypto
 {
@@ -22,7 +21,7 @@ namespace Nethermind.Core.Crypto
         private readonly int _hashCode;
 
         public PublicKey(string? hexString)
-            : this(Core.Extensions.Bytes.FromHexString(hexString ?? throw new ArgumentNullException(nameof(hexString))))
+            : this(Extensions.Bytes.FromHexString(hexString ?? throw new ArgumentNullException(nameof(hexString))))
         {
         }
 
@@ -71,6 +70,8 @@ namespace Nethermind.Core.Crypto
         public byte[] Bytes { get; }
 
         public byte[] PrefixedBytes => _prefixedBytes ??= Core.Extensions.Bytes.Concat(0x04, Bytes);
+
+        public static PublicKey Zero => new(new byte[32]);
 
         public bool Equals(PublicKey? other) => other is not null && Core.Extensions.Bytes.AreEqual(Bytes, other.Bytes);
 

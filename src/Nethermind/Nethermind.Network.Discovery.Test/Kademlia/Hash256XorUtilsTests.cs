@@ -2,13 +2,8 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Numerics;
-using System.Runtime.Intrinsics;
 using FluentAssertions;
 using Nethermind.Core.Crypto;
-using Nethermind.Network.Discovery.Kademlia;
 using NUnit.Framework;
 
 namespace Nethermind.Network.Discovery.Test.Kademlia;
@@ -57,10 +52,10 @@ public class Hash256XorUtilsTests
               "0x000000000000000000000000000000000000000000000000000000000001000f", 17)]
     public void TestDistance(string hash1, string hash2, string xosString, int expectedDistance)
     {
-        ValueHash256 xor = Hash256XorUtils.XorDistance(new ValueHash256(hash1), new ValueHash256(hash2));
+        ValueHash256 xor = ValueHash256.XorDistance(new ValueHash256(hash1), new ValueHash256(hash2));
         xor.ToString().Should().Be(xosString.ToLower());
-        Hash256XorUtils.CalculateLogDistance(new ValueHash256(hash1), new ValueHash256(hash2)).Should().Be(expectedDistance);
-        Hash256XorUtils.CalculateLogDistance(new ValueHash256(hash2), new ValueHash256(hash1)).Should().Be(expectedDistance);
+        ValueHash256.CalculateLogDistance(new ValueHash256(hash1), new ValueHash256(hash2)).Should().Be(expectedDistance);
+        ValueHash256.CalculateLogDistance(new ValueHash256(hash2), new ValueHash256(hash1)).Should().Be(expectedDistance);
     }
 
     [Test]
@@ -72,8 +67,8 @@ public class Hash256XorUtilsTests
 
         void TestForDistance(int distance)
         {
-            var randHash = Hash256XorUtils.GetRandomHashAtDistance(randomized, distance, rand);
-            Hash256XorUtils.CalculateLogDistance(randomized, randHash).Should().Be(distance);
+            var randHash = ValueHash256.GetRandomHashAtDistance(randomized, distance, rand);
+            ValueHash256.CalculateLogDistance(randomized, randHash).Should().Be(distance);
         }
 
         for (int i = 1; i < 256; i++)
@@ -94,6 +89,6 @@ public class Hash256XorUtilsTests
         ValueHash256 h2 = new ValueHash256("0x0110000000000000000000000000000000000000000000000000000000000000");
         ValueHash256 h3 = new ValueHash256("0x0000000000000000000000000000000000000000000000000000000000000000");
 
-        Hash256XorUtils.Compare(h1, h2, h3).Should().BeLessThan(0);
+        ValueHash256.Compare(h1, h2, h3).Should().BeLessThan(0);
     }
 }

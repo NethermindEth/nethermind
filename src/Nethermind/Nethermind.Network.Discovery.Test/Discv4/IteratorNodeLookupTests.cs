@@ -7,9 +7,9 @@ using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using FluentAssertions;
+using Microsoft.Extensions.Logging;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Test.Builders;
-using Nethermind.Logging;
 using Nethermind.Network.Discovery.Discv4;
 using Nethermind.Network.Discovery.Kademlia;
 using Nethermind.Stats.Model;
@@ -22,8 +22,8 @@ namespace Nethermind.Network.Discovery.Test.Discv4
     [TestFixture]
     public class IteratorNodeLookupTests
     {
-        private IRoutingTable<Node> _routingTable = null!;
-        private IteratorNodeLookup<PublicKey, Node> _lookup = null!;
+        private IRoutingTable<ValueHash256, Node> _routingTable = null!;
+        private IteratorNodeLookup<PublicKey, ValueHash256, Node> _lookup = null!;
         private IKademliaMessageSender<PublicKey, Node> _msgSender = null!;
         private Node _currentNode = null!;
         private PublicKey _targetKey = null!;
@@ -34,12 +34,12 @@ namespace Nethermind.Network.Discovery.Test.Discv4
             _currentNode = new Node(TestItem.PublicKeyA, "192.168.1.1", 30303);
             _targetKey = TestItem.PublicKeyB;
 
-            _routingTable = Substitute.For<IRoutingTable<Node>>();
+            _routingTable = Substitute.For<IRoutingTable<ValueHash256, Node>>();
             KademliaConfig<Node> kademliaConfig = new KademliaConfig<Node> { CurrentNodeId = _currentNode };
             _msgSender = Substitute.For<IKademliaMessageSender<PublicKey, Node>>();
-            ILogManager logManager = Substitute.For<ILogManager>();
+            ILoggerFactory logManager = Substitute.For<ILoggerFactory>();
 
-            _lookup = new IteratorNodeLookup<PublicKey, Node>(
+            _lookup = new IteratorNodeLookup<PublicKey, ValueHash256, Node>(
                 _routingTable,
                 kademliaConfig,
                 _msgSender,

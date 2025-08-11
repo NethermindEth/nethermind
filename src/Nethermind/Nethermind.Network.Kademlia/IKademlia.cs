@@ -1,16 +1,14 @@
 // SPDX-FileCopyrightText: 2024 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using Nethermind.Core.Crypto;
-
 namespace Nethermind.Network.Discovery.Kademlia;
 
 /// <summary>
 /// Main kademlia interface. High level code is expected to interface with this interface.
 /// </summary>
-/// <typeparam name="TKey"></typeparam>
+/// <typeparam name="THash"></typeparam>
 /// <typeparam name="TNode"></typeparam>
-public interface IKademlia<TKey, TNode>
+public interface IKademlia<TPublicKey, TNode>
 {
     /// <summary>
     /// Add node to the table.
@@ -43,7 +41,7 @@ public interface IKademlia<TKey, TNode>
     /// <param name="targetHash"></param>
     /// <param name="token"></param>
     /// <param name="k"></param>
-    Task<TNode[]> LookupNodesClosest(TKey key, CancellationToken token, int? k = null);
+    Task<TNode[]> LookupNodesClosest(TPublicKey key, CancellationToken token, int? k = null);
 
     /// <summary>
     /// Return the K nearest table entry from target. This does not traverse the network. The returned array is not
@@ -52,7 +50,7 @@ public interface IKademlia<TKey, TNode>
     /// <param name="target"></param>
     /// <param name="excluding"></param>
     /// <param name="excludeSelf"></param>
-    TNode[] GetKNeighbour(TKey target, TNode? excluding = default, bool excludeSelf = false);
+    TNode[] GetKNeighbour(TPublicKey target, TNode? excluding = default, bool excludeSelf = false);
 
     /// <summary>
     /// Called when a TNode is added to the routing table.

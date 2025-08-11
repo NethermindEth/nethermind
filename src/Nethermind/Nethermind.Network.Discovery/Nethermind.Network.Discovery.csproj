@@ -1,4 +1,4 @@
-<Project Sdk="Microsoft.NET.Sdk">
+﻿<Project Sdk="Microsoft.NET.Sdk">
 
   <PropertyGroup>
     <ImplicitUsings>enable</ImplicitUsings>
@@ -10,6 +10,7 @@
     <ProjectReference Include="..\Nethermind.Crypto\Nethermind.Crypto.csproj" />
     <ProjectReference Include="..\Nethermind.Facade\Nethermind.Facade.csproj" />
     <ProjectReference Include="..\Nethermind.Network.Enr\Nethermind.Network.Enr.csproj" />
+    <ProjectReference Include="..\Nethermind.Network.Kademlia\Nethermind.Network.Discovery.Kademlia.csproj" />
     <ProjectReference Include="..\Nethermind.Network\Nethermind.Network.csproj" />
   </ItemGroup>
 

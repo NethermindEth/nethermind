@@ -32,9 +32,9 @@ public class DiscV4KademliaModule(PublicKey masterNode, IReadOnlyList<Node> boot
             .AddSingleton<NettyDiscoveryHandler>()
 
             // Register the main kademlia module and integration
-            .AddModule(new KademliaModule<PublicKey, Node>())
+            .AddModule(new KademliaModule<PublicKey, ValueHash256, Node>())
             .Bind<IKademliaMessageSender<PublicKey, Node>, IKademliaDiscv4Adapter>()
-            .AddSingleton<IKeyOperator<PublicKey, Node>, PublicKeyKeyOperator>()
+            .AddSingleton<IKeyOperator<PublicKey, ValueHash256, Node>, PublicKeyKeyOperator>()
             .AddSingleton<KademliaConfig<Node>, IDiscoveryConfig>((discoveryConfig) => new KademliaConfig<Node>()
             {
                 CurrentNodeId = new Node(masterNode, "127.0.0.1", 9999, true), // It actually only need masterNode.
