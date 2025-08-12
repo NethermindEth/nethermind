@@ -96,7 +96,7 @@ jobs:
         config: ${{fromJson(needs.setup-matrix.outputs.matrix)}}
 
     name: "Run sync of ${{ matrix.config.network }} chain"
-    runs-on: t-${{ github.run_id }}-${{ matrix.config.network }}
+    runs-on: t-${{ github.run_id }}-${{ matrix.config.network }}${{ matrix.config.cl && '-' || '' }}${{ matrix.config.cl }}
     timeout-minutes: ${{ matrix.config.timeout }}
 
     steps:
@@ -360,8 +360,8 @@ jobs:
           linode_token: ${{ secrets.LINODE_TOKEN }}
           github_token: "${{ secrets.REPOSITORY_DISPATCH_TOKEN }}"
           action: "destroy-machine-async"
-          runner_label: t-${{ github.run_id }}-${{ matrix.config.network }}
-          search_phrase: t-${{ github.run_id }}-${{ matrix.config.network }}
+          runner_label: t-${{ github.run_id }}-${{ matrix.config.network }}${{ matrix.config.cl && '-' || '' }}${{ matrix.config.cl }}
+          search_phrase: t-${{ github.run_id }}-${{ matrix.config.network }}${{ matrix.config.cl && '-' || '' }}${{ matrix.config.cl }}
           root_password: ${{ secrets.LINODE_ROOT_PASSWORD }}
           organization: "NethermindEth"
           repo_name: "nethermind"
