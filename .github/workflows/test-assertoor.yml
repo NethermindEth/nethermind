@@ -21,12 +21,12 @@ jobs:
         private-key: ${{ secrets.APP_PRIVATE_KEY }}
         
     - name: Checkout this repository
-      uses: actions/checkout@v4
+      uses: actions/checkout@v5
       with:
         path: main-repo
 
     - name: Checkout assertoor-test repository
-      uses: actions/checkout@v4
+      uses: actions/checkout@v5
       with:
         repository: kamilchodola/assertoor-test
         path: assertoor-test

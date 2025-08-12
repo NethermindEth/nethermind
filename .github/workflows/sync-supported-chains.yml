@@ -32,7 +32,7 @@ jobs:
       matrix: ${{ steps.set-matrix.outputs.matrix }}
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
         with:
           path: nethermind
           ref: ${{ github.event.workflow_run.head_branch || github.ref_name || 'master' }}
@@ -105,13 +105,13 @@ jobs:
           repositories: "nethermind,post-merge-smoke-tests"
 
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
         with:
           clean: true
           ref: ${{ github.event.workflow_run.head_branch || github.ref_name || 'master' }}
 
       - name: Checkout tests repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
         with:
           repository: NethermindEth/post-merge-smoke-tests
           path: tests
