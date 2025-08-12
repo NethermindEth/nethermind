@@ -84,7 +84,7 @@ namespace Nethermind.Trie
             }
 
             // Process any remaining bytes that were not handled by SIMD.
-            for (int i = length; i < bytes.Length; i++)
+            for (int i = Vector128.IsHardwareAccelerated ? length : 0; i < bytes.Length; i++)
             {
                 // We use Unsafe here as we have verified all the bounds above and also only go to length
                 // However the loop doesn't start a 0 and the nibbles span access is complex (rather than just i)
