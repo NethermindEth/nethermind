@@ -388,8 +388,8 @@ jobs:
           linode_token: ${{ secrets.LINODE_TOKEN }}
           github_token: "${{ steps.gh-app.outputs.token }}"
           action: "destroy-machine"
-          runner_label: t-${{ github.run_id }}-${{ matrix.config.network }}
-          search_phrase: t-${{ github.run_id }}-${{ matrix.config.network }}
+          runner_label: t-${{ github.run_id }}-${{ matrix.config.network }}${{ matrix.config.cl && '-' || '' }}${{ matrix.config.cl }}
+          search_phrase: t-${{ github.run_id }}-${{ matrix.config.network }}${{ matrix.config.cl && '-' || '' }}${{ matrix.config.cl }}
           root_password: ${{ secrets.LINODE_ROOT_PASSWORD }}
           organization: "NethermindEth"
           repo_name: "nethermind"
@@ -400,33 +400,8 @@ jobs:
           linode_token: ${{ secrets.LINODE_TOKEN }}
           github_token: "${{ steps.gh-app.outputs.token }}"
           action: "destroy-runner"
-          runner_label: t-${{ github.run_id }}-${{ matrix.config.network }}
-          search_phrase: t-${{ github.run_id }}-${{ matrix.config.network }}
+          runner_label: t-${{ github.run_id }}-${{ matrix.config.network }}${{ matrix.config.cl && '-' || '' }}${{ matrix.config.cl }}
+          search_phrase: t-${{ github.run_id }}-${{ matrix.config.network }}${{ matrix.config.cl && '-' || '' }}${{ matrix.config.cl }}
           root_password: ${{ secrets.LINODE_ROOT_PASSWORD }}
           organization: "NethermindEth"
           repo_name: "nethermind"
-  trigger_tests:
-    needs: [setup-matrix, create_a_runner, sync-chain, destroy_runner]
-    if: success()
-    runs-on: ubuntu-latest
-    steps:
-      - name: Authenticate App
-        id: gh-app
-        uses: actions/create-github-app-token@v1
-        with:
-          app-id: ${{ vars.APP_ID }}
-          private-key: ${{ secrets.APP_PRIVATE_KEY }}
-          repositories: "nethermind,post-merge-smoke-tests"
-
-      - name: Trigger notification action on test repo
-        if: startsWith(github.event.workflow_run.head_branch, 'release/')
-        continue-on-error: true
-        uses: benc-uk/workflow-dispatch@v1
-        with:
-          workflow: receive-push-notification.yml
-          repo: NethermindEth/post-merge-smoke-tests
-          ref: "main"
-          token: "${{ steps.gh-app.outputs.token }}"
-          inputs: '{
-            "nethermind_branch": "refs/heads/${{ github.event.workflow_run.head_branch }}"
-          }'
