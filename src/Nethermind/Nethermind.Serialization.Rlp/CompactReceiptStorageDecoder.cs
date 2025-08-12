@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Diagnostics.CodeAnalysis;
 using System.Linq;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
@@ -15,11 +16,13 @@ namespace Nethermind.Serialization.Rlp
     [Decoder(RlpDecoderKey.Storage)]
     public class CompactReceiptStorageDecoder : IRlpStreamDecoder<TxReceipt>, IRlpValueDecoder<TxReceipt>, IRlpObjectDecoder<TxReceipt>, IReceiptRefDecoder
     {
-        public static readonly CompactReceiptStorageDecoder Instance = new();
-
+        [DynamicDependency(DynamicallyAccessedMemberTypes.PublicConstructors, typeof(CompactReceiptStorageDecoder))]
         public CompactReceiptStorageDecoder()
         {
+
         }
+
+        public static readonly CompactReceiptStorageDecoder Instance = new();
 
         public TxReceipt? Decode(RlpStream rlpStream, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
         {

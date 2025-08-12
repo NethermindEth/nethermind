@@ -2,12 +2,15 @@ ROOT_DIR := $(shell pwd)
 PARENT_DIR := $(shell dirname "$(ROOT_DIR)")
 ARTIFACTS_DIR := $(PARENT_DIR)/artifacts/bin/StatelessExecution/release
 
-.PHONY: all build-tool-local build-riscv
+.PHONY: all build-tool-local build-riscv publish-aot run-docker
 
 all: build-tool-local build-riscv execute-riscv
 
 build-tool-local:
 	dotnet build -c release .
+
+run-docker:
+	docker run -v $(ARTIFACTS_DIR):/nethermind -v $(ROOT_DIR):$(ROOT_DIR) -w $(ROOT_DIR) -it maximmenshikov/bflat-riscv64  /bin/bash
 
 build-riscv:
 		docker run -v $(ARTIFACTS_DIR):/nethermind -v $(ROOT_DIR):$(ROOT_DIR) -w $(ROOT_DIR) -it maximmenshikov/bflat-riscv64 bflat build --arch riscv64 --os linux --no-debug-info -x --no-pthread --no-pie --libc musl \
@@ -90,3 +93,6 @@ build-riscv:
 
 execute-riscv:
 	DOTNET_SYSTEM_GLOBALIZATION_INVARIANT=1 ./Program
+
+publish-aot:
+	dotnet publish -c Release -r linux-x64 --self-contained true -p:PublishAot=true

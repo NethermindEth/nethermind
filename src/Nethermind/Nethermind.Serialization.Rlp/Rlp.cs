@@ -164,16 +164,11 @@ namespace Nethermind.Serialization.Rlp
                             using Lock.Scope _ = _decoderLock.EnterScope();
                             if (!_decoderBuilder.TryGetValue(key, out IRlpDecoder? value) || canOverrideExistingDecoders)
                             {
-                                try
-                                {
+
                                     _decoderBuilder[key] = instance ??= (IRlpDecoder)(type.GetConstructor(Type.EmptyTypes) is not null ?
                                         Activator.CreateInstance(type) :
                                         Activator.CreateInstance(type, BindingFlags.CreateInstance | BindingFlags.OptionalParamBinding, null, [Type.Missing], null));
-                                }
-                                catch (Exception)
-                                {
-                                    throw new ArgumentException($"Unable to set decoder for {key}, because {type} decoder has no suitable constructor.");
-                                }
+
                             }
                             else
                             {
@@ -1937,7 +1932,7 @@ namespace Nethermind.Serialization.Rlp
 
         public bool Equals(RlpDecoderKey other) => _type.Equals(other._type) && _key.Equals(other._key);
 
-        public override int GetHashCode() => (int)BitOperations.Crc32C(
+        public override int GetHashCode() => (int)HashCode.Combine(
             (uint)_type.GetHashCode(),
             (uint)MemoryMarshal.AsBytes(_key.AsSpan()).FastHash());
 

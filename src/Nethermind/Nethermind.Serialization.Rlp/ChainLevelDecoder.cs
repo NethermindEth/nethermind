@@ -12,6 +12,13 @@ namespace Nethermind.Serialization.Rlp
 {
     public class ChainLevelDecoder : IRlpStreamDecoder<ChainLevelInfo>, IRlpValueDecoder<ChainLevelInfo>
     {
+
+        [DynamicDependency(DynamicallyAccessedMemberTypes.PublicConstructors, typeof(ChainLevelDecoder))]
+        public ChainLevelDecoder()
+        {
+
+        }
+
         public ChainLevelInfo? Decode(RlpStream rlpStream, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
         {
             if (rlpStream.Length == 0)

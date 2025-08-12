@@ -4,6 +4,8 @@
     <Nullable>enable</Nullable>
   </PropertyGroup>
 
+  <PropertyGroup><TreatWarningsAsErrors>false</TreatWarningsAsErrors></PropertyGroup>
+
   <ItemGroup>
     <PackageReference Include="Autofac" />
     <PackageReference Include="Autofac.Extensions.DependencyInjection" />
