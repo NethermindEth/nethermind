@@ -14,7 +14,9 @@ using Nethermind.Core;
 using Nethermind.Core.ServiceStopper;
 using Nethermind.Core.Specs;
 using Nethermind.Crypto;
+using Nethermind.Db;
 using Nethermind.Era1;
+using Nethermind.History;
 using Nethermind.JsonRpc;
 using Nethermind.Logging;
 using Nethermind.Network.Config;
@@ -57,7 +59,7 @@ public class NethermindModule(ChainSpec chainSpec, IConfigProvider configProvide
             .AddSingleton<IBlobTxStorage, BlobTxStorage>()
 
             .AddKeyedSingleton<IProtectedPrivateKey>(IProtectedPrivateKey.NodeKey, (ctx) => ctx.Resolve<INethermindApi>().NodeKey!)
-            .AddSingleton<IAbiEncoder>(Nethermind.Abi.AbiEncoder.Instance)
+            .AddSingleton<IAbiEncoder>(AbiEncoder.Instance)
             .AddSingleton<IEciesCipher, EciesCipher>()
             .AddSingleton<ICryptoRandom, CryptoRandom>()
 
@@ -66,6 +68,8 @@ public class NethermindModule(ChainSpec chainSpec, IConfigProvider configProvide
             .AddSingleton<IReceiptFinder, FullInfoReceiptFinder>()
             .AddSingleton<IEthereumEcdsa, ISpecProvider>((specProvider) => new EthereumEcdsa(specProvider.ChainId))
             .Bind<IEcdsa, IEthereumEcdsa>()
+
+            .AddSingleton<IHistoryPruner, HistoryPruner>()
 
             .AddSingleton<IChainHeadSpecProvider, ChainHeadSpecProvider>()
             .AddSingleton<IChainHeadInfoProvider, ChainHeadInfoProvider>()

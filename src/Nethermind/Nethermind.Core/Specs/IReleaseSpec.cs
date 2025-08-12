@@ -17,6 +17,7 @@ namespace Nethermind.Core.Specs
         //EIP-3860: Limit and meter initcode
         long MaxInitCodeSize => 2 * MaxCodeSize;
         long MinGasLimit { get; }
+        long MinHistoryRetentionEpochs { get; }
         long GasLimitBoundDivisor { get; }
         UInt256 BlockReward { get; }
         long DifficultyBombDelay { get; }
