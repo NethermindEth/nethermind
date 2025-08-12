@@ -21,8 +21,9 @@ on:
         default: ""
         required: false
       matrix_file:
-        descript: "File to be chosen for testing"
+        description: "File to be chosen for testing"
         default: "scripts/config/testnet-matrix.json"
+        required: true
 
 env:
   DOTNET_SYSTEM_CONSOLE_ALLOW_ANSI_COLOR_REDIRECTION: "1"
