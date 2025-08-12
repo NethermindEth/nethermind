@@ -78,7 +78,7 @@ jobs:
           linode_token: ${{ secrets.LINODE_TOKEN }}
           github_token: "${{ steps.gh-app.outputs.token }}"
           action: "create"
-          runner_label: t-${{ github.run_id }}-${{ matrix.config.network }}
+          runner_label: t-${{ github.run_id }}-${{ matrix.config.network }}${{ matrix.config.cl && '-' || '' }}${{ matrix.config.cl }}
           root_password: ${{ secrets.LINODE_ROOT_PASSWORD }}
           machine_type: "${{ matrix.config.agent }}"
           image: "linode/ubuntu24.04"
@@ -287,7 +287,7 @@ jobs:
               --logging none \
               -p $GITHUB_WORKSPACE/sedge \
               full-node \
-              -c ${{ matrix.config.cl }}:${{ matrix.config.cl_image }} \
+              -c ${{ matrix.config.cl }} \
               -e nethermind:$docker_image \
               --map-all \
               --no-mev-boost \
