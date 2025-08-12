@@ -2,8 +2,9 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.ComponentModel;
+using Nethermind.Config;
 
-namespace Nethermind.Config;
+namespace Nethermind.History;
 
 public interface IHistoryConfig : IConfig
 {
@@ -11,7 +12,7 @@ public interface IHistoryConfig : IConfig
 
     [ConfigItem(
         Description = "Pruning mode.",
-        DefaultValue = "UseAncientBarriers")]
+        DefaultValue = "Disabled")]
     PruningModes Pruning { get; set; }
 
     // For EIP-4444 should be 82125
