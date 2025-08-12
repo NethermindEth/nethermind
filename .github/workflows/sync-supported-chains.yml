@@ -20,6 +20,9 @@ on:
         description: "Usefull for manual execution on only specified networks - provide partial or full name. Will execute action only on networks which contains phrase."
         default: ""
         required: false
+      matrix_file:
+        descript: "File to be chosen for testing"
+        default: "scripts/config/testnet-matrix.json"
 
 env:
   DOTNET_SYSTEM_CONSOLE_ALLOW_ANSI_COLOR_REDIRECTION: "1"
@@ -39,7 +42,7 @@ jobs:
       - name: Set Matrix
         id: set-matrix
         run: |
-          matrix=$(cat nethermind/scripts/config/testnet-matrix.json)
+          matrix=$(cat "nethermind/${{ github.event.inputs.matrix_file }}")
 
           if [ -n "${{ github.event.inputs.network_filter }}" ]; then
             matrix=$(echo "$matrix" | jq --arg filter "${{ github.event.inputs.network_filter }}" '[.[] | select(.network | contains($filter))]')
