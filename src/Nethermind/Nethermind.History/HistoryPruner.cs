@@ -8,7 +8,6 @@ using System.Runtime.CompilerServices;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Blockchain;
-using Nethermind.Blockchain.Blocks;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Config;
@@ -260,7 +259,7 @@ public class HistoryPruner : IHistoryPruner
                     !TryLoadDeletePointer() ||
                     !ShouldPruneHistory(out ulong? cutoffTimestamp))
                 {
-                    _logger.Info($"[prune] Skipping historical block pruning.");
+                    if (_logger.IsDebug) _logger.Debug($"Skipping historical block pruning.");
                     return Task.CompletedTask;
                 }
 
@@ -271,7 +270,7 @@ public class HistoryPruner : IHistoryPruner
                     long? toDelete = cutoff - _deletePointer;
 
                     string cutoffString = cutoffTimestamp is null ? $"#{(cutoff is null ? "unknown" : cutoff)}" : $"timestamp {cutoffTimestamp} (#{(cutoff is null ? "unknown" : cutoff)})";
-                    _logger.Info($"[prune] Pruning historical blocks up to {cutoffString}. Estimated {(toDelete is null ? "unknown" : toDelete)} blocks will be deleted.");
+                    _logger.Info($"Pruning historical blocks up to {cutoffString}. Estimated {(toDelete is null ? "unknown" : toDelete)} blocks will be deleted.");
                 }
 
                 PruneBlocksAndReceipts(cutoffTimestamp, cancellationToken);
