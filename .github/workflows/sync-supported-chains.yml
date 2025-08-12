@@ -288,7 +288,6 @@ jobs:
               --logging none \
               -p $GITHUB_WORKSPACE/sedge \
               full-node \
-              -c ${{ matrix.config.cl }} \
               -e nethermind:$docker_image \
               --map-all \
               --no-mev-boost \
@@ -302,8 +301,7 @@ jobs:
               --el-extra-flag Sync.VerifyTrieOnStateSyncFinished=true \
               --el-extra-flag loggerConfigSource=/nethermind/data/logs/configs/customNLog.config \
               --el-extra-flag Sync.SnapSync=true \
-              "${GENERIC_METRICS_FLAGS[@]}" \
-              --checkpoint-sync-url=${{ matrix.config.checkpoint-sync-url }}
+              ${{ matrix.config.cl && format('-c {0}', matrix.config.cl) || '' }} ${{ matrix.config.checkpoint-sync-url && format('--checkpoint-sync-url={0}', matrix.config.checkpoint-sync-url) || '' }} "${GENERIC_METRICS_FLAGS[@]}" 
           fi
 
           echo 'Running sedge...'
