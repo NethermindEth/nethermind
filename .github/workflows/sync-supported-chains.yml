@@ -229,6 +229,7 @@ jobs:
               --network $stripped_network \
               --consensus-url $CONSENSUS_URL \
               --execution-api-url $EXECUTION_URL \
+              --latest \
               --el-op-extra-flag Sync.NonValidatorNode=true \
               --el-op-extra-flag Sync.DownloadBodiesInFastSync=false \
               --el-op-extra-flag Sync.DownloadReceiptsInFastSync=false \
@@ -266,6 +267,7 @@ jobs:
               --network $stripped_network \
               --consensus-url $CONSENSUS_URL \
               --execution-api-url $EXECUTION_URL \
+              --latest \
               --el-l2-extra-flag Sync.NonValidatorNode=true \
               --el-l2-extra-flag Sync.DownloadBodiesInFastSync=false \
               --el-l2-extra-flag Sync.DownloadReceiptsInFastSync=false \
@@ -288,6 +290,7 @@ jobs:
               --no-mev-boost \
               --no-validator \
               --network ${{ matrix.config.network }} \
+              --latest \
               --el-extra-flag Sync.NonValidatorNode=true \
               --el-extra-flag Sync.DownloadBodiesInFastSync=false \
               --el-extra-flag Sync.DownloadReceiptsInFastSync=false \
