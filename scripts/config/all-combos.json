@@ -78,7 +78,7 @@
   },
   {
     "network": "chiado",
-    "cl": "ligthouse",
+    "cl": "lighthouse",
     "checkpoint-sync-url": "http://139.144.26.89:4000/",
     "timeout": 180,
     "agent": "g6-standard-6"
