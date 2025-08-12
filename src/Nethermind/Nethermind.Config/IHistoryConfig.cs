@@ -11,7 +11,7 @@ public interface IHistoryConfig : IConfig
 
     [ConfigItem(
         Description = "Pruning mode.",
-        DefaultValue = "UseAncientBarriers")]
+        DefaultValue = "Disabled")]
     PruningModes Pruning { get; set; }
 
     // For EIP-4444 should be 82125
