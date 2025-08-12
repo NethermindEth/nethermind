@@ -51,6 +51,7 @@ namespace Nethermind.Consensus.Processing
         private long _startSLoadOps;
         private long _startSStoreOps;
         private long _startSelfDestructOps;
+        private long _startOpCodes;
         private long _startCreateOps;
         private long _startContractsAnalyzed;
         private long _startCachedContractsUsed;
@@ -59,6 +60,7 @@ namespace Nethermind.Consensus.Processing
         private long _chunkTx;
         private long _chunkBlobs;
         private long _chunkBlocks;
+        private long _opCodes;
         private long _callOps;
         private long _emptyCalls;
         private long _sLoadOps;
@@ -92,6 +94,7 @@ namespace Nethermind.Consensus.Processing
             _startContractsAnalyzed = Evm.Metrics.ThreadLocalContractsAnalysed;
             _startCreateOps = Evm.Metrics.ThreadLocalCreates;
             _startSelfDestructOps = Evm.Metrics.ThreadLocalSelfDestructs;
+            _startOpCodes = Evm.Metrics.ThreadLocalOpCodes;
         }
 
         public void UpdateStats(Block? block, BlockHeader? baseBlock, long blockProcessingTimeInMicros)
@@ -108,6 +111,7 @@ namespace Nethermind.Consensus.Processing
             blockData.BaseBlock = baseBlock;
             blockData.RunningMicroseconds = _runStopwatch.ElapsedMicroseconds();
             blockData.RunMicroseconds = (_runStopwatch.ElapsedMicroseconds() - _lastElapsedRunningMicroseconds);
+            blockData.StartOpCodes = _startOpCodes;
             blockData.StartSLoadOps = _startSLoadOps;
             blockData.StartSStoreOps = _startSStoreOps;
             blockData.StartCallOps = _startCallOps;
@@ -117,6 +121,7 @@ namespace Nethermind.Consensus.Processing
             blockData.StartCreateOps = _startCreateOps;
             blockData.StartSelfDestructOps = _startSelfDestructOps;
             blockData.ProcessingMicroseconds = blockProcessingTimeInMicros;
+            blockData.CurrentOpCodes = Evm.Metrics.ThreadLocalOpCodes;
             blockData.CurrentSLoadOps = Evm.Metrics.ThreadLocalSLoadOpcode;
             blockData.CurrentSStoreOps = Evm.Metrics.ThreadLocalSStoreOpcode;
             blockData.CurrentCallOps = Evm.Metrics.ThreadLocalCalls;
@@ -197,6 +202,7 @@ namespace Nethermind.Consensus.Processing
             Metrics.GasUsed = block.GasUsed;
             Metrics.GasLimit = block.GasLimit;
 
+            long chunkOpCodes = (_opCodes += data.CurrentOpCodes - data.StartOpCodes);
             long chunkCalls = (_callOps += data.CurrentCallOps - data.StartCallOps);
             long chunkEmptyCalls = (_emptyCalls += data.CurrentEmptyCalls - data.StartEmptyCalls);
             long chunkSload = (_sLoadOps += data.CurrentSLoadOps - data.StartSLoadOps);
@@ -266,6 +272,7 @@ namespace Nethermind.Consensus.Processing
             _chunkMGas = 0;
             _chunkTx = 0;
             _chunkProcessingMicroseconds = 0;
+            _opCodes = 0;
             _callOps = 0;
             _emptyCalls = 0;
             _sLoadOps = 0;
@@ -393,17 +400,17 @@ namespace Nethermind.Consensus.Processing
                 _logger.Info($" Block{(chunkBlocks > 1 ? $"s  x{chunkBlocks,-9:N0} " : $"{(isMev ? " mb" : "   ")} {rewards.ToDecimal(null) / weiToEth,6:N4}{BlocksConfig.GasTokenTicker,4}")}{(chunkBlocks == 1 ? mgasColor : "")} {chunkMGas,8:F2}{resetColor} MGas    | {chunkTx,8:N0}   txs | calls {callsColor}{chunkCalls,10:N0}{resetColor} {darkGreyText}({chunkEmptyCalls,3:N0}){resetColor} | sload {chunkSload,7:N0} | sstore {sstoreColor}{chunkSstore,6:N0}{resetColor} | create {createsColor}{chunkCreates,3:N0}{resetColor}{(chunkSelfDestructs > 0 ? $"{darkGreyText}({-chunkSelfDestructs,3:N0}){resetColor}" : "")}");
                 string blobsOrBlocksPerSec = _showBlobs switch
                 {
-                    true => $" blobs {blobs,10:N0}       ",
+                    true => $" blobs {blobs,3:N0} ",
                     _ => $"       {bps,10:F2} Blk/s "
                 };
 
                 if (recoveryQueue > 0 || processingQueue > 0)
                 {
-                    _logger.Info($" Block throughput {mgasPerSecondColor}{mgasPerSecond,11:F2}{resetColor} MGas/s{(mgasPerSecond > 1000 ? "🔥" : "  ")}| {txps,10:N1} tps |{blobsOrBlocksPerSec}| recover {recoveryQueue,5:N0} | process {processingQueue,5:N0}");
+                    _logger.Info($" Block throughput {mgasPerSecondColor}{mgasPerSecond,11:F2}{resetColor} MGas/s{(mgasPerSecond > 1000 ? "🔥" : "  ")}| {txps,10:N1} tps |{blobsOrBlocksPerSec}| recover {recoveryQueue,5:N0} | process {processingQueue,5:N0} | ops {chunkOpCodes,11:N0}");
                 }
                 else
                 {
-                    _logger.Info($" Block throughput {mgasPerSecondColor}{mgasPerSecond,11:F2}{resetColor} MGas/s{(mgasPerSecond > 1000 ? "🔥" : "  ")}| {txps,10:N1} tps |{blobsOrBlocksPerSec}| exec code {resetColor} from cache {cachedContractsUsed,7:N0} |{resetColor} new {contractsAnalysed,6:N0}");
+                    _logger.Info($" Block throughput {mgasPerSecondColor}{mgasPerSecond,11:F2}{resetColor} MGas/s{(mgasPerSecond > 1000 ? "🔥" : "  ")}| {txps,10:N1} tps |{blobsOrBlocksPerSec}| exec code{resetColor} cache {cachedContractsUsed,7:N0} |{resetColor} new {contractsAnalysed,6:N0} | ops {chunkOpCodes,11:N0}");
                 }
             }
 
@@ -449,6 +456,7 @@ namespace Nethermind.Consensus.Processing
         {
             public Block Block;
             public BlockHeader? BaseBlock;
+            public long CurrentOpCodes;
             public long CurrentSLoadOps;
             public long CurrentSStoreOps;
             public long CurrentCallOps;
@@ -460,6 +468,7 @@ namespace Nethermind.Consensus.Processing
             public long ProcessingMicroseconds;
             public long RunningMicroseconds;
             public long RunMicroseconds;
+            public long StartOpCodes;
             public long StartSelfDestructOps;
             public long StartCreateOps;
             public long StartContractsAnalyzed;

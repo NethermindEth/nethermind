@@ -107,6 +107,7 @@ public sealed unsafe partial class VirtualMachine(
 
     public EvmState EvmState { get => _currentState; private set => _currentState = value; }
     public int SectionIndex { get; set; }
+    public int OpCodeCount { get; set; }
 
     /// <summary>
     /// Executes a transaction by iteratively processing call frames until a top-level call returns
@@ -138,7 +139,7 @@ public sealed unsafe partial class VirtualMachine(
         // Prepare the specification and opcode mapping based on the current block header.
         IReleaseSpec spec = BlockExecutionContext.Spec;
         PrepareOpcodes<TTracingInst>(spec);
-
+        OpCodeCount = 0;
         // Initialize the code repository and set up the initial execution state.
         _codeInfoRepository = TxExecutionContext.CodeInfoRepository;
         _currentState = evmState;
@@ -1190,6 +1191,7 @@ public sealed unsafe partial class VirtualMachine(
         // Or have bounds checks (however only 256 opcodes and opcode is a byte so know always in bounds).
         fixed (OpCode* opcodeMethods = &_opcodeMethods[0])
         {
+            int opCodeCount = 0;
             ref Instruction code = ref MemoryMarshal.GetReference(codeSection);
             // Iterate over the instructions using a while loop because opcodes may modify the program counter.
             while ((uint)programCounter < (uint)codeSection.Length)
@@ -1211,6 +1213,7 @@ public sealed unsafe partial class VirtualMachine(
 
                 // Advance the program counter to point to the next instruction.
                 programCounter++;
+                opCodeCount++;
 
                 // For the very common POP opcode, use an inlined implementation to reduce overhead.
                 if (Instruction.POP == instruction)
@@ -1228,7 +1231,10 @@ public sealed unsafe partial class VirtualMachine(
 
                 // If gas is exhausted, jump to the out-of-gas handler.
                 if (gasAvailable < 0)
+                {
+                    OpCodeCount += opCodeCount;
                     goto OutOfGas;
+                }
                 // If an exception occurred, exit the loop.
                 if (exceptionType != EvmExceptionType.None)
                     break;
@@ -1241,6 +1247,7 @@ public sealed unsafe partial class VirtualMachine(
                 if (ReturnData is not null)
                     break;
             }
+            OpCodeCount += opCodeCount;
         }
 
         // Update the current VM state if no fatal exception occurred, or if the exception is of type Stop or Revert.
