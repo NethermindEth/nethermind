@@ -1,0 +1,294 @@
+[
+  {
+    "network": "hoodi",
+    "cl": "lodestar",
+    "checkpoint-sync-url": "https://checkpoint-sync.hoodi.ethpandaops.io",
+    "timeout": 180,
+    "agent": "g6-standard-6"
+  },
+  {
+    "network": "hoodi",
+    "cl": "lighthouse",
+    "checkpoint-sync-url": "https://checkpoint-sync.hoodi.ethpandaops.io",
+    "timeout": 180,
+    "agent": "g6-standard-6"
+  },
+  {
+    "network": "hoodi",
+    "cl": "prysm",
+    "checkpoint-sync-url": "https://checkpoint-sync.hoodi.ethpandaops.io",
+    "timeout": 180,
+    "agent": "g6-standard-6"
+  },
+  {
+    "network": "hoodi",
+    "cl": "teku",
+    "checkpoint-sync-url": "https://checkpoint-sync.hoodi.ethpandaops.io",
+    "timeout": 180,
+    "agent": "g6-standard-6"
+  },
+  {
+    "network": "hoodi",
+    "cl": "nimbus",
+    "checkpoint-sync-url": "https://checkpoint-sync.hoodi.ethpandaops.io",
+    "timeout": 180,
+    "agent": "g6-standard-6"
+  },
+  {
+    "network": "holesky",
+    "cl": "lodestar",
+    "checkpoint-sync-url": "https://checkpoint-sync.holesky.ethpandaops.io/",
+    "timeout": 180,
+    "agent": "g6-standard-6"
+  },
+  {
+    "network": "holesky",
+    "cl": "lighthouse",
+    "checkpoint-sync-url": "https://checkpoint-sync.holesky.ethpandaops.io/",
+    "timeout": 180,
+    "agent": "g6-standard-6"
+  },
+  {
+    "network": "holesky",
+    "cl": "prysm",
+    "checkpoint-sync-url": "https://checkpoint-sync.holesky.ethpandaops.io/",
+    "timeout": 180,
+    "agent": "g6-standard-6"
+  },
+  {
+    "network": "holesky",
+    "cl": "teku",
+    "checkpoint-sync-url": "https://checkpoint-sync.holesky.ethpandaops.io/",
+    "timeout": 180,
+    "agent": "g6-standard-6"
+  },
+  {
+    "network": "holesky",
+    "cl": "nimbus",
+    "checkpoint-sync-url": "https://checkpoint-sync.holesky.ethpandaops.io/",
+    "timeout": 180,
+    "agent": "g6-standard-6"
+  },
+  {
+    "network": "chiado",
+    "cl": "lodestar",
+    "checkpoint-sync-url": "http://139.144.26.89:4000/",
+    "timeout": 180,
+    "agent": "g6-standard-6"
+  },
+  {
+    "network": "chiado",
+    "cl": "ligthouse",
+    "checkpoint-sync-url": "http://139.144.26.89:4000/",
+    "timeout": 180,
+    "agent": "g6-standard-6"
+  },
+  {
+    "network": "chiado",
+    "cl": "teku",
+    "checkpoint-sync-url": "http://139.144.26.89:4000/",
+    "timeout": 180,
+    "agent": "g6-standard-6"
+  },
+  {
+    "network": "chiado",
+    "cl": "nimbus",
+    "checkpoint-sync-url": "http://139.144.26.89:4000/",
+    "timeout": 180,
+    "agent": "g6-standard-6"
+  },
+  {
+    "network": "sepolia",
+    "cl": "lodestar",
+    "checkpoint-sync-url": "https://checkpoint-sync.sepolia.ethpandaops.io/",
+    "timeout": 180,
+    "agent": "g6-standard-6"
+  },
+  {
+    "network": "sepolia",
+    "cl": "lighthouse",
+    "checkpoint-sync-url": "https://checkpoint-sync.sepolia.ethpandaops.io/",
+    "timeout": 180,
+    "agent": "g6-standard-6"
+  },
+  {
+    "network": "sepolia",
+    "cl": "prysm",
+    "checkpoint-sync-url": "https://checkpoint-sync.sepolia.ethpandaops.io/",
+    "timeout": 180,
+    "agent": "g6-standard-6"
+  },
+  {
+    "network": "sepolia",
+    "cl": "teku",
+    "checkpoint-sync-url": "https://checkpoint-sync.sepolia.ethpandaops.io/",
+    "timeout": 180,
+    "agent": "g6-standard-6"
+  },
+  {
+    "network": "sepolia",
+    "cl": "nimbus",
+    "checkpoint-sync-url": "https://checkpoint-sync.sepolia.ethpandaops.io/",
+    "timeout": 180,
+    "agent": "g6-standard-6"
+  },
+  {
+    "network": "gnosis",
+    "cl": "lodestar",
+    "checkpoint-sync-url": "https://checkpoint.gnosischain.com",
+    "timeout": 180,
+    "agent": "g6-standard-6"
+  },
+  {
+    "network": "gnosis",
+    "cl": "lighthouse",
+    "checkpoint-sync-url": "https://checkpoint.gnosischain.com",
+    "timeout": 180,
+    "agent": "g6-standard-6"
+  },
+  {
+    "network": "gnosis",
+    "cl": "teku",
+    "checkpoint-sync-url": "https://checkpoint.gnosischain.com",
+    "timeout": 180,
+    "agent": "g6-standard-6"
+  },
+  {
+    "network": "gnosis",
+    "cl": "nimbus",
+    "checkpoint-sync-url": "https://checkpoint.gnosischain.com",
+    "timeout": 180,
+    "agent": "g6-standard-6"
+  },
+  {
+    "network": "mainnet",
+    "cl": "lodestar",
+    "checkpoint-sync-url": "https://mainnet-checkpoint-sync.attestant.io/",
+    "timeout": 180,
+    "agent": "g6-standard-6"
+  },
+  {
+    "network": "mainnet",
+    "cl": "lighthouse",
+    "checkpoint-sync-url": "https://mainnet-checkpoint-sync.attestant.io/",
+    "timeout": 180,
+    "agent": "g6-standard-6"
+  },
+  {
+    "network": "mainnet",
+    "cl": "prysm",
+    "checkpoint-sync-url": "https://mainnet-checkpoint-sync.attestant.io/",
+    "timeout": 180,
+    "agent": "g6-standard-6"
+  },
+  {
+    "network": "mainnet",
+    "cl": "teku",
+    "checkpoint-sync-url": "https://mainnet-checkpoint-sync.attestant.io/",
+    "timeout": 180,
+    "agent": "g6-standard-6"
+  },
+  {
+    "network": "mainnet",
+    "cl": "nimbus",
+    "checkpoint-sync-url": "https://mainnet-checkpoint-sync.attestant.io/",
+    "timeout": 180,
+    "agent": "g6-standard-6"
+  },
+  {
+    "network": "op-sepolia",
+    "cl": "",
+    "cl_image": "",
+    "checkpoint-sync-url": "",
+    "timeout": 180,
+    "agent": "g6-standard-6"
+  },
+  {
+    "network": "base-sepolia",
+    "cl": "",
+    "cl_image": "",
+    "checkpoint-sync-url": "",
+    "timeout": 180,
+    "agent": "g6-standard-6"
+  },
+  {
+    "network": "world-sepolia",
+    "cl": "",
+    "cl_image": "",
+    "checkpoint-sync-url": "",
+    "timeout": 180,
+    "agent": "g6-standard-6"
+  },
+  {
+    "network": "op-mainnet",
+    "cl": "",
+    "cl_image": "",
+    "checkpoint-sync-url": "",
+    "timeout": 600,
+    "agent": "g6-standard-8"
+  },
+  {
+    "network": "base-mainnet",
+    "cl": "",
+    "cl_image": "",
+    "checkpoint-sync-url": "",
+    "timeout": 600,
+    "agent": "g6-standard-8"
+  },
+  {
+    "network": "world-mainnet",
+    "cl": "",
+    "cl_image": "",
+    "checkpoint-sync-url": "",
+    "timeout": 600,
+    "agent": "g6-standard-6"
+  },
+  {
+    "network": "taiko-alethia",
+    "cl": "",
+    "cl_image": "",
+    "checkpoint-sync-url": "",
+    "timeout": 600,
+    "agent": "g6-standard-6"
+  },
+  {
+    "network": "taiko-hekla",
+    "cl": "",
+    "cl_image": "",
+    "checkpoint-sync-url": "",
+    "timeout": 600,
+    "agent": "g6-standard-6"
+  },
+  {
+    "network": "joc-mainnet",
+    "cl": "",
+    "cl_image": "",
+    "checkpoint-sync-url": "",
+    "timeout": 180,
+    "agent": "g6-standard-6"
+  },
+  {
+    "network": "joc-testnet",
+    "cl": "",
+    "cl_image": "",
+    "checkpoint-sync-url": "",
+    "timeout": 180,
+    "agent": "g6-standard-6"
+  },
+  {
+    "network": "linea-mainnet",
+    "cl": "",
+    "cl_image": "",
+    "checkpoint-sync-url": "",
+    "timeout": 360,
+    "agent": "g6-standard-6"
+  },
+  {
+    "network": "linea-sepolia",
+    "cl": "",
+    "cl_image": "",
+    "checkpoint-sync-url": "",
+    "timeout": 180,
+    "agent": "g6-standard-6"
+  }
+]
