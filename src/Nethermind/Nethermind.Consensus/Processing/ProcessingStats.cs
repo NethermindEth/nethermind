@@ -170,7 +170,7 @@ namespace Nethermind.Consensus.Processing
             if (block is null) return;
 
             long blockNumber = data.Block.Number;
-            if (_lastBlockNumber >= blockNumber) return;
+            if (_lastBlockNumber > blockNumber) return;
 
             _lastBlockNumber = blockNumber;
             double chunkMGas = (_chunkMGas += block.GasUsed / 1_000_000.0);
