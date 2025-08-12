@@ -343,22 +343,14 @@ class Program
 
         IBlockProcessor blockProcessor = blockProcessingEnv.GetProcessor(witness, baseBlock.StateRoot!);
 
-        try
+        (Block processed, TxReceipt[] _) = blockProcessor.ProcessOne(suggestedBlock,
+            ProcessingOptions.ReadOnlyChain, NullBlockTracer.Instance, specProvider.GetSpec(suggestedBlock.Header));
+        if (processed.Hash != suggestedBlock.Hash)
         {
-            (Block processed, TxReceipt[] _) = blockProcessor.ProcessOne(suggestedBlock,
-                ProcessingOptions.ReadOnlyChain, NullBlockTracer.Instance, specProvider.GetSpec(suggestedBlock.Header));
-            if (processed.Hash != suggestedBlock.Hash)
-            {
-                // Invalid block
-                return 2;
-            }
-            // Block processed successfully
+            // Invalid block
+            return 2;
         }
-        catch (MissingTrieNodeException)
-        {
-            // Invalid proof
-            return 3;
-        }
+        // Block processed successfully
 
         return 0;
     }
