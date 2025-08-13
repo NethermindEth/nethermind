@@ -118,16 +118,13 @@ namespace Nethermind.Blockchain.FullPruning
         {
             IPruningContext? pruningContext = null;
 
-            // we don't want to start pruning in the middle of block processing, lets wait for new head.
-            await WaitForMainChainChange((e) =>
+            using (_trieStore.LockDirtyNodes())
             {
                 if (_fullPruningDb.TryStartPruning(_pruningConfig.Mode.IsMemory(), out IPruningContext fromDbPruningContext))
                 {
                     pruningContext = fromDbPruningContext;
                 }
-
-                return true;
-            }, cancellationToken);
+            }
 
             if (pruningContext is null) return;
 
@@ -225,7 +222,7 @@ namespace Nethermind.Blockchain.FullPruning
             }
         }
 
-        private async Task CopyTrie(IPruningContext pruning, Hash256 stateRoot, CancellationToken cancellationToken)
+        private Task CopyTrie(IPruningContext pruning, Hash256 stateRoot, CancellationToken cancellationToken)
         {
             INodeStorage.KeyScheme originalKeyScheme = _nodeStorage.Scheme;
             ICopyTreeVisitor visitor = null;
@@ -275,17 +272,14 @@ namespace Nethermind.Blockchain.FullPruning
 
                 if (!cancellationToken.IsCancellationRequested)
                 {
+                    Console.Error.WriteLine("Finishing");
                     visitor.Finish();
 
-                    _nodeStorage.Scheme = targetNodeStorage.Scheme;
-                    // Note: This does means that during full pruning some of the key copied will be of old key scheme.
-                    await WaitForMainChainChange((e) =>
+                    using (_trieStore.LockDirtyNodes())
                     {
-                        // The db swap happens here. We do it within the event handler of main chain change to block
-                        // so that it does not happen during block processing.
+                        _nodeStorage.Scheme = targetNodeStorage.Scheme;
                         pruning.Commit();
-                        return true;
-                    }, cancellationToken);
+                    }
 
                     _lastPruning = DateTime.UtcNow;
                 }
@@ -300,6 +294,8 @@ namespace Nethermind.Blockchain.FullPruning
             {
                 visitor?.Dispose();
             }
+
+            return Task.CompletedTask;
         }
 
         private ICopyTreeVisitor CopyTree<TContext>(
@@ -312,6 +308,7 @@ namespace Nethermind.Blockchain.FullPruning
         {
             CopyTreeVisitor<TContext> copyTreeVisitor = new(targetNodeStorage, writeFlags, _logManager, cancellationToken);
             _stateReader.RunTreeVisitor(copyTreeVisitor, stateRoot, visitingOptions);
+            Console.Error.WriteLine("Visit tree finished");
             return copyTreeVisitor;
         }
 

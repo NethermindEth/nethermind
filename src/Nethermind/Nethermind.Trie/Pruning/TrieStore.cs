@@ -533,7 +533,9 @@ public sealed class TrieStore : ITrieStore, IPruningTrieStore
         ArgumentNullException.ThrowIfNull(hash);
 
         TrieStoreDirtyNodesCache.Key key = new TrieStoreDirtyNodesCache.Key(address, path, hash);
-        return IsInCommitBufferMode ? _commitBuffer.FindCachedOrUnknown(key, isReadOnly) : FindCachedOrUnknown(key, isReadOnly);
+        return _commitBuffer is { } commitBuffer
+            ? commitBuffer.FindCachedOrUnknown(key, isReadOnly)
+            : FindCachedOrUnknown(key, isReadOnly);
     }
 
     private TrieNode FindCachedOrUnknown(TrieStoreDirtyNodesCache.Key key, bool isReadOnly)
@@ -1199,6 +1201,11 @@ public sealed class TrieStore : ITrieStore, IPruningTrieStore
     }
 
     public IReadOnlyKeyValueStore TrieNodeRlpStore => _publicStore;
+
+    public Lock.Scope LockDirtyNodes()
+    {
+        return _pruningLock.EnterScope();
+    }
 
     private class TrieKeyValueStore(TrieStore trieStore) : IReadOnlyKeyValueStore
     {

@@ -59,6 +59,7 @@ namespace Nethermind.Blockchain.FullPruning
         [DoesNotReturn, StackTraceHidden]
         public void VisitMissingNode(in TContext ctx, in ValueHash256 nodeHash)
         {
+            Console.Error.WriteLine($"Full Pruning Failed: Missing node {nodeHash} at level {ctx.Storage}:{ctx.Path}.");
             if (_logger.IsWarn)
             {
                 _logger.Warn($"Full Pruning Failed: Missing node {nodeHash} at level {ctx.Storage}:{ctx.Path}.");
@@ -108,6 +109,7 @@ namespace Nethermind.Blockchain.FullPruning
 
         public void Finish()
         {
+            Console.Error.WriteLine("Finish called");
             _finished = true;
             LogProgress("Finished");
             _concurrentWriteBatcher.Dispose();

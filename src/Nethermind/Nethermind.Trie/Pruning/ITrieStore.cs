@@ -48,6 +48,8 @@ namespace Nethermind.Trie.Pruning
 
         // Used for serving via hash
         IReadOnlyKeyValueStore TrieNodeRlpStore { get; }
+
+        Lock.Scope LockDirtyNodes();
     }
 
     /// <summary>

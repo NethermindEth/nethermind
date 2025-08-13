@@ -91,4 +91,8 @@ public class TestRawTrieStore(INodeStorage nodeStorage, bool isReadOnly = false)
     }
 
     public IReadOnlyKeyValueStore TrieNodeRlpStore => throw new Exception("Unsupported operatioon");
+    public Lock.Scope LockDirtyNodes()
+    {
+        return new Lock.Scope();
+    }
 }
