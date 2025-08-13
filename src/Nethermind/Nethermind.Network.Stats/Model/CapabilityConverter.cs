@@ -10,6 +10,7 @@ using System.Runtime.CompilerServices;
 using System.Text;
 using System.Text.Json;
 using System.Text.Json.Serialization;
+using Nethermind.Network.Contract.P2P;
 
 namespace Nethermind.Stats.Model
 {
@@ -119,9 +120,25 @@ namespace Nethermind.Stats.Model
                 return false;
             }
 
-            string protocolCode = Encoding.UTF8.GetString(protocolSpan);
+            string protocolCode = GetProtocolCode(protocolSpan);
             capability = new Capability(protocolCode, version);
             return true;
+        }
+
+        private static string GetProtocolCode(ReadOnlySpan<byte> protocolSpan)
+        {
+            if (protocolSpan.SequenceEqual("eth"u8)) return Protocol.Eth;
+            if (protocolSpan.SequenceEqual("snap"u8)) return Protocol.Snap;
+            if (protocolSpan.SequenceEqual("p2p"u8)) return Protocol.P2P;
+            if (protocolSpan.SequenceEqual("nodedata"u8)) return Protocol.NodeData;
+            if (protocolSpan.SequenceEqual("shh"u8)) return Protocol.Shh;
+            if (protocolSpan.SequenceEqual("bzz"u8)) return Protocol.Bzz;
+            if (protocolSpan.SequenceEqual("par"u8)) return Protocol.Par;
+            if (protocolSpan.SequenceEqual("ndm"u8)) return Protocol.Ndm;
+            if (protocolSpan.SequenceEqual("aa"u8)) return Protocol.AA;
+            
+            // Fallback for unknown protocols
+            return Encoding.UTF8.GetString(protocolSpan);
         }
 
         [DoesNotReturn, StackTraceHidden]
