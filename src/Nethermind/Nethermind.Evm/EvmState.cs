@@ -84,7 +84,7 @@ public sealed class EvmState : IDisposable // TODO: rename to CallState
     public long Refund { get; set; }
     public int DataStackHead;
     public int ReturnStackHead;
-    internal ExecutionType ExecutionType { get; private set; } // TODO: move to CallEnv
+    public ExecutionType ExecutionType { get; private set; } // TODO: move to CallEnv
     public int ProgramCounter { get; set; }
     public int FunctionIndex { get; set; }
     public bool IsTopLevel { get; private set; } // TODO: move to CallEnv
@@ -222,7 +222,7 @@ public sealed class EvmState : IDisposable // TODO: rename to CallState
     };
 
     public Address To => Env.CodeSource ?? Env.ExecutingAccount;
-    internal bool IsPrecompile => Env.CodeInfo?.IsPrecompile ?? false;
+    public bool IsPrecompile => Env.CodeInfo?.IsPrecompile ?? false;
 
     public ref readonly StackAccessTracker AccessTracker => ref _accessTracker;
     public ref readonly ExecutionEnvironment Env => ref _env;
