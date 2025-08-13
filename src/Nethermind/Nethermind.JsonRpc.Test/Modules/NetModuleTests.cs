@@ -13,6 +13,7 @@ using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Builders;
+using Nethermind.History;
 using Nethermind.JsonRpc.Modules.Net;
 using Nethermind.Logging;
 using Nethermind.State;
@@ -58,6 +59,7 @@ namespace Nethermind.JsonRpc.Test.Modules
                 Substitute.For<ISyncModeSelector>(),
                 syncConfig,
                 Substitute.For<IGossipPolicy>(),
+                Substitute.For<IHistoryPruner>(),
                 Substitute.For<ISpecProvider>(),
                 Substitute.For<ILogManager>());
             NetBridge netBridge = new(enode, syncServer);

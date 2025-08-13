@@ -28,6 +28,7 @@ using Nethermind.Trie;
 using Nethermind.Trie.Pruning;
 using NSubstitute;
 using NUnit.Framework;
+using Nethermind.History;
 
 namespace Nethermind.Synchronization.Test.Trie;
 
@@ -146,6 +147,7 @@ public class HealingTreeTests
             configProvider.GetConfig<IInitConfig>().StateDbKeyScheme = keyScheme;
             return new ContainerBuilder()
                 .AddModule(new TestNethermindModule(configProvider))
+                .AddSingleton<IHistoryPruner>(Substitute.For<IHistoryPruner>())
                 .AddSingleton<IBlockTree>(Build.A.BlockTree().OfChainLength(1).TestObject)
                 .Build();
         }

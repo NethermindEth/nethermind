@@ -1,7 +1,6 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-#nullable enable
 using Nethermind.Blockchain;
 using Nethermind.Config;
 using Nethermind.Consensus;
@@ -71,7 +70,7 @@ namespace Nethermind.Api
         IGasPriceOracle GasPriceOracle { get; }
 
         IBlockProductionPolicy? BlockProductionPolicy { get; set; }
-        BackgroundTaskScheduler BackgroundTaskScheduler { get; set; }
+        IBackgroundTaskScheduler BackgroundTaskScheduler { get; set; }
         ICensorshipDetector CensorshipDetector { get; set; }
     }
 }
