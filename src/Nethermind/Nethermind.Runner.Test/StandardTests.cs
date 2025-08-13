@@ -19,7 +19,7 @@ namespace Nethermind.Runner.Test
         [Test]
         public void All_metrics_are_described()
         {
-            Monitoring.Test.MetricsTests.ValidateMetricsDescriptions();
+            Nethermind.Monitoring.Test.MetricsTests.ValidateMetricsDescriptions();
         }
 
         [Test]

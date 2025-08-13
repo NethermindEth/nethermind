@@ -12,7 +12,6 @@ using Nethermind.Core;
 using Nethermind.Core.ServiceStopper;
 using Nethermind.Db;
 using Nethermind.Facade.Eth;
-using Nethermind.Init.Modules;
 using Nethermind.Logging;
 using Nethermind.Monitoring;
 using Nethermind.Monitoring.Config;
@@ -22,7 +21,7 @@ using Type = System.Type;
 
 namespace Nethermind.Init.Steps;
 
-[RunnerStepDependencies(typeof(InitializeBlockTree))]
+[RunnerStepDependencies(typeof(InitializeBlockchain))]
 public class StartMonitoring(
     IEthSyncingInfo ethSyncingInfo,
     DbTracker dbTracker,
@@ -58,7 +57,7 @@ public class StartMonitoring(
 
         if (metricsConfig.Enabled)
         {
-            MonitoringService monitoringService = new MonitoringService(controller, metricsConfig, logManager);
+            MonitoringService monitoringService = new(controller, metricsConfig, logManager);
 
             SetupMetrics(monitoringService);
 
@@ -84,7 +83,7 @@ public class StartMonitoring(
         }
     }
 
-    private void SetupMetrics(IMonitoringService monitoringService)
+    private void SetupMetrics(MonitoringService monitoringService)
     {
         if (metricsConfig.EnableDbSizeMetrics)
         {

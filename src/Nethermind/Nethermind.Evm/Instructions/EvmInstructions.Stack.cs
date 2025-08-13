@@ -127,6 +127,7 @@ internal static partial class EvmInstructions
         Instruction nextInstruction;
         if (!TTracingInst.IsActive &&
             remainingCode > Size &&
+            stack.Head < EvmStack.MaxStackSize - 1 &&
             ((nextInstruction = (Instruction)Add(ref bytes, programCounter + Size))
                 is Instruction.JUMP or Instruction.JUMPI))
         {
@@ -140,10 +141,12 @@ internal static partial class EvmInstructions
             if (nextInstruction == Instruction.JUMP)
             {
                 gasAvailable -= GasCostOf.Jump;
+                vm.OpCodeCount++;
             }
             else
             {
                 gasAvailable -= GasCostOf.JumpI;
+                vm.OpCodeCount++;
                 bool shouldJump = TestJumpCondition(ref stack, out bool isOverflow);
                 if (isOverflow) goto StackUnderflow;
                 if (!shouldJump)
