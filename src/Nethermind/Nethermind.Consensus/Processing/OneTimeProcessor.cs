@@ -40,7 +40,7 @@ namespace Nethermind.Consensus.Processing
         {
             lock (_lock)
             {
-                return _processor.Process(block, options, tracer, token);
+                return _processor.Process(block, options, tracer, token, forkName: forkName);
             }
         }
 
