@@ -15,9 +15,9 @@ using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Threading;
+using Nethermind.Evm.Tracing.State;
 using Nethermind.Int256;
 using Nethermind.Logging;
-using Nethermind.State.Tracing;
 using Nethermind.Trie.Pruning;
 
 namespace Nethermind.State;
@@ -35,7 +35,7 @@ internal sealed class PersistentStorageProvider : PartialStorageProviderBase
     private readonly ILogManager? _logManager;
     internal readonly IStorageTreeFactory _storageTreeFactory;
     private readonly Dictionary<AddressAsKey, StorageTree> _storages = new();
-    private readonly HashSet<AddressAsKey> _toUpdateRoots = new();
+    private readonly Dictionary<AddressAsKey, bool> _toUpdateRoots = new();
 
     /// <summary>
     /// EIP-1283
@@ -206,7 +206,7 @@ internal sealed class PersistentStorageProvider : PartialStorageProviderBase
             // since the accounts could be empty accounts that are removing (EIP-158)
             if (_stateProvider.AccountExists(address))
             {
-                _toUpdateRoots.Add(address);
+                _toUpdateRoots[address] = true;
                 // Add storage tree, will accessed later, which may be in parallel
                 // As we can't add a new storage tries in parallel to the _storages Dict do it here
                 GetOrCreateStorage(address, out _);
@@ -252,7 +252,7 @@ internal sealed class PersistentStorageProvider : PartialStorageProviderBase
         {
             foreach (KeyValuePair<AddressAsKey, StorageTree> kvp in _storages)
             {
-                if (!_toUpdateRoots.Contains(kvp.Key))
+                if (!_toUpdateRoots.TryGetValue(kvp.Key, out bool hasChanges) || !hasChanges)
                 {
                     // Wasn't updated don't recalculate
                     continue;
@@ -281,7 +281,7 @@ internal sealed class PersistentStorageProvider : PartialStorageProviderBase
                 static (i, state) =>
             {
                 ref var kvp = ref state.storages.GetRef(i);
-                if (!state.toUpdateRoots.Contains(kvp.Key))
+                if (!state.toUpdateRoots.TryGetValue(kvp.Key, out bool hasChanges) || !hasChanges)
                 {
                     // Wasn't updated don't recalculate
                     return state;
@@ -292,13 +292,9 @@ internal sealed class PersistentStorageProvider : PartialStorageProviderBase
                 (int writes, int skipped) = ProcessStorageChanges(dict, storageTree);
                 if (writes == 0)
                 {
-                    lock (state.toUpdateRoots)
-                    {
-                        // No changes to this storage, remove from toUpdateRoots
-                        // Needs to be under lock as regular HashSet, should be
-                        // uncommon enough not to cause contention.
-                        state.toUpdateRoots.Remove(kvp.Key);
-                    }
+                    // Mark as no changes; we set as false rather than removing so
+                    // as not to modify the non-concurrent collection without synchronization
+                    state.toUpdateRoots[kvp.Key] = false;
                 }
                 else
                 {
@@ -315,7 +311,7 @@ internal sealed class PersistentStorageProvider : PartialStorageProviderBase
             // as can't update the StateTrie in parallel.
             foreach (ref var kvp in storages.AsSpan())
             {
-                if (!_toUpdateRoots.Contains(kvp.Key))
+                if (!_toUpdateRoots.TryGetValue(kvp.Key, out bool hasChanges) || !hasChanges)
                 {
                     continue;
                 }

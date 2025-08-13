@@ -21,6 +21,12 @@ namespace Nethermind.JsonRpc.Modules
             _onlyInstance = factory.Create();
             _onlyInstanceAsTask = Task.FromResult(_onlyInstance);
             _allowExclusive = allowExclusive;
+
+            if (_onlyInstance is IContextAwareRpcModule)
+            {
+                throw new InvalidOperationException(
+                    $"{_onlyInstance} implement {nameof(IContextAwareRpcModule)} which is not safe to share and should not use singleton module pool.");
+            }
         }
 
         public Task<T> GetModule(bool canBeShared)

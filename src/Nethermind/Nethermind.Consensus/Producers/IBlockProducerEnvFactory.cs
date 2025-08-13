@@ -5,7 +5,6 @@ namespace Nethermind.Consensus.Producers
 {
     public interface IBlockProducerEnvFactory
     {
-        IBlockTransactionsExecutorFactory TransactionsExecutorFactory { get; set; }
-        BlockProducerEnv Create();
+        IBlockProducerEnv Create();
     }
 }

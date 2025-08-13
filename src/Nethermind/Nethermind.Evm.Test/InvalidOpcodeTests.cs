@@ -16,8 +16,6 @@ namespace Nethermind.Evm.Test
     [Parallelizable(ParallelScope.Self)]
     public class InvalidOpcodeTests : VirtualMachineTestsBase
     {
-        protected override long BlockNumber => MainnetSpecProvider.ConstantinopleFixBlockNumber;
-
         private static readonly Instruction[] FrontierInstructions =
         {
             Instruction.STOP, Instruction.ADD, Instruction.MUL, Instruction.SUB, Instruction.DIV, Instruction.SDIV,
@@ -152,7 +150,7 @@ namespace Nethermind.Evm.Test
 
         protected override ILogManager GetLogManager()
         {
-            _logManager ??= new TestLogManager(LogLevel.Trace);
+            _logManager ??= new TestLogManager(LogLevel.Warn);
             return _logManager;
         }
 

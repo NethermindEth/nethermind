@@ -19,8 +19,7 @@ public class NullTxTracer : TxTracer
     private const string ErrorMessage = "Null tracer should never receive any calls.";
     private NullTxTracer() { }
 
-    [DoesNotReturn]
-    [StackTraceHidden]
+    [DoesNotReturn, StackTraceHidden]
     private static void ThrowInvalidOperationException() => throw new InvalidOperationException(ErrorMessage);
 
     public override void MarkAsSuccess(Address recipient, GasConsumed gasSpent, byte[] output, LogEntry[] logs, Hash256? stateRoot = null)

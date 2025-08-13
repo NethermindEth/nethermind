@@ -11,16 +11,15 @@ using Nethermind.Abi;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Find;
 using Nethermind.Blockchain.Receipts;
-using Nethermind.Consensus.Processing;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Crypto;
+using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Facade.Find;
 using Nethermind.KeyStore.Config;
 using Nethermind.Logging;
 using Nethermind.Shutter.Config;
-using Nethermind.State;
 using NSubstitute;
 
 namespace Nethermind.Shutter.Test;
@@ -35,14 +34,14 @@ public class ShutterApiSimulator(
     ILogManager logManager,
     ISpecProvider specProvider,
     ITimestamper timestamper,
-    IWorldStateManager worldStateManager,
     IFileSystem fileSystem,
     IKeyStoreConfig keyStoreConfig,
     IShutterConfig cfg,
+    IShareableTxProcessorSource shareableTxProcessorSource,
     ShutterValidatorsInfo validatorsInfo,
     Random rnd
         ) : ShutterApi(abiEncoder, blockTree, ecdsa, logFinder, receiptStorage,
-        logManager, specProvider, timestamper, new ReadOnlyTxProcessingEnvFactory(worldStateManager, blockTree, specProvider, logManager), fileSystem,
+        logManager, specProvider, timestamper, shareableTxProcessorSource, fileSystem,
         keyStoreConfig, cfg, validatorsInfo, ShutterTestsCommon.SlotLength, IPAddress.None)
 {
     public int EonUpdateCalled = 0;

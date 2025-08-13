@@ -43,7 +43,7 @@ namespace Nethermind.Consensus.AuRa.Transactions
                 {
                     if (tx is GeneratedTransaction)
                     {
-                        tx.Nonce = CalculateNonce(tx.SenderAddress, parent.StateRoot, _nonces);
+                        tx.Nonce = CalculateNonce(tx.SenderAddress, parent, _nonces);
                         _txSealer.Seal(tx, TxHandlingOptions.ManagedNonce | TxHandlingOptions.AllowReplacingSignature);
                         Metrics.SealedTransactions++;
                         if (_logger.IsDebug) _logger.Debug($"Sealed node generated transaction {tx.ToShortString()}");
@@ -58,11 +58,11 @@ namespace Nethermind.Consensus.AuRa.Transactions
             }
         }
 
-        private UInt256 CalculateNonce(Address address, Hash256 stateRoot, IDictionary<Address, UInt256> nonces)
+        private UInt256 CalculateNonce(Address address, BlockHeader baseBlock, IDictionary<Address, UInt256> nonces)
         {
             if (!nonces.TryGetValue(address, out var nonce))
             {
-                nonce = _stateReader.GetNonce(stateRoot, address);
+                nonce = _stateReader.GetNonce(baseBlock, address);
             }
 
             nonces[address] = nonce + 1;

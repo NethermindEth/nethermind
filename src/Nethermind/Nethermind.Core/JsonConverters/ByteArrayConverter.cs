@@ -80,8 +80,7 @@ public class ByteArrayConverter : JsonConverter<byte[]>
         Bytes.FromUtf8HexString(hex, span);
     }
 
-    [DoesNotReturn]
-    [StackTraceHidden]
+    [DoesNotReturn, StackTraceHidden]
     internal static void ThrowInvalidOperationException()
     {
         throw new InvalidOperationException();

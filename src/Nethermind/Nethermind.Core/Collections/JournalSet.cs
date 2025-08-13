@@ -16,7 +16,7 @@ namespace Nethermind.Core.Collections
     /// </summary>
     /// <typeparam name="T">Item type.</typeparam>
     /// <remarks>Due to snapshots <see cref="Remove"/> is not supported.</remarks>
-    public sealed class JournalSet<T> : IReadOnlyCollection<T>, ICollection<T>, IJournal<int>
+    public sealed class JournalSet<T> : IHashSetEnumerableCollection<T>, ICollection<T>, IJournal<int>
     {
         private readonly List<T> _items = [];
         private readonly HashSet<T> _set = [];
@@ -41,8 +41,7 @@ namespace Nethermind.Core.Collections
             CollectionsMarshal.SetCount(_items, snapshot + 1);
         }
 
-        [DoesNotReturn]
-        [StackTraceHidden]
+        [DoesNotReturn, StackTraceHidden]
         private void ThrowInvalidRestore(int snapshot)
             => throw new InvalidOperationException($"{nameof(JournalSet<T>)} tried to restore snapshot {snapshot} beyond current position {Count}");
 
@@ -64,7 +63,8 @@ namespace Nethermind.Core.Collections
             _set.Clear();
         }
 
-        public IEnumerator<T> GetEnumerator() => _set.GetEnumerator();
+        public HashSet<T>.Enumerator GetEnumerator() => _set.GetEnumerator();
+        IEnumerator<T> IEnumerable<T>.GetEnumerator() => GetEnumerator();
         IEnumerator IEnumerable.GetEnumerator() => GetEnumerator();
         public bool Remove(T item) => throw new NotSupportedException("Cannot remove from Journal, use Restore(int snapshot) instead.");
         public int Count => _set.Count;

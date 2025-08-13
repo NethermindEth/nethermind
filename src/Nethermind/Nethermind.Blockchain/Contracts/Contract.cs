@@ -5,12 +5,12 @@ using System;
 using System.Linq;
 using Nethermind.Abi;
 using Nethermind.Blockchain.Contracts.Json;
+using Nethermind.Blockchain.Tracing;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Crypto;
 using Nethermind.Int256;
 using Nethermind.Evm;
-using Nethermind.Evm.Tracing;
 using Nethermind.Evm.TransactionProcessing;
 
 namespace Nethermind.Blockchain.Contracts
@@ -167,7 +167,7 @@ namespace Nethermind.Blockchain.Contracts
         /// <param name="transaction">Transaction to be executed.</param>
         /// <param name="callAndRestore">Is it restore call.</param>
         /// <returns>Bytes with result.</returns>
-        /// <exception cref="AbiException">Thrown when there is an exception during execution or <see cref="CallOutputTracer.StatusCode"/> is <see cref="StatusCode.Failure"/>.</exception>
+        /// <exception cref="AbiException">Thrown when there is an exception during execution or <see cref="StatusCode"/> is <see cref="StatusCode.Failure"/>.</exception>
         protected byte[] CallCore(ITransactionProcessor transactionProcessor, BlockHeader header, string functionName, Transaction transaction, bool callAndRestore = false)
         {
             bool failure;
@@ -176,14 +176,13 @@ namespace Nethermind.Blockchain.Contracts
 
             try
             {
-                BlockExecutionContext blkCtx = new BlockExecutionContext(header, 0);
                 if (callAndRestore)
                 {
-                    transactionProcessor.CallAndRestore(transaction, in blkCtx, tracer);
+                    transactionProcessor.CallAndRestore(transaction, header, tracer);
                 }
                 else
                 {
-                    transactionProcessor.Execute(transaction, in blkCtx, tracer);
+                    transactionProcessor.Execute(transaction, header, tracer);
                 }
 
                 failure = tracer.StatusCode != StatusCode.Success;

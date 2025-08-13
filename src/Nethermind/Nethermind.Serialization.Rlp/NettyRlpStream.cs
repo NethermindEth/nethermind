@@ -2,10 +2,8 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using System.Collections.Generic;
 using DotNetty.Buffers;
 using DotNetty.Common.Utilities;
-using Nethermind.Core.Collections;
 
 namespace Nethermind.Serialization.Rlp
 {

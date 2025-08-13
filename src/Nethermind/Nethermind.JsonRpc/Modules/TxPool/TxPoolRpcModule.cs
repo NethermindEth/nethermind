@@ -7,20 +7,12 @@ using Nethermind.TxPool;
 
 namespace Nethermind.JsonRpc.Modules.TxPool
 {
-    public class TxPoolRpcModule : ITxPoolRpcModule
+    public class TxPoolRpcModule(ITxPoolInfoProvider txPoolInfoProvider, ISpecProvider specProvider)
+        : ITxPoolRpcModule
     {
-        private readonly ITxPoolInfoProvider _txPoolInfoProvider;
-        private readonly ISpecProvider _specProvider;
-
-        public TxPoolRpcModule(ITxPoolInfoProvider txPoolInfoProvider, ISpecProvider specProvider)
-        {
-            _txPoolInfoProvider = txPoolInfoProvider ?? throw new ArgumentNullException(nameof(txPoolInfoProvider));
-            _specProvider = specProvider ?? throw new ArgumentNullException(nameof(specProvider));
-        }
-
         public ResultWrapper<TxPoolStatus> txpool_status()
         {
-            var poolInfo = _txPoolInfoProvider.GetInfo();
+            var poolInfo = txPoolInfoProvider.GetInfo();
             var poolStatus = new TxPoolStatus(poolInfo);
 
             return ResultWrapper<TxPoolStatus>.Success(poolStatus);
@@ -28,14 +20,14 @@ namespace Nethermind.JsonRpc.Modules.TxPool
 
         public ResultWrapper<TxPoolContent> txpool_content()
         {
-            var poolInfo = _txPoolInfoProvider.GetInfo();
-            var chainId = _specProvider.ChainId;
+            var poolInfo = txPoolInfoProvider.GetInfo();
+            var chainId = specProvider.ChainId;
             return ResultWrapper<TxPoolContent>.Success(new TxPoolContent(poolInfo, chainId));
         }
 
         public ResultWrapper<TxPoolInspection> txpool_inspect()
         {
-            var poolInfo = _txPoolInfoProvider.GetInfo();
+            var poolInfo = txPoolInfoProvider.GetInfo();
             return ResultWrapper<TxPoolInspection>.Success(new TxPoolInspection(poolInfo));
         }
     }

@@ -92,7 +92,7 @@ namespace Nethermind.Init.Steps
                     new ReceiptArrayStorageDecoder(receiptConfig.CompactReceiptStore))
                 : NullReceiptStorage.Instance;
 
-            IReceiptFinder receiptFinder = _set.ReceiptFinder = new FullInfoReceiptFinder(receiptStorage, receiptsRecovery, blockTree);
+            IReceiptFinder receiptFinder = _set.ReceiptFinder;
 
             LogFinder logFinder = new(
                 blockTree,

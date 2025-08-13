@@ -1,0 +1,28 @@
+{
+  "$schema": "https://raw.githubusercontent.com/NethermindEth/core-scripts/refs/heads/main/schemas/config.json",
+  "Init": {
+    "ChainSpecPath": "chainspec/surge-hoodi.json",
+    "GenesisHash": "0xf4ca134e6355f2225d89119e9ddb917910b4fad86cf8c9d8640b8ddab292c0a1",
+    "BaseDbPath": "nethermind_db/surge-hoodi",
+    "LogFileName": "surge-hoodi.log"
+  },
+  "TxPool": {
+    "Size": 1024,
+    "BlobsSupport": "Disabled"
+  },
+  "Sync": {
+    "FastSync": true,
+    "SnapSync": true,
+    "FastSyncCatchUpHeightDelta": "10000000000"
+  },
+  "Metrics": {
+    "NodeName": "Surge Hoodi"
+  },
+  "Blocks": {
+    "TargetBlockGasLimit": 60000000
+  },
+  "JsonRpc": {
+    "Enabled": true,
+    "EnginePort": 8551
+  }
+}

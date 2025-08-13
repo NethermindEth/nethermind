@@ -330,4 +330,16 @@ public class HeaderValidatorTests
 
         Assert.That(error, Does.StartWith("InvalidHeaderHash"));
     }
+
+    [Test]
+    public void When_given_parent_is_wrong()
+    {
+        _block.Header.Hash = _block.CalculateHash();
+        _block.Header.MaybeParent = new WeakReference<BlockHeader>(Build.A.BlockHeader.WithNonce(999).TestObject);
+
+        bool result = _validator.Validate(_block.Header, false, out string? error);
+
+        Assert.That(result, Is.False);
+        Assert.That(error, Does.StartWith("Mismatched parent"));
+    }
 }

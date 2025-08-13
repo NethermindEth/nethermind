@@ -13,8 +13,8 @@ namespace Nethermind.Init.Steps
         {
         }
 
-        public StepDependencyException(string message)
-            : base(message)
+        public StepDependencyException(string message, Exception? innerException = null)
+            : base(message, innerException)
         {
         }
 

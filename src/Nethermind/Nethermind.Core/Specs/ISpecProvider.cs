@@ -79,15 +79,15 @@ namespace Nethermind.Core.Specs
         /// </summary>
         /// <param name="forkActivation"></param>
         /// <returns>A spec that is valid at the given chain height</returns>
-        protected internal IReleaseSpec GetSpec(ForkActivation forkActivation);
+        protected internal IReleaseSpec GetSpecInternal(ForkActivation forkActivation);
     }
 
     public static class SpecProviderExtensions
     {
         public static IReleaseSpec GetSpec(this ISpecProvider specProvider, ForkActivation forkActivation)
             => specProvider.SealEngine == SealEngineType.AuRa
-                ? new AuraSpecProvider(specProvider.GetSpec(forkActivation))
-                : specProvider.GetSpec(forkActivation);
+                ? new AuraSpecProvider(specProvider.GetSpecInternal(forkActivation))
+                : specProvider.GetSpecInternal(forkActivation);
 
         public static IReleaseSpec GetSpec(this ISpecProvider specProvider, long blockNumber, ulong? timestamp) => specProvider.GetSpec(new ForkActivation(blockNumber, timestamp));
         public static IReleaseSpec GetSpec(this ISpecProvider specProvider, BlockHeader blockHeader) => specProvider.GetSpec(new ForkActivation(blockHeader.Number, blockHeader.Timestamp));

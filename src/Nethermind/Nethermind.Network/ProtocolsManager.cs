@@ -62,7 +62,7 @@ namespace Nethermind.Network
         private readonly INodeStatsManager _stats;
         private readonly IProtocolValidator _protocolValidator;
         private readonly INetworkStorage _peerStorage;
-        private readonly ForkInfo _forkInfo;
+        private readonly IForkInfo _forkInfo;
         private readonly IGossipPolicy _gossipPolicy;
         private readonly ITxGossipPolicy _txGossipPolicy;
         private readonly ILogManager _logManager;
@@ -83,7 +83,7 @@ namespace Nethermind.Network
             INodeStatsManager nodeStatsManager,
             IProtocolValidator protocolValidator,
             [KeyFilter(DbNames.PeersDb)] INetworkStorage peerStorage,
-            ForkInfo forkInfo,
+            IForkInfo forkInfo,
             IGossipPolicy gossipPolicy,
             IWorldStateManager worldStateManager,
             ILogManager logManager,
@@ -262,7 +262,7 @@ namespace Nethermind.Network
                     {
                         peer.SyncPeer.RegisterSatelliteProtocol(handler.ProtocolCode, handler);
                         if (handler.IsPriority) _syncPool.SetPeerPriority(session.Node.Id);
-                        if (_logger.IsDebug) _logger.Debug($"{handler.ProtocolCode} satellite protocol registered for sync peer {session}.");
+                        if (_logger.IsTrace) _logger.Trace($"{handler.ProtocolCode} satellite protocol registered for sync peer {session}.");
                     }
                     else
                     {
@@ -345,13 +345,13 @@ namespace Nethermind.Network
                             {
                                 handler.RegisterSatelliteProtocol(registration.Value);
                                 if (registration.Value.IsPriority) handler.IsPriority = true;
-                                if (_logger.IsDebug) _logger.Debug($"{handler.ProtocolCode} satellite protocol registered for sync peer {session}. Sync peer has priority: {handler.IsPriority}");
+                                if (_logger.IsTrace) _logger.Trace($"{handler.ProtocolCode} satellite protocol registered for sync peer {session}. Sync peer has priority: {handler.IsPriority}");
                             }
                         }
 
                         _syncPool.AddPeer(handler);
                         if (handler.IncludeInTxPool) _txPool.AddPeer(handler);
-                        if (_logger.IsDebug) _logger.Debug($"{handler.ClientId} sync peer {session} created.");
+                        if (_logger.IsTrace) _logger.Trace($"{handler.ClientId} sync peer {session} created.");
                     }
                     else
                     {
@@ -375,7 +375,7 @@ namespace Nethermind.Network
         {
             if (session.IsClosing)
             {
-                if (_logger.IsDebug) _logger.Debug($"|NetworkTrace| {protocolCode}.{protocolVersion} initialized in {session}");
+                if (_logger.IsTrace) _logger.Trace($"|NetworkTrace| {protocolCode}.{protocolVersion} initialized in {session}");
                 return false;
             }
 
@@ -396,7 +396,7 @@ namespace Nethermind.Network
 
             if (session.Node.Port != eventArgs.ListenPort)
             {
-                if (_logger.IsDebug) _logger.Debug($"Updating listen port for {session:s} to: {eventArgs.ListenPort}");
+                if (_logger.IsTrace) _logger.Trace($"Updating listen port for {session:s} to: {eventArgs.ListenPort}");
                 session.Node.Port = eventArgs.ListenPort;
             }
 
@@ -413,7 +413,7 @@ namespace Nethermind.Network
         {
             if (_capabilities.Remove(capability))
             {
-                if (_logger.IsDebug) _logger.Debug($"Removed supported capability: {capability}");
+                if (_logger.IsTrace) _logger.Trace($"Removed supported capability: {capability}");
             }
         }
 

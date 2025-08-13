@@ -218,7 +218,7 @@ namespace Nethermind.Blockchain.Visitors
             {
                 BlockHeader? parentHeader = _blockTree.FindParentHeader(block.Header, BlockTreeLookupOptions.TotalDifficultyNotNeeded);
                 if (parentHeader is null || parentHeader.StateRoot is null ||
-                    !_stateReader.HasStateForRoot(parentHeader.StateRoot))
+                    !_stateReader.HasStateForBlock(parentHeader))
                     return false;
             }
             else

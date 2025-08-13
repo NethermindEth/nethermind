@@ -36,7 +36,7 @@ namespace Nethermind.Merge.Plugin.BlockProduction
         }
 
         public virtual PostMergeBlockProducer Create(
-            BlockProducerEnv producerEnv,
+            IBlockProducerEnv producerEnv,
             ITxSource? txSource = null)
         {
 

@@ -59,5 +59,6 @@ namespace Nethermind.TxPool
         event EventHandler<TxEventArgs> EvictedPending;
         public bool AcceptTxWhenNotSynced { get; set; }
         bool SupportsBlobs { get; }
+        long PendingTransactionsAdded { get; }
     }
 }

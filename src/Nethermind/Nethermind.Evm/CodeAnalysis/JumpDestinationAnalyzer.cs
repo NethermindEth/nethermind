@@ -108,6 +108,9 @@ public sealed class JumpDestinationAnalyzer(ReadOnlyMemory<byte> code)
         Metrics.IncrementContractsAnalysed();
         ReadOnlySpan<byte> code = MachineCode.Span;
 
+        // If code is empty or starts with STOP, then we don't need to analyse
+        if ((uint)code.Length < (uint)1 || code[0] == (byte)Instruction.STOP) return _emptyJumpDestinationBitmap;
+
         long[] bitmap = CreateBitmap(code.Length);
 
         return Vector512<sbyte>.IsSupported && code.Length >= Vector512<sbyte>.Count ?

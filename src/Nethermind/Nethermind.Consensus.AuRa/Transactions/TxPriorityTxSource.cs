@@ -4,6 +4,7 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using Nethermind.Config;
 using Nethermind.Consensus.AuRa.Contracts;
 using Nethermind.Consensus.AuRa.Contracts.DataStore;
 using Nethermind.Consensus.Comparers;
@@ -12,31 +13,25 @@ using Nethermind.Consensus.Transactions;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
 using Nethermind.Logging;
-using Nethermind.State;
 using Nethermind.TxPool;
 
 namespace Nethermind.Consensus.AuRa.Transactions
 {
-    public class TxPriorityTxSource : TxPoolTxSource
+    public class TxPriorityTxSource(
+        ITxPool transactionPool,
+        ILogManager logManager,
+        ITxFilterPipeline txFilterPipeline,
+        IContractDataStore<Address> sendersWhitelist, // expected HashSet based
+        IDictionaryContractDataStore<TxPriorityContract.Destination> priorities,
+        ISpecProvider specProvider,
+        ITransactionComparerProvider transactionComparerProvider, // expected SortedList based
+        IBlocksConfig blocksConfig)
+        : TxPoolTxSource(transactionPool, specProvider, transactionComparerProvider, logManager, txFilterPipeline,
+            blocksConfig)
     {
-        private readonly IContractDataStore<Address> _sendersWhitelist;
-        private readonly IDictionaryContractDataStore<TxPriorityContract.Destination> _priorities;
+        private readonly IContractDataStore<Address> _sendersWhitelist = sendersWhitelist ?? throw new ArgumentNullException(nameof(sendersWhitelist));
+        private readonly IDictionaryContractDataStore<TxPriorityContract.Destination> _priorities = priorities ?? throw new ArgumentNullException(nameof(priorities));
         private CompareTxByPriorityOnSpecifiedBlock _comparer = null!;
-
-        public TxPriorityTxSource(
-            ITxPool transactionPool,
-            IStateReader stateReader,
-            ILogManager logManager,
-            ITxFilterPipeline txFilterPipeline,
-            IContractDataStore<Address> sendersWhitelist, // expected HashSet based
-            IDictionaryContractDataStore<TxPriorityContract.Destination> priorities,
-            ISpecProvider specProvider,
-            ITransactionComparerProvider transactionComparerProvider) // expected SortedList based
-            : base(transactionPool, specProvider, transactionComparerProvider, logManager, txFilterPipeline)
-        {
-            _sendersWhitelist = sendersWhitelist ?? throw new ArgumentNullException(nameof(sendersWhitelist));
-            _priorities = priorities ?? throw new ArgumentNullException(nameof(priorities));
-        }
 
         protected override IComparer<Transaction> GetComparer(BlockHeader parent, BlockPreparationContext blockPreparationContext)
         {

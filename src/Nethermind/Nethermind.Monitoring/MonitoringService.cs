@@ -8,11 +8,12 @@ using Nethermind.Logging;
 using Nethermind.Monitoring.Metrics;
 using Nethermind.Monitoring.Config;
 using System.Net.Sockets;
+using Nethermind.Core.ServiceStopper;
 using Prometheus;
 
 namespace Nethermind.Monitoring;
 
-public class MonitoringService : IMonitoringService
+public class MonitoringService : IMonitoringService, IStoppableService
 {
     private readonly IMetricsController _metricsController;
     private readonly ILogger _logger;
@@ -100,6 +101,8 @@ public class MonitoringService : IMonitoringService
 
         return Task.CompletedTask;
     }
+
+    public string Description => "Monitoring service";
 
     private Options GetOptions(IMetricsConfig config)
     {

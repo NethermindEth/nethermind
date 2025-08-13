@@ -33,10 +33,10 @@ namespace Nethermind.Core.Test
         {
             EthereumEcdsa ethereumEcdsa = new(BlockchainIds.Olympic);
 
-            Hash256 message = Keccak.Compute("Test message");
+            ValueHash256 message = ValueKeccak.Compute("Test message");
             PrivateKey privateKey = Build.A.PrivateKey.TestObject;
-            Signature signature = ethereumEcdsa.Sign(privateKey, message);
-            Assert.That(ethereumEcdsa.RecoverAddress(signature, message), Is.EqualTo(privateKey.Address));
+            Signature signature = ethereumEcdsa.Sign(privateKey, in message);
+            Assert.That(ethereumEcdsa.RecoverAddress(signature, in message), Is.EqualTo(privateKey.Address));
         }
 
         [Test]

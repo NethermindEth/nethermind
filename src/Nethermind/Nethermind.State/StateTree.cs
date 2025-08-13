@@ -22,14 +22,14 @@ namespace Nethermind.State
 
         [DebuggerStepThrough]
         public StateTree(ICappedArrayPool? bufferPool = null)
-            : base(new MemDb(), Keccak.EmptyTreeHash, true, true, NullLogManager.Instance, bufferPool: bufferPool)
+            : base(new MemDb(), Keccak.EmptyTreeHash, true, NullLogManager.Instance, bufferPool: bufferPool)
         {
             TrieType = TrieType.State;
         }
 
         [DebuggerStepThrough]
         public StateTree(IScopedTrieStore? store, ILogManager? logManager)
-            : base(store, Keccak.EmptyTreeHash, true, true, logManager)
+            : base(store, Keccak.EmptyTreeHash, true, logManager)
         {
             TrieType = TrieType.State;
         }

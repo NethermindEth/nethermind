@@ -30,6 +30,7 @@ using Nethermind.Specs;
 using Nethermind.Specs.Forks;
 using Nethermind.Specs.Test;
 using Nethermind.State;
+using Nethermind.Evm.State;
 using Nethermind.TxPool;
 using NUnit.Framework;
 
@@ -38,7 +39,7 @@ namespace Ethereum.Test.Base;
 public abstract class BlockchainTestBase
 {
     private static ILogger _logger;
-    private static ILogManager _logManager = new TestLogManager(LogLevel.Info);
+    private static ILogManager _logManager = new TestLogManager(LogLevel.Warn);
     private static ISealValidator Sealer { get; }
     private static DifficultyCalculatorWrapper DifficultyCalculator { get; }
 

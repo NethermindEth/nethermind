@@ -113,19 +113,18 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V63
             _nodeDataRequests.Handle(msg.Data, size);
         }
 
-        public override async Task<IOwnedReadOnlyList<byte[]>> GetNodeData(IReadOnlyList<Hash256> keys, CancellationToken token)
+        public override Task<IOwnedReadOnlyList<byte[]>> GetNodeData(IReadOnlyList<Hash256> keys, CancellationToken token)
         {
             if (keys.Count == 0)
             {
-                return ArrayPoolList<byte[]>.Empty();
+                return Task.FromResult<IOwnedReadOnlyList<byte[]>>(ArrayPoolList<byte[]>.Empty());
             }
 
             GetNodeDataMessage msg = new(keys.ToPooledList());
 
             // could use more array pooled lists (pooled memmory) here.
             // maybe remeasure allocations on another network since goerli has been phased out.
-            IOwnedReadOnlyList<byte[]> nodeData = await SendRequest(msg, token);
-            return nodeData;
+            return SendRequest(msg, token);
         }
         public override async Task<IOwnedReadOnlyList<TxReceipt[]>> GetReceipts(IReadOnlyList<Hash256> blockHashes, CancellationToken token)
         {
@@ -140,7 +139,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V63
             return txReceipts;
         }
 
-        protected virtual async Task<IOwnedReadOnlyList<byte[]>> SendRequest(GetNodeDataMessage message, CancellationToken token)
+        protected virtual Task<IOwnedReadOnlyList<byte[]>> SendRequest(GetNodeDataMessage message, CancellationToken token)
         {
             if (Logger.IsTrace)
             {
@@ -148,7 +147,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V63
                 Logger.Trace($"Keys count: {message.Hashes.Count}");
             }
 
-            return await SendRequestGeneric(
+            return SendRequestGeneric(
                 _nodeDataRequests,
                 message,
                 TransferSpeedType.NodeData,
@@ -156,7 +155,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V63
                 token);
         }
 
-        protected virtual async Task<(IOwnedReadOnlyList<TxReceipt[]>, long)> SendRequest(GetReceiptsMessage message, CancellationToken token)
+        protected virtual Task<(IOwnedReadOnlyList<TxReceipt[]>, long)> SendRequest(GetReceiptsMessage message, CancellationToken token)
         {
             if (Logger.IsTrace)
             {
@@ -164,7 +163,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V63
                 Logger.Trace($"Hashes count: {message.Hashes.Count}");
             }
 
-            return await SendRequestGeneric(
+            return SendRequestGeneric(
                 _receiptsRequests,
                 message,
                 TransferSpeedType.Receipts,

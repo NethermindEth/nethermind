@@ -38,15 +38,11 @@ public class AnalyticsWebSocketsModule : IWebSocketsModule, IPublisher
 
     public void RemoveClient(string id) => _clients.TryRemove(id, out _);
 
-    public async Task PublishAsync<T>(T data) where T : class
-    {
-        await SendAsync(new SocketsMessage("analytics", null, data));
-    }
+    public Task PublishAsync<T>(T data) where T : class
+        => SendAsync(new SocketsMessage("analytics", null, data));
 
-    public async Task SendAsync(SocketsMessage message)
-    {
-        await Task.WhenAll(_clients.Values.Select(v => v.SendAsync(message)));
-    }
+    public Task SendAsync(SocketsMessage message)
+        => Task.WhenAll(_clients.Values.Select(v => v.SendAsync(message)));
 
     public void Dispose()
     {

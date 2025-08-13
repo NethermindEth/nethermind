@@ -2,6 +2,8 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Diagnostics;
+using System.Diagnostics.CodeAnalysis;
 using Nethermind.Core;
 using Nethermind.Core.Buffers;
 using Nethermind.Core.Crypto;
@@ -14,7 +16,7 @@ namespace Nethermind.State.Proofs;
 /// <summary>
 /// Represents a Patricia trie built of a collection of <see cref="Transaction"/>.
 /// </summary>
-public class TxTrie : PatriciaTrie<Transaction>
+public sealed class TxTrie : PatriciaTrie<Transaction>
 {
     private static readonly TxDecoder _txDecoder = TxDecoder.Instance;
 
@@ -29,13 +31,34 @@ public class TxTrie : PatriciaTrie<Transaction>
 
         foreach (Transaction? transaction in list)
         {
-            SpanSource buffer = _txDecoder.EncodeToSpanSource(transaction, rlpBehaviors: RlpBehaviors.SkipTypedWrapping, bufferPool: _bufferPool);
+            ref readonly Memory<byte> rlp = ref transaction.PreHash;
+            SpanSource buffer = (rlp.Length > 0) ?
+                CopyExistingRlp(rlp.Span, _bufferPool) :
+                _txDecoder.EncodeToSpanSource(transaction, rlpBehaviors: RlpBehaviors.SkipTypedWrapping, bufferPool: _bufferPool);
             SpanSource keyBuffer = key.EncodeToSpanSource(_bufferPool);
             key++;
 
             Set(keyBuffer.Span, buffer);
         }
+
+        static SpanSource CopyExistingRlp(ReadOnlySpan<byte> rlp, ICappedArrayPool? bufferPool)
+        {
+            // If we still have the tx rlp (usually case on new payload), just copy that rather than re-encoding
+            SpanSource buffer = bufferPool.SafeRentBuffer(rlp.Length);
+            if (buffer.TryGetCappedArray(out CappedArray<byte> capped))
+            {
+                rlp.CopyTo(capped.AsSpan());
+            }
+            else
+            {
+                ThrowSpanSourceNotCappedArray();
+            }
+            return buffer;
+        }
     }
+
+    [DoesNotReturn, StackTraceHidden]
+    private static void ThrowSpanSourceNotCappedArray() => throw new InvalidOperationException("Encode to SpanSource failed to get a CappedArray.");
 
     public static byte[][] CalculateProof(ReadOnlySpan<Transaction> transactions, int index)
     {

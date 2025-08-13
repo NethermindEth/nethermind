@@ -32,7 +32,7 @@ namespace Nethermind.Network.P2P.ProtocolHandlers
 
         public abstract void HandleMessage(ZeroPacket message);
 
-        protected async Task<TResponse> SendRequestGeneric<TRequest, TResponse>(
+        protected Task<TResponse> SendRequestGeneric<TRequest, TResponse>(
             MessageQueue<TRequest, TResponse> messageQueue,
             TRequest message,
             TransferSpeedType speedType,
@@ -43,7 +43,7 @@ namespace Nethermind.Network.P2P.ProtocolHandlers
             Request<TRequest, TResponse> request = new(message);
             messageQueue.Send(request);
 
-            return await HandleResponse(request, speedType, describeRequestFunc, token);
+            return HandleResponse(request, speedType, describeRequestFunc, token);
         }
 
         protected async Task<TResponse> HandleResponse<TRequest, TResponse>(

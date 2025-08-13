@@ -2,27 +2,26 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 
-using System.Collections.Generic;
 using System.Threading.Tasks;
+using Autofac;
+using Autofac.Core;
+using Nethermind.Analytics;
 using Nethermind.Api;
 using Nethermind.Api.Extensions;
+using Nethermind.Api.Steps;
+using Nethermind.Core;
 using Nethermind.Core.PubSub;
 using Nethermind.JsonRpc.Modules;
-using Nethermind.TxPool;
+using Nethermind.Serialization.Json.PubSub;
 
 namespace Nethermind.Analytics
 {
     public class AnalyticsPlugin(IInitConfig initConfig, IAnalyticsConfig analyticsConfig) : INethermindPlugin
     {
-        private IList<IPublisher> _publishers;
-        private INethermindApi _api;
-
-        private bool _isOn = initConfig.WebSocketsEnabled &&
-                             (analyticsConfig.PluginsEnabled ||
-                              analyticsConfig.StreamBlocks ||
-                              analyticsConfig.StreamTransactions);
-
-        public bool Enabled => _isOn;
+        public bool Enabled => initConfig.WebSocketsEnabled &&
+                               (analyticsConfig.PluginsEnabled ||
+                                analyticsConfig.StreamBlocks ||
+                                analyticsConfig.StreamTransactions);
 
         public ValueTask DisposeAsync() { return ValueTask.CompletedTask; }
 
@@ -32,65 +31,23 @@ namespace Nethermind.Analytics
 
         public string Author => "Nethermind";
 
-        public Task Init(INethermindApi api)
-        {
-            _api = api;
-            var (getFromAPi, _) = _api.ForInit;
-
-            if (!_isOn)
-            {
-                if (!initConfig.WebSocketsEnabled)
-                {
-                    getFromAPi.LogManager.GetClassLogger().Warn($"{nameof(AnalyticsPlugin)} disabled due to {nameof(initConfig.WebSocketsEnabled)} set to false");
-                }
-                else
-                {
-                    getFromAPi.LogManager.GetClassLogger().Warn($"{nameof(AnalyticsPlugin)} plugin disabled due to {nameof(AnalyticsConfig)} settings set to false");
-                }
-            }
-
-            return Task.CompletedTask;
-        }
-
-        private void TxPoolOnNewDiscovered(object sender, TxEventArgs e)
-        {
-            if (analyticsConfig.StreamTransactions)
-            {
-                foreach (IPublisher publisher in _publishers)
-                {
-                    // TODO: probably need to serialize first
-                    publisher.PublishAsync(e.Transaction);
-                }
-            }
-        }
-
-        public Task InitNetworkProtocol()
-        {
-            var (getFromAPi, _) = _api.ForNetwork;
-            if (_isOn)
-            {
-                getFromAPi.TxPool!.NewDiscovered += TxPoolOnNewDiscovered;
-            }
-
-            if (_isOn)
-            {
-                AnalyticsWebSocketsModule webSocketsModule = new(getFromAPi.EthereumJsonSerializer, getFromAPi.LogManager);
-                getFromAPi.WebSocketsManager!.AddModule(webSocketsModule, true);
-                getFromAPi.Publishers.Add(webSocketsModule);
-            }
-
-            _publishers = getFromAPi.Publishers;
-
-            return Task.CompletedTask;
-        }
-
-        public Task InitRpcModules()
-        {
-            var (getFromAPi, _) = _api.ForRpc;
-            AnalyticsRpcModule analyticsRpcModule = new(
-                getFromAPi.BlockTree, getFromAPi.StateReader, getFromAPi.LogManager);
-            getFromAPi.RpcModuleProvider.Register(new SingletonModulePool<IAnalyticsRpcModule>(analyticsRpcModule));
-            return Task.CompletedTask;
-        }
+        public IModule Module => new AnalyticsModule();
     }
+}
+
+public class AnalyticsModule : Module
+{
+    protected override void Load(ContainerBuilder builder) => builder
+
+        // Standard IPublishers, which seems to be things that publish when txpool got transaction
+        .AddSingleton<AnalyticsWebSocketsModule>()
+            .Bind<IPublisher, AnalyticsWebSocketsModule>() // send to websocket
+        .AddSingleton<IPublisher, LogPublisher>() // Send to log
+
+        // Rpc
+        .RegisterSingletonJsonRpcModule<IAnalyticsRpcModule, AnalyticsRpcModule>()
+
+        // Step
+        .AddStep(typeof(AnalyticsSteps))
+    ;
 }

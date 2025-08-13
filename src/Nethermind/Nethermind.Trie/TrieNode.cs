@@ -123,8 +123,7 @@ namespace Nethermind.Trie
                 previousValue = Interlocked.CompareExchange(ref _blockAndFlags, newValue, currentValue);
             } while (previousValue != currentValue);
 
-            [DoesNotReturn]
-            [StackTraceHidden]
+            [DoesNotReturn, StackTraceHidden]
             void ThrowAlreadySealed()
             {
                 throw new InvalidOperationException($"{nameof(TrieNode)} {this} is already sealed.");
@@ -179,16 +178,14 @@ namespace Nethermind.Trie
                 node.Key = value;
                 Keccak = null;
 
-                [DoesNotReturn]
-                [StackTraceHidden]
+                [DoesNotReturn, StackTraceHidden]
                 void ThrowDoesNotSupportKey()
                 {
                     throw new InvalidOperationException(
                         $"{NodeType} {this} is does not support having a {nameof(Key)}.");
                 }
 
-                [DoesNotReturn]
-                [StackTraceHidden]
+                [DoesNotReturn, StackTraceHidden]
                 void ThrowAlreadySealed()
                 {
                     throw new InvalidOperationException(
@@ -230,16 +227,14 @@ namespace Nethermind.Trie
 
                 _nodeData = leafData.CloneWithNewValue(value);
 
-                [DoesNotReturn]
-                [StackTraceHidden]
+                [DoesNotReturn, StackTraceHidden]
                 void ThrowAlreadySealed()
                 {
                     throw new InvalidOperationException(
                         $"{nameof(TrieNode)} {this} is already sealed when setting {nameof(Value)}.");
                 }
 
-                [DoesNotReturn]
-                [StackTraceHidden]
+                [DoesNotReturn, StackTraceHidden]
                 static void ThrowNoValueOnBranches()
                 {
                     throw new TrieException("Optimized Patricia Trie does not support setting values on branches.");
@@ -365,8 +360,7 @@ namespace Nethermind.Trie
                 ThrowDecodingError(rlpException, path);
             }
 
-            [DoesNotReturn]
-            [StackTraceHidden]
+            [DoesNotReturn, StackTraceHidden]
             void ThrowDecodingError(RlpException rlpException, in TreePath path)
             {
                 throw new TrieNodeException($"Error when decoding node {Keccak}", path,
@@ -405,22 +399,19 @@ namespace Nethermind.Trie
                 ThrowUnexpectedNumberOfItems(numberOfItems, path);
             }
 
-            [DoesNotReturn]
-            [StackTraceHidden]
+            [DoesNotReturn, StackTraceHidden]
             static void ThrowMissingKeccak()
             {
                 throw new TrieException("Unable to resolve node without Keccak");
             }
 
-            [DoesNotReturn]
-            [StackTraceHidden]
+            [DoesNotReturn, StackTraceHidden]
             void ThrowNullRlp()
             {
                 throw new TrieException($"Trie returned a NULL RLP for node {Keccak}");
             }
 
-            [DoesNotReturn]
-            [StackTraceHidden]
+            [DoesNotReturn, StackTraceHidden]
             void ThrowUnexpectedNumberOfItems(int numberOfItems, in TreePath path)
             {
                 throw new TrieNodeException(
@@ -565,8 +556,7 @@ namespace Nethermind.Trie
                 _ => ThrowUnhandledNodeType(this)
             };
 
-            [DoesNotReturn]
-            [StackTraceHidden]
+            [DoesNotReturn, StackTraceHidden]
             static SpanSource ThrowUnhandledNodeType(TrieNode item)
             {
                 throw new TrieException($"An attempt was made to encode a trie node of type {item.NodeType}");
@@ -625,8 +615,7 @@ namespace Nethermind.Trie
 
             return data is null || ReferenceEquals(data, _nullNode);
 
-            [DoesNotReturn]
-            [StackTraceHidden]
+            [DoesNotReturn, StackTraceHidden]
             static void ThrowNotABranch()
             {
                 throw new TrieException(
@@ -735,8 +724,7 @@ namespace Nethermind.Trie
 
             return child;
 
-            [DoesNotReturn]
-            [StackTraceHidden]
+            [DoesNotReturn, StackTraceHidden]
             void ThrowUnexpectedTypeException(int childIndex, object childOrRef)
             {
                 bool isKeccakCalculated = Keccak is not null && FullRlp.IsNotNull;
@@ -767,8 +755,7 @@ namespace Nethermind.Trie
             SetItem(i, node);
             Keccak = null;
 
-            [DoesNotReturn]
-            [StackTraceHidden]
+            [DoesNotReturn, StackTraceHidden]
             void ThrowAlreadySealed()
             {
                 throw new InvalidOperationException(
@@ -1365,8 +1352,7 @@ namespace Nethermind.Trie
                 }
             }
 
-            [DoesNotReturn]
-            [StackTraceHidden]
+            [DoesNotReturn, StackTraceHidden]
             static void ThrowNotPersisted()
             {
                 throw new InvalidOperationException("Cannot unresolve a child that is not persisted yet.");

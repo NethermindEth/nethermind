@@ -95,8 +95,7 @@ namespace Nethermind.Trie
                 Unsafe.Add(ref MemoryMarshal.GetReference(nibbles), i * 2 + 1) = (byte)(value & 15);
             }
 
-            [DoesNotReturn]
-            [StackTraceHidden]
+            [DoesNotReturn, StackTraceHidden]
             static void ThrowArgumentException()
             {
                 throw new ArgumentException("Nibbles length must be twice the bytes length");

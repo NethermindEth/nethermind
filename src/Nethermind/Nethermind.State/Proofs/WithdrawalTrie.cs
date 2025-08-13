@@ -12,7 +12,7 @@ namespace Nethermind.State.Proofs;
 /// <summary>
 /// Represents a Patricia trie built of a collection of <see cref="Withdrawal"/>.
 /// </summary>
-public class WithdrawalTrie : PatriciaTrie<Withdrawal>
+public sealed class WithdrawalTrie : PatriciaTrie<Withdrawal>
 {
     private static readonly WithdrawalDecoder _codec = new();
 

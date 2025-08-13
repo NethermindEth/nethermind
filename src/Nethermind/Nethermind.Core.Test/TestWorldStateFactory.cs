@@ -2,8 +2,10 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using Nethermind.Consensus.Validators;
+using Nethermind.Core.Test.Db;
 using Nethermind.Db;
 using Nethermind.Logging;
+using Nethermind.Evm.State;
 using Nethermind.State;
 using Nethermind.Trie;
 using Nethermind.Trie.Pruning;
@@ -25,7 +27,7 @@ public static class TestWorldStateFactory
             Persist.EveryBlock,
             new PruningConfig(),
             LimboLogs.Instance);
-        IWorldState worldState = new WorldState(trieStore, dbProvider.CodeDb, logManager);
+        var worldState = new WorldState(trieStore, dbProvider.CodeDb, logManager);
 
         return new WorldStateManager(worldState, trieStore, dbProvider, logManager);
     }

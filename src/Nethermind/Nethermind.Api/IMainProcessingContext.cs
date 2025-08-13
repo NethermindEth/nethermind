@@ -4,8 +4,8 @@
 using System.Threading.Tasks;
 using Nethermind.Consensus.Processing;
 using Nethermind.Core.ServiceStopper;
+using Nethermind.Evm.State;
 using Nethermind.Evm.TransactionProcessing;
-using Nethermind.State;
 
 namespace Nethermind.Api;
 
