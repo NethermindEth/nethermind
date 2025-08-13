@@ -46,15 +46,17 @@ namespace Nethermind.Synchronization.Peers
 
         public Hash256 HeadHash => SyncPeer.HeadHash;
 
-        private long _lastNotifiedHeadNumber;
+        private long _lastNotifiedEarliestNumber;
+        private long _lastNotifiedLatestNumber;
 
         [MethodImpl(MethodImplOptions.Synchronized)]
-        public bool ShouldNotifyHeadNumber(long headNumber)
+        public bool ShouldNotifyNewRange(long earliestNumber, long latestNumber)
         {
             // Also notify if same header as could be reorg with different hash
-            if (headNumber < _lastNotifiedHeadNumber)
+            if (latestNumber < _lastNotifiedLatestNumber && earliestNumber < _lastNotifiedEarliestNumber)
                 return false;
-            _lastNotifiedHeadNumber = headNumber;
+            _lastNotifiedEarliestNumber = earliestNumber;
+            _lastNotifiedLatestNumber = latestNumber;
             return true;
         }
 
