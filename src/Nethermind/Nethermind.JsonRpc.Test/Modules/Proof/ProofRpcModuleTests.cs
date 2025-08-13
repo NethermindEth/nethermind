@@ -69,7 +69,7 @@ public class ProofRpcModuleTests
 
         Hash256 stateRoot;
         IWorldState worldState = _worldStateManager.GlobalWorldState;
-        using (var _ = worldState.BeginScope(null))
+        using (var _ = worldState.BeginScope(IWorldState.PreGenesis))
         {
             worldState.CreateAccount(TestItem.AddressA, 100000);
             worldState.Commit(London.Instance);
@@ -898,7 +898,7 @@ public class ProofRpcModuleTests
     private (IWorldState, Hash256) CreateInitialState(byte[]? code)
     {
         IWorldState stateProvider = _worldStateManager.GlobalWorldState;
-        using var _ = stateProvider.BeginScope(null);
+        using var _ = stateProvider.BeginScope(IWorldState.PreGenesis);
 
         AddAccount(stateProvider, TestItem.AddressA, 1.Ether());
         AddAccount(stateProvider, TestItem.AddressB, 1.Ether());

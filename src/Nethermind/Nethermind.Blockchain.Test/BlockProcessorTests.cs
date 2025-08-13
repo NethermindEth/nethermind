@@ -163,7 +163,7 @@ public class BlockProcessorTests
         BlockToProduce newBlock = new(Build.A.BlockHeader.WithExcessBlobGas(0).TestObject);
         WorldStateStab stateProvider = new();
 
-        using var _ = stateProvider.BeginScope(null);
+        using var _ = stateProvider.BeginScope(IWorldState.PreGenesis);
 
         Transaction? addedTransaction = null;
         txPicker.AddingTransaction += (s, e) => addedTransaction = e.Transaction;

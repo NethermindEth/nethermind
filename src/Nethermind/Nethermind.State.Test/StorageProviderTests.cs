@@ -186,7 +186,7 @@ public class StorageProviderTests
         // block 1
         Hash256 stateRoot;
         WorldState storageProvider = BuildStorageProvider(ctx);
-        using (var _ = storageProvider.BeginScope(null))
+        using (var _ = storageProvider.BeginScope(IWorldState.PreGenesis))
         {
             storageProvider.CreateAccount(ctx.Address1, 0);
             storageProvider.CreateAccount(ctx.Address2, 0);
@@ -453,7 +453,7 @@ public class StorageProviderTests
             StateProvider = new WorldState(TestTrieStoreFactory.Build(new MemDb(), LimboLogs.Instance), Substitute.For<IDb>(), LogManager, preBlockCaches);
             if (setInitialState)
             {
-                StateProvider.BeginScope(null);
+                StateProvider.BeginScope(IWorldState.PreGenesis);
                 StateProvider.CreateAccount(Address1, 0);
                 StateProvider.CreateAccount(Address2, 0);
                 StateProvider.Commit(Frontier.Instance);

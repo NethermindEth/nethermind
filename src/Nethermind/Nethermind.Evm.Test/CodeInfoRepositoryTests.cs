@@ -62,7 +62,7 @@ public class CodeInfoRepositoryTests
     {
         IWorldStateManager worldStateManager = TestWorldStateFactory.CreateForTest();
         IWorldState stateProvider = worldStateManager.GlobalWorldState;
-        using var _scope = stateProvider.BeginScope(null);
+        using var _scope = stateProvider.BeginScope(IWorldState.PreGenesis);
         stateProvider.CreateAccount(TestItem.AddressA, 0);
         stateProvider.InsertCode(TestItem.AddressA, code, Substitute.For<IReleaseSpec>());
         EthereumCodeInfoRepository sut = new();
@@ -91,7 +91,7 @@ public class CodeInfoRepositoryTests
     {
         IWorldStateManager worldStateManager = TestWorldStateFactory.CreateForTest();
         IWorldState stateProvider = worldStateManager.GlobalWorldState;
-        using var _scope = stateProvider.BeginScope(null);
+        using var _scope = stateProvider.BeginScope(IWorldState.PreGenesis);
         stateProvider.CreateAccount(TestItem.AddressA, 0);
         stateProvider.InsertCode(TestItem.AddressA, code, Substitute.For<IReleaseSpec>());
         EthereumCodeInfoRepository sut = new();
@@ -104,7 +104,7 @@ public class CodeInfoRepositoryTests
     {
         IWorldStateManager worldStateManager = TestWorldStateFactory.CreateForTest();
         IWorldState stateProvider = worldStateManager.GlobalWorldState;
-        using var _ = stateProvider.BeginScope(null);
+        using var _ = stateProvider.BeginScope(IWorldState.PreGenesis);
         stateProvider.CreateAccount(TestItem.AddressA, 0);
         stateProvider.InsertCode(TestItem.AddressA, code, Substitute.For<IReleaseSpec>());
         EthereumCodeInfoRepository sut = new();
@@ -120,7 +120,7 @@ public class CodeInfoRepositoryTests
     {
         IWorldStateManager worldStateManager = TestWorldStateFactory.CreateForTest();
         IWorldState stateProvider = worldStateManager.GlobalWorldState;
-        using var _ = stateProvider.BeginScope(null);
+        using var _ = stateProvider.BeginScope(IWorldState.PreGenesis);
         stateProvider.CreateAccount(TestItem.AddressA, 0);
         stateProvider.InsertCode(TestItem.AddressA, code, Substitute.For<IReleaseSpec>());
         Address delegationAddress = new Address(code.Slice(3, Address.Size));
@@ -138,7 +138,7 @@ public class CodeInfoRepositoryTests
     {
         IWorldStateManager worldStateManager = TestWorldStateFactory.CreateForTest();
         IWorldState stateProvider = worldStateManager.GlobalWorldState;
-        using var _ = stateProvider.BeginScope(null);
+        using var _ = stateProvider.BeginScope(IWorldState.PreGenesis);
         stateProvider.CreateAccount(TestItem.AddressA, 0);
         stateProvider.InsertCode(TestItem.AddressA, code, Substitute.For<IReleaseSpec>());
 
@@ -152,7 +152,7 @@ public class CodeInfoRepositoryTests
     {
         IWorldStateManager worldStateManager = TestWorldStateFactory.CreateForTest();
         IWorldState stateProvider = worldStateManager.GlobalWorldState;
-        using var _ = stateProvider.BeginScope(null);
+        using var _ = stateProvider.BeginScope(IWorldState.PreGenesis);
         stateProvider.CreateAccount(TestItem.AddressA, 0);
         stateProvider.InsertCode(TestItem.AddressA, code, Substitute.For<IReleaseSpec>());
         Address delegationAddress = new Address(code.Slice(3, Address.Size));
@@ -170,7 +170,7 @@ public class CodeInfoRepositoryTests
     {
         IWorldStateManager worldStateManager = TestWorldStateFactory.CreateForTest();
         IWorldState stateProvider = worldStateManager.GlobalWorldState;
-        using var _ = stateProvider.BeginScope(null);
+        using var _ = stateProvider.BeginScope(IWorldState.PreGenesis);
         stateProvider.CreateAccount(TestItem.AddressA, 0);
         stateProvider.InsertCode(TestItem.AddressA, code, Substitute.For<IReleaseSpec>());
 

@@ -61,7 +61,7 @@ namespace Nethermind.Trie.Test
                 _trieStore = new TrieStore(new NodeStorage(_dbProvider.StateDb), _pruningStrategy, _persistenceStrategy, _pruningConfig, _logManager);
                 _stateProvider = new WorldState(_trieStore, _dbProvider.CodeDb, _logManager);
                 _stateReader = new StateReader(_trieStore, _dbProvider.CodeDb, _logManager);
-                _worldStateCloser = _stateProvider.BeginScope(null);
+                _worldStateCloser = _stateProvider.BeginScope(IWorldState.PreGenesis);
             }
 
 

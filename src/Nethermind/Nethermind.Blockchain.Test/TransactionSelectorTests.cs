@@ -484,7 +484,7 @@ namespace Nethermind.Blockchain.Test
             {
                 HashSet<Address> missingAddressesSet = missingAddresses.ToHashSet();
 
-                using var _ = stateProvider.BeginScope(null);
+                using var _ = stateProvider.BeginScope(IWorldState.PreGenesis);
 
                 foreach (KeyValuePair<Address, (UInt256 Balance, UInt256 Nonce)> accountState in testCase.AccountStates
                              .Where(v => !missingAddressesSet.Contains(v.Key)))

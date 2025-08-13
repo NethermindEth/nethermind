@@ -62,7 +62,7 @@ public class RbuilderRpcModuleTests
         Hash256 theHash = Keccak.Compute(theCodeBytes);
 
         IWorldState worldState = _worldStateManager.GlobalWorldState;
-        using (worldState.BeginScope(null))
+        using (worldState.BeginScope(IWorldState.PreGenesis))
         {
             worldState.CreateAccount(TestItem.AddressA, 100000);
             worldState.InsertCode(TestItem.AddressA, theCodeBytes, London.Instance);

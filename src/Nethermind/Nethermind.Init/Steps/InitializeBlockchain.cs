@@ -171,7 +171,7 @@ namespace Nethermind.Init.Steps
         private void WarmupEvm()
         {
             IWorldState state = _api.WorldStateManager!.CreateResettableWorldState();
-            using var _ = state.BeginScope(null);
+            using var _ = state.BeginScope(IWorldState.PreGenesis);
             VirtualMachine.WarmUpEvmInstructions(state, new EthereumCodeInfoRepository());
         }
 

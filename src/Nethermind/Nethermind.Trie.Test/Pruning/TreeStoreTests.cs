@@ -594,7 +594,7 @@ namespace Nethermind.Trie.Test.Pruning
         {
             IWorldStateManager worldStateManager = TestWorldStateFactory.CreateForTest();
             IWorldState worldState = worldStateManager.GlobalWorldState;
-            using var _ = worldState.BeginScope(null);
+            using var _ = worldState.BeginScope(IWorldState.PreGenesis);
             worldState.CreateAccount(TestItem.AddressA, 1000);
             worldState.CreateAccount(TestItem.AddressB, 1000);
         }
@@ -1119,7 +1119,7 @@ namespace Nethermind.Trie.Test.Pruning
             (Hash256, ValueHash256) SetupStartingState()
             {
                 WorldState worldState = new WorldState(new TestRawTrieStore(nodeStorage), memDbProvider.CodeDb, LimboLogs.Instance);
-                using var _ = worldState.BeginScope(null);
+                using var _ = worldState.BeginScope(IWorldState.PreGenesis);
                 worldState.CreateAccountIfNotExists(address, UInt256.One);
                 worldState.Set(new StorageCell(address, slot), TestItem.KeccakB.BytesToArray());
                 worldState.Commit(MainnetSpecProvider.Instance.GenesisSpec);

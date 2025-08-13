@@ -32,7 +32,7 @@ namespace Nethermind.Store.Test
             StateReader stateReader = new StateReader(trieStore, codeDb, LimboLogs.Instance);
             Hash256 stateRoot;
 
-            using (var _ = stateProvider.BeginScope(null))
+            using (var _ = stateProvider.BeginScope(IWorldState.PreGenesis))
             {
                 stateProvider.CreateAccount(TestItem.AddressA, 1);
                 stateProvider.InsertCode(TestItem.AddressA, new byte[] { 1, 2, 3 }, Istanbul.Instance);

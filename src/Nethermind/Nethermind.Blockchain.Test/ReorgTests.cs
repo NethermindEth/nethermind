@@ -50,7 +50,7 @@ public class ReorgTests
 
         IReleaseSpec finalSpec = specProvider.GetFinalSpec();
 
-        using (var _ = stateProvider.BeginScope(null))
+        using (var _ = stateProvider.BeginScope(IWorldState.PreGenesis))
         {
             if (finalSpec.WithdrawalsEnabled)
             {

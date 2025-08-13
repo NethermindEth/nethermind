@@ -19,6 +19,9 @@ namespace Nethermind.Evm.State;
 /// </summary>
 public interface IWorldState : IJournal<Snapshot>, IReadOnlyStateProvider
 {
+    // For scope to create genesis.
+    const BlockHeader? PreGenesis = null;
+
     IDisposable BeginScope(BlockHeader? baseBlock);
     bool IsInScope { get; }
     new ref readonly UInt256 GetBalance(Address address);

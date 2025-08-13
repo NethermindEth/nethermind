@@ -202,7 +202,7 @@ public class TestBlockchain : IDisposable
         {
             Task waitGenesis = WaitForNewHead();
 
-            using var _ = state.BeginScope(null);
+            using var _ = state.BeginScope(IWorldState.PreGenesis);
 
             // Eip4788 precompile state account
             if (specProvider?.GenesisSpec?.IsBeaconBlockRootAvailable ?? false)

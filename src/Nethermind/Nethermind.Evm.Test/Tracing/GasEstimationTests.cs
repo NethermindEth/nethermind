@@ -390,7 +390,7 @@ namespace Nethermind.Evm.Test.Tracing
                 _specProvider = MainnetSpecProvider.Instance;
                 IWorldStateManager worldStateManager = TestWorldStateFactory.CreateForTest();
                 _stateProvider = worldStateManager.GlobalWorldState;
-                _closer = _stateProvider.BeginScope(null);
+                _closer = _stateProvider.BeginScope(IWorldState.PreGenesis);
                 _stateProvider.CreateAccount(TestItem.AddressA, 1.Ether());
                 _stateProvider.Commit(_specProvider.GenesisSpec);
                 _stateProvider.CommitTree(0);

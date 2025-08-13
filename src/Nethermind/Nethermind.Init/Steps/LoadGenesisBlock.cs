@@ -10,6 +10,7 @@ using Nethermind.Blockchain;
 using Nethermind.Config;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Evm.State;
 using Nethermind.Logging;
 
 namespace Nethermind.Init.Steps
@@ -43,7 +44,7 @@ namespace Nethermind.Init.Steps
             // if we already have a database with blocks then we do not need to load genesis from spec
             if (_api.BlockTree.Genesis is null)
             {
-                using var _ = mainProcessingContext.WorldState.BeginScope(null);
+                using var _ = mainProcessingContext.WorldState.BeginScope(IWorldState.PreGenesis);
 
                 Load(mainProcessingContext);
             }

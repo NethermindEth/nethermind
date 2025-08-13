@@ -62,7 +62,7 @@ public class GenesisLoaderTests
         ITransactionProcessor transactionProcessor = Substitute.For<ITransactionProcessor>();
         GenesisLoader genesisLoader = new(chainSpec, specProvider, worldStateManager.GlobalStateReader, stateProvider, transactionProcessor, LimboLogs.Instance);
 
-        using var _ = stateProvider.BeginScope(null);
+        using var _ = stateProvider.BeginScope(IWorldState.PreGenesis);
         return genesisLoader.Load();
     }
 

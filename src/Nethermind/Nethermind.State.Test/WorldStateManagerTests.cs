@@ -91,7 +91,7 @@ public class WorldStateManagerTests
 
             Hash256 stateRoot;
 
-            using (worldState.BeginScope(null))
+            using (worldState.BeginScope(IWorldState.PreGenesis))
             {
                 worldState.CreateAccount(TestItem.AddressA, 1, 2);
                 worldState.Commit(Cancun.Instance);

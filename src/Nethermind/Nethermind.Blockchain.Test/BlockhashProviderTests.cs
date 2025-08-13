@@ -25,7 +25,7 @@ public class BlockhashProviderTests
     {
         IWorldStateManager worldStateManager = TestWorldStateFactory.CreateForTest();
         IWorldState worldState = worldStateManager.GlobalWorldState;
-        using var _ = worldState.BeginScope(null);
+        using var _ = worldState.BeginScope(IWorldState.PreGenesis);
         worldState.CreateAccount(Eip2935Constants.BlockHashHistoryAddress, 0, 1);
         worldState.Commit(Frontier.Instance);
         worldState.CommitTree(0);

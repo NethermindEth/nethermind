@@ -39,7 +39,7 @@ namespace Nethermind.Store.Test
             IWorldStateManager worldStateManager = TestWorldStateFactory.CreateForTest(dbProvider, LimboLogs.Instance);
 
             IWorldState provider = worldStateManager.GlobalWorldState;
-            using var _ = provider.BeginScope(null);
+            using var _ = provider.BeginScope(IWorldState.PreGenesis);
 
             provider.CreateAccount(_address1, 0);
             provider.AddToBalance(_address1, 1, spec);
@@ -82,7 +82,7 @@ namespace Nethermind.Store.Test
             IDbProvider dbProvider = TestMemDbProvider.Init();
             IWorldStateManager worldStateManager = TestWorldStateFactory.CreateForTest(dbProvider, LimboLogs.Instance);
             IWorldState provider = worldStateManager.GlobalWorldState;
-            using var _ = provider.BeginScope(null);
+            using var _ = provider.BeginScope(IWorldState.PreGenesis);
 
             void UpdateStorageValue(byte[] newValue)
             {
@@ -141,7 +141,7 @@ namespace Nethermind.Store.Test
 
             IWorldStateManager worldStateManager = TestWorldStateFactory.CreateForTest();
             IWorldState provider = worldStateManager.GlobalWorldState;
-            using var _ = provider.BeginScope(null);
+            using var _ = provider.BeginScope(IWorldState.PreGenesis);
 
             void CommitEverything()
             {
@@ -195,7 +195,7 @@ namespace Nethermind.Store.Test
             IWorldState state = worldStateManager.GlobalWorldState;
             byte[] initialValue = new byte[] { 1, 2, 3 };
             BlockHeader baseBlock;
-            using (var _ = state.BeginScope(null))
+            using (var _ = state.BeginScope(IWorldState.PreGenesis))
             {
                 /* to start with we need to create an account that we will be setting storage at */
                 state.CreateAccount(storageCell.Address, UInt256.One);
@@ -253,7 +253,7 @@ namespace Nethermind.Store.Test
             IWorldState provider = worldStateManager.GlobalWorldState;
 
             Hash256 stateRoot;
-            using (var _ = provider.BeginScope(null))
+            using (var _ = provider.BeginScope(IWorldState.PreGenesis))
             {
                 provider.CreateAccount(TestItem.AddressA, 1.Ether());
                 provider.Commit(MuirGlacier.Instance);
@@ -275,7 +275,7 @@ namespace Nethermind.Store.Test
             IDbProvider dbProvider = TestMemDbProvider.Init();
             IWorldStateManager worldStateManager = TestWorldStateFactory.CreateForTest(dbProvider, LimboLogs.Instance);
             IWorldState sut = worldStateManager.GlobalWorldState;
-            using var _ = sut.BeginScope(null);
+            using var _ = sut.BeginScope(IWorldState.PreGenesis);
             sut.CreateAccount(TestItem.AddressA, 0);
             sut.InsertCode(TestItem.AddressA, ValueKeccak.Compute(new byte[1]), new byte[1], releaseSpec, false);
             sut.Commit(MuirGlacier.Instance);
@@ -295,7 +295,7 @@ namespace Nethermind.Store.Test
             IDbProvider dbProvider = TestMemDbProvider.Init();
             IWorldStateManager worldStateManager = TestWorldStateFactory.CreateForTest(dbProvider, LimboLogs.Instance);
             IWorldState sut = worldStateManager.GlobalWorldState;
-            using var _ = sut.BeginScope(null);
+            using var _ = sut.BeginScope(IWorldState.PreGenesis);
             sut.CreateAccount(TestItem.AddressA, 0);
             sut.Commit(MuirGlacier.Instance);
             sut.CommitTree(0);
@@ -314,7 +314,7 @@ namespace Nethermind.Store.Test
             IDbProvider dbProvider = TestMemDbProvider.Init();
             IWorldStateManager worldStateManager = TestWorldStateFactory.CreateForTest(dbProvider, LimboLogs.Instance);
             IWorldState sut = worldStateManager.GlobalWorldState;
-            using var _ = sut.BeginScope(null);
+            using var _ = sut.BeginScope(IWorldState.PreGenesis);
             sut.CreateAccount(TestItem.AddressA, 0);
             byte[] code = [.. Eip7702Constants.DelegationHeader, .. new byte[20]];
             sut.InsertCode(TestItem.AddressA, ValueKeccak.Compute(code), code, releaseSpec, false);
@@ -335,7 +335,7 @@ namespace Nethermind.Store.Test
             IDbProvider dbProvider = TestMemDbProvider.Init();
             IWorldStateManager worldStateManager = TestWorldStateFactory.CreateForTest(dbProvider, LimboLogs.Instance);
             IWorldState sut = worldStateManager.GlobalWorldState;
-            using var _ = sut.BeginScope(null);
+            using var _ = sut.BeginScope(IWorldState.PreGenesis);
             sut.CreateAccount(TestItem.AddressA, 0);
             byte[] code = new byte[20];
             sut.InsertCode(TestItem.AddressA, ValueKeccak.Compute(code), code, releaseSpec, false);
@@ -355,7 +355,7 @@ namespace Nethermind.Store.Test
             IDbProvider dbProvider = TestMemDbProvider.Init();
             IWorldStateManager worldStateManager = TestWorldStateFactory.CreateForTest(dbProvider, LimboLogs.Instance);
             IWorldState sut = worldStateManager.GlobalWorldState;
-            using var _ = sut.BeginScope(null);
+            using var _ = sut.BeginScope(IWorldState.PreGenesis);
             sut.CreateAccount(TestItem.AddressA, 0);
             byte[] code = [.. Eip7702Constants.DelegationHeader, .. new byte[20]];
             sut.InsertCode(TestItem.AddressA, ValueKeccak.Compute(code), code, releaseSpec, false);
@@ -375,7 +375,7 @@ namespace Nethermind.Store.Test
             IDbProvider dbProvider = TestMemDbProvider.Init();
             IWorldStateManager worldStateManager = TestWorldStateFactory.CreateForTest(dbProvider, LimboLogs.Instance);
             IWorldState sut = worldStateManager.GlobalWorldState;
-            using var _ = sut.BeginScope(null);
+            using var _ = sut.BeginScope(IWorldState.PreGenesis);
             sut.CreateAccount(TestItem.AddressA, 0);
             byte[] code = [.. Eip7702Constants.DelegationHeader, .. new byte[20]];
             sut.InsertCode(TestItem.AddressA, ValueKeccak.Compute(code), code, releaseSpec, false);
@@ -393,7 +393,7 @@ namespace Nethermind.Store.Test
             WorldStateManager worldStateManager = TestWorldStateFactory.CreateForTest();
             Hash256 stateRoot;
             IWorldState provider = worldStateManager.GlobalWorldState;
-            using (var _ = provider.BeginScope(null))
+            using (var _ = provider.BeginScope(IWorldState.PreGenesis))
             {
                 provider.CreateAccount(TestItem.AddressA, 1.Ether());
                 provider.Commit(MuirGlacier.Instance);
@@ -412,7 +412,7 @@ namespace Nethermind.Store.Test
             IWorldState provider = worldStateManager.GlobalWorldState;
 
             Hash256 stateRoot;
-            using (var _ = provider.BeginScope(null))
+            using (var _ = provider.BeginScope(IWorldState.PreGenesis))
             {
                 provider.CreateAccount(TestItem.AddressA, 1.Ether());
                 provider.Commit(MuirGlacier.Instance);

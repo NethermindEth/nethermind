@@ -132,7 +132,7 @@ namespace Nethermind.AuRa.Test
 
             Hash256 stateRoot;
 
-            using (stateProvider.BeginScope(null))
+            using (stateProvider.BeginScope(IWorldState.PreGenesis))
             {
                 stateProvider.CreateAccount(TestItem.AddressA, UInt256.One);
                 stateProvider.CreateAccount(TestItem.AddressB, UInt256.One);

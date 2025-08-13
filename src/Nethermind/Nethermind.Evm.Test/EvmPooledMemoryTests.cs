@@ -164,7 +164,7 @@ public class EvmPooledMemoryTests : EvmMemoryTestsBase
                 LimboLogs.Instance);
 
         Hash256 stateRoot = null;
-        using var _ = stateProvider.BeginScope(null);
+        using var _ = stateProvider.BeginScope(IWorldState.PreGenesis);
         stateProvider.CreateAccount(to, 123);
         stateProvider.InsertCode(to, input, specProvider.GenesisSpec);
 

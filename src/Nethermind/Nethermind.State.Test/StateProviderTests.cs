@@ -35,7 +35,7 @@ public class StateProviderTests
         WorldStateManager worldStateManager = TestWorldStateFactory.CreateForTest();
         IWorldState frontierProvider = worldStateManager.GlobalWorldState;
         BlockHeader baseBlock;
-        using (var _ = frontierProvider.BeginScope(null))
+        using (var _ = frontierProvider.BeginScope(IWorldState.PreGenesis))
         {
             frontierProvider.CreateAccount(_address1, 0);
             frontierProvider.Commit(Frontier.Instance);
@@ -57,7 +57,7 @@ public class StateProviderTests
     {
         WorldStateManager worldStateManager = TestWorldStateFactory.CreateForTest();
         IWorldState provider = worldStateManager.GlobalWorldState;
-        using var _ = provider.BeginScope(null);
+        using var _ = provider.BeginScope(IWorldState.PreGenesis);
         var systemUser = Address.SystemUser;
 
         provider.CreateAccount(systemUser, 0);
@@ -75,7 +75,7 @@ public class StateProviderTests
     {
         WorldStateManager worldStateManager = TestWorldStateFactory.CreateForTest();
         IWorldState provider = worldStateManager.GlobalWorldState;
-        using var _ = provider.BeginScope(null);
+        using var _ = provider.BeginScope(IWorldState.PreGenesis);
         provider.Commit(Frontier.Instance);
         provider.Restore(Snapshot.Empty);
     }
@@ -85,7 +85,7 @@ public class StateProviderTests
     {
         WorldStateManager worldStateManager = TestWorldStateFactory.CreateForTest();
         IWorldState provider = worldStateManager.GlobalWorldState;
-        using var _ = provider.BeginScope(null);
+        using var _ = provider.BeginScope(IWorldState.PreGenesis);
         Assert.Throws<InvalidOperationException>(() => provider.AddToBalance(TestItem.AddressA, 1.Ether(), Olympic.Instance));
     }
 
@@ -94,7 +94,7 @@ public class StateProviderTests
     {
         WorldStateManager worldStateManager = TestWorldStateFactory.CreateForTest();
         IWorldState provider = worldStateManager.GlobalWorldState;
-        using var _ = provider.BeginScope(null);
+        using var _ = provider.BeginScope(IWorldState.PreGenesis);
         provider.CreateAccount(_address1, 0);
         provider.Commit(Frontier.Instance);
         bool isEmpty = !provider.TryGetAccount(_address1, out var account) || account.IsEmpty;
@@ -106,7 +106,7 @@ public class StateProviderTests
     {
         WorldStateManager worldStateManager = TestWorldStateFactory.CreateForTest();
         IWorldState provider = worldStateManager.GlobalWorldState;
-        using var _ = provider.BeginScope(null);
+        using var _ = provider.BeginScope(IWorldState.PreGenesis);
         byte[] code = provider.GetCode(TestItem.AddressA);
         code.Should().BeEmpty();
     }
@@ -116,7 +116,7 @@ public class StateProviderTests
     {
         WorldStateManager worldStateManager = TestWorldStateFactory.CreateForTest();
         IWorldState provider = worldStateManager.GlobalWorldState;
-        using var _ = provider.BeginScope(null);
+        using var _ = provider.BeginScope(IWorldState.PreGenesis);
         provider.CreateAccount(_address1, 0);
         provider.AddToBalance(_address1, 1, Frontier.Instance);
         provider.AddToBalance(_address1, 1, Frontier.Instance);
@@ -144,7 +144,7 @@ public class StateProviderTests
     {
         WorldStateManager worldStateManager = TestWorldStateFactory.CreateForTest();
         IWorldState provider = worldStateManager.GlobalWorldState;
-        using var _ = provider.BeginScope(null);
+        using var _ = provider.BeginScope(IWorldState.PreGenesis);
         provider.CreateAccount(_address1, 0);
         provider.Commit(Frontier.Instance);
         provider.GetBalance(_address1);
@@ -164,7 +164,7 @@ public class StateProviderTests
 
         WorldStateManager worldStateManager = TestWorldStateFactory.CreateForTest();
         IWorldState provider = worldStateManager.GlobalWorldState;
-        using var _ = provider.BeginScope(null);
+        using var _ = provider.BeginScope(IWorldState.PreGenesis);
         provider.CreateAccount(_address1, 1);
         provider.AddToBalance(_address1, 1, Frontier.Instance);
         provider.IncrementNonce(_address1);
@@ -206,7 +206,7 @@ public class StateProviderTests
         WorldStateManager worldStateManager = TestWorldStateFactory.CreateForTest();
         IWorldState provider = worldStateManager.GlobalWorldState;
 
-        using var _ = provider.BeginScope(null);
+        using var _ = provider.BeginScope(IWorldState.PreGenesis);
 
         provider.CreateAccount(_address1, 0);
         provider.TryGetAccount(_address1, out AccountStruct account);
@@ -228,7 +228,7 @@ public class StateProviderTests
 
         Action action = () => { _ = provider.StateRoot; };
         {
-            using var _ = provider.BeginScope(null);
+            using var _ = provider.BeginScope(IWorldState.PreGenesis);
             provider.CreateAccount(TestItem.AddressA, 5);
             provider.CommitTree(0);
 
