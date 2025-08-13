@@ -19,7 +19,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V65
     public class PooledTxsRequestorTests
     {
         private readonly ITxPool _txPool = Substitute.For<ITxPool>();
-        private ISpecProvider _specProvider = Substitute.For<ISpecProvider>();
+        private readonly ISpecProvider _specProvider = Substitute.For<ISpecProvider>();
         private readonly Action<GetPooledTransactionsMessage> _doNothing = static msg => msg.Dispose();
         private IPooledTxsRequestor _requestor;
         private ArrayPoolList<Hash256> _response;
@@ -38,7 +38,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V65
             _requestor.RequestTransactions(_doNothing, skipped);
 
             using var request = new ArrayPoolList<Hash256>(3) { TestItem.KeccakA, TestItem.KeccakB, TestItem.KeccakC };
-            using var expected = new ArrayPoolList<Hash256>(3) { TestItem.KeccakB, TestItem.KeccakC };
+            using var expected = new ArrayPoolList<Hash256>(3) { TestItem.KeccakA, TestItem.KeccakB, TestItem.KeccakC };
             _requestor.RequestTransactions(Send, request);
             _response.Should().BeEquivalentTo(expected);
         }
@@ -52,7 +52,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V65
 
             using var request = new ArrayPoolList<Hash256>(3) { TestItem.KeccakA, TestItem.KeccakB, TestItem.KeccakC };
             _requestor.RequestTransactions(Send, request);
-            _response.Should().BeEmpty();
+            _response.Should().BeEquivalentTo(request);
         }
 
         [Test]
