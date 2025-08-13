@@ -19,8 +19,7 @@ namespace Nethermind.JsonRpc.Modules.Admin.Utils
             }
 
             var session = peer.InSession ?? peer.OutSession;
-            var localAddress = GetLocalAddress(peer);
-            var localHost = GetLocalHost(localAddress);
+            var (localAddress, localHost) = GetLocalInfo(peer.Node);
             var remoteAddress = GetRemoteAddress(session, peer.Node);
 
             return new NetworkInfo
@@ -34,40 +33,24 @@ namespace Nethermind.JsonRpc.Modules.Admin.Utils
             };
         }
 
-        private static string GetLocalAddress(Peer peer)
+        private static (string address, string host) GetLocalInfo(Node node)
         {
-            // For backward compatibility with subscriptions, use the peer's address
-            // This matches the old peerInfo.Host behavior
-            if (peer.Node?.Host != null)
+            if (string.IsNullOrEmpty(node.Host))
             {
-                return $"{IPAddress.Parse(peer.Node.Host).MapToIPv4()}:{peer.Node.Port}";
+                return (string.Empty, string.Empty);
             }
 
-            return string.Empty;
-        }
+            var host = node.Host;
+            var address = $"{host}:{node.Port}";
 
-        private static string GetLocalHost(string localAddress)
-        {
-            return ExtractHost(localAddress);
-        }
-
-        private static string ExtractHost(string address)
-        {
-            if (string.IsNullOrEmpty(address))
-                return string.Empty;
-
-            var colonIndex = address.LastIndexOf(':');
-            return colonIndex > 0 ? address.Substring(0, colonIndex) : address;
+            return (address, host);
         }
 
         private static string GetRemoteAddress(ISession? session, Node node)
         {
-            if (session != null)
-            {
-                return $"{session.RemoteHost}:{session.RemotePort}";
-            }
-
-            return node.Address.ToString();
+            return session != null
+                ? $"{session.RemoteHost}:{session.RemotePort}"
+                : node.Address.ToString();
         }
     }
 }
