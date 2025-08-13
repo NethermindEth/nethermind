@@ -25,8 +25,6 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth
             ? long.MaxValue
             : txPoolConfig.MaxBlobTxSize.Value + (long)specProvider.GetFinalMaxBlobGasPerBlock();
 
-        private readonly ClockKeyCache<ValueHash256> _pendingHashes = new(MemoryAllowance.TxHashCacheSize);
-
         public void RequestTransactions(Action<GetPooledTransactionsMessage> send, IOwnedReadOnlyList<Hash256> hashes)
         {
             ArrayPoolList<Hash256> discoveredTxHashes = AddMarkUnknownHashes(hashes.AsSpan());
@@ -100,7 +98,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth
             for (int i = 0; i < hashes.Length; i++)
             {
                 Hash256 hash = hashes[i];
-                if (!txPool.IsKnown(hash) && _pendingHashes.Set(hash))
+                if (!txPool.IsKnown(hash))
                 {
                     discoveredTxHashes.Add(hash);
                 }
@@ -115,7 +113,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth
             for (int i = 0; i < hashes.Length; i++)
             {
                 Hash256 hash = hashes[i];
-                if (!txPool.IsKnown(hash) && !txPool.ContainsTx(hash, (TxType)types[i]) && _pendingHashes.Set(hash))
+                if (!txPool.IsKnown(hash) && !txPool.ContainsTx(hash, (TxType)types[i]))
                 {
                     discoveredTxHashesAndSizes.Add((hash, types[i], sizes[i]));
                 }
