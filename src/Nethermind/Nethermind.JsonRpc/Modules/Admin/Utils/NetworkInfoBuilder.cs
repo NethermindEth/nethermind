@@ -40,10 +40,7 @@ namespace Nethermind.JsonRpc.Modules.Admin.Utils
                 return (string.Empty, string.Empty);
             }
 
-            var host = node.Host;
-            var address = $"{host}:{node.Port}";
-
-            return (address, host);
+            return ($"{node.Host}:{node.Port}", node.Host);
         }
 
         private static string GetRemoteAddress(ISession? session, Node node)
