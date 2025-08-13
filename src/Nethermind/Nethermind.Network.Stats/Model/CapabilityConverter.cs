@@ -136,7 +136,7 @@ namespace Nethermind.Stats.Model
             if (protocolSpan.SequenceEqual("par"u8)) return Protocol.Par;
             if (protocolSpan.SequenceEqual("ndm"u8)) return Protocol.Ndm;
             if (protocolSpan.SequenceEqual("aa"u8)) return Protocol.AA;
-            
+
             // Fallback for unknown protocols
             return Encoding.UTF8.GetString(protocolSpan);
         }
