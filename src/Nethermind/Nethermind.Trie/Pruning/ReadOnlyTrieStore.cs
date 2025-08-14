@@ -10,7 +10,7 @@ namespace Nethermind.Trie.Pruning
     /// <summary>
     /// Safe to be reused for the same wrapped store.
     /// </summary>
-    public class ReadOnlyTrieStore(TrieStore trieStore, INodeStorage? readOnlyStore) : IReadOnlyTrieStore
+    public class ReadOnlyTrieStore(TrieStore trieStore) : IReadOnlyTrieStore
     {
         private readonly TrieStore _trieStore = trieStore ?? throw new ArgumentNullException(nameof(trieStore));
         public INodeStorage.KeyScheme Scheme => _trieStore.Scheme;
@@ -19,9 +19,9 @@ namespace Nethermind.Trie.Pruning
             _trieStore.FindCachedOrUnknown(address, treePath, hash, true);
 
         public byte[] LoadRlp(Hash256? address, in TreePath treePath, Hash256 hash, ReadFlags flags) =>
-            _trieStore.LoadRlp(address, treePath, hash, readOnlyStore, flags);
+            _trieStore.LoadRlp(address, treePath, hash, flags);
         public byte[]? TryLoadRlp(Hash256? address, in TreePath treePath, Hash256 hash, ReadFlags flags) =>
-            _trieStore.TryLoadRlp(address, treePath, hash, readOnlyStore, flags);
+            _trieStore.TryLoadRlp(address, treePath, hash, flags);
 
         public bool IsPersisted(Hash256? address, in TreePath path, in ValueHash256 keccak) => _trieStore.IsPersisted(address, path, keccak);
 
@@ -31,8 +31,6 @@ namespace Nethermind.Trie.Pruning
         {
             return NullCommitter.Instance;
         }
-
-        public IReadOnlyKeyValueStore TrieNodeRlpStore => _trieStore.TrieNodeRlpStore;
 
         public IScopedTrieStore GetTrieStore(Hash256? address) => new ScopedReadOnlyTrieStore(this, address);
 

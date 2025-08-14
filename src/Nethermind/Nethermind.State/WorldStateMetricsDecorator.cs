@@ -122,7 +122,8 @@ public class WorldStateMetricsDecorator(IWorldState innerState) : IWorldState
 
     public bool HasStateForBlock(BlockHeader? stateRoot) => innerState.HasStateForBlock(stateRoot);
 
-    public void SetBaseBlock(BlockHeader? header) => innerState.SetBaseBlock(header);
+    public IDisposable BeginScope(BlockHeader? baseBlock) => innerState.BeginScope(baseBlock);
+    public bool IsInScope => innerState.IsInScope;
 
     public ref readonly UInt256 GetBalance(Address account) => ref innerState.GetBalance(account);
 

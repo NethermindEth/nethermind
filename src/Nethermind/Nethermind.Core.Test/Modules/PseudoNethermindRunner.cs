@@ -10,6 +10,7 @@ using Nethermind.Blockchain;
 using Nethermind.Consensus;
 using Nethermind.Consensus.Processing;
 using Nethermind.Core.Events;
+using Nethermind.Evm.State;
 using Nethermind.Network;
 using Nethermind.Network.Rlpx;
 using Nethermind.Synchronization;
@@ -51,6 +52,8 @@ public class PseudoNethermindRunner(IComponentContext ctx) : IAsyncDisposable
         if (blockTree.Genesis is not null) return;
 
         GenesisLoader genesisLoader = ctx.Resolve<GenesisLoader>();
+
+        using var _ = ctx.Resolve<IMainProcessingContext>().WorldState.BeginScope(IWorldState.PreGenesis);
 
         Task newHeadTask = Wait.ForEventCondition<BlockEventArgs>(
             cancellation,
