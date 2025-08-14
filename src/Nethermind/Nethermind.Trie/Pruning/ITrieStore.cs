@@ -49,7 +49,9 @@ namespace Nethermind.Trie.Pruning
         // Used for serving via hash
         IReadOnlyKeyValueStore TrieNodeRlpStore { get; }
 
-        TrieStore.StabilizerLockScope Stabilize(CancellationToken cancellationToken); // Need a better name
+        // Acquire lock, then persist and flush cache.
+        // Used for full pruning operation that change underlying node storage.
+        TrieStore.StableLockScope PrepareStableState(CancellationToken cancellationToken);
     }
 
     /// <summary>

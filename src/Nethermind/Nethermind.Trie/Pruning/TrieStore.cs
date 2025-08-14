@@ -1202,9 +1202,8 @@ public sealed class TrieStore : ITrieStore, IPruningTrieStore
 
     public IReadOnlyKeyValueStore TrieNodeRlpStore => _publicStore;
 
-    public StabilizerLockScope Stabilize(CancellationToken cancellationToken)
+    public StableLockScope PrepareStableState(CancellationToken cancellationToken)
     {
-        Console.Error.WriteLine("Stabilize!");
         var scopeLockScope = _scopeLock.EnterScope();
         var pruneLockScope = _pruningLock.EnterScope();
 
@@ -1220,14 +1219,14 @@ public sealed class TrieStore : ITrieStore, IPruningTrieStore
             throw;
         }
 
-        return new StabilizerLockScope()
+        return new StableLockScope()
         {
             scopeLockScope = scopeLockScope,
             pruneLockScope = pruneLockScope,
         };
     }
 
-    public ref struct StabilizerLockScope: IDisposable
+    public ref struct StableLockScope: IDisposable
     {
         public Lock.Scope scopeLockScope;
         public Lock.Scope pruneLockScope;
@@ -1236,7 +1235,6 @@ public sealed class TrieStore : ITrieStore, IPruningTrieStore
         {
             pruneLockScope.Dispose();
             scopeLockScope.Dispose();
-            Console.Error.WriteLine("De Stabilize!");
         }
     }
 

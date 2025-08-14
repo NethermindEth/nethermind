@@ -118,7 +118,7 @@ namespace Nethermind.Blockchain.FullPruning
         {
             IPruningContext? pruningContext = null;
 
-            using (_trieStore.Stabilize(cancellationToken))
+            using (_trieStore.PrepareStableState(cancellationToken))
             {
                 if (_fullPruningDb.TryStartPruning(_pruningConfig.Mode.IsMemory(), out IPruningContext fromDbPruningContext))
                 {
@@ -272,7 +272,7 @@ namespace Nethermind.Blockchain.FullPruning
                 {
                     visitor.Finish();
 
-                    using (_trieStore.Stabilize(cancellationToken))
+                    using (_trieStore.PrepareStableState(cancellationToken))
                     {
                         pruning.Commit();
                     }
