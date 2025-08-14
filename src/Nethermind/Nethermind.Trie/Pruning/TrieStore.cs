@@ -1226,7 +1226,7 @@ public sealed class TrieStore : ITrieStore, IPruningTrieStore
         };
     }
 
-    public ref struct StableLockScope: IDisposable
+    public ref struct StableLockScope : IDisposable
     {
         public Lock.Scope scopeLockScope;
         public Lock.Scope pruneLockScope;
