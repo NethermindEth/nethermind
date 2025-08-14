@@ -10,15 +10,16 @@ using Nethermind.Blockchain;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Config;
 using Nethermind.Consensus.Processing;
+using Nethermind.Core;
 using Nethermind.Core.Container;
 using Nethermind.Evm;
 using Nethermind.Evm.State;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.State;
 
-namespace Nethermind.Core.Test.Modules;
+namespace Nethermind.Init.Modules;
 
-public record AutoMainProcessingContext : IMainProcessingContext, IAsyncDisposable
+public class AutoMainProcessingContext : IMainProcessingContext, IAsyncDisposable
 {
     public AutoMainProcessingContext(
         ILifetimeScope rootLifetimeScope,
@@ -26,6 +27,7 @@ public record AutoMainProcessingContext : IMainProcessingContext, IAsyncDisposab
         IBlocksConfig blocksConfig,
         IInitConfig initConfig,
         IBlockValidationModule[] blockValidationModules,
+        IMainProcessingModule[] mainProcessingModules,
         IWorldStateManager worldStateManager,
         [KeyFilter(nameof(IWorldStateManager.GlobalWorldState))] ICodeInfoRepository mainCodeInfoRepository)
     {
@@ -45,6 +47,7 @@ public record AutoMainProcessingContext : IMainProcessingContext, IAsyncDisposab
                     DumpOptions = initConfig.AutoDump
                 })
                 .AddScoped<GenesisLoader>()
+                .AddModule(mainProcessingModules)
 
                 // And finally, to wrap things up.
                 .AddScoped<MainProcessingContext>()

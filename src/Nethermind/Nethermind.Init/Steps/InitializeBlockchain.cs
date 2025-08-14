@@ -66,9 +66,11 @@ namespace Nethermind.Init.Steps
                 "- binary data -");
 
             IStateReader stateReader = setApi.StateReader!;
-            IWorldState mainWorldState = _api.WorldStateManager!.GlobalWorldState;
-            PreBlockCaches? preBlockCaches = (mainWorldState as IPreBlockCaches)?.Caches;
-            EthereumCodeInfoRepository codeInfoRepository = new(preBlockCaches?.PrecompileCache);
+
+            // The main one
+            ICodeInfoRepository codeInfoRepository =
+                _api.Context.ResolveNamed<ICodeInfoRepository>(nameof(IWorldStateManager.GlobalWorldState));
+
             IChainHeadInfoProvider chainHeadInfoProvider =
                 new ChainHeadInfoProvider(
                     new ChainHeadSpecProvider(getApi.SpecProvider!, getApi.BlockTree!),
@@ -82,10 +84,6 @@ namespace Nethermind.Init.Steps
                 new RecoverSignatures(getApi.EthereumEcdsa, getApi.SpecProvider, getApi.LogManager));
 
             WarmupEvm();
-            VirtualMachine virtualMachine = CreateVirtualMachine(mainWorldState);
-            ITransactionProcessor transactionProcessor = CreateTransactionProcessor(codeInfoRepository, virtualMachine, mainWorldState);
-
-            if (_api.SealValidator is null) throw new StepDependencyException(nameof(_api.SealValidator));
 
             // TODO: can take the tx sender from plugin here maybe
             ITxSigner txSigner = new WalletTxSigner(getApi.Wallet, getApi.SpecProvider!.ChainId);
@@ -94,6 +92,10 @@ namespace Nethermind.Init.Steps
             INonceManager nonceManager = new NonceManager(chainHeadInfoProvider.ReadOnlyStateProvider);
             setApi.NonceManager = nonceManager;
             setApi.TxSender = new TxPoolSender(txPool, nonceReservingTxSealer, nonceManager, getApi.EthereumEcdsa!);
+
+            /*
+            VirtualMachine virtualMachine = CreateVirtualMachine(mainWorldState);
+            ITransactionProcessor transactionProcessor = CreateTransactionProcessor(codeInfoRepository, virtualMachine, mainWorldState);
 
             BlockCachePreWarmer? preWarmer = blocksConfig.PreWarmStateOnBlockProcessing
                 ? new(
@@ -139,7 +141,10 @@ namespace Nethermind.Init.Steps
                 mainWorldState);
             _serviceStopper.AddStoppable(mainProcessingContext);
             setApi.BlockProcessingQueue = blockchainProcessor;
+            */
             setApi.BlockProductionPolicy = CreateBlockProductionPolicy();
+
+            var mainBranchProcessor = setApi.MainProcessingContext.BranchProcessor;
 
             BackgroundTaskScheduler backgroundTaskScheduler = new BackgroundTaskScheduler(
                 mainBranchProcessor,
@@ -175,6 +180,7 @@ namespace Nethermind.Init.Steps
             VirtualMachine.WarmUpEvmInstructions(state, new EthereumCodeInfoRepository());
         }
 
+        /*
         protected virtual ITransactionProcessor CreateTransactionProcessor(ICodeInfoRepository codeInfoRepository, IVirtualMachine virtualMachine, IWorldState worldState)
         {
             if (_api.SpecProvider is null) throw new StepDependencyException(nameof(_api.SpecProvider));
@@ -204,6 +210,7 @@ namespace Nethermind.Init.Steps
 
             return virtualMachine;
         }
+        */
 
         protected virtual IBlockProductionPolicy CreateBlockProductionPolicy() =>
             new BlockProductionPolicy(_api.Config<IMiningConfig>());
@@ -229,6 +236,7 @@ namespace Nethermind.Init.Steps
         protected IComparer<Transaction> CreateTxPoolTxComparer() => _api.TransactionComparerProvider!.GetDefaultComparer();
 
         // TODO: remove from here - move to consensus?
+        /*
         protected virtual IBlockProcessor CreateBlockProcessor(
             BlockCachePreWarmer? preWarmer,
             ITransactionProcessor transactionProcessor,
@@ -251,5 +259,6 @@ namespace Nethermind.Init.Steps
                 new WithdrawalProcessor(worldState, _api.LogManager),
                 new ExecutionRequestsProcessor(transactionProcessor));
         }
+        */
     }
 }
