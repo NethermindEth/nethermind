@@ -14,7 +14,7 @@ public class ClHealthRequestsTracker(ITimestamper timestamper, IHealthChecksConf
     : IEngineRequestsTracker, IClHealthTracker, IAsyncDisposable
 {
     private readonly int _maxIntervalClRequestTime = healthChecksConfig.MaxIntervalClRequestTime;
-    private readonly bool _enableConsensusLayerHealthChecks = !healthChecksConfig.DisableConsensusLayerHealthChecks;
+    private readonly bool _disableConsensusLayerHealthChecks = healthChecksConfig.DisableConsensusLayerHealthChecks;
     private readonly ILogger _logger = logManager.GetClassLogger<ClHealthRequestsTracker>();
 
     private const int ClUnavailableReportMessageDelay = 5;
@@ -26,7 +26,7 @@ public class ClHealthRequestsTracker(ITimestamper timestamper, IHealthChecksConf
 
     public Task StartAsync()
     {
-        if (_enableConsensusLayerHealthChecks)
+        if (!_disableConsensusLayerHealthChecks)
         {
             _timer = new Timer(ReportClStatus, null, TimeSpan.Zero,
                 TimeSpan.FromSeconds(ClUnavailableReportMessageDelay));
@@ -58,7 +58,7 @@ public class ClHealthRequestsTracker(ITimestamper timestamper, IHealthChecksConf
 
     public bool CheckClAlive()
     {
-        if (!_enableConsensusLayerHealthChecks)
+        if (_disableConsensusLayerHealthChecks)
             return true;
 
         var now = timestamper.UtcNow;
