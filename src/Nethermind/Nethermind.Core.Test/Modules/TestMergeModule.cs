@@ -30,11 +30,6 @@ public class TestMergeModule(ITxPoolConfig txPoolConfig) : Module
             .AddModule(new MergePluginModule())
 
             .AddSingleton<IBlockFinalizationManager, ManualBlockFinalizationManager>()
-            .OnActivate<IMainProcessingContext>(((context, componentContext) =>
-            {
-                componentContext.Resolve<InvalidChainTracker>().SetupBlockchainProcessorInterceptor(context.BlockchainProcessor);
-            }))
-
             .AddDecorator<IRewardCalculatorSource, MergeRewardCalculatorSource>()
 
             // Validators
