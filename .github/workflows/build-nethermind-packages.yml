@@ -25,10 +25,10 @@ jobs:
       - name: Build Nethermind.Runner
         id: build
         run: |
-          build_timestamp=$(date '+%s')
+          build_timestamp=31536000
           echo "build-timestamp=$build_timestamp" >> $GITHUB_OUTPUT
           echo "commit-hash=${GITHUB_SHA:0:8}" >> $GITHUB_OUTPUT
-          $SCRIPTS_PATH/build.sh $GITHUB_SHA $build_timestamp
+          $SCRIPTS_PATH/build.sh 0000000000000000000000000000000000000000000000000000000000000000 $build_timestamp
 
       - name: Archive packages
         env:
