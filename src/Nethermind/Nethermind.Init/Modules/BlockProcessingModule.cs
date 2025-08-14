@@ -77,11 +77,11 @@ public class BlockProcessingModule(IInitConfig initConfig) : Module
 
             // The main block processing pipeline, anything that requires the use of the main IWorldState is wrapped
             // in a `IMainProcessingContext`.
-            .AddSingleton<IMainProcessingContext, AutoMainProcessingContext>()
+            .AddSingleton<IMainProcessingContext, MainProcessingContext>()
             // Then component that has no ambiguity is extracted back out.
-            .Map<IBlockProcessingQueue, AutoMainProcessingContext>(ctx => (IBlockProcessingQueue)ctx.BlockchainProcessor)
-            .Map<GenesisLoader, AutoMainProcessingContext>(ctx => ctx.GenesisLoader)
-            .Bind<IMainProcessingContext, AutoMainProcessingContext>()
+            .Map<IBlockProcessingQueue, MainProcessingContext>(ctx => (IBlockProcessingQueue)ctx.BlockchainProcessor)
+            .Map<GenesisLoader, MainProcessingContext>(ctx => ctx.GenesisLoader)
+            .Bind<IMainProcessingContext, MainProcessingContext>()
 
             // Some configuration that applies to validation and rpc but not to block producer. Plugins can add
             // modules in case they have special case where it only apply to validation and rpc but not block producer.

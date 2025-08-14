@@ -20,9 +20,9 @@ using Nethermind.State;
 
 namespace Nethermind.Init.Modules;
 
-public class AutoMainProcessingContext : IMainProcessingContext, IAsyncDisposable
+public class MainProcessingContext : IMainProcessingContext, IAsyncDisposable
 {
-    public AutoMainProcessingContext(
+    public MainProcessingContext(
         ILifetimeScope rootLifetimeScope,
         IReceiptConfig receiptConfig,
         IBlocksConfig blocksConfig,
@@ -48,8 +48,6 @@ public class AutoMainProcessingContext : IMainProcessingContext, IAsyncDisposabl
                 .AddScoped<GenesisLoader>()
                 .AddModule(mainProcessingModules)
 
-                // And finally, to wrap things up.
-                .AddScoped<MainProcessingContext>()
                 .AddScoped<IBlockchainProcessor, IBranchProcessor>((branchProcessor) => new BlockchainProcessor (
                     blockTree!,
                     branchProcessor,
@@ -64,6 +62,9 @@ public class AutoMainProcessingContext : IMainProcessingContext, IAsyncDisposabl
                 {
                     IsMainProcessor = true // Manual construction because of this flag
                 })
+
+                // And finally, to wrap things up.
+                .AddScoped<Components>()
                 ;
 
             if (blocksConfig.PreWarmStateOnBlockProcessing)
@@ -75,10 +76,9 @@ public class AutoMainProcessingContext : IMainProcessingContext, IAsyncDisposabl
             }
         });
 
-        _mainProcessingContext = innerScope.Resolve<MainProcessingContext>();
+        _components = innerScope.Resolve<Components>();
 
         LifetimeScope = innerScope;
-        GenesisLoader = innerScope.Resolve<GenesisLoader>();
     }
 
     public async ValueTask DisposeAsync()
@@ -86,12 +86,21 @@ public class AutoMainProcessingContext : IMainProcessingContext, IAsyncDisposabl
         await LifetimeScope.DisposeAsync();
     }
 
-    private MainProcessingContext _mainProcessingContext;
+    private Components _components;
     public ILifetimeScope LifetimeScope { get; init; }
-    public IBlockchainProcessor BlockchainProcessor => _mainProcessingContext.BlockchainProcessor;
-    public IWorldState WorldState => _mainProcessingContext.WorldState;
-    public IBranchProcessor BranchProcessor => _mainProcessingContext.BranchProcessor;
-    public IBlockProcessor BlockProcessor => _mainProcessingContext.BlockProcessor;
-    public ITransactionProcessor TransactionProcessor => _mainProcessingContext.TransactionProcessor;
-    public GenesisLoader GenesisLoader { get; init; }
+    public IBlockchainProcessor BlockchainProcessor => _components.BlockchainProcessor;
+    public IWorldState WorldState => _components.WorldState;
+    public IBranchProcessor BranchProcessor => _components.BranchProcessor;
+    public IBlockProcessor BlockProcessor => _components.BlockProcessor;
+    public ITransactionProcessor TransactionProcessor => _components.TransactionProcessor;
+    public GenesisLoader GenesisLoader => _components.GenesisLoader;
+
+    private record Components(
+        ITransactionProcessor TransactionProcessor,
+        IBranchProcessor BranchProcessor,
+        IBlockProcessor BlockProcessor,
+        IBlockchainProcessor BlockchainProcessor,
+        IWorldState WorldState,
+        GenesisLoader GenesisLoader
+    );
 }
