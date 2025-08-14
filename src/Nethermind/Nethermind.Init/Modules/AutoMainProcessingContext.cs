@@ -62,7 +62,7 @@ public class AutoMainProcessingContext : IMainProcessingContext, IAsyncDisposabl
                         DumpOptions = initConfig.AutoDump
                     })
                 {
-                    IsMainProcessor = true // Because of this flag
+                    IsMainProcessor = true // Manual construction because of this flag
                 })
                 ;
 
