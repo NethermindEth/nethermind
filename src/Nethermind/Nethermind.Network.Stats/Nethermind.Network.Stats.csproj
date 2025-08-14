@@ -8,6 +8,7 @@
     <ProjectReference Include="..\Nethermind.Config\Nethermind.Config.csproj" />
     <ProjectReference Include="..\Nethermind.Core\Nethermind.Core.csproj" />
     <ProjectReference Include="..\Nethermind.Logging\Nethermind.Logging.csproj" />
+    <ProjectReference Include="../Nethermind.Network.Contract/Nethermind.Network.Contract.csproj" />
   </ItemGroup>
 
 </Project>
