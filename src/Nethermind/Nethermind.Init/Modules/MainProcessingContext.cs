@@ -48,7 +48,7 @@ public class MainProcessingContext : IMainProcessingContext, IAsyncDisposable
                 .AddScoped<GenesisLoader>()
                 .AddModule(mainProcessingModules)
 
-                .AddScoped<IBlockchainProcessor, IBranchProcessor>((branchProcessor) => new BlockchainProcessor (
+                .AddScoped<IBlockchainProcessor, IBranchProcessor>((branchProcessor) => new BlockchainProcessor(
                     blockTree!,
                     branchProcessor,
                     compositeBlockPreprocessorStep,
