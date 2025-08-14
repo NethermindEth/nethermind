@@ -47,6 +47,7 @@ using Nethermind.TxPool;
 using NSubstitute;
 using NUnit.Framework;
 using Nethermind.History;
+using Nethermind.Init.Modules;
 
 namespace Nethermind.Merge.Plugin.Test;
 

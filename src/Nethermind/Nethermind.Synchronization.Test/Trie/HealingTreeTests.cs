@@ -29,6 +29,7 @@ using Nethermind.Trie.Pruning;
 using NSubstitute;
 using NUnit.Framework;
 using Nethermind.History;
+using Nethermind.Init.Modules;
 
 namespace Nethermind.Synchronization.Test.Trie;
 

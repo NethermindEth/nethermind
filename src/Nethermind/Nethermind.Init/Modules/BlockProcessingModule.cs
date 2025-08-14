@@ -21,6 +21,7 @@ using Nethermind.Core;
 using Nethermind.Core.Container;
 using Nethermind.Core.Specs;
 using Nethermind.Evm;
+using Nethermind.Evm.State;
 using Nethermind.State.OverridableEnv;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Init.Steps;
@@ -64,6 +65,23 @@ public class BlockProcessingModule(IInitConfig initConfig) : Module
 
             .AddSingleton<IOverridableEnvFactory, OverridableEnvFactory>()
             .AddScopedOpenGeneric(typeof(IOverridableEnv<>), typeof(DisposableScopeOverridableEnv<>))
+
+            // Yea, for some reason, the ICodeInfoRepository need to be the main one for ChainHeadInfoProvider to work.
+            // Like, is ICodeInfoRepository suppose to be global? Why not just IStateReader.
+            .AddKeyedSingleton<ICodeInfoRepository>(nameof(IWorldStateManager.GlobalWorldState), (ctx) =>
+            {
+                IWorldState worldState = ctx.Resolve<IWorldStateManager>().GlobalWorldState;
+                PreBlockCaches? preBlockCaches = (worldState as IPreBlockCaches)?.Caches;
+                return new EthereumCodeInfoRepository(preBlockCaches?.PrecompileCache);
+            })
+
+            // The main block processing pipeline, anything that requires the use of the main IWorldState is wrapped
+            // in a `IMainProcessingContext`.
+            .AddSingleton<IMainProcessingContext, AutoMainProcessingContext>()
+            // Then component that has no ambiguity is extracted back out.
+            .Map<IBlockProcessingQueue, AutoMainProcessingContext>(ctx => (IBlockProcessingQueue)ctx.BlockchainProcessor)
+            .Map<GenesisLoader, AutoMainProcessingContext>(ctx => ctx.GenesisLoader)
+            .Bind<IMainProcessingContext, AutoMainProcessingContext>()
 
             // Some configuration that applies to validation and rpc but not to block producer. Plugins can add
             // modules in case they have special case where it only apply to validation and rpc but not block producer.

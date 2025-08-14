@@ -69,7 +69,7 @@ namespace Nethermind.Api
 
         public IBlobTxStorage BlobTxStorage => Context.Resolve<IBlobTxStorage>();
         public CompositeBlockPreprocessorStep BlockPreprocessor { get; } = new();
-        public IBlockProcessingQueue? BlockProcessingQueue { get; set; }
+        public IBlockProcessingQueue BlockProcessingQueue => Context.Resolve<IBlockProcessingQueue>();
         public IBlockProducer? BlockProducer { get; set; }
         public IBlockProducerRunner BlockProducerRunner { get; set; } = new NoBlockProducerRunner();
         public IBlockTree? BlockTree { get; set; }
@@ -123,7 +123,7 @@ namespace Nethermind.Api
         public ITrustedNodesManager TrustedNodesManager => Context.Resolve<ITrustedNodesManager>();
         public ITimestamper Timestamper { get; } = Core.Timestamper.Default;
         public ITimerFactory TimerFactory { get; } = Core.Timers.TimerFactory.Default;
-        public IMainProcessingContext? MainProcessingContext { get; set; }
+        public IMainProcessingContext MainProcessingContext => Context.Resolve<IMainProcessingContext>();
         public IReadOnlyTxProcessingEnvFactory ReadOnlyTxProcessingEnvFactory => Context.Resolve<IReadOnlyTxProcessingEnvFactory>();
         public ITxSender? TxSender { get; set; }
         public INonceManager? NonceManager { get; set; }
