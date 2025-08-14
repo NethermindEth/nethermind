@@ -130,6 +130,7 @@ namespace Nethermind.Init.Steps
             };
 
             getApi.DisposeStack.Push(blockchainProcessor);
+            _api.TxGossipPolicy.Policies.Add(new NotProcessingBlocksGossipPolicy(blockchainProcessor));
 
             var mainProcessingContext = setApi.MainProcessingContext = new MainProcessingContext(
                 transactionProcessor,

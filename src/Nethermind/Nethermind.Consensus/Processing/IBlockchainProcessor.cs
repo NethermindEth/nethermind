@@ -21,6 +21,7 @@ namespace Nethermind.Consensus.Processing
         Block? Process(Block block, ProcessingOptions options, IBlockTracer tracer, CancellationToken token = default);
 
         bool IsProcessingBlocks(ulong? maxProcessingInterval);
+        bool IsProcessingBlock { get; }
 
         event EventHandler<InvalidBlockEventArgs> InvalidBlock;
         event EventHandler<BlockStatistics> NewProcessingStatistics;
