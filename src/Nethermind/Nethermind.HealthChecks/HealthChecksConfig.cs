@@ -18,7 +18,7 @@ namespace Nethermind.HealthChecks
 
         public ulong? MaxIntervalWithoutProducedBlock { get; set; }
         public int MaxIntervalClRequestTime { get; set; } = 300;
-        public bool EnableConsensusLayerHealthChecks { get; set; } = true;
+        public bool DisableConsensusLayerHealthChecks { get; set; } = false;
 
         public float LowStorageSpaceWarningThreshold { get; set; } = 5;
         public float LowStorageSpaceShutdownThreshold { get; set; } = 1;
