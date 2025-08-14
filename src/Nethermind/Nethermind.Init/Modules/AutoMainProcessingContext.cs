@@ -15,6 +15,7 @@ using Nethermind.Core.Container;
 using Nethermind.Evm;
 using Nethermind.Evm.State;
 using Nethermind.Evm.TransactionProcessing;
+using Nethermind.Logging;
 using Nethermind.State;
 
 namespace Nethermind.Init.Modules;
@@ -29,7 +30,10 @@ public class AutoMainProcessingContext : IMainProcessingContext, IAsyncDisposabl
         IBlockValidationModule[] blockValidationModules,
         IMainProcessingModule[] mainProcessingModules,
         IWorldStateManager worldStateManager,
-        [KeyFilter(nameof(IWorldStateManager.GlobalWorldState))] ICodeInfoRepository mainCodeInfoRepository)
+        [KeyFilter(nameof(IWorldStateManager.GlobalWorldState))] ICodeInfoRepository mainCodeInfoRepository,
+        CompositeBlockPreprocessorStep compositeBlockPreprocessorStep,
+        IBlockTree blockTree,
+        ILogManager logManager)
     {
 
         var mainWorldState = worldStateManager.GlobalWorldState;
@@ -41,16 +45,25 @@ public class AutoMainProcessingContext : IMainProcessingContext, IAsyncDisposabl
                 .AddSingleton<IWorldState>(mainWorldState)
                 .AddModule(blockValidationModules)
                 .AddScoped<ITransactionProcessorAdapter, ExecuteTransactionProcessorAdapter>()
-                .AddScoped(new BlockchainProcessor.Options
-                {
-                    StoreReceiptsByDefault = receiptConfig.StoreReceipts,
-                    DumpOptions = initConfig.AutoDump
-                })
                 .AddScoped<GenesisLoader>()
                 .AddModule(mainProcessingModules)
 
                 // And finally, to wrap things up.
                 .AddScoped<MainProcessingContext>()
+                .AddScoped<IBlockchainProcessor, IBranchProcessor>((branchProcessor) => new BlockchainProcessor (
+                    blockTree!,
+                    branchProcessor,
+                    compositeBlockPreprocessorStep,
+                    worldStateManager.GlobalStateReader,
+                    logManager,
+                    new BlockchainProcessor.Options
+                    {
+                        StoreReceiptsByDefault = receiptConfig.StoreReceipts,
+                        DumpOptions = initConfig.AutoDump
+                    })
+                {
+                    IsMainProcessor = true // Because of this flag
+                })
                 ;
 
             if (blocksConfig.PreWarmStateOnBlockProcessing)
