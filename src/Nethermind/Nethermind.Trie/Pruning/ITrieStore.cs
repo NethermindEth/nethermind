@@ -49,7 +49,7 @@ namespace Nethermind.Trie.Pruning
         // Used for serving via hash
         IReadOnlyKeyValueStore TrieNodeRlpStore { get; }
 
-        Lock.Scope LockDirtyNodes();
+        TrieStore.StabilizerLockScope Stabilize(CancellationToken cancellationToken); // Need a better name
     }
 
     /// <summary>

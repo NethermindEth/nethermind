@@ -118,7 +118,7 @@ namespace Nethermind.Blockchain.FullPruning
         {
             IPruningContext? pruningContext = null;
 
-            using (_trieStore.LockDirtyNodes())
+            using (_trieStore.Stabilize(cancellationToken))
             {
                 if (_fullPruningDb.TryStartPruning(_pruningConfig.Mode.IsMemory(), out IPruningContext fromDbPruningContext))
                 {
@@ -144,8 +144,6 @@ namespace Nethermind.Blockchain.FullPruning
 
         private async Task RunFullPruning(IPruningContext pruningContext, CancellationToken cancellationToken)
         {
-            _trieStore.PersistCache(cancellationToken);
-
             long blockToWaitFor = 0;
             await WaitForMainChainChange((e) =>
             {
@@ -165,7 +163,7 @@ namespace Nethermind.Blockchain.FullPruning
             }, cancellationToken);
 
             long stateToCopy = _blockTree.BestPersistedState.Value;
-            long blockToPruneAfter = stateToCopy + Reorganization.MaxDepth;
+            long blockToPruneAfter = stateToCopy + _pruningConfig.PruningBoundary;
 
             await WaitForMainChainChange((e) =>
             {
@@ -275,12 +273,12 @@ namespace Nethermind.Blockchain.FullPruning
                     Console.Error.WriteLine("Finishing");
                     visitor.Finish();
 
-                    using (_trieStore.LockDirtyNodes())
+                    using (_trieStore.Stabilize(cancellationToken))
                     {
-                        _nodeStorage.Scheme = targetNodeStorage.Scheme;
                         pruning.Commit();
                     }
 
+                    _nodeStorage.Scheme = targetNodeStorage.Scheme;
                     _lastPruning = DateTime.UtcNow;
                 }
             }

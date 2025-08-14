@@ -1202,9 +1202,42 @@ public sealed class TrieStore : ITrieStore, IPruningTrieStore
 
     public IReadOnlyKeyValueStore TrieNodeRlpStore => _publicStore;
 
-    public Lock.Scope LockDirtyNodes()
+    public StabilizerLockScope Stabilize(CancellationToken cancellationToken)
     {
-        return _pruningLock.EnterScope();
+        Console.Error.WriteLine("Stabilize!");
+        var scopeLockScope = _scopeLock.EnterScope();
+        var pruneLockScope = _pruningLock.EnterScope();
+
+        try
+        {
+            FlushCommitBufferNoLock();
+            PersistCache(cancellationToken);
+        }
+        catch (OperationCanceledException)
+        {
+            pruneLockScope.Dispose();
+            scopeLockScope.Dispose();
+            throw;
+        }
+
+        return new StabilizerLockScope()
+        {
+            scopeLockScope = scopeLockScope,
+            pruneLockScope = pruneLockScope,
+        };
+    }
+
+    public ref struct StabilizerLockScope: IDisposable
+    {
+        public Lock.Scope scopeLockScope;
+        public Lock.Scope pruneLockScope;
+
+        public void Dispose()
+        {
+            pruneLockScope.Dispose();
+            scopeLockScope.Dispose();
+            Console.Error.WriteLine("De Stabilize!");
+        }
     }
 
     private class TrieKeyValueStore(TrieStore trieStore) : IReadOnlyKeyValueStore
