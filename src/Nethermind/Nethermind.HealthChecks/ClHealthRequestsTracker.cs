@@ -26,7 +26,6 @@ public class ClHealthRequestsTracker(ITimestamper timestamper, IHealthChecksConf
 
     public Task StartAsync()
     {
-        // Only start the timer if consensus layer health checks are enabled
         if (_enableConsensusLayerHealthChecks)
         {
             _timer = new Timer(ReportClStatus, null, TimeSpan.Zero,
@@ -59,7 +58,6 @@ public class ClHealthRequestsTracker(ITimestamper timestamper, IHealthChecksConf
 
     public bool CheckClAlive()
     {
-        // If consensus layer health checks are disabled, always return true (healthy)
         if (!_enableConsensusLayerHealthChecks)
             return true;
 
