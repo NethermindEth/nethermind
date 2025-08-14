@@ -461,11 +461,17 @@ namespace Nethermind.Trie.Test.Pruning
                 committer.CommitNode(ref emptyPath, new NodeCommitInfo(a));
             }
             using (ICommitter _ = fullTrieStore.BeginStateBlockCommit(2, a)) { }
+            fullTrieStore.WaitForPruning();
             using (ICommitter _ = fullTrieStore.BeginStateBlockCommit(3, a)) { }
+            fullTrieStore.WaitForPruning();
             using (ICommitter _ = fullTrieStore.BeginStateBlockCommit(4, a)) { }
+            fullTrieStore.WaitForPruning();
             using (ICommitter _ = fullTrieStore.BeginStateBlockCommit(5, a)) { }
+            fullTrieStore.WaitForPruning();
             using (ICommitter _ = fullTrieStore.BeginStateBlockCommit(6, a)) { }
+            fullTrieStore.WaitForPruning();
             using (ICommitter _ = fullTrieStore.BeginStateBlockCommit(7, a)) { }
+            fullTrieStore.WaitForPruning();
             using (ICommitter _ = fullTrieStore.BeginStateBlockCommit(8, a)) { }
             fullTrieStore.WaitForPruning();
 
