@@ -8,16 +8,20 @@ using Nethermind.Api;
 using Nethermind.Config;
 using Nethermind.Consensus.AuRa.Config;
 using Nethermind.Consensus.AuRa.Validators;
+using Nethermind.Consensus.Processing;
 using Nethermind.Core;
 using Nethermind.Core.Container;
 using Nethermind.Evm.State;
 using Nethermind.Evm.TransactionProcessing;
+using Nethermind.JsonRpc.Modules.Eth.GasPrice;
 using Nethermind.TxPool;
 
 namespace Nethermind.Consensus.AuRa.InitializationSteps;
 
 public class AuraMainProcessingModule(
     IAbiEncoder abiEncoder,
+    IGasPriceOracle gasPriceOracle,
+    IReadOnlyTxProcessingEnvFactory envFactory,
     AuRaChainSpecEngineParameters chainSpecAuRa
 ): Module, IMainProcessingModule
 {
@@ -34,7 +38,7 @@ public class AuraMainProcessingModule(
                 worldState,
                 transactionProcessor,
                 api.BlockTree,
-                api.ReadOnlyTxProcessingEnvFactory.Create(),
+                envFactory.Create(),
                 api.ReceiptStorage,
                 api.ValidatorStore,
                 api.FinalizationManager,
@@ -44,7 +48,7 @@ public class AuraMainProcessingModule(
                 api.LogManager,
                 api.EngineSigner,
                 api.SpecProvider,
-                api.GasPriceOracle,
+                gasPriceOracle,
                 api.ReportingContractValidatorCache,
                 chainSpecAuRa.PosdaoTransition)
             .CreateValidatorProcessor(chainSpecAuRa.Validators, api.BlockTree.Head?.Header);

@@ -74,7 +74,6 @@ namespace Nethermind.Api
         public IBlockProducer? BlockProducer { get; set; }
         public IBlockProducerRunner BlockProducerRunner { get; set; } = new NoBlockProducerRunner();
         public IBlockTree? BlockTree { get; set; }
-        public IBlockValidator BlockValidator => Context.Resolve<IBlockValidator>();
         public IBloomStorage? BloomStorage { get; set; }
         public IChainLevelInfoRepository? ChainLevelInfoRepository { get; set; }
         public IConfigProvider ConfigProvider => _dependencies.ConfigProvider;
@@ -103,13 +102,11 @@ namespace Nethermind.Api
         public IProtocolValidator? ProtocolValidator { get; set; }
         public IReceiptStorage? ReceiptStorage { get; set; }
         public IReceiptFinder ReceiptFinder => Context.Resolve<IReceiptFinder>();
-        public IRewardCalculatorSource RewardCalculatorSource => Context.Resolve<IRewardCalculatorSource>();
         public IRlpxHost RlpxPeer => Context.Resolve<IRlpxHost>();
         public IRpcModuleProvider? RpcModuleProvider => Context.Resolve<IRpcModuleProvider>();
         public IJsonRpcLocalStats JsonRpcLocalStats => Context.Resolve<IJsonRpcLocalStats>();
         public ISealer Sealer => Context.Resolve<ISealer>();
         public string SealEngineType => ChainSpec.SealEngineType;
-        public ISealValidator SealValidator => Context.Resolve<ISealValidator>();
         public ISealEngine SealEngine => Context.Resolve<ISealEngine>();
 
         public ISessionMonitor SessionMonitor => Context.Resolve<ISessionMonitor>();
@@ -125,7 +122,6 @@ namespace Nethermind.Api
         public ITimestamper Timestamper { get; } = Core.Timestamper.Default;
         public ITimerFactory TimerFactory { get; } = Core.Timers.TimerFactory.Default;
         public IMainProcessingContext MainProcessingContext => Context.Resolve<IMainProcessingContext>();
-        public IReadOnlyTxProcessingEnvFactory ReadOnlyTxProcessingEnvFactory => Context.Resolve<IReadOnlyTxProcessingEnvFactory>();
         public ITxSender? TxSender { get; set; }
         public INonceManager? NonceManager { get; set; }
         public ITxPool? TxPool { get; set; }
@@ -134,7 +130,6 @@ namespace Nethermind.Api
         public IBlockFinalizationManager? FinalizationManager { get; set; }
 
         public IBlockProducerEnvFactory BlockProducerEnvFactory => Context.Resolve<IBlockProducerEnvFactory>();
-        public IGasPriceOracle GasPriceOracle => Context.Resolve<IGasPriceOracle>();
         public IBlockProductionPolicy? BlockProductionPolicy { get; set; }
         public IBackgroundTaskScheduler BackgroundTaskScheduler { get; set; } = null!;
         public ICensorshipDetector CensorshipDetector { get; set; } = new NoopCensorshipDetector();

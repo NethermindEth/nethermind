@@ -8,12 +8,10 @@ using Nethermind.Consensus.Comparers;
 using Nethermind.Consensus.Processing;
 using Nethermind.Consensus.Processing.CensorshipDetector;
 using Nethermind.Consensus.Producers;
-using Nethermind.Consensus.Rewards;
 using Nethermind.Consensus.Scheduler;
 using Nethermind.Consensus.Validators;
 using Nethermind.Core;
 using Nethermind.Facade;
-using Nethermind.JsonRpc.Modules.Eth.GasPrice;
 using Nethermind.State;
 using Nethermind.TxPool;
 
@@ -31,15 +29,10 @@ namespace Nethermind.Api
         IBlockProducer? BlockProducer { get; set; }
         IBlockProducerRunner BlockProducerRunner { get; set; }
 
-        [SkipServiceCollection]
-        IBlockValidator BlockValidator { get; }
-
         IEnode? Enode { get; set; }
 
         IManualBlockProductionTrigger ManualBlockProductionTrigger { get; }
-        IRewardCalculatorSource RewardCalculatorSource { get; }
         ISealer Sealer { get; }
-        ISealValidator SealValidator { get; }
         ISealEngine SealEngine { get; }
         IStateReader? StateReader { get; }
 
@@ -66,9 +59,6 @@ namespace Nethermind.Api
         IBlockFinalizationManager? FinalizationManager { get; set; }
 
         IBlockProducerEnvFactory BlockProducerEnvFactory { get; }
-        IReadOnlyTxProcessingEnvFactory ReadOnlyTxProcessingEnvFactory { get; }
-
-        IGasPriceOracle GasPriceOracle { get; }
 
         IBlockProductionPolicy? BlockProductionPolicy { get; set; }
         IBackgroundTaskScheduler BackgroundTaskScheduler { get; set; }
