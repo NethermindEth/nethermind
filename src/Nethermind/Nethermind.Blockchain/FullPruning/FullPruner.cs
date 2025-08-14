@@ -270,7 +270,6 @@ namespace Nethermind.Blockchain.FullPruning
 
                 if (!cancellationToken.IsCancellationRequested)
                 {
-                    Console.Error.WriteLine("Finishing");
                     visitor.Finish();
 
                     using (_trieStore.Stabilize(cancellationToken))
@@ -306,7 +305,6 @@ namespace Nethermind.Blockchain.FullPruning
         {
             CopyTreeVisitor<TContext> copyTreeVisitor = new(targetNodeStorage, writeFlags, _logManager, cancellationToken);
             _stateReader.RunTreeVisitor(copyTreeVisitor, stateRoot, visitingOptions);
-            Console.Error.WriteLine("Visit tree finished");
             return copyTreeVisitor;
         }
 
