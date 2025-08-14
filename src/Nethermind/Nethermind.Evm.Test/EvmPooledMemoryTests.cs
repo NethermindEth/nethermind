@@ -163,6 +163,8 @@ public class EvmPooledMemoryTests : EvmMemoryTestsBase
                 codeInfoRepository,
                 LimboLogs.Instance);
 
+        Hash256 stateRoot = null;
+        using var _ = stateProvider.BeginScope(IWorldState.PreGenesis);
         stateProvider.CreateAccount(to, 123);
         stateProvider.InsertCode(to, input, specProvider.GenesisSpec);
 
@@ -170,6 +172,7 @@ public class EvmPooledMemoryTests : EvmMemoryTestsBase
         stateProvider.Commit(specProvider.GenesisSpec);
 
         stateProvider.CommitTree(0);
+        stateRoot = stateProvider.StateRoot;
 
         Transaction tx = Build.A.Transaction.
             WithData(input).
@@ -186,6 +189,7 @@ public class EvmPooledMemoryTests : EvmMemoryTestsBase
             WithTransactions(tx).
             WithGasLimit(30000000).
             WithDifficulty(0).
+            WithStateRoot(stateRoot).
             TestObject;
         MyTracer tracer = new();
         transactionProcessor.Execute(

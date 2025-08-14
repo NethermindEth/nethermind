@@ -114,9 +114,6 @@ public class PruningTrieStateFactory(
             verifyTrieStarter!
         );
 
-        // Init state if we need system calls before actual processing starts
-        worldState.SetBaseBlock(blockTree.Head?.Header);
-
         return (stateManager, adminRpcModule);
     }
 

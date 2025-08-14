@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2023 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using Autofac;
 using FluentAssertions;
 using Nethermind.Blockchain;
@@ -88,17 +89,30 @@ public class WorldStateManagerTests
 
             IWorldState worldState = ctx.Resolve<IWorldStateManager>().GlobalWorldState;
 
-            worldState.SetBaseBlock(null);
+            Hash256 stateRoot;
 
-            worldState.CreateAccount(TestItem.AddressA, 1, 2);
-            worldState.Commit(Cancun.Instance);
-            worldState.CommitTree(1);
+            using (worldState.BeginScope(IWorldState.PreGenesis))
+            {
+                worldState.CreateAccount(TestItem.AddressA, 1, 2);
+                worldState.Commit(Cancun.Instance);
+                worldState.CommitTree(1);
+                stateRoot = worldState.StateRoot;
+            }
 
             for (int i = 2; i <= lastBlock; i++)
             {
-                worldState.IncrementNonce(TestItem.AddressA, 1);
-                worldState.Commit(Cancun.Instance);
-                worldState.CommitTree(i);
+                BlockHeader baseBlock = Build.A.BlockHeader
+                    .WithStateRoot(stateRoot)
+                    .WithNumber(i - 1)
+                    .TestObject;
+
+                using (worldState.BeginScope(baseBlock))
+                {
+                    worldState.IncrementNonce(TestItem.AddressA, 1);
+                    worldState.Commit(Cancun.Instance);
+                    worldState.CommitTree(i);
+                    stateRoot = worldState.StateRoot;
+                }
             }
         }
 
