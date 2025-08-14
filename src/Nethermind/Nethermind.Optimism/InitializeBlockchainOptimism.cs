@@ -2,14 +2,12 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Threading.Tasks;
-using Autofac;
 using Nethermind.Api;
 using Nethermind.Consensus.Producers;
 using Nethermind.Consensus.Validators;
 using Nethermind.Core;
 using Nethermind.Facade.Eth.RpcTransaction;
 using Nethermind.Init.Steps;
-using Nethermind.Merge.Plugin.InvalidChainTracker;
 using Nethermind.Optimism.Rpc;
 using Nethermind.TxPool;
 
@@ -27,8 +25,6 @@ public class InitializeBlockchainOptimism(OptimismNethermindApi api) : Initializ
 
         api.RegisterTxType<DepositTransactionForRpc>(new OptimismTxDecoder<Transaction>(), Always.Valid);
         api.RegisterTxType<LegacyTransactionForRpc>(new OptimismLegacyTxDecoder(), new OptimismLegacyTxValidator(api.SpecProvider!.ChainId));
-
-        api.Context.Resolve<InvalidChainTracker>().SetupBlockchainProcessorInterceptor(api.MainProcessingContext!.BlockchainProcessor);
     }
 
     protected override IBlockProductionPolicy CreateBlockProductionPolicy() => AlwaysStartBlockProductionPolicy.Instance;
