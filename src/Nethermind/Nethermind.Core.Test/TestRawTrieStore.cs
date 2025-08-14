@@ -91,8 +91,18 @@ public class TestRawTrieStore(INodeStorage nodeStorage, bool isReadOnly = false)
     }
 
     public IReadOnlyKeyValueStore TrieNodeRlpStore => throw new Exception("Unsupported operatioon");
-    public Lock.Scope LockDirtyNodes()
+
+    private Lock _scopeLock = new Lock();
+    private Lock _pruneLock = new Lock();
+    public TrieStore.StabilizerLockScope Stabilize(CancellationToken cancellationToken)
     {
-        return new Lock.Scope();
+        var scopeLockScope =  _scopeLock.EnterScope();
+        var pruneLockScope =  _pruneLock.EnterScope();
+
+        return new TrieStore.StabilizerLockScope
+        {
+            scopeLockScope = scopeLockScope,
+            pruneLockScope = pruneLockScope,
+        };
     }
 }
