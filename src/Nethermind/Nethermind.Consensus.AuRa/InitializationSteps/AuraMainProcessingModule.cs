@@ -23,7 +23,7 @@ public class AuraMainProcessingModule(
     IGasPriceOracle gasPriceOracle,
     IReadOnlyTxProcessingEnvFactory envFactory,
     AuRaChainSpecEngineParameters chainSpecAuRa
-): Module, IMainProcessingModule
+) : Module, IMainProcessingModule
 {
     protected override void Load(ContainerBuilder builder)
     {
