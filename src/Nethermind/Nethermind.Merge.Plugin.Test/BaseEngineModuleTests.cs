@@ -177,7 +177,7 @@ public abstract partial class BaseEngineModuleTests
 
         public BeaconSync BeaconSync => Container.Resolve<BeaconSync>();
 
-        public IWithdrawalProcessor WithdrawalProcessor => ((AutoMainProcessingContext)MainProcessingContext).LifetimeScope.Resolve<IWithdrawalProcessor>();
+        public IWithdrawalProcessor WithdrawalProcessor => ((MainProcessingContext)MainProcessingContext).LifetimeScope.Resolve<IWithdrawalProcessor>();
 
         public ISyncPeerPool SyncPeerPool => Container.Resolve<ISyncPeerPool>();
 
