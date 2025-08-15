@@ -328,7 +328,7 @@ namespace Nethermind.Synchronization.FastBlocks
             }
         }
 
-        public override Task<HeadersSyncBatch?> PrepareRequest(CancellationToken cancellationToken = default)
+        public override async Task<HeadersSyncBatch?> PrepareRequest(CancellationToken cancellationToken = default)
         {
             _resetLock.EnterReadLock();
             try
@@ -348,7 +348,7 @@ namespace Nethermind.Synchronization.FastBlocks
                     // Set the request size depending on the approximate allocation strategy.
                     // NOTE: Cannot await because of the lock.
                     int requestSize =
-                        _syncPeerPool.EstimateRequestLimit(RequestType.Headers, _approximateAllocationStrategy, AllocationContexts.Headers, cancellationToken).Result
+                        await _syncPeerPool.EstimateRequestLimit(RequestType.Headers, _approximateAllocationStrategy, AllocationContexts.Headers, cancellationToken)
                         ?? GethSyncLimits.MaxHeaderFetch;
 
                     batch = ProcessPersistedHeadersOrBuildNewBatch(requestSize, cancellationToken);
@@ -366,7 +366,7 @@ namespace Nethermind.Synchronization.FastBlocks
                     LogStateOnPrepare();
                 }
 
-                return Task.FromResult(batch);
+                return batch;
             }
             finally
             {
