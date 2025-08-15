@@ -27,8 +27,6 @@ namespace Nethermind.Optimism;
 
 public class InitializeBlockchainOptimism(OptimismNethermindApi api) : InitializeBlockchain(api)
 {
-    private readonly IBlocksConfig _blocksConfig = api.Config<IBlocksConfig>();
-
     protected override async Task InitBlockchain()
     {
         await base.InitBlockchain();
@@ -65,6 +63,11 @@ public class InitializeBlockchainOptimism(OptimismNethermindApi api) : Initializ
 
         Create2DeployerContractRewriter contractRewriter = new(api.SpecHelper, api.SpecProvider, api.BlockTree);
 
+        var withdrawalProcessor = new OptimismWithdrawalProcessor(api.WorldStateManager!.GlobalWorldState, api.LogManager, api.SpecHelper);
+        var genesisPostProcessor = new OptimismGenesisPostProcessor(withdrawalProcessor, api.SpecProvider);
+
+        api.GenesisPostProcessor = genesisPostProcessor;
+
         return new OptimismBlockProcessor(
             api.SpecProvider,
             api.BlockValidator,
@@ -77,7 +80,7 @@ public class InitializeBlockchainOptimism(OptimismNethermindApi api) : Initializ
             api.LogManager,
             api.SpecHelper,
             contractRewriter,
-            new OptimismWithdrawalProcessor(api.WorldStateManager!.GlobalWorldState, api.LogManager, api.SpecHelper),
+            withdrawalProcessor,
             new ExecutionRequestsProcessor(transactionProcessor));
     }
 
