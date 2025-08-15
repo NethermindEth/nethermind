@@ -89,7 +89,7 @@ public interface IHealthChecksConfig : IConfig
     public int MaxIntervalClRequestTime { get; set; }
 
     [ConfigItem(Description = "Whether to disable consensus layer health checks. Set to true for L2s that don't use consensus clients.", DefaultValue = "false")]
-    public bool DisableConsensusLayerHealthChecks { get; set; }
+    public bool EnableConsensusLayerHealthChecks { get; set; }
 
     [ConfigItem(Description = "The percentage of available disk space below which a warning is displayed. `0` to disable.", DefaultValue = "5")]
     public float LowStorageSpaceWarningThreshold { get; set; }
