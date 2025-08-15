@@ -3,9 +3,8 @@
 
 using System;
 using System.Collections.Generic;
-using Nethermind.Core;
 
-namespace Nethermind.Blockchain.Tracing;
+namespace Nethermind.Core.BlockAccessLists;
 
 // Single storage write: tx_index -> new_value
 public struct StorageChange
@@ -83,4 +82,7 @@ public struct BlockAccessList
 {
     // [SszList(Eip7928Constants.MaxAccounts)]
     public Dictionary<Address, AccountChanges> AccountChanges { get; set;  }
+
+    // RLP encode bal
+    public byte[] Bytes => [];
 }

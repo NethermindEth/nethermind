@@ -15,6 +15,7 @@ using Nethermind.Consensus.Rewards;
 using Nethermind.Consensus.Validators;
 using Nethermind.Consensus.Withdrawals;
 using Nethermind.Core;
+using Nethermind.Core.BlockAccessLists;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Threading;
 using Nethermind.Crypto;
@@ -155,8 +156,7 @@ public partial class BlockProcessor(
         }
 
         header.Hash = header.CalculateHash();
-        // RLP encode bal
-        body.BlockAccessList = [];
+        body.BlockAccessList = bal.Bytes;
 
         return receipts;
     }
