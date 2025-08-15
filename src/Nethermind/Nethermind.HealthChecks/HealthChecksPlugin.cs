@@ -67,7 +67,7 @@ namespace Nethermind.HealthChecks
                 }
             }
 
-            if (_mergeConfig.Enabled && _healthChecksConfig.EnableConsensusLayerHealthChecks)
+            if (_mergeConfig.Enabled)
             {
                 _ = _api.EngineRequestsTracker.StartAsync(); // Fire and forget
             }

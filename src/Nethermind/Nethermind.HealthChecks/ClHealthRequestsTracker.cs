@@ -26,8 +26,11 @@ public class ClHealthRequestsTracker(ITimestamper timestamper, IHealthChecksConf
 
     public Task StartAsync()
     {
-        _timer = new Timer(ReportClStatus, null, TimeSpan.Zero,
-            TimeSpan.FromSeconds(ClUnavailableReportMessageDelay));
+        if (_enableConsensusLayerHealthChecks)
+        {
+            _timer = new Timer(ReportClStatus, null, TimeSpan.Zero,
+                TimeSpan.FromSeconds(ClUnavailableReportMessageDelay));
+        }
         return Task.CompletedTask;
     }
 
