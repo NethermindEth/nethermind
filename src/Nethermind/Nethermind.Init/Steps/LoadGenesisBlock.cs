@@ -68,6 +68,7 @@ namespace Nethermind.Init.Steps
                 _api.StateReader!,
                 mainProcessingContext.WorldState,
                 mainProcessingContext.TransactionProcessor,
+                _api.GenesisPostProcessor,
                 _api.LogManager,
                 string.IsNullOrWhiteSpace(_initConfig?.GenesisHash) ? null : new Hash256(_initConfig.GenesisHash))
                 .Load();
