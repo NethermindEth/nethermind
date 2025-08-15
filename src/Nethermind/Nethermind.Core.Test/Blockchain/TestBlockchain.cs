@@ -249,7 +249,7 @@ public class TestBlockchain : IDisposable
 
             Block? genesis = GetGenesisBlock(WorldStateManager.GlobalWorldState);
             BlockTree.SuggestBlock(genesis);
-            await waitGenesis;
+            waitGenesis.Wait(_cts.Token);
         }
 
         if (testConfiguration.AddBlockOnStart)
