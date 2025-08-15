@@ -6,7 +6,6 @@ import json
 import logging
 import os
 import os.path as path
-import sha3
 import tempfile
 import tomllib
 import zstandard as zstd
@@ -18,10 +17,6 @@ from zipfile import ZipFile
 SUPERCHAIN_REPOSITORY = "https://github.com/ethereum-optimism/superchain-registry/archive/refs/heads/main.zip"
 IGNORED_CHAINS = ["arena-z-testnet", "creator-chain-testnet", "rehearsal-0-bn-0", "rehearsal-0-bn-1", "celo", "radius_testnet"]
 IGNORED_L1S = ["sepolia-dev-0"]
-
-
-def keccak(hex):
-    return "0x" + sha3.keccak_256(bytes.fromhex(hex[2:])).hexdigest()
 
 
 def lookup(dictionary, path):
