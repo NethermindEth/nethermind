@@ -4,6 +4,7 @@
 using System.IO;
 using System.Threading;
 using System.Threading.Tasks;
+using Autofac;
 using Nethermind.Api;
 using Nethermind.Api.Steps;
 using Nethermind.Blockchain;
@@ -13,6 +14,7 @@ using Nethermind.Blockchain.Receipts;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Consensus;
 using Nethermind.Core;
+using Nethermind.Core.ServiceStopper;
 using Nethermind.Db;
 using Nethermind.Db.Blooms;
 using Nethermind.Facade.Find;
@@ -24,11 +26,13 @@ namespace Nethermind.Init.Steps
     [RunnerStepDependencies(typeof(InitTxTypesAndRlp), typeof(InitDatabase), typeof(MigrateConfigs), typeof(SetupKeyStore))]
     public class InitializeBlockTree : IStep
     {
+        private readonly IServiceStopper _stopper;
         private readonly IBasicApi _get;
         private readonly IApiWithStores _set;
 
-        public InitializeBlockTree(INethermindApi api)
+        public InitializeBlockTree(INethermindApi api, IServiceStopper stopper)
         {
+            _stopper = stopper;
             (_get, _set) = api.ForInit;
         }
 
@@ -94,6 +98,14 @@ namespace Nethermind.Init.Steps
 
             IReceiptFinder receiptFinder = _set.ReceiptFinder;
 
+            ILogIndexStorage logIndexStorage = _set.LogIndexStorage = new LogIndexStorage(
+                _get.Context.Resolve<IDbFactory>(),
+                _get.LogManager,
+                receiptConfig.LogIndexIOParallelism,
+                receiptConfig.LogIndexCompactionDistance
+            );
+            _get.DisposeStack.Push(logIndexStorage);
+
             LogFinder logFinder = new(
                 blockTree,
                 receiptFinder,
@@ -101,6 +113,7 @@ namespace Nethermind.Init.Steps
                 bloomStorage,
                 _get.LogManager,
                 new ReceiptsRecovery(_get.EthereumEcdsa, _get.SpecProvider),
+                logIndexStorage,
                 receiptConfig.MaxBlockDepth);
 
             _set.LogFinder = logFinder;
