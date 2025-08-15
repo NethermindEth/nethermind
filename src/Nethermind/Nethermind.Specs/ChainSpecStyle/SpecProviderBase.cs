@@ -43,7 +43,7 @@ public abstract class SpecProviderBase
 
     public IReleaseSpec GenesisSpec { get; private set; }
 
-    public IReleaseSpec GetSpec(ForkActivation activation)
+    public virtual IReleaseSpec GetSpec(ForkActivation activation)
     {
         static int CompareTransitionOnActivation(ForkActivation activation, (ForkActivation Activation, IReleaseSpec Spec) transition) =>
            activation.CompareTo(transition.Activation);
