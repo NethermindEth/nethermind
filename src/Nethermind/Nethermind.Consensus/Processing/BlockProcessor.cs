@@ -52,6 +52,7 @@ public partial class BlockProcessor(
     /// to any block-specific tracers.
     /// </summary>
     protected BlockReceiptsTracer ReceiptsTracer { get; set; } = new();
+    protected BlockAccessTracer BlockAccessTracer { get; set; } = new();
 
     public event EventHandler<TxProcessedEventArgs> TransactionProcessed
     {
@@ -101,7 +102,10 @@ public partial class BlockProcessor(
         BlockBody body = block.Body;
         BlockHeader header = block.Header;
 
-        ReceiptsTracer.SetOtherTracer(blockTracer);
+        CompositeBlockTracer compositeBlockTracer = new();
+        compositeBlockTracer.Add(blockTracer);
+        compositeBlockTracer.Add(BlockAccessTracer);
+        ReceiptsTracer.SetOtherTracer(compositeBlockTracer);
         ReceiptsTracer.StartNewBlockTrace(block);
 
         blockTransactionsExecutor.SetBlockExecutionContext(new BlockExecutionContext(block.Header, spec));
@@ -150,6 +154,7 @@ public partial class BlockProcessor(
 
         header.Hash = header.CalculateHash();
         // create from block.AccountChanges and encode
+        System.Collections.Generic.IReadOnlyList<Access> accesses = ReceiptsTracer.GetTracer<BlockAccessTracer>().Accesses;
         body.BlockAccessList = [];
 
         return receipts;
