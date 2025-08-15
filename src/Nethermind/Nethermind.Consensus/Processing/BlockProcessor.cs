@@ -118,6 +118,8 @@ public partial class BlockProcessor(
 
         _stateProvider.Commit(spec, commitRoots: false);
 
+        BlockAccessList bal = ReceiptsTracer.GetTracer<BlockAccessTracer>().BlockAccessList;
+
         CalculateBlooms(receipts);
 
         if (spec.IsEip4844Enabled)
@@ -153,8 +155,7 @@ public partial class BlockProcessor(
         }
 
         header.Hash = header.CalculateHash();
-        // create from block.AccountChanges and encode
-        System.Collections.Generic.IReadOnlyList<Access> accesses = ReceiptsTracer.GetTracer<BlockAccessTracer>().Accesses;
+        // RLP encode bal
         body.BlockAccessList = [];
 
         return receipts;

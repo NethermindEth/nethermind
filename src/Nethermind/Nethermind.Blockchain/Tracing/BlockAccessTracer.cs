@@ -12,11 +12,6 @@ using Nethermind.Int256;
 
 namespace Nethermind.Blockchain.Tracing;
 
-public struct Access
-{
-
-}
-
 public class BlockAccessTracer : IBlockTracer, ITxTracer, IJournal<int>
 {
     // private IBlockTracer _otherTracer = NullBlockTracer.Instance;
@@ -48,37 +43,6 @@ public class BlockAccessTracer : IBlockTracer, ITxTracer, IJournal<int>
 
     }
 
-    protected TxReceipt BuildFailedReceipt(Address recipient, long gasSpent, string error, Hash256? stateRoot)
-    {
-        TxReceipt receipt = BuildReceipt(recipient, gasSpent, StatusCode.Failure, [], stateRoot);
-        receipt.Error = error;
-        return receipt;
-    }
-
-    protected virtual TxReceipt BuildReceipt(Address recipient, long spentGas, byte statusCode, LogEntry[] logEntries, Hash256? stateRoot)
-    {
-        Transaction transaction = CurrentTx!;
-        TxReceipt txReceipt = new()
-        {
-            Logs = logEntries,
-            TxType = transaction.Type,
-            // Bloom calculated in parallel with other receipts
-            GasUsedTotal = Block.GasUsed,
-            StatusCode = statusCode,
-            Recipient = transaction.IsContractCreation ? null : recipient,
-            BlockHash = Block.Hash,
-            BlockNumber = Block.Number,
-            Index = _currentIndex,
-            GasUsed = spentGas,
-            Sender = transaction.SenderAddress,
-            ContractAddress = transaction.IsContractCreation ? recipient : null,
-            TxHash = transaction.Hash,
-            PostTransactionState = stateRoot
-        };
-
-        return txReceipt;
-    }
-
     public void StartOperation(int pc, Instruction opcode, long gas, in ExecutionEnvironment env, int codeSection = 0, int functionDepth = 0) {}
 
     public void ReportOperationError(EvmExceptionType error) {}
@@ -94,7 +58,7 @@ public class BlockAccessTracer : IBlockTracer, ITxTracer, IJournal<int>
 
     public void ReportStorageChange(in ReadOnlySpan<byte> key, in ReadOnlySpan<byte> value)
     {
-        _accesses.Add(new());
+        //_bal.AccountChanges[].StorageChanges()
     }
 
     public void SetOperationStorage(Address address, UInt256 storageIndex, ReadOnlySpan<byte> newValue, ReadOnlySpan<byte> currentValue) {}
@@ -105,32 +69,61 @@ public class BlockAccessTracer : IBlockTracer, ITxTracer, IJournal<int>
 
     public void ReportBalanceChange(Address address, UInt256? before, UInt256? after)
     {
-        _accesses.Add(new());
+        BalanceChange balanceChange = new()
+        {
+            TxIndex = (ushort)_currentIndex,
+            PostBalance = (ulong)after // why not 256 bit?
+        };
+        _bal.AccountChanges[address].BalanceChanges.Add(balanceChange);
     }
 
     public void ReportCodeChange(Address address, byte[] before, byte[] after)
     {
-        _accesses.Add(new());
+        CodeChange codeChange = new()
+        {
+            TxIndex = (ushort)_currentIndex,
+            NewCode = after
+        };
+        _bal.AccountChanges[address].CodeChanges.Add(codeChange);
     }
 
     public void ReportNonceChange(Address address, UInt256? before, UInt256? after)
     {
-        _accesses.Add(new());
+        NonceChange nonceChange = new()
+        {
+            TxIndex = (ushort)_currentIndex,
+            NewNonce = (ulong)after
+        };
+        _bal.AccountChanges[address].NonceChanges.Add(nonceChange);
     }
 
     public void ReportAccountRead(Address address)
     {
-        _accesses.Add(new());
+        if (!_bal.AccountChanges.ContainsKey(address))
+        {
+            _bal.AccountChanges.Add(address, new());
+        }
     }
 
     public void ReportStorageChange(in StorageCell storageCell, byte[] before, byte[] after)
     {
-        _accesses.Add(new());
+        StorageChange storageChange = new()
+        {
+            TxIndex = (ushort)_currentIndex,
+            NewValue = after
+        };
+        Address address = Address.Zero;
+        _bal.AccountChanges[address].StorageChanges.Add(storageChange);
     }
 
     public void ReportStorageRead(in StorageCell storageCell)
     {
-        _accesses.Add(new());
+        StorageKey storageKey = new()
+        {
+            Key = storageCell.Hash.ToByteArray()
+        };
+        Address address = Address.Zero;
+        _bal.AccountChanges[address].StorageReads.Add(storageKey);
     }
 
     public void ReportAction(long gas, UInt256 value, Address from, Address to, ReadOnlyMemory<byte> input, ExecutionType callType, bool isPrecompileCall = false) {}
@@ -153,7 +146,7 @@ public class BlockAccessTracer : IBlockTracer, ITxTracer, IJournal<int>
 
     public void ReportAccess(IReadOnlyCollection<Address> accessedAddresses, IReadOnlyCollection<StorageCell> accessedStorageCells)
     {
-        _accesses.Add(new());
+        // _bal.Add(new());
     }
 
     public void SetOperationStack(TraceStack stack) {}
@@ -169,16 +162,15 @@ public class BlockAccessTracer : IBlockTracer, ITxTracer, IJournal<int>
     // private ITxTracer _currentTxTracer = NullTxTracer.Instance;
     protected int _currentIndex { get; private set; }
     // private readonly List<TxReceipt> _txReceipts = new();
-    private readonly List<Access> _accesses = [];
+    private BlockAccessList _bal = new();
     protected Transaction? CurrentTx;
-    public IReadOnlyList<Access> Accesses => _accesses;
-    // public IReadOnlyList<TxReceipt> TxReceipts => _txReceipts;
+    public BlockAccessList BlockAccessList => _bal;
     // public TxReceipt LastReceipt => _txReceipts[^1];
     public bool IsTracingRewards => false;
 
     // public ITxTracer InnerTracer => _currentTxTracer;
 
-    public int TakeSnapshot() => _accesses.Count;
+    public int TakeSnapshot() => _bal.AccountChanges.Count;
 
     public void Restore(int snapshot)
     {
@@ -198,7 +190,7 @@ public class BlockAccessTracer : IBlockTracer, ITxTracer, IJournal<int>
     {
         Block = block;
         _currentIndex = 0;
-        _accesses.Clear();
+        _bal = new();
     }
 
     public ITxTracer StartNewTxTrace(Transaction? tx)
