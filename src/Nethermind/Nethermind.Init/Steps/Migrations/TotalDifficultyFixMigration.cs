@@ -20,6 +20,7 @@ public class TotalDifficultyFixMigration : IDatabaseMigration
     private readonly ISyncConfig _syncConfig;
     private readonly IChainLevelInfoRepository _chainLevelInfoRepository;
     private readonly IBlockTree _blockTree;
+    private readonly ProgressLogger _progressLogger;
 
     public TotalDifficultyFixMigration(IChainLevelInfoRepository? chainLevelInfoRepository, IBlockTree? blockTree, ISyncConfig syncConfig, ILogManager logManager)
     {
@@ -27,6 +28,7 @@ public class TotalDifficultyFixMigration : IDatabaseMigration
         _blockTree = blockTree ?? throw new ArgumentNullException(nameof(blockTree));
         _logger = logManager.GetClassLogger();
         _syncConfig = syncConfig;
+        _progressLogger = new ProgressLogger("TotalDifficulty Fix", logManager);
     }
 
     public Task Run(CancellationToken cancellationToken)
@@ -52,6 +54,12 @@ public class TotalDifficultyFixMigration : IDatabaseMigration
 
         if (_logger.IsInfo) _logger.Info($"Starting TotalDifficultyFixMigration. From block {startingBlock} to block {lastBlock}");
 
+        long totalBlocks = lastBlock.Value - startingBlock + 1;
+        long processedBlocks = 0;
+        long fixedBlocks = 0;
+
+        _progressLogger.Reset(0, totalBlocks);
+
         for (long blockNumber = startingBlock; blockNumber <= lastBlock; ++blockNumber)
         {
             cancellationToken.ThrowIfCancellationRequested();
@@ -75,6 +83,7 @@ public class TotalDifficultyFixMigration : IDatabaseMigration
                             $"Found discrepancy in block {header.ToString(BlockHeader.Format.Short)} total difficulty: should be {expectedTd}, was {actualTd}. Fixing.");
                     blockInfo.TotalDifficulty = expectedTd;
                     shouldPersist = true;
+                    fixedBlocks++;
                 }
             }
 
@@ -82,9 +91,23 @@ public class TotalDifficultyFixMigration : IDatabaseMigration
             {
                 _chainLevelInfoRepository.PersistLevel(blockNumber, currentLevel);
             }
+
+            processedBlocks++;
+            
+            // Update progress every 1000 blocks or when progress logger suggests
+            if (processedBlocks % 1000 == 0)
+            {
+                _progressLogger.Update(processedBlocks);
+                _progressLogger.LogProgress();
+            }
         }
 
-        if (_logger.IsInfo) _logger.Info("Ended TotalDifficultyFixMigration.");
+        // Final progress update
+        _progressLogger.Update(processedBlocks);
+        _progressLogger.MarkEnd();
+        _progressLogger.LogProgress();
+
+        if (_logger.IsInfo) _logger.Info($"Ended TotalDifficultyFixMigration. Processed {processedBlocks} blocks, fixed {fixedBlocks} blocks.");
     }
 
     UInt256? FindParentTd(BlockHeader blockHeader, long level)
