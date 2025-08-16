@@ -36,8 +36,11 @@ public static class BatchDecoder
         var l1OriginCheck = reader.Take(20);
 
         // payload
-        // TODO: `blockCount`: This is at least 1, empty span batches are invalid.
         var blockCount = reader.Read(Protobuf.DecodeULong);
+        if (blockCount == 0)
+        {
+            throw new ArgumentException($"Invalid span batch: blockCount is {blockCount}, but must be at least 1.");
+        }
         var originBits = reader.Read(Protobuf.DecodeBitList, blockCount);
 
         var blockTransactionCounts = new ulong[blockCount];
@@ -47,9 +50,11 @@ public static class BatchDecoder
             blockTransactionCounts[i] = reader.Read(Protobuf.DecodeULong);
             totalTxCount += blockTransactionCounts[i];
         }
-        // TODO:
-        // `totalTxCount` in BatchV1 cannot be greater than MaxSpanBatchElementCount (`10_000_000`).
-        // MaxSpanBatchElementCount is the maximum number of blocks, transactions in total, or transaction per block allowed in a BatchV1.
+        const ulong MaxSpanBatchElementCount = 10_000_000;
+        if (totalTxCount > MaxSpanBatchElementCount)
+        {
+            throw new ArgumentException($"Invalid span batch: totalTxCount {totalTxCount} exceeds the limit of {MaxSpanBatchElementCount}.");
+        }
 
         // Txs
 
