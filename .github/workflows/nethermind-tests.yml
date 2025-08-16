@@ -93,7 +93,7 @@ jobs:
           - Nethermind.Wallet.Test
     steps:
     - name: Check out repository
-      uses: actions/checkout@v4
+      uses: actions/checkout@v5
       with:
         submodules: ${{ startsWith(matrix.project, 'Ethereum.') && 'recursive' || 'false' }}
     - name: Set up .NET
