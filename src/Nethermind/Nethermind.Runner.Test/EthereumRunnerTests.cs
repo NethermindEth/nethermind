@@ -213,6 +213,7 @@ public class EthereumRunnerTests
         api.ReceiptStorage = Substitute.For<IReceiptStorage>();
         api.BlockProducerRunner = Substitute.For<IBlockProducerRunner>();
         api.BackgroundTaskScheduler = Substitute.For<IBackgroundTaskScheduler>();
+        api.NonceManager = Substitute.For<INonceManager>();
 
         if (api is AuRaNethermindApi auRaNethermindApi)
         {
