@@ -2,11 +2,9 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using System.Collections.Generic;
 using System.Numerics;
 using System.Runtime.CompilerServices;
 using System.Threading;
-using System.Threading.Tasks;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.BeaconBlockRoot;
 using Nethermind.Blockchain.Blocks;
@@ -17,8 +15,7 @@ using Nethermind.Consensus.Rewards;
 using Nethermind.Consensus.Validators;
 using Nethermind.Consensus.Withdrawals;
 using Nethermind.Core;
-using Nethermind.Core.Crypto;
-using Nethermind.Core.Extensions;
+using Nethermind.Core.BlockAccessLists;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Threading;
 using Nethermind.Crypto;
@@ -30,8 +27,6 @@ using Nethermind.Logging;
 using Nethermind.Specs.Forks;
 using Nethermind.State;
 using static Nethermind.Consensus.Processing.IBlockProcessor;
-
-using Metrics = Nethermind.Blockchain.Metrics;
 
 namespace Nethermind.Consensus.Processing;
 
@@ -58,6 +53,7 @@ public partial class BlockProcessor(
     /// to any block-specific tracers.
     /// </summary>
     protected BlockReceiptsTracer ReceiptsTracer { get; set; } = new();
+    protected BlockAccessTracer BlockAccessTracer { get; set; } = new();
 
     public event EventHandler<TxProcessedEventArgs> TransactionProcessed
     {
@@ -104,9 +100,13 @@ public partial class BlockProcessor(
         IReleaseSpec spec,
         CancellationToken token)
     {
+        BlockBody body = block.Body;
         BlockHeader header = block.Header;
 
-        ReceiptsTracer.SetOtherTracer(blockTracer);
+        CompositeBlockTracer compositeBlockTracer = new();
+        compositeBlockTracer.Add(blockTracer);
+        compositeBlockTracer.Add(BlockAccessTracer);
+        ReceiptsTracer.SetOtherTracer(compositeBlockTracer);
         ReceiptsTracer.StartNewBlockTrace(block);
 
         blockTransactionsExecutor.SetBlockExecutionContext(new BlockExecutionContext(block.Header, spec));
@@ -118,6 +118,8 @@ public partial class BlockProcessor(
         TxReceipt[] receipts = blockTransactionsExecutor.ProcessTransactions(block, options, ReceiptsTracer, token);
 
         _stateProvider.Commit(spec, commitRoots: false);
+
+        BlockAccessList bal = ReceiptsTracer.GetTracer<BlockAccessTracer>().BlockAccessList;
 
         CalculateBlooms(receipts);
 
@@ -154,6 +156,7 @@ public partial class BlockProcessor(
         }
 
         header.Hash = header.CalculateHash();
+        body.BlockAccessList = bal.Bytes;
 
         return receipts;
     }
