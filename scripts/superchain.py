@@ -192,6 +192,7 @@ def to_nethermind_chainspec(chain_name, l1, superchain, chain, genesis):
             "eip2028Transition": "0x0",
             "eip2200Transition": "0x0",
             "eip2565Transition": "0x0",
+            "eip2718Transition": "0x0",
             "eip2929Transition": "0x0",
             "eip2930Transition": "0x0",
             "eip1559Transition": hex(lookup(config, ["genesis", "l2", "number"])),
@@ -232,7 +233,6 @@ def to_nethermind_chainspec(chain_name, l1, superchain, chain, genesis):
                         "mixHash": lookup(genesis, ["mixHash"]),
                     }
                 },
-                "number": lookup(genesis, ["number"]),
                 "difficulty": lookup(genesis, ["difficulty"]),
                 "author": one_of(lookup(genesis, ["author"]), lookup(genesis, ["coinbase"])),
                 "timestamp": lookup(genesis, ["timestamp"]),
