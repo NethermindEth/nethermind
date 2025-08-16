@@ -368,6 +368,11 @@ namespace Nethermind.Synchronization.FastBlocks
 
                 return Task.FromResult(batch);
             }
+            catch (Exception ex)
+            {
+                // Explicitly wrap exception in Task
+                return Task.FromException<HeadersSyncBatch?>(ex);
+            }
             finally
             {
                 _resetLock.ExitReadLock();
