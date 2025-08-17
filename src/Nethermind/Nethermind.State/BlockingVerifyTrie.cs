@@ -49,19 +49,19 @@ public class BlockingVerifyTrie
         using IDisposable _ = _trieStore.BeginScope(stateAtBlock);
 
         Hash256 rootNode = stateAtBlock.StateRoot;
-        
+
         if (_logger.IsInfo) _logger.Info($"Starting trie verification for block {stateAtBlock.Number} with state root {rootNode}");
-        
+
         // Initialize progress logger
         _progressLogger.Reset(0, 0); // We'll update as we go since we don't know total nodes upfront
-        
-        TrieStats stats = _stateReader.CollectStats(rootNode, _codeDb, _logManager, cancellationToken, _progressLogger);
-        
+
+        TrieStats stats = _stateReader.CollectStats(rootNode, _codeDb, _logManager, _progressLogger, cancellationToken);
+
         // Update progress logger with final stats
         _progressLogger.Update(stats.NodesCount);
         _progressLogger.MarkEnd();
         _progressLogger.LogProgress();
-        
+
         if (stats.MissingNodes > 0)
         {
             if (_logger.IsError) _logger.Error($"Missing node found!");
