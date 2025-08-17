@@ -33,11 +33,6 @@ namespace Nethermind.Db.Test.LogIndex
     [FixtureLifeCycle(LifeCycle.InstancePerTestCase)]
     public class LogIndexStorageComplexTests(LogIndexStorageComplexTests.TestData testData)
     {
-        // (batchCount: 10, blocksPerBatch: 100, isExplicit: false, extendedGetRanges = false),
-        // (batchCount: 5, blocksPerBatch: 200, isExplicit: false),
-        // (batchCount: 100, blocksPerBatch: 100, isExplicit: true),
-        // (batchCount: 100, blocksPerBatch: 200, isExplicit: true)
-
         public static readonly TestFixtureData[] TestCases =
         [
             new(new TestData(10, 100)),
@@ -740,13 +735,13 @@ namespace Nethermind.Db.Test.LogIndex
                 var ranges = new HashSet<(int, int)>();
 
                 var edges = new[] { min - 1, min, min + 1, max - 1, max + 1 };
-                ranges.AddRange(edges.Zip(edges));
+                ranges.AddRange(edges.SelectMany(_ => edges, static (x, y) => (x, y)));
 
                 const int step = 100;
                 for (var i = min; i <= max; i += step)
                 {
                     var middles = new[] { i - step, i - 1, i, i + 1, i + step };
-                    ranges.AddRange(middles.Zip(middles));
+                    ranges.AddRange(middles.SelectMany(_ => middles, static (x, y) => (x, y)));
                 }
 
                 return ranges;
