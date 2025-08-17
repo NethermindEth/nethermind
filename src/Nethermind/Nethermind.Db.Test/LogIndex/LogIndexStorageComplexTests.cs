@@ -2,11 +2,13 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
 using System.IO;
 using System.Linq;
+using System.Runtime.ExceptionServices;
 using System.Threading;
 using System.Threading.Tasks;
 using MathNet.Numerics.Random;
@@ -370,9 +372,9 @@ namespace Nethermind.Db.Test.LogIndex
         }
 
         [Combinatorial]
+        [Repeat(3)] // race condition does not always trigger
         [SuppressMessage("ReSharper", "AccessToDisposedClosure")]
         public async Task Set_ConcurrentGet_Test(
-            [Values(1, 8)] int ioParallelism,
             [Values(100, int.MaxValue)] int compactionDistance,
             [Values] bool isBackwardsSync
         )
@@ -382,11 +384,12 @@ namespace Nethermind.Db.Test.LogIndex
             using var getCancellation = new CancellationTokenSource();
             var token = getCancellation.Token;
 
+            ConcurrentBag<Exception> exceptions = [];
             var getThreads = new[]
             {
-                new Thread(() => GetBlockNumbersLoop(new Random(42), logIndexStorage, testData, token)),
-                new Thread(() => GetBlockNumbersLoop(new Random(4242), logIndexStorage, testData, token)),
-                new Thread(() => GetBlockNumbersLoop(new Random(424242), logIndexStorage, testData, token)),
+                new Thread(() => VerifyReceiptsPartialLoop(new Random(42), logIndexStorage, testData, exceptions, token)),
+                new Thread(() => VerifyReceiptsPartialLoop(new Random(4242), logIndexStorage, testData, exceptions, token)),
+                new Thread(() => VerifyReceiptsPartialLoop(new Random(424242), logIndexStorage, testData, exceptions, token)),
             };
             getThreads.ForEach(t => t.Start());
 
@@ -394,6 +397,9 @@ namespace Nethermind.Db.Test.LogIndex
 
             await getCancellation.CancelAsync();
             getThreads.ForEach(t => t.Join());
+
+            if (exceptions.FirstOrDefault() is {} exception)
+                ExceptionDispatchInfo.Capture(exception).Throw();
 
             VerifyReceipts(logIndexStorage, testData);
         }
@@ -530,25 +536,49 @@ namespace Nethermind.Db.Test.LogIndex
             );
         }
 
-        private static void GetBlockNumbersLoop(Random random, ILogIndexStorage logIndexStorage, TestData testData,
-            CancellationToken cancellationToken)
+        private static void VerifyReceiptsPartialLoop(Random random, ILogIndexStorage logIndexStorage, TestData testData,
+            ConcurrentBag<Exception> exceptions, CancellationToken cancellationToken)
         {
-            var addresses = testData.AddressMap.Keys.ToArray();
-            var topics = testData.TopicMap.Keys.ToArray();
-
-            while (!cancellationToken.IsCancellationRequested)
+            try
             {
-                if (addresses.Length != 0)
-                {
-                    var address = random.NextValue(addresses);
-                    logIndexStorage.GetBlockNumbersFor(address, 0, int.MaxValue);
-                }
+                var (addresses, topics) = (testData.Addresses, testData.Topics);
 
-                if (topics.Length != 0)
+                while (!cancellationToken.IsCancellationRequested)
                 {
-                    var topic = random.NextValue(topics);
-                    logIndexStorage.GetBlockNumbersFor(topic, 0, int.MaxValue);
+                    if (addresses.Count != 0)
+                    {
+                        var address = random.NextValue(addresses);
+                        var expectedNums = testData.AddressMap[address];
+
+                        if (logIndexStorage.GetMinBlockNumber() is not {} min || logIndexStorage.GetMaxBlockNumber() is not {} max)
+                            continue;
+
+                        Assert.That(
+                            logIndexStorage.GetBlockNumbersFor(address, min, max),
+                            Is.EqualTo(expectedNums.SkipWhile(i => i < min).TakeWhile(i => i <= max)),
+                            $"Address: {address}, available: {min} - {max}"
+                        );
+                    }
+
+                    if (topics.Count != 0)
+                    {
+                        var topic = random.NextValue(topics);
+                        var expectedNums = testData.TopicMap[topic];
+
+                        if (logIndexStorage.GetMinBlockNumber() is not {} min || logIndexStorage.GetMaxBlockNumber() is not {} max)
+                            continue;
+
+                        Assert.That(
+                            logIndexStorage.GetBlockNumbersFor(topic, min, max),
+                            Is.EqualTo(expectedNums.SkipWhile(i => i < min).TakeWhile(i => i <= max)),
+                            $"Topic: {topic}, available: {min} - {max}"
+                        );
+                    }
                 }
+            }
+            catch (Exception ex)
+            {
+                exceptions.Add(ex);
             }
         }
 
@@ -625,6 +655,9 @@ namespace Nethermind.Db.Test.LogIndex
             public IReadOnlyDictionary<Address, HashSet<int>> AddressMap { get; private set; } = new Dictionary<Address, HashSet<int>>();
             public IReadOnlyDictionary<Hash256, HashSet<int>> TopicMap { get; private set; } = new Dictionary<Hash256, HashSet<int>>();
 
+            public IReadOnlyList<Address> Addresses { get; private set; }
+            public IReadOnlyList<Hash256> Topics { get; private set; }
+
             public bool ExtendedGetRanges { get; init; }
 
             public TestData(Random random, int batchCount, int blocksPerBatch, int startNum = 0)
@@ -663,8 +696,8 @@ namespace Nethermind.Db.Test.LogIndex
                 }
 
                 var maps = GenerateMaps(batches.SelectMany(b => b));
-                AddressMap = maps.address;
-                TopicMap = maps.topic;
+                (AddressMap, TopicMap) = (maps.address, maps.topic);
+                (Addresses, Topics) = (maps.address.Keys.ToList(), maps.topic.Keys.ToList());
 
                 return batches;
             }

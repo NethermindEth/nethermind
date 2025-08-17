@@ -191,40 +191,42 @@ namespace Nethermind.Db
             }
         }
 
-        private static void UpdateBlockNumbers(IWriteOnlyKeyValueStore dbBatch, int batchFirst, int batchLast,
-            ref int? lastMin, ref int? lastMax, bool isBackwardSync, bool isReorg)
+        private static (int min, int max) SaveBlockNumbers(IWriteOnlyKeyValueStore dbBatch, int batchFirst, int batchLast,
+            int? lastMin, int? lastMax, bool isBackwardSync, bool isReorg)
         {
             var batchMin = Math.Min(batchFirst, batchLast);
             var batchMax = Math.Max(batchFirst, batchLast);
 
-            lastMin ??= SaveBlockNumber(dbBatch, SpecialKey.MinBlockNum, batchMin);
-            lastMax ??= SaveBlockNumber(dbBatch, SpecialKey.MaxBlockNum, batchMax);
+            var min = lastMin ?? SaveBlockNumber(dbBatch, SpecialKey.MinBlockNum, batchMin);
+            var max = lastMax ??= SaveBlockNumber(dbBatch, SpecialKey.MaxBlockNum, batchMax);
 
             if (!isBackwardSync)
             {
                 if ((isReorg && batchMax < lastMax) || (!isReorg && batchMax > lastMax))
-                    lastMax = SaveBlockNumber(dbBatch, SpecialKey.MaxBlockNum, batchMax);
+                    max = SaveBlockNumber(dbBatch, SpecialKey.MaxBlockNum, batchMax);
             }
             else
             {
                 if (isReorg)
                     throw ValidationException("Backwards sync does not support reorgs.");
                 if (batchMin < lastMin)
-                    lastMin = SaveBlockNumber(dbBatch, SpecialKey.MinBlockNum, batchMin);
+                    min = SaveBlockNumber(dbBatch, SpecialKey.MinBlockNum, batchMin);
             }
+
+            return (min, max);
         }
 
-        private void UpdateAddressBlockNumbers(IWriteBatch dbBatch, LogIndexAggregate aggregate, bool isBackwardSync, bool isReorg = false) =>
-            UpdateBlockNumbers(dbBatch, aggregate.FirstBlockNum, aggregate.LastBlockNum, ref _addressMinBlock, ref _addressMaxBlock, isBackwardSync, isReorg);
+        private (int min, int max) SaveAddressBlockNumbers(IWriteBatch dbBatch, LogIndexAggregate aggregate, bool isBackwardSync, bool isReorg = false) =>
+            SaveBlockNumbers(dbBatch, aggregate.FirstBlockNum, aggregate.LastBlockNum, _addressMinBlock, _addressMaxBlock, isBackwardSync, isReorg);
 
-        private void UpdateAddressBlockNumbers(IWriteBatch dbBatch, int block, bool isBackwardSync, bool isReorg = false) =>
-            UpdateBlockNumbers(dbBatch, block, block, ref _addressMinBlock, ref _addressMaxBlock, isBackwardSync, isReorg);
+        private (int min, int max) SaveAddressBlockNumbers(IWriteBatch dbBatch, int block, bool isBackwardSync, bool isReorg = false) =>
+            SaveBlockNumbers(dbBatch, block, block, _addressMinBlock, _addressMaxBlock, isBackwardSync, isReorg);
 
-        private void UpdateTopicBlockNumbers(IWriteBatch dbBatch, LogIndexAggregate aggregate, bool isBackwardSync, bool isReorg = false) =>
-            UpdateBlockNumbers(dbBatch, aggregate.FirstBlockNum, aggregate.LastBlockNum, ref _topicMinBlock, ref _topicMaxBlock, isBackwardSync, isReorg);
+        private (int min, int max) SaveTopicBlockNumbers(IWriteBatch dbBatch, LogIndexAggregate aggregate, bool isBackwardSync, bool isReorg = false) =>
+            SaveBlockNumbers(dbBatch, aggregate.FirstBlockNum, aggregate.LastBlockNum, _topicMinBlock, _topicMaxBlock, isBackwardSync, isReorg);
 
-        private void UpdateTopicBlockNumbers(IWriteBatch dbBatch, int block, bool isBackwardSync, bool isReorg = false) =>
-            UpdateBlockNumbers(dbBatch, block, block, ref _topicMinBlock, ref _topicMaxBlock, isBackwardSync, isReorg);
+        private (int min, int max) SaveTopicBlockNumbers(IWriteBatch dbBatch, int block, bool isBackwardSync, bool isReorg = false) =>
+            SaveBlockNumbers(dbBatch, block, block, _topicMinBlock, _topicMaxBlock, isBackwardSync, isReorg);
 
         private int GetLastReorgableBlockNumber() => Math.Min(_addressMaxBlock ?? 0, _topicMaxBlock ?? 0) - _maxReorgDepth;
 
@@ -479,11 +481,14 @@ namespace Nethermind.Db
                 // Need to update last block number, so that new-receipts comparison won't fail when rewriting it
                 // TODO: figure out if this can be improved, maybe don't use comparison checks at all
                 var blockNum = block.BlockNumber - 1;
-                UpdateAddressBlockNumbers(addressBatch, blockNum, isBackwardSync: false, isReorg: true);
-                UpdateTopicBlockNumbers(topicBatch, blockNum, isBackwardSync: false, isReorg: true);
+                (int min, int max) addressRange = SaveAddressBlockNumbers(addressBatch, blockNum, isBackwardSync: false, isReorg: true);
+                (int min, int max) topicRange = SaveTopicBlockNumbers(topicBatch, blockNum, isBackwardSync: false, isReorg: true);
 
                 addressBatch.Dispose();
                 topicBatch.Dispose();
+
+                (_addressMinBlock, _addressMaxBlock) = addressRange;
+                (_topicMinBlock, _topicMaxBlock) = topicRange;
             }
             finally
             {
@@ -583,8 +588,8 @@ namespace Nethermind.Db
 
                 // Update block numbers
                 timestamp = Stopwatch.GetTimestamp();
-                UpdateAddressBlockNumbers(dbBatch.address, aggregate, isBackwardSync);
-                UpdateTopicBlockNumbers(dbBatch.topic, aggregate, isBackwardSync);
+                (int min, int max) addressRange = SaveAddressBlockNumbers(dbBatch.address, aggregate, isBackwardSync);
+                (int min, int max) topicRange = SaveTopicBlockNumbers(dbBatch.topic, aggregate, isBackwardSync);
                 stats?.UpdatingMeta.Include(Stopwatch.GetElapsedTime(timestamp));
 
                 // Notify we have the first block
@@ -596,6 +601,10 @@ namespace Nethermind.Db
                 dbBatch.address.Dispose();
                 dbBatch.topic.Dispose();
                 stats?.WaitingBatch.Include(Stopwatch.GetElapsedTime(timestamp));
+
+                // Update availability ranges
+                (_addressMinBlock, _addressMaxBlock) = addressRange;
+                (_topicMinBlock, _topicMaxBlock) = topicRange;
 
                 // Enqueue compaction if needed
                 _compactor.TryEnqueue();
