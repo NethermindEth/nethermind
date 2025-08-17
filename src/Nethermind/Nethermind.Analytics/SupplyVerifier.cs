@@ -20,10 +20,10 @@ namespace Nethermind.Analytics
         private int _nodesVisited;
         private readonly ProgressLogger _progressLogger;
 
-        public SupplyVerifier(ILogger logger, ProgressLogger progressLogger = null)
+        public SupplyVerifier(ILogger logger, ProgressLogger progressLogger)
         {
             _logger = logger;
-            _progressLogger = progressLogger;
+            _progressLogger = progressLogger ?? throw new ArgumentNullException(nameof(progressLogger));
             _ignoreThisOneLookup = _ignoreThisOne.GetAlternateLookup<ValueHash256>();
         }
 
@@ -31,11 +31,6 @@ namespace Nethermind.Analytics
 
         public bool IsFullDbScan => false;
 
-        public bool ShouldVisit(in OldStyleTrieVisitContext _, in ValueHash256 nextNode)
-        {
-            if (_ignoreThisOne.Count > 16)
-            {
-                _logger.Warn($"Ignore count leak -> {_ignoreThisOne.Count}"
         public bool ShouldVisit(in OldStyleTrieVisitContext _, in ValueHash256 nextNode)
         {
             if (_ignoreThisOne.Count > 16)
@@ -53,10 +48,7 @@ namespace Nethermind.Analytics
 
         public void VisitTree(in OldStyleTrieVisitContext _, in ValueHash256 rootHash)
         {
-            if (_progressLogger is not null)
-            {
-                _progressLogger.Reset(0, 0); // We'll update as we go since we don't know total nodes upfront
-            }
+            _progressLogger.Reset(0, 0); // We'll update as we go since we don't know total nodes upfront
         }
 
         public void VisitMissingNode(in OldStyleTrieVisitContext _, in ValueHash256 nodeHash)
@@ -68,21 +60,12 @@ namespace Nethermind.Analytics
         {
             _nodesVisited++;
 
-            // Update progress logger if available
-            if (_progressLogger is not null)
-            {
-                _progressLogger.Update(_nodesVisited);
+            _progressLogger.Update(_nodesVisited);
 
-                // Log progress every 1000 nodes
-                if (_nodesVisited % 1000 == 0)
-                {
-                    _progressLogger.LogProgress();
-                }
-            }
-            else
+            // Log progress every 1000 nodes
+            if (_nodesVisited % 1000 == 0)
             {
-                // Fallback to old logging method
-                _logger.Info($"Balance after visiting {_accountsVisited} accounts and {_nodesVisited} nodes: {Balance}");
+                _progressLogger.LogProgress();
             }
 
             if (trieVisitContext.IsStorage)
@@ -102,11 +85,7 @@ namespace Nethermind.Analytics
         {
             _nodesVisited++;
 
-            // Update progress logger if available
-            if (_progressLogger is not null)
-            {
-                _progressLogger.Update(_nodesVisited);
-            }
+            _progressLogger.Update(_nodesVisited);
 
             if (trieVisitContext.IsStorage)
             {
@@ -124,21 +103,12 @@ namespace Nethermind.Analytics
             Balance += account.Balance;
             _accountsVisited++;
 
-            // Update progress logger if available
-            if (_progressLogger is not null)
-            {
-                _progressLogger.Update(_nodesVisited);
+            _progressLogger.Update(_nodesVisited);
 
-                // Log progress every 1000 accounts
-                if (_accountsVisited % 1000 == 0)
-                {
-                    _progressLogger.LogProgress();
-                }
-            }
-            else
+            // Log progress every 1000 accounts
+            if (_accountsVisited % 1000 == 0)
             {
-                // Fallback to old logging method
-                _logger.Info($"Balance after visiting {_accountsVisited} accounts and {_nodesVisited} nodes: {Balance}");
+                _progressLogger.LogProgress();
             }
         }
     }
