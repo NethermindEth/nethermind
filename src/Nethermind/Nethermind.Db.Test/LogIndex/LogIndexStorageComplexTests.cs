@@ -398,7 +398,7 @@ namespace Nethermind.Db.Test.LogIndex
             await getCancellation.CancelAsync();
             getThreads.ForEach(t => t.Join());
 
-            if (exceptions.FirstOrDefault() is {} exception)
+            if (exceptions.FirstOrDefault() is { } exception)
                 ExceptionDispatchInfo.Capture(exception).Throw();
 
             VerifyReceipts(logIndexStorage, testData);
@@ -550,7 +550,7 @@ namespace Nethermind.Db.Test.LogIndex
                         var address = random.NextValue(addresses);
                         var expectedNums = testData.AddressMap[address];
 
-                        if (logIndexStorage.GetMinBlockNumber() is not {} min || logIndexStorage.GetMaxBlockNumber() is not {} max)
+                        if (logIndexStorage.GetMinBlockNumber() is not { } min || logIndexStorage.GetMaxBlockNumber() is not { } max)
                             continue;
 
                         Assert.That(
@@ -565,7 +565,7 @@ namespace Nethermind.Db.Test.LogIndex
                         var topic = random.NextValue(topics);
                         var expectedNums = testData.TopicMap[topic];
 
-                        if (logIndexStorage.GetMinBlockNumber() is not {} min || logIndexStorage.GetMaxBlockNumber() is not {} max)
+                        if (logIndexStorage.GetMinBlockNumber() is not { } min || logIndexStorage.GetMaxBlockNumber() is not { } max)
                             continue;
 
                         Assert.That(
