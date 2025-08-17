@@ -96,14 +96,16 @@ public class CopyTreeVisitorTests
         if (_keyScheme == INodeStorage.KeyScheme.Hash)
         {
             NodeStorage nodeStorage = new NodeStorage(pruningContext, _keyScheme);
-            using CopyTreeVisitor<NoopTreePathContextWithStorage> copyTreeVisitor = new(nodeStorage, writeFlags, logManager, cancellationToken);
+            ProgressLogger progressLogger = new ProgressLogger("Copy Tree", logManager);
+            using CopyTreeVisitor<NoopTreePathContextWithStorage> copyTreeVisitor = new(nodeStorage, writeFlags, logManager, cancellationToken, progressLogger);
             stateReader.RunTreeVisitor(copyTreeVisitor, trie.RootHash, visitingOptions);
             copyTreeVisitor.Finish();
         }
         else
         {
             NodeStorage nodeStorage = new NodeStorage(pruningContext, _keyScheme);
-            using CopyTreeVisitor<TreePathContextWithStorage> copyTreeVisitor = new(nodeStorage, writeFlags, logManager, cancellationToken);
+            ProgressLogger progressLogger = new ProgressLogger("Copy Tree", logManager);
+            using CopyTreeVisitor<TreePathContextWithStorage> copyTreeVisitor = new(nodeStorage, writeFlags, logManager, cancellationToken, progressLogger);
             stateReader.RunTreeVisitor(copyTreeVisitor, trie.RootHash, visitingOptions);
             copyTreeVisitor.Finish();
         }
