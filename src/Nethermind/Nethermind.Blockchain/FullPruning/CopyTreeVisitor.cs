@@ -31,7 +31,7 @@ namespace Nethermind.Blockchain.FullPruning
         private readonly CancellationToken _cancellationToken;
         private const int Million = 1_000_000;
         private readonly ConcurrentNodeWriteBatcher _concurrentWriteBatcher;
-        private readonly ProgressLogger? _progressLogger;
+        private readonly ProgressLogger _progressLogger;
         private readonly INodeStorage _sourceNodeStorage;
 
         public CopyTreeVisitor(
@@ -39,14 +39,14 @@ namespace Nethermind.Blockchain.FullPruning
             WriteFlags writeFlags,
             ILogManager logManager,
             CancellationToken cancellationToken,
-            ProgressLogger? progressLogger = null)
+            ProgressLogger progressLogger)
         {
             _cancellationToken = cancellationToken;
             _writeFlags = writeFlags;
             _logger = logManager.GetClassLogger();
             _stopwatch = new Stopwatch();
             _concurrentWriteBatcher = new ConcurrentNodeWriteBatcher(nodeStorage);
-            _progressLogger = progressLogger;
+            _progressLogger = progressLogger ?? throw new ArgumentNullException(nameof(progressLogger));
             _sourceNodeStorage = nodeStorage;
         }
 
@@ -61,26 +61,12 @@ namespace Nethermind.Blockchain.FullPruning
             _stopwatch.Start();
             if (_logger.IsInfo) _logger.Info($"Full Pruning Started on root hash {rootHash}: do not close the node until finished or progress will be lost.");
 
-            // Estimate total nodes to process based on the current state trie
-            // This is a rough estimate since we don't know exactly how many nodes will be copied
-            // but it gives users a better sense of progress than just counting copied nodes
-            try
-            {
-                // Get a rough estimate of nodes in the current state
-                _totalNodesToProcess = EstimateNodesInState(rootHash);
-                if (_logger.IsInfo) _logger.Info($"Estimated {_totalNodesToProcess:N0} nodes to process during full pruning");
-            }
-            catch (Exception ex)
-            {
-                if (_logger.IsWarn) _logger.Warn($"Could not estimate total nodes: {ex.Message}");
-                _totalNodesToProcess = 0; // We'll track progress without a target
-            }
+            // Initialize total nodes to process - we don't estimate since full pruning
+            // may not copy all nodes and the actual count depends on pruning strategy
+            _totalNodesToProcess = 0; // We'll track progress without a target
 
-            // Initialize progress logger if provided
-            if (_progressLogger != null)
-            {
-                _progressLogger.Reset(0, _totalNodesToProcess);
-            }
+            // Initialize progress logger
+            _progressLogger.Reset(0, _totalNodesToProcess);
         }
 
         [DoesNotReturn, StackTraceHidden]
@@ -111,24 +97,12 @@ namespace Nethermind.Blockchain.FullPruning
                 _concurrentWriteBatcher.Set(storage, path, node.Keccak, node.FullRlp.ToArray(), _writeFlags);
                 long currentNodes = Interlocked.Increment(ref _persistedNodes);
 
-                // Update progress logger if available
-                if (_progressLogger != null)
-                {
-                    _progressLogger.Update(currentNodes);
+                _progressLogger.Update(currentNodes);
 
-                    // Log progress every 1 million nodes or when progress logger suggests
-                    if (currentNodes % Million == 0)
-                    {
-                        _progressLogger.LogProgress();
-                    }
-                }
-                else
+                // Log progress every 1 million nodes or when progress logger suggests
+                if (currentNodes % Million == 0)
                 {
-                    // Fallback to old logging method
-                    if (currentNodes % Million == 0)
-                    {
-                        LogProgress("In Progress");
-                    }
+                    _progressLogger.LogProgress();
                 }
             }
         }
@@ -139,10 +113,9 @@ namespace Nethermind.Blockchain.FullPruning
             {
                 var elapsed = _stopwatch.Elapsed;
                 var nodesPerSecond = elapsed.TotalSeconds > 0 ? _persistedNodes / elapsed.TotalSeconds : 0;
-                var progressPercent = _totalNodesToProcess > 0 ? (_persistedNodes * 100.0 / _totalNodesToProcess) : 0;
 
                 _logger.Info($"Full Pruning {state}: {elapsed} | " +
-                           $"Nodes: {_persistedNodes:N0} / {_totalNodesToProcess:N0} ({progressPercent:F1}%) | " +
+                           $"Nodes: {_persistedNodes:N0} | " +
                            $"Speed: {nodesPerSecond:N0} nodes/sec | " +
                            $"Mirrored: {_persistedNodes / (double)Million:N} mln nodes");
             }
@@ -154,14 +127,11 @@ namespace Nethermind.Blockchain.FullPruning
         /// </summary>
         private long EstimateNodesInState(ValueHash256 rootHash)
         {
-            // This is a simplified estimation - in practice, you might want to:
-            // 1. Do a quick scan of the trie to count nodes
-            // 2. Use historical data from previous pruning operations
-            // 3. Use block number to estimate state size
-
-            // For now, we'll use a conservative estimate based on typical state sizes
-            // This can be improved with more sophisticated estimation logic
-            return 10_000_000; // Conservative estimate for mainnet state
+            // Since we cannot accurately estimate the number of nodes that will be copied
+            // during full pruning (as it depends on the pruning strategy and state structure),
+            // we return 0 to indicate that we don't have a target value.
+            // ProgressLogger will handle this by showing only current progress without percentage.
+            return 0;
         }
 
         public void Dispose()
@@ -176,15 +146,8 @@ namespace Nethermind.Blockchain.FullPruning
         {
             _finished = true;
 
-            if (_progressLogger != null)
-            {
-                _progressLogger.MarkEnd();
-                _progressLogger.LogProgress();
-            }
-            else
-            {
-                LogProgress("Finished");
-            }
+            _progressLogger.MarkEnd();
+            _progressLogger.LogProgress();
 
             _concurrentWriteBatcher.Dispose();
         }
