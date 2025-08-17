@@ -28,7 +28,7 @@ public sealed class LogIndexService : ILogIndexService
     private CancellationToken CancellationToken => _cancellationSource.Token;
 
     // TODO: take some/all values from chain config
-    private const int MaxReorgDepth = 64;
+    private const int MaxReorgDepth = 8;
     private const int MaxCacheSize = 256;
     private const int BatchSize = 256;
     private const int MaxQueueSize = 4096;
