@@ -19,6 +19,7 @@ using Nethermind.Db;
 using Nethermind.Blockchain.Tracing.GethStyle;
 using Nethermind.Crypto;
 using Nethermind.Serialization.Rlp;
+using Nethermind.State;
 using Nethermind.Synchronization.ParallelSync;
 using Nethermind.Synchronization.Reporting;
 
@@ -209,4 +210,56 @@ public class DebugBridge : IDebugBridge
         _tracer.TraceBadBlockToFile(blockHash, gethTraceOptions ?? GethTraceOptions.Default, cancellationToken);
 
     public Hash256? GetTransactionBlockHash(Hash256 transactionHash) => _receiptStorage.FindBlockHash(transactionHash);
+
+    public IReadOnlyList<GethLikeTxTrace[]> GetBundleTraces(TransactionBundle[] bundles, BlockParameter blockParameter, CancellationToken cancellationToken, GethTraceOptions? gethTraceOptions = null)
+    {
+        var results = new List<GethLikeTxTrace[]>();
+
+        foreach (var bundle in bundles)
+        {
+            var bundleTraces = new List<GethLikeTxTrace>();
+
+            foreach (var txForRpc in bundle.Transactions)
+            {
+                Transaction tx = txForRpc.ToTransaction();
+                GethLikeTxTrace? trace;
+
+                try
+                {
+                    trace = _tracer.Trace(
+                        blockParameter,
+                        tx,
+                        gethTraceOptions ?? GethTraceOptions.Default,
+                        cancellationToken);
+                }
+                catch (InsufficientBalanceException)
+                {
+                    trace = new GethLikeTxTrace
+                    {
+                        Failed = true,
+                        Gas = tx.GasLimit,
+                        ReturnValue = []
+                    };
+                }
+                catch (Exception)
+                {
+                    trace = new GethLikeTxTrace
+                    {
+                        Failed = true,
+                        Gas = tx.GasLimit,
+                        ReturnValue = []
+                    };
+                }
+
+                if (trace is not null)
+                {
+                    bundleTraces.Add(trace);
+                }
+            }
+
+            results.Add(bundleTraces.ToArray());
+        }
+
+        return results;
+    }
 }
