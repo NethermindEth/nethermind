@@ -15,7 +15,7 @@ namespace Nethermind.Trie
         private readonly ClockCache<ValueHash256, int> _existingCodeHash = new ClockCache<ValueHash256, int>(1024 * 8);
         private readonly IKeyValueStore _codeKeyValueStore;
         private long _lastAccountNodeCount = 0;
-        private readonly ProgressLogger? _progressLogger;
+        private readonly ProgressLogger _progressLogger;
 
         private readonly ILogger _logger;
         private readonly CancellationToken _cancellationToken;
@@ -59,12 +59,12 @@ namespace Nethermind.Trie
             }
         }
 
-        public TrieStatsCollector(IKeyValueStore codeKeyValueStore, ILogManager logManager, CancellationToken cancellationToken = default, ProgressLogger? progressLogger = null)
+        public TrieStatsCollector(IKeyValueStore codeKeyValueStore, ILogManager logManager, ProgressLogger progressLogger, CancellationToken cancellationToken = default)
         {
             _codeKeyValueStore = codeKeyValueStore ?? throw new ArgumentNullException(nameof(codeKeyValueStore));
             _logger = logManager.GetClassLogger();
             _cancellationToken = cancellationToken;
-            _progressLogger = progressLogger;
+            _progressLogger = progressLogger ?? throw new ArgumentNullException(nameof(progressLogger));
         }
 
         public TrieStats Stats { get; } = new();
@@ -72,10 +72,7 @@ namespace Nethermind.Trie
         public bool IsFullDbScan => true;
         public void VisitTree(in Context nodeContext, in ValueHash256 rootHash)
         {
-            if (_progressLogger != null)
-            {
-                _progressLogger.Reset(0, 0); // We'll update as we go since we don't know total nodes upfront
-            }
+            _progressLogger.Reset(0, 0); // We'll update as we go since we don't know total nodes upfront
         }
 
         public bool ShouldVisit(in Context nodeContext, in ValueHash256 nextNode)
@@ -137,25 +134,13 @@ namespace Nethermind.Trie
         {
             long lastAccountNodeCount = _lastAccountNodeCount;
             long currentNodeCount = Stats.NodesCount;
-            
-            // Update progress logger if available
-            if (_progressLogger != null)
+
+            _progressLogger.Update(currentNodeCount);
+
+            // Log progress every 1 million nodes
+            if (currentNodeCount - lastAccountNodeCount > 1_000_000 && Interlocked.CompareExchange(ref _lastAccountNodeCount, currentNodeCount, lastAccountNodeCount) == lastAccountNodeCount)
             {
-                _progressLogger.Update(currentNodeCount);
-                
-                // Log progress every 1 million nodes
-                if (currentNodeCount - lastAccountNodeCount > 1_000_000 && Interlocked.CompareExchange(ref _lastAccountNodeCount, currentNodeCount, lastAccountNodeCount) == lastAccountNodeCount)
-                {
-                    _progressLogger.LogProgress();
-                }
-            }
-            else
-            {
-                // Fallback to old logging method
-                if (currentNodeCount - lastAccountNodeCount > 1_000_000 && Interlocked.CompareExchange(ref _lastAccountNodeCount, currentNodeCount, lastAccountNodeCount) == lastAccountNodeCount)
-                {
-                    _logger.Warn($"Collected info from {Stats.NodesCount} nodes. Missing CODE {Stats.MissingCode} STATE {Stats.MissingState} STORAGE {Stats.MissingStorage}");
-                }
+                _progressLogger.LogProgress();
             }
 
             if (nodeContext.IsStorage)
