@@ -19,6 +19,7 @@ public class ReleaseSpecDecorator(IReleaseSpec spec) : IReleaseSpec
     public virtual long MaximumExtraDataSize => spec.MaximumExtraDataSize;
     public virtual long MaxCodeSize => spec.MaxCodeSize;
     public virtual long MinGasLimit => spec.MinGasLimit;
+    public virtual long MinHistoryRetentionEpochs => spec.MinHistoryRetentionEpochs;
     public virtual long GasLimitBoundDivisor => spec.GasLimitBoundDivisor;
     public virtual UInt256 BlockReward => spec.BlockReward;
     public virtual long DifficultyBombDelay => spec.DifficultyBombDelay;
@@ -151,4 +152,5 @@ public class ReleaseSpecDecorator(IReleaseSpec spec) : IReleaseSpec
     Array? IReleaseSpec.EvmInstructionsTraced { get => spec.EvmInstructionsTraced; set => spec.EvmInstructionsTraced = value; }
     public bool IsEip7939Enabled => spec.IsEip7939Enabled;
     public bool IsEip7907Enabled => spec.IsEip7907Enabled;
+    public bool IsRip7728Enabled => spec.IsRip7728Enabled;
 }

@@ -82,6 +82,10 @@ namespace Nethermind.Trie
                     Unsafe.Add(ref output, i * 2 + 1) = upper0;
                 }
             }
+            else
+            {
+                length = 0;
+            }
 
             // Process any remaining bytes that were not handled by SIMD.
             for (int i = length; i < bytes.Length; i++)

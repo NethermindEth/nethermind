@@ -17,6 +17,7 @@ namespace Nethermind.Core.Specs
         //EIP-3860: Limit and meter initcode
         long MaxInitCodeSize => 2 * MaxCodeSize;
         long MinGasLimit { get; }
+        long MinHistoryRetentionEpochs { get; }
         long GasLimitBoundDivisor { get; }
         UInt256 BlockReward { get; }
         long DifficultyBombDelay { get; }
@@ -508,5 +509,10 @@ namespace Nethermind.Core.Specs
         /// EIP-7907: Meter Contract Code Size And Increase Limit
         /// </summary>
         public bool IsEip7907Enabled { get; }
+
+        /// <summary>
+        /// RIP-7728: L1SLOAD precompile for reading L1 storage from L2
+        /// </summary>
+        public bool IsRip7728Enabled { get; }
     }
 }

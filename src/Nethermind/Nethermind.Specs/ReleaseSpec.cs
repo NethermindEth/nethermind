@@ -14,6 +14,7 @@ namespace Nethermind.Specs
         public long MaximumExtraDataSize { get; set; }
         public long MaxCodeSize { get; set; }
         public long MinGasLimit { get; set; }
+        public long MinHistoryRetentionEpochs { get; set; }
         public long GasLimitBoundDivisor { get; set; }
         public UInt256 BlockReward { get; set; }
         public long DifficultyBombDelay { get; set; }
@@ -158,5 +159,6 @@ namespace Nethermind.Specs
 
         Array? IReleaseSpec.EvmInstructionsTraced { get; set; }
         public bool IsEip7939Enabled { get; set; }
+        public bool IsRip7728Enabled { get; set; }
     }
 }

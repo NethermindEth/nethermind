@@ -673,8 +673,7 @@ namespace Nethermind.Network
                 if (_logger.IsTrace) _logger.Trace($"CONNECTING TO {candidate}");
                 candidate.IsAwaitingConnection = true;
                 _stats.ReportEvent(candidate.Node, NodeStatsEventType.Connecting);
-                await _rlpxHost.ConnectAsync(candidate.Node);
-                return true;
+                return await _rlpxHost.ConnectAsync(candidate.Node);
             }
             catch (NetworkingException ex)
             {

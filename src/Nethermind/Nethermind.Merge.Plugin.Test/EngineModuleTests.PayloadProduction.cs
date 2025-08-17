@@ -744,7 +744,7 @@ public partial class EngineModuleTests
     {
         using MergeTestBlockchain chain = CreateBaseBlockchain();
         chain.GenesisBlockBuilder = Build.A.Block.Genesis.Genesis.WithTimestamp(1UL).WithGasLimit(Eip7825Constants.DefaultTxGasLimitCap * 2);
-        await chain.Build(new TestSpecProvider(initialSpec) { SpecToReturn = isForked ? nextBlockSpec : initialSpec });
+        await chain.Build(new TestSpecProvider(initialSpec) { NextForkSpec = isForked ? nextBlockSpec : initialSpec });
 
         IEngineRpcModule rpc = chain.EngineRpcModule;
         Hash256 blockHash = chain.BlockTree.HeadHash;

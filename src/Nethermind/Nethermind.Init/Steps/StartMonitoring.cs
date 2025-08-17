@@ -1,18 +1,19 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using DotNetty.Buffers;
 using Nethermind.Api.Steps;
+using Nethermind.Blockchain;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Core;
 using Nethermind.Core.ServiceStopper;
 using Nethermind.Db;
 using Nethermind.Facade.Eth;
-using Nethermind.Init.Modules;
 using Nethermind.Logging;
 using Nethermind.Monitoring;
 using Nethermind.Monitoring.Config;
@@ -22,7 +23,7 @@ using Type = System.Type;
 
 namespace Nethermind.Init.Steps;
 
-[RunnerStepDependencies(typeof(InitializeBlockTree))]
+[RunnerStepDependencies(typeof(InitializeBlockchain))]
 public class StartMonitoring(
     IEthSyncingInfo ethSyncingInfo,
     DbTracker dbTracker,
@@ -30,7 +31,8 @@ public class StartMonitoring(
     ISyncConfig syncConfig,
     IServiceStopper serviceStopper,
     ILogManager logManager,
-    IMetricsConfig metricsConfig
+    IMetricsConfig metricsConfig,
+    ChainHeadInfoProvider chainHeadInfoProvider
 ) : IStep
 {
     private readonly ILogger _logger = logManager.GetClassLogger();
@@ -58,7 +60,7 @@ public class StartMonitoring(
 
         if (metricsConfig.Enabled)
         {
-            MonitoringService monitoringService = new MonitoringService(controller, metricsConfig, logManager);
+            MonitoringService monitoringService = new(controller, metricsConfig, logManager);
 
             SetupMetrics(monitoringService);
 
@@ -84,12 +86,43 @@ public class StartMonitoring(
         }
     }
 
-    private void SetupMetrics(IMonitoringService monitoringService)
+    private void SetupMetrics(MonitoringService monitoringService)
     {
         if (metricsConfig.EnableDbSizeMetrics)
         {
-            monitoringService.AddMetricsUpdateAction(() =>
+            monitoringService.AddMetricsUpdateAction(() => Task.Run(() => UpdateDbMetrics()));
+        }
+
+        if (metricsConfig.EnableDetailedMetric)
+        {
+            monitoringService.AddMetricsUpdateAction(() => Task.Run(() => UpdateAllocatorMetrics()));
+        }
+
+        monitoringService.AddMetricsUpdateAction(() =>
+        {
+            Synchronization.Metrics.SyncTime = (long?)ethSyncingInfo?.UpdateAndGetSyncTime().TotalSeconds ?? 0;
+        });
+    }
+
+    private bool _isUpdatingDbMetrics = false;
+    private long _lastDbMetricsUpdate = 0;
+    private void UpdateDbMetrics()
+    {
+        if (!Interlocked.Exchange(ref _isUpdatingDbMetrics, true))
+        {
+            try
             {
+                if (Environment.TickCount64 - _lastDbMetricsUpdate < 60_000)
+                {
+                    // Update max every minute
+                    return;
+                }
+                if (chainHeadInfoProvider.IsProcessingBlock)
+                {
+                    // Do not update db metrics while processing a block
+                    return;
+                }
+
                 foreach (KeyValuePair<string, IDbMeta> kv in dbTracker.GetAllDbMeta())
                 {
                     // Note: At the moment, the metric for a columns db is combined across column.
@@ -101,27 +134,43 @@ public class StartMonitoring(
                     Db.Metrics.DbReads[kv.Key] = dbMetric.TotalReads;
                     Db.Metrics.DbWrites[kv.Key] = dbMetric.TotalWrites;
                 }
-            });
+                _lastDbMetricsUpdate = Environment.TickCount64;
+            }
+            catch (Exception e)
+            {
+                if (_logger.IsError) _logger.Error("Error during updating db metrics", e);
+            }
+            finally
+            {
+                Volatile.Write(ref _isUpdatingDbMetrics, false);
+            }
         }
+    }
 
-        if (metricsConfig.EnableDetailedMetric)
+    private bool _isUpdatingAllocatorMetrics = false;
+    private void UpdateAllocatorMetrics()
+    {
+        if (!Interlocked.Exchange(ref _isUpdatingAllocatorMetrics, true))
         {
-            monitoringService.AddMetricsUpdateAction(() =>
+            try
             {
                 SetAllocatorMetrics(NethermindBuffers.RlpxAllocator, "rlpx");
                 SetAllocatorMetrics(NethermindBuffers.DiscoveryAllocator, "discovery");
                 SetAllocatorMetrics(NethermindBuffers.Default, "default");
                 SetAllocatorMetrics(PooledByteBufferAllocator.Default, "netty_default");
-            });
+            }
+            catch (Exception e)
+            {
+                if (_logger.IsError) _logger.Error("Error during allocator metrics", e);
+            }
+            finally
+            {
+                Volatile.Write(ref _isUpdatingAllocatorMetrics, false);
+            }
         }
-
-        monitoringService.AddMetricsUpdateAction(() =>
-        {
-            Synchronization.Metrics.SyncTime = (long?)ethSyncingInfo?.UpdateAndGetSyncTime().TotalSeconds ?? 0;
-        });
     }
 
-    public static void SetAllocatorMetrics(IByteBufferAllocator allocator, string name)
+    private static void SetAllocatorMetrics(IByteBufferAllocator allocator, string name)
     {
         if (allocator is PooledByteBufferAllocator byteBufferAllocator)
         {

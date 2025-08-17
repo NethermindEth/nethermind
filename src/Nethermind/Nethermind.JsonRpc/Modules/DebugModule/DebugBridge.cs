@@ -17,6 +17,7 @@ using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
 using Nethermind.Db;
 using Nethermind.Blockchain.Tracing.GethStyle;
+using Nethermind.Crypto;
 using Nethermind.Serialization.Rlp;
 using Nethermind.Synchronization.ParallelSync;
 using Nethermind.Synchronization.Reporting;
@@ -166,29 +167,18 @@ public class DebugBridge : IDebugBridge
 
     public byte[]? GetBlockRlp(BlockParameter parameter)
     {
-        if (parameter.BlockHash is Hash256 hash)
+        if (parameter.BlockNumber is long number)
         {
-            return GetBlockRlp(hash);
-
+            Hash256? hash = _blockTree.FindHash(number);
+            if (hash is null) return null;
+            return _blockStore.GetRlp(number, hash);
         }
-        if (parameter.BlockNumber is long num)
+        else
         {
-            return GetBlockRlp(num);
+            BlockHeader? header = _blockTree.FindHeader(parameter);
+            if (header is null) return null;
+            return _blockStore.GetRlp(header.Number, header.GetOrCalculateHash());
         }
-        return null;
-    }
-
-    public byte[] GetBlockRlp(Hash256 blockHash)
-    {
-        BlockHeader? header = _blockTree.FindHeader(blockHash);
-        if (header is null) return null;
-        return _blockStore.GetRlp(header.Number, blockHash);
-    }
-
-    public byte[] GetBlockRlp(long number)
-    {
-        Hash256 hash = _blockTree.FindHash(number);
-        return hash is null ? null : _blockStore.GetRlp(number, hash);
     }
 
     public Block? GetBlock(BlockParameter param)

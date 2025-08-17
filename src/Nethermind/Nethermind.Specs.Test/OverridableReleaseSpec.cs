@@ -24,6 +24,8 @@ namespace Nethermind.Specs.Test
 
         public long MinGasLimit => spec.MinGasLimit;
 
+        public long MinHistoryRetentionEpochs => spec.MinHistoryRetentionEpochs;
+
         public long GasLimitBoundDivisor => spec.GasLimitBoundDivisor;
 
         private UInt256? _blockReward = spec.BlockReward;
@@ -195,5 +197,6 @@ namespace Nethermind.Specs.Test
         Array? IReleaseSpec.EvmInstructionsTraced { get => spec.EvmInstructionsTraced; set => spec.EvmInstructionsTraced = value; }
         public bool IsEip7939Enabled => spec.IsEip7939Enabled;
         public bool IsEip7907Enabled => spec.IsEip7907Enabled;
+        public bool IsRip7728Enabled => spec.IsRip7728Enabled;
     }
 }

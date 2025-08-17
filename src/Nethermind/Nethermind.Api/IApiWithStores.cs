@@ -10,6 +10,7 @@ using Nethermind.Crypto;
 using Nethermind.Db;
 using Nethermind.Db.Blooms;
 using Nethermind.Facade.Find;
+using Nethermind.History;
 using Nethermind.State.Repositories;
 using Nethermind.TxPool;
 using Nethermind.Wallet;
@@ -32,5 +33,6 @@ namespace Nethermind.Api
         IReceiptFinder ReceiptFinder { get; }
         IWallet? Wallet { get; set; }
         IBadBlockStore? BadBlocksStore { get; set; }
+        IHistoryPruner? HistoryPruner { get; }
     }
 }
