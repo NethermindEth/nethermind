@@ -252,7 +252,9 @@ namespace Nethermind.Trie
                     TrieNode newExtensionChild = Commit(committer, ref path, extensionChild, maxLevelForConcurrentCommit);
                     if (ReferenceEquals(newExtensionChild, extensionChild))
                     {
-                        node[0] = extensionChild;
+                    if (!ReferenceEquals(newExtensionChild, extensionChild))
+                    {
+                        node[0] = newExtensionChild;
                     }
                 }
                 else
