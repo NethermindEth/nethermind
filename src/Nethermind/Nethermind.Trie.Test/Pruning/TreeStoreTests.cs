@@ -82,7 +82,7 @@ namespace Nethermind.Trie.Test.Pruning
             TreePath emptyPath = TreePath.Empty;
             using (ICommitter? committer = fullTrieStore.BeginStateBlockCommit(1234, null))
             {
-                committer.CommitNode(ref emptyPath, new NodeCommitInfo(trieNode));
+                committer.CommitNode(ref emptyPath, trieNode);
             }
             fullTrieStore.MemoryUsedByDirtyCache.Should().Be(
                 trieNode.GetMemorySize(false) + ExpectedPerNodeKeyMemorySize);
@@ -131,12 +131,12 @@ namespace Nethermind.Trie.Test.Pruning
             TreePath emptyPath = TreePath.Empty;
             using (ICommitter? committer = fullTrieStore.BeginStateBlockCommit(1234, trieNode))
             {
-                committer.CommitNode(ref emptyPath, new NodeCommitInfo(trieNode));
+                committer.CommitNode(ref emptyPath, trieNode);
             }
             using (ICommitter? committer = fullTrieStore.BeginStateBlockCommit(1235, trieNode))
             {
-                committer.CommitNode(ref emptyPath, new NodeCommitInfo(trieNode2));
-                committer.CommitNode(ref emptyPath, new NodeCommitInfo(trieNode3));
+                committer.CommitNode(ref emptyPath, trieNode2);
+                committer.CommitNode(ref emptyPath, trieNode3);
             }
             fullTrieStore.WaitForPruning();
             fullTrieStore.MemoryUsedByDirtyCache.Should().Be(_scheme == INodeStorage.KeyScheme.HalfPath ? 832 : 676);
@@ -200,8 +200,8 @@ namespace Nethermind.Trie.Test.Pruning
             TreePath emptyPath = TreePath.Empty;
             using (ICommitter committer = fullTrieStore.BeginStateBlockCommit(1234, null))
             {
-                committer.CommitNode(ref emptyPath, new NodeCommitInfo(trieNode1));
-                committer.CommitNode(ref emptyPath, new NodeCommitInfo(trieNode2));
+                committer.CommitNode(ref emptyPath, trieNode1);
+                committer.CommitNode(ref emptyPath, trieNode2);
             }
             fullTrieStore.MemoryUsedByDirtyCache.Should().Be(
                 trieNode1.GetMemorySize(false) + ExpectedPerNodeKeyMemorySize +
@@ -249,14 +249,14 @@ namespace Nethermind.Trie.Test.Pruning
             TreePath emptyPath = TreePath.Empty;
             using (ICommitter? committer = fullTrieStore.BeginStateBlockCommit(1234, trieNode2))
             {
-                committer.CommitNode(ref emptyPath, new NodeCommitInfo(trieNode1));
-                committer.CommitNode(ref emptyPath, new NodeCommitInfo(trieNode2));
+                committer.CommitNode(ref emptyPath, trieNode1);
+                committer.CommitNode(ref emptyPath, trieNode2);
             }
 
             using (ICommitter? committer = fullTrieStore.BeginStateBlockCommit(1235, trieNode2))
             {
-                committer.CommitNode(ref emptyPath, new NodeCommitInfo(trieNode3));
-                committer.CommitNode(ref emptyPath, new NodeCommitInfo(trieNode4));
+                committer.CommitNode(ref emptyPath, trieNode3);
+                committer.CommitNode(ref emptyPath, trieNode4);
             }
 
             // depending on whether the node gets resolved it gives different values here in debugging and run
@@ -285,14 +285,14 @@ namespace Nethermind.Trie.Test.Pruning
 
             using (ICommitter committer = fullTrieStore.BeginStateBlockCommit(1234, trieNode2))
             {
-                committer.CommitNode(ref emptyPath, new NodeCommitInfo(trieNode1));
-                committer.CommitNode(ref emptyPath, new NodeCommitInfo(trieNode2));
+                committer.CommitNode(ref emptyPath, trieNode1);
+                committer.CommitNode(ref emptyPath, trieNode2);
             }
 
             using (ICommitter committer = fullTrieStore.BeginStateBlockCommit(1235, trieNode2))
             {
-                committer.CommitNode(ref emptyPath, new NodeCommitInfo(trieNode3));
-                committer.CommitNode(ref emptyPath, new NodeCommitInfo(trieNode4));
+                committer.CommitNode(ref emptyPath, trieNode3);
+                committer.CommitNode(ref emptyPath, trieNode4);
             }
 
             using (ICommitter _ = fullTrieStore.BeginStateBlockCommit(1236, trieNode2)) { }
@@ -323,14 +323,14 @@ namespace Nethermind.Trie.Test.Pruning
 
             using (ICommitter committer = fullTrieStore.BeginStateBlockCommit(1234, trieNode2))
             {
-                committer.CommitNode(ref emptyPath, new NodeCommitInfo(trieNode1));
-                committer.CommitNode(ref emptyPath, new NodeCommitInfo(trieNode2));
+                committer.CommitNode(ref emptyPath, trieNode1);
+                committer.CommitNode(ref emptyPath, trieNode2);
             }
 
             using (ICommitter committer = fullTrieStore.BeginStateBlockCommit(1235, trieNode2))
             {
-                committer.CommitNode(ref emptyPath, new NodeCommitInfo(trieNode3));
-                committer.CommitNode(ref emptyPath, new NodeCommitInfo(trieNode4));
+                committer.CommitNode(ref emptyPath, trieNode3);
+                committer.CommitNode(ref emptyPath, trieNode4);
             }
 
             fullTrieStore.MemoryUsedByDirtyCache.Should().Be(
@@ -355,7 +355,7 @@ namespace Nethermind.Trie.Test.Pruning
                     {
                         TrieNode trieNode = new(NodeType.Leaf, []); // 192B
                         trieNode.ResolveKey(NullTrieNodeResolver.Instance, ref emptyPath, true);
-                        committer.CommitNode(ref emptyPath, new NodeCommitInfo(trieNode));
+                        committer.CommitNode(ref emptyPath, trieNode);
                     }
                 }
             }
@@ -384,7 +384,7 @@ namespace Nethermind.Trie.Test.Pruning
 
             using (ICommitter committer = fullTrieStore.BeginStateBlockCommit(0, a))
             {
-                committer.CommitNode(ref emptyPath, new NodeCommitInfo(a));
+                committer.CommitNode(ref emptyPath, a);
             }
             using (ICommitter _ = fullTrieStore.BeginStateBlockCommit(1, a)) { }
             using (ICommitter _ = fullTrieStore.BeginStateBlockCommit(2, a)) { }
@@ -410,7 +410,7 @@ namespace Nethermind.Trie.Test.Pruning
 
             using (ICommitter committer = fullTrieStore.BeginStateBlockCommit(0, a))
             {
-                committer.CommitNode(ref emptyPath, new NodeCommitInfo(a));
+                committer.CommitNode(ref emptyPath, a);
             }
             using (ICommitter _ = fullTrieStore.BeginStateBlockCommit(1, a)) { }
             using (ICommitter _ = fullTrieStore.BeginStateBlockCommit(2, a)) { }
@@ -458,7 +458,7 @@ namespace Nethermind.Trie.Test.Pruning
             using (ICommitter _ = fullTrieStore.BeginStateBlockCommit(0, null)) { }
             using (ICommitter committer = fullTrieStore.BeginStateBlockCommit(1, a))
             {
-                committer.CommitNode(ref emptyPath, new NodeCommitInfo(a));
+                committer.CommitNode(ref emptyPath, a);
             }
             using (ICommitter _ = fullTrieStore.BeginStateBlockCommit(2, a)) { }
             fullTrieStore.WaitForPruning();
@@ -504,7 +504,7 @@ namespace Nethermind.Trie.Test.Pruning
             using (ICommitter _ = fullTrieStore.BeginStateBlockCommit(0, null)) { }
             using (ICommitter committer = fullTrieStore.BeginStateBlockCommit(1, a))
             {
-                committer.CommitNode(ref emptyPath, new NodeCommitInfo(a));
+                committer.CommitNode(ref emptyPath, a);
             }
             using (ICommitter _ = fullTrieStore.BeginStateBlockCommit(2, a)) { }
             using (ICommitter _ = fullTrieStore.BeginStateBlockCommit(3, a)) { }
@@ -513,7 +513,7 @@ namespace Nethermind.Trie.Test.Pruning
             using (ICommitter _ = fullTrieStore.BeginStateBlockCommit(6, a)) { }
             using (ICommitter committer = fullTrieStore.BeginStateBlockCommit(7, a))
             {
-                committer.CommitNode(ref emptyPath, new NodeCommitInfo(b));
+                committer.CommitNode(ref emptyPath, b);
             }
             using (ICommitter _ = fullTrieStore.BeginStateBlockCommit(8, a)) { }
 
@@ -542,12 +542,12 @@ namespace Nethermind.Trie.Test.Pruning
             using (ICommitter _ = fullTrieStore.BeginStateBlockCommit(0, null)) { }
             using (ICommitter committer = fullTrieStore.BeginStateBlockCommit(1, a))
             {
-                committer.CommitNode(ref emptyPath, new NodeCommitInfo(a));
+                committer.CommitNode(ref emptyPath, a);
             }
             using (ICommitter _ = fullTrieStore.BeginStateBlockCommit(2, a)) { }
             using (ICommitter committer = fullTrieStore.BeginStateBlockCommit(3, a))
             {
-                committer.CommitNode(ref emptyPath, new NodeCommitInfo(b)); // <- new root
+                committer.CommitNode(ref emptyPath, b); // <- new root
             }
             using (ICommitter _ = fullTrieStore.BeginStateBlockCommit(4, b)) { } // should be 'a' to test properly
             using (ICommitter _ = fullTrieStore.BeginStateBlockCommit(5, b)) { }
@@ -646,12 +646,12 @@ namespace Nethermind.Trie.Test.Pruning
             {
                 using (ICommitter committer = fullTrieStore.GetTrieStore(TestItem.KeccakA).BeginCommit(storage1))
                 {
-                    committer.CommitNode(ref emptyPath, new NodeCommitInfo(storage1));
+                    committer.CommitNode(ref emptyPath, storage1);
                 }
 
                 using (ICommitter committer = fullTrieStore.GetTrieStore(null).BeginCommit(a))
                 {
-                    committer.CommitNode(ref emptyPath, new NodeCommitInfo(a));
+                    committer.CommitNode(ref emptyPath, a);
                 }
             }
 
@@ -701,8 +701,8 @@ namespace Nethermind.Trie.Test.Pruning
             {
                 using (ICommitter committer = fullTrieStore.GetTrieStore(null).BeginCommit(storage1))
                 {
-                    committer.CommitNode(ref emptyPath, new NodeCommitInfo(a));
-                    committer.CommitNode(ref emptyPath, new NodeCommitInfo(storage1));
+                    committer.CommitNode(ref emptyPath, a);
+                    committer.CommitNode(ref emptyPath, storage1);
                 }
 
                 using (ICommitter _ = trieStore.BeginCommit(a)) { }
@@ -712,7 +712,7 @@ namespace Nethermind.Trie.Test.Pruning
             using (ICommitter _ = fullTrieStore.BeginStateBlockCommit(2, a)) { }
             using (ICommitter committer = fullTrieStore.BeginStateBlockCommit(2, b))
             {
-                committer.CommitNode(ref emptyPath, new NodeCommitInfo(b)); // <- new root
+                committer.CommitNode(ref emptyPath, b); // <- new root
             }
 
             using (ICommitter _ = fullTrieStore.BeginStateBlockCommit(4, b)) { } // Should be 'a' to test properly
@@ -777,19 +777,19 @@ namespace Nethermind.Trie.Test.Pruning
             {
                 using (ICommitter committer = fullTrieStore.GetTrieStore(new Hash256(Nibbles.ToBytes(storage1Nib))).BeginCommit(storage1))
                 {
-                    committer.CommitNode(ref emptyPath, new NodeCommitInfo(storage1));
+                    committer.CommitNode(ref emptyPath, storage1);
                 }
 
                 using (ICommitter committer = fullTrieStore.GetTrieStore(new Hash256(Nibbles.ToBytes(storage2Nib))).BeginCommit(storage2))
                 {
-                    committer.CommitNode(ref emptyPath, new NodeCommitInfo(storage2));
+                    committer.CommitNode(ref emptyPath, storage2);
                 }
 
                 using (ICommitter committer = fullTrieStore.GetTrieStore(null).BeginCommit(branch))
                 {
-                    committer.CommitNode(ref emptyPath, new NodeCommitInfo(a));
-                    committer.CommitNode(ref emptyPath, new NodeCommitInfo(b));
-                    committer.CommitNode(ref emptyPath, new NodeCommitInfo(branch));
+                    committer.CommitNode(ref emptyPath, a);
+                    committer.CommitNode(ref emptyPath, b);
+                    committer.CommitNode(ref emptyPath, branch);
                 }
             }
 
@@ -831,7 +831,7 @@ namespace Nethermind.Trie.Test.Pruning
             trieNode.ResolveKey(trieStore, ref emptyPath, false);
             using (ICommitter? committer = fullTrieStore.BeginStateBlockCommit(0, trieNode))
             {
-                committer.CommitNode(ref emptyPath, new NodeCommitInfo(trieNode));
+                committer.CommitNode(ref emptyPath, trieNode);
             }
 
             if (beThreadSafe)
@@ -888,7 +888,7 @@ namespace Nethermind.Trie.Test.Pruning
 
             using (ICommitter? committer = fullTrieStore.BeginStateBlockCommit(0, node))
             {
-                committer.CommitNode(ref emptyPath, new NodeCommitInfo(node));
+                committer.CommitNode(ref emptyPath, node);
             }
 
             var originalNode = trieStore.FindCachedOrUnknown(TreePath.Empty, node.Keccak);
@@ -960,7 +960,7 @@ namespace Nethermind.Trie.Test.Pruning
                 TrieNode node = new(NodeType.Leaf, TestItem.Keccaks[i], new SpanSource(new byte[2]));
                 using (ICommitter? committer = fullTrieStore.BeginStateBlockCommit(i, node))
                 {
-                    committer.CommitNode(ref emptyPath, new NodeCommitInfo(node));
+                    committer.CommitNode(ref emptyPath, node);
                 }
 
                 // Pruning is done in background
@@ -1004,7 +1004,7 @@ namespace Nethermind.Trie.Test.Pruning
                 TrieNode node = new(NodeType.Leaf, TestItem.Keccaks[i], new SpanSource(new byte[2]));
                 using (ICommitter? committer = fullTrieStore.BeginStateBlockCommit(i, node))
                 {
-                    committer.CommitNode(ref emptyPath, new NodeCommitInfo(node));
+                    committer.CommitNode(ref emptyPath, node);
                 }
 
                 if (i > 4)
@@ -1041,7 +1041,7 @@ namespace Nethermind.Trie.Test.Pruning
                 TrieNode node = new(NodeType.Leaf, TestItem.Keccaks[i % 4], new SpanSource(new byte[2]));
                 using (ICommitter committer = fullTrieStore.BeginStateBlockCommit(i, node))
                 {
-                    committer.CommitNode(ref emptyPath, new NodeCommitInfo(node));
+                    committer.CommitNode(ref emptyPath, node);
                 }
 
                 // Pruning is done in background
@@ -1177,7 +1177,7 @@ namespace Nethermind.Trie.Test.Pruning
                 TrieNode node = new(NodeType.Leaf, TestItem.Keccaks[i], new SpanSource(new byte[2]));
                 using (ICommitter? committer = fullTrieStore.BeginStateBlockCommit(i, node))
                 {
-                    committer.CommitNode(ref emptyPath, new NodeCommitInfo(node));
+                    committer.CommitNode(ref emptyPath, node);
                 }
 
                 // Pruning is done in background
@@ -1215,7 +1215,7 @@ namespace Nethermind.Trie.Test.Pruning
                 TrieNode node = new(NodeType.Leaf, TestItem.Keccaks[i % 4], new SpanSource(new byte[2]));
                 using (ICommitter committer = fullTrieStore.BeginStateBlockCommit(i + 1, node))
                 {
-                    committer.CommitNode(ref emptyPath, new NodeCommitInfo(node));
+                    committer.CommitNode(ref emptyPath, node);
                 }
             }
 
