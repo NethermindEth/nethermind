@@ -206,6 +206,9 @@ public sealed class LogIndexService : ILogIndexService
             if (_logger.IsError)
                 _logger.Error("Log index block addition failed. Please restart the client.", ex);
         }
+
+        if (_logger.IsInfo)
+            _logger.Info($"{GetLogPrefix()}: processing completed.");
     }
 
     private LogIndexUpdateStats? _stats;
@@ -357,6 +360,9 @@ public sealed class LogIndexService : ILogIndexService
             if (_logger.IsError)
                 _logger.Error("Log index block enumeration failed. Please restart the client.", ex);
         }
+
+        if (_logger.IsInfo)
+            _logger.Info($"{GetLogPrefix(isForward)}: queueing completed.");
     }
 
     private void UpdateProgress()
