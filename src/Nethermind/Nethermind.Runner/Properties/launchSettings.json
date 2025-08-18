@@ -51,7 +51,7 @@
     },
     "Hoodi": {
       "commandName": "Project",
-      "commandLineArgs": "-c hoodi --data-dir .data --JsonRpc.IpcUnixDomainSocketPath=nethermind.ipc",
+      "commandLineArgs": "-c hoodi --data-dir .data",
       "environmentVariables": {
         "ASPNETCORE_ENVIRONMENT": "Development"
       }
