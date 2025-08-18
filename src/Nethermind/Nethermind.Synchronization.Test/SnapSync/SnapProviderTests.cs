@@ -67,6 +67,39 @@ public class SnapProviderTests
     }
 
     [Test]
+    public void AddStorageRange_ResponseReversedOrderedListOfAccounts_ReturnsInvalidOrder()
+    {
+        using IContainer container = new ContainerBuilder()
+            .AddModule(new TestSynchronizerModule(new TestSyncConfig()))
+            .Build();
+
+        SnapProvider snapProvider = container.Resolve<SnapProvider>();
+        ProgressTracker progressTracker = container.Resolve<ProgressTracker>();
+
+        using AccountsAndProofs accountsAndProofs = new();
+
+        StorageRange storage = new StorageRange()
+        {
+            Accounts = new PathWithAccount[] {new(TestItem.KeccakA, Account.TotallyEmpty)}.ToPooledList(),
+        };
+        List<PathWithStorageSlot> slots =
+        [
+            new(new ValueHash256("0000000000000000000000000000000000000000000000000000000000000004"), []),
+            new(new ValueHash256("0000000000000000000000000000000000000000000000000000000000000003"), []),
+            new(new ValueHash256("0000000000000000000000000000000000000000000000000000000000000002"), []),
+            new(new ValueHash256("0000000000000000000000000000000000000000000000000000000000000001"), []),
+        ];
+
+        snapProvider.AddStorageRangeForAccount(
+            storage,
+            0,
+            slots,
+            null).Should().Be(AddRangeResult.InvalidOrder);
+
+        progressTracker.IsSnapGetRangesFinished().Should().BeFalse();
+    }
+
+    [Test]
     public void AddAccountRange_SetStartRange_ToAfterLastPath()
     {
         (Hash256, Account)[] entries =
