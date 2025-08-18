@@ -172,7 +172,7 @@ public sealed class LogIndexService : ILogIndexService
     // TODO: figure out values that would be correct in all cases
     private int? GetMaxAvailableBlockNumber()
     {
-        if (_blockTree.BestPersistedState is null || _blockTree.Head is not { } head)
+        if (_blockTree.Head is not { } head)
             return null;
 
         var res = Math.Min(
@@ -186,7 +186,7 @@ public sealed class LogIndexService : ILogIndexService
 
     private int? GetMinAvailableBlockNumber()
     {
-        if (_blockTree.BestPersistedState is null || _blockTree.Head is null)
+        if (_blockTree.Head is null)
             return null;
 
         return (int?)_blockTree.LowestInsertedHeader?.Number;
