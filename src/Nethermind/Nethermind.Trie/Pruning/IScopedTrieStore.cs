@@ -22,7 +22,7 @@ public interface IScopedTrieStore : ITrieNodeResolver
 
 public interface ICommitter : IDisposable
 {
-    void CommitNode(ref TreePath path, NodeCommitInfo nodeCommitInfo);
+    TrieNode CommitNode(ref TreePath path, TrieNode node);
 
     bool TryRequestConcurrentQuota() => false;
     void ReturnConcurrencyQuota() { }
