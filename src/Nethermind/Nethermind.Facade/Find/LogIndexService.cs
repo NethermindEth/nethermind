@@ -54,11 +54,12 @@ public sealed class LogIndexService : ILogIndexService
     private readonly LruCache<int, BlockReceipts> _backwardBlockCache = new(MaxCacheSize, nameof(LogIndexService));
     private readonly AutoResetEvent _newBackwardBlockEvent = new(false);
 
-    // TODO: wait for when stopping?
+    private readonly TaskCompletionSource<int> _pivotSource = new();
+    private readonly Task<int> _pivotTask;
+
     private Task? _processTask;
     private Task? _queueForwardBlocksTask;
     private Task? _queueBackwardBlocksTask;
-    private int _pivotNumber;
 
     public string Description => "log index service";
 
@@ -79,30 +80,43 @@ public sealed class LogIndexService : ILogIndexService
 
         _forwardProgressLogger = new(GetLogPrefix(isForward: true), logManager);
         _backwardProgressLogger = new(GetLogPrefix(isForward: false), logManager);
+
+        _pivotTask = _pivotSource.Task;
+        if (_logIndexStorage.GetMaxBlockNumber() is {} maxNumber)
+            _pivotSource.TrySetResult(maxNumber);
     }
 
-    public Task StartAsync()
+    public async Task StartAsync()
     {
-        _pivotNumber = _logIndexStorage.GetMaxBlockNumber() ?? (int)_blockTree.SyncPivot.BlockNumber;
+        try
+        {
+            _receiptStorage.OldReceiptsInserted += OnReceiptsInserted;
 
-        UpdateProgress();
-        LogProgress();
-        _progressLoggerTimer.AutoReset = true;
-        _progressLoggerTimer.Elapsed += (_, _) => LogProgress();
-        _progressLoggerTimer.Start();
+            if (!_pivotTask.IsCompleted && _logger.IsInfo)
+                _logger.Info($"{GetLogPrefix()}: waiting for the first block...");
 
-        _receiptStorage.OldReceiptsInserted += OnReceiptsInserted;
+            var pivotNumber = await _pivotTask;
 
-        _queueForwardBlocksTask = Task.Run(() => DoQueueBlocks(isForward: true), CancellationToken);
-        _queueBackwardBlocksTask = Task.Run(() => DoQueueBlocks(isForward: false), CancellationToken);
-        _processTask = Task.Run(DoProcess, CancellationToken);
+            UpdateProgress(pivotNumber);
+            LogProgress();
+            _progressLoggerTimer.AutoReset = true;
+            _progressLoggerTimer.Elapsed += (_, _) => LogProgress();
+            _progressLoggerTimer.Start();
 
-        return Task.CompletedTask;
+            _queueForwardBlocksTask = Task.Run(() => DoQueueBlocks(isForward: true), CancellationToken);
+            _queueBackwardBlocksTask = Task.Run(() => DoQueueBlocks(isForward: false), CancellationToken);
+            _processTask = Task.Run(DoProcess, CancellationToken);
+        }
+        catch (OperationCanceledException canceledEx) when (canceledEx.CancellationToken == CancellationToken)
+        {
+            // Cancelled
+        }
     }
 
     public async Task StopAsync()
     {
         await _cancellationSource.CancelAsync();
+        _pivotSource.TrySetCanceled(CancellationToken);
         _progressLoggerTimer.Stop();
         await (_queueForwardBlocksTask ?? Task.CompletedTask);
         await (_queueBackwardBlocksTask ?? Task.CompletedTask);
@@ -141,14 +155,18 @@ public sealed class LogIndexService : ILogIndexService
         //     return;
         // }
 
-        var next = args.BlockHeader.Number;
+        var next = (int)args.BlockHeader.Number;
+
+        if (!_pivotTask.IsCompleted && _pivotSource.TrySetResult(next) && _logger.IsInfo)
+            _logger.Info($"{GetLogPrefix()}: starting at block {next}.");
+
         var (min, max) = (_logIndexStorage.GetMinBlockNumber(), _logIndexStorage.GetMaxBlockNumber());
 
-        // if (min is null || next < min)
-        //     _newBackwardBlockEvent.Set();
+        if (min is null || next < min)
+            _newBackwardBlockEvent.Set();
 
-        // if (max is null || next > max)
-        //     _newForwardBlockEvent.Set();
+        if (max is null || next > max)
+            _newBackwardBlockEvent.Set();
     }
 
     // TODO: figure out values that would be correct in all cases
@@ -223,6 +241,7 @@ public sealed class LogIndexService : ILogIndexService
         //     await _logIndexStorage.ReorgFrom(reorgBlock);
         // }
 
+        var pivotNumber = await _pivotTask;
         ChannelReader<BlockReceipts> queue = isForward ? _forwardChannel.Reader : _backwardChannel.Reader;
 
         // await _logIndexStorage.CompactAsync(flush: false);
@@ -247,7 +266,7 @@ public sealed class LogIndexService : ILogIndexService
             if (_logIndexStorage.GetMinBlockNumber() == 0)
                 _receiptStorage.OldReceiptsInserted -= OnReceiptsInserted;
 
-            UpdateProgress();
+            UpdateProgress(pivotNumber);
             count++;
         }
 
@@ -259,6 +278,8 @@ public sealed class LogIndexService : ILogIndexService
     {
         try
         {
+            var pivotNumber = await _pivotTask;
+
             ChannelWriter<BlockReceipts> queue = isForward ? _forwardChannel.Writer : _backwardChannel.Writer;
             AutoResetEvent newBlockEvent = isForward ? _newForwardBlockEvent : _newBackwardBlockEvent;
 
@@ -267,11 +288,11 @@ public sealed class LogIndexService : ILogIndexService
             {
                 if (isForward)
                 {
-                    start = _pivotNumber;
+                    start = pivotNumber;
                 }
                 else
                 {
-                    start = _pivotNumber - 1;
+                    start = pivotNumber - 1;
                 }
             }
 
@@ -365,17 +386,17 @@ public sealed class LogIndexService : ILogIndexService
             _logger.Info($"{GetLogPrefix(isForward)}: queueing completed.");
     }
 
-    private void UpdateProgress()
+    private void UpdateProgress(int pivotNumber)
     {
-        _forwardProgressLogger.TargetValue = (GetMaxAvailableBlockNumber() ?? _pivotNumber) - _pivotNumber;
-        _forwardProgressLogger.Update((_logIndexStorage.GetMaxBlockNumber() ?? _pivotNumber) - _pivotNumber);
+        _forwardProgressLogger.TargetValue = (GetMaxAvailableBlockNumber() ?? pivotNumber) - pivotNumber;
+        _forwardProgressLogger.Update((_logIndexStorage.GetMaxBlockNumber() ?? pivotNumber) - pivotNumber);
         _forwardProgressLogger.CurrentQueued = _forwardChannel.Reader.Count;
 
         // if (_forwardProgressLogger.CurrentValue == _forwardProgressLogger.TargetValue)
         //     _forwardProgressLogger.MarkEnd();
 
-        _backwardProgressLogger.TargetValue = _pivotNumber;
-        _backwardProgressLogger.Update(_pivotNumber - (_logIndexStorage.GetMinBlockNumber() ?? _pivotNumber));
+        _backwardProgressLogger.TargetValue = pivotNumber;
+        _backwardProgressLogger.Update(pivotNumber - (_logIndexStorage.GetMinBlockNumber() ?? pivotNumber));
         _backwardProgressLogger.CurrentQueued = _backwardChannel.Reader.Count;
 
         if (_backwardProgressLogger.CurrentValue == _backwardProgressLogger.TargetValue)
