@@ -148,7 +148,6 @@ namespace Nethermind.Trie
                 TreePath path = TreePath.Empty;
                 RootRef = Commit(committer, ref path, RootRef, skipSelf: skipRoot, maxLevelForConcurrentCommit: maxLevelForConcurrentCommit);
 
-                // reset objects
                 SetRootHash(RootRef.Keccak!, true);
             }
         }
@@ -216,7 +215,7 @@ namespace Nethermind.Trie
                                 path.AppendMut(i);
                                 TrieNode childNode = node.GetChildWithChildPath(TrieStore, ref path, i);
                                 TrieNode newChildNode = Commit(committer, ref path, childNode!, maxLevelForConcurrentCommit);
-                                if (!ReferenceEquals(newChildNode, newChildNode))
+                                if (!ReferenceEquals(childNode, newChildNode))
                                 {
                                     node[i] = newChildNode;
                                 }
