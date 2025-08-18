@@ -241,9 +241,9 @@ void AddConfigurationOptions(Command command)
                 Option option = prop.PropertyType == typeof(bool)
                     ? CreateOption<bool>(prop.Name, configType)
                     : CreateOption<string>(prop.Name, configType);
-                
+
                 string description = configItemAttribute?.Description ?? "";
-                
+
                 // Add default value to description if available
                 if (!string.IsNullOrEmpty(configItemAttribute?.DefaultValue))
                 {
@@ -251,7 +251,7 @@ void AddConfigurationOptions(Command command)
                         ? $"Defaults to `{configItemAttribute.DefaultValue}`."
                         : $"{description} Defaults to `{configItemAttribute.DefaultValue}`.";
                 }
-                
+
                 option.Description = description;
                 option.HelpName = "value";
                 option.Hidden = categoryHidden || configItemAttribute?.HiddenFromDocs == true;
