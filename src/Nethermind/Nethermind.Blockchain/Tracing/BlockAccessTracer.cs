@@ -73,9 +73,23 @@ public class BlockAccessTracer : IBlockTracer, ITxTracer, IJournal<int>
         BalanceChange balanceChange = new()
         {
             TxIndex = (ushort)_currentIndex,
-            PostBalance = (ulong)after // why not 256 bit?
+            // PostBalance = (ulong)after // why not 256 bit?
+            PostBalance = after!.Value
         };
-        _bal.AccountChanges[address].BalanceChanges.Add(balanceChange);
+
+        if (!_bal.AccountChanges.TryGetValue(address, out AccountChanges accountChanges))
+        {
+            accountChanges = new(address);
+            _bal.AccountChanges.Add(address, accountChanges);
+        }
+
+        // show should refunds be handled?
+
+        // don't add zero balance transfers, but add empty account changes
+        if ((before ?? 0) != after)
+        {
+            accountChanges.BalanceChanges.Add(balanceChange);
+        }
     }
 
     public void ReportCodeChange(Address address, byte[] before, byte[] after)
@@ -85,7 +99,14 @@ public class BlockAccessTracer : IBlockTracer, ITxTracer, IJournal<int>
             TxIndex = (ushort)_currentIndex,
             NewCode = after
         };
-        _bal.AccountChanges[address].CodeChanges.Add(codeChange);
+
+        if (!_bal.AccountChanges.TryGetValue(address, out AccountChanges accountChanges))
+        {
+            accountChanges = new(address);
+            _bal.AccountChanges.Add(address, accountChanges);
+        }
+
+        accountChanges.CodeChanges.Add(codeChange);
     }
 
     public void ReportNonceChange(Address address, UInt256? before, UInt256? after)
@@ -95,14 +116,21 @@ public class BlockAccessTracer : IBlockTracer, ITxTracer, IJournal<int>
             TxIndex = (ushort)_currentIndex,
             NewNonce = (ulong)after
         };
-        _bal.AccountChanges[address].NonceChanges.Add(nonceChange);
+
+        if (!_bal.AccountChanges.TryGetValue(address, out AccountChanges accountChanges))
+        {
+            accountChanges = new(address);
+            _bal.AccountChanges.Add(address, accountChanges);
+        }
+
+        accountChanges.NonceChanges.Add(nonceChange);
     }
 
     public void ReportAccountRead(Address address)
     {
         if (!_bal.AccountChanges.ContainsKey(address))
         {
-            _bal.AccountChanges.Add(address, new());
+            _bal.AccountChanges.Add(address, new(address));
         }
     }
 
@@ -114,7 +142,14 @@ public class BlockAccessTracer : IBlockTracer, ITxTracer, IJournal<int>
             NewValue = after
         };
         Address address = Address.Zero;
-        _bal.AccountChanges[address].StorageChanges.Add(storageChange);
+
+        if (!_bal.AccountChanges.TryGetValue(address, out AccountChanges accountChanges))
+        {
+            accountChanges = new(address);
+            _bal.AccountChanges.Add(address, accountChanges);
+        }
+
+        accountChanges.StorageChanges.Add(storageChange);
     }
 
     public void ReportStorageRead(in StorageCell storageCell)
@@ -124,7 +159,14 @@ public class BlockAccessTracer : IBlockTracer, ITxTracer, IJournal<int>
             Key = storageCell.Hash.ToByteArray()
         };
         Address address = Address.Zero;
-        _bal.AccountChanges[address].StorageReads.Add(storageKey);
+
+        if (!_bal.AccountChanges.TryGetValue(address, out AccountChanges accountChanges))
+        {
+            accountChanges = new(address);
+            _bal.AccountChanges.Add(address, accountChanges);
+        }
+
+        accountChanges.StorageReads.Add(storageKey);
     }
 
     public void ReportAction(long gas, UInt256 value, Address from, Address to, ReadOnlyMemory<byte> input, ExecutionType callType, bool isPrecompileCall = false) {}

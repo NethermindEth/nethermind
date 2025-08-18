@@ -1,8 +1,8 @@
 // SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System;
 using System.Collections.Generic;
+using Nethermind.Int256;
 
 namespace Nethermind.Core.BlockAccessLists;
 
@@ -18,7 +18,8 @@ public struct StorageChange
 public struct BalanceChange
 {
     public ushort TxIndex { get; set; }
-    public UInt128 PostBalance { get; set; }
+    // actually UInt128
+    public UInt256 PostBalance { get; set; }
 }
 
 // Single nonce change: tx_index -> new_nonce
@@ -52,36 +53,36 @@ public struct StorageKey
     public byte[] Key { get; set; }
 }
 
-public struct AccountChanges
+public struct AccountChanges(Address address)
 {
     // [SszVector(20)]
-    public byte[] Address { get; set; }
+    public byte[] Address { get; set; } = address.Bytes;
 
     // Storage changes (slot -> [tx_index -> new_value])
     // [SszList(Eip7928Constants.MaxSlots)]
-    public List<StorageChange> StorageChanges { get; set;  }
+    public List<StorageChange> StorageChanges { get; set; } = [];
 
     // Read-only storage keys
     // [SszList(Eip7928Constants.MaxSlots)]
-    public List<StorageKey> StorageReads { get; set;  }
+    public List<StorageKey> StorageReads { get; set; } = [];
 
     // Balance changes ([tx_index -> post_balance])
     // [SszList(Eip7928Constants.MaxTxs)]
-    public List<BalanceChange> BalanceChanges { get; set;  }
+    public List<BalanceChange> BalanceChanges { get; set; } = [];
 
     // Nonce changes ([tx_index -> new_nonce])
     // [SszList(Eip7928Constants.MaxTxs)]
-    public List<NonceChange> NonceChanges { get; set;  }
+    public List<NonceChange> NonceChanges { get; set; } = [];
 
     // Code changes ([tx_index -> new_code])
     // [SszList(Eip7928Constants.MaxCodeChanges)]
-    public List<CodeChange> CodeChanges { get; set;  }
+    public List<CodeChange> CodeChanges { get; set; } = [];
 }
 
-public struct BlockAccessList
+public struct BlockAccessList()
 {
     // [SszList(Eip7928Constants.MaxAccounts)]
-    public Dictionary<Address, AccountChanges> AccountChanges { get; set;  }
+    public Dictionary<Address, AccountChanges> AccountChanges { get; set; } = [];
 
     // RLP encode bal
     public byte[] Bytes => [];

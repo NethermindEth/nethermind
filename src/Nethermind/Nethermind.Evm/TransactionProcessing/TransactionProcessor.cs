@@ -867,6 +867,7 @@ namespace Nethermind.Evm.TransactionProcessing
             spentGas = Math.Max(spentGas, floorGas);
 
             // If noValidation we didn't charge for gas, so do not refund
+            // report to tracer??
             if (!opts.HasFlag(ExecutionOptions.SkipValidation))
                 WorldState.AddToBalance(tx.SenderAddress!, (ulong)(tx.GasLimit - spentGas) * gasPrice, spec);
 
