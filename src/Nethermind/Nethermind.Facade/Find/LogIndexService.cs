@@ -144,11 +144,11 @@ public sealed class LogIndexService : ILogIndexService
         var next = args.BlockHeader.Number;
         var (min, max) = (_logIndexStorage.GetMinBlockNumber(), _logIndexStorage.GetMaxBlockNumber());
 
-        if (min is null || next < min)
-            _newBackwardBlockEvent.Set();
+        // if (min is null || next < min)
+        //     _newBackwardBlockEvent.Set();
 
-        if (max is null || next > max)
-            _newForwardBlockEvent.Set();
+        // if (max is null || next > max)
+        //     _newForwardBlockEvent.Set();
     }
 
     // TODO: figure out values that would be correct in all cases
