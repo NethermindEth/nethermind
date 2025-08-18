@@ -44,6 +44,8 @@ public class DataFeed
     private readonly ILogger _logger;
     private readonly CancellationToken _lifetime;
 
+    private long _subscribers;
+
     public DataFeed(
         ITxPool txPool,
         ISpecProvider specProvider,
@@ -79,6 +81,7 @@ public class DataFeed
 
     public async Task ProcessingFeedAsync(HttpContext ctx, CancellationToken ct)
     {
+        Interlocked.Increment(ref _subscribers);
         try
         {
             await ProcessingFeeds(ctx, ct);
@@ -90,6 +93,10 @@ public class DataFeed
         catch (Exception e)
         {
             if (_logger.IsDebug) _logger.Error($"DEBUG/ERROR Http request {nameof(DataFeed)} errored", e);
+        }
+        finally
+        {
+            Interlocked.Decrement(ref _subscribers);
         }
     }
 
@@ -176,7 +183,11 @@ public class DataFeed
     {
         while (!_lifetime.IsCancellationRequested)
         {
-            byte[] data = await GetTxFlowTask(delayMs: 1000);
+            await Task.Delay(millisecondsDelay: 1000);
+            // No subscribers, no need to prepare event data
+            if (!HaveSubscribers) continue;
+
+            byte[] data = GetTxFlowTask();
 
             DataCompletion txFlow = _txFlow;
             _txFlow = new DataCompletion();
@@ -229,17 +240,19 @@ public class DataFeed
         _lastTimeStamp = Stopwatch.GetTimestamp();
         while (!_lifetime.IsCancellationRequested)
         {
-            byte[] data = await GetPeersTask(delayMs: 1000);
+            await Task.Delay(millisecondsDelay: 1000);
+            // No subscribers, no need to prepare event data
+            if (!HaveSubscribers) continue;
+
+            byte[] data = GetPeersTask();
             DataCompletion peers = _peers;
             _peers = new();
             peers.TrySetResult(data);
         }
     }
 
-    private async Task<byte[]> GetPeersTask(int delayMs)
+    private byte[] GetPeersTask()
     {
-        await Task.Delay(delayMs);
-
         List<PeerForWeb> peers = [.. _syncPeerPool.AllPeers.Select(
             static peer => new PeerForWeb
             {
@@ -252,9 +265,8 @@ public class DataFeed
         return JsonSerializer.SerializeToUtf8Bytes(peers, JsonSerializerOptions.Web);
     }
 
-    private async Task<byte[]> GetTxFlowTask(int delayMs)
+    private byte[] GetTxFlowTask()
     {
-        await Task.Delay(delayMs);
         return JsonSerializer.SerializeToUtf8Bytes(new TxPoolFlow(
                     TxPool.Metrics.PendingTransactionsReceived,
                     TxPool.Metrics.PendingTransactionsNotSupportedTxType,
@@ -291,6 +303,9 @@ public class DataFeed
     private DataCompletion _processing = new();
     private void OnNewProcessingStatistics(object? sender, BlockStatistics stats)
     {
+        // No subscribers, no need to prepare event data
+        if (!HaveSubscribers) return;
+
         DataCompletion processing = _processing;
         _processing = new DataCompletion();
 
@@ -299,6 +314,9 @@ public class DataFeed
 
     private void OnForkChoiceUpdated(object? sender, IBlockTree.ForkChoiceUpdateEventArgs choice)
     {
+        // No subscribers, no need to prepare event data
+        if (!HaveSubscribers) return;
+
         Task.Run(() =>
         {
             try
@@ -449,11 +467,16 @@ public class DataFeed
     private DataCompletion _log = new();
     private void OnConsoleLineWritten(object? sender, string logLine)
     {
+        // No subscribers, no need to prepare event data
+        if (!HaveSubscribers) return;
+
         DataCompletion log = _log;
         _log = new DataCompletion();
 
         log.TrySetResult(JsonSerializer.SerializeToUtf8Bytes(new[] { logLine }, JsonSerializerOptions.Web));
     }
+
+    private bool HaveSubscribers => Volatile.Read(ref _subscribers) > 0;
 }
 
 internal class SystemStats
