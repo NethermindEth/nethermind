@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using System.Diagnostics.CodeAnalysis;
 using System.Linq;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
@@ -12,7 +11,6 @@ using Nethermind.Merge.Plugin.Handlers;
 using Nethermind.Serialization.Rlp;
 using Nethermind.State.Proofs;
 using System.Text.Json.Serialization;
-using Microsoft.AspNetCore.Server.Kestrel.Transport.Quic;
 using Nethermind.Core.ExecutionRequest;
 
 namespace Nethermind.Merge.Plugin.Data;
@@ -52,6 +50,8 @@ public class ExecutionPayload : IForkValidator, IExecutionPayloadParams, IExecut
     public Hash256 StateRoot { get; set; } = Keccak.Zero;
 
     public ulong Timestamp { get; set; }
+
+    public byte[] BlockAccessList { get; set; } = [];
 
     protected byte[][] _encodedTransactions = [];
 
@@ -126,6 +126,7 @@ public class ExecutionPayload : IForkValidator, IExecutionPayloadParams, IExecut
             Timestamp = block.Timestamp,
             BaseFeePerGas = block.BaseFeePerGas,
             Withdrawals = block.Withdrawals,
+            BlockAccessList = block.BlockAccessList!,
         };
         executionPayload.SetTransactions(block.Transactions);
         return executionPayload;
@@ -168,9 +169,10 @@ public class ExecutionPayload : IForkValidator, IExecutionPayloadParams, IExecut
             TotalDifficulty = totalDifficulty,
             TxRoot = TxTrie.CalculateRoot(transactions.Transactions),
             WithdrawalsRoot = BuildWithdrawalsRoot(),
+            BlockAccessListHash = new Hash256(BlockAccessList) //valuehash
         };
 
-        return new BlockDecodingResult(new Block(header, transactions.Transactions, Array.Empty<BlockHeader>(), Withdrawals));
+        return new BlockDecodingResult(new Block(header, transactions.Transactions, Array.Empty<BlockHeader>(), Withdrawals, BlockAccessList));
     }
 
     protected virtual Hash256? BuildWithdrawalsRoot()

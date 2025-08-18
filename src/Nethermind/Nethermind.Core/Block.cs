@@ -12,6 +12,8 @@ using System.Text.Unicode;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Int256;
+using Nethermind.Core.BlockAccessLists;
+using Nethermind.Serialization.Json;
 
 namespace Nethermind.Core;
 
@@ -27,10 +29,11 @@ public class Block
     public Block(BlockHeader header,
         IEnumerable<Transaction> transactions,
         IEnumerable<BlockHeader> uncles,
-        IEnumerable<Withdrawal>? withdrawals = null)
+        IEnumerable<Withdrawal>? withdrawals = null,
+        byte[]? blockAccessList = null)
     {
         Header = header ?? throw new ArgumentNullException(nameof(header));
-        Body = new(transactions.ToArray(), uncles.ToArray(), withdrawals?.ToArray());
+        Body = new(transactions.ToArray(), uncles.ToArray(), withdrawals?.ToArray(), blockAccessList);
     }
 
     public Block(BlockHeader header) : this(

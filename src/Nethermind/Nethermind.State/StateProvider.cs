@@ -57,6 +57,7 @@ namespace Nethermind.State
         private readonly bool _populatePreBlockCache;
         private bool _needsStateRootUpdate;
 
+        // get from block access list
         public StateProvider(IScopedTrieStore? trieStore,
             IKeyValueStoreWithBatching codeDb,
             ILogManager logManager,
