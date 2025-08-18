@@ -110,7 +110,7 @@ public class DiscoveryV5App : IDiscoveryApp
             .WithTableOptions(new TableOptions(bootstrapEnrs.Select(enr => enr.ToString()).ToArray()))
             .WithEnrBuilder(enrBuilder)
             .WithTalkResponder(new TalkReqAndRespHandler())
-            .WithLoggerFactory(new NethermindLoggerFactory(logManager, true))
+            .WithLoggerFactory(new NethermindLoggerFactory(logManager, true, Microsoft.Extensions.Logging.LogLevel.Debug))
             .WithServices(s =>
             {
                 s.AddSingleton(logManager);
