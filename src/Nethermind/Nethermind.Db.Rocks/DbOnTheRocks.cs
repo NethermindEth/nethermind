@@ -1503,6 +1503,11 @@ public partial class DbOnTheRocks : IDb, ITunableDb, IReadOnlyNativeKeyValueStor
             case ITunableDb.TuneType.HashDb:
                 ApplyOptions(GetHashDbOptions());
                 break;
+            case ITunableDb.TuneType.AIReadHeavy:
+                // Optimized for high-concurrency read workloads like AI agents
+                // Focus on read performance and reduced read amplification
+                ApplyOptions(GetAIReadHeavyOptions());
+                break;
             case ITunableDb.TuneType.Default:
             default:
                 ApplyOptions(GetStandardOptions());
@@ -1651,6 +1656,60 @@ public partial class DbOnTheRocks : IDb, ITunableDb, IReadOnlyNativeKeyValueStor
             // These two are SST files instead of the blobs, which are now much smaller.
             { "max_bytes_for_level_base", 4.MiB().ToString() },
             { "target_file_size_base", 1.MiB().ToString() },
+        };
+    }
+
+    private static IDictionary<string, string> GetAIReadHeavyOptions()
+    {
+        // Optimized for AI-agent workloads with high-concurrency read patterns
+        // Focuses on read performance and reduced read amplification for eth_call, getLogs, and debug_trace operations
+        return new Dictionary<string, string>()
+        {
+            // Larger block cache for better read performance
+            { "table_factory.block_cache_size", 8.GiB().ToString() },
+            { "table_factory.cache_index_and_filter_blocks", "true" },
+            { "table_factory.pin_l0_filter_and_index_blocks_in_cache", "true" },
+            
+            // Optimized bloom filters for faster negative lookups
+            { "table_factory.filter_policy", "bloomfilter:10:false" },
+            { "table_factory.whole_key_filtering", "true" },
+            
+            // Prefix optimization for range queries (common in getLogs)
+            { "table_factory.prefix_extractor", "fixed:8" },
+            
+            // Read optimization settings
+            { "max_open_files", "10000" },
+            { "max_file_opening_threads", "16" },
+            
+            // Universal compaction for read-heavy workloads
+            { "compaction_style", "kCompactionStyleUniversal" },
+            { "compression", "kZSTD" },
+            { "compression_level", "3" },
+            
+            // Larger memtables to reduce flush frequency but not too large to avoid long flush times
+            { "write_buffer_size", 256.MiB().ToString() },
+            { "max_write_buffer_number", "6" },
+            { "max_write_buffer_number_to_maintain", "2" },
+            
+            // Background job optimization for read workloads
+            { "max_background_compactions", "4" },
+            { "max_background_flushes", "2" },
+            { "max_subcompactions", "1" },
+            
+            // Read-ahead optimization
+            { "use_adaptive_mutex", "true" },
+            { "bytes_per_sync", 1.MiB().ToString() },
+            { "wal_bytes_per_sync", 1.MiB().ToString() },
+            
+            // Level configuration optimized for reads
+            { "target_file_size_base", 128.MiB().ToString() },
+            { "max_bytes_for_level_base", 512.MiB().ToString() },
+            { "max_bytes_for_level_multiplier", "8" },
+            
+            // Reduce compaction triggers to maintain stable read performance
+            { "level0_file_num_compaction_trigger", "2" },
+            { "level0_slowdown_writes_trigger", "8" },
+            { "level0_stop_writes_trigger", "16" },
         };
     }
 

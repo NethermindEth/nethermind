@@ -187,4 +187,13 @@ public interface IJsonRpcConfig : IConfig
 
     [ConfigItem(Description = "Preload rpc modules. Useful in rpc provider to reduce latency on first request.", DefaultValue = "false")]
     bool PreloadRpcModules { get; set; }
+
+    [ConfigItem(Description = "Enable AI-agent optimized settings for high-QPS read workloads.", DefaultValue = "false")]
+    bool EnableAIAgentOptimizations { get; set; }
+
+    [ConfigItem(Description = "Maximum queue depth for AI-agent workloads before applying back-pressure.", DefaultValue = "2000")]
+    int AIAgentMaxQueueDepth { get; set; }
+
+    [ConfigItem(Description = "Enable streaming JSON responses for large trace and log results.", DefaultValue = "false")]
+    bool EnableStreamingResponses { get; set; }
 }

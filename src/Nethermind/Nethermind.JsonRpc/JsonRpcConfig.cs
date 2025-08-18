@@ -74,4 +74,7 @@ public class JsonRpcConfig : IJsonRpcConfig
     public bool EnablePerMethodMetrics { get; set; } = false;
     public int FiltersTimeout { get; set; } = 900000;
     public bool PreloadRpcModules { get; set; }
+    public bool EnableAIAgentOptimizations { get; set; }
+    public int AIAgentMaxQueueDepth { get; set; } = 2000;
+    public bool EnableStreamingResponses { get; set; }
 };

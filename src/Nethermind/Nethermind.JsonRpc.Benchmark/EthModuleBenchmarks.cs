@@ -16,6 +16,7 @@ using Nethermind.Specs;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Evm.State;
 using Nethermind.Facade;
+using Nethermind.JsonRpc.Data;
 using Nethermind.JsonRpc.Modules.Eth;
 using Nethermind.Logging;
 using Nethermind.State;
@@ -95,6 +96,36 @@ namespace Nethermind.JsonRpc.Benchmark
         {
             _ethModule.eth_getBalance(Address.Zero, new BlockParameter(1));
             _ethModule.eth_getBlockByNumber(new BlockParameter(1), false);
+        }
+
+        [Benchmark]
+        [Arguments(10)]
+        [Arguments(100)]
+        public void EthCallBatch(int batchSize)
+        {
+            var transaction = new TransactionForRpc
+            {
+                To = Address.Zero,
+                Data = new byte[] { 0x60, 0x00, 0x60, 0x00, 0xf3 }, // Simple return bytecode
+                Gas = 21000
+            };
+
+            for (int i = 0; i < batchSize; i++)
+            {
+                _ethModule.eth_call(transaction, new BlockParameter(1L));
+            }
+        }
+
+        [Benchmark]
+        public void GetLogsHistoricalRange()
+        {
+            // Simulate getLogs call for a small historical range (common in AI agents)
+            var logs = _ethModule.eth_getLogs(new FilterForRpc
+            {
+                FromBlock = new BlockParameter(0L),
+                ToBlock = new BlockParameter(1L),
+                Address = Address.Zero
+            });
         }
     }
 }
