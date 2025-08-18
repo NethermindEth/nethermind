@@ -80,7 +80,7 @@ public class SnapProviderTests
 
         StorageRange storage = new StorageRange()
         {
-            Accounts = new PathWithAccount[] {new(TestItem.KeccakA, Account.TotallyEmpty)}.ToPooledList(),
+            Accounts = new PathWithAccount[] { new(TestItem.KeccakA, Account.TotallyEmpty) }.ToPooledList(),
         };
         List<PathWithStorageSlot> slots =
         [
