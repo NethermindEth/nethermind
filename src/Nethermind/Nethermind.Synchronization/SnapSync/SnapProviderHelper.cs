@@ -204,6 +204,17 @@ namespace Nethermind.Synchronization.SnapSync
                 return (AddRangeResult.MissingRootHashInProofs, null, true);
             }
 
+            if (dict.Count == 1 && root.IsLeaf)
+            {
+                // Special case with some server sending proof where the root is the same as the only path.
+                // Without this the proof's IsBoundaryNode flag will cause the key to not get saved.
+                var rootPath = TreePath.FromNibble(root.Key);
+                if (rootPath.Length == 64 && rootPath.Path.Equals(endHash))
+                {
+                    return (AddRangeResult.OK, null, false);
+                }
+            }
+
             TreePath leftBoundaryPath = TreePath.FromPath(effectiveStartingHAsh.Bytes);
             TreePath rightBoundaryPath = TreePath.FromPath(endHash.Bytes);
             TreePath rightLimitPath = TreePath.FromPath(limitHash.Bytes);
