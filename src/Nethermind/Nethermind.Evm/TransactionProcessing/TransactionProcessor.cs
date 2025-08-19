@@ -638,6 +638,7 @@ namespace Nethermind.Evm.TransactionProcessing
             using (EvmState state = EvmState.RentTopLevel(gasAvailable, executionType, in env, in accessedItems, in snapshot))
             {
                 substate = VirtualMachine.ExecuteTransaction<TTracingInst>(state, WorldState, tracer);
+                Metrics.IncrementOpCodes(VirtualMachine.OpCodeCount);
                 gasAvailable = state.GasAvailable;
             }
 

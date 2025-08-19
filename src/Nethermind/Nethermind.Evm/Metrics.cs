@@ -25,6 +25,14 @@ public class Metrics
     public static long EvmExceptions { get; set; }
 
     [CounterMetric]
+    [Description("Number of opcodes executed.")]
+    public static long OpCodes => _sOpCodes.GetTotalValue();
+    private static readonly ZeroContentionCounter _sOpCodes = new();
+    [Description("Number of opcodes executed on thread.")]
+    public static long ThreadLocalOpCodes => _sOpCodes.ThreadLocalValue;
+    public static void IncrementOpCodes(int count) => _sOpCodes.Increment(count);
+
+    [CounterMetric]
     [Description("Number of SELFDESTRUCT calls.")]
     public static long SelfDestructs => _selfDestructs.GetTotalValue();
     private static readonly ZeroContentionCounter _selfDestructs = new();

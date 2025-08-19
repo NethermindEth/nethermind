@@ -65,6 +65,7 @@ public enum DisconnectReason : byte
     UnexpectedIdentity,
     IdentitySameAsSelf,
     ReceiveMessageTimeout,
+    MultipleHeaderDependencies,
 
     // Try not to use this. Instead create a new one.
     Other,
@@ -101,6 +102,7 @@ public static class DisconnectReasonExtension
             DisconnectReason.UnexpectedIdentity => EthDisconnectReason.UnexpectedIdentity,
             DisconnectReason.IdentitySameAsSelf => EthDisconnectReason.IdentitySameAsSelf,
             DisconnectReason.ReceiveMessageTimeout => EthDisconnectReason.ReceiveMessageTimeout,
+            DisconnectReason.MultipleHeaderDependencies => EthDisconnectReason.MultipleHeaderDependencies,
             _ => EthDisconnectReason.Other,
         };
     }

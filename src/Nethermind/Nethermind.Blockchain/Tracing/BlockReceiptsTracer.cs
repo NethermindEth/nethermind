@@ -45,8 +45,7 @@ public class BlockReceiptsTracer : IBlockTracer, ITxTracer, IJournal<int>, ITxTr
 
         if (_currentTxTracer.IsTracingReceipt)
         {
-            // TODO: is no stateRoot a bug?
-            _currentTxTracer.MarkAsSuccess(recipient, gasSpent, output, logs);
+            _currentTxTracer.MarkAsSuccess(recipient, gasSpent, output, logs, stateRoot);
         }
     }
 
@@ -62,8 +61,7 @@ public class BlockReceiptsTracer : IBlockTracer, ITxTracer, IJournal<int>, ITxTr
 
         if (_currentTxTracer.IsTracingReceipt)
         {
-            // TODO: is no stateRoot a bug?
-            _currentTxTracer.MarkAsFailed(recipient, gasSpent, output, error, null);
+            _currentTxTracer.MarkAsFailed(recipient, gasSpent, output, error, stateRoot);
         }
     }
 
