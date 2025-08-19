@@ -149,6 +149,7 @@ public class Block
         _ => ToShortHashAndNumber()
     };
 
+    public BlockAccessList? DecodedBlockAccessList;
     private string ExtraDataToString()
     {
         if (ExtraData is null)

@@ -21,6 +21,8 @@ using Nethermind.Core.Eip2930;
 using Nethermind.Core.Collections;
 using Nethermind.State;
 using Nethermind.Trie;
+using Nethermind.Serialization.Rlp;
+using Nethermind.Core.BlockAccessLists;
 
 namespace Nethermind.Consensus.Processing;
 
@@ -276,7 +278,7 @@ public sealed class BlockCachePreWarmer(
             {
                 if (SystemTxAccessLists is not null)
                 {
-                    var env = envPool.Get();
+                    IReadOnlyTxProcessorSource env = envPool.Get();
                     try
                     {
                         using IReadOnlyTxProcessingScope scope = env.Build(parent);
@@ -293,56 +295,82 @@ public sealed class BlockCachePreWarmer(
                     }
                 }
 
-                AddressWarmingState baseState = new(envPool, block, parent);
-
-                ParallelUnbalancedWork.For(
-                    0,
-                    block.Transactions.Length,
-                    parallelOptions,
-                    baseState.InitThreadState,
-                static (i, state) =>
+                WarmupTransactionAddresses(envPool, block.Transactions, true);
+                if (block.BlockAccessList is not null)
                 {
-                    Transaction tx = state.Block.Transactions[i];
-                    Address? sender = tx.SenderAddress;
-
+                    block.DecodedBlockAccessList = Rlp.Decode<BlockAccessList>(block.BlockAccessList);
+                    IReadOnlyTxProcessorSource env = envPool.Get();
                     try
                     {
-                        if (sender is not null)
+                        using IReadOnlyTxProcessingScope scope = env.Build(parent);
+
+                        foreach (Address address in block.DecodedBlockAccessList.Value.AccountChanges.Keys)
                         {
-                            state.Scope.WorldState.WarmUp(sender);
+                            scope.WorldState.WarmUp(address);
                         }
 
-                        Address to = tx.To;
-                        if (to is not null)
-                        {
-                            state.Scope.WorldState.WarmUp(to);
-                        }
+                        // warmup storage locations
                     }
-                    catch (MissingTrieNodeException)
+                    finally
                     {
+                        envPool.Return(env);
                     }
-
-                    return state;
-                },
-                AddressWarmingState.FinallyAction);
+                }
             }
             catch (OperationCanceledException)
             {
                 // Ignore, block completed cancel
             }
         }
+
+        private void WarmupTransactionAddresses(ObjectPool<IReadOnlyTxProcessorSource> envPool, Transaction[] transactions, bool warmToAddress)
+        {
+            AddressWarmingState baseState = new(envPool, transactions, parent, warmToAddress);
+
+            ParallelUnbalancedWork.For(
+                0,
+                transactions.Length,
+                parallelOptions,
+                baseState.InitThreadState,
+            static (i, state) =>
+            {
+                Transaction tx = state.Transactions[i];
+                Address? sender = tx.SenderAddress;
+
+                try
+                {
+                    if (sender is not null)
+                    {
+                        state.Scope.WorldState.WarmUp(sender);
+                    }
+
+                    Address? to = state.WarmToAddress ? null : tx.To;
+                    if (to is not null)
+                    {
+                        state.Scope.WorldState.WarmUp(to);
+                    }
+                }
+                catch (MissingTrieNodeException)
+                {
+                }
+
+                return state;
+            },
+            AddressWarmingState.FinallyAction);
+        }
     }
 
-    private readonly struct AddressWarmingState(ObjectPool<IReadOnlyTxProcessorSource> envPool, Block block, BlockHeader parent) : IDisposable
+    private readonly struct AddressWarmingState(ObjectPool<IReadOnlyTxProcessorSource> envPool, Transaction[] transactions, BlockHeader parent, bool warmToAddress) : IDisposable
     {
         public static Action<AddressWarmingState> FinallyAction { get; } = DisposeThreadState;
 
         public readonly ObjectPool<IReadOnlyTxProcessorSource> EnvPool = envPool;
-        public readonly Block Block = block;
+        public readonly Transaction[] Transactions = transactions;
         public readonly IReadOnlyTxProcessorSource? Env;
         public readonly IReadOnlyTxProcessingScope? Scope;
+        public readonly bool WarmToAddress = warmToAddress;
 
-        public AddressWarmingState(ObjectPool<IReadOnlyTxProcessorSource> envPool, Block block, BlockHeader parent, IReadOnlyTxProcessorSource env, IReadOnlyTxProcessingScope scope) : this(envPool, block, parent)
+        public AddressWarmingState(ObjectPool<IReadOnlyTxProcessorSource> envPool, Transaction[] transactions, BlockHeader parent, IReadOnlyTxProcessorSource env, IReadOnlyTxProcessingScope scope, bool warmToAddress) : this(envPool, transactions, parent, warmToAddress)
         {
             Env = env;
             Scope = scope;
@@ -351,7 +379,8 @@ public sealed class BlockCachePreWarmer(
         public AddressWarmingState InitThreadState()
         {
             IReadOnlyTxProcessorSource env = EnvPool.Get();
-            return new(EnvPool, Block, parent, env, scope: env.Build(parent));
+            IReadOnlyTxProcessingScope scope = env.Build(parent);
+            return new(EnvPool, Transactions, parent, env, scope, WarmToAddress);
         }
 
         public void Dispose()
