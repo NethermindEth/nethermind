@@ -74,7 +74,7 @@ public static unsafe partial class Bytes
                 Vector256<byte> a2 = Vector256.LoadUnsafe(ref Unsafe.Add(ref valueRef, i));
                 Vector256.BitwiseOr(a1, a2).StoreUnsafe(ref Unsafe.Add(ref thisRef, i));
             }
-            
+
             // Always process the final block (covers full or partial tail)
             int offset = thisSpan.Length - Vector256<byte>.Count;
             Vector256<byte> b1 = Vector256.LoadUnsafe(ref Unsafe.Add(ref thisRef, offset));
@@ -97,7 +97,7 @@ public static unsafe partial class Bytes
             Vector128.BitwiseOr(b1, b2).StoreUnsafe(ref Unsafe.Add(ref thisRef, offset));
         }
         else
-        { 
+        {
             // scalar fallback
             for (int i = 0; i < thisSpan.Length; i++)
             {
