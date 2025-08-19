@@ -160,13 +160,13 @@ public sealed class LogIndexService : ILogIndexService
         if (!_pivotTask.IsCompleted && _pivotSource.TrySetResult(next) && _logger.IsInfo)
             _logger.Info($"{GetLogPrefix()}: starting at block {next}.");
 
-        var (min, max) = (_logIndexStorage.GetMinBlockNumber(), _logIndexStorage.GetMaxBlockNumber());
-
-        if (min is null || next < min)
-            _newBackwardBlockEvent.Set();
-
-        if (max is null || next > max)
-            _newBackwardBlockEvent.Set();
+        // var (min, max) = (_logIndexStorage.GetMinBlockNumber(), _logIndexStorage.GetMaxBlockNumber());
+        //
+        // if (min is null || next < min)
+        //     _newBackwardBlockEvent.Set();
+        //
+        // if (max is null || next > max)
+        //     _newBackwardBlockEvent.Set();
     }
 
     // TODO: figure out values that would be correct in all cases
