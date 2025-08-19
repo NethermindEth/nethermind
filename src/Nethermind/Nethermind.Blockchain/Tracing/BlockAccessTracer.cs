@@ -58,7 +58,19 @@ public class BlockAccessTracer : IBlockTracer, ITxTracer, IJournal<int>
 
     public void ReportMemoryChange(long offset, in ReadOnlySpan<byte> data) {}
 
-    public void SetOperationStorage(Address address, UInt256 storageIndex, ReadOnlySpan<byte> newValue, ReadOnlySpan<byte> currentValue) {}
+    public void SetOperationStorage(Address address, UInt256 storageIndex, ReadOnlySpan<byte> newValue, ReadOnlySpan<byte> currentValue)
+    {
+        if (!_bal.AccountChanges.TryGetValue(address, out AccountChanges accountChanges))
+        {
+            accountChanges = new(address);
+            _bal.AccountChanges.Add(address, accountChanges);
+        }
+
+        if (currentValue != newValue)
+        {
+            StorageChange(accountChanges, new StorageCell(address, storageIndex).Hash.BytesAsSpan, newValue);
+        }
+    }
 
     public void LoadOperationStorage(Address address, UInt256 storageIndex, ReadOnlySpan<byte> value) {}
 
@@ -148,21 +160,12 @@ public class BlockAccessTracer : IBlockTracer, ITxTracer, IJournal<int>
 
     public void ReportStorageChange(in ReadOnlySpan<byte> key, in ReadOnlySpan<byte> value)
     {
-        // get address?
-        Address address = Address.Zero;
-
-        if (!_bal.AccountChanges.TryGetValue(address, out AccountChanges accountChanges))
-        {
-            accountChanges = new(address);
-            _bal.AccountChanges.Add(address, accountChanges);
-        }
-
-        StorageChange(accountChanges, key, value);
+        // no address
     }
 
     public void ReportStorageChange(in StorageCell storageCell, byte[] before, byte[] after)
     {
-        Address address = Address.Zero;
+        Address address = storageCell.Address;
 
         if (!_bal.AccountChanges.TryGetValue(address, out AccountChanges accountChanges))
         {
@@ -174,26 +177,6 @@ public class BlockAccessTracer : IBlockTracer, ITxTracer, IJournal<int>
         {
             StorageChange(accountChanges, storageCell.Hash.BytesAsSpan, after.AsSpan());
         }
-    }
-
-    private void StorageChange(AccountChanges accountChanges, in ReadOnlySpan<byte> key, in ReadOnlySpan<byte> value)
-    {
-        StorageChange storageChange = new()
-        {
-            BlockAccessIndex = _blockAccessIndex,
-            NewValue = value.ToArray()
-        };
-
-        StorageKey storageKey = new(key);
-        if (!accountChanges.StorageChanges.TryGetValue(storageKey, out SlotChanges storageChanges))
-        {
-            storageChanges = new();
-        }
-        else if (storageChanges.Changes is not [] && storageChanges.Changes[^1].BlockAccessIndex == _blockAccessIndex)
-        {
-            storageChanges.Changes.RemoveAt(storageChanges.Changes.Count - 1);
-        }
-        storageChanges.Changes.Add(storageChange);
     }
 
     public void ReportStorageRead(in StorageCell storageCell)
@@ -314,4 +297,25 @@ public class BlockAccessTracer : IBlockTracer, ITxTracer, IJournal<int>
     {
         // _currentTxTracer.Dispose();
     }
+
+    private void StorageChange(AccountChanges accountChanges, in ReadOnlySpan<byte> key, in ReadOnlySpan<byte> value)
+    {
+        StorageChange storageChange = new()
+        {
+            BlockAccessIndex = _blockAccessIndex,
+            NewValue = value.ToArray()
+        };
+
+        StorageKey storageKey = new(key);
+        if (!accountChanges.StorageChanges.TryGetValue(storageKey, out SlotChanges storageChanges))
+        {
+            storageChanges = new();
+        }
+        else if (storageChanges.Changes is not [] && storageChanges.Changes[^1].BlockAccessIndex == _blockAccessIndex)
+        {
+            storageChanges.Changes.RemoveAt(storageChanges.Changes.Count - 1);
+        }
+        storageChanges.Changes.Add(storageChange);
+    }
+
 }
