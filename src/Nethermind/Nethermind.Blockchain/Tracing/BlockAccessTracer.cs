@@ -72,8 +72,7 @@ public class BlockAccessTracer : IBlockTracer, ITxTracer, IJournal<int>
     {
         BalanceChange balanceChange = new()
         {
-            TxIndex = (ushort)_currentIndex,
-            // PostBalance = (ulong)after // why not 256 bit?
+            BlockAccessIndex = (ushort)_currentIndex,
             PostBalance = after!.Value
         };
 
@@ -96,7 +95,7 @@ public class BlockAccessTracer : IBlockTracer, ITxTracer, IJournal<int>
     {
         CodeChange codeChange = new()
         {
-            TxIndex = (ushort)_currentIndex,
+            BlockAccessIndex = (ushort)_currentIndex,
             NewCode = after
         };
 
@@ -113,7 +112,7 @@ public class BlockAccessTracer : IBlockTracer, ITxTracer, IJournal<int>
     {
         NonceChange nonceChange = new()
         {
-            TxIndex = (ushort)_currentIndex,
+            BlockAccessIndex = (ushort)_currentIndex,
             NewNonce = (ulong)after
         };
 
@@ -138,7 +137,7 @@ public class BlockAccessTracer : IBlockTracer, ITxTracer, IJournal<int>
     {
         StorageChange storageChange = new()
         {
-            TxIndex = (ushort)_currentIndex,
+            BlockAccessIndex = (ushort)_currentIndex,
             NewValue = after
         };
         Address address = Address.Zero;

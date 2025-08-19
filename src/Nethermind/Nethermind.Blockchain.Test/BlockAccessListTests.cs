@@ -51,7 +51,7 @@ namespace Nethermind.Evm.Test
             blockReceiptsTracer.SetOtherTracer(accessTracer);
             Execute(tx, block, blockReceiptsTracer);
 
-            Dictionary<Address, AccountChanges> accountChanges = accessTracer.BlockAccessList.AccountChanges;
+            SortedDictionary<Address, AccountChanges> accountChanges = accessTracer.BlockAccessList.AccountChanges;
             Assert.That(accountChanges, Has.Count.EqualTo(3));
 
             List<BalanceChange> senderBalanceChanges = accountChanges[TestItem.AddressA].BalanceChanges;

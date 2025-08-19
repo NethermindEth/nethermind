@@ -6,38 +6,39 @@ using Nethermind.Int256;
 
 namespace Nethermind.Core.BlockAccessLists;
 
-// Single storage write: tx_index -> new_value
+// # StorageChange: [block_access_index, new_value]
 public struct StorageChange
 {
-    public ushort TxIndex { get; set; }
+    public ushort BlockAccessIndex { get; set; }
     // [SszVector(32)]
     public byte[] NewValue { get; set; }
 }
 
-// Single balance change: tx_index -> post_balance
+// BalanceChange: [block_access_index, post_balance]
 public struct BalanceChange
 {
-    public ushort TxIndex { get; set; }
-    // actually UInt128
+    public ushort BlockAccessIndex { get; set; }
     public UInt256 PostBalance { get; set; }
 }
 
-// Single nonce change: tx_index -> new_nonce
+// NonceChange: [block_access_index, new_nonce]
 public struct NonceChange
 {
-    public ushort TxIndex { get; set; }
+    public ushort BlockAccessIndex { get; set; }
     public ulong NewNonce { get; set; }
 }
 
-// Single code change: tx_index -> new_code
+// CodeChange: [block_access_index, new_code]
 public struct CodeChange
 {
-    public ushort TxIndex { get; set; }
+    public ushort BlockAccessIndex { get; set; }
 
     // [SszList(Eip7928Constants.MaxCodeSize)]
     public byte[] NewCode { get; set; }
 }
 
+// SlotChanges: [slot, [changes]]
+// All changes to a single storage slot
 public struct SlotChanges
 {
     // [SszVector(32)]
@@ -82,7 +83,7 @@ public struct AccountChanges(Address address)
 public struct BlockAccessList()
 {
     // [SszList(Eip7928Constants.MaxAccounts)]
-    public Dictionary<Address, AccountChanges> AccountChanges { get; set; } = [];
+    public SortedDictionary<Address, AccountChanges> AccountChanges { get; set; } = [];
 
     // RLP encode bal
     public byte[] Bytes => [];
