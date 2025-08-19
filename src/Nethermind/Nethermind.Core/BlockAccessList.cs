@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using System.Collections.Generic;
 using Nethermind.Int256;
 
@@ -39,19 +40,19 @@ public struct CodeChange
 
 // SlotChanges: [slot, [changes]]
 // All changes to a single storage slot
-public struct SlotChanges
+public struct SlotChanges()
 {
     // [SszVector(32)]
-    public byte[] Slot { get; set; }
+    // public byte[] Slot { get; set; }
 
     // [SszList(Eip7928Constants.MaxTxs)]
-    public ulong Changes { get; set; }
+    public List<StorageChange> Changes { get; set; } = [];
 }
 
-public struct StorageKey
+public struct StorageKey(ReadOnlySpan<byte> key)
 {
     // [SszVector(32)]
-    public byte[] Key { get; set; }
+    public byte[] Key { get; set; } = key.ToArray();
 }
 
 public struct AccountChanges(Address address)
@@ -61,7 +62,7 @@ public struct AccountChanges(Address address)
 
     // Storage changes (slot -> [tx_index -> new_value])
     // [SszList(Eip7928Constants.MaxSlots)]
-    public List<StorageChange> StorageChanges { get; set; } = [];
+    public SortedDictionary<StorageKey, SlotChanges> StorageChanges { get; set; } = [];
 
     // Read-only storage keys
     // [SszList(Eip7928Constants.MaxSlots)]
