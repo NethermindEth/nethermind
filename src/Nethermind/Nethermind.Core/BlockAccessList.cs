@@ -85,7 +85,4 @@ public struct BlockAccessList()
 {
     // [SszList(Eip7928Constants.MaxAccounts)]
     public SortedDictionary<Address, AccountChanges> AccountChanges { get; set; } = [];
-
-    // RLP encode bal
-    public byte[] Bytes => [];
 }

@@ -24,6 +24,7 @@ using Nethermind.Evm.State;
 using Nethermind.Evm.Tracing;
 using Nethermind.Int256;
 using Nethermind.Logging;
+using Nethermind.Serialization.Rlp;
 using Nethermind.Specs.Forks;
 using Nethermind.State;
 using static Nethermind.Consensus.Processing.IBlockProcessor;
@@ -156,7 +157,7 @@ public partial class BlockProcessor(
         }
 
         header.Hash = header.CalculateHash();
-        body.BlockAccessList = bal.Bytes;
+        body.BlockAccessList = Rlp.Encode(bal).Bytes;
 
         return receipts;
     }
