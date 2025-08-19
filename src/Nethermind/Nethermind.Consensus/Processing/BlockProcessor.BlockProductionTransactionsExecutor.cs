@@ -106,6 +106,9 @@ namespace Nethermind.Consensus.Processing
                         {
                             blockToProduce.TxByteLength += currentTx.GetLength();
                         }
+
+                        // Only add a single transaction
+                        break;
                     }
                 }
 
