@@ -150,23 +150,6 @@ public interface ITxTracer : IWorldStateTracer, IDisposable
                       || IsTracingFees
                       || IsTracingLogs;
 
-    bool IsIlEvmInCompatible =>  // only allow reciepts for now, this  enables ilevm to be easily tested by the existing setup
-                      IsTracingActions
-                      || IsTracingOpLevelStorage
-                      || IsTracingMemory
-                      || IsTracingInstructions
-                      || IsTracingRefunds
-                      || IsTracingCode
-                      || IsTracingStack
-                      || IsTracingBlockHash
-                      || IsTracingAccess
-                      || IsTracingFees
-                      || IsTracingLogs
-                      || IsTracingState
-                      || IsTracingStorage;
-
-    bool IsIlEvmCompatible => !IsIlEvmInCompatible;
-
 
     /// <summary>
     /// Transaction completed successfully

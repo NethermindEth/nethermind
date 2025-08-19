@@ -10,9 +10,8 @@ namespace Nethermind.Evm
 {
     public interface IVirtualMachine
     {
-        TransactionSubstate ExecuteTransaction<TTracingInst, TEnablePrecompilation>(EvmState state, IWorldState worldState, ITxTracer txTracer)
-            where TTracingInst : struct, IFlag
-            where TEnablePrecompilation : struct, IFlag;
+        TransactionSubstate ExecuteTransaction<TTracingInst>(EvmState state, IWorldState worldState, ITxTracer txTracer)
+            where TTracingInst : struct, IFlag;
         ref readonly BlockExecutionContext BlockExecutionContext { get; }
         ref readonly TxExecutionContext TxExecutionContext { get; }
         void SetBlockExecutionContext(in BlockExecutionContext blockExecutionContext);

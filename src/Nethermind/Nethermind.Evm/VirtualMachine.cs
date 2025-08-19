@@ -135,12 +135,11 @@ public sealed unsafe partial class VirtualMachine(
     /// <exception cref="EvmException">
     /// Thrown when an EVM-specific error occurs during execution.
     /// </exception>
-    public TransactionSubstate ExecuteTransaction<TTracingInst, TEnablePrecompilation>(
+    public TransactionSubstate ExecuteTransaction<TTracingInst>(
         EvmState evmState,
         IWorldState worldState,
         ITxTracer txTracer)
         where TTracingInst : struct, IFlag
-        where TEnablePrecompilation : struct, IFlag
     {
         // Initialize dependencies for transaction tracing and state access.
         _txTracer = txTracer;
@@ -192,9 +191,12 @@ public sealed unsafe partial class VirtualMachine(
                     // Execute the regular EVM call if valid code is present; otherwise, mark as invalid.
                     if (_currentState.Env.CodeInfo is not null)
                     {
-                        callResult = _vmConfig.IsVmOptimizationEnabled
-                            ? ExecuteCall<TTracingInst, TEnablePrecompilation>(_previousCallResult, previousCallOutput, _previousCallOutputDestination)
+                        /*callResult = _vmConfig.IsVmOptimizationEnabled
+                            ? ExecuteCall<TTracingInst, OnFlag>(_previousCallResult, previousCallOutput, _previousCallOutputDestination)
                             : ExecuteCall<TTracingInst, OffFlag>(_previousCallResult, previousCallOutput, _previousCallOutputDestination);
+                        */
+
+                        callResult = ExecuteCall<TTracingInst, OnFlag>(_previousCallResult, previousCallOutput, _previousCallOutputDestination);
                     }
                     else
                     {
@@ -1078,8 +1080,8 @@ public sealed unsafe partial class VirtualMachine(
 
             if(typeof(TEnablePrecompilation) == typeof(OnFlag))
             {
-                //if (env.CodeInfo.CodeHash is not null) IlAnalyzer.Analyse(env.CodeInfo as CodeInfo, ILMode.AOT_MODE, _vmConfig, _logger);
-                env.CodeInfo.NoticeExecution(_vmConfig, _logger, Spec);
+                if (env.CodeInfo.CodeHash is not null) IlAnalyzer.Analyse(env.CodeInfo as CodeInfo, ILMode.AOT_MODE, _vmConfig, _logger);
+                // env.CodeInfo.NoticeExecution(_vmConfig, _logger, Spec);
             }
         }
 
