@@ -471,9 +471,9 @@ public class FastHeadersSyncTests
     [TestCase(190, 1, 1, true, true)]
     [TestCase(80, 1, 1, true, false)]
     [TestCase(80, 1, 1, true, true)]
-    //All empty reponse
+    //All empty response
     [TestCase(0, 192, 1, false, false)]
-    //All null reponse
+    //All null response
     [TestCase(0, 192, 1, false, true)]
     public async Task Can_insert_all_good_headers_from_dependent_batch_with_missing_or_null_headers(int nullIndex, int count, int increment, bool shouldReport, bool useNulls)
     {

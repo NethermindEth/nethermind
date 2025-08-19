@@ -480,7 +480,7 @@ namespace Nethermind.Synchronization.Blocks
 
             if (result == SyncResponseHandlingResult.OK)
             {
-                // Request and body does not have the same size so this hueristic is wrong.
+                // Request and body does not have the same size so this heuristic is wrong.
                 if (bodiesCount + receiptsCount == 0)
                 {
                     // Trigger sleep

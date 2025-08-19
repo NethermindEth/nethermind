@@ -785,7 +785,7 @@ internal class Eof1 : IEofVersionHandler
         }
 
         // When trailing bytes are not allowed, the DataSection cannot exceed the stated size data.
-        // Undeflow cases were checked above as they don't apply in all cases
+        // Underflow cases were checked above as they don't apply in all cases
         if (!strategy.HasFlag(ValidationStrategy.AllowTrailingBytes)
             && strategy.HasFlag(ValidationStrategy.ValidateFullBody)
             && header.DataSection.Size < dataBody.Length)
@@ -1083,7 +1083,7 @@ internal class Eof1 : IEofVersionHandler
                         return false;
                     }
 
-                    // JUMPF is only returnig when the target is returning
+                    // JUMPF is only returning when the target is returning
                     if (!isTargetSectionNonReturning)
                     {
                         hasRequiredSectionExit = true;

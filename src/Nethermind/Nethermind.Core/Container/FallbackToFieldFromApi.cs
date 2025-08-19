@@ -13,7 +13,7 @@ using Nethermind.Core.Exceptions;
 namespace Nethermind.Core.Container;
 
 /// <summary>
-/// If a service does not have any registration, try to get it from a member fo a type `T`.
+/// If a service does not have any registration, try to get it from a member of a type `T`.
 /// This allow fetching of unregistered/unconfigured component from `NethermindApi`.
 /// </summary>
 public class FallbackToFieldFromApi<TApi> : IRegistrationSource where TApi : notnull

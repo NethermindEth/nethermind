@@ -122,7 +122,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V63
 
             GetNodeDataMessage msg = new(keys.ToPooledList());
 
-            // could use more array pooled lists (pooled memmory) here.
+            // could use more array pooled lists (pooled memory) here.
             // maybe remeasure allocations on another network since goerli has been phased out.
             return SendRequest(msg, token);
         }

@@ -1109,7 +1109,7 @@ namespace Nethermind.Trie
             // else
             // {
             //     // we assume that the storage root will get resolved during persistence even if not persisted yet
-            //     // if this is not true then the code above that is commented out would be critical to call isntead
+            //     // if this is not true then the code above that is commented out would be critical to call instead
             //     _storageRoot = null;
             // }
         }

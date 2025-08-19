@@ -716,7 +716,7 @@ namespace Nethermind.Core.Extensions
             if (extraNibble)
             {
                 // Odd number of hex bytes, handle the first
-                // seperately so loop can work in pairs
+                // separately so loop can work in pairs
                 ushort val = Unsafe.Add(ref lookup32, input);
                 Unsafe.As<ushort, byte>(ref output) = (byte)(val >> 8);
 
@@ -773,7 +773,7 @@ namespace Nethermind.Core.Extensions
             {
                 skip++;
                 // Odd number of hex chars, handle the first
-                // seperately so loop can work in pairs
+                // separately so loop can work in pairs
                 uint val = Unsafe.Add(ref Lookup32[0], input);
                 charsRef = (char)(val >> 16);
 

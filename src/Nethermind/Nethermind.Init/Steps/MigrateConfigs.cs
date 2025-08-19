@@ -37,12 +37,12 @@ namespace Nethermind.Init.Steps
             return Task.CompletedTask;
         }
 
-        //This function is marked publick and static for use in tests
+        //This function is marked public and static for use in tests
         public static void MigrateBlocksConfig(IBlocksConfig? blocksConfig, IBlocksConfig? value)
         {
             PropertyInfo[]? propertyInfos = blocksConfig?.GetType().GetInterface($"{nameof(IBlocksConfig)}")?.GetProperties();
 
-            //Loop over config properties checking mismaches and changing defaults
+            //Loop over config properties checking mismatches and changing defaults
             //So that on given and current inner configs we would only have same values
             if (propertyInfos is null) return;
 

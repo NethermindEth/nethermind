@@ -327,7 +327,7 @@ namespace Nethermind.Evm.TransactionProcessing
         }
 
         /// <summary>
-        /// Validates the transaction, in a static manner (i.e. without accesing state/storage).
+        /// Validates the transaction, in a static manner (i.e. without accessing state/storage).
         /// It basically ensures the transaction is well formed (i.e. no null values where not allowed, no overflows, etc).
         /// As a part of validating the transaction the premium per gas will be calculated, to save computation this
         /// is returned in an out parameter.
