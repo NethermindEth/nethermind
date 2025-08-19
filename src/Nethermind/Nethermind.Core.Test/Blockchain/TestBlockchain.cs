@@ -278,7 +278,6 @@ public class TestBlockchain : IDisposable
             .AddSingleton<ISealValidator>(Always.Valid)
             .AddSingleton<IUnclesValidator>(Always.Valid)
             .AddSingleton<ISealer>(new NethDevSealEngine(TestItem.AddressD))
-            .AddSingleton<IGenesisPostProcessor>(new NullGenesisPostProcessor())
 
             .AddSingleton<IBlockProducer>((_) => this.BlockProducer)
             .AddSingleton<IBlockProducerRunner>((_) => this.BlockProducerRunner)

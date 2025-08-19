@@ -44,7 +44,6 @@ public record AutoMainProcessingContext : IMainProcessingContext, IAsyncDisposab
                     StoreReceiptsByDefault = receiptConfig.StoreReceipts,
                     DumpOptions = initConfig.AutoDump
                 })
-                .AddSingleton<IGenesisPostProcessor>(new NullGenesisPostProcessor())
                 .AddScoped<GenesisLoader>()
 
                 // And finally, to wrap things up.
