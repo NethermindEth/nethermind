@@ -57,7 +57,7 @@ public interface IPruningConfig : IConfig
 
     [ConfigItem(
         Description = "The memory budget, in MB, used for the trie visit. Increasing this value significantly reduces the IOPS requirement at the expense of memory usage. `0` to disable.",
-        DefaultValue = "4000")]
+        DefaultValue = "12000")]
     int FullPruningMemoryBudgetMb { get; set; }
 
     [ConfigItem(
@@ -80,7 +80,7 @@ public interface IPruningConfig : IConfig
     [ConfigItem(Description = "Enable tracking of past key to reduce database and pruning cache growth", DefaultValue = "true")]
     bool TrackPastKeys { get; set; }
 
-    [ConfigItem(Description = "The number of past states before the state gets pruned. Used to determine how old of a state to keep from the head.", DefaultValue = "64")]
+    [ConfigItem(Description = "The number of past states before the state gets pruned. Used to determine how old of a state to keep from the head.", DefaultValue = "192")]
     int PruningBoundary { get; set; }
 
     [ConfigItem(Description = "Dirty node shard count", DefaultValue = "8")]
@@ -89,10 +89,10 @@ public interface IPruningConfig : IConfig
     [ConfigItem(Description = "Portion of persisted node to be prune at a time", DefaultValue = "0.05")]
     double PrunePersistedNodePortion { get; set; }
 
-    [ConfigItem(Description = "Minimum persisted cache prune target", DefaultValue = "50000000")]
+    [ConfigItem(Description = "Minimum persisted cache prune target", DefaultValue = "150000000")]
     long PrunePersistedNodeMinimumTarget { get; set; }
 
-    [ConfigItem(Description = "Maximimum number of block worth of unpersisted state in memory. Default is 297, which is number of mainnet block per hour.", DefaultValue = "297")]
+    [ConfigItem(Description = "Maximimum number of block worth of unpersisted state in memory. Default is 297, which is number of mainnet block per hour.", DefaultValue = "892")]
     long MaxUnpersistedBlockCount { get; set; }
 
     [ConfigItem(Description = "Minimum number of block worth of unpersisted state in memory. Prevent memory pruning too often due to insufficient dirty cache memory.", DefaultValue = "8")]
