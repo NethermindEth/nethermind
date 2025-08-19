@@ -32,12 +32,15 @@ namespace Nethermind.Store.Test
         private static readonly ILogManager Logger = LimboLogs.Instance;
 
         [Test]
-        public async Task Can_ask_about_balance_in_parallel()
+        public void Can_ask_about_balance_in_parallel()
         {
             IReleaseSpec spec = MainnetSpecProvider.Instance.GetSpec((ForkActivation)MainnetSpecProvider.ConstantinopleFixBlockNumber);
             IDbProvider dbProvider = TestMemDbProvider.Init();
             IWorldStateManager worldStateManager = TestWorldStateFactory.CreateForTest(dbProvider, LimboLogs.Instance);
+
             IWorldState provider = worldStateManager.GlobalWorldState;
+            using var _ = provider.BeginScope(IWorldState.PreGenesis);
+
             provider.CreateAccount(_address1, 0);
             provider.AddToBalance(_address1, 1, spec);
             provider.Commit(spec);
@@ -68,17 +71,18 @@ namespace Nethermind.Store.Test
             Task c = StartTask(reader, baseBlock2, 3);
             Task d = StartTask(reader, baseBlock3, 4);
 
-            await Task.WhenAll(a, b, c, d);
+            Task.WhenAll(a, b, c, d).Wait();
         }
 
         [Test]
-        public async Task Can_ask_about_storage_in_parallel()
+        public void Can_ask_about_storage_in_parallel()
         {
             StorageCell storageCell = new(_address1, UInt256.One);
             IReleaseSpec spec = MuirGlacier.Instance;
             IDbProvider dbProvider = TestMemDbProvider.Init();
             IWorldStateManager worldStateManager = TestWorldStateFactory.CreateForTest(dbProvider, LimboLogs.Instance);
             IWorldState provider = worldStateManager.GlobalWorldState;
+            using var _ = provider.BeginScope(IWorldState.PreGenesis);
 
             void UpdateStorageValue(byte[] newValue)
             {
@@ -126,7 +130,7 @@ namespace Nethermind.Store.Test
             Task c = StartStorageTask(reader, baseBlock2, storageCell, new byte[] { 3 });
             Task d = StartStorageTask(reader, baseBlock3, storageCell, new byte[] { 4 });
 
-            await Task.WhenAll(a, b, c, d);
+            Task.WhenAll(a, b, c, d).Wait();
         }
 
         [Test]
@@ -137,6 +141,7 @@ namespace Nethermind.Store.Test
 
             IWorldStateManager worldStateManager = TestWorldStateFactory.CreateForTest();
             IWorldState provider = worldStateManager.GlobalWorldState;
+            using var _ = provider.BeginScope(IWorldState.PreGenesis);
 
             void CommitEverything()
             {
@@ -188,19 +193,22 @@ namespace Nethermind.Store.Test
             IDbProvider dbProvider = TestMemDbProvider.Init();
             IWorldStateManager worldStateManager = TestWorldStateFactory.CreateForTest(dbProvider, LimboLogs.Instance);
             IWorldState state = worldStateManager.GlobalWorldState;
-
-            /* to start with we need to create an account that we will be setting storage at */
-            state.CreateAccount(storageCell.Address, UInt256.One);
-            state.Commit(MuirGlacier.Instance);
-            state.CommitTree(1);
-
-            /* at this stage we have an account with empty storage at the address that we want to test */
-
             byte[] initialValue = new byte[] { 1, 2, 3 };
-            state.Set(storageCell, initialValue);
-            state.Commit(MuirGlacier.Instance);
-            state.CommitTree(2);
-            BlockHeader baseBlock = Build.A.BlockHeader.WithNumber(2).WithStateRoot(state.StateRoot).TestObject;
+            BlockHeader baseBlock;
+            using (var _ = state.BeginScope(IWorldState.PreGenesis))
+            {
+                /* to start with we need to create an account that we will be setting storage at */
+                state.CreateAccount(storageCell.Address, UInt256.One);
+                state.Commit(MuirGlacier.Instance);
+                state.CommitTree(1);
+
+                /* at this stage we have an account with empty storage at the address that we want to test */
+
+                state.Set(storageCell, initialValue);
+                state.Commit(MuirGlacier.Instance);
+                state.CommitTree(2);
+                baseBlock = Build.A.BlockHeader.WithNumber(2).WithStateRoot(state.StateRoot).TestObject;
+            }
 
             IStateReader reader = worldStateManager.GlobalStateReader;
 
@@ -218,12 +226,14 @@ namespace Nethermind.Store.Test
             byte[] newValue = new byte[] { 1, 2, 3, 4, 5 };
 
             IWorldState processorStateProvider = state; // They are the same
-            processorStateProvider.SetBaseBlock(baseBlock);
 
-            processorStateProvider.Set(storageCell, newValue);
-            processorStateProvider.Commit(MuirGlacier.Instance);
-            processorStateProvider.CommitTree(3);
-            baseBlock = Build.A.BlockHeader.WithParent(baseBlock).WithStateRoot(state.StateRoot).TestObject;
+            using (var _ = processorStateProvider.BeginScope(baseBlock))
+            {
+                processorStateProvider.Set(storageCell, newValue);
+                processorStateProvider.Commit(MuirGlacier.Instance);
+                processorStateProvider.CommitTree(baseBlock.Number + 1);
+                baseBlock = Build.A.BlockHeader.WithParent(baseBlock).WithStateRoot(state.StateRoot).TestObject;
+            }
 
             /* At this stage the DB should have the storage value updated to 5.
                We will try to retrieve the value by taking the state root from the processor.*/
@@ -241,12 +251,18 @@ namespace Nethermind.Store.Test
             IDbProvider dbProvider = TestMemDbProvider.Init();
             IWorldStateManager worldStateManager = TestWorldStateFactory.CreateForTest(dbProvider, LimboLogs.Instance);
             IWorldState provider = worldStateManager.GlobalWorldState;
-            provider.CreateAccount(TestItem.AddressA, 1.Ether());
-            provider.Commit(MuirGlacier.Instance);
-            provider.CommitTree(0);
+
+            Hash256 stateRoot;
+            using (var _ = provider.BeginScope(IWorldState.PreGenesis))
+            {
+                provider.CreateAccount(TestItem.AddressA, 1.Ether());
+                provider.Commit(MuirGlacier.Instance);
+                provider.CommitTree(0);
+                stateRoot = provider.StateRoot;
+            }
 
             IStateReader stateReader = worldStateManager.GlobalStateReader;
-            var stats = stateReader.CollectStats(provider.StateRoot, new MemDb(), Logger);
+            var stats = stateReader.CollectStats(stateRoot, new MemDb(), Logger);
             stats.AccountCount.Should().Be(1);
         }
 
@@ -259,6 +275,7 @@ namespace Nethermind.Store.Test
             IDbProvider dbProvider = TestMemDbProvider.Init();
             IWorldStateManager worldStateManager = TestWorldStateFactory.CreateForTest(dbProvider, LimboLogs.Instance);
             IWorldState sut = worldStateManager.GlobalWorldState;
+            using var _ = sut.BeginScope(IWorldState.PreGenesis);
             sut.CreateAccount(TestItem.AddressA, 0);
             sut.InsertCode(TestItem.AddressA, ValueKeccak.Compute(new byte[1]), new byte[1], releaseSpec, false);
             sut.Commit(MuirGlacier.Instance);
@@ -278,6 +295,7 @@ namespace Nethermind.Store.Test
             IDbProvider dbProvider = TestMemDbProvider.Init();
             IWorldStateManager worldStateManager = TestWorldStateFactory.CreateForTest(dbProvider, LimboLogs.Instance);
             IWorldState sut = worldStateManager.GlobalWorldState;
+            using var _ = sut.BeginScope(IWorldState.PreGenesis);
             sut.CreateAccount(TestItem.AddressA, 0);
             sut.Commit(MuirGlacier.Instance);
             sut.CommitTree(0);
@@ -296,6 +314,7 @@ namespace Nethermind.Store.Test
             IDbProvider dbProvider = TestMemDbProvider.Init();
             IWorldStateManager worldStateManager = TestWorldStateFactory.CreateForTest(dbProvider, LimboLogs.Instance);
             IWorldState sut = worldStateManager.GlobalWorldState;
+            using var _ = sut.BeginScope(IWorldState.PreGenesis);
             sut.CreateAccount(TestItem.AddressA, 0);
             byte[] code = [.. Eip7702Constants.DelegationHeader, .. new byte[20]];
             sut.InsertCode(TestItem.AddressA, ValueKeccak.Compute(code), code, releaseSpec, false);
@@ -316,6 +335,7 @@ namespace Nethermind.Store.Test
             IDbProvider dbProvider = TestMemDbProvider.Init();
             IWorldStateManager worldStateManager = TestWorldStateFactory.CreateForTest(dbProvider, LimboLogs.Instance);
             IWorldState sut = worldStateManager.GlobalWorldState;
+            using var _ = sut.BeginScope(IWorldState.PreGenesis);
             sut.CreateAccount(TestItem.AddressA, 0);
             byte[] code = new byte[20];
             sut.InsertCode(TestItem.AddressA, ValueKeccak.Compute(code), code, releaseSpec, false);
@@ -335,6 +355,7 @@ namespace Nethermind.Store.Test
             IDbProvider dbProvider = TestMemDbProvider.Init();
             IWorldStateManager worldStateManager = TestWorldStateFactory.CreateForTest(dbProvider, LimboLogs.Instance);
             IWorldState sut = worldStateManager.GlobalWorldState;
+            using var _ = sut.BeginScope(IWorldState.PreGenesis);
             sut.CreateAccount(TestItem.AddressA, 0);
             byte[] code = [.. Eip7702Constants.DelegationHeader, .. new byte[20]];
             sut.InsertCode(TestItem.AddressA, ValueKeccak.Compute(code), code, releaseSpec, false);
@@ -354,6 +375,7 @@ namespace Nethermind.Store.Test
             IDbProvider dbProvider = TestMemDbProvider.Init();
             IWorldStateManager worldStateManager = TestWorldStateFactory.CreateForTest(dbProvider, LimboLogs.Instance);
             IWorldState sut = worldStateManager.GlobalWorldState;
+            using var _ = sut.BeginScope(IWorldState.PreGenesis);
             sut.CreateAccount(TestItem.AddressA, 0);
             byte[] code = [.. Eip7702Constants.DelegationHeader, .. new byte[20]];
             sut.InsertCode(TestItem.AddressA, ValueKeccak.Compute(code), code, releaseSpec, false);
@@ -369,13 +391,18 @@ namespace Nethermind.Store.Test
         public void Can_accepts_visitors()
         {
             WorldStateManager worldStateManager = TestWorldStateFactory.CreateForTest();
+            Hash256 stateRoot;
             IWorldState provider = worldStateManager.GlobalWorldState;
-            provider.CreateAccount(TestItem.AddressA, 1.Ether());
-            provider.Commit(MuirGlacier.Instance);
-            provider.CommitTree(0);
+            using (var _ = provider.BeginScope(IWorldState.PreGenesis))
+            {
+                provider.CreateAccount(TestItem.AddressA, 1.Ether());
+                provider.Commit(MuirGlacier.Instance);
+                provider.CommitTree(0);
+                stateRoot = provider.StateRoot;
+            }
 
             TrieStatsCollector visitor = new(new MemDb(), LimboLogs.Instance);
-            worldStateManager.GlobalStateReader.RunTreeVisitor(visitor, provider.StateRoot);
+            worldStateManager.GlobalStateReader.RunTreeVisitor(visitor, stateRoot);
         }
 
         [Test]
@@ -383,11 +410,17 @@ namespace Nethermind.Store.Test
         {
             WorldStateManager worldStateManager = TestWorldStateFactory.CreateForTest();
             IWorldState provider = worldStateManager.GlobalWorldState;
-            provider.CreateAccount(TestItem.AddressA, 1.Ether());
-            provider.Commit(MuirGlacier.Instance);
-            provider.CommitTree(0);
 
-            string state = worldStateManager.GlobalStateReader.DumpState(provider.StateRoot);
+            Hash256 stateRoot;
+            using (var _ = provider.BeginScope(IWorldState.PreGenesis))
+            {
+                provider.CreateAccount(TestItem.AddressA, 1.Ether());
+                provider.Commit(MuirGlacier.Instance);
+                provider.CommitTree(0);
+                stateRoot = provider.StateRoot;
+            }
+
+            string state = worldStateManager.GlobalStateReader.DumpState(stateRoot);
             state.Should().NotBeEmpty();
         }
     }
