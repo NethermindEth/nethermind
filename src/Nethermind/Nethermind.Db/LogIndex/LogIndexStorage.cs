@@ -702,9 +702,7 @@ namespace Nethermind.Db
         {
             fixed (byte* dataPtr = data)
             fixed (int* decompressedPtr = decompressedBlockNumbers)
-            {
-                _ = TurboPFor.p4nd1dec256v32(dataPtr, decompressedBlockNumbers.Length, decompressedPtr);
-            }
+                _ = TurboPFor.p4nd1dec256v32(dataPtr, (nuint)decompressedBlockNumbers.Length, decompressedPtr);
 
             return decompressedBlockNumbers;
         }
@@ -719,7 +717,7 @@ namespace Nethermind.Db
             fixed (byte* compressedPtr = buffer)
             {
                 // TODO: test different deltas and block sizes
-                length = TurboPFor.p4nd1enc256v32(blockNumbersPtr, blockNumbers.Length, compressedPtr);
+                length = (int)TurboPFor.p4nd1enc256v32(blockNumbersPtr, (nuint)blockNumbers.Length, compressedPtr);
             }
 
             return buffer[..length];
@@ -787,7 +785,7 @@ namespace Nethermind.Db
             if (len < 0)
                 throw new ValidationException("Data is not compressed");
 
-            var buffer = new int[len];
+            var buffer = new int[len]; // TODO: reuse buffer
             var result = Decompress(data[BlockNumSize..], buffer);
             return result.ToArray();
         }

@@ -10,6 +10,7 @@ namespace Nethermind.Db
     // https://github.com/brettwooldridge/TurboPFor/blob/master/java/jic.java
     // https://github.com/brettwooldridge/TurboPFor/blob/master/vp4.h
     // TODO: move to separate Nuget package
+    // TODO: fix bindings using incorrect types
     public static class TurboPFor
     {
         private const string LibraryName = "ic";
@@ -77,13 +78,13 @@ namespace Nethermind.Db
         [DllImport(LibraryName)]
         public extern unsafe static int p4nd1dec32(byte[] @in, int n, int[] @out);
         [DllImport(LibraryName)]
-        public extern unsafe static int p4nd1enc128v32(int* @in, int n, byte* @out);
+        public extern unsafe static nuint p4nd1enc128v32(int* @in, nuint n, byte* @out);
         [DllImport(LibraryName)]
-        public extern unsafe static int p4nd1dec128v32(byte* @in, int n, int* @out);
+        public extern unsafe static nuint p4nd1dec128v32(byte* @in, nuint n, int* @out);
         [DllImport(LibraryName)]
-        public extern unsafe static int p4nd1enc256v32(int* @in, int n, byte* @out);
+        public extern unsafe static nuint p4nd1enc256v32(int* @in, nuint n, byte* @out);
         [DllImport(LibraryName)]
-        public extern unsafe static int p4nd1dec256v32(byte* @in, int n, int* @out);
+        public extern unsafe static nuint p4nd1dec256v32(byte* @in, nuint n, int* @out);
 
         [DllImport(LibraryName)]
         public extern unsafe static int p4nzenc32(int[] @in, int n, byte[] @out); // zigzag: unsorted integer list

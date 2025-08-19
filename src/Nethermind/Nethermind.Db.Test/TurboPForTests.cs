@@ -135,9 +135,9 @@ public class TurboPForTests
         }
     }
 
-    private unsafe delegate int CompressFunc(int* @in, int n, byte* @out);
+    private unsafe delegate nuint CompressFunc(int* @in, nuint n, byte* @out);
 
-    private unsafe delegate int DecompressFunc(byte* @in, int n, int* @out);
+    private unsafe delegate nuint DecompressFunc(byte* @in, nuint n, int* @out);
 
     private unsafe delegate byte* CompressBlockFunc(int* @in, int n, byte* @out, int start);
 
@@ -180,7 +180,7 @@ public class TurboPForTests
         fixed (int* inputPtr = values)
         fixed (byte* resultPtr = buffer)
         {
-            resultLength = compressFunc(inputPtr, values.Length, resultPtr);
+            resultLength = (int)compressFunc(inputPtr, (nuint)values.Length, resultPtr);
         }
 
         //TestContext.Out.WriteLine($"Compressed: {resultLength} bytes");
@@ -194,7 +194,7 @@ public class TurboPForTests
         fixed (byte* inputPtr = data)
         fixed (int* resultPtr = buffer)
         {
-            _ = decompressFunc(inputPtr, count, resultPtr);
+            _ = decompressFunc(inputPtr, (nuint)count, resultPtr);
         }
 
         return buffer[..count];
