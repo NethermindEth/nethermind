@@ -132,6 +132,10 @@ public class Block
 
 
     [JsonIgnore]
+    public BlockAccessList? DecodedBlockAccessList { get; set; }
+
+
+    [JsonIgnore]
     internal volatile int TransactionProcessed;
 
     public override string ToString() => ToString(Format.Short);
@@ -149,7 +153,6 @@ public class Block
         _ => ToShortHashAndNumber()
     };
 
-    public BlockAccessList? DecodedBlockAccessList;
     private string ExtraDataToString()
     {
         if (ExtraData is null)

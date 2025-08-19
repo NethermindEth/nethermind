@@ -4,7 +4,6 @@
 using System;
 using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
-using System.Linq;
 using System.Threading;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Tracing;
@@ -12,7 +11,7 @@ using Nethermind.Core;
 using Nethermind.Evm;
 using Nethermind.Evm.State;
 using Nethermind.Evm.TransactionProcessing;
-
+using Nethermind.State;
 using Metrics = Nethermind.Evm.Metrics;
 
 namespace Nethermind.Consensus.Processing
@@ -41,18 +40,19 @@ namespace Nethermind.Consensus.Processing
                     Transaction currentTx = block.Transactions[i];
                     ProcessTransaction(block, currentTx, i, receiptsTracer, processingOptions);
                 }
-                return receiptsTracer.TxReceipts.ToArray();
+                return [.. receiptsTracer.TxReceipts];
             }
 
             protected virtual void ProcessTransaction(Block block, Transaction currentTx, int index, BlockReceiptsTracer receiptsTracer, ProcessingOptions processingOptions)
             {
+                BlockAccessWorldState blockAccessStateProvider = new(block.DecodedBlockAccessList!.Value, (ushort)(index + 1), stateProvider);
                 TransactionResult result = transactionProcessor.ProcessTransaction(currentTx, receiptsTracer, processingOptions, stateProvider);
                 if (!result) ThrowInvalidBlockException(result, block.Header, currentTx, index);
                 TransactionProcessed?.Invoke(this, new TxProcessedEventArgs(index, currentTx, receiptsTracer.TxReceipts[index]));
             }
 
             [DoesNotReturn, StackTraceHidden]
-            private void ThrowInvalidBlockException(TransactionResult result, BlockHeader header, Transaction currentTx, int index)
+            private static void ThrowInvalidBlockException(TransactionResult result, BlockHeader header, Transaction currentTx, int index)
             {
                 throw new InvalidBlockException(header, $"Transaction {currentTx.Hash} at index {index} failed with error {result.Error}");
             }
