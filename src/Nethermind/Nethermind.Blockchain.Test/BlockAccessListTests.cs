@@ -56,25 +56,23 @@ namespace Nethermind.Evm.Test
 
             List<BalanceChange> senderBalanceChanges = accountChanges[TestItem.AddressA].BalanceChanges;
             List<NonceChange> senderNonceChanges = accountChanges[TestItem.AddressA].NonceChanges;
-            // refund?
+            List<BalanceChange> toBalanceChanges = accountChanges[TestItem.AddressB].BalanceChanges;
+            List<BalanceChange> beneficiaryBalanceChanges = accountChanges[TestItem.AddressC].BalanceChanges;
+
             using (Assert.EnterMultipleScope())
             {
-                Assert.That(senderBalanceChanges, Has.Count.EqualTo(2));
-                Assert.That(senderBalanceChanges[0].PostBalance, Is.EqualTo(AccountBalance - gasPrice * (ulong)gasLimit));
-                Assert.That(senderBalanceChanges[1].PostBalance, Is.EqualTo(AccountBalance - gasPrice * GasCostOf.Transaction));
+                Assert.That(senderBalanceChanges, Has.Count.EqualTo(1));
+                Assert.That(senderBalanceChanges[0].PostBalance, Is.EqualTo(AccountBalance - gasPrice * GasCostOf.Transaction));
 
                 Assert.That(senderNonceChanges, Has.Count.EqualTo(1));
                 Assert.That(senderNonceChanges[0].NewNonce, Is.EqualTo(1));
 
+                // zero balance change should not be recorded
+                Assert.That(toBalanceChanges, Is.Empty);
+
+                Assert.That(beneficiaryBalanceChanges, Has.Count.EqualTo(1));
+                Assert.That(beneficiaryBalanceChanges[0].PostBalance, Is.EqualTo(new UInt256(GasCostOf.Transaction)));
             }
-
-            // zero balance change should not be recorded
-            List<BalanceChange> toBalanceChanges = accountChanges[TestItem.AddressB].BalanceChanges;
-            Assert.That(toBalanceChanges, Is.Empty);
-
-            List<BalanceChange> beneficiaryBalanceChanges = accountChanges[TestItem.AddressC].BalanceChanges;
-            Assert.That(beneficiaryBalanceChanges, Has.Count.EqualTo(1));
-            Assert.That(beneficiaryBalanceChanges[0].PostBalance, Is.EqualTo(new UInt256(GasCostOf.Transaction)));
         }
     }
 }
