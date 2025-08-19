@@ -57,7 +57,6 @@ public class OverridableEnvFactory(IWorldStateManager worldStateManager, Func<IC
 
         private void Reset()
         {
-            overridableScope.WorldState.Reset();
             codeInfoRepository.ResetOverrides();
 
             _worldScopeCloser?.Dispose();

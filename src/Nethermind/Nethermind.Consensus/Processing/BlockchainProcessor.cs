@@ -78,6 +78,7 @@ public sealed class BlockchainProcessor : IBlockchainProcessor, IBlockProcessing
     private readonly Stopwatch _stopwatch = new();
 
     public event EventHandler<IBlockchainProcessor.InvalidBlockEventArgs>? InvalidBlock;
+    public event EventHandler<BlockStatistics>? NewProcessingStatistics;
 
     /// <summary>
     ///
@@ -105,7 +106,11 @@ public sealed class BlockchainProcessor : IBlockchainProcessor, IBlockProcessing
 
         _stats = new ProcessingStats(stateReader, logManager.GetClassLogger<ProcessingStats>());
         _loopCancellationSource = new CancellationTokenSource();
+        _stats.NewProcessingStatistics += OnNewProcessingStatistics;
     }
+
+    private void OnNewProcessingStatistics(object? sender, BlockStatistics stats)
+        => NewProcessingStatistics?.Invoke(sender, stats);
 
     private void OnNewHeadBlock(object? sender, BlockEventArgs e)
     {
@@ -865,6 +870,9 @@ public sealed class BlockchainProcessor : IBlockchainProcessor, IBlockProcessing
 
     public async ValueTask DisposeAsync()
     {
+        _stats.NewProcessingStatistics -= OnNewProcessingStatistics;
+        _blockTree.NewBestSuggestedBlock -= OnNewBestBlock;
+        _blockTree.NewHeadBlock -= OnNewHeadBlock;
         await StopAsync(processRemainingBlocks: false);
     }
 

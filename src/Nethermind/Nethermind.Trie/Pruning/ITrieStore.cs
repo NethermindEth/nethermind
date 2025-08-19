@@ -15,6 +15,8 @@ namespace Nethermind.Trie.Pruning
     {
         bool HasRoot(Hash256 stateRoot);
 
+        IDisposable BeginScope(BlockHeader? baseBlock);
+
         IScopedTrieStore GetTrieStore(Hash256? address);
 
         /// <summary>
@@ -40,12 +42,16 @@ namespace Nethermind.Trie.Pruning
     {
         public void PersistCache(CancellationToken cancellationToken);
 
-        IReadOnlyTrieStore AsReadOnly(INodeStorage? keyValueStore = null);
+        IReadOnlyTrieStore AsReadOnly();
 
         event EventHandler<ReorgBoundaryReached>? ReorgBoundaryReached;
 
         // Used for serving via hash
         IReadOnlyKeyValueStore TrieNodeRlpStore { get; }
+
+        // Acquire lock, then persist and flush cache.
+        // Used for full pruning operation that change underlying node storage.
+        TrieStore.StableLockScope PrepareStableState(CancellationToken cancellationToken);
     }
 
     /// <summary>

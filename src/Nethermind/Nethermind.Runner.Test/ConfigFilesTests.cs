@@ -249,10 +249,11 @@ public class ConfigFilesTests : ConfigFileTestsBase
         Test<IBloomConfig, bool>(configWildcard, static c => c.MigrationStatistics, false);
     }
 
-    [TestCase("^mainnet ^sepolia", 0)]
-    [TestCase("mainnet fast", 15537394L)]
-    [TestCase("sepolia ^archive", 1450409)]
-    [TestCase("archive", 0)]
+    [TestCase("^mainnet ^gnosis ^sepolia", 0L)]
+    [TestCase("mainnet ^archive", 15537394L)]
+    [TestCase("gnosis ^archive", 25349537L)]
+    [TestCase("sepolia ^archive", 1450409L)]
+    [TestCase("archive", 0L)]
     public void Barriers_defaults_are_correct(string configWildcard, long barrier)
     {
         Test<ISyncConfig, long>(configWildcard, static c => c.AncientBodiesBarrier, barrier);

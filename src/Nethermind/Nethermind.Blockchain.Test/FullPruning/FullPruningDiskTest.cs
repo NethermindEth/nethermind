@@ -20,7 +20,6 @@ using Nethermind.Core.Test.IO;
 using Nethermind.Db;
 using Nethermind.Db.FullPruning;
 using Nethermind.Db.Rocks;
-using Nethermind.Db.Rocks.Config;
 using Nethermind.Init;
 using Nethermind.Logging;
 using Nethermind.State;
@@ -76,13 +75,19 @@ public class FullPruningDiskTest
             return chain;
         }
 
-        protected override ContainerBuilder ConfigureContainer(ContainerBuilder builder, IConfigProvider configProvider) =>
+        protected override ContainerBuilder
+            ConfigureContainer(ContainerBuilder builder, IConfigProvider configProvider) =>
             // Reenable rocksdb
             base.ConfigureContainer(builder, configProvider)
                 .AddSingleton<IDbFactory, RocksDbFactory>()
                 .Intercept<IInitConfig>((initConfig) =>
                 {
                     initConfig.BaseDbPath = TempDirectory.Path;
+                })
+                .Intercept<IPruningConfig>((pruningConfig) =>
+                {
+                    // Make test faster otherwise it may potentially buffer 128 block.
+                    pruningConfig.MaxBufferedCommitCount = 1;
                 });
 
         public override void Dispose()

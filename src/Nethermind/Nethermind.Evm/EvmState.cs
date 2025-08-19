@@ -269,7 +269,7 @@ public sealed class EvmState : IDisposable // TODO: rename to CallState
     {
         if (!_isDisposed)
         {
-            throw new InvalidOperationException($"{nameof(EvmState)} hasn't been disposed. Created {_creationStackTrace}");
+            Console.Error.WriteLine($"Warning: {nameof(EvmState)} was not disposed. Created at: {_creationStackTrace}");
         }
     }
 #endif

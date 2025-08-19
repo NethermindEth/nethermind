@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using Nethermind.Blockchain;
 using Nethermind.Core;
 using Nethermind.Core.Extensions;
@@ -26,6 +27,7 @@ public class TransactionProcessorEip7623Tests
     private IEthereumEcdsa _ethereumEcdsa;
     private ITransactionProcessor _transactionProcessor;
     private IWorldState _stateProvider;
+    private IDisposable _worldStateCloser;
 
     [SetUp]
     public void Setup()
@@ -33,14 +35,21 @@ public class TransactionProcessorEip7623Tests
         _specProvider = new TestSpecProvider(Prague.Instance);
         IWorldStateManager worldStateManager = TestWorldStateFactory.CreateForTest();
         _stateProvider = worldStateManager.GlobalWorldState;
+        _worldStateCloser = _stateProvider.BeginScope(IWorldState.PreGenesis);
         EthereumCodeInfoRepository codeInfoRepository = new();
         VirtualMachine virtualMachine = new(new TestBlockhashProvider(_specProvider), _specProvider, LimboLogs.Instance);
         _transactionProcessor = new TransactionProcessor(_specProvider, _stateProvider, virtualMachine, codeInfoRepository, LimboLogs.Instance);
         _ethereumEcdsa = new EthereumEcdsa(_specProvider.ChainId);
     }
 
-    [TestCase(21006, false, TestName = "GasLimit=IntrinsicGas")]
-    [TestCase(21010, true, TestName = "GasLimit=FloorGas")]
+    [TearDown]
+    public void TearDown()
+    {
+        _worldStateCloser?.Dispose();
+    }
+
+    [TestCase(21006, true, TestName = "GasLimit=IntrinsicGas")]
+    [TestCase(21010, false, TestName = "GasLimit=FloorGas")]
 
     public void transaction_validation_intrinsic_below_floor(long gasLimit, bool executed)
     {
