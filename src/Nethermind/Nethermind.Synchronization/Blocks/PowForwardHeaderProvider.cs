@@ -257,7 +257,7 @@ public class PowForwardHeaderProvider(
         {
             if (cancellation.IsCancellationRequested)
             {
-                if (_logger.IsTrace) _logger.Trace("Returning fom seal validation");
+                if (_logger.IsTrace) _logger.Trace("Returning from seal validation");
                 state.Stop();
                 return;
             }

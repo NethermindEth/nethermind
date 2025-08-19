@@ -82,7 +82,7 @@ public static class TxErrorMessages
         "InvalidBlobCommitmentHash: Commitment hash does not match.";
 
     public static string TxGasLimitCapExceeded(long gasLimit, long gasLimitCap)
-        => $"TxGasLimitCapExceeded: Gas limit {gasLimit} exceeed cap of {gasLimitCap}.";
+        => $"TxGasLimitCapExceeded: Gas limit {gasLimit} exceeds cap of {gasLimitCap}.";
 
     public const string InvalidCreateTxData
         = "InvalidCreateTxData: Legacy createTx cannot create Eof code";

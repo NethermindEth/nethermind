@@ -1117,8 +1117,8 @@ public sealed unsafe partial class VirtualMachine(
 
         // Dispatch the bytecode interpreter.
         // The second generic parameter is selected based on whether the transaction tracer is cancelable:
-        // - OffFlag is used when cancelation is not needed.
-        // - OnFlag is used when cancelation is enabled.
+        // - OffFlag is used when cancellation is not needed.
+        // - OnFlag is used when cancellation is enabled.
         // This leverages the compile-time evaluation of TTracingInst to optimize away runtime checks.
         return _txTracer.IsCancelable switch
         {

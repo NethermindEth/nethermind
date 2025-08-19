@@ -492,9 +492,9 @@ namespace Nethermind.Synchronization.SnapSync
                 int totalPathProgress = 0;
                 foreach (KeyValuePair<ValueHash256, AccountRangePartition> kv in AccountRangePartitions)
                 {
-                    AccountRangePartition? partiton = kv.Value;
-                    int nextAccount = partiton.NextAccountPath.Bytes[0] * 256 + partiton.NextAccountPath.Bytes[1];
-                    int startAccount = partiton.AccountPathStart.Bytes[0] * 256 + partiton.AccountPathStart.Bytes[1];
+                    AccountRangePartition? partition = kv.Value;
+                    int nextAccount = partition.NextAccountPath.Bytes[0] * 256 + partition.NextAccountPath.Bytes[1];
+                    int startAccount = partition.AccountPathStart.Bytes[0] * 256 + partition.AccountPathStart.Bytes[1];
                     totalPathProgress += nextAccount - startAccount;
                 }
 
@@ -528,7 +528,7 @@ namespace Nethermind.Synchronization.SnapSync
                         else
                         {
                             double totalAllLargeStorageProgress = 0;
-                            // totalLargeStorage changes over time, but thats fine.
+                            // totalLargeStorage changes over time, but that's fine.
                             double totalLargeStorage = queuedStorage;
                             foreach (var keyValuePair in _largeStorageProgress)
                             {

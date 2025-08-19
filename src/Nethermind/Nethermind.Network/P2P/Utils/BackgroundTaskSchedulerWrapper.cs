@@ -36,16 +36,16 @@ public class BackgroundTaskSchedulerWrapper(ProtocolHandlerBase handler, IBackgr
 
     // I just don't want to create a closure.. so this happens.
     private async ValueTask BackgroundSyncSender<TReq, TRes>(
-        (TReq Request, Func<TReq, CancellationToken, Task<TRes>> FullfillFunc) input, CancellationToken cancellationToken) where TRes : P2PMessage
+        (TReq Request, Func<TReq, CancellationToken, Task<TRes>> FulfillFunc) input, CancellationToken cancellationToken) where TRes : P2PMessage
     {
-        TRes response = await input.FullfillFunc.Invoke(input.Request, cancellationToken);
+        TRes response = await input.FulfillFunc.Invoke(input.Request, cancellationToken);
         handler.Send(response);
     }
 
     private async ValueTask BackgroundSyncSenderValueTask<TReq, TRes>(
-        (TReq Request, Func<TReq, CancellationToken, ValueTask<TRes>> FullfillFunc) input, CancellationToken cancellationToken) where TRes : P2PMessage
+        (TReq Request, Func<TReq, CancellationToken, ValueTask<TRes>> FulfillFunc) input, CancellationToken cancellationToken) where TRes : P2PMessage
     {
-        TRes response = await input.FullfillFunc.Invoke(input.Request, cancellationToken);
+        TRes response = await input.FulfillFunc.Invoke(input.Request, cancellationToken);
         handler.Send(response);
     }
 

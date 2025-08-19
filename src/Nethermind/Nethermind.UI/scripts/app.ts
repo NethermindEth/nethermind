@@ -246,7 +246,7 @@ sse.addEventListener("forkChoice", (e) => {
   const number = parseInt(data.head.number, 16);
   if (!setActiveBlock && number !== 0) {
     setActiveBlock = true;
-    document.getElementById("lastestBlock").classList.remove("not-active");
+    document.getElementById("latestBlock").classList.remove("not-active");
     setTimeout(resize, 10);
   }
   const safe = parseInt(data.safe, 16);
