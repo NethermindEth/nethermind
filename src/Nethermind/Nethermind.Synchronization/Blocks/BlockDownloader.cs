@@ -128,7 +128,7 @@ namespace Nethermind.Synchronization.Blocks
             }
             catch (Exception ex)
             {
-                if (_logger.IsError) _logger.Error($"Unhandled exception in {nameof(BlockDownloader)}: {ex}");
+                if (_logger.IsDebug) _logger.Error($"DEBUG/ERROR Unhandled exception in {nameof(BlockDownloader)}: {ex}");
 #if DEBUG
                 throw;
 #else
