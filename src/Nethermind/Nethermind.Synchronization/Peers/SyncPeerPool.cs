@@ -318,6 +318,11 @@ namespace Nethermind.Synchronization.Peers
             int timeoutMilliseconds = 0,
             CancellationToken cancellationToken = default)
         {
+            if (cancellationToken.IsCancellationRequested)
+            {
+                return SyncPeerAllocation.FailedAllocation;
+            }
+
             int tryCount = 1;
             long timeStamp = Stopwatch.GetTimestamp();
 
