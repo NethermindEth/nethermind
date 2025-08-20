@@ -31,10 +31,11 @@ public interface ILogIndexStorage : IAsyncDisposable, IStoppableService
 {
     int? GetMaxBlockNumber();
     int? GetMinBlockNumber();
-    IEnumerable<int> GetBlockNumbersFor(Address address, int from, int to);
-    Task FirstBlockAdded { get; }
 
-    IEnumerable<int> GetBlockNumbersFor(Hash256 topic, int from, int to);
+    List<int> GetBlockNumbersFor(Address address, int from, int to);
+    List<int> GetBlockNumbersFor(Hash256 topic, int from, int to);
+
+    Task FirstBlockAdded { get; }
     Task CheckMigratedData();
 
     LogIndexAggregate Aggregate(IReadOnlyList<BlockReceipts> batch, bool isBackwardSync, LogIndexUpdateStats? stats = null);

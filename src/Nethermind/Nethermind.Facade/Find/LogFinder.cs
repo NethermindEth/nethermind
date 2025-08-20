@@ -264,9 +264,9 @@ namespace Nethermind.Facade.Find
                 .ForAll(x =>
                 {
                     if (x is Address addr)
-                        byAddress![addr] = _logIndexStorage.GetBlockNumbersFor(addr, (int)fromBlock, (int)toBlock).ToList();
+                        byAddress![addr] = _logIndexStorage.GetBlockNumbersFor(addr, (int)fromBlock, (int)toBlock);
                     if (x is Hash256 tpc)
-                        byTopic![tpc] = _logIndexStorage.GetBlockNumbersFor(tpc, (int)fromBlock, (int)toBlock).ToList();
+                        byTopic![tpc] = _logIndexStorage.GetBlockNumbersFor(tpc, (int)fromBlock, (int)toBlock);
                 });
 
             if (byTopic is null)

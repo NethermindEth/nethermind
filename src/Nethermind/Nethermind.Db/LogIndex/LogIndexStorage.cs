@@ -246,17 +246,18 @@ namespace Nethermind.Db
             ? Math.Max(addressMinBlock, topicMinBlock)
             : null;
 
-        public IEnumerable<int> GetBlockNumbersFor(Address address, int from, int to)
+        // TODO: use ArrayPoolList?
+        public List<int> GetBlockNumbersFor(Address address, int from, int to)
         {
             return GetBlockNumbersFor(_addressDb, address.Bytes, from, to);
         }
 
-        public IEnumerable<int> GetBlockNumbersFor(Hash256 topic, int from, int to)
+        public List<int> GetBlockNumbersFor(Hash256 topic, int from, int to)
         {
             return GetBlockNumbersFor(_topicsDb, topic.Bytes.ToArray(), from, to);
         }
 
-        private IEnumerable<int> GetBlockNumbersFor(IDb db, byte[] keyPrefix, int from, int to)
+        private List<int> GetBlockNumbersFor(IDb db, byte[] keyPrefix, int from, int to)
         {
             static bool IsInKeyBounds(IIterator<byte[], byte[]> iterator, byte[] key)
             {
@@ -266,11 +267,13 @@ namespace Nethermind.Db
             var timestamp = Stopwatch.GetTimestamp();
             byte[] dbKeyBuffer = null;
 
+            var result = new List<int>();
+
             try
             {
                 // Adjust parameters to avoid composing invalid lookup keys
                 if (from < 0) from = 0;
-                if (to < from) yield break;
+                if (to < from) return result;
 
                 var dbKeyLength = keyPrefix.Length + BlockNumSize;
                 dbKeyBuffer = _arrayPool.Rent(dbKeyLength);
@@ -297,19 +300,20 @@ namespace Nethermind.Db
                     foreach (var block in EnumerateBlockNumbers(value, from))
                     {
                         if (block > to)
-                            yield break;
+                            return result;
 
-                        yield return block;
+                        result.Add(block);
                     }
 
                     iterator.Next();
                 }
+
+                return result;
             }
             finally
             {
                 if (dbKeyBuffer != null) _arrayPool.Return(dbKeyBuffer);
 
-                // TODO: log in Debug
                 if (_logger.IsTrace) _logger.Trace($"GetBlockNumbersFor({Convert.ToHexString(keyPrefix)}, {from}, {to}) in {Stopwatch.GetElapsedTime(timestamp)}");
             }
         }
