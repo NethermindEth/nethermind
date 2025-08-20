@@ -261,7 +261,7 @@ namespace Nethermind.Db
         {
             static bool IsInKeyBounds(IIterator<byte[], byte[]> iterator, byte[] key)
             {
-                return iterator.Valid() && iterator.Key().AsSpan()[..key.Length].SequenceEqual(key);
+                return iterator.Valid() && iterator.Key().AsSpan().StartsWith(key);
             }
 
             var timestamp = Stopwatch.GetTimestamp();

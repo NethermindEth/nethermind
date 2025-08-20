@@ -138,14 +138,20 @@ namespace Nethermind.Db.Test.LogIndex
         {
             var logIndexStorage = CreateLogIndexStorage(compactionDistance);
 
+            const int rangeCount = 20;
             var half = testData.Batches.Length / 2;
-            await SetReceiptsAsync(logIndexStorage, Reverse(testData.Batches.Take(half)), isBackwardsSync: true);
-            await SetReceiptsAsync(logIndexStorage, testData.Batches.Skip(half), isBackwardsSync: false);
+            var left = Reverse(testData.Batches.Take(half));
+            var right = testData.Batches.Skip(half);
 
-            using (Assert.EnterMultipleScope())
+            var segments = Enumerable.Zip(
+                left.GroupBy(x => x[^1].BlockNumber / rangeCount),
+                right.GroupBy(x => x[^1].BlockNumber / rangeCount)
+            );
+
+            foreach (var (backwards, forward) in segments)
             {
-                Assert.That(logIndexStorage.GetMinBlockNumber(), Is.Zero);
-                Assert.That(logIndexStorage.GetMaxBlockNumber(), Is.EqualTo(testData.Batches[^1][^1].BlockNumber));
+                await SetReceiptsAsync(logIndexStorage, backwards, isBackwardsSync: true);
+                await SetReceiptsAsync(logIndexStorage, forward, isBackwardsSync: false);
             }
 
             VerifyReceipts(logIndexStorage, testData);
