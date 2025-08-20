@@ -13,16 +13,32 @@ namespace Ethereum.Blockchain.Block.Test
     [Parallelizable(ParallelScope.All)]
     public class StateTests : BlockchainTestBase
     {
-        [Todo(Improve.TestCoverage, "SuicideStorage tests")]
         [TestCaseSource(nameof(LoadTests)), Retry(3)]
         public async Task Test(BlockchainTest test)
         {
+            if (test?.Name is not null && test.Name.Contains("SuicideStorage"))
+            {
+                Assert.Ignore("Covered by dedicated SuicideStorage tests");
+            }
+
             await RunTest(test);
         }
 
         public static IEnumerable<BlockchainTest> LoadTests()
         {
             var loader = new TestsSourceLoader(new LoadBlockchainTestsStrategy(), "bcStateTests");
+            return loader.LoadTests<BlockchainTest>();
+        }
+
+        [TestCaseSource(nameof(LoadSuicideStorageTests)), Retry(3)]
+        public async Task SuicideStorage_Tests(BlockchainTest test)
+        {
+            await RunTest(test);
+        }
+
+        public static IEnumerable<BlockchainTest> LoadSuicideStorageTests()
+        {
+            var loader = new TestsSourceLoader(new LoadBlockchainTestsStrategy(), "bcStateTests", "SuicideStorage");
             return loader.LoadTests<BlockchainTest>();
         }
     }
