@@ -187,6 +187,7 @@ jobs:
             --el-op-extra-flag "Seq.ApiKey=${{ secrets.SEQ_API_KEY }}" \
             --el-op-extra-flag Seq.MinLevel=Info \
             --el-op-extra-flag "Metrics.PushGatewayUrl=${{ secrets.GRAFANA_CONNECTION_STRING }}"
+            --el-op-extra-flag Blocks.PreWarmStateOnBlockProcessing=false
           )
           L2_METRICS_FLAGS=(
             --el-l2-extra-flag "Metrics.NodeName=${node_name}" \
