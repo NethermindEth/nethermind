@@ -82,7 +82,7 @@ public sealed class LogIndexService : ILogIndexService
         _backwardProgressLogger = new(GetLogPrefix(isForward: false), logManager);
 
         _pivotTask = _pivotSource.Task;
-        if (_logIndexStorage.GetMaxBlockNumber() is {} maxNumber)
+        if (_logIndexStorage.GetMaxBlockNumber() is { } maxNumber)
             _pivotSource.TrySetResult(maxNumber);
     }
 
@@ -104,6 +104,7 @@ public sealed class LogIndexService : ILogIndexService
             _progressLoggerTimer.Start();
 
             _queueForwardBlocksTask = Task.Run(() => DoQueueBlocks(isForward: true), CancellationToken);
+            // TODO: log and don't start backward sync if old receipts download is disabled
             _queueBackwardBlocksTask = Task.Run(() => DoQueueBlocks(isForward: false), CancellationToken);
             _processTask = Task.Run(DoProcess, CancellationToken);
         }

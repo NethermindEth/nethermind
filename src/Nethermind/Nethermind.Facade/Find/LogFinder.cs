@@ -195,6 +195,7 @@ namespace Nethermind.Facade.Find
                 .SelectMany(blockNumber => FindLogsInBlock(filter, FindBlockHash(blockNumber, cancellationToken), blockNumber, cancellationToken));
         }
 
+        // TODO: Do not use for single block after testing - scanning it will be usually faster
         private (int from, int to)? CanUseLogIndex(LogFilter filter, BlockHeader fromBlock, BlockHeader toBlock)
         {
             if (!filter.UseIndex || _logIndexStorage == null || filter.AcceptsAnyBlock)
