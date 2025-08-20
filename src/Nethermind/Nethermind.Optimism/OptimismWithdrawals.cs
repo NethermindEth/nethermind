@@ -36,7 +36,7 @@ public class OptimismWithdrawalProcessor : IWithdrawalProcessor
 
         if (_specHelper.IsIsthmus(header))
         {
-            _state.Commit(spec, commitRoots: true);
+            //_state.Commit(spec, commitRoots: true);
 
             if (_state.TryGetAccount(PreDeploys.L2ToL1MessagePasser, out var account))
             {
