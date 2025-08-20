@@ -44,7 +44,6 @@ namespace Nethermind.Db.Test.LogIndex
             new(new TestData(100, 200)) { RunState = RunState.Explicit }
         ];
 
-        private ILogger _logger;
         private string _dbPath = null!;
         private IDbFactory _dbFactory = null!;
         private readonly List<ILogIndexStorage> _createdStorages = [];
@@ -59,7 +58,6 @@ namespace Nethermind.Db.Test.LogIndex
         [SetUp]
         public void Setup()
         {
-            _logger = LimboLogs.Instance.GetClassLogger();
             _dbPath = $"{nameof(LogIndexStorageComplexTests)}/{Guid.NewGuid():N}";
 
             if (Directory.Exists(_dbPath))
@@ -138,20 +136,15 @@ namespace Nethermind.Db.Test.LogIndex
         {
             var logIndexStorage = CreateLogIndexStorage(compactionDistance);
 
-            const int rangeCount = 20;
-            var half = testData.Batches.Length / 2;
-            var left = Reverse(testData.Batches.Take(half));
-            var right = testData.Batches.Skip(half);
+            var batches = testData.Batches;
+            var half = batches.Length / 2;
 
-            var segments = Enumerable.Zip(
-                left.GroupBy(x => x[^1].BlockNumber / rangeCount),
-                right.GroupBy(x => x[^1].BlockNumber / rangeCount)
-            );
-
-            foreach (var (backwards, forward) in segments)
+            for (var i = 0; i < half + 1; i++)
             {
-                await SetReceiptsAsync(logIndexStorage, backwards, isBackwardsSync: true);
-                await SetReceiptsAsync(logIndexStorage, forward, isBackwardsSync: false);
+                if (half - i >= 0)
+                    await SetReceiptsAsync(logIndexStorage, Reverse([batches[half - i]]), isBackwardsSync: true);
+                if (half + i < batches.Length)
+                    await SetReceiptsAsync(logIndexStorage, [batches[half + i]], isBackwardsSync: false);
             }
 
             VerifyReceipts(logIndexStorage, testData);
