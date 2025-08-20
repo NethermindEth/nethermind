@@ -35,6 +35,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Blockchain.Tracing;
 using Nethermind.State;
+using Nethermind.Evm;
 
 namespace Nethermind.Blockchain.Test;
 
@@ -46,10 +47,12 @@ public class BlockProcessorTests
         IWorldStateManager worldStateManager = TestWorldStateFactory.CreateForTest();
         IWorldState stateProvider = worldStateManager.GlobalWorldState;
         ITransactionProcessor transactionProcessor = Substitute.For<ITransactionProcessor>();
+        IVirtualMachine virtualMachine = Substitute.For<IVirtualMachine>();
+        ICodeInfoRepository codeInfoRepository = Substitute.For<ICodeInfoRepository>();
         BlockProcessor processor = new BlockProcessor(HoleskySpecProvider.Instance,
             TestBlockValidator.AlwaysValid,
             NoBlockRewards.Instance,
-            new BlockProcessor.BlockValidationTransactionsExecutor(new ExecuteTransactionProcessorAdapter(transactionProcessor), stateProvider),
+            new BlockProcessor.BlockValidationTransactionsExecutor(HoleskySpecProvider.Instance, virtualMachine, codeInfoRepository, stateProvider, LimboLogs.Instance),
             stateProvider,
             NullReceiptStorage.Instance,
             new BeaconBlockRootHandler(transactionProcessor, stateProvider),
@@ -81,11 +84,13 @@ public class BlockProcessorTests
         IWorldStateManager worldStateManager = TestWorldStateFactory.CreateForTest();
         IWorldState stateProvider = worldStateManager.GlobalWorldState;
         ITransactionProcessor transactionProcessor = Substitute.For<ITransactionProcessor>();
+        IVirtualMachine virtualMachine = Substitute.For<IVirtualMachine>();
+        ICodeInfoRepository codeInfoRepository = Substitute.For<ICodeInfoRepository>();
         BlockProcessor processor = new BlockProcessor(
             HoleskySpecProvider.Instance,
             TestBlockValidator.AlwaysValid,
             new RewardCalculator(MainnetSpecProvider.Instance),
-            new BlockProcessor.BlockValidationTransactionsExecutor(new ExecuteTransactionProcessorAdapter(transactionProcessor), stateProvider),
+            new BlockProcessor.BlockValidationTransactionsExecutor(HoleskySpecProvider.Instance, virtualMachine, codeInfoRepository, stateProvider, LimboLogs.Instance),
             stateProvider,
             NullReceiptStorage.Instance,
             new BeaconBlockRootHandler(transactionProcessor, stateProvider),

@@ -104,7 +104,7 @@ namespace Nethermind.Init.Steps
                     preBlockCaches)
                 : null;
 
-            IBlockProcessor mainBlockProcessor = CreateBlockProcessor(preWarmer, transactionProcessor, mainWorldState);
+            IBlockProcessor mainBlockProcessor = CreateBlockProcessor(preWarmer, transactionProcessor, virtualMachine, codeInfoRepository, mainWorldState);
             IBranchProcessor mainBranchProcessor = new BranchProcessor(
                 mainBlockProcessor,
                 _api.SpecProvider!,
@@ -232,6 +232,8 @@ namespace Nethermind.Init.Steps
         protected virtual IBlockProcessor CreateBlockProcessor(
             BlockCachePreWarmer? preWarmer,
             ITransactionProcessor transactionProcessor,
+            IVirtualMachine virtualMachine,
+            ICodeInfoRepository codeInfoRepository,
             IWorldState worldState)
         {
             if (_api.RewardCalculatorSource is null) throw new StepDependencyException(nameof(_api.RewardCalculatorSource));
@@ -242,7 +244,7 @@ namespace Nethermind.Init.Steps
             return new BlockProcessor(_api.SpecProvider,
                 _api.BlockValidator,
                 _api.RewardCalculatorSource.Get(transactionProcessor),
-                new BlockProcessor.BlockValidationTransactionsExecutor(new ExecuteTransactionProcessorAdapter(transactionProcessor), worldState),
+                new BlockProcessor.BlockValidationTransactionsExecutor(_api.SpecProvider, virtualMachine, codeInfoRepository, worldState, _api.LogManager),
                 worldState,
                 _api.ReceiptStorage!,
                 new BeaconBlockRootHandler(transactionProcessor, worldState),
