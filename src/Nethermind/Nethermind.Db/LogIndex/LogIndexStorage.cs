@@ -789,7 +789,10 @@ namespace Nethermind.Db
             if (len < 0)
                 throw new ValidationException("Data is not compressed");
 
-            var buffer = new int[len]; // TODO: reuse buffer
+            // TODO: reuse buffer
+            ReadOnlySpan<int> buffer = new int[len + 1]; // +1 fixes TurboPFor reading outside of array bounds
+            buffer = buffer[..^1];
+
             var result = Decompress(data[BlockNumSize..], buffer);
             return result.ToArray();
         }
