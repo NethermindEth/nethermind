@@ -671,7 +671,7 @@ public partial class BlockDownloaderTests
             return true;
         }
 
-        public bool ValidateSuggestedBlock(Block block, [NotNullWhen(false)] out string? error, bool validateHashes = true)
+        public bool ValidateSuggestedBlock(Block block, BlockHeader? parent, [NotNullWhen(false)] out string? error, bool validateHashes = true)
         {
             Thread.Sleep(1000);
             error = null;

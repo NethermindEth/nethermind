@@ -195,7 +195,7 @@ namespace Nethermind.Synchronization.Blocks
                     BlockEntry entry = satisfiedEntry[blockIndex];
                     Block currentBlock = entry.Block!;
 
-                    if (!_blockValidator.ValidateSuggestedBlock(currentBlock, out string? errorMessage))
+                    if (!_blockValidator.ValidateSuggestedBlock(currentBlock, entry.ParentHeader, out string? errorMessage))
                     {
                         PeerInfo peer = entry.PeerInfo;
                         if (_logger.IsWarn) _logger.Warn($"Invalid downloaded block from {peer}, {errorMessage}");
