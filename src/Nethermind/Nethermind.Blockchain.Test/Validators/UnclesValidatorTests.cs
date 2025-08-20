@@ -26,7 +26,7 @@ public class UnclesValidatorTests
     public void Setup()
     {
         _headerValidator = Substitute.For<IHeaderValidator>();
-        _headerValidator.Validate(Arg.Any<BlockHeader>(), true).Returns(true);
+        _headerValidator.Validate(Arg.Any<BlockHeader>(), Arg.Any<BlockHeader>(), true).Returns(true);
     }
 
     public UnclesValidatorTests()
@@ -49,7 +49,7 @@ public class UnclesValidatorTests
         BlockHeader[] uncles = GetValidUncles(3);
 
         UnclesValidator unclesValidator = new(_blockTree, _headerValidator, LimboLogs.Instance);
-        Assert.That(unclesValidator.Validate(Build.A.BlockHeader.TestObject, uncles), Is.False);
+        Assert.That(unclesValidator.Validate(Build.A.BlockHeader.TestObject, Build.A.BlockHeader.TestObject, uncles), Is.False);
     }
 
     [Test, MaxTime(Timeout.MaxTestTime)]
@@ -59,7 +59,7 @@ public class UnclesValidatorTests
         uncles[0] = _block.Header;
 
         UnclesValidator unclesValidator = new(_blockTree, _headerValidator, LimboLogs.Instance);
-        Assert.That(unclesValidator.Validate(_block.Header, uncles), Is.False);
+        Assert.That(unclesValidator.Validate(_block.Header, _parent.Header, uncles), Is.False);
     }
 
     [Test, MaxTime(Timeout.MaxTestTime)]
@@ -70,7 +70,7 @@ public class UnclesValidatorTests
         uncles[0].Number = _block.Number;
 
         UnclesValidator unclesValidator = new(_blockTree, _headerValidator, LimboLogs.Instance);
-        Assert.That(unclesValidator.Validate(_block.Header, uncles), Is.False);
+        Assert.That(unclesValidator.Validate(_block.Header, _parent.Header, uncles), Is.False);
     }
 
     [Test, MaxTime(Timeout.MaxTestTime)]
@@ -78,14 +78,14 @@ public class UnclesValidatorTests
     {
         BlockHeader[] uncles = [_parent.Header];
         UnclesValidator unclesValidator = new(_blockTree, _headerValidator, LimboLogs.Instance);
-        Assert.That(unclesValidator.Validate(_block.Header, uncles), Is.False);
+        Assert.That(unclesValidator.Validate(_block.Header, _parent.Header, uncles), Is.False);
     }
 
     [Test, MaxTime(Timeout.MaxTestTime)]
     public void When_uncle_was_already_included_return_false()
     {
         UnclesValidator unclesValidator = new(_blockTree, _headerValidator, LimboLogs.Instance);
-        Assert.That(unclesValidator.Validate(_block.Header, [_duplicateUncle.Header]), Is.False);
+        Assert.That(unclesValidator.Validate(_block.Header, _parent.Header, [_duplicateUncle.Header]), Is.False);
     }
 
     private BlockHeader[] GetValidUncles(int count)
@@ -105,7 +105,7 @@ public class UnclesValidatorTests
         BlockHeader[] uncles = GetValidUncles(1);
 
         UnclesValidator unclesValidator = new(_blockTree, _headerValidator, LimboLogs.Instance);
-        Assert.That(unclesValidator.Validate(_block.Header, uncles));
+        Assert.That(unclesValidator.Validate(_block.Header, _parent.Header, uncles));
     }
 
     [Test, MaxTime(Timeout.MaxTestTime)]
@@ -116,7 +116,7 @@ public class UnclesValidatorTests
         uncles[0].ParentHash = _grandgrandparent.Hash;
 
         UnclesValidator unclesValidator = new(_blockTree, _headerValidator, LimboLogs.Instance);
-        Assert.That(unclesValidator.Validate(_block.Header, uncles), Is.True);
+        Assert.That(unclesValidator.Validate(_block.Header, _parent.Header, uncles), Is.True);
     }
 
     [Test, MaxTime(Timeout.MaxTestTime)]
@@ -125,7 +125,7 @@ public class UnclesValidatorTests
         BlockHeader[] uncles = GetValidUncles(1).Union(GetValidUncles(1)).ToArray();
 
         UnclesValidator unclesValidator = new(_blockTree, _headerValidator, LimboLogs.Instance);
-        Assert.That(unclesValidator.Validate(_block.Header, uncles), Is.False);
+        Assert.That(unclesValidator.Validate(_block.Header, _parent.Header, uncles), Is.False);
     }
 
     [Test, MaxTime(Timeout.MaxTestTime)] // because we decided to store the head block at 0x00..., eh
@@ -134,6 +134,6 @@ public class UnclesValidatorTests
         Block falseUncle = Build.A.Block.WithParent(Build.A.Block.WithDifficulty(123).TestObject).TestObject;
         Block toValidate = Build.A.Block.WithParent(_parent).WithUncles(falseUncle).TestObject;
         UnclesValidator unclesValidator = new(_blockTree, _headerValidator, LimboLogs.Instance);
-        Assert.That(unclesValidator.Validate(toValidate.Header, toValidate.Uncles), Is.False);
+        Assert.That(unclesValidator.Validate(toValidate.Header, _parent.Header, toValidate.Uncles), Is.False);
     }
 }

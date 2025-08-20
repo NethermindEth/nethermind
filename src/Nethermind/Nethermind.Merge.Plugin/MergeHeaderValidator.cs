@@ -49,12 +49,6 @@ namespace Nethermind.Merge.Plugin
                 : ValidatePoWTotalDifficulty(header) && _preMergeHeaderValidator.Validate(header, parent, isUncle, out error);
         }
 
-        public override bool Validate(BlockHeader header, bool isUncle, out string? error) =>
-            Validate(header, _blockTree.FindParentHeader(header, BlockTreeLookupOptions.None), isUncle, out error);
-
-        public override bool Validate(BlockHeader header, bool isUncle = false) =>
-            Validate(header, _blockTree.FindParentHeader(header, BlockTreeLookupOptions.None), isUncle);
-
         protected override bool ValidateTotalDifficulty(BlockHeader parent, BlockHeader header, ref string? error) =>
             _poSSwitcher.IsPostMerge(header) || base.ValidateTotalDifficulty(parent, header, ref error);
 

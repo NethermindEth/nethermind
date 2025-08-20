@@ -53,9 +53,11 @@ public class OptimismBlockValidatorTests
         specHelper.IsIsthmus(Arg.Any<BlockHeader>()).Returns(timestamp >= Spec.IsthmusTimeStamp);
         specHelper.IsCanyon(Arg.Any<BlockHeader>()).Returns(timestamp >= Spec.CanyonTimestamp);
 
+        var parentBlock = Build.A.BlockHeader.TestObject;
         var block = Build.A.Block
             .WithWithdrawals(timestamp >= Spec.IsthmusTimeStamp ? [] : null)
             .WithHeader(Build.A.BlockHeader
+                .WithParent(parentBlock)
                 .WithTimestamp(timestamp)
                 .WithWithdrawalsRoot(withdrawalsRoot)
                 .TestObject)
@@ -69,7 +71,7 @@ public class OptimismBlockValidatorTests
             specHelper,
             TestLogManager.Instance);
 
-        var result = validator.ValidateSuggestedBlock(block, out string? error);
+        var result = validator.ValidateSuggestedBlock(block, parentBlock, out string? error);
 
         result.Should().Be(isValid);
         if (!isValid)
@@ -96,9 +98,11 @@ public class OptimismBlockValidatorTests
         specHelper.IsIsthmus(Arg.Any<BlockHeader>()).Returns(true);
         specHelper.IsCanyon(Arg.Any<BlockHeader>()).Returns(true);
 
+        var parentBlock = Build.A.BlockHeader.TestObject;
         var block = Build.A.Block
             .WithWithdrawals(withdrawals)
             .WithHeader(Build.A.BlockHeader
+                .WithParent(parentBlock)
                 .WithTimestamp(Spec.IsthmusTimeStamp)
                 .WithWithdrawalsRoot(TestWithdrawalsRoot)
                 .TestObject)
@@ -112,7 +116,7 @@ public class OptimismBlockValidatorTests
             specHelper,
             TestLogManager.Instance);
 
-        var result = validator.ValidateSuggestedBlock(block, out string? error);
+        var result = validator.ValidateSuggestedBlock(block, parentBlock, out string? error);
 
         result.Should().Be(isValid);
         if (!isValid)

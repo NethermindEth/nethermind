@@ -35,7 +35,7 @@ namespace Nethermind.Core.Test.Builders
 
         protected override void BeforeReturn()
         {
-            TestObjectInternal.ValidateSuggestedBlock(Arg.Any<Block>(), out _).Returns(_alwaysTrue);
+            TestObjectInternal.ValidateSuggestedBlock(Arg.Any<Block>(), Arg.Any<BlockHeader>(), out _).Returns(_alwaysTrue);
             TestObjectInternal.ValidateProcessedBlock(Arg.Any<Block>(), Arg.Any<TxReceipt[]>(), Arg.Any<Block>(), out _).Returns(_alwaysTrue);
             base.BeforeReturn();
         }

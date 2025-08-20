@@ -25,7 +25,7 @@ namespace Nethermind.Consensus.Validators
             _headerValidator = headerValidator ?? throw new ArgumentNullException(nameof(headerValidator));
         }
 
-        public bool Validate(BlockHeader header, BlockHeader[] uncles)
+        public bool Validate(BlockHeader header, BlockHeader? parentHeader, BlockHeader[] uncles)
         {
             if (uncles.Length > 2)
             {
@@ -42,7 +42,7 @@ namespace Nethermind.Consensus.Validators
             for (int i = 0; i < uncles.Length; i++)
             {
                 BlockHeader uncle = uncles[i];
-                if (!_headerValidator.Validate(uncle, true, out _))
+                if (!_headerValidator.Validate(uncle, parentHeader, true, out _))
                 {
                     _logger.Info($"Invalid block ({header.ToString(BlockHeader.Format.Full)}) - uncle's header invalid");
                     return false;
