@@ -90,8 +90,6 @@ public class BlockAccessTracer : IBlockTracer, ITxTracer, IJournal<int>
             _bal.AccountChanges.Add(address, accountChanges);
         }
 
-        // show should refunds be handled?
-
         // don't add zero balance transfers, but add empty account changes
         if ((before ?? 0) == after)
         {
@@ -230,7 +228,7 @@ public class BlockAccessTracer : IBlockTracer, ITxTracer, IJournal<int>
     public void ReportFees(UInt256 fees, UInt256 burntFees) {}
 
     // private ITxTracer _currentTxTracer = NullTxTracer.Instance;
-    private ushort _blockAccessIndex = 1;
+    private ushort _blockAccessIndex = 0;
     // private readonly List<TxReceipt> _txReceipts = new();
     private BlockAccessList _bal = new();
     protected Transaction? CurrentTx;
@@ -259,7 +257,7 @@ public class BlockAccessTracer : IBlockTracer, ITxTracer, IJournal<int>
     public void StartNewBlockTrace(Block block)
     {
         Block = block;
-        _blockAccessIndex = 1;
+        _blockAccessIndex = 0;
         _bal = new();
     }
 

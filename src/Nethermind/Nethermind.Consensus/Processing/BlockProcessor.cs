@@ -123,11 +123,12 @@ public partial class BlockProcessor(
         blockHashStore.ApplyBlockhashStateChanges(header, spec);
         _stateProvider.Commit(spec, commitRoots: false);
 
+        // set access index to 1 since system contracts completed
+        BlockAccessTracer.EndTxTrace();
+
         TxReceipt[] receipts = blockTransactionsExecutor.ProcessTransactions(block, options, ReceiptsTracer, token);
 
         _stateProvider.Commit(spec, commitRoots: false);
-
-        BlockAccessList? bal = ReceiptsTracer.GetTracer<BlockAccessTracer>()?.BlockAccessList;
 
         CalculateBlooms(receipts);
 
@@ -138,8 +139,7 @@ public partial class BlockProcessor(
 
         header.ReceiptsRoot = _receiptsRootCalculator.GetReceiptsRoot(receipts, spec, block.ReceiptsRoot);
         ApplyMinerRewards(block, blockTracer, spec);
-        // build BAL
-        withdrawalProcessor.ProcessWithdrawals(block, spec);
+        withdrawalProcessor.ProcessWithdrawals(block, spec, BlockAccessTracer);
 
         // We need to do a commit here as in _executionRequestsProcessor while executing system transactions
         // we do WorldState.Commit(SystemTransactionReleaseSpec.Instance). In SystemTransactionReleaseSpec
@@ -168,7 +168,7 @@ public partial class BlockProcessor(
 
         if (spec.BlockLevelAccessListsEnabled)
         {
-            body.BlockAccessList = Rlp.Encode(bal).Bytes;
+            body.BlockAccessList = Rlp.Encode(BlockAccessTracer.BlockAccessList).Bytes;
         }
 
         return receipts;
