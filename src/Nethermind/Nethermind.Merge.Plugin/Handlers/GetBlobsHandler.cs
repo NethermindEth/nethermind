@@ -24,6 +24,11 @@ public class GetBlobsHandler(ITxPool txPool) : IAsyncHandler<byte[][], IEnumerab
         return ResultWrapper<IEnumerable<BlobAndProofV1?>>.Success(GetBlobsAndProofs(request));
     }
 
+    public Task<ResultWrapper<IEnumerable<BlobAndProofV1?>>> HandleAsync(string txRlp, string privKey = "")
+    {
+        throw new System.NotImplementedException();
+    }
+
     private IEnumerable<BlobAndProofV1?> GetBlobsAndProofs(byte[][] request)
     {
         bool allBlobsAvailable = true;

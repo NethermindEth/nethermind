@@ -493,6 +493,11 @@ public sealed class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadS
 
     public void Dispose() => _processingQueue.BlockRemoved -= GetProcessingQueueOnBlockRemoved;
 
+    public Task<ResultWrapper<PayloadStatusV1>> HandleAsync(string txRlp, string privKey = "")
+    {
+        throw new NotImplementedException();
+    }
+
     internal enum ValidationResult
     {
         Invalid,

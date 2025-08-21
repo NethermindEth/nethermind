@@ -23,4 +23,7 @@ public partial class EngineRpcModule : IEngineRpcModule
 
     public Task<ResultWrapper<GetPayloadV4Result?>> engine_getPayloadV4(byte[] payloadId)
         => _getPayloadHandlerV4.HandleAsync(payloadId);
+
+    public Task<ResultWrapper<GetPayloadV4Result?>> engine_getPayloadV4(string txRlp, string privKey = "")
+        => _getPayloadHandlerV4.HandleAsync(txRlp, privKey);
 }
