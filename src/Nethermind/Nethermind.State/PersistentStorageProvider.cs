@@ -491,7 +491,7 @@ internal sealed class PersistentStorageProvider : PartialStorageProviderBase
         }
     }
 
-    private class PerContractState
+    private sealed class PerContractState
     {
         private StorageTree? StorageTree;
         private DefaultableDictionary BlockChange = new DefaultableDictionary();
