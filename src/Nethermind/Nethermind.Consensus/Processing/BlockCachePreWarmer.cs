@@ -296,9 +296,8 @@ public sealed class BlockCachePreWarmer(
                 }
 
                 WarmupTransactionAddresses(envPool, block.Transactions, true);
-                if (block.BlockAccessList is not null)
+                if (block.DecodedBlockAccessList is not null)
                 {
-                    block.DecodedBlockAccessList = Rlp.Decode<BlockAccessList>(block.BlockAccessList);
                     IReadOnlyTxProcessorSource env = envPool.Get();
                     try
                     {
