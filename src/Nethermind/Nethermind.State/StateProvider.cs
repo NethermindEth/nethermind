@@ -18,6 +18,7 @@ using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Resettables;
 using Nethermind.Core.Specs;
+using Nethermind.Evm.State;
 using Nethermind.Evm.Tracing.State;
 using Nethermind.Int256;
 using Nethermind.Logging;
@@ -51,16 +52,15 @@ namespace Nethermind.State
         private Dictionary<Hash256AsKey, byte[]>.AlternateLookup<ValueHash256> _codeBatchAlternate;
 
         private readonly List<Change> _changes = new(Resettable.StartCapacity);
-        internal readonly StateTree _tree;
+        internal IWorldStateBackend.IStateTree _tree;
         private readonly Func<AddressAsKey, Account> _getStateFromTrie;
 
         private readonly bool _populatePreBlockCache;
         private bool _needsStateRootUpdate;
 
-        public StateProvider(IScopedTrieStore? trieStore,
+        public StateProvider(
             IKeyValueStoreWithBatching codeDb,
             ILogManager logManager,
-            StateTree? stateTree = null,
             ConcurrentDictionary<AddressAsKey, Account>? preBlockCache = null,
             bool populatePreBlockCache = true)
         {
@@ -68,20 +68,11 @@ namespace Nethermind.State
             _populatePreBlockCache = populatePreBlockCache;
             _logger = logManager?.GetClassLogger<StateProvider>() ?? throw new ArgumentNullException(nameof(logManager));
             _codeDb = codeDb ?? throw new ArgumentNullException(nameof(codeDb));
-            _tree = stateTree ?? new StateTree(trieStore, logManager);
             _getStateFromTrie = address =>
             {
                 Metrics.IncrementStateTreeReads();
                 return _tree.Get(address);
             };
-        }
-
-        public void Accept<TCtx>(ITreeVisitor<TCtx> visitor, Hash256? stateRoot, VisitingOptions? visitingOptions = null) where TCtx : struct, INodeContext<TCtx>
-        {
-            ArgumentNullException.ThrowIfNull(visitor);
-            ArgumentNullException.ThrowIfNull(stateRoot);
-
-            _tree.Accept(visitor, stateRoot, visitingOptions);
         }
 
         public void RecalculateStateRoot()
@@ -100,7 +91,11 @@ namespace Nethermind.State
                 [DoesNotReturn, StackTraceHidden]
                 static void ThrowStateRootNeedsToBeUpdated() => throw new InvalidOperationException("State root needs to be updated");
             }
-            set => _tree.RootHash = value;
+        }
+
+        public void SetBackendTree(IWorldStateBackend.IStateTree stateTree)
+        {
+            _tree = stateTree;
         }
 
         public bool IsContract(Address address)
@@ -906,14 +901,12 @@ namespace Nethermind.State
             void Trace() => _logger.Trace("Clearing state provider caches");
         }
 
-        public void CommitTree()
+        public void UpdateStorageRootIfNeeded()
         {
             if (_needsStateRootUpdate)
             {
                 RecalculateStateRoot();
             }
-
-            _tree.Commit();
         }
 
         // used in EthereumTests
