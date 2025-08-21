@@ -63,7 +63,7 @@ public class PseudoNethermindRunner(IComponentContext ctx) : IAsyncDisposable
 
         Block genesis = genesisLoader.Load();
         blockTree.SuggestBlock(genesis);
-        await newHeadTask;
+        newHeadTask.Wait();
     }
 
     public async Task StartNetwork(CancellationToken cancellationToken)

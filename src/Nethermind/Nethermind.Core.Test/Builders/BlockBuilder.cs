@@ -250,6 +250,12 @@ namespace Nethermind.Core.Test.Builders
             return this;
         }
 
+        public BlockBuilder WithRequestsHash(Hash256 hash)
+        {
+            TestObjectInternal.Header.RequestsHash = hash;
+            return this;
+        }
+
         public BlockBuilder WithEmptyRequestsHash()
         {
             TestObjectInternal.Header.RequestsHash = ExecutionRequestExtensions.EmptyRequestsHash;
