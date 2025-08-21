@@ -104,10 +104,17 @@ public partial class BlockProcessor(
         BlockBody body = block.Body;
         BlockHeader header = block.Header;
 
-        CompositeBlockTracer compositeBlockTracer = new();
-        compositeBlockTracer.Add(blockTracer);
-        compositeBlockTracer.Add(BlockAccessTracer);
-        ReceiptsTracer.SetOtherTracer(compositeBlockTracer);
+        if (spec.BlockLevelAccessListsEnabled)
+        {
+            CompositeBlockTracer compositeBlockTracer = new();
+            compositeBlockTracer.Add(blockTracer);
+            compositeBlockTracer.Add(BlockAccessTracer);
+            ReceiptsTracer.SetOtherTracer(compositeBlockTracer);
+        }
+        else
+        {
+            ReceiptsTracer.SetOtherTracer(blockTracer);
+        }
         ReceiptsTracer.StartNewBlockTrace(block);
 
         blockTransactionsExecutor.SetBlockExecutionContext(new BlockExecutionContext(block.Header, spec));
@@ -120,7 +127,7 @@ public partial class BlockProcessor(
 
         _stateProvider.Commit(spec, commitRoots: false);
 
-        BlockAccessList bal = ReceiptsTracer.GetTracer<BlockAccessTracer>().BlockAccessList;
+        BlockAccessList? bal = ReceiptsTracer.GetTracer<BlockAccessTracer>()?.BlockAccessList;
 
         CalculateBlooms(receipts);
 
@@ -131,6 +138,7 @@ public partial class BlockProcessor(
 
         header.ReceiptsRoot = _receiptsRootCalculator.GetReceiptsRoot(receipts, spec, block.ReceiptsRoot);
         ApplyMinerRewards(block, blockTracer, spec);
+        // build BAL
         withdrawalProcessor.ProcessWithdrawals(block, spec);
 
         // We need to do a commit here as in _executionRequestsProcessor while executing system transactions
@@ -157,7 +165,11 @@ public partial class BlockProcessor(
         }
 
         header.Hash = header.CalculateHash();
-        body.BlockAccessList = Rlp.Encode(bal).Bytes;
+
+        if (spec.BlockLevelAccessListsEnabled)
+        {
+            body.BlockAccessList = Rlp.Encode(bal).Bytes;
+        }
 
         return receipts;
     }
