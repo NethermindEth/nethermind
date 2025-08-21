@@ -69,6 +69,7 @@ namespace Nethermind.Api
 
         public IBlobTxStorage BlobTxStorage => Context.Resolve<IBlobTxStorage>();
         public CompositeBlockPreprocessorStep BlockPreprocessor { get; } = new();
+        public IGenesisPostProcessor GenesisPostProcessor { get; set; } = new NullGenesisPostProcessor();
         public IBlockProcessingQueue? BlockProcessingQueue { get; set; }
         public IBlockProducer? BlockProducer { get; set; }
         public IBlockProducerRunner BlockProducerRunner { get; set; } = new NoBlockProducerRunner();
