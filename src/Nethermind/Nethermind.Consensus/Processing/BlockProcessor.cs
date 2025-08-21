@@ -119,8 +119,8 @@ public partial class BlockProcessor(
 
         blockTransactionsExecutor.SetBlockExecutionContext(new BlockExecutionContext(block.Header, spec));
 
-        StoreBeaconRoot(block, spec);
-        blockHashStore.ApplyBlockhashStateChanges(header, spec);
+        StoreBeaconRoot(block, spec, BlockAccessTracer);
+        blockHashStore.ApplyBlockhashStateChanges(header, spec, BlockAccessTracer);
         _stateProvider.Commit(spec, commitRoots: false);
 
         // set access index to 1 since system contracts completed
@@ -189,11 +189,11 @@ public partial class BlockProcessor(
             });
     }
 
-    private void StoreBeaconRoot(Block block, IReleaseSpec spec)
+    private void StoreBeaconRoot(Block block, IReleaseSpec spec, ITxTracer tracer)
     {
         try
         {
-            beaconBlockRootHandler.StoreBeaconRoot(block, spec, NullTxTracer.Instance);
+            beaconBlockRootHandler.StoreBeaconRoot(block, spec, tracer);
         }
         catch (Exception e)
         {
@@ -287,6 +287,7 @@ public partial class BlockProcessor(
         if (_logger.IsTrace) _logger.Trace($"  {(BigInteger)reward.Value / (BigInteger)Unit.Ether:N3}{Unit.EthSymbol} for account at {reward.Address}");
 
         _stateProvider.AddToBalanceAndCreateIfNotExists(reward.Address, reward.Value, spec);
+        // tracer here?
     }
 
     private void ApplyDaoTransition(Block block)
