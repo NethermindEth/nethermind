@@ -215,7 +215,7 @@ internal sealed class PersistentStorageProvider : PartialStorageProviderBase
                 _toUpdateRoots[address] = true;
                 // Add storage tree, will accessed later, which may be in parallel
                 // As we can't add a new storage tries in parallel to the _storages Dict do it here
-                GetOrCreateStorage(address);
+                GetOrCreateStorage(address).EnsureStorageTree();
             }
             else
             {
@@ -508,10 +508,11 @@ internal sealed class PersistentStorageProvider : PartialStorageProviderBase
             _loadFromTreeStorageFunc = LoadFromTreeStorage;
         }
 
-        private void EnsureStorageTree()
+        public void EnsureStorageTree()
         {
             if (StorageTree is not null) return;
 
+            // Note: GetStorageRoot is not concurrent safe! And so do this whole method!
             Hash256 storageRoot = _provider._stateProvider.GetStorageRoot(_address);
             bool isEmpty = storageRoot == Keccak.EmptyTreeHash; // We know all lookups will be empty against this tree
             StorageTree = _provider._storageTreeFactory.Create(_address,
