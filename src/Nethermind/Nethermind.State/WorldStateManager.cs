@@ -63,7 +63,7 @@ public class WorldStateManager : IWorldStateManager
     public IWorldState CreateResettableWorldState()
     {
         return new WorldState(
-            _readOnlyTrieStore,
+            new TrieStoreBackend(_readOnlyTrieStore, _logManager),
             _readaOnlyCodeCb,
             _logManager);
     }
@@ -73,7 +73,7 @@ public class WorldStateManager : IWorldStateManager
         PreBlockCaches? preBlockCaches = (forWarmup as IPreBlockCaches)?.Caches;
         return preBlockCaches is not null
             ? new WorldState(
-                new PreCachedTrieStore(_readOnlyTrieStore, preBlockCaches.RlpCache),
+                new TrieStoreBackend(new PreCachedTrieStore(_readOnlyTrieStore, preBlockCaches.RlpCache), _logManager),
                 _readaOnlyCodeCb,
                 _logManager,
                 preBlockCaches)
