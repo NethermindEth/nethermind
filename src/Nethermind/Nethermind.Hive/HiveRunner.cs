@@ -106,6 +106,7 @@ namespace Nethermind.Hive
             string[] files = Directory.GetFiles(blocksDir).OrderBy(static x => x).ToArray();
             if (_logger.IsInfo) _logger.Info($"Loaded {files.Length} files with blocks to process.");
 
+            BlockHeader? parent = null;
             foreach (string file in files)
             {
                 if (cancellationToken.IsCancellationRequested)
@@ -119,7 +120,8 @@ namespace Nethermind.Hive
                     if (_logger.IsInfo)
                         _logger.Info(
                             $"HIVE Processing block file: {file} - {block.ToString(Block.Format.Short)}");
-                    await ProcessBlock(block);
+                    await ProcessBlock(block, parent);
+                    parent = block.Header;
                 }
                 catch (RlpException e)
                 {
@@ -150,12 +152,14 @@ namespace Nethermind.Hive
                 blocks.Add(block);
             }
 
+            BlockHeader? parent = null;
             for (int i = 0; i < blocks.Count; i++)
             {
                 Block block = blocks[i];
                 if (_logger.IsInfo)
                     _logger.Info($"HIVE Processing a chain.rlp block {block.ToString(Block.Format.Short)}");
-                await ProcessBlock(block);
+                await ProcessBlock(block, parent);
+                parent = block.Header;
             }
         }
 
@@ -175,14 +179,14 @@ namespace Nethermind.Hive
             }
         }
 
-        private async Task ProcessBlock(Block block)
+        private async Task ProcessBlock(Block block, BlockHeader? parent)
         {
             try
             {
                 // Start of block processing, setting flag BlockSuggested to default value: false
                 BlockSuggested = false;
 
-                if (!blockValidator.ValidateSuggestedBlock(block, out _))
+                if (!blockValidator.ValidateSuggestedBlock(block, parent, out _))
                 {
                     if (_logger.IsInfo) _logger.Info($"Invalid block {block}");
                     return;

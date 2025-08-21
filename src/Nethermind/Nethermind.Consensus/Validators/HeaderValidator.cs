@@ -325,24 +325,6 @@ namespace Nethermind.Consensus.Validators
             return result;
         }
 
-        /// <summary>
-        /// Validates all the header elements (usually in relation to parent). Difficulty calculation is validated in <see cref="ISealValidator"/>
-        /// </summary>
-        /// <param name="header">Block header to validate</param>
-        /// <param name="isUncle"><value>True</value> if the <paramref name="header"/> is an uncle, otherwise <value>False</value></param>
-        /// <returns><value>True</value> if <paramref name="header"/> is valid, otherwise <value>False</value></returns>
-        public virtual bool Validate(BlockHeader header, bool isUncle = false) => Validate(header, isUncle, out _);
-
-        /// <summary>
-        /// Validates all the header elements (usually in relation to parent). Difficulty calculation is validated in <see cref="ISealValidator"/>
-        /// </summary>
-        /// <param name="header">Block header to validate</param>
-        /// <param name="isUncle"><value>True</value> if the <paramref name="header"/> is an uncle, otherwise <value>False</value></param>
-        /// <param name="error">Detailed error message if validation fails, otherwise <value>False</value></param>
-        /// <returns><value>True</value> if <paramref name="header"/> is valid, otherwise <value>False</value></returns>
-        public virtual bool Validate(BlockHeader header, bool isUncle, out string? error) =>
-            Validate(header, _blockTree.FindParentHeader(header, BlockTreeLookupOptions.TotalDifficultyNotNeeded), isUncle, out error);
-
         private bool ValidateGenesis(BlockHeader header) =>
             header.GasUsed < header.GasLimit &&
             header.GasLimit > _specProvider.GenesisSpec.MinGasLimit &&
