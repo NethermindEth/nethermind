@@ -121,6 +121,7 @@ public class WorldStateMetricsDecorator(IWorldState innerState) : IWorldState
 
     public IDisposable BeginScope(BlockHeader? baseBlock) => innerState.BeginScope(baseBlock);
     public bool IsInScope => innerState.IsInScope;
+    public IWorldStateBackend Backend => innerState.Backend;
 
     public ref readonly UInt256 GetBalance(Address account) => ref innerState.GetBalance(account);
 
