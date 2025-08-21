@@ -6,6 +6,7 @@ using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
 using Nethermind.Evm.State;
+using Nethermind.Evm.Tracing;
 using Nethermind.Logging;
 
 namespace Nethermind.Optimism;
@@ -17,28 +18,21 @@ namespace Nethermind.Optimism;
 /// Constructed over the world state so that it can construct the proper withdrawals hash just before commitment.
 /// https://github.com/ethereum-optimism/specs/blob/main/specs/protocol/isthmus/exec-engine.md#l2tol1messagepasser-storage-root-in-header
 /// </remarks>
-public class OptimismWithdrawalProcessor : IWithdrawalProcessor
+public class OptimismWithdrawalProcessor(IWorldState state, ILogManager logManager, IOptimismSpecHelper specHelper) : IWithdrawalProcessor
 {
-    private readonly IWorldState _state;
-    private readonly IOptimismSpecHelper _specHelper;
-    private readonly ILogger _logger;
+    private readonly IWorldState _state = state;
+    private readonly IOptimismSpecHelper _specHelper = specHelper;
+    private readonly ILogger _logger = logManager.GetClassLogger();
 
-    public OptimismWithdrawalProcessor(IWorldState state, ILogManager logManager, IOptimismSpecHelper specHelper)
+    public void ProcessWithdrawals(Block block, IReleaseSpec spec, ITxTracer? tracer = null)
     {
-        _state = state;
-        _specHelper = specHelper;
-        _logger = logManager.GetClassLogger();
-    }
-
-    public void ProcessWithdrawals(Block block, IReleaseSpec spec)
-    {
-        var header = block.Header;
+        BlockHeader header = block.Header;
 
         if (_specHelper.IsIsthmus(header))
         {
             _state.Commit(spec, commitRoots: true);
 
-            if (_state.TryGetAccount(PreDeploys.L2ToL1MessagePasser, out var account))
+            if (_state.TryGetAccount(PreDeploys.L2ToL1MessagePasser, out AccountStruct account))
             {
                 if (_logger.IsDebug)
                     _logger.Debug($"Setting {nameof(BlockHeader.WithdrawalsRoot)} to {account.StorageRoot}");
