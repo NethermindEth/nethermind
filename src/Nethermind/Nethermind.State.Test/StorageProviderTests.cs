@@ -510,7 +510,8 @@ public class StorageProviderTests
 
         public Context(PreBlockCaches preBlockCaches = null, bool setInitialState = true)
         {
-            StateProvider = new WorldState(TestTrieStoreFactory.Build(new MemDb(), LimboLogs.Instance), Substitute.For<IDb>(), LogManager, preBlockCaches);
+            StateProvider = new WorldState(
+                new TrieStoreBackend(TestTrieStoreFactory.Build(new MemDb(), LimboLogs.Instance), LimboLogs.Instance), Substitute.For<IDb>(), LogManager, preBlockCaches);
             if (setInitialState)
             {
                 StateProvider.BeginScope(IWorldState.PreGenesis);
