@@ -6,8 +6,10 @@ using System.Collections.Frozen;
 using System.Collections.Generic;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
+using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
+using Nethermind.Evm.State;
 using Nethermind.Logging;
 using Nethermind.Int256;
 using Nethermind.Serialization.Rlp;
@@ -16,7 +18,7 @@ using Nethermind.Trie.Pruning;
 
 namespace Nethermind.State
 {
-    public class StorageTree : PatriciaTree
+    public class StorageTree : PatriciaTree, IWorldStateBackend.IStorageTree
     {
         private const int LookupSize = 1024;
         private static readonly FrozenDictionary<UInt256, byte[]> Lookup = CreateLookup();
@@ -124,6 +126,26 @@ namespace Nethermind.State
             return rlp.DecodeByteArray();
         }
 
+        public void Commit()
+        {
+            Commit(false, WriteFlags.None);
+        }
+
+        public void Clear()
+        {
+            RootHash = EmptyTreeHash;
+        }
+
+        public byte[] Get(in UInt256 index)
+        {
+            return Get(index, null);
+        }
+
+        public byte[] Get(in ValueHash256 hash)
+        {
+            return GetArray(hash.Bytes, null);
+        }
+
         [SkipLocalsInit]
         public void Set(in UInt256 index, byte[] value)
         {
@@ -143,6 +165,11 @@ namespace Nethermind.State
                 ComputeKey(index, key);
                 SetInternal(key, value);
             }
+        }
+
+        public void UpdateRootHash()
+        {
+            UpdateRootHash(canBeParallel: true);
         }
 
         public void Set(in ValueHash256 key, byte[] value, bool rlpEncode = true)

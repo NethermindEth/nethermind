@@ -7,6 +7,7 @@ using Nethermind.Core;
 using Nethermind.Core.Buffers;
 using Nethermind.Core.Crypto;
 using Nethermind.Db;
+using Nethermind.Evm.State;
 using Nethermind.Logging;
 using Nethermind.Serialization.Rlp;
 using Nethermind.Trie;
@@ -14,7 +15,7 @@ using Nethermind.Trie.Pruning;
 
 namespace Nethermind.State
 {
-    public class StateTree : PatriciaTree
+    public class StateTree : PatriciaTree, IWorldStateBackend.IStateTree
     {
         private readonly AccountDecoder _decoder = new();
 
@@ -88,6 +89,21 @@ namespace Nethermind.State
 
             Set(keccak.Bytes, rlp);
             return rlp;
+        }
+
+        public Account? Get(Address address)
+        {
+            return Get(address, null);
+        }
+
+        public void UpdateRootHash()
+        {
+            UpdateRootHash(true);
+        }
+
+        public void Commit()
+        {
+            Commit(false, WriteFlags.None);
         }
     }
 }
