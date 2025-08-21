@@ -56,7 +56,12 @@ public class InitializeBlockchainOptimism(OptimismNethermindApi api) : Initializ
         );
     }
 
-    protected override BlockProcessor CreateBlockProcessor(BlockCachePreWarmer? preWarmer, ITransactionProcessor transactionProcessor, IWorldState worldState)
+    protected override BlockProcessor CreateBlockProcessor(
+        BlockCachePreWarmer? preWarmer,
+        ITransactionProcessor transactionProcessor,
+        IVirtualMachine virtualMachine,
+        ICodeInfoRepository codeInfoRepository,
+        IWorldState worldState)
     {
         if (api.RewardCalculatorSource is null) throw new StepDependencyException(nameof(api.RewardCalculatorSource));
         if (api.SpecHelper is null) throw new StepDependencyException(nameof(api.SpecHelper));
@@ -69,7 +74,7 @@ public class InitializeBlockchainOptimism(OptimismNethermindApi api) : Initializ
             api.SpecProvider,
             api.BlockValidator,
             api.RewardCalculatorSource.Get(transactionProcessor),
-            new BlockProcessor.BlockValidationTransactionsExecutor(new ExecuteTransactionProcessorAdapter(transactionProcessor), worldState),
+            new BlockProcessor.BlockValidationTransactionsExecutor(api.SpecProvider, virtualMachine, codeInfoRepository, worldState, api.LogManager),
             worldState,
             api.ReceiptStorage!,
             new BlockhashStore(api.SpecProvider, worldState),

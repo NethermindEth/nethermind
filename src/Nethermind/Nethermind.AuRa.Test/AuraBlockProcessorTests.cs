@@ -22,6 +22,7 @@ using Nethermind.Core.Specs;
 using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Db;
+using Nethermind.Evm;
 using Nethermind.Evm.State;
 using Nethermind.Evm.Tracing;
 using Nethermind.Evm.TransactionProcessing;
@@ -155,11 +156,18 @@ namespace Nethermind.AuRa.Test
             IWorldStateManager worldStateManager = TestWorldStateFactory.CreateForTest();
             IWorldState stateProvider = worldStateManager.GlobalWorldState;
             ITransactionProcessor transactionProcessor = Substitute.For<ITransactionProcessor>();
-            AuRaBlockProcessor processor = new AuRaBlockProcessor(
+            BlockProcessor.BlockValidationTransactionsExecutor transactionsExecutor = new(
+                HoleskySpecProvider.Instance,
+                Substitute.For<IVirtualMachine>(),
+                Substitute.For<ICodeInfoRepository>(),
+                stateProvider,
+                LimboLogs.Instance
+            );
+            AuRaBlockProcessor processor = new(
                 HoleskySpecProvider.Instance,
                 TestBlockValidator.AlwaysValid,
                 NoBlockRewards.Instance,
-                new BlockProcessor.BlockValidationTransactionsExecutor(new ExecuteTransactionProcessorAdapter(transactionProcessor), stateProvider),
+                transactionsExecutor,
                 stateProvider,
                 NullReceiptStorage.Instance,
                 new BeaconBlockRootHandler(transactionProcessor, stateProvider),
@@ -171,7 +179,7 @@ namespace Nethermind.AuRa.Test
                 txFilter,
                 contractRewriter: contractRewriter);
 
-            BranchProcessor branchProcessor = new BranchProcessor(
+            BranchProcessor branchProcessor = new(
                 processor,
                 HoleskySpecProvider.Instance,
                 stateProvider,

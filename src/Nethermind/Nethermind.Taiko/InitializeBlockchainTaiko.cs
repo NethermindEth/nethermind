@@ -45,7 +45,12 @@ public class InitializeBlockchainTaiko(TaikoNethermindApi api) : InitializeBlock
         );
     }
 
-    protected override BlockProcessor CreateBlockProcessor(BlockCachePreWarmer? preWarmer, ITransactionProcessor transactionProcessor, IWorldState worldState)
+    protected override BlockProcessor CreateBlockProcessor(
+        BlockCachePreWarmer? preWarmer,
+        ITransactionProcessor transactionProcessor,
+        IVirtualMachine virtualMachine,
+        ICodeInfoRepository codeInfoRepository,
+        IWorldState worldState)
     {
         if (_api.RewardCalculatorSource is null) throw new StepDependencyException(nameof(_api.RewardCalculatorSource));
         if (_api.SpecProvider is null) throw new StepDependencyException(nameof(_api.SpecProvider));

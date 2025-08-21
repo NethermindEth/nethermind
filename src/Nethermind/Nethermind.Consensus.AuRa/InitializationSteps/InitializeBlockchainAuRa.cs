@@ -25,6 +25,7 @@ using Nethermind.Init.Steps;
 using Nethermind.Logging;
 using Nethermind.TxPool;
 using Nethermind.TxPool.Comparison;
+using Nethermind.Evm;
 
 namespace Nethermind.Consensus.AuRa.InitializationSteps;
 
@@ -67,7 +68,12 @@ public class InitializeBlockchainAuRa : InitializeBlockchain
         _api.FinalizationManager.SetMainBlockBranchProcessor(_api.MainProcessingContext!.BranchProcessor!);
     }
 
-    protected override IBlockProcessor CreateBlockProcessor(BlockCachePreWarmer? preWarmer, ITransactionProcessor transactionProcessor, IWorldState worldState)
+    protected override IBlockProcessor CreateBlockProcessor(
+        BlockCachePreWarmer? preWarmer,
+        ITransactionProcessor transactionProcessor,
+        IVirtualMachine virtualMachine,
+        ICodeInfoRepository codeInfoRepository,
+        IWorldState worldState)
     {
         return _rootLifetimeScope.BeginLifetimeScope((builder) =>
             {
