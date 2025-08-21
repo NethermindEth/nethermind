@@ -172,7 +172,9 @@ jobs:
           ./build/sedge deps install
 
           ADDITIONAL_FLAGS=()
-          for f in "${{ github.event.inputs.nethermind_args }}"; do ADDITIONAL_FLAGS+=(--el-extra-flag "$f"); done
+          for f in "${{ inputs.nethermind_args }}"; do ADDITIONAL_FLAGS+=(--el-extra-flag "$f"); done
+          echo ${ADDITIONAL_FLAGS[@]}
+          return 1
 
           # Define metrics flags
           GENERIC_METRICS_FLAGS=(
