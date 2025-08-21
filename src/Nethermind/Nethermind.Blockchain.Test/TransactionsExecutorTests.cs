@@ -364,7 +364,7 @@ namespace Nethermind.Blockchain.Test
         }
     }
 
-    public class WorldStateStab() : WorldState(Substitute.For<ITrieStore>(), Substitute.For<IKeyValueStoreWithBatching>(), LimboLogs.Instance), IWorldState
+    public class WorldStateStab() : WorldState(Substitute.For<IWorldStateBackend>(), Substitute.For<IKeyValueStoreWithBatching>(), LimboLogs.Instance), IWorldState
     {
         // we cannot mock ref methods
         ref readonly UInt256 IWorldState.GetBalance(Address address) => ref UInt256.MaxValue;
