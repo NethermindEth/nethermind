@@ -259,15 +259,16 @@ public class StartBlockProducerAuRa(
         {
             ReadOnlyBlockTree readOnlyBlockTree = blockTree.AsReadOnly();
 
-            IWorldState worldState = worldStateManager.CreateResettableWorldState();
+            IWorldStateScopeProvider worldStateScopeProvider = worldStateManager.CreateResettableWorldState();
             ILifetimeScope innerLifetime = lifetimeScope.BeginLifetimeScope((builder) => builder
-                .AddSingleton<IWorldState>(worldState)
+                .AddSingleton<IWorldStateScopeProvider>(worldStateScopeProvider)
                 .AddSingleton<BlockchainProcessor.Options>(BlockchainProcessor.Options.NoReceipts)
                 .AddSingleton<IBlockProcessor, ITransactionProcessor, IWorldState>(CreateBlockProcessor)
                 .AddDecorator<IBlockchainProcessor, OneTimeChainProcessor>());
             lifetimeScope.Disposer.AddInstanceForAsyncDisposal(innerLifetime);
 
             IBlockchainProcessor chainProcessor = innerLifetime.Resolve<IBlockchainProcessor>();
+            IWorldState worldState = innerLifetime.Resolve<IWorldState>();
 
             return new BlockProducerEnv(readOnlyBlockTree, chainProcessor, worldState, CreateTxSourceForProducer());
         }

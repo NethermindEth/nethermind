@@ -227,10 +227,10 @@ namespace Nethermind.Trie.Test
                 _pruningConfig = pruningConfig ?? new PruningConfig() { TrackPastKeys = false };
                 _finalizedStateProvider = new TestFinalizedStateProvider(_pruningConfig.PruningBoundary);
 
-                _trieStore = new TrieStore(
-                    new NodeStorage(_stateDb), _pruningStrategy, _persistenceStrategy, _finalizedStateProvider, _pruningConfig, _logManager);
+                _trieStore = new TrieStore(new NodeStorage(_stateDb), _pruningStrategy, _persistenceStrategy, _finalizedStateProvider, _pruningConfig, _logManager);
                 _finalizedStateProvider.TrieStore = _trieStore;
-                _stateProvider = new WorldState(_trieStore, _codeDb, _logManager);
+                _stateProvider = new WorldState(
+                    new TrieStoreScopeProvider(_trieStore, _codeDb, _logManager), _logManager);
                 _stateReader = new StateReader(_trieStore, _codeDb, _logManager);
                 _worldStateCloser = _stateProvider.BeginScope(IWorldState.PreGenesis);
             }
@@ -432,11 +432,10 @@ namespace Nethermind.Trie.Test
             {
                 _worldStateCloser!.Dispose();
                 _trieStore.Dispose();
-
                 TestFinalizedStateProvider finalizedStateProvider = new TestFinalizedStateProvider(_pruningConfig.PruningBoundary);
                 _trieStore = new TrieStore(new NodeStorage(_stateDb), _pruningStrategy, _persistenceStrategy, finalizedStateProvider, _pruningConfig, _logManager);
-                finalizedStateProvider.TrieStore = _trieStore;
-                _stateProvider = new WorldState(_trieStore, _codeDb, _logManager);
+                _stateProvider = new WorldState(
+                    new TrieStoreScopeProvider(_trieStore, _codeDb, _logManager), _logManager);
                 _stateReader = new StateReader(_trieStore, _codeDb, _logManager);
                 return this;
             }
