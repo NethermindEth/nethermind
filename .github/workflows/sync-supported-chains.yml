@@ -17,7 +17,11 @@ on:
         default: ""
         required: false
       network_filter:
-        description: "Usefull for manual execution on only specified networks - provide partial or full name. Will execute action only on networks which contains phrase."
+        description: "Useful for manual execution on only specified networks - provide partial or full name. Will execute action only on networks which contains phrase."
+        default: ""
+        required: false
+      nethermind_args:
+        description: "Additional arguments that will be passed to Nethermind."
         default: ""
         required: false
 
@@ -167,6 +171,9 @@ jobs:
           echo 'Generating sedge docker...'
           ./build/sedge deps install
 
+          ADDITIONAL_FLAGS=()
+          for f in "${{ github.event.inputs.nethermind_args }}"; do ADDITIONAL_FLAGS+=(--el-extra-flag "$f"); done
+
           # Define metrics flags
           GENERIC_METRICS_FLAGS=(
             --el-extra-flag "Metrics.NodeName=${node_name}" \
@@ -235,6 +242,7 @@ jobs:
               --el-op-extra-flag loggerConfigSource=/nethermind/data/logs/configs/customNLog.config \
               --el-op-extra-flag Sync.VerifyTrieOnStateSyncFinished=true \
               "${OP_METRICS_FLAGS[@]}" \
+              "${ADDITIONAL_FLAGS[@]}" \
               $extra_param
 
           elif [[ "$network" == taiko-* ]]; then
@@ -272,6 +280,7 @@ jobs:
               --el-l2-extra-flag loggerConfigSource=/nethermind/data/logs/configs/customNLog.config \
               --el-l2-extra-flag Sync.VerifyTrieOnStateSyncFinished=true \
               "${L2_METRICS_FLAGS[@]}" \
+              "${ADDITIONAL_FLAGS[@]}" \
               $extra_param
 
           else
@@ -296,6 +305,7 @@ jobs:
               --el-extra-flag loggerConfigSource=/nethermind/data/logs/configs/customNLog.config \
               --el-extra-flag Sync.SnapSync=true \
               "${GENERIC_METRICS_FLAGS[@]}" \
+              "${ADDITIONAL_FLAGS[@]}" \
               --checkpoint-sync-url=${{ matrix.config.checkpoint-sync-url }}
           fi
 
