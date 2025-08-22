@@ -118,7 +118,7 @@ namespace Nethermind.Evm.TransactionProcessing
         public TransactionResult Trace(Transaction transaction, ITxTracer txTracer) =>
             ExecuteCore(transaction, txTracer, ExecutionOptions.SkipValidationAndCommit);
 
-        public TransactionResult Warmup(Transaction transaction, ITxTracer txTracer) =>
+        public virtual TransactionResult Warmup(Transaction transaction, ITxTracer txTracer) =>
             ExecuteCore(transaction, txTracer, ExecutionOptions.SkipValidation);
 
         private TransactionResult ExecuteCore(Transaction tx, ITxTracer tracer, ExecutionOptions opts)
