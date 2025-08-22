@@ -150,6 +150,7 @@ public class BlockValidator(
         {
             if (block.BlockAccessList is null || block.BlockAccessList.Length == 0)
             {
+                if (_logger.IsDebug) _logger.Debug($"{Invalid(block)} Block-level access list was missing or empty");
                 errorMessage = BlockErrorMessages.InvalidBlockLevelAccessList;
                 return false;
             }
@@ -158,8 +159,9 @@ public class BlockValidator(
             {
                 block.DecodedBlockAccessList = Rlp.Decode<BlockAccessList>(block.BlockAccessList);
             }
-            catch (RlpException)
+            catch (RlpException e)
             {
+                if (_logger.IsDebug) _logger.Debug($"{Invalid(block)} Block-level access list could not be decoded: {e}");
                 errorMessage = BlockErrorMessages.InvalidBlockLevelAccessList;
                 return false;
             }
