@@ -15,6 +15,7 @@ using Nethermind.Consensus.Withdrawals;
 using Nethermind.Core;
 using Nethermind.Core.BlockAccessLists;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Int256;
@@ -107,7 +108,12 @@ namespace Nethermind.Evm.Test
                 new WithdrawalProcessor(_stateProvider, LimboLogs.Instance),
                 new ExecutionRequestsProcessor(_transactionProcessor));
 
+            // todo: just use test blockchain?
             _stateProvider.CreateAccount(Eip4788Constants.BeaconRootsAddress, 10);
+            _stateProvider.CreateAccount(Eip7002Constants.WithdrawalRequestPredeployAddress, 0, Eip7002TestConstants.Nonce);
+            _stateProvider.InsertCode(Eip7002Constants.WithdrawalRequestPredeployAddress, Eip7002TestConstants.CodeHash, Eip7002TestConstants.Code, Prague.Instance);
+            _stateProvider.CreateAccount(Eip7251Constants.ConsolidationRequestPredeployAddress, 0, Eip7251TestConstants.Nonce);
+            _stateProvider.InsertCode(Eip7251Constants.ConsolidationRequestPredeployAddress, Eip7251TestConstants.CodeHash, Eip7251TestConstants.Code, Prague.Instance);
 
             ulong gasPrice = 2;
             long gasLimit = 100000;
