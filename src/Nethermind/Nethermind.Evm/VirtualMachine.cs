@@ -515,6 +515,7 @@ public sealed unsafe partial class VirtualMachine(
             _currentState.AccessTracker.Logs,
             callResult.ShouldRevert,
             isTracerConnected: _txTracer.IsTracing,
+            callResult.ExceptionType,
             _logger);
     }
 
@@ -1293,7 +1294,7 @@ public sealed unsafe partial class VirtualMachine(
 
     Revert:
         // Return a CallResult indicating a revert.
-        return new CallResult(null, (byte[])ReturnData, null, codeInfo.Version, shouldRevert: true);
+        return new CallResult(null, (byte[])ReturnData, null, codeInfo.Version, shouldRevert: true, exceptionType);
 
     OutOfGas:
         gasAvailable = 0;
