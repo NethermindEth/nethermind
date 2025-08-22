@@ -6,6 +6,7 @@ using System.Threading;
 
 namespace Nethermind.Db;
 
+// TODO: separate stats for forward and backwards sync - should help with debugging
 public class LogIndexUpdateStats(ILogIndexStorage storage) : IFormattable
 {
     private long _blocksAdded;
@@ -70,35 +71,36 @@ public class LogIndexUpdateStats(ILogIndexStorage storage) : IFormattable
     {
         const string tab = "\t";
 
-        return
-            $"""
-             {tab}Blocks: {MinBlockNumber:N0} - {MaxBlockNumber:N0} (+{_blocksAdded:N0})
+        return !string.Equals(format, "D", StringComparison.OrdinalIgnoreCase)
+            ? $"{MinBlockNumber:N0} - {MaxBlockNumber:N0} (+{_blocksAdded:N0}, txs: +{_txAdded:N0}, logs: +{_logsAdded:N0}, topics: +{_topicsAdded:N0})"
+            : $"""
+               {tab}Blocks: {MinBlockNumber:N0} - {MaxBlockNumber:N0} (+{_blocksAdded:N0})
 
-             {tab}Txs: +{_txAdded:N0}
-             {tab}Logs: +{_logsAdded:N0}
-             {tab}Topics: +{_topicsAdded:N0}
+               {tab}Txs: +{_txAdded:N0}
+               {tab}Logs: +{_logsAdded:N0}
+               {tab}Topics: +{_topicsAdded:N0}
 
-             {tab}Keys per batch: {KeysCount:N0}
-             {tab}SetReceipts: {SetReceipts}
-             {tab}Aggregating: {Aggregating}
-             {tab}Processing: {Processing}
+               {tab}Keys per batch: {KeysCount:N0}
+               {tab}SetReceipts: {SetReceipts}
+               {tab}Aggregating: {Aggregating}
+               {tab}Processing: {Processing}
 
-             {tab}Merge call: {CallingMerge}
-             {tab}Updating metadata: {UpdatingMeta}
-             {tab}Waiting batch: {WaitingBatch}
-             {tab}In-memory merging: {InMemoryMerging}
+               {tab}Merge call: {CallingMerge}
+               {tab}Updating metadata: {UpdatingMeta}
+               {tab}Waiting batch: {WaitingBatch}
+               {tab}In-memory merging: {InMemoryMerging}
 
-             {tab}Post-merge processing: {PostMergeProcessing.Execution}
-             {tab}{tab}DB getting: {PostMergeProcessing.GettingValue}
-             {tab}{tab}Compressing: {PostMergeProcessing.CompressingValue}
-             {tab}{tab}Putting: {PostMergeProcessing.PuttingValues}
-             {tab}{tab}Compressed keys: {PostMergeProcessing.CompressedAddressKeys:N0} address, {PostMergeProcessing.CompressedTopicKeys:N0} topic
-             {tab}{tab}In queue: {PostMergeProcessing.QueueLength:N0}
+               {tab}Post-merge processing: {PostMergeProcessing.Execution}
+               {tab}{tab}DB getting: {PostMergeProcessing.GettingValue}
+               {tab}{tab}Compressing: {PostMergeProcessing.CompressingValue}
+               {tab}{tab}Putting: {PostMergeProcessing.PuttingValues}
+               {tab}{tab}Compressed keys: {PostMergeProcessing.CompressedAddressKeys:N0} address, {PostMergeProcessing.CompressedTopicKeys:N0} topic
+               {tab}{tab}In queue: {PostMergeProcessing.QueueLength:N0}
 
-             {tab}Compacting: {Compacting.Total}
-             {tab}{tab}Addresses: {Compacting.Addresses}
-             {tab}{tab}Topics: {Compacting.Topics}
-             """;
+               {tab}Compacting: {Compacting.Total}
+               {tab}{tab}Addresses: {Compacting.Addresses}
+               {tab}{tab}Topics: {Compacting.Topics}
+               """;
     }
 
     public override string ToString() => ToString(null, null);

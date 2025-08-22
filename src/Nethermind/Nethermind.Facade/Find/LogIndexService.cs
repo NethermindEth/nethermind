@@ -142,8 +142,8 @@ public sealed class LogIndexService : ILogIndexService
         {
             LogIndexUpdateStats stats = Interlocked.Exchange(ref _stats, new(_logIndexStorage));
 
-            if (_logger.IsInfo)
-                _logger.Info($"{GetLogPrefix()}:\n{stats}");
+            if (_logger.IsInfo) // TODO: log at debug/trace
+                _logger.Info($"{GetLogPrefix()}: {stats}");
         }
     }
 
@@ -322,8 +322,8 @@ public sealed class LogIndexService : ILogIndexService
 
                     if (timedOut && _logger.IsInfo)
                     {
-                        (int? sFrom, int? sTo, int? best) = GetStatus(isForward);
-                        _logger.Info($"{GetLogPrefix(isForward)}: waiting for a new block, synced: {sFrom:N0} - {sTo:N0}, best available: {best:N0}");
+                        (int? synced, int? available) = GetStatus(isForward);
+                        _logger.Info($"{GetLogPrefix(isForward)}: waiting for a new block, last synced: {synced:N0}, best available: {available:N0}");
                     }
 
                     continue;
@@ -414,11 +414,9 @@ public sealed class LogIndexService : ILogIndexService
         return isForward ? last + 1 : last - 1;
     }
 
-    private (int? syncedFrom, int? syncedTo, int? best) GetStatus(bool isForward) =>
-    (
-        _logIndexStorage.GetMinBlockNumber(), _logIndexStorage.GetMaxBlockNumber(),
-        isForward ? GetMaxAvailableBlockNumber() : GetMinAvailableBlockNumber()
-    );
+    private (int? synced, int? available) GetStatus(bool isForward) => isForward
+        ? (_logIndexStorage.GetMaxBlockNumber(), GetMaxAvailableBlockNumber())
+        : (_logIndexStorage.GetMinBlockNumber(), GetMinAvailableBlockNumber());
 
     private void PopulateBlocks(int from, int to, BlockReceipts[] buffer, bool isForward, CancellationToken token)
     {
