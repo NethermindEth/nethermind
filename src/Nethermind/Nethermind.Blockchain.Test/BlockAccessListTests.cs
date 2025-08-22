@@ -14,6 +14,7 @@ using Nethermind.Consensus.Rewards;
 using Nethermind.Consensus.Withdrawals;
 using Nethermind.Core;
 using Nethermind.Core.BlockAccessLists;
+using Nethermind.Core.Crypto;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Int256;
@@ -106,6 +107,8 @@ namespace Nethermind.Evm.Test
                 new WithdrawalProcessor(_stateProvider, LimboLogs.Instance),
                 new ExecutionRequestsProcessor(_transactionProcessor));
 
+            _stateProvider.CreateAccount(Eip4788Constants.BeaconRootsAddress, 10);
+
             ulong gasPrice = 2;
             long gasLimit = 100000;
             Transaction tx = Build.A.Transaction
@@ -117,6 +120,8 @@ namespace Nethermind.Evm.Test
                 .TestObject;
 
             Block block = Build.A.Block
+                .WithParentBeaconBlockRoot(Hash256.Zero)
+                .WithNumber(100)
                 .WithTransactions(tx)
                 .WithBaseFeePerGas(1)
                 .WithBeneficiary(TestItem.AddressC).TestObject;
