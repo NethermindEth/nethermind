@@ -12,6 +12,7 @@ using System.Threading.Tasks;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Extensions;
 using Nethermind.Logging;
 #pragma warning disable CS0162 // Unreachable code detected
 
@@ -246,6 +247,71 @@ namespace Nethermind.Db
             ? Math.Max(addressMinBlock, topicMinBlock)
             : null;
 
+        public Dictionary<byte[], int[]> GetKeysFor(byte[] key, int from, int to, bool includeValues = false)
+        {
+            static bool IsInKeyBounds(IIterator<byte[], byte[]> iterator, byte[] key)
+            {
+                return iterator.Valid() && iterator.Key().AsSpan().StartsWith(key);
+            }
+
+            byte[] dbKeyBuffer = null;
+            var result = new Dictionary<byte[], int[]>(Bytes.EqualityComparer);
+
+            try
+            {
+                // Adjust parameters to avoid composing invalid lookup keys
+                if (from < 0) from = 0;
+                if (to < from) return result;
+
+                var dbKeyLength = key.Length + BlockNumSize;
+                dbKeyBuffer = _arrayPool.Rent(dbKeyLength);
+                Span<byte> dbKey = dbKeyBuffer.AsSpan(..dbKeyLength);
+
+                IDb db = GetDbByKeyLength(key.Length, out _);
+                using IIterator<byte[], byte[]> iterator = db.GetIterator(true);
+
+                // Find the last index for the given key, starting at or before `from`
+                CreateDbKey(key, from, dbKey);
+                iterator.SeekForPrev(dbKey);
+
+                // Otherwise, find the first index for the given key
+                // TODO: achieve in a single seek?
+                if (!IsInKeyBounds(iterator, key))
+                {
+                    iterator.SeekToFirst();
+                    iterator.Seek(key);
+                }
+
+                using var buffer = new ArrayPoolList<int>(includeValues ? 128 : 0);
+                while (IsInKeyBounds(iterator, key))
+                {
+                    var value = iterator.Value();
+                    foreach (var block in EnumerateBlockNumbers(value, from))
+                    {
+                        if (block > to)
+                        {
+                            result.Add(iterator.Key(), buffer.AsSpan().ToArray());
+                            return result;
+                        }
+
+                        if (includeValues)
+                            buffer.Add(block);
+                    }
+
+                    result.Add(iterator.Key(), buffer.AsSpan().ToArray());
+
+                    buffer.Clear();
+                    iterator.Next();
+                }
+
+                return result;
+            }
+            finally
+            {
+                if (dbKeyBuffer != null) _arrayPool.Return(dbKeyBuffer);
+            }
+        }
+
         // TODO: use ArrayPoolList?
         public List<int> GetBlockNumbersFor(Address address, int from, int to)
         {
@@ -358,13 +424,13 @@ namespace Nethermind.Db
         {
             if (IncludeTopicIndex) length -= 1;
 
-            if (length - Hash256.Size is BlockNumSize or SpecialPostfix.ForwardMergeLength or SpecialPostfix.BackwardMergeLength)
+            if (length - Hash256.Size is 0 or BlockNumSize or SpecialPostfix.ForwardMergeLength or SpecialPostfix.BackwardMergeLength)
             {
                 prefixLength = Hash256.Size;
                 return _topicsDb;
             }
 
-            if (length - Address.Size is BlockNumSize or SpecialPostfix.ForwardMergeLength or SpecialPostfix.BackwardMergeLength)
+            if (length - Address.Size is 0 or BlockNumSize or SpecialPostfix.ForwardMergeLength or SpecialPostfix.BackwardMergeLength)
             {
                 prefixLength = Address.Size;
                 return _addressDb;

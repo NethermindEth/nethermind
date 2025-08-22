@@ -14,6 +14,7 @@ namespace Nethermind.JsonRpc.Modules
         public const string Debug = nameof(Debug);
         public const string Erc20 = nameof(Erc20);
         public const string Eth = nameof(Eth);
+        public const string LogIndex = nameof(LogIndex);
         public const string Evm = nameof(Evm);
         public const string Flashbots = nameof(Flashbots);
         public const string Net = nameof(Net);
@@ -40,6 +41,7 @@ namespace Nethermind.JsonRpc.Modules
             Debug,
             Erc20,
             Eth,
+            LogIndex,
             Evm,
             Flashbots,
             Net,

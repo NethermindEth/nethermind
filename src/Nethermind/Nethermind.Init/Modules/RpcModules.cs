@@ -22,6 +22,7 @@ using Nethermind.JsonRpc.Modules.Admin;
 using Nethermind.JsonRpc.Modules.DebugModule;
 using Nethermind.JsonRpc.Modules.Eth;
 using Nethermind.JsonRpc.Modules.Eth.FeeHistory;
+using Nethermind.JsonRpc.Modules.LogIndex;
 using Nethermind.JsonRpc.Modules.Net;
 using Nethermind.JsonRpc.Modules.Parity;
 using Nethermind.JsonRpc.Modules.Personal;
@@ -60,6 +61,7 @@ public class RpcModules(IJsonRpcConfig jsonRpcConfig) : Module
             .RegisterSingletonJsonRpcModule<IWeb3RpcModule, Web3RpcModule>()
             .RegisterSingletonJsonRpcModule<IPersonalRpcModule, PersonalRpcModule>()
             .RegisterSingletonJsonRpcModule<IRpcRpcModule, RpcRpcModule>()
+            .RegisterSingletonJsonRpcModule<ILogIndexRpcModule, LogIndexRpcModule>()
             .AddSingleton<ILogIndexService, LogIndexService>() // TODO: relocate registration?
 
             // Txpool rpc
