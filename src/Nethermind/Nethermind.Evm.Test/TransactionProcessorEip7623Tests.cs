@@ -48,8 +48,8 @@ public class TransactionProcessorEip7623Tests
         _worldStateCloser?.Dispose();
     }
 
-    [TestCase(21006, true, TestName = "GasLimit=IntrinsicGas")]
-    [TestCase(21010, false, TestName = "GasLimit=FloorGas")]
+    [TestCase(21006, false, TestName = "GasLimit=IntrinsicGas")]
+    [TestCase(21010, true, TestName = "GasLimit=FloorGas")]
 
     public void transaction_validation_intrinsic_below_floor(long gasLimit, bool executed)
     {
