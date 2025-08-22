@@ -4,7 +4,7 @@
 using System;
 using Nethermind.Core.BlockAccessLists;
 
-namespace Nethermind.Serialization.Rlp;
+namespace Nethermind.Serialization.Rlp.Eip7928;
 
 public class BlockAccessListDecoder : IRlpValueDecoder<BlockAccessList>, IRlpStreamDecoder<BlockAccessList>
 {
