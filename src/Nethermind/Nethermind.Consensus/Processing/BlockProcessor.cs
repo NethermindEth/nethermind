@@ -167,7 +167,9 @@ public partial class BlockProcessor(
 
         if (spec.BlockLevelAccessListsEnabled)
         {
-            body.BlockAccessList = Rlp.Encode(BlockAccessTracer.BlockAccessList).Bytes;
+            //tmp
+            block.DecodedBlockAccessList = BlockAccessTracer.BlockAccessList;
+            // body.BlockAccessList = Rlp.Encode(BlockAccessTracer.BlockAccessList).Bytes;
         }
 
         return receipts;

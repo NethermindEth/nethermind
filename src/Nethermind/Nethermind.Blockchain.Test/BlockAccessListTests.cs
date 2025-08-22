@@ -132,7 +132,9 @@ namespace Nethermind.Evm.Test
             };
             (Block processedBlock, TxReceipt[] _) = processor.ProcessOne(block, ProcessingOptions.None, NullBlockTracer.Instance, spec, CancellationToken.None);
 
-            SortedDictionary<Address, AccountChanges> accountChanges = Rlp.Decode<BlockAccessList>(processedBlock.BlockAccessList).AccountChanges;
+            // tmp
+            // SortedDictionary<Address, AccountChanges> accountChanges = Rlp.Decode<BlockAccessList>(processedBlock.BlockAccessList).AccountChanges;
+            SortedDictionary<Address, AccountChanges> accountChanges = processedBlock.DecodedBlockAccessList!.Value.AccountChanges;
             Assert.That(accountChanges, Has.Count.EqualTo(3));
 
             List<BalanceChange> senderBalanceChanges = accountChanges[TestItem.AddressA].BalanceChanges;
