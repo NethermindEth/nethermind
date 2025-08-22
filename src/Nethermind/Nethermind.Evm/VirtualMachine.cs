@@ -104,6 +104,7 @@ public unsafe partial class VirtualMachineBase(
     public ReadOnlyMemory<byte> ReturnDataBuffer { get; set; } = Array.Empty<byte>();
     public object ReturnData { get; set; }
     public IBlockhashProvider BlockHashProvider => _blockHashProvider;
+    protected Stack<EvmState> StateStack => _stateStack;
 
     private BlockExecutionContext _blockExecutionContext;
     public void SetBlockExecutionContext(in BlockExecutionContext blockExecutionContext) => _blockExecutionContext = blockExecutionContext;
