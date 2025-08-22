@@ -2,11 +2,9 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using System.Collections.Generic;
 using System.Numerics;
 using System.Runtime.CompilerServices;
 using System.Threading;
-using System.Threading.Tasks;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.BeaconBlockRoot;
 using Nethermind.Blockchain.Blocks;
@@ -17,8 +15,7 @@ using Nethermind.Consensus.Rewards;
 using Nethermind.Consensus.Validators;
 using Nethermind.Consensus.Withdrawals;
 using Nethermind.Core;
-using Nethermind.Core.Crypto;
-using Nethermind.Core.Extensions;
+using Nethermind.Core.BlockAccessLists;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Threading;
 using Nethermind.Crypto;
@@ -27,11 +24,10 @@ using Nethermind.Evm.State;
 using Nethermind.Evm.Tracing;
 using Nethermind.Int256;
 using Nethermind.Logging;
+using Nethermind.Serialization.Rlp;
 using Nethermind.Specs.Forks;
 using Nethermind.State;
 using static Nethermind.Consensus.Processing.IBlockProcessor;
-
-using Metrics = Nethermind.Blockchain.Metrics;
 
 namespace Nethermind.Consensus.Processing;
 
@@ -58,6 +54,7 @@ public partial class BlockProcessor(
     /// to any block-specific tracers.
     /// </summary>
     protected BlockReceiptsTracer ReceiptsTracer { get; set; } = new();
+    protected BlockAccessTracer BlockAccessTracer { get; set; } = new();
 
     public event EventHandler<TxProcessedEventArgs> TransactionProcessed
     {
@@ -104,16 +101,30 @@ public partial class BlockProcessor(
         IReleaseSpec spec,
         CancellationToken token)
     {
+        BlockBody body = block.Body;
         BlockHeader header = block.Header;
 
-        ReceiptsTracer.SetOtherTracer(blockTracer);
+        if (spec.BlockLevelAccessListsEnabled)
+        {
+            CompositeBlockTracer compositeBlockTracer = new();
+            compositeBlockTracer.Add(blockTracer);
+            compositeBlockTracer.Add(BlockAccessTracer);
+            ReceiptsTracer.SetOtherTracer(compositeBlockTracer);
+        }
+        else
+        {
+            ReceiptsTracer.SetOtherTracer(blockTracer);
+        }
         ReceiptsTracer.StartNewBlockTrace(block);
 
         blockTransactionsExecutor.SetBlockExecutionContext(new BlockExecutionContext(block.Header, spec));
 
-        StoreBeaconRoot(block, spec);
-        blockHashStore.ApplyBlockhashStateChanges(header, spec);
+        StoreBeaconRoot(block, spec, BlockAccessTracer);
+        blockHashStore.ApplyBlockhashStateChanges(header, spec, BlockAccessTracer);
         _stateProvider.Commit(spec, commitRoots: false);
+
+        // set access index to 1 since system contracts completed
+        BlockAccessTracer.EndTxTrace();
 
         TxReceipt[] receipts = blockTransactionsExecutor.ProcessTransactions(block, options, ReceiptsTracer, token);
 
@@ -128,7 +139,7 @@ public partial class BlockProcessor(
 
         header.ReceiptsRoot = _receiptsRootCalculator.GetReceiptsRoot(receipts, spec, block.ReceiptsRoot);
         ApplyMinerRewards(block, blockTracer, spec);
-        withdrawalProcessor.ProcessWithdrawals(block, spec);
+        withdrawalProcessor.ProcessWithdrawals(block, spec, BlockAccessTracer);
 
         // We need to do a commit here as in _executionRequestsProcessor while executing system transactions
         // we do WorldState.Commit(SystemTransactionReleaseSpec.Instance). In SystemTransactionReleaseSpec
@@ -155,6 +166,11 @@ public partial class BlockProcessor(
 
         header.Hash = header.CalculateHash();
 
+        if (spec.BlockLevelAccessListsEnabled)
+        {
+            body.BlockAccessList = Rlp.Encode(BlockAccessTracer.BlockAccessList).Bytes;
+        }
+
         return receipts;
     }
 
@@ -173,11 +189,11 @@ public partial class BlockProcessor(
             });
     }
 
-    private void StoreBeaconRoot(Block block, IReleaseSpec spec)
+    private void StoreBeaconRoot(Block block, IReleaseSpec spec, ITxTracer tracer)
     {
         try
         {
-            beaconBlockRootHandler.StoreBeaconRoot(block, spec, NullTxTracer.Instance);
+            beaconBlockRootHandler.StoreBeaconRoot(block, spec, tracer);
         }
         catch (Exception e)
         {
@@ -229,7 +245,14 @@ public partial class BlockProcessor(
             headerForProcessing.StateRoot = bh.StateRoot;
         }
 
-        return suggestedBlock.WithReplacedHeader(headerForProcessing);
+        Block block = suggestedBlock.WithReplacedHeader(headerForProcessing);
+
+        if (block.BlockAccessList is not null)
+        {
+            block.DecodedBlockAccessList = Rlp.Decode<BlockAccessList>(block.BlockAccessList);
+        }
+
+        return block;
     }
 
     private void ApplyMinerRewards(Block block, IBlockTracer tracer, IReleaseSpec spec)
@@ -264,6 +287,7 @@ public partial class BlockProcessor(
         if (_logger.IsTrace) _logger.Trace($"  {(BigInteger)reward.Value / (BigInteger)Unit.Ether:N3}{Unit.EthSymbol} for account at {reward.Address}");
 
         _stateProvider.AddToBalanceAndCreateIfNotExists(reward.Address, reward.Value, spec);
+        // tracer here?
     }
 
     private void ApplyDaoTransition(Block block)

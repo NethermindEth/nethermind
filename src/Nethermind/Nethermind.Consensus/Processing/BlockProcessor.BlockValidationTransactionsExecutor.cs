@@ -4,17 +4,13 @@
 using System;
 using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
-using System.Linq;
 using System.Threading;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Tracing;
 using Nethermind.Core;
-using Nethermind.Core.Specs;
 using Nethermind.Evm;
 using Nethermind.Evm.State;
-using Nethermind.Evm.Tracing;
 using Nethermind.Evm.TransactionProcessing;
-
 using Metrics = Nethermind.Evm.Metrics;
 
 namespace Nethermind.Consensus.Processing
@@ -43,7 +39,7 @@ namespace Nethermind.Consensus.Processing
                     Transaction currentTx = block.Transactions[i];
                     ProcessTransaction(block, currentTx, i, receiptsTracer, processingOptions);
                 }
-                return receiptsTracer.TxReceipts.ToArray();
+                return [.. receiptsTracer.TxReceipts];
             }
 
             protected virtual void ProcessTransaction(Block block, Transaction currentTx, int index, BlockReceiptsTracer receiptsTracer, ProcessingOptions processingOptions)
@@ -54,7 +50,7 @@ namespace Nethermind.Consensus.Processing
             }
 
             [DoesNotReturn, StackTraceHidden]
-            private void ThrowInvalidBlockException(TransactionResult result, BlockHeader header, Transaction currentTx, int index)
+            private static void ThrowInvalidBlockException(TransactionResult result, BlockHeader header, Transaction currentTx, int index)
             {
                 throw new InvalidBlockException(header, $"Transaction {currentTx.Hash} at index {index} failed with error {result.Error}");
             }
