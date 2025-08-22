@@ -434,11 +434,16 @@ public sealed class LogIndexService : ILogIndexService
             MaxDegreeOfParallelism = IOParallelism
         }, i =>
         {
-            Block? block = _blockTree.FindBlock(i);
-            if (block == null) return;
+            var bufferIndex = isForward ? i - from : to - 1 - i;
+
+            if (_blockTree.FindBlock(i) is not { } block)
+                return;
+
             TxReceipt[] receipts = _receiptStorage.Get(block, false) ?? [];
-            var index = isForward ? i - from : to - 1 - i;
-            buffer[index] = new(i, receipts);
+            if (block.Header.HasTransactions && receipts.Length == 0)
+                return;
+
+            buffer[bufferIndex] = new(i, receipts);
         });
     }
 
