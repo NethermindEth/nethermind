@@ -172,27 +172,9 @@ public sealed class LogIndexService : ILogIndexService
         //     _newBackwardBlockEvent.Set();
     }
 
-    // TODO: figure out values that would be correct in all cases
-    private int? GetMaxAvailableBlockNumber()
+    private int GetMaxAvailableBlockNumber()
     {
-        if (_blockTree.Head is not { } head)
-            return null;
-
-        var res = Math.Min(
-            head.Number,
-            Math.Max(_blockTree.BestKnownNumber, _blockTree.BestKnownBeaconNumber)
-        );
-
-        res -= MaxReorgDepth; // TODO: do not stay MaxReorgDepth behind, handle reorgs instead
-        return res >= 0 ? (int)res : null;
-    }
-
-    private int? GetMinAvailableBlockNumber()
-    {
-        if (_blockTree.Head is null)
-            return null;
-
-        return (int?)_blockTree.LowestInsertedHeader?.Number;
+        return (int)Math.Max(_blockTree.BestKnownNumber - MaxReorgDepth, 0);
     }
 
     private async Task DoProcess()
@@ -311,38 +293,21 @@ public sealed class LogIndexService : ILogIndexService
                     return;
                 }
 
-                var end = isForward
-                    ? Math.Min(GetMaxAvailableBlockNumber() ?? int.MinValue, start + BatchSize - 1)
-                    : Math.Max(start - BatchSize + 1, GetMinAvailableBlockNumber() ?? int.MaxValue);
+                var end = isForward ? start + BatchSize - 1 : start - BatchSize + 1;
 
                 // from - inclusive, to - exclusive
-                var (from, to) = isForward ? (start, end + 1) : (end, start + 1);
-
-                if (to <= from)
-                {
-                    var timedOut = !await newBlockEvent.WaitOneAsync(NewBlockWaitTimeout, CancellationToken);
-
-                    if (timedOut && _logger.IsInfo)
-                    {
-                        (int? synced, int? available) = GetStatus(isForward);
-                        _logger.Info($"{GetLogPrefix(isForward)}: waiting for a new block, last synced: {synced:N0}, best available: {available:N0}");
-                    }
-
-                    continue;
-                }
+                var (from, to) = isForward ?
+                    (start, Math.Min(end, GetMaxAvailableBlockNumber()) + 1) :
+                    (end, start + 1);
 
                 Array.Clear(buffer);
                 PopulateBlocks(from, to, buffer, isForward, CancellationToken);
 
                 if (buffer[0] == default)
                 {
-                    var timedOut = !await newBlockEvent.WaitOneAsync(NewBlockWaitTimeout, CancellationToken);
-
-                    if (timedOut && _logger.IsInfo)
-                    {
-                        var index = isForward ? from : to - 1;
-                        _logger.Info($"{GetLogPrefix(isForward)}: waiting for a new block, no receipts available for {index:N0}");
-                    }
+                    next = isForward ? from : to - 1;
+                    _logger.Info($"{GetLogPrefix(isForward)}: waiting for receipts of block {next:N0}");
+                    await newBlockEvent.WaitOneAsync(NewBlockWaitTimeout, CancellationToken);
 
                     continue;
                 }
@@ -391,18 +356,18 @@ public sealed class LogIndexService : ILogIndexService
 
     private void UpdateProgress(int pivotNumber)
     {
-        _forwardProgressLogger.TargetValue = (GetMaxAvailableBlockNumber() ?? pivotNumber) - pivotNumber;
-        _forwardProgressLogger.Update((_logIndexStorage.GetMaxBlockNumber() ?? pivotNumber) - pivotNumber);
+        _forwardProgressLogger.TargetValue = Math.Max(0, _blockTree.BestKnownNumber - MaxReorgDepth - pivotNumber + 1);
+        _forwardProgressLogger.Update(_logIndexStorage.GetMaxBlockNumber() is { } max ? max - pivotNumber + 1 : 0);
         _forwardProgressLogger.CurrentQueued = _forwardChannel.Reader.Count;
 
         // if (_forwardProgressLogger.CurrentValue == _forwardProgressLogger.TargetValue)
         //     _forwardProgressLogger.MarkEnd();
 
         _backwardProgressLogger.TargetValue = pivotNumber;
-        _backwardProgressLogger.Update(pivotNumber - (_logIndexStorage.GetMinBlockNumber() ?? pivotNumber));
+        _backwardProgressLogger.Update(_logIndexStorage.GetMinBlockNumber() is { } min ? pivotNumber - min : 0);
         _backwardProgressLogger.CurrentQueued = _backwardChannel.Reader.Count;
 
-        if (_backwardProgressLogger.CurrentValue == _backwardProgressLogger.TargetValue)
+        if (_backwardProgressLogger.CurrentValue <= 0)
             _backwardProgressLogger.MarkEnd();
     }
 
@@ -416,10 +381,6 @@ public sealed class LogIndexService : ILogIndexService
         return isForward ? last + 1 : last - 1;
     }
 
-    private (int? synced, int? available) GetStatus(bool isForward) => isForward
-        ? (_logIndexStorage.GetMaxBlockNumber(), GetMaxAvailableBlockNumber())
-        : (_logIndexStorage.GetMinBlockNumber(), GetMinAvailableBlockNumber());
-
     private void PopulateBlocks(int from, int to, BlockReceipts[] buffer, bool isForward, CancellationToken token)
     {
         if (to <= from)
@@ -428,6 +389,11 @@ public sealed class LogIndexService : ILogIndexService
         if (to - from > buffer.Length)
             throw new InvalidOperationException($"Buffer size is too small: {buffer.Length} / {to - from}");
 
+        // Check the immediate next block first
+        var nextIndex = isForward ? from : to - 1;
+        buffer[0] = GetBlockReceipts(nextIndex);
+        if (buffer[0] == default) return;
+
         Parallel.For(from, to, new()
         {
             CancellationToken = token,
@@ -435,16 +401,21 @@ public sealed class LogIndexService : ILogIndexService
         }, i =>
         {
             var bufferIndex = isForward ? i - from : to - 1 - i;
+            if (buffer[bufferIndex] == default)
+                buffer[bufferIndex] = GetBlockReceipts(i);
+        });
 
+        BlockReceipts GetBlockReceipts(int i)
+        {
             if (_blockTree.FindBlock(i) is not { } block)
-                return;
+                return default;
 
             TxReceipt[] receipts = _receiptStorage.Get(block, false) ?? [];
             if (block.Header.HasTransactions && receipts.Length == 0)
-                return;
+                return default;
 
-            buffer[bufferIndex] = new(i, receipts);
-        });
+            return new(i, receipts);
+        }
     }
 
     private static bool IsSeqAsc(List<BlockReceipts> blocks)
