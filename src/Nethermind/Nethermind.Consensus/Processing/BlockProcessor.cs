@@ -247,7 +247,7 @@ public partial class BlockProcessor(
 
         Block block = suggestedBlock.WithReplacedHeader(headerForProcessing);
 
-        if (block.BlockAccessList is not null)
+        if (block.BlockAccessList is not null && block.BlockAccessList.Length != 0)
         {
             block.DecodedBlockAccessList = Rlp.Decode<BlockAccessList>(block.BlockAccessList);
         }
@@ -287,7 +287,6 @@ public partial class BlockProcessor(
         if (_logger.IsTrace) _logger.Trace($"  {(BigInteger)reward.Value / (BigInteger)Unit.Ether:N3}{Unit.EthSymbol} for account at {reward.Address}");
 
         _stateProvider.AddToBalanceAndCreateIfNotExists(reward.Address, reward.Value, spec);
-        // tracer here?
     }
 
     private void ApplyDaoTransition(Block block)

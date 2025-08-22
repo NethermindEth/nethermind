@@ -45,18 +45,18 @@ public class BlockAccessTracer : IBlockTracer, ITxTracer, IJournal<int>
 
     }
 
-    public void StartOperation(int pc, Instruction opcode, long gas, in ExecutionEnvironment env, int codeSection = 0, int functionDepth = 0) {}
+    public void StartOperation(int pc, Instruction opcode, long gas, in ExecutionEnvironment env, int codeSection = 0, int functionDepth = 0) { }
 
-    public void ReportOperationError(EvmExceptionType error) {}
+    public void ReportOperationError(EvmExceptionType error) { }
 
 
-    public void ReportOperationRemainingGas(long gas) {}
+    public void ReportOperationRemainingGas(long gas) { }
 
-    public void ReportLog(LogEntry log) {}
+    public void ReportLog(LogEntry log) { }
 
-    public void SetOperationMemorySize(ulong newSize) {}
+    public void SetOperationMemorySize(ulong newSize) { }
 
-    public void ReportMemoryChange(long offset, in ReadOnlySpan<byte> data) {}
+    public void ReportMemoryChange(long offset, in ReadOnlySpan<byte> data) { }
 
     public void SetOperationStorage(Address address, UInt256 storageIndex, ReadOnlySpan<byte> newValue, ReadOnlySpan<byte> currentValue)
     {
@@ -72,9 +72,9 @@ public class BlockAccessTracer : IBlockTracer, ITxTracer, IJournal<int>
         }
     }
 
-    public void LoadOperationStorage(Address address, UInt256 storageIndex, ReadOnlySpan<byte> value) {}
+    public void LoadOperationStorage(Address address, UInt256 storageIndex, ReadOnlySpan<byte> value) { }
 
-    public void ReportSelfDestruct(Address address, UInt256 balance, Address refundAddress) {}
+    public void ReportSelfDestruct(Address address, UInt256 balance, Address refundAddress) { }
 
     public void ReportBalanceChange(Address address, UInt256? before, UInt256? after)
     {
@@ -194,38 +194,38 @@ public class BlockAccessTracer : IBlockTracer, ITxTracer, IJournal<int>
         accountChanges.StorageReads.Add(storageKey);
     }
 
-    public void ReportAction(long gas, UInt256 value, Address from, Address to, ReadOnlyMemory<byte> input, ExecutionType callType, bool isPrecompileCall = false) {}
+    public void ReportAction(long gas, UInt256 value, Address from, Address to, ReadOnlyMemory<byte> input, ExecutionType callType, bool isPrecompileCall = false) { }
 
-    public void ReportActionEnd(long gas, ReadOnlyMemory<byte> output) {}
+    public void ReportActionEnd(long gas, ReadOnlyMemory<byte> output) { }
 
-    public void ReportActionError(EvmExceptionType exceptionType) {}
+    public void ReportActionError(EvmExceptionType exceptionType) { }
 
-    public void ReportActionRevert(long gasLeft, ReadOnlyMemory<byte> output) {}
+    public void ReportActionRevert(long gasLeft, ReadOnlyMemory<byte> output) { }
 
-    public void ReportActionEnd(long gas, Address deploymentAddress, ReadOnlyMemory<byte> deployedCode) {}
+    public void ReportActionEnd(long gas, Address deploymentAddress, ReadOnlyMemory<byte> deployedCode) { }
 
-    public void ReportByteCode(ReadOnlyMemory<byte> byteCode) {}
+    public void ReportByteCode(ReadOnlyMemory<byte> byteCode) { }
 
-    public void ReportGasUpdateForVmTrace(long refund, long gasAvailable) {}
+    public void ReportGasUpdateForVmTrace(long refund, long gasAvailable) { }
 
-    public void ReportRefund(long refund) {}
+    public void ReportRefund(long refund) { }
 
-    public void ReportExtraGasPressure(long extraGasPressure) {}
+    public void ReportExtraGasPressure(long extraGasPressure) { }
 
     public void ReportAccess(IReadOnlyCollection<Address> accessedAddresses, IReadOnlyCollection<StorageCell> accessedStorageCells)
     {
         // _bal.Add(new());
     }
 
-    public void SetOperationStack(TraceStack stack) {}
+    public void SetOperationStack(TraceStack stack) { }
 
-    public void ReportStackPush(in ReadOnlySpan<byte> stackItem) {}
+    public void ReportStackPush(in ReadOnlySpan<byte> stackItem) { }
 
-    public void ReportBlockHash(Hash256 blockHash) {}
+    public void ReportBlockHash(Hash256 blockHash) { }
 
-    public void SetOperationMemory(TraceMemory memoryTrace) {}
+    public void SetOperationMemory(TraceMemory memoryTrace) { }
 
-    public void ReportFees(UInt256 fees, UInt256 burntFees) {}
+    public void ReportFees(UInt256 fees, UInt256 burntFees) { }
 
     // private ITxTracer _currentTxTracer = NullTxTracer.Instance;
     private ushort _blockAccessIndex = 0;
@@ -252,7 +252,7 @@ public class BlockAccessTracer : IBlockTracer, ITxTracer, IJournal<int>
         // Block.Header.GasUsed = _txReceipts.Count > 0 ? _txReceipts.Last().GasUsedTotal : 0;
     }
 
-    public void ReportReward(Address author, string rewardType, UInt256 rewardValue) {}
+    public void ReportReward(Address author, string rewardType, UInt256 rewardValue) { }
 
     public void StartNewBlockTrace(Block block)
     {
