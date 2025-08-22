@@ -15,7 +15,6 @@ using Nethermind.Consensus.Rewards;
 using Nethermind.Consensus.Validators;
 using Nethermind.Consensus.Withdrawals;
 using Nethermind.Core;
-using Nethermind.Core.BlockAccessLists;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Threading;
 using Nethermind.Crypto;
@@ -245,14 +244,7 @@ public partial class BlockProcessor(
             headerForProcessing.StateRoot = bh.StateRoot;
         }
 
-        Block block = suggestedBlock.WithReplacedHeader(headerForProcessing);
-
-        if (block.BlockAccessList is not null && block.BlockAccessList.Length != 0)
-        {
-            block.DecodedBlockAccessList = Rlp.Decode<BlockAccessList>(block.BlockAccessList);
-        }
-
-        return block;
+        return suggestedBlock.WithReplacedHeader(headerForProcessing);
     }
 
     private void ApplyMinerRewards(Block block, IBlockTracer tracer, IReleaseSpec spec)

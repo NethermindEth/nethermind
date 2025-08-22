@@ -153,7 +153,10 @@ public static class BlockErrorMessages
 
     public const string MissingBlockLevelAccessList = "MissingBlockLevelAccessList: Must be present in block body.";
 
+    public const string InvalidBlockLevelAccessList =
+        $"InvalidBlockLevelAccessList: Unable to decode.";
+
     public static string InvalidBlockLevelAccessListRoot(Hash256 expected, Hash256 actual) =>
-        $"InvalidBlockLevelAccessListRoot: expected {expected}, got {actual}";
+        $"InvalidBlockLevelAccessListRoot: Expected {expected}, got {actual}";
 
 }

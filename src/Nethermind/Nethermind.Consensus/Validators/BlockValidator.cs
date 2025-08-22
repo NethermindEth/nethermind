@@ -6,6 +6,7 @@ using System.Text;
 using Nethermind.Blockchain;
 using Nethermind.Consensus.Messages;
 using Nethermind.Core;
+using Nethermind.Core.BlockAccessLists;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
@@ -141,6 +142,25 @@ public class BlockValidator(
 
             if (!ValidateWithdrawals(block, spec, out errorMessage))
             {
+                return false;
+            }
+        }
+
+        if (spec.BlockLevelAccessListsEnabled)
+        {
+            if (block.BlockAccessList is null || block.BlockAccessList.Length == 0)
+            {
+                errorMessage = BlockErrorMessages.InvalidBlockLevelAccessList;
+                return false;
+            }
+
+            try
+            {
+                block.DecodedBlockAccessList = Rlp.Decode<BlockAccessList>(block.BlockAccessList);
+            }
+            catch (RlpException)
+            {
+                errorMessage = BlockErrorMessages.InvalidBlockLevelAccessList;
                 return false;
             }
         }
