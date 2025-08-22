@@ -247,6 +247,11 @@ namespace Nethermind.Db
             ? Math.Max(addressMinBlock, topicMinBlock)
             : null;
 
+        public string GetDbSize()
+        {
+            return FormatSize(_columnsDb.GatherMetric().Size);
+        }
+
         public Dictionary<byte[], int[]> GetKeysFor(byte[] key, int from, int to, bool includeValues = false)
         {
             static bool IsInKeyBounds(IIterator<byte[], byte[]> iterator, byte[] key)
@@ -944,6 +949,20 @@ namespace Nethermind.Db
             }
 
             return ~(left * BlockNumSize);
+        }
+
+        private static readonly string[] SizeSuffixes = ["B", "KB", "MB", "GB", "TB", "PB"];
+
+        private static string FormatSize(double size)
+        {
+            int index = 0;
+            while (size >= 1024 && index < SizeSuffixes.Length - 1)
+            {
+                size /= 1024;
+                index++;
+            }
+
+            return $"{size:0.##} {SizeSuffixes[index]}";
         }
     }
 }

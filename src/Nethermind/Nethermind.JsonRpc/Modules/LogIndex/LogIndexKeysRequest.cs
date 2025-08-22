@@ -33,6 +33,3 @@ public class LogIndexKeysRequest : IJsonRpcParam
             IncludeValues = valuesElement.GetBoolean();
     }
 }
-
-// TODO: add forward/backward sync status?
-public record LogIndexStatus(int? FromBlock, int? ToBlock);

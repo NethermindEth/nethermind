@@ -19,7 +19,7 @@ public class LogIndexRpcModule(ILogIndexStorage storage, IBlockFinder blockFinde
     public ResultWrapper<LogIndexStatus> logIndex_status()
     {
         return ResultWrapper<LogIndexStatus>.Success(
-            new(storage.GetMinBlockNumber(), storage.GetMaxBlockNumber())
+            new(storage.GetMinBlockNumber(), storage.GetMaxBlockNumber(), storage.GetDbSize())
         );
     }
 

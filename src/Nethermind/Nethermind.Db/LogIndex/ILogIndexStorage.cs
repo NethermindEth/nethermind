@@ -36,6 +36,7 @@ public interface ILogIndexStorage : IAsyncDisposable, IStoppableService
     List<int> GetBlockNumbersFor(Hash256 topic, int from, int to);
 
     Dictionary<byte[], int[]> GetKeysFor(byte[] key, int from, int to, bool includeValues = false);
+    string GetDbSize();
 
     Task FirstBlockAdded { get; }
     Task CheckMigratedData();
