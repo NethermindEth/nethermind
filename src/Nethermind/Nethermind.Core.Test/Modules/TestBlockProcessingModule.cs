@@ -28,7 +28,7 @@ public class TestBlockProcessingModule : Module
     {
         builder
             .AddSingleton<ITransactionComparerProvider, TransactionComparerProvider>()
-            // NOTE: The ordering of block preprocessor is not guarenteed
+            // NOTE: The ordering of block preprocessor is not guaranteed
             .AddComposite<IBlockPreprocessorStep, CompositeBlockPreprocessorStep>()
             .AddSingleton<CompositeBlockPreprocessorStep>()
             .AddSingleton<IBlockPreprocessorStep, RecoverSignatures>()
