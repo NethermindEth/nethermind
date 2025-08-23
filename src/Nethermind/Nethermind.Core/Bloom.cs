@@ -230,9 +230,12 @@ public class Bloom : IEquatable<Bloom>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private static (int w, ulong m) WordMask(int bitIndex)
     {
+        const int LittleEndianBitReverseMask = 7;   // For little-endian, reverse lower 3 bits
+        const int BigEndianBitReverseMask = 63;     // For big-endian, reverse lower 6 bits
         int w = bitIndex >> 6;
-        int bi = bitIndex & 63;
-        int shift = BitConverter.IsLittleEndian ? (bi ^ 7) : (bi ^ 63);
+        int bi = bitIndex & BigEndianBitReverseMask;
+        // The following bit reversal logic ensures correct mapping of bits in the bloom filter
+        int shift = BitConverter.IsLittleEndian ? (bi ^ LittleEndianBitReverseMask) : (bi ^ BigEndianBitReverseMask);
         ulong m = 1UL << shift;
         return (w, m);
     }
