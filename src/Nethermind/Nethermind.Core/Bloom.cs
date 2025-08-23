@@ -56,7 +56,7 @@ public class Bloom : IEquatable<Bloom>
     public Span<byte> Bytes => _bloomData.AsSpan();
     private Span<ulong> ULongs => _bloomData.AsULongs();
 
-    private void Set(ReadOnlySpan<byte> sequence, Bloom? masterBloom = null)
+    public void Set(ReadOnlySpan<byte> sequence, Bloom? masterBloom = null)
     {
         if (ReferenceEquals(this, Empty))
         {
