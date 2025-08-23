@@ -92,7 +92,7 @@ public interface IPruningConfig : IConfig
     [ConfigItem(Description = "Minimum persisted cache prune target", DefaultValue = "50000000")]
     long PrunePersistedNodeMinimumTarget { get; set; }
 
-    [ConfigItem(Description = "Maximimum number of block worth of unpersisted state in memory. Default is 297, which is number of mainnet block per hour.", DefaultValue = "297")]
+    [ConfigItem(Description = "Maximum number of block worth of unpersisted state in memory. Default is 297, which is number of mainnet block per hour.", DefaultValue = "297")]
     long MaxUnpersistedBlockCount { get; set; }
 
     [ConfigItem(Description = "Minimum number of block worth of unpersisted state in memory. Prevent memory pruning too often due to insufficient dirty cache memory.", DefaultValue = "8")]
