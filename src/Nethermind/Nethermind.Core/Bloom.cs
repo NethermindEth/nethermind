@@ -20,7 +20,7 @@ public class Bloom : IEquatable<Bloom>
     public static readonly Bloom Empty = new();
     public const int BitLength = 2048;
     public const int ByteLength = BitLength / 8;
-
+    private const int NotRequired = -1;
     private BloomData _bloomData;
 
     public Bloom() { }
@@ -72,9 +72,9 @@ public class Bloom : IEquatable<Bloom>
         (int w3, ulong m3) = WordMask(indexes.Index3);
 
         // Merge masks if same word to minimize stores.
-        if (w2 == w1) { m1 |= m2; w2 = -1; }
-        if (w3 == w1) { m1 |= m3; w3 = -1; }
-        else if (w3 == w2) { m2 |= m3; w3 = -1; }
+        if (w2 == w1) { m1 |= m2; w2 = NotRequired; }
+        if (w3 == w1) { m1 |= m3; w3 = NotRequired; }
+        else if (w3 == w2) { m2 |= m3; w3 = NotRequired; }
 
         // Write to this bloom using 64-bit words.
         SetWordMasks(w1, m1, w2, m2, w3, m3);
@@ -95,9 +95,9 @@ public class Bloom : IEquatable<Bloom>
         (int w3, ulong m3) = WordMask(indexes.Index3);
 
         // Merge masks if same word to minimize stores.
-        if (w2 == w1) { m1 |= m2; w2 = -1; }
-        if (w3 == w1) { m1 |= m3; w3 = -1; }
-        else if (w3 == w2) { m2 |= m3; w3 = -1; }
+        if (w2 == w1) { m1 |= m2; w2 = NotRequired; }
+        if (w3 == w1) { m1 |= m3; w3 = NotRequired; }
+        else if (w3 == w2) { m2 |= m3; w3 = NotRequired; }
 
         // Write to this bloom using 64-bit words.
         SetWordMasks(w1, m1, w2, m2, w3, m3);
@@ -223,8 +223,8 @@ public class Bloom : IEquatable<Bloom>
     {
         Span<ulong> words = ULongs; // 256 / 8 = 32 ulongs
         words[w1] |= m1;
-        if (w2 >= 0) words[w2] |= m2;
-        if (w3 >= 0) words[w3] |= m3;
+        if (w2 >= NotRequired) words[w2] |= m2;
+        if (w3 >= NotRequired) words[w3] |= m3;
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
