@@ -20,7 +20,6 @@ public class Bloom : IEquatable<Bloom>
     public static readonly Bloom Empty = new();
     public const int BitLength = 2048;
     public const int ByteLength = BitLength / 8;
-    private const int NotRequired = -1;
     private BloomData _bloomData;
 
     public Bloom() { }
@@ -57,7 +56,7 @@ public class Bloom : IEquatable<Bloom>
     public Span<byte> Bytes => _bloomData.AsSpan();
     private Span<ulong> ULongs => _bloomData.AsULongs();
 
-    public void Set(ReadOnlySpan<byte> sequence)
+    private void Set(ReadOnlySpan<byte> sequence, Bloom? masterBloom = null)
     {
         if (ReferenceEquals(this, Empty))
         {
@@ -70,40 +69,12 @@ public class Bloom : IEquatable<Bloom>
         (int w1, ulong m1) = WordMask(indexes.Index1);
         (int w2, ulong m2) = WordMask(indexes.Index2);
         (int w3, ulong m3) = WordMask(indexes.Index3);
-
-        // Merge masks if same word to minimize stores.
-        if (w2 == w1) { m1 |= m2; w2 = NotRequired; }
-        if (w3 == w1) { m1 |= m3; w3 = NotRequired; }
-        else if (w3 == w2) { m2 |= m3; w3 = NotRequired; }
-
-        // Write to this bloom using 64-bit words.
-        SetWordMasks(w1, m1, w2, m2, w3, m3);
-    }
-
-    private void Set(ReadOnlySpan<byte> sequence, Bloom masterBloom)
-    {
-        if (ReferenceEquals(this, Empty))
-        {
-            ThrowInvalidUpdate();
-        }
-
-        BloomExtract indexes = GetExtract(sequence);
-
-        // Compute word/masks once.
-        (int w1, ulong m1) = WordMask(indexes.Index1);
-        (int w2, ulong m2) = WordMask(indexes.Index2);
-        (int w3, ulong m3) = WordMask(indexes.Index3);
-
-        // Merge masks if same word to minimize stores.
-        if (w2 == w1) { m1 |= m2; w2 = NotRequired; }
-        if (w3 == w1) { m1 |= m3; w3 = NotRequired; }
-        else if (w3 == w2) { m2 |= m3; w3 = NotRequired; }
 
         // Write to this bloom using 64-bit words.
         SetWordMasks(w1, m1, w2, m2, w3, m3);
 
         // Write to master bloom using bit indexes.
-        masterBloom.SetWordMasks(w1, m1, w2, m2, w3, m3);
+        masterBloom?.SetWordMasks(w1, m1, w2, m2, w3, m3);
     }
 
     public bool Matches(ReadOnlySpan<byte> sequence) => Matches(GetExtract(sequence));
@@ -221,26 +192,24 @@ public class Bloom : IEquatable<Bloom>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private void SetWordMasks(int w1, ulong m1, int w2, ulong m2, int w3, ulong m3)
     {
-        const int Required = 0;
-
         Span<ulong> words = ULongs; // 256 / 8 = 32 ulongs
         words[w1] |= m1;
-        if (w2 >= Required) words[w2] |= m2;
-        if (w3 >= Required) words[w3] |= m3;
+        words[w2] |= m2;
+        words[w3] |= m3;
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    private static (int w, ulong m) WordMask(int bitIndex)
+    private static (int wordIndex, ulong mask) WordMask(int bitIndex)
     {
-        const int LittleEndianBitReverseMask = 7;   // For little-endian, reverse lower 3 bits
-        const int BigEndianBitReverseMask = 63;     // For big-endian, reverse lower 6 bits
+        const int LittleEndianReverseMask = 7;   // For little-endian, reverse lower 3 bits
+        const int BigEndianReverseMask = 63;     // For big-endian, reverse lower 6 bits
 
-        int w = bitIndex >> 6;
-        int bi = bitIndex & 63;
-        // The following bit reversal logic ensures correct mapping of bits in the bloom filter
-        int shift = BitConverter.IsLittleEndian ? (bi ^ LittleEndianBitReverseMask) : (bi ^ BigEndianBitReverseMask);
-        ulong m = 1UL << shift;
-        return (w, m);
+        int wordIndex = bitIndex >> 6;
+        bitIndex &= 63;
+        int mirrorMask = BitConverter.IsLittleEndian ? LittleEndianReverseMask : BigEndianReverseMask;
+        int shift = bitIndex ^ mirrorMask; // JIT folds endianness
+        ulong mask = 1UL << shift;
+        return (wordIndex, mask);
     }
 
     public bool Matches(Address address) => Matches(address.Bytes);
