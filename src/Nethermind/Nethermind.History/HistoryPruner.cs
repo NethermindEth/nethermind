@@ -373,7 +373,7 @@ public class HistoryPruner : IHistoryPruner
                 // should never happen
                 if (number == 0 || number >= _blockTree.SyncPivot.BlockNumber)
                 {
-                    if (_logger.IsWarn) _logger.Warn($"Encountered unexepected block #{number} while pruning history, this block will not be deleted. Should be in range (0, {_blockTree.SyncPivot.BlockNumber}).");
+                    if (_logger.IsWarn) _logger.Warn($"Encountered unexpected block #{number} while pruning history, this block will not be deleted. Should be in range (0, {_blockTree.SyncPivot.BlockNumber}).");
                     continue;
                 }
 
