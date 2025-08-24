@@ -1163,18 +1163,18 @@ namespace Nethermind.Trie
             SeekChildNotNull(ref rlpStream, itemToSetOn);
         }
 
-        private void SeekChildNotNull(ref ValueRlpStream rlpStream, int itemToSetOn)
+        private void SeekChildNotNull(ref ValueRlpStream rlpStream, int index)
         {
             rlpStream.Reset();
             rlpStream.SkipLength();
-            if (itemToSetOn == 0 && IsExtension)
+            if (index == 0 && IsExtension)
             {
-                // Optimization: setting itemToSetOn = 1 achieves the same result as the original skip+decrement pattern,
-                // but is more efficient. This is functionally equivalent to calling SkipItem() and decrementing.
-                itemToSetOn = 1;
+                // Corner case, index is zero, but we are an extension
+                // so we need to move to next item
+                index = 1;
             }
 
-            for (int i = 0; i < itemToSetOn; i++)
+            for (int i = 0; i < index; i++)
             {
                 rlpStream.SkipItem();
             }
