@@ -77,75 +77,173 @@ public ref struct ValueRlpStream(SpanSource data)
 
     public void SkipLength()
     {
-        SkipBytes(PeekPrefixAndContentLength().PrefixLength);
+        SkipBytes(PeekPrefixLength());
     }
 
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public readonly int PeekPrefixLength()
+    {
+        // This is a branchless implementation of Rlp prefix length calculation
+        uint p = PeekByte(); // 0..255
+        uint v = p >> 3; // 0..31
+        uint r = v >> 4; // base: 0 for <0x80, 1 for >=0x80
+        uint t = 1u + (p & 7u); // 1..8
+
+        // 1 for 0xB8..0xBF or 0xF8..0xFF
+        uint longMask = ((v | 8u) == 31u) ? 1u : 0u;   
+
+        // Branchless select: t when longMask == 1 else 0
+        uint add = (0u - longMask) & t;
+        return (int)(r + add);
+    }
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public readonly int PeekNextRlpLength()
     {
-        (int a, int b) = PeekPrefixAndContentLength();
-        return a + b;
+        int result;
+        int prefix = PeekByte();
+        if (prefix <= 128)
+        {
+            // Single byte (0x00..0x7f). The byte is its own content. Length = 1.
+            result = 1;
+        }
+        else if (prefix <= 183)
+        {
+            // Short string (0x80..0xb7). Content length = prefix - 0x80 (0..55).
+            // Prefix length = 1.
+            result = 1 + prefix - 128;
+        }
+        else if (prefix < 192)
+        {
+            // Long string (0xb8..0xbf). The next (prefix-0xb7) bytes encode the length.
+            // Content length >= 56.
+            result = PeekLongStringRlpLength(prefix);
+        }
+        else if (prefix <= 247)
+        {
+            // Short list (0xc0..0xf7). Content length = prefix - 0xc0 (0..55).
+            // Prefix length = 1.
+            result = 1 + prefix - 192;
+        }
+        else
+        {
+            // Long list (0xf8..0xff). The next (prefix-0xf7) bytes encode the length.
+            // Content length >= 56.
+            result = PeekLongListRlpLength(prefix);
+        }
+
+        return result;
     }
 
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public readonly (int PrefixLength, int ContentLength) PeekPrefixAndContentLength()
     {
         (int prefixLength, int contentLength) result;
         int prefix = PeekByte();
         if (prefix <= 128)
         {
+            // Single byte (0x00..0x7f). The byte is its own content. Length = 1.
             result = (0, 1);
         }
         else if (prefix <= 183)
         {
+            // Short string (0x80..0xb7). Content length = prefix - 0x80 (0..55).
+            // Prefix length = 1.
             result = (1, prefix - 128);
         }
         else if (prefix < 192)
         {
-            int lengthOfLength = prefix - 183;
-            if ((uint)lengthOfLength > 4)
-            {
-                // strange but needed to pass tests - seems that spec gives int64 length and tests int32 length
-                ThrowSequenceLengthTooLong();
-            }
-
-            int length = PeekDeserializeLength(1, lengthOfLength);
-            if (length < 56)
-            {
-                ThrowLengthTooLong(length);
-            }
-
-            result = (lengthOfLength + 1, length);
+            // Long string (0xb8..0xbf). The next (prefix-0xb7) bytes encode the length.
+            // Content length >= 56.
+            result = PeekLongString(prefix);
         }
         else if (prefix <= 247)
         {
+            // Short list (0xc0..0xf7). Content length = prefix - 0xc0 (0..55).
+            // Prefix length = 1.
             result = (1, prefix - 192);
         }
         else
         {
-            int lengthOfContentLength = prefix - 247;
-            int contentLength = PeekDeserializeLength(1, lengthOfContentLength);
-            if (contentLength < 56)
-            {
-                ThrowLengthTooLong(contentLength);
-            }
-
-
-            result = (lengthOfContentLength + 1, contentLength);
+            // Long list (0xf8..0xff). The next (prefix-0xf7) bytes encode the length.
+            // Content length >= 56.
+            result = PeekLongList(prefix);
         }
 
         return result;
-
-        [DoesNotReturn, StackTraceHidden]
-        static void ThrowSequenceLengthTooLong()
-        {
-            throw new RlpException("Expected length of length less or equal 4");
-        }
-
-        [DoesNotReturn, StackTraceHidden]
-        static void ThrowLengthTooLong(int length)
-        {
-            throw new RlpException($"Expected length greater or equal 56 and was {length}");
-        }
     }
+
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    private readonly int PeekLongStringRlpLength(int prefix)
+    {
+        int lengthOfLength = prefix - 183;
+        if ((uint)lengthOfLength > 4)
+        {
+            // strange but needed to pass tests - seems that spec gives int64 length and tests int32 length
+            ThrowSequenceLengthTooLong();
+        }
+
+        int length = PeekDeserializeLength(1, lengthOfLength);
+        if (length < 56)
+        {
+            ThrowLengthTooLong(length);
+        }
+
+        return lengthOfLength + 1 + length;
+    }
+
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    private readonly int PeekLongListRlpLength(int prefix)
+    {
+        int lengthOfContentLength = prefix - 247;
+        int contentLength = PeekDeserializeLength(1, lengthOfContentLength);
+        if (contentLength < 56)
+        {
+            ThrowLengthTooLong(contentLength);
+        }
+
+        return lengthOfContentLength + 1 + contentLength;
+    }
+
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    private readonly (int prefixLength, int contentLength) PeekLongString(int prefix)
+    {
+        int lengthOfLength = prefix - 183;
+        if ((uint)lengthOfLength > 4)
+        {
+            // strange but needed to pass tests - seems that spec gives int64 length and tests int32 length
+            ThrowSequenceLengthTooLong();
+        }
+
+        int length = PeekDeserializeLength(1, lengthOfLength);
+        if (length < 56)
+        {
+            ThrowLengthTooLong(length);
+        }
+
+        return (lengthOfLength + 1, length);
+    }
+
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    private readonly (int prefixLength, int contentLength) PeekLongList(int prefix)
+    {
+        int lengthOfContentLength = prefix - 247;
+        int contentLength = PeekDeserializeLength(1, lengthOfContentLength);
+        if (contentLength < 56)
+        {
+            ThrowLengthTooLong(contentLength);
+        }
+
+        return (lengthOfContentLength + 1, contentLength);
+    }
+
+    [DoesNotReturn, StackTraceHidden]
+    private static void ThrowSequenceLengthTooLong()
+        => throw new RlpException("Expected length of length less or equal 4");
+
+    [DoesNotReturn, StackTraceHidden]
+    private static void ThrowLengthTooLong(int length)
+        => throw new RlpException($"Expected length greater or equal 56 and was {length}");
 
     public int ReadSequenceLength()
     {
@@ -275,6 +373,7 @@ public ref struct ValueRlpStream(SpanSource data)
         return Data[_position];
     }
 
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public void SkipBytes(int length)
     {
         _position += length;
@@ -434,10 +533,10 @@ public ref struct ValueRlpStream(SpanSource data)
         }
     }
 
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public void SkipItem()
     {
-        (int prefix, int content) = PeekPrefixAndContentLength();
-        SkipBytes(prefix + content);
+        SkipBytes(PeekNextRlpLength());
     }
 
     public void Reset()

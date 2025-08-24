@@ -1167,10 +1167,9 @@ namespace Nethermind.Trie
         {
             rlpStream.Reset();
             rlpStream.SkipLength();
-            if (IsExtension)
+            if (itemToSetOn == 0 && IsExtension)
             {
-                rlpStream.SkipItem();
-                itemToSetOn--;
+                itemToSetOn = 1;
             }
 
             for (int i = 0; i < itemToSetOn; i++)
