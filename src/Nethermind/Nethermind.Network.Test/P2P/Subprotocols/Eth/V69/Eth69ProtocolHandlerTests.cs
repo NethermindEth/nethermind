@@ -92,6 +92,7 @@ public class Eth69ProtocolHandlerTests
     [TearDown]
     public void TearDown()
     {
+        _pooledTxsRequestor?.Dispose();
         // Dispose received messages
         _session?.ReceivedCalls()
             .Where(c => c.GetMethodInfo().Name == nameof(_session.DeliverMessage))

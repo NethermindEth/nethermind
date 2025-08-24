@@ -95,6 +95,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V65
             _session?.Dispose();
             _syncManager?.Dispose();
             _disposables.Dispose();
+            _pooledTxsRequestor?.Dispose();
         }
 
         [Test]

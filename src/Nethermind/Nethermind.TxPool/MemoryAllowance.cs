@@ -7,5 +7,6 @@ namespace Nethermind.TxPool
     {
         public static int MemPoolSize { get; set; } = 2_048;
         public static int TxHashCacheSize { get; set; } = 131_072;
+        public static int RequestedTxHashCacheSize { get; set; } = MemPoolSize * 2;
     }
 }
