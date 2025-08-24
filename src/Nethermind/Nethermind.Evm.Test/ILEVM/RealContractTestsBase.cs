@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Threading.Tasks;
+using System;
 using FluentAssertions;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
@@ -13,6 +14,7 @@ using Nethermind.Evm.CodeAnalysis.IL;
 using Nethermind.Evm.Config;
 using Nethermind.Evm.Tracing;
 using Nethermind.Evm.TransactionProcessing;
+using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.Specs.Forks;
 using Nethermind.Specs.Test;
@@ -30,7 +32,7 @@ public abstract class RealContractTestsBase : VirtualMachineTestsBase
 
     protected abstract byte[] ByteCode { get; }
 
-    private bool UseIlEvm { get; }
+    protected bool UseIlEvm { get; }
 
     private readonly IVMConfig _config;
 
@@ -140,6 +142,28 @@ public abstract class RealContractTestsBase : VirtualMachineTestsBase
         Precompiler.TryGetEmittedIL(ci.IlMetadata.PrecompiledContract!, out var ilInfo).Should().Be(true);
 
         await Verifier.Verify(ilInfo);
+    }
+
+    public UInt256 GetAccountBalance(Address address)
+    {
+        return TestState.GetBalance(address);
+    }
+
+    public Address InsertCode(byte[] bytecode, Address? target = null)
+    {
+        var hashcode = Keccak.Compute(bytecode);
+        var address = target ?? new Address(hashcode);
+
+        TestState.CreateAccount(address, 1_000_000_000);
+        TestState.InsertCode(address, hashcode, bytecode, Spec);
+        return address;
+    }
+
+    protected void AssertBalance(in StorageCell cell, UInt256 expected)
+    {
+        ReadOnlySpan<byte> read = TestState.Get(cell);
+        UInt256 after = new UInt256(read);
+        after.Should().Be(expected);
     }
 
     [TearDown]
