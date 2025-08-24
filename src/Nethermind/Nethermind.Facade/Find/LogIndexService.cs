@@ -306,7 +306,13 @@ public sealed class LogIndexService : ILogIndexService
                 if (buffer[0] == default)
                 {
                     next = isForward ? from : to - 1;
-                    _logger.Info($"{GetLogPrefix(isForward)}: waiting for receipts of block {next:N0}");
+
+                    var nextBlock = _blockTree.FindBlock((long)next);
+                    var blockHasTransactions = nextBlock?.Header.HasTransactions ?? false;
+                    var receiptsAvailable = nextBlock is not null && _receiptStorage.HasBlock(nextBlock.Number, nextBlock.Hash!);
+                    var receiptsCount = nextBlock is not null ? _receiptStorage.Get(nextBlock)?.Length ?? 0 : 0;
+
+                    _logger.Info($"{GetLogPrefix(isForward)}: waiting for receipts of block {next:N0} ({new { nextBlock, blockHasTransactions, receiptsAvailable, receiptsCount }})");
                     await newBlockEvent.WaitOneAsync(NewBlockWaitTimeout, CancellationToken);
 
                     continue;
