@@ -1167,6 +1167,7 @@ namespace Nethermind.Trie
         {
             rlpStream.Reset();
             rlpStream.SkipLength();
+            if (itemToSetOn == 0 && IsExtension)
             {
                 // Optimization: setting itemToSetOn = 1 achieves the same result as the original skip+decrement pattern,
                 // but is more efficient. This is functionally equivalent to calling SkipItem() and decrementing.
