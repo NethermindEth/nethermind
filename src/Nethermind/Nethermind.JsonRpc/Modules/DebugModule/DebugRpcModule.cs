@@ -20,6 +20,7 @@ using Nethermind.JsonRpc.Modules.Eth;
 using Nethermind.Core.Specs;
 using Nethermind.Facade.Eth.RpcTransaction;
 using Nethermind.Config;
+using Nethermind.Consensus.Stateless;
 using Nethermind.TxPool;
 using Nethermind.Facade.Proxy.Models.Simulate;
 using Nethermind.Facade;
@@ -547,5 +548,22 @@ public class DebugRpcModule(
 
         error = default!;
         return block;
+    }
+
+    public ResultWrapper<Witness> debug_executionWitness(BlockParameter blockParameter)
+    {
+        Block? block = blockFinder.FindBlock(blockParameter);
+        if (block is null)
+        {
+            return ResultWrapper<Witness>.Fail($"Unable to find block {blockParameter}");
+        }
+
+        BlockHeader? parent = blockFinder.FindHeader(block.ParentHash);
+        if (parent is null)
+        {
+            return ResultWrapper<Witness>.Fail($"Unable to find parent for block {blockParameter}");
+        }
+        return ResultWrapper<Witness>.Success(
+            blockchainBridge.GenerateExecutionWitness(parent, block));
     }
 }
