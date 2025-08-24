@@ -111,39 +111,15 @@ public ref struct ValueRlpStream(SpanSource data)
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public readonly int PeekNextRlpLength()
     {
-        int result;
         int prefix = PeekByte();
-        if (prefix <= 128)
+        return prefix switch
         {
-            // Single byte (0x00..0x7f). The byte is its own content. Length = 1.
-            result = 1;
-        }
-        else if (prefix <= 183)
-        {
-            // Short string (0x80..0xb7). Content length = prefix - 0x80 (0..55).
-            // Prefix length = 1.
-            result = 1 + prefix - 128;
-        }
-        else if (prefix < 192)
-        {
-            // Long string (0xb8..0xbf). The next (prefix-0xb7) bytes encode the length.
-            // Content length >= 56.
-            result = PeekLongStringRlpLength(prefix);
-        }
-        else if (prefix <= 247)
-        {
-            // Short list (0xc0..0xf7). Content length = prefix - 0xc0 (0..55).
-            // Prefix length = 1.
-            result = 1 + prefix - 192;
-        }
-        else
-        {
-            // Long list (0xf8..0xff). The next (prefix-0xf7) bytes encode the length.
-            // Content length >= 56.
-            result = PeekLongListRlpLength(prefix);
-        }
-
-        return result;
+            <= 128 => 1,// Single byte (0x00..0x7f). The byte is its own content.
+            <= 183 => 1 + prefix - 0x80,// Short string (0x80..0xb7). Content length = prefix - 0x80 (0..55).
+            < 192 => PeekLongStringRlpLength(prefix),// Long string (0xb8..0xbf). The next (prefix-0xb7) bytes encode the length.
+            <= 247 => 1 + prefix - 0xC0,// Short list (0xc0..0xf7). Content length = prefix - 0xc0 (0..55).
+            _ => PeekLongListRlpLength(prefix),// Long list (0xf8..0xff). The next (prefix-0xf7) bytes encode the length.
+        };
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
