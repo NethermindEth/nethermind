@@ -83,16 +83,27 @@ public ref struct ValueRlpStream(SpanSource data)
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public readonly int PeekPrefixLength()
     {
-        // This is a branchless implementation of Rlp prefix length calculation
-        uint p = PeekByte(); // 0..255
-        uint v = p >> 3; // 0..31
-        uint r = v >> 4; // base: 0 for <0x80, 1 for >=0x80
-        uint t = 1u + (p & 7u); // 1..8
+        // Branchless implementation of RLP prefix length calculation.
+        // See RLP specification: https://github.com/ethereum/wiki/wiki/RLP
+        // RLP encoding rules:
+        // - For a single byte < 0x80: prefix length is 0 (no prefix).
+        // - For short strings (0x80..0xb7): prefix length is 1.
+        // - For long strings (0xb8..0xbf): prefix length is 1 + (prefix - 0xb7).
+        // - For short lists (0xc0..0xf7): prefix length is 1.
+        // - For long lists (0xf8..0xff): prefix length is 1 + (prefix - 0xf7).
+        //
+        // The following bit manipulations encode these rules without branches:
 
-        // 1 for 0xB8..0xBF or 0xF8..0xFF
-        uint longMask = ((v | 8u) == 31u) ? 1u : 0u;   
+        uint p = PeekByte(); // The prefix byte (0..255)
+        uint v = p >> 3;     // Used to classify the prefix range (0..31)
+        uint r = v >> 4;     // r = 0 for <0x80, r = 1 for >=0x80 (single byte vs. prefixed)
+        uint t = 1u + (p & 7u); // t = 1..8, used for long string/list prefix length
 
-        // Branchless select: t when longMask == 1 else 0
+        // longMask is 1 for 0xB8..0xBF or 0xF8..0xFF (long string/list prefixes), else 0
+        // v | 8u == 31u is true for v == 23 (0xB8..0xBF) or v == 31 (0xF8..0xFF)
+        uint longMask = ((v | 8u) == 31u) ? 1u : 0u;
+
+        // If longMask == 1, add t to r; else add 0. This selects the correct prefix length for long string/list.
         uint add = (0u - longMask) & t;
         return (int)(r + add);
     }
