@@ -20,6 +20,7 @@ using Nethermind.Evm.Tracing;
 using Nethermind.Logging;
 using Nethermind.Evm.State;
 
+using static System.Runtime.CompilerServices.Unsafe;
 using static Nethermind.Evm.EvmObjectFormat.EofValidator;
 
 #if DEBUG
@@ -29,24 +30,33 @@ using Nethermind.Evm.Tracing.Debugger;
 [assembly: InternalsVisibleTo("Nethermind.Evm.Test")]
 namespace Nethermind.Evm;
 
-using unsafe OpCode = delegate*<VirtualMachine, ref EvmStack, ref long, ref int, EvmExceptionType>;
 using Int256;
+using Nethermind.Evm.CodeAnalysis.IL;
+using Nethermind.Evm.CodeAnalysis.IL.ArgumentBundle;
+using Nethermind.Evm.Config;
+
+using unsafe OpCode = delegate*<VirtualMachine, ref EvmStack, ref long, ref int, EvmExceptionType>;
+using Word = Vector256<byte>;
 
 public sealed unsafe partial class VirtualMachine(
     IBlockhashProvider? blockHashProvider,
     ISpecProvider? specProvider,
-    ILogManager? logManager) : IVirtualMachine
+    ILogManager? logManager,
+    IVMConfig? vmConfig = null) : IVirtualMachine
 {
+    private readonly IVMConfig _vmConfig = vmConfig ?? new VMConfig();
+
     public const int MaxCallDepth = Eof1.RETURN_STACK_MAX_HEIGHT;
-    private readonly static UInt256 P255Int = (UInt256)System.Numerics.BigInteger.Pow(2, 255);
-    internal readonly static byte[] EofHash256 = KeccakHash.ComputeHashBytes(MAGIC);
+    private static readonly UInt256 P255Int = (UInt256)System.Numerics.BigInteger.Pow(2, 255);
+    internal static readonly byte[] EofHash256 = KeccakHash.ComputeHashBytes(MAGIC);
+
     internal static ref readonly UInt256 P255 => ref P255Int;
     internal static readonly UInt256 BigInt256 = 256;
-    internal static readonly UInt256 BigInt32 = 32;
+    public static readonly UInt256 BigInt32 = 32;
 
     internal static readonly byte[] BytesZero = [0];
 
-    internal static readonly byte[] BytesZero32 =
+    public static readonly byte[] BytesZero32 =
     {
         0, 0, 0, 0, 0, 0, 0, 0,
         0, 0, 0, 0, 0, 0, 0, 0,
@@ -54,7 +64,7 @@ public sealed unsafe partial class VirtualMachine(
         0, 0, 0, 0, 0, 0, 0, 0
     };
 
-    internal static readonly byte[] BytesMax32 =
+    public static readonly byte[] BytesMax32 =
     {
         255, 255, 255, 255, 255, 255, 255, 255,
         255, 255, 255, 255, 255, 255, 255, 255,
@@ -182,10 +192,12 @@ public sealed unsafe partial class VirtualMachine(
                     // Execute the regular EVM call if valid code is present; otherwise, mark as invalid.
                     if (_currentState.Env.CodeInfo is not null)
                     {
-                        callResult = ExecuteCall<TTracingInst>(
-                            _previousCallResult,
-                            previousCallOutput,
-                            _previousCallOutputDestination);
+                        /*callResult = _vmConfig.IsVmOptimizationEnabled
+                            ? ExecuteCall<TTracingInst, OnFlag>(_previousCallResult, previousCallOutput, _previousCallOutputDestination)
+                            : ExecuteCall<TTracingInst, OffFlag>(_previousCallResult, previousCallOutput, _previousCallOutputDestination);
+                        */
+
+                        callResult = ExecuteCall<TTracingInst, OnFlag>(_previousCallResult, previousCallOutput, _previousCallOutputDestination);
                     }
                     else
                     {
@@ -1044,11 +1056,12 @@ public sealed unsafe partial class VirtualMachine(
     /// of <c>TTracingInst.IsActive</c>.
     /// </remarks>
     [SkipLocalsInit]
-    private CallResult ExecuteCall<TTracingInst>(
+    private CallResult ExecuteCall<TTracingInst, TEnablePrecompilation>(
         ReadOnlyMemory<byte>? previousCallResult,
         ZeroPaddedSpan previousCallOutput,
         scoped in UInt256 previousCallOutputDestination)
         where TTracingInst : struct, IFlag
+        where TEnablePrecompilation : struct, IFlag
     {
         EvmState vmState = _currentState;
         // Obtain a reference to the execution environment for convenience.
@@ -1065,6 +1078,12 @@ public sealed unsafe partial class VirtualMachine(
             if (vmState.ExecutionType.IsAnyCreate() && spec.ClearEmptyAccountWhenTouched)
             {
                 _worldState.IncrementNonce(env.ExecutingAccount);
+            }
+
+            if(typeof(TEnablePrecompilation) == typeof(OnFlag))
+            {
+                if (env.CodeInfo.CodeHash is not null) IlAnalyzer.Analyse(env.CodeInfo as CodeInfo, ILMode.AOT_MODE, _vmConfig, _logger);
+                // env.CodeInfo.NoticeExecution(_vmConfig, _logger, Spec);
             }
         }
 
@@ -1116,6 +1135,53 @@ public sealed unsafe partial class VirtualMachine(
             vmState.Memory.Save(in localPreviousDest, previousCallOutput);
         }
 
+        if (typeof(TEnablePrecompilation) == typeof(OnFlag) && env.CodeInfo.IlMetadata.IsPrecompiled)
+        {
+            Metrics.IlvmAotPrecompiledCalls++; // this will treat continuations as new calls
+
+            if (_logger.IsDebug)
+            {
+                _logger.Debug($"{env.CodeInfo.CodeHash} precompile is being called");
+            }
+
+            int programCounter = vmState.ProgramCounter;
+            ReadOnlySpan<byte> codeAsSpan = env.CodeInfo.Code.Span;
+            ref ILChunkExecutionState chunkExecutionState = ref vmState.IlExecutionStepState;
+
+            // TODO: Use members of VM to minimize the overhead and the size of ILChunkExecutionArguments.
+            ILChunkExecutionArguments chunkArguments = new(
+                ref MemoryMarshal.GetReference(codeAsSpan),
+                ref gasAvailable,
+                ref programCounter,
+                ref stack.Head,
+                ref Add(ref As<byte, CodeAnalysis.IL.Word>(ref MemoryMarshal.GetReference(stack.UnderlyingSpan)), stack.Head),
+                this,
+                vmState,
+                ReturnDataBuffer
+            );
+
+            if (env.CodeInfo.IlMetadata.PrecompiledContract(
+                ref chunkArguments,
+                ref chunkExecutionState)
+               )
+            {
+                UpdateCurrentState(++programCounter, gasAvailable, stack.Head - 1);
+                Metrics.IlvmAotPrecompiledCalls--; // this will treat continuations as new calls
+                return new CallResult(chunkExecutionState.CallResult);
+            }
+
+            UpdateCurrentState(programCounter, gasAvailable, stack.Head);
+
+            switch (chunkExecutionState.ContractState)
+            {
+                case ContractState.Return or ContractState.Revert:
+                    return new CallResult(null, chunkExecutionState.ReturnData.ToArray(), null, 0, shouldRevert: chunkExecutionState.ContractState is ContractState.Revert);
+                case ContractState.Failed:
+                    return GetFailureReturn(gasAvailable, chunkExecutionState.ExceptionType);
+                default:
+                    return CallResult.Empty(vmState.Env.CodeInfo.Version);
+            }
+        }
         // Dispatch the bytecode interpreter.
         // The second generic parameter is selected based on whether the transaction tracer is cancelable:
         // - OffFlag is used when cancelation is not needed.

@@ -366,10 +366,10 @@ public sealed class ArrayPoolList<T> : IList<T>, IList, IOwnedReadOnlyList<T>
         GC.SuppressFinalize(this);
 #endif
     }
-
 #if DEBUG
     private readonly StackTrace _creationStackTrace = new();
 
+    /*
     ~ArrayPoolList()
     {
         if (_capacity != 0 && !_disposed)
@@ -377,8 +377,8 @@ public sealed class ArrayPoolList<T> : IList<T>, IList, IOwnedReadOnlyList<T>
             Console.Error.WriteLine($"Warning: {nameof(ArrayPoolList<T>)} was not disposed. Created at: {_creationStackTrace}");
         }
     }
+    */
 #endif
-
     public Span<T> AsSpan() => _array.AsSpan(0, Count);
     public Memory<T> AsMemory() => new(_array, 0, Count);
     public ReadOnlyMemory<T> AsReadOnlyMemory() => new(_array, 0, Count);

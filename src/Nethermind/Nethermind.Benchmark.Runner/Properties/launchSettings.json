@@ -1,0 +1,8 @@
+{
+  "profiles": {
+    "Nethermind.Benchmark.Runner": {
+      "commandName": "Project",
+      "commandLineArgs": "-m weth-bench -c 3"
+    }
+  }
+}

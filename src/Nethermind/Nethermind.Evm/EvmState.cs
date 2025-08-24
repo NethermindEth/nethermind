@@ -1,12 +1,13 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using Nethermind.Core;
+using Nethermind.Evm.CodeAnalysis.IL;
 using System;
 using System.Collections.Concurrent;
 using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
 using System.Runtime.CompilerServices;
-using Nethermind.Core;
 using Nethermind.Evm.State;
 
 namespace Nethermind.Evm;
@@ -78,6 +79,9 @@ public sealed class EvmState : IDisposable // TODO: rename to CallState
 
     public byte[]? DataStack;
     public ReturnState[]? ReturnStack;
+
+    public ILChunkExecutionState IlExecutionStepState;
+
     public long GasAvailable { get; set; }
     internal long OutputDestination { get; private set; } // TODO: move to CallEnv
     internal long OutputLength { get; private set; } // TODO: move to CallEnv
@@ -196,7 +200,7 @@ public sealed class EvmState : IDisposable // TODO: rename to CallState
         IsStatic = isStatic;
         IsContinuation = false;
         IsCreateOnPreExistingAccount = isCreateOnPreExistingAccount;
-
+        IlExecutionStepState = new();
         if (!_isDisposed)
         {
             ThrowIsInUse();

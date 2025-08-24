@@ -150,6 +150,7 @@ public interface ITxTracer : IWorldStateTracer, IDisposable
                       || IsTracingFees
                       || IsTracingLogs;
 
+
     /// <summary>
     /// Transaction completed successfully
     /// </summary>

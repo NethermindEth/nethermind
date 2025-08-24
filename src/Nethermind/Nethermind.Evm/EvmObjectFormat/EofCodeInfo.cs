@@ -1,12 +1,17 @@
 // SPDX-FileCopyrightText: 2023 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System;
+using Nethermind.Core.Crypto;
+using Nethermind.Core.Specs;
+using Nethermind.Evm.CodeAnalysis.IL;
+using Nethermind.Evm.Config;
 using Nethermind.Evm.EvmObjectFormat;
+using Nethermind.Logging;
+using System;
 
 namespace Nethermind.Evm.CodeAnalysis;
 
-public sealed class EofCodeInfo(in EofContainer container) : ICodeInfo
+public sealed class EofCodeInfo(in EofContainer container, ValueHash256? codeHash = null) : ICodeInfo
 {
     public EofContainer EofContainer { get; private set; } = container;
     public ReadOnlyMemory<byte> Code => EofContainer.Container;
@@ -18,10 +23,19 @@ public sealed class EofCodeInfo(in EofContainer container) : ICodeInfo
     public ReadOnlyMemory<byte> ContainerSection => EofContainer.ContainerSection;
     ReadOnlySpan<byte> ICodeInfo.CodeSpan => CodeSection.Span;
 
+    public ValueHash256? CodeHash => codeHash;
+
+    public IlInfo IlMetadata => IlInfo.Empty();
+
     public SectionHeader CodeSectionOffset(int sectionId) => EofContainer.Header.CodeSections[sectionId];
     public SectionHeader? ContainerSectionOffset(int sectionId) => EofContainer.Header.ContainerSections.Value[sectionId];
     public int PcOffset() => EofContainer.Header.CodeSections.Start;
 
     public (byte inputCount, byte outputCount, ushort maxStackHeight) GetSectionMetadata(int index)
         => EofContainer.GetSectionMetadata(index);
+
+    public void NoticeExecution(IVMConfig vmConfig, ILogger logger, IReleaseSpec spec)
+    {
+        return;
+    }
 }

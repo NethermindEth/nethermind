@@ -20,7 +20,7 @@ public class NativeCallTracerCallFrameConverter : JsonConverter<NativeCallTracer
 
             ForcedNumberConversion.ForcedConversion.Value = NumberConversion.Hex;
             writer.WritePropertyName("type"u8);
-            JsonSerializer.Serialize(writer, value.Type.GetName(), options);
+            JsonSerializer.Serialize(writer, EofInstructionExtensions.GetName(value.Type), options);
 
             writer.WritePropertyName("from"u8);
             JsonSerializer.Serialize(writer, value.From, options);

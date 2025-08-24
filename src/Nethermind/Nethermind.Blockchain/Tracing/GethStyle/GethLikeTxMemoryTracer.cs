@@ -79,4 +79,5 @@ public class GethLikeTxMemoryTracer : GethLikeTxTracer<GethTxMemoryTraceEntry>
             CurrentTraceEntry.Storage = new Dictionary<string, string>(previousTraceEntry.Storage);
         }
     }
+
 }

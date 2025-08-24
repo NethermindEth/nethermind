@@ -2,6 +2,9 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Collections.Generic;
+using System.IO;
+using System.Reflection;
+using System.Runtime.Loader;
 using System.Text.Unicode;
 using System.Threading;
 using System.Threading.Tasks;
@@ -27,10 +30,14 @@ using Nethermind.Core.Attributes;
 using Nethermind.Core.ServiceStopper;
 using Nethermind.Evm;
 using Nethermind.Evm.State;
+using Nethermind.Evm.CodeAnalysis.IL;
+using Nethermind.Evm.CodeAnalysis.IL.Delegates;
+using Nethermind.Evm.Config;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.State;
 using Nethermind.TxPool;
 using Nethermind.Wallet;
+using Nethermind.Core.Crypto;
 
 namespace Nethermind.Init.Steps
 {
@@ -59,6 +66,7 @@ namespace Nethermind.Init.Steps
             IInitConfig initConfig = getApi.Config<IInitConfig>();
             IBlocksConfig blocksConfig = getApi.Config<IBlocksConfig>();
             IReceiptConfig receiptConfig = getApi.Config<IReceiptConfig>();
+            IVMConfig vmConfig = getApi.Config<IVMConfig>();
 
             ThisNodeInfo.AddInfo("Gaslimit     :", $"{blocksConfig.TargetBlockGasLimit:N0}");
             ThisNodeInfo.AddInfo("ExtraData    :", Utf8.IsValid(blocksConfig.GetExtraDataBytes()) ?
@@ -81,8 +89,10 @@ namespace Nethermind.Init.Steps
             _api.BlockPreprocessor.AddFirst(
                 new RecoverSignatures(getApi.EthereumEcdsa, getApi.SpecProvider, getApi.LogManager));
 
-            WarmupEvm();
-            VirtualMachine virtualMachine = CreateVirtualMachine(mainWorldState);
+            SetupAndLoadWhiteListedContracts(vmConfig);
+
+            WarmupEvm(vmConfig);
+            VirtualMachine virtualMachine = CreateVirtualMachine(mainWorldState, vmConfig);
             ITransactionProcessor transactionProcessor = CreateTransactionProcessor(codeInfoRepository, virtualMachine, mainWorldState);
 
             if (_api.SealValidator is null) throw new StepDependencyException(nameof(_api.SealValidator));
@@ -168,11 +178,11 @@ namespace Nethermind.Init.Steps
             return Task.CompletedTask;
         }
 
-        private void WarmupEvm()
+        private void WarmupEvm(IVMConfig vmConfig)
         {
             IWorldState state = _api.WorldStateManager!.CreateResettableWorldState();
             using var _ = state.BeginScope(IWorldState.PreGenesis);
-            VirtualMachine.WarmUpEvmInstructions(state, new EthereumCodeInfoRepository());
+            VirtualMachine.WarmUpEvmInstructions(state, new EthereumCodeInfoRepository(), vmConfig);
         }
 
         protected virtual ITransactionProcessor CreateTransactionProcessor(ICodeInfoRepository codeInfoRepository, IVirtualMachine virtualMachine, IWorldState worldState)
@@ -187,7 +197,7 @@ namespace Nethermind.Init.Steps
                 _api.LogManager);
         }
 
-        protected VirtualMachine CreateVirtualMachine(IWorldState worldState)
+        protected VirtualMachine CreateVirtualMachine(IWorldState worldState, IVMConfig vmConfig)
         {
             if (_api.BlockTree is null) throw new StepDependencyException(nameof(_api.BlockTree));
             if (_api.SpecProvider is null) throw new StepDependencyException(nameof(_api.SpecProvider));
@@ -200,7 +210,9 @@ namespace Nethermind.Init.Steps
             VirtualMachine virtualMachine = new(
                 blockhashProvider,
                 _api.SpecProvider,
-                _api.LogManager);
+                _api.LogManager,
+                vmConfig
+                );
 
             return virtualMachine;
         }
@@ -250,6 +262,25 @@ namespace Nethermind.Init.Steps
                 _api.LogManager,
                 new WithdrawalProcessor(worldState, _api.LogManager),
                 new ExecutionRequestsProcessor(transactionProcessor));
+        }
+
+        protected void SetupAndLoadWhiteListedContracts(IVMConfig? vmConfig)
+        {
+
+            var logger = _api.LogManager.GetLogger("ilevmLogger");
+            if (!vmConfig?.IsVmOptimizationEnabled ?? false) return;
+
+            if (vmConfig!.IlEvmAllowedContracts.Length > 0)
+            {
+                var codeHashes = vmConfig!.IlEvmAllowedContracts;
+                foreach (var hash in codeHashes)
+                {
+                    ValueHash256 codeHash = new ValueHash256(hash);
+                    AotContractsRepository.ReserveForWhitelisting(codeHash);
+                    logger.Info($"Whitelisting contract for compilation {codeHash}");
+                }
+            }
+
         }
     }
 }

@@ -21,7 +21,7 @@ namespace Nethermind.Test.Runner
         public int Section { get; set; }
 
         [JsonPropertyName("op")]
-        public byte Operation { get; set; }
+        public byte? Operation { get; set; }
 
         [JsonPropertyName("gas")]
         public long Gas { get; set; }

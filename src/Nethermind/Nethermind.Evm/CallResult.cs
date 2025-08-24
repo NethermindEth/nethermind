@@ -22,7 +22,6 @@ public sealed unsafe partial class VirtualMachine
         public static CallResult InvalidCodeException => new(EvmExceptionType.InvalidCode);
         public static CallResult InvalidAddressRange => new(EvmExceptionType.AddressOutOfRange);
         public static CallResult Empty(int fromVersion) => new(container: null, output: default, precompileSuccess: null, fromVersion);
-
         public CallResult(EvmState stateToExecute)
         {
             StateToExecute = stateToExecute;
