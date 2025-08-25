@@ -1163,17 +1163,18 @@ namespace Nethermind.Trie
             SeekChildNotNull(ref rlpStream, itemToSetOn);
         }
 
-        private void SeekChildNotNull(ref ValueRlpStream rlpStream, int itemToSetOn)
+        private void SeekChildNotNull(ref ValueRlpStream rlpStream, int index)
         {
             rlpStream.Reset();
             rlpStream.SkipLength();
-            if (IsExtension)
+            if (index == 0 && IsExtension)
             {
-                rlpStream.SkipItem();
-                itemToSetOn--;
+                // Corner case, index is zero, but we are an extension
+                // so we need to move to next item
+                index = 1;
             }
 
-            for (int i = 0; i < itemToSetOn; i++)
+            for (int i = 0; i < index; i++)
             {
                 rlpStream.SkipItem();
             }
