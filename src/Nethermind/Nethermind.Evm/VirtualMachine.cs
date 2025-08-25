@@ -79,11 +79,11 @@ public unsafe partial class VirtualMachineBase(
     private readonly IBlockhashProvider _blockHashProvider = blockHashProvider ?? throw new ArgumentNullException(nameof(blockHashProvider));
     private readonly ISpecProvider _specProvider = specProvider ?? throw new ArgumentNullException(nameof(specProvider));
     private readonly ILogger _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
-    private readonly Stack<EvmState> _stateStack = new();
+    protected readonly Stack<EvmState> _stateStack = new();
 
     private IWorldState _worldState = null!;
     private (Address Address, bool ShouldDelete) _parityTouchBugAccount = (Address.FromNumber(3), false);
-    private ITxTracer _txTracer = NullTxTracer.Instance;
+    protected ITxTracer _txTracer = NullTxTracer.Instance;
     private IReleaseSpec _spec;
 
     private ICodeInfoRepository _codeInfoRepository;
@@ -91,9 +91,9 @@ public unsafe partial class VirtualMachineBase(
     private OpCode[] _opcodeMethods;
     private static long _txCount;
 
-    private EvmState _currentState;
-    private ReadOnlyMemory<byte>? _previousCallResult;
-    private UInt256 _previousCallOutputDestination;
+    protected EvmState _currentState;
+    protected ReadOnlyMemory<byte>? _previousCallResult;
+    protected UInt256 _previousCallOutputDestination;
 
     public ILogger Logger => _logger;
     public ICodeInfoRepository CodeInfoRepository => _codeInfoRepository;
@@ -310,7 +310,7 @@ public unsafe partial class VirtualMachineBase(
         }
     }
 
-    private void PrepareCreateData(EvmState previousState, ref ZeroPaddedSpan previousCallOutput)
+    protected void PrepareCreateData(EvmState previousState, ref ZeroPaddedSpan previousCallOutput)
     {
         _previousCallResult = previousState.Env.ExecutingAccount.Bytes;
         _previousCallOutputDestination = UInt256.Zero;
@@ -318,7 +318,7 @@ public unsafe partial class VirtualMachineBase(
         previousCallOutput = ZeroPaddedSpan.Empty;
     }
 
-    private ZeroPaddedSpan HandleRegularReturn<TTracingInst>(scoped in CallResult callResult, EvmState previousState)
+    protected ZeroPaddedSpan HandleRegularReturn<TTracingInst>(scoped in CallResult callResult, EvmState previousState)
         where TTracingInst : struct, IFlag
     {
         ZeroPaddedSpan previousCallOutput;
@@ -346,7 +346,7 @@ public unsafe partial class VirtualMachineBase(
         return previousCallOutput;
     }
 
-    private void HandleEofCreate(in CallResult callResult, EvmState previousState, long gasAvailableForCodeDeposit, IReleaseSpec spec, ref bool previousStateSucceeded)
+    protected void HandleEofCreate(in CallResult callResult, EvmState previousState, long gasAvailableForCodeDeposit, IReleaseSpec spec, ref bool previousStateSucceeded)
     {
         Address callCodeOwner = previousState.Env.ExecutingAccount;
         // ReturnCode was called with a container index and auxdata
@@ -445,7 +445,7 @@ public unsafe partial class VirtualMachineBase(
     /// <param name="previousStateSucceeded">
     /// A reference flag indicating whether the previous call frame executed successfully. This flag is set to false if the deposit fails.
     /// </param>
-    private void HandleLegacyCreate(
+    protected void HandleLegacyCreate(
         in CallResult callResult,
         EvmState previousState,
         long gasAvailableForCodeDeposit,
@@ -515,7 +515,7 @@ public unsafe partial class VirtualMachineBase(
         }
     }
 
-    private TransactionSubstate PrepareTopLevelSubstate(in CallResult callResult)
+    protected TransactionSubstate PrepareTopLevelSubstate(in CallResult callResult)
     {
         return new TransactionSubstate(
             callResult.Output,
@@ -544,7 +544,7 @@ public unsafe partial class VirtualMachineBase(
     /// A reference to the output data buffer that will be updated with the reverted call's output,
     /// padded to match the expected length.
     /// </param>
-    private void HandleRevert(EvmState previousState, in CallResult callResult, ref ZeroPaddedSpan previousCallOutput)
+    protected void HandleRevert(EvmState previousState, in CallResult callResult, ref ZeroPaddedSpan previousCallOutput)
     {
         // Restore the world state to the snapshot taken before the execution of the call.
         _worldState.Restore(previousState.Snapshot);
@@ -594,7 +594,7 @@ public unsafe partial class VirtualMachineBase(
     /// A <see cref="TransactionSubstate"/> if the failure occurs in the top-level call; otherwise, <c>null</c>
     /// to indicate that execution should continue with the parent call frame.
     /// </returns>
-    private TransactionSubstate? HandleFailure<TTracingInst>(Exception failure, ref ZeroPaddedSpan previousCallOutput)
+    protected TransactionSubstate? HandleFailure<TTracingInst>(Exception failure, ref ZeroPaddedSpan previousCallOutput)
         where TTracingInst : struct, IFlag
     {
         // Log the exception if trace logging is enabled.
@@ -666,7 +666,7 @@ public unsafe partial class VirtualMachineBase(
     /// <param name="previousCallOutput">
     /// A reference to the buffer holding the previous call's output, which is cleared in preparation for the new call.
     /// </param>
-    private void PrepareNextCallFrame(in CallResult callResult, ref ZeroPaddedSpan previousCallOutput)
+    protected void PrepareNextCallFrame(in CallResult callResult, ref ZeroPaddedSpan previousCallOutput)
     {
         // Push the current execution state onto the state stack so it can be restored later.
         _stateStack.Push(_currentState);
@@ -699,7 +699,7 @@ public unsafe partial class VirtualMachineBase(
     /// A <see cref="TransactionSubstate"/> instance if the failure occurred in a top-level call,
     /// otherwise <c>null</c> to indicate that execution should continue in the parent frame.
     /// </returns>
-    private TransactionSubstate? HandleException(in CallResult callResult, ref ZeroPaddedSpan previousCallOutput)
+    protected TransactionSubstate? HandleException(in CallResult callResult, ref ZeroPaddedSpan previousCallOutput)
     {
         // Cache the tracer to minimize repeated field accesses.
         ITxTracer txTracer = _txTracer;
@@ -757,7 +757,7 @@ public unsafe partial class VirtualMachineBase(
     /// A <see cref="CallResult"/> containing the results of the precompile execution. In case of a failure,
     /// returns the default value of <see cref="CallResult"/>.
     /// </returns>
-    private CallResult ExecutePrecompile(EvmState currentState, bool isTracingActions, out Exception? failure)
+    protected CallResult ExecutePrecompile(EvmState currentState, bool isTracingActions, out Exception? failure)
     {
         // Report the precompile action if tracing is enabled.
         if (isTracingActions)
@@ -806,7 +806,7 @@ public unsafe partial class VirtualMachineBase(
     }
 
 
-    private void TraceTransactionActionStart(EvmState currentState)
+    protected void TraceTransactionActionStart(EvmState currentState)
     {
         _txTracer.ReportAction(currentState.GasAvailable,
             currentState.Env.Value,
@@ -888,7 +888,7 @@ public unsafe partial class VirtualMachineBase(
     /// <param name="callResult">
     /// The result of the executed call, including output bytes, exception and revert flags, and additional metadata.
     /// </param>
-    private void TraceTransactionActionEnd(EvmState currentState, IReleaseSpec spec, in CallResult callResult)
+    protected void TraceTransactionActionEnd(EvmState currentState, IReleaseSpec spec, in CallResult callResult)
     {
         // Calculate the gas cost required for depositing the contract code based on the length of the output.
         long codeDepositGasCost = CodeDepositHandler.CalculateCost(spec, callResult.Output.Bytes.Length);
@@ -956,7 +956,7 @@ public unsafe partial class VirtualMachineBase(
         }
     }
 
-    private static bool UpdateGas(long gasCost, ref long gasAvailable)
+    protected static bool UpdateGas(long gasCost, ref long gasAvailable)
     {
         if (gasAvailable < gasCost)
         {
@@ -1058,7 +1058,7 @@ public unsafe partial class VirtualMachineBase(
     /// of <c>TTracingInst.IsActive</c>.
     /// </remarks>
     [SkipLocalsInit]
-    private CallResult ExecuteCall<TTracingInst>(
+    protected CallResult ExecuteCall<TTracingInst>(
         EvmState vmState,
         ReadOnlyMemory<byte>? previousCallResult,
         ZeroPaddedSpan previousCallOutput,
