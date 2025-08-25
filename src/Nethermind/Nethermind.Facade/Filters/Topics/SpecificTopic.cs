@@ -34,9 +34,9 @@ namespace Nethermind.Blockchain.Filters.Topics
 
         public override bool Accepts(ref Hash256StructRef topic) => topic == _topic;
 
-        public override bool Matches(Bloom bloom) => bloom.Matches(in BloomExtract);
+        public override bool Matches(Bloom bloom) => bloom.Matches(BloomExtract);
 
-        public override bool Matches(ref BloomStructRef bloom) => bloom.Matches(in BloomExtract);
+        public override bool Matches(ref BloomStructRef bloom) => bloom.Matches(BloomExtract);
 
         public override bool AcceptsAnyBlock => false;
 

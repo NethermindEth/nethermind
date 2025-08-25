@@ -20,11 +20,11 @@ public class MergeUnclesValidator : IUnclesValidator
         _preMergeUnclesValidator = preMergeUnclesValidator;
     }
 
-    public bool Validate(BlockHeader header, BlockHeader[] uncles)
+    public bool Validate(BlockHeader header, BlockHeader? parent, BlockHeader[] uncles)
     {
         if (_poSSwitcher.IsPostMerge(header))
             return true;
 
-        return _preMergeUnclesValidator.Validate(header, uncles);
+        return _preMergeUnclesValidator.Validate(header, parent, uncles);
     }
 }
