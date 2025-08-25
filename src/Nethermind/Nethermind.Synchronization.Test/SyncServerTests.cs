@@ -767,7 +767,7 @@ public class SyncServerTests
             using (ICommitter committer = scopedTrieStore.BeginCommit(node))
             {
                 TreePath path = TreePath.Empty;
-                committer.CommitNode(ref path, new NodeCommitInfo(node));
+                committer.CommitNode(ref path, node);
             }
         }
 

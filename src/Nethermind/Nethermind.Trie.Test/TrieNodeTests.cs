@@ -948,8 +948,8 @@ public class TrieNodeTests
         {
             using (ICommitter? committer = trieStore.BeginCommit(leaf2))
             {
-                committer.CommitNode(ref path, new NodeCommitInfo(leaf1));
-                committer.CommitNode(ref path, new NodeCommitInfo(leaf2));
+                committer.CommitNode(ref path, leaf1);
+                committer.CommitNode(ref path, leaf2);
             }
         }
 
