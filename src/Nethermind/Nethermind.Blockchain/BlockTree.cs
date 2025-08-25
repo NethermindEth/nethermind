@@ -37,6 +37,7 @@ namespace Nethermind.Blockchain
         private static readonly byte[] StateHeadHashDbEntryAddress = new byte[16];
         internal static Hash256 DeletePointerAddressInDb = new(new BitArray(32 * 8, true).ToBytes());
         internal static Hash256 HeadAddressInDb = Keccak.Zero;
+        public const int MaxInvalidBlockToDelete = 256;
 
         private const int BestKnownSearchLimit = 256_000_000;
 
@@ -828,6 +829,7 @@ namespace Nethermind.Blockchain
             }
 
             long currentNumber = deleteHeader.Number;
+            int deletedBlock = 0;
             Hash256 currentHash = deleteHeader.Hash;
             Hash256? nextHash = null;
             ChainLevelInfo? nextLevel = null;
@@ -835,6 +837,12 @@ namespace Nethermind.Blockchain
             using BatchWrite batch = _chainLevelInfoRepository.StartBatch();
             while (true)
             {
+                if (deletedBlock >= MaxInvalidBlockToDelete)
+                {
+                    if (_logger.IsWarn) _logger.Warn($"Skipping block deletion as there are too many invalid blocks.");
+                    break;
+                }
+
                 ChainLevelInfo? currentLevel = nextLevel ?? LoadLevel(currentNumber);
                 nextLevel = LoadLevel(currentNumber + 1);
 
@@ -881,6 +889,7 @@ namespace Nethermind.Blockchain
                 currentNumber++;
                 currentHash = nextHash;
                 nextHash = null;
+                deletedBlock++;
             }
         }
 
