@@ -24,21 +24,19 @@ public class RegisterPluginRpcModules(
     IManualBlockProductionTrigger manualBlockProductionTrigger
 ) : IStep
 {
-    private const int NumberOfBlocksToWaitFor = 256;
-
     public virtual async Task Execute(CancellationToken cancellationToken)
     {
         if (!initConfig.InRunnerTest)
         {
             // Ugly temporary hack to not receive engine API messages before end of processing of all blocks after restart.
             // Then we will wait 5s more to ensure everything is processed
-            long initialHeadNumber = blockTree.Head?.Number ?? 0;
+            long bestKnownNumber = blockTree.BestKnownNumber;
             while (!blockProcessingQueue.IsEmpty && !cancellationToken.IsCancellationRequested)
             {
                 await Task.Delay(100, cancellationToken);
                 // If we have new blocks coming from the network we will spin in this loop until we sync head
-                // So we limit number of blocks we wait for to 256
-                if (blockTree.Head is not null && initialHeadNumber + NumberOfBlocksToWaitFor <= blockTree.Head.Number)
+                // So we wait only until old BestKnownNumber
+                if (blockTree.Head is not null && bestKnownNumber <= blockTree.Head.Number)
                 {
                     break;
                 }
