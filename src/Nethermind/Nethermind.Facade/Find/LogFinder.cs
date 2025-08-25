@@ -195,6 +195,7 @@ namespace Nethermind.Facade.Find
                 .SelectMany(blockNumber => FindLogsInBlock(filter, FindBlockHash(blockNumber, cancellationToken), blockNumber, cancellationToken));
         }
 
+        // TODO: Do not use for single block after testing - scanning it will be usually faster
         private (int from, int to)? CanUseLogIndex(LogFilter filter, BlockHeader fromBlock, BlockHeader toBlock)
         {
             if (!filter.UseIndex || _logIndexStorage == null || filter.AcceptsAnyBlock)
@@ -264,9 +265,9 @@ namespace Nethermind.Facade.Find
                 .ForAll(x =>
                 {
                     if (x is Address addr)
-                        byAddress![addr] = _logIndexStorage.GetBlockNumbersFor(addr, (int)fromBlock, (int)toBlock).ToList();
+                        byAddress![addr] = _logIndexStorage.GetBlockNumbersFor(addr, (int)fromBlock, (int)toBlock);
                     if (x is Hash256 tpc)
-                        byTopic![tpc] = _logIndexStorage.GetBlockNumbersFor(tpc, (int)fromBlock, (int)toBlock).ToList();
+                        byTopic![tpc] = _logIndexStorage.GetBlockNumbersFor(tpc, (int)fromBlock, (int)toBlock);
                 });
 
             if (byTopic is null)

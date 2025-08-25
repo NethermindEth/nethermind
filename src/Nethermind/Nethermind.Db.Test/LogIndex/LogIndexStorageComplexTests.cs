@@ -43,7 +43,6 @@ namespace Nethermind.Db.Test.LogIndex
             new(new TestData(100, 200)) { RunState = RunState.Explicit }
         ];
 
-        private ILogger _logger;
         private string _dbPath = null!;
         private IDbFactory _dbFactory = null!;
         private readonly List<ILogIndexStorage> _createdStorages = [];
@@ -58,7 +57,6 @@ namespace Nethermind.Db.Test.LogIndex
         [SetUp]
         public void Setup()
         {
-            _logger = LimboLogs.Instance.GetClassLogger();
             _dbPath = $"{nameof(LogIndexStorageComplexTests)}/{Guid.NewGuid():N}";
 
             if (Directory.Exists(_dbPath))
@@ -135,14 +133,15 @@ namespace Nethermind.Db.Test.LogIndex
         {
             var logIndexStorage = CreateLogIndexStorage(compactionDistance);
 
-            var half = testData.Batches.Length / 2;
-            await SetReceiptsAsync(logIndexStorage, Reverse(testData.Batches.Take(half)), isBackwardsSync: true);
-            await SetReceiptsAsync(logIndexStorage, testData.Batches.Skip(half), isBackwardsSync: false);
+            var batches = testData.Batches;
+            var half = batches.Length / 2;
 
-            using (Assert.EnterMultipleScope())
+            for (var i = 0; i < half + 1; i++)
             {
-                Assert.That(logIndexStorage.GetMinBlockNumber(), Is.Zero);
-                Assert.That(logIndexStorage.GetMaxBlockNumber(), Is.EqualTo(testData.Batches[^1][^1].BlockNumber));
+                if (half - i >= 0)
+                    await SetReceiptsAsync(logIndexStorage, Reverse([batches[half - i]]), isBackwardsSync: true);
+                if (half + i < batches.Length)
+                    await SetReceiptsAsync(logIndexStorage, [batches[half + i]], isBackwardsSync: false);
             }
 
             VerifyReceipts(logIndexStorage, testData);
@@ -395,7 +394,7 @@ namespace Nethermind.Db.Test.LogIndex
             await getCancellation.CancelAsync();
             getThreads.ForEach(t => t.Join());
 
-            if (exceptions.FirstOrDefault() is {} exception)
+            if (exceptions.FirstOrDefault() is { } exception)
                 ExceptionDispatchInfo.Capture(exception).Throw();
 
             VerifyReceipts(logIndexStorage, testData);
@@ -547,7 +546,7 @@ namespace Nethermind.Db.Test.LogIndex
                         var address = random.NextValue(addresses);
                         var expectedNums = testData.AddressMap[address];
 
-                        if (logIndexStorage.GetMinBlockNumber() is not {} min || logIndexStorage.GetMaxBlockNumber() is not {} max)
+                        if (logIndexStorage.GetMinBlockNumber() is not { } min || logIndexStorage.GetMaxBlockNumber() is not { } max)
                             continue;
 
                         Assert.That(
@@ -562,7 +561,7 @@ namespace Nethermind.Db.Test.LogIndex
                         var topic = random.NextValue(topics);
                         var expectedNums = testData.TopicMap[topic];
 
-                        if (logIndexStorage.GetMinBlockNumber() is not {} min || logIndexStorage.GetMaxBlockNumber() is not {} max)
+                        if (logIndexStorage.GetMinBlockNumber() is not { } min || logIndexStorage.GetMaxBlockNumber() is not { } max)
                             continue;
 
                         Assert.That(

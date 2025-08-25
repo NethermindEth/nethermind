@@ -135,9 +135,9 @@ public class TurboPForTests
         }
     }
 
-    private unsafe delegate int CompressFunc(int* @in, int n, byte* @out);
+    private unsafe delegate nuint CompressFunc(int* @in, nuint n, byte* @out);
 
-    private unsafe delegate int DecompressFunc(byte* @in, int n, int* @out);
+    private unsafe delegate nuint DecompressFunc(byte* @in, nuint n, int* @out);
 
     private unsafe delegate byte* CompressBlockFunc(int* @in, int n, byte* @out, int start);
 
@@ -180,7 +180,7 @@ public class TurboPForTests
         fixed (int* inputPtr = values)
         fixed (byte* resultPtr = buffer)
         {
-            resultLength = compressFunc(inputPtr, values.Length, resultPtr);
+            resultLength = (int)compressFunc(inputPtr, (nuint)values.Length, resultPtr);
         }
 
         //TestContext.Out.WriteLine($"Compressed: {resultLength} bytes");
@@ -189,13 +189,19 @@ public class TurboPForTests
 
     private static unsafe int[] Decompress(byte[] data, int count, DecompressFunc decompressFunc)
     {
-        var buffer = new int[count];
+        //var buffer = new int[count];
+
+        var buffer = new int[count * 2];
+        for (var i = count; i < buffer.Length; i++)
+            buffer[i] = -1;
 
         fixed (byte* inputPtr = data)
         fixed (int* resultPtr = buffer)
         {
-            _ = decompressFunc(inputPtr, count, resultPtr);
+            _ = decompressFunc(inputPtr, (nuint)count, resultPtr);
         }
+
+        for (var i = count; i < buffer.Length; i++) Assert.That(buffer[i], Is.EqualTo(-1));
 
         return buffer[..count];
     }

@@ -5,6 +5,7 @@ using Autofac;
 using Nethermind.Core;
 using Nethermind.Facade.Eth;
 using Nethermind.JsonRpc.Modules;
+using Nethermind.JsonRpc.Modules.LogIndex;
 using Nethermind.JsonRpc.Modules.Net;
 using Nethermind.JsonRpc.Modules.Parity;
 using Nethermind.JsonRpc.Modules.TxPool;
@@ -27,6 +28,7 @@ public class RpcModules : Module
             .RegisterSingletonJsonRpcModule<INetRpcModule, NetRpcModule>()
             .RegisterSingletonJsonRpcModule<IParityRpcModule, ParityRpcModule>()
             .RegisterSingletonJsonRpcModule<IWeb3RpcModule, Web3RpcModule>()
+            .RegisterSingletonJsonRpcModule<ILogIndexRpcModule, LogIndexRpcModule>()
             ;
     }
 }
