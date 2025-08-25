@@ -52,6 +52,7 @@ namespace Nethermind.AuRa.Test.Contract
                     StateReader,
                     worldState,
                     TxProcessor,
+                    GenesisPostProcessor,
                     LogManager)
                 .Load();
     }

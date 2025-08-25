@@ -285,9 +285,6 @@ public class Era1ModuleTests
 
             Block expectedBlock = blocks[i] ?? throw new ArgumentException("Could not find required block?");
 
-            //ignore this for comparison
-            expectedBlock.Header.MaybeParent = null;
-
             TxReceipt[] expectedReceipts = testBlockchain.ReceiptStorage.Get(expectedBlock);
 
             b.Should().BeEquivalentTo(expectedBlock);
