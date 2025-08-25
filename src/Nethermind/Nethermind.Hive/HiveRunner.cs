@@ -117,6 +117,12 @@ namespace Nethermind.Hive
                 try
                 {
                     Block block = DecodeBlock(file);
+
+                    if (parent is null && block.Number is 1)
+                    {
+                        parent = blockTree.Genesis;
+                    }
+
                     if (_logger.IsInfo)
                         _logger.Info(
                             $"HIVE Processing block file: {file} - {block.ToString(Block.Format.Short)}");
