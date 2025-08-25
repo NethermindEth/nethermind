@@ -7,6 +7,7 @@ using Nethermind.Blockchain.Receipts;
 using Nethermind.Consensus;
 using Nethermind.Core;
 using Nethermind.Crypto;
+using Nethermind.Db;
 using Nethermind.Db.Blooms;
 using Nethermind.Facade.Find;
 using Nethermind.History;
@@ -23,6 +24,7 @@ namespace Nethermind.Api
         IBloomStorage? BloomStorage { get; set; }
         IChainLevelInfoRepository? ChainLevelInfoRepository { get; set; }
         ILogFinder? LogFinder { get; set; }
+        ILogIndexStorage? LogIndexStorage { get; set; }
         ISigner? EngineSigner { get; set; }
         ISignerStore? EngineSignerStore { get; set; }
         [SkipServiceCollection]
