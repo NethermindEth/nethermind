@@ -156,7 +156,7 @@ public sealed class LogIndexService : ILogIndexService
         //     return;
         // }
 
-        _logger.Info($"{nameof(OnReceiptsInserted)}: {args.BlockHeader.Number:N0} [{args.TxReceipts.Length}]");
+        _logger.Info($"{nameof(OnReceiptsInserted)}: {args.BlockHeader.ToString(BlockHeader.Format.FullHashAndNumber)} [{args.TxReceipts.Length}]");
 
         var next = (int)args.BlockHeader.Number;
 
