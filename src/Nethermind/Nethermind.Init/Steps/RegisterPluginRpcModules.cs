@@ -6,6 +6,7 @@ using System.Threading.Tasks;
 using Nethermind.Api;
 using Nethermind.Api.Extensions;
 using Nethermind.Api.Steps;
+using Nethermind.Blockchain;
 using Nethermind.Consensus.Processing;
 using Nethermind.Consensus.Producers;
 using Nethermind.JsonRpc.Modules;
@@ -18,6 +19,7 @@ public class RegisterPluginRpcModules(
     IRpcModuleProvider rpcModuleProvider,
     IInitConfig initConfig,
     IBlockProcessingQueue blockProcessingQueue,
+    IBlockTree blockTree,
     INethermindPlugin[] plugins,
     IManualBlockProductionTrigger manualBlockProductionTrigger
 ) : IStep
@@ -28,9 +30,20 @@ public class RegisterPluginRpcModules(
         {
             // Ugly temporary hack to not receive engine API messages before end of processing of all blocks after restart.
             // Then we will wait 5s more to ensure everything is processed
-            while (!blockProcessingQueue!.IsEmpty)
-                await Task.Delay(100);
-            await Task.Delay(5000);
+            long bestKnownNumber = blockTree.BestKnownNumber;
+            while (!blockProcessingQueue.IsEmpty && !cancellationToken.IsCancellationRequested)
+            {
+                await Task.Delay(100, cancellationToken);
+                // If we have new blocks coming from the network we will spin in this loop until we sync head
+                // So we wait only until old BestKnownNumber
+                if (blockTree.Head is not null && bestKnownNumber <= blockTree.Head.Number)
+                {
+                    break;
+                }
+            }
+
+            await Task.Delay(5000, cancellationToken);
+            cancellationToken.ThrowIfCancellationRequested();
         }
 
         foreach (INethermindPlugin plugin in plugins)
