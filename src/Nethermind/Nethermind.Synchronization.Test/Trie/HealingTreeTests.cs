@@ -29,6 +29,7 @@ using Nethermind.Trie.Pruning;
 using NSubstitute;
 using NUnit.Framework;
 using Nethermind.History;
+using Nethermind.Init.Modules;
 
 namespace Nethermind.Synchronization.Test.Trie;
 
@@ -154,7 +155,7 @@ public class HealingTreeTests
 
         BlockHeader FillStorage(IContainer server)
         {
-            IWorldState mainWorldState = server.Resolve<AutoMainProcessingContext>().WorldState;
+            IWorldState mainWorldState = server.Resolve<MainProcessingContext>().WorldState;
             IBlockTree blockTree = server.Resolve<IBlockTree>();
 
             using var _ = mainWorldState.BeginScope(blockTree.Head?.Header);
@@ -208,7 +209,7 @@ public class HealingTreeTests
 
         void AssertStorage(IContainer client)
         {
-            IWorldState mainWorldState = client.Resolve<AutoMainProcessingContext>().WorldState;
+            IWorldState mainWorldState = client.Resolve<MainProcessingContext>().WorldState;
             using var _ = mainWorldState.BeginScope(baseBlock);
 
             for (int i = 0; i < 100; i++)
