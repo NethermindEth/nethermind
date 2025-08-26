@@ -9,6 +9,7 @@ using System.Diagnostics.CodeAnalysis;
 using System.IO;
 using System.Runtime.CompilerServices;
 using System.Runtime.ExceptionServices;
+using System.Runtime.InteropServices;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Core;
@@ -16,9 +17,11 @@ using Nethermind.Core.Buffers;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
+using Nethermind.Core.Threading;
 using Nethermind.Logging;
 using Nethermind.Serialization.Rlp;
 using Nethermind.Trie.Pruning;
+using Prometheus;
 
 namespace Nethermind.Trie
 {
@@ -941,6 +944,372 @@ namespace Nethermind.Trie
                 visitor.VisitTree(default, rootHash);
                 rootRef?.Accept(visitor, default, resolver, ref emptyPath, trieVisitContext);
             }
+        }
+
+        bool IsNodeStackEmpty()
+        {
+            Stack<StackedNode> nodeStack = _nodeStack;
+            if (nodeStack is null) return true;
+            return nodeStack.Count == 0;
+        }
+
+        void ClearNodeStack() => _nodeStack?.Clear();
+
+        [MethodImpl(MethodImplOptions.NoInlining)]
+        void PushToNodeStack(TrieNode node, int pathLength, int pathIndex)
+        {
+            // Allocated the _nodeStack if first push
+            _nodeStack ??= new();
+            _nodeStack.Push(new StackedNode(node, pathLength, pathIndex));
+        }
+
+        StackedNode PopFromNodeStack()
+        {
+            Stack<StackedNode> stackedNodes = _nodeStack;
+            if (stackedNodes is null)
+            {
+                Throw();
+            }
+
+            return stackedNodes.Pop();
+
+            [DoesNotReturn, StackTraceHidden]
+            static void Throw() => throw new InvalidOperationException($"Nothing on {nameof(_nodeStack)}");
+        }
+
+        public void BulkSet(Span<(byte[], SpanSource)> entries)
+        {
+            long sw = Stopwatch.GetTimestamp();
+
+            for (int i = 1; i < entries.Length; i++)
+            {
+                int compared = Bytes.BytesComparer.Compare(entries[i-1].Item1, entries[i].Item1);
+                if (compared == 0)
+                {
+                    throw new InvalidOperationException("Entries must be unique");
+                }
+                if (compared > 0)
+                {
+                    throw new InvalidOperationException("Entries must be sorted in increasing order");
+                }
+            }
+
+
+            long lsw = Stopwatch.GetTimestamp();
+            TreePath path = TreePath.Empty;
+            RootRef = BulkSet(entries, ref path, RootRef);
+            _justBulkSetTime.Inc(Stopwatch.GetTimestamp() - lsw);
+            _bulkSetTime.Inc(Stopwatch.GetTimestamp() - sw);
+        }
+
+        private static Counter _leafPathTime = Prometheus.Metrics.CreateCounter("patricia_leaf_path", "critpath time");
+        private static Counter _fakePathTime = Prometheus.Metrics.CreateCounter("patricia_fake_path", "fake time");
+        private static Counter _collapsePathTime = Prometheus.Metrics.CreateCounter("patricia_collapse_path", "fake time");
+        private static Counter _checkPathTime = Prometheus.Metrics.CreateCounter("patricia_check_path", "fake time");
+        private static Counter _hexTime = Prometheus.Metrics.CreateCounter("patricia_hex_time", "fake time");
+        private static Counter _fakeBranch = Prometheus.Metrics.CreateCounter("patricia_is_fake", "Is fake", "is_fake");
+        private static Counter _newBranch = Prometheus.Metrics.CreateCounter("patricia_new_time", "Is fake");
+
+
+        private static Counter _bulkSetTime = Prometheus.Metrics.CreateCounter("patricia_bulk_set", "fake time");
+        private static Counter _justBulkSetTime = Prometheus.Metrics.CreateCounter("patricia_just_bulk_set", "fake time");
+
+
+        internal TrieNode? BulkSet(Span<(byte[], SpanSource)> entries, ref TreePath currentPath, TrieNode? existingNode)
+        {
+            if (entries.Length == 0) return existingNode;
+
+            bool newBranch = false;
+            if (existingNode is null)
+            {
+                long nsw = Stopwatch.GetTimestamp();
+                try
+                {
+                    if (entries.Length == 1)
+                    {
+                        (byte[] path, SpanSource value) = entries[0];
+                        if (value.IsNull || value.Length == 0) return null;
+                        byte[] remainingKey = path.Slice(currentPath.Length);
+                        return TrieNodeFactory.CreateLeaf(remainingKey, value);
+                    }
+
+                    existingNode = TrieNodeFactory.CreateBranch();
+                    newBranch = true;
+                }
+                finally
+                {
+                    _newBranch.Inc(Stopwatch.GetTimestamp() - nsw);
+                }
+            }
+            else
+            {
+                existingNode.ResolveNode(TrieStore, currentPath);
+
+                if (existingNode.IsLeaf && entries.Length == 1)
+                {
+                    long sw = Stopwatch.GetTimestamp();
+                    try
+                    {
+                        (byte[] path, SpanSource value) = entries[0];
+                        int commonPrefixLength = path.AsSpan()[currentPath.Length..].CommonPrefixLength(existingNode.Key);
+                        if (commonPrefixLength == existingNode.Key!.Length)
+                        {
+                            // Deletion
+                            if (value.IsNull || value.Length == 0) return null;
+
+                            if (existingNode.IsSealed)
+                            {
+                                return TrieNodeFactory.CreateLeaf(path.Slice(currentPath.Length), value);
+                            }
+
+                            existingNode.Value = value;
+                            return existingNode;
+                        }
+
+                        if (value.IsNull || value.Length == 0) return existingNode;
+
+                        // Making a T branch here.
+                        // If the commonPrefixLength > 0, we'll also need to also make an extension in front of the branch.
+                        TrieNode theBranch = TrieNodeFactory.CreateBranch();
+                        theBranch[existingNode.Key[commonPrefixLength]] =
+                            TrieNodeFactory.CreateLeaf(existingNode.Key.Slice(commonPrefixLength + 1), existingNode.Value);
+                        theBranch[path[currentPath.Length + commonPrefixLength]] =
+                            TrieNodeFactory.CreateLeaf(path.Slice(currentPath.Length + commonPrefixLength + 1), value);
+
+                        if (commonPrefixLength == 0) return theBranch;
+
+                        return TrieNodeFactory.CreateExtension(path.Slice(currentPath.Length, commonPrefixLength),
+                            theBranch);
+                    }
+                    finally
+                    {
+                        _leafPathTime.Inc(Stopwatch.GetTimestamp() - sw);
+                    }
+                }
+
+                // Cases here are:
+                // - More than one entries. If leaf or extension, we convert to a potentially fake branch.
+                // - One entries on extension. Convert to fake branch.
+                // - One entries on branch, already operating on branch
+
+                if (!existingNode.IsBranch)
+                {
+                    // .5 % of path.
+
+                    long sw = Stopwatch.GetTimestamp();
+                    // TODO: if this is a leaf, the existing key is long. Check if it is worth optimizing.
+                    byte[] shortenedKey = new byte[existingNode.Key.Length - 1];
+                    Array.Copy(existingNode.Key, 1, shortenedKey, 0, existingNode.Key.Length - 1);
+
+                    int branchIdx = existingNode.Key[0];
+
+                    TrieNode newChild;
+                    if (existingNode.IsLeaf)
+                    {
+                        newChild = TrieNodeFactory.CreateLeaf(shortenedKey, existingNode.Value);
+                    }
+                    else
+                    {
+                        var child = existingNode.GetChild(TrieStore, ref currentPath, 0);
+                        if (existingNode.Key.Length == 1)
+                        {
+                            newChild = child;
+                        }
+                        else
+                        {
+                            newChild = TrieNodeFactory.CreateExtension(shortenedKey, child);
+                        }
+                    }
+
+                    existingNode = TrieNodeFactory.CreateBranch();
+                    existingNode.SetChild(branchIdx, newChild);
+                    newBranch = true;
+                    _fakePathTime.Inc(Stopwatch.GetTimestamp() - sw);
+                    _fakeBranch.WithLabels("true").Inc();
+                }
+                else
+                {
+                    _fakeBranch.WithLabels("false").Inc();
+                }
+
+                if (existingNode.IsSealed)
+                {
+                    existingNode = existingNode.Clone();
+                }
+
+            }
+
+            Span<(int, int)> indexes = stackalloc (int, int)[TrieNode.BranchesCount];
+
+            long swh = Stopwatch.GetTimestamp();
+            int nibToCheck = HexarySearch(entries, currentPath.Length, indexes);
+            _hexTime.Inc(Stopwatch.GetTimestamp() - swh);
+
+            bool hasRemove = false;
+            if (entries.Length > 100000 && nibToCheck == TrieNode.BranchesCount) // Disabled for now
+            {
+                (ArrayPoolList<(byte[], SpanSource)> entries, int nibble, TreePath appendedPath, TrieNode? outNode)[] jobs =
+                    new (ArrayPoolList<(byte[], SpanSource)> entries, int nibble, TreePath appendedPath, TrieNode? outNode)[TrieNode.BranchesCount];
+
+                for (int i = 0; i < TrieNode.BranchesCount; i++)
+                {
+                    (int nib, int startRange) = indexes[i];
+
+                    int endRange;
+                    if (i < nibToCheck - 1)
+                    {
+                        endRange = indexes[i + 1].Item2;
+                    }
+                    else
+                    {
+                        endRange = entries.Length;
+                    }
+
+                    ArrayPoolList<(byte[], SpanSource)> jobEntry = new ArrayPoolList<(byte[], SpanSource)>(endRange - startRange);
+                    for (int j = startRange; j < endRange; j++)
+                    {
+                        jobEntry.Add(entries[j]);
+                    }
+
+                    TreePath childPath = currentPath.Append(nib);
+                    TrieNode? child = existingNode.GetChildWithChildPath(TrieStore, ref childPath, nib);
+                    jobs[i] = (jobEntry, nib, childPath, child);
+                }
+
+                ParallelUnbalancedWork.For(0, nibToCheck, ParallelUnbalancedWork.DefaultOptions, jobs, (i, jobs) =>
+                {
+                    (ArrayPoolList<(byte[], SpanSource)> jobEntry, int nib, TreePath childPath, TrieNode child) = jobs[i];
+
+                    child = BulkSet(jobEntry.AsSpan(), ref childPath, child);
+                    jobs[i] = (jobEntry, nib, childPath, child);
+                    return jobs;
+                });
+
+                for (int i = 0; i < TrieNode.BranchesCount; i++)
+                {
+                    jobs[i].entries.Dispose();
+                    TrieNode? child = jobs[i].outNode;
+                    if (child is null) hasRemove = true;
+                    existingNode.SetChild(i, child);
+                }
+            }
+            else
+            {
+                currentPath.AppendMut(0);
+                for (int i = 0; i < nibToCheck; i++)
+                {
+                    (int nib, int startRange) = indexes[i];
+
+                    currentPath.SetLast(nib);
+                    TrieNode? child = existingNode.GetChildWithChildPath(TrieStore, ref currentPath, nib);
+
+                    int endRange;
+                    if (i < nibToCheck - 1)
+                    {
+                        endRange = indexes[i + 1].Item2;
+                    }
+                    else
+                    {
+                        endRange = entries.Length;
+                    }
+
+                    child = BulkSet(entries.Slice(startRange, endRange - startRange), ref currentPath, child);
+                    if (child is null) hasRemove = true;
+
+                    existingNode.SetChild(nib, child);
+                }
+
+                currentPath.TruncateOne();
+            }
+
+            bool needToCheck = false;
+            if (hasRemove) needToCheck = true;
+            if (newBranch) needToCheck = true;
+
+            if (!needToCheck)
+            {
+                return existingNode;
+            }
+
+            long sw3 = Stopwatch.GetTimestamp();
+            int onlyChildIdx = -1;
+            for (int i = 0; i < TrieNode.BranchesCount; i++)
+            {
+                currentPath.AppendMut(i);
+                TrieNode? child = existingNode.GetChildWithChildPath(TrieStore, ref currentPath, i);
+
+                if (child is not null)
+                {
+                    if (onlyChildIdx == -1)
+                    {
+                        onlyChildIdx = i;
+                    }
+                    else
+                    {
+                        // More than one non null child. We don't care anymore.
+                        currentPath.TruncateOne();
+                        return existingNode;
+                    }
+                }
+
+                currentPath.TruncateOne();
+            }
+            _checkPathTime.Inc(Stopwatch.GetTimestamp() - sw3);
+
+            if (onlyChildIdx == -1) return null;
+
+            long sw2 = Stopwatch.GetTimestamp();
+            try
+            {
+                currentPath.AppendMut(onlyChildIdx);
+                TrieNode onlyChildNode = existingNode.GetChildWithChildPath(TrieStore, ref currentPath, onlyChildIdx);
+                onlyChildNode.ResolveNode(TrieStore, currentPath);
+                currentPath.TruncateOne();
+
+                if (onlyChildNode.IsBranch)
+                {
+                    return TrieNodeFactory.CreateExtension([(byte)onlyChildIdx], onlyChildNode);
+                }
+
+                // Replace the only child with something with extra key.
+                // TODO: Check if it is worth optimizing
+                byte[] newKey = new byte[onlyChildNode.Key.Length + 1];
+                newKey[0] = (byte)onlyChildIdx;
+                Array.Copy(onlyChildNode.Key, 0, newKey, 1, onlyChildNode.Key.Length);
+
+                if (onlyChildNode.IsLeaf) return TrieNodeFactory.CreateLeaf(newKey, onlyChildNode.Value);
+                return TrieNodeFactory.CreateExtension(newKey, onlyChildNode.GetChild(TrieStore, ref currentPath, 0));
+            }
+            finally
+            {
+                _collapsePathTime.Inc(Stopwatch.GetTimestamp() - sw2);
+            }
+        }
+
+        public static int HexarySearch(Span<(byte[], SpanSource)> entries, int pathIndex, Span<(int, int)> indexes)
+        {
+            // TODO: Change to binary search
+            int relevantNib = 0;
+            int curIdx = 0;
+
+            for (int i = 0; i < entries.Length && curIdx < TrieNode.BranchesCount; i++)
+            {
+                var currentNib = entries[i].Item1[pathIndex];
+
+                if (currentNib > curIdx)
+                {
+                    curIdx = currentNib;
+                }
+
+                if (currentNib == curIdx)
+                {
+                    indexes[relevantNib] = (currentNib, i);
+                    relevantNib++;
+                    curIdx++;
+                }
+            }
+
+            return relevantNib;
         }
 
         [DoesNotReturn, StackTraceHidden]

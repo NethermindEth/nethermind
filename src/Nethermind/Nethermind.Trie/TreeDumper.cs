@@ -88,5 +88,7 @@ namespace Nethermind.Trie
         {
             return node.Keccak is not null ? node.Keccak!.Bytes.ToHexString() : node.FullRlp.Span.ToHexString();
         }
+
+        public bool ExpectAccounts => false;
     }
 }

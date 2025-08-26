@@ -16,6 +16,8 @@ using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.Trie;
 using Nethermind.Trie.Pruning;
+using Prometheus;
+using Metrics = Prometheus.Metrics;
 
 [assembly: InternalsVisibleTo("Ethereum.Test.Base")]
 [assembly: InternalsVisibleTo("Ethereum.Blockchain.Test")]
@@ -71,6 +73,7 @@ namespace Nethermind.State
             _persistentStorageProvider = new PersistentStorageProvider(trieStore, _stateProvider, logManager, storageTreeFactory, PreBlockCaches?.StorageCache, populatePreBlockCache);
             _transientStorageProvider = new TransientStorageProvider(logManager);
             _logger = logManager.GetClassLogger<WorldState>();
+            _populatePreBlockCache = populatePreBlockCache;
         }
 
         public WorldState(ITrieStore trieStore, IKeyValueStoreWithBatching? codeDb, ILogManager? logManager, PreBlockCaches? preBlockCaches, bool populatePreBlockCache = true)
@@ -172,8 +175,10 @@ namespace Nethermind.State
         }
         public void RecalculateStateRoot()
         {
+            long startTime = Stopwatch.GetTimestamp();
             DebugGuardInScope();
             _stateProvider.RecalculateStateRoot();
+            _recalculateRootTime.WithLabels((_populatePreBlockCache == false).ToString()).Observe(Stopwatch.GetTimestamp() - startTime);
         }
         public void DeleteAccount(Address address)
         {
@@ -221,8 +226,33 @@ namespace Nethermind.State
             _stateProvider.DecrementNonce(address, delta);
         }
 
+        private Histogram _commitTreeTime = Metrics.CreateHistogram("worldstate_commit_tree_time", "committ tree time",
+            new HistogramConfiguration()
+            {
+                LabelNames = ["is_main"],
+                Buckets = Histogram.PowersOfTenDividedBuckets(3, 9, 20)
+            });
+
+        private Histogram _commitTime = Metrics.CreateHistogram("worldstate_commit_time", "committ tree time",
+            new HistogramConfiguration()
+            {
+                LabelNames = ["part", "is_main"],
+                Buckets = Histogram.PowersOfTenDividedBuckets(3, 9, 20)
+            });
+
+        private Histogram _recalculateRootTime = Metrics.CreateHistogram("worldstate_recalculate_root", "committ tree time",
+            new HistogramConfiguration()
+            {
+                LabelNames = ["is_main"],
+                Buckets = Histogram.PowersOfTenDividedBuckets(3, 9, 20)
+            });
+
+
+        private readonly bool _populatePreBlockCache;
+
         public void CommitTree(long blockNumber)
         {
+            long startTime = Stopwatch.GetTimestamp();
             DebugGuardInScope();
             using (IBlockCommitter committer = _trieStore.BeginBlockCommit(blockNumber))
             {
@@ -230,6 +260,7 @@ namespace Nethermind.State
                 _stateProvider.CommitTree();
             }
             _persistentStorageProvider.StateRoot = _stateProvider.StateRoot;
+            _commitTreeTime.WithLabels((_populatePreBlockCache == false).ToString()).Observe(Stopwatch.GetTimestamp() - startTime);
         }
 
         public UInt256 GetNonce(Address address)
@@ -321,10 +352,16 @@ namespace Nethermind.State
 
         public void Commit(IReleaseSpec releaseSpec, bool isGenesis = false, bool commitRoots = true)
         {
+            long startTime = Stopwatch.GetTimestamp();
             DebugGuardInScope();
             _persistentStorageProvider.Commit(commitRoots);
+            _commitTime.WithLabels("storage", (_populatePreBlockCache == false).ToString()).Observe(Stopwatch.GetTimestamp() - startTime);
+            startTime = Stopwatch.GetTimestamp();
+            _commitTime.WithLabels("transient_storage", (_populatePreBlockCache == false).ToString()).Observe(Stopwatch.GetTimestamp() - startTime);
             _transientStorageProvider.Commit(commitRoots);
+            startTime = Stopwatch.GetTimestamp();
             _stateProvider.Commit(releaseSpec, commitRoots, isGenesis);
+            _commitTime.WithLabels("state", (_populatePreBlockCache == false).ToString()).Observe(Stopwatch.GetTimestamp() - startTime);
         }
 
         public void Commit(IReleaseSpec releaseSpec, IWorldStateTracer tracer, bool isGenesis = false, bool commitRoots = true)

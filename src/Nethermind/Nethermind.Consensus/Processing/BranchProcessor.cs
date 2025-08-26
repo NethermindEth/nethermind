@@ -3,6 +3,7 @@
 
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Blockchain.BeaconBlockRoot;
@@ -19,6 +20,7 @@ using Nethermind.Evm.State;
 using Nethermind.Evm.Tracing;
 using Nethermind.Logging;
 using Nethermind.State;
+using Prometheus;
 using Metrics = Nethermind.Blockchain.Metrics;
 
 namespace Nethermind.Consensus.Processing;
@@ -57,9 +59,19 @@ public class BranchProcessor(
         _stateProvider.CommitTree(block.Number);
     }
 
+    private static  Histogram _branchProcessorTime = Prometheus.Metrics.CreateHistogram("branch_processor_process_time", "prewarmer tx time",
+        new HistogramConfiguration()
+        {
+            LabelNames = ["part"],
+            Buckets = Histogram.PowersOfTenDividedBuckets(3, 9, 20)
+        });
+
     public Block[] Process(BlockHeader? baseBlock, IReadOnlyList<Block> suggestedBlocks, ProcessingOptions options, IBlockTracer blockTracer, CancellationToken token = default)
     {
         if (suggestedBlocks.Count == 0) return [];
+
+        long startTime = Stopwatch.GetTimestamp();
+        long sw;
 
         BlockHeader? previousBranchStateRoot = baseBlock;
         Block suggestedBlock = suggestedBlocks[0];
@@ -128,6 +140,7 @@ public class BranchProcessor(
                 Block processedBlock;
                 TxReceipt[] receipts;
 
+                sw = Stopwatch.GetTimestamp();
                 if (prewarmCancellation is not null)
                 {
                     (processedBlock, receipts) = blockProcessor.ProcessOne(suggestedBlock, options, blockTracer, spec, token);
@@ -144,6 +157,7 @@ public class BranchProcessor(
                     }
                     (processedBlock, receipts) = blockProcessor.ProcessOne(suggestedBlock, options, blockTracer, spec, token);
                 }
+                _branchProcessorTime.WithLabels("process_one").Observe(Stopwatch.GetTimestamp() - sw);
 
                 processedBlocks[i] = processedBlock;
 
@@ -196,6 +210,7 @@ public class BranchProcessor(
         finally
         {
             worldStateCloser?.Dispose();
+            _branchProcessorTime.WithLabels("whole").Observe(Stopwatch.GetTimestamp() - startTime);
         }
     }
 
