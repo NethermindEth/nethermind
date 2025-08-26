@@ -35,7 +35,7 @@ public sealed class LogIndexService : ILogIndexService
     private const int BatchSize = 256;
     private const int MaxQueueSize = 4096;
     private static readonly int IOParallelism = Math.Max(Environment.ProcessorCount / 2, 1);
-    private static readonly TimeSpan NewBlockWaitTimeout = TimeSpan.FromSeconds(30);
+    private static readonly TimeSpan NewBlockWaitTimeout = TimeSpan.FromSeconds(5);
 
     private readonly ILogIndexStorage _logIndexStorage;
     private readonly IReceiptFinder _receiptFinder;
@@ -159,7 +159,7 @@ public sealed class LogIndexService : ILogIndexService
         //     return;
         // }
 
-        _logger.Info($"{nameof(OnReceiptsInserted)}: {args.BlockHeader.ToString(BlockHeader.Format.FullHashAndNumber)} [{args.TxReceipts.Length}]");
+        //_logger.Info($"{nameof(OnReceiptsInserted)}: {args.BlockHeader.ToString(BlockHeader.Format.FullHashAndNumber)} [{args.TxReceipts.Length}]");
 
         var next = (int)args.BlockHeader.Number;
 
@@ -199,13 +199,10 @@ public sealed class LogIndexService : ILogIndexService
                 //     await _logIndexStorage.ReorgFrom(reorgBlock);
                 // }
 
-                var count = await ProcessQueued(isForward: true);
+                await ProcessQueued(isForward: true);
 
-                if (_logIndexStorage.GetMinBlockNumber() != 0)
-                    count += await ProcessQueued(isForward: false);
-
-                if (count == 0)
-                    await Task.Delay(QueueSpinWaitTime, CancellationToken);
+                if (_logIndexStorage.GetMinBlockNumber() != GetMinTargetBlockNumber())
+                    await ProcessQueued(isForward: false);
             }
         }
         catch (OperationCanceledException canceledEx) when (canceledEx.CancellationToken == CancellationToken)
@@ -315,14 +312,10 @@ public sealed class LogIndexService : ILogIndexService
                 {
                     next = isForward ? from : to - 1;
 
-                    var nextBlock = _blockTree.FindBlock((long)next);
-                    var blockHasTransactions = nextBlock?.Header.HasTransactions ?? false;
-                    var receiptsAvailable = nextBlock is not null && _receiptStorage.HasBlock(nextBlock.Number, nextBlock.Hash!);
-                    var receiptsCount = nextBlock is not null ? _receiptStorage.Get(nextBlock)?.Length ?? 0 : 0;
+                    if (_logger.IsTrace)
+                        _logger.Trace($"{GetLogPrefix(isForward)}: waiting for receipts of block {next}");
 
-                    _logger.Info($"{GetLogPrefix(isForward)}: waiting for receipts of block {next} ({new { nextBlock, blockHasTransactions, receiptsAvailable, receiptsCount }})");
                     await newBlockEvent.WaitOneAsync(NewBlockWaitTimeout, CancellationToken);
-
                     continue;
                 }
 
