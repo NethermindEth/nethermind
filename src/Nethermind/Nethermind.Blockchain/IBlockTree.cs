@@ -160,6 +160,9 @@ namespace Nethermind.Blockchain
 
         void ForkChoiceUpdated(Hash256? finalizedBlockHash, Hash256? safeBlockBlockHash);
 
+        void UpdateSafeHash(Hash256? safeBlockHash);
+        void UpdateFinalHash(Hash256? finalizedBlockHash);
+
         event EventHandler<BlockEventArgs> NewBestSuggestedBlock;
         event EventHandler<BlockEventArgs> NewSuggestedBlock;
 
