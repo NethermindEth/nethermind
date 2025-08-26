@@ -1753,6 +1753,24 @@ namespace Nethermind.Blockchain
             TryUpdateSyncPivot();
         }
 
+        public void UpdateSafeHash(Hash256? safeBlockHash)
+        {
+            SafeHash = safeBlockHash;
+            using (_metadataDb.StartWriteBatch())
+            {
+                _metadataDb.Set(MetadataDbKeys.SafeBlockHash, Rlp.Encode(SafeHash!).Bytes);
+            }
+        }
+
+        public void UpdateFinalHash(Hash256? finalizedBlockHash)
+        {
+            FinalizedHash = finalizedBlockHash;
+            using (_metadataDb.StartWriteBatch())
+            {
+                _metadataDb.Set(MetadataDbKeys.FinalizedBlockHash, Rlp.Encode(FinalizedHash!).Bytes);
+            }
+        }
+
         public long GetLowestBlock()
         {
             return _syncConfig.AncientReceiptsBarrierCalc < _syncConfig.AncientBodiesBarrierCalc ? _syncConfig.AncientReceiptsBarrierCalc : _syncConfig.AncientBodiesBarrierCalc;

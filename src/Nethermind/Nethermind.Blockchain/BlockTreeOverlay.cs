@@ -117,6 +117,16 @@ public class BlockTreeOverlay : IBlockTree
     public void ForkChoiceUpdated(Hash256? finalizedBlockHash, Hash256? safeBlockBlockHash) =>
         _overlayTree.ForkChoiceUpdated(finalizedBlockHash, safeBlockBlockHash);
 
+    public void UpdateSafeHash(Hash256? safeBlockHash)
+    {
+        _overlayTree.UpdateSafeHash(safeBlockHash);
+    }
+
+    public void UpdateFinalHash(Hash256? finalizedBlockHash)
+    {
+        _overlayTree.UpdateFinalHash(finalizedBlockHash);
+    }
+
     public event EventHandler<BlockEventArgs>? NewBestSuggestedBlock
     {
         add
