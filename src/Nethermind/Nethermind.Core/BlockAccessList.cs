@@ -43,17 +43,17 @@ public struct CodeChange
 public struct SlotChanges()
 {
     // [SszVector(32)]
-    // public byte[] Slot { get; set; }
+    public byte[] Slot { get; set; } = [];
 
     // [SszList(Eip7928Constants.MaxTxs)]
     public List<StorageChange> Changes { get; set; } = [];
 }
 
-public struct StorageKey(ReadOnlySpan<byte> key)
-{
-    // [SszVector(32)]
-    public byte[] Key { get; set; } = key.ToArray();
-}
+// public struct StorageKey(ReadOnlySpan<byte> key)
+// {
+//     // [SszVector(32)]
+//     public byte[] Key { get; set; } = key.ToArray();
+// }
 
 public struct AccountChanges(Address address)
 {
@@ -62,11 +62,11 @@ public struct AccountChanges(Address address)
 
     // Storage changes (slot -> [tx_index -> new_value])
     // [SszList(Eip7928Constants.MaxSlots)]
-    public SortedDictionary<StorageKey, SlotChanges> StorageChanges { get; set; } = [];
+    public SortedDictionary<byte[], SlotChanges> StorageChanges { get; set; } = [];
 
     // Read-only storage keys
     // [SszList(Eip7928Constants.MaxSlots)]
-    public List<StorageKey> StorageReads { get; set; } = [];
+    public List<byte[]> StorageReads { get; set; } = [];
 
     // Balance changes ([tx_index -> post_balance])
     // [SszList(Eip7928Constants.MaxTxs)]
