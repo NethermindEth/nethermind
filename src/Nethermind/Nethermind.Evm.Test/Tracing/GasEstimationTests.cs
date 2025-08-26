@@ -39,7 +39,7 @@ namespace Nethermind.Evm.Test.Tracing
         [Test]
         public void Does_not_take_into_account_precompiles()
         {
-            using TestEnvironment testEnvironment = new();
+            TestEnvironment testEnvironment = new();
             Transaction tx = Build.A.Transaction.WithGasLimit(1000).TestObject;
             Block block = Build.A.Block.WithNumber(1).WithTransactions(tx).TestObject;
 
@@ -73,7 +73,7 @@ namespace Nethermind.Evm.Test.Tracing
         [Test]
         public void Handles_well_top_level()
         {
-            using TestEnvironment testEnvironment = new();
+            TestEnvironment testEnvironment = new();
             Transaction tx = Build.A.Transaction.WithGasLimit(1000).TestObject;
             Block block = Build.A.Block.WithNumber(1).WithTransactions(tx).TestObject;
 
@@ -88,7 +88,7 @@ namespace Nethermind.Evm.Test.Tracing
         [Test]
         public void Handles_well_serial_calls()
         {
-            using TestEnvironment testEnvironment = new();
+            TestEnvironment testEnvironment = new();
             Transaction tx = Build.A.Transaction.WithGasLimit(1000).TestObject;
             Block block = Build.A.Block.WithNumber(1).WithTransactions(tx).TestObject;
 
@@ -116,7 +116,7 @@ namespace Nethermind.Evm.Test.Tracing
         [Test]
         public void Handles_well_errors()
         {
-            using TestEnvironment testEnvironment = new();
+            TestEnvironment testEnvironment = new();
             Transaction tx = Build.A.Transaction.WithGasLimit(1000).TestObject;
             Block block = Build.A.Block.WithNumber(1).WithTransactions(tx).TestObject;
 
@@ -146,7 +146,7 @@ namespace Nethermind.Evm.Test.Tracing
         [Test]
         public void Handles_well_revert()
         {
-            using TestEnvironment testEnvironment = new();
+            TestEnvironment testEnvironment = new();
             long gasLimit = 100_000_000;
             Transaction tx = Build.A.Transaction.WithGasLimit(gasLimit).TestObject;
             Block block = Build.A.Block.WithNumber(1).WithTransactions(tx).WithGasLimit(gasLimit).TestObject;
@@ -171,7 +171,7 @@ namespace Nethermind.Evm.Test.Tracing
         [Test]
         public void Easy_one_level_case()
         {
-            using TestEnvironment testEnvironment = new();
+            TestEnvironment testEnvironment = new();
             Transaction tx = Build.A.Transaction.WithGasLimit(128).TestObject;
             Block block = Build.A.Block.WithNumber(1).WithTransactions(tx).TestObject;
 
@@ -188,7 +188,7 @@ namespace Nethermind.Evm.Test.Tracing
         [Test]
         public void Handles_well_precompile_out_of_gas()
         {
-            using TestEnvironment testEnvironment = new();
+            TestEnvironment testEnvironment = new();
             Transaction tx = Build.A.Transaction.WithGasLimit(128).TestObject;
             Block block = Build.A.Block.WithNumber(1).WithTransactions(tx).TestObject;
 
@@ -206,7 +206,7 @@ namespace Nethermind.Evm.Test.Tracing
         [Test]
         public void Handles_well_nested_calls_where_most_nested_defines_excess()
         {
-            using TestEnvironment testEnvironment = new();
+            TestEnvironment testEnvironment = new();
             Transaction tx = Build.A.Transaction.WithGasLimit(1000).TestObject;
             Block block = Build.A.Block.WithNumber(1).WithTransactions(tx).TestObject;
 
@@ -236,7 +236,7 @@ namespace Nethermind.Evm.Test.Tracing
         [Test]
         public void Handles_well_nested_calls_where_least_nested_defines_excess()
         {
-            using TestEnvironment testEnvironment = new();
+            TestEnvironment testEnvironment = new();
             Transaction tx = Build.A.Transaction.WithGasLimit(1000).TestObject;
             Block block = Build.A.Block.WithNumber(1).WithTransactions(tx).TestObject;
 
@@ -284,11 +284,11 @@ namespace Nethermind.Evm.Test.Tracing
             Assert.That(err, Is.Not.Null);
         }
 
-        [TestCase(Transaction.BaseTxGasCost, GasEstimationConstants.DefaultErrorMargin, false)]
+        [TestCase(Transaction.BaseTxGasCost, GasEstimator.DefaultErrorMargin, false)]
         [TestCase(Transaction.BaseTxGasCost, 100, false)]
         [TestCase(Transaction.BaseTxGasCost, 1000, false)]
-        [TestCase(Transaction.BaseTxGasCost + 10000, GasEstimationConstants.DefaultErrorMargin, true)]
-        [TestCase(Transaction.BaseTxGasCost + 20000, GasEstimationConstants.DefaultErrorMargin, true)]
+        [TestCase(Transaction.BaseTxGasCost + 10000, GasEstimator.DefaultErrorMargin, true)]
+        [TestCase(Transaction.BaseTxGasCost + 20000, GasEstimator.DefaultErrorMargin, true)]
         [TestCase(Transaction.BaseTxGasCost + 123456789, 123, true)]
         public void Estimate_DifferentAmountOfGasAndMargin_EstimationResultIsWithinMargin(int totalGas, int errorMargin, bool fail)
         {
@@ -340,7 +340,7 @@ namespace Nethermind.Evm.Test.Tracing
                 MainnetSpecProvider.Instance,
                 new BlocksConfig());
 
-            long result = sut.Estimate(tx, block.Header, tracer, out string? err, GasEstimationConstants.DefaultErrorMargin);
+            long result = sut.Estimate(tx, block.Header, tracer, out string? err, GasEstimator.DefaultErrorMargin);
 
             using (Assert.EnterMultipleScope())
             {
@@ -612,7 +612,7 @@ namespace Nethermind.Evm.Test.Tracing
             }
         }
 
-        private class TestEnvironment : IDisposable
+        private class TestEnvironment
         {
             public ISpecProvider _specProvider;
             public IEthereumEcdsa _ethereumEcdsa;
@@ -620,14 +620,12 @@ namespace Nethermind.Evm.Test.Tracing
             public IWorldState _stateProvider;
             public EstimateGasTracer tracer;
             public GasEstimator estimator;
-            private readonly IDisposable _closer;
 
             public TestEnvironment()
             {
                 _specProvider = MainnetSpecProvider.Instance;
                 IWorldStateManager worldStateManager = TestWorldStateFactory.CreateForTest();
                 _stateProvider = worldStateManager.GlobalWorldState;
-                _closer = _stateProvider.BeginScope(IWorldState.PreGenesis);
                 _stateProvider.CreateAccount(TestItem.AddressA, 1.Ether());
                 _stateProvider.Commit(_specProvider.GenesisSpec);
                 _stateProvider.CommitTree(0);
@@ -648,11 +646,6 @@ namespace Nethermind.Evm.Test.Tracing
                 _stateProvider.InsertCode(contractAddress, ValueKeccak.Compute(code), code, _specProvider.GenesisSpec);
                 _stateProvider.Commit(_specProvider.GenesisSpec);
                 _stateProvider.CommitTree(0);
-            }
-
-            public void Dispose()
-            {
-                _closer.Dispose();
             }
         }
     }
