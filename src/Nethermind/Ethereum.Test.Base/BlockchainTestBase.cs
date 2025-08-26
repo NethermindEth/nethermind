@@ -32,6 +32,7 @@ using Nethermind.Specs.Forks;
 using Nethermind.Specs.Test;
 using Nethermind.State;
 using Nethermind.Evm.State;
+using Nethermind.Init.Modules;
 using Nethermind.TxPool;
 using NUnit.Framework;
 
@@ -213,7 +214,7 @@ public abstract class BlockchainTestBase
         await blockchainProcessor.StopAsync(true);
         stopwatch?.Stop();
 
-        IBlockCachePreWarmer? preWarmer = container.Resolve<AutoMainProcessingContext>().LifetimeScope.ResolveOptional<IBlockCachePreWarmer>();
+        IBlockCachePreWarmer? preWarmer = container.Resolve<MainProcessingContext>().LifetimeScope.ResolveOptional<IBlockCachePreWarmer>();
         if (preWarmer is not null)
         {
             // Caches are cleared async, which is a problem as read for the MainWorldState with prewarmer is not correct if its not cleared.
