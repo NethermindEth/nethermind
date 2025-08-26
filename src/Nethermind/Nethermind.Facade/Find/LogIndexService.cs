@@ -411,17 +411,21 @@ public sealed class LogIndexService : ILogIndexService
                 buffer[bufferIndex] = GetBlockReceipts(i);
         });
 
-        BlockReceipts GetBlockReceipts(int i)
-        {
-            if (_blockTree.FindBlock(i) is not { } block)
-                return default;
+    }
 
-            TxReceipt[] receipts = _receiptStorage.Get(block, false) ?? [];
-            if (block.Header.HasTransactions && receipts.Length == 0)
-                return default;
+    // TODO: move to IReceiptStorage as `TryGet`?
+    private BlockReceipts GetBlockReceipts(int i)
+    {
+        if (_blockTree.FindBlock(i) is not { Hash: not null } block)
+            return default;
 
-            return new(i, receipts);
-        }
+        TxReceipt[] receipts = _receiptStorage.Get(block, false) ?? [];
+
+        // Double-check if no receipts are present
+        if (receipts.Length == 0 && block.Header.HasTransactions)
+            return default;
+
+        return new(i, receipts);
     }
 
     private static bool IsSeqAsc(List<BlockReceipts> blocks)
