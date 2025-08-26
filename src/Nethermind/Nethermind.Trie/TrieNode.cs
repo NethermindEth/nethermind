@@ -1153,14 +1153,14 @@ namespace Nethermind.Trie
             return hasStorage;
         }
 
-        private void SeekChild(ref ValueRlpStream rlpStream, int itemToSetOn)
+        private void SeekChild(ref ValueRlpStream rlpStream, int index)
         {
             if (rlpStream.IsNull)
             {
                 return;
             }
 
-            SeekChildNotNull(ref rlpStream, itemToSetOn);
+            SeekChildNotNull(ref rlpStream, index);
         }
 
         private void SeekChildNotNull(ref ValueRlpStream rlpStream, int index)
