@@ -138,8 +138,8 @@ public sealed class LogIndexService : ILogIndexService
 
     private void LogProgress()
     {
-        _forwardProgressLogger.LogProgress();
-        _backwardProgressLogger.LogProgress();
+        _forwardProgressLogger.LogProgress(false);
+        _backwardProgressLogger.LogProgress(false);
 
         if (_stats is not null)
         {
@@ -364,22 +364,29 @@ public sealed class LogIndexService : ILogIndexService
 
     private void UpdateProgress(int pivotNumber)
     {
-        _forwardProgressLogger.TargetValue = Math.Max(0, _blockTree.BestKnownNumber - MaxReorgDepth - pivotNumber + 1);
-        _forwardProgressLogger.Update(_logIndexStorage.GetMaxBlockNumber() is { } max ? max - pivotNumber + 1 : 0);
-        _forwardProgressLogger.CurrentQueued = _forwardChannel.Reader.Count;
-
-        // if (_forwardProgressLogger.CurrentValue == _forwardProgressLogger.TargetValue)
-        //     _forwardProgressLogger.MarkEnd();
-
-        _backwardProgressLogger.TargetValue = pivotNumber - GetMinTargetBlockNumber();
-        _backwardProgressLogger.Update(_logIndexStorage.GetMinBlockNumber() is { } min ? pivotNumber - min : 0);
-        _backwardProgressLogger.CurrentQueued = _backwardChannel.Reader.Count;
-
-        if (_backwardProgressLogger.CurrentValue >= _backwardProgressLogger.TargetValue)
+        if (!_forwardProgressLogger.HasEnded)
         {
-            _backwardProgressLogger.MarkEnd();
-            if (_logger.IsInfo)
-                _logger.Info($"{GetLogPrefix(isForward: false)}: completed.");
+            _forwardProgressLogger.TargetValue = Math.Max(0, _blockTree.BestKnownNumber - MaxReorgDepth - pivotNumber + 1);
+            _forwardProgressLogger.Update(_logIndexStorage.GetMaxBlockNumber() is { } max ? max - pivotNumber + 1 : 0);
+            _forwardProgressLogger.CurrentQueued = _forwardChannel.Reader.Count;
+
+            // if (_forwardProgressLogger.CurrentValue == _forwardProgressLogger.TargetValue)
+            //     _forwardProgressLogger.MarkEnd();
+        }
+
+        if (!_backwardProgressLogger.HasEnded)
+        {
+            _backwardProgressLogger.TargetValue = pivotNumber - GetMinTargetBlockNumber();
+            _backwardProgressLogger.Update(_logIndexStorage.GetMinBlockNumber() is { } min ? pivotNumber - min : 0);
+            _backwardProgressLogger.CurrentQueued = _backwardChannel.Reader.Count;
+
+            if (_backwardProgressLogger.CurrentValue >= _backwardProgressLogger.TargetValue)
+            {
+                _backwardProgressLogger.MarkEnd();
+
+                if (_logger.IsInfo)
+                    _logger.Info($"{GetLogPrefix(isForward: false)}: completed.");
+            }
         }
     }
 
