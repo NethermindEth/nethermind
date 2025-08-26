@@ -67,59 +67,6 @@ public class InitializeBlockchainAuRa : InitializeBlockchain
         _api.FinalizationManager.SetMainBlockBranchProcessor(_api.MainProcessingContext!.BranchProcessor!);
     }
 
-    protected override IBlockProcessor CreateBlockProcessor(BlockCachePreWarmer? preWarmer, ITransactionProcessor transactionProcessor, IWorldState worldState)
-    {
-        return _rootLifetimeScope.BeginLifetimeScope((builder) =>
-            {
-                builder
-                    .AddModule(_validationBlockProcessingModules)
-                    .AddScoped(worldState)
-                    .AddScoped(transactionProcessor)
-                    .AddScoped<IAuRaValidator>(CreateAuRaValidator(worldState, transactionProcessor));
-                if (preWarmer is not null)
-                    builder.AddScoped(preWarmer);
-            })
-            .Resolve<IBlockProcessor>();
-    }
-
-    protected IAuRaValidator CreateAuRaValidator(IWorldState worldState, ITransactionProcessor transactionProcessor)
-    {
-        if (_api.ChainSpec is null) throw new StepDependencyException(nameof(_api.ChainSpec));
-        if (_api.BlockTree is null) throw new StepDependencyException(nameof(_api.BlockTree));
-        if (_api.EngineSigner is null) throw new StepDependencyException(nameof(_api.EngineSigner));
-        if (_api.SpecProvider is null) throw new StepDependencyException(nameof(_api.SpecProvider));
-        if (_api.NonceManager is null) throw new StepDependencyException(nameof(_api.NonceManager));
-
-        var chainSpecAuRa = _api.ChainSpec.EngineChainSpecParametersProvider.GetChainSpecParameters<AuRaChainSpecEngineParameters>();
-
-        IAuRaValidator validator = new AuRaValidatorFactory(
-                _abiEncoder,
-                worldState,
-                transactionProcessor,
-                _api.BlockTree,
-                _api.ReadOnlyTxProcessingEnvFactory.Create(),
-                _api.ReceiptStorage,
-                _api.ValidatorStore,
-                _api.FinalizationManager,
-                new TxPoolSender(_api.TxPool, new TxSealer(_api.EngineSigner, _api.Timestamper), _api.NonceManager, _api.EthereumEcdsa),
-                _api.TxPool,
-                NethermindApi.Config<IBlocksConfig>(),
-                _api.LogManager,
-                _api.EngineSigner,
-                _api.SpecProvider,
-                _api.GasPriceOracle,
-                _api.ReportingContractValidatorCache,
-                chainSpecAuRa.PosdaoTransition)
-            .CreateValidatorProcessor(chainSpecAuRa.Validators, _api.BlockTree.Head?.Header);
-
-        if (validator is IDisposable disposableValidator)
-        {
-            _api.DisposeStack.Push(disposableValidator);
-        }
-
-        return validator;
-    }
-
     private IComparer<Transaction> CreateTxPoolTxComparer(TxPriorityContract? txPriorityContract, TxPriorityContract.LocalDataSource? localDataSource)
     {
         if (txPriorityContract is not null || localDataSource is not null)

@@ -111,6 +111,7 @@ namespace Nethermind.Consensus.AuRa
 
                 // Block processing components
                 .AddSingleton<IBlockValidationModule, AuraValidationModule>()
+                .AddSingleton<IMainProcessingModule, AuraMainProcessingModule>()
                 .AddScoped<IAuRaValidator, NullAuRaValidator>() // Note: for main block processor this is not the case
                 .AddScoped<IBlockProcessor, AuRaBlockProcessor>()
 
