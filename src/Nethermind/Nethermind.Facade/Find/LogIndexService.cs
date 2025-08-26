@@ -298,7 +298,8 @@ public sealed class LogIndexService : ILogIndexService
                 if (buffer[0] == default)
                 {
                     next = isForward ? from : to - 1;
-                    _logger.Info($"{GetLogPrefix(isForward)}: waiting for receipts of block {next:N0}");
+                    _logger.Info($"{GetLogPrefix(isForward)}: waiting for receipts of block {next}");
+
                     await newBlockEvent.WaitOneAsync(NewBlockWaitTimeout, CancellationToken);
 
                     continue;
@@ -318,7 +319,7 @@ public sealed class LogIndexService : ILogIndexService
                         if (_logger.IsError)
                         {
                             _logger.Error(
-                                $"Non-sequential block number {block.BlockNumber:N0} in log index queue, previous block: {lastQueuedNum}. " +
+                                $"Non-sequential block number {block.BlockNumber} in log index queue, previous block: {lastQueuedNum}. " +
                                 $"Please restart the client."
                             );
                         }
