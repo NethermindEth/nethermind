@@ -312,7 +312,7 @@ public sealed class LogIndexService : ILogIndexService
                     var receiptsAvailable = nextBlock is not null && _receiptStorage.HasBlock(nextBlock.Number, nextBlock.Hash!);
                     var receiptsCount = nextBlock is not null ? _receiptStorage.Get(nextBlock)?.Length ?? 0 : 0;
 
-                    _logger.Info($"{GetLogPrefix(isForward)}: waiting for receipts of block {next:N0} ({new { nextBlock, blockHasTransactions, receiptsAvailable, receiptsCount }})");
+                    _logger.Info($"{GetLogPrefix(isForward)}: waiting for receipts of block {next} ({new { nextBlock, blockHasTransactions, receiptsAvailable, receiptsCount }})");
                     await newBlockEvent.WaitOneAsync(NewBlockWaitTimeout, CancellationToken);
 
                     continue;
@@ -332,7 +332,7 @@ public sealed class LogIndexService : ILogIndexService
                         if (_logger.IsError)
                         {
                             _logger.Error(
-                                $"Non-sequential block number {block.BlockNumber:N0} in log index queue, previous block: {lastQueuedNum}. " +
+                                $"Non-sequential block number {block.BlockNumber} in log index queue, previous block: {lastQueuedNum}. " +
                                 $"Please restart the client."
                             );
                         }
