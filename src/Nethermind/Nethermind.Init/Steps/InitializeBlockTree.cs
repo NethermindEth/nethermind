@@ -106,6 +106,7 @@ namespace Nethermind.Init.Steps
             ILogIndexService logIndexService = _set.LogIndexService = new LogIndexService(
                 logIndexStorage,
                 blockTree,
+                _get.Config<ISyncConfig>(),
                 receiptFinder,
                 receiptStorage,
                 _get.LogManager
