@@ -4,4 +4,15 @@
 namespace Nethermind.JsonRpc.Modules.LogIndex;
 
 // TODO: add forward/backward sync status?
-public record LogIndexStatus(int? FromBlock, int? ToBlock, string DbSize);
+public class LogIndexStatus
+{
+    public class Range
+    {
+        public required int? FromBlock { get; init; }
+        public required int? ToBlock { get; init; }
+    }
+
+    public required Range Current { get; init; }
+    public required Range Target { get; init; }
+    public required string DbSize { get; init; }
+}

@@ -8,5 +8,7 @@ namespace Nethermind.Facade.Find
         string Description { get; }
         Task StartAsync();
         Task StopAsync();
+        int GetMaxTargetBlockNumber();
+        int GetMinTargetBlockNumber();
     }
 }
