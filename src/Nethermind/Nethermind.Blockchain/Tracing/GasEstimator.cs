@@ -62,7 +62,24 @@ public class GasEstimator
         UInt256 senderBalance = _stateProvider.GetBalance(tx.SenderAddress);
         if (tx.ValueRef != UInt256.Zero && tx.ValueRef > senderBalance && !tx.IsSystem())
         {
-            return gasTracer.CalculateAdditionalGasRequired(tx, releaseSpec);
+            long additionalGas = gasTracer.CalculateAdditionalGasRequired(tx, releaseSpec);
+            if (additionalGas == 0)
+            {
+                // If no additional gas can help, it's an insufficient balance error
+                if (gasTracer.OutOfGas)
+                {
+                    err = "Gas estimation failed due to out of gas";
+                }
+                else if (gasTracer.StatusCode == StatusCode.Failure)
+                {
+                    err = gasTracer.Error ?? "Transaction execution fails";
+                }
+                else
+                {
+                    err = "insufficient balance";
+                }
+            }
+            return additionalGas;
         }
 
         var lowerBound = IntrinsicGasCalculator.Calculate(tx, releaseSpec).MinimalGas;
@@ -82,13 +99,15 @@ public class GasEstimator
         }
 
         // Execute binary search to find the optimal gas estimation.
-        return BinarySearchEstimate(leftBound, rightBound, tx, header, gasTracer, errorMargin, token);
+        return BinarySearchEstimate(leftBound, rightBound, tx, header, gasTracer, errorMargin, token, out err);
     }
 
     private long BinarySearchEstimate(long leftBound, long rightBound, Transaction tx, BlockHeader header,
-        EstimateGasTracer gasTracer, int errorMargin, CancellationToken token)
+        EstimateGasTracer gasTracer, int errorMargin, CancellationToken token, out string? err)
     {
+        err = null;
         double marginWithDecimals = errorMargin == 0 ? 1 : errorMargin / 10000d + 1;
+
         //This approach is similar to Geth, by starting from an optimistic guess the number of iterations is greatly reduced in most cases
         long optimisticGasEstimate =
             (long)((gasTracer.GasSpent + gasTracer.TotalRefund + GasCostOf.CallStipend) * marginWithDecimals);
@@ -118,6 +137,19 @@ public class GasEstimator
 
         if (rightBound == cap && !TryExecutableTransaction(tx, header, rightBound, token, gasTracer))
         {
+            // Set error based on failure reason
+            if (gasTracer.OutOfGas)
+            {
+                err = "Gas estimation failed due to out of gas";
+            }
+            else if (gasTracer.StatusCode == StatusCode.Failure)
+            {
+                err = gasTracer.Error ?? "Transaction execution fails";
+            }
+            else
+            {
+                err = "Transaction execution fails";
+            }
             return 0;
         }
 
