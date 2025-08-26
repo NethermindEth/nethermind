@@ -8,9 +8,6 @@ namespace Nethermind.Serialization.Rlp.Eip7928;
 
 public class CodeChangeDecoder : IRlpValueDecoder<CodeChange>, IRlpStreamDecoder<CodeChange>
 {
-    // ushort + UInt256
-    private const int Length = 2 + 32;
-
     private static CodeChangeDecoder? _instance = null;
     public static CodeChangeDecoder Instance => _instance ??= new();
 
@@ -21,7 +18,7 @@ public class CodeChangeDecoder : IRlpValueDecoder<CodeChange>, IRlpStreamDecoder
             NewCode = ctx.DecodeByteArray()
         };
 
-    public int GetLength(CodeChange item, RlpBehaviors rlpBehaviors) => Length;
+    public int GetLength(CodeChange item, RlpBehaviors rlpBehaviors) => 2 + item.NewCode.Length;
 
     public CodeChange Decode(RlpStream rlpStream, RlpBehaviors rlpBehaviors)
     {
@@ -35,7 +32,7 @@ public class CodeChangeDecoder : IRlpValueDecoder<CodeChange>, IRlpStreamDecoder
 
     public void Encode(RlpStream stream, CodeChange item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
     {
-        stream.StartSequence(Length);
+        stream.StartSequence(GetLength(item, rlpBehaviors));
         stream.Encode(item.BlockAccessIndex);
         stream.Encode(item.NewCode);
     }

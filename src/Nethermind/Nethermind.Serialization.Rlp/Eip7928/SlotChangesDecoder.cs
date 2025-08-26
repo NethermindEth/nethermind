@@ -19,7 +19,17 @@ public class SlotChangesDecoder : IRlpValueDecoder<SlotChanges>, IRlpStreamDecod
             Changes = [.. ctx.DecodeArray(StorageChangeDecoder.Instance)]
         };
 
-    public int GetLength(SlotChanges item, RlpBehaviors rlpBehaviors) => 0;
+    public int GetLength(SlotChanges item, RlpBehaviors rlpBehaviors)
+    {
+        int len = 32; // slot
+
+        foreach (StorageChange slotChange in item.Changes)
+        {
+            len += StorageChangeDecoder.Instance.GetLength(slotChange, rlpBehaviors);
+        }
+
+        return len;
+    }
 
     public SlotChanges Decode(RlpStream rlpStream, RlpBehaviors rlpBehaviors)
     {

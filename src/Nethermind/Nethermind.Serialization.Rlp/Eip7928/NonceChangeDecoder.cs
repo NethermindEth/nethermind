@@ -6,37 +6,37 @@ using Nethermind.Core.BlockAccessLists;
 
 namespace Nethermind.Serialization.Rlp.Eip7928;
 
-public class NonceChangeDecoder : IRlpValueDecoder<BalanceChange>, IRlpStreamDecoder<BalanceChange>
+public class NonceChangeDecoder : IRlpValueDecoder<NonceChange>, IRlpStreamDecoder<NonceChange>
 {
-    // ushort + UInt256
-    private const int Length = 2 + 32;
+    // ushort + ulong
+    private const int Length = 2 + 8;
 
-    private static BalanceChangeDecoder? _instance = null;
-    public static BalanceChangeDecoder Instance => _instance ??= new();
+    private static NonceChangeDecoder? _instance = null;
+    public static NonceChangeDecoder Instance => _instance ??= new();
 
-    public BalanceChange Decode(ref Rlp.ValueDecoderContext ctx, RlpBehaviors rlpBehaviors)
+    public NonceChange Decode(ref Rlp.ValueDecoderContext ctx, RlpBehaviors rlpBehaviors)
         => new()
         {
             BlockAccessIndex = ctx.DecodeUShort(),
-            PostBalance = ctx.DecodeUInt256()
+            NewNonce = ctx.DecodeULong()
         };
 
-    public int GetLength(BalanceChange item, RlpBehaviors rlpBehaviors) => Length;
+    public int GetLength(NonceChange item, RlpBehaviors rlpBehaviors) => Length;
 
-    public BalanceChange Decode(RlpStream rlpStream, RlpBehaviors rlpBehaviors)
+    public NonceChange Decode(RlpStream rlpStream, RlpBehaviors rlpBehaviors)
     {
         Span<byte> span = rlpStream.PeekNextItem();
         Rlp.ValueDecoderContext ctx = new(span);
-        BalanceChange response = Decode(ref ctx, rlpBehaviors);
+        NonceChange response = Decode(ref ctx, rlpBehaviors);
         rlpStream.SkipItem();
 
         return response;
     }
 
-    public void Encode(RlpStream stream, BalanceChange item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+    public void Encode(RlpStream stream, NonceChange item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
     {
         stream.StartSequence(Length);
         stream.Encode(item.BlockAccessIndex);
-        stream.Encode(item.PostBalance);
+        stream.Encode(item.NewNonce);
     }
 }
