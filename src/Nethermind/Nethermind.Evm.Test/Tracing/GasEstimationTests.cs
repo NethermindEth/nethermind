@@ -38,7 +38,7 @@ namespace Nethermind.Evm.Test.Tracing
         [Test]
         public void Does_not_take_into_account_precompiles()
         {
-            TestEnvironment testEnvironment = new();
+            using TestEnvironment testEnvironment = new();
             Transaction tx = Build.A.Transaction.WithGasLimit(1000).TestObject;
             Block block = Build.A.Block.WithNumber(1).WithTransactions(tx).TestObject;
 
@@ -72,7 +72,7 @@ namespace Nethermind.Evm.Test.Tracing
         [Test]
         public void Handles_well_top_level()
         {
-            TestEnvironment testEnvironment = new();
+            using TestEnvironment testEnvironment = new();
             Transaction tx = Build.A.Transaction.WithGasLimit(1000).TestObject;
             Block block = Build.A.Block.WithNumber(1).WithTransactions(tx).TestObject;
 
@@ -87,7 +87,7 @@ namespace Nethermind.Evm.Test.Tracing
         [Test]
         public void Handles_well_serial_calls()
         {
-            TestEnvironment testEnvironment = new();
+            using TestEnvironment testEnvironment = new();
             Transaction tx = Build.A.Transaction.WithGasLimit(1000).TestObject;
             Block block = Build.A.Block.WithNumber(1).WithTransactions(tx).TestObject;
 
@@ -115,7 +115,7 @@ namespace Nethermind.Evm.Test.Tracing
         [Test]
         public void Handles_well_errors()
         {
-            TestEnvironment testEnvironment = new();
+            using TestEnvironment testEnvironment = new();
             Transaction tx = Build.A.Transaction.WithGasLimit(1000).TestObject;
             Block block = Build.A.Block.WithNumber(1).WithTransactions(tx).TestObject;
 
@@ -145,7 +145,7 @@ namespace Nethermind.Evm.Test.Tracing
         [Test]
         public void Handles_well_revert()
         {
-            TestEnvironment testEnvironment = new();
+            using TestEnvironment testEnvironment = new();
             long gasLimit = 100_000_000;
             Transaction tx = Build.A.Transaction.WithGasLimit(gasLimit).TestObject;
             Block block = Build.A.Block.WithNumber(1).WithTransactions(tx).WithGasLimit(gasLimit).TestObject;
@@ -170,7 +170,7 @@ namespace Nethermind.Evm.Test.Tracing
         [Test]
         public void Easy_one_level_case()
         {
-            TestEnvironment testEnvironment = new();
+            using TestEnvironment testEnvironment = new();
             Transaction tx = Build.A.Transaction.WithGasLimit(128).TestObject;
             Block block = Build.A.Block.WithNumber(1).WithTransactions(tx).TestObject;
 
@@ -187,7 +187,7 @@ namespace Nethermind.Evm.Test.Tracing
         [Test]
         public void Handles_well_precompile_out_of_gas()
         {
-            TestEnvironment testEnvironment = new();
+            using TestEnvironment testEnvironment = new();
             Transaction tx = Build.A.Transaction.WithGasLimit(128).TestObject;
             Block block = Build.A.Block.WithNumber(1).WithTransactions(tx).TestObject;
 
@@ -206,7 +206,7 @@ namespace Nethermind.Evm.Test.Tracing
         [Test]
         public void Handles_well_nested_calls_where_most_nested_defines_excess()
         {
-            TestEnvironment testEnvironment = new();
+            using TestEnvironment testEnvironment = new();
             Transaction tx = Build.A.Transaction.WithGasLimit(1000).TestObject;
             Block block = Build.A.Block.WithNumber(1).WithTransactions(tx).TestObject;
 
@@ -236,7 +236,7 @@ namespace Nethermind.Evm.Test.Tracing
         [Test]
         public void Handles_well_nested_calls_where_least_nested_defines_excess()
         {
-            TestEnvironment testEnvironment = new();
+            using TestEnvironment testEnvironment = new();
             Transaction tx = Build.A.Transaction.WithGasLimit(1000).TestObject;
             Block block = Build.A.Block.WithNumber(1).WithTransactions(tx).TestObject;
 
@@ -378,7 +378,7 @@ namespace Nethermind.Evm.Test.Tracing
         [Test]
         public void Should_return_zero_when_out_of_gas_detected_during_estimation()
         {
-            TestEnvironment testEnvironment = new();
+            using TestEnvironment testEnvironment = new();
             Transaction tx = Build.A.Transaction.WithGasLimit(1000).TestObject;
             Block block = Build.A.Block.WithNumber(1).WithTransactions(tx).TestObject;
 
@@ -398,7 +398,7 @@ namespace Nethermind.Evm.Test.Tracing
         [Test]
         public void Should_return_positive_estimate_when_no_failure_conditions()
         {
-            TestEnvironment testEnvironment = new();
+            using TestEnvironment testEnvironment = new();
             Transaction tx = Build.A.Transaction.WithGasLimit(128).TestObject;
             Block block = Build.A.Block.WithNumber(1).WithTransactions(tx).TestObject;
 
@@ -420,7 +420,7 @@ namespace Nethermind.Evm.Test.Tracing
         [Test]
         public void Should_return_zero_when_status_code_is_failure()
         {
-            TestEnvironment testEnvironment = new();
+            using TestEnvironment testEnvironment = new();
             Transaction tx = Build.A.Transaction.WithGasLimit(1000).TestObject;
             Block block = Build.A.Block.WithNumber(1).WithTransactions(tx).TestObject;
 
@@ -435,7 +435,7 @@ namespace Nethermind.Evm.Test.Tracing
             testEnvironment.tracer.StatusCode.Should().Be(StatusCode.Failure);
         }
 
-        private class TestEnvironment
+        private class TestEnvironment : IDisposable
         {
             public ISpecProvider _specProvider;
             public IEthereumEcdsa _ethereumEcdsa;
@@ -443,15 +443,18 @@ namespace Nethermind.Evm.Test.Tracing
             public IWorldState _stateProvider;
             public EstimateGasTracer tracer;
             public GasEstimator estimator;
+            private readonly IDisposable _closer;
 
             public TestEnvironment()
             {
                 _specProvider = MainnetSpecProvider.Instance;
                 IWorldStateManager worldStateManager = TestWorldStateFactory.CreateForTest();
                 _stateProvider = worldStateManager.GlobalWorldState;
+                _closer = _stateProvider.BeginScope(IWorldState.PreGenesis);
                 _stateProvider.CreateAccount(TestItem.AddressA, 1.Ether());
                 _stateProvider.Commit(_specProvider.GenesisSpec);
                 _stateProvider.CommitTree(0);
+
 
                 EthereumCodeInfoRepository codeInfoRepository = new();
                 VirtualMachine virtualMachine = new(new TestBlockhashProvider(_specProvider), _specProvider, LimboLogs.Instance);
@@ -461,6 +464,11 @@ namespace Nethermind.Evm.Test.Tracing
                 tracer = new();
                 BlocksConfig blocksConfig = new();
                 estimator = new(_transactionProcessor, _stateProvider, _specProvider, blocksConfig);
+            }
+
+            public void Dispose()
+            {
+                _closer.Dispose();
             }
         }
     }
