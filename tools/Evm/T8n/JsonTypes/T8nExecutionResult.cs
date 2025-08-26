@@ -103,7 +103,7 @@ public class T8nExecutionResult
 
     private static AccountState? GetAccountState(Address address, IWorldState stateProvider, StorageTxTracer storageTxTracer)
     {
-        if (!stateProvider.AccountExists(address)) return null;
+        if (!stateProvider.AccountExists(address))  return null;
 
         stateProvider.TryGetAccount(address, out var account);
         var code = stateProvider.GetCode(address);
