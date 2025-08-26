@@ -55,7 +55,7 @@ public sealed class LogIndexService : ILogIndexService
     private readonly LruCache<int, BlockReceipts> _backwardBlockCache = new(MaxCacheSize, nameof(LogIndexService));
     private readonly AutoResetEvent _newBackwardBlockEvent = new(false);
 
-    private readonly TaskCompletionSource<int> _pivotSource = new();
+    private readonly TaskCompletionSource<int> _pivotSource = new(TaskCreationOptions.RunContinuationsAsynchronously);
     private readonly Task<int> _pivotTask;
 
     private Task? _processTask;
@@ -163,8 +163,8 @@ public sealed class LogIndexService : ILogIndexService
 
         var next = (int)args.BlockHeader.Number;
 
-        if (!_pivotTask.IsCompleted && _pivotSource.TrySetResult(next) && _logger.IsInfo)
-            _logger.Info($"{GetLogPrefix()}: starting at block {next}.");
+        if (next != 0 && !_pivotTask.IsCompleted && _pivotSource.TrySetResult(next) && _logger.IsInfo)
+            _logger.Info($"{GetLogPrefix()}: using block {next} as pivot.");
 
         // var (min, max) = (_logIndexStorage.GetMinBlockNumber(), _logIndexStorage.GetMaxBlockNumber());
         //
@@ -172,7 +172,7 @@ public sealed class LogIndexService : ILogIndexService
         //     _newBackwardBlockEvent.Set();
         //
         // if (max is null || next > max)
-        //     _newBackwardBlockEvent.Set();
+        //     _newForwardBlockEvent.Set();
     }
 
     public int GetMaxTargetBlockNumber()
