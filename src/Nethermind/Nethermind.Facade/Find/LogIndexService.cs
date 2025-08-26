@@ -90,7 +90,7 @@ public sealed class LogIndexService : ILogIndexService
     {
         try
         {
-            _receiptStorage.OldReceiptsInserted += OnReceiptsInserted;
+            _receiptStorage.AnyReceiptsInserted += OnReceiptsInserted;
 
             if (!_pivotTask.IsCompleted && _logger.IsInfo)
                 _logger.Info($"{GetLogPrefix()}: waiting for the first block...");
