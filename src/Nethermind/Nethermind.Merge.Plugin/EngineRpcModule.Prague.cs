@@ -10,7 +10,7 @@ using Nethermind.Merge.Plugin.Handlers;
 
 namespace Nethermind.Merge.Plugin;
 
-public partial class EngineRpcModule : IEngineRpcModuleMock
+public partial class EngineRpcModule : IEngineRpcModule
 {
     readonly IAsyncHandler<byte[], GetPayloadV4Result?> _getPayloadHandlerV4;
 

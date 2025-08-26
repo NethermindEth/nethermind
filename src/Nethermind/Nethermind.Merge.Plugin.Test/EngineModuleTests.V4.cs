@@ -311,7 +311,7 @@ public partial class EngineModuleTests
         string payloadId = chain.PayloadPreparationService!.StartPreparingPayload(parentHeader, payloadAttributes)!;
 
         ResultWrapper<GetPayloadV4Result?> getPayloadResult =
-            await rpc.engine_getPayloadV4(Bytes.FromHexString(payloadId));
+            await rpc.engine_getPayloadV4("", "");
         return getPayloadResult.Data!.ExecutionPayload!;
     }
 
@@ -371,7 +371,7 @@ public partial class EngineModuleTests
         await blockImprovementWait;
 
         ResultWrapper<GetPayloadV4Result?> getPayloadResult =
-            await rpc.engine_getPayloadV4(Bytes.FromHexString(payloadId!));
+            await rpc.engine_getPayloadV4("", "");
 
         return getPayloadResult.Data!.ExecutionPayload!;
     }
