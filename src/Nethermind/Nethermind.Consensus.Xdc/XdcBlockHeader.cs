@@ -11,7 +11,7 @@ using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
 
-namespace Nethermind.Consensus.Xdc;
+namespace Nethermind.Xdc;
 internal class XdcBlockHeader : BlockHeader
 {
     public XdcBlockHeader(
@@ -39,7 +39,7 @@ internal class XdcBlockHeader : BlockHeader
     {
         if (Validators == null)
             throw new InvalidOperationException("Header has no validators.");
-        Address[] masterNodes = new Address[Validators!.Length / 20];
+        Address[] masterNodes = new Address[Validators.Length / 20];
         for (int i = 0; i < masterNodes.Length; i++)
         {
             masterNodes[i] = new Address(Validators.AsSpan(i * 20, 20));

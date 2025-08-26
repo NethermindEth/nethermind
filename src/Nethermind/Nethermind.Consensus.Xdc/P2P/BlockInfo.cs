@@ -9,7 +9,7 @@ using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
 
-namespace Nethermind.Consensus.Xdc;
+namespace Nethermind.Xdc;
 internal class BlockInfo
 {
     public BlockInfo(Hash256 hash, ulong parentHash, UInt256 number)

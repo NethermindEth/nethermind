@@ -2,6 +2,8 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using Nethermind.Blockchain;
+using Nethermind.Consensus;
+
 
 
 // SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
@@ -13,7 +15,7 @@ using Nethermind.Core.Specs;
 using Nethermind.Logging;
 using System;
 
-namespace Nethermind.Consensus.Xdc;
+namespace Nethermind.Xdc;
 
 public class XdcHeaderValidator : HeaderValidator
 {
@@ -24,7 +26,7 @@ public class XdcHeaderValidator : HeaderValidator
     public override bool Validate(BlockHeader header, BlockHeader? parent, bool isUncle, out string? error)
     {
         if (header is not XdcBlockHeader xdcHeader)
-            throw new ArgumentException($"Only type of {nameof(XdcBlockHeader)} is allowed, but got type {header.GetType().Name}.", nameof(header) );
+            throw new ArgumentException($"Only type of {nameof(XdcBlockHeader)} is allowed, but got type {header.GetType().Name}.", nameof(header));
 
         if (xdcHeader.Validator == null || xdcHeader.Validator.Length == 0)
         {

@@ -8,7 +8,7 @@ using System.Security.Cryptography.Xml;
 using System.Text;
 using System.Threading.Tasks;
 
-namespace Nethermind.Consensus.Xdc;
+namespace Nethermind.Xdc;
 internal class QuorumCertificate
 {
     public QuorumCertificate()

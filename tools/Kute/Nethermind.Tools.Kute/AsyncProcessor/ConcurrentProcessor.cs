@@ -3,7 +3,7 @@
 
 namespace Nethermind.Tools.Kute.AsyncProcessor;
 
-public sealed class ConcurrentProcessor: IAsyncProcessor
+public sealed class ConcurrentProcessor : IAsyncProcessor
 {
     private readonly int _maxDegreeOfParallelism;
 
