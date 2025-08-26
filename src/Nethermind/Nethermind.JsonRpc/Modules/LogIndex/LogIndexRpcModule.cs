@@ -4,10 +4,11 @@
 using System.Collections.Generic;
 using Nethermind.Blockchain.Find;
 using Nethermind.Db;
+using Nethermind.Facade.Find;
 
 namespace Nethermind.JsonRpc.Modules.LogIndex;
 
-public class LogIndexRpcModule(ILogIndexStorage storage, IBlockFinder blockFinder) : ILogIndexRpcModule
+public class LogIndexRpcModule(ILogIndexStorage storage, ILogIndexService service, IBlockFinder blockFinder) : ILogIndexRpcModule
 {
     public ResultWrapper<Dictionary<byte[], int[]>> logIndex_keys(LogIndexKeysRequest request)
     {
@@ -18,9 +19,20 @@ public class LogIndexRpcModule(ILogIndexStorage storage, IBlockFinder blockFinde
 
     public ResultWrapper<LogIndexStatus> logIndex_status()
     {
-        return ResultWrapper<LogIndexStatus>.Success(
-            new(storage.GetMinBlockNumber(), storage.GetMaxBlockNumber(), storage.GetDbSize())
-        );
+        return ResultWrapper<LogIndexStatus>.Success(new()
+        {
+            Current = new()
+            {
+                FromBlock = storage.GetMinBlockNumber(),
+                ToBlock = storage.GetMaxBlockNumber()
+            },
+            Target = new()
+            {
+                FromBlock = service.GetMinTargetBlockNumber(),
+                ToBlock = service.GetMaxTargetBlockNumber()
+            },
+            DbSize = storage.GetDbSize()
+        });
     }
 
     private int GetBlockNumber(BlockParameter parameter)

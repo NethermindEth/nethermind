@@ -8,6 +8,7 @@ using System.Threading.Channels;
 using System.Threading.Tasks;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Receipts;
+using Nethermind.Blockchain.Synchronization;
 using Nethermind.Core;
 using Nethermind.Core.Caching;
 using Nethermind.Core.Extensions;
@@ -22,6 +23,7 @@ namespace Nethermind.Facade.Find;
 public sealed class LogIndexService : ILogIndexService
 {
     private readonly IBlockTree _blockTree;
+    private readonly ISyncConfig _syncConfig;
     private readonly ILogger _logger;
 
     private readonly CancellationTokenSource _cancellationSource = new();
@@ -34,7 +36,6 @@ public sealed class LogIndexService : ILogIndexService
     private const int MaxQueueSize = 4096;
     private static readonly int IOParallelism = Math.Max(Environment.ProcessorCount / 2, 1);
     private static readonly TimeSpan NewBlockWaitTimeout = TimeSpan.FromSeconds(30);
-    private static readonly TimeSpan QueueSpinWaitTime = TimeSpan.FromSeconds(1);
 
     private readonly ILogIndexStorage _logIndexStorage;
     private readonly IReceiptFinder _receiptFinder;
@@ -63,7 +64,7 @@ public sealed class LogIndexService : ILogIndexService
 
     public string Description => "log index service";
 
-    public LogIndexService(ILogIndexStorage logIndexStorage, IBlockTree blockTree,
+    public LogIndexService(ILogIndexStorage logIndexStorage, IBlockTree blockTree, ISyncConfig syncConfig,
         IReceiptFinder receiptFinder, IReceiptStorage receiptStorage, ILogManager logManager)
     {
         ArgumentNullException.ThrowIfNull(logIndexStorage);
@@ -71,9 +72,11 @@ public sealed class LogIndexService : ILogIndexService
         ArgumentNullException.ThrowIfNull(receiptFinder);
         ArgumentNullException.ThrowIfNull(receiptStorage);
         ArgumentNullException.ThrowIfNull(logManager);
+        ArgumentNullException.ThrowIfNull(syncConfig);
 
         _logIndexStorage = logIndexStorage;
         _blockTree = blockTree;
+        _syncConfig = syncConfig;
         _receiptFinder = receiptFinder;
         _receiptStorage = receiptStorage;
         _logger = logManager.GetClassLogger<LogIndexService>();
@@ -172,9 +175,14 @@ public sealed class LogIndexService : ILogIndexService
         //     _newBackwardBlockEvent.Set();
     }
 
-    private int GetMaxAvailableBlockNumber()
+    public int GetMaxTargetBlockNumber()
     {
         return (int)Math.Max(_blockTree.BestKnownNumber - MaxReorgDepth, 0);
+    }
+
+    public int GetMinTargetBlockNumber()
+    {
+        return (int)Math.Max(_syncConfig.AncientReceiptsBarrierCalc, 0);
     }
 
     private async Task DoProcess()
@@ -285,7 +293,7 @@ public sealed class LogIndexService : ILogIndexService
             var lastQueuedNum = -1;
             while (!CancellationToken.IsCancellationRequested)
             {
-                if (!isForward && start < 0)
+                if (!isForward && start < GetMinTargetBlockNumber())
                 {
                     if (_logger.IsTrace)
                         _logger.Trace($"{GetLogPrefix(isForward)}: queued last block");
@@ -296,9 +304,9 @@ public sealed class LogIndexService : ILogIndexService
                 var end = isForward ? start + BatchSize - 1 : start - BatchSize + 1;
 
                 // from - inclusive, to - exclusive
-                var (from, to) = isForward ?
-                    (start, Math.Min(end, GetMaxAvailableBlockNumber()) + 1) :
-                    (end, start + 1);
+                var (from, to) = isForward
+                    ? (start, Math.Min(end, GetMaxTargetBlockNumber()) + 1)
+                    : (end, Math.Max(start, GetMinTargetBlockNumber()) + 1);
 
                 Array.Clear(buffer);
                 PopulateBlocks(from, to, buffer, isForward, CancellationToken);
@@ -369,12 +377,16 @@ public sealed class LogIndexService : ILogIndexService
         // if (_forwardProgressLogger.CurrentValue == _forwardProgressLogger.TargetValue)
         //     _forwardProgressLogger.MarkEnd();
 
-        _backwardProgressLogger.TargetValue = pivotNumber;
+        _backwardProgressLogger.TargetValue = pivotNumber - GetMinTargetBlockNumber();
         _backwardProgressLogger.Update(_logIndexStorage.GetMinBlockNumber() is { } min ? pivotNumber - min : 0);
         _backwardProgressLogger.CurrentQueued = _backwardChannel.Reader.Count;
 
-        if (_backwardProgressLogger.CurrentValue <= 0)
+        if (_backwardProgressLogger.CurrentValue >= _backwardProgressLogger.TargetValue)
+        {
             _backwardProgressLogger.MarkEnd();
+            if (_logger.IsInfo)
+                _logger.Info($"{GetLogPrefix(isForward: false)}: completed.");
+        }
     }
 
     private int? GetNextBlockNumber(bool isForward)

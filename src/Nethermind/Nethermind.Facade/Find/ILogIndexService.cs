@@ -7,5 +7,7 @@ namespace Nethermind.Facade.Find
     public interface ILogIndexService : IAsyncDisposable, IStoppableService
     {
         Task StartAsync();
+        int GetMaxTargetBlockNumber();
+        int GetMinTargetBlockNumber();
     }
 }
