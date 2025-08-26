@@ -43,7 +43,6 @@ namespace Nethermind.Consensus.Processing
         private readonly Stopwatch _runStopwatch = new();
 
         private bool _showBlobs;
-        private long _lastBlockNumber;
         private long _lastElapsedRunningMicroseconds;
         private long _lastReportMs;
         private long _startCallOps;
@@ -100,11 +99,6 @@ namespace Nethermind.Consensus.Processing
         public void UpdateStats(Block? block, BlockHeader? baseBlock, long blockProcessingTimeInMicros)
         {
             if (block is null) return;
-
-            if (_lastBlockNumber == 0)
-            {
-                _lastBlockNumber = block.Number;
-            }
 
             BlockData blockData = _dataPool.Get();
             blockData.Block = block;
@@ -175,9 +169,6 @@ namespace Nethermind.Consensus.Processing
             if (block is null) return;
 
             long blockNumber = data.Block.Number;
-            if (_lastBlockNumber > blockNumber) return;
-
-            _lastBlockNumber = blockNumber;
             double chunkMGas = (_chunkMGas += block.GasUsed / 1_000_000.0);
 
             // We want the rate here

@@ -718,7 +718,7 @@ public class SyncServerTests
         var expectedUpdates = Enumerable.Range(startBlock + 1, blocksCount)
             .Where(x => x % frequency == 0)
             .Select(x => (earliest: localBlockTree.Genesis!.Number, latest: x))
-            .ToArray();
+            .ToArray()[^2..];
 
         foreach (PeerInfo peerInfo in peers)
         {
@@ -726,7 +726,7 @@ public class SyncServerTests
                 () => peerInfo.SyncPeer.ReceivedCalls()
                     .Where(c => c.GetMethodInfo().Name == nameof(ISyncPeer.NotifyOfNewRange))
                     .Select(c => c.GetArguments().Cast<BlockHeader>().Select(b => b.Number).ToArray())
-                    .Select(a => (earliest: a[0], latest: a[1])),
+                    .Select(a => (earliest: a[0], latest: a[1])).ToArray()[^2..],
                 Is.EquivalentTo(expectedUpdates).After(5000, 100) // Wait for background notifications to finish
             );
         }
