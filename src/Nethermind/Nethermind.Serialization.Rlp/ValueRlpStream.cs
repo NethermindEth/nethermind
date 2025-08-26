@@ -83,29 +83,7 @@ public ref struct ValueRlpStream(SpanSource data)
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public readonly int PeekPrefixLength()
     {
-        // Branchless implementation of RLP prefix length calculation.
-        // See RLP specification: https://github.com/ethereum/wiki/wiki/RLP
-        // RLP encoding rules:
-        // - For a single byte < 0x80: prefix length is 0 (no prefix).
-        // - For short strings (0x80..0xb7): prefix length is 1.
-        // - For long strings (0xb8..0xbf): prefix length is 1 + (prefix - 0xb7).
-        // - For short lists (0xc0..0xf7): prefix length is 1.
-        // - For long lists (0xf8..0xff): prefix length is 1 + (prefix - 0xf7).
-        //
-        // The following bit manipulations encode these rules without branches:
-
-        uint p = PeekByte(); // The prefix byte (0..255)
-        uint v = p >> 3;     // Used to classify the prefix range (0..31)
-        uint r = v >> 4;     // r = 0 for <0x80, r = 1 for >=0x80 (single byte vs. prefixed)
-        uint t = 1u + (p & 7u); // t = 1..8, used for long string/list prefix length
-
-        // longMask is 1 for 0xB8..0xBF or 0xF8..0xFF (long string/list prefixes), else 0
-        // v | 8u == 31u is true for v == 23 (0xB8..0xBF) or v == 31 (0xF8..0xFF)
-        uint longMask = ((v | 8u) == 31u) ? 1u : 0u;
-
-        // If longMask == 1, add t to r; else add 0. This selects the correct prefix length for long string/list.
-        uint add = (0u - longMask) & t;
-        return (int)(r + add);
+        return RlpHelpers.CalculatePrefixLength(PeekByte());
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
@@ -153,13 +131,13 @@ public ref struct ValueRlpStream(SpanSource data)
         if ((uint)lengthOfLength > 4)
         {
             // strange but needed to pass tests - seems that spec gives int64 length and tests int32 length
-            ThrowSequenceLengthTooLong();
+            RlpHelpers.ThrowSequenceLengthTooLong();
         }
 
         int length = PeekDeserializeLength(1, lengthOfLength);
         if (length < 56)
         {
-            ThrowLengthTooLong(length);
+            RlpHelpers.ThrowLengthTooLong(length);
         }
 
         return lengthOfLength + 1 + length;
@@ -172,13 +150,13 @@ public ref struct ValueRlpStream(SpanSource data)
         if ((uint)lengthOfLength > 4)
         {
             // strange but needed to pass tests - seems that spec gives int64 length and tests int32 length
-            ThrowSequenceLengthTooLong();
+            RlpHelpers.ThrowSequenceLengthTooLong();
         }
 
         int length = PeekDeserializeLength(1, lengthOfLength);
         if (length < 56)
         {
-            ThrowLengthTooLong(length);
+            RlpHelpers.ThrowLengthTooLong(length);
         }
 
         return (lengthOfLength + 1, length);
@@ -191,7 +169,7 @@ public ref struct ValueRlpStream(SpanSource data)
         int contentLength = PeekDeserializeLength(1, lengthOfContentLength);
         if (contentLength < 56)
         {
-            ThrowLengthTooLong(contentLength);
+            RlpHelpers.ThrowLengthTooLong(contentLength);
         }
 
         return lengthOfContentLength + 1 + contentLength;
@@ -204,19 +182,13 @@ public ref struct ValueRlpStream(SpanSource data)
         int contentLength = PeekDeserializeLength(1, lengthOfContentLength);
         if (contentLength < 56)
         {
-            ThrowLengthTooLong(contentLength);
+            RlpHelpers.ThrowLengthTooLong(contentLength);
         }
 
         return (lengthOfContentLength + 1, contentLength);
     }
 
-    [DoesNotReturn, StackTraceHidden]
-    private static void ThrowSequenceLengthTooLong()
-        => throw new RlpException("Expected length of length less or equal 4");
 
-    [DoesNotReturn, StackTraceHidden]
-    private static void ThrowLengthTooLong(int length)
-        => throw new RlpException($"Expected length greater or equal 56 and was {length}");
 
     public int ReadSequenceLength()
     {
@@ -246,7 +218,7 @@ public ref struct ValueRlpStream(SpanSource data)
     {
         if (lengthOfLength == 0 || (uint)lengthOfLength > 4)
         {
-            ThrowArgumentOutOfRangeException(lengthOfLength);
+            RlpHelpers.ThrowArgumentOutOfRangeException(lengthOfLength);
         }
 
         // Will use Unsafe.ReadUnaligned as we know the length of the span is same
@@ -261,7 +233,7 @@ public ref struct ValueRlpStream(SpanSource data)
     {
         if (lengthOfLength == 0 || (uint)lengthOfLength > 4)
         {
-            ThrowArgumentOutOfRangeException(lengthOfLength);
+            RlpHelpers.ThrowArgumentOutOfRangeException(lengthOfLength);
         }
 
         // Will use Unsafe.ReadUnaligned as we know the length of the span is same
@@ -274,67 +246,10 @@ public ref struct ValueRlpStream(SpanSource data)
 
     private static int DeserializeLengthRef(ref byte firstElement, int lengthOfLength)
     {
-        int result = firstElement;
-        if (result == 0)
-        {
-            ThrowInvalidData();
-        }
-
-        if (lengthOfLength == 1)
-        {
-            // Already read above
-            // result = span[0];
-        }
-        else if (lengthOfLength == 2)
-        {
-            if (BitConverter.IsLittleEndian)
-            {
-                result = BinaryPrimitives.ReverseEndianness(Unsafe.ReadUnaligned<ushort>(ref firstElement));
-            }
-            else
-            {
-                result = Unsafe.ReadUnaligned<ushort>(ref firstElement);
-            }
-        }
-        else if (lengthOfLength == 3)
-        {
-            if (BitConverter.IsLittleEndian)
-            {
-                result = BinaryPrimitives.ReverseEndianness(Unsafe.ReadUnaligned<ushort>(ref Unsafe.Add(ref firstElement, 1)))
-                    | (result << 16);
-            }
-            else
-            {
-                result = Unsafe.ReadUnaligned<ushort>(ref Unsafe.Add(ref firstElement, 1))
-                    | (result << 16);
-            }
-        }
-        else
-        {
-            if (BitConverter.IsLittleEndian)
-            {
-                result = BinaryPrimitives.ReverseEndianness(Unsafe.ReadUnaligned<int>(ref firstElement));
-            }
-            else
-            {
-                result = Unsafe.ReadUnaligned<int>(ref firstElement);
-            }
-        }
-
-        return result;
-
-        [DoesNotReturn]
-        static void ThrowInvalidData()
-        {
-            throw new RlpException("Length starts with 0");
-        }
+        return RlpHelpers.DeserializeLengthRef(ref firstElement, lengthOfLength);
     }
 
-    [DoesNotReturn]
-    static void ThrowArgumentOutOfRangeException(int lengthOfLength)
-    {
-        throw new InvalidOperationException($"Invalid length of length = {lengthOfLength}");
-    }
+
 
     public byte ReadByte()
     {
