@@ -18,7 +18,7 @@ namespace Nethermind.State
     {
         private readonly AccountDecoder _decoder = new();
 
-        private static readonly Rlp EmptyAccountRlp = Rlp.Encode(Account.TotallyEmpty);
+        public static readonly Rlp EmptyAccountRlp = Rlp.Encode(Account.TotallyEmpty);
 
         [DebuggerStepThrough]
         public StateTree(ICappedArrayPool? bufferPool = null)

@@ -4,12 +4,14 @@
 using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using System.Runtime.Intrinsics;
 using System.Threading.Tasks;
 using Nethermind.Core;
+using Nethermind.Core.Buffers;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
@@ -17,7 +19,10 @@ using Nethermind.Core.Threading;
 using Nethermind.Evm.Tracing.State;
 using Nethermind.Int256;
 using Nethermind.Logging;
+using Nethermind.Serialization.Rlp;
+using Nethermind.Trie;
 using Nethermind.Trie.Pruning;
+using Prometheus;
 
 namespace Nethermind.State;
 
@@ -43,6 +48,19 @@ internal sealed class PersistentStorageProvider : PartialStorageProviderBase
 
     private readonly HashSet<StorageCell> _committedThisRound = new();
     private readonly ConcurrentDictionary<StorageCell, byte[]>? _preBlockCache;
+
+    private Histogram _flushTime = Prometheus.Metrics.CreateHistogram("storage_provider_flushtree_time", "committ tree time",
+        new HistogramConfiguration()
+        {
+            LabelNames = ["is_main"],
+            Buckets = Histogram.PowersOfTenDividedBuckets(3, 9, 20)
+        });
+    private static Histogram _prepTime = Prometheus.Metrics.CreateHistogram("storage_provider_prep_time", "committ tree time",
+        new HistogramConfiguration()
+        {
+            LabelNames = ["is_main"],
+            Buckets = Histogram.PowersOfTenDividedBuckets(3, 9, 20)
+        });
 
     /// <summary>
     /// Manages persistent storage allowing for snapshotting and restoring
@@ -242,6 +260,7 @@ internal sealed class PersistentStorageProvider : PartialStorageProviderBase
             return;
         }
 
+        long sw = Stopwatch.GetTimestamp();
         // Is overhead of parallel foreach worth it?
         if (_toUpdateRoots.Count < 3)
         {
@@ -252,6 +271,7 @@ internal sealed class PersistentStorageProvider : PartialStorageProviderBase
             UpdateRootHashesMultiThread();
         }
 
+        _flushTime.WithLabels((!_populatePreBlockCache).ToString()).Observe(Stopwatch.GetTimestamp() - sw);
         _toUpdateRoots.Clear();
 
         void UpdateRootHashesSingleThread()
@@ -274,7 +294,9 @@ internal sealed class PersistentStorageProvider : PartialStorageProviderBase
             }
         }
 
+#pragma warning disable CS8321 // Local function is declared but never used
         void UpdateRootHashesMultiThread()
+#pragma warning restore CS8321 // Local function is declared but never used
         {
             // We can recalculate the roots in parallel as they are all independent tries
             using var storages = _storages.ToPooledList();
@@ -323,6 +345,94 @@ internal sealed class PersistentStorageProvider : PartialStorageProviderBase
                 _stateProvider.UpdateStorageRoot(address: kvp.Key, kvp.Value.RootHash);
             }
         }
+
+        /*
+        static (int writes, int skipped) ProcessStorageChanges(DefaultableDictionary dict, StorageTree storageTree)
+        {
+            int writes = 0;
+            int skipped = 0;
+
+            if (dict.EstimatedSize < 0)
+            {
+                foreach (var kvp in dict)
+                {
+                    byte[] after = kvp.Value.After;
+                    if (!Bytes.AreEqual(kvp.Value.Before, after))
+                    {
+                        dict[kvp.Key] = new(after, after);
+
+                        storageTree.Set(kvp.Key, after);
+                        writes++;
+                    }
+                    else
+                    {
+                        skipped++;
+                    }
+                }
+            }
+            else
+            {
+
+                using ArrayPoolList<(byte[], SpanSource)> bulkWrite = new(dict.EstimatedSize);
+                long sw = Stopwatch.GetTimestamp();
+
+                Span<byte> keyBuf = stackalloc byte[32];
+                foreach (var kvp in dict)
+                {
+                    byte[] after = kvp.Value.After;
+                    if (!Bytes.AreEqual(kvp.Value.Before, after))
+                    {
+                        dict[kvp.Key] = new(after, after);
+
+                        StorageTree.ComputeKeyWithLookup(kvp.Key, keyBuf);
+
+                        byte[] asNib = new byte[64];
+                        Nibbles.BytesToNibbleBytes(keyBuf, asNib);
+
+                        SpanSource value;
+                        if (after.IsZero())
+                        {
+                            value = Array.Empty<byte>();
+                        }
+                        else
+                        {
+                            Rlp rlpEncoded = Rlp.Encode(after);
+                            if (rlpEncoded is null)
+                            {
+                                value = SpanSource.Empty;
+                            }
+                            else
+                            {
+                                value = new SpanSource(rlpEncoded.Bytes);
+                            }
+                        }
+
+                        bulkWrite.Add((asNib, value));
+
+                        // storageTree.Set(kvp.Key, after);
+                        writes++;
+                    }
+                    else
+                    {
+                        skipped++;
+                    }
+                }
+
+                bulkWrite.Sort((it1, it2) => Bytes.BytesComparer.Compare(it1.Item1, it2.Item1));
+
+                _prepTime.Observe(Stopwatch.GetTimestamp() - sw);
+                storageTree.BulkSet(bulkWrite.AsSpan());
+
+            }
+
+            if (writes > 0)
+            {
+                storageTree.UpdateRootHash(canBeParallel: true);
+            }
+
+            return (writes, skipped);
+        }
+        */
 
         static void ReportMetrics(int writes, int skipped)
         {
@@ -447,6 +557,7 @@ internal sealed class PersistentStorageProvider : PartialStorageProviderBase
     {
         private bool _missingAreDefault;
         private readonly Dictionary<UInt256, ChangeTrace> _dictionary = new(Comparer.Instance);
+        public int EstimatedSize => _dictionary.Count;
 
         public void ClearAndSetMissingAsDefault()
         {
@@ -565,6 +676,8 @@ internal sealed class PersistentStorageProvider : PartialStorageProviderBase
             }
         }
 
+        private Counter _storageProviderGetFromTrieCount = Prometheus.Metrics.CreateCounter("storage_provider_get_count", "Get count", "is_main");
+        private Counter _storageProviderGetFromTrieTime = Prometheus.Metrics.CreateCounter("storage_provider_get_time", "Get count", "is_main");
         public ReadOnlySpan<byte> LoadFromTree(in StorageCell storageCell)
         {
             ref ChangeTrace valueChange = ref BlockChange.GetValueRefOrAddDefault(storageCell.Index, out bool exists);

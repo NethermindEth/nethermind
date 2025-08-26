@@ -49,7 +49,7 @@ namespace Nethermind.State
 
         [SkipLocalsInit]
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        private static void ComputeKey(in UInt256 index, Span<byte> key)
+        public static void ComputeKey(in UInt256 index, Span<byte> key)
         {
             index.ToBigEndian(key);
 
@@ -57,6 +57,16 @@ namespace Nethermind.State
             KeccakCache.ComputeTo(key, out ValueHash256 keyHash);
             // Which we can then directly assign to fast update the key
             Unsafe.As<byte, ValueHash256>(ref MemoryMarshal.GetReference(key)) = keyHash;
+        }
+
+        public static void ComputeKeyWithLookup(in UInt256 index, Span<byte> key)
+        {
+            if (index < LookupSize)
+            {
+                Lookup[index].CopyTo(key);
+            }
+
+            ComputeKey(index, key);
         }
 
         [SkipLocalsInit]
