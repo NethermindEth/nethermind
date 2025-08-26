@@ -182,7 +182,8 @@ public sealed class LogIndexService : ILogIndexService
 
     public int GetMinTargetBlockNumber()
     {
-        return (int)Math.Max(_syncConfig.AncientReceiptsBarrierCalc, 0);
+        // Block 0 should always be present
+        return (int)(_syncConfig.AncientReceiptsBarrierCalc <= 1 ? 0 : _syncConfig.AncientReceiptsBarrierCalc);
     }
 
     private async Task DoProcess()
