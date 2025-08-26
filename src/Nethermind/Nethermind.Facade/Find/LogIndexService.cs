@@ -249,7 +249,7 @@ public sealed class LogIndexService : ILogIndexService
             await _logIndexStorage.SetReceiptsAsync(batch, isBackwardSync: !isForward, _stats);
 
             if (_logIndexStorage.GetMinBlockNumber() == 0)
-                _receiptStorage.OldReceiptsInserted -= OnReceiptsInserted;
+                _receiptStorage.AnyReceiptsInserted -= OnReceiptsInserted;
 
             UpdateProgress(pivotNumber);
             count++;

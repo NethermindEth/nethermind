@@ -14,7 +14,7 @@ namespace Nethermind.Blockchain.Receipts
 
 #pragma warning disable CS0067
         public event EventHandler<BlockReplacementEventArgs> ReceiptsInserted;
-        public event EventHandler<ReceiptsEventArgs>? OldReceiptsInserted;
+        public event EventHandler<ReceiptsEventArgs>? AnyReceiptsInserted;
 #pragma warning restore CS0067
 
         public Hash256? FindBlockHash(Hash256 hash) => null;
