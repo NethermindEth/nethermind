@@ -352,7 +352,7 @@ internal sealed class PersistentStorageProvider : PartialStorageProviderBase
             int writes = 0;
             int skipped = 0;
 
-            if (dict.EstimatedSize < 0)
+            if (dict.EstimatedSize < 128)
             {
                 foreach (var kvp in dict)
                 {
@@ -373,7 +373,7 @@ internal sealed class PersistentStorageProvider : PartialStorageProviderBase
             else
             {
 
-                using ArrayPoolList<(byte[], SpanSource)> bulkWrite = new(dict.EstimatedSize);
+                using ArrayPoolList<(TreePath, SpanSource)> bulkWrite = new(dict.EstimatedSize);
                 long sw = Stopwatch.GetTimestamp();
 
                 Span<byte> keyBuf = stackalloc byte[32];
@@ -385,9 +385,6 @@ internal sealed class PersistentStorageProvider : PartialStorageProviderBase
                         dict[kvp.Key] = new(after, after);
 
                         StorageTree.ComputeKeyWithLookup(kvp.Key, keyBuf);
-
-                        byte[] asNib = new byte[64];
-                        Nibbles.BytesToNibbleBytes(keyBuf, asNib);
 
                         SpanSource value;
                         if (after.IsZero())
@@ -407,9 +404,8 @@ internal sealed class PersistentStorageProvider : PartialStorageProviderBase
                             }
                         }
 
-                        bulkWrite.Add((asNib, value));
+                        bulkWrite.Add((TreePath.FromPath(keyBuf), value));
 
-                        // storageTree.Set(kvp.Key, after);
                         writes++;
                     }
                     else
@@ -418,7 +414,7 @@ internal sealed class PersistentStorageProvider : PartialStorageProviderBase
                     }
                 }
 
-                bulkWrite.Sort((it1, it2) => Bytes.BytesComparer.Compare(it1.Item1, it2.Item1));
+                bulkWrite.Sort((it1, it2) => it1.Item1.CompareTo(it2.Item1));
 
                 _prepTime.Observe(Stopwatch.GetTimestamp() - sw);
                 storageTree.BulkSet(bulkWrite.AsSpan());

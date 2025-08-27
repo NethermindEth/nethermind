@@ -1342,13 +1342,17 @@ namespace Nethermind.Trie
             static void Throw() => throw new InvalidOperationException($"Nothing on {nameof(_nodeStack)}");
         }
 
-        public void BulkSet(Span<(byte[], SpanSource)> entries)
+        public void BulkSet(Span<(TreePath, SpanSource)> entries)
         {
             long sw = Stopwatch.GetTimestamp();
+            if (entries.Length < 16)
+            {
+                Console.Error.WriteLine($"Small bulkset {Environment.StackTrace}");
+            }
 
             for (int i = 1; i < entries.Length; i++)
             {
-                int compared = Bytes.BytesComparer.Compare(entries[i-1].Item1, entries[i].Item1);
+                int compared = entries[i-1].Item1.CompareTo(entries[i].Item1);
                 if (compared == 0)
                 {
                     throw new InvalidOperationException("Entries must be unique");
@@ -1380,11 +1384,82 @@ namespace Nethermind.Trie
         private static Counter _loopTime = Prometheus.Metrics.CreateCounter("patricia_loop_time", "fake time");
         private static Counter _resolveTime = Prometheus.Metrics.CreateCounter("patricia_resolve_time", "fake time");
         private static Counter _justBulkSetTime = Prometheus.Metrics.CreateCounter("patricia_just_bulk_set", "fake time");
+        private static Histogram _bulkEntryCount = Prometheus.Metrics.CreateHistogram("patricia_bulk_entry_count", "fake time", new HistogramConfiguration()
+        {
+            Buckets = Histogram.PowersOfTenDividedBuckets(0, 3, 20)
+        });
 
+        private TrieNode? BulkSetNewLeaf(in TreePath treePath, SpanSource value, ref TreePath currentPath, TrieNode? existingNode)
+        {
+            var path = treePath.ToNibble();
+            int commonPrefixLength = path.AsSpan()[currentPath.Length..].CommonPrefixLength(existingNode.Key);
+            if (commonPrefixLength == existingNode.Key!.Length)
+            {
+                // Deletion
+                if (value.IsNull || value.Length == 0) return null;
 
-        internal TrieNode? BulkSet(Span<(byte[], SpanSource)> entries, ref TreePath currentPath, TrieNode? existingNode)
+                if (existingNode.IsSealed)
+                {
+                    return TrieNodeFactory.CreateLeaf(path.Slice(currentPath.Length), value);
+                }
+
+                existingNode.Value = value;
+                return existingNode;
+            }
+
+            if (value.IsNull || value.Length == 0) return existingNode;
+
+            // Making a T branch here.
+            // If the commonPrefixLength > 0, we'll also need to also make an extension in front of the branch.
+            TrieNode theBranch = TrieNodeFactory.CreateBranch();
+            theBranch[existingNode.Key[commonPrefixLength]] =
+                TrieNodeFactory.CreateLeaf(existingNode.Key.Slice(commonPrefixLength + 1), existingNode.Value);
+            theBranch[path[currentPath.Length + commonPrefixLength]] =
+                TrieNodeFactory.CreateLeaf(path.Slice(currentPath.Length + commonPrefixLength + 1), value);
+
+            if (commonPrefixLength == 0) return theBranch;
+
+            return TrieNodeFactory.CreateExtension(path.Slice(currentPath.Length, commonPrefixLength),
+                theBranch);
+        }
+
+        private TrieNode? MakeFakeBranch(ref TreePath currentPath, TrieNode? existingNode)
+        {
+            // TODO: if this is a leaf, the existing key is long. Check if it is worth optimizing.
+            byte[] shortenedKey = new byte[existingNode.Key.Length - 1];
+            Array.Copy(existingNode.Key, 1, shortenedKey, 0, existingNode.Key.Length - 1);
+
+            int branchIdx = existingNode.Key[0];
+
+            TrieNode newChild;
+            if (existingNode.IsLeaf)
+            {
+                newChild = TrieNodeFactory.CreateLeaf(shortenedKey, existingNode.Value);
+            }
+            else
+            {
+                var child = existingNode.GetChild(TrieStore, ref currentPath, 0);
+                if (existingNode.Key.Length == 1)
+                {
+                    newChild = child;
+                }
+                else
+                {
+                    newChild = TrieNodeFactory.CreateExtension(shortenedKey, child);
+                }
+            }
+
+            existingNode = TrieNodeFactory.CreateBranch();
+            existingNode.SetChild(branchIdx, newChild);
+
+            return existingNode;
+        }
+
+        internal TrieNode? BulkSet(Span<(TreePath, SpanSource)> entries, ref TreePath currentPath, TrieNode? existingNode)
         {
             if (entries.Length == 0) return existingNode;
+
+            _bulkEntryCount.Observe(entries.Length);
 
             bool newBranch = false;
             if (existingNode is null)
@@ -1394,9 +1469,9 @@ namespace Nethermind.Trie
                 {
                     if (entries.Length == 1)
                     {
-                        (byte[] path, SpanSource value) = entries[0];
+                        (TreePath treePath, SpanSource value) = entries[0];
                         if (value.IsNull || value.Length == 0) return null;
-                        byte[] remainingKey = path.Slice(currentPath.Length);
+                        byte[] remainingKey = treePath.ToNibble().Slice(currentPath.Length);
                         return TrieNodeFactory.CreateLeaf(remainingKey, value);
                     }
 
@@ -1419,36 +1494,8 @@ namespace Nethermind.Trie
                     long sw = Stopwatch.GetTimestamp();
                     try
                     {
-                        (byte[] path, SpanSource value) = entries[0];
-                        int commonPrefixLength = path.AsSpan()[currentPath.Length..].CommonPrefixLength(existingNode.Key);
-                        if (commonPrefixLength == existingNode.Key!.Length)
-                        {
-                            // Deletion
-                            if (value.IsNull || value.Length == 0) return null;
-
-                            if (existingNode.IsSealed)
-                            {
-                                return TrieNodeFactory.CreateLeaf(path.Slice(currentPath.Length), value);
-                            }
-
-                            existingNode.Value = value;
-                            return existingNode;
-                        }
-
-                        if (value.IsNull || value.Length == 0) return existingNode;
-
-                        // Making a T branch here.
-                        // If the commonPrefixLength > 0, we'll also need to also make an extension in front of the branch.
-                        TrieNode theBranch = TrieNodeFactory.CreateBranch();
-                        theBranch[existingNode.Key[commonPrefixLength]] =
-                            TrieNodeFactory.CreateLeaf(existingNode.Key.Slice(commonPrefixLength + 1), existingNode.Value);
-                        theBranch[path[currentPath.Length + commonPrefixLength]] =
-                            TrieNodeFactory.CreateLeaf(path.Slice(currentPath.Length + commonPrefixLength + 1), value);
-
-                        if (commonPrefixLength == 0) return theBranch;
-
-                        return TrieNodeFactory.CreateExtension(path.Slice(currentPath.Length, commonPrefixLength),
-                            theBranch);
+                        (TreePath treePath, SpanSource value) = entries[0];
+                        return BulkSetNewLeaf(treePath, value, ref currentPath, existingNode);
                     }
                     finally
                     {
@@ -1466,32 +1513,7 @@ namespace Nethermind.Trie
                     // .5 % of path.
 
                     long sw = Stopwatch.GetTimestamp();
-                    // TODO: if this is a leaf, the existing key is long. Check if it is worth optimizing.
-                    byte[] shortenedKey = new byte[existingNode.Key.Length - 1];
-                    Array.Copy(existingNode.Key, 1, shortenedKey, 0, existingNode.Key.Length - 1);
-
-                    int branchIdx = existingNode.Key[0];
-
-                    TrieNode newChild;
-                    if (existingNode.IsLeaf)
-                    {
-                        newChild = TrieNodeFactory.CreateLeaf(shortenedKey, existingNode.Value);
-                    }
-                    else
-                    {
-                        var child = existingNode.GetChild(TrieStore, ref currentPath, 0);
-                        if (existingNode.Key.Length == 1)
-                        {
-                            newChild = child;
-                        }
-                        else
-                        {
-                            newChild = TrieNodeFactory.CreateExtension(shortenedKey, child);
-                        }
-                    }
-
-                    existingNode = TrieNodeFactory.CreateBranch();
-                    existingNode.SetChild(branchIdx, newChild);
+                    existingNode = MakeFakeBranch(ref currentPath, existingNode);
                     newBranch = true;
                     _fakePathTime.Inc(Stopwatch.GetTimestamp() - sw);
                     _fakeBranch.WithLabels("true").Inc();
@@ -1517,8 +1539,8 @@ namespace Nethermind.Trie
             bool hasRemove = false;
             if (entries.Length > 100000 && nibToCheck == TrieNode.BranchesCount) // Disabled for now
             {
-                (ArrayPoolList<(byte[], SpanSource)> entries, int nibble, TreePath appendedPath, TrieNode? outNode)[] jobs =
-                    new (ArrayPoolList<(byte[], SpanSource)> entries, int nibble, TreePath appendedPath, TrieNode? outNode)[TrieNode.BranchesCount];
+                (ArrayPoolList<(TreePath, SpanSource)> entries, int nibble, TreePath appendedPath, TrieNode? outNode)[] jobs =
+                    new (ArrayPoolList<(TreePath, SpanSource)> entries, int nibble, TreePath appendedPath, TrieNode? outNode)[TrieNode.BranchesCount];
 
                 for (int i = 0; i < TrieNode.BranchesCount; i++)
                 {
@@ -1534,7 +1556,7 @@ namespace Nethermind.Trie
                         endRange = entries.Length;
                     }
 
-                    ArrayPoolList<(byte[], SpanSource)> jobEntry = new ArrayPoolList<(byte[], SpanSource)>(endRange - startRange);
+                    ArrayPoolList<(TreePath, SpanSource)> jobEntry = new ArrayPoolList<(TreePath, SpanSource)>(endRange - startRange);
                     for (int j = startRange; j < endRange; j++)
                     {
                         jobEntry.Add(entries[j]);
@@ -1547,7 +1569,7 @@ namespace Nethermind.Trie
 
                 ParallelUnbalancedWork.For(0, nibToCheck, ParallelUnbalancedWork.DefaultOptions, jobs, (i, jobs) =>
                 {
-                    (ArrayPoolList<(byte[], SpanSource)> jobEntry, int nib, TreePath childPath, TrieNode child) = jobs[i];
+                    (ArrayPoolList<(TreePath, SpanSource)> jobEntry, int nib, TreePath childPath, TrieNode child) = jobs[i];
 
                     child = BulkSet(jobEntry.AsSpan(), ref childPath, child);
                     jobs[i] = (jobEntry, nib, childPath, child);
@@ -1656,7 +1678,7 @@ namespace Nethermind.Trie
             }
         }
 
-        public static int HexarySearch(Span<(byte[], SpanSource)> entries, int pathIndex, Span<(int, int)> indexes)
+        public static int HexarySearch(Span<(TreePath, SpanSource)> entries, int pathIndex, Span<(int, int)> indexes)
         {
             // TODO: Change to binary search
             int relevantNib = 0;
