@@ -41,9 +41,9 @@ COPY --from=build /publish .
 
 # --- Copy Pyroscope .NET agent binaries from official image
 # pick the latest matching glibc x86_64 build (0.12.0 here, adjust as needed)
-COPY --from=pyroscope/pyroscope-dotnet:0.12.0-glibc \
+COPY --from=pyroscope/pyroscope-dotnet:0.12.0-glibc-x86_64 \
      /Pyroscope.Profiler.Native.so /opt/pyroscope/Pyroscope.Profiler.Native.so
-COPY --from=pyroscope/pyroscope-dotnet:0.12.0-glibc \
+COPY --from=pyroscope/pyroscope-dotnet:0.12.0-glibc-x86_64 \
      /Pyroscope.Linux.ApiWrapper.x64.so /opt/pyroscope/Pyroscope.Linux.ApiWrapper.x64.so
 
 # --- Environment vars to enable Pyroscope CLR profiler
