@@ -40,9 +40,9 @@ EXPOSE 8545 8551 30303
 COPY --from=build /publish .
 
 # --- Copy Pyroscope .NET agent binaries from official image (x86_64 glibc)
-COPY --from=pyroscope/pyroscope-dotnet:0.10.0-glibc-x86_64 \
+COPY --from=pyroscope/pyroscope-dotnet:0.9.4-glibc-x86_64 \
      /Pyroscope.Profiler.Native.so ./Pyroscope.Profiler.Native.so
-COPY --from=pyroscope/pyroscope-dotnet:0.10.0-glibc-x86_64 \
+COPY --from=pyroscope/pyroscope-dotnet:0.9.4-glibc-x86_64 \
      /Pyroscope.Linux.ApiWrapper.x64.so ./Pyroscope.Linux.ApiWrapper.x64.so
 
 # --- Environment vars to enable the CLR profiler and ALL profiling types
