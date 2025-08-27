@@ -732,9 +732,8 @@ namespace Nethermind.State
             int skipped = 0;
 
             long sw = Stopwatch.GetTimestamp();
-            if (_blockChanges.Keys.Count < 0)
+            if (_blockChanges.Count < 128)
             {
-                using ArrayPoolList<(byte[], SpanSource)> bulkWrite = new(_blockChanges.Count);
                 foreach (var key in _blockChanges.Keys)
                 {
                     ref var change = ref CollectionsMarshal.GetValueRefOrNullRef(_blockChanges, key);
@@ -753,7 +752,7 @@ namespace Nethermind.State
             }
             else
             {
-                using ArrayPoolList<(byte[], SpanSource)> bulkWrite = new(_blockChanges.Count);
+                using ArrayPoolList<(TreePath, SpanSource)> bulkWrite = new(_blockChanges.Count);
                 foreach (var key in _blockChanges.Keys)
                 {
                     ref var change = ref CollectionsMarshal.GetValueRefOrNullRef(_blockChanges, key);
@@ -766,7 +765,7 @@ namespace Nethermind.State
                         var account = change.After;
                         Rlp accountRlp = account is null ? null : account.IsTotallyEmpty ? StateTree.EmptyAccountRlp : Rlp.Encode(account);
 
-                        bulkWrite.Add((Nibbles.BytesToNibbleBytes(keccak.Bytes.ToArray()), accountRlp?.Bytes));
+                        bulkWrite.Add((new TreePath(keccak, 64), accountRlp?.Bytes));
                         writes++;
                     }
                     else
@@ -775,7 +774,7 @@ namespace Nethermind.State
                     }
                 }
 
-                bulkWrite.Sort((it1, it2) => Bytes.BytesComparer.Compare(it1.Item1, it2.Item1));
+                bulkWrite.Sort((it1, it2) => it1.Item1.CompareTo(it2.Item1));
                 _tree.BulkSet(bulkWrite.AsSpan());
             }
 

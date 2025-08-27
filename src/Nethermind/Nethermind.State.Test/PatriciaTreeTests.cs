@@ -387,12 +387,12 @@ namespace Nethermind.Store.Test
 
                 long sw = Stopwatch.GetTimestamp();
 
-                using ArrayPoolList<(byte[], SpanSource)> entries = new ArrayPoolList<(byte[], SpanSource)>(items.Count);
+                using ArrayPoolList<(TreePath, SpanSource)> entries = new ArrayPoolList<(TreePath, SpanSource)>(items.Count);
                 foreach (var valueTuple in items)
                 {
-                    entries.Add((Nibbles.BytesToNibbleBytes(valueTuple.key.Bytes), valueTuple.value));
+                    entries.Add((new TreePath(valueTuple.key, 64), valueTuple.value));
                 }
-                entries.Sort((it1, it2) => Bytes.BytesComparer.Compare(it1.Item1, it2.Item1));
+                entries.Sort((it1, it2) => it1.Item1.CompareTo(it2.Item1));
 
                 pTree.BulkSet(entries.AsSpan());
                 pTree.UpdateRootHash();
@@ -439,10 +439,10 @@ namespace Nethermind.Store.Test
         [TestCaseSource(nameof(HexarySearchTestCases))]
         public void HexarySearch(List<Hash256> paths, (int, int)[] expectedResult)
         {
-            List<(byte[], SpanSource)> items = new List<(byte[], SpanSource)>(paths.Count);
+            List<(TreePath, SpanSource)> items = new List<(TreePath, SpanSource)>(paths.Count);
             foreach (Hash256 hash256 in paths)
             {
-                items.Add((Nibbles.BytesToNibbleBytes(hash256.Bytes), SpanSource.Empty));
+                items.Add((new TreePath(hash256, 64), SpanSource.Empty));
             }
 
             Span<(int, int)> result = stackalloc (int, int)[TrieNode.BranchesCount];
