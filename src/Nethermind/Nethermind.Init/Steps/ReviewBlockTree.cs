@@ -20,7 +20,7 @@ namespace Nethermind.Init.Steps
         IWorldStateManager worldStateManager,
         IInitConfig initConfig,
         ISyncConfig syncConfig,
-        IBlockProcessingQueue  blockProcessingQueue,
+        IBlockProcessingQueue blockProcessingQueue,
         IBlockTree blockTree,
         ILogManager logManager
     ) : IStep
