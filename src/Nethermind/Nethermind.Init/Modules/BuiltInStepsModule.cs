@@ -19,6 +19,7 @@ public class BuiltInStepsModule : Module
         typeof(InitializeBlockProducer),
         typeof(InitializeBlockTree),
         typeof(InitializeNetwork),
+        typeof(StartNetwork),
         typeof(InitializePlugins),
         typeof(InitializePrecompiles),
         typeof(InitTxTypesAndRlp),

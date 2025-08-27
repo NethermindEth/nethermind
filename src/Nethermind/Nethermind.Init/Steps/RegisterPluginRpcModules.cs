@@ -14,12 +14,11 @@ using Nethermind.JsonRpc.Modules.Evm;
 
 namespace Nethermind.Init.Steps;
 
-[RunnerStepDependencies(typeof(InitializeNetwork), typeof(SetupKeyStore), typeof(InitializeBlockchain), typeof(InitializePlugins), typeof(InitializeBlockProducer), typeof(RegisterRpcModules))]
+[RunnerStepDependencies(typeof(SetupKeyStore), typeof(InitializeBlockchain), typeof(InitializePlugins), typeof(InitializeBlockProducer), typeof(RegisterRpcModules))]
 public class RegisterPluginRpcModules(
     IRpcModuleProvider rpcModuleProvider,
     IInitConfig initConfig,
     IBlockProcessingQueue blockProcessingQueue,
-    IBlockTree blockTree,
     INethermindPlugin[] plugins,
     IManualBlockProductionTrigger manualBlockProductionTrigger
 ) : IStep
@@ -30,16 +29,10 @@ public class RegisterPluginRpcModules(
         {
             // Ugly temporary hack to not receive engine API messages before end of processing of all blocks after restart.
             // Then we will wait 5s more to ensure everything is processed
-            long bestKnownNumber = blockTree.BestKnownNumber;
             while (!blockProcessingQueue.IsEmpty && !cancellationToken.IsCancellationRequested)
             {
                 await Task.Delay(100, cancellationToken);
                 // If we have new blocks coming from the network we will spin in this loop until we sync head
-                // So we wait only until old BestKnownNumber
-                if (blockTree.Head is not null && bestKnownNumber <= blockTree.Head.Number)
-                {
-                    break;
-                }
             }
 
             await Task.Delay(5000, cancellationToken);
