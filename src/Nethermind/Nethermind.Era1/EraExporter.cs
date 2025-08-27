@@ -68,8 +68,8 @@ public class EraExporter(
             epochIdxs.Add(i);
         }
 
-        using ArrayPoolList<ValueHash256> accumulators = new((int)epochCount, (int)epochCount);
-        using ArrayPoolList<ValueHash256> checksums = new((int)epochCount, (int)epochCount);
+        using ArrayPoolList<string> accumulators = new((int)epochCount, (int)epochCount);
+        using ArrayPoolList<string> checksums = new((int)epochCount, (int)epochCount);
 
         await Parallel.ForEachAsync(epochIdxs, new ParallelOptions()
         {
@@ -135,10 +135,10 @@ public class EraExporter(
                 }
             }
 
+            string fileName = Path.GetFileName(filePath);
             (ValueHash256 accumulator, ValueHash256 sha256) = await eraWriter.Finalize(cancellation);
-            accumulators[(int)epochIdx] = accumulator;
-            checksums[(int)epochIdx] = sha256;
-
+            accumulators[(int)epochIdx] = string.Concat(accumulator.ToString()," ", fileName);
+            checksums[(int)epochIdx] = string.Concat(sha256.ToString(), " ", fileName);
             string rename = Path.Combine(
                 destinationPath,
                 EraPathUtils.Filename(_networkName, epoch, new Hash256(accumulator)));

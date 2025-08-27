@@ -19,7 +19,7 @@ public class EraExporterTests
     [TestCase(32, 8, 0, 16, 2)]
     [TestCase(48, 8, 40 - 1, 16, 2)]
     [TestCase(64 * 2 + 1, 0, 64 * 2 + 1 - 1, 64, 3)]
-    public async Task Export_ChainHasDifferentLength_CorrectNumberOfFilesCreated(int chainlength, int start, int end, int size, int expectedNumberOfFiles)
+    public async Task Export_ChainHasDifferentLength_CorrectNumberOfFilesCreated_with_file_name(int chainlength, int start, int end, int size, int expectedNumberOfFiles)
     {
         await using IContainer container = EraTestModule.BuildContainerBuilderWithBlockTreeOfLength(chainlength)
             .AddSingleton<IEraConfig>(new EraConfig() { MaxEra1Size = size })
@@ -32,6 +32,19 @@ public class EraExporterTests
         int fileCount = container.Resolve<IFileSystem>().Directory.GetFiles(tmpDirectory).Length;
         int metaFile = 2;
         Assert.That(fileCount, Is.EqualTo(expectedNumberOfFiles + metaFile));
+        string[] files = Directory.GetFiles(tmpDirectory);
+        foreach(string file in files)
+        {
+            if (Path.GetFileName(file).Equals("accumulators.txt") || Path.GetFileName(file).Equals("checksums.txt"))
+            {
+                foreach (string line in File.ReadLines(file))
+                {
+                    string[] words = line.Split(' ');
+                    Assert.That(words.Length, Is.EqualTo(2));
+                    Assert.That(words[1].EndsWith(".era1"));
+                }
+            }
+        }
     }
 
     [TestCase(1, 1)]
