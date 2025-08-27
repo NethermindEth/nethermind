@@ -40,16 +40,16 @@ EXPOSE 8545 8551 30303
 COPY --from=build /publish .
 
 # --- Copy Pyroscope .NET agent binaries from official image (x86_64 glibc)
-COPY --from=pyroscope/pyroscope-dotnet:0.12.0-glibc-x86_64 \
-     /Pyroscope.Profiler.Native.so /opt/pyroscope/Pyroscope.Profiler.Native.so
-COPY --from=pyroscope/pyroscope-dotnet:0.12.0-glibc-x86_64 \
-     /Pyroscope.Linux.ApiWrapper.x64.so /opt/pyroscope/Pyroscope.Linux.ApiWrapper.x64.so
+COPY --from=pyroscope/pyroscope-dotnet:0.10.0-glibc-x86_64 \
+     /Pyroscope.Profiler.Native.so ./Pyroscope.Profiler.Native.so
+COPY --from=pyroscope/pyroscope-dotnet:0.10.0-glibc-x86_64 \
+     /Pyroscope.Linux.ApiWrapper.x64.so ./Pyroscope.Linux.ApiWrapper.x64.so
 
 # --- Environment vars to enable the CLR profiler and ALL profiling types
 ENV CORECLR_ENABLE_PROFILING=1 \
     CORECLR_PROFILER={BD1A650D-AC5D-4896-B64F-D6FA25D6B26A} \
-    CORECLR_PROFILER_PATH=/opt/pyroscope/Pyroscope.Profiler.Native.so \
-    LD_PRELOAD=/opt/pyroscope/Pyroscope.Linux.ApiWrapper.x64.so \
+    CORECLR_PROFILER_PATH=/nethermind/Pyroscope.Profiler.Native.so \
+    LD_PRELOAD=/nethermind/Pyroscope.Linux.ApiWrapper.x64.so \
     PYROSCOPE_PROFILING_ENABLED=1 \
     PYROSCOPE_PROFILING_CPU_ENABLED=true \
     PYROSCOPE_PROFILING_WALLTIME_ENABLED=true \
