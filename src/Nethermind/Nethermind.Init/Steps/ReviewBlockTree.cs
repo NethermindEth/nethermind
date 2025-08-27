@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Api;
@@ -8,6 +9,7 @@ using Nethermind.Api.Steps;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Blockchain.Visitors;
+using Nethermind.Consensus.Processing;
 using Nethermind.Logging;
 using Nethermind.State;
 
@@ -18,6 +20,7 @@ namespace Nethermind.Init.Steps
         IWorldStateManager worldStateManager,
         IInitConfig initConfig,
         ISyncConfig syncConfig,
+        IBlockProcessingQueue  blockProcessingQueue,
         IBlockTree blockTree,
         ILogManager logManager
     ) : IStep
@@ -68,6 +71,20 @@ namespace Nethermind.Init.Steps
                     }
                 });
             }
+
+            blockProcessingQueue.ProcessingQueueEmpty += OnProcessingQueueEmpty;
+            if (!blockProcessingQueue.IsEmpty) // Just in case the queue got empty before we subscribed
+            {
+                await _blocksProcessedTaskSource.Task.WaitAsync(cancellationToken);
+            }
+            blockProcessingQueue.ProcessingQueueEmpty -= OnProcessingQueueEmpty;
+        }
+
+        private readonly TaskCompletionSource _blocksProcessedTaskSource = new();
+
+        private void OnProcessingQueueEmpty(object? sender, EventArgs e)
+        {
+            _blocksProcessedTaskSource.SetResult();
         }
     }
 }
