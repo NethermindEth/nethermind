@@ -46,4 +46,21 @@ internal class XdcBlockHeader : BlockHeader
         }
         return masterNodes;
     }
+
+    public ExtraFieldsV2 DecodeQuorumCertificate()
+    {
+        if (ExtraData is null || ExtraData.Length == 0)
+            throw new InvalidOperationException("ExtraData field is null or empty.");
+        if (ExtraData[0] != 2)
+            throw new InvalidOperationException("Not V2 consensus version in ExtraData field.");
+
+        //TODO use rlp to decode QuorumCertificate from ExtraData
+        return new ExtraFieldsV2();
+    }
+
+    public bool IsEpochSwitch(ISpecProvider specProvider)
+    {
+        throw new NotImplementedException();
+    }
 }
+
