@@ -179,11 +179,8 @@ public class BlockAccessTracer : IBlockTracer, ITxTracer, IJournal<int>
 
     public void ReportStorageRead(in StorageCell storageCell)
     {
-        StorageKey storageKey = new()
-        {
-            Key = storageCell.Hash.ToByteArray()
-        };
-        Address address = Address.Zero;
+        byte[] storageKey = storageCell.Hash.ToByteArray();
+        Address address = storageCell.Address;
 
         if (!_bal.AccountChanges.TryGetValue(address, out AccountChanges accountChanges))
         {
@@ -304,7 +301,7 @@ public class BlockAccessTracer : IBlockTracer, ITxTracer, IJournal<int>
             NewValue = value.ToArray()
         };
 
-        StorageKey storageKey = new(key);
+        byte[] storageKey = [.. key];
         if (!accountChanges.StorageChanges.TryGetValue(storageKey, out SlotChanges storageChanges))
         {
             storageChanges = new();
