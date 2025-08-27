@@ -52,13 +52,17 @@ public class InitializeNetwork : IStep
 {
     private readonly IApiWithNetwork _api;
     private readonly INodeStatsManager _nodeStatsManager;
+    private readonly ISynchronizer _synchronizer;
+    private readonly ISyncPeerPool _syncPeerPool;
     private readonly IForkInfo _forkInfo;
     private readonly NodeSourceToDiscV4Feeder _enrDiscoveryAppFeeder;
     private readonly INetworkStorage _peerStorage;
     private readonly IDiscoveryApp _discoveryApp;
+    private readonly Lazy<IPeerPool> _peerPool;
 
     private readonly INetworkConfig _networkConfig;
     private readonly ISyncConfig _syncConfig;
+    private readonly IInitConfig _initConfig;
 
     private readonly ILogger _logger;
 
@@ -81,12 +85,16 @@ public class InitializeNetwork : IStep
     {
         _api = api;
         _nodeStatsManager = nodeStatsManager;
+        _synchronizer = synchronizer;
+        _syncPeerPool = syncPeerPool;
         _enrDiscoveryAppFeeder = enrDiscoveryAppFeeder;
         _discoveryApp = discoveryApp;
+        _peerPool = peerPool;
         _forkInfo = forkInfo;
         _peerStorage = peerStorage;
         _networkConfig = networkConfig;
         _syncConfig = syncConfig;
+        _initConfig = initConfig;
 
         _logger = logManager.GetClassLogger();
     }
@@ -142,6 +150,41 @@ public class InitializeNetwork : IStep
             return;
         }
 
+        await StartSync().ContinueWith(initNetTask =>
+        {
+            if (initNetTask.IsFaulted)
+            {
+                _logger.Error("Unable to start the synchronizer.", initNetTask.Exception);
+            }
+        });
+
+        if (cancellationToken.IsCancellationRequested)
+        {
+            return;
+        }
+
+        await StartDiscovery().ContinueWith(initDiscoveryTask =>
+        {
+            if (initDiscoveryTask.IsFaulted)
+            {
+                _logger.Error("Unable to start the discovery protocol.", initDiscoveryTask.Exception);
+            }
+        });
+
+        try
+        {
+            if (cancellationToken.IsCancellationRequested)
+            {
+                return;
+            }
+
+            StartPeer();
+        }
+        catch (Exception e)
+        {
+            _logger.Error("Unable to start the peer manager.", e);
+        }
+
         if (_api.Enode is null)
         {
             throw new InvalidOperationException("Cannot initialize network without knowing own enode");
@@ -154,6 +197,61 @@ public class InitializeNetwork : IStep
         ThisNodeInfo.AddInfo("Public id    :", ProductInfo.PublicClientId);
         ThisNodeInfo.AddInfo("This node    :", $"{_api.Enode.Info} ");
         ThisNodeInfo.AddInfo("Node address :", $"{_api.Enode.Address} (do not use as an account)");
+    }
+
+    private Task StartDiscovery()
+    {
+        if (!_initConfig.DiscoveryEnabled)
+        {
+            if (_logger.IsWarn) _logger.Warn($"Skipping discovery init due to {nameof(IInitConfig.DiscoveryEnabled)} set to false");
+            return Task.CompletedTask;
+        }
+
+        if (_logger.IsDebug) _logger.Debug("Starting discovery process.");
+        _ = _discoveryApp.StartAsync();
+        if (_logger.IsDebug) _logger.Debug("Discovery process started.");
+        return Task.CompletedTask;
+    }
+
+    private void StartPeer()
+    {
+        if (_api.PeerManager is null) throw new StepDependencyException(nameof(_api.PeerManager));
+        if (_api.SessionMonitor is null) throw new StepDependencyException(nameof(_api.SessionMonitor));
+
+        if (!_api.Config<IInitConfig>().PeerManagerEnabled)
+        {
+            if (_logger.IsWarn) _logger.Warn($"Skipping peer manager init due to {nameof(IInitConfig.PeerManagerEnabled)} set to false");
+        }
+
+        if (_logger.IsDebug) _logger.Debug("Initializing peer manager");
+        _peerPool.Value.Start();
+        _api.PeerManager.Start();
+        _api.SessionMonitor.Start();
+        if (_logger.IsDebug) _logger.Debug("Peer manager initialization completed");
+    }
+
+    private Task StartSync()
+    {
+        if (_api.BlockTree is null) throw new StepDependencyException(nameof(_api.BlockTree));
+
+        if (_syncConfig.NetworkingEnabled)
+        {
+            _syncPeerPool.Start();
+
+            if (_syncConfig.SynchronizationEnabled)
+            {
+                if (_logger.IsDebug) _logger.Debug($"Starting synchronization from block {_api.BlockTree.Head?.Header.ToString(BlockHeader.Format.Short)}.");
+                _synchronizer.Start();
+            }
+            else
+            {
+                if (_logger.IsWarn) _logger.Warn($"Skipping blockchain synchronization init due to {nameof(ISyncConfig.SynchronizationEnabled)} set to false");
+            }
+        }
+        else if (_logger.IsWarn) _logger.Warn($"Skipping connecting to peers due to {nameof(ISyncConfig.NetworkingEnabled)} set to false");
+
+
+        return Task.CompletedTask;
     }
 
     private async Task InitPeer()
