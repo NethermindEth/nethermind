@@ -33,7 +33,7 @@ public class EraExporterTests
         int metaFile = 2;
         Assert.That(fileCount, Is.EqualTo(expectedNumberOfFiles + metaFile));
         string[] files = Directory.GetFiles(tmpDirectory);
-        foreach(string file in files)
+        foreach (string file in files)
         {
             if (Path.GetFileName(file).Equals("accumulators.txt") || Path.GetFileName(file).Equals("checksums.txt"))
             {

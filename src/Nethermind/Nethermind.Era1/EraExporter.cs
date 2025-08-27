@@ -137,7 +137,7 @@ public class EraExporter(
 
             string fileName = Path.GetFileName(filePath);
             (ValueHash256 accumulator, ValueHash256 sha256) = await eraWriter.Finalize(cancellation);
-            accumulators[(int)epochIdx] = string.Concat(accumulator.ToString()," ", fileName);
+            accumulators[(int)epochIdx] = string.Concat(accumulator.ToString(), " ", fileName);
             checksums[(int)epochIdx] = string.Concat(sha256.ToString(), " ", fileName);
             string rename = Path.Combine(
                 destinationPath,
