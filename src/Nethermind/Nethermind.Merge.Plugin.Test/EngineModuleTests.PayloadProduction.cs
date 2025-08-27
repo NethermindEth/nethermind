@@ -315,8 +315,10 @@ public partial class EngineModuleTests
         IEngineRpcModule rpc = chain.EngineRpcModule;
         byte[] payloadId = Bytes.FromHexString("0x1111111111111111");
 
-        string parameters = payloadId.ToHexString(true);
-        string result = await RpcTest.TestSerializedRequest(rpc, "engine_getPayloadV1", parameters);
+        string param1 = "0xf86f80843b9aca0082520894da49a5b28233d74c69dbe0fd509cb54f98d8bf6e893635c99aac6d15b0008083111784a081431251449310a0670dc406bedf5315420f8f08970e2e4f788162cf895dafeda042ccb9f5956afdd6438c570e48976b535fb605d66e1ed12328de6ac238fa67e2";
+        string param2 = "0x86cF016FB873D50a7B8F31EB154c9234DD31b058";
+        string result = await RpcTest.TestSerializedRequest(rpc, "engine_getPayloadV4", param1, param2);
+        Console.WriteLine(result);
         result.Should().Be("{\"jsonrpc\":\"2.0\",\"error\":{\"code\":-38001,\"message\":\"unknown payload\"},\"id\":67}");
     }
 
