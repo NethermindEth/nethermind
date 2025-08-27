@@ -6,6 +6,7 @@ using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
+using System.Net.Http.Headers;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using System.Runtime.Intrinsics;
@@ -346,90 +347,6 @@ internal sealed class PersistentStorageProvider : PartialStorageProviderBase
             }
         }
 
-        /*
-        static (int writes, int skipped) ProcessStorageChanges(DefaultableDictionary dict, StorageTree storageTree)
-        {
-            int writes = 0;
-            int skipped = 0;
-
-            if (dict.EstimatedSize < 128)
-            {
-                foreach (var kvp in dict)
-                {
-                    byte[] after = kvp.Value.After;
-                    if (!Bytes.AreEqual(kvp.Value.Before, after))
-                    {
-                        dict[kvp.Key] = new(after, after);
-
-                        storageTree.Set(kvp.Key, after);
-                        writes++;
-                    }
-                    else
-                    {
-                        skipped++;
-                    }
-                }
-            }
-            else
-            {
-
-                using ArrayPoolList<(TreePath, SpanSource)> bulkWrite = new(dict.EstimatedSize);
-                long sw = Stopwatch.GetTimestamp();
-
-                Span<byte> keyBuf = stackalloc byte[32];
-                foreach (var kvp in dict)
-                {
-                    byte[] after = kvp.Value.After;
-                    if (!Bytes.AreEqual(kvp.Value.Before, after))
-                    {
-                        dict[kvp.Key] = new(after, after);
-
-                        StorageTree.ComputeKeyWithLookup(kvp.Key, keyBuf);
-
-                        SpanSource value;
-                        if (after.IsZero())
-                        {
-                            value = Array.Empty<byte>();
-                        }
-                        else
-                        {
-                            Rlp rlpEncoded = Rlp.Encode(after);
-                            if (rlpEncoded is null)
-                            {
-                                value = SpanSource.Empty;
-                            }
-                            else
-                            {
-                                value = new SpanSource(rlpEncoded.Bytes);
-                            }
-                        }
-
-                        bulkWrite.Add((TreePath.FromPath(keyBuf), value));
-
-                        writes++;
-                    }
-                    else
-                    {
-                        skipped++;
-                    }
-                }
-
-                bulkWrite.Sort((it1, it2) => it1.Item1.CompareTo(it2.Item1));
-
-                _prepTime.Observe(Stopwatch.GetTimestamp() - sw);
-                storageTree.BulkSet(bulkWrite.AsSpan());
-
-            }
-
-            if (writes > 0)
-            {
-                storageTree.UpdateRootHash(canBeParallel: true);
-            }
-
-            return (writes, skipped);
-        }
-        */
-
         static void ReportMetrics(int writes, int skipped)
         {
             if (skipped > 0)
@@ -672,8 +589,6 @@ internal sealed class PersistentStorageProvider : PartialStorageProviderBase
             }
         }
 
-        private Counter _storageProviderGetFromTrieCount = Prometheus.Metrics.CreateCounter("storage_provider_get_count", "Get count", "is_main");
-        private Counter _storageProviderGetFromTrieTime = Prometheus.Metrics.CreateCounter("storage_provider_get_time", "Get count", "is_main");
         public ReadOnlySpan<byte> LoadFromTree(in StorageCell storageCell)
         {
             ref ChangeTrace valueChange = ref BlockChange.GetValueRefOrAddDefault(storageCell.Index, out bool exists);
@@ -723,12 +638,25 @@ internal sealed class PersistentStorageProvider : PartialStorageProviderBase
             return value;
         }
 
+        private Counter _storageProviderGetFromTrieCount = Prometheus.Metrics.CreateCounter("storage_provider_get_count", "Get count", "is_main");
+        private Counter _storageProviderGetFromTrieTime = Prometheus.Metrics.CreateCounter("storage_provider_get_time", "Get count", "is_main");
         private byte[] LoadFromTreeStorage(StorageCell storageCell)
         {
             Db.Metrics.IncrementStorageTreeReads();
 
             EnsureStorageTree();
-            return !storageCell.IsHash ? StorageTree.Get(storageCell.Index) : StorageTree.GetArray(storageCell.Hash.Bytes);
+            long sw = Stopwatch.GetTimestamp();
+            try
+            {
+                return !storageCell.IsHash
+                    ? StorageTree.Get(storageCell.Index)
+                    : StorageTree.GetArray(storageCell.Hash.Bytes);
+            }
+            finally
+            {
+                _storageProviderGetFromTrieCount.WithLabels((!_provider._populatePreBlockCache).ToString()).Inc();
+                _storageProviderGetFromTrieTime.WithLabels((!_provider._populatePreBlockCache).ToString()).Inc(Stopwatch.GetTimestamp() - sw);
+            }
         }
 
         public (int writes, int skipped) ProcessStorageChanges()
@@ -737,20 +665,87 @@ internal sealed class PersistentStorageProvider : PartialStorageProviderBase
 
             int writes = 0;
             int skipped = 0;
-            foreach (var kvp in BlockChange)
+            if (BlockChange.EstimatedSize < 0)
             {
-                byte[] after = kvp.Value.After;
-                if (!Bytes.AreEqual(kvp.Value.Before, after))
+                foreach (var kvp in BlockChange)
                 {
-                    BlockChange[kvp.Key] = new(after, after);
-                    StorageTree.Set(kvp.Key, after);
-                    writes++;
+                    byte[] after = kvp.Value.After;
+                    if (!Bytes.AreEqual(kvp.Value.Before, after))
+                    {
+                        BlockChange[kvp.Key] = new(after, after);
+                        StorageTree.Set(kvp.Key, after);
+                        writes++;
+                    }
+                    else
+                    {
+                        skipped++;
+                    }
+                }
+            }
+            else
+            {
+                using ArrayPoolList<(TreePath, byte[])> bulkWrite = new(BlockChange.EstimatedSize);
+                long sw = Stopwatch.GetTimestamp();
+
+                Span<byte> keyBuf = stackalloc byte[32];
+                foreach (var kvp in BlockChange)
+                {
+                    byte[] after = kvp.Value.After;
+                    if (!Bytes.AreEqual(kvp.Value.Before, after))
+                    {
+                        BlockChange[kvp.Key] = new(after, after);
+
+                        StorageTree.ComputeKeyWithLookup(kvp.Key, keyBuf);
+                        bulkWrite.Add((TreePath.FromPath(keyBuf), after));
+
+                        writes++;
+                    }
+                    else
+                    {
+                        skipped++;
+                    }
+                }
+
+                if (bulkWrite.Count < 16)
+                {
+                    foreach (var kv in bulkWrite)
+                    {
+                        StorageTree.Set(kv.Item1.Path, kv.Item2);
+                    }
                 }
                 else
                 {
-                    skipped++;
+                    for (var i = 0; i < bulkWrite.Count; i++)
+                    {
+                        byte[] after = bulkWrite[i].Item2;
+                        byte[] value;
+                        if (after.IsZero())
+                        {
+                            value = [];
+                        }
+                        else
+                        {
+                            Rlp rlpEncoded = Rlp.Encode(after);
+                            if (rlpEncoded is null)
+                            {
+                                value = [];
+                            }
+                            else
+                            {
+                                value = rlpEncoded.Bytes;
+                            }
+                        }
+
+                        bulkWrite[i] = (bulkWrite[i].Item1, value);
+                    }
+
+                    bulkWrite.Sort((it1, it2) => it1.Item1.CompareTo(it2.Item1));
+
+                    _prepTime.Observe(Stopwatch.GetTimestamp() - sw);
+                    StorageTree.BulkSet(bulkWrite.AsSpan());
                 }
             }
+
 
             if (writes > 0)
             {
