@@ -1009,12 +1009,22 @@ namespace Nethermind.Trie.Test
                 .TurnOnPrune()
                 .WithPruningConfig((cfg) =>
                 {
-                    cfg.PruningBoundary = 2;
+                    cfg.PruningBoundary = 0;
                     cfg.MaxBufferedCommitCount = maxBufferedCommit;
                 })
                 .BlockDatabase()
-                .ExitScope()
                 ;
+
+            for (int i = 0; i < 3; i++) // PruningBoundary + 1
+            {
+                ctx
+                    .SetAccountBalance(i, (UInt256)i + 1)
+                    .Commit();
+            }
+            ctx.ExitScope();
+
+            // Make sure prune task started and its snapshotting
+            Thread.Sleep(100);
 
             Task blockTask = Task.Run(() =>
             {
@@ -1022,13 +1032,13 @@ namespace Nethermind.Trie.Test
                 for (int i = 0; i < blockCount; i++)
                 {
                     ctx
-                        .SetAccountBalance(i, (UInt256)i)
+                        .SetAccountBalance(i, (UInt256)i + 1)
                         .Commit();
                 }
 
                 for (int i = 0; i < blockCount; i++)
                 {
-                    ctx.GetAccountBalance(i).Should().Be((UInt256)i);
+                    ctx.GetAccountBalance(i).Should().Be((UInt256)i + 1);
                 }
                 ctx.ExitScope();
             });
