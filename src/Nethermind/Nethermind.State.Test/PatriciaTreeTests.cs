@@ -149,7 +149,7 @@ namespace Nethermind.Store.Test
             yield return new TestCaseData(GenRandomOfLength(100)).SetName("100");
             yield return new TestCaseData(GenRandomOfLength(1000)).SetName("1000");
 
-            yield return new TestCaseData(new List<(Hash256 key, SpanSource value)>()
+            yield return new TestCaseData(new List<(Hash256 key, byte[] value)>()
             {
                 (new Hash256("0000000000000000000000000000000000000000000000000000000000000000"), MakeRandomValue(rng)),
                 (new Hash256("1000000000000000000000000000000000000000000000000000000000000000"), MakeRandomValue(rng)),
@@ -169,7 +169,7 @@ namespace Nethermind.Store.Test
                 (new Hash256("f000000000000000000000000000000000000000000000000000000000000000"), MakeRandomValue(rng)),
             }).SetName("top level branch");
 
-            yield return new TestCaseData(new List<(Hash256 key, SpanSource value)>()
+            yield return new TestCaseData(new List<(Hash256 key, byte[] value)>()
             {
                 (new Hash256("a000000000000000000000000000000000000000000000000000000000000000"), MakeRandomValue(rng)),
                 (new Hash256("a100000000000000000000000000000000000000000000000000000000000000"), MakeRandomValue(rng)),
@@ -189,7 +189,7 @@ namespace Nethermind.Store.Test
                 (new Hash256("af00000000000000000000000000000000000000000000000000000000000000"), MakeRandomValue(rng)),
             }).SetName("second level branch");
 
-            yield return new TestCaseData(new List<(Hash256 key, SpanSource value)>()
+            yield return new TestCaseData(new List<(Hash256 key, byte[] value)>()
             {
                 (new Hash256("a000000000000000000000000000000000000000000000000000000000000000"), MakeRandomValue(rng)),
                 (new Hash256("a100000000000000000000000000000000000000000000000000000000000000"), MakeRandomValue(rng)),
@@ -198,7 +198,7 @@ namespace Nethermind.Store.Test
                 (new Hash256("f200000000000000000000000000000000000000000000000000000000000000"), MakeRandomValue(rng)),
             }).SetName("multi last hex");
 
-            yield return new TestCaseData(new List<(Hash256 key, SpanSource value)>()
+            yield return new TestCaseData(new List<(Hash256 key, byte[] value)>()
             {
                 (new Hash256("aaaa000000000000000000000000000000000000000000000000000000000000"), MakeRandomValue(rng)),
                 (new Hash256("aaaadddd00000000000000000000000000000000000000000000000000000000"), MakeRandomValue(rng)),
@@ -213,14 +213,14 @@ namespace Nethermind.Store.Test
         {
             Random rng = new(0);
 
-            yield return new TestCaseData(new List<(Hash256 key, SpanSource value)>()).SetName("baseline");
+            yield return new TestCaseData(new List<(Hash256 key, byte[] value)>()).SetName("baseline");
 
-            yield return new TestCaseData(new List<(Hash256 key, SpanSource value)>()
+            yield return new TestCaseData(new List<(Hash256 key, byte[] value)>()
             {
                 (new Hash256("3333333333333333333333333333333333333333333333333333333333333333"), MakeRandomValue(rng)),
             }).SetName("one long leaf");
 
-            yield return new TestCaseData(new List<(Hash256 key, SpanSource value)>()
+            yield return new TestCaseData(new List<(Hash256 key, byte[] value)>()
             {
                 (new Hash256("3333333333333333333333333333333333333333333333333333333333333333"), MakeRandomValue(rng)),
                 (new Hash256("3322222222222222222222222222222222222222222222222222222222222222"), MakeRandomValue(rng)),
@@ -240,19 +240,19 @@ namespace Nethermind.Store.Test
             }
 
             yield return new TestCaseData(
-                new List<(Hash256 key, SpanSource value)>()
+                new List<(Hash256 key, byte[] value)>()
                 {
                     (new Hash256("aaaa000000000000000000000000000000000000000000000000000000000000"), MakeRandomValue(rng)),
                     (new Hash256("aaaadddd00000000000000000000000000000000000000000000000000000000"), MakeRandomValue(rng)),
                 },
-                new List<(Hash256 key, SpanSource value)>()
+                new List<(Hash256 key, byte[] value)>()
                 {
                     (new Hash256("aaaadddd00000000000000000000000000000000000000000000000000000000"), null),
                 }
             ).SetName("simple delete");
 
             yield return new TestCaseData(
-                new List<(Hash256 key, SpanSource value)>()
+                new List<(Hash256 key, byte[] value)>()
                 {
                     (new Hash256("aaaa000000000000000000000000000000000000000000000000000000000000"), MakeRandomValue(rng)),
                     (new Hash256("aaaadddd00000000000000000000000000000000000000000000000000000000"), MakeRandomValue(rng)),
@@ -261,7 +261,7 @@ namespace Nethermind.Store.Test
                     (new Hash256("cccccccc00000000000000000000000000000000000000000000000000000000"), MakeRandomValue(rng)),
                     (new Hash256("cccc000000000000000000000000000000000000000000000000000000000000"), MakeRandomValue(rng))
                 },
-                new List<(Hash256 key, SpanSource value)>()
+                new List<(Hash256 key, byte[] value)>()
                 {
                     (new Hash256("aaaadddd00000000000000000000000000000000000000000000000000000000"), MakeRandomValue(rng)),
                     (new Hash256("bbbbeeee00000000000000000000000000000000000000000000000000000000"), MakeRandomValue(rng)),
@@ -270,7 +270,7 @@ namespace Nethermind.Store.Test
             ).SetName("replace");
 
             yield return new TestCaseData(
-                new List<(Hash256 key, SpanSource value)>()
+                new List<(Hash256 key, byte[] value)>()
                 {
                     (new Hash256("aaaa000000000000000000000000000000000000000000000000000000000000"), MakeRandomValue(rng)),
                     (new Hash256("aaaadddd00000000000000000000000000000000000000000000000000000000"), MakeRandomValue(rng)),
@@ -279,7 +279,7 @@ namespace Nethermind.Store.Test
                     (new Hash256("cccccccc00000000000000000000000000000000000000000000000000000000"), MakeRandomValue(rng)),
                     (new Hash256("cccc000000000000000000000000000000000000000000000000000000000000"), MakeRandomValue(rng))
                 },
-                new List<(Hash256 key, SpanSource value)>()
+                new List<(Hash256 key, byte[] value)>()
                 {
                     (new Hash256("aaaadddd00000000000000000000000000000000000000000000000000000000"), MakeRandomValue(rng)),
                     (new Hash256("bbbbeeee00000000000000000000000000000000000000000000000000000000"), MakeRandomValue(rng)),
@@ -294,8 +294,8 @@ namespace Nethermind.Store.Test
                 yield return new TestCaseData(GenRandomOfLength(1000, i), GenRandomOfLength(1000, i*2)).SetName($"random {i}");
             }
 
-            List<(Hash256 key, SpanSource value)> list = GenRandomOfLength(100);
-            List<(Hash256 key, SpanSource value)> eraseList = list.Select<(Hash256 key, SpanSource value), (Hash256 key, SpanSource value)>((k) => (k.key, null)).ToList();
+            List<(Hash256 key, byte[] value)> list = GenRandomOfLength(100);
+            List<(Hash256 key, byte[] value)> eraseList = list.Select<(Hash256 key, byte[] value), (Hash256 key, byte[] value)>((k) => (k.key, null)).ToList();
 
             yield return new TestCaseData(GenRandomOfLength(100), eraseList).SetName("delete");
 
@@ -316,10 +316,10 @@ namespace Nethermind.Store.Test
             return randData;
         }
 
-        private static List<(Hash256 key, SpanSource value)> GenRandomOfLength(int itemCount, int seed = 0)
+        private static List<(Hash256 key, byte[] value)> GenRandomOfLength(int itemCount, int seed = 0)
         {
             Random rng = new Random(seed);
-            List<(Hash256 key, SpanSource value)> items = new List<(Hash256 key, SpanSource value)>(0);
+            List<(Hash256 key, byte[] value)> items = new List<(Hash256 key, byte[] value)>(0);
 
             for (int i = 0; i < itemCount; i++)
             {
@@ -328,7 +328,7 @@ namespace Nethermind.Store.Test
                 Hash256 key = new Hash256(buffer);
                 rng.NextBytes(buffer);
 
-                items.Add((key,  new SpanSource(buffer.AsSpan().ToArray())));
+                items.Add((key,  buffer.AsSpan().ToArray()));
             }
 
             return items;
@@ -336,7 +336,7 @@ namespace Nethermind.Store.Test
 
 #pragma warning disable CS0162 // Unreachable code detected
         [TestCaseSource(nameof(BulkSetTestGen))]
-        public void BulkSet(List<(Hash256 key, SpanSource value)> existingItems, List<(Hash256 key, SpanSource value)> items)
+        public void BulkSet(List<(Hash256 key, byte[] value)> existingItems, List<(Hash256 key, byte[] value)> items)
         {
             Hash256 root;
             const bool recordDump = true;
@@ -387,7 +387,7 @@ namespace Nethermind.Store.Test
 
                 long sw = Stopwatch.GetTimestamp();
 
-                using ArrayPoolList<(TreePath, SpanSource)> entries = new ArrayPoolList<(TreePath, SpanSource)>(items.Count);
+                using ArrayPoolList<(TreePath, byte[])> entries = new ArrayPoolList<(TreePath, byte[])>(items.Count);
                 foreach (var valueTuple in items)
                 {
                     entries.Add((new TreePath(valueTuple.key, 64), valueTuple.value));
@@ -439,10 +439,10 @@ namespace Nethermind.Store.Test
         [TestCaseSource(nameof(HexarySearchTestCases))]
         public void HexarySearch(List<Hash256> paths, (int, int)[] expectedResult)
         {
-            List<(TreePath, SpanSource)> items = new List<(TreePath, SpanSource)>(paths.Count);
+            List<(TreePath, byte[])> items = new List<(TreePath, byte[])>(paths.Count);
             foreach (Hash256 hash256 in paths)
             {
-                items.Add((new TreePath(hash256, 64), SpanSource.Empty));
+                items.Add((new TreePath(hash256, 64), Array.Empty<byte>()));
             }
 
             Span<(int, int)> result = stackalloc (int, int)[TrieNode.BranchesCount];

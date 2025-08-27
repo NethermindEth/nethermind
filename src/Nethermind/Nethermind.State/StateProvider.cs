@@ -752,7 +752,7 @@ namespace Nethermind.State
             }
             else
             {
-                using ArrayPoolList<(TreePath, SpanSource)> bulkWrite = new(_blockChanges.Count);
+                using ArrayPoolList<(TreePath, byte[])> bulkWrite = new(_blockChanges.Count);
                 foreach (var key in _blockChanges.Keys)
                 {
                     ref var change = ref CollectionsMarshal.GetValueRefOrNullRef(_blockChanges, key);

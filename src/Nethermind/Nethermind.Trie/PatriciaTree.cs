@@ -4,6 +4,7 @@
 using System;
 using System.Buffers;
 using System.Collections.Generic;
+using System.Data;
 using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
 using System.IO;
@@ -977,13 +978,10 @@ namespace Nethermind.Trie
             static void Throw() => throw new InvalidOperationException($"Nothing on {nameof(_nodeStack)}");
         }
 
-        public void BulkSet(Span<(TreePath, SpanSource)> entries)
+        public void BulkSet(Span<(TreePath, byte[])> entries)
         {
             long sw = Stopwatch.GetTimestamp();
-            if (entries.Length < 16)
-            {
-                Console.Error.WriteLine($"Small bulkset {Environment.StackTrace}");
-            }
+            _bulkEntryCount.Observe(entries.Length);
 
             for (int i = 1; i < entries.Length; i++)
             {
@@ -1007,59 +1005,26 @@ namespace Nethermind.Trie
         }
 
         private static Counter _leafPathTime = Prometheus.Metrics.CreateCounter("patricia_leaf_path", "critpath time");
-        private static Counter _fakePathTime = Prometheus.Metrics.CreateCounter("patricia_fake_path", "fake time");
         private static Counter _collapsePathTime = Prometheus.Metrics.CreateCounter("patricia_collapse_path", "fake time");
         private static Counter _checkPathTime = Prometheus.Metrics.CreateCounter("patricia_check_path", "fake time");
         private static Counter _hexTime = Prometheus.Metrics.CreateCounter("patricia_hex_time", "fake time");
-        private static Counter _fakeBranch = Prometheus.Metrics.CreateCounter("patricia_is_fake", "Is fake", "is_fake");
-        private static Counter _newBranch = Prometheus.Metrics.CreateCounter("patricia_new_time", "Is fake");
 
 
         private static Counter _bulkSetTime = Prometheus.Metrics.CreateCounter("patricia_bulk_set", "fake time");
-        private static Counter _loopTime = Prometheus.Metrics.CreateCounter("patricia_loop_time", "fake time");
         private static Counter _resolveTime = Prometheus.Metrics.CreateCounter("patricia_resolve_time", "fake time");
         private static Counter _justBulkSetTime = Prometheus.Metrics.CreateCounter("patricia_just_bulk_set", "fake time");
         private static Histogram _bulkEntryCount = Prometheus.Metrics.CreateHistogram("patricia_bulk_entry_count", "fake time", new HistogramConfiguration()
         {
             Buckets = Histogram.PowersOfTenDividedBuckets(0, 3, 20)
         });
-
-        private TrieNode? BulkSetNewLeaf(in TreePath treePath, SpanSource value, ref TreePath currentPath, TrieNode? existingNode)
-        {
-            var path = treePath.ToNibble();
-            int commonPrefixLength = path.AsSpan()[currentPath.Length..].CommonPrefixLength(existingNode.Key);
-            if (commonPrefixLength == existingNode.Key!.Length)
-            {
-                // Deletion
-                if (value.IsNull || value.Length == 0) return null;
-
-                if (existingNode.IsSealed)
-                {
-                    return TrieNodeFactory.CreateLeaf(path.Slice(currentPath.Length), value);
-                }
-
-                existingNode.Value = value;
-                return existingNode;
-            }
-
-            if (value.IsNull || value.Length == 0) return existingNode;
-
-            // Making a T branch here.
-            // If the commonPrefixLength > 0, we'll also need to also make an extension in front of the branch.
-            TrieNode theBranch = TrieNodeFactory.CreateBranch();
-            theBranch[existingNode.Key[commonPrefixLength]] =
-                TrieNodeFactory.CreateLeaf(existingNode.Key.Slice(commonPrefixLength + 1), existingNode.Value);
-            theBranch[path[currentPath.Length + commonPrefixLength]] =
-                TrieNodeFactory.CreateLeaf(path.Slice(currentPath.Length + commonPrefixLength + 1), value);
-
-            if (commonPrefixLength == 0) return theBranch;
-
-            return TrieNodeFactory.CreateExtension(path.Slice(currentPath.Length, commonPrefixLength),
-                theBranch);
-        }
+        private static Counter _bulkSetCount = Prometheus.Metrics.CreateCounter("patricia_bulk_set_count", "fake time");
+        private static Counter _bulkSetSingleEntryCount = Prometheus.Metrics.CreateCounter("patricia_bulk_set_single_entry_count", "fake time");
+        private static Counter _bulkSetCombineCount = Prometheus.Metrics.CreateCounter("patricia_bulk_set_combine_count", "fake time");
+        private static Counter _bulkSetMakeFakeBranchCount = Prometheus.Metrics.CreateCounter("patricia_bulk_set_make_fake_branch", "fake time");
 
         private TrieNode? MakeFakeBranch(ref TreePath currentPath, TrieNode? existingNode)
         {
+            _bulkSetMakeFakeBranchCount.Inc();
             // TODO: if this is a leaf, the existing key is long. Check if it is worth optimizing.
             byte[] shortenedKey = new byte[existingNode.Key.Length - 1];
             Array.Copy(existingNode.Key, 1, shortenedKey, 0, existingNode.Key.Length - 1);
@@ -1090,33 +1055,110 @@ namespace Nethermind.Trie
             return existingNode;
         }
 
-        internal TrieNode? BulkSet(Span<(TreePath, SpanSource)> entries, ref TreePath currentPath, TrieNode? existingNode)
+        internal TrieNode? BulkSetOne(Span<byte> remainingKey, byte[] value, ref TreePath currentNodePath, TrieNode? currentNode)
+        {
+            // 80% of the time is spent in this func.
+            _bulkSetSingleEntryCount.Inc();
+            if (currentNode is null)
+            {
+                if (value is null || value.Length == 0) return null;
+                return TrieNodeFactory.CreateLeaf(remainingKey.ToArray(), value);
+            }
+
+            currentNode.ResolveNode(TrieStore, currentNodePath);
+
+            if (currentNode.IsLeaf)
+            {
+                int commonPrefixLength = remainingKey.CommonPrefixLength(currentNode.Key);
+                if (commonPrefixLength == currentNode.Key!.Length)
+                {
+                    if (value is null || value.Length == 0) return null;
+
+                    if (currentNode.IsSealed)
+                    {
+                        return TrieNodeFactory.CreateLeaf(remainingKey.ToArray(), value);
+                    }
+
+                    currentNode.Value = value;
+                    return currentNode;
+                }
+
+                // No change in structure
+                if (value is null || value.Length == 0) return currentNode;
+
+                // Making a T branch here.
+                // If the commonPrefixLength > 0, we'll also need to also make an extension in front of the branch.
+                TrieNode theBranch = TrieNodeFactory.CreateBranch();
+                theBranch[currentNode.Key[commonPrefixLength]] =
+                    TrieNodeFactory.CreateLeaf(currentNode.Key.Slice(commonPrefixLength + 1), currentNode.Value);
+                theBranch[remainingKey[commonPrefixLength]] =
+                    TrieNodeFactory.CreateLeaf(remainingKey[(commonPrefixLength+1)..].ToArray(), value);
+
+                if (commonPrefixLength == 0) return theBranch;
+
+                return TrieNodeFactory.CreateExtension(remainingKey[..commonPrefixLength].ToArray(), theBranch);
+            }
+
+            // We make a fake branch
+            bool shouldCheckForBranchMerge = false;
+            if (currentNode.IsExtension)
+            {
+                currentNode = MakeFakeBranch(ref currentNodePath, currentNode);
+                shouldCheckForBranchMerge = true;
+            }
+
+            if (currentNode.IsSealed)
+            {
+                currentNode = currentNode.Clone();
+            }
+
+            int nib = remainingKey[0];
+            currentNodePath.AppendMut(nib);
+            TrieNode? child = currentNode.GetChildWithChildPath(TrieStore, ref currentNodePath, nib);
+            child = BulkSetOne(remainingKey[1..], value, ref currentNodePath, child);
+            currentNodePath.TruncateOne();
+
+            if (child is null) shouldCheckForBranchMerge = true;
+            currentNode.SetChild(nib, child);
+
+            if (!shouldCheckForBranchMerge) return currentNode;
+
+            return MaybeCombineNode(ref currentNodePath, currentNode);
+        }
+
+        internal TrieNode? BulkSetOne(in TreePath key, byte[] value, ref TreePath currentNodePath, TrieNode? currentNode)
+        {
+            // Just for holding the expanded nibble for the key
+            Span<byte> nibble = stackalloc byte[64];
+            Span<byte> remainingKey = nibble.Slice(currentNodePath.Length);
+
+            Nibbles.BytesToNibbleBytes(key.Span, nibble);
+            return BulkSetOne(remainingKey, value, ref currentNodePath, currentNode);
+        }
+
+        internal TrieNode? BulkSet(Span<(TreePath, byte[])> entries, ref TreePath currentPath, TrieNode? existingNode)
         {
             if (entries.Length == 0) return existingNode;
+            _bulkSetCount.Inc();
 
-            _bulkEntryCount.Observe(entries.Length);
+            if (entries.Length == 1)
+            {
+                long sw = Stopwatch.GetTimestamp();
+                try
+                {
+                    return BulkSetOne(entries[0].Item1, entries[0].Item2, ref currentPath, existingNode);
+                }
+                finally
+                {
+                    _leafPathTime.Inc(Stopwatch.GetTimestamp() - sw);
+                }
+            }
 
             bool newBranch = false;
             if (existingNode is null)
             {
-                long nsw = Stopwatch.GetTimestamp();
-                try
-                {
-                    if (entries.Length == 1)
-                    {
-                        (TreePath treePath, SpanSource value) = entries[0];
-                        if (value.IsNull || value.Length == 0) return null;
-                        byte[] remainingKey = treePath.ToNibble().Slice(currentPath.Length);
-                        return TrieNodeFactory.CreateLeaf(remainingKey, value);
-                    }
-
-                    existingNode = TrieNodeFactory.CreateBranch();
-                    newBranch = true;
-                }
-                finally
-                {
-                    _newBranch.Inc(Stopwatch.GetTimestamp() - nsw);
-                }
+                existingNode = TrieNodeFactory.CreateBranch();
+                newBranch = true;
             }
             else
             {
@@ -1124,46 +1166,16 @@ namespace Nethermind.Trie
                 existingNode.ResolveNode(TrieStore, currentPath);
                 _resolveTime.Inc(Stopwatch.GetTimestamp() - swr);
 
-                if (existingNode.IsLeaf && entries.Length == 1)
-                {
-                    long sw = Stopwatch.GetTimestamp();
-                    try
-                    {
-                        (TreePath treePath, SpanSource value) = entries[0];
-                        return BulkSetNewLeaf(treePath, value, ref currentPath, existingNode);
-                    }
-                    finally
-                    {
-                        _leafPathTime.Inc(Stopwatch.GetTimestamp() - sw);
-                    }
-                }
-
-                // Cases here are:
-                // - More than one entries. If leaf or extension, we convert to a potentially fake branch.
-                // - One entries on extension. Convert to fake branch.
-                // - One entries on branch, already operating on branch
-
                 if (!existingNode.IsBranch)
                 {
-                    // .5 % of path.
-
-                    long sw = Stopwatch.GetTimestamp();
                     existingNode = MakeFakeBranch(ref currentPath, existingNode);
                     newBranch = true;
-                    _fakePathTime.Inc(Stopwatch.GetTimestamp() - sw);
-                    _fakeBranch.WithLabels("true").Inc();
-                }
-                else
-                {
-                    _fakeBranch.WithLabels("false").Inc();
                 }
 
-                if (existingNode.IsSealed)
-                {
-                    existingNode = existingNode.Clone();
-                }
-
+                if (existingNode.IsSealed) existingNode = existingNode.Clone();
             }
+
+            if (entries.Length == 1) _bulkSetSingleEntryCount.Inc();
 
             Span<(int, int)> indexes = stackalloc (int, int)[TrieNode.BranchesCount];
 
@@ -1174,8 +1186,8 @@ namespace Nethermind.Trie
             bool hasRemove = false;
             if (entries.Length > 100000 && nibToCheck == TrieNode.BranchesCount) // Disabled for now
             {
-                (ArrayPoolList<(TreePath, SpanSource)> entries, int nibble, TreePath appendedPath, TrieNode? outNode)[] jobs =
-                    new (ArrayPoolList<(TreePath, SpanSource)> entries, int nibble, TreePath appendedPath, TrieNode? outNode)[TrieNode.BranchesCount];
+                (ArrayPoolList<(TreePath, byte[])> entries, int nibble, TreePath appendedPath, TrieNode? outNode)[] jobs =
+                    new (ArrayPoolList<(TreePath, byte[])> entries, int nibble, TreePath appendedPath, TrieNode? outNode)[TrieNode.BranchesCount];
 
                 for (int i = 0; i < TrieNode.BranchesCount; i++)
                 {
@@ -1191,7 +1203,7 @@ namespace Nethermind.Trie
                         endRange = entries.Length;
                     }
 
-                    ArrayPoolList<(TreePath, SpanSource)> jobEntry = new ArrayPoolList<(TreePath, SpanSource)>(endRange - startRange);
+                    ArrayPoolList<(TreePath, byte[])> jobEntry = new ArrayPoolList<(TreePath, byte[])>(endRange - startRange);
                     for (int j = startRange; j < endRange; j++)
                     {
                         jobEntry.Add(entries[j]);
@@ -1204,7 +1216,7 @@ namespace Nethermind.Trie
 
                 ParallelUnbalancedWork.For(0, nibToCheck, ParallelUnbalancedWork.DefaultOptions, jobs, (i, jobs) =>
                 {
-                    (ArrayPoolList<(TreePath, SpanSource)> jobEntry, int nib, TreePath childPath, TrieNode child) = jobs[i];
+                    (ArrayPoolList<(TreePath, byte[])> jobEntry, int nib, TreePath childPath, TrieNode child) = jobs[i];
 
                     child = BulkSet(jobEntry.AsSpan(), ref childPath, child);
                     jobs[i] = (jobEntry, nib, childPath, child);
@@ -1249,15 +1261,17 @@ namespace Nethermind.Trie
                 currentPath.TruncateOne();
             }
 
-            bool needToCheck = false;
-            if (hasRemove) needToCheck = true;
-            if (newBranch) needToCheck = true;
+            if (hasRemove || newBranch)
+                return MaybeCombineNode(ref currentPath, existingNode);
 
-            if (!needToCheck)
-            {
-                return existingNode;
-            }
+            return existingNode;
+        }
 
+        private TrieNode? MaybeCombineNode(ref TreePath currentPath, in TrieNode? existingNode)
+        {
+            // Called, about 0.5% of the time (count)
+            // Take about 2% of total time (second)
+            _bulkSetCombineCount.Inc();
             long sw3 = Stopwatch.GetTimestamp();
             int onlyChildIdx = -1;
             for (int i = 0; i < TrieNode.BranchesCount; i++)
@@ -1282,8 +1296,8 @@ namespace Nethermind.Trie
                 currentPath.TruncateOne();
             }
             _checkPathTime.Inc(Stopwatch.GetTimestamp() - sw3);
-
             if (onlyChildIdx == -1) return null;
+
 
             long sw2 = Stopwatch.GetTimestamp();
             try
@@ -1313,7 +1327,7 @@ namespace Nethermind.Trie
             }
         }
 
-        public static int HexarySearch(Span<(TreePath, SpanSource)> entries, int pathIndex, Span<(int, int)> indexes)
+        public static int HexarySearch(Span<(TreePath, byte[])> entries, int pathIndex, Span<(int, int)> indexes)
         {
             // TODO: Change to binary search
             int relevantNib = 0;
