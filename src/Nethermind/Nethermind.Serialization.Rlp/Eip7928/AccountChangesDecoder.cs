@@ -4,6 +4,7 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using Nethermind.Core;
 using Nethermind.Core.BlockAccessLists;
 
 namespace Nethermind.Serialization.Rlp.Eip7928;
@@ -34,33 +35,7 @@ public class AccountChangesDecoder : IRlpValueDecoder<AccountChanges>, IRlpStrea
     }
 
     public int GetLength(AccountChanges item, RlpBehaviors rlpBehaviors)
-    {
-        int len = 20; // address
-
-        foreach (SlotChanges slotChanges in item.StorageChanges.Values)
-        {
-            len += SlotChangesDecoder.Instance.GetLength(slotChanges, rlpBehaviors);
-        }
-
-        len += item.StorageReads.Count * 32;
-
-        foreach (BalanceChange balanceChange in item.BalanceChanges)
-        {
-            len += BalanceChangeDecoder.Instance.GetLength(balanceChange, rlpBehaviors);
-        }
-
-        foreach (NonceChange nonceChange in item.NonceChanges)
-        {
-            len += NonceChangeDecoder.Instance.GetLength(nonceChange, rlpBehaviors);
-        }
-
-        foreach (CodeChange codeChange in item.CodeChanges)
-        {
-            len += CodeChangeDecoder.Instance.GetLength(codeChange, rlpBehaviors);
-        }
-
-        return len;
-    }
+        => GetContentLength(item, rlpBehaviors).Total;
 
     public AccountChanges Decode(RlpStream rlpStream, RlpBehaviors rlpBehaviors)
     {
@@ -74,32 +49,86 @@ public class AccountChangesDecoder : IRlpValueDecoder<AccountChanges>, IRlpStrea
 
     public void Encode(RlpStream stream, AccountChanges item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
     {
-        stream.StartSequence(GetLength(item, rlpBehaviors));
+        ContentLengths contentLengths = GetContentLength(item, rlpBehaviors);
+        stream.StartSequence(contentLengths.Total);
         stream.Encode(item.Address);
 
+        stream.StartSequence(contentLengths.SlotChanges);
         foreach (SlotChanges slotChanges in item.StorageChanges.Values)
         {
             SlotChangesDecoder.Instance.Encode(stream, slotChanges);
         }
 
+        stream.StartSequence(contentLengths.StorageReads);
         foreach (byte[] storageKey in item.StorageReads)
         {
             stream.Encode(storageKey);
         }
 
+        stream.StartSequence(contentLengths.BalanceChanges);
         foreach (BalanceChange balanceChange in item.BalanceChanges)
         {
             BalanceChangeDecoder.Instance.Encode(stream, balanceChange);
         }
 
+        stream.StartSequence(contentLengths.NonceChanges);
         foreach (NonceChange nonceChange in item.NonceChanges)
         {
             NonceChangeDecoder.Instance.Encode(stream, nonceChange);
         }
 
+        stream.StartSequence(contentLengths.CodeChanges);
         foreach (CodeChange codeChange in item.CodeChanges)
         {
             CodeChangeDecoder.Instance.Encode(stream, codeChange);
         }
+    }
+
+    private static ContentLengths GetContentLength(AccountChanges item, RlpBehaviors rlpBehaviors)
+    {
+        ContentLengths res = new()
+        {
+            Total = Address.Size,
+            SlotChanges = 0,
+            StorageReads = 0,
+            BalanceChanges = 0,
+            NonceChanges = 0,
+            CodeChanges = 0
+        };
+
+        foreach (SlotChanges slotChanges in item.StorageChanges.Values)
+        {
+            res.SlotChanges += SlotChangesDecoder.Instance.GetLength(slotChanges, rlpBehaviors);
+        }
+
+        res.StorageReads = item.StorageReads.Count * 32;
+
+        foreach (BalanceChange balanceChange in item.BalanceChanges)
+        {
+            res.BalanceChanges += BalanceChangeDecoder.Instance.GetLength(balanceChange, rlpBehaviors);
+        }
+
+        foreach (NonceChange nonceChange in item.NonceChanges)
+        {
+            res.NonceChanges += NonceChangeDecoder.Instance.GetLength(nonceChange, rlpBehaviors);
+        }
+
+        foreach (CodeChange codeChange in item.CodeChanges)
+        {
+            res.CodeChanges += CodeChangeDecoder.Instance.GetLength(codeChange, rlpBehaviors);
+        }
+
+        res.Total += res.SlotChanges + res.StorageReads + res.BalanceChanges + res.NonceChanges + res.CodeChanges;
+        return res;
+    }
+
+    private struct ContentLengths
+    {
+        public int Total;
+        public int SlotChanges;
+        public int StorageReads;
+        public int BalanceChanges;
+        public int NonceChanges;
+        public int CodeChanges;
     }
 }

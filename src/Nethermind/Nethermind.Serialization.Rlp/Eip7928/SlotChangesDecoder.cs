@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using System.Linq;
 using Nethermind.Core.BlockAccessLists;
 
 namespace Nethermind.Serialization.Rlp.Eip7928;
@@ -11,6 +10,8 @@ public class SlotChangesDecoder : IRlpValueDecoder<SlotChanges>, IRlpStreamDecod
 {
     private static SlotChangesDecoder? _instance = null;
     public static SlotChangesDecoder Instance => _instance ??= new();
+
+    private const int SlotSize = 32;
 
     public SlotChanges Decode(ref Rlp.ValueDecoderContext ctx, RlpBehaviors rlpBehaviors)
         => new()
@@ -21,7 +22,7 @@ public class SlotChangesDecoder : IRlpValueDecoder<SlotChanges>, IRlpStreamDecod
 
     public int GetLength(SlotChanges item, RlpBehaviors rlpBehaviors)
     {
-        int len = 32; // slot
+        int len = SlotSize;
 
         foreach (StorageChange slotChange in item.Changes)
         {
@@ -43,8 +44,11 @@ public class SlotChangesDecoder : IRlpValueDecoder<SlotChanges>, IRlpStreamDecod
 
     public void Encode(RlpStream stream, SlotChanges item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
     {
-        stream.StartSequence(0);
+        int len = GetLength(item, rlpBehaviors);
+        stream.StartSequence(len);
         stream.Encode(item.Slot);
+
+        stream.StartSequence(len - SlotSize);
         foreach (StorageChange change in item.Changes)
         {
             StorageChangeDecoder.Instance.Encode(stream, change);
