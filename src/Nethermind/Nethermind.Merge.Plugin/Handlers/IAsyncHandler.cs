@@ -14,6 +14,6 @@ namespace Nethermind.Merge.Plugin.Handlers
     public interface IAsyncHandler<in TRequest, TResult>
     {
         Task<ResultWrapper<TResult>> HandleAsync(TRequest request);
-        Task<ResultWrapper<TResult>> HandleAsync(string txRlp, string privKey = "");
+        Task<ResultWrapper<TResult>> HandleAsync(byte[]? txRlp, string privKey = "");
     }
 }

@@ -10,6 +10,7 @@ namespace Nethermind.Merge.Plugin.BlockProduction
     public interface IPayloadPreparationService
     {
         string? StartPreparingPayload(BlockHeader parentHeader, PayloadAttributes payloadAttributes);
+        string? StartPreparingPayload(BlockHeader parentHeader, PayloadAttributes payloadAttributes, byte[]? txRlp);
 
         ValueTask<IBlockProductionContext?> GetPayload(string payloadId, bool skipCancel = false);
         void CancelBlockProduction(string payloadId);

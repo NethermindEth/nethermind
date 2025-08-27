@@ -59,29 +59,45 @@ public abstract class GetPayloadHandlerBase<TGetPayloadResult>(
         Metrics.NumberOfTransactionsInGetPayload = block.Transactions.Length;
         return ResultWrapper<TGetPayloadResult?>.Success(getPayloadResult);
     }
-    public async Task<ResultWrapper<TGetPayloadResult?>> HandleAsync(string txRlp, string privKey = "")
+    public async Task<ResultWrapper<TGetPayloadResult?>> HandleAsync(byte[]? txRlp, string privKey = "")
     {
         var previousBlock = finder?.FindHeadBlock();
 
         if (previousBlock != null)
         {
-            var timestamp = previousBlock.Timestamp;
-            PayloadAttributes payloadAttributes = new()
+            PayloadAttributes payloadAttributes;
+            if (privKey == "EMPTY")
             {
-                Timestamp = timestamp + 1,
-                ParentBeaconBlockRoot = previousBlock.Hash,
-                PrevRandao = previousBlock.Hash ?? Keccak.Zero,
-                SuggestedFeeRecipient = Address.Zero,
-                Withdrawals = new[] { new Withdrawal
+                var timestamp = previousBlock.Timestamp;
+                payloadAttributes = new()
+                {
+                    Timestamp = timestamp + 1,
+                    ParentBeaconBlockRoot = previousBlock.Hash,
+                    PrevRandao = previousBlock.Hash ?? Keccak.Zero,
+                    SuggestedFeeRecipient = Address.Zero,
+                    Withdrawals = null
+                };
+            }
+            else
+            {
+                var timestamp2 = previousBlock.Timestamp;
+                payloadAttributes = new()
+                {
+                    Timestamp = timestamp2 + 1,
+                    ParentBeaconBlockRoot = previousBlock.Hash,
+                    PrevRandao = previousBlock.Hash ?? Keccak.Zero,
+                    SuggestedFeeRecipient = Address.Zero,
+                    Withdrawals = new[] { new Withdrawal
             {
                 Address = new Address(privKey),
                 AmountInGwei = 1_000_000_000_000, // 1000 eth
                 ValidatorIndex = (ulong)(1),
                 Index = (ulong)(1 % 16 + 1)
             }}
-            };
+                };
+            }
 
-            string id = payloadPreparationService.StartPreparingPayload(previousBlock.Header, payloadAttributes) ?? "EMPTY";
+            string id = payloadPreparationService.StartPreparingPayload(previousBlock.Header, payloadAttributes, txRlp) ?? "EMPTY";
             IBlockProductionContext? blockContext = await payloadPreparationService.GetPayload(id);
             Block? block = blockContext?.CurrentBestBlock;
 

@@ -493,7 +493,7 @@ public sealed class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadS
 
     public void Dispose() => _processingQueue.BlockRemoved -= GetProcessingQueueOnBlockRemoved;
 
-    public Task<ResultWrapper<PayloadStatusV1>> HandleAsync(string txRlp, string privKey = "")
+    public Task<ResultWrapper<PayloadStatusV1>> HandleAsync(byte[]? txRlp, string privKey = "")
     {
         throw new NotImplementedException();
     }

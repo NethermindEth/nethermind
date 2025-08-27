@@ -72,7 +72,7 @@ public class OptimismEngineRpcModule(
 
     public Task<ResultWrapper<GetPayloadV4Result?>> engine_getPayloadV4(byte[] payloadId)
     {
-        return _engineRpcModule.engine_getPayloadV4("", "");
+        return _engineRpcModule.engine_getPayloadV4([], "");
     }
 
     public ResultWrapper<OptimismSignalSuperchainV1Result> engine_signalSuperchainV1(OptimismSuperchainSignal signal)

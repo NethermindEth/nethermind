@@ -310,8 +310,8 @@ public partial class EngineModuleTests
         // we're using payloadService directly, because we can't use fcU for branch
         string payloadId = chain.PayloadPreparationService!.StartPreparingPayload(parentHeader, payloadAttributes)!;
 
-        ResultWrapper<GetPayloadV4Result?> getPayloadResult =
-            await rpc.engine_getPayloadV4("", "");
+
+        ResultWrapper<GetPayloadV4Result?> getPayloadResult = await rpc.engine_getPayloadV4([], "");
         return getPayloadResult.Data!.ExecutionPayload!;
     }
 
@@ -371,7 +371,7 @@ public partial class EngineModuleTests
         await blockImprovementWait;
 
         ResultWrapper<GetPayloadV4Result?> getPayloadResult =
-            await rpc.engine_getPayloadV4("", "");
+            await rpc.engine_getPayloadV4([], "");
 
         return getPayloadResult.Data!.ExecutionPayload!;
     }

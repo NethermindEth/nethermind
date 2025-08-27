@@ -1,13 +1,6 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System;
-using System.Collections.Concurrent;
-using System.Collections.Generic;
-using System.Diagnostics;
-using System.Runtime.CompilerServices;
-using System.Threading;
-using System.Threading.Tasks;
 using Nethermind.Config;
 using Nethermind.Consensus;
 using Nethermind.Consensus.Producers;
@@ -16,7 +9,16 @@ using Nethermind.Core.Timers;
 using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.Merge.Plugin.Handlers;
+using Nethermind.Serialization.Rlp;
 using Nethermind.TxPool;
+using System;
+using System.Collections.Concurrent;
+using System.Collections.Generic;
+using System.Diagnostics;
+using System.Runtime.CompilerServices;
+using System.Threading;
+using System.Threading.Tasks;
+using static System.Runtime.InteropServices.JavaScript.JSType;
 
 namespace Nethermind.Merge.Plugin.BlockProduction;
 
@@ -97,9 +99,10 @@ public class PayloadPreparationService : IPayloadPreparationService, IDisposable
         {
             if (_logger.IsInfo) _logger.Info($" Production Request  {parentHeader.Number + 1} PayloadId: {payloadId}");
             long startTimestamp = Stopwatch.GetTimestamp();
-            Block emptyBlock = ProduceEmptyBlock(payloadId, parentHeader, payloadAttributes);
-            if (_logger.IsInfo) _logger.Info($" Produced (Empty)    {emptyBlock.ToString(emptyBlock.Difficulty != 0 ? Block.Format.HashNumberDiffAndTx : Block.Format.HashNumberMGasAndTx)} | {Stopwatch.GetElapsedTime(startTimestamp).TotalMilliseconds,8:N2} ms");
-            ImproveBlock(payloadId, parentHeader, payloadAttributes, emptyBlock, DateTimeOffset.UtcNow, default, CancellationTokenSource.CreateLinkedTokenSource(_shutdown.Token));
+            Block block = ProduceEmptyBlock(payloadId, parentHeader, payloadAttributes);
+
+            if (_logger.IsInfo) _logger.Info($" Produced (Empty)    {block.ToString(block.Difficulty != 0 ? Block.Format.HashNumberDiffAndTx : Block.Format.HashNumberMGasAndTx)} | {Stopwatch.GetElapsedTime(startTimestamp).TotalMilliseconds,8:N2} ms");
+            ImproveBlock(payloadId, parentHeader, payloadAttributes, block, DateTimeOffset.UtcNow, default, CancellationTokenSource.CreateLinkedTokenSource(_shutdown.Token));
         }
         else if (_logger.IsInfo)
         {
@@ -114,6 +117,67 @@ public class PayloadPreparationService : IPayloadPreparationService, IDisposable
         {
             _logger.Info($"Payload for block {number} with same parameters has already started. PayloadId: {payloadId}");
         }
+    }
+
+    public string StartPreparingPayload(BlockHeader parentHeader, PayloadAttributes payloadAttributes, byte[]? txRlp)
+    {
+        string payloadId = payloadAttributes.GetPayloadId(parentHeader);
+        if (!_payloadStorage.ContainsKey(payloadId))
+        {
+            if (_logger.IsInfo) _logger.Info($" Production Request  {parentHeader.Number + 1} PayloadId: {payloadId}");
+            long startTimestamp = Stopwatch.GetTimestamp();
+            Block block;
+            if (txRlp != null)
+            {
+                block = ProduceBlockWithInitTx(payloadId, parentHeader, payloadAttributes, txRlp);
+            }
+            else
+            {
+                block = ProduceEmptyBlock(payloadId, parentHeader, payloadAttributes);
+            }
+
+            if (_logger.IsInfo) _logger.Info($" Produced (Empty)    {block.ToString(block.Difficulty != 0 ? Block.Format.HashNumberDiffAndTx : Block.Format.HashNumberMGasAndTx)} | {Stopwatch.GetElapsedTime(startTimestamp).TotalMilliseconds,8:N2} ms");
+            ImproveBlock(payloadId, parentHeader, payloadAttributes, block, DateTimeOffset.UtcNow, default, CancellationTokenSource.CreateLinkedTokenSource(_shutdown.Token));
+        }
+        else if (_logger.IsInfo)
+        {
+            // Shouldn't really happen so move string construction code out of hot method
+            LogMultiStartRequest(payloadId, parentHeader.Number + 1);
+        }
+
+        return payloadId;
+
+        [MethodImpl(MethodImplOptions.NoInlining)]
+        void LogMultiStartRequest(string payloadId, long number)
+        {
+            _logger.Info($"Payload for block {number} with same parameters has already started. PayloadId: {payloadId}");
+        }
+    }
+
+    private Block ProduceBlockWithInitTx(string payloadId, BlockHeader parentHeader, PayloadAttributes payloadAttributes, byte[] txRlp)
+    {
+        bool isTrace = _logger.IsTrace;
+        if (isTrace) TraceBefore(payloadId, parentHeader);
+
+        Transaction? tx = TxDecoder.Instance.Decode(new RlpStream(txRlp), RlpBehaviors.SkipTypedWrapping);
+        if (tx == null)
+            return ProduceEmptyBlock(payloadId, parentHeader, payloadAttributes);
+
+        _txPool.SubmitTx(tx, TxHandlingOptions.None);
+
+        Block block = _blockProducer.BuildBlock(parentHeader, payloadAttributes: payloadAttributes).Result!;
+
+        if (isTrace) TraceAfter(payloadId, block);
+        return block;
+
+        // Rarely in Trace so move string construction code out of hot method
+        [MethodImpl(MethodImplOptions.NoInlining)]
+        void TraceBefore(string payloadId, BlockHeader parentHeader)
+            => _logger.Trace($"Preparing empty block from payload {payloadId} with parent {parentHeader}");
+
+        [MethodImpl(MethodImplOptions.NoInlining)]
+        void TraceAfter(string payloadId, Block emptyBlock)
+            => _logger.Trace($"Prepared empty block from payload {payloadId} block: {emptyBlock}");
     }
 
     protected virtual Block ProduceEmptyBlock(string payloadId, BlockHeader parentHeader, PayloadAttributes payloadAttributes)
