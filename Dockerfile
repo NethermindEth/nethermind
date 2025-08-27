@@ -30,4 +30,19 @@ EXPOSE 8545 8551 30303
 
 COPY --from=build /publish .
 
+COPY --from=pyroscope/pyroscope-dotnet:0.10.0-glibc /Pyroscope.Profiler.Native.so ./Pyroscope.Profiler.Native.so
+COPY --from=pyroscope/pyroscope-dotnet:0.10.0-glibc /Pyroscope.Linux.ApiWrapper.x64.so ./Pyroscope.Linux.ApiWrapper.x64.so
+
+ENV PYROSCOPE_APPLICATION_NAME=nethermind \
+    PYROSCOPE_SERVER_ADDRESS=http://localhost:4040 \
+    PYROSCOPE_PROFILING_ENABLED=1 \
+    CORECLR_ENABLE_PROFILING=1 \
+    CORECLR_PROFILER={BD1A650D-AC5D-4896-B64F-D6FA25D6B26A} \
+    CORECLR_PROFILER_PATH=Pyroscope.Profiler.Native.so \
+    LD_PRELOAD=Pyroscope.Linux.ApiWrapper.x64.so \
+    DOTNET_EnableDiagnostics=1 \
+    DOTNET_EnableDiagnostics_IPC=0 \
+    DOTNET_EnableDiagnostics_Debugger=0 \
+    DOTNET_EnableDiagnostics_Profiler=1
+
 ENTRYPOINT ["./nethermind"]
