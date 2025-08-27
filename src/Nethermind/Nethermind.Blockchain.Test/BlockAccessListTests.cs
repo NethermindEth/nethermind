@@ -94,6 +94,15 @@ namespace Nethermind.Evm.Test
         }
 
         [Test]
+        public void Encoding_decoding_test()
+        {
+            BlockAccessList b = new();
+            byte[] bytes = Rlp.Encode<BlockAccessList>(b).Bytes;
+            BlockAccessList b2 = Rlp.Decode<BlockAccessList>(bytes);
+            Assert.That(b, Is.EqualTo(b2));
+        }
+
+        [Test]
         public void System_contracts_and_withdrawals()
         {
             BlockProcessor processor = new(HoleskySpecProvider.Instance,
