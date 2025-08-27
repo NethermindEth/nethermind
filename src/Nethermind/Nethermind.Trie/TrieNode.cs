@@ -718,6 +718,151 @@ namespace Nethermind.Trie
             }
         }
 
+        public ChildIterator CreateChildIterator()
+        {
+            return new ChildIterator(this);
+        }
+
+        public ref struct ChildIterator(TrieNode node)
+        {
+            private ValueRlpStream _rlpStream;
+            private int? _currentStreamIndex;
+
+            private object? ResolveChildWithChildPath(ITrieNodeResolver tree, ref TreePath childPath, int i)
+            {
+                object? childOrRef;
+                SpanSource rlp = node._rlp;
+                ref var data = ref node._nodeData[i];
+                if (rlp.IsNull)
+                {
+                    childOrRef = data;
+                }
+                else
+                {
+                    if (data is null)
+                    {
+                        if (_currentStreamIndex.HasValue && _currentStreamIndex <= i)
+                        {
+                            int toSkip = i - _currentStreamIndex.Value;
+                            for (int j = 0; j < toSkip; j++) _rlpStream.SkipItem();
+                            _currentStreamIndex += toSkip;
+                        }
+                        else
+                        {
+                            _rlpStream = new ValueRlpStream(rlp);
+                            _rlpStream.Reset();
+                            _rlpStream.SkipLength();
+                            if (node.IsExtension)
+                            {
+                                _rlpStream.SkipItem();
+                                i--;
+                            }
+                            else
+                            {
+                                for (int j = 0; j < i; j++) _rlpStream.SkipItem();
+                            }
+
+                            _currentStreamIndex = i;
+                        }
+
+                        int prefix = _rlpStream.ReadByte();
+
+                        switch (prefix)
+                        {
+                            case 0:
+                            case 128:
+                            {
+                                data = childOrRef = _nullNode;
+                                _currentStreamIndex++;
+                                break;
+                            }
+                            case 160:
+                            {
+                                _rlpStream.Position--;
+                                Hash256 keccak = _rlpStream.DecodeKeccak();
+                                _currentStreamIndex++;
+
+                                TrieNode child = tree.FindCachedOrUnknown(childPath, keccak);
+                                data = childOrRef = child;
+
+                                if (node.IsPersisted && !child.IsPersisted)
+                                {
+                                    child.CallRecursively(_markPersisted, null, ref childPath, tree, false,
+                                        NullLogger.Instance);
+                                }
+
+                                break;
+                            }
+                            default:
+                            {
+                                _rlpStream.Position--;
+                                ReadOnlySpan<byte> fullRlp = _rlpStream.PeekNextItem();
+                                TrieNode child = new(NodeType.Unknown, fullRlp.ToArray());
+                                data = childOrRef = child;
+                                break;
+                            }
+                        }
+                    }
+                    else
+                    {
+                        childOrRef = data;
+                    }
+                }
+
+                return childOrRef;
+            }
+
+            public TrieNode? GetChildWithChildPath(ITrieNodeResolver tree, ref TreePath childPath, int childIndex)
+            {
+                /* extensions store value before the child while branches store children before the value
+                 * so just to treat them in the same way we update index on extensions
+                 */
+                childIndex = node.IsExtension ? childIndex + 1 : childIndex;
+                object childOrRef = ResolveChildWithChildPath(tree, ref childPath, childIndex);
+
+                TrieNode? child;
+                if (ReferenceEquals(childOrRef, _nullNode) || childOrRef is null)
+                {
+                    child = null;
+                }
+                else if (childOrRef is TrieNode childNode)
+                {
+                    child = childNode;
+                }
+                else if (childOrRef is Hash256 reference)
+                {
+                    child = tree.FindCachedOrUnknown(childPath, reference);
+                }
+                else
+                {
+                    // we expect this to happen as a Trie traversal error (please see the stack trace above)
+                    // we need to investigate this case when it happens again
+                    ThrowUnexpectedTypeException(node, childIndex, childOrRef);
+                }
+
+                // pruning trick so we never store long persisted paths
+                // Dont unresolve node of path length <= 4. there should be a relatively small number of these, enough to fit
+                // in RAM, but they are hit quite a lot, and don't have very good data locality.
+                // That said, in practice, it does nothing notable, except for significantly improving benchmark score.
+                if (child?.IsPersisted == true && childPath.Length > 4 && childPath.Length % 2 == 0)
+                {
+                    node.UnresolveChild(childIndex);
+                }
+
+                return child;
+
+                [DoesNotReturn, StackTraceHidden]
+                void ThrowUnexpectedTypeException(TrieNode @this, int childIndex, object childOrRef)
+                {
+                    bool isKeccakCalculated = @this.Keccak is not null && @this.FullRlp.IsNotNull;
+                    bool isKeccakCorrect =
+                        isKeccakCalculated && @this.Keccak == Nethermind.Core.Crypto.Keccak.Compute(@this.FullRlp.Span);
+                    throw new TrieException(
+                        $"Unexpected type found at position {childIndex} of {@this} with {nameof(_nodeData)} of length {@this._nodeData?.Length}. Expected a {nameof(TrieNode)} or {nameof(Keccak)} but found {childOrRef?.GetType()} with a value of {childOrRef}. Keccak calculated? : {isKeccakCalculated}; Keccak correct? : {isKeccakCorrect}");
+                }
+            }
+        }
+
         public void ReplaceChildRef(int i, TrieNode child)
         {
             if (child is null)
@@ -1167,9 +1312,14 @@ namespace Nethermind.Trie
 
         private void SeekChildNotNull(ref ValueRlpStream rlpStream, int index)
         {
+            SeekChildNotNull(ref rlpStream, IsExtension, index);
+        }
+
+        private static void SeekChildNotNull(ref ValueRlpStream rlpStream, bool isExtension, int index)
+        {
             rlpStream.Reset();
             rlpStream.SkipLength();
-            if (index == 0 && IsExtension)
+            if (index == 0 && isExtension)
             {
                 // Corner case, index is zero, but we are an extension
                 // so we need to move to next item

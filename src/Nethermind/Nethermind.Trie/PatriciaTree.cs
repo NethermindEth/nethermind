@@ -1012,6 +1012,8 @@ namespace Nethermind.Trie
 
 
         private static Counter _bulkSetTime = Prometheus.Metrics.CreateCounter("patricia_bulk_set", "fake time");
+        private static Counter _loopTime = Prometheus.Metrics.CreateCounter("patricia_loop_time", "fake time");
+        private static Counter _resolveTime = Prometheus.Metrics.CreateCounter("patricia_resolve_time", "fake time");
         private static Counter _justBulkSetTime = Prometheus.Metrics.CreateCounter("patricia_just_bulk_set", "fake time");
 
 
@@ -1043,7 +1045,9 @@ namespace Nethermind.Trie
             }
             else
             {
+                long swr = Stopwatch.GetTimestamp();
                 existingNode.ResolveNode(TrieStore, currentPath);
+                _resolveTime.Inc(Stopwatch.GetTimestamp() - swr);
 
                 if (existingNode.IsLeaf && entries.Length == 1)
                 {
@@ -1195,13 +1199,14 @@ namespace Nethermind.Trie
             }
             else
             {
+                TrieNode.ChildIterator childIterator = existingNode.CreateChildIterator();
                 currentPath.AppendMut(0);
                 for (int i = 0; i < nibToCheck; i++)
                 {
                     (int nib, int startRange) = indexes[i];
 
                     currentPath.SetLast(nib);
-                    TrieNode? child = existingNode.GetChildWithChildPath(TrieStore, ref currentPath, nib);
+                    TrieNode? child = childIterator.GetChildWithChildPath(TrieStore, ref currentPath, nib);
 
                     int endRange;
                     if (i < nibToCheck - 1)
