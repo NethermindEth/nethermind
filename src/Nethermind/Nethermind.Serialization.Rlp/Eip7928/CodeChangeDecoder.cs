@@ -18,7 +18,8 @@ public class CodeChangeDecoder : IRlpValueDecoder<CodeChange>, IRlpStreamDecoder
             NewCode = ctx.DecodeByteArray()
         };
 
-    public int GetLength(CodeChange item, RlpBehaviors rlpBehaviors) => 2 + item.NewCode.Length;
+    public int GetLength(CodeChange item, RlpBehaviors rlpBehaviors)
+        => Rlp.LengthOfSequence(GetContentLength(item, rlpBehaviors));
 
     public CodeChange Decode(RlpStream rlpStream, RlpBehaviors rlpBehaviors)
     {
@@ -36,4 +37,7 @@ public class CodeChangeDecoder : IRlpValueDecoder<CodeChange>, IRlpStreamDecoder
         stream.Encode(item.BlockAccessIndex);
         stream.Encode(item.NewCode);
     }
+
+    public static int GetContentLength(CodeChange item, RlpBehaviors rlpBehaviors)
+        => Rlp.LengthOf(item.BlockAccessIndex) + Rlp.LengthOf(item.NewCode);
 }

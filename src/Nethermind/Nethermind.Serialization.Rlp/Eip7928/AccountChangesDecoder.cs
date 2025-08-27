@@ -4,7 +4,6 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
-using Nethermind.Core;
 using Nethermind.Core.BlockAccessLists;
 
 namespace Nethermind.Serialization.Rlp.Eip7928;
@@ -35,7 +34,7 @@ public class AccountChangesDecoder : IRlpValueDecoder<AccountChanges>, IRlpStrea
     }
 
     public int GetLength(AccountChanges item, RlpBehaviors rlpBehaviors)
-        => GetContentLength(item, rlpBehaviors).Total;
+        => Rlp.LengthOfSequence(GetContentLength(item, rlpBehaviors).Total);
 
     public AccountChanges Decode(RlpStream rlpStream, RlpBehaviors rlpBehaviors)
     {
@@ -88,7 +87,7 @@ public class AccountChangesDecoder : IRlpValueDecoder<AccountChanges>, IRlpStrea
     {
         ContentLengths res = new()
         {
-            Total = Address.Size,
+            Total = Rlp.LengthOfAddressRlp,
             SlotChanges = 0,
             StorageReads = 0,
             BalanceChanges = 0,
@@ -100,23 +99,27 @@ public class AccountChangesDecoder : IRlpValueDecoder<AccountChanges>, IRlpStrea
         {
             res.SlotChanges += SlotChangesDecoder.Instance.GetLength(slotChanges, rlpBehaviors);
         }
+        res.SlotChanges = Rlp.LengthOfSequence(res.SlotChanges);
 
-        res.StorageReads = item.StorageReads.Count * 32;
+        res.StorageReads = Rlp.LengthOfSequence(item.StorageReads.Count * 32);
 
         foreach (BalanceChange balanceChange in item.BalanceChanges)
         {
             res.BalanceChanges += BalanceChangeDecoder.Instance.GetLength(balanceChange, rlpBehaviors);
         }
+        res.BalanceChanges = Rlp.LengthOfSequence(res.BalanceChanges);
 
         foreach (NonceChange nonceChange in item.NonceChanges)
         {
             res.NonceChanges += NonceChangeDecoder.Instance.GetLength(nonceChange, rlpBehaviors);
         }
+        res.NonceChanges = Rlp.LengthOfSequence(res.NonceChanges);
 
         foreach (CodeChange codeChange in item.CodeChanges)
         {
             res.CodeChanges += CodeChangeDecoder.Instance.GetLength(codeChange, rlpBehaviors);
         }
+        res.CodeChanges = Rlp.LengthOfSequence(res.CodeChanges);
 
         res.Total += res.SlotChanges + res.StorageReads + res.BalanceChanges + res.NonceChanges + res.CodeChanges;
         return res;

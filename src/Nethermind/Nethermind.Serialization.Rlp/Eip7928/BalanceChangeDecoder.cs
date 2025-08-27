@@ -8,9 +8,6 @@ namespace Nethermind.Serialization.Rlp.Eip7928;
 
 public class BalanceChangeDecoder : IRlpValueDecoder<BalanceChange>, IRlpStreamDecoder<BalanceChange>
 {
-    // ushort + UInt256
-    private const int Length = 2 + 32;
-
     private static BalanceChangeDecoder? _instance = null;
     public static BalanceChangeDecoder Instance => _instance ??= new();
 
@@ -21,7 +18,8 @@ public class BalanceChangeDecoder : IRlpValueDecoder<BalanceChange>, IRlpStreamD
             PostBalance = ctx.DecodeUInt256()
         };
 
-    public int GetLength(BalanceChange item, RlpBehaviors rlpBehaviors) => Length;
+    public int GetLength(BalanceChange item, RlpBehaviors rlpBehaviors)
+        => Rlp.LengthOfSequence(GetContentLength(item, rlpBehaviors));
 
     public BalanceChange Decode(RlpStream rlpStream, RlpBehaviors rlpBehaviors)
     {
@@ -35,8 +33,11 @@ public class BalanceChangeDecoder : IRlpValueDecoder<BalanceChange>, IRlpStreamD
 
     public void Encode(RlpStream stream, BalanceChange item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
     {
-        stream.StartSequence(Length);
+        stream.StartSequence(GetContentLength(item, rlpBehaviors));
         stream.Encode(item.BlockAccessIndex);
         stream.Encode(item.PostBalance);
     }
+
+    public static int GetContentLength(BalanceChange item, RlpBehaviors rlpBehaviors)
+        => Rlp.LengthOf(item.BlockAccessIndex) + Rlp.LengthOf(item.PostBalance);
 }

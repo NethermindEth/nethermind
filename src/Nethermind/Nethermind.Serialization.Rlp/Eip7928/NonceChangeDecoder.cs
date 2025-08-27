@@ -8,9 +8,6 @@ namespace Nethermind.Serialization.Rlp.Eip7928;
 
 public class NonceChangeDecoder : IRlpValueDecoder<NonceChange>, IRlpStreamDecoder<NonceChange>
 {
-    // ushort + ulong
-    private const int Length = 2 + 8;
-
     private static NonceChangeDecoder? _instance = null;
     public static NonceChangeDecoder Instance => _instance ??= new();
 
@@ -21,7 +18,8 @@ public class NonceChangeDecoder : IRlpValueDecoder<NonceChange>, IRlpStreamDecod
             NewNonce = ctx.DecodeULong()
         };
 
-    public int GetLength(NonceChange item, RlpBehaviors rlpBehaviors) => Length;
+    public int GetLength(NonceChange item, RlpBehaviors rlpBehaviors)
+        => Rlp.LengthOfSequence(GetContentLength(item, rlpBehaviors));
 
     public NonceChange Decode(RlpStream rlpStream, RlpBehaviors rlpBehaviors)
     {
@@ -35,8 +33,11 @@ public class NonceChangeDecoder : IRlpValueDecoder<NonceChange>, IRlpStreamDecod
 
     public void Encode(RlpStream stream, NonceChange item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
     {
-        stream.StartSequence(Length);
+        stream.StartSequence(GetContentLength(item, rlpBehaviors));
         stream.Encode(item.BlockAccessIndex);
         stream.Encode(item.NewNonce);
     }
+
+    public static int GetContentLength(NonceChange item, RlpBehaviors rlpBehaviors)
+        => Rlp.LengthOf(item.BlockAccessIndex) + Rlp.LengthOf(item.NewNonce);
 }

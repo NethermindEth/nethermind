@@ -8,9 +8,6 @@ namespace Nethermind.Serialization.Rlp.Eip7928;
 
 public class StorageChangeDecoder : IRlpValueDecoder<StorageChange>, IRlpStreamDecoder<StorageChange>
 {
-    // ushort + 32 byte vector
-    private const int Length = 2 + 32;
-
     private static StorageChangeDecoder? _instance = null;
     public static StorageChangeDecoder Instance => _instance ??= new();
 
@@ -21,7 +18,8 @@ public class StorageChangeDecoder : IRlpValueDecoder<StorageChange>, IRlpStreamD
             NewValue = ctx.DecodeByteArray()
         };
 
-    public int GetLength(StorageChange item, RlpBehaviors rlpBehaviors) => Length;
+    public int GetLength(StorageChange item, RlpBehaviors rlpBehaviors)
+        => Rlp.LengthOfSequence(GetContentLength(item, rlpBehaviors));
 
     public StorageChange Decode(RlpStream rlpStream, RlpBehaviors rlpBehaviors)
     {
@@ -35,8 +33,11 @@ public class StorageChangeDecoder : IRlpValueDecoder<StorageChange>, IRlpStreamD
 
     public void Encode(RlpStream stream, StorageChange item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
     {
-        stream.StartSequence(Length);
+        stream.StartSequence(GetContentLength(item, rlpBehaviors));
         stream.Encode(item.BlockAccessIndex);
         stream.Encode(item.NewValue);
     }
+
+    public static int GetContentLength(StorageChange item, RlpBehaviors rlpBehaviors)
+        => Rlp.LengthOf(item.BlockAccessIndex) + Rlp.LengthOf(item.NewValue);
 }
