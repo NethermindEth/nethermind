@@ -50,7 +50,6 @@ COPY --from=pyroscope/pyroscope-dotnet:0.12.0-glibc \
 ENV CORECLR_ENABLE_PROFILING=1 \
     CORECLR_PROFILER={BD1A650D-AC5D-4896-B64F-D6FA25D6B26A} \
     CORECLR_PROFILER_PATH=/opt/pyroscope/Pyroscope.Profiler.Native.so \
-    LD_PRELOAD=/opt/pyroscope/Pyroscope.Linux.ApiWrapper.x64.so \
     PYROSCOPE_PROFILING_ENABLED=1 \
     PYROSCOPE_APPLICATION_NAME=nethermind \
     PYROSCOPE_SERVER_ADDRESS=http://pyroscope:4040 \
