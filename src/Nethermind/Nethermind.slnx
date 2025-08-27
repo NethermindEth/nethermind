@@ -87,7 +87,6 @@
   <Project Path="Nethermind.Consensus.AuRa/Nethermind.Consensus.AuRa.csproj" />
   <Project Path="Nethermind.Consensus.Clique/Nethermind.Consensus.Clique.csproj" />
   <Project Path="Nethermind.Consensus.Ethash/Nethermind.Consensus.Ethash.csproj" />
-  <Project Path="Nethermind.Xdc/Nethermind.Xdc.csproj" Id="a2df25a7-610f-4d9c-a0d4-95bedb7166c5" />
   <Project Path="Nethermind.Consensus/Nethermind.Consensus.csproj" />
   <Project Path="Nethermind.Core/Nethermind.Core.csproj" />
   <Project Path="Nethermind.Crypto/Nethermind.Crypto.csproj" />
@@ -130,4 +129,5 @@
   <Project Path="Nethermind.Trie/Nethermind.Trie.csproj" />
   <Project Path="Nethermind.TxPool/Nethermind.TxPool.csproj" />
   <Project Path="Nethermind.Wallet/Nethermind.Wallet.csproj" />
+  <Project Path="Nethermind.Xdc/Nethermind.Xdc.csproj" />
 </Solution>
