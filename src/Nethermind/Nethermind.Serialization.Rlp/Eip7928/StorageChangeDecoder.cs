@@ -27,10 +27,10 @@ public class StorageChangeDecoder : IRlpValueDecoder<StorageChange>, IRlpStreamD
     {
         Span<byte> span = rlpStream.PeekNextItem();
         Rlp.ValueDecoderContext ctx = new(span);
-        StorageChange response = Decode(ref ctx, rlpBehaviors);
+        StorageChange res = Decode(ref ctx, rlpBehaviors);
         rlpStream.SkipItem();
 
-        return response;
+        return res;
     }
 
     public void Encode(RlpStream stream, StorageChange item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)

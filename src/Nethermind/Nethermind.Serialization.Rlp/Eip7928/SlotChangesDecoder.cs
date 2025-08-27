@@ -35,10 +35,10 @@ public class SlotChangesDecoder : IRlpValueDecoder<SlotChanges>, IRlpStreamDecod
     {
         Span<byte> span = rlpStream.PeekNextItem();
         Rlp.ValueDecoderContext ctx = new(span);
-        SlotChanges response = Decode(ref ctx, rlpBehaviors);
+        SlotChanges res = Decode(ref ctx, rlpBehaviors);
         rlpStream.SkipItem();
 
-        return response;
+        return res;
     }
 
     public void Encode(RlpStream stream, SlotChanges item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)

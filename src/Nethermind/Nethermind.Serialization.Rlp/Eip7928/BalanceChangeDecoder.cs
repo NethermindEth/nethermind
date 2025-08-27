@@ -27,10 +27,10 @@ public class BalanceChangeDecoder : IRlpValueDecoder<BalanceChange>, IRlpStreamD
     {
         Span<byte> span = rlpStream.PeekNextItem();
         Rlp.ValueDecoderContext ctx = new(span);
-        BalanceChange response = Decode(ref ctx, rlpBehaviors);
+        BalanceChange res = Decode(ref ctx, rlpBehaviors);
         rlpStream.SkipItem();
 
-        return response;
+        return res;
     }
 
     public void Encode(RlpStream stream, BalanceChange item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)

@@ -168,25 +168,5 @@ namespace Nethermind.Evm.Test
                 Assert.That(beneficiaryBalanceChanges[0].PostBalance, Is.EqualTo(new UInt256(GasCostOf.Transaction)));
             }
         }
-
-        [Test]
-        public void Fun_test()
-        {
-            StorageChange s = new()
-            {
-                BlockAccessIndex = 5,
-                NewValue = []
-            };
-            byte[] x = Rlp.Encode(s).Bytes;
-            // Assert.That(x, Has.Length.EqualTo(10));
-
-            BalanceChange b = new()
-            {
-                BlockAccessIndex = 5,
-                PostBalance = 69
-            };
-            byte[] y = Rlp.Encode(b).Bytes;
-            Assert.That(x, Has.Length.EqualTo(10));
-        }
     }
 }

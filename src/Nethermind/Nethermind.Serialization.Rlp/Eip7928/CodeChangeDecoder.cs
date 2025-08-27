@@ -24,10 +24,10 @@ public class CodeChangeDecoder : IRlpValueDecoder<CodeChange>, IRlpStreamDecoder
     {
         Span<byte> span = rlpStream.PeekNextItem();
         Rlp.ValueDecoderContext ctx = new(span);
-        CodeChange response = Decode(ref ctx, rlpBehaviors);
+        CodeChange res = Decode(ref ctx, rlpBehaviors);
         rlpStream.SkipItem();
 
-        return response;
+        return res;
     }
 
     public void Encode(RlpStream stream, CodeChange item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
