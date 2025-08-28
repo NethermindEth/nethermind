@@ -732,7 +732,7 @@ namespace Nethermind.State
             int skipped = 0;
 
             long sw = Stopwatch.GetTimestamp();
-            if (_blockChanges.Count < 128)
+            if (_blockChanges.Count < 0)
             {
                 foreach (var key in _blockChanges.Keys)
                 {
@@ -752,7 +752,7 @@ namespace Nethermind.State
             }
             else
             {
-                using ArrayPoolList<(TreePath, byte[])> bulkWrite = new(_blockChanges.Count);
+                using ArrayPoolList<PatriciaTreeBulkSetter.BulkSetEntry> bulkWrite = new(_blockChanges.Count);
                 foreach (var key in _blockChanges.Keys)
                 {
                     ref var change = ref CollectionsMarshal.GetValueRefOrNullRef(_blockChanges, key);
@@ -765,7 +765,7 @@ namespace Nethermind.State
                         var account = change.After;
                         Rlp accountRlp = account is null ? null : account.IsTotallyEmpty ? StateTree.EmptyAccountRlp : Rlp.Encode(account);
 
-                        bulkWrite.Add((new TreePath(keccak, 64), accountRlp?.Bytes));
+                        bulkWrite.Add(new PatriciaTreeBulkSetter.BulkSetEntry(keccak, accountRlp?.Bytes));
                         writes++;
                     }
                     else
@@ -774,8 +774,7 @@ namespace Nethermind.State
                     }
                 }
 
-                bulkWrite.Sort((it1, it2) => it1.Item1.CompareTo(it2.Item1));
-                _tree.BulkSet(bulkWrite.AsSpan());
+                PatriciaTreeBulkSetter.BulkSetUnsorted(_tree, bulkWrite.AsMemory());
             }
 
             if (writes > 0)
