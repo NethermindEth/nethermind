@@ -175,7 +175,7 @@ public class JsonRpcService : IJsonRpcService
             if (parameters is null)
             {
                 if (_logger.IsWarn) _logger.Warn($"Incorrect JSON RPC parameters when calling {methodName} with params [{string.Join(", ", providedParameters)}]");
-                return GetErrorResponse(methodName, ErrorCodes.InvalidParams, "does not have a default valueInvalid params", null, request.Id);
+                return GetErrorResponse(methodName, ErrorCodes.InvalidParams, "Invalid params", null, request.Id);
             }
         }
 

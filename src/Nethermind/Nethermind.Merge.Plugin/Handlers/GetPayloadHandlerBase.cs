@@ -75,7 +75,7 @@ public abstract class GetPayloadHandlerBase<TGetPayloadResult>(
                     ParentBeaconBlockRoot = previousBlock.Hash,
                     PrevRandao = previousBlock.Hash ?? Keccak.Zero,
                     SuggestedFeeRecipient = Address.Zero,
-                    Withdrawals = null
+                    Withdrawals = Array.Empty<Withdrawal>(),
                 };
             }
             else
@@ -88,12 +88,12 @@ public abstract class GetPayloadHandlerBase<TGetPayloadResult>(
                     PrevRandao = previousBlock.Hash ?? Keccak.Zero,
                     SuggestedFeeRecipient = Address.Zero,
                     Withdrawals = new[] { new Withdrawal
-            {
-                Address = new Address(privKey),
-                AmountInGwei = 1_000_000_000_000, // 1000 eth
-                ValidatorIndex = (ulong)(1),
-                Index = (ulong)(1 % 16 + 1)
-            }}
+                    {
+                        Address = new Address(privKey),
+                        AmountInGwei = 1_000_000_000_000, // 1000 eth
+                        ValidatorIndex = (ulong)(1),
+                        Index = (ulong)(1 % 16 + 1)
+                    }}
                 };
             }
 

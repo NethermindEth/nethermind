@@ -320,7 +320,8 @@ public partial class EngineModuleTests
         string param2 = "0x86cF016FB873D50a7B8F31EB154c9234DD31b058";
         string result = await RpcTest.TestSerializedRequest(rpc, "engine_getPayloadV4", param1, param2);
         Console.WriteLine(result);
-        result.Should().Be("{\"jsonrpc\":\"2.0\",\"error\":{\"code\":-38001,\"message\":\"unknown payload\"},\"id\":67}");
+
+        string np = await RpcTest.TestSerializedRequest(rpc, "engine_newPayloadV4", np1, np2, np3, np4);
     }
 
     [Test]
