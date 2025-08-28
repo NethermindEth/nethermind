@@ -8,6 +8,7 @@ using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.Db;
 using Nethermind.Evm.CodeAnalysis;
+using Nethermind.Evm.Precompiles;
 using Nethermind.Evm.Tracing;
 using Nethermind.Int256;
 using Nethermind.Logging;
@@ -27,7 +28,8 @@ public unsafe partial class VirtualMachineBase
     {
         IReleaseSpec spec = Fork.GetLatest();
         IBlockhashProvider hashProvider = new WarmupBlockhashProvider(MainnetSpecProvider.Instance);
-        VirtualMachineBase vm = new(hashProvider, MainnetSpecProvider.Instance, LimboLogs.Instance);
+        IPrecompileChecker precompileChecker = new EthereumPrecompileChecker();
+        VirtualMachineBase vm = new(hashProvider, MainnetSpecProvider.Instance, LimboLogs.Instance, precompileChecker);
         ILogManager lm = new OneLoggerLogManager(NullLogger.Instance);
 
         IKeyValueStoreWithBatching db = new MemDb();
@@ -42,7 +44,7 @@ public unsafe partial class VirtualMachineBase
         WorldState state = new(trieStore, db, lm);
         state.CreateAccount(addressOne, 1000.Ether());
         state.Commit(spec);
-        CodeInfoRepository codeInfoRepository = new();
+        CodeInfoRepository codeInfoRepository = new CodeInfoRepository(precompileChecker);
         BlockHeader _header = new(Keccak.Zero, Keccak.Zero, addressOne, UInt256.One, MainnetSpecProvider.PragueActivation.BlockNumber, Int64.MaxValue, 1UL, Bytes.Empty, 0, 0);
 
         vm.SetBlockExecutionContext(new BlockExecutionContext(_header, spec));

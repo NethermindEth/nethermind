@@ -36,15 +36,17 @@ using Int256;
 public sealed unsafe class VirtualMachine(
     IBlockhashProvider? blockHashProvider,
     ISpecProvider? specProvider,
-    ILogManager? logManager
-) : VirtualMachineBase(blockHashProvider, specProvider, logManager)
+    ILogManager? logManager,
+    IPrecompileChecker precompileChecker
+) : VirtualMachineBase(blockHashProvider, specProvider, logManager, precompileChecker)
 {
 }
 
 public unsafe partial class VirtualMachineBase(
     IBlockhashProvider? blockHashProvider,
     ISpecProvider? specProvider,
-    ILogManager? logManager) : IVirtualMachine
+    ILogManager? logManager,
+    IPrecompileChecker precompileChecker) : IVirtualMachine
 {
     public const int MaxCallDepth = Eof1.RETURN_STACK_MAX_HEIGHT;
     private readonly static UInt256 P255Int = (UInt256)System.Numerics.BigInteger.Pow(2, 255);
@@ -104,6 +106,7 @@ public unsafe partial class VirtualMachineBase(
     public ReadOnlyMemory<byte> ReturnDataBuffer { get; set; } = Array.Empty<byte>();
     public object ReturnData { get; set; }
     public IBlockhashProvider BlockHashProvider => _blockHashProvider;
+    public IPrecompileChecker PrecompileChecker { get; } = precompileChecker;
     protected Stack<EvmState> StateStack => _stateStack;
 
     private BlockExecutionContext _blockExecutionContext;

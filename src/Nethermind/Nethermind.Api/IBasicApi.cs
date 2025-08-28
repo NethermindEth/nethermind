@@ -53,6 +53,7 @@ namespace Nethermind.Api
 
         [SkipServiceCollection]
         ILifetimeScope Context { get; }
+        IPrecompileChecker PrecompileChecker { get; }
 
         public IConsensusPlugin? GetConsensusPlugin() =>
             Plugins

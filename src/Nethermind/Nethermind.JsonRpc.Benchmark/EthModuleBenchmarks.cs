@@ -54,6 +54,7 @@ using Nethermind.Synchronization;
 using Nethermind.Synchronization.ParallelSync;
 using Nethermind.Synchronization.Peers;
 using NSubstitute;
+using Nethermind.Evm.Precompiles;
 
 namespace Nethermind.JsonRpc.Benchmark
 {
@@ -98,8 +99,9 @@ namespace Nethermind.JsonRpc.Benchmark
                 new SyncConfig(),
                 LimboLogs.Instance);
             _blockhashProvider = new BlockhashProvider(blockTree, specProvider, stateProvider, LimboLogs.Instance);
-            CodeInfoRepository codeInfoRepository = new();
-            _virtualMachine = new VirtualMachine(_blockhashProvider, specProvider, LimboLogs.Instance);
+            IPrecompileChecker precompileChecker = new EthereumPrecompileChecker();
+            CodeInfoRepository codeInfoRepository = new(precompileChecker);
+            _virtualMachine = new VirtualMachine(_blockhashProvider, specProvider, LimboLogs.Instance, precompileChecker);
 
             Block genesisBlock = Build.A.Block.Genesis.TestObject;
             blockTree.SuggestBlock(genesisBlock);

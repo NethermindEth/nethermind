@@ -19,7 +19,6 @@ using Nethermind.Consensus.Validators;
 using Nethermind.Consensus.Withdrawals;
 using Nethermind.Core;
 using Nethermind.Logging;
-using Nethermind.Specs.ChainSpecStyle;
 using Nethermind.State;
 using NUnit.Framework;
 
@@ -92,7 +91,7 @@ public class AuRaContractGasLimitOverrideTests
                 blockGasLimitContractTransition.Key,
                 new ReadOnlyTxProcessingEnv(
                     WorldStateManager,
-                    BlockTree.AsReadOnly(), SpecProvider, LimboLogs.Instance));
+                    BlockTree.AsReadOnly(), SpecProvider, LimboLogs.Instance, PrecompileChecker));
 
             GasLimitOverrideCache = new AuRaContractGasLimitOverride.Cache();
             GasLimitCalculator = new AuRaContractGasLimitOverride(new[] { gasLimitContract }, GasLimitOverrideCache, false, new FollowOtherMiners(SpecProvider), LimboLogs.Instance);

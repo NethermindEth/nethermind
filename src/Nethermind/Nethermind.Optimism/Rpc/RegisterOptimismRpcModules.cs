@@ -8,7 +8,6 @@ using Nethermind.Config;
 using Nethermind.Consensus;
 using Nethermind.Consensus.Withdrawals;
 using Nethermind.Init.Steps;
-using Nethermind.JsonRpc;
 using Nethermind.JsonRpc.Client;
 using Nethermind.JsonRpc.Modules;
 using Nethermind.JsonRpc.Modules.Eth.FeeHistory;
@@ -121,7 +120,8 @@ public class RegisterOptimismRpcModules : RegisterRpcModules
             _api.L1CostHelper,
             _api.SpecHelper,
             new Create2DeployerContractRewriter(_api.SpecHelper, _api.SpecProvider, _api.BlockTree),
-            new BlockProductionWithdrawalProcessor(new NullWithdrawalProcessor()));
+            new BlockProductionWithdrawalProcessor(new NullWithdrawalProcessor()),
+            _api.PrecompileChecker);
 
         rpcModuleProvider.RegisterBoundedByCpuCount(traceModuleFactory, JsonRpcConfig.Timeout);
     }

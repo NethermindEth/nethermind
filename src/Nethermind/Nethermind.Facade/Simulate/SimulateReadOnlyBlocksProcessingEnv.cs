@@ -68,6 +68,7 @@ public class SimulateReadOnlyBlocksProcessingEnv : IDisposable
         IBlockTree blockTree,
         ISpecProvider specProvider,
         ISimulateTransactionProcessorFactory transactionProcessorFactory,
+        IPrecompileChecker precompileChecker,
         ILogManager? logManager = null,
         bool validate = false)
     {
@@ -78,8 +79,8 @@ public class SimulateReadOnlyBlocksProcessingEnv : IDisposable
         BlockTree = new BlockTreeOverlay(baseBlockTree, blockTree);
         StateProvider = worldState;
         SimulateBlockhashProvider blockhashProvider = new SimulateBlockhashProvider(new BlockhashProvider(BlockTree, specProvider, StateProvider, logManager), BlockTree);
-        CodeInfoRepository = new OverridableCodeInfoRepository(new CodeInfoRepository());
-        SimulateVirtualMachine virtualMachine = new SimulateVirtualMachine(new VirtualMachine(blockhashProvider, specProvider, logManager));
+        CodeInfoRepository = new OverridableCodeInfoRepository(new CodeInfoRepository(precompileChecker));
+        SimulateVirtualMachine virtualMachine = new SimulateVirtualMachine(new VirtualMachine(blockhashProvider, specProvider, logManager, precompileChecker));
         _transactionProcessor = transactionProcessorFactory.CreateTransactionProcessor(SpecProvider, StateProvider, virtualMachine, CodeInfoRepository, _logManager, validate);
         _blockValidator = CreateValidator();
         BlockTransactionPicker = new BlockProductionTransactionPicker(specProvider, ignoreEip3607: true);

@@ -36,6 +36,7 @@ using NSubstitute;
 using NUnit.Framework;
 using System;
 using Nethermind.Evm;
+using Nethermind.Evm.Precompiles;
 
 namespace Nethermind.JsonRpc.Test.Modules
 {
@@ -78,7 +79,7 @@ namespace Nethermind.JsonRpc.Test.Modules
 
             _txPool = new TxPool.TxPool(_ethereumEcdsa,
                 new BlobTxStorage(),
-                new ChainHeadInfoProvider(new FixedForkActivationChainHeadSpecProvider(specProvider), _blockTree, stateProvider, new CodeInfoRepository()) { HasSynced = true },
+                new ChainHeadInfoProvider(new FixedForkActivationChainHeadSpecProvider(specProvider), _blockTree, stateProvider, new CodeInfoRepository(TestPrecompiles.Ethereum)) { HasSynced = true },
                 new TxPoolConfig(),
                 new TxValidator(specProvider.ChainId),
                 LimboLogs.Instance,

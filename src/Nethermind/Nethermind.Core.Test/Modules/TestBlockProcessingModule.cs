@@ -43,7 +43,8 @@ public class TestBlockProcessingModule : Module
             {
                 IWorldState worldState = ctx.Resolve<IWorldStateManager>().GlobalWorldState;
                 PreBlockCaches? preBlockCaches = (worldState as IPreBlockCaches)?.Caches;
-                return new CodeInfoRepository(preBlockCaches?.PrecompileCache);
+                IPrecompileChecker precompileChecker = ctx.Resolve<IPrecompileChecker>();
+                return new CodeInfoRepository(precompileChecker, preBlockCaches?.PrecompileCache);
             })
             .AddSingleton<IChainHeadInfoProvider, IComponentContext>((ctx) =>
             {

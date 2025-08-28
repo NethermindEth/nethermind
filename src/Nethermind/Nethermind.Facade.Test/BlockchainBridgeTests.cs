@@ -21,7 +21,6 @@ using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.Specs;
-using Nethermind.Trie.Pruning;
 using Nethermind.TxPool;
 using NSubstitute;
 using NUnit.Framework;
@@ -47,14 +46,16 @@ public class BlockchainBridgeTests
     private ManualTimestamper _timestamper;
     private ISpecProvider _specProvider;
     private IDbProvider _dbProvider;
+    private IPrecompileChecker _precompileChecker;
 
     private class TestReadOnlyTxProcessingEnv(
         IOverridableWorldScope worldStateManager,
         IReadOnlyBlockTree blockTree,
         ISpecProvider specProvider,
         ILogManager logManager,
-        ITransactionProcessor transactionProcessor)
-        : OverridableTxProcessingEnv(worldStateManager, blockTree, specProvider, logManager)
+        ITransactionProcessor transactionProcessor,
+        IPrecompileChecker precompileChecker)
+        : OverridableTxProcessingEnv(worldStateManager, blockTree, specProvider, logManager, precompileChecker)
     {
         protected override ITransactionProcessor CreateTransactionProcessor() => transactionProcessor;
     }
@@ -72,6 +73,7 @@ public class BlockchainBridgeTests
         _transactionProcessor = Substitute.For<ITransactionProcessor>();
         _ethereumEcdsa = Substitute.For<IEthereumEcdsa>();
         _specProvider = MainnetSpecProvider.Instance;
+        _precompileChecker = Substitute.For<IPrecompileChecker>();
 
         WorldStateManager worldStateManager = TestWorldStateFactory.CreateForTest(_dbProvider, LimboLogs.Instance);
         IOverridableWorldScope overridableWorldScope = worldStateManager.CreateOverridableWorldScope();
@@ -82,7 +84,8 @@ public class BlockchainBridgeTests
             readOnlyBlockTree,
             _specProvider,
             LimboLogs.Instance,
-            _transactionProcessor);
+            _transactionProcessor,
+            _precompileChecker);
 
         SimulateReadOnlyBlocksProcessingEnvFactory simulateProcessingEnvFactory = new SimulateReadOnlyBlocksProcessingEnvFactory(
             worldStateManager,
@@ -90,6 +93,7 @@ public class BlockchainBridgeTests
             new ReadOnlyDbProvider(_dbProvider, true),
             _specProvider,
             SimulateTransactionProcessorFactory.Instance,
+            _precompileChecker,
             LimboLogs.Instance);
 
         _blockchainBridge = new BlockchainBridge(
@@ -220,7 +224,8 @@ public class BlockchainBridgeTests
             worldStateManager.CreateOverridableWorldScope(),
             roBlockTree,
             _specProvider,
-            LimboLogs.Instance);
+            LimboLogs.Instance,
+            _precompileChecker);
 
         SimulateReadOnlyBlocksProcessingEnvFactory simulateProcessingEnv = new SimulateReadOnlyBlocksProcessingEnvFactory(
             worldStateManager,
@@ -228,6 +233,7 @@ public class BlockchainBridgeTests
             new ReadOnlyDbProvider(_dbProvider, true),
             _specProvider,
             SimulateTransactionProcessorFactory.Instance,
+            _precompileChecker,
             LimboLogs.Instance);
 
         Block head = Build.A.Block.WithNumber(headNumber).TestObject;

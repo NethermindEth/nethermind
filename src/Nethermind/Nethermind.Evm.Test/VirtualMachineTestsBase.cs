@@ -12,13 +12,13 @@ using Nethermind.Specs;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Crypto;
 using Nethermind.Db;
+using Nethermind.Evm.Precompiles;
 using Nethermind.Int256;
 using Nethermind.Evm.Tracing;
 using Nethermind.Evm.Tracing.GethStyle;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Logging;
 using Nethermind.State;
-using Nethermind.Trie.Pruning;
 using NUnit.Framework;
 
 namespace Nethermind.Evm.Test;
@@ -50,6 +50,7 @@ public abstract class VirtualMachineTestsBase
     protected virtual long BlockNumber { get; } = MainnetSpecProvider.ByzantiumBlockNumber;
     protected virtual ulong Timestamp => 0UL;
     protected virtual ISpecProvider SpecProvider => MainnetSpecProvider.Instance;
+    protected IPrecompileChecker _precompileChecker => TestPrecompiles.Ethereum;
     protected IReleaseSpec Spec => SpecProvider.GetSpec(Activation);
 
     protected virtual ILogManager GetLogManager()
@@ -68,8 +69,8 @@ public abstract class VirtualMachineTestsBase
         TestState = worldStateManager.GlobalWorldState;
         _ethereumEcdsa = new EthereumEcdsa(SpecProvider.ChainId);
         IBlockhashProvider blockhashProvider = new TestBlockhashProvider(SpecProvider);
-        CodeInfoRepository = new CodeInfoRepository();
-        Machine = new VirtualMachine(blockhashProvider, SpecProvider, logManager);
+        CodeInfoRepository = new CodeInfoRepository(_precompileChecker);
+        Machine = new VirtualMachine(blockhashProvider, SpecProvider, logManager, _precompileChecker);
         _processor = new TransactionProcessor(SpecProvider, TestState, Machine, CodeInfoRepository, logManager);
     }
 
@@ -227,7 +228,6 @@ public abstract class VirtualMachineTestsBase
             TestState.CreateAccount(senderRecipientAndMiner.Recipient, 100.Ether());
         else
             TestState.AddToBalance(senderRecipientAndMiner.Recipient, 100.Ether(), SpecProvider.GenesisSpec);
-
         if (code is not null)
         {
             TestState.InsertCode(senderRecipientAndMiner.Recipient, code, SpecProvider.GenesisSpec);

@@ -16,6 +16,7 @@ using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.State;
 using Nethermind.Trie.Pruning;
+using Nethermind.Evm.Precompiles;
 
 namespace Nethermind.Evm.Benchmark
 {
@@ -43,8 +44,9 @@ namespace Nethermind.Evm.Benchmark
             _stateProvider = worldStateManager.GlobalWorldState;
             _stateProvider.CreateAccount(Address.Zero, 1000.Ether());
             _stateProvider.Commit(_spec);
-            CodeInfoRepository codeInfoRepository = new();
-            _virtualMachine = new VirtualMachine(_blockhashProvider, MainnetSpecProvider.Instance, LimboLogs.Instance);
+            IPrecompileChecker precompileChecker = new EthereumPrecompileChecker();
+            CodeInfoRepository codeInfoRepository = new(precompileChecker);
+            _virtualMachine = new VirtualMachine(_blockhashProvider, MainnetSpecProvider.Instance, LimboLogs.Instance, precompileChecker);
             _virtualMachine.SetBlockExecutionContext(new BlockExecutionContext(_header, _spec));
             _virtualMachine.SetTxExecutionContext(new TxExecutionContext(Address.Zero, codeInfoRepository, null, 0));
 

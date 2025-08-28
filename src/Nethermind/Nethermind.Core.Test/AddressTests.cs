@@ -19,6 +19,8 @@ namespace Nethermind.Core.Test;
 
 public class AddressTests
 {
+    private readonly EthereumPrecompileChecker _precompileChecker = new();
+
     [TestCase("0x5A4EAB120fB44eb6684E5e32785702FF45ea344D", "0x5a4eab120fb44eb6684e5e32785702ff45ea344d")]
     [TestCase("0x5a4eab120fb44eb6684e5e32785702ff45ea344d", "0x5a4eab120fb44eb6684e5e32785702ff45ea344d")]
     public void String_representation_is_correct(string init, string expected)
@@ -120,7 +122,7 @@ public class AddressTests
         byte[] addressBytes = new byte[20];
         addressBytes[19] = 1;
         Address address = new(addressBytes);
-        Assert.That(address.IsPrecompile(Frontier.Instance), Is.True);
+        Assert.That(_precompileChecker.IsPrecompile(address, Frontier.Instance), Is.True);
     }
 
     [Test]
@@ -129,7 +131,7 @@ public class AddressTests
         byte[] addressBytes = new byte[20];
         addressBytes[19] = 4;
         Address address = new(addressBytes);
-        Assert.That(address.IsPrecompile(Frontier.Instance), Is.True);
+        Assert.That(_precompileChecker.IsPrecompile(address, Frontier.Instance), Is.True);
     }
 
     [Test]
@@ -138,7 +140,7 @@ public class AddressTests
         byte[] addressBytes = new byte[20];
         addressBytes[19] = 5;
         Address address = new(addressBytes);
-        Assert.That(address.IsPrecompile(Frontier.Instance), Is.False);
+        Assert.That(_precompileChecker.IsPrecompile(address, Frontier.Instance), Is.False);
     }
 
     [Test]
@@ -147,7 +149,7 @@ public class AddressTests
         byte[] addressBytes = new byte[20];
         addressBytes[19] = 5;
         Address address = new(addressBytes);
-        Assert.That(address.IsPrecompile(Byzantium.Instance), Is.True);
+        Assert.That(_precompileChecker.IsPrecompile(address, Byzantium.Instance), Is.True);
     }
 
     [Test]
@@ -156,7 +158,7 @@ public class AddressTests
         byte[] addressBytes = new byte[20];
         addressBytes[19] = 9;
         Address address = new(addressBytes);
-        Assert.That(address.IsPrecompile(Byzantium.Instance), Is.False);
+        Assert.That(_precompileChecker.IsPrecompile(address, Byzantium.Instance), Is.False);
     }
 
     [TestCase(0, false)]
@@ -165,7 +167,7 @@ public class AddressTests
     public void From_number_for_precompile(int number, bool isPrecompile)
     {
         Address address = Address.FromNumber((UInt256)number);
-        Assert.That(address.IsPrecompile(Byzantium.Instance), Is.EqualTo(isPrecompile));
+        Assert.That(_precompileChecker.IsPrecompile(address, Byzantium.Instance), Is.EqualTo(isPrecompile));
     }
 
     [TestCase(0, "0x24cd2edba056b7c654a50e8201b619d4f624fdda")]
@@ -178,7 +180,7 @@ public class AddressTests
 
     [TestCaseSource(nameof(PointEvaluationPrecompileTestCases))]
     public bool Is_PointEvaluationPrecompile_properly_activated(IReleaseSpec spec) =>
-        Address.FromNumber(0x0a).IsPrecompile(spec);
+        _precompileChecker.IsPrecompile(Address.FromNumber(0x0a), spec);
 
     [TestCase(Address.SystemUserHex, false)]
     [TestCase("2" + Address.SystemUserHex, false)]

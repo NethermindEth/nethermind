@@ -13,6 +13,7 @@ using Nethermind.Core.Specs;
 using Nethermind.Crypto;
 using Nethermind.Db;
 using Nethermind.Era1;
+using Nethermind.Evm.Precompiles;
 using Nethermind.Logging;
 using Nethermind.Network.Config;
 using Nethermind.Runner.Ethereum.Modules;
@@ -43,6 +44,7 @@ public class NethermindModule(ChainSpec chainSpec, IConfigProvider configProvide
             .AddModule(new DbModule())
             .AddModule(new BlockProcessingModule())
             .AddSingleton<ISpecProvider, ChainSpecBasedSpecProvider>()
+            .AddSingleton<IPrecompileChecker, EthereumPrecompileChecker>()
 
             .Bind<IBlockFinder, IBlockTree>()
 

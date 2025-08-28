@@ -8,6 +8,7 @@ using Nethermind.Consensus.Processing;
 using Nethermind.Consensus.Rewards;
 using Nethermind.Consensus.Validators;
 using Nethermind.Consensus.Withdrawals;
+using Nethermind.Core;
 using Nethermind.Core.Specs;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.JsonRpc;
@@ -33,7 +34,8 @@ public class OptimismTraceModuleFactory(
     ICostHelper costHelper,
     IOptimismSpecHelper opSpecHelper,
     Create2DeployerContractRewriter contractRewriter,
-    IWithdrawalProcessor withdrawalProcessor) : TraceModuleFactory(
+    IWithdrawalProcessor withdrawalProcessor,
+    IPrecompileChecker precompileChecker) : TraceModuleFactory(
         worldStateManager,
         blockTree,
         jsonRpcConfig,
@@ -44,10 +46,11 @@ public class OptimismTraceModuleFactory(
         receiptFinder,
         specProvider,
         poSSwitcher,
-        logManager)
+        logManager,
+        precompileChecker)
 {
     protected override OverridableTxProcessingEnv CreateTxProcessingEnv(IOverridableWorldScope worldStateManager) =>
-        new OptimismOverridableTxProcessingEnv(worldStateManager, _blockTree, _specProvider, _logManager, costHelper, opSpecHelper);
+        new OptimismOverridableTxProcessingEnv(worldStateManager, _blockTree, _specProvider, _logManager, costHelper, opSpecHelper, _precompileChecker);
 
     protected override ReadOnlyChainProcessingEnv CreateChainProcessingEnv(IOverridableWorldScope worldStateManager, IBlockProcessor.IBlockTransactionsExecutor transactionsExecutor, IReadOnlyTxProcessingScope scope, IRewardCalculator rewardCalculator) => new OptimismReadOnlyChainProcessingEnv(
                 scope,

@@ -113,7 +113,8 @@ public class RegisterTaikoRpcModules : RegisterRpcModules
             _api.ReceiptStorage,
             _api.SpecProvider,
             _poSSwitcher,
-            _api.LogManager);
+            _api.LogManager,
+            _api.PrecompileChecker);
 
         rpcModuleProvider.RegisterBoundedByCpuCount(traceModuleFactory, JsonRpcConfig.Timeout);
     }
@@ -148,7 +149,8 @@ public class RegisterTaikoRpcModules : RegisterRpcModules
             _api.SyncModeSelector,
             _api.BadBlocksStore,
             _api.FileSystem,
-            _api.LogManager);
+            _api.LogManager,
+            _api.PrecompileChecker);
 
         rpcModuleProvider.RegisterBoundedByCpuCount(debugModuleFactory, JsonRpcConfig.Timeout);
     }
