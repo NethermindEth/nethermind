@@ -6,7 +6,7 @@ using Nethermind.Core.Specs;
 
 namespace Nethermind.Core;
 
-public class PrecompileChecker(params IPrecompileChecker[] checkers) : IPrecompileChecker
+public class CompositePrecompileChecker(params IPrecompileChecker[] checkers) : IPrecompileChecker
 {
     public bool IsPrecompile(Address address, IReleaseSpec spec)
     {
