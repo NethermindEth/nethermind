@@ -32,6 +32,7 @@ using Nethermind.Specs.Forks;
 using Nethermind.Specs.Test;
 using Nethermind.State;
 using Nethermind.Evm.State;
+using Nethermind.Init.Modules;
 using Nethermind.TxPool;
 using NUnit.Framework;
 
@@ -142,6 +143,7 @@ public abstract class BlockchainTestBase
         IBlockValidator blockValidator = container.Resolve<IBlockValidator>();
         blockchainProcessor.Start();
 
+        BlockHeader parentHeader;
         // Genesis processing
         using (stateProvider.BeginScope(null))
         {
@@ -167,6 +169,7 @@ public abstract class BlockchainTestBase
 
             blockTree.SuggestBlock(genesisBlock);
             genesisProcessed.WaitOne();
+            parentHeader = genesisBlock.Header;
         }
 
         List<(Block Block, string ExpectedException)> correctRlp = DecodeRlps(test, failOnInvalidRlp);
@@ -181,7 +184,7 @@ public abstract class BlockchainTestBase
             {
                 // TODO: mimic the actual behaviour where block goes through validating sync manager?
                 correctRlp[i].Block.Header.IsPostMerge = correctRlp[i].Block.Difficulty == 0;
-                if (!test.SealEngineUsed || blockValidator.ValidateSuggestedBlock(correctRlp[i].Block, out var _error))
+                if (!test.SealEngineUsed || blockValidator.ValidateSuggestedBlock(correctRlp[i].Block, parentHeader, out var _error))
                 {
                     blockTree.SuggestBlock(correctRlp[i].Block);
                 }
@@ -204,12 +207,14 @@ public abstract class BlockchainTestBase
             {
                 Assert.Fail($"Unexpected exception during processing: {e}");
             }
+
+            parentHeader = correctRlp[i].Block.Header;
         }
 
         await blockchainProcessor.StopAsync(true);
         stopwatch?.Stop();
 
-        IBlockCachePreWarmer? preWarmer = container.Resolve<AutoMainProcessingContext>().LifetimeScope.ResolveOptional<IBlockCachePreWarmer>();
+        IBlockCachePreWarmer? preWarmer = container.Resolve<MainProcessingContext>().LifetimeScope.ResolveOptional<IBlockCachePreWarmer>();
         if (preWarmer is not null)
         {
             // Caches are cleared async, which is a problem as read for the MainWorldState with prewarmer is not correct if its not cleared.

@@ -65,6 +65,7 @@ public class MergePluginTests
                 LimboLogs.Instance))
             .AddSingleton<IRpcModuleProvider>(Substitute.For<IRpcModuleProvider>())
             .AddModule(new HealthCheckPluginModule()) // The merge RPC require it.
+            .AddSingleton<IBlockProcessingQueue>(Substitute.For<IBlockProcessingQueue>())
             .OnBuild((ctx) =>
             {
                 INethermindApi api = ctx.Resolve<INethermindApi>();

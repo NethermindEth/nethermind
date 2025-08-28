@@ -215,9 +215,6 @@ public partial class MergePlugin(ChainSpec chainSpec, IMergeConfig mergeConfig) 
             _api.BlockProductionPolicy = _mergeBlockProductionPolicy;
             _api.FinalizationManager = InitializeMergeFinilizationManager();
 
-            // Need to do it here because blockprocessor is not available in init
-            _invalidChainTracker.SetupBlockchainProcessorInterceptor(_api.MainProcessingContext!.BlockchainProcessor!);
-
             if (_poSSwitcher.TransitionFinished)
             {
                 AddEth69();
@@ -290,6 +287,11 @@ public class BaseMergePluginModule : Module
                 .Bind<IPivot, IBeaconPivot>()
             .AddSingleton<InvalidChainTracker.InvalidChainTracker>()
                 .Bind<IInvalidChainTracker, InvalidChainTracker.InvalidChainTracker>()
+            .OnActivate<IMainProcessingContext>(((context, ctx) =>
+            {
+                ctx.Resolve<InvalidChainTracker.InvalidChainTracker>().SetupBlockchainProcessorInterceptor(context.BlockchainProcessor);
+            }))
+
             .AddSingleton<IPoSSwitcher, PoSSwitcher>()
             .AddDecorator<IBetterPeerStrategy, MergeBetterPeerStrategy>()
 

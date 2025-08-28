@@ -39,12 +39,6 @@ public class BlockValidator(
     public bool Validate(BlockHeader header, BlockHeader? parent, bool isUncle, out string? error) =>
         _headerValidator.Validate(header, parent, isUncle, out error);
 
-    public bool Validate(BlockHeader header, bool isUncle) =>
-        _headerValidator.Validate(header, isUncle, out _);
-
-    public bool Validate(BlockHeader header, bool isUncle, out string? error) =>
-        _headerValidator.Validate(header, isUncle, out error);
-
     /// <summary>
     /// Applies to blocks without parent
     /// </summary>
@@ -67,21 +61,13 @@ public class BlockValidator(
     /// Suggested block validation runs basic checks that can be executed before going through the expensive EVM processing.
     /// </summary>
     /// <param name="block">A block to validate</param>
-    /// <returns>
-    /// <c>true</c> if the <paramref name="block"/> is valid; otherwise, <c>false</c>.
-    /// </returns>
-    public bool ValidateSuggestedBlock(Block block) => ValidateSuggestedBlock(block, out _);
-
-    /// <summary>
-    /// Suggested block validation runs basic checks that can be executed before going through the expensive EVM processing.
-    /// </summary>
-    /// <param name="block">A block to validate</param>
+    /// <param name="parent">Parent of the block</param>
     /// <param name="errorMessage">Message detailing a validation failure.</param>
     /// <param name="validateHashes"></param>
     /// <returns>
     /// <c>true</c> if the <paramref name="block"/> is valid; otherwise, <c>false</c>.
     /// </returns>
-    public bool ValidateSuggestedBlock(Block block, out string? errorMessage, bool validateHashes = true)
+    public bool ValidateSuggestedBlock(Block block, BlockHeader? parent, out string? errorMessage, bool validateHashes = true)
     {
         IReleaseSpec spec = _specProvider.GetSpec(block.Header);
 
@@ -116,14 +102,14 @@ public class BlockValidator(
             return false;
         }
 
-        if (block.Uncles.Length > 0 && !_unclesValidator.Validate(block.Header, block.Uncles))
+        if (block.Uncles.Length > 0 && !_unclesValidator.Validate(block.Header, parent, block.Uncles))
         {
             if (_logger.IsDebug) _logger.Debug($"{Invalid(block)} Invalid uncles");
             errorMessage = BlockErrorMessages.InvalidUncle;
             return false;
         }
 
-        bool blockHeaderValid = _headerValidator.Validate(block.Header, false, out errorMessage);
+        bool blockHeaderValid = _headerValidator.Validate(block.Header, parent, false, out errorMessage);
         if (!blockHeaderValid)
         {
             if (_logger.IsDebug) _logger.Debug($"{Invalid(block)} Invalid header");

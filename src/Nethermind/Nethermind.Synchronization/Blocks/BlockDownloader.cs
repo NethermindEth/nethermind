@@ -211,7 +211,7 @@ namespace Nethermind.Synchronization.Blocks
                     BlockEntry entry = satisfiedEntry[blockIndex];
                     Block currentBlock = entry.Block!;
 
-                    if (!_blockValidator.ValidateSuggestedBlock(currentBlock, out string? errorMessage))
+                    if (!_blockValidator.ValidateSuggestedBlock(currentBlock, entry.ParentHeader, out string? errorMessage))
                     {
                         PeerInfo peer = entry.PeerInfo;
                         if (_logger.IsWarn) _logger.Warn($"Invalid downloaded block from {peer}, {errorMessage}");
@@ -301,7 +301,6 @@ namespace Nethermind.Synchronization.Blocks
                 BlockEntry? entry;
                 while (!_downloadRequests.TryGetValue(blockHeader.Hash!, out entry))
                 {
-                    blockHeader.MaybeParent = new WeakReference<BlockHeader>(parentHeader);
                     _downloadRequests.TryAdd(blockHeader.Hash, new BlockEntry(parentHeader, blockHeader, null, null, null));
                 }
                 parentHeader = blockHeader;

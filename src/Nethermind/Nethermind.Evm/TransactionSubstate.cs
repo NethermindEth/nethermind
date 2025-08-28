@@ -50,6 +50,7 @@ public readonly ref struct TransactionSubstate
 
     public bool IsError => Error is not null && !ShouldRevert;
     public string? Error { get; }
+    public EvmExceptionType EvmExceptionType { get; }
     public (ICodeInfo DeployCode, ReadOnlyMemory<byte> Bytes) Output { get; }
     public bool ShouldRevert { get; }
     public long Refund { get; }
@@ -59,6 +60,7 @@ public readonly ref struct TransactionSubstate
     public TransactionSubstate(EvmExceptionType exceptionType, bool isTracerConnected)
     {
         Error = isTracerConnected ? exceptionType.ToString() : SomeError;
+        EvmExceptionType = exceptionType;
         Refund = 0;
         _destroyList = _emptyDestroyList;
         _logs = _emptyLogs;
@@ -82,6 +84,7 @@ public readonly ref struct TransactionSubstate
         IToArrayCollection<LogEntry> logs,
         bool shouldRevert,
         bool isTracerConnected,
+        EvmExceptionType evmExceptionType = default,
         ILogger logger = default)
     {
         _logger = logger;
@@ -90,6 +93,7 @@ public readonly ref struct TransactionSubstate
         _destroyList = destroyList;
         _logs = logs;
         ShouldRevert = shouldRevert;
+        EvmExceptionType = evmExceptionType;
 
         if (!ShouldRevert)
         {

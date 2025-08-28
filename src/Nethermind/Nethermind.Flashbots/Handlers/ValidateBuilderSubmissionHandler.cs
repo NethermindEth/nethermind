@@ -244,7 +244,7 @@ public class ValidateSubmissionHandler
             }
         }
 
-        if (!_blockValidator.ValidateSuggestedBlock(block, out error))
+        if (!_blockValidator.ValidateSuggestedBlock(block, parentHeader, out error))
         {
             return false;
         }
@@ -273,7 +273,7 @@ public class ValidateSubmissionHandler
 
     private bool ValidateBlockMetadata(Block block, long registerGasLimit, BlockHeader parentHeader, out string? error)
     {
-        if (!_headerValidator.Validate(block.Header))
+        if (!_headerValidator.Validate(block.Header, parentHeader))
         {
             error = $"Invalid block header hash {block.Header.Hash}";
             return false;
