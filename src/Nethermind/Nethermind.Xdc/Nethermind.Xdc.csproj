@@ -2,6 +2,7 @@
 
   <PropertyGroup>
     <Nullable>annotations</Nullable>
+    <RootNamespace>Nethermind.Xdc</RootNamespace>
   </PropertyGroup>
 
   <ItemGroup>

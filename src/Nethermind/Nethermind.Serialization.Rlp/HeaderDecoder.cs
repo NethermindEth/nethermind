@@ -291,4 +291,8 @@ namespace Nethermind.Serialization.Rlp
             return Rlp.LengthOfSequence(GetContentLength(item, rlpBehaviors));
         }
     }
+
+    public interface IHeaderRlpCodec: IRlpValueDecoder<BlockHeader>, IRlpStreamDecoder<BlockHeader> { }
+
+    internal sealed class EthHeaderRlpCodec : HeaderDecoder, IHeaderRlpCodec { }
 }

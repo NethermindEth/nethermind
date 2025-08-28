@@ -12,7 +12,7 @@ using System.Text;
 using System.Threading.Tasks;
 
 namespace Nethermind.Xdc;
-internal class XdcBlockHeader : BlockHeader
+public class XdcBlockHeader : BlockHeader
 {
     public XdcBlockHeader(
         Hash256 parentHash,
