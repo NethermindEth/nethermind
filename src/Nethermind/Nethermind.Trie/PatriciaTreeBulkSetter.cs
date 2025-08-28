@@ -3,10 +3,12 @@
 
 using System;
 using System.Buffers.Binary;
+using System.Collections.Generic;
 using System.Numerics;
 using System.Reflection.Metadata;
 using System.Threading.Tasks;
 using DotNetty.Common.Internal;
+using Microsoft.Extensions.ObjectPool;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
@@ -114,15 +116,16 @@ public class PatriciaTreeBulkSetter(PatriciaTree patriciaTree)
         }
 
         TreePath path = TreePath.Empty;
-        patriciaTree.RootRef = BulkSet(entriesMemory, ref path, patriciaTree.RootRef, true);
+        Stack<TraverseStack> stack = new Stack<TraverseStack>();
+        patriciaTree.RootRef = BulkSet(stack, entriesMemory, ref path, patriciaTree.RootRef, true);
     }
 
-    internal TrieNode? BulkSet(Memory<BulkSetEntry> entriesMemory, ref TreePath currentPath, TrieNode? existingNode, bool canParallelize)
+    internal TrieNode? BulkSet(Stack<TraverseStack> traverseStack, Memory<BulkSetEntry> entriesMemory, ref TreePath currentPath, TrieNode? existingNode, bool canParallelize)
     {
         Span<BulkSetEntry> entries = entriesMemory.Span;
 
         if (entries.Length == 0) return existingNode;
-        if (entries.Length == 1) return BulkSetOne(entries[0], ref currentPath, existingNode);
+        if (entries.Length == 1) return BulkSetOneStack(traverseStack, entries[0], ref currentPath, existingNode);
 
         bool newBranch = false;
         if (existingNode is null)
@@ -175,11 +178,12 @@ public class PatriciaTreeBulkSetter(PatriciaTree patriciaTree)
                 jobs[i] = (jobEntry, nib, childPath, child);
             }
 
-            ParallelUnbalancedWork.For(0, nibToCheck, ParallelUnbalancedWork.DefaultOptions, jobs, (i, jobs) =>
+            ParallelUnbalancedWork.For(0, nibToCheck, ParallelUnbalancedWork.DefaultOptions, jobs,
+                (i, jobs) =>
             {
                 (Memory<BulkSetEntry> jobEntry, int nib, TreePath childPath, TrieNode child) = jobs[i];
 
-                child = BulkSet(jobEntry, ref childPath, child, false); // Only parallelize at top level.
+                child = BulkSet(new Stack<TraverseStack>(), jobEntry, ref childPath, child, false); // Only parallelize at top level.
                 jobs[i] = (jobEntry, nib, childPath, child);
                 return jobs;
             });
@@ -213,8 +217,8 @@ public class PatriciaTreeBulkSetter(PatriciaTree patriciaTree)
                 }
 
                 child = (endRange - startRange == 1)
-                    ? BulkSetOne(entries[startRange], ref currentPath, child)
-                    : BulkSet(entriesMemory.Slice(startRange, endRange - startRange), ref currentPath, child, canParallelize);
+                    ? BulkSetOneStack(traverseStack, entries[startRange], ref currentPath, child)
+                    : BulkSet(traverseStack, entriesMemory.Slice(startRange, endRange - startRange), ref currentPath, child, canParallelize);
                 if (child is null) hasRemove = true;
 
                 existingNode.SetChild(nib, child);
@@ -229,84 +233,137 @@ public class PatriciaTreeBulkSetter(PatriciaTree patriciaTree)
         return existingNode;
     }
 
-    internal TrieNode? BulkSetOne(BulkSetEntry entry, ref TreePath currentNodePath, TrieNode? currentNode)
+    internal TrieNode? BulkSetOneStack(Stack<TraverseStack> traverseStack, BulkSetEntry entry, ref TreePath currentNodePath, TrieNode? currentNode)
     {
         // Just for holding the expanded nibble for the key
         Span<byte> nibble = stackalloc byte[64];
-        Span<byte> remainingKey = nibble[currentNodePath.Length..];
-
         Nibbles.BytesToNibbleBytes(entry.Path.BytesAsSpan, nibble);
-        return BulkSetOne(remainingKey, entry.Value, ref currentNodePath, currentNode);
-    }
+        Span<byte> remainingKey = nibble[currentNodePath.Length..];
+        byte[] value = entry.Value;
 
-    internal TrieNode? BulkSetOne(Span<byte> remainingKey, byte[] value, ref TreePath currentNodePath, TrieNode? currentNode)
-    {
-        // 80% of the time is spent in this func.
-        if (currentNode is null)
+        while (true)
         {
-            if (value is null || value.Length == 0) return null;
-            return TrieNodeFactory.CreateLeaf(remainingKey.ToArray(), value);
-        }
-
-        currentNode.ResolveNode(patriciaTree.TrieStore, currentNodePath);
-
-        if (currentNode.IsLeaf)
-        {
-            int commonPrefixLength = remainingKey.CommonPrefixLength(currentNode.Key);
-            if (commonPrefixLength == currentNode.Key!.Length)
+            if (currentNode is null)
             {
-                if (value is null || value.Length == 0) return null;
+                if (value is null || value.Length == 0)
+                    currentNode = null;
+                else
+                    currentNode = TrieNodeFactory.CreateLeaf(remainingKey.ToArray(), value);
 
-                if (currentNode.IsSealed)
-                {
-                    return TrieNodeFactory.CreateLeaf(remainingKey.ToArray(), value);
-                }
-
-                currentNode.Value = value;
-                return currentNode;
+                // End traverse
+                break;
             }
 
-            // No change in structure
-            if (value is null || value.Length == 0) return currentNode;
+            currentNode.ResolveNode(patriciaTree.TrieStore, currentNodePath);
 
-            // Making a T branch here.
-            // If the commonPrefixLength > 0, we'll also need to also make an extension in front of the branch.
-            TrieNode theBranch = TrieNodeFactory.CreateBranch();
-            theBranch[currentNode.Key[commonPrefixLength]] =
-                TrieNodeFactory.CreateLeaf(currentNode.Key.Slice(commonPrefixLength + 1), currentNode.Value);
-            theBranch[remainingKey[commonPrefixLength]] =
-                TrieNodeFactory.CreateLeaf(remainingKey[(commonPrefixLength+1)..].ToArray(), value);
+            if (currentNode.IsLeaf)
+            {
+                int commonPrefixLength = remainingKey.CommonPrefixLength(currentNode.Key);
+                if (commonPrefixLength == currentNode.Key!.Length)
+                {
+                    if (value is null || value.Length == 0)
+                    {
+                        currentNode = null;
+                    }
+                    else if (currentNode.IsSealed)
+                    {
+                        currentNode = TrieNodeFactory.CreateLeaf(remainingKey.ToArray(), value);
+                    }
+                    else
+                    {
+                        currentNode.Value = value;
+                    }
 
-            if (commonPrefixLength == 0) return theBranch;
+                    // end traverse
+                    break;
+                }
 
-            return TrieNodeFactory.CreateExtension(remainingKey[..commonPrefixLength].ToArray(), theBranch);
+                // No change in structure
+                if (value is null || value.Length == 0)
+                {
+                    // end traverse
+                    break;
+                }
+
+                // Making a T branch here.
+                // If the commonPrefixLength > 0, we'll also need to also make an extension in front of the branch.
+                TrieNode theBranch = TrieNodeFactory.CreateBranch();
+                theBranch[currentNode.Key[commonPrefixLength]] =
+                    TrieNodeFactory.CreateLeaf(currentNode.Key.Slice(commonPrefixLength + 1), currentNode.Value);
+                theBranch[remainingKey[commonPrefixLength]] =
+                    TrieNodeFactory.CreateLeaf(remainingKey[(commonPrefixLength+1)..].ToArray(), value);
+
+                if (commonPrefixLength == 0)
+                {
+                    currentNode = theBranch;
+                }
+                else
+                {
+                    currentNode = TrieNodeFactory.CreateExtension(remainingKey[..commonPrefixLength].ToArray(), theBranch);
+                }
+
+                // end traverse
+                break;
+            }
+
+            // We make a fake branch
+            bool shouldCheckForBranchMerge = false;
+            if (currentNode.IsExtension)
+            {
+                currentNode = MakeFakeBranch(ref currentNodePath, currentNode);
+                shouldCheckForBranchMerge = true;
+            }
+
+            if (currentNode.IsSealed)
+            {
+                currentNode = currentNode.Clone();
+            }
+
+            int nib = remainingKey[0];
+            currentNodePath.AppendMut(nib);
+            TrieNode? child = currentNode.GetChildWithChildPath(patriciaTree.TrieStore, ref currentNodePath, nib);
+
+            traverseStack.Push(new TraverseStack()
+            {
+                Node = currentNode,
+                ChildIdx = nib,
+                ShouldCheckForBranchMerge = shouldCheckForBranchMerge
+            });
+
+            // Continue loop with child as current node
+            currentNode = child;
+            remainingKey = remainingKey[1..];
         }
 
-        // We make a fake branch
-        bool shouldCheckForBranchMerge = false;
-        if (currentNode.IsExtension)
+        while (traverseStack.TryPop(out TraverseStack cStack))
         {
-            currentNode = MakeFakeBranch(ref currentNodePath, currentNode);
-            shouldCheckForBranchMerge = true;
+            TrieNode? child = currentNode;
+            currentNode = cStack.Node;
+            bool shouldCheckForBranchMerge = cStack.ShouldCheckForBranchMerge;
+            int nib = cStack.ChildIdx;
+
+            currentNodePath.TruncateOne();
+
+            if (child is null) shouldCheckForBranchMerge = true;
+
+            currentNode.SetChild(nib, child);
+
+            if (!shouldCheckForBranchMerge)
+            {
+                continue;
+            }
+
+            currentNode = MaybeCombineNode(ref currentNodePath, currentNode);
         }
 
-        if (currentNode.IsSealed)
-        {
-            currentNode = currentNode.Clone();
-        }
+        return currentNode;
+    }
 
-        int nib = remainingKey[0];
-        currentNodePath.AppendMut(nib);
-        TrieNode? child = currentNode.GetChildWithChildPath(patriciaTree.TrieStore, ref currentNodePath, nib);
-        child = BulkSetOne(remainingKey[1..], value, ref currentNodePath, child);
-        currentNodePath.TruncateOne();
-
-        if (child is null) shouldCheckForBranchMerge = true;
-        currentNode.SetChild(nib, child);
-
-        if (!shouldCheckForBranchMerge) return currentNode;
-
-        return MaybeCombineNode(ref currentNodePath, currentNode);
+    internal struct TraverseStack
+    {
+        public TrieNode Node;
+        public int ChildIdx;
+        public bool ShouldCheckForBranchMerge;
     }
 
     private TrieNode? MakeFakeBranch(ref TreePath currentPath, TrieNode? existingNode)
@@ -346,10 +403,12 @@ public class PatriciaTreeBulkSetter(PatriciaTree patriciaTree)
         // Called, about 0.5% of the time (count)
         // Take about 2% of total time (second)
         int onlyChildIdx = -1;
+        currentPath.AppendMut(0);
+        var iterator = existingNode.CreateChildIterator();
         for (int i = 0; i < TrieNode.BranchesCount; i++)
         {
-            currentPath.AppendMut(i);
-            TrieNode? child = existingNode.GetChildWithChildPath(patriciaTree.TrieStore, ref currentPath, i);
+            currentPath.SetLast(i);
+            TrieNode? child = iterator.GetChildWithChildPath(patriciaTree.TrieStore, ref currentPath, i);
 
             if (child is not null)
             {
@@ -365,8 +424,8 @@ public class PatriciaTreeBulkSetter(PatriciaTree patriciaTree)
                 }
             }
 
-            currentPath.TruncateOne();
         }
+        currentPath.TruncateOne();
         if (onlyChildIdx == -1) return null;
 
 
