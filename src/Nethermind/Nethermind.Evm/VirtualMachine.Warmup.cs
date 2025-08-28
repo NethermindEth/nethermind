@@ -28,7 +28,7 @@ public unsafe partial class VirtualMachineBase
     {
         IReleaseSpec spec = Fork.GetLatest();
         IBlockhashProvider hashProvider = new WarmupBlockhashProvider(MainnetSpecProvider.Instance);
-        IPrecompileChecker precompileChecker = new EthereumPrecompileChecker(); // Add this
+        IPrecompileChecker precompileChecker = new EthereumPrecompileChecker();
         VirtualMachineBase vm = new(hashProvider, MainnetSpecProvider.Instance, LimboLogs.Instance, precompileChecker);
         ILogManager lm = new OneLoggerLogManager(NullLogger.Instance);
 
