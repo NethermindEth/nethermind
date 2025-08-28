@@ -88,7 +88,7 @@ public class CliqueBlockProducerTests
             MemDb blocksDb = new();
 
             ISpecProvider specProvider = SepoliaSpecProvider.Instance;
-            IPrecompileChecker precompileChecker = new EthereumPrecompileChecker();
+            IPrecompileChecker precompileChecker = TestPrecompiles.Ethereum;
             IWorldStateManager worldStateManager = TestWorldStateFactory.CreateForTest();
             IStateReader stateReader = worldStateManager.GlobalStateReader;
             IWorldState stateProvider = worldStateManager.GlobalWorldState;

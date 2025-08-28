@@ -392,7 +392,7 @@ namespace Nethermind.Evm.Test.Tracing
                 _stateProvider.CreateAccount(TestItem.AddressA, 1.Ether());
                 _stateProvider.Commit(_specProvider.GenesisSpec);
                 _stateProvider.CommitTree(0);
-                precompileChecker = new EthereumPrecompileChecker();
+                precompileChecker = TestPrecompiles.Ethereum;
 
                 CodeInfoRepository codeInfoRepository = new(precompileChecker);
                 VirtualMachine virtualMachine = new(new TestBlockhashProvider(_specProvider), _specProvider, LimboLogs.Instance, precompileChecker);

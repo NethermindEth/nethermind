@@ -42,7 +42,7 @@ public class TransactionProcessorFeeTests
         _stateProvider.CreateAccount(TestItem.AddressA, 1.Ether());
         _stateProvider.Commit(_specProvider.GenesisSpec);
         _stateProvider.CommitTree(0);
-        _precompileChecker = new EthereumPrecompileChecker();
+        _precompileChecker = TestPrecompiles.Ethereum;
 
         CodeInfoRepository codeInfoRepository = new(_precompileChecker);
         VirtualMachine virtualMachine = new(new TestBlockhashProvider(_specProvider), _specProvider, LimboLogs.Instance, _precompileChecker);

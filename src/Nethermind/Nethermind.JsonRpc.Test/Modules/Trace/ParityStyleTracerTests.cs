@@ -69,7 +69,7 @@ public class ParityStyleTracerTests
 
         BlockhashProvider blockhashProvider = new(_blockTree, specProvider, stateProvider, LimboLogs.Instance);
         CodeInfoRepository codeInfoRepository = new(_precompileChecker);
-        _precompileChecker = new EthereumPrecompileChecker();
+        _precompileChecker = TestPrecompiles.Ethereum;
         VirtualMachine virtualMachine = new(blockhashProvider, specProvider, LimboLogs.Instance, _precompileChecker);
         TransactionProcessor transactionProcessor = new(specProvider, stateProvider, virtualMachine, codeInfoRepository, LimboLogs.Instance);
 

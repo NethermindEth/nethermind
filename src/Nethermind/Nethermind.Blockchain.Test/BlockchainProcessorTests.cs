@@ -523,7 +523,7 @@ public class BlockchainProcessorTests
                     new FixedForkActivationChainHeadSpecProvider(specProvider, fixedBlock: 10_000_000),
                     blockTree,
                     readOnlyState,
-                    new CodeInfoRepository(new EthereumPrecompileChecker()))
+                    new CodeInfoRepository(TestPrecompiles.Ethereum))
                 {
                     HasSynced = true
                 };

@@ -44,7 +44,7 @@ public class ReorgTests
         IDbProvider memDbProvider = TestMemDbProvider.Init();
         IWorldStateManager worldStateManager = TestWorldStateFactory.CreateForTest(memDbProvider, LimboLogs.Instance);
         IWorldState stateProvider = worldStateManager.GlobalWorldState;
-        IPrecompileChecker precompileChecker = new EthereumPrecompileChecker();
+        IPrecompileChecker precompileChecker = TestPrecompiles.Ethereum;
         IReleaseSpec finalSpec = specProvider.GetFinalSpec();
 
         if (finalSpec.WithdrawalsEnabled)

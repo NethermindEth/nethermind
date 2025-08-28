@@ -70,7 +70,7 @@ public class CodeInfoRepositoryTests
         IWorldState stateProvider = worldStateManager.GlobalWorldState;
         stateProvider.CreateAccount(TestItem.AddressA, 0);
         stateProvider.InsertCode(TestItem.AddressA, code, Substitute.For<IReleaseSpec>());
-        IPrecompileChecker precompileChecker = new EthereumPrecompileChecker();
+        IPrecompileChecker precompileChecker = TestPrecompiles.Ethereum;
         CodeInfoRepository sut = new(precompileChecker);
 
         sut.TryGetDelegation(stateProvider, TestItem.AddressA, Substitute.For<IReleaseSpec>(), out _).Should().Be(false);
@@ -100,7 +100,7 @@ public class CodeInfoRepositoryTests
         IWorldState stateProvider = worldStateManager.GlobalWorldState;
         stateProvider.CreateAccount(TestItem.AddressA, 0);
         stateProvider.InsertCode(TestItem.AddressA, code, Substitute.For<IReleaseSpec>());
-        IPrecompileChecker precompileChecker = new EthereumPrecompileChecker();
+        IPrecompileChecker precompileChecker = TestPrecompiles.Ethereum;
         CodeInfoRepository sut = new(precompileChecker);
 
         sut.TryGetDelegation(stateProvider, TestItem.AddressA, Substitute.For<IReleaseSpec>(), out _).Should().Be(true);
@@ -114,7 +114,7 @@ public class CodeInfoRepositoryTests
         IWorldState stateProvider = worldStateManager.GlobalWorldState;
         stateProvider.CreateAccount(TestItem.AddressA, 0);
         stateProvider.InsertCode(TestItem.AddressA, code, Substitute.For<IReleaseSpec>());
-        IPrecompileChecker precompileChecker = new EthereumPrecompileChecker();
+        IPrecompileChecker precompileChecker = TestPrecompiles.Ethereum;
         CodeInfoRepository sut = new(precompileChecker);
 
         Address result;
@@ -136,7 +136,7 @@ public class CodeInfoRepositoryTests
         stateProvider.CreateAccount(delegationAddress, 0);
         stateProvider.InsertCode(delegationAddress, delegationCode, Substitute.For<IReleaseSpec>());
 
-        IPrecompileChecker precompileChecker = new EthereumPrecompileChecker();
+        IPrecompileChecker precompileChecker = TestPrecompiles.Ethereum;
         CodeInfoRepository sut = new(precompileChecker);
 
         sut.GetExecutableCodeHash(stateProvider, TestItem.AddressA, Substitute.For<IReleaseSpec>()).Should().Be(Keccak.Compute(code).ValueHash256);
@@ -151,7 +151,7 @@ public class CodeInfoRepositoryTests
         stateProvider.CreateAccount(TestItem.AddressA, 0);
         stateProvider.InsertCode(TestItem.AddressA, code, Substitute.For<IReleaseSpec>());
 
-        IPrecompileChecker precompileChecker = new EthereumPrecompileChecker();
+        IPrecompileChecker precompileChecker = TestPrecompiles.Ethereum;
         CodeInfoRepository sut = new(precompileChecker);
 
         sut.GetExecutableCodeHash(stateProvider, TestItem.AddressA, Substitute.For<IReleaseSpec>()).Should().Be(Keccak.Compute(code).ValueHash256);
@@ -169,7 +169,7 @@ public class CodeInfoRepositoryTests
         stateProvider.CreateAccount(delegationAddress, 0);
         byte[] delegationCode = new byte[32];
         stateProvider.InsertCode(delegationAddress, delegationCode, Substitute.For<IReleaseSpec>());
-        IPrecompileChecker precompileChecker = new EthereumPrecompileChecker();
+        IPrecompileChecker precompileChecker = TestPrecompiles.Ethereum;
         CodeInfoRepository sut = new(precompileChecker);
 
         ICodeInfo result = sut.GetCachedCodeInfo(stateProvider, TestItem.AddressA, Substitute.For<IReleaseSpec>());
@@ -185,7 +185,7 @@ public class CodeInfoRepositoryTests
         stateProvider.CreateAccount(TestItem.AddressA, 0);
         stateProvider.InsertCode(TestItem.AddressA, code, Substitute.For<IReleaseSpec>());
 
-        IPrecompileChecker precompileChecker = new EthereumPrecompileChecker();
+        IPrecompileChecker precompileChecker = TestPrecompiles.Ethereum;
         CodeInfoRepository sut = new(precompileChecker);
 
         sut.GetCachedCodeInfo(stateProvider, TestItem.AddressA, Substitute.For<IReleaseSpec>()).Should().BeEquivalentTo(new CodeInfo(code));

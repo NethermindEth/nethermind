@@ -35,7 +35,7 @@ internal class TransactionProcessorEip4844Tests
         _specProvider = new TestSpecProvider(Cancun.Instance);
         IWorldStateManager worldStateManager = TestWorldStateFactory.CreateForTest();
         _stateProvider = worldStateManager.GlobalWorldState;
-        _precompileChecker = new EthereumPrecompileChecker();
+        _precompileChecker = TestPrecompiles.Ethereum;
         CodeInfoRepository codeInfoRepository = new(_precompileChecker);
         VirtualMachine virtualMachine = new(new TestBlockhashProvider(_specProvider), _specProvider, LimboLogs.Instance, _precompileChecker);
         _transactionProcessor = new TransactionProcessor(_specProvider, _stateProvider, virtualMachine, codeInfoRepository, LimboLogs.Instance);

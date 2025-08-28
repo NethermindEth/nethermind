@@ -73,7 +73,7 @@ public class ProofRpcModuleTests
             .WithTransactions(receiptStorage)
             .OfChainLength(10)
             .TestObject;
-        _precompileChecker = new EthereumPrecompileChecker();
+        _precompileChecker = TestPrecompiles.Ethereum;
 
         _readOnlyTxProcessingEnvFactory = new ReadOnlyTxProcessingEnvFactory(_worldStateManager, _blockTree, _specProvider, LimboLogs.Instance, _precompileChecker);
 

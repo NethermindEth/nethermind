@@ -43,7 +43,7 @@ public class NonceManagerTests
         _blockTree.Head.Returns(block);
         _blockTree.FindBestSuggestedHeader().Returns(Build.A.BlockHeader.WithNumber(10000000).TestObject);
 
-        _headInfo = new ChainHeadInfoProvider(_specProvider, _blockTree, _stateProvider, new CodeInfoRepository(new EthereumPrecompileChecker()));
+        _headInfo = new ChainHeadInfoProvider(_specProvider, _blockTree, _stateProvider, new CodeInfoRepository(TestPrecompiles.Ethereum));
         _nonceManager = new NonceManager(_headInfo.ReadOnlyStateProvider);
     }
 

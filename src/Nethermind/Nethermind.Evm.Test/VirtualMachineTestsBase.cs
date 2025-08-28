@@ -50,7 +50,7 @@ public abstract class VirtualMachineTestsBase
     protected virtual long BlockNumber { get; } = MainnetSpecProvider.ByzantiumBlockNumber;
     protected virtual ulong Timestamp => 0UL;
     protected virtual ISpecProvider SpecProvider => MainnetSpecProvider.Instance;
-    protected IPrecompileChecker _precompileChecker => new EthereumPrecompileChecker();
+    protected IPrecompileChecker _precompileChecker => TestPrecompiles.Ethereum;
     protected IReleaseSpec Spec => SpecProvider.GetSpec(Activation);
 
     protected virtual ILogManager GetLogManager()

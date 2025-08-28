@@ -150,7 +150,7 @@ public class EvmPooledMemoryTests : EvmMemoryTestsBase
         IWorldStateManager worldStateManager = TestWorldStateFactory.CreateForTest();
         IWorldState stateProvider = worldStateManager.GlobalWorldState;
         ISpecProvider specProvider = new TestSpecProvider(London.Instance);
-        IPrecompileChecker precompileChecker = new EthereumPrecompileChecker();
+        IPrecompileChecker precompileChecker = TestPrecompiles.Ethereum;
         CodeInfoRepository codeInfoRepository = new(precompileChecker);
         VirtualMachine virtualMachine = new(
             new TestBlockhashProvider(specProvider),

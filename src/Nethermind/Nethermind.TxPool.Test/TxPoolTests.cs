@@ -2196,7 +2196,7 @@ namespace Nethermind.TxPool.Test
             txStorage ??= new BlobTxStorage();
 
             _headInfo = chainHeadInfoProvider;
-            _headInfo ??= new ChainHeadInfoProvider(specProvider, _blockTree, _stateProvider, new CodeInfoRepository(new EthereumPrecompileChecker()));
+            _headInfo ??= new ChainHeadInfoProvider(specProvider, _blockTree, _stateProvider, new CodeInfoRepository(TestPrecompiles.Ethereum));
 
             return new TxPool(
                 _ethereumEcdsa,
