@@ -17,7 +17,7 @@ public interface IWorldStateBackend
     bool HasRoot(BlockHeader? baseBlock);
     IScope BeginScope(BlockHeader? baseBlock);
 
-    public interface IScope: IDisposable
+    public interface IScope : IDisposable
     {
         /// <summary>
         /// The top level tree that holds account information.
