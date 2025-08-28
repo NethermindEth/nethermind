@@ -9,6 +9,7 @@ using Nethermind.Consensus.Processing;
 using Nethermind.Consensus.Rewards;
 using Nethermind.Consensus.Tracing;
 using Nethermind.Consensus.Validators;
+using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
 using Nethermind.Evm.TransactionProcessing;
@@ -29,7 +30,8 @@ public class TraceModuleFactory(
     IReceiptStorage receiptFinder,
     ISpecProvider specProvider,
     IPoSSwitcher poSSwitcher,
-    ILogManager logManager) : ModuleFactoryBase<ITraceRpcModule>
+    ILogManager logManager,
+    IPrecompileChecker precompileChecker) : ModuleFactoryBase<ITraceRpcModule>
 {
     protected readonly IReadOnlyBlockTree _blockTree = blockTree.AsReadOnly();
     protected readonly IJsonRpcConfig _jsonRpcConfig = jsonRpcConfig ?? throw new ArgumentNullException(nameof(jsonRpcConfig));
@@ -41,8 +43,9 @@ public class TraceModuleFactory(
     protected readonly IBlockPreprocessorStep _recoveryStep = recoveryStep ?? throw new ArgumentNullException(nameof(recoveryStep));
     protected readonly IRewardCalculatorSource _rewardCalculatorSource = rewardCalculatorSource ?? throw new ArgumentNullException(nameof(rewardCalculatorSource));
     protected readonly IPoSSwitcher _poSSwitcher = poSSwitcher ?? throw new ArgumentNullException(nameof(poSSwitcher));
+    protected readonly IPrecompileChecker _precompileChecker = precompileChecker ?? throw new ArgumentNullException(nameof(precompileChecker));
 
-    protected virtual OverridableTxProcessingEnv CreateTxProcessingEnv(IOverridableWorldScope worldScope) => new(worldScope, _blockTree, _specProvider, _logManager);
+    protected virtual OverridableTxProcessingEnv CreateTxProcessingEnv(IOverridableWorldScope worldScope) => new(worldScope, _blockTree, _specProvider, _logManager, _precompileChecker);
 
     protected virtual ReadOnlyChainProcessingEnv CreateChainProcessingEnv(IOverridableWorldScope worldScope, IBlockProcessor.IBlockTransactionsExecutor transactionsExecutor, IReadOnlyTxProcessingScope scope, IRewardCalculator rewardCalculator) => new(
                 scope,

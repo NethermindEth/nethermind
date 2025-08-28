@@ -26,6 +26,7 @@ public class CodeInfoRepository : ICodeInfoRepository
     private static readonly FrozenDictionary<AddressAsKey, PrecompileInfo> _precompiles = InitializePrecompiledContracts();
     private static readonly CodeLruCache _codeCache = new();
     private readonly FrozenDictionary<AddressAsKey, PrecompileInfo> _localPrecompiles;
+    private readonly IPrecompileChecker _precompileChecker;
 
     private static FrozenDictionary<AddressAsKey, PrecompileInfo> InitializePrecompiledContracts()
     {
@@ -59,6 +60,7 @@ public class CodeInfoRepository : ICodeInfoRepository
 
     public CodeInfoRepository(ConcurrentDictionary<PreBlockCaches.PrecompileCacheKey, (byte[], bool)>? precompileCache = null)
     {
+        _precompileChecker = new EthereumPrecompileChecker();
         _localPrecompiles = precompileCache is null
             ? _precompiles
             : _precompiles.ToFrozenDictionary(kvp => kvp.Key, kvp => CreateCachedPrecompile(kvp, precompileCache));
@@ -67,7 +69,7 @@ public class CodeInfoRepository : ICodeInfoRepository
     public ICodeInfo GetCachedCodeInfo(IWorldState worldState, Address codeSource, bool followDelegation, IReleaseSpec vmSpec, out Address? delegationAddress)
     {
         delegationAddress = null;
-        if (codeSource.IsPrecompile(vmSpec))
+        if (_precompileChecker.IsPrecompile(codeSource, vmSpec))
         {
             return _localPrecompiles[codeSource];
         }

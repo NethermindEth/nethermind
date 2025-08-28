@@ -5,6 +5,7 @@ using Nethermind.Blockchain;
 using Nethermind.Blockchain.Blocks;
 using Nethermind.Blockchain.Headers;
 using Nethermind.Blockchain.Synchronization;
+using Nethermind.Core;
 using Nethermind.Core.Specs;
 using Nethermind.Db;
 using Nethermind.Db.Blooms;
@@ -20,6 +21,7 @@ public class SimulateReadOnlyBlocksProcessingEnvFactory(
     IDbProvider dbProvider,
     ISpecProvider specProvider,
     ISimulateTransactionProcessorFactory transactionProcessorFactory,
+    IPrecompileChecker precompileChecker,
     ILogManager? logManager = null)
 {
     public SimulateReadOnlyBlocksProcessingEnv Create(bool validate)
@@ -35,6 +37,7 @@ public class SimulateReadOnlyBlocksProcessingEnvFactory(
             tempBlockTree,
             specProvider,
             transactionProcessorFactory,
+            precompileChecker,
             logManager,
             validate);
     }

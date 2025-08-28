@@ -10,6 +10,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using Microsoft.ClearScript.JavaScript;
 using Microsoft.ClearScript.V8;
+using Nethermind.Core;
 using Nethermind.Core.Caching;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
@@ -31,6 +32,7 @@ public class Engine : IDisposable
     private const string Extension = "js";
 
     private readonly IReleaseSpec _spec;
+    private readonly IPrecompileChecker _precompileChecker;
 
     private dynamic _bigInteger;
     private dynamic _createUint8Array;
@@ -75,9 +77,10 @@ public class Engine : IDisposable
 
     private static V8Script LoadBuiltIn(string name, string code) => _builtInScripts.AddOrUpdate(name, c => _runtime.Compile(code), static (_, script) => script);
 
-    public Engine(IReleaseSpec spec)
+    public Engine(IReleaseSpec spec, IPrecompileChecker? precompileChecker = null)
     {
         _spec = spec;
+        _precompileChecker = precompileChecker ?? new EthereumPrecompileChecker();
 
         V8Engine = _runtime.CreateScriptEngine(IsDebugging
             ? V8ScriptEngineFlags.AwaitDebuggerAndPauseOnStart | V8ScriptEngineFlags.EnableDebugging
@@ -126,8 +129,7 @@ public class Engine : IDisposable
     /// <summary>
     /// Checks if contract at given address is a precompile
     /// </summary>
-    private bool IsPrecompiled(object address) => address.ToAddress().IsPrecompile(_spec);
-
+    private bool IsPrecompiled(object address) => _precompileChecker.IsPrecompile(address.ToAddress(), _spec);
     /// <summary>
     /// Returns a slice of input
     /// </summary>

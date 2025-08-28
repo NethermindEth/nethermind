@@ -20,11 +20,11 @@ using Nethermind.Core.Test.Builders;
 using Nethermind.Crypto;
 using Nethermind.Db;
 using Nethermind.Evm;
+using Nethermind.Evm.Precompiles;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Logging;
 using Nethermind.Specs;
 using Nethermind.State;
-using Nethermind.Trie.Pruning;
 using Nethermind.TxPool;
 using NUnit.Framework;
 
@@ -44,7 +44,7 @@ public class ReorgTests
         IDbProvider memDbProvider = TestMemDbProvider.Init();
         IWorldStateManager worldStateManager = TestWorldStateFactory.CreateForTest(memDbProvider, LimboLogs.Instance);
         IWorldState stateProvider = worldStateManager.GlobalWorldState;
-
+        IPrecompileChecker precompileChecker = new EthereumPrecompileChecker();
         IReleaseSpec finalSpec = specProvider.GetFinalSpec();
 
         if (finalSpec.WithdrawalsEnabled)
@@ -85,7 +85,8 @@ public class ReorgTests
         VirtualMachine virtualMachine = new(
             blockhashProvider,
             specProvider,
-            LimboLogs.Instance);
+            LimboLogs.Instance,
+            precompileChecker);
         TransactionProcessor transactionProcessor = new(
             specProvider,
             stateProvider,

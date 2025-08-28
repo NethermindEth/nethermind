@@ -15,7 +15,6 @@ using Nethermind.Consensus.Rewards;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
-using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Evm.Tracing.GethStyle;
 using Nethermind.Facade;
@@ -70,7 +69,8 @@ public partial class DebugRpcModuleTests
                 syncModeSelector,
                 new BadBlockStore(blockchain.BlocksDb, 100),
                 new FileSystem(),
-                blockchain.LogManager
+                blockchain.LogManager,
+                blockchain.PrecompileChecker
             );
 
             IDebugRpcModule debugRpcModule = factory.Create();

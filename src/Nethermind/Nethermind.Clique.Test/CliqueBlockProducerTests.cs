@@ -28,7 +28,6 @@ using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.Specs;
 using Nethermind.State;
-using Nethermind.Trie.Pruning;
 using Nethermind.TxPool;
 using NUnit.Framework;
 using System;
@@ -39,6 +38,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Consensus.ExecutionRequests;
 using Nethermind.Consensus.Withdrawals;
+using Nethermind.Evm.Precompiles;
 
 namespace Nethermind.Clique.Test;
 
@@ -88,7 +88,7 @@ public class CliqueBlockProducerTests
             MemDb blocksDb = new();
 
             ISpecProvider specProvider = SepoliaSpecProvider.Instance;
-
+            IPrecompileChecker precompileChecker = new EthereumPrecompileChecker();
             IWorldStateManager worldStateManager = TestWorldStateFactory.CreateForTest();
             IStateReader stateReader = worldStateManager.GlobalStateReader;
             IWorldState stateProvider = worldStateManager.GlobalWorldState;
@@ -144,7 +144,7 @@ public class CliqueBlockProducerTests
             _genesis3Validators.Header.Hash = _genesis3Validators.Header.CalculateHash();
 
             TransactionProcessor transactionProcessor = new(testnetSpecProvider, stateProvider,
-                new VirtualMachine(blockhashProvider, specProvider, nodeLogManager),
+                new VirtualMachine(blockhashProvider, specProvider, nodeLogManager , precompileChecker),
                 codeInfoRepository,
                 nodeLogManager);
             BlockProcessor blockProcessor = new BlockProcessor(
@@ -180,7 +180,7 @@ public class CliqueBlockProducerTests
             minerStateProvider.Commit(testnetSpecProvider.GenesisSpec);
             minerStateProvider.CommitTree(0);
 
-            VirtualMachine minerVirtualMachine = new(blockhashProvider, specProvider, nodeLogManager);
+            VirtualMachine minerVirtualMachine = new(blockhashProvider, specProvider, nodeLogManager, precompileChecker);
             TransactionProcessor minerTransactionProcessor = new(testnetSpecProvider, minerStateProvider, minerVirtualMachine, codeInfoRepository, nodeLogManager);
 
             BlockProcessor minerBlockProcessor = new BlockProcessor(

@@ -14,7 +14,6 @@ using Nethermind.Blockchain.BeaconBlockRoot;
 using Nethermind.Blockchain.Blocks;
 using Nethermind.Blockchain.Filters;
 using Nethermind.Blockchain.Receipts;
-using Nethermind.Blockchain.Services;
 using Nethermind.Config;
 using Nethermind.Consensus;
 using Nethermind.Consensus.Comparers;
@@ -201,7 +200,8 @@ namespace Nethermind.Init.Steps
             VirtualMachine virtualMachine = new(
                 blockhashProvider,
                 _api.SpecProvider,
-                _api.LogManager);
+                _api.LogManager,
+                _api.PrecompileChecker);
 
             return virtualMachine;
         }

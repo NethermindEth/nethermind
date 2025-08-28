@@ -2,8 +2,8 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using Nethermind.Core;
-using Nethermind.Specs;
 using Nethermind.Evm.Precompiles;
+using Nethermind.Specs;
 using NUnit.Framework;
 
 namespace Nethermind.Evm.Test;
@@ -28,7 +28,7 @@ public class Eip152Tests : VirtualMachineTestsBase
     {
         _blockNumberAdjustment = -1;
         Address precompileAddress = Blake2FPrecompile.Address;
-        Assert.That(precompileAddress.IsPrecompile(Spec), Is.False);
+        Assert.That(_precompileChecker.IsPrecompile(precompileAddress, Spec), Is.False);
     }
 
     [Test]

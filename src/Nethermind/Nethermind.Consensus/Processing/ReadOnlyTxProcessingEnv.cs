@@ -3,6 +3,7 @@
 
 using System;
 using Nethermind.Blockchain;
+using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
 using Nethermind.Evm;
@@ -42,8 +43,9 @@ namespace Nethermind.Consensus.Processing
             IReadOnlyBlockTree readOnlyBlockTree,
             ISpecProvider specProvider,
             ILogManager logManager,
-            IWorldState worldStateToWarmUp
-            ) : this(worldStateManager.GlobalStateReader, worldStateManager.CreateWorldStateForWarmingUp(worldStateToWarmUp), new CodeInfoRepository((worldStateToWarmUp as IPreBlockCaches)?.Caches.PrecompileCache), readOnlyBlockTree, specProvider, logManager)
+            IWorldState worldStateToWarmUp,
+            IPrecompileChecker precompileChecker
+            ) : this(worldStateManager.GlobalStateReader, worldStateManager.CreateWorldStateForWarmingUp(worldStateToWarmUp), new CodeInfoRepository((worldStateToWarmUp as IPreBlockCaches)?.Caches.PrecompileCache), readOnlyBlockTree, specProvider, logManager, precompileChecker)
         {
         }
 
@@ -51,8 +53,9 @@ namespace Nethermind.Consensus.Processing
             IWorldStateManager worldStateManager,
             IReadOnlyBlockTree readOnlyBlockTree,
             ISpecProvider specProvider,
-            ILogManager logManager
-            ) : this(worldStateManager.GlobalStateReader, worldStateManager.CreateResettableWorldState(), new CodeInfoRepository(), readOnlyBlockTree, specProvider, logManager)
+            ILogManager logManager,
+            IPrecompileChecker precompileChecker
+            ) : this(worldStateManager.GlobalStateReader, worldStateManager.CreateResettableWorldState(), new CodeInfoRepository(), readOnlyBlockTree, specProvider, logManager, precompileChecker)
         {
         }
 
@@ -62,7 +65,8 @@ namespace Nethermind.Consensus.Processing
             ICodeInfoRepository codeInfoRepository,
             IReadOnlyBlockTree readOnlyBlockTree,
             ISpecProvider specProvider,
-            ILogManager logManager
+            ILogManager logManager,
+            IPrecompileChecker precompileChecker
             )
         {
             SpecProvider = specProvider;
@@ -72,7 +76,7 @@ namespace Nethermind.Consensus.Processing
             BlockhashProvider = new BlockhashProvider(BlockTree, specProvider, StateProvider, logManager);
 
             CodeInfoRepository = codeInfoRepository;
-            Machine = new VirtualMachine(BlockhashProvider, specProvider, logManager);
+            Machine = new VirtualMachine(BlockhashProvider, specProvider, logManager, precompileChecker);
             BlockTree = readOnlyBlockTree ?? throw new ArgumentNullException(nameof(readOnlyBlockTree));
             BlockhashProvider = new BlockhashProvider(BlockTree, specProvider, StateProvider, logManager);
 

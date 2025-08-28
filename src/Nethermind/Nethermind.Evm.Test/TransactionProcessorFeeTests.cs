@@ -9,14 +9,13 @@ using Nethermind.Core.Extensions;
 using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Crypto;
-using Nethermind.Db;
+using Nethermind.Evm.Precompiles;
 using Nethermind.Evm.Tracing;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Logging;
 using Nethermind.Specs;
 using Nethermind.Specs.Test;
 using Nethermind.State;
-using Nethermind.Trie.Pruning;
 using Nethermind.Int256;
 using NUnit.Framework;
 using Nethermind.Specs.GnosisForks;
@@ -30,6 +29,7 @@ public class TransactionProcessorFeeTests
     private ITransactionProcessor _transactionProcessor;
     private IWorldState _stateProvider;
     private OverridableReleaseSpec _spec;
+    private IPrecompileChecker _precompileChecker;
 
     [SetUp]
     public void Setup()
@@ -42,9 +42,10 @@ public class TransactionProcessorFeeTests
         _stateProvider.CreateAccount(TestItem.AddressA, 1.Ether());
         _stateProvider.Commit(_specProvider.GenesisSpec);
         _stateProvider.CommitTree(0);
+        _precompileChecker = new EthereumPrecompileChecker();
 
         CodeInfoRepository codeInfoRepository = new();
-        VirtualMachine virtualMachine = new(new TestBlockhashProvider(_specProvider), _specProvider, LimboLogs.Instance);
+        VirtualMachine virtualMachine = new(new TestBlockhashProvider(_specProvider), _specProvider, LimboLogs.Instance, _precompileChecker);
         _transactionProcessor = new TransactionProcessor(_specProvider, _stateProvider, virtualMachine, codeInfoRepository, LimboLogs.Instance);
         _ethereumEcdsa = new EthereumEcdsa(_specProvider.ChainId);
     }

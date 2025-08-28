@@ -4,7 +4,6 @@
 using System.Collections.Generic;
 using System.IO.Abstractions;
 using System.Linq;
-using Autofac;
 using Nethermind.Api;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.BeaconBlockRoot;
@@ -80,7 +79,8 @@ public class RegisterAuRaRpcModules : RegisterRpcModules
             _api.SpecProvider,
             _poSSwitcher,
             _api.LogManager,
-            _factory);
+            _factory,
+            _api.PrecompileChecker);
 
         rpcModuleProvider.RegisterBoundedByCpuCount(traceModuleFactory, JsonRpcConfig.Timeout);
     }
@@ -97,9 +97,10 @@ public class RegisterAuRaRpcModules : RegisterRpcModules
         ISpecProvider specProvider,
         IPoSSwitcher poSSwitcher,
         ILogManager logManager,
-        IAuRaBlockProcessorFactory factory)
+        IAuRaBlockProcessorFactory factory,
+        IPrecompileChecker precompileChecker)
         : TraceModuleFactory(worldStateManager, blockTree, jsonRpcConfig, blockchainBridge, secondsPerSlot, recoveryStep, rewardCalculatorSource,
-            receiptFinder, specProvider, poSSwitcher, logManager)
+            receiptFinder, specProvider, poSSwitcher, logManager, precompileChecker)
     {
         protected override ReadOnlyChainProcessingEnv CreateChainProcessingEnv(IOverridableWorldScope worldStateManager,
             IBlockProcessor.IBlockTransactionsExecutor transactionsExecutor, IReadOnlyTxProcessingScope scope,
@@ -226,7 +227,8 @@ public class RegisterAuRaRpcModules : RegisterRpcModules
             _api.BadBlocksStore,
             _api.FileSystem,
             _api.LogManager,
-            _factory);
+            _factory,
+            _api.PrecompileChecker);
 
         rpcModuleProvider.RegisterBoundedByCpuCount(debugModuleFactory, JsonRpcConfig.Timeout);
     }
@@ -249,10 +251,11 @@ public class RegisterAuRaRpcModules : RegisterRpcModules
         IBadBlockStore badBlockStore,
         IFileSystem fileSystem,
         ILogManager logManager,
-        IAuRaBlockProcessorFactory factory)
+        IAuRaBlockProcessorFactory factory,
+        IPrecompileChecker precompileChecker)
         : DebugModuleFactory(worldStateManager, dbProvider, blockTree, jsonRpcConfig, blockchainBridge, secondsPerSlot, blockValidator, recoveryStep,
             rewardCalculator, receiptStorage, receiptsMigration, configProvider, specProvider, syncModeSelector,
-            badBlockStore, fileSystem, logManager)
+            badBlockStore, fileSystem, logManager, precompileChecker)
     {
         protected override ReadOnlyChainProcessingEnv CreateReadOnlyChainProcessingEnv(IReadOnlyTxProcessingScope scope,
             IOverridableWorldScope worldStateManager, IBlockProcessor.IBlockTransactionsExecutor transactionsExecutor)

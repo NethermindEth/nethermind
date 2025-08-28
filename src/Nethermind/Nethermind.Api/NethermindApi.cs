@@ -84,7 +84,8 @@ namespace Nethermind.Api
                 WorldStateManager!.CreateOverridableWorldScope(),
                 readOnlyTree,
                 SpecProvider!,
-                LogManager);
+                LogManager,
+                PrecompileChecker);
 
             SimulateReadOnlyBlocksProcessingEnvFactory simulateReadOnlyBlocksProcessingEnvFactory =
                 new SimulateReadOnlyBlocksProcessingEnvFactory(
@@ -93,6 +94,7 @@ namespace Nethermind.Api
                     DbProvider!,
                     SpecProvider!,
                     SimulateTransactionProcessorFactory,
+                    PrecompileChecker,
                     LogManager);
 
             IMiningConfig miningConfig = ConfigProvider.GetConfig<IMiningConfig>();
@@ -205,7 +207,7 @@ namespace Nethermind.Api
 
         public ISubscriptionFactory? SubscriptionFactory { get; set; }
         public IProtectedPrivateKey? NodeKey { get; set; }
-
+        public IPrecompileChecker PrecompileChecker => Context.Resolve<IPrecompileChecker>();
         /// <summary>
         /// Key used for signing blocks. Original as its loaded on startup. This can later be changed via RPC in <see cref="Signer"/>.
         /// </summary>

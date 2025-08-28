@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using Nethermind.Blockchain;
+using Nethermind.Core;
 using Nethermind.Core.Specs;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Logging;
@@ -13,14 +14,16 @@ public class ReadOnlyTxProcessingEnvFactory(
     IWorldStateManager worldStateManager,
     IReadOnlyBlockTree readOnlyBlockTree,
     ISpecProvider specProvider,
-    ILogManager logManager) : IReadOnlyTxProcessingEnvFactory
+    ILogManager logManager,
+    IPrecompileChecker precompileChecker) : IReadOnlyTxProcessingEnvFactory
 {
     public ReadOnlyTxProcessingEnvFactory(
         IWorldStateManager worldStateManager,
         IBlockTree blockTree,
         ISpecProvider specProvider,
-        ILogManager logManager)
-        : this(worldStateManager, blockTree.AsReadOnly(), specProvider, logManager)
+        ILogManager logManager,
+        IPrecompileChecker precompileChecker)
+        : this(worldStateManager, blockTree.AsReadOnly(), specProvider, logManager, precompileChecker)
     {
     }
 
@@ -30,7 +33,8 @@ public class ReadOnlyTxProcessingEnvFactory(
             worldStateManager,
             readOnlyBlockTree,
             specProvider,
-            logManager);
+            logManager,
+            precompileChecker);
     }
 
     public IReadOnlyTxProcessorSource CreateForWarmingUp(IWorldState worldStateToWarmUp)
@@ -40,6 +44,7 @@ public class ReadOnlyTxProcessingEnvFactory(
             readOnlyBlockTree,
             specProvider,
             logManager,
-            worldStateToWarmUp);
+            worldStateToWarmUp,
+            precompileChecker);
     }
 }

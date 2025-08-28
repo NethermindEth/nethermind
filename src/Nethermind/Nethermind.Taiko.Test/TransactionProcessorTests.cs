@@ -7,16 +7,15 @@ using Nethermind.Core.Specs;
 using Nethermind.Specs;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Crypto;
-using Nethermind.Db;
 using Nethermind.Int256;
 using Nethermind.Evm.Tracing;
 using Nethermind.Logging;
 using Nethermind.State;
-using Nethermind.Trie.Pruning;
 using NUnit.Framework;
 using System.Collections;
 using Nethermind.Core.Test;
 using Nethermind.Evm;
+using Nethermind.Evm.Precompiles;
 using Nethermind.Evm.Test;
 using Nethermind.Taiko.TaikoSpec;
 
@@ -29,6 +28,7 @@ public class TransactionProcessorTests
     private readonly IEthereumEcdsa _ethereumEcdsa;
     private TaikoTransactionProcessor? _transactionProcessor;
     private IWorldState? _stateProvider;
+    private IPrecompileChecker? _precompileChecker;
 
     public TransactionProcessorTests()
     {
@@ -49,9 +49,10 @@ public class TransactionProcessorTests
         _stateProvider.CreateAccount(TestItem.AddressA, AccountBalance);
         _stateProvider.Commit(_specProvider.GenesisSpec);
         _stateProvider.CommitTree(0);
+        _precompileChecker = new EthereumPrecompileChecker();
 
         CodeInfoRepository codeInfoRepository = new();
-        VirtualMachine virtualMachine = new(new TestBlockhashProvider(_specProvider), _specProvider, LimboLogs.Instance);
+        VirtualMachine virtualMachine = new(new TestBlockhashProvider(_specProvider), _specProvider, LimboLogs.Instance, _precompileChecker);
         _transactionProcessor = new TaikoTransactionProcessor(_specProvider, _stateProvider, virtualMachine, codeInfoRepository, LimboLogs.Instance);
     }
 

@@ -20,7 +20,6 @@ using Nethermind.Consensus.ExecutionRequests;
 using Nethermind.Consensus.Processing;
 using Nethermind.Consensus.Producers;
 using Nethermind.Consensus.Rewards;
-using Nethermind.Consensus.Transactions;
 using Nethermind.Consensus.Validators;
 using Nethermind.Consensus.Withdrawals;
 using Nethermind.Core.Crypto;
@@ -81,6 +80,7 @@ public class TestBlockchain : IDisposable
     public IBlockProducerRunner BlockProducerRunner { get; protected set; } = null!;
     public IDbProvider DbProvider => _fromContainer.DbProvider;
     public ISpecProvider SpecProvider => _fromContainer.SpecProvider;
+    public IPrecompileChecker PrecompileChecker => _fromContainer.PrecompileChecker;
 
     public ISealEngine SealEngine => _fromContainer.SealEngine;
 
@@ -144,6 +144,7 @@ public class TestBlockchain : IDisposable
         IReadOnlyStateProvider ReadOnlyState,
         IDbProvider DbProvider,
         ISpecProvider SpecProvider,
+        IPrecompileChecker PrecompileChecker,
         ISealEngine SealEngine,
         ITransactionComparerProvider TransactionComparerProvider,
         IPoSSwitcher PoSSwitcher,

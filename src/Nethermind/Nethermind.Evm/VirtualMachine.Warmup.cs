@@ -8,6 +8,7 @@ using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.Db;
 using Nethermind.Evm.CodeAnalysis;
+using Nethermind.Evm.Precompiles;
 using Nethermind.Evm.Tracing;
 using Nethermind.Int256;
 using Nethermind.Logging;
@@ -27,7 +28,8 @@ public unsafe partial class VirtualMachineBase
     {
         IReleaseSpec spec = Fork.GetLatest();
         IBlockhashProvider hashProvider = new WarmupBlockhashProvider(MainnetSpecProvider.Instance);
-        VirtualMachineBase vm = new(hashProvider, MainnetSpecProvider.Instance, LimboLogs.Instance);
+        IPrecompileChecker precompileChecker = new EthereumPrecompileChecker(); // Add this
+        VirtualMachineBase vm = new(hashProvider, MainnetSpecProvider.Instance, LimboLogs.Instance, precompileChecker);
         ILogManager lm = new OneLoggerLogManager(NullLogger.Instance);
 
         IKeyValueStoreWithBatching db = new MemDb();

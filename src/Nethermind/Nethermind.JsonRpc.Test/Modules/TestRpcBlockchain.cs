@@ -41,11 +41,9 @@ using Autofac;
 using Nethermind.Consensus;
 using Nethermind.Consensus.Scheduler;
 using Nethermind.Core;
-using Nethermind.Core.Crypto;
 using Nethermind.Core.Timers;
 using Nethermind.JsonRpc.Modules.Trace;
 using Nethermind.Network;
-using Nethermind.Network.Config;
 using Nethermind.Network.P2P.Subprotocols.Eth;
 using Nethermind.Network.Rlpx;
 using Nethermind.Stats;
@@ -212,7 +210,8 @@ namespace Nethermind.JsonRpc.Test.Modules
             Substitute.For<ISyncModeSelector>(),
             new BadBlockStore(@this.BlocksDb, 100),
             new FileSystem(),
-            @this.LogManager).Create();
+            @this.LogManager,
+            @this.PrecompileChecker).Create();
 
 
         private readonly Func<TestRpcBlockchain, ITraceRpcModule> _traceRpcModuleBuilder = static @this => new TraceModuleFactory(
@@ -226,7 +225,8 @@ namespace Nethermind.JsonRpc.Test.Modules
             @this.ReceiptStorage,
             @this.SpecProvider,
             @this.PoSSwitcher,
-            @this.LogManager
+            @this.LogManager,
+            @this.PrecompileChecker
         ).Create();
 
         protected override async Task<TestBlockchain> Build(Action<ContainerBuilder>? configurer = null)
@@ -246,13 +246,15 @@ namespace Nethermind.JsonRpc.Test.Modules
                 WorldStateManager.CreateOverridableWorldScope(),
                 roBlockTree,
                 SpecProvider,
-                LimboLogs.Instance);
+                LimboLogs.Instance,
+                PrecompileChecker);
             SimulateReadOnlyBlocksProcessingEnvFactory simulateProcessingEnvFactory = new SimulateReadOnlyBlocksProcessingEnvFactory(
                 WorldStateManager,
                 roBlockTree,
                 new ReadOnlyDbProvider(dbProvider, true),
                 SpecProvider,
                 SimulateTransactionProcessorFactory.Instance,
+                PrecompileChecker,
                 LimboLogs.Instance);
 
             Bridge ??= new BlockchainBridge(processingEnv, simulateProcessingEnvFactory, TxPool, ReceiptFinder, filterStore, filterManager, EthereumEcdsa, Timestamper, LogFinder, SpecProvider, BlocksConfig, false);

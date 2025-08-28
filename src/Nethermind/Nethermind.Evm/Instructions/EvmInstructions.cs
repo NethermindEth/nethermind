@@ -8,7 +8,6 @@ using Nethermind.Core.Specs;
 namespace Nethermind.Evm;
 using unsafe OpCode = delegate*<VirtualMachineBase, ref EvmStack, ref long, ref int, EvmExceptionType>;
 using Int256;
-using Nethermind.Evm.Precompiles;
 
 internal static unsafe partial class EvmInstructions
 {
@@ -359,7 +358,7 @@ internal static unsafe partial class EvmInstructions
             }
 
             // If the account is cold (and not a precompile), charge the cold access cost.
-            if (vmState.AccessTracker.IsCold(address) && !address.IsPrecompile(spec))
+            if (vmState.AccessTracker.IsCold(address) && !vm.PrecompileChecker.IsPrecompile(address, spec))
             {
                 result = UpdateGas(GasCostOf.ColdAccountAccess, ref gasAvailable);
                 vmState.AccessTracker.WarmUp(address);

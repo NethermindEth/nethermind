@@ -21,6 +21,7 @@ using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Db;
 using Nethermind.Evm;
+using Nethermind.Evm.Precompiles;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Logging;
 using Nethermind.Specs;
@@ -52,11 +53,13 @@ public class DevBlockProducerTests
         IWorldState stateProvider = worldStateManager.GlobalWorldState;
         IStateReader stateReader = worldStateManager.GlobalStateReader;
         BlockhashProvider blockhashProvider = new(blockTree, specProvider, stateProvider, LimboLogs.Instance);
+        IPrecompileChecker precompileChecker = new EthereumPrecompileChecker();
         CodeInfoRepository codeInfoRepository = new();
         VirtualMachine virtualMachine = new(
             blockhashProvider,
             specProvider,
-            LimboLogs.Instance);
+            LimboLogs.Instance,
+            precompileChecker);
         TransactionProcessor txProcessor = new(
             specProvider,
             stateProvider,

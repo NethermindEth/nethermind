@@ -4,6 +4,7 @@
 using System;
 using Nethermind.Blockchain;
 using Nethermind.Consensus.Processing;
+using Nethermind.Core;
 using Nethermind.Core.Specs;
 using Nethermind.Evm;
 using Nethermind.Evm.TransactionProcessing;
@@ -18,15 +19,16 @@ public class OptimismOverridableTxProcessingEnv(
     ISpecProvider specProvider,
     ILogManager logManager,
     ICostHelper costHelper,
-    IOptimismSpecHelper opSpecHelper)
-    : OverridableTxProcessingEnv(worldStateManager, readOnlyBlockTree, specProvider, logManager)
+    IOptimismSpecHelper opSpecHelper,
+    IPrecompileChecker precompileChecker)
+    : OverridableTxProcessingEnv(worldStateManager, readOnlyBlockTree, specProvider, logManager, precompileChecker)
 {
     protected override ITransactionProcessor CreateTransactionProcessor()
     {
         ArgumentNullException.ThrowIfNull(LogManager);
 
         BlockhashProvider blockhashProvider = new(BlockTree, SpecProvider, StateProvider, LogManager);
-        VirtualMachine virtualMachine = new(blockhashProvider, SpecProvider, LogManager);
+        VirtualMachine virtualMachine = new(blockhashProvider, SpecProvider, LogManager, PrecompileChecker);
         return new OptimismTransactionProcessor(SpecProvider, StateProvider, virtualMachine, LogManager, costHelper, opSpecHelper, CodeInfoRepository);
     }
 }

@@ -3,6 +3,7 @@
 
 using Nethermind.Blockchain;
 using Nethermind.Consensus.Processing;
+using Nethermind.Core;
 using Nethermind.Core.Specs;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Logging;
@@ -14,11 +15,13 @@ public class TaikoOverridableTxProcessingEnv(
     IOverridableWorldScope worldScope,
     IReadOnlyBlockTree readOnlyBlockTree,
     ISpecProvider specProvider,
-    ILogManager logManager) : OverridableTxProcessingEnv(
+    ILogManager logManager,
+    IPrecompileChecker precompileChecker) : OverridableTxProcessingEnv(
     worldScope,
     readOnlyBlockTree,
     specProvider,
-    logManager
+    logManager,
+    precompileChecker
 )
 {
     protected override ITransactionProcessor CreateTransactionProcessor() =>

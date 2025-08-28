@@ -26,12 +26,14 @@ public class OverridableTxProcessingEnv : IOverridableTxProcessorSource
     protected OverridableCodeInfoRepository CodeInfoRepository { get; }
     protected IVirtualMachine Machine { get; }
     protected ITransactionProcessor TransactionProcessor => _transactionProcessorLazy.Value;
+    protected IPrecompileChecker PrecompileChecker { get; }
 
     public OverridableTxProcessingEnv(
         IOverridableWorldScope overridableScope,
         IReadOnlyBlockTree readOnlyBlockTree,
         ISpecProvider specProvider,
-        ILogManager? logManager
+        ILogManager? logManager,
+        IPrecompileChecker precompileChecker
     )
     {
         SpecProvider = specProvider;
@@ -40,9 +42,10 @@ public class OverridableTxProcessingEnv : IOverridableTxProcessorSource
         IBlockhashProvider blockhashProvider = new BlockhashProvider(BlockTree, specProvider, StateProvider, logManager);
         LogManager = logManager;
         StateProvider = overridableScope.WorldState;
+        PrecompileChecker = precompileChecker;
 
         CodeInfoRepository = new(new CodeInfoRepository());
-        Machine = new VirtualMachine(blockhashProvider, specProvider, logManager);
+        Machine = new VirtualMachine(blockhashProvider, specProvider, logManager, precompileChecker);
         _transactionProcessorLazy = new(CreateTransactionProcessor);
     }
 

@@ -76,7 +76,8 @@ public class TraceRpcModuleTests
                 Blockchain.ReceiptStorage,
                 Blockchain.SpecProvider,
                 Blockchain.PoSSwitcher,
-                Blockchain.LogManager
+                Blockchain.LogManager,
+                Blockchain.PrecompileChecker
             );
 
             TraceRpcModule = Factory.Create();

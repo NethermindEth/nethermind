@@ -26,16 +26,15 @@ using Nethermind.JsonRpc.Modules.Trace;
 using Nethermind.Logging;
 using Nethermind.Specs;
 using Nethermind.State;
-using Nethermind.TxPool;
 using NUnit.Framework;
 using Nethermind.Evm.TransactionProcessing;
-using Nethermind.Trie.Pruning;
 using NSubstitute;
 using Nethermind.Facade;
 using Nethermind.Config;
 using Nethermind.Consensus.ExecutionRequests;
 using Nethermind.Consensus.Withdrawals;
 using Nethermind.Core.Test;
+using Nethermind.Evm.Precompiles;
 
 namespace Nethermind.JsonRpc.Test.Modules.Trace;
 
@@ -51,6 +50,7 @@ public class ParityStyleTracerTests
     private IStateReader _stateReader;
     private TraceRpcModule _traceRpcModule;
     private readonly IJsonRpcConfig _jsonRpcConfig = new JsonRpcConfig();
+    private IPrecompileChecker _precompileChecker;
 
     [SetUp]
     public void Setup()
@@ -69,7 +69,8 @@ public class ParityStyleTracerTests
 
         BlockhashProvider blockhashProvider = new(_blockTree, specProvider, stateProvider, LimboLogs.Instance);
         CodeInfoRepository codeInfoRepository = new();
-        VirtualMachine virtualMachine = new(blockhashProvider, specProvider, LimboLogs.Instance);
+        _precompileChecker = new EthereumPrecompileChecker();
+        VirtualMachine virtualMachine = new(blockhashProvider, specProvider, LimboLogs.Instance, _precompileChecker);
         TransactionProcessor transactionProcessor = new(specProvider, stateProvider, virtualMachine, codeInfoRepository, LimboLogs.Instance);
 
         _poSSwitcher = Substitute.For<IPoSSwitcher>();

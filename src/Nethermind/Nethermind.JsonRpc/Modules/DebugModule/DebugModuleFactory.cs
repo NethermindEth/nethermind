@@ -11,6 +11,7 @@ using Nethermind.Consensus.Processing;
 using Nethermind.Consensus.Rewards;
 using Nethermind.Consensus.Tracing;
 using Nethermind.Consensus.Validators;
+using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
 using Nethermind.Db;
@@ -18,7 +19,6 @@ using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Logging;
 using Nethermind.State;
 using Nethermind.Synchronization.ParallelSync;
-using Nethermind.Trie.Pruning;
 using Nethermind.Facade;
 
 namespace Nethermind.JsonRpc.Modules.DebugModule;
@@ -42,6 +42,7 @@ public class DebugModuleFactory : ModuleFactoryBase<IDebugRpcModule>
     private readonly IBadBlockStore _badBlockStore;
     private readonly IFileSystem _fileSystem;
     private readonly IWorldStateManager _worldStateManager;
+    private readonly IPrecompileChecker _precompileChecker;
 
     public DebugModuleFactory(
         IWorldStateManager worldStateManager,
@@ -60,7 +61,8 @@ public class DebugModuleFactory : ModuleFactoryBase<IDebugRpcModule>
         ISyncModeSelector syncModeSelector,
         IBadBlockStore badBlockStore,
         IFileSystem fileSystem,
-        ILogManager logManager)
+        ILogManager logManager,
+        IPrecompileChecker precompileChecker)
     {
         _worldStateManager = worldStateManager;
         _dbProvider = dbProvider.AsReadOnly(false);
@@ -79,12 +81,13 @@ public class DebugModuleFactory : ModuleFactoryBase<IDebugRpcModule>
         _syncModeSelector = syncModeSelector ?? throw new ArgumentNullException(nameof(syncModeSelector));
         _badBlockStore = badBlockStore;
         _fileSystem = fileSystem ?? throw new ArgumentNullException(nameof(fileSystem));
+        _precompileChecker = precompileChecker;
     }
 
     public override IDebugRpcModule Create()
     {
         IOverridableWorldScope worldStateManager = _worldStateManager.CreateOverridableWorldScope();
-        OverridableTxProcessingEnv txEnv = new(worldStateManager, _blockTree, _specProvider, _logManager);
+        OverridableTxProcessingEnv txEnv = new(worldStateManager, _blockTree, _specProvider, _logManager, _precompileChecker);
 
         IReadOnlyTxProcessingScope scope = txEnv.Build(Keccak.EmptyTreeHash);
 

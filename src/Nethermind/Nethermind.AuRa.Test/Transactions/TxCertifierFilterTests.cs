@@ -143,7 +143,7 @@ public class TxCertifierFilterTests
             ReadOnlyTransactionProcessorSource = new ReadOnlyTxProcessingEnv(
                 WorldStateManager,
                 BlockTree.AsReadOnly(), SpecProvider,
-                LimboLogs.Instance);
+                LimboLogs.Instance, PrecompileChecker);
             RegisterContract = new RegisterContract(abiEncoder, ChainSpec.Parameters.Registrar, ReadOnlyTransactionProcessorSource);
             CertifierContract = new CertifierContract(
                 abiEncoder,

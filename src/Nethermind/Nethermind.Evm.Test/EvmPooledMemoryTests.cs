@@ -9,7 +9,6 @@ using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Crypto;
-using Nethermind.Db;
 using Nethermind.Evm.Tracing;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Int256;
@@ -17,9 +16,9 @@ using Nethermind.Logging;
 using Nethermind.Specs;
 using Nethermind.Specs.Forks;
 using Nethermind.State;
-using Nethermind.Trie.Pruning;
 using FluentAssertions;
 using Nethermind.Core.Test;
+using Nethermind.Evm.Precompiles;
 using NUnit.Framework;
 
 namespace Nethermind.Evm.Test;
@@ -151,11 +150,13 @@ public class EvmPooledMemoryTests : EvmMemoryTestsBase
         IWorldStateManager worldStateManager = TestWorldStateFactory.CreateForTest();
         IWorldState stateProvider = worldStateManager.GlobalWorldState;
         ISpecProvider specProvider = new TestSpecProvider(London.Instance);
+        IPrecompileChecker precompileChecker = new EthereumPrecompileChecker();
         CodeInfoRepository codeInfoRepository = new();
         VirtualMachine virtualMachine = new(
             new TestBlockhashProvider(specProvider),
                 specProvider,
-                LimboLogs.Instance);
+                LimboLogs.Instance,
+            precompileChecker);
         ITransactionProcessor transactionProcessor = new TransactionProcessor(
                 specProvider,
                 stateProvider,

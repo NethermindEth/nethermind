@@ -40,9 +40,10 @@ public class ShutterApiSimulator(
     IKeyStoreConfig keyStoreConfig,
     IShutterConfig cfg,
     ShutterValidatorsInfo validatorsInfo,
-    Random rnd
+    Random rnd,
+    IPrecompileChecker precompileChecker
         ) : ShutterApi(abiEncoder, blockTree, ecdsa, logFinder, receiptStorage,
-        logManager, specProvider, timestamper, new ReadOnlyTxProcessingEnvFactory(worldStateManager, blockTree, specProvider, logManager), fileSystem,
+        logManager, specProvider, timestamper, new ReadOnlyTxProcessingEnvFactory(worldStateManager, blockTree, specProvider, logManager, precompileChecker), fileSystem,
         keyStoreConfig, cfg, validatorsInfo, ShutterTestsCommon.SlotLength, IPAddress.None)
 {
     public int EonUpdateCalled = 0;

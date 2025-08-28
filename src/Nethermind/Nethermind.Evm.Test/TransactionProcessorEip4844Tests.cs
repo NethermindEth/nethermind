@@ -7,17 +7,16 @@ using Nethermind.Core.Specs;
 using Nethermind.Specs;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Crypto;
-using Nethermind.Db;
 using Nethermind.Int256;
 using Nethermind.Evm.Tracing;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Logging;
 using Nethermind.Specs.Forks;
 using Nethermind.State;
-using Nethermind.Trie.Pruning;
 using NUnit.Framework;
 using System.Collections.Generic;
 using Nethermind.Core.Test;
+using Nethermind.Evm.Precompiles;
 
 namespace Nethermind.Evm.Test;
 
@@ -28,6 +27,7 @@ internal class TransactionProcessorEip4844Tests
     private IEthereumEcdsa _ethereumEcdsa = null!;
     private ITransactionProcessor _transactionProcessor = null!;
     private IWorldState _stateProvider = null!;
+    private IPrecompileChecker _precompileChecker = null!;
 
     [SetUp]
     public void Setup()
@@ -35,8 +35,9 @@ internal class TransactionProcessorEip4844Tests
         _specProvider = new TestSpecProvider(Cancun.Instance);
         IWorldStateManager worldStateManager = TestWorldStateFactory.CreateForTest();
         _stateProvider = worldStateManager.GlobalWorldState;
+        _precompileChecker = new EthereumPrecompileChecker();
         CodeInfoRepository codeInfoRepository = new();
-        VirtualMachine virtualMachine = new(new TestBlockhashProvider(_specProvider), _specProvider, LimboLogs.Instance);
+        VirtualMachine virtualMachine = new(new TestBlockhashProvider(_specProvider), _specProvider, LimboLogs.Instance, _precompileChecker);
         _transactionProcessor = new TransactionProcessor(_specProvider, _stateProvider, virtualMachine, codeInfoRepository, LimboLogs.Instance);
         _ethereumEcdsa = new EthereumEcdsa(_specProvider.ChainId);
     }

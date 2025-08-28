@@ -27,6 +27,7 @@ using FluentAssertions;
 using Nethermind.Consensus.Processing;
 using Nethermind.Core.Buffers;
 using Nethermind.Core.Test;
+using Nethermind.Evm.Precompiles;
 using Nethermind.Facade.Eth.RpcTransaction;
 using Nethermind.State.Tracing;
 using NSubstitute;
@@ -47,6 +48,7 @@ public class ProofRpcModuleTests
     private TestSpecProvider _specProvider = null!;
     private WorldStateManager _worldStateManager = null!;
     private IReadOnlyTxProcessingEnvFactory _readOnlyTxProcessingEnvFactory = null!;
+    private IPrecompileChecker _precompileChecker = null!;
 
     public ProofRpcModuleTests(bool createSystemAccount, bool useNonZeroGasPrice)
     {
@@ -71,8 +73,9 @@ public class ProofRpcModuleTests
             .WithTransactions(receiptStorage)
             .OfChainLength(10)
             .TestObject;
+        _precompileChecker = new EthereumPrecompileChecker();
 
-        _readOnlyTxProcessingEnvFactory = new ReadOnlyTxProcessingEnvFactory(_worldStateManager, _blockTree, _specProvider, LimboLogs.Instance);
+        _readOnlyTxProcessingEnvFactory = new ReadOnlyTxProcessingEnvFactory(_worldStateManager, _blockTree, _specProvider, LimboLogs.Instance, _precompileChecker);
 
         ProofModuleFactory moduleFactory = new(
             _worldStateManager,

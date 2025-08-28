@@ -17,6 +17,7 @@ using Nethermind.Logging;
 using Nethermind.State;
 using Nethermind.Synchronization.ParallelSync;
 using System.IO.Abstractions;
+using Nethermind.Core;
 using Nethermind.Taiko.BlockTransactionExecutors;
 using Nethermind.Facade;
 
@@ -42,7 +43,8 @@ class TaikoDebugModuleFactory :
         ISyncModeSelector syncModeSelector,
         IBadBlockStore badBlockStore,
         IFileSystem fileSystem,
-        ILogManager logManager) : base(worldStateManager, dbProvider, blockTree, jsonRpcConfig, blockchainBridge, secondsPerSlot, blockValidator, recoveryStep, rewardCalculator, receiptStorage, receiptsMigration, configProvider, specProvider, syncModeSelector, badBlockStore, fileSystem, logManager)
+        ILogManager logManager,
+        IPrecompileChecker precompileChecker) : base(worldStateManager, dbProvider, blockTree, jsonRpcConfig, blockchainBridge, secondsPerSlot, blockValidator, recoveryStep, rewardCalculator, receiptStorage, receiptsMigration, configProvider, specProvider, syncModeSelector, badBlockStore, fileSystem, logManager, precompileChecker)
     {
     }
 
