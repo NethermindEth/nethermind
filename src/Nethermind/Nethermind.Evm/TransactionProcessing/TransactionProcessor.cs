@@ -380,10 +380,10 @@ namespace Nethermind.Evm.TransactionProcessing
 
         protected virtual TransactionResult ValidateGas(Transaction tx, BlockHeader header, long minGasRequired, bool validate)
         {
-            if (tx.GasLimit < minGasRequired)
+            if (validate && tx.GasLimit < minGasRequired)
             {
                 TraceLogInvalidTx(tx, $"GAS_LIMIT_BELOW_INTRINSIC_GAS {tx.GasLimit} < {minGasRequired}");
-                return "gas limit below intrinsic gas";
+                return TransactionResult.GasLimitBelowIntrinsicGas;
             }
 
             if (validate && tx.GasLimit > header.GasLimit - header.GasUsed)
