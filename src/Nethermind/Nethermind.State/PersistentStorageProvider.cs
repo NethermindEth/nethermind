@@ -62,6 +62,12 @@ internal sealed class PersistentStorageProvider : PartialStorageProviderBase
             LabelNames = ["is_main"],
             Buckets = Histogram.PowersOfTenDividedBuckets(3, 9, 20)
         });
+    private Histogram _updateRootTime = Prometheus.Metrics.CreateHistogram("storage_provider_update_root_time", "committ tree time",
+        new HistogramConfiguration()
+        {
+            LabelNames = ["is_main"],
+            Buckets = Histogram.PowersOfTenDividedBuckets(3, 9, 20)
+        });
 
     /// <summary>
     /// Manages persistent storage allowing for snapshotting and restoring
@@ -684,7 +690,7 @@ internal sealed class PersistentStorageProvider : PartialStorageProviderBase
             }
             else
             {
-                using ArrayPoolList<(TreePath, byte[])> bulkWrite = new(BlockChange.EstimatedSize);
+                using ArrayPoolList<PatriciaTreeBulkSetter.BulkSetEntry> bulkWrite = new(BlockChange.EstimatedSize);
                 long sw = Stopwatch.GetTimestamp();
 
                 Span<byte> keyBuf = stackalloc byte[32];
@@ -696,28 +702,7 @@ internal sealed class PersistentStorageProvider : PartialStorageProviderBase
                         BlockChange[kvp.Key] = new(after, after);
 
                         StorageTree.ComputeKeyWithLookup(kvp.Key, keyBuf);
-                        bulkWrite.Add((TreePath.FromPath(keyBuf), after));
 
-                        writes++;
-                    }
-                    else
-                    {
-                        skipped++;
-                    }
-                }
-
-                if (bulkWrite.Count < 16)
-                {
-                    foreach (var kv in bulkWrite)
-                    {
-                        StorageTree.Set(kv.Item1.Path, kv.Item2);
-                    }
-                }
-                else
-                {
-                    for (var i = 0; i < bulkWrite.Count; i++)
-                    {
-                        byte[] after = bulkWrite[i].Item2;
                         byte[] value;
                         if (after.IsZero())
                         {
@@ -736,14 +721,20 @@ internal sealed class PersistentStorageProvider : PartialStorageProviderBase
                             }
                         }
 
-                        bulkWrite[i] = (bulkWrite[i].Item1, value);
+                        bulkWrite.Add(new PatriciaTreeBulkSetter.BulkSetEntry(new ValueHash256(keyBuf), value));
+
+                        writes++;
                     }
-
-                    bulkWrite.Sort((it1, it2) => it1.Item1.CompareTo(it2.Item1));
-
-                    _prepTime.Observe(Stopwatch.GetTimestamp() - sw);
-                    StorageTree.BulkSet(bulkWrite.AsSpan());
+                    else
+                    {
+                        skipped++;
+                    }
                 }
+
+                bulkWrite.AsSpan().Sort();
+
+                _prepTime.Observe(Stopwatch.GetTimestamp() - sw);
+                PatriciaTreeBulkSetter.BulkSetUnsorted(StorageTree, bulkWrite.AsMemory());
             }
 
 
