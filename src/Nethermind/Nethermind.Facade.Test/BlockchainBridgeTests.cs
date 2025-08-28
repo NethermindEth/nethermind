@@ -586,7 +586,7 @@ public class BlockchainBridgeTests
     }
 
     [Test]
-    public void EstimateGas_tx_returns_noError()
+    public void EstimateGas_invalid_tx_returns_error()
     {
         BlockHeader header = Build.A.BlockHeader
             .TestObject;
@@ -597,7 +597,7 @@ public class BlockchainBridgeTests
 
         CallOutput callOutput = _blockchainBridge.EstimateGas(header, tx, 1);
 
-        Assert.That(callOutput.Error, Is.Null);
+        Assert.That(callOutput.Error, Is.Not.Null);
     }
 
     [Test]

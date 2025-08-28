@@ -349,6 +349,7 @@ internal sealed class PersistentStorageProvider : PartialStorageProviderBase
         using ArrayPoolList<Task> commitTask = new ArrayPoolList<Task>(_storages.Count);
         foreach (KeyValuePair<AddressAsKey, PerContractState> storage in _storages)
         {
+            storage.Value.EnsureStorageTree(); // Cannot be called concurrently
             if (blockCommitter.TryRequestConcurrencyQuota())
             {
                 commitTask.Add(Task.Factory.StartNew((ctx) =>
@@ -513,7 +514,8 @@ internal sealed class PersistentStorageProvider : PartialStorageProviderBase
             if (StorageTree is not null) return;
 
             // Note: GetStorageRoot is not concurrent safe! And so do this whole method!
-            Hash256 storageRoot = _provider._stateProvider.GetStorageRoot(_address);
+            Account? acc = _provider._stateProvider.GetAccount(_address);
+            Hash256 storageRoot = acc?.StorageRoot ?? Keccak.EmptyTreeHash;
             bool isEmpty = storageRoot == Keccak.EmptyTreeHash; // We know all lookups will be empty against this tree
             StorageTree = _provider._storageTreeFactory.Create(_address,
                 _provider._trieStore.GetTrieStore(_address),

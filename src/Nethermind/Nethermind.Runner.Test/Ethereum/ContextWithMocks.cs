@@ -121,9 +121,7 @@ namespace Nethermind.Runner.Test.Ethereum
             api.LogFinder = Substitute.For<ILogFinder>();
             api.ProtocolsManager = Substitute.For<IProtocolsManager>();
             api.ProtocolValidator = Substitute.For<IProtocolValidator>();
-            api.MainProcessingContext = Substitute.For<IMainProcessingContext>();
             api.TxSender = Substitute.For<ITxSender>();
-            api.BlockProcessingQueue = Substitute.For<IBlockProcessingQueue>();
             api.EngineSignerStore = Substitute.For<ISignerStore>();
             api.ChainLevelInfoRepository = Substitute.For<IChainLevelInfoRepository>();
             api.TransactionComparerProvider = Substitute.For<ITransactionComparerProvider>();
