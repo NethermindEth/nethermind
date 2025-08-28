@@ -109,7 +109,7 @@ public partial class EngineModuleTests
             withdrawals);
         GetPayloadV4Result expectedPayload = new(block, UInt256.Zero, new BlobsBundleV1(block), executionRequests: [], shouldOverrideBuilder: false);
 
-        response = await RpcTest.TestSerializedRequest(rpc, "engine_getPayloadV4", "fsafa", "asfsaf");
+        response = await RpcTest.TestSerializedRequest(rpc, "engine_getPayloadV4", "", "0x86cF016FB873D50a7B8F31EB154c9234DD31b058");
         successResponse = chain.JsonSerializer.Deserialize<JsonRpcSuccessResponse>(response);
 
         successResponse.Should().NotBeNull();

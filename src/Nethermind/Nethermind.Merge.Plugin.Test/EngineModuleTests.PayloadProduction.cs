@@ -311,11 +311,12 @@ public partial class EngineModuleTests
     [Test]
     public async Task getPayload_should_serialize_unknown_payload_response_properly()
     {
-        using MergeTestBlockchain chain = await CreateBlockchain();
+        using MergeTestBlockchain chain =
+            await CreateBlockchain(Prague.Instance, new MergeConfig { TerminalTotalDifficulty = "0" });
         IEngineRpcModule rpc = chain.EngineRpcModule;
         byte[] payloadId = Bytes.FromHexString("0x1111111111111111");
 
-        string param1 = "";
+        byte[]? param1 = null;
         string param2 = "0x86cF016FB873D50a7B8F31EB154c9234DD31b058";
         string result = await RpcTest.TestSerializedRequest(rpc, "engine_getPayloadV4", param1, param2);
         Console.WriteLine(result);

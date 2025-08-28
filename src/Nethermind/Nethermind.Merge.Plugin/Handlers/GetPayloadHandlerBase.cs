@@ -98,8 +98,10 @@ public abstract class GetPayloadHandlerBase<TGetPayloadResult>(
             }
 
             string id = payloadPreparationService.StartPreparingPayload(previousBlock.Header, payloadAttributes, txRlp) ?? "EMPTY";
+            _logger.Info("Started preparing Payload with ID: " + id);
             IBlockProductionContext? blockContext = await payloadPreparationService.GetPayload(id);
             Block? block = blockContext?.CurrentBestBlock;
+            _logger.Info("Current best block: " + block);
 
             if (blockContext is null || block is null)
             {
