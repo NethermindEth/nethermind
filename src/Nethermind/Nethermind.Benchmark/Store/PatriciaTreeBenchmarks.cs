@@ -3,6 +3,7 @@
 
 using System;
 using System.Collections.Generic;
+using System.Runtime.CompilerServices;
 using BenchmarkDotNet.Attributes;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
@@ -406,6 +407,7 @@ namespace Nethermind.Benchmarks.Store
             using IBlockCommitter _ = trieStore.BeginBlockCommit(0);
             tempTree.Commit();
         }
+        */
 
         [Benchmark]
         public void LargeSetOnly()
@@ -422,48 +424,19 @@ namespace Nethermind.Benchmarks.Store
                 tempTree.Set(address, value);
             }
         }
-        */
 
         [Benchmark]
+        [MethodImpl(MethodImplOptions.NoInlining)]
         public void LargeBulkSet()
         {
             BenchCase(0);
         }
 
         [Benchmark]
-        public void LargeBulkSet8()
+        [MethodImpl(MethodImplOptions.NoInlining)]
+        public void LargeBulkSetCustomSort()
         {
-            BenchCase(8);
-        }
-
-        [Benchmark]
-        public void LargeBulkSet16()
-        {
-            BenchCase(16);
-        }
-
-        [Benchmark]
-        public void LargeBulkSet32()
-        {
-            BenchCase(32);
-        }
-
-        [Benchmark]
-        public void LargeBulkSet64()
-        {
-            BenchCase(64);
-        }
-
-        [Benchmark]
-        public void LargeBulkSet128()
-        {
-            BenchCase(128);
-        }
-
-        [Benchmark]
-        public void LargeBulkSet256()
-        {
-            BenchCase(256);
+            BenchCase(-1);
         }
 
         public void BenchCase(int targetBucketSize)
@@ -487,6 +460,10 @@ namespace Nethermind.Benchmarks.Store
             {
                 bulkSet.AsSpan().Sort();
                 PatriciaTreeBulkSetter.BulkSet(tempTree, bulkSet.AsMemory());
+            }
+            else if (targetBucketSize == -1)
+            {
+                PatriciaTreeBulkSetter.BulkSetUnsorted(tempTree, bulkSet.AsMemory());
             }
             else
             {
