@@ -45,7 +45,7 @@ namespace Nethermind.Consensus.Processing
             ILogManager logManager,
             IWorldState worldStateToWarmUp,
             IPrecompileChecker precompileChecker
-            ) : this(worldStateManager.GlobalStateReader, worldStateManager.CreateWorldStateForWarmingUp(worldStateToWarmUp), new CodeInfoRepository((worldStateToWarmUp as IPreBlockCaches)?.Caches.PrecompileCache), readOnlyBlockTree, specProvider, logManager, precompileChecker)
+            ) : this(worldStateManager.GlobalStateReader, worldStateManager.CreateWorldStateForWarmingUp(worldStateToWarmUp), new CodeInfoRepository(precompileChecker, (worldStateToWarmUp as IPreBlockCaches)?.Caches.PrecompileCache), readOnlyBlockTree, specProvider, logManager, precompileChecker)
         {
         }
 
@@ -55,7 +55,7 @@ namespace Nethermind.Consensus.Processing
             ISpecProvider specProvider,
             ILogManager logManager,
             IPrecompileChecker precompileChecker
-            ) : this(worldStateManager.GlobalStateReader, worldStateManager.CreateResettableWorldState(), new CodeInfoRepository(), readOnlyBlockTree, specProvider, logManager, precompileChecker)
+            ) : this(worldStateManager.GlobalStateReader, worldStateManager.CreateResettableWorldState(), new CodeInfoRepository(precompileChecker), readOnlyBlockTree, specProvider, logManager, precompileChecker)
         {
         }
 

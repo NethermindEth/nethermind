@@ -13,7 +13,6 @@ using Nethermind.Consensus.Validators;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
 using Nethermind.Evm;
-using Nethermind.Evm.Precompiles;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.JsonRpc.Modules.Eth.GasPrice;
 using Nethermind.Logging;
@@ -34,7 +33,6 @@ public class BlockProcessingModule : Module
             .AddSingleton<IUnclesValidator, UnclesValidator>()
 
             // Block processing components
-            .AddSingleton<IPrecompileChecker, EthereumPrecompileChecker>()
             .AddScoped<ITransactionProcessor, TransactionProcessor>()
             .AddScoped<ICodeInfoRepository, CodeInfoRepository>()
             .AddScoped<IVirtualMachine, VirtualMachine>()

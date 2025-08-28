@@ -44,7 +44,7 @@ public class OverridableTxProcessingEnv : IOverridableTxProcessorSource
         StateProvider = overridableScope.WorldState;
         PrecompileChecker = precompileChecker;
 
-        CodeInfoRepository = new(new CodeInfoRepository());
+        CodeInfoRepository = new(new CodeInfoRepository(precompileChecker));
         Machine = new VirtualMachine(blockhashProvider, specProvider, logManager, precompileChecker);
         _transactionProcessorLazy = new(CreateTransactionProcessor);
     }

@@ -13,6 +13,7 @@ using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Db;
 using Nethermind.Evm;
+using Nethermind.Evm.Precompiles;
 using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.Specs;
@@ -42,7 +43,7 @@ public class NonceManagerTests
         _blockTree.Head.Returns(block);
         _blockTree.FindBestSuggestedHeader().Returns(Build.A.BlockHeader.WithNumber(10000000).TestObject);
 
-        _headInfo = new ChainHeadInfoProvider(_specProvider, _blockTree, _stateProvider, new CodeInfoRepository());
+        _headInfo = new ChainHeadInfoProvider(_specProvider, _blockTree, _stateProvider, new CodeInfoRepository(new EthereumPrecompileChecker()));
         _nonceManager = new NonceManager(_headInfo.ReadOnlyStateProvider);
     }
 

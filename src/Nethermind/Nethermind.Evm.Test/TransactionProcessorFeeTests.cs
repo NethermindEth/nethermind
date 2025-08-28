@@ -44,7 +44,7 @@ public class TransactionProcessorFeeTests
         _stateProvider.CommitTree(0);
         _precompileChecker = new EthereumPrecompileChecker();
 
-        CodeInfoRepository codeInfoRepository = new();
+        CodeInfoRepository codeInfoRepository = new(_precompileChecker);
         VirtualMachine virtualMachine = new(new TestBlockhashProvider(_specProvider), _specProvider, LimboLogs.Instance, _precompileChecker);
         _transactionProcessor = new TransactionProcessor(_specProvider, _stateProvider, virtualMachine, codeInfoRepository, LimboLogs.Instance);
         _ethereumEcdsa = new EthereumEcdsa(_specProvider.ChainId);

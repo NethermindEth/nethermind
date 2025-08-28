@@ -19,6 +19,7 @@ using Nethermind.Core.Test;
 using Nethermind.Core.Test.Blockchain;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Evm;
+using Nethermind.Evm.Precompiles;
 using Nethermind.Evm.Tracing;
 using Nethermind.Logging;
 using Nethermind.State;
@@ -522,7 +523,7 @@ public class BlockchainProcessorTests
                     new FixedForkActivationChainHeadSpecProvider(specProvider, fixedBlock: 10_000_000),
                     blockTree,
                     readOnlyState,
-                    new CodeInfoRepository())
+                    new CodeInfoRepository(new EthereumPrecompileChecker()))
                 {
                     HasSynced = true
                 };

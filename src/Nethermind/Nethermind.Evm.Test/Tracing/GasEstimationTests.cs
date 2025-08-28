@@ -394,7 +394,7 @@ namespace Nethermind.Evm.Test.Tracing
                 _stateProvider.CommitTree(0);
                 precompileChecker = new EthereumPrecompileChecker();
 
-                CodeInfoRepository codeInfoRepository = new();
+                CodeInfoRepository codeInfoRepository = new(precompileChecker);
                 VirtualMachine virtualMachine = new(new TestBlockhashProvider(_specProvider), _specProvider, LimboLogs.Instance, precompileChecker);
                 _transactionProcessor = new TransactionProcessor(_specProvider, _stateProvider, virtualMachine, codeInfoRepository, LimboLogs.Instance);
                 _ethereumEcdsa = new EthereumEcdsa(_specProvider.ChainId);

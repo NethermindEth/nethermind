@@ -19,6 +19,7 @@ using NSubstitute;
 using NUnit.Framework;
 using System.Collections.Generic;
 using Nethermind.Core.Test;
+using Nethermind.Evm.Precompiles;
 
 namespace Nethermind.TxPool.Test;
 internal class DelegatedAccountFilterTest
@@ -30,7 +31,7 @@ internal class DelegatedAccountFilterTest
         headInfoProvider.GetCurrentHeadSpec().Returns(Prague.Instance);
         TxDistinctSortedPool standardPool = new TxDistinctSortedPool(MemoryAllowance.MemPoolSize, Substitute.For<IComparer<Transaction>>(), NullLogManager.Instance);
         TxDistinctSortedPool blobPool = new BlobTxDistinctSortedPool(10, Substitute.For<IComparer<Transaction>>(), NullLogManager.Instance);
-        DelegatedAccountFilter filter = new(headInfoProvider, standardPool, blobPool, Substitute.For<IReadOnlyStateProvider>(), new CodeInfoRepository(), new DelegationCache());
+        DelegatedAccountFilter filter = new(headInfoProvider, standardPool, blobPool, Substitute.For<IReadOnlyStateProvider>(), new CodeInfoRepository(new EthereumPrecompileChecker()), new DelegationCache());
         Transaction transaction = Build.A.Transaction.SignedAndResolved(new EthereumEcdsa(0), TestItem.PrivateKeyA).TestObject;
         TxFilteringState state = new(transaction, Substitute.For<IAccountStateProvider>());
 
@@ -45,7 +46,7 @@ internal class DelegatedAccountFilterTest
         IWorldStateManager worldStateManager = TestWorldStateFactory.CreateForTest();
         IWorldState stateProvider = worldStateManager.GlobalWorldState;
         stateProvider.CreateAccount(TestItem.AddressA, 0);
-        CodeInfoRepository codeInfoRepository = new();
+        CodeInfoRepository codeInfoRepository = new CodeInfoRepository(new EthereumPrecompileChecker());
         byte[] code = [.. Eip7702Constants.DelegationHeader, .. TestItem.PrivateKeyA.Address.Bytes];
         codeInfoRepository.InsertCode(stateProvider, code, TestItem.AddressA, Prague.Instance);
         IChainHeadSpecProvider headInfoProvider = Substitute.For<IChainHeadSpecProvider>();
@@ -73,7 +74,7 @@ internal class DelegatedAccountFilterTest
         IWorldStateManager worldStateManager = TestWorldStateFactory.CreateForTest();
         IWorldState stateProvider = worldStateManager.GlobalWorldState;
         stateProvider.CreateAccount(TestItem.AddressA, 0);
-        CodeInfoRepository codeInfoRepository = new();
+        CodeInfoRepository codeInfoRepository = new CodeInfoRepository(new EthereumPrecompileChecker());
         byte[] code = [.. Eip7702Constants.DelegationHeader, .. TestItem.PrivateKeyA.Address.Bytes];
         codeInfoRepository.InsertCode(stateProvider, code, TestItem.AddressA, Prague.Instance);
         DelegatedAccountFilter filter = new(headInfoProvider, standardPool, blobPool, stateProvider, codeInfoRepository, new DelegationCache());
@@ -97,7 +98,7 @@ internal class DelegatedAccountFilterTest
         IWorldStateManager worldStateManager = TestWorldStateFactory.CreateForTest();
         IWorldState stateProvider = worldStateManager.GlobalWorldState;
         stateProvider.CreateAccount(TestItem.AddressA, 0);
-        CodeInfoRepository codeInfoRepository = new();
+        CodeInfoRepository codeInfoRepository = new CodeInfoRepository(new EthereumPrecompileChecker());
         byte[] code = [.. Eip7702Constants.DelegationHeader, .. TestItem.PrivateKeyA.Address.Bytes];
         codeInfoRepository.InsertCode(stateProvider, code, TestItem.AddressA, Prague.Instance);
         DelegatedAccountFilter filter = new(headInfoProvider, standardPool, blobPool, stateProvider, codeInfoRepository, new DelegationCache());
@@ -126,7 +127,7 @@ internal class DelegatedAccountFilterTest
         IWorldStateManager worldStateManager = TestWorldStateFactory.CreateForTest();
         IWorldState stateProvider = worldStateManager.GlobalWorldState;
         stateProvider.CreateAccount(TestItem.AddressA, 0);
-        CodeInfoRepository codeInfoRepository = new();
+        CodeInfoRepository codeInfoRepository = new CodeInfoRepository(new EthereumPrecompileChecker());
         byte[] code = [.. Eip7702Constants.DelegationHeader, .. TestItem.PrivateKeyA.Address.Bytes];
         codeInfoRepository.InsertCode(stateProvider, code, TestItem.AddressA, Prague.Instance);
         DelegatedAccountFilter filter = new(headInfoProvider, standardPool, blobPool, stateProvider, codeInfoRepository, new DelegationCache());
@@ -154,7 +155,7 @@ internal class DelegatedAccountFilterTest
         TxDistinctSortedPool blobPool = new BlobTxDistinctSortedPool(10, Substitute.For<IComparer<Transaction>>(), NullLogManager.Instance);
         DelegationCache pendingDelegations = new();
         pendingDelegations.IncrementDelegationCount(TestItem.AddressA);
-        DelegatedAccountFilter filter = new(headInfoProvider, standardPool, blobPool, Substitute.For<IReadOnlyStateProvider>(), new CodeInfoRepository(), pendingDelegations);
+        DelegatedAccountFilter filter = new(headInfoProvider, standardPool, blobPool, Substitute.For<IReadOnlyStateProvider>(), new CodeInfoRepository(new EthereumPrecompileChecker()), pendingDelegations);
         Transaction transaction = Build.A.Transaction.WithNonce((UInt256)nonce).SignedAndResolved(new EthereumEcdsa(0), TestItem.PrivateKeyA).TestObject;
         IWorldStateManager worldStateManager = TestWorldStateFactory.CreateForTest();
         IWorldState stateProvider = worldStateManager.GlobalWorldState;
@@ -174,7 +175,7 @@ internal class DelegatedAccountFilterTest
         headInfoProvider.GetCurrentHeadSpec().Returns(Prague.Instance);
         TxDistinctSortedPool standardPool = new TxDistinctSortedPool(MemoryAllowance.MemPoolSize, Substitute.For<IComparer<Transaction>>(), NullLogManager.Instance);
         TxDistinctSortedPool blobPool = new BlobTxDistinctSortedPool(10, Substitute.For<IComparer<Transaction>>(), NullLogManager.Instance);
-        DelegatedAccountFilter filter = new(headInfoProvider, standardPool, blobPool, Substitute.For<IReadOnlyStateProvider>(), new CodeInfoRepository(), new());
+        DelegatedAccountFilter filter = new(headInfoProvider, standardPool, blobPool, Substitute.For<IReadOnlyStateProvider>(), new CodeInfoRepository(new EthereumPrecompileChecker()), new());
         Transaction transaction;
         if (useBlobPool)
         {
@@ -215,7 +216,7 @@ internal class DelegatedAccountFilterTest
         TxDistinctSortedPool blobPool = new BlobTxDistinctSortedPool(10, Substitute.For<IComparer<Transaction>>(), NullLogManager.Instance);
         DelegationCache pendingDelegations = new();
         pendingDelegations.IncrementDelegationCount(TestItem.AddressA);
-        DelegatedAccountFilter filter = new(headInfoProvider, standardPool, blobPool, Substitute.For<IReadOnlyStateProvider>(), new CodeInfoRepository(), pendingDelegations);
+        DelegatedAccountFilter filter = new(headInfoProvider, standardPool, blobPool, Substitute.For<IReadOnlyStateProvider>(), new CodeInfoRepository(new EthereumPrecompileChecker()), pendingDelegations);
         Transaction transaction = Build.A.Transaction
             .WithNonce(1)
             .SignedAndResolved(new EthereumEcdsa(0), TestItem.PrivateKeyA).TestObject;

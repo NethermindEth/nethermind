@@ -79,7 +79,7 @@ public class SimulateReadOnlyBlocksProcessingEnv : IDisposable
         BlockTree = new BlockTreeOverlay(baseBlockTree, blockTree);
         StateProvider = worldState;
         SimulateBlockhashProvider blockhashProvider = new SimulateBlockhashProvider(new BlockhashProvider(BlockTree, specProvider, StateProvider, logManager), BlockTree);
-        CodeInfoRepository = new OverridableCodeInfoRepository(new CodeInfoRepository());
+        CodeInfoRepository = new OverridableCodeInfoRepository(new CodeInfoRepository(precompileChecker));
         SimulateVirtualMachine virtualMachine = new SimulateVirtualMachine(new VirtualMachine(blockhashProvider, specProvider, logManager, precompileChecker));
         _transactionProcessor = transactionProcessorFactory.CreateTransactionProcessor(SpecProvider, StateProvider, virtualMachine, CodeInfoRepository, _logManager, validate);
         _blockValidator = CreateValidator();

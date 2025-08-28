@@ -54,7 +54,7 @@ public class DevBlockProducerTests
         IStateReader stateReader = worldStateManager.GlobalStateReader;
         BlockhashProvider blockhashProvider = new(blockTree, specProvider, stateProvider, LimboLogs.Instance);
         IPrecompileChecker precompileChecker = new EthereumPrecompileChecker();
-        CodeInfoRepository codeInfoRepository = new();
+        CodeInfoRepository codeInfoRepository = new(precompileChecker);
         VirtualMachine virtualMachine = new(
             blockhashProvider,
             specProvider,

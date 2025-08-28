@@ -23,6 +23,7 @@ using Nethermind.Core.Test.Builders;
 using Nethermind.Crypto;
 using Nethermind.Db;
 using Nethermind.Evm;
+using Nethermind.Evm.Precompiles;
 using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.Specs;
@@ -2195,7 +2196,7 @@ namespace Nethermind.TxPool.Test
             txStorage ??= new BlobTxStorage();
 
             _headInfo = chainHeadInfoProvider;
-            _headInfo ??= new ChainHeadInfoProvider(specProvider, _blockTree, _stateProvider, new CodeInfoRepository());
+            _headInfo ??= new ChainHeadInfoProvider(specProvider, _blockTree, _stateProvider, new CodeInfoRepository(new EthereumPrecompileChecker()));
 
             return new TxPool(
                 _ethereumEcdsa,

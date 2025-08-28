@@ -71,7 +71,7 @@ namespace Nethermind.Init.Steps
             IStateReader stateReader = setApi.StateReader!;
             IWorldState mainWorldState = _api.WorldStateManager!.GlobalWorldState;
             PreBlockCaches? preBlockCaches = (mainWorldState as IPreBlockCaches)?.Caches;
-            ICodeInfoRepository codeInfoRepository = CreateCodeInfoRepository(preBlockCaches?.PrecompileCache);
+            ICodeInfoRepository codeInfoRepository = CreateCodeInfoRepository(_api.PrecompileChecker, preBlockCaches?.PrecompileCache);
             IChainHeadInfoProvider chainHeadInfoProvider =
                 new ChainHeadInfoProvider(getApi.SpecProvider!, getApi.BlockTree!, stateReader, codeInfoRepository);
 
@@ -84,7 +84,7 @@ namespace Nethermind.Init.Steps
             _api.ReceiptMonitor = receiptCanonicalityMonitor;
 
             _api.BlockPreprocessor.AddFirst(
-                new RecoverSignatures(getApi.EthereumEcdsa, getApi.SpecProvider, getApi.LogManager));
+                new RecoverSignatures(getApi.EthereumEcdsa, getApi.SpecProvider, _api.LogManager));
 
             VirtualMachine.WarmUpEvmInstructions();
             IVirtualMachine virtualMachine = CreateVirtualMachine(mainWorldState);
@@ -171,9 +171,10 @@ namespace Nethermind.Init.Steps
         }
 
         protected virtual ICodeInfoRepository CreateCodeInfoRepository(
+            IPrecompileChecker precompileChecker,
             ConcurrentDictionary<PrecompileCacheKey, (byte[], bool)>? precompileCache
         )
-            => new CodeInfoRepository(precompileCache);
+            => new CodeInfoRepository(precompileChecker, precompileCache);
 
         protected virtual ITransactionProcessor CreateTransactionProcessor(ICodeInfoRepository codeInfoRepository, IVirtualMachine virtualMachine, IWorldState worldState)
         {

@@ -44,7 +44,7 @@ public unsafe partial class VirtualMachineBase
         WorldState state = new(trieStore, db, lm);
         state.CreateAccount(addressOne, 1000.Ether());
         state.Commit(spec);
-        CodeInfoRepository codeInfoRepository = new();
+        CodeInfoRepository codeInfoRepository = new CodeInfoRepository(precompileChecker);
         BlockHeader _header = new(Keccak.Zero, Keccak.Zero, addressOne, UInt256.One, MainnetSpecProvider.PragueActivation.BlockNumber, Int64.MaxValue, 1UL, Bytes.Empty, 0, 0);
 
         vm.SetBlockExecutionContext(new BlockExecutionContext(_header, spec));

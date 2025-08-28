@@ -58,9 +58,11 @@ public class CodeInfoRepository : ICodeInfoRepository
         }.ToFrozenDictionary();
     }
 
-    public CodeInfoRepository(ConcurrentDictionary<PreBlockCaches.PrecompileCacheKey, (byte[], bool)>? precompileCache = null)
+    public CodeInfoRepository(
+        IPrecompileChecker precompileChecker,
+        ConcurrentDictionary<PreBlockCaches.PrecompileCacheKey, (byte[], bool)>? precompileCache = null)
     {
-        _precompileChecker = new EthereumPrecompileChecker();
+        _precompileChecker = precompileChecker;
         _localPrecompiles = precompileCache is null
             ? _precompiles
             : _precompiles.ToFrozenDictionary(kvp => kvp.Key, kvp => CreateCachedPrecompile(kvp, precompileCache));
@@ -273,4 +275,3 @@ public class CodeInfoRepository : ICodeInfoRepository
         }
     }
 }
-
