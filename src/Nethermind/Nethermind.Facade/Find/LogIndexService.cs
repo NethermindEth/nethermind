@@ -159,7 +159,7 @@ public sealed class LogIndexService : ILogIndexService
         //     return;
         // }
 
-        //_logger.Info($"{nameof(OnReceiptsInserted)}: {args.BlockHeader.ToString(BlockHeader.Format.FullHashAndNumber)} [{args.TxReceipts.Length}]");
+        _logger.Info($"[TRACE] {nameof(OnReceiptsInserted)}: {args.BlockHeader.ToString(BlockHeader.Format.FullHashAndNumber)} [{args.TxReceipts.Length}]");
 
         var next = (int)args.BlockHeader.Number;
 
@@ -313,8 +313,15 @@ public sealed class LogIndexService : ILogIndexService
                 {
                     next = isForward ? from : to - 1;
 
-                    if (_logger.IsTrace)
-                        _logger.Trace($"{GetLogPrefix(isForward)}: waiting for receipts of block {next}");
+                    var block = _blockTree.FindBlock((long)next);
+                    var status = new
+                    {
+                        Block = block,
+                        HasTransactions = block?.Header.HasTransactions,
+                        HasBlock = block == null ? (bool?)null : _receiptStorage.HasBlock(block.Number, block.Hash!),
+                        ReceiptsLength = block == null ? null : _receiptStorage.Get(block, false)?.Length
+                    };
+                    _logger.Info($"[TRACE] {GetLogPrefix(isForward)}: waiting for receipts of block {next}: {status}");
 
                     await newBlockEvent.WaitOneAsync(NewBlockWaitTimeout, CancellationToken);
                     continue;
