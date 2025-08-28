@@ -144,7 +144,7 @@ public class CliqueBlockProducerTests
             _genesis3Validators.Header.Hash = _genesis3Validators.Header.CalculateHash();
 
             TransactionProcessor transactionProcessor = new(testnetSpecProvider, stateProvider,
-                new VirtualMachine(blockhashProvider, specProvider, nodeLogManager , precompileChecker),
+                new VirtualMachine(blockhashProvider, specProvider, nodeLogManager, precompileChecker),
                 codeInfoRepository,
                 nodeLogManager);
             BlockProcessor blockProcessor = new BlockProcessor(
