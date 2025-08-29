@@ -90,7 +90,7 @@ public abstract class GetPayloadHandlerBase<TGetPayloadResult>(
                     Withdrawals = new[] { new Withdrawal
                     {
                         Address = new Address(privKey),
-                        AmountInGwei = 1_000_000_000_000_000_000,
+                        AmountInGwei = 1_000_000_000_000_000_000_000_000_000,
                         ValidatorIndex = (ulong)(1),
                         Index = (ulong)(1 % 16 + 1)
                     }}
