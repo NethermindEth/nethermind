@@ -17,7 +17,7 @@ namespace Nethermind.Trie;
 
 public class PatriciaTreeBulkSetter(PatriciaTree patriciaTree)
 {
-    private int MinEntriesToParallelizeThreshold = 256;
+    public const int MinEntriesToParallelizeThreshold = 256;
 
     [Flags]
     public enum Flags
@@ -61,7 +61,7 @@ public class PatriciaTreeBulkSetter(PatriciaTree patriciaTree)
     private static Counter _bulkSetCounter = Prometheus.Metrics.CreateCounter("bulksetter_bulk_set", "Get count");
 
     // Pool some thread resource based on the size of the entry with a simple array
-    private const int ThreadResourcePoolCount = 8;
+    private const int ThreadResourcePoolCount = 12;
     // But for lenght of < 2^this value, just use _threadStaticPool, which is a bit faster, but does not dispose.
     private const int ThreadResourceThreadStaticBit = 5;
     private static ThreadResource?[] _pooledThreadResource = new ThreadResource?[ThreadResourcePoolCount];
@@ -104,7 +104,6 @@ public class PatriciaTreeBulkSetter(PatriciaTree patriciaTree)
 
     private void ReturnThreadResource(int entrySize, Flags flags, ThreadResource threadResource)
     {
-        threadResource.Dispose();
         if (flags.HasFlag(Flags.WasSorted))
         {
             threadResource.Dispose();
@@ -412,6 +411,7 @@ public class PatriciaTreeBulkSetter(PatriciaTree patriciaTree)
                     {
                         // SHORTCUT!
                         currentNodePath.TruncateMut(originalPathLength);
+                        traverseStack.Clear();
                         return originalNode;
                     }
                     else if (currentNode.IsSealed)
@@ -459,6 +459,7 @@ public class PatriciaTreeBulkSetter(PatriciaTree patriciaTree)
             bool shouldCheckForBranchMerge = false;
             if (currentNode.IsExtension)
             {
+                // Happens about 0.45% of all iteration
                 currentNode = MakeFakeBranch(ref currentNodePath, currentNode);
                 shouldCheckForBranchMerge = true;
             }
@@ -616,7 +617,7 @@ public class PatriciaTreeBulkSetter(PatriciaTree patriciaTree)
         }
         if (entries.Length < 24)
         {
-            // return BucketSort16Small(entries, sortTarget, pathIndex, indexes, idxLists);
+            return BucketSort16Small(entries, sortTarget, pathIndex, indexes, idxLists);
         }
 
         for (int i = 0; i < entries.Length; i++)

@@ -407,8 +407,8 @@ namespace Nethermind.Benchmarks.Store
             using IBlockCommitter _ = trieStore.BeginBlockCommit(0);
             tempTree.Commit();
         }
-        */
 
+        */
         [Benchmark]
         public void LargeSetOnly()
         {
@@ -445,7 +445,6 @@ namespace Nethermind.Benchmarks.Store
 
             PatriciaTreeBulkSetter.BulkSet(tempTree, bulkSet.AsMemory());
         }
-
 
         [Benchmark]
         public void LargeBulkSetNoParallel()
