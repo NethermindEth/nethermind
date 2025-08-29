@@ -10,6 +10,10 @@
   <Folder Name="/Plugins/Analytics/">
     <Project Path="Nethermind.Analytics/Nethermind.Analytics.csproj" />
   </Folder>
+  <Folder Name="/Plugins/Flashbots/">
+    <Project Path="Nethermind.Flashbots.Test/Nethermind.Flashbots.Test.csproj" />
+    <Project Path="Nethermind.Flashbots/Nethermind.Flashbots.csproj" />
+  </Folder>
   <Folder Name="/Plugins/Hive/">
     <Project Path="Nethermind.Hive.Test/Nethermind.Hive.Test.csproj" />
     <Project Path="Nethermind.Hive/Nethermind.Hive.csproj" />
@@ -17,10 +21,6 @@
   <Folder Name="/Plugins/Merge/">
     <Project Path="Nethermind.Merge.Plugin.Test/Nethermind.Merge.Plugin.Test.csproj" />
     <Project Path="Nethermind.Merge.Plugin/Nethermind.Merge.Plugin.csproj" />
-  </Folder>
-  <Folder Name="/Plugins/Flashbots/">
-    <Project Path="Nethermind.Flashbots.Test/Nethermind.Flashbots.Test.csproj" />
-    <Project Path="Nethermind.Flashbots/Nethermind.Flashbots.csproj" />
   </Folder>
   <Folder Name="/Plugins/Signer/">
     <Project Path="Nethermind.ExternalSigner.Plugin/Nethermind.ExternalSigner.Plugin.csproj" />
@@ -79,6 +79,7 @@
     <Project Path="Nethermind.Trie.Test/Nethermind.Trie.Test.csproj" />
     <Project Path="Nethermind.TxPool.Test/Nethermind.TxPool.Test.csproj" />
     <Project Path="Nethermind.Wallet.Test/Nethermind.Wallet.Test.csproj" />
+    <Project Path="Nethermind.Xdc.Test\Nethermind.Xdc.Test.csproj" Type="Classic C#" />
   </Folder>
   <Project Path="Nethermind.Abi/Nethermind.Abi.csproj" />
   <Project Path="Nethermind.Api/Nethermind.Api.csproj" />
