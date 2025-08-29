@@ -12,11 +12,23 @@ public class NonceChangeDecoder : IRlpValueDecoder<NonceChange>, IRlpStreamDecod
     public static NonceChangeDecoder Instance => _instance ??= new();
 
     public NonceChange Decode(ref Rlp.ValueDecoderContext ctx, RlpBehaviors rlpBehaviors)
-        => new()
+    {
+        int length = ctx.ReadSequenceLength();
+        int check = length + ctx.Position;
+
+        NonceChange nonceChange = new()
         {
             BlockAccessIndex = ctx.DecodeUShort(),
             NewNonce = ctx.DecodeULong()
         };
+
+        if (!rlpBehaviors.HasFlag(RlpBehaviors.AllowExtraBytes))
+        {
+            ctx.Check(check);
+        }
+
+        return nonceChange;
+    }
 
     public int GetLength(NonceChange item, RlpBehaviors rlpBehaviors)
         => Rlp.LengthOfSequence(GetContentLength(item, rlpBehaviors));

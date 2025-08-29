@@ -15,7 +15,7 @@ public class BlockAccessListDecoder : IRlpValueDecoder<BlockAccessList>, IRlpStr
     public static BlockAccessListDecoder Instance => _instance ??= new();
 
     public int GetLength(BlockAccessList item, RlpBehaviors rlpBehaviors)
-        => Rlp.LengthOfSequence(GetContentLength(item, rlpBehaviors));
+        => GetContentLength(item, rlpBehaviors);
 
     public BlockAccessList Decode(ref Rlp.ValueDecoderContext ctx, RlpBehaviors rlpBehaviors)
     {
@@ -39,12 +39,12 @@ public class BlockAccessListDecoder : IRlpValueDecoder<BlockAccessList>, IRlpStr
 
     public void Encode(RlpStream stream, BlockAccessList item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
     {
-        stream.StartSequence(GetContentLength(item, rlpBehaviors));
-
-        foreach (AccountChanges accountChanges in item.AccountChanges.Values)
-        {
-            AccountChangesDecoder.Instance.Encode(stream, accountChanges);
-        }
+        // stream.StartSequence(GetContentLength(item, rlpBehaviors));
+        stream.EncodeArray([.. item.AccountChanges.Values]);
+        // foreach (AccountChanges accountChanges in item.AccountChanges.Values)
+        // {
+        //     AccountChangesDecoder.Instance.Encode(stream, accountChanges);
+        // }
     }
 
     private static int GetContentLength(BlockAccessList item, RlpBehaviors rlpBehaviors)

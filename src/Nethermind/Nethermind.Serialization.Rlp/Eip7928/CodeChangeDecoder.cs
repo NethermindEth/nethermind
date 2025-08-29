@@ -12,11 +12,23 @@ public class CodeChangeDecoder : IRlpValueDecoder<CodeChange>, IRlpStreamDecoder
     public static CodeChangeDecoder Instance => _instance ??= new();
 
     public CodeChange Decode(ref Rlp.ValueDecoderContext ctx, RlpBehaviors rlpBehaviors)
-        => new()
+    {
+        int length = ctx.ReadSequenceLength();
+        int check = length + ctx.Position;
+
+        CodeChange codeChange = new()
         {
             BlockAccessIndex = ctx.DecodeUShort(),
             NewCode = ctx.DecodeByteArray()
         };
+
+        if (!rlpBehaviors.HasFlag(RlpBehaviors.AllowExtraBytes))
+        {
+            ctx.Check(check);
+        }
+
+        return codeChange;
+    }
 
     public int GetLength(CodeChange item, RlpBehaviors rlpBehaviors)
         => Rlp.LengthOfSequence(GetContentLength(item, rlpBehaviors));

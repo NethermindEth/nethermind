@@ -37,7 +37,7 @@ public class SlotChangesDecoder : IRlpValueDecoder<SlotChanges>, IRlpStreamDecod
     }
 
     public int GetLength(SlotChanges item, RlpBehaviors rlpBehaviors)
-        => Rlp.LengthOfSequence(GetContentLength(item, rlpBehaviors).Total);
+        => Rlp.LengthOfSequence(GetContentLength(item, rlpBehaviors));
 
     public SlotChanges Decode(RlpStream rlpStream, RlpBehaviors rlpBehaviors)
     {
@@ -51,8 +51,7 @@ public class SlotChangesDecoder : IRlpValueDecoder<SlotChanges>, IRlpStreamDecod
 
     public void Encode(RlpStream stream, SlotChanges item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
     {
-        (int Total, int Slot, int SlotChanges) = GetContentLength(item, rlpBehaviors);
-        stream.StartSequence(Total);
+        stream.StartSequence(GetContentLength(item, rlpBehaviors));
 
         // stream.StartSequence(Slot);
         stream.Encode(item.Slot);
@@ -62,20 +61,19 @@ public class SlotChangesDecoder : IRlpValueDecoder<SlotChanges>, IRlpStreamDecod
         // {
         //     StorageChangeDecoder.Instance.Encode(stream, change);
         // }
-        stream.EncodeArray<StorageChange>([.. item.Changes], rlpBehaviors);
+        stream.EncodeArray([.. item.Changes], rlpBehaviors);
     }
 
-    public static (int Total, int Slot, int SlotChanges) GetContentLength(SlotChanges item, RlpBehaviors rlpBehaviors)
+    public static int GetContentLength(SlotChanges item, RlpBehaviors rlpBehaviors)
     {
-        int slotChangeLen = 0;
+        int storageChangesLen = 0;
 
         foreach (StorageChange slotChange in item.Changes)
         {
-            slotChangeLen += StorageChangeDecoder.Instance.GetLength(slotChange, rlpBehaviors);
+            storageChangesLen += StorageChangeDecoder.Instance.GetLength(slotChange, rlpBehaviors);
         }
+        storageChangesLen = Rlp.LengthOfSequence(storageChangesLen);
 
-        int slot = Rlp.LengthOf(item.Slot);
-        slotChangeLen = Rlp.LengthOfSequence(slotChangeLen);
-        return (slotChangeLen + slot, slot, slotChangeLen);
+        return storageChangesLen + Rlp.LengthOf(item.Slot);
     }
 }
