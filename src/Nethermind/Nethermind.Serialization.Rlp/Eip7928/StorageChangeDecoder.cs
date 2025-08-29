@@ -16,10 +16,16 @@ public class StorageChangeDecoder : IRlpValueDecoder<StorageChange>, IRlpStreamD
         int length = ctx.ReadSequenceLength();
         int check = length + ctx.Position;
 
+        byte[] newValue = ctx.DecodeByteArray();
+        if (newValue.Length != 32)
+        {
+            throw new RlpException("Invalid storage value, should be 32 bytes.");
+        }
+
         StorageChange storageChange = new()
         {
             BlockAccessIndex = ctx.DecodeUShort(),
-            NewValue = new(ctx.DecodeByteArray())
+            NewValue = new(newValue)
         };
 
         if (!rlpBehaviors.HasFlag(RlpBehaviors.AllowExtraBytes))

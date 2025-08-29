@@ -18,6 +18,10 @@ public class SlotChangesDecoder : IRlpValueDecoder<SlotChanges>, IRlpStreamDecod
         int check = length + ctx.Position;
 
         byte[] slot = ctx.DecodeByteArray();
+        if (slot.Length != 32)
+        {
+            throw new RlpException("Invalid storage key, should be 32 bytes.");
+        }
 
         SlotChanges slotChanges = new()
         {
