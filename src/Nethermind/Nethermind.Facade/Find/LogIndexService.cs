@@ -319,7 +319,7 @@ public sealed class LogIndexService : ILogIndexService
                         Block = block,
                         HasTransactions = block?.Header.HasTransactions,
                         HasBlock = block == null ? (bool?)null : _receiptStorage.HasBlock(block.Number, block.Hash!),
-                        ReceiptsLength = block == null ? null : _receiptStorage.Get(block, false)?.Length
+                        ReceiptsLength = block == null ? null : _receiptStorage.Get(block)?.Length
                     };
                     _logger.Info($"[TRACE] {GetLogPrefix(isForward)}: waiting for receipts of block {next}: {status}");
 
@@ -439,7 +439,7 @@ public sealed class LogIndexService : ILogIndexService
         if (_blockTree.FindBlock(i) is not { Hash: not null } block)
             return default;
 
-        TxReceipt[] receipts = _receiptStorage.Get(block, false) ?? [];
+        TxReceipt[] receipts = _receiptStorage.Get(block) ?? [];
 
         // Double-check if no receipts are present
         if (receipts.Length == 0 && block.Header.HasTransactions)
