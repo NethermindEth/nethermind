@@ -23,7 +23,7 @@ public class BlockAccessListDecoder : IRlpValueDecoder<BlockAccessList>, IRlpStr
         int check = length + ctx.Position;
 
         AccountChanges[] accountChanges = ctx.DecodeArray(AccountChangesDecoder.Instance);
-        SortedDictionary<Address, AccountChanges> accountChangesMap = new(accountChanges.ToDictionary(a => new Address(a.Address), a => a));
+        SortedDictionary<Address, AccountChanges> accountChangesMap = new(accountChanges.ToDictionary(a => a.Address, a => a));
         BlockAccessList blockAccessList = new()
         {
             AccountChanges = accountChangesMap

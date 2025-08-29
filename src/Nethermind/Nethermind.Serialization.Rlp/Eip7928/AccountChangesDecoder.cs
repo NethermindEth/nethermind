@@ -4,6 +4,7 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using Nethermind.Core;
 using Nethermind.Core.BlockAccessLists;
 
 namespace Nethermind.Serialization.Rlp.Eip7928;
@@ -18,7 +19,7 @@ public class AccountChangesDecoder : IRlpValueDecoder<AccountChanges>, IRlpStrea
         int length = ctx.ReadSequenceLength();
         int check = length + ctx.Position;
 
-        byte[] address = ctx.DecodeAddress().Bytes;
+        Address address = ctx.DecodeAddress();
         SlotChanges[] slotChanges = ctx.DecodeArray(SlotChangesDecoder.Instance);
         SortedDictionary<byte[], SlotChanges> slotChangesMap = new(slotChanges.ToDictionary(s => s.Slot, s => s));
         StorageRead[] storageReads = ctx.DecodeArray(StorageReadDecoder.Instance);

@@ -9,12 +9,12 @@ namespace Nethermind.Core.BlockAccessLists;
 public struct StorageChange
 {
     public ushort BlockAccessIndex { get; set; }
-    public byte[] NewValue { get; set; }
+    public Bytes32 NewValue { get; set; }
 }
 
 public struct StorageRead
 {
-    public byte[] Key { get; set; }
+    public Bytes32 Key { get; set; }
 }
 
 public struct BalanceChange
@@ -43,7 +43,7 @@ public struct SlotChanges()
 
 public struct AccountChanges(Address address)
 {
-    public byte[] Address { get; set; } = address.Bytes;
+    public Address Address { get; set; } = address;
     public SortedDictionary<byte[], SlotChanges> StorageChanges { get; set; } = [];
     public List<StorageRead> StorageReads { get; set; } = [];
     public List<BalanceChange> BalanceChanges { get; set; } = [];

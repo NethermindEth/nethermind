@@ -19,7 +19,7 @@ public class StorageChangeDecoder : IRlpValueDecoder<StorageChange>, IRlpStreamD
         StorageChange storageChange = new()
         {
             BlockAccessIndex = ctx.DecodeUShort(),
-            NewValue = ctx.DecodeByteArray()
+            NewValue = new(ctx.DecodeByteArray())
         };
 
         if (!rlpBehaviors.HasFlag(RlpBehaviors.AllowExtraBytes))
@@ -47,9 +47,9 @@ public class StorageChangeDecoder : IRlpValueDecoder<StorageChange>, IRlpStreamD
     {
         stream.StartSequence(GetContentLength(item, rlpBehaviors));
         stream.Encode(item.BlockAccessIndex);
-        stream.Encode(item.NewValue);
+        stream.Encode(item.NewValue.Unwrap());
     }
 
     public static int GetContentLength(StorageChange item, RlpBehaviors rlpBehaviors)
-        => Rlp.LengthOf(item.BlockAccessIndex) + Rlp.LengthOf(item.NewValue);
+        => Rlp.LengthOf(item.BlockAccessIndex) + Rlp.LengthOf(item.NewValue.Unwrap());
 }

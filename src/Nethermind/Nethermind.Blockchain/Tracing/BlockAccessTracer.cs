@@ -181,7 +181,7 @@ public class BlockAccessTracer : IBlockTracer, ITxTracer, IJournal<int>
     {
         StorageRead storageRead = new()
         {
-            Key = storageCell.Hash.ToByteArray()
+            Key = new(storageCell.Hash.ToByteArray())
         };
         Address address = storageCell.Address;
 
@@ -301,7 +301,7 @@ public class BlockAccessTracer : IBlockTracer, ITxTracer, IJournal<int>
         StorageChange storageChange = new()
         {
             BlockAccessIndex = _blockAccessIndex,
-            NewValue = value.ToArray()
+            NewValue = new(value.ToArray())
         };
 
         byte[] storageKey = [.. key];

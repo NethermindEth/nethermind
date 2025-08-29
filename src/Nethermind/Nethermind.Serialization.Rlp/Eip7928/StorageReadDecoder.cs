@@ -21,7 +21,7 @@ public class StorageReadDecoder : IRlpValueDecoder<StorageRead>, IRlpStreamDecod
 
         StorageRead storageRead = new()
         {
-            Key = ctx.DecodeByteArray(),
+            Key = new(ctx.DecodeByteArray()),
         };
 
         if (!rlpBehaviors.HasFlag(RlpBehaviors.AllowExtraBytes))
@@ -45,9 +45,9 @@ public class StorageReadDecoder : IRlpValueDecoder<StorageRead>, IRlpStreamDecod
     public void Encode(RlpStream stream, StorageRead item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
     {
         stream.StartSequence(GetContentLength(item, rlpBehaviors));
-        stream.Encode(item.Key);
+        stream.Encode(item.Key.Unwrap());
     }
 
     public static int GetContentLength(StorageRead item, RlpBehaviors rlpBehaviors)
-        => Rlp.LengthOf(item.Key);
+        => Rlp.LengthOf(item.Key.Unwrap());
 }
