@@ -671,7 +671,7 @@ internal sealed class PersistentStorageProvider : PartialStorageProviderBase
 
             int writes = 0;
             int skipped = 0;
-            if (BlockChange.EstimatedSize < 0)
+            if (BlockChange.EstimatedSize < 256000)
             {
                 foreach (var kvp in BlockChange)
                 {
@@ -731,10 +731,8 @@ internal sealed class PersistentStorageProvider : PartialStorageProviderBase
                     }
                 }
 
-                bulkWrite.AsSpan().Sort();
-
                 _prepTime.Observe(Stopwatch.GetTimestamp() - sw);
-                PatriciaTreeBulkSetter.BulkSetUnsorted(StorageTree, bulkWrite.AsMemory());
+                PatriciaTreeBulkSetter.BulkSet(StorageTree, bulkWrite.AsMemory());
             }
 
 

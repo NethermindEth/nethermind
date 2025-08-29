@@ -5,7 +5,6 @@ using System;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.Linq;
-using CommunityToolkit.HighPerformance;
 using FluentAssertions;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
@@ -169,8 +168,19 @@ public class PatriciaTreeBulkSetterTests
             }
         ).SetName("replace");
 
+        var reappliedEntry =
+            new List<(Hash256 key, byte[] value)>()
+            {
+                (new Hash256("abaa000000000000000000000000000000000000000000000000000000000000"), MakeRandomValue(rng, canBeNull: false)),
+                (new Hash256("aaaadddd00000000000000000000000000000000000000000000000000000000"), MakeRandomValue(rng, canBeNull: false)),
+                (new Hash256("bbbbdddd00000000000000000000000000000000000000000000000000000000"), MakeRandomValue(rng, canBeNull: false)),
+                (new Hash256("bbbbeeee00000000000000000000000000000000000000000000000000000000"), MakeRandomValue(rng, canBeNull: false)),
+                (new Hash256("cccccccc00000000000000000000000000000000000000000000000000000000"), MakeRandomValue(rng, canBeNull: false)),
+                (new Hash256("cccc000000000000000000000000000000000000000000000000000000000000"), MakeRandomValue(rng, canBeNull: false))
+            };
+        yield return new TestCaseData(reappliedEntry, reappliedEntry).SetName("reapply specific");
 
-        yield return new TestCaseData(GenRandomOfLength(100), GenRandomOfLength(100)).SetName("reapply");
+        yield return new TestCaseData(GenRandomOfLength(100), GenRandomOfLength(100)).SetName("reapply 100");
         for (int i = 0; i < 10; i++)
         {
             yield return new TestCaseData(GenRandomOfLength(1000, i), GenRandomOfLength(1000, i*2)).SetName($"random {i}");
@@ -183,13 +193,13 @@ public class PatriciaTreeBulkSetterTests
 
     }
 
-    static byte[] MakeRandomValue(Random rng)
+    static byte[] MakeRandomValue(Random rng, bool canBeNull = true)
     {
-        if (rng.NextDouble() < 0.05)
+        if (canBeNull && rng.NextDouble() < 0.05)
         {
             return null;
         }
-        if (rng.NextDouble() < 0.05)
+        if (canBeNull && rng.NextDouble() < 0.05)
         {
             return [];
         }
@@ -221,12 +231,14 @@ public class PatriciaTreeBulkSetterTests
     public void BulkSet(List<(Hash256 key, byte[] value)> existingItems, List<(Hash256 key, byte[] value)> items)
     {
         Hash256 root;
-        const bool recordDump = true;
+        const bool recordDump = false;
         String originalDump = "";
 
         TimeSpan baselineTime;
+        long baselineWriteCount = 0;
         {
-            IScopedTrieStore trieStore = new RawScopedTrieStore(new TestMemDb());
+            TestMemDb db = new TestMemDb();
+            IScopedTrieStore trieStore = new RawScopedTrieStore(db);
             PatriciaTree pTree = new PatriciaTree(trieStore, LimboLogs.Instance);
             pTree.RootHash = Keccak.EmptyTreeHash;
 
@@ -240,7 +252,7 @@ public class PatriciaTreeBulkSetterTests
 
             foreach (var valueTuple in items) pTree.Set(valueTuple.key.Bytes, valueTuple.value);
 
-            pTree.UpdateRootHash();
+            pTree.Commit();
 
             baselineTime = Stopwatch.GetElapsedTime(sw);
 
@@ -252,11 +264,15 @@ public class PatriciaTreeBulkSetterTests
                 originalDump = td.ToString();
             }
             root = pTree.RootHash;
+
+            baselineWriteCount = db.WritesCount;
         }
 
         TimeSpan newTime;
+        long newWriteCount = 0;
         {
-            IScopedTrieStore trieStore = new RawScopedTrieStore(new TestMemDb());
+            TestMemDb db = new TestMemDb();
+            IScopedTrieStore trieStore = new RawScopedTrieStore(db);
             PatriciaTree pTree = new PatriciaTree(trieStore, LimboLogs.Instance);
             pTree.RootHash = Keccak.EmptyTreeHash;
 
@@ -267,17 +283,17 @@ public class PatriciaTreeBulkSetterTests
 
             pTree.Commit();
 
-            long sw = Stopwatch.GetTimestamp();
-
             using ArrayPoolList<PatriciaTreeBulkSetter.BulkSetEntry> entries = new ArrayPoolList<PatriciaTreeBulkSetter.BulkSetEntry>(items.Count);
             foreach (var valueTuple in items)
             {
                 entries.Add(new PatriciaTreeBulkSetter.BulkSetEntry(valueTuple.key, valueTuple.value));
             }
 
-            PatriciaTreeBulkSetter.BulkSetUnsorted(pTree, entries.AsMemory());
-            pTree.UpdateRootHash();
+            long sw = Stopwatch.GetTimestamp();
+            PatriciaTreeBulkSetter.BulkSet(pTree, entries.AsMemory());
+            pTree.Commit();
             newTime = Stopwatch.GetElapsedTime(sw);
+            newWriteCount = db.WritesCount;
 
             if (recordDump)
             {
@@ -289,44 +305,147 @@ public class PatriciaTreeBulkSetterTests
                     TestContext.Error.WriteLine($"Baseline {originalDump}");
                     TestContext.Error.WriteLine($"But got {td.ToString()}");
                 }
+                TestContext.Error.WriteLine($"Baseline {originalDump}");
+                TestContext.Error.WriteLine($"But got {td.ToString()}");
+            }
+
+            newWriteCount.Should().BeLessOrEqualTo(baselineWriteCount);
+            pTree.RootHash.Should().Be(root);
+        }
+
+        TimeSpan preSortedTime;
+        long preSortedWriteCount;
+        {
+            TestMemDb db = new TestMemDb();
+            IScopedTrieStore trieStore = new RawScopedTrieStore(db);
+            PatriciaTree pTree = new PatriciaTree(trieStore, LimboLogs.Instance);
+            pTree.RootHash = Keccak.EmptyTreeHash;
+
+            foreach (var existingItem in existingItems)
+            {
+                pTree.Set(existingItem.key.Bytes, existingItem.value);
+            }
+
+            pTree.Commit();
+
+
+            using ArrayPoolList<PatriciaTreeBulkSetter.BulkSetEntry> entries = new ArrayPoolList<PatriciaTreeBulkSetter.BulkSetEntry>(items.Count);
+            foreach (var valueTuple in items)
+            {
+                entries.Add(new PatriciaTreeBulkSetter.BulkSetEntry(valueTuple.key, valueTuple.value));
+            }
+
+            entries.AsSpan().Sort();
+
+            long sw = Stopwatch.GetTimestamp();
+            PatriciaTreeBulkSetter.BulkSet(pTree, entries.AsMemory(), PatriciaTreeBulkSetter.Flags.WasSorted);
+            pTree.Commit();
+            preSortedWriteCount = db.WritesCount;
+            preSortedTime = Stopwatch.GetElapsedTime(sw);
+
+            if (recordDump)
+            {
+                TreeDumper td = new TreeDumper();
+                pTree.Commit();
+                pTree.Accept(td, pTree.RootHash);
+                if (pTree.RootHash != root)
+                {
+                    TestContext.Error.WriteLine($"Baseline {originalDump}");
+                    TestContext.Error.WriteLine($"But in sorted got {td.ToString()}");
+                }
             }
 
             pTree.RootHash.Should().Be(root);
         }
-        TestContext.Error.WriteLine($"Time is {newTime} vs {baselineTime}");
+
+        TestContext.Error.WriteLine($"Time is Baseline: {baselineTime}, Bulk: {newTime}, Sorted Bulk: {preSortedTime}");
+        TestContext.Error.WriteLine($"Write count is Baseline: {baselineWriteCount}, Bulk: {newWriteCount}, Sorted Bulk: {preSortedWriteCount}");
     }
 #pragma warning restore CS0162 // Unreachable code detected
 
-    public static IEnumerable<TestCaseData> HexarySearchTestCases()
+    [Test]
+    public void BulkSet_ShouldThrowOnNonUniqueEntries()
+    {
+        IScopedTrieStore trieStore = new RawScopedTrieStore(new TestMemDb());
+        PatriciaTree pTree = new PatriciaTree(trieStore, LimboLogs.Instance);
+        pTree.RootHash = Keccak.EmptyTreeHash;
+
+        Random rng = new Random(0);
+
+        using ArrayPoolList<PatriciaTreeBulkSetter.BulkSetEntry> entries = new ArrayPoolList<PatriciaTreeBulkSetter.BulkSetEntry>(3);
+        entries.Add(new PatriciaTreeBulkSetter.BulkSetEntry(new ValueHash256("8818888888888888888888888888888888888888888888888888888888888888"), MakeRandomValue(rng)));
+        entries.Add(new PatriciaTreeBulkSetter.BulkSetEntry(new ValueHash256("8828888888888888888888888888888888888888888888888888888888888888"), MakeRandomValue(rng)));
+        entries.Add(new PatriciaTreeBulkSetter.BulkSetEntry(new ValueHash256("8848888888888888888888888888888888888888888888888888888888888888"), MakeRandomValue(rng)));
+        entries.Add(new PatriciaTreeBulkSetter.BulkSetEntry(new ValueHash256("8848888888888888888888888888888888888888888888888888888888888888"), MakeRandomValue(rng)));
+        entries.Add(new PatriciaTreeBulkSetter.BulkSetEntry(new ValueHash256("8858888888888888888888888888888888888888888888888888888888888888"), MakeRandomValue(rng)));
+
+        var act = () => PatriciaTreeBulkSetter.BulkSet(pTree, entries.AsMemory());
+        act.Should().Throw<InvalidOperationException>();
+    }
+
+    public static IEnumerable<TestCaseData> BucketSortTestCase()
     {
         yield return new TestCaseData(
-            new List<Hash256>()
+            new List<ValueHash256>()
             {
-                new Hash256("1111111111111111111111111111111111111111111111111111111111111111"),
-                new Hash256("1111111111111111111111111111111111111111111111111111111111111111"),
-                new Hash256("1111111111111111111111111111111111111111111111111111111111111111"),
-                new Hash256("4111111111111111111111111111111111111111111111111111111111111111"),
-                new Hash256("4111111111111111111111111111111111111111111111111111111111111111"),
-                new Hash256("4111111111111111111111111111111111111111111111111111111111111111"),
+                new("1211111111111111111111111111111111111111111111111111111111111111"),
+                new("4111111111111111111111111111111111111111111111111111111111111111"),
+                new("1111111111111111111111111111111111111111111111111111111111111111"),
+                new("4211111111111111111111111111111111111111111111111111111111111111"),
+            },
+            new List<ValueHash256>()
+            {
+                new("1211111111111111111111111111111111111111111111111111111111111111"),
+                new("4111111111111111111111111111111111111111111111111111111111111111"),
+                new("1111111111111111111111111111111111111111111111111111111111111111"),
+                new("4211111111111111111111111111111111111111111111111111111111111111"),
             },
             new (int, int)[]
             {
                 ( 1, 0 ),
-                ( 4, 3 )
+                ( 4, 2 )
             }).SetName("base");
     }
 
-    [TestCaseSource(nameof(HexarySearchTestCases))]
-    public void HexarySearch(List<Hash256> paths, (int, int)[] expectedResult)
+    [TestCaseSource(nameof(BucketSortTestCase))]
+    public void TestBucketSort(List<ValueHash256> paths, List<ValueHash256> expectedPaths, (int, int)[] expectedResult)
     {
-        List<PatriciaTreeBulkSetter.BulkSetEntry> items = new List<PatriciaTreeBulkSetter.BulkSetEntry>(paths.Count);
-        foreach (Hash256 hash256 in paths)
+        using ArrayPoolList<PatriciaTreeBulkSetter.BulkSetEntry> items = new ArrayPoolList<PatriciaTreeBulkSetter.BulkSetEntry>(paths.Count);
+        foreach (ValueHash256 ValueHash256 in paths)
+        {
+            items.Add(new PatriciaTreeBulkSetter.BulkSetEntry(ValueHash256, Array.Empty<byte>()));
+        }
+
+        PatriciaTreeBulkSetter.ThreadResource thread = new PatriciaTreeBulkSetter.ThreadResource(items.Count, PatriciaTreeBulkSetter.Flags.None);
+
+        Span<(int, int)> result = stackalloc (int, int)[TrieNode.BranchesCount];
+        using ArrayPoolList<PatriciaTreeBulkSetter.BulkSetEntry> buffer = new ArrayPoolList<PatriciaTreeBulkSetter.BulkSetEntry>(paths.Count, paths.Count);
+        int resultNum = PatriciaTreeBulkSetter.BucketSort16(items.AsSpan(), buffer.AsSpan(), 0, result, thread.SortBuckets.UnsafeGetInternalArray());
+
+        List<ValueHash256> partiallySortedPaths = buffer.Select((it) => it.Path).ToList();
+        partiallySortedPaths.Should().BeEquivalentTo(expectedPaths);
+
+        (int,int)[] asArray = new (int, int)[resultNum];
+        for (int i = 0; i < resultNum; i++)
+        {
+            asArray[i] = (result[i].Item1, result[i].Item2);
+        }
+
+        asArray.Should().BeEquivalentTo(expectedResult);
+    }
+
+    [TestCaseSource(nameof(BucketSortTestCase))]
+    public void HexarySearch(List<ValueHash256> paths, List<ValueHash256> expectedPaths, (int, int)[] expectedResult)
+    {
+        using ArrayPoolList<PatriciaTreeBulkSetter.BulkSetEntry> items = new ArrayPoolList<PatriciaTreeBulkSetter.BulkSetEntry>(paths.Count);
+        foreach (ValueHash256 hash256 in paths)
         {
             items.Add(new PatriciaTreeBulkSetter.BulkSetEntry(hash256, Array.Empty<byte>()));
         }
+        items.AsSpan().Sort();
 
         Span<(int, int)> result = stackalloc (int, int)[TrieNode.BranchesCount];
-        int resultNum = PatriciaTreeBulkSetter.HexarySearch(items.AsSpan(), 0, result);
+        int resultNum = PatriciaTreeBulkSetter.HexarySearchAlreadySorted(items.AsSpan(), 0, result);
 
         (int,int)[] asArray = new (int, int)[resultNum];
         for (int i = 0; i < resultNum; i++)

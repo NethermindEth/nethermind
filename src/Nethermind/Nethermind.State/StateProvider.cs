@@ -732,7 +732,7 @@ namespace Nethermind.State
             int skipped = 0;
 
             long sw = Stopwatch.GetTimestamp();
-            if (_blockChanges.Count < 0)
+            if (_blockChanges.Count < 256000)
             {
                 foreach (var key in _blockChanges.Keys)
                 {
@@ -774,7 +774,7 @@ namespace Nethermind.State
                     }
                 }
 
-                PatriciaTreeBulkSetter.BulkSetUnsorted(_tree, bulkWrite.AsMemory());
+                PatriciaTreeBulkSetter.BulkSet(_tree, bulkWrite.AsMemory());
             }
 
             if (writes > 0)
@@ -954,14 +954,21 @@ namespace Nethermind.State
             void Trace() => _logger.Trace("Clearing state provider caches");
         }
 
+        private Counter StateProvideCommitTreeTime =
+            Prometheus.Metrics.CreateCounter("state_provider_commit_tree_part", "commit tree", "part");
+
         public void CommitTree()
         {
             if (_needsStateRootUpdate)
             {
+                long sw = Stopwatch.GetTimestamp();
                 RecalculateStateRoot();
+                StateProvideCommitTreeTime.WithLabels("root").Inc(Stopwatch.GetTimestamp() - sw);
             }
 
+            long s2 = Stopwatch.GetTimestamp();
             _tree.Commit();
+            StateProvideCommitTreeTime.WithLabels("commit").Inc(Stopwatch.GetTimestamp() - s2);
         }
 
         // used in EthereumTests

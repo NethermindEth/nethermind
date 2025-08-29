@@ -159,6 +159,11 @@ namespace Nethermind.Trie
             }
         }
 
+        internal void IncrementWriteCount(long writeCount)
+        {
+            _writeBeforeCommit += writeCount;
+        }
+
         private void Commit(ICommitter committer, ref TreePath path, NodeCommitInfo nodeCommitInfo, int maxLevelForConcurrentCommit, bool skipSelf = false)
         {
             if (!_allowCommits)
