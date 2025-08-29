@@ -315,7 +315,7 @@ public sealed class LogIndexService : ILogIndexService
 
                     _ = GetBlockReceipts(next.Value, out Block? block, out bool? hasTransactions, out TxReceipt[] receipts);
                     _logger.Info($"[TRACE] {GetLogPrefix(isForward)}: waiting for receipts of block {next}: " +
-                        $"{new { Block = block, HasTransactions = hasTransactions, ReceiptsLength = receipts.Length, Storage = _receiptStorage.GetType().Name }}");
+                        $"{new { Block = block, HasTransactions = hasTransactions, ReceiptsLength = receipts.Length, Storage = _receiptStorage.GetType().Name, Finder = _receiptFinder.GetType().Name }}");
 
                     await newBlockEvent.WaitOneAsync(NewBlockWaitTimeout, CancellationToken);
                     continue;
@@ -437,7 +437,7 @@ public sealed class LogIndexService : ILogIndexService
         if (_blockTree.FindBlock(i) is not { Hash: not null } findBlock)
             return default;
 
-        (block, hasTransactions, receipts) = (findBlock, findBlock.Header.HasTransactions, _receiptStorage.Get(findBlock) ?? []);
+        (block, hasTransactions, receipts) = (findBlock, findBlock.Header.HasTransactions, _receiptFinder.Get(findBlock) ?? []);
 
         // Double-check if no receipts are present
         if (receipts.Length == 0 && hasTransactions.Value)

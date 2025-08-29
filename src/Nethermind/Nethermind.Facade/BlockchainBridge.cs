@@ -353,7 +353,7 @@ namespace Nethermind.Facade
         {
             TxReceipt[] receipts = receiptStorage.Get(block);
             _logger.Info($"[TRACE] {nameof(RecoverTxSenders)}: " +
-                $"{new { Block = block, ReceiptsLength = receipts.Length, BlockTxLength = block.Transactions.Length, Storage = receiptStorage.GetType().Name }}");
+                $"{new { Block = block, ReceiptsLength = receipts.Length, BlockTxLength = block.Transactions.Length, Finder = receiptStorage.GetType().Name }}");
 
             if (block.Transactions.Length == receipts.Length)
             {
