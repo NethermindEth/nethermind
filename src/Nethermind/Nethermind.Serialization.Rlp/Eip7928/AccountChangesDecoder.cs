@@ -21,7 +21,7 @@ public class AccountChangesDecoder : IRlpValueDecoder<AccountChanges>, IRlpStrea
         byte[] address = ctx.DecodeAddress().Bytes;
         SlotChanges[] slotChanges = ctx.DecodeArray(SlotChangesDecoder.Instance);
         SortedDictionary<byte[], SlotChanges> slotChangesMap = new(slotChanges.ToDictionary(s => s.Slot, s => s));
-        byte[][] storageReads = ctx.DecodeByteArrays();
+        StorageRead[] storageReads = ctx.DecodeArray(StorageReadDecoder.Instance);
         BalanceChange[] balanceChanges = ctx.DecodeArray(BalanceChangeDecoder.Instance);
         NonceChange[] nonceChanges = ctx.DecodeArray(NonceChangeDecoder.Instance);
         CodeChange[] codeChanges = ctx.DecodeArray(CodeChangeDecoder.Instance);
@@ -115,9 +115,9 @@ public class AccountChangesDecoder : IRlpValueDecoder<AccountChanges>, IRlpStrea
         slotChangesLen = Rlp.LengthOfSequence(slotChangesLen);
 
         int storageReadsLen = 0;
-        foreach (byte[] storageRead in item.StorageReads)
+        foreach (StorageRead storageRead in item.StorageReads)
         {
-            storageReadsLen += Rlp.LengthOf(storageRead);
+            storageReadsLen += StorageReadDecoder.Instance.GetLength(storageRead, rlpBehaviors);
         }
         storageReadsLen = Rlp.LengthOfSequence(storageReadsLen);
 

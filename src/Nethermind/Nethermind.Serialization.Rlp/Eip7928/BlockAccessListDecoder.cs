@@ -15,16 +15,26 @@ public class BlockAccessListDecoder : IRlpValueDecoder<BlockAccessList>, IRlpStr
     public static BlockAccessListDecoder Instance => _instance ??= new();
 
     public int GetLength(BlockAccessList item, RlpBehaviors rlpBehaviors)
-        => GetContentLength(item, rlpBehaviors);
+        => Rlp.LengthOfSequence(GetContentLength(item, rlpBehaviors));
 
     public BlockAccessList Decode(ref Rlp.ValueDecoderContext ctx, RlpBehaviors rlpBehaviors)
     {
+        int length = ctx.ReadSequenceLength();
+        int check = length + ctx.Position;
+
         AccountChanges[] accountChanges = ctx.DecodeArray(AccountChangesDecoder.Instance);
         SortedDictionary<Address, AccountChanges> accountChangesMap = new(accountChanges.ToDictionary(a => new Address(a.Address), a => a));
-        return new()
+        BlockAccessList blockAccessList = new()
         {
             AccountChanges = accountChangesMap
         };
+
+        if (!rlpBehaviors.HasFlag(RlpBehaviors.AllowExtraBytes))
+        {
+            ctx.Check(check);
+        }
+
+        return blockAccessList;
     }
 
     public BlockAccessList Decode(RlpStream rlpStream, RlpBehaviors rlpBehaviors)
@@ -39,7 +49,7 @@ public class BlockAccessListDecoder : IRlpValueDecoder<BlockAccessList>, IRlpStr
 
     public void Encode(RlpStream stream, BlockAccessList item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
     {
-        // stream.StartSequence(GetContentLength(item, rlpBehaviors));
+        stream.StartSequence(GetContentLength(item, rlpBehaviors));
         stream.EncodeArray([.. item.AccountChanges.Values]);
         // foreach (AccountChanges accountChanges in item.AccountChanges.Values)
         // {
@@ -56,6 +66,6 @@ public class BlockAccessListDecoder : IRlpValueDecoder<BlockAccessList>, IRlpStr
             len += AccountChangesDecoder.Instance.GetLength(accountChange, rlpBehaviors);
         }
 
-        return len;
+        return Rlp.LengthOfSequence(len);
     }
 }

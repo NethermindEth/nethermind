@@ -15,6 +15,11 @@ public struct StorageChange
     public byte[] NewValue { get; set; }
 }
 
+public struct StorageRead
+{
+    public byte[] Key { get; set; }
+}
+
 // BalanceChange: [block_access_index, post_balance]
 public struct BalanceChange
 {
@@ -66,7 +71,7 @@ public struct AccountChanges(Address address)
 
     // Read-only storage keys
     // [SszList(Eip7928Constants.MaxSlots)]
-    public List<byte[]> StorageReads { get; set; } = [];
+    public List<StorageRead> StorageReads { get; set; } = [];
 
     // Balance changes ([tx_index -> post_balance])
     // [SszList(Eip7928Constants.MaxTxs)]
