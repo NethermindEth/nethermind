@@ -62,12 +62,13 @@ internal sealed class PersistentStorageProvider : PartialStorageProviderBase
             LabelNames = ["is_main"],
             Buckets = Histogram.PowersOfTenDividedBuckets(3, 9, 20)
         });
-    private Histogram _updateRootTime = Prometheus.Metrics.CreateHistogram("storage_provider_update_root_time", "committ tree time",
+    private static Histogram _flushTimeTotal = Prometheus.Metrics.CreateHistogram("storage_provider_flushtimes", "committ tree time",
         new HistogramConfiguration()
         {
-            LabelNames = ["is_main"],
+            LabelNames = ["is_main", "part"],
             Buckets = Histogram.PowersOfTenDividedBuckets(3, 9, 20)
         });
+
 
     /// <summary>
     /// Manages persistent storage allowing for snapshotting and restoring
@@ -667,11 +668,14 @@ internal sealed class PersistentStorageProvider : PartialStorageProviderBase
 
         public (int writes, int skipped) ProcessStorageChanges()
         {
+            long swt = Stopwatch.GetTimestamp();
             EnsureStorageTree();
+            _flushTimeTotal.WithLabels((!_provider._populatePreBlockCache).ToString(), "ensure_storage_root").Observe(Stopwatch.GetTimestamp() - swt);
+            swt = Stopwatch.GetTimestamp();
 
             int writes = 0;
             int skipped = 0;
-            if (BlockChange.EstimatedSize < 256000)
+            if (BlockChange.EstimatedSize < PatriciaTreeBulkSetter.MinEntriesToParallelizeThreshold)
             {
                 foreach (var kvp in BlockChange)
                 {
@@ -687,11 +691,11 @@ internal sealed class PersistentStorageProvider : PartialStorageProviderBase
                         skipped++;
                     }
                 }
+                _flushTimeTotal.WithLabels((!_provider._populatePreBlockCache).ToString(), "set").Observe(Stopwatch.GetTimestamp() - swt);
             }
             else
             {
                 using ArrayPoolList<PatriciaTreeBulkSetter.BulkSetEntry> bulkWrite = new(BlockChange.EstimatedSize);
-                long sw = Stopwatch.GetTimestamp();
 
                 Span<byte> keyBuf = stackalloc byte[32];
                 foreach (var kvp in BlockChange)
@@ -731,16 +735,19 @@ internal sealed class PersistentStorageProvider : PartialStorageProviderBase
                     }
                 }
 
-                _prepTime.Observe(Stopwatch.GetTimestamp() - sw);
+                _flushTimeTotal.WithLabels((!_provider._populatePreBlockCache).ToString(), "prep").Observe(Stopwatch.GetTimestamp() - swt);
+                swt = Stopwatch.GetTimestamp();
                 PatriciaTreeBulkSetter.BulkSet(StorageTree, bulkWrite.AsMemory());
+                _flushTimeTotal.WithLabels((!_provider._populatePreBlockCache).ToString(), "bulk_set").Observe(Stopwatch.GetTimestamp() - swt);
             }
-
+            swt = Stopwatch.GetTimestamp();
 
             if (writes > 0)
             {
                 StorageTree.UpdateRootHash(canBeParallel: true);
             }
 
+            _flushTimeTotal.WithLabels((!_provider._populatePreBlockCache).ToString(), "calculate_root").Observe(Stopwatch.GetTimestamp() - swt);
             return (writes, skipped);
         }
     }
