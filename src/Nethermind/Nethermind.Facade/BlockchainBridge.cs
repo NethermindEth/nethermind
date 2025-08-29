@@ -32,6 +32,7 @@ using Autofac;
 using Nethermind.Blockchain.Tracing;
 using Nethermind.Consensus;
 using Nethermind.Evm.State;
+using Nethermind.Logging;
 using Nethermind.State.OverridableEnv;
 
 namespace Nethermind.Facade
@@ -51,10 +52,12 @@ namespace Nethermind.Facade
         ILogFinder logFinder,
         ISpecProvider specProvider,
         IBlocksConfig blocksConfig,
-        IMiningConfig miningConfig)
+        IMiningConfig miningConfig,
+        ILogManager logManager)
         : IBlockchainBridge
     {
         private readonly SimulateBridgeHelper _simulateBridgeHelper = new(blocksConfig, specProvider);
+        private readonly ILogger _logger = logManager.GetClassLogger<BlockchainBridge>();
 
         public Block? HeadBlock
         {
@@ -349,6 +352,9 @@ namespace Nethermind.Facade
         public void RecoverTxSenders(Block block)
         {
             TxReceipt[] receipts = receiptStorage.Get(block);
+            _logger.Info($"[TRACE] {nameof(RecoverTxSenders)}: " +
+                $"{new { Block = block, ReceiptsLength = receipts.Length, BlockTxLength = block.Transactions.Length, Finder = receiptStorage.GetType().Name }}");
+
             if (block.Transactions.Length == receipts.Length)
             {
                 for (int i = 0; i < block.Transactions.Length; i++)

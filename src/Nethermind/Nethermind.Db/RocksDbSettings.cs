@@ -1,6 +1,8 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
+
 namespace Nethermind.Db
 {
     public class DbSettings
@@ -16,6 +18,7 @@ namespace Nethermind.Db
 
         public bool DeleteOnStart { get; set; }
         public bool CanDeleteFolder { get; set; } = true;
+        public IMergeOperator? MergeOperator { get; set; }
 
         public DbSettings Clone(string name, string path)
         {

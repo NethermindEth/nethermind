@@ -4,6 +4,7 @@
   
   <PropertyGroup>
     <Nullable>annotations</Nullable>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
   </PropertyGroup>
   <ItemGroup>
     <PackageReference Include="NSubstitute" />
