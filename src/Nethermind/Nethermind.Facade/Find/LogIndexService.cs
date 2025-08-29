@@ -313,15 +313,9 @@ public sealed class LogIndexService : ILogIndexService
                 {
                     next = isForward ? from : to - 1;
 
-                    var block = _blockTree.FindBlock((long)next);
-                    var status = new
-                    {
-                        Block = block,
-                        HasTransactions = block?.Header.HasTransactions,
-                        HasBlock = block == null ? (bool?)null : _receiptStorage.HasBlock(block.Number, block.Hash!),
-                        ReceiptsLength = block == null ? null : _receiptStorage.Get(block)?.Length
-                    };
-                    _logger.Info($"[TRACE] {GetLogPrefix(isForward)}: waiting for receipts of block {next}: {status}");
+                    _ = GetBlockReceipts(next.Value, out Block? block, out bool? hasTransactions, out TxReceipt[] receipts);
+                    _logger.Info($"[TRACE] {GetLogPrefix(isForward)}: waiting for receipts of block {next}: " +
+                        $"{new { Block = block, HasTransactions = hasTransactions, ReceiptsLength = receipts.Length, Storage = _receiptStorage.GetType().Name }}");
 
                     await newBlockEvent.WaitOneAsync(NewBlockWaitTimeout, CancellationToken);
                     continue;
@@ -434,15 +428,19 @@ public sealed class LogIndexService : ILogIndexService
     }
 
     // TODO: move to IReceiptStorage as `TryGet`?
-    private BlockReceipts GetBlockReceipts(int i)
+    private BlockReceipts GetBlockReceipts(int i) => GetBlockReceipts(i, out _, out _, out _);
+
+    private BlockReceipts GetBlockReceipts(int i, out Block? block, out bool? hasTransactions, out TxReceipt[] receipts)
     {
-        if (_blockTree.FindBlock(i) is not { Hash: not null } block)
+        (block, hasTransactions, receipts) = (null, null, []);
+
+        if (_blockTree.FindBlock(i) is not { Hash: not null } findBlock)
             return default;
 
-        TxReceipt[] receipts = _receiptStorage.Get(block) ?? [];
+        (block, hasTransactions, receipts) = (findBlock, findBlock.Header.HasTransactions, _receiptStorage.Get(findBlock) ?? []);
 
         // Double-check if no receipts are present
-        if (receipts.Length == 0 && block.Header.HasTransactions)
+        if (receipts.Length == 0 && hasTransactions.Value)
             return default;
 
         return new(i, receipts);
