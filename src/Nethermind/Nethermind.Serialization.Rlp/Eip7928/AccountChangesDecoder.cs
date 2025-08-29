@@ -58,55 +58,16 @@ public class AccountChangesDecoder : IRlpValueDecoder<AccountChanges>, IRlpStrea
     public void Encode(RlpStream stream, AccountChanges item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
     {
         stream.StartSequence(GetContentLength(item, rlpBehaviors));
-        // stream.StartSequence(Rlp.LengthOfAddressRlp);
         stream.Encode(item.Address);
         stream.EncodeArray([.. item.StorageChanges.Values], rlpBehaviors);
         stream.EncodeArray([.. item.StorageReads], rlpBehaviors);
         stream.EncodeArray([.. item.BalanceChanges], rlpBehaviors);
         stream.EncodeArray([.. item.NonceChanges], rlpBehaviors);
         stream.EncodeArray([.. item.CodeChanges], rlpBehaviors);
-        // stream.StartSequence(contentLengths.SlotChanges);
-        // foreach (SlotChanges slotChanges in item.StorageChanges.Values)
-        // {
-        //     SlotChangesDecoder.Instance.Encode(stream, slotChanges);
-        // }
-
-        // stream.StartSequence(contentLengths.StorageReads);
-        // foreach (byte[] storageKey in item.StorageReads)
-        // {
-        //     stream.Encode(storageKey);
-        // }
-
-        // stream.StartSequence(contentLengths.BalanceChanges);
-        // foreach (BalanceChange balanceChange in item.BalanceChanges)
-        // {
-        //     BalanceChangeDecoder.Instance.Encode(stream, balanceChange);
-        // }
-
-        // stream.StartSequence(contentLengths.NonceChanges);
-        // foreach (NonceChange nonceChange in item.NonceChanges)
-        // {
-        //     NonceChangeDecoder.Instance.Encode(stream, nonceChange);
-        // }
-
-        // stream.StartSequence(contentLengths.CodeChanges);
-        // foreach (CodeChange codeChange in item.CodeChanges)
-        // {
-        //     CodeChangeDecoder.Instance.Encode(stream, codeChange);
-        // }
     }
 
     private static int GetContentLength(AccountChanges item, RlpBehaviors rlpBehaviors)
     {
-        // ContentLengths res = new()
-        // {
-        //     Total = Rlp.LengthOfAddressRlp,
-        //     SlotChanges = 0,
-        //     StorageReads = 0,
-        //     BalanceChanges = 0,
-        //     NonceChanges = 0,
-        //     CodeChanges = 0
-        // };
         int slotChangesLen = 0;
         foreach (SlotChanges slotChanges in item.StorageChanges.Values)
         {
@@ -144,14 +105,4 @@ public class AccountChangesDecoder : IRlpValueDecoder<AccountChanges>, IRlpStrea
 
         return Rlp.LengthOfAddressRlp + slotChangesLen + storageReadsLen + balanceChangesLen + nonceChangesLen + codeChangesLen;
     }
-
-    // private struct ContentLengths
-    // {
-    //     public int Total;
-    //     public int SlotChanges;
-    //     public int StorageReads;
-    //     public int BalanceChanges;
-    //     public int NonceChanges;
-    //     public int CodeChanges;
-    // }
 }

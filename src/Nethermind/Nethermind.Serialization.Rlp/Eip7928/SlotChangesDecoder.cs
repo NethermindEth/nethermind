@@ -19,9 +19,6 @@ public class SlotChangesDecoder : IRlpValueDecoder<SlotChanges>, IRlpStreamDecod
 
         byte[] slot = ctx.DecodeByteArray();
 
-        // int changesLength = ctx.ReadSequenceLength();
-        // int changesCheck = length + ctx.Position;
-
         SlotChanges slotChanges = new()
         {
             Slot = slot,
@@ -52,15 +49,7 @@ public class SlotChangesDecoder : IRlpValueDecoder<SlotChanges>, IRlpStreamDecod
     public void Encode(RlpStream stream, SlotChanges item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
     {
         stream.StartSequence(GetContentLength(item, rlpBehaviors));
-
-        // stream.StartSequence(Slot);
         stream.Encode(item.Slot);
-
-        // stream.StartSequence(SlotChanges);
-        // foreach (StorageChange change in item.Changes)
-        // {
-        //     StorageChangeDecoder.Instance.Encode(stream, change);
-        // }
         stream.EncodeArray([.. item.Changes], rlpBehaviors);
     }
 
