@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using NUnit.Framework;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
@@ -12,27 +12,27 @@ namespace Nethermind.Xdc.Test
     {
         private static XdcBlockHeader MakeHeader(bool includeBaseFee = true)
         {
-            var parent   = new Hash256(new byte[32]);
-            var uncles   = new Hash256(new byte[32]);
+            var parent = new Hash256(new byte[32]);
+            var uncles = new Hash256(new byte[32]);
             var coinbase = new Address(new byte[20]);
             UInt256 diff = UInt256.One;
-            long number  = 1;
-            long gasLim  = 30_000_000;
-            ulong ts     = 1_700_000_000;
-            var extra= Array.Empty<byte>();
+            long number = 1;
+            long gasLim = 30_000_000;
+            ulong ts = 1_700_000_000;
+            var extra = Array.Empty<byte>();
 
             var header = new XdcBlockHeader(parent, uncles, coinbase, in diff, number, gasLim, ts, extra)
             {
-                StateRoot    = new Hash256(new byte[32]),
-                TxRoot       = new Hash256(new byte[32]),
+                StateRoot = new Hash256(new byte[32]),
+                TxRoot = new Hash256(new byte[32]),
                 ReceiptsRoot = new Hash256(new byte[32]),
-                Bloom        = new Bloom(new byte[256]),
-                GasUsed      = 21_000,
-                MixHash      = new Hash256(new byte[32]),
-                Nonce        = 0UL,
-                Validators   = new byte[20 * 2],
-                Validator    = new byte[20],
-                Penalties    = Array.Empty<byte>(),
+                Bloom = new Bloom(new byte[256]),
+                GasUsed = 21_000,
+                MixHash = new Hash256(new byte[32]),
+                Nonce = 0UL,
+                Validators = new byte[20 * 2],
+                Validator = new byte[20],
+                Penalties = Array.Empty<byte>(),
             };
 
             if (includeBaseFee)
@@ -57,30 +57,30 @@ namespace Nethermind.Xdc.Test
             var stream = new RlpStream(bytes);
             BlockHeader? decodedBase = codec.Decode(stream);
             Assert.That(decodedBase, Is.Not.Null, "The decoded header should not be null.");
-            Assert.That(decodedBase,Is.InstanceOf<XdcBlockHeader>(), "The decoded header should be an instance of XdcBlockHeader.");
+            Assert.That(decodedBase, Is.InstanceOf<XdcBlockHeader>(), "The decoded header should be an instance of XdcBlockHeader.");
 
             var decoded = (XdcBlockHeader)decodedBase!;
 
             // Spot-check key fields
             Assert.That(original.ParentHash, Is.EqualTo(decoded.ParentHash), "The parent hash should be the same.");
-            Assert.That(original.UnclesHash, Is.EqualTo(decoded.UnclesHash),  "The uncles hash should be the same.");
-            Assert.That(original.Beneficiary, Is.EqualTo(decoded.Beneficiary),  "The beneficiary should be the same.");
-            Assert.That(original.StateRoot, Is.EqualTo(decoded.StateRoot),  "The state root should be the same.");
-            Assert.That(original.TxRoot, Is.EqualTo(decoded.TxRoot),   "The tx root should be the same.");
-            Assert.That(original.ReceiptsRoot, Is.EqualTo(decoded.ReceiptsRoot),  "The receipts root should be the same.");
-            Assert.That(original.Bloom, Is.EqualTo(decoded.Bloom),  "The bloom should be the same.");
-            Assert.That(original.Difficulty, Is.EqualTo(decoded.Difficulty),  "The difficulty should be the same.");
-            Assert.That(original.Number, Is.EqualTo(decoded.Number),  "The number should be the same.");
-            Assert.That(original.GasLimit, Is.EqualTo(decoded.GasLimit),  "The gas limit should be the same.");
-            Assert.That(original.GasUsed, Is.EqualTo(decoded.GasUsed),  "The gas used should be the same.");
-            Assert.That(original.Timestamp, Is.EqualTo(decoded.Timestamp),  "The timestamp should be the same.");
-            Assert.That(original.ExtraData, Is.EqualTo(decoded.ExtraData),  "The extra data should be the same.");
-            Assert.That(original.MixHash, Is.EqualTo(decoded.MixHash),  "The mix hash should be the same.");
-            Assert.That(original.Nonce, Is.EqualTo(decoded.Nonce),  "The nonce should be the same.");
+            Assert.That(original.UnclesHash, Is.EqualTo(decoded.UnclesHash), "The uncles hash should be the same.");
+            Assert.That(original.Beneficiary, Is.EqualTo(decoded.Beneficiary), "The beneficiary should be the same.");
+            Assert.That(original.StateRoot, Is.EqualTo(decoded.StateRoot), "The state root should be the same.");
+            Assert.That(original.TxRoot, Is.EqualTo(decoded.TxRoot), "The tx root should be the same.");
+            Assert.That(original.ReceiptsRoot, Is.EqualTo(decoded.ReceiptsRoot), "The receipts root should be the same.");
+            Assert.That(original.Bloom, Is.EqualTo(decoded.Bloom), "The bloom should be the same.");
+            Assert.That(original.Difficulty, Is.EqualTo(decoded.Difficulty), "The difficulty should be the same.");
+            Assert.That(original.Number, Is.EqualTo(decoded.Number), "The number should be the same.");
+            Assert.That(original.GasLimit, Is.EqualTo(decoded.GasLimit), "The gas limit should be the same.");
+            Assert.That(original.GasUsed, Is.EqualTo(decoded.GasUsed), "The gas used should be the same.");
+            Assert.That(original.Timestamp, Is.EqualTo(decoded.Timestamp), "The timestamp should be the same.");
+            Assert.That(original.ExtraData, Is.EqualTo(decoded.ExtraData), "The extra data should be the same.");
+            Assert.That(original.MixHash, Is.EqualTo(decoded.MixHash), "The mix hash should be the same.");
+            Assert.That(original.Nonce, Is.EqualTo(decoded.Nonce), "The nonce should be the same.");
             Assert.That(decoded.Validators, Is.EqualTo(original.Validators), "Validators should match.");
             Assert.That(original.Validator, Is.EqualTo(decoded.Validator), "Validator should match.");
-            Assert.That(original.Penalties,Is.EqualTo(decoded.Penalties),"Penalties should match.");
-            Assert.That(original.BaseFeePerGas, Is.EqualTo(decoded.BaseFeePerGas),"BaseFeePerGas should be the same.");
+            Assert.That(original.Penalties, Is.EqualTo(decoded.Penalties), "Penalties should match.");
+            Assert.That(original.BaseFeePerGas, Is.EqualTo(decoded.BaseFeePerGas), "BaseFeePerGas should be the same.");
         }
 
         [Test]
