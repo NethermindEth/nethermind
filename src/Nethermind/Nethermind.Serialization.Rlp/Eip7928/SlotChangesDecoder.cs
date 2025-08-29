@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using Nethermind.Core;
 using Nethermind.Core.BlockAccessLists;
 
 namespace Nethermind.Serialization.Rlp.Eip7928;
@@ -12,14 +11,30 @@ public class SlotChangesDecoder : IRlpValueDecoder<SlotChanges>, IRlpStreamDecod
     private static SlotChangesDecoder? _instance = null;
     public static SlotChangesDecoder Instance => _instance ??= new();
 
-    private const int SlotSize = 32;
 
     public SlotChanges Decode(ref Rlp.ValueDecoderContext ctx, RlpBehaviors rlpBehaviors)
-        => new()
+    {
+        int length = ctx.ReadSequenceLength();
+        int check = length + ctx.Position;
+
+        byte[] slot = ctx.DecodeByteArray();
+
+        // int changesLength = ctx.ReadSequenceLength();
+        // int changesCheck = length + ctx.Position;
+
+        SlotChanges slotChanges = new()
         {
-            Slot = ctx.DecodeByteArray(),
+            Slot = slot,
             Changes = [.. ctx.DecodeArray(StorageChangeDecoder.Instance)]
         };
+
+        if (!rlpBehaviors.HasFlag(RlpBehaviors.AllowExtraBytes))
+        {
+            ctx.Check(check);
+        }
+
+        return slotChanges;
+    }
 
     public int GetLength(SlotChanges item, RlpBehaviors rlpBehaviors)
         => Rlp.LengthOfSequence(GetContentLength(item, rlpBehaviors).Total);
@@ -36,18 +51,21 @@ public class SlotChangesDecoder : IRlpValueDecoder<SlotChanges>, IRlpStreamDecod
 
     public void Encode(RlpStream stream, SlotChanges item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
     {
-        (int Total, int SlotChanges) len = GetContentLength(item, rlpBehaviors);
-        stream.StartSequence(len.Total);
+        (int Total, int Slot, int SlotChanges) = GetContentLength(item, rlpBehaviors);
+        stream.StartSequence(Total);
+
+        // stream.StartSequence(Slot);
         stream.Encode(item.Slot);
 
-        stream.StartSequence(len.SlotChanges);
-        foreach (StorageChange change in item.Changes)
-        {
-            StorageChangeDecoder.Instance.Encode(stream, change);
-        }
+        // stream.StartSequence(SlotChanges);
+        // foreach (StorageChange change in item.Changes)
+        // {
+        //     StorageChangeDecoder.Instance.Encode(stream, change);
+        // }
+        stream.EncodeArray<StorageChange>([.. item.Changes], rlpBehaviors);
     }
 
-    public static (int Total, int SlotChanges) GetContentLength(SlotChanges item, RlpBehaviors rlpBehaviors)
+    public static (int Total, int Slot, int SlotChanges) GetContentLength(SlotChanges item, RlpBehaviors rlpBehaviors)
     {
         int slotChangeLen = 0;
 
@@ -56,6 +74,8 @@ public class SlotChangesDecoder : IRlpValueDecoder<SlotChanges>, IRlpStreamDecod
             slotChangeLen += StorageChangeDecoder.Instance.GetLength(slotChange, rlpBehaviors);
         }
 
-        return (slotChangeLen + Rlp.LengthOf(item.Slot), slotChangeLen);
+        int slot = Rlp.LengthOf(item.Slot);
+        slotChangeLen = Rlp.LengthOfSequence(slotChangeLen);
+        return (slotChangeLen + slot, slot, slotChangeLen);
     }
 }

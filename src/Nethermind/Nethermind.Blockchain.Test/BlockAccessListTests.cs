@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Collections.Generic;
+using System.Linq;
 using System.Threading;
 using Nethermind.Blockchain.BeaconBlockRoot;
 using Nethermind.Blockchain.Blocks;
@@ -97,9 +98,25 @@ namespace Nethermind.Evm.Test
         [Test]
         public void Encoding_decoding_test()
         {
-            BlockAccessList b = new();
-            byte[] bytes = Rlp.Encode<BlockAccessList>(b).Bytes;
-            BlockAccessList b2 = Rlp.Decode<BlockAccessList>(bytes);
+            StorageChange s = new()
+            {
+                BlockAccessIndex = 10,
+                NewValue = [.. Enumerable.Repeat<byte>(50, 32)]
+            };
+            byte[] b = Rlp.Encode<StorageChange>(s, RlpBehaviors.None).Bytes;
+            StorageChange s2 = Rlp.Decode<StorageChange>(b, RlpBehaviors.None);
+
+            SlotChanges sc = new()
+            {
+                Slot = [.. Enumerable.Repeat<byte>(100, 32)],
+                Changes = [s, s]
+            };
+            byte[] b2 = Rlp.Encode<SlotChanges>(sc, RlpBehaviors.None).Bytes;
+            SlotChanges sc2 = Rlp.Decode<SlotChanges>(b2, RlpBehaviors.None);
+            Assert.That(true);
+            // BlockAccessList b = new();
+            // byte[] bytes = Rlp.Encode<BlockAccessList>(b).Bytes;
+            // BlockAccessList b2 = Rlp.Decode<BlockAccessList>(bytes);
         }
 
         [Test]

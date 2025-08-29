@@ -11,15 +11,15 @@ public class BalanceChangeDecoder : IRlpValueDecoder<BalanceChange>, IRlpStreamD
     private static BalanceChangeDecoder? _instance = null;
     public static BalanceChangeDecoder Instance => _instance ??= new();
 
+    public int GetLength(BalanceChange item, RlpBehaviors rlpBehaviors)
+        => Rlp.LengthOfSequence(GetContentLength(item, rlpBehaviors));
+
     public BalanceChange Decode(ref Rlp.ValueDecoderContext ctx, RlpBehaviors rlpBehaviors)
         => new()
         {
             BlockAccessIndex = ctx.DecodeUShort(),
             PostBalance = ctx.DecodeUInt256()
         };
-
-    public int GetLength(BalanceChange item, RlpBehaviors rlpBehaviors)
-        => Rlp.LengthOfSequence(GetContentLength(item, rlpBehaviors));
 
     public BalanceChange Decode(RlpStream rlpStream, RlpBehaviors rlpBehaviors)
     {

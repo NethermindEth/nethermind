@@ -15,6 +15,9 @@ public class AccountChangesDecoder : IRlpValueDecoder<AccountChanges>, IRlpStrea
 
     public AccountChanges Decode(ref Rlp.ValueDecoderContext ctx, RlpBehaviors rlpBehaviors)
     {
+        int length = ctx.ReadSequenceLength();
+        int check = length + ctx.Position;
+
         byte[] address = ctx.DecodeAddress().Bytes;
         SlotChanges[] slotChanges = ctx.DecodeArray(SlotChangesDecoder.Instance);
         SortedDictionary<byte[], SlotChanges> slotChangesMap = new(slotChanges.ToDictionary(s => s.Slot, s => s));
@@ -22,6 +25,12 @@ public class AccountChangesDecoder : IRlpValueDecoder<AccountChanges>, IRlpStrea
         BalanceChange[] balanceChanges = ctx.DecodeArray(BalanceChangeDecoder.Instance);
         NonceChange[] nonceChanges = ctx.DecodeArray(NonceChangeDecoder.Instance);
         CodeChange[] codeChanges = ctx.DecodeArray(CodeChangeDecoder.Instance);
+
+        if (!rlpBehaviors.HasFlag(RlpBehaviors.AllowExtraBytes))
+        {
+            ctx.Check(check);
+        }
+
         return new()
         {
             Address = address,

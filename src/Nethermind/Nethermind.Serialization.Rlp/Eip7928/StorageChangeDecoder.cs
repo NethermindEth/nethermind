@@ -12,11 +12,23 @@ public class StorageChangeDecoder : IRlpValueDecoder<StorageChange>, IRlpStreamD
     public static StorageChangeDecoder Instance => _instance ??= new();
 
     public StorageChange Decode(ref Rlp.ValueDecoderContext ctx, RlpBehaviors rlpBehaviors)
-        => new()
+    {
+        int length = ctx.ReadSequenceLength();
+        int check = length + ctx.Position;
+
+        StorageChange storageChange = new()
         {
             BlockAccessIndex = ctx.DecodeUShort(),
             NewValue = ctx.DecodeByteArray()
         };
+
+        if (!rlpBehaviors.HasFlag(RlpBehaviors.AllowExtraBytes))
+        {
+            ctx.Check(check);
+        }
+
+        return storageChange;
+    }
 
     public int GetLength(StorageChange item, RlpBehaviors rlpBehaviors)
         => Rlp.LengthOfSequence(GetContentLength(item, rlpBehaviors));
