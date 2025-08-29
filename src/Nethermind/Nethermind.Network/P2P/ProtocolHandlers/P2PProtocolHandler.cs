@@ -346,4 +346,13 @@ public class P2PProtocolHandler(
         ProtocolInitialized = null;
         SubprotocolRequested = null;
     }
+
+    public IEnumerable<Capability> GetCapabilities()
+    {
+        var capabilities = _agreedCapabilities?.Any() == true
+            ? _agreedCapabilities
+            : _supportedCapabilities;
+
+        return capabilities ?? Enumerable.Empty<Capability>();
+    }
 }
