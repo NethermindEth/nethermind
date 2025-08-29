@@ -14,7 +14,7 @@ jobs:
       SCRIPTS_PATH: ${{ github.workspace }}/scripts/build
     steps:
       - name: Check out repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
       - name: Set up .NET
         uses: actions/setup-dotnet@v4
       - name: Build Nethermind.Runner
