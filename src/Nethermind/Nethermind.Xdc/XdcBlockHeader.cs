@@ -22,12 +22,8 @@ public class XdcBlockHeader : BlockHeader
         long number,
         long gasLimit,
         ulong timestamp,
-        byte[] extraData,
-        ulong? blobGasUsed = null,
-        ulong? excessBlobGas = null,
-        Hash256? parentBeaconBlockRoot = null,
-        Hash256? requestsHash = null)
-        : base(parentHash, unclesHash, beneficiary, difficulty, number, gasLimit, timestamp, extraData, blobGasUsed, excessBlobGas, parentBeaconBlockRoot, requestsHash)
+        byte[] extraData)
+        : base(parentHash, unclesHash, beneficiary, difficulty, number, gasLimit, timestamp, extraData)
     {
     }
 

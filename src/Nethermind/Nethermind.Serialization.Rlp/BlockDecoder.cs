@@ -12,7 +12,7 @@ namespace Nethermind.Serialization.Rlp
         private readonly IHeaderRlpCodec _headerDecoder;
         private readonly BlockBodyDecoder _blockBodyDecoder = BlockBodyDecoder.Instance;
 
-        public BlockDecoder() : this(new EthHeaderRlpCodec()) { } // back-compat
+        public BlockDecoder() : this(new EthHeaderRlpCodec()) { }
 
         public BlockDecoder(IHeaderRlpCodec headerCodec)
         {

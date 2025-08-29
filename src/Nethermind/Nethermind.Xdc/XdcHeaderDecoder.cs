@@ -7,11 +7,11 @@ using Nethermind.Core.Crypto;
 using Nethermind.Int256;
 using Nethermind.Serialization.Rlp;
 namespace Nethermind.Xdc;
-public class XdcHeaderDecoder : IRlpValueDecoder<XdcBlockHeader>, IRlpStreamDecoder<XdcBlockHeader>
+public sealed class XdcHeaderDecoder : IHeaderRlpCodec
 {
     private const int NonceLength = 8;
 
-    public XdcBlockHeader? Decode(ref Rlp.ValueDecoderContext decoderContext,
+    public BlockHeader? Decode(ref Rlp.ValueDecoderContext decoderContext,
         RlpBehaviors rlpBehaviors = RlpBehaviors.None)
     {
         if (decoderContext.IsNextItemNull())
@@ -72,7 +72,7 @@ public class XdcHeaderDecoder : IRlpValueDecoder<XdcBlockHeader>, IRlpStreamDeco
         return blockHeader;
     }
 
-    public XdcBlockHeader? Decode(RlpStream rlpStream, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+    public BlockHeader? Decode(RlpStream rlpStream, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
     {
         if (rlpStream.IsNextItemNull())
         {
@@ -133,45 +133,47 @@ public class XdcHeaderDecoder : IRlpValueDecoder<XdcBlockHeader>, IRlpStreamDeco
         return blockHeader;
     }
 
-    public void Encode(RlpStream rlpStream, XdcBlockHeader? header, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+    public void Encode(RlpStream rlpStream, BlockHeader? header, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
     {
         if (header is null)
         {
             rlpStream.EncodeNullObject();
             return;
         }
+        if (header is not XdcBlockHeader h)
+            throw new ArgumentException("XdcHeaderRlpCodec expects XdcBlockHeader.", nameof(header));
 
         bool notForSealing = (rlpBehaviors & RlpBehaviors.ForSealing) != RlpBehaviors.ForSealing;
-        rlpStream.StartSequence(GetContentLength(header, rlpBehaviors));
-        rlpStream.Encode(header.ParentHash);
-        rlpStream.Encode(header.UnclesHash);
-        rlpStream.Encode(header.Beneficiary);
-        rlpStream.Encode(header.StateRoot);
-        rlpStream.Encode(header.TxRoot);
-        rlpStream.Encode(header.ReceiptsRoot);
-        rlpStream.Encode(header.Bloom);
-        rlpStream.Encode(header.Difficulty);
-        rlpStream.Encode(header.Number);
-        rlpStream.Encode(header.GasLimit);
-        rlpStream.Encode(header.GasUsed);
-        rlpStream.Encode(header.Timestamp);
-        rlpStream.Encode(header.ExtraData);
+        rlpStream.StartSequence(GetContentLength(h, rlpBehaviors));
+        rlpStream.Encode(h.ParentHash);
+        rlpStream.Encode(h.UnclesHash);
+        rlpStream.Encode(h.Beneficiary);
+        rlpStream.Encode(h.StateRoot);
+        rlpStream.Encode(h.TxRoot);
+        rlpStream.Encode(h.ReceiptsRoot);
+        rlpStream.Encode(h.Bloom);
+        rlpStream.Encode(h.Difficulty);
+        rlpStream.Encode(h.Number);
+        rlpStream.Encode(h.GasLimit);
+        rlpStream.Encode(h.GasUsed);
+        rlpStream.Encode(h.Timestamp);
+        rlpStream.Encode(h.ExtraData);
 
         if (notForSealing)
         {
-            rlpStream.Encode(header.MixHash);
-            rlpStream.Encode(header.Nonce, NonceLength);
+            rlpStream.Encode(h.MixHash);
+            rlpStream.Encode(h.Nonce, NonceLength);
         }
 
-        rlpStream.Encode(header.Validators);
-        rlpStream.Encode(header.Validator);
-        rlpStream.Encode(header.Penalties);
+        rlpStream.Encode(h.Validators);
+        rlpStream.Encode(h.Validator);
+        rlpStream.Encode(h.Penalties);
 
-        if (!header.BaseFeePerGas.IsZero) rlpStream.Encode(header.BaseFeePerGas);
+        if (!h.BaseFeePerGas.IsZero) rlpStream.Encode(h.BaseFeePerGas);
 
     }
 
-    public Rlp Encode(XdcBlockHeader? item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+    public Rlp Encode(BlockHeader? item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
     {
         if (item is null)
         {
@@ -213,13 +215,19 @@ public class XdcHeaderDecoder : IRlpValueDecoder<XdcBlockHeader>, IRlpStreamDeco
             contentLength += Rlp.LengthOfNonce(item.Nonce);
         }
 
+        contentLength += Rlp.LengthOf(item.Validators);
+        contentLength += Rlp.LengthOf(item.Validator);
+        contentLength += Rlp.LengthOf(item.Penalties);
+
         if (!item.BaseFeePerGas.IsZero) contentLength += Rlp.LengthOf(item.BaseFeePerGas);
         return contentLength;
     }
 
-    public int GetLength(XdcBlockHeader? item, RlpBehaviors rlpBehaviors)
+    public int GetLength(BlockHeader? item, RlpBehaviors rlpBehaviors)
     {
-        return Rlp.LengthOfSequence(GetContentLength(item, rlpBehaviors));
+        if (item is not XdcBlockHeader header)
+            throw new ArgumentException("XdcHeaderRlpCodec expects XdcBlockHeader.", nameof(header));
+        return Rlp.LengthOfSequence(GetContentLength(header, rlpBehaviors));
     }
 }
 
