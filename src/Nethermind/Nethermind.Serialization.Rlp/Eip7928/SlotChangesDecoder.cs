@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using Nethermind.Core;
 using Nethermind.Core.BlockAccessLists;
 
 namespace Nethermind.Serialization.Rlp.Eip7928;
@@ -23,10 +24,16 @@ public class SlotChangesDecoder : IRlpValueDecoder<SlotChanges>, IRlpStreamDecod
             throw new RlpException("Invalid storage key, should be 32 bytes.");
         }
 
+        StorageChange[] changes = ctx.DecodeArray(StorageChangeDecoder.Instance);
+        if (changes.Length > Eip7928Constants.MaxSlots)
+        {
+            throw new RlpException("Number of slot changes exceeded maximum.");
+        }
+
         SlotChanges slotChanges = new()
         {
             Slot = slot,
-            Changes = [.. ctx.DecodeArray(StorageChangeDecoder.Instance)]
+            Changes = [.. changes]
         };
 
         if (!rlpBehaviors.HasFlag(RlpBehaviors.AllowExtraBytes))

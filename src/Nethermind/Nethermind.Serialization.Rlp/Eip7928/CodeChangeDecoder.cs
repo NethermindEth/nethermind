@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using Nethermind.Core;
 using Nethermind.Core.BlockAccessLists;
 
 namespace Nethermind.Serialization.Rlp.Eip7928;
@@ -16,10 +17,16 @@ public class CodeChangeDecoder : IRlpValueDecoder<CodeChange>, IRlpStreamDecoder
         int length = ctx.ReadSequenceLength();
         int check = length + ctx.Position;
 
+        byte[] newCode = ctx.DecodeByteArray();
+        if (newCode.Length > Eip7928Constants.MaxCodeSize)
+        {
+            throw new RlpException("New code exceeded maxium length.");
+        }
+
         CodeChange codeChange = new()
         {
             BlockAccessIndex = ctx.DecodeUShort(),
-            NewCode = ctx.DecodeByteArray()
+            NewCode = newCode
         };
 
         if (!rlpBehaviors.HasFlag(RlpBehaviors.AllowExtraBytes))

@@ -27,6 +27,11 @@ public class AccountChangesDecoder : IRlpValueDecoder<AccountChanges>, IRlpStrea
         NonceChange[] nonceChanges = ctx.DecodeArray(NonceChangeDecoder.Instance);
         CodeChange[] codeChanges = ctx.DecodeArray(CodeChangeDecoder.Instance);
 
+        if (codeChanges.Length > Eip7928Constants.MaxCodeChanges)
+        {
+            throw new RlpException("Number of code changes exceeded maximum.");
+        }
+
         if (!rlpBehaviors.HasFlag(RlpBehaviors.AllowExtraBytes))
         {
             ctx.Check(check);

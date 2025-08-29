@@ -23,6 +23,11 @@ public class BlockAccessListDecoder : IRlpValueDecoder<BlockAccessList>, IRlpStr
         int check = length + ctx.Position;
 
         AccountChanges[] accountChanges = ctx.DecodeArray(AccountChangesDecoder.Instance);
+        if (accountChanges.Length > Eip7928Constants.MaxAccounts)
+        {
+            throw new RlpException("Number of accounts exceeded maximum.");
+        }
+
         SortedDictionary<Address, AccountChanges> accountChangesMap = new(accountChanges.ToDictionary(a => a.Address, a => a));
         BlockAccessList blockAccessList = new()
         {
