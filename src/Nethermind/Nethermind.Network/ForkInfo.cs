@@ -1,11 +1,6 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System;
-using System.Buffers.Binary;
-using System.Collections.Generic;
-using System.Numerics;
-using System.Runtime.CompilerServices;
 using Force.Crc32;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
@@ -13,40 +8,51 @@ using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
 using Nethermind.Specs;
 using Nethermind.Synchronization;
+using System;
+using System.Buffers.Binary;
+using System.Collections.Generic;
+using System.Numerics;
+using System.Runtime.CompilerServices;
+using System.Threading;
 
 namespace Nethermind.Network
 {
-    public class ForkInfo : IForkInfo
+    public class ForkInfo(ISpecProvider specProvider, ISyncServer syncServer) : IForkInfo
     {
-        private Dictionary<uint, (ForkActivation Activation, ForkId Id)> DictForks { get; }
-        private (ForkActivation Activation, ForkId Id)[] Forks { get; }
-        private readonly bool _hasTimestampFork;
+        private readonly Lock _initLock = new();
+        private bool _wasInitialized = false;
+        private Dictionary<uint, Fork> DictForks { get; set; }
+        internal Fork[] Forks { get; set; }
+        private bool _hasTimestampFork;
 
-        public ForkInfo(ISpecProvider specProvider, ISyncServer syncServer) : this(specProvider, syncServer.Genesis.Hash)
+        internal void EnsureInitialized()
         {
-        }
+            using Lock.Scope _ = _initLock.EnterScope();
 
-        public ForkInfo(ISpecProvider specProvider, Hash256 genesisHash)
-        {
+            if (_wasInitialized) return;
+            _wasInitialized = true;
+
+            Hash256 genesisHash = syncServer.Genesis!.Hash;
+
             _hasTimestampFork = specProvider.TimestampFork != ISpecProvider.TimestampForkNever;
             ForkActivation[] transitionActivations = specProvider.TransitionActivations;
             DictForks = new();
-            Forks = new (ForkActivation Activation, ForkId Id)[transitionActivations.Length + 1];
+            Forks = new Fork[transitionActivations.Length + 1];
             byte[] blockNumberBytes = new byte[8];
             uint crc = Crc32Algorithm.Append(0, genesisHash.ThreadStaticBytes());
             // genesis fork activation
-            SetFork(0, crc, ((0, null), new ForkId(crc, transitionActivations.Length > 0 ? transitionActivations[0].Activation : 0)));
+            SetFork(0, crc, new((0, null), new ForkId(crc, transitionActivations.Length > 0 ? transitionActivations[0].Activation : 0)));
             for (int index = 0; index < transitionActivations.Length; index++)
             {
                 ForkActivation forkActivation = transitionActivations[index];
                 BinaryPrimitives.WriteUInt64BigEndian(blockNumberBytes, forkActivation.Activation);
                 crc = Crc32Algorithm.Append(crc, blockNumberBytes);
-                SetFork(index + 1, crc, (forkActivation, new ForkId(crc, GetNextActivation(index, transitionActivations))));
+                SetFork(index + 1, crc, new(forkActivation, new ForkId(crc, GetNextActivation(index, transitionActivations))));
             }
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        private void SetFork(int index, uint crc, (ForkActivation Activation, ForkId Id) fork)
+        private void SetFork(int index, uint crc, Fork fork)
         {
             Forks[index] = fork;
             DictForks.Add(crc, fork);
@@ -69,14 +75,16 @@ namespace Nethermind.Network
 
         public ForkId GetForkId(long headNumber, ulong headTimestamp)
         {
+            EnsureInitialized();
+
             return Forks.TryGetSearchedItem(
                 new ForkActivation(headNumber, headTimestamp),
-                CompareTransitionOnActivation, out (ForkActivation Activation, ForkId Id) fork)
+                CompareTransitionOnActivation, out Fork fork)
                 ? fork.Id
                 : throw new InvalidOperationException("Fork not found");
         }
 
-        private static int CompareTransitionOnActivation(ForkActivation activation, (ForkActivation Activation, ForkId _) transition) =>
+        private static int CompareTransitionOnActivation(ForkActivation activation, Fork transition) =>
             activation.CompareTo(transition.Activation);
 
         /// <summary>
@@ -93,8 +101,10 @@ namespace Nethermind.Network
             [MethodImpl(MethodImplOptions.AggressiveInlining)]
             static bool IsTimestamp(ulong next) => next >= MainnetSpecProvider.GenesisBlockTimestamp;
 
+            EnsureInitialized();
+
             if (head is null) return ValidationResult.Valid;
-            if (!DictForks.TryGetValue(peerId.ForkHash, out (ForkActivation Activation, ForkId Id) found))
+            if (!DictForks.TryGetValue(peerId.ForkHash, out Fork found))
             {
                 // Remote is on fork that does not exist for local. remote is incompatible or local is stale.
                 return ValidationResult.IncompatibleOrStale;
@@ -127,6 +137,42 @@ namespace Nethermind.Network
             }
 
             return ValidationResult.Valid;
+        }
+
+        public ForkActivationsSummary GetForkActivationsSummary(BlockHeader? head)
+        {
+            ForkActivation headActivation = new(head?.Number ?? 0, head?.Number == 0 ? 0 : head?.Timestamp ?? 0);
+
+            int indexOfActive = Forks.Length - 1;
+
+            do
+            {
+                ForkActivation fork = Forks[indexOfActive].Activation;
+
+                if (fork.Timestamp.HasValue ? fork.Timestamp <= headActivation.Timestamp : fork.BlockNumber <= headActivation.BlockNumber)
+                {
+                    break;
+                }
+
+                indexOfActive--;
+            } while (indexOfActive != 0);
+
+            // The fix for post-merge genesis
+            Fork currentFork = Forks[indexOfActive];
+
+            if (currentFork.Activation.BlockNumber is 0 && currentFork.Activation.Timestamp is null)
+            {
+                currentFork = new Fork(new ForkActivation(0, 0), currentFork.Id);
+            }
+
+            bool isNextPresent = GetNextActivation(indexOfActive - 1, specProvider.TransitionActivations) is not 0;
+
+            return new ForkActivationsSummary
+            {
+                Current = currentFork,
+                Next = isNextPresent ? new Fork(Forks[indexOfActive + 1].Activation, Forks[indexOfActive + 1].Id) : null,
+                Last = isNextPresent ? new Fork(Forks[^1].Activation, Forks[^1].Id) : null,
+            };
         }
     }
 }

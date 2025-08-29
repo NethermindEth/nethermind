@@ -1,9 +1,9 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System.Linq;
 using System;
 using System.IO;
+using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Api;
@@ -15,96 +15,102 @@ using Nethermind.Init.Steps;
 using Nethermind.JsonRpc;
 using Nethermind.JsonRpc.Modules;
 using Nethermind.JsonRpc.WebSockets;
+using Nethermind.KeyStore.Config;
 using Nethermind.Logging;
 using Nethermind.Runner.JsonRpc;
-using Nethermind.KeyStore.Config;
+using Nethermind.Sockets;
 
 namespace Nethermind.Runner.Ethereum.Steps;
 
 [RunnerStepDependencies(typeof(InitializeNetwork), typeof(RegisterRpcModules), typeof(RegisterPluginRpcModules))]
-public class StartRpc(INethermindApi api, IJsonRpcServiceConfigurer[] serviceConfigurers) : IStep
+public class StartRpc(INethermindApi api, IJsonRpcServiceConfigurer[] serviceConfigurers, IWebSocketsManager webSocketsManager) : IStep
 {
-    private readonly INethermindApi _api = api;
-
     public async Task Execute(CancellationToken cancellationToken)
     {
-        IJsonRpcConfig jsonRpcConfig = _api.Config<IJsonRpcConfig>();
-        IKeyStoreConfig keyStoreConfig = _api.Config<IKeyStoreConfig>();
-        ILogger logger = _api.LogManager.GetClassLogger();
+        IJsonRpcConfig jsonRpcConfig = api.Config<IJsonRpcConfig>();
+        IKeyStoreConfig keyStoreConfig = api.Config<IKeyStoreConfig>();
+        ILogger logger = api.LogManager.GetClassLogger();
 
         if (string.IsNullOrEmpty(jsonRpcConfig.JwtSecretFile))
             ConfigureJwtSecret(keyStoreConfig, jsonRpcConfig, logger);
 
-        if (jsonRpcConfig.Enabled)
-        {
-            IInitConfig initConfig = _api.Config<IInitConfig>();
-            IJsonRpcUrlCollection jsonRpcUrlCollection = new JsonRpcUrlCollection(_api.LogManager, jsonRpcConfig, initConfig.WebSocketsEnabled);
-
-            IRpcModuleProvider rpcModuleProvider = _api.RpcModuleProvider!;
-            JsonRpcService jsonRpcService = new(rpcModuleProvider, _api.LogManager, jsonRpcConfig);
-
-            IRpcAuthentication auth = jsonRpcConfig.UnsecureDevNoRpcAuthentication || !jsonRpcUrlCollection.Values.Any(u => u.IsAuthenticated)
-                ? NoAuthentication.Instance
-                : JwtAuthentication.FromFile(jsonRpcConfig.JwtSecretFile, _api.Timestamper, logger);
-
-            JsonRpcProcessor jsonRpcProcessor = new(
-                jsonRpcService,
-                jsonRpcConfig,
-                _api.FileSystem,
-                _api.LogManager,
-                _api.ProcessExit);
-
-            if (initConfig.WebSocketsEnabled)
-            {
-                JsonRpcWebSocketsModule webSocketsModule = new(
-                    jsonRpcProcessor,
-                    jsonRpcService,
-                    _api.JsonRpcLocalStats!,
-                    _api.LogManager,
-                    _api.EthereumJsonSerializer,
-                    jsonRpcUrlCollection,
-                    auth,
-                    jsonRpcConfig.MaxBatchResponseBodySize,
-                    jsonRpcConfig.WebSocketsProcessingConcurrency);
-
-                _api.WebSocketsManager!.AddModule(webSocketsModule, true);
-            }
-
-            Bootstrap.Instance.JsonRpcService = jsonRpcService;
-            Bootstrap.Instance.LogManager = _api.LogManager;
-            Bootstrap.Instance.JsonSerializer = _api.EthereumJsonSerializer;
-            Bootstrap.Instance.JsonRpcLocalStats = _api.JsonRpcLocalStats!;
-            Bootstrap.Instance.JsonRpcAuthentication = auth;
-
-            JsonRpcRunner? jsonRpcRunner = new(
-                jsonRpcProcessor,
-                jsonRpcUrlCollection,
-                _api.WebSocketsManager!,
-                _api.ConfigProvider,
-                auth,
-                _api.LogManager,
-                serviceConfigurers);
-
-            await jsonRpcRunner.Start(cancellationToken).ContinueWith(x =>
-            {
-                if (x.IsFaulted && logger.IsError)
-                    logger.Error("Error during jsonRpc runner start", x.Exception);
-            }, cancellationToken);
-
-            JsonRpcIpcRunner jsonIpcRunner = new(jsonRpcProcessor, _api.ConfigProvider,
-                _api.LogManager, _api.JsonRpcLocalStats!, _api.EthereumJsonSerializer, _api.FileSystem);
-            jsonIpcRunner.Start(cancellationToken);
-
-#pragma warning disable 4014
-            _api.DisposeStack.Push(
-                new Reactive.AnonymousDisposable(() => jsonRpcRunner.StopAsync())); // do not await
-            _api.DisposeStack.Push(jsonIpcRunner); // do not await
-#pragma warning restore 4014
-        }
-        else
+        if (!jsonRpcConfig.Enabled)
         {
             if (logger.IsInfo) logger.Info("Json RPC is disabled");
+            return;
         }
+
+        IInitConfig initConfig = api.Config<IInitConfig>();
+        IJsonRpcUrlCollection jsonRpcUrlCollection =
+            new JsonRpcUrlCollection(api.LogManager, jsonRpcConfig, initConfig.WebSocketsEnabled);
+
+        IRpcModuleProvider rpcModuleProvider = api.RpcModuleProvider!;
+
+        JsonRpcService jsonRpcService = new(rpcModuleProvider, api.LogManager, jsonRpcConfig);
+        IRpcAuthentication auth =
+            jsonRpcConfig.UnsecureDevNoRpcAuthentication || !jsonRpcUrlCollection.Values.Any(u => u.IsAuthenticated)
+                ? NoAuthentication.Instance
+                : JwtAuthentication.FromFile(jsonRpcConfig.JwtSecretFile, api.Timestamper, logger);
+
+        JsonRpcProcessor jsonRpcProcessor = new(
+            jsonRpcService,
+            jsonRpcConfig,
+            api.FileSystem,
+            api.LogManager,
+            api.ProcessExit);
+
+        if (initConfig.WebSocketsEnabled)
+        {
+            JsonRpcWebSocketsModule webSocketsModule = new(
+                jsonRpcProcessor,
+                jsonRpcService,
+                api.JsonRpcLocalStats!,
+                api.LogManager,
+                api.EthereumJsonSerializer,
+                jsonRpcUrlCollection,
+                auth,
+                jsonRpcConfig.MaxBatchResponseBodySize,
+                jsonRpcConfig.WebSocketsProcessingConcurrency);
+
+            webSocketsManager!.AddModule(webSocketsModule, true);
+        }
+
+        Bootstrap.Instance.JsonRpcService = jsonRpcService;
+        Bootstrap.Instance.LogManager = api.LogManager;
+        Bootstrap.Instance.JsonSerializer = api.EthereumJsonSerializer;
+        Bootstrap.Instance.JsonRpcLocalStats = api.JsonRpcLocalStats!;
+        Bootstrap.Instance.JsonRpcAuthentication = auth;
+
+        JsonRpcRunner? jsonRpcRunner = new(
+            jsonRpcProcessor,
+            jsonRpcUrlCollection,
+            webSocketsManager!,
+            api.ConfigProvider,
+            auth,
+            api.LogManager,
+            serviceConfigurers,
+            api.TxPool,
+            api.SpecProvider,
+            api.ReceiptFinder,
+            api.BlockTree,
+            api.SyncPeerPool,
+            api.MainProcessingContext);
+
+        await jsonRpcRunner.Start(cancellationToken).ContinueWith(x =>
+        {
+            if (x.IsFaulted && logger.IsError)
+                logger.Error("Error during jsonRpc runner start", x.Exception);
+        }, cancellationToken);
+
+        JsonRpcIpcRunner jsonIpcRunner = new(jsonRpcProcessor, api.ConfigProvider,
+            api.LogManager, api.JsonRpcLocalStats!, api.EthereumJsonSerializer, api.FileSystem);
+        jsonIpcRunner.Start(cancellationToken);
+
+#pragma warning disable 4014
+        api.DisposeStack.Push(
+            new Reactive.AnonymousDisposable(() => jsonRpcRunner.StopAsync())); // do not await
+        api.DisposeStack.Push(jsonIpcRunner); // do not await
+#pragma warning restore 4014
     }
     private static void ConfigureJwtSecret(IKeyStoreConfig keyStoreConfig, IJsonRpcConfig jsonRpcConfig, ILogger logger)
     {

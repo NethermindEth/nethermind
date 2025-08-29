@@ -21,9 +21,9 @@ public class NethDevBlockProducerTxSourceFactory(
     public ITxSource Create()
     {
         ITxFilterPipeline txFilterPipeline = new TxFilterPipelineBuilder(logManager)
-            .WithBaseFeeFilter(specProvider)
+            .WithBaseFeeFilter()
             .WithNullTxFilter()
-            .WithMinGasPriceFilter(blocksConfig, specProvider)
+            .WithMinGasPriceFilter(blocksConfig)
             .Build;
 
         return new TxPoolTxSource(
@@ -31,6 +31,7 @@ public class NethDevBlockProducerTxSourceFactory(
             specProvider,
             transactionComparerProvider!,
             logManager,
-            txFilterPipeline).ServeTxsOneByOne();
+            txFilterPipeline,
+            blocksConfig).ServeTxsOneByOne();
     }
 }

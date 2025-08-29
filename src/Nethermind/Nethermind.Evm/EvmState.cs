@@ -7,7 +7,7 @@ using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
 using System.Runtime.CompilerServices;
 using Nethermind.Core;
-using Nethermind.State;
+using Nethermind.Evm.State;
 
 namespace Nethermind.Evm;
 
@@ -206,8 +206,7 @@ public sealed class EvmState : IDisposable // TODO: rename to CallState
 #if DEBUG
         _creationStackTrace = new StackTrace();
 #endif
-        [DoesNotReturn]
-        [StackTraceHidden]
+        [DoesNotReturn, StackTraceHidden]
         static void ThrowIsInUse()
         {
             throw new InvalidOperationException("Already in use");
@@ -270,7 +269,7 @@ public sealed class EvmState : IDisposable // TODO: rename to CallState
     {
         if (!_isDisposed)
         {
-            throw new InvalidOperationException($"{nameof(EvmState)} hasn't been disposed. Created {_creationStackTrace}");
+            Console.Error.WriteLine($"Warning: {nameof(EvmState)} was not disposed. Created at: {_creationStackTrace}");
         }
     }
 #endif

@@ -3,6 +3,9 @@
 
 using System;
 using System.Threading;
+using Autofac.Features.AttributeFilters;
+using Nethermind.Config;
+using Nethermind.Consensus;
 using Nethermind.Consensus.Producers;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
@@ -12,6 +15,7 @@ using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.Merge.Plugin.BlockProduction;
 using Nethermind.Optimism.Rpc;
+using Nethermind.TxPool;
 
 namespace Nethermind.Optimism;
 
@@ -22,21 +26,19 @@ public class OptimismPayloadPreparationService : PayloadPreparationService
 
     public OptimismPayloadPreparationService(
         ISpecProvider specProvider,
-        PostMergeBlockProducer blockProducer,
+        IBlockProducer blockProducer,
+        ITxPool txPool,
         IBlockImprovementContextFactory blockImprovementContextFactory,
         ITimerFactory timerFactory,
         ILogManager logManager,
-        TimeSpan timePerSlot,
-        int slotsPerOldPayloadCleanup = SlotsPerOldPayloadCleanup,
-        TimeSpan? improvementDelay = null)
+        IBlocksConfig blocksConfig)
         : base(
             blockProducer,
+            txPool,
             blockImprovementContextFactory,
             timerFactory,
             logManager,
-            timePerSlot,
-            slotsPerOldPayloadCleanup,
-            improvementDelay)
+            blocksConfig)
     {
         _specProvider = specProvider;
         _logger = logManager.GetClassLogger();

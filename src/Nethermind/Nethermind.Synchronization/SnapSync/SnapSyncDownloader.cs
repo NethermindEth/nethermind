@@ -46,6 +46,10 @@ namespace Nethermind.Synchronization.SnapSync
                         batch.AccountsToRefreshResponse = await handler.GetTrieNodes(batch.AccountsToRefreshRequest, cancellationToken);
                     }
                 }
+                catch (OperationCanceledException)
+                {
+                    if (Logger.IsDebug) Logger.Debug($"Snap sync request cancelled. Request: {batch}");
+                }
                 catch (Exception e)
                 {
                     if (Logger.IsDebug)

@@ -3,8 +3,8 @@
 
 using System;
 using Nethermind.Core;
+using Nethermind.Evm.State;
 using Nethermind.Evm.Tracing;
-using Nethermind.State;
 
 namespace Nethermind.Evm
 {
@@ -16,5 +16,6 @@ namespace Nethermind.Evm
         ref readonly TxExecutionContext TxExecutionContext { get; }
         void SetBlockExecutionContext(in BlockExecutionContext blockExecutionContext);
         void SetTxExecutionContext(in TxExecutionContext txExecutionContext);
+        int OpCodeCount { get; }
     }
 }

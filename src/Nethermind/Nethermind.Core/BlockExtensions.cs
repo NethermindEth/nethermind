@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
 using Nethermind.Int256;
 
@@ -46,4 +47,18 @@ public static class BlockExtensions
     /// <seealso cref="https://github.com/ethereum/EIPs/blob/d896145678bd65d3eafd8749690c1b5228875c39/EIPS/eip-3675.md#specification"/>
     /// </remarks>
     public static bool IsTerminalBlock(this Block block, ISpecProvider specProvider) => block.Header.IsTerminalBlock(specProvider);
+
+    public static int GetTransactionIndex(this Block block, in ValueHash256 txHash)
+    {
+        Transaction[] blockTransactions = block.Transactions;
+        for (int index = 0; index < blockTransactions.Length; index++)
+        {
+            if (blockTransactions[index].Hash == txHash)
+            {
+                return index;
+            }
+        }
+
+        return -1;
+    }
 }

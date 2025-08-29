@@ -9,6 +9,7 @@ using Nethermind.Core;
 using Nethermind.Crypto;
 using Nethermind.Db.Blooms;
 using Nethermind.Facade.Find;
+using Nethermind.History;
 using Nethermind.State.Repositories;
 using Nethermind.TxPool;
 using Nethermind.Wallet;
@@ -17,7 +18,7 @@ namespace Nethermind.Api
 {
     public interface IApiWithStores : IBasicApi
     {
-        IBlobTxStorage? BlobTxStorage { get; set; }
+        IBlobTxStorage BlobTxStorage { get; }
         IBlockTree? BlockTree { get; set; }
         IBloomStorage? BloomStorage { get; set; }
         IChainLevelInfoRepository? ChainLevelInfoRepository { get; set; }
@@ -27,9 +28,9 @@ namespace Nethermind.Api
         [SkipServiceCollection]
         IProtectedPrivateKey? NodeKey { get; set; }
         IReceiptStorage? ReceiptStorage { get; set; }
-        IReceiptFinder? ReceiptFinder { get; set; }
-        IReceiptMonitor? ReceiptMonitor { get; set; }
+        IReceiptFinder ReceiptFinder { get; }
         IWallet? Wallet { get; set; }
         IBadBlockStore? BadBlocksStore { get; set; }
+        IHistoryPruner? HistoryPruner { get; }
     }
 }

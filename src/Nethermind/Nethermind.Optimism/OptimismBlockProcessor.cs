@@ -13,10 +13,9 @@ using Nethermind.Consensus.Validators;
 using Nethermind.Consensus.Withdrawals;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
+using Nethermind.Evm.State;
 using Nethermind.Evm.Tracing;
-using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Logging;
-using Nethermind.State;
 
 namespace Nethermind.Optimism;
 
@@ -37,8 +36,7 @@ public class OptimismBlockProcessor : BlockProcessor
         IOptimismSpecHelper opSpecHelper,
         Create2DeployerContractRewriter contractRewriter,
         IWithdrawalProcessor withdrawalProcessor,
-        IExecutionRequestsProcessor executionRequestsProcessor,
-        IBlockCachePreWarmer? preWarmer = null)
+        IExecutionRequestsProcessor executionRequestsProcessor)
         : base(
             specProvider,
             blockValidator,
@@ -50,17 +48,16 @@ public class OptimismBlockProcessor : BlockProcessor
             blockhashStore,
             logManager,
             withdrawalProcessor,
-            executionRequestsProcessor,
-            preWarmer)
+            executionRequestsProcessor)
     {
         ArgumentNullException.ThrowIfNull(stateProvider);
         _contractRewriter = contractRewriter;
         ReceiptsTracer = new OptimismBlockReceiptTracer(opSpecHelper, stateProvider);
     }
 
-    protected override TxReceipt[] ProcessBlock(Block block, IBlockTracer blockTracer, ProcessingOptions options, CancellationToken token)
+    protected override TxReceipt[] ProcessBlock(Block block, IBlockTracer blockTracer, ProcessingOptions options, IReleaseSpec spec, CancellationToken token)
     {
         _contractRewriter?.RewriteContract(block.Header, _stateProvider);
-        return base.ProcessBlock(block, blockTracer, options, token);
+        return base.ProcessBlock(block, blockTracer, options, spec, token);
     }
 }

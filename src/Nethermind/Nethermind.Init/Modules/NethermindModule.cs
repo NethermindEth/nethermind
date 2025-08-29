@@ -6,6 +6,9 @@ using Nethermind.Abi;
 using Nethermind.Api;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Find;
+using Nethermind.Blockchain.Receipts;
+using Nethermind.Blockchain.Spec;
+using Nethermind.Blockchain.Synchronization;
 using Nethermind.Config;
 using Nethermind.Core;
 using Nethermind.Core.ServiceStopper;
@@ -13,10 +16,13 @@ using Nethermind.Core.Specs;
 using Nethermind.Crypto;
 using Nethermind.Db;
 using Nethermind.Era1;
+using Nethermind.History;
+using Nethermind.JsonRpc;
 using Nethermind.Logging;
 using Nethermind.Network.Config;
 using Nethermind.Runner.Ethereum.Modules;
 using Nethermind.Specs.ChainSpecStyle;
+using Nethermind.TxPool;
 
 namespace Nethermind.Init.Modules;
 
@@ -35,25 +41,47 @@ public class NethermindModule(ChainSpec chainSpec, IConfigProvider configProvide
             .AddModule(new AppInputModule(chainSpec, configProvider, logManager))
             .AddModule(new NetworkModule(configProvider))
             .AddModule(new DiscoveryModule(configProvider.GetConfig<IInitConfig>(), configProvider.GetConfig<INetworkConfig>()))
+            .AddModule(new DbModule(
+                configProvider.GetConfig<IInitConfig>(),
+                configProvider.GetConfig<IReceiptConfig>(),
+                configProvider.GetConfig<ISyncConfig>()
+            ))
             .AddModule(new WorldStateModule(configProvider.GetConfig<IInitConfig>()))
             .AddModule(new BuiltInStepsModule())
-            .AddModule(new RpcModules())
+            .AddModule(new RpcModules(configProvider.GetConfig<IJsonRpcConfig>()))
             .AddModule(new EraModule())
             .AddSource(new ConfigRegistrationSource())
-            .AddModule(new DbModule())
-            .AddModule(new BlockProcessingModule())
+            .AddModule(new BlockProcessingModule(configProvider.GetConfig<IInitConfig>()))
             .AddSingleton<ISpecProvider, ChainSpecBasedSpecProvider>()
 
             .Bind<IBlockFinder, IBlockTree>()
+            .AddSingleton<IReadOnlyBlockTree, IBlockTree>((bt) => bt.AsReadOnly())
+            .AddSingleton<IBlobTxStorage, BlobTxStorage>()
 
             .AddKeyedSingleton<IProtectedPrivateKey>(IProtectedPrivateKey.NodeKey, (ctx) => ctx.Resolve<INethermindApi>().NodeKey!)
-            .AddSingleton<IAbiEncoder>(Nethermind.Abi.AbiEncoder.Instance)
+            .AddSingleton<IAbiEncoder>(AbiEncoder.Instance)
             .AddSingleton<IEciesCipher, EciesCipher>()
             .AddSingleton<ICryptoRandom, CryptoRandom>()
+
+            .AddSingleton<IReceiptsRecovery, IEthereumEcdsa, ISpecProvider, IReceiptConfig>((ecdsa, specProvider, receiptConfig) =>
+                new ReceiptsRecovery(ecdsa, specProvider, !receiptConfig.CompactReceiptStore))
+            .AddSingleton<IReceiptFinder, FullInfoReceiptFinder>()
             .AddSingleton<IEthereumEcdsa, ISpecProvider>((specProvider) => new EthereumEcdsa(specProvider.ChainId))
             .Bind<IEcdsa, IEthereumEcdsa>()
+
+            .AddSingleton<IHistoryPruner, HistoryPruner>()
+
+            .AddSingleton<IChainHeadSpecProvider, ChainHeadSpecProvider>()
+            .AddSingleton<IChainHeadInfoProvider, ChainHeadInfoProvider>()
             .Add<IDisposableStack, AutofacDisposableStack>() // Not a singleton so that dispose is registered to correct lifetime
+
+            .AddSingleton<IHardwareInfo, HardwareInfo>()
             ;
+
+        if (!configProvider.GetConfig<ITxPoolConfig>().BlobsSupport.IsPersistentStorage())
+        {
+            builder.AddSingleton<IBlobTxStorage>(NullBlobTxStorage.Instance);
+        }
     }
 
     // Just a wrapper to make it clear, these three are expected to be available at the time of configurations.

@@ -5,8 +5,8 @@ namespace Nethermind.Trie.Pruning
 {
     public interface IPruningStrategy
     {
-        bool PruningEnabled { get; }
-        bool ShouldPruneDirtyNode(in long dirtyNodeMemory);
-        bool ShouldPrunePersistedNode(in long persistedNodeMemory);
+        bool DeleteObsoleteKeys { get; }
+        bool ShouldPruneDirtyNode(TrieStoreState state);
+        bool ShouldPrunePersistedNode(TrieStoreState state);
     }
 }

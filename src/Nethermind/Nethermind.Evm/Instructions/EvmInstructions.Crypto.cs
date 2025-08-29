@@ -27,7 +27,7 @@ internal static partial class EvmInstructions
             goto StackUnderflow;
 
         // Deduct gas: base cost plus additional cost per 32-byte word.
-        gasAvailable -= GasCostOf.Sha3 + GasCostOf.Sha3Word * EvmPooledMemory.Div32Ceiling(in b, out bool outOfGas);
+        gasAvailable -= GasCostOf.Sha3 + GasCostOf.Sha3Word * Div32Ceiling(in b, out bool outOfGas);
         if (outOfGas)
             goto OutOfGas;
 

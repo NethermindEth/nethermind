@@ -12,7 +12,9 @@ using Nethermind.Specs;
 using Nethermind.Core;
 using System.Linq;
 using System.Collections.Generic;
+using Nethermind.Config;
 using NSubstitute;
+using Nethermind.Core.Specs;
 
 namespace Nethermind.Consensus.Producers.Test;
 
@@ -34,9 +36,9 @@ public class TxPoolSourceTests
         txPool.GetPendingLightBlobTransactionsBySender().Returns(transactionsWithBlobs);
 
         ITxFilterPipeline txFilterPipeline = Substitute.For<ITxFilterPipeline>();
-        txFilterPipeline.Execute(Arg.Any<Transaction>(), Arg.Any<BlockHeader>()).Returns(true);
+        txFilterPipeline.Execute(Arg.Any<Transaction>(), Arg.Any<BlockHeader>(), Arg.Any<IReleaseSpec>()).Returns(AcceptTxResult.Accepted);
 
-        TxPoolTxSource transactionSelector = new(txPool, specProvider, transactionComparerProvider, LimboLogs.Instance, txFilterPipeline);
+        TxPoolTxSource transactionSelector = new(txPool, specProvider, transactionComparerProvider, LimboLogs.Instance, txFilterPipeline, new BlocksConfig { SecondsPerSlot = 12 });
 
         IEnumerable<Transaction> txs = transactionSelector.GetTransactions(new BlockHeader { }, long.MaxValue);
         int blobsCount = txs.Sum(tx => tx.GetBlobCount());

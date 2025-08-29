@@ -8,6 +8,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using FluentAssertions;
 using Nethermind.Blockchain;
+using Nethermind.Blockchain.Spec;
 using Nethermind.Config;
 using Nethermind.Consensus;
 using Nethermind.Consensus.Comparers;
@@ -21,15 +22,12 @@ using Nethermind.Core.Specs;
 using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Crypto;
-using Nethermind.Db;
 using Nethermind.Evm;
 using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.Specs;
 using Nethermind.Specs.Forks;
 using Nethermind.Specs.Test;
-using Nethermind.State;
-using Nethermind.Trie.Pruning;
 using Nethermind.TxPool.Filters;
 using NSubstitute;
 using NUnit.Framework;
@@ -43,7 +41,7 @@ namespace Nethermind.TxPool.Test
         private IEthereumEcdsa _ethereumEcdsa;
         private ISpecProvider _specProvider;
         private TxPool _txPool;
-        private IWorldState _stateProvider;
+        private TestReadOnlyStateProvider _stateProvider;
         private IBlockTree _blockTree;
 
         private readonly int _txGasLimit = 1_000_000;
@@ -54,8 +52,7 @@ namespace Nethermind.TxPool.Test
             _logManager = LimboLogs.Instance;
             _specProvider = MainnetSpecProvider.Instance;
             _ethereumEcdsa = new EthereumEcdsa(_specProvider.ChainId);
-            IWorldStateManager worldStateManager = TestWorldStateFactory.CreateForTest();
-            _stateProvider = worldStateManager.GlobalWorldState;
+            _stateProvider = new TestReadOnlyStateProvider();
             _blockTree = Substitute.For<IBlockTree>();
             Block block = Build.A.Block.WithNumber(10000000 - 1).TestObject;
             _blockTree.Head.Returns(block);
@@ -384,7 +381,7 @@ namespace Nethermind.TxPool.Test
             {
                 MinGasPrice = 1.GWei()
             };
-            IIncomingTxFilter incomingTxFilter = new TxFilterAdapter(_blockTree, new MinGasPriceTxFilter(blocksConfig, specProvider), LimboLogs.Instance);
+            IIncomingTxFilter incomingTxFilter = new TxFilterAdapter(_blockTree, new MinGasPriceTxFilter(blocksConfig), LimboLogs.Instance, specProvider);
             _txPool = CreatePool(specProvider: specProvider, incomingTxFilter: incomingTxFilter);
             Transaction tx = Build.A.Transaction
                 .WithGasLimit(Transaction.BaseTxGasCost)
@@ -1836,13 +1833,14 @@ namespace Nethermind.TxPool.Test
         }
 
 
-        private static object[] NonceAndRemovedCases =
+        private static readonly object[] NonceAndRemovedCases =
         {
             new object[]{ true, 1, AcceptTxResult.Accepted },
             new object[]{ true, 0, AcceptTxResult.Accepted},
             new object[]{ false, 0, AcceptTxResult.Accepted},
             new object[]{ false, 1, AcceptTxResult.NotCurrentNonceForDelegation},
         };
+
         [TestCaseSource(nameof(NonceAndRemovedCases))]
         public void Tx_with_conflicting_pending_delegation_is_rejected_then_is_accepted_after_delegation_removal(bool withRemoval, int secondNonce, AcceptTxResult expected)
         {
@@ -2013,7 +2011,7 @@ namespace Nethermind.TxPool.Test
             {
                 //Not self sponsored
                 TestItem.PrivateKeyB,
-                (IWorldState state, Address account, IReleaseSpec spec) =>
+                (TestReadOnlyStateProvider state, Address account, IReleaseSpec spec) =>
                 {
                     state.CreateAccount(account, UInt256.MaxValue);
                     state.CreateAccount(TestItem.AddressB, UInt256.MaxValue);
@@ -2024,7 +2022,7 @@ namespace Nethermind.TxPool.Test
             {
                 //Self sponsored
                 TestItem.PrivateKeyA,
-                (IWorldState state, Address account, IReleaseSpec spec) =>
+                (TestReadOnlyStateProvider state, Address account, IReleaseSpec spec) =>
                 {
                     state.CreateAccount(account, UInt256.MaxValue);
                 },
@@ -2035,7 +2033,7 @@ namespace Nethermind.TxPool.Test
                 //Self sponsored
                 TestItem.PrivateKeyA,
                 //Account is delegated so the last transaction should not be accepted
-                (IWorldState state, Address account, IReleaseSpec spec) =>
+                (TestReadOnlyStateProvider state, Address account, IReleaseSpec spec) =>
                 {
                     state.CreateAccount(account, UInt256.MaxValue);
                     byte[] delegation = [..Eip7702Constants.DelegationHeader, ..TestItem.AddressB.Bytes];
@@ -2047,7 +2045,7 @@ namespace Nethermind.TxPool.Test
 
         [TestCaseSource(nameof(SetCodeReplacedTxCases))]
         public void SetCode_tx_can_be_replaced_and_remove_pending_delegation_restriction(
-            PrivateKey sponsor, Action<IWorldState, Address, IReleaseSpec> accountSetup, AcceptTxResult lastExpectation)
+            PrivateKey sponsor, Action<TestReadOnlyStateProvider, Address, IReleaseSpec> accountSetup, AcceptTxResult lastExpectation)
         {
             ISpecProvider specProvider = GetPragueSpecProvider();
             TxPoolConfig txPoolConfig = new TxPoolConfig { Size = 30, PersistentBlobStorageSize = 0 };
@@ -2195,7 +2193,11 @@ namespace Nethermind.TxPool.Test
             txStorage ??= new BlobTxStorage();
 
             _headInfo = chainHeadInfoProvider;
-            _headInfo ??= new ChainHeadInfoProvider(specProvider, _blockTree, _stateProvider, new CodeInfoRepository());
+            _headInfo ??= new ChainHeadInfoProvider(
+                new ChainHeadSpecProvider(specProvider, _blockTree),
+                _blockTree,
+                _stateProvider,
+                new EthereumCodeInfoRepository());
 
             return new TxPool(
                 _ethereumEcdsa,
@@ -2207,6 +2209,7 @@ namespace Nethermind.TxPool.Test
                 transactionComparerProvider.GetDefaultComparer(),
                 ShouldGossip.Instance,
                 incomingTxFilter,
+                new HeadTxValidator(),
                 thereIsPriorityContract);
         }
 

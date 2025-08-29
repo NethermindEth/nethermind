@@ -10,7 +10,6 @@ using System.Threading;
 using System.Threading.Tasks;
 using Autofac.Features.AttributeFilters;
 using Nethermind.Blockchain;
-using Nethermind.Blockchain.Synchronization;
 using Nethermind.Core;
 using Nethermind.Core.Caching;
 using Nethermind.Core.Crypto;
@@ -414,6 +413,11 @@ namespace Nethermind.Synchronization.FastSync
 
             BlockHeader headerForState = _stateSyncPivot.GetPivotHeader();
 
+            if (headerForState is null)
+            {
+                if (_logger.IsDebug) _logger.Debug($"State pivot header not known.");
+                return;
+            }
             if (_logger.IsInfo) _logger.Info($"Starting the node data sync from the {headerForState.ToString(BlockHeader.Format.Short)} {headerForState.StateRoot} root");
 
             ResetStateRoot(headerForState.Number, headerForState.StateRoot!, currentState);

@@ -72,7 +72,7 @@ namespace Nethermind.Network.Rlpx.Handshake
                 {
                     Nonce = handshake.InitiatorNonce,
                     PublicKey = _privateKey.PublicKey,
-                    Signature = _ecdsa.Sign(handshake.EphemeralPrivateKey, new Hash256(forSigning)),
+                    Signature = _ecdsa.Sign(handshake.EphemeralPrivateKey, new ValueHash256(forSigning)),
                     IsTokenUsed = false,
                     EphemeralPublicHash = Keccak.Compute(handshake.EphemeralPrivateKey.PublicKey.Bytes)
                 };
@@ -96,7 +96,7 @@ namespace Nethermind.Network.Rlpx.Handshake
                 {
                     Nonce = handshake.InitiatorNonce,
                     PublicKey = _privateKey.PublicKey,
-                    Signature = _ecdsa.Sign(handshake.EphemeralPrivateKey, new Hash256(forSigning))
+                    Signature = _ecdsa.Sign(handshake.EphemeralPrivateKey, new ValueHash256(forSigning))
                 };
 
                 IByteBuffer authData = _messageSerializationService.ZeroSerialize(authMessage);
@@ -156,7 +156,7 @@ namespace Nethermind.Network.Rlpx.Handshake
             byte[] staticSharedSecret = SecP256k1.EcdhSerialized(handshake.RemoteNodeId.Bytes, _privateKey.KeyBytes);
             byte[] forSigning = staticSharedSecret.Xor(handshake.InitiatorNonce);
 
-            handshake.RemoteEphemeralPublicKey = _ecdsa.RecoverPublicKey(authMessage.Signature, new Hash256(forSigning));
+            handshake.RemoteEphemeralPublicKey = _ecdsa.RecoverPublicKey(authMessage.Signature, new ValueHash256(forSigning));
 
             byte[] data;
             if (preEip8Format)

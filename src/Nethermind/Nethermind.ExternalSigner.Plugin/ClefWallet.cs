@@ -1,11 +1,9 @@
 // SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using DotNetty.Buffers;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
-using Nethermind.Crypto;
 using Nethermind.Facade.Eth.RpcTransaction;
 using Nethermind.JsonRpc.Client;
 using Nethermind.Serialization.Rlp;
@@ -14,8 +12,6 @@ using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
 using System.Runtime.CompilerServices;
 using System.Security;
-using System.Text;
-using System.Text.Unicode;
 
 namespace Nethermind.ExternalSigner.Plugin
 {
@@ -86,30 +82,21 @@ namespace Nethermind.ExternalSigner.Plugin
         public Signature Sign(BlockHeader header, Address address)
         {
             ArgumentNullException.ThrowIfNull(header);
-            int contentLength = _headerDecoder.GetLength(header, RlpBehaviors.None);
-            IByteBuffer buffer = PooledByteBufferAllocator.Default.Buffer(contentLength);
-            try
-            {
-                RlpStream rlpStream = new NettyRlpStream(buffer);
-                rlpStream.Encode(header);
-                string? signed = rpcClient.Post<string>(
-                    "account_signData",
-                    "application/x-clique-header",
-                    address.ToString(),
-                    buffer.AsSpan().ToHexString(true))
-                    .GetAwaiter().GetResult();
-                if (signed is null) ThrowInvalidOperationSignFailed();
-                byte[] bytes = Bytes.FromHexString(signed);
 
-                //Clef will set recid to 0/1, without the VOffset
-                return bytes.Length == 65 && (bytes[64] == 0 || bytes[64] == 1)
-                    ? new Signature(bytes.AsSpan(0, 64), bytes[64])
-                    : new Signature(bytes);
-            }
-            finally
-            {
-                buffer.Release();
-            }
+            using var rlpStream = _headerDecoder.EncodeToNewNettyStream(header, RlpBehaviors.None);
+            string? signed = rpcClient.Post<string>(
+                "account_signData",
+                "application/x-clique-header",
+                address.ToString(),
+                rlpStream.AsSpan().ToHexString(true))
+                .GetAwaiter().GetResult();
+            if (signed is null) ThrowInvalidOperationSignFailed();
+            byte[] bytes = Bytes.FromHexString(signed);
+
+            //Clef will set recid to 0/1, without the VOffset
+            return bytes.Length == 65 && (bytes[64] == 0 || bytes[64] == 1)
+                ? new Signature(bytes.AsSpan(0, 64), bytes[64])
+                : new Signature(bytes);
         }
 
         /// <summary>
@@ -152,14 +139,12 @@ namespace Nethermind.ExternalSigner.Plugin
             return false;
         }
 
-        [DoesNotReturn]
-        [StackTraceHidden]
+        [DoesNotReturn, StackTraceHidden]
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         private static void ThrowInvalidOperationSignFailed() =>
             throw new InvalidOperationException("Remote signer failed to sign the request.");
 
-        [DoesNotReturn]
-        [StackTraceHidden]
+        [DoesNotReturn, StackTraceHidden]
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         private static void ThrowNotSupportedException([CallerMemberName] string member = "") =>
             throw new NotSupportedException($"Clef remote signer does not support '{member}'");

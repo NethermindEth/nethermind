@@ -4,6 +4,7 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using Autofac;
 using Autofac.Features.AttributeFilters;
 using Nethermind.Abi;
 using Nethermind.Blockchain;
@@ -28,6 +29,7 @@ using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
 using Nethermind.Crypto;
+using Nethermind.Evm.State;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.JsonRpc.Modules.Eth.GasPrice;
 using Nethermind.Logging;
@@ -56,7 +58,6 @@ public class StartBlockProducerAuRa(
     IGasPriceOracle gasPriceOracle,
     ReportingContractBasedValidator.Cache reportingContractValidatorCache,
     IDisposableStack disposeStack,
-    AuRaContractGasLimitOverride.Cache gasLimitCalculatorCache,
     IAbiEncoder abiEncoder,
     IReadOnlyTxProcessingEnvFactory readOnlyTxProcessingEnvFactory,
     TxAuRaFilterBuilders apiTxAuRaFilterBuilders,
@@ -64,13 +65,14 @@ public class StartBlockProducerAuRa(
     ITxPool txPool,
     IStateReader apiStateReader,
     ITransactionComparerProvider transactionComparerProvider,
-    CompositeBlockPreprocessorStep compositeBlockPreprocessorStep,
     [KeyFilter(IProtectedPrivateKey.NodeKey)] IProtectedPrivateKey protectedPrivateKey,
     ICryptoRandom cryptoRandom,
     IBlockValidator blockValidator,
     IRewardCalculatorSource rewardCalculatorSource,
-    IBlockProducerEnvFactory blockProducerEnvFactory,
     IAuRaStepCalculator stepCalculator,
+    AuRaGasLimitOverrideFactory gasLimitOverrideFactory,
+    IWorldStateManager worldStateManager,
+    ILifetimeScope lifetimeScope,
     ILogManager logManager)
 {
     private readonly AuRaChainSpecEngineParameters _parameters = chainSpec.EngineChainSpecParametersProvider
@@ -98,12 +100,12 @@ public class StartBlockProducerAuRa(
         return onlyWhenNotProcessing;
     }
 
-    public IBlockProducer BuildProducer(ITxSource? additionalTxSource = null)
+    public IBlockProducer BuildProducer()
     {
         ILogger logger = logManager.GetClassLogger();
         if (logger.IsInfo) logger.Info("Starting AuRa block producer & sealer");
 
-        BlockProducerEnv producerEnv = GetProducerChain(additionalTxSource);
+        BlockProducerEnv producerEnv = GetProducerChain();
 
         IGasLimitCalculator gasLimitCalculator = CreateGasLimitCalculator();
 
@@ -125,14 +127,14 @@ public class StartBlockProducerAuRa(
         return blockProducer;
     }
 
-    private BlockProcessor CreateBlockProcessor(IReadOnlyTxProcessingScope changeableTxProcessingEnv)
+    private BlockProcessor CreateBlockProcessor(ITransactionProcessor txProcessor, IWorldState worldState)
     {
         ITxFilter auRaTxFilter = apiTxAuRaFilterBuilders.CreateAuRaTxFilter(
             new LocalTxFilter(engineSigner));
 
         _validator = new AuRaValidatorFactory(abiEncoder,
-                changeableTxProcessingEnv.WorldState,
-                changeableTxProcessingEnv.TransactionProcessor,
+                worldState,
+                txProcessor,
                 blockTree,
                 readOnlyTxProcessingEnvFactory.Create(),
                 receiptStorage,
@@ -158,18 +160,24 @@ public class StartBlockProducerAuRa(
         IDictionary<long, IDictionary<Address, byte[]>> rewriteBytecode = _parameters.RewriteBytecode;
         ContractRewriter? contractRewriter = rewriteBytecode?.Count > 0 ? new ContractRewriter(rewriteBytecode) : null;
 
+        var transactionExecutor = new BlockProcessor.BlockProductionTransactionsExecutor(
+            new BuildUpTransactionProcessorAdapter(txProcessor),
+            worldState,
+            new BlockProcessor.BlockProductionTransactionPicker(specProvider, blocksConfig.BlockProductionMaxTxKilobytes),
+            logManager);
+
         return new AuRaBlockProcessor(
             specProvider,
             blockValidator,
-            rewardCalculatorSource.Get(changeableTxProcessingEnv.TransactionProcessor),
-            blockProducerEnvFactory.TransactionsExecutorFactory.Create(changeableTxProcessingEnv),
-            changeableTxProcessingEnv.WorldState,
+            rewardCalculatorSource.Get(txProcessor),
+            transactionExecutor,
+            worldState,
             receiptStorage,
-            new BeaconBlockRootHandler(changeableTxProcessingEnv.TransactionProcessor, changeableTxProcessingEnv.WorldState),
+            new BeaconBlockRootHandler(txProcessor, worldState),
             logManager,
             blockTree,
             NullWithdrawalProcessor.Instance,
-            new ExecutionRequestsProcessor(changeableTxProcessingEnv.TransactionProcessor),
+            new ExecutionRequestsProcessor(txProcessor),
             _validator,
             auRaTxFilter,
             CreateGasLimitCalculator() as AuRaContractGasLimitOverride,
@@ -210,20 +218,20 @@ public class StartBlockProducerAuRa(
                 apiTxAuRaFilterBuilders.CreateAuRaTxFilterForProducer(_minGasPricesContractDataStore);
             ITxFilterPipeline txFilterPipeline = new TxFilterPipelineBuilder(logManager)
                 .WithCustomTxFilter(auraTxFilter)
-                .WithBaseFeeFilter(specProvider)
+                .WithBaseFeeFilter()
                 .WithNullTxFilter()
                 .Build;
 
 
             return new TxPriorityTxSource(
                 txPool,
-                apiStateReader,
                 logManager,
                 txFilterPipeline,
                 whitelistContractDataStore,
                 prioritiesContractDataStore,
                 specProvider,
-                transactionComparerProvider);
+                transactionComparerProvider,
+                blocksConfig);
         }
         else
         {
@@ -236,43 +244,32 @@ public class StartBlockProducerAuRa(
         ITxFilter txSourceFilter = apiTxAuRaFilterBuilders.CreateAuRaTxFilterForProducer(_minGasPricesContractDataStore);
         ITxFilterPipeline txFilterPipeline = new TxFilterPipelineBuilder(logManager)
             .WithCustomTxFilter(txSourceFilter)
-            .WithBaseFeeFilter(specProvider)
+            .WithBaseFeeFilter()
+            .WithHeadTxFilter()
             .Build;
-        return new TxPoolTxSource(txPool, specProvider, transactionComparerProvider, logManager, txFilterPipeline);
+
+        return new TxPoolTxSource(txPool, specProvider, transactionComparerProvider, logManager, txFilterPipeline, blocksConfig);
     }
 
 
     // TODO: Use BlockProducerEnvFactory
-    private BlockProducerEnv GetProducerChain(ITxSource? additionalTxSource)
+    private BlockProducerEnv GetProducerChain()
     {
         BlockProducerEnv Create()
         {
             ReadOnlyBlockTree readOnlyBlockTree = blockTree.AsReadOnly();
 
-            IReadOnlyTxProcessorSource txProcessingEnv = readOnlyTxProcessingEnvFactory.Create();
-            IReadOnlyTxProcessingScope scope = txProcessingEnv.Build(Keccak.EmptyTreeHash);
-            BlockProcessor blockProcessor = CreateBlockProcessor(scope);
+            IWorldState worldState = worldStateManager.CreateResettableWorldState();
+            ILifetimeScope innerLifetime = lifetimeScope.BeginLifetimeScope((builder) => builder
+                .AddSingleton<IWorldState>(worldState)
+                .AddSingleton<BlockchainProcessor.Options>(BlockchainProcessor.Options.NoReceipts)
+                .AddSingleton<IBlockProcessor, ITransactionProcessor, IWorldState>(CreateBlockProcessor)
+                .AddDecorator<IBlockchainProcessor, OneTimeChainProcessor>());
+            lifetimeScope.Disposer.AddInstanceForAsyncDisposal(innerLifetime);
 
-            IBlockchainProcessor blockchainProcessor =
-                new BlockchainProcessor(
-                    readOnlyBlockTree,
-                    blockProcessor,
-                    compositeBlockPreprocessorStep,
-                    apiStateReader,
-                    logManager,
-                    BlockchainProcessor.Options.NoReceipts);
+            IBlockchainProcessor chainProcessor = innerLifetime.Resolve<IBlockchainProcessor>();
 
-            OneTimeChainProcessor chainProcessor = new(
-                scope.WorldState,
-                blockchainProcessor);
-
-            return new BlockProducerEnv()
-            {
-                BlockTree = readOnlyBlockTree,
-                ChainProcessor = chainProcessor,
-                ReadOnlyStateProvider = scope.WorldState,
-                TxSource = CreateTxSourceForProducer(additionalTxSource),
-            };
+            return new BlockProducerEnv(readOnlyBlockTree, chainProcessor, worldState, CreateTxSourceForProducer());
         }
 
         return _blockProducerContext ??= Create();
@@ -280,7 +277,7 @@ public class StartBlockProducerAuRa(
 
     private ITxSource CreateStandardTxSourceForProducer() => CreateTxPoolTxSource();
 
-    private ITxSource CreateTxSourceForProducer(ITxSource? additionalTxSource)
+    private ITxSource CreateTxSourceForProducer()
     {
         bool CheckAddPosdaoTransactions(IList<ITxSource> list, long auRaPosdaoTransition)
         {
@@ -331,10 +328,6 @@ public class StartBlockProducerAuRa(
         IList<ITxSource> txSources = new List<ITxSource> { CreateStandardTxSourceForProducer() };
         bool needSigner = false;
 
-        if (additionalTxSource is not null)
-        {
-            txSources.Insert(0, additionalTxSource);
-        }
         needSigner |= CheckAddPosdaoTransactions(txSources, _parameters.PosdaoTransition);
         needSigner |= CheckAddRandomnessTransactions(txSources, _parameters.RandomnessContractAddress, engineSigner);
 
@@ -350,7 +343,7 @@ public class StartBlockProducerAuRa(
         if (txPermissionFilter is not null)
         {
             // we now only need to filter generated transactions here, as regular ones are filtered on TxPoolTxSource filter based on CreateTxSourceFilter method
-            txSource = new FilteredTxSource<GeneratedTransaction>(txSource, txPermissionFilter, logManager);
+            txSource = new FilteredTxSource<GeneratedTransaction>(txSource, txPermissionFilter, logManager, specProvider, blocksConfig);
         }
 
         return txSource;
@@ -358,28 +351,8 @@ public class StartBlockProducerAuRa(
 
     private IGasLimitCalculator CreateGasLimitCalculator()
     {
-        var blockGasLimitContractTransitions = chainSpec.EngineChainSpecParametersProvider
-            .GetChainSpecParameters<AuRaChainSpecEngineParameters>().BlockGasLimitContractTransitions;
-
-        IGasLimitCalculator gasLimitCalculator = new TargetAdjustedGasLimitCalculator(specProvider, blocksConfig);
-        if (blockGasLimitContractTransitions?.Count > 0)
-        {
-            AuRaContractGasLimitOverride auRaContractGasLimitOverride = new(
-                    blockGasLimitContractTransitions.Select(blockGasLimitContractTransition =>
-                            new BlockGasLimitContract(
-                                abiEncoder,
-                                blockGasLimitContractTransition.Value,
-                                blockGasLimitContractTransition.Key,
-                                readOnlyTxProcessingEnvFactory.Create()))
-                        .ToArray<IBlockGasLimitContract>(),
-                    gasLimitCalculatorCache,
-                    auraConfig.Minimum2MlnGasPerBlockWhenUsingBlockGasLimitContract == true,
-                    gasLimitCalculator,
-                    logManager);
-
-            gasLimitCalculator = auRaContractGasLimitOverride;
-        }
-
-        return gasLimitCalculator;
+        AuRaContractGasLimitOverride? auRaContractGasLimitOverride = gasLimitOverrideFactory.GetGasLimitCalculator();
+        if (auRaContractGasLimitOverride is not null) return auRaContractGasLimitOverride;
+        return new TargetAdjustedGasLimitCalculator(specProvider, blocksConfig);
     }
 }

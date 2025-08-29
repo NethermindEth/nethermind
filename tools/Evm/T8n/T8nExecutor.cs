@@ -16,12 +16,15 @@ using Nethermind.Core.Test;
 using Nethermind.Crypto;
 using Nethermind.Db;
 using Nethermind.Evm;
+using Nethermind.Evm.State;
 using Nethermind.Evm.Tracing;
-using Nethermind.Evm.Tracing.GethStyle;
+using Nethermind.Blockchain.Tracing.GethStyle;
+using Nethermind.Blockchain.Tracing;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Logging;
 using Nethermind.State;
 using Nethermind.Trie.Pruning;
+using Nethermind.Blockchain;
 
 namespace Evm.T8n;
 
@@ -37,7 +40,7 @@ public static class T8nExecutor
 
         IWorldStateManager worldStateManager = TestWorldStateFactory.CreateForTest();
         IWorldState stateProvider = worldStateManager.GlobalWorldState;
-        CodeInfoRepository codeInfoRepository = new();
+        EthereumCodeInfoRepository codeInfoRepository = new();
         IBlockhashProvider blockhashProvider = ConstructBlockHashProvider(test);
 
         IVirtualMachine virtualMachine = new VirtualMachine(
@@ -105,7 +108,7 @@ public static class T8nExecutor
 
             transactionExecutionReport.ValidTransactions.Add(transaction);
 
-            if (transactionResult.Success)
+            if (transactionResult.TransactionExecuted)
             {
                 transactionExecutionReport.SuccessfulTransactions.Add(transaction);
                 blockReceiptsTracer.LastReceipt.PostTransactionState = null;

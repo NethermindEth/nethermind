@@ -38,14 +38,11 @@ namespace Nethermind.Trie
         private static readonly Action<TrieNode, Hash256?, TreePath> _markPersisted = static (tn, _, _) =>
             tn.IsPersisted = true;
 
-        private const long _dirtyMask = 0b001;
-        private const long _persistedMask = 0b010;
-        private const long _boundaryProof = 0b100;
-        private const long _flagsMask = 0b111;
-        private const long _blockMask = ~_flagsMask;
-        private const int _blockShift = 3;
+        private const byte _dirtyMask = 0b001;
+        private const byte _persistedMask = 0b010;
+        private const byte _boundaryProof = 0b100;
 
-        private long _blockAndFlags = -1L & _blockMask;
+        private byte _blockAndFlags = 0;
         private SpanSource _rlp;
         private INodeData? _nodeData;
 
@@ -54,33 +51,17 @@ namespace Nethermind.Trie
         /// </summary>
         public bool IsSealed => !IsDirty;
 
-        public long LastSeen
-        {
-            get => (Volatile.Read(ref _blockAndFlags) >> _blockShift);
-            set
-            {
-                long previousValue = Volatile.Read(ref _blockAndFlags);
-                long currentValue;
-                do
-                {
-                    currentValue = previousValue;
-                    long newValue = (currentValue & _flagsMask) | (value << _blockShift);
-                    previousValue = Interlocked.CompareExchange(ref _blockAndFlags, newValue, currentValue);
-                } while (previousValue != currentValue);
-            }
-        }
-
         public bool IsPersisted
         {
             get => (Volatile.Read(ref _blockAndFlags) & _persistedMask) != 0;
             set
             {
-                long previousValue = Volatile.Read(ref _blockAndFlags);
-                long currentValue;
+                byte previousValue = Volatile.Read(ref _blockAndFlags);
+                byte currentValue;
                 do
                 {
                     currentValue = previousValue;
-                    long newValue = value ? (currentValue | _persistedMask) : (currentValue & ~_persistedMask);
+                    byte newValue = (byte)(value ? (currentValue | _persistedMask) : (currentValue & ~_persistedMask));
                     previousValue = Interlocked.CompareExchange(ref _blockAndFlags, newValue, currentValue);
                 } while (previousValue != currentValue);
             }
@@ -91,12 +72,12 @@ namespace Nethermind.Trie
             get => (Volatile.Read(ref _blockAndFlags) & _boundaryProof) != 0;
             set
             {
-                long previousValue = Volatile.Read(ref _blockAndFlags);
-                long currentValue;
+                byte previousValue = Volatile.Read(ref _blockAndFlags);
+                byte currentValue;
                 do
                 {
                     currentValue = previousValue;
-                    long newValue = value ? (currentValue | _boundaryProof) : (currentValue & ~_boundaryProof);
+                    byte newValue = (byte)(value ? (currentValue | _boundaryProof) : (currentValue & ~_boundaryProof));
                     previousValue = Interlocked.CompareExchange(ref _blockAndFlags, newValue, currentValue);
                 } while (previousValue != currentValue);
             }
@@ -109,8 +90,8 @@ namespace Nethermind.Trie
         /// </summary>
         public void Seal()
         {
-            long previousValue = Volatile.Read(ref _blockAndFlags);
-            long currentValue;
+            byte previousValue = Volatile.Read(ref _blockAndFlags);
+            byte currentValue;
             do
             {
                 if ((previousValue & _dirtyMask) == 0)
@@ -119,12 +100,11 @@ namespace Nethermind.Trie
                 }
 
                 currentValue = previousValue;
-                long newValue = currentValue & ~_dirtyMask;
+                byte newValue = (byte)(currentValue & ~_dirtyMask);
                 previousValue = Interlocked.CompareExchange(ref _blockAndFlags, newValue, currentValue);
             } while (previousValue != currentValue);
 
-            [DoesNotReturn]
-            [StackTraceHidden]
+            [DoesNotReturn, StackTraceHidden]
             void ThrowAlreadySealed()
             {
                 throw new InvalidOperationException($"{nameof(TrieNode)} {this} is already sealed.");
@@ -179,16 +159,14 @@ namespace Nethermind.Trie
                 node.Key = value;
                 Keccak = null;
 
-                [DoesNotReturn]
-                [StackTraceHidden]
+                [DoesNotReturn, StackTraceHidden]
                 void ThrowDoesNotSupportKey()
                 {
                     throw new InvalidOperationException(
                         $"{NodeType} {this} is does not support having a {nameof(Key)}.");
                 }
 
-                [DoesNotReturn]
-                [StackTraceHidden]
+                [DoesNotReturn, StackTraceHidden]
                 void ThrowAlreadySealed()
                 {
                     throw new InvalidOperationException(
@@ -230,16 +208,14 @@ namespace Nethermind.Trie
 
                 _nodeData = leafData.CloneWithNewValue(value);
 
-                [DoesNotReturn]
-                [StackTraceHidden]
+                [DoesNotReturn, StackTraceHidden]
                 void ThrowAlreadySealed()
                 {
                     throw new InvalidOperationException(
                         $"{nameof(TrieNode)} {this} is already sealed when setting {nameof(Value)}.");
                 }
 
-                [DoesNotReturn]
-                [StackTraceHidden]
+                [DoesNotReturn, StackTraceHidden]
                 static void ThrowNoValueOnBranches()
                 {
                     throw new TrieException("Optimized Patricia Trie does not support setting values on branches.");
@@ -271,19 +247,19 @@ namespace Nethermind.Trie
 
         private TrieNode(TrieNode node)
         {
-            _blockAndFlags |= _dirtyMask;
+            _blockAndFlags = _dirtyMask;
             _nodeData = node._nodeData?.Clone();
         }
 
         public TrieNode(NodeType nodeType)
         {
-            _blockAndFlags |= _dirtyMask;
+            _blockAndFlags = _dirtyMask;
             _nodeData = CreateNodeData(nodeType);
         }
 
         public TrieNode(INodeData nodeData)
         {
-            _blockAndFlags |= _dirtyMask;
+            _blockAndFlags = _dirtyMask;
             _nodeData = nodeData;
         }
 
@@ -345,9 +321,9 @@ namespace Nethermind.Trie
 #if DEBUG
             return
                 $"[{NodeType}({(FullRlp.IsNotNullOrEmpty ? FullRlp.Length : 0)}){(FullRlp.IsNotNullOrEmpty && FullRlp.Length < 32 ? $"{FullRlp.Span.ToHexString()}" : "")}" +
-                $"|{Id}|{Keccak}|{LastSeen}|D:{IsDirty}|S:{IsSealed}|P:{IsPersisted}|";
+                $"|{Id}|{Keccak}|D:{IsDirty}|S:{IsSealed}|P:{IsPersisted}|";
 #else
-            return $"[{NodeType}({(FullRlp.IsNotNullOrEmpty ? FullRlp.Length : 0)})|{Keccak?.ToShortString()}|{LastSeen}|D:{IsDirty}|S:{IsSealed}|P:{IsPersisted}|";
+            return $"[{NodeType}({(FullRlp.IsNotNullOrEmpty ? FullRlp.Length : 0)})|{Keccak?.ToShortString()}|D:{IsDirty}|S:{IsSealed}|P:{IsPersisted}|";
 #endif
         }
 
@@ -365,8 +341,7 @@ namespace Nethermind.Trie
                 ThrowDecodingError(rlpException, path);
             }
 
-            [DoesNotReturn]
-            [StackTraceHidden]
+            [DoesNotReturn, StackTraceHidden]
             void ThrowDecodingError(RlpException rlpException, in TreePath path)
             {
                 throw new TrieNodeException($"Error when decoding node {Keccak}", path,
@@ -405,22 +380,19 @@ namespace Nethermind.Trie
                 ThrowUnexpectedNumberOfItems(numberOfItems, path);
             }
 
-            [DoesNotReturn]
-            [StackTraceHidden]
+            [DoesNotReturn, StackTraceHidden]
             static void ThrowMissingKeccak()
             {
                 throw new TrieException("Unable to resolve node without Keccak");
             }
 
-            [DoesNotReturn]
-            [StackTraceHidden]
+            [DoesNotReturn, StackTraceHidden]
             void ThrowNullRlp()
             {
                 throw new TrieException($"Trie returned a NULL RLP for node {Keccak}");
             }
 
-            [DoesNotReturn]
-            [StackTraceHidden]
+            [DoesNotReturn, StackTraceHidden]
             void ThrowUnexpectedNumberOfItems(int numberOfItems, in TreePath path)
             {
                 throw new TrieNodeException(
@@ -565,8 +537,7 @@ namespace Nethermind.Trie
                 _ => ThrowUnhandledNodeType(this)
             };
 
-            [DoesNotReturn]
-            [StackTraceHidden]
+            [DoesNotReturn, StackTraceHidden]
             static SpanSource ThrowUnhandledNodeType(TrieNode item)
             {
                 throw new TrieException($"An attempt was made to encode a trie node of type {item.NodeType}");
@@ -625,8 +596,7 @@ namespace Nethermind.Trie
 
             return data is null || ReferenceEquals(data, _nullNode);
 
-            [DoesNotReturn]
-            [StackTraceHidden]
+            [DoesNotReturn, StackTraceHidden]
             static void ThrowNotABranch()
             {
                 throw new TrieException(
@@ -735,8 +705,7 @@ namespace Nethermind.Trie
 
             return child;
 
-            [DoesNotReturn]
-            [StackTraceHidden]
+            [DoesNotReturn, StackTraceHidden]
             void ThrowUnexpectedTypeException(int childIndex, object childOrRef)
             {
                 bool isKeccakCalculated = Keccak is not null && FullRlp.IsNotNull;
@@ -767,8 +736,7 @@ namespace Nethermind.Trie
             SetItem(i, node);
             Keccak = null;
 
-            [DoesNotReturn]
-            [StackTraceHidden]
+            [DoesNotReturn, StackTraceHidden]
             void ThrowAlreadySealed()
             {
                 throw new InvalidOperationException(
@@ -1185,27 +1153,28 @@ namespace Nethermind.Trie
             return hasStorage;
         }
 
-        private void SeekChild(ref ValueRlpStream rlpStream, int itemToSetOn)
+        private void SeekChild(ref ValueRlpStream rlpStream, int index)
         {
             if (rlpStream.IsNull)
             {
                 return;
             }
 
-            SeekChildNotNull(ref rlpStream, itemToSetOn);
+            SeekChildNotNull(ref rlpStream, index);
         }
 
-        private void SeekChildNotNull(ref ValueRlpStream rlpStream, int itemToSetOn)
+        private void SeekChildNotNull(ref ValueRlpStream rlpStream, int index)
         {
             rlpStream.Reset();
             rlpStream.SkipLength();
-            if (IsExtension)
+            if (index == 0 && IsExtension)
             {
-                rlpStream.SkipItem();
-                itemToSetOn--;
+                // Corner case, index is zero, but we are an extension
+                // so we need to move to next item
+                index = 1;
             }
 
-            for (int i = 0; i < itemToSetOn; i++)
+            for (int i = 0; i < index; i++)
             {
                 rlpStream.SkipItem();
             }
@@ -1365,8 +1334,7 @@ namespace Nethermind.Trie
                 }
             }
 
-            [DoesNotReturn]
-            [StackTraceHidden]
+            [DoesNotReturn, StackTraceHidden]
             static void ThrowNotPersisted()
             {
                 throw new InvalidOperationException("Cannot unresolve a child that is not persisted yet.");

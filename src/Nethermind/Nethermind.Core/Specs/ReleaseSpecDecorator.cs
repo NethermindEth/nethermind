@@ -19,6 +19,7 @@ public class ReleaseSpecDecorator(IReleaseSpec spec) : IReleaseSpec
     public virtual long MaximumExtraDataSize => spec.MaximumExtraDataSize;
     public virtual long MaxCodeSize => spec.MaxCodeSize;
     public virtual long MinGasLimit => spec.MinGasLimit;
+    public virtual long MinHistoryRetentionEpochs => spec.MinHistoryRetentionEpochs;
     public virtual long GasLimitBoundDivisor => spec.GasLimitBoundDivisor;
     public virtual UInt256 BlockReward => spec.BlockReward;
     public virtual long DifficultyBombDelay => spec.DifficultyBombDelay;
@@ -70,7 +71,7 @@ public class ReleaseSpecDecorator(IReleaseSpec spec) : IReleaseSpec
     public virtual bool IsEip4788Enabled => spec.IsEip4788Enabled;
     public virtual ulong TargetBlobCount => spec.TargetBlobCount;
     public virtual ulong MaxBlobCount => spec.MaxBlobCount;
-    public virtual ulong MaxBlobsPerTx => spec.MaxBlobsPerTx;
+    public virtual ulong MaxBlobsPerTx { get; init; } = spec.MaxBlobsPerTx;
     public virtual UInt256 BlobBaseFeeUpdateFraction => spec.BlobBaseFeeUpdateFraction;
     public virtual Address? Eip4788ContractAddress => spec.Eip4788ContractAddress;
     public bool IsEip6110Enabled => spec.IsEip6110Enabled;
@@ -85,12 +86,15 @@ public class ReleaseSpecDecorator(IReleaseSpec spec) : IReleaseSpec
     public virtual bool IsEip6780Enabled => spec.IsEip6780Enabled;
     public bool IsEip7702Enabled => spec.IsEip7702Enabled;
     public bool IsEip7823Enabled => spec.IsEip7823Enabled;
+    public virtual bool IsEip7934Enabled => spec.IsEip7934Enabled;
+    public virtual int Eip7934MaxRlpBlockSize => spec.Eip7934MaxRlpBlockSize;
+    public virtual bool IsEip7951Enabled => spec.IsEip7951Enabled;
     public virtual bool IsRip7212Enabled => spec.IsRip7212Enabled;
     public virtual bool IsOpGraniteEnabled => spec.IsOpGraniteEnabled;
     public virtual bool IsOpHoloceneEnabled => spec.IsOpHoloceneEnabled;
     public virtual bool IsOpIsthmusEnabled => spec.IsOpIsthmusEnabled;
     public virtual bool IsEip7623Enabled => spec.IsEip7623Enabled;
-    public virtual bool IsEip7825Enabled => spec.IsEip7825Enabled;
+    public virtual bool IsEip7825Enabled { get; init; } = spec.IsEip7825Enabled;
     public bool IsEip7883Enabled => spec.IsEip7883Enabled;
     public virtual bool IsEip7918Enabled => spec.IsEip7918Enabled;
     public virtual ulong WithdrawalTimestamp => spec.WithdrawalTimestamp;
@@ -109,7 +113,7 @@ public class ReleaseSpecDecorator(IReleaseSpec spec) : IReleaseSpec
     public virtual bool UseTxAccessLists => spec.UseTxAccessLists;
     public virtual bool AddCoinbaseToTxAccessList => spec.AddCoinbaseToTxAccessList;
     public virtual bool ModExpEnabled => spec.ModExpEnabled;
-    public virtual bool Bn128Enabled => spec.Bn128Enabled;
+    public virtual bool BN254Enabled => spec.BN254Enabled;
     public virtual bool BlakeEnabled => spec.BlakeEnabled;
     public virtual bool Bls381Enabled => spec.Bls381Enabled;
     public virtual bool ChargeForTopLevelCreate => spec.ChargeForTopLevelCreate;
@@ -147,4 +151,6 @@ public class ReleaseSpecDecorator(IReleaseSpec spec) : IReleaseSpec
     Array? IReleaseSpec.EvmInstructionsNoTrace { get => spec.EvmInstructionsNoTrace; set => spec.EvmInstructionsNoTrace = value; }
     Array? IReleaseSpec.EvmInstructionsTraced { get => spec.EvmInstructionsTraced; set => spec.EvmInstructionsTraced = value; }
     public bool IsEip7939Enabled => spec.IsEip7939Enabled;
+    public bool IsEip7907Enabled => spec.IsEip7907Enabled;
+    public bool IsRip7728Enabled => spec.IsRip7728Enabled;
 }

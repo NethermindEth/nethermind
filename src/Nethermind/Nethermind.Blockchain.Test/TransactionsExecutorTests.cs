@@ -1,10 +1,8 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System.Collections;
-using System.Collections.Generic;
-using System.Linq;
 using FluentAssertions;
+using Nethermind.Config;
 using Nethermind.Consensus.Comparers;
 using Nethermind.Consensus.Processing;
 using Nethermind.Consensus.Producers;
@@ -14,18 +12,23 @@ using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
-using Nethermind.Db;
 using Nethermind.Evm;
 using Nethermind.Evm.Tracing;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Int256;
 using Nethermind.Logging;
+using Nethermind.Specs;
 using Nethermind.Specs.Forks;
-using Nethermind.State;
+using Nethermind.Evm.State;
 using Nethermind.Trie.Pruning;
 using Nethermind.TxPool.Comparison;
 using NSubstitute;
 using NUnit.Framework;
+using System.Collections;
+using System.Collections.Generic;
+using System.Linq;
+using Nethermind.Blockchain.Tracing;
+using Nethermind.State;
 
 namespace Nethermind.Blockchain.Test
 {
@@ -262,6 +265,7 @@ namespace Nethermind.Blockchain.Test
         {
             IWorldStateManager worldStateManager = TestWorldStateFactory.CreateForTest();
             IWorldState stateProvider = worldStateManager.GlobalWorldState;
+            using var _ = stateProvider.BeginScope(IWorldState.PreGenesis);
             ISpecProvider specProvider = Substitute.For<ISpecProvider>();
 
             IReleaseSpec spec = testCase.ReleaseSpec;
@@ -312,11 +316,7 @@ namespace Nethermind.Blockchain.Test
             }
 
             BlockProcessor.BlockProductionTransactionsExecutor txExecutor =
-                new(
-                    transactionProcessor,
-                    stateProvider,
-                    specProvider,
-                    LimboLogs.Instance);
+                new BlockProcessor.BlockProductionTransactionsExecutor(new BuildUpTransactionProcessorAdapter(transactionProcessor), stateProvider, new BlockProcessor.BlockProductionTransactionPicker(specProvider, BlocksConfig.DefaultMaxTxKilobytes), LimboLogs.Instance);
 
             SetAccountStates(testCase.MissingAddresses);
 
@@ -324,8 +324,50 @@ namespace Nethermind.Blockchain.Test
             receiptsTracer.StartNewBlockTrace(blockToProduce);
 
             txExecutor.SetBlockExecutionContext(new BlockExecutionContext(block.Header, spec));
-            txExecutor.ProcessTransactions(blockToProduce, ProcessingOptions.ProducingBlock, receiptsTracer, spec);
+            txExecutor.ProcessTransactions(blockToProduce, ProcessingOptions.ProducingBlock, receiptsTracer);
             blockToProduce.Transactions.Should().BeEquivalentTo(testCase.ExpectedSelectedTransactions);
         }
+
+        [Test]
+        public void BlockProductionTransactionsExecutor_calculates_block_size_using_proper_tx_form()
+        {
+            Transaction transactionInMempoolForm = Build.A.Transaction
+                .WithShardBlobTxTypeAndFields(1, true, Osaka.Instance)
+                .SignedAndResolved()
+                .TestObject;
+
+            int payloadLength = TxPool.TransactionExtensions.GetLength(transactionInMempoolForm, false);
+            int mempoolLength = TxPool.TransactionExtensions.GetLength(transactionInMempoolForm, true);
+
+            Block block = Build.A.Block
+                .WithExcessBlobGas(0)
+                .WithGasLimit(GasCostOf.Transaction)
+                .WithTransactions([transactionInMempoolForm])
+                .TestObject;
+
+            BlockToProduce blockToProduce = new(block.Header, block.Transactions, block.Uncles);
+
+            ITransactionProcessorAdapter transactionProcessor = Substitute.For<ITransactionProcessorAdapter>();
+
+            IWorldState stateProvider = new WorldStateStab();
+            using var _ = stateProvider.BeginScope(IWorldState.PreGenesis);
+
+            IReleaseSpec spec = Osaka.Instance;
+            ISpecProvider specProvider = new TestSingleReleaseSpecProvider(spec);
+
+            BlockProcessor.BlockProductionTransactionPicker txPicker = new(specProvider, mempoolLength / 1.KiB() - 1);
+            BlockProcessor.BlockProductionTransactionsExecutor txExecutor = new(transactionProcessor, stateProvider, txPicker, LimboLogs.Instance);
+
+            txExecutor.SetBlockExecutionContext(new BlockExecutionContext(block.Header, spec));
+            txExecutor.ProcessTransactions(blockToProduce, ProcessingOptions.ProducingBlock, new());
+
+            Assert.That(blockToProduce.TxByteLength, Is.EqualTo(payloadLength));
+        }
+    }
+
+    public class WorldStateStab() : WorldState(Substitute.For<ITrieStore>(), Substitute.For<IKeyValueStoreWithBatching>(), LimboLogs.Instance), IWorldState
+    {
+        // we cannot mock ref methods
+        ref readonly UInt256 IWorldState.GetBalance(Address address) => ref UInt256.MaxValue;
     }
 }

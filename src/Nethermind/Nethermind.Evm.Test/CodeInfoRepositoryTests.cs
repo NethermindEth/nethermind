@@ -3,22 +3,18 @@
 
 using Nethermind.Core.Crypto;
 using Nethermind.Core;
-using Nethermind.Crypto;
-using Nethermind.Logging;
-using Nethermind.Serialization.Rlp;
 using NSubstitute;
 using NUnit.Framework;
-using System;
 using System.Collections.Generic;
 using Nethermind.Core.Test.Builders;
 using FluentAssertions;
-using Nethermind.State;
+using Nethermind.Blockchain;
+using Nethermind.Evm.State;
 using Nethermind.Core.Specs;
 using Nethermind.Evm.CodeAnalysis;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Test;
-using Nethermind.Db;
-using Nethermind.Trie.Pruning;
+using Nethermind.State;
 
 namespace Nethermind.Evm.Test;
 
@@ -64,12 +60,12 @@ public class CodeInfoRepositoryTests
     [TestCaseSource(nameof(NotDelegationCodeCases))]
     public void TryGetDelegation_CodeIsNotDelegation_ReturnsFalse(byte[] code)
     {
-        IDbProvider dbProvider = TestMemDbProvider.Init();
-        WorldStateManager worldStateManager = TestWorldStateFactory.CreateForTest(dbProvider, LimboLogs.Instance);
+        IWorldStateManager worldStateManager = TestWorldStateFactory.CreateForTest();
         IWorldState stateProvider = worldStateManager.GlobalWorldState;
+        using var _scope = stateProvider.BeginScope(IWorldState.PreGenesis);
         stateProvider.CreateAccount(TestItem.AddressA, 0);
         stateProvider.InsertCode(TestItem.AddressA, code, Substitute.For<IReleaseSpec>());
-        CodeInfoRepository sut = new();
+        EthereumCodeInfoRepository sut = new();
 
         sut.TryGetDelegation(stateProvider, TestItem.AddressA, Substitute.For<IReleaseSpec>(), out _).Should().Be(false);
     }
@@ -93,12 +89,12 @@ public class CodeInfoRepositoryTests
     [TestCaseSource(nameof(DelegationCodeCases))]
     public void TryGetDelegation_CodeTryGetDelegation_ReturnsTrue(byte[] code)
     {
-        IDbProvider dbProvider = TestMemDbProvider.Init();
-        WorldStateManager worldStateManager = TestWorldStateFactory.CreateForTest(dbProvider, LimboLogs.Instance);
+        IWorldStateManager worldStateManager = TestWorldStateFactory.CreateForTest();
         IWorldState stateProvider = worldStateManager.GlobalWorldState;
+        using var _scope = stateProvider.BeginScope(IWorldState.PreGenesis);
         stateProvider.CreateAccount(TestItem.AddressA, 0);
         stateProvider.InsertCode(TestItem.AddressA, code, Substitute.For<IReleaseSpec>());
-        CodeInfoRepository sut = new();
+        EthereumCodeInfoRepository sut = new();
 
         sut.TryGetDelegation(stateProvider, TestItem.AddressA, Substitute.For<IReleaseSpec>(), out _).Should().Be(true);
     }
@@ -106,12 +102,12 @@ public class CodeInfoRepositoryTests
     [TestCaseSource(nameof(DelegationCodeCases))]
     public void TryGetDelegation_CodeTryGetDelegation_CorrectDelegationAddressIsSet(byte[] code)
     {
-        IDbProvider dbProvider = TestMemDbProvider.Init();
-        WorldStateManager worldStateManager = TestWorldStateFactory.CreateForTest(dbProvider, LimboLogs.Instance);
+        IWorldStateManager worldStateManager = TestWorldStateFactory.CreateForTest();
         IWorldState stateProvider = worldStateManager.GlobalWorldState;
+        using var _ = stateProvider.BeginScope(IWorldState.PreGenesis);
         stateProvider.CreateAccount(TestItem.AddressA, 0);
         stateProvider.InsertCode(TestItem.AddressA, code, Substitute.For<IReleaseSpec>());
-        CodeInfoRepository sut = new();
+        EthereumCodeInfoRepository sut = new();
 
         Address result;
         sut.TryGetDelegation(stateProvider, TestItem.AddressA, Substitute.For<IReleaseSpec>(), out result);
@@ -122,9 +118,9 @@ public class CodeInfoRepositoryTests
     [TestCaseSource(nameof(DelegationCodeCases))]
     public void GetExecutableCodeHash_CodeTryGetDelegation_ReturnsHashOfDelegated(byte[] code)
     {
-        IDbProvider dbProvider = TestMemDbProvider.Init();
-        WorldStateManager worldStateManager = TestWorldStateFactory.CreateForTest(dbProvider, LimboLogs.Instance);
+        IWorldStateManager worldStateManager = TestWorldStateFactory.CreateForTest();
         IWorldState stateProvider = worldStateManager.GlobalWorldState;
+        using var _ = stateProvider.BeginScope(IWorldState.PreGenesis);
         stateProvider.CreateAccount(TestItem.AddressA, 0);
         stateProvider.InsertCode(TestItem.AddressA, code, Substitute.For<IReleaseSpec>());
         Address delegationAddress = new Address(code.Slice(3, Address.Size));
@@ -132,7 +128,7 @@ public class CodeInfoRepositoryTests
         stateProvider.CreateAccount(delegationAddress, 0);
         stateProvider.InsertCode(delegationAddress, delegationCode, Substitute.For<IReleaseSpec>());
 
-        CodeInfoRepository sut = new();
+        EthereumCodeInfoRepository sut = new();
 
         sut.GetExecutableCodeHash(stateProvider, TestItem.AddressA, Substitute.For<IReleaseSpec>()).Should().Be(Keccak.Compute(code).ValueHash256);
     }
@@ -140,13 +136,13 @@ public class CodeInfoRepositoryTests
     [TestCaseSource(nameof(NotDelegationCodeCases))]
     public void GetExecutableCodeHash_CodeIsNotDelegation_ReturnsCodeHashOfAddress(byte[] code)
     {
-        IDbProvider dbProvider = TestMemDbProvider.Init();
-        WorldStateManager worldStateManager = TestWorldStateFactory.CreateForTest(dbProvider, LimboLogs.Instance);
+        IWorldStateManager worldStateManager = TestWorldStateFactory.CreateForTest();
         IWorldState stateProvider = worldStateManager.GlobalWorldState;
+        using var _ = stateProvider.BeginScope(IWorldState.PreGenesis);
         stateProvider.CreateAccount(TestItem.AddressA, 0);
         stateProvider.InsertCode(TestItem.AddressA, code, Substitute.For<IReleaseSpec>());
 
-        CodeInfoRepository sut = new();
+        EthereumCodeInfoRepository sut = new();
 
         sut.GetExecutableCodeHash(stateProvider, TestItem.AddressA, Substitute.For<IReleaseSpec>()).Should().Be(Keccak.Compute(code).ValueHash256);
     }
@@ -154,45 +150,32 @@ public class CodeInfoRepositoryTests
     [TestCaseSource(nameof(DelegationCodeCases))]
     public void GetCachedCodeInfo_CodeTryGetDelegation_ReturnsCodeOfDelegation(byte[] code)
     {
-        IDbProvider dbProvider = TestMemDbProvider.Init();
-        WorldStateManager worldStateManager = TestWorldStateFactory.CreateForTest(dbProvider, LimboLogs.Instance);
+        IWorldStateManager worldStateManager = TestWorldStateFactory.CreateForTest();
         IWorldState stateProvider = worldStateManager.GlobalWorldState;
+        using var _ = stateProvider.BeginScope(IWorldState.PreGenesis);
         stateProvider.CreateAccount(TestItem.AddressA, 0);
         stateProvider.InsertCode(TestItem.AddressA, code, Substitute.For<IReleaseSpec>());
         Address delegationAddress = new Address(code.Slice(3, Address.Size));
         stateProvider.CreateAccount(delegationAddress, 0);
         byte[] delegationCode = new byte[32];
         stateProvider.InsertCode(delegationAddress, delegationCode, Substitute.For<IReleaseSpec>());
-        CodeInfoRepository sut = new();
+        EthereumCodeInfoRepository sut = new();
 
         ICodeInfo result = sut.GetCachedCodeInfo(stateProvider, TestItem.AddressA, Substitute.For<IReleaseSpec>());
-        result.MachineCode.ToArray().Should().BeEquivalentTo(delegationCode);
+        result.CodeSpan.ToArray().Should().BeEquivalentTo(delegationCode);
     }
 
     [TestCaseSource(nameof(NotDelegationCodeCases))]
     public void GetCachedCodeInfo_CodeIsNotDelegation_ReturnsCodeOfAddress(byte[] code)
     {
-        IDbProvider dbProvider = TestMemDbProvider.Init();
-        WorldStateManager worldStateManager = TestWorldStateFactory.CreateForTest(dbProvider, LimboLogs.Instance);
+        IWorldStateManager worldStateManager = TestWorldStateFactory.CreateForTest();
         IWorldState stateProvider = worldStateManager.GlobalWorldState;
+        using var _ = stateProvider.BeginScope(IWorldState.PreGenesis);
         stateProvider.CreateAccount(TestItem.AddressA, 0);
         stateProvider.InsertCode(TestItem.AddressA, code, Substitute.For<IReleaseSpec>());
 
-        CodeInfoRepository sut = new();
+        EthereumCodeInfoRepository sut = new();
 
         sut.GetCachedCodeInfo(stateProvider, TestItem.AddressA, Substitute.For<IReleaseSpec>()).Should().BeEquivalentTo(new CodeInfo(code));
-    }
-
-    private static AuthorizationTuple CreateAuthorizationTuple(PrivateKey signer, ulong chainId, Address codeAddress, ulong nonce)
-    {
-        AuthorizationTupleDecoder decoder = new();
-        using NettyRlpStream rlp = decoder.EncodeWithoutSignature(chainId, codeAddress, nonce);
-        Span<byte> code = stackalloc byte[rlp.Length + 1];
-        code[0] = Eip7702Constants.Magic;
-        rlp.AsSpan().CopyTo(code[1..]);
-        EthereumEcdsa ecdsa = new(1);
-        Signature sig = ecdsa.Sign(signer, Keccak.Compute(code));
-
-        return new AuthorizationTuple(chainId, codeAddress, nonce, sig, signer.Address);
     }
 }

@@ -23,7 +23,7 @@ public class HoleskySpecProvider : ISpecProvider
 
     private HoleskySpecProvider() { }
 
-    public IReleaseSpec GetSpec(ForkActivation forkActivation)
+    IReleaseSpec ISpecProvider.GetSpecInternal(ForkActivation forkActivation)
     {
         return forkActivation.Timestamp switch
         {

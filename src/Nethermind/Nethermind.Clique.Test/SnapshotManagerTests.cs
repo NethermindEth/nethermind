@@ -85,8 +85,8 @@ public class SnapshotManagerTests
     {
         BlockHeader header = BuildCliqueBlock();
 
-        Hash256 expectedHeaderHash = new("0x7b27b6add9e8d0184c722dde86a2a3f626630264bae3d62ffeea1585ce6e3cdd");
-        Hash256 headerHash = SnapshotManager.CalculateCliqueHeaderHash(header);
+        ValueHash256 expectedHeaderHash = new("0x7b27b6add9e8d0184c722dde86a2a3f626630264bae3d62ffeea1585ce6e3cdd");
+        ValueHash256 headerHash = SnapshotManager.CalculateCliqueHeaderHash(header);
         Assert.That(headerHash, Is.EqualTo(expectedHeaderHash));
     }
 

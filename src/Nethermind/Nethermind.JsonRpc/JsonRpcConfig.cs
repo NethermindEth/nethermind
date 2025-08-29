@@ -73,4 +73,5 @@ public class JsonRpcConfig : IJsonRpcConfig
     public int IpcProcessingConcurrency { get; set; } = 1;
     public bool EnablePerMethodMetrics { get; set; } = false;
     public int FiltersTimeout { get; set; } = 900000;
+    public bool PreloadRpcModules { get; set; }
 };

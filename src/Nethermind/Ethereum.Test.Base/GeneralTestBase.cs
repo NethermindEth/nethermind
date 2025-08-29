@@ -5,6 +5,7 @@ using System;
 using System.Collections.Generic;
 using System.Diagnostics;
 using Autofac;
+using Nethermind.Api;
 using NUnit.Framework;
 using Nethermind.Config;
 using Nethermind.Consensus.Validators;
@@ -18,6 +19,7 @@ using Nethermind.Int256;
 using Nethermind.Evm;
 using Nethermind.Evm.EvmObjectFormat;
 using Nethermind.Evm.Tracing;
+using Nethermind.Evm.State;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Logging;
 using Nethermind.Specs;
@@ -30,7 +32,7 @@ namespace Ethereum.Test.Base
     public abstract class GeneralStateTestBase
     {
         private static ILogger _logger;
-        private static ILogManager _logManager = new TestLogManager(LogLevel.Info);
+        private static ILogManager _logManager = new TestLogManager(LogLevel.Warn);
         private static readonly UInt256 _defaultBaseFeeForStateTest = 0xA;
 
         static GeneralStateTestBase()
@@ -83,8 +85,9 @@ namespace Ethereum.Test.Base
                 .AddSingleton(_logManager)
                 .Build();
 
-            MainBlockProcessingContext mainBlockProcessingContext = container.Resolve<MainBlockProcessingContext>();
+            IMainProcessingContext mainBlockProcessingContext = container.Resolve<IMainProcessingContext>();
             IWorldState stateProvider = mainBlockProcessingContext.WorldState;
+            using var _ = stateProvider.BeginScope(null);
             ITransactionProcessor transactionProcessor = mainBlockProcessingContext.TransactionProcessor;
 
             InitializeTestState(test.Pre, stateProvider, specProvider);

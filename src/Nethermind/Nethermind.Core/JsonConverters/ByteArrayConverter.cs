@@ -1,7 +1,6 @@
 // SPDX-FileCopyrightText: 2024 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using Nethermind.Core.Extensions;
 using System;
 using System.Buffers;
 using System.Diagnostics;
@@ -10,6 +9,7 @@ using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using System.Text.Json;
 using System.Text.Json.Serialization;
+using Nethermind.Core.Extensions;
 
 namespace Nethermind.Serialization.Json;
 
@@ -31,31 +31,120 @@ public class ByteArrayConverter : JsonConverter<byte[]>
         if (tokenType == JsonTokenType.None || tokenType == JsonTokenType.Null)
             return null;
         else if (tokenType != JsonTokenType.String && tokenType != JsonTokenType.PropertyName)
-        {
             ThrowInvalidOperationException();
-        }
 
-        var length = reader.ValueSpan.Length;
-        byte[]? bytes = null;
-        if (length == 0)
+        if (reader.HasValueSequence)
         {
-            length = checked((int)reader.ValueSequence.Length);
-            if (length == 0)
-                return null;
-
-            bytes = ArrayPool<byte>.Shared.Rent(length);
-            reader.ValueSequence.CopyTo(bytes);
+            return ConvertValueSequence(ref reader);
         }
 
-        ReadOnlySpan<byte> hex = bytes is null ? reader.ValueSpan : bytes.AsSpan(0, length);
+        int length = reader.ValueSpan.Length;
+        ReadOnlySpan<byte> hex = reader.ValueSpan;
+        if (hex.Length == 0) return null;
         if (length >= 2 && Unsafe.As<byte, ushort>(ref MemoryMarshal.GetReference(hex)) == _hexPrefix)
             hex = hex[2..];
 
-        var returnVal = Bytes.FromUtf8HexString(hex);
-        if (bytes is not null)
-            ArrayPool<byte>.Shared.Return(bytes);
+        return Bytes.FromUtf8HexString(hex);
+    }
 
-        return returnVal;
+    [SkipLocalsInit]
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    private static byte[]? ConvertValueSequence(ref Utf8JsonReader reader)
+    {
+        ReadOnlySequence<byte> valueSequence = reader.ValueSequence;
+        int length = checked((int)valueSequence.Length);
+        if (length == 0) return null;
+        // Detect and skip 0x prefix even if split across segments
+        SequenceReader<byte> sr = new(valueSequence);
+        bool hadPrefix = false;
+        if (sr.TryPeek(out byte b0))
+        {
+            if (b0 == (byte)'0')
+            {
+                sr.Advance(1);
+                if (sr.TryPeek(out byte b1) && (b1 == (byte)'x'))
+                {
+                    sr.Advance(1);
+                    hadPrefix = true;
+                }
+                else
+                {
+                    // rewind if not really a prefix
+                    sr.Rewind(1);
+                }
+            }
+        }
+
+        // Compute total hex digit count (after prefix)
+        long totalHexChars = length - (hadPrefix ? 2 : 0);
+        if (totalHexChars <= 0) return [];
+
+        int odd = (int)(totalHexChars & 1);
+        int outLenFinal = (int)(totalHexChars >> 1) + odd;
+        if (outLenFinal == 0) return [];
+
+        byte[] result = GC.AllocateUninitializedArray<byte>(outLenFinal);
+        Span<byte> output = result;
+        if (odd == 1)
+        {
+            // If odd, we deal with the extra nibble, so we are left with an even number of nibbles
+            if (!sr.TryRead(out byte firstNibble))
+            {
+                ThrowInvalidOperationException();
+            }
+            firstNibble = (byte)HexConverter.FromLowerChar(firstNibble | 0x20);
+            if (firstNibble > 0x0F)
+            {
+                ThrowFormatException();
+            }
+            result[0] = firstNibble;
+            output = output[1..];
+        }
+
+        // Stackalloc outside of the loop to avoid stackoverflow.
+        Span<byte> twoNibbles = stackalloc byte[2];
+        while (!sr.End)
+        {
+            ReadOnlySpan<byte> first = sr.UnreadSpan;
+            if (!first.IsEmpty)
+            {
+                // Decode the largest even-length slice of the current contiguous span without copying.
+                int evenLen = first.Length & ~1; // largest even
+                if (evenLen > 0)
+                {
+                    int outBytes = evenLen >> 1;
+                    Bytes.FromUtf8HexString(first.Slice(0, evenLen), output.Slice(0, outBytes));
+                    output = output.Slice(outBytes);
+                    sr.Advance(evenLen);
+                    continue;
+                }
+            }
+
+            // Either current span is empty or has exactly 1 trailing nibble; marshal an even-sized chunk.
+            long remaining = sr.Remaining;
+            if (remaining == 0) break;
+
+            // If remaining is even overall, remaining will be >= 2 here; be defensive just in case.
+            if (remaining == 1)
+            {
+                ThrowInvalidOperationException();
+            }
+
+            if (!sr.TryCopyTo(twoNibbles))
+            {
+                // Should not happen since CopyTo should copy 2 hex chars and bridge the spans.
+                ThrowInvalidOperationException();
+            }
+
+            Bytes.FromUtf8HexString(twoNibbles, output[..1]);
+            output = output[1..];
+            sr.Advance(twoNibbles.Length);
+        }
+
+        if (!output.IsEmpty)
+            ThrowInvalidOperationException();
+
+        return result;
     }
 
     public static void Convert(ref Utf8JsonReader reader, scoped Span<byte> span)
@@ -80,12 +169,11 @@ public class ByteArrayConverter : JsonConverter<byte[]>
         Bytes.FromUtf8HexString(hex, span);
     }
 
-    [DoesNotReturn]
-    [StackTraceHidden]
-    internal static void ThrowInvalidOperationException()
-    {
-        throw new InvalidOperationException();
-    }
+    [DoesNotReturn, StackTraceHidden]
+    private static void ThrowFormatException() => throw new FormatException();
+
+    [DoesNotReturn, StackTraceHidden]
+    private static void ThrowInvalidOperationException() => throw new InvalidOperationException();
 
     public override void Write(
         Utf8JsonWriter writer,

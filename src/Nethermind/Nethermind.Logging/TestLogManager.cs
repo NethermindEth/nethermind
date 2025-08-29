@@ -11,12 +11,10 @@ namespace Nethermind.Logging
         public static readonly TestLogManager Instance = new TestLogManager();
         private readonly NUnitLogger _logger;
 
-        public TestLogManager(LogLevel level = LogLevel.Info)
+        public TestLogManager(LogLevel level = LogLevel.Warn)
         {
             _logger = new NUnitLogger(level);
         }
-
-        public ILogger GetClassLogger(Type type) => GetClassLogger();
 
         public ILogger GetClassLogger<T>() => GetClassLogger();
 

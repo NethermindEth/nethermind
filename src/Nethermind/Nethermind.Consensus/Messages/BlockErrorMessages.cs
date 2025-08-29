@@ -6,6 +6,7 @@ using Nethermind.Core.Crypto;
 using Nethermind.Int256;
 
 namespace Nethermind.Consensus.Messages;
+
 public static class BlockErrorMessages
 {
     public static string ExceededUncleLimit(int maxUncleCount) =>
@@ -17,7 +18,7 @@ public static class BlockErrorMessages
     public static string InvalidLogsBloom(Bloom expected, Bloom actual) =>
         $"InvalidLogsBloom: Logs bloom in header does not match. Expected {expected}, got {actual}";
 
-    public static string InvalidTxRoot(Core.Crypto.Hash256 expected, Core.Crypto.Hash256 actual) =>
+    public static string InvalidTxRoot(Hash256 expected, Hash256 actual) =>
         $"InvalidTxRoot: Expected {expected}, got {actual}";
 
     public const string InvalidUncle =
@@ -26,7 +27,7 @@ public static class BlockErrorMessages
     public const string InvalidUnclesHash =
         "InvalidUnclesHash: Uncle header hash does not match.";
 
-    public static string InvalidWithdrawalsRoot(Core.Crypto.Hash256 expected, Core.Crypto.Hash256 actual) =>
+    public static string InvalidWithdrawalsRoot(Hash256 expected, Hash256 actual) =>
         $"InvalidWithdrawalsRoot: expected {expected}, got {actual}";
 
     public const string MissingWithdrawals =
@@ -38,7 +39,7 @@ public static class BlockErrorMessages
     public static string InvalidReceiptsRoot(Hash256 expected, Hash256 actual) =>
         $"InvalidReceiptsRoot: Receipts root in header does not match. Expected {expected}, got {actual}";
 
-    public static string InvalidStateRoot(Hash256 expected, Core.Crypto.Hash256 actual) =>
+    public static string InvalidStateRoot(Hash256 expected, Hash256 actual) =>
         $"InvalidStateRoot: State root in header does not match. Expected {expected}, got {actual}";
 
     public static string InvalidParentBeaconBlockRoot(Hash256 expected, Hash256 actual) =>
@@ -55,6 +56,9 @@ public static class BlockErrorMessages
 
     public const string InvalidGenesisBlock =
         "InvalidGenesisBlock: Genesis block could not be validated.";
+
+    public static string MismatchedParent(Hash256 hash, Hash256 expectedParent, Hash256 givenParent) =>
+        $"Mismatched parent: Hash {hash}, expected parent hash {expectedParent}, given parent hash {givenParent}";
 
     public const string InvalidAncestor =
         "InvalidAncestor: No valid ancestors could be found.";
@@ -95,8 +99,8 @@ public static class BlockErrorMessages
     public static string HeaderGasUsedMismatch(long expected, long actual) =>
         $"HeaderGasUsedMismatch: Gas used in header does not match calculated. Expected {expected}, got {actual}";
 
-    public static string BlobGasUsedAboveBlockLimit(ulong blobGas, int blobsCount, ulong blobsGasUsed) =>
-        $"BlockBlobGasExceeded: A block cannot have more than {blobGas} blob gas, blobs count {blobsCount}, blobs gas used: {blobsGasUsed}.";
+    public static string BlobGasUsedAboveBlockLimit(ulong blockBlobGasLimit, int blobsCount, ulong blobGasUsed) =>
+        $"BlockBlobGasExceeded: A block cannot have more than {blockBlobGasLimit} blob gas, blobs count {blobsCount}, blobs gas used: {blobGasUsed}.";
 
     public static string IncorrectExcessBlobGas(ulong? expected, ulong? actual) =>
         $"HeaderExcessBlobGasMismatch: Excess blob gas in header does not match calculated. Expected {expected}, got {actual}";
@@ -143,4 +147,7 @@ public static class BlockErrorMessages
 
     public static string InvalidDepositEventLayout(string error) =>
         $"DepositsInvalid: Invalid deposit event layout: {error}";
+
+    public static string ExceededBlockSizeLimit(int limit) =>
+        $"ExceededBlockSizeLimit: Exceeded block size limit of {limit} bytes.";
 }

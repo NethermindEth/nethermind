@@ -1,12 +1,13 @@
 // SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using Nethermind.Blockchain;
 using Nethermind.Consensus.Withdrawals;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
+using Nethermind.Evm.State;
 using Nethermind.Logging;
-using Nethermind.State;
 
 namespace Nethermind.Optimism;
 
@@ -50,5 +51,18 @@ public class OptimismWithdrawalProcessor : IWithdrawalProcessor
                 header.WithdrawalsRoot = Keccak.EmptyTreeHash;
             }
         }
+    }
+}
+
+public sealed class OptimismGenesisPostProcessor(
+    OptimismWithdrawalProcessor withdrawalProcessor,
+    ISpecProvider specProvider
+) : IGenesisPostProcessor
+{
+    public void PostProcess(Block genesis)
+    {
+        // When Isthmus is enabled at Genesis it's required that we compute the `WithdrawalsRoot` from the L2ToL1MessagePasser account.
+        // See: https://specs.optimism.io/protocol/isthmus/exec-engine.html?search=#genesis-block
+        withdrawalProcessor.ProcessWithdrawals(genesis, spec: specProvider.GetSpec(genesis.Header));
     }
 }

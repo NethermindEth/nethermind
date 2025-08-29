@@ -16,7 +16,7 @@ from urllib.request import urlopen
 from zipfile import ZipFile
 
 SUPERCHAIN_REPOSITORY = "https://github.com/ethereum-optimism/superchain-registry/archive/refs/heads/main.zip"
-IGNORED_CHAINS = ["arena-z-testnet", "creator-chain-testnet"]
+IGNORED_CHAINS = ["arena-z-testnet", "creator-chain-testnet", "rehearsal-0-bn-0", "rehearsal-0-bn-1", "celo", "radius_testnet"]
 IGNORED_L1S = ["sepolia-dev-0"]
 
 
@@ -192,6 +192,7 @@ def to_nethermind_chainspec(chain_name, l1, superchain, chain, genesis):
             "eip2028Transition": "0x0",
             "eip2200Transition": "0x0",
             "eip2565Transition": "0x0",
+            "eip2718Transition": "0x0",
             "eip2929Transition": "0x0",
             "eip2930Transition": "0x0",
             "eip1559Transition": hex(lookup(config, ["genesis", "l2", "number"])),
@@ -232,7 +233,6 @@ def to_nethermind_chainspec(chain_name, l1, superchain, chain, genesis):
                         "mixHash": lookup(genesis, ["mixHash"]),
                     }
                 },
-                "number": lookup(genesis, ["number"]),
                 "difficulty": lookup(genesis, ["difficulty"]),
                 "author": one_of(lookup(genesis, ["author"]), lookup(genesis, ["coinbase"])),
                 "timestamp": lookup(genesis, ["timestamp"]),
@@ -343,10 +343,10 @@ def main(tmp_dir, output_dir):
     for chain in chainList["chains"]:
         [l1, chainName] = chain["identifier"].split("/")
         if chainName in IGNORED_CHAINS or l1 in IGNORED_L1S:
-            logging.info(f"Ignoring `{l1}-{chainName}`")
+            logging.info(f"Ignoring `{chainName}-{l1}`")
             continue
 
-        logging.debug(f"Processing `{l1}-{chainName}`")
+        logging.debug(f"Processing `{chainName}-{l1}`")
         superchain_path = path.join(tmp_dir, "superchain-registry-main", "superchain", "configs", l1, "superchain.toml")
         config_path = path.join(tmp_dir, "superchain-registry-main", "superchain", "configs", l1, f"{chainName}.toml")
         genesis_path = path.join(
