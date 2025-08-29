@@ -98,22 +98,85 @@ namespace Nethermind.Evm.Test
         [Test]
         public void Encoding_decoding_test()
         {
-            StorageChange s = new()
+            StorageChange storageChange = new()
             {
                 BlockAccessIndex = 10,
                 NewValue = [.. Enumerable.Repeat<byte>(50, 32)]
             };
-            byte[] b = Rlp.Encode<StorageChange>(s, RlpBehaviors.None).Bytes;
-            StorageChange s2 = Rlp.Decode<StorageChange>(b, RlpBehaviors.None);
+            byte[] storageChangeBytes = Rlp.Encode(storageChange, RlpBehaviors.None).Bytes;
+            StorageChange storageChangeDecoded = Rlp.Decode<StorageChange>(storageChangeBytes, RlpBehaviors.None);
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(storageChange.BlockAccessIndex, Is.EqualTo(storageChangeDecoded.BlockAccessIndex));
+                Assert.That(storageChange.NewValue, Is.EquivalentTo(storageChangeDecoded.NewValue));
+            }
 
-            SlotChanges sc = new()
+            SlotChanges slotChanges = new()
             {
                 Slot = [.. Enumerable.Repeat<byte>(100, 32)],
-                Changes = [s, s]
+                Changes = [storageChange, storageChange]
             };
-            byte[] b2 = Rlp.Encode<SlotChanges>(sc, RlpBehaviors.None).Bytes;
-            SlotChanges sc2 = Rlp.Decode<SlotChanges>(b2, RlpBehaviors.None);
-            Assert.That(true);
+            byte[] slotChangesBytes = Rlp.Encode(slotChanges, RlpBehaviors.None).Bytes;
+            SlotChanges slotChangesDecoded = Rlp.Decode<SlotChanges>(slotChangesBytes, RlpBehaviors.None);
+            Assert.That(slotChanges.Slot, Is.EquivalentTo(slotChangesDecoded.Slot));
+
+            BalanceChange balanceChange = new()
+            {
+                BlockAccessIndex = 10,
+                PostBalance = 0
+            };
+            byte[] balanceChangeBytes = Rlp.Encode(balanceChange, RlpBehaviors.None).Bytes;
+            BalanceChange balanceChangeDecoded = Rlp.Decode<BalanceChange>(balanceChangeBytes, RlpBehaviors.None);
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(balanceChange.BlockAccessIndex, Is.EqualTo(balanceChangeDecoded.BlockAccessIndex));
+                Assert.That(balanceChange.PostBalance, Is.EqualTo(balanceChangeDecoded.PostBalance));
+            }
+
+            NonceChange nonceChange = new()
+            {
+                BlockAccessIndex = 10,
+                NewNonce = 0
+            };
+            byte[] nonceChangeBytes = Rlp.Encode(nonceChange, RlpBehaviors.None).Bytes;
+            NonceChange nonceChangeDecoded = Rlp.Decode<NonceChange>(nonceChangeBytes, RlpBehaviors.None);
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(nonceChange.BlockAccessIndex, Is.EqualTo(nonceChangeDecoded.BlockAccessIndex));
+                Assert.That(nonceChange.NewNonce, Is.EqualTo(nonceChangeDecoded.NewNonce));
+            }
+
+            CodeChange codeChange = new()
+            {
+                BlockAccessIndex = 10,
+                NewCode = [0, 50]
+            };
+            byte[] codeChangeBytes = Rlp.Encode(codeChange, RlpBehaviors.None).Bytes;
+            CodeChange codeChangeDecoded = Rlp.Decode<CodeChange>(codeChangeBytes, RlpBehaviors.None);
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(codeChange.BlockAccessIndex, Is.EqualTo(codeChangeDecoded.BlockAccessIndex));
+                Assert.That(codeChange.NewCode, Is.EqualTo(codeChangeDecoded.NewCode));
+            }
+
+            SortedDictionary<byte[], SlotChanges> storageChanges = new()
+            {
+                { slotChanges.Slot, slotChanges }
+            };
+
+            AccountChanges accountChanges = new()
+            {
+                Address = TestItem.AddressA.Bytes,
+                StorageChanges = storageChanges,
+                StorageReads = [[.. Enumerable.Repeat<byte>(50, 32)]],
+                BalanceChanges = [balanceChange, balanceChange],
+                NonceChanges = [nonceChange, nonceChange],
+                CodeChanges = [codeChange, codeChange]
+            };
+            byte[] accountChangesBytes = Rlp.Encode(accountChanges, RlpBehaviors.None).Bytes;
+            AccountChanges accountChangesDecoded = Rlp.Decode<AccountChanges>(accountChangesBytes, RlpBehaviors.None);
+            Assert.That(accountChanges.Address, Is.EquivalentTo(accountChangesDecoded.Address));
+
             // BlockAccessList b = new();
             // byte[] bytes = Rlp.Encode<BlockAccessList>(b).Bytes;
             // BlockAccessList b2 = Rlp.Decode<BlockAccessList>(bytes);

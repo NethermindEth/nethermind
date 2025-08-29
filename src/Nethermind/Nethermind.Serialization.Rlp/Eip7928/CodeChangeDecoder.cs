@@ -45,7 +45,7 @@ public class CodeChangeDecoder : IRlpValueDecoder<CodeChange>, IRlpStreamDecoder
 
     public void Encode(RlpStream stream, CodeChange item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
     {
-        stream.StartSequence(GetLength(item, rlpBehaviors));
+        stream.StartSequence(GetContentLength(item, rlpBehaviors));
         stream.Encode(item.BlockAccessIndex);
         stream.Encode(item.NewCode);
     }

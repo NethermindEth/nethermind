@@ -57,10 +57,10 @@ public class AccountChangesDecoder : IRlpValueDecoder<AccountChanges>, IRlpStrea
 
     public void Encode(RlpStream stream, AccountChanges item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
     {
-        int len = GetContentLength(item, rlpBehaviors);
-        stream.StartSequence(len);
+        stream.StartSequence(GetContentLength(item, rlpBehaviors));
+        // stream.StartSequence(Rlp.LengthOfAddressRlp);
         stream.Encode(item.Address);
-        stream.EncodeArray([.. item.StorageChanges], rlpBehaviors);
+        stream.EncodeArray([.. item.StorageChanges.Values], rlpBehaviors);
         stream.EncodeArray([.. item.StorageReads], rlpBehaviors);
         stream.EncodeArray([.. item.BalanceChanges], rlpBehaviors);
         stream.EncodeArray([.. item.NonceChanges], rlpBehaviors);
@@ -114,7 +114,12 @@ public class AccountChangesDecoder : IRlpValueDecoder<AccountChanges>, IRlpStrea
         }
         slotChangesLen = Rlp.LengthOfSequence(slotChangesLen);
 
-        int storageReadsLen = Rlp.LengthOfSequence(item.StorageReads.Count * 32);
+        int storageReadsLen = 0;
+        foreach (byte[] storageRead in item.StorageReads)
+        {
+            storageReadsLen += Rlp.LengthOf(storageRead);
+        }
+        storageReadsLen = Rlp.LengthOfSequence(storageReadsLen);
 
         int balanceChangesLen = 0;
         foreach (BalanceChange balanceChange in item.BalanceChanges)
@@ -137,7 +142,7 @@ public class AccountChangesDecoder : IRlpValueDecoder<AccountChanges>, IRlpStrea
         }
         codeChangesLen = Rlp.LengthOfSequence(codeChangesLen);
 
-        return slotChangesLen + storageReadsLen + balanceChangesLen + nonceChangesLen + codeChangesLen;
+        return Rlp.LengthOfAddressRlp + slotChangesLen + storageReadsLen + balanceChangesLen + nonceChangesLen + codeChangesLen;
     }
 
     // private struct ContentLengths
