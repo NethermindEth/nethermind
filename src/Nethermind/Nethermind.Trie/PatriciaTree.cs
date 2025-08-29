@@ -158,6 +158,11 @@ namespace Nethermind.Trie
             SetRootHash(RootRef?.Keccak, true);
         }
 
+        internal void IncrementWriteCount(long writeCount)
+        {
+            _writeBeforeCommit += writeCount;
+        }
+
         private TrieNode Commit(ICommitter committer, ref TreePath path, TrieNode node, int maxLevelForConcurrentCommit, bool skipSelf = false)
         {
             if (!_allowCommits)

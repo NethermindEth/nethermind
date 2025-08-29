@@ -5,80 +5,40 @@ using System;
 using System.Buffers.Binary;
 using System.Collections.Generic;
 using System.Numerics;
-using System.Reflection.Metadata;
+using System.Threading;
 using System.Threading.Tasks;
-using DotNetty.Common.Internal;
-using Microsoft.Extensions.ObjectPool;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Threading;
+using Prometheus;
 
 namespace Nethermind.Trie;
 
 public class PatriciaTreeBulkSetter(PatriciaTree patriciaTree)
 {
-    public static void BulkSet(PatriciaTree patriciaTree, Memory<BulkSetEntry> entriesMemory)
+    private int MinEntriesToParallelizeThreshold = 256;
+
+    [Flags]
+    public enum Flags
     {
-        new PatriciaTreeBulkSetter(patriciaTree).BulkSet(entriesMemory);
+        None = 0,
+        WasSorted = 1,
+        DoNotParallelize = 2,
     }
 
-    public static void BulkSetUnsorted(PatriciaTree patriciaTree, Memory<BulkSetEntry> entriesMemory, int targetBucketSize = 64)
+    public static void BulkSet(PatriciaTree patriciaTree, Memory<BulkSetEntry> entriesMemory, Flags flags = Flags.None)
     {
-        if (entriesMemory.Length < targetBucketSize)
-        {
-            entriesMemory.Span.Sort();
-            BulkSet(patriciaTree, entriesMemory);
-            return;
-        }
-
-        int powerOfTwoSize = BitOperations.Log2((uint)(entriesMemory.Length / targetBucketSize));
-        if (powerOfTwoSize == 0) powerOfTwoSize = 1; // Just make the code simpler
-        if (powerOfTwoSize > 16) powerOfTwoSize = 16; // I mean, thats 65K
-        int shift = 32 - powerOfTwoSize;
-        int bucketCount = 1 << powerOfTwoSize;
-
-        ArrayPoolList<ArrayPoolList<BulkSetEntry>> buckets = new ArrayPoolList<ArrayPoolList<BulkSetEntry>>(bucketCount, bucketCount);
-        for (int i = 0; i < buckets.Count; i++)
-        {
-            buckets[i] = new ArrayPoolList<BulkSetEntry>(targetBucketSize);
-        }
-
-        Span<BulkSetEntry> asSpan = entriesMemory.Span;
-        for (int i = 0; i < asSpan.Length; i++)
-        {
-            BulkSetEntry entry = asSpan[i];
-            uint bucketIdx = entry._first4Byte >> shift;
-            buckets[(int)bucketIdx].Add(entry);
-        }
-
-        ParallelUnbalancedWork.For(0, bucketCount, (i) => buckets[i].AsSpan().Sort());
-
-        using ArrayPoolList<BulkSetEntry> sorted = new ArrayPoolList<BulkSetEntry>(entriesMemory.Length);
-        for (int i = 0; i < buckets.Count; i++)
-        {
-            ArrayPoolList<BulkSetEntry> bucket = buckets[i];
-            foreach (var bulkSetEntry in bucket)
-            {
-                sorted.Add(bulkSetEntry);
-            }
-            bucket.Dispose();
-        }
-
-        BulkSet(patriciaTree, sorted.AsMemory());
+        new PatriciaTreeBulkSetter(patriciaTree).BulkSet(entriesMemory, flags);
     }
 
     public readonly struct BulkSetEntry(ValueHash256 path, byte[] value) : IComparable<BulkSetEntry>
     {
         public readonly ValueHash256 Path = path;
         public readonly byte[] Value = value;
-        internal readonly uint _first4Byte = BinaryPrimitives.ReadUInt32BigEndian(path.BytesAsSpan[..4]);
 
         public int CompareTo(BulkSetEntry entry)
         {
-            int diff = _first4Byte.CompareTo(entry._first4Byte);
-            if (diff != 0) return diff;
-
             return Path.CompareTo(entry.Path);
         }
 
@@ -98,34 +58,158 @@ public class PatriciaTreeBulkSetter(PatriciaTree patriciaTree)
         }
     }
 
-    public void BulkSet(Memory<BulkSetEntry> entriesMemory)
-    {
-        Span<BulkSetEntry> entries = entriesMemory.Span;
+    private static Counter _bulkSetCounter = Prometheus.Metrics.CreateCounter("bulksetter_bulk_set", "Get count");
 
-        for (int i = 1; i < entries.Length; i++)
+    // Pool some thread resource based on the size of the entry with a simple array
+    private const int ThreadResourcePoolCount = 8;
+    // But for lenght of < 2^this value, just use _threadStaticPool, which is a bit faster, but does not dispose.
+    private const int ThreadResourceThreadStaticBit = 5;
+    private static ThreadResource?[] _pooledThreadResource = new ThreadResource?[ThreadResourcePoolCount];
+
+    [ThreadStatic]
+    private static ThreadResource? _threadStaticPool;
+
+    private ThreadResource GetThreadResource(int entrySize, Flags flags)
+    {
+        if (flags.HasFlag(Flags.WasSorted))
         {
-            int compared = entries[i-1].CompareTo(entries[i]);
-            if (compared == 0)
+            return new ThreadResource(entrySize, flags);
+        }
+
+        // Bucket for every power of 16
+        int bucketIdx = BitOperations.Log2((uint)entrySize);
+        if (bucketIdx > ThreadResourcePoolCount) return new ThreadResource(entrySize, flags); // Seems to be faster to just not pool
+
+        if (bucketIdx <= ThreadResourceThreadStaticBit)
+        {
+            if (_threadStaticPool is not null)
             {
-                throw new InvalidOperationException("Entries must be unique");
+                ThreadResource threadResource = _threadStaticPool;
+                _threadStaticPool = null;
+                return threadResource;
             }
-            if (compared > 0)
+            else
             {
-                throw new InvalidOperationException("Entries must be sorted in increasing order");
+                return new ThreadResource(entrySize, flags);
             }
         }
 
-        TreePath path = TreePath.Empty;
-        Stack<TraverseStack> stack = new Stack<TraverseStack>();
-        patriciaTree.RootRef = BulkSet(stack, entriesMemory, ref path, patriciaTree.RootRef, true);
+        // Get and replace with null
+        ThreadResource? originalValue = Interlocked.Exchange(ref _pooledThreadResource[bucketIdx], null);
+        if (originalValue is not null) return originalValue;
+
+        // Will have to just make a new one
+        return new ThreadResource(entrySize, flags);
     }
 
-    internal TrieNode? BulkSet(Stack<TraverseStack> traverseStack, Memory<BulkSetEntry> entriesMemory, ref TreePath currentPath, TrieNode? existingNode, bool canParallelize)
+    private void ReturnThreadResource(int entrySize, Flags flags, ThreadResource threadResource)
+    {
+        threadResource.Dispose();
+        if (flags.HasFlag(Flags.WasSorted))
+        {
+            threadResource.Dispose();
+            return;
+        }
+
+#if DEBUG
+        threadResource.EnsureCleared();
+#endif
+
+        // Bucket for every power of 16
+        int bucketIdx = BitOperations.Log2((uint)entrySize);
+        if (bucketIdx > ThreadResourcePoolCount) {
+            threadResource.Dispose();
+            return;
+        }
+
+        if (bucketIdx <= ThreadResourceThreadStaticBit)
+        {
+            _threadStaticPool = threadResource;
+            return;
+        }
+
+        ThreadResource? originalValue = Interlocked.Exchange(ref _pooledThreadResource[bucketIdx], threadResource);
+        if (originalValue is not null)
+        {
+            originalValue.Dispose();
+        }
+    }
+
+    public void BulkSet(Memory<BulkSetEntry> entriesMemory, Flags flags)
     {
         Span<BulkSetEntry> entries = entriesMemory.Span;
+        if (entries.Length == 0) return;
 
-        if (entries.Length == 0) return existingNode;
-        if (entries.Length == 1) return BulkSetOneStack(traverseStack, entries[0], ref currentPath, existingNode);
+        _bulkSetCounter.Inc();
+
+        TreePath path = TreePath.Empty;
+        ThreadResource threadResource = GetThreadResource(entries.Length, flags);
+        using ArrayPoolList<BulkSetEntry> buffer = new ArrayPoolList<BulkSetEntry>(entries.Length, entries.Length);
+        patriciaTree.RootRef = BulkSet(threadResource, entriesMemory, buffer.AsMemory(), ref path, patriciaTree.RootRef, (flags & Flags.DoNotParallelize) == 0, flags);
+        patriciaTree.IncrementWriteCount(entries.Length);
+        ReturnThreadResource(entries.Length, flags, threadResource);
+    }
+
+    internal class ThreadResource: IDisposable
+    {
+        internal Stack<TraverseStack> TraverseStack;
+        internal ArrayPoolList<ArrayPoolList<int>>? SortBuckets;
+
+        public ThreadResource(int entryCount, Flags flags)
+        {
+            if (!flags.HasFlag(Flags.WasSorted))
+            {
+                ArrayPoolList<ArrayPoolList<int>> sortCounters = new ArrayPoolList<ArrayPoolList<int>>(TrieNode.BranchesCount, TrieNode.BranchesCount);
+                for (int i = 0; i < sortCounters.Count; i++)
+                {
+                    sortCounters[i] =
+                        new ArrayPoolList<int>((int)BitOperations.RoundUpToPowerOf2((uint)(entryCount / TrieNode.BranchesCount)));
+                }
+
+                SortBuckets = sortCounters;
+            }
+
+            TraverseStack = new Stack<TraverseStack>(16);
+        }
+
+        public void Dispose()
+        {
+            if (SortBuckets is not null)
+            {
+                for (int i = 0; i < SortBuckets.Count; i++) SortBuckets[i].Dispose();
+                SortBuckets.Dispose();
+            }
+        }
+
+        public void EnsureCleared()
+        {
+            if (TraverseStack.Count != 0)
+            {
+                throw new InvalidOperationException("traverse stack must be cleared before returning");
+            }
+            foreach (ArrayPoolList<int> bucket in SortBuckets)
+            {
+                if (bucket.Count != 0)
+                {
+                    throw new InvalidOperationException("bucket must be cleared before returning");
+                }
+            }
+        }
+    }
+
+    internal TrieNode? BulkSet(
+        ThreadResource threadResource,
+        Memory<BulkSetEntry> entriesMemory,
+        Memory<BulkSetEntry> buffer,
+        ref TreePath currentPath,
+        TrieNode? existingNode,
+        bool canParallelize,
+        Flags flags)
+    {
+        Span<BulkSetEntry> entries = entriesMemory.Span;
+        TrieNode? originalNode = existingNode;
+
+        if (entries.Length == 1) return BulkSetOneStack(threadResource.TraverseStack, entries[0], ref currentPath, existingNode);
 
         bool newBranch = false;
         if (existingNode is null)
@@ -142,19 +226,37 @@ public class PatriciaTreeBulkSetter(PatriciaTree patriciaTree)
                 existingNode = MakeFakeBranch(ref currentPath, existingNode);
                 newBranch = true;
             }
-
-            if (existingNode.IsSealed) existingNode = existingNode.Clone();
         }
 
         Span<(int, int)> indexes = stackalloc (int, int)[TrieNode.BranchesCount];
 
-        int nibToCheck = HexarySearch(entries, currentPath.Length, indexes);
+        if (currentPath.Length == 64)
+        {
+            throw new InvalidOperationException("Non unique entry keys");
+        }
+
+        int nibToCheck;
+        if ((flags & Flags.WasSorted) != 0)
+        {
+            nibToCheck = HexarySearchAlreadySorted(entries, currentPath.Length, indexes);
+        }
+        else
+        {
+            nibToCheck = BucketSort16(entries, buffer.Span, currentPath.Length, indexes, threadResource.SortBuckets.UnsafeGetInternalArray());
+            // Buffer is not partially sorted. Swap buffer and entries
+            Memory<BulkSetEntry> newBuffer = entriesMemory;
+            entriesMemory = buffer;
+            entries = entriesMemory.Span;
+            buffer = newBuffer;
+        }
 
         bool hasRemove = false;
-        if (entries.Length > 64 && nibToCheck == TrieNode.BranchesCount && canParallelize)
+        int nonNullChild = 0;
+        bool hasChange = false;
+        if (entries.Length >= MinEntriesToParallelizeThreshold && nibToCheck == TrieNode.BranchesCount && canParallelize)
         {
-            (Memory<BulkSetEntry> entries, int nibble, TreePath appendedPath, TrieNode? outNode)[] jobs =
-                new (Memory<BulkSetEntry> entries, int nibble, TreePath appendedPath, TrieNode? outNode)[TrieNode.BranchesCount];
+            (Memory<BulkSetEntry> entries, Memory<BulkSetEntry> buffer, int nibble, TreePath appendedPath, TrieNode? currentChild, TrieNode? newChild, Flags flags)[] jobs =
+                new (Memory<BulkSetEntry> entries, Memory<BulkSetEntry> buffer, int nibble, TreePath appendedPath, TrieNode? currentChild, TrieNode? newChild, Flags flags)[TrieNode.BranchesCount];
 
             TrieNode.ChildIterator childIterator = existingNode.CreateChildIterator();
             for (int i = 0; i < TrieNode.BranchesCount; i++)
@@ -172,27 +274,53 @@ public class PatriciaTreeBulkSetter(PatriciaTree patriciaTree)
                 }
 
                 Memory<BulkSetEntry> jobEntry = entriesMemory.Slice(startRange, endRange - startRange);
+                Memory<BulkSetEntry> jobBuffer = buffer.Slice(startRange, endRange - startRange);
 
                 TreePath childPath = currentPath.Append(nib);
                 TrieNode? child = childIterator.GetChildWithChildPath(patriciaTree.TrieStore, ref childPath, nib);
-                jobs[i] = (jobEntry, nib, childPath, child);
+                jobs[i] = (jobEntry, jobBuffer, nib, childPath, child, null, flags);
             }
 
-            ParallelUnbalancedWork.For(0, nibToCheck, ParallelUnbalancedWork.DefaultOptions, jobs,
-                (i, jobs) =>
-            {
-                (Memory<BulkSetEntry> jobEntry, int nib, TreePath childPath, TrieNode child) = jobs[i];
+            bool outerWasUsed = false;
+            ParallelUnbalancedWork.For(0, nibToCheck,
+                ParallelUnbalancedWork.DefaultOptions,
+                () =>
+                {
+                    if (!Interlocked.CompareExchange(ref outerWasUsed, true, false))
+                    {
+                        return threadResource;
+                    }
 
-                child = BulkSet(new Stack<TraverseStack>(), jobEntry, ref childPath, child, false); // Only parallelize at top level.
-                jobs[i] = (jobEntry, nib, childPath, child);
-                return jobs;
-            });
+                    return GetThreadResource(entriesMemory.Length / 16, flags);
+                },
+                (i, workerThreadResource) =>
+                {
+                    (Memory<BulkSetEntry> jobEntry, Memory<BulkSetEntry> buffer, int nib, TreePath childPath, TrieNode child, TrieNode? outNode, Flags flags) = jobs[i];
+
+                    TrieNode? newChild = BulkSet(workerThreadResource, jobEntry, buffer, ref childPath, child, false, flags); // Only parallelize at top level.
+                    jobs[i] = (jobEntry, buffer, nib, childPath, child, newChild, flags); // Just need the child actually...
+
+                    return workerThreadResource;
+                }, (workerThreadResource =>
+                {
+                    if (ReferenceEquals(workerThreadResource, threadResource)) return;
+                    ReturnThreadResource(entriesMemory.Length / 16, flags, workerThreadResource);
+                }));
 
             for (int i = 0; i < TrieNode.BranchesCount; i++)
             {
-                TrieNode? child = jobs[i].outNode;
-                if (child is null) hasRemove = true;
-                existingNode.SetChild(i, child);
+                TrieNode? child = jobs[i].currentChild;
+                TrieNode? newChild = jobs[i].newChild;
+
+                if (ShouldUpdateChild(child, newChild))
+                {
+                    if (newChild is null) hasRemove = true;
+                    if (newChild is not null) nonNullChild++;
+                    if (existingNode.IsSealed) existingNode = existingNode.Clone();
+
+                    existingNode.SetChild(i, newChild);
+                    hasChange = true;
+                }
             }
         }
         else
@@ -216,18 +344,30 @@ public class PatriciaTreeBulkSetter(PatriciaTree patriciaTree)
                     endRange = entries.Length;
                 }
 
-                child = (endRange - startRange == 1)
-                    ? BulkSetOneStack(traverseStack, entries[startRange], ref currentPath, child)
-                    : BulkSet(traverseStack, entriesMemory.Slice(startRange, endRange - startRange), ref currentPath, child, canParallelize);
-                if (child is null) hasRemove = true;
+                var newChild = (endRange - startRange == 1)
+                    ? BulkSetOneStack(threadResource.TraverseStack, entries[startRange], ref currentPath, child)
+                    : BulkSet(threadResource, entriesMemory[startRange..endRange], buffer[startRange..endRange], ref currentPath, child, canParallelize, flags);
 
-                existingNode.SetChild(nib, child);
+                if (ShouldUpdateChild(child, newChild))
+                {
+                    if (newChild is null) hasRemove = true;
+                    if (newChild is not null) nonNullChild++;
+                    if (existingNode.IsSealed) existingNode = existingNode.Clone();
+
+                    existingNode.SetChild(nib, newChild);
+                    hasChange = true;
+                }
             }
 
             currentPath.TruncateOne();
         }
 
-        if (hasRemove || newBranch)
+        if (!hasChange)
+        {
+            return originalNode;
+        }
+
+        if ((hasRemove || newBranch) && nonNullChild < 2)
             return MaybeCombineNode(ref currentPath, existingNode);
 
         return existingNode;
@@ -239,6 +379,8 @@ public class PatriciaTreeBulkSetter(PatriciaTree patriciaTree)
         Span<byte> nibble = stackalloc byte[64];
         Nibbles.BytesToNibbleBytes(entry.Path.BytesAsSpan, nibble);
         Span<byte> remainingKey = nibble[currentNodePath.Length..];
+        TrieNode? originalNode = currentNode;
+        int originalPathLength = currentNodePath.Length;
         byte[] value = entry.Value;
 
         while (true)
@@ -263,7 +405,14 @@ public class PatriciaTreeBulkSetter(PatriciaTree patriciaTree)
                 {
                     if (value is null || value.Length == 0)
                     {
+                        // Deletion
                         currentNode = null;
+                    }
+                    else if (currentNode.Value.Equals(value))
+                    {
+                        // SHORTCUT!
+                        currentNodePath.TruncateMut(originalPathLength);
+                        return originalNode;
                     }
                     else if (currentNode.IsSealed)
                     {
@@ -314,11 +463,6 @@ public class PatriciaTreeBulkSetter(PatriciaTree patriciaTree)
                 shouldCheckForBranchMerge = true;
             }
 
-            if (currentNode.IsSealed)
-            {
-                currentNode = currentNode.Clone();
-            }
-
             int nib = remainingKey[0];
             currentNodePath.AppendMut(nib);
             TrieNode? child = currentNode.GetChildWithChildPath(patriciaTree.TrieStore, ref currentNodePath, nib);
@@ -326,6 +470,7 @@ public class PatriciaTreeBulkSetter(PatriciaTree patriciaTree)
             traverseStack.Push(new TraverseStack()
             {
                 Node = currentNode,
+                OriginalChild = child,
                 ChildIdx = nib,
                 ShouldCheckForBranchMerge = shouldCheckForBranchMerge
             });
@@ -344,9 +489,13 @@ public class PatriciaTreeBulkSetter(PatriciaTree patriciaTree)
 
             currentNodePath.TruncateOne();
 
-            if (child is null) shouldCheckForBranchMerge = true;
+            if (ShouldUpdateChild(child, cStack.OriginalChild))
+            {
+                if (child is null) shouldCheckForBranchMerge = true;
+                if (currentNode.IsSealed) currentNode = currentNode.Clone();
 
-            currentNode.SetChild(nib, child);
+                currentNode.SetChild(nib, child);
+            }
 
             if (!shouldCheckForBranchMerge)
             {
@@ -359,11 +508,18 @@ public class PatriciaTreeBulkSetter(PatriciaTree patriciaTree)
         return currentNode;
     }
 
+    private bool ShouldUpdateChild(TrieNode? child1, TrieNode? child2)
+    {
+        if (child1 is null && child2 is null) return false;
+        return !ReferenceEquals(child1, child2);
+    }
+
     internal struct TraverseStack
     {
         public TrieNode Node;
         public int ChildIdx;
         public bool ShouldCheckForBranchMerge;
+        public TrieNode? OriginalChild;
     }
 
     private TrieNode? MakeFakeBranch(ref TreePath currentPath, TrieNode? existingNode)
@@ -449,12 +605,92 @@ public class PatriciaTreeBulkSetter(PatriciaTree patriciaTree)
         return TrieNodeFactory.CreateExtension(newKey, onlyChildNode.GetChild(patriciaTree.TrieStore, ref currentPath, 0));
     }
 
-    public static int HexarySearch(Span<BulkSetEntry> entries, int pathIndex, Span<(int, int)> indexes)
+    internal static int BucketSort16(Span<BulkSetEntry> entries, Span<BulkSetEntry> sortTarget, int pathIndex,
+        Span<(int, int)> indexes, ArrayPoolList<int>[] idxLists)
+    {
+        if (entries.Length != sortTarget.Length) throw new Exception("Both buffer must be of the smae length");
+        if (idxLists.Length != 16) throw new Exception("Idx list must be of length 16");
+        foreach (ArrayPoolList<int> bucket in idxLists)
+        {
+            if (bucket.Count != 0) throw new Exception("Bucket must be emptied");
+        }
+        if (entries.Length < 24)
+        {
+            // return BucketSort16Small(entries, sortTarget, pathIndex, indexes, idxLists);
+        }
+
+        for (int i = 0; i < entries.Length; i++)
+        {
+            var currentNib = entries[i].GetPathNibbble(pathIndex);
+            idxLists[currentNib].Add(i);
+        }
+
+        int relevantNib = 0;
+        int runningCount = 0;
+        for (int i = 0; i < TrieNode.BranchesCount; i++)
+        {
+            ArrayPoolList<int> currentBucket = idxLists[i];
+
+            if (currentBucket.Count > 0)
+            {
+                indexes[relevantNib] = (i, runningCount);
+                relevantNib++;
+            }
+
+            for (int j = 0; j < currentBucket.Count; j++)
+            {
+                sortTarget[runningCount++] = entries[currentBucket[j]];
+            }
+
+            currentBucket.Clear();
+        }
+
+        return relevantNib;
+    }
+
+    private static int BucketSort16Small(Span<BulkSetEntry> entries, Span<BulkSetEntry> sortTarget, int pathIndex,
+        Span<(int, int)> indexes, ArrayPoolList<int>[] idxLists)
+    {
+        // Small variant keep track of used nib to prevent looping through 16 possible nib.
+
+        int usedNib = 0;
+        for (int i = 0; i < entries.Length; i++)
+        {
+            var currentNib = entries[i].GetPathNibbble(pathIndex);
+            usedNib |= 1 << currentNib;
+            idxLists[currentNib].Add(i);
+        }
+
+        int relevantNib = 0;
+        int runningCount = 0;
+        while (usedNib != 0)
+        {
+            int i = BitOperations.TrailingZeroCount(usedNib);
+
+            var currentBucket = idxLists[i];
+
+            indexes[relevantNib] = (i, runningCount);
+            relevantNib++;
+
+            for (int j = 0; j < currentBucket.Count; j++)
+            {
+                sortTarget[runningCount++] = entries[currentBucket[j]];
+            }
+
+            currentBucket.Clear();
+
+            usedNib &= usedNib - 1;
+        }
+
+        return relevantNib;
+    }
+
+    public static int HexarySearchAlreadySorted(Span<BulkSetEntry> entries, int pathIndex, Span<(int, int)> indexes)
     {
         // About .5% of the time
         // TODO: Change to binary search
-        int relevantNib = 0;
         int curIdx = 0;
+        int relevantNib = 0;
 
         for (int i = 0; i < entries.Length && curIdx < TrieNode.BranchesCount; i++)
         {
