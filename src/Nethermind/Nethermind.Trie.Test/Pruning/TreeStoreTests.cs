@@ -833,7 +833,7 @@ namespace Nethermind.Trie.Test.Pruning
             {
                 committer.CommitNode(ref emptyPath, trieNode);
             }
-            using (fullTrieStore.PrepareStableState(default)) {}
+            using (fullTrieStore.PrepareStableState(default)) { }
 
             if (beThreadSafe)
             {
