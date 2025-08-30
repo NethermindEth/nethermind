@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Collections.Generic;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
 using Nethermind.Int256;
@@ -156,5 +157,44 @@ namespace Nethermind.Specs
 
         Array? IReleaseSpec.EvmInstructionsTraced { get; set; }
         public bool IsEip7939Enabled { get; set; }
+        HashSet<AddressAsKey>? IReleaseSpec.Precompiles { get; set; }
+        public bool IsPrecompile(Address address)
+        {
+            HashSet<AddressAsKey>? precompiles = ((IReleaseSpec)this).Precompiles ??= BuildPrecompilesCache();
+            return precompiles.Contains(address);
+        }
+
+        public virtual HashSet<AddressAsKey> BuildPrecompilesCache()
+        {
+            HashSet<AddressAsKey> cache = new();
+
+            cache.Add(Address.FromNumber(0x01));
+            cache.Add(Address.FromNumber(0x02));
+            cache.Add(Address.FromNumber(0x03));
+            cache.Add(Address.FromNumber(0x04));
+
+            if (IsEip198Enabled) cache.Add(Address.FromNumber(0x05));
+            if (IsEip196Enabled && IsEip197Enabled)
+            {
+                cache.Add(Address.FromNumber(0x06));
+                cache.Add(Address.FromNumber(0x07));
+                cache.Add(Address.FromNumber(0x08));
+            }
+            if (IsEip152Enabled) cache.Add(Address.FromNumber(0x09));
+            if (IsEip4844Enabled) cache.Add(Address.FromNumber(0x0a));
+            if (IsEip2537Enabled)
+            {
+                cache.Add(Address.FromNumber(0x0b));
+                cache.Add(Address.FromNumber(0x0c));
+                cache.Add(Address.FromNumber(0x0d));
+                cache.Add(Address.FromNumber(0x0e));
+                cache.Add(Address.FromNumber(0x0f));
+                cache.Add(Address.FromNumber(0x10));
+                cache.Add(Address.FromNumber(0x11));
+            }
+            if (IsRip7212Enabled) cache.Add(Address.FromNumber(0x0100));
+
+            return cache;
+        }
     }
 }

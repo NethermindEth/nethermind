@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Collections.Generic;
 using Nethermind.Int256;
 
 namespace Nethermind.Core.Specs
@@ -460,6 +461,14 @@ namespace Nethermind.Core.Specs
         public bool RequestsEnabled => ConsolidationRequestsEnabled || WithdrawalRequestsEnabled || DepositsEnabled;
 
         public bool IsEip7594Enabled { get; }
+
+        bool IsPrecompile(Address address);
+
+        /// <summary>
+        /// Gets a cached set of all precompiled contract addresses for this release specification.
+        /// Chain-specific implementations can override this to include their own precompiled contracts.
+        /// </summary>
+        HashSet<AddressAsKey>? Precompiles { get; set; }
 
         /// <summary>
         /// This property holds an array that, at runtime, is actually an array of function pointers
