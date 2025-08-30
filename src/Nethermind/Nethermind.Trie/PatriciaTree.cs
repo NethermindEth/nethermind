@@ -155,8 +155,9 @@ namespace Nethermind.Trie
 
                 // reset objects
                 RootRef!.ResolveKey(TrieStore, ref path, true, bufferPool: _bufferPool);
-                SetRootHash(RootRef.Keccak!, true);
             }
+
+            SetRootHash(RootRef?.Keccak!, true);
         }
 
         internal void IncrementWriteCount(long writeCount)

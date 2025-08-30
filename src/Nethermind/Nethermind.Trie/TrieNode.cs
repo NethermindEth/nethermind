@@ -481,6 +481,11 @@ namespace Nethermind.Trie
             return true;
         }
 
+        public void ResolveKey(ITrieNodeResolver tree, ref TreePath path, ICappedArrayPool? bufferPool = null, bool canBeParallel = true)
+        {
+            ResolveKey(tree, ref path, path.Length == 0, null, canBeParallel: canBeParallel);
+        }
+
         public void ResolveKey(ITrieNodeResolver tree, ref TreePath path, bool isRoot,
             ICappedArrayPool? bufferPool = null, bool canBeParallel = true)
         {

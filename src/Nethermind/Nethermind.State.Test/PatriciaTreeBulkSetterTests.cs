@@ -8,11 +8,14 @@ using System.Linq;
 using FluentAssertions;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Extensions;
 using Nethermind.Core.Test;
 using Nethermind.Logging;
+using Nethermind.Serialization.Rlp.TxDecoders;
 using Nethermind.Trie;
 using Nethermind.Trie.Pruning;
 using NUnit.Framework;
+using No = Nethermind.JsonRpc.No;
 
 namespace Nethermind.Store.Test;
 
@@ -24,7 +27,11 @@ public class PatriciaTreeBulkSetterTests
 
         yield return new TestCaseData(GenRandomOfLength(1)).SetName("1");
         yield return new TestCaseData(GenRandomOfLength(1)).SetName("2");
-        yield return new TestCaseData(GenRandomOfLength(10)).SetName("10");
+
+        for (int i = 0; i < 10; i++)
+        {
+            yield return new TestCaseData(GenRandomOfLength(10, seed: i)).SetName($"10 {i}");
+        }
         yield return new TestCaseData(GenRandomOfLength(100)).SetName("100");
         yield return new TestCaseData(GenRandomOfLength(1000)).SetName("1000");
 
@@ -230,43 +237,8 @@ public class PatriciaTreeBulkSetterTests
     [TestCaseSource(nameof(BulkSetTestGen))]
     public void BulkSet(List<(Hash256 key, byte[] value)> existingItems, List<(Hash256 key, byte[] value)> items)
     {
-        Hash256 root;
         const bool recordDump = false;
-        String originalDump = "";
-
-        TimeSpan baselineTime;
-        long baselineWriteCount = 0;
-        {
-            TestMemDb db = new TestMemDb();
-            IScopedTrieStore trieStore = new RawScopedTrieStore(db);
-            PatriciaTree pTree = new PatriciaTree(trieStore, LimboLogs.Instance);
-            pTree.RootHash = Keccak.EmptyTreeHash;
-
-            foreach (var existingItem in existingItems)
-            {
-                pTree.Set(existingItem.key.Bytes, existingItem.value);
-            }
-            pTree.Commit();
-
-            long sw = Stopwatch.GetTimestamp();
-
-            foreach (var valueTuple in items) pTree.Set(valueTuple.key.Bytes, valueTuple.value);
-
-            pTree.Commit();
-
-            baselineTime = Stopwatch.GetElapsedTime(sw);
-
-            if (recordDump)
-            {
-                pTree.Commit();
-                TreeDumper td = new TreeDumper();
-                pTree.Accept(td, pTree.RootHash);
-                originalDump = td.ToString();
-            }
-            root = pTree.RootHash;
-
-            baselineWriteCount = db.WritesCount;
-        }
+        (Hash256 root, TimeSpan baselineTime, long baselineWriteCount, string originalDump) = CalculateBaseline(existingItems, items, recordDump);
 
         TimeSpan newTime;
         long newWriteCount = 0;
@@ -290,7 +262,7 @@ public class PatriciaTreeBulkSetterTests
             }
 
             long sw = Stopwatch.GetTimestamp();
-            PatriciaTreeBulkSetter.BulkSet(pTree, entries.AsMemory());
+            PatriciaTreeBulkSetter.BulkSet(pTree, entries.AsMemory(), PatriciaTreeBulkSetter.Flags.CalculateRoot);
             pTree.Commit();
             newTime = Stopwatch.GetElapsedTime(sw);
             newWriteCount = db.WritesCount;
@@ -312,6 +284,17 @@ public class PatriciaTreeBulkSetterTests
             newWriteCount.Should().BeLessOrEqualTo(baselineWriteCount);
             pTree.RootHash.Should().Be(root);
         }
+
+        TestContext.Error.WriteLine($"Time is Baseline: {baselineTime}, Bulk: {newTime}");
+        TestContext.Error.WriteLine($"Write count is Baseline: {baselineWriteCount}, Bulk: {newWriteCount}");
+        newWriteCount.Should().BeLessOrEqualTo(baselineWriteCount);
+    }
+
+    [TestCaseSource(nameof(BulkSetTestGen))]
+    public void BulkSetPreSorted(List<(Hash256 key, byte[] value)> existingItems, List<(Hash256 key, byte[] value)> items)
+    {
+        const bool recordDump = false;
+        (Hash256 root, TimeSpan baselineTime, long baselineWriteCount, string originalDump) = CalculateBaseline(existingItems, items, recordDump);
 
         TimeSpan preSortedTime;
         long preSortedWriteCount;
@@ -358,8 +341,114 @@ public class PatriciaTreeBulkSetterTests
             pTree.RootHash.Should().Be(root);
         }
 
-        TestContext.Error.WriteLine($"Time is Baseline: {baselineTime}, Bulk: {newTime}, Sorted Bulk: {preSortedTime}");
-        TestContext.Error.WriteLine($"Write count is Baseline: {baselineWriteCount}, Bulk: {newWriteCount}, Sorted Bulk: {preSortedWriteCount}");
+        TestContext.Error.WriteLine($"Time is Baseline: {baselineTime}, Sorted Bulk: {preSortedTime}");
+        TestContext.Error.WriteLine($"Write count is Baseline: {baselineWriteCount}, Sorted Bulk: {preSortedWriteCount}");
+        preSortedWriteCount.Should().BeLessOrEqualTo(baselineWriteCount);
+    }
+
+    [TestCaseSource(nameof(BulkSetTestGen))]
+    public void BulkSetOneByOne(List<(Hash256 key, byte[] value)> existingItems, List<(Hash256 key, byte[] value)> items)
+    {
+        const bool recordDump = false;
+        (Hash256 root, TimeSpan baselineTime, long baselineWriteCount, string originalDump) = CalculateBaseline(existingItems, items, recordDump);
+
+        TimeSpan bulkSetOne;
+        long writeCount;
+
+        {
+            // Just the bulk set one stack
+            TestMemDb db = new TestMemDb();
+            IScopedTrieStore trieStore = new RawScopedTrieStore(db);
+            PatriciaTree pTree = new PatriciaTree(trieStore, LimboLogs.Instance);
+            pTree.RootHash = Keccak.EmptyTreeHash;
+
+            foreach (var existingItem in existingItems)
+            {
+                pTree.Set(existingItem.key.Bytes, existingItem.value);
+            }
+
+            pTree.Commit();
+
+
+            using ArrayPoolList<PatriciaTreeBulkSetter.BulkSetEntry> entries = new ArrayPoolList<PatriciaTreeBulkSetter.BulkSetEntry>(items.Count);
+            foreach (var valueTuple in items)
+            {
+                entries.Add(new PatriciaTreeBulkSetter.BulkSetEntry(valueTuple.key, valueTuple.value));
+            }
+
+            entries.AsSpan().Sort();
+
+            long sw = Stopwatch.GetTimestamp();
+            PatriciaTreeBulkSetter setter = new PatriciaTreeBulkSetter(pTree);
+            PatriciaTreeBulkSetter.ThreadResource threadResource = new PatriciaTreeBulkSetter.ThreadResource(entries.Count, PatriciaTreeBulkSetter.Flags.None);
+            foreach (PatriciaTreeBulkSetter.BulkSetEntry bulkSetEntry in entries)
+            {
+                TreePath path = TreePath.Empty;
+                pTree.RootRef = setter.BulkSetOneStack(threadResource, bulkSetEntry, ref path, pTree.Root, PatriciaTreeBulkSetter.Flags.None);
+            }
+
+            pTree.Commit();
+            writeCount = db.WritesCount;
+            bulkSetOne = Stopwatch.GetElapsedTime(sw);
+
+            if (recordDump)
+            {
+                TreeDumper td = new TreeDumper();
+                pTree.Commit();
+                pTree.Accept(td, pTree.RootHash);
+                if (pTree.RootHash != root)
+                {
+                    TestContext.Error.WriteLine($"Baseline {originalDump}");
+                    TestContext.Error.WriteLine($"But in multiple set one got {td.ToString()}");
+                }
+            }
+
+            pTree.RootHash.Should().Be(root);
+        }
+
+        TestContext.Error.WriteLine($"Time is Baseline: {baselineTime}, One by one time: {bulkSetOne}");
+        TestContext.Error.WriteLine($"Write count is Baseline: {baselineWriteCount}, Write count: {writeCount}");
+        writeCount.Should().BeLessOrEqualTo(baselineWriteCount);
+    }
+
+    private static (Hash256, TimeSpan, long, string originalDump) CalculateBaseline(List<(Hash256 key, byte[] value)> existingItems, List<(Hash256 key, byte[] value)> items, bool recordDump)
+    {
+        Hash256 root;
+        String originalDump = "";
+        TimeSpan baselineTime;
+        long baselineWriteCount = 0;
+        {
+            TestMemDb db = new TestMemDb();
+            IScopedTrieStore trieStore = new RawScopedTrieStore(db);
+            PatriciaTree pTree = new PatriciaTree(trieStore, LimboLogs.Instance);
+            pTree.RootHash = Keccak.EmptyTreeHash;
+
+            foreach (var existingItem in existingItems)
+            {
+                pTree.Set(existingItem.key.Bytes, existingItem.value);
+            }
+            pTree.Commit();
+
+            long sw = Stopwatch.GetTimestamp();
+
+            foreach (var valueTuple in items) pTree.Set(valueTuple.key.Bytes, valueTuple.value);
+
+            pTree.Commit();
+
+            baselineTime = Stopwatch.GetElapsedTime(sw);
+
+            if (recordDump)
+            {
+                pTree.Commit();
+                TreeDumper td = new TreeDumper();
+                pTree.Accept(td, pTree.RootHash);
+                originalDump = td.ToString();
+            }
+            root = pTree.RootHash;
+
+            baselineWriteCount = db.WritesCount;
+        }
+        return (root, baselineTime, baselineWriteCount, originalDump);
     }
 #pragma warning restore CS0162 // Unreachable code detected
 
@@ -420,7 +509,7 @@ public class PatriciaTreeBulkSetterTests
 
         Span<(int, int)> result = stackalloc (int, int)[TrieNode.BranchesCount];
         using ArrayPoolList<PatriciaTreeBulkSetter.BulkSetEntry> buffer = new ArrayPoolList<PatriciaTreeBulkSetter.BulkSetEntry>(paths.Count, paths.Count);
-        int resultNum = PatriciaTreeBulkSetter.BucketSort16(items.AsSpan(), buffer.AsSpan(), 0, result, thread.SortBuckets.UnsafeGetInternalArray());
+        int resultNum = PatriciaTreeBulkSetter.BucketSort16(thread, items.AsSpan(), buffer.AsSpan(), 0, result);
 
         List<ValueHash256> partiallySortedPaths = buffer.Select((it) => it.Path).ToList();
         partiallySortedPaths.Should().BeEquivalentTo(expectedPaths);
