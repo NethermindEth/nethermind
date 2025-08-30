@@ -262,7 +262,7 @@ namespace Nethermind.Trie
                 path.TruncateMut(previousPathLength);
             }
 
-            node.ResolveKey(TrieStore, ref path, path.Length == 0, bufferPool: _bufferPool);
+            node.ResolveKey(TrieStore, ref path, bufferPool: _bufferPool);
             node.Seal();
 
             if (node.FullRlp.Length >= 32)
@@ -308,7 +308,7 @@ namespace Nethermind.Trie
         public void UpdateRootHash(bool canBeParallel = true)
         {
             TreePath path = TreePath.Empty;
-            RootRef?.ResolveKey(TrieStore, ref path, isRoot: true, bufferPool: _bufferPool, canBeParallel);
+            RootRef?.ResolveKey(TrieStore, ref path, bufferPool: _bufferPool, canBeParallel);
             SetRootHash(RootRef?.Keccak ?? EmptyTreeHash, false);
         }
 
