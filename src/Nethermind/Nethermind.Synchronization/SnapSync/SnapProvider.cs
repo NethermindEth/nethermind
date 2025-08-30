@@ -268,7 +268,7 @@ namespace Nethermind.Synchronization.SnapSync
                         TreePath emptyTreePath = TreePath.Empty;
                         TrieNode node = new(NodeType.Unknown, nodeData, isDirty: true);
                         node.ResolveNode(stateStore, emptyTreePath);
-                        node.ResolveKey(stateStore, ref emptyTreePath, true);
+                        node.ResolveKey(stateStore, ref emptyTreePath);
 
                         requestedPath.PathAndAccount.Account = requestedPath.PathAndAccount.Account.WithChangedStorageRoot(node.Keccak);
 

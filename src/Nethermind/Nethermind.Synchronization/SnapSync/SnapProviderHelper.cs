@@ -326,7 +326,7 @@ namespace Nethermind.Synchronization.SnapSync
 
                 TreePath emptyPath = TreePath.Empty;
                 node.ResolveNode(store, emptyPath);
-                node.ResolveKey(store, ref emptyPath, isRoot: i == 0);
+                node.ResolveKey(store, ref emptyPath);
 
                 dict[node.Keccak] = node;
             }

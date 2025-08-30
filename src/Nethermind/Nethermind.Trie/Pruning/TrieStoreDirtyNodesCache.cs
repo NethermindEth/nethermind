@@ -355,7 +355,7 @@ internal class TrieStoreDirtyNodesCache
         {
             Hash256 keccak;
             TreePath path2 = key.Path;
-            keccak = node.GenerateKey(_trieStore.GetTrieStore(key.Address), ref path2, isRoot: true);
+            keccak = node.GenerateKey(_trieStore.GetTrieStore(key.Address), ref path2);
             if (keccak != key.Keccak)
             {
                 ThrowPersistedNodeDoesNotMatch(key, node, keccak);

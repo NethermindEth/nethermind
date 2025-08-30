@@ -16,5 +16,5 @@ public class NullCommitter : ICommitter, IBlockCommitter
 
     public void Dispose() { }
 
-    public void CommitNode(ref TreePath path, NodeCommitInfo nodeCommitInfo) { }
+    public TrieNode CommitNode(ref TreePath path, TrieNode node) => node;
 }

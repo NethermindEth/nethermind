@@ -22,7 +22,14 @@ public interface IScopedTrieStore : ITrieNodeResolver
 
 public interface ICommitter : IDisposable
 {
-    void CommitNode(ref TreePath path, NodeCommitInfo nodeCommitInfo);
+    /// <summary>
+    /// Commit a trienode to the triestore at path. Returns potentially another trienode that should be merged
+    /// with the patricia trie.
+    /// </summary>
+    /// <param name="path"></param>
+    /// <param name="node"></param>
+    /// <returns></returns>
+    TrieNode CommitNode(ref TreePath path, TrieNode node);
 
     bool TryRequestConcurrentQuota() => false;
     void ReturnConcurrencyQuota() { }
