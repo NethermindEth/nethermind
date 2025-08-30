@@ -6,6 +6,7 @@ using System.IO.Abstractions;
 using System.Reflection;
 using Autofac;
 using Nethermind.Api;
+using Nethermind.Blockchain;
 using Nethermind.Config;
 using Nethermind.Consensus;
 using Nethermind.Consensus.Scheduler;
@@ -73,6 +74,9 @@ public class PseudoNethermindModule(ChainSpec spec, IConfigProvider configProvid
 
             // Rpc
             .AddSingleton<IJsonRpcService, JsonRpcService>()
+
+            // Genesis
+            .AddSingleton<IGenesisPostProcessor, NullGenesisPostProcessor>()
             ;
 
 

@@ -48,10 +48,10 @@ public class TransactionProcessorEip7623Tests
         _worldStateCloser?.Dispose();
     }
 
-    [TestCase(21006, true, TestName = "GasLimit=IntrinsicGas")]
-    [TestCase(21010, false, TestName = "GasLimit=FloorGas")]
+    [TestCase(21006, false, TestName = "GasLimit=IntrinsicGas")]
+    [TestCase(21010, true, TestName = "GasLimit=FloorGas")]
 
-    public void transaction_validation_intrinsic_below_floor(long gasLimit, bool isFail)
+    public void transaction_validation_intrinsic_below_floor(long gasLimit, bool executed)
     {
         _stateProvider.CreateAccount(TestItem.AddressA, 1.Ether());
         _stateProvider.Commit(_specProvider.GenesisSpec);
@@ -73,7 +73,7 @@ public class TransactionProcessorEip7623Tests
             .WithGasLimit(10000000).TestObject;
 
         TransactionResult result = _transactionProcessor.Execute(tx, new BlockExecutionContext(block.Header, _specProvider.GetSpec(block.Header)), NullTxTracer.Instance);
-        Assert.That(result.Fail, Is.EqualTo(isFail));
+        Assert.That(result.TransactionExecuted, Is.EqualTo(executed));
     }
 
     [Test]

@@ -37,7 +37,7 @@ public class PseudoNethermindRunner(IComponentContext ctx) : IAsyncDisposable
         _blockProducerRunner ??= ctx.Resolve<IBlockProducerRunner>();
         _blockProducerRunner.Start();
 
-        IMainProcessingContext mainBlockProcessingContext = ctx.Resolve<AutoMainProcessingContext>();
+        IMainProcessingContext mainBlockProcessingContext = ctx.Resolve<IMainProcessingContext>();
         _blockchainProcessor = mainBlockProcessingContext.BlockchainProcessor;
         _blockchainProcessor.Start();
 
