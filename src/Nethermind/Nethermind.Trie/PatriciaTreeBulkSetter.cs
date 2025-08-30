@@ -4,6 +4,7 @@
 using System;
 using System.Collections.Generic;
 using System.Numerics;
+using System.Runtime.CompilerServices;
 using System.Threading;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
@@ -41,18 +42,19 @@ public class PatriciaTreeBulkSetter(PatriciaTree patriciaTree)
             return Path.CompareTo(entry.Path);
         }
 
-        public int GetPathNibbble(int index)
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public byte GetPathNibbble(int index)
         {
             int offset = index / 2;
             Span<byte> theSpan = Path.BytesAsSpan;
             int b = theSpan[offset];
             if ((index & 1) == 0)
             {
-                return ((b & 0xf0) >> 4);
+                return (byte)((b & 0xf0) >> 4);
             }
             else
             {
-                return (b & 0x0f);
+                return (byte)(b & 0x0f);
             }
         }
     }
@@ -134,7 +136,7 @@ public class PatriciaTreeBulkSetter(PatriciaTree patriciaTree)
         }
         else
         {
-            nibToCheck = BucketSort16(threadResource, entries, buffer.Span, path.Length, indexes);
+            nibToCheck = BucketSort16(entries, buffer.Span, path.Length, indexes);
             // Buffer is now partially sorted. Swap buffer and entries
             Memory<BulkSetEntry> newBuffer = entriesMemory;
             entriesMemory = buffer;
@@ -548,7 +550,6 @@ public class PatriciaTreeBulkSetter(PatriciaTree patriciaTree)
     /// Partially sort the <see cref="entries"/> based on the nibble at <see cref="pathIndex"/>> while at the same time
     /// populate <see cref="indexes"/> similar to <see cref="HexarySearchAlreadySorted"/>. Output is set to <see cref="sortTarget"/>.
     /// </summary>
-    /// <param name="threadResource"></param>
     /// <param name="entries"></param>
     /// <param name="sortTarget"></param>
     /// <param name="pathIndex"></param>
@@ -556,7 +557,6 @@ public class PatriciaTreeBulkSetter(PatriciaTree patriciaTree)
     /// <returns></returns>
     /// <exception cref="Exception"></exception>
     internal static int BucketSort16(
-        ThreadResource threadResource,
         Span<BulkSetEntry> entries,
         Span<BulkSetEntry> sortTarget,
         int pathIndex,
@@ -571,85 +571,81 @@ public class PatriciaTreeBulkSetter(PatriciaTree patriciaTree)
 
         if (entries.Length < 24)
         {
-            return BucketSort16Small(threadResource, entries, sortTarget, pathIndex, indexes);
+            return BucketSort16Small(entries, sortTarget, pathIndex, indexes);
         }
 
-        return BucketSort16Large(threadResource, entries, sortTarget, pathIndex, indexes);
+        return BucketSort16Large(entries, sortTarget, pathIndex, indexes);
     }
 
     private static int BucketSort16Large(
-        ThreadResource threadResource,
         Span<BulkSetEntry> entries, Span<BulkSetEntry> sortTarget, int pathIndex, Span<(int, int)> indexes)
     {
-        ArrayPoolList<int>[] idxLists = threadResource.SortBuckets.UnsafeGetInternalArray();
+        // You know, I originally used another buffer to keep track of the entries per nibble. then ChatGPT gave me this.
+        // I dont know what is worst, that ChatGPT beat me to it, or that it is simpler.
+
+        Span<int> counts = stackalloc int[TrieNode.BranchesCount];
+        for (int i = 0; i < entries.Length; i++)
+            counts[entries[i].GetPathNibbble(pathIndex)]++;
+
+        Span<int> starts = stackalloc int[TrieNode.BranchesCount];
+        int relevantNib = 0;
+        int total = 0;
+        for (int n = 0; n < TrieNode.BranchesCount; n++)
+        {
+            starts[n] = total;
+            total += counts[n];
+            if (counts[n] != 0)
+                indexes[relevantNib++] = (n, starts[n]);
+        }
 
         for (int i = 0; i < entries.Length; i++)
         {
-            var currentNib = entries[i].GetPathNibbble(pathIndex);
-            idxLists[currentNib].Add(i);
-        }
-
-        int relevantNib = 0;
-        int runningCount = 0;
-        for (int i = 0; i < TrieNode.BranchesCount; i++)
-        {
-            ArrayPoolList<int> currentBucket = idxLists[i];
-
-            if (currentBucket.Count > 0)
-            {
-                indexes[relevantNib] = (i, runningCount);
-                relevantNib++;
-            }
-
-            for (int j = 0; j < currentBucket.Count; j++)
-            {
-                sortTarget[runningCount++] = entries[currentBucket[j]];
-            }
-
-            currentBucket.Clear();
+            int nib = entries[i].GetPathNibbble(pathIndex);
+            sortTarget[starts[nib]++] = entries[i];
         }
 
         return relevantNib;
     }
 
     private static int BucketSort16Small(
-        ThreadResource threadResource,
         Span<BulkSetEntry> entries,
         Span<BulkSetEntry> sortTarget,
         int pathIndex,
         Span<(int, int)> indexes)
     {
-        // Small variant keep track of used nib to prevent looping through 16 possible nib.
+        // The small variant keeps track of used nibbles to skip looping unused nibble.
+        int relevantNib = 0;
+        int usedMask = 0;
 
-        ArrayPoolList<int>[] idxLists = threadResource.SortBuckets.UnsafeGetInternalArray();
+        Span<byte> nibbleCache = stackalloc byte[entries.Length];
 
-        int usedNib = 0;
+        Span<int> counts = stackalloc int[TrieNode.BranchesCount];
         for (int i = 0; i < entries.Length; i++)
         {
-            var currentNib = entries[i].GetPathNibbble(pathIndex);
-            usedNib |= 1 << currentNib;
-            idxLists[currentNib].Add(i);
+            byte nib = entries[i].GetPathNibbble(pathIndex);
+            nibbleCache[i] = nib;
+            counts[nib]++;
+            usedMask |= 1 << nib;
         }
 
-        int relevantNib = 0;
-        int runningCount = 0;
-        while (usedNib != 0)
+        Span<int> starts = stackalloc int[TrieNode.BranchesCount];
+        int total = 0;
+        int mask = usedMask;
+        while (mask != 0)
         {
-            int i = BitOperations.TrailingZeroCount(usedNib);
+            int nib = BitOperations.TrailingZeroCount(mask);
 
-            var currentBucket = idxLists[i];
+            starts[nib] = total;
+            total += counts[nib];
+            indexes[relevantNib++] = (nib, starts[nib]);
 
-            indexes[relevantNib] = (i, runningCount);
-            relevantNib++;
+            mask &= mask - 1; // clear lowest 1-bit
+        }
 
-            for (int j = 0; j < currentBucket.Count; j++)
-            {
-                sortTarget[runningCount++] = entries[currentBucket[j]];
-            }
-
-            currentBucket.Clear();
-
-            usedNib &= usedNib - 1;
+        for (int i = 0; i < entries.Length; i++)
+        {
+            int nib = nibbleCache[i];
+            sortTarget[starts[nib]++] = entries[i];
         }
 
         return relevantNib;
@@ -706,35 +702,13 @@ public class PatriciaTreeBulkSetter(PatriciaTree patriciaTree)
         /// </summary>
         internal Stack<TraverseStack> TraverseStack;
 
-        /// <summary>
-        /// Used by <see cref="PatriciaTreeBulkSetter.BucketSort16"/> to store indexes based on buckets.
-        /// </summary>
-        internal ArrayPoolList<ArrayPoolList<int>>? SortBuckets;
-
-        public ThreadResource(int entryCount, Flags flags)
+        public ThreadResource(Flags flags)
         {
-            if (!flags.HasFlag(Flags.WasSorted))
-            {
-                ArrayPoolList<ArrayPoolList<int>> sortCounters = new ArrayPoolList<ArrayPoolList<int>>(TrieNode.BranchesCount, TrieNode.BranchesCount);
-                for (int i = 0; i < sortCounters.Count; i++)
-                {
-                    sortCounters[i] =
-                        new ArrayPoolList<int>((int)BitOperations.RoundUpToPowerOf2((uint)(entryCount / TrieNode.BranchesCount)));
-                }
-
-                SortBuckets = sortCounters;
-            }
-
             TraverseStack = new Stack<TraverseStack>(16);
         }
 
         public void Dispose()
         {
-            if (SortBuckets is not null)
-            {
-                for (int i = 0; i < SortBuckets.Count; i++) SortBuckets[i].Dispose();
-                SortBuckets.Dispose();
-            }
         }
 
         public void EnsureCleared()
@@ -743,87 +717,32 @@ public class PatriciaTreeBulkSetter(PatriciaTree patriciaTree)
             {
                 throw new InvalidOperationException("traverse stack must be cleared before returning");
             }
-            foreach (ArrayPoolList<int> bucket in SortBuckets)
-            {
-                if (bucket.Count != 0)
-                {
-                    throw new InvalidOperationException("bucket must be cleared before returning");
-                }
-            }
         }
     }
-
-    // Pool some thread resource based on the size of the entry with a simple array
-    private const int ThreadResourcePoolCount = 12;
-    // But for lenght of < 2^this value, just use _threadStaticPool, which is a bit faster, but does not dispose.
-    private const int ThreadResourceThreadStaticBit = 5;
-    private static ThreadResource?[] _pooledThreadResource = new ThreadResource?[ThreadResourcePoolCount];
 
     [ThreadStatic]
     private static ThreadResource? _threadStaticPool;
 
     private ThreadResource GetThreadResource(int entrySize, Flags flags)
     {
-        if (flags.HasFlag(Flags.WasSorted))
+        if (_threadStaticPool is not null)
         {
-            return new ThreadResource(entrySize, flags);
+            ThreadResource threadResource = _threadStaticPool;
+            _threadStaticPool = null;
+            return threadResource;
         }
-
-        // Bucket for every power of 16
-        int bucketIdx = BitOperations.Log2((uint)entrySize);
-        if (bucketIdx > ThreadResourcePoolCount) return new ThreadResource(entrySize, flags); // Seems to be faster to just not pool
-
-        if (bucketIdx <= ThreadResourceThreadStaticBit)
+        else
         {
-            if (_threadStaticPool is not null)
-            {
-                ThreadResource threadResource = _threadStaticPool;
-                _threadStaticPool = null;
-                return threadResource;
-            }
-            else
-            {
-                return new ThreadResource(entrySize, flags);
-            }
+            return new ThreadResource(flags);
         }
-
-        // Get and replace with null
-        ThreadResource? originalValue = Interlocked.Exchange(ref _pooledThreadResource[bucketIdx], null);
-        if (originalValue is not null) return originalValue;
-
-        // Will have to just make a new one
-        return new ThreadResource(entrySize, flags);
     }
 
     private void ReturnThreadResource(int entrySize, Flags flags, ThreadResource threadResource)
     {
-        if (flags.HasFlag(Flags.WasSorted))
-        {
-            threadResource.Dispose();
-            return;
-        }
-
 #if DEBUG
         threadResource.EnsureCleared();
 #endif
 
-        // Bucket for every power of 16
-        int bucketIdx = BitOperations.Log2((uint)entrySize);
-        if (bucketIdx > ThreadResourcePoolCount) {
-            threadResource.Dispose();
-            return;
-        }
-
-        if (bucketIdx <= ThreadResourceThreadStaticBit)
-        {
-            _threadStaticPool = threadResource;
-            return;
-        }
-
-        ThreadResource? originalValue = Interlocked.Exchange(ref _pooledThreadResource[bucketIdx], threadResource);
-        if (originalValue is not null)
-        {
-            originalValue.Dispose();
-        }
+        _threadStaticPool = threadResource;
     }
 }
