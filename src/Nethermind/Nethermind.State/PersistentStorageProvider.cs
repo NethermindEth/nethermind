@@ -744,7 +744,7 @@ internal sealed class PersistentStorageProvider : PartialStorageProviderBase
 
             if (writes > 0)
             {
-                StorageTree.UpdateRootHash(canBeParallel: true);
+                StorageTree.UpdateRootHash(canBeParallel: false);
             }
 
             _flushTimeTotal.WithLabels((!_provider._populatePreBlockCache).ToString(), "calculate_root").Observe(Stopwatch.GetTimestamp() - swt);
