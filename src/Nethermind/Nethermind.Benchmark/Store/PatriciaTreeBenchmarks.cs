@@ -443,7 +443,7 @@ namespace Nethermind.Benchmarks.Store
                 bulkSet.Add(new PatriciaTreeBulkSetter.BulkSetEntry(address, rlp?.Bytes));
             }
 
-            PatriciaTreeBulkSetter.BulkSet(tempTree, bulkSet.AsMemory());
+            PatriciaTreeBulkSetter.BulkSet(tempTree, bulkSet);
         }
 
         [Benchmark]
@@ -457,7 +457,7 @@ namespace Nethermind.Benchmarks.Store
 
             using ArrayPoolList<PatriciaTreeBulkSetter.BulkSetEntry> bulkSet = new ArrayPoolList<PatriciaTreeBulkSetter.BulkSetEntry>(_largerEntryCount);
 
-            using PatriciaTreeBulkSetter.ThreadResource threadResource = new PatriciaTreeBulkSetter.ThreadResource(PatriciaTreeBulkSetter.Flags.None);
+            using PatriciaTreeBulkSetter.ThreadResource threadResource = new PatriciaTreeBulkSetter.ThreadResource();
             PatriciaTreeBulkSetter setter = new PatriciaTreeBulkSetter(tempTree);
             TreePath path = TreePath.Empty;
             for (int i = 0; i < _largerEntryCount; i++)
@@ -467,7 +467,7 @@ namespace Nethermind.Benchmarks.Store
                 tempTree.RootRef = setter.BulkSetOneStack(threadResource, new PatriciaTreeBulkSetter.BulkSetEntry(address, rlp?.Bytes), ref path, tempTree.RootRef, PatriciaTreeBulkSetter.Flags.None);
             }
 
-            PatriciaTreeBulkSetter.BulkSet(tempTree, bulkSet.AsMemory());
+            PatriciaTreeBulkSetter.BulkSet(tempTree, bulkSet);
         }
 
         [Benchmark]
@@ -488,7 +488,7 @@ namespace Nethermind.Benchmarks.Store
                 bulkSet.Add(new PatriciaTreeBulkSetter.BulkSetEntry(address, rlp?.Bytes));
             }
 
-            PatriciaTreeBulkSetter.BulkSet(tempTree, bulkSet.AsMemory(), PatriciaTreeBulkSetter.Flags.DoNotParallelize);
+            PatriciaTreeBulkSetter.BulkSet(tempTree, bulkSet, PatriciaTreeBulkSetter.Flags.DoNotParallelize);
         }
 
         [Benchmark]
@@ -509,7 +509,7 @@ namespace Nethermind.Benchmarks.Store
                 bulkSet.Add(new PatriciaTreeBulkSetter.BulkSetEntry(address, rlp?.Bytes));
             }
 
-            PatriciaTreeBulkSetter.BulkSet(tempTree, bulkSet.AsMemory(), PatriciaTreeBulkSetter.Flags.WasSorted);
+            PatriciaTreeBulkSetter.BulkSet(tempTree, bulkSet, PatriciaTreeBulkSetter.Flags.WasSorted);
         }
 
         /*

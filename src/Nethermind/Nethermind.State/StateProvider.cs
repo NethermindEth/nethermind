@@ -774,7 +774,7 @@ namespace Nethermind.State
                     }
                 }
 
-                PatriciaTreeBulkSetter.BulkSet(_tree, bulkWrite.AsMemory());
+                PatriciaTreeBulkSetter.BulkSet(_tree, bulkWrite);
             }
 
             if (writes > 0)

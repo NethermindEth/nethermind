@@ -737,7 +737,7 @@ internal sealed class PersistentStorageProvider : PartialStorageProviderBase
 
                 _flushTimeTotal.WithLabels((!_provider._populatePreBlockCache).ToString(), "prep").Observe(Stopwatch.GetTimestamp() - swt);
                 swt = Stopwatch.GetTimestamp();
-                PatriciaTreeBulkSetter.BulkSet(StorageTree, bulkWrite.AsMemory());
+                PatriciaTreeBulkSetter.BulkSet(StorageTree, bulkWrite);
                 _flushTimeTotal.WithLabels((!_provider._populatePreBlockCache).ToString(), "bulk_set").Observe(Stopwatch.GetTimestamp() - swt);
             }
             swt = Stopwatch.GetTimestamp();
