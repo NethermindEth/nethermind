@@ -81,15 +81,26 @@ public class PatriciaTreeBulkSetter(PatriciaTree patriciaTree)
         TreePath path = TreePath.Empty;
         ThreadResource threadResource = GetThreadResource();
         using ArrayPoolList<BulkSetEntry> buffer = new ArrayPoolList<BulkSetEntry>(entries.Length, entries.Length);
+        using ArrayPoolList<byte> nibbleBuffer = new ArrayPoolList<byte>(entries.Length, entries.Length);
 
+        Context ctx = new Context()
+        {
+            originalBufferArray = buffer.UnsafeGetInternalArray(),
+            originalEntriesArray = entriesMemory.UnsafeGetInternalArray(),
+            nibbleBufferArray = nibbleBuffer.UnsafeGetInternalArray(),
+        };
 
         TrieNode? newRoot = BulkSet(
+            ctx,
             threadResource,
-            entriesMemory.UnsafeGetInternalArray(),
-            buffer.UnsafeGetInternalArray(),
             entriesMemory.AsSpan(),
             buffer.AsSpan(),
-            ref path, patriciaTree.RootRef, (flags & Flags.DoNotParallelize) == 0, flags);
+            nibbleBuffer.AsSpan(),
+            ref path,
+            patriciaTree.RootRef,
+            0,
+            (flags & Flags.DoNotParallelize) == 0,
+            flags);
         if (flags.HasFlag(Flags.CalculateRoot)) newRoot?.ResolveKey(patriciaTree.TrieStore, ref path, canBeParallel: false);
         patriciaTree.RootRef = newRoot;
 
@@ -98,14 +109,22 @@ public class PatriciaTreeBulkSetter(PatriciaTree patriciaTree)
         ReturnThreadResource(threadResource);
     }
 
+    internal struct Context
+    {
+        internal BulkSetEntry[] originalEntriesArray;
+        internal BulkSetEntry[] originalBufferArray;
+        internal byte[] nibbleBufferArray;
+    }
+
     internal TrieNode? BulkSet(
+        in Context ctx,
         ThreadResource threadResource,
-        BulkSetEntry[] originalEntriesArray,
-        BulkSetEntry[] originalBufferArray,
         Span<BulkSetEntry> entries,
         Span<BulkSetEntry> buffer,
+        Span<byte> nibbleBuffer,
         ref TreePath path,
         TrieNode? node,
+        int flipCount,
         bool canParallelize,
         Flags flags)
     {
@@ -144,9 +163,9 @@ public class PatriciaTreeBulkSetter(PatriciaTree patriciaTree)
         }
         else
         {
-            nibToCheck = BucketSort16(entries, buffer, path.Length, indexes);
+            nibToCheck = BucketSort16(entries, buffer, nibbleBuffer, path.Length, indexes);
             // Buffer is now partially sorted. Swap buffer and entries
-            (originalEntriesArray, originalBufferArray) = (originalBufferArray, originalEntriesArray);
+            flipCount++;
 
             Span<BulkSetEntry> newBufferSpan = entries;
             entries = buffer;
@@ -157,9 +176,12 @@ public class PatriciaTreeBulkSetter(PatriciaTree patriciaTree)
         int nonNullChildCount = 0;
         if (entries.Length >= MinEntriesToParallelizeThreshold && nibToCheck == TrieNode.BranchesCount && canParallelize)
         {
-            (int startIdx, int count, int nibble, TreePath appendedPath, TrieNode? currentChild, TrieNode? newChild, Flags flags)[] jobs =
-                new (int startIdx, int count, int nibble, TreePath appendedPath, TrieNode? currentChild, TrieNode? newChild, Flags flags)[TrieNode.BranchesCount];
+            (int startIdx, int count, int nibble, TreePath appendedPath, TrieNode? currentChild, TrieNode? newChild)[] jobs =
+                new (int startIdx, int count, int nibble, TreePath appendedPath, TrieNode? currentChild, TrieNode? newChild)[TrieNode.BranchesCount];
 
+            Context closureCtx = ctx;
+            var originalEntriesArray = (flipCount % 2 == 0) ? ctx.originalEntriesArray : ctx.originalBufferArray;
+            var originalBufferArray = (flipCount % 2 == 0) ? ctx.originalBufferArray : ctx.originalEntriesArray;
             TrieNode.ChildIterator childIterator = node.CreateChildIterator();
             for (int i = 0; i < TrieNode.BranchesCount; i++)
             {
@@ -175,7 +197,7 @@ public class PatriciaTreeBulkSetter(PatriciaTree patriciaTree)
 
                 TreePath childPath = path.Append(nib);
                 TrieNode? child = childIterator.GetChildWithChildPath(patriciaTree.TrieStore, ref childPath, nib);
-                jobs[i] = (GetSpanOffset(originalEntriesArray, jobEntry), jobEntry.Length, nib, childPath, child, null, flags);
+                jobs[i] = (GetSpanOffset(originalEntriesArray, jobEntry), jobEntry.Length, nib, childPath, child, null);
             }
 
             ParallelUnbalancedWork.For(0, nibToCheck,
@@ -183,13 +205,14 @@ public class PatriciaTreeBulkSetter(PatriciaTree patriciaTree)
                 GetThreadResource,
                 (i, workerThreadResource) =>
                 {
-                    (int startIdx, int count, int nib, TreePath childPath, TrieNode child, TrieNode? outNode, Flags flags) = jobs[i];
+                    (int startIdx, int count, int nib, TreePath childPath, TrieNode child, TrieNode? outNode) = jobs[i];
 
                     Span<BulkSetEntry> jobEntries = originalEntriesArray.AsSpan().Slice(startIdx, count);
                     Span<BulkSetEntry> bufferEntries = originalBufferArray.AsSpan().Slice(startIdx, count);
+                    Span<byte> nibbleBuffer = closureCtx.nibbleBufferArray.AsSpan().Slice(startIdx, count);
 
-                    TrieNode? newChild = BulkSet(workerThreadResource, originalEntriesArray, originalBufferArray, jobEntries, bufferEntries, ref childPath, child, false, flags); // Only parallelize at top level.
-                    jobs[i] = (startIdx, count, nib, childPath, child, newChild, flags); // Just need the child actually...
+                    TrieNode? newChild = BulkSet(in closureCtx, workerThreadResource, jobEntries, bufferEntries, nibbleBuffer, ref childPath, child, flipCount, false, flags); // Only parallelize at top level.
+                    jobs[i] = (startIdx, count, nib, childPath, child, newChild); // Just need the child actually...
 
                     return workerThreadResource;
                 }, ReturnThreadResource);
@@ -227,7 +250,7 @@ public class PatriciaTreeBulkSetter(PatriciaTree patriciaTree)
 
                 TrieNode newChild = (endRange - startRange == 1)
                     ? BulkSetOneStack(threadResource, entries[startRange], ref path, child, flags)
-                    : BulkSet(threadResource, originalEntriesArray, originalBufferArray, entries[startRange..endRange], buffer[startRange..endRange], ref path, child, canParallelize, flags);
+                    : BulkSet(in ctx, threadResource, entries[startRange..endRange], buffer[startRange..endRange], nibbleBuffer[startRange..endRange], ref path, child, flipCount, canParallelize, flags);
 
                 if (!ShouldUpdateChild(child, newChild)) continue;
 
@@ -557,6 +580,7 @@ public class PatriciaTreeBulkSetter(PatriciaTree patriciaTree)
     internal static int BucketSort16(
         Span<BulkSetEntry> entries,
         Span<BulkSetEntry> sortTarget,
+        Span<byte> nibbleBuffer,
         int pathIndex,
         Span<(int, int)> indexes)
     {
@@ -569,21 +593,29 @@ public class PatriciaTreeBulkSetter(PatriciaTree patriciaTree)
 
         if (entries.Length < 24)
         {
-            return BucketSort16Small(entries, sortTarget, pathIndex, indexes);
+            return BucketSort16Small(entries, sortTarget, nibbleBuffer, pathIndex, indexes);
         }
 
-        return BucketSort16Large(entries, sortTarget, pathIndex, indexes);
+        return BucketSort16Large(entries, sortTarget, nibbleBuffer, pathIndex, indexes);
     }
 
     private static int BucketSort16Large(
-        Span<BulkSetEntry> entries, Span<BulkSetEntry> sortTarget, int pathIndex, Span<(int, int)> indexes)
+        Span<BulkSetEntry> entries,
+        Span<BulkSetEntry> sortTarget,
+        Span<byte> nibbleBuffer,
+        int pathIndex,
+        Span<(int, int)> indexes)
     {
         // You know, I originally used another buffer to keep track of the entries per nibble. then ChatGPT gave me this.
         // I dont know what is worst, that ChatGPT beat me to it, or that it is simpler.
 
         Span<int> counts = stackalloc int[TrieNode.BranchesCount];
         for (int i = 0; i < entries.Length; i++)
-            counts[entries[i].GetPathNibbble(pathIndex)]++;
+        {
+            byte nib = entries[i].GetPathNibbble(pathIndex);
+            nibbleBuffer[i] = nib;
+            counts[nib]++;
+        }
 
         Span<int> starts = stackalloc int[TrieNode.BranchesCount];
         int relevantNib = 0;
@@ -598,7 +630,7 @@ public class PatriciaTreeBulkSetter(PatriciaTree patriciaTree)
 
         for (int i = 0; i < entries.Length; i++)
         {
-            int nib = entries[i].GetPathNibbble(pathIndex);
+            int nib = nibbleBuffer[i];
             sortTarget[starts[nib]++] = entries[i];
         }
 
@@ -608,6 +640,7 @@ public class PatriciaTreeBulkSetter(PatriciaTree patriciaTree)
     private static int BucketSort16Small(
         Span<BulkSetEntry> entries,
         Span<BulkSetEntry> sortTarget,
+        Span<byte> nibbleBuffer,
         int pathIndex,
         Span<(int, int)> indexes)
     {
@@ -615,13 +648,11 @@ public class PatriciaTreeBulkSetter(PatriciaTree patriciaTree)
         int relevantNib = 0;
         int usedMask = 0;
 
-        Span<byte> nibbleCache = stackalloc byte[entries.Length];
-
         Span<int> counts = stackalloc int[TrieNode.BranchesCount];
         for (int i = 0; i < entries.Length; i++)
         {
             byte nib = entries[i].GetPathNibbble(pathIndex);
-            nibbleCache[i] = nib;
+            nibbleBuffer[i] = nib;
             counts[nib]++;
             usedMask |= 1 << nib;
         }
@@ -642,7 +673,7 @@ public class PatriciaTreeBulkSetter(PatriciaTree patriciaTree)
 
         for (int i = 0; i < entries.Length; i++)
         {
-            int nib = nibbleCache[i];
+            int nib = nibbleBuffer[i];
             sortTarget[starts[nib]++] = entries[i];
         }
 
