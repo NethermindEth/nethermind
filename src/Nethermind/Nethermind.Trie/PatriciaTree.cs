@@ -3,12 +3,15 @@
 
 using System;
 using System.Buffers;
+using System.Buffers.Binary;
 using System.Collections.Generic;
+using System.Data;
 using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
 using System.IO;
 using System.Runtime.CompilerServices;
 using System.Runtime.ExceptionServices;
+using System.Runtime.InteropServices;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Core;
@@ -16,9 +19,11 @@ using Nethermind.Core.Buffers;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
+using Nethermind.Core.Threading;
 using Nethermind.Logging;
 using Nethermind.Serialization.Rlp;
 using Nethermind.Trie.Pruning;
+using Prometheus;
 
 namespace Nethermind.Trie
 {
@@ -150,8 +155,14 @@ namespace Nethermind.Trie
 
                 // reset objects
                 RootRef!.ResolveKey(TrieStore, ref path, true, bufferPool: _bufferPool);
-                SetRootHash(RootRef.Keccak!, true);
             }
+
+            SetRootHash(RootRef?.Keccak!, true);
+        }
+
+        internal void IncrementWriteCount(long writeCount)
+        {
+            _writeBeforeCommit += writeCount;
         }
 
         private void Commit(ICommitter committer, ref TreePath path, NodeCommitInfo nodeCommitInfo, int maxLevelForConcurrentCommit, bool skipSelf = false)
@@ -844,13 +855,13 @@ namespace Nethermind.Trie
             RootRef = nextNode;
             return;
 
-        Corruption:
+            Corruption:
             ThrowTrieExceptionCorruption();
-        InvalidNodeType:
+            InvalidNodeType:
             ThrowInvalidNodeType(node);
-        NullNode:
+            NullNode:
             ThrowInvalidNullNode(node);
-        LeafCannotBeParent:
+            LeafCannotBeParent:
             ThrowTrieExceptionLeafCannotBeParent(node, nextNode);
 
             [DoesNotReturn, StackTraceHidden]

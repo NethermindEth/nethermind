@@ -12,6 +12,7 @@ using System.Runtime.InteropServices;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Core;
+using Nethermind.Core.Buffers;
 using Nethermind.Core.Caching;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
@@ -21,9 +22,10 @@ using Nethermind.Core.Specs;
 using Nethermind.Evm.Tracing.State;
 using Nethermind.Int256;
 using Nethermind.Logging;
+using Nethermind.Serialization.Rlp;
 using Nethermind.Trie;
 using Nethermind.Trie.Pruning;
-
+using Prometheus;
 using Metrics = Nethermind.Db.Metrics;
 using static Nethermind.State.StateProvider;
 
@@ -57,6 +59,17 @@ namespace Nethermind.State
         private readonly bool _populatePreBlockCache;
         private bool _needsStateRootUpdate;
 
+        private Counter _stateProviderGetFromTrieCount = Prometheus.Metrics.CreateCounter("state_provider_get_count", "Get count", "is_main");
+        private Counter _stateProviderGetFromTrieTime = Prometheus.Metrics.CreateCounter("state_provider_get_time", "Get count", "is_main");
+        private Counter _storageProviderPreWarmRead = Prometheus.Metrics.CreateCounter("storage_provider_pre_warm_read", "Get count", "cache_hit");
+
+        private Histogram _commitTime = Prometheus.Metrics.CreateHistogram("state_provider_flushtree_time", "committ tree time",
+            new HistogramConfiguration()
+            {
+                LabelNames = ["is_main"],
+                Buckets = Histogram.PowersOfTenDividedBuckets(3, 9, 20)
+            });
+
         public StateProvider(IScopedTrieStore? trieStore,
             IKeyValueStoreWithBatching codeDb,
             ILogManager logManager,
@@ -71,8 +84,17 @@ namespace Nethermind.State
             _tree = stateTree ?? new StateTree(trieStore, logManager);
             _getStateFromTrie = address =>
             {
+                long startTime = Stopwatch.GetTimestamp();
                 Metrics.IncrementStateTreeReads();
-                return _tree.Get(address);
+                try
+                {
+                    return _tree.Get(address);
+                }
+                finally
+                {
+                    _stateProviderGetFromTrieCount.WithLabels((!_populatePreBlockCache).ToString()).Inc();
+                    _stateProviderGetFromTrieTime.WithLabels((!_populatePreBlockCache).ToString()).Inc(Stopwatch.GetTimestamp() - startTime);
+                }
             };
         }
 
@@ -708,25 +730,58 @@ namespace Nethermind.State
         {
             int writes = 0;
             int skipped = 0;
-            foreach (var key in _blockChanges.Keys)
+
+            long sw = Stopwatch.GetTimestamp();
+            if (_blockChanges.Count < PatriciaTreeBulkSetter.MinEntriesToParallelizeThreshold)
             {
-                ref var change = ref CollectionsMarshal.GetValueRefOrNullRef(_blockChanges, key);
-                if (change.Before != change.After)
+                foreach (var key in _blockChanges.Keys)
                 {
-                    change.Before = change.After;
-                    _tree.Set(key, change.After);
-                    writes++;
+                    ref var change = ref CollectionsMarshal.GetValueRefOrNullRef(_blockChanges, key);
+                    if (change.Before != change.After)
+                    {
+                        change.Before = change.After;
+
+                        _tree.Set(key, change.After);
+                        writes++;
+                    }
+                    else
+                    {
+                        skipped++;
+                    }
                 }
-                else
+            }
+            else
+            {
+                using ArrayPoolList<PatriciaTreeBulkSetter.BulkSetEntry> bulkWrite = new(_blockChanges.Count);
+                foreach (var key in _blockChanges.Keys)
                 {
-                    skipped++;
+                    ref var change = ref CollectionsMarshal.GetValueRefOrNullRef(_blockChanges, key);
+                    if (change.Before != change.After)
+                    {
+                        change.Before = change.After;
+
+                        KeccakCache.ComputeTo(key.Value.Bytes, out ValueHash256 keccak);
+
+                        var account = change.After;
+                        Rlp accountRlp = account is null ? null : account.IsTotallyEmpty ? StateTree.EmptyAccountRlp : Rlp.Encode(account);
+
+                        bulkWrite.Add(new PatriciaTreeBulkSetter.BulkSetEntry(keccak, accountRlp?.Bytes));
+                        writes++;
+                    }
+                    else
+                    {
+                        skipped++;
+                    }
                 }
+
+                PatriciaTreeBulkSetter.BulkSet(_tree, bulkWrite);
             }
 
             if (writes > 0)
                 Metrics.IncrementStateTreeWrites(writes);
             if (skipped > 0)
                 Metrics.IncrementStateSkippedWrites(skipped);
+            _commitTime.WithLabels((!_populatePreBlockCache).ToString()).Observe(Stopwatch.GetTimestamp() - sw);
         }
 
         public bool WarmUp(Address address)
@@ -751,6 +806,7 @@ namespace Nethermind.State
             return accountChanges.After;
         }
 
+        private Counter _stateProviderPreWarmRead = Prometheus.Metrics.CreateCounter("state_provider_pre_warm_read", "Get count", "is_main", "cache_hit");
         private Account? GetStatePopulatePrewarmCache(AddressAsKey addressAsKey)
         {
             long priorReads = Metrics.ThreadLocalStateTreeReads;
@@ -769,10 +825,12 @@ namespace Nethermind.State
         {
             if (_preBlockCache?.TryGetValue(addressAsKey, out Account? account) ?? false)
             {
+                _stateProviderPreWarmRead.WithLabels((!_populatePreBlockCache).ToString(), "hit").Inc();
                 Metrics.IncrementStateTreeCacheHits();
             }
             else
             {
+                _stateProviderPreWarmRead.WithLabels((!_populatePreBlockCache).ToString(), "miss").Inc();
                 account = _getStateFromTrie(addressAsKey);
             }
             return account;
@@ -896,14 +954,21 @@ namespace Nethermind.State
             void Trace() => _logger.Trace("Clearing state provider caches");
         }
 
+        private Counter StateProvideCommitTreeTime =
+            Prometheus.Metrics.CreateCounter("state_provider_commit_tree_part", "commit tree", "part");
+
         public void CommitTree()
         {
             if (_needsStateRootUpdate)
             {
+                long sw = Stopwatch.GetTimestamp();
                 RecalculateStateRoot();
+                StateProvideCommitTreeTime.WithLabels("root").Inc(Stopwatch.GetTimestamp() - sw);
             }
 
+            long s2 = Stopwatch.GetTimestamp();
             _tree.Commit();
+            StateProvideCommitTreeTime.WithLabels("commit").Inc(Stopwatch.GetTimestamp() - s2);
         }
 
         // used in EthereumTests
