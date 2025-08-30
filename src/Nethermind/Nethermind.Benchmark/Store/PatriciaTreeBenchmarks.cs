@@ -407,8 +407,8 @@ namespace Nethermind.Benchmarks.Store
             using IBlockCommitter _ = trieStore.BeginBlockCommit(0);
             tempTree.Commit();
         }
-
         */
+
         [Benchmark]
         public void LargeSetOnly()
         {
@@ -457,7 +457,7 @@ namespace Nethermind.Benchmarks.Store
 
             using ArrayPoolList<PatriciaTreeBulkSetter.BulkSetEntry> bulkSet = new ArrayPoolList<PatriciaTreeBulkSetter.BulkSetEntry>(_largerEntryCount);
 
-            using PatriciaTreeBulkSetter.ThreadResource threadResource = new PatriciaTreeBulkSetter.ThreadResource(_largerEntryCount, PatriciaTreeBulkSetter.Flags.None);
+            using PatriciaTreeBulkSetter.ThreadResource threadResource = new PatriciaTreeBulkSetter.ThreadResource(PatriciaTreeBulkSetter.Flags.None);
             PatriciaTreeBulkSetter setter = new PatriciaTreeBulkSetter(tempTree);
             TreePath path = TreePath.Empty;
             for (int i = 0; i < _largerEntryCount; i++)
@@ -511,6 +511,78 @@ namespace Nethermind.Benchmarks.Store
 
             PatriciaTreeBulkSetter.BulkSet(tempTree, bulkSet.AsMemory(), PatriciaTreeBulkSetter.Flags.WasSorted);
         }
+
+        /*
+        [Benchmark]
+        public void LargeBulkSetOneByOne1()
+        {
+            PatriciaTreeBulkSetter.MinEntriesToSetOneByOne = 1;
+            LargeBulkSet();
+        }
+
+        [Benchmark]
+        public void LargeBulkSetOneByOne2()
+        {
+            PatriciaTreeBulkSetter.MinEntriesToSetOneByOne = 2;
+            LargeBulkSet();
+        }
+
+        [Benchmark]
+        public void LargeBulkSetOneByOne4()
+        {
+            PatriciaTreeBulkSetter.MinEntriesToSetOneByOne = 4;
+            LargeBulkSet();
+        }
+
+        [Benchmark]
+        public void LargeBulkSetOneByOne8()
+        {
+            PatriciaTreeBulkSetter.MinEntriesToSetOneByOne = 8;
+            LargeBulkSet();
+        }
+
+        [Benchmark]
+        public void LargeBulkSetOneByOne16()
+        {
+            PatriciaTreeBulkSetter.MinEntriesToSetOneByOne = 16;
+            LargeBulkSet();
+        }
+
+        [Benchmark]
+        public void LargeBulkSetOneByOne32()
+        {
+            PatriciaTreeBulkSetter.MinEntriesToSetOneByOne = 32;
+            LargeBulkSet();
+        }
+
+        [Benchmark]
+        public void LargeBulkSetOneByOne64()
+        {
+            PatriciaTreeBulkSetter.MinEntriesToSetOneByOne = 64;
+            LargeBulkSet();
+        }
+
+        [Benchmark]
+        public void LargeBulkSetOneByOne128()
+        {
+            PatriciaTreeBulkSetter.MinEntriesToSetOneByOne = 128;
+            LargeBulkSet();
+        }
+
+        [Benchmark]
+        public void LargeBulkSetOneByOne256()
+        {
+            PatriciaTreeBulkSetter.MinEntriesToSetOneByOne = 256;
+            LargeBulkSet();
+        }
+
+        [Benchmark]
+        public void LargeBulkSetOneByOne512()
+        {
+            PatriciaTreeBulkSetter.MinEntriesToSetOneByOne = 512;
+            LargeBulkSet();
+        }
+        */
 
         /*
         [Benchmark]

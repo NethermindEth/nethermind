@@ -8,14 +8,11 @@ using System.Linq;
 using FluentAssertions;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
-using Nethermind.Core.Extensions;
 using Nethermind.Core.Test;
 using Nethermind.Logging;
-using Nethermind.Serialization.Rlp.TxDecoders;
 using Nethermind.Trie;
 using Nethermind.Trie.Pruning;
 using NUnit.Framework;
-using No = Nethermind.JsonRpc.No;
 
 namespace Nethermind.Store.Test;
 
@@ -505,11 +502,9 @@ public class PatriciaTreeBulkSetterTests
             items.Add(new PatriciaTreeBulkSetter.BulkSetEntry(ValueHash256, Array.Empty<byte>()));
         }
 
-        PatriciaTreeBulkSetter.ThreadResource thread = new PatriciaTreeBulkSetter.ThreadResource(items.Count, PatriciaTreeBulkSetter.Flags.None);
-
         Span<(int, int)> result = stackalloc (int, int)[TrieNode.BranchesCount];
         using ArrayPoolList<PatriciaTreeBulkSetter.BulkSetEntry> buffer = new ArrayPoolList<PatriciaTreeBulkSetter.BulkSetEntry>(paths.Count, paths.Count);
-        int resultNum = PatriciaTreeBulkSetter.BucketSort16(thread, items.AsSpan(), buffer.AsSpan(), 0, result);
+        int resultNum = PatriciaTreeBulkSetter.BucketSort16(items.AsSpan(), buffer.AsSpan(), 0, result);
 
         List<ValueHash256> partiallySortedPaths = buffer.Select((it) => it.Path).ToList();
         partiallySortedPaths.Should().BeEquivalentTo(expectedPaths);
