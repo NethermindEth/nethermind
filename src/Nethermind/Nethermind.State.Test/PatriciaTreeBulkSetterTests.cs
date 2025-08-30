@@ -259,7 +259,7 @@ public class PatriciaTreeBulkSetterTests
             }
 
             long sw = Stopwatch.GetTimestamp();
-            PatriciaTreeBulkSetter.BulkSet(pTree, entries.AsMemory(), PatriciaTreeBulkSetter.Flags.CalculateRoot);
+            PatriciaTreeBulkSetter.BulkSet(pTree, entries, PatriciaTreeBulkSetter.Flags.CalculateRoot);
             pTree.Commit();
             newTime = Stopwatch.GetElapsedTime(sw);
             newWriteCount = db.WritesCount;
@@ -318,7 +318,7 @@ public class PatriciaTreeBulkSetterTests
             entries.AsSpan().Sort();
 
             long sw = Stopwatch.GetTimestamp();
-            PatriciaTreeBulkSetter.BulkSet(pTree, entries.AsMemory(), PatriciaTreeBulkSetter.Flags.WasSorted);
+            PatriciaTreeBulkSetter.BulkSet(pTree, entries, PatriciaTreeBulkSetter.Flags.WasSorted);
             pTree.Commit();
             preSortedWriteCount = db.WritesCount;
             preSortedTime = Stopwatch.GetElapsedTime(sw);
@@ -377,7 +377,7 @@ public class PatriciaTreeBulkSetterTests
 
             long sw = Stopwatch.GetTimestamp();
             PatriciaTreeBulkSetter setter = new PatriciaTreeBulkSetter(pTree);
-            PatriciaTreeBulkSetter.ThreadResource threadResource = new PatriciaTreeBulkSetter.ThreadResource(entries.Count, PatriciaTreeBulkSetter.Flags.None);
+            PatriciaTreeBulkSetter.ThreadResource threadResource = new PatriciaTreeBulkSetter.ThreadResource();
             foreach (PatriciaTreeBulkSetter.BulkSetEntry bulkSetEntry in entries)
             {
                 TreePath path = TreePath.Empty;
@@ -465,7 +465,7 @@ public class PatriciaTreeBulkSetterTests
         entries.Add(new PatriciaTreeBulkSetter.BulkSetEntry(new ValueHash256("8848888888888888888888888888888888888888888888888888888888888888"), MakeRandomValue(rng)));
         entries.Add(new PatriciaTreeBulkSetter.BulkSetEntry(new ValueHash256("8858888888888888888888888888888888888888888888888888888888888888"), MakeRandomValue(rng)));
 
-        var act = () => PatriciaTreeBulkSetter.BulkSet(pTree, entries.AsMemory());
+        var act = () => PatriciaTreeBulkSetter.BulkSet(pTree, entries);
         act.Should().Throw<InvalidOperationException>();
     }
 
