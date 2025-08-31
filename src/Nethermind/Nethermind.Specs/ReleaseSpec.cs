@@ -4,6 +4,7 @@
 using System;
 using System.Collections.Generic;
 using Nethermind.Core;
+using Nethermind.Core.Precompiles;
 using Nethermind.Core.Specs;
 using Nethermind.Int256;
 
@@ -157,42 +158,42 @@ namespace Nethermind.Specs
 
         Array? IReleaseSpec.EvmInstructionsTraced { get; set; }
         public bool IsEip7939Enabled { get; set; }
-        HashSet<AddressAsKey>? IReleaseSpec.Precompiles { get; set; }
-        public bool IsPrecompile(Address address)
-        {
-            HashSet<AddressAsKey>? precompiles = ((IReleaseSpec)this).Precompiles ??= BuildPrecompilesCache();
-            return precompiles.Contains(address);
-        }
 
+        private HashSet<AddressAsKey>? _precompiles;
+        HashSet<AddressAsKey>? IReleaseSpec.Precompiles
+        {
+            get => _precompiles ??= BuildPrecompilesCache();
+            set => _precompiles = value;
+        }
         public virtual HashSet<AddressAsKey> BuildPrecompilesCache()
         {
             HashSet<AddressAsKey> cache = new();
 
-            cache.Add(Address.FromNumber(0x01));
-            cache.Add(Address.FromNumber(0x02));
-            cache.Add(Address.FromNumber(0x03));
-            cache.Add(Address.FromNumber(0x04));
+            cache.Add(Precompiles.EcRecover);
+            cache.Add(Precompiles.Sha256);
+            cache.Add(Precompiles.Ripemd160);
+            cache.Add(Precompiles.Identity);
 
-            if (IsEip198Enabled) cache.Add(Address.FromNumber(0x05));
+            if (IsEip198Enabled) cache.Add(Precompiles.ModExp);
             if (IsEip196Enabled && IsEip197Enabled)
             {
-                cache.Add(Address.FromNumber(0x06));
-                cache.Add(Address.FromNumber(0x07));
-                cache.Add(Address.FromNumber(0x08));
+                cache.Add(Precompiles.Bn128Add);
+                cache.Add(Precompiles.Bn128Mul);
+                cache.Add(Precompiles.Bn128Pairing);
             }
-            if (IsEip152Enabled) cache.Add(Address.FromNumber(0x09));
-            if (IsEip4844Enabled) cache.Add(Address.FromNumber(0x0a));
+            if (IsEip152Enabled) cache.Add(Precompiles.Blake2F);
+            if (IsEip4844Enabled) cache.Add(Precompiles.PointEvaluation);
             if (IsEip2537Enabled)
             {
-                cache.Add(Address.FromNumber(0x0b));
-                cache.Add(Address.FromNumber(0x0c));
-                cache.Add(Address.FromNumber(0x0d));
-                cache.Add(Address.FromNumber(0x0e));
-                cache.Add(Address.FromNumber(0x0f));
-                cache.Add(Address.FromNumber(0x10));
-                cache.Add(Address.FromNumber(0x11));
+                cache.Add(Precompiles.Bls12G1Add);
+                cache.Add(Precompiles.Bls12G1Mul);
+                cache.Add(Precompiles.Bls12G1MultiExp);
+                cache.Add(Precompiles.Bls12G2Add);
+                cache.Add(Precompiles.Bls12G2Mul);
+                cache.Add(Precompiles.Bls12G2MultiExp);
+                cache.Add(Precompiles.Bls12Pairing);
             }
-            if (IsRip7212Enabled) cache.Add(Address.FromNumber(0x0100));
+            if (IsRip7212Enabled) cache.Add(Precompiles.P256Verify);
 
             return cache;
         }

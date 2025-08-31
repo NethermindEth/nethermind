@@ -67,7 +67,7 @@ public class CodeInfoRepository : ICodeInfoRepository
     public ICodeInfo GetCachedCodeInfo(IWorldState worldState, Address codeSource, bool followDelegation, IReleaseSpec vmSpec, out Address? delegationAddress)
     {
         delegationAddress = null;
-        if (codeSource.IsPrecompile(vmSpec))
+        if (vmSpec.IsPrecompile(codeSource))
         {
             return _localPrecompiles[codeSource];
         }
@@ -271,4 +271,3 @@ public class CodeInfoRepository : ICodeInfoRepository
         }
     }
 }
-

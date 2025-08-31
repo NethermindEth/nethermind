@@ -365,6 +365,20 @@ namespace Nethermind.Core.Specs
         bool IsEip7883Enabled { get; }
 
         /// <summary>
+        /// Determines whether the specified address is a precompiled contract for this release specification.
+        /// This method uses the cached Precompiles collection for efficient lookups.
+        /// </summary>
+        /// <param name="address">The address to check for precompile status.</param>
+        /// <returns>True if the address is a precompiled contract; otherwise, false.</returns>
+        bool IsPrecompile(Address address) => Precompiles?.Contains(address) ?? false;
+
+        /// <summary>
+        /// Gets a cached set of all precompiled contract addresses for this release specification.
+        /// Chain-specific implementations can override this to include their own precompiled contracts.
+        /// </summary>
+        HashSet<AddressAsKey>? Precompiles { get; set; }
+
+        /// <summary>
         /// Should transactions be validated against chainId.
         /// </summary>
         /// <remarks>Backward compatibility for early Kovan blocks.</remarks>
@@ -461,14 +475,6 @@ namespace Nethermind.Core.Specs
         public bool RequestsEnabled => ConsolidationRequestsEnabled || WithdrawalRequestsEnabled || DepositsEnabled;
 
         public bool IsEip7594Enabled { get; }
-
-        bool IsPrecompile(Address address);
-
-        /// <summary>
-        /// Gets a cached set of all precompiled contract addresses for this release specification.
-        /// Chain-specific implementations can override this to include their own precompiled contracts.
-        /// </summary>
-        HashSet<AddressAsKey>? Precompiles { get; set; }
 
         /// <summary>
         /// This property holds an array that, at runtime, is actually an array of function pointers
