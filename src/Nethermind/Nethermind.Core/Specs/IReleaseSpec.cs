@@ -366,7 +366,6 @@ namespace Nethermind.Core.Specs
 
         /// <summary>
         /// Determines whether the specified address is a precompiled contract for this release specification.
-        /// This method uses the cached Precompiles collection for efficient lookups.
         /// </summary>
         /// <param name="address">The address to check for precompile status.</param>
         /// <returns>True if the address is a precompiled contract; otherwise, false.</returns>
