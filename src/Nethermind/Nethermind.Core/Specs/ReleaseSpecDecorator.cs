@@ -148,6 +148,5 @@ public class ReleaseSpecDecorator(IReleaseSpec spec) : IReleaseSpec
     Array? IReleaseSpec.EvmInstructionsNoTrace { get => spec.EvmInstructionsNoTrace; set => spec.EvmInstructionsNoTrace = value; }
     Array? IReleaseSpec.EvmInstructionsTraced { get => spec.EvmInstructionsTraced; set => spec.EvmInstructionsTraced = value; }
     public bool IsEip7939Enabled => spec.IsEip7939Enabled;
-    public bool IsPrecompile(Address address) => spec.IsPrecompile(address);
     HashSet<AddressAsKey> IReleaseSpec.Precompiles => spec.Precompiles;
 }
