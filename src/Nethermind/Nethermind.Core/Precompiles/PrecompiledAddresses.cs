@@ -6,7 +6,7 @@ namespace Nethermind.Core.Precompiles;
 /// <summary>
 /// Contains static references to all known Ethereum precompile addresses.
 /// </summary>
-public static class Precompiles
+public static class PrecompiledAddresses
 {
     public static readonly AddressAsKey EcRecover = Address.FromNumber(0x01);
     public static readonly AddressAsKey Sha256 = Address.FromNumber(0x02);

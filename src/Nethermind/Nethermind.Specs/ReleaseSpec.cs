@@ -169,31 +169,31 @@ namespace Nethermind.Specs
         {
             HashSet<AddressAsKey> cache = new();
 
-            cache.Add(Precompiles.EcRecover);
-            cache.Add(Precompiles.Sha256);
-            cache.Add(Precompiles.Ripemd160);
-            cache.Add(Precompiles.Identity);
+            cache.Add(PrecompiledAddresses.EcRecover);
+            cache.Add(PrecompiledAddresses.Sha256);
+            cache.Add(PrecompiledAddresses.Ripemd160);
+            cache.Add(PrecompiledAddresses.Identity);
 
-            if (IsEip198Enabled) cache.Add(Precompiles.ModExp);
+            if (IsEip198Enabled) cache.Add(PrecompiledAddresses.ModExp);
             if (IsEip196Enabled && IsEip197Enabled)
             {
-                cache.Add(Precompiles.Bn128Add);
-                cache.Add(Precompiles.Bn128Mul);
-                cache.Add(Precompiles.Bn128Pairing);
+                cache.Add(PrecompiledAddresses.Bn128Add);
+                cache.Add(PrecompiledAddresses.Bn128Mul);
+                cache.Add(PrecompiledAddresses.Bn128Pairing);
             }
-            if (IsEip152Enabled) cache.Add(Precompiles.Blake2F);
-            if (IsEip4844Enabled) cache.Add(Precompiles.PointEvaluation);
+            if (IsEip152Enabled) cache.Add(PrecompiledAddresses.Blake2F);
+            if (IsEip4844Enabled) cache.Add(PrecompiledAddresses.PointEvaluation);
             if (IsEip2537Enabled)
             {
-                cache.Add(Precompiles.Bls12G1Add);
-                cache.Add(Precompiles.Bls12G1Mul);
-                cache.Add(Precompiles.Bls12G1MultiExp);
-                cache.Add(Precompiles.Bls12G2Add);
-                cache.Add(Precompiles.Bls12G2Mul);
-                cache.Add(Precompiles.Bls12G2MultiExp);
-                cache.Add(Precompiles.Bls12Pairing);
+                cache.Add(PrecompiledAddresses.Bls12G1Add);
+                cache.Add(PrecompiledAddresses.Bls12G1Mul);
+                cache.Add(PrecompiledAddresses.Bls12G1MultiExp);
+                cache.Add(PrecompiledAddresses.Bls12G2Add);
+                cache.Add(PrecompiledAddresses.Bls12G2Mul);
+                cache.Add(PrecompiledAddresses.Bls12G2MultiExp);
+                cache.Add(PrecompiledAddresses.Bls12Pairing);
             }
-            if (IsRip7212Enabled) cache.Add(Precompiles.P256Verify);
+            if (IsRip7212Enabled) cache.Add(PrecompiledAddresses.P256Verify);
 
             return cache;
         }
