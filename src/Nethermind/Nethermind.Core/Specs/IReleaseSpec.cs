@@ -369,13 +369,13 @@ namespace Nethermind.Core.Specs
         /// </summary>
         /// <param name="address">The address to check for precompile status.</param>
         /// <returns>True if the address is a precompiled contract; otherwise, false.</returns>
-        bool IsPrecompile(Address address) => Precompiles?.Contains(address) ?? false;
+        bool IsPrecompile(Address address) => Precompiles.Contains(address);
 
         /// <summary>
         /// Gets a cached set of all precompiled contract addresses for this release specification.
         /// Chain-specific implementations can override this to include their own precompiled contracts.
         /// </summary>
-        HashSet<AddressAsKey>? Precompiles { get; set; }
+        HashSet<AddressAsKey> Precompiles { get; }
 
         /// <summary>
         /// Should transactions be validated against chainId.

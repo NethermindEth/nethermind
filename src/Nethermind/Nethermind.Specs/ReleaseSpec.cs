@@ -160,11 +160,8 @@ namespace Nethermind.Specs
         public bool IsEip7939Enabled { get; set; }
 
         private HashSet<AddressAsKey>? _precompiles;
-        HashSet<AddressAsKey>? IReleaseSpec.Precompiles
-        {
-            get => _precompiles ??= BuildPrecompilesCache();
-            set => _precompiles = value;
-        }
+        HashSet<AddressAsKey> IReleaseSpec.Precompiles => _precompiles ??= BuildPrecompilesCache();
+
         public virtual HashSet<AddressAsKey> BuildPrecompilesCache()
         {
             HashSet<AddressAsKey> cache = new();
