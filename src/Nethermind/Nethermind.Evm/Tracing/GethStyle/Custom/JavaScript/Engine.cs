@@ -13,7 +13,6 @@ using Microsoft.ClearScript.V8;
 using Nethermind.Core.Caching;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
-using Nethermind.Evm.Precompiles;
 using Nethermind.Logging;
 #pragma warning disable CS0162 // Unreachable code detected
 

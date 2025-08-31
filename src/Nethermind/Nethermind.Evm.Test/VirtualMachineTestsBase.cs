@@ -18,7 +18,6 @@ using Nethermind.Evm.Tracing.GethStyle;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Logging;
 using Nethermind.State;
-using Nethermind.Trie.Pruning;
 using NUnit.Framework;
 
 namespace Nethermind.Evm.Test;

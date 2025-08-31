@@ -8,7 +8,6 @@ using Nethermind.Core.Specs;
 namespace Nethermind.Evm;
 using unsafe OpCode = delegate*<VirtualMachineBase, ref EvmStack, ref long, ref int, EvmExceptionType>;
 using Int256;
-using Nethermind.Evm.Precompiles;
 
 internal static unsafe partial class EvmInstructions
 {
