@@ -32,41 +32,17 @@ public class Always : IBlockValidator, ISealValidator, IUnclesValidator, ITxVali
     public static Always Invalid
         => LazyInitializer.EnsureInitialized(ref _invalid, static () => new Always(false));
 
-    public bool ValidateHash(BlockHeader header)
-    {
-        return _result;
-    }
-
-    public bool Validate(BlockHeader header, BlockHeader parent, bool isUncle = false)
-    {
-        return _result;
-    }
-
     public bool Validate(BlockHeader header, BlockHeader? parent, bool isUncle, out string? error)
     {
         error = null;
         return _result;
     }
 
-    public bool Validate(BlockHeader header, bool isUncle = false)
-    {
-        return _result;
-    }
     public bool Validate(BlockHeader header, bool isUncle, out string? error)
     {
         error = null;
         return _result;
     }
-    public bool ValidateSuggestedBlock(Block block)
-    {
-        return _result;
-    }
-
-    public bool ValidateProcessedBlock(Block processedBlock, TxReceipt[] receipts, Block suggestedBlock)
-    {
-        return _result;
-    }
-
     public bool ValidateParams(BlockHeader parent, BlockHeader header, bool isUncle = false)
     {
         return _result;
@@ -77,7 +53,7 @@ public class Always : IBlockValidator, ISealValidator, IUnclesValidator, ITxVali
         return _result;
     }
 
-    public bool Validate(BlockHeader header, BlockHeader[] uncles)
+    public bool Validate(BlockHeader header, BlockHeader? parent, BlockHeader[] uncles)
     {
         return _result;
     }
@@ -99,7 +75,7 @@ public class Always : IBlockValidator, ISealValidator, IUnclesValidator, ITxVali
         return _result;
     }
 
-    public bool ValidateSuggestedBlock(Block block, out string? error, bool validateHashes = true)
+    public bool ValidateSuggestedBlock(Block block, BlockHeader? parent, out string? error, bool validateHashes = true)
     {
         error = null;
         return _result;

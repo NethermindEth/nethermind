@@ -21,12 +21,23 @@ using Nethermind.Trie;
 
 namespace Nethermind.Blockchain
 {
+    public interface IGenesisPostProcessor
+    {
+        void PostProcess(Block genesis);
+    }
+
+    public sealed class NullGenesisPostProcessor : IGenesisPostProcessor
+    {
+        public void PostProcess(Block genesis) { }
+    }
+
     public class GenesisLoader(
         ChainSpec chainSpec,
         ISpecProvider specProvider,
         IStateReader stateReader,
         IWorldState stateProvider,
         ITransactionProcessor transactionProcessor,
+        IGenesisPostProcessor postProcessor,
         ILogManager logManager,
         Hash256? expectedGenesisHash = null
     )
@@ -49,6 +60,8 @@ namespace Nethermind.Blockchain
 
                 genesis.Header.StateRoot = stateProvider.StateRoot;
             }
+
+            postProcessor.PostProcess(genesis);
 
             genesis.Header.Hash = genesis.Header.CalculateHash();
 

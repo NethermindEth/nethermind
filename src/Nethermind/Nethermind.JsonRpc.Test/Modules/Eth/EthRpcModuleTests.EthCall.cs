@@ -69,7 +69,7 @@ public partial class EthRpcModuleTests
             "{\"from\":\"0x0001020304050607080910111213141516171819\",\"gasPrice\":\"0x100000\", \"data\": \"0x70a082310000000000000000000000006c1f09f6271fbe133db38db9c9280307f5d22160\", \"to\": \"0x0d8775f648430679a709e98d2b0cb6250d2887ef\", \"value\": 500, \"gas\": 100000000}");
         string serialized = await ctx.Test.TestEthRpc("eth_call", transaction);
         Assert.That(
-            serialized, Is.EqualTo("{\"jsonrpc\":\"2.0\",\"error\":{\"code\":-32000,\"message\":\"err: insufficient funds for transfer: address 0x0001020304050607080910111213141516171819 (supplied gas 100000000)\"},\"id\":67}"));
+            serialized, Is.EqualTo("{\"jsonrpc\":\"2.0\",\"error\":{\"code\":-32000,\"message\":\"insufficient funds for transfer: address 0x0001020304050607080910111213141516171819\"},\"id\":67}"));
         ctx.Test.ReadOnlyState.AccountExists(someAccount).Should().BeFalse();
     }
 
@@ -115,7 +115,7 @@ public partial class EthRpcModuleTests
         string serialized =
             await ctx.Test.TestEthRpc("eth_call", transaction, "latest");
         Assert.That(
-            serialized, Is.EqualTo("{\"jsonrpc\":\"2.0\",\"error\":{\"code\":-32015,\"message\":\"VM execution error.\",\"data\":\"err: StackUnderflow (supplied gas 100000000)\"},\"id\":67}"));
+            serialized, Is.EqualTo("{\"jsonrpc\":\"2.0\",\"error\":{\"code\":-32000,\"message\":\"stack underflow\",\"data\":\"0x\"},\"id\":67}"));
     }
 
 
@@ -124,14 +124,19 @@ public partial class EthRpcModuleTests
     {
         OverridableReleaseSpec releaseSpec = new(London.Instance) { Eip1559TransitionBlock = 1, IsEip3607Enabled = true };
         TestSpecProvider specProvider = new(releaseSpec) { AllowTestChainOverride = false };
-        using Context ctx = await Context.Create(specProvider);
+        using Context ctx = await Context.Create(specProvider, configurer: builder => builder.Intercept<TestBlockchain.Configuration>((cfg) =>
+        {
+            cfg.InitialStateMutator = (worldState) =>
+            {
+                worldState.InsertCode(TestItem.AddressA, "H"u8.ToArray(), London.Instance);
+            };
+        }));
 
         Transaction tx = Build.A.Transaction.SignedAndResolved(TestItem.PrivateKeyA).TestObject;
         LegacyTransactionForRpc transaction = new(tx, 1, Keccak.Zero, 1L)
         {
             To = TestItem.AddressB
         };
-        ctx.Test.WorldStateManager.GlobalWorldState.InsertCode(TestItem.AddressA, "H"u8.ToArray(), London.Instance);
 
         string serialized =
             await ctx.Test.TestEthRpc("eth_call", transaction, "latest");
@@ -309,7 +314,7 @@ public partial class EthRpcModuleTests
             $"{{\"from\": \"0x32e4e4c7c5d1cea5db5f9202a9e4d99e56c91a24\", \"type\": \"0x2\", \"data\": \"{dataStr}\", \"gas\": 100000000}}");
         string serialized = await ctx.Test.TestEthRpc("eth_call", transaction);
         Assert.That(
-            serialized, Is.EqualTo("{\"jsonrpc\":\"2.0\",\"error\":{\"code\":-32015,\"message\":\"VM execution error.\",\"data\":\"err: revert (supplied gas 100000000)\"},\"id\":67}"));
+            serialized, Is.EqualTo("{\"jsonrpc\":\"2.0\",\"error\":{\"code\":-32000,\"message\":\"execution reverted\",\"data\":\"0x\"},\"id\":67}"));
     }
 
     [TestCase(
@@ -441,6 +446,6 @@ public partial class EthRpcModuleTests
 
         string serialized = await ctx.Test.TestEthRpc("eth_call", transaction);
         JToken.Parse(serialized).Should().BeEquivalentTo(
-            $"{{\"jsonrpc\":\"2.0\",\"error\":{{\"code\":-32015,\"message\":\"VM execution error.\",\"data\":\"err: OutOfGas (supplied gas {expectedGasLimit})\"}},\"id\":67}}");
+            $"{{\"jsonrpc\":\"2.0\",\"error\":{{\"code\":-32000,\"message\":\"out of gas\",\"data\":\"0x\"}},\"id\":67}}");
     }
 }

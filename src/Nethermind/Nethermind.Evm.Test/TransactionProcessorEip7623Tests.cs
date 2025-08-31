@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using Nethermind.Blockchain;
 using Nethermind.Core;
 using Nethermind.Core.Extensions;
@@ -26,6 +27,7 @@ public class TransactionProcessorEip7623Tests
     private IEthereumEcdsa _ethereumEcdsa;
     private ITransactionProcessor _transactionProcessor;
     private IWorldState _stateProvider;
+    private IDisposable _worldStateCloser;
 
     [SetUp]
     public void Setup()
@@ -33,16 +35,23 @@ public class TransactionProcessorEip7623Tests
         _specProvider = new TestSpecProvider(Prague.Instance);
         IWorldStateManager worldStateManager = TestWorldStateFactory.CreateForTest();
         _stateProvider = worldStateManager.GlobalWorldState;
+        _worldStateCloser = _stateProvider.BeginScope(IWorldState.PreGenesis);
         EthereumCodeInfoRepository codeInfoRepository = new();
         VirtualMachine virtualMachine = new(new TestBlockhashProvider(_specProvider), _specProvider, LimboLogs.Instance);
         _transactionProcessor = new TransactionProcessor(_specProvider, _stateProvider, virtualMachine, codeInfoRepository, LimboLogs.Instance);
         _ethereumEcdsa = new EthereumEcdsa(_specProvider.ChainId);
     }
 
-    [TestCase(21006, true, TestName = "GasLimit=IntrinsicGas")]
-    [TestCase(21010, false, TestName = "GasLimit=FloorGas")]
+    [TearDown]
+    public void TearDown()
+    {
+        _worldStateCloser?.Dispose();
+    }
 
-    public void transaction_validation_intrinsic_below_floor(long gasLimit, bool isFail)
+    [TestCase(21006, false, TestName = "GasLimit=IntrinsicGas")]
+    [TestCase(21010, true, TestName = "GasLimit=FloorGas")]
+
+    public void transaction_validation_intrinsic_below_floor(long gasLimit, bool executed)
     {
         _stateProvider.CreateAccount(TestItem.AddressA, 1.Ether());
         _stateProvider.Commit(_specProvider.GenesisSpec);
@@ -64,7 +73,7 @@ public class TransactionProcessorEip7623Tests
             .WithGasLimit(10000000).TestObject;
 
         TransactionResult result = _transactionProcessor.Execute(tx, new BlockExecutionContext(block.Header, _specProvider.GetSpec(block.Header)), NullTxTracer.Instance);
-        Assert.That(result.Fail, Is.EqualTo(isFail));
+        Assert.That(result.TransactionExecuted, Is.EqualTo(executed));
     }
 
     [Test]

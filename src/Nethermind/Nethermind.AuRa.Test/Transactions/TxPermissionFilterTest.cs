@@ -274,7 +274,9 @@ public class TxPermissionFilterTest
 
                     return new PermissionBasedTxFilter(transactionPermissionContract, txFilterCache, LimboLogs.Instance);
                 })
-                .AddSingleton<IBlockValidationModule, TestValidationModule>();
+                .AddSingleton<IBlockValidationModule, TestValidationModule>()
+                .AddScoped<IBlockProcessor, BlockProcessor>()
+            ;
 
         private class TestValidationModule(PermissionBasedTxFilter permissionBasedFilter) : Module, IBlockValidationModule
         {

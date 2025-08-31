@@ -29,6 +29,7 @@ using Nethermind.Trie.Pruning;
 using NSubstitute;
 using NUnit.Framework;
 using Nethermind.History;
+using Nethermind.Init.Modules;
 
 namespace Nethermind.Synchronization.Test.Trie;
 
@@ -154,9 +155,10 @@ public class HealingTreeTests
 
         BlockHeader FillStorage(IContainer server)
         {
-            IWorldState mainWorldState = server.Resolve<AutoMainProcessingContext>().WorldState;
+            IWorldState mainWorldState = server.Resolve<MainProcessingContext>().WorldState;
             IBlockTree blockTree = server.Resolve<IBlockTree>();
-            mainWorldState.SetBaseBlock(null);
+
+            using var _ = mainWorldState.BeginScope(blockTree.Head?.Header);
 
             for (int i = 0; i < 100; i++)
             {
@@ -172,11 +174,13 @@ public class HealingTreeTests
             }
 
             mainWorldState.Commit(Cancun.Instance);
-            mainWorldState.CommitTree(1);
 
             // Snap server check for the past 128 block in blocktree explicitly to pass hive test.
             // So need to simulate block processing..
+            mainWorldState.CommitTree((blockTree.Head?.Number ?? 0) + 1);
+
             Block block = Build.A.Block.WithStateRoot(mainWorldState.StateRoot).WithParent(blockTree.Head!).TestObject;
+
             blockTree.SuggestBlock(block).Should().Be(AddBlockResult.Added);
             blockTree.UpdateMainChain([block], true);
 
@@ -205,8 +209,8 @@ public class HealingTreeTests
 
         void AssertStorage(IContainer client)
         {
-            IWorldState mainWorldState = client.Resolve<AutoMainProcessingContext>().WorldState;
-            mainWorldState.SetBaseBlock(baseBlock);
+            IWorldState mainWorldState = client.Resolve<MainProcessingContext>().WorldState;
+            using var _ = mainWorldState.BeginScope(baseBlock);
 
             for (int i = 0; i < 100; i++)
             {

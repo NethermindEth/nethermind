@@ -4,6 +4,7 @@
 using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.Linq;
 using System.Runtime.CompilerServices;
 using System.Threading;
@@ -317,8 +318,13 @@ namespace Nethermind.Synchronization.Peers
             int timeoutMilliseconds = 0,
             CancellationToken cancellationToken = default)
         {
+            if (cancellationToken.IsCancellationRequested)
+            {
+                return SyncPeerAllocation.FailedAllocation;
+            }
+
             int tryCount = 1;
-            DateTime startTime = DateTime.UtcNow;
+            long timeStamp = Stopwatch.GetTimestamp();
 
             using CancellationTokenSource cts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, _refreshLoopCancellation.Token);
 
@@ -330,19 +336,31 @@ namespace Nethermind.Synchronization.Peers
                     return allocation;
                 }
 
+                long elapsedMilliseconds = (long)Stopwatch.GetElapsedTime(timeStamp).TotalMilliseconds;
                 bool timeoutReached = timeoutMilliseconds == 0
-                                      || (DateTime.UtcNow - startTime).TotalMilliseconds > timeoutMilliseconds;
+                                      || elapsedMilliseconds < 0
+                                      || elapsedMilliseconds > timeoutMilliseconds;
                 if (timeoutReached) return SyncPeerAllocation.FailedAllocation;
 
                 int waitTime = 10 * tryCount++;
-                waitTime = Math.Min(waitTime, timeoutMilliseconds);
+                waitTime = Math.Min(waitTime, timeoutMilliseconds - (int)elapsedMilliseconds);
 
                 if (waitTime > 0 && !_signals.SafeWaitHandle.IsClosed)
                 {
-                    await _signals.WaitOneAsync(waitTime, cts.Token);
-                    if (!_signals.SafeWaitHandle.IsClosed)
+                    try
                     {
-                        _signals.Reset(); // without this we have no delay
+                        await _signals.WaitOneAsync(waitTime, cts.Token);
+                    }
+                    catch (OperationCanceledException)
+                    {
+                        return SyncPeerAllocation.FailedAllocation;
+                    }
+                    finally
+                    {
+                        if (!_signals.SafeWaitHandle.IsClosed)
+                        {
+                            _signals.Reset(); // without this we have no delay
+                        }
                     }
                 }
             }

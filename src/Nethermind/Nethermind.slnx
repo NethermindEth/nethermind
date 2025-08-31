@@ -95,8 +95,8 @@
   <Project Path="Nethermind.Db/Nethermind.Db.csproj" />
   <Project Path="Nethermind.Era1/Nethermind.Era1.csproj" />
   <Project Path="Nethermind.EthStats/Nethermind.EthStats.csproj" />
-  <Project Path="Nethermind.Evm/Nethermind.Evm.csproj" />
   <Project Path="Nethermind.Evm.Precompiles/Nethermind.Evm.Precompiles.csproj" />
+  <Project Path="Nethermind.Evm/Nethermind.Evm.csproj" />
   <Project Path="Nethermind.Facade/Nethermind.Facade.csproj" />
   <Project Path="Nethermind.Grpc/Nethermind.Grpc.csproj" />
   <Project Path="Nethermind.HealthChecks/Nethermind.HealthChecks.csproj" />
@@ -129,4 +129,5 @@
   <Project Path="Nethermind.Trie/Nethermind.Trie.csproj" />
   <Project Path="Nethermind.TxPool/Nethermind.TxPool.csproj" />
   <Project Path="Nethermind.Wallet/Nethermind.Wallet.csproj" />
+  <Project Path="Nethermind.Xdc/Nethermind.Xdc.csproj" />
 </Solution>
