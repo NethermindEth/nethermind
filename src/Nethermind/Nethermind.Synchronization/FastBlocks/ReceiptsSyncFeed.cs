@@ -170,6 +170,17 @@ namespace Nethermind.Synchronization.FastBlocks
 
             _syncPointers.LowestInsertedReceiptBlockNumber = _syncStatusList.LowestInsertWithoutGaps;
 
+            if (batch is null)
+            {
+                var status = new
+                {
+                    _syncConfig.DownloadReceiptsInFastSync, _syncPointers.LowestInsertedReceiptBlockNumber,
+                    _barrier, _barrierWhenStarted,
+                    _historyPruner.CutoffBlockNumber, _historyPruner.OldestBlockHeader
+                };
+                _logger.Info($"[TRACE] finishing {GetType().Name}: {new {status}}");
+            }
+
             return batch;
         }
 

@@ -159,12 +159,21 @@ public sealed class LogIndexService : ILogIndexService
         //     return;
         // }
 
-        _logger.Info($"[TRACE] {nameof(OnReceiptsInserted)}: {args.BlockHeader.ToString(BlockHeader.Format.FullHashAndNumber)} [{args.TxReceipts.Length}]");
+        try
+        {
+            _logger.Info(
+                $"[TRACE] {nameof(OnReceiptsInserted)}: {args.BlockHeader.ToString(BlockHeader.Format.FullHashAndNumber)} [{args.TxReceipts.Length}]");
 
-        var next = (int)args.BlockHeader.Number;
+            var next = (int)args.BlockHeader.Number;
 
-        if (next != 0 && !_pivotTask.IsCompleted && _pivotSource.TrySetResult(next) && _logger.IsInfo)
-            _logger.Info($"{GetLogPrefix()}: using block {next} as pivot.");
+            if (next != 0 && !_pivotTask.IsCompleted && _pivotSource.TrySetResult(next) && _logger.IsInfo)
+                _logger.Info($"{GetLogPrefix()}: using block {next} as pivot.");
+        }
+        catch (Exception exception)
+        {
+            if (_logger.IsError)
+                _logger.Error($"{nameof(OnReceiptsInserted)} has failed", exception);
+        }
 
         // var (min, max) = (_logIndexStorage.GetMinBlockNumber(), _logIndexStorage.GetMaxBlockNumber());
         //

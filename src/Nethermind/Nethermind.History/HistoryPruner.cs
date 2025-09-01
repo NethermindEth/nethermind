@@ -389,6 +389,8 @@ public class HistoryPruner : IHistoryPruner
                 _blockTree.DeleteOldBlock(number, hash);
                 _receiptStorage.RemoveReceipts(block);
 
+                _logger.Info($"[TRACE] {nameof(PruneBlocksAndReceipts)}: {block.Header.ToString(BlockHeader.Format.FullHashAndNumber)}");
+
                 UpdateDeletePointer(number + 1, remaining is null || remaining == 0);
                 lastDeletedTimstamp = block.Timestamp;
                 deletedBlocks++;
