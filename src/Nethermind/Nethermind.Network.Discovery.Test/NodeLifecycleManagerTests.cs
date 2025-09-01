@@ -364,7 +364,7 @@ public class NodeLifecycleManagerTests
     }
 
     [Test]
-    public async Task ProcessEnrResponseMsg_WhenBondedWithRemoteNode_StoresEnrAndTransitionsToActiveWithEnr()
+    public async Task ProcessEnrResponseMsg_WhenBondedWithRemoteNode_StoresEnrAndSendsEnrEvent()
     {
         // Create a lifecycle manager for our local node
         Node localNode = new(TestItem.PublicKeyA, "192.168.1.100", 30303);
@@ -383,13 +383,17 @@ public class NodeLifecycleManagerTests
         await BondWithRemoteNode(manager, remoteNode);
         Assert.That(manager.IsBonded, Is.True);
 
+        // Set up event capture
+        NodeLifecycleState? firedState = null;
+        manager.OnStateChanged += (sender, state) => firedState = state;
+
         // Process ENR response from bonded node
-        EnrResponseMsg enrResponse = new(TestItem.PublicKeyB, remoteNodeRecord, TestItem.KeccakA);
+        EnrResponseMsg enrResponse = new(TestItem.PublicKeyB, CreateValidEnrForNode(TestItem.PublicKeyB, TestItem.PrivateKeyB, "192.168.1.101", 30303, 1), TestItem.KeccakA);
         manager.ProcessEnrResponseMsg(enrResponse);
 
-        // Verify ENR storage and state transition
-        Assert.That(manager.ManagedNode.Enr, Is.EqualTo(remoteNodeRecord.EnrString));
-        Assert.That(manager.State, Is.EqualTo(NodeLifecycleState.ActiveWithEnr));
+        // Verify ENR storage and event notification
+        Assert.That(manager.ManagedNode.Enr, Is.EqualTo(enrResponse.NodeRecord.EnrString));
+        Assert.That(firedState, Is.EqualTo(NodeLifecycleState.ActiveWithEnr));
     }
 
     [Test]
@@ -407,18 +411,23 @@ public class NodeLifecycleManagerTests
         Assert.That(manager.ManagedNode.Enr, Is.Null.Or.Empty);
         Assert.That(manager.IsBonded, Is.False);
 
+        // Set up event capture
+        NodeLifecycleState? firedState = null;
+        manager.OnStateChanged += (sender, state) => firedState = state;
+
         // Process ENR from unbonded node (should be ignored)
         EnrResponseMsg enrResponse = new(TestItem.PublicKeyC, unbondedNodeRecord, TestItem.KeccakB);
         manager.ProcessEnrResponseMsg(enrResponse);
 
-        // Verify ENR is ignored and state unchanged
+        // Verify ENR is ignored and no event fired
         Assert.That(manager.ManagedNode.Enr, Is.Null.Or.Empty);
         Assert.That(manager.State, Is.EqualTo(NodeLifecycleState.New));
         Assert.That(manager.IsBonded, Is.False);
+        Assert.That(firedState, Is.Null);
     }
 
     [Test]
-    public async Task ProcessEnrResponseMsg_WhenBondedNodeSendsUpdatedEnr_UpdatesStoredEnr()
+    public async Task ProcessEnrResponseMsg_WhenBondedNodeSendsUpdatedEnr_UpdatesStoredEnrAndSendsEvent()
     {
         // Create lifecycle manager and bond with remote node
         Node localNode = new(TestItem.PublicKeyA, "192.168.1.100", 30303);
@@ -435,15 +444,19 @@ public class NodeLifecycleManagerTests
         string initialEnrString = manager.ManagedNode.Enr;
         Assert.That(initialEnrString, Is.Not.Null.And.Not.Empty);
 
+        // Set up event capture for updated ENR
+        NodeLifecycleState? firedState = null;
+        manager.OnStateChanged += (sender, state) => firedState = state;
+
         // Send updated ENR with different port (simulating node migration)
         NodeRecord updatedEnr = CreateValidEnrForNode(TestItem.PublicKeyB, TestItem.PrivateKeyB, "192.168.1.101", 30304, 2);
         EnrResponseMsg updatedResponse = new(TestItem.PublicKeyB, updatedEnr, TestItem.KeccakB);
         manager.ProcessEnrResponseMsg(updatedResponse);
 
-        // Verify ENR was updated
+        // Verify ENR was updated and event fired
         Assert.That(manager.ManagedNode.Enr, Is.Not.EqualTo(initialEnrString));
         Assert.That(manager.ManagedNode.Enr, Is.EqualTo(updatedEnr.EnrString));
-        Assert.That(manager.State, Is.EqualTo(NodeLifecycleState.ActiveWithEnr));
+        Assert.That(firedState, Is.EqualTo(NodeLifecycleState.ActiveWithEnr));
     }
 
     [Test]
@@ -464,14 +477,18 @@ public class NodeLifecycleManagerTests
         string newerEnrString = manager.ManagedNode.Enr;
         Assert.That(newerEnrString, Is.EqualTo(newerEnr.EnrString));
 
+        // Set up event capture for older ENR attempt
+        NodeLifecycleState? firedState = null;
+        manager.OnStateChanged += (sender, state) => firedState = state;
+
         // Try to process older ENR with sequence 3 (should be ignored)
         NodeRecord olderEnr = CreateValidEnrForNode(TestItem.PublicKeyB, TestItem.PrivateKeyB, "192.168.1.101", 30304, 3);
         EnrResponseMsg olderResponse = new(TestItem.PublicKeyB, olderEnr, TestItem.KeccakB);
         manager.ProcessEnrResponseMsg(olderResponse);
 
-        // Verify older ENR was ignored
+        // Verify older ENR was ignored and no event fired
         Assert.That(manager.ManagedNode.Enr, Is.EqualTo(newerEnrString));
-        Assert.That(manager.ManagedNode.Enr, Is.Not.EqualTo(olderEnr.EnrString));
+        Assert.That(firedState, Is.Null); // No event should be fired for ignored ENR
     }
 
     [Test]
@@ -492,18 +509,22 @@ public class NodeLifecycleManagerTests
         string initialEnrString = manager.ManagedNode.Enr;
         Assert.That(initialEnrString, Is.EqualTo(initialEnr.EnrString));
 
+        // Set up event capture for duplicate ENR attempt
+        NodeLifecycleState? firedState = null;
+        manager.OnStateChanged += (sender, state) => firedState = state;
+
         // Try to process ENR with same sequence 3 (should be ignored)
         NodeRecord duplicateEnr = CreateValidEnrForNode(TestItem.PublicKeyB, TestItem.PrivateKeyB, "192.168.1.101", 30304, 3);
         EnrResponseMsg duplicateResponse = new(TestItem.PublicKeyB, duplicateEnr, TestItem.KeccakB);
         manager.ProcessEnrResponseMsg(duplicateResponse);
 
-        // Verify duplicate sequence ENR was ignored
+        // Verify duplicate sequence ENR was ignored and no event fired
         Assert.That(manager.ManagedNode.Enr, Is.EqualTo(initialEnrString));
-        Assert.That(manager.ManagedNode.Enr, Is.Not.EqualTo(duplicateEnr.EnrString));
+        Assert.That(firedState, Is.Null);
     }
 
     [Test]
-    public async Task ProcessEnrResponseMsg_WhenInitialSequenceIsZero_AcceptsFirstEnr()
+    public async Task ProcessEnrResponseMsg_WhenInitialSequenceIsZero_AcceptsFirstEnrAndSendsEvent()
     {
         // Create lifecycle manager and bond with remote node
         Node localNode = new(TestItem.PublicKeyA, "192.168.1.100", 30303);
@@ -512,17 +533,21 @@ public class NodeLifecycleManagerTests
         Node remoteNode = new(TestItem.PublicKeyB, "192.168.1.101", 30303);
         await BondWithRemoteNode(manager, remoteNode);
 
-        // Initial state should have _lastEnrSequence = 0
+        // Verify initial state before processing any ENR
         Assert.That(manager.ManagedNode.Enr, Is.Null.Or.Empty);
 
-        // Process ENR with sequence 1 (should be accepted since 1 > 0)
+        // Set up event capture
+        NodeLifecycleState? firedState = null;
+        manager.OnStateChanged += (sender, state) => firedState = state;
+
+        // Process ENR with sequence 1 (should be accepted since 1 > -1)
         NodeRecord firstEnr = CreateValidEnrForNode(TestItem.PublicKeyB, TestItem.PrivateKeyB, "192.168.1.101", 30303, 1);
         EnrResponseMsg firstResponse = new(TestItem.PublicKeyB, firstEnr, TestItem.KeccakA);
         manager.ProcessEnrResponseMsg(firstResponse);
 
-        // Verify first ENR was accepted
+        // Verify first ENR was accepted and event fired
         Assert.That(manager.ManagedNode.Enr, Is.EqualTo(firstEnr.EnrString));
-        Assert.That(manager.State, Is.EqualTo(NodeLifecycleState.ActiveWithEnr));
+        Assert.That(firedState, Is.EqualTo(NodeLifecycleState.ActiveWithEnr));
     }
 
     [Test]
@@ -543,14 +568,18 @@ public class NodeLifecycleManagerTests
         string highSeqEnrString = manager.ManagedNode.Enr;
         Assert.That(highSeqEnrString, Is.EqualTo(highSeqEnr.EnrString));
 
+        // Set up event capture for max sequence ENR
+        NodeLifecycleState? firedState = null;
+        manager.OnStateChanged += (sender, state) => firedState = state;
+
         // Process ENR with max sequence number (should be accepted)
         NodeRecord maxSeqEnr = CreateValidEnrForNode(TestItem.PublicKeyB, TestItem.PrivateKeyB, "192.168.1.101", 30304, long.MaxValue);
         EnrResponseMsg maxSeqResponse = new(TestItem.PublicKeyB, maxSeqEnr, TestItem.KeccakB);
         manager.ProcessEnrResponseMsg(maxSeqResponse);
 
-        // Verify max sequence ENR was accepted
+        // Verify max sequence ENR was accepted and event fired
         Assert.That(manager.ManagedNode.Enr, Is.EqualTo(maxSeqEnr.EnrString));
-        Assert.That(manager.ManagedNode.Enr, Is.Not.EqualTo(highSeqEnrString));
+        Assert.That(firedState, Is.EqualTo(NodeLifecycleState.ActiveWithEnr));
     }
 
     private async Task BondWithRemoteNode(NodeLifecycleManager manager, Node remoteNode)

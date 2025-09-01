@@ -109,7 +109,7 @@ public class NodeLifecycleManager : INodeLifecycleManager
         //     _logger.Warn($"Discovered new node with forkId {forkId.Value.ForkHash.ToHexString()}");
         // }
 
-        UpdateState(NodeLifecycleState.ActiveWithEnr);
+        OnStateChanged?.Invoke(this, NodeLifecycleState.ActiveWithEnr);
         NodeStats.AddNodeStatsEvent(NodeStatsEventType.DiscoveryEnrResponseIn);
     }
 
