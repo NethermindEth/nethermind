@@ -93,7 +93,7 @@ public class EraStore : IEraStore
 
         // Geth behaviour seems to be to always read the checksum and fail when its missing.
         _checksums = fileSystem.File.ReadAllLines(Path.Join(directory, EraExporter.ChecksumsFileName))
-            .Select(static (chk) => new ValueHash256(chk))
+            .Select(static (chk) => new ValueHash256(chk.Split()[0]))
             .ToArray();
 
         bool hasEraFile = false;

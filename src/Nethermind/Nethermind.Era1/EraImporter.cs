@@ -42,7 +42,7 @@ public class EraImporter(
         HashSet<ValueHash256>? trustedAccumulators = null;
         if (accumulatorFile != null)
         {
-            trustedAccumulators = fileSystem.File.ReadAllLines(accumulatorFile).Select(s => new ValueHash256(s)).ToHashSet();
+            trustedAccumulators = fileSystem.File.ReadAllLines(accumulatorFile).Select(s => new ValueHash256(s.Split()[0])).ToHashSet();
         }
 
         IEraStore eraStore = eraStoreFactory.Create(src, trustedAccumulators);
