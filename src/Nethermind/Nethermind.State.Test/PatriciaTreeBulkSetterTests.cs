@@ -234,7 +234,7 @@ public class PatriciaTreeBulkSetterTests
     [TestCaseSource(nameof(BulkSetTestGen))]
     public void BulkSet(List<(Hash256 key, byte[] value)> existingItems, List<(Hash256 key, byte[] value)> items)
     {
-        const bool recordDump = false;
+        const bool recordDump = true;
         (Hash256 root, TimeSpan baselineTime, long baselineWriteCount, string originalDump) = CalculateBaseline(existingItems, items, recordDump);
 
         TimeSpan newTime;
@@ -266,7 +266,7 @@ public class PatriciaTreeBulkSetterTests
 
             if (recordDump)
             {
-                TreeDumper td = new TreeDumper();
+                TreeDumper td = new TreeDumper(expectAccounts: false);
                 pTree.Commit();
                 pTree.Accept(td, pTree.RootHash);
                 if (pTree.RootHash != root)
@@ -274,8 +274,6 @@ public class PatriciaTreeBulkSetterTests
                     TestContext.Error.WriteLine($"Baseline {originalDump}");
                     TestContext.Error.WriteLine($"But got {td.ToString()}");
                 }
-                TestContext.Error.WriteLine($"Baseline {originalDump}");
-                TestContext.Error.WriteLine($"But got {td.ToString()}");
             }
 
             newWriteCount.Should().BeLessOrEqualTo(baselineWriteCount);
@@ -325,7 +323,7 @@ public class PatriciaTreeBulkSetterTests
 
             if (recordDump)
             {
-                TreeDumper td = new TreeDumper();
+                TreeDumper td = new TreeDumper(expectAccounts: false);
                 pTree.Commit();
                 pTree.Accept(td, pTree.RootHash);
                 if (pTree.RootHash != root)
@@ -381,7 +379,7 @@ public class PatriciaTreeBulkSetterTests
             foreach (PatriciaTreeBulkSetter.BulkSetEntry bulkSetEntry in entries)
             {
                 TreePath path = TreePath.Empty;
-                pTree.RootRef = setter.BulkSetOneStack(threadResource, bulkSetEntry, ref path, pTree.Root, PatriciaTreeBulkSetter.Flags.None);
+                pTree.RootRef = setter.BulkSetOneStack(threadResource, bulkSetEntry, ref path, pTree.Root);
             }
 
             pTree.Commit();
@@ -390,7 +388,7 @@ public class PatriciaTreeBulkSetterTests
 
             if (recordDump)
             {
-                TreeDumper td = new TreeDumper();
+                TreeDumper td = new TreeDumper(expectAccounts: false);
                 pTree.Commit();
                 pTree.Accept(td, pTree.RootHash);
                 if (pTree.RootHash != root)
@@ -437,7 +435,7 @@ public class PatriciaTreeBulkSetterTests
             if (recordDump)
             {
                 pTree.Commit();
-                TreeDumper td = new TreeDumper();
+                TreeDumper td = new TreeDumper(expectAccounts: false);
                 pTree.Accept(td, pTree.RootHash);
                 originalDump = td.ToString();
             }
@@ -504,7 +502,8 @@ public class PatriciaTreeBulkSetterTests
 
         Span<(int, int)> result = stackalloc (int, int)[TrieNode.BranchesCount];
         using ArrayPoolList<PatriciaTreeBulkSetter.BulkSetEntry> buffer = new ArrayPoolList<PatriciaTreeBulkSetter.BulkSetEntry>(paths.Count, paths.Count);
-        int resultNum = PatriciaTreeBulkSetter.BucketSort16(items.AsSpan(), buffer.AsSpan(), 0, result);
+        using ArrayPoolList<byte> nibbleBuffer = new ArrayPoolList<byte>(paths.Count, paths.Count);
+        int resultNum = PatriciaTreeBulkSetter.BucketSort16(items.AsSpan(), buffer.AsSpan(), nibbleBuffer.AsSpan(), 0, result);
 
         List<ValueHash256> partiallySortedPaths = buffer.Select((it) => it.Path).ToList();
         partiallySortedPaths.Should().BeEquivalentTo(expectedPaths);

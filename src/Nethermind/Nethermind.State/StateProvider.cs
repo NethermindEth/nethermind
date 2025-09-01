@@ -732,7 +732,7 @@ namespace Nethermind.State
             int skipped = 0;
 
             long sw = Stopwatch.GetTimestamp();
-            if (_blockChanges.Count < PatriciaTreeBulkSetter.MinEntriesToParallelizeThreshold)
+            if (_blockChanges.Count < 0)
             {
                 foreach (var key in _blockChanges.Keys)
                 {

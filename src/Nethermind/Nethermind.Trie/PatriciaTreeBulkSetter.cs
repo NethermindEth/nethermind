@@ -6,7 +6,6 @@ using System.Collections.Generic;
 using System.Numerics;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
-using System.Threading;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
@@ -18,6 +17,7 @@ namespace Nethermind.Trie;
 public class PatriciaTreeBulkSetter(PatriciaTree patriciaTree)
 {
     public const int MinEntriesToParallelizeThreshold = 256;
+    public const int BSearchThreshold = 128;
 
     [Flags]
     public enum Flags
@@ -60,9 +60,6 @@ public class PatriciaTreeBulkSetter(PatriciaTree patriciaTree)
         }
     }
 
-    private static Counter _bulkSetCounter = Prometheus.Metrics.CreateCounter("bulksetter_bulk_set", "Get count");
-    private static Counter _bulkSetRecurCounter = Prometheus.Metrics.CreateCounter("bulksetter_bulk_set_recur", "Get count", "type");
-
     /// <summary>
     /// BulkSet multiple entries at the same time. It works by working each nibble level one at a time, partially
     /// sorting the <see cref="entriesMemory"/> then recurs on each nibble, traversing the top level branch only once.
@@ -75,8 +72,6 @@ public class PatriciaTreeBulkSetter(PatriciaTree patriciaTree)
     {
         Span<BulkSetEntry> entries = entriesMemory.AsSpan();
         if (entries.Length == 0) return;
-
-        _bulkSetCounter.Inc();
 
         TreePath path = TreePath.Empty;
         ThreadResource threadResource = GetThreadResource();
@@ -130,7 +125,8 @@ public class PatriciaTreeBulkSetter(PatriciaTree patriciaTree)
     {
         TrieNode? originalNode = node;
 
-        if (entries.Length == 1) return BulkSetOneStack(threadResource, in entries[0], ref path, node, flags);
+        if (entries.Length == 1) return BulkSetOneStack(threadResource, in entries[0], ref path, node);
+        bool shouldUpdateRoot = (flags & Flags.CalculateRoot) != 0;
 
         bool newBranch = false;
         if (node is null)
@@ -142,11 +138,9 @@ public class PatriciaTreeBulkSetter(PatriciaTree patriciaTree)
         {
             node.ResolveNode(patriciaTree.TrieStore, path);
 
-            _bulkSetRecurCounter.WithLabels(node.NodeType.ToString()).Inc();
-
             if (!node.IsBranch)
             {
-                // TODO: Check if it is worth it. Maybe just call `BulkSetOneStack` multiple time.
+                // .1% of execution go here.
                 node = MakeFakeBranch(ref path, node);
                 newBranch = true;
             }
@@ -180,8 +174,8 @@ public class PatriciaTreeBulkSetter(PatriciaTree patriciaTree)
                 new (int startIdx, int count, int nibble, TreePath appendedPath, TrieNode? currentChild, TrieNode? newChild)[TrieNode.BranchesCount];
 
             Context closureCtx = ctx;
-            var originalEntriesArray = (flipCount % 2 == 0) ? ctx.originalEntriesArray : ctx.originalBufferArray;
-            var originalBufferArray = (flipCount % 2 == 0) ? ctx.originalBufferArray : ctx.originalEntriesArray;
+            BulkSetEntry[] originalEntriesArray = (flipCount % 2 == 0) ? ctx.originalEntriesArray : ctx.originalBufferArray;
+            BulkSetEntry[] originalBufferArray = (flipCount % 2 == 0) ? ctx.originalBufferArray : ctx.originalEntriesArray;
             TrieNode.ChildIterator childIterator = node.CreateChildIterator();
             for (int i = 0; i < TrieNode.BranchesCount; i++)
             {
@@ -222,7 +216,7 @@ public class PatriciaTreeBulkSetter(PatriciaTree patriciaTree)
                 TrieNode? child = jobs[i].currentChild;
                 TrieNode? newChild = jobs[i].newChild;
 
-                if (!ShouldUpdateChild(child, newChild)) continue;
+                if (!ShouldUpdateChild(node, child, newChild)) continue;
 
                 if (newChild is null) hasRemove = true;
                 if (newChild is not null) nonNullChildCount++;
@@ -249,14 +243,16 @@ public class PatriciaTreeBulkSetter(PatriciaTree patriciaTree)
                     endRange = entries.Length;
 
                 TrieNode newChild = (endRange - startRange == 1)
-                    ? BulkSetOneStack(threadResource, entries[startRange], ref path, child, flags)
+                    ? BulkSetOneStack(threadResource, entries[startRange], ref path, child)
                     : BulkSet(in ctx, threadResource, entries[startRange..endRange], buffer[startRange..endRange], nibbleBuffer[startRange..endRange], ref path, child, flipCount, canParallelize, flags);
 
-                if (!ShouldUpdateChild(child, newChild)) continue;
+                if (!ShouldUpdateChild(node, child, newChild)) continue;
 
                 if (newChild is null) hasRemove = true;
                 if (newChild is not null) nonNullChildCount++;
                 if (node.IsSealed) node = node.Clone();
+
+                if (shouldUpdateRoot) newChild?.ResolveKey(patriciaTree.TrieStore, ref path, canBeParallel: false);
 
                 node.SetChild(nib, newChild);
             }
@@ -266,13 +262,12 @@ public class PatriciaTreeBulkSetter(PatriciaTree patriciaTree)
         if (!hasRemove && nonNullChildCount == 0) return originalNode;
 
         if ((hasRemove || newBranch) && nonNullChildCount < 2)
-            node = MaybeCombineNode(ref path, node);
+            node = MaybeCombineNode(ref path, node, false, hasRemove);
 
-        if ((flags & Flags.CalculateRoot) != 0) node?.ResolveKey(patriciaTree.TrieStore, ref path, canBeParallel: false);
         return node;
     }
 
-    internal TrieNode? BulkSetOneStack(ThreadResource threadResource, in BulkSetEntry entry, ref TreePath path, TrieNode? node, Flags flags)
+    internal TrieNode? BulkSetOneStack(ThreadResource threadResource, in BulkSetEntry entry, ref TreePath path, TrieNode? node)
     {
         Span<byte> nibble = stackalloc byte[64];
         Nibbles.BytesToNibbleBytes(entry.Path.BytesAsSpan, nibble);
@@ -281,7 +276,6 @@ public class PatriciaTreeBulkSetter(PatriciaTree patriciaTree)
         Stack<TraverseStack> traverseStack = threadResource.TraverseStack;
         TrieNode? originalNode = node;
         int originalPathLength = path.Length;
-        bool shouldUpdateRoot = flags.HasFlag(Flags.CalculateRoot);
         byte[] value = entry.Value;
 
         while (true)
@@ -338,14 +332,13 @@ public class PatriciaTreeBulkSetter(PatriciaTree patriciaTree)
                     }
                     else if (node.IsSealed)
                     {
-                        node = TrieNodeFactory.CreateLeaf(remainingKey.ToArray(), value);
+                        node = node.CloneWithChangedValue(value);
                     }
                     else
                     {
                         node.Value = value;
                     }
 
-                    if (shouldUpdateRoot) node?.ResolveKey(patriciaTree.TrieStore, ref path, canBeParallel: false);
                     // end traverse
                     break;
                 }
@@ -353,8 +346,10 @@ public class PatriciaTreeBulkSetter(PatriciaTree patriciaTree)
                 // We are suppose to create a branch, but no change in structure
                 if (value is null || value.Length == 0)
                 {
-                    // end traverse
-                    break;
+                    // SHORTCUT!
+                    path.TruncateMut(originalPathLength);
+                    traverseStack.Clear();
+                    return originalNode;
                 }
 
                 // Making a T branch here.
@@ -385,11 +380,6 @@ public class PatriciaTreeBulkSetter(PatriciaTree patriciaTree)
                     theBranch :
                     TrieNodeFactory.CreateExtension(remainingKey[..commonPrefixLength].ToArray(), theBranch);
 
-                // This is the end of the traversal, which end in a branch/extension instead of leaf.
-                // Since we know this is not a deletion, we do not need to check to combine the branch to extension.
-                // Since this is originally a leaf or an extension so its parent must be a branch, so we can calculate
-                // root here.
-                if (shouldUpdateRoot) node?.ResolveKey(patriciaTree.TrieStore, ref path, canBeParallel: false);
                 break;
             }
 
@@ -418,7 +408,7 @@ public class PatriciaTreeBulkSetter(PatriciaTree patriciaTree)
             {
                 path.TruncateMut(path.Length - node.Key!.Length);
 
-                if (ShouldUpdateChild(child, cStack.OriginalChild))
+                if (ShouldUpdateChild(node, cStack.OriginalChild, child))
                 {
                     if (child is null)
                     {
@@ -436,11 +426,6 @@ public class PatriciaTreeBulkSetter(PatriciaTree patriciaTree)
                         if (node.IsSealed) node = node.Clone();
                         node.SetChild(0, child);
                     }
-
-                    // Extension must be a branch parent.
-                    // Since this is not a deletion, parent will not get merged to an extension so it is safe to
-                    // recalculate root
-                    if (shouldUpdateRoot) node?.ResolveKey(patriciaTree.TrieStore, ref path, canBeParallel: false);
                 }
 
                 continue;
@@ -452,7 +437,7 @@ public class PatriciaTreeBulkSetter(PatriciaTree patriciaTree)
             bool hasRemove = false;
             path.TruncateOne();
 
-            if (ShouldUpdateChild(child, cStack.OriginalChild))
+            if (ShouldUpdateChild(node, cStack.OriginalChild, child))
             {
                 if (child is null) hasRemove = true;
                 if (node.IsSealed) node = node.Clone();
@@ -462,25 +447,23 @@ public class PatriciaTreeBulkSetter(PatriciaTree patriciaTree)
 
             if (!hasRemove)
             {
-                if (shouldUpdateRoot) node?.ResolveKey(patriciaTree.TrieStore, ref path, canBeParallel: false);
+                // 99%
                 continue;
             }
 
-            node = MaybeCombineNode(ref path, node);
-            if (node?.IsExtension == false)
-            {
-                // If it is an extension, it might get merged with parent, so we don't recalculate root
-                if (shouldUpdateRoot) node?.ResolveKey(patriciaTree.TrieStore, ref path, canBeParallel: false);
-            }
+            // About 1% reach here
+            node = MaybeCombineNode(ref path, node, true, value is null || value.Length == 0);
         }
 
         return node;
     }
 
-    private bool ShouldUpdateChild(TrieNode? child1, TrieNode? child2)
+    private bool ShouldUpdateChild(TrieNode parent, TrieNode? oldChild, TrieNode? newChild)
     {
-        if (child1 is null && child2 is null) return false;
-        return !ReferenceEquals(child1, child2);
+        if (oldChild is null && newChild is null) return false;
+        if(!ReferenceEquals(oldChild, newChild)) return true;
+        if (newChild.Keccak is null && parent.Keccak is not null) return true; // So that recalculate root knows to recalculate the parent root.
+        return false;
     }
 
     private TrieNode? MakeFakeBranch(ref TreePath currentPath, TrieNode? existingNode)
@@ -521,7 +504,7 @@ public class PatriciaTreeBulkSetter(PatriciaTree patriciaTree)
     /// <param name="path"></param>
     /// <param name="node"></param>
     /// <returns></returns>
-    private TrieNode? MaybeCombineNode(ref TreePath path, in TrieNode? node)
+    private TrieNode? MaybeCombineNode(ref TreePath path, in TrieNode? node, bool fromOne, bool hasRemove)
     {
         int onlyChildIdx = -1;
         TrieNode? onlyChildNode = null;
@@ -541,6 +524,7 @@ public class PatriciaTreeBulkSetter(PatriciaTree patriciaTree)
                 }
                 else
                 {
+                    // 63%
                     // More than one non null child. We don't care anymore.
                     path.TruncateOne();
                     return node;
@@ -561,6 +545,7 @@ public class PatriciaTreeBulkSetter(PatriciaTree patriciaTree)
             return TrieNodeFactory.CreateExtension([(byte)onlyChildIdx], onlyChildNode);
         }
 
+        // 35%
         // Replace the only child with something with extra key.
         byte[] newKey = Bytes.Concat((byte)onlyChildIdx, onlyChildNode.Key);
         TrieNode tn = onlyChildNode.CloneWithChangedKey(newKey);
@@ -587,8 +572,6 @@ public class PatriciaTreeBulkSetter(PatriciaTree patriciaTree)
 
 #if DEBUG
         if (entries.Length != sortTarget.Length) throw new Exception("Both buffer must be of the same length");
-        if (threadResource.SortBuckets.Count != 16) throw new Exception("Sort bucckets must be of length 16");
-        foreach (ArrayPoolList<int> bucket in threadResource.SortBuckets) if (bucket.Count != 0) throw new Exception("Bucket must be emptied");
 #endif
 
         if (entries.Length < 24)
@@ -690,7 +673,12 @@ public class PatriciaTreeBulkSetter(PatriciaTree patriciaTree)
     /// <returns></returns>
     public static int HexarySearchAlreadySorted(Span<BulkSetEntry> entries, int pathIndex, Span<(int, int)> indexes)
     {
-        // TODO: Check if it worth it to convert to binary search.
+        if (entries.Length < BSearchThreshold) return HexarySearchAlreadySortedSmall(entries, pathIndex, indexes);
+        return HexarySearchAlreadySortedLarge(entries, pathIndex, indexes);
+    }
+
+    public static int HexarySearchAlreadySortedSmall(Span<BulkSetEntry> entries, int pathIndex, Span<(int, int)> indexes)
+    {
         int curIdx = 0;
         int relevantNib = 0;
 
@@ -712,6 +700,61 @@ public class PatriciaTreeBulkSetter(PatriciaTree patriciaTree)
         }
 
         return relevantNib;
+    }
+
+    public static int HexarySearchAlreadySortedLarge(
+        Span<BulkSetEntry> entries,
+        int pathIndex,
+        Span<(int nib, int start)> indexes)
+    {
+        int n = entries.Length;
+        if (n == 0) return 0;
+
+        // All hi
+        Span<int> his = stackalloc int[TrieNode.BranchesCount];
+        his.Fill(n);
+
+        int nib = entries[0].GetPathNibbble(pathIndex);
+
+        // First nib is free
+        int relevant = 0;
+        indexes[relevant] = (nib, 0);
+        relevant++;
+        nib++;
+
+        int lo = 0;
+        for (; nib < TrieNode.BranchesCount;)
+        {
+            int hi = his[nib];
+
+            while (lo < hi)
+            {
+                int mid = (int)((uint)(lo + hi) >> 1);
+                int midnib = entries[mid].GetPathNibbble(pathIndex);
+                if (midnib < nib)
+                {
+                    lo = mid + 1;
+                }
+                else
+                {
+                    hi = mid;
+                    // Also fill all hi for nib between nib to midnib.
+                    if (midnib > nib) his[(nib+1)..midnib].Fill(mid);
+                }
+            }
+
+            if (lo == n) break;
+
+            // Note: The nib can be different, but its fine as it automatically skip.
+            nib = entries[lo].GetPathNibbble(pathIndex);
+            indexes[relevant] = (nib, lo);
+            relevant++;
+
+            nib++;
+            lo++;
+        }
+
+        return relevant;
     }
 
     internal struct TraverseStack

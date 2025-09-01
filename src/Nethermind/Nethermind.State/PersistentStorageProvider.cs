@@ -675,7 +675,7 @@ internal sealed class PersistentStorageProvider : PartialStorageProviderBase
 
             int writes = 0;
             int skipped = 0;
-            if (BlockChange.EstimatedSize < PatriciaTreeBulkSetter.MinEntriesToParallelizeThreshold)
+            if (BlockChange.EstimatedSize < 0)
             {
                 foreach (var kvp in BlockChange)
                 {
