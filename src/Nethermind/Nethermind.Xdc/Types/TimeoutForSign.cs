@@ -1,15 +1,22 @@
 // SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using Nethermind.Core.Crypto;
 using Nethermind.Serialization.Rlp;
 
-namespace Nethermind.Consensus.HotStuff.Types;
+namespace Nethermind.Xdc.Types;
 
 using Round = ulong;
 
 public class TimeoutForSign
 {
+    public TimeoutForSign(ulong round, ulong gapNumber)
+    {
+        Round = round;
+        GapNumber = gapNumber;
+    }
+
     public Round Round { get; set; }
     public ulong GapNumber { get; set; }
-    public Rlp Hash() => Rlp.Encode(this);
+    public Hash256 Hash() => Keccak.Compute(Rlp.Encode(this).Bytes);
 }

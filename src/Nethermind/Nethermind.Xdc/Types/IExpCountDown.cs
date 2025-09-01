@@ -3,7 +3,7 @@
 
 using System;
 
-namespace Nethermind.Consensus.HotStuff.Types;
+namespace Nethermind.Xdc.Types;
 public interface IExpCountDown
 {
     void Dispose();

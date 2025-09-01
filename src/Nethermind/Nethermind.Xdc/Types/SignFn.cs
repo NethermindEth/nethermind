@@ -8,5 +8,5 @@ using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
 
-namespace Nethermind.Consensus.HotStuff.Types;
+namespace Nethermind.Xdc.Types;
 public delegate byte[] SignFn(Address address, byte[] data);

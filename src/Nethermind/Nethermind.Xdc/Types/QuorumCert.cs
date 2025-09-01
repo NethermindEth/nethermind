@@ -5,10 +5,17 @@ using Nethermind.Core.Crypto;
 using System.Collections.Generic;
 using System.Text.Json.Serialization;
 
-namespace Nethermind.Consensus.HotStuff.Types;
+namespace Nethermind.Xdc.Types;
 
 public class QuorumCert
 {
+    public QuorumCert(BlockInfo proposedBlockInfo, Signature[] signatures, long gapNumber)
+    {
+        ProposedBlockInfo = proposedBlockInfo;
+        Signatures = signatures;
+        GapNumber = gapNumber;
+    }
+
     [JsonPropertyName("proposedBlockInfo")]
     public BlockInfo ProposedBlockInfo { get; set; }
 

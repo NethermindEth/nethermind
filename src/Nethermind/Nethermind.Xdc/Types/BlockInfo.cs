@@ -9,7 +9,7 @@ using System.Text;
 using System.Text.Json.Serialization;
 using System.Threading.Tasks;
 
-namespace Nethermind.Consensus.HotStuff.Types;
+namespace Nethermind.Xdc.Types;
 
 using Round = ulong;
 

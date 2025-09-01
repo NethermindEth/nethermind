@@ -3,12 +3,18 @@
 
 using Nethermind.Serialization.Rlp;
 
-namespace Nethermind.Consensus.HotStuff.Types;
+namespace Nethermind.Xdc.Types;
 
 using Round = ulong;
 
 public class ExtraFieldsV2
 {
+    public ExtraFieldsV2(ulong round, QuorumCert quorumCert)
+    {
+        Round = round;
+        QuorumCert = quorumCert;
+    }
+
     public Round Round { get; set; }
     public QuorumCert QuorumCert { get; set; }
 

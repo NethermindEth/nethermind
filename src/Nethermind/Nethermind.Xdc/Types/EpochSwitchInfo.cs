@@ -4,10 +4,19 @@
 using Nethermind.Core;
 using System.Collections.Generic;
 
-namespace Nethermind.Consensus.HotStuff.Types;
+namespace Nethermind.Xdc.Types;
 
 public class EpochSwitchInfo
 {
+    public EpochSwitchInfo(Address[] penalties, Address[] standbynodes, Address[] masternodes, BlockInfo epochSwitchBlockInfo, BlockInfo epochSwitchParentBlockInfo)
+    {
+        Penalties = penalties;
+        Standbynodes = standbynodes;
+        Masternodes = masternodes;
+        EpochSwitchBlockInfo = epochSwitchBlockInfo;
+        EpochSwitchParentBlockInfo = epochSwitchParentBlockInfo;
+    }
+
     public Address[] Penalties { get; set; }
     public Address[] Standbynodes { get; set; }
     public Address[] Masternodes { get; set; }

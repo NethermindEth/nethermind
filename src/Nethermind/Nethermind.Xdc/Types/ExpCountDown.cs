@@ -4,7 +4,7 @@
 using System;
 using System.Threading;
 
-namespace Nethermind.Consensus.HotStuff.Types;
+namespace Nethermind.Xdc.Types;
 
 public class ExpCountDown : IDisposable, IExpCountDown
 {

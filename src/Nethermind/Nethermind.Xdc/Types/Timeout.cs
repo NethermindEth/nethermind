@@ -3,9 +3,10 @@
 
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Serialization.Rlp;
 using System;
 
-namespace Nethermind.Consensus.HotStuff.Types;
+namespace Nethermind.Xdc.Types;
 
 using Round = ulong;
 
@@ -13,11 +14,18 @@ public class Timeout
 {
     private Address signer;
 
+    public Timeout(ulong round, Signature signature, ulong gapNumber)
+    {
+        Round = round;
+        Signature = signature;
+        GapNumber = gapNumber;
+    }
+
     public Round Round { get; set; }
     public Signature Signature { get; set; }
     public ulong GapNumber { get; set; }
 
-    public Hash256 Hash() => throw new NotImplementedException();
+    public Hash256 Hash() => Keccak.Compute(Rlp.Encode(this).Bytes);
 
     public override string ToString() => $"{Round}:{GapNumber}";
 

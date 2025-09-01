@@ -4,7 +4,7 @@
 using Nethermind.Core.Crypto;
 using Nethermind.Serialization.Rlp;
 
-namespace Nethermind.Consensus.HotStuff.Types;
+namespace Nethermind.Xdc.Types;
 
 public class VoteForSign
 {

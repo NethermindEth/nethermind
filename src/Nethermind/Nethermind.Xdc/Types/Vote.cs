@@ -5,7 +5,7 @@ using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using System.Text.Json.Serialization;
 
-namespace Nethermind.Consensus.HotStuff.Types;
+namespace Nethermind.Xdc.Types;
 
 public class Vote
 {

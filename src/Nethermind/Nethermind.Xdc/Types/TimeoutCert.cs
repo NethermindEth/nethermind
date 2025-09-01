@@ -4,7 +4,7 @@
 using Nethermind.Core.Crypto;
 using System.Collections.Generic;
 
-namespace Nethermind.Consensus.HotStuff.Types;
+namespace Nethermind.Xdc.Types;
 
 using Round = ulong;
 

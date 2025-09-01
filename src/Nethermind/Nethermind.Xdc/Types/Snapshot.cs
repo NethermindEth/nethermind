@@ -4,7 +4,7 @@
 using System;
 using System.Collections.Generic;
 using Nethermind.Consensus.Clique;
-using Nethermind.Consensus.HotStuff.Types;
+using Nethermind.Xdc.Types;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 

@@ -7,9 +7,15 @@ using System.Text;
 using System.Text.Json.Serialization;
 using System.Threading.Tasks;
 
-namespace Nethermind.Consensus.HotStuff.Types;
+namespace Nethermind.Xdc.Types;
 public class ExpTimeoutConfig
 {
+    public ExpTimeoutConfig(int @base, byte maxExponent)
+    {
+        Base = @base;
+        MaxExponent = maxExponent;
+    }
+
     [JsonPropertyName("base")]
     public int Base { get; set; }
 
