@@ -186,6 +186,19 @@ namespace Nethermind.Init.Steps
         /// </summary>
         private string BuildStepDependencyTree(Dictionary<Type, StepWrapper> stepInfoMap)
         {
+            // Remove absent steps
+            foreach (var kv in stepInfoMap)
+            {
+                foreach (var dep in kv.Value.Dependencies.ToArray())
+                {
+                    if (!stepInfoMap.ContainsKey(dep))
+                    {
+                        kv.Value.Dependencies.Remove(dep);
+                        if (_logger.IsDebug) _logger.Debug($"Dependency {dep.Name} will not be loaded for step {kv.Key.Name} because it was not found.");
+                    }
+                }
+            }
+
             // Map each step to its direct dependencies
             var depsMap = stepInfoMap.ToDictionary(
                 kv => kv.Key.Name,
@@ -277,7 +290,7 @@ namespace Nethermind.Init.Steps
             public Task StepTask => _taskCompletedSource.Task;
             public List<Type> Dependencies = new(stepInfo.Dependencies);
 
-            private TaskCompletionSource _taskCompletedSource = new TaskCompletionSource();
+            private readonly TaskCompletionSource _taskCompletedSource = new TaskCompletionSource();
 
             public async Task StartExecute(IEnumerable<StepWrapper> dependentSteps, CancellationToken cancellationToken)
             {
