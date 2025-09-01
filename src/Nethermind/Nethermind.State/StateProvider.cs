@@ -709,7 +709,6 @@ namespace Nethermind.State
             int writes = 0;
             int skipped = 0;
 
-            long sw = Stopwatch.GetTimestamp();
             if (_blockChanges.Count < 0)
             {
                 foreach (var key in _blockChanges.Keys)
