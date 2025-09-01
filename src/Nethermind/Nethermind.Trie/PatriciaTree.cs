@@ -313,6 +313,8 @@ namespace Nethermind.Trie
             }
         }
 
+        public static bool UseNewRead = true;
+
         [SkipLocalsInit]
         [DebuggerStepThrough]
         public virtual ReadOnlySpan<byte> Get(ReadOnlySpan<byte> rawKey, Hash256? rootHash = null)
@@ -327,8 +329,26 @@ namespace Nethermind.Trie
                     [..nibblesCount]; // Slice to exact size;
 
                 Nibbles.BytesToNibbleBytes(rawKey, nibbles);
-                TreePath updatePathTreePath = TreePath.Empty; // Only used on update.
-                SpanSource result = Run(ref updatePathTreePath, SpanSource.Empty, nibbles, isUpdate: false, startRootHash: rootHash);
+
+                SpanSource result;
+                if (UseNewRead)
+                {
+                    TreePath emptyPath = TreePath.Empty;
+                    TrieNode root = RootRef;
+
+                    if (rootHash is not null)
+                    {
+                        root = TrieStore.FindCachedOrUnknown(emptyPath, rootHash);
+                    }
+
+                    result = GetNew(nibbles, ref emptyPath, root, isNodeRead: false);
+                }
+                else
+                {
+                    TreePath updatePathTreePath = TreePath.Empty; // Only used on update.
+                    result = Run(ref updatePathTreePath, SpanSource.Empty, nibbles, isUpdate: false, startRootHash: rootHash);
+                }
+
                 if (array is not null) ArrayPool<byte>.Shared.Return(array);
 
                 return result.IsNull ? ReadOnlySpan<byte>.Empty : result.Span;
@@ -345,9 +365,23 @@ namespace Nethermind.Trie
         {
             try
             {
-                TreePath updatePathTreePath = TreePath.Empty; // Only used on update.
-                SpanSource result = Run(ref updatePathTreePath, SpanSource.Empty, nibbles, false, startRootHash: rootHash,
+                SpanSource result;
+                if (UseNewRead)
+                {
+                    TreePath emptyPath = TreePath.Empty;
+                    TrieNode root = RootRef;
+                    if (rootHash is not null)
+                    {
+                        root = TrieStore.FindCachedOrUnknown(emptyPath, rootHash);
+                    }
+                    result = GetNew(nibbles, ref emptyPath, root, isNodeRead: true);
+                }
+                else
+                {
+                    TreePath updatePathTreePath = TreePath.Empty; // Only used on update.
+                    result = Run(ref updatePathTreePath, SpanSource.Empty, nibbles, false, startRootHash: rootHash,
                     isNodeRead: true);
+                }
                 return result.ToArray();
             }
             catch (TrieException e)
@@ -369,9 +403,25 @@ namespace Nethermind.Trie
                         : array = ArrayPool<byte>.Shared.Rent(nibblesCount))
                     [..nibblesCount]; // Slice to exact size;
                 Nibbles.BytesToNibbleBytes(rawKey, nibbles);
-                TreePath updatePathTreePath = TreePath.Empty; // Only used on update.
-                SpanSource result = Run(ref updatePathTreePath, SpanSource.Empty, nibbles, false, startRootHash: rootHash,
-                    isNodeRead: true);
+
+                SpanSource result;
+                if (UseNewRead)
+                {
+                    TreePath emptyPath = TreePath.Empty;
+                    TrieNode root = RootRef;
+                    if (rootHash is not null)
+                    {
+                        root = TrieStore.FindCachedOrUnknown(emptyPath, rootHash);
+                    }
+                    result = GetNew(nibbles, ref emptyPath, root, isNodeRead: true);
+                }
+                else
+                {
+                    TreePath updatePathTreePath = TreePath.Empty; // Only used on update.
+                    result = Run(ref updatePathTreePath, SpanSource.Empty, nibbles, false, startRootHash: rootHash,
+                        isNodeRead: true);
+                }
+
                 if (array is not null) ArrayPool<byte>.Shared.Return(array);
                 return result.ToArray() ?? [];
             }
@@ -1102,13 +1152,13 @@ namespace Nethermind.Trie
             RootRef = nextNode;
             return;
 
-        Corruption:
+            Corruption:
             ThrowTrieExceptionCorruption();
-        InvalidNodeType:
+            InvalidNodeType:
             ThrowInvalidNodeType(node);
-        NullNode:
+            NullNode:
             ThrowInvalidNullNode(node);
-        LeafCannotBeParent:
+            LeafCannotBeParent:
             ThrowTrieExceptionLeafCannotBeParent(node, nextNode);
 
             [DoesNotReturn, StackTraceHidden]
@@ -1338,6 +1388,68 @@ namespace Nethermind.Trie
 
             ConnectNodes(branch, in traverseContext);
             return traverseContext.UpdateValue;
+        }
+
+        internal SpanSource GetNew(Span<byte> remainingKey, ref TreePath path, TrieNode? node, bool isNodeRead)
+        {
+            int originalPathLength = path.Length;
+
+            try
+            {
+                while (true)
+                {
+                    if (node is null)
+                    {
+                        // If node read, then missing node. If value read.... what is it suppose to be then?
+                        return default;
+                    }
+
+                    node.ResolveNode(TrieStore, path);
+
+                    if (isNodeRead && remainingKey.Length == 0)
+                    {
+                        return node.FullRlp;
+                    }
+
+                    if (node.IsLeaf || node.IsExtension)
+                    {
+                        int commonPrefixLength = remainingKey.CommonPrefixLength(node.Key);
+                        if (commonPrefixLength == node.Key!.Length)
+                        {
+                            if (node.IsLeaf)
+                            {
+                                if (!isNodeRead && commonPrefixLength == remainingKey.Length) return node.Value;
+
+                                // Um..... leaf cannot have child
+                                return default;
+                            }
+
+                            // Continue traversal to the child of the extension
+                            path.AppendMut(node.Key);
+                            TrieNode? extensionChild = node.GetChildWithChildPath(TrieStore, ref path, 0);
+                            remainingKey = remainingKey[node!.Key.Length..];
+                            node = extensionChild;
+
+                            continue;
+                        }
+
+                        // No node match
+                        return default;
+                    }
+
+                    int nib = remainingKey[0];
+                    path.AppendMut(nib);
+                    TrieNode? child = node.GetChildWithChildPath(TrieStore, ref path, nib);
+
+                    // Continue loop with child as current node
+                    node = child;
+                    remainingKey = remainingKey[1..];
+                }
+            }
+            finally
+            {
+                path.TruncateMut(originalPathLength);
+            }
         }
 
         private SpanSource ResolveCurrent(scoped in TraverseContext traverseContext)
