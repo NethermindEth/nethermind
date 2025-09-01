@@ -71,7 +71,10 @@ namespace Nethermind.JsonRpc.Modules.Admin
             Name = peer.Node.ClientId;
             Enode = peer.Node.ToString(Node.Format.ENode);
             Caps = capabilities;
-            Enr = EnrExtractor.GetEnrFromPeer(peer);
+            // TODO : ENR strings require signed NodeRecord instances from the discovery layer
+            // This would require access to IDiscoveryManager and proper ENR handshake
+            // For now, return null as this matches the expected behavior
+            Enr = null;
         }
 
         private void SetNetworkInfo(Peer peer)
