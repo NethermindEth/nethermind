@@ -1,10 +1,10 @@
 {
   "$schema": "https://raw.githubusercontent.com/NethermindEth/core-scripts/refs/heads/main/schemas/config.json",
   "Init": {
-    "ChainSpecPath": "chainspec/base-mainnet.json.zst",
-    "GenesisHash": "0xf712aa9241cc24369b143cf6dce85f0902a9731e70d66818a3a5845b296c73dd",
-    "BaseDbPath": "nethermind_db/base-mainnet",
-    "LogFileName": "base-mainnet.log"
+    "ChainSpecPath": "chainspec/arena-z-sepolia.json.zst",
+    "GenesisHash": "0x29b5818dde83228647d69794cad3e28bfc2e99defc3696c46c068ba4a27b8d4a",
+    "BaseDbPath": "nethermind_db/arena-z-sepolia",
+    "LogFileName": "arena-z-sepolia.log"
   },
   "TxPool": {
     "BlobsSupport": "Disabled"
@@ -12,9 +12,7 @@
   "Sync": {
     "FastSync": true,
     "SnapSync": true,
-    "FastSyncCatchUpHeightDelta": "10000000000",
-    "PivotNumber": 34890000,
-    "PivotHash": "0x99253e5d7cb60c133b97389fd80bcd8e4f7907d9f0c674193192e7496ab81046"
+    "FastSyncCatchUpHeightDelta": "10000000000"
   },
   "Discovery": {
     "DiscoveryVersion": "V5"
@@ -34,6 +32,6 @@
     "Enabled": true
   },
   "Optimism": {
-    "SequencerUrl": "https://mainnet-sequencer.base.org"
+    "SequencerUrl": "https://testnet-rpc.arena-z.gg"
   }
 }

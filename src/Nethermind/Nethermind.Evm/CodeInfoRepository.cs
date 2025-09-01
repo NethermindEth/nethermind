@@ -28,7 +28,7 @@ public class CodeInfoRepository : ICodeInfoRepository
     }
 
     public bool IsPrecompile(Address address, IReleaseSpec spec) =>
-        address.IsPrecompile(spec) && _localPrecompiles.ContainsKey(address);
+        spec.IsPrecompile(address) && _localPrecompiles.ContainsKey(address);
 
     public ICodeInfo GetCachedCodeInfo(IWorldState worldState, Address codeSource, bool followDelegation, IReleaseSpec vmSpec, out Address? delegationAddress)
     {

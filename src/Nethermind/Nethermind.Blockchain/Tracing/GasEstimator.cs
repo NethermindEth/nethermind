@@ -13,7 +13,11 @@ using Nethermind.Evm.Tracing;
 
 namespace Nethermind.Blockchain.Tracing;
 
-public class GasEstimator
+public class GasEstimator(
+    ITransactionProcessor transactionProcessor,
+    IReadOnlyStateProvider stateProvider,
+    ISpecProvider specProvider,
+    IBlocksConfig blocksConfig)
 {
     /// <summary>
     /// Error margin used if none other is specified expressed in basis points.
@@ -21,20 +25,6 @@ public class GasEstimator
     public const int DefaultErrorMargin = 150;
 
     private const int MaxErrorMargin = 10000;
-
-    private readonly ITransactionProcessor _transactionProcessor;
-    private readonly IReadOnlyStateProvider _stateProvider;
-    private readonly ISpecProvider _specProvider;
-    private readonly IBlocksConfig _blocksConfig;
-
-    public GasEstimator(ITransactionProcessor transactionProcessor, IReadOnlyStateProvider stateProvider,
-        ISpecProvider specProvider, IBlocksConfig blocksConfig)
-    {
-        _transactionProcessor = transactionProcessor;
-        _stateProvider = stateProvider;
-        _specProvider = specProvider;
-        _blocksConfig = blocksConfig;
-    }
 
     public long Estimate(Transaction tx, BlockHeader header, EstimateGasTracer gasTracer, out string? err,
         int errorMargin = DefaultErrorMargin, CancellationToken token = new())
@@ -53,30 +43,19 @@ public class GasEstimator
         }
 
         IReleaseSpec releaseSpec =
-            _specProvider.GetSpec(header.Number + 1, header.Timestamp + _blocksConfig.SecondsPerSlot);
+            specProvider.GetSpec(header.Number + 1, header.Timestamp + blocksConfig.SecondsPerSlot);
 
         tx.SenderAddress ??= Address.Zero; // If sender is not specified, use zero address.
 
         // Calculate and return additional gas required in case of insufficient funds.
-        UInt256 senderBalance = _stateProvider.GetBalance(tx.SenderAddress);
+        UInt256 senderBalance = stateProvider.GetBalance(tx.SenderAddress);
         if (tx.ValueRef != UInt256.Zero && tx.ValueRef > senderBalance && !tx.IsSystem())
         {
             long additionalGas = gasTracer.CalculateAdditionalGasRequired(tx, releaseSpec);
             if (additionalGas == 0)
             {
                 // If no additional gas can help, it's an insufficient balance error
-                if (gasTracer.OutOfGas)
-                {
-                    err = "Gas estimation failed due to out of gas";
-                }
-                else if (gasTracer.StatusCode == StatusCode.Failure)
-                {
-                    err = gasTracer.Error ?? "Transaction execution fails";
-                }
-                else
-                {
-                    err = "insufficient balance";
-                }
+                err = GetError(gasTracer, "insufficient balance");
             }
             return additionalGas;
         }
@@ -101,15 +80,21 @@ public class GasEstimator
         return BinarySearchEstimate(leftBound, rightBound, tx, header, gasTracer, errorMargin, token, out err);
     }
 
-    private long BinarySearchEstimate(long leftBound, long rightBound, Transaction tx, BlockHeader header,
-        EstimateGasTracer gasTracer, int errorMargin, CancellationToken token, out string? err)
+    private long BinarySearchEstimate(
+        long leftBound,
+        long rightBound,
+        Transaction tx,
+        BlockHeader header,
+        EstimateGasTracer gasTracer,
+        int errorMargin,
+        CancellationToken token,
+        out string? err)
     {
         err = null;
         double marginWithDecimals = errorMargin == 0 ? 1 : errorMargin / 10000d + 1;
 
         //This approach is similar to Geth, by starting from an optimistic guess the number of iterations is greatly reduced in most cases
-        long optimisticGasEstimate =
-            (long)((gasTracer.GasSpent + gasTracer.TotalRefund + GasCostOf.CallStipend) * marginWithDecimals);
+        long optimisticGasEstimate = (long)((gasTracer.GasSpent + gasTracer.TotalRefund + GasCostOf.CallStipend) * marginWithDecimals);
         if (optimisticGasEstimate > leftBound && optimisticGasEstimate < rightBound)
         {
             if (TryExecutableTransaction(tx, header, optimisticGasEstimate, token, gasTracer))
@@ -136,24 +121,20 @@ public class GasEstimator
 
         if (rightBound == cap && !TryExecutableTransaction(tx, header, rightBound, token, gasTracer))
         {
-            // Set error based on failure reason
-            if (gasTracer.OutOfGas)
-            {
-                err = "Gas estimation failed due to out of gas";
-            }
-            else if (gasTracer.StatusCode == StatusCode.Failure)
-            {
-                err = gasTracer.Error ?? "Transaction execution fails";
-            }
-            else
-            {
-                err = "Transaction execution fails";
-            }
+            err = GetError(gasTracer);
             return 0;
         }
 
         return rightBound;
     }
+
+    private static string GetError(EstimateGasTracer gasTracer, string defaultError = "Transaction execution fails") =>
+        gasTracer switch
+        {
+            { OutOfGas: true } => "Gas estimation failed due to out of gas",
+            { StatusCode: StatusCode.Failure } => gasTracer.Error ?? "Transaction execution fails",
+            _ => defaultError
+        };
 
     private bool TryExecutableTransaction(Transaction transaction, BlockHeader block, long gasLimit,
         CancellationToken token, EstimateGasTracer gasTracer)
@@ -162,8 +143,8 @@ public class GasEstimator
         transaction.CopyTo(txClone);
         txClone.GasLimit = gasLimit;
 
-        _transactionProcessor.SetBlockExecutionContext(new(block, _specProvider.GetSpec(block)));
-        TransactionResult result = _transactionProcessor.CallAndRestore(txClone, gasTracer.WithCancellation(token));
+        transactionProcessor.SetBlockExecutionContext(new(block, specProvider.GetSpec(block)));
+        TransactionResult result = transactionProcessor.CallAndRestore(txClone, gasTracer.WithCancellation(token));
 
         return result.TransactionExecuted && gasTracer.StatusCode == StatusCode.Success && !gasTracer.OutOfGas;
     }
