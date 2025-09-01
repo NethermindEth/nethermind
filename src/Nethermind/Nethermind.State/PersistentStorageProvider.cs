@@ -700,7 +700,7 @@ internal sealed class PersistentStorageProvider : PartialStorageProviderBase
 
             if (writes > 0)
             {
-                StorageTree.UpdateRootHash(canBeParallel: false);
+                StorageTree.UpdateRootHash(canBeParallel: writes > 64);
             }
 
             return (writes, skipped);
