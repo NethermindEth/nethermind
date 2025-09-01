@@ -429,8 +429,6 @@ namespace Nethermind.Trie
             Set(rawKey, new SpanSource(value));
         }
 
-        public static bool UseNewSet = true;
-
         [SkipLocalsInit]
         [DebuggerStepThrough]
         public void Set(ReadOnlySpan<byte> rawKey, SpanSource value)
@@ -453,22 +451,11 @@ namespace Nethermind.Trie
                         : array = ArrayPool<byte>.Shared.Rent(nibblesCount))
                     [..nibblesCount]; // Slice to exact size
 
-                Nibbles.BytesToNibbleBytes(rawKey, nibbles);
-                if (UseNewSet)
-                {
-                    if (_traverseStack is null) _traverseStack = new Stack<TraverseStack>();
-                    if (_traverseStack.Count > 0) _traverseStack.Clear();
+                if (_traverseStack is null) _traverseStack = new Stack<TraverseStack>();
+                if (_traverseStack.Count > 0) _traverseStack.Clear();
 
-                    TreePath empty = TreePath.Empty;
-                    RootRef = SetNew(_traverseStack, nibbles, value, ref empty, RootRef);
-                }
-                else
-                {
-                    // lazy stack cleaning after the previous update
-                    ClearNodeStack();
-                    TreePath updatePathTreePath = TreePath.FromPath(rawKey); // Only used on update.
-                    Run(ref updatePathTreePath, value, nibbles, isUpdate: true);
-                }
+                TreePath empty = TreePath.Empty;
+                RootRef = SetNew(_traverseStack, nibbles, value, ref empty, RootRef);
 
                 if (array is not null) ArrayPool<byte>.Shared.Return(array);
             }
