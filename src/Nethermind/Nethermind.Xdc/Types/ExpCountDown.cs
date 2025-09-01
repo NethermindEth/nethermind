@@ -16,7 +16,7 @@ public class ExpCountDown : IDisposable, IExpCountDown
     private Action? _callback;
 
     public ExpCountDown(int initialDuration, int @base, int maxExponent)
-        => SetParams(initialDuration, @base, maxExponent, false)
+        => SetParams(initialDuration, @base, maxExponent, false);
 
     public void SetParams(int initialDuration, int @base, int maxExponent, bool shouldScheduleNext = true)
     {
