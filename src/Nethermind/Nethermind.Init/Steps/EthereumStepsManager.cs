@@ -13,6 +13,7 @@ using System.Diagnostics;
 using System.Linq;
 using System.Reflection;
 using System.Runtime.ExceptionServices;
+using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
 
@@ -48,8 +49,7 @@ namespace Nethermind.Init.Steps
             {
                 Task current = await Task.WhenAny(allRequiredSteps);
                 ReviewFailedAndThrow(current);
-                if (current.IsCanceled && _logger.IsDebug)
-                    _logger.Debug($"A required step was cancelled!");
+                if (current.IsCanceled && _logger.IsDebug) _logger.Debug("A required step was cancelled!");
                 allRequiredSteps.Remove(current);
             } while (allRequiredSteps.Any(s => !s.IsCompleted));
         }
@@ -63,44 +63,41 @@ namespace Nethermind.Init.Steps
             {
                 cancellationToken.ThrowIfCancellationRequested();
 
-                Func<IStep> stepFactory = () =>
-                {
-                    return CreateStepInstance(stepInfo);
-                };
+                IStep StepFactory() => CreateStepInstance(stepInfo);
 
                 Debug.Assert(!stepInfoMap.ContainsKey(stepInfo.StepBaseType), "Resolve steps implementations should have deduplicated step by base type");
-                stepInfoMap.Add(stepInfo.StepBaseType, new StepWrapper(stepFactory, stepInfo));
+                stepInfoMap.Add(stepInfo.StepBaseType, new StepWrapper(StepFactory, stepInfo));
             }
 
-            foreach (var kv in stepInfoMap)
+            foreach ((Type key, StepWrapper stepWrapper) in stepInfoMap)
             {
-                StepWrapper stepWrapper = kv.Value;
                 foreach (Type type in stepWrapper.StepInfo.Dependents)
                 {
                     if (stepInfoMap.TryGetValue(type, out StepWrapper? dependent))
                     {
-                        dependent.Dependencies.Add(kv.Key);
+                        dependent.Dependencies.Add(key);
                     }
                     else
                     {
-                        throw new StepDependencyException(
-                            $"The dependent step {type.Name} for {stepWrapper.StepInfo.StepBaseType.Name} is missing.");
+                        throw new StepDependencyException($"The dependent step {type.Name} for {stepWrapper.StepInfo.StepBaseType.Name} is missing.");
                     }
                 }
 
-                // Remove absent optional steps
-                foreach (Type dep in stepWrapper.Dependencies.ToArray())
+                // Remove absent optional dependencies
+                for (var i = 0; i < stepWrapper.Dependencies.Count; i++)
                 {
+                    Type dep = stepWrapper.Dependencies[i];
                     if (!stepInfoMap.ContainsKey(dep))
                     {
                         if (dep.GetCustomAttribute<RunnerStepDependenciesAttribute>()?.Optional is true)
                         {
-                            stepWrapper.Dependencies.Remove(dep);
-                            if (_logger.IsDebug) _logger.Debug($"Optional dependency {dep.Name} will not be loaded for step {kv.Key.Name} because it was not found.");
+                            stepWrapper.Dependencies.RemoveAt(i);
+                            i--;
+                            if (_logger.IsDebug) _logger.Debug($"Optional dependency {dep.Name} will not be loaded for step {key.Name} because it was not found.");
                         }
                         else
                         {
-                            throw new StepDependencyException($"Dependency {dep.Name} was not found for step {kv.Key.Name}.");
+                            throw new StepDependencyException($"Dependency {dep.Name} was not found for step {key.Name}.");
                         }
                     }
                 }
@@ -132,26 +129,17 @@ namespace Nethermind.Init.Steps
                 }
                 await stepWrapper.StartExecute(dependencies, cancellationToken);
 
-                if (_logger.IsDebug)
-                    _logger.Debug(
-                        $"Step {stepWrapper.GetType().Name,-24} executed in {Stopwatch.GetElapsedTime(startTime).TotalMilliseconds:N0}ms");
+                if (_logger.IsDebug) _logger.Debug($"Step {stepWrapper.GetType().Name,-24} executed in {Stopwatch.GetElapsedTime(startTime).TotalMilliseconds:N0}ms");
             }
             catch (Exception exception) when (exception is not TaskCanceledException)
             {
                 if (stepWrapper.Step.MustInitialize)
                 {
-                    if (_logger.IsError)
-                        _logger.Error(
-                            $"Step {stepWrapper.GetType().Name,-24} failed after {Stopwatch.GetElapsedTime(startTime).TotalMilliseconds:N0}ms",
-                            exception);
+                    if (_logger.IsError) _logger.Error($"Step {stepWrapper.GetType().Name,-24} failed after {Stopwatch.GetElapsedTime(startTime).TotalMilliseconds:N0}ms", exception);
                     throw;
                 }
 
-                if (_logger.IsWarn)
-                {
-                    _logger.Warn(
-                        $"Step {stepWrapper.GetType().Name,-24} failed after {Stopwatch.GetElapsedTime(startTime).TotalMilliseconds:N0}ms {exception}");
-                }
+                if (_logger.IsWarn) _logger.Warn($"Step {stepWrapper.GetType().Name,-24} failed after {Stopwatch.GetElapsedTime(startTime).TotalMilliseconds:N0}ms {exception}");
             }
             finally
             {
@@ -185,12 +173,7 @@ namespace Nethermind.Init.Steps
                 unwrapped = resolutionException.InnerException;
             }
 
-            if (unwrapped is InvalidConfigurationException)
-            {
-                return true;
-            }
-
-            return false;
+            return unwrapped is InvalidConfigurationException;
         }
 
         private void ReviewFailedAndThrow(Task task)
@@ -212,10 +195,10 @@ namespace Nethermind.Init.Steps
 
             // Build children map for topological sorting (parent -> children)
             var dependentsMap = stepInfoMap.Keys.ToDictionary(t => t.Name, t => new List<string>());
-            foreach (var kv in stepInfoMap)
+            foreach (KeyValuePair<Type, StepWrapper> kv in stepInfoMap)
             {
                 var node = kv.Key.Name;
-                foreach (var dependency in kv.Value.Dependencies)
+                foreach (Type dependency in kv.Value.Dependencies)
                 {
                     if (dependentsMap.ContainsKey(dependency.Name))
                         dependentsMap[dependency.Name].Add(node);
@@ -223,10 +206,10 @@ namespace Nethermind.Init.Steps
             }
 
             // Kahn's algorithm to compute topological order
-            var inDegree = depsMap.ToDictionary(kv => kv.Key, kv => kv.Value.Count);
-            var queue = new Queue<string>(inDegree.Where(kv => kv.Value == 0).Select(kv => kv.Key).OrderBy((c) => dependentsMap[c].Count));
-            var sorted = new List<string>();
-            var degree = new Dictionary<string, int>(inDegree);
+            Dictionary<string, int> inDegree = depsMap.ToDictionary(kv => kv.Key, kv => kv.Value.Count);
+            Queue<string> queue = new(inDegree.Where(kv => kv.Value == 0).Select(kv => kv.Key).OrderBy((c) => dependentsMap[c].Count));
+            List<string> sorted = new();
+            Dictionary<string, int> degree = new(inDegree);
             while (queue.Count > 0)
             {
                 var n = queue.Dequeue();
@@ -242,11 +225,11 @@ namespace Nethermind.Init.Steps
                 sorted = depsMap.Keys.OrderBy(n => n).ToList();
 
             // Compute max dependency depth for indentation
-            var depth = new Dictionary<string, int>();
-            var allCombinedDeps = new Dictionary<string, HashSet<string>>();
-            foreach (var node in sorted)
+            Dictionary<string, int> depth = new();
+            Dictionary<string, HashSet<string>> allCombinedDeps = new();
+            foreach (string node in sorted)
             {
-                var deps = depsMap[node];
+                List<string> deps = depsMap[node];
                 depth[node] = deps.Count == 0
                     ? 0
                     : deps.Select(d => depth.GetValueOrDefault(d, 0)).Max() + 1;
@@ -255,34 +238,28 @@ namespace Nethermind.Init.Steps
                 allCombinedDeps[node].AddRange(depsMap[node]);
             }
 
-            var deduplicatedDependency = new Dictionary<string, List<string>>();
+            Dictionary<string, List<string>> deduplicatedDependency = new();
             foreach (var node in sorted)
             {
-                HashSet<string> childOnlyAllCombinedDeps = depsMap[node].SelectMany((d) => allCombinedDeps[d]).ToHashSet();
-                deduplicatedDependency[node] = depsMap[node].Where((d) => !childOnlyAllCombinedDeps.Contains(d)).ToList();
+                HashSet<string> childOnlyAllCombinedDeps = depsMap[node].SelectMany(d => allCombinedDeps[d]).ToHashSet();
+                deduplicatedDependency[node] = depsMap[node].Where(d => !childOnlyAllCombinedDeps.Contains(d)).ToList();
             }
 
             // Build the indented output using reversed indentation
-            var sb = new System.Text.StringBuilder();
+            StringBuilder sb = new();
             foreach (var node in sorted)
             {
                 int lvl = depth[node];
                 sb.Append(new string(' ', lvl * 2));
-                var deps = deduplicatedDependency[node];
-                if (dependentsMap[node].Count == 0)
+                List<string> deps = deduplicatedDependency[node];
+                sb.Append(dependentsMap[node].Count == 0 ? "● " : "○ ");
+                sb.Append(node);
+                if (deps.Count != 0)
                 {
-                    sb.Append("● ");
+                    sb.AppendLine($" (depends on {string.Join(", ", deps)})");
                 }
-                else
-                {
-                    sb.Append("○ ");
-                }
-
-                if (deps.Count == 0)
-                    sb.AppendLine($"{node}");
-                else
-                    sb.AppendLine($"{node} (depends on {string.Join(", ", deps)})");
             }
+
             return sb.ToString();
         }
 
@@ -292,10 +269,10 @@ namespace Nethermind.Init.Steps
 
             private IStep? _step;
             public IStep Step => _step ??= stepFactory();
-            public Task StepTask => _taskCompletedSource.Task;
-            public List<Type> Dependencies = new(stepInfo.Dependencies);
+            private Task StepTask => _taskCompletedSource.Task;
+            public readonly List<Type> Dependencies = [..stepInfo.Dependencies];
 
-            private readonly TaskCompletionSource _taskCompletedSource = new TaskCompletionSource();
+            private readonly TaskCompletionSource _taskCompletedSource = new();
 
             public async Task StartExecute(IEnumerable<StepWrapper> dependentSteps, CancellationToken cancellationToken)
             {
