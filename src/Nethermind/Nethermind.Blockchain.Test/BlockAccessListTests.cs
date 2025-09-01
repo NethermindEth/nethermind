@@ -1,31 +1,28 @@
 // SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Threading;
-using Nethermind.Blockchain.BeaconBlockRoot;
-using Nethermind.Blockchain.Blocks;
-using Nethermind.Blockchain.Receipts;
-using Nethermind.Blockchain.Test.Validators;
+using System.Threading.Tasks;
+using Autofac;
 using Nethermind.Blockchain.Tracing;
-using Nethermind.Consensus.ExecutionRequests;
 using Nethermind.Consensus.Processing;
-using Nethermind.Consensus.Rewards;
-using Nethermind.Consensus.Withdrawals;
 using Nethermind.Core;
 using Nethermind.Core.BlockAccessLists;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Extensions;
+using Nethermind.Core.Specs;
 using Nethermind.Core.Test;
+using Nethermind.Core.Test.Blockchain;
 using Nethermind.Core.Test.Builders;
-using Nethermind.Evm.TransactionProcessing;
+using Nethermind.Evm.State;
 using Nethermind.Int256;
-using Nethermind.Logging;
 using Nethermind.Serialization.Rlp;
 using Nethermind.Specs;
 using Nethermind.Specs.Forks;
 using Nethermind.Specs.Test;
-using NSubstitute;
 using NUnit.Framework;
 
 //move all to correct folder
@@ -34,6 +31,13 @@ namespace Nethermind.Evm.Test;
 [TestFixture]
 public class BlockAccessListTests() : TransactionProcessorTests(true)
 {
+    private static readonly OverridableReleaseSpec _spec = new(Prague.Instance)
+    {
+        IsEip7928Enabled = true
+    };
+
+    private static readonly ISpecProvider _specProvider = new TestSpecProvider(_spec);
+
     [Test]
     public void Empty_account_changes()
     {
@@ -180,26 +184,23 @@ public class BlockAccessListTests() : TransactionProcessorTests(true)
     }
 
     [Test]
-    public void System_contracts_and_withdrawals()
+    public async Task System_contracts_and_withdrawals()
     {
-        BlockProcessor processor = new(HoleskySpecProvider.Instance,
-            TestBlockValidator.AlwaysValid,
-            NoBlockRewards.Instance,
-            new BlockProcessor.BlockValidationTransactionsExecutor(new ExecuteTransactionProcessorAdapter(_transactionProcessor), _stateProvider),
-            _stateProvider,
-            NullReceiptStorage.Instance,
-            new BeaconBlockRootHandler(_transactionProcessor, _stateProvider),
-            Substitute.For<IBlockhashStore>(), // create dummy?
-            LimboLogs.Instance,
-            new WithdrawalProcessor(_stateProvider, LimboLogs.Instance),
-            new ExecutionRequestsProcessor(_transactionProcessor));
+        using BasicTestBlockchain testBlockchain = await BasicTestBlockchain.Create(BuildContainer());
 
-        // todo: just use test blockchain?
-        _stateProvider.CreateAccount(Eip4788Constants.BeaconRootsAddress, 10);
-        _stateProvider.CreateAccount(Eip7002Constants.WithdrawalRequestPredeployAddress, 0, Eip7002TestConstants.Nonce);
-        _stateProvider.InsertCode(Eip7002Constants.WithdrawalRequestPredeployAddress, Eip7002TestConstants.CodeHash, Eip7002TestConstants.Code, Prague.Instance);
-        _stateProvider.CreateAccount(Eip7251Constants.ConsolidationRequestPredeployAddress, 0, Eip7251TestConstants.Nonce);
-        _stateProvider.InsertCode(Eip7251Constants.ConsolidationRequestPredeployAddress, Eip7251TestConstants.CodeHash, Eip7251TestConstants.Code, Prague.Instance);
+        IWorldState worldState = testBlockchain.WorldStateManager.GlobalWorldState;
+        using IDisposable _ = worldState.BeginScope(IWorldState.PreGenesis);
+        worldState.CreateAccount(TestItem.AddressA, 10.Ether());
+        worldState.CreateAccount(Eip4788Constants.BeaconRootsAddress, 1);
+        worldState.CreateAccount(Eip7002Constants.WithdrawalRequestPredeployAddress, 0, Eip7002TestConstants.Nonce);
+        worldState.InsertCode(Eip7002Constants.WithdrawalRequestPredeployAddress, Eip7002TestConstants.CodeHash, Eip7002TestConstants.Code, _specProvider.GenesisSpec);
+        worldState.CreateAccount(Eip7251Constants.ConsolidationRequestPredeployAddress, 0, Eip7251TestConstants.Nonce);
+        worldState.InsertCode(Eip7251Constants.ConsolidationRequestPredeployAddress, Eip7251TestConstants.CodeHash, Eip7251TestConstants.Code, _specProvider.GenesisSpec);
+
+        worldState.Commit(_specProvider.GenesisSpec);
+        worldState.CommitTree(0);
+        worldState.RecalculateStateRoot();
+        Hash256 stateRoot = worldState.StateRoot;
 
         ulong gasPrice = 2;
         long gasLimit = 100000;
@@ -211,23 +212,25 @@ public class BlockAccessListTests() : TransactionProcessorTests(true)
             .WithGasLimit(gasLimit)
             .TestObject;
 
+        BlockHeader header = Build.A.BlockHeader
+            .WithBaseFee(1)
+            .WithNumber(1)
+            .WithGasUsed(21000)
+            .WithReceiptsRoot(new("0x056b23fbba480696b65fe5a59b8f2148a1299103c4f57df839233af2cf4ca2d2"))
+            .WithStateRoot(new("0x7c14eebf21367805cab32e286e87f18191ce9286ff344b665fd7d278e2ee2b87"))
+            .WithBlobGasUsed(0)
+            .WithBeneficiary(TestItem.AddressC)
+            .WithParentBeaconBlockRoot(Hash256.Zero)
+            .WithRequestsHash(new("0xe3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"))
+            .TestObject;
+
         Block block = Build.A.Block
             .WithParentBeaconBlockRoot(Hash256.Zero)
-            .WithNumber(100)
             .WithTransactions(tx)
             .WithBaseFeePerGas(1)
-            .WithBeneficiary(TestItem.AddressC).TestObject;
+            .WithHeader(header).TestObject;
 
-        // BlockReceiptsTracer blockReceiptsTracer = new();
-        // BlockAccessTracer accessTracer = new();
-        // blockReceiptsTracer.SetOtherTracer(accessTracer);
-        // Execute(tx, block, blockReceiptsTracer);
-
-        OverridableReleaseSpec spec = new(Prague.Instance)
-        {
-            IsEip7928Enabled = true
-        };
-        (Block processedBlock, TxReceipt[] _) = processor.ProcessOne(block, ProcessingOptions.None, NullBlockTracer.Instance, spec, CancellationToken.None);
+        (Block processedBlock, TxReceipt[] _) = testBlockchain.BlockProcessor.ProcessOne(block, ProcessingOptions.None, NullBlockTracer.Instance, _spec, CancellationToken.None);
 
         BlockAccessList blockAccessList = Rlp.Decode<BlockAccessList>(processedBlock.BlockAccessList);
         SortedDictionary<Address, AccountChanges> accountChanges = blockAccessList.AccountChanges;
@@ -253,4 +256,7 @@ public class BlockAccessListTests() : TransactionProcessorTests(true)
             Assert.That(beneficiaryBalanceChanges[0].PostBalance, Is.EqualTo(new UInt256(GasCostOf.Transaction)));
         }
     }
+
+    private static Action<ContainerBuilder> BuildContainer()
+        => containerBuilder => containerBuilder.AddSingleton(_specProvider);
 }
