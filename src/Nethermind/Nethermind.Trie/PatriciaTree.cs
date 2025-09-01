@@ -465,8 +465,6 @@ namespace Nethermind.Trie
             Set(rawKey, new SpanSource(value));
         }
 
-        public static bool UseNewSet = false;
-
         [SkipLocalsInit]
         [DebuggerStepThrough]
         public void Set(ReadOnlySpan<byte> rawKey, SpanSource value)

@@ -1167,14 +1167,9 @@ namespace Nethermind.Trie
 
         private void SeekChildNotNull(ref ValueRlpStream rlpStream, int index)
         {
-            SeekChildNotNull(ref rlpStream, IsExtension, index);
-        }
-
-        private static void SeekChildNotNull(ref ValueRlpStream rlpStream, bool isExtension, int index)
-        {
             rlpStream.Reset();
             rlpStream.SkipLength();
-            if (index == 0 && isExtension)
+            if (index == 0 && IsExtension)
             {
                 // Corner case, index is zero, but we are an extension
                 // so we need to move to next item
