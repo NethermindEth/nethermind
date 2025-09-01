@@ -3,15 +3,11 @@
 
 using System;
 using System.Buffers;
-using System.Buffers.Binary;
 using System.Collections.Generic;
-using System.Data;
 using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
 using System.IO;
 using System.Runtime.CompilerServices;
-using System.Runtime.ExceptionServices;
-using System.Runtime.InteropServices;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Core;
@@ -19,11 +15,9 @@ using Nethermind.Core.Buffers;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
-using Nethermind.Core.Threading;
 using Nethermind.Logging;
 using Nethermind.Serialization.Rlp;
 using Nethermind.Trie.Pruning;
-using Prometheus;
 
 namespace Nethermind.Trie
 {
@@ -536,7 +530,7 @@ namespace Nethermind.Trie
             }
         }
 
-        private TrieNode? SetNew(Stack<TraverseStack> traverseStack, Span<byte> remainingKey, SpanSource value, ref TreePath path, TrieNode? node)
+        internal TrieNode? SetNew(Stack<TraverseStack> traverseStack, Span<byte> remainingKey, SpanSource value, ref TreePath path, TrieNode? node)
         {
             TrieNode? originalNode = node;
             int originalPathLength = path.Length;
@@ -782,7 +776,7 @@ namespace Nethermind.Trie
             return tn;
         }
 
-        private record struct TraverseStack
+        internal record struct TraverseStack
         {
             public TrieNode Node;
             public int ChildIdx;
@@ -953,37 +947,6 @@ namespace Nethermind.Trie
                 visitor.VisitTree(default, rootHash);
                 rootRef?.Accept(visitor, default, resolver, ref emptyPath, trieVisitContext);
             }
-        }
-
-        bool IsNodeStackEmpty()
-        {
-            Stack<StackedNode> nodeStack = _nodeStack;
-            if (nodeStack is null) return true;
-            return nodeStack.Count == 0;
-        }
-
-        void ClearNodeStack() => _nodeStack?.Clear();
-
-        [MethodImpl(MethodImplOptions.NoInlining)]
-        void PushToNodeStack(TrieNode node, int pathLength, int pathIndex)
-        {
-            // Allocated the _nodeStack if first push
-            _nodeStack ??= new();
-            _nodeStack.Push(new StackedNode(node, pathLength, pathIndex));
-        }
-
-        StackedNode PopFromNodeStack()
-        {
-            Stack<StackedNode> stackedNodes = _nodeStack;
-            if (stackedNodes is null)
-            {
-                Throw();
-            }
-
-            return stackedNodes.Pop();
-
-            [DoesNotReturn, StackTraceHidden]
-            static void Throw() => throw new InvalidOperationException($"Nothing on {nameof(_nodeStack)}");
         }
 
         [DoesNotReturn, StackTraceHidden]

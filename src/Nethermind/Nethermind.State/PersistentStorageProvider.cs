@@ -737,7 +737,6 @@ internal sealed class PersistentStorageProvider : PartialStorageProviderBase
 
                 _flushTimeTotal.WithLabels((!_provider._populatePreBlockCache).ToString(), "prep").Observe(Stopwatch.GetTimestamp() - swt);
                 swt = Stopwatch.GetTimestamp();
-                Console.Error.WriteLine($"Bulk write {bulkWrite.Count} entries");
                 PatriciaTreeBulkSetter.BulkSet(StorageTree, bulkWrite);
                 _flushTimeTotal.WithLabels((!_provider._populatePreBlockCache).ToString(), "bulk_set").Observe(Stopwatch.GetTimestamp() - swt);
             }
@@ -745,9 +744,7 @@ internal sealed class PersistentStorageProvider : PartialStorageProviderBase
 
             if (writes > 0)
             {
-                ValueHash256 before = StorageTree.RootHash;
                 StorageTree.UpdateRootHash(canBeParallel: false);
-                Console.Error.WriteLine($"Hash change from {before} to {StorageTree.RootHash}");
             }
 
             _flushTimeTotal.WithLabels((!_provider._populatePreBlockCache).ToString(), "calculate_root").Observe(Stopwatch.GetTimestamp() - swt);
