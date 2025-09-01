@@ -7,6 +7,7 @@ using Nethermind.Core.Specs;
 using Nethermind.Int256;
 using System;
 using System.Collections.Generic;
+using System.Collections.Immutable;
 using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
@@ -32,8 +33,34 @@ internal class XdcBlockHeader : BlockHeader
     }
 
     public byte[]? Validators { get; set; }
+
+    private ImmutableSortedSet<Address>? _validatorsAddress;
+    public ImmutableSortedSet<Address>? ValidatorsAddress
+    {
+        get
+        {
+            if (_validatorsAddress is not null)
+                return _validatorsAddress;
+            _validatorsAddress = ExtractAddresses(Validators);
+            return _validatorsAddress;
+        }
+        set { _validatorsAddress = value; }
+    }
     public byte[]? Validator { get; set; }
     public byte[]? Penalties { get; set; }
+
+    private ImmutableSortedSet<Address>? _penaltiesAddress;
+    public ImmutableSortedSet<Address>? PenaltiesAddress
+    {
+        get
+        {
+            if (_penaltiesAddress is not null)
+                return _penaltiesAddress;
+            _penaltiesAddress = ExtractAddresses(Penalties);
+            return _penaltiesAddress;
+        }
+        set { _penaltiesAddress = value; }
+    }
 
     internal Address[] GetMasterNodesFromEpochSwitchHeader()
     {
@@ -61,6 +88,19 @@ internal class XdcBlockHeader : BlockHeader
     public bool IsEpochSwitch(ISpecProvider specProvider)
     {
         throw new NotImplementedException();
+    }
+
+    private static ImmutableSortedSet<Address>? ExtractAddresses(byte[]? data)
+    {
+        if (data is null || data.Length % Address.Size != 0)
+            return null;
+
+        Address[] addresses = new Address[data.Length / Address.Size];
+        for (int i = 0; i < addresses.Length; i++)
+        {
+            addresses[i] = new Address(data.AsSpan(i * Address.Size, Address.Size));
+        }
+        return addresses.ToImmutableSortedSet();
     }
 }
 

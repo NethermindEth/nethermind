@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using Microsoft.FSharp.Data.UnitSystems.SI.UnitNames;
 using Nethermind.Blockchain;
 using Nethermind.Consensus;
 
@@ -16,14 +17,13 @@ using Nethermind.Core.Specs;
 using Nethermind.Logging;
 using System;
 using System.Collections;
+using System.Collections.Generic;
+using System.Linq;
 
 namespace Nethermind.Xdc;
 
-public class XdcHeaderValidator : HeaderValidator
+internal class XdcHeaderValidator(ISnapshotManager snapshotManager, IBlockTree? blockTree, ISealValidator? sealValidator, ISpecProvider? specProvider, ILogManager? logManager) : HeaderValidator(blockTree, sealValidator, specProvider, logManager)
 {
-    public XdcHeaderValidator(IBlockTree? blockTree, ISealValidator? sealValidator, ISpecProvider? specProvider, ILogManager? logManager) : base(blockTree, sealValidator, specProvider, logManager)
-    {
-    }
 
     public override bool Validate(BlockHeader header, BlockHeader? parent, bool isUncle, out string? error)
     {
@@ -45,9 +45,9 @@ public class XdcHeaderValidator : HeaderValidator
 
         //TODO verify QC
 
-        if (xdcHeader.Nonce != XdcConstants.NonceDropVoteValue && header.Nonce != XdcConstants.NonceAuthVoteValue)
+        if (xdcHeader.Nonce != XdcConstants.NonceDropVoteValue && xdcHeader.Nonce != XdcConstants.NonceAuthVoteValue)
         {
-            error = $"Invalid nonce value ({header.Nonce}) in XDC header.";
+            error = $"Invalid nonce value ({xdcHeader.Nonce}) in XDC header.";
             return false;
         }
 
@@ -68,9 +68,41 @@ public class XdcHeaderValidator : HeaderValidator
             return false;
         }
 
-        //IEnumerable<Address> masternodes;
+        IEnumerable<Address> masternodes = null;
 
-        if (!xdcHeader.IsEpochSwitch(_specProvider))
+        if (xdcHeader.IsEpochSwitch(_specProvider))
+        {
+            if (xdcHeader.Nonce != XdcConstants.NonceDropVoteValue)
+            {
+                error = "Vote nonce in checkpoint block non-zero.";
+                return false;
+            }
+            if (xdcHeader.Validators is null || xdcHeader.Validators.Length == 0)
+            {
+                error = "Empty validators list on epoch switch block.";
+                return false;
+            }
+            if (xdcHeader.Validators.Length % Address.Size != 0)
+            {
+                error = "Invalid signer list on checkpoint block.";
+                return false;
+            }
+
+            //TODO init masternodes by reading from most recent checkpoint
+            masternodes = snapshotManager.GetMasternodes(xdcHeader);
+            if (!xdcHeader.ValidatorsAddress.SetEquals(masternodes))
+            {
+                error = "Validators does not match what's stored in snapshot minus its penalty.";
+                return false;
+            }
+
+            if (!xdcHeader.PenaltiesAddress.SetEquals(snapshotManager.GetPenalties(xdcHeader)))
+            {
+                error = "Penalties does not match.";
+                return false;
+            }
+        }
+        else
         {
             if (xdcHeader.Validators?.Length != 0)
             {
@@ -83,6 +115,8 @@ public class XdcHeaderValidator : HeaderValidator
                 return false;
             }
         }
+
+        //TODO check 
 
         error =null;
         return true;
@@ -117,7 +151,5 @@ public class XdcHeaderValidator : HeaderValidator
 
         return true;
     }
-
-
 
 }
