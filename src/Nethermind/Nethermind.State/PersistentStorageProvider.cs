@@ -6,13 +6,11 @@ using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
-using System.Net.Http.Headers;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using System.Runtime.Intrinsics;
 using System.Threading.Tasks;
 using Nethermind.Core;
-using Nethermind.Core.Buffers;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
@@ -23,7 +21,6 @@ using Nethermind.Logging;
 using Nethermind.Serialization.Rlp;
 using Nethermind.Trie;
 using Nethermind.Trie.Pruning;
-using Prometheus;
 
 namespace Nethermind.State;
 
@@ -49,26 +46,6 @@ internal sealed class PersistentStorageProvider : PartialStorageProviderBase
 
     private readonly HashSet<StorageCell> _committedThisRound = new();
     private readonly ConcurrentDictionary<StorageCell, byte[]>? _preBlockCache;
-
-    private Histogram _flushTime = Prometheus.Metrics.CreateHistogram("storage_provider_flushtree_time", "committ tree time",
-        new HistogramConfiguration()
-        {
-            LabelNames = ["is_main"],
-            Buckets = Histogram.PowersOfTenDividedBuckets(3, 9, 20)
-        });
-    private static Histogram _prepTime = Prometheus.Metrics.CreateHistogram("storage_provider_prep_time", "committ tree time",
-        new HistogramConfiguration()
-        {
-            LabelNames = ["is_main"],
-            Buckets = Histogram.PowersOfTenDividedBuckets(3, 9, 20)
-        });
-    private static Histogram _flushTimeTotal = Prometheus.Metrics.CreateHistogram("storage_provider_flushtimes", "committ tree time",
-        new HistogramConfiguration()
-        {
-            LabelNames = ["is_main", "part"],
-            Buckets = Histogram.PowersOfTenDividedBuckets(3, 9, 20)
-        });
-
 
     /// <summary>
     /// Manages persistent storage allowing for snapshotting and restoring
@@ -279,7 +256,6 @@ internal sealed class PersistentStorageProvider : PartialStorageProviderBase
             UpdateRootHashesMultiThread();
         }
 
-        _flushTime.WithLabels((!_populatePreBlockCache).ToString()).Observe(Stopwatch.GetTimestamp() - sw);
         _toUpdateRoots.Clear();
 
         void UpdateRootHashesSingleThread()
@@ -645,33 +621,19 @@ internal sealed class PersistentStorageProvider : PartialStorageProviderBase
             return value;
         }
 
-        private Counter _storageProviderGetFromTrieCount = Prometheus.Metrics.CreateCounter("storage_provider_get_count", "Get count", "is_main");
-        private Counter _storageProviderGetFromTrieTime = Prometheus.Metrics.CreateCounter("storage_provider_get_time", "Get count", "is_main");
         private byte[] LoadFromTreeStorage(StorageCell storageCell)
         {
             Db.Metrics.IncrementStorageTreeReads();
 
             EnsureStorageTree();
-            long sw = Stopwatch.GetTimestamp();
-            try
-            {
-                return !storageCell.IsHash
-                    ? StorageTree.Get(storageCell.Index)
-                    : StorageTree.GetArray(storageCell.Hash.Bytes);
-            }
-            finally
-            {
-                _storageProviderGetFromTrieCount.WithLabels((!_provider._populatePreBlockCache).ToString()).Inc();
-                _storageProviderGetFromTrieTime.WithLabels((!_provider._populatePreBlockCache).ToString()).Inc(Stopwatch.GetTimestamp() - sw);
-            }
+            return !storageCell.IsHash
+                ? StorageTree.Get(storageCell.Index)
+                : StorageTree.GetArray(storageCell.Hash.Bytes);
         }
 
         public (int writes, int skipped) ProcessStorageChanges()
         {
-            long swt = Stopwatch.GetTimestamp();
             EnsureStorageTree();
-            _flushTimeTotal.WithLabels((!_provider._populatePreBlockCache).ToString(), "ensure_storage_root").Observe(Stopwatch.GetTimestamp() - swt);
-            swt = Stopwatch.GetTimestamp();
 
             int writes = 0;
             int skipped = 0;
@@ -691,7 +653,6 @@ internal sealed class PersistentStorageProvider : PartialStorageProviderBase
                         skipped++;
                     }
                 }
-                _flushTimeTotal.WithLabels((!_provider._populatePreBlockCache).ToString(), "set").Observe(Stopwatch.GetTimestamp() - swt);
             }
             else
             {
@@ -735,19 +696,14 @@ internal sealed class PersistentStorageProvider : PartialStorageProviderBase
                     }
                 }
 
-                _flushTimeTotal.WithLabels((!_provider._populatePreBlockCache).ToString(), "prep").Observe(Stopwatch.GetTimestamp() - swt);
-                swt = Stopwatch.GetTimestamp();
                 PatriciaTreeBulkSetter.BulkSet(StorageTree, bulkWrite);
-                _flushTimeTotal.WithLabels((!_provider._populatePreBlockCache).ToString(), "bulk_set").Observe(Stopwatch.GetTimestamp() - swt);
             }
-            swt = Stopwatch.GetTimestamp();
 
             if (writes > 0)
             {
                 StorageTree.UpdateRootHash(canBeParallel: false);
             }
 
-            _flushTimeTotal.WithLabels((!_provider._populatePreBlockCache).ToString(), "calculate_root").Observe(Stopwatch.GetTimestamp() - swt);
             return (writes, skipped);
         }
     }
