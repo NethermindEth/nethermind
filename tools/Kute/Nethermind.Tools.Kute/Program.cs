@@ -33,7 +33,10 @@ static class Program
             Config.ConcurrentRequests,
             Config.ShowProgress,
             Config.UnwrapBatch,
-            Config.PrometheusPushGateway
+            Config.PrometheusPushGateway,
+            Config.PrometheusPushGatewayUser,
+            Config.PrometheusPushGatewayPassword,
+            Config.Labels,
         ];
         rootCommand.SetAction(async (parseResult, cancellationToken) =>
         {
@@ -121,9 +124,12 @@ static class Program
                 ? new ConsoleProgressReporter()
                 : new NullMetricsReporter();
 
+            Dictionary<string, string> labels = parseResult.GetValue(Config.Labels) ?? new();
             string? prometheusGateway = parseResult.GetValue(Config.PrometheusPushGateway);
+            string? prometheusGatewayUser = parseResult.GetValue(Config.PrometheusPushGatewayUser);
+            string? prometheusGatewayPassword = parseResult.GetValue(Config.PrometheusPushGatewayPassword);
             IMetricsReporter prometheusReporter = prometheusGateway is not null
-                ? new PrometheusPushGatewayMetricsReporter(prometheusGateway)
+                ? new PrometheusPushGatewayMetricsReporter(prometheusGateway, labels, prometheusGatewayUser, prometheusGatewayPassword)
                 : new NullMetricsReporter();
 
             return new ComposedMetricsReporter([memoryReporter, progresReporter, consoleReporter, prometheusReporter]);

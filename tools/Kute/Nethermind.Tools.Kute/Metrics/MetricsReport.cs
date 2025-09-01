@@ -54,13 +54,13 @@ public sealed record MetricsReport
     public required long Ignored { get; init; }
     public required long Responses { get; init; }
     public required TimeSpan TotalTime { get; init; }
-    public required IReadOnlyDictionary<string, TimeSpan> Singles { get; init; }
+    public required IReadOnlyDictionary<string, IReadOnlyDictionary<string, TimeSpan>> Singles { get; init; }
     public required IReadOnlyDictionary<string, TimeSpan> Batches { get; init; }
 
     // Computed properties
-    private TimeMetrics? _singlesMetrics;
+    private Dictionary<string, TimeMetrics>? _singlesMetrics;
     private TimeMetrics? _batchesMetrics;
-    public TimeMetrics SinglesMetrics => _singlesMetrics ??= TimeMetrics.From(Singles.Values.ToList());
+    public Dictionary<string, TimeMetrics> SinglesMetrics => _singlesMetrics ??= Singles.ToDictionary(kvp => kvp.Key, kvp => TimeMetrics.From(kvp.Value.Values.ToList()));
     public TimeMetrics BatchesMetrics => _batchesMetrics ??= TimeMetrics.From(Batches.Values.ToList());
 }
 
