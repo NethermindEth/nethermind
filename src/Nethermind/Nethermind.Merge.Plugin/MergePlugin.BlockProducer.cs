@@ -3,7 +3,6 @@
 
 using System;
 using Nethermind.Consensus;
-using Nethermind.Consensus.Transactions;
 using Nethermind.Core;
 using Nethermind.Merge.Plugin.BlockProduction;
 

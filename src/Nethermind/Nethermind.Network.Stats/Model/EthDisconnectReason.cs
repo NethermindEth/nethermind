@@ -20,6 +20,7 @@ namespace Nethermind.Stats.Model
         UnexpectedIdentity = 0x09,
         IdentitySameAsSelf = 0x0a,
         ReceiveMessageTimeout = 0x0b,
+        MultipleHeaderDependencies = 0x0c,
         Other = 0x10
     }
 

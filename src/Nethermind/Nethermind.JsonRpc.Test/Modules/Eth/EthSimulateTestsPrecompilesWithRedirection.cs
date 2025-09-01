@@ -141,7 +141,6 @@ public class EthSimulateTestsPrecompilesWithRedirection
         chain.BlockTree.UpdateHeadBlock(chain.BlockFinder.Head!.Hash!);
 
         Assert.That(headHash != chain.BlockFinder.Head!.Hash!);
-        chain.WorldStateManager.GlobalWorldState.SetBaseBlock(chain.BlockFinder.Head.Header);
 
         TransactionForRpc transactionForRpc = TransactionForRpc.FromTransaction(new Transaction
         {

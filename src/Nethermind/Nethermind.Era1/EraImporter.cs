@@ -224,7 +224,7 @@ public class EraImporter(
         block.Header.TotalDifficulty = null;
 
         // Should this be in suggest instead?
-        if (!blockValidator.ValidateSuggestedBlock(block, out string? error))
+        if (!blockValidator.ValidateBodyAgainstHeader(block.Header, block.Body, out string? error))
         {
             throw new EraVerificationException($"Block validation failed: {error}");
         }
