@@ -245,7 +245,6 @@ internal sealed class PersistentStorageProvider : PartialStorageProviderBase
             return;
         }
 
-        long sw = Stopwatch.GetTimestamp();
         // Is overhead of parallel foreach worth it?
         if (_toUpdateRoots.Count < 3)
         {
