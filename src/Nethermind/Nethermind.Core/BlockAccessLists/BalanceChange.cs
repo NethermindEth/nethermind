@@ -12,7 +12,7 @@ public readonly struct BalanceChange(ushort blockAccessIndex, UInt256 postBalanc
     public UInt256 PostBalance { get; init; } = postBalance;
 
     public readonly bool Equals(BalanceChange other) =>
-        BlockAccessIndex == other.BlockAccessIndex && 
+        BlockAccessIndex == other.BlockAccessIndex &&
         PostBalance == other.PostBalance;
 
     public override readonly bool Equals(object? obj) =>

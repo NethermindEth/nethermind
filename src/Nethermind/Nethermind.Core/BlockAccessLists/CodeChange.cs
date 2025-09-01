@@ -13,7 +13,7 @@ public readonly struct CodeChange(ushort blockAccessIndex, byte[] newCode) : IEq
     public byte[] NewCode { get; init; } = newCode;
 
     public readonly bool Equals(CodeChange other) =>
-        BlockAccessIndex == other.BlockAccessIndex && 
+        BlockAccessIndex == other.BlockAccessIndex &&
         CompareByteArrays(NewCode, other.NewCode);
 
     public override readonly bool Equals(object? obj) =>

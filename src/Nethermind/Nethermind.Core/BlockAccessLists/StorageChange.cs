@@ -13,7 +13,7 @@ public readonly struct StorageChange(ushort blockAccessIndex, Bytes32 newValue) 
     public Bytes32 NewValue { get; init; } = newValue;
 
     public readonly bool Equals(StorageChange other) =>
-        BlockAccessIndex == other.BlockAccessIndex && 
+        BlockAccessIndex == other.BlockAccessIndex &&
         NewValue.Unwrap().SequenceEqual(other.NewValue.Unwrap());
 
     public override readonly bool Equals(object? obj) =>

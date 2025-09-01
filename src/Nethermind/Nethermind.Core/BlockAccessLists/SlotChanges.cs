@@ -18,7 +18,7 @@ public readonly struct SlotChanges(byte[] slot, List<StorageChange> changes) : I
     }
 
     public readonly bool Equals(SlotChanges other) =>
-        CompareByteArrays(Slot, other.Slot) && 
+        CompareByteArrays(Slot, other.Slot) &&
         Changes.SequenceEqual(other.Changes);
 
     public override readonly bool Equals(object? obj) =>

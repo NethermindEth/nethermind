@@ -11,7 +11,7 @@ public readonly struct NonceChange(ushort blockAccessIndex, ulong newNonce) : IE
     public ulong NewNonce { get; init; } = newNonce;
 
     public readonly bool Equals(NonceChange other) =>
-        BlockAccessIndex == other.BlockAccessIndex && 
+        BlockAccessIndex == other.BlockAccessIndex &&
         NewNonce == other.NewNonce;
 
     public override readonly bool Equals(object? obj) =>

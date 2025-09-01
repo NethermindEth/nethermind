@@ -37,7 +37,7 @@ public class NonceChangeDecoder : IRlpValueDecoder<NonceChange>, IRlpStreamDecod
     {
         Span<byte> span = rlpStream.PeekNextItem();
         Rlp.ValueDecoderContext ctx = new(span);
-        NonceChange res= Decode(ref ctx, rlpBehaviors);
+        NonceChange res = Decode(ref ctx, rlpBehaviors);
         rlpStream.SkipItem();
 
         return res;
