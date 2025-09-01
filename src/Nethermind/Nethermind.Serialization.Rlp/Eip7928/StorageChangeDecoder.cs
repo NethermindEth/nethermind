@@ -16,6 +16,7 @@ public class StorageChangeDecoder : IRlpValueDecoder<StorageChange>, IRlpStreamD
         int length = ctx.ReadSequenceLength();
         int check = length + ctx.Position;
 
+        ushort blockAccessIndex = ctx.DecodeUShort();
         byte[] newValue = ctx.DecodeByteArray();
         if (newValue.Length != 32)
         {
@@ -24,7 +25,7 @@ public class StorageChangeDecoder : IRlpValueDecoder<StorageChange>, IRlpStreamD
 
         StorageChange storageChange = new()
         {
-            BlockAccessIndex = ctx.DecodeUShort(),
+            BlockAccessIndex = blockAccessIndex,
             NewValue = new(newValue)
         };
 

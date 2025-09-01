@@ -178,7 +178,7 @@ namespace Nethermind.Evm.Test
                 StorageReads = [storageRead, storageRead],
                 BalanceChanges = [balanceChange, balanceChange],
                 NonceChanges = [nonceChange, nonceChange],
-                CodeChanges = [codeChange, codeChange]
+                CodeChanges = [codeChange]
             };
             byte[] accountChangesBytes = Rlp.Encode(accountChanges, RlpBehaviors.None).Bytes;
             AccountChanges accountChangesDecoded = Rlp.Decode<AccountChanges>(accountChangesBytes, RlpBehaviors.None);

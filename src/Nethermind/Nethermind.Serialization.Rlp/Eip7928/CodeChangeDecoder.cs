@@ -17,6 +17,7 @@ public class CodeChangeDecoder : IRlpValueDecoder<CodeChange>, IRlpStreamDecoder
         int length = ctx.ReadSequenceLength();
         int check = length + ctx.Position;
 
+        ushort blockAccessIndex = ctx.DecodeUShort();
         byte[] newCode = ctx.DecodeByteArray();
         if (newCode.Length > Eip7928Constants.MaxCodeSize)
         {
@@ -25,7 +26,7 @@ public class CodeChangeDecoder : IRlpValueDecoder<CodeChange>, IRlpStreamDecoder
 
         CodeChange codeChange = new()
         {
-            BlockAccessIndex = ctx.DecodeUShort(),
+            BlockAccessIndex = blockAccessIndex,
             NewCode = newCode
         };
 
