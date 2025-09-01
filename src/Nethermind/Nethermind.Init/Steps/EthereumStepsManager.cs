@@ -270,7 +270,7 @@ namespace Nethermind.Init.Steps
             private IStep? _step;
             public IStep Step => _step ??= stepFactory();
             private Task StepTask => _taskCompletedSource.Task;
-            public readonly List<Type> Dependencies = [..stepInfo.Dependencies];
+            public readonly List<Type> Dependencies = [.. stepInfo.Dependencies];
 
             private readonly TaskCompletionSource _taskCompletedSource = new();
 
