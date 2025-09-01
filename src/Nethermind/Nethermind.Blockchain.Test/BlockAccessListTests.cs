@@ -104,11 +104,7 @@ namespace Nethermind.Evm.Test
             };
             byte[] storageChangeBytes = Rlp.Encode(storageChange, RlpBehaviors.None).Bytes;
             StorageChange storageChangeDecoded = Rlp.Decode<StorageChange>(storageChangeBytes, RlpBehaviors.None);
-            using (Assert.EnterMultipleScope())
-            {
-                Assert.That(storageChange.BlockAccessIndex, Is.EqualTo(storageChangeDecoded.BlockAccessIndex));
-                Assert.That(storageChange.NewValue, Is.EqualTo(storageChangeDecoded.NewValue));
-            }
+            Assert.That(storageChange, Is.EqualTo(storageChangeDecoded));
 
             SlotChanges slotChanges = new()
             {
@@ -117,15 +113,12 @@ namespace Nethermind.Evm.Test
             };
             byte[] slotChangesBytes = Rlp.Encode(slotChanges, RlpBehaviors.None).Bytes;
             SlotChanges slotChangesDecoded = Rlp.Decode<SlotChanges>(slotChangesBytes, RlpBehaviors.None);
-            Assert.That(slotChanges.Slot, Is.EquivalentTo(slotChangesDecoded.Slot));
+            Assert.That(slotChanges, Is.EqualTo(slotChangesDecoded));
 
-            StorageRead storageRead = new()
-            {
-                Key = new([.. Enumerable.Repeat<byte>(50, 32)])
-            };
+            StorageRead storageRead = new(new Bytes32([.. Enumerable.Repeat<byte>(50, 32)]));
             byte[] storageReadBytes = Rlp.Encode(storageRead, RlpBehaviors.None).Bytes;
             StorageRead storageReadDecoded = Rlp.Decode<StorageRead>(storageReadBytes, RlpBehaviors.None);
-            Assert.That(storageRead.Key, Is.EqualTo(storageReadDecoded.Key));
+            Assert.That(storageRead, Is.EqualTo(storageReadDecoded));
 
             BalanceChange balanceChange = new()
             {
@@ -134,11 +127,7 @@ namespace Nethermind.Evm.Test
             };
             byte[] balanceChangeBytes = Rlp.Encode(balanceChange, RlpBehaviors.None).Bytes;
             BalanceChange balanceChangeDecoded = Rlp.Decode<BalanceChange>(balanceChangeBytes, RlpBehaviors.None);
-            using (Assert.EnterMultipleScope())
-            {
-                Assert.That(balanceChange.BlockAccessIndex, Is.EqualTo(balanceChangeDecoded.BlockAccessIndex));
-                Assert.That(balanceChange.PostBalance, Is.EqualTo(balanceChangeDecoded.PostBalance));
-            }
+            Assert.That(balanceChange, Is.EqualTo(balanceChangeDecoded));
 
             NonceChange nonceChange = new()
             {
@@ -147,11 +136,7 @@ namespace Nethermind.Evm.Test
             };
             byte[] nonceChangeBytes = Rlp.Encode(nonceChange, RlpBehaviors.None).Bytes;
             NonceChange nonceChangeDecoded = Rlp.Decode<NonceChange>(nonceChangeBytes, RlpBehaviors.None);
-            using (Assert.EnterMultipleScope())
-            {
-                Assert.That(nonceChange.BlockAccessIndex, Is.EqualTo(nonceChangeDecoded.BlockAccessIndex));
-                Assert.That(nonceChange.NewNonce, Is.EqualTo(nonceChangeDecoded.NewNonce));
-            }
+            Assert.That(nonceChange, Is.EqualTo(nonceChangeDecoded));
 
             CodeChange codeChange = new()
             {
@@ -160,11 +145,7 @@ namespace Nethermind.Evm.Test
             };
             byte[] codeChangeBytes = Rlp.Encode(codeChange, RlpBehaviors.None).Bytes;
             CodeChange codeChangeDecoded = Rlp.Decode<CodeChange>(codeChangeBytes, RlpBehaviors.None);
-            using (Assert.EnterMultipleScope())
-            {
-                Assert.That(codeChange.BlockAccessIndex, Is.EqualTo(codeChangeDecoded.BlockAccessIndex));
-                Assert.That(codeChange.NewCode, Is.EqualTo(codeChangeDecoded.NewCode));
-            }
+            Assert.That(codeChange, Is.EqualTo(codeChangeDecoded));
 
             SortedDictionary<byte[], SlotChanges> storageChangesDict = new()
             {
@@ -182,7 +163,7 @@ namespace Nethermind.Evm.Test
             };
             byte[] accountChangesBytes = Rlp.Encode(accountChanges, RlpBehaviors.None).Bytes;
             AccountChanges accountChangesDecoded = Rlp.Decode<AccountChanges>(accountChangesBytes, RlpBehaviors.None);
-            Assert.That(accountChanges.Address, Is.EqualTo(accountChangesDecoded.Address));
+            Assert.That(accountChanges, Is.EqualTo(accountChangesDecoded));
 
             SortedDictionary<Address, AccountChanges> accountChangesDict = new()
             {
@@ -195,7 +176,7 @@ namespace Nethermind.Evm.Test
             };
             byte[] blockAccessListBytes = Rlp.Encode(blockAccessList, RlpBehaviors.None).Bytes;
             BlockAccessList blockAccessListDecoded = Rlp.Decode<BlockAccessList>(blockAccessListBytes, RlpBehaviors.None);
-            Assert.That(blockAccessList.AccountChanges, Has.Count.EqualTo(blockAccessListDecoded.AccountChanges.Count));
+            Assert.That(blockAccessList, Is.EqualTo(blockAccessListDecoded));
         }
 
         [Test]
