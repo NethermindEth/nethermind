@@ -9,4 +9,4 @@ using System.Text;
 using System.Threading.Tasks;
 
 namespace Nethermind.Consensus.HotStuff.Types;
-public delegate byte[] SignFn(Address, byte[] data);
+public delegate byte[] SignFn(Address address, byte[] data);
