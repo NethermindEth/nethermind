@@ -87,18 +87,15 @@ namespace Nethermind.Init.Steps
                             $"The dependent step {type.Name} for {stepWrapper.StepInfo.StepBaseType.Name} is missing.");
                     }
                 }
-            }
 
-            // Remove absent optional steps
-            foreach (var kv in stepInfoMap)
-            {
-                foreach (Type dep in kv.Value.Dependencies.ToArray())
+                // Remove absent optional steps
+                foreach (Type dep in stepWrapper.Dependencies.ToArray())
                 {
                     if (!stepInfoMap.ContainsKey(dep))
                     {
                         if (dep.GetCustomAttribute<RunnerStepDependenciesAttribute>()?.Optional is true)
                         {
-                            kv.Value.Dependencies.Remove(dep);
+                            stepWrapper.Dependencies.Remove(dep);
                             if (_logger.IsDebug) _logger.Debug($"Optional dependency {dep.Name} will not be loaded for step {kv.Key.Name} because it was not found.");
                         }
                         else
