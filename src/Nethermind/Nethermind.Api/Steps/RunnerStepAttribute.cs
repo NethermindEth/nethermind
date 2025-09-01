@@ -6,15 +6,11 @@ using System;
 namespace Nethermind.Api.Steps;
 
 [AttributeUsage(AttributeTargets.Class)]
-public class RunnerStepDependenciesAttribute(bool optional, Type[] dependencies, Type[] dependents) : Attribute
+public class RunnerStepDependenciesAttribute(Type[] dependencies, Type[] dependents) : Attribute
 {
-    public RunnerStepDependenciesAttribute(Type[] dependencies, Type[] dependents) : this(false, dependencies, dependents) { }
-
-    public RunnerStepDependenciesAttribute(bool optional, params Type[] dependencies) : this(optional, dependencies, []) { }
-
-    public RunnerStepDependenciesAttribute(params Type[] dependencies) : this(false, dependencies, []) { }
+    public RunnerStepDependenciesAttribute(params Type[] dependencies) : this(dependencies, []) { }
 
     public Type[] Dependencies { get; } = dependencies;
     public Type[] Dependents { get; } = dependents;
-    public bool Optional { get; } = optional;
+    public bool Optional { get; set; }
 }

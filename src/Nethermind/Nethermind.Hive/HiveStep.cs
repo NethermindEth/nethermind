@@ -11,7 +11,7 @@ using Nethermind.TxPool;
 
 namespace Nethermind.Hive;
 
-[RunnerStepDependencies(true, typeof(InitializeNetwork))]
+[RunnerStepDependencies(typeof(InitializeNetwork), Optional = true)]
 public class HiveStep(
     ITxPool txPool,
     CompositeTxGossipPolicy txGossipPolicy,
@@ -20,7 +20,7 @@ public class HiveStep(
     ILogManager logManager
 ) : IStep
 {
-    ILogger _logger = logManager.GetClassLogger();
+    private readonly ILogger _logger = logManager.GetClassLogger();
 
     public async Task Execute(CancellationToken cancellationToken)
     {
