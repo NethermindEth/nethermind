@@ -24,7 +24,7 @@ public sealed class NethermindLoggerFactory(ILogManager logManager, bool lowerLo
 
         public bool IsEnabled(MsLogLevel logLevel)
         {
-            if (lowerLogLevel)
+            if (lowerLogLevel && logLevel > MsLogLevel.Debug)
             {
                 logLevel = LowerLogLevel(logLevel, maxLogLevel);
             }
@@ -43,7 +43,7 @@ public sealed class NethermindLoggerFactory(ILogManager logManager, bool lowerLo
         public void Log<TState>(MsLogLevel logLevel, EventId eventId,
                                 TState state, Exception? exception, Func<TState, Exception?, string> formatter)
         {
-            if (lowerLogLevel)
+            if (lowerLogLevel && logLevel > MsLogLevel.Debug)
             {
                 logLevel = LowerLogLevel(logLevel, maxLogLevel);
             }
@@ -52,24 +52,19 @@ public sealed class NethermindLoggerFactory(ILogManager logManager, bool lowerLo
             {
                 case MsLogLevel.Critical:
                 case MsLogLevel.Error:
-                    if (logger.IsError)
-                        logger.Error(formatter(state, exception));
+                    logger.Error(formatter(state, exception));
                     break;
                 case MsLogLevel.Warning:
-                    if (logger.IsWarn)
-                        logger.Warn(formatter(state, exception));
+                    logger.Warn(formatter(state, exception));
                     break;
                 case MsLogLevel.Information:
-                    if (logger.IsInfo)
-                        logger.Info(formatter(state, exception));
+                    logger.Info(formatter(state, exception));
                     break;
                 case MsLogLevel.Debug:
-                    if (logger.IsDebug)
-                        logger.Debug(formatter(state, exception));
+                    logger.Debug(formatter(state, exception));
                     break;
                 case MsLogLevel.Trace:
-                    if (logger.IsTrace)
-                        logger.Trace(formatter(state, exception));
+                    logger.Trace(formatter(state, exception));
                     break;
             }
         }

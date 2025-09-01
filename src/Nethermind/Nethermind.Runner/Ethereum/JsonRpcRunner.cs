@@ -127,8 +127,6 @@ namespace Nethermind.Runner.Ethereum
                     logging.SetMinimumLevel(LogLevel.Information);
                     logging.ClearProviders();
                     logging.AddProvider(new CustomMicrosoftLoggerProvider(_logManager));
-                    logging.Configure(options =>
-                        options.ActivityTrackingOptions = ActivityTrackingOptions.None);
                 });
 
             WebApplication webApp = builder.Build();
