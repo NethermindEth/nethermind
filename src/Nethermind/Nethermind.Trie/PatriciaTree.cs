@@ -454,7 +454,7 @@ namespace Nethermind.Trie
                 Nibbles.BytesToNibbleBytes(rawKey, nibbles);
 
                 if (_traverseStack is null) _traverseStack = new Stack<TraverseStack>();
-                if (_traverseStack.Count > 0) _traverseStack.Clear();
+                else if (_traverseStack.Count > 0) _traverseStack.Clear();
 
                 TreePath empty = TreePath.Empty;
                 RootRef = SetNew(_traverseStack, nibbles, value, ref empty, RootRef);
