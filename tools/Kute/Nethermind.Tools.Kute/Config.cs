@@ -77,8 +77,43 @@ public static class Config
         HelpName = "url",
     };
 
+    public static Option<string?> PrometheusPushGatewayUser { get; } = new("--gateway-user")
+    {
+        Description = "Prometheus Push Gateway username",
+        HelpName = "username",
+    };
+
+    public static Option<string?> PrometheusPushGatewayPassword { get; } = new("--gateway-pass")
+    {
+        Description = "Prometheus Push Gateway password",
+        HelpName = "password",
+    };
+
     public static Option<bool> UnwrapBatch { get; } = new("--unwrapBatch", "-u")
     {
         Description = "Batch requests will be unwraped to single requests"
+    };
+
+    public static Option<Dictionary<string, string>> Labels { get; } = new("--labels", "-l")
+    {
+        DefaultValueFactory = r => new Dictionary<string, string>(),
+        CustomParser = r =>
+        {
+            var labels = new Dictionary<string, string>();
+            foreach (var token in r.Tokens)
+            {
+                foreach (var pair in token.Value.Split(','))
+                {
+                    var parts = pair.Split('=', 2);
+                    if (parts.Length == 2)
+                    {
+                        labels.Add(parts[0], parts[1]);
+                    }
+                }
+            }
+            return labels;
+        },
+        Description = "A comma separated list of tags to be added to the metrics in the format key=value",
+        HelpName = "labels",
     };
 }
