@@ -14,7 +14,7 @@ public class Timeout
     private Address signer;
 
     public Round Round { get; set; }
-    public byte[] Signature { get; set; }
+    public Signature Signature { get; set; }
     public ulong GapNumber { get; set; }
 
     public Hash256 Hash() => throw new NotImplementedException();
