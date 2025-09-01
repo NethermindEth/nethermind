@@ -171,6 +171,7 @@ namespace Nethermind.JsonRpc.Data
                     }
                     else if (reader.ValueTextEquals("blockHash"u8))
                     {
+                        reader.Read();
                         blockHash = JsonSerializer.Deserialize<Hash256>(ref reader, options);
                     }
                 }
