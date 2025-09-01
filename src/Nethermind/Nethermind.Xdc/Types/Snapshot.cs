@@ -20,7 +20,7 @@ namespace Nethermind.Xdc.Types
         {
             Number = number;
             Hash = hash;
-            NextEpochCandidates  = nextEpochCandidates;
+            NextEpochCandidates = nextEpochCandidates;
         }
 
         public object Clone() =>

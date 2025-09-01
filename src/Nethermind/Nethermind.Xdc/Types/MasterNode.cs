@@ -13,5 +13,5 @@ namespace Nethermind.Consensus.Clique;
 public class MasterNode
 {
     public Address Address { get; set; }
-    public UInt256 Stake{ get; set; }
+    public UInt256 Stake { get; set; }
 }

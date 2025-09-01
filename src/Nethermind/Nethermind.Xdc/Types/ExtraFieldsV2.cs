@@ -16,6 +16,6 @@ public class ExtraFieldsV2
     {
         var bytes = Rlp.Encode(this).Bytes;
 
-        return [2, ..bytes];
+        return [2, .. bytes];
     }
 }
