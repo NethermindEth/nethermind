@@ -216,7 +216,7 @@ public class PatriciaTreeBulkSetter(PatriciaTree patriciaTree)
                 TrieNode? child = jobs[i].currentChild;
                 TrieNode? newChild = jobs[i].newChild;
 
-                if (!ShouldUpdateChild(node, child, newChild)) continue;
+                if (!patriciaTree.ShouldUpdateChild(node, child, newChild)) continue;
 
                 if (newChild is null) hasRemove = true;
                 if (newChild is not null) nonNullChildCount++;
@@ -246,7 +246,7 @@ public class PatriciaTreeBulkSetter(PatriciaTree patriciaTree)
                     ? BulkSetOneStack(threadResource, entries[startRange], ref path, child)
                     : BulkSet(in ctx, threadResource, entries[startRange..endRange], buffer[startRange..endRange], nibbleBuffer[startRange..endRange], ref path, child, flipCount, canParallelize, flags);
 
-                if (!ShouldUpdateChild(node, child, newChild)) continue;
+                if (!patriciaTree.ShouldUpdateChild(node, child, newChild)) continue;
 
                 if (newChild is null) hasRemove = true;
                 if (newChild is not null) nonNullChildCount++;
@@ -262,208 +262,21 @@ public class PatriciaTreeBulkSetter(PatriciaTree patriciaTree)
         if (!hasRemove && nonNullChildCount == 0) return originalNode;
 
         if ((hasRemove || newBranch) && nonNullChildCount < 2)
-            node = MaybeCombineNode(ref path, node, false, hasRemove);
+            node = patriciaTree.MaybeCombineNode(ref path, node);
 
         return node;
     }
 
-    internal TrieNode? BulkSetOneStack(ThreadResource threadResource, in BulkSetEntry entry, ref TreePath path, TrieNode? node)
+    internal TrieNode? BulkSetOneStack(ThreadResource threadResource, in BulkSetEntry entry, ref TreePath path,
+        TrieNode? node)
     {
         Span<byte> nibble = stackalloc byte[64];
         Nibbles.BytesToNibbleBytes(entry.Path.BytesAsSpan, nibble);
         Span<byte> remainingKey = nibble[path.Length..];
 
-        Stack<TraverseStack> traverseStack = threadResource.TraverseStack;
-        TrieNode? originalNode = node;
-        int originalPathLength = path.Length;
+        Stack<PatriciaTree.TraverseStack> traverseStack = threadResource.TraverseStack;
         byte[] value = entry.Value;
-
-        while (true)
-        {
-            if (node is null)
-            {
-                if (value is null || value.Length == 0)
-                    node = null;
-                else
-                    node = TrieNodeFactory.CreateLeaf(remainingKey.ToArray(), value);
-
-                // End traverse
-                break;
-            }
-
-            node.ResolveNode(patriciaTree.TrieStore, path);
-
-            if (node.IsLeaf || node.IsExtension)
-            {
-                int commonPrefixLength = remainingKey.CommonPrefixLength(node.Key);
-                if (commonPrefixLength == node.Key!.Length)
-                {
-                    if (node.IsExtension)
-                    {
-                        // Continue traversal to the child of the extension
-                        path.AppendMut(node.Key);
-                        TrieNode? extensionChild = node.GetChildWithChildPath(patriciaTree.TrieStore, ref path, 0);
-
-                        traverseStack.Push(new TraverseStack()
-                        {
-                            Node = node,
-                            OriginalChild = extensionChild,
-                            ChildIdx = 0,
-                        });
-
-                        // Continue loop with the child as current node
-                        remainingKey = remainingKey[node!.Key.Length..];
-                        node = extensionChild;
-
-                        continue;
-                    }
-
-                    if (value is null || value.Length == 0)
-                    {
-                        // Deletion
-                        node = null;
-                    }
-                    else if (node.Value.Equals(value))
-                    {
-                        // SHORTCUT!
-                        path.TruncateMut(originalPathLength);
-                        traverseStack.Clear();
-                        return originalNode;
-                    }
-                    else if (node.IsSealed)
-                    {
-                        node = node.CloneWithChangedValue(value);
-                    }
-                    else
-                    {
-                        node.Value = value;
-                    }
-
-                    // end traverse
-                    break;
-                }
-
-                // We are suppose to create a branch, but no change in structure
-                if (value is null || value.Length == 0)
-                {
-                    // SHORTCUT!
-                    path.TruncateMut(originalPathLength);
-                    traverseStack.Clear();
-                    return originalNode;
-                }
-
-                // Making a T branch here.
-                // If the commonPrefixLength > 0, we'll also need to also make an extension in front of the branch.
-                TrieNode theBranch = TrieNodeFactory.CreateBranch();
-
-                // This is the current node branch
-                int currentNodeNib = node.Key[commonPrefixLength];
-                if (node.Key.Length == commonPrefixLength + 1)
-                {
-                    if (node.IsLeaf) throw new InvalidOperationException("Branch with value not supported");
-                    // Collapsing the extension, taking the child directly and set the branch
-                    int originalLength = path.Length;
-                    path.AppendMut(node.Key);
-                    path.AppendMut(currentNodeNib);
-                    theBranch[currentNodeNib] = node.GetChildWithChildPath(patriciaTree.TrieStore, ref path, 0);
-                    path.TruncateMut(originalLength);
-                } else {
-                    theBranch[currentNodeNib] = node.CloneWithChangedKey(node.Key.Slice(commonPrefixLength + 1));
-                }
-
-                // This is the new branch
-                theBranch[remainingKey[commonPrefixLength]] =
-                    TrieNodeFactory.CreateLeaf(remainingKey[(commonPrefixLength+1)..].ToArray(), value);
-
-                // Extension in front of the branch
-                node = commonPrefixLength == 0 ?
-                    theBranch :
-                    TrieNodeFactory.CreateExtension(remainingKey[..commonPrefixLength].ToArray(), theBranch);
-
-                break;
-            }
-
-            int nib = remainingKey[0];
-            path.AppendMut(nib);
-            TrieNode? child = node.GetChildWithChildPath(patriciaTree.TrieStore, ref path, nib);
-
-            traverseStack.Push(new TraverseStack()
-            {
-                Node = node,
-                OriginalChild = child,
-                ChildIdx = nib,
-            });
-
-            // Continue loop with child as current node
-            node = child;
-            remainingKey = remainingKey[1..];
-        }
-
-        while (traverseStack.TryPop(out TraverseStack cStack))
-        {
-            TrieNode? child = node;
-            node = cStack.Node;
-
-            if (node.IsExtension)
-            {
-                path.TruncateMut(path.Length - node.Key!.Length);
-
-                if (ShouldUpdateChild(node, cStack.OriginalChild, child))
-                {
-                    if (child is null)
-                    {
-                        node = null; // Remove extension
-                        continue;
-                    }
-
-                    if (child.IsExtension || child.IsLeaf)
-                    {
-                        // Merge current node with child
-                        node = child.CloneWithChangedKey(Bytes.Concat(node.Key, child.Key));
-                    }
-                    else
-                    {
-                        if (node.IsSealed) node = node.Clone();
-                        node.SetChild(0, child);
-                    }
-                }
-
-                continue;
-            }
-
-            // Branch only
-            int nib = cStack.ChildIdx;
-
-            bool hasRemove = false;
-            path.TruncateOne();
-
-            if (ShouldUpdateChild(node, cStack.OriginalChild, child))
-            {
-                if (child is null) hasRemove = true;
-                if (node.IsSealed) node = node.Clone();
-
-                node.SetChild(nib, child);
-            }
-
-            if (!hasRemove)
-            {
-                // 99%
-                continue;
-            }
-
-            // About 1% reach here
-            node = MaybeCombineNode(ref path, node, true, value is null || value.Length == 0);
-        }
-
-        return node;
-    }
-
-    private bool ShouldUpdateChild(TrieNode parent, TrieNode? oldChild, TrieNode? newChild)
-    {
-        if (oldChild is null && newChild is null) return false;
-        if(!ReferenceEquals(oldChild, newChild)) return true;
-        if (newChild.Keccak is null && parent.Keccak is not null) return true; // So that recalculate root knows to recalculate the parent root.
-        return false;
+        return patriciaTree.SetNew(traverseStack, remainingKey, value, ref path, node);
     }
 
     private TrieNode? MakeFakeBranch(ref TreePath currentPath, TrieNode? existingNode)
@@ -496,60 +309,6 @@ public class PatriciaTreeBulkSetter(PatriciaTree patriciaTree)
         existingNode.SetChild(branchIdx, newChild);
 
         return existingNode;
-    }
-
-    /// <summary>
-    /// Tries to make the current node an extension or null if it has only one child left.
-    /// </summary>
-    /// <param name="path"></param>
-    /// <param name="node"></param>
-    /// <returns></returns>
-    private TrieNode? MaybeCombineNode(ref TreePath path, in TrieNode? node, bool fromOne, bool hasRemove)
-    {
-        int onlyChildIdx = -1;
-        TrieNode? onlyChildNode = null;
-        path.AppendMut(0);
-        var iterator = node.CreateChildIterator();
-        for (int i = 0; i < TrieNode.BranchesCount; i++)
-        {
-            path.SetLast(i);
-            TrieNode? child = iterator.GetChildWithChildPath(patriciaTree.TrieStore, ref path, i);
-
-            if (child is not null)
-            {
-                if (onlyChildIdx == -1)
-                {
-                    onlyChildIdx = i;
-                    onlyChildNode = child;
-                }
-                else
-                {
-                    // 63%
-                    // More than one non null child. We don't care anymore.
-                    path.TruncateOne();
-                    return node;
-                }
-            }
-
-        }
-        path.TruncateOne();
-
-        if (onlyChildIdx == -1) return null; // No child at all.
-
-        path.AppendMut(onlyChildIdx);
-        onlyChildNode.ResolveNode(patriciaTree.TrieStore, path);
-        path.TruncateOne();
-
-        if (onlyChildNode.IsBranch)
-        {
-            return TrieNodeFactory.CreateExtension([(byte)onlyChildIdx], onlyChildNode);
-        }
-
-        // 35%
-        // Replace the only child with something with extra key.
-        byte[] newKey = Bytes.Concat((byte)onlyChildIdx, onlyChildNode.Key);
-        TrieNode tn = onlyChildNode.CloneWithChangedKey(newKey);
-        return tn;
     }
 
     /// <summary>
@@ -757,13 +516,6 @@ public class PatriciaTreeBulkSetter(PatriciaTree patriciaTree)
         return relevant;
     }
 
-    internal struct TraverseStack
-    {
-        public TrieNode Node;
-        public int ChildIdx;
-        public TrieNode? OriginalChild;
-    }
-
     /// <summary>
     /// Some bunch of structures that are used often but cannot be shared between threads.
     /// </summary>
@@ -772,11 +524,11 @@ public class PatriciaTreeBulkSetter(PatriciaTree patriciaTree)
         /// <summary>
         /// Used for <see cref="PatriciaTreeBulkSetter.BulkSetOneStack"/> to keep track of traversed node.
         /// </summary>
-        internal Stack<TraverseStack> TraverseStack;
+        internal Stack<PatriciaTree.TraverseStack> TraverseStack;
 
         public ThreadResource()
         {
-            TraverseStack = new Stack<TraverseStack>(16);
+            TraverseStack = new Stack<PatriciaTree.TraverseStack>(16);
         }
 
         public void Dispose()

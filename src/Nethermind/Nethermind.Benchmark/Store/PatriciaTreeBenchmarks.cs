@@ -426,6 +426,24 @@ namespace Nethermind.Benchmarks.Store
         }
 
         [Benchmark]
+        public void LargeSetOnlyNew()
+        {
+            TrieStore trieStore = TestTrieStoreFactory.Build(new MemDb(),
+                Prune.WhenCacheReaches(1.MiB()),
+                Persist.EveryNBlock(2), NullLogManager.Instance);
+            StateTree tempTree = new StateTree(trieStore, NullLogManager.Instance);
+            PatriciaTree.UseNewSet = true;
+            tempTree.RootHash = Keccak.EmptyTreeHash;
+
+            for (int i = 0; i < _largerEntryCount; i++)
+            {
+                (Hash256 address, Account value) = _uniqueLargeSet[i];
+                tempTree.Set(address, value);
+            }
+        }
+
+        /*
+        [Benchmark]
         public void LargeBulkSet()
         {
             TrieStore trieStore = TestTrieStoreFactory.Build(new MemDb(),
@@ -464,7 +482,7 @@ namespace Nethermind.Benchmarks.Store
             {
                 (Hash256 address, Account account) = _uniqueLargeSet[i];
                 Serialization.Rlp.Rlp rlp = account is null ? null : account.IsTotallyEmpty ? StateTree.EmptyAccountRlp : Serialization.Rlp.Rlp.Encode(account);
-                tempTree.RootRef = setter.BulkSetOneStack(threadResource, new PatriciaTreeBulkSetter.BulkSetEntry(address, rlp?.Bytes), ref path, tempTree.RootRef, PatriciaTreeBulkSetter.Flags.None);
+                tempTree.RootRef = setter.BulkSetOneStack(threadResource, new PatriciaTreeBulkSetter.BulkSetEntry(address, rlp?.Bytes), ref path, tempTree.RootRef);
             }
 
             PatriciaTreeBulkSetter.BulkSet(tempTree, bulkSet);
