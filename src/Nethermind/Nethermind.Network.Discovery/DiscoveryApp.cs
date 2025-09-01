@@ -255,6 +255,10 @@ public class DiscoveryApp : IDiscoveryApp
                 await persistenceTask;
             }
         }
+        catch (OperationCanceledException)
+        {
+            if (_logger.IsInfo) _logger.Info("Discovery App stopped");
+        }
         catch (Exception e)
         {
             if (_logger.IsDebug) _logger.Error("DEBUG/ERROR Error during discovery initialization", e);

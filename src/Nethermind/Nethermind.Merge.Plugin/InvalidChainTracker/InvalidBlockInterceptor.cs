@@ -18,8 +18,6 @@ public class InvalidBlockInterceptor(
 
     public bool ValidateOrphanedBlock(Block block, [NotNullWhen(false)] out string? error) => blockValidator.ValidateOrphanedBlock(block, out error);
 
-    public bool Validate(BlockHeader header, BlockHeader? parent, bool isUncle = false) => Validate(header, parent, isUncle, out _);
-
     public bool Validate(BlockHeader header, BlockHeader? parent, bool isUncle, [NotNullWhen(false)] out string? error)
     {
         bool result = blockValidator.Validate(header, parent, isUncle, out error);
@@ -37,28 +35,9 @@ public class InvalidBlockInterceptor(
         return result;
     }
 
-    public bool Validate(BlockHeader header, bool isUncle = false) => Validate(header, isUncle, out _);
-
-    public bool Validate(BlockHeader header, bool isUncle, [NotNullWhen(false)] out string? error)
+    public bool ValidateSuggestedBlock(Block block, BlockHeader? parent, [NotNullWhen(false)] out string? error, bool validateHashes = true)
     {
-        bool result = blockValidator.Validate(header, isUncle, out error);
-        if (!result)
-        {
-            if (_logger.IsTrace) _logger.Trace($"Intercepted a bad header {header}");
-            if (ShouldNotTrackInvalidation(header))
-            {
-                if (_logger.IsDebug) _logger.Debug($"Header invalidation should not be tracked");
-                return result;
-            }
-            invalidChainTracker.OnInvalidBlock(header.Hash!, header.ParentHash);
-        }
-        invalidChainTracker.SetChildParent(header.Hash!, header.ParentHash!);
-        return result;
-    }
-
-    public bool ValidateSuggestedBlock(Block block, [NotNullWhen(false)] out string? error, bool validateHashes = true)
-    {
-        bool result = blockValidator.ValidateSuggestedBlock(block, out error, validateHashes);
+        bool result = blockValidator.ValidateSuggestedBlock(block, parent, out error, validateHashes);
         if (!result)
         {
             if (_logger.IsTrace) _logger.Trace($"Intercepted a bad block {block}");

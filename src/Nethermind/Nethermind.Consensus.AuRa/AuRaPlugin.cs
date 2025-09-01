@@ -92,6 +92,7 @@ namespace Nethermind.Consensus.AuRa
 
             builder
                 .AddSingleton<NethermindApi, AuRaNethermindApi>()
+                .AddDecorator<ISpecProvider, AuRaSpecProvider>()
                 .AddSingleton<AuRaChainSpecEngineParameters>(specParam)
                 .AddDecorator<IBetterPeerStrategy, AuRaBetterPeerStrategy>()
                 .Add<StartBlockProducerAuRa>() // Note: Stateful. Probably just some strange unintentional side effect though.
@@ -111,6 +112,7 @@ namespace Nethermind.Consensus.AuRa
 
                 // Block processing components
                 .AddSingleton<IBlockValidationModule, AuraValidationModule>()
+                .AddSingleton<IMainProcessingModule, AuraMainProcessingModule>()
                 .AddScoped<IAuRaValidator, NullAuRaValidator>() // Note: for main block processor this is not the case
                 .AddScoped<IBlockProcessor, AuRaBlockProcessor>()
 

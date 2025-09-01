@@ -7,7 +7,6 @@ namespace Nethermind.Tools.Kute;
 
 public abstract class JsonRpc
 {
-
     public abstract string? Id { get; }
     private readonly JsonNode _node;
 

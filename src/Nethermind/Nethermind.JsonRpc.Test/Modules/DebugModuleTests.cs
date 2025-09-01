@@ -158,6 +158,20 @@ public class DebugModuleTests
     }
 
     [Test]
+    public async Task Get_rawblock_named()
+    {
+        BlockDecoder decoder = new();
+        IDebugBridge localDebugBridge = Substitute.For<IDebugBridge>();
+        Rlp rlp = decoder.Encode(Build.A.Block.WithNumber(1).TestObject);
+        localDebugBridge.GetBlockRlp(BlockParameter.Latest).Returns(rlp.Bytes);
+
+        DebugRpcModule rpcModule = CreateDebugRpcModule(localDebugBridge);
+        using var response = await RpcTest.TestRequest<IDebugRpcModule>(rpcModule, "debug_getRawBlock", "latest") as JsonRpcSuccessResponse;
+
+        Assert.That((byte[]?)response?.Result, Is.EqualTo(rlp.Bytes));
+    }
+
+    [Test]
     public async Task Get_block_rlp_when_missing()
     {
         debugBridge.GetBlockRlp(new BlockParameter(1)).ReturnsNull();

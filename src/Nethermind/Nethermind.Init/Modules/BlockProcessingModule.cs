@@ -14,12 +14,14 @@ using Nethermind.Consensus.ExecutionRequests;
 using Nethermind.Consensus.Processing;
 using Nethermind.Consensus.Producers;
 using Nethermind.Consensus.Rewards;
+using Nethermind.Consensus.Tracing;
 using Nethermind.Consensus.Validators;
 using Nethermind.Consensus.Withdrawals;
 using Nethermind.Core;
 using Nethermind.Core.Container;
 using Nethermind.Core.Specs;
 using Nethermind.Evm;
+using Nethermind.Evm.State;
 using Nethermind.State.OverridableEnv;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Init.Steps;
@@ -59,9 +61,27 @@ public class BlockProcessingModule(IInitConfig initConfig) : Module
                 new BlockProcessor.BlockProductionTransactionPicker(specProvider, blocksConfig.BlockProductionMaxTxKilobytes))
             .AddSingleton<IReadOnlyTxProcessingEnvFactory, AutoReadOnlyTxProcessingEnvFactory>()
             .AddSingleton<IShareableTxProcessorSource, ShareableTxProcessingSource>()
+            .Add<BlockchainProcessorFacade>()
 
             .AddSingleton<IOverridableEnvFactory, OverridableEnvFactory>()
             .AddScopedOpenGeneric(typeof(IOverridableEnv<>), typeof(DisposableScopeOverridableEnv<>))
+
+            // Yea, for some reason, the ICodeInfoRepository need to be the main one for ChainHeadInfoProvider to work.
+            // Like, is ICodeInfoRepository suppose to be global? Why not just IStateReader.
+            .AddKeyedSingleton<ICodeInfoRepository>(nameof(IWorldStateManager.GlobalWorldState), (ctx) =>
+            {
+                IWorldState worldState = ctx.Resolve<IWorldStateManager>().GlobalWorldState;
+                PreBlockCaches? preBlockCaches = (worldState as IPreBlockCaches)?.Caches;
+                return new EthereumCodeInfoRepository(preBlockCaches?.PrecompileCache);
+            })
+
+            // The main block processing pipeline, anything that requires the use of the main IWorldState is wrapped
+            // in a `IMainProcessingContext`.
+            .AddSingleton<IMainProcessingContext, MainProcessingContext>()
+            // Then component that has no ambiguity is extracted back out.
+            .Map<IBlockProcessingQueue, MainProcessingContext>(ctx => (IBlockProcessingQueue)ctx.BlockchainProcessor)
+            .Map<GenesisLoader, MainProcessingContext>(ctx => ctx.GenesisLoader)
+            .Bind<IMainProcessingContext, MainProcessingContext>()
 
             // Some configuration that applies to validation and rpc but not to block producer. Plugins can add
             // modules in case they have special case where it only apply to validation and rpc but not block producer.

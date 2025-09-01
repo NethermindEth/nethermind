@@ -118,16 +118,13 @@ namespace Nethermind.Blockchain.FullPruning
         {
             IPruningContext? pruningContext = null;
 
-            // we don't want to start pruning in the middle of block processing, lets wait for new head.
-            await WaitForMainChainChange((e) =>
+            using (_trieStore.PrepareStableState(cancellationToken))
             {
                 if (_fullPruningDb.TryStartPruning(_pruningConfig.Mode.IsMemory(), out IPruningContext fromDbPruningContext))
                 {
                     pruningContext = fromDbPruningContext;
                 }
-
-                return true;
-            }, cancellationToken);
+            }
 
             if (pruningContext is null) return;
 
@@ -147,8 +144,6 @@ namespace Nethermind.Blockchain.FullPruning
 
         private async Task RunFullPruning(IPruningContext pruningContext, CancellationToken cancellationToken)
         {
-            _trieStore.PersistCache(cancellationToken);
-
             long blockToWaitFor = 0;
             await WaitForMainChainChange((e) =>
             {
@@ -168,7 +163,7 @@ namespace Nethermind.Blockchain.FullPruning
             }, cancellationToken);
 
             long stateToCopy = _blockTree.BestPersistedState.Value;
-            long blockToPruneAfter = stateToCopy + Reorganization.MaxDepth;
+            long blockToPruneAfter = stateToCopy + _pruningConfig.PruningBoundary;
 
             await WaitForMainChainChange((e) =>
             {
@@ -225,7 +220,7 @@ namespace Nethermind.Blockchain.FullPruning
             }
         }
 
-        private async Task CopyTrie(IPruningContext pruning, Hash256 stateRoot, CancellationToken cancellationToken)
+        private Task CopyTrie(IPruningContext pruning, Hash256 stateRoot, CancellationToken cancellationToken)
         {
             INodeStorage.KeyScheme originalKeyScheme = _nodeStorage.Scheme;
             ICopyTreeVisitor visitor = null;
@@ -277,16 +272,12 @@ namespace Nethermind.Blockchain.FullPruning
                 {
                     visitor.Finish();
 
-                    _nodeStorage.Scheme = targetNodeStorage.Scheme;
-                    // Note: This does means that during full pruning some of the key copied will be of old key scheme.
-                    await WaitForMainChainChange((e) =>
+                    using (_trieStore.PrepareStableState(cancellationToken))
                     {
-                        // The db swap happens here. We do it within the event handler of main chain change to block
-                        // so that it does not happen during block processing.
                         pruning.Commit();
-                        return true;
-                    }, cancellationToken);
+                    }
 
+                    _nodeStorage.Scheme = targetNodeStorage.Scheme;
                     _lastPruning = DateTime.UtcNow;
                 }
             }
@@ -300,6 +291,8 @@ namespace Nethermind.Blockchain.FullPruning
             {
                 visitor?.Dispose();
             }
+
+            return Task.CompletedTask;
         }
 
         private ICopyTreeVisitor CopyTree<TContext>(

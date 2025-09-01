@@ -5,7 +5,7 @@ namespace Nethermind.Tools.Kute.Metrics;
 
 public enum MetricsReportFormat
 {
-    Pretty, Json,
+    Pretty, Json, Html
 }
 
 public sealed record TimeMetrics

@@ -61,12 +61,19 @@ jobs:
       - name: Install sshpass
         run: sudo apt-get update && sudo apt-get install -y sshpass
 
+      - name: Authenticate App
+        id: gh-app
+        uses: actions/create-github-app-token@v1
+        with:
+          app-id: ${{ vars.ADMIN_APP_ID }}
+          private-key: ${{ secrets.ADMIN_APP_PRIVATE_KEY }}
+
       - name: Create a Runner
         id: run-linode-action
         uses: kamilchodola/linode-github-runner/.github/actions/linode-machine-manager@main
         with:
           linode_token: ${{ secrets.LINODE_TOKEN }}
-          github_token: "${{ secrets.REPOSITORY_DISPATCH_TOKEN }}"
+          github_token: "${{ steps.gh-app.outputs.token }}"
           action: "create"
           runner_label: t-${{ github.run_id }}-${{ matrix.config.network }}
           root_password: ${{ secrets.LINODE_ROOT_PASSWORD }}
@@ -292,9 +299,9 @@ jobs:
               --checkpoint-sync-url=${{ matrix.config.checkpoint-sync-url }}
           fi
 
-          echo 'Running sedge...'          
+          echo 'Running sedge...'
           ./build/sedge run -p $GITHUB_WORKSPACE/sedge
-          
+
       - name: Wait for ${{ matrix.config.network }} to sync
         id: wait
         env:
@@ -361,12 +368,19 @@ jobs:
         config: ${{fromJson(needs.setup-matrix.outputs.matrix)}}
     runs-on: ubuntu-latest
     steps:
+      - name: Authenticate App
+        id: gh-app
+        uses: actions/create-github-app-token@v1
+        with:
+          app-id: ${{ vars.ADMIN_APP_ID }}
+          private-key: ${{ secrets.ADMIN_APP_PRIVATE_KEY }}
+
       - name: Destroy VM (make sure is removed)
         uses: kamilchodola/linode-github-runner/.github/actions/linode-machine-manager@main
         continue-on-error: true
         with:
           linode_token: ${{ secrets.LINODE_TOKEN }}
-          github_token: "${{ secrets.REPOSITORY_DISPATCH_TOKEN }}"
+          github_token: "${{ steps.gh-app.outputs.token }}"
           action: "destroy-machine"
           runner_label: t-${{ github.run_id }}-${{ matrix.config.network }}
           search_phrase: t-${{ github.run_id }}-${{ matrix.config.network }}
@@ -378,7 +392,7 @@ jobs:
         uses: kamilchodola/linode-github-runner/.github/actions/linode-machine-manager@main
         with:
           linode_token: ${{ secrets.LINODE_TOKEN }}
-          github_token: "${{ secrets.REPOSITORY_DISPATCH_TOKEN }}"
+          github_token: "${{ steps.gh-app.outputs.token }}"
           action: "destroy-runner"
           runner_label: t-${{ github.run_id }}-${{ matrix.config.network }}
           search_phrase: t-${{ github.run_id }}-${{ matrix.config.network }}

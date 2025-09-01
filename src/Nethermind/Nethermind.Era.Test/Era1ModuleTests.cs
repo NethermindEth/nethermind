@@ -33,15 +33,15 @@ public class Era1ModuleTests
             .WithNumber(0)
             .WithTotalDifficulty(BlockHeaderBuilder.DefaultDifficulty)
             .WithTransactions(Build.A.Transaction.SignedAndResolved(TestItem.PrivateKeyA)
-                                                 .WithSenderAddress(null)
-                                                 .To(TestItem.GetRandomAddress()).TestObject)
+                .WithSenderAddress(null)
+                .To(TestItem.GetRandomAddress()).TestObject)
             .TestObject;
         Block block1 = Build.A.Block
             .WithNumber(1)
             .WithTotalDifficulty(BlockHeaderBuilder.DefaultDifficulty)
             .WithTransactions(Build.A.Transaction.SignedAndResolved(TestItem.PrivateKeyB)
-                                                 .WithSenderAddress(null)
-                                                 .To(TestItem.GetRandomAddress()).TestObject).TestObject;
+                .WithSenderAddress(null)
+                .To(TestItem.GetRandomAddress()).TestObject).TestObject;
         TxReceipt receipt0 = Build.A.Receipt
             .WithAllFieldsFilled
             .TestObject;
@@ -119,8 +119,6 @@ public class Era1ModuleTests
     {
         TestBlockchain testBlockchain = await BasicTestBlockchain.Create();
         IWorldState worldState = testBlockchain.WorldStateManager.GlobalWorldState;
-        worldState.AddToBalance(TestItem.AddressA, 10.Ether(), testBlockchain.SpecProvider.GenesisSpec);
-        worldState.RecalculateStateRoot();
 
         using TempPath tmpFile = TempPath.GetTempFile();
         Block genesis = testBlockchain.BlockFinder.FindBlock(0)!;
@@ -129,7 +127,18 @@ public class Era1ModuleTests
         int numOfTx = 2;
         UInt256 nonce = 0;
 
-        List<Block> blocks = [genesis];
+        List<Block> blocks = [];
+        using (worldState.BeginScope(genesis.Header))
+        {
+            worldState.AddToBalance(TestItem.AddressA, 10.Ether(), testBlockchain.SpecProvider.GenesisSpec);
+            worldState.RecalculateStateRoot();
+
+            genesis.Header.StateRoot = worldState.StateRoot;
+            worldState.CommitTree(0);
+
+            blocks.Add(genesis);
+        }
+
         BlockHeader uncle = Build.A.BlockHeader.TestObject;
 
         for (int i = 0; i < numOfBlocks; i++)
@@ -208,10 +217,19 @@ public class Era1ModuleTests
     [Test]
     public async Task TestBigBlocksExportImportHistory()
     {
-        TestBlockchain testBlockchain = await BasicTestBlockchain.Create();
-        IWorldState worldState = testBlockchain.WorldStateManager.GlobalWorldState;
-        worldState.AddToBalance(TestItem.AddressA, 10.Ether(), testBlockchain.SpecProvider.GenesisSpec);
-        worldState.RecalculateStateRoot();
+        TestBlockchain testBlockchain = await BasicTestBlockchain.Create(configurer: builder =>
+        {
+            builder.AddDecorator<TestBlockchain.Configuration>((ctx, config) =>
+            {
+                ISpecProvider specProvider = ctx.Resolve<ISpecProvider>();
+                config.InitialStateMutator = worldState =>
+                {
+                    worldState.AddToBalance(TestItem.AddressA, 10.Ether(), specProvider.GenesisSpec);
+                    worldState.RecalculateStateRoot();
+                };
+                return config;
+            });
+        });
 
         using var tmpFile = TempPath.GetTempFile();
         using EraWriter builder = new EraWriter(tmpFile.Path, Substitute.For<ISpecProvider>());
@@ -231,19 +249,19 @@ public class Era1ModuleTests
             for (int y = 0; y < numOfTx; y++)
             {
                 transactions[y] = Build.A.Transaction.WithTo(TestItem.GetRandomAddress())
-                                                     .WithNonce(nonce)
-                                                     .WithValue(1)
-                                                     .SignedAndResolved(TestItem.PrivateKeyA)
-                                                     .TestObject;
+                    .WithNonce(nonce)
+                    .WithValue(1)
+                    .SignedAndResolved(TestItem.PrivateKeyA)
+                    .TestObject;
                 nonce++;
             }
             blocks.Add(Build.A.Block.WithUncles(Build.A.Block.TestObject)
-                                    .WithBaseFeePerGas(1)
-                                    .WithWithdrawals(100)
-                                    .WithTotalDifficulty(1000000L + blocks[i].Difficulty)
-                                    .WithTransactions(transactions)
-                                    .WithParent(blocks[i])
-                                    .WithGasLimit(30_000_000).TestObject);
+                .WithBaseFeePerGas(1)
+                .WithWithdrawals(100)
+                .WithTotalDifficulty(1000000L + blocks[i].Difficulty)
+                .WithTransactions(transactions)
+                .WithParent(blocks[i])
+                .WithGasLimit(30_000_000).TestObject);
         }
 
         testBlockchain.BranchProcessor.Process(genesis.Header!, blocks, ProcessingOptions.NoValidation, new BlockReceiptsTracer());
@@ -266,9 +284,6 @@ public class Era1ModuleTests
             (Block b, TxReceipt[] r) = enu.Current;
 
             Block expectedBlock = blocks[i] ?? throw new ArgumentException("Could not find required block?");
-
-            //ignore this for comparison
-            expectedBlock.Header.MaybeParent = null;
 
             TxReceipt[] expectedReceipts = testBlockchain.ReceiptStorage.Get(expectedBlock);
 

@@ -99,6 +99,7 @@ public class AuRaContractGasLimitOverrideTests
         protected override ContainerBuilder ConfigureContainer(ContainerBuilder builder, IConfigProvider configProvider) =>
             base.ConfigureContainer(builder, configProvider)
                 .AddModule(new AuRaModule(CreateChainSpec()))
+                .AddScoped<IBlockProcessor, BlockProcessor>()
                 .AddSingleton<AuRaContractGasLimitOverride, ChainSpec, AuRaContractGasLimitOverride.Cache, ISpecProvider, IReadOnlyTxProcessingEnvFactory>(CreateGasLimitCalculator);
 
         protected override Task AddBlocksOnStart() => Task.CompletedTask;

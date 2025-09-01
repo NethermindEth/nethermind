@@ -32,6 +32,16 @@ namespace Nethermind.Synchronization.SnapSync
             // TODO: Check the accounts boundaries and sorting
             if (accounts.Count == 0)
                 throw new ArgumentException("Cannot be empty.", nameof(accounts));
+
+            // Validate sorting order
+            for (int i = 1; i < accounts.Count; i++)
+            {
+                if (accounts[i - 1].Path.CompareTo(accounts[i].Path) >= 0)
+                {
+                    return (AddRangeResult.InvalidOrder, true, null, null);
+                }
+            }
+
             ValueHash256 lastHash = accounts[^1].Path;
 
             (AddRangeResult result, List<(TrieNode, TreePath)> sortedBoundaryList, bool moreChildrenToRight) =
@@ -119,7 +129,17 @@ namespace Nethermind.Synchronization.SnapSync
             IReadOnlyList<byte[]>? proofs = null
         )
         {
-            // TODO: Check the slots boundaries and sorting
+            if (slots.Count == 0)
+                throw new ArgumentException("Cannot be empty.", nameof(slots));
+
+            // Validate sorting order
+            for (int i = 1; i < slots.Count; i++)
+            {
+                if (slots[i - 1].Path.CompareTo(slots[i].Path) >= 0)
+                {
+                    return (AddRangeResult.InvalidOrder, true);
+                }
+            }
 
             ValueHash256 lastHash = slots[^1].Path;
 
@@ -182,6 +202,17 @@ namespace Nethermind.Synchronization.SnapSync
             if (!dict.TryGetValue(expectedRootHash, out TrieNode root))
             {
                 return (AddRangeResult.MissingRootHashInProofs, null, true);
+            }
+
+            if (dict.Count == 1 && root.IsLeaf)
+            {
+                // Special case with some server sending proof where the root is the same as the only path.
+                // Without this the proof's IsBoundaryNode flag will cause the key to not get saved.
+                var rootPath = TreePath.FromNibble(root.Key);
+                if (rootPath.Length == 64 && rootPath.Path.Equals(endHash))
+                {
+                    return (AddRangeResult.OK, null, false);
+                }
             }
 
             TreePath leftBoundaryPath = TreePath.FromPath(effectiveStartingHAsh.Bytes);

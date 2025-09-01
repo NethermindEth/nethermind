@@ -108,17 +108,18 @@ static class Program
 
             return new FileResponseTracer(tracesFilePath);
         });
-        collection.AddSingleton<IMetricsReporter>(provider =>
-        {
-            IMetricsReportFormatter formatter = parseResult.GetValue(Config.MetricsReportFormatter) switch
+        collection.AddSingleton<IMetricsReportFormatter>(_ =>
+            parseResult.GetValue(Config.MetricsReportFormatter) switch
             {
                 MetricsReportFormat.Pretty => new PrettyMetricsReportFormatter(),
                 MetricsReportFormat.Json => new JsonMetricsReportFormatter(),
+                MetricsReportFormat.Html => new HtmlMetricsReportFormatter(),
                 _ => throw new ArgumentOutOfRangeException(nameof(Config.MetricsReportFormatter)),
-            };
-
+            });
+        collection.AddSingleton<IMetricsReporter>(provider =>
+        {
             MemoryMetricsReporter memoryReporter = new MemoryMetricsReporter();
-            ConsoleTotalReporter consoleReporter = new ConsoleTotalReporter(memoryReporter, formatter);
+            ConsoleTotalReporter consoleReporter = new ConsoleTotalReporter(memoryReporter, provider.GetRequiredService<IMetricsReportFormatter>());
             IMetricsReporter progresReporter = parseResult.GetValue(Config.ShowProgress)
                 ? new ConsoleProgressReporter()
                 : new NullMetricsReporter();

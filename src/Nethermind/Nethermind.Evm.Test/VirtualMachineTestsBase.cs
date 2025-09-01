@@ -35,6 +35,7 @@ public abstract class VirtualMachineTestsBase
     private IEthereumEcdsa _ethereumEcdsa;
     protected ITransactionProcessor _processor;
     private IDb _stateDb;
+    private IDisposable _worldStateCloser;
 
     protected VirtualMachine Machine { get; private set; }
     protected CodeInfoRepository CodeInfoRepository { get; private set; }
@@ -68,6 +69,7 @@ public abstract class VirtualMachineTestsBase
         IDbProvider dbProvider = TestMemDbProvider.Init();
         WorldStateManager worldStateManager = TestWorldStateFactory.CreateForTest(dbProvider, logManager);
         TestState = worldStateManager.GlobalWorldState;
+        _worldStateCloser = TestState.BeginScope(IWorldState.PreGenesis);
         _ethereumEcdsa = new EthereumEcdsa(SpecProvider.ChainId);
         IBlockhashProvider blockhashProvider = new TestBlockhashProvider(SpecProvider);
         CodeInfoRepository = new EthereumCodeInfoRepository();
@@ -76,7 +78,11 @@ public abstract class VirtualMachineTestsBase
     }
 
     [TearDown]
-    public virtual void TearDown() => _stateDb?.Dispose();
+    public virtual void TearDown()
+    {
+        _stateDb?.Dispose();
+        _worldStateCloser?.Dispose();
+    }
 
     protected GethLikeTxTrace ExecuteAndTrace(params byte[] code)
     {

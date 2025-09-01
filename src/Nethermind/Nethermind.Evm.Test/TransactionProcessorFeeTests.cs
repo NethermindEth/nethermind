@@ -32,6 +32,7 @@ public class TransactionProcessorFeeTests
     private IEthereumEcdsa _ethereumEcdsa;
     private ITransactionProcessor _transactionProcessor;
     private IWorldState _stateProvider;
+    private IDisposable _worldStateCloser;
     private OverridableReleaseSpec _spec;
 
     [SetUp]
@@ -42,6 +43,7 @@ public class TransactionProcessorFeeTests
 
         IWorldStateManager worldStateManager = TestWorldStateFactory.CreateForTest();
         _stateProvider = worldStateManager.GlobalWorldState;
+        _worldStateCloser = _stateProvider.BeginScope(IWorldState.PreGenesis);
         _stateProvider.CreateAccount(TestItem.AddressA, 1.Ether());
         _stateProvider.Commit(_specProvider.GenesisSpec);
         _stateProvider.CommitTree(0);
@@ -50,6 +52,12 @@ public class TransactionProcessorFeeTests
         VirtualMachine virtualMachine = new(new TestBlockhashProvider(_specProvider), _specProvider, LimboLogs.Instance);
         _transactionProcessor = new TransactionProcessor(_specProvider, _stateProvider, virtualMachine, codeInfoRepository, LimboLogs.Instance);
         _ethereumEcdsa = new EthereumEcdsa(_specProvider.ChainId);
+    }
+
+    [TearDown]
+    public void TearDown()
+    {
+        _worldStateCloser.Dispose();
     }
 
     [TestCase(true, true)]
@@ -82,6 +90,7 @@ public class TransactionProcessorFeeTests
     }
 
     private readonly Address SelfDestructAddress = new("0x89aa9b2ce05aaef815f25b237238c0b4ffff6ae3");
+
     [Test]
     public void Check_fees_with_fee_collector_destroy_coinbase()
     {

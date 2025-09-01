@@ -1,9 +1,9 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System.Linq;
 using System;
 using System.IO;
+using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Api;
@@ -15,9 +15,9 @@ using Nethermind.Init.Steps;
 using Nethermind.JsonRpc;
 using Nethermind.JsonRpc.Modules;
 using Nethermind.JsonRpc.WebSockets;
+using Nethermind.KeyStore.Config;
 using Nethermind.Logging;
 using Nethermind.Runner.JsonRpc;
-using Nethermind.KeyStore.Config;
 using Nethermind.Sockets;
 
 namespace Nethermind.Runner.Ethereum.Steps;
@@ -88,7 +88,13 @@ public class StartRpc(INethermindApi api, IJsonRpcServiceConfigurer[] serviceCon
             api.ConfigProvider,
             auth,
             api.LogManager,
-            serviceConfigurers);
+            serviceConfigurers,
+            api.TxPool,
+            api.SpecProvider,
+            api.ReceiptFinder,
+            api.BlockTree,
+            api.SyncPeerPool,
+            api.MainProcessingContext);
 
         await jsonRpcRunner.Start(cancellationToken).ContinueWith(x =>
         {

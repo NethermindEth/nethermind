@@ -10,9 +10,9 @@ namespace Nethermind.Evm.Precompiles;
 
 public static class Extensions
 {
-    public static OrderedDictionary<Address, string> ListPrecompiles(this IReleaseSpec spec)
+    public static OrderedDictionary<string, Address> ListPrecompiles(this IReleaseSpec spec)
     {
-        OrderedDictionary<Address, string> precompiles = [];
+        OrderedDictionary<string, Address> precompiles = [];
 
         AddPrecompile<EcRecoverPrecompile>();
         AddPrecompile<Sha256Precompile>();
@@ -57,9 +57,14 @@ public static class Extensions
             AddPrecompile<Secp256r1Precompile>();
         }
 
+        if (spec.IsRip7728Enabled)
+        {
+            AddPrecompile<L1SloadPrecompile>();
+        }
+
         return precompiles;
 
-        void AddPrecompile<T>() where T : IPrecompile<T> => precompiles[T.Address] = T.Name;
+        void AddPrecompile<T>() where T : IPrecompile<T> => precompiles[T.Name] = T.Address;
     }
 
     public static OrderedDictionary<string, Address> ListSystemContracts(this IReleaseSpec spec)
