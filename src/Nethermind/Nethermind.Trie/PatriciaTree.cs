@@ -738,7 +738,7 @@ namespace Nethermind.Trie
             return tn;
         }
 
-        public struct TraverseStack
+        private record struct TraverseStack
         {
             public TrieNode Node;
             public int ChildIdx;
