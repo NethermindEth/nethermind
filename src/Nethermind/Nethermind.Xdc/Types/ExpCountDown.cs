@@ -16,12 +16,7 @@ public class ExpCountDown : IDisposable, IExpCountDown
     private Action? _callback;
 
     public ExpCountDown(int initialDuration, int @base, int maxExponent)
-        => SetParams(initialDuration, @base, maxExponent, false);
-
-    public ExpCountDown(IXdcConfig hotStuffConfig)
-        : this(TimeSpan.FromSeconds(hotStuffConfig.CurrentConfig.TimeoutPeriod).Nanoseconds, hotStuffConfig.CurrentConfig.ExpTimeoutConfig.Base, hotStuffConfig.CurrentConfig.ExpTimeoutConfig.MaxExponent)
-    {
-    }
+        => SetParams(initialDuration, @base, maxExponent, false)
 
     public void SetParams(int initialDuration, int @base, int maxExponent, bool shouldScheduleNext = true)
     {
