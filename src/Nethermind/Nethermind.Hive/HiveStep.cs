@@ -11,7 +11,7 @@ using Nethermind.TxPool;
 
 namespace Nethermind.Hive;
 
-[RunnerStepDependencies(typeof(InitializeNetwork))]
+[RunnerStepDependencies(true, typeof(InitializeNetwork))]
 public class HiveStep(
     ITxPool txPool,
     CompositeTxGossipPolicy txGossipPolicy,

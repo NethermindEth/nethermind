@@ -1,19 +1,20 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System;
-using System.Collections.Generic;
-using System.Diagnostics;
-using System.Linq;
-using System.Runtime.ExceptionServices;
-using System.Threading;
-using System.Threading.Tasks;
 using Autofac;
 using Autofac.Core;
 using Nethermind.Api.Steps;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Exceptions;
 using Nethermind.Logging;
+using System;
+using System.Collections.Generic;
+using System.Diagnostics;
+using System.Linq;
+using System.Reflection;
+using System.Runtime.ExceptionServices;
+using System.Threading;
+using System.Threading.Tasks;
 
 namespace Nethermind.Init.Steps
 {
@@ -84,6 +85,26 @@ namespace Nethermind.Init.Steps
                     {
                         throw new StepDependencyException(
                             $"The dependent step {type.Name} for {stepWrapper.StepInfo.StepBaseType.Name} is missing.");
+                    }
+                }
+            }
+
+            // Remove absent optional steps
+            foreach (var kv in stepInfoMap)
+            {
+                foreach (Type dep in kv.Value.Dependencies.ToArray())
+                {
+                    if (!stepInfoMap.ContainsKey(dep))
+                    {
+                        if (dep.GetCustomAttribute<RunnerStepDependenciesAttribute>()?.Optional is true)
+                        {
+                            kv.Value.Dependencies.Remove(dep);
+                            if (_logger.IsDebug) _logger.Debug($"Optional dependency {dep.Name} will not be loaded for step {kv.Key.Name} because it was not found.");
+                        }
+                        else
+                        {
+                            throw new StepDependencyException($"Dependency {dep.Name} was not found for step {kv.Key.Name}.");
+                        }
                     }
                 }
             }
@@ -186,19 +207,6 @@ namespace Nethermind.Init.Steps
         /// </summary>
         private string BuildStepDependencyTree(Dictionary<Type, StepWrapper> stepInfoMap)
         {
-            // Remove absent steps
-            foreach (var kv in stepInfoMap)
-            {
-                foreach (var dep in kv.Value.Dependencies.ToArray())
-                {
-                    if (!stepInfoMap.ContainsKey(dep))
-                    {
-                        kv.Value.Dependencies.Remove(dep);
-                        if (_logger.IsDebug) _logger.Debug($"Dependency {dep.Name} will not be loaded for step {kv.Key.Name} because it was not found.");
-                    }
-                }
-            }
-
             // Map each step to its direct dependencies
             var depsMap = stepInfoMap.ToDictionary(
                 kv => kv.Key.Name,
