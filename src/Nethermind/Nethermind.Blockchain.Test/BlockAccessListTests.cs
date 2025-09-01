@@ -37,6 +37,7 @@ public class BlockAccessListTests()
     };
 
     private static readonly ISpecProvider _specProvider = new TestSpecProvider(_spec);
+    private static readonly UInt256 _accountBalance = 10.Ether();
 
     [Test]
     public void Empty_account_changes()
@@ -215,7 +216,6 @@ public class BlockAccessListTests()
             .TestObject;
 
         Block block = Build.A.Block
-            .WithParentBeaconBlockRoot(Hash256.Zero)
             .WithTransactions(tx)
             .WithBaseFeePerGas(1)
             .WithHeader(header).TestObject;
@@ -224,7 +224,7 @@ public class BlockAccessListTests()
 
         BlockAccessList blockAccessList = Rlp.Decode<BlockAccessList>(processedBlock.BlockAccessList);
         SortedDictionary<Address, AccountChanges> accountChanges = blockAccessList.AccountChanges;
-        Assert.That(accountChanges, Has.Count.EqualTo(3));
+        Assert.That(accountChanges, Has.Count.EqualTo(5));
 
         List<BalanceChange> senderBalanceChanges = accountChanges[TestItem.AddressA].BalanceChanges;
         List<NonceChange> senderNonceChanges = accountChanges[TestItem.AddressA].NonceChanges;
@@ -234,7 +234,7 @@ public class BlockAccessListTests()
         using (Assert.EnterMultipleScope())
         {
             Assert.That(senderBalanceChanges, Has.Count.EqualTo(1));
-            // Assert.That(senderBalanceChanges[0].PostBalance, Is.EqualTo(AccountBalance - gasPrice * GasCostOf.Transaction));
+            Assert.That(senderBalanceChanges[0].PostBalance, Is.EqualTo(_accountBalance - gasPrice * GasCostOf.Transaction));
 
             Assert.That(senderNonceChanges, Has.Count.EqualTo(1));
             Assert.That(senderNonceChanges[0].NewNonce, Is.EqualTo(1));
@@ -252,7 +252,7 @@ public class BlockAccessListTests()
 
     private static void InitWorldState(IWorldState worldState)
     {
-        worldState.CreateAccount(TestItem.AddressA, 10.Ether());
+        worldState.CreateAccount(TestItem.AddressA, _accountBalance);
         worldState.CreateAccount(Eip4788Constants.BeaconRootsAddress, 1);
         worldState.CreateAccount(Eip7002Constants.WithdrawalRequestPredeployAddress, 0, Eip7002TestConstants.Nonce);
         worldState.InsertCode(Eip7002Constants.WithdrawalRequestPredeployAddress, Eip7002TestConstants.CodeHash, Eip7002TestConstants.Code, _specProvider.GenesisSpec);
