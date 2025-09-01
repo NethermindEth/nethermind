@@ -100,7 +100,7 @@ public readonly struct SpanSource : ISpanSource, IEquatable<SpanSource>
         {
             var obj = _obj;
 
-            if (obj == null)
+            if (obj is null)
                 return true;
 
             if (obj is byte[] array)
