@@ -1101,13 +1101,13 @@ namespace Nethermind.Trie
             RootRef = nextNode;
             return;
 
-            Corruption:
+        Corruption:
             ThrowTrieExceptionCorruption();
-            InvalidNodeType:
+        InvalidNodeType:
             ThrowInvalidNodeType(node);
-            NullNode:
+        NullNode:
             ThrowInvalidNullNode(node);
-            LeafCannotBeParent:
+        LeafCannotBeParent:
             ThrowTrieExceptionLeafCannotBeParent(node, nextNode);
 
             [DoesNotReturn, StackTraceHidden]
