@@ -13,14 +13,11 @@ namespace Nethermind.JsonRpc.Modules.Admin.Utils
     {
         public static NetworkInfo Build(Peer peer, bool isInbound)
         {
-            if (peer?.Node == null)
-            {
-                throw new ArgumentNullException(nameof(peer));
-            }
+            ArgumentNullException.ThrowIfNull(peer.Node);
 
-            var session = peer.InSession ?? peer.OutSession;
-            var (localAddress, localHost) = GetLocalInfo(peer.Node);
-            var remoteAddress = GetRemoteAddress(session, peer.Node);
+            ISession? session = peer.InSession ?? peer.OutSession;
+            (string localAddress, string localHost) = GetLocalInfo(peer.Node);
+            string remoteAddress = GetRemoteAddress(session, peer.Node);
 
             return new NetworkInfo
             {
@@ -33,21 +30,12 @@ namespace Nethermind.JsonRpc.Modules.Admin.Utils
             };
         }
 
-        private static (string address, string host) GetLocalInfo(Node node)
-        {
-            if (string.IsNullOrEmpty(node.Host))
-            {
-                return (string.Empty, string.Empty);
-            }
+        private static (string address, string host) GetLocalInfo(Node node) =>
+            string.IsNullOrEmpty(node.Host) ? (string.Empty, string.Empty) : ($"{node.Host}:{node.Port}", node.Host);
 
-            return ($"{node.Host}:{node.Port}", node.Host);
-        }
-
-        private static string GetRemoteAddress(ISession? session, Node node)
-        {
-            return session != null
+        private static string GetRemoteAddress(ISession? session, Node node) =>
+            session is not null
                 ? $"{session.RemoteHost}:{session.RemotePort}"
                 : node.Address.ToString();
-        }
     }
 }

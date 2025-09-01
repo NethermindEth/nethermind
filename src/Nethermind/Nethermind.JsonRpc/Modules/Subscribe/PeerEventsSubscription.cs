@@ -47,7 +47,7 @@ namespace Nethermind.JsonRpc.Modules.Subscribe
 
         private void OnPeerAdded(object? sender, PeerEventArgs args)
         {
-            var (localHost, remoteAddress, peerId) = GetPeerEventInfo(args.Node);
+            (string localHost, string remoteAddress, PublicKey? peerId) = GetPeerEventInfo(args.Node);
             var response = new PeerEventResponse
             {
                 Type = PeerEventType.Add,
@@ -66,7 +66,7 @@ namespace Nethermind.JsonRpc.Modules.Subscribe
 
         private void OnPeerRemoved(object? sender, PeerEventArgs args)
         {
-            var (localHost, remoteAddress, peerId) = GetPeerEventInfo(args.Node);
+            (string localHost, string remoteAddress, PublicKey peerId) = GetPeerEventInfo(args.Node);
             var response = new PeerEventResponse
             {
                 Type = PeerEventType.Drop,
@@ -85,7 +85,7 @@ namespace Nethermind.JsonRpc.Modules.Subscribe
 
         private void OnMsgReceived(object? sender, PeerEventArgs args)
         {
-            var (localHost, remoteAddress, peerId) = GetPeerEventInfo(args.Node);
+            (string localHost, string remoteAddress, PublicKey peerId) = GetPeerEventInfo(args.Node);
             var response = new PeerEventResponse
             {
                 Type = PeerEventType.MsgRecv,
@@ -107,7 +107,7 @@ namespace Nethermind.JsonRpc.Modules.Subscribe
 
         private void OnMsgDelivered(object? sender, PeerEventArgs args)
         {
-            var (localHost, remoteAddress, peerId) = GetPeerEventInfo(args.Node);
+            (string localHost, string remoteAddress, PublicKey peerId) = GetPeerEventInfo(args.Node);
             var response = new PeerEventResponse
             {
                 Type = PeerEventType.MsgSend,
@@ -129,8 +129,7 @@ namespace Nethermind.JsonRpc.Modules.Subscribe
 
         private (string localHost, string remoteAddress, PublicKey peerId) GetPeerEventInfo(Node node)
         {
-            var peer = new Peer(node);
-            var peerInfo = new PeerInfo(peer, false);
+            PeerInfo peerInfo = new(new Peer(node));
 
             return (
                 peerInfo.Network.LocalHost,
@@ -171,12 +170,12 @@ namespace Nethermind.JsonRpc.Modules.Subscribe
             if (_logger.IsTrace) _logger.Trace($"admin_subscription.peerEvent {Id} is no longer subscribed.");
         }
 
-        public static class PeerEventType
+        private static class PeerEventType
         {
-            public static string Add = "add";
-            public static string Drop = "drop";
-            public static string MsgSend = "msgsend";
-            public static string MsgRecv = "msgrecv";
+            public const string Add = "add";
+            public const string Drop = "drop";
+            public const string MsgSend = "msgsend";
+            public const string MsgRecv = "msgrecv";
         }
     }
 }

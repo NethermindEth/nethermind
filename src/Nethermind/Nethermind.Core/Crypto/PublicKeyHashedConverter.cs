@@ -21,14 +21,16 @@ public class PublicKeyHashedConverter : JsonConverter<PublicKey>
             return null;
         }
 
-        if (bytes.Length < 64)
+        if (bytes.Length >= 64)
         {
-            var newArray = new byte[64];
-            bytes.AsSpan().CopyTo(newArray.AsSpan(64 - bytes.Length));
-            bytes = newArray;
+            return new PublicKey(bytes);
         }
-
-        return new PublicKey(bytes);
+        else
+        {
+            Span<byte> span = stackalloc byte[64];
+            bytes.AsSpan().CopyTo(span.Slice(64 - bytes.Length));
+            return new PublicKey(span);
+        }
     }
 
     public override void Write(Utf8JsonWriter writer, PublicKey publicKey, JsonSerializerOptions options)

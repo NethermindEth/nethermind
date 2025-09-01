@@ -50,7 +50,7 @@ public class P2PProtocolHandler(
 
     public IReadOnlyList<Capability> AgreedCapabilities { get { return _agreedCapabilities; } }
     public IReadOnlyList<Capability> AvailableCapabilities { get { return _availableCapabilities; } }
-    private readonly List<Capability> _supportedCapabilities = new List<Capability>();
+    private readonly List<Capability> _supportedCapabilities = new();
 
     public int ListenPort { get; } = session.LocalPort;
     public PublicKey LocalNodeId { get; } = localNodeId;
@@ -347,12 +347,8 @@ public class P2PProtocolHandler(
         SubprotocolRequested = null;
     }
 
-    public IEnumerable<Capability> GetCapabilities()
-    {
-        var capabilities = _agreedCapabilities?.Any() == true
+    public IReadOnlyList<Capability> GetCapabilities() =>
+        _agreedCapabilities.Count > 0
             ? _agreedCapabilities
             : _supportedCapabilities;
-
-        return capabilities ?? Enumerable.Empty<Capability>();
-    }
 }

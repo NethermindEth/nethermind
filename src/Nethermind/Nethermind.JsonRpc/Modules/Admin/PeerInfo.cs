@@ -19,7 +19,7 @@ namespace Nethermind.JsonRpc.Modules.Admin
 {
     public class PeerInfo
     {
-        private static readonly IReadOnlyList<Capability> EmptyCapabilities = Array.Empty<Capability>();
+        private static readonly IReadOnlyList<Capability> EmptyCapabilities = [];
 
         public string Enode { get; set; } = string.Empty;
 
@@ -53,7 +53,7 @@ namespace Nethermind.JsonRpc.Modules.Admin
         {
             ValidatePeer(peer);
 
-            var capabilities = ExtractCapabilities(peer);
+            IReadOnlyList<Capability> capabilities = ExtractCapabilities(peer);
 
             SetBasicInfo(peer, capabilities);
             SetNetworkInfo(peer);
@@ -87,10 +87,8 @@ namespace Nethermind.JsonRpc.Modules.Admin
             int ethVersion = 0;
             int snapVersion = 0;
 
-            for (int i = 0; i < capabilities.Count; i++)
+            foreach (Capability capability in capabilities)
             {
-                var capability = capabilities[i];
-
                 if (capability.ProtocolCode == Protocol.Eth && ethVersion == 0)
                 {
                     ethVersion = capability.Version;
@@ -125,10 +123,7 @@ namespace Nethermind.JsonRpc.Modules.Admin
 
         private void ValidatePeer(Peer peer)
         {
-            if (peer is null)
-            {
-                throw new ArgumentNullException(nameof(peer));
-            }
+            ArgumentNullException.ThrowIfNull(peer);
 
             if (peer.Node is null)
             {
@@ -136,29 +131,9 @@ namespace Nethermind.JsonRpc.Modules.Admin
             }
         }
 
-        private static IReadOnlyList<Capability> ExtractCapabilities(Peer peer)
-        {
-            var session = peer.InSession ?? peer.OutSession;
-            if (session?.TryGetProtocolHandler(Protocol.P2P, out IProtocolHandler? handler) == true &&
-                handler is IP2PProtocolHandler p2pHandler)
-            {
-                var capabilities = p2pHandler.GetCapabilities();
-                return capabilities is IReadOnlyList<Capability> readOnlyList ? readOnlyList : capabilities.ToArray();
-            }
-
-            return EmptyCapabilities;
-        }
-
-        public int GetEthVersion()
-        {
-            for (int i = 0; i < Caps.Count; i++)
-            {
-                if (Caps[i].ProtocolCode == Protocol.Eth)
-                {
-                    return Caps[i].Version;
-                }
-            }
-            return 0;
-        }
+        private static IReadOnlyList<Capability> ExtractCapabilities(Peer peer) =>
+            (peer.InSession ?? peer.OutSession)?.TryGetProtocolHandler(Protocol.P2P, out IProtocolHandler? handler) == true && handler is IP2PProtocolHandler p2pHandler
+                ? p2pHandler.GetCapabilities()
+                : EmptyCapabilities;
     }
 }

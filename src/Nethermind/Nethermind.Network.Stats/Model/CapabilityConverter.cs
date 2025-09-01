@@ -32,13 +32,12 @@ namespace Nethermind.Stats.Model
                 ThrowJsonException();
             }
 
-            if (TryParseCapability(ref reader, out Capability capability))
+            if (!TryParseCapability(ref reader, out Capability capability))
             {
-                return capability;
+                ThrowJsonException();
             }
 
-            ThrowJsonException();
-            return null;
+            return capability;
         }
 
         public override void Write(Utf8JsonWriter writer, Capability value, JsonSerializerOptions options)
@@ -46,10 +45,11 @@ namespace Nethermind.Stats.Model
             if (value is null)
             {
                 writer.WriteNullValue();
-                return;
             }
-
-            WriteCapability(writer, value);
+            else
+            {
+                WriteCapability(writer, value);
+            }
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
@@ -95,7 +95,7 @@ namespace Nethermind.Stats.Model
 
         private static bool TryParseCapability(ref Utf8JsonReader reader, out Capability capability)
         {
-            capability = default;
+            capability = null;
 
             ReadOnlySpan<byte> valueSpan = reader.HasValueSequence ?
                 reader.ValueSequence.ToArray() :
