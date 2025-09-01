@@ -13,6 +13,7 @@ using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Core.Timers;
+using Nethermind.Crypto;
 using Nethermind.Db;
 using Nethermind.Logging;
 using Nethermind.Network.Config;
@@ -301,8 +302,6 @@ public class NodeLifecycleManagerTests
         //Assert.IsTrue(closestNodes.Count(x => x.Host == candidateNode.Host) == 0);
     }
 
-    private static long GetExpirationTime() => Timestamper.Default.UnixTime.SecondsLong + 20;
-
     [Test]
     [Ignore("This test keeps failing and should be only manually enabled / understood when we review the discovery code")]
     public void EvictCandidateStateLostEvictionTest()
@@ -364,6 +363,227 @@ public class NodeLifecycleManagerTests
         //Assert.IsTrue(closestNodes.Count(x => x.Host == candidateNode.Host) == 1);
     }
 
+    [Test]
+    public async Task ProcessEnrResponseMsg_WhenBondedWithRemoteNode_StoresEnrAndTransitionsToActiveWithEnr()
+    {
+        // Create a lifecycle manager for our local node
+        Node localNode = new(TestItem.PublicKeyA, "192.168.1.100", 30303);
+        NodeLifecycleManager manager = new(localNode, _discoveryManagerMock, _nodeTable, _evictionManagerMock, _nodeStatsMock, new NodeRecord(), _discoveryConfigMock, Timestamper.Default, _loggerMock);
+
+        // Create and bond with remote node
+        Node remoteNode = new(TestItem.PublicKeyB, "192.168.1.101", 30303);
+        NodeRecord remoteNodeRecord = CreateValidEnrForNode(TestItem.PublicKeyB, TestItem.PrivateKeyB, "192.168.1.101", 30303, 1);
+
+        // Verify initial state before bonding
+        Assert.That(manager.State, Is.EqualTo(NodeLifecycleState.New));
+        Assert.That(manager.ManagedNode.Enr, Is.Null.Or.Empty);
+        Assert.That(manager.IsBonded, Is.False);
+
+        // Bond with the remote node
+        await BondWithRemoteNode(manager, remoteNode);
+        Assert.That(manager.IsBonded, Is.True);
+
+        // Process ENR response from bonded node
+        EnrResponseMsg enrResponse = new(TestItem.PublicKeyB, remoteNodeRecord, TestItem.KeccakA);
+        manager.ProcessEnrResponseMsg(enrResponse);
+
+        // Verify ENR storage and state transition
+        Assert.That(manager.ManagedNode.Enr, Is.EqualTo(remoteNodeRecord.EnrString));
+        Assert.That(manager.State, Is.EqualTo(NodeLifecycleState.ActiveWithEnr));
+    }
+
+    [Test]
+    public void ProcessEnrResponseMsg_WhenNotBondedWithRemoteNode_IgnoresEnrAndMaintainsState()
+    {
+        // Create lifecycle manager without bonding
+        Node localNode = new(TestItem.PublicKeyA, "192.168.1.100", 30303);
+        NodeLifecycleManager manager = new(localNode, _discoveryManagerMock, _nodeTable, _evictionManagerMock, _nodeStatsMock, new NodeRecord(), _discoveryConfigMock, Timestamper.Default, _loggerMock);
+
+        // Create ENR from unbonded node
+        NodeRecord unbondedNodeRecord = CreateValidEnrForNode(TestItem.PublicKeyC, TestItem.PrivateKeyC, "192.168.1.102", 30303, 1);
+
+        // Verify initial state
+        Assert.That(manager.State, Is.EqualTo(NodeLifecycleState.New));
+        Assert.That(manager.ManagedNode.Enr, Is.Null.Or.Empty);
+        Assert.That(manager.IsBonded, Is.False);
+
+        // Process ENR from unbonded node (should be ignored)
+        EnrResponseMsg enrResponse = new(TestItem.PublicKeyC, unbondedNodeRecord, TestItem.KeccakB);
+        manager.ProcessEnrResponseMsg(enrResponse);
+
+        // Verify ENR is ignored and state unchanged
+        Assert.That(manager.ManagedNode.Enr, Is.Null.Or.Empty);
+        Assert.That(manager.State, Is.EqualTo(NodeLifecycleState.New));
+        Assert.That(manager.IsBonded, Is.False);
+    }
+
+    [Test]
+    public async Task ProcessEnrResponseMsg_WhenBondedNodeSendsUpdatedEnr_UpdatesStoredEnr()
+    {
+        // Create lifecycle manager and bond with remote node
+        Node localNode = new(TestItem.PublicKeyA, "192.168.1.100", 30303);
+        NodeLifecycleManager manager = new(localNode, _discoveryManagerMock, _nodeTable, _evictionManagerMock, _nodeStatsMock, new NodeRecord(), _discoveryConfigMock, Timestamper.Default, _loggerMock);
+
+        Node remoteNode = new(TestItem.PublicKeyB, "192.168.1.101", 30303);
+        await BondWithRemoteNode(manager, remoteNode);
+
+        // Process initial ENR
+        NodeRecord initialEnr = CreateValidEnrForNode(TestItem.PublicKeyB, TestItem.PrivateKeyB, "192.168.1.101", 30303, 1);
+        EnrResponseMsg initialResponse = new(TestItem.PublicKeyB, initialEnr, TestItem.KeccakA);
+        manager.ProcessEnrResponseMsg(initialResponse);
+
+        string initialEnrString = manager.ManagedNode.Enr;
+        Assert.That(initialEnrString, Is.Not.Null.And.Not.Empty);
+
+        // Send updated ENR with different port (simulating node migration)
+        NodeRecord updatedEnr = CreateValidEnrForNode(TestItem.PublicKeyB, TestItem.PrivateKeyB, "192.168.1.101", 30304, 2);
+        EnrResponseMsg updatedResponse = new(TestItem.PublicKeyB, updatedEnr, TestItem.KeccakB);
+        manager.ProcessEnrResponseMsg(updatedResponse);
+
+        // Verify ENR was updated
+        Assert.That(manager.ManagedNode.Enr, Is.Not.EqualTo(initialEnrString));
+        Assert.That(manager.ManagedNode.Enr, Is.EqualTo(updatedEnr.EnrString));
+        Assert.That(manager.State, Is.EqualTo(NodeLifecycleState.ActiveWithEnr));
+    }
+
+    [Test]
+    public async Task ProcessEnrResponseMsg_WhenReceivingOlderSequenceNumber_IgnoresOutdatedEnr()
+    {
+        // Create lifecycle manager and bond with remote node
+        Node localNode = new(TestItem.PublicKeyA, "192.168.1.100", 30303);
+        NodeLifecycleManager manager = new(localNode, _discoveryManagerMock, _nodeTable, _evictionManagerMock, _nodeStatsMock, new NodeRecord(), _discoveryConfigMock, Timestamper.Default, _loggerMock);
+
+        Node remoteNode = new(TestItem.PublicKeyB, "192.168.1.101", 30303);
+        await BondWithRemoteNode(manager, remoteNode);
+
+        // Process ENR with sequence 5
+        NodeRecord newerEnr = CreateValidEnrForNode(TestItem.PublicKeyB, TestItem.PrivateKeyB, "192.168.1.101", 30303, 5);
+        EnrResponseMsg newerResponse = new(TestItem.PublicKeyB, newerEnr, TestItem.KeccakA);
+        manager.ProcessEnrResponseMsg(newerResponse);
+
+        string newerEnrString = manager.ManagedNode.Enr;
+        Assert.That(newerEnrString, Is.EqualTo(newerEnr.EnrString));
+
+        // Try to process older ENR with sequence 3 (should be ignored)
+        NodeRecord olderEnr = CreateValidEnrForNode(TestItem.PublicKeyB, TestItem.PrivateKeyB, "192.168.1.101", 30304, 3);
+        EnrResponseMsg olderResponse = new(TestItem.PublicKeyB, olderEnr, TestItem.KeccakB);
+        manager.ProcessEnrResponseMsg(olderResponse);
+
+        // Verify older ENR was ignored
+        Assert.That(manager.ManagedNode.Enr, Is.EqualTo(newerEnrString));
+        Assert.That(manager.ManagedNode.Enr, Is.Not.EqualTo(olderEnr.EnrString));
+    }
+
+    [Test]
+    public async Task ProcessEnrResponseMsg_WhenReceivingEqualSequenceNumber_IgnoresEnr()
+    {
+        // Create lifecycle manager and bond with remote node
+        Node localNode = new(TestItem.PublicKeyA, "192.168.1.100", 30303);
+        NodeLifecycleManager manager = new(localNode, _discoveryManagerMock, _nodeTable, _evictionManagerMock, _nodeStatsMock, new NodeRecord(), _discoveryConfigMock, Timestamper.Default, _loggerMock);
+
+        Node remoteNode = new(TestItem.PublicKeyB, "192.168.1.101", 30303);
+        await BondWithRemoteNode(manager, remoteNode);
+
+        // Process initial ENR with sequence 3
+        NodeRecord initialEnr = CreateValidEnrForNode(TestItem.PublicKeyB, TestItem.PrivateKeyB, "192.168.1.101", 30303, 3);
+        EnrResponseMsg initialResponse = new(TestItem.PublicKeyB, initialEnr, TestItem.KeccakA);
+        manager.ProcessEnrResponseMsg(initialResponse);
+
+        string initialEnrString = manager.ManagedNode.Enr;
+        Assert.That(initialEnrString, Is.EqualTo(initialEnr.EnrString));
+
+        // Try to process ENR with same sequence 3 (should be ignored)
+        NodeRecord duplicateEnr = CreateValidEnrForNode(TestItem.PublicKeyB, TestItem.PrivateKeyB, "192.168.1.101", 30304, 3);
+        EnrResponseMsg duplicateResponse = new(TestItem.PublicKeyB, duplicateEnr, TestItem.KeccakB);
+        manager.ProcessEnrResponseMsg(duplicateResponse);
+
+        // Verify duplicate sequence ENR was ignored
+        Assert.That(manager.ManagedNode.Enr, Is.EqualTo(initialEnrString));
+        Assert.That(manager.ManagedNode.Enr, Is.Not.EqualTo(duplicateEnr.EnrString));
+    }
+
+    [Test]
+    public async Task ProcessEnrResponseMsg_WhenInitialSequenceIsZero_AcceptsFirstEnr()
+    {
+        // Create lifecycle manager and bond with remote node
+        Node localNode = new(TestItem.PublicKeyA, "192.168.1.100", 30303);
+        NodeLifecycleManager manager = new(localNode, _discoveryManagerMock, _nodeTable, _evictionManagerMock, _nodeStatsMock, new NodeRecord(), _discoveryConfigMock, Timestamper.Default, _loggerMock);
+
+        Node remoteNode = new(TestItem.PublicKeyB, "192.168.1.101", 30303);
+        await BondWithRemoteNode(manager, remoteNode);
+
+        // Initial state should have _lastEnrSequence = 0
+        Assert.That(manager.ManagedNode.Enr, Is.Null.Or.Empty);
+
+        // Process ENR with sequence 1 (should be accepted since 1 > 0)
+        NodeRecord firstEnr = CreateValidEnrForNode(TestItem.PublicKeyB, TestItem.PrivateKeyB, "192.168.1.101", 30303, 1);
+        EnrResponseMsg firstResponse = new(TestItem.PublicKeyB, firstEnr, TestItem.KeccakA);
+        manager.ProcessEnrResponseMsg(firstResponse);
+
+        // Verify first ENR was accepted
+        Assert.That(manager.ManagedNode.Enr, Is.EqualTo(firstEnr.EnrString));
+        Assert.That(manager.State, Is.EqualTo(NodeLifecycleState.ActiveWithEnr));
+    }
+
+    [Test]
+    public async Task ProcessEnrResponseMsg_WhenSequenceNumberWrapsAround_HandlesCorrectly()
+    {
+        // Create lifecycle manager and bond with remote node
+        Node localNode = new(TestItem.PublicKeyA, "192.168.1.100", 30303);
+        NodeLifecycleManager manager = new(localNode, _discoveryManagerMock, _nodeTable, _evictionManagerMock, _nodeStatsMock, new NodeRecord(), _discoveryConfigMock, Timestamper.Default, _loggerMock);
+
+        Node remoteNode = new(TestItem.PublicKeyB, "192.168.1.101", 30303);
+        await BondWithRemoteNode(manager, remoteNode);
+
+        // Process ENR with very high sequence number (simulating near max value)
+        NodeRecord highSeqEnr = CreateValidEnrForNode(TestItem.PublicKeyB, TestItem.PrivateKeyB, "192.168.1.101", 30303, long.MaxValue - 1);
+        EnrResponseMsg highSeqResponse = new(TestItem.PublicKeyB, highSeqEnr, TestItem.KeccakA);
+        manager.ProcessEnrResponseMsg(highSeqResponse);
+
+        string highSeqEnrString = manager.ManagedNode.Enr;
+        Assert.That(highSeqEnrString, Is.EqualTo(highSeqEnr.EnrString));
+
+        // Process ENR with max sequence number (should be accepted)
+        NodeRecord maxSeqEnr = CreateValidEnrForNode(TestItem.PublicKeyB, TestItem.PrivateKeyB, "192.168.1.101", 30304, long.MaxValue);
+        EnrResponseMsg maxSeqResponse = new(TestItem.PublicKeyB, maxSeqEnr, TestItem.KeccakB);
+        manager.ProcessEnrResponseMsg(maxSeqResponse);
+
+        // Verify max sequence ENR was accepted
+        Assert.That(manager.ManagedNode.Enr, Is.EqualTo(maxSeqEnr.EnrString));
+        Assert.That(manager.ManagedNode.Enr, Is.Not.EqualTo(highSeqEnrString));
+    }
+
+    private async Task BondWithRemoteNode(NodeLifecycleManager manager, Node remoteNode)
+    {
+        byte[] mdc = new byte[32];
+        Random.Shared.NextBytes(mdc);
+
+        PingMsg? sentPing = null;
+        await _discoveryManagerMock.SendMessageAsync(Arg.Do<PingMsg>(msg =>
+        {
+            msg.Mdc = mdc;
+            sentPing = msg;
+        }));
+
+        await manager.SendPingAsync();
+        manager.ProcessPongMsg(new PongMsg(remoteNode.Address, GetExpirationTime(), sentPing!.Mdc!));
+    }
+
+    private static NodeRecord CreateValidEnrForNode(PublicKey publicKey, PrivateKey privateKey, string ip, int port, long sequence)
+    {
+        NodeRecord record = new();
+        record.EnrSequence = sequence;
+        record.SetEntry(new IpEntry(IPAddress.Parse(ip)));
+        record.SetEntry(new UdpEntry(port));
+        record.SetEntry(new Secp256K1Entry(privateKey.CompressedPublicKey));
+
+        Ecdsa ecdsa = new();
+        NodeRecordSigner signer = new(ecdsa, privateKey);
+        signer.Sign(record);
+
+        return record;
+    }
+
     private void SetupNodeIds()
     {
         _signatureMocks = new Signature[4];
@@ -394,4 +614,11 @@ public class NodeLifecycleManagerTests
         nodeManager.ProcessPongMsg(new PongMsg(node.Address, GetExpirationTime(), sentPing!.Mdc!));
     }
 
+    private static long GetExpirationTime() => Timestamper.Default.UnixTime.SecondsLong + 20;
+
+    private NodeLifecycleManager CreateNodeLifecycleManager()
+    {
+        Node node = new(TestItem.PublicKeyB, _host, _port);
+        return new NodeLifecycleManager(node, _discoveryManagerMock, _nodeTable, _evictionManagerMock, _nodeStatsMock, new NodeRecord(), _discoveryConfigMock, Timestamper.Default, _loggerMock);
+    }
 }
