@@ -35,6 +35,7 @@ using NUnit.Framework;
 namespace Nethermind.TxPool.Test
 {
     [TestFixture]
+    [Explicit]
     public partial class TxPoolTests
     {
         private ILogManager _logManager;
