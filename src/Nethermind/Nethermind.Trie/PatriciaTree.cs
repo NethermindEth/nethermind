@@ -451,6 +451,8 @@ namespace Nethermind.Trie
                         : array = ArrayPool<byte>.Shared.Rent(nibblesCount))
                     [..nibblesCount]; // Slice to exact size
 
+                Nibbles.BytesToNibbleBytes(rawKey, nibbles);
+
                 if (_traverseStack is null) _traverseStack = new Stack<TraverseStack>();
                 if (_traverseStack.Count > 0) _traverseStack.Clear();
 
