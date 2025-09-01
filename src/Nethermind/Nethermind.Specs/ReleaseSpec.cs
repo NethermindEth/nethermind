@@ -194,7 +194,8 @@ namespace Nethermind.Specs
                 cache.Add(PrecompiledAddresses.Bls12G2MultiExp);
                 cache.Add(PrecompiledAddresses.Bls12Pairing);
             }
-            if (IsRip7212Enabled) cache.Add(PrecompiledAddresses.P256Verify);
+            if (IsRip7212Enabled || IsEip7951Enabled) cache.Add(PrecompiledAddresses.P256Verify);
+            if (IsRip7728Enabled) cache.Add(PrecompiledAddresses.L1Sload);
 
             return cache;
         }
