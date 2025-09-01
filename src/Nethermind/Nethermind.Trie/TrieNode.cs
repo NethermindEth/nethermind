@@ -1400,36 +1400,36 @@ namespace Nethermind.Trie
                         {
                             case 0:
                             case 128:
-                            {
-                                data = childOrRef = _nullNode;
-                                _currentStreamIndex++;
-                                break;
-                            }
-                            case 160:
-                            {
-                                _rlpStream.Position--;
-                                Hash256 keccak = _rlpStream.DecodeKeccak();
-                                _currentStreamIndex++;
-
-                                TrieNode child = tree.FindCachedOrUnknown(childPath, keccak);
-                                data = childOrRef = child;
-
-                                if (node.IsPersisted && !child.IsPersisted)
                                 {
-                                    child.CallRecursively(_markPersisted, null, ref childPath, tree, false,
-                                        NullLogger.Instance);
+                                    data = childOrRef = _nullNode;
+                                    _currentStreamIndex++;
+                                    break;
                                 }
+                            case 160:
+                                {
+                                    _rlpStream.Position--;
+                                    Hash256 keccak = _rlpStream.DecodeKeccak();
+                                    _currentStreamIndex++;
 
-                                break;
-                            }
+                                    TrieNode child = tree.FindCachedOrUnknown(childPath, keccak);
+                                    data = childOrRef = child;
+
+                                    if (node.IsPersisted && !child.IsPersisted)
+                                    {
+                                        child.CallRecursively(_markPersisted, null, ref childPath, tree, false,
+                                            NullLogger.Instance);
+                                    }
+
+                                    break;
+                                }
                             default:
-                            {
-                                _rlpStream.Position--;
-                                ReadOnlySpan<byte> fullRlp = _rlpStream.PeekNextItem();
-                                TrieNode child = new(NodeType.Unknown, fullRlp.ToArray());
-                                data = childOrRef = child;
-                                break;
-                            }
+                                {
+                                    _rlpStream.Position--;
+                                    ReadOnlySpan<byte> fullRlp = _rlpStream.PeekNextItem();
+                                    TrieNode child = new(NodeType.Unknown, fullRlp.ToArray());
+                                    data = childOrRef = child;
+                                    break;
+                                }
                         }
                     }
                     else

@@ -585,14 +585,16 @@ namespace Nethermind.Trie
                         path.AppendMut(node.Key);
                         theBranch[currentNodeNib] = node.GetChildWithChildPath(TrieStore, ref path, 0);
                         path.TruncateMut(originalLength);
-                    } else {
+                    }
+                    else
+                    {
                         // Note: could be a leaf at the end of the tree which now have zero length key
                         theBranch[currentNodeNib] = node.CloneWithChangedKey(node.Key.Slice(commonPrefixLength + 1));
                     }
 
                     // This is the new branch
                     theBranch[remainingKey[commonPrefixLength]] =
-                        TrieNodeFactory.CreateLeaf(remainingKey[(commonPrefixLength+1)..].ToArray(), value);
+                        TrieNodeFactory.CreateLeaf(remainingKey[(commonPrefixLength + 1)..].ToArray(), value);
 
                     // Extension in front of the branch
                     node = commonPrefixLength == 0 ?
@@ -680,7 +682,7 @@ namespace Nethermind.Trie
         internal bool ShouldUpdateChild(TrieNode parent, TrieNode? oldChild, TrieNode? newChild)
         {
             if (oldChild is null && newChild is null) return false;
-            if(!ReferenceEquals(oldChild, newChild)) return true;
+            if (!ReferenceEquals(oldChild, newChild)) return true;
             if (newChild.Keccak is null && parent.Keccak is not null) return true; // So that recalculate root knows to recalculate the parent root.
             return true;
         }
