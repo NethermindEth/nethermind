@@ -501,10 +501,7 @@ namespace Nethermind.Trie
             {
                 if (node is null)
                 {
-                    if (value.IsNullOrEmpty)
-                        node = null;
-                    else
-                        node = TrieNodeFactory.CreateLeaf(remainingKey.ToArray(), value);
+                    node = value.IsNullOrEmpty ? null : TrieNodeFactory.CreateLeaf(remainingKey.ToArray(), value);
 
                     // End traverse
                     break;
