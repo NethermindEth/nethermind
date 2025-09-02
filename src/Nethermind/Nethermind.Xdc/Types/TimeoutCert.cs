@@ -10,7 +10,7 @@ using Round = ulong;
 
 public class TimeoutCert
 {
-    public TimeoutCert(ulong round, List<Signature> signatures, ulong gapNumber)
+    public TimeoutCert(ulong round, Signature[] signatures, ulong gapNumber)
     {
         Round = round;
         Signatures = signatures;
@@ -18,6 +18,6 @@ public class TimeoutCert
     }
 
     public Round Round { get; set; }
-    public List<Signature> Signatures { get; set; }
+    public Signature[] Signatures { get; set; }
     public ulong GapNumber { get; set; }
 }
