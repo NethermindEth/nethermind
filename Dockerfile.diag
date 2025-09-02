@@ -35,6 +35,9 @@ VOLUME /nethermind/nethermind_db
 
 EXPOSE 8545 8551 30303
 
+ENV DOTNET_EnableDiagnostics=1 \
+    COMPlus_EnableDiagnostics=1
+
 COPY --from=build /publish .
 COPY --from=build /root/.dotnet/tools /opt/diag-tools
 COPY --from=build /tmp/jetbrains.dotmemory.console.*/**/tools /opt/diag-tools/dotmemory
