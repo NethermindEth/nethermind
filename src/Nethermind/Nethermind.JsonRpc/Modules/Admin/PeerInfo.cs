@@ -71,8 +71,7 @@ namespace Nethermind.JsonRpc.Modules.Admin
             Name = peer.Node.ClientId;
             Enode = peer.Node.ToString(Node.Format.ENode);
             Caps = capabilities;
-            // TODO : https://github.com/NethermindEth/nethermind/issues/9226
-            Enr = null;
+            Enr = peer.Node.Enr;
         }
 
         private void SetNetworkInfo(Peer peer)
