@@ -19,7 +19,7 @@ public class EraExporterTests
     [TestCase(32, 8, 0, 16, 2)]
     [TestCase(48, 8, 40 - 1, 16, 2)]
     [TestCase(64 * 2 + 1, 0, 64 * 2 + 1 - 1, 64, 3)]
-    public async Task Export_ChainHasDifferentLength_CorrectNumberOfFilesCreated_with_file_name(int chainlength, int start, int end, int size, int expectedNumberOfFiles)
+    public async Task Export_ChainHasDifferentLength_CorrectNumberOfFilesCreated_WithFileName(int chainLength, int start, int end, int size, int expectedNumberOfFiles)
     {
         await using IContainer container = EraTestModule.BuildContainerBuilderWithBlockTreeOfLength(chainlength)
             .AddSingleton<IEraConfig>(new EraConfig() { MaxEra1Size = size })
