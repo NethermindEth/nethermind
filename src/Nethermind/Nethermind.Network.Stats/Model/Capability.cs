@@ -2,9 +2,11 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Text.Json.Serialization;
 
 namespace Nethermind.Stats.Model
 {
+    [JsonConverter(typeof(CapabilityConverter))]
     public class Capability : IEquatable<Capability>
     {
         public Capability(string protocolCode, int version)
