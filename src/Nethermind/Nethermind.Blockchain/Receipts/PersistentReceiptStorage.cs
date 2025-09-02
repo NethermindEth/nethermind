@@ -15,6 +15,7 @@ using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.Crypto;
 using Nethermind.Db;
+using Nethermind.Logging;
 using Nethermind.Serialization.Rlp;
 
 namespace Nethermind.Blockchain.Receipts
@@ -33,6 +34,7 @@ namespace Nethermind.Blockchain.Receipts
         private readonly IBlockTree _blockTree;
         private readonly IBlockStore _blockStore;
         private readonly IReceiptConfig _receiptConfig;
+        private readonly ILogger? _logger;
         private readonly bool _legacyHashKey;
 
         private const int CacheSize = 64;
@@ -48,7 +50,8 @@ namespace Nethermind.Blockchain.Receipts
             IBlockTree blockTree,
             IBlockStore blockStore,
             IReceiptConfig receiptConfig,
-            ReceiptArrayStorageDecoder? storageDecoder = null)
+            ReceiptArrayStorageDecoder? storageDecoder = null,
+            ILogManager logManager = null)
         {
             _database = receiptsDb ?? throw new ArgumentNullException(nameof(receiptsDb));
             _defaultColumn = _database.GetColumnDb(ReceiptsColumns.Default);
@@ -62,6 +65,7 @@ namespace Nethermind.Blockchain.Receipts
             _blockStore = blockStore ?? throw new ArgumentNullException(nameof(blockStore));
             _storageDecoder = storageDecoder ?? ReceiptArrayStorageDecoder.Instance;
             _receiptConfig = receiptConfig ?? throw new ArgumentNullException(nameof(receiptConfig));
+            _logger = logManager?.GetClassLogger();
 
             _migratedBlockNumber = Get(MigrationBlockNumberKey, long.MaxValue);
 
@@ -276,6 +280,8 @@ namespace Nethermind.Blockchain.Receipts
                 GetBlockNumPrefixedKey(blockNumber, block.Hash!, blockNumPrefixed);
 
                 _receiptsDb.PutSpan(blockNumPrefixed, stream.AsSpan(), writeFlags);
+
+                _logger?.Info($"[TRACE] OnReceiptsInserted: {block?.Header?.ToString(BlockHeader.Format.FullHashAndNumber)} [{txReceipts?.Length}]");
             }
 
             if (blockNumber < MigratedBlockNumber)
@@ -340,6 +346,8 @@ namespace Nethermind.Blockchain.Receipts
             Span<byte> blockNumPrefixed = stackalloc byte[40];
             GetBlockNumPrefixedKey(block.Number, block.Hash, blockNumPrefixed);
             _receiptsDb.Remove(blockNumPrefixed);
+
+            _logger?.Info($"[TRACE] OnReceiptsRemoved: {block?.Header?.ToString(BlockHeader.Format.FullHashAndNumber)}");
 
             using IWriteBatch writeBatch = _transactionDb.StartWriteBatch();
             foreach (Transaction tx in block.Transactions)

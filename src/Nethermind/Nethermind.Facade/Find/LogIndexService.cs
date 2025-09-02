@@ -161,9 +161,6 @@ public sealed class LogIndexService : ILogIndexService
 
         try
         {
-            _logger.Info(
-                $"[TRACE] {nameof(OnReceiptsInserted)}: {args.BlockHeader.ToString(BlockHeader.Format.FullHashAndNumber)} [{args.TxReceipts.Length}]");
-
             var next = (int)args.BlockHeader.Number;
 
             if (next != 0 && !_pivotTask.IsCompleted && _pivotSource.TrySetResult(next) && _logger.IsInfo)
