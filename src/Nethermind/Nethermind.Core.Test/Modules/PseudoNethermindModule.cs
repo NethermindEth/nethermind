@@ -64,8 +64,6 @@ public class PseudoNethermindModule(ChainSpec spec, IConfigProvider configProvid
             .AddSingleton<IJsonSerializer, EthereumJsonSerializer>()
 
             // Crypto
-            .AddSingleton<ICryptoRandom>(new CryptoRandom())
-
             .AddSingleton<ISignerStore>(NullSigner.Instance)
             .AddSingleton<IKeyStore>(Substitute.For<IKeyStore>())
             .AddSingleton<IWallet, DevWallet>()
