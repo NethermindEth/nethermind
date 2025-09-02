@@ -299,7 +299,7 @@ public sealed class LogIndexService : ILogIndexService
                     return;
                 }
 
-                var end = isForward ? start + BatchSize - 1 : start - BatchSize + 1;
+                var end = isForward ? start + BatchSize - 1 : Math.Max(0, start - BatchSize + 1);
 
                 // from - inclusive, to - exclusive
                 var (from, to) = isForward
