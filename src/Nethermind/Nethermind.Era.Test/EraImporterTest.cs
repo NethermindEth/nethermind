@@ -90,7 +90,7 @@ public class EraImporterTest
         string destinationPath = outputCtx.ResolveTempDirPath();
 
         string accumulatorPath = Path.Combine(destinationPath, EraExporter.AccumulatorFileName);
-        var accumulators = outputCtx.Resolve<IFileSystem>().File.ReadAllLines(accumulatorPath)
+        byte[][] accumulators = outputCtx.Resolve<IFileSystem>().File.ReadAllLines(accumulatorPath)
             .Select(s => Bytes.FromHexString(s.Split()[0])).ToArray();
 
         accumulators[accumulators.Length - 1] = new byte[32];
@@ -117,7 +117,7 @@ public class EraImporterTest
         string destinationPath = outputCtx.ResolveTempDirPath();
 
         string checksumPath = Path.Combine(destinationPath, EraExporter.ChecksumsFileName);
-        var checksums = outputCtx.Resolve<IFileSystem>().File.ReadAllLines(checksumPath).Select(s => Bytes.FromHexString(s.Split()[0])).ToArray();
+        byte[][] checksums = outputCtx.Resolve<IFileSystem>().File.ReadAllLines(checksumPath).Select(s => Bytes.FromHexString(s.Split()[0])).ToArray();
         checksums[checksums.Length - 1] = new byte[32];
         await fileSystem.File.WriteAllLinesAsync(checksumPath, checksums.Select(acc => acc.ToHexString()));
 
