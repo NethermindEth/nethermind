@@ -436,13 +436,15 @@ public sealed class LogIndexService : ILogIndexService
     // TODO: move to IReceiptStorage as `TryGet`?
     private BlockReceipts GetBlockReceipts(int i)
     {
-        if (_blockTree.FindBlock(i) is not { Hash: not null } block)
+        if (_blockTree.FindBlock(i, BlockTreeLookupOptions.ExcludeTxHashes) is not { Hash: not null } block)
             return default;
+
+        if (!block.Header.HasTransactions)
+            return new(i, []);
 
         TxReceipt[] receipts = _receiptStorage.Get(block) ?? [];
 
-        // Double-check if no receipts are present
-        if (receipts.Length == 0 && block.Header.HasTransactions)
+        if (receipts.Length == 0)
             return default;
 
         return new(i, receipts);
