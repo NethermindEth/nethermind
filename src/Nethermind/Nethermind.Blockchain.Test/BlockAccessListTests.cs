@@ -52,53 +52,6 @@ public class BlockAccessListTests()
         Assert.That(tracer.BlockAccessList.AccountChanges, Has.Count.EqualTo(0));
     }
 
-    // [Test]
-    // public void Balance_and_nonce_changes()
-    // {
-    //     ulong gasPrice = 2;
-    //     long gasLimit = 100000;
-    //     Transaction tx = Build.A.Transaction
-    //         .WithTo(TestItem.AddressB)
-    //         .WithSenderAddress(TestItem.AddressA)
-    //         .WithValue(0)
-    //         .WithGasPrice(gasPrice)
-    //         .WithGasLimit(gasLimit)
-    //         .TestObject;
-
-    //     Block block = Build.A.Block
-    //         .WithTransactions(tx)
-    //         .WithBaseFeePerGas(1)
-    //         .WithBeneficiary(TestItem.AddressC).TestObject;
-
-    //     // BlockReceiptsTracer blockReceiptsTracer = new();
-    //     // BlockAccessTracer accessTracer = new();
-    //     // blockReceiptsTracer.SetOtherTracer(accessTracer);
-    //     // Execute(tx, block, blockReceiptsTracer);
-
-    //     SortedDictionary<Address, AccountChanges> accountChanges = accessTracer.BlockAccessList.AccountChanges;
-    //     Assert.That(accountChanges, Has.Count.EqualTo(3));
-
-    //     List<BalanceChange> senderBalanceChanges = accountChanges[TestItem.AddressA].BalanceChanges;
-    //     List<NonceChange> senderNonceChanges = accountChanges[TestItem.AddressA].NonceChanges;
-    //     List<BalanceChange> toBalanceChanges = accountChanges[TestItem.AddressB].BalanceChanges;
-    //     List<BalanceChange> beneficiaryBalanceChanges = accountChanges[TestItem.AddressC].BalanceChanges;
-
-    //     using (Assert.EnterMultipleScope())
-    //     {
-    //         Assert.That(senderBalanceChanges, Has.Count.EqualTo(1));
-    //         // Assert.That(senderBalanceChanges[0].PostBalance, Is.EqualTo(AccountBalance - gasPrice * GasCostOf.Transaction));
-
-    //         Assert.That(senderNonceChanges, Has.Count.EqualTo(1));
-    //         Assert.That(senderNonceChanges[0].NewNonce, Is.EqualTo(1));
-
-    //         // zero balance change should not be recorded
-    //         Assert.That(toBalanceChanges, Is.Empty);
-
-    //         Assert.That(beneficiaryBalanceChanges, Has.Count.EqualTo(1));
-    //         Assert.That(beneficiaryBalanceChanges[0].PostBalance, Is.EqualTo(new UInt256(GasCostOf.Transaction)));
-    //     }
-    // }
-
     [Test]
     public void Can_encode_and_decode()
     {
@@ -185,7 +138,7 @@ public class BlockAccessListTests()
     }
 
     [Test]
-    public async Task System_contracts_and_withdrawals()
+    public async Task Can_construct_BAL()
     {
         using BasicTestBlockchain testBlockchain = await BasicTestBlockchain.Create(BuildContainer());
 
@@ -208,27 +161,37 @@ public class BlockAccessListTests()
             .WithNumber(1)
             .WithGasUsed(21000)
             .WithReceiptsRoot(new("0x056b23fbba480696b65fe5a59b8f2148a1299103c4f57df839233af2cf4ca2d2"))
-            .WithStateRoot(new("0x7c14eebf21367805cab32e286e87f18191ce9286ff344b665fd7d278e2ee2b87"))
+            .WithStateRoot(new("0x791d07603a3449bd9d70180d3f00af1fb493033171c7c2b056bf07779c45cfe8"))
             .WithBlobGasUsed(0)
             .WithBeneficiary(TestItem.AddressC)
             .WithParentBeaconBlockRoot(Hash256.Zero)
             .WithRequestsHash(new("0xe3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"))
             .TestObject;
 
+        Withdrawal withdrawal = new()
+        {
+            Index = 0,
+            ValidatorIndex = 0,
+            Address = TestItem.AddressD,
+            AmountInGwei = 1
+        };
+
         Block block = Build.A.Block
             .WithTransactions(tx)
             .WithBaseFeePerGas(1)
+            .WithWithdrawals([withdrawal])
             .WithHeader(header).TestObject;
 
         (Block processedBlock, TxReceipt[] _) = testBlockchain.BlockProcessor.ProcessOne(block, ProcessingOptions.None, NullBlockTracer.Instance, _spec, CancellationToken.None);
 
         BlockAccessList blockAccessList = Rlp.Decode<BlockAccessList>(processedBlock.BlockAccessList);
         SortedDictionary<Address, AccountChanges> accountChanges = blockAccessList.AccountChanges;
-        Assert.That(accountChanges, Has.Count.EqualTo(5));
+        Assert.That(accountChanges, Has.Count.EqualTo(6));
 
         AccountChanges addressAChanges = accountChanges[TestItem.AddressA];
         AccountChanges addressBChanges = accountChanges[TestItem.AddressB];
         AccountChanges addressCChanges = accountChanges[TestItem.AddressC];
+        AccountChanges addressDChanges = accountChanges[TestItem.AddressD];
         AccountChanges eip4788Changes = accountChanges[Eip4788Constants.BeaconRootsAddress];
         AccountChanges eip2935Changes = accountChanges[Eip2935Constants.BlockHashHistoryAddress];
 
@@ -264,6 +227,16 @@ public class BlockAccessListTests()
                 CodeChanges = []
             }));
 
+            Assert.That(addressDChanges, Is.EqualTo(new AccountChanges()
+            {
+                Address = TestItem.AddressD,
+                StorageChanges = [],
+                StorageReads = [],
+                BalanceChanges = [new(2, 1.GWei())],
+                NonceChanges = [],
+                CodeChanges = []
+            }));
+
             Assert.That(eip4788Changes, Is.EqualTo(new AccountChanges()
             {
                 Address = Eip4788Constants.BeaconRootsAddress,
@@ -284,7 +257,7 @@ public class BlockAccessListTests()
                 CodeChanges = []
             }));
         }
-        }
+    }
 
     private static Action<ContainerBuilder> BuildContainer()
         => containerBuilder => containerBuilder.AddSingleton(_specProvider);
