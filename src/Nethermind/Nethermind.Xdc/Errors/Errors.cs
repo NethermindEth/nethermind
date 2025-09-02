@@ -8,7 +8,7 @@ using System.Text;
 using System.Threading.Tasks;
 
 namespace Nethermind.Xdc.ors;
-public static class Commonors
+public static class CommonErrors
 {
     // Various or messages to mark blocks invalid. 
     // These are private in Go, but in C# we typically use public to limit exposure within the assembly.
