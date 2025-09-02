@@ -13,6 +13,7 @@ using Nethermind.Core.Specs;
 using Nethermind.Crypto;
 using Nethermind.Evm;
 using Nethermind.Evm.State;
+using Nethermind.Evm.Tracing;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Int256;
 using System;
@@ -56,7 +57,7 @@ public class ExecutionRequestsProcessor : IExecutionRequestsProcessor
         _consolidationTransaction.Hash = _consolidationTransaction.CalculateHash();
     }
 
-    public void ProcessExecutionRequests(Block block, IWorldState state, TxReceipt[] receipts, IReleaseSpec spec)
+    public void ProcessExecutionRequests(Block block, IWorldState state, TxReceipt[] receipts, IReleaseSpec spec, ITxTracer tracer)
     {
         if (!spec.RequestsEnabled || block.IsGenesis)
             return;
@@ -68,13 +69,13 @@ public class ExecutionRequestsProcessor : IExecutionRequestsProcessor
         if (spec.WithdrawalRequestsEnabled)
         {
             ReadRequests(block, state, spec.Eip7002ContractAddress, requests, _withdrawalTransaction, ExecutionRequestType.WithdrawalRequest,
-                BlockErrorMessages.WithdrawalsContractEmpty, BlockErrorMessages.WithdrawalsContractFailed);
+                BlockErrorMessages.WithdrawalsContractEmpty, BlockErrorMessages.WithdrawalsContractFailed, tracer);
         }
 
         if (spec.ConsolidationRequestsEnabled)
         {
             ReadRequests(block, state, spec.Eip7251ContractAddress, requests, _consolidationTransaction, ExecutionRequestType.ConsolidationRequest,
-                BlockErrorMessages.ConsolidationsContractEmpty, BlockErrorMessages.ConsolidationsContractFailed);
+                BlockErrorMessages.ConsolidationsContractEmpty, BlockErrorMessages.ConsolidationsContractFailed, tracer);
         }
 
         block.ExecutionRequests = [.. requests];
@@ -161,7 +162,7 @@ public class ExecutionRequestsProcessor : IExecutionRequestsProcessor
     }
 
     private void ReadRequests(Block block, IWorldState state, Address contractAddress, ArrayPoolList<byte[]> requests,
-        Transaction systemTx, ExecutionRequestType type, string contractEmptyError, string contractFailedError)
+        Transaction systemTx, ExecutionRequestType type, string contractEmptyError, string contractFailedError, ITxTracer? additionalTracer = null)
     {
         if (!state.HasCode(contractAddress))
         {
@@ -170,7 +171,7 @@ public class ExecutionRequestsProcessor : IExecutionRequestsProcessor
 
         CallOutputTracer tracer = new();
 
-        _transactionProcessor.Execute(systemTx, tracer);
+        _transactionProcessor.Execute(systemTx, additionalTracer is null ? tracer : new CompositeTxTracer(tracer, additionalTracer));
 
         if (tracer.StatusCode == StatusCode.Failure)
         {

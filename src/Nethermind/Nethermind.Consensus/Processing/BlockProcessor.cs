@@ -145,7 +145,7 @@ public partial class BlockProcessor(
         // Eip158Enabled=false, so we end up persisting empty accounts created while processing withdrawals.
         _stateProvider.Commit(spec, commitRoots: false);
 
-        executionRequestsProcessor.ProcessExecutionRequests(block, _stateProvider, receipts, spec);
+        executionRequestsProcessor.ProcessExecutionRequests(block, _stateProvider, receipts, spec, BlockAccessTracer);
 
         ReceiptsTracer.EndBlockTrace();
 

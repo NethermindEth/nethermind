@@ -186,14 +186,16 @@ public class BlockAccessListTests()
 
         BlockAccessList blockAccessList = Rlp.Decode<BlockAccessList>(processedBlock.BlockAccessList);
         SortedDictionary<Address, AccountChanges> accountChanges = blockAccessList.AccountChanges;
-        Assert.That(accountChanges, Has.Count.EqualTo(6));
+        Assert.That(accountChanges, Has.Count.EqualTo(8));
 
         AccountChanges addressAChanges = accountChanges[TestItem.AddressA];
         AccountChanges addressBChanges = accountChanges[TestItem.AddressB];
         AccountChanges addressCChanges = accountChanges[TestItem.AddressC];
         AccountChanges addressDChanges = accountChanges[TestItem.AddressD];
-        AccountChanges eip4788Changes = accountChanges[Eip4788Constants.BeaconRootsAddress];
         AccountChanges eip2935Changes = accountChanges[Eip2935Constants.BlockHashHistoryAddress];
+        AccountChanges eip4788Changes = accountChanges[Eip4788Constants.BeaconRootsAddress];
+        AccountChanges eip7002Changes = accountChanges[Eip7002Constants.WithdrawalRequestPredeployAddress];
+        AccountChanges eip7251Changes = accountChanges[Eip7251Constants.ConsolidationRequestPredeployAddress];
 
         using (Assert.EnterMultipleScope())
         {
@@ -237,6 +239,16 @@ public class BlockAccessListTests()
                 CodeChanges = []
             }));
 
+            Assert.That(eip2935Changes, Is.EqualTo(new AccountChanges()
+            {
+                Address = Eip2935Constants.BlockHashHistoryAddress,
+                StorageChanges = [],
+                StorageReads = [],
+                BalanceChanges = [],
+                NonceChanges = [],
+                CodeChanges = []
+            }));
+
             Assert.That(eip4788Changes, Is.EqualTo(new AccountChanges()
             {
                 Address = Eip4788Constants.BeaconRootsAddress,
@@ -247,11 +259,31 @@ public class BlockAccessListTests()
                 CodeChanges = []
             }));
 
-            Assert.That(eip2935Changes, Is.EqualTo(new AccountChanges()
+            Assert.That(eip7002Changes, Is.EqualTo(new AccountChanges()
             {
-                Address = Eip2935Constants.BlockHashHistoryAddress,
+                Address = Eip7002Constants.WithdrawalRequestPredeployAddress,
                 StorageChanges = [],
-                StorageReads = [],
+                StorageReads = [
+                    new(Bytes32.Wrap(Convert.FromHexString("b10e2d527612073b26eecdfd717e6a320cf44b4afac2b0732d9fcbe2b7fa0cf6"))),
+                    new(Bytes32.Wrap(Convert.FromHexString("290decd9548b62a8d60345a988386fc84ba6bc95484008f6362f93160ef3e563"))),
+                    new(Bytes32.Wrap(Convert.FromHexString("405787fa12a823e0f2b7631cc41b3ba8828b3321ca811111fa75cd3aa3bb5ace"))),
+                    new(Bytes32.Wrap(Convert.FromHexString("c2575a0e9e593c00f959f8c92f12db2869c3395a3b0502d05e2516446f71f85b"))),
+                ],
+                BalanceChanges = [],
+                NonceChanges = [],
+                CodeChanges = []
+            }));
+
+            Assert.That(eip7251Changes, Is.EqualTo(new AccountChanges()
+            {
+                Address = Eip7251Constants.ConsolidationRequestPredeployAddress,
+                StorageChanges = [],
+                StorageReads = [
+                    new(Bytes32.Wrap(Convert.FromHexString("b10e2d527612073b26eecdfd717e6a320cf44b4afac2b0732d9fcbe2b7fa0cf6"))),
+                    new(Bytes32.Wrap(Convert.FromHexString("290decd9548b62a8d60345a988386fc84ba6bc95484008f6362f93160ef3e563"))),
+                    new(Bytes32.Wrap(Convert.FromHexString("405787fa12a823e0f2b7631cc41b3ba8828b3321ca811111fa75cd3aa3bb5ace"))),
+                    new(Bytes32.Wrap(Convert.FromHexString("c2575a0e9e593c00f959f8c92f12db2869c3395a3b0502d05e2516446f71f85b"))),
+                ],
                 BalanceChanges = [],
                 NonceChanges = [],
                 CodeChanges = []
