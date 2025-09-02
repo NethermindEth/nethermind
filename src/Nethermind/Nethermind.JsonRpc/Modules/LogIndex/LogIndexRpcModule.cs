@@ -2,18 +2,30 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Collections.Generic;
+using Nethermind.Blockchain.Filters;
 using Nethermind.Blockchain.Find;
 using Nethermind.Db;
+using Nethermind.Facade;
 using Nethermind.Facade.Find;
+using Nethermind.JsonRpc.Modules.Eth;
 
 namespace Nethermind.JsonRpc.Modules.LogIndex;
 
-public class LogIndexRpcModule(ILogIndexStorage storage, ILogIndexService service, IBlockFinder blockFinder) : ILogIndexRpcModule
+public class LogIndexRpcModule(ILogIndexStorage storage, ILogIndexService service, IBlockFinder blockFinder, IBlockchainBridge blockchainBridge) : ILogIndexRpcModule
 {
     public ResultWrapper<Dictionary<byte[], int[]>> logIndex_keys(LogIndexKeysRequest request)
     {
         return ResultWrapper<Dictionary<byte[], int[]>>.Success(
             storage.GetKeysFor(request.Key, GetBlockNumber(request.FromBlock), GetBlockNumber(request.ToBlock), request.IncludeValues)
+        );
+    }
+
+    public ResultWrapper<int[]> logIndex_blockNumbers(Filter filter)
+    {
+        LogFilter logFilter = blockchainBridge.GetFilter(filter.FromBlock!, filter.ToBlock!, filter.Address, filter.Topics);
+
+        return ResultWrapper<int[]>.Success(
+            storage.GetBlockNumbersFor(logFilter, GetBlockNumber(logFilter.FromBlock), GetBlockNumber(logFilter.ToBlock)).ToArray()
         );
     }
 

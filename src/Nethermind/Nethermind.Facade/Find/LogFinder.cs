@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Linq;
 using System.Threading;
@@ -11,7 +10,6 @@ using Nethermind.Blockchain.Filters;
 using Nethermind.Blockchain.Find;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Core;
-using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Db;
 using Nethermind.Db.Blooms;
@@ -235,57 +233,6 @@ namespace Nethermind.Facade.Find
             return true;
         }
 
-        public List<int> GetBlockNumbersFor(LogFilter filter, long fromBlock, long toBlock, CancellationToken cancellationToken = default)
-        {
-            if (_logIndexStorage == null)
-                throw new InvalidOperationException("Log index storage is not provided.");
-
-            ConcurrentDictionary<Address, List<int>> byAddress = null;
-            if (filter.AddressFilter.Address is { } address)
-            {
-                byAddress = new() { [address] = null };
-            }
-            else if (filter.AddressFilter.Addresses is { Count: > 0 } addresses)
-            {
-                byAddress = new();
-                byAddress.AddRange(addresses.Select(a => KeyValuePair.Create(a.Value, (List<int>)null)));
-            }
-
-            ConcurrentDictionary<Hash256, List<int>> byTopic = null;
-            foreach (Hash256 topic in filter.TopicsFilter.Topics)
-            {
-                byTopic ??= new();
-                byTopic[topic] = null;
-            }
-
-            Enumerable.Empty<object>()
-                .Union(byAddress?.Keys ?? Enumerable.Empty<Address>())
-                .Union(byTopic?.Keys ?? Enumerable.Empty<Hash256>())
-                .AsParallel() // TODO utilize canRunParallel?
-                .ForAll(x =>
-                {
-                    if (x is Address addr)
-                        byAddress![addr] = _logIndexStorage.GetBlockNumbersFor(addr, (int)fromBlock, (int)toBlock);
-                    if (x is Hash256 tpc)
-                        byTopic![tpc] = _logIndexStorage.GetBlockNumbersFor(tpc, (int)fromBlock, (int)toBlock);
-                });
-
-            if (byTopic is null)
-                return AscListHelper.UnionAll(byAddress?.Values ?? []);
-
-            List<int> blockNumbers = filter.TopicsFilter.FilterBlockNumbers(byTopic);
-
-            if (byAddress is null)
-                return blockNumbers;
-
-            blockNumbers = AscListHelper.Intersect(
-                AscListHelper.UnionAll(byAddress.Values),
-                blockNumbers
-            );
-
-            return blockNumbers;
-        }
-
         private IEnumerable<FilterLog> FilterLogsUsingIndex(LogFilter filter, BlockHeader fromBlock, BlockHeader toBlock,
             CancellationToken cancellationToken)
         {
@@ -308,7 +255,7 @@ namespace Nethermind.Facade.Find
             {
                 try
                 {
-                    foreach (var blockNumber in GetBlockNumbersFor(f, from, to, token))
+                    foreach (var blockNumber in _logIndexStorage!.GetBlockNumbersFor(f, from, to, token))
                     {
                         token.ThrowIfCancellationRequested();
 
