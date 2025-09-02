@@ -1,18 +1,14 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 using System;
 using System.Collections.Generic;
-using System.Linq;
 using System.Text.Json.Serialization;
 using Nethermind.Core.Crypto;
 using Nethermind.Network;
 using Nethermind.Network.P2P;
 using Nethermind.Stats.Model;
-using Nethermind.Network.Enr;
 using Nethermind.Serialization.Json;
-using Nethermind.Network.Contract;
 using Nethermind.Network.Contract.P2P;
 using Nethermind.Network.P2P.ProtocolHandlers;
-using Nethermind.JsonRpc.Modules.Admin.Models;
 using Nethermind.JsonRpc.Modules.Admin.Utils;
 
 namespace Nethermind.JsonRpc.Modules.Admin
