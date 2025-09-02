@@ -16,12 +16,7 @@ public class QuorumCert
         GapNumber = gapNumber;
     }
 
-    [JsonPropertyName("proposedBlockInfo")]
     public BlockInfo ProposedBlockInfo { get; set; }
-
-    [JsonPropertyName("signatures")]
     public Signature[] Signatures { get; set; }
-
-    [JsonPropertyName("gapNumber")]
     public long GapNumber { get; set; }
 }

@@ -16,5 +16,5 @@ public class VoteForSign
 
     public BlockInfo ProposedBlockInfo { get; set; }
     public long GapNumber { get; set; }
-    public Hash256 Hash() => Keccak.Compute(Rlp.Encode(this).Bytes);
+    public Hash256 SigHash() => Keccak.Compute(Rlp.Encode(this).Bytes);
 }

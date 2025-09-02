@@ -25,7 +25,7 @@ public class Timeout
     public Signature Signature { get; set; }
     public ulong GapNumber { get; set; }
 
-    public Hash256 Hash() => Keccak.Compute(Rlp.Encode(this).Bytes);
+    public Hash256 SigHash() => Keccak.Compute(Rlp.Encode(this).Bytes);
 
     public override string ToString() => $"{Round}:{GapNumber}";
 

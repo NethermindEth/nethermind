@@ -27,17 +27,12 @@ public class Vote
         GapNumber = gapNumber;
     }
 
-    [JsonPropertyName("proposedBlockInfo")]
     public BlockInfo ProposedBlockInfo { get; set; }
-
-    [JsonPropertyName("signature")]
     public Signature Signature { get; set; }
-
-    [JsonPropertyName("gapNumber")]
     public long GapNumber { get; set; }
 
     public override string ToString() =>
-        $"{ProposedBlockInfo.Round}:{GapNumber}:{ProposedBlockInfo.Number}:{ProposedBlockInfo.Hash()}";
+        $"{ProposedBlockInfo.Round}:{GapNumber}:{ProposedBlockInfo.Number}:{ProposedBlockInfo.SigHash()}";
 
     public Address GetSigner() => _signer;
     public void SetSigner(Address signer) => _signer = signer;

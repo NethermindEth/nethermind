@@ -5,14 +5,15 @@ using System;
 
 namespace Nethermind.Xdc.Errors;
 
-public class ErrIncomingMessageBlockNotFound : Exception
+public class IncomingMessageBlockNotFoundException : Exception
 {
     public string Type { get; }
     public string IncomingBlockHash { get; } // using string.Hex in Go
     public long IncomingBlockNumber { get; }
     public Exception InnerErr { get; }
 
-    public ErrIncomingMessageBlockNotFound(string type, string incomingBlockHash, long incomingBlockNumber, Exception innerErr)
+    public IncomingMessageBlockNotFoundException(string type, string incomingBlockHash, long incomingBlockNumber, Exception innerErr)
+        :base($"{type} proposed block is not found hash: {incomingBlockHash}, block number: {incomingBlockNumber}, error: {innerErr?.Message}")
     {
         Type = type;
         IncomingBlockHash = incomingBlockHash;
@@ -20,6 +21,4 @@ public class ErrIncomingMessageBlockNotFound : Exception
         InnerErr = innerErr;
     }
 
-    public override string Message =>
-        $"{Type} proposed block is not found hash: {IncomingBlockHash}, block number: {IncomingBlockNumber}, error: {InnerErr?.Message}";
 }

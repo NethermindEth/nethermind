@@ -18,5 +18,5 @@ public class TimeoutForSign
 
     public Round Round { get; set; }
     public ulong GapNumber { get; set; }
-    public Hash256 Hash() => Keccak.Compute(Rlp.Encode(this).Bytes);
+    public Hash256 SigHash() => Keccak.Compute(Rlp.Encode(this).Bytes);
 }

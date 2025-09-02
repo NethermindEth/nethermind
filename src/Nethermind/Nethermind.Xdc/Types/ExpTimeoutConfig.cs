@@ -16,9 +16,6 @@ public class ExpTimeoutConfig
         MaxExponent = maxExponent;
     }
 
-    [JsonPropertyName("base")]
     public int Base { get; set; }
-
-    [JsonPropertyName("maxExponent")]
     public byte MaxExponent { get; set; }
 }

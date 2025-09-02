@@ -17,18 +17,13 @@ public class BlockInfo
 {
     public BlockInfo(Hash256 hash256, ulong round, long number)
     {
-        Hash256 = hash256;
+        Hash = hash256;
         Round = round;
         Number = number;
     }
 
-    [JsonPropertyName("hash")]
-    public Hash256 Hash256 { get; set; }
-
-    [JsonPropertyName("round")]
+    public Hash256 Hash { get; set; }
     public Round Round { get; set; }
-
-    [JsonPropertyName("number")]
     public long Number { get; set; }
-    public Rlp Hash() => Rlp.Encode(this);
+    public Hash256 SigHash() => Keccak.Compute(Rlp.Encode(this).Bytes);
 }
