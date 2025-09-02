@@ -28,7 +28,7 @@ public class ExpCountDown : IDisposable, IExpCountDown
         _maxExponent = maxExponent;
         _currentExponent = 0;
 
-        if (_callback != null && shouldScheduleNext)
+        if (_callback is not null && shouldScheduleNext)
         {
             ScheduleNext();
         }
