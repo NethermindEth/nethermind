@@ -4,6 +4,7 @@
 
 using System;
 using System.Collections.Generic;
+using System.Linq;
 
 namespace Nethermind.Core.BlockAccessLists;
 
@@ -37,7 +38,12 @@ public readonly struct AccountChanges : IEquatable<AccountChanges>
     }
 
     public readonly bool Equals(AccountChanges other) =>
-        Address == other.Address;
+        Address == other.Address &&
+        StorageChanges.Values.SequenceEqual(other.StorageChanges.Values) &&
+        StorageReads.SequenceEqual(other.StorageReads) &&
+        BalanceChanges.SequenceEqual(other.BalanceChanges) &&
+        NonceChanges.SequenceEqual(other.NonceChanges) &&
+        CodeChanges.SequenceEqual(other.CodeChanges);
 
     public override readonly bool Equals(object? obj) =>
         obj is AccountChanges other && Equals(other);

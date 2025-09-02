@@ -226,26 +226,65 @@ public class BlockAccessListTests()
         SortedDictionary<Address, AccountChanges> accountChanges = blockAccessList.AccountChanges;
         Assert.That(accountChanges, Has.Count.EqualTo(5));
 
-        List<BalanceChange> senderBalanceChanges = accountChanges[TestItem.AddressA].BalanceChanges;
-        List<NonceChange> senderNonceChanges = accountChanges[TestItem.AddressA].NonceChanges;
-        List<BalanceChange> toBalanceChanges = accountChanges[TestItem.AddressB].BalanceChanges;
-        List<BalanceChange> beneficiaryBalanceChanges = accountChanges[TestItem.AddressC].BalanceChanges;
+        AccountChanges addressAChanges = accountChanges[TestItem.AddressA];
+        AccountChanges addressBChanges = accountChanges[TestItem.AddressB];
+        AccountChanges addressCChanges = accountChanges[TestItem.AddressC];
+        AccountChanges eip4788Changes = accountChanges[Eip4788Constants.BeaconRootsAddress];
+        AccountChanges eip2935Changes = accountChanges[Eip2935Constants.BlockHashHistoryAddress];
 
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(senderBalanceChanges, Has.Count.EqualTo(1));
-            Assert.That(senderBalanceChanges[0].PostBalance, Is.EqualTo(_accountBalance - gasPrice * GasCostOf.Transaction));
+            Assert.That(addressAChanges, Is.EqualTo(new AccountChanges()
+            {
+                Address = TestItem.AddressA,
+                StorageChanges = [],
+                StorageReads = [],
+                BalanceChanges = [new(1, _accountBalance - gasPrice * GasCostOf.Transaction)],
+                NonceChanges = [new(1, 1)],
+                CodeChanges = []
+            }));
 
-            Assert.That(senderNonceChanges, Has.Count.EqualTo(1));
-            Assert.That(senderNonceChanges[0].NewNonce, Is.EqualTo(1));
+            Assert.That(addressBChanges, Is.EqualTo(new AccountChanges()
+            {
+                Address = TestItem.AddressB,
+                StorageChanges = [],
+                StorageReads = [],
+                BalanceChanges = [],
+                NonceChanges = [],
+                CodeChanges = []
+            }));
 
-            // zero balance change should not be recorded
-            Assert.That(toBalanceChanges, Is.Empty);
+            Assert.That(addressCChanges, Is.EqualTo(new AccountChanges()
+            {
+                Address = TestItem.AddressC,
+                StorageChanges = [],
+                StorageReads = [],
+                BalanceChanges = [new(1, new UInt256(GasCostOf.Transaction))],
+                NonceChanges = [new(1, 0)],
+                CodeChanges = []
+            }));
 
-            Assert.That(beneficiaryBalanceChanges, Has.Count.EqualTo(1));
-            Assert.That(beneficiaryBalanceChanges[0].PostBalance, Is.EqualTo(new UInt256(GasCostOf.Transaction)));
+            Assert.That(eip4788Changes, Is.EqualTo(new AccountChanges()
+            {
+                Address = Eip4788Constants.BeaconRootsAddress,
+                StorageChanges = [],
+                StorageReads = [],
+                BalanceChanges = [],
+                NonceChanges = [],
+                CodeChanges = []
+            }));
+
+            Assert.That(eip2935Changes, Is.EqualTo(new AccountChanges()
+            {
+                Address = Eip2935Constants.BlockHashHistoryAddress,
+                StorageChanges = [],
+                StorageReads = [],
+                BalanceChanges = [],
+                NonceChanges = [],
+                CodeChanges = []
+            }));
         }
-    }
+        }
 
     private static Action<ContainerBuilder> BuildContainer()
         => containerBuilder => containerBuilder.AddSingleton(_specProvider);

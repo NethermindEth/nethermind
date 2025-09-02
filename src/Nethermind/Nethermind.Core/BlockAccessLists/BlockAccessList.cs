@@ -3,6 +3,7 @@
 
 using System;
 using System.Collections.Generic;
+using System.Linq;
 
 namespace Nethermind.Core.BlockAccessLists;
 
@@ -21,7 +22,7 @@ public readonly struct BlockAccessList : IEquatable<BlockAccessList>
     }
 
     public readonly bool Equals(BlockAccessList other) =>
-        AccountChanges.Count == other.AccountChanges.Count;
+        AccountChanges.SequenceEqual(other.AccountChanges);
 
     public override readonly bool Equals(object? obj) =>
         obj is BlockAccessList other && Equals(other);
