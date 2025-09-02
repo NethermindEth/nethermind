@@ -463,7 +463,6 @@ public class NodeLifecycleManagerTests
 
         // Process ENR with very high sequence number
         context.ProcessEnrResponse(long.MaxValue - 1, TestItem.KeccakA);
-        string highSeqEnrString = manager.ManagedNode.Enr;
 
         // Process max sequence ENR
         context.CaptureStateChanges();
@@ -478,6 +477,7 @@ public class NodeLifecycleManagerTests
         private readonly string _remoteIp = "192.168.1.101";
         private readonly PublicKey _remotePublicKey = TestItem.PublicKeyB;
         private readonly PrivateKey _remotePrivateKey = TestItem.PrivateKeyB;
+        private EventHandler<NodeLifecycleState>? _currentHandler;
 
         public NodeLifecycleState? FiredState { get; private set; }
 
@@ -489,8 +489,14 @@ public class NodeLifecycleManagerTests
 
         public void CaptureStateChanges()
         {
+            if (_currentHandler != null)
+            {
+                _manager.OnStateChanged -= _currentHandler;
+            }
+
             FiredState = null;
-            _manager.OnStateChanged += (_, state) => FiredState = state;
+            _currentHandler = (_, state) => FiredState = state;
+            _manager.OnStateChanged += _currentHandler;
         }
 
         public EnrResponseMsg CreateEnrResponse(long sequence, Hash256 requestHash, int port = 30303)
