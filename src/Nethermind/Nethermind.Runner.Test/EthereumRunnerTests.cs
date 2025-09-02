@@ -209,8 +209,6 @@ public class EthereumRunnerTests
 
         api.NodeKey = new InsecureProtectedPrivateKey(TestItem.PrivateKeyA);
         api.FileSystem = Substitute.For<IFileSystem>();
-        api.BlockTree = Substitute.For<IBlockTree>();
-        api.ReceiptStorage = Substitute.For<IReceiptStorage>();
         api.BlockProducerRunner = Substitute.For<IBlockProducerRunner>();
         api.BackgroundTaskScheduler = Substitute.For<IBackgroundTaskScheduler>();
         api.NonceManager = Substitute.For<INonceManager>();

@@ -49,7 +49,6 @@ public class PseudoNethermindModule(ChainSpec spec, IConfigProvider configProvid
         builder
             .AddModule(new NethermindModule(spec, configProvider, logManager))
             .AddModule(new PseudoNetworkModule())
-            .AddModule(new BlockTreeModule())
             .AddModule(new TestBlockProcessingModule())
 
             // Environments
