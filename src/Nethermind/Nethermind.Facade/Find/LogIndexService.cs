@@ -319,7 +319,8 @@ public sealed class LogIndexService : ILogIndexService
                         Block = block,
                         HasTransactions = block?.Header.HasTransactions,
                         HasBlock = block == null ? (bool?)null : _receiptStorage.HasBlock(block.Number, block.Hash!),
-                        ReceiptsLength = block == null ? null : _receiptStorage.Get(block)?.Length
+                        ReceiptsLength = block == null ? null : _receiptStorage.Get(block)?.Length,
+                        BestKnownNumber = _blockTree.BestKnownNumber
                     };
                     _logger.Info($"[TRACE] {GetLogPrefix(isForward)}: waiting for receipts of block {next}: {status}");
 
