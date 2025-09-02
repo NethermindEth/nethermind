@@ -43,7 +43,6 @@ public class TestEnvironmentModule(PrivateKey nodeKey, string? networkGroup) : M
             // These two dont use db provider
             .AddKeyedSingleton<IFullDb>(DbNames.PeersDb, (_) => new MemDb())
             .AddKeyedSingleton<IFullDb>(DbNames.DiscoveryNodes, (_) => new MemDb())
-            .AddSingleton<IFileStoreFactory>(new InMemoryDictionaryFileStoreFactory())
             .AddSingleton<IChannelFactory, INetworkConfig>(networkConfig => new LocalChannelFactory(networkGroup ?? nameof(TestEnvironmentModule), networkConfig))
 
             .AddSingleton<PseudoNethermindRunner>()
@@ -58,6 +57,7 @@ public class TestEnvironmentModule(PrivateKey nodeKey, string? networkGroup) : M
                 return new Enode(nodeKey.PublicKey, ipAddress, networkConfig.P2PPort);
             })
             .AddKeyedSingleton(NodeKey, nodeKey)
+            .AddKeyedSingleton<IFileStoreFactory>(nameof(BloomStorage), (_) => new InMemoryDictionaryFileStoreFactory())
 
             .AddSingleton<IChainHeadInfoProvider, IComponentContext>((ctx) =>
             {
