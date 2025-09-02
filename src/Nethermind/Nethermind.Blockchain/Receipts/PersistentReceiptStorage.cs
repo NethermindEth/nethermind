@@ -17,6 +17,8 @@ using Nethermind.Crypto;
 using Nethermind.Db;
 using Nethermind.Serialization.Rlp;
 
+[assembly: InternalsVisibleTo("Nethermind.Blockchain.Test")]
+
 namespace Nethermind.Blockchain.Receipts
 {
     public class PersistentReceiptStorage : IReceiptStorage
@@ -199,7 +201,7 @@ namespace Nethermind.Blockchain.Receipts
             }
         }
 
-        private static void GetBlockNumPrefixedKey(long blockNumber, Hash256 blockHash, Span<byte> output)
+        internal static void GetBlockNumPrefixedKey(long blockNumber, Hash256 blockHash, Span<byte> output)
         {
             blockNumber.WriteBigEndian(output);
             blockHash!.Bytes.CopyTo(output[8..]);

@@ -442,7 +442,7 @@ public class PersistentReceiptStorageTests
     }
 
     [Test]
-    public void When_NewHeadBlock_ClearOldTxIndex()
+    public void When_NewHeadBlock_ClearOldTxIndex_And_KeepsReceipts()
     {
         _receiptConfig.TxLookupLimit = 1000;
         CreateStorage();
@@ -466,6 +466,10 @@ public class PersistentReceiptStorageTests
             () => _receiptsDb.GetColumnDb(ReceiptsColumns.Transactions)[receipts[0].TxHash!.Bytes],
             Is.Null.After(1000, 100)
             );
+
+        Span<byte> blockNumPrefixed = stackalloc byte[40];
+        PersistentReceiptStorage.GetBlockNumPrefixedKey(receipts[0].BlockNumber, receipts[0].BlockHash!, blockNumPrefixed);
+        Assert.That(_receiptsDb.GetColumnDb(ReceiptsColumns.Blocks)[blockNumPrefixed], Is.Not.Null);
     }
 
     private (Block block, TxReceipt[] receipts) PrepareBlock(Block? block = null, bool isFinalized = false, long? headNumber = null)
