@@ -372,7 +372,10 @@ public class NodeLifecycleManager : INodeLifecycleManager
 
         State = newState;
         OnStateChanged?.Invoke(this, State);
-        if (newState == NodeLifecycleState.Active && string.IsNullOrEmpty(ManagedNode.Enr)) SendEnrRequest();
+        if (newState == NodeLifecycleState.Active && string.IsNullOrEmpty(ManagedNode.Enr))
+        {
+            SendEnrRequest();
+        }
     }
 
     private void RefreshNodeContactTime()
