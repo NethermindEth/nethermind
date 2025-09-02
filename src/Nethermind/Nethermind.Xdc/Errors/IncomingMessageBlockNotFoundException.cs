@@ -13,7 +13,7 @@ public class IncomingMessageBlockNotFoundException : Exception
     public Exception InnerErr { get; }
 
     public IncomingMessageBlockNotFoundException(string type, string incomingBlockHash, long incomingBlockNumber, Exception innerErr)
-        :base($"{type} proposed block is not found hash: {incomingBlockHash}, block number: {incomingBlockNumber}, error: {innerErr?.Message}")
+        : base($"{type} proposed block is not found hash: {incomingBlockHash}, block number: {incomingBlockNumber}, error: {innerErr?.Message}")
     {
         Type = type;
         IncomingBlockHash = incomingBlockHash;

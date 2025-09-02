@@ -12,6 +12,12 @@ public static class CommonErrors
 {
     // Various or messages to mark blocks invalid. 
     // These are private in Go, but in C# we typically use public to limit exposure within the assembly.
+    public static readonly Exception FailedToExtractExtraFieldsFromHeader =
+        new ArgumentException("Failed to get extra fields from header.");
+
+    public static readonly Exception FailedToExtractEpochInfoFromHeader =
+       new Exception("Failed to extract EpochSwitch from HeadOfChain");
+
     public static readonly Exception UnknownBlock =
         new Exception("unknown block");
 
