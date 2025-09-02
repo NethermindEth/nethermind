@@ -74,6 +74,7 @@ public class BlockValidator(
         int encodedSize = block.EncodedSize ?? _blockDecoder.GetLength(block, RlpBehaviors.None);
         if (spec.IsEip7934Enabled && encodedSize > spec.Eip7934MaxRlpBlockSize)
         {
+            if (_logger.IsDebug) _logger.Debug($"{Invalid(block)} RLP encoded size of {encodedSize} bytes exceeds the max limit of {spec.Eip7934MaxRlpBlockSize} bytes");
             errorMessage = BlockErrorMessages.ExceededBlockSizeLimit(spec.Eip7934MaxRlpBlockSize);
             return false;
         }
