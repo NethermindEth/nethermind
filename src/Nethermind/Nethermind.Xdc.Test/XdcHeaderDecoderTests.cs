@@ -92,6 +92,6 @@ namespace Nethermind.Xdc.Test
             string encoded = decoder.Encode(unencoded).ToString();
 
             Assert.That(encoded, Is.EqualTo(hexRlp));
-        }        
+        }
     }
 }
