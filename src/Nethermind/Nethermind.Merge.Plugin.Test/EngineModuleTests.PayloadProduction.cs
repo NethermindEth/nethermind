@@ -20,8 +20,10 @@ using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Builders;
+using Nethermind.Core.Test.Container;
 using Nethermind.Core.Timers;
 using Nethermind.Crypto;
+using Nethermind.Evm.State;
 using Nethermind.Int256;
 using Nethermind.JsonRpc;
 using Nethermind.JsonRpc.Test;
@@ -424,17 +426,16 @@ public partial class EngineModuleTests
         Transaction tx2 = TxDecoder.Instance.Decode(new RlpStream(Bytes.FromHexString(tx2Hex)), RlpBehaviors.SkipTypedWrapping)!;
 
         MergeTestBlockchain blockchain = CreateBaseBlockchain();
-        blockchain.InitialStateMutator = state =>
-        {
-            state.CreateAccount(new Address("0xBC2Fd1637C49839aDB7Bb57F9851EAE3194A90f7"), (UInt256)1200482917041833040, 1);
-        };
-
         TimeSpan delay = TimeSpan.FromMilliseconds(10);
         TimeSpan timePerSlot = 1000 * delay;
         using MergeTestBlockchain chain = await blockchain.BuildMergeTestBlockchain(builder =>
         {
             builder
                 .AddSingleton<ISpecProvider>(SepoliaSpecProvider.Instance)
+                .WithGenesisPostProcessor((genesis, state) =>
+                {
+                    state.CreateAccount(new Address("0xBC2Fd1637C49839aDB7Bb57F9851EAE3194A90f7"), (UInt256)1200482917041833040, 1);
+                })
                 .AddSingleton(ConfigurePayloadPreparationService(timePerSlot, delay))
                 ;
 
@@ -742,9 +743,14 @@ public partial class EngineModuleTests
     [TestCaseSource(nameof(OsakaTransitionInvalidatedTransactionsTestCaseSource))]
     public async Task Lightweight_transaction_validation_is_applied_on_new_head(Transaction tx, IReleaseSpec initialSpec, IReleaseSpec nextBlockSpec, bool isForked)
     {
-        using MergeTestBlockchain chain = CreateBaseBlockchain();
-        chain.GenesisBlockBuilder = Build.A.Block.Genesis.Genesis.WithTimestamp(1UL).WithGasLimit(Eip7825Constants.DefaultTxGasLimitCap * 2);
-        await chain.Build(new TestSpecProvider(initialSpec) { NextForkSpec = isForked ? nextBlockSpec : initialSpec });
+        using MergeTestBlockchain chain = await CreateBlockchain(configurer: builder => builder
+            .WithGenesisPostProcessor((genesis, state) =>
+            {
+                // chain.GenesisBlockBuilder = Build.A.Block.Genesis.Genesis.WithTimestamp(1UL).WithGasLimit(Eip7825Constants.DefaultTxGasLimitCap * 2);
+                genesis.Header.Timestamp = 1UL;
+                genesis.Header.GasLimit = Eip7825Constants.DefaultTxGasLimitCap * 2;
+            })
+            .AddSingleton<ISpecProvider>(new TestSpecProvider(initialSpec) { NextForkSpec = isForked ? nextBlockSpec : initialSpec }));
 
         IEngineRpcModule rpc = chain.EngineRpcModule;
         Hash256 blockHash = chain.BlockTree.HeadHash;

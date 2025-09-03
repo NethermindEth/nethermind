@@ -3,13 +3,15 @@
 
 using System.IO;
 using System.Threading.Tasks;
+using Autofac;
 using Nethermind.Blockchain;
+using Nethermind.Config;
+using Nethermind.Consensus.AuRa.InitializationSteps;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Blockchain;
 using Nethermind.Serialization.Json;
 using Nethermind.Specs.ChainSpecStyle;
-using Nethermind.Evm.State;
 
 namespace Nethermind.AuRa.Test.Contract
 {
@@ -45,6 +47,15 @@ namespace Nethermind.AuRa.Test.Contract
             return ChainSpecOverride ?? base.CreateChainSpec();
         }
 
+        protected override ContainerBuilder ConfigureContainer(ContainerBuilder builder, IConfigProvider configProvider)
+        {
+            return base.ConfigureContainer(builder, configProvider)
+                .AddScoped<IGenesisBuilder, GenesisBuilder>()
+                .AddScoped<IGenesisPostProcessor, AuraGenesisPostProcessor>()
+                ; // AuRa uses full genesis builder
+        }
+
+        /*
         protected override Block GetGenesisBlock(IWorldState worldState) =>
             new GenesisLoader(
                     ChainSpec,
@@ -55,5 +66,6 @@ namespace Nethermind.AuRa.Test.Contract
                     GenesisPostProcessor,
                     LogManager)
                 .Load();
+                */
     }
 }

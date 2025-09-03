@@ -112,12 +112,6 @@ namespace Nethermind.JsonRpc.Test.Modules
                 return this;
             }
 
-            public Builder<T> WithGenesisBlockBuilder(BlockBuilder blockBuilder)
-            {
-                _blockchain.GenesisBlockBuilder = blockBuilder;
-                return this;
-            }
-
             public Builder<T> WithGasPriceOracle(IGasPriceOracle gasPriceOracle)
             {
                 _blockchain.GasPriceOracle = gasPriceOracle;

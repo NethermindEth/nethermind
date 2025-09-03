@@ -26,6 +26,7 @@ using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Blockchain;
 using Nethermind.Core.Test.Builders;
+using Nethermind.Core.Test.Container;
 using Nethermind.Core.Test.Modules;
 using Nethermind.Core.Timers;
 using Nethermind.Crypto;
@@ -200,7 +201,6 @@ public abstract partial class BaseEngineModuleTests
 
         public MergeTestBlockchain(IMergeConfig? mergeConfig = null)
         {
-            GenesisBlockBuilder = Core.Test.Builders.Build.A.Block.Genesis.Genesis.WithTimestamp(1UL);
             MergeConfig = mergeConfig ?? new MergeConfig();
             if (MergeConfig.TerminalTotalDifficulty is null) MergeConfig.TerminalTotalDifficulty = "0";
         }
@@ -244,6 +244,11 @@ public abstract partial class BaseEngineModuleTests
                 .AddSingleton<ISyncProgressResolver>(Substitute.For<ISyncProgressResolver>())
                 .AddSingleton<ISyncModeSelector>(new StaticSelector(SyncMode.All))
                 .AddSingleton<IPeerRefresher>(Substitute.For<IPeerRefresher>())
+                .WithGenesisPostProcessor((block, worldState) =>
+                {
+                    // GenesisBlockBuilder = Core.Test.Builders.Build.A.Block.Genesis.Genesis.WithTimestamp(1UL);
+                    block.Header.Timestamp = 1UL;
+                })
                 .Intercept<IInitConfig>((initConfig) => initConfig.DisableGcOnNewPayload = false);
 
         protected override IBlockProducer CreateTestBlockProducer()

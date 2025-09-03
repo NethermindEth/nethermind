@@ -15,6 +15,7 @@ using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Blockchain;
 using Nethermind.Core.Test.Builders;
+using Nethermind.Core.Test.Container;
 using Nethermind.Core.Test.IO;
 using Nethermind.Int256;
 using Nethermind.Specs.ChainSpecStyle;
@@ -147,17 +148,17 @@ public class Era1ModuleTests
             for (int y = 0; y < numOfTx; y++)
             {
                 transactions[y] = Build.A.Transaction.WithTo(TestItem.GetRandomAddress())
-                                                     .WithNonce(nonce)
-                                                     .WithValue(TestContext.CurrentContext.Random.NextUInt(10))
-                                                     .SignedAndResolved(TestItem.PrivateKeyA)
-                                                     .TestObject;
+                    .WithNonce(nonce)
+                    .WithValue(TestContext.CurrentContext.Random.NextUInt(10))
+                    .SignedAndResolved(TestItem.PrivateKeyA)
+                    .TestObject;
                 nonce++;
             }
             blocks.Add(Build.A.Block.WithUncles(uncle)
-                                    .WithBaseFeePerGas(1)
-                                    .WithTotalDifficulty(blocks[i].TotalDifficulty + blocks[i].Difficulty)
-                                    .WithTransactions(transactions)
-                                    .WithParent(blocks[i]).TestObject);
+                .WithBaseFeePerGas(1)
+                .WithTotalDifficulty(blocks[i].TotalDifficulty + blocks[i].Difficulty)
+                .WithTransactions(transactions)
+                .WithParent(blocks[i]).TestObject);
         }
 
         blocks = testBlockchain.BranchProcessor.Process(genesis.Header!, blocks, ProcessingOptions.NoValidation | ProcessingOptions.StoreReceipts, new BlockReceiptsTracer()).ToList();
@@ -219,16 +220,13 @@ public class Era1ModuleTests
     {
         TestBlockchain testBlockchain = await BasicTestBlockchain.Create(configurer: builder =>
         {
-            builder.AddDecorator<TestBlockchain.Configuration>((ctx, config) =>
-            {
-                ISpecProvider specProvider = ctx.Resolve<ISpecProvider>();
-                config.InitialStateMutator = worldState =>
-                {
-                    worldState.AddToBalance(TestItem.AddressA, 10.Ether(), specProvider.GenesisSpec);
-                    worldState.RecalculateStateRoot();
-                };
-                return config;
-            });
+            builder
+                .AddScoped<IGenesisPostProcessor, IWorldState, ISpecProvider>((worldState, specProvider) =>
+                    new FunctionalGenesisPostProcessor(worldState, (block, state) =>
+                    {
+                        worldState.AddToBalance(TestItem.AddressA, 10.Ether(), specProvider.GenesisSpec);
+                        worldState.RecalculateStateRoot();
+                    }));
         });
 
         using var tmpFile = TempPath.GetTempFile();
