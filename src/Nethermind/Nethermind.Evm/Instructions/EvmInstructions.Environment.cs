@@ -290,29 +290,6 @@ internal static partial class EvmInstructions
     /// <param name="programCounter">The program counter.</param>
     /// <returns>An EVM exception type if an error occurs.</returns>
     [SkipLocalsInit]
-    public static EvmExceptionType InstructionBlkUInt64<TOpEnv, TTracingInst>(VirtualMachine vm, ref EvmStack stack, ref long gasAvailable, ref int programCounter)
-        where TOpEnv : struct, IOpBlkUInt64
-        where TTracingInst : struct, IFlag
-    {
-        gasAvailable -= TOpEnv.GasCost;
-
-        ulong result = TOpEnv.Operation(vm);
-
-        stack.PushUInt64<TTracingInst>(result);
-
-        return EvmExceptionType.None;
-    }
-
-    /// <summary>
-    /// Executes an environment introspection opcode that returns a UInt64 value.
-    /// </summary>
-    /// <typeparam name="TOpEnv">The specific operation implementation.</typeparam>
-    /// <param name="vm">The virtual machine instance.</param>
-    /// <param name="stack">The execution stack.</param>
-    /// <param name="gasAvailable">The available gas which is reduced by the operation's cost.</param>
-    /// <param name="programCounter">The program counter.</param>
-    /// <returns>An EVM exception type if an error occurs.</returns>
-    [SkipLocalsInit]
     public static EvmExceptionType InstructionEnv32Bytes<TOpEnv, TTracingInst>(VirtualMachineBase vm, ref EvmStack stack, ref long gasAvailable, ref int programCounter)
         where TOpEnv : struct, IOpEnv32Bytes
         where TTracingInst : struct, IFlag
