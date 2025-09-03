@@ -557,7 +557,11 @@ internal sealed class PersistentStorageProvider : PartialStorageProviderBase
             ref ChangeTrace valueChanges = ref BlockChange.GetValueRefOrAddDefault(storageCell.Index, out bool exists);
             if (!exists)
             {
-                valueChanges = new ChangeTrace(value);
+                byte[] treeValue = !_provider._populatePreBlockCache ?
+                    LoadFromTreeReadPreWarmCache(in storageCell) :
+                    LoadFromTreePopulatePrewarmCache(in storageCell);
+
+                valueChanges = new ChangeTrace(treeValue, value);
             }
             else
             {
