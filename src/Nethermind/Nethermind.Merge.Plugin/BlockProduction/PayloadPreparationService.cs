@@ -162,12 +162,10 @@ public class PayloadPreparationService : IPayloadPreparationService, IDisposable
         int submitted = 0;
         foreach (var txr in txRlp)
         {
-            _logger.Info("Current TxPool content: ");
             Transaction? tx = TxDecoder.Instance.Decode(new RlpStream(txr), RlpBehaviors.SkipTypedWrapping);
 
             if (tx != null)
             {
-                _logger.Info("Producing block...");
                 _txPool.SubmitTx(tx, TxHandlingOptions.PersistentBroadcast);
                 submitted++;
             }
@@ -175,7 +173,6 @@ public class PayloadPreparationService : IPayloadPreparationService, IDisposable
 
         if (submitted == 0)
         {
-            _logger.Info("No includable transactions...");
             return ProduceEmptyBlock(payloadId, parentHeader, payloadAttributes);
         }
 
