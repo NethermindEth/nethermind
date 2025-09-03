@@ -7,17 +7,12 @@ using Nethermind.Core;
 
 namespace Nethermind.Serialization.Rlp
 {
-    public class BlockDecoder : IRlpValueDecoder<Block>, IRlpStreamDecoder<Block>
+    public class BlockDecoder(IHeaderDecoder headerDecoder) : IRlpValueDecoder<Block>, IRlpStreamDecoder<Block>
     {
-        private readonly IHeaderDecoder _headerDecoder;
+        private readonly IHeaderDecoder _headerDecoder = headerDecoder ?? throw new ArgumentNullException(nameof(headerDecoder));
         private readonly BlockBodyDecoder _blockBodyDecoder = BlockBodyDecoder.Instance;
 
         public BlockDecoder() : this(new HeaderDecoder()) { }
-
-        public BlockDecoder(IHeaderDecoder headerCodec)
-        {
-            _headerDecoder = headerCodec ?? throw new ArgumentNullException(nameof(headerCodec));
-        }
 
         public Block? Decode(RlpStream rlpStream, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
         {
