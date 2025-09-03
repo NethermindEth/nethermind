@@ -7,29 +7,17 @@ using System.Text.Json.Serialization;
 
 namespace Nethermind.Xdc.Types;
 
-public class Vote
+public class Vote(Address signer, BlockInfo proposedBlockInfo, Signature signature, long gapNumber)
 {
-    private Address _signer;
-
-    public Vote(Address signer, BlockInfo proposedBlockInfo, Signature signature, long gapNumber)
-    {
-        _signer = signer;
-        ProposedBlockInfo = proposedBlockInfo;
-        Signature = signature;
-        GapNumber = gapNumber;
-    }
-
     public Vote(BlockInfo proposedBlockInfo, Signature signature, long gapNumber)
+        : this(default, proposedBlockInfo, signature, gapNumber)
     {
-        _signer = default;
-        ProposedBlockInfo = proposedBlockInfo;
-        Signature = signature;
-        GapNumber = gapNumber;
     }
 
-    public BlockInfo ProposedBlockInfo { get; set; }
-    public Signature Signature { get; set; }
-    public long GapNumber { get; set; }
+    private Address _signer = signer;
+    public BlockInfo ProposedBlockInfo { get; set; } = proposedBlockInfo;
+    public Signature Signature { get; set; } = signature;
+    public long GapNumber { get; set; } = gapNumber;
 
     public override string ToString() =>
         $"{ProposedBlockInfo.Round}:{GapNumber}:{ProposedBlockInfo.Number}:{ProposedBlockInfo.SigHash()}";

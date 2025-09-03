@@ -5,17 +5,9 @@ using System;
 
 namespace Nethermind.Xdc.Errors;
 
-public class IncomingMessageRoundTooFarFromCurrentRoundException : Exception
+public class IncomingMessageRoundTooFarFromCurrentRoundException(ulong incomingRound, ulong currentRound, Exception? innerException = null)
+    : Exception($"message round number: {incomingRound} is too far away from currentRound: {currentRound}", innerException)
 {
-    public string Type { get; }
-    public ulong IncomingRound { get; }
-    public ulong CurrentRound { get; }
-
-    public IncomingMessageRoundTooFarFromCurrentRoundException(string type, ulong incomingRound, ulong currentRound)
-        : base($"{type} message round number: {incomingRound} is too far away from currentRound: {currentRound}")
-    {
-        Type = type;
-        IncomingRound = incomingRound;
-        CurrentRound = currentRound;
-    }
+    public ulong IncomingRound { get; } = incomingRound;
+    public ulong CurrentRound { get; } = currentRound;
 }

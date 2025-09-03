@@ -10,20 +10,13 @@ namespace Nethermind.Xdc.Types;
 
 using Round = ulong;
 
-public class Timeout
+public class Timeout(ulong round, Signature signature, ulong gapNumber)
 {
     private Address signer;
 
-    public Timeout(ulong round, Signature signature, ulong gapNumber)
-    {
-        Round = round;
-        Signature = signature;
-        GapNumber = gapNumber;
-    }
-
-    public Round Round { get; set; }
-    public Signature Signature { get; set; }
-    public ulong GapNumber { get; set; }
+    public Round Round { get; set; } = round;
+    public Signature Signature { get; set; } = signature;
+    public ulong GapNumber { get; set; } = gapNumber;
 
     public Hash256 SigHash() => Keccak.Compute(Rlp.Encode(this).Bytes);
 

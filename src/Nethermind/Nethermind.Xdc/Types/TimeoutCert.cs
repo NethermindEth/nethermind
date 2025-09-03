@@ -8,16 +8,9 @@ namespace Nethermind.Xdc.Types;
 
 using Round = ulong;
 
-public class TimeoutCert
+public class TimeoutCert(ulong round, Signature[] signatures, ulong gapNumber)
 {
-    public TimeoutCert(ulong round, Signature[] signatures, ulong gapNumber)
-    {
-        Round = round;
-        Signatures = signatures;
-        GapNumber = gapNumber;
-    }
-
-    public Round Round { get; set; }
-    public Signature[] Signatures { get; set; }
-    public ulong GapNumber { get; set; }
+    public Round Round { get; set; } = round;
+    public Signature[] Signatures { get; set; } = signatures;
+    public ulong GapNumber { get; set; } = gapNumber;
 }

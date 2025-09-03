@@ -5,20 +5,9 @@ using System;
 
 namespace Nethermind.Xdc.Errors;
 
-public class IncomingMessageBlockNotFoundException : Exception
+public class IncomingMessageBlockNotFoundException(string incomingBlockHash, long incomingBlockNumber, Exception? innerException = null)
+    : Exception($"proposed block is not found hash: {incomingBlockHash}, block number: {incomingBlockNumber}", innerException)
 {
-    public string Type { get; }
-    public string IncomingBlockHash { get; } // using string.Hex in Go
-    public long IncomingBlockNumber { get; }
-    public Exception InnerErr { get; }
-
-    public IncomingMessageBlockNotFoundException(string type, string incomingBlockHash, long incomingBlockNumber, Exception innerErr)
-        : base($"{type} proposed block is not found hash: {incomingBlockHash}, block number: {incomingBlockNumber}, error: {innerErr?.Message}")
-    {
-        Type = type;
-        IncomingBlockHash = incomingBlockHash;
-        IncomingBlockNumber = incomingBlockNumber;
-        InnerErr = innerErr;
-    }
-
+    public string IncomingBlockHash { get; } = incomingBlockHash;
+    public long IncomingBlockNumber { get; } = incomingBlockNumber;
 }

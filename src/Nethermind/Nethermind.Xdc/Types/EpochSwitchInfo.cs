@@ -6,20 +6,11 @@ using System.Collections.Generic;
 
 namespace Nethermind.Xdc.Types;
 
-public class EpochSwitchInfo
+public class EpochSwitchInfo(Address[] penalties, Address[] standbynodes, Address[] masternodes, BlockInfo epochSwitchBlockInfo, BlockInfo epochSwitchParentBlockInfo)
 {
-    public EpochSwitchInfo(Address[] penalties, Address[] standbynodes, Address[] masternodes, BlockInfo epochSwitchBlockInfo, BlockInfo epochSwitchParentBlockInfo)
-    {
-        Penalties = penalties;
-        Standbynodes = standbynodes;
-        Masternodes = masternodes;
-        EpochSwitchBlockInfo = epochSwitchBlockInfo;
-        EpochSwitchParentBlockInfo = epochSwitchParentBlockInfo;
-    }
-
-    public Address[] Penalties { get; set; }
-    public Address[] Standbynodes { get; set; }
-    public Address[] Masternodes { get; set; }
-    public BlockInfo EpochSwitchBlockInfo { get; set; }
-    public BlockInfo EpochSwitchParentBlockInfo { get; set; }
+    public Address[] Penalties { get; set; } = penalties;
+    public Address[] Standbynodes { get; set; } = standbynodes;
+    public Address[] Masternodes { get; set; } = masternodes;
+    public BlockInfo EpochSwitchBlockInfo { get; set; } = epochSwitchBlockInfo;
+    public BlockInfo EpochSwitchParentBlockInfo { get; set; } = epochSwitchParentBlockInfo;
 }

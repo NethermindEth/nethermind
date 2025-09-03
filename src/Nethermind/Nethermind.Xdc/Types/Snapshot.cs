@@ -10,18 +10,11 @@ using Nethermind.Core.Crypto;
 
 namespace Nethermind.Xdc.Types
 {
-    public class Snapshot : ICloneable
+    public class Snapshot(long number, Hash256 hash, Address[] nextEpochCandidates) : ICloneable
     {
-        public long Number { get; set; }
-        public Hash256 Hash { get; set; }
-        public Address[] NextEpochCandidates { get; set; }
-
-        internal Snapshot(long number, Hash256 hash, Address[] nextEpochCandidates)
-        {
-            Number = number;
-            Hash = hash;
-            NextEpochCandidates = nextEpochCandidates;
-        }
+        public long Number { get; set; } = number;
+        public Hash256 Hash { get; set; } = hash;
+        public Address[] NextEpochCandidates { get; set; } = nextEpochCandidates;
 
         public object Clone() =>
             new Snapshot(Number,

@@ -8,15 +8,9 @@ namespace Nethermind.Xdc.Types;
 
 using Round = ulong;
 
-public class TimeoutForSign
+public class TimeoutForSign(ulong round, ulong gapNumber)
 {
-    public TimeoutForSign(ulong round, ulong gapNumber)
-    {
-        Round = round;
-        GapNumber = gapNumber;
-    }
-
-    public Round Round { get; set; }
-    public ulong GapNumber { get; set; }
+    public Round Round { get; set; } = round;
+    public ulong GapNumber { get; set; } = gapNumber;
     public Hash256 SigHash() => Keccak.Compute(Rlp.Encode(this).Bytes);
 }

@@ -10,14 +10,8 @@ using System.Text;
 using System.Threading.Tasks;
 
 namespace Nethermind.Consensus.Clique;
-public class MasterNode
+public class MasterNode(Address address, UInt256 stake)
 {
-    public MasterNode(Address address, UInt256 stake)
-    {
-        Address = address;
-        Stake = stake;
-    }
-
-    public Address Address { get; set; }
-    public UInt256 Stake { get; set; }
+    public Address Address { get; set; } = address;
+    public UInt256 Stake { get; set; } = stake;
 }

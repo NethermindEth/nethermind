@@ -7,16 +7,9 @@ using System.Text.Json.Serialization;
 
 namespace Nethermind.Xdc.Types;
 
-public class QuorumCert
+public class QuorumCert(BlockInfo proposedBlockInfo, Signature[] signatures, long gapNumber)
 {
-    public QuorumCert(BlockInfo proposedBlockInfo, Signature[] signatures, long gapNumber)
-    {
-        ProposedBlockInfo = proposedBlockInfo;
-        Signatures = signatures;
-        GapNumber = gapNumber;
-    }
-
-    public BlockInfo ProposedBlockInfo { get; set; }
-    public Signature[] Signatures { get; set; }
-    public long GapNumber { get; set; }
+    public BlockInfo ProposedBlockInfo { get; set; } = proposedBlockInfo;
+    public Signature[] Signatures { get; set; } = signatures;
+    public long GapNumber { get; set; } = gapNumber;
 }

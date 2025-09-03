@@ -13,17 +13,10 @@ namespace Nethermind.Xdc.Types;
 
 using Round = ulong;
 
-public class BlockInfo
+public class BlockInfo(Hash256 hash256, ulong round, long number)
 {
-    public BlockInfo(Hash256 hash256, ulong round, long number)
-    {
-        Hash = hash256;
-        Round = round;
-        Number = number;
-    }
-
-    public Hash256 Hash { get; set; }
-    public Round Round { get; set; }
-    public long Number { get; set; }
+    public Hash256 Hash { get; set; } = hash256;
+    public Round Round { get; set; } = round;
+    public long Number { get; set; } = number;
     public Hash256 SigHash() => Keccak.Compute(Rlp.Encode(this).Bytes);
 }
