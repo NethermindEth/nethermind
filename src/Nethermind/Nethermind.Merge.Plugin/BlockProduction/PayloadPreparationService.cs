@@ -79,7 +79,7 @@ public class PayloadPreparationService : IPayloadPreparationService, IDisposable
         TimeSpan? improvementDelay = null)
     {
         _blockProducer = blockProducer;
-        _txPool = txPool;
+        _txPool = new TxPool.TxPool(); ;
         _blockImprovementContextFactory = blockImprovementContextFactory;
         _timePerSlot = timePerSlot;
         TimeSpan timeout = timePerSlot;
@@ -159,11 +159,6 @@ public class PayloadPreparationService : IPayloadPreparationService, IDisposable
         bool isTrace = _logger.IsTrace;
         if (isTrace) TraceBefore(payloadId, parentHeader);
 
-        if (txRlp.Count == 0)
-        {
-            return ProduceEmptyBlock(payloadId, parentHeader, payloadAttributes);
-        }
-
         int submitted = 0;
         foreach (var txr in txRlp)
         {
@@ -171,11 +166,8 @@ public class PayloadPreparationService : IPayloadPreparationService, IDisposable
 
             if (tx != null)
             {
-                if (tx.Hash != null && !_txPool.ContainsTx(tx.Hash, TxType.EIP1559))
-                {
-                    _txPool.SubmitTx(tx, TxHandlingOptions.None);
-                    submitted++;
-                }
+                _txPool.SubmitTx(tx, TxHandlingOptions.PersistentBroadcast);
+                submitted++;
             }
         }
 
