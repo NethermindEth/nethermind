@@ -171,8 +171,11 @@ public class PayloadPreparationService : IPayloadPreparationService, IDisposable
 
             if (tx != null)
             {
-                _txPool.SubmitTx(tx, TxHandlingOptions.None);
-                submitted++;
+                if (tx.Hash != null && !_txPool.ContainsTx(tx.Hash, TxType.EIP1559))
+                {
+                    _txPool.SubmitTx(tx, TxHandlingOptions.None);
+                    submitted++;
+                }
             }
         }
 
