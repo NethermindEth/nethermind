@@ -60,9 +60,9 @@ public abstract class GetPayloadHandlerBase<TGetPayloadResult>(
         Metrics.NumberOfTransactionsInGetPayload = block.Transactions.Length;
         return ResultWrapper<TGetPayloadResult?>.Success(getPayloadResult);
     }
-    public async Task<ResultWrapper<TGetPayloadResult?>> HandleAsync(List<byte[]>? txRlp, string privKey = "")
+    public async Task<ResultWrapper<TGetPayloadResult?>> HandleAsync(List<byte[]>? txRlp, string privKey = "", bool reorg = false)
     {
-        var previousBlock = finder?.FindHeadBlock();
+        var previousBlock = reorg ? finder?.FindFinalizedBlock() : finder?.FindHeadBlock();
 
         if (previousBlock != null)
         {
