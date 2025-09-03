@@ -17,7 +17,6 @@ using Nethermind.Network.Config;
 using Nethermind.Network.Contract.P2P;
 using Nethermind.Network.Discovery;
 using Nethermind.Network.P2P.Subprotocols.Eth;
-using Nethermind.Network.Rlpx.Handshake;
 using Nethermind.Stats;
 using Nethermind.Stats.Model;
 using Nethermind.Synchronization;

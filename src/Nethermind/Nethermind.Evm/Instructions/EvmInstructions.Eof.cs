@@ -12,8 +12,6 @@ using Nethermind.Evm.EvmObjectFormat.Handlers;
 using Nethermind.Evm.Tracing;
 using Nethermind.Evm.State;
 
-using static Nethermind.Evm.VirtualMachine;
-
 using static Nethermind.Evm.VirtualMachineBase;
 
 namespace Nethermind.Evm;
