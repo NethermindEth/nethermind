@@ -70,7 +70,7 @@ public class XdcBlockHeader : BlockHeader
         return masterNodes;
     }
 
-    public ExtraFieldsV2 DecodeQuorumCertificate()
+    internal ExtraFieldsV2 DecodeQuorumCertificate()
     {
         if (ExtraData is null || ExtraData.Length == 0)
             throw new InvalidOperationException("ExtraData field is null or empty.");
