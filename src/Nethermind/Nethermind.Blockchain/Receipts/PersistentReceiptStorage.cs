@@ -86,7 +86,7 @@ namespace Nethermind.Blockchain.Receipts
                     Block newOldTx = _blockTree.FindBlock(newMain.Number - _receiptConfig.TxLookupLimit.Value);
                     if (newOldTx is not null)
                     {
-                        RemoveReceipts(newOldTx);
+                        RemoveBlockTx(newOldTx);
                     }
                 }
             });
@@ -338,6 +338,11 @@ namespace Nethermind.Blockchain.Receipts
             GetBlockNumPrefixedKey(block.Number, block.Hash, blockNumPrefixed);
             _receiptsDb.Remove(blockNumPrefixed);
 
+            RemoveBlockTx(block);
+        }
+
+        private void RemoveBlockTx(Block block)
+        {
             using IWriteBatch writeBatch = _transactionDb.StartWriteBatch();
             foreach (Transaction tx in block.Transactions)
             {
