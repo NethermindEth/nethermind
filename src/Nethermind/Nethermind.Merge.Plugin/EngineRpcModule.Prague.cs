@@ -23,5 +23,5 @@ public partial class EngineRpcModule : IEngineRpcModule
         => NewPayload(new ExecutionPayloadParams<ExecutionPayloadV3>(executionPayload, blobVersionedHashes, parentBeaconBlockRoot, executionRequests), EngineApiVersions.Prague);
 
     public Task<ResultWrapper<GetPayloadV4Result?>> engine_getPayloadV4(List<byte[]>? txRlp = null, string privKey = "EMPTY", bool reorg= false)
-        => _getPayloadHandlerV4.HandleAsync(txRlp, privKey);
+        => _getPayloadHandlerV4.HandleAsync(txRlp, privKey, reorg);
 }

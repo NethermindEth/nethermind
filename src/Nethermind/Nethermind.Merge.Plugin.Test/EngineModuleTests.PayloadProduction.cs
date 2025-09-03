@@ -321,7 +321,8 @@ public partial class EngineModuleTests
             Bytes.FromHexString("0xf85f800182520894475674cb523a0a2736b7f7534390288fce16982c018025a0634db2f18f24d740be29e03dd217eea5757ed7422680429bdd458c582721b6c2a02f0fa83931c9a99d3448a46b922261447d6a41d8a58992b5596089d15d521102")
         };
         string param2 = "EMPTY";
-        string result = await RpcTest.TestSerializedRequest(rpc, "engine_getPayloadV4", param1, param2);
+        bool param3 = true;
+        string result = await RpcTest.TestSerializedRequest(rpc, "engine_getPayloadV4", param1, param2, param3);
         Console.WriteLine(result);
     }
 
