@@ -176,7 +176,10 @@ public class DiscoveryV5App : IDiscoveryApp
         IPAddress ip = enr.GetEntry<EntryIp>(EnrEntryKey.Ip).Value;
         int tcpPort = enr.GetEntry<EntryTcp>(EnrEntryKey.Tcp).Value;
 
-        node = new(key, ip.ToString(), tcpPort);
+        node = new(key, ip.ToString(), tcpPort)
+        {
+            Enr = enr.ToString()
+        };
         return true;
     }
 
