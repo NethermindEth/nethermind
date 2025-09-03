@@ -142,7 +142,7 @@ namespace Nethermind.Evm.TransactionProcessing
 
             // restore is CallAndRestore - previous call, we will restore state after the execution
             bool restore = opts.HasFlag(ExecutionOptions.Restore);
-            // commit - is for standard execute, we will commit thee state after execution
+            // commit - is for standard execute, we will commit the state after execution
             // !commit - is for build up during block production, we won't commit state after each transaction to support rollbacks
             // we commit only after all block is constructed
             bool commit = opts.HasFlag(ExecutionOptions.Commit) || (!opts.HasFlag(ExecutionOptions.SkipValidation) && !spec.IsEip658Enabled);

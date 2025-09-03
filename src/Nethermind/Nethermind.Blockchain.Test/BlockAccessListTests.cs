@@ -161,7 +161,7 @@ public class BlockAccessListTests()
             .WithNumber(1)
             .WithGasUsed(21000)
             .WithReceiptsRoot(new("0x056b23fbba480696b65fe5a59b8f2148a1299103c4f57df839233af2cf4ca2d2"))
-            .WithStateRoot(new("0x791d07603a3449bd9d70180d3f00af1fb493033171c7c2b056bf07779c45cfe8"))
+            .WithStateRoot(new("0x869b0dea3e9d18f71753c2b64142901e11b6be272ddbb8975f32851528d30c36"))
             .WithBlobGasUsed(0)
             .WithBeneficiary(TestItem.AddressC)
             .WithParentBeaconBlockRoot(Hash256.Zero)
@@ -193,9 +193,66 @@ public class BlockAccessListTests()
         AccountChanges addressCChanges = accountChanges[TestItem.AddressC];
         AccountChanges addressDChanges = accountChanges[TestItem.AddressD];
         AccountChanges eip2935Changes = accountChanges[Eip2935Constants.BlockHashHistoryAddress];
+        // string k1 = Convert.ToHexString(eip2935Changes.StorageChanges.First().Key);
+        // string v1 = Convert.ToHexString(eip2935Changes.StorageChanges.First().Value.Changes.First().NewValue.Unwrap());
         AccountChanges eip4788Changes = accountChanges[Eip4788Constants.BeaconRootsAddress];
+        // string k2 = Convert.ToHexString(eip4788Changes.StorageChanges.First().Key);
+        // string v2 = Convert.ToHexString(eip4788Changes.StorageChanges.First().Value.Changes.First().NewValue.Unwrap());
+        // string k3 = Convert.ToHexString(eip4788Changes.StorageChanges.ElementAt(1).Key);
+        // string v3 = Convert.ToHexString(eip4788Changes.StorageChanges.ElementAt(1).Value.Changes.First().NewValue.Unwrap());
         AccountChanges eip7002Changes = accountChanges[Eip7002Constants.WithdrawalRequestPredeployAddress];
+        // string k4 = Convert.ToHexString(eip7002Changes.StorageChanges.First().Key);
+        // string v4 = Convert.ToHexString(eip7002Changes.StorageChanges.First().Value.Changes.First().NewValue.Unwrap());
+        // string k5 = Convert.ToHexString(eip7002Changes.StorageChanges.ElementAt(1).Key);
+        // string v5 = Convert.ToHexString(eip7002Changes.StorageChanges.ElementAt(1).Value.Changes.First().NewValue.Unwrap());
+        // string k6 = Convert.ToHexString(eip7002Changes.StorageChanges.ElementAt(2).Key);
+        // string v6 = Convert.ToHexString(eip7002Changes.StorageChanges.ElementAt(2).Value.Changes.First().NewValue.Unwrap());
+        // string k7 = Convert.ToHexString(eip7002Changes.StorageChanges.ElementAt(3).Key);
+        // string v7 = Convert.ToHexString(eip7002Changes.StorageChanges.ElementAt(3).Value.Changes.First().NewValue.Unwrap());
         AccountChanges eip7251Changes = accountChanges[Eip7251Constants.ConsolidationRequestPredeployAddress];
+        // string k8 = Convert.ToHexString(eip7251Changes.StorageChanges.First().Key);
+        // string v8 = Convert.ToHexString(eip7251Changes.StorageChanges.First().Value.Changes.First().NewValue.Unwrap());
+        // string k9 = Convert.ToHexString(eip7251Changes.StorageChanges.ElementAt(1).Key);
+        // string v9 = Convert.ToHexString(eip7251Changes.StorageChanges.ElementAt(1).Value.Changes.First().NewValue.Unwrap());
+        // string ka = Convert.ToHexString(eip7251Changes.StorageChanges.ElementAt(2).Key);
+        // string va = Convert.ToHexString(eip7251Changes.StorageChanges.ElementAt(2).Value.Changes.First().NewValue.Unwrap());
+        // string kb = Convert.ToHexString(eip7251Changes.StorageChanges.ElementAt(3).Key);
+        // string vb = Convert.ToHexString(eip7251Changes.StorageChanges.ElementAt(3).Value.Changes.First().NewValue.Unwrap());
+
+        byte[] slot1 = Convert.FromHexString("290DECD9548B62A8D60345A988386FC84BA6BC95484008F6362F93160EF3E563");
+        StorageChange value1 = new(0, Bytes32.Wrap(Convert.FromHexString("FF483E972A04A9A62BB4B7D04AE403C615604E4090521ECC5BB7AF67F71BE09C")));
+
+        byte[] slot2 = Convert.FromHexString("0E59911BBD9B80FD816896F0425C7A25DC9EB9092F5AC6264B432F6697F877C8");
+        StorageChange value2 = new(0, Bytes32.Zero);
+
+        byte[] slot3 = Convert.FromHexString("2CFFC05BC4230E308FCB837385A814EED1B4C90FB58BA2A0B8407649B9629B28");
+        StorageChange value3 = new(0, Bytes32.Wrap(Convert.FromHexString("00000000000000000000000000000000000000000000000000000000000F4240")));
+
+        byte[] slot4 = Convert.FromHexString("290DECD9548B62A8D60345A988386FC84BA6BC95484008F6362F93160EF3E563");
+        StorageChange value4 = new(2, Bytes32.Zero);
+
+        byte[] slot5 = Convert.FromHexString("405787FA12A823E0F2B7631CC41B3BA8828B3321CA811111FA75CD3AA3BB5ACE");
+        StorageChange value5 = new(2, Bytes32.Zero);
+
+        byte[] slot6 = Convert.FromHexString("B10E2D527612073B26EECDFD717E6A320CF44B4AFAC2B0732D9FCBE2B7FA0CF6");
+        StorageChange value6 = new(2, Bytes32.Zero);
+        // StorageChange value6 = new(0, Bytes32.Wrap(Convert.FromHexString("00000000000000000000000000000000000000000000000000000000000F4240")));
+
+        byte[] slot7 = Convert.FromHexString("C2575A0E9E593C00F959F8C92F12DB2869C3395A3B0502D05E2516446F71F85B");
+        StorageChange value7 = new(2, Bytes32.Zero);
+
+        byte[] slot8 = Convert.FromHexString("290DECD9548B62A8D60345A988386FC84BA6BC95484008F6362F93160EF3E563");
+        StorageChange value8 = new(2, Bytes32.Zero);
+
+        byte[] slot9 = Convert.FromHexString("405787FA12A823E0F2B7631CC41B3BA8828B3321CA811111FA75CD3AA3BB5ACE");
+        StorageChange value9 = new(2, Bytes32.Zero);
+
+        byte[] slota = Convert.FromHexString("B10E2D527612073B26EECDFD717E6A320CF44B4AFAC2B0732D9FCBE2B7FA0CF6");
+        StorageChange valuea = new(2, Bytes32.Zero);
+        // StorageChange valuea = new(2, Bytes32.Wrap(Convert.FromHexString("00000000000000000000000000000000000000000000000000000000000F4240")));
+
+        byte[] slotb = Convert.FromHexString("C2575A0E9E593C00F959F8C92F12DB2869C3395A3B0502D05E2516446F71F85B");
+        StorageChange valueb = new(2, Bytes32.Zero);
 
         using (Assert.EnterMultipleScope())
         {
@@ -242,7 +299,7 @@ public class BlockAccessListTests()
             Assert.That(eip2935Changes, Is.EqualTo(new AccountChanges()
             {
                 Address = Eip2935Constants.BlockHashHistoryAddress,
-                StorageChanges = [],
+                StorageChanges = new(Bytes.Comparer) { { slot1, new SlotChanges(slot1, [value1]) } },
                 StorageReads = [],
                 BalanceChanges = [],
                 NonceChanges = [],
@@ -252,8 +309,8 @@ public class BlockAccessListTests()
             Assert.That(eip4788Changes, Is.EqualTo(new AccountChanges()
             {
                 Address = Eip4788Constants.BeaconRootsAddress,
-                StorageChanges = [],
-                StorageReads = [],
+                StorageChanges = new(Bytes.Comparer) { { slot2, new SlotChanges(slot2, [value2]) }, { slot3, new SlotChanges(slot3, [value3]) }},
+                StorageReads = [new(Bytes32.Wrap(Convert.FromHexString("0e59911bbd9b80fd816896f0425c7a25dc9eb9092f5ac6264b432f6697f877c8")))],
                 BalanceChanges = [],
                 NonceChanges = [],
                 CodeChanges = []
@@ -262,7 +319,7 @@ public class BlockAccessListTests()
             Assert.That(eip7002Changes, Is.EqualTo(new AccountChanges()
             {
                 Address = Eip7002Constants.WithdrawalRequestPredeployAddress,
-                StorageChanges = [],
+                StorageChanges = new(Bytes.Comparer) { { slot4, new SlotChanges(slot4, [value4]) }, { slot5, new SlotChanges(slot5, [value5]) }, { slot6, new SlotChanges(slot6, [value6]) }, { slot7, new SlotChanges(slot7, [value7]) }},
                 StorageReads = [
                     new(Bytes32.Wrap(Convert.FromHexString("b10e2d527612073b26eecdfd717e6a320cf44b4afac2b0732d9fcbe2b7fa0cf6"))),
                     new(Bytes32.Wrap(Convert.FromHexString("290decd9548b62a8d60345a988386fc84ba6bc95484008f6362f93160ef3e563"))),
@@ -277,7 +334,7 @@ public class BlockAccessListTests()
             Assert.That(eip7251Changes, Is.EqualTo(new AccountChanges()
             {
                 Address = Eip7251Constants.ConsolidationRequestPredeployAddress,
-                StorageChanges = [],
+                StorageChanges = new(Bytes.Comparer) { { slot8, new SlotChanges(slot8, [value8]) }, { slot9, new SlotChanges(slot9, [value9]) }, { slota, new SlotChanges(slota, [valuea]) }, { slotb, new SlotChanges(slotb, [valueb]) }},
                 StorageReads = [
                     new(Bytes32.Wrap(Convert.FromHexString("b10e2d527612073b26eecdfd717e6a320cf44b4afac2b0732d9fcbe2b7fa0cf6"))),
                     new(Bytes32.Wrap(Convert.FromHexString("290decd9548b62a8d60345a988386fc84ba6bc95484008f6362f93160ef3e563"))),
@@ -297,9 +354,18 @@ public class BlockAccessListTests()
     private static void InitWorldState(IWorldState worldState)
     {
         worldState.CreateAccount(TestItem.AddressA, _accountBalance);
-        worldState.CreateAccount(Eip4788Constants.BeaconRootsAddress, 1);
+
+        worldState.CreateAccount(Eip2935Constants.BlockHashHistoryAddress, 0, 1);
+        byte[] eip2935Code = Bytes.FromHexString("0x3373fffffffffffffffffffffffffffffffffffffffe14604657602036036042575f35600143038111604257611fff81430311604257611fff9006545f5260205ff35b5f5ffd5b5f35611fff60014303065500");
+        worldState.InsertCode(Eip2935Constants.BlockHashHistoryAddress, ValueKeccak.Compute(eip2935Code), eip2935Code, _specProvider.GenesisSpec);
+
+        worldState.CreateAccount(Eip4788Constants.BeaconRootsAddress, 0, 1);
+        byte[] eip4788Code = Bytes.FromHexString("0x3373fffffffffffffffffffffffffffffffffffffffe14604d57602036146024575f5ffd5b5f35801560495762001fff810690815414603c575f5ffd5b62001fff01545f5260205ff35b5f5ffd5b62001fff42064281555f359062001fff015500");
+        worldState.InsertCode(Eip4788Constants.BeaconRootsAddress, ValueKeccak.Compute(eip4788Code), eip4788Code, _specProvider.GenesisSpec);
+
         worldState.CreateAccount(Eip7002Constants.WithdrawalRequestPredeployAddress, 0, Eip7002TestConstants.Nonce);
         worldState.InsertCode(Eip7002Constants.WithdrawalRequestPredeployAddress, Eip7002TestConstants.CodeHash, Eip7002TestConstants.Code, _specProvider.GenesisSpec);
+
         worldState.CreateAccount(Eip7251Constants.ConsolidationRequestPredeployAddress, 0, Eip7251TestConstants.Nonce);
         worldState.InsertCode(Eip7251Constants.ConsolidationRequestPredeployAddress, Eip7251TestConstants.CodeHash, Eip7251TestConstants.Code, _specProvider.GenesisSpec);
 

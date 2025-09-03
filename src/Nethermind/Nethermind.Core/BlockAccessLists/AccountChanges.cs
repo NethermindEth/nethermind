@@ -5,6 +5,7 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using Nethermind.Core.Extensions;
 
 namespace Nethermind.Core.BlockAccessLists;
 
@@ -20,7 +21,7 @@ public readonly struct AccountChanges : IEquatable<AccountChanges>
     public AccountChanges(Address address)
     {
         Address = address;
-        StorageChanges = [];
+        StorageChanges = new(Bytes.Comparer);
         StorageReads = [];
         BalanceChanges = [];
         NonceChanges = [];
@@ -30,7 +31,7 @@ public readonly struct AccountChanges : IEquatable<AccountChanges>
     public AccountChanges(Address address, SortedDictionary<byte[], SlotChanges> storageChanges, List<StorageRead> storageReads, List<BalanceChange> balanceChanges, List<NonceChange> nonceChanges, List<CodeChange> codeChanges)
     {
         Address = address;
-        StorageChanges = storageChanges;
+        StorageChanges = new(Bytes.Comparer);
         StorageReads = storageReads;
         BalanceChanges = balanceChanges;
         NonceChanges = nonceChanges;

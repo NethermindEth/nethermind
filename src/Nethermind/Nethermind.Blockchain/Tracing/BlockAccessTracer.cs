@@ -20,7 +20,8 @@ public class BlockAccessTracer : IBlockTracer, ITxTracer, IJournal<int>
     protected Block Block = null!;
     public bool IsTracingReceipt => false;
     public bool IsTracingActions => false;
-    public bool IsTracingOpLevelStorage => false;
+    // public bool IsTracingOpLevelStorage => false;
+    public bool IsTracingOpLevelStorage => true;
     public bool IsTracingMemory => false;
     public bool IsTracingInstructions => false;
     public bool IsTracingRefunds => false;
@@ -171,7 +172,7 @@ public class BlockAccessTracer : IBlockTracer, ITxTracer, IJournal<int>
             _bal.AccountChanges.Add(address, accountChanges);
         }
 
-        if (!Enumerable.SequenceEqual(before, after))
+        if (before is null || !Enumerable.SequenceEqual(before, after))
         {
             StorageChange(accountChanges, storageCell.Hash.BytesAsSpan, after.AsSpan());
         }
@@ -298,22 +299,27 @@ public class BlockAccessTracer : IBlockTracer, ITxTracer, IJournal<int>
 
     private void StorageChange(AccountChanges accountChanges, in ReadOnlySpan<byte> key, in ReadOnlySpan<byte> value)
     {
+        Span<byte> newValue = stackalloc byte[32];
+        newValue.Clear();
+        value.CopyTo(newValue[(32 - value.Length)..]);
         StorageChange storageChange = new()
         {
             BlockAccessIndex = _blockAccessIndex,
-            NewValue = new(value.ToArray())
+            NewValue = new(newValue.ToArray())
         };
 
         byte[] storageKey = [.. key];
+
         if (!accountChanges.StorageChanges.TryGetValue(storageKey, out SlotChanges storageChanges))
         {
-            storageChanges = new();
+            storageChanges = new(storageKey);
         }
         else if (storageChanges.Changes is not [] && storageChanges.Changes[^1].BlockAccessIndex == _blockAccessIndex)
         {
             storageChanges.Changes.RemoveAt(storageChanges.Changes.Count - 1);
         }
         storageChanges.Changes.Add(storageChange);
+        accountChanges.StorageChanges[storageKey] = storageChanges;
     }
 
 }
