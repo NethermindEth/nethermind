@@ -9,12 +9,12 @@ namespace Nethermind.Serialization.Rlp
 {
     public class BlockDecoder : IRlpValueDecoder<Block>, IRlpStreamDecoder<Block>
     {
-        private readonly IHeaderRlpCodec _headerDecoder;
+        private readonly IHeaderDecoder _headerDecoder;
         private readonly BlockBodyDecoder _blockBodyDecoder = BlockBodyDecoder.Instance;
 
         public BlockDecoder() : this(new HeaderDecoder()) { }
 
-        public BlockDecoder(IHeaderRlpCodec headerCodec)
+        public BlockDecoder(IHeaderDecoder headerCodec)
         {
             _headerDecoder = headerCodec ?? throw new ArgumentNullException(nameof(headerCodec));
         }

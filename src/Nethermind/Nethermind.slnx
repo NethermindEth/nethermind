@@ -79,7 +79,7 @@
     <Project Path="Nethermind.Trie.Test/Nethermind.Trie.Test.csproj" />
     <Project Path="Nethermind.TxPool.Test/Nethermind.TxPool.Test.csproj" />
     <Project Path="Nethermind.Wallet.Test/Nethermind.Wallet.Test.csproj" />
-    <Project Path="Nethermind.Xdc.Test\Nethermind.Xdc.Test.csproj" Type="Classic C#" />
+    <Project Path="Nethermind.Xdc.Test\Nethermind.Xdc.Test.csproj" />
   </Folder>
   <Project Path="Nethermind.Abi/Nethermind.Abi.csproj" />
   <Project Path="Nethermind.Api/Nethermind.Api.csproj" />
