@@ -122,36 +122,22 @@ public class PayloadPreparationService : IPayloadPreparationService, IDisposable
     public string StartPreparingPayload(BlockHeader parentHeader, PayloadAttributes payloadAttributes, List<byte[]>? txRlp)
     {
         string payloadId = payloadAttributes.GetPayloadId(parentHeader);
-        if (!_payloadStorage.ContainsKey(payloadId))
+        if (_logger.IsInfo) _logger.Info($" Production Request  {parentHeader.Number + 1} PayloadId: {payloadId}");
+        long startTimestamp = Stopwatch.GetTimestamp();
+        Block block;
+        if (txRlp != null)
         {
-            if (_logger.IsInfo) _logger.Info($" Production Request  {parentHeader.Number + 1} PayloadId: {payloadId}");
-            long startTimestamp = Stopwatch.GetTimestamp();
-            Block block;
-            if (txRlp != null)
-            {
-                block = ProduceBlockWithInitTx(payloadId, parentHeader, payloadAttributes, txRlp);
-            }
-            else
-            {
-                block = ProduceEmptyBlock(payloadId, parentHeader, payloadAttributes);
-            }
+            block = ProduceBlockWithInitTx(payloadId, parentHeader, payloadAttributes, txRlp);
+        }
+        else
+        {
+            block = ProduceEmptyBlock(payloadId, parentHeader, payloadAttributes);
+        }
 
-            if (_logger.IsInfo) _logger.Info($" Produced (Empty)    {block.ToString(block.Difficulty != 0 ? Block.Format.HashNumberDiffAndTx : Block.Format.HashNumberMGasAndTx)} | {Stopwatch.GetElapsedTime(startTimestamp).TotalMilliseconds,8:N2} ms");
-            ImproveBlock(payloadId, parentHeader, payloadAttributes, block, DateTimeOffset.UtcNow, default, CancellationTokenSource.CreateLinkedTokenSource(_shutdown.Token));
-        }
-        else if (_logger.IsInfo)
-        {
-            // Shouldn't really happen so move string construction code out of hot method
-            LogMultiStartRequest(payloadId, parentHeader.Number + 1);
-        }
+        if (_logger.IsInfo) _logger.Info($" Produced (Empty)    {block.ToString(block.Difficulty != 0 ? Block.Format.HashNumberDiffAndTx : Block.Format.HashNumberMGasAndTx)} | {Stopwatch.GetElapsedTime(startTimestamp).TotalMilliseconds,8:N2} ms");
+        ImproveBlock(payloadId, parentHeader, payloadAttributes, block, DateTimeOffset.UtcNow, default, CancellationTokenSource.CreateLinkedTokenSource(_shutdown.Token));
 
         return payloadId;
-
-        [MethodImpl(MethodImplOptions.NoInlining)]
-        void LogMultiStartRequest(string payloadId, long number)
-        {
-            _logger.Info($"Payload for block {number} with same parameters has already started. PayloadId: {payloadId}");
-        }
     }
 
     private Block ProduceBlockWithInitTx(string payloadId, BlockHeader parentHeader, PayloadAttributes payloadAttributes, List<byte[]> txRlp)

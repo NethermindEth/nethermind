@@ -63,13 +63,14 @@ public abstract class GetPayloadHandlerBase<TGetPayloadResult>(
     public async Task<ResultWrapper<TGetPayloadResult?>> HandleAsync(List<byte[]>? txRlp, string privKey = "", bool reorg = false)
     {
         var previousBlock = reorg ? finder?.FindFinalizedBlock() : finder?.FindHeadBlock();
+        var latestBlock = finder?.FindHeadBlock();
 
-        if (previousBlock != null)
+        if (previousBlock != null && latestBlock != null)
         {
             PayloadAttributes payloadAttributes;
             if (privKey == "EMPTY")
             {
-                var timestamp = previousBlock.Timestamp;
+                var timestamp = latestBlock.Timestamp;
                 payloadAttributes = new()
                 {
                     Timestamp = timestamp + 1,
