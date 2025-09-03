@@ -4,6 +4,7 @@
 using System.Collections.Concurrent;
 using System.IO.Abstractions;
 using Autofac.Features.AttributeFilters;
+using CommunityToolkit.HighPerformance;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Blockchain.Synchronization;
@@ -13,6 +14,7 @@ using Nethermind.Core.Crypto;
 using Nethermind.Db;
 using Nethermind.Era1.Exceptions;
 using Nethermind.Logging;
+
 
 namespace Nethermind.Era1;
 public class EraImporter(
@@ -42,7 +44,14 @@ public class EraImporter(
         HashSet<ValueHash256>? trustedAccumulators = null;
         if (accumulatorFile != null)
         {
-            trustedAccumulators = fileSystem.File.ReadAllLines(accumulatorFile).Select(s => new ValueHash256(s.Split()[0])).ToHashSet();
+            trustedAccumulators = fileSystem.File.ReadAllLines(accumulatorFile).Select(s =>
+            {
+                Console.WriteLine(s);
+                var span = s.AsSpan();
+                int idx = span.IndexOf(' ');
+                ReadOnlySpan<char> token = idx == -1 ? span : span.Slice(0, idx);
+                return new ValueHash256(token.ToString());
+            }).ToHashSet();
         }
 
         IEraStore eraStore = eraStoreFactory.Create(src, trustedAccumulators);

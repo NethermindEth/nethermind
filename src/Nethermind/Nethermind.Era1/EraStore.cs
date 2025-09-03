@@ -3,6 +3,7 @@
 
 using System.IO.Abstractions;
 using System.Runtime.CompilerServices;
+using CommunityToolkit.HighPerformance;
 using Nethermind.Consensus.Validators;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
@@ -93,7 +94,13 @@ public class EraStore : IEraStore
 
         // Geth behaviour seems to be to always read the checksum and fail when its missing.
         _checksums = fileSystem.File.ReadAllLines(Path.Join(directory, EraExporter.ChecksumsFileName))
-            .Select(static (chk) => new ValueHash256(chk.Split()[0]))
+            .Select(static (chk) =>
+            {
+                var span = chk.AsSpan();
+                int idx = span.IndexOf(' ');
+                ReadOnlySpan<char> token = idx == -1 ? span : span.Slice(0, idx);
+                return new ValueHash256(token.ToString());
+            })
             .ToArray();
 
         bool hasEraFile = false;
