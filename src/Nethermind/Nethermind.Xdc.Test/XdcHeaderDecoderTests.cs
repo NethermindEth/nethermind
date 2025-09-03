@@ -5,11 +5,15 @@ using Nethermind.Int256;
 using Nethermind.Serialization.Rlp;
 
 using Nethermind.Core.Test.Builders;
+using Nethermind.Core.Extensions;
+using Nethermind.Crypto;
+using Nethermind.Xdc;
+using Nethermind.Core.Crypto;
 
 namespace Nethermind.Xdc.Test
 {
     [TestFixture]
-    public class XdcHeaderRlpCodecTests
+    public class XdcHeaderDecoderTests
     {
         private static (XdcBlockHeader Header, byte[] Bytes) BuildHeaderAndDefaultEncode(XdcHeaderDecoder codec, bool includeBaseFee = true)
         {
@@ -63,19 +67,31 @@ namespace Nethermind.Xdc.Test
         }
 
         [Test]
-        public void Encode_ForSealing_Omits_MixHash_And_Nonce()
+        public void Encode_ForSealing_Omits_Validator()
         {
-            var codec = new XdcHeaderDecoder();
-            var (header, encodedBytes) = BuildHeaderAndDefaultEncode(codec);
+            var decoder = new XdcHeaderDecoder();
+            var (header, encodedBytes) = BuildHeaderAndDefaultEncode(decoder);
             int fullLen = encodedBytes.Length;
 
             // ForSealing encoding
-            Rlp sealing = codec.Encode(header, RlpBehaviors.ForSealing);
-            int sealingLen = sealing.Bytes.Length;
+            Rlp encoded = decoder.Encode(header, RlpBehaviors.ForSealing);
+            XdcBlockHeader unencoded = (XdcBlockHeader)decoder.Decode(new RlpStream(encoded.Bytes), RlpBehaviors.ForSealing)!;
 
-            int mixPart = Rlp.LengthOf(header.MixHash) + Rlp.LengthOfNonce(header.Nonce);
-            Assert.That(fullLen - mixPart, Is.EqualTo(sealingLen),
-                "ForSealing encoding should be shorter by MixHash+Nonce RLP sizes.");
+            Assert.That(unencoded.Validator, Is.Null,
+                "ForSealing encoding should not contain Validator field.");
         }
+
+        [TestCase("0xf90258a00000000000000000000000000000000000000000000000000000000000000000a01dcc4de8dec75d7aab85b567b6ccd41ad312451b948a7413f0a142fd40d49347940000000000000000000000000000000000000000a0efb190856ff185dded722e2dca183304c92fd7ac25f2ef5ea8ff9d518ba85693a056e81f171bcc55a6ff8345e692c0f86e5b48e01b996cadc001622fb5e363b421a056e81f171bcc55a6ff8345e692c0f86e5b48e01b996cadc001622fb5e363b421b90100000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000008302000080839896808080b86100000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000a00000000000000000000000000000000000000000000000000000000000000000880000000000000000808080")]
+        [TestCase("0xf901f3a0683da113eb01cc0265a2c3399b49a80671b850c8b12739150fc6a1d2ca16b7d3a01dcc4de8dec75d7aab85b567b6ccd41ad312451b948a7413f0a142fd40d49347940000000000000000000000000000000000000000a0efb190856ff185dded722e2dca183304c92fd7ac25f2ef5ea8ff9d518ba85693a056e81f171bcc55a6ff8345e692c0f86e5b48e01b996cadc001622fb5e363b421a056e81f171bcc55a6ff8345e692c0f86e5b48e01b996cadc001622fb5e363b421b901000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000001018398bca4800a80a00000000000000000000000000000000000000000000000000000000000000000880000000000000000808080")]
+        public void Encode_Xdc_Rlp_Decodes_Correctly(string hexRlp)
+        {
+            var decoder = new XdcHeaderDecoder();
+
+            BlockHeader? unencoded = decoder.Decode(new RlpStream(Bytes.FromHexString(hexRlp)));
+
+            string encoded = decoder.Encode(unencoded).ToString();
+
+            Assert.That(encoded, Is.EqualTo(hexRlp));
+        }        
     }
 }
