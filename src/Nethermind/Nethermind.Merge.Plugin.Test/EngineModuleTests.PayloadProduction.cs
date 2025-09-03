@@ -316,7 +316,10 @@ public partial class EngineModuleTests
         IEngineRpcModule rpc = chain.EngineRpcModule;
         byte[] payloadId = Bytes.FromHexString("0x1111111111111111");
 
-        byte[]? param1 = null;
+        List<byte[]> param1 = new List<byte[]>() {
+            Bytes.FromHexString("0x02f8620180011482520894475674cb523a0a2736b7f7534390288fce16982c0180c001a0db002b398e038bc919b316a214154aa6d9d5e404cb201aa8a151efb92f9fdbbda07bee8ea6915ed54bb07af4cd69b201548fe9aac699978e5c444405dc49f55a36"),
+            Bytes.FromHexString("0xf85f800182520894475674cb523a0a2736b7f7534390288fce16982c018025a0634db2f18f24d740be29e03dd217eea5757ed7422680429bdd458c582721b6c2a02f0fa83931c9a99d3448a46b922261447d6a41d8a58992b5596089d15d521102")
+        };
         string param2 = "EMPTY";
         string result = await RpcTest.TestSerializedRequest(rpc, "engine_getPayloadV4", param1, param2);
         Console.WriteLine(result);

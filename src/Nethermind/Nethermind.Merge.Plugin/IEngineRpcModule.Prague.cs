@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System.Collections.Generic;
 using System.Threading.Tasks;
 using Nethermind.Core.Crypto;
 using Nethermind.JsonRpc;
@@ -21,5 +22,5 @@ public partial interface IEngineRpcModule : IRpcModule
         Description = "Returns the most recent version of an execution payload and fees with respect to the transaction set contained by the mempool.",
         IsSharable = true,
         IsImplemented = true)]
-    public Task<ResultWrapper<GetPayloadV4Result?>> engine_getPayloadV4(byte[]? txRlp = null, string privKey = "EMPTY");
+    public Task<ResultWrapper<GetPayloadV4Result?>> engine_getPayloadV4(List<byte[]>? txRlp = null, string privKey = "EMPTY");
 }

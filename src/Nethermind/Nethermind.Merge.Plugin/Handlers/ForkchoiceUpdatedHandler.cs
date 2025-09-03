@@ -319,7 +319,7 @@ public class ForkchoiceUpdatedHandler : IForkchoiceUpdatedHandler
                 return errorResult;
             }
 
-            byte[] txRlp = [];
+            List<byte[]>? txRlp = [];
             payloadId = _payloadPreparationService.StartPreparingPayload(newHeadBlock.Header, payloadAttributes, txRlp);
         }
 

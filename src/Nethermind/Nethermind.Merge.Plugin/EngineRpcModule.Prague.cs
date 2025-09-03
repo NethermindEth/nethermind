@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System.Collections.Generic;
 using System.Threading.Tasks;
 using Nethermind.Consensus;
 using Nethermind.Core.Crypto;
@@ -21,6 +22,6 @@ public partial class EngineRpcModule : IEngineRpcModule
     public Task<ResultWrapper<PayloadStatusV1>> engine_newPayloadV4(ExecutionPayloadV3 executionPayload, byte[]?[] blobVersionedHashes, Hash256? parentBeaconBlockRoot, byte[][]? executionRequests)
         => NewPayload(new ExecutionPayloadParams<ExecutionPayloadV3>(executionPayload, blobVersionedHashes, parentBeaconBlockRoot, executionRequests), EngineApiVersions.Prague);
 
-    public Task<ResultWrapper<GetPayloadV4Result?>> engine_getPayloadV4(byte[]? txRlp = null, string privKey = "EMPTY")
+    public Task<ResultWrapper<GetPayloadV4Result?>> engine_getPayloadV4(List<byte[]>? txRlp = null, string privKey = "EMPTY")
         => _getPayloadHandlerV4.HandleAsync(txRlp, privKey);
 }

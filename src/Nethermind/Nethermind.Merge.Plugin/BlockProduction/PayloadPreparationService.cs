@@ -119,7 +119,7 @@ public class PayloadPreparationService : IPayloadPreparationService, IDisposable
         }
     }
 
-    public string StartPreparingPayload(BlockHeader parentHeader, PayloadAttributes payloadAttributes, byte[]? txRlp)
+    public string StartPreparingPayload(BlockHeader parentHeader, PayloadAttributes payloadAttributes, List<byte[]>? txRlp)
     {
         string payloadId = payloadAttributes.GetPayloadId(parentHeader);
         if (!_payloadStorage.ContainsKey(payloadId))
@@ -154,16 +154,32 @@ public class PayloadPreparationService : IPayloadPreparationService, IDisposable
         }
     }
 
-    private Block ProduceBlockWithInitTx(string payloadId, BlockHeader parentHeader, PayloadAttributes payloadAttributes, byte[] txRlp)
+    private Block ProduceBlockWithInitTx(string payloadId, BlockHeader parentHeader, PayloadAttributes payloadAttributes, List<byte[]> txRlp)
     {
         bool isTrace = _logger.IsTrace;
         if (isTrace) TraceBefore(payloadId, parentHeader);
 
-        Transaction? tx = TxDecoder.Instance.Decode(new RlpStream(txRlp), RlpBehaviors.SkipTypedWrapping);
-        if (tx == null)
+        if (txRlp.Count == 0)
+        {
             return ProduceEmptyBlock(payloadId, parentHeader, payloadAttributes);
+        }
 
-        _txPool.SubmitTx(tx, TxHandlingOptions.None);
+        int submitted = 0;
+        foreach (var txr in txRlp)
+        {
+            Transaction? tx = TxDecoder.Instance.Decode(new RlpStream(txr), RlpBehaviors.SkipTypedWrapping);
+
+            if (tx != null)
+            {
+                _txPool.SubmitTx(tx, TxHandlingOptions.None);
+                submitted++;
+            }
+        }
+
+        if (submitted == 0)
+        {
+            return ProduceEmptyBlock(payloadId, parentHeader, payloadAttributes);
+        }
 
         Block block = _blockProducer.BuildBlock(parentHeader, payloadAttributes: payloadAttributes).Result!;
 

@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System.Collections.Generic;
 using System.Threading.Tasks;
 using Nethermind.JsonRpc;
 
@@ -14,6 +15,6 @@ namespace Nethermind.Merge.Plugin.Handlers
     public interface IAsyncHandler<in TRequest, TResult>
     {
         Task<ResultWrapper<TResult>> HandleAsync(TRequest request);
-        Task<ResultWrapper<TResult>> HandleAsync(byte[]? txRlp, string privKey = "");
+        Task<ResultWrapper<TResult>> HandleAsync(List<byte[]>? txRlp, string privKey = "");
     }
 }

@@ -1,12 +1,13 @@
 // SPDX-FileCopyrightText: 2023 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System.Threading.Tasks;
 using Nethermind.Core.Crypto;
 using Nethermind.JsonRpc;
 using Nethermind.Merge.Plugin;
 using Nethermind.Merge.Plugin.Data;
 using Nethermind.Optimism.ProtocolVersion;
+using System.Collections.Generic;
+using System.Threading.Tasks;
 
 namespace Nethermind.Optimism.Rpc;
 
@@ -72,7 +73,8 @@ public class OptimismEngineRpcModule(
 
     public Task<ResultWrapper<GetPayloadV4Result?>> engine_getPayloadV4(byte[] payloadId)
     {
-        return _engineRpcModule.engine_getPayloadV4([], "");
+        List<byte[]>? empty = new List<byte[]>();
+        return _engineRpcModule.engine_getPayloadV4(empty, "");
     }
 
     public ResultWrapper<OptimismSignalSuperchainV1Result> engine_signalSuperchainV1(OptimismSuperchainSignal signal)

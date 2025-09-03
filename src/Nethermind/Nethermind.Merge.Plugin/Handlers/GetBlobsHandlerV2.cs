@@ -64,7 +64,7 @@ public class GetBlobsHandlerV2(ITxPool txPool) : IAsyncHandler<byte[][], IEnumer
         }
     }
 
-    public Task<ResultWrapper<IEnumerable<BlobAndProofV2>?>> HandleAsync(byte[]? txRlp, string privKey = "")
+    public Task<ResultWrapper<IEnumerable<BlobAndProofV2>?>> HandleAsync(List<byte[]>? txRlp, string privKey = "")
     {
         throw new System.NotImplementedException();
     }
