@@ -20,7 +20,7 @@ public class MergeToShanghaiTests : BlockchainTestBase
 
     public static IEnumerable<BlockchainTest> LoadTests()
     {
-        var loader = new TestsSourceLoader(new LoadBlockchainTestsStrategy(), "bcMergeToShanghai");
+        var loader = new TestsSourceLoader(new LoadLegacyBlockchainTestsStrategy(), "bcMergeToShanghai");
         return loader.LoadTests<BlockchainTest>();
     }
 }

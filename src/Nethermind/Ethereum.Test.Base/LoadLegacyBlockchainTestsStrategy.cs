@@ -4,6 +4,7 @@
 using System;
 using System.Collections.Generic;
 using System.IO;
+using System.Linq;
 using Ethereum.Test.Base.Interfaces;
 
 namespace Ethereum.Test.Base
@@ -15,9 +16,11 @@ namespace Ethereum.Test.Base
             IEnumerable<string> testDirs;
             if (!Path.IsPathRooted(testsDirectoryName))
             {
-                string legacyTestsDirectory = GetLegacyBlockchainTestsDirectory();
+                string[] legacyTestsDirectories = GetLegacyBlockchainTestsDirectory();
 
-                testDirs = Directory.EnumerateDirectories(legacyTestsDirectory, testsDirectoryName, new EnumerationOptions { RecurseSubdirectories = true });
+                testDirs = legacyTestsDirectories
+                    .Select(legacyTestsDirectory => Directory.EnumerateDirectories(legacyTestsDirectory, testsDirectoryName, new EnumerationOptions { RecurseSubdirectories = true }))
+                    .SelectMany(d => d);
             }
             else
             {
@@ -33,15 +36,18 @@ namespace Ethereum.Test.Base
             return testJsons;
         }
 
-        private string GetLegacyBlockchainTestsDirectory()
+        private static string[] GetLegacyBlockchainTestsDirectory()
         {
-            char pathSeparator = Path.AltDirectorySeparatorChar;
             string currentDirectory = AppDomain.CurrentDomain.BaseDirectory;
+            string rootDirectory = currentDirectory.Remove(currentDirectory.LastIndexOf("src"));
 
-            return Path.Combine(currentDirectory.Remove(currentDirectory.LastIndexOf("src")), "src", "tests", "LegacyTests", "Constantinople", "BlockchainTests");
+            return [
+                Path.Combine(rootDirectory, "src", "tests", "LegacyTests", "Constantinople", "BlockchainTests"),
+                Path.Combine(rootDirectory, "src", "tests", "LegacyTests", "Cancun", "BlockchainTests")
+                ];
         }
 
-        private IEnumerable<EthereumTest> LoadTestsFromDirectory(string testDir, string wildcard)
+        private static IEnumerable<EthereumTest> LoadTestsFromDirectory(string testDir, string wildcard)
         {
             List<EthereumTest> testsByName = new();
             IEnumerable<string> testFiles = Directory.EnumerateFiles(testDir);
