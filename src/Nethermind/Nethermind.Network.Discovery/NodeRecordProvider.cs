@@ -8,6 +8,7 @@ using Nethermind.Network.Config;
 using Nethermind.Network.Enr;
 using Nethermind.Blockchain;
 using Nethermind.Network;
+using Nethermind.Core;
 
 namespace Nethermind.Network.Discovery;
 
