@@ -18,13 +18,13 @@ using Nethermind.State;
 namespace Nethermind.Blockchain;
 
 public class CachedCodeInfoRepository(
-    IPrecompileFactory precompileFactory,
+    IPrecompileProvider precompileProvider,
     ICodeInfoRepository baseCodeInfoRepository,
     ConcurrentDictionary<PreBlockCaches.PrecompileCacheKey, (byte[], bool)>? precompileCache) : ICodeInfoRepository
 {
     private readonly FrozenDictionary<AddressAsKey, PrecompileInfo> _cachedPrecompile = precompileCache is null
-        ? precompileFactory.GetPrecompiles()
-        : precompileFactory.GetPrecompiles().ToFrozenDictionary(kvp => kvp.Key, kvp => CreateCachedPrecompile(kvp, precompileCache));
+        ? precompileProvider.GetPrecompiles()
+        : precompileProvider.GetPrecompiles().ToFrozenDictionary(kvp => kvp.Key, kvp => CreateCachedPrecompile(kvp, precompileCache));
 
     public ICodeInfo GetCachedCodeInfo(IWorldState worldState, Address codeSource, bool followDelegation, IReleaseSpec vmSpec,
         out Address? delegationAddress)

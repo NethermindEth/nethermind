@@ -46,7 +46,7 @@ public class BlockProcessingModule(IInitConfig initConfig) : Module
             // Block processing components common between rpc, validation and production
             .AddScoped<ITransactionProcessor, TransactionProcessor>()
             .AddScoped<ICodeInfoRepository, CodeInfoRepository>()
-                .AddSingleton<IPrecompileFactory, EthereumPrecompileFactory>()
+                .AddSingleton<IPrecompileProvider, EthereumPrecompileProvider>()
             .AddScoped<IVirtualMachine, VirtualMachine>()
             .AddScoped<IBlockhashProvider, BlockhashProvider>()
             .AddScoped<IBeaconBlockRootHandler, BeaconBlockRootHandler>()

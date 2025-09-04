@@ -7,7 +7,7 @@ using Nethermind.Evm.CodeAnalysis;
 
 namespace Nethermind.Evm;
 
-public interface IPrecompileFactory
+public interface IPrecompileProvider
 {
     public FrozenDictionary<AddressAsKey, PrecompileInfo> GetPrecompiles();
 }
