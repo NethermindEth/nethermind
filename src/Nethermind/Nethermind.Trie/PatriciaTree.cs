@@ -504,9 +504,7 @@ namespace Nethermind.Trie
                 TreePath startingPath = TreePath.Empty;
                 TrieNode startNode = TrieStore.FindCachedOrUnknown(startingPath, startRootHash);
                 ResolveNode(startNode, in traverseContext, in startingPath);
-                return startNode.IsBranch ?
-                    TraverseBranches(startNode, ref startingPath, traverseContext) :
-                    TraverseNode(startNode, traverseContext, ref startingPath);
+                return TraverseNode(startNode, traverseContext, ref startingPath);
             }
             else
             {
@@ -528,9 +526,7 @@ namespace Nethermind.Trie
                     TreePath startingPath = TreePath.Empty;
                     ResolveNode(RootRef, in traverseContext, in startingPath);
                     if (_logger.IsTrace) TraceNode(in traverseContext);
-                    return RootRef.IsBranch ?
-                        TraverseBranches(RootRef, ref startingPath, traverseContext) :
-                        TraverseNode(RootRef, traverseContext, ref startingPath);
+                    return TraverseNode(RootRef, traverseContext, ref startingPath);
                 }
             }
 
@@ -577,7 +573,20 @@ namespace Nethermind.Trie
             }
         }
 
-        private SpanSource TraverseNode(TrieNode node, scoped in TraverseContext traverseContext, scoped ref TreePath path)
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        private SpanSource TraverseNode(TrieNode node, scoped in TraverseContext traverseContext,
+            scoped ref TreePath path)
+        {
+            if (node.IsBranch)
+            {
+                return TraverseBranches(node, traverseContext, ref path);
+            }
+
+            return TraverseExtensionOrLeaf(node, traverseContext, ref path);
+        }
+
+
+        private SpanSource TraverseExtensionOrLeaf(TrieNode node, scoped in TraverseContext traverseContext, scoped ref TreePath path)
         {
             if (_logger.IsTrace) Trace(node, traverseContext);
 
@@ -607,19 +616,11 @@ namespace Nethermind.Trie
             {
                 switch (node.NodeType)
                 {
-                    case NodeType.Branch:
-                        return TraverseBranch(node);
                     case NodeType.Unknown:
                         return TraverseUnknown(node);
                     default:
                         return ThrowNotSupported(node);
                 }
-            }
-
-            [DoesNotReturn, StackTraceHidden]
-            static SpanSource TraverseBranch(TrieNode node)
-            {
-                throw new InvalidOperationException($"Branch node {node.Keccak} should already be handled");
             }
 
             [DoesNotReturn, StackTraceHidden]
@@ -870,7 +871,7 @@ namespace Nethermind.Trie
                 => throw new InvalidOperationException($"An attempt to set a null node as a child of the {node}");
         }
 
-        private SpanSource TraverseBranches(TrieNode node, scoped ref TreePath path, TraverseContext traverseContext)
+        private SpanSource TraverseBranches(TrieNode node, TraverseContext traverseContext, scoped ref TreePath path)
         {
             while (true)
             {
@@ -897,7 +898,7 @@ namespace Nethermind.Trie
                 traverseContext = traverseContext.WithNewIndex(traverseContext.CurrentIndex + 1);
                 if (!childNode.IsBranch)
                 {
-                    return TraverseNode(childNode, in traverseContext, ref path);
+                    return TraverseExtensionOrLeaf(childNode, in traverseContext, ref path);
                 }
 
                 // Traverse next branch
@@ -963,8 +964,6 @@ namespace Nethermind.Trie
                     ConnectNodes(withUpdatedValue, in traverseContext);
                     return traverseContext.UpdateValue;
                 }
-
-                return traverseContext.UpdateValue;
             }
 
             if (traverseContext.IsRead || traverseContext.IsDelete)
@@ -1028,9 +1027,7 @@ namespace Nethermind.Trie
 
                 ResolveNode(next, in traverseContext, in path);
                 TraverseContext newContext = traverseContext.WithNewIndex(traverseContext.CurrentIndex + extensionLength);
-                return next.IsBranch ?
-                    TraverseBranches(next, ref path, newContext) :
-                    TraverseNode(next, newContext, ref path);
+                return TraverseNode(next, newContext, ref path);
             }
 
             if (traverseContext.IsRead || traverseContext.IsDelete)
@@ -1168,7 +1165,6 @@ namespace Nethermind.Trie
                 ref TreePath updatePathTreePath,
                 SpanSource updateValue,
                 bool isUpdate,
-                bool ignoreMissingDelete = true,
                 bool isNodeRead = false)
             {
                 UpdatePath = updatePath;
