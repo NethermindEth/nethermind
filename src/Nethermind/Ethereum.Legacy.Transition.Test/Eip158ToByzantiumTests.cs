@@ -6,11 +6,11 @@ using System.Threading.Tasks;
 using Ethereum.Test.Base;
 using NUnit.Framework;
 
-namespace Ethereum.Transition.Test
+namespace Ethereum.Legacy.Transition.Test
 {
     [TestFixture]
     [Parallelizable(ParallelScope.All)]
-    public class HomesteadToDaoTests : BlockchainTestBase
+    public class Eip158ToByzantiumTests : BlockchainTestBase
     {
         [TestCaseSource(nameof(LoadTests))]
         public async Task Test(BlockchainTest test)
@@ -20,7 +20,7 @@ namespace Ethereum.Transition.Test
 
         public static IEnumerable<BlockchainTest> LoadTests()
         {
-            var loader = new TestsSourceLoader(new LoadBlockchainTestsStrategy(), "bcHomesteadToDao");
+            var loader = new TestsSourceLoader(new LoadBlockchainTestsStrategy(), "bcEIP158ToByzantium");
             return loader.LoadTests<BlockchainTest>();
         }
     }

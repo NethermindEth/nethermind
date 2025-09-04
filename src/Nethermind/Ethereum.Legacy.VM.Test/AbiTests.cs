@@ -28,7 +28,7 @@ internal class AbiTests
 
     private static AbiTest Convert(string name, AbiTestJson testJson)
     {
-        var test = new AbiTest();
+        AbiTest test = new();
         test.Name = name;
         test.Result = Bytes.FromHexString(testJson.Result);
         test.Types = testJson.Types.Select(ToAbiType).ToArray();
@@ -47,9 +47,9 @@ internal class AbiTests
     [TestCaseSource(nameof(LoadBasicAbiTests))]
     public void Test(AbiTest abiTest)
     {
-        var encoder = new AbiEncoder();
-        var signature = new AbiSignature(abiTest.Name, abiTest.Types);
-        var encoded = encoder.Encode(AbiEncodingStyle.IncludeSignature, signature, abiTest.Args).Slice(4);
+        AbiEncoder encoder = new AbiEncoder();
+        AbiSignature signature = new AbiSignature(abiTest.Name, abiTest.Types);
+        byte[] encoded = encoder.Encode(AbiEncodingStyle.IncludeSignature, signature, abiTest.Args).Slice(4);
         Assert.That(Bytes.AreEqual(abiTest.Result, encoded), Is.True);
     }
 

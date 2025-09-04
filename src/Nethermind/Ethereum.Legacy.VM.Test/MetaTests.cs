@@ -16,17 +16,17 @@ namespace Ethereum.Legacy.VM.Test
         [Test]
         public void All_categories_are_tested()
         {
-            var directories =
+            string[] directories =
                 Directory.GetDirectories(AppDomain.CurrentDomain.BaseDirectory)
                 .Select(Path.GetFileName)
                 .Where(d => d.StartsWith("vm"))
                 .ToArray();
 
             Type[] types = GetType().Assembly.GetTypes();
-            var missingCategories = new List<string>();
-            foreach (var directory in directories)
+            List<string> missingCategories = new List<string>();
+            foreach (string directory in directories)
             {
-                var expectedTypeName = ExpectedTypeName(directory);
+                string expectedTypeName = ExpectedTypeName(directory);
                 if (types.All(t => !string.Equals(t.Name, expectedTypeName, StringComparison.InvariantCultureIgnoreCase)))
                 {
                     if (new DirectoryInfo(directory).GetFiles().Any(f => f.Name.Contains(".resources.")))
@@ -36,7 +36,7 @@ namespace Ethereum.Legacy.VM.Test
                 }
             }
 
-            foreach (var missing in missingCategories)
+            foreach (string missing in missingCategories)
             {
                 Console.WriteLine($"{missing} category is missing");
             }
@@ -46,7 +46,7 @@ namespace Ethereum.Legacy.VM.Test
 
         private static string ExpectedTypeName(string directory)
         {
-            var expectedTypeName = directory.Remove(0, 2);
+            string expectedTypeName = directory.Remove(0, 2);
             if (!expectedTypeName.EndsWith("Tests"))
             {
                 if (!expectedTypeName.EndsWith("Test"))

@@ -56,12 +56,12 @@
   <Project Path="Ethereum.KeyStore.Test/Ethereum.KeyStore.Test.csproj" />
   <Project Path="Ethereum.Legacy.Blockchain.Block.Test/Ethereum.Legacy.Blockchain.Block.Test.csproj" />
   <Project Path="Ethereum.Legacy.Blockchain.Test/Ethereum.Legacy.Blockchain.Test.csproj" />
+  <Project Path="Ethereum.Legacy.Transition.Test/Ethereum.Legacy.Transition.Test.csproj" />
   <Project Path="Ethereum.Legacy.VM.Test/Ethereum.Legacy.VM.Test.csproj" />
   <Project Path="Ethereum.PoW.Test/Ethereum.PoW.Test.csproj" />
   <Project Path="Ethereum.Rlp.Test/Ethereum.Rlp.Test.csproj" />
   <Project Path="Ethereum.Test.Base/Ethereum.Test.Base.csproj" />
   <Project Path="Ethereum.Transaction.Test/Ethereum.Transaction.Test.csproj" />
-  <Project Path="Ethereum.Transition.Test/Ethereum.Transition.Test.csproj" />
   <Project Path="Ethereum.Trie.Test/Ethereum.Trie.Test.csproj" />
   <Project Path="Nethermind.Blockchain.Test.Runner/Nethermind.Blockchain.Test.Runner.csproj" />
   <Project Path="Nethermind.EofParse.Runner/Nethermind.EofParse.Runner.csproj" />

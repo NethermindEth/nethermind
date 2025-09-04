@@ -6,7 +6,7 @@ using System.Threading.Tasks;
 using Ethereum.Test.Base;
 using NUnit.Framework;
 
-namespace Ethereum.Transition.Test;
+namespace Ethereum.Legacy.Transition.Test;
 
 [TestFixture]
 [Parallelizable(ParallelScope.All)]
