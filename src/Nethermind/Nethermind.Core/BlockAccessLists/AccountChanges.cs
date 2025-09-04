@@ -13,6 +13,7 @@ public readonly struct AccountChanges : IEquatable<AccountChanges>
 {
     public Address Address { get; init; }
     public SortedDictionary<byte[], SlotChanges> StorageChanges { get; init; }
+    // should be ordered sets / lists
     public List<StorageRead> StorageReads { get; init; }
     public List<BalanceChange> BalanceChanges { get; init; }
     public List<NonceChange> NonceChanges { get; init; }

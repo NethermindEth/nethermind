@@ -283,10 +283,10 @@ public class BlockAccessListTests()
                 Address = Eip7002Constants.WithdrawalRequestPredeployAddress,
                 StorageChanges = new(Bytes.Comparer) { { slot0, new SlotChanges(slot0, [zeroStorageChangeEnd]) }, { slot2, new SlotChanges(slot2, [zeroStorageChangeEnd]) }, { slot1, new SlotChanges(slot1, [zeroStorageChangeEnd]) }, { slot3, new SlotChanges(slot3, [zeroStorageChangeEnd]) } },
                 StorageReads = [
-                    new(Bytes32.Wrap(Bytes.FromHexString("0xb10e2d527612073b26eecdfd717e6a320cf44b4afac2b0732d9fcbe2b7fa0cf6"))),
-                    new(Bytes32.Wrap(Bytes.FromHexString("0x290decd9548b62a8d60345a988386fc84ba6bc95484008f6362f93160ef3e563"))),
-                    new(Bytes32.Wrap(Bytes.FromHexString("0x405787fa12a823e0f2b7631cc41b3ba8828b3321ca811111fa75cd3aa3bb5ace"))),
-                    new(Bytes32.Wrap(Bytes.FromHexString("0xc2575a0e9e593c00f959f8c92f12db2869c3395a3b0502d05e2516446f71f85b"))),
+                    ToStorageRead(slot1),
+                    ToStorageRead(slot0),
+                    ToStorageRead(slot2),
+                    ToStorageRead(slot3),
                 ],
                 BalanceChanges = [],
                 NonceChanges = [],
@@ -298,10 +298,10 @@ public class BlockAccessListTests()
                 Address = Eip7251Constants.ConsolidationRequestPredeployAddress,
                 StorageChanges = new(Bytes.Comparer) { { slot0, new SlotChanges(slot0, [zeroStorageChangeEnd]) }, { slot2, new SlotChanges(slot2, [zeroStorageChangeEnd]) }, { slot1, new SlotChanges(slot1, [zeroStorageChangeEnd]) }, { slot3, new SlotChanges(slot3, [zeroStorageChangeEnd]) } },
                 StorageReads = [
-                    new(Bytes32.Wrap(Bytes.FromHexString("0xb10e2d527612073b26eecdfd717e6a320cf44b4afac2b0732d9fcbe2b7fa0cf6"))),
-                    new(Bytes32.Wrap(Bytes.FromHexString("0x290decd9548b62a8d60345a988386fc84ba6bc95484008f6362f93160ef3e563"))),
-                    new(Bytes32.Wrap(Bytes.FromHexString("0x405787fa12a823e0f2b7631cc41b3ba8828b3321ca811111fa75cd3aa3bb5ace"))),
-                    new(Bytes32.Wrap(Bytes.FromHexString("0xc2575a0e9e593c00f959f8c92f12db2869c3395a3b0502d05e2516446f71f85b"))),
+                    ToStorageRead(slot1),
+                    ToStorageRead(slot0),
+                    ToStorageRead(slot2),
+                    ToStorageRead(slot3),
                 ],
                 BalanceChanges = [],
                 NonceChanges = [],
@@ -339,4 +339,7 @@ public class BlockAccessListTests()
 
     private static byte[] ToStorageSlot(ulong x)
         => ValueKeccak.Compute(new BigInteger(x).ToBytes32(true)).ToByteArray();
+
+    private static StorageRead ToStorageRead(byte[] x)
+        => new(Bytes32.Wrap(x));
 }
