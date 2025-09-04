@@ -201,88 +201,20 @@ public class BlockAccessListTests()
         AccountChanges addressCChanges = accountChanges[TestItem.AddressC];
         AccountChanges addressDChanges = accountChanges[TestItem.AddressD];
         AccountChanges eip2935Changes = accountChanges[Eip2935Constants.BlockHashHistoryAddress];
-        // string k1 = Convert.ToHexString(eip2935Changes.StorageChanges.First().Key);
-        // string v1 = Convert.ToHexString(eip2935Changes.StorageChanges.First().Value.Changes.First().NewValue.Unwrap());
         AccountChanges eip4788Changes = accountChanges[Eip4788Constants.BeaconRootsAddress];
-        // string k2 = Convert.ToHexString(eip4788Changes.StorageChanges.First().Key);
-        // string v2 = Convert.ToHexString(eip4788Changes.StorageChanges.First().Value.Changes.First().NewValue.Unwrap());
-        // string k3 = Convert.ToHexString(eip4788Changes.StorageChanges.ElementAt(1).Key);
-        // string v3 = Convert.ToHexString(eip4788Changes.StorageChanges.ElementAt(1).Value.Changes.First().NewValue.Unwrap());
         AccountChanges eip7002Changes = accountChanges[Eip7002Constants.WithdrawalRequestPredeployAddress];
-        // string k4 = Convert.ToHexString(eip7002Changes.StorageChanges.First().Key);
-        // string v4 = Convert.ToHexString(eip7002Changes.StorageChanges.First().Value.Changes.First().NewValue.Unwrap());
-        // string k5 = Convert.ToHexString(eip7002Changes.StorageChanges.ElementAt(1).Key);
-        // string v5 = Convert.ToHexString(eip7002Changes.StorageChanges.ElementAt(1).Value.Changes.First().NewValue.Unwrap());
-        // string k6 = Convert.ToHexString(eip7002Changes.StorageChanges.ElementAt(2).Key);
-        // string v6 = Convert.ToHexString(eip7002Changes.StorageChanges.ElementAt(2).Value.Changes.First().NewValue.Unwrap());
-        // string k7 = Convert.ToHexString(eip7002Changes.StorageChanges.ElementAt(3).Key);
-        // string v7 = Convert.ToHexString(eip7002Changes.StorageChanges.ElementAt(3).Value.Changes.First().NewValue.Unwrap());
         AccountChanges eip7251Changes = accountChanges[Eip7251Constants.ConsolidationRequestPredeployAddress];
-        // string k8 = Convert.ToHexString(eip7251Changes.StorageChanges.First().Key);
-        // string v8 = Convert.ToHexString(eip7251Changes.StorageChanges.First().Value.Changes.First().NewValue.Unwrap());
-        // string k9 = Convert.ToHexString(eip7251Changes.StorageChanges.ElementAt(1).Key);
-        // string v9 = Convert.ToHexString(eip7251Changes.StorageChanges.ElementAt(1).Value.Changes.First().NewValue.Unwrap());
-        // string ka = Convert.ToHexString(eip7251Changes.StorageChanges.ElementAt(2).Key);
-        // string va = Convert.ToHexString(eip7251Changes.StorageChanges.ElementAt(2).Value.Changes.First().NewValue.Unwrap());
-        // string kb = Convert.ToHexString(eip7251Changes.StorageChanges.ElementAt(3).Key);
-        // string vb = Convert.ToHexString(eip7251Changes.StorageChanges.ElementAt(3).Value.Changes.First().NewValue.Unwrap());
 
-        // byte[] slot0 = Bytes.FromHexString("0x290DECD9548B62A8D60345A988386FC84BA6BC95484008F6362F93160EF3E563");
         byte[] slot0 = ToStorageSlot(0);
-        // StorageChange parentHashStorageChange = new(0, Bytes32.Wrap(Bytes.FromHexString("0xFF483E972A04A9A62BB4B7D04AE403C615604E4090521ECC5BB7AF67F71BE09C")));
-        StorageChange parentHashStorageChange = new(0, Bytes32.Wrap(parentHash.BytesToArray()));
-
-        byte[] eip4788Slot2 = ValueKeccak.Compute(new BigInteger((timestamp % 8191) + 8191).ToBytes32(true)).ToByteArray();
-        byte[] slot2Old = Bytes.FromHexString("0x0E59911BBD9B80FD816896F0425C7A25DC9EB9092F5AC6264B432F6697F877C8");
-        StorageChange calldataStorageChange = new(0, Bytes32.Zero);
-
-        byte[] eip4788Slot1 = ValueKeccak.Compute(new BigInteger(timestamp % 8191).ToBytes32(true)).ToByteArray();
-        byte[] slot3Old = Bytes.FromHexString("0x2CFFC05BC4230E308FCB837385A814EED1B4C90FB58BA2A0B8407649B9629B28");
-        // hash(timestamp)
-        StorageChange timestampStorageChange = new(0, Bytes32.Wrap(Bytes.FromHexString("0x00000000000000000000000000000000000000000000000000000000000F4240")));
-
-        // hash(0)
-        // byte[] slot4 = ToStorageSlot(0);
-        // byte[] slot0Old = Bytes.FromHexString("0x290DECD9548B62A8D60345A988386FC84BA6BC95484008F6362F93160EF3E563");
-        StorageChange zeroStorageChangeEnd = new(2, Bytes32.Zero);
-        // StorageChange value4 = new(2, Bytes32.Zero);
-
-        // hash(2)
-        byte[] slot2 = ToStorageSlot(2);
-        // byte[] slot2Old = Bytes.FromHexString("0x405787FA12A823E0F2B7631CC41B3BA8828B3321CA811111FA75CD3AA3BB5ACE");
-        // StorageChange value5 = new(2, Bytes32.Zero);
-
-        // hash(1)
         byte[] slot1 = ToStorageSlot(1);
-        // byte[] slot1Old = Bytes.FromHexString("0xB10E2D527612073B26EECDFD717E6A320CF44B4AFAC2B0732D9FCBE2B7FA0CF6");
-        // StorageChange value6 = new(2, Bytes32.Zero);
-        // StorageChange value6 = new(0, Bytes32.Wrap(Bytes.FromHexString("00000000000000000000000000000000000000000000000000000000000F4240")));
-
-        // hash(3)
+        byte[] slot2 = ToStorageSlot(2);
         byte[] slot3 = ToStorageSlot(3);
-        // byte[] slot3Old = Bytes.FromHexString("0xC2575A0E9E593C00F959F8C92F12DB2869C3395A3B0502D05E2516446F71F85B");
-        // StorageChange value7 = new(2, Bytes32.Zero);
-
-        // hash(0)
-        // byte[] slot8 = ToStorageSlot(0);
-        // byte[] slot0Old = Bytes.FromHexString("0x290DECD9548B62A8D60345A988386FC84BA6BC95484008F6362F93160EF3E563");
-        // StorageChange value8 = new(2, Bytes32.Zero);
-
-        // hash(2)
-        // byte[] slot2 = ToStorageSlot(2);
-        // byte[] slot2Old = Bytes.FromHexString("0x405787FA12A823E0F2B7631CC41B3BA8828B3321CA811111FA75CD3AA3BB5ACE");
-        // StorageChange value9 = new(2, Bytes32.Zero);
-
-        // hash(1)
-        // byte[] slota = ToStorageSlot(1);
-        // byte[] slotaOld = Bytes.FromHexString("0xB10E2D527612073B26EECDFD717E6A320CF44B4AFAC2B0732D9FCBE2B7FA0CF6");
-        // StorageChange valuea = new(2, Bytes32.Zero);
-        // StorageChange valuea = new(2, Bytes32.Wrap(Bytes.FromHexString("00000000000000000000000000000000000000000000000000000000000F4240")));
-
-        // hash(3)
-        // byte[] slotb = ToStorageSlot(3);
-        // byte[] slotbOld = Bytes.FromHexString("0xC2575A0E9E593C00F959F8C92F12DB2869C3395A3B0502D05E2516446F71F85B");
-        // StorageChange valueb = new(2, Bytes32.Zero);
+        byte[] eip4788Slot1 = ValueKeccak.Compute(new BigInteger(timestamp % 8191).ToBytes32(true)).ToByteArray();
+        byte[] eip4788Slot2 = ValueKeccak.Compute(new BigInteger((timestamp % 8191) + 8191).ToBytes32(true)).ToByteArray();
+        StorageChange parentHashStorageChange = new(0, Bytes32.Wrap(parentHash.BytesToArray()));
+        StorageChange calldataStorageChange = new(0, Bytes32.Zero);
+        StorageChange timestampStorageChange = new(0, Bytes32.Wrap(Bytes.FromHexString("0x00000000000000000000000000000000000000000000000000000000000F4240")));
+        StorageChange zeroStorageChangeEnd = new(2, Bytes32.Zero);
 
         using (Assert.EnterMultipleScope())
         {
