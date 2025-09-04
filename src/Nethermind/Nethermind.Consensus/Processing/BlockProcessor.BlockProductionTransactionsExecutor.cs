@@ -107,7 +107,7 @@ namespace Nethermind.Consensus.Processing
 
                 if (args.Action != TxAction.Add)
                 {
-                    if (_logger.IsDebug) DebugSkipReason(currentTx, args);
+                    if (_logger.IsInfo) DebugSkipReason(currentTx, args);
                 }
                 else
                 {
@@ -128,7 +128,7 @@ namespace Nethermind.Consensus.Processing
 
                 [MethodImpl(MethodImplOptions.NoInlining)]
                 void DebugSkipReason(Transaction currentTx, AddingTxEventArgs args)
-                    => _logger.Debug($"Skipping transaction {currentTx.ToShortString()} because: {args.Reason}.");
+                    => _logger.Info($"Skipping transaction {currentTx.ToShortString()} because: {args.Reason}.");
             }
         }
     }
