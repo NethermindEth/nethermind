@@ -6,11 +6,9 @@ using System.Collections.Generic;
 
 namespace Nethermind.Xdc.Types;
 
-using Round = ulong;
-
 public class TimeoutCert(ulong round, Signature[] signatures, ulong gapNumber)
 {
-    public Round Round { get; set; } = round;
+    public ulong Round { get; set; } = round;
     public Signature[] Signatures { get; set; } = signatures;
     public ulong GapNumber { get; set; } = gapNumber;
 }

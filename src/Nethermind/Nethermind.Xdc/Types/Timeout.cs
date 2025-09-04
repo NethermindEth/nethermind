@@ -8,13 +8,11 @@ using System;
 
 namespace Nethermind.Xdc.Types;
 
-using Round = ulong;
-
 public class Timeout(ulong round, Signature signature, ulong gapNumber)
 {
     private Address signer;
 
-    public Round Round { get; set; } = round;
+    public ulong Round { get; set; } = round;
     public Signature Signature { get; set; } = signature;
     public ulong GapNumber { get; set; } = gapNumber;
 

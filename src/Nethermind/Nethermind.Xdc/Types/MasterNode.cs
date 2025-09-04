@@ -9,7 +9,7 @@ using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
 
-namespace Nethermind.Consensus.Clique;
+namespace Nethermind.Xdc.Types;
 public class MasterNode(Address address, UInt256 stake)
 {
     public Address Address { get; set; } = address;

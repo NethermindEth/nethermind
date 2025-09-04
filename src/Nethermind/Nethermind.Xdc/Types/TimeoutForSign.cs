@@ -6,11 +6,9 @@ using Nethermind.Serialization.Rlp;
 
 namespace Nethermind.Xdc.Types;
 
-using Round = ulong;
-
 public class TimeoutForSign(ulong round, ulong gapNumber)
 {
-    public Round Round { get; set; } = round;
+    public ulong Round { get; set; } = round;
     public ulong GapNumber { get; set; } = gapNumber;
     public Hash256 SigHash() => Keccak.Compute(Rlp.Encode(this).Bytes);
 }
