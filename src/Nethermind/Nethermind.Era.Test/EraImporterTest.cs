@@ -3,12 +3,12 @@
 
 using Nethermind.Blockchain;
 using Nethermind.Consensus.Validators;
-using Nethermind.Core.Extensions;
 using Nethermind.Core.Test.Builders;
 using System.IO.Abstractions;
 using Autofac;
 using FluentAssertions;
 using Nethermind.Core;
+using Nethermind.Core.Crypto;
 using Nethermind.Era1.Exceptions;
 
 namespace Nethermind.Era1.Test;
@@ -28,7 +28,7 @@ public class EraImporterTest
     [Test]
     public async Task ImportAsArchiveSync_DirectoryContainsWrongEraFiles_ThrowEraImportException()
     {
-        using IContainer testContext = EraTestModule.BuildContainerBuilderWithBlockTreeOfLength(10).Build();
+        await using IContainer testContext = EraTestModule.BuildContainerBuilderWithBlockTreeOfLength(10).Build();
         string tempDirectory = testContext.ResolveTempDirPath();
 
         IFileSystem fileSystem = testContext.Resolve<IFileSystem>();
@@ -38,7 +38,7 @@ public class EraImporterTest
 
         string badFilePath = Path.Join(tempDirectory, "abc-00000-00000000.era1");
         FileSystemStream stream = fileSystem.File.Create(badFilePath);
-        await stream.WriteAsync(new byte[] { 0, 0 });
+        await stream.WriteAsync("\0\0"u8.ToArray());
         stream.Close();
 
         IEraImporter sut = testContext.Resolve<IEraImporter>();
@@ -85,26 +85,26 @@ public class EraImporterTest
     [Test]
     public async Task VerifyEraFiles_VerifyAccumulatorsWithUnexpected_ThrowEraVerificationException()
     {
-        using IContainer outputCtx = await EraTestModule.CreateExportedEraEnv(64);
+        await using IContainer outputCtx = await EraTestModule.CreateExportedEraEnv(64);
         IFileSystem fileSystem = outputCtx.Resolve<IFileSystem>();
         string destinationPath = outputCtx.ResolveTempDirPath();
 
         string accumulatorPath = Path.Combine(destinationPath, EraExporter.AccumulatorFileName);
-        byte[][] accumulators = outputCtx.Resolve<IFileSystem>().File.ReadAllLines(accumulatorPath)
-            .Select(s => EraPathUtils.ExtractHashFromAccumulatorAndCheckSumEntry(s)).ToArray();
+        ValueHash256[] accumulators = (await outputCtx.Resolve<IFileSystem>().File.ReadAllLinesAsync(accumulatorPath))
+            .Select(EraPathUtils.ExtractHashFromAccumulatorAndCheckSumEntry).ToArray();
 
-        accumulators[accumulators.Length - 1] = new byte[32];
-        await fileSystem.File.WriteAllLinesAsync(accumulatorPath, accumulators.Select(acc => acc.ToHexString()));
+        accumulators[^1] = default;
+        await fileSystem.File.WriteAllLinesAsync(accumulatorPath, accumulators.Select(acc => acc.ToString(false)));
 
         BlockTree inTree = Build.A.BlockTree()
             .WithBlocks(outputCtx.Resolve<IBlockTree>().FindBlock(0, BlockTreeLookupOptions.None)!).TestObject;
-        using IContainer inCtx = EraTestModule.BuildContainerBuilder()
+        await using IContainer inCtx = EraTestModule.BuildContainerBuilder()
             .AddSingleton<IBlockTree>(inTree)
             .Build();
 
         IEraImporter sut = inCtx.Resolve<IEraImporter>();
         Func<Task> importTask = () => sut.Import(destinationPath, 0, long.MaxValue,
-            Path.Join(destinationPath, EraExporter.AccumulatorFileName), default);
+            Path.Join(destinationPath, EraExporter.AccumulatorFileName), CancellationToken.None);
 
         Assert.That(importTask, Throws.TypeOf<EraVerificationException>());
     }
@@ -112,24 +112,25 @@ public class EraImporterTest
     [Test]
     public async Task VerifyEraFiles_ModifiedChecksum_ThrowEraVerificationException()
     {
-        using IContainer outputCtx = await EraTestModule.CreateExportedEraEnv(64);
+        await using IContainer outputCtx = await EraTestModule.CreateExportedEraEnv(64);
         IFileSystem fileSystem = outputCtx.Resolve<IFileSystem>();
         string destinationPath = outputCtx.ResolveTempDirPath();
 
         string checksumPath = Path.Combine(destinationPath, EraExporter.ChecksumsFileName);
-        byte[][] checksums = outputCtx.Resolve<IFileSystem>().File.ReadAllLines(checksumPath).Select(s => EraPathUtils.ExtractHashFromAccumulatorAndCheckSumEntry(s)).ToArray();
-        checksums[checksums.Length - 1] = new byte[32];
-        await fileSystem.File.WriteAllLinesAsync(checksumPath, checksums.Select(acc => acc.ToHexString()));
+        ValueHash256[] checksums = (await outputCtx.Resolve<IFileSystem>().File.ReadAllLinesAsync(checksumPath))
+            .Select(EraPathUtils.ExtractHashFromAccumulatorAndCheckSumEntry).ToArray();
+        checksums[^1] = default;
+        await fileSystem.File.WriteAllLinesAsync(checksumPath, checksums.Select(acc => acc.ToString(false)));
 
         BlockTree inTree = Build.A.BlockTree()
             .WithBlocks(outputCtx.Resolve<IBlockTree>().FindBlock(0, BlockTreeLookupOptions.None)!).TestObject;
-        using IContainer inCtx = EraTestModule.BuildContainerBuilder()
+        await using IContainer inCtx = EraTestModule.BuildContainerBuilder()
             .AddSingleton<IBlockTree>(inTree)
             .Build();
 
         IEraImporter sut = inCtx.Resolve<IEraImporter>();
         Func<Task> importTask = () => sut.Import(destinationPath, 0, long.MaxValue,
-            Path.Join(destinationPath, EraExporter.AccumulatorFileName), default);
+            Path.Join(destinationPath, EraExporter.AccumulatorFileName), CancellationToken.None);
 
         Assert.That(importTask, Throws.TypeOf<EraVerificationException>());
     }

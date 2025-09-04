@@ -50,11 +50,13 @@ public static class EraPathUtils
         return $"{network}-{epoch.ToString("D5")}-{root.ToString(true)[2..10]}.era1";
     }
 
-    public static byte[] ExtractHashFromAccumulatorAndCheckSumEntry(string s)
+    public static ValueHash256 ExtractHashFromAccumulatorAndCheckSumEntry(string s)
     {
+        ValueHash256 result = default;
         ReadOnlySpan<char> span = s.AsSpan();
         int idx = span.IndexOf(' ');
-        ReadOnlySpan<char> token = idx == -1 ? span : span.Slice(0, idx);
-        return Bytes.fromHexSpan(token);
+        ReadOnlySpan<char> token = idx == -1 ? span : span[..idx];
+        Bytes.FromHexString(token, result.BytesAsSpan);
+        return result;
     }
 }
