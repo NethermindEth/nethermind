@@ -8,7 +8,7 @@ using NUnit.Framework;
 namespace Ethereum.Legacy.Blockchain.Test;
 
 [Parallelizable(ParallelScope.All)]
-public class ArgsZeroOneBalanaceTests : GeneralStateTestBase
+public class ArgsZeroOneBalanceTests : GeneralStateTestBase
 {
     [TestCaseSource(nameof(LoadTests))]
     public void Test(GeneralStateTest test)
