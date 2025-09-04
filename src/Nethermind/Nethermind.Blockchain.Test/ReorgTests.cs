@@ -85,7 +85,7 @@ public class ReorgTests
             ecdsa,
             new BlobTxStorage(),
             new ChainHeadInfoProvider(
-                new ChainHeadSpecProvider(specProvider, _blockTree), _blockTree, worldStateManager.GlobalStateReader, new EthereumCodeInfoRepository()),
+                new ChainHeadSpecProvider(specProvider, _blockTree), _blockTree, worldStateManager.GlobalStateReader, codeInfoRepository),
             new TxPoolConfig(),
             new TxValidator(specProvider.ChainId),
             LimboLogs.Instance,
