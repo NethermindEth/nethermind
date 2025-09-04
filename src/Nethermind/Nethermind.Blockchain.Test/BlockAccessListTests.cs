@@ -209,8 +209,8 @@ public class BlockAccessListTests()
         byte[] slot1 = ToStorageSlot(1);
         byte[] slot2 = ToStorageSlot(2);
         byte[] slot3 = ToStorageSlot(3);
-        byte[] eip4788Slot1 = ValueKeccak.Compute(new BigInteger(timestamp % 8191).ToBytes32(true)).ToByteArray();
-        byte[] eip4788Slot2 = ValueKeccak.Compute(new BigInteger((timestamp % 8191) + 8191).ToBytes32(true)).ToByteArray();
+        byte[] eip4788Slot1 = ToStorageSlot(timestamp % 8191);
+        byte[] eip4788Slot2 = ToStorageSlot((timestamp % 8191) + 8191);
         StorageChange parentHashStorageChange = new(0, Bytes32.Wrap(parentHash.BytesToArray()));
         StorageChange calldataStorageChange = new(0, Bytes32.Zero);
         StorageChange timestampStorageChange = new(0, Bytes32.Wrap(Bytes.FromHexString("0x00000000000000000000000000000000000000000000000000000000000F4240")));
