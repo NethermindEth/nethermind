@@ -286,7 +286,7 @@ namespace Nethermind.JsonRpc.Modules.Eth
         [JsonRpcMethod(IsImplemented = true, Description = "Retrieves Accounts via Address and Blocknumber", IsSharable = true)]
         ResultWrapper<AccountForRpc?> eth_getAccount([JsonRpcParameter(ExampleValue = "[\"0xaa00000000000000000000000000000000000000\", \"latest\"]")] Address accountAddress, BlockParameter? blockParameter = null);
 
-        [JsonRpcMethod(IsImplemented = true, Description = "Retrieves Account via Address and Blocknumber", IsSharable = true)]
+        [JsonRpcMethod(IsImplemented = true, Description = "Retrieves Account with code and no storageRoot via Address and Blocknumber", IsSharable = true)]
         ResultWrapper<AccountInfoForRpc?> eth_getAccountInfo([JsonRpcParameter(ExampleValue = "[\"0xaa00000000000000000000000000000000000000\", \"latest\"]")] Address accountAddress, BlockParameter? blockParameter = null);
 
         [JsonRpcMethod(IsImplemented = true, Description = "Provides configuration data for the current and next fork", IsSharable = true)]
