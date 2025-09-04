@@ -29,10 +29,10 @@ public class CachedCodeInfoRepository(
     public ICodeInfo GetCachedCodeInfo(IWorldState worldState, Address codeSource, bool followDelegation, IReleaseSpec vmSpec,
         out Address? delegationAddress)
     {
-        if (_cachedPrecompile.TryGetValue(codeSource, out PrecompileInfo info))
+        if (IsPrecompile(codeSource, vmSpec) && _cachedPrecompile.TryGetValue(codeSource, out var cachedCodeInfo))
         {
             delegationAddress = null;
-            return info;
+            return cachedCodeInfo;
         }
         return baseCodeInfoRepository.GetCachedCodeInfo(worldState, codeSource, followDelegation, vmSpec, out delegationAddress);
     }
