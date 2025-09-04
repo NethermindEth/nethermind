@@ -308,14 +308,16 @@ public abstract class BlockchainTestBase
             stateProvider.InsertCode(accountState.Key, accountState.Value.Code, specProvider.GenesisSpec);
         }
 
-        if (coinbase is not null)
-        {
-            stateProvider.CreateAccountIfNotExists(coinbase, 0);
-        }
-
         stateProvider.Commit(specProvider.GenesisSpec);
         stateProvider.CommitTree(0);
         stateProvider.Reset();
+
+        if (!stateProvider.AccountExists(coinbase))
+        {
+            stateProvider.CreateAccount(coinbase, 0);
+            stateProvider.Commit(specProvider.GetSpec((ForkActivation)1));
+            stateProvider.RecalculateStateRoot();
+        }
     }
 
     private List<string> RunAssertions(BlockchainTest test, Block headBlock, IWorldState stateProvider)

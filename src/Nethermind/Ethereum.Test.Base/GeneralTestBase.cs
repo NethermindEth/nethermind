@@ -1,12 +1,8 @@
 // SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System;
-using System.Collections.Generic;
-using System.Diagnostics;
 using Autofac;
 using Nethermind.Api;
-using NUnit.Framework;
 using Nethermind.Config;
 using Nethermind.Consensus.Validators;
 using Nethermind.Core;
@@ -15,16 +11,20 @@ using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Modules;
 using Nethermind.Crypto;
-using Nethermind.Int256;
 using Nethermind.Evm;
 using Nethermind.Evm.EvmObjectFormat;
-using Nethermind.Evm.Tracing;
 using Nethermind.Evm.State;
+using Nethermind.Evm.Tracing;
 using Nethermind.Evm.TransactionProcessing;
+using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.Specs;
 using Nethermind.Specs.Forks;
 using Nethermind.Specs.Test;
+using NUnit.Framework;
+using System;
+using System.Collections.Generic;
+using System.Diagnostics;
 
 namespace Ethereum.Test.Base
 {
@@ -147,19 +147,11 @@ namespace Ethereum.Test.Base
             }
 
             stopwatch.Stop();
+
             if (txResult is not null && txResult.Value == TransactionResult.Ok)
             {
                 stateProvider.Commit(specProvider.GetSpec((ForkActivation)1));
                 stateProvider.CommitTree(1);
-
-                // '@winsvega added a 0-wei reward to the miner , so we had to add that into the state test execution phase. He needed it for retesteth.'
-                if (!stateProvider.AccountExists(test.CurrentCoinbase))
-                {
-                    stateProvider.CreateAccount(test.CurrentCoinbase, 0);
-                }
-
-                stateProvider.Commit(specProvider.GetSpec((ForkActivation)1));
-
                 stateProvider.RecalculateStateRoot();
             }
             else
@@ -195,11 +187,16 @@ namespace Ethereum.Test.Base
                 stateProvider.SetNonce(accountState.Key, accountState.Value.Nonce);
             }
 
-            stateProvider.CreateAccountIfNotExists(coinbase, 0);
-
             stateProvider.Commit(specProvider.GenesisSpec);
             stateProvider.CommitTree(0);
             stateProvider.Reset();
+
+            if (!stateProvider.AccountExists(coinbase))
+            {
+                stateProvider.CreateAccount(coinbase, 0);
+                stateProvider.Commit(specProvider.GetSpec((ForkActivation)1));
+                stateProvider.RecalculateStateRoot();
+            }
         }
 
         private List<string> RunAssertions(GeneralStateTest test, IWorldState stateProvider)
