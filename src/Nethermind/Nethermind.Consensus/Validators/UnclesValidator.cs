@@ -42,7 +42,8 @@ namespace Nethermind.Consensus.Validators
             for (int i = 0; i < uncles.Length; i++)
             {
                 BlockHeader uncle = uncles[i];
-                if (!_headerValidator.Validate(uncle, parentHeader, true, out string? err))
+                BlockHeader? uncleParent = _blockTree.FindParentHeader(uncle, BlockTreeLookupOptions.TotalDifficultyNotNeeded);
+                if (!_headerValidator.Validate(uncle, uncleParent, true, out string? err))
                 {
                     _logger.Info($"Invalid block ({header.ToString(BlockHeader.Format.Full)}) - uncle's header invalid. Error: {err}");
                     return false;
