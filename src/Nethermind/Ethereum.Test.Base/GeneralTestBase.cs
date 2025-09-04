@@ -25,7 +25,6 @@ using Nethermind.Logging;
 using Nethermind.Specs;
 using Nethermind.Specs.Forks;
 using Nethermind.Specs.Test;
-using Nethermind.State;
 
 namespace Ethereum.Test.Base
 {
@@ -87,10 +86,10 @@ namespace Ethereum.Test.Base
 
             IMainProcessingContext mainBlockProcessingContext = container.Resolve<IMainProcessingContext>();
             IWorldState stateProvider = mainBlockProcessingContext.WorldState;
-            using var _ = stateProvider.BeginScope(null);
+            using IDisposable _ = stateProvider.BeginScope(null);
             ITransactionProcessor transactionProcessor = mainBlockProcessingContext.TransactionProcessor;
 
-            InitializeTestState(test.Pre, stateProvider, specProvider);
+            InitializeTestState(test.Pre, test.CurrentCoinbase, stateProvider, specProvider);
 
             BlockHeader header = new(
                 test.PreviousHash,
@@ -178,11 +177,10 @@ namespace Ethereum.Test.Base
                 _logger.Info($"\nDifferences from expected\n{string.Join("\n", differences)}");
             }
 
-            //            Assert.Zero(differences.Count, "differences");
             return testResult;
         }
 
-        public static void InitializeTestState(Dictionary<Address, AccountState> preState, IWorldState stateProvider, ISpecProvider specProvider)
+        public static void InitializeTestState(Dictionary<Address, AccountState> preState, Address coinbase, IWorldState stateProvider, ISpecProvider specProvider)
         {
             foreach (KeyValuePair<Address, AccountState> accountState in preState)
             {
@@ -196,6 +194,8 @@ namespace Ethereum.Test.Base
                 stateProvider.InsertCode(accountState.Key, accountState.Value.Code, specProvider.GenesisSpec);
                 stateProvider.SetNonce(accountState.Key, accountState.Value.Nonce);
             }
+
+            stateProvider.CreateAccountIfNotExists(coinbase, 0);
 
             stateProvider.Commit(specProvider.GenesisSpec);
             stateProvider.CommitTree(0);

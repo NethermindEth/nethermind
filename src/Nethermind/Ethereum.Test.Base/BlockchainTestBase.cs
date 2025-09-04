@@ -30,7 +30,6 @@ using Nethermind.Serialization.Rlp;
 using Nethermind.Specs;
 using Nethermind.Specs.Forks;
 using Nethermind.Specs.Test;
-using Nethermind.State;
 using Nethermind.Evm.State;
 using Nethermind.Init.Modules;
 using Nethermind.TxPool;
@@ -41,7 +40,7 @@ namespace Ethereum.Test.Base;
 public abstract class BlockchainTestBase
 {
     private static ILogger _logger;
-    private static ILogManager _logManager = new TestLogManager(LogLevel.Warn);
+    private static readonly ILogManager _logManager = new TestLogManager(LogLevel.Warn);
     private static ISealValidator Sealer { get; }
     private static DifficultyCalculatorWrapper DifficultyCalculator { get; }
 
@@ -147,14 +146,14 @@ public abstract class BlockchainTestBase
         // Genesis processing
         using (stateProvider.BeginScope(null))
         {
-            InitializeTestState(test, stateProvider, specProvider);
+            Block genesisBlock = Rlp.Decode<Block>(test.GenesisRlp.Bytes);
+            Assert.That(genesisBlock.Header.Hash, Is.EqualTo(new Hash256(test.GenesisBlockHeader.Hash)));
+
+            InitializeTestState(test, genesisBlock.Beneficiary, stateProvider, specProvider);
 
             stopwatch?.Start();
 
             test.GenesisRlp ??= Rlp.Encode(new Block(JsonToEthereumTest.Convert(test.GenesisBlockHeader)));
-
-            Block genesisBlock = Rlp.Decode<Block>(test.GenesisRlp.Bytes);
-            Assert.That(genesisBlock.Header.Hash, Is.EqualTo(new Hash256(test.GenesisBlockHeader.Hash)));
 
             ManualResetEvent genesisProcessed = new(false);
 
@@ -295,7 +294,7 @@ public abstract class BlockchainTestBase
         return correctRlp;
     }
 
-    private void InitializeTestState(BlockchainTest test, IWorldState stateProvider, ISpecProvider specProvider)
+    private void InitializeTestState(BlockchainTest test, Address? coinbase, IWorldState stateProvider, ISpecProvider specProvider)
     {
         foreach (KeyValuePair<Address, AccountState> accountState in
             ((IEnumerable<KeyValuePair<Address, AccountState>>)test.Pre ?? Array.Empty<KeyValuePair<Address, AccountState>>()))
@@ -309,10 +308,13 @@ public abstract class BlockchainTestBase
             stateProvider.InsertCode(accountState.Key, accountState.Value.Code, specProvider.GenesisSpec);
         }
 
+        if (coinbase is not null)
+        {
+            stateProvider.CreateAccountIfNotExists(coinbase, 0);
+        }
+
         stateProvider.Commit(specProvider.GenesisSpec);
-
         stateProvider.CommitTree(0);
-
         stateProvider.Reset();
     }
 
