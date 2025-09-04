@@ -747,6 +747,28 @@ public partial class EthRpcModule(
                     : null);
     }
 
+    public ResultWrapper<AccountInfoForRpc?> eth_getAccountInfo(Address accountAddress, BlockParameter? blockParameter)
+    {
+        SearchResult<BlockHeader> searchResult = _blockFinder.SearchForHeader(blockParameter);
+        if (searchResult.IsError)
+        {
+            return GetFailureResult<AccountInfoForRpc?, BlockHeader>(searchResult, _ethSyncingInfo.SyncMode.HaveNotSyncedHeadersYet());
+        }
+
+        BlockHeader header = searchResult.Object!;
+        return !_blockchainBridge.HasStateForBlock(header)
+            ? GetStateFailureResult<AccountInfoForRpc?>(header)
+            : ResultWrapper<AccountInfoForRpc?>.Success(
+                _stateReader.TryGetAccount(header, accountAddress, out AccountStruct account)
+                    ? new AccountInfoForRpc
+                    {
+                        Balance = account.Balance,
+                        Nonce = account.Nonce,
+                        Code = _stateReader.GetCode(account.CodeHash) ?? []
+                    }
+                    : new AccountInfoForRpc());
+    }
+
     protected static ResultWrapper<TResult> GetFailureResult<TResult, TSearch>(SearchResult<TSearch> searchResult, bool isTemporary) where TSearch : class =>
         ResultWrapper<TResult>.Fail(searchResult, isTemporary && searchResult.ErrorCode == ErrorCodes.ResourceNotFound);
 
