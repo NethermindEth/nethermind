@@ -37,6 +37,11 @@ public class CachedCodeInfoRepository(
         return baseCodeInfoRepository.GetCachedCodeInfo(worldState, codeSource, followDelegation, vmSpec, out delegationAddress);
     }
 
+    public ValueHash256 GetExecutableCodeHash(IWorldState worldState, Address address, IReleaseSpec spec)
+    {
+        return baseCodeInfoRepository.GetExecutableCodeHash(worldState, address, spec);
+    }
+
     public bool IsPrecompile(Address address, IReleaseSpec spec)
     {
         return baseCodeInfoRepository.IsPrecompile(address, spec);
@@ -56,6 +61,12 @@ public class CachedCodeInfoRepository(
         [NotNullWhen(true)] out Address? delegatedAddress)
     {
         return baseCodeInfoRepository.TryGetDelegation(worldState, address, spec, out delegatedAddress);
+    }
+
+    public bool TryGetDelegation(IReadOnlyStateProvider worldState, in ValueHash256 codeHash, IReleaseSpec spec,
+        [NotNullWhen(true)] out Address? delegatedAddress)
+    {
+        return baseCodeInfoRepository.TryGetDelegation(worldState, in codeHash, spec, out delegatedAddress);
     }
 
     private static PrecompileInfo CreateCachedPrecompile(

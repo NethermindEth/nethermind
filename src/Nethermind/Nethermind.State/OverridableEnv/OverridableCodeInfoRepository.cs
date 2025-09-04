@@ -5,6 +5,7 @@ using System;
 using System.Collections.Generic;
 using System.Diagnostics.CodeAnalysis;
 using Nethermind.Core;
+using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
 using Nethermind.Evm;
 using Nethermind.Evm.CodeAnalysis;
@@ -52,6 +53,12 @@ public class OverridableCodeInfoRepository(ICodeInfoRepository codeInfoRepositor
 
     public bool TryGetDelegation(IReadOnlyStateProvider worldState, Address address, IReleaseSpec vmSpec, [NotNullWhen(true)] out Address? delegatedAddress) =>
         codeInfoRepository.TryGetDelegation(worldState, address, vmSpec, out delegatedAddress);
+
+    public bool TryGetDelegation(IReadOnlyStateProvider worldState, in ValueHash256 codeHash, IReleaseSpec spec, [NotNullWhen(true)] out Address? delegatedAddress) =>
+        codeInfoRepository.TryGetDelegation(worldState, in codeHash, spec, out delegatedAddress);
+
+    public ValueHash256 GetExecutableCodeHash(IWorldState worldState, Address address, IReleaseSpec spec) =>
+        codeInfoRepository.GetExecutableCodeHash(worldState, address, spec);
 
     public void ResetOverrides() => _codeOverwrites.Clear();
 }

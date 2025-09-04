@@ -31,6 +31,8 @@ public class MainProcessingContext : IMainProcessingContext, BlockProcessor.Bloc
         IWorldStateManager worldStateManager,
         CompositeBlockPreprocessorStep compositeBlockPreprocessorStep,
         IBlockTree blockTree,
+        ICodeInfoRepository globalCodeInfoRepository,
+        IPrecompileProvider precompileProvider,
         ILogManager logManager)
     {
 
@@ -69,13 +71,10 @@ public class MainProcessingContext : IMainProcessingContext, BlockProcessor.Bloc
                 builder
                     .AddScoped<PreBlockCaches>((mainWorldState as IPreBlockCaches)!.Caches)
                     .AddScoped<IBlockCachePreWarmer, BlockCachePreWarmer>()
-                    .AddDecorator<ITransactionProcessorAdapter, PrewarmerTxAdapter>()
-                    .AddDecorator<ICodeInfoRepository>((ctx, baseCodeInfoRepository) =>
+                    .AddSingleton<ICodeInfoRepository, PreBlockCaches>((preBlockCaches) =>
                     {
-                        PreBlockCaches preBlockCaches = ctx.Resolve<PreBlockCaches>();
-                        IPrecompileProvider precompileProvider = ctx.Resolve<IPrecompileProvider>();
                         // Note: The use of FrozenDictionary means that this cannot be used for other processing env also due to risk of memory leak.
-                        return new CachedCodeInfoRepository(precompileProvider, baseCodeInfoRepository, preBlockCaches?.PrecompileCache);
+                        return new CachedCodeInfoRepository(precompileProvider, globalCodeInfoRepository, preBlockCaches?.PrecompileCache);
                     })
                     ;
             }

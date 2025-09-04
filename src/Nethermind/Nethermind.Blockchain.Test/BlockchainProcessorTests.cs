@@ -523,7 +523,8 @@ public class BlockchainProcessorTests
                 return new ChainHeadInfoProvider(
                     new FixedForkActivationChainHeadSpecProvider(specProvider, fixedBlock: 10_000_000),
                     blockTree,
-                    new ChainHeadReadOnlyStateProvider(blockTree, stateReader)) // Need to use the non  ChainHeadSpecProvider constructor.
+                    new ChainHeadReadOnlyStateProvider(blockTree, stateReader), // Need to use the non  ChainHeadSpecProvider constructor.
+                    new EthereumCodeInfoRepository())
                 {
                     HasSynced = true
                 };
