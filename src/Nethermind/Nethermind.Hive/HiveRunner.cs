@@ -164,6 +164,12 @@ namespace Nethermind.Hive
                 Block block = blocks[i];
                 if (_logger.IsInfo)
                     _logger.Info($"HIVE Processing a chain.rlp block {block.ToString(Block.Format.Short)}");
+
+                if (parent is null && block.Number is 1)
+                {
+                    parent = blockTree.Genesis;
+                }
+
                 await ProcessBlock(block, parent);
                 parent = block.Header;
             }
