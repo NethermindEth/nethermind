@@ -7,6 +7,7 @@ namespace Nethermind.JsonRpc.Data;
 
 public readonly struct AccountInfoForRpc
 {
+    public static readonly AccountInfoForRpc Empty = new();
     public AccountInfoForRpc()
     {
     }
