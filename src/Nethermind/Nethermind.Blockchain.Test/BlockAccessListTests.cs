@@ -227,53 +227,62 @@ public class BlockAccessListTests()
         // string kb = Convert.ToHexString(eip7251Changes.StorageChanges.ElementAt(3).Key);
         // string vb = Convert.ToHexString(eip7251Changes.StorageChanges.ElementAt(3).Value.Changes.First().NewValue.Unwrap());
 
-        // byte[] slot1 = Bytes.FromHexString("0x290DECD9548B62A8D60345A988386FC84BA6BC95484008F6362F93160EF3E563");
-        byte[] slot1 = ValueKeccak.Compute([.. Enumerable.Repeat<byte>(0, 32)]).ToByteArray();
-        // StorageChange value1 = new(0, Bytes32.Wrap(Bytes.FromHexString("0xFF483E972A04A9A62BB4B7D04AE403C615604E4090521ECC5BB7AF67F71BE09C")));
-        StorageChange value1 = new(0, Bytes32.Wrap(parentHash.BytesToArray()));
+        // byte[] slot0 = Bytes.FromHexString("0x290DECD9548B62A8D60345A988386FC84BA6BC95484008F6362F93160EF3E563");
+        byte[] slot0 = ToStorageSlot(0);
+        // StorageChange parentHashStorageChange = new(0, Bytes32.Wrap(Bytes.FromHexString("0xFF483E972A04A9A62BB4B7D04AE403C615604E4090521ECC5BB7AF67F71BE09C")));
+        StorageChange parentHashStorageChange = new(0, Bytes32.Wrap(parentHash.BytesToArray()));
 
-        byte[] slot2 = ValueKeccak.Compute(new BigInteger((timestamp % 8191) + 8191).ToBytes32(true)).ToByteArray();
+        byte[] eip4788Slot2 = ValueKeccak.Compute(new BigInteger((timestamp % 8191) + 8191).ToBytes32(true)).ToByteArray();
         byte[] slot2Old = Bytes.FromHexString("0x0E59911BBD9B80FD816896F0425C7A25DC9EB9092F5AC6264B432F6697F877C8");
-        StorageChange value2 = new(0, Bytes32.Zero);
+        StorageChange calldataStorageChange = new(0, Bytes32.Zero);
 
-        byte[] slot3 = ValueKeccak.Compute(new BigInteger(timestamp % 8191).ToBytes32(true)).ToByteArray();
+        byte[] eip4788Slot1 = ValueKeccak.Compute(new BigInteger(timestamp % 8191).ToBytes32(true)).ToByteArray();
         byte[] slot3Old = Bytes.FromHexString("0x2CFFC05BC4230E308FCB837385A814EED1B4C90FB58BA2A0B8407649B9629B28");
         // hash(timestamp)
-        StorageChange value3 = new(0, Bytes32.Wrap(Bytes.FromHexString("0x00000000000000000000000000000000000000000000000000000000000F4240")));
+        StorageChange timestampStorageChange = new(0, Bytes32.Wrap(Bytes.FromHexString("0x00000000000000000000000000000000000000000000000000000000000F4240")));
 
         // hash(0)
-        byte[] slot4 = Bytes.FromHexString("0x290DECD9548B62A8D60345A988386FC84BA6BC95484008F6362F93160EF3E563");
-        StorageChange value4 = new(2, Bytes32.Zero);
+        // byte[] slot4 = ToStorageSlot(0);
+        // byte[] slot0Old = Bytes.FromHexString("0x290DECD9548B62A8D60345A988386FC84BA6BC95484008F6362F93160EF3E563");
+        StorageChange zeroStorageChangeEnd = new(2, Bytes32.Zero);
+        // StorageChange value4 = new(2, Bytes32.Zero);
 
         // hash(2)
-        byte[] slot5 = Bytes.FromHexString("0x405787FA12A823E0F2B7631CC41B3BA8828B3321CA811111FA75CD3AA3BB5ACE");
-        StorageChange value5 = new(2, Bytes32.Zero);
+        byte[] slot2 = ToStorageSlot(2);
+        // byte[] slot2Old = Bytes.FromHexString("0x405787FA12A823E0F2B7631CC41B3BA8828B3321CA811111FA75CD3AA3BB5ACE");
+        // StorageChange value5 = new(2, Bytes32.Zero);
 
         // hash(1)
-        byte[] slot6 = Bytes.FromHexString("0xB10E2D527612073B26EECDFD717E6A320CF44B4AFAC2B0732D9FCBE2B7FA0CF6");
-        StorageChange value6 = new(2, Bytes32.Zero);
+        byte[] slot1 = ToStorageSlot(1);
+        // byte[] slot1Old = Bytes.FromHexString("0xB10E2D527612073B26EECDFD717E6A320CF44B4AFAC2B0732D9FCBE2B7FA0CF6");
+        // StorageChange value6 = new(2, Bytes32.Zero);
         // StorageChange value6 = new(0, Bytes32.Wrap(Bytes.FromHexString("00000000000000000000000000000000000000000000000000000000000F4240")));
 
         // hash(3)
-        byte[] slot7 = Bytes.FromHexString("0xC2575A0E9E593C00F959F8C92F12DB2869C3395A3B0502D05E2516446F71F85B");
-        StorageChange value7 = new(2, Bytes32.Zero);
+        byte[] slot3 = ToStorageSlot(3);
+        // byte[] slot3Old = Bytes.FromHexString("0xC2575A0E9E593C00F959F8C92F12DB2869C3395A3B0502D05E2516446F71F85B");
+        // StorageChange value7 = new(2, Bytes32.Zero);
 
         // hash(0)
-        byte[] slot8 = Bytes.FromHexString("0x290DECD9548B62A8D60345A988386FC84BA6BC95484008F6362F93160EF3E563");
-        StorageChange value8 = new(2, Bytes32.Zero);
+        // byte[] slot8 = ToStorageSlot(0);
+        // byte[] slot0Old = Bytes.FromHexString("0x290DECD9548B62A8D60345A988386FC84BA6BC95484008F6362F93160EF3E563");
+        // StorageChange value8 = new(2, Bytes32.Zero);
 
         // hash(2)
-        byte[] slot9 = Bytes.FromHexString("0x405787FA12A823E0F2B7631CC41B3BA8828B3321CA811111FA75CD3AA3BB5ACE");
-        StorageChange value9 = new(2, Bytes32.Zero);
+        // byte[] slot2 = ToStorageSlot(2);
+        // byte[] slot2Old = Bytes.FromHexString("0x405787FA12A823E0F2B7631CC41B3BA8828B3321CA811111FA75CD3AA3BB5ACE");
+        // StorageChange value9 = new(2, Bytes32.Zero);
 
         // hash(1)
-        byte[] slota = Bytes.FromHexString("0xB10E2D527612073B26EECDFD717E6A320CF44B4AFAC2B0732D9FCBE2B7FA0CF6");
-        StorageChange valuea = new(2, Bytes32.Zero);
+        // byte[] slota = ToStorageSlot(1);
+        // byte[] slotaOld = Bytes.FromHexString("0xB10E2D527612073B26EECDFD717E6A320CF44B4AFAC2B0732D9FCBE2B7FA0CF6");
+        // StorageChange valuea = new(2, Bytes32.Zero);
         // StorageChange valuea = new(2, Bytes32.Wrap(Bytes.FromHexString("00000000000000000000000000000000000000000000000000000000000F4240")));
 
         // hash(3)
-        byte[] slotb = Bytes.FromHexString("0xC2575A0E9E593C00F959F8C92F12DB2869C3395A3B0502D05E2516446F71F85B");
-        StorageChange valueb = new(2, Bytes32.Zero);
+        // byte[] slotb = ToStorageSlot(3);
+        // byte[] slotbOld = Bytes.FromHexString("0xC2575A0E9E593C00F959F8C92F12DB2869C3395A3B0502D05E2516446F71F85B");
+        // StorageChange valueb = new(2, Bytes32.Zero);
 
         using (Assert.EnterMultipleScope())
         {
@@ -320,7 +329,7 @@ public class BlockAccessListTests()
             Assert.That(eip2935Changes, Is.EqualTo(new AccountChanges()
             {
                 Address = Eip2935Constants.BlockHashHistoryAddress,
-                StorageChanges = new(Bytes.Comparer) { { slot1, new SlotChanges(slot1, [value1]) } },
+                StorageChanges = new(Bytes.Comparer) { { slot0, new SlotChanges(slot0, [parentHashStorageChange]) } },
                 StorageReads = [],
                 BalanceChanges = [],
                 NonceChanges = [],
@@ -330,7 +339,7 @@ public class BlockAccessListTests()
             Assert.That(eip4788Changes, Is.EqualTo(new AccountChanges()
             {
                 Address = Eip4788Constants.BeaconRootsAddress,
-                StorageChanges = new(Bytes.Comparer) { { slot2, new SlotChanges(slot2, [value2]) }, { slot3, new SlotChanges(slot3, [value3]) }},
+                StorageChanges = new(Bytes.Comparer) { { eip4788Slot1, new SlotChanges(eip4788Slot1, [timestampStorageChange]) }, { eip4788Slot2, new SlotChanges(eip4788Slot2, [calldataStorageChange]) } },
                 StorageReads = [new(Bytes32.Wrap(Bytes.FromHexString("0x0e59911bbd9b80fd816896f0425c7a25dc9eb9092f5ac6264b432f6697f877c8")))],
                 BalanceChanges = [],
                 NonceChanges = [],
@@ -340,7 +349,7 @@ public class BlockAccessListTests()
             Assert.That(eip7002Changes, Is.EqualTo(new AccountChanges()
             {
                 Address = Eip7002Constants.WithdrawalRequestPredeployAddress,
-                StorageChanges = new(Bytes.Comparer) { { slot4, new SlotChanges(slot4, [value4]) }, { slot5, new SlotChanges(slot5, [value5]) }, { slot6, new SlotChanges(slot6, [value6]) }, { slot7, new SlotChanges(slot7, [value7]) }},
+                StorageChanges = new(Bytes.Comparer) { { slot0, new SlotChanges(slot0, [zeroStorageChangeEnd]) }, { slot2, new SlotChanges(slot2, [zeroStorageChangeEnd]) }, { slot1, new SlotChanges(slot1, [zeroStorageChangeEnd]) }, { slot3, new SlotChanges(slot3, [zeroStorageChangeEnd]) } },
                 StorageReads = [
                     new(Bytes32.Wrap(Bytes.FromHexString("0xb10e2d527612073b26eecdfd717e6a320cf44b4afac2b0732d9fcbe2b7fa0cf6"))),
                     new(Bytes32.Wrap(Bytes.FromHexString("0x290decd9548b62a8d60345a988386fc84ba6bc95484008f6362f93160ef3e563"))),
@@ -355,7 +364,7 @@ public class BlockAccessListTests()
             Assert.That(eip7251Changes, Is.EqualTo(new AccountChanges()
             {
                 Address = Eip7251Constants.ConsolidationRequestPredeployAddress,
-                StorageChanges = new(Bytes.Comparer) { { slot8, new SlotChanges(slot8, [value8]) }, { slot9, new SlotChanges(slot9, [value9]) }, { slota, new SlotChanges(slota, [valuea]) }, { slotb, new SlotChanges(slotb, [valueb]) }},
+                StorageChanges = new(Bytes.Comparer) { { slot0, new SlotChanges(slot0, [zeroStorageChangeEnd]) }, { slot2, new SlotChanges(slot2, [zeroStorageChangeEnd]) }, { slot1, new SlotChanges(slot1, [zeroStorageChangeEnd]) }, { slot3, new SlotChanges(slot3, [zeroStorageChangeEnd]) } },
                 StorageReads = [
                     new(Bytes32.Wrap(Bytes.FromHexString("0xb10e2d527612073b26eecdfd717e6a320cf44b4afac2b0732d9fcbe2b7fa0cf6"))),
                     new(Bytes32.Wrap(Bytes.FromHexString("0x290decd9548b62a8d60345a988386fc84ba6bc95484008f6362f93160ef3e563"))),
@@ -395,4 +404,7 @@ public class BlockAccessListTests()
         worldState.RecalculateStateRoot();
         // Hash256 stateRoot = worldState.StateRoot;
     }
+
+    private static byte[] ToStorageSlot(ulong x)
+        => ValueKeccak.Compute(new BigInteger(x).ToBytes32(true)).ToByteArray();
 }
