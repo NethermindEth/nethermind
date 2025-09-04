@@ -9,7 +9,7 @@ namespace Ethereum.Legacy.Blockchain.Test
 {
     [TestFixture]
     [Parallelizable(ParallelScope.All)]
-    public class Create2Tests : GeneralStateTestBase
+    public class EIP3860Tests : GeneralStateTestBase
     {
         [TestCaseSource(nameof(LoadTests))]
         public void Test(GeneralStateTest test)
@@ -19,7 +19,7 @@ namespace Ethereum.Legacy.Blockchain.Test
 
         public static IEnumerable<GeneralStateTest> LoadTests()
         {
-            var loader = new TestsSourceLoader(new LoadLegacyGeneralStateTestsStrategy(), "stCreate2");
+            var loader = new TestsSourceLoader(new LoadLegacyGeneralStateTestsStrategy(), "stEIP3860");
             return loader.LoadTests<GeneralStateTest>();
         }
     }

@@ -5,7 +5,7 @@ using System.Collections.Generic;
 using Ethereum.Test.Base;
 using NUnit.Framework;
 
-namespace Ethereum.VM.Test
+namespace Ethereum.Legacy.VM.Test
 {
     [TestFixture]
     [Parallelizable(ParallelScope.All)]

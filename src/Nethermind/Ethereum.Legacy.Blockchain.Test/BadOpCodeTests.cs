@@ -5,7 +5,7 @@ using System.Collections.Generic;
 using Ethereum.Test.Base;
 using NUnit.Framework;
 
-namespace Ethereum.Blockchain.Legacy.Test;
+namespace Ethereum.Legacy.Blockchain.Test;
 
 [Parallelizable(ParallelScope.All)]
 public class BadOpCodeTests : GeneralStateTestBase

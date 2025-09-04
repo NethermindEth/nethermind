@@ -6,7 +6,7 @@ using System.Threading.Tasks;
 using Ethereum.Test.Base;
 using NUnit.Framework;
 
-namespace Ethereum.Blockchain.Block.Legacy.Test
+namespace Ethereum.Legacy.Blockchain.Block.Test
 {
     [TestFixture]
     [Parallelizable(ParallelScope.All)]

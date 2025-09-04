@@ -5,11 +5,11 @@ using System.Collections.Generic;
 using Ethereum.Test.Base;
 using NUnit.Framework;
 
-namespace Ethereum.Blockchain.Legacy.Test
+namespace Ethereum.Legacy.Blockchain.Test
 {
     [TestFixture]
     [Parallelizable(ParallelScope.All)]
-    public class NonZeroCallTests : GeneralStateTestBase
+    public class EIP3651Tests : GeneralStateTestBase
     {
         [TestCaseSource(nameof(LoadTests))]
         public void Test(GeneralStateTest test)
@@ -19,9 +19,8 @@ namespace Ethereum.Blockchain.Legacy.Test
 
         public static IEnumerable<GeneralStateTest> LoadTests()
         {
-            var loader = new TestsSourceLoader(new LoadLegacyGeneralStateTestsStrategy(), "stNonZeroCallsTest");
+            var loader = new TestsSourceLoader(new LoadLegacyGeneralStateTestsStrategy(), "stEIP3651");
             return loader.LoadTests<GeneralStateTest>();
         }
     }
 }
-

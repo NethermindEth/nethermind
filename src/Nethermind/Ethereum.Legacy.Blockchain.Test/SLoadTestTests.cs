@@ -8,16 +8,17 @@ using NUnit.Framework;
 namespace Ethereum.Legacy.Blockchain.Test;
 
 [Parallelizable(ParallelScope.All)]
-public class CallCodesTests : GeneralStateTestBase
+public class SLoadTestTests : GeneralStateTestBase
 {
     [TestCaseSource(nameof(LoadTests))]
     public void Test(GeneralStateTest test)
     {
         Assert.That(RunTest(test).Pass, Is.True);
     }
+
     public static IEnumerable<GeneralStateTest> LoadTests()
     {
-        var loader = new TestsSourceLoader(new LoadLegacyGeneralStateTestsStrategy(), "stCallCodes");
+        var loader = new TestsSourceLoader(new LoadLegacyGeneralStateTestsStrategy(), "stSLoadTest");
         return loader.LoadTests<GeneralStateTest>();
     }
 }
