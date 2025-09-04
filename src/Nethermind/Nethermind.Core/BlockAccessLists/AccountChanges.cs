@@ -13,11 +13,10 @@ public readonly struct AccountChanges : IEquatable<AccountChanges>
 {
     public Address Address { get; init; }
     public SortedDictionary<byte[], SlotChanges> StorageChanges { get; init; }
-    // should be ordered sets / lists
-    public List<StorageRead> StorageReads { get; init; }
-    public List<BalanceChange> BalanceChanges { get; init; }
-    public List<NonceChange> NonceChanges { get; init; }
-    public List<CodeChange> CodeChanges { get; init; }
+    public SortedSet<StorageRead> StorageReads { get; init; }
+    public SortedList<ushort, BalanceChange> BalanceChanges { get; init; }
+    public SortedList<ushort, NonceChange> NonceChanges { get; init; }
+    public SortedList<ushort, CodeChange> CodeChanges { get; init; }
 
     public AccountChanges(Address address)
     {
@@ -29,10 +28,10 @@ public readonly struct AccountChanges : IEquatable<AccountChanges>
         CodeChanges = [];
     }
 
-    public AccountChanges(Address address, SortedDictionary<byte[], SlotChanges> storageChanges, List<StorageRead> storageReads, List<BalanceChange> balanceChanges, List<NonceChange> nonceChanges, List<CodeChange> codeChanges)
+    public AccountChanges(Address address, SortedDictionary<byte[], SlotChanges> storageChanges, SortedSet<StorageRead> storageReads, SortedList<ushort, BalanceChange> balanceChanges, SortedList<ushort, NonceChange> nonceChanges, SortedList<ushort, CodeChange> codeChanges)
     {
         Address = address;
-        StorageChanges = new(Bytes.Comparer);
+        StorageChanges = storageChanges;
         StorageReads = storageReads;
         BalanceChanges = balanceChanges;
         NonceChanges = nonceChanges;

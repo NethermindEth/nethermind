@@ -97,12 +97,12 @@ public class BlockAccessTracer : IBlockTracer, ITxTracer, IJournal<int>
             return;
         }
 
-        List<BalanceChange> balanceChanges = accountChanges.BalanceChanges;
-        if (balanceChanges is not [] && balanceChanges[^1].BlockAccessIndex == _blockAccessIndex)
+        SortedList<ushort, BalanceChange> balanceChanges = accountChanges.BalanceChanges;
+        if (balanceChanges.Count != 0 && balanceChanges.Last().Key == _blockAccessIndex)
         {
             balanceChanges.RemoveAt(balanceChanges.Count - 1);
         }
-        balanceChanges.Add(balanceChange);
+        balanceChanges.Add(balanceChange.BlockAccessIndex, balanceChange);
     }
 
     public void ReportCodeChange(Address address, byte[] before, byte[] after)
@@ -119,12 +119,12 @@ public class BlockAccessTracer : IBlockTracer, ITxTracer, IJournal<int>
             _bal.AccountChanges.Add(address, accountChanges);
         }
 
-        List<CodeChange> codeChanges = accountChanges.CodeChanges;
-        if (codeChanges is not [] && codeChanges[^1].BlockAccessIndex == _blockAccessIndex)
+        SortedList<ushort, CodeChange> codeChanges = accountChanges.CodeChanges;
+        if (codeChanges.Count != 0 && codeChanges.Last().Key == _blockAccessIndex)
         {
             codeChanges.RemoveAt(codeChanges.Count - 1);
         }
-        codeChanges.Add(codeChange);
+        codeChanges.Add(codeChange.BlockAccessIndex, codeChange);
     }
 
     public void ReportNonceChange(Address address, UInt256? before, UInt256? after)
@@ -141,12 +141,12 @@ public class BlockAccessTracer : IBlockTracer, ITxTracer, IJournal<int>
             _bal.AccountChanges.Add(address, accountChanges);
         }
 
-        List<NonceChange> nonceChanges = accountChanges.NonceChanges;
-        if (nonceChanges is not [] && nonceChanges[^1].BlockAccessIndex == _blockAccessIndex)
+        SortedList<ushort, NonceChange> nonceChanges = accountChanges.NonceChanges;
+        if (nonceChanges.Count != 0 && nonceChanges.Last().Key == _blockAccessIndex)
         {
             nonceChanges.RemoveAt(nonceChanges.Count - 1);
         }
-        nonceChanges.Add(nonceChange);
+        nonceChanges.Add(nonceChange.BlockAccessIndex, nonceChange);
     }
 
     public void ReportAccountRead(Address address)

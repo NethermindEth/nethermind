@@ -3,12 +3,16 @@
 
 using System;
 using System.Linq;
+using Nethermind.Core.Extensions;
 
 namespace Nethermind.Core.BlockAccessLists;
 
-public readonly struct StorageRead(Bytes32 key) : IEquatable<StorageRead>
+public readonly struct StorageRead(Bytes32 key) : IEquatable<StorageRead>, IComparable<StorageRead>
 {
     public Bytes32 Key { get; init; } = key;
+
+    public int CompareTo(StorageRead other)
+        => Bytes.BytesComparer.Compare(Key.Unwrap(), other.Key.Unwrap());
 
     public readonly bool Equals(StorageRead other) =>
         Key.Unwrap().SequenceEqual(other.Key.Unwrap());

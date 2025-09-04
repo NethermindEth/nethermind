@@ -25,8 +25,11 @@ public class AccountChangesDecoder : IRlpValueDecoder<AccountChanges>, IRlpStrea
         SortedDictionary<byte[], SlotChanges> slotChangesMap = new(slotChanges.ToDictionary(s => s.Slot, s => s), Bytes.Comparer);
         StorageRead[] storageReads = ctx.DecodeArray(StorageReadDecoder.Instance);
         BalanceChange[] balanceChanges = ctx.DecodeArray(BalanceChangeDecoder.Instance);
+        SortedList<ushort, BalanceChange> balanceChangesList = new(balanceChanges.ToDictionary(s => s.BlockAccessIndex, s => s));
         NonceChange[] nonceChanges = ctx.DecodeArray(NonceChangeDecoder.Instance);
+        SortedList<ushort, NonceChange> nonceChangesList = new(nonceChanges.ToDictionary(s => s.BlockAccessIndex, s => s));
         CodeChange[] codeChanges = ctx.DecodeArray(CodeChangeDecoder.Instance);
+        SortedList<ushort, CodeChange> codeChangesList = new(codeChanges.ToDictionary(s => s.BlockAccessIndex, s => s));
 
         if (codeChanges.Length > Eip7928Constants.MaxCodeChanges)
         {
@@ -43,9 +46,9 @@ public class AccountChangesDecoder : IRlpValueDecoder<AccountChanges>, IRlpStrea
             Address = address,
             StorageChanges = slotChangesMap,
             StorageReads = [.. storageReads],
-            BalanceChanges = [.. balanceChanges],
-            NonceChanges = [.. nonceChanges],
-            CodeChanges = [.. codeChanges]
+            BalanceChanges = balanceChangesList,
+            NonceChanges = nonceChangesList,
+            CodeChanges = codeChangesList
         };
     }
 
@@ -68,9 +71,9 @@ public class AccountChangesDecoder : IRlpValueDecoder<AccountChanges>, IRlpStrea
         stream.Encode(item.Address);
         stream.EncodeArray([.. item.StorageChanges.Values], rlpBehaviors);
         stream.EncodeArray([.. item.StorageReads], rlpBehaviors);
-        stream.EncodeArray([.. item.BalanceChanges], rlpBehaviors);
-        stream.EncodeArray([.. item.NonceChanges], rlpBehaviors);
-        stream.EncodeArray([.. item.CodeChanges], rlpBehaviors);
+        stream.EncodeArray([.. item.BalanceChanges.Values], rlpBehaviors);
+        stream.EncodeArray([.. item.NonceChanges.Values], rlpBehaviors);
+        stream.EncodeArray([.. item.CodeChanges.Values], rlpBehaviors);
     }
 
     private static int GetContentLength(AccountChanges item, RlpBehaviors rlpBehaviors)
@@ -90,21 +93,21 @@ public class AccountChangesDecoder : IRlpValueDecoder<AccountChanges>, IRlpStrea
         storageReadsLen = Rlp.LengthOfSequence(storageReadsLen);
 
         int balanceChangesLen = 0;
-        foreach (BalanceChange balanceChange in item.BalanceChanges)
+        foreach (BalanceChange balanceChange in item.BalanceChanges.Values)
         {
             balanceChangesLen += BalanceChangeDecoder.Instance.GetLength(balanceChange, rlpBehaviors);
         }
         balanceChangesLen = Rlp.LengthOfSequence(balanceChangesLen);
 
         int nonceChangesLen = 0;
-        foreach (NonceChange nonceChange in item.NonceChanges)
+        foreach (NonceChange nonceChange in item.NonceChanges.Values)
         {
             nonceChangesLen += NonceChangeDecoder.Instance.GetLength(nonceChange, rlpBehaviors);
         }
         nonceChangesLen = Rlp.LengthOfSequence(nonceChangesLen);
 
         int codeChangesLen = 0;
-        foreach (CodeChange codeChange in item.CodeChanges)
+        foreach (CodeChange codeChange in item.CodeChanges.Values)
         {
             codeChangesLen += CodeChangeDecoder.Instance.GetLength(codeChange, rlpBehaviors);
         }

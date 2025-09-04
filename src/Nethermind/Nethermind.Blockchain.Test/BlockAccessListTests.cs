@@ -111,14 +111,31 @@ public class BlockAccessListTests()
             { slotChanges.Slot, slotChanges }
         };
 
+        SortedList<ushort, BalanceChange> balanceChangesList = new()
+        {
+            { balanceChange.BlockAccessIndex, balanceChange },
+            { balanceChange.BlockAccessIndex, balanceChange }
+        };
+
+        SortedList<ushort, NonceChange> nonceChangesList = new()
+        {
+            { nonceChange.BlockAccessIndex, nonceChange },
+            { nonceChange.BlockAccessIndex, nonceChange }
+        };
+
+        SortedList<ushort, CodeChange> codeChangesList = new()
+        {
+            { codeChange.BlockAccessIndex, codeChange },
+        };
+
         AccountChanges accountChanges = new()
         {
             Address = TestItem.AddressA,
             StorageChanges = storageChangesDict,
             StorageReads = [storageRead, storageRead],
-            BalanceChanges = [balanceChange, balanceChange],
-            NonceChanges = [nonceChange, nonceChange],
-            CodeChanges = [codeChange]
+            BalanceChanges = balanceChangesList,
+            NonceChanges = nonceChangesList,
+            CodeChanges = codeChangesList
         };
         byte[] accountChangesBytes = Rlp.Encode(accountChanges, RlpBehaviors.None).Bytes;
         AccountChanges accountChangesDecoded = Rlp.Decode<AccountChanges>(accountChangesBytes, RlpBehaviors.None);
@@ -223,8 +240,8 @@ public class BlockAccessListTests()
                 Address = TestItem.AddressA,
                 StorageChanges = [],
                 StorageReads = [],
-                BalanceChanges = [new(1, _accountBalance - gasPrice * GasCostOf.Transaction)],
-                NonceChanges = [new(1, 1)],
+                BalanceChanges = new SortedList<ushort, BalanceChange>{ { 1, new(1, _accountBalance - gasPrice * GasCostOf.Transaction) } },
+                NonceChanges =  new SortedList<ushort, NonceChange>{ { 1, new(1, 1) } },
                 CodeChanges = []
             }));
 
@@ -243,8 +260,8 @@ public class BlockAccessListTests()
                 Address = TestItem.AddressC,
                 StorageChanges = [],
                 StorageReads = [],
-                BalanceChanges = [new(1, new UInt256(GasCostOf.Transaction))],
-                NonceChanges = [new(1, 0)],
+                BalanceChanges =  new SortedList<ushort, BalanceChange>{ { 1, new(1, new UInt256(GasCostOf.Transaction)) } },
+                NonceChanges =  new SortedList<ushort, NonceChange>{ { 1, new(1, 0) } },
                 CodeChanges = []
             }));
 
@@ -253,7 +270,7 @@ public class BlockAccessListTests()
                 Address = TestItem.AddressD,
                 StorageChanges = [],
                 StorageReads = [],
-                BalanceChanges = [new(2, 1.GWei())],
+                BalanceChanges = new SortedList<ushort, BalanceChange>{ { 2, new(2, 1.GWei()) } },
                 NonceChanges = [],
                 CodeChanges = []
             }));
