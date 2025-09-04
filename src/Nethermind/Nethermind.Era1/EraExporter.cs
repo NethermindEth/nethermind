@@ -68,8 +68,9 @@ public class EraExporter(
             epochIdxs.Add(i);
         }
 
-        using ArrayPoolList<string> accumulators = new((int)epochCount, (int)epochCount);
-        using ArrayPoolList<string> checksums = new((int)epochCount, (int)epochCount);
+        using ArrayPoolList<ValueHash256> accumulators = new((int)epochCount, (int)epochCount);
+        using ArrayPoolList<ValueHash256> checksums = new((int)epochCount, (int)epochCount);
+        using ArrayPoolList<string> fileNames = new((int)epochCount, (int)epochCount);
 
         await Parallel.ForEachAsync(epochIdxs, new ParallelOptions()
         {
@@ -83,11 +84,15 @@ public class EraExporter(
 
         string accumulatorPath = Path.Combine(destinationPath, AccumulatorFileName);
         fileSystem.File.Delete(accumulatorPath);
-        await fileSystem.File.WriteAllLinesAsync(accumulatorPath, accumulators.Select((v) => v.ToString()), cancellation);
+        await fileSystem.File.WriteAllLinesAsync(
+            accumulatorPath,
+            accumulators.Zip(fileNames, (accumulatorHash, fileName) => $"{accumulatorHash.ToString()} {fileName}"), cancellation);
 
         string checksumPath = Path.Combine(destinationPath, ChecksumsFileName);
         fileSystem.File.Delete(checksumPath);
-        await fileSystem.File.WriteAllLinesAsync(checksumPath, checksums.Select((v) => v.ToString()), cancellation);
+        await fileSystem.File.WriteAllLinesAsync(
+            checksumPath,
+            checksums.Zip(fileNames, (checkSumHash, fileName) => $"{checkSumHash} {fileName}"), cancellation);
 
         progress.LogProgress();
 
@@ -137,8 +142,9 @@ public class EraExporter(
 
             string fileName = Path.GetFileName(filePath);
             (ValueHash256 accumulator, ValueHash256 sha256) = await eraWriter.Finalize(cancellation);
-            accumulators[(int)epochIdx] = string.Concat(accumulator.ToString(), " ", fileName);
-            checksums[(int)epochIdx] = string.Concat(sha256.ToString(), " ", fileName);
+            accumulators[(int)epochIdx] = accumulator;
+            checksums[(int)epochIdx] = sha256;
+            fileNames[(int)epochIdx] = fileName;
             string rename = Path.Combine(
                 destinationPath,
                 EraPathUtils.Filename(_networkName, epoch, new Hash256(accumulator)));
