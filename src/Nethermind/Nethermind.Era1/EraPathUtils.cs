@@ -3,6 +3,7 @@
 
 using System.IO.Abstractions;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Extensions;
 
 namespace Nethermind.Era1;
 
@@ -47,5 +48,13 @@ public static class EraPathUtils
         ArgumentOutOfRangeException.ThrowIfLessThan(epoch, 0);
 
         return $"{network}-{epoch.ToString("D5")}-{root.ToString(true)[2..10]}.era1";
+    }
+
+    public static byte[] ExtractHashFromAccumulatorAndCheckSumEntry(string s)
+    {
+        ReadOnlySpan<char> span = s.AsSpan();
+        int idx = span.IndexOf(' ');
+        ReadOnlySpan<char> token = idx == -1 ? span : span.Slice(0, idx);
+        return Bytes.fromHexSpan(token);
     }
 }

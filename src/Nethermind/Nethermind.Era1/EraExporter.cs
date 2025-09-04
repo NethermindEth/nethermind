@@ -23,7 +23,10 @@ public class EraExporter(
     ILogManager logManager)
     : IEraExporter
 {
-    private readonly string _networkName = (string.IsNullOrWhiteSpace(eraConfig.NetworkName)) ? throw new ArgumentException("Cannot be null or whitespace.", nameof(eraConfig.NetworkName)) : eraConfig.NetworkName.Trim().ToLower();
+    private readonly string _networkName = (string.IsNullOrWhiteSpace(eraConfig.NetworkName))
+        ? throw new ArgumentException("Cannot be null or whitespace.", nameof(eraConfig.NetworkName))
+        : eraConfig.NetworkName.Trim().ToLower();
+
     private readonly ILogger _logger = logManager.GetClassLogger<EraExporter>();
     private readonly int _era1Size = eraConfig.MaxEra1Size;
 
@@ -36,9 +39,11 @@ public class EraExporter(
         long to,
         CancellationToken cancellation = default)
     {
-        if (fileSystem.File.Exists(destinationPath)) throw new ArgumentException($"Destination already exist as a file.", nameof(destinationPath));
+        if (fileSystem.File.Exists(destinationPath))
+            throw new ArgumentException($"Destination already exist as a file.", nameof(destinationPath));
         if (to == 0) to = blockTree.Head?.Number ?? 0;
-        if (to > (blockTree.Head?.Number ?? 0)) throw new ArgumentException($"Cannot export to a block after head block {blockTree.Head?.Number ?? 0}.");
+        if (to > (blockTree.Head?.Number ?? 0))
+            throw new ArgumentException($"Cannot export to a block after head block {blockTree.Head?.Number ?? 0}.");
         if (from > to) throw new ArgumentException($"Start block ({from}) must be before end ({to}) block");
 
         return DoExport(destinationPath, from, to, cancellation: cancellation);
@@ -50,7 +55,8 @@ public class EraExporter(
         long to,
         CancellationToken cancellation = default)
     {
-        if (_logger.IsInfo) _logger.Info($"Exporting from block {from} to block {to} as Era files to {destinationPath}");
+        if (_logger.IsInfo)
+            _logger.Info($"Exporting from block {from} to block {to} as Era files to {destinationPath}");
         if (!fileSystem.Directory.Exists(destinationPath))
         {
             fileSystem.Directory.CreateDirectory(destinationPath);
@@ -74,25 +80,19 @@ public class EraExporter(
 
         await Parallel.ForEachAsync(epochIdxs, new ParallelOptions()
         {
-            MaxDegreeOfParallelism = (eraConfig.Concurrency == 0 ? Environment.ProcessorCount : eraConfig.Concurrency),
+            MaxDegreeOfParallelism =
+                    (eraConfig.Concurrency == 0 ? Environment.ProcessorCount : eraConfig.Concurrency),
             CancellationToken = cancellation
         },
-        async (epochIdx, cancel) =>
-        {
-            await WriteEpoch(epochIdx);
-        });
+            async (epochIdx, cancel) => { await WriteEpoch(epochIdx); });
 
         string accumulatorPath = Path.Combine(destinationPath, AccumulatorFileName);
         fileSystem.File.Delete(accumulatorPath);
-        await fileSystem.File.WriteAllLinesAsync(
-            accumulatorPath,
-            accumulators.Zip(fileNames, (accumulatorHash, fileName) => $"{accumulatorHash.ToString()} {fileName}"), cancellation);
+        await WriteFileAsync(accumulatorPath, accumulators, fileNames, cancellation);
 
         string checksumPath = Path.Combine(destinationPath, ChecksumsFileName);
         fileSystem.File.Delete(checksumPath);
-        await fileSystem.File.WriteAllLinesAsync(
-            checksumPath,
-            checksums.Zip(fileNames, (checkSumHash, fileName) => $"{checkSumHash} {fileName}"), cancellation);
+        await WriteFileAsync(checksumPath, checksums, fileNames, cancellation);
 
         progress.LogProgress();
 
@@ -122,12 +122,14 @@ public class EraExporter(
                 TxReceipt[]? receipts = receiptStorage.Get(block, true, false);
                 if (receipts is null || (block.Header.ReceiptsRoot != Keccak.EmptyTreeHash && receipts.Length == 0))
                 {
-                    throw new EraException($"Could not find receipts for block {block.ToString(Block.Format.FullHashAndNumber)} {receiptStorage.GetHashCode()}");
+                    throw new EraException(
+                        $"Could not find receipts for block {block.ToString(Block.Format.FullHashAndNumber)} {receiptStorage.GetHashCode()}");
                 }
 
                 if (block.TotalDifficulty is null)
                 {
-                    throw new EraException($"Block {block.ToString(Block.Format.FullHashAndNumber)} does  not have total difficulty specified");
+                    throw new EraException(
+                        $"Block {block.ToString(Block.Format.FullHashAndNumber)} does  not have total difficulty specified");
                 }
 
                 await eraWriter.Add(block, receipts, cancellation);
@@ -151,6 +153,18 @@ public class EraExporter(
             fileSystem.File.Move(
                 filePath,
                 rename, true);
+        }
+    }
+
+    private async Task WriteFileAsync(string path, ArrayPoolList<ValueHash256> hashes, ArrayPoolList<string> fileNames, CancellationToken cancellationToken)
+    {
+        using FileSystemStream stream = fileSystem.FileStream.New(path, FileMode.Create, FileAccess.Write, FileShare.None);
+        using StreamWriter writer = new StreamWriter(stream);
+
+        for (int i = 0; i < hashes.Count; i++)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            await writer.WriteLineAsync($"{hashes[i]} {fileNames[i]}");
         }
     }
 }

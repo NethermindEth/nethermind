@@ -1118,6 +1118,10 @@ namespace Nethermind.Core.Extensions
             hexString is null ? throw new ArgumentNullException(nameof(hexString)) : FromHexString(hexString.AsSpan());
 
         [DebuggerStepThrough]
+        public static byte[] fromHexSpan(ReadOnlySpan<char> hexSpan) =>
+            FromHexString(hexSpan);
+
+        [DebuggerStepThrough]
         private static byte[] FromHexString(ReadOnlySpan<char> hexString)
         {
             int start = hexString is ['0', 'x', ..] ? 2 : 0;

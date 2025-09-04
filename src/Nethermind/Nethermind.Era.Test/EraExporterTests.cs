@@ -39,9 +39,17 @@ public class EraExporterTests
             {
                 foreach (string line in File.ReadLines(file))
                 {
-                    string[] words = line.Split(' ');
-                    Assert.That(words.Length, Is.EqualTo(2));
-                    Assert.That(words[1].EndsWith(".era1"));
+                    ReadOnlySpan<char> lineSpan = line.AsSpan();
+                    int spaceIndex = lineSpan.IndexOf(' ');
+
+                    Assert.That(spaceIndex, Is.GreaterThan(0)); // not at beginning
+                    Assert.That(spaceIndex, Is.LessThan(lineSpan.Length - 1)); // not at end
+
+                    int secondSpaceIndex = lineSpan[(spaceIndex + 1)..].IndexOf(' ');
+                    Assert.That(secondSpaceIndex, Is.EqualTo(-1), "More than two words found");
+
+                    ReadOnlySpan<char> secondWord = lineSpan[(spaceIndex + 1)..];
+                    Assert.That(secondWord.EndsWith(".era1".AsSpan()));
                 }
             }
         }
