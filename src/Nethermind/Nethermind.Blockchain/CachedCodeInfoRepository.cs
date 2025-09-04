@@ -23,8 +23,8 @@ public class CachedCodeInfoRepository(
     ConcurrentDictionary<PreBlockCaches.PrecompileCacheKey, (byte[], bool)>? precompileCache) : ICodeInfoRepository
 {
     private readonly FrozenDictionary<AddressAsKey, PrecompileInfo> _cachedPrecompile = precompileCache is null
-        ? precompileFactory.CreatePrecompiles().ToFrozenDictionary()
-        : precompileFactory.CreatePrecompiles().ToFrozenDictionary(kvp => kvp.Key, kvp => CreateCachedPrecompile(kvp, precompileCache));
+        ? precompileFactory.GetPrecompiles()
+        : precompileFactory.GetPrecompiles().ToFrozenDictionary(kvp => kvp.Key, kvp => CreateCachedPrecompile(kvp, precompileCache));
 
     public ICodeInfo GetCachedCodeInfo(IWorldState worldState, Address codeSource, bool followDelegation, IReleaseSpec vmSpec,
         out Address? delegationAddress)

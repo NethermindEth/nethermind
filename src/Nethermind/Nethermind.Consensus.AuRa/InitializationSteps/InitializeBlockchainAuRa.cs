@@ -33,21 +33,9 @@ public class InitializeBlockchainAuRa : InitializeBlockchain
     private readonly AuRaNethermindApi _api;
     private INethermindApi NethermindApi => _api;
 
-    private readonly ILifetimeScope _rootLifetimeScope;
-    private readonly IBlockValidationModule[] _validationBlockProcessingModules;
-    private readonly IAbiEncoder _abiEncoder;
-
-    public InitializeBlockchainAuRa(
-        AuRaNethermindApi api,
-        ILifetimeScope rootLifetimeScope,
-        IBlockValidationModule[] validationBlockProcessingModules,
-        IAbiEncoder abiEncoder
-    ) : base(api)
+    public InitializeBlockchainAuRa(AuRaNethermindApi api) : base(api)
     {
         _api = api;
-        _rootLifetimeScope = rootLifetimeScope;
-        _validationBlockProcessingModules = validationBlockProcessingModules;
-        _abiEncoder = abiEncoder;
     }
 
     protected override async Task InitBlockchain()
