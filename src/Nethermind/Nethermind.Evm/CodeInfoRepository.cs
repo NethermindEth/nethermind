@@ -21,9 +21,9 @@ public class CodeInfoRepository : ICodeInfoRepository
     private static readonly CodeLruCache _codeCache = new();
     private readonly FrozenDictionary<AddressAsKey, PrecompileInfo> _localPrecompiles;
 
-    public CodeInfoRepository(IPrecompileFactory precompileFactory)
+    public CodeInfoRepository(IPrecompileProvider precompileProvider)
     {
-        _localPrecompiles = precompileFactory.GetPrecompiles();
+        _localPrecompiles = precompileProvider.GetPrecompiles();
     }
 
     public bool IsPrecompile(Address address, IReleaseSpec spec) =>

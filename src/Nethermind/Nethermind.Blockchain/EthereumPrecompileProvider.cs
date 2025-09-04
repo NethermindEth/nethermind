@@ -11,7 +11,7 @@ using Nethermind.Evm.Precompiles.Bls;
 
 namespace Nethermind.Blockchain;
 
-public class EthereumPrecompileFactory() : IPrecompileFactory
+public class EthereumPrecompileProvider() : IPrecompileProvider
 {
     private static FrozenDictionary<AddressAsKey, PrecompileInfo> Precompiles
     {

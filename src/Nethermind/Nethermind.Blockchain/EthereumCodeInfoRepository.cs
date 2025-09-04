@@ -5,6 +5,6 @@ using Nethermind.Evm;
 
 namespace Nethermind.Blockchain;
 
-public class EthereumCodeInfoRepository() : CodeInfoRepository(new EthereumPrecompileFactory())
+public class EthereumCodeInfoRepository() : CodeInfoRepository(new EthereumPrecompileProvider())
 {
 }

@@ -73,9 +73,9 @@ public class MainProcessingContext : IMainProcessingContext, BlockProcessor.Bloc
                     .AddDecorator<ICodeInfoRepository>((ctx, baseCodeInfoRepository) =>
                     {
                         PreBlockCaches preBlockCaches = ctx.Resolve<PreBlockCaches>();
-                        IPrecompileFactory precompileFactory = ctx.Resolve<IPrecompileFactory>();
+                        IPrecompileProvider precompileProvider = ctx.Resolve<IPrecompileProvider>();
                         // Note: The use of FrozenDictionary means that this cannot be used for other processing env also due to risk of memory leak.
-                        return new CachedCodeInfoRepository(precompileFactory, baseCodeInfoRepository, preBlockCaches?.PrecompileCache);
+                        return new CachedCodeInfoRepository(precompileProvider, baseCodeInfoRepository, preBlockCaches?.PrecompileCache);
                     })
                     ;
             }
