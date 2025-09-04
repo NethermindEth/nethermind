@@ -17,6 +17,7 @@ internal class XdcChainSpecEngineParameters : IChainSpecEngineParameters
     public string SealEngineType => Core.SealEngineType.XDPoS;
     public int Epoch { get; set; }
     public int Gap { get; set; }
+    public int Period { get; set; }
     public bool SkipV1Validation { get; set; }
     public Address FoundationWalletAddr { get; set; }
     public int Reward { get; set; }
