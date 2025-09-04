@@ -134,7 +134,7 @@ public class PayloadPreparationService : IPayloadPreparationService, IDisposable
             block = ProduceEmptyBlock(payloadId, parentHeader, payloadAttributes);
         }
 
-        if (_logger.IsInfo) _logger.Info($" Produced (Empty)    {block.ToString(block.Difficulty != 0 ? Block.Format.HashNumberDiffAndTx : Block.Format.HashNumberMGasAndTx)} | {Stopwatch.GetElapsedTime(startTimestamp).TotalMilliseconds,8:N2} ms");
+        if (_logger.IsInfo) _logger.Info($" Produced    {block.ToString(block.Difficulty != 0 ? Block.Format.HashNumberDiffAndTx : Block.Format.HashNumberMGasAndTx)} | {Stopwatch.GetElapsedTime(startTimestamp).TotalMilliseconds,8:N2} ms");
         ImproveBlock(payloadId, parentHeader, payloadAttributes, block, DateTimeOffset.UtcNow, default, CancellationTokenSource.CreateLinkedTokenSource(_shutdown.Token));
 
         return payloadId;
@@ -152,7 +152,7 @@ public class PayloadPreparationService : IPayloadPreparationService, IDisposable
 
             if (tx != null)
             {
-                _txPool.SubmitTx(tx, TxHandlingOptions.PersistentBroadcast);
+                var status = _txPool.SubmitTx(tx, TxHandlingOptions.PersistentBroadcast);
                 submitted++;
             }
         }
