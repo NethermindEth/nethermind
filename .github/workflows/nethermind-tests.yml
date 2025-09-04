@@ -33,21 +33,20 @@ jobs:
         project:
           - Ethereum.Abi.Test
           - Ethereum.Basic.Test
-          - Ethereum.Blockchain.Block.Legacy.Test
           - Ethereum.Blockchain.Block.Test
-          - Ethereum.Blockchain.Legacy.Test
           - Ethereum.Blockchain.Pyspec.Test
-          - Ethereum.Blockchain.Test
           - Ethereum.Difficulty.Test
           - Ethereum.HexPrefix.Test
           - Ethereum.KeyAddress.Test
           - Ethereum.KeyStore.Test
+          - Ethereum.Legacy.Blockchain.Block.Test
+          - Ethereum.Legacy.Blockchain.Test
+          - Ethereum.Legacy.VM.Test
           - Ethereum.PoW.Test
           - Ethereum.Rlp.Test
           - Ethereum.Transaction.Test
           - Ethereum.Transition.Test
           - Ethereum.Trie.Test
-          - Ethereum.VM.Test
           - Nethermind.Abi.Test
           - Nethermind.Api.Test
           - Nethermind.AuRa.Test

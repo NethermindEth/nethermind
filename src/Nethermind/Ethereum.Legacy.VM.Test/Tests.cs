@@ -5,11 +5,12 @@ using System.Collections.Generic;
 using Ethereum.Test.Base;
 using NUnit.Framework;
 
-namespace Ethereum.Blockchain.Test
+namespace Ethereum.VM.Test
 {
     [TestFixture]
     [Parallelizable(ParallelScope.All)]
-    public class CallDelegateCodesCallCodeHomesteadTests : GeneralStateTestBase
+    // ReSharper disable once InconsistentNaming
+    public class Tests : GeneralStateTestBase
     {
         [TestCaseSource(nameof(LoadTests))]
         public void Test(GeneralStateTest test)
@@ -19,7 +20,7 @@ namespace Ethereum.Blockchain.Test
 
         public static IEnumerable<GeneralStateTest> LoadTests()
         {
-            var loader = new TestsSourceLoader(new LoadGeneralStateTestsStrategy(), "stCallDelegateCodesCallCodeHomestead");
+            var loader = new TestsSourceLoader(new LoadLegacyGeneralStateTestsStrategy(), "vmTests");
             return loader.LoadTests<GeneralStateTest>();
         }
     }

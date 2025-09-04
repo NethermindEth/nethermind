@@ -5,13 +5,15 @@ using System.Collections.Generic;
 using Ethereum.Test.Base;
 using NUnit.Framework;
 
-namespace Ethereum.Blockchain.Test
+namespace Ethereum.VM.Test
 {
     [TestFixture]
     [Parallelizable(ParallelScope.All)]
-    public class CodeCopyTests : GeneralStateTestBase
+    // ReSharper disable once InconsistentNaming
+    public class PerformanceTests : GeneralStateTestBase
     {
         [TestCaseSource(nameof(LoadTests))]
+        [Retry(3)]
         public void Test(GeneralStateTest test)
         {
             Assert.That(RunTest(test).Pass, Is.True);
@@ -19,7 +21,7 @@ namespace Ethereum.Blockchain.Test
 
         public static IEnumerable<GeneralStateTest> LoadTests()
         {
-            var loader = new TestsSourceLoader(new LoadGeneralStateTestsStrategy(), "stCodeCopyTest");
+            var loader = new TestsSourceLoader(new LoadLegacyGeneralStateTestsStrategy(), "vmPerformance");
             return loader.LoadTests<GeneralStateTest>();
         }
     }

@@ -5,11 +5,11 @@ using System.Collections.Generic;
 using Ethereum.Test.Base;
 using NUnit.Framework;
 
-namespace Ethereum.Blockchain.Test
+namespace Ethereum.VM.Test
 {
     [TestFixture]
     [Parallelizable(ParallelScope.All)]
-    public class DelegateCallTestHomesteadTests : GeneralStateTestBase
+    public class ArithmeticTests : GeneralStateTestBase
     {
         [TestCaseSource(nameof(LoadTests))]
         public void Test(GeneralStateTest test)
@@ -19,7 +19,7 @@ namespace Ethereum.Blockchain.Test
 
         public static IEnumerable<GeneralStateTest> LoadTests()
         {
-            var loader = new TestsSourceLoader(new LoadGeneralStateTestsStrategy(), "stDelegatecallTestHomestead");
+            var loader = new TestsSourceLoader(new LoadLegacyGeneralStateTestsStrategy(), "VMTests", "vmArithmeticTest");
             return loader.LoadTests<GeneralStateTest>();
         }
     }

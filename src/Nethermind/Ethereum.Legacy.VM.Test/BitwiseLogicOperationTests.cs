@@ -5,14 +5,13 @@ using System.Collections.Generic;
 using Ethereum.Test.Base;
 using NUnit.Framework;
 
-namespace Ethereum.Blockchain.Test
+namespace Ethereum.VM.Test
 {
     [TestFixture]
     [Parallelizable(ParallelScope.All)]
-    public class MemoryTests : GeneralStateTestBase
+    public class BitwiseLogicOperationTests : GeneralStateTestBase
     {
         [TestCaseSource(nameof(LoadTests))]
-        [Retry(3)]
         public void Test(GeneralStateTest test)
         {
             Assert.That(RunTest(test).Pass, Is.True);
@@ -20,7 +19,7 @@ namespace Ethereum.Blockchain.Test
 
         public static IEnumerable<GeneralStateTest> LoadTests()
         {
-            var loader = new TestsSourceLoader(new LoadGeneralStateTestsStrategy(), "stMemoryTest");
+            var loader = new TestsSourceLoader(new LoadLegacyGeneralStateTestsStrategy(), "vmBitwiseLogicOperation");
             return loader.LoadTests<GeneralStateTest>();
         }
     }
