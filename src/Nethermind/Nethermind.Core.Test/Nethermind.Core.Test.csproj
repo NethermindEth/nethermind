@@ -17,7 +17,6 @@
     <ProjectReference Include="..\Nethermind.Facade\Nethermind.Facade.csproj" />
     <ProjectReference Include="..\Nethermind.Merge.Plugin\Nethermind.Merge.Plugin.csproj" />
     <ProjectReference Include="..\Nethermind.Specs.Test\Nethermind.Specs.Test.csproj" />
-    <ProjectReference Include="..\Nethermind.Xdc\Nethermind.Xdc.csproj" />
   </ItemGroup>
   <ItemGroup>
     <Content Include="TestRopstenBlocks\*.*">

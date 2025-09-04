@@ -13,7 +13,7 @@ namespace Nethermind.Xdc.Test
     {
         private static (XdcBlockHeader Header, byte[] Bytes) BuildHeaderAndDefaultEncode(XdcHeaderDecoder codec, bool includeBaseFee = true)
         {
-            XdcBlockHeaderBuilder builder = Build.A.XdcBlockHeader;
+            XdcBlockHeaderBuilder builder = Build.A.XdcBlockHeader();
             XdcBlockHeader header = (includeBaseFee ? builder.WithBaseFee((UInt256)1_000_000_000) : builder).TestObject;
 
             Rlp encoded = codec.Encode(header);
