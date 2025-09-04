@@ -22,15 +22,9 @@ public enum CertificateValidationFailure
 }
 
 [Serializable]
-public class CertificateValidationException : Exception
+public class CertificateValidationException(CertificateType certificateType, CertificateValidationFailure failure, Exception? innerException = null)
+    : Exception($"Invalid {certificateType}: {failure}", innerException)
 {
-    public CertificateValidationException(CertificateType certificateType, CertificateValidationFailure failure, Exception? innerException = null)
-        : base($"Invalid {certificateType}: {failure}", innerException)
-    {
-        CertificateType = certificateType;
-        Failure = failure;
-    }
-
-    public CertificateType CertificateType { get; }
-    public CertificateValidationFailure Failure { get; }
+    public CertificateType CertificateType { get; } = certificateType;
+    public CertificateValidationFailure Failure { get; } = failure;
 }
