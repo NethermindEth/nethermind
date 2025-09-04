@@ -4,6 +4,7 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Numerics;
 using System.Threading;
 using System.Threading.Tasks;
 using Autofac;
@@ -146,8 +147,11 @@ public class BlockAccessListTests()
         using IDisposable _ = worldState.BeginScope(IWorldState.PreGenesis);
         InitWorldState(worldState);
 
-        ulong gasPrice = 2;
-        long gasLimit = 100000;
+        const ulong gasPrice = 2;
+        const long gasLimit = 100000;
+        const ulong timestamp = 1000000;
+        Hash256 parentHash = new("0xff483e972a04a9a62bb4b7d04ae403c615604e4090521ecc5bb7af67f71be09c");
+
         Transaction tx = Build.A.Transaction
             .WithTo(TestItem.AddressB)
             .WithSenderAddress(TestItem.AddressA)
@@ -155,6 +159,8 @@ public class BlockAccessListTests()
             .WithGasPrice(gasPrice)
             .WithGasLimit(gasLimit)
             .TestObject;
+
+        // add code change
 
         BlockHeader header = Build.A.BlockHeader
             .WithBaseFee(1)
@@ -166,6 +172,8 @@ public class BlockAccessListTests()
             .WithBeneficiary(TestItem.AddressC)
             .WithParentBeaconBlockRoot(Hash256.Zero)
             .WithRequestsHash(new("0xe3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"))
+            .WithTimestamp(timestamp)
+            .WithParentHash(parentHash)
             .TestObject;
 
         Withdrawal withdrawal = new()
@@ -219,39 +227,52 @@ public class BlockAccessListTests()
         // string kb = Convert.ToHexString(eip7251Changes.StorageChanges.ElementAt(3).Key);
         // string vb = Convert.ToHexString(eip7251Changes.StorageChanges.ElementAt(3).Value.Changes.First().NewValue.Unwrap());
 
-        byte[] slot1 = Convert.FromHexString("290DECD9548B62A8D60345A988386FC84BA6BC95484008F6362F93160EF3E563");
-        StorageChange value1 = new(0, Bytes32.Wrap(Convert.FromHexString("FF483E972A04A9A62BB4B7D04AE403C615604E4090521ECC5BB7AF67F71BE09C")));
+        // byte[] slot1 = Bytes.FromHexString("0x290DECD9548B62A8D60345A988386FC84BA6BC95484008F6362F93160EF3E563");
+        byte[] slot1 = ValueKeccak.Compute([.. Enumerable.Repeat<byte>(0, 32)]).ToByteArray();
+        // StorageChange value1 = new(0, Bytes32.Wrap(Bytes.FromHexString("0xFF483E972A04A9A62BB4B7D04AE403C615604E4090521ECC5BB7AF67F71BE09C")));
+        StorageChange value1 = new(0, Bytes32.Wrap(parentHash.BytesToArray()));
 
-        byte[] slot2 = Convert.FromHexString("0E59911BBD9B80FD816896F0425C7A25DC9EB9092F5AC6264B432F6697F877C8");
+        byte[] slot2 = ValueKeccak.Compute(new BigInteger((timestamp % 8191) + 8191).ToBytes32(true)).ToByteArray();
+        byte[] slot2Old = Bytes.FromHexString("0x0E59911BBD9B80FD816896F0425C7A25DC9EB9092F5AC6264B432F6697F877C8");
         StorageChange value2 = new(0, Bytes32.Zero);
 
-        byte[] slot3 = Convert.FromHexString("2CFFC05BC4230E308FCB837385A814EED1B4C90FB58BA2A0B8407649B9629B28");
-        StorageChange value3 = new(0, Bytes32.Wrap(Convert.FromHexString("00000000000000000000000000000000000000000000000000000000000F4240")));
+        byte[] slot3 = ValueKeccak.Compute(new BigInteger(timestamp % 8191).ToBytes32(true)).ToByteArray();
+        byte[] slot3Old = Bytes.FromHexString("0x2CFFC05BC4230E308FCB837385A814EED1B4C90FB58BA2A0B8407649B9629B28");
+        // hash(timestamp)
+        StorageChange value3 = new(0, Bytes32.Wrap(Bytes.FromHexString("0x00000000000000000000000000000000000000000000000000000000000F4240")));
 
-        byte[] slot4 = Convert.FromHexString("290DECD9548B62A8D60345A988386FC84BA6BC95484008F6362F93160EF3E563");
+        // hash(0)
+        byte[] slot4 = Bytes.FromHexString("0x290DECD9548B62A8D60345A988386FC84BA6BC95484008F6362F93160EF3E563");
         StorageChange value4 = new(2, Bytes32.Zero);
 
-        byte[] slot5 = Convert.FromHexString("405787FA12A823E0F2B7631CC41B3BA8828B3321CA811111FA75CD3AA3BB5ACE");
+        // hash(2)
+        byte[] slot5 = Bytes.FromHexString("0x405787FA12A823E0F2B7631CC41B3BA8828B3321CA811111FA75CD3AA3BB5ACE");
         StorageChange value5 = new(2, Bytes32.Zero);
 
-        byte[] slot6 = Convert.FromHexString("B10E2D527612073B26EECDFD717E6A320CF44B4AFAC2B0732D9FCBE2B7FA0CF6");
+        // hash(1)
+        byte[] slot6 = Bytes.FromHexString("0xB10E2D527612073B26EECDFD717E6A320CF44B4AFAC2B0732D9FCBE2B7FA0CF6");
         StorageChange value6 = new(2, Bytes32.Zero);
-        // StorageChange value6 = new(0, Bytes32.Wrap(Convert.FromHexString("00000000000000000000000000000000000000000000000000000000000F4240")));
+        // StorageChange value6 = new(0, Bytes32.Wrap(Bytes.FromHexString("00000000000000000000000000000000000000000000000000000000000F4240")));
 
-        byte[] slot7 = Convert.FromHexString("C2575A0E9E593C00F959F8C92F12DB2869C3395A3B0502D05E2516446F71F85B");
+        // hash(3)
+        byte[] slot7 = Bytes.FromHexString("0xC2575A0E9E593C00F959F8C92F12DB2869C3395A3B0502D05E2516446F71F85B");
         StorageChange value7 = new(2, Bytes32.Zero);
 
-        byte[] slot8 = Convert.FromHexString("290DECD9548B62A8D60345A988386FC84BA6BC95484008F6362F93160EF3E563");
+        // hash(0)
+        byte[] slot8 = Bytes.FromHexString("0x290DECD9548B62A8D60345A988386FC84BA6BC95484008F6362F93160EF3E563");
         StorageChange value8 = new(2, Bytes32.Zero);
 
-        byte[] slot9 = Convert.FromHexString("405787FA12A823E0F2B7631CC41B3BA8828B3321CA811111FA75CD3AA3BB5ACE");
+        // hash(2)
+        byte[] slot9 = Bytes.FromHexString("0x405787FA12A823E0F2B7631CC41B3BA8828B3321CA811111FA75CD3AA3BB5ACE");
         StorageChange value9 = new(2, Bytes32.Zero);
 
-        byte[] slota = Convert.FromHexString("B10E2D527612073B26EECDFD717E6A320CF44B4AFAC2B0732D9FCBE2B7FA0CF6");
+        // hash(1)
+        byte[] slota = Bytes.FromHexString("0xB10E2D527612073B26EECDFD717E6A320CF44B4AFAC2B0732D9FCBE2B7FA0CF6");
         StorageChange valuea = new(2, Bytes32.Zero);
-        // StorageChange valuea = new(2, Bytes32.Wrap(Convert.FromHexString("00000000000000000000000000000000000000000000000000000000000F4240")));
+        // StorageChange valuea = new(2, Bytes32.Wrap(Bytes.FromHexString("00000000000000000000000000000000000000000000000000000000000F4240")));
 
-        byte[] slotb = Convert.FromHexString("C2575A0E9E593C00F959F8C92F12DB2869C3395A3B0502D05E2516446F71F85B");
+        // hash(3)
+        byte[] slotb = Bytes.FromHexString("0xC2575A0E9E593C00F959F8C92F12DB2869C3395A3B0502D05E2516446F71F85B");
         StorageChange valueb = new(2, Bytes32.Zero);
 
         using (Assert.EnterMultipleScope())
@@ -310,7 +331,7 @@ public class BlockAccessListTests()
             {
                 Address = Eip4788Constants.BeaconRootsAddress,
                 StorageChanges = new(Bytes.Comparer) { { slot2, new SlotChanges(slot2, [value2]) }, { slot3, new SlotChanges(slot3, [value3]) }},
-                StorageReads = [new(Bytes32.Wrap(Convert.FromHexString("0e59911bbd9b80fd816896f0425c7a25dc9eb9092f5ac6264b432f6697f877c8")))],
+                StorageReads = [new(Bytes32.Wrap(Bytes.FromHexString("0x0e59911bbd9b80fd816896f0425c7a25dc9eb9092f5ac6264b432f6697f877c8")))],
                 BalanceChanges = [],
                 NonceChanges = [],
                 CodeChanges = []
@@ -321,10 +342,10 @@ public class BlockAccessListTests()
                 Address = Eip7002Constants.WithdrawalRequestPredeployAddress,
                 StorageChanges = new(Bytes.Comparer) { { slot4, new SlotChanges(slot4, [value4]) }, { slot5, new SlotChanges(slot5, [value5]) }, { slot6, new SlotChanges(slot6, [value6]) }, { slot7, new SlotChanges(slot7, [value7]) }},
                 StorageReads = [
-                    new(Bytes32.Wrap(Convert.FromHexString("b10e2d527612073b26eecdfd717e6a320cf44b4afac2b0732d9fcbe2b7fa0cf6"))),
-                    new(Bytes32.Wrap(Convert.FromHexString("290decd9548b62a8d60345a988386fc84ba6bc95484008f6362f93160ef3e563"))),
-                    new(Bytes32.Wrap(Convert.FromHexString("405787fa12a823e0f2b7631cc41b3ba8828b3321ca811111fa75cd3aa3bb5ace"))),
-                    new(Bytes32.Wrap(Convert.FromHexString("c2575a0e9e593c00f959f8c92f12db2869c3395a3b0502d05e2516446f71f85b"))),
+                    new(Bytes32.Wrap(Bytes.FromHexString("0xb10e2d527612073b26eecdfd717e6a320cf44b4afac2b0732d9fcbe2b7fa0cf6"))),
+                    new(Bytes32.Wrap(Bytes.FromHexString("0x290decd9548b62a8d60345a988386fc84ba6bc95484008f6362f93160ef3e563"))),
+                    new(Bytes32.Wrap(Bytes.FromHexString("0x405787fa12a823e0f2b7631cc41b3ba8828b3321ca811111fa75cd3aa3bb5ace"))),
+                    new(Bytes32.Wrap(Bytes.FromHexString("0xc2575a0e9e593c00f959f8c92f12db2869c3395a3b0502d05e2516446f71f85b"))),
                 ],
                 BalanceChanges = [],
                 NonceChanges = [],
@@ -336,10 +357,10 @@ public class BlockAccessListTests()
                 Address = Eip7251Constants.ConsolidationRequestPredeployAddress,
                 StorageChanges = new(Bytes.Comparer) { { slot8, new SlotChanges(slot8, [value8]) }, { slot9, new SlotChanges(slot9, [value9]) }, { slota, new SlotChanges(slota, [valuea]) }, { slotb, new SlotChanges(slotb, [valueb]) }},
                 StorageReads = [
-                    new(Bytes32.Wrap(Convert.FromHexString("b10e2d527612073b26eecdfd717e6a320cf44b4afac2b0732d9fcbe2b7fa0cf6"))),
-                    new(Bytes32.Wrap(Convert.FromHexString("290decd9548b62a8d60345a988386fc84ba6bc95484008f6362f93160ef3e563"))),
-                    new(Bytes32.Wrap(Convert.FromHexString("405787fa12a823e0f2b7631cc41b3ba8828b3321ca811111fa75cd3aa3bb5ace"))),
-                    new(Bytes32.Wrap(Convert.FromHexString("c2575a0e9e593c00f959f8c92f12db2869c3395a3b0502d05e2516446f71f85b"))),
+                    new(Bytes32.Wrap(Bytes.FromHexString("0xb10e2d527612073b26eecdfd717e6a320cf44b4afac2b0732d9fcbe2b7fa0cf6"))),
+                    new(Bytes32.Wrap(Bytes.FromHexString("0x290decd9548b62a8d60345a988386fc84ba6bc95484008f6362f93160ef3e563"))),
+                    new(Bytes32.Wrap(Bytes.FromHexString("0x405787fa12a823e0f2b7631cc41b3ba8828b3321ca811111fa75cd3aa3bb5ace"))),
+                    new(Bytes32.Wrap(Bytes.FromHexString("0xc2575a0e9e593c00f959f8c92f12db2869c3395a3b0502d05e2516446f71f85b"))),
                 ],
                 BalanceChanges = [],
                 NonceChanges = [],
