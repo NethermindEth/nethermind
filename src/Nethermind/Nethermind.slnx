@@ -89,6 +89,7 @@
   <Project Path="Nethermind.Consensus.Clique/Nethermind.Consensus.Clique.csproj" />
   <Project Path="Nethermind.Consensus.Ethash/Nethermind.Consensus.Ethash.csproj" />
   <Project Path="Nethermind.Consensus/Nethermind.Consensus.csproj" />
+  <Project Path="Nethermind.ContractSearch.Plugin.Test/Nethermind.ContractSearch.Plugin.Test.csproj" />
   <Project Path="Nethermind.Core/Nethermind.Core.csproj" />
   <Project Path="Nethermind.Crypto/Nethermind.Crypto.csproj" />
   <Project Path="Nethermind.Db.Rocks/Nethermind.Db.Rocks.csproj" />
