@@ -209,8 +209,8 @@ public class BlockAccessListTests()
         byte[] slot1 = ToStorageSlot(1);
         byte[] slot2 = ToStorageSlot(2);
         byte[] slot3 = ToStorageSlot(3);
-        byte[] eip4788Slot1 = ToStorageSlot(timestamp % 8191);
-        byte[] eip4788Slot2 = ToStorageSlot((timestamp % 8191) + 8191);
+        byte[] eip4788Slot1 = ToStorageSlot(timestamp % Eip4788Constants.RingBufferSize);
+        byte[] eip4788Slot2 = ToStorageSlot((timestamp % Eip4788Constants.RingBufferSize) + Eip4788Constants.RingBufferSize);
         StorageChange parentHashStorageChange = new(0, Bytes32.Wrap(parentHash.BytesToArray()));
         StorageChange calldataStorageChange = new(0, Bytes32.Zero);
         StorageChange timestampStorageChange = new(0, Bytes32.Wrap(Bytes.FromHexString("0x00000000000000000000000000000000000000000000000000000000000F4240")));
@@ -272,7 +272,7 @@ public class BlockAccessListTests()
             {
                 Address = Eip4788Constants.BeaconRootsAddress,
                 StorageChanges = new(Bytes.Comparer) { { eip4788Slot1, new SlotChanges(eip4788Slot1, [timestampStorageChange]) }, { eip4788Slot2, new SlotChanges(eip4788Slot2, [calldataStorageChange]) } },
-                StorageReads = [new(Bytes32.Wrap(Bytes.FromHexString("0x0e59911bbd9b80fd816896f0425c7a25dc9eb9092f5ac6264b432f6697f877c8")))],
+                StorageReads = [ToStorageRead(eip4788Slot2)],
                 BalanceChanges = [],
                 NonceChanges = [],
                 CodeChanges = []
