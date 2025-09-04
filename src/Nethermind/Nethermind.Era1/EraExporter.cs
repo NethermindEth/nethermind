@@ -76,7 +76,7 @@ public class EraExporter(
 
         using ArrayPoolList<ValueHash256> accumulators = new((int)epochCount, (int)epochCount);
         using ArrayPoolList<ValueHash256> checksums = new((int)epochCount, (int)epochCount);
-        using ArrayPoolList<byte[]> fileNames = new((int)epochCount, (int)epochCount);
+        using ArrayPoolList<string> fileNames = new((int)epochCount, (int)epochCount);
 
         await Parallel.ForEachAsync(epochIdxs, new ParallelOptions
         {
@@ -143,11 +143,10 @@ public class EraExporter(
                 }
             }
 
-            byte[] fileName = Encoding.UTF8.GetBytes(Path.GetFileName(filePath));
             (ValueHash256 accumulator, ValueHash256 sha256) = await eraWriter.Finalize(cancellation);
             accumulators[(int)epochIdx] = accumulator;
             checksums[(int)epochIdx] = sha256;
-            fileNames[(int)epochIdx] = fileName;
+            fileNames[(int)epochIdx] = Path.GetFileName(filePath);
             string rename = Path.Combine(
                 destinationPath,
                 EraPathUtils.Filename(_networkName, epoch, new Hash256(accumulator)));
@@ -157,23 +156,17 @@ public class EraExporter(
         }
     }
 
-    private static readonly ReadOnlyMemory<byte> Space = new[] { (byte)' ' };
-    private static readonly ReadOnlyMemory<byte> NewLine = new[] { (byte)'\n' };
-
-    private async ValueTask WriteFileAsync(string path, ArrayPoolList<ValueHash256> hashes, ArrayPoolList<byte[]> fileNames, CancellationToken cancellationToken)
+    private async Task WriteFileAsync(string path, ArrayPoolList<ValueHash256> hashes, ArrayPoolList<string> fileNames, CancellationToken cancellationToken)
     {
-        Memory<byte> hash = new byte[ValueHash256.Length * 2];
         await using FileSystemStream stream = fileSystem.FileStream.New(path, FileMode.Create, FileAccess.Write, FileShare.None);
-        await using BufferedStream bufferedStream = new(stream);
+        await using StreamWriter writer = new(stream);
 
         for (int i = 0; i < hashes.Count; i++)
         {
             cancellationToken.ThrowIfCancellationRequested();
-            hashes[i].Bytes.OutputBytesToByteHex(hash.Span, false);
-            await bufferedStream.WriteAsync(hash, cancellationToken);
-            await bufferedStream.WriteAsync(Space,cancellationToken);
-            await bufferedStream.WriteAsync(fileNames[i], cancellationToken);
-            await bufferedStream.WriteAsync(NewLine, cancellationToken);
+            await writer.WriteAsync(hashes[i].ToString());
+            await writer.WriteAsync(' ');
+            await writer.WriteLineAsync(fileNames[i]);
         }
     }
 }

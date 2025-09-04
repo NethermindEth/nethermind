@@ -12,8 +12,6 @@ using Nethermind.Core.Crypto;
 using Nethermind.Era1.Exceptions;
 
 namespace Nethermind.Era1.Test;
-
-[Parallelizable(ParallelScope.None)]
 public class EraImporterTest
 {
     [Test]
