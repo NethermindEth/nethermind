@@ -557,11 +557,7 @@ internal sealed class PersistentStorageProvider : PartialStorageProviderBase
             ref ChangeTrace valueChanges = ref BlockChange.GetValueRefOrAddDefault(storageCell.Index, out bool exists);
             if (!exists)
             {
-                byte[] treeValue = !_provider._populatePreBlockCache ?
-                    LoadFromTreeReadPreWarmCache(in storageCell) :
-                    LoadFromTreePopulatePrewarmCache(in storageCell);
-
-                valueChanges = new ChangeTrace(treeValue, value);
+                valueChanges = new ChangeTrace(value);
             }
             else
             {
@@ -635,7 +631,8 @@ internal sealed class PersistentStorageProvider : PartialStorageProviderBase
             foreach (var kvp in BlockChange)
             {
                 byte[] after = kvp.Value.After;
-                if (!Bytes.AreEqual(kvp.Value.Before, after))
+                if (!Bytes.AreEqual(kvp.Value.Before, after)
+                    || kvp.Value.IsInitialValue) // IsInitialValue is so that it does not skip change if it does not know existing value.
                 {
                     BlockChange[kvp.Key] = new(after, after);
                     StorageTree.Set(kvp.Key, after);
