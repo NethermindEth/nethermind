@@ -16,8 +16,6 @@ namespace Ethereum.Test.Base
             if (!Path.IsPathRooted(testsDirectoryName))
             {
                 string testsDirectory = GetGeneralStateTestsDirectory();
-
-
                 testDirs = Directory.EnumerateDirectories(testsDirectory, testsDirectoryName, new EnumerationOptions { RecurseSubdirectories = true });
             }
             else

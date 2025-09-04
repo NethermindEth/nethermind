@@ -50,7 +50,9 @@ namespace Ethereum.Legacy.VM.Test
             if (!expectedTypeName.EndsWith("Tests"))
             {
                 if (!expectedTypeName.EndsWith("Test"))
+                {
                     expectedTypeName += "Tests";
+                }
                 else
                 {
                     expectedTypeName += "s";

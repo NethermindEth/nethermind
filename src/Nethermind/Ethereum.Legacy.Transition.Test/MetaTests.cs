@@ -16,20 +16,20 @@ namespace Ethereum.Legacy.Transition.Test
         [Test]
         public void All_categories_are_tested()
         {
-            var directories = Directory.GetDirectories(Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "Tests"))
+            string[] directories = Directory.GetDirectories(Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "Tests"))
                 .Select(Path.GetFileName)
                 .Except(new[] { "bcArrowGlacierToMerge", "bcArrowGlacierToParis" }) // these ones are missing
                 .ToArray();
             Type[] types = GetType().Assembly.GetTypes();
-            var missingCategories = new List<string>();
-            foreach (var directory in directories)
+            List<string> missingCategories = new List<string>();
+            foreach (string directory in directories)
             {
-                var expectedTypeName = ExpectedTypeName(directory);
+                string expectedTypeName = ExpectedTypeName(directory);
                 if (types.All(t => !string.Equals(t.Name, expectedTypeName, StringComparison.InvariantCultureIgnoreCase)))
                     missingCategories.Add(directory);
             }
 
-            foreach (var missing in missingCategories)
+            foreach (string missing in missingCategories)
             {
                 Console.WriteLine($"{missing} category is missing");
             }
@@ -39,11 +39,13 @@ namespace Ethereum.Legacy.Transition.Test
 
         private static string ExpectedTypeName(string directory)
         {
-            var expectedTypeName = directory.Remove(0, 2);
+            string expectedTypeName = directory.Remove(0, 2);
             if (!expectedTypeName.EndsWith("Tests"))
             {
                 if (!expectedTypeName.EndsWith("Test"))
+                {
                     expectedTypeName += "Tests";
+                }
                 else
                 {
                     expectedTypeName += "s";

@@ -37,7 +37,7 @@ namespace Ethereum.Legacy.Blockchain.Test
             List<string> missingCategories = new List<string>();
             foreach (string directory in directories)
             {
-                var expectedTypeName = ExpectedTypeName(directory).Replace("-", "");
+                string expectedTypeName = ExpectedTypeName(directory).Replace("-", "");
                 Type type = types.SingleOrDefault(t => string.Equals(t.Name, expectedTypeName, StringComparison.InvariantCultureIgnoreCase));
                 if (type is null && !excludesDirectories.Contains(directory))
                 {
@@ -62,7 +62,9 @@ namespace Ethereum.Legacy.Blockchain.Test
             if (!expectedTypeName.EndsWith("Tests"))
             {
                 if (!expectedTypeName.EndsWith("Test"))
+                {
                     expectedTypeName += "Tests";
+                }
                 else
                 {
                     expectedTypeName += "s";
