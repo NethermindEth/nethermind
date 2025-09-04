@@ -21,10 +21,10 @@ namespace Nethermind.Consensus.AuRa.InitializationSteps
             _api = api;
         }
 
-        protected override async Task Load(IMainProcessingContext mainProcessingContext)
+        protected override void Load(IMainProcessingContext mainProcessingContext)
         {
             CreateSystemAccounts(mainProcessingContext.WorldState);
-            await base.Load(mainProcessingContext);
+            base.Load(mainProcessingContext);
         }
 
         private void CreateSystemAccounts(IWorldState worldState)

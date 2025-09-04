@@ -9,7 +9,6 @@ using Nethermind.Api.Steps;
 using Nethermind.Consensus.Producers;
 using Nethermind.JsonRpc.Modules;
 using Nethermind.JsonRpc.Modules.Evm;
-using Nethermind.Core.Events;
 
 namespace Nethermind.Init.Steps;
 
