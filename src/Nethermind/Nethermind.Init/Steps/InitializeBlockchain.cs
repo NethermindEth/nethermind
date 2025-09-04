@@ -30,7 +30,7 @@ namespace Nethermind.Init.Steps
         typeof(SetupKeyStore),
         typeof(InitializePrecompiles)
     )]
-    public class InitializeBlockchain(INethermindApi api) : IStep
+    public class InitializeBlockchain(INethermindApi api, IChainHeadInfoProvider chainHeadInfoProvider) : IStep
     {
         private readonly INethermindApi _api = api;
 
@@ -54,11 +54,6 @@ namespace Nethermind.Init.Steps
                 "- binary data -");
 
             IStateReader stateReader = setApi.StateReader!;
-
-            IChainHeadInfoProvider chainHeadInfoProvider =
-                new ChainHeadInfoProvider(
-                    new ChainHeadSpecProvider(getApi.SpecProvider!, getApi.BlockTree!),
-                    getApi.BlockTree!, stateReader);
 
             _api.TxGossipPolicy.Policies.Add(new SpecDrivenTxGossipPolicy(chainHeadInfoProvider));
 

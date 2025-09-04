@@ -64,7 +64,8 @@ public class TestEnvironmentModule(PrivateKey nodeKey, string? networkGroup) : M
                 IChainHeadSpecProvider specProvider = ctx.Resolve<IChainHeadSpecProvider>();
                 IBlockTree blockTree = ctx.Resolve<IBlockTree>();
                 IStateReader stateReader = ctx.Resolve<IStateReader>();
-                return new ChainHeadInfoProvider(specProvider, blockTree, stateReader)
+                ICodeInfoRepository codeInfoRepository = ctx.Resolve<ICodeInfoRepository>();
+                return new ChainHeadInfoProvider(specProvider, blockTree, stateReader, codeInfoRepository)
                 {
                     // It just need to override this.
                     HasSynced = true

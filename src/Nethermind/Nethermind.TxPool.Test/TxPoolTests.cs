@@ -2196,7 +2196,8 @@ namespace Nethermind.TxPool.Test
             _headInfo ??= new ChainHeadInfoProvider(
                 new ChainHeadSpecProvider(specProvider, _blockTree),
                 _blockTree,
-                _stateProvider);
+                _stateProvider,
+                new EthereumCodeInfoRepository());
 
             return new TxPool(
                 _ethereumEcdsa,
