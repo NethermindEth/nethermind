@@ -59,7 +59,10 @@ public sealed class XdcHeaderDecoder : IHeaderDecoder
         blockHeader.Nonce = (ulong)decoderContext.DecodeUInt256(NonceLength);
 
         blockHeader.Validators = decoderContext.DecodeByteArray();
-        blockHeader.Validator = decoderContext.DecodeByteArray();
+        if ((rlpBehaviors & RlpBehaviors.ForSealing) != RlpBehaviors.ForSealing)
+        {
+            blockHeader.Validator = decoderContext.DecodeByteArray();
+        }
         blockHeader.Penalties = decoderContext.DecodeByteArray();
 
         if (decoderContext.Position != headerCheck) blockHeader.BaseFeePerGas = decoderContext.DecodeUInt256();
@@ -120,7 +123,10 @@ public sealed class XdcHeaderDecoder : IHeaderDecoder
         blockHeader.Nonce = (ulong)rlpStream.DecodeUInt256(NonceLength);
 
         blockHeader.Validators = rlpStream.DecodeByteArray();
-        blockHeader.Validator = rlpStream.DecodeByteArray();
+        if ((rlpBehaviors & RlpBehaviors.ForSealing) != RlpBehaviors.ForSealing)
+        {
+            blockHeader.Validator = rlpStream.DecodeByteArray();
+        }
         blockHeader.Penalties = rlpStream.DecodeByteArray();
 
         if (rlpStream.Position != headerCheck) blockHeader.BaseFeePerGas = rlpStream.DecodeUInt256();
@@ -158,15 +164,13 @@ public sealed class XdcHeaderDecoder : IHeaderDecoder
         rlpStream.Encode(h.GasUsed);
         rlpStream.Encode(h.Timestamp);
         rlpStream.Encode(h.ExtraData);
-
+        rlpStream.Encode(h.MixHash);
+        rlpStream.Encode(h.Nonce, NonceLength);
+        rlpStream.Encode(h.Validators);
         if (notForSealing)
         {
-            rlpStream.Encode(h.MixHash);
-            rlpStream.Encode(h.Nonce, NonceLength);
+            rlpStream.Encode(h.Validator);
         }
-
-        rlpStream.Encode(h.Validators);
-        rlpStream.Encode(h.Validator);
         rlpStream.Encode(h.Penalties);
 
         if (!h.BaseFeePerGas.IsZero) rlpStream.Encode(h.BaseFeePerGas);
@@ -207,16 +211,15 @@ public sealed class XdcHeaderDecoder : IHeaderDecoder
                             + Rlp.LengthOf(item.GasLimit)
                             + Rlp.LengthOf(item.GasUsed)
                             + Rlp.LengthOf(item.Timestamp)
-                            + Rlp.LengthOf(item.ExtraData);
+                            + Rlp.LengthOf(item.ExtraData)
+                            + Rlp.LengthOf(item.MixHash)
+                            + Rlp.LengthOfNonce(item.Nonce);
 
         if (notForSealing)
         {
-            contentLength += Rlp.LengthOf(item.MixHash);
-            contentLength += Rlp.LengthOfNonce(item.Nonce);
+            contentLength += Rlp.LengthOf(item.Validator);
         }
-
         contentLength += Rlp.LengthOf(item.Validators);
-        contentLength += Rlp.LengthOf(item.Validator);
         contentLength += Rlp.LengthOf(item.Penalties);
 
         if (!item.BaseFeePerGas.IsZero) contentLength += Rlp.LengthOf(item.BaseFeePerGas);
