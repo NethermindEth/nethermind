@@ -6,29 +6,28 @@ using System.Linq;
 using Ethereum.Test.Base;
 using NUnit.Framework;
 
-namespace Ethereum.Legacy.Blockchain.Test
+namespace Ethereum.Legacy.Blockchain.Test;
+
+[TestFixture]
+[Parallelizable(ParallelScope.All)]
+public class RevertTests : GeneralStateTestBase
 {
-    [TestFixture]
-    [Parallelizable(ParallelScope.All)]
-    public class RevertTests : GeneralStateTestBase
+    [TestCaseSource(nameof(LoadTests))]
+    public void Test(GeneralStateTest test)
     {
-        [TestCaseSource(nameof(LoadTests))]
-        public void Test(GeneralStateTest test)
-        {
-            Assert.That(RunTest(test).Pass, Is.True);
-        }
+        Assert.That(RunTest(test).Pass, Is.True);
+    }
 
-        public static IEnumerable<GeneralStateTest> LoadTests()
+    public static IEnumerable<GeneralStateTest> LoadTests()
+    {
+        var loader = new TestsSourceLoader(new LoadLegacyGeneralStateTestsStrategy(), "stRevertTest");
+        IEnumerable<GeneralStateTest> tests = loader.LoadTests<GeneralStateTest>();
+        HashSet<string> ignoredTests = new()
         {
-            var loader = new TestsSourceLoader(new LoadLegacyGeneralStateTestsStrategy(), "stRevertTest");
-            IEnumerable<GeneralStateTest> tests = loader.LoadTests<GeneralStateTest>();
-            HashSet<string> ignoredTests = new()
-            {
-                "RevertPrecompiledTouch",
-            };
+            "RevertPrecompiledTouch",
+        };
 
-            return tests.Where(t => !ignoredTests.Any(pattern => t.Name.Contains(pattern))); ;
-        }
+        return tests.Where(t => !ignoredTests.Any(pattern => t.Name.Contains(pattern))); ;
     }
 }
 

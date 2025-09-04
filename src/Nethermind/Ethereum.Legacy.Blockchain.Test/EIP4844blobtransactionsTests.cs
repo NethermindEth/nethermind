@@ -5,22 +5,21 @@ using System.Collections.Generic;
 using Ethereum.Test.Base;
 using NUnit.Framework;
 
-namespace Ethereum.Blockchain.Legacy.Test
-{
-    [TestFixture]
-    [Parallelizable(ParallelScope.All)]
-    public class EIP4844blobtransactionsTests : GeneralStateTestBase
-    {
-        [TestCaseSource(nameof(LoadTests))]
-        public void Test(GeneralStateTest test)
-        {
-            Assert.That(RunTest(test).Pass, Is.True);
-        }
+namespace Ethereum.Blockchain.Legacy.Test;
 
-        public static IEnumerable<GeneralStateTest> LoadTests()
-        {
-            var loader = new TestsSourceLoader(new LoadLegacyGeneralStateTestsStrategy(), "stEIP4844-blobtransactions");
-            return loader.LoadTests<GeneralStateTest>();
-        }
+[TestFixture]
+[Parallelizable(ParallelScope.All)]
+public class EIP4844blobtransactionsTests : GeneralStateTestBase
+{
+    [TestCaseSource(nameof(LoadTests))]
+    public void Test(GeneralStateTest test)
+    {
+        Assert.That(RunTest(test).Pass, Is.True);
+    }
+
+    public static IEnumerable<GeneralStateTest> LoadTests()
+    {
+        var loader = new TestsSourceLoader(new LoadLegacyGeneralStateTestsStrategy(), "stEIP4844-blobtransactions");
+        return loader.LoadTests<GeneralStateTest>();
     }
 }
