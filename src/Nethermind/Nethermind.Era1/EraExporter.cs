@@ -3,11 +3,14 @@
 
 using System.Diagnostics;
 using System.IO.Abstractions;
+using System.Runtime.CompilerServices;
+using System.Text;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.Logging;
 using Nethermind.Serialization.Rlp;
@@ -39,11 +42,9 @@ public class EraExporter(
         long to,
         CancellationToken cancellation = default)
     {
-        if (fileSystem.File.Exists(destinationPath))
-            throw new ArgumentException($"Destination already exist as a file.", nameof(destinationPath));
+        if (fileSystem.File.Exists(destinationPath)) throw new ArgumentException($"Destination already exist as a file.", nameof(destinationPath));
         if (to == 0) to = blockTree.Head?.Number ?? 0;
-        if (to > (blockTree.Head?.Number ?? 0))
-            throw new ArgumentException($"Cannot export to a block after head block {blockTree.Head?.Number ?? 0}.");
+        if (to > (blockTree.Head?.Number ?? 0)) throw new ArgumentException($"Cannot export to a block after head block {blockTree.Head?.Number ?? 0}.");
         if (from > to) throw new ArgumentException($"Start block ({from}) must be before end ({to}) block");
 
         return DoExport(destinationPath, from, to, cancellation: cancellation);
@@ -55,8 +56,7 @@ public class EraExporter(
         long to,
         CancellationToken cancellation = default)
     {
-        if (_logger.IsInfo)
-            _logger.Info($"Exporting from block {from} to block {to} as Era files to {destinationPath}");
+        if (_logger.IsInfo) _logger.Info($"Exporting from block {from} to block {to} as Era files to {destinationPath}");
         if (!fileSystem.Directory.Exists(destinationPath))
         {
             fileSystem.Directory.CreateDirectory(destinationPath);
@@ -76,15 +76,18 @@ public class EraExporter(
 
         using ArrayPoolList<ValueHash256> accumulators = new((int)epochCount, (int)epochCount);
         using ArrayPoolList<ValueHash256> checksums = new((int)epochCount, (int)epochCount);
-        using ArrayPoolList<string> fileNames = new((int)epochCount, (int)epochCount);
+        using ArrayPoolList<byte[]> fileNames = new((int)epochCount, (int)epochCount);
 
-        await Parallel.ForEachAsync(epochIdxs, new ParallelOptions()
+        await Parallel.ForEachAsync(epochIdxs, new ParallelOptions
         {
-            MaxDegreeOfParallelism =
-                    (eraConfig.Concurrency == 0 ? Environment.ProcessorCount : eraConfig.Concurrency),
+            MaxDegreeOfParallelism = eraConfig.Concurrency == 0 ? Environment.ProcessorCount : eraConfig.Concurrency,
             CancellationToken = cancellation
         },
-            async (epochIdx, cancel) => { await WriteEpoch(epochIdx); });
+        async (epochIdx, cancel)
+            =>
+        {
+            await WriteEpoch(epochIdx);
+        });
 
         string accumulatorPath = Path.Combine(destinationPath, AccumulatorFileName);
         fileSystem.File.Delete(accumulatorPath);
@@ -122,14 +125,12 @@ public class EraExporter(
                 TxReceipt[]? receipts = receiptStorage.Get(block, true, false);
                 if (receipts is null || (block.Header.ReceiptsRoot != Keccak.EmptyTreeHash && receipts.Length == 0))
                 {
-                    throw new EraException(
-                        $"Could not find receipts for block {block.ToString(Block.Format.FullHashAndNumber)} {receiptStorage.GetHashCode()}");
+                    throw new EraException($"Could not find receipts for block {block.ToString(Block.Format.FullHashAndNumber)} {receiptStorage.GetHashCode()}");
                 }
 
                 if (block.TotalDifficulty is null)
                 {
-                    throw new EraException(
-                        $"Block {block.ToString(Block.Format.FullHashAndNumber)} does  not have total difficulty specified");
+                    throw new EraException($"Block {block.ToString(Block.Format.FullHashAndNumber)} does  not have total difficulty specified");
                 }
 
                 await eraWriter.Add(block, receipts, cancellation);
@@ -142,7 +143,7 @@ public class EraExporter(
                 }
             }
 
-            string fileName = Path.GetFileName(filePath);
+            byte[] fileName = Encoding.UTF8.GetBytes(Path.GetFileName(filePath));
             (ValueHash256 accumulator, ValueHash256 sha256) = await eraWriter.Finalize(cancellation);
             accumulators[(int)epochIdx] = accumulator;
             checksums[(int)epochIdx] = sha256;
@@ -156,15 +157,23 @@ public class EraExporter(
         }
     }
 
-    private async Task WriteFileAsync(string path, ArrayPoolList<ValueHash256> hashes, ArrayPoolList<string> fileNames, CancellationToken cancellationToken)
+    private static readonly ReadOnlyMemory<byte> Space = new[] { (byte)' ' };
+    private static readonly ReadOnlyMemory<byte> NewLine = new[] { (byte)'\n' };
+
+    private async ValueTask WriteFileAsync(string path, ArrayPoolList<ValueHash256> hashes, ArrayPoolList<byte[]> fileNames, CancellationToken cancellationToken)
     {
-        using FileSystemStream stream = fileSystem.FileStream.New(path, FileMode.Create, FileAccess.Write, FileShare.None);
-        using StreamWriter writer = new StreamWriter(stream);
+        Memory<byte> hash = new byte[ValueHash256.Length * 2];
+        await using FileSystemStream stream = fileSystem.FileStream.New(path, FileMode.Create, FileAccess.Write, FileShare.None);
+        await using BufferedStream bufferedStream = new(stream);
 
         for (int i = 0; i < hashes.Count; i++)
         {
             cancellationToken.ThrowIfCancellationRequested();
-            await writer.WriteLineAsync($"{hashes[i]} {fileNames[i]}");
+            hashes[i].Bytes.OutputBytesToByteHex(hash.Span, false);
+            await bufferedStream.WriteAsync(hash, cancellationToken);
+            await bufferedStream.WriteAsync(Space,cancellationToken);
+            await bufferedStream.WriteAsync(fileNames[i], cancellationToken);
+            await bufferedStream.WriteAsync(NewLine, cancellationToken);
         }
     }
 }
