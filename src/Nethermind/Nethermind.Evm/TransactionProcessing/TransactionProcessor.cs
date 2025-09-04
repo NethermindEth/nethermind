@@ -711,7 +711,7 @@ namespace Nethermind.Evm.TransactionProcessing
             return statusCode;
         }
 
-        private bool DeployLegacyContract(IReleaseSpec spec, Address codeOwner, in TransactionSubstate substate, in StackAccessTracker accessedItems, ref long unspentGas)
+        protected virtual bool DeployLegacyContract(IReleaseSpec spec, Address codeOwner, in TransactionSubstate substate, in StackAccessTracker accessedItems, ref long unspentGas)
         {
             long codeDepositGasCost = CodeDepositHandler.CalculateCost(spec, substate.Output.Bytes.Length);
             if (unspentGas < codeDepositGasCost && spec.ChargeForTopLevelCreate)
