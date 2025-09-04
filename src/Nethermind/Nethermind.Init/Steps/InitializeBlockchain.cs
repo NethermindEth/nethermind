@@ -5,7 +5,6 @@ using System.Collections.Generic;
 using System.Text.Unicode;
 using System.Threading;
 using System.Threading.Tasks;
-using Autofac;
 using Nethermind.Api;
 using Nethermind.Api.Steps;
 using Nethermind.Blockchain;
@@ -19,8 +18,6 @@ using Nethermind.Consensus.Producers;
 using Nethermind.Consensus.Scheduler;
 using Nethermind.Core;
 using Nethermind.Core.Attributes;
-using Nethermind.Evm;
-using Nethermind.Evm.State;
 using Nethermind.State;
 using Nethermind.TxPool;
 using Nethermind.Wallet;
@@ -70,8 +67,6 @@ namespace Nethermind.Init.Steps
             _api.BlockPreprocessor.AddFirst(
                 new RecoverSignatures(getApi.EthereumEcdsa, getApi.SpecProvider, getApi.LogManager));
 
-            WarmupEvm();
-
             // TODO: can take the tx sender from plugin here maybe
             ITxSigner txSigner = new WalletTxSigner(getApi.Wallet, getApi.SpecProvider!.ChainId);
             TxSealer nonceReservingTxSealer =
@@ -108,13 +103,6 @@ namespace Nethermind.Init.Steps
             }
 
             return Task.CompletedTask;
-        }
-
-        private void WarmupEvm()
-        {
-            IWorldState state = _api.WorldStateManager!.CreateResettableWorldState();
-            using var _ = state.BeginScope(IWorldState.PreGenesis);
-            VirtualMachine.WarmUpEvmInstructions(state, new EthereumCodeInfoRepository());
         }
 
         protected virtual IBlockProductionPolicy CreateBlockProductionPolicy() =>

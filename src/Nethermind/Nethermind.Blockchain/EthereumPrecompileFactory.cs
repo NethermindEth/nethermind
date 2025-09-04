@@ -45,7 +45,7 @@ public class EthereumPrecompileFactory() : IPrecompileFactory
         }.ToFrozenDictionary();
     }
 
-    public IDictionary<AddressAsKey, PrecompileInfo> CreatePrecompiles()
+    public FrozenDictionary<AddressAsKey, PrecompileInfo> GetPrecompiles()
     {
         return Precompiles;
     }
