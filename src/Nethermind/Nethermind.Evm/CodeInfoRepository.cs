@@ -12,7 +12,6 @@ using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
 using Nethermind.Evm.CodeAnalysis;
 using Nethermind.Evm.EvmObjectFormat;
-using Nethermind.Evm.Precompiles;
 using Nethermind.Evm.State;
 
 namespace Nethermind.Evm;
@@ -22,9 +21,9 @@ public class CodeInfoRepository : ICodeInfoRepository
     private static readonly CodeLruCache _codeCache = new();
     private readonly FrozenDictionary<AddressAsKey, PrecompileInfo> _localPrecompiles;
 
-    protected CodeInfoRepository(FrozenDictionary<AddressAsKey, PrecompileInfo> precompiles)
+    protected CodeInfoRepository(IPrecompileFactory precompileFactory)
     {
-        _localPrecompiles = precompiles;
+        _localPrecompiles = precompileFactory.CreatePrecompiles().ToFrozenDictionary();
     }
 
     public bool IsPrecompile(Address address, IReleaseSpec spec) =>

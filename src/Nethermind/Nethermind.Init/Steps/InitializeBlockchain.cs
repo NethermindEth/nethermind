@@ -58,14 +58,10 @@ namespace Nethermind.Init.Steps
 
             IStateReader stateReader = setApi.StateReader!;
 
-            // The main one
-            ICodeInfoRepository codeInfoRepository =
-                _api.Context.ResolveNamed<ICodeInfoRepository>(nameof(IWorldStateManager.GlobalWorldState));
-
             IChainHeadInfoProvider chainHeadInfoProvider =
                 new ChainHeadInfoProvider(
                     new ChainHeadSpecProvider(getApi.SpecProvider!, getApi.BlockTree!),
-                    getApi.BlockTree!, stateReader, codeInfoRepository);
+                    getApi.BlockTree!, stateReader);
 
             _api.TxGossipPolicy.Policies.Add(new SpecDrivenTxGossipPolicy(chainHeadInfoProvider));
 

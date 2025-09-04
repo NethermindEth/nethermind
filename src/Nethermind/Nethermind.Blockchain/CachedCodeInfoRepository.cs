@@ -5,22 +5,70 @@ using System;
 using System.Collections.Concurrent;
 using System.Collections.Frozen;
 using System.Collections.Generic;
+using System.Diagnostics.CodeAnalysis;
 using Nethermind.Core;
+using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
 using Nethermind.Evm;
 using Nethermind.Evm.CodeAnalysis;
 using Nethermind.Evm.Precompiles;
+using Nethermind.Evm.State;
 using Nethermind.State;
 
 namespace Nethermind.Blockchain;
 
 public class CachedCodeInfoRepository(
-    FrozenDictionary<AddressAsKey, PrecompileInfo> precompiles,
-    ConcurrentDictionary<PreBlockCaches.PrecompileCacheKey, (byte[], bool)>? precompileCache) : CodeInfoRepository(
-    precompileCache is null
-        ? precompiles
-        : precompiles.ToFrozenDictionary(kvp => kvp.Key, kvp => CreateCachedPrecompile(kvp, precompileCache)))
+    IPrecompileFactory precompileFactory,
+    ICodeInfoRepository baseCodeInfoRepository,
+    ConcurrentDictionary<PreBlockCaches.PrecompileCacheKey, (byte[], bool)>? precompileCache) : ICodeInfoRepository
 {
+    private readonly FrozenDictionary<AddressAsKey, PrecompileInfo> _cachedPrecompile = precompileCache is null
+        ? precompileFactory.CreatePrecompiles().ToFrozenDictionary()
+        : precompileFactory.CreatePrecompiles().ToFrozenDictionary(kvp => kvp.Key, kvp => CreateCachedPrecompile(kvp, precompileCache));
+
+    public ICodeInfo GetCachedCodeInfo(IWorldState worldState, Address codeSource, bool followDelegation, IReleaseSpec vmSpec,
+        out Address? delegationAddress)
+    {
+        if (_cachedPrecompile.TryGetValue(codeSource, out PrecompileInfo info))
+        {
+            delegationAddress = null;
+            return info;
+        }
+        return baseCodeInfoRepository.GetCachedCodeInfo(worldState, codeSource, followDelegation, vmSpec, out delegationAddress);
+    }
+
+    public bool IsPrecompile(Address address, IReleaseSpec spec)
+    {
+        return baseCodeInfoRepository.IsPrecompile(address, spec);
+    }
+
+    public ValueHash256 GetExecutableCodeHash(IWorldState worldState, Address address, IReleaseSpec spec)
+    {
+        return baseCodeInfoRepository.GetExecutableCodeHash(worldState, address, spec);
+    }
+
+    public void InsertCode(IWorldState state, ReadOnlyMemory<byte> code, Address codeOwner, IReleaseSpec spec)
+    {
+        baseCodeInfoRepository.InsertCode(state, code, codeOwner, spec);
+    }
+
+    public void SetDelegation(IWorldState state, Address codeSource, Address authority, IReleaseSpec spec)
+    {
+        baseCodeInfoRepository.SetDelegation(state, codeSource, authority, spec);
+    }
+
+    public bool TryGetDelegation(IReadOnlyStateProvider worldState, Address address, IReleaseSpec spec,
+        [NotNullWhen(true)] out Address? delegatedAddress)
+    {
+        return baseCodeInfoRepository.TryGetDelegation(worldState, address, spec, out delegatedAddress);
+    }
+
+    public bool TryGetDelegation(IReadOnlyStateProvider worldState, in ValueHash256 codeHash, IReleaseSpec spec,
+        [NotNullWhen(true)] out Address? delegatedAddress)
+    {
+        return baseCodeInfoRepository.TryGetDelegation(worldState, in codeHash, spec, out delegatedAddress);
+    }
+
     private static PrecompileInfo CreateCachedPrecompile(
         in KeyValuePair<AddressAsKey, PrecompileInfo> originalPrecompile,
         ConcurrentDictionary<PreBlockCaches.PrecompileCacheKey, (byte[], bool)> cache) =>
