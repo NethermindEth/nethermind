@@ -60,7 +60,7 @@ namespace Nethermind.Api
 
         private Dependencies _dependencies = dependencies;
 
-        public virtual IBlockchainBridge CreateBlockchainBridge()
+        public IBlockchainBridge CreateBlockchainBridge()
         {
             return Context.Resolve<IBlockchainBridgeFactory>().CreateBlockchainBridge();
         }
