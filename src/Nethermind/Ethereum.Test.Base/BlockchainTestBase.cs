@@ -146,14 +146,14 @@ public abstract class BlockchainTestBase
         // Genesis processing
         using (stateProvider.BeginScope(null))
         {
-            Block genesisBlock = Rlp.Decode<Block>(test.GenesisRlp.Bytes);
-            Assert.That(genesisBlock.Header.Hash, Is.EqualTo(new Hash256(test.GenesisBlockHeader.Hash)));
-
             InitializeTestState(test, stateProvider, specProvider);
 
             stopwatch?.Start();
 
             test.GenesisRlp ??= Rlp.Encode(new Block(JsonToEthereumTest.Convert(test.GenesisBlockHeader)));
+
+            Block genesisBlock = Rlp.Decode<Block>(test.GenesisRlp.Bytes);
+            Assert.That(genesisBlock.Header.Hash, Is.EqualTo(new Hash256(test.GenesisBlockHeader.Hash)));
 
             ManualResetEvent genesisProcessed = new(false);
 
