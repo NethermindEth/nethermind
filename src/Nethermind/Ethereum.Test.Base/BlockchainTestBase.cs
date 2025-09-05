@@ -149,7 +149,7 @@ public abstract class BlockchainTestBase
             Block genesisBlock = Rlp.Decode<Block>(test.GenesisRlp.Bytes);
             Assert.That(genesisBlock.Header.Hash, Is.EqualTo(new Hash256(test.GenesisBlockHeader.Hash)));
 
-            InitializeTestState(test, genesisBlock.Beneficiary, stateProvider, specProvider);
+            InitializeTestState(test, stateProvider, specProvider);
 
             stopwatch?.Start();
 
@@ -294,7 +294,7 @@ public abstract class BlockchainTestBase
         return correctRlp;
     }
 
-    private void InitializeTestState(BlockchainTest test, Address? coinbase, IWorldState stateProvider, ISpecProvider specProvider)
+    private static void InitializeTestState(BlockchainTest test, IWorldState stateProvider, ISpecProvider specProvider)
     {
         foreach (KeyValuePair<Address, AccountState> accountState in
             ((IEnumerable<KeyValuePair<Address, AccountState>>)test.Pre ?? Array.Empty<KeyValuePair<Address, AccountState>>()))
@@ -311,13 +311,6 @@ public abstract class BlockchainTestBase
         stateProvider.Commit(specProvider.GenesisSpec);
         stateProvider.CommitTree(0);
         stateProvider.Reset();
-
-        if (!stateProvider.AccountExists(coinbase))
-        {
-            stateProvider.CreateAccount(coinbase, 0);
-            stateProvider.Commit(specProvider.GetSpec((ForkActivation)1));
-            stateProvider.RecalculateStateRoot();
-        }
     }
 
     private List<string> RunAssertions(BlockchainTest test, Block headBlock, IWorldState stateProvider)
