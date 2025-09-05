@@ -4,7 +4,6 @@
 using System;
 using System.Collections.Generic;
 using System.IO;
-using System.Linq;
 using Ethereum.Test.Base.Interfaces;
 
 namespace Ethereum.Test.Base
@@ -16,11 +15,9 @@ namespace Ethereum.Test.Base
             IEnumerable<string> testDirs;
             if (!Path.IsPathRooted(testsDirectoryName))
             {
-                string[] legacyTestsDirectories = GetLegacyGeneralStateTestsDirectories();
+                string legacyTestsDirectory = GetLegacyGeneralStateTestsDirectory();
 
-                testDirs = legacyTestsDirectories.Select(legacyTestsDirectory =>
-                    Directory.EnumerateDirectories(legacyTestsDirectory, testsDirectoryName, new EnumerationOptions { RecurseSubdirectories = true }))
-                    .SelectMany(d => d);
+                testDirs = Directory.EnumerateDirectories(legacyTestsDirectory, testsDirectoryName, new EnumerationOptions { RecurseSubdirectories = true });
             }
             else
             {
@@ -36,14 +33,12 @@ namespace Ethereum.Test.Base
             return testJsons;
         }
 
-        private string[] GetLegacyGeneralStateTestsDirectories()
+        private static string GetLegacyGeneralStateTestsDirectory()
         {
             string currentDirectory = AppDomain.CurrentDomain.BaseDirectory;
             string rootDirectory = currentDirectory.Remove(currentDirectory.LastIndexOf("src"));
 
-            return [
-                Path.Combine(rootDirectory, "src", "tests", "LegacyTests", "Constantinople", "GeneralStateTests"),
-                Path.Combine(rootDirectory, "src", "tests", "LegacyTests", "Cancun", "GeneralStateTests")];
+            return Path.Combine(rootDirectory, "src", "tests", "LegacyTests", "Cancun", "GeneralStateTests");
         }
 
         private IEnumerable<EthereumTest> LoadTestsFromDirectory(string testDir, string wildcard)
