@@ -164,6 +164,7 @@ public class BlockAccessListTests()
         using IDisposable _ = worldState.BeginScope(IWorldState.PreGenesis);
         InitWorldState(worldState);
 
+        const long gasUsed = 92100;
         const ulong gasPrice = 2;
         const long gasLimit = 100000;
         const ulong timestamp = 1000000;
@@ -177,14 +178,22 @@ public class BlockAccessListTests()
             .WithGasLimit(gasLimit)
             .TestObject;
 
-        // add code change
+        Transaction tx2 = Build.A.Transaction
+            .WithTo(null)
+            .WithSenderAddress(TestItem.AddressA)
+            .WithValue(0)
+            .WithNonce(1)
+            .WithGasPrice(gasPrice)
+            .WithGasLimit(gasLimit)
+            .WithCode(Eip2935TestConstants.InitCode)
+            .TestObject;
 
         BlockHeader header = Build.A.BlockHeader
             .WithBaseFee(1)
             .WithNumber(1)
-            .WithGasUsed(21000)
-            .WithReceiptsRoot(new("0x056b23fbba480696b65fe5a59b8f2148a1299103c4f57df839233af2cf4ca2d2"))
-            .WithStateRoot(new("0x869b0dea3e9d18f71753c2b64142901e11b6be272ddbb8975f32851528d30c36"))
+            .WithGasUsed(gasUsed)
+            .WithReceiptsRoot(new("0x6ade9745ba09d7b426314ec12280d510e4811867c2b56f215385842ffb43edf9"))
+            .WithStateRoot(new("0x18a32a11a465a81922828c9b2289924065a37a6961cbbef6633e57b465c11c9d"))
             .WithBlobGasUsed(0)
             .WithBeneficiary(TestItem.AddressC)
             .WithParentBeaconBlockRoot(Hash256.Zero)
@@ -202,7 +211,7 @@ public class BlockAccessListTests()
         };
 
         Block block = Build.A.Block
-            .WithTransactions(tx)
+            .WithTransactions([tx, tx2])
             .WithBaseFeePerGas(1)
             .WithWithdrawals([withdrawal])
             .WithHeader(header).TestObject;
@@ -211,12 +220,15 @@ public class BlockAccessListTests()
 
         BlockAccessList blockAccessList = Rlp.Decode<BlockAccessList>(processedBlock.BlockAccessList);
         SortedDictionary<Address, AccountChanges> accountChanges = blockAccessList.AccountChanges;
-        Assert.That(accountChanges, Has.Count.EqualTo(8));
+        Assert.That(accountChanges, Has.Count.EqualTo(9));
+
+        Address newContractAddress = ContractAddress.From(TestItem.AddressA, 1);
 
         AccountChanges addressAChanges = accountChanges[TestItem.AddressA];
         AccountChanges addressBChanges = accountChanges[TestItem.AddressB];
         AccountChanges addressCChanges = accountChanges[TestItem.AddressC];
         AccountChanges addressDChanges = accountChanges[TestItem.AddressD];
+        AccountChanges newContractChanges = accountChanges[newContractAddress];
         AccountChanges eip2935Changes = accountChanges[Eip2935Constants.BlockHashHistoryAddress];
         AccountChanges eip4788Changes = accountChanges[Eip4788Constants.BeaconRootsAddress];
         AccountChanges eip7002Changes = accountChanges[Eip7002Constants.WithdrawalRequestPredeployAddress];
@@ -231,7 +243,10 @@ public class BlockAccessListTests()
         StorageChange parentHashStorageChange = new(0, Bytes32.Wrap(parentHash.BytesToArray()));
         StorageChange calldataStorageChange = new(0, Bytes32.Zero);
         StorageChange timestampStorageChange = new(0, Bytes32.Wrap(Bytes.FromHexString("0x00000000000000000000000000000000000000000000000000000000000F4240")));
-        StorageChange zeroStorageChangeEnd = new(2, Bytes32.Zero);
+        StorageChange zeroStorageChangeEnd = new(3, Bytes32.Zero);
+
+        UInt256 addressABalance = _accountBalance - gasPrice * GasCostOf.Transaction;
+        UInt256 addressABalance2 = _accountBalance - gasPrice * gasUsed;
 
         using (Assert.EnterMultipleScope())
         {
@@ -240,8 +255,8 @@ public class BlockAccessListTests()
                 Address = TestItem.AddressA,
                 StorageChanges = [],
                 StorageReads = [],
-                BalanceChanges = new SortedList<ushort, BalanceChange>{ { 1, new(1, _accountBalance - gasPrice * GasCostOf.Transaction) } },
-                NonceChanges =  new SortedList<ushort, NonceChange>{ { 1, new(1, 1) } },
+                BalanceChanges = new SortedList<ushort, BalanceChange> { { 1, new(1, addressABalance) }, { 2, new(2, addressABalance2)} },
+                NonceChanges = new SortedList<ushort, NonceChange> { { 1, new(1, 1) }, { 2, new(2, 2) } },
                 CodeChanges = []
             }));
 
@@ -260,8 +275,8 @@ public class BlockAccessListTests()
                 Address = TestItem.AddressC,
                 StorageChanges = [],
                 StorageReads = [],
-                BalanceChanges =  new SortedList<ushort, BalanceChange>{ { 1, new(1, new UInt256(GasCostOf.Transaction)) } },
-                NonceChanges =  new SortedList<ushort, NonceChange>{ { 1, new(1, 0) } },
+                BalanceChanges = new SortedList<ushort, BalanceChange> { { 1, new(1, new UInt256(GasCostOf.Transaction)) }, { 2, new(2, new UInt256(gasUsed))} },
+                NonceChanges = new SortedList<ushort, NonceChange> { { 1, new(1, 0) } },
                 CodeChanges = []
             }));
 
@@ -270,9 +285,19 @@ public class BlockAccessListTests()
                 Address = TestItem.AddressD,
                 StorageChanges = [],
                 StorageReads = [],
-                BalanceChanges = new SortedList<ushort, BalanceChange>{ { 2, new(2, 1.GWei()) } },
+                BalanceChanges = new SortedList<ushort, BalanceChange> { { 3, new(3, 1.GWei()) } },
                 NonceChanges = [],
                 CodeChanges = []
+            }));
+
+            Assert.That(newContractChanges, Is.EqualTo(new AccountChanges()
+            {
+                Address = newContractAddress,
+                StorageChanges = [],
+                StorageReads = [],
+                BalanceChanges = [],
+                NonceChanges = new SortedList<ushort, NonceChange> { { 2, new(2, 1) } },
+                CodeChanges = new SortedList<ushort, CodeChange> { { 2, new(2, Eip2935TestConstants.Code) } }
             }));
 
             Assert.That(eip2935Changes, Is.EqualTo(new AccountChanges()
