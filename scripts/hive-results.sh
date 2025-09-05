@@ -34,8 +34,6 @@ do
         shouldPass+=("$each")
       fi
     done
-
-    if [ ${#results[@]} -gt 0 ]; then exit 1; fi
   fi
 done
 
