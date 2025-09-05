@@ -53,11 +53,6 @@ namespace Nethermind.Consensus.AuRa
         private StartBlockProducerAuRa BlockProducerStarter => _blockProducerStarter ??= _nethermindApi!.CreateStartBlockProducer();
 
         public bool Enabled => chainSpec.SealEngineType == SealEngineType;
-        public ValueTask DisposeAsync()
-        {
-            return default;
-        }
-
         public Task Init(INethermindApi nethermindApi)
         {
             _nethermindApi = nethermindApi as AuRaNethermindApi;

@@ -23,8 +23,6 @@ namespace Nethermind.Analytics
                                 analyticsConfig.StreamBlocks ||
                                 analyticsConfig.StreamTransactions);
 
-        public ValueTask DisposeAsync() { return ValueTask.CompletedTask; }
-
         public string Name => "Analytics";
 
         public string Description => "Various Analytics Extensions";

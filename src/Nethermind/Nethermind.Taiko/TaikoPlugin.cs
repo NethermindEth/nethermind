@@ -87,8 +87,6 @@ public class TaikoPlugin(ChainSpec chainSpec) : IConsensusPlugin
         L1SloadPrecompile.L1StorageProvider = storageProvider;
     }
 
-    public ValueTask DisposeAsync() => ValueTask.CompletedTask;
-
     public bool MustInitialize => true;
 
     // IConsensusPlugin
