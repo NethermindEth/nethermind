@@ -868,7 +868,7 @@ public class ChainSpecBasedSpecProviderTests
 
             yield return MakeTestCase("Default", 1, 2, [], [NoneAllowed, Default, Default]);
 
-            yield return MakeTestCase("Both activate not at genesis", 1, 1, [], [NoneAllowed, Default]);
+            yield return MakeTestCase("Both activate after genesis", 1, 1, [], [NoneAllowed, Default]);
 
             yield return MakeTestCase("Named only from genesis", 0, 0, [], [Default]);
 
@@ -876,9 +876,9 @@ public class ChainSpecBasedSpecProviderTests
 
             yield return MakeTestCase("BPO from genesis", 0, 0, [(0, 7)], [7]);
 
-            yield return MakeTestCase("A named fork has no change in settings", 1, 2, [(3, 10)], [NoneAllowed, Default, Default, 10]);
+            yield return MakeTestCase("A named fork does not change settings", 1, 2, [(3, 10)], [NoneAllowed, Default, Default, 10]);
 
-            yield return MakeTestCase("Cancun and Prague have default settings, but a between bpo changes it", 0, 2, [(1, 10)], [Default, 10, 10]);
+            yield return MakeTestCase("Cancun and Prague have default settings, but an in-between BPO changes them", 0, 2, [(1, 10)], [Default, 10, 10]);
 
             yield return MakeTestCase("Multiple BPOs", 0, 0, [
                 (1, 5),
