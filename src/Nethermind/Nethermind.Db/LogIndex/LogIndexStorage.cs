@@ -48,6 +48,16 @@ namespace Nethermind.Db
             // Any ordered prefix seeking will end on it.
             public static readonly byte[] ForwardMerge = Enumerable.Repeat(byte.MaxValue, ForwardMergeLength).ToArray();
             public const int ForwardMergeLength = BlockNumSize + 1;
+
+            public static Span<byte> CutFrom(Span<byte> dbKey)
+            {
+                if (dbKey.EndsWith(BackwardMerge))
+                    return dbKey[..^BackwardMergeLength];
+                else if (dbKey.EndsWith(ForwardMerge))
+                    return dbKey[..^ForwardMergeLength];
+                else
+                    throw new ArgumentException($"Key {Convert.ToHexString(dbKey)} does not have a special postfix.", nameof(dbKey));
+            }
         }
 
         private static class Defaults
@@ -252,7 +262,13 @@ namespace Nethermind.Db
             return FormatSize(_columnsDb.GatherMetric().Size);
         }
 
-        public Dictionary<byte[], int[]> GetKeysFor(byte[] key, int from, int to, bool includeValues = false)
+        public Dictionary<byte[], int[]> GetKeysFor(Address address, int from, int to, bool includeValues = false) =>
+            GetKeysFor(null, address.Bytes, from, to, includeValues);
+
+        public Dictionary<byte[], int[]> GetKeysFor(int index, Hash256 topic, int from, int to, bool includeValues = false) =>
+            GetKeysFor(index, topic.Bytes.ToArray(), from, to, includeValues);
+
+        private Dictionary<byte[], int[]> GetKeysFor(int? index, byte[] key, int from, int to, bool includeValues = false)
         {
             static bool IsInKeyBounds(IIterator<byte[], byte[]> iterator, byte[] key)
             {
@@ -272,11 +288,11 @@ namespace Nethermind.Db
                 dbKeyBuffer = _arrayPool.Rent(dbKeyLength);
                 Span<byte> dbKey = dbKeyBuffer.AsSpan(..dbKeyLength);
 
-                IDb db = GetDbByKeyLength(key.Length, out _);
+                IDb db = index is null ? _addressDb : _topicsDb;
                 using IIterator<byte[], byte[]> iterator = db.GetIterator(true);
 
                 // Find the last index for the given key, starting at or before `from`
-                CreateDbKey(key, from, dbKey);
+                CreateDbKey(index, key, from, dbKey);
                 iterator.SeekForPrev(dbKey);
 
                 // Otherwise, find the first index for the given key
@@ -320,15 +336,15 @@ namespace Nethermind.Db
         // TODO: use ArrayPoolList?
         public List<int> GetBlockNumbersFor(Address address, int from, int to)
         {
-            return GetBlockNumbersFor(_addressDb, address.Bytes, from, to);
+            return GetBlockNumbersFor(null, address.Bytes, from, to);
         }
 
-        public List<int> GetBlockNumbersFor(Hash256 topic, int from, int to)
+        public List<int> GetBlockNumbersFor(int index, Hash256 topic, int from, int to)
         {
-            return GetBlockNumbersFor(_topicsDb, topic.Bytes.ToArray(), from, to);
+            return GetBlockNumbersFor(index, topic.Bytes.ToArray(), from, to);
         }
 
-        private List<int> GetBlockNumbersFor(IDb db, byte[] keyPrefix, int from, int to)
+        private List<int> GetBlockNumbersFor(int? index, byte[] keyPrefix, int from, int to)
         {
             static bool IsInKeyBounds(IIterator<byte[], byte[]> iterator, byte[] key)
             {
@@ -350,10 +366,11 @@ namespace Nethermind.Db
                 dbKeyBuffer = _arrayPool.Rent(dbKeyLength);
                 Span<byte> dbKey = dbKeyBuffer.AsSpan(..dbKeyLength);
 
+                IDb? db = index is null ? _addressDb : _topicsDb;
                 using IIterator<byte[], byte[]> iterator = db.GetIterator(true);
 
                 // Find the last index for the given key, starting at or before `from`
-                CreateDbKey(keyPrefix, from, dbKey);
+                CreateDbKey(index, keyPrefix, from, dbKey);
                 iterator.SeekForPrev(dbKey);
 
                 // Otherwise, find the first index for the given key
@@ -410,25 +427,21 @@ namespace Nethermind.Db
                 yield return blockNums[i];
         }
 
-        private const bool IncludeTopicIndex = false;
-
-        private static byte[] BuildTopicKey(Hash256 topic, byte topicIndex)
+        private static Span<byte> BuildTopicKey(int topicIndex, ReadOnlySpan<byte> topic, Span<byte> buffer)
         {
-            var key = new byte[Hash256.Size + (IncludeTopicIndex ? 1 : 0)];
-            BuildTopicKey(topic, topicIndex, key);
-            return key;
-        }
+            var index = topic.LeadingZerosCount();
+            ReadOnlySpan<byte> bytes = topic[index..];
 
-        private static void BuildTopicKey(Hash256 topic, byte topicIndex, byte[] buffer)
-        {
-            topic.Bytes.CopyTo(buffer);
-            if (IncludeTopicIndex) buffer[^1] = topicIndex;
+            bytes.CopyTo(buffer);
+
+            // Reduces space requirement while introducing very low risk of collisions (and false positives)
+            buffer[0] ^= (byte)topicIndex;
+
+            return buffer[..bytes.Length];
         }
 
         private IDb GetDbByKeyLength(int length, out int prefixLength)
         {
-            if (IncludeTopicIndex) length -= 1;
-
             if (length - Hash256.Size is 0 or BlockNumSize or SpecialPostfix.ForwardMergeLength or SpecialPostfix.BackwardMergeLength)
             {
                 prefixLength = Hash256.Size;
@@ -627,7 +640,10 @@ namespace Nethermind.Db
             {
                 if (IsMergeKey(key) && value.Length >= minLengthToCompress)
                 {
-                    await _compressor.EnqueueAsync(key);
+                    if (db == _addressDb)
+                        await _compressor.EnqueueAddressAsync(key);
+                    else if (db == _topicsDb)
+                        await _compressor.EnqueueTopicAsync(key);
                     counter++;
                 }
             }
@@ -737,8 +753,11 @@ namespace Nethermind.Db
         /// <summary>
         /// Saves a key consisting of the <c>key || block-number</c> byte array to <paramref name="dbKey"/>
         /// </summary>
-        private static void CreateDbKey(ReadOnlySpan<byte> key, int blockNumber, Span<byte> dbKey)
+        private static void CreateDbKey(int? topicIndex, ReadOnlySpan<byte> key, int blockNumber, Span<byte> dbKey)
         {
+            if (topicIndex.HasValue)
+                key = BuildTopicKey(topicIndex.Value, key, dbKey);
+
             key.CopyTo(dbKey);
             SetKeyBlockNum(dbKey, blockNumber);
         }

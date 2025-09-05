@@ -431,10 +431,10 @@ namespace Nethermind.Db.Test.LogIndex
 
         private static void VerifyReceipts(ILogIndexStorage logIndexStorage, TestData testData,
             Dictionary<Address, HashSet<int>>? excludedAddresses = null,
-            Dictionary<Hash256, HashSet<int>>? excludedTopics = null,
+            Dictionary<int, Dictionary<Hash256, HashSet<int>>>? excludedTopics = null,
             HashSet<int>? excludedBlockNums = null,
             Dictionary<Address, HashSet<int>>? addedAddresses = null,
-            Dictionary<Hash256, HashSet<int>>? addedTopics = null,
+            Dictionary<int, Dictionary<Hash256, HashSet<int>>>? addedTopics = null,
             int? minBlock = null, int? maxBlock = null,
             bool validateMinMax = true
         )
@@ -484,17 +484,18 @@ namespace Nethermind.Db.Test.LogIndex
                 }
             }
 
-            foreach (var (topic, nums) in testData.TopicMap)
+            foreach (var (idx, byTopic) in testData.TopicMap)
+            foreach (var (topic, nums) in byTopic)
             {
                 IEnumerable<int> expectedNums = nums;
 
-                if (excludedTopics != null && excludedTopics.TryGetValue(topic, out HashSet<int> topicExcludedBlocks))
+                if (excludedTopics != null && excludedTopics[idx].TryGetValue(topic, out HashSet<int> topicExcludedBlocks))
                     expectedNums = expectedNums.Except(topicExcludedBlocks);
 
                 if (excludedBlockNums != null)
                     expectedNums = expectedNums.Except(excludedBlockNums);
 
-                if (addedTopics != null && addedTopics.TryGetValue(topic, out HashSet<int> topicAddedBlocks))
+                if (addedTopics != null && addedTopics[idx].TryGetValue(topic, out HashSet<int> topicAddedBlocks))
                     expectedNums = expectedNums.Concat(topicAddedBlocks);
 
                 expectedNums = expectedNums.Order();
@@ -510,9 +511,9 @@ namespace Nethermind.Db.Test.LogIndex
                 foreach (var (from, to) in testData.Ranges)
                 {
                     Assert.That(
-                        logIndexStorage.GetBlockNumbersFor(topic, from, to),
+                        logIndexStorage.GetBlockNumbersFor(idx, topic, from, to),
                         Is.EqualTo(expectedNums.SkipWhile(i => i < from).TakeWhile(i => i <= to)),
-                        $"Topic: {topic}, {from} - {to}"
+                        $"Topic: [{idx}] {topic}, {from} - {to}"
                     );
                 }
             }
@@ -561,16 +562,16 @@ namespace Nethermind.Db.Test.LogIndex
 
                     if (topics.Count != 0)
                     {
-                        var topic = random.NextValue(topics);
-                        var expectedNums = testData.TopicMap[topic];
+                        var (idx, topic) = random.NextValue(topics);
+                        var expectedNums = testData.TopicMap[idx][topic];
 
                         if (logIndexStorage.GetMinBlockNumber() is not { } min || logIndexStorage.GetMaxBlockNumber() is not { } max)
                             continue;
 
                         Assert.That(
-                            logIndexStorage.GetBlockNumbersFor(topic, min, max),
+                            logIndexStorage.GetBlockNumbersFor(idx, topic, min, max),
                             Is.EqualTo(expectedNums.SkipWhile(i => i < min).TakeWhile(i => i <= max)),
-                            $"Topic: {topic}, available: {min} - {max}"
+                            $"Topic: [{idx}] {topic}, available: {min} - {max}"
                         );
                     }
                 }
@@ -651,11 +652,11 @@ namespace Nethermind.Db.Test.LogIndex
             private readonly Lazy<IEnumerable<(int from, int to)>> _ranges;
             public IEnumerable<(int from, int to)> Ranges => _ranges.Value;
 
-            public IReadOnlyDictionary<Address, HashSet<int>> AddressMap { get; private set; } = new Dictionary<Address, HashSet<int>>();
-            public IReadOnlyDictionary<Hash256, HashSet<int>> TopicMap { get; private set; } = new Dictionary<Hash256, HashSet<int>>();
+            public Dictionary<Address, HashSet<int>> AddressMap { get; private set; } = new();
+            public Dictionary<int, Dictionary<Hash256, HashSet<int>>> TopicMap { get; private set; } = new();
 
-            public IReadOnlyList<Address> Addresses { get; private set; }
-            public IReadOnlyList<Hash256> Topics { get; private set; }
+            public List<Address> Addresses { get; private set; }
+            public List<(int, Hash256)> Topics { get; private set; }
 
             public bool ExtendedGetRanges { get; init; }
 
@@ -664,6 +665,10 @@ namespace Nethermind.Db.Test.LogIndex
                 _batchCount = batchCount;
                 _blocksPerBatch = blocksPerBatch;
                 _startNum = startNum;
+
+                // Populated during GenerateBatches()
+                Addresses = null!;
+                Topics = null!;
 
                 _batches = new(() => GenerateBatches(random, batchCount, blocksPerBatch, startNum));
                 _ranges = new(() => ExtendedGetRanges ? GenerateExtendedRanges() : GenerateSimpleRanges());
@@ -695,17 +700,19 @@ namespace Nethermind.Db.Test.LogIndex
                 }
 
                 var maps = GenerateMaps(batches.SelectMany(b => b));
+
                 (AddressMap, TopicMap) = (maps.address, maps.topic);
-                (Addresses, Topics) = (maps.address.Keys.ToList(), maps.topic.Keys.ToList());
+                (Addresses, Topics) = (maps.address.Keys.ToList(), maps.topic.SelectMany(byIdx => byIdx.Value.Select(byTpc => (byIdx.Key, byTpc.Key)))
+                    .ToList());
 
                 return batches;
             }
 
-            public static (Dictionary<Address, HashSet<int>> address, Dictionary<Hash256, HashSet<int>> topic) GenerateMaps(
+            public static (Dictionary<Address, HashSet<int>> address, Dictionary<int, Dictionary<Hash256, HashSet<int>>> topic) GenerateMaps(
                 IEnumerable<BlockReceipts> blocks)
             {
-                var excludedAddresses = new Dictionary<Address, HashSet<int>>();
-                var excludedTopics = new Dictionary<Hash256, HashSet<int>>();
+                var address = new Dictionary<Address, HashSet<int>>();
+                var topic = new Dictionary<int, Dictionary<Hash256, HashSet<int>>>();
 
                 foreach (var block in blocks)
                 {
@@ -713,19 +720,20 @@ namespace Nethermind.Db.Test.LogIndex
                     {
                         foreach (var log in txReceipt.Logs!)
                         {
-                            var addressMap = excludedAddresses.GetOrAdd(log.Address, static _ => []);
+                            var addressMap = address.GetOrAdd(log.Address, static _ => []);
                             addressMap.Add(block.BlockNumber);
 
-                            foreach (var topic in log.Topics)
+                            for (var i = 0; i < log.Topics.Length; i++)
                             {
-                                var topicMap = excludedTopics.GetOrAdd(topic, static _ => []);
+                                topic[i] ??= new();
+                                var topicMap = topic[i].GetOrAdd(log.Topics[i], static _ => []);
                                 topicMap.Add(block.BlockNumber);
                             }
                         }
                     }
                 }
 
-                return (excludedAddresses, excludedTopics);
+                return (address, topic);
             }
 
             private static TxReceipt[] GenerateReceipts(Random random, Address[] addresses, Hash256[] topics)

@@ -74,7 +74,7 @@ namespace Nethermind.Blockchain.Filters.Topics
 
         public override IEnumerable<Hash256> Topics => _subexpressions.SelectMany(e => e.Topics);
 
-        public override List<int>? FilterBlockNumbers(IReadOnlyDictionary<Hash256, List<int>> byTopic)
+        public override List<int>? FilterBlockNumbers(IDictionary<Hash256, List<int>> byTopic)
         {
             List<int>? result = null;
             foreach (TopicExpression subexpression in _subexpressions)

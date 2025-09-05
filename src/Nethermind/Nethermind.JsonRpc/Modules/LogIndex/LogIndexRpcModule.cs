@@ -15,9 +15,21 @@ public class LogIndexRpcModule(ILogIndexStorage storage, ILogIndexService servic
 {
     public ResultWrapper<Dictionary<byte[], int[]>> logIndex_keys(LogIndexKeysRequest request)
     {
-        return ResultWrapper<Dictionary<byte[], int[]>>.Success(
-            storage.GetKeysFor(request.Key, GetBlockNumber(request.FromBlock), GetBlockNumber(request.ToBlock), request.IncludeValues)
-        );
+        if (request.Address is { } address)
+        {
+            return ResultWrapper<Dictionary<byte[], int[]>>.Success(
+                storage.GetKeysFor(address, GetBlockNumber(request.FromBlock), GetBlockNumber(request.ToBlock), request.IncludeValues)
+            );
+        }
+
+        if (request.Topic is { } topic)
+        {
+            return ResultWrapper<Dictionary<byte[], int[]>>.Success(
+                storage.GetKeysFor(request.TopicIndex ?? 0, topic, GetBlockNumber(request.FromBlock), GetBlockNumber(request.ToBlock), request.IncludeValues)
+            );
+        }
+
+        return ResultWrapper<Dictionary<byte[], int[]>>.Fail("No address or topic specified.");
     }
 
     public ResultWrapper<int[]> logIndex_blockNumbers(Filter filter)

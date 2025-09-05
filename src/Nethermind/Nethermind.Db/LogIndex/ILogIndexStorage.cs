@@ -33,9 +33,11 @@ public interface ILogIndexStorage : IAsyncDisposable, IStoppableService
     int? GetMinBlockNumber();
 
     List<int> GetBlockNumbersFor(Address address, int from, int to);
-    List<int> GetBlockNumbersFor(Hash256 topic, int from, int to);
+    List<int> GetBlockNumbersFor(int index, Hash256 topic, int from, int to);
 
-    Dictionary<byte[], int[]> GetKeysFor(byte[] key, int from, int to, bool includeValues = false);
+    Dictionary<byte[], int[]> GetKeysFor(Address address, int from, int to, bool includeValues = false);
+    Dictionary<byte[], int[]> GetKeysFor(int index, Hash256 topic, int from, int to, bool includeValues = false);
+
     string GetDbSize();
 
     Task FirstBlockAdded { get; }

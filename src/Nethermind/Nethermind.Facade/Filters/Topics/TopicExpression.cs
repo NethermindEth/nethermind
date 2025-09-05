@@ -21,6 +21,6 @@ namespace Nethermind.Blockchain.Filters.Topics
 
         public abstract IEnumerable<Hash256> Topics { get; }
 
-        public abstract List<int>? FilterBlockNumbers(IReadOnlyDictionary<Hash256, List<int>> byTopic);
+        public abstract List<int>? FilterBlockNumbers(IDictionary<Hash256, List<int>> byTopic);
     }
 }

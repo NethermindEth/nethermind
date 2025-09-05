@@ -107,14 +107,16 @@ namespace Nethermind.Blockchain.Filters.Topics
 
         public override IEnumerable<Hash256> Topics => _expressions.SelectMany(e => e.Topics);
 
-        public override List<int> FilterBlockNumbers(IReadOnlyDictionary<Hash256, List<int>> byTopic)
+        public override List<int> FilterBlockNumbers(IDictionary<int, IDictionary<Hash256, List<int>>> byTopic)
         {
             List<int>? result = null;
-            foreach (TopicExpression expression in _expressions)
+            for (var i = 0; i < _expressions.Length; i++)
             {
+                TopicExpression expression = _expressions[i];
+
                 if (result == null)
-                    result = expression.FilterBlockNumbers(byTopic);
-                else if (expression.FilterBlockNumbers(byTopic) is { } next)
+                    result = expression.FilterBlockNumbers(byTopic[i]);
+                else if (expression.FilterBlockNumbers(byTopic[i]) is { } next)
                     result = AscListHelper.Intersect(result, next);
             }
 
