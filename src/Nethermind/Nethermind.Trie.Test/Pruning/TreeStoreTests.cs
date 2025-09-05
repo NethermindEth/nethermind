@@ -19,6 +19,7 @@ using Nethermind.Serialization.Rlp;
 using Nethermind.Specs;
 using Nethermind.Evm.State;
 using Nethermind.State;
+using Nethermind.State.Healing;
 using Nethermind.Trie.Pruning;
 using NSubstitute;
 using NUnit.Framework;
@@ -1118,7 +1119,7 @@ namespace Nethermind.Trie.Test.Pruning
                 });
 
             WorldState worldState = new WorldState(
-                fullTrieStore,
+                new TrieStoreBackend(fullTrieStore, _logManager),
                 memDbProvider.CodeDb,
                 LimboLogs.Instance);
 
@@ -1140,7 +1141,8 @@ namespace Nethermind.Trie.Test.Pruning
 
             (Hash256, ValueHash256) SetupStartingState()
             {
-                WorldState worldState = new WorldState(new TestRawTrieStore(nodeStorage), memDbProvider.CodeDb, LimboLogs.Instance);
+                WorldState worldState = new WorldState(
+                    new TrieStoreBackend(new TestRawTrieStore(nodeStorage), LimboLogs.Instance), memDbProvider.CodeDb, LimboLogs.Instance);
                 using var _ = worldState.BeginScope(IWorldState.PreGenesis);
                 worldState.CreateAccountIfNotExists(address, UInt256.One);
                 worldState.Set(new StorageCell(address, slot), TestItem.KeccakB.BytesToArray());
