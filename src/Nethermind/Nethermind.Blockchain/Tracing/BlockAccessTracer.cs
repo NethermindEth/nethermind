@@ -3,7 +3,6 @@
 
 using System;
 using System.Collections.Generic;
-using System.Linq;
 using Nethermind.Core;
 using Nethermind.Core.BlockAccessLists;
 using Nethermind.Core.Crypto;
@@ -60,107 +59,23 @@ public class BlockAccessTracer : IBlockTracer, ITxTracer, IJournal<int>
     public void ReportMemoryChange(long offset, in ReadOnlySpan<byte> data) { }
 
     public void SetOperationStorage(Address address, UInt256 storageIndex, ReadOnlySpan<byte> newValue, ReadOnlySpan<byte> currentValue)
-    {
-        if (!_bal.AccountChanges.TryGetValue(address, out AccountChanges accountChanges))
-        {
-            accountChanges = new(address);
-            _bal.AccountChanges.Add(address, accountChanges);
-        }
-
-        if (currentValue != newValue)
-        {
-            StorageChange(accountChanges, new StorageCell(address, storageIndex).Hash.BytesAsSpan, newValue);
-        }
-    }
+        => _bal.AddStorageChange(address, storageIndex, newValue, currentValue);
 
     public void LoadOperationStorage(Address address, UInt256 storageIndex, ReadOnlySpan<byte> value) { }
 
     public void ReportSelfDestruct(Address address, UInt256 balance, Address refundAddress) { }
 
     public void ReportBalanceChange(Address address, UInt256? before, UInt256? after)
-    {
-        BalanceChange balanceChange = new()
-        {
-            BlockAccessIndex = _blockAccessIndex,
-            PostBalance = after!.Value
-        };
-
-        if (!_bal.AccountChanges.TryGetValue(address, out AccountChanges accountChanges))
-        {
-            accountChanges = new(address);
-            _bal.AccountChanges.Add(address, accountChanges);
-        }
-
-        // don't add zero balance transfers, but add empty account changes
-        if ((before ?? 0) == after)
-        {
-            return;
-        }
-
-        SortedList<ushort, BalanceChange> balanceChanges = accountChanges.BalanceChanges;
-        if (balanceChanges.Count != 0 && balanceChanges.Last().Key == _blockAccessIndex)
-        {
-            balanceChanges.RemoveAt(balanceChanges.Count - 1);
-        }
-        balanceChanges.Add(balanceChange.BlockAccessIndex, balanceChange);
-    }
+        => _bal.AddBalanceChange(address, before, after);
 
     public void ReportCodeChange(Address address, byte[] before, byte[] after)
-    {
-        CodeChange codeChange = new()
-        {
-            BlockAccessIndex = _blockAccessIndex,
-            NewCode = after
-        };
-
-        if (!_bal.AccountChanges.TryGetValue(address, out AccountChanges accountChanges))
-        {
-            accountChanges = new(address);
-            _bal.AccountChanges.Add(address, accountChanges);
-        }
-
-        SortedList<ushort, CodeChange> codeChanges = accountChanges.CodeChanges;
-        if (codeChanges.Count != 0 && codeChanges.Last().Key == _blockAccessIndex)
-        {
-            codeChanges.RemoveAt(codeChanges.Count - 1);
-        }
-        codeChanges.Add(codeChange.BlockAccessIndex, codeChange);
-    }
+        => _bal.AddCodeChange(address, before, after);
 
     public void ReportNonceChange(Address address, UInt256? before, UInt256? after)
-    {
-        if (after == 0)
-        {
-            return;
-        }
-
-        NonceChange nonceChange = new()
-        {
-            BlockAccessIndex = _blockAccessIndex,
-            NewNonce = (ulong)after
-        };
-
-        if (!_bal.AccountChanges.TryGetValue(address, out AccountChanges accountChanges))
-        {
-            accountChanges = new(address);
-            _bal.AccountChanges.Add(address, accountChanges);
-        }
-
-        SortedList<ushort, NonceChange> nonceChanges = accountChanges.NonceChanges;
-        if (nonceChanges.Count != 0 && nonceChanges.Last().Key == _blockAccessIndex)
-        {
-            nonceChanges.RemoveAt(nonceChanges.Count - 1);
-        }
-        nonceChanges.Add(nonceChange.BlockAccessIndex, nonceChange);
-    }
+        => _bal.AddNonceChange(address, (ulong)after);
 
     public void ReportAccountRead(Address address)
-    {
-        if (!_bal.AccountChanges.ContainsKey(address))
-        {
-            _bal.AccountChanges.Add(address, new(address));
-        }
-    }
+        => _bal.AddAccountRead(address);
 
     public void ReportStorageChange(in ReadOnlySpan<byte> key, in ReadOnlySpan<byte> value)
     {
@@ -168,37 +83,10 @@ public class BlockAccessTracer : IBlockTracer, ITxTracer, IJournal<int>
     }
 
     public void ReportStorageChange(in StorageCell storageCell, byte[] before, byte[] after)
-    {
-        Address address = storageCell.Address;
-
-        if (!_bal.AccountChanges.TryGetValue(address, out AccountChanges accountChanges))
-        {
-            accountChanges = new(address);
-            _bal.AccountChanges.Add(address, accountChanges);
-        }
-
-        if (before is null || !Enumerable.SequenceEqual(before, after))
-        {
-            StorageChange(accountChanges, storageCell.Hash.BytesAsSpan, after.AsSpan());
-        }
-    }
+        => _bal.AddStorageChange(storageCell, before, after);
 
     public void ReportStorageRead(in StorageCell storageCell)
-    {
-        StorageRead storageRead = new()
-        {
-            Key = new(storageCell.Hash.ToByteArray())
-        };
-        Address address = storageCell.Address;
-
-        if (!_bal.AccountChanges.TryGetValue(address, out AccountChanges accountChanges))
-        {
-            accountChanges = new(address);
-            _bal.AccountChanges.Add(address, accountChanges);
-        }
-
-        accountChanges.StorageReads.Add(storageRead);
-    }
+        => _bal.AddStorageRead(storageCell);
 
     public void ReportAction(long gas, UInt256 value, Address from, Address to, ReadOnlyMemory<byte> input, ExecutionType callType, bool isPrecompileCall = false) { }
 
@@ -244,7 +132,7 @@ public class BlockAccessTracer : IBlockTracer, ITxTracer, IJournal<int>
 
     // public ITxTracer InnerTracer => _currentTxTracer;
 
-    public int TakeSnapshot() => _bal.AccountChanges.Count;
+    public int TakeSnapshot() => 0;
 
     public void Restore(int snapshot)
     {
@@ -263,19 +151,14 @@ public class BlockAccessTracer : IBlockTracer, ITxTracer, IJournal<int>
     public void StartNewBlockTrace(Block block)
     {
         Block = block;
-        _blockAccessIndex = 0;
         _bal = new();
     }
 
     public ITxTracer StartNewTxTrace(Transaction? tx)
-    {
-        return this;
-    }
+        => this;
 
     public void EndTxTrace()
-    {
-        _blockAccessIndex++;
-    }
+        => _bal.IncrementBlockAccessIndex();
 
     public void EndBlockTrace()
     {

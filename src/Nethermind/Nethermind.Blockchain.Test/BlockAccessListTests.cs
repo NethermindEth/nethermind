@@ -50,7 +50,7 @@ public class BlockAccessListTests()
         tracer.StartNewTxTrace(block.Transactions[0]);
         tracer.MarkAsSuccess(TestItem.AddressA, 100, [], [], TestItem.KeccakF);
 
-        Assert.That(tracer.BlockAccessList.AccountChanges, Has.Count.EqualTo(0));
+        Assert.That(tracer.BlockAccessList.GetAccountChanges().Count, Is.Zero);
     }
 
     [Test]
@@ -146,10 +146,7 @@ public class BlockAccessListTests()
             { accountChanges.Address, accountChanges }
         };
 
-        BlockAccessList blockAccessList = new()
-        {
-            AccountChanges = accountChangesDict
-        };
+        BlockAccessList blockAccessList = new(accountChangesDict);
         byte[] blockAccessListBytes = Rlp.Encode(blockAccessList, RlpBehaviors.None).Bytes;
         BlockAccessList blockAccessListDecoded = Rlp.Decode<BlockAccessList>(blockAccessListBytes, RlpBehaviors.None);
         Assert.That(blockAccessList, Is.EqualTo(blockAccessListDecoded));
@@ -219,20 +216,19 @@ public class BlockAccessListTests()
         (Block processedBlock, TxReceipt[] _) = testBlockchain.BlockProcessor.ProcessOne(block, ProcessingOptions.None, NullBlockTracer.Instance, _spec, CancellationToken.None);
 
         BlockAccessList blockAccessList = Rlp.Decode<BlockAccessList>(processedBlock.BlockAccessList);
-        SortedDictionary<Address, AccountChanges> accountChanges = blockAccessList.AccountChanges;
-        Assert.That(accountChanges, Has.Count.EqualTo(9));
+        Assert.That(blockAccessList.GetAccountChanges().Count, Is.EqualTo(9));
 
         Address newContractAddress = ContractAddress.From(TestItem.AddressA, 1);
 
-        AccountChanges addressAChanges = accountChanges[TestItem.AddressA];
-        AccountChanges addressBChanges = accountChanges[TestItem.AddressB];
-        AccountChanges addressCChanges = accountChanges[TestItem.AddressC];
-        AccountChanges addressDChanges = accountChanges[TestItem.AddressD];
-        AccountChanges newContractChanges = accountChanges[newContractAddress];
-        AccountChanges eip2935Changes = accountChanges[Eip2935Constants.BlockHashHistoryAddress];
-        AccountChanges eip4788Changes = accountChanges[Eip4788Constants.BeaconRootsAddress];
-        AccountChanges eip7002Changes = accountChanges[Eip7002Constants.WithdrawalRequestPredeployAddress];
-        AccountChanges eip7251Changes = accountChanges[Eip7251Constants.ConsolidationRequestPredeployAddress];
+        AccountChanges addressAChanges = blockAccessList.GetAccountChanges(TestItem.AddressA)!.Value;
+        AccountChanges addressBChanges = blockAccessList.GetAccountChanges(TestItem.AddressB)!.Value;
+        AccountChanges addressCChanges = blockAccessList.GetAccountChanges(TestItem.AddressC)!.Value;
+        AccountChanges addressDChanges = blockAccessList.GetAccountChanges(TestItem.AddressD)!.Value;
+        AccountChanges newContractChanges = blockAccessList.GetAccountChanges(newContractAddress)!.Value;
+        AccountChanges eip2935Changes = blockAccessList.GetAccountChanges(Eip2935Constants.BlockHashHistoryAddress)!.Value;
+        AccountChanges eip4788Changes = blockAccessList.GetAccountChanges(Eip4788Constants.BeaconRootsAddress)!.Value;
+        AccountChanges eip7002Changes = blockAccessList.GetAccountChanges(Eip7002Constants.WithdrawalRequestPredeployAddress)!.Value;
+        AccountChanges eip7251Changes = blockAccessList.GetAccountChanges(Eip7251Constants.ConsolidationRequestPredeployAddress)!.Value;
 
         byte[] slot0 = ToStorageSlot(0);
         byte[] slot1 = ToStorageSlot(1);
