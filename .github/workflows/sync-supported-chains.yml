@@ -20,6 +20,10 @@ on:
         description: "Usefull for manual execution on only specified networks - provide partial or full name. Will execute action only on networks which contains phrase."
         default: ""
         required: false
+      matrix_file:
+        description: "File to be chosen for testing"
+        default: "scripts/config/testnet-matrix.json"
+        required: true
 
 env:
   DOTNET_SYSTEM_CONSOLE_ALLOW_ANSI_COLOR_REDIRECTION: "1"
@@ -39,7 +43,7 @@ jobs:
       - name: Set Matrix
         id: set-matrix
         run: |
-          matrix=$(cat nethermind/scripts/config/testnet-matrix.json)
+          matrix=$(cat "nethermind/${{ github.event.inputs.matrix_file }}")
 
           if [ -n "${{ github.event.inputs.network_filter }}" ]; then
             matrix=$(echo "$matrix" | jq --arg filter "${{ github.event.inputs.network_filter }}" '[.[] | select(.network | contains($filter))]')
@@ -75,7 +79,7 @@ jobs:
           linode_token: ${{ secrets.LINODE_TOKEN }}
           github_token: "${{ steps.gh-app.outputs.token }}"
           action: "create"
-          runner_label: t-${{ github.run_id }}-${{ matrix.config.network }}
+          runner_label: t-${{ github.run_id }}-${{ matrix.config.network }}${{ matrix.config.cl && '-' || '' }}${{ matrix.config.cl }}
           root_password: ${{ secrets.LINODE_ROOT_PASSWORD }}
           machine_type: "${{ matrix.config.agent }}"
           image: "linode/ubuntu24.04"
@@ -92,7 +96,7 @@ jobs:
         config: ${{fromJson(needs.setup-matrix.outputs.matrix)}}
 
     name: "Run sync of ${{ matrix.config.network }} chain"
-    runs-on: t-${{ github.run_id }}-${{ matrix.config.network }}
+    runs-on: t-${{ github.run_id }}-${{ matrix.config.network }}${{ matrix.config.cl && '-' || '' }}${{ matrix.config.cl }}
     timeout-minutes: ${{ matrix.config.timeout }}
 
     steps:
@@ -183,6 +187,7 @@ jobs:
             --el-op-extra-flag "Seq.ApiKey=${{ secrets.SEQ_API_KEY }}" \
             --el-op-extra-flag Seq.MinLevel=Info \
             --el-op-extra-flag "Metrics.PushGatewayUrl=${{ secrets.GRAFANA_CONNECTION_STRING }}"
+            --el-op-extra-flag Blocks.PreWarmStateOnBlockProcessing=false
           )
           L2_METRICS_FLAGS=(
             --el-l2-extra-flag "Metrics.NodeName=${node_name}" \
@@ -229,6 +234,7 @@ jobs:
               --network $stripped_network \
               --consensus-url $CONSENSUS_URL \
               --execution-api-url $EXECUTION_URL \
+              --latest \
               --el-op-extra-flag Sync.NonValidatorNode=true \
               --el-op-extra-flag Sync.DownloadBodiesInFastSync=false \
               --el-op-extra-flag Sync.DownloadReceiptsInFastSync=false \
@@ -266,6 +272,7 @@ jobs:
               --network $stripped_network \
               --consensus-url $CONSENSUS_URL \
               --execution-api-url $EXECUTION_URL \
+              --latest \
               --el-l2-extra-flag Sync.NonValidatorNode=true \
               --el-l2-extra-flag Sync.DownloadBodiesInFastSync=false \
               --el-l2-extra-flag Sync.DownloadReceiptsInFastSync=false \
@@ -282,12 +289,12 @@ jobs:
               --logging none \
               -p $GITHUB_WORKSPACE/sedge \
               full-node \
-              -c ${{ matrix.config.cl }}:${{ matrix.config.cl_image }} \
               -e nethermind:$docker_image \
               --map-all \
               --no-mev-boost \
               --no-validator \
               --network ${{ matrix.config.network }} \
+              --latest \
               --el-extra-flag Sync.NonValidatorNode=true \
               --el-extra-flag Sync.DownloadBodiesInFastSync=false \
               --el-extra-flag Sync.DownloadReceiptsInFastSync=false \
@@ -295,8 +302,7 @@ jobs:
               --el-extra-flag Sync.VerifyTrieOnStateSyncFinished=true \
               --el-extra-flag loggerConfigSource=/nethermind/data/logs/configs/customNLog.config \
               --el-extra-flag Sync.SnapSync=true \
-              "${GENERIC_METRICS_FLAGS[@]}" \
-              --checkpoint-sync-url=${{ matrix.config.checkpoint-sync-url }}
+              ${{ matrix.config.cl && format('-c {0}', matrix.config.cl) || '' }} ${{ matrix.config.checkpoint-sync-url && format('--checkpoint-sync-url={0}', matrix.config.checkpoint-sync-url) || '' }} "${GENERIC_METRICS_FLAGS[@]}" 
           fi
 
           echo 'Running sedge...'
@@ -353,8 +359,8 @@ jobs:
           linode_token: ${{ secrets.LINODE_TOKEN }}
           github_token: "${{ secrets.REPOSITORY_DISPATCH_TOKEN }}"
           action: "destroy-machine-async"
-          runner_label: t-${{ github.run_id }}-${{ matrix.config.network }}
-          search_phrase: t-${{ github.run_id }}-${{ matrix.config.network }}
+          runner_label: t-${{ github.run_id }}-${{ matrix.config.network }}${{ matrix.config.cl && '-' || '' }}${{ matrix.config.cl }}
+          search_phrase: t-${{ github.run_id }}-${{ matrix.config.network }}${{ matrix.config.cl && '-' || '' }}${{ matrix.config.cl }}
           root_password: ${{ secrets.LINODE_ROOT_PASSWORD }}
           organization: "NethermindEth"
           repo_name: "nethermind"
@@ -382,8 +388,8 @@ jobs:
           linode_token: ${{ secrets.LINODE_TOKEN }}
           github_token: "${{ steps.gh-app.outputs.token }}"
           action: "destroy-machine"
-          runner_label: t-${{ github.run_id }}-${{ matrix.config.network }}
-          search_phrase: t-${{ github.run_id }}-${{ matrix.config.network }}
+          runner_label: t-${{ github.run_id }}-${{ matrix.config.network }}${{ matrix.config.cl && '-' || '' }}${{ matrix.config.cl }}
+          search_phrase: t-${{ github.run_id }}-${{ matrix.config.network }}${{ matrix.config.cl && '-' || '' }}${{ matrix.config.cl }}
           root_password: ${{ secrets.LINODE_ROOT_PASSWORD }}
           organization: "NethermindEth"
           repo_name: "nethermind"
@@ -394,33 +400,8 @@ jobs:
           linode_token: ${{ secrets.LINODE_TOKEN }}
           github_token: "${{ steps.gh-app.outputs.token }}"
           action: "destroy-runner"
-          runner_label: t-${{ github.run_id }}-${{ matrix.config.network }}
-          search_phrase: t-${{ github.run_id }}-${{ matrix.config.network }}
+          runner_label: t-${{ github.run_id }}-${{ matrix.config.network }}${{ matrix.config.cl && '-' || '' }}${{ matrix.config.cl }}
+          search_phrase: t-${{ github.run_id }}-${{ matrix.config.network }}${{ matrix.config.cl && '-' || '' }}${{ matrix.config.cl }}
           root_password: ${{ secrets.LINODE_ROOT_PASSWORD }}
           organization: "NethermindEth"
           repo_name: "nethermind"
-  trigger_tests:
-    needs: [setup-matrix, create_a_runner, sync-chain, destroy_runner]
-    if: success()
-    runs-on: ubuntu-latest
-    steps:
-      - name: Authenticate App
-        id: gh-app
-        uses: actions/create-github-app-token@v1
-        with:
-          app-id: ${{ vars.APP_ID }}
-          private-key: ${{ secrets.APP_PRIVATE_KEY }}
-          repositories: "nethermind,post-merge-smoke-tests"
-
-      - name: Trigger notification action on test repo
-        if: startsWith(github.event.workflow_run.head_branch, 'release/')
-        continue-on-error: true
-        uses: benc-uk/workflow-dispatch@v1
-        with:
-          workflow: receive-push-notification.yml
-          repo: NethermindEth/post-merge-smoke-tests
-          ref: "main"
-          token: "${{ steps.gh-app.outputs.token }}"
-          inputs: '{
-            "nethermind_branch": "refs/heads/${{ github.event.workflow_run.head_branch }}"
-          }'
