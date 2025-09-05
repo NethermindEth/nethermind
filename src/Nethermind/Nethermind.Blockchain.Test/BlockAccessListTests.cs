@@ -334,13 +334,11 @@ public class BlockAccessListTests()
     {
         worldState.CreateAccount(TestItem.AddressA, _accountBalance);
 
-        worldState.CreateAccount(Eip2935Constants.BlockHashHistoryAddress, 0, 1);
-        byte[] eip2935Code = Bytes.FromHexString("0x3373fffffffffffffffffffffffffffffffffffffffe14604657602036036042575f35600143038111604257611fff81430311604257611fff9006545f5260205ff35b5f5ffd5b5f35611fff60014303065500");
-        worldState.InsertCode(Eip2935Constants.BlockHashHistoryAddress, ValueKeccak.Compute(eip2935Code), eip2935Code, _specProvider.GenesisSpec);
+        worldState.CreateAccount(Eip2935Constants.BlockHashHistoryAddress, 0, Eip2935TestConstants.Nonce);
+        worldState.InsertCode(Eip2935Constants.BlockHashHistoryAddress, Eip2935TestConstants.CodeHash, Eip2935TestConstants.Code, _specProvider.GenesisSpec);
 
-        worldState.CreateAccount(Eip4788Constants.BeaconRootsAddress, 0, 1);
-        byte[] eip4788Code = Bytes.FromHexString("0x3373fffffffffffffffffffffffffffffffffffffffe14604d57602036146024575f5ffd5b5f35801560495762001fff810690815414603c575f5ffd5b62001fff01545f5260205ff35b5f5ffd5b62001fff42064281555f359062001fff015500");
-        worldState.InsertCode(Eip4788Constants.BeaconRootsAddress, ValueKeccak.Compute(eip4788Code), eip4788Code, _specProvider.GenesisSpec);
+        worldState.CreateAccount(Eip4788Constants.BeaconRootsAddress, 0, Eip4788TestConstants.Nonce);
+        worldState.InsertCode(Eip4788Constants.BeaconRootsAddress, Eip4788TestConstants.CodeHash, Eip4788TestConstants.Code, _specProvider.GenesisSpec);
 
         worldState.CreateAccount(Eip7002Constants.WithdrawalRequestPredeployAddress, 0, Eip7002TestConstants.Nonce);
         worldState.InsertCode(Eip7002Constants.WithdrawalRequestPredeployAddress, Eip7002TestConstants.CodeHash, Eip7002TestConstants.Code, _specProvider.GenesisSpec);
