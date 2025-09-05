@@ -62,11 +62,6 @@ namespace Nethermind.Api
 
         private Dependencies _dependencies = dependencies;
 
-        public IBlockchainBridge CreateBlockchainBridge()
-        {
-            return Context.Resolve<IBlockchainBridgeFactory>().CreateBlockchainBridge();
-        }
-
         public IBlobTxStorage BlobTxStorage => Context.Resolve<IBlobTxStorage>();
         public CompositeBlockPreprocessorStep BlockPreprocessor { get; } = new();
         public IGenesisPostProcessor GenesisPostProcessor { get; set; } = new NullGenesisPostProcessor();
