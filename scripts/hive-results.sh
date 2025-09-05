@@ -21,7 +21,7 @@ do
     do
       echo -e "\033[0;32m\u2714\033[0m $each"
       if grep -qx "$each" <<< "$knownFailingTests"; then
-        shuoldNotPass+=("$each")
+        shouldNotPass+=("$each")
       fi
     done
   else
