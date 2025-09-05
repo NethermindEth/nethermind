@@ -428,8 +428,6 @@ public class EthereumRunnerTests
         public string Author { get; } = "";
         public bool Enabled { get; } = true;
 
-        public ValueTask DisposeAsync() => ValueTask.CompletedTask;
-
         public IModule Module => new RunnerTestModule(forStepTest);
 
         private class RunnerTestModule(bool forStepTest) : Autofac.Module
