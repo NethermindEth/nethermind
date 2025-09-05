@@ -46,7 +46,7 @@ namespace Nethermind.Init.Steps
             {
                 using var _ = mainProcessingContext.WorldState.BeginScope(IWorldState.PreGenesis);
 
-                await Load(mainProcessingContext);
+                Load(mainProcessingContext);
             }
 
             if (!_initConfig.ProcessingEnabled)
@@ -56,7 +56,7 @@ namespace Nethermind.Init.Steps
             }
         }
 
-        protected virtual Task Load(IMainProcessingContext mainProcessingContext)
+        protected virtual void Load(IMainProcessingContext mainProcessingContext)
         {
             if (_api.ChainSpec is null) throw new StepDependencyException(nameof(_api.ChainSpec));
             if (_api.BlockTree is null) throw new StepDependencyException(nameof(_api.BlockTree));
@@ -90,8 +90,6 @@ namespace Nethermind.Init.Steps
             {
                 throw new TimeoutException($"Genesis block was not processed after {_genesisProcessedTimeout.TotalSeconds} seconds. If you are running custom chain with very big genesis file consider increasing {nameof(BlocksConfig)}.{nameof(IBlocksConfig.GenesisTimeoutMs)}.");
             }
-
-            return Task.CompletedTask;
         }
     }
 }
