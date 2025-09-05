@@ -21,8 +21,6 @@ public class Flashbots(IFlashbotsConfig flashbotsConfig, IJsonRpcConfig jsonRpcC
     public string Author => "Nethermind";
     public bool Enabled => flashbotsConfig.Enabled;
 
-    public ValueTask DisposeAsync() => ValueTask.CompletedTask;
-
     public IModule Module => new FlashbotsModule(flashbotsConfig, jsonRpcConfig);
 }
 

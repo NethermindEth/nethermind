@@ -240,8 +240,6 @@ public partial class MergePlugin(ChainSpec chainSpec, IMergeConfig mergeConfig) 
         return new MergeFinalizationManager(_api.Context.Resolve<IManualBlockFinalizationManager>(), _api.FinalizationManager, _poSSwitcher);
     }
 
-    public ValueTask DisposeAsync() => ValueTask.CompletedTask;
-
     public bool MustInitialize { get => true; }
 
     public virtual IModule Module => new MergePluginModule();
