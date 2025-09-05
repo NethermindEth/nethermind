@@ -25,6 +25,53 @@ public partial class BlockTree
         LoadForkChoiceInfo();
     }
 
+    public static long? BinarySearchBlockNumber(long left, long right, Func<long, bool, bool> isBlockFound,
+        BinarySearchDirection direction = BinarySearchDirection.Up, bool findBeacon = false)
+    {
+        if (left > right)
+        {
+            return null;
+        }
+
+        long? result = null;
+        while (left != right)
+        {
+            long index = direction == BinarySearchDirection.Up
+                ? left + (right - left) / 2
+                : right - (right - left) / 2;
+            if (isBlockFound(index, findBeacon))
+            {
+                result = index;
+                if (direction == BinarySearchDirection.Up)
+                {
+                    left = index + 1;
+                }
+                else
+                {
+                    right = index - 1;
+                }
+            }
+            else
+            {
+                if (direction == BinarySearchDirection.Up)
+                {
+                    right = index;
+                }
+                else
+                {
+                    left = index;
+                }
+            }
+        }
+
+        if (isBlockFound(left, findBeacon))
+        {
+            result = direction == BinarySearchDirection.Up ? left : right;
+        }
+
+        return result;
+    }
+
     private void AttemptToFixCorruptionByMovingHeadBackwards()
     {
         if (_tryToRecoverFromHeaderBelowBodyCorruption && BestSuggestedHeader is not null)
@@ -252,7 +299,7 @@ public partial class BlockTree
             : FindBlock(bestBeaconBodyHeader.Hash, BlockTreeLookupOptions.TotalDifficultyNotNeeded);
     }
 
-    private enum BinarySearchDirection
+    public enum BinarySearchDirection
     {
         Up,
         Down
@@ -271,53 +318,6 @@ public partial class BlockTree
         }
 
         return null;
-    }
-
-    private static long? BinarySearchBlockNumber(long left, long right, Func<long, bool, bool> isBlockFound,
-        BinarySearchDirection direction = BinarySearchDirection.Up, bool findBeacon = false)
-    {
-        if (left > right)
-        {
-            return null;
-        }
-
-        long? result = null;
-        while (left != right)
-        {
-            long index = direction == BinarySearchDirection.Up
-                ? left + (right - left) / 2
-                : right - (right - left) / 2;
-            if (isBlockFound(index, findBeacon))
-            {
-                result = index;
-                if (direction == BinarySearchDirection.Up)
-                {
-                    left = index + 1;
-                }
-                else
-                {
-                    right = index - 1;
-                }
-            }
-            else
-            {
-                if (direction == BinarySearchDirection.Up)
-                {
-                    right = index;
-                }
-                else
-                {
-                    left = index;
-                }
-            }
-        }
-
-        if (isBlockFound(left, findBeacon))
-        {
-            result = direction == BinarySearchDirection.Up ? left : right;
-        }
-
-        return result;
     }
 
     private void LoadStartBlock()

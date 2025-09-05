@@ -3,20 +3,13 @@
 
 using System.Collections.Generic;
 using Autofac;
-using Nethermind.Api;
-using Nethermind.Blockchain;
-using Nethermind.Blockchain.Receipts;
-using Nethermind.Config;
 using Nethermind.Consensus;
 using Nethermind.Consensus.Comparers;
 using Nethermind.Consensus.Processing;
 using Nethermind.Consensus.Producers;
 using Nethermind.Consensus.Transactions;
 using Nethermind.Core.Test.Blockchain;
-using Nethermind.Evm;
-using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Evm.State;
-using Nethermind.State;
 using Nethermind.TxPool;
 
 namespace Nethermind.Core.Test.Modules;
@@ -32,26 +25,9 @@ public class TestBlockProcessingModule : Module
             .AddSingleton<CompositeBlockPreprocessorStep>()
             .AddSingleton<IBlockPreprocessorStep, RecoverSignatures>()
 
-            // Yea, for some reason, the ICodeInfoRepository need to be the main one for ChainHeadInfoProvider to work.
-            // Like, is ICodeInfoRepository suppose to be global? Why not just IStateReader.
-            .AddKeyedSingleton<ICodeInfoRepository>(nameof(IWorldStateManager.GlobalWorldState), (ctx) =>
-            {
-                IWorldState worldState = ctx.Resolve<IWorldStateManager>().GlobalWorldState;
-                PreBlockCaches? preBlockCaches = (worldState as IPreBlockCaches)?.Caches;
-                return new EthereumCodeInfoRepository(preBlockCaches?.PrecompileCache);
-            })
-
             .AddSingleton<ITxPool, TxPool.TxPool>()
             .AddSingleton<CompositeTxGossipPolicy>()
             .AddSingleton<INonceManager, IChainHeadInfoProvider>((chainHeadInfoProvider) => new NonceManager(chainHeadInfoProvider.ReadOnlyStateProvider))
-
-            // The main block processing pipeline, anything that requires the use of the main IWorldState is wrapped
-            // in a `MainBlockProcessingContext`.
-            .AddSingleton<MainBlockProcessingContext, ILifetimeScope>(ConfigureMainBlockProcessingContext)
-            // Then component that has no ambiguity is extracted back out.
-            .Map<IBlockProcessingQueue, MainBlockProcessingContext>(ctx => ctx.BlockProcessingQueue)
-            .Bind<IMainProcessingContext, MainBlockProcessingContext>()
-
 
             // Seems to be only used by block producer.
             .AddScoped<IGasLimitCalculator, TargetAdjustedGasLimitCalculator>()
@@ -71,48 +47,6 @@ public class TestBlockProcessingModule : Module
             .AddSingleton<ISigner>(NullSigner.Instance)
 
             ;
-    }
-
-    private MainBlockProcessingContext ConfigureMainBlockProcessingContext(ILifetimeScope ctx)
-    {
-        IReceiptConfig receiptConfig = ctx.Resolve<IReceiptConfig>();
-        IInitConfig initConfig = ctx.Resolve<IInitConfig>();
-        IBlocksConfig blocksConfig = ctx.Resolve<IBlocksConfig>();
-        var mainWorldState = ctx.Resolve<IWorldStateManager>().GlobalWorldState;
-        ICodeInfoRepository mainCodeInfoRepository =
-            ctx.ResolveNamed<ICodeInfoRepository>(nameof(IWorldStateManager.GlobalWorldState));
-
-        ILifetimeScope innerScope = ctx.BeginLifetimeScope((processingCtxBuilder) =>
-        {
-            processingCtxBuilder
-                // These are main block processing specific
-                .AddScoped<ICodeInfoRepository>(mainCodeInfoRepository)
-                .AddSingleton<IWorldState>(mainWorldState)
-                .Bind<IBlockProcessor.IBlockTransactionsExecutor, IValidationTransactionExecutor>()
-                .AddScoped<ITransactionProcessorAdapter, ExecuteTransactionProcessorAdapter>()
-                .AddScoped(new BlockchainProcessor.Options
-                {
-                    StoreReceiptsByDefault = receiptConfig.StoreReceipts,
-                    DumpOptions = initConfig.AutoDump
-                })
-                .AddScoped<GenesisLoader>()
-
-                // And finally, to wrap things up.
-                .AddScoped<MainBlockProcessingContext>()
-                .Bind<IBlockchainProcessor, BlockchainProcessor>()
-                .Bind<IBlockProcessingQueue, BlockchainProcessor>()
-                ;
-
-            if (blocksConfig.PreWarmStateOnBlockProcessing)
-            {
-                processingCtxBuilder
-                    .AddScoped<PreBlockCaches>((mainWorldState as IPreBlockCaches)!.Caches)
-                    .AddScoped<IBlockCachePreWarmer, BlockCachePreWarmer>()
-                    ;
-            }
-        });
-
-        return innerScope.Resolve<MainBlockProcessingContext>();
     }
 
     public class AutoBlockProducerFactory<T>(ILifetimeScope rootLifetime, IBlockProducerEnvFactory producerEnvFactory) : IBlockProducerFactory where T : IBlockProducer

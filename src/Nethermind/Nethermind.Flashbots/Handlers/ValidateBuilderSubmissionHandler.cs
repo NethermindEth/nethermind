@@ -3,6 +3,7 @@
 
 using System;
 using System.Collections.Generic;
+using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Tracing;
@@ -210,7 +211,6 @@ public class ValidateSubmissionHandler
         RecoverSenderAddress(block, spec);
         UInt256 feeRecipientBalanceBefore = worldState.HasStateForBlock(parentHeader) ? (worldState.AccountExists(feeRecipient) ? worldState.GetBalance(feeRecipient) : UInt256.Zero) : UInt256.Zero;
 
-        List<Block> suggestedBlocks = [block];
         BlockReceiptsTracer blockReceiptsTracer = new();
 
         try
@@ -219,7 +219,9 @@ public class ValidateSubmissionHandler
             {
                 ValidateSubmissionProcessingOptions |= ProcessingOptions.NoValidation;
             }
-            _ = blockProcessor.Process(parentHeader, suggestedBlocks, ValidateSubmissionProcessingOptions, blockReceiptsTracer)[0];
+
+            spec = _specProvider.GetSpec(block.Header);
+            _ = blockProcessor.ProcessOne(block, ValidateSubmissionProcessingOptions, blockReceiptsTracer, spec, CancellationToken.None);
         }
         catch (Exception e)
         {
@@ -242,7 +244,7 @@ public class ValidateSubmissionHandler
             }
         }
 
-        if (!_blockValidator.ValidateSuggestedBlock(block, out error))
+        if (!_blockValidator.ValidateSuggestedBlock(block, parentHeader, out error))
         {
             return false;
         }
@@ -271,7 +273,7 @@ public class ValidateSubmissionHandler
 
     private bool ValidateBlockMetadata(Block block, long registerGasLimit, BlockHeader parentHeader, out string? error)
     {
-        if (!_headerValidator.Validate(block.Header))
+        if (!_headerValidator.Validate(block.Header, parentHeader))
         {
             error = $"Invalid block header hash {block.Header.Hash}";
             return false;

@@ -15,42 +15,35 @@ using System.Runtime;
 using System.Text.RegularExpressions;
 using System.Threading;
 using System.Threading.Tasks;
-#if !DEBUG
-using DotNetty.Common;
-#endif
 using Nethermind.Api;
 using Nethermind.Api.Extensions;
 using Nethermind.Config;
-using Nethermind.Consensus.AuRa;
-using Nethermind.Consensus.Clique;
-using Nethermind.Consensus.Ethash;
 using Nethermind.Core;
 using Nethermind.Core.Exceptions;
 using Nethermind.Db.Rocks;
-using Nethermind.Hive;
 using Nethermind.Init.Snapshot;
 using Nethermind.KeyStore.Config;
 using Nethermind.Logging;
 using Nethermind.Logging.NLog;
+using Nethermind.Network.Discovery;
 using Nethermind.Runner;
 using Nethermind.Runner.Ethereum;
 using Nethermind.Runner.Ethereum.Api;
 using Nethermind.Runner.Logging;
+using Nethermind.Runner.Monitoring;
 using Nethermind.Seq.Config;
 using Nethermind.Serialization.Json;
-using Nethermind.Specs.ChainSpecStyle;
-using Nethermind.UPnP.Plugin;
 using NLog;
 using NLog.Config;
 using ILogger = Nethermind.Logging.ILogger;
 using NullLogger = Nethermind.Logging.NullLogger;
+using DotNettyLoggerFactory = DotNetty.Common.Internal.Logging.InternalLoggerFactory;
+using DotNettyLeakDetector = DotNetty.Common.ResourceLeakDetector;
 
+DataFeed.StartTime = Environment.TickCount64;
 Console.Title = ProductInfo.Name;
 // Increase regex cache size as more added in log coloring matches
 Regex.CacheSize = 128;
-#if !DEBUG
-ResourceLeakDetector.Level = ResourceLeakDetector.DetectionLevel.Disabled;
-#endif
 BlocksConfig.SetDefaultExtraDataWithVersion();
 
 ManualResetEventSlim exit = new(true);
@@ -157,6 +150,10 @@ async Task<int> RunAsync(ParseResult parseResult, PluginLoader pluginLoader, Can
         initConfig, keyStoreConfig, snapshotConfig);
 
     NLogManager logManager = new(initConfig.LogFileName, initConfig.LogDirectory, initConfig.LogRules);
+    DotNettyLoggerFactory.DefaultFactory = new NethermindLoggerFactory(logManager, lowerLogLevel: true);
+#if !DEBUG
+    DotNettyLeakDetector.Level = DotNettyLeakDetector.DetectionLevel.Disabled;
+#endif
 
     logger = logManager.GetClassLogger();
 
@@ -244,7 +241,18 @@ void AddConfigurationOptions(Command command)
                 Option option = prop.PropertyType == typeof(bool)
                     ? CreateOption<bool>(prop.Name, configType)
                     : CreateOption<string>(prop.Name, configType);
-                option.Description = configItemAttribute?.Description;
+
+                string description = configItemAttribute?.Description ?? "";
+
+                // Add default value to description if available
+                if (!string.IsNullOrEmpty(configItemAttribute?.DefaultValue))
+                {
+                    description = string.IsNullOrEmpty(description)
+                        ? $"Defaults to `{configItemAttribute.DefaultValue}`."
+                        : $"{description} Defaults to `{configItemAttribute.DefaultValue}`.";
+                }
+
+                option.Description = description;
                 option.HelpName = "value";
                 option.Hidden = categoryHidden || configItemAttribute?.HiddenFromDocs == true;
 

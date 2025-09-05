@@ -9,7 +9,6 @@ using Nethermind.Logging;
 using Nethermind.Network.Discovery.Messages;
 using Nethermind.Network.Discovery.RoutingTable;
 using Nethermind.Network.Enr;
-using Nethermind.Serialization.Rlp;
 using Nethermind.Stats;
 using Nethermind.Stats.Model;
 
@@ -92,11 +91,14 @@ public class NodeLifecycleManager : INodeLifecycleManager
 
     public void ProcessEnrResponseMsg(EnrResponseMsg enrResponseMsg)
     {
-        if (!IsBonded)
-        {
-            return;
-        }
+        if (!IsBonded) return;
+
+        // Only accept ENRs with higher sequence numbers (consistent with Geth implementation)
+        // https://github.com/ethereum/go-ethereum/blob/0978604196e5949cf83b45d1a08d175f0cbe4f73/p2p/discover/v4_udp.go#L388
+        if (enrResponseMsg.NodeRecord.EnrSequence <= _lastEnrSequence) return;
+
         _lastEnrSequence = enrResponseMsg.NodeRecord.EnrSequence;
+        ManagedNode.Enr = enrResponseMsg.NodeRecord.EnrString;
 
         // TODO: 6) use the fork ID knowledge to mark each node with info on the forkhash
 
@@ -114,8 +116,12 @@ public class NodeLifecycleManager : INodeLifecycleManager
     {
         if (IsBonded)
         {
-            Rlp requestRlp = Rlp.Encode(Rlp.Encode(enrRequestMessage.ExpirationTime));
-            EnrResponseMsg msg = new(ManagedNode.Address, _nodeRecord, Keccak.Compute(requestRlp.Bytes));
+            if (enrRequestMessage.Hash is null)
+            {
+                throw new ArgumentNullException(nameof(enrRequestMessage.Hash));
+            }
+
+            EnrResponseMsg msg = new(ManagedNode.Address, _nodeRecord, new Hash256(enrRequestMessage.Hash.Value.Span));
             _discoveryManager.SendMessage(msg);
             NodeStats.AddNodeStatsEvent(NodeStatsEventType.DiscoveryEnrRequestIn);
             NodeStats.AddNodeStatsEvent(NodeStatsEventType.DiscoveryEnrResponseOut);
@@ -366,6 +372,10 @@ public class NodeLifecycleManager : INodeLifecycleManager
 
         State = newState;
         OnStateChanged?.Invoke(this, State);
+        if (newState == NodeLifecycleState.Active && string.IsNullOrEmpty(ManagedNode.Enr))
+        {
+            SendEnrRequest();
+        }
     }
 
     private void RefreshNodeContactTime()

@@ -10,6 +10,7 @@ using Nethermind.Blockchain;
 using Nethermind.Config;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Evm.State;
 using Nethermind.Logging;
 
 namespace Nethermind.Init.Steps
@@ -29,7 +30,7 @@ namespace Nethermind.Init.Steps
             _genesisProcessedTimeout = TimeSpan.FromMilliseconds(_api.Config<IBlocksConfig>().GenesisTimeoutMs);
         }
 
-        public async Task Execute(CancellationToken _)
+        public async Task Execute(CancellationToken cancellationToken)
         {
             _initConfig = _api.Config<IInitConfig>();
 
@@ -43,6 +44,8 @@ namespace Nethermind.Init.Steps
             // if we already have a database with blocks then we do not need to load genesis from spec
             if (_api.BlockTree.Genesis is null)
             {
+                using var _ = mainProcessingContext.WorldState.BeginScope(IWorldState.PreGenesis);
+
                 Load(mainProcessingContext);
             }
 
@@ -65,6 +68,7 @@ namespace Nethermind.Init.Steps
                 _api.StateReader!,
                 mainProcessingContext.WorldState,
                 mainProcessingContext.TransactionProcessor,
+                _api.GenesisPostProcessor,
                 _api.LogManager,
                 string.IsNullOrWhiteSpace(_initConfig?.GenesisHash) ? null : new Hash256(_initConfig.GenesisHash))
                 .Load();

@@ -39,7 +39,7 @@ public sealed class BlockchainProcessor : IBlockchainProcessor, IBlockProcessing
 
     public ITracerBag Tracers => _compositeBlockTracer;
 
-    private readonly IBlockProcessor _blockProcessor;
+    private readonly IBranchProcessor _branchProcessor;
     private readonly IBlockPreprocessorStep _recoveryStep;
     private readonly IStateReader _stateReader;
     private readonly Options _options;
@@ -78,34 +78,39 @@ public sealed class BlockchainProcessor : IBlockchainProcessor, IBlockProcessing
     private readonly Stopwatch _stopwatch = new();
 
     public event EventHandler<IBlockchainProcessor.InvalidBlockEventArgs>? InvalidBlock;
+    public event EventHandler<BlockStatistics>? NewProcessingStatistics;
 
     /// <summary>
     ///
     /// </summary>
     /// <param name="blockTree"></param>
-    /// <param name="blockProcessor"></param>
+    /// <param name="branchProcessor"></param>
     /// <param name="recoveryStep"></param>
     /// <param name="stateReader"></param>
     /// <param name="logManager"></param>
     /// <param name="options"></param>
     public BlockchainProcessor(
-        IBlockTree? blockTree,
-        IBlockProcessor? blockProcessor,
-        IBlockPreprocessorStep? recoveryStep,
+        IBlockTree blockTree,
+        IBranchProcessor branchProcessor,
+        IBlockPreprocessorStep recoveryStep,
         IStateReader stateReader,
-        ILogManager? logManager,
+        ILogManager logManager,
         Options options)
     {
-        _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
-        _blockTree = blockTree ?? throw new ArgumentNullException(nameof(blockTree));
-        _blockProcessor = blockProcessor ?? throw new ArgumentNullException(nameof(blockProcessor));
-        _recoveryStep = recoveryStep ?? throw new ArgumentNullException(nameof(recoveryStep));
-        _stateReader = stateReader ?? throw new ArgumentNullException(nameof(stateReader));
+        _logger = logManager.GetClassLogger();
+        _blockTree = blockTree;
+        _branchProcessor = branchProcessor;
+        _recoveryStep = recoveryStep;
+        _stateReader = stateReader;
         _options = options;
 
-        _stats = new ProcessingStats(stateReader, _logger);
+        _stats = new ProcessingStats(stateReader, logManager.GetClassLogger<ProcessingStats>());
         _loopCancellationSource = new CancellationTokenSource();
+        _stats.NewProcessingStatistics += OnNewProcessingStatistics;
     }
+
+    private void OnNewProcessingStatistics(object? sender, BlockStatistics stats)
+        => NewProcessingStatistics?.Invoke(sender, stats);
 
     private void OnNewHeadBlock(object? sender, BlockEventArgs e)
     {
@@ -515,7 +520,7 @@ public sealed class BlockchainProcessor : IBlockchainProcessor, IBlockProcessing
         {
             try
             {
-                _blockProcessor.Process(
+                _branchProcessor.Process(
                     processingBranch.BaseBlock,
                     processingBranch.BlocksToProcess,
                     options,
@@ -551,7 +556,7 @@ public sealed class BlockchainProcessor : IBlockchainProcessor, IBlockProcessing
         Block[]? processedBlocks;
         try
         {
-            processedBlocks = _blockProcessor.Process(
+            processedBlocks = _branchProcessor.Process(
                 processingBranch.BaseBlock,
                 processingBranch.BlocksToProcess,
                 options,
@@ -865,6 +870,9 @@ public sealed class BlockchainProcessor : IBlockchainProcessor, IBlockProcessing
 
     public async ValueTask DisposeAsync()
     {
+        _stats.NewProcessingStatistics -= OnNewProcessingStatistics;
+        _blockTree.NewBestSuggestedBlock -= OnNewBestBlock;
+        _blockTree.NewHeadBlock -= OnNewHeadBlock;
         await StopAsync(processRemainingBlocks: false);
     }
 

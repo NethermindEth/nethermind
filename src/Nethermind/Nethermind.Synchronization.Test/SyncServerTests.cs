@@ -18,6 +18,7 @@ using Nethermind.Core.Specs;
 using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Db;
+using Nethermind.History;
 using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.Merge.Plugin;
@@ -104,6 +105,7 @@ public class SyncServerTests
             StaticSelector.Full,
             new TestSyncConfig(),
             Policy.FullGossip,
+            ctx.HistoryPruner,
             MainnetSpecProvider.Instance,
             LimboLogs.Instance);
 
@@ -146,6 +148,7 @@ public class SyncServerTests
             StaticSelector.Full,
             new TestSyncConfig(),
             Policy.FullGossip,
+            ctx.HistoryPruner,
             MainnetSpecProvider.Instance,
             LimboLogs.Instance);
 
@@ -183,6 +186,7 @@ public class SyncServerTests
             staticSelector,
             new TestSyncConfig(),
             Policy.FullGossip,
+            ctx.HistoryPruner,
             MainnetSpecProvider.Instance,
             LimboLogs.Instance);
 
@@ -251,6 +255,7 @@ public class SyncServerTests
             StaticSelector.Full,
             new TestSyncConfig(),
             Policy.FullGossip,
+            ctx.HistoryPruner,
             testSpecProvider,
             LimboLogs.Instance);
 
@@ -472,6 +477,7 @@ public class SyncServerTests
             StaticSelector.Full,
             new TestSyncConfig(),
             Policy.FullGossip,
+            ctx.HistoryPruner,
             testSpecProvider,
             LimboLogs.Instance);
         ctx.SpecProvider = testSpecProvider;
@@ -512,6 +518,7 @@ public class SyncServerTests
             StaticSelector.Full,
             new TestSyncConfig(),
             Policy.FullGossip,
+            ctx.HistoryPruner,
             MainnetSpecProvider.Instance,
             LimboLogs.Instance);
 
@@ -544,6 +551,7 @@ public class SyncServerTests
             StaticSelector.Full,
             new TestSyncConfig(),
             Policy.FullGossip,
+            ctx.HistoryPruner,
             MainnetSpecProvider.Instance,
             LimboLogs.Instance);
 
@@ -571,6 +579,7 @@ public class SyncServerTests
             StaticSelector.Full,
             new TestSyncConfig(),
             Policy.FullGossip,
+            ctx.HistoryPruner,
             MainnetSpecProvider.Instance,
             LimboLogs.Instance);
 
@@ -607,6 +616,7 @@ public class SyncServerTests
             StaticSelector.Full,
             new TestSyncConfig(),
             Policy.FullGossip,
+            ctx.HistoryPruner,
             MainnetSpecProvider.Instance,
             LimboLogs.Instance);
 
@@ -648,6 +658,7 @@ public class SyncServerTests
             StaticSelector.Full,
             new TestSyncConfig(),
             Policy.FullGossip,
+            ctx.HistoryPruner,
             MainnetSpecProvider.Instance,
             LimboLogs.Instance);
 
@@ -686,6 +697,7 @@ public class SyncServerTests
             StaticSelector.Full,
             new TestSyncConfig(),
             Policy.FullGossip,
+            ctx.HistoryPruner,
             MainnetSpecProvider.Instance,
             LimboLogs.Instance);
 
@@ -699,12 +711,14 @@ public class SyncServerTests
 
         const int blocksCount = 100;
         var startBlock = (int)localBlockTree.Head!.Number;
+        localBlockTree.AddBranch(blocksCount / 3, splitBlockNumber: startBlock, splitVariant: 0);
+        localBlockTree.AddBranch(blocksCount * 2 / 3, splitBlockNumber: startBlock, splitVariant: 0);
         localBlockTree.AddBranch(blocksCount, splitBlockNumber: startBlock, splitVariant: 0);
 
         var expectedUpdates = Enumerable.Range(startBlock + 1, blocksCount)
             .Where(x => x % frequency == 0)
             .Select(x => (earliest: localBlockTree.Genesis!.Number, latest: x))
-            .ToArray();
+            .ToArray()[^2..];
 
         foreach (PeerInfo peerInfo in peers)
         {
@@ -712,7 +726,7 @@ public class SyncServerTests
                 () => peerInfo.SyncPeer.ReceivedCalls()
                     .Where(c => c.GetMethodInfo().Name == nameof(ISyncPeer.NotifyOfNewRange))
                     .Select(c => c.GetArguments().Cast<BlockHeader>().Select(b => b.Number).ToArray())
-                    .Select(a => (earliest: a[0], latest: a[1])),
+                    .Select(a => (earliest: a[0], latest: a[1])).ToArray()[^2..],
                 Is.EquivalentTo(expectedUpdates).After(5000, 100) // Wait for background notifications to finish
             );
         }
@@ -741,6 +755,7 @@ public class SyncServerTests
             StaticSelector.Full,
             new TestSyncConfig(),
             Policy.FullGossip,
+            ctx.HistoryPruner,
             MainnetSpecProvider.Instance,
             LimboLogs.Instance);
 
@@ -752,7 +767,7 @@ public class SyncServerTests
             using (ICommitter committer = scopedTrieStore.BeginCommit(node))
             {
                 TreePath path = TreePath.Empty;
-                committer.CommitNode(ref path, new NodeCommitInfo(node));
+                committer.CommitNode(ref path, node);
             }
         }
 
@@ -770,6 +785,7 @@ public class SyncServerTests
 
             BlockTree = Substitute.For<IBlockTree>();
             WorldStateManager = Substitute.For<IWorldStateManager>();
+            HistoryPruner = Substitute.For<IHistoryPruner>();
 
             StaticSelector selector = StaticSelector.Full;
             SyncServer = new SyncServer(
@@ -783,11 +799,13 @@ public class SyncServerTests
                 selector,
                 new TestSyncConfig(),
                 Policy.FullGossip,
+                HistoryPruner,
                 MainnetSpecProvider.Instance,
                 LimboLogs.Instance);
         }
 
         public IBlockTree BlockTree { get; }
+        public IHistoryPruner HistoryPruner { get; }
         public IWorldStateManager WorldStateManager { get; }
         public ISyncPeerPool PeerPool { get; }
         public SyncServer SyncServer { get; set; }

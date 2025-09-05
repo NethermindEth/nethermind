@@ -2,6 +2,8 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using Autofac;
+using Nethermind.Api;
+using Nethermind.Api.Steps;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.BeaconBlockRoot;
 using Nethermind.Blockchain.Blocks;
@@ -12,13 +14,17 @@ using Nethermind.Consensus.ExecutionRequests;
 using Nethermind.Consensus.Processing;
 using Nethermind.Consensus.Producers;
 using Nethermind.Consensus.Rewards;
+using Nethermind.Consensus.Tracing;
 using Nethermind.Consensus.Validators;
 using Nethermind.Consensus.Withdrawals;
 using Nethermind.Core;
+using Nethermind.Core.Container;
 using Nethermind.Core.Specs;
 using Nethermind.Evm;
+using Nethermind.Evm.State;
 using Nethermind.State.OverridableEnv;
 using Nethermind.Evm.TransactionProcessing;
+using Nethermind.Init.Steps;
 using Nethermind.JsonRpc.Modules.Eth.GasPrice;
 using Nethermind.Logging;
 using Nethermind.State;
@@ -26,7 +32,7 @@ using Nethermind.TxPool;
 
 namespace Nethermind.Init.Modules;
 
-public class BlockProcessingModule : Module
+public class BlockProcessingModule(IInitConfig initConfig) : Module
 {
     protected override void Load(ContainerBuilder builder)
     {
@@ -45,6 +51,7 @@ public class BlockProcessingModule : Module
             .AddScoped<IBlockhashProvider, BlockhashProvider>()
             .AddScoped<IBeaconBlockRootHandler, BeaconBlockRootHandler>()
             .AddScoped<IBlockhashStore, BlockhashStore>()
+            .AddScoped<IBranchProcessor, BranchProcessor>()
             .AddScoped<IBlockProcessor, BlockProcessor>()
             .AddScoped<IWithdrawalProcessor, WithdrawalProcessor>()
             .AddScoped<IExecutionRequestsProcessor, ExecutionRequestsProcessor>()
@@ -54,12 +61,31 @@ public class BlockProcessingModule : Module
                 new BlockProcessor.BlockProductionTransactionPicker(specProvider, blocksConfig.BlockProductionMaxTxKilobytes))
             .AddSingleton<IReadOnlyTxProcessingEnvFactory, AutoReadOnlyTxProcessingEnvFactory>()
             .AddSingleton<IShareableTxProcessorSource, ShareableTxProcessingSource>()
+            .Add<BlockchainProcessorFacade>()
 
             .AddSingleton<IOverridableEnvFactory, OverridableEnvFactory>()
             .AddScopedOpenGeneric(typeof(IOverridableEnv<>), typeof(DisposableScopeOverridableEnv<>))
 
-            // Transaction executor used by main block validation and rpc.
-            .AddScoped<IValidationTransactionExecutor, BlockProcessor.BlockValidationTransactionsExecutor>()
+            // Yea, for some reason, the ICodeInfoRepository need to be the main one for ChainHeadInfoProvider to work.
+            // Like, is ICodeInfoRepository suppose to be global? Why not just IStateReader.
+            .AddKeyedSingleton<ICodeInfoRepository>(nameof(IWorldStateManager.GlobalWorldState), (ctx) =>
+            {
+                IWorldState worldState = ctx.Resolve<IWorldStateManager>().GlobalWorldState;
+                PreBlockCaches? preBlockCaches = (worldState as IPreBlockCaches)?.Caches;
+                return new EthereumCodeInfoRepository(preBlockCaches?.PrecompileCache);
+            })
+
+            // The main block processing pipeline, anything that requires the use of the main IWorldState is wrapped
+            // in a `IMainProcessingContext`.
+            .AddSingleton<IMainProcessingContext, MainProcessingContext>()
+            // Then component that has no ambiguity is extracted back out.
+            .Map<IBlockProcessingQueue, MainProcessingContext>(ctx => (IBlockProcessingQueue)ctx.BlockchainProcessor)
+            .Map<GenesisLoader, MainProcessingContext>(ctx => ctx.GenesisLoader)
+            .Bind<IMainProcessingContext, MainProcessingContext>()
+
+            // Some configuration that applies to validation and rpc but not to block producer. Plugins can add
+            // modules in case they have special case where it only apply to validation and rpc but not block producer.
+            .AddSingleton<IBlockValidationModule, StandardBlockValidationModule>()
 
             // Block production components
             .AddSingleton<IRewardCalculatorSource>(NoBlockRewards.Instance)
@@ -78,5 +104,14 @@ public class BlockProcessingModule : Module
                     blocksConfig.MinGasPrice
                 ))
             ;
+
+        if (initConfig.ExitOnInvalidBlock) builder.AddStep(typeof(ExitOnInvalidBlock));
+    }
+
+    private class StandardBlockValidationModule : Module, IBlockValidationModule
+    {
+        protected override void Load(ContainerBuilder builder) => builder
+            .AddScoped<IBlockProcessor.IBlockTransactionsExecutor, BlockProcessor.BlockValidationTransactionsExecutor>()
+            .AddScoped<ITransactionProcessorAdapter, ExecuteTransactionProcessorAdapter>();
     }
 }

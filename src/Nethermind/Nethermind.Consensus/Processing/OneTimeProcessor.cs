@@ -53,6 +53,7 @@ namespace Nethermind.Consensus.Processing
         public event EventHandler<BlockProcessedEventArgs> BlockProcessed;
         public event EventHandler<BlockProcessedEventArgs> BlockInvalid;
         public event EventHandler<IBlockchainProcessor.InvalidBlockEventArgs>? InvalidBlock;
+        public event EventHandler<BlockStatistics> NewProcessingStatistics;
 #pragma warning restore 67
 
         public ValueTask DisposeAsync() => _processor?.DisposeAsync() ?? default;

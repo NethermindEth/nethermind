@@ -14,7 +14,9 @@ using Nethermind.Core;
 using Nethermind.Core.ServiceStopper;
 using Nethermind.Core.Specs;
 using Nethermind.Crypto;
+using Nethermind.Db;
 using Nethermind.Era1;
+using Nethermind.History;
 using Nethermind.JsonRpc;
 using Nethermind.Logging;
 using Nethermind.Network.Config;
@@ -49,21 +51,15 @@ public class NethermindModule(ChainSpec chainSpec, IConfigProvider configProvide
             .AddModule(new RpcModules(configProvider.GetConfig<IJsonRpcConfig>()))
             .AddModule(new EraModule())
             .AddSource(new ConfigRegistrationSource())
-            .AddModule(new BlockProcessingModule())
+            .AddModule(new BlockProcessingModule(configProvider.GetConfig<IInitConfig>()))
+            .AddModule(new BlockTreeModule(configProvider.GetConfig<IReceiptConfig>()))
             .AddSingleton<ISpecProvider, ChainSpecBasedSpecProvider>()
 
-            .Bind<IBlockFinder, IBlockTree>()
-            .AddSingleton<IReadOnlyBlockTree, IBlockTree>((bt) => bt.AsReadOnly())
-            .AddSingleton<IBlobTxStorage, BlobTxStorage>()
-
             .AddKeyedSingleton<IProtectedPrivateKey>(IProtectedPrivateKey.NodeKey, (ctx) => ctx.Resolve<INethermindApi>().NodeKey!)
-            .AddSingleton<IAbiEncoder>(Nethermind.Abi.AbiEncoder.Instance)
+            .AddSingleton<IAbiEncoder>(AbiEncoder.Instance)
             .AddSingleton<IEciesCipher, EciesCipher>()
             .AddSingleton<ICryptoRandom, CryptoRandom>()
 
-            .AddSingleton<IReceiptsRecovery, IEthereumEcdsa, ISpecProvider, IReceiptConfig>((ecdsa, specProvider, receiptConfig) =>
-                new ReceiptsRecovery(ecdsa, specProvider, !receiptConfig.CompactReceiptStore))
-            .AddSingleton<IReceiptFinder, FullInfoReceiptFinder>()
             .AddSingleton<IEthereumEcdsa, ISpecProvider>((specProvider) => new EthereumEcdsa(specProvider.ChainId))
             .Bind<IEcdsa, IEthereumEcdsa>()
 

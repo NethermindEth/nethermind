@@ -42,7 +42,7 @@ public partial class EngineModuleTests
     {
         MergeTestBlockchain chain = await CreateBlockchain(releaseSpec: Osaka.Instance, mergeConfig: new MergeConfig()
         {
-            NewPayloadTimeout = TimeSpan.FromDays(1).TotalSeconds
+            NewPayloadBlockProcessingTimeout = (int)TimeSpan.FromDays(1).TotalMilliseconds
         });
         IEngineRpcModule rpcModule = chain.EngineRpcModule;
 
@@ -71,7 +71,7 @@ public partial class EngineModuleTests
     {
         MergeTestBlockchain chain = await CreateBlockchain(releaseSpec: Osaka.Instance, mergeConfig: new MergeConfig()
         {
-            NewPayloadTimeout = TimeSpan.FromDays(1).TotalSeconds
+            NewPayloadBlockProcessingTimeout = (int)TimeSpan.FromDays(1).TotalMilliseconds
         });
         IEngineRpcModule rpcModule = chain.EngineRpcModule;
 
@@ -86,7 +86,7 @@ public partial class EngineModuleTests
     {
         MergeTestBlockchain chain = await CreateBlockchain(releaseSpec: Osaka.Instance, mergeConfig: new MergeConfig()
         {
-            NewPayloadTimeout = TimeSpan.FromDays(1).TotalSeconds
+            NewPayloadBlockProcessingTimeout = (int)TimeSpan.FromDays(1).TotalMilliseconds
         });
         IEngineRpcModule rpcModule = chain.EngineRpcModule;
 
@@ -114,7 +114,7 @@ public partial class EngineModuleTests
     {
         MergeTestBlockchain chain = await CreateBlockchain(releaseSpec: Osaka.Instance, mergeConfig: new MergeConfig()
         {
-            NewPayloadTimeout = TimeSpan.FromDays(1).TotalSeconds
+            NewPayloadBlockProcessingTimeout = (int)TimeSpan.FromDays(1).TotalMilliseconds
         });
         IEngineRpcModule rpcModule = chain.EngineRpcModule;
 
@@ -140,7 +140,7 @@ public partial class EngineModuleTests
 
         MergeTestBlockchain chain = await CreateBlockchain(releaseSpec: Osaka.Instance, mergeConfig: new MergeConfig()
         {
-            NewPayloadTimeout = TimeSpan.FromDays(1).TotalSeconds
+            NewPayloadBlockProcessingTimeout = (int)TimeSpan.FromDays(1).TotalMilliseconds
         });
         IEngineRpcModule rpcModule = chain.EngineRpcModule;
 

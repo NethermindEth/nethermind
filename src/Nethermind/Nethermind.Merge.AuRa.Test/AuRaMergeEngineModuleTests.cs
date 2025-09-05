@@ -5,28 +5,20 @@ using System;
 using System.Threading.Tasks;
 using Autofac;
 using Nethermind.Api;
-using Nethermind.Blockchain.BeaconBlockRoot;
-using Nethermind.Blockchain.Synchronization;
 using Nethermind.Config;
 using Nethermind.Consensus;
 using Nethermind.Consensus.AuRa;
 using Nethermind.Consensus.AuRa.Config;
 using Nethermind.Consensus.AuRa.InitializationSteps;
 using Nethermind.Consensus.AuRa.Validators;
-using Nethermind.Consensus.ExecutionRequests;
 using Nethermind.Consensus.Processing;
 using Nethermind.Consensus.Producers;
-using Nethermind.Consensus.Rewards;
 using Nethermind.Consensus.Withdrawals;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
-using Nethermind.Core.Test.Blockchain;
-using Nethermind.Core.Timers;
 using Nethermind.Evm.TransactionProcessing;
-using Nethermind.Facade.Eth;
 using Nethermind.Int256;
-using Nethermind.Logging;
 using Nethermind.Merge.AuRa.Contracts;
 using Nethermind.Merge.AuRa.Withdrawals;
 using Nethermind.Merge.Plugin;
@@ -36,9 +28,6 @@ using Nethermind.Specs;
 using Nethermind.Specs.ChainSpecStyle;
 using Nethermind.Specs.Test;
 using Nethermind.Specs.Test.ChainSpecStyle;
-using Nethermind.Evm.State;
-using Nethermind.Synchronization;
-using Nethermind.Synchronization.ParallelSync;
 using NSubstitute;
 using NUnit.Framework;
 
@@ -102,8 +91,6 @@ public class AuRaMergeEngineModuleTests : EngineModuleTests
 
     public class MergeAuRaTestBlockchain : MergeTestBlockchain
     {
-        private AuRaNethermindApi? _api;
-
         public MergeAuRaTestBlockchain(IMergeConfig? mergeConfig = null)
             : base(mergeConfig)
         {
@@ -140,6 +127,9 @@ public class AuRaMergeEngineModuleTests : EngineModuleTests
                 .AddSingleton<IBlockImprovementContextFactory, IBlockProducer, IMergeConfig>((blockProducer,
                     mergeConfig) => new BlockImprovementContextFactory(blockProducer, TimeSpan.FromSeconds(mergeConfig.SecondsPerSlot)))
 
+                // AuRa was never configured correctly in test.
+                .AddScoped<IBlockProcessor, BlockProcessor>()
+
                 .AddDecorator<AuRaNethermindApi>((ctx, api) =>
                 {
                     // Yes getting from `TestBlockchain` itself, since steps are not run
@@ -163,26 +153,6 @@ public class AuRaMergeEngineModuleTests : EngineModuleTests
             baseChainSpec.Parameters = new ChainParameters();
             return baseChainSpec;
         }
-
-        protected override IBlockProcessor CreateBlockProcessor(IWorldState state)
-        {
-            _api = Container.Resolve<AuRaNethermindApi>();
-
-            IBlockProcessor processor = _api.Context.Resolve<IAuRaBlockProcessorFactory>().Create(
-                BlockValidator,
-                NoBlockRewards.Instance,
-                new BlockProcessor.BlockValidationTransactionsExecutor(new ExecuteTransactionProcessorAdapter(TxProcessor), state),
-                state,
-                ReceiptStorage,
-                new BeaconBlockRootHandler(TxProcessor, state),
-                TxProcessor,
-                MainExecutionRequestsProcessor,
-                null,
-                preWarmer: CreateBlockCachePreWarmer());
-
-            return new TestBlockProcessorInterceptor(processor, _blockProcessingThrottle);
-        }
-
 
         protected override IBlockProducer CreateTestBlockProducer()
         {

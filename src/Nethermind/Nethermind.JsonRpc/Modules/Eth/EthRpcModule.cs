@@ -348,7 +348,7 @@ public partial class EthRpcModule(
             .ExecuteTx(transactionCall, blockParameter, stateOverride);
 
     public ResultWrapper<IReadOnlyList<SimulateBlockResult<SimulateCallResult>>> eth_simulateV1(SimulatePayload<TransactionForRpc> payload, BlockParameter? blockParameter = null) =>
-        new SimulateTxExecutor<SimulateCallResult>(_blockchainBridge, _blockFinder, _rpcConfig, new SimulateBlockMutatorTracerFactory())
+        new SimulateTxExecutor<SimulateCallResult>(_blockchainBridge, _blockFinder, _rpcConfig, new SimulateBlockMutatorTracerFactory(), secondsPerSlot: _secondsPerSlot)
             .Execute(payload, blockParameter);
 
     public ResultWrapper<UInt256?> eth_estimateGas(TransactionForRpc transactionCall, BlockParameter? blockParameter, Dictionary<Address, AccountOverride>? stateOverride = null) =>
@@ -413,11 +413,8 @@ public partial class EthRpcModule(
 
         RlpBehaviors encodingSettings = RlpBehaviors.SkipTypedWrapping | (transaction.IsInMempoolForm() ? RlpBehaviors.InMempoolForm : RlpBehaviors.None);
 
-        IByteBuffer buffer = PooledByteBufferAllocator.Default.Buffer(TxDecoder.Instance.GetLength(transaction, encodingSettings));
-        using NettyRlpStream stream = new(buffer);
-        TxDecoder.Instance.Encode(stream, transaction, encodingSettings);
-
-        return ResultWrapper<string?>.Success(buffer.AsSpan().ToHexString(false));
+        using NettyRlpStream stream = TxDecoder.Instance.EncodeToNewNettyStream(transaction, encodingSettings);
+        return ResultWrapper<string?>.Success(stream.AsSpan().ToHexString(false));
     }
 
     public ResultWrapper<TransactionForRpc[]> eth_pendingTransactions()
@@ -741,13 +738,35 @@ public partial class EthRpcModule(
             return GetFailureResult<AccountForRpc?, BlockHeader>(searchResult, _ethSyncingInfo.SyncMode.HaveNotSyncedHeadersYet());
         }
 
-        BlockHeader header = searchResult.Object;
-        return !_blockchainBridge.HasStateForBlock(header!)
-            ? GetStateFailureResult<AccountForRpc?>(header)
-            : ResultWrapper<AccountForRpc?>.Success(
-                _stateReader.TryGetAccount(header!, accountAddress, out AccountStruct account)
-                    ? new AccountForRpc(account)
-                    : null);
+        BlockHeader header = searchResult.Object!;
+        if (!_blockchainBridge.HasStateForBlock(header))
+            return GetStateFailureResult<AccountForRpc?>(header);
+        return ResultWrapper<AccountForRpc?>.Success(
+            _stateReader.TryGetAccount(header, accountAddress, out AccountStruct account)
+                ? new AccountForRpc(account)
+                : null);
+    }
+
+    public ResultWrapper<AccountInfoForRpc?> eth_getAccountInfo(Address accountAddress, BlockParameter? blockParameter)
+    {
+        SearchResult<BlockHeader> searchResult = _blockFinder.SearchForHeader(blockParameter);
+        if (searchResult.IsError)
+        {
+            return GetFailureResult<AccountInfoForRpc?, BlockHeader>(searchResult, _ethSyncingInfo.SyncMode.HaveNotSyncedHeadersYet());
+        }
+
+        BlockHeader header = searchResult.Object!;
+        if (!_blockchainBridge.HasStateForBlock(header))
+            return GetStateFailureResult<AccountInfoForRpc?>(header);
+        return ResultWrapper<AccountInfoForRpc?>.Success(
+            _stateReader.TryGetAccount(header, accountAddress, out AccountStruct account)
+                ? new AccountInfoForRpc
+                {
+                    Balance = account.Balance,
+                    Nonce = account.Nonce,
+                    Code = _stateReader.GetCode(account.CodeHash) ?? []
+                }
+                : AccountInfoForRpc.Empty);
     }
 
     protected static ResultWrapper<TResult> GetFailureResult<TResult, TSearch>(SearchResult<TSearch> searchResult, bool isTemporary) where TSearch : class =>
@@ -781,49 +800,30 @@ public partial class EthRpcModule(
         };
     }
 
-    public ResultWrapper<EthConfig> eth_config()
+    public ResultWrapper<JsonNode> eth_config()
     {
         ForkActivationsSummary forks = forkInfo.GetForkActivationsSummary(_blockFinder.Head?.Header);
 
-        ForkConfig current = GetForkConfig(forks.Current, _specProvider);
-        ForkConfig? next = GetForkConfig(forks.Next, _specProvider);
-        ForkConfig? last = GetForkConfig(forks.Last, _specProvider);
-
-        string serializedCurrent = JsonSerializer.Serialize(current, UnchangedDictionaryKeyOptions);
-        string? serializedNext = next is null ? null : JsonSerializer.Serialize(next, UnchangedDictionaryKeyOptions);
-        string? serializedLast = last is null ? null : JsonSerializer.Serialize(last, UnchangedDictionaryKeyOptions);
-
-        return ResultWrapper<EthConfig>.Success(new EthConfig
+        return ResultWrapper<JsonNode>.Success(JsonNode.Parse(JsonSerializer.Serialize((new ForkConfigSummary
         {
-            Current = JsonNode.Parse(serializedCurrent)!,
-            CurrentHash = GetCrc32FromJson(serializedCurrent).Value,
-            CurrentForkId = forks.CurrentForkId.HashBytes,
+            Current = GetForkConfig(forks.Current, _specProvider)!,
+            Next = GetForkConfig(forks.Next, _specProvider),
+            Last = GetForkConfig(forks.Last, _specProvider)
+        }), UnchangedDictionaryKeyOptions)));
 
-            Next = serializedNext is null ? null : JsonNode.Parse(serializedNext),
-            NextHash = GetCrc32FromJson(serializedNext),
-            NextForkId = forks.NextForkId?.HashBytes,
-
-            Last = serializedLast is null ? null : JsonNode.Parse(serializedLast),
-            LastHash = GetCrc32FromJson(serializedLast),
-            LastForkId = forks.LastForkId?.HashBytes,
-        });
-
-        [return: NotNullIfNotNull(nameof(json))]
-        static uint? GetCrc32FromJson(string? json) => json is null ? null : Crc32Algorithm.Compute(Encoding.UTF8.GetBytes(RemoveWhitespace().Replace(json, "")));
-
-        static ForkConfig? GetForkConfig(ForkActivation? forkActivation, ISpecProvider specProvider)
+        static ForkConfig? GetForkConfig(Fork? fork, ISpecProvider specProvider)
         {
-            if (forkActivation is null)
+            if (fork is null)
             {
                 return null;
             }
 
-            IReleaseSpec? spec = specProvider.GetSpec(forkActivation.Value.BlockNumber, forkActivation.Value.Timestamp);
+            IReleaseSpec? spec = specProvider.GetSpec(fork.Value.Activation.BlockNumber, fork.Value.Activation.Timestamp);
 
             return new ForkConfig
             {
-                ActivationTime = forkActivation.Value.Timestamp is not null ? (int)forkActivation.Value.Timestamp : null,
-                ActivationBlock = forkActivation.Value.Timestamp is null ? (int)forkActivation.Value.BlockNumber : null,
+                ActivationTime = fork.Value.Activation.Timestamp is not null ? (int)fork.Value.Activation.Timestamp : null,
+                ActivationBlock = fork.Value.Activation.Timestamp is null ? (int)fork.Value.Activation.BlockNumber : null,
                 BlobSchedule = spec.IsEip4844Enabled ? new BlobScheduleSettingsForRpc
                 {
                     BaseFeeUpdateFraction = (int)spec.BlobBaseFeeUpdateFraction,
@@ -831,6 +831,7 @@ public partial class EthRpcModule(
                     Target = (int)spec.TargetBlobCount,
                 } : null,
                 ChainId = specProvider.ChainId,
+                ForkId = fork.Value.Id.HashBytes,
                 Precompiles = spec.ListPrecompiles(),
                 SystemContracts = spec.ListSystemContracts(),
             };
@@ -839,7 +840,4 @@ public partial class EthRpcModule(
 
     private CancellationTokenSource BuildTimeoutCancellationTokenSource() =>
         _rpcConfig.BuildTimeoutCancellationToken();
-
-    [GeneratedRegex("\\s", RegexOptions.Compiled)]
-    private static partial Regex RemoveWhitespace();
 }

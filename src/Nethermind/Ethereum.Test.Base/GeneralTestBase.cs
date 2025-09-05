@@ -5,6 +5,7 @@ using System;
 using System.Collections.Generic;
 using System.Diagnostics;
 using Autofac;
+using Nethermind.Api;
 using NUnit.Framework;
 using Nethermind.Config;
 using Nethermind.Consensus.Validators;
@@ -84,8 +85,9 @@ namespace Ethereum.Test.Base
                 .AddSingleton(_logManager)
                 .Build();
 
-            MainBlockProcessingContext mainBlockProcessingContext = container.Resolve<MainBlockProcessingContext>();
+            IMainProcessingContext mainBlockProcessingContext = container.Resolve<IMainProcessingContext>();
             IWorldState stateProvider = mainBlockProcessingContext.WorldState;
+            using var _ = stateProvider.BeginScope(null);
             ITransactionProcessor transactionProcessor = mainBlockProcessingContext.TransactionProcessor;
 
             InitializeTestState(test.Pre, stateProvider, specProvider);

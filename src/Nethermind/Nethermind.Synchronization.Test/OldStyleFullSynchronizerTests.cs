@@ -20,6 +20,7 @@ using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Core.Test.Modules;
 using Nethermind.Db;
+using Nethermind.History;
 using Nethermind.Synchronization.Peers;
 using NSubstitute;
 using NUnit.Framework;
@@ -52,6 +53,7 @@ namespace Nethermind.Synchronization.Test
 
             IContainer container = new ContainerBuilder()
                 .AddModule(new TestNethermindModule(configProvider))
+                .AddSingleton<IHistoryPruner>(Substitute.For<IHistoryPruner>())
                 .AddSingleton<IBlockTree>(_blockTree)
                 .AddSingleton<IBlockValidator>(Always.Valid)
                 .AddSingleton<ISealValidator>(Always.Valid)
@@ -189,7 +191,7 @@ namespace Nethermind.Synchronization.Test
             SyncPeerPool.AddPeer(miner1);
 
             Assert.That(() => _blockTree.BestSuggestedHeader?.Number, Is.EqualTo(miner1Tree.BestSuggestedHeader!.Number).After((int)_standardTimeoutUnit.TotalMilliseconds, 100));
-            miner1Tree.BestSuggestedHeader.Should().BeEquivalentTo(_blockTree.BestSuggestedHeader, options => options.Excluding(h => h!.MaybeParent), "client agrees with miner before split");
+            miner1Tree.BestSuggestedHeader.Should().BeEquivalentTo(_blockTree.BestSuggestedHeader, "client agrees with miner before split");
 
             Block splitBlock = Build.A.Block
                 .WithParent(miner1Tree.FindParent(miner1Tree.Head!, BlockTreeLookupOptions.TotalDifficultyNotNeeded)!)

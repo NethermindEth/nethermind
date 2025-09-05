@@ -15,8 +15,6 @@ public class UPnPPlugin(INetworkConfig networkConfig) : INethermindPlugin
     public string Description => "Automatic port forwarding with UPnP";
     public string Author => "Nethermind";
     public bool Enabled => networkConfig.EnableUPnP;
-    public ValueTask DisposeAsync() => ValueTask.CompletedTask;
-
     public IModule Module => new UPnPModule();
 }
 

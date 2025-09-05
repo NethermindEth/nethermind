@@ -265,6 +265,7 @@ namespace Nethermind.Blockchain.Test
         {
             IWorldStateManager worldStateManager = TestWorldStateFactory.CreateForTest();
             IWorldState stateProvider = worldStateManager.GlobalWorldState;
+            using var _ = stateProvider.BeginScope(IWorldState.PreGenesis);
             ISpecProvider specProvider = Substitute.For<ISpecProvider>();
 
             IReleaseSpec spec = testCase.ReleaseSpec;
@@ -349,6 +350,7 @@ namespace Nethermind.Blockchain.Test
             ITransactionProcessorAdapter transactionProcessor = Substitute.For<ITransactionProcessorAdapter>();
 
             IWorldState stateProvider = new WorldStateStab();
+            using var _ = stateProvider.BeginScope(IWorldState.PreGenesis);
 
             IReleaseSpec spec = Osaka.Instance;
             ISpecProvider specProvider = new TestSingleReleaseSpecProvider(spec);
