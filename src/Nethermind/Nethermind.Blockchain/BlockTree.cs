@@ -568,7 +568,14 @@ namespace Nethermind.Blockchain
                 return null;
             }
 
-            BlockHeader? header = _headerStore.Get(blockHash, shouldCache: false, blockNumber: blockNumber);
+            bool totalDifficultyNeeded = (options & BlockTreeLookupOptions.TotalDifficultyNotNeeded) == BlockTreeLookupOptions.None;
+            bool requiresCanonical = (options & BlockTreeLookupOptions.RequireCanonical) == BlockTreeLookupOptions.RequireCanonical;
+            if (_headerStore.TryGetCache(blockHash, totalDifficultyNeeded, requiresCanonical, out BlockHeader? header))
+            {
+                return header;
+            }
+
+            header = _headerStore.Get(blockHash, blockNumber: blockNumber);
             if (header is null)
             {
                 bool allowInvalid = (options & BlockTreeLookupOptions.AllowInvalid) == BlockTreeLookupOptions.AllowInvalid;
@@ -581,9 +588,7 @@ namespace Nethermind.Blockchain
             }
 
             header.Hash ??= blockHash;
-            bool totalDifficultyNeeded = (options & BlockTreeLookupOptions.TotalDifficultyNotNeeded) == BlockTreeLookupOptions.None;
             bool createLevelIfMissing = (options & BlockTreeLookupOptions.DoNotCreateLevelIfMissing) == BlockTreeLookupOptions.None;
-            bool requiresCanonical = (options & BlockTreeLookupOptions.RequireCanonical) == BlockTreeLookupOptions.RequireCanonical;
 
             if ((totalDifficultyNeeded && header.TotalDifficulty is null) || requiresCanonical)
             {
@@ -620,7 +625,7 @@ namespace Nethermind.Blockchain
 
             if (header is not null && ShouldCache(header.Number))
             {
-                _headerStore.Cache(header);
+                _headerStore.Cache(header, hasDifficulty: totalDifficultyNeeded, requiresCanonical);
             }
 
             return header;
@@ -944,7 +949,7 @@ namespace Nethermind.Blockchain
                 if (ShouldCache(block.Number))
                 {
                     _blockStore.Cache(block);
-                    _headerStore.Cache(block.Header);
+                    _headerStore.Cache(block.Header, hasDifficulty: true);
                 }
 
                 ChainLevelInfo? level = LoadLevel(block.Number);
@@ -1010,17 +1015,18 @@ namespace Nethermind.Blockchain
             for (int i = 0; i < blocks.Count; i++)
             {
                 Block block = blocks[i];
-                if (ShouldCache(block.Number))
-                {
-                    _blockStore.Cache(block);
-                    _headerStore.Cache(block.Header);
-                }
 
                 // we only force update head block for last block in processed blocks
                 bool lastProcessedBlock = i == blocks.Count - 1;
 
                 // Where head is set if wereProcessed is true
-                MoveToMain(blocks[i], batch, wereProcessed, forceUpdateHeadBlock && lastProcessedBlock);
+                bool updateHead = forceUpdateHeadBlock && lastProcessedBlock;
+                MoveToMain(blocks[i], batch, wereProcessed, updateHead);
+                if (ShouldCache(block.Number))
+                {
+                    _blockStore.Cache(block);
+                    _headerStore.Cache(block.Header, hasDifficulty: true, isCanonical: updateHead);
+                }
             }
 
             TryUpdateSyncPivot();
@@ -1081,6 +1087,7 @@ namespace Nethermind.Blockchain
                     for (int i = 0; i < level.BlockInfos.Length; ++i)
                     {
                         level.BlockInfos[i].Metadata &= ~BlockMetadata.BeaconMainChain;
+                        _headerStore.DeleteCanonicalCache(level.BlockInfos[i].BlockHash);
                     }
 
                     _chainLevelInfoRepository.PersistLevel(j, level, batch);
@@ -1095,13 +1102,15 @@ namespace Nethermind.Blockchain
                 {
                     for (int i = 0; i < level.BlockInfos.Length; ++i)
                     {
-                        if (level.BlockInfos[i].BlockHash == blockInfo.BlockHash)
+                        Hash256 blockHash = level.BlockInfos[i].BlockHash;
+                        if (blockHash == blockInfo.BlockHash)
                         {
                             level.BlockInfos[i].Metadata |= BlockMetadata.BeaconMainChain;
                         }
                         else
                         {
                             level.BlockInfos[i].Metadata &= ~BlockMetadata.BeaconMainChain;
+                            _headerStore.DeleteCanonicalCache(blockHash);
                         }
                     }
 
@@ -1438,7 +1447,8 @@ namespace Nethermind.Blockchain
                 block = _blockStore.Get(
                     blockNumber.Value,
                     blockHash,
-                    (options & BlockTreeLookupOptions.ExcludeTxHashes) != 0 ? RlpBehaviors.ExcludeHashes : RlpBehaviors.None,
+                    ((options & BlockTreeLookupOptions.ExcludeTxHashes) != 0 ? RlpBehaviors.ExcludeHashes : RlpBehaviors.None) |
+                    ((options & BlockTreeLookupOptions.OnlyTxHashes) != 0 ? RlpBehaviors.OnlyHashes : RlpBehaviors.None),
                     shouldCache: false);
             }
 
@@ -1493,10 +1503,10 @@ namespace Nethermind.Blockchain
                 }
             }
 
-            if (block is not null && ShouldCache(block.Number))
+            if (block is not null && (options & BlockTreeLookupOptions.OnlyTxHashes) == 0 && ShouldCache(block.Number))
             {
                 _blockStore.Cache(block);
-                _headerStore.Cache(block.Header);
+                _headerStore.Cache(block.Header, hasDifficulty: totalDifficultyNeeded, requiresCanonical);
             }
 
             return block;

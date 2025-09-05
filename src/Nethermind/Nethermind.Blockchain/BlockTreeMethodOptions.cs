@@ -14,7 +14,8 @@ public enum BlockTreeLookupOptions
     DoNotCreateLevelIfMissing = 4,
     AllowInvalid = 8,
     ExcludeTxHashes = 16,
-    All = 31
+    All = 31,
+    OnlyTxHashes = 32
 }
 
 [Flags]
