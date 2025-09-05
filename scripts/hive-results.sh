@@ -2,7 +2,7 @@
 # SPDX-FileCopyrightText: 2023 Demerzel Solutions Limited
 # SPDX-License-Identifier: LGPL-3.0-only
 
-knownFailingTests=$(cat known-failing-hive-tests.txt)
+knownFailingTests=$(cat nethermind/scripts/known-failing-hive-tests.txt)
 
 shouldNotPass=()
 shouldPass=()
