@@ -163,6 +163,7 @@ namespace Nethermind.Specs
         public bool IsEip7939Enabled { get; set; }
         public bool IsRip7728Enabled { get; set; }
 
+        public bool IsEip7928Enabled { get; set; }
         private HashSet<AddressAsKey>? _precompiles;
         HashSet<AddressAsKey> IReleaseSpec.Precompiles => _precompiles ??= BuildPrecompilesCache();
 

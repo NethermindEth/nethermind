@@ -12,6 +12,8 @@ using System.Text.Unicode;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Int256;
+using Nethermind.Core.BlockAccessLists;
+using Nethermind.Serialization.Json;
 
 namespace Nethermind.Core;
 
@@ -27,10 +29,11 @@ public class Block
     public Block(BlockHeader header,
         IEnumerable<Transaction> transactions,
         IEnumerable<BlockHeader> uncles,
-        IEnumerable<Withdrawal>? withdrawals = null)
+        IEnumerable<Withdrawal>? withdrawals = null,
+        byte[]? blockAccessList = null)
     {
         Header = header ?? throw new ArgumentNullException(nameof(header));
-        Body = new(transactions.ToArray(), uncles.ToArray(), withdrawals?.ToArray());
+        Body = new(transactions.ToArray(), uncles.ToArray(), withdrawals?.ToArray(), blockAccessList);
     }
 
     public Block(BlockHeader header) : this(
@@ -116,6 +119,7 @@ public class Block
     public Hash256? ParentBeaconBlockRoot => Header.ParentBeaconBlockRoot; // do not add setter here
 
     public Hash256? RequestsHash => Header.RequestsHash; // do not add setter here
+    public byte[]? BlockAccessList => Body.BlockAccessList; // do not add setter here
 
     [JsonIgnore]
     public byte[][]? ExecutionRequests { get; set; }
@@ -125,6 +129,10 @@ public class Block
 
     [JsonIgnore]
     public int? EncodedSize { get; set; }
+
+
+    [JsonIgnore]
+    public BlockAccessList? DecodedBlockAccessList { get; set; }
 
 
     [JsonIgnore]
