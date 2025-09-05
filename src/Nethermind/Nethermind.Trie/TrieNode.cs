@@ -481,12 +481,8 @@ namespace Nethermind.Trie
             return true;
         }
 
-        public void ResolveKey(ITrieNodeResolver tree, ref TreePath path, ICappedArrayPool? bufferPool = null, bool canBeParallel = true)
-        {
-            ResolveKey(tree, ref path, path.Length == 0, null, canBeParallel: canBeParallel);
-        }
 
-        public void ResolveKey(ITrieNodeResolver tree, ref TreePath path, bool isRoot,
+        public void ResolveKey(ITrieNodeResolver tree, ref TreePath path,
             ICappedArrayPool? bufferPool = null, bool canBeParallel = true)
         {
             if (Keccak is not null)
@@ -496,12 +492,13 @@ namespace Nethermind.Trie
                 return;
             }
 
-            Keccak = GenerateKey(tree, ref path, isRoot, bufferPool, canBeParallel);
+            Keccak = GenerateKey(tree, ref path, bufferPool, canBeParallel);
         }
 
-        public Hash256? GenerateKey(ITrieNodeResolver tree, ref TreePath path, bool isRoot,
+        public Hash256? GenerateKey(ITrieNodeResolver tree, ref TreePath path,
             ICappedArrayPool? bufferPool = null, bool canBeParallel = true)
         {
+            bool isRoot = path.Length == 0;
             SpanSource rlp = _rlp;
             if (rlp.IsNull || IsDirty)
             {
