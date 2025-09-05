@@ -129,6 +129,11 @@ public class BlockAccessTracer : IBlockTracer, ITxTracer, IJournal<int>
 
     public void ReportNonceChange(Address address, UInt256? before, UInt256? after)
     {
+        if (after == 0)
+        {
+            return;
+        }
+
         NonceChange nonceChange = new()
         {
             BlockAccessIndex = _blockAccessIndex,

@@ -276,7 +276,7 @@ public class BlockAccessListTests()
                 StorageChanges = [],
                 StorageReads = [],
                 BalanceChanges = new SortedList<ushort, BalanceChange> { { 1, new(1, new UInt256(GasCostOf.Transaction)) }, { 2, new(2, new UInt256(gasUsed))} },
-                NonceChanges = new SortedList<ushort, NonceChange> { { 1, new(1, 0) } },
+                NonceChanges = [],
                 CodeChanges = []
             }));
 
