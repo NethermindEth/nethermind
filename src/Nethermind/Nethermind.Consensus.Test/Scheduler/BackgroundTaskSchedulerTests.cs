@@ -54,15 +54,15 @@ public class BackgroundTaskSchedulerTests
         SemaphoreSlim waitSignal = new SemaphoreSlim(0);
         scheduler.ScheduleTask(1, async (_, token) =>
         {
-            counter++;
+            Interlocked.Increment(ref counter);
             await waitSignal.WaitAsync(token);
-            counter--;
+            Interlocked.Decrement(ref counter);
         });
         scheduler.ScheduleTask(1, async (_, token) =>
         {
-            counter++;
+            Interlocked.Increment(ref counter);
             await waitSignal.WaitAsync(token);
-            counter--;
+            Interlocked.Decrement(ref counter);
         });
 
         Assert.That(() => counter, Is.EqualTo(2).After(5000, 1));
