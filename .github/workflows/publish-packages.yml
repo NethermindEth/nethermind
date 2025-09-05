@@ -11,7 +11,7 @@ jobs:
     if: ${{ !github.event.release.prerelease }}
     steps:
       - name: Check out Nethermind repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
         with:
           ref: ${{ github.event.release.tag_name }}
       - name: Set up GPG
@@ -112,7 +112,7 @@ jobs:
           repositories: "homebrew-nethermind"
 
       - name: Check out homebrew-nethermind repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
         with:
           repository: NethermindEth/homebrew-nethermind
           token: ${{ steps.gh-app.outputs.token }}
