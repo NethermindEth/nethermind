@@ -21,18 +21,14 @@ public class AccessListTransactionForRpc : LegacyTransactionForRpc, IFromTransac
     [JsonIgnore(Condition = JsonIgnoreCondition.Never)]
     public virtual UInt256? YParity { get; set; }
 
-    [JsonIgnore(Condition = JsonIgnoreCondition.Never)]
-    public sealed override ulong? ChainId { get; set; }
-
     [JsonConstructor]
     public AccessListTransactionForRpc() { }
 
     public AccessListTransactionForRpc(Transaction transaction, int? txIndex = null, Hash256? blockHash = null, long? blockNumber = null, ulong? chainId = null)
-        : base(transaction, txIndex, blockHash, blockNumber)
+        : base(transaction, txIndex, blockHash, blockNumber, chainId)
     {
         AccessList = AccessListForRpc.FromAccessList(transaction.AccessList);
         YParity = transaction.Signature?.RecoveryId ?? 0;
-        ChainId = transaction.ChainId ?? chainId ?? BlockchainIds.Mainnet;
         V = YParity ?? 0;
     }
 

@@ -23,6 +23,7 @@ public class LegacyTransactionForRpc : TransactionForRpc, ITxTyped, IFromTransac
     [JsonIgnore(Condition = JsonIgnoreCondition.Never)]
     public Address? To { get; set; }
 
+
     // NOTE: This field exists only during deserialization according to the Ethereum JSON-RPC spec.
     // No transaction types include a `From` field when serializing.
     // For backwards compatibility with previous Nethermind versions we also serialize it.
@@ -44,9 +45,6 @@ public class LegacyTransactionForRpc : TransactionForRpc, ITxTyped, IFromTransac
     [JsonIgnore(Condition = JsonIgnoreCondition.Never)]
     public virtual UInt256? GasPrice { get; set; }
 
-    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
-    public virtual ulong? ChainId { get; set; }
-
     [JsonIgnore(Condition = JsonIgnoreCondition.Never)]
     public virtual UInt256? V { get; set; }
 
@@ -59,8 +57,8 @@ public class LegacyTransactionForRpc : TransactionForRpc, ITxTyped, IFromTransac
     [JsonConstructor]
     public LegacyTransactionForRpc() { }
 
-    public LegacyTransactionForRpc(Transaction transaction, int? txIndex = null, Hash256? blockHash = null, long? blockNumber = null)
-        : base(transaction, txIndex, blockHash, blockNumber)
+    public LegacyTransactionForRpc(Transaction transaction, int? txIndex = null, Hash256? blockHash = null, long? blockNumber = null, ulong? chainId = null)
+        : base(transaction, txIndex, blockHash, blockNumber, chainId)
     {
         Nonce = transaction.Nonce;
         To = transaction.To;
@@ -69,7 +67,6 @@ public class LegacyTransactionForRpc : TransactionForRpc, ITxTyped, IFromTransac
         Value = transaction.Value;
         Input = transaction.Data.AsArray();
         GasPrice = transaction.GasPrice;
-        ChainId = transaction.ChainId;
 
         Signature? signature = transaction.Signature;
         if (signature is null)
