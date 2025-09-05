@@ -20,7 +20,7 @@ do
     for each in "${results[@]}";
     do
       echo -e "\033[0;32m\u2714\033[0m $each"
-      if grep -qx $each <<< "$knownFailingTests"; then
+      if grep -qx "$each" <<< "$knownFailingTests"; then
         shuoldNotPass+=("$each")
       fi
     done
@@ -30,7 +30,7 @@ do
     for each in "${results[@]}";
     do
       echo -e "\033[0;31m\u2716\033[0m $each"
-      if ! grep -qx $each <<< "$knownFailingTests"; then
+      if ! grep -qx "$each" <<< "$knownFailingTests"; then
         shouldPass+=("$each")
       fi
     done
