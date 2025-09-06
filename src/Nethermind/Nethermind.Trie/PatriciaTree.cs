@@ -40,7 +40,8 @@ namespace Nethermind.Trie
         public TrieType TrieType { get; init; }
 
         private Stack<StackedNode>? _nodeStack;
-        public IScopedTrieStore TrieStore { get; }
+        private Stack<TraverseStack>? _traverseStack;
+        public readonly IScopedTrieStore TrieStore;
         public ICappedArrayPool? _bufferPool;
 
         private readonly bool _allowCommits;
@@ -147,9 +148,10 @@ namespace Nethermind.Trie
             {
                 TreePath path = TreePath.Empty;
                 RootRef = Commit(committer, ref path, RootRef, skipSelf: skipRoot, maxLevelForConcurrentCommit: maxLevelForConcurrentCommit);
-
-                SetRootHash(RootRef.Keccak!, true);
             }
+
+            // Sometimes RootRef is set to null, so we still need to reset roothash to empty tree hash.
+            SetRootHash(RootRef?.Keccak, true);
         }
 
         private TrieNode Commit(ICommitter committer, ref TreePath path, TrieNode node, int maxLevelForConcurrentCommit, bool skipSelf = false)
@@ -443,7 +445,7 @@ namespace Nethermind.Trie
 
         [SkipLocalsInit]
         [DebuggerStepThrough]
-        public virtual void Set(ReadOnlySpan<byte> rawKey, SpanSource value)
+        public void Set(ReadOnlySpan<byte> rawKey, SpanSource value)
         {
             if (_logger.IsTrace) Trace(in rawKey, value);
 
@@ -464,10 +466,12 @@ namespace Nethermind.Trie
                     [..nibblesCount]; // Slice to exact size
 
                 Nibbles.BytesToNibbleBytes(rawKey, nibbles);
-                // lazy stack cleaning after the previous update
-                ClearNodeStack();
-                TreePath updatePathTreePath = TreePath.FromPath(rawKey); // Only used on update.
-                Run(ref updatePathTreePath, value, nibbles, isUpdate: true);
+
+                if (_traverseStack is null) _traverseStack = new Stack<TraverseStack>();
+                else if (_traverseStack.Count > 0) _traverseStack.Clear();
+
+                TreePath empty = TreePath.Empty;
+                RootRef = SetNew(_traverseStack, nibbles, value, ref empty, RootRef);
 
                 if (array is not null) ArrayPool<byte>.Shared.Return(array);
             }
@@ -500,6 +504,259 @@ namespace Nethermind.Trie
                 SpanSource valueBytes = new(value.Bytes);
                 Set(rawKey, valueBytes);
             }
+        }
+
+        private TrieNode? SetNew(Stack<TraverseStack> traverseStack, Span<byte> remainingKey, SpanSource value, ref TreePath path, TrieNode? node)
+        {
+            TrieNode? originalNode = node;
+            int originalPathLength = path.Length;
+
+            while (true)
+            {
+                if (node is null)
+                {
+                    node = value.IsNullOrEmpty ? null : TrieNodeFactory.CreateLeaf(remainingKey.ToArray(), value);
+
+                    // End traverse
+                    break;
+                }
+
+                node.ResolveNode(TrieStore, path);
+
+                if (node.IsLeaf || node.IsExtension)
+                {
+                    int commonPrefixLength = remainingKey.CommonPrefixLength(node.Key);
+                    if (commonPrefixLength == node.Key!.Length)
+                    {
+                        if (node.IsExtension)
+                        {
+                            // Continue traversal to the child of the extension
+                            path.AppendMut(node.Key);
+                            TrieNode? extensionChild = node.GetChildWithChildPath(TrieStore, ref path, 0);
+
+                            traverseStack.Push(new TraverseStack()
+                            {
+                                Node = node,
+                                OriginalChild = extensionChild,
+                                ChildIdx = 0,
+                            });
+
+                            // Continue loop with the child as current node
+                            remainingKey = remainingKey[node!.Key.Length..];
+                            node = extensionChild;
+
+                            continue;
+                        }
+
+                        if (value.IsNullOrEmpty)
+                        {
+                            // Deletion
+                            node = null;
+                        }
+                        else if (node.Value.Equals(value))
+                        {
+                            // SHORTCUT!
+                            path.TruncateMut(originalPathLength);
+                            traverseStack.Clear();
+                            return originalNode;
+                        }
+                        else if (node.IsSealed)
+                        {
+                            node = node.CloneWithChangedValue(value);
+                        }
+                        else
+                        {
+                            node.Value = value;
+                            node.Keccak = null; // For parent node usually done in SetChild.
+                        }
+
+                        // end traverse
+                        break;
+                    }
+
+                    // We are suppose to create a branch, but no change in structure
+                    if (value.IsNullOrEmpty)
+                    {
+                        // SHORTCUT!
+                        path.TruncateMut(originalPathLength);
+                        traverseStack.Clear();
+                        return originalNode;
+                    }
+
+                    // Making a T branch here.
+                    // If the commonPrefixLength > 0, we'll also need to also make an extension in front of the branch.
+                    TrieNode theBranch = TrieNodeFactory.CreateBranch();
+
+                    // This is the current node branch
+                    int currentNodeNib = node.Key[commonPrefixLength];
+                    if (node.Key.Length == commonPrefixLength + 1 && node.IsExtension)
+                    {
+                        // Collapsing the extension, taking the child directly and set the branch
+                        int originalLength = path.Length;
+                        path.AppendMut(node.Key);
+                        theBranch[currentNodeNib] = node.GetChildWithChildPath(TrieStore, ref path, 0);
+                        path.TruncateMut(originalLength);
+                    }
+                    else
+                    {
+                        // Note: could be a leaf at the end of the tree which now have zero length key
+                        theBranch[currentNodeNib] = node.CloneWithChangedKey(node.Key.Slice(commonPrefixLength + 1));
+                    }
+
+                    // This is the new branch
+                    theBranch[remainingKey[commonPrefixLength]] =
+                        TrieNodeFactory.CreateLeaf(remainingKey[(commonPrefixLength + 1)..].ToArray(), value);
+
+                    // Extension in front of the branch
+                    node = commonPrefixLength == 0 ?
+                        theBranch :
+                        TrieNodeFactory.CreateExtension(remainingKey[..commonPrefixLength].ToArray(), theBranch);
+
+                    break;
+                }
+
+                int nib = remainingKey[0];
+                path.AppendMut(nib);
+                TrieNode? child = node.GetChildWithChildPath(TrieStore, ref path, nib);
+
+                traverseStack.Push(new TraverseStack()
+                {
+                    Node = node,
+                    OriginalChild = child,
+                    ChildIdx = nib,
+                });
+
+                // Continue loop with child as current node
+                node = child;
+                remainingKey = remainingKey[1..];
+            }
+
+            while (traverseStack.TryPop(out TraverseStack cStack))
+            {
+                TrieNode? child = node;
+                node = cStack.Node;
+
+                if (node.IsExtension)
+                {
+                    path.TruncateMut(path.Length - node.Key!.Length);
+
+                    if (ShouldUpdateChild(node, cStack.OriginalChild, child))
+                    {
+                        if (child is null)
+                        {
+                            node = null; // Remove extension
+                            continue;
+                        }
+
+                        if (child.IsExtension || child.IsLeaf)
+                        {
+                            // Merge current node with child
+                            node = child.CloneWithChangedKey(Bytes.Concat(node.Key, child.Key));
+                        }
+                        else
+                        {
+                            if (node.IsSealed) node = node.Clone();
+                            node.SetChild(0, child);
+                        }
+                    }
+
+                    continue;
+                }
+
+                // Branch only
+                int nib = cStack.ChildIdx;
+
+                bool hasRemove = false;
+                path.TruncateOne();
+
+                if (ShouldUpdateChild(node, cStack.OriginalChild, child))
+                {
+                    if (child is null) hasRemove = true;
+                    if (node.IsSealed) node = node.Clone();
+
+                    node.SetChild(nib, child);
+                }
+
+                if (!hasRemove)
+                {
+                    // 99%
+                    continue;
+                }
+
+                // About 1% reach here
+                node = MaybeCombineNode(ref path, node);
+            }
+
+            return node;
+        }
+
+        internal bool ShouldUpdateChild(TrieNode parent, TrieNode? oldChild, TrieNode? newChild)
+        {
+            if (oldChild is null && newChild is null) return false;
+            if (!ReferenceEquals(oldChild, newChild)) return true;
+            if (newChild.Keccak is null && parent.Keccak is not null) return true; // So that recalculate root knows to recalculate the parent root.
+            return true;
+        }
+
+        /// <summary>
+        /// Tries to make the current node an extension or null if it has only one child left.
+        /// </summary>
+        /// <param name="path"></param>
+        /// <param name="node"></param>
+        /// <returns></returns>
+        internal TrieNode? MaybeCombineNode(ref TreePath path, in TrieNode? node)
+        {
+            int onlyChildIdx = -1;
+            TrieNode? onlyChildNode = null;
+            path.AppendMut(0);
+            var iterator = node.CreateChildIterator();
+            for (int i = 0; i < TrieNode.BranchesCount; i++)
+            {
+                path.SetLast(i);
+                TrieNode? child = iterator.GetChildWithChildPath(TrieStore, ref path, i);
+
+                if (child is not null)
+                {
+                    if (onlyChildIdx == -1)
+                    {
+                        onlyChildIdx = i;
+                        onlyChildNode = child;
+                    }
+                    else
+                    {
+                        // 63%
+                        // More than one non null child. We don't care anymore.
+                        path.TruncateOne();
+                        return node;
+                    }
+                }
+
+            }
+            path.TruncateOne();
+
+            if (onlyChildIdx == -1) return null; // No child at all.
+
+            path.AppendMut(onlyChildIdx);
+            onlyChildNode.ResolveNode(TrieStore, path);
+            path.TruncateOne();
+
+            if (onlyChildNode.IsBranch)
+            {
+                return TrieNodeFactory.CreateExtension([(byte)onlyChildIdx], onlyChildNode);
+            }
+
+            // 35%
+            // Replace the only child with something with extra key.
+            byte[] newKey = Bytes.Concat((byte)onlyChildIdx, onlyChildNode.Key);
+            TrieNode tn = onlyChildNode.CloneWithChangedKey(newKey);
+            return tn;
+        }
+
+        private record struct TraverseStack
+        {
+            public TrieNode Node;
+            public int ChildIdx;
+            public TrieNode? OriginalChild;
         }
 
         private SpanSource Run(
