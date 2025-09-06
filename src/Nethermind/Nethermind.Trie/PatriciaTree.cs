@@ -146,24 +146,20 @@ namespace Nethermind.Trie
             if (RootRef is not null && RootRef.IsDirty)
             {
                 TreePath path = TreePath.Empty;
-                Commit(committer, ref path, new NodeCommitInfo(RootRef), skipSelf: skipRoot, maxLevelForConcurrentCommit: maxLevelForConcurrentCommit);
-
-                // reset objects
-                RootRef!.ResolveKey(TrieStore, ref path, true, bufferPool: _bufferPool);
+                RootRef = Commit(committer, ref path, RootRef, skipSelf: skipRoot, maxLevelForConcurrentCommit: maxLevelForConcurrentCommit);
             }
 
             // Sometimes RootRef is set to null, so we still need to reset roothash to empty tree hash.
             SetRootHash(RootRef?.Keccak, true);
         }
 
-        private void Commit(ICommitter committer, ref TreePath path, NodeCommitInfo nodeCommitInfo, int maxLevelForConcurrentCommit, bool skipSelf = false)
+        private TrieNode Commit(ICommitter committer, ref TreePath path, TrieNode node, int maxLevelForConcurrentCommit, bool skipSelf = false)
         {
             if (!_allowCommits)
             {
                 ThrowReadOnlyTrieException();
             }
 
-            TrieNode node = nodeCommitInfo.Node;
             if (node!.IsBranch)
             {
                 if (path.Length > maxLevelForConcurrentCommit)
@@ -174,7 +170,11 @@ namespace Nethermind.Trie
                         {
                             path.AppendMut(i);
                             TrieNode childNode = node.GetChildWithChildPath(TrieStore, ref path, i);
-                            Commit(committer, ref path, new NodeCommitInfo(childNode!, node, i), maxLevelForConcurrentCommit);
+                            TrieNode newChildNode = Commit(committer, ref path, childNode, maxLevelForConcurrentCommit);
+                            if (!ReferenceEquals(childNode, newChildNode))
+                            {
+                                node[i] = newChildNode;
+                            }
                             path.TruncateOne();
                         }
                         else
@@ -190,7 +190,11 @@ namespace Nethermind.Trie
                 {
                     Task CreateTaskForPath(TreePath childPath, TrieNode childNode, int idx) => Task.Run(() =>
                     {
-                        Commit(committer, ref childPath, new NodeCommitInfo(childNode!, node, idx), maxLevelForConcurrentCommit);
+                        TrieNode newChild = Commit(committer, ref childPath, childNode!, maxLevelForConcurrentCommit);
+                        if (!ReferenceEquals(childNode, newChild))
+                        {
+                            node[idx] = newChild;
+                        }
                         committer.ReturnConcurrencyQuota();
                     });
 
@@ -211,7 +215,11 @@ namespace Nethermind.Trie
                             {
                                 path.AppendMut(i);
                                 TrieNode childNode = node.GetChildWithChildPath(TrieStore, ref path, i);
-                                Commit(committer, ref path, new NodeCommitInfo(childNode!, node, i), maxLevelForConcurrentCommit);
+                                TrieNode newChildNode = Commit(committer, ref path, childNode!, maxLevelForConcurrentCommit);
+                                if (!ReferenceEquals(childNode, newChildNode))
+                                {
+                                    node[i] = newChildNode;
+                                }
                                 path.TruncateOne();
                             }
                         }
@@ -242,7 +250,11 @@ namespace Nethermind.Trie
 
                 if (extensionChild.IsDirty)
                 {
-                    Commit(committer, ref path, new NodeCommitInfo(extensionChild, node, 0), maxLevelForConcurrentCommit);
+                    TrieNode newExtensionChild = Commit(committer, ref path, extensionChild, maxLevelForConcurrentCommit);
+                    if (!ReferenceEquals(newExtensionChild, extensionChild))
+                    {
+                        node[0] = newExtensionChild;
+                    }
                 }
                 else
                 {
@@ -251,20 +263,22 @@ namespace Nethermind.Trie
                 path.TruncateMut(previousPathLength);
             }
 
-            node.ResolveKey(TrieStore, ref path, nodeCommitInfo.IsRoot, bufferPool: _bufferPool);
+            node.ResolveKey(TrieStore, ref path, bufferPool: _bufferPool);
             node.Seal();
 
             if (node.FullRlp.Length >= 32)
             {
                 if (!skipSelf)
                 {
-                    committer.CommitNode(ref path, nodeCommitInfo);
+                    node = committer.CommitNode(ref path, node);
                 }
             }
             else
             {
                 if (_logger.IsTrace) TraceSkipInlineNode(node);
             }
+
+            return node;
 
             [DoesNotReturn, StackTraceHidden]
             static void ThrowInvalidExtension() => throw new InvalidOperationException("An attempt to store an extension without a child.");
@@ -295,7 +309,7 @@ namespace Nethermind.Trie
         public void UpdateRootHash(bool canBeParallel = true)
         {
             TreePath path = TreePath.Empty;
-            RootRef?.ResolveKey(TrieStore, ref path, isRoot: true, bufferPool: _bufferPool, canBeParallel);
+            RootRef?.ResolveKey(TrieStore, ref path, bufferPool: _bufferPool, canBeParallel);
             SetRootHash(RootRef?.Keccak ?? EmptyTreeHash, false);
         }
 
