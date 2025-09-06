@@ -441,6 +441,66 @@ public class StorageProviderTests
         provider.Get(nonAccessedStorageCell).ToArray().Should().BeEquivalentTo(StorageTree.ZeroBytes);
     }
 
+    [Test]
+    public void Set_empty_value_for_storage_cell_without_read_clears_data()
+    {
+        IWorldState worldState = new WorldState(TestTrieStoreFactory.Build(new MemDb(), LimboLogs.Instance), Substitute.For<IDb>(), LogManager);
+
+        using var disposable = worldState.BeginScope(IWorldState.PreGenesis);
+        worldState.CreateAccount(TestItem.AddressA, 1);
+        worldState.Commit(Prague.Instance);
+        worldState.CommitTree(0);
+        Hash256 emptyHash = worldState.StateRoot;
+
+        worldState.Set(new StorageCell(TestItem.AddressA, 1), _values[11]);
+        worldState.Set(new StorageCell(TestItem.AddressA, 2), _values[12]);
+        worldState.Commit(Prague.Instance);
+        worldState.CommitTree(1);
+
+        var fullHash = worldState.StateRoot;
+        fullHash.Should().NotBe(emptyHash);
+
+        worldState.Set(new StorageCell(TestItem.AddressA, 1), [0]);
+        worldState.Set(new StorageCell(TestItem.AddressA, 2), [0]);
+        worldState.Commit(Prague.Instance);
+        worldState.CommitTree(2);
+
+        var clearedHash = worldState.StateRoot;
+
+        clearedHash.Should().Be(emptyHash);
+    }
+
+    [Test]
+    public void Set_empty_value_for_storage_cell_with_read_clears_data()
+    {
+        IWorldState worldState = new WorldState(TestTrieStoreFactory.Build(new MemDb(), LimboLogs.Instance), Substitute.For<IDb>(), LogManager);
+
+        using var disposable = worldState.BeginScope(IWorldState.PreGenesis);
+        worldState.CreateAccount(TestItem.AddressA, 1);
+        worldState.Commit(Prague.Instance);
+        worldState.CommitTree(0);
+        Hash256 emptyHash = worldState.StateRoot;
+
+        worldState.Set(new StorageCell(TestItem.AddressA, 1), _values[11]);
+        worldState.Set(new StorageCell(TestItem.AddressA, 2), _values[12]);
+        worldState.Commit(Prague.Instance);
+        worldState.CommitTree(1);
+
+        var fullHash = worldState.StateRoot;
+        fullHash.Should().NotBe(emptyHash);
+
+        worldState.Get(new StorageCell(TestItem.AddressA, 1));
+        worldState.Get(new StorageCell(TestItem.AddressA, 2));
+        worldState.Set(new StorageCell(TestItem.AddressA, 1), [0]);
+        worldState.Set(new StorageCell(TestItem.AddressA, 2), [0]);
+        worldState.Commit(Prague.Instance);
+        worldState.CommitTree(2);
+
+        var clearedHash = worldState.StateRoot;
+
+        clearedHash.Should().Be(emptyHash);
+    }
+
     private class Context
     {
         public WorldState StateProvider { get; }
