@@ -39,6 +39,7 @@ namespace Nethermind.Blockchain.FullPruning
         private readonly ILogger _logger;
         private readonly TimeSpan _minimumPruningDelay;
         private DateTime _lastPruning = DateTime.MinValue;
+        private readonly ProgressLogger _progressLogger;
 
         public FullPruner(
             IFullPruningDb fullPruningDb,
@@ -69,6 +70,7 @@ namespace Nethermind.Blockchain.FullPruning
             _pruningTrigger.Prune += OnPrune;
             _logger = _logManager.GetClassLogger();
             _minimumPruningDelay = TimeSpan.FromHours(_pruningConfig.FullPruningMinimumDelayHours);
+            _progressLogger = new ProgressLogger("Full Pruning", logManager);
 
             if (_pruningConfig.FullPruningCompletionBehavior != FullPruningCompletionBehavior.None)
             {
@@ -264,6 +266,9 @@ namespace Nethermind.Blockchain.FullPruning
                 };
                 if (_logger.IsInfo) _logger.Info($"Full pruning started with MaxDegreeOfParallelism: {visitingOptions.MaxDegreeOfParallelism} and FullScanMemoryBudget: {visitingOptions.FullScanMemoryBudget}");
 
+                // Initialize progress logger for trie copying
+                _progressLogger.Reset(0, 0); // We'll update the target value when we know the total nodes
+
                 visitor = targetNodeStorage.Scheme == INodeStorage.KeyScheme.Hash
                     ? CopyTree<NoopTreePathContextWithStorage>(stateRoot, targetNodeStorage, writeFlags, visitingOptions, cancellationToken)
                     : CopyTree<TreePathContextWithStorage>(stateRoot, targetNodeStorage, writeFlags, visitingOptions, cancellationToken);
@@ -303,7 +308,7 @@ namespace Nethermind.Blockchain.FullPruning
             CancellationToken cancellationToken
         ) where TContext : struct, ITreePathContextWithStorage, INodeContext<TContext>
         {
-            CopyTreeVisitor<TContext> copyTreeVisitor = new(targetNodeStorage, writeFlags, _logManager, cancellationToken);
+            CopyTreeVisitor<TContext> copyTreeVisitor = new(targetNodeStorage, writeFlags, _logManager, cancellationToken, _progressLogger);
             _stateReader.RunTreeVisitor(copyTreeVisitor, stateRoot, visitingOptions);
             return copyTreeVisitor;
         }
