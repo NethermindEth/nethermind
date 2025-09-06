@@ -265,7 +265,7 @@ public class PatriciaTreeBulkSetter(PatriciaTree patriciaTree)
         return node;
     }
 
-    internal TrieNode? BulkSetOneStack(ThreadResource threadResource, in BulkSetEntry entry, ref TreePath path,
+    private TrieNode? BulkSetOneStack(ThreadResource threadResource, in BulkSetEntry entry, ref TreePath path,
         TrieNode? node)
     {
         Span<byte> nibble = stackalloc byte[64];

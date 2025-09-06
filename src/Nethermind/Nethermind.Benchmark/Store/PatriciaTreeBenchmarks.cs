@@ -322,8 +322,6 @@ namespace Nethermind.Benchmarks.Store
             Array.Sort(_presortedLargeSet, (it1, it2) => it1.CompareTo(it2));
         }
 
-        /*
-
         [Benchmark]
         public void Scenarios()
         {
@@ -407,106 +405,23 @@ namespace Nethermind.Benchmarks.Store
             using IBlockCommitter _ = trieStore.BeginBlockCommit(0);
             tempTree.Commit();
         }
-        */
 
         [Benchmark]
         public void LargeSetOnly()
         {
-            TrieStore trieStore = TestTrieStoreFactory.Build(new MemDb(),
-                Prune.WhenCacheReaches(1.MiB()),
-                Persist.EveryNBlock(2), NullLogManager.Instance);
-            StateTree tempTree = new StateTree(trieStore, NullLogManager.Instance);
-            tempTree.RootHash = Keccak.EmptyTreeHash;
-
-            for (int i = 0; i < _largerEntryCount; i++)
-            {
-                (Hash256 address, Account value) = _uniqueLargeSet[i];
-                tempTree.Set(address, value);
-            }
+            DoSetOnlyRepeatedly(_largerEntryCount);
         }
 
-        [Benchmark]
-        public void LargeSetOnlyNew()
-        {
-            TrieStore trieStore = TestTrieStoreFactory.Build(new MemDb(),
-                Prune.WhenCacheReaches(1.MiB()),
-                Persist.EveryNBlock(2), NullLogManager.Instance);
-            StateTree tempTree = new StateTree(trieStore, NullLogManager.Instance);
-            PatriciaTree.UseNewSet = true;
-            tempTree.RootHash = Keccak.EmptyTreeHash;
-
-            for (int i = 0; i < _largerEntryCount; i++)
-            {
-                (Hash256 address, Account value) = _uniqueLargeSet[i];
-                tempTree.Set(address, value);
-            }
-        }
-
-        /*
         [Benchmark]
         public void LargeBulkSet()
         {
-            TrieStore trieStore = TestTrieStoreFactory.Build(new MemDb(),
-                Prune.WhenCacheReaches(1.MiB()),
-                Persist.EveryNBlock(2), NullLogManager.Instance);
-            StateTree tempTree = new StateTree(trieStore, NullLogManager.Instance);
-            tempTree.RootHash = Keccak.EmptyTreeHash;
-
-            using ArrayPoolList<PatriciaTreeBulkSetter.BulkSetEntry> bulkSet = new ArrayPoolList<PatriciaTreeBulkSetter.BulkSetEntry>(_largerEntryCount);
-
-            for (int i = 0; i < _largerEntryCount; i++)
-            {
-                (Hash256 address, Account account) = _uniqueLargeSet[i];
-                Serialization.Rlp.Rlp rlp = account is null ? null : account.IsTotallyEmpty ? StateTree.EmptyAccountRlp : Serialization.Rlp.Rlp.Encode(account);
-                bulkSet.Add(new PatriciaTreeBulkSetter.BulkSetEntry(address, rlp?.Bytes));
-            }
-
-            PatriciaTreeBulkSetter.BulkSet(tempTree, bulkSet);
-        }
-
-        [Benchmark]
-        public void LargeBulkSetOneStack()
-        {
-            TrieStore trieStore = TestTrieStoreFactory.Build(new MemDb(),
-                Prune.WhenCacheReaches(1.MiB()),
-                Persist.EveryNBlock(2), NullLogManager.Instance);
-            StateTree tempTree = new StateTree(trieStore, NullLogManager.Instance);
-            tempTree.RootHash = Keccak.EmptyTreeHash;
-
-            using ArrayPoolList<PatriciaTreeBulkSetter.BulkSetEntry> bulkSet = new ArrayPoolList<PatriciaTreeBulkSetter.BulkSetEntry>(_largerEntryCount);
-
-            using PatriciaTreeBulkSetter.ThreadResource threadResource = new PatriciaTreeBulkSetter.ThreadResource();
-            PatriciaTreeBulkSetter setter = new PatriciaTreeBulkSetter(tempTree);
-            TreePath path = TreePath.Empty;
-            for (int i = 0; i < _largerEntryCount; i++)
-            {
-                (Hash256 address, Account account) = _uniqueLargeSet[i];
-                Serialization.Rlp.Rlp rlp = account is null ? null : account.IsTotallyEmpty ? StateTree.EmptyAccountRlp : Serialization.Rlp.Rlp.Encode(account);
-                tempTree.RootRef = setter.BulkSetOneStack(threadResource, new PatriciaTreeBulkSetter.BulkSetEntry(address, rlp?.Bytes), ref path, tempTree.RootRef);
-            }
-
-            PatriciaTreeBulkSetter.BulkSet(tempTree, bulkSet);
+            DoBulkSetRepeatedly(_largerEntryCount);
         }
 
         [Benchmark]
         public void LargeBulkSetNoParallel()
         {
-            TrieStore trieStore = TestTrieStoreFactory.Build(new MemDb(),
-                Prune.WhenCacheReaches(1.MiB()),
-                Persist.EveryNBlock(2), NullLogManager.Instance);
-            StateTree tempTree = new StateTree(trieStore, NullLogManager.Instance);
-            tempTree.RootHash = Keccak.EmptyTreeHash;
-
-            using ArrayPoolList<PatriciaTreeBulkSetter.BulkSetEntry> bulkSet = new ArrayPoolList<PatriciaTreeBulkSetter.BulkSetEntry>(_largerEntryCount);
-
-            for (int i = 0; i < _largerEntryCount; i++)
-            {
-                (Hash256 address, Account account) = _uniqueLargeSet[i];
-                Serialization.Rlp.Rlp rlp = account is null ? null : account.IsTotallyEmpty ? StateTree.EmptyAccountRlp : Serialization.Rlp.Rlp.Encode(account);
-                bulkSet.Add(new PatriciaTreeBulkSetter.BulkSetEntry(address, rlp?.Bytes));
-            }
-
-            PatriciaTreeBulkSetter.BulkSet(tempTree, bulkSet, PatriciaTreeBulkSetter.Flags.DoNotParallelize);
+            DoBulkSetRepeatedlyNoParallel(_largerEntryCount);
         }
 
         [Benchmark]
@@ -530,89 +445,11 @@ namespace Nethermind.Benchmarks.Store
             PatriciaTreeBulkSetter.BulkSet(tempTree, bulkSet, PatriciaTreeBulkSetter.Flags.WasSorted);
         }
 
-        /*
-        [Benchmark]
-        public void LargeBulkSetOneByOne1()
-        {
-            PatriciaTreeBulkSetter.MinEntriesToSetOneByOne = 1;
-            LargeBulkSet();
-        }
 
         [Benchmark]
-        public void LargeBulkSetOneByOne2()
+        public void LargeBulkSetPreSortedNoParallel()
         {
-            PatriciaTreeBulkSetter.MinEntriesToSetOneByOne = 2;
-            LargeBulkSet();
-        }
-
-        [Benchmark]
-        public void LargeBulkSetOneByOne4()
-        {
-            PatriciaTreeBulkSetter.MinEntriesToSetOneByOne = 4;
-            LargeBulkSet();
-        }
-
-        [Benchmark]
-        public void LargeBulkSetOneByOne8()
-        {
-            PatriciaTreeBulkSetter.MinEntriesToSetOneByOne = 8;
-            LargeBulkSet();
-        }
-
-        [Benchmark]
-        public void LargeBulkSetOneByOne16()
-        {
-            PatriciaTreeBulkSetter.MinEntriesToSetOneByOne = 16;
-            LargeBulkSet();
-        }
-
-        [Benchmark]
-        public void LargeBulkSetOneByOne32()
-        {
-            PatriciaTreeBulkSetter.MinEntriesToSetOneByOne = 32;
-            LargeBulkSet();
-        }
-
-        [Benchmark]
-        public void LargeBulkSetOneByOne64()
-        {
-            PatriciaTreeBulkSetter.MinEntriesToSetOneByOne = 64;
-            LargeBulkSet();
-        }
-
-        [Benchmark]
-        public void LargeBulkSetOneByOne128()
-        {
-            PatriciaTreeBulkSetter.MinEntriesToSetOneByOne = 128;
-            LargeBulkSet();
-        }
-
-        [Benchmark]
-        public void LargeBulkSetOneByOne256()
-        {
-            PatriciaTreeBulkSetter.MinEntriesToSetOneByOne = 256;
-            LargeBulkSet();
-        }
-
-        [Benchmark]
-        public void LargeBulkSetOneByOne512()
-        {
-            PatriciaTreeBulkSetter.MinEntriesToSetOneByOne = 512;
-            LargeBulkSet();
-        }
-        */
-
-        /*
-        [Benchmark]
-        public void RepeatedSet16()
-        {
-            DoSetOnlyRepeatedly(16);
-        }
-
-        [Benchmark]
-        public void RepeatedSet32()
-        {
-            DoSetOnlyRepeatedly(32);
+            DoBulkSetRepeatedly(_largerEntryCount);
         }
 
         [Benchmark]
@@ -620,16 +457,17 @@ namespace Nethermind.Benchmarks.Store
         {
             DoSetOnlyRepeatedly(64);
         }
+
         [Benchmark]
-        public void RepeatedSet128()
+        public void RepeatedBulkSetNoParallel64()
         {
-            DoSetOnlyRepeatedly(128);
+            DoBulkSetRepeatedlyNoParallel(64);
         }
 
         [Benchmark]
-        public void RepeatedSet256()
+        public void RepeatedBulkSet64()
         {
-            DoSetOnlyRepeatedly(256);
+            DoBulkSetRepeatedly(64);
         }
 
         [Benchmark]
@@ -639,31 +477,9 @@ namespace Nethermind.Benchmarks.Store
         }
 
         [Benchmark]
-        public void RepeatedBulkSet16()
+        public void RepeatedBulkSetNoParallel512()
         {
-            DoBulkSetRepeatedly(16);
-        }
-        [Benchmark]
-        public void RepeatedBulkSet32()
-        {
-            DoBulkSetRepeatedly(32);
-        }
-        [Benchmark]
-        public void RepeatedBulkSet64()
-        {
-            DoBulkSetRepeatedly(64);
-        }
-
-        [Benchmark]
-        public void RepeatedBulkSet128()
-        {
-            DoBulkSetRepeatedly(128);
-        }
-
-        [Benchmark]
-        public void RepeatedBulkSet256()
-        {
-            DoBulkSetRepeatedly(256);
+            DoBulkSetRepeatedlyNoParallel(512);
         }
 
         [Benchmark]
@@ -672,7 +488,7 @@ namespace Nethermind.Benchmarks.Store
             DoBulkSetRepeatedly(512);
         }
 
-        public void DoSetOnlyRepeatedly(int repeatBatchSize)
+        private void DoSetOnlyRepeatedly(int repeatBatchSize)
         {
             TrieStore trieStore = TestTrieStoreFactory.Build(new MemDb(),
                 Prune.WhenCacheReaches(1.MiB()),
@@ -693,7 +509,7 @@ namespace Nethermind.Benchmarks.Store
             }
         }
 
-        public void DoBulkSetRepeatedly(int repeatBatchSize)
+        private void DoBulkSetRepeatedly(int repeatBatchSize)
         {
             TrieStore trieStore = TestTrieStoreFactory.Build(new MemDb(),
                 Prune.WhenCacheReaches(1.MiB()),
@@ -707,7 +523,7 @@ namespace Nethermind.Benchmarks.Store
             {
                 if (i % repeatBatchSize == 0)
                 {
-                    PatriciaTreeBulkSetter.BulkSet(tempTree, bulkSet.AsMemory(), PatriciaTreeBulkSetter.Flags.None);
+                    PatriciaTreeBulkSetter.BulkSet(tempTree, bulkSet, PatriciaTreeBulkSetter.Flags.None);
                     bulkSet.Clear();
                     tempTree.RootHash = originalRootHash;
                 }
@@ -717,10 +533,36 @@ namespace Nethermind.Benchmarks.Store
                 bulkSet.Add(new PatriciaTreeBulkSetter.BulkSetEntry(address, rlp?.Bytes));
             }
 
-            PatriciaTreeBulkSetter.BulkSet(tempTree, bulkSet.AsMemory(), PatriciaTreeBulkSetter.Flags.None);
+            PatriciaTreeBulkSetter.BulkSet(tempTree, bulkSet, PatriciaTreeBulkSetter.Flags.None);
         }
 
-        /*
+        private void DoBulkSetRepeatedlyNoParallel(int repeatBatchSize)
+        {
+            TrieStore trieStore = TestTrieStoreFactory.Build(new MemDb(),
+                Prune.WhenCacheReaches(1.MiB()),
+                Persist.EveryNBlock(2), NullLogManager.Instance);
+            StateTree tempTree = new StateTree(trieStore, NullLogManager.Instance);
+            var originalRootHash = Keccak.EmptyTreeHash;
+            tempTree.RootHash = Keccak.EmptyTreeHash;
+
+            using ArrayPoolList<PatriciaTreeBulkSetter.BulkSetEntry> bulkSet = new ArrayPoolList<PatriciaTreeBulkSetter.BulkSetEntry>(_repeatedlyFactor);
+            for (int i = 0; i < _largerEntryCount; i++)
+            {
+                if (i % repeatBatchSize == 0)
+                {
+                    PatriciaTreeBulkSetter.BulkSet(tempTree, bulkSet, PatriciaTreeBulkSetter.Flags.DoNotParallelize);
+                    bulkSet.Clear();
+                    tempTree.RootHash = originalRootHash;
+                }
+
+                (Hash256 address, Account account) = _uniqueLargeSet[i];
+                Serialization.Rlp.Rlp rlp = account is null ? null : account.IsTotallyEmpty ? StateTree.EmptyAccountRlp : Serialization.Rlp.Rlp.Encode(account);
+                bulkSet.Add(new PatriciaTreeBulkSetter.BulkSetEntry(address, rlp?.Bytes));
+            }
+
+            PatriciaTreeBulkSetter.BulkSet(tempTree, bulkSet, PatriciaTreeBulkSetter.Flags.DoNotParallelize);
+        }
+
         TrieStore _largeUncommittedFullTree;
         StateTree _largeUncommittedStateTree;
 
@@ -831,6 +673,5 @@ namespace Nethermind.Benchmarks.Store
                 tempTree.Get(_entriesShuffled[i].Item1);
             }
         }
-        */
     }
 }
