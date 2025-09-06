@@ -8,7 +8,6 @@ using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
 using System.IO;
 using System.Runtime.CompilerServices;
-using System.Runtime.ExceptionServices;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Core;
@@ -151,6 +150,11 @@ namespace Nethermind.Trie
 
             // Sometimes RootRef is set to null, so we still need to reset roothash to empty tree hash.
             SetRootHash(RootRef?.Keccak, true);
+        }
+
+        internal void IncrementWriteCount(long writeCount)
+        {
+            _writeBeforeCommit += writeCount;
         }
 
         private TrieNode Commit(ICommitter committer, ref TreePath path, TrieNode node, int maxLevelForConcurrentCommit, bool skipSelf = false)
@@ -524,7 +528,7 @@ namespace Nethermind.Trie
             }
         }
 
-        private TrieNode? SetNew(Stack<TraverseStack> traverseStack, Span<byte> remainingKey, SpanSource value, ref TreePath path, TrieNode? node)
+        internal TrieNode? SetNew(Stack<TraverseStack> traverseStack, Span<byte> remainingKey, SpanSource value, ref TreePath path, TrieNode? node)
         {
             TrieNode? originalNode = node;
             int originalPathLength = path.Length;
@@ -770,7 +774,7 @@ namespace Nethermind.Trie
             return tn;
         }
 
-        private record struct TraverseStack
+        internal record struct TraverseStack
         {
             public TrieNode Node;
             public int ChildIdx;

@@ -59,6 +59,16 @@ namespace Nethermind.State
             Unsafe.As<byte, ValueHash256>(ref MemoryMarshal.GetReference(key)) = keyHash;
         }
 
+        public static void ComputeKeyWithLookup(in UInt256 index, Span<byte> key)
+        {
+            if (index < LookupSize)
+            {
+                Lookup[index].CopyTo(key);
+            }
+
+            ComputeKey(index, key);
+        }
+
         [SkipLocalsInit]
         public byte[] Get(in UInt256 index, Hash256? storageRoot = null)
         {
