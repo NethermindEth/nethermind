@@ -4,7 +4,6 @@
 using System;
 using System.Threading.Tasks;
 using Autofac;
-using Autofac.Features.AttributeFilters;
 using Nethermind.Api;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Receipts;
@@ -30,9 +29,10 @@ public class MainProcessingContext : IMainProcessingContext, IAsyncDisposable
         IBlockValidationModule[] blockValidationModules,
         IMainProcessingModule[] mainProcessingModules,
         IWorldStateManager worldStateManager,
-        [KeyFilter(nameof(IWorldStateManager.GlobalWorldState))] ICodeInfoRepository mainCodeInfoRepository,
         CompositeBlockPreprocessorStep compositeBlockPreprocessorStep,
         IBlockTree blockTree,
+        ICodeInfoRepository globalCodeInfoRepository,
+        IPrecompileProvider precompileProvider,
         ILogManager logManager)
     {
 
@@ -41,7 +41,6 @@ public class MainProcessingContext : IMainProcessingContext, IAsyncDisposable
         {
             builder
                 // These are main block processing specific
-                .AddScoped<ICodeInfoRepository>(mainCodeInfoRepository)
                 .AddSingleton<IWorldState>(mainWorldState)
                 .AddModule(blockValidationModules)
                 .AddScoped<ITransactionProcessorAdapter, ExecuteTransactionProcessorAdapter>()
@@ -72,6 +71,11 @@ public class MainProcessingContext : IMainProcessingContext, IAsyncDisposable
                 builder
                     .AddScoped<PreBlockCaches>((mainWorldState as IPreBlockCaches)!.Caches)
                     .AddScoped<IBlockCachePreWarmer, BlockCachePreWarmer>()
+                    .AddSingleton<ICodeInfoRepository, PreBlockCaches>((preBlockCaches) =>
+                    {
+                        // Note: The use of FrozenDictionary means that this cannot be used for other processing env also due to risk of memory leak.
+                        return new CachedCodeInfoRepository(precompileProvider, globalCodeInfoRepository, preBlockCaches?.PrecompileCache);
+                    })
                     ;
             }
         });

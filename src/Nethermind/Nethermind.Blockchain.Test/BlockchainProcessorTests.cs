@@ -520,7 +520,7 @@ public class BlockchainProcessorTests
                 ISpecProvider specProvider = ctx.Resolve<ISpecProvider>();
                 IBlockTree blockTree = ctx.Resolve<IBlockTree>();
                 IStateReader stateReader = ctx.Resolve<IStateReader>();
-                ICodeInfoRepository codeInfoRepository = ctx.ResolveKeyed<ICodeInfoRepository>(nameof(IWorldStateManager.GlobalWorldState));
+                ICodeInfoRepository codeInfoRepository = ctx.Resolve<ICodeInfoRepository>();
                 return new ChainHeadInfoProvider(
                     new FixedForkActivationChainHeadSpecProvider(specProvider, fixedBlock: 10_000_000),
                     blockTree,
