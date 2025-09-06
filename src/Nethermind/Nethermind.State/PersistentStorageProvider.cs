@@ -4,7 +4,6 @@
 using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
-using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
@@ -277,9 +276,7 @@ internal sealed class PersistentStorageProvider : PartialStorageProviderBase
             }
         }
 
-#pragma warning disable CS8321 // Local function is declared but never used
         void UpdateRootHashesMultiThread()
-#pragma warning restore CS8321 // Local function is declared but never used
         {
             // We can recalculate the roots in parallel as they are all independent tries
             using var storages = _storages.ToPooledList();

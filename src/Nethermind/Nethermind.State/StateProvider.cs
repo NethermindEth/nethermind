@@ -709,50 +709,29 @@ namespace Nethermind.State
             int writes = 0;
             int skipped = 0;
 
-            if (_blockChanges.Count < 0)
+            using ArrayPoolList<PatriciaTreeBulkSetter.BulkSetEntry> bulkWrite = new(_blockChanges.Count);
+            foreach (var key in _blockChanges.Keys)
             {
-                foreach (var key in _blockChanges.Keys)
+                ref var change = ref CollectionsMarshal.GetValueRefOrNullRef(_blockChanges, key);
+                if (change.Before != change.After)
                 {
-                    ref var change = ref CollectionsMarshal.GetValueRefOrNullRef(_blockChanges, key);
-                    if (change.Before != change.After)
-                    {
-                        change.Before = change.After;
+                    change.Before = change.After;
 
-                        _tree.Set(key, change.After);
-                        writes++;
-                    }
-                    else
-                    {
-                        skipped++;
-                    }
+                    KeccakCache.ComputeTo(key.Value.Bytes, out ValueHash256 keccak);
+
+                    var account = change.After;
+                    Rlp accountRlp = account is null ? null : account.IsTotallyEmpty ? StateTree.EmptyAccountRlp : Rlp.Encode(account);
+
+                    bulkWrite.Add(new PatriciaTreeBulkSetter.BulkSetEntry(keccak, accountRlp?.Bytes));
+                    writes++;
+                }
+                else
+                {
+                    skipped++;
                 }
             }
-            else
-            {
-                using ArrayPoolList<PatriciaTreeBulkSetter.BulkSetEntry> bulkWrite = new(_blockChanges.Count);
-                foreach (var key in _blockChanges.Keys)
-                {
-                    ref var change = ref CollectionsMarshal.GetValueRefOrNullRef(_blockChanges, key);
-                    if (change.Before != change.After)
-                    {
-                        change.Before = change.After;
 
-                        KeccakCache.ComputeTo(key.Value.Bytes, out ValueHash256 keccak);
-
-                        var account = change.After;
-                        Rlp accountRlp = account is null ? null : account.IsTotallyEmpty ? StateTree.EmptyAccountRlp : Rlp.Encode(account);
-
-                        bulkWrite.Add(new PatriciaTreeBulkSetter.BulkSetEntry(keccak, accountRlp?.Bytes));
-                        writes++;
-                    }
-                    else
-                    {
-                        skipped++;
-                    }
-                }
-
-                PatriciaTreeBulkSetter.BulkSet(_tree, bulkWrite);
-            }
+            PatriciaTreeBulkSetter.BulkSet(_tree, bulkWrite);
 
             if (writes > 0)
                 Metrics.IncrementStateTreeWrites(writes);

@@ -49,7 +49,7 @@ namespace Nethermind.State
 
         [SkipLocalsInit]
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public static void ComputeKey(in UInt256 index, Span<byte> key)
+        private static void ComputeKey(in UInt256 index, Span<byte> key)
         {
             index.ToBigEndian(key);
 
