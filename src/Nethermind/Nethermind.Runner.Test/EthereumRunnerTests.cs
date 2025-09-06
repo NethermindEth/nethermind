@@ -6,6 +6,7 @@ using System;
 using System.Collections;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.IO;
 using System.IO.Abstractions;
 using System.Net;
@@ -19,8 +20,6 @@ using Autofac.Core.Lifetime;
 using FluentAssertions;
 using Nethermind.Api;
 using Nethermind.Api.Extensions;
-using Nethermind.Blockchain;
-using Nethermind.Blockchain.Receipts;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Config;
 using Nethermind.Consensus;
@@ -78,6 +77,10 @@ public class EthereumRunnerTests
 {
     static EthereumRunnerTests()
     {
+        // Trigger plugins loading early to ensure TypeDiscovery caches plugin's types
+        PluginLoader pluginLoader = new("plugins", new FileSystem(), NullLogger.Instance);
+        pluginLoader.Load();
+
         AssemblyLoadContext.Default.Resolving += static (_, _) => null;
     }
 

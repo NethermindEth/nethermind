@@ -18,9 +18,9 @@ using Nethermind.Specs.Forks;
 
 namespace Nethermind.Evm;
 
-using unsafe OpCode = delegate*<VirtualMachine, ref EvmStack, ref long, ref int, EvmExceptionType>;
+using unsafe OpCode = delegate*<VirtualMachineBase, ref EvmStack, ref long, ref int, EvmExceptionType>;
 
-public unsafe partial class VirtualMachine
+public unsafe partial class VirtualMachineBase
 {
     public static void WarmUpEvmInstructions(IWorldState state, ICodeInfoRepository codeInfoRepository)
     {
@@ -145,12 +145,12 @@ public unsafe partial class VirtualMachine
         codeToDeploy.Add((byte)Instruction.POP);
     }
 
-    private static void RunOpCodes<TTracingInst>(VirtualMachine vm, IWorldState state, EvmState evmState, IReleaseSpec spec)
+    private static void RunOpCodes<TTracingInst>(VirtualMachineBase vm, IWorldState state, EvmState evmState, IReleaseSpec spec)
         where TTracingInst : struct, IFlag
     {
         const int WarmUpIterations = 40;
 
-        OpCode[] opcodes = EvmInstructions.GenerateOpCodes<TTracingInst>(spec);
+        OpCode[] opcodes = vm.GenerateOpCodes<TTracingInst>(spec);
         ITxTracer txTracer = new FeesTracer();
         vm._txTracer = txTracer;
         EvmStack stack = new(0, txTracer, evmState.DataStack);
