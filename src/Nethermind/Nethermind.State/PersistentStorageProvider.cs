@@ -663,26 +663,7 @@ internal sealed class PersistentStorageProvider : PartialStorageProviderBase
                         BlockChange[kvp.Key] = new(after, after);
 
                         StorageTree.ComputeKeyWithLookup(kvp.Key, keyBuf);
-
-                        byte[] value;
-                        if (after.IsZero())
-                        {
-                            value = [];
-                        }
-                        else
-                        {
-                            Rlp rlpEncoded = Rlp.Encode(after);
-                            if (rlpEncoded is null)
-                            {
-                                value = [];
-                            }
-                            else
-                            {
-                                value = rlpEncoded.Bytes;
-                            }
-                        }
-
-                        bulkWrite.Add(new PatriciaTree.BulkSetEntry(new ValueHash256(keyBuf), value));
+                        bulkWrite.Add(StorageTree.CreateBulkSetEntry(new ValueHash256(keyBuf), after));
 
                         writes++;
                     }

@@ -69,6 +69,29 @@ namespace Nethermind.State
             ComputeKey(index, key);
         }
 
+        public static BulkSetEntry CreateBulkSetEntry(ValueHash256 key, byte[]? value)
+        {
+            byte[] encodedValue;
+            if (value.IsZero())
+            {
+                encodedValue = [];
+            }
+            else
+            {
+                Rlp rlpEncoded = Rlp.Encode(value);
+                if (rlpEncoded is null)
+                {
+                    encodedValue = [];
+                }
+                else
+                {
+                    encodedValue = rlpEncoded.Bytes;
+                }
+            }
+
+            return new BulkSetEntry(key, encodedValue);
+        }
+
         [SkipLocalsInit]
         public byte[] Get(in UInt256 index, Hash256? storageRoot = null)
         {
