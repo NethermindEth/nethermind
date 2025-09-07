@@ -25,10 +25,7 @@ namespace Nethermind.Db
     {
         private static class SpecialKey
         {
-            private static readonly int MaxCommonLength = Math.Max(Address.Size, Hash256.Size);
-
-            public static bool Is(ReadOnlySpan<byte> key) =>
-                key.Length == MaxCommonLength + 1 && (key.SequenceEqual(MinBlockNum) || key.SequenceEqual(MaxBlockNum));
+            private const int MaxCommonLength = Hash256.Size; // Math.Max(Address.Size, Hash256.Size)
 
             // Use values that we won't encounter during iterator Seek or SeekForPrev
             public static readonly byte[] MinBlockNum = Enumerable.Repeat(byte.MaxValue, MaxCommonLength)
@@ -65,6 +62,8 @@ namespace Nethermind.Db
             public const int IOParallelism = 1;
             public const int MaxReorgDepth = 64;
         }
+
+        private const int MaxKeyLength = Hash256.Size + SpecialPostfix.ForwardMergeLength;
 
         // TODO: consider using ArrayPoolList just for `using` syntax
         private static readonly ArrayPool<byte> _arrayPool = ArrayPool<byte>.Shared;
@@ -411,7 +410,7 @@ namespace Nethermind.Db
             if (data == null)
                 yield break;
 
-            var blockNums = data.Length == 0 || ReadCompressionMarker(data) <= 0
+            var blockNums = data.Length == 0 || !IsCompressed(data, out _)
                 ? ReadBlockNums(data)
                 : DecompressDbValue(data);
 
@@ -438,23 +437,6 @@ namespace Nethermind.Db
             buffer[0] ^= (byte)topicIndex;
 
             return buffer[..bytes.Length];
-        }
-
-        private IDb GetDbByKeyLength(int length, out int prefixLength)
-        {
-            if (length - Hash256.Size is 0 or BlockNumSize or SpecialPostfix.ForwardMergeLength or SpecialPostfix.BackwardMergeLength)
-            {
-                prefixLength = Hash256.Size;
-                return _topicsDb;
-            }
-
-            if (length - Address.Size is 0 or BlockNumSize or SpecialPostfix.ForwardMergeLength or SpecialPostfix.BackwardMergeLength)
-            {
-                prefixLength = Address.Size;
-                return _addressDb;
-            }
-
-            throw ValidationException($"Unexpected key of {length} bytes.");
         }
 
         // TODO: optimize allocations
@@ -543,7 +525,7 @@ namespace Nethermind.Db
 
             try
             {
-                keyArray = _arrayPool.Rent(Hash256.Size + SpecialPostfix.BackwardMergeLength);
+                keyArray = _arrayPool.Rent(MaxKeyLength);
                 valueArray = _arrayPool.Rent(BlockNumSize + 1);
 
                 IWriteBatch addressBatch = _addressDb.StartWriteBatch();
@@ -638,7 +620,7 @@ namespace Nethermind.Db
             using var addressIterator = db.GetIterator();
             foreach (var (key, value) in Enumerate(addressIterator))
             {
-                if (IsMergeKey(key) && value.Length >= minLengthToCompress)
+                if (!IsCompressed(value) && value.Length >= minLengthToCompress)
                 {
                     if (db == _addressDb)
                         await _compressor.EnqueueAddressAsync(key);
@@ -776,15 +758,7 @@ namespace Nethermind.Db
         private static int GetKeyBlockNum(ReadOnlySpan<byte> dbKey) => BinaryPrimitives.ReadInt32BigEndian(dbKey[^BlockNumSize..]);
         private static void SetKeyBlockNum(Span<byte> dbKey, int blockNumber) => BinaryPrimitives.WriteInt32BigEndian(dbKey[^BlockNumSize..], blockNumber);
 
-        private static bool IsMergeKey(ReadOnlySpan<byte> dbKey) => dbKey.Length is
-            Hash256.Size + SpecialPostfix.ForwardMergeLength or
-            Hash256.Size + SpecialPostfix.BackwardMergeLength or
-            Address.Size + SpecialPostfix.ForwardMergeLength or
-            Address.Size + SpecialPostfix.BackwardMergeLength;
-
-        private static bool UseBackwardSyncFor(ReadOnlySpan<byte> dbKey) => dbKey.Length is
-            Hash256.Size + SpecialPostfix.BackwardMergeLength or
-            Address.Size + SpecialPostfix.BackwardMergeLength;
+        private static bool UseBackwardSyncFor(ReadOnlySpan<byte> dbKey) => dbKey.EndsWith(SpecialPostfix.BackwardMerge);
 
         private static int BinarySearch(ReadOnlySpan<int> blocks, int from)
         {
@@ -824,6 +798,13 @@ namespace Nethermind.Db
         public static int ReadCompressionMarker(ReadOnlySpan<byte> source) => -BinaryPrimitives.ReadInt32LittleEndian(source);
         public static void WriteCompressionMarker(Span<byte> source, int len) => BinaryPrimitives.WriteInt32LittleEndian(source, -len);
 
+        public static bool IsCompressed(ReadOnlySpan<byte> source) => IsCompressed(source, out _);
+        public static bool IsCompressed(ReadOnlySpan<byte> source, out int len)
+        {
+            len = ReadCompressionMarker(source);
+            return len > 0;
+        }
+
         public static void SetValBlockNum(Span<byte> destination, int blockNum) => BinaryPrimitives.WriteInt32LittleEndian(destination, blockNum);
         public static int GetValBlockNum(ReadOnlySpan<byte> source) => BinaryPrimitives.ReadInt32LittleEndian(source);
         public static int GetValLastBlockNum(ReadOnlySpan<byte> source) => GetValBlockNum(source[^BlockNumSize..]);
@@ -859,7 +840,7 @@ namespace Nethermind.Db
 
         private static byte[] CompressDbValue(Span<byte> data)
         {
-            if (ReadCompressionMarker(data) > 0)
+            if (IsCompressed(data, out _))
                 throw ValidationException("Data is already compressed.");
             if (data.Length % BlockNumSize != 0)
                 throw ValidationException("Invalid data length.");
@@ -875,8 +856,7 @@ namespace Nethermind.Db
 
         private static int[] DecompressDbValue(ReadOnlySpan<byte> data)
         {
-            var len = ReadCompressionMarker(data);
-            if (len < 0)
+            if (!IsCompressed(data, out int len))
                 throw new ValidationException("Data is not compressed");
 
             // TODO: reuse buffer
