@@ -366,7 +366,6 @@ public class PatriciaTreeBulkSetterTests
 
 
             long sw = Stopwatch.GetTimestamp();
-            PatriciaTree.ThreadResource threadResource = new PatriciaTree.ThreadResource();
             foreach (var valueTuple in items)
             {
                 using ArrayPoolList<PatriciaTree.BulkSetEntry> entries = new ArrayPoolList<PatriciaTree.BulkSetEntry>(items.Count);

@@ -66,7 +66,6 @@ public partial class PatriciaTree
         if (entries.Length == 0) return;
 
         TreePath path = TreePath.Empty;
-        ThreadResource threadResource = GetThreadResource();
         using ArrayPoolList<BulkSetEntry> buffer = new ArrayPoolList<BulkSetEntry>(entries.Length, entries.Length);
         using ArrayPoolList<byte> nibbleBuffer = new ArrayPoolList<byte>(entries.Length, entries.Length);
 
@@ -77,9 +76,11 @@ public partial class PatriciaTree
             nibbleBufferArray = nibbleBuffer.UnsafeGetInternalArray(),
         };
 
+        if (_traverseStack is null) _traverseStack = new Stack<TraverseStack>();
+        else if (_traverseStack.Count > 0) _traverseStack.Clear();
         TrieNode? newRoot = BulkSet(
             ctx,
-            threadResource,
+            _traverseStack,
             entriesMemory.AsSpan(),
             buffer.AsSpan(),
             nibbleBuffer.AsSpan(),
@@ -90,9 +91,7 @@ public partial class PatriciaTree
             flags);
         RootRef = newRoot;
 
-
         IncrementWriteCount(entries.Length);
-        ReturnThreadResource(threadResource);
     }
 
     internal struct Context
@@ -104,7 +103,7 @@ public partial class PatriciaTree
 
     internal TrieNode? BulkSet(
         in Context ctx,
-        ThreadResource threadResource,
+        Stack<TraverseStack> traverseStack,
         Span<BulkSetEntry> entries,
         Span<BulkSetEntry> buffer,
         Span<byte> nibbleBuffer,
@@ -116,7 +115,7 @@ public partial class PatriciaTree
     {
         TrieNode? originalNode = node;
 
-        if (entries.Length == 1) return BulkSetOneStack(threadResource, in entries[0], ref path, node);
+        if (entries.Length == 1) return BulkSetOneStack(traverseStack, in entries[0], ref path, node);
 
         bool newBranch = false;
         if (node is null)
@@ -186,8 +185,8 @@ public partial class PatriciaTree
 
             ParallelUnbalancedWork.For(0, nibToCheck,
                 ParallelUnbalancedWork.DefaultOptions,
-                GetThreadResource,
-                (i, workerThreadResource) =>
+                GetTraverseStack,
+                (i, workerTraverseStack) =>
                 {
                     (int startIdx, int count, int nib, TreePath childPath, TrieNode child, TrieNode? outNode) = jobs[i];
 
@@ -195,11 +194,11 @@ public partial class PatriciaTree
                     Span<BulkSetEntry> bufferEntries = originalBufferArray.AsSpan().Slice(startIdx, count);
                     Span<byte> nibbleBuffer = closureCtx.nibbleBufferArray.AsSpan().Slice(startIdx, count);
 
-                    TrieNode? newChild = BulkSet(in closureCtx, workerThreadResource, jobEntries, bufferEntries, nibbleBuffer, ref childPath, child, flipCount, false, flags); // Only parallelize at top level.
+                    TrieNode? newChild = BulkSet(in closureCtx, workerTraverseStack, jobEntries, bufferEntries, nibbleBuffer, ref childPath, child, flipCount, false, flags); // Only parallelize at top level.
                     jobs[i] = (startIdx, count, nib, childPath, child, newChild); // Just need the child actually...
 
-                    return workerThreadResource;
-                }, ReturnThreadResource);
+                    return workerTraverseStack;
+                }, ReturnTraverseStack);
 
             for (int i = 0; i < TrieNode.BranchesCount; i++)
             {
@@ -233,8 +232,8 @@ public partial class PatriciaTree
                     endRange = entries.Length;
 
                 TrieNode newChild = (endRange - startRange == 1)
-                    ? BulkSetOneStack(threadResource, entries[startRange], ref path, child)
-                    : BulkSet(in ctx, threadResource, entries[startRange..endRange], buffer[startRange..endRange], nibbleBuffer[startRange..endRange], ref path, child, flipCount, canParallelize, flags);
+                    ? BulkSetOneStack(traverseStack, entries[startRange], ref path, child)
+                    : BulkSet(in ctx, traverseStack, entries[startRange..endRange], buffer[startRange..endRange], nibbleBuffer[startRange..endRange], ref path, child, flipCount, canParallelize, flags);
 
                 if (!ShouldUpdateChild(node, child, newChild)) continue;
 
@@ -255,14 +254,13 @@ public partial class PatriciaTree
         return node;
     }
 
-    private TrieNode? BulkSetOneStack(ThreadResource threadResource, in BulkSetEntry entry, ref TreePath path,
+    private TrieNode? BulkSetOneStack(Stack<TraverseStack> traverseStack, in BulkSetEntry entry, ref TreePath path,
         TrieNode? node)
     {
         Span<byte> nibble = stackalloc byte[64];
         Nibbles.BytesToNibbleBytes(entry.Path.BytesAsSpan, nibble);
         Span<byte> remainingKey = nibble[path.Length..];
 
-        Stack<TraverseStack> traverseStack = threadResource.TraverseStack;
         byte[] value = entry.Value;
         return SetNew(traverseStack, remainingKey, value, ref path, node);
     }
@@ -504,58 +502,30 @@ public partial class PatriciaTree
         return relevant;
     }
 
-    /// <summary>
-    /// Some bunch of structures that are used often but cannot be shared between threads.
-    /// </summary>
-    internal class ThreadResource: IDisposable
-    {
-        /// <summary>
-        /// Used for <see cref="PatriciaTreeBulkSetter.BulkSetOneStack"/> to keep track of traversed node.
-        /// </summary>
-        internal Stack<TraverseStack> TraverseStack;
-
-        public ThreadResource()
-        {
-            TraverseStack = new Stack<TraverseStack>(16);
-        }
-
-        public void Dispose()
-        {
-        }
-
-        public void EnsureCleared()
-        {
-            if (TraverseStack.Count != 0)
-            {
-                throw new InvalidOperationException("traverse stack must be cleared before returning");
-            }
-        }
-    }
-
     [ThreadStatic]
-    private static ThreadResource? _threadStaticPool;
+    private static Stack<TraverseStack>? _threadStaticTraverseStackPool;
 
-    private ThreadResource GetThreadResource()
+    private Stack<TraverseStack> GetTraverseStack()
     {
-        if (_threadStaticPool is not null)
+        Stack<TraverseStack>? traverseStack = _threadStaticTraverseStackPool;
+        if (traverseStack is not null)
         {
-            ThreadResource threadResource = _threadStaticPool;
-            _threadStaticPool = null;
-            return threadResource;
+            _threadStaticTraverseStackPool = null;
+            return traverseStack;
         }
         else
         {
-            return new ThreadResource();
+            return new Stack<TraverseStack>();
         }
     }
 
-    private void ReturnThreadResource(ThreadResource threadResource)
+    private void ReturnTraverseStack(Stack<TraverseStack> threadResource)
     {
 #if DEBUG
         threadResource.EnsureCleared();
 #endif
 
-        _threadStaticPool = threadResource;
+        _threadStaticTraverseStackPool = threadResource;
     }
 
     public static int GetSpanOffset<T>(T[] array, Span<T> span)
