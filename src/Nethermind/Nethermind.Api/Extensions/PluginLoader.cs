@@ -91,7 +91,10 @@ public class PluginLoader(string pluginPath, IFileSystem fileSystem, ILogger log
 
     public void OrderPlugins(IPluginConfig pluginConfig)
     {
-        List<string> order = pluginConfig.PluginOrder.Select(s => s.ToLower() + "plugin").ToList();
+        var orderMap = pluginConfig.PluginOrder
+            .Select((name, index) => new { Key = name + "plugin", Index = index })
+            .ToDictionary(x => x.Key, x => x.Index, StringComparer.OrdinalIgnoreCase);
+
         _pluginTypes.Sort((f, s) =>
         {
             bool fIsConsensus = typeof(IConsensusPlugin).IsAssignableFrom(f);
@@ -108,19 +111,19 @@ public class PluginLoader(string pluginPath, IFileSystem fileSystem, ILogger log
                 return 1;
             }
 
-            int fPos = order.IndexOf(f.Name.ToLower());
-            int sPos = order.IndexOf(s.Name.ToLower());
-            if (fPos == -1)
+            bool fHas = orderMap.TryGetValue(f.Name, out int fPos);
+            bool sHas = orderMap.TryGetValue(s.Name, out int sPos);
+            if (!fHas)
             {
-                if (sPos == -1)
+                if (!sHas)
                 {
-                    return f.Name.CompareTo(s.Name);
+                    return string.Compare(f.Name, s.Name, StringComparison.Ordinal);
                 }
 
                 return 1;
             }
 
-            if (sPos == -1)
+            if (!sHas)
             {
                 return -1;
             }
