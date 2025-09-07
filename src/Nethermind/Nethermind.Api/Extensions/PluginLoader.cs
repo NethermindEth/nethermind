@@ -111,8 +111,8 @@ public class PluginLoader(string pluginPath, IFileSystem fileSystem, ILogger log
                 return 1;
             }
 
-            bool fHas = orderMap.TryGetValue(f.Name, out int fPos);
-            bool sHas = orderMap.TryGetValue(s.Name, out int sPos);
+            bool fHasExplicitOrder = orderMap.TryGetValue(f.Name, out int fPos);
+            bool sHasExplicitOrder = orderMap.TryGetValue(s.Name, out int sPos);
             if (!fHas)
             {
                 if (!sHas)
