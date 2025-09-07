@@ -117,7 +117,7 @@ public class PluginLoader(string pluginPath, IFileSystem fileSystem, ILogger log
             {
                 if (!sHas)
                 {
-                    return string.Compare(f.Name, s.Name, StringComparison.Ordinal);
+                    return string.Compare(f.Name, s.Name, StringComparison.OrdinalIgnoreCase);
                 }
 
                 return 1;
