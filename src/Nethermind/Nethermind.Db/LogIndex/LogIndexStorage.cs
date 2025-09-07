@@ -622,10 +622,7 @@ namespace Nethermind.Db
             {
                 if (!IsCompressed(value) && value.Length >= minLengthToCompress)
                 {
-                    if (db == _addressDb)
-                        await _compressor.EnqueueAddressAsync(key);
-                    else if (db == _topicsDb)
-                        await _compressor.EnqueueTopicAsync(key);
+                    await _compressor.EnqueueAsync(key);
                     counter++;
                 }
             }
