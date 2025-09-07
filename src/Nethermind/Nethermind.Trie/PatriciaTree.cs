@@ -22,7 +22,7 @@ using Nethermind.Trie.Pruning;
 namespace Nethermind.Trie
 {
     [DebuggerDisplay("{RootHash}")]
-    public class PatriciaTree
+    public partial class PatriciaTree
     {
         private const int MaxKeyStackAlloc = 64;
         private readonly static byte[][] _singleByteKeys = [[0], [1], [2], [3], [4], [5], [6], [7], [8], [9], [10], [11], [12], [13], [14], [15]];
@@ -717,7 +717,7 @@ namespace Nethermind.Trie
             if (oldChild is null && newChild is null) return false;
             if (!ReferenceEquals(oldChild, newChild)) return true;
             if (newChild.Keccak is null && parent.Keccak is not null) return true; // So that recalculate root knows to recalculate the parent root.
-            return true;
+            return false;
         }
 
         /// <summary>

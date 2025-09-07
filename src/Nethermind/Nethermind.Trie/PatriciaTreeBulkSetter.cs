@@ -12,7 +12,7 @@ using Nethermind.Core.Threading;
 
 namespace Nethermind.Trie;
 
-public class PatriciaTreeBulkSetter(PatriciaTree patriciaTree)
+public partial class PatriciaTree
 {
     public const int MinEntriesToParallelizeThreshold = 256;
     public const int BSearchThreshold = 128;
@@ -22,13 +22,7 @@ public class PatriciaTreeBulkSetter(PatriciaTree patriciaTree)
     {
         None = 0,
         WasSorted = 1,
-        DoNotParallelize = 2,
-        CalculateRoot = 4,
-    }
-
-    public static void BulkSet(PatriciaTree patriciaTree, ArrayPoolList<BulkSetEntry> entriesMemory, Flags flags = Flags.None)
-    {
-        new PatriciaTreeBulkSetter(patriciaTree).BulkSet(entriesMemory, flags);
+        DoNotParallelize = 2
     }
 
     public readonly struct BulkSetEntry(ValueHash256 path, byte[] value) : IComparable<BulkSetEntry>
@@ -66,7 +60,7 @@ public class PatriciaTreeBulkSetter(PatriciaTree patriciaTree)
     /// </summary>
     /// <param name="entriesMemory"></param>
     /// <param name="flags"></param>
-    public void BulkSet(ArrayPoolList<BulkSetEntry> entriesMemory, Flags flags)
+    public void BulkSet(ArrayPoolList<BulkSetEntry> entriesMemory, Flags flags = Flags.None)
     {
         Span<BulkSetEntry> entries = entriesMemory.AsSpan();
         if (entries.Length == 0) return;
@@ -90,15 +84,14 @@ public class PatriciaTreeBulkSetter(PatriciaTree patriciaTree)
             buffer.AsSpan(),
             nibbleBuffer.AsSpan(),
             ref path,
-            patriciaTree.RootRef,
+            RootRef,
             0,
             (flags & Flags.DoNotParallelize) == 0,
             flags);
-        if (flags.HasFlag(Flags.CalculateRoot)) newRoot?.ResolveKey(patriciaTree.TrieStore, ref path, canBeParallel: false);
-        patriciaTree.RootRef = newRoot;
+        RootRef = newRoot;
 
 
-        patriciaTree.IncrementWriteCount(entries.Length);
+        IncrementWriteCount(entries.Length);
         ReturnThreadResource(threadResource);
     }
 
@@ -124,7 +117,6 @@ public class PatriciaTreeBulkSetter(PatriciaTree patriciaTree)
         TrieNode? originalNode = node;
 
         if (entries.Length == 1) return BulkSetOneStack(threadResource, in entries[0], ref path, node);
-        bool shouldUpdateRoot = (flags & Flags.CalculateRoot) != 0;
 
         bool newBranch = false;
         if (node is null)
@@ -134,7 +126,7 @@ public class PatriciaTreeBulkSetter(PatriciaTree patriciaTree)
         }
         else
         {
-            node.ResolveNode(patriciaTree.TrieStore, path);
+            node.ResolveNode(TrieStore, path);
 
             if (!node.IsBranch)
             {
@@ -188,7 +180,7 @@ public class PatriciaTreeBulkSetter(PatriciaTree patriciaTree)
                 Span<BulkSetEntry> jobEntry = entries.Slice(startRange, endRange - startRange);
 
                 TreePath childPath = path.Append(nib);
-                TrieNode? child = childIterator.GetChildWithChildPath(patriciaTree.TrieStore, ref childPath, nib);
+                TrieNode? child = childIterator.GetChildWithChildPath(TrieStore, ref childPath, nib);
                 jobs[i] = (GetSpanOffset(originalEntriesArray, jobEntry), jobEntry.Length, nib, childPath, child, null);
             }
 
@@ -214,7 +206,7 @@ public class PatriciaTreeBulkSetter(PatriciaTree patriciaTree)
                 TrieNode? child = jobs[i].currentChild;
                 TrieNode? newChild = jobs[i].newChild;
 
-                if (!patriciaTree.ShouldUpdateChild(node, child, newChild)) continue;
+                if (!ShouldUpdateChild(node, child, newChild)) continue;
 
                 if (newChild is null) hasRemove = true;
                 if (newChild is not null) nonNullChildCount++;
@@ -232,7 +224,7 @@ public class PatriciaTreeBulkSetter(PatriciaTree patriciaTree)
                 (int nib, int startRange) = indexes[i];
 
                 path.SetLast(nib);
-                TrieNode? child = childIterator.GetChildWithChildPath(patriciaTree.TrieStore, ref path, nib);
+                TrieNode? child = childIterator.GetChildWithChildPath(TrieStore, ref path, nib);
 
                 int endRange;
                 if (i < nibToCheck - 1)
@@ -244,13 +236,11 @@ public class PatriciaTreeBulkSetter(PatriciaTree patriciaTree)
                     ? BulkSetOneStack(threadResource, entries[startRange], ref path, child)
                     : BulkSet(in ctx, threadResource, entries[startRange..endRange], buffer[startRange..endRange], nibbleBuffer[startRange..endRange], ref path, child, flipCount, canParallelize, flags);
 
-                if (!patriciaTree.ShouldUpdateChild(node, child, newChild)) continue;
+                if (!ShouldUpdateChild(node, child, newChild)) continue;
 
                 if (newChild is null) hasRemove = true;
                 if (newChild is not null) nonNullChildCount++;
                 if (node.IsSealed) node = node.Clone();
-
-                if (shouldUpdateRoot) newChild?.ResolveKey(patriciaTree.TrieStore, ref path, canBeParallel: false);
 
                 node.SetChild(nib, newChild);
             }
@@ -260,7 +250,7 @@ public class PatriciaTreeBulkSetter(PatriciaTree patriciaTree)
         if (!hasRemove && nonNullChildCount == 0) return originalNode;
 
         if ((hasRemove || newBranch) && nonNullChildCount < 2)
-            node = patriciaTree.MaybeCombineNode(ref path, node);
+            node = MaybeCombineNode(ref path, node);
 
         return node;
     }
@@ -272,9 +262,9 @@ public class PatriciaTreeBulkSetter(PatriciaTree patriciaTree)
         Nibbles.BytesToNibbleBytes(entry.Path.BytesAsSpan, nibble);
         Span<byte> remainingKey = nibble[path.Length..];
 
-        Stack<PatriciaTree.TraverseStack> traverseStack = threadResource.TraverseStack;
+        Stack<TraverseStack> traverseStack = threadResource.TraverseStack;
         byte[] value = entry.Value;
-        return patriciaTree.SetNew(traverseStack, remainingKey, value, ref path, node);
+        return SetNew(traverseStack, remainingKey, value, ref path, node);
     }
 
     private TrieNode? MakeFakeBranch(ref TreePath currentPath, TrieNode? existingNode)
@@ -292,7 +282,7 @@ public class PatriciaTreeBulkSetter(PatriciaTree patriciaTree)
         }
         else
         {
-            var child = existingNode.GetChild(patriciaTree.TrieStore, ref currentPath, 0);
+            var child = existingNode.GetChild(TrieStore, ref currentPath, 0);
             if (existingNode.Key.Length == 1)
             {
                 newChild = child;
@@ -522,11 +512,11 @@ public class PatriciaTreeBulkSetter(PatriciaTree patriciaTree)
         /// <summary>
         /// Used for <see cref="PatriciaTreeBulkSetter.BulkSetOneStack"/> to keep track of traversed node.
         /// </summary>
-        internal Stack<PatriciaTree.TraverseStack> TraverseStack;
+        internal Stack<TraverseStack> TraverseStack;
 
         public ThreadResource()
         {
-            TraverseStack = new Stack<PatriciaTree.TraverseStack>(16);
+            TraverseStack = new Stack<TraverseStack>(16);
         }
 
         public void Dispose()

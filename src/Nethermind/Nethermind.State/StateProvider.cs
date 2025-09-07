@@ -709,7 +709,7 @@ namespace Nethermind.State
             int writes = 0;
             int skipped = 0;
 
-            using ArrayPoolList<PatriciaTreeBulkSetter.BulkSetEntry> bulkWrite = new(_blockChanges.Count);
+            using ArrayPoolList<PatriciaTree.BulkSetEntry> bulkWrite = new(_blockChanges.Count);
             foreach (var key in _blockChanges.Keys)
             {
                 ref var change = ref CollectionsMarshal.GetValueRefOrNullRef(_blockChanges, key);
@@ -722,7 +722,7 @@ namespace Nethermind.State
                     var account = change.After;
                     Rlp accountRlp = account is null ? null : account.IsTotallyEmpty ? StateTree.EmptyAccountRlp : Rlp.Encode(account);
 
-                    bulkWrite.Add(new PatriciaTreeBulkSetter.BulkSetEntry(keccak, accountRlp?.Bytes));
+                    bulkWrite.Add(new PatriciaTree.BulkSetEntry(keccak, accountRlp?.Bytes));
                     writes++;
                 }
                 else
@@ -731,7 +731,7 @@ namespace Nethermind.State
                 }
             }
 
-            PatriciaTreeBulkSetter.BulkSet(_tree, bulkWrite);
+            _tree.BulkSet(bulkWrite);
 
             if (writes > 0)
                 Metrics.IncrementStateTreeWrites(writes);

@@ -633,7 +633,7 @@ internal sealed class PersistentStorageProvider : PartialStorageProviderBase
 
             int writes = 0;
             int skipped = 0;
-            if (BlockChange.EstimatedSize < PatriciaTreeBulkSetter.MinEntriesToParallelizeThreshold)
+            if (BlockChange.EstimatedSize < PatriciaTree.MinEntriesToParallelizeThreshold)
             {
                 foreach (var kvp in BlockChange)
                 {
@@ -652,7 +652,7 @@ internal sealed class PersistentStorageProvider : PartialStorageProviderBase
             }
             else
             {
-                using ArrayPoolList<PatriciaTreeBulkSetter.BulkSetEntry> bulkWrite = new(BlockChange.EstimatedSize);
+                using ArrayPoolList<PatriciaTree.BulkSetEntry> bulkWrite = new(BlockChange.EstimatedSize);
 
                 Span<byte> keyBuf = stackalloc byte[32];
                 foreach (var kvp in BlockChange)
@@ -682,7 +682,7 @@ internal sealed class PersistentStorageProvider : PartialStorageProviderBase
                             }
                         }
 
-                        bulkWrite.Add(new PatriciaTreeBulkSetter.BulkSetEntry(new ValueHash256(keyBuf), value));
+                        bulkWrite.Add(new PatriciaTree.BulkSetEntry(new ValueHash256(keyBuf), value));
 
                         writes++;
                     }
@@ -692,7 +692,7 @@ internal sealed class PersistentStorageProvider : PartialStorageProviderBase
                     }
                 }
 
-                PatriciaTreeBulkSetter.BulkSet(StorageTree, bulkWrite);
+                StorageTree.BulkSet(bulkWrite);
             }
 
             if (writes > 0)
