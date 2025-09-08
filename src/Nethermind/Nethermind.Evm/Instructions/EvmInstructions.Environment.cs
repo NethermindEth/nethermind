@@ -290,15 +290,15 @@ internal static partial class EvmInstructions
     /// <param name="programCounter">The program counter.</param>
     /// <returns>An EVM exception type if an error occurs.</returns>
     [SkipLocalsInit]
-    public static EvmExceptionType InstructionEnv32Bytes<TOpEnv, TTracingInst>(VirtualMachine vm, ref EvmStack stack, ref long gasAvailable, ref int programCounter)
-        where TOpEnv : struct, IOpEnv32Bytes
+    public static EvmExceptionType InstructionBlkUInt64<TOpEnv, TTracingInst>(VirtualMachine vm, ref EvmStack stack, ref long gasAvailable, ref int programCounter)
+        where TOpEnv : struct, IOpBlkUInt64
         where TTracingInst : struct, IFlag
     {
         gasAvailable -= TOpEnv.GasCost;
 
-        ref readonly ValueHash256 result = ref TOpEnv.Operation(vm);
+        ulong result = TOpEnv.Operation(vm);
 
-        stack.Push32Bytes<TTracingInst>(in result);
+        stack.PushUInt64<TTracingInst>(result);
 
         return EvmExceptionType.None;
     }
@@ -313,15 +313,15 @@ internal static partial class EvmInstructions
     /// <param name="programCounter">The program counter.</param>
     /// <returns>An EVM exception type if an error occurs.</returns>
     [SkipLocalsInit]
-    public static EvmExceptionType InstructionBlkUInt64<TOpEnv, TTracingInst>(VirtualMachine vm, ref EvmStack stack, ref long gasAvailable, ref int programCounter)
-        where TOpEnv : struct, IOpBlkUInt64
+    public static EvmExceptionType InstructionEnv32Bytes<TOpEnv, TTracingInst>(VirtualMachine vm, ref EvmStack stack, ref long gasAvailable, ref int programCounter)
+        where TOpEnv : struct, IOpEnv32Bytes
         where TTracingInst : struct, IFlag
     {
         gasAvailable -= TOpEnv.GasCost;
 
-        ulong result = TOpEnv.Operation(vm);
+        ref readonly ValueHash256 result = ref TOpEnv.Operation(vm);
 
-        stack.PushUInt64<TTracingInst>(result);
+        stack.Push32Bytes<TTracingInst>(in result);
 
         return EvmExceptionType.None;
     }
