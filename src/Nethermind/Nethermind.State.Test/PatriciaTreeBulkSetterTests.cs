@@ -475,15 +475,11 @@ public class PatriciaTreeBulkSetterTests
                 new("1111111111111111111111111111111111111111111111111111111111111111"),
                 new("4211111111111111111111111111111111111111111111111111111111111111"),
             },
-            new (int, int)[]
-            {
-                ( 1, 0 ),
-                ( 4, 2 )
-            }).SetName("base");
+            new[] { 0, 0, 0, 0, 2, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0 }).SetName("base");
     }
 
     [TestCaseSource(nameof(BucketSortTestCase))]
-    public void TestBucketSort(List<ValueHash256> paths, List<ValueHash256> expectedPaths, (int, int)[] expectedResult)
+    public void TestBucketSort(List<ValueHash256> paths, List<ValueHash256> expectedPaths, int[] expectedResult)
     {
         using ArrayPoolList<PatriciaTree.BulkSetEntry> items = new ArrayPoolList<PatriciaTree.BulkSetEntry>(paths.Count);
         foreach (ValueHash256 ValueHash256 in paths)
@@ -491,25 +487,19 @@ public class PatriciaTreeBulkSetterTests
             items.Add(new PatriciaTree.BulkSetEntry(ValueHash256, Array.Empty<byte>()));
         }
 
-        Span<(int, int)> result = stackalloc (int, int)[TrieNode.BranchesCount];
+        Span<int> result = stackalloc int[TrieNode.BranchesCount];
         using ArrayPoolList<PatriciaTree.BulkSetEntry> buffer = new ArrayPoolList<PatriciaTree.BulkSetEntry>(paths.Count, paths.Count);
         using ArrayPoolList<byte> nibbleBuffer = new ArrayPoolList<byte>(paths.Count, paths.Count);
-        int resultNum = PatriciaTree.BucketSort16(items.AsSpan(), buffer.AsSpan(), nibbleBuffer.AsSpan(), 0, result);
+        int resultMask = PatriciaTree.BucketSort16(items.AsSpan(), buffer.AsSpan(), nibbleBuffer.AsSpan(), 0, result);
 
         List<ValueHash256> partiallySortedPaths = buffer.Select((it) => it.Path).ToList();
         partiallySortedPaths.Should().BeEquivalentTo(expectedPaths);
 
-        (int,int)[] asArray = new (int, int)[resultNum];
-        for (int i = 0; i < resultNum; i++)
-        {
-            asArray[i] = (result[i].Item1, result[i].Item2);
-        }
-
-        asArray.Should().BeEquivalentTo(expectedResult);
+        result.ToArray().Should().BeEquivalentTo(expectedResult);
     }
 
     [TestCaseSource(nameof(BucketSortTestCase))]
-    public void HexarySearch(List<ValueHash256> paths, List<ValueHash256> expectedPaths, (int, int)[] expectedResult)
+    public void HexarySearch(List<ValueHash256> paths, List<ValueHash256> expectedPaths, int[] expectedResult)
     {
         using ArrayPoolList<PatriciaTree.BulkSetEntry> items = new ArrayPoolList<PatriciaTree.BulkSetEntry>(paths.Count);
         foreach (ValueHash256 hash256 in paths)
@@ -518,15 +508,9 @@ public class PatriciaTreeBulkSetterTests
         }
         items.AsSpan().Sort();
 
-        Span<(int, int)> result = stackalloc (int, int)[TrieNode.BranchesCount];
+        Span<int> result = stackalloc int[TrieNode.BranchesCount];
         int resultNum = PatriciaTree.HexarySearchAlreadySorted(items.AsSpan(), 0, result);
 
-        (int,int)[] asArray = new (int, int)[resultNum];
-        for (int i = 0; i < resultNum; i++)
-        {
-            asArray[i] = (result[i].Item1, result[i].Item2);
-        }
-
-        asArray.Should().BeEquivalentTo(expectedResult);
+        result.ToArray().Should().BeEquivalentTo(expectedResult);
     }
 }

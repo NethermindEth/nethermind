@@ -16,6 +16,7 @@ public partial class PatriciaTree
 {
     public const int MinEntriesToParallelizeThreshold = 256;
     public const int BSearchThreshold = 128;
+    public const int FullBranch = (1 << TrieNode.BranchesCount) - 1;
 
     [Flags]
     public enum Flags
@@ -147,18 +148,18 @@ public partial class PatriciaTree
             }
         }
 
-        Span<(int, int)> indexes = stackalloc (int, int)[TrieNode.BranchesCount];
+        Span<int> indexes = stackalloc int[TrieNode.BranchesCount];
 
         if (path.Length == 64) throw new InvalidOperationException("Non unique entry keys");
 
-        int nibToCheck;
+        int nibMask;
         if ((flags & Flags.WasSorted) != 0)
         {
-            nibToCheck = HexarySearchAlreadySorted(entries, path.Length, indexes);
+            nibMask = HexarySearchAlreadySorted(entries, path.Length, indexes);
         }
         else
         {
-            nibToCheck = BucketSort16(entries, buffer, nibbleBuffer, path.Length, indexes);
+            nibMask = BucketSort16(entries, buffer, nibbleBuffer, path.Length, indexes);
             // Buffer is now partially sorted. Swap buffer and entries
             flipCount++;
 
@@ -169,7 +170,7 @@ public partial class PatriciaTree
 
         bool hasRemove = false;
         int nonNullChildCount = 0;
-        if (entries.Length >= MinEntriesToParallelizeThreshold && nibToCheck == TrieNode.BranchesCount && canParallelize)
+        if (entries.Length >= MinEntriesToParallelizeThreshold && nibMask == FullBranch && canParallelize)
         {
             (int startIdx, int count, int nibble, TreePath appendedPath, TrieNode? currentChild, TrieNode? newChild)[] jobs =
                 new (int startIdx, int count, int nibble, TreePath appendedPath, TrieNode? currentChild, TrieNode? newChild)[TrieNode.BranchesCount];
@@ -178,13 +179,16 @@ public partial class PatriciaTree
             BulkSetEntry[] originalEntriesArray = (flipCount % 2 == 0) ? ctx.originalEntriesArray : ctx.originalBufferArray;
             BulkSetEntry[] originalBufferArray = (flipCount % 2 == 0) ? ctx.originalBufferArray : ctx.originalEntriesArray;
             TrieNode.ChildIterator childIterator = node.CreateChildIterator();
-            for (int i = 0; i < TrieNode.BranchesCount; i++)
+
+            while (nibMask != 0)
             {
-                (int nib, int startRange) = indexes[i];
+                int nib = BitOperations.TrailingZeroCount(nibMask);
+                nibMask &= nibMask - 1;
+                int startRange = indexes[nib];
 
                 int endRange;
-                if (i < nibToCheck - 1)
-                    endRange = indexes[i + 1].Item2;
+                if (nibMask != 0)
+                    endRange = indexes[BitOperations.TrailingZeroCount(nibMask)];
                 else
                     endRange = entries.Length;
 
@@ -192,10 +196,10 @@ public partial class PatriciaTree
 
                 TreePath childPath = path.Append(nib);
                 TrieNode? child = childIterator.GetChildWithChildPath(TrieStore, ref childPath, nib);
-                jobs[i] = (GetSpanOffset(originalEntriesArray, jobEntry), jobEntry.Length, nib, childPath, child, null);
+                jobs[nib] = (GetSpanOffset(originalEntriesArray, jobEntry), jobEntry.Length, nib, childPath, child, null);
             }
 
-            ParallelUnbalancedWork.For(0, nibToCheck,
+            ParallelUnbalancedWork.For(0, TrieNode.BranchesCount,
                 ParallelUnbalancedWork.DefaultOptions,
                 GetTraverseStack,
                 (i, workerTraverseStack) =>
@@ -230,16 +234,18 @@ public partial class PatriciaTree
         {
             TrieNode.ChildIterator childIterator = node.CreateChildIterator();
             path.AppendMut(0);
-            for (int i = 0; i < nibToCheck; i++)
+            while (nibMask != 0)
             {
-                (int nib, int startRange) = indexes[i];
+                int nib = BitOperations.TrailingZeroCount(nibMask);
+                nibMask &= nibMask - 1;
+                int startRange = indexes[nib];
 
                 path.SetLast(nib);
                 TrieNode? child = childIterator.GetChildWithChildPath(TrieStore, ref path, nib);
 
                 int endRange;
-                if (i < nibToCheck - 1)
-                    endRange = indexes[i + 1].Item2;
+                if (nibMask != 0)
+                    endRange = indexes[BitOperations.TrailingZeroCount(nibMask)];
                 else
                     endRange = entries.Length;
 
@@ -255,6 +261,7 @@ public partial class PatriciaTree
 
                 node.SetChild(nib, newChild);
             }
+
             path.TruncateOne();
         }
 
@@ -324,7 +331,7 @@ public partial class PatriciaTree
         Span<BulkSetEntry> sortTarget,
         Span<byte> nibbleBuffer,
         int pathIndex,
-        Span<(int, int)> indexes)
+        Span<int> indexes)
     {
 
 #if DEBUG
@@ -344,7 +351,7 @@ public partial class PatriciaTree
         Span<BulkSetEntry> sortTarget,
         Span<byte> nibbleBuffer,
         int pathIndex,
-        Span<(int, int)> indexes)
+        Span<int> indexes)
     {
         // You know, I originally used another buffer to keep track of the entries per nibble. then ChatGPT gave me this.
         // I dont know what is worst, that ChatGPT beat me to it, or that it is simpler.
@@ -357,15 +364,19 @@ public partial class PatriciaTree
             counts[nib]++;
         }
 
+        int usedMask = 0;
         Span<int> starts = stackalloc int[TrieNode.BranchesCount];
-        int relevantNib = 0;
         int total = 0;
-        for (int n = 0; n < TrieNode.BranchesCount; n++)
+        for (int nib = 0; nib < TrieNode.BranchesCount; nib++)
         {
-            starts[n] = total;
-            total += counts[n];
-            if (counts[n] != 0)
-                indexes[relevantNib++] = (n, starts[n]);
+            starts[nib] = total;
+            total += counts[nib];
+
+            if (counts[nib] != 0)
+            {
+                usedMask |= 1 << nib;
+                indexes[nib] = starts[nib];
+            }
         }
 
         for (int i = 0; i < entries.Length; i++)
@@ -374,7 +385,7 @@ public partial class PatriciaTree
             sortTarget[starts[nib]++] = entries[i];
         }
 
-        return relevantNib;
+        return usedMask;
     }
 
     private static int BucketSort16Small(
@@ -382,10 +393,9 @@ public partial class PatriciaTree
         Span<BulkSetEntry> sortTarget,
         Span<byte> nibbleBuffer,
         int pathIndex,
-        Span<(int, int)> indexes)
+        Span<int> indexes)
     {
         // The small variant keeps track of used nibbles to skip looping unused nibble.
-        int relevantNib = 0;
         int usedMask = 0;
 
         Span<int> counts = stackalloc int[TrieNode.BranchesCount];
@@ -406,7 +416,7 @@ public partial class PatriciaTree
 
             starts[nib] = total;
             total += counts[nib];
-            indexes[relevantNib++] = (nib, starts[nib]);
+            indexes[nib] = starts[nib];
 
             mask &= mask - 1; // clear lowest 1-bit
         }
@@ -417,7 +427,7 @@ public partial class PatriciaTree
             sortTarget[starts[nib]++] = entries[i];
         }
 
-        return relevantNib;
+        return usedMask;
     }
 
     /// <summary>
@@ -428,16 +438,16 @@ public partial class PatriciaTree
     /// <param name="pathIndex"></param>
     /// <param name="indexes"></param>
     /// <returns></returns>
-    public static int HexarySearchAlreadySorted(Span<BulkSetEntry> entries, int pathIndex, Span<(int, int)> indexes)
+    public static int HexarySearchAlreadySorted(Span<BulkSetEntry> entries, int pathIndex, Span<int> indexes)
     {
         if (entries.Length < BSearchThreshold) return HexarySearchAlreadySortedSmall(entries, pathIndex, indexes);
         return HexarySearchAlreadySortedLarge(entries, pathIndex, indexes);
     }
 
-    private static int HexarySearchAlreadySortedSmall(Span<BulkSetEntry> entries, int pathIndex, Span<(int, int)> indexes)
+    private static int HexarySearchAlreadySortedSmall(Span<BulkSetEntry> entries, int pathIndex, Span<int> indexes)
     {
         int curIdx = 0;
-        int relevantNib = 0;
+        int usedMask = 0;
 
         for (int i = 0; i < entries.Length && curIdx < TrieNode.BranchesCount; i++)
         {
@@ -450,19 +460,19 @@ public partial class PatriciaTree
 
             if (currentNib == curIdx)
             {
-                indexes[relevantNib] = (currentNib, i);
-                relevantNib++;
+                indexes[currentNib]  = i;
+                usedMask |= 1 << currentNib;
                 curIdx++;
             }
         }
 
-        return relevantNib;
+        return usedMask;
     }
 
     private static int HexarySearchAlreadySortedLarge(
         Span<BulkSetEntry> entries,
         int pathIndex,
-        Span<(int nib, int start)> indexes)
+        Span<int> indexes)
     {
         int n = entries.Length;
         if (n == 0) return 0;
@@ -474,9 +484,9 @@ public partial class PatriciaTree
         int nib = entries[0].GetPathNibbble(pathIndex);
 
         // First nib is free
-        int relevant = 0;
-        indexes[relevant] = (nib, 0);
-        relevant++;
+        int usedMask = 0;
+        usedMask |= 1 << nib;
+        indexes[nib] = 0;
         nib++;
 
         int lo = 0;
@@ -504,14 +514,14 @@ public partial class PatriciaTree
 
             // Note: The nib can be different, but its fine as it automatically skip.
             nib = entries[lo].GetPathNibbble(pathIndex);
-            indexes[relevant] = (nib, lo);
-            relevant++;
+            usedMask |= 1 << nib;
+            indexes[nib] = lo;
 
             nib++;
             lo++;
         }
 
-        return relevant;
+        return usedMask;
     }
 
     [ThreadStatic]
