@@ -75,8 +75,8 @@ public unsafe partial class VirtualMachine(
     private readonly ValueHash256 _chainId = ((UInt256)specProvider.ChainId).ToValueHash();
 
     private readonly IBlockhashProvider _blockHashProvider = blockHashProvider ?? throw new ArgumentNullException(nameof(blockHashProvider));
-    private readonly ISpecProvider _specProvider = specProvider ?? throw new ArgumentNullException(nameof(specProvider));
-    private readonly ILogger _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
+    protected readonly ISpecProvider _specProvider = specProvider ?? throw new ArgumentNullException(nameof(specProvider));
+    protected readonly ILogger _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
     protected readonly Stack<EvmState> _stateStack = new();
 
     private IWorldState _worldState;
@@ -1177,7 +1177,7 @@ public unsafe partial class VirtualMachine(
     /// which minimizes overhead and allows aggressive inlining and compile-time optimizations.
     /// </remarks>
     [SkipLocalsInit]
-    private unsafe CallResult RunByteCode<TTracingInst, TCancelable>(
+    protected unsafe CallResult RunByteCode<TTracingInst, TCancelable>(
         scoped ref EvmStack stack,
         long gasAvailable)
         where TTracingInst : struct, IFlag
