@@ -1177,7 +1177,7 @@ public unsafe partial class VirtualMachine(
     /// which minimizes overhead and allows aggressive inlining and compile-time optimizations.
     /// </remarks>
     [SkipLocalsInit]
-    protected unsafe CallResult RunByteCode<TTracingInst, TCancelable>(
+    protected virtual unsafe CallResult RunByteCode<TTracingInst, TCancelable>(
         scoped ref EvmStack stack,
         long gasAvailable)
         where TTracingInst : struct, IFlag
