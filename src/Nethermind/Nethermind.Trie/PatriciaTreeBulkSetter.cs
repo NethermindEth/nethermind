@@ -91,17 +91,29 @@ public partial class PatriciaTree
             flags);
         RootRef = newRoot;
 
-        IncrementWriteCount(entries.Length);
+        _writeBeforeCommit += entries.Length;
     }
 
-    internal struct Context
+    private struct Context
     {
         internal BulkSetEntry[] originalEntriesArray;
         internal BulkSetEntry[] originalBufferArray;
         internal byte[] nibbleBufferArray;
     }
 
-    internal TrieNode? BulkSet(
+    /// <param name="ctx">Just to reduce the param count</param>
+    /// <param name="traverseStack">Stack used in set. Parallel call use different stack.</param>
+    /// <param name="entries">The entries</param>
+    /// <param name="buffer">Entry buffer used during sort. May be flippped between entries on recursion.</param>
+    /// <param name="nibbleBuffer">Buffer used to store nibble during sort.</param>
+    /// <param name="path"></param>
+    /// <param name="node"></param>
+    /// <param name="flipCount"></param>
+    /// <param name="canParallelize"></param>
+    /// <param name="flags"></param>
+    /// <returns></returns>
+    /// <exception cref="InvalidOperationException"></exception>
+    private TrieNode? BulkSet(
         in Context ctx,
         Stack<TraverseStack> traverseStack,
         Span<BulkSetEntry> entries,
@@ -115,7 +127,7 @@ public partial class PatriciaTree
     {
         TrieNode? originalNode = node;
 
-        if (entries.Length == 1) return BulkSetOneStack(traverseStack, in entries[0], ref path, node);
+        if (entries.Length == 1) return BulkSetOne(traverseStack, in entries[0], ref path, node);
 
         bool newBranch = false;
         if (node is null)
@@ -232,7 +244,7 @@ public partial class PatriciaTree
                     endRange = entries.Length;
 
                 TrieNode newChild = (endRange - startRange == 1)
-                    ? BulkSetOneStack(traverseStack, entries[startRange], ref path, child)
+                    ? BulkSetOne(traverseStack, entries[startRange], ref path, child)
                     : BulkSet(in ctx, traverseStack, entries[startRange..endRange], buffer[startRange..endRange], nibbleBuffer[startRange..endRange], ref path, child, flipCount, canParallelize, flags);
 
                 if (!ShouldUpdateChild(node, child, newChild)) continue;
@@ -254,7 +266,7 @@ public partial class PatriciaTree
         return node;
     }
 
-    private TrieNode? BulkSetOneStack(Stack<TraverseStack> traverseStack, in BulkSetEntry entry, ref TreePath path,
+    private TrieNode? BulkSetOne(Stack<TraverseStack> traverseStack, in BulkSetEntry entry, ref TreePath path,
         TrieNode? node)
     {
         Span<byte> nibble = stackalloc byte[64];
@@ -267,7 +279,6 @@ public partial class PatriciaTree
 
     private TrieNode? MakeFakeBranch(ref TreePath currentPath, TrieNode? existingNode)
     {
-        // TODO: if this is a leaf, the existing key is long. Check if it is worth optimizing.
         byte[] shortenedKey = new byte[existingNode.Key.Length - 1];
         Array.Copy(existingNode.Key, 1, shortenedKey, 0, existingNode.Key.Length - 1);
 
@@ -303,6 +314,7 @@ public partial class PatriciaTree
     /// </summary>
     /// <param name="entries"></param>
     /// <param name="sortTarget"></param>
+    /// <param name="nibbleBuffer"></param>
     /// <param name="pathIndex"></param>
     /// <param name="indexes"></param>
     /// <returns></returns>
@@ -422,7 +434,7 @@ public partial class PatriciaTree
         return HexarySearchAlreadySortedLarge(entries, pathIndex, indexes);
     }
 
-    public static int HexarySearchAlreadySortedSmall(Span<BulkSetEntry> entries, int pathIndex, Span<(int, int)> indexes)
+    private static int HexarySearchAlreadySortedSmall(Span<BulkSetEntry> entries, int pathIndex, Span<(int, int)> indexes)
     {
         int curIdx = 0;
         int relevantNib = 0;
@@ -447,7 +459,7 @@ public partial class PatriciaTree
         return relevantNib;
     }
 
-    public static int HexarySearchAlreadySortedLarge(
+    private static int HexarySearchAlreadySortedLarge(
         Span<BulkSetEntry> entries,
         int pathIndex,
         Span<(int nib, int start)> indexes)

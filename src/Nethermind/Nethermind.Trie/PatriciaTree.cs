@@ -152,11 +152,6 @@ namespace Nethermind.Trie
             SetRootHash(RootRef?.Keccak, true);
         }
 
-        internal void IncrementWriteCount(long writeCount)
-        {
-            _writeBeforeCommit += writeCount;
-        }
-
         private TrieNode Commit(ICommitter committer, ref TreePath path, TrieNode node, int maxLevelForConcurrentCommit, bool skipSelf = false)
         {
             if (!_allowCommits)
@@ -528,7 +523,7 @@ namespace Nethermind.Trie
             }
         }
 
-        internal TrieNode? SetNew(Stack<TraverseStack> traverseStack, Span<byte> remainingKey, SpanSource value, ref TreePath path, TrieNode? node)
+        private TrieNode? SetNew(Stack<TraverseStack> traverseStack, Span<byte> remainingKey, SpanSource value, ref TreePath path, TrieNode? node)
         {
             TrieNode? originalNode = node;
             int originalPathLength = path.Length;
@@ -774,14 +769,14 @@ namespace Nethermind.Trie
             return tn;
         }
 
-        internal record struct TraverseStack
+        private record struct TraverseStack
         {
             public TrieNode Node;
             public int ChildIdx;
             public TrieNode? OriginalChild;
         }
 
-        internal SpanSource GetNew(Span<byte> remainingKey, ref TreePath path, TrieNode? node, bool isNodeRead)
+        private SpanSource GetNew(Span<byte> remainingKey, ref TreePath path, TrieNode? node, bool isNodeRead)
         {
             int originalPathLength = path.Length;
 
