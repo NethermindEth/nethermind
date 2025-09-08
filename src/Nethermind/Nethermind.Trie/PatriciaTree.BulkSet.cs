@@ -530,10 +530,6 @@ public partial class PatriciaTree
 
     private void ReturnTraverseStack(Stack<TraverseStack> threadResource)
     {
-#if DEBUG
-        threadResource.EnsureCleared();
-#endif
-
         _threadStaticTraverseStackPool = threadResource;
     }
 
