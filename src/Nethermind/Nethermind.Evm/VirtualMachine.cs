@@ -7,7 +7,6 @@ using System.Diagnostics.CodeAnalysis;
 using System.Numerics;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
-using System.Runtime.Intrinsics;
 using System.Threading;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
@@ -32,7 +31,15 @@ namespace Nethermind.Evm;
 using unsafe OpCode = delegate*<VirtualMachine, ref EvmStack, ref long, ref int, EvmExceptionType>;
 using Int256;
 
-public sealed unsafe partial class VirtualMachine(
+public sealed unsafe class EthereumVirtualMachine(
+    IBlockhashProvider? blockHashProvider,
+    ISpecProvider? specProvider,
+    ILogManager? logManager
+) : VirtualMachine(blockHashProvider, specProvider, logManager)
+{
+}
+
+public unsafe partial class VirtualMachine(
     IBlockhashProvider? blockHashProvider,
     ISpecProvider? specProvider,
     ILogManager? logManager) : IVirtualMachine
@@ -85,6 +92,7 @@ public sealed unsafe partial class VirtualMachine(
     private ReadOnlyMemory<byte>? _previousCallResult;
     private UInt256 _previousCallOutputDestination;
 
+    public ILogger Logger => _logger;
     public ICodeInfoRepository CodeInfoRepository => _codeInfoRepository;
     public IReleaseSpec Spec => _blockExecutionContext.Spec;
     public ITxTracer TxTracer => _txTracer;
@@ -93,6 +101,7 @@ public sealed unsafe partial class VirtualMachine(
     public ReadOnlyMemory<byte> ReturnDataBuffer { get; set; } = Array.Empty<byte>();
     public object ReturnData { get; set; }
     public IBlockhashProvider BlockHashProvider => _blockHashProvider;
+    protected Stack<EvmState> StateStack => _stateStack;
 
     private BlockExecutionContext _blockExecutionContext;
     public void SetBlockExecutionContext(in BlockExecutionContext blockExecutionContext) => _blockExecutionContext = blockExecutionContext;
@@ -126,7 +135,7 @@ public sealed unsafe partial class VirtualMachine(
     /// <exception cref="EvmException">
     /// Thrown when an EVM-specific error occurs during execution.
     /// </exception>
-    public TransactionSubstate ExecuteTransaction<TTracingInst>(
+    public virtual TransactionSubstate ExecuteTransaction<TTracingInst>(
         EvmState evmState,
         IWorldState worldState,
         ITxTracer txTracer)
@@ -845,17 +854,21 @@ public sealed unsafe partial class VirtualMachine(
                     _logger.Debug("Refreshing EVM instruction cache");
                 }
                 // Regenerate the non-traced opcode set to pick up any updated PGO optimized methods.
-                spec.EvmInstructionsNoTrace = EvmInstructions.GenerateOpCodes<TTracingInst>(spec);
+                spec.EvmInstructionsNoTrace = GenerateOpCodes<TTracingInst>(spec);
             }
             // Ensure the non-traced opcode set is generated and assign it to the _opcodeMethods field.
-            _opcodeMethods = (OpCode[])(spec.EvmInstructionsNoTrace ??= EvmInstructions.GenerateOpCodes<TTracingInst>(spec));
+            _opcodeMethods = (OpCode[])(spec.EvmInstructionsNoTrace ??= GenerateOpCodes<TTracingInst>(spec));
         }
         else
         {
             // For tracing-enabled execution, generate (if necessary) and cache the traced opcode set.
-            _opcodeMethods = (OpCode[])(spec.EvmInstructionsTraced ??= EvmInstructions.GenerateOpCodes<TTracingInst>(spec));
+            _opcodeMethods = (OpCode[])(spec.EvmInstructionsTraced ??= GenerateOpCodes<TTracingInst>(spec));
         }
     }
+
+    protected virtual OpCode[] GenerateOpCodes<TTracingInst>(IReleaseSpec spec)
+        where TTracingInst : struct, IFlag
+        => EvmInstructions.GenerateOpCodes<TTracingInst>(spec);
 
     /// <summary>
     /// Reports the final outcome of a transaction action to the transaction tracer, taking into account
@@ -957,7 +970,7 @@ public sealed unsafe partial class VirtualMachine(
         SSTORE
     }
 
-    private CallResult RunPrecompile(EvmState state)
+    protected virtual CallResult RunPrecompile(EvmState state)
     {
         ReadOnlyMemory<byte> callData = state.Env.InputData;
         UInt256 transferValue = state.Env.TransferValue;
