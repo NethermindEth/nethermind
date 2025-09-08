@@ -12,7 +12,7 @@ using System.Threading.Tasks;
 namespace Nethermind.Xdc.RLP;
 internal class ExtraConsensusDataDecoder : IRlpValueDecoder<ExtraFieldsV2>, IRlpStreamDecoder<ExtraFieldsV2>
 {
-    private QuorumCertificateDecoder _quorumCertificateDecoder = new ();
+    private QuorumCertificateDecoder _quorumCertificateDecoder = new();
     public ExtraFieldsV2 Decode(ref Rlp.ValueDecoderContext decoderContext, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
     {
         if (decoderContext.IsNextItemNull())
@@ -46,8 +46,8 @@ internal class ExtraConsensusDataDecoder : IRlpValueDecoder<ExtraFieldsV2>, IRlp
     {
         if (item is null)
             return Rlp.OfEmptySequence;
-        
-        RlpStream rlpStream = new (GetLength(item, rlpBehaviors));
+
+        RlpStream rlpStream = new(GetLength(item, rlpBehaviors));
         Encode(rlpStream, item, rlpBehaviors);
         return new Rlp(rlpStream.Data.ToArray());
     }

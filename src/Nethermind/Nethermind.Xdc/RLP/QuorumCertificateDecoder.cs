@@ -41,7 +41,7 @@ internal class QuorumCertificateDecoder : IRlpValueDecoder<QuorumCert>, IRlpStre
                 signatures[i] = new Signature(signatureBytes[i].AsSpan(0, 64), signatureBytes[i][64]);
             }
         }
-        
+
         ulong gap = decoderContext.DecodeULong();
         return new QuorumCert(blockInfo, signatures, gap);
     }

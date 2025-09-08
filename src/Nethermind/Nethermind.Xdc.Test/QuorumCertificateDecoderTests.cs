@@ -34,7 +34,7 @@ internal class QuorumCertificateDecoderTests
     [TestCaseSource(nameof(QuorumCertificateCases))]
     public void Encode_DifferentValues_IsEquivalentAfterReencoding(QuorumCert quorumCert)
     {
-        QuorumCertificateDecoder decoder = new ();
+        QuorumCertificateDecoder decoder = new();
         RlpStream stream = new RlpStream(decoder.GetLength(quorumCert));
         decoder.Encode(stream, quorumCert);
         stream.Position = 0;
