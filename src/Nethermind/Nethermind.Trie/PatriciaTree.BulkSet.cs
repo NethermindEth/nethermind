@@ -195,8 +195,8 @@ public partial class PatriciaTree
                 {
                     (int startIdx, int count, int nib, TreePath childPath, TrieNode child, TrieNode? outNode) = jobs[i];
 
-                    Span<BulkSetEntry> jobEntries = originalEntriesArray.AsSpan().Slice(startIdx, count);
-                    Span<BulkSetEntry> bufferEntries = originalBufferArray.AsSpan().Slice(startIdx, count);
+                    Span<BulkSetEntry> jobEntries = originalEntriesArray.AsSpan(startIdx, count);
+                    Span<BulkSetEntry> bufferEntries = originalBufferArray.AsSpan(startIdx, count);
 
                     TrieNode? newChild = BulkSet(in closureCtx, workerTraverseStack, jobEntries, bufferEntries, ref childPath, child, flipCount, flags & ~Flags.DoNotParallelize); // Only parallelize at top level.
                     jobs[i] = (startIdx, count, nib, childPath, child, newChild); // Just need the child actually...
