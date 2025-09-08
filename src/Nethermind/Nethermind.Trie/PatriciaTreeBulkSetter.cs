@@ -68,13 +68,11 @@ public partial class PatriciaTree
 
         TreePath path = TreePath.Empty;
         using ArrayPoolList<BulkSetEntry> buffer = new ArrayPoolList<BulkSetEntry>(entries.Length, entries.Length);
-        using ArrayPoolList<byte> nibbleBuffer = new ArrayPoolList<byte>(entries.Length, entries.Length);
 
         Context ctx = new Context()
         {
             originalBufferArray = buffer.UnsafeGetInternalArray(),
             originalEntriesArray = entriesMemory.UnsafeGetInternalArray(),
-            nibbleBufferArray = nibbleBuffer.UnsafeGetInternalArray(),
         };
 
         if (_traverseStack is null) _traverseStack = new Stack<TraverseStack>();
@@ -84,7 +82,6 @@ public partial class PatriciaTree
             _traverseStack,
             entriesMemory.AsSpan(),
             buffer.AsSpan(),
-            nibbleBuffer.AsSpan(),
             ref path,
             RootRef,
             0,
@@ -99,17 +96,15 @@ public partial class PatriciaTree
     {
         internal BulkSetEntry[] originalEntriesArray;
         internal BulkSetEntry[] originalBufferArray;
-        internal byte[] nibbleBufferArray;
     }
 
     /// <param name="ctx">Just to reduce the param count</param>
     /// <param name="traverseStack">Stack used in set. Parallel call use different stack.</param>
     /// <param name="entries">The entries</param>
-    /// <param name="buffer">Entry buffer used during sort. May be flippped between entries on recursion.</param>
-    /// <param name="nibbleBuffer">Buffer used to store nibble during sort.</param>
+    /// <param name="buffer">Entry buffer used during sort. May be flipped between this and `entries` on recursion.</param>
     /// <param name="path"></param>
     /// <param name="node"></param>
-    /// <param name="flipCount"></param>
+    /// <param name="flipCount">Flip count, for parallelism.</param>
     /// <param name="canParallelize"></param>
     /// <param name="flags"></param>
     /// <returns></returns>
@@ -119,7 +114,6 @@ public partial class PatriciaTree
         Stack<TraverseStack> traverseStack,
         Span<BulkSetEntry> entries,
         Span<BulkSetEntry> buffer,
-        Span<byte> nibbleBuffer,
         ref TreePath path,
         TrieNode? node,
         int flipCount,
@@ -159,7 +153,7 @@ public partial class PatriciaTree
         }
         else
         {
-            nibMask = BucketSort16(entries, buffer, nibbleBuffer, path.Length, indexes);
+            nibMask = BucketSort16(entries, buffer, path.Length, indexes);
             // Buffer is now partially sorted. Swap buffer and entries
             flipCount++;
 
@@ -208,9 +202,8 @@ public partial class PatriciaTree
 
                     Span<BulkSetEntry> jobEntries = originalEntriesArray.AsSpan().Slice(startIdx, count);
                     Span<BulkSetEntry> bufferEntries = originalBufferArray.AsSpan().Slice(startIdx, count);
-                    Span<byte> nibbleBuffer = closureCtx.nibbleBufferArray.AsSpan().Slice(startIdx, count);
 
-                    TrieNode? newChild = BulkSet(in closureCtx, workerTraverseStack, jobEntries, bufferEntries, nibbleBuffer, ref childPath, child, flipCount, false, flags); // Only parallelize at top level.
+                    TrieNode? newChild = BulkSet(in closureCtx, workerTraverseStack, jobEntries, bufferEntries, ref childPath, child, flipCount, false, flags); // Only parallelize at top level.
                     jobs[i] = (startIdx, count, nib, childPath, child, newChild); // Just need the child actually...
 
                     return workerTraverseStack;
@@ -251,7 +244,7 @@ public partial class PatriciaTree
 
                 TrieNode newChild = (endRange - startRange == 1)
                     ? BulkSetOne(traverseStack, entries[startRange], ref path, child)
-                    : BulkSet(in ctx, traverseStack, entries[startRange..endRange], buffer[startRange..endRange], nibbleBuffer[startRange..endRange], ref path, child, flipCount, canParallelize, flags);
+                    : BulkSet(in ctx, traverseStack, entries[startRange..endRange], buffer[startRange..endRange], ref path, child, flipCount, canParallelize, flags);
 
                 if (!ShouldUpdateChild(node, child, newChild)) continue;
 
@@ -329,7 +322,6 @@ public partial class PatriciaTree
     internal static int BucketSort16(
         Span<BulkSetEntry> entries,
         Span<BulkSetEntry> sortTarget,
-        Span<byte> nibbleBuffer,
         int pathIndex,
         Span<int> indexes)
     {
@@ -340,16 +332,15 @@ public partial class PatriciaTree
 
         if (entries.Length < 24)
         {
-            return BucketSort16Small(entries, sortTarget, nibbleBuffer, pathIndex, indexes);
+            return BucketSort16Small(entries, sortTarget, pathIndex, indexes);
         }
 
-        return BucketSort16Large(entries, sortTarget, nibbleBuffer, pathIndex, indexes);
+        return BucketSort16Large(entries, sortTarget, pathIndex, indexes);
     }
 
     private static int BucketSort16Large(
         Span<BulkSetEntry> entries,
         Span<BulkSetEntry> sortTarget,
-        Span<byte> nibbleBuffer,
         int pathIndex,
         Span<int> indexes)
     {
@@ -360,7 +351,6 @@ public partial class PatriciaTree
         for (int i = 0; i < entries.Length; i++)
         {
             byte nib = entries[i].GetPathNibbble(pathIndex);
-            nibbleBuffer[i] = nib;
             counts[nib]++;
         }
 
@@ -381,7 +371,7 @@ public partial class PatriciaTree
 
         for (int i = 0; i < entries.Length; i++)
         {
-            int nib = nibbleBuffer[i];
+            int nib = entries[i].GetPathNibbble(pathIndex);
             sortTarget[starts[nib]++] = entries[i];
         }
 
@@ -391,7 +381,6 @@ public partial class PatriciaTree
     private static int BucketSort16Small(
         Span<BulkSetEntry> entries,
         Span<BulkSetEntry> sortTarget,
-        Span<byte> nibbleBuffer,
         int pathIndex,
         Span<int> indexes)
     {
@@ -402,7 +391,6 @@ public partial class PatriciaTree
         for (int i = 0; i < entries.Length; i++)
         {
             byte nib = entries[i].GetPathNibbble(pathIndex);
-            nibbleBuffer[i] = nib;
             counts[nib]++;
             usedMask |= 1 << nib;
         }
@@ -423,7 +411,7 @@ public partial class PatriciaTree
 
         for (int i = 0; i < entries.Length; i++)
         {
-            int nib = nibbleBuffer[i];
+            int nib = entries[i].GetPathNibbble(pathIndex);
             sortTarget[starts[nib]++] = entries[i];
         }
 
