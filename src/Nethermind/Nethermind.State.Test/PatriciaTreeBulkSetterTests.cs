@@ -187,7 +187,7 @@ public class PatriciaTreeBulkSetterTests
         yield return new TestCaseData(GenRandomOfLength(100), GenRandomOfLength(100)).SetName("reapply 100");
         for (int i = 0; i < 10; i++)
         {
-            yield return new TestCaseData(GenRandomOfLength(1000, i), GenRandomOfLength(1000, i*2)).SetName($"random {i}");
+            yield return new TestCaseData(GenRandomOfLength(1000, i), GenRandomOfLength(1000, i * 2)).SetName($"random {i}");
         }
 
         List<(Hash256 key, byte[] value)> list = GenRandomOfLength(100);
@@ -224,7 +224,7 @@ public class PatriciaTreeBulkSetterTests
             Hash256 key = new Hash256(buffer);
             rng.NextBytes(buffer);
 
-            items.Add((key,  buffer.AsSpan().ToArray()));
+            items.Add((key, buffer.AsSpan().ToArray()));
         }
 
         return items;

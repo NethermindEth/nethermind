@@ -447,7 +447,7 @@ public partial class PatriciaTree
 
             if (currentNib == curIdx)
             {
-                indexes[currentNib]  = i;
+                indexes[currentNib] = i;
                 usedMask |= 1 << currentNib;
                 curIdx++;
             }
@@ -493,7 +493,7 @@ public partial class PatriciaTree
                 {
                     hi = mid;
                     // Also fill all hi for nib between nib to midnib.
-                    if (midnib > nib) his[(nib+1)..midnib].Fill(mid);
+                    if (midnib > nib) his[(nib + 1)..midnib].Fill(mid);
                 }
             }
 
@@ -540,7 +540,7 @@ public partial class PatriciaTree
     private static int GetSpanOffset<T>(T[] array, Span<T> span)
     {
         ref T spanRef = ref MemoryMarshal.GetReference(span);
-        ref T arrRef  = ref MemoryMarshal.GetArrayDataReference(array);
+        ref T arrRef = ref MemoryMarshal.GetArrayDataReference(array);
         return (int)(Unsafe.ByteOffset(ref arrRef, ref spanRef) / Unsafe.SizeOf<T>());
     }
 }
