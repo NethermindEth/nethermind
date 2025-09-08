@@ -113,9 +113,9 @@ public class PluginLoader(string pluginPath, IFileSystem fileSystem, ILogger log
 
             bool fHasExplicitOrder = orderMap.TryGetValue(f.Name, out int fPos);
             bool sHasExplicitOrder = orderMap.TryGetValue(s.Name, out int sPos);
-            if (!fHas)
+            if (!fHasExplicitOrder)
             {
-                if (!sHas)
+                if (!sHasExplicitOrder)
                 {
                     return string.Compare(f.Name, s.Name, StringComparison.OrdinalIgnoreCase);
                 }
@@ -123,7 +123,7 @@ public class PluginLoader(string pluginPath, IFileSystem fileSystem, ILogger log
                 return 1;
             }
 
-            if (!sHas)
+            if (!sHasExplicitOrder)
             {
                 return -1;
             }
