@@ -13,8 +13,6 @@ namespace Nethermind.Hive;
 
 public class HivePlugin(IHiveConfig hiveConfig) : INethermindPlugin
 {
-    public ValueTask DisposeAsync() => ValueTask.CompletedTask;
-
     public string Name => "Hive";
 
     public string Description => "Plugin used for executing Hive Ethereum Tests";

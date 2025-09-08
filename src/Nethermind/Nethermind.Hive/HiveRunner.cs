@@ -164,6 +164,12 @@ namespace Nethermind.Hive
                 Block block = blocks[i];
                 if (_logger.IsInfo)
                     _logger.Info($"HIVE Processing a chain.rlp block {block.ToString(Block.Format.Short)}");
+
+                if (parent is null && block.Number is 1)
+                {
+                    parent = blockTree.Genesis;
+                }
+
                 await ProcessBlock(block, parent);
                 parent = block.Header;
             }
@@ -192,9 +198,9 @@ namespace Nethermind.Hive
                 // Start of block processing, setting flag BlockSuggested to default value: false
                 BlockSuggested = false;
 
-                if (!blockValidator.ValidateSuggestedBlock(block, parent, out _))
+                if (!blockValidator.ValidateSuggestedBlock(block, parent, out string? err))
                 {
-                    if (_logger.IsInfo) _logger.Info($"Invalid block {block}");
+                    if (_logger.IsInfo) _logger.Info($"Invalid block {block}. Error: {err}");
                     return;
                 }
 

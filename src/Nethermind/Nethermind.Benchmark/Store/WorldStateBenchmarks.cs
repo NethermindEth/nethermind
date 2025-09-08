@@ -45,6 +45,7 @@ public class WorldStateBenchmarks
             .Build();
 
         IWorldState worldState = _globalWorldState = _container.Resolve<IWorldStateManager>().GlobalWorldState;
+        using var _ = worldState.BeginScope(IWorldState.PreGenesis);
 
         Random rand = new Random(0);
         byte[] randomBuffer = new byte[20];
