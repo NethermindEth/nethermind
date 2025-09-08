@@ -251,7 +251,7 @@ public class BlockAccessListTests()
                 Address = TestItem.AddressA,
                 StorageChanges = [],
                 StorageReads = [],
-                BalanceChanges = new SortedList<ushort, BalanceChange> { { 1, new(1, addressABalance) }, { 2, new(2, addressABalance2)} },
+                BalanceChanges = new SortedList<ushort, BalanceChange> { { 1, new(1, addressABalance) }, { 2, new(2, addressABalance2) } },
                 NonceChanges = new SortedList<ushort, NonceChange> { { 1, new(1, 1) }, { 2, new(2, 2) } },
                 CodeChanges = []
             }));
@@ -271,7 +271,7 @@ public class BlockAccessListTests()
                 Address = TestItem.AddressC,
                 StorageChanges = [],
                 StorageReads = [],
-                BalanceChanges = new SortedList<ushort, BalanceChange> { { 1, new(1, new UInt256(GasCostOf.Transaction)) }, { 2, new(2, new UInt256(gasUsed))} },
+                BalanceChanges = new SortedList<ushort, BalanceChange> { { 1, new(1, new UInt256(GasCostOf.Transaction)) }, { 2, new(2, new UInt256(gasUsed)) } },
                 NonceChanges = [],
                 CodeChanges = []
             }));
