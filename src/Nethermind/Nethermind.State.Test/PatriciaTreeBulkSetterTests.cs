@@ -461,6 +461,7 @@ public class PatriciaTreeBulkSetterTests
     public static IEnumerable<TestCaseData> BucketSortTestCase()
     {
         yield return new TestCaseData(
+            0,
             new List<ValueHash256>()
             {
                 new("1211111111111111111111111111111111111111111111111111111111111111"),
@@ -475,11 +476,143 @@ public class PatriciaTreeBulkSetterTests
                 new("1111111111111111111111111111111111111111111111111111111111111111"),
                 new("4211111111111111111111111111111111111111111111111111111111111111"),
             },
-            new[] { 0, 0, 0, 0, 2, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0 }).SetName("base");
+            new[] { 0, 0, 0, 0, 2, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0 },
+            (ushort)(0b0000000000010010)
+        ).SetName("standard");
+
+        yield return new TestCaseData(
+            0,
+            new List<ValueHash256>()
+            {
+                new("0000000000000000000000000000000000000000000000000000000000000000"),
+                new("1000000000000000000000000000000000000000000000000000000000000000"),
+                new("2000000000000000000000000000000000000000000000000000000000000000"),
+                new("3000000000000000000000000000000000000000000000000000000000000000"),
+                new("4000000000000000000000000000000000000000000000000000000000000000"),
+                new("5000000000000000000000000000000000000000000000000000000000000000"),
+                new("6000000000000000000000000000000000000000000000000000000000000000"),
+                new("7000000000000000000000000000000000000000000000000000000000000000"),
+                new("8000000000000000000000000000000000000000000000000000000000000000"),
+                new("9000000000000000000000000000000000000000000000000000000000000000"),
+                new("a000000000000000000000000000000000000000000000000000000000000000"),
+                new("b000000000000000000000000000000000000000000000000000000000000000"),
+                new("c000000000000000000000000000000000000000000000000000000000000000"),
+                new("d000000000000000000000000000000000000000000000000000000000000000"),
+                new("e000000000000000000000000000000000000000000000000000000000000000"),
+                new("f000000000000000000000000000000000000000000000000000000000000000"),
+            },
+            new List<ValueHash256>()
+            {
+                new("0000000000000000000000000000000000000000000000000000000000000000"),
+                new("1000000000000000000000000000000000000000000000000000000000000000"),
+                new("2000000000000000000000000000000000000000000000000000000000000000"),
+                new("3000000000000000000000000000000000000000000000000000000000000000"),
+                new("4000000000000000000000000000000000000000000000000000000000000000"),
+                new("5000000000000000000000000000000000000000000000000000000000000000"),
+                new("6000000000000000000000000000000000000000000000000000000000000000"),
+                new("7000000000000000000000000000000000000000000000000000000000000000"),
+                new("8000000000000000000000000000000000000000000000000000000000000000"),
+                new("9000000000000000000000000000000000000000000000000000000000000000"),
+                new("a000000000000000000000000000000000000000000000000000000000000000"),
+                new("b000000000000000000000000000000000000000000000000000000000000000"),
+                new("c000000000000000000000000000000000000000000000000000000000000000"),
+                new("d000000000000000000000000000000000000000000000000000000000000000"),
+                new("e000000000000000000000000000000000000000000000000000000000000000"),
+                new("f000000000000000000000000000000000000000000000000000000000000000"),
+            },
+            new[] { 0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15 },
+            (ushort)(0b1111111111111111)
+        ).SetName("full");
+
+        yield return new TestCaseData(
+            0,
+            new List<ValueHash256>()
+            {
+                new("f000000000000000000000000000000000000000000000000000000000000000"),
+                new("e000000000000000000000000000000000000000000000000000000000000000"),
+                new("d000000000000000000000000000000000000000000000000000000000000000"),
+                new("c000000000000000000000000000000000000000000000000000000000000000"),
+                new("b000000000000000000000000000000000000000000000000000000000000000"),
+                new("a000000000000000000000000000000000000000000000000000000000000000"),
+                new("9000000000000000000000000000000000000000000000000000000000000000"),
+                new("8000000000000000000000000000000000000000000000000000000000000000"),
+                new("7000000000000000000000000000000000000000000000000000000000000000"),
+                new("6000000000000000000000000000000000000000000000000000000000000000"),
+                new("5000000000000000000000000000000000000000000000000000000000000000"),
+                new("4000000000000000000000000000000000000000000000000000000000000000"),
+                new("3000000000000000000000000000000000000000000000000000000000000000"),
+                new("2000000000000000000000000000000000000000000000000000000000000000"),
+                new("1000000000000000000000000000000000000000000000000000000000000000"),
+                new("0000000000000000000000000000000000000000000000000000000000000000"),
+            },
+            new List<ValueHash256>()
+            {
+                new("0000000000000000000000000000000000000000000000000000000000000000"),
+                new("1000000000000000000000000000000000000000000000000000000000000000"),
+                new("2000000000000000000000000000000000000000000000000000000000000000"),
+                new("3000000000000000000000000000000000000000000000000000000000000000"),
+                new("4000000000000000000000000000000000000000000000000000000000000000"),
+                new("5000000000000000000000000000000000000000000000000000000000000000"),
+                new("6000000000000000000000000000000000000000000000000000000000000000"),
+                new("7000000000000000000000000000000000000000000000000000000000000000"),
+                new("8000000000000000000000000000000000000000000000000000000000000000"),
+                new("9000000000000000000000000000000000000000000000000000000000000000"),
+                new("a000000000000000000000000000000000000000000000000000000000000000"),
+                new("b000000000000000000000000000000000000000000000000000000000000000"),
+                new("c000000000000000000000000000000000000000000000000000000000000000"),
+                new("d000000000000000000000000000000000000000000000000000000000000000"),
+                new("e000000000000000000000000000000000000000000000000000000000000000"),
+                new("f000000000000000000000000000000000000000000000000000000000000000"),
+            },
+            new[] { 0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15 },
+            (ushort)(0b1111111111111111)
+        ).SetName("reversed");
+
+        TestCaseData GenRandom(int nibIndex, int count)
+        {
+            byte[] buffer = new byte[32];
+            Random rng = new Random(0);
+            List<ValueHash256> hashes = new List<ValueHash256>();
+            for (int i = 0; i < count; i++)
+            {
+                rng.NextBytes(buffer);
+                hashes.Add(new ValueHash256(buffer));
+            }
+
+            List<ValueHash256> partiallySorted = hashes.OrderBy((hash) => Nibbles.BytesToNibbleBytes(hash.Bytes)[nibIndex]).ToList();
+            int[] indexes = new int[16];
+            int curNib = 0;
+            int mask = 0;
+            for (int i = 0; i < partiallySorted.Count && curNib < 16; i++)
+            {
+                ValueHash256 hash = partiallySorted[i];
+                int nib = Nibbles.BytesToNibbleBytes(hash.Bytes)[nibIndex];
+                if (nib >= curNib)
+                {
+                    indexes[nib] = i;
+                    mask |= (1 << nib);
+                    curNib = nib + 1;
+                }
+            }
+
+            return new TestCaseData(
+                nibIndex,
+                hashes,
+                partiallySorted,
+                indexes,
+                (ushort)mask
+            );
+        }
+
+        yield return GenRandom(0, 1).SetName("rand-0-1");
+        yield return GenRandom(0, 2).SetName("rand-0-2");
+        yield return GenRandom(0, 10).SetName("rand-0-10");
+        yield return GenRandom(1, 10).SetName("rand-1-10");
+        yield return GenRandom(1, 100).SetName("rand-1-100");
     }
 
     [TestCaseSource(nameof(BucketSortTestCase))]
-    public void TestBucketSort(List<ValueHash256> paths, List<ValueHash256> expectedPaths, int[] expectedResult)
+    public void TestBucketSort(int nibIndex, List<ValueHash256> paths, List<ValueHash256> expectedPaths, int[] expectedResult, ushort expectedMask)
     {
         using ArrayPoolList<PatriciaTree.BulkSetEntry> items = new ArrayPoolList<PatriciaTree.BulkSetEntry>(paths.Count);
         foreach (ValueHash256 ValueHash256 in paths)
@@ -489,28 +622,45 @@ public class PatriciaTreeBulkSetterTests
 
         Span<int> result = stackalloc int[TrieNode.BranchesCount];
         using ArrayPoolList<PatriciaTree.BulkSetEntry> buffer = new ArrayPoolList<PatriciaTree.BulkSetEntry>(paths.Count, paths.Count);
-        using ArrayPoolList<byte> nibbleBuffer = new ArrayPoolList<byte>(paths.Count, paths.Count);
-        int resultMask = PatriciaTree.BucketSort16(items.AsSpan(), buffer.AsSpan(), nibbleBuffer.AsSpan(), 0, result);
 
-        List<ValueHash256> partiallySortedPaths = buffer.Select((it) => it.Path).ToList();
-        partiallySortedPaths.Should().BeEquivalentTo(expectedPaths);
-
+        int resultMask = PatriciaTree.BucketSort16Small(items.AsSpan(), buffer.AsSpan(), nibIndex, result);
+        buffer.Select((it) => it.Path).ToList().Should().BeEquivalentTo(expectedPaths);
         result.ToArray().Should().BeEquivalentTo(expectedResult);
+        resultMask.Should().Be(expectedMask);
+
+        resultMask = PatriciaTree.BucketSort16Large(items.AsSpan(), buffer.AsSpan(), nibIndex, result);
+        buffer.Select((it) => it.Path).ToList().Should().BeEquivalentTo(expectedPaths);
+        result.ToArray().Should().BeEquivalentTo(expectedResult);
+        resultMask.Should().Be(expectedMask);
+
+        resultMask = PatriciaTree.BucketSort16(items.AsSpan(), buffer.AsSpan(), nibIndex, result);
+        buffer.Select((it) => it.Path).ToList().Should().BeEquivalentTo(expectedPaths);
+        result.ToArray().Should().BeEquivalentTo(expectedResult);
+        resultMask.Should().Be(expectedMask);
     }
 
     [TestCaseSource(nameof(BucketSortTestCase))]
-    public void HexarySearch(List<ValueHash256> paths, List<ValueHash256> expectedPaths, int[] expectedResult)
+    public void HexarySearch(int nibIndex, List<ValueHash256> paths, List<ValueHash256> expectedPaths, int[] expectedResult, ushort expectedMask)
     {
         using ArrayPoolList<PatriciaTree.BulkSetEntry> items = new ArrayPoolList<PatriciaTree.BulkSetEntry>(paths.Count);
         foreach (ValueHash256 hash256 in paths)
         {
             items.Add(new PatriciaTree.BulkSetEntry(hash256, Array.Empty<byte>()));
         }
-        items.AsSpan().Sort();
+        items.AsSpan().Sort((a, b) => a.GetPathNibbble(nibIndex).CompareTo(b.GetPathNibbble(nibIndex)));
 
         Span<int> result = stackalloc int[TrieNode.BranchesCount];
-        int resultNum = PatriciaTree.HexarySearchAlreadySorted(items.AsSpan(), 0, result);
-
+        int resultMask = PatriciaTree.HexarySearchAlreadySortedSmall(items.AsSpan(), nibIndex, result);
+        resultMask.Should().Be(expectedMask);
         result.ToArray().Should().BeEquivalentTo(expectedResult);
+
+        resultMask = PatriciaTree.HexarySearchAlreadySortedLarge(items.AsSpan(), nibIndex, result);
+        resultMask.Should().Be(expectedMask);
+        result.ToArray().Should().BeEquivalentTo(expectedResult);
+
+        resultMask = PatriciaTree.HexarySearchAlreadySorted(items.AsSpan(), nibIndex, result);
+        resultMask.Should().Be(expectedMask);
+        result.ToArray().Should().BeEquivalentTo(expectedResult);
+
     }
 }

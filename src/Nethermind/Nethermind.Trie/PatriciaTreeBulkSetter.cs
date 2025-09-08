@@ -338,7 +338,7 @@ public partial class PatriciaTree
         return BucketSort16Large(entries, sortTarget, pathIndex, indexes);
     }
 
-    private static int BucketSort16Large(
+    internal static int BucketSort16Large(
         Span<BulkSetEntry> entries,
         Span<BulkSetEntry> sortTarget,
         int pathIndex,
@@ -378,7 +378,7 @@ public partial class PatriciaTree
         return usedMask;
     }
 
-    private static int BucketSort16Small(
+    internal static int BucketSort16Small(
         Span<BulkSetEntry> entries,
         Span<BulkSetEntry> sortTarget,
         int pathIndex,
@@ -426,13 +426,13 @@ public partial class PatriciaTree
     /// <param name="pathIndex"></param>
     /// <param name="indexes"></param>
     /// <returns></returns>
-    public static int HexarySearchAlreadySorted(Span<BulkSetEntry> entries, int pathIndex, Span<int> indexes)
+    internal static int HexarySearchAlreadySorted(Span<BulkSetEntry> entries, int pathIndex, Span<int> indexes)
     {
         if (entries.Length < BSearchThreshold) return HexarySearchAlreadySortedSmall(entries, pathIndex, indexes);
         return HexarySearchAlreadySortedLarge(entries, pathIndex, indexes);
     }
 
-    private static int HexarySearchAlreadySortedSmall(Span<BulkSetEntry> entries, int pathIndex, Span<int> indexes)
+    internal static int HexarySearchAlreadySortedSmall(Span<BulkSetEntry> entries, int pathIndex, Span<int> indexes)
     {
         int curIdx = 0;
         int usedMask = 0;
@@ -457,7 +457,7 @@ public partial class PatriciaTree
         return usedMask;
     }
 
-    private static int HexarySearchAlreadySortedLarge(
+    internal static int HexarySearchAlreadySortedLarge(
         Span<BulkSetEntry> entries,
         int pathIndex,
         Span<int> indexes)
@@ -538,7 +538,7 @@ public partial class PatriciaTree
         _threadStaticTraverseStackPool = threadResource;
     }
 
-    public static int GetSpanOffset<T>(T[] array, Span<T> span)
+    private static int GetSpanOffset<T>(T[] array, Span<T> span)
     {
         ref T spanRef = ref MemoryMarshal.GetReference(span);
         ref T arrRef  = ref MemoryMarshal.GetArrayDataReference(array);

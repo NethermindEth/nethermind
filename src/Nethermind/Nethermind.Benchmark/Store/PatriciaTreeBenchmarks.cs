@@ -453,15 +453,21 @@ namespace Nethermind.Benchmarks.Store
         }
 
         [Benchmark]
-        public void RepeatedSet64()
+        public void RepeatedSet8()
         {
-            DoSetOnlyRepeatedly(64);
+            DoSetOnlyRepeatedly(8);
         }
 
         [Benchmark]
-        public void RepeatedBulkSetNoParallel64()
+        public void RepeatedBulkSet8()
         {
-            DoBulkSetRepeatedlyNoParallel(64);
+            DoBulkSetRepeatedly(8);
+        }
+
+        [Benchmark]
+        public void RepeatedSet64()
+        {
+            DoSetOnlyRepeatedly(64);
         }
 
         [Benchmark]
