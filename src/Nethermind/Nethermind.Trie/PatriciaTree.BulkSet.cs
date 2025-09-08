@@ -55,53 +55,53 @@ public partial class PatriciaTree
 
     /// <summary>
     /// BulkSet multiple entries at the same time. It works by working each nibble level one at a time, partially
-    /// sorting the <see cref="entriesMemory"/> then recurs on each nibble, traversing the top level branch only once.
+    /// sorting the <see cref="entries"/> then recurs on each nibble, traversing the top level branch only once.
     /// if <see cref="Flags.WasSorted"/> is on, the sort is skipped for a slightly faster set.
     /// It will parallelize at the top level if the number of entries reached a certain threshold.
     /// </summary>
-    /// <param name="entriesMemory"></param>
+    /// <param name="entries"></param>
     /// <param name="flags"></param>
-    public void BulkSet(ArrayPoolList<BulkSetEntry> entriesMemory, Flags flags = Flags.None)
+    public void BulkSet(ArrayPoolList<BulkSetEntry> entries, Flags flags = Flags.None)
     {
-        Span<BulkSetEntry> entries = entriesMemory.AsSpan();
-        if (entries.Length == 0) return;
+        if (entries.Count == 0) return;
 
-        TreePath path = TreePath.Empty;
-        using ArrayPoolList<BulkSetEntry> buffer = new ArrayPoolList<BulkSetEntry>(entries.Length, entries.Length);
+        using ArrayPoolList<BulkSetEntry> sortBuffer = new ArrayPoolList<BulkSetEntry>(entries.Count, entries.Count);
 
         Context ctx = new Context()
         {
-            originalBufferArray = buffer.UnsafeGetInternalArray(),
-            originalEntriesArray = entriesMemory.UnsafeGetInternalArray(),
+            originalSortBufferArray = sortBuffer.UnsafeGetInternalArray(),
+            originalEntriesArray = entries.UnsafeGetInternalArray(),
         };
 
         if (_traverseStack is null) _traverseStack = new Stack<TraverseStack>();
         else if (_traverseStack.Count > 0) _traverseStack.Clear();
+
+        TreePath path = TreePath.Empty;
+
         TrieNode? newRoot = BulkSet(
             ctx,
             _traverseStack,
-            entriesMemory.AsSpan(),
-            buffer.AsSpan(),
+            entries.AsSpan(),
+            sortBuffer.AsSpan(),
             ref path,
             RootRef,
             0,
-            (flags & Flags.DoNotParallelize) == 0,
             flags);
         RootRef = newRoot;
 
-        _writeBeforeCommit += entries.Length;
+        _writeBeforeCommit += entries.Count;
     }
 
     private struct Context
     {
         internal BulkSetEntry[] originalEntriesArray;
-        internal BulkSetEntry[] originalBufferArray;
+        internal BulkSetEntry[] originalSortBufferArray;
     }
 
     /// <param name="ctx">Just to reduce the param count</param>
     /// <param name="traverseStack">Stack used in set. Parallel call use different stack.</param>
     /// <param name="entries">The entries</param>
-    /// <param name="buffer">Entry buffer used during sort. May be flipped between this and `entries` on recursion.</param>
+    /// <param name="sortBuffer">Entry buffer used during sort. May be flipped between this and `entries` on recursion.</param>
     /// <param name="path"></param>
     /// <param name="node"></param>
     /// <param name="flipCount">Flip count, for parallelism.</param>
@@ -113,11 +113,10 @@ public partial class PatriciaTree
         in Context ctx,
         Stack<TraverseStack> traverseStack,
         Span<BulkSetEntry> entries,
-        Span<BulkSetEntry> buffer,
+        Span<BulkSetEntry> sortBuffer,
         ref TreePath path,
         TrieNode? node,
         int flipCount,
-        bool canParallelize,
         Flags flags)
     {
         TrieNode? originalNode = node;
@@ -153,25 +152,25 @@ public partial class PatriciaTree
         }
         else
         {
-            nibMask = BucketSort16(entries, buffer, path.Length, indexes);
+            nibMask = BucketSort16(entries, sortBuffer, path.Length, indexes);
             // Buffer is now partially sorted. Swap buffer and entries
             flipCount++;
 
             Span<BulkSetEntry> newBufferSpan = entries;
-            entries = buffer;
-            buffer = newBufferSpan;
+            entries = sortBuffer;
+            sortBuffer = newBufferSpan;
         }
 
         bool hasRemove = false;
         int nonNullChildCount = 0;
-        if (entries.Length >= MinEntriesToParallelizeThreshold && nibMask == FullBranch && canParallelize)
+        if (entries.Length >= MinEntriesToParallelizeThreshold && nibMask == FullBranch && !flags.HasFlag(Flags.DoNotParallelize))
         {
             (int startIdx, int count, int nibble, TreePath appendedPath, TrieNode? currentChild, TrieNode? newChild)[] jobs =
                 new (int startIdx, int count, int nibble, TreePath appendedPath, TrieNode? currentChild, TrieNode? newChild)[TrieNode.BranchesCount];
 
             Context closureCtx = ctx;
-            BulkSetEntry[] originalEntriesArray = (flipCount % 2 == 0) ? ctx.originalEntriesArray : ctx.originalBufferArray;
-            BulkSetEntry[] originalBufferArray = (flipCount % 2 == 0) ? ctx.originalBufferArray : ctx.originalEntriesArray;
+            BulkSetEntry[] originalEntriesArray = (flipCount % 2 == 0) ? ctx.originalEntriesArray : ctx.originalSortBufferArray;
+            BulkSetEntry[] originalBufferArray = (flipCount % 2 == 0) ? ctx.originalSortBufferArray : ctx.originalEntriesArray;
             TrieNode.ChildIterator childIterator = node.CreateChildIterator();
 
             while (nibMask != 0)
@@ -203,7 +202,7 @@ public partial class PatriciaTree
                     Span<BulkSetEntry> jobEntries = originalEntriesArray.AsSpan().Slice(startIdx, count);
                     Span<BulkSetEntry> bufferEntries = originalBufferArray.AsSpan().Slice(startIdx, count);
 
-                    TrieNode? newChild = BulkSet(in closureCtx, workerTraverseStack, jobEntries, bufferEntries, ref childPath, child, flipCount, false, flags); // Only parallelize at top level.
+                    TrieNode? newChild = BulkSet(in closureCtx, workerTraverseStack, jobEntries, bufferEntries, ref childPath, child, flipCount, flags & ~Flags.DoNotParallelize); // Only parallelize at top level.
                     jobs[i] = (startIdx, count, nib, childPath, child, newChild); // Just need the child actually...
 
                     return workerTraverseStack;
@@ -244,7 +243,7 @@ public partial class PatriciaTree
 
                 TrieNode newChild = (endRange - startRange == 1)
                     ? BulkSetOne(traverseStack, entries[startRange], ref path, child)
-                    : BulkSet(in ctx, traverseStack, entries[startRange..endRange], buffer[startRange..endRange], ref path, child, flipCount, canParallelize, flags);
+                    : BulkSet(in ctx, traverseStack, entries[startRange..endRange], sortBuffer[startRange..endRange], ref path, child, flipCount, flags);
 
                 if (!ShouldUpdateChild(node, child, newChild)) continue;
 
