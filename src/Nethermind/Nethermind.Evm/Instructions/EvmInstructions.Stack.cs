@@ -27,7 +27,7 @@ internal static partial class EvmInstructions
     /// <returns><see cref="EvmExceptionType.None"/> if successful; otherwise, <see cref="EvmExceptionType.StackUnderflow"/>.</returns>
     [SkipLocalsInit]
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public static EvmExceptionType InstructionPop(VirtualMachineBase vm, ref EvmStack stack, ref long gasAvailable, ref int programCounter)
+    public static EvmExceptionType InstructionPop(VirtualMachine vm, ref EvmStack stack, ref long gasAvailable, ref int programCounter)
     {
         // Deduct the minimal gas cost for a POP operation.
         gasAvailable -= GasCostOf.Base;
@@ -113,7 +113,7 @@ internal static partial class EvmInstructions
     /// Push operation for two bytes.
     /// </summary>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public static EvmExceptionType InstructionPush2<TTracingInst>(VirtualMachineBase vm, ref EvmStack stack, ref long gasAvailable, ref int programCounter)
+    public static EvmExceptionType InstructionPush2<TTracingInst>(VirtualMachine vm, ref EvmStack stack, ref long gasAvailable, ref int programCounter)
         where TTracingInst : struct, IFlag
     {
         const int Size = sizeof(ushort);
@@ -485,7 +485,7 @@ internal static partial class EvmInstructions
     /// <param name="programCounter">The program counter.</param>
     /// <returns><see cref="EvmExceptionType.None"/> on success.</returns>
     [SkipLocalsInit]
-    public static EvmExceptionType InstructionPush0<TTracingInst>(VirtualMachineBase vm, ref EvmStack stack, ref long gasAvailable, ref int programCounter)
+    public static EvmExceptionType InstructionPush0<TTracingInst>(VirtualMachine vm, ref EvmStack stack, ref long gasAvailable, ref int programCounter)
         where TTracingInst : struct, IFlag
     {
         gasAvailable -= GasCostOf.Base;
@@ -504,7 +504,7 @@ internal static partial class EvmInstructions
     /// <param name="programCounter">Reference to the program counter, which will be advanced.</param>
     /// <returns><see cref="EvmExceptionType.None"/> on success.</returns>
     [SkipLocalsInit]
-    public static EvmExceptionType InstructionPush<TOpCount, TTracingInst>(VirtualMachineBase vm, ref EvmStack stack, ref long gasAvailable, ref int programCounter)
+    public static EvmExceptionType InstructionPush<TOpCount, TTracingInst>(VirtualMachine vm, ref EvmStack stack, ref long gasAvailable, ref int programCounter)
         where TOpCount : IOpCount
         where TTracingInst : struct, IFlag
     {
@@ -529,7 +529,7 @@ internal static partial class EvmInstructions
     /// <param name="programCounter">Reference to the program counter.</param>
     /// <returns><see cref="EvmExceptionType.None"/> on success or <see cref="EvmExceptionType.StackUnderflow"/> if insufficient stack elements.</returns>
     [SkipLocalsInit]
-    public static EvmExceptionType InstructionDup<TOpCount, TTracingInst>(VirtualMachineBase vm, ref EvmStack stack, ref long gasAvailable, ref int programCounter)
+    public static EvmExceptionType InstructionDup<TOpCount, TTracingInst>(VirtualMachine vm, ref EvmStack stack, ref long gasAvailable, ref int programCounter)
         where TOpCount : IOpCount
         where TTracingInst : struct, IFlag
     {
@@ -548,7 +548,7 @@ internal static partial class EvmInstructions
     /// <param name="programCounter">Reference to the program counter.</param>
     /// <returns><see cref="EvmExceptionType.None"/> on success or <see cref="EvmExceptionType.StackUnderflow"/> if insufficient elements.</returns>
     [SkipLocalsInit]
-    public static EvmExceptionType InstructionSwap<TOpCount, TTracingInst>(VirtualMachineBase vm, ref EvmStack stack, ref long gasAvailable, ref int programCounter)
+    public static EvmExceptionType InstructionSwap<TOpCount, TTracingInst>(VirtualMachine vm, ref EvmStack stack, ref long gasAvailable, ref int programCounter)
         where TOpCount : IOpCount
         where TTracingInst : struct, IFlag
     {
@@ -572,7 +572,7 @@ internal static partial class EvmInstructions
     /// <see cref="EvmExceptionType.StackUnderflow"/>, <see cref="EvmExceptionType.StaticCallViolation"/>, or <see cref="EvmExceptionType.OutOfGas"/>.
     /// </returns>
     [SkipLocalsInit]
-    public static EvmExceptionType InstructionLog<TOpCount>(VirtualMachineBase vm, ref EvmStack stack, ref long gasAvailable, ref int programCounter)
+    public static EvmExceptionType InstructionLog<TOpCount>(VirtualMachine vm, ref EvmStack stack, ref long gasAvailable, ref int programCounter)
         where TOpCount : struct, IOpCount
     {
         EvmState vmState = vm.EvmState;

@@ -41,7 +41,7 @@ internal static partial class EvmInstructions
     /// <param name="programCounter">The program counter (unused in this operation).</param>
     /// <returns>An <see cref="EvmExceptionType"/> indicating success or a stack underflow error.</returns>
     [SkipLocalsInit]
-    public static EvmExceptionType InstructionBitwise<TOpBitwise>(VirtualMachineBase _, ref EvmStack stack, ref long gasAvailable, ref int programCounter)
+    public static EvmExceptionType InstructionBitwise<TOpBitwise>(VirtualMachine _, ref EvmStack stack, ref long gasAvailable, ref int programCounter)
         where TOpBitwise : struct, IOpBitwise
     {
         // Deduct the operation's gas cost.

@@ -10,7 +10,7 @@ using Nethermind.Evm.EvmObjectFormat;
 using Nethermind.Int256;
 using Nethermind.Evm.State;
 
-using static Nethermind.Evm.VirtualMachineBase;
+using static Nethermind.Evm.VirtualMachine;
 
 namespace Nethermind.Evm;
 
@@ -68,7 +68,7 @@ internal static partial class EvmInstructions
     /// <returns>An <see cref="EvmExceptionType"/> indicating success or the type of exception encountered.</returns>
     [SkipLocalsInit]
     public static EvmExceptionType InstructionCreate<TOpCreate, TTracingInst>(
-        VirtualMachineBase vm,
+        VirtualMachine vm,
         ref EvmStack stack,
         ref long gasAvailable,
         ref int programCounter)

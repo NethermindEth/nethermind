@@ -9,7 +9,7 @@ using Nethermind.Core.Specs;
 
 [assembly: InternalsVisibleTo("Nethermind.Evm.Precompiles")]
 namespace Nethermind.Evm;
-using unsafe OpCode = delegate*<VirtualMachineBase, ref EvmStack, ref long, ref int, EvmExceptionType>;
+using unsafe OpCode = delegate*<VirtualMachine, ref EvmStack, ref long, ref int, EvmExceptionType>;
 using Int256;
 
 internal static unsafe partial class EvmInstructions
@@ -328,7 +328,7 @@ internal static unsafe partial class EvmInstructions
     /// <param name="address">The target account address.</param>
     /// <param name="chargeForWarm">If true, charge even if the account is already warm.</param>
     /// <returns>True if gas was successfully charged; otherwise false.</returns>
-    private static bool ChargeAccountAccessGasWithDelegation(ref long gasAvailable, VirtualMachineBase vm, Address address, bool chargeForWarm = true)
+    private static bool ChargeAccountAccessGasWithDelegation(ref long gasAvailable, VirtualMachine vm, Address address, bool chargeForWarm = true)
     {
         IReleaseSpec spec = vm.Spec;
         if (!spec.UseHotAndColdStorage)
@@ -352,7 +352,7 @@ internal static unsafe partial class EvmInstructions
     /// <param name="address">The target account address.</param>
     /// <param name="chargeForWarm">If true, applies the warm read gas cost even if the account is warm.</param>
     /// <returns>True if the gas charge was successful; otherwise false.</returns>
-    private static bool ChargeAccountAccessGas(ref long gasAvailable, VirtualMachineBase vm, Address address, bool chargeForWarm = true)
+    private static bool ChargeAccountAccessGas(ref long gasAvailable, VirtualMachine vm, Address address, bool chargeForWarm = true)
     {
         bool result = true;
         IReleaseSpec spec = vm.Spec;
@@ -395,7 +395,7 @@ internal static unsafe partial class EvmInstructions
     /// <returns><c>true</c> if the gas charge was successfully applied; otherwise, <c>false</c> indicating an out-of-gas condition.</returns>
     private static bool ChargeStorageAccessGas(
         ref long gasAvailable,
-        VirtualMachineBase vm,
+        VirtualMachine vm,
         in StorageCell storageCell,
         StorageAccessType storageAccessType,
         IReleaseSpec spec)

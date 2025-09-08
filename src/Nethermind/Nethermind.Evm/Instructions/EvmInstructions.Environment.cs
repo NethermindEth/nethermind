@@ -9,7 +9,7 @@ using Nethermind.Core.Crypto;
 using Nethermind.Evm.EvmObjectFormat;
 using Nethermind.Evm.State;
 
-using static Nethermind.Evm.VirtualMachineBase;
+using static Nethermind.Evm.VirtualMachine;
 
 namespace Nethermind.Evm;
 using Int256;
@@ -30,7 +30,7 @@ internal static partial class EvmInstructions
         /// Executes the operation and returns the result as address.
         /// </summary>
         /// <param name="vmState">The current virtual machine state.</param>
-        abstract static Address Operation(VirtualMachineBase vm);
+        abstract static Address Operation(VirtualMachine vm);
     }
 
     /// <summary>
@@ -47,7 +47,7 @@ internal static partial class EvmInstructions
         /// Executes the operation and returns the result as ref to big endian word.
         /// </summary>
         /// <param name="vmState">The current virtual machine state.</param>
-        abstract static ref readonly ValueHash256 Operation(VirtualMachineBase vm);
+        abstract static ref readonly ValueHash256 Operation(VirtualMachine vm);
     }
 
     /// <summary>
@@ -92,7 +92,7 @@ internal static partial class EvmInstructions
         /// </summary>
         /// <param name="vmState">The current virtual machine state.</param>
         /// <param name="result">The resulting 256-bit unsigned integer.</param>
-        abstract static ref readonly UInt256 Operation(VirtualMachineBase vm);
+        abstract static ref readonly UInt256 Operation(VirtualMachine vm);
     }
 
     /// <summary>
@@ -131,7 +131,7 @@ internal static partial class EvmInstructions
         /// Executes the operation and returns the result as a UInt64.
         /// </summary>
         /// <param name="vmState">The current virtual machine state.</param>
-        abstract static ulong Operation(VirtualMachineBase vm);
+        abstract static ulong Operation(VirtualMachine vm);
     }
 
     /// <summary>
@@ -145,7 +145,7 @@ internal static partial class EvmInstructions
     /// <param name="programCounter">The program counter.</param>
     /// <returns>An EVM exception type if an error occurs.</returns>
     [SkipLocalsInit]
-    public static EvmExceptionType InstructionEnvAddress<TOpEnv, TTracingInst>(VirtualMachineBase vm, ref EvmStack stack, ref long gasAvailable, ref int programCounter)
+    public static EvmExceptionType InstructionEnvAddress<TOpEnv, TTracingInst>(VirtualMachine vm, ref EvmStack stack, ref long gasAvailable, ref int programCounter)
         where TOpEnv : struct, IOpEnvAddress
         where TTracingInst : struct, IFlag
     {
@@ -172,7 +172,7 @@ internal static partial class EvmInstructions
     /// <param name="programCounter">The program counter.</param>
     /// <returns>An EVM exception type if an error occurs.</returns>
     [SkipLocalsInit]
-    public static EvmExceptionType InstructionBlkAddress<TOpEnv, TTracingInst>(VirtualMachineBase vm, ref EvmStack stack, ref long gasAvailable, ref int programCounter)
+    public static EvmExceptionType InstructionBlkAddress<TOpEnv, TTracingInst>(VirtualMachine vm, ref EvmStack stack, ref long gasAvailable, ref int programCounter)
         where TOpEnv : struct, IOpBlkAddress
         where TTracingInst : struct, IFlag
     {
@@ -198,7 +198,7 @@ internal static partial class EvmInstructions
     /// <param name="programCounter">The program counter.</param>
     /// <returns>An EVM exception type if an error occurs.</returns>
     [SkipLocalsInit]
-    public static EvmExceptionType InstructionEnvUInt256<TOpEnv, TTracingInst>(VirtualMachineBase vm, ref EvmStack stack, ref long gasAvailable, ref int programCounter)
+    public static EvmExceptionType InstructionEnvUInt256<TOpEnv, TTracingInst>(VirtualMachine vm, ref EvmStack stack, ref long gasAvailable, ref int programCounter)
         where TOpEnv : struct, IOpEnvUInt256
         where TTracingInst : struct, IFlag
     {
@@ -221,7 +221,7 @@ internal static partial class EvmInstructions
     /// <param name="programCounter">The program counter.</param>
     /// <returns>An EVM exception type if an error occurs.</returns>
     [SkipLocalsInit]
-    public static EvmExceptionType InstructionBlkUInt256<TOpEnv, TTracingInst>(VirtualMachineBase vm, ref EvmStack stack, ref long gasAvailable, ref int programCounter)
+    public static EvmExceptionType InstructionBlkUInt256<TOpEnv, TTracingInst>(VirtualMachine vm, ref EvmStack stack, ref long gasAvailable, ref int programCounter)
         where TOpEnv : struct, IOpBlkUInt256
         where TTracingInst : struct, IFlag
     {
@@ -244,7 +244,7 @@ internal static partial class EvmInstructions
     /// <param name="programCounter">The program counter.</param>
     /// <returns>An EVM exception type if an error occurs.</returns>
     [SkipLocalsInit]
-    public static EvmExceptionType InstructionEnvUInt32<TOpEnv, TTracingInst>(VirtualMachineBase vm, ref EvmStack stack, ref long gasAvailable, ref int programCounter)
+    public static EvmExceptionType InstructionEnvUInt32<TOpEnv, TTracingInst>(VirtualMachine vm, ref EvmStack stack, ref long gasAvailable, ref int programCounter)
         where TOpEnv : struct, IOpEnvUInt32
         where TTracingInst : struct, IFlag
     {
@@ -267,7 +267,7 @@ internal static partial class EvmInstructions
     /// <param name="programCounter">The program counter.</param>
     /// <returns>An EVM exception type if an error occurs.</returns>
     [SkipLocalsInit]
-    public static EvmExceptionType InstructionEnvUInt64<TOpEnv, TTracingInst>(VirtualMachineBase vm, ref EvmStack stack, ref long gasAvailable, ref int programCounter)
+    public static EvmExceptionType InstructionEnvUInt64<TOpEnv, TTracingInst>(VirtualMachine vm, ref EvmStack stack, ref long gasAvailable, ref int programCounter)
         where TOpEnv : struct, IOpEnvUInt64
         where TTracingInst : struct, IFlag
     {
@@ -290,7 +290,7 @@ internal static partial class EvmInstructions
     /// <param name="programCounter">The program counter.</param>
     /// <returns>An EVM exception type if an error occurs.</returns>
     [SkipLocalsInit]
-    public static EvmExceptionType InstructionEnv32Bytes<TOpEnv, TTracingInst>(VirtualMachineBase vm, ref EvmStack stack, ref long gasAvailable, ref int programCounter)
+    public static EvmExceptionType InstructionEnv32Bytes<TOpEnv, TTracingInst>(VirtualMachine vm, ref EvmStack stack, ref long gasAvailable, ref int programCounter)
         where TOpEnv : struct, IOpEnv32Bytes
         where TTracingInst : struct, IFlag
     {
@@ -313,7 +313,7 @@ internal static partial class EvmInstructions
     /// <param name="programCounter">The program counter.</param>
     /// <returns>An EVM exception type if an error occurs.</returns>
     [SkipLocalsInit]
-    public static EvmExceptionType InstructionBlkUInt64<TOpEnv, TTracingInst>(VirtualMachineBase vm, ref EvmStack stack, ref long gasAvailable, ref int programCounter)
+    public static EvmExceptionType InstructionBlkUInt64<TOpEnv, TTracingInst>(VirtualMachine vm, ref EvmStack stack, ref long gasAvailable, ref int programCounter)
         where TOpEnv : struct, IOpBlkUInt64
         where TTracingInst : struct, IFlag
     {
@@ -349,7 +349,7 @@ internal static partial class EvmInstructions
     /// </summary>
     public struct OpTimestamp : IOpBlkUInt64
     {
-        public static ulong Operation(VirtualMachineBase vm)
+        public static ulong Operation(VirtualMachine vm)
             => vm.BlockExecutionContext.Header.Timestamp;
     }
 
@@ -358,7 +358,7 @@ internal static partial class EvmInstructions
     /// </summary>
     public struct OpNumber : IOpBlkUInt64
     {
-        public static ulong Operation(VirtualMachineBase vm)
+        public static ulong Operation(VirtualMachine vm)
             => vm.BlockExecutionContext.Number;
     }
 
@@ -367,7 +367,7 @@ internal static partial class EvmInstructions
     /// </summary>
     public struct OpGasLimit : IOpBlkUInt64
     {
-        public static ulong Operation(VirtualMachineBase vm)
+        public static ulong Operation(VirtualMachine vm)
             => vm.BlockExecutionContext.GasLimit;
     }
 
@@ -385,7 +385,7 @@ internal static partial class EvmInstructions
     /// </summary>
     public struct OpBaseFee : IOpBlkUInt256
     {
-        public static ref readonly UInt256 Operation(VirtualMachineBase vm)
+        public static ref readonly UInt256 Operation(VirtualMachine vm)
             => ref vm.BlockExecutionContext.Header.BaseFeePerGas;
     }
 
@@ -400,7 +400,7 @@ internal static partial class EvmInstructions
     /// <returns>
     /// <see cref="EvmExceptionType.None"/>, or <see cref="EvmExceptionType.BadInstruction"/> if blob base fee not set.
     /// </returns>
-    public static EvmExceptionType InstructionBlobBaseFee<TTracingInst>(VirtualMachineBase vm, ref EvmStack stack, ref long gasAvailable, ref int programCounter)
+    public static EvmExceptionType InstructionBlobBaseFee<TTracingInst>(VirtualMachine vm, ref EvmStack stack, ref long gasAvailable, ref int programCounter)
         where TTracingInst : struct, IFlag
     {
         ref readonly BlockExecutionContext context = ref vm.BlockExecutionContext;
@@ -422,7 +422,7 @@ internal static partial class EvmInstructions
     /// </summary>
     public struct OpGasPrice : IOpBlkUInt256
     {
-        public static ref readonly UInt256 Operation(VirtualMachineBase vm)
+        public static ref readonly UInt256 Operation(VirtualMachine vm)
             => ref vm.TxExecutionContext.GasPrice;
     }
 
@@ -458,7 +458,7 @@ internal static partial class EvmInstructions
     /// </summary>
     public struct OpOrigin : IOpEnv32Bytes
     {
-        public static ref readonly ValueHash256 Operation(VirtualMachineBase vm)
+        public static ref readonly ValueHash256 Operation(VirtualMachine vm)
             => ref vm.TxExecutionContext.Origin;
     }
 
@@ -467,7 +467,7 @@ internal static partial class EvmInstructions
     /// </summary>
     public struct OpCoinbase : IOpBlkAddress
     {
-        public static Address Operation(VirtualMachineBase vm)
+        public static Address Operation(VirtualMachine vm)
             => vm.BlockExecutionContext.Coinbase;
     }
 
@@ -476,7 +476,7 @@ internal static partial class EvmInstructions
     /// </summary>
     public struct OpChainId : IOpEnv32Bytes
     {
-        public static ref readonly ValueHash256 Operation(VirtualMachineBase vm)
+        public static ref readonly ValueHash256 Operation(VirtualMachine vm)
             => ref vm.ChainId;
     }
 
@@ -494,7 +494,7 @@ internal static partial class EvmInstructions
     /// or <see cref="EvmExceptionType.StackUnderflow"/> if not enough items on stack.
     /// </returns>
     [SkipLocalsInit]
-    public static EvmExceptionType InstructionBalance<TTracingInst>(VirtualMachineBase vm, ref EvmStack stack, ref long gasAvailable, ref int programCounter)
+    public static EvmExceptionType InstructionBalance<TTracingInst>(VirtualMachine vm, ref EvmStack stack, ref long gasAvailable, ref int programCounter)
         where TTracingInst : struct, IFlag
     {
         IReleaseSpec spec = vm.Spec;
@@ -529,7 +529,7 @@ internal static partial class EvmInstructions
     /// <see cref="EvmExceptionType.None"/>
     /// </returns>
     [SkipLocalsInit]
-    public static EvmExceptionType InstructionSelfBalance<TTracingInst>(VirtualMachineBase vm, ref EvmStack stack, ref long gasAvailable, ref int programCounter)
+    public static EvmExceptionType InstructionSelfBalance<TTracingInst>(VirtualMachine vm, ref EvmStack stack, ref long gasAvailable, ref int programCounter)
         where TTracingInst : struct, IFlag
     {
         gasAvailable -= GasCostOf.SelfBalance;
@@ -555,7 +555,7 @@ internal static partial class EvmInstructions
     /// or <see cref="EvmExceptionType.StackUnderflow"/> if not enough items on stack.
     /// </returns>
     [SkipLocalsInit]
-    public static EvmExceptionType InstructionExtCodeHash<TTracingInst>(VirtualMachineBase vm, ref EvmStack stack, ref long gasAvailable, ref int programCounter)
+    public static EvmExceptionType InstructionExtCodeHash<TTracingInst>(VirtualMachine vm, ref EvmStack stack, ref long gasAvailable, ref int programCounter)
         where TTracingInst : struct, IFlag
     {
         IReleaseSpec spec = vm.Spec;
@@ -601,7 +601,7 @@ internal static partial class EvmInstructions
     /// or <see cref="EvmExceptionType.StackUnderflow"/> if not enough items on stack.
     /// </returns>
     [SkipLocalsInit]
-    public static EvmExceptionType InstructionExtCodeHashEof<TTracingInst>(VirtualMachineBase vm, ref EvmStack stack, ref long gasAvailable, ref int programCounter)
+    public static EvmExceptionType InstructionExtCodeHashEof<TTracingInst>(VirtualMachine vm, ref EvmStack stack, ref long gasAvailable, ref int programCounter)
         where TTracingInst : struct, IFlag
     {
         IReleaseSpec spec = vm.Spec;
@@ -651,7 +651,7 @@ internal static partial class EvmInstructions
     /// <see cref="EvmExceptionType.None"/>
     /// </returns>
     [SkipLocalsInit]
-    public static EvmExceptionType InstructionPrevRandao<TTracingInst>(VirtualMachineBase vm, ref EvmStack stack, ref long gasAvailable, ref int programCounter)
+    public static EvmExceptionType InstructionPrevRandao<TTracingInst>(VirtualMachine vm, ref EvmStack stack, ref long gasAvailable, ref int programCounter)
         where TTracingInst : struct, IFlag
     {
         // Charge the base gas cost for this opcode.
@@ -672,7 +672,7 @@ internal static partial class EvmInstructions
     /// <see cref="EvmExceptionType.None"/> if gas is available, or <see cref="EvmExceptionType.OutOfGas"/> if the gas becomes negative.
     /// </returns>
     [SkipLocalsInit]
-    public static EvmExceptionType InstructionGas<TTracingInst>(VirtualMachineBase vm, ref EvmStack stack, ref long gasAvailable, ref int programCounter)
+    public static EvmExceptionType InstructionGas<TTracingInst>(VirtualMachine vm, ref EvmStack stack, ref long gasAvailable, ref int programCounter)
         where TTracingInst : struct, IFlag
     {
         // Deduct the base gas cost for reading gas.
@@ -704,7 +704,7 @@ internal static partial class EvmInstructions
     /// if there are insufficient elements on the stack.
     /// </returns>
     [SkipLocalsInit]
-    public static EvmExceptionType InstructionBlobHash<TTracingInst>(VirtualMachineBase vm, ref EvmStack stack, ref long gasAvailable, ref int programCounter)
+    public static EvmExceptionType InstructionBlobHash<TTracingInst>(VirtualMachine vm, ref EvmStack stack, ref long gasAvailable, ref int programCounter)
         where TTracingInst : struct, IFlag
     {
         // Deduct the gas cost for blob hash operation.
@@ -748,7 +748,7 @@ internal static partial class EvmInstructions
     /// otherwise, <see cref="EvmExceptionType.StackUnderflow"/> if there are insufficient stack elements.
     /// </returns>
     [SkipLocalsInit]
-    public static EvmExceptionType InstructionBlockHash<TTracingInst>(VirtualMachineBase vm, ref EvmStack stack, ref long gasAvailable, ref int programCounter)
+    public static EvmExceptionType InstructionBlockHash<TTracingInst>(VirtualMachine vm, ref EvmStack stack, ref long gasAvailable, ref int programCounter)
         where TTracingInst : struct, IFlag
     {
         // Deduct the gas cost for block hash operation.
