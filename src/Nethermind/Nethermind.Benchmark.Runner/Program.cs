@@ -51,7 +51,6 @@ namespace Nethermind.Benchmark.Runner
         public static void Main(string[] args)
         {
             BenchmarkRunner.Run(typeof(PatriciaTreeBenchmarks), new DebugInProcessConfig(), args);
-            /*
             List<Assembly> additionalJobAssemblies = [
                 typeof(JsonRpc.Benchmark.EthModuleBenchmarks).Assembly,
                 typeof(Benchmarks.Core.Keccak256Benchmarks).Assembly,
@@ -81,7 +80,6 @@ namespace Nethermind.Benchmark.Runner
 
                 BenchmarkRunner.Run(typeof(KeccakBenchmark).Assembly, new PrecompileBenchmarkConfig(), args);
             }
-            */
         }
     }
 }
