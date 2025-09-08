@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Collections.Generic;
 
 namespace Nethermind.Db
 {
@@ -18,7 +19,9 @@ namespace Nethermind.Db
 
         public bool DeleteOnStart { get; set; }
         public bool CanDeleteFolder { get; set; } = true;
+
         public IMergeOperator? MergeOperator { get; set; }
+        public Dictionary<string, IMergeOperator>? MergeOperatorByColumn { get; set; }
 
         public DbSettings Clone(string name, string path)
         {

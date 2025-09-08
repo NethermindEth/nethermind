@@ -148,7 +148,7 @@ public partial class DbOnTheRocks : IDb, ITunableDb, IReadOnlyNativeKeyValueStor
             // ReSharper disable once VirtualMemberCallInConstructor
             if (_logger.IsDebug) _logger.Debug($"Building options for {Name} DB");
             DbOptions = new DbOptions();
-            BuildOptions(_perTableDbConfig, DbOptions, sharedCache);
+            BuildOptions(_perTableDbConfig, DbOptions, sharedCache, _settings.MergeOperator);
 
             ColumnFamilies? columnFamilies = null;
             if (columnNames is not null)
@@ -160,7 +160,8 @@ public partial class DbOnTheRocks : IDb, ITunableDb, IReadOnlyNativeKeyValueStor
 
                     ColumnFamilyOptions options = new();
                     IRocksDbConfig columnConfig = _rocksDbConfigFactory.GetForDatabase(Name, columnFamily);
-                    BuildOptions(columnConfig, options, sharedCache);
+                    IMergeOperator? mergeOperator = _settings.MergeOperatorByColumn?.GetValueOrDefault(enumColumnName);
+                    BuildOptions(columnConfig, options, sharedCache, mergeOperator);
 
                     // "default" is a special column name with rocksdb, which is what previously not specifying column goes to
                     if (columnFamily == "Default") columnFamily = "default";
@@ -451,7 +452,7 @@ public partial class DbOnTheRocks : IDb, ITunableDb, IReadOnlyNativeKeyValueStor
         return asDict;
     }
 
-    protected virtual void BuildOptions<T>(IRocksDbConfig dbConfig, Options<T> options, IntPtr? sharedCache) where T : Options<T>
+    protected virtual void BuildOptions<T>(IRocksDbConfig dbConfig, Options<T> options, IntPtr? sharedCache, IMergeOperator? mergeOperator) where T : Options<T>
     {
         // This section is about the table factory.. and block cache apparently.
         // This effect the format of the SST files and usually require resync to take effect.
@@ -581,7 +582,7 @@ public partial class DbOnTheRocks : IDb, ITunableDb, IReadOnlyNativeKeyValueStor
             }
         }
 
-        if (_settings.MergeOperator is { } mergeOperator)
+        if (mergeOperator is not null)
         {
             options.SetMergeOperator(new MergeOperatorAdapter(mergeOperator));
             _doNotGcOptions.Add(options);

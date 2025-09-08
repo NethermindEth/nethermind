@@ -12,7 +12,7 @@ partial class LogIndexStorage
 {
     // TODO: check if success=false + paranoid_checks=true is better than throwing exception
     // TODO: tests for MergeOperator specifically?
-    private class MergeOperator(ILogIndexStorage logIndexStorage, ICompressor compressor) : IMergeOperator
+    private abstract class MergeOperator(ILogIndexStorage logIndexStorage) : IMergeOperator
     {
         private LogIndexUpdateStats _stats = new(logIndexStorage);
         public LogIndexUpdateStats GetAndResetStats() => Interlocked.Exchange(ref _stats, new(logIndexStorage));
@@ -103,7 +103,7 @@ partial class LogIndexStorage
                 if (result.Count % BlockNumSize != 0)
                     throw ValidationException("Invalid data length post-merge.");
 
-                compressor.TryEnqueue(key, result.AsSpan());
+                TryEnqueue(key, result.AsSpan());
 
                 success = true;
                 return result;
@@ -115,6 +115,8 @@ partial class LogIndexStorage
                 _stats.InMemoryMerging.Include(Stopwatch.GetElapsedTime(timestamp));
             }
         }
+
+        protected abstract bool TryEnqueue(ReadOnlySpan<byte> key, ReadOnlySpan<byte> value);
 
         private static int? FindNext(MergeOp op, RocksDbMergeEnumerator enumerator, ref int i)
         {
@@ -141,5 +143,19 @@ partial class LogIndexStorage
 
             return result;
         }
+    }
+
+    private class AddressMergeOperator(ILogIndexStorage logIndexStorage, ICompressor compressor):
+        MergeOperator(logIndexStorage)
+    {
+        protected override bool TryEnqueue(ReadOnlySpan<byte> key, ReadOnlySpan<byte> value) =>
+            compressor.TryEnqueueAddress(key, value);
+    }
+
+    private class TopicMergeOperator(ILogIndexStorage logIndexStorage, ICompressor compressor):
+        MergeOperator(logIndexStorage)
+    {
+        protected override bool TryEnqueue(ReadOnlySpan<byte> key, ReadOnlySpan<byte> value) =>
+            compressor.TryEnqueueTopic(key, value);
     }
 }

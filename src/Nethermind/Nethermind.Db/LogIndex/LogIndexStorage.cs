@@ -77,7 +77,7 @@ namespace Nethermind.Db
 
         private readonly int _maxReorgDepth;
 
-        private readonly MergeOperator _mergeOperator;
+        private readonly Dictionary<LogIndexColumns, MergeOperator> _mergeOperators;
         private readonly ICompressor _compressor;
         private readonly ICompactor _compactor;
 
@@ -99,9 +99,14 @@ namespace Nethermind.Db
             _logger = logManager.GetClassLogger<LogIndexStorage>();
             _compressor = new Compressor(this, _logger, ioParallelism ?? Defaults.IOParallelism);
             _compactor = compactionDistance.HasValue ? new Compactor(this, _logger, compactionDistance.Value) : new NoOpCompactor();
+            _mergeOperators = new()
+            {
+                { LogIndexColumns.Addresses, new AddressMergeOperator(this, _compressor) },
+                { LogIndexColumns.Topics, new TopicMergeOperator(this, _compressor) }
+            };
             _columnsDb = dbFactory.CreateColumnsDb<LogIndexColumns>(new("logIndexStorage", DbNames.LogIndex)
             {
-                MergeOperator = _mergeOperator = new(this, _compressor)
+                MergeOperatorByColumn = _mergeOperators.ToDictionary(x => $"{x.Key}", x => (IMergeOperator)x.Value)
             });
             _addressDb = _columnsDb.GetColumnDb(LogIndexColumns.Addresses);
             _topicsDb = _columnsDb.GetColumnDb(LogIndexColumns.Topics);
@@ -620,11 +625,15 @@ namespace Nethermind.Db
             using var addressIterator = db.GetIterator();
             foreach (var (key, value) in Enumerate(addressIterator))
             {
-                if (!IsCompressed(value) && value.Length >= minLengthToCompress)
-                {
-                    await _compressor.EnqueueAsync(key);
-                    counter++;
-                }
+                if (IsCompressed(value) || value.Length < minLengthToCompress)
+                    continue;
+
+                if (db == _addressDb)
+                    await _compressor.EnqueueAddressAsync(key);
+                else if (db == _topicsDb)
+                    await _compressor.EnqueueTopicAsync(key);
+
+                counter++;
             }
 
             return counter;
@@ -684,7 +693,8 @@ namespace Nethermind.Db
                 _setReceiptsSemaphore.Release();
             }
 
-            stats?.Combine(_mergeOperator.GetAndResetStats());
+            foreach (MergeOperator mergeOperator in _mergeOperators.Values)
+                stats?.Combine(mergeOperator.GetAndResetStats());
             stats?.PostMergeProcessing.Combine(_compressor.GetAndResetStats());
             stats?.Compacting.Combine(_compactor.GetAndResetStats());
             stats?.SetReceipts.Include(Stopwatch.GetElapsedTime(totalTimestamp));
