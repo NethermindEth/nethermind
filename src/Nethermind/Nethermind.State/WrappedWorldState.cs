@@ -29,7 +29,7 @@ public class WrappedWorldState(IWorldState innerWorldState) : IWorldState
     public virtual bool AddToBalanceAndCreateIfNotExists(Address address, in UInt256 balanceChange, IReleaseSpec spec)
         => _innerWorldState.AddToBalanceAndCreateIfNotExists(address, balanceChange, spec);
 
-    public IDisposable BeginScope(BlockHeader? baseBlock)
+    public virtual IDisposable BeginScope(BlockHeader? baseBlock)
         => _innerWorldState.BeginScope(baseBlock);
 
     public void ClearStorage(Address address)

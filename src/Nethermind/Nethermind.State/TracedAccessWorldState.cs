@@ -37,8 +37,11 @@ public class TracedAccessWorldState(IWorldState innerWorldState) : WrappedWorldS
         return _innerWorldState.AddToBalanceAndCreateIfNotExists(address, balanceChange, spec);
     }
 
-    // public IDisposable BeginScope(BlockHeader? baseBlock)
-    //     => innerWorldState.BeginScope(baseBlock);
+    public override IDisposable BeginScope(BlockHeader? baseBlock)
+    {
+        BlockAccessList = new();
+        return _innerWorldState.BeginScope(baseBlock);
+    }
 
     // public void ClearStorage(Address address)
     // => innerWorldState.ClearStorage(address);
