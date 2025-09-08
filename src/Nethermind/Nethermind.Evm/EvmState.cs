@@ -213,6 +213,35 @@ public sealed class EvmState : IDisposable // TODO: rename to CallState
         }
     }
 
+    /// <summary>
+    /// Constructor for a frame <see cref="EvmState"/> beneath top level.
+    /// </summary>
+    public static EvmState RentTopLevelFrame(
+        long gasAvailable,
+        long outputDestination,
+        long outputLength,
+        ExecutionType executionType,
+        bool isStatic,
+        bool isCreateOnPreExistingAccount,
+        in ExecutionEnvironment env,
+        in StackAccessTracker stateForAccessLists,
+        in Snapshot snapshot)
+    {
+        EvmState state = Rent();
+        state.Initialize(
+            gasAvailable,
+            outputDestination,
+            outputLength,
+            executionType,
+            isTopLevel: true,
+            isStatic: isStatic,
+            isCreateOnPreExistingAccount: isCreateOnPreExistingAccount,
+            env: env,
+            stateForAccessLists: stateForAccessLists,
+            snapshot: snapshot);
+        return state;
+    }
+
     public Address From => ExecutionType switch
     {
         ExecutionType.STATICCALL or ExecutionType.CALL or ExecutionType.CALLCODE or ExecutionType.CREATE
