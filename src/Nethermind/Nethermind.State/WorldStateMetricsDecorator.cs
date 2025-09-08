@@ -14,6 +14,7 @@ using Nethermind.Int256;
 
 namespace Nethermind.State;
 
+// use WrappedWorldState
 public class WorldStateMetricsDecorator(IWorldState innerState) : IWorldState
 {
     public void Restore(Snapshot snapshot) => innerState.Restore(snapshot);

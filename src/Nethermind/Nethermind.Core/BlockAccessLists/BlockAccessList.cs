@@ -46,6 +46,11 @@ public struct BlockAccessList : IEquatable<BlockAccessList>
 
     public void AddBalanceChange(Address address, UInt256? before, UInt256? after)
     {
+        if (address == Address.SystemUser)
+        {
+            return;
+        }
+
         BalanceChange balanceChange = new()
         {
             BlockAccessIndex = _blockAccessIndex,
@@ -129,7 +134,7 @@ public struct BlockAccessList : IEquatable<BlockAccessList>
         }
     }
 
-    public void AddStorageChange(Address address, UInt256 storageIndex, ReadOnlySpan<byte> newValue, ReadOnlySpan<byte> currentValue)
+    public void AddStorageChange(Address address, UInt256 storageIndex, ReadOnlySpan<byte> before, ReadOnlySpan<byte> after)
     {
         if (!_accountChanges.TryGetValue(address, out AccountChanges accountChanges))
         {
@@ -137,9 +142,9 @@ public struct BlockAccessList : IEquatable<BlockAccessList>
             _accountChanges.Add(address, accountChanges);
         }
 
-        if (currentValue != newValue)
+        if (before != after)
         {
-            StorageChange(accountChanges, new StorageCell(address, storageIndex).Hash.BytesAsSpan, newValue);
+            StorageChange(accountChanges, new StorageCell(address, storageIndex).Hash.BytesAsSpan, after);
         }
     }
 

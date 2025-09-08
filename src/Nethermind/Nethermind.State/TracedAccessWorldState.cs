@@ -4,19 +4,19 @@
 using System;
 using Nethermind.Core;
 using Nethermind.Core.BlockAccessLists;
-using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
-using Nethermind.Core.Eip2930;
 using Nethermind.Core.Specs;
 using Nethermind.Evm.State;
-using Nethermind.Evm.Tracing.State;
 using Nethermind.Int256;
 
 namespace Nethermind.State;
 
-public class TracedAccessWorldState(IWorldState innerWorldState) : WrappedWorldState(innerWorldState)
+public class TracedAccessWorldState(IWorldState innerWorldState) : WrappedWorldState(innerWorldState), IPreBlockCaches
 {
-    private BlockAccessList _bal = new();
+    public BlockAccessList BlockAccessList = new();
+
+    public PreBlockCaches Caches => (_innerWorldState as IPreBlockCaches).Caches;
+
     // public bool IsInScope => innerWorldState.IsInScope;
 
     // public Hash256 StateRoot => innerWorldState.StateRoot;
@@ -27,12 +27,15 @@ public class TracedAccessWorldState(IWorldState innerWorldState) : WrappedWorldS
     {
         UInt256 before = _innerWorldState.GetBalance(address);
         UInt256 after = before + balanceChange;
+        BlockAccessList.AddBalanceChange(address, before, after);
         _innerWorldState.AddToBalance(address, balanceChange, spec);
-        _bal.AddBalanceChange(address, before, after);
     }
 
-    // public bool AddToBalanceAndCreateIfNotExists(Address address, in UInt256 balanceChange, IReleaseSpec spec)
-    // => innerWorldState.AddToBalanceAndCreateIfNotExists(address, balanceChange, spec);
+    public override bool AddToBalanceAndCreateIfNotExists(Address address, in UInt256 balanceChange, IReleaseSpec spec)
+    {
+        BlockAccessList.AddBalanceChange(address, UInt256.Zero, balanceChange);
+        return _innerWorldState.AddToBalanceAndCreateIfNotExists(address, balanceChange, spec);
+    }
 
     // public IDisposable BeginScope(BlockHeader? baseBlock)
     //     => innerWorldState.BeginScope(baseBlock);
@@ -62,8 +65,11 @@ public class TracedAccessWorldState(IWorldState innerWorldState) : WrappedWorldS
     // public void DeleteAccount(Address address) =>
     //     innerWorldState.DeleteAccount(address);
 
-    // public ReadOnlySpan<byte> Get(in StorageCell storageCell) =>
-    //     innerWorldState.Get(storageCell);
+    public override ReadOnlySpan<byte> Get(in StorageCell storageCell)
+    {
+        BlockAccessList.AddStorageRead(storageCell);
+        return _innerWorldState.Get(storageCell);
+    }
 
     // public ArrayPoolList<AddressAsKey>? GetAccountChanges() =>
     //     innerWorldState.GetAccountChanges();
@@ -89,11 +95,19 @@ public class TracedAccessWorldState(IWorldState innerWorldState) : WrappedWorldS
     // public bool HasStateForBlock(BlockHeader? baseBlock) =>
     //     innerWorldState.HasStateForBlock(baseBlock);
 
-    // public void IncrementNonce(Address address, UInt256 delta) =>
-    //     innerWorldState.IncrementNonce(address, delta);
+    public override void IncrementNonce(Address address, UInt256 delta)
+    {
+        UInt256 oldNonce = _innerWorldState.GetNonce(address);
+        BlockAccessList.AddNonceChange(address, (ulong)(oldNonce + delta));
+        _innerWorldState.IncrementNonce(address, delta);
+    }
 
-    // public bool InsertCode(Address address, in ValueHash256 codeHash, ReadOnlyMemory<byte> code, IReleaseSpec spec, bool isGenesis = false) =>
-    //     innerWorldState.InsertCode(address, codeHash, code, spec, isGenesis);
+    public override bool InsertCode(Address address, in ValueHash256 codeHash, ReadOnlyMemory<byte> code, IReleaseSpec spec, bool isGenesis = false)
+    {
+        byte[] oldCode = _innerWorldState.GetCode(address);
+        BlockAccessList.AddCodeChange(address, oldCode, code.ToArray());
+        return _innerWorldState.InsertCode(address, codeHash, code, spec, isGenesis);
+    }
 
     // public bool IsContract(Address address) =>
     //     innerWorldState.IsContract(address);
@@ -113,24 +127,35 @@ public class TracedAccessWorldState(IWorldState innerWorldState) : WrappedWorldS
     // public void Restore(Snapshot snapshot) =>
     //     innerWorldState.Restore(snapshot);
 
-    // public void Set(in StorageCell storageCell, byte[] newValue) =>
-    //     innerWorldState.Set(storageCell, newValue);
+    public override void Set(in StorageCell storageCell, byte[] newValue)
+    {
+        ReadOnlySpan<byte> oldValue = _innerWorldState.Get(storageCell);
+        BlockAccessList.AddStorageChange(storageCell, [.. oldValue], newValue);
+        _innerWorldState.Set(storageCell, newValue);
+    }
 
-    // public void SetNonce(Address address, in UInt256 nonce) =>
-    //     innerWorldState.SetNonce(address, nonce);
+        // public override void SetNonce(Address address, in UInt256 nonce) =>
+        //     _innerWorldState.SetNonce(address, nonce);
 
-    // public void SetTransientState(in StorageCell storageCell, byte[] newValue) =>
-    //     innerWorldState.SetTransientState(storageCell, newValue);
+        // public void SetTransientState(in StorageCell storageCell, byte[] newValue) =>
+        //     innerWorldState.SetTransientState(storageCell, newValue);
 
-    // public void SubtractFromBalance(Address address, in UInt256 balanceChange, IReleaseSpec spec) =>
-    //     innerWorldState.SubtractFromBalance(address, balanceChange, spec);
+    public override void SubtractFromBalance(Address address, in UInt256 balanceChange, IReleaseSpec spec)
+    {
+        UInt256 before = _innerWorldState.GetBalance(address);
+        UInt256 after = before - balanceChange;
+        _innerWorldState.SubtractFromBalance(address, balanceChange, spec);
+        BlockAccessList.AddBalanceChange(address, before, after);
+    }
 
     // public Snapshot TakeSnapshot(bool newTransactionStart = false) =>
     //     innerWorldState.TakeSnapshot(newTransactionStart);
 
-    // public bool TryGetAccount(Address address, out AccountStruct account) =>
-    //     innerWorldState.TryGetAccount(address, out account);
-
+    public override bool TryGetAccount(Address address, out AccountStruct account)
+    {
+        BlockAccessList.AddAccountRead(address);
+        return _innerWorldState.TryGetAccount(address, out account);
+    }
     // public void UpdateStorageRoot(Address address, Hash256 storageRoot) =>
     //     innerWorldState.UpdateStorageRoot(address, storageRoot);
 

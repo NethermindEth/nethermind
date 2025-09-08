@@ -11,7 +11,6 @@ using Nethermind.Blockchain.Synchronization;
 using Nethermind.Blockchain.Utils;
 using Nethermind.Config;
 using Nethermind.Core;
-using Nethermind.Core.Crypto;
 using Nethermind.Core.Exceptions;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Timers;
@@ -80,8 +79,8 @@ public class PruningTrieStateFactory(
                 // Main thread should only read from prewarm caches, not spend extra time updating them.
                 populatePreBlockCache: false);
 
-        IWorldStateManager stateManager = new WorldStateManager(
-            worldState,
+        WorldStateManager stateManager = new(
+            new TracedAccessWorldState(worldState),
             trieStore,
             dbProvider,
             logManager,
@@ -104,10 +103,10 @@ public class PruningTrieStateFactory(
             preBlockCaches
         );
 
-        var verifyTrieStarter = new VerifyTrieStarter(stateManager, processExit!, logManager);
+        VerifyTrieStarter verifyTrieStarter = new(stateManager, processExit!, logManager);
         ManualPruningTrigger pruningTrigger = new();
         compositePruningTrigger.Add(pruningTrigger);
-        PruningTrieStateAdminRpcModule adminRpcModule = new PruningTrieStateAdminRpcModule(
+        PruningTrieStateAdminRpcModule adminRpcModule = new(
             pruningTrigger,
             blockTree,
             stateManager.GlobalStateReader,

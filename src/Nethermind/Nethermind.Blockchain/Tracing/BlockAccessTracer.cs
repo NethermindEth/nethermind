@@ -59,7 +59,7 @@ public class BlockAccessTracer : IBlockTracer, ITxTracer, IJournal<int>
     public void ReportMemoryChange(long offset, in ReadOnlySpan<byte> data) { }
 
     public void SetOperationStorage(Address address, UInt256 storageIndex, ReadOnlySpan<byte> newValue, ReadOnlySpan<byte> currentValue)
-        => _bal.AddStorageChange(address, storageIndex, newValue, currentValue);
+        => _bal.AddStorageChange(address, storageIndex, currentValue, newValue);
 
     public void LoadOperationStorage(Address address, UInt256 storageIndex, ReadOnlySpan<byte> value) { }
 
