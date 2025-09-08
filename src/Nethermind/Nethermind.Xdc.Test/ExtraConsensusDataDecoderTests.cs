@@ -32,4 +32,28 @@ internal class ExtraConsensusDataDecoderTests
         unencoded.Should().BeEquivalentTo(decodedExtraData);
     }
 
+    [TestCase(true)]
+    [TestCase(false)]
+    public void Decode_XdcExtraDataRlp_IsEquivalentAfterReencoding(bool useRlpStream)
+    {
+        ExtraFieldsV2 extraFields = new ExtraFieldsV2(1, new QuorumCert(new BlockInfo(Hash256.Zero, 1, 1), [new Signature(new byte[64], 0), new Signature(new byte[64], 0), new Signature(new byte[64], 0)], 0));
+        ExtraConsensusDataDecoder decoder = new();
+        var stream = new RlpStream(decoder.GetLength(extraFields));
+        decoder.Encode(stream, extraFields);
+
+        ExtraFieldsV2 decodedExtraData; 
+        if (useRlpStream)
+        {
+            stream.Position = 0;
+            decodedExtraData = decoder.Decode(stream);
+        }
+        else
+        {
+            Rlp.ValueDecoderContext context = new Rlp.ValueDecoderContext(stream.Data);
+            decodedExtraData = decoder.Decode(ref context);
+        }
+
+        decodedExtraData.Should().BeEquivalentTo(extraFields);
+    }
+
 }
