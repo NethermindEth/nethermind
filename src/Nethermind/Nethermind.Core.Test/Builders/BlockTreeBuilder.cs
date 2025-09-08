@@ -20,6 +20,7 @@ using Nethermind.State.Proofs;
 using Nethermind.State.Repositories;
 using Nethermind.Db.Blooms;
 using Nethermind.Evm;
+using Nethermind.Int256;
 using NSubstitute;
 using NUnit.Framework;
 
@@ -251,6 +252,7 @@ namespace Nethermind.Core.Test.Builders
                 .WithNumber(blockIndex + 1)
                 .WithParent(parent)
                 .WithWithdrawals(withWithdrawals ? new[] { TestItem.WithdrawalA_1Eth } : null)
+                .WithBaseFeePerGas(withWithdrawals ? UInt256.One : UInt256.Zero)
                 .WithBeneficiary(beneficiary);
 
             if (_stateRoot != null)
@@ -307,7 +309,7 @@ namespace Nethermind.Core.Test.Builders
                 currentBlock.Header.TxRoot = TxTrie.CalculateRoot(currentBlock.Transactions);
                 TxReceipt[] txReceipts = receipts.ToArray();
                 currentBlock.Header.ReceiptsRoot =
-                    ReceiptTrie<TxReceipt>.CalculateRoot(_specProvider.GetSpec(currentBlock.Header), txReceipts, Rlp.GetStreamDecoder<TxReceipt>()!);
+                    ReceiptTrie.CalculateRoot(_specProvider.GetSpec(currentBlock.Header), txReceipts, Rlp.GetStreamDecoder<TxReceipt>()!);
                 currentBlock.Header.Hash = currentBlock.CalculateHash();
                 foreach (TxReceipt txReceipt in txReceipts)
                 {

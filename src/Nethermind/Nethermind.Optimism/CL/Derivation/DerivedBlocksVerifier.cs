@@ -10,14 +10,9 @@ using Nethermind.Serialization.Rlp;
 
 namespace Nethermind.Optimism.CL.Derivation;
 
-public class DerivedBlocksVerifier : IDerivedBlocksVerifier
+public class DerivedBlocksVerifier(ILogManager logManager) : IDerivedBlocksVerifier
 {
-    private readonly ILogger _logger;
-
-    public DerivedBlocksVerifier(ILogger logger)
-    {
-        _logger = logger;
-    }
+    private readonly ILogger _logger = logManager.GetClassLogger();
 
     public bool ComparePayloadAttributes(OptimismPayloadAttributes expected, OptimismPayloadAttributes actual, ulong blockNumber)
     {

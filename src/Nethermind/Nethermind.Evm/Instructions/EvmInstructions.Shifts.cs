@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Runtime.CompilerServices;
+using Nethermind.Core;
 using static System.Runtime.CompilerServices.Unsafe;
 
 namespace Nethermind.Evm;
@@ -42,12 +43,13 @@ internal static partial class EvmInstructions
     /// <param name="gasAvailable">The available gas which is reduced by the operation's cost.</param>
     /// <param name="programCounter">Reference to the program counter.</param>
     /// <returns>
-    /// <see cref="EvmExceptionType.None"/> if the operation completes successfully; 
+    /// <see cref="EvmExceptionType.None"/> if the operation completes successfully;
     /// otherwise, <see cref="EvmExceptionType.StackUnderflow"/> if there are insufficient stack elements.
     /// </returns>
     [SkipLocalsInit]
-    public static EvmExceptionType InstructionShift<TOpShift>(VirtualMachine vm, ref EvmStack stack, ref long gasAvailable, ref int programCounter)
+    public static EvmExceptionType InstructionShift<TOpShift, TTracingInst>(VirtualMachine vm, ref EvmStack stack, ref long gasAvailable, ref int programCounter)
         where TOpShift : struct, IOpShift
+        where TTracingInst : struct, IFlag
     {
         // Deduct gas cost specific to the shift operation.
         gasAvailable -= TOpShift.GasCost;
@@ -60,7 +62,7 @@ internal static partial class EvmInstructions
         {
             // Pop the second operand without using its value.
             if (!stack.PopLimbo()) goto StackUnderflow;
-            stack.PushZero();
+            stack.PushZero<TTracingInst>();
         }
         else
         {
@@ -68,7 +70,7 @@ internal static partial class EvmInstructions
             if (!stack.PopUInt256(out UInt256 b)) goto StackUnderflow;
             // Perform the shift operation using the specific implementation.
             TOpShift.Operation(in a, in b, out UInt256 result);
-            stack.PushUInt256(in result);
+            stack.PushUInt256<TTracingInst>(in result);
         }
 
         return EvmExceptionType.None;
@@ -91,7 +93,8 @@ internal static partial class EvmInstructions
     /// if insufficient stack elements are available.
     /// </returns>
     [SkipLocalsInit]
-    public static EvmExceptionType InstructionSar(VirtualMachine vm, ref EvmStack stack, ref long gasAvailable, ref int programCounter)
+    public static EvmExceptionType InstructionSar<TTracingInst>(VirtualMachine vm, ref EvmStack stack, ref long gasAvailable, ref int programCounter)
+        where TTracingInst : struct, IFlag
     {
         // Deduct the gas cost for the arithmetic shift operation.
         gasAvailable -= GasCostOf.VeryLow;
@@ -106,12 +109,12 @@ internal static partial class EvmInstructions
             if (As<UInt256, Int256>(ref b).Sign >= 0)
             {
                 // Non-negative value: result is zero.
-                stack.PushZero();
+                stack.PushZero<TTracingInst>();
             }
             else
             {
                 // Negative value: result is -1 (all bits set).
-                stack.PushSignedInt256(in Int256.MinusOne);
+                stack.PushSignedInt256<TTracingInst>(in Int256.MinusOne);
             }
         }
         else
@@ -119,7 +122,7 @@ internal static partial class EvmInstructions
             // For a valid shift amount (<256), perform an arithmetic right shift.
             As<UInt256, Int256>(ref b).RightShift((int)a, out Int256 result);
             // Convert the signed result back to unsigned representation.
-            stack.PushUInt256(in As<Int256, UInt256>(ref result));
+            stack.PushUInt256<TTracingInst>(in As<Int256, UInt256>(ref result));
         }
 
         return EvmExceptionType.None;

@@ -60,11 +60,19 @@ namespace Nethermind.Runner.JsonRpc
 
         private async Task StartServer(string path, CancellationToken cancellationToken)
         {
-            DeleteSocketFileIfExists(path);
+            try
+            {
+                DeleteSocketFileIfExists(path);
 
-            _server = new(AddressFamily.Unix, SocketType.Stream, ProtocolType.Unspecified);
-            _server.Bind(new UnixDomainSocketEndPoint(path));
-            _server.Listen(0);
+                _server = new(AddressFamily.Unix, SocketType.Stream, ProtocolType.Unspecified);
+                _server.Bind(new UnixDomainSocketEndPoint(path));
+                _server.Listen(0);
+            }
+            catch (Exception ex)
+            {
+                if (_logger.IsError) _logger.Error($"Failed to start IPC server at {path}.", ex);
+                return;
+            }
 
             while (true)
             {

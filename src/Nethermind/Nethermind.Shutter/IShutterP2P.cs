@@ -11,6 +11,6 @@ namespace Nethermind.Shutter;
 
 public interface IShutterP2P
 {
-    Task Start(IEnumerable<Multiaddress> bootnodeP2PAddresses, Func<Dto.DecryptionKeys, Task> onKeysReceived, CancellationTokenSource? cts = null);
+    Task Start(IEnumerable<Multiaddress> bootnodeP2PAddresses, Func<Dto.DecryptionKeys, Task> onKeysReceived, CancellationToken cancellationToken);
     ValueTask DisposeAsync();
 }

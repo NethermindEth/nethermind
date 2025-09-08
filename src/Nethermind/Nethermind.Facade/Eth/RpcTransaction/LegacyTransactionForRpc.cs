@@ -30,9 +30,6 @@ public class LegacyTransactionForRpc : TransactionForRpc, ITxTyped, IFromTransac
     public Address? From { get; set; }
 
     [JsonIgnore(Condition = JsonIgnoreCondition.Never)]
-    public long? Gas { get; set; }
-
-    [JsonIgnore(Condition = JsonIgnoreCondition.Never)]
     public UInt256? Value { get; set; }
 
     // Required for compatibility with some CLs like Prysm
@@ -70,7 +67,7 @@ public class LegacyTransactionForRpc : TransactionForRpc, ITxTyped, IFromTransac
         From = transaction.SenderAddress;
         Gas = transaction.GasLimit;
         Value = transaction.Value;
-        Input = transaction.Data.AsArray() ?? [];
+        Input = transaction.Data.AsArray();
         GasPrice = transaction.GasPrice;
         ChainId = transaction.ChainId;
 
@@ -98,7 +95,7 @@ public class LegacyTransactionForRpc : TransactionForRpc, ITxTyped, IFromTransac
         tx.GasLimit = Gas ?? 90_000;
         tx.Value = Value ?? 0;
         tx.Data = Input;
-        tx.GasPrice = GasPrice ?? 20.GWei();
+        tx.GasPrice = GasPrice ?? 0;
         tx.ChainId = ChainId;
         tx.SenderAddress = From ?? Address.SystemUser;
         if ((R != 0 || S != 0) && (R is not null || S is not null))
@@ -123,7 +120,6 @@ public class LegacyTransactionForRpc : TransactionForRpc, ITxTyped, IFromTransac
         return tx;
     }
 
-    // TODO: Can we remove this code?
     public override void EnsureDefaults(long? gasCap)
     {
         if (gasCap is null || gasCap == 0)

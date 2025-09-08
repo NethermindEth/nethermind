@@ -26,46 +26,17 @@ namespace Nethermind.Init.Steps
     {
         private readonly IBasicApi _get;
         private readonly IApiWithStores _set;
+        private readonly INethermindApi _api;
 
         public InitializeBlockTree(INethermindApi api)
         {
             (_get, _set) = api.ForInit;
+            _api = api;
         }
 
         public Task Execute(CancellationToken cancellationToken)
         {
             IInitConfig initConfig = _get.Config<IInitConfig>();
-            IBloomConfig bloomConfig = _get.Config<IBloomConfig>();
-
-            IFileStoreFactory fileStoreFactory = initConfig.DiagnosticMode == DiagnosticMode.MemDb
-                ? new InMemoryDictionaryFileStoreFactory()
-                : new FixedSizeFileStoreFactory(Path.Combine(initConfig.BaseDbPath, DbNames.Bloom), DbNames.Bloom, Bloom.ByteLength);
-
-            IBloomStorage bloomStorage =
-                _set.BloomStorage = bloomConfig.Index
-                    ? new BloomStorage(bloomConfig, _get.DbProvider!.BloomDb, fileStoreFactory)
-                    : NullBloomStorage.Instance;
-
-            _get.DisposeStack.Push(bloomStorage);
-
-            IChainLevelInfoRepository chainLevelInfoRepository =
-                _set.ChainLevelInfoRepository = new ChainLevelInfoRepository(_get.DbProvider!.BlockInfosDb);
-
-            IBlockStore blockStore = new BlockStore(_get.DbProvider.BlocksDb);
-            IHeaderStore headerStore = new HeaderStore(_get.DbProvider.HeadersDb, _get.DbProvider.BlockNumbersDb);
-            IBadBlockStore badBlockStore = _set.BadBlocksStore = new BadBlockStore(_get.DbProvider.BadBlocksDb, initConfig.BadBlocksStored ?? 100);
-
-            IBlockTree blockTree = _set.BlockTree = new BlockTree(
-                blockStore,
-                headerStore,
-                _get.DbProvider.BlockInfosDb,
-                _get.DbProvider.MetadataDb,
-                badBlockStore,
-                chainLevelInfoRepository,
-                _get.SpecProvider,
-                bloomStorage,
-                _get.Config<ISyncConfig>(),
-                _get.LogManager);
 
             ISigner signer = NullSigner.Instance;
             ISignerStore signerStore = NullSigner.Instance;
@@ -79,35 +50,9 @@ namespace Nethermind.Init.Steps
             _set.EngineSigner = signer;
             _set.EngineSignerStore = signerStore;
 
-            IReceiptConfig receiptConfig = _set.Config<IReceiptConfig>();
-            ReceiptsRecovery receiptsRecovery = new(_get.EthereumEcdsa, _get.SpecProvider, !receiptConfig.CompactReceiptStore);
-            IReceiptStorage receiptStorage = _set.ReceiptStorage = receiptConfig.StoreReceipts
-                ? new PersistentReceiptStorage(
-                    _get.DbProvider.ReceiptsDb,
-                    _get.SpecProvider!,
-                    receiptsRecovery,
-                    blockTree,
-                    blockStore,
-                    receiptConfig,
-                    new ReceiptArrayStorageDecoder(receiptConfig.CompactReceiptStore))
-                : NullReceiptStorage.Instance;
-
-            IReceiptFinder receiptFinder = _set.ReceiptFinder = new FullInfoReceiptFinder(receiptStorage, receiptsRecovery, blockTree);
-
-            LogFinder logFinder = new(
-                blockTree,
-                receiptFinder,
-                receiptStorage,
-                bloomStorage,
-                _get.LogManager,
-                new ReceiptsRecovery(_get.EthereumEcdsa, _get.SpecProvider),
-                receiptConfig.MaxBlockDepth);
-
-            _set.LogFinder = logFinder;
-
             if (initConfig.ExitOnBlockNumber is not null)
             {
-                new ExitOnBlockNumberHandler(blockTree, _get.ProcessExit!, initConfig.ExitOnBlockNumber.Value, _get.LogManager);
+                new ExitOnBlockNumberHandler(_api.BlockTree, _get.ProcessExit!, initConfig.ExitOnBlockNumber.Value, _get.LogManager);
             }
 
             return Task.CompletedTask;

@@ -12,7 +12,6 @@ using Nethermind.Api;
 using Nethermind.Blockchain;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
-using Nethermind.Core.Events;
 using Nethermind.Db.Blooms;
 using Nethermind.Int256;
 using Nethermind.Logging;
@@ -46,7 +45,6 @@ namespace Nethermind.Init.Steps.Migrations
         public async Task Run(CancellationToken cancellationToken)
         {
             if (_api.BloomStorage is null) throw new StepDependencyException(nameof(_api.BloomStorage));
-            if (_api.Synchronizer is null) throw new StepDependencyException(nameof(_api.Synchronizer));
             if (_api.SyncModeSelector is null) throw new StepDependencyException(nameof(_api.SyncModeSelector));
 
             IBloomStorage? storage = _api.BloomStorage;

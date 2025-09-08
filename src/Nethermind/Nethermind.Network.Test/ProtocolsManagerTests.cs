@@ -15,6 +15,7 @@ using Nethermind.Core.Test.Builders;
 using Nethermind.Core.Timers;
 using Nethermind.Logging;
 using Nethermind.Network.Config;
+using Nethermind.Network.Contract.P2P;
 using Nethermind.Network.P2P;
 using Nethermind.Network.P2P.Analyzers;
 using Nethermind.Network.P2P.Messages;
@@ -24,6 +25,7 @@ using Nethermind.Network.P2P.Subprotocols.Eth.V62;
 using Nethermind.Network.P2P.Subprotocols.Eth.V62.Messages;
 using Nethermind.Network.Rlpx;
 using Nethermind.Specs;
+using Nethermind.Evm.State;
 using Nethermind.State;
 using Nethermind.State.SnapServer;
 using Nethermind.Stats;
@@ -70,6 +72,8 @@ public class ProtocolsManagerTests
         private readonly IPacketSender _packetSender;
         private readonly IBlockTree _blockTree;
         private readonly IGossipPolicy _gossipPolicy;
+        private readonly IPeerManager _peerManager;
+        private readonly INetworkConfig _networkConfig;
 
         public Context()
         {
@@ -87,7 +91,13 @@ public class ProtocolsManagerTests
             _txPool = Substitute.For<ITxPool>();
             _pooledTxsRequestor = Substitute.For<IPooledTxsRequestor>();
             _discoveryApp = Substitute.For<IDiscoveryApp>();
-            _serializer = new MessageSerializationService();
+
+            _serializer = new MessageSerializationService(
+                SerializerInfo.Create(new HelloMessageSerializer()),
+                SerializerInfo.Create(new StatusMessageSerializer()),
+                SerializerInfo.Create(new DisconnectMessageSerializer())
+                );
+
             _rlpxHost = Substitute.For<IRlpxHost>();
             _rlpxHost.LocalPort.Returns(_localPort);
             _rlpxHost.LocalNodeId.Returns(TestItem.PublicKeyA);
@@ -97,8 +107,10 @@ public class ProtocolsManagerTests
             _blockTree.NetworkId.Returns((ulong)TestBlockchainIds.NetworkId);
             _blockTree.ChainId.Returns((ulong)TestBlockchainIds.ChainId);
             _blockTree.Genesis.Returns(Build.A.Block.Genesis.TestObject.Header);
-            ForkInfo forkInfo = new ForkInfo(MainnetSpecProvider.Instance, _syncServer.Genesis.Hash!);
-            _protocolValidator = new ProtocolValidator(_nodeStatsManager, _blockTree, forkInfo, LimboLogs.Instance);
+            ForkInfo forkInfo = new ForkInfo(MainnetSpecProvider.Instance, _syncServer);
+            _peerManager = Substitute.For<IPeerManager>();
+            _networkConfig = new NetworkConfig();
+            _protocolValidator = new ProtocolValidator(_nodeStatsManager, _blockTree, forkInfo, _peerManager, _networkConfig, LimboLogs.Instance);
             _peerStorage = Substitute.For<INetworkStorage>();
             _syncPeerPool = Substitute.For<ISyncPeerPool>();
             _gossipPolicy = Substitute.For<IGossipPolicy>();
@@ -116,13 +128,8 @@ public class ProtocolsManagerTests
                 _peerStorage,
                 forkInfo,
                 _gossipPolicy,
-                new NetworkConfig(),
                 Substitute.For<IWorldStateManager>(),
                 LimboLogs.Instance);
-
-            _serializer.Register(new HelloMessageSerializer());
-            _serializer.Register(new StatusMessageSerializer());
-            _serializer.Register(new DisconnectMessageSerializer());
         }
 
         public Context CreateIncomingSession()
@@ -188,6 +195,12 @@ public class ProtocolsManagerTests
         public Context VerifyInitialized()
         {
             Assert.That(_currentSession.State, Is.EqualTo(SessionState.Initialized));
+            return this;
+        }
+
+        public Context VerifyProtocolVersion(string protocol, int version)
+        {
+            Assert.That(_manager.GetHighestProtocolVersion(protocol), Is.EqualTo(version));
             return this;
         }
 
@@ -475,5 +488,16 @@ public class ProtocolsManagerTests
             .VerifyInitialized()
             .ReceiveHelloEth(66)
             .VerifyInitialized();
+    }
+
+    [Test]
+    public void Has_correct_highest_eth_protocol_version()
+    {
+        When
+            .CreateIncomingSession()
+            .ActivateChannel()
+            .Handshake()
+            .Init()
+            .VerifyProtocolVersion(Protocol.Eth, 68);
     }
 }

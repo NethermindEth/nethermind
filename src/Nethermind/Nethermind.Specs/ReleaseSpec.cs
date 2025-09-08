@@ -1,8 +1,10 @@
-// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Collections.Generic;
 using Nethermind.Core;
+using Nethermind.Core.Precompiles;
 using Nethermind.Core.Specs;
 using Nethermind.Int256;
 
@@ -14,6 +16,7 @@ namespace Nethermind.Specs
         public long MaximumExtraDataSize { get; set; }
         public long MaxCodeSize { get; set; }
         public long MinGasLimit { get; set; }
+        public long MinHistoryRetentionEpochs { get; set; }
         public long GasLimitBoundDivisor { get; set; }
         public UInt256 BlockReward { get; set; }
         public long DifficultyBombDelay { get; set; }
@@ -83,19 +86,30 @@ namespace Nethermind.Specs
         public bool IsEip3860Enabled { get; set; }
         public bool IsEip4895Enabled { get; set; }
         public bool IsEip4844Enabled { get; set; }
+        public bool IsEip7951Enabled { get; set; }
         public bool IsRip7212Enabled { get; set; }
         public bool IsOpGraniteEnabled { get; set; }
         public bool IsOpHoloceneEnabled { get; set; }
+        public bool IsOpIsthmusEnabled { get; set; }
         public bool IsEip7623Enabled { get; set; }
+        public bool IsEip7883Enabled { get; set; }
         public bool IsEip5656Enabled { get; set; }
         public bool IsEip6780Enabled { get; set; }
         public bool IsEip4788Enabled { get; set; }
         public bool IsEip7702Enabled { get; set; }
+        public bool IsEip7823Enabled { get; set; }
         public bool IsEip4844FeeCollectorEnabled { get; set; }
         public bool IsEip7002Enabled { get; set; }
         public bool IsEip7251Enabled { get; set; }
+        public bool IsEip7825Enabled { get; set; }
+        public bool IsEip7918Enabled { get; set; }
+        public bool IsEip7934Enabled { get; set; }
+        public int Eip7934MaxRlpBlockSize { get; set; }
+        public bool IsEip7907Enabled { get; set; }
+
         public ulong TargetBlobCount { get; set; }
         public ulong MaxBlobCount { get; set; }
+        public ulong MaxBlobsPerTx => IsEip7594Enabled ? Math.Min(Eip7594Constants.MaxBlobsPerTx, MaxBlobCount) : MaxBlobCount;
         public UInt256 BlobBaseFeeUpdateFraction { get; set; }
 
 
@@ -141,8 +155,49 @@ namespace Nethermind.Specs
             set => _eip2935ContractAddress = value;
         }
 
+        public bool IsEip7594Enabled { get; set; }
+
         Array? IReleaseSpec.EvmInstructionsNoTrace { get; set; }
 
         Array? IReleaseSpec.EvmInstructionsTraced { get; set; }
+        public bool IsEip7939Enabled { get; set; }
+        public bool IsRip7728Enabled { get; set; }
+
+        private HashSet<AddressAsKey>? _precompiles;
+        HashSet<AddressAsKey> IReleaseSpec.Precompiles => _precompiles ??= BuildPrecompilesCache();
+
+        public virtual HashSet<AddressAsKey> BuildPrecompilesCache()
+        {
+            HashSet<AddressAsKey> cache = new();
+
+            cache.Add(PrecompiledAddresses.EcRecover);
+            cache.Add(PrecompiledAddresses.Sha256);
+            cache.Add(PrecompiledAddresses.Ripemd160);
+            cache.Add(PrecompiledAddresses.Identity);
+
+            if (IsEip198Enabled) cache.Add(PrecompiledAddresses.ModExp);
+            if (IsEip196Enabled && IsEip197Enabled)
+            {
+                cache.Add(PrecompiledAddresses.Bn128Add);
+                cache.Add(PrecompiledAddresses.Bn128Mul);
+                cache.Add(PrecompiledAddresses.Bn128Pairing);
+            }
+            if (IsEip152Enabled) cache.Add(PrecompiledAddresses.Blake2F);
+            if (IsEip4844Enabled) cache.Add(PrecompiledAddresses.PointEvaluation);
+            if (IsEip2537Enabled)
+            {
+                cache.Add(PrecompiledAddresses.Bls12G1Add);
+                cache.Add(PrecompiledAddresses.Bls12G1Mul);
+                cache.Add(PrecompiledAddresses.Bls12G1MultiExp);
+                cache.Add(PrecompiledAddresses.Bls12G2Add);
+                cache.Add(PrecompiledAddresses.Bls12G2Mul);
+                cache.Add(PrecompiledAddresses.Bls12G2MultiExp);
+                cache.Add(PrecompiledAddresses.Bls12Pairing);
+            }
+            if (IsRip7212Enabled || IsEip7951Enabled) cache.Add(PrecompiledAddresses.P256Verify);
+            if (IsRip7728Enabled) cache.Add(PrecompiledAddresses.L1Sload);
+
+            return cache;
+        }
     }
 }

@@ -9,13 +9,13 @@ using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Blockchain;
 using Nethermind.Serialization.Json;
 using Nethermind.Specs.ChainSpecStyle;
-using Nethermind.State;
+using Nethermind.Evm.State;
 
 namespace Nethermind.AuRa.Test.Contract
 {
     public class TestContractBlockchain : TestBlockchain
     {
-        public ChainSpec ChainSpec { get; set; }
+        public ChainSpec? ChainSpecOverride { get; set; }
 
         protected TestContractBlockchain()
         {
@@ -35,17 +35,25 @@ namespace Nethermind.AuRa.Test.Contract
             }
 
             (ChainSpec ChainSpec, ISpecProvider SpecProvider) provider = GetSpecProvider();
-            TTest test = new() { ChainSpec = provider.ChainSpec };
+            TTest test = new() { ChainSpecOverride = provider.ChainSpec };
             return (TTest)await test.Build(builder =>
                 builder.AddSingleton<ISpecProvider>(provider.SpecProvider));
+        }
+
+        protected override ChainSpec CreateChainSpec()
+        {
+            return ChainSpecOverride ?? base.CreateChainSpec();
         }
 
         protected override Block GetGenesisBlock(IWorldState worldState) =>
             new GenesisLoader(
                     ChainSpec,
                     SpecProvider,
+                    StateReader,
                     worldState,
-                    TxProcessor)
+                    TxProcessor,
+                    GenesisPostProcessor,
+                    LogManager)
                 .Load();
     }
 }

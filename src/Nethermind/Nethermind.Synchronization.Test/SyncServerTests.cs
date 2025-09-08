@@ -18,6 +18,7 @@ using Nethermind.Core.Specs;
 using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Db;
+using Nethermind.History;
 using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.Merge.Plugin;
@@ -39,6 +40,7 @@ using BlockTree = Nethermind.Blockchain.BlockTree;
 
 namespace Nethermind.Synchronization.Test;
 
+// TODO: add tests for new block notification for eth/69
 [Parallelizable(ParallelScope.All)]
 public class SyncServerTests
 {
@@ -103,6 +105,7 @@ public class SyncServerTests
             StaticSelector.Full,
             new TestSyncConfig(),
             Policy.FullGossip,
+            ctx.HistoryPruner,
             MainnetSpecProvider.Instance,
             LimboLogs.Instance);
 
@@ -145,6 +148,7 @@ public class SyncServerTests
             StaticSelector.Full,
             new TestSyncConfig(),
             Policy.FullGossip,
+            ctx.HistoryPruner,
             MainnetSpecProvider.Instance,
             LimboLogs.Instance);
 
@@ -182,6 +186,7 @@ public class SyncServerTests
             staticSelector,
             new TestSyncConfig(),
             Policy.FullGossip,
+            ctx.HistoryPruner,
             MainnetSpecProvider.Instance,
             LimboLogs.Instance);
 
@@ -250,6 +255,7 @@ public class SyncServerTests
             StaticSelector.Full,
             new TestSyncConfig(),
             Policy.FullGossip,
+            ctx.HistoryPruner,
             testSpecProvider,
             LimboLogs.Instance);
 
@@ -428,11 +434,9 @@ public class SyncServerTests
             testSpecProvider,
             new ChainSpec(),
             LimboLogs.Instance);
-        MergeSealEngine sealEngine = new(
-            new SealEngine(new NethDevSealEngine(), Always.Valid),
-            poSSwitcher,
-            new MergeSealValidator(poSSwitcher, Always.Valid),
-            LimboLogs.Instance);
+        MergeSealer mergeSealer = new(new NethDevSealEngine(), poSSwitcher);
+        MergeSealValidator mergeSealValidator = new MergeSealValidator(poSSwitcher, Always.Valid);
+        SealEngine sealEngine = new(mergeSealer, mergeSealValidator);
         HeaderValidator headerValidator = new(
             localBlockTree,
             sealEngine,
@@ -473,6 +477,7 @@ public class SyncServerTests
             StaticSelector.Full,
             new TestSyncConfig(),
             Policy.FullGossip,
+            ctx.HistoryPruner,
             testSpecProvider,
             LimboLogs.Instance);
         ctx.SpecProvider = testSpecProvider;
@@ -513,6 +518,7 @@ public class SyncServerTests
             StaticSelector.Full,
             new TestSyncConfig(),
             Policy.FullGossip,
+            ctx.HistoryPruner,
             MainnetSpecProvider.Instance,
             LimboLogs.Instance);
 
@@ -545,6 +551,7 @@ public class SyncServerTests
             StaticSelector.Full,
             new TestSyncConfig(),
             Policy.FullGossip,
+            ctx.HistoryPruner,
             MainnetSpecProvider.Instance,
             LimboLogs.Instance);
 
@@ -572,6 +579,7 @@ public class SyncServerTests
             StaticSelector.Full,
             new TestSyncConfig(),
             Policy.FullGossip,
+            ctx.HistoryPruner,
             MainnetSpecProvider.Instance,
             LimboLogs.Instance);
 
@@ -608,6 +616,7 @@ public class SyncServerTests
             StaticSelector.Full,
             new TestSyncConfig(),
             Policy.FullGossip,
+            ctx.HistoryPruner,
             MainnetSpecProvider.Instance,
             LimboLogs.Instance);
 
@@ -649,6 +658,7 @@ public class SyncServerTests
             StaticSelector.Full,
             new TestSyncConfig(),
             Policy.FullGossip,
+            ctx.HistoryPruner,
             MainnetSpecProvider.Instance,
             LimboLogs.Instance);
 
@@ -669,13 +679,67 @@ public class SyncServerTests
     }
 
     [Test]
+    public void Broadcast_BlockRangeUpdate_when_latest_increased_enough()
+    {
+        Context ctx = new();
+
+        const int frequency = 32;
+        BlockTree localBlockTree = Build.A.BlockTree().OfChainLength(1).TestObject;
+
+        ctx.SyncServer = new SyncServer(
+            ctx.WorldStateManager,
+            new MemDb(),
+            localBlockTree,
+            NullReceiptStorage.Instance,
+            Always.Valid,
+            Always.Valid,
+            ctx.PeerPool,
+            StaticSelector.Full,
+            new TestSyncConfig(),
+            Policy.FullGossip,
+            ctx.HistoryPruner,
+            MainnetSpecProvider.Instance,
+            LimboLogs.Instance);
+
+        PeerInfo[] peers = Enumerable.Range(0, 3)
+            .Select(_ => Substitute.For<ISyncPeer>())
+            .Select(p => new PeerInfo(p))
+            .ToArray();
+
+        ctx.PeerPool.AllPeers.Returns(peers);
+        ctx.PeerPool.PeerCount.Returns(peers.Length);
+
+        const int blocksCount = 100;
+        var startBlock = (int)localBlockTree.Head!.Number;
+        localBlockTree.AddBranch(blocksCount / 3, splitBlockNumber: startBlock, splitVariant: 0);
+        localBlockTree.AddBranch(blocksCount * 2 / 3, splitBlockNumber: startBlock, splitVariant: 0);
+        localBlockTree.AddBranch(blocksCount, splitBlockNumber: startBlock, splitVariant: 0);
+
+        var expectedUpdates = Enumerable.Range(startBlock + 1, blocksCount)
+            .Where(x => x % frequency == 0)
+            .Select(x => (earliest: localBlockTree.Genesis!.Number, latest: x))
+            .ToArray()[^2..];
+
+        foreach (PeerInfo peerInfo in peers)
+        {
+            Assert.That(
+                () => peerInfo.SyncPeer.ReceivedCalls()
+                    .Where(c => c.GetMethodInfo().Name == nameof(ISyncPeer.NotifyOfNewRange))
+                    .Select(c => c.GetArguments().Cast<BlockHeader>().Select(b => b.Number).ToArray())
+                    .Select(a => (earliest: a[0], latest: a[1])).ToArray()[^2..],
+                Is.EquivalentTo(expectedUpdates).After(5000, 100) // Wait for background notifications to finish
+            );
+        }
+    }
+
+    [Test]
     public void GetNodeData_returns_cached_trie_nodes()
     {
         Context ctx = new();
         BlockTree localBlockTree = Build.A.BlockTree().OfChainLength(600).TestObject;
         ISealValidator sealValidator = Substitute.For<ISealValidator>();
         MemDb stateDb = new();
-        TrieStore trieStore = new(stateDb, Prune.WhenCacheReaches(10.MB()), NoPersistence.Instance, LimboLogs.Instance);
+        TrieStore trieStore = TestTrieStoreFactory.Build(stateDb, Prune.WhenCacheReaches(10.MB()), NoPersistence.Instance, LimboLogs.Instance);
 
         IWorldStateManager worldStateManager = Substitute.For<IWorldStateManager>();
         worldStateManager.HashServer.Returns(trieStore.TrieNodeRlpStore);
@@ -691,6 +755,7 @@ public class SyncServerTests
             StaticSelector.Full,
             new TestSyncConfig(),
             Policy.FullGossip,
+            ctx.HistoryPruner,
             MainnetSpecProvider.Instance,
             LimboLogs.Instance);
 
@@ -702,7 +767,7 @@ public class SyncServerTests
             using (ICommitter committer = scopedTrieStore.BeginCommit(node))
             {
                 TreePath path = TreePath.Empty;
-                committer.CommitNode(ref path, new NodeCommitInfo(node));
+                committer.CommitNode(ref path, node);
             }
         }
 
@@ -720,6 +785,7 @@ public class SyncServerTests
 
             BlockTree = Substitute.For<IBlockTree>();
             WorldStateManager = Substitute.For<IWorldStateManager>();
+            HistoryPruner = Substitute.For<IHistoryPruner>();
 
             StaticSelector selector = StaticSelector.Full;
             SyncServer = new SyncServer(
@@ -733,11 +799,13 @@ public class SyncServerTests
                 selector,
                 new TestSyncConfig(),
                 Policy.FullGossip,
+                HistoryPruner,
                 MainnetSpecProvider.Instance,
                 LimboLogs.Instance);
         }
 
         public IBlockTree BlockTree { get; }
+        public IHistoryPruner HistoryPruner { get; }
         public IWorldStateManager WorldStateManager { get; }
         public ISyncPeerPool PeerPool { get; }
         public SyncServer SyncServer { get; set; }

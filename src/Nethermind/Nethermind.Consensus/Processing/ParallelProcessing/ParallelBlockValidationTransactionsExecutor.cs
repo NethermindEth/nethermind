@@ -3,15 +3,17 @@
 
 using System;
 using System.Threading;
+using Nethermind.Blockchain.Tracing;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
+using Nethermind.Evm;
 using Nethermind.Evm.Tracing;
 
 namespace Nethermind.Consensus.Processing.ParallelProcessing;
 
 public class ParallelBlockValidationTransactionsExecutor() : IBlockProcessor.IBlockTransactionsExecutor
 {
-    public TxReceipt[] ProcessTransactions(Block block, ProcessingOptions processingOptions, BlockReceiptsTracer receiptsTracer, IReleaseSpec spec, CancellationToken token = default)
+    public TxReceipt[] ProcessTransactions(Block block, ProcessingOptions processingOptions, BlockReceiptsTracer receiptsTracer, CancellationToken token = default)
     {
         for (int i = 0; i < block.Transactions.Length; i++)
         {
@@ -20,7 +22,12 @@ public class ParallelBlockValidationTransactionsExecutor() : IBlockProcessor.IBl
         }
 
         return [];
+
     }
 
     public event EventHandler<TxProcessedEventArgs>? TransactionProcessed;
+    public void SetBlockExecutionContext(in BlockExecutionContext blockExecutionContext)
+    {
+        throw new NotImplementedException();
+    }
 }

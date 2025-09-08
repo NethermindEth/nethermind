@@ -49,17 +49,41 @@ namespace Nethermind.JsonRpc.Modules.Eth
             public override ResultWrapper<TResult> Execute(
                 TransactionForRpc transactionCall,
                 BlockParameter? blockParameter,
-                Dictionary<Address, AccountOverride>? stateOverride = null)
+                Dictionary<Address, AccountOverride>? stateOverride = null,
+                SearchResult<BlockHeader>? searchResult = null)
             {
                 NoBaseFee = !transactionCall.ShouldSetBaseFee();
+
+                // default to previous block gas if unspecified
+                if (transactionCall.Gas is null)
+                {
+                    searchResult ??= _blockFinder.SearchForHeader(blockParameter);
+                    if (!searchResult.Value.IsError)
+                    {
+                        transactionCall.Gas = searchResult.Value.Object.GasLimit;
+                    }
+                }
+
+                // enforces gas cap
                 transactionCall.EnsureDefaults(_rpcConfig.GasCap);
-                return base.Execute(transactionCall, blockParameter, stateOverride);
+
+                return base.Execute(transactionCall, blockParameter, stateOverride, searchResult);
             }
 
             public ResultWrapper<TResult> ExecuteTx(TransactionForRpc transactionCall, BlockParameter? blockParameter, Dictionary<Address, AccountOverride>? stateOverride = null)
                 => Execute(transactionCall, blockParameter, stateOverride);
 
             protected abstract ResultWrapper<TResult> ExecuteTx(BlockHeader header, Transaction tx, Dictionary<Address, AccountOverride>? stateOverride, CancellationToken token);
+
+            protected ResultWrapper<TResult> CreateResultWrapper(bool inputError, string? errorMessage, TResult? bodyData)
+            {
+                if (inputError)
+                    return ResultWrapper<TResult>.Fail(errorMessage, ErrorCodes.InvalidInput);
+                if (errorMessage is not null)
+                    return ResultWrapper<TResult>.Fail(errorMessage, ErrorCodes.InvalidInput, bodyData);
+
+                return ResultWrapper<TResult>.Success(bodyData);
+            }
         }
 
         private class CallTxExecutor(IBlockchainBridge blockchainBridge, IBlockFinder blockFinder, IJsonRpcConfig rpcConfig)
@@ -69,9 +93,7 @@ namespace Nethermind.JsonRpc.Modules.Eth
             {
                 CallOutput result = _blockchainBridge.Call(header, tx, stateOverride, token);
 
-                return result.Error is null
-                    ? ResultWrapper<string>.Success(result.OutputData.ToHexString(true))
-                    : TryGetInputError(result) ?? ResultWrapper<string>.Fail("VM execution error.", ErrorCodes.ExecutionError, result.Error);
+                return CreateResultWrapper(result.InputError, result.Error, result.OutputData?.ToHexString(true));
             }
         }
 
@@ -84,12 +106,7 @@ namespace Nethermind.JsonRpc.Modules.Eth
             {
                 CallOutput result = _blockchainBridge.EstimateGas(header, tx, _errorMargin, stateOverride, token);
 
-                return result switch
-                {
-                    { Error: null } => ResultWrapper<UInt256?>.Success((UInt256)result.GasSpent),
-                    { InputError: true } => ResultWrapper<UInt256?>.Fail(result.Error, ErrorCodes.InvalidInput),
-                    _ => ResultWrapper<UInt256?>.Fail(result.Error, ErrorCodes.ExecutionError)
-                };
+                return CreateResultWrapper(result.InputError, result.Error, result.InputError || result.Error is not null ? null : (UInt256)result.GasSpent);
             }
         }
 
@@ -104,12 +121,7 @@ namespace Nethermind.JsonRpc.Modules.Eth
                     accessList: AccessListForRpc.FromAccessList(result.AccessList ?? tx.AccessList),
                     gasUsed: GetResultGas(tx, result));
 
-                return result switch
-                {
-                    { Error: null } => ResultWrapper<AccessListResultForRpc?>.Success(rpcAccessListResult),
-                    { InputError: true } => ResultWrapper<AccessListResultForRpc?>.Fail(result.Error, ErrorCodes.InvalidInput),
-                    _ => ResultWrapper<AccessListResultForRpc?>.Fail(result.Error, ErrorCodes.ExecutionError),
-                };
+                return CreateResultWrapper(result.InputError, result.Error, rpcAccessListResult);
             }
 
             private static UInt256 GetResultGas(Transaction transaction, CallOutput result)

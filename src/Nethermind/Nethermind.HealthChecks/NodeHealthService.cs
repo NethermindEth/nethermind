@@ -1,16 +1,16 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System;
-using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.IO.Abstractions;
+using Autofac.Features.AttributeFilters;
 using Nethermind.Api;
 using Nethermind.Blockchain.Services;
 using Nethermind.Consensus;
 using Nethermind.Consensus.Processing;
+using Nethermind.Core.Specs;
 using Nethermind.Facade.Eth;
-using Nethermind.JsonRpc;
+using Nethermind.Int256;
 using Nethermind.Synchronization;
 using Nethermind.Synchronization.ParallelSync;
 
@@ -32,10 +32,34 @@ namespace Nethermind.HealthChecks
         private readonly IHealthChecksConfig _healthChecksConfig;
         private readonly IHealthHintService _healthHintService;
         private readonly IEthSyncingInfo _ethSyncingInfo;
-        private readonly INethermindApi _api;
-        private readonly IRpcCapabilitiesProvider _rpcCapabilitiesProvider;
+        private readonly IClHealthTracker _clHealthTracker;
+        private readonly UInt256? _terminalTotalDifficulty;
         private readonly IDriveInfo[] _drives;
         private readonly bool _isMining;
+
+        public NodeHealthService(
+            ISyncServer syncServer,
+            IMainProcessingContext mainProcessingContext,
+            IBlockProducerRunner blockProducerRunner,
+            IHealthChecksConfig healthChecksConfig,
+            IHealthHintService healthHintService,
+            IEthSyncingInfo ethSyncingInfo,
+            IClHealthTracker clHealthTracker,
+            ISpecProvider specProvider,
+            [KeyFilter(nameof(IInitConfig.BaseDbPath))] IDriveInfo[] drives,
+            IInitConfig initConfig) : this(
+            syncServer,
+            mainProcessingContext.BlockchainProcessor,
+            blockProducerRunner,
+            healthChecksConfig,
+            healthHintService,
+            ethSyncingInfo,
+            clHealthTracker,
+            specProvider.TerminalTotalDifficulty,
+            drives,
+            initConfig.IsMining)
+        {
+        }
 
         public NodeHealthService(ISyncServer syncServer,
             IBlockchainProcessor blockchainProcessor,
@@ -43,8 +67,8 @@ namespace Nethermind.HealthChecks
             IHealthChecksConfig healthChecksConfig,
             IHealthHintService healthHintService,
             IEthSyncingInfo ethSyncingInfo,
-            IRpcCapabilitiesProvider rpcCapabilitiesProvider,
-            INethermindApi api,
+            IClHealthTracker clHealthTracker,
+            UInt256? terminalTotalDifficulty,
             IDriveInfo[] drives,
             bool isMining)
         {
@@ -55,8 +79,8 @@ namespace Nethermind.HealthChecks
             _blockchainProcessor = blockchainProcessor;
             _blockProducerRunner = blockProducerRunner;
             _ethSyncingInfo = ethSyncingInfo;
-            _rpcCapabilitiesProvider = rpcCapabilitiesProvider;
-            _api = api;
+            _clHealthTracker = clHealthTracker;
+            _terminalTotalDifficulty = terminalTotalDifficulty;
             _drives = drives;
         }
 
@@ -68,7 +92,7 @@ namespace Nethermind.HealthChecks
             long netPeerCount = _syncServer.GetPeerCount();
             SyncingResult syncingResult = _ethSyncingInfo.GetFullInfo();
 
-            if (_api.SpecProvider!.TerminalTotalDifficulty is not null)
+            if (_terminalTotalDifficulty is not null)
             {
                 bool syncHealthy = CheckSyncPostMerge(messages, errors, syncingResult);
 
@@ -132,6 +156,8 @@ namespace Nethermind.HealthChecks
             return new CheckHealthResult() { Healthy = healthy, Errors = errors, Messages = messages, IsSyncing = syncingResult.IsSyncing };
         }
 
+        public bool CheckClAlive() => _clHealthTracker?.CheckClAlive() ?? true;
+
         private ulong? GetBlockProcessorIntervalHint()
         {
             return _healthChecksConfig.MaxIntervalWithoutProcessedBlock ??
@@ -164,41 +190,6 @@ namespace Nethermind.HealthChecks
                 AddFullySyncMessage(messages);
             }
 
-            return true;
-        }
-
-        public bool CheckClAlive()
-        {
-            var now = _api.Timestamper.UtcNow;
-            var capabilities = _rpcCapabilitiesProvider.GetEngineCapabilities();
-            bool result = false;
-            foreach (var capability in capabilities)
-            {
-                if (capability.Value.Enabled)
-                {
-                    result |= UpdateStatsAndCheckInvoked(capability.Key, now);
-                }
-            }
-            return result;
-        }
-
-        private readonly ConcurrentDictionary<string, DateTime> _previousSuccessfulCheckTime = new();
-        private readonly ConcurrentDictionary<string, int> _previousMethodCallSuccesses = new();
-
-        private bool UpdateStatsAndCheckInvoked(string methodName, DateTime now)
-        {
-            var methodCallSuccesses = _api.JsonRpcLocalStats!.GetMethodStats(methodName).Successes;
-            var previousSuccesses = _previousMethodCallSuccesses.GetOrAdd(methodName, 0);
-            var lastSuccessfulCheckTime = _previousSuccessfulCheckTime.GetOrAdd(methodName, now);
-
-            if (methodCallSuccesses == previousSuccesses)
-            {
-                int diff = (int)(Math.Floor((now - lastSuccessfulCheckTime).TotalSeconds));
-                return diff <= _healthChecksConfig.MaxIntervalClRequestTime;
-            }
-
-            _previousSuccessfulCheckTime[methodName] = now;
-            _previousMethodCallSuccesses[methodName] = methodCallSuccesses;
             return true;
         }
 

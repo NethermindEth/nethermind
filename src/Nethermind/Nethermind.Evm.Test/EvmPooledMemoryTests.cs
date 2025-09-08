@@ -9,16 +9,17 @@ using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Crypto;
-using Nethermind.Db;
 using Nethermind.Evm.Tracing;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.Specs;
 using Nethermind.Specs.Forks;
-using Nethermind.State;
-using Nethermind.Trie.Pruning;
+using Nethermind.Evm.State;
 using FluentAssertions;
+using Nethermind.Blockchain;
+using Nethermind.Core.Test;
+using Nethermind.State;
 using NUnit.Framework;
 
 namespace Nethermind.Evm.Test;
@@ -37,12 +38,12 @@ public class EvmPooledMemoryTests : EvmMemoryTestsBase
     [TestCase(int.MaxValue, int.MaxValue / 32 + 1)]
     public void Div32Ceiling(int input, int expectedResult)
     {
-        long result = EvmPooledMemory.Div32Ceiling((ulong)input);
+        long result = EvmInstructions.Div32Ceiling((ulong)input);
         TestContext.Out.WriteLine($"Memory cost (gas): {result}");
         Assert.That(result, Is.EqualTo(expectedResult));
     }
 
-    private const int MaxCodeSize = 24576;
+    private const int MaxCodeSize = CodeSizeConstants.MaxCodeSizeEip170;
 
     [TestCase(0, 0)]
     [TestCase(0, 32)]
@@ -147,27 +148,23 @@ public class EvmPooledMemoryTests : EvmMemoryTestsBase
         long blocknr = 12965000;
         long gas = 34218;
         ulong ts = 123456;
-        MemDb stateDb = new();
-        TrieStore trieStore = new(
-                stateDb,
-                LimboLogs.Instance);
-        IWorldState stateProvider = new WorldState(
-                trieStore,
-                new MemDb(),
-                LimboLogs.Instance);
+        IWorldStateManager worldStateManager = TestWorldStateFactory.CreateForTest();
+        IWorldState stateProvider = worldStateManager.GlobalWorldState;
         ISpecProvider specProvider = new TestSpecProvider(London.Instance);
-        CodeInfoRepository codeInfoRepository = new();
+        EthereumCodeInfoRepository codeInfoRepository = new();
         VirtualMachine virtualMachine = new(
             new TestBlockhashProvider(specProvider),
                 specProvider,
                 LimboLogs.Instance);
-        TransactionProcessor transactionProcessor = new TransactionProcessor(
+        ITransactionProcessor transactionProcessor = new TransactionProcessor(
                 specProvider,
                 stateProvider,
                 virtualMachine,
                 codeInfoRepository,
                 LimboLogs.Instance);
 
+        Hash256 stateRoot = null;
+        using var _ = stateProvider.BeginScope(IWorldState.PreGenesis);
         stateProvider.CreateAccount(to, 123);
         stateProvider.InsertCode(to, input, specProvider.GenesisSpec);
 
@@ -175,6 +172,7 @@ public class EvmPooledMemoryTests : EvmMemoryTestsBase
         stateProvider.Commit(specProvider.GenesisSpec);
 
         stateProvider.CommitTree(0);
+        stateRoot = stateProvider.StateRoot;
 
         Transaction tx = Build.A.Transaction.
             WithData(input).
@@ -191,6 +189,7 @@ public class EvmPooledMemoryTests : EvmMemoryTestsBase
             WithTransactions(tx).
             WithGasLimit(30000000).
             WithDifficulty(0).
+            WithStateRoot(stateRoot).
             TestObject;
         MyTracer tracer = new();
         transactionProcessor.Execute(
@@ -373,7 +372,7 @@ public class MyTracer : ITxTracer, IDisposable
         throw new NotImplementedException();
     }
 
-    public void ReportAccess(IReadOnlySet<Address> accessedAddresses, IReadOnlySet<StorageCell> accessedStorageCells)
+    public void ReportAccess(IReadOnlyCollection<Address> accessedAddresses, IReadOnlyCollection<StorageCell> accessedStorageCells)
     {
         throw new NotImplementedException();
     }

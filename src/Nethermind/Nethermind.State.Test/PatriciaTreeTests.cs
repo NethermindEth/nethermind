@@ -4,6 +4,7 @@
 using FluentAssertions;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Db;
 using Nethermind.Int256;
@@ -15,14 +16,18 @@ using NUnit.Framework;
 
 namespace Nethermind.Store.Test
 {
-    [TestFixture, Parallelizable(ParallelScope.All)]
-    public class PatriciaTreeTests
+    [TestFixture(true)]
+    [TestFixture(false)]
+    [Parallelizable(ParallelScope.All)]
+    public class PatriciaTreeTests(bool useFullTrieStore)
     {
         [Test]
         public void Create_commit_change_balance_get()
         {
             Account account = new(1);
-            StateTree stateTree = new();
+            using ITrieStore trieStore = CreateTrieStore();
+            using var _ = trieStore.BeginBlockCommit(0);
+            StateTree stateTree = new(trieStore.GetTrieStore(null), LimboLogs.Instance);
             stateTree.Set(TestItem.AddressA, account);
             stateTree.Commit();
 
@@ -38,14 +43,19 @@ namespace Nethermind.Store.Test
         public void Create_create_commit_change_balance_get()
         {
             Account account = new(1);
-            StateTree stateTree = new();
-            stateTree.Set(TestItem.AddressA, account);
-            stateTree.Set(TestItem.AddressB, account);
-            stateTree.Commit();
+            using ITrieStore trieStore = CreateTrieStore();
+            StateTree stateTree = new(trieStore.GetTrieStore(null), LimboLogs.Instance);
 
-            account = account.WithChangedBalance(2);
-            stateTree.Set(TestItem.AddressA, account);
-            stateTree.Commit();
+            {
+                using var _ = trieStore.BeginBlockCommit(0);
+                stateTree.Set(TestItem.AddressA, account);
+                stateTree.Set(TestItem.AddressB, account);
+                stateTree.Commit();
+
+                account = account.WithChangedBalance(2);
+                stateTree.Set(TestItem.AddressA, account);
+                stateTree.Commit();
+            }
 
             Account accountRestored = stateTree.Get(TestItem.AddressA);
             Assert.That(accountRestored.Balance, Is.EqualTo((UInt256)2));
@@ -54,20 +64,27 @@ namespace Nethermind.Store.Test
         [Test]
         public void Create_commit_reset_change_balance_get()
         {
+            if (useFullTrieStore) Assert.Ignore("immediate key count does not work with pruning try store");
+
             MemDb db = new();
             Account account = new(1);
-            StateTree stateTree = new(new TrieStore(db, LimboLogs.Instance), LimboLogs.Instance);
-            stateTree.Set(TestItem.AddressA, account);
-            stateTree.Commit();
+            using ITrieStore trieStore = CreateTrieStore(db);
 
-            Hash256 rootHash = stateTree.RootHash;
-            stateTree.RootHash = null;
+            {
+                using var _ = trieStore.BeginBlockCommit(0);
+                StateTree stateTree = new(trieStore.GetTrieStore(null), LimboLogs.Instance);
+                stateTree.Set(TestItem.AddressA, account);
+                stateTree.Commit();
 
-            stateTree.RootHash = rootHash;
-            stateTree.Get(TestItem.AddressA);
-            account = account.WithChangedBalance(2);
-            stateTree.Set(TestItem.AddressA, account);
-            stateTree.Commit();
+                Hash256 rootHash = stateTree.RootHash;
+                stateTree.RootHash = null;
+
+                stateTree.RootHash = rootHash;
+                stateTree.Get(TestItem.AddressA);
+                account = account.WithChangedBalance(2);
+                stateTree.Set(TestItem.AddressA, account);
+                stateTree.Commit();
+            }
 
             Assert.That(db.Keys.Count, Is.EqualTo(2));
         }
@@ -76,24 +93,48 @@ namespace Nethermind.Store.Test
         [TestCase(false, true)]
         public void Commit_with_skip_root_should_skip_root(bool skipRoot, bool hasRoot)
         {
-            MemDb db = new();
-            TrieStore trieStore = new TrieStore(db, LimboLogs.Instance);
+            using ITrieStore fullTrieStore = CreateTrieStore();
+            IScopedTrieStore trieStore = fullTrieStore.GetTrieStore(null);
             Account account = new(1);
 
-            StateTree stateTree = new(trieStore, LimboLogs.Instance);
-            stateTree.Set(TestItem.AddressA, account);
-            stateTree.UpdateRootHash();
-            Hash256 stateRoot = stateTree.RootHash;
-            stateTree.Commit(skipRoot);
+            Hash256 stateRoot;
+            {
+                using var _ = fullTrieStore.BeginBlockCommit(0);
+                StateTree stateTree = new(trieStore, LimboLogs.Instance);
+                stateTree.Set(TestItem.AddressA, account);
+                stateTree.UpdateRootHash();
+                stateRoot = stateTree.RootHash;
+                stateTree.Commit(skipRoot);
+            }
 
-            if (hasRoot)
-            {
-                trieStore.LoadRlp(null, TreePath.Empty, stateRoot).Length.Should().BeGreaterThan(0);
-            }
-            else
-            {
-                trieStore.Invoking(ts => ts.LoadRlp(null, TreePath.Empty, stateRoot)).Should().Throw<TrieException>();
-            }
+            fullTrieStore.HasRoot(stateRoot).Should().Be(hasRoot);
+        }
+
+
+        [Test]
+        public void Modify_LeafOnlyNode_And_RecalculateRoot()
+        {
+            using ITrieStore fullTrieStore = CreateTrieStore();
+            IScopedTrieStore trieStore = fullTrieStore.GetTrieStore(null);
+
+            PatriciaTree tree = new(trieStore, LimboLogs.Instance);
+            tree.Set(new ValueHash256("2222222222222222222222222222222222222222222222222222222222222222").BytesAsSpan, [1]);
+            tree.UpdateRootHash();
+
+            Hash256 rootHash = tree.RootHash;
+
+            tree.Set(new ValueHash256("2222222222222222222222222222222222222222222222222222222222222222").BytesAsSpan, [2]);
+            tree.UpdateRootHash();
+
+            tree.RootHash.Should().NotBe(rootHash);
+        }
+
+        private ITrieStore CreateTrieStore(IDb db = null)
+        {
+            db ??= new MemDb();
+            return useFullTrieStore
+                ? TestTrieStoreFactory.Build(db, LimboLogs.Instance)
+                : new TestRawTrieStore(new NodeStorage(db));
         }
     }
 }

@@ -19,9 +19,9 @@ public class EraExporterTests
     [TestCase(32, 8, 0, 16, 2)]
     [TestCase(48, 8, 40 - 1, 16, 2)]
     [TestCase(64 * 2 + 1, 0, 64 * 2 + 1 - 1, 64, 3)]
-    public async Task Export_ChainHasDifferentLength_CorrectNumberOfFilesCreated(int chainlength, int start, int end, int size, int expectedNumberOfFiles)
+    public async Task Export_ChainHasDifferentLength_CorrectNumberOfFilesCreated_WithFileName(int chainLength, int start, int end, int size, int expectedNumberOfFiles)
     {
-        await using IContainer container = EraTestModule.BuildContainerBuilderWithBlockTreeOfLength(chainlength)
+        await using IContainer container = EraTestModule.BuildContainerBuilderWithBlockTreeOfLength(chainLength)
             .AddSingleton<IEraConfig>(new EraConfig() { MaxEra1Size = size })
             .Build();
 
@@ -32,6 +32,27 @@ public class EraExporterTests
         int fileCount = container.Resolve<IFileSystem>().Directory.GetFiles(tmpDirectory).Length;
         int metaFile = 2;
         Assert.That(fileCount, Is.EqualTo(expectedNumberOfFiles + metaFile));
+        string[] files = Directory.GetFiles(tmpDirectory);
+        foreach (string file in files)
+        {
+            if (Path.GetFileName(file).Equals("accumulators.txt") || Path.GetFileName(file).Equals("checksums.txt"))
+            {
+                foreach (string line in File.ReadLines(file))
+                {
+                    ReadOnlySpan<char> lineSpan = line.AsSpan();
+                    int spaceIndex = lineSpan.IndexOf(' ');
+
+                    Assert.That(spaceIndex, Is.GreaterThan(0)); // not at beginning
+                    Assert.That(spaceIndex, Is.LessThan(lineSpan.Length - 1)); // not at end
+
+                    int secondSpaceIndex = lineSpan[(spaceIndex + 1)..].IndexOf(' ');
+                    Assert.That(secondSpaceIndex, Is.EqualTo(-1), "More than two words found");
+
+                    ReadOnlySpan<char> secondWord = lineSpan[(spaceIndex + 1)..];
+                    Assert.That(secondWord.EndsWith(".era1".AsSpan()));
+                }
+            }
+        }
     }
 
     [TestCase(1, 1)]

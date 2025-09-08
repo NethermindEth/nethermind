@@ -64,6 +64,17 @@ public class OptimismEngineRpcModule(
         return _engineRpcModule.engine_newPayloadV3(executionPayload, blobVersionedHashes, parentBeaconBlockRoot);
     }
 
+    public Task<ResultWrapper<PayloadStatusV1>> engine_newPayloadV4(OptimismExecutionPayloadV3 executionPayload, byte[]?[] blobVersionedHashes,
+        Hash256? parentBeaconBlockRoot, byte[][]? executionRequests)
+    {
+        return _engineRpcModule.engine_newPayloadV4(executionPayload, blobVersionedHashes, parentBeaconBlockRoot, executionRequests);
+    }
+
+    public Task<ResultWrapper<GetPayloadV4Result?>> engine_getPayloadV4(byte[] payloadId)
+    {
+        return _engineRpcModule.engine_getPayloadV4(payloadId);
+    }
+
     public ResultWrapper<OptimismSignalSuperchainV1Result> engine_signalSuperchainV1(OptimismSuperchainSignal signal)
     {
         OptimismProtocolVersion currentVersion = _signalSuperchainHandler.CurrentVersion;

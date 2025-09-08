@@ -16,7 +16,6 @@ namespace Nethermind.Synchronization.Peers.AllocationStrategies
             _peerInfo = peerInfo;
         }
 
-        public bool CanBeReplaced => false;
         public PeerInfo Allocate(PeerInfo? currentPeer, IEnumerable<PeerInfo> peers, INodeStatsManager nodeStatsManager, IBlockTree blockTree)
         {
             return _peerInfo;

@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using System.Diagnostics.CodeAnalysis;
 using System.Linq;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
@@ -12,7 +11,6 @@ using Nethermind.Merge.Plugin.Handlers;
 using Nethermind.Serialization.Rlp;
 using Nethermind.State.Proofs;
 using System.Text.Json.Serialization;
-using Microsoft.AspNetCore.Server.Kestrel.Transport.Quic;
 using Nethermind.Core.ExecutionRequest;
 
 namespace Nethermind.Merge.Plugin.Data;
@@ -167,10 +165,15 @@ public class ExecutionPayload : IForkValidator, IExecutionPayloadParams, IExecut
             IsPostMerge = true,
             TotalDifficulty = totalDifficulty,
             TxRoot = TxTrie.CalculateRoot(transactions.Transactions),
-            WithdrawalsRoot = Withdrawals is null ? null : new WithdrawalTrie(Withdrawals).RootHash,
+            WithdrawalsRoot = BuildWithdrawalsRoot(),
         };
 
         return new BlockDecodingResult(new Block(header, transactions.Transactions, Array.Empty<BlockHeader>(), Withdrawals));
+    }
+
+    protected virtual Hash256? BuildWithdrawalsRoot()
+    {
+        return Withdrawals is null ? null : new WithdrawalTrie(Withdrawals).RootHash;
     }
 
     protected Transaction[]? _transactions = null;

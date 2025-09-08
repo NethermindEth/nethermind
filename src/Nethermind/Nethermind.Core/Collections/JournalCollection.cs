@@ -4,6 +4,9 @@
 using System;
 using System.Collections;
 using System.Collections.Generic;
+using System.Diagnostics;
+using System.Diagnostics.CodeAnalysis;
+using System.Runtime.InteropServices;
 
 namespace Nethermind.Core.Collections
 {
@@ -12,7 +15,7 @@ namespace Nethermind.Core.Collections
     /// </summary>
     /// <typeparam name="T">Item type.</typeparam>
     /// <remarks>Due to snapshots <see cref="Remove"/> is not supported.</remarks>
-    public sealed class JournalCollection<T> : ICollection<T>, IReadOnlyCollection<T>, IJournal<int>
+    public sealed class JournalCollection<T> : IToArrayCollection<T>, ICollection<T>, IJournal<int>
     {
         private readonly List<T> _list = new();
         public int TakeSnapshot() => Count - 1;
@@ -21,14 +24,16 @@ namespace Nethermind.Core.Collections
         {
             if (snapshot >= Count)
             {
-                throw new InvalidOperationException($"{nameof(JournalCollection<T>)} tried to restore snapshot {snapshot} beyond current position {Count}");
+                ThrowInvalidRestore(snapshot);
             }
 
             // Just remove excessive items after snapshot
-            int index = snapshot + 1;
-            _list.RemoveRange(index, Count - index);
+            CollectionsMarshal.SetCount(_list, snapshot + 1);
         }
 
+        [DoesNotReturn, StackTraceHidden]
+        private void ThrowInvalidRestore(int snapshot)
+            => throw new InvalidOperationException($"{nameof(JournalCollection<T>)} tried to restore snapshot {snapshot} beyond current position {Count}");
 
         public IEnumerator<T> GetEnumerator() => _list.GetEnumerator();
         IEnumerator IEnumerable.GetEnumerator() => ((IEnumerable)_list).GetEnumerator();
@@ -37,6 +42,7 @@ namespace Nethermind.Core.Collections
         public bool Contains(T item) => _list.Contains(item);
         public void CopyTo(T[] array, int arrayIndex) => _list.CopyTo(array, arrayIndex);
         public bool Remove(T item) => throw new NotSupportedException("Cannot remove from Journal, use Restore(int snapshot) instead.");
+        public T[] ToArray() => _list.ToArray();
         public int Count => _list.Count;
         public bool IsReadOnly => false;
     }

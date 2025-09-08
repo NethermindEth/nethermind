@@ -10,6 +10,8 @@ ARG COMMIT_HASH
 ARG TARGETARCH
 
 COPY src/Nethermind src/Nethermind
+COPY Directory.*.props .
+COPY nuget.config .
 
 RUN arch=$([ "$TARGETARCH" = "amd64" ] && echo "x64" || echo "$TARGETARCH") && \
     dotnet publish src/Nethermind/Nethermind.Runner -c $BUILD_CONFIG -a $arch -o /publish --sc false \

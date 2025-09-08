@@ -3,16 +3,14 @@
 
 using System;
 
-namespace Nethermind.Api.Steps
-{
-    [AttributeUsage(AttributeTargets.Class)]
-    public class RunnerStepDependenciesAttribute : Attribute
-    {
-        public Type[] Dependencies { get; }
+namespace Nethermind.Api.Steps;
 
-        public RunnerStepDependenciesAttribute(params Type[] dependencies)
-        {
-            Dependencies = dependencies;
-        }
-    }
+[AttributeUsage(AttributeTargets.Class)]
+public class RunnerStepDependenciesAttribute(Type[] dependencies, Type[] dependents) : Attribute
+{
+    public RunnerStepDependenciesAttribute(params Type[] dependencies) : this(dependencies, []) { }
+
+    public Type[] Dependencies { get; } = dependencies;
+    public Type[] Dependents { get; } = dependents;
+    public bool Optional { get; set; }
 }

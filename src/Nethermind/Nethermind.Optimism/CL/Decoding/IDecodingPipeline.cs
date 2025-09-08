@@ -11,6 +11,21 @@ namespace Nethermind.Optimism.CL.Decoding;
 public interface IDecodingPipeline
 {
     Task Run(CancellationToken token);
-    ChannelWriter<byte[]> DaDataWriter { get; }
-    ChannelReader<BatchV1> DecodedBatchesReader { get; }
+    ChannelWriter<DaDataSource> DaDataWriter { get; }
+    // L1BatchOrigin - block at witch we fully reconstructed Batch
+    ChannelReader<(BatchV1 Batch, ulong L1BatchOrigin)> DecodedBatchesReader { get; }
+    Task Reset(CancellationToken token);
+}
+
+public class DaDataSource
+{
+    public required ulong DataOrigin { get; init; }
+    public required byte[] Data { get; init; }
+    public required DaDataType DataType { get; init; }
+}
+
+public enum DaDataType
+{
+    Blob,
+    Calldata
 }

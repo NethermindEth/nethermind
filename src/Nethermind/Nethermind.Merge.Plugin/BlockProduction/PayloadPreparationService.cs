@@ -9,12 +9,14 @@ using System.Runtime.CompilerServices;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Config;
+using Nethermind.Consensus;
 using Nethermind.Consensus.Producers;
 using Nethermind.Core;
 using Nethermind.Core.Timers;
 using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.Merge.Plugin.Handlers;
+using Nethermind.TxPool;
 
 namespace Nethermind.Merge.Plugin.BlockProduction;
 
@@ -27,7 +29,8 @@ namespace Nethermind.Merge.Plugin.BlockProduction;
 public class PayloadPreparationService : IPayloadPreparationService, IDisposable
 {
     private readonly CancellationTokenSource _shutdown = new();
-    private readonly PostMergeBlockProducer _blockProducer;
+    private readonly IBlockProducer _blockProducer;
+    private readonly ITxPool _txPool;
     private readonly IBlockImprovementContextFactory _blockImprovementContextFactory;
     private readonly ILogger _logger;
     private readonly Core.Timers.ITimer _timer;
@@ -48,7 +51,24 @@ public class PayloadPreparationService : IPayloadPreparationService, IDisposable
     protected readonly ConcurrentDictionary<string, IBlockImprovementContext> _payloadStorage = new();
 
     public PayloadPreparationService(
-        PostMergeBlockProducer blockProducer,
+        IBlockProducer blockProducer,
+        ITxPool txPool,
+        IBlockImprovementContextFactory blockImprovementContextFactory,
+        ITimerFactory timerFactory,
+        ILogManager logManager,
+        IBlocksConfig blockConfig) : this(
+        blockProducer,
+        txPool,
+        blockImprovementContextFactory,
+        timerFactory,
+        logManager,
+        TimeSpan.FromSeconds(blockConfig.SecondsPerSlot))
+    {
+    }
+
+    public PayloadPreparationService(
+        IBlockProducer blockProducer,
+        ITxPool txPool,
         IBlockImprovementContextFactory blockImprovementContextFactory,
         ITimerFactory timerFactory,
         ILogManager logManager,
@@ -57,6 +77,7 @@ public class PayloadPreparationService : IPayloadPreparationService, IDisposable
         TimeSpan? improvementDelay = null)
     {
         _blockProducer = blockProducer;
+        _txPool = txPool;
         _blockImprovementContextFactory = blockImprovementContextFactory;
         _timePerSlot = timePerSlot;
         TimeSpan timeout = timePerSlot;
@@ -74,21 +95,24 @@ public class PayloadPreparationService : IPayloadPreparationService, IDisposable
         string payloadId = payloadAttributes.GetPayloadId(parentHeader);
         if (!_payloadStorage.ContainsKey(payloadId))
         {
+            if (_logger.IsInfo) _logger.Info($" Production Request  {parentHeader.Number + 1} PayloadId: {payloadId}");
+            long startTimestamp = Stopwatch.GetTimestamp();
             Block emptyBlock = ProduceEmptyBlock(payloadId, parentHeader, payloadAttributes);
+            if (_logger.IsInfo) _logger.Info($" Produced (Empty)    {emptyBlock.ToString(emptyBlock.Difficulty != 0 ? Block.Format.HashNumberDiffAndTx : Block.Format.HashNumberMGasAndTx)} | {Stopwatch.GetElapsedTime(startTimestamp).TotalMilliseconds,8:N2} ms");
             ImproveBlock(payloadId, parentHeader, payloadAttributes, emptyBlock, DateTimeOffset.UtcNow, default, CancellationTokenSource.CreateLinkedTokenSource(_shutdown.Token));
         }
         else if (_logger.IsInfo)
         {
             // Shouldn't really happen so move string construction code out of hot method
-            LogMultiStartRequest(payloadId);
+            LogMultiStartRequest(payloadId, parentHeader.Number + 1);
         }
 
         return payloadId;
 
         [MethodImpl(MethodImplOptions.NoInlining)]
-        void LogMultiStartRequest(string payloadId)
+        void LogMultiStartRequest(string payloadId, long number)
         {
-            _logger.Info($"Payload with the same parameters has already started. PayloadId: {payloadId}");
+            _logger.Info($"Payload for block {number} with same parameters has already started. PayloadId: {payloadId}");
         }
     }
 
@@ -97,7 +121,7 @@ public class PayloadPreparationService : IPayloadPreparationService, IDisposable
         bool isTrace = _logger.IsTrace;
         if (isTrace) TraceBefore(payloadId, parentHeader);
 
-        Block emptyBlock = _blockProducer.PrepareEmptyBlock(parentHeader, payloadAttributes);
+        Block emptyBlock = _blockProducer.BuildBlock(parentHeader, payloadAttributes: payloadAttributes, flags: IBlockProducer.Flags.PrepareEmptyBlock).Result!;
 
         if (isTrace) TraceAfter(payloadId, emptyBlock);
         return emptyBlock;
@@ -149,7 +173,7 @@ public class PayloadPreparationService : IPayloadPreparationService, IDisposable
         if (_logger.IsTrace) _logger.Trace($"Start improving block from payload {payloadId} with parent {parentHeader.ToString(BlockHeader.Format.FullHashAndNumber)}");
 
         long startTimestamp = Stopwatch.GetTimestamp();
-        long added = Volatile.Read(ref TxPool.Metrics.PendingTransactionsAdded);
+        long added = _txPool.PendingTransactionsAdded;
         IBlockImprovementContext blockImprovementContext = _blockImprovementContextFactory.StartBlockImprovementContext(currentBestBlock, parentHeader, payloadAttributes, startDateTime, currentBlockFees, cts);
         blockImprovementContext.ImprovementTask.ContinueWith(
             (b) =>
@@ -187,7 +211,7 @@ public class PayloadPreparationService : IPayloadPreparationService, IDisposable
 
                 // Loop the delay if no new txs have been added, and while not cancelled.
                 // Is no point in rebuilding an identical block.
-            } while (added == Volatile.Read(ref TxPool.Metrics.PendingTransactionsAdded));
+            } while (added == _txPool.PendingTransactionsAdded);
 
             if (!token.IsCancellationRequested || !blockImprovementContext.Disposed) // if GetPayload wasn't called for this item or it wasn't cleared
             {
@@ -205,12 +229,12 @@ public class PayloadPreparationService : IPayloadPreparationService, IDisposable
 
     private TimeSpan CalculateImprovementDelay(DateTimeOffset startDateTime, long startTimestamp)
     {
-        // We want to keep building better blocks throughout this slot so that when 
+        // We want to keep building better blocks throughout this slot so that when
         // the consensus client requests the block, we have the best version ready.
-        // However, building blocks repeatedly is expensive. We also expect more 
-        // transactions towards the end of the slot, when it's more likely we will 
-        // actually need to deliver the block. So we slow down improvements early in 
-        // the slot (to save resources) and gradually increase the improvement 
+        // However, building blocks repeatedly is expensive. We also expect more
+        // transactions towards the end of the slot, when it's more likely we will
+        // actually need to deliver the block. So we slow down improvements early in
+        // the slot (to save resources) and gradually increase the improvement
         // frequency toward the end of the slot.
         //
         // This is both to capture more transactions, and where the probability of
@@ -238,8 +262,8 @@ public class PayloadPreparationService : IPayloadPreparationService, IDisposable
             // Clamp progress to [0, 1] just in case:
             progress = Math.Clamp(progress, 0.0, 1.0);
 
-            // We use a cubic curve (progress^3) so that improvement builds 
-            // start off quite spaced out (less frequent at the start) and 
+            // We use a cubic curve (progress^3) so that improvement builds
+            // start off quite spaced out (less frequent at the start) and
             // rapidly become more frequent as we near the end of the slot.
             progress *= progress * progress;
 
@@ -249,9 +273,9 @@ public class PayloadPreparationService : IPayloadPreparationService, IDisposable
             const double fractionStart = 1.0 / 6.0;
             const double fractionEnd = 1.0 / 960.0;
             // Slot Timeline: 0% -------------------------- 100%
-            //                |        (long gap)         | 
+            //                |        (long gap)         |
             //    [Block Improvement #1]        <--- big delay here
-            // 
+            //
             //                                   (medium gap)
             //                                       [Block Improvement #2]
             //                                           (small gap)
@@ -330,25 +354,21 @@ public class PayloadPreparationService : IPayloadPreparationService, IDisposable
             Block? block = t.Result;
             if (block is not null && !ReferenceEquals(block, currentBestBlock))
             {
-                bool supportsBlobs = _blockProducer.SupportsBlobs;
                 int blobs = 0;
                 int blobTx = 0;
                 UInt256 gas = 0;
-                if (supportsBlobs)
+                foreach (Transaction tx in block.Transactions)
                 {
-                    foreach (Transaction tx in block.Transactions)
+                    int blobCount = tx.GetBlobCount();
+                    if (blobCount > 0)
                     {
-                        int blobCount = tx.GetBlobCount();
-                        if (blobCount > 0)
-                        {
-                            blobs += blobCount;
-                            blobTx++;
-                            tx.TryCalculatePremiumPerGas(block.BaseFeePerGas, out UInt256 premiumPerGas);
-                            gas += (ulong)tx.SpentGas * premiumPerGas;
-                        }
+                        blobs += blobCount;
+                        blobTx++;
+                        tx.TryCalculatePremiumPerGas(block.BaseFeePerGas, out UInt256 premiumPerGas);
+                        gas += (ulong)tx.SpentGas * premiumPerGas;
                     }
                 }
-                _logger.Info($" Produced {blockFees.ToDecimal(null) / weiToEth,6:N4}{BlocksConfig.GasTokenTicker,4} {block.ToString(block.Difficulty != 0 ? Block.Format.HashNumberDiffAndTx : Block.Format.HashNumberMGasAndTx)} | {time.TotalMilliseconds,8:N2} ms {((supportsBlobs && blobs > 0) ? $"{blobs,2:N0} blobs in {blobTx,2:N0} tx @ {(decimal)gas / weiToGwei,7:N0} gwei" : "")}");
+                _logger.Info($" Produced {blockFees.ToDecimal(null) / weiToEth,6:N4}{BlocksConfig.GasTokenTicker,4} {block.ToString(block.Difficulty != 0 ? Block.Format.HashNumberDiffAndTx : Block.Format.HashNumberMGasAndTx)} | {time.TotalMilliseconds,8:N2} ms {((blobs > 0) ? $"{blobs,2:N0} blobs in {blobTx,2:N0} tx @ {(decimal)gas / weiToGwei,7:N0} gwei" : "")}");
             }
             else
             {
@@ -411,10 +431,8 @@ public class PayloadPreparationService : IPayloadPreparationService, IDisposable
         _shutdown.Cancel();
     }
 
-    public void CancelBlockProductionForParent(object? sender, BlockHeader parentHeader)
+    public void CancelBlockProduction(string payloadId)
     {
-        PayloadAttributes payloadAttributes = parentHeader.GenerateSimulatedPayload();
-        string payloadId = payloadAttributes.GetPayloadId(parentHeader);
         // GetPayload cancels the request
         _ = GetPayload(payloadId);
     }

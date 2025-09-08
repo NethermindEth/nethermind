@@ -10,6 +10,10 @@
   <Folder Name="/Plugins/Analytics/">
     <Project Path="Nethermind.Analytics/Nethermind.Analytics.csproj" />
   </Folder>
+  <Folder Name="/Plugins/Flashbots/">
+    <Project Path="Nethermind.Flashbots.Test/Nethermind.Flashbots.Test.csproj" />
+    <Project Path="Nethermind.Flashbots/Nethermind.Flashbots.csproj" />
+  </Folder>
   <Folder Name="/Plugins/Hive/">
     <Project Path="Nethermind.Hive.Test/Nethermind.Hive.Test.csproj" />
     <Project Path="Nethermind.Hive/Nethermind.Hive.csproj" />
@@ -17,10 +21,6 @@
   <Folder Name="/Plugins/Merge/">
     <Project Path="Nethermind.Merge.Plugin.Test/Nethermind.Merge.Plugin.Test.csproj" />
     <Project Path="Nethermind.Merge.Plugin/Nethermind.Merge.Plugin.csproj" />
-  </Folder>
-  <Folder Name="/Plugins/Flashbots/">
-    <Project Path="Nethermind.Flashbots.Test/Nethermind.Flashbots.Test.csproj" />
-    <Project Path="Nethermind.Flashbots/Nethermind.Flashbots.csproj" />
   </Folder>
   <Folder Name="/Plugins/Signer/">
     <Project Path="Nethermind.ExternalSigner.Plugin/Nethermind.ExternalSigner.Plugin.csproj" />
@@ -34,15 +34,16 @@
   </Folder>
   <Folder Name="/Solution Items/">
     <File Path="Directory.Build.props" />
-    <File Path="Directory.Packages.props" />
-    <File Path="nuget.config" />
+    <File Path="../../Directory.Packages.props" />
+    <File Path="../../nuget.config" />
+    <File Path="testenvironments.json" />
+    <File Path="tests.props" />
   </Folder>
   <Folder Name="/Tests/">
     <Project Path="Nethermind.Abi.Test/Nethermind.Abi.Test.csproj" />
     <Project Path="Nethermind.Api.Test/Nethermind.Api.Test.csproj" />
     <Project Path="Nethermind.AuRa.Test/Nethermind.AuRa.Test.csproj" />
     <Project Path="Nethermind.Blockchain.Test/Nethermind.Blockchain.Test.csproj" />
-    <Project Path="Nethermind.Cli.Test/Nethermind.Cli.Test.csproj" />
     <Project Path="Nethermind.Clique.Test/Nethermind.Clique.Test.csproj" />
     <Project Path="Nethermind.Config.Test/Nethermind.Config.Test.csproj" />
     <Project Path="Nethermind.Consensus.Test/Nethermind.Consensus.Test.csproj" />
@@ -54,6 +55,7 @@
     <Project Path="Nethermind.Evm.Test/Nethermind.Evm.Test.csproj" />
     <Project Path="Nethermind.Facade.Test/Nethermind.Facade.Test.csproj" />
     <Project Path="Nethermind.HealthChecks.Test/Nethermind.HealthChecks.Test.csproj" />
+    <Project Path="Nethermind.History.Test/Nethermind.History.Test.csproj" />
     <Project Path="Nethermind.JsonRpc.Test/Nethermind.JsonRpc.Test.csproj" />
     <Project Path="Nethermind.KeyStore.Test/Nethermind.KeyStore.Test.csproj" />
     <Project Path="Nethermind.Merge.AuRa.Test/Nethermind.Merge.AuRa.Test.csproj" />
@@ -77,14 +79,11 @@
     <Project Path="Nethermind.Trie.Test/Nethermind.Trie.Test.csproj" />
     <Project Path="Nethermind.TxPool.Test/Nethermind.TxPool.Test.csproj" />
     <Project Path="Nethermind.Wallet.Test/Nethermind.Wallet.Test.csproj" />
-  </Folder>
-  <Folder Name="/Tools/">
-    <Project Path="Nethermind.Tools.GasHistorian/Nethermind.Tools.GasHistorian.csproj" />
+    <Project Path="Nethermind.Xdc.Test\Nethermind.Xdc.Test.csproj" />
   </Folder>
   <Project Path="Nethermind.Abi/Nethermind.Abi.csproj" />
   <Project Path="Nethermind.Api/Nethermind.Api.csproj" />
   <Project Path="Nethermind.Blockchain/Nethermind.Blockchain.csproj" />
-  <Project Path="Nethermind.Cli/Nethermind.Cli.csproj" />
   <Project Path="Nethermind.Config/Nethermind.Config.csproj" />
   <Project Path="Nethermind.Consensus.AuRa/Nethermind.Consensus.AuRa.csproj" />
   <Project Path="Nethermind.Consensus.Clique/Nethermind.Consensus.Clique.csproj" />
@@ -97,10 +96,12 @@
   <Project Path="Nethermind.Db/Nethermind.Db.csproj" />
   <Project Path="Nethermind.Era1/Nethermind.Era1.csproj" />
   <Project Path="Nethermind.EthStats/Nethermind.EthStats.csproj" />
+  <Project Path="Nethermind.Evm.Precompiles/Nethermind.Evm.Precompiles.csproj" />
   <Project Path="Nethermind.Evm/Nethermind.Evm.csproj" />
   <Project Path="Nethermind.Facade/Nethermind.Facade.csproj" />
   <Project Path="Nethermind.Grpc/Nethermind.Grpc.csproj" />
   <Project Path="Nethermind.HealthChecks/Nethermind.HealthChecks.csproj" />
+  <Project Path="Nethermind.History/Nethermind.History.csproj" />
   <Project Path="Nethermind.Init.Snapshot/Nethermind.Init.Snapshot.csproj" />
   <Project Path="Nethermind.Init/Nethermind.Init.csproj" />
   <Project Path="Nethermind.JsonRpc/Nethermind.JsonRpc.csproj" />
@@ -129,4 +130,5 @@
   <Project Path="Nethermind.Trie/Nethermind.Trie.csproj" />
   <Project Path="Nethermind.TxPool/Nethermind.TxPool.csproj" />
   <Project Path="Nethermind.Wallet/Nethermind.Wallet.csproj" />
+  <Project Path="Nethermind.Xdc/Nethermind.Xdc.csproj" />
 </Solution>

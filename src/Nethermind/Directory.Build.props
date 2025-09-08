@@ -1,23 +1,11 @@
 <Project>
 
-  <PropertyGroup>
-    <Configuration Condition="'$(Configuration)' == ''">Debug</Configuration>
-    <ContinuousIntegrationBuild Condition="'$(CI)' == 'true'">true</ContinuousIntegrationBuild>
-    <InvariantGlobalization>true</InvariantGlobalization>
-    <LangVersion>13.0</LangVersion>
-    <NuGetAuditMode>direct</NuGetAuditMode>
-    <SatelliteResourceLanguages>en</SatelliteResourceLanguages>
-    <TargetFramework>net9.0</TargetFramework>
-    <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
-    <UseArtifactsOutput>true</UseArtifactsOutput>
-  </PropertyGroup>
+  <Import Project="../../Directory.Build.props" />
 
   <PropertyGroup Label="ProductInfo">
     <BuildTimestamp Condition="'$(BuildTimestamp)' == ''">$([System.DateTimeOffset]::UtcNow.ToUnixTimeSeconds())</BuildTimestamp>
-    <Copyright>Demerzel Solutions Limited</Copyright>
-    <Product>Nethermind</Product>
     <SourceRevisionId Condition="'$(Commit)' != ''">$(Commit)</SourceRevisionId>
-    <VersionPrefix>1.32.0</VersionPrefix>
+    <VersionPrefix>1.33.0</VersionPrefix>
     <VersionSuffix>unstable</VersionSuffix>
   </PropertyGroup>
 

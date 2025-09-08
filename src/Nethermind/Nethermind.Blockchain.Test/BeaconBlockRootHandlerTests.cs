@@ -5,6 +5,7 @@ using Nethermind.Blockchain.BeaconBlockRoot;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Eip2930;
+using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Crypto;
 using Nethermind.Evm;
@@ -12,7 +13,7 @@ using Nethermind.Evm.Tracing;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Int256;
 using Nethermind.Specs.Forks;
-using Nethermind.State;
+using Nethermind.Evm.State;
 using NSubstitute;
 using NUnit.Framework;
 
@@ -124,7 +125,7 @@ public class BeaconBlockRootHandlerTests
 
         _beaconBlockRootHandler.StoreBeaconRoot(block, Cancun.Instance, NullTxTracer.Instance);
 
-        _transactionProcessor.DidNotReceive().Execute(Arg.Any<Transaction>(), Arg.Any<BlockExecutionContext>(), Arg.Any<ITxTracer>());
+        _transactionProcessor.DidNotReceive().Execute(Arg.Any<Transaction>(), Arg.Any<ITxTracer>());
     }
 
     [Test]
@@ -132,6 +133,7 @@ public class BeaconBlockRootHandlerTests
     {
         BlockHeader header = Build.A.BlockHeader.WithNumber(1).WithParentBeaconBlockRoot(Hash256.Zero).TestObject;
         Block block = Build.A.Block.WithHeader(header).TestObject;
+
         _worldState.AccountExists(Arg.Any<Address>()).Returns(true);
 
         _beaconBlockRootHandler.StoreBeaconRoot(block, Cancun.Instance, NullTxTracer.Instance);
@@ -149,6 +151,6 @@ public class BeaconBlockRootHandlerTests
 
         transaction.Hash = transaction.CalculateHash();
         _transactionProcessor.Received().Execute(Arg.Is<Transaction>(t =>
-            t.Hash == transaction.Hash), new BlockExecutionContext(header, Cancun.Instance), NullTxTracer.Instance);
+            t.Hash == transaction.Hash), NullTxTracer.Instance);
     }
 }

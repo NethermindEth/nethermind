@@ -9,9 +9,9 @@ using Nethermind.Core;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.Evm;
+using Nethermind.Evm.State;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Int256;
-using Nethermind.State;
 using Nethermind.TxPool;
 
 namespace Nethermind.Consensus.Processing
@@ -52,7 +52,7 @@ namespace Nethermind.Consensus.Processing
                     return args.Set(TxAction.Stop, "Block full");
                 }
 
-                if (block is BlockToProduce blockToProduce && blockToProduce.TxByteLength + currentTx.GetLength() > _maxTxLengthBytes)
+                if (block is BlockToProduce blockToProduce && blockToProduce.TxByteLength + currentTx.GetLength(false) > _maxTxLengthBytes)
                 {
                     return args.Set(
                         // If smallest tx is too large, stop picking

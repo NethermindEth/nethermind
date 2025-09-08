@@ -2,17 +2,24 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using Autofac;
+using Nethermind.Abi;
+using Nethermind.Api;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Find;
+using Nethermind.Blockchain.Receipts;
+using Nethermind.Blockchain.Spec;
+using Nethermind.Blockchain.Synchronization;
 using Nethermind.Config;
-using Nethermind.Consensus.Processing;
-using Nethermind.Consensus.Validators;
 using Nethermind.Core;
+using Nethermind.Core.ServiceStopper;
 using Nethermind.Core.Specs;
 using Nethermind.Crypto;
 using Nethermind.Db;
 using Nethermind.Era1;
+using Nethermind.History;
+using Nethermind.JsonRpc;
 using Nethermind.Logging;
+using Nethermind.Network.Config;
 using Nethermind.Runner.Ethereum.Modules;
 using Nethermind.Specs.ChainSpecStyle;
 using Nethermind.TxPool;
@@ -29,29 +36,44 @@ public class NethermindModule(ChainSpec chainSpec, IConfigProvider configProvide
 {
     protected override void Load(ContainerBuilder builder)
     {
-        base.Load(builder);
-
         builder
+            .AddServiceStopper()
             .AddModule(new AppInputModule(chainSpec, configProvider, logManager))
             .AddModule(new NetworkModule(configProvider))
-            .AddModule(new WorldStateModule())
+            .AddModule(new DiscoveryModule(configProvider.GetConfig<IInitConfig>(), configProvider.GetConfig<INetworkConfig>()))
+            .AddModule(new DbModule(
+                configProvider.GetConfig<IInitConfig>(),
+                configProvider.GetConfig<IReceiptConfig>(),
+                configProvider.GetConfig<ISyncConfig>()
+            ))
+            .AddModule(new WorldStateModule(configProvider.GetConfig<IInitConfig>()))
             .AddModule(new BuiltInStepsModule())
-            .AddModule(new RpcModules())
+            .AddModule(new RpcModules(configProvider.GetConfig<IJsonRpcConfig>()))
             .AddModule(new EraModule())
             .AddSource(new ConfigRegistrationSource())
-            .AddModule(new DbModule())
+            .AddModule(new BlockProcessingModule(configProvider.GetConfig<IInitConfig>()))
+            .AddModule(new BlockTreeModule(configProvider.GetConfig<IReceiptConfig>()))
             .AddSingleton<ISpecProvider, ChainSpecBasedSpecProvider>()
 
-            .Bind<IBlockFinder, IBlockTree>()
-            .Bind<IEcdsa, IEthereumEcdsa>()
-            .AddSingleton<IReadOnlyTxProcessingEnvFactory, ReadOnlyTxProcessingEnvFactory>()
+            .AddKeyedSingleton<IProtectedPrivateKey>(IProtectedPrivateKey.NodeKey, (ctx) => ctx.Resolve<INethermindApi>().NodeKey!)
+            .AddSingleton<IAbiEncoder>(AbiEncoder.Instance)
+            .AddSingleton<IEciesCipher, EciesCipher>()
+            .AddSingleton<ICryptoRandom, CryptoRandom>()
 
-            .AddSingleton<TxValidator, ISpecProvider>((spec) => new TxValidator(spec.ChainId))
-            .Bind<ITxValidator, TxValidator>()
-            .AddSingleton<IBlockValidator, BlockValidator>()
-            .AddSingleton<IHeaderValidator, HeaderValidator>()
-            .AddSingleton<IUnclesValidator, UnclesValidator>()
+            .AddSingleton<IEthereumEcdsa, ISpecProvider>((specProvider) => new EthereumEcdsa(specProvider.ChainId))
+            .Bind<IEcdsa, IEthereumEcdsa>()
+
+            .AddSingleton<IChainHeadSpecProvider, ChainHeadSpecProvider>()
+            .AddSingleton<IChainHeadInfoProvider, ChainHeadInfoProvider>()
+            .Add<IDisposableStack, AutofacDisposableStack>() // Not a singleton so that dispose is registered to correct lifetime
+
+            .AddSingleton<IHardwareInfo, HardwareInfo>()
             ;
+
+        if (!configProvider.GetConfig<ITxPoolConfig>().BlobsSupport.IsPersistentStorage())
+        {
+            builder.AddSingleton<IBlobTxStorage>(NullBlobTxStorage.Instance);
+        }
     }
 
     // Just a wrapper to make it clear, these three are expected to be available at the time of configurations.

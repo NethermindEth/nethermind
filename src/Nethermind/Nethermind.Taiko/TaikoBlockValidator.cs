@@ -21,9 +21,9 @@ public class TaikoBlockValidator(
     IEthereumEcdsa ecdsa,
     ILogManager logManager) : BlockValidator(txValidator, headerValidator, unclesValidator, specProvider, logManager)
 {
-    private static readonly byte[] AnchorSelector = Keccak.Compute("anchor(bytes32,bytes32,uint64,uint32)").Bytes[0..4].ToArray();
-    private static readonly byte[] AnchorV2Selector = Keccak.Compute("anchorV2(uint64,bytes32,uint32,(uint8,uint8,uint32,uint64,uint32))").Bytes[0..4].ToArray();
-    private static readonly byte[] AnchorV3Selector = Keccak.Compute("anchorV3(uint64,bytes32,uint32,(uint8,uint8,uint32,uint64,uint32),bytes32[])").Bytes[0..4].ToArray();
+    private static readonly byte[] AnchorSelector = Keccak.Compute("anchor(bytes32,bytes32,uint64,uint32)").Bytes[..4].ToArray();
+    private static readonly byte[] AnchorV2Selector = Keccak.Compute("anchorV2(uint64,bytes32,uint32,(uint8,uint8,uint32,uint64,uint32))").Bytes[..4].ToArray();
+    private static readonly byte[] AnchorV3Selector = Keccak.Compute("anchorV3(uint64,bytes32,uint32,(uint8,uint8,uint32,uint64,uint32),bytes32[])").Bytes[..4].ToArray();
 
     public static readonly Address GoldenTouchAccount = new("0x0000777735367b36bC9B61C50022d9D0700dB4Ec");
 
@@ -45,14 +45,8 @@ public class TaikoBlockValidator(
             return true;
         }
 
-        if (block.TxRoot == Keccak.Zero)
+        if (block.Transactions.Length is not 0)
         {
-            if (block.Transactions.Length is 0)
-            {
-                errorMessage = "Missing required anchor transaction";
-                return false;
-            }
-
             if (!ValidateAnchorTransaction(block.Transactions[0], block, (ITaikoReleaseSpec)spec, out errorMessage))
                 return false;
         }
@@ -69,22 +63,22 @@ public class TaikoBlockValidator(
             return false;
         }
 
-        if (tx.To != spec.FeeCollector)
+        if (tx.To != spec.TaikoL2Address)
         {
             errorMessage = "Anchor transaction must target Taiko L2 address";
             return false;
         }
 
-        if (tx.Data is null
-            || (!AnchorSelector.AsSpan().SequenceEqual(tx.Data.Value.Span[0..4])
-                && !AnchorV2Selector.AsSpan().SequenceEqual(tx.Data.Value.Span[0..4])
-                && !AnchorV3Selector.AsSpan().SequenceEqual(tx.Data.Value.Span[0..4])))
+        if (tx.Data.Length == 0
+            || (!AnchorSelector.AsSpan().SequenceEqual(tx.Data.Span[..4])
+                && !AnchorV2Selector.AsSpan().SequenceEqual(tx.Data.Span[..4])
+                && !AnchorV3Selector.AsSpan().SequenceEqual(tx.Data.Span[..4])))
         {
             errorMessage = "Anchor transaction must have valid selector";
             return false;
         }
 
-        if (!tx.Value.IsZero)
+        if (!tx.ValueRef.IsZero)
         {
             errorMessage = "Anchor transaction must have value of 0";
             return false;
@@ -102,15 +96,17 @@ public class TaikoBlockValidator(
             return false;
         }
 
-        tx.SenderAddress ??= ecdsa.RecoverAddress(tx);
+        // We dont set the tx.SenderAddress here, as it will stop the rest of the transactions in the block
+        // from getting their sender address recovered
+        Address? senderAddress = tx.SenderAddress ?? ecdsa.RecoverAddress(tx);
 
-        if (tx.SenderAddress is null)
+        if (senderAddress is null)
         {
             errorMessage = "Anchor transaction sender address is not recoverable";
             return false;
         }
 
-        if (!tx.SenderAddress!.Equals(GoldenTouchAccount))
+        if (!senderAddress.Equals(GoldenTouchAccount))
         {
             errorMessage = "Anchor transaction must be sent by the golden touch account";
             return false;

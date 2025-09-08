@@ -30,11 +30,6 @@ public class TestBlockValidator : IBlockValidator
         _processedValidationResults = processedValidationResults ?? throw new ArgumentNullException(nameof(processedValidationResults));
     }
 
-    public bool Validate(BlockHeader header, BlockHeader? parent, bool isUncle)
-    {
-        return _alwaysSameResultForSuggested ?? _suggestedValidationResults.Dequeue();
-    }
-
     public bool Validate(BlockHeader header, BlockHeader? parent, bool isUncle, [NotNullWhen(false)] out string? error)
     {
         var result = _alwaysSameResultForSuggested ?? _suggestedValidationResults.Dequeue();
@@ -42,29 +37,12 @@ public class TestBlockValidator : IBlockValidator
         return result;
     }
 
-    public bool Validate(BlockHeader header, bool isUncle)
-    {
-        return _alwaysSameResultForSuggested ?? _suggestedValidationResults.Dequeue();
-    }
-    public bool Validate(BlockHeader header, bool isUncle, [NotNullWhen(false)] out string? error)
+    public bool ValidateSuggestedBlock(Block block, BlockHeader? parent, [NotNullWhen(false)] out string? error, bool validateHashes = true)
     {
         error = null;
         return _alwaysSameResultForSuggested ?? _suggestedValidationResults.Dequeue();
     }
 
-    public bool ValidateSuggestedBlock(Block block)
-    {
-        return _alwaysSameResultForSuggested ?? _suggestedValidationResults.Dequeue();
-    }
-    public bool ValidateSuggestedBlock(Block block, [NotNullWhen(false)] out string? error, bool validateHashes = true)
-    {
-        error = null;
-        return _alwaysSameResultForSuggested ?? _suggestedValidationResults.Dequeue();
-    }
-    public bool ValidateProcessedBlock(Block processedBlock, TxReceipt[] receipts, Block suggestedBlock)
-    {
-        return _alwaysSameResultForProcessed ?? _processedValidationResults.Dequeue();
-    }
     public bool ValidateProcessedBlock(Block processedBlock, TxReceipt[] receipts, Block suggestedBlock, [NotNullWhen(false)] out string? error)
     {
         error = null;
@@ -84,5 +62,9 @@ public class TestBlockValidator : IBlockValidator
         return _alwaysSameResultForSuggested ?? _suggestedValidationResults.Dequeue();
     }
 
-
+    public bool ValidateBodyAgainstHeader(BlockHeader header, BlockBody toBeValidated, [NotNullWhen(false)] out string? errorMessage)
+    {
+        errorMessage = null;
+        return _alwaysSameResultForSuggested ?? _suggestedValidationResults.Dequeue();
+    }
 }

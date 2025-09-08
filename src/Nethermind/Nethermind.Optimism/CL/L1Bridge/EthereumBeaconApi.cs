@@ -21,12 +21,12 @@ public class EthereumBeaconApi : IBeaconApi
 
     private const int BeaconApiRetryDelayMilliseconds = 1000;
 
-    public EthereumBeaconApi(Uri beaconApiUri, IJsonSerializer jsonSerializer, IEthereumEcdsa ecdsa, ILogger logger)
+    public EthereumBeaconApi(Uri beaconApiUri, IJsonSerializer jsonSerializer, IEthereumEcdsa ecdsa, ILogManager logManager)
     {
         _client = new HttpClient { BaseAddress = beaconApiUri };
         _jsonSerializer = jsonSerializer;
         _ecdsa = ecdsa;
-        _logger = logger;
+        _logger = logManager.GetClassLogger();
     }
 
     public async Task<BlobSidecar[]> GetBlobSidecars(ulong slot, int indexFrom, int indexTo, CancellationToken cancellationToken)
@@ -40,12 +40,12 @@ public class EthereumBeaconApi : IBeaconApi
             await Task.Delay(BeaconApiRetryDelayMilliseconds, cancellationToken);
             data = await GetData<GetBlobSidecarsResponse>(req, cancellationToken);
         }
-        if (indexTo - indexFrom + 1 != data.Value.Data.Length)
+        if (indexTo - indexFrom + 1 != data.Data.Length)
         {
-            if (_logger.IsWarn) _logger.Warn($"Invalid number of blobs in slot {slot}. Expected {indexTo - indexFrom + 1}. Got {data.Value.Data.Length}");
+            if (_logger.IsWarn) _logger.Warn($"Invalid number of blobs in slot {slot}. Expected {indexTo - indexFrom + 1}. Got {data.Data.Length}");
             throw new Exception($"Blob sidecars are unavailable");
         }
-        return data.Value.Data;
+        return data.Data;
     }
 
     private async Task<T?> GetData<T>(string uri, CancellationToken cancellationToken)
@@ -65,12 +65,17 @@ public class EthereumBeaconApi : IBeaconApi
             }
 
             if (_logger.IsDebug)
-                _logger.Debug($"GetData<{typeof(T)}>({uri}) result: {await response.Content.ReadAsStringAsync(cancellationToken)}");
+                _logger.Debug(
+                    $"GetData<{typeof(T)}>({uri}) result: {await response.Content.ReadAsStringAsync(cancellationToken)}");
 
             T decoded =
                 _jsonSerializer.Deserialize<T>(await response.Content.ReadAsStreamAsync(cancellationToken));
 
             return decoded;
+        }
+        catch (OperationCanceledException)
+        {
+            throw;
         }
         catch (Exception e)
         {
@@ -80,8 +85,8 @@ public class EthereumBeaconApi : IBeaconApi
         return default;
     }
 
-    private struct GetBlobSidecarsResponse
+    private class GetBlobSidecarsResponse
     {
-        public BlobSidecar[] Data { get; init; }
+        public required BlobSidecar[] Data { get; init; }
     }
 }

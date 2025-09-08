@@ -15,42 +15,35 @@ using System.Runtime;
 using System.Text.RegularExpressions;
 using System.Threading;
 using System.Threading.Tasks;
-#if !DEBUG
-using DotNetty.Common;
-#endif
 using Nethermind.Api;
 using Nethermind.Api.Extensions;
 using Nethermind.Config;
-using Nethermind.Consensus.AuRa;
-using Nethermind.Consensus.Clique;
-using Nethermind.Consensus.Ethash;
 using Nethermind.Core;
 using Nethermind.Core.Exceptions;
 using Nethermind.Db.Rocks;
-using Nethermind.Hive;
 using Nethermind.Init.Snapshot;
 using Nethermind.KeyStore.Config;
 using Nethermind.Logging;
 using Nethermind.Logging.NLog;
+using Nethermind.Network.Discovery;
 using Nethermind.Runner;
 using Nethermind.Runner.Ethereum;
 using Nethermind.Runner.Ethereum.Api;
 using Nethermind.Runner.Logging;
+using Nethermind.Runner.Monitoring;
 using Nethermind.Seq.Config;
 using Nethermind.Serialization.Json;
-using Nethermind.Specs.ChainSpecStyle;
-using Nethermind.UPnP.Plugin;
 using NLog;
 using NLog.Config;
 using ILogger = Nethermind.Logging.ILogger;
 using NullLogger = Nethermind.Logging.NullLogger;
+using DotNettyLoggerFactory = DotNetty.Common.Internal.Logging.InternalLoggerFactory;
+using DotNettyLeakDetector = DotNetty.Common.ResourceLeakDetector;
 
+DataFeed.StartTime = Environment.TickCount64;
 Console.Title = ProductInfo.Name;
 // Increase regex cache size as more added in log coloring matches
 Regex.CacheSize = 128;
-#if !DEBUG
-ResourceLeakDetector.Level = ResourceLeakDetector.DetectionLevel.Disabled;
-#endif
 BlocksConfig.SetDefaultExtraDataWithVersion();
 
 ManualResetEventSlim exit = new(true);
@@ -89,7 +82,7 @@ finally
 
 async Task<int> ConfigureAsync(string[] args)
 {
-    CliConfiguration cli = ConfigureCli();
+    CommandLineConfiguration cli = ConfigureCli();
     ParseResult parseResult = cli.Parse(args);
     // Suppress logs if run with `--help` or `--version`
     bool silent = parseResult.CommandResult.Children
@@ -116,12 +109,7 @@ async Task<int> ConfigureAsync(string[] args)
         parseResult.GetValue(BasicOptions.PluginsDirectory) ?? "plugins",
         new FileSystem(),
         silent ? NullLogger.Instance : logger,
-        typeof(AuRaPlugin),
-        typeof(CliquePlugin),
-        typeof(EthashPlugin),
-        typeof(NethDevPlugin),
-        typeof(HivePlugin),
-        typeof(UPnPPlugin)
+        NethermindPlugins.EmbeddedPlugins
     );
     pluginLoader.Load();
 
@@ -162,6 +150,10 @@ async Task<int> RunAsync(ParseResult parseResult, PluginLoader pluginLoader, Can
         initConfig, keyStoreConfig, snapshotConfig);
 
     NLogManager logManager = new(initConfig.LogFileName, initConfig.LogDirectory, initConfig.LogRules);
+    DotNettyLoggerFactory.DefaultFactory = new NethermindLoggerFactory(logManager, lowerLogLevel: true);
+#if !DEBUG
+    DotNettyLeakDetector.Level = DotNettyLeakDetector.DetectionLevel.Disabled;
+#endif
 
     logger = logManager.GetClassLogger();
 
@@ -215,10 +207,10 @@ async Task<int> RunAsync(ParseResult parseResult, PluginLoader pluginLoader, Can
     return processExitSource.ExitCode;
 }
 
-void AddConfigurationOptions(CliCommand command)
+void AddConfigurationOptions(Command command)
 {
-    static CliOption CreateOption<T>(string name, Type configType) =>
-        new CliOption<T>(
+    static Option CreateOption<T>(string name, Type configType) =>
+        new Option<T>(
             $"--{ConfigExtensions.GetCategoryName(configType)}.{name}",
             $"--{ConfigExtensions.GetCategoryName(configType)}-{name}".ToLowerInvariant());
 
@@ -246,10 +238,21 @@ void AddConfigurationOptions(CliCommand command)
 
             if (configItemAttribute?.DisabledForCli != true)
             {
-                CliOption option = prop.PropertyType == typeof(bool)
+                Option option = prop.PropertyType == typeof(bool)
                     ? CreateOption<bool>(prop.Name, configType)
                     : CreateOption<string>(prop.Name, configType);
-                option.Description = configItemAttribute?.Description;
+
+                string description = configItemAttribute?.Description ?? "";
+
+                // Add default value to description if available
+                if (!string.IsNullOrEmpty(configItemAttribute?.DefaultValue))
+                {
+                    description = string.IsNullOrEmpty(description)
+                        ? $"Defaults to `{configItemAttribute.DefaultValue}`."
+                        : $"{description} Defaults to `{configItemAttribute.DefaultValue}`.";
+                }
+
+                option.Description = description;
                 option.HelpName = "value";
                 option.Hidden = categoryHidden || configItemAttribute?.HiddenFromDocs == true;
 
@@ -264,7 +267,7 @@ void AddConfigurationOptions(CliCommand command)
 
 void CheckForDeprecatedOptions(ParseResult parseResult)
 {
-    CliOption<string>[] deprecatedOptions =
+    Option<string>[] deprecatedOptions =
     [
         BasicOptions.ConfigurationDirectory,
         BasicOptions.DatabasePath,
@@ -272,9 +275,9 @@ void CheckForDeprecatedOptions(ParseResult parseResult)
         BasicOptions.PluginsDirectory
     ];
 
-    foreach (CliToken token in parseResult.Tokens)
+    foreach (Token token in parseResult.Tokens)
     {
-        foreach (CliOption option in deprecatedOptions)
+        foreach (Option option in deprecatedOptions)
         {
             if (option.Aliases.Contains(token.Value, StringComparison.Ordinal))
                 logger.Warn($"{token} option is deprecated. Use {option.Name} instead.");
@@ -282,9 +285,9 @@ void CheckForDeprecatedOptions(ParseResult parseResult)
     }
 }
 
-CliConfiguration ConfigureCli()
+CommandLineConfiguration ConfigureCli()
 {
-    CliRootCommand rootCommand =
+    RootCommand rootCommand =
     [
         BasicOptions.Configuration,
         BasicOptions.ConfigurationDirectory,
@@ -299,7 +302,7 @@ CliConfiguration ConfigureCli()
 
     if (versionOption is not null)
     {
-        versionOption.Action = new AnonymousCliAction(parseResult =>
+        versionOption.Action = new AsynchronousCommandLineAction(parseResult =>
         {
             parseResult.Configuration.Output.WriteLine($"""
                 Version:    {ProductInfo.Version}
@@ -510,46 +513,46 @@ void ResolveDataDirectory(string? path, IInitConfig initConfig, IKeyStoreConfig 
 
 static class BasicOptions
 {
-    public static CliOption<string> Configuration { get; } =
+    public static Option<string> Configuration { get; } =
         new("--config", "-c")
         {
             Description = "The path to the configuration file or the file name (also without extension) of any of the configuration files in the configuration files directory.",
             HelpName = "network or file name"
         };
 
-    public static CliOption<string> ConfigurationDirectory { get; } =
+    public static Option<string> ConfigurationDirectory { get; } =
         new("--configs-dir", "--configsDirectory", "-cd")
         {
             Description = "The path to the configuration files directory.",
             HelpName = "path"
         };
 
-    public static CliOption<string> DatabasePath { get; } = new("--db-dir", "--baseDbPath", "-d")
+    public static Option<string> DatabasePath { get; } = new("--db-dir", "--baseDbPath", "-d")
     {
         Description = "The path to the Nethermind database directory.",
         HelpName = "path"
     };
 
-    public static CliOption<string> DataDirectory { get; } = new("--data-dir", "--datadir", "-dd")
+    public static Option<string> DataDirectory { get; } = new("--data-dir", "--datadir", "-dd")
     {
         Description = "The path to the Nethermind data directory.",
         HelpName = "path"
     };
 
-    public static CliOption<string> LoggerConfigurationSource { get; } =
+    public static Option<string> LoggerConfigurationSource { get; } =
         new("--logger-config", "--loggerConfigSource", "-lcs")
         {
             Description = "The path to the logging configuration file.",
             HelpName = "path"
         };
 
-    public static CliOption<string> LogLevel { get; } = new("--log", "-l")
+    public static Option<string> LogLevel { get; } = new("--log", "-l")
     {
         Description = "Log level (severity). Allowed values: off, trace, debug, info, warn, error.",
         HelpName = "level"
     };
 
-    public static CliOption<string> PluginsDirectory { get; } =
+    public static Option<string> PluginsDirectory { get; } =
         new("--plugins-dir", "--pluginsDirectory", "-pd")
         {
             Description = "The path to the Nethermind plugins directory.",
@@ -557,7 +560,7 @@ static class BasicOptions
         };
 }
 
-class AnonymousCliAction(Func<ParseResult, int> action) : SynchronousCliAction
+class AsynchronousCommandLineAction(Func<ParseResult, int> action) : SynchronousCommandLineAction
 {
     private readonly Func<ParseResult, int> _action = action ?? throw new ArgumentNullException(nameof(action));
 

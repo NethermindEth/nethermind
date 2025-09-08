@@ -9,7 +9,6 @@ using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Blockchain;
-using Nethermind.Config;
 using Nethermind.Consensus.Processing;
 using Nethermind.Consensus.Validators;
 using Nethermind.Core;
@@ -19,48 +18,30 @@ using Nethermind.Serialization.Rlp;
 
 namespace Nethermind.Hive
 {
-    public class HiveRunner
+    public class HiveRunner(
+        IBlockTree blockTree,
+        IBlockProcessingQueue blockProcessingQueue,
+        IHiveConfig hiveConfig,
+        ILogManager logManager,
+        IFileSystem fileSystem,
+        IBlockValidator blockValidator)
     {
-        private readonly IBlockTree _blockTree;
-        private readonly IBlockProcessingQueue _blockProcessingQueue;
-        private readonly ILogger _logger;
-        private readonly IConfigProvider _configurationProvider;
-        private readonly IFileSystem _fileSystem;
-        private readonly IBlockValidator _blockValidator;
-        private readonly SemaphoreSlim _resetEvent;
+        private readonly ILogger _logger = logManager.GetClassLogger<HiveRunner>();
+        private readonly SemaphoreSlim _resetEvent = new(0);
         private bool BlockSuggested;
-
-        public HiveRunner(
-            IBlockTree blockTree,
-            IBlockProcessingQueue blockProcessingQueue,
-            IConfigProvider configurationProvider,
-            ILogger logger,
-            IFileSystem fileSystem,
-            IBlockValidator blockValidator)
-        {
-            _logger = logger;
-            _blockTree = blockTree ?? throw new ArgumentNullException(nameof(blockTree));
-            _blockProcessingQueue = blockProcessingQueue ?? throw new ArgumentNullException(nameof(blockProcessingQueue));
-            _configurationProvider = configurationProvider ?? throw new ArgumentNullException(nameof(configurationProvider));
-            _fileSystem = fileSystem ?? throw new ArgumentNullException(nameof(fileSystem));
-            _blockValidator = blockValidator;
-
-            _resetEvent = new SemaphoreSlim(0);
-        }
 
         public async Task Start(CancellationToken cancellationToken)
         {
             if (_logger.IsInfo) _logger.Info("HIVE initialization started");
-            _blockTree.NewBestSuggestedBlock += OnNewBestSuggestedBlock;
-            _blockProcessingQueue.BlockRemoved += BlockProcessingFinished;
-            IHiveConfig hiveConfig = _configurationProvider.GetConfig<IHiveConfig>();
+            blockTree.NewBestSuggestedBlock += OnNewBestSuggestedBlock;
+            blockProcessingQueue.BlockRemoved += BlockProcessingFinished;
 
             ListEnvironmentVariables();
             await InitializeBlocks(hiveConfig.BlocksDir, cancellationToken);
             await InitializeChain(hiveConfig.ChainFile);
 
-            _blockTree.NewBestSuggestedBlock -= OnNewBestSuggestedBlock;
-            _blockProcessingQueue.BlockRemoved -= BlockProcessingFinished;
+            blockTree.NewBestSuggestedBlock -= OnNewBestSuggestedBlock;
+            blockProcessingQueue.BlockRemoved -= BlockProcessingFinished;
 
             if (_logger.IsInfo) _logger.Info("HIVE initialization completed");
         }
@@ -68,7 +49,7 @@ namespace Nethermind.Hive
         private void OnNewBestSuggestedBlock(object? sender, BlockEventArgs e)
         {
             BlockSuggested = true;
-            if (_logger.IsInfo) _logger.Info($"HIVE suggested {e.Block.ToString(Block.Format.Short)}, now best suggested header {_blockTree.BestSuggestedHeader}, head {_blockTree.Head?.Header?.ToString(BlockHeader.Format.Short)}");
+            if (_logger.IsInfo) _logger.Info($"HIVE suggested {e.Block.ToString(Block.Format.Short)}, now best suggested header {blockTree.BestSuggestedHeader}, head {blockTree.Head?.Header?.ToString(BlockHeader.Format.Short)}");
         }
 
         private void BlockProcessingFinished(object? sender, BlockHashEventArgs e)
@@ -125,6 +106,7 @@ namespace Nethermind.Hive
             string[] files = Directory.GetFiles(blocksDir).OrderBy(static x => x).ToArray();
             if (_logger.IsInfo) _logger.Info($"Loaded {files.Length} files with blocks to process.");
 
+            BlockHeader? parent = null;
             foreach (string file in files)
             {
                 if (cancellationToken.IsCancellationRequested)
@@ -135,10 +117,17 @@ namespace Nethermind.Hive
                 try
                 {
                     Block block = DecodeBlock(file);
+
+                    if (parent is null && block.Number is 1)
+                    {
+                        parent = blockTree.Genesis;
+                    }
+
                     if (_logger.IsInfo)
                         _logger.Info(
                             $"HIVE Processing block file: {file} - {block.ToString(Block.Format.Short)}");
-                    await ProcessBlock(block);
+                    await ProcessBlock(block, parent);
+                    parent = block.Header;
                 }
                 catch (RlpException e)
                 {
@@ -149,13 +138,13 @@ namespace Nethermind.Hive
 
         private async Task InitializeChain(string chainFile)
         {
-            if (!_fileSystem.File.Exists(chainFile))
+            if (!fileSystem.File.Exists(chainFile))
             {
                 if (_logger.IsInfo) _logger.Info($"HIVE Chain file does not exist: {chainFile}, skipping");
                 return;
             }
 
-            byte[] chainFileContent = _fileSystem.File.ReadAllBytes(chainFile);
+            byte[] chainFileContent = fileSystem.File.ReadAllBytes(chainFile);
             RlpStream rlpStream = new RlpStream(chainFileContent);
             List<Block> blocks = new List<Block>();
 
@@ -169,12 +158,20 @@ namespace Nethermind.Hive
                 blocks.Add(block);
             }
 
+            BlockHeader? parent = null;
             for (int i = 0; i < blocks.Count; i++)
             {
                 Block block = blocks[i];
                 if (_logger.IsInfo)
                     _logger.Info($"HIVE Processing a chain.rlp block {block.ToString(Block.Format.Short)}");
-                await ProcessBlock(block);
+
+                if (parent is null && block.Number is 1)
+                {
+                    parent = blockTree.Genesis;
+                }
+
+                await ProcessBlock(block, parent);
+                parent = block.Header;
             }
         }
 
@@ -194,23 +191,23 @@ namespace Nethermind.Hive
             }
         }
 
-        private async Task ProcessBlock(Block block)
+        private async Task ProcessBlock(Block block, BlockHeader? parent)
         {
             try
             {
                 // Start of block processing, setting flag BlockSuggested to default value: false
                 BlockSuggested = false;
 
-                if (!_blockValidator.ValidateSuggestedBlock(block, out _))
+                if (!blockValidator.ValidateSuggestedBlock(block, parent, out string? err))
                 {
-                    if (_logger.IsInfo) _logger.Info($"Invalid block {block}");
+                    if (_logger.IsInfo) _logger.Info($"Invalid block {block}. Error: {err}");
                     return;
                 }
 
                 // Inside BlockTree.SuggestBlockAsync, if block's total difficulty is higher than highest known,
                 // then event NewBestSuggestedBlock is invoked and block will be processed - we are not awaiting it here.
                 // Here, in HiveRunner, in method OnNewBestSuggestedBlock, flag BlockSuggested is set to true.
-                AddBlockResult result = await _blockTree.SuggestBlockAsync(block);
+                AddBlockResult result = await blockTree.SuggestBlockAsync(block);
                 if (result != AddBlockResult.Added && result != AddBlockResult.AlreadyKnown)
                 {
                     if (_logger.IsError) _logger.Error($"Cannot add block {block} to the blockTree, add result {result}");

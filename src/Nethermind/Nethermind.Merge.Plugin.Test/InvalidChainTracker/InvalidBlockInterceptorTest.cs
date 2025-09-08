@@ -28,6 +28,15 @@ public class InvalidBlockInterceptorTest
     public void Setup()
     {
         _baseValidator = Substitute.For<IBlockValidator>();
+        _baseValidator.ValidateBodyAgainstHeader(Arg.Any<BlockHeader>(), Arg.Any<BlockBody>(), out _)
+            .Returns(f =>
+            {
+                var blockHeader = f.Arg<BlockHeader>();
+                var blockBody = f.Arg<BlockBody>();
+                return BlockValidator.ValidateTxRootMatchesTxs(blockHeader, blockBody, out _) &&
+                       BlockValidator.ValidateUnclesHashMatches(blockHeader, blockBody, out _) &&
+                       BlockValidator.ValidateWithdrawalsHashMatches(blockHeader, blockBody, out _);
+            });
         _tracker = Substitute.For<IInvalidChainTracker>();
         _invalidBlockInterceptor = new(
             _baseValidator,
@@ -42,9 +51,10 @@ public class InvalidBlockInterceptorTest
     [TestCase(false, true)]
     public void TestValidateSuggestedBlock(bool baseReturnValue, bool isInvalidBlockReported)
     {
-        Block block = Build.A.Block.TestObject;
-        _baseValidator.ValidateSuggestedBlock(block, out _).Returns(baseReturnValue);
-        _invalidBlockInterceptor.ValidateSuggestedBlock(block, out _);
+        BlockHeader parent = Build.A.BlockHeader.TestObject;
+        Block block = Build.A.Block.WithParent(parent).TestObject;
+        _baseValidator.ValidateSuggestedBlock(block, parent, out _).Returns(baseReturnValue);
+        _invalidBlockInterceptor.ValidateSuggestedBlock(block, parent, out _);
 
         _tracker.Received().SetChildParent(block.GetOrCalculateHash(), block.ParentHash!);
         if (isInvalidBlockReported)
@@ -81,11 +91,12 @@ public class InvalidBlockInterceptorTest
     [Test]
     public void TestInvalidBlockhashShouldNotGetTracked()
     {
-        Block block = Build.A.Block.TestObject;
+        BlockHeader parent = Build.A.BlockHeader.TestObject;
+        Block block = Build.A.Block.WithParent(parent).TestObject;
         block.Header.StateRoot = Keccak.Zero;
 
-        _baseValidator.ValidateSuggestedBlock(block, out _).Returns(false);
-        _invalidBlockInterceptor.ValidateSuggestedBlock(block, out _);
+        _baseValidator.ValidateSuggestedBlock(block, parent, out _).Returns(false);
+        _invalidBlockInterceptor.ValidateSuggestedBlock(block, parent, out _);
 
         _tracker.DidNotReceive().SetChildParent(block.GetOrCalculateHash(), block.ParentHash!);
         _tracker.DidNotReceive().OnInvalidBlock(block.GetOrCalculateHash(), block.ParentHash);
@@ -94,7 +105,9 @@ public class InvalidBlockInterceptorTest
     [Test]
     public void TestBlockWithNotMatchingTxShouldNotGetTracked()
     {
+        BlockHeader parent = Build.A.BlockHeader.TestObject;
         Block block = Build.A.Block
+            .WithParent(parent)
             .WithTransactions(10, MainnetSpecProvider.Instance)
             .TestObject;
 
@@ -102,8 +115,8 @@ public class InvalidBlockInterceptorTest
             block.Transactions.Take(9).ToArray()
         ));
 
-        _baseValidator.ValidateSuggestedBlock(block, out _).Returns(false);
-        _invalidBlockInterceptor.ValidateSuggestedBlock(block, out _);
+        _baseValidator.ValidateSuggestedBlock(block, parent, out _).Returns(false);
+        _invalidBlockInterceptor.ValidateSuggestedBlock(block, parent, out _);
 
         _tracker.DidNotReceive().SetChildParent(block.GetOrCalculateHash(), block.ParentHash!);
         _tracker.DidNotReceive().OnInvalidBlock(block.GetOrCalculateHash(), block.ParentHash);
@@ -112,7 +125,9 @@ public class InvalidBlockInterceptorTest
     [Test]
     public void TestBlockWithIncorrectWithdrawalsShouldNotGetTracked()
     {
+        BlockHeader parent = Build.A.BlockHeader.TestObject;
         Block block = Build.A.Block
+            .WithParent(parent)
             .WithWithdrawals(10)
             .TestObject;
 
@@ -120,8 +135,8 @@ public class InvalidBlockInterceptorTest
             block.Withdrawals!.Take(8).ToArray()
         ));
 
-        _baseValidator.ValidateSuggestedBlock(block, out _).Returns(false);
-        _invalidBlockInterceptor.ValidateSuggestedBlock(block, out _);
+        _baseValidator.ValidateSuggestedBlock(block, parent, out _).Returns(false);
+        _invalidBlockInterceptor.ValidateSuggestedBlock(block, parent, out _);
 
         _tracker.DidNotReceive().SetChildParent(block.GetOrCalculateHash(), block.ParentHash!);
         _tracker.DidNotReceive().OnInvalidBlock(block.GetOrCalculateHash(), block.ParentHash);

@@ -1,18 +1,21 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using Autofac;
+using Autofac.Core;
+using Nethermind.Api.Steps;
+using Nethermind.Core.Collections;
+using Nethermind.Core.Exceptions;
+using Nethermind.Logging;
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.Linq;
+using System.Reflection;
 using System.Runtime.ExceptionServices;
-using System.Runtime.InteropServices;
+using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
-using Autofac;
-using Nethermind.Api;
-using Nethermind.Api.Steps;
-using Nethermind.Logging;
 
 namespace Nethermind.Init.Steps
 {
@@ -46,8 +49,7 @@ namespace Nethermind.Init.Steps
             {
                 Task current = await Task.WhenAny(allRequiredSteps);
                 ReviewFailedAndThrow(current);
-                if (current.IsCanceled && _logger.IsDebug)
-                    _logger.Debug($"A required step was cancelled!");
+                if (current.IsCanceled && _logger.IsDebug) _logger.Debug("A required step was cancelled!");
                 allRequiredSteps.Remove(current);
             } while (allRequiredSteps.Any(s => !s.IsCompleted));
         }
@@ -55,75 +57,89 @@ namespace Nethermind.Init.Steps
 
         private List<Task> CreateAndExecuteSteps(CancellationToken cancellationToken)
         {
-            Dictionary<Type, List<StepWrapper>> stepBaseTypeMap = [];
-            Dictionary<Type, StepInfo> stepInfoMap = [];
+            Dictionary<Type, StepWrapper> stepInfoMap = [];
 
             foreach (StepInfo stepInfo in _loader.ResolveStepsImplementations().ToList())
             {
                 cancellationToken.ThrowIfCancellationRequested();
 
-                Func<IStep> stepFactory = () =>
-                {
-                    IStep? step = CreateStepInstance(stepInfo);
-                    if (step is null)
-                        throw new StepDependencyException(
-                            $"A step {stepInfo} could not be created and initialization cannot proceed.");
-                    return step;
-                };
+                IStep StepFactory() => CreateStepInstance(stepInfo);
 
-                stepInfoMap.Add(stepInfo.StepType, stepInfo);
-                ref List<StepWrapper>? list = ref CollectionsMarshal.GetValueRefOrAddDefault(stepBaseTypeMap, stepInfo.StepBaseType, out bool keyExists);
-                list ??= new List<StepWrapper>();
-                list.Add(new StepWrapper(stepFactory, stepInfo));
+                Debug.Assert(!stepInfoMap.ContainsKey(stepInfo.StepBaseType), "Resolve steps implementations should have deduplicated step by base type");
+                stepInfoMap.Add(stepInfo.StepBaseType, new StepWrapper(StepFactory, stepInfo));
             }
-            List<Task> allRequiredSteps = new();
-            foreach (List<StepWrapper> steps in stepBaseTypeMap.Values)
+
+            foreach ((Type key, StepWrapper stepWrapper) in stepInfoMap)
             {
-                foreach (StepWrapper stepWrapper in steps)
+                foreach (Type type in stepWrapper.StepInfo.Dependents)
                 {
-                    StepInfo stepInfo = stepInfoMap[stepWrapper.StepInfo.StepType];
-                    Task task = ExecuteStep(stepWrapper, stepInfo, stepBaseTypeMap, cancellationToken);
-                    if (_logger.IsDebug) _logger.Debug($"Executing step: {stepInfo}");
-                    allRequiredSteps.Add(task);
+                    if (stepInfoMap.TryGetValue(type, out StepWrapper? dependent))
+                    {
+                        dependent.Dependencies.Add(key);
+                    }
+                    else
+                    {
+                        throw new StepDependencyException($"The dependent step {type.Name} for {stepWrapper.StepInfo.StepBaseType.Name} is missing.");
+                    }
                 }
+
+                // Remove absent optional dependencies
+                for (var i = 0; i < stepWrapper.Dependencies.Count; i++)
+                {
+                    Type dep = stepWrapper.Dependencies[i];
+                    if (!stepInfoMap.ContainsKey(dep))
+                    {
+                        if (dep.GetCustomAttribute<RunnerStepDependenciesAttribute>()?.Optional is true)
+                        {
+                            stepWrapper.Dependencies.RemoveAt(i);
+                            i--;
+                            if (_logger.IsDebug) _logger.Debug($"Optional dependency {dep.Name} will not be loaded for step {key.Name} because it was not found.");
+                        }
+                        else
+                        {
+                            throw new StepDependencyException($"Dependency {dep.Name} was not found for step {key.Name}.");
+                        }
+                    }
+                }
+            }
+
+            if (_logger.IsDebug) _logger.Debug($"Ethereum steps dependency tree:\n{BuildStepDependencyTree(stepInfoMap)}");
+            List<Task> allRequiredSteps = new();
+            foreach (StepWrapper stepWrapper in stepInfoMap.Values)
+            {
+                StepInfo stepInfo = stepWrapper.StepInfo;
+                Task task = ExecuteStep(stepWrapper, stepInfoMap, cancellationToken);
+                if (_logger.IsDebug) _logger.Debug($"Executing step: {stepInfo}");
+                allRequiredSteps.Add(task);
             }
             return allRequiredSteps;
         }
 
-        private async Task ExecuteStep(StepWrapper stepWrapper, StepInfo stepInfo, Dictionary<Type, List<StepWrapper>> stepBaseTypeMap, CancellationToken cancellationToken)
+        private async Task ExecuteStep(StepWrapper stepWrapper, Dictionary<Type, StepWrapper> stepBaseTypeMap, CancellationToken cancellationToken)
         {
             long startTime = Stopwatch.GetTimestamp();
             try
             {
                 List<StepWrapper> dependencies = [];
-                foreach (Type type in stepInfo.Dependencies)
+                foreach (Type type in stepWrapper.Dependencies)
                 {
-                    if (!stepBaseTypeMap.ContainsKey(type))
-                        throw new StepDependencyException($"The dependent step {type.Name} for {stepInfo.StepType.Name} was not created.");
-                    dependencies.AddRange(stepBaseTypeMap[type]);
+                    if (!stepBaseTypeMap.TryGetValue(type, out StepWrapper? value))
+                        throw new StepDependencyException($"The dependent step {type.Name} for {stepWrapper.StepInfo.StepBaseType.Name} was not created.");
+                    dependencies.AddRange(value);
                 }
                 await stepWrapper.StartExecute(dependencies, cancellationToken);
 
-                if (_logger.IsDebug)
-                    _logger.Debug(
-                        $"Step {stepWrapper.GetType().Name,-24} executed in {Stopwatch.GetElapsedTime(startTime).TotalMilliseconds:N0}ms");
+                if (_logger.IsDebug) _logger.Debug($"Step {stepWrapper.GetType().Name,-24} executed in {Stopwatch.GetElapsedTime(startTime).TotalMilliseconds:N0}ms");
             }
             catch (Exception exception) when (exception is not TaskCanceledException)
             {
                 if (stepWrapper.Step.MustInitialize)
                 {
-                    if (_logger.IsError)
-                        _logger.Error(
-                            $"Step {stepWrapper.GetType().Name,-24} failed after {Stopwatch.GetElapsedTime(startTime).TotalMilliseconds:N0}ms",
-                            exception);
+                    if (_logger.IsError) _logger.Error($"Step {stepWrapper.GetType().Name,-24} failed after {Stopwatch.GetElapsedTime(startTime).TotalMilliseconds:N0}ms", exception);
                     throw;
                 }
 
-                if (_logger.IsWarn)
-                {
-                    _logger.Warn(
-                        $"Step {stepWrapper.GetType().Name,-24} failed after {Stopwatch.GetElapsedTime(startTime).TotalMilliseconds:N0}ms {exception}");
-                }
+                if (_logger.IsWarn) _logger.Warn($"Step {stepWrapper.GetType().Name,-24} failed after {Stopwatch.GetElapsedTime(startTime).TotalMilliseconds:N0}ms {exception}");
             }
             finally
             {
@@ -131,19 +147,33 @@ namespace Nethermind.Init.Steps
             }
         }
 
-        private IStep? CreateStepInstance(StepInfo stepInfo)
+        private IStep CreateStepInstance(StepInfo stepInfo)
         {
-            IStep? step = null;
             try
             {
-                step = _ctx.Resolve(stepInfo.StepType) as IStep;
+                return (_ctx.Resolve(stepInfo.StepType) as IStep)!;
             }
             catch (Exception e)
             {
-                if (_logger.IsError) _logger.Error($"Failed to create instance of Ethereum runner step {stepInfo}", e);
+                if (TryUnwrapException(e, out Exception? unwrappedException))
+                {
+                    ExceptionDispatchInfo.Capture(unwrappedException!).Throw();
+                    throw;
+                }
+
+                throw new StepDependencyException($"A step {stepInfo} could not be created and initialization cannot proceed.", e);
+            }
+        }
+
+        private bool TryUnwrapException(Exception exception, out Exception? unwrapped)
+        {
+            unwrapped = exception;
+            while (unwrapped is DependencyResolutionException resolutionException)
+            {
+                unwrapped = resolutionException.InnerException;
             }
 
-            return step;
+            return unwrapped is InvalidConfigurationException;
         }
 
         private void ReviewFailedAndThrow(Task task)
@@ -152,15 +182,97 @@ namespace Nethermind.Init.Steps
                 ExceptionDispatchInfo.Capture(task.Exception.GetBaseException()).Throw();
         }
 
+        /// <summary>
+        /// Recursively prints roots (steps with no dependencies) and their dependents.
+        /// </summary>
+        private string BuildStepDependencyTree(Dictionary<Type, StepWrapper> stepInfoMap)
+        {
+            // Map each step to its direct dependencies
+            var depsMap = stepInfoMap.ToDictionary(
+                kv => kv.Key.Name,
+                kv => kv.Value.Dependencies.Select(d => d.Name).ToList()
+            );
+
+            // Build children map for topological sorting (parent -> children)
+            var dependentsMap = stepInfoMap.Keys.ToDictionary(t => t.Name, t => new List<string>());
+            foreach (KeyValuePair<Type, StepWrapper> kv in stepInfoMap)
+            {
+                var node = kv.Key.Name;
+                foreach (Type dependency in kv.Value.Dependencies)
+                {
+                    if (dependentsMap.ContainsKey(dependency.Name))
+                        dependentsMap[dependency.Name].Add(node);
+                }
+            }
+
+            // Kahn's algorithm to compute topological order
+            Dictionary<string, int> inDegree = depsMap.ToDictionary(kv => kv.Key, kv => kv.Value.Count);
+            Queue<string> queue = new(inDegree.Where(kv => kv.Value == 0).Select(kv => kv.Key).OrderBy((c) => dependentsMap[c].Count));
+            List<string> sorted = new();
+            Dictionary<string, int> degree = new(inDegree);
+            while (queue.Count > 0)
+            {
+                var n = queue.Dequeue();
+                sorted.Add(n);
+                foreach (var dependent in dependentsMap[n].OrderBy((c) => dependentsMap[c].Count))
+                {
+                    degree[dependent]--;
+                    if (degree[dependent] == 0)
+                        queue.Enqueue(dependent);
+                }
+            }
+            if (sorted.Count != depsMap.Count)
+                sorted = depsMap.Keys.OrderBy(n => n).ToList();
+
+            // Compute max dependency depth for indentation
+            Dictionary<string, int> depth = new();
+            Dictionary<string, HashSet<string>> allCombinedDeps = new();
+            foreach (string node in sorted)
+            {
+                List<string> deps = depsMap[node];
+                depth[node] = deps.Count == 0
+                    ? 0
+                    : deps.Select(d => depth.GetValueOrDefault(d, 0)).Max() + 1;
+
+                allCombinedDeps[node] = depsMap[node].SelectMany((d) => allCombinedDeps[d]).ToHashSet();
+                allCombinedDeps[node].AddRange(depsMap[node]);
+            }
+
+            Dictionary<string, List<string>> deduplicatedDependency = new();
+            foreach (var node in sorted)
+            {
+                HashSet<string> childOnlyAllCombinedDeps = depsMap[node].SelectMany(d => allCombinedDeps[d]).ToHashSet();
+                deduplicatedDependency[node] = depsMap[node].Where(d => !childOnlyAllCombinedDeps.Contains(d)).ToList();
+            }
+
+            // Build the indented output using reversed indentation
+            StringBuilder sb = new();
+            foreach (var node in sorted)
+            {
+                int lvl = depth[node];
+                sb.Append(new string(' ', lvl * 2));
+                List<string> deps = deduplicatedDependency[node];
+                sb.Append(dependentsMap[node].Count == 0 ? "● " : "○ ");
+                sb.Append(node);
+                if (deps.Count != 0)
+                {
+                    sb.AppendLine($" (depends on {string.Join(", ", deps)})");
+                }
+            }
+
+            return sb.ToString();
+        }
+
         private class StepWrapper(Func<IStep> stepFactory, StepInfo stepInfo)
         {
             public StepInfo StepInfo => stepInfo;
 
             private IStep? _step;
             public IStep Step => _step ??= stepFactory();
-            public Task StepTask => _taskCompletedSource.Task;
+            private Task StepTask => _taskCompletedSource.Task;
+            public readonly List<Type> Dependencies = [.. stepInfo.Dependencies];
 
-            private TaskCompletionSource _taskCompletedSource = new TaskCompletionSource();
+            private readonly TaskCompletionSource _taskCompletedSource = new();
 
             public async Task StartExecute(IEnumerable<StepWrapper> dependentSteps, CancellationToken cancellationToken)
             {

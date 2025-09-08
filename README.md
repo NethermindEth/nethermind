@@ -47,7 +47,7 @@ The standalone release builds are available on [GitHub Releases](https://github.
   On Windows, Nethermind can be installed via Windows Package Manager:
 
   ```powershell
-  winget install nethermind
+  winget install --id Nethermind.Nethermind
   ```
 
 - **macOS**

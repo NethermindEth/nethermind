@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System.Diagnostics.CodeAnalysis;
 using System.Threading;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
@@ -31,41 +32,17 @@ public class Always : IBlockValidator, ISealValidator, IUnclesValidator, ITxVali
     public static Always Invalid
         => LazyInitializer.EnsureInitialized(ref _invalid, static () => new Always(false));
 
-    public bool ValidateHash(BlockHeader header)
-    {
-        return _result;
-    }
-
-    public bool Validate(BlockHeader header, BlockHeader parent, bool isUncle = false)
-    {
-        return _result;
-    }
-
     public bool Validate(BlockHeader header, BlockHeader? parent, bool isUncle, out string? error)
     {
         error = null;
         return _result;
     }
 
-    public bool Validate(BlockHeader header, bool isUncle = false)
-    {
-        return _result;
-    }
     public bool Validate(BlockHeader header, bool isUncle, out string? error)
     {
         error = null;
         return _result;
     }
-    public bool ValidateSuggestedBlock(Block block)
-    {
-        return _result;
-    }
-
-    public bool ValidateProcessedBlock(Block processedBlock, TxReceipt[] receipts, Block suggestedBlock)
-    {
-        return _result;
-    }
-
     public bool ValidateParams(BlockHeader parent, BlockHeader header, bool isUncle = false)
     {
         return _result;
@@ -98,7 +75,7 @@ public class Always : IBlockValidator, ISealValidator, IUnclesValidator, ITxVali
         return _result;
     }
 
-    public bool ValidateSuggestedBlock(Block block, out string? error, bool validateHashes = true)
+    public bool ValidateSuggestedBlock(Block block, BlockHeader? parent, out string? error, bool validateHashes = true)
     {
         error = null;
         return _result;
@@ -110,4 +87,9 @@ public class Always : IBlockValidator, ISealValidator, IUnclesValidator, ITxVali
         return _result;
     }
 
+    public bool ValidateBodyAgainstHeader(BlockHeader header, BlockBody toBeValidated, [NotNullWhen(false)] out string? errorMessage)
+    {
+        errorMessage = null;
+        return _result;
+    }
 }

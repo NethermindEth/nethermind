@@ -7,6 +7,7 @@ using System.Linq;
 using System.Runtime.InteropServices;
 using System.Text;
 using System.Threading;
+using Autofac.Features.AttributeFilters;
 using Nethermind.Blockchain;
 using Nethermind.Core;
 using Nethermind.Core.Attributes;
@@ -32,7 +33,13 @@ namespace Nethermind.Consensus.Clique
         private ulong _lastSignersCount = 0;
         private readonly LruCache<ValueHash256, Snapshot> _snapshotCache = new(Clique.InMemorySnapshots, "clique snapshots");
 
-        public SnapshotManager(ICliqueConfig cliqueConfig, IDb blocksDb, IBlockTree blockTree, IEthereumEcdsa ecdsa, ILogManager logManager)
+        public SnapshotManager(
+            ICliqueConfig cliqueConfig,
+            [KeyFilter(DbNames.Blocks)] IDb blocksDb,
+            IBlockTree blockTree,
+            IEthereumEcdsa ecdsa,
+            ILogManager logManager
+        )
         {
             _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
             _cliqueConfig = cliqueConfig ?? throw new ArgumentNullException(nameof(cliqueConfig));
@@ -59,8 +66,8 @@ namespace Nethermind.Consensus.Clique
             Span<byte> signatureBytes = header.ExtraData.AsSpan(header.ExtraData.Length - extraSeal, extraSeal);
             Signature signature = new(signatureBytes);
             signature.V += Signature.VOffset;
-            Hash256 message = CalculateCliqueHeaderHash(header);
-            Address address = _ecdsa.RecoverAddress(signatureBytes, message);
+            ValueHash256 message = CalculateCliqueHeaderHash(header);
+            Address address = _ecdsa.RecoverAddress(signature, in message);
             _signatures.Set(header.Hash, address);
             return address;
         }
@@ -73,12 +80,12 @@ namespace Nethermind.Consensus.Clique
             return signersCount;
         }
 
-        public static Hash256 CalculateCliqueHeaderHash(BlockHeader blockHeader)
+        public static ValueHash256 CalculateCliqueHeaderHash(BlockHeader blockHeader)
         {
             byte[] fullExtraData = blockHeader.ExtraData;
             byte[] shortExtraData = SliceExtraSealFromExtraData(blockHeader.ExtraData);
             blockHeader.ExtraData = shortExtraData;
-            Hash256 sigHash = blockHeader.CalculateHash();
+            ValueHash256 sigHash = blockHeader.CalculateValueHash();
             blockHeader.ExtraData = fullExtraData;
             return sigHash;
         }

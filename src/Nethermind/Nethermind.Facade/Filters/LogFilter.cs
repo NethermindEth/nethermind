@@ -7,21 +7,18 @@ using Nethermind.Core;
 
 namespace Nethermind.Blockchain.Filters
 {
-    public class LogFilter : FilterBase
+    public class LogFilter(
+        int id,
+        BlockParameter fromBlock,
+        BlockParameter toBlock,
+        AddressFilter addressFilter,
+        TopicsFilter topicsFilter)
+        : FilterBase(id)
     {
-        public AddressFilter AddressFilter { get; }
-        public TopicsFilter TopicsFilter { get; }
-        public BlockParameter FromBlock { get; }
-        public BlockParameter ToBlock { get; }
-
-        public LogFilter(int id, BlockParameter fromBlock, BlockParameter toBlock,
-            AddressFilter addressFilter, TopicsFilter topicsFilter) : base(id)
-        {
-            FromBlock = fromBlock;
-            ToBlock = toBlock;
-            AddressFilter = addressFilter;
-            TopicsFilter = topicsFilter;
-        }
+        public AddressFilter AddressFilter { get; } = addressFilter;
+        public TopicsFilter TopicsFilter { get; } = topicsFilter;
+        public BlockParameter FromBlock { get; } = fromBlock;
+        public BlockParameter ToBlock { get; } = toBlock;
 
         public bool Accepts(LogEntry logEntry) => AddressFilter.Accepts(logEntry.Address) && TopicsFilter.Accepts(logEntry);
 

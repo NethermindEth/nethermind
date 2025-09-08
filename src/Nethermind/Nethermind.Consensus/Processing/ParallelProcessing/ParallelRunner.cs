@@ -57,7 +57,7 @@ public class ParallelRunner<TLocation, TLogger>(
     private void Loop(int threadIndex)
     {
         long start = Stopwatch.GetTimestamp();
-        using var handle = Thread.CurrentThread.BoostPriorityHighest();
+        using ThreadExtensions.Disposable handle = Thread.CurrentThread.SetHighestPriority();
         TxTask task = scheduler.NextTask();
         do
         {

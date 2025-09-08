@@ -7,13 +7,17 @@ using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
+using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
+using Nethermind.Core.Test.Db;
 using Nethermind.Db;
 using Nethermind.Specs;
 using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.Specs.Forks;
+using Nethermind.Evm.State;
 using Nethermind.State;
+using Nethermind.Trie;
 using Nethermind.Trie.Pruning;
 using NSubstitute;
 using NUnit.Framework;
@@ -28,54 +32,57 @@ namespace Nethermind.Store.Test
         private static readonly ILogManager Logger = LimboLogs.Instance;
 
         [Test]
-        public async Task Can_ask_about_balance_in_parallel()
+        public void Can_ask_about_balance_in_parallel()
         {
             IReleaseSpec spec = MainnetSpecProvider.Instance.GetSpec((ForkActivation)MainnetSpecProvider.ConstantinopleFixBlockNumber);
-            MemDb stateDb = new();
-            WorldState provider =
-                new(new TrieStore(stateDb, Logger), Substitute.For<IDb>(), Logger);
+            IDbProvider dbProvider = TestMemDbProvider.Init();
+            IWorldStateManager worldStateManager = TestWorldStateFactory.CreateForTest(dbProvider, LimboLogs.Instance);
+
+            IWorldState provider = worldStateManager.GlobalWorldState;
+            using var _ = provider.BeginScope(IWorldState.PreGenesis);
+
             provider.CreateAccount(_address1, 0);
             provider.AddToBalance(_address1, 1, spec);
             provider.Commit(spec);
             provider.CommitTree(0);
-            Hash256 stateRoot0 = provider.StateRoot;
+            BlockHeader baseBlock0 = Build.A.BlockHeader.WithStateRoot(provider.StateRoot).TestObject;
 
             provider.AddToBalance(_address1, 1, spec);
             provider.Commit(spec);
             provider.CommitTree(0);
-            Hash256 stateRoot1 = provider.StateRoot;
+            BlockHeader baseBlock1 = Build.A.BlockHeader.WithStateRoot(provider.StateRoot).TestObject;
 
             provider.AddToBalance(_address1, 1, spec);
             provider.Commit(spec);
             provider.CommitTree(0);
-            Hash256 stateRoot2 = provider.StateRoot;
+            BlockHeader baseBlock2 = Build.A.BlockHeader.WithStateRoot(provider.StateRoot).TestObject;
 
             provider.AddToBalance(_address1, 1, spec);
             provider.Commit(spec);
             provider.CommitTree(0);
-            Hash256 stateRoot3 = provider.StateRoot;
+            BlockHeader baseBlock3 = Build.A.BlockHeader.WithStateRoot(provider.StateRoot).TestObject;
 
             provider.CommitTree(0);
 
-            StateReader reader =
-                new(new TrieStore(stateDb, LimboLogs.Instance), Substitute.For<IDb>(), Logger);
+            IStateReader reader = worldStateManager.GlobalStateReader;
 
-            Task a = StartTask(reader, stateRoot0, 1);
-            Task b = StartTask(reader, stateRoot1, 2);
-            Task c = StartTask(reader, stateRoot2, 3);
-            Task d = StartTask(reader, stateRoot3, 4);
+            Task a = StartTask(reader, baseBlock0, 1);
+            Task b = StartTask(reader, baseBlock1, 2);
+            Task c = StartTask(reader, baseBlock2, 3);
+            Task d = StartTask(reader, baseBlock3, 4);
 
-            await Task.WhenAll(a, b, c, d);
+            Task.WhenAll(a, b, c, d).Wait();
         }
 
         [Test]
-        public async Task Can_ask_about_storage_in_parallel()
+        public void Can_ask_about_storage_in_parallel()
         {
             StorageCell storageCell = new(_address1, UInt256.One);
             IReleaseSpec spec = MuirGlacier.Instance;
-            MemDb stateDb = new();
-            TrieStore trieStore = new(stateDb, Logger);
-            WorldState provider = new(trieStore, new MemDb(), Logger);
+            IDbProvider dbProvider = TestMemDbProvider.Init();
+            IWorldStateManager worldStateManager = TestWorldStateFactory.CreateForTest(dbProvider, LimboLogs.Instance);
+            IWorldState provider = worldStateManager.GlobalWorldState;
+            using var _ = provider.BeginScope(IWorldState.PreGenesis);
 
             void UpdateStorageValue(byte[] newValue)
             {
@@ -99,32 +106,31 @@ namespace Nethermind.Store.Test
             AddOneToBalance();
             UpdateStorageValue(new byte[] { 1 });
             CommitEverything();
-            Hash256 stateRoot0 = provider.StateRoot;
+            BlockHeader baseBlock0 = Build.A.BlockHeader.WithStateRoot(provider.StateRoot).TestObject;
 
             AddOneToBalance();
             UpdateStorageValue(new byte[] { 2 });
             CommitEverything();
-            Hash256 stateRoot1 = provider.StateRoot;
+            BlockHeader baseBlock1 = Build.A.BlockHeader.WithStateRoot(provider.StateRoot).TestObject;
 
             AddOneToBalance();
             UpdateStorageValue(new byte[] { 3 });
             CommitEverything();
-            Hash256 stateRoot2 = provider.StateRoot;
+            BlockHeader baseBlock2 = Build.A.BlockHeader.WithStateRoot(provider.StateRoot).TestObject;
 
             AddOneToBalance();
             UpdateStorageValue(new byte[] { 4 });
             CommitEverything();
-            Hash256 stateRoot3 = provider.StateRoot;
+            BlockHeader baseBlock3 = Build.A.BlockHeader.WithStateRoot(provider.StateRoot).TestObject;
 
-            StateReader reader =
-                new(new TrieStore(stateDb, LimboLogs.Instance), Substitute.For<IDb>(), Logger);
+            IStateReader reader = worldStateManager.GlobalStateReader;
 
-            Task a = StartStorageTask(reader, stateRoot0, storageCell, new byte[] { 1 });
-            Task b = StartStorageTask(reader, stateRoot1, storageCell, new byte[] { 2 });
-            Task c = StartStorageTask(reader, stateRoot2, storageCell, new byte[] { 3 });
-            Task d = StartStorageTask(reader, stateRoot3, storageCell, new byte[] { 4 });
+            Task a = StartStorageTask(reader, baseBlock0, storageCell, new byte[] { 1 });
+            Task b = StartStorageTask(reader, baseBlock1, storageCell, new byte[] { 2 });
+            Task c = StartStorageTask(reader, baseBlock2, storageCell, new byte[] { 3 });
+            Task d = StartStorageTask(reader, baseBlock3, storageCell, new byte[] { 4 });
 
-            await Task.WhenAll(a, b, c, d);
+            Task.WhenAll(a, b, c, d).Wait();
         }
 
         [Test]
@@ -133,9 +139,9 @@ namespace Nethermind.Store.Test
             StorageCell storageCell = new(_address1, UInt256.One);
             IReleaseSpec spec = MuirGlacier.Instance;
 
-            MemDb stateDb = new();
-            TrieStore trieStore = new(stateDb, Logger);
-            WorldState provider = new(trieStore, new MemDb(), Logger);
+            IWorldStateManager worldStateManager = TestWorldStateFactory.CreateForTest();
+            IWorldState provider = worldStateManager.GlobalWorldState;
+            using var _ = provider.BeginScope(IWorldState.PreGenesis);
 
             void CommitEverything()
             {
@@ -148,64 +154,65 @@ namespace Nethermind.Store.Test
             CommitEverything();
             Hash256 stateRoot0 = provider.StateRoot;
 
-            StateReader reader =
-                new(new TrieStore(stateDb, LimboLogs.Instance), Substitute.For<IDb>(), Logger);
-            reader.GetStorage(stateRoot0, _address1, storageCell.Index + 1).ToArray().Should().BeEquivalentTo(new byte[] { 0 });
+            IStateReader reader = worldStateManager.GlobalStateReader;
+            reader.GetStorage(Build.A.BlockHeader.WithStateRoot(stateRoot0).TestObject, _address1, storageCell.Index + 1).ToArray().Should().BeEquivalentTo(new byte[] { 0 });
         }
 
-        private Task StartTask(StateReader reader, Hash256 stateRoot, UInt256 value)
+        private Task StartTask(IStateReader reader, BlockHeader baseBlock, UInt256 value)
         {
             return Task.Run(
                 () =>
                 {
                     for (int i = 0; i < 10000; i++)
                     {
-                        UInt256 balance = reader.GetBalance(stateRoot, _address1);
+                        UInt256 balance = reader.GetBalance(baseBlock, _address1);
                         Assert.That(balance, Is.EqualTo(value));
                     }
                 });
         }
 
-        private Task StartStorageTask(StateReader reader, Hash256 stateRoot, StorageCell storageCell, byte[] value)
+        private Task StartStorageTask(IStateReader reader, BlockHeader baseBlock, StorageCell storageCell, byte[] value)
         {
             return Task.Run(
                 () =>
                 {
                     for (int i = 0; i < 1000; i++)
                     {
-                        byte[] result = reader.GetStorage(stateRoot, storageCell.Address, storageCell.Index).ToArray();
+                        byte[] result = reader.GetStorage(baseBlock, storageCell.Address, storageCell.Index).ToArray();
                         result.Should().BeEquivalentTo(value);
                     }
                 });
         }
 
         [Test]
-        public async Task Get_storage()
+        public void Get_storage()
         {
-            IDbProvider dbProvider = await TestMemDbProvider.InitAsync();
-
             /* all testing will be touching just a single storage cell */
             StorageCell storageCell = new(_address1, UInt256.One);
 
-            TrieStore trieStore = new(dbProvider.StateDb, Logger);
-            WorldState state = new(trieStore, dbProvider.CodeDb, Logger);
-
-            /* to start with we need to create an account that we will be setting storage at */
-            state.CreateAccount(storageCell.Address, UInt256.One);
-            state.Commit(MuirGlacier.Instance);
-            state.CommitTree(1);
-
-            /* at this stage we have an account with empty storage at the address that we want to test */
-
+            IDbProvider dbProvider = TestMemDbProvider.Init();
+            IWorldStateManager worldStateManager = TestWorldStateFactory.CreateForTest(dbProvider, LimboLogs.Instance);
+            IWorldState state = worldStateManager.GlobalWorldState;
             byte[] initialValue = new byte[] { 1, 2, 3 };
-            state.Set(storageCell, initialValue);
-            state.Commit(MuirGlacier.Instance);
-            state.CommitTree(2);
+            BlockHeader baseBlock;
+            using (var _ = state.BeginScope(IWorldState.PreGenesis))
+            {
+                /* to start with we need to create an account that we will be setting storage at */
+                state.CreateAccount(storageCell.Address, UInt256.One);
+                state.Commit(MuirGlacier.Instance);
+                state.CommitTree(1);
 
-            StateReader reader = new(
-                new TrieStore(dbProvider.StateDb, LimboLogs.Instance), dbProvider.CodeDb, Logger);
+                /* at this stage we have an account with empty storage at the address that we want to test */
 
-            var retrieved = reader.GetStorage(state.StateRoot, _address1, storageCell.Index).ToArray();
+                state.Set(storageCell, initialValue);
+                state.Commit(MuirGlacier.Instance);
+                state.CommitTree(2);
+                baseBlock = Build.A.BlockHeader.WithNumber(2).WithStateRoot(state.StateRoot).TestObject;
+            }
+
+            IStateReader reader = worldStateManager.GlobalStateReader;
+
+            var retrieved = reader.GetStorage(baseBlock, _address1, storageCell.Index).ToArray();
             retrieved.Should().BeEquivalentTo(initialValue);
 
             /* at this stage we set the value in storage to 1,2,3 at the tested storage cell */
@@ -213,21 +220,25 @@ namespace Nethermind.Store.Test
             /* Now we are testing scenario where the storage is being changed by the block processor.
                To do that we create some different storage / state access stack that represents the processor.
                It is a different stack of objects than the one that is used by the blockchain bridge. */
+            // Note: There is only one global IWorldState and IStateReader now. With pruning trie store, the data is
+            // not written to db immediately.
 
             byte[] newValue = new byte[] { 1, 2, 3, 4, 5 };
 
-            WorldState processorStateProvider =
-                new(trieStore, new MemDb(), LimboLogs.Instance);
-            processorStateProvider.StateRoot = state.StateRoot;
+            IWorldState processorStateProvider = state; // They are the same
 
-            processorStateProvider.Set(storageCell, newValue);
-            processorStateProvider.Commit(MuirGlacier.Instance);
-            processorStateProvider.CommitTree(3);
+            using (var _ = processorStateProvider.BeginScope(baseBlock))
+            {
+                processorStateProvider.Set(storageCell, newValue);
+                processorStateProvider.Commit(MuirGlacier.Instance);
+                processorStateProvider.CommitTree(baseBlock.Number + 1);
+                baseBlock = Build.A.BlockHeader.WithParent(baseBlock).WithStateRoot(state.StateRoot).TestObject;
+            }
 
             /* At this stage the DB should have the storage value updated to 5.
                We will try to retrieve the value by taking the state root from the processor.*/
 
-            retrieved = reader.GetStorage(processorStateProvider.StateRoot, storageCell.Address, storageCell.Index).ToArray();
+            retrieved = reader.GetStorage(baseBlock, storageCell.Address, storageCell.Index).ToArray();
             retrieved.Should().BeEquivalentTo(newValue);
 
             /* If it failed then it means that the blockchain bridge cached the previous call value */
@@ -237,14 +248,21 @@ namespace Nethermind.Store.Test
         [Test]
         public void Can_collect_stats()
         {
-            TrieStore trieStore = new TrieStore(new MemDb(), Logger);
-            WorldState provider = new(trieStore, new MemDb(), Logger);
-            provider.CreateAccount(TestItem.AddressA, 1.Ether());
-            provider.Commit(MuirGlacier.Instance);
-            provider.CommitTree(0);
+            IDbProvider dbProvider = TestMemDbProvider.Init();
+            IWorldStateManager worldStateManager = TestWorldStateFactory.CreateForTest(dbProvider, LimboLogs.Instance);
+            IWorldState provider = worldStateManager.GlobalWorldState;
 
-            StateReader stateReader = new StateReader(trieStore.AsReadOnly(), new MemDb(), Logger);
-            var stats = stateReader.CollectStats(provider.StateRoot, new MemDb(), Logger);
+            Hash256 stateRoot;
+            using (var _ = provider.BeginScope(IWorldState.PreGenesis))
+            {
+                provider.CreateAccount(TestItem.AddressA, 1.Ether());
+                provider.Commit(MuirGlacier.Instance);
+                provider.CommitTree(0);
+                stateRoot = provider.StateRoot;
+            }
+
+            IStateReader stateReader = worldStateManager.GlobalStateReader;
+            var stats = stateReader.CollectStats(stateRoot, new MemDb(), Logger);
             stats.AccountCount.Should().Be(1);
         }
 
@@ -254,8 +272,10 @@ namespace Nethermind.Store.Test
             IReleaseSpec releaseSpec = Substitute.For<IReleaseSpec>();
             releaseSpec.IsEip3607Enabled.Returns(true);
             releaseSpec.IsEip7702Enabled.Returns(true);
-            TrieStore trieStore = new TrieStore(new MemDb(), Logger);
-            WorldState sut = new(trieStore, new MemDb(), Logger);
+            IDbProvider dbProvider = TestMemDbProvider.Init();
+            IWorldStateManager worldStateManager = TestWorldStateFactory.CreateForTest(dbProvider, LimboLogs.Instance);
+            IWorldState sut = worldStateManager.GlobalWorldState;
+            using var _ = sut.BeginScope(IWorldState.PreGenesis);
             sut.CreateAccount(TestItem.AddressA, 0);
             sut.InsertCode(TestItem.AddressA, ValueKeccak.Compute(new byte[1]), new byte[1], releaseSpec, false);
             sut.Commit(MuirGlacier.Instance);
@@ -272,8 +292,10 @@ namespace Nethermind.Store.Test
             IReleaseSpec releaseSpec = Substitute.For<IReleaseSpec>();
             releaseSpec.IsEip3607Enabled.Returns(true);
             releaseSpec.IsEip7702Enabled.Returns(true);
-            TrieStore trieStore = new TrieStore(new MemDb(), Logger);
-            WorldState sut = new(trieStore, new MemDb(), Logger);
+            IDbProvider dbProvider = TestMemDbProvider.Init();
+            IWorldStateManager worldStateManager = TestWorldStateFactory.CreateForTest(dbProvider, LimboLogs.Instance);
+            IWorldState sut = worldStateManager.GlobalWorldState;
+            using var _ = sut.BeginScope(IWorldState.PreGenesis);
             sut.CreateAccount(TestItem.AddressA, 0);
             sut.Commit(MuirGlacier.Instance);
             sut.CommitTree(0);
@@ -289,8 +311,10 @@ namespace Nethermind.Store.Test
             IReleaseSpec releaseSpec = Substitute.For<IReleaseSpec>();
             releaseSpec.IsEip3607Enabled.Returns(true);
             releaseSpec.IsEip7702Enabled.Returns(true);
-            TrieStore trieStore = new TrieStore(new MemDb(), Logger);
-            WorldState sut = new(trieStore, new MemDb(), Logger);
+            IDbProvider dbProvider = TestMemDbProvider.Init();
+            IWorldStateManager worldStateManager = TestWorldStateFactory.CreateForTest(dbProvider, LimboLogs.Instance);
+            IWorldState sut = worldStateManager.GlobalWorldState;
+            using var _ = sut.BeginScope(IWorldState.PreGenesis);
             sut.CreateAccount(TestItem.AddressA, 0);
             byte[] code = [.. Eip7702Constants.DelegationHeader, .. new byte[20]];
             sut.InsertCode(TestItem.AddressA, ValueKeccak.Compute(code), code, releaseSpec, false);
@@ -308,8 +332,10 @@ namespace Nethermind.Store.Test
             IReleaseSpec releaseSpec = Substitute.For<IReleaseSpec>();
             releaseSpec.IsEip3607Enabled.Returns(true);
             releaseSpec.IsEip7702Enabled.Returns(true);
-            TrieStore trieStore = new TrieStore(new MemDb(), Logger);
-            WorldState sut = new(trieStore, new MemDb(), Logger);
+            IDbProvider dbProvider = TestMemDbProvider.Init();
+            IWorldStateManager worldStateManager = TestWorldStateFactory.CreateForTest(dbProvider, LimboLogs.Instance);
+            IWorldState sut = worldStateManager.GlobalWorldState;
+            using var _ = sut.BeginScope(IWorldState.PreGenesis);
             sut.CreateAccount(TestItem.AddressA, 0);
             byte[] code = new byte[20];
             sut.InsertCode(TestItem.AddressA, ValueKeccak.Compute(code), code, releaseSpec, false);
@@ -326,8 +352,10 @@ namespace Nethermind.Store.Test
         {
             IReleaseSpec releaseSpec = Substitute.For<IReleaseSpec>();
             releaseSpec.IsEip3607Enabled.Returns(true);
-            TrieStore trieStore = new TrieStore(new MemDb(), Logger);
-            WorldState sut = new(trieStore, new MemDb(), Logger);
+            IDbProvider dbProvider = TestMemDbProvider.Init();
+            IWorldStateManager worldStateManager = TestWorldStateFactory.CreateForTest(dbProvider, LimboLogs.Instance);
+            IWorldState sut = worldStateManager.GlobalWorldState;
+            using var _ = sut.BeginScope(IWorldState.PreGenesis);
             sut.CreateAccount(TestItem.AddressA, 0);
             byte[] code = [.. Eip7702Constants.DelegationHeader, .. new byte[20]];
             sut.InsertCode(TestItem.AddressA, ValueKeccak.Compute(code), code, releaseSpec, false);
@@ -344,8 +372,10 @@ namespace Nethermind.Store.Test
         {
             IReleaseSpec releaseSpec = Substitute.For<IReleaseSpec>();
             releaseSpec.IsEip7702Enabled.Returns(true);
-            TrieStore trieStore = new TrieStore(new MemDb(), Logger);
-            WorldState sut = new(trieStore, new MemDb(), Logger);
+            IDbProvider dbProvider = TestMemDbProvider.Init();
+            IWorldStateManager worldStateManager = TestWorldStateFactory.CreateForTest(dbProvider, LimboLogs.Instance);
+            IWorldState sut = worldStateManager.GlobalWorldState;
+            using var _ = sut.BeginScope(IWorldState.PreGenesis);
             sut.CreateAccount(TestItem.AddressA, 0);
             byte[] code = [.. Eip7702Constants.DelegationHeader, .. new byte[20]];
             sut.InsertCode(TestItem.AddressA, ValueKeccak.Compute(code), code, releaseSpec, false);
@@ -355,6 +385,43 @@ namespace Nethermind.Store.Test
             bool result = sut.IsInvalidContractSender(releaseSpec, TestItem.AddressA);
 
             Assert.That(result, Is.False);
+        }
+
+        [Test]
+        public void Can_accepts_visitors()
+        {
+            WorldStateManager worldStateManager = TestWorldStateFactory.CreateForTest();
+            Hash256 stateRoot;
+            IWorldState provider = worldStateManager.GlobalWorldState;
+            using (var _ = provider.BeginScope(IWorldState.PreGenesis))
+            {
+                provider.CreateAccount(TestItem.AddressA, 1.Ether());
+                provider.Commit(MuirGlacier.Instance);
+                provider.CommitTree(0);
+                stateRoot = provider.StateRoot;
+            }
+
+            TrieStatsCollector visitor = new(new MemDb(), LimboLogs.Instance);
+            worldStateManager.GlobalStateReader.RunTreeVisitor(visitor, stateRoot);
+        }
+
+        [Test]
+        public void Can_dump_state()
+        {
+            WorldStateManager worldStateManager = TestWorldStateFactory.CreateForTest();
+            IWorldState provider = worldStateManager.GlobalWorldState;
+
+            Hash256 stateRoot;
+            using (var _ = provider.BeginScope(IWorldState.PreGenesis))
+            {
+                provider.CreateAccount(TestItem.AddressA, 1.Ether());
+                provider.Commit(MuirGlacier.Instance);
+                provider.CommitTree(0);
+                stateRoot = provider.StateRoot;
+            }
+
+            string state = worldStateManager.GlobalStateReader.DumpState(stateRoot);
+            state.Should().NotBeEmpty();
         }
     }
 }

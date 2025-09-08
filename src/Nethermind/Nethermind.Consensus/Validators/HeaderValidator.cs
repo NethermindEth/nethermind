@@ -102,7 +102,7 @@ namespace Nethermind.Consensus.Validators
                 && ValidateRequestsHash(header, spec, ref error);
         }
 
-        private bool ValidateRequestsHash(BlockHeader header, IReleaseSpec spec, ref string? error)
+        protected virtual bool ValidateRequestsHash(BlockHeader header, IReleaseSpec spec, ref string? error)
         {
             if (spec.RequestsEnabled)
             {
@@ -184,6 +184,11 @@ namespace Nethermind.Consensus.Validators
                     error = BlockErrorMessages.InvalidGenesisBlock;
                     return false;
                 }
+            }
+            else if (parent.Hash != header.ParentHash)
+            {
+                error = BlockErrorMessages.MismatchedParent(header.Hash, header.ParentHash, parent.Hash);
+                return false;
             }
 
             return true;
@@ -271,7 +276,11 @@ namespace Nethermind.Consensus.Validators
                                      header.GasLimit >= spec.MinGasLimit;
             if (!gasLimitNotTooLow)
             {
-                if (_logger.IsWarn) _logger.Warn($"Invalid block header ({header.Hash}) - gas limit too low");
+                if (_logger.IsWarn) _logger.Warn($"Invalid block header ({header.Hash}) - gas limit too low. " +
+                                                 $"Gas limit: {header.GasLimit}, " +
+                                                 $"Adjusted parent gas limit: {adjustedParentGasLimit}, " +
+                                                 $"Max gas limit difference: {maxGasLimitDifference}, " +
+                                                 $"Spec min gas limit: {spec.MinGasLimit}");
                 error = BlockErrorMessages.InvalidGasLimit;
             }
 
@@ -315,24 +324,6 @@ namespace Nethermind.Consensus.Validators
 
             return result;
         }
-
-        /// <summary>
-        /// Validates all the header elements (usually in relation to parent). Difficulty calculation is validated in <see cref="ISealValidator"/>
-        /// </summary>
-        /// <param name="header">Block header to validate</param>
-        /// <param name="isUncle"><value>True</value> if the <paramref name="header"/> is an uncle, otherwise <value>False</value></param>
-        /// <returns><value>True</value> if <paramref name="header"/> is valid, otherwise <value>False</value></returns>
-        public virtual bool Validate(BlockHeader header, bool isUncle = false) => Validate(header, isUncle, out _);
-
-        /// <summary>
-        /// Validates all the header elements (usually in relation to parent). Difficulty calculation is validated in <see cref="ISealValidator"/>
-        /// </summary>
-        /// <param name="header">Block header to validate</param>
-        /// <param name="isUncle"><value>True</value> if the <paramref name="header"/> is an uncle, otherwise <value>False</value></param>
-        /// <param name="error">Detailed error message if validation fails, otherwise <value>False</value></param>
-        /// <returns><value>True</value> if <paramref name="header"/> is valid, otherwise <value>False</value></returns>
-        public virtual bool Validate(BlockHeader header, bool isUncle, out string? error) =>
-            Validate(header, _blockTree.FindParentHeader(header, BlockTreeLookupOptions.TotalDifficultyNotNeeded), isUncle, out error);
 
         private bool ValidateGenesis(BlockHeader header) =>
             header.GasUsed < header.GasLimit &&

@@ -37,9 +37,9 @@ namespace Nethermind.Synchronization.Peers
         /// on the allocation strategy and context. May not be accurate as different peer may get allocated.
         /// </summary>
         Task<int?> EstimateRequestLimit(
-            RequestType bodies,
+            RequestType requestType,
             IPeerAllocationStrategy peerAllocationStrategy,
-            AllocationContexts blocks,
+            AllocationContexts contexts,
             CancellationToken token);
 
         /// <summary>
@@ -106,8 +106,6 @@ namespace Nethermind.Synchronization.Peers
         PeerInfo? GetPeer(Node node);
 
         event EventHandler<PeerBlockNotificationEventArgs> NotifyPeerBlock;
-
-        event EventHandler<PeerHeadRefreshedEventArgs> PeerRefreshed;
     }
 
     public static class SyncPeerPoolExtensions

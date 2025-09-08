@@ -29,7 +29,7 @@ public class MainnetSpecProvider : ISpecProvider
     public const ulong PragueBlockTimestamp = 0x681b3057;
     public const ulong OsakaBlockTimestamp = ulong.MaxValue - 1;
 
-    public IReleaseSpec GetSpec(ForkActivation forkActivation) =>
+    IReleaseSpec ISpecProvider.GetSpecInternal(ForkActivation forkActivation) =>
         forkActivation switch
         {
             { BlockNumber: < HomesteadBlockNumber } => Frontier.Instance,

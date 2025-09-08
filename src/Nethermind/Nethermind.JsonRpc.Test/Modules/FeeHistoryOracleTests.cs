@@ -414,14 +414,14 @@ namespace Nethermind.JsonRpc.Test.Modules
             FeeHistoryOracle feeHistoryOracle = SetUpFeeHistoryManager(newestBlockParameter, spec);
             double[] rewardPercentiles = { 0 };
             using FeeHistoryResults expected = new(0,
-                new ArrayPoolList<UInt256>(3, [2, 3, 3]),
-                new ArrayPoolList<double>(2, [0.6, 0.25]),
-                new ArrayPoolList<UInt256>(3, [1, 1, 1]),
+                new ArrayPoolList<UInt256>([2, 3, 3]),
+                new ArrayPoolList<double>([0.6, 0.25]),
+                new ArrayPoolList<UInt256>([1, 1, 1]),
                 new ArrayPoolList<double>(2, blobGasUsedRatio),
-                new ArrayPoolList<ArrayPoolList<UInt256>>(2,
+                new ArrayPoolList<ArrayPoolList<UInt256>>(
                 [
-                    new ArrayPoolList<UInt256>(1, [1]),
-                    new ArrayPoolList<UInt256>(1, [0])
+                    new ArrayPoolList<UInt256>([1]),
+                    new ArrayPoolList<UInt256>([0])
                 ])
             );
 

@@ -8,6 +8,7 @@ using System.ComponentModel;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Blockchain.Synchronization;
+using Nethermind.Core.ServiceStopper;
 using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.Synchronization.Peers;
@@ -106,7 +107,7 @@ namespace Nethermind.Synchronization.ParallelSync
                     {
                         Update();
                     }
-                    catch (Exception exception)
+                    catch (Exception exception) when (exception is not OperationCanceledException)
                     {
                         if (_logger.IsError) _logger.Error("Sync mode update failed", exception);
                     }
@@ -118,10 +119,12 @@ namespace Nethermind.Synchronization.ParallelSync
             }
         }
 
-        public void Stop()
+        public Task StopAsync()
         {
-            _cancellation.Cancel();
+            return _cancellation.CancelAsync();
         }
+
+        string IStoppableService.Description => "sync mode selector";
 
         public void Update()
         {
@@ -147,7 +150,7 @@ namespace Nethermind.Synchronization.ParallelSync
                 bool inBeaconControl = _beaconSyncStrategy.ShouldBeInBeaconModeControl();
                 (UInt256? peerDifficulty, long? peerBlock) = ReloadDataFromPeers();
                 // if there are no peers that we could use then we cannot sync
-                if (peerDifficulty is null || peerBlock is null || peerBlock == 0)
+                if (peerBlock is null or 0)
                 {
                     newModes = shouldBeInUpdatingPivot ? SyncMode.UpdatingPivot : inBeaconControl ? SyncMode.WaitingForBlock : SyncMode.Disconnected;
                     reason = "No Useful Peers";
@@ -155,7 +158,7 @@ namespace Nethermind.Synchronization.ParallelSync
                 // to avoid expensive checks we make this simple check at the beginning
                 else
                 {
-                    Snapshot best = EnsureSnapshot(peerDifficulty.Value, peerBlock.Value, inBeaconControl);
+                    Snapshot best = EnsureSnapshot(peerDifficulty, peerBlock.Value, inBeaconControl);
                     best.IsInBeaconHeaders = ShouldBeInBeaconHeaders(shouldBeInUpdatingPivot);
 
                     if (!FastSyncEnabled)
@@ -560,14 +563,15 @@ namespace Nethermind.Synchronization.ParallelSync
         private static bool ShouldBeInDisconnectedMode(Snapshot best)
         {
             return !best.IsInUpdatingPivot &&
-                   !best.IsInFastBodies &&
-                   !best.IsInFastHeaders &&
-                   !best.IsInFastReceipts &&
-                   !best.IsInFastSync &&
-                   !best.IsInFullSync &&
-                   !best.IsInStateSync &&
-                   // maybe some more sophisticated heuristic?
-                   best.Peer.TotalDifficulty.IsZero;
+                !best.IsInFastBodies &&
+                !best.IsInFastHeaders &&
+                !best.IsInFastReceipts &&
+                !best.IsInFastSync &&
+                !best.IsInFullSync &&
+                !best.IsInStateSync &&
+                // maybe some more sophisticated heuristic?
+                (best.Peer.TotalDifficulty ?? UInt256.Zero).IsZero &&
+                best.Peer.Block == 0;
         }
 
         private bool ShouldBeInStateSyncMode(Snapshot best)
@@ -664,18 +668,28 @@ namespace Nethermind.Synchronization.ParallelSync
                 UInt256 currentMax = maxPeerDifficulty ?? UInt256.Zero;
                 long currentMaxNumber = number ?? 0;
                 bool isNewPeerBetterThanCurrentMax = _betterPeerStrategy.Compare((currentMax, currentMaxNumber), peer.SyncPeer) < 0;
+
                 if (isNewPeerBetterThanCurrentMax)
                 {
-                    // we don't trust parity TotalDifficulty, so we are checking if we know the hash and get our total difficulty
-                    UInt256 realTotalDifficulty = _syncProgressResolver.GetTotalDifficulty(peer.HeadHash) ?? peer.TotalDifficulty;
-
-                    // during the beacon header sync our realTotalDifficulty could be 0. We're using peer.TotalDifficulty in this case
-                    realTotalDifficulty = realTotalDifficulty == 0 ? peer.TotalDifficulty : realTotalDifficulty;
-                    bool isRealPeerBetterThanCurrentMax = _betterPeerStrategy.Compare(((currentMax, currentMaxNumber)), (realTotalDifficulty, peer.HeadNumber)) < 0;
-
-                    if (isRealPeerBetterThanCurrentMax)
+                    if (peer.TotalDifficulty is { } peerTD)
                     {
-                        maxPeerDifficulty = realTotalDifficulty;
+                        // we don't trust parity TotalDifficulty, so we are checking if we know the hash and get our total difficulty
+                        UInt256 realTotalDifficulty = _syncProgressResolver.GetTotalDifficulty(peer.HeadHash) ?? peerTD;
+
+                        // during the beacon header sync our realTotalDifficulty could be 0. We're using peer.TotalDifficulty in this case
+                        realTotalDifficulty = realTotalDifficulty == 0 ? peerTD : realTotalDifficulty;
+
+                        var isRealPeerBetterThanCurrentMax = _betterPeerStrategy.Compare(((currentMax, currentMaxNumber)), (realTotalDifficulty, peer.HeadNumber)) < 0;
+
+                        if (isRealPeerBetterThanCurrentMax)
+                        {
+                            maxPeerDifficulty = realTotalDifficulty;
+                            number = peer.HeadNumber;
+                        }
+                    }
+                    else
+                    {
+                        // Don't do TD check if peer doesn't support it
                         number = peer.HeadNumber;
                     }
                 }
@@ -686,7 +700,7 @@ namespace Nethermind.Synchronization.ParallelSync
 
         public void Dispose() => _cancellation.Dispose();
 
-        private Snapshot EnsureSnapshot(in UInt256 peerDifficulty, long peerBlock, bool inBeaconControl)
+        private Snapshot EnsureSnapshot(in UInt256? peerDifficulty, long peerBlock, bool inBeaconControl)
         {
             // need to find them in the reversed order otherwise we may fall behind the processing
             // and think that we have an invalid snapshot
@@ -710,7 +724,7 @@ namespace Nethermind.Synchronization.ParallelSync
             return best;
         }
 
-        private Snapshot TakeSnapshot(in UInt256 peerDifficulty, long peerBlock, bool inBeaconControl)
+        private Snapshot TakeSnapshot(in UInt256? peerDifficulty, long peerBlock, bool inBeaconControl)
         {
             // need to find them in the reversed order otherwise we may fall behind the processing
             // and think that we have an invalid snapshot
@@ -774,7 +788,7 @@ namespace Nethermind.Synchronization.ParallelSync
                 long header,
                 UInt256 chainDifficulty,
                 long peerBlock,
-                in UInt256 peerDifficulty,
+                in UInt256? peerDifficulty,
                 bool isInBeaconControl,
                 long targetBlock,
                 long pivotNumber
@@ -845,7 +859,7 @@ namespace Nethermind.Synchronization.ParallelSync
             /// <summary>
             /// Best peer block - this is what other peers are advertising - it may be lower than our best block if we get disconnected from best peers
             /// </summary>
-            public (UInt256 TotalDifficulty, long Block) Peer { get; }
+            public (UInt256? TotalDifficulty, long Block) Peer { get; }
 
             public long PivotNumber { get; }
 

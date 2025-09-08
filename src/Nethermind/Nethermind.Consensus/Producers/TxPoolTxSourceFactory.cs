@@ -10,32 +10,17 @@ using Nethermind.TxPool;
 
 namespace Nethermind.Consensus.Producers
 {
-    public class TxPoolTxSourceFactory
+    public class TxPoolTxSourceFactory(
+        ITxPool txPool,
+        ISpecProvider specProvider,
+        ITransactionComparerProvider transactionComparerProvider,
+        IBlocksConfig blocksConfig,
+        ILogManager logManager) : IBlockProducerTxSourceFactory
     {
-        private readonly ITxPool _txPool;
-        private readonly ISpecProvider _specProvider;
-        private readonly ITransactionComparerProvider _transactionComparerProvider;
-        private readonly IBlocksConfig _blocksConfig;
-        private readonly ILogManager _logManager;
-
-        public TxPoolTxSourceFactory(
-            ITxPool txPool,
-            ISpecProvider specProvider,
-            ITransactionComparerProvider transactionComparerProvider,
-            IBlocksConfig blocksConfig,
-            ILogManager logManager)
+        public virtual ITxSource Create()
         {
-            _txPool = txPool;
-            _specProvider = specProvider;
-            _transactionComparerProvider = transactionComparerProvider;
-            _blocksConfig = blocksConfig;
-            _logManager = logManager;
-        }
-
-        public virtual TxPoolTxSource Create()
-        {
-            ITxFilterPipeline txSourceFilterPipeline = TxFilterPipelineBuilder.CreateStandardFilteringPipeline(_logManager, _specProvider, _blocksConfig);
-            return new TxPoolTxSource(_txPool, _specProvider, _transactionComparerProvider, _logManager, txSourceFilterPipeline);
+            ITxFilterPipeline txSourceFilterPipeline = TxFilterPipelineBuilder.CreateStandardFilteringPipeline(logManager, blocksConfig);
+            return new TxPoolTxSource(txPool, specProvider, transactionComparerProvider, logManager, txSourceFilterPipeline, blocksConfig);
         }
     }
 }

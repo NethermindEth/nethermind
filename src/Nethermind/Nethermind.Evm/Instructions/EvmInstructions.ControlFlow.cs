@@ -6,7 +6,7 @@ using System.Runtime.CompilerServices;
 using System.Runtime.Intrinsics;
 using Nethermind.Core.Specs;
 using Nethermind.Core;
-using Nethermind.State;
+using Nethermind.Evm.State;
 
 namespace Nethermind.Evm;
 using Int256;
@@ -25,12 +25,13 @@ internal static partial class EvmInstructions
     /// <see cref="EvmExceptionType.None"/> on success.
     /// </returns>
     [SkipLocalsInit]
-    public static EvmExceptionType InstructionProgramCounter(VirtualMachine vm, ref EvmStack stack, ref long gasAvailable, ref int programCounter)
+    public static EvmExceptionType InstructionProgramCounter<TTracingInst>(VirtualMachine vm, ref EvmStack stack, ref long gasAvailable, ref int programCounter)
+        where TTracingInst : struct, IFlag
     {
         // Deduct the base gas cost for reading the program counter.
         gasAvailable -= GasCostOf.Base;
         // The program counter pushed is adjusted by -1 to reflect the correct opcode location.
-        stack.PushUInt32((uint)(programCounter - 1));
+        stack.PushUInt32<TTracingInst>((uint)(programCounter - 1));
 
         return EvmExceptionType.None;
     }

@@ -7,6 +7,7 @@ using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Blockchain.Synchronization;
+using Nethermind.Core.Buffers;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
@@ -192,9 +193,9 @@ public class SnapRangeRecovery(ISyncPeerPool peerPool, ILogManager logManager) :
                 if (slotPathAsTreePath.Truncate(currentPath.Length) == currentPath)
                 {
                     // Try using the slot as a leaf with the remaining path as key
-                    TrieNode leafNode = TrieNodeFactory.CreateLeaf(slotPathAsTreePath.ToNibble()[currentPath.Length..], value);
+                    TrieNode leafNode = TrieNodeFactory.CreateLeaf(slotPathAsTreePath.ToNibble()[currentPath.Length..], new SpanSource(value));
                     leafNode.ResolveNode(emptyResolver, currentPath);
-                    leafNode.ResolveKey(emptyResolver, ref currentPath, false);
+                    leafNode.ResolveKey(emptyResolver, ref currentPath);
                     if (leafNode.Keccak == currentHash)
                     {
                         rlp = leafNode.FullRlp.ToArray();

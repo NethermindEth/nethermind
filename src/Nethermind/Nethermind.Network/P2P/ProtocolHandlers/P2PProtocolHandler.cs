@@ -29,7 +29,6 @@ public class P2PProtocolHandler(
     PublicKey localNodeId,
     INodeStatsManager nodeStatsManager,
     IMessageSerializationService serializer,
-    Regex? clientIdPattern,
     ILogManager logManager)
     : ProtocolHandlerBase(session, nodeStatsManager, serializer, logManager), IPingSender, IP2PProtocolHandler
 {
@@ -51,7 +50,7 @@ public class P2PProtocolHandler(
 
     public IReadOnlyList<Capability> AgreedCapabilities { get { return _agreedCapabilities; } }
     public IReadOnlyList<Capability> AvailableCapabilities { get { return _availableCapabilities; } }
-    private readonly List<Capability> _supportedCapabilities = new List<Capability>();
+    private readonly List<Capability> _supportedCapabilities = new();
 
     public int ListenPort { get; } = session.LocalPort;
     public PublicKey LocalNodeId { get; } = localNodeId;
@@ -219,13 +218,6 @@ public class P2PProtocolHandler(
                 $"capabilities: {string.Join(", ", capabilities)}");
         }
 
-        if (clientIdPattern?.IsMatch(hello.ClientId) == false)
-        {
-            Session.InitiateDisconnect(
-                DisconnectReason.ClientFiltered,
-                $"clientId: {hello.ClientId}");
-        }
-
         ReceivedProtocolInitMsg(hello);
 
         P2PProtocolInitializedEventArgs eventArgs = new(this)
@@ -354,4 +346,9 @@ public class P2PProtocolHandler(
         ProtocolInitialized = null;
         SubprotocolRequested = null;
     }
+
+    public IReadOnlyList<Capability> GetCapabilities() =>
+        _agreedCapabilities.Count > 0
+            ? _agreedCapabilities
+            : _supportedCapabilities;
 }

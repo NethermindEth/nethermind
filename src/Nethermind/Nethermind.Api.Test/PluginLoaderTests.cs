@@ -4,6 +4,7 @@
 using System;
 using System.Collections.Generic;
 using System.IO.Abstractions;
+using System.Linq;
 using System.Threading.Tasks;
 using FluentAssertions;
 using Nethermind.Api.Extensions;
@@ -176,11 +177,6 @@ public class PluginLoaderTests
 
         // Just some arbitrary combination
         public bool Enabled => chainSpec.ChainId == 999 && initConfig.DiscoveryEnabled && !initConfig.PeerManagerEnabled;
-
-        public ValueTask DisposeAsync()
-        {
-            return ValueTask.CompletedTask;
-        }
     }
 
     private class TestPlugin2() : INethermindPlugin
@@ -189,11 +185,6 @@ public class PluginLoaderTests
         public string Description => "TestPlugin2";
         public string Author => "TestPlugin2";
         public bool Enabled => false;
-
-        public ValueTask DisposeAsync()
-        {
-            return ValueTask.CompletedTask;
-        }
     }
 
 
@@ -204,12 +195,7 @@ public class PluginLoaderTests
         public string Author => "TestPlugin2";
         public bool Enabled => true;
 
-        public ValueTask DisposeAsync()
-        {
-            return ValueTask.CompletedTask;
-        }
-
-        public IBlockProducer InitBlockProducer(ITxSource additionalTxSource = null)
+        public IBlockProducer InitBlockProducer()
         {
             throw new NotImplementedException();
         }

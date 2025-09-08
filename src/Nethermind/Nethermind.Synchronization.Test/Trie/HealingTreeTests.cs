@@ -21,13 +21,15 @@ using Nethermind.Db;
 using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.Specs.Forks;
-using Nethermind.State;
+using Nethermind.Evm.State;
 using Nethermind.State.Healing;
 using Nethermind.Synchronization.Peers;
 using Nethermind.Trie;
 using Nethermind.Trie.Pruning;
 using NSubstitute;
 using NUnit.Framework;
+using Nethermind.History;
+using Nethermind.Init.Modules;
 
 namespace Nethermind.Synchronization.Test.Trie;
 
@@ -40,23 +42,23 @@ public class HealingTreeTests
     [Test]
     public void get_state_tree_works()
     {
-        HealingStateTree stateTree = new(Substitute.For<ITrieStore>(), LimboLogs.Instance);
+        HealingStateTree stateTree = new(Substitute.For<ITrieStore>(), Substitute.For<INodeStorage>(), LimboLogs.Instance);
         stateTree.Get(stackalloc byte[] { 1, 2, 3 });
     }
 
     [Test]
     public void get_storage_tree_works()
     {
-        HealingStorageTree stateTree = new(Substitute.For<IScopedTrieStore>(), Keccak.EmptyTreeHash, LimboLogs.Instance, TestItem.AddressA, TestItem.KeccakA, null);
+        HealingStorageTree stateTree = new(Substitute.For<IScopedTrieStore>(), Substitute.For<INodeStorage>(), Keccak.EmptyTreeHash, LimboLogs.Instance, TestItem.AddressA, TestItem.KeccakA, null);
         stateTree.Get(stackalloc byte[] { 1, 2, 3 });
     }
 
     [Test]
     public void recovery_works_state_trie([Values(true, false)] bool successfullyRecovered)
     {
-        static HealingStateTree CreateHealingStateTree(ITrieStore trieStore, IPathRecovery recovery)
+        static HealingStateTree CreateHealingStateTree(ITrieStore trieStore, INodeStorage nodeStorage, IPathRecovery recovery)
         {
-            HealingStateTree stateTree = new(trieStore, LimboLogs.Instance);
+            HealingStateTree stateTree = new(trieStore, nodeStorage, LimboLogs.Instance);
             stateTree.InitializeNetwork(recovery);
             return stateTree;
         }
@@ -70,8 +72,8 @@ public class HealingTreeTests
     public void recovery_works_storage_trie([Values(true, false)] bool successfullyRecovered)
     {
         Hash256 addressPath = Keccak.Compute(TestItem.AddressA.Bytes);
-        HealingStorageTree CreateHealingStorageTree(ITrieStore trieStore, IPathRecovery recovery) =>
-            new(trieStore.GetTrieStore(addressPath), Keccak.EmptyTreeHash, LimboLogs.Instance, TestItem.AddressA,
+        HealingStorageTree CreateHealingStorageTree(ITrieStore trieStore, INodeStorage nodeStorage, IPathRecovery recovery) =>
+            new(trieStore.GetTrieStore(addressPath), nodeStorage, Keccak.EmptyTreeHash, LimboLogs.Instance, TestItem.AddressA,
                 _key, recovery);
 
         TreePath path = TreePath.FromNibble([1, 2]);
@@ -85,10 +87,10 @@ public class HealingTreeTests
         Hash256? address,
         TreePath path,
         Hash256 fullPath,
-        Func<ITrieStore, IPathRecovery, T> createTrie)
+        Func<ITrieStore, INodeStorage, IPathRecovery, T> createTrie)
         where T : PatriciaTree
     {
-        ITrieStore trieStore = Substitute.For<ITrieStore>();
+        IPruningTrieStore trieStore = Substitute.For<IPruningTrieStore>();
         trieStore.FindCachedOrUnknown(address, TreePath.Empty, _key).Returns(
             k => throw new MissingTrieNodeException("", null, path, _key),
             k => new TrieNode(NodeType.Leaf) { Key = Nibbles.BytesToNibbleBytes(fullPath.Bytes)[path.Length..] });
@@ -106,14 +108,13 @@ public class HealingTreeTests
                 }
             ) : Task.FromResult<IOwnedReadOnlyList<(TreePath, byte[])>?>(null));
 
-        T trie = createTrie(trieStore, recovery);
+        T trie = createTrie(trieStore, new NodeStorage(db), recovery);
 
         Action action = () => trie.Get(fullPath.Bytes, _key);
         if (successfullyRecovered)
         {
             action.Should().NotThrow();
-            trieStore.Received()
-                .Set(address, path, ValueKeccak.Compute(_rlp), _rlp);
+            db.KeyWasWritten(NodeStorage.GetHalfPathNodeStoragePath(address, path, ValueKeccak.Compute(_rlp)));
         }
         else
         {
@@ -129,7 +130,7 @@ public class HealingTreeTests
         await using IContainer client = CreateNode();
 
         // Add some data to the server.
-        Hash256 stateRoot = FillStorage(server);
+        BlockHeader baseBlock = FillStorage(server);
 
         RandomCopyState(server, client);
 
@@ -147,15 +148,17 @@ public class HealingTreeTests
             configProvider.GetConfig<IInitConfig>().StateDbKeyScheme = keyScheme;
             return new ContainerBuilder()
                 .AddModule(new TestNethermindModule(configProvider))
+                .AddSingleton<IHistoryPruner>(Substitute.For<IHistoryPruner>())
                 .AddSingleton<IBlockTree>(Build.A.BlockTree().OfChainLength(1).TestObject)
                 .Build();
         }
 
-        Hash256 FillStorage(IContainer server)
+        BlockHeader FillStorage(IContainer server)
         {
-            IWorldState mainWorldState = server.Resolve<MainBlockProcessingContext>().WorldState;
+            IWorldState mainWorldState = server.Resolve<MainProcessingContext>().WorldState;
             IBlockTree blockTree = server.Resolve<IBlockTree>();
-            mainWorldState.StateRoot = Keccak.EmptyTreeHash;
+
+            using var _ = mainWorldState.BeginScope(blockTree.Head?.Header);
 
             for (int i = 0; i < 100; i++)
             {
@@ -171,15 +174,17 @@ public class HealingTreeTests
             }
 
             mainWorldState.Commit(Cancun.Instance);
-            mainWorldState.CommitTree(1);
 
             // Snap server check for the past 128 block in blocktree explicitly to pass hive test.
             // So need to simulate block processing..
+            mainWorldState.CommitTree((blockTree.Head?.Number ?? 0) + 1);
+
             Block block = Build.A.Block.WithStateRoot(mainWorldState.StateRoot).WithParent(blockTree.Head!).TestObject;
+
             blockTree.SuggestBlock(block).Should().Be(AddBlockResult.Added);
             blockTree.UpdateMainChain([block], true);
 
-            return mainWorldState.StateRoot;
+            return block.Header;
         }
 
         void RandomCopyState(IContainer server, IContainer client)
@@ -193,7 +198,7 @@ public class HealingTreeTests
             allValues.AsSpan().Sort(((k1, k2) => ((IComparer<byte[]>)Bytes.Comparer).Compare(k1.Key, k2.Key)));
 
             // Copy from server to client, but randomly remove some of them.
-            foreach (var kv in allValues)
+            foreach (var kv in allValues.AsSpan())
             {
                 if (random.NextDouble() < 0.9)
                 {
@@ -204,8 +209,8 @@ public class HealingTreeTests
 
         void AssertStorage(IContainer client)
         {
-            IWorldState mainWorldState = client.Resolve<MainBlockProcessingContext>().WorldState;
-            mainWorldState.StateRoot = stateRoot;
+            IWorldState mainWorldState = client.Resolve<MainProcessingContext>().WorldState;
+            using var _ = mainWorldState.BeginScope(baseBlock);
 
             for (int i = 0; i < 100; i++)
             {
