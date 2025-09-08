@@ -361,7 +361,7 @@ public struct EvmPooledMemory : IEvmMemory
     }
 
     [DoesNotReturn, StackTraceHidden]
-    public static void ThrowOutOfGasException()
+    private static void ThrowOutOfGasException()
     {
         Metrics.EvmExceptions++;
         throw new OutOfGasException();
