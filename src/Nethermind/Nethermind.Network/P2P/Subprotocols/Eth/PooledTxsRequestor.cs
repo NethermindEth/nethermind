@@ -2,9 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using System.Linq;
 using Nethermind.Core;
-using Nethermind.Core.Caching;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
@@ -25,7 +23,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth
             ? long.MaxValue
             : txPoolConfig.MaxBlobTxSize.Value + (long)specProvider.GetFinalMaxBlobGasPerBlock();
 
-        private readonly ClockKeyCache<ValueHash256> _pendingHashes = new(MemoryAllowance.TxHashCacheSize);
+        public SimpleRetryCache<Hash256, string> simpleRetryCache { get; set; } = new(null);
 
         public void RequestTransactions(Action<GetPooledTransactionsMessage> send, IOwnedReadOnlyList<Hash256> hashes)
         {
@@ -75,7 +73,11 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth
                 if (txSize > maxSize)
                     continue;
 
-                if (txSize > packetSizeLeft && toRequestCount > 0)
+                if (txSize > packetSizeLeft && toRequestCount > 0 && simpleRetryCache.Announced(hash, "", () =>
+                {
+                    GetPooledTransactionsMessage msg65 = new([hash]); ;
+                    send(new() { EthMessage = msg65 });
+                }))
                 {
                     RequestPooledTransactionsEth66(send, hashesToRequest);
                     hashesToRequest = new ArrayPoolList<Hash256>(discoveredCount);
@@ -100,7 +102,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth
             for (int i = 0; i < hashes.Length; i++)
             {
                 Hash256 hash = hashes[i];
-                if (!txPool.IsKnown(hash) && _pendingHashes.Set(hash))
+                if (!txPool.IsKnown(hash))
                 {
                     discoveredTxHashes.Add(hash);
                 }
@@ -115,7 +117,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth
             for (int i = 0; i < hashes.Length; i++)
             {
                 Hash256 hash = hashes[i];
-                if (!txPool.IsKnown(hash) && !txPool.ContainsTx(hash, (TxType)types[i]) && _pendingHashes.Set(hash))
+                if (!txPool.IsKnown(hash) && !txPool.ContainsTx(hash, (TxType)types[i]))
                 {
                     discoveredTxHashesAndSizes.Add((hash, types[i], sizes[i]));
                 }
