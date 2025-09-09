@@ -114,7 +114,7 @@ public class AuRaMergeEngineModuleTests : EngineModuleTests
                 .WithGenesisPostProcessor((block, state) =>
                 {
                     block.Header.AuRaStep = 0;
-                    block.Header.AuRaSignature = new byte[64];
+                    block.Header.AuRaSignature = new byte[65];
                 })
 
                 // Aura uses `AuRaNethermindApi` for initialization, so need to do some additional things here
