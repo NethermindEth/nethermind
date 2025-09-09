@@ -15,6 +15,7 @@ using MathNet.Numerics.Random;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Extensions;
 using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Db.Rocks;
@@ -680,13 +681,28 @@ namespace Nethermind.Db.Test.LogIndex
             {
                 var batches = new BlockReceipts[batchCount][];
                 var blocksCount = batchCount * blocksPerBatch;
-                var addresses = Enumerable.Repeat(0, Math.Max(10, blocksCount / 5))
-                //var addresses = Enumerable.Repeat(0, 1)
+
+                Address[] customAddresses =
+                [
+                    Address.Zero, Address.MaxValue,
+                    new(new byte[] { 1 }.PadLeft(Address.Size)), new(new byte[] { 1 }.PadRight(Address.Size))
+                ];
+
+                Hash256[] customTopics =
+                [
+                    Hash256.Zero, new(Enumerable.Repeat((byte)0xFF, Hash256.Size).ToArray()),
+                    new(new byte[] { 1 }.PadLeft(Hash256.Size)), new(new byte[] { 1 }.PadRight(Hash256.Size))
+                ];
+
+                //var addresses = Enumerable.Repeat(0, Math.Max(10, blocksCount / 5) - customAddresses.Length)
+                var addresses = Enumerable.Repeat(0, 0)
                     .Select(_ => new Address(random.NextBytes(Address.Size)))
+                    .Concat(customAddresses)
                     .ToArray();
-                var topics = Enumerable.Repeat(0, addresses.Length * 7)
-                //var topics = Enumerable.Repeat(0, 0)
+                //var topics = Enumerable.Repeat(0, addresses.Length * 7 - customTopics.Length)
+                var topics = Enumerable.Repeat(0, 0)
                     .Select(_ => new Hash256(random.NextBytes(Hash256.Size)))
+                    .Concat(customTopics)
                     .ToArray();
 
                 // Generate batches
@@ -725,8 +741,8 @@ namespace Nethermind.Db.Test.LogIndex
 
                             for (var i = 0; i < log.Topics.Length; i++)
                             {
-                                topic[i] ??= new();
-                                var topicMap = topic[i].GetOrAdd(log.Topics[i], static _ => []);
+                                var topicI = topic.GetOrAdd(i, static _ => []);
+                                var topicMap = topicI.GetOrAdd(log.Topics[i], static _ => []);
                                 topicMap.Add(block.BlockNumber);
                             }
                         }

@@ -136,10 +136,10 @@ partial class LogIndexStorage
 
                 var postfixBlock = GetValBlockNum(dbValue);
 
-                Span<byte> key = SpecialPostfix.CutFrom(dbKey);
+                Span<byte> key = SpecialPostfix.RemoveFrom(dbKey);
                 Span<byte> dbKeyComp = new byte[key.Length + BlockNumSize];
                 key.CopyTo(dbKeyComp);
-                SetKeyBlockNum(dbKeyComp, postfixBlock);
+                SetKeyBlockNum(dbKeyComp[key.Length..], postfixBlock);
 
                 timestamp = Stopwatch.GetTimestamp();
                 dbValue = CompressDbValue(dbValue);

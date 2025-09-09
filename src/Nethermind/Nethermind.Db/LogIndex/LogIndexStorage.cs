@@ -46,7 +46,7 @@ namespace Nethermind.Db
             public static readonly byte[] ForwardMerge = Enumerable.Repeat(byte.MaxValue, ForwardMergeLength).ToArray();
             public const int ForwardMergeLength = BlockNumSize + 1;
 
-            public static Span<byte> CutFrom(Span<byte> dbKey)
+            public static Span<byte> RemoveFrom(Span<byte> dbKey)
             {
                 if (dbKey.EndsWith(BackwardMerge))
                     return dbKey[..^BackwardMergeLength];
@@ -62,6 +62,10 @@ namespace Nethermind.Db
             public const int IOParallelism = 1;
             public const int MaxReorgDepth = 64;
         }
+
+        private static readonly byte[] ZeroArray = [0];
+
+        public const int MaxTopics = 4;
 
         private const int MaxKeyLength = Hash256.Size + SpecialPostfix.ForwardMergeLength;
 
@@ -97,7 +101,8 @@ namespace Nethermind.Db
             _maxReorgDepth = maxReorgDepth ?? Defaults.MaxReorgDepth;
 
             _logger = logManager.GetClassLogger<LogIndexStorage>();
-            _compressor = new Compressor(this, _logger, ioParallelism ?? Defaults.IOParallelism);
+            //_compressor = new Compressor(this, _logger, ioParallelism ?? Defaults.IOParallelism);
+            _compressor = new NoOpCompressor();
             _compactor = compactionDistance.HasValue ? new Compactor(this, _logger, compactionDistance.Value) : new NoOpCompactor();
             _mergeOperators = new()
             {
@@ -274,7 +279,7 @@ namespace Nethermind.Db
 
         private Dictionary<byte[], int[]> GetKeysFor(int? index, byte[] key, int from, int to, bool includeValues = false)
         {
-            static bool IsInKeyBounds(IIterator<byte[], byte[]> iterator, byte[] key)
+            static bool IsInKeyBounds(IIterator<byte[], byte[]> iterator, ReadOnlySpan<byte> key)
             {
                 return iterator.Valid() && iterator.Key().AsSpan().StartsWith(key);
             }
@@ -288,27 +293,25 @@ namespace Nethermind.Db
                 if (from < 0) from = 0;
                 if (to < from) return result;
 
-                var dbKeyLength = key.Length + BlockNumSize;
-                dbKeyBuffer = _arrayPool.Rent(dbKeyLength);
-                Span<byte> dbKey = dbKeyBuffer.AsSpan(..dbKeyLength);
-
                 IDb db = index is null ? _addressDb : _topicsDb;
                 using IIterator<byte[], byte[]> iterator = db.GetIterator(true);
 
                 // Find the last index for the given key, starting at or before `from`
-                CreateDbKey(index, key, from, dbKey);
+                dbKeyBuffer = _arrayPool.Rent(MaxKeyLength);
+                ReadOnlySpan<byte> dbKey = CreateDbKey(index, key, from, dbKeyBuffer);
+                ReadOnlySpan<byte> normalizedKey = dbKey[..^BlockNumSize];
                 iterator.SeekForPrev(dbKey);
 
                 // Otherwise, find the first index for the given key
                 // TODO: achieve in a single seek?
-                if (!IsInKeyBounds(iterator, key))
+                if (!IsInKeyBounds(iterator, normalizedKey))
                 {
                     iterator.SeekToFirst();
                     iterator.Seek(key);
                 }
 
                 using var buffer = new ArrayPoolList<int>(includeValues ? 128 : 0);
-                while (IsInKeyBounds(iterator, key))
+                while (IsInKeyBounds(iterator, normalizedKey))
                 {
                     var value = iterator.Value();
                     foreach (var block in EnumerateBlockNumbers(value, from))
@@ -350,7 +353,7 @@ namespace Nethermind.Db
 
         private List<int> GetBlockNumbersFor(int? index, byte[] keyPrefix, int from, int to)
         {
-            static bool IsInKeyBounds(IIterator<byte[], byte[]> iterator, byte[] key)
+            static bool IsInKeyBounds(IIterator<byte[], byte[]> iterator, ReadOnlySpan<byte> key)
             {
                 return iterator.Valid() && iterator.Key().AsSpan().StartsWith(key);
             }
@@ -366,26 +369,24 @@ namespace Nethermind.Db
                 if (from < 0) from = 0;
                 if (to < from) return result;
 
-                var dbKeyLength = keyPrefix.Length + BlockNumSize;
-                dbKeyBuffer = _arrayPool.Rent(dbKeyLength);
-                Span<byte> dbKey = dbKeyBuffer.AsSpan(..dbKeyLength);
-
                 IDb? db = index is null ? _addressDb : _topicsDb;
                 using IIterator<byte[], byte[]> iterator = db.GetIterator(true);
 
                 // Find the last index for the given key, starting at or before `from`
-                CreateDbKey(index, keyPrefix, from, dbKey);
+                dbKeyBuffer = _arrayPool.Rent(MaxKeyLength);
+                ReadOnlySpan<byte> dbKey = CreateDbKey(index, keyPrefix, from, dbKeyBuffer);
+                ReadOnlySpan<byte> normalizedKey = dbKey[..^BlockNumSize];
                 iterator.SeekForPrev(dbKey);
 
                 // Otherwise, find the first index for the given key
                 // TODO: achieve in a single seek?
-                if (!IsInKeyBounds(iterator, keyPrefix))
+                if (!IsInKeyBounds(iterator, normalizedKey))
                 {
                     iterator.SeekToFirst();
                     iterator.Seek(keyPrefix);
                 }
 
-                while (IsInKeyBounds(iterator, keyPrefix))
+                while (IsInKeyBounds(iterator, normalizedKey))
                 {
                     var value = iterator.Value();
 
@@ -433,8 +434,7 @@ namespace Nethermind.Db
 
         private static Span<byte> BuildTopicKey(int topicIndex, ReadOnlySpan<byte> topic, Span<byte> buffer)
         {
-            var index = topic.LeadingZerosCount();
-            ReadOnlySpan<byte> bytes = topic[index..];
+            ReadOnlySpan<byte> bytes = topic.WithoutLeadingZeros();
 
             bytes.CopyTo(buffer);
 
@@ -481,11 +481,12 @@ namespace Nethermind.Db
 
                         if (IsTopicBlockNewer(blockNumber, isBackwardSync))
                         {
-                            for (byte i = 0; i < log.Topics.Length; i++)
+                            for (byte topicIndex = 0; topicIndex < log.Topics.Length; topicIndex++)
                             {
                                 stats?.IncrementTopics();
 
-                                var topicNums = aggregate.Topic.GetOrAdd(log.Topics[i], static _ => new(1));
+                                var topicNums = aggregate.Topic[topicIndex].GetOrAdd(log.Topics[topicIndex], static _ => new(1));
+
                                 if (topicNums.Count == 0 || topicNums[^1] != blockNumber)
                                     topicNums.Add(blockNumber);
                             }
@@ -494,7 +495,7 @@ namespace Nethermind.Db
                 }
             }
 
-            stats?.KeysCount.Include(aggregate.Address.Count + aggregate.Topic.Count);
+            stats?.KeysCount.Include(aggregate.Address.Count + aggregate.TopicCount);
             stats?.Aggregating.Include(Stopwatch.GetElapsedTime(timestamp));
 
             return aggregate;
@@ -542,12 +543,13 @@ namespace Nethermind.Db
                 {
                     foreach (LogEntry log in receipt.Logs ?? [])
                     {
-                        ReadOnlySpan<byte> addressKey = CreateMergeDbKey(log.Address.Bytes, keyArray, isBackwardSync: false);
+                        ReadOnlySpan<byte> addressKey = CreateMergeDbKey(topicIndex: null, log.Address.Bytes, keyArray, isBackwardSync: false);
                         addressBatch.Merge(addressKey, dbValue);
 
-                        foreach (Hash256 topic in log.Topics)
+                        for (var topicIndex = 0; topicIndex < log.Topics.Length; topicIndex++)
                         {
-                            ReadOnlySpan<byte> topicKey = CreateMergeDbKey(topic.Bytes, keyArray, isBackwardSync: false);
+                            Hash256 topic = log.Topics[topicIndex];
+                            ReadOnlySpan<byte> topicKey = CreateMergeDbKey(topicIndex, topic.Bytes, keyArray, isBackwardSync: false);
                             topicBatch.Merge(topicKey, dbValue);
                         }
                     }
@@ -656,11 +658,20 @@ namespace Nethermind.Db
                 {
                     timestamp = Stopwatch.GetTimestamp();
 
+                    // Add addresses
                     foreach (var (address, blockNums) in aggregate.Address)
-                        SaveBlockNumbersByKey(dbBatch.address, address.Bytes, blockNums, isBackwardSync, stats);
+                    {
+                        SaveBlockNumbersByKey(dbBatch.address, topicIndex: null, address.Bytes, blockNums, isBackwardSync, stats);
+                    }
 
-                    foreach (var (topic, blockNums) in aggregate.Topic)
-                        SaveBlockNumbersByKey(dbBatch.topic, topic.Bytes, blockNums, isBackwardSync, stats);
+                    // Add topics
+                    for (var topicIndex = 0; topicIndex < aggregate.Topic.Length; topicIndex++)
+                    {
+                        var topics = aggregate.Topic[topicIndex];
+
+                        foreach (var (topic, blockNums) in topics)
+                            SaveBlockNumbersByKey(dbBatch.topic, topicIndex, topic.Bytes, blockNums, isBackwardSync, stats);
+                    }
 
                     stats?.Processing.Include(Stopwatch.GetElapsedTime(timestamp));
                 }
@@ -709,7 +720,7 @@ namespace Nethermind.Db
 
         // TODO: optimize allocations
         private static void SaveBlockNumbersByKey(
-            IWriteBatch dbBatch, ReadOnlySpan<byte> key, IReadOnlyList<int> blockNums,
+            IWriteBatch dbBatch, int? topicIndex, ReadOnlySpan<byte> key, IReadOnlyList<int> blockNums,
             bool isBackwardSync, LogIndexUpdateStats? stats
         )
         {
@@ -717,7 +728,7 @@ namespace Nethermind.Db
 
             try
             {
-                ReadOnlySpan<byte> dbKey = CreateMergeDbKey(key, dbKeyArray, isBackwardSync);
+                ReadOnlySpan<byte> dbKey = CreateMergeDbKey(topicIndex, key, dbKeyArray, isBackwardSync);
 
                 // TODO: handle writing already processed blocks
                 // if (blockNums[^1] <= lastSavedNum)
@@ -739,31 +750,42 @@ namespace Nethermind.Db
             }
         }
 
-        /// <summary>
-        /// Saves a key consisting of the <c>key || block-number</c> byte array to <paramref name="dbKey"/>
-        /// </summary>
-        private static void CreateDbKey(int? topicIndex, ReadOnlySpan<byte> key, int blockNumber, Span<byte> dbKey)
+        private static ReadOnlySpan<byte> GetNormalizedKey(int? topicIndex, ReadOnlySpan<byte> key, Span<byte> buffer)
         {
-            if (topicIndex.HasValue)
-                key = BuildTopicKey(topicIndex.Value, key, dbKey);
+            ReadOnlySpan<byte> normalized = key.WithoutLeadingZeros();
+            normalized = normalized.Length > 0 ? normalized : ZeroArray;
+            normalized.CopyTo(buffer);
 
-            key.CopyTo(dbKey);
-            SetKeyBlockNum(dbKey, blockNumber);
+            if (topicIndex is not null) buffer[0] ^= (byte)topicIndex;
+
+            return buffer[..normalized.Length];
         }
 
-        private static ReadOnlySpan<byte> CreateMergeDbKey(ReadOnlySpan<byte> key, Span<byte> dbKey, bool isBackwardSync)
+        /// <summary>
+        /// Generates a key consisting of the <c>key || block-number</c> byte array.
+        /// </summary>
+        private static ReadOnlySpan<byte> CreateDbKey(int? topicIndex, ReadOnlySpan<byte> key, int blockNumber, Span<byte> buffer)
         {
+            key = GetNormalizedKey(topicIndex, key, buffer);
+            SetKeyBlockNum(buffer[key.Length..], blockNumber);
+
+            var length = key.Length + BlockNumSize;
+            return buffer[..length];
+        }
+
+        private static ReadOnlySpan<byte> CreateMergeDbKey(int? topicIndex, ReadOnlySpan<byte> key, Span<byte> buffer, bool isBackwardSync)
+        {
+            key = GetNormalizedKey(topicIndex, key, buffer);
             var postfix = isBackwardSync ? SpecialPostfix.BackwardMerge : SpecialPostfix.ForwardMerge;
+            postfix.CopyTo(buffer[key.Length..]);
 
-            key.CopyTo(dbKey);
-            postfix.CopyTo(dbKey[key.Length..]);
-
-            return dbKey[..(key.Length + postfix.Length)];
+            var length = key.Length + postfix.Length;
+            return buffer[..length];
         }
 
         // RocksDB uses big-endian (lexicographic) ordering
         private static int GetKeyBlockNum(ReadOnlySpan<byte> dbKey) => BinaryPrimitives.ReadInt32BigEndian(dbKey[^BlockNumSize..]);
-        private static void SetKeyBlockNum(Span<byte> dbKey, int blockNumber) => BinaryPrimitives.WriteInt32BigEndian(dbKey[^BlockNumSize..], blockNumber);
+        private static void SetKeyBlockNum(Span<byte> dbKeyEnd, int blockNumber) => BinaryPrimitives.WriteInt32BigEndian(dbKeyEnd, blockNumber);
 
         private static bool UseBackwardSyncFor(ReadOnlySpan<byte> dbKey) => dbKey.EndsWith(SpecialPostfix.BackwardMerge);
 
