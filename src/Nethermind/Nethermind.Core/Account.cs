@@ -238,6 +238,15 @@ namespace Nethermind.Core
         }
         public static bool operator !=(AccountStruct? left, AccountStruct? right) => !(left == right);
         public override bool Equals(object? obj) => Equals(obj as AccountStruct?);
+        public bool Equals(AccountStruct? other)
+        {
+            if (other is not { } value) return false;
+
+            return Nonce == value.Nonce &&
+                   Balance == value.Balance &&
+                   CodeHash == value.CodeHash &&
+                   _storageRoot == value._storageRoot;
+        }
         public override int GetHashCode() => (int)BitOperations.Crc32C((uint)CodeHash.GetHashCode(), (ulong)Nonce.GetHashCode() << 8 | (uint)Balance.GetHashCode()) ^ StorageRoot.GetHashCode();
     }
 }

@@ -745,11 +745,10 @@ namespace Nethermind.State
                 if (change.Before != change.After)
                 {
                     change.Before = change.After;
-
                     KeccakCache.ComputeTo(key.Value.Bytes, out ValueHash256 keccak);
 
                     var account = change.After;
-                    Rlp accountRlp = account is null ? null : account.IsTotallyEmpty ? StateTree.EmptyAccountRlp : Rlp.Encode(account);
+                    Rlp accountRlp = account is not {} notNullAccount ? null : notNullAccount.IsTotallyEmpty ? StateTree.EmptyAccountRlp : Rlp.Encode(account);
 
                     bulkWrite.Add(new PatriciaTree.BulkSetEntry(keccak, accountRlp?.Bytes));
                     writes++;
