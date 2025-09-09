@@ -133,15 +133,15 @@ namespace Nethermind.Core
     {
         private static readonly AccountStruct _totallyEmpty = Account.TotallyEmpty.ToStruct();
         public static ref readonly AccountStruct TotallyEmpty => ref _totallyEmpty;
+        public static readonly AccountStruct? Null = null;
 
-        private readonly UInt256 _balance;
         private readonly UInt256 _nonce = default;
         public readonly ValueHash256 CodeHash = Keccak.OfAnEmptyString.ValueHash256;
         private readonly ValueHash256 _storageRoot = Keccak.EmptyTreeHash.ValueHash256;
 
         public AccountStruct(in UInt256 nonce, in UInt256 balance, in ValueHash256 storageRoot, in ValueHash256 codeHash)
         {
-            _balance = balance;
+            Balance = balance;
             _nonce = nonce;
             CodeHash = codeHash;
             _storageRoot = storageRoot;
@@ -149,13 +149,13 @@ namespace Nethermind.Core
 
         public AccountStruct(in UInt256 nonce, in UInt256 balance)
         {
-            _balance = balance;
+            Balance = balance;
             _nonce = nonce;
         }
 
         public AccountStruct(in UInt256 balance)
         {
-            _balance = balance;
+            Balance = balance;
         }
 
         public bool HasCode => CodeHash != Keccak.OfAnEmptyString.ValueHash256;
@@ -163,7 +163,7 @@ namespace Nethermind.Core
         public bool HasStorage => _storageRoot != Keccak.EmptyTreeHash.ValueHash256;
 
         public UInt256 Nonce => _nonce;
-        public UInt256 Balance => _balance;
+        public readonly UInt256 Balance;
         public ValueHash256 StorageRoot => _storageRoot;
         public bool IsTotallyEmpty => IsEmpty && IsStorageEmpty;
         public bool IsEmpty => Balance.IsZero && Nonce.IsZero && CodeHash == Keccak.OfAnEmptyString.ValueHash256;
@@ -193,7 +193,7 @@ namespace Nethermind.Core
                 //        ret
                 // ; Total bytes of code: 37
 
-                return (Unsafe.As<UInt256, Vector256<byte>>(ref Unsafe.AsRef(in _balance)) |
+                return (Unsafe.As<UInt256, Vector256<byte>>(ref Unsafe.AsRef(in Balance)) |
                     Unsafe.As<UInt256, Vector256<byte>>(ref Unsafe.AsRef(in _nonce)) |
                     Unsafe.As<ValueHash256, Vector256<byte>>(ref Unsafe.AsRef(in CodeHash)) |
                     Unsafe.As<ValueHash256, Vector256<byte>>(ref Unsafe.AsRef(in _storageRoot))) == default;
@@ -203,7 +203,7 @@ namespace Nethermind.Core
         public bool Equals(AccountStruct other)
         {
             return _nonce == other.Nonce &&
-                   _balance == other.Balance &&
+                   Balance == other.Balance &&
                    CodeHash == other.CodeHash &&
                    _storageRoot == other._storageRoot;
         }
