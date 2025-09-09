@@ -69,7 +69,7 @@ namespace Nethermind.Synchronization.Blocks
                 UInt256? remoteTotalDiff = info.TotalDifficulty;
                 if (remoteTotalDiff.HasValue &&
                     remoteTotalDiff.Value >= localTotalDiff &&
-                    remoteTotalDiff.Value - localTotalDiff <= 2 &&
+                    remoteTotalDiff.Value <= localTotalDiff + 2 &&
                     info.PeerClientType is NodeClientType.Parity or NodeClientType.OpenEthereum)
                 {
                     // Parity advertises a better block but never sends it back and then it disconnects after a few conversations like this
