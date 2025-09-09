@@ -101,8 +101,7 @@ namespace Nethermind.Db
             _maxReorgDepth = maxReorgDepth ?? Defaults.MaxReorgDepth;
 
             _logger = logManager.GetClassLogger<LogIndexStorage>();
-            //_compressor = new Compressor(this, _logger, ioParallelism ?? Defaults.IOParallelism);
-            _compressor = new NoOpCompressor();
+            _compressor = new Compressor(this, _logger, ioParallelism ?? Defaults.IOParallelism);
             _compactor = compactionDistance.HasValue ? new Compactor(this, _logger, compactionDistance.Value) : new NoOpCompactor();
             _mergeOperators = new()
             {
@@ -432,18 +431,6 @@ namespace Nethermind.Db
                 yield return blockNums[i];
         }
 
-        private static Span<byte> BuildTopicKey(int topicIndex, ReadOnlySpan<byte> topic, Span<byte> buffer)
-        {
-            ReadOnlySpan<byte> bytes = topic.WithoutLeadingZeros();
-
-            bytes.CopyTo(buffer);
-
-            // Reduces space requirement while introducing very low risk of collisions (and false positives)
-            buffer[0] ^= (byte)topicIndex;
-
-            return buffer[..bytes.Length];
-        }
-
         // TODO: optimize allocations
         public LogIndexAggregate Aggregate(IReadOnlyList<BlockReceipts> batch, bool isBackwardSync, LogIndexUpdateStats? stats)
         {
@@ -756,10 +743,8 @@ namespace Nethermind.Db
             normalized = normalized.Length > 0 ? normalized : ZeroArray;
             normalized.CopyTo(buffer);
 
-            //if (topicIndex is not null) buffer[0] ^= (byte)topicIndex;
-
             var length = normalized.Length;
-            if (topicIndex is not null && length != Hash256.Size) // Most 32-byte topics have index=0, ignore collisions for them
+            if (topicIndex is not null && !(topicIndex == 0 && length == Hash256.Size))
             {
                 buffer[normalized.Length] = (byte)topicIndex;
                 length++;
