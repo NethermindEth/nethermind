@@ -67,25 +67,22 @@ namespace Nethermind.State
             return bytes.IsEmpty ? null : _decoder.Decode(bytes);
         }
 
-        public void Set(Address address, AccountStruct? account)
+        public void SetStruct(Address address, AccountStruct? account)
         {
             KeccakCache.ComputeTo(address.Bytes, out ValueHash256 keccak);
             Set(keccak.BytesAsSpan, account is null ? null : account.Value.IsTotallyEmpty ? EmptyAccountRlp : Rlp.Encode(account));
+        }
+
+        public void Set(Address address, Account? account)
+        {
+            KeccakCache.ComputeTo(address.Bytes, out ValueHash256 keccak);
+            Set(keccak.BytesAsSpan, account is null ? null : account.IsTotallyEmpty ? EmptyAccountRlp : Rlp.Encode(account));
         }
 
         [DebuggerStepThrough]
         public Rlp? Set(Hash256 keccak, Account? account)
         {
             Rlp rlp = account is null ? null : account.IsTotallyEmpty ? EmptyAccountRlp : Rlp.Encode(account);
-
-            Set(keccak.Bytes, rlp);
-            return rlp;
-        }
-
-        [DebuggerStepThrough]
-        public Rlp? Set(Hash256 keccak, AccountStruct? account)
-        {
-            Rlp rlp = account is null ? null : account.Value.IsTotallyEmpty ? EmptyAccountRlp : Rlp.Encode(account);
 
             Set(keccak.Bytes, rlp);
             return rlp;
