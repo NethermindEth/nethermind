@@ -15,10 +15,10 @@ namespace Nethermind.Store.Test;
 
 public class StateTreeTests
 {
-    private readonly AccountStruct _account0 = Build.An.Account.WithBalance(0).TestObject.ToStruct();
-    private readonly AccountStruct _account1 = Build.An.Account.WithBalance(1).TestObject.ToStruct();
-    private readonly AccountStruct _account2 = Build.An.Account.WithBalance(2).TestObject.ToStruct();
-    private readonly AccountStruct _account3 = Build.An.Account.WithBalance(3).TestObject.ToStruct();
+    private readonly Account _account0 = Build.An.Account.WithBalance(0).TestObject;
+    private readonly Account _account1 = Build.An.Account.WithBalance(1).TestObject;
+    private readonly Account _account2 = Build.An.Account.WithBalance(2).TestObject;
+    private readonly Account _account3 = Build.An.Account.WithBalance(3).TestObject;
 
     [SetUp]
     public void Setup()
