@@ -2,20 +2,11 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using FluentAssertions;
-using Nethermind.Abi;
-using Nethermind.Blockchain.Tracing.GethStyle.Custom.JavaScript;
 using Nethermind.Core.Crypto;
-using Nethermind.Core.Extensions;
 using Nethermind.Serialization.Rlp;
-using Nethermind.Xdc;
 using Nethermind.Xdc.Types;
 using NUnit.Framework;
-using System;
 using System.Collections;
-using System.Collections.Generic;
-using System.Linq;
-using System.Text;
-using System.Threading.Tasks;
 
 namespace Nethermind.Xdc.Test;
 internal class QuorumCertificateDecoderTests
