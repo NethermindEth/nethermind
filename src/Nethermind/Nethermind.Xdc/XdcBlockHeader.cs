@@ -4,7 +4,10 @@
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
+using Nethermind.Crypto;
 using Nethermind.Int256;
+using Nethermind.Xdc.Spec;
+using Nethermind.Xdc.Types;
 using System;
 using System.Collections.Generic;
 using System.Collections.Immutable;
@@ -70,19 +73,32 @@ public class XdcBlockHeader : BlockHeader
         return masterNodes;
     }
 
-    internal ExtraFieldsV2 DecodeQuorumCertificate()
+    private ExtraFieldsV2 _extraFieldsV2;
+    public ExtraFieldsV2? ExtraConsensusData()
     {
         if (ExtraData is null || ExtraData.Length == 0)
-            throw new InvalidOperationException("ExtraData field is null or empty.");
-        if (ExtraData[0] != 2)
-            throw new InvalidOperationException("Not V2 consensus version in ExtraData field.");
+            return null;
 
-        //TODO use rlp to decode QuorumCertificate from ExtraData
-        return new ExtraFieldsV2();
+        if (_extraFieldsV2 == null)
+        {
+            //Check V2 consensus version in ExtraData field.
+            if (ExtraData[0] != 2)
+                return null;
+            //TODO use rlp to decode QuorumCertificate from ExtraData
+            _extraFieldsV2 = new ExtraFieldsV2();
+        }
+
+        return _extraFieldsV2;
     }
 
     public bool IsEpochSwitch(ISpecProvider specProvider)
     {
+        XdcReleaseSpec spec = specProvider.GetXdcSpec(this);
+        if (spec.SwitchBlock == this.Number)
+        {
+            return true;
+        }
+        ExtraFieldsV2? extraFields = ExtraConsensusData();
         throw new NotImplementedException();
     }
 

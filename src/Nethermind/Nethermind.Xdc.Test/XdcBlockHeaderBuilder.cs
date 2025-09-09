@@ -7,8 +7,12 @@ using Nethermind.Int256;
 
 namespace Nethermind.Core.Test.Builders;
 
-public class XdcBlockHeaderBuilder : BuilderBase<XdcBlockHeader>
+public class XdcBlockHeaderBuilder : BlockHeaderBuilder
 {
+    private XdcBlockHeader XdcTestObjectInternal => (XdcBlockHeader)TestObjectInternal;
+
+    public new XdcBlockHeader TestObject => (XdcBlockHeader)TestObjectInternal;
+
     public XdcBlockHeaderBuilder()
     {
         TestObjectInternal = new XdcBlockHeader(
@@ -27,16 +31,37 @@ public class XdcBlockHeaderBuilder : BuilderBase<XdcBlockHeader>
             Bloom = Bloom.Empty,
             GasUsed = 21_000,
             MixHash = Keccak.Compute("mix_hash"),
-            Nonce = 1000,
+            Nonce = 0,
             Validators = new byte[20 * 2],
-            Validator = new byte[20],
+            Validator = new byte[65],
             Penalties = Array.Empty<byte>(),
         };
     }
 
-    public XdcBlockHeaderBuilder WithBaseFee(UInt256 baseFee)
+    public new XdcBlockHeaderBuilder WithBaseFee(UInt256 baseFee)
     {
         TestObjectInternal.BaseFeePerGas = baseFee;
+        return this;
+    }
+
+    public XdcBlockHeaderBuilder WithValidator(Signature signature)
+    {
+        XdcTestObjectInternal.Validator = signature.Bytes.ToArray();
+        return this;
+    }
+    public XdcBlockHeaderBuilder WithValidator(byte[] bytes)
+    {
+        XdcTestObjectInternal.Validator = bytes;
+        return this;
+    }
+    public XdcBlockHeaderBuilder WithValidators(byte[] validators)
+    {
+        XdcTestObjectInternal.Validators = validators;
+        return this;
+    }
+    public XdcBlockHeaderBuilder WithPenalties(byte[] penalties)
+    {
+        XdcTestObjectInternal.Penalties = penalties;
         return this;
     }
 }

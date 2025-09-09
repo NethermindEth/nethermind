@@ -1,8 +1,9 @@
 // SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using Nethermind.Core;
+using Nethermind.Core.Specs;
 using Nethermind.Int256;
-using Nethermind.Specs;
 using System;
 using System.Collections.Generic;
 using System.Linq;
@@ -10,8 +11,18 @@ using System.Text;
 using System.Threading.Tasks;
 
 namespace Nethermind.Xdc.Spec;
-internal class XdcV2ReleaseSpec : ReleaseSpec
+
+public class XdcSpecProvider(ISpecProvider baseSpecProvider) : SpecProviderDecorator(baseSpecProvider)
 {
+    public override IReleaseSpec GetSpecInternal(ForkActivation forkActivation)
+    {
+        return new XdcReleaseSpec(base.GetSpecInternal(forkActivation));
+    }
+}
+
+public class XdcReleaseSpec(IReleaseSpec spec) : ReleaseSpecDecorator(spec)
+{
+    public int EpochLength { get; }
     public int SwitchEpoch { get; set; }
     public UInt256 SwitchBlock { get; set; }
     public int MaxMasternodes { get; set; }          // v2 max masternodes

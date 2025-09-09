@@ -22,7 +22,7 @@ using System.Linq;
 
 namespace Nethermind.Xdc;
 
-internal class XdcHeaderValidator(ISnapshotManager snapshotManager, IBlockTree? blockTree, ISealValidator? sealValidator, ISpecProvider? specProvider, ILogManager? logManager) : HeaderValidator(blockTree, sealValidator, specProvider, logManager)
+internal class XdcHeaderValidator(IBlockTree? blockTree, ISealValidator? sealValidator, ISpecProvider? specProvider, ILogManager? logManager = null) : HeaderValidator(blockTree, sealValidator, specProvider, logManager)
 {
 
     public override bool Validate(BlockHeader header, BlockHeader? parent, bool isUncle, out string? error)
@@ -36,10 +36,10 @@ internal class XdcHeaderValidator(ISnapshotManager snapshotManager, IBlockTree? 
             return false;
         }
 
-        ExtraFieldsV2? extraFields = xdcHeader.DecodeQuorumCertificate();
+        ExtraFieldsV2? extraFields = xdcHeader.ExtraConsensusData();
         if (extraFields is null)
         {
-            error = "ExtraData doesn't contain required fields.";
+            error = "ExtraData doesn't contain required consensus data.";
             return false;
         }
 
@@ -68,57 +68,11 @@ internal class XdcHeaderValidator(ISnapshotManager snapshotManager, IBlockTree? 
             return false;
         }
 
-        IEnumerable<Address> masternodes = null;
-
-        if (xdcHeader.IsEpochSwitch(_specProvider))
-        {
-            if (xdcHeader.Nonce != XdcConstants.NonceDropVoteValue)
-            {
-                error = "Vote nonce in checkpoint block non-zero.";
-                return false;
-            }
-            if (xdcHeader.Validators is null || xdcHeader.Validators.Length == 0)
-            {
-                error = "Empty validators list on epoch switch block.";
-                return false;
-            }
-            if (xdcHeader.Validators.Length % Address.Size != 0)
-            {
-                error = "Invalid signer list on checkpoint block.";
-                return false;
-            }
-
-            //TODO init masternodes by reading from most recent checkpoint
-            masternodes = snapshotManager.GetMasternodes(xdcHeader);
-            if (!xdcHeader.ValidatorsAddress.SetEquals(masternodes))
-            {
-                error = "Validators does not match what's stored in snapshot minus its penalty.";
-                return false;
-            }
-
-            if (!xdcHeader.PenaltiesAddress.SetEquals(snapshotManager.GetPenalties(xdcHeader)))
-            {
-                error = "Penalties does not match.";
-                return false;
-            }
-        }
-        else
-        {
-            if (xdcHeader.Validators?.Length != 0)
-            {
-                error = "Validators are not empty in non-epoch switch header.";
-                return false;
-            }
-            if (xdcHeader.Penalties?.Length != 0)
-            {
-                error = "Penalties are not empty in non-epoch switch header.";
-                return false;
-            }
-        }
+      
 
         //TODO check 
 
-        error =null;
+        error = null;
         return true;
     }
 

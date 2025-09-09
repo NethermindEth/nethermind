@@ -10,10 +10,20 @@ using System.Text;
 using System.Threading.Tasks;
 
 namespace Nethermind.Xdc;
-internal class SnapshotManager
+internal class SnapshotManager : ISnapshotManager
 {
+    public ImmutableSortedSet<Address> GetPenalties(XdcBlockHeader xdcHeader)
+    {
+        throw new NotImplementedException();
+    }
+
     internal ImmutableSortedSet<Address> GetMasternodes(XdcBlockHeader xdcHeader)
     {
         throw new NotImplementedException();
+    }
+
+    ImmutableSortedSet<Address> ISnapshotManager.GetMasternodes(XdcBlockHeader xdcHeader)
+    {
+        return GetMasternodes(xdcHeader);
     }
 }
