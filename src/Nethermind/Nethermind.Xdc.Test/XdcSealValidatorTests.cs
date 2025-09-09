@@ -8,6 +8,7 @@ using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Crypto;
+using Nethermind.Xdc.Types;
 using NSubstitute;
 using NUnit.Framework;
 using System;
@@ -91,10 +92,13 @@ internal class XdcSealValidatorTests
         EthereumEcdsa ecdsa = new EthereumEcdsa(0);
         XdcSealValidator validator = new XdcSealValidator(Substitute.For<ISnapshotManager>(), Substitute.For<ISpecProvider>());
 
-        XdcBlockHeader parent = Build.A.XdcBlockHeader().TestObject;
+        XdcBlockHeader parent = Build.A
+            .XdcBlockHeader()
+            .WithGeneratedExtraConsensusData()
+            .TestObject;
         XdcBlockHeader header = Build.A.XdcBlockHeader().TestObject;
 
-        //Assert.That(validator.ValidateParams(parent, header, ), Is.False);
+        Assert.That(validator.ValidateParams(parent, header, ), Is.False);
     }
 
 }

@@ -11,7 +11,7 @@ using System.Threading.Tasks;
 
 namespace Nethermind.Xdc.Types;
 
-public class BlockInfo(Hash256 hash256, ulong round, long number)
+public class BlockRoundInfo(Hash256 hash256, ulong round, long number)
 {
     public Hash256 Hash { get; set; } = hash256;
     public ulong Round { get; set; } = round;

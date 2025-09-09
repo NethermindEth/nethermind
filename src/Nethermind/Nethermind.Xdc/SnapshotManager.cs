@@ -12,6 +12,11 @@ using System.Threading.Tasks;
 namespace Nethermind.Xdc;
 internal class SnapshotManager : ISnapshotManager
 {
+    public ImmutableSortedSet<Address> CalculateNextEpochMasternodes(XdcBlockHeader xdcHeader)
+    {
+        throw new NotImplementedException();
+    }
+
     public ImmutableSortedSet<Address> GetPenalties(XdcBlockHeader xdcHeader)
     {
         throw new NotImplementedException();

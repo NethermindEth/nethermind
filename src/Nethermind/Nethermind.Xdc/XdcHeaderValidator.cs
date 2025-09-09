@@ -8,6 +8,7 @@ using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
 using Nethermind.Logging;
+using Nethermind.Xdc.Spec;
 using Nethermind.Xdc.Types;
 using System;
 using System.Collections;
@@ -30,7 +31,7 @@ internal class XdcHeaderValidator(IBlockTree blockTree, ISealValidator sealValid
             return false;
         }
 
-        ExtraFieldsV2? extraFields = xdcHeader.ExtraConsensusData();
+        ExtraFieldsV2? extraFields = xdcHeader.ExtraConsensusData;
         if (extraFields is null)
         {
             error = "ExtraData doesn't contain required consensus data.";
@@ -62,8 +63,6 @@ internal class XdcHeaderValidator(IBlockTree blockTree, ISealValidator sealValid
             return false;
         }
 
-        //TODO check 
-
         error = null;
         return true;
     }
@@ -72,7 +71,8 @@ internal class XdcHeaderValidator(IBlockTree blockTree, ISealValidator sealValid
     {
         if (!_sealValidator.ValidateParams(parent, header, isUncle))
         {
-
+            error = "Invalid validator signature.";
+            return false;
         }
         if (!_sealValidator.ValidateSeal(header, false))
         {
@@ -100,11 +100,10 @@ internal class XdcHeaderValidator(IBlockTree blockTree, ISealValidator sealValid
 
     protected override bool ValidateTimestamp(BlockHeader header, BlockHeader parent, ref string? error)
     {
-        //TODO fetch from spec
-        const int SlotTime = 2; // seconds
+        XdcReleaseSpec xdcSpec = _specProvider.GetXdcSpec((XdcBlockHeader)header); // will throw if no spec found
 
         //TODO check if V2 header
-        if (parent.Timestamp + SlotTime > header.Timestamp)
+        if (parent.Timestamp + (ulong)xdcSpec.MinePeriod > header.Timestamp)
         {
             error = "Timestamp in header cannot be lower than ancestor plus slot time.";
             return false;

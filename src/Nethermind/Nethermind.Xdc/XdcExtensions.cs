@@ -17,6 +17,7 @@ internal static class XdcExtensions
         XdcReleaseSpec spec = specProvider.GetSpec(xdcBlockHeader) as XdcReleaseSpec;
         if (spec is null)
             throw new InvalidOperationException($"Expected {nameof(XdcReleaseSpec)}.");
+        //TODO return spec based on the current round
         return spec;
     }
 }

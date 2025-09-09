@@ -6,9 +6,9 @@ using Nethermind.Serialization.Rlp;
 using Nethermind.Xdc.Types;
 
 namespace Nethermind.Xdc.RLP;
-internal class XdcBlockInfoDecoder : IRlpValueDecoder<BlockInfo>, IRlpStreamDecoder<BlockInfo>
+internal class XdcBlockInfoDecoder : IRlpValueDecoder<BlockRoundInfo>, IRlpStreamDecoder<BlockRoundInfo>
 {
-    public BlockInfo Decode(ref Rlp.ValueDecoderContext decoderContext, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+    public BlockRoundInfo Decode(ref Rlp.ValueDecoderContext decoderContext, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
     {
         if (decoderContext.IsNextItemNull())
             return null;
@@ -21,11 +21,11 @@ internal class XdcBlockInfoDecoder : IRlpValueDecoder<BlockInfo>, IRlpStreamDeco
         ulong round = decoderContext.DecodeULong();
         long number = decoderContext.DecodeLong();
 
-        return new BlockInfo(new Hash256(hashBytes), round, number);
+        return new BlockRoundInfo(new Hash256(hashBytes), round, number);
 
     }
 
-    public BlockInfo Decode(RlpStream rlpStream, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+    public BlockRoundInfo Decode(RlpStream rlpStream, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
     {
         if (rlpStream.IsNextItemNull())
             return null;
@@ -38,10 +38,10 @@ internal class XdcBlockInfoDecoder : IRlpValueDecoder<BlockInfo>, IRlpStreamDeco
         ulong round = rlpStream.DecodeULong();
         long number = rlpStream.DecodeLong();
 
-        return new BlockInfo(new Hash256(hashBytes), round, number);
+        return new BlockRoundInfo(new Hash256(hashBytes), round, number);
     }
 
-    public void Encode(RlpStream stream, BlockInfo item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+    public void Encode(RlpStream stream, BlockRoundInfo item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
     {
         if (item is null)
         {
@@ -54,12 +54,12 @@ internal class XdcBlockInfoDecoder : IRlpValueDecoder<BlockInfo>, IRlpStreamDeco
         stream.Encode(item.Number);
     }
 
-    public int GetLength(BlockInfo item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+    public int GetLength(BlockRoundInfo item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
     {
         return Rlp.LengthOfSequence(GetContentLength(item, rlpBehaviors));
     }
 
-    private static int GetContentLength(BlockInfo? item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+    private static int GetContentLength(BlockRoundInfo? item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
     {
         if (item is null)
             return 0;

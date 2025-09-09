@@ -9,6 +9,7 @@ namespace Nethermind.Xdc;
 
 public interface ISnapshotManager
 {
+    ImmutableSortedSet<Address> CalculateNextEpochMasternodes(XdcBlockHeader xdcHeader);
     ImmutableSortedSet<Address> GetMasternodes(XdcBlockHeader xdcHeader);
     ImmutableSortedSet<Address> GetPenalties(XdcBlockHeader xdcHeader);
 }

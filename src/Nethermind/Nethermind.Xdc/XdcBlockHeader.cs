@@ -6,6 +6,8 @@ using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
 using Nethermind.Crypto;
 using Nethermind.Int256;
+using Nethermind.Serialization.Rlp;
+using Nethermind.Xdc.RLP;
 using Nethermind.Xdc.Spec;
 using Nethermind.Xdc.Types;
 using System;
@@ -18,7 +20,7 @@ using System.Threading.Tasks;
 namespace Nethermind.Xdc;
 public class XdcBlockHeader : BlockHeader
 {
-    
+    private static readonly ExtraConsensusDataDecoder _extraConsensusDataDecoder = new();
     public XdcBlockHeader(
         Hash256 parentHash,
         Hash256 unclesHash,
@@ -75,21 +77,24 @@ public class XdcBlockHeader : BlockHeader
     }
 
     private ExtraFieldsV2 _extraFieldsV2;
-    public ExtraFieldsV2? ExtraConsensusData()
+    public ExtraFieldsV2? ExtraConsensusData
     {
-        if (ExtraData is null || ExtraData.Length == 0)
-            return null;
-
-        if (_extraFieldsV2 == null)
+        get
         {
-            //Check V2 consensus version in ExtraData field.
-            if (ExtraData[0] != 2)
+            if (ExtraData is null || ExtraData.Length == 0)
                 return null;
-            //TODO use rlp to decode QuorumCertificate from ExtraData
-            _extraFieldsV2 = null;// new ExtraFieldsV2();
-        }
 
-        return _extraFieldsV2;
+            if (_extraFieldsV2 == null)
+            {
+                //Check V2 consensus version in ExtraData field.
+                if (ExtraData.Length < 3 || ExtraData[0] != 2)
+                    return null;
+                Rlp.ValueDecoderContext valueDecoderContext = new Rlp.ValueDecoderContext(ExtraData.AsSpan(1));
+                _extraFieldsV2 = _extraConsensusDataDecoder.Decode(ref valueDecoderContext);
+            }
+            return _extraFieldsV2;
+        }
+        set { _extraFieldsV2 = value; }
     }
 
     public bool IsEpochSwitch(ISpecProvider specProvider)
@@ -99,7 +104,7 @@ public class XdcBlockHeader : BlockHeader
         {
             return true;
         }
-        ExtraFieldsV2? extraFields = ExtraConsensusData();
+        ExtraFieldsV2? extraFields = ExtraConsensusData;
         throw new NotImplementedException();
     }
 

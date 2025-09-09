@@ -7,6 +7,8 @@ using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
 using Nethermind.Crypto;
 using Nethermind.Serialization.Rlp;
+using Nethermind.Xdc.Spec;
+using Nethermind.Xdc.Types;
 using System;
 using System.Collections.Generic;
 using System.Collections.Immutable;
@@ -26,11 +28,24 @@ internal class XdcSealValidator(ISnapshotManager snapshotManager, ISpecProvider 
     {
         if (header is not XdcBlockHeader xdcHeader)
             throw new ArgumentException($"Only type of {nameof(XdcBlockHeader)} is allowed, but got type {header.GetType().Name}.", nameof(header));
-        if (xdcHeader.ExtraConsensusData() is null)
+        if (xdcHeader.ExtraConsensusData is null)
         {
             error = "ExtraData doesn't contain required consensus data.";
             return false;
         }
+
+        ExtraFieldsV2 extraFieldsV2 = xdcHeader.ExtraConsensusData!;
+
+        if (extraFieldsV2.Round <= extraFieldsV2.QuorumCert.ProposedBlockInfo.Round)
+        {
+            error = "Round number is not greater than the round in the QC.";
+            return false;
+        }
+
+        //TODO verify QC
+
+        XdcReleaseSpec xdcSpec = specProvider.GetXdcSpec(xdcHeader); // will throw if no spec found  
+
 
         ImmutableSortedSet<Address> masternodes;
 
@@ -53,7 +68,7 @@ internal class XdcSealValidator(ISnapshotManager snapshotManager, ISpecProvider 
             }
 
             //TODO init masternodes by reading from most recent checkpoint
-            masternodes = xdcHeader.ValidatorsAddress;
+            masternodes = snapshotManager.CalculateNextEpochMasternodes(xdcHeader);
             if (!xdcHeader.ValidatorsAddress.SetEquals(masternodes))
             {
                 error = "Validators does not match what's stored in snapshot minus its penalty.";
@@ -82,16 +97,10 @@ internal class XdcSealValidator(ISnapshotManager snapshotManager, ISpecProvider 
             masternodes = snapshotManager.GetMasternodes(xdcHeader);
         }
 
-        if (!masternodes.Contains(header.Author))
-        {
-            error = "Block author is not in the masternode list.";
-            return false;
-        }
-
-        ulong currentLeaderIndex = (xdcHeader.ExtraConsensusData().Round % (ulong)specProvider.GetXdcSpec(xdcHeader).EpochLength % (ulong)masternodes.Count);
+        ulong currentLeaderIndex = (xdcHeader.ExtraConsensusData.Round % (ulong)xdcSpec.EpochLength % (ulong)masternodes.Count);
         if (masternodes[(int)currentLeaderIndex] != header.Author)
         {
-            error = "Block author is not the current leader.";
+            error = $"Block proposer {header.Author} is not the current leader.";
             return false;
         }
 
@@ -99,8 +108,8 @@ internal class XdcSealValidator(ISnapshotManager snapshotManager, ISpecProvider 
         return true;
     }
 
-    public bool ValidateSeal(BlockHeader header) => ValidateSeal(header, false);
-    public bool ValidateSeal(BlockHeader header, bool force)
+    public bool ValidateSeal(BlockHeader header, bool force) => ValidateSeal(header);
+    public bool ValidateSeal(BlockHeader header)
     {
         if (header is not XdcBlockHeader xdcHeader)
             throw new ArgumentException($"Only type of {nameof(XdcBlockHeader)} is allowed, but got type {header.GetType().Name}.", nameof(header));

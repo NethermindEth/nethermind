@@ -4,6 +4,10 @@ using System;
 using Nethermind.Xdc;
 using Nethermind.Core.Crypto;
 using Nethermind.Int256;
+using Nethermind.Xdc.Types;
+using System.Linq;
+using Nethermind.Crypto;
+using Nethermind.Serialization.Rlp;
 
 namespace Nethermind.Core.Test.Builders;
 
@@ -12,6 +16,7 @@ public class XdcBlockHeaderBuilder : BlockHeaderBuilder
     private XdcBlockHeader XdcTestObjectInternal => (XdcBlockHeader)TestObjectInternal;
 
     public new XdcBlockHeader TestObject => (XdcBlockHeader)TestObjectInternal;
+
 
     public XdcBlockHeaderBuilder()
     {
@@ -36,6 +41,26 @@ public class XdcBlockHeaderBuilder : BlockHeaderBuilder
             Validator = new byte[65],
             Penalties = Array.Empty<byte>(),
         };
+    }
+
+    public XdcBlockHeaderBuilder WithGeneratedExtraConsensusData()
+    {
+        var encoder = new QuorumCertificateDecoder();
+        var ecdsa = new EthereumEcdsa(0);
+        var keyBuilder = new PrivateKeyGenerator();
+        var blockRoundInfo = new BlockRoundInfo(Hash256.Zero, 1, 1);
+        var quorumForSigning = new QuorumCert(blockRoundInfo, null, 450);
+        var signatures = Enumerable.Range(0, 72).Select(i => keyBuilder.Generate()).Select(k => ecdsa.Sign(k, new ValueHash256(encoder.Encode(quorumForSigning, RlpBehaviors.ForSealing).Bytes)));
+        var quorumCert = new QuorumCert(blockRoundInfo, signatures.ToArray(), 450);
+        var extraFieldsV2 = new ExtraFieldsV2(1, quorumCert);
+        XdcTestObjectInternal.ExtraConsensusData = extraFieldsV2;
+        return this;
+    }
+
+    public XdcBlockHeaderBuilder WithExtraConsensusData(ExtraFieldsV2 extraFieldsV2)
+    {
+        XdcTestObjectInternal.ExtraConsensusData = extraFieldsV2;
+        return this;
     }
 
     public new XdcBlockHeaderBuilder WithBaseFee(UInt256 baseFee)
