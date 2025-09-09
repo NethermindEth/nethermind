@@ -26,7 +26,7 @@ public class CachedCodeInfoRepository(
         ? precompileProvider.GetPrecompiles()
         : precompileProvider.GetPrecompiles().ToFrozenDictionary(kvp => kvp.Key, kvp => CreateCachedPrecompile(kvp, precompileCache));
 
-    public ICodeInfo GetCachedCodeInfo(IWorldState worldState, Address codeSource, bool followDelegation, IReleaseSpec vmSpec,
+    public ICodeInfo GetCachedCodeInfo(Address codeSource, bool followDelegation, IReleaseSpec vmSpec,
         out Address? delegationAddress)
     {
         if (IsPrecompile(codeSource, vmSpec) && _cachedPrecompile.TryGetValue(codeSource, out var cachedCodeInfo))
@@ -34,12 +34,12 @@ public class CachedCodeInfoRepository(
             delegationAddress = null;
             return cachedCodeInfo;
         }
-        return baseCodeInfoRepository.GetCachedCodeInfo(worldState, codeSource, followDelegation, vmSpec, out delegationAddress);
+        return baseCodeInfoRepository.GetCachedCodeInfo(codeSource, followDelegation, vmSpec, out delegationAddress);
     }
 
-    public ValueHash256 GetExecutableCodeHash(IWorldState worldState, Address address, IReleaseSpec spec)
+    public ValueHash256 GetExecutableCodeHash(Address address, IReleaseSpec spec)
     {
-        return baseCodeInfoRepository.GetExecutableCodeHash(worldState, address, spec);
+        return baseCodeInfoRepository.GetExecutableCodeHash(address, spec);
     }
 
     public bool IsPrecompile(Address address, IReleaseSpec spec)
@@ -47,26 +47,26 @@ public class CachedCodeInfoRepository(
         return baseCodeInfoRepository.IsPrecompile(address, spec);
     }
 
-    public void InsertCode(IWorldState state, ReadOnlyMemory<byte> code, Address codeOwner, IReleaseSpec spec)
+    public void InsertCode(ReadOnlyMemory<byte> code, Address codeOwner, IReleaseSpec spec)
     {
-        baseCodeInfoRepository.InsertCode(state, code, codeOwner, spec);
+        baseCodeInfoRepository.InsertCode(code, codeOwner, spec);
     }
 
-    public void SetDelegation(IWorldState state, Address codeSource, Address authority, IReleaseSpec spec)
+    public void SetDelegation(Address codeSource, Address authority, IReleaseSpec spec)
     {
-        baseCodeInfoRepository.SetDelegation(state, codeSource, authority, spec);
+        baseCodeInfoRepository.SetDelegation(codeSource, authority, spec);
     }
 
-    public bool TryGetDelegation(IReadOnlyStateProvider worldState, Address address, IReleaseSpec spec,
+    public bool TryGetDelegation(Address address, IReleaseSpec spec,
         [NotNullWhen(true)] out Address? delegatedAddress)
     {
-        return baseCodeInfoRepository.TryGetDelegation(worldState, address, spec, out delegatedAddress);
+        return baseCodeInfoRepository.TryGetDelegation(address, spec, out delegatedAddress);
     }
 
-    public bool TryGetDelegation(IReadOnlyStateProvider worldState, in ValueHash256 codeHash, IReleaseSpec spec,
+    public bool TryGetDelegation(in ValueHash256 codeHash, IReleaseSpec spec,
         [NotNullWhen(true)] out Address? delegatedAddress)
     {
-        return baseCodeInfoRepository.TryGetDelegation(worldState, in codeHash, spec, out delegatedAddress);
+        return baseCodeInfoRepository.TryGetDelegation(in codeHash, spec, out delegatedAddress);
     }
 
     private static PrecompileInfo CreateCachedPrecompile(

@@ -20,16 +20,18 @@ public class CodeInfoRepository : ICodeInfoRepository
 {
     private static readonly CodeLruCache _codeCache = new();
     private readonly FrozenDictionary<AddressAsKey, PrecompileInfo> _localPrecompiles;
+    private readonly IWorldState worldState;
 
-    public CodeInfoRepository(IPrecompileProvider precompileProvider)
+    public CodeInfoRepository(IWorldState worldState_, IPrecompileProvider precompileProvider)
     {
         _localPrecompiles = precompileProvider.GetPrecompiles();
+        worldState = worldState_;
     }
 
     public bool IsPrecompile(Address address, IReleaseSpec spec) =>
         spec.IsPrecompile(address) && _localPrecompiles.ContainsKey(address);
 
-    public ICodeInfo GetCachedCodeInfo(IWorldState worldState, Address codeSource, bool followDelegation, IReleaseSpec vmSpec, out Address? delegationAddress)
+    public ICodeInfo GetCachedCodeInfo(Address codeSource, bool followDelegation, IReleaseSpec vmSpec, out Address? delegationAddress)
     {
         delegationAddress = null;
         if (IsPrecompile(codeSource, vmSpec))
@@ -48,7 +50,7 @@ public class CodeInfoRepository : ICodeInfoRepository
         return cachedCodeInfo;
     }
 
-    private static ICodeInfo InternalGetCachedCode(IWorldState worldState, Address codeSource, IReleaseSpec vmSpec)
+    private ICodeInfo InternalGetCachedCode(Address codeSource, IReleaseSpec vmSpec)
     {
         ref readonly ValueHash256 codeHash = ref worldState.GetCodeHash(codeSource);
         return InternalGetCachedCode(worldState, in codeHash, vmSpec);
@@ -95,11 +97,11 @@ public class CodeInfoRepository : ICodeInfoRepository
         }
     }
 
-    public void InsertCode(IWorldState state, ReadOnlyMemory<byte> code, Address codeOwner, IReleaseSpec spec)
+    public void InsertCode(ReadOnlyMemory<byte> code, Address codeOwner, IReleaseSpec spec)
     {
         ValueHash256 codeHash = code.Length == 0 ? ValueKeccak.OfAnEmptyString : ValueKeccak.Compute(code.Span);
         // If the code is already in the cache, we don't need to create and add it again (and reanalyze it)
-        if (state.InsertCode(codeOwner, in codeHash, code, spec) &&
+        if (worldState.InsertCode(codeOwner, in codeHash, code, spec) &&
             _codeCache.Get(in codeHash) is null)
         {
             ICodeInfo codeInfo = CodeInfoFactory.CreateCodeInfo(code, spec, ValidationStrategy.ExtractHeader);
@@ -107,18 +109,18 @@ public class CodeInfoRepository : ICodeInfoRepository
         }
     }
 
-    public void SetDelegation(IWorldState state, Address codeSource, Address authority, IReleaseSpec spec)
+    public void SetDelegation(Address codeSource, Address authority, IReleaseSpec spec)
     {
         if (codeSource == Address.Zero)
         {
-            state.InsertCode(authority, Keccak.OfAnEmptyString, Array.Empty<byte>(), spec);
+            worldState.InsertCode(authority, Keccak.OfAnEmptyString, Array.Empty<byte>(), spec);
             return;
         }
         byte[] authorizedBuffer = new byte[Eip7702Constants.DelegationHeader.Length + Address.Size];
         Eip7702Constants.DelegationHeader.CopyTo(authorizedBuffer);
         codeSource.Bytes.CopyTo(authorizedBuffer, Eip7702Constants.DelegationHeader.Length);
         ValueHash256 codeHash = ValueKeccak.Compute(authorizedBuffer);
-        if (state.InsertCode(authority, codeHash, authorizedBuffer.AsMemory(), spec)
+        if (worldState.InsertCode(authority, codeHash, authorizedBuffer.AsMemory(), spec)
             // If the code is already in the cache, we don't need to create CodeInfo and add it again (and reanalyze it)
             && _codeCache.Get(in codeHash) is null)
         {
@@ -131,7 +133,7 @@ public class CodeInfoRepository : ICodeInfoRepository
     /// </summary>
     /// <param name="worldState"></param>
     /// <param name="address"></param>
-    public ValueHash256 GetExecutableCodeHash(IWorldState worldState, Address address, IReleaseSpec spec)
+    public ValueHash256 GetExecutableCodeHash(Address address, IReleaseSpec spec)
     {
         ValueHash256 codeHash = worldState.GetCodeHash(address);
         if (codeHash == Keccak.OfAnEmptyString.ValueHash256)
@@ -161,10 +163,10 @@ public class CodeInfoRepository : ICodeInfoRepository
         return false;
     }
 
-    public bool TryGetDelegation(IReadOnlyStateProvider worldState, Address address, IReleaseSpec spec, [NotNullWhen(true)] out Address? delegatedAddress) =>
+    public bool TryGetDelegation(Address address, IReleaseSpec spec, [NotNullWhen(true)] out Address? delegatedAddress) =>
         TryGetDelegatedAddress(InternalGetCachedCode(worldState, address, spec).CodeSpan, out delegatedAddress);
 
-    public bool TryGetDelegation(IReadOnlyStateProvider worldState, in ValueHash256 codeHash, IReleaseSpec spec, [NotNullWhen(true)] out Address? delegatedAddress) =>
+    public bool TryGetDelegation(in ValueHash256 codeHash, IReleaseSpec spec, [NotNullWhen(true)] out Address? delegatedAddress) =>
         TryGetDelegatedAddress(InternalGetCachedCode(worldState, in codeHash, spec).CodeSpan, out delegatedAddress);
 
     private sealed class CodeLruCache

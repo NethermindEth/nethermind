@@ -12,23 +12,27 @@ using Nethermind.Evm.State;
 
 namespace Nethermind.State.OverridableEnv;
 
-public class OverridableEnvFactory(IWorldStateManager worldStateManager, Func<ICodeInfoRepository> codeInfoRepositoryFunc, ISpecProvider specProvider) : IOverridableEnvFactory
+public class OverridableEnvFactory(IWorldStateManager worldStateManager, ILifetimeScope parentLifetimeScope, ISpecProvider specProvider) : IOverridableEnvFactory
 {
     public IOverridableEnv Create()
     {
         IOverridableWorldScope overridableScope = worldStateManager.CreateOverridableWorldScope();
-        IOverridableCodeInfoRepository codeInfoRepository = new OverridableCodeInfoRepository(codeInfoRepositoryFunc());
+        ILifetimeScope childLifetimeScope = parentLifetimeScope.BeginLifetimeScope((builder) => builder
+            .AddSingleton<IWorldState>(overridableScope.WorldState)
+            .AddDecorator<ICodeInfoRepository, OverridableCodeInfoRepository>()
+            .AddScoped<IOverridableCodeInfoRepository, ICodeInfoRepository>((codeInfoRepo) => (codeInfoRepo as OverridableCodeInfoRepository)!));
 
-        return new OverridableEnv(overridableScope, codeInfoRepository, specProvider);
+        return new OverridableEnv(overridableScope, childLifetimeScope, specProvider);
     }
 
     private class OverridableEnv(
         IOverridableWorldScope overridableScope,
-        IOverridableCodeInfoRepository codeInfoRepository,
+        ILifetimeScope childLifetimeScope,
         ISpecProvider specProvider
-    ) : Module, IOverridableEnv
+    ) : Module, IOverridableEnv, IDisposable
     {
         private IDisposable? _worldScopeCloser;
+        private readonly IOverridableCodeInfoRepository _codeInfoRepository = childLifetimeScope.Resolve<IOverridableCodeInfoRepository>();
 
         public IDisposable BuildAndOverride(BlockHeader header, Dictionary<Address, AccountOverride>? stateOverride)
         {
@@ -40,7 +44,7 @@ public class OverridableEnvFactory(IWorldStateManager worldStateManager, Func<IC
 
             if (stateOverride is not null)
             {
-                overridableScope.WorldState.ApplyStateOverrides(codeInfoRepository, stateOverride, specProvider.GetSpec(header), header.Number);
+                overridableScope.WorldState.ApplyStateOverrides(_codeInfoRepository, stateOverride, specProvider.GetSpec(header), header.Number);
                 header.StateRoot = overridableScope.WorldState.StateRoot;
             }
 
@@ -57,7 +61,7 @@ public class OverridableEnvFactory(IWorldStateManager worldStateManager, Func<IC
 
         private void Reset()
         {
-            codeInfoRepository.ResetOverrides();
+            _codeInfoRepository.ResetOverrides();
 
             _worldScopeCloser?.Dispose();
             _worldScopeCloser = null;
@@ -68,8 +72,14 @@ public class OverridableEnvFactory(IWorldStateManager worldStateManager, Func<IC
                 .AddScoped<IWorldState>(overridableScope.WorldState)
                 .AddScoped<IStateReader>(overridableScope.GlobalStateReader)
                 .AddScoped<IOverridableEnv>(this)
-                .AddScoped<ICodeInfoRepository>(codeInfoRepository)
-                .AddScoped<IOverridableCodeInfoRepository>(codeInfoRepository)
+                .AddScoped<ICodeInfoRepository>(_codeInfoRepository)
+                .AddScoped<IOverridableCodeInfoRepository>(_codeInfoRepository)
             ;
+
+        public void Dispose()
+        {
+            // Note: This is the env's dispose, not the scope dispose.
+            childLifetimeScope.Dispose();
+        }
     }
 }
