@@ -179,7 +179,7 @@ public partial class PatriciaTree
                 nibMask &= nibMask - 1;
                 int startRange = indexes[nib];
 
-                int endRange = nibMask != 0? indexes[BitOperations.TrailingZeroCount(nibMask)] : entries.Length;
+                int endRange = nibMask != 0 ? indexes[BitOperations.TrailingZeroCount(nibMask)] : entries.Length;
 
                 Span<BulkSetEntry> jobEntry = entries.Slice(startRange, endRange - startRange);
 
