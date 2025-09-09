@@ -6,7 +6,7 @@ using Nethermind.Core.Timers;
 
 namespace Nethermind.Core.Test;
 
-public class FunctionalTimerFactory(Func<TimeSpan, ITimer> timerFactory): ITimerFactory
+public class FunctionalTimerFactory(Func<TimeSpan, ITimer> timerFactory) : ITimerFactory
 {
     public ITimer CreateTimer(TimeSpan interval)
     {
