@@ -117,8 +117,6 @@ public interface IWorldState : IJournal<Snapshot>, IReadOnlyStateProvider
 
     void SubtractFromBalance(Address address, in UInt256 balanceChange, IReleaseSpec spec);
 
-    void UpdateStorageRoot(Address address, Hash256 storageRoot);
-
     void IncrementNonce(Address address, UInt256 delta);
 
     void DecrementNonce(Address address, UInt256 delta);

@@ -163,10 +163,12 @@ namespace Nethermind.State
             {
                 After = after ?? StorageTree.ZeroBytes;
                 Before = StorageTree.ZeroBytes;
+                IsInitialValue = true;
             }
 
             public byte[] Before;
             public byte[] After;
+            public bool IsInitialValue;
         }
 
         /// <summary>
