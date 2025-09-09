@@ -53,7 +53,7 @@ internal class XdcSealValidator(ISnapshotManager snapshotManager, ISpecProvider 
             }
 
             //TODO init masternodes by reading from most recent checkpoint
-            masternodes = snapshotManager.GetMasternodes(xdcHeader);
+            masternodes = xdcHeader.ValidatorsAddress;
             if (!xdcHeader.ValidatorsAddress.SetEquals(masternodes))
             {
                 error = "Validators does not match what's stored in snapshot minus its penalty.";

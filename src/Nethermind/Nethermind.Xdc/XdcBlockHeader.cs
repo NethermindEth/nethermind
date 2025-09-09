@@ -18,6 +18,7 @@ using System.Threading.Tasks;
 namespace Nethermind.Xdc;
 public class XdcBlockHeader : BlockHeader
 {
+    
     public XdcBlockHeader(
         Hash256 parentHash,
         Hash256 unclesHash,
@@ -85,7 +86,7 @@ public class XdcBlockHeader : BlockHeader
             if (ExtraData[0] != 2)
                 return null;
             //TODO use rlp to decode QuorumCertificate from ExtraData
-            _extraFieldsV2 = new ExtraFieldsV2();
+            _extraFieldsV2 = null;// new ExtraFieldsV2();
         }
 
         return _extraFieldsV2;
