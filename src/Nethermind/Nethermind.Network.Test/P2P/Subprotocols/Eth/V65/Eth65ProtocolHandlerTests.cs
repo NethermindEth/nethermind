@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using System.Collections.Generic;
 using System.Net;
 using System.Threading;
 using System.Threading.Tasks;
@@ -197,7 +196,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V65
             HandleIncomingStatusMessage();
             HandleZeroMessage(msg, Eth65MessageCode.NewPooledTransactionHashes);
 
-            _pooledTxsRequestor.Received(canGossipTransactions ? 1 : 0).RequestTransactions(Arg.Any<Action<GetPooledTransactionsMessage>>(), Arg.Any<IOwnedReadOnlyList<Hash256>>());
+            _pooledTxsRequestor.Received(canGossipTransactions ? 1 : 0).RequestTransactions(Arg.Any<Action<GetPooledTransactionsMessage>>(), Arg.Any<IOwnedReadOnlyList<Hash256>>(), Arg.Any<Guid>());
         }
 
         private void HandleZeroMessage<T>(T msg, int messageCode) where T : MessageBase

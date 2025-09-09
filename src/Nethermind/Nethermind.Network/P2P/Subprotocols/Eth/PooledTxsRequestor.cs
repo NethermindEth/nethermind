@@ -23,17 +23,15 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth
             ? long.MaxValue
             : txPoolConfig.MaxBlobTxSize.Value + (long)specProvider.GetFinalMaxBlobGasPerBlock();
 
-        public SimpleRetryCache<Hash256, string> simpleRetryCache { get; set; } = new(null);
-
-        public void RequestTransactions(Action<GetPooledTransactionsMessage> send, IOwnedReadOnlyList<Hash256> hashes)
+        public void RequestTransactions(Action<GetPooledTransactionsMessage> send, IOwnedReadOnlyList<Hash256> hashes, Guid sessionId)
         {
-            ArrayPoolList<Hash256> discoveredTxHashes = AddMarkUnknownHashes(hashes.AsSpan());
+            ArrayPoolList<Hash256> discoveredTxHashes = AddMarkUnknownHashes(hashes.AsSpan(), send, sessionId);
             RequestPooledTransactions(send, discoveredTxHashes);
         }
 
-        public void RequestTransactionsEth66(Action<V66.Messages.GetPooledTransactionsMessage> send, IOwnedReadOnlyList<Hash256> hashes)
+        public void RequestTransactionsEth66(Action<V66.Messages.GetPooledTransactionsMessage> send, IOwnedReadOnlyList<Hash256> hashes, Guid sessionId)
         {
-            ArrayPoolList<Hash256> discoveredTxHashes = AddMarkUnknownHashes(hashes.AsSpan());
+            ArrayPoolList<Hash256> discoveredTxHashes = AddMarkUnknownHashes(hashes.AsSpan(), send, sessionId);
 
             if (discoveredTxHashes.Count <= MaxNumberOfTxsInOneMsg)
             {
@@ -54,9 +52,9 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth
             }
         }
 
-        public void RequestTransactionsEth68(Action<V66.Messages.GetPooledTransactionsMessage> send, IOwnedReadOnlyList<Hash256> hashes, IOwnedReadOnlyList<int> sizes, IOwnedReadOnlyList<byte> types)
+        public void RequestTransactionsEth68(Action<V66.Messages.GetPooledTransactionsMessage> send, IOwnedReadOnlyList<Hash256> hashes, IOwnedReadOnlyList<int> sizes, IOwnedReadOnlyList<byte> types, Guid sessionId)
         {
-            using ArrayPoolList<(Hash256 Hash, byte Type, int Size)> discoveredTxHashesAndSizes = AddMarkUnknownHashesEth68(hashes.AsSpan(), sizes.AsSpan(), types.AsSpan());
+            using ArrayPoolList<(Hash256 Hash, byte Type, int Size)> discoveredTxHashesAndSizes = AddMarkUnknownHashesEth68(hashes.AsSpan(), sizes.AsSpan(), types.AsSpan(), send, sessionId);
             if (discoveredTxHashesAndSizes.Count == 0) return;
 
             int packetSizeLeft = TransactionsMessage.MaxPacketSize;
@@ -73,11 +71,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth
                 if (txSize > maxSize)
                     continue;
 
-                if (txSize > packetSizeLeft && toRequestCount > 0 && simpleRetryCache.Announced(hash, "", () =>
-                {
-                    GetPooledTransactionsMessage msg65 = new([hash]); ;
-                    send(new() { EthMessage = msg65 });
-                }))
+                if (txSize > packetSizeLeft && toRequestCount > 0)
                 {
                     RequestPooledTransactionsEth66(send, hashesToRequest);
                     hashesToRequest = new ArrayPoolList<Hash256>(discoveredCount);
@@ -96,7 +90,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth
             RequestPooledTransactionsEth66(send, hashesToRequest);
         }
 
-        private ArrayPoolList<Hash256> AddMarkUnknownHashes(ReadOnlySpan<Hash256> hashes)
+        private ArrayPoolList<Hash256> AddMarkUnknownHashes(ReadOnlySpan<Hash256> hashes, Action<GetPooledTransactionsMessage> send, Guid sessionId)
         {
             ArrayPoolList<Hash256> discoveredTxHashes = new ArrayPoolList<Hash256>(hashes.Length);
             for (int i = 0; i < hashes.Length; i++)
@@ -104,14 +98,45 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth
                 Hash256 hash = hashes[i];
                 if (!txPool.IsKnown(hash))
                 {
-                    discoveredTxHashes.Add(hash);
+                    if (txPool.SimpleRetryCache.Announced(hash, sessionId, () =>
+                    {
+                        ArrayPoolList<Hash256> discoveredTxHashes = new(1) { hash };
+                        GetPooledTransactionsMessage msg65 = new(discoveredTxHashes);
+                        send(msg65);
+                    }) is AnnounceResult.New)
+                    {
+                        discoveredTxHashes.Add(hash);
+                    }
                 }
             }
 
             return discoveredTxHashes;
         }
 
-        private ArrayPoolList<(Hash256, byte, int)> AddMarkUnknownHashesEth68(ReadOnlySpan<Hash256> hashes, ReadOnlySpan<int> sizes, ReadOnlySpan<byte> types)
+        private ArrayPoolList<Hash256> AddMarkUnknownHashes(ReadOnlySpan<Hash256> hashes, Action<V66.Messages.GetPooledTransactionsMessage> send, Guid sessionId)
+        {
+            ArrayPoolList<Hash256> discoveredTxHashes = new ArrayPoolList<Hash256>(hashes.Length);
+            for (int i = 0; i < hashes.Length; i++)
+            {
+                Hash256 hash = hashes[i];
+                if (!txPool.IsKnown(hash))
+                {
+                    if (txPool.SimpleRetryCache.Announced(hash, sessionId, () =>
+                    {
+                        ArrayPoolList<Hash256> discoveredTxHashes = new(1) { hash };
+                        V66.Messages.GetPooledTransactionsMessage msg66 = new(MessageConstants.Random.NextLong(), new GetPooledTransactionsMessage(discoveredTxHashes));
+                        send(msg66);
+                    }) is AnnounceResult.New)
+                    {
+                        discoveredTxHashes.Add(hash);
+                    }
+                }
+            }
+
+            return discoveredTxHashes;
+        }
+
+        private ArrayPoolList<(Hash256, byte, int)> AddMarkUnknownHashesEth68(ReadOnlySpan<Hash256> hashes, ReadOnlySpan<int> sizes, ReadOnlySpan<byte> types, Action<V66.Messages.GetPooledTransactionsMessage> send, Guid sessionId)
         {
             ArrayPoolList<(Hash256, byte, int)> discoveredTxHashesAndSizes = new(hashes.Length);
             for (int i = 0; i < hashes.Length; i++)
@@ -119,7 +144,15 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth
                 Hash256 hash = hashes[i];
                 if (!txPool.IsKnown(hash) && !txPool.ContainsTx(hash, (TxType)types[i]))
                 {
-                    discoveredTxHashesAndSizes.Add((hash, types[i], sizes[i]));
+                    if (txPool.SimpleRetryCache.Announced(hash, sessionId, () =>
+                    {
+                        ArrayPoolList<Hash256> discoveredTxHashes = new(1) { hash };
+                        V66.Messages.GetPooledTransactionsMessage msg66 = new(MessageConstants.Random.NextLong(), new GetPooledTransactionsMessage(discoveredTxHashes));
+                        send(msg66);
+                    }) is AnnounceResult.New)
+                    {
+                        discoveredTxHashesAndSizes.Add((hash, types[i], sizes[i]));
+                    }
                 }
             }
 

@@ -111,5 +111,7 @@ namespace Nethermind.TxPool
             remove { }
         }
         public bool AcceptTxWhenNotSynced { get; set; }
+
+        public SimpleRetryCache<ValueHash256, Guid> SimpleRetryCache { get; } = new(null);
     }
 }

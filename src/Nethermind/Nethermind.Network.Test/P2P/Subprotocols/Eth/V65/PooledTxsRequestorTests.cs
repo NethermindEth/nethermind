@@ -35,11 +35,11 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V65
         {
             _requestor = new PooledTxsRequestor(_txPool, new TxPoolConfig(), _specProvider);
             using var skipped = new ArrayPoolList<Hash256>(2) { TestItem.KeccakA, TestItem.KeccakD };
-            _requestor.RequestTransactions(_doNothing, skipped);
+            _requestor.RequestTransactions(_doNothing, skipped, Arg.Any<Guid>());
 
             using var request = new ArrayPoolList<Hash256>(3) { TestItem.KeccakA, TestItem.KeccakB, TestItem.KeccakC };
             using var expected = new ArrayPoolList<Hash256>(3) { TestItem.KeccakA, TestItem.KeccakB, TestItem.KeccakC };
-            _requestor.RequestTransactions(Send, request);
+            _requestor.RequestTransactions(Send, request, Arg.Any<Guid>());
             _response.Should().BeEquivalentTo(expected);
         }
 
@@ -48,10 +48,10 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V65
         {
             _requestor = new PooledTxsRequestor(_txPool, new TxPoolConfig(), _specProvider);
             using var skipped = new ArrayPoolList<Hash256>(3) { TestItem.KeccakA, TestItem.KeccakB, TestItem.KeccakC };
-            _requestor.RequestTransactions(_doNothing, skipped);
+            _requestor.RequestTransactions(_doNothing, skipped, Arg.Any<Guid>());
 
             using var request = new ArrayPoolList<Hash256>(3) { TestItem.KeccakA, TestItem.KeccakB, TestItem.KeccakC };
-            _requestor.RequestTransactions(Send, request);
+            _requestor.RequestTransactions(Send, request, Arg.Any<Guid>());
             _response.Should().BeEquivalentTo(request);
         }
 
@@ -62,7 +62,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V65
 
             using var request = new ArrayPoolList<Hash256>(3) { TestItem.KeccakA, TestItem.KeccakB, TestItem.KeccakC };
             using var expected = new ArrayPoolList<Hash256>(3) { TestItem.KeccakA, TestItem.KeccakB, TestItem.KeccakC };
-            _requestor.RequestTransactions(Send, request);
+            _requestor.RequestTransactions(Send, request, Arg.Any<Guid>());
             _response.Should().BeEquivalentTo(expected);
         }
 
@@ -71,7 +71,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V65
         {
             _requestor = new PooledTxsRequestor(_txPool, new TxPoolConfig(), _specProvider);
             using var skipped = new ArrayPoolList<Hash256>(0);
-            _requestor.RequestTransactions(Send, skipped);
+            _requestor.RequestTransactions(Send, skipped, Arg.Any<Guid>());
             _response.Should().BeEmpty();
         }
 
@@ -84,7 +84,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V65
 
             using var request = new ArrayPoolList<Hash256>(2) { TestItem.KeccakA, TestItem.KeccakB };
             using var expected = new ArrayPoolList<Hash256>(0) { };
-            _requestor.RequestTransactions(Send, request);
+            _requestor.RequestTransactions(Send, request, Arg.Any<Guid>());
             _response.Should().BeEquivalentTo(expected);
         }
 

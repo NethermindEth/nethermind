@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using Nethermind.Core.Caching;
 using Nethermind.Logging;
 using System;
 using System.Collections.Concurrent;
@@ -8,9 +9,9 @@ using System.Collections.Generic;
 using System.Threading;
 using System.Threading.Tasks;
 
-namespace Nethermind.Network.P2P.Subprotocols.Eth;
+namespace Nethermind.TxPool;
 
-public class SimpleRetryCache<Hash256, NodeId> where Hash256 : notnull where NodeId : notnull
+public class SimpleRetryCache<Hash256, NodeId> where Hash256 : struct, IEquatable<Hash256> where NodeId : notnull
 {
     public int TimeoutMs = 3000;
     public int CheckMs = 200;
@@ -18,6 +19,7 @@ public class SimpleRetryCache<Hash256, NodeId> where Hash256 : notnull where Nod
 
     private readonly ConcurrentDictionary<Hash256, Dictionary<NodeId, Action>> _dict = new();
     private readonly ConcurrentQueue<(Hash256 TxHash, DateTimeOffset Expires)> expiringQueue = new();
+    private readonly ClockKeyCache<Hash256> _pendingHashes = new(MemoryAllowance.TxHashCacheSize / 10);
 
     public SimpleRetryCache(ILogManager? logManager, CancellationToken token = default)
     {
@@ -29,8 +31,9 @@ public class SimpleRetryCache<Hash256, NodeId> where Hash256 : notnull where Nod
             {
                 if (expiringQueue.TryPeek(out (Hash256 TxHash, DateTimeOffset Expires) item) && item.Expires <= DateTimeOffset.UtcNow)
                 {
+                    _pendingHashes.Set(item.TxHash);
                     expiringQueue.TryDequeue(out item);
-                    if (_dict.TryRemove(item.TxHash, out Dictionary<NodeId, Action> requests))
+                    if (_dict.TryRemove(item.TxHash, out Dictionary<NodeId, Action>? requests))
                     {
                         foreach ((NodeId nodeId, Action request) in requests)
                         {
@@ -50,6 +53,7 @@ public class SimpleRetryCache<Hash256, NodeId> where Hash256 : notnull where Nod
         }, token);
     }
 
+
     /// <summary>
     /// 
     /// </summary>
@@ -57,28 +61,46 @@ public class SimpleRetryCache<Hash256, NodeId> where Hash256 : notnull where Nod
     /// <param name="nodeId"></param>
     /// <param name="request"></param>
     /// <returns>True if new added</returns>
-    public bool Announced(Hash256 txHash, NodeId nodeId, Action request)
+    public AnnounceResult Announced(Hash256 txHash, NodeId nodeId, Action request)
     {
-        bool added = false;
-        _dict.AddOrUpdate(txHash, (txHash) => Add(txHash, ref added), (txhash, dict) => Update(nodeId, request, dict));
-        return added;
+        if (!_pendingHashes.Contains(txHash))
+        {
+            var added = false;
+            _dict.AddOrUpdate(txHash, (txHash) => Add(nodeId, txHash, ref added), (txhash, dict) => Update(nodeId, txHash, request, dict));
+            return added ? AnnounceResult.New : AnnounceResult.Enqueued;
+        }
+        _logger?.Warn($"Announced {txHash} by {nodeId}: PENDING");
+
+        return AnnounceResult.PendingRequest;
     }
 
-    private Dictionary<NodeId, Action> Add(Hash256 txHash, ref bool added)
+    private Dictionary<NodeId, Action> Add(NodeId nodeId, Hash256 txHash, ref bool added)
     {
+        _logger?.Warn($"Announced {txHash} by {nodeId}: NEW");
+
         expiringQueue.Enqueue((txHash, DateTimeOffset.UtcNow.AddMilliseconds(TimeoutMs)));
         added = true;
         return [];
     }
 
-    private static Dictionary<NodeId, Action> Update(NodeId nodeId, Action request, Dictionary<NodeId, Action> dictionary)
+    private Dictionary<NodeId, Action> Update(NodeId nodeId, Hash256 txHash, Action request, Dictionary<NodeId, Action> dictionary)
     {
+        _logger?.Warn($"Announced {txHash} by {nodeId}: UPDATE");
+
         dictionary.TryAdd(nodeId, request);
         return dictionary;
     }
 
     public void Received(Hash256 txHash)
     {
-        _dict.TryRemove(txHash, out Dictionary<NodeId, Action> _);
+        _logger?.Warn($"Received {txHash}");
+        _dict.TryRemove(txHash, out Dictionary<NodeId, Action>? _);
     }
+}
+
+public enum AnnounceResult
+{
+    New,
+    Enqueued,
+    PendingRequest
 }

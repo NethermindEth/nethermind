@@ -1,10 +1,11 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System;
 using Nethermind.Core;
 using Nethermind.Logging;
 using Nethermind.Stats.Model;
+using Nethermind.TxPool;
+using System;
 
 namespace Nethermind.Network.P2P.Subprotocols.Eth.V62
 {
@@ -27,8 +28,17 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62
             _logger = logger;
         }
 
-        public void Report(bool accepted)
+        public void Report(AcceptTxResult accepted)
         {
+            if (accepted == AcceptTxResult.Invalid)
+            {
+                if (_logger.IsDebug) _logger.Debug($"Disconnecting {_protocolHandler} due to invalid tx");
+                _protocolHandler.Disconnect(
+                    DisconnectReason.InvalidTxOrUncle,
+                        $"invalid tx");
+                return;
+            }
+
             TryReset();
 
             if (!accepted)
