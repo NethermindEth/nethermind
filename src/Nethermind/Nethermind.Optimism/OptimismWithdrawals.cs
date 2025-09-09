@@ -25,7 +25,7 @@ public class OptimismWithdrawalProcessor(IWorldState state, ILogManager logManag
     private readonly IOptimismSpecHelper _specHelper = specHelper;
     private readonly ILogger _logger = logManager.GetClassLogger();
 
-    public void ProcessWithdrawals(Block block, IReleaseSpec spec, ITxTracer? tracer = null)
+    public void ProcessWithdrawals(Block block, IReleaseSpec spec)
     {
         BlockHeader header = block.Header;
 

@@ -2,8 +2,6 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using System.Diagnostics.CodeAnalysis;
-using Nethermind.Blockchain.Tracing;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
 using Nethermind.Evm.State;
@@ -26,7 +24,7 @@ public class WithdrawalProcessor : IWithdrawalProcessor
         _stateProvider = stateProvider ?? throw new ArgumentNullException(nameof(stateProvider));
     }
 
-    public void ProcessWithdrawals(Block block, IReleaseSpec spec, ITxTracer tracer = null)
+    public void ProcessWithdrawals(Block block, IReleaseSpec spec)
     {
         if (!spec.WithdrawalsEnabled)
             return;
@@ -45,12 +43,6 @@ public class WithdrawalProcessor : IWithdrawalProcessor
 
                 // Consensus clients are using Gwei for withdrawals amount. We need to convert it to Wei before applying state changes https://github.com/ethereum/execution-apis/pull/354
                 _stateProvider.AddToBalanceAndCreateIfNotExists(address, amount, spec);
-
-                if (tracer is not null && amount != 0)
-                {
-                    UInt256 newBalance = _stateProvider.GetBalance(address);
-                    tracer.ReportBalanceChange(address, null, newBalance);
-                }
             }
         }
 

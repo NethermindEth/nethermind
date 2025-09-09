@@ -57,7 +57,7 @@ public class ExecutionRequestsProcessor : IExecutionRequestsProcessor
         _consolidationTransaction.Hash = _consolidationTransaction.CalculateHash();
     }
 
-    public void ProcessExecutionRequests(Block block, IWorldState state, TxReceipt[] receipts, IReleaseSpec spec, ITxTracer tracer)
+    public void ProcessExecutionRequests(Block block, IWorldState state, TxReceipt[] receipts, IReleaseSpec spec)
     {
         if (!spec.RequestsEnabled || block.IsGenesis)
             return;
@@ -69,13 +69,13 @@ public class ExecutionRequestsProcessor : IExecutionRequestsProcessor
         if (spec.WithdrawalRequestsEnabled)
         {
             ReadRequests(block, state, spec.Eip7002ContractAddress, requests, _withdrawalTransaction, ExecutionRequestType.WithdrawalRequest,
-                BlockErrorMessages.WithdrawalsContractEmpty, BlockErrorMessages.WithdrawalsContractFailed, tracer);
+                BlockErrorMessages.WithdrawalsContractEmpty, BlockErrorMessages.WithdrawalsContractFailed);
         }
 
         if (spec.ConsolidationRequestsEnabled)
         {
             ReadRequests(block, state, spec.Eip7251ContractAddress, requests, _consolidationTransaction, ExecutionRequestType.ConsolidationRequest,
-                BlockErrorMessages.ConsolidationsContractEmpty, BlockErrorMessages.ConsolidationsContractFailed, tracer);
+                BlockErrorMessages.ConsolidationsContractEmpty, BlockErrorMessages.ConsolidationsContractFailed);
         }
 
         block.ExecutionRequests = [.. requests];

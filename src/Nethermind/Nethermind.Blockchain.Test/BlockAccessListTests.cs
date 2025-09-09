@@ -42,19 +42,6 @@ public class BlockAccessListTests()
     private static readonly UInt256 _accountBalance = 10.Ether();
 
     [Test]
-    public void Empty_account_changes()
-    {
-        Block block = Build.A.Block.WithTransactions(Build.A.Transaction.TestObject).TestObject;
-
-        BlockAccessTracer tracer = new();
-        tracer.StartNewBlockTrace(block);
-        tracer.StartNewTxTrace(block.Transactions[0]);
-        tracer.MarkAsSuccess(TestItem.AddressA, 100, [], [], TestItem.KeccakF);
-
-        Assert.That(tracer.BlockAccessList.GetAccountChanges().Count, Is.Zero);
-    }
-
-    [Test]
     public void Can_encode_and_decode()
     {
         StorageChange storageChange = new()

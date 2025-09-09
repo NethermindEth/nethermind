@@ -30,7 +30,7 @@ public class AuraWithdrawalProcessor : IWithdrawalProcessor
         _logger = logManager.GetClassLogger();
     }
 
-    public void ProcessWithdrawals(Block block, IReleaseSpec spec, ITxTracer? tracer = null)
+    public void ProcessWithdrawals(Block block, IReleaseSpec spec)
     {
         if (!spec.WithdrawalsEnabled || block.Withdrawals is null) // The second check seems redundant
             return;

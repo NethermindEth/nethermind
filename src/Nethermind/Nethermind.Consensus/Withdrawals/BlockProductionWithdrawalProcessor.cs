@@ -5,7 +5,6 @@ using System;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
-using Nethermind.Evm.Tracing;
 using Nethermind.State.Proofs;
 
 namespace Nethermind.Consensus.Withdrawals;
@@ -14,9 +13,9 @@ public class BlockProductionWithdrawalProcessor(IWithdrawalProcessor processor) 
 {
     private readonly IWithdrawalProcessor _processor = processor ?? throw new ArgumentNullException(nameof(processor));
 
-    public void ProcessWithdrawals(Block block, IReleaseSpec spec, ITxTracer tracer = null)
+    public void ProcessWithdrawals(Block block, IReleaseSpec spec)
     {
-        _processor.ProcessWithdrawals(block, spec, tracer);
+        _processor.ProcessWithdrawals(block, spec);
 
         if (spec.WithdrawalsEnabled)
         {

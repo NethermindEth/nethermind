@@ -53,7 +53,6 @@ public partial class BlockProcessor
     /// to any block-specific tracers.
     /// </summary>
     protected BlockReceiptsTracer ReceiptsTracer { get; set; } = new();
-    protected BlockAccessTracer BlockAccessTracer { get; set; } = new();
 
     public BlockProcessor(
         ISpecProvider specProvider,
@@ -138,12 +137,9 @@ public partial class BlockProcessor
 
         _blockTransactionsExecutor.SetBlockExecutionContext(new BlockExecutionContext(block.Header, spec));
 
-        StoreBeaconRoot(block, spec, BlockAccessTracer);
-        _blockHashStore.ApplyBlockhashStateChanges(header, spec, BlockAccessTracer);
+        StoreBeaconRoot(block, spec);
+        _blockHashStore.ApplyBlockhashStateChanges(header, spec);
         _stateProvider.Commit(spec, commitRoots: false);
-
-        // set access index to 1 since system contracts completed
-        BlockAccessTracer.EndTxTrace();
 
         TxReceipt[] receipts = _blockTransactionsExecutor.ProcessTransactions(block, options, ReceiptsTracer, token);
 
@@ -158,14 +154,14 @@ public partial class BlockProcessor
 
         header.ReceiptsRoot = _receiptsRootCalculator.GetReceiptsRoot(receipts, spec, block.ReceiptsRoot);
         ApplyMinerRewards(block, blockTracer, spec);
-        _withdrawalProcessor.ProcessWithdrawals(block, spec, BlockAccessTracer);
+        _withdrawalProcessor.ProcessWithdrawals(block, spec);
 
         // We need to do a commit here as in _executionRequestsProcessor while executing system transactions
         // we do WorldState.Commit(SystemTransactionReleaseSpec.Instance). In SystemTransactionReleaseSpec
         // Eip158Enabled=false, so we end up persisting empty accounts created while processing withdrawals.
         _stateProvider.Commit(spec, commitRoots: false);
 
-        _executionRequestsProcessor.ProcessExecutionRequests(block, _stateProvider, receipts, spec, BlockAccessTracer);
+        _executionRequestsProcessor.ProcessExecutionRequests(block, _stateProvider, receipts, spec);
 
         ReceiptsTracer.EndBlockTrace();
 
@@ -187,7 +183,6 @@ public partial class BlockProcessor
 
         if (spec.BlockLevelAccessListsEnabled)
         {
-            // body.BlockAccessList = Rlp.Encode(BlockAccessTracer.BlockAccessList).Bytes;
             body.BlockAccessList = Rlp.Encode(_tracedAccessWorldState.BlockAccessList).Bytes;
         }
 
@@ -209,11 +204,11 @@ public partial class BlockProcessor
             });
     }
 
-    private void StoreBeaconRoot(Block block, IReleaseSpec spec, ITxTracer tracer)
+    private void StoreBeaconRoot(Block block, IReleaseSpec spec)
     {
         try
         {
-            _beaconBlockRootHandler.StoreBeaconRoot(block, spec, tracer);
+            _beaconBlockRootHandler.StoreBeaconRoot(block, spec, NullTxTracer.Instance);
         }
         catch (Exception e)
         {

@@ -35,13 +35,13 @@ public class WrappedWorldState(IWorldState innerWorldState) : IWorldState
     public void ClearStorage(Address address)
         => _innerWorldState.ClearStorage(address);
 
-    public void Commit(IReleaseSpec releaseSpec, bool isGenesis = false, bool commitRoots = true)
+    public virtual void Commit(IReleaseSpec releaseSpec, bool isGenesis = false, bool commitRoots = true)
         => _innerWorldState.Commit(releaseSpec, isGenesis, commitRoots);
 
-    public void Commit(IReleaseSpec releaseSpec, IWorldStateTracer tracer, bool isGenesis = false, bool commitRoots = true)
+    public virtual void Commit(IReleaseSpec releaseSpec, IWorldStateTracer tracer, bool isGenesis = false, bool commitRoots = true)
         => _innerWorldState.Commit(releaseSpec, tracer, isGenesis, commitRoots);
 
-    public void CommitTree(long blockNumber)
+    public virtual void CommitTree(long blockNumber)
         => _innerWorldState.CommitTree(blockNumber);
 
     public void CreateAccount(Address address, in UInt256 balance, in UInt256 nonce = default)
@@ -98,10 +98,10 @@ public class WrappedWorldState(IWorldState innerWorldState) : IWorldState
     public bool IsDeadAccount(Address address)
         => _innerWorldState.IsDeadAccount(address);
 
-    public void RecalculateStateRoot()
+    public virtual void RecalculateStateRoot()
         => _innerWorldState.RecalculateStateRoot();
 
-    public void Reset(bool resetBlockChanges = true)
+    public virtual void Reset(bool resetBlockChanges = true)
         => _innerWorldState.Reset(resetBlockChanges);
 
     public void ResetTransient()

@@ -4,11 +4,10 @@
 using Nethermind.Core;
 using Nethermind.Core.Specs;
 using Nethermind.Evm.State;
-using Nethermind.Evm.Tracing;
 
 namespace Nethermind.Consensus.ExecutionRequests;
 
 public interface IExecutionRequestsProcessor
 {
-    public void ProcessExecutionRequests(Block block, IWorldState state, TxReceipt[] receipts, IReleaseSpec spec, ITxTracer? additionalTracer = null);
+    public void ProcessExecutionRequests(Block block, IWorldState state, TxReceipt[] receipts, IReleaseSpec spec);
 }

@@ -3,13 +3,12 @@
 
 using Nethermind.Core;
 using Nethermind.Core.Specs;
-using Nethermind.Evm.Tracing;
 
 namespace Nethermind.Consensus.Withdrawals;
 
 public class NullWithdrawalProcessor : IWithdrawalProcessor
 {
-    public void ProcessWithdrawals(Block block, IReleaseSpec spec, ITxTracer? tracer = null) { }
+    public void ProcessWithdrawals(Block block, IReleaseSpec spec) { }
 
     public static IWithdrawalProcessor Instance { get; } = new NullWithdrawalProcessor();
 }
