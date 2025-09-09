@@ -22,6 +22,7 @@ namespace Nethermind.Benchmarks.Store
 {
 
     [MemoryDiagnoser]
+    [MinIterationTime(1000)]
     public class PatriciaTreeBenchmarks
     {
         private static readonly Account _empty = Build.An.Account.WithBalance(0).TestObject;
@@ -387,6 +388,25 @@ namespace Nethermind.Benchmarks.Store
 
             using IBlockCommitter _ = trieStore.BeginBlockCommit(0);
             tempTree.Commit();
+        }
+
+
+        [Benchmark]
+        public void LargeInsert()
+        {
+            TrieStore trieStore = TestTrieStoreFactory.Build(new MemDb(),
+                Prune.WhenCacheReaches(1.MiB()),
+                Persist.EveryNBlock(2), NullLogManager.Instance);
+            StateTree tempTree = new StateTree(trieStore, NullLogManager.Instance);
+
+            for (int i = 0; i < _largerEntryCount; i++)
+            {
+                (bool isWrite, Hash256 address, Account value) = _largerEntriesAccess[i];
+                if (isWrite)
+                {
+                    tempTree.Set(address, value);
+                }
+            }
         }
 
         TrieStore _largeUncommittedFullTree;

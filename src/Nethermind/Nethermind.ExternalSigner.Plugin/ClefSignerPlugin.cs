@@ -27,8 +27,6 @@ public class ClefSignerPlugin(IMiningConfig miningConfig) : INethermindPlugin
     public bool MustInitialize => true;
     public bool Enabled => !string.IsNullOrEmpty(miningConfig.Signer);
 
-    public ValueTask DisposeAsync() => ValueTask.CompletedTask;
-
     public Task Init(INethermindApi nethermindApi)
     {
         _nethermindApi = nethermindApi ?? throw new ArgumentNullException(nameof(nethermindApi));

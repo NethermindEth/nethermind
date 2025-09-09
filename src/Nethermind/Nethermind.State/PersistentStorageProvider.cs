@@ -631,7 +631,8 @@ internal sealed class PersistentStorageProvider : PartialStorageProviderBase
             foreach (var kvp in BlockChange)
             {
                 byte[] after = kvp.Value.After;
-                if (!Bytes.AreEqual(kvp.Value.Before, after))
+                if (!Bytes.AreEqual(kvp.Value.Before, after)
+                    || kvp.Value.IsInitialValue) // IsInitialValue is so that it does not skip change if it does not know existing value.
                 {
                     BlockChange[kvp.Key] = new(after, after);
                     StorageTree.Set(kvp.Key, after);
