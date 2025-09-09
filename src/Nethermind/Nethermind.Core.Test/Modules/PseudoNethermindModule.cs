@@ -71,9 +71,6 @@ public class PseudoNethermindModule(ChainSpec spec, IConfigProvider configProvid
 
             // Rpc
             .AddSingleton<IJsonRpcService, JsonRpcService>()
-
-            // Genesis
-            .AddSingleton<IGenesisPostProcessor, NullGenesisPostProcessor>()
             ;
 
 

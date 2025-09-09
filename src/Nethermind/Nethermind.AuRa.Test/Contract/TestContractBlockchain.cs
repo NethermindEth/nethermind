@@ -54,18 +54,5 @@ namespace Nethermind.AuRa.Test.Contract
                 .AddScoped<IGenesisPostProcessor, AuraGenesisPostProcessor>()
                 ; // AuRa uses full genesis builder
         }
-
-        /*
-        protected override Block GetGenesisBlock(IWorldState worldState) =>
-            new GenesisLoader(
-                    ChainSpec,
-                    SpecProvider,
-                    StateReader,
-                    worldState,
-                    TxProcessor,
-                    GenesisPostProcessor,
-                    LogManager)
-                .Load();
-                */
     }
 }

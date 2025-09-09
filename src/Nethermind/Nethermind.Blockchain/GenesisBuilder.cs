@@ -34,24 +34,17 @@ public class GenesisBuilder(
         // we no longer need the allocations - 0.5MB RAM, 9000 objects for mainnet
         chainSpec.Allocations = null;
 
+        foreach (IGenesisPostProcessor postProcessor in postProcessors)
+        {
+            postProcessor.PostProcess(genesis);
+        }
+
         if (!chainSpec.GenesisStateUnavailable)
         {
-            foreach (IGenesisPostProcessor postProcessor in postProcessors)
-            {
-                postProcessor.PostProcess(genesis);
-            }
-
             stateProvider.Commit(specProvider.GenesisSpec, true);
             stateProvider.CommitTree(0);
 
             genesis.Header.StateRoot = stateProvider.StateRoot;
-        }
-        else
-        {
-            foreach (IGenesisPostProcessor postProcessor in postProcessors)
-            {
-                postProcessor.PostProcess(genesis);
-            }
         }
 
         genesis.Header.Hash = genesis.Header.CalculateHash();

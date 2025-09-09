@@ -220,13 +220,12 @@ public class Era1ModuleTests
     {
         TestBlockchain testBlockchain = await BasicTestBlockchain.Create(configurer: builder =>
         {
-            builder
-                .AddScoped<IGenesisPostProcessor, IWorldState, ISpecProvider>((worldState, specProvider) =>
-                    new FunctionalGenesisPostProcessor(worldState, (block, state) =>
-                    {
-                        worldState.AddToBalance(TestItem.AddressA, 10.Ether(), specProvider.GenesisSpec);
-                        worldState.RecalculateStateRoot();
-                    }));
+            builder.AddScoped<IGenesisPostProcessor, IWorldState, ISpecProvider>((worldState, specProvider) =>
+                new FunctionalGenesisPostProcessor(worldState, (block, state) =>
+                {
+                    worldState.AddToBalance(TestItem.AddressA, 10.Ether(), specProvider.GenesisSpec);
+                    worldState.RecalculateStateRoot();
+                }));
         });
 
         using var tmpFile = TempPath.GetTempFile();

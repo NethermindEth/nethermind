@@ -246,7 +246,6 @@ public abstract partial class BaseEngineModuleTests
                 .AddSingleton<IPeerRefresher>(Substitute.For<IPeerRefresher>())
                 .WithGenesisPostProcessor((block, worldState) =>
                 {
-                    // GenesisBlockBuilder = Core.Test.Builders.Build.A.Block.Genesis.Genesis.WithTimestamp(1UL);
                     block.Header.Timestamp = 1UL;
                 })
                 .Intercept<IInitConfig>((initConfig) => initConfig.DisableGcOnNewPayload = false);

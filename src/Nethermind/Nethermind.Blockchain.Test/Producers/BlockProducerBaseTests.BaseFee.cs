@@ -64,7 +64,6 @@ public partial class BlockProducerBaseTests
                         .AddSingleton<ISpecProvider>(spec)
                         .WithGenesisPostProcessor((block, state) =>
                         {
-                            // BlockBuilder blockBuilder = Build.A.Block.Genesis.WithGasLimit(gasLimit);
                             block.Header.GasLimit = gasLimit;
                         })
                     );

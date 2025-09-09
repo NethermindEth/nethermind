@@ -18,7 +18,7 @@ using NUnit.Framework;
 namespace Nethermind.Blockchain.Test;
 
 [Parallelizable(ParallelScope.All)]
-public class GenesisLoaderTests
+public class GenesisBuilderTests
 {
     [Test, MaxTime(Timeout.MaxTestTime)]
     public void Can_load_genesis_with_emtpy_accounts_and_storage()

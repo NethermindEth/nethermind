@@ -7,7 +7,6 @@ namespace Nethermind.Core.Specs;
 
 public class SpecProviderDecorator(ISpecProvider baseSpecProvider) : ISpecProvider
 {
-    public ISpecProvider BaseSpecProvider => baseSpecProvider;
     public void UpdateMergeTransitionInfo(long? blockNumber, UInt256? terminalTotalDifficulty = null) => baseSpecProvider.UpdateMergeTransitionInfo(blockNumber, terminalTotalDifficulty);
 
     public ForkActivation? MergeBlockNumber => baseSpecProvider.MergeBlockNumber;

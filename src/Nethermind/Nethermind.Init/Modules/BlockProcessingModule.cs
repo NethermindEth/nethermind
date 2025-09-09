@@ -109,7 +109,6 @@ public class BlockProcessingModule(IInitConfig initConfig) : Module
             .AddSingleton<GenesisLoader.Config>((ctx) => new GenesisLoader.Config(
                 string.IsNullOrWhiteSpace(initConfig?.GenesisHash) ? null : new Hash256(initConfig.GenesisHash),
                 TimeSpan.FromMilliseconds(ctx.Resolve<IBlocksConfig>().GenesisTimeoutMs)))
-            .AddScoped<IGenesisPostProcessor, NullGenesisPostProcessor>()
             .AddScoped<IGenesisBuilder, GenesisBuilder>()
             .AddScoped<GenesisLoader>()
             ;

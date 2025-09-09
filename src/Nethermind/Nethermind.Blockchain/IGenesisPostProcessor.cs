@@ -9,8 +9,3 @@ public interface IGenesisPostProcessor
 {
     void PostProcess(Block genesis);
 }
-
-public sealed class NullGenesisPostProcessor : IGenesisPostProcessor
-{
-    public void PostProcess(Block genesis) { }
-}
