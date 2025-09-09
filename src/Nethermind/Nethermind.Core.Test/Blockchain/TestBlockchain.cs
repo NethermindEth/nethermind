@@ -289,7 +289,7 @@ public class TestBlockchain : IDisposable
         IWorldState state,
         IGenesisPostProcessor[] postProcessors,
         Configuration testConfiguration
-    ): IGenesisBuilder
+    ) : IGenesisBuilder
     {
         public Block Build()
         {
