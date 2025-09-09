@@ -14,7 +14,7 @@ using System.Threading.Tasks;
 using BlockInfo = Nethermind.Xdc.Types.BlockInfo;
 using Round = ulong;
 
-using static Nethermind.Xdc.HotStuffConfigExtensions;
+using static Nethermind.Xdc.ConfigExtensions;
 using Nethermind.Blockchain;
 using Nethermind.Int256;
 using Nethermind.Core.Extensions;
@@ -28,6 +28,7 @@ using Nethermind.Core.Collections;
 using Snapshot = Nethermind.Xdc.Types.Snapshot;
 using Nethermind.Crypto;
 using Nethermind.Xdc.Errors;
+using Nethermind.Consensus.Rewards;
 
 namespace Nethermind.Xdc;
 public class XdcContext
@@ -65,15 +66,67 @@ public class XdcContext
     public bool IsInitialized { get; set; } = false;
 
     public event Action<IBlockTree, ulong> NewRoundSetEvent;
-
-    public Func<IBlockTree, IWorldState, IWorldState, XdcBlockHeader, string[]> HookReward { get; set; }
-    public Func<IBlockTree, UInt256, Hash256, Address[], Address[]> HookPenalty { get; set; }
-
-    internal void BroadcastToBftChannel(object syncInfo)
+    public void Initialize(IBlockTree chain, XdcBlockHeader header, IQuorumCertificateManager handler)
     {
-        throw new NotImplementedException();
-    }
+        /*if (HighestQC.ProposedBlockInfo.Hash is not null)
+        {
+            IsInitialized = true;
+            return;
+        }
 
+        if (header.Number == HotStuffConfig.SwitchBlock)
+        {
+            HighestQC = new QuorumCert
+            {
+                Signatures = [],
+                ProposedBlockInfo = new BlockInfo(header.Hash, 0, header.Number),
+                GapNumber = (ulong)header.Number < HotStuffConfig.Gap
+                    ? (ulong)header.Number - HotStuffConfig.Gap
+                    : 0ul,
+            };
+
+            CurrentRound = 1;
+        }
+        else
+        {
+            if (!Utils.TryGetExtraFields(header, out QuorumCert quorumCert, out _, out _))
+            {
+                throw new ConsensusHeaderDataExtractionException(nameof(ExtraFieldsV2));
+            }
+
+            handler.CommitCertificate(chain, quorumCert);
+        }
+
+        ulong lastGapNum = Math.Max((ulong)HotStuffConfig.SwitchBlock - HotStuffConfig.Gap, 0ul);
+
+        var lastGapHeader = (XdcBlockHeader)chain.FindHeader((long)lastGapNum);
+
+        if (SnapshotManager.TryGetSnapshot(lastGapHeader.Number, lastGapHeader.Hash, out Snapshot snapshot))
+        {
+            var checkoutPointHeader = (XdcBlockHeader)chain.FindHeader(HotStuffConfig.SwitchBlock);
+
+            if (!Utils.TryGetExtraFields(checkoutPointHeader, out _, out _, out Address[] masterNodes))
+            {
+                throw new ConsensusHeaderDataExtractionException(nameof(ExtraFieldsV2));
+            }
+
+            if (masterNodes.Length == 0)
+            {
+                throw new ArgumentException($"masternodes are empty v2 switch number: {HotStuffConfig.SwitchBlock}";
+            }
+
+            var newSnapshot = new Snapshot((long)lastGapNum, lastGapHeader.Hash, masterNodes);
+            if (!SnapshotManager.TryStoreSnapshot(newSnapshot))
+            {
+                throw new Exception("failed to store new Snapshot");
+            }
+
+            SnapshotManager.TryCacheSnapshot(newSnapshot);
+        }
+
+        CountDownTimer.Start();
+        IsInitialized = true;*/
+    }
     internal bool IsAllowedToSend(IBlockTree tree, XdcBlockHeader header)
     {
         throw new NotImplementedException();

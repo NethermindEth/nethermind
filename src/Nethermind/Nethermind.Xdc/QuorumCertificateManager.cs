@@ -24,7 +24,7 @@ public class QuorumCertificateManager : IQuorumCertificateManager
         XdcContext context,
         IBlockTree chain,
         IXdcConfig xdcConfig,
-        IXdcSignatureManager xdcSignatureManager,
+        ISignatureManager xdcSignatureManager,
         IEpochSwitchManager epochSwitchManager,
         IBlockInfoProcessor blockInfoProcessor,
         IForensicsProcessor forensicsProcessor)
@@ -41,12 +41,10 @@ public class QuorumCertificateManager : IQuorumCertificateManager
     private XdcContext _context { get; }
     private IBlockTree _chain { get; }
     private IXdcConfig _config { get; }
-    private IXdcSignatureManager _signatureManager { get; }
+    private ISignatureManager _signatureManager { get; }
     private IEpochSwitchManager _epochSwitchManager { get; }
     private IBlockInfoProcessor _blockInfoProcessor { get; }
     private IForensicsProcessor _forensicsProcessor { get; }
-
-    public event Action<IBlockTree, ulong> NewRoundSetEvent;
 
     public void CommitCertificate(QuorumCert qc)
     {
@@ -161,7 +159,7 @@ public class QuorumCertificateManager : IQuorumCertificateManager
                 {
                     if (!_signatureManager.VerifyMessageSignature(voteForSignObj, signature, epochSwitchInfo.Masternodes, out Address _))
                     {
-                        throw new Exception("fail to verify QC due to signature mis-match");
+                        throw new CertificateValidationException(CertificateType.QuorumCertificate, CertificateValidationFailure.InvalidSignatures);
                     }
                 }));
 
@@ -175,7 +173,7 @@ public class QuorumCertificateManager : IQuorumCertificateManager
 
             if (gapNumber != qc.GapNumber)
             {
-                throw new Exception($"gap number mismatch QC Gap {qc.GapNumber}, shouldBe {gapNumber}");
+                throw new CertificateValidationException(CertificateType.QuorumCertificate, CertificateValidationFailure.InvalidGapNumber);
             }
 
             // Note : this method should be moved outside of Context
