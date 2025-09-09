@@ -11,6 +11,7 @@ using Nethermind.Core;
 using Nethermind.Evm;
 using Nethermind.Evm.State;
 using Nethermind.Evm.TransactionProcessing;
+using Nethermind.State;
 using Metrics = Nethermind.Evm.Metrics;
 
 namespace Nethermind.Consensus.Processing
@@ -35,10 +36,13 @@ namespace Nethermind.Consensus.Processing
 
                 for (int i = 0; i < block.Transactions.Length; i++)
                 {
+                    (stateProvider as TracedAccessWorldState)?.BlockAccessList.IncrementBlockAccessIndex();
                     block.TransactionProcessed = i;
                     Transaction currentTx = block.Transactions[i];
                     ProcessTransaction(block, currentTx, i, receiptsTracer, processingOptions);
                 }
+                (stateProvider as TracedAccessWorldState)?.BlockAccessList.IncrementBlockAccessIndex();
+
                 return [.. receiptsTracer.TxReceipts];
             }
 

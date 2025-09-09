@@ -33,7 +33,9 @@ public class TracedAccessWorldState(IWorldState innerWorldState) : WrappedWorldS
 
     public override bool AddToBalanceAndCreateIfNotExists(Address address, in UInt256 balanceChange, IReleaseSpec spec)
     {
-        BlockAccessList.AddBalanceChange(address, UInt256.Zero, balanceChange);
+        UInt256 before = _innerWorldState.GetBalance(address);
+        UInt256 after = before + balanceChange;
+        BlockAccessList.AddBalanceChange(address, before, after);
         return _innerWorldState.AddToBalanceAndCreateIfNotExists(address, balanceChange, spec);
     }
 

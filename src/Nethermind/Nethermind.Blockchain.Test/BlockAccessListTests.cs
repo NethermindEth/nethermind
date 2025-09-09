@@ -24,6 +24,7 @@ using Nethermind.Serialization.Rlp;
 using Nethermind.Specs;
 using Nethermind.Specs.Forks;
 using Nethermind.Specs.Test;
+using Nethermind.State;
 using NUnit.Framework;
 
 //move all to correct folder
@@ -161,6 +162,8 @@ public class BlockAccessListTests()
         using IDisposable _ = worldState.BeginScope(IWorldState.PreGenesis);
         InitWorldState(worldState);
 
+        (worldState as TracedAccessWorldState)!.BlockAccessList = new();
+
         const long gasUsed = 92100;
         const ulong gasPrice = 2;
         const long gasLimit = 100000;
@@ -216,7 +219,7 @@ public class BlockAccessListTests()
         (Block processedBlock, TxReceipt[] _) = testBlockchain.BlockProcessor.ProcessOne(block, ProcessingOptions.None, NullBlockTracer.Instance, _spec, CancellationToken.None);
 
         BlockAccessList blockAccessList = Rlp.Decode<BlockAccessList>(processedBlock.BlockAccessList);
-        // Assert.That(blockAccessList.GetAccountChanges().Count, Is.EqualTo(9));
+        Assert.That(blockAccessList.GetAccountChanges().Count, Is.EqualTo(9));
 
         Address newContractAddress = ContractAddress.From(TestItem.AddressA, 1);
 
@@ -309,8 +312,9 @@ public class BlockAccessListTests()
             Assert.That(eip4788Changes, Is.EqualTo(new AccountChanges()
             {
                 Address = Eip4788Constants.BeaconRootsAddress,
-                StorageChanges = new(Bytes.Comparer) { { eip4788Slot1, new SlotChanges(eip4788Slot1, [timestampStorageChange]) }, { eip4788Slot2, new SlotChanges(eip4788Slot2, [calldataStorageChange]) } },
-                StorageReads = [ToStorageRead(eip4788Slot2)],
+                StorageChanges = new(Bytes.Comparer) { { eip4788Slot1, new SlotChanges(eip4788Slot1, [timestampStorageChange]) } },
+                // StorageChanges = new(Bytes.Comparer) { { eip4788Slot1, new SlotChanges(eip4788Slot1, [timestampStorageChange]) }, { eip4788Slot2, new SlotChanges(eip4788Slot2, [calldataStorageChange]) } },
+                StorageReads = [ToStorageRead(eip4788Slot1), ToStorageRead(eip4788Slot2)],
                 BalanceChanges = [],
                 NonceChanges = [],
                 CodeChanges = []
