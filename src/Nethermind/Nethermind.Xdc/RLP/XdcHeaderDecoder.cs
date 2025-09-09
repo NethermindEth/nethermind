@@ -72,11 +72,6 @@ public sealed class XdcHeaderDecoder : IHeaderDecoder
             decoderContext.Check(headerCheck);
         }
 
-        if (blockHeader.ExtraData != null)
-        {
-
-        }
-
         return blockHeader;
     }
 
