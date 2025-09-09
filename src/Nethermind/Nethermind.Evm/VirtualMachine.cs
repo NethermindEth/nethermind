@@ -104,6 +104,7 @@ public unsafe partial class VirtualMachineBase(
     public ReadOnlyMemory<byte> ReturnDataBuffer { get; set; } = Array.Empty<byte>();
     public object ReturnData { get; set; }
     public IBlockhashProvider BlockHashProvider => _blockHashProvider;
+    protected Stack<EvmState> StateStack => _stateStack;
 
     private BlockExecutionContext _blockExecutionContext;
     public void SetBlockExecutionContext(in BlockExecutionContext blockExecutionContext) => _blockExecutionContext = blockExecutionContext;
@@ -137,7 +138,7 @@ public unsafe partial class VirtualMachineBase(
     /// <exception cref="EvmException">
     /// Thrown when an EVM-specific error occurs during execution.
     /// </exception>
-    public TransactionSubstate ExecuteTransaction<TTracingInst>(
+    public virtual TransactionSubstate ExecuteTransaction<TTracingInst>(
         EvmState evmState,
         IWorldState worldState,
         ITxTracer txTracer)
@@ -854,20 +855,24 @@ public unsafe partial class VirtualMachineBase(
                     _logger.Debug("Refreshing EVM instruction cache");
                 }
                 // Regenerate the non-traced opcode set to pick up any updated PGO optimized methods.
-                spec.EvmInstructionsNoTrace = EvmInstructions.GenerateOpCodes<TTracingInst>(spec);
+                spec.EvmInstructionsNoTrace = GenerateOpCodes<TTracingInst>(spec);
             }
             // Ensure the non-traced opcode set is generated and assign it to the _opcodeMethods field.
-            _opcodeMethods = (OpCode[])(spec.EvmInstructionsNoTrace ??= EvmInstructions.GenerateOpCodes<TTracingInst>(spec));
+            _opcodeMethods = (OpCode[])(spec.EvmInstructionsNoTrace ??= GenerateOpCodes<TTracingInst>(spec));
         }
         else
         {
             // For tracing-enabled execution, generate (if necessary) and cache the traced opcode set.
-            _opcodeMethods = (OpCode[])(spec.EvmInstructionsTraced ??= EvmInstructions.GenerateOpCodes<TTracingInst>(spec));
+            _opcodeMethods = (OpCode[])(spec.EvmInstructionsTraced ??= GenerateOpCodes<TTracingInst>(spec));
         }
 
         // Store the spec in field for future access and return it.
         return (_spec = spec);
     }
+
+    protected virtual OpCode[] GenerateOpCodes<TTracingInst>(IReleaseSpec spec)
+        where TTracingInst : struct, IFlag
+        => EvmInstructions.GenerateOpCodes<TTracingInst>(spec);
 
     /// <summary>
     /// Reports the final outcome of a transaction action to the transaction tracer, taking into account
