@@ -76,6 +76,7 @@ public class BlockAccessListTests()
         Assert.That(slotChanges, Is.EqualTo(slotChangesDecoded));
 
         StorageRead storageRead = new(new Bytes32([.. Enumerable.Repeat<byte>(50, 32)]));
+        StorageRead storageRead2 = new(new Bytes32([.. Enumerable.Repeat<byte>(60, 32)]));
         byte[] storageReadBytes = Rlp.Encode(storageRead, RlpBehaviors.None).Bytes;
         StorageRead storageReadDecoded = Rlp.Decode<StorageRead>(storageReadBytes, RlpBehaviors.None);
         Assert.That(storageRead, Is.EqualTo(storageReadDecoded));
@@ -85,6 +86,11 @@ public class BlockAccessListTests()
             BlockAccessIndex = 10,
             PostBalance = 0
         };
+        BalanceChange balanceChange2 = new()
+        {
+            BlockAccessIndex = 11,
+            PostBalance = 1
+        };
         byte[] balanceChangeBytes = Rlp.Encode(balanceChange, RlpBehaviors.None).Bytes;
         BalanceChange balanceChangeDecoded = Rlp.Decode<BalanceChange>(balanceChangeBytes, RlpBehaviors.None);
         Assert.That(balanceChange, Is.EqualTo(balanceChangeDecoded));
@@ -92,6 +98,11 @@ public class BlockAccessListTests()
         NonceChange nonceChange = new()
         {
             BlockAccessIndex = 10,
+            NewNonce = 0
+        };
+        NonceChange nonceChange2 = new()
+        {
+            BlockAccessIndex = 11,
             NewNonce = 0
         };
         byte[] nonceChangeBytes = Rlp.Encode(nonceChange, RlpBehaviors.None).Bytes;
@@ -115,13 +126,13 @@ public class BlockAccessListTests()
         SortedList<ushort, BalanceChange> balanceChangesList = new()
         {
             { balanceChange.BlockAccessIndex, balanceChange },
-            { balanceChange.BlockAccessIndex, balanceChange }
+            { balanceChange2.BlockAccessIndex, balanceChange2 }
         };
 
         SortedList<ushort, NonceChange> nonceChangesList = new()
         {
             { nonceChange.BlockAccessIndex, nonceChange },
-            { nonceChange.BlockAccessIndex, nonceChange }
+            { nonceChange2.BlockAccessIndex, nonceChange2 }
         };
 
         SortedList<ushort, CodeChange> codeChangesList = new()
@@ -133,7 +144,7 @@ public class BlockAccessListTests()
         {
             Address = TestItem.AddressA,
             StorageChanges = storageChangesDict,
-            StorageReads = [storageRead, storageRead],
+            StorageReads = [storageRead, storageRead2],
             BalanceChanges = balanceChangesList,
             NonceChanges = nonceChangesList,
             CodeChanges = codeChangesList
