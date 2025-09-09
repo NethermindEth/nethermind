@@ -219,7 +219,7 @@ public class TestBlockchain : IDisposable
             .AddSingleton<ManualTimestamper>(new ManualTimestamper(InitialTimestamp))
             .AddSingleton<Configuration>()
             .AddSingleton<FromContainer>()
-            .AddScoped<IGenesisBuilder, TestGenesisPostProcessor>()
+            .AddScoped<IGenesisBuilder, TestGenesisBuilder>()
 
             // Some validator configurations
             .AddSingleton<ISealValidator>(Always.Valid)
@@ -284,7 +284,7 @@ public class TestBlockchain : IDisposable
 
     public ILogManager LogManager => Container.Resolve<ILogManager>();
 
-    public class TestGenesisPostProcessor(
+    private class TestGenesisBuilder(
         ISpecProvider specProvider,
         IWorldState state,
         IGenesisPostProcessor[] postProcessors,
