@@ -86,6 +86,9 @@ public class WrappedWorldState(IWorldState innerWorldState) : IWorldState
     public virtual void IncrementNonce(Address address, UInt256 delta)
         => _innerWorldState.IncrementNonce(address, delta);
 
+    public virtual void IncrementNonce(Address address, UInt256 delta, out UInt256 oldNonce)
+        => _innerWorldState.IncrementNonce(address, delta, out oldNonce);
+
     public virtual bool InsertCode(Address address, in ValueHash256 codeHash, ReadOnlyMemory<byte> code, IReleaseSpec spec, bool isGenesis = false)
         => _innerWorldState.InsertCode(address, codeHash, code, spec, isGenesis);
 

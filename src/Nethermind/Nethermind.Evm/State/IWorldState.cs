@@ -120,6 +120,7 @@ public interface IWorldState : IJournal<Snapshot>, IReadOnlyStateProvider
     void UpdateStorageRoot(Address address, Hash256 storageRoot);
 
     void IncrementNonce(Address address, UInt256 delta);
+    void IncrementNonce(Address address, UInt256 delta, out UInt256 oldNonce);
 
     void DecrementNonce(Address address, UInt256 delta);
 

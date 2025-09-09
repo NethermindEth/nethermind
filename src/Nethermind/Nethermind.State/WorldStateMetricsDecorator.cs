@@ -80,6 +80,8 @@ public class WorldStateMetricsDecorator(IWorldState innerState) : IWorldState
 
     public void IncrementNonce(Address address, UInt256 delta) => innerState.IncrementNonce(address, delta);
 
+    public void IncrementNonce(Address address, UInt256 delta, out UInt256 oldNonce) => innerState.IncrementNonce(address, delta, out oldNonce);
+
     public void DecrementNonce(Address address, UInt256 delta) => innerState.DecrementNonce(address, delta);
 
     public void SetNonce(Address address, in UInt256 nonce) => innerState.SetNonce(address, nonce);

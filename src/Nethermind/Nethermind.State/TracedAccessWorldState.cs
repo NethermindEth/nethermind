@@ -102,9 +102,14 @@ public class TracedAccessWorldState(IWorldState innerWorldState) : WrappedWorldS
 
     public override void IncrementNonce(Address address, UInt256 delta)
     {
-        UInt256 oldNonce = _innerWorldState.GetNonce(address);
+        _innerWorldState.IncrementNonce(address, delta, out UInt256 oldNonce);
         BlockAccessList.AddNonceChange(address, (ulong)(oldNonce + delta));
-        _innerWorldState.IncrementNonce(address, delta);
+    }
+
+    public override void IncrementNonce(Address address, UInt256 delta, out UInt256 oldNonce)
+    {
+        _innerWorldState.IncrementNonce(address, delta, out oldNonce);
+        BlockAccessList.AddNonceChange(address, (ulong)(oldNonce + delta));
     }
 
     public override bool InsertCode(Address address, in ValueHash256 codeHash, ReadOnlyMemory<byte> code, IReleaseSpec spec, bool isGenesis = false)

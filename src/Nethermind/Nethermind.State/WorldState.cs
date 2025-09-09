@@ -211,9 +211,11 @@ namespace Nethermind.State
             _stateProvider.UpdateStorageRoot(address, storageRoot);
         }
         public void IncrementNonce(Address address, UInt256 delta)
+            => IncrementNonce(address, delta, out _);
+        public void IncrementNonce(Address address, UInt256 delta, out UInt256 oldNonce)
         {
             DebugGuardInScope();
-            _stateProvider.IncrementNonce(address, delta);
+            _stateProvider.IncrementNonce(address, delta, out oldNonce);
         }
         public void DecrementNonce(Address address, UInt256 delta)
         {

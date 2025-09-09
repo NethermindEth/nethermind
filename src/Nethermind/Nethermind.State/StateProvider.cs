@@ -309,10 +309,14 @@ namespace Nethermind.State
         }
 
         public void IncrementNonce(Address address, UInt256 delta)
+            => IncrementNonce(address, delta, out _);
+
+        public void IncrementNonce(Address address, UInt256 delta, out UInt256 oldNonce)
         {
             _needsStateRootUpdate = true;
             Account account = GetThroughCache(address) ?? ThrowNullAccount(address);
-            Account changedAccount = account.WithChangedNonce(account.Nonce + delta);
+            oldNonce = account.Nonce;
+            Account changedAccount = account.WithChangedNonce(oldNonce + delta);
             if (_logger.IsTrace) Trace(address, account, changedAccount);
 
             PushUpdate(address, changedAccount);
