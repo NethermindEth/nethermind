@@ -207,5 +207,37 @@ namespace Nethermind.Core
                    CodeHash == other.CodeHash &&
                    _storageRoot == other._storageRoot;
         }
+
+        public AccountStruct WithChangedBalance(in UInt256 newBalance)
+        {
+            return new(Nonce, newBalance, _storageRoot, CodeHash);
+        }
+
+        public AccountStruct WithChangedNonce(in UInt256 newNonce)
+        {
+            return new(newNonce, Balance, _storageRoot, CodeHash);
+        }
+
+        public AccountStruct WithChangedStorageRoot(Hash256 newStorageRoot)
+        {
+            return new(Nonce, Balance, newStorageRoot, CodeHash);
+        }
+
+        public AccountStruct WithChangedCodeHash(Hash256 newCodeHash)
+        {
+            return new(Nonce, Balance, _storageRoot, newCodeHash);
+        }
+
+        public static bool operator ==(AccountStruct? left, AccountStruct? right)
+        {
+            if (left is not null)
+            {
+                return left.Equals(right);
+            }
+            return right is null;
+        }
+        public static bool operator !=(AccountStruct? left, AccountStruct? right) => !(left == right);
+        public override bool Equals(object? obj) => Equals(obj as AccountStruct?);
+        public override int GetHashCode() => (int)BitOperations.Crc32C((uint)CodeHash.GetHashCode(), (ulong)Nonce.GetHashCode() << 8 | (uint)Balance.GetHashCode()) ^ StorageRoot.GetHashCode();
     }
 }

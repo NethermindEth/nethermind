@@ -521,12 +521,12 @@ internal sealed class PersistentStorageProvider : PartialStorageProviderBase
             if (StorageTree is not null) return;
 
             // Note: GetStorageRoot is not concurrent safe! And so do this whole method!
-            Account? acc = _provider._stateProvider.GetAccount(_address);
-            Hash256 storageRoot = acc?.StorageRoot ?? Keccak.EmptyTreeHash;
+            AccountStruct? acc = _provider._stateProvider.GetAccount(_address);
+            ValueHash256 storageRoot = acc?.StorageRoot ?? Keccak.EmptyTreeHash;
             bool isEmpty = storageRoot == Keccak.EmptyTreeHash; // We know all lookups will be empty against this tree
             StorageTree = _provider._storageTreeFactory.Create(_address,
                 _provider._trieStore.GetTrieStore(_address),
-                storageRoot,
+                storageRoot.ToCommitment(),
                 _provider.StateRoot,
                 _provider._logManager);
 

@@ -100,7 +100,7 @@ namespace Nethermind.State
             throw new InvalidOperationException($"{nameof(IWorldState)} must only be used within scope");
         }
 
-        public Account GetAccount(Address address)
+        public AccountStruct GetAccount(Address address)
         {
             DebugGuardInScope();
             return _stateProvider.GetAccount(address);
@@ -108,7 +108,7 @@ namespace Nethermind.State
 
         bool IAccountStateProvider.TryGetAccount(Address address, out AccountStruct account)
         {
-            account = _stateProvider.GetAccount(address).ToStruct();
+            account = _stateProvider.GetAccount(address);
             return !account.IsTotallyEmpty;
         }
 
