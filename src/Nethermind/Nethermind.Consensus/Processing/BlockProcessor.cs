@@ -132,11 +132,7 @@ public partial class BlockProcessor
         BlockBody body = block.Body;
         BlockHeader header = block.Header;
 
-        CompositeBlockTracer compositeBlockTracer = new();
-        compositeBlockTracer.Add(blockTracer);
-        compositeBlockTracer.Add(BlockAccessTracer);
-        ReceiptsTracer.SetOtherTracer(compositeBlockTracer);
-        // ReceiptsTracer.SetOtherTracer(blockTracer);
+        ReceiptsTracer.SetOtherTracer(blockTracer);
 
         ReceiptsTracer.StartNewBlockTrace(block);
 

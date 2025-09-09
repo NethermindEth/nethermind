@@ -309,24 +309,25 @@ public class BlockAccessListTests()
                 CodeChanges = []
             }));
 
+            // second storage read is not a change, so not recorded
             Assert.That(eip4788Changes, Is.EqualTo(new AccountChanges()
             {
                 Address = Eip4788Constants.BeaconRootsAddress,
                 StorageChanges = new(Bytes.Comparer) { { eip4788Slot1, new SlotChanges(eip4788Slot1, [timestampStorageChange]) } },
-                // StorageChanges = new(Bytes.Comparer) { { eip4788Slot1, new SlotChanges(eip4788Slot1, [timestampStorageChange]) }, { eip4788Slot2, new SlotChanges(eip4788Slot2, [calldataStorageChange]) } },
                 StorageReads = [ToStorageRead(eip4788Slot1), ToStorageRead(eip4788Slot2)],
                 BalanceChanges = [],
                 NonceChanges = [],
                 CodeChanges = []
             }));
 
+            // storage reads make no changes
             Assert.That(eip7002Changes, Is.EqualTo(new AccountChanges()
             {
                 Address = Eip7002Constants.WithdrawalRequestPredeployAddress,
-                StorageChanges = new(Bytes.Comparer) { { slot0, new SlotChanges(slot0, [zeroStorageChangeEnd]) }, { slot2, new SlotChanges(slot2, [zeroStorageChangeEnd]) }, { slot1, new SlotChanges(slot1, [zeroStorageChangeEnd]) }, { slot3, new SlotChanges(slot3, [zeroStorageChangeEnd]) } },
+                StorageChanges = [],
                 StorageReads = [
-                    ToStorageRead(slot1),
                     ToStorageRead(slot0),
+                    ToStorageRead(slot1),
                     ToStorageRead(slot2),
                     ToStorageRead(slot3),
                 ],
@@ -335,13 +336,14 @@ public class BlockAccessListTests()
                 CodeChanges = []
             }));
 
+            // storage reads make no changes
             Assert.That(eip7251Changes, Is.EqualTo(new AccountChanges()
             {
                 Address = Eip7251Constants.ConsolidationRequestPredeployAddress,
-                StorageChanges = new(Bytes.Comparer) { { slot0, new SlotChanges(slot0, [zeroStorageChangeEnd]) }, { slot2, new SlotChanges(slot2, [zeroStorageChangeEnd]) }, { slot1, new SlotChanges(slot1, [zeroStorageChangeEnd]) }, { slot3, new SlotChanges(slot3, [zeroStorageChangeEnd]) } },
+                StorageChanges = [],
                 StorageReads = [
-                    ToStorageRead(slot1),
                     ToStorageRead(slot0),
+                    ToStorageRead(slot1),
                     ToStorageRead(slot2),
                     ToStorageRead(slot3),
                 ],
