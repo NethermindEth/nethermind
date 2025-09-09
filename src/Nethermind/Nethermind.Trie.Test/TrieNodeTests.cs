@@ -4,6 +4,7 @@
 using System;
 using System.Collections.Generic;
 using System.Runtime.InteropServices;
+using System.Threading;
 using System.Threading.Tasks;
 using FluentAssertions;
 using Nethermind.Core;
@@ -112,7 +113,7 @@ public class TrieNodeTests
     {
         TrieNode trieNode = new(NodeType.Unknown);
         TreePath emptyPath = TreePath.Empty;
-        Assert.Throws<TrieException>(() => trieNode.ResolveKey(NullTrieNodeResolver.Instance, ref emptyPath, false));
+        Assert.Throws<TrieException>(() => trieNode.ResolveKey(NullTrieNodeResolver.Instance, ref emptyPath));
     }
 
     [Test(Description = "This is controversial and only used in visitors. Can consider an exception instead.")]
@@ -440,7 +441,7 @@ public class TrieNodeTests
         }
 
         TreePath emptyPath = TreePath.Empty;
-        node.ResolveKey(NullTrieStore.Instance, ref emptyPath, true);
+        node.ResolveKey(NullTrieStore.Instance, ref emptyPath);
         node.Accept(visitor, default, NullTrieNodeResolver.Instance, ref emptyPath, context);
 
         visitor.VisitBranchReceived[(TreePath.Empty, node)].Should().Be(1);
@@ -762,7 +763,7 @@ public class TrieNodeTests
         trieNode.SetChild(0, child);
         trieNode.Key = Bytes.FromHexString("abcd");
         TreePath emptyPath = TreePath.Empty;
-        trieNode.ResolveKey(NullTrieStore.Instance, ref emptyPath, false);
+        trieNode.ResolveKey(NullTrieStore.Instance, ref emptyPath);
 
         trieNode.PrunePersistedRecursively(1);
         trieNode.PrunePersistedRecursively(1);
@@ -774,14 +775,15 @@ public class TrieNodeTests
         TrieNode child = new(NodeType.Leaf);
         child.Value = Bytes.FromHexString("a");
         child.Key = Bytes.FromHexString("b");
-        TreePath emptyPath = TreePath.Empty;
-        child.ResolveKey(NullTrieStore.Instance, ref emptyPath, false);
+        TreePath childPath = TreePath.FromHexString("abcd");
+        child.ResolveKey(NullTrieStore.Instance, ref childPath);
         child.IsPersisted = true;
 
+        TreePath emptyPath = TreePath.Empty;
         TrieNode trieNode = new(NodeType.Extension);
         trieNode.SetChild(0, child);
         trieNode.Key = Bytes.FromHexString("abcd");
-        trieNode.ResolveKey(NullTrieStore.Instance, ref emptyPath, false);
+        trieNode.ResolveKey(NullTrieStore.Instance, ref emptyPath);
 
         trieNode.PrunePersistedRecursively(2);
         trieNode.GetChild(NullTrieStore.Instance, ref emptyPath, 0).Should().Be(child);
@@ -873,7 +875,7 @@ public class TrieNodeTests
         ITrieNodeResolver trieStore = Substitute.For<ITrieNodeResolver>();
         trieStore.LoadRlp(Arg.Any<TreePath>(), Arg.Any<Hash256>()).Throws(new TrieException());
         TreePath emptyPath = TreePath.Empty;
-        child.ResolveKey(trieStore, ref emptyPath, false);
+        child.ResolveKey(trieStore, ref emptyPath);
         child.IsPersisted = true;
 
         trieStore.FindCachedOrUnknown(Arg.Any<TreePath>(), Arg.Any<Hash256>()).Returns(new TrieNode(NodeType.Unknown, child.Keccak!));
@@ -893,7 +895,7 @@ public class TrieNodeTests
 
         trieNode.Seal();
         TreePath emptyPath = TreePath.Empty;
-        trieNode.ResolveKey(Substitute.For<ITrieNodeResolver>(), ref emptyPath, false);
+        trieNode.ResolveKey(Substitute.For<ITrieNodeResolver>(), ref emptyPath);
 
         void CheckChildren()
         {
@@ -925,20 +927,20 @@ public class TrieNodeTests
     [Test]
     public void Rlp_is_cloned_when_cloning()
     {
-        ITrieStore fullTrieStore = TestTrieStoreFactory.Build(new MemDb(), NullLogManager.Instance);
+        TestRawTrieStore fullTrieStore = new TestRawTrieStore(new MemDb());
         IScopedTrieStore trieStore = fullTrieStore.GetTrieStore(null);
 
         TrieNode leaf1 = new(NodeType.Leaf);
         leaf1.Key = Bytes.FromHexString("abc");
         leaf1.Value = new byte[111];
         TreePath emptyPath = TreePath.Empty;
-        leaf1.ResolveKey(trieStore, ref emptyPath, false);
+        leaf1.ResolveKey(trieStore, ref emptyPath);
         leaf1.Seal();
 
         TrieNode leaf2 = new(NodeType.Leaf);
         leaf2.Key = Bytes.FromHexString("abd");
         leaf2.Value = new byte[222];
-        leaf2.ResolveKey(trieStore, ref emptyPath, false);
+        leaf2.ResolveKey(trieStore, ref emptyPath);
         leaf2.Seal();
 
         TreePath path = TreePath.Empty;
@@ -947,15 +949,15 @@ public class TrieNodeTests
         {
             using (ICommitter? committer = trieStore.BeginCommit(leaf2))
             {
-                committer.CommitNode(ref path, new NodeCommitInfo(leaf1));
-                committer.CommitNode(ref path, new NodeCommitInfo(leaf2));
+                committer.CommitNode(ref path, leaf1);
+                committer.CommitNode(ref path, leaf2);
             }
         }
 
         TrieNode trieNode = new(NodeType.Branch);
         trieNode.SetChild(1, leaf1);
         trieNode.SetChild(2, leaf2);
-        trieNode.ResolveKey(trieStore, ref emptyPath, true);
+        trieNode.ResolveKey(trieStore, ref emptyPath);
         SpanSource rlp = trieNode.FullRlp;
 
         TrieNode restoredBranch = new(NodeType.Branch, rlp);

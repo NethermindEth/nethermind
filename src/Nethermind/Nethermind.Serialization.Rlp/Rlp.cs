@@ -12,6 +12,7 @@ using System.Reflection;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using System.Text;
+using System.Threading;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
@@ -77,7 +78,37 @@ namespace Nethermind.Serialization.Rlp
 
         private static readonly Dictionary<RlpDecoderKey, IRlpDecoder> _decoderBuilder = new();
         private static FrozenDictionary<RlpDecoderKey, IRlpDecoder>? _decoders;
-        public static FrozenDictionary<RlpDecoderKey, IRlpDecoder> Decoders => _decoders ??= _decoderBuilder.ToFrozenDictionary();
+        private static Lock _decoderLock = new();
+        public static FrozenDictionary<RlpDecoderKey, IRlpDecoder> Decoders
+        {
+            get
+            {
+                FrozenDictionary<RlpDecoderKey, IRlpDecoder> decoders = _decoders;
+                if (decoders is not null)
+                {
+                    // Already exists no need for lock
+                    return decoders;
+                }
+
+                return CreateDecoders();
+            }
+        }
+
+        private static FrozenDictionary<RlpDecoderKey, IRlpDecoder> CreateDecoders()
+        {
+            using Lock.Scope _ = _decoderLock.EnterScope();
+            // Recreate, if not already recreated
+            return _decoders ??= _decoderBuilder.ToFrozenDictionary();
+        }
+
+        public static void ResetDecoders()
+        {
+            using Lock.Scope _ = _decoderLock.EnterScope();
+            _decoderBuilder.Clear();
+            _decoders = null;
+            RegisterDecoders(Assembly.GetAssembly(typeof(Rlp)));
+            RegisterDecoder(typeof(Transaction), TxDecoder.Instance);
+        }
 
         public static void ResetDecoders()
         {
@@ -89,6 +120,7 @@ namespace Nethermind.Serialization.Rlp
 
         public static void RegisterDecoder(RlpDecoderKey key, IRlpDecoder decoder)
         {
+            using Lock.Scope _ = _decoderLock.EnterScope();
             _decoderBuilder[key] = decoder;
             // Mark FrozenDictionary as null to force re-creation
             _decoders = null;
@@ -137,6 +169,7 @@ namespace Nethermind.Serialization.Rlp
 
                         void AddEncoder(RlpDecoderKey key)
                         {
+                            using Lock.Scope _ = _decoderLock.EnterScope();
                             if (!_decoderBuilder.TryGetValue(key, out IRlpDecoder? value) || canOverrideExistingDecoders)
                             {
                                 try
@@ -437,8 +470,7 @@ namespace Nethermind.Serialization.Rlp
             Unsafe.As<byte, ValueHash256>(ref Unsafe.Add(ref MemoryMarshal.GetReference(buffer), (nuint)position + 1)) = hash.ValueHash256;
             return newPosition;
 
-            [DoesNotReturn]
-            [StackTraceHidden]
+            [DoesNotReturn, StackTraceHidden]
             static void ThrowArgumentOutOfRangeException()
             {
                 throw new ArgumentOutOfRangeException(nameof(buffer));
@@ -1074,8 +1106,7 @@ namespace Nethermind.Serialization.Rlp
                 address = new AddressStructRef(Read(20));
             }
 
-            [DoesNotReturn]
-            [StackTraceHidden]
+            [DoesNotReturn, StackTraceHidden]
             private static void ThrowInvalidPrefix(ref ValueDecoderContext ctx, int prefix)
             {
                 throw new RlpException($"Unexpected prefix of {prefix} when decoding {nameof(Hash256)} at position {ctx.Position} in the message of length {ctx.Data.Length} starting with {ctx.Data[..Math.Min(DebugMessageContentLength, ctx.Data.Length)].ToHexString()}");
@@ -1104,16 +1135,13 @@ namespace Nethermind.Serialization.Rlp
 
                 return new UInt256(byteSpan, true);
 
-                [DoesNotReturn]
-                [StackTraceHidden]
+                [DoesNotReturn, StackTraceHidden]
                 static void ThrowDataTooLong() => throw new RlpException("UInt256 cannot be longer than 32 bytes");
 
-                [DoesNotReturn]
-                [StackTraceHidden]
+                [DoesNotReturn, StackTraceHidden]
                 static void ThrowNonCanonicalUInt256(int position) => throw new RlpException($"Non-canonical UInt256 (leading zero bytes) at position {position}");
 
-                [DoesNotReturn]
-                [StackTraceHidden]
+                [DoesNotReturn, StackTraceHidden]
                 static void ThrowInvalidLength(int position) => throw new RlpException($"Invalid length at position {position}");
             }
 
@@ -1347,37 +1375,32 @@ namespace Nethermind.Serialization.Rlp
                 ThrowUnexpectedPrefix(prefix);
                 return default;
 
-                [DoesNotReturn]
-                [StackTraceHidden]
+                [DoesNotReturn, StackTraceHidden]
                 static void ThrowNotMemoryBacked()
                 {
                     throw new RlpException("Rlp not backed by a Memory<byte>");
                 }
             }
 
-            [DoesNotReturn]
-            [StackTraceHidden]
+            [DoesNotReturn, StackTraceHidden]
             static void ThrowUnexpectedPrefix(int prefix)
             {
                 throw new RlpException($"Unexpected prefix value of {prefix} when decoding a byte array.");
             }
 
-            [DoesNotReturn]
-            [StackTraceHidden]
+            [DoesNotReturn, StackTraceHidden]
             static void ThrowUnexpectedLength(int length)
             {
                 throw new RlpException($"Expected length greater or equal 56 and was {length}");
             }
 
-            [DoesNotReturn]
-            [StackTraceHidden]
+            [DoesNotReturn, StackTraceHidden]
             static void ThrowUnexpectedValue(int buffer0)
             {
                 throw new RlpException($"Unexpected byte value {buffer0}");
             }
 
-            [DoesNotReturn]
-            [StackTraceHidden]
+            [DoesNotReturn, StackTraceHidden]
             static void ThrowUnexpectedLengthOfLength()
             {
                 throw new RlpException("Expected length of length less or equal 4");
@@ -1922,7 +1945,9 @@ namespace Nethermind.Serialization.Rlp
 
         public bool Equals(RlpDecoderKey other) => _type.Equals(other._type) && _key.Equals(other._key);
 
-        public override int GetHashCode() => HashCode.Combine(_type, _key);
+        public override int GetHashCode() => (int)BitOperations.Crc32C(
+            (uint)_type.GetHashCode(),
+            (uint)MemoryMarshal.AsBytes(_key.AsSpan()).FastHash());
 
         public override bool Equals(object obj) => obj is RlpDecoderKey key && Equals(key);
 

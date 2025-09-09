@@ -3,6 +3,7 @@
 
 using System;
 using System.Numerics;
+using Nethermind.Blockchain;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
@@ -14,11 +15,12 @@ using Nethermind.Crypto;
 using Nethermind.Db;
 using Nethermind.Int256;
 using Nethermind.Evm.Tracing;
-using Nethermind.Evm.Tracing.GethStyle;
+using Nethermind.Blockchain.Tracing.GethStyle;
+using Nethermind.Core.Test.Db;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Logging;
+using Nethermind.Evm.State;
 using Nethermind.State;
-using Nethermind.Trie.Pruning;
 using NUnit.Framework;
 
 namespace Nethermind.Evm.Test;
@@ -33,6 +35,7 @@ public abstract class VirtualMachineTestsBase
     private IEthereumEcdsa _ethereumEcdsa;
     protected ITransactionProcessor _processor;
     private IDb _stateDb;
+    private IDisposable _worldStateCloser;
 
     protected VirtualMachine Machine { get; private set; }
     protected CodeInfoRepository CodeInfoRepository { get; private set; }
@@ -47,8 +50,8 @@ public abstract class VirtualMachineTestsBase
     protected static PrivateKey MinerKey { get; } = TestItem.PrivateKeyD;
 
     protected virtual ForkActivation Activation => (BlockNumber, Timestamp);
-    protected virtual long BlockNumber { get; } = MainnetSpecProvider.ByzantiumBlockNumber;
-    protected virtual ulong Timestamp => 0UL;
+    protected virtual long BlockNumber { get; private set; } = MainnetSpecProvider.ByzantiumBlockNumber;
+    protected virtual ulong Timestamp { get; private set; } = 0UL;
     protected virtual ISpecProvider SpecProvider => MainnetSpecProvider.Instance;
     protected IReleaseSpec Spec => SpecProvider.GetSpec(Activation);
 
@@ -66,21 +69,26 @@ public abstract class VirtualMachineTestsBase
         IDbProvider dbProvider = TestMemDbProvider.Init();
         WorldStateManager worldStateManager = TestWorldStateFactory.CreateForTest(dbProvider, logManager);
         TestState = worldStateManager.GlobalWorldState;
+        _worldStateCloser = TestState.BeginScope(IWorldState.PreGenesis);
         _ethereumEcdsa = new EthereumEcdsa(SpecProvider.ChainId);
         IBlockhashProvider blockhashProvider = new TestBlockhashProvider(SpecProvider);
-        CodeInfoRepository = new CodeInfoRepository();
+        CodeInfoRepository = new EthereumCodeInfoRepository();
         Machine = new VirtualMachine(blockhashProvider, SpecProvider, logManager);
         _processor = new TransactionProcessor(SpecProvider, TestState, Machine, CodeInfoRepository, logManager);
     }
 
     [TearDown]
-    public virtual void TearDown() => _stateDb?.Dispose();
+    public virtual void TearDown()
+    {
+        _stateDb?.Dispose();
+        _worldStateCloser?.Dispose();
+    }
 
     protected GethLikeTxTrace ExecuteAndTrace(params byte[] code)
     {
         (Block block, Transaction transaction) = PrepareTx(Activation, 100000, code);
         GethLikeTxMemoryTracer tracer = new(transaction, GethTraceOptions.Default with { EnableMemory = true });
-        _processor.Execute(transaction, new BlockExecutionContext(block.Header, Spec), tracer);
+        _processor.Execute(transaction, new BlockExecutionContext(block.Header, SpecProvider.GetSpec(block.Header)), tracer);
         return tracer.BuildResult();
     }
 
@@ -88,7 +96,7 @@ public abstract class VirtualMachineTestsBase
     {
         (Block block, Transaction transaction) = PrepareTx((blockNumber, Timestamp), gasLimit, code);
         GethLikeTxMemoryTracer tracer = new(transaction, GethTraceOptions.Default);
-        _processor.Execute(transaction, new BlockExecutionContext(block.Header, Spec), tracer);
+        _processor.Execute(transaction, new BlockExecutionContext(block.Header, SpecProvider.GetSpec(block.Header)), tracer);
         return tracer.BuildResult();
     }
 
@@ -96,7 +104,7 @@ public abstract class VirtualMachineTestsBase
     {
         (Block block, Transaction transaction) = PrepareTx(Activation, gasLimit, code);
         GethLikeTxMemoryTracer tracer = new(transaction, GethTraceOptions.Default);
-        _processor.Execute(transaction, new BlockExecutionContext(block.Header, Spec), tracer);
+        _processor.Execute(transaction, new BlockExecutionContext(block.Header, SpecProvider.GetSpec(block.Header)), tracer);
         return tracer.BuildResult();
     }
 
@@ -104,7 +112,7 @@ public abstract class VirtualMachineTestsBase
     {
         (Block block, Transaction transaction) = PrepareTx(Activation, 100000, code);
         GethLikeTxFileTracer tracer = new(dumpCallback, options);
-        _processor.Execute(transaction, new BlockExecutionContext(block.Header, Spec), tracer);
+        _processor.Execute(transaction, new BlockExecutionContext(block.Header, SpecProvider.GetSpec(block.Header)), tracer);
         return tracer.BuildResult();
     }
 
@@ -120,7 +128,7 @@ public abstract class VirtualMachineTestsBase
     {
         (Block block, Transaction transaction) = PrepareTx(activation, 100000, code);
         TestAllTracerWithOutput tracer = CreateTracer();
-        _processor.Execute(transaction, new BlockExecutionContext(block.Header, Spec), tracer);
+        _processor.Execute(transaction, new BlockExecutionContext(block.Header, SpecProvider.GetSpec(block.Header)), tracer);
         return tracer;
     }
 
@@ -128,7 +136,7 @@ public abstract class VirtualMachineTestsBase
     {
         (Block block, _) = PrepareTx(activation, 100000, null);
         TestAllTracerWithOutput tracer = CreateTracer();
-        _processor.Execute(tx, new BlockExecutionContext(block.Header, Spec), tracer);
+        _processor.Execute(tx, new BlockExecutionContext(block.Header, SpecProvider.GetSpec(block.Header)), tracer);
         return tracer;
     }
 
@@ -149,7 +157,7 @@ public abstract class VirtualMachineTestsBase
         (Block block, Transaction transaction) = PrepareTx(forkActivation ?? Activation, 100000, code);
         tracer.StartNewBlockTrace(block);
         ITxTracer txTracer = tracer.StartNewTxTrace(transaction);
-        _processor.Execute(transaction, new BlockExecutionContext(block.Header, Spec), txTracer);
+        _processor.Execute(transaction, new BlockExecutionContext(block.Header, SpecProvider.GetSpec(block.Header)), txTracer);
         tracer.EndTxTrace();
         tracer.EndBlockTrace();
         return tracer;
@@ -158,7 +166,7 @@ public abstract class VirtualMachineTestsBase
     protected T Execute<T>(T tracer, byte[] code, ForkActivation? forkActivation = null) where T : ITxTracer
     {
         (Block block, Transaction transaction) = PrepareTx(forkActivation ?? Activation, 100000, code);
-        _processor.Execute(transaction, new BlockExecutionContext(block.Header, Spec), tracer);
+        _processor.Execute(transaction, new BlockExecutionContext(block.Header, SpecProvider.GetSpec(block.Header)), tracer);
         return tracer;
     }
 
@@ -171,7 +179,7 @@ public abstract class VirtualMachineTestsBase
         (Block block, Transaction transaction) = PrepareTx((blockNumber, Timestamp), gasLimit, code,
             blockGasLimit: blockGasLimit, blobVersionedHashes: blobVersionedHashes);
         TestAllTracerWithOutput tracer = CreateTracer();
-        _processor.Execute(transaction, new BlockExecutionContext(block.Header, Spec), tracer);
+        _processor.Execute(transaction, new BlockExecutionContext(block.Header, SpecProvider.GetSpec(block.Header)), tracer);
         return tracer;
     }
 
@@ -181,7 +189,7 @@ public abstract class VirtualMachineTestsBase
         (Block block, Transaction transaction) = PrepareTx(activation, gasLimit, code,
             blockGasLimit: blockGasLimit, blobVersionedHashes: blobVersionedHashes);
         TestAllTracerWithOutput tracer = CreateTracer();
-        _processor.Execute(transaction, new BlockExecutionContext(block.Header, Spec), tracer);
+        _processor.Execute(transaction, new BlockExecutionContext(block.Header, SpecProvider.GetSpec(block.Header)), tracer);
         return tracer;
     }
 
@@ -251,6 +259,8 @@ public abstract class VirtualMachineTestsBase
             .TestObject;
 
         Block block = BuildBlock(activation, senderRecipientAndMiner, transaction, blockGasLimit, excessBlobGas);
+        BlockNumber = block.Header.Number;
+        Timestamp = block.Header.Timestamp;
         return (block, transaction);
     }
 

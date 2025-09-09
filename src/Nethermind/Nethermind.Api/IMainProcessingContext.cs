@@ -4,8 +4,8 @@
 using System.Threading.Tasks;
 using Nethermind.Consensus.Processing;
 using Nethermind.Core.ServiceStopper;
+using Nethermind.Evm.State;
 using Nethermind.Evm.TransactionProcessing;
-using Nethermind.State;
 
 namespace Nethermind.Api;
 
@@ -19,6 +19,7 @@ namespace Nethermind.Api;
 public interface IMainProcessingContext : IStoppableService
 {
     ITransactionProcessor TransactionProcessor { get; }
+    IBranchProcessor BranchProcessor { get; }
     IBlockProcessor BlockProcessor { get; }
     IBlockchainProcessor BlockchainProcessor { get; }
     IWorldState WorldState { get; }

@@ -7,7 +7,6 @@ using System.Diagnostics.CodeAnalysis;
 using System.Numerics;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
-using System.Runtime.Intrinsics;
 using System.Threading;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
@@ -18,7 +17,7 @@ using Nethermind.Evm.EvmObjectFormat.Handlers;
 using Nethermind.Evm.Precompiles;
 using Nethermind.Evm.Tracing;
 using Nethermind.Logging;
-using Nethermind.State;
+using Nethermind.Evm.State;
 
 using static Nethermind.Evm.EvmObjectFormat.EofValidator;
 
@@ -29,19 +28,18 @@ using Nethermind.Evm.Tracing.Debugger;
 [assembly: InternalsVisibleTo("Nethermind.Evm.Test")]
 namespace Nethermind.Evm;
 
-using Word = Vector256<byte>;
-using unsafe OpCode = delegate*<VirtualMachineBase, ref EvmStack, ref long, ref int, EvmExceptionType>;
+using unsafe OpCode = delegate*<VirtualMachine, ref EvmStack, ref long, ref int, EvmExceptionType>;
 using Int256;
 
-public sealed unsafe class VirtualMachine(
+public sealed unsafe class EthereumVirtualMachine(
     IBlockhashProvider? blockHashProvider,
     ISpecProvider? specProvider,
     ILogManager? logManager
-) : VirtualMachineBase(blockHashProvider, specProvider, logManager)
+) : VirtualMachine(blockHashProvider, specProvider, logManager)
 {
 }
 
-public unsafe partial class VirtualMachineBase(
+public unsafe partial class VirtualMachine(
     IBlockhashProvider? blockHashProvider,
     ISpecProvider? specProvider,
     ILogManager? logManager) : IVirtualMachine
@@ -81,10 +79,9 @@ public unsafe partial class VirtualMachineBase(
     private readonly ILogger _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
     private readonly Stack<EvmState> _stateStack = new();
 
-    private IWorldState _worldState = null!;
+    private IWorldState _worldState;
     private (Address Address, bool ShouldDelete) _parityTouchBugAccount = (Address.FromNumber(3), false);
     private ITxTracer _txTracer = NullTxTracer.Instance;
-    private IReleaseSpec _spec;
 
     private ICodeInfoRepository _codeInfoRepository;
 
@@ -97,7 +94,7 @@ public unsafe partial class VirtualMachineBase(
 
     public ILogger Logger => _logger;
     public ICodeInfoRepository CodeInfoRepository => _codeInfoRepository;
-    public IReleaseSpec Spec => _spec;
+    public IReleaseSpec Spec => _blockExecutionContext.Spec;
     public ITxTracer TxTracer => _txTracer;
     public IWorldState WorldState => _worldState;
     public ref readonly ValueHash256 ChainId => ref _chainId;
@@ -117,9 +114,9 @@ public unsafe partial class VirtualMachineBase(
     /// </summary>
     public void SetTxExecutionContext(in TxExecutionContext txExecutionContext) => _txExecutionContext = txExecutionContext;
 
-    private EvmState _vmState;
-    public EvmState EvmState { get => _vmState; private set => _vmState = value; }
+    public EvmState EvmState { get => _currentState; private set => _currentState = value; }
     public int SectionIndex { get; set; }
+    public int OpCodeCount { get; set; }
 
     /// <summary>
     /// Executes a transaction by iteratively processing call frames until a top-level call returns
@@ -149,8 +146,9 @@ public unsafe partial class VirtualMachineBase(
         _worldState = worldState;
 
         // Prepare the specification and opcode mapping based on the current block header.
-        IReleaseSpec spec = PrepareSpecAndOpcodes<TTracingInst>(BlockExecutionContext.Header);
-
+        IReleaseSpec spec = BlockExecutionContext.Spec;
+        PrepareOpcodes<TTracingInst>(spec);
+        OpCodeCount = 0;
         // Initialize the code repository and set up the initial execution state.
         _codeInfoRepository = TxExecutionContext.CodeInfoRepository;
         _currentState = evmState;
@@ -194,7 +192,6 @@ public unsafe partial class VirtualMachineBase(
                     if (_currentState.Env.CodeInfo is not null)
                     {
                         callResult = ExecuteCall<TTracingInst>(
-                            _currentState,
                             _previousCallResult,
                             previousCallOutput,
                             _previousCallOutputDestination);
@@ -214,9 +211,10 @@ public unsafe partial class VirtualMachineBase(
                     // Handle exceptions raised during the call execution.
                     if (callResult.IsException)
                     {
-                        TransactionSubstate? substate = HandleException(in callResult, ref previousCallOutput);
-                        if (substate is not null)
+                        TransactionSubstate substate = HandleException(in callResult, ref previousCallOutput, out bool terminate);
+                        if (terminate)
                         {
+                            _currentState = null;
                             return substate;
                         }
                         // Continue execution if the exception did not immediately finalize the transaction.
@@ -229,9 +227,11 @@ public unsafe partial class VirtualMachineBase(
                 {
                     if (_txTracer.IsTracingActions)
                     {
-                        TraceTransactionActionEnd(_currentState, spec, callResult);
+                        TraceTransactionActionEnd(_currentState, callResult);
                     }
-                    return PrepareTopLevelSubstate(in callResult);
+                    TransactionSubstate substate = PrepareTopLevelSubstate(in callResult);
+                    _currentState = null;
+                    return substate;
                 }
 
                 // For nested call frames, merge the results and restore the previous execution state.
@@ -258,7 +258,6 @@ public unsafe partial class VirtualMachineBase(
                                     in callResult,
                                     previousState,
                                     gasAvailableForCodeDeposit,
-                                    spec,
                                     ref previousStateSucceeded);
                             }
                             else if (previousState.ExecutionType.IsAnyCreateEof())
@@ -267,7 +266,6 @@ public unsafe partial class VirtualMachineBase(
                                     in callResult,
                                     previousState,
                                     gasAvailableForCodeDeposit,
-                                    spec,
                                     ref previousStateSucceeded);
                             }
                         }
@@ -302,9 +300,10 @@ public unsafe partial class VirtualMachineBase(
 
         // Failure handling: attempts to process and possibly finalize the transaction after an error.
         Failure:
-            TransactionSubstate? failSubstate = HandleFailure<TTracingInst>(failure, ref previousCallOutput);
-            if (failSubstate is not null)
+            TransactionSubstate failSubstate = HandleFailure<TTracingInst>(failure, ref previousCallOutput, out bool shouldExit);
+            if (shouldExit)
             {
+                _currentState = null;
                 return failSubstate;
             }
         }
@@ -346,7 +345,7 @@ public unsafe partial class VirtualMachineBase(
         return previousCallOutput;
     }
 
-    private void HandleEofCreate(in CallResult callResult, EvmState previousState, long gasAvailableForCodeDeposit, IReleaseSpec spec, ref bool previousStateSucceeded)
+    private void HandleEofCreate(in CallResult callResult, EvmState previousState, long gasAvailableForCodeDeposit, ref bool previousStateSucceeded)
     {
         Address callCodeOwner = previousState.Env.ExecutingAccount;
         // ReturnCode was called with a container index and auxdata
@@ -355,11 +354,11 @@ public unsafe partial class VirtualMachineBase(
         EofCodeInfo deployCodeInfo = (EofCodeInfo)callResult.Output.Container;
 
         // 2 - concatenate data section with (aux_data_offset, aux_data_offset + aux_data_size) memory segment and update data size in the header
-        Span<byte> bytecodeResult = new byte[deployCodeInfo.MachineCode.Length + auxExtraData.Length];
+        Span<byte> bytecodeResult = new byte[deployCodeInfo.Code.Length + auxExtraData.Length];
         // 2 - 1 - 1 - copy old container
-        deployCodeInfo.MachineCode.Span.CopyTo(bytecodeResult);
+        deployCodeInfo.Code.Span.CopyTo(bytecodeResult);
         // 2 - 1 - 2 - copy aux data to dataSection
-        auxExtraData.CopyTo(bytecodeResult[deployCodeInfo.MachineCode.Length..]);
+        auxExtraData.CopyTo(bytecodeResult[deployCodeInfo.Code.Length..]);
 
         // 2 - 2 - update data section size in the header u16
         int dataSubHeaderSectionStart =
@@ -386,6 +385,7 @@ public unsafe partial class VirtualMachineBase(
 
         byte[] bytecodeResultArray = bytecodeResult.ToArray();
 
+        IReleaseSpec spec = BlockExecutionContext.Spec;
         // 3 - if updated deploy container size exceeds MAX_CODE_SIZE instruction exceptionally aborts
         bool invalidCode = bytecodeResultArray.Length > spec.MaxCodeSize;
         long codeDepositGasCost = CodeDepositHandler.CalculateCost(spec, bytecodeResultArray?.Length ?? 0);
@@ -449,7 +449,6 @@ public unsafe partial class VirtualMachineBase(
         in CallResult callResult,
         EvmState previousState,
         long gasAvailableForCodeDeposit,
-        IReleaseSpec spec,
         ref bool previousStateSucceeded)
     {
         // Cache whether transaction tracing is enabled to avoid multiple property lookups.
@@ -458,6 +457,7 @@ public unsafe partial class VirtualMachineBase(
         // Get the address of the account that initiated the contract creation.
         Address callCodeOwner = previousState.Env.ExecutingAccount;
 
+        IReleaseSpec spec = BlockExecutionContext.Spec;
         // Calculate the gas cost required to deposit the contract code using legacy cost rules.
         long codeDepositGasCost = CodeDepositHandler.CalculateCost(spec, callResult.Output.Bytes.Length);
 
@@ -515,15 +515,16 @@ public unsafe partial class VirtualMachineBase(
         }
     }
 
-    private TransactionSubstate PrepareTopLevelSubstate(in CallResult callResult)
+    private TransactionSubstate PrepareTopLevelSubstate(scoped in CallResult callResult)
     {
         return new TransactionSubstate(
             callResult.Output,
             _currentState.Refund,
             _currentState.AccessTracker.DestroyList,
-            (IReadOnlyCollection<LogEntry>)_currentState.AccessTracker.Logs,
+            _currentState.AccessTracker.Logs,
             callResult.ShouldRevert,
             isTracerConnected: _txTracer.IsTracing,
+            callResult.ExceptionType,
             _logger);
     }
 
@@ -594,7 +595,7 @@ public unsafe partial class VirtualMachineBase(
     /// A <see cref="TransactionSubstate"/> if the failure occurs in the top-level call; otherwise, <c>null</c>
     /// to indicate that execution should continue with the parent call frame.
     /// </returns>
-    private TransactionSubstate? HandleFailure<TTracingInst>(Exception failure, ref ZeroPaddedSpan previousCallOutput)
+    private TransactionSubstate HandleFailure<TTracingInst>(Exception failure, scoped ref ZeroPaddedSpan previousCallOutput, out bool shouldExit)
         where TTracingInst : struct, IFlag
     {
         // Log the exception if trace logging is enabled.
@@ -634,6 +635,7 @@ public unsafe partial class VirtualMachineBase(
         {
             // For an OverflowException, force the error type to a generic Other error.
             EvmExceptionType finalErrorType = failure is OverflowException ? EvmExceptionType.Other : errorType;
+            shouldExit = true;
             return new TransactionSubstate(finalErrorType, txTracer.IsTracing);
         }
 
@@ -653,7 +655,8 @@ public unsafe partial class VirtualMachineBase(
         _currentState = _stateStack.Pop();
         _currentState.IsContinuation = true;
 
-        return null;
+        shouldExit = false;
+        return default;
     }
 
     /// <summary>
@@ -699,7 +702,7 @@ public unsafe partial class VirtualMachineBase(
     /// A <see cref="TransactionSubstate"/> instance if the failure occurred in a top-level call,
     /// otherwise <c>null</c> to indicate that execution should continue in the parent frame.
     /// </returns>
-    private TransactionSubstate? HandleException(in CallResult callResult, ref ZeroPaddedSpan previousCallOutput)
+    private TransactionSubstate HandleException(scoped in CallResult callResult, scoped ref ZeroPaddedSpan previousCallOutput, out bool shouldExit)
     {
         // Cache the tracer to minimize repeated field accesses.
         ITxTracer txTracer = _txTracer;
@@ -719,6 +722,7 @@ public unsafe partial class VirtualMachineBase(
         // If this is the top-level call, return a final transaction substate encapsulating the error.
         if (_currentState.IsTopLevel)
         {
+            shouldExit = true;
             return new TransactionSubstate(callResult.ExceptionType, txTracer.IsTracing);
         }
 
@@ -738,7 +742,8 @@ public unsafe partial class VirtualMachineBase(
         _currentState.IsContinuation = true;
 
         // Return null to indicate that the failure was handled and execution should continue in the parent frame.
-        return null;
+        shouldExit = false;
+        return default;
     }
 
     /// <summary>
@@ -813,33 +818,27 @@ public unsafe partial class VirtualMachineBase(
             currentState.From,
             currentState.To,
             currentState.ExecutionType.IsAnyCreate()
-                ? currentState.Env.CodeInfo.MachineCode
+                ? currentState.Env.CodeInfo.Code
                 : currentState.Env.InputData,
             currentState.ExecutionType);
 
-        if (_txTracer.IsTracingCode) _txTracer.ReportByteCode(currentState.Env.CodeInfo?.MachineCode ?? default);
+        if (_txTracer.IsTracingCode) _txTracer.ReportByteCode(currentState.Env.CodeInfo?.Code ?? default);
     }
 
     /// <summary>
-    /// Prepares the release specification and opcode methods to be used during EVM execution,
-    /// based on the provided block header and the tracing instructions flag.
+    /// Prepares the opcode methods to be used during EVM execution,
+    /// based on the provided release specification.
     /// </summary>
     /// <typeparam name="TTracingInst">
     /// A value type implementing <see cref="IFlag"/> that indicates whether tracing-specific opcodes
     /// should be used.
     /// </typeparam>
-    /// <param name="header">
-    /// The block header containing the block number and timestamp, which are used to select the appropriate release specification.
+    /// <param name="spec">
+    /// The release specification, which is used to prepare the appropriate opcodes.
     /// </param>
-    /// <returns>
-    /// The prepared <see cref="IReleaseSpec"/> instance, with its associated opcode methods cached for execution.
-    /// </returns>
-    private IReleaseSpec PrepareSpecAndOpcodes<TTracingInst>(BlockHeader header)
+    private void PrepareOpcodes<TTracingInst>(IReleaseSpec spec)
         where TTracingInst : struct, IFlag
     {
-        // Retrieve the release specification based on the block's number and timestamp.
-        IReleaseSpec spec = _specProvider.GetSpec(header.Number, header.Timestamp);
-
         // Check if tracing instructions are inactive.
         if (!TTracingInst.IsActive)
         {
@@ -865,9 +864,6 @@ public unsafe partial class VirtualMachineBase(
             // For tracing-enabled execution, generate (if necessary) and cache the traced opcode set.
             _opcodeMethods = (OpCode[])(spec.EvmInstructionsTraced ??= GenerateOpCodes<TTracingInst>(spec));
         }
-
-        // Store the spec in field for future access and return it.
-        return (_spec = spec);
     }
 
     protected virtual OpCode[] GenerateOpCodes<TTracingInst>(IReleaseSpec spec)
@@ -888,8 +884,9 @@ public unsafe partial class VirtualMachineBase(
     /// <param name="callResult">
     /// The result of the executed call, including output bytes, exception and revert flags, and additional metadata.
     /// </param>
-    private void TraceTransactionActionEnd(EvmState currentState, IReleaseSpec spec, in CallResult callResult)
+    private void TraceTransactionActionEnd(EvmState currentState, in CallResult callResult)
     {
+        IReleaseSpec spec = BlockExecutionContext.Spec;
         // Calculate the gas cost required for depositing the contract code based on the length of the output.
         long codeDepositGasCost = CodeDepositHandler.CalculateCost(spec, callResult.Output.Bytes.Length);
 
@@ -949,7 +946,7 @@ public unsafe partial class VirtualMachineBase(
         {
             if (_worldState.AccountExists(_parityTouchBugAccount.Address))
             {
-                _worldState.AddToBalance(_parityTouchBugAccount.Address, UInt256.Zero, _spec);
+                _worldState.AddToBalance(_parityTouchBugAccount.Address, UInt256.Zero, BlockExecutionContext.Spec);
             }
 
             _parityTouchBugAccount.ShouldDelete = false;
@@ -980,10 +977,12 @@ public unsafe partial class VirtualMachineBase(
         long gasAvailable = state.GasAvailable;
 
         IPrecompile precompile = ((PrecompileInfo)state.Env.CodeInfo).Precompile;
-        long baseGasCost = precompile.BaseGasCost(_spec);
-        long blobGasCost = precompile.DataGasCost(callData, _spec);
 
-        bool wasCreated = _worldState.AddToBalanceAndCreateIfNotExists(state.Env.ExecutingAccount, transferValue, _spec);
+        IReleaseSpec spec = BlockExecutionContext.Spec;
+        long baseGasCost = precompile.BaseGasCost(spec);
+        long dataGasCost = precompile.DataGasCost(callData, spec);
+
+        bool wasCreated = _worldState.AddToBalanceAndCreateIfNotExists(state.Env.ExecutingAccount, transferValue, spec);
 
         // https://github.com/ethereum/EIPs/blob/master/EIPS/eip-161.md
         // An additional issue was found in Parity,
@@ -996,12 +995,12 @@ public unsafe partial class VirtualMachineBase(
         if (state.Env.ExecutingAccount.Equals(_parityTouchBugAccount.Address)
             && !wasCreated
             && transferValue.IsZero
-            && _spec.ClearEmptyAccountWhenTouched)
+            && spec.ClearEmptyAccountWhenTouched)
         {
             _parityTouchBugAccount.ShouldDelete = true;
         }
 
-        if (!UpdateGas(checked(baseGasCost + blobGasCost), ref gasAvailable))
+        if (!UpdateGas(checked(baseGasCost + dataGasCost), ref gasAvailable))
         {
             return new(default, false, 0, true, EvmExceptionType.OutOfGas);
         }
@@ -1010,7 +1009,7 @@ public unsafe partial class VirtualMachineBase(
 
         try
         {
-            (ReadOnlyMemory<byte> output, bool success) = precompile.Run(callData, _spec);
+            (ReadOnlyMemory<byte> output, bool success) = precompile.Run(callData, spec);
             CallResult callResult = new(output, precompileSuccess: success, fromVersion: 0, shouldRevert: !success);
             return callResult;
         }
@@ -1059,30 +1058,31 @@ public unsafe partial class VirtualMachineBase(
     /// </remarks>
     [SkipLocalsInit]
     private CallResult ExecuteCall<TTracingInst>(
-        EvmState vmState,
         ReadOnlyMemory<byte>? previousCallResult,
         ZeroPaddedSpan previousCallOutput,
         scoped in UInt256 previousCallOutputDestination)
         where TTracingInst : struct, IFlag
     {
+        EvmState vmState = _currentState;
         // Obtain a reference to the execution environment for convenience.
         ref readonly ExecutionEnvironment env = ref vmState.Env;
 
         // If this is the first call frame (not a continuation), adjust account balances and nonces.
         if (!vmState.IsContinuation)
         {
+            IReleaseSpec spec = BlockExecutionContext.Spec;
             // Ensure the executing account has sufficient balance and exists in the world state.
-            _worldState.AddToBalanceAndCreateIfNotExists(env.ExecutingAccount, env.TransferValue, _spec);
+            _worldState.AddToBalanceAndCreateIfNotExists(env.ExecutingAccount, env.TransferValue, spec);
 
             // For contract creation calls, increment the nonce if the specification requires it.
-            if (vmState.ExecutionType.IsAnyCreate() && _spec.ClearEmptyAccountWhenTouched)
+            if (vmState.ExecutionType.IsAnyCreate() && spec.ClearEmptyAccountWhenTouched)
             {
                 _worldState.IncrementNonce(env.ExecutingAccount);
             }
         }
 
         // If no machine code is present, treat the call as empty.
-        if (env.CodeInfo.MachineCode.Length == 0)
+        if (env.CodeInfo.CodeSpan.Length == 0)
         {
             // Increment a metric for empty calls if this is a nested call.
             if (!vmState.IsTopLevel)
@@ -1128,9 +1128,6 @@ public unsafe partial class VirtualMachineBase(
             // Save the previous call's output into the VM state's memory.
             vmState.Memory.Save(in localPreviousDest, previousCallOutput);
         }
-
-        // Update the global EVM state with the current state.
-        EvmState = vmState;
 
         // Dispatch the bytecode interpreter.
         // The second generic parameter is selected based on whether the transaction tracer is cancelable:
@@ -1208,13 +1205,14 @@ public unsafe partial class VirtualMachineBase(
         // Or have bounds checks (however only 256 opcodes and opcode is a byte so know always in bounds).
         fixed (OpCode* opcodeMethods = &_opcodeMethods[0])
         {
+            int opCodeCount = 0;
             ref Instruction code = ref MemoryMarshal.GetReference(codeSection);
             // Iterate over the instructions using a while loop because opcodes may modify the program counter.
             while ((uint)programCounter < (uint)codeSection.Length)
             {
 #if DEBUG
                 // Allow the debugger to inspect and possibly pause execution for debugging purposes.
-                debugger?.TryWait(ref _vmState, ref programCounter, ref gasAvailable, ref stack.Head);
+                debugger?.TryWait(ref _currentState, ref programCounter, ref gasAvailable, ref stack.Head);
 #endif
                 // Fetch the current instruction from the code section.
                 Instruction instruction = Unsafe.Add(ref code, programCounter);
@@ -1229,6 +1227,7 @@ public unsafe partial class VirtualMachineBase(
 
                 // Advance the program counter to point to the next instruction.
                 programCounter++;
+                opCodeCount++;
 
                 // For the very common POP opcode, use an inlined implementation to reduce overhead.
                 if (Instruction.POP == instruction)
@@ -1246,7 +1245,10 @@ public unsafe partial class VirtualMachineBase(
 
                 // If gas is exhausted, jump to the out-of-gas handler.
                 if (gasAvailable < 0)
+                {
+                    OpCodeCount += opCodeCount;
                     goto OutOfGas;
+                }
                 // If an exception occurred, exit the loop.
                 if (exceptionType != EvmExceptionType.None)
                     break;
@@ -1259,6 +1261,7 @@ public unsafe partial class VirtualMachineBase(
                 if (ReturnData is not null)
                     break;
             }
+            OpCodeCount += opCodeCount;
         }
 
         // Update the current VM state if no fatal exception occurred, or if the exception is of type Stop or Revert.
@@ -1288,7 +1291,7 @@ public unsafe partial class VirtualMachineBase(
     DataReturn:
 #if DEBUG
         // Allow debugging before processing the return data.
-        debugger?.TryWait(ref _vmState, ref programCounter, ref gasAvailable, ref stack.Head);
+        debugger?.TryWait(ref _currentState, ref programCounter, ref gasAvailable, ref stack.Head);
 #endif
         // Process the return data based on its runtime type.
         if (ReturnData is EvmState state)
@@ -1304,7 +1307,7 @@ public unsafe partial class VirtualMachineBase(
 
     Revert:
         // Return a CallResult indicating a revert.
-        return new CallResult(null, (byte[])ReturnData, null, codeInfo.Version, shouldRevert: true);
+        return new CallResult(null, (byte[])ReturnData, null, codeInfo.Version, shouldRevert: true, exceptionType);
 
     OutOfGas:
         gasAvailable = 0;
@@ -1318,7 +1321,7 @@ public unsafe partial class VirtualMachineBase(
         // Lightest weight conversion as mostly just helpful when debugging to see what the opcodes are.
         static ReadOnlySpan<Instruction> GetInstructions(ICodeInfo codeInfo)
         {
-            ReadOnlySpan<byte> codeBytes = codeInfo.CodeSection.Span;
+            ReadOnlySpan<byte> codeBytes = codeInfo.CodeSpan;
             return MemoryMarshal.CreateReadOnlySpan(
                 ref Unsafe.As<byte, Instruction>(ref MemoryMarshal.GetReference(codeBytes)),
                 codeBytes.Length);

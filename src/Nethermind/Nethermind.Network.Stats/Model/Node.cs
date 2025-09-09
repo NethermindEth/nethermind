@@ -73,6 +73,7 @@ namespace Nethermind.Stats.Model
 
         public string EthDetails { get; set; }
         public long CurrentReputation { get; set; }
+        public string Enr { get; set; }
 
         public Node(NetworkNode networkNode, bool isStatic = false)
             : this(networkNode.NodeId, networkNode.Host, networkNode.Port, isStatic)
@@ -124,6 +125,8 @@ namespace Nethermind.Stats.Model
                 return _paddedPort ??= (Port >= 30300 && Port <= 30399) ? _ports[Port - 30300] : Port.ToString().PadLeft(5, ' ');
             }
         }
+
+        public bool? ValidatedProtocol { get; set; }
 
         private static IPEndPoint GetIPEndPoint(string host, int port)
         {

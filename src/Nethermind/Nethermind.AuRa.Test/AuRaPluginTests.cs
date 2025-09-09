@@ -43,9 +43,22 @@ namespace Nethermind.AuRa.Test
                 Substitute.For<IProcessExitSource>(),
                 testNethermindContainer);
             AuRaNethermindApi api = new AuRaNethermindApi(apiDependencies);
-            api.DbProvider = TestMemDbProvider.Init();
             Action init = () => auRaPlugin.Init(api);
             init.Should().NotThrow();
+        }
+
+        [Test]
+        public void DecorateReleaseSpecWithAuraReleaseSpec()
+        {
+            ChainSpec chainSpec = new();
+            chainSpec.EngineChainSpecParametersProvider = new TestChainSpecParametersProvider(new AuRaChainSpecEngineParameters());
+            using IContainer container = new ContainerBuilder()
+                .AddModule(new TestNethermindModule())
+                .AddModule(new AuRaModule(chainSpec))
+                .Build();
+
+            container.Resolve<ISpecProvider>().GetSpec(Build.A.BlockHeader.WithNumber(10).TestObject)
+                .Should().BeOfType<AuRaReleaseSpecDecorator>();
         }
 
     }

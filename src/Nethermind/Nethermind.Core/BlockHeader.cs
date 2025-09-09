@@ -44,7 +44,6 @@ public class BlockHeader
         ExcessBlobGas = excessBlobGas;
     }
 
-    public WeakReference<BlockHeader>? MaybeParent { get; set; }
     public bool IsGenesis => Number == 0L;
     public Hash256? ParentHash { get; set; }
     public Hash256? UnclesHash { get; set; }

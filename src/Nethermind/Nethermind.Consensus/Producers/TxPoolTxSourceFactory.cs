@@ -19,8 +19,8 @@ namespace Nethermind.Consensus.Producers
     {
         public virtual ITxSource Create()
         {
-            ITxFilterPipeline txSourceFilterPipeline = TxFilterPipelineBuilder.CreateStandardFilteringPipeline(logManager, specProvider, blocksConfig);
-            return new TxPoolTxSource(txPool, specProvider, transactionComparerProvider, logManager, txSourceFilterPipeline);
+            ITxFilterPipeline txSourceFilterPipeline = TxFilterPipelineBuilder.CreateStandardFilteringPipeline(logManager, blocksConfig);
+            return new TxPoolTxSource(txPool, specProvider, transactionComparerProvider, logManager, txSourceFilterPipeline, blocksConfig);
         }
     }
 }

@@ -81,6 +81,7 @@ public sealed class NethermindKestrelMetricServer : MetricHandler
             .UseKestrelHttpsConfiguration()
             .Configure(app =>
             {
+                app.UseOutputCache();
                 app.UseMetricServer(_configureExporter, _url);
 
                 // If there is any URL prefix, we just redirect people going to root URL to our prefix.
@@ -97,6 +98,12 @@ public sealed class NethermindKestrelMetricServer : MetricHandler
                         });
                 }
             });
+
+        builder.ConfigureServices(services =>
+        {
+            services.AddOutputCache(options =>
+                options.AddBasePolicy(builder => builder.Expire(TimeSpan.FromSeconds(1))));
+        });
 
         if (_certificate is not null)
         {

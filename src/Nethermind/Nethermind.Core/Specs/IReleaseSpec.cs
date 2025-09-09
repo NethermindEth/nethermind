@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Collections.Generic;
 using Nethermind.Int256;
 
 namespace Nethermind.Core.Specs
@@ -17,6 +18,7 @@ namespace Nethermind.Core.Specs
         //EIP-3860: Limit and meter initcode
         long MaxInitCodeSize => 2 * MaxCodeSize;
         long MinGasLimit { get; }
+        long MinHistoryRetentionEpochs { get; }
         long GasLimitBoundDivisor { get; }
         UInt256 BlockReward { get; }
         long DifficultyBombDelay { get; }
@@ -338,6 +340,7 @@ namespace Nethermind.Core.Specs
         /// Secp256r1 precompile
         /// </summary>
         bool IsRip7212Enabled { get; }
+        bool IsEip7951Enabled { get; }
 
         /// OP Granite
         bool IsOpGraniteEnabled { get; }
@@ -362,6 +365,12 @@ namespace Nethermind.Core.Specs
         ///  Increase ModExp Gas Cost
         /// </summary>
         bool IsEip7883Enabled { get; }
+
+        /// <summary>
+        ///  RLP Execution Block Size Limit
+        /// </summary>
+        bool IsEip7934Enabled { get; }
+        int Eip7934MaxRlpBlockSize { get; }
 
         /// <summary>
         /// Should transactions be validated against chainId.
@@ -395,7 +404,7 @@ namespace Nethermind.Core.Specs
 
         public bool ModExpEnabled => IsEip198Enabled;
 
-        public bool Bn128Enabled => IsEip196Enabled && IsEip197Enabled;
+        public bool BN254Enabled => IsEip196Enabled && IsEip197Enabled;
 
         public bool BlakeEnabled => IsEip152Enabled;
 
@@ -488,6 +497,19 @@ namespace Nethermind.Core.Specs
         /// </remarks>
         public Array? EvmInstructionsTraced { get; set; }
 
+        /// <summary>
+        /// Determines whether the specified address is a precompiled contract for this release specification.
+        /// </summary>
+        /// <param name="address">The address to check for precompile status.</param>
+        /// <returns>True if the address is a precompiled contract; otherwise, false.</returns>
+        bool IsPrecompile(Address address) => Precompiles.Contains(address);
+
+        /// <summary>
+        /// Gets a cached set of all precompiled contract addresses for this release specification.
+        /// Chain-specific implementations can override this to include their own precompiled contracts.
+        /// </summary>
+        HashSet<AddressAsKey> Precompiles { get; }
+
         public ProofVersion BlobProofVersion => IsEip7594Enabled ? ProofVersion.V1 : ProofVersion.V0;
 
         /// <summary>
@@ -496,5 +518,15 @@ namespace Nethermind.Core.Specs
         public bool IsEip7939Enabled { get; }
 
         public bool CLZEnabled => IsEip7939Enabled;
+
+        /// <summary>
+        /// EIP-7907: Meter Contract Code Size And Increase Limit
+        /// </summary>
+        public bool IsEip7907Enabled { get; }
+
+        /// <summary>
+        /// RIP-7728: L1SLOAD precompile for reading L1 storage from L2
+        /// </summary>
+        public bool IsRip7728Enabled { get; }
     }
 }

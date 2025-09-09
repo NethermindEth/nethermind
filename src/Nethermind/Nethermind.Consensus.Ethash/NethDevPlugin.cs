@@ -9,7 +9,6 @@ using Nethermind.Api;
 using Nethermind.Api.Extensions;
 using Nethermind.Config;
 using Nethermind.Consensus.Producers;
-using Nethermind.Consensus.Transactions;
 using Nethermind.Core;
 using Nethermind.Logging;
 using Nethermind.Specs.ChainSpecStyle;
@@ -20,8 +19,6 @@ namespace Nethermind.Consensus.Ethash
     {
         public const string NethDev = "NethDev";
         private INethermindApi? _nethermindApi;
-
-        public ValueTask DisposeAsync() { return ValueTask.CompletedTask; }
 
         public string Name => NethDev;
 
@@ -44,7 +41,7 @@ namespace Nethermind.Consensus.Ethash
             ILogger logger = getFromApi.LogManager.GetClassLogger();
             if (logger.IsInfo) logger.Info("Starting Neth Dev block producer & sealer");
 
-            BlockProducerEnv env = getFromApi.BlockProducerEnvFactory.Create();
+            IBlockProducerEnv env = getFromApi.BlockProducerEnvFactory.Create();
             IBlockProducer blockProducer = new DevBlockProducer(
                 env.TxSource,
                 env.ChainProcessor,

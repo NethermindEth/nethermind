@@ -10,20 +10,16 @@ using Nethermind.Blockchain.Visitors;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
+using Nethermind.State.Repositories;
 
 namespace Nethermind.Blockchain
 {
     /// <summary>
     /// Safe to be reused for all classes reading the same wrapped block tree.
     /// </summary>
-    public class ReadOnlyBlockTree : IReadOnlyBlockTree
+    public class ReadOnlyBlockTree(IBlockTree wrapped) : IReadOnlyBlockTree
     {
-        private readonly IBlockTree _wrapped;
-
-        public ReadOnlyBlockTree(IBlockTree wrapped)
-        {
-            _wrapped = wrapped;
-        }
+        private readonly IBlockTree _wrapped = wrapped;
 
         public ulong NetworkId => _wrapped.NetworkId;
         public ulong ChainId => _wrapped.ChainId;
@@ -57,10 +53,8 @@ namespace Nethermind.Blockchain
         public (BlockInfo Info, ChainLevelInfo Level) GetInfo(long number, Hash256 blockHash) => _wrapped.GetInfo(number, blockHash);
         public bool CanAcceptNewBlocks { get; } = false;
 
-        public async Task Accept(IBlockTreeVisitor blockTreeVisitor, CancellationToken cancellationToken)
-        {
-            await _wrapped.Accept(blockTreeVisitor, cancellationToken);
-        }
+        public Task Accept(IBlockTreeVisitor blockTreeVisitor, CancellationToken cancellationToken)
+            => _wrapped.Accept(blockTreeVisitor, cancellationToken);
 
         public ChainLevelInfo FindLevel(long number) => _wrapped.FindLevel(number);
         public BlockInfo FindCanonicalBlockInfo(long blockNumber) => _wrapped.FindCanonicalBlockInfo(blockNumber);
@@ -153,6 +147,12 @@ namespace Nethermind.Blockchain
             remove { }
         }
 
+        event EventHandler<IBlockTree.ForkChoiceUpdateEventArgs> IBlockTree.OnForkChoiceUpdated
+        {
+            add { }
+            remove { }
+        }
+
         public int DeleteChainSlice(in long startNumber, long? endNumber = null, bool force = false)
         {
             var bestKnownNumber = BestKnownNumber;
@@ -202,10 +202,16 @@ namespace Nethermind.Blockchain
             }
         }
 
+        public bool IsProcessingBlock { get => _wrapped.IsProcessingBlock; set { } }
+
         public void UpdateMainChain(IReadOnlyList<Block> blocks, bool wereProcessed, bool forceHeadBlock = false) => throw new InvalidOperationException($"{nameof(ReadOnlyBlockTree)} does not expect {nameof(UpdateMainChain)} calls");
 
         public void ForkChoiceUpdated(Hash256? finalizedBlockHash, Hash256? safeBlockBlockHash) => throw new InvalidOperationException($"{nameof(ReadOnlyBlockTree)} does not expect {nameof(ForkChoiceUpdated)} calls");
 
         public long GetLowestBlock() => _wrapped.GetLowestBlock();
+
+        public void NewOldestBlock(long oldestBlock) => throw new InvalidOperationException($"{nameof(ReadOnlyBlockTree)} does not expect {nameof(NewOldestBlock)} calls");
+
+        public void DeleteOldBlock(long blockNumber, Hash256 blockHash) => throw new InvalidOperationException($"{nameof(ReadOnlyBlockTree)} does not expect {nameof(DeleteOldBlock)} calls");
     }
 }

@@ -59,7 +59,7 @@ public class HeaderValidatorTests
     public void Valid_when_valid()
     {
         _block.Header.SealEngineType = SealEngineType.None;
-        bool result = _validator.Validate(_block.Header);
+        bool result = _validator.Validate(_block.Header, _parentBlock.Header);
         if (!result)
         {
             foreach (string error in _testLogger.LogList)
@@ -78,7 +78,7 @@ public class HeaderValidatorTests
         _block.Header.SealEngineType = SealEngineType.None;
         _block.Header.Hash = _block.CalculateHash();
 
-        bool result = _validator.Validate(_block.Header);
+        bool result = _validator.Validate(_block.Header, _parentBlock.Header);
         Assert.That(result, Is.False);
     }
 
@@ -89,7 +89,7 @@ public class HeaderValidatorTests
         _block.Header.SealEngineType = SealEngineType.None;
         _block.Header.Hash = _block.CalculateHash();
 
-        bool result = _validator.Validate(_block.Header);
+        bool result = _validator.Validate(_block.Header, _parentBlock.Header);
         Assert.That(result, Is.True);
     }
 
@@ -100,7 +100,7 @@ public class HeaderValidatorTests
         _block.Header.SealEngineType = SealEngineType.None;
         _block.Header.Hash = _block.CalculateHash();
 
-        bool result = _validator.Validate(_block.Header);
+        bool result = _validator.Validate(_block.Header, _parentBlock.Header);
         Assert.That(result, Is.True);
     }
 
@@ -111,7 +111,7 @@ public class HeaderValidatorTests
         _block.Header.SealEngineType = SealEngineType.None;
         _block.Header.Hash = _block.CalculateHash();
 
-        bool result = _validator.Validate(_block.Header);
+        bool result = _validator.Validate(_block.Header, _parentBlock.Header);
         Assert.That(result, Is.False);
     }
 
@@ -122,7 +122,7 @@ public class HeaderValidatorTests
         _block.Header.SealEngineType = SealEngineType.None;
         _block.Header.Hash = _block.CalculateHash();
 
-        bool result = _validator.Validate(_block.Header);
+        bool result = _validator.Validate(_block.Header, _parentBlock.Header);
         Assert.That(result, Is.False);
     }
 
@@ -132,9 +132,8 @@ public class HeaderValidatorTests
         _block.Header.ParentHash = Keccak.Zero;
         _block.Header.SealEngineType = SealEngineType.None;
         _block.Header.Hash = _block.CalculateHash();
-        _block.Header.MaybeParent = null;
 
-        bool result = _validator.Validate(_block.Header);
+        bool result = _validator.Validate(_block.Header, _parentBlock.Header);
         Assert.That(result, Is.False);
     }
 
@@ -145,7 +144,7 @@ public class HeaderValidatorTests
         _block.Header.SealEngineType = SealEngineType.None;
         _block.Header.Hash = _block.CalculateHash();
 
-        bool result = _validator.Validate(_block.Header);
+        bool result = _validator.Validate(_block.Header, _parentBlock.Header);
         Assert.That(result, Is.False);
     }
 
@@ -156,7 +155,7 @@ public class HeaderValidatorTests
         _block.Header.SealEngineType = SealEngineType.None;
         _block.Header.Hash = _block.CalculateHash();
 
-        bool result = _validator.Validate(_block.Header);
+        bool result = _validator.Validate(_block.Header, _parentBlock.Header);
         Assert.That(result, Is.False);
     }
 
@@ -167,7 +166,7 @@ public class HeaderValidatorTests
         _block.Header.SealEngineType = SealEngineType.None;
         _block.Header.Hash = _block.CalculateHash();
 
-        bool result = _validator.Validate(_block.Header);
+        bool result = _validator.Validate(_block.Header, _parentBlock.Header);
         Assert.That(result, Is.False);
     }
 
@@ -178,7 +177,7 @@ public class HeaderValidatorTests
         _block.Header.SealEngineType = SealEngineType.None;
         _block.Header.Hash = _block.CalculateHash();
 
-        bool result = _validator.Validate(_block.Header);
+        bool result = _validator.Validate(_block.Header, _parentBlock.Header);
         Assert.That(result, Is.False);
     }
 
@@ -251,7 +250,7 @@ public class HeaderValidatorTests
         _block.Header.Number = -1;
         _block.Header.Hash = _block.CalculateHash();
 
-        bool result = _validator.Validate(_block.Header);
+        bool result = _validator.Validate(_block.Header, _parentBlock.Header);
         Assert.That(result, Is.False);
     }
 
@@ -261,7 +260,7 @@ public class HeaderValidatorTests
         _block.Header.GasUsed = -1;
         _block.Header.Hash = _block.CalculateHash();
 
-        bool result = _validator.Validate(_block.Header);
+        bool result = _validator.Validate(_block.Header, _parentBlock.Header);
         Assert.That(result, Is.False);
     }
 
@@ -274,7 +273,7 @@ public class HeaderValidatorTests
         _block.Header.Hash = _block.CalculateHash();
 
         HeaderValidator validator = new HeaderValidator(_blockTree, Always.Valid, _specProvider, new OneLoggerLogManager(new(_testLogger)));
-        bool result = validator.Validate(_block.Header);
+        bool result = validator.Validate(_block.Header, _parentBlock.Header);
         Assert.That(result, Is.True);
     }
 
@@ -306,7 +305,7 @@ public class HeaderValidatorTests
         _specProvider.UpdateMergeTransitionInfo(null, (UInt256?)ttd);
 
         HeaderValidator validator = new(_blockTree, Always.Valid, _specProvider, new OneLoggerLogManager(new(_testLogger)));
-        bool result = validator.Validate(_block.Header);
+        bool result = validator.Validate(_block.Header, _parentBlock.Header);
         Assert.That(result, Is.EqualTo(expectedResult));
     }
 
@@ -316,7 +315,7 @@ public class HeaderValidatorTests
         _block.Header.GasLimit = -1;
         _block.Header.Hash = _block.CalculateHash();
 
-        bool result = _validator.Validate(_block.Header);
+        bool result = _validator.Validate(_block.Header, _parentBlock.Header);
         Assert.That(result, Is.False);
     }
 
@@ -326,8 +325,19 @@ public class HeaderValidatorTests
         HeaderValidator sut = new HeaderValidator(_blockTree, Always.Valid, Substitute.For<ISpecProvider>(), new OneLoggerLogManager(new(_testLogger)));
         _block.Header.Hash = Keccak.Zero;
         string? error;
-        sut.Validate(_block.Header, false, out error);
+        sut.Validate(_block.Header, _parentBlock.Header, false, out error);
 
         Assert.That(error, Does.StartWith("InvalidHeaderHash"));
+    }
+
+    [Test]
+    public void When_given_parent_is_wrong()
+    {
+        _block.Header.Hash = _block.CalculateHash();
+
+        bool result = _validator.Validate(_block.Header, Build.A.BlockHeader.WithNonce(999).TestObject, false, out string? error);
+
+        Assert.That(result, Is.False);
+        Assert.That(error, Does.StartWith("Mismatched parent"));
     }
 }

@@ -220,11 +220,11 @@ public class PowForwardHeaderProvider(
         headers = FilterPosHeader(headers);
 
         ValidateSeals(headers, cancellation);
-        ValidateBatchConsistencyAndSetParents(peer, headers);
+        ValidateBatchConsistency(peer, headers);
         return headers;
     }
 
-    private void ValidateBatchConsistencyAndSetParents(PeerInfo bestPeer, IReadOnlyList<BlockHeader?> headers)
+    private void ValidateBatchConsistency(PeerInfo bestPeer, IReadOnlyList<BlockHeader?> headers)
     {
         // in the past (version 1.11) and possibly now too Parity was sending non canonical blocks in responses
         // so we need to confirm that the blocks form a valid subchain
@@ -239,11 +239,6 @@ public class PowForwardHeaderProvider(
             if (headers[i] is null)
             {
                 break;
-            }
-
-            if (i != 1) // because we will never set TotalDifficulty on the first block?
-            {
-                headers[i].MaybeParent = new WeakReference<BlockHeader>(headers[i - 1]);
             }
         }
     }

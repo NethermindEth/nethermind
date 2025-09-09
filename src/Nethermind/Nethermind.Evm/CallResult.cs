@@ -6,7 +6,7 @@ using Nethermind.Evm.CodeAnalysis;
 
 namespace Nethermind.Evm;
 
-public unsafe partial class VirtualMachineBase
+public unsafe partial class VirtualMachine
 {
     protected readonly ref struct CallResult
     {
@@ -67,7 +67,8 @@ public unsafe partial class VirtualMachineBase
         public bool ShouldRevert { get; }
         public bool? PrecompileSuccess { get; }
         public bool IsReturn => StateToExecute is null;
-        public bool IsException => ExceptionType != EvmExceptionType.None;
+        //EvmExceptionType.Revert is returned when the top frame encounters a REVERT opcode, which is not an exception.
+        public bool IsException => ExceptionType != EvmExceptionType.None && ExceptionType != EvmExceptionType.Revert;
         public int FromVersion { get; }
     }
 }

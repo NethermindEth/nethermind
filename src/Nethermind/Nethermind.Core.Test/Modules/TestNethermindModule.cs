@@ -18,9 +18,21 @@ namespace Nethermind.Core.Test.Modules;
 /// component later anyway.
 /// </summary>
 /// <param name="configProvider"></param>
-public class TestNethermindModule(IConfigProvider configProvider) : Module
+public class TestNethermindModule(IConfigProvider configProvider, ChainSpec chainSpec) : Module
 {
     public TestNethermindModule() : this(new ConfigProvider())
+    {
+    }
+
+    public TestNethermindModule(params IConfig[] configs) : this(new ConfigProvider(configs))
+    {
+    }
+
+    public TestNethermindModule(IConfigProvider configProvider) : this(configProvider, new ChainSpec() { Parameters = new ChainParameters() })
+    {
+    }
+
+    public TestNethermindModule(ChainSpec chainSpec) : this(new ConfigProvider(), chainSpec)
     {
     }
 
@@ -31,7 +43,7 @@ public class TestNethermindModule(IConfigProvider configProvider) : Module
         LongDisposeTracker.Configure(builder);
 
         builder
-            .AddModule(new PseudoNethermindModule(new ChainSpec(), configProvider, LimboLogs.Instance))
+            .AddModule(new PseudoNethermindModule(chainSpec, configProvider, LimboLogs.Instance))
             .AddModule(new TestEnvironmentModule(TestItem.PrivateKeyA, Random.Shared.Next().ToString()))
             .AddSingleton<ISpecProvider>(_ => new TestSpecProvider(Cancun.Instance));
     }

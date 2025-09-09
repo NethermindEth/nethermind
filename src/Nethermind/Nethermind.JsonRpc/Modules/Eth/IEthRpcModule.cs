@@ -3,6 +3,7 @@
 
 using System;
 using System.Collections.Generic;
+using System.Text.Json.Nodes;
 using System.Threading.Tasks;
 using Nethermind.Blockchain.Find;
 using Nethermind.Core;
@@ -61,7 +62,7 @@ namespace Nethermind.JsonRpc.Modules.Eth
             Description = "Returns miner's gas price",
             IsSharable = true,
             ExampleResponse = "0x4a817c800")]
-        ResultWrapper<UInt256?> eth_gasPrice();
+        Task<ResultWrapper<UInt256?>> eth_gasPrice();
 
         [JsonRpcMethod(IsImplemented = true,
             Description = "Returns the base fee per blob gas in wei",
@@ -284,5 +285,11 @@ namespace Nethermind.JsonRpc.Modules.Eth
 
         [JsonRpcMethod(IsImplemented = true, Description = "Retrieves Accounts via Address and Blocknumber", IsSharable = true)]
         ResultWrapper<AccountForRpc?> eth_getAccount([JsonRpcParameter(ExampleValue = "[\"0xaa00000000000000000000000000000000000000\", \"latest\"]")] Address accountAddress, BlockParameter? blockParameter = null);
+
+        [JsonRpcMethod(IsImplemented = true, Description = "Retrieves Account with code and no storageRoot via Address and Blocknumber", IsSharable = true)]
+        ResultWrapper<AccountInfoForRpc?> eth_getAccountInfo([JsonRpcParameter(ExampleValue = "[\"0xaa00000000000000000000000000000000000000\", \"latest\"]")] Address accountAddress, BlockParameter? blockParameter = null);
+
+        [JsonRpcMethod(IsImplemented = true, Description = "Provides configuration data for the current and next fork", IsSharable = true)]
+        ResultWrapper<JsonNode> eth_config();
     }
 }

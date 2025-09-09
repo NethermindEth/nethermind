@@ -27,7 +27,7 @@ internal static partial class EvmInstructions
     /// <returns><see cref="EvmExceptionType.None"/> if successful; otherwise, <see cref="EvmExceptionType.StackUnderflow"/>.</returns>
     [SkipLocalsInit]
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public static EvmExceptionType InstructionPop(VirtualMachineBase vm, ref EvmStack stack, ref long gasAvailable, ref int programCounter)
+    public static EvmExceptionType InstructionPop(VirtualMachine vm, ref EvmStack stack, ref long gasAvailable, ref int programCounter)
     {
         // Deduct the minimal gas cost for a POP operation.
         gasAvailable -= GasCostOf.Base;
@@ -113,20 +113,21 @@ internal static partial class EvmInstructions
     /// Push operation for two bytes.
     /// </summary>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public static EvmExceptionType InstructionPush2<TTracingInst>(VirtualMachineBase vm, ref EvmStack stack, ref long gasAvailable, ref int programCounter)
+    public static EvmExceptionType InstructionPush2<TTracingInst>(VirtualMachine vm, ref EvmStack stack, ref long gasAvailable, ref int programCounter)
         where TTracingInst : struct, IFlag
     {
         const int Size = sizeof(ushort);
         // Deduct a very low gas cost for the push operation.
         gasAvailable -= GasCostOf.VeryLow;
         // Retrieve the code segment containing immediate data.
-        ReadOnlySpan<byte> code = vm.EvmState.Env.CodeInfo.CodeSection.Span;
+        ReadOnlySpan<byte> code = vm.EvmState.Env.CodeInfo.CodeSpan;
 
         ref byte bytes = ref MemoryMarshal.GetReference(code);
         int remainingCode = code.Length - programCounter;
         Instruction nextInstruction;
         if (!TTracingInst.IsActive &&
             remainingCode > Size &&
+            stack.Head < EvmStack.MaxStackSize - 1 &&
             ((nextInstruction = (Instruction)Add(ref bytes, programCounter + Size))
                 is Instruction.JUMP or Instruction.JUMPI))
         {
@@ -140,10 +141,12 @@ internal static partial class EvmInstructions
             if (nextInstruction == Instruction.JUMP)
             {
                 gasAvailable -= GasCostOf.Jump;
+                vm.OpCodeCount++;
             }
             else
             {
                 gasAvailable -= GasCostOf.JumpI;
+                vm.OpCodeCount++;
                 bool shouldJump = TestJumpCondition(ref stack, out bool isOverflow);
                 if (isOverflow) goto StackUnderflow;
                 if (!shouldJump)
@@ -482,7 +485,7 @@ internal static partial class EvmInstructions
     /// <param name="programCounter">The program counter.</param>
     /// <returns><see cref="EvmExceptionType.None"/> on success.</returns>
     [SkipLocalsInit]
-    public static EvmExceptionType InstructionPush0<TTracingInst>(VirtualMachineBase vm, ref EvmStack stack, ref long gasAvailable, ref int programCounter)
+    public static EvmExceptionType InstructionPush0<TTracingInst>(VirtualMachine vm, ref EvmStack stack, ref long gasAvailable, ref int programCounter)
         where TTracingInst : struct, IFlag
     {
         gasAvailable -= GasCostOf.Base;
@@ -501,14 +504,14 @@ internal static partial class EvmInstructions
     /// <param name="programCounter">Reference to the program counter, which will be advanced.</param>
     /// <returns><see cref="EvmExceptionType.None"/> on success.</returns>
     [SkipLocalsInit]
-    public static EvmExceptionType InstructionPush<TOpCount, TTracingInst>(VirtualMachineBase vm, ref EvmStack stack, ref long gasAvailable, ref int programCounter)
+    public static EvmExceptionType InstructionPush<TOpCount, TTracingInst>(VirtualMachine vm, ref EvmStack stack, ref long gasAvailable, ref int programCounter)
         where TOpCount : IOpCount
         where TTracingInst : struct, IFlag
     {
         // Deduct a very low gas cost for the push operation.
         gasAvailable -= GasCostOf.VeryLow;
         // Retrieve the code segment containing immediate data.
-        ReadOnlySpan<byte> code = vm.EvmState.Env.CodeInfo.CodeSection.Span;
+        ReadOnlySpan<byte> code = vm.EvmState.Env.CodeInfo.CodeSpan;
         // Use the push method defined by the specific push operation.
         TOpCount.Push<TTracingInst>(TOpCount.Count, ref stack, programCounter, code);
         // Advance the program counter by the number of bytes consumed.
@@ -526,17 +529,13 @@ internal static partial class EvmInstructions
     /// <param name="programCounter">Reference to the program counter.</param>
     /// <returns><see cref="EvmExceptionType.None"/> on success or <see cref="EvmExceptionType.StackUnderflow"/> if insufficient stack elements.</returns>
     [SkipLocalsInit]
-    public static EvmExceptionType InstructionDup<TOpCount, TTracingInst>(VirtualMachineBase vm, ref EvmStack stack, ref long gasAvailable, ref int programCounter)
+    public static EvmExceptionType InstructionDup<TOpCount, TTracingInst>(VirtualMachine vm, ref EvmStack stack, ref long gasAvailable, ref int programCounter)
         where TOpCount : IOpCount
         where TTracingInst : struct, IFlag
     {
         gasAvailable -= GasCostOf.VeryLow;
-        // Duplicate the nth element from the top; if it fails, signal a stack underflow.
-        if (!stack.Dup<TTracingInst>(TOpCount.Count)) goto StackUnderflow;
-        return EvmExceptionType.None;
-    // Jump forward to be unpredicted by the branch predictor.
-    StackUnderflow:
-        return EvmExceptionType.StackUnderflow;
+
+        return stack.Dup<TTracingInst>(TOpCount.Count);
     }
 
     /// <summary>
@@ -549,17 +548,13 @@ internal static partial class EvmInstructions
     /// <param name="programCounter">Reference to the program counter.</param>
     /// <returns><see cref="EvmExceptionType.None"/> on success or <see cref="EvmExceptionType.StackUnderflow"/> if insufficient elements.</returns>
     [SkipLocalsInit]
-    public static EvmExceptionType InstructionSwap<TOpCount, TTracingInst>(VirtualMachineBase vm, ref EvmStack stack, ref long gasAvailable, ref int programCounter)
+    public static EvmExceptionType InstructionSwap<TOpCount, TTracingInst>(VirtualMachine vm, ref EvmStack stack, ref long gasAvailable, ref int programCounter)
         where TOpCount : IOpCount
         where TTracingInst : struct, IFlag
     {
         gasAvailable -= GasCostOf.VeryLow;
         // Swap the top element with the (n+1)th element; ensure adequate stack depth.
-        if (!stack.Swap<TTracingInst>(TOpCount.Count + 1)) goto StackUnderflow;
-        return EvmExceptionType.None;
-    // Jump forward to be unpredicted by the branch predictor.
-    StackUnderflow:
-        return EvmExceptionType.StackUnderflow;
+        return stack.Swap<TTracingInst>(TOpCount.Count + 1);
     }
 
     /// <summary>
@@ -577,7 +572,7 @@ internal static partial class EvmInstructions
     /// <see cref="EvmExceptionType.StackUnderflow"/>, <see cref="EvmExceptionType.StaticCallViolation"/>, or <see cref="EvmExceptionType.OutOfGas"/>.
     /// </returns>
     [SkipLocalsInit]
-    public static EvmExceptionType InstructionLog<TOpCount>(VirtualMachineBase vm, ref EvmStack stack, ref long gasAvailable, ref int programCounter)
+    public static EvmExceptionType InstructionLog<TOpCount>(VirtualMachine vm, ref EvmStack stack, ref long gasAvailable, ref int programCounter)
         where TOpCount : struct, IOpCount
     {
         EvmState vmState = vm.EvmState;

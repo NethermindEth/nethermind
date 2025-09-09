@@ -32,6 +32,7 @@ using Nethermind.Synchronization.Peers;
 using Nethermind.Synchronization.Test.ParallelSync;
 using NSubstitute;
 using NUnit.Framework;
+using Nethermind.History;
 
 namespace Nethermind.Synchronization.Test;
 
@@ -42,17 +43,11 @@ namespace Nethermind.Synchronization.Test;
 [TestFixture(SynchronizerType.Eth2MergeFastWithoutTTD)]
 [TestFixture(SynchronizerType.Eth2MergeFullWithoutTTD)]
 [Parallelizable(ParallelScope.Self)]
-public class SynchronizerTests
+public class SynchronizerTests(SynchronizerType synchronizerType)
 {
     private const int SyncBatchSizeMax = 128;
 
-    private readonly SynchronizerType _synchronizerType;
-
-    public SynchronizerTests(SynchronizerType synchronizerType)
-    {
-        _synchronizerType = synchronizerType;
-    }
-
+    private readonly SynchronizerType _synchronizerType = synchronizerType;
     private static readonly Block _genesisBlock = Build.A.Block
         .Genesis
         .WithDifficulty(100000)
@@ -210,7 +205,7 @@ public class SynchronizerTests
             {
                 block = Build.A.Block.WithParent(block).WithDifficulty(2000000)
                     .WithTotalDifficulty(block.TotalDifficulty + 2000000)
-                    .WithExtraData(j < branchStart ? [] : new[] { branchIndex }).TestObject;
+                    .WithExtraData(j < branchStart ? [] : [branchIndex]).TestObject;
                 Blocks.Add(block);
             }
 
@@ -225,14 +220,9 @@ public class SynchronizerTests
 
     private WhenImplementation When => new(_synchronizerType);
 
-    private class WhenImplementation
+    private class WhenImplementation(SynchronizerType synchronizerType)
     {
-        private readonly SynchronizerType _synchronizerType;
-
-        public WhenImplementation(SynchronizerType synchronizerType)
-        {
-            _synchronizerType = synchronizerType;
-        }
+        private readonly SynchronizerType _synchronizerType = synchronizerType;
 
         public SyncingContext Syncing => new(_synchronizerType);
     }
@@ -242,7 +232,7 @@ public class SynchronizerTests
         private bool _wasStopped = false;
         public static ConcurrentQueue<SyncingContext> AllInstances { get; } = new();
 
-        private readonly Dictionary<string, ISyncPeer> _peers = new();
+        private readonly Dictionary<string, ISyncPeer> _peers = [];
         private IBlockTree BlockTree => FromContainer.BlockTree;
 
         private ISyncServer SyncServer => FromContainer.SyncServer;
@@ -300,12 +290,13 @@ public class SynchronizerTests
                 .AddSingleton(Substitute.For<IProcessExitSource>())
                 .AddSingleton<ISealValidator>(Always.Valid)
                 .AddSingleton<IBlockValidator>(Always.Valid)
+                .AddSingleton(Substitute.For<IHistoryPruner>())
                 .AddSingleton<ContainerDependencies>()
                 .AddSingleton(_logManager);
 
             if (IsMerge(synchronizerType))
             {
-                builder.RegisterModule(new MergeModule(configProvider));
+                builder.RegisterModule(new TestMergeModule(configProvider));
             }
 
             Container = builder.Build();

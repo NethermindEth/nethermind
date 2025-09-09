@@ -33,7 +33,7 @@ namespace Nethermind.Blockchain.Filters
 
         public FilterManager(
             IFilterStore filterStore,
-            IBlockProcessor blockProcessor,
+            IBranchProcessor blockProcessor,
             ITxPool txPool,
             ILogManager logManager)
         {
@@ -76,7 +76,7 @@ namespace Nethermind.Blockchain.Filters
                 int filterId = filter.Id;
                 List<Hash256> transactions = _pendingTransactions.GetOrAdd(filterId, static _ => new List<Hash256>());
                 transactions.Add(e.Transaction.Hash);
-                if (_logger.IsDebug) _logger.Debug($"Filter with id: {filterId} contains {transactions.Count} transactions.");
+                if (_logger.IsTrace) _logger.Trace($"Filter with id: {filterId} contains {transactions.Count} transactions.");
 
             }
         }
@@ -90,7 +90,7 @@ namespace Nethermind.Blockchain.Filters
                 int filterId = filter.Id;
                 List<Hash256> transactions = _pendingTransactions.GetOrAdd(filterId, static _ => new List<Hash256>());
                 transactions.Remove(e.Transaction.Hash);
-                if (_logger.IsDebug) _logger.Debug($"Filter with id: {filterId} contains {transactions.Count} transactions.");
+                if (_logger.IsTrace) _logger.Trace($"Filter with id: {filterId} contains {transactions.Count} transactions.");
 
             }
         }
@@ -194,7 +194,7 @@ namespace Nethermind.Blockchain.Filters
 
             List<Hash256> blocks = _blockHashes.GetOrAdd(filter.Id, static i => new List<Hash256>());
             blocks.Add(block.Hash);
-            if (_logger.IsDebug) _logger.Debug($"Filter with id: {filter.Id} contains {blocks.Count} blocks.");
+            if (_logger.IsTrace) _logger.Trace($"Filter with id: {filter.Id} contains {blocks.Count} blocks.");
         }
 
         private void StoreLogs(LogFilter filter, TxReceipt txReceipt, long logIndex)
@@ -220,7 +220,7 @@ namespace Nethermind.Blockchain.Filters
                 return;
             }
 
-            if (_logger.IsDebug) _logger.Debug($"Filter with id: {filter.Id} contains {logs.Count} logs.");
+            if (_logger.IsTrace) _logger.Trace($"Filter with id: {filter.Id} contains {logs.Count} logs.");
         }
 
         private static FilterLog? CreateLog(LogFilter logFilter, TxReceipt txReceipt, LogEntry logEntry, long index)

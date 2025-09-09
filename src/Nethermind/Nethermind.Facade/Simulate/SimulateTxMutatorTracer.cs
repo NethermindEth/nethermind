@@ -5,6 +5,7 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using Nethermind.Abi;
+using Nethermind.Blockchain.Tracing;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Evm;
@@ -24,14 +25,15 @@ public sealed class SimulateTxMutatorTracer : TxTracer, ITxLogsMutator
     private static readonly Address Erc20Sender = new("0xeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee");
     private readonly Hash256 _currentBlockHash;
     private readonly ulong _currentBlockNumber;
-    private readonly Hash256 _txHash;
     private readonly ulong _txIndex;
     private ICollection<LogEntry>? _logsToMutate;
+    private readonly Transaction _tx;
 
-    public SimulateTxMutatorTracer(bool isTracingTransfers, Hash256 txHash, ulong currentBlockNumber, Hash256 currentBlockHash,
+    public SimulateTxMutatorTracer(bool isTracingTransfers, Transaction tx, ulong currentBlockNumber, Hash256 currentBlockHash,
         ulong txIndex)
     {
-        _txHash = txHash;
+        // Note: Tx hash will be mutated as tx is modified while processing block
+        _tx = tx;
         _currentBlockNumber = currentBlockNumber;
         _currentBlockHash = currentBlockHash;
         _txIndex = txIndex;
@@ -69,7 +71,7 @@ public sealed class SimulateTxMutatorTracer : TxTracer, ITxLogsMutator
                 Topics = entry.Topics,
                 Data = entry.Data,
                 LogIndex = (ulong)i,
-                TransactionHash = _txHash,
+                TransactionHash = _tx.Hash!,
                 TransactionIndex = _txIndex,
                 BlockHash = _currentBlockHash,
                 BlockNumber = _currentBlockNumber

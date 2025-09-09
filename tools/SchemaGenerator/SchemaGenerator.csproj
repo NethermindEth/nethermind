@@ -5,7 +5,7 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <Compile Include="update.ps1" />
+    <Content Include="update.ps1" />
   </ItemGroup>
 
   <ItemGroup>
@@ -13,8 +13,12 @@
   </ItemGroup>
 
   <ItemGroup>
+    <ProjectReference Include="..\..\src\Nethermind\Nethermind.Analytics\Nethermind.Analytics.csproj" />
+    <ProjectReference Include="..\..\src\Nethermind\Nethermind.Flashbots\Nethermind.Flashbots.csproj" />
+    <ProjectReference Include="..\..\src\Nethermind\Nethermind.Hive\Nethermind.Hive.csproj" />
     <ProjectReference Include="..\..\src\Nethermind\Nethermind.Api\Nethermind.Api.csproj" />
     <ProjectReference Include="..\..\src\Nethermind\Nethermind.Init.Snapshot\Nethermind.Init.Snapshot.csproj" />
+    <ProjectReference Include="..\..\src\Nethermind\Nethermind.JsonRpc.TraceStore\Nethermind.JsonRpc.TraceStore.csproj" />
     <ProjectReference Include="..\..\src\Nethermind\Nethermind.Optimism\Nethermind.Optimism.csproj" />
     <ProjectReference Include="..\..\src\Nethermind\Nethermind.Shutter\Nethermind.Shutter.csproj" />
     <ProjectReference Include="..\..\src\Nethermind\Nethermind.Consensus.AuRa\Nethermind.Consensus.AuRa.csproj" />

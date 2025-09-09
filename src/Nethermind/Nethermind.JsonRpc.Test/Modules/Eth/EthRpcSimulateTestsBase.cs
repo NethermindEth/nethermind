@@ -79,12 +79,12 @@ public class EthRpcSimulateTestsBase
     public static byte[] GetTxData(TestRpcBlockchain chain, PrivateKey account, string name = "recover")
     {
         // Step 1: Hash the message
-        Hash256 messageHash = Keccak.Compute("Hello, world!");
+        ValueHash256 messageHash = ValueKeccak.Compute("Hello, world!");
         // Step 2: Sign the hash
-        Signature signature = chain.EthereumEcdsa.Sign(account, messageHash);
+        Signature signature = chain.EthereumEcdsa.Sign(account, in messageHash);
 
         //Check real address
-        return GenerateTransactionDataForEcRecover(messageHash, signature, name);
+        return GenerateTransactionDataForEcRecover(new Hash256(messageHash), signature, name);
     }
 
     public static async Task<Address> DeployEcRecoverContract(TestRpcBlockchain chain, PrivateKey privateKey, string contractBytecode)

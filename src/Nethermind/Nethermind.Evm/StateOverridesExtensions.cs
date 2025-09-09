@@ -8,18 +8,18 @@ using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.Evm.CodeAnalysis;
 using Nethermind.Int256;
-using Nethermind.State;
+using Nethermind.Evm.State;
 
 namespace Nethermind.Evm;
 
 public static class StateOverridesExtensions
 {
-    public static void ApplyStateOverrides(
+
+    public static void ApplyStateOverridesNoCommit(
         this IWorldState state,
         IOverridableCodeInfoRepository overridableCodeInfoRepository,
         Dictionary<Address, AccountOverride>? overrides,
-        IReleaseSpec spec,
-        long blockNumber)
+        IReleaseSpec spec)
     {
         if (overrides is not null)
         {
@@ -39,11 +39,20 @@ public static class StateOverridesExtensions
                 state.UpdateState(accountOverride, address);
             }
         }
+    }
+
+    public static void ApplyStateOverrides(
+        this IWorldState state,
+        IOverridableCodeInfoRepository overridableCodeInfoRepository,
+        Dictionary<Address, AccountOverride>? overrides,
+        IReleaseSpec spec,
+        long blockNumber)
+    {
+        state.ApplyStateOverridesNoCommit(overridableCodeInfoRepository, overrides, spec);
 
         state.Commit(spec);
         state.CommitTree(blockNumber);
         state.RecalculateStateRoot();
-
     }
 
     private static void UpdateState(this IWorldState stateProvider, AccountOverride accountOverride, Address address)

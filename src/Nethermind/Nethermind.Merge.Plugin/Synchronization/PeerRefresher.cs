@@ -28,6 +28,7 @@ public class PeerRefresher : IPeerRefresher, IAsyncDisposable
     private (Hash256 headBlockhash, Hash256 headParentBlockhash, Hash256 finalizedBlockhash) _lastBlockhashes = (Keccak.Zero, Keccak.Zero, Keccak.Zero);
     private readonly ITimer _refreshTimer;
     private readonly ILogger _logger;
+    private bool _disposed;
 
     public PeerRefresher(IPeerDifficultyRefreshPool syncPeerPool, ITimerFactory timerFactory, ILogManager logManager)
     {
@@ -35,11 +36,12 @@ public class PeerRefresher : IPeerRefresher, IAsyncDisposable
         _refreshTimer.Elapsed += TimerOnElapsed;
         _refreshTimer.AutoReset = false;
         _syncPeerPool = syncPeerPool;
-        _logger = logManager.GetClassLogger(GetType());
+        _logger = logManager.GetClassLogger<PeerRefresher>();
     }
 
     public void RefreshPeers(Hash256 headBlockhash, Hash256 headParentBlockhash, Hash256 finalizedBlockhash)
     {
+        if (_disposed) return;
         _lastBlockhashes = (headBlockhash, headParentBlockhash, finalizedBlockhash);
         TimeSpan timePassed = DateTime.UtcNow - _lastRefresh;
         if (timePassed > _minRefreshDelay)
@@ -78,6 +80,10 @@ public class PeerRefresher : IPeerRefresher, IAsyncDisposable
         try
         {
             await RefreshPeerForFcu(syncPeer, headBlockhash, headParentBlockhash, finalizedBlockhash, delaySource.Token);
+        }
+        catch (OperationCanceledException)
+        {
+            if (_logger.IsDebug) _logger.Debug($"Peer refresh timed out.");
         }
         catch (Exception exception)
         {
@@ -199,7 +205,11 @@ public class PeerRefresher : IPeerRefresher, IAsyncDisposable
 
     public ValueTask DisposeAsync()
     {
-        _refreshTimer.Dispose();
+        if (!_disposed)
+        {
+            _disposed = true;
+            _refreshTimer.Dispose();
+        }
         return default;
     }
 }

@@ -4,12 +4,13 @@
 using FluentAssertions;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
-using Nethermind.Core.Extensions;
+using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Db;
 using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.Specs.Forks;
+using Nethermind.Evm.State;
 using Nethermind.State;
 using Nethermind.Trie;
 using Nethermind.Trie.Pruning;
@@ -26,25 +27,31 @@ namespace Nethermind.Store.Test
             MemDb codeDb = new();
             MemDb stateDb = new MemDb();
             NodeStorage nodeStorage = new NodeStorage(stateDb);
-            TrieStore trieStore = new(nodeStorage, new MemoryLimit(0.MB()), Persist.EveryBlock, new PruningConfig(), LimboLogs.Instance);
+            TestRawTrieStore trieStore = new(nodeStorage);
             WorldState stateProvider = new(trieStore, codeDb, LimboLogs.Instance);
+            StateReader stateReader = new StateReader(trieStore, codeDb, LimboLogs.Instance);
+            Hash256 stateRoot;
 
-            stateProvider.CreateAccount(TestItem.AddressA, 1);
-            stateProvider.InsertCode(TestItem.AddressA, new byte[] { 1, 2, 3 }, Istanbul.Instance);
-
-            stateProvider.CreateAccount(TestItem.AddressB, 1);
-            stateProvider.InsertCode(TestItem.AddressB, new byte[] { 1, 2, 3, 4 }, Istanbul.Instance);
-
-            for (int i = 0; i < 1000; i++)
+            using (var _ = stateProvider.BeginScope(IWorldState.PreGenesis))
             {
-                StorageCell storageCell = new(TestItem.AddressA, (UInt256)i);
-                stateProvider.Set(storageCell, new byte[] { (byte)i });
+                stateProvider.CreateAccount(TestItem.AddressA, 1);
+                stateProvider.InsertCode(TestItem.AddressA, new byte[] { 1, 2, 3 }, Istanbul.Instance);
+
+                stateProvider.CreateAccount(TestItem.AddressB, 1);
+                stateProvider.InsertCode(TestItem.AddressB, new byte[] { 1, 2, 3, 4 }, Istanbul.Instance);
+
+                for (int i = 0; i < 1000; i++)
+                {
+                    StorageCell storageCell = new(TestItem.AddressA, (UInt256)i);
+                    stateProvider.Set(storageCell, new byte[] { (byte)i });
+                }
+
+                stateProvider.Commit(Istanbul.Instance);
+
+                stateProvider.CommitTree(0);
+                stateProvider.CommitTree(1);
+                stateRoot = stateProvider.StateRoot;
             }
-
-            stateProvider.Commit(Istanbul.Instance);
-
-            stateProvider.CommitTree(0);
-            stateProvider.CommitTree(1);
 
             codeDb.Delete(Keccak.Compute(new byte[] { 1, 2, 3, 4 })); // missing code
 
@@ -54,15 +61,13 @@ namespace Nethermind.Store.Test
             Hash256 storageKey = new("0x345e54154080bfa9e8f20c99d7a0139773926479bc59e5b4f830ad94b6425332");
             nodeStorage.Set(address, path, storageKey, null);
 
-            trieStore.ClearCache();
-
             TrieStatsCollector statsCollector = new(codeDb, LimboLogs.Instance);
             VisitingOptions visitingOptions = new VisitingOptions()
             {
                 MaxDegreeOfParallelism = parallel ? 0 : 1
             };
 
-            stateProvider.Accept(statsCollector, stateProvider.StateRoot, visitingOptions);
+            stateReader.RunTreeVisitor(statsCollector, stateRoot, visitingOptions);
             var stats = statsCollector.Stats;
 
             stats.CodeCount.Should().Be(1);

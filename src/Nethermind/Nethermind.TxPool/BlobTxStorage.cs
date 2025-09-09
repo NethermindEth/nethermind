@@ -5,7 +5,6 @@ using System;
 using System.Buffers.Binary;
 using System.Collections.Generic;
 using System.Diagnostics.CodeAnalysis;
-using DotNetty.Buffers;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
@@ -141,38 +140,14 @@ public class BlobTxStorage : IBlobTxStorage
 
     private void EncodeAndSaveTx(Transaction transaction, IDb db, Span<byte> txHashPrefixed)
     {
-        int length = _txDecoder.GetLength(transaction, RlpBehaviors.InMempoolForm);
-        IByteBuffer byteBuffer = PooledByteBufferAllocator.Default.Buffer(length);
-        using NettyRlpStream rlpStream = new(byteBuffer);
-        rlpStream.Encode(transaction, RlpBehaviors.InMempoolForm);
-
-        db.PutSpan(txHashPrefixed, byteBuffer.AsSpan());
+        using NettyRlpStream rlpStream = _txDecoder.EncodeToNewNettyStream(transaction, RlpBehaviors.InMempoolForm);
+        db.PutSpan(txHashPrefixed, rlpStream.AsSpan());
     }
 
     private void EncodeAndSaveTxs(IList<Transaction> blockBlobTransactions, IDb db, long blockNumber)
     {
-        int contentLength = GetLength(blockBlobTransactions);
-
-        IByteBuffer byteBuffer = PooledByteBufferAllocator.Default.Buffer(Rlp.LengthOfSequence(contentLength));
-        using NettyRlpStream rlpStream = new(byteBuffer);
-        rlpStream.StartSequence(contentLength);
-        foreach (Transaction transaction in blockBlobTransactions)
-        {
-            _txDecoder.Encode(rlpStream, transaction, RlpBehaviors.InMempoolForm);
-        }
-
-        db.PutSpan(blockNumber.ToBigEndianSpanWithoutLeadingZeros(out _), byteBuffer.AsSpan());
-    }
-
-    private int GetLength(IList<Transaction> blockBlobTransactions)
-    {
-        int contentLength = 0;
-        foreach (Transaction transaction in blockBlobTransactions)
-        {
-            contentLength += _txDecoder.GetLength(transaction, RlpBehaviors.InMempoolForm);
-        }
-
-        return contentLength;
+        using NettyRlpStream rlpStream = _txDecoder.EncodeToNewNettyStream(blockBlobTransactions!, RlpBehaviors.InMempoolForm);
+        db.PutSpan(blockNumber.ToBigEndianSpanWithoutLeadingZeros(out _), rlpStream.AsSpan());
     }
 }
 

@@ -42,25 +42,23 @@ public class RawScopedTrieStore(INodeStorage nodeStorage, Hash256? address = nul
             _writeBatch.Dispose();
         }
 
-        public void CommitNode(ref TreePath path, NodeCommitInfo nodeCommitInfo)
+        public TrieNode CommitNode(ref TreePath path, TrieNode node)
         {
-            if (!nodeCommitInfo.IsEmptyBlockMarker && !nodeCommitInfo.Node.IsBoundaryProofNode)
+            if (!node.IsBoundaryProofNode)
             {
-                TrieNode node = nodeCommitInfo.Node;
-
                 if (node.Keccak is null)
                 {
                     ThrowUnknownHash(node);
                 }
 
-                TrieNode currentNode = nodeCommitInfo.Node;
-                currentNode.IsPersisted = true;
-                _writeBatch.Set(address, path, currentNode.Keccak, currentNode.FullRlp.Span, writeFlags);
+                node.IsPersisted = true;
+                _writeBatch.Set(address, path, node.Keccak, node.FullRlp.Span, writeFlags);
             }
+
+            return node;
         }
 
-        [DoesNotReturn]
-        [StackTraceHidden]
+        [DoesNotReturn, StackTraceHidden]
         static void ThrowUnknownHash(TrieNode node) => throw new TrieStoreException($"The hash of {node} should be known at the time of committing.");
     }
 }

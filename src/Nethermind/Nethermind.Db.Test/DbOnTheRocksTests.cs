@@ -15,6 +15,7 @@ using Nethermind.Core.Buffers;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Exceptions;
 using Nethermind.Core.Extensions;
+using Nethermind.Core.Test;
 using Nethermind.Db.Rocks;
 using Nethermind.Db.Rocks.Config;
 using Nethermind.Logging;
@@ -29,12 +30,15 @@ namespace Nethermind.Db.Test
     [Parallelizable(ParallelScope.None)]
     public class DbOnTheRocksTests
     {
+        private RocksDbConfigFactory _rocksdbConfigFactory;
         string DbPath => "testdb/" + TestContext.CurrentContext.Test.Name;
+
 
         [SetUp]
         public void Setup()
         {
             Directory.CreateDirectory(DbPath);
+            _rocksdbConfigFactory = new RocksDbConfigFactory(new DbConfig(), new PruningConfig(), new TestHardwareInfo(1.GiB()), LimboLogs.Instance);
         }
 
         [TearDown]
@@ -47,7 +51,7 @@ namespace Nethermind.Db.Test
         public void WriteOptions_is_correct()
         {
             IDbConfig config = new DbConfig();
-            using DbOnTheRocks db = new(DbPath, GetRocksDbSettings(DbPath, "Blocks"), config, LimboLogs.Instance);
+            using DbOnTheRocks db = new(DbPath, GetRocksDbSettings(DbPath, "Blocks"), config, _rocksdbConfigFactory, LimboLogs.Instance);
 
             WriteOptions? options = db.WriteFlagsToWriteOptions(WriteFlags.LowPriority);
             Native.Instance.rocksdb_writeoptions_get_low_pri(options.Handle).Should().BeTrue();
@@ -66,7 +70,7 @@ namespace Nethermind.Db.Test
         public async Task Dispose_while_writing_does_not_cause_access_violation_exception()
         {
             IDbConfig config = new DbConfig();
-            DbOnTheRocks db = new("testDispose1", GetRocksDbSettings("testDispose1", "TestDispose1"), config, LimboLogs.Instance);
+            DbOnTheRocks db = new("testDispose1", GetRocksDbSettings("testDispose1", "TestDispose1"), config, _rocksdbConfigFactory, LimboLogs.Instance);
 
             CancellationTokenSource cancelSource = new();
             ManualResetEventSlim firstWriteWait = new();
@@ -108,7 +112,7 @@ namespace Nethermind.Db.Test
         public void Dispose_wont_cause_ObjectDisposedException_when_batch_is_still_open()
         {
             IDbConfig config = new DbConfig();
-            DbOnTheRocks db = new("testDispose2", GetRocksDbSettings("testDispose2", "TestDispose2"), config, LimboLogs.Instance);
+            DbOnTheRocks db = new("testDispose2", GetRocksDbSettings("testDispose2", "TestDispose2"), config, _rocksdbConfigFactory, LimboLogs.Instance);
             _ = db.StartWriteBatch();
             db.Dispose();
         }
@@ -119,7 +123,7 @@ namespace Nethermind.Db.Test
             IDbConfig config = new DbConfig();
             config.EnableFileWarmer = true;
             {
-                using DbOnTheRocks db = new("testFileWarmer", GetRocksDbSettings("testFileWarmer", "FileWarmerTest"), config, LimboLogs.Instance);
+                using DbOnTheRocks db = new("testFileWarmer", GetRocksDbSettings("testFileWarmer", "FileWarmerTest"), config, _rocksdbConfigFactory, LimboLogs.Instance);
                 for (int i = 0; i < 1000; i++)
                 {
                     db[i.ToBigEndianByteArray()] = i.ToBigEndianByteArray();
@@ -127,7 +131,7 @@ namespace Nethermind.Db.Test
             }
 
             {
-                using DbOnTheRocks db = new("testFileWarmer", GetRocksDbSettings("testFileWarmer", "FileWarmerTest"), config, LimboLogs.Instance);
+                using DbOnTheRocks db = new("testFileWarmer", GetRocksDbSettings("testFileWarmer", "FileWarmerTest"), config, _rocksdbConfigFactory, LimboLogs.Instance);
             }
         }
 
@@ -141,7 +145,8 @@ namespace Nethermind.Db.Test
 
             Action act = () =>
             {
-                using DbOnTheRocks db = new("testFileWarmer", GetRocksDbSettings("testFileWarmer", "FileWarmerTest"), config, LimboLogs.Instance);
+                var configFactory = new RocksDbConfigFactory(config, new PruningConfig(), new TestHardwareInfo(1.GiB()), LimboLogs.Instance);
+                using DbOnTheRocks db = new("testFileWarmer", GetRocksDbSettings("testFileWarmer", "FileWarmerTest"), config, configFactory, LimboLogs.Instance);
             };
 
             if (success)
@@ -167,6 +172,7 @@ namespace Nethermind.Db.Test
             try
             {
                 CorruptedDbOnTheRocks db = new("test", GetRocksDbSettings("test", "test"), config,
+                    _rocksdbConfigFactory,
                     LimboLogs.Instance,
                     fileSystem: fileSystem);
             }
@@ -195,7 +201,7 @@ namespace Nethermind.Db.Test
 
             try
             {
-                DbOnTheRocks db = new(Path.Join(Path.GetTempPath(), "test"), GetRocksDbSettings("test", "test"), config,
+                DbOnTheRocks db = new(Path.Join(Path.GetTempPath(), "test"), GetRocksDbSettings("test", "test"), config, _rocksdbConfigFactory,
                     LimboLogs.Instance,
                     fileSystem: fileSystem,
                     rocksDbNative: native);
@@ -235,6 +241,8 @@ namespace Nethermind.Db.Test
         [SetUp]
         public void Setup()
         {
+            RocksDbConfigFactory rocksdbConfigFactory = new RocksDbConfigFactory(new DbConfig(), new PruningConfig(), new TestHardwareInfo(1.GiB()), LimboLogs.Instance);
+
             if (Directory.Exists(DbPath))
             {
                 Directory.Delete(DbPath, true);
@@ -244,7 +252,7 @@ namespace Nethermind.Db.Test
             if (_useColumnDb)
             {
                 IDbConfig config = new DbConfig();
-                ColumnsDb<ReceiptsColumns> columnsDb = new(DbPath, GetRocksDbSettings(DbPath, "Blocks"), config,
+                ColumnsDb<ReceiptsColumns> columnsDb = new(DbPath, GetRocksDbSettings(DbPath, "Blocks"), config, rocksdbConfigFactory,
                     LimboLogs.Instance, new List<ReceiptsColumns>() { ReceiptsColumns.Blocks });
                 _dbDisposable = columnsDb;
 
@@ -253,7 +261,7 @@ namespace Nethermind.Db.Test
             else
             {
                 IDbConfig config = new DbConfig();
-                _db = new DbOnTheRocks(DbPath, GetRocksDbSettings(DbPath, "Blocks"), config, LimboLogs.Instance);
+                _db = new DbOnTheRocks(DbPath, GetRocksDbSettings(DbPath, "Blocks"), config, rocksdbConfigFactory, LimboLogs.Instance);
                 _dbDisposable = _db;
             }
         }
@@ -389,6 +397,13 @@ namespace Nethermind.Db.Test
             parsedOptions["optimize_filters_for_hits"].Should().Be("false");
             parsedOptions["memtable_whole_key_filtering"].Should().Be("true");
         }
+
+        [Test]
+        public void Can_GetMetric_AfterDispose()
+        {
+            _db.Dispose();
+            _db.GatherMetric().Size.Should().Be(0);
+        }
     }
 
     class CorruptedDbOnTheRocks : DbOnTheRocks
@@ -397,11 +412,12 @@ namespace Nethermind.Db.Test
             string basePath,
             DbSettings dbSettings,
             IDbConfig dbConfig,
+            IRocksDbConfigFactory rocksDbConfigFactory,
             ILogManager logManager,
             IList<string>? columnFamilies = null,
             RocksDbSharp.Native? rocksDbNative = null,
             IFileSystem? fileSystem = null
-        ) : base(basePath, dbSettings, dbConfig, logManager, columnFamilies, rocksDbNative, fileSystem)
+        ) : base(basePath, dbSettings, dbConfig, rocksDbConfigFactory, logManager, columnFamilies, rocksDbNative, fileSystem)
         {
         }
 

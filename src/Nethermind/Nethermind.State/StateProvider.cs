@@ -18,9 +18,9 @@ using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Resettables;
 using Nethermind.Core.Specs;
+using Nethermind.Evm.Tracing.State;
 using Nethermind.Int256;
 using Nethermind.Logging;
-using Nethermind.State.Tracing;
 using Nethermind.Trie;
 using Nethermind.Trie.Pruning;
 
@@ -113,15 +113,6 @@ namespace Nethermind.State
             _intraTxCache.TryGetValue(address, out Stack<int> value)
                 ? _changes[value.Peek()]!.ChangeType != ChangeType.Delete
                 : GetAndAddToCache(address) is not null;
-
-        public bool IsEmptyAccount(Address address)
-        {
-            Account? account = GetThroughCache(address);
-            return account?.IsEmpty ?? ThrowIfNull(address);
-
-            [DoesNotReturn, StackTraceHidden]
-            static bool ThrowIfNull(Address address) => throw new InvalidOperationException($"Account {address} is null when checking if empty");
-        }
 
         public Account GetAccount(Address address) => GetThroughCache(address) ?? Account.TotallyEmpty;
 

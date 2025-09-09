@@ -19,13 +19,15 @@ using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.Specs;
 using Nethermind.Specs.Forks;
-using Nethermind.State;
+using Nethermind.Evm.State;
 using Nethermind.Trie.Pruning;
 using NSubstitute;
 using NUnit.Framework;
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using Nethermind.Blockchain.Tracing;
+using Nethermind.State;
 
 namespace Nethermind.Consensus.Test;
 
@@ -35,6 +37,7 @@ public class ExecutionProcessorTests
     private ITransactionProcessor _transactionProcessor;
     private IWorldState _stateProvider;
     private IReleaseSpec _spec;
+    private IDisposable _worldStateCloser;
     private static readonly UInt256 AccountBalance = 1.Ether();
     private static readonly Address DepositContractAddress = Eip6110Constants.MainnetDepositContractAddress;
     private static readonly Address eip7002Account = Eip7002Constants.WithdrawalRequestPredeployAddress;
@@ -70,6 +73,7 @@ public class ExecutionProcessorTests
         _specProvider = MainnetSpecProvider.Instance;
         IWorldStateManager worldStateManager = TestWorldStateFactory.CreateForTest();
         _stateProvider = worldStateManager.GlobalWorldState;
+        _worldStateCloser = _stateProvider.BeginScope(IWorldState.PreGenesis);
         _stateProvider.CreateAccount(eip7002Account, AccountBalance);
         _stateProvider.CreateAccount(eip7251Account, AccountBalance);
 
@@ -119,6 +123,12 @@ public class ExecutionProcessorTests
 
                 static int GetRequestsByteSize(IEnumerable<ExecutionRequest> requests) => requests.Sum(r => r.RequestData.Length);
             });
+    }
+
+    [TearDown]
+    public void TearDown()
+    {
+        _worldStateCloser?.Dispose();
     }
 
     private static Hash256 CalculateHash(

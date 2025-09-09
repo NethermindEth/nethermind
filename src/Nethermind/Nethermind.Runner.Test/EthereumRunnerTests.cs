@@ -6,7 +6,6 @@ using System;
 using System.Collections;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
-using System.Diagnostics;
 using System.IO;
 using System.IO.Abstractions;
 using System.Net;
@@ -20,19 +19,21 @@ using Autofac.Core.Lifetime;
 using FluentAssertions;
 using Nethermind.Api;
 using Nethermind.Api.Extensions;
-using Nethermind.Blockchain;
-using Nethermind.Blockchain.Receipts;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Config;
 using Nethermind.Consensus;
+using Nethermind.Consensus.AuRa;
+using Nethermind.Consensus.AuRa.InitializationSteps;
+using Nethermind.Consensus.AuRa.Validators;
 using Nethermind.Consensus.Clique;
 using Nethermind.Consensus.Processing;
+using Nethermind.Consensus.Producers;
 using Nethermind.Consensus.Rewards;
+using Nethermind.Consensus.Tracing;
 using Nethermind.Consensus.Validators;
 using Nethermind.Core;
 using Nethermind.Core.Container;
 using Nethermind.Core.Crypto;
-using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Core.Test.IO;
 using Nethermind.Core.Test.Modules;
@@ -46,6 +47,7 @@ using Nethermind.Flashbots;
 using Nethermind.HealthChecks;
 using Nethermind.Hive;
 using Nethermind.Init.Steps;
+using Nethermind.JsonRpc;
 using Nethermind.JsonRpc.Modules;
 using Nethermind.Logging;
 using Nethermind.Merge.Plugin.Handlers;
@@ -57,13 +59,15 @@ using Nethermind.Runner.Ethereum;
 using Nethermind.Optimism;
 using Nethermind.Runner.Ethereum.Api;
 using Nethermind.Serialization.Rlp;
-using Nethermind.State;
+using Nethermind.Evm.State;
 using Nethermind.Synchronization;
 using Nethermind.Taiko.TaikoSpec;
 using Nethermind.TxPool;
 using NSubstitute;
 using NUnit.Framework;
 using Build = Nethermind.Runner.Test.Ethereum.Build;
+using Nethermind.Api.Steps;
+using Nethermind.Consensus.Scheduler;
 
 namespace Nethermind.Runner.Test;
 
@@ -191,9 +195,9 @@ public class EthereumRunnerTests
         );
         pluginLoader.Load();
 
-        ApiBuilder builder = new ApiBuilder(Substitute.For<IProcessExitSource>(), testCase.configProvider, LimboLogs.Instance);
+        ApiBuilder builder = new(Substitute.For<IProcessExitSource>(), testCase.configProvider, LimboLogs.Instance);
         IList<INethermindPlugin> plugins = await pluginLoader.LoadPlugins(testCase.configProvider, builder.ChainSpec);
-        plugins.Add(new RunnerTestPlugin());
+        plugins.Add(new RunnerTestPlugin(true));
         EthereumRunner runner = builder.CreateEthereumRunner(plugins);
 
         INethermindApi api = runner.Api;
@@ -207,22 +211,25 @@ public class EthereumRunnerTests
 
         api.NodeKey = new InsecureProtectedPrivateKey(TestItem.PrivateKeyA);
         api.FileSystem = Substitute.For<IFileSystem>();
-        api.BlockTree = Substitute.For<IBlockTree>();
-        api.ReceiptStorage = Substitute.For<IReceiptStorage>();
-        api.ReceiptFinder = Substitute.For<IReceiptFinder>();
-        api.DbProvider = await TestMemDbProvider.InitAsync();
         api.BlockProducerRunner = Substitute.For<IBlockProducerRunner>();
+        api.BackgroundTaskScheduler = Substitute.For<IBackgroundTaskScheduler>();
+        api.NonceManager = Substitute.For<INonceManager>();
+
+        if (api is AuRaNethermindApi auRaNethermindApi)
+        {
+            auRaNethermindApi.FinalizationManager = Substitute.For<IAuRaBlockFinalizationManager>();
+        }
 
         try
         {
-            var stepsLoader = runner.LifetimeScope.Resolve<IEthereumStepsLoader>();
-            foreach (var step in stepsLoader.ResolveStepsImplementations())
+            IEthereumStepsLoader stepsLoader = runner.LifetimeScope.Resolve<IEthereumStepsLoader>();
+            foreach (StepInfo step in stepsLoader.ResolveStepsImplementations())
             {
                 runner.LifetimeScope.Resolve(step.StepType);
             }
 
             // Many components are not part of the step constructor param, so we have resolve them manually here
-            foreach (var propertyInfo in api.GetType().Properties())
+            foreach (PropertyInfo? propertyInfo in api.GetType().Properties())
             {
                 // Property with `SkipServiceCollection` make property from container.
                 if (propertyInfo.GetCustomAttribute<SkipServiceCollectionAttribute>() is not null)
@@ -264,15 +271,16 @@ public class EthereumRunnerTests
             api.Context.Resolve<IUnclesValidator>();
             api.Context.Resolve<ITxValidator>();
             api.Context.Resolve<IReadOnlyTxProcessingEnvFactory>();
+            api.Context.Resolve<IBlockProducerEnvFactory>().Create();
 
             // A root registration should not have both keyed and unkeyed registration. This is confusing and may
             // cause unexpected registration. Either have a single non-keyed registration or all keyed-registration,
             // or put them in an unambiguous container class.
-            Dictionary<Type, object> keyedTypes = new();
-            foreach (var registrations in api.Context.ComponentRegistry.Registrations)
+            Dictionary<Type, object> keyedTypes = [];
+            foreach (IComponentRegistration registrations in api.Context.ComponentRegistry.Registrations)
             {
                 if (registrations.Lifetime != RootScopeLifetime.Instance) continue;
-                foreach (var registrationsService in registrations.Services)
+                foreach (Service registrationsService in registrations.Services)
                 {
                     if (registrationsService is KeyedService keyedService)
                     {
@@ -296,13 +304,15 @@ public class EthereumRunnerTests
                 typeof(IProtectedPrivateKey),
                 typeof(PublicKey),
                 typeof(IPrivateKeyGenerator),
+                typeof(ITracer), // Completely different construction on every case
+                typeof(IReadOnlyStateProvider), // For which block? Use IChainHeadInfoProvider, or preferably, IStateReader instead
                 typeof(string),
             ];
 
-            foreach (var registrations in api.Context.ComponentRegistry.Registrations)
+            foreach (IComponentRegistration registrations in api.Context.ComponentRegistry.Registrations)
             {
                 if (registrations.Lifetime != RootScopeLifetime.Instance) continue;
-                foreach (var registrationsService in registrations.Services)
+                foreach (Service registrationsService in registrations.Services)
                 {
                     if (registrationsService is TypedService typedService)
                     {
@@ -413,34 +423,49 @@ public class EthereumRunnerTests
         }
     }
 
-    private class RunnerTestPlugin : INethermindPlugin
+    private class RunnerTestPlugin(bool forStepTest = false) : INethermindPlugin
     {
         public string Name { get; } = "Runner test plugin";
         public string Description { get; } = "A plugin to pass runner test and make it faster";
         public string Author { get; } = "";
         public bool Enabled { get; } = true;
 
-        public ValueTask DisposeAsync() => ValueTask.CompletedTask;
+        public IModule Module => new RunnerTestModule(forStepTest);
 
-        public IModule Module => new RunnerTestModule();
-
-        private class RunnerTestModule : Autofac.Module
+        private class RunnerTestModule(bool forStepTest) : Autofac.Module
         {
             protected override void Load(ContainerBuilder builder)
             {
                 base.Load(builder);
 
-                var ipResolver = Substitute.For<IIPResolver>();
+                IIPResolver ipResolver = Substitute.For<IIPResolver>();
                 ipResolver.ExternalIp.Returns(IPAddress.Parse("127.0.0.1"));
                 ipResolver.LocalIp.Returns(IPAddress.Parse("127.0.0.1"));
-                builder.AddSingleton(ipResolver);
 
-                builder.AddDecorator<IInitConfig>((ctx, initConfig) =>
+                builder
+                    .AddSingleton(ipResolver)
+                    .AddDecorator<IInitConfig>((ctx, initConfig) =>
+                    {
+                        initConfig.DiagnosticMode = DiagnosticMode.MemDb;
+                        initConfig.InRunnerTest = true;
+                        return initConfig;
+                    })
+                    .AddDecorator<IJsonRpcConfig>((ctx, jsonRpcConfig) =>
+                    {
+                        jsonRpcConfig.PreloadRpcModules = true; // So that rpc is resolved early so that we know if something is wrong in test
+                        return jsonRpcConfig;
+                    });
+
+                if (forStepTest)
                 {
-                    initConfig.DiagnosticMode = DiagnosticMode.MemDb;
-                    initConfig.InRunnerTest = true;
-                    return initConfig;
-                });
+                    // Special case for aura where by default it try to cast the main blockchain processor
+                    // to extract the reporting validator. The blockchain processor is not DI so it fail in step test but
+                    // pass in runner test.
+                    builder
+                        .AddSingleton(Substitute.For<IReportingValidator>())
+                        ;
+                }
+
             }
         }
     }
