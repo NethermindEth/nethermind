@@ -210,7 +210,6 @@ public class EthereumRunnerTests
         _ = api.Config<IHealthChecksConfig>(); // Randomly fail type disccovery if not resolved early.
 
         api.NodeKey = new InsecureProtectedPrivateKey(TestItem.PrivateKeyA);
-        api.FileSystem = Substitute.For<IFileSystem>();
         api.BlockProducerRunner = Substitute.For<IBlockProducerRunner>();
         api.BackgroundTaskScheduler = Substitute.For<IBackgroundTaskScheduler>();
         api.NonceManager = Substitute.For<INonceManager>();
