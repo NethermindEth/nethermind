@@ -756,9 +756,16 @@ namespace Nethermind.Db
             normalized = normalized.Length > 0 ? normalized : ZeroArray;
             normalized.CopyTo(buffer);
 
-            if (topicIndex is not null) buffer[0] ^= (byte)topicIndex;
+            //if (topicIndex is not null) buffer[0] ^= (byte)topicIndex;
 
-            return buffer[..normalized.Length];
+            var length = normalized.Length;
+            if (topicIndex is not null && length != Hash256.Size) // Most 32-byte topics have index=0, ignore collisions for them
+            {
+                buffer[normalized.Length] = (byte)topicIndex;
+                length++;
+            }
+
+            return buffer[..length];
         }
 
         /// <summary>
