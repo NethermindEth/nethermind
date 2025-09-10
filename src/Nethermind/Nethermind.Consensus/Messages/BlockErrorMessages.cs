@@ -150,4 +150,13 @@ public static class BlockErrorMessages
 
     public static string ExceededBlockSizeLimit(int limit) =>
         $"ExceededBlockSizeLimit: Exceeded block size limit of {limit} bytes.";
+
+    public const string MissingBlockLevelAccessList = "MissingBlockLevelAccessList: Must be present in block body.";
+
+    public const string InvalidBlockLevelAccessList =
+        $"InvalidBlockLevelAccessList: Unable to decode.";
+
+    public static string InvalidBlockLevelAccessListRoot(Hash256 expected, Hash256 actual) =>
+        $"InvalidBlockLevelAccessListRoot: Expected {expected}, got {actual}";
+
 }
