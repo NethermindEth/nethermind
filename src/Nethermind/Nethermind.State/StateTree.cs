@@ -65,7 +65,15 @@ namespace Nethermind.State
                 return false;
             }
 
-            return _decoder.TryDecodeStruct(ref valueDecoderContext, out account);
+            AccountStruct? nullableStruct = _structDecoder.Decode(ref valueDecoderContext);
+            if (nullableStruct is null)
+            {
+                account = AccountStruct.TotallyEmpty;
+                return false;
+            }
+
+            account = nullableStruct.Value;
+            return true;
         }
 
         [DebuggerStepThrough]

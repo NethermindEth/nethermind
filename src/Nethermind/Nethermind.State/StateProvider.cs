@@ -74,7 +74,7 @@ namespace Nethermind.State
             _getStateFromTrie = address =>
             {
                 Metrics.IncrementStateTreeReads();
-                return _tree.Get(address)?.ToStruct();
+                return _tree.GetStruct(address);
             };
         }
 
