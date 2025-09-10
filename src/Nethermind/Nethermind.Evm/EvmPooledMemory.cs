@@ -368,7 +368,7 @@ public struct EvmPooledMemory : IEvmMemory
     }
 }
 
-internal static class UInt256Extensions
+public static class UInt256Extensions
 {
     public static bool IsLargerThanULong(in this UInt256 value) => (value.u1 | value.u2 | value.u3) != 0;
     public static bool IsLargerThanLong(in this UInt256 value) => value.IsLargerThanULong() || value.u0 > long.MaxValue;
