@@ -99,7 +99,7 @@ public class XdcBlockHeader : BlockHeader
 
     public bool IsEpochSwitch(ISpecProvider specProvider)
     {
-        XdcReleaseSpec spec = specProvider.GetXdcSpec(this);
+        IXdcReleaseSpec spec = specProvider.GetXdcSpec(this);
         if (spec.SwitchBlock == this.Number)
         {
             return true;

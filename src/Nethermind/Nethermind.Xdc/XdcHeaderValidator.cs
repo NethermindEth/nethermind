@@ -34,7 +34,7 @@ internal class XdcHeaderValidator(IBlockTree blockTree, ISealValidator sealValid
         ExtraFieldsV2? extraFields = xdcHeader.ExtraConsensusData;
         if (extraFields is null)
         {
-            error = "ExtraData doesn't contain required consensus data.";
+            error = "Header ExtraData doesn't contain required consensus data.";
             return false;
         }
 
@@ -52,7 +52,7 @@ internal class XdcHeaderValidator(IBlockTree blockTree, ISealValidator sealValid
             return false;
         }
 
-        if (xdcHeader.UnclesHash != Keccak.OfAnEmptyString)
+        if (xdcHeader.UnclesHash != Keccak.OfAnEmptySequenceRlp)
         {
             error = $"Cannot contain uncles.";
             return false;
@@ -100,7 +100,7 @@ internal class XdcHeaderValidator(IBlockTree blockTree, ISealValidator sealValid
 
     protected override bool ValidateTimestamp(BlockHeader header, BlockHeader parent, ref string? error)
     {
-        XdcReleaseSpec xdcSpec = _specProvider.GetXdcSpec((XdcBlockHeader)header); // will throw if no spec found
+        IXdcReleaseSpec xdcSpec = _specProvider.GetXdcSpec((XdcBlockHeader)header); // will throw if no spec found
 
         //TODO check if V2 header
         if (parent.Timestamp + (ulong)xdcSpec.MinePeriod > header.Timestamp)

@@ -50,7 +50,7 @@ public class XdcBlockHeaderBuilder : BlockHeaderBuilder
         var keyBuilder = new PrivateKeyGenerator();
         var blockRoundInfo = new BlockRoundInfo(Hash256.Zero, 1, 1);
         var quorumForSigning = new QuorumCert(blockRoundInfo, null, 450);
-        var signatures = Enumerable.Range(0, 72).Select(i => keyBuilder.Generate()).Select(k => ecdsa.Sign(k, new ValueHash256(encoder.Encode(quorumForSigning, RlpBehaviors.ForSealing).Bytes)));
+        var signatures = Enumerable.Range(0, 72).Select(i => keyBuilder.Generate()).Select(k => ecdsa.Sign(k, Keccak.Compute(encoder.Encode(quorumForSigning, RlpBehaviors.ForSealing).Bytes)));
         var quorumCert = new QuorumCert(blockRoundInfo, signatures.ToArray(), 450);
         var extraFieldsV2 = new ExtraFieldsV2(1, quorumCert);
         XdcTestObjectInternal.ExtraConsensusData = extraFieldsV2;

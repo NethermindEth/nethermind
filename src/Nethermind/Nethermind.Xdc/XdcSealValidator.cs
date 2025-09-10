@@ -44,7 +44,7 @@ internal class XdcSealValidator(ISnapshotManager snapshotManager, ISpecProvider 
 
         //TODO verify QC
 
-        XdcReleaseSpec xdcSpec = specProvider.GetXdcSpec(xdcHeader); // will throw if no spec found  
+        IXdcReleaseSpec xdcSpec = specProvider.GetXdcSpec(xdcHeader); // will throw if no spec found  
 
 
         ImmutableSortedSet<Address> masternodes;
