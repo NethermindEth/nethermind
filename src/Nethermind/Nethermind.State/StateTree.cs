@@ -16,7 +16,8 @@ namespace Nethermind.State
 {
     public class StateTree : PatriciaTree
     {
-        private readonly AccountDecoder _decoder = new();
+        private static readonly AccountDecoder _decoder = AccountDecoder.Instance;
+        private static readonly AccountStructDecoder _structDecoder = AccountStructDecoder.Instance;
 
         public static readonly Rlp EmptyAccountRlp = Rlp.Encode(Account.TotallyEmpty);
 
@@ -44,6 +45,13 @@ namespace Nethermind.State
         {
             ReadOnlySpan<byte> bytes = Get(KeccakCache.Compute(address.Bytes).BytesAsSpan, rootHash);
             return bytes.IsEmpty ? null : _decoder.Decode(bytes);
+        }
+
+        [DebuggerStepThrough]
+        public AccountStruct? GetStruct(Address address, Hash256? rootHash = null)
+        {
+            ReadOnlySpan<byte> bytes = Get(KeccakCache.Compute(address.Bytes).BytesAsSpan, rootHash);
+            return bytes.IsEmpty ? null : _structDecoder.Decode(bytes);
         }
 
         [DebuggerStepThrough]
