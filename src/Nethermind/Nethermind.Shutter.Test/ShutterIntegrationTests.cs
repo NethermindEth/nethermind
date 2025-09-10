@@ -74,7 +74,7 @@ public class ShutterIntegrationTests : BaseEngineModuleTests
         ExecutionPayload lastPayload = executionPayloads[executionPayloads.Count - 1];
 
         // no events loaded initially
-        var txs = chain.Api!.TxSource.GetTransactions(chain.BlockTree!.Head!.Header, 0, payloadAttributes).ToList();
+        List<Transaction> txs = [.. chain.Api!.TxSource.GetTransactions(chain.BlockTree!.Head!.Header, 0, payloadAttributes)];
         Assert.That(txs, Has.Count.EqualTo(0));
 
         chain.Api.AdvanceSlot(20);
@@ -82,7 +82,7 @@ public class ShutterIntegrationTests : BaseEngineModuleTests
         IReadOnlyList<ExecutionPayload> payloads = await ProduceBranchV1(rpc, chain, 1, lastPayload, true, null, 5);
         lastPayload = payloads[0];
 
-        txs = chain.Api.TxSource.GetTransactions(chain.BlockTree!.Head!.Header, 0, payloadAttributes).ToList();
+        txs = [.. chain.Api.TxSource.GetTransactions(chain.BlockTree!.Head!.Header, 0, payloadAttributes)];
         Assert.That(txs, Has.Count.EqualTo(20));
 
         payloads = await ProduceBranchV1(rpc, chain, 1, lastPayload, true, null, 5);
