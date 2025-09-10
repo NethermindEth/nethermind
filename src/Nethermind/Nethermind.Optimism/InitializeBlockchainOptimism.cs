@@ -19,10 +19,6 @@ public class InitializeBlockchainOptimism(OptimismNethermindApi api) : Initializ
     {
         await base.InitBlockchain();
 
-        var withdrawalProcessor = new OptimismWithdrawalProcessor(api.WorldStateManager!.GlobalWorldState, api.LogManager, api.SpecHelper);
-        var genesisPostProcessor = new OptimismGenesisPostProcessor(withdrawalProcessor, api.SpecProvider);
-        api.GenesisPostProcessor = genesisPostProcessor;
-
         api.RegisterTxType<DepositTransactionForRpc>(new OptimismTxDecoder<Transaction>(), Always.Valid);
         api.RegisterTxType<LegacyTransactionForRpc>(new OptimismLegacyTxDecoder(), new OptimismLegacyTxValidator(api.SpecProvider!.ChainId));
     }

@@ -18,7 +18,7 @@ using NUnit.Framework;
 namespace Nethermind.Blockchain.Test;
 
 [Parallelizable(ParallelScope.All)]
-public class GenesisLoaderTests
+public class GenesisBuilderTests
 {
     [Test, MaxTime(Timeout.MaxTestTime)]
     public void Can_load_genesis_with_emtpy_accounts_and_storage()
@@ -61,17 +61,15 @@ public class GenesisLoaderTests
         specProvider.GetSpec(Arg.Any<ForkActivation>()).Returns(Berlin.Instance);
         ITransactionProcessor transactionProcessor = Substitute.For<ITransactionProcessor>();
         IGenesisPostProcessor genesisPostProcessor = Substitute.For<IGenesisPostProcessor>();
-        GenesisLoader genesisLoader = new(
+        GenesisBuilder genesisLoader = new(
             chainSpec,
             specProvider,
-            worldStateManager.GlobalStateReader,
             stateProvider,
             transactionProcessor,
-            genesisPostProcessor,
-            LimboLogs.Instance);
+            genesisPostProcessor);
 
         using var _ = stateProvider.BeginScope(IWorldState.PreGenesis);
-        return genesisLoader.Load();
+        return genesisLoader.Build();
     }
 
 

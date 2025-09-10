@@ -7,11 +7,11 @@ using Nethermind.Core.Crypto;
 using Nethermind.Int256;
 using Nethermind.Serialization.Rlp;
 namespace Nethermind.Xdc;
-public sealed class XdcHeaderDecoder : IHeaderDecoder
+public sealed class XdcHeaderDecoder : IHeaderDecoder<XdcBlockHeader>
 {
     private const int NonceLength = 8;
 
-    public BlockHeader? Decode(ref Rlp.ValueDecoderContext decoderContext,
+    public XdcBlockHeader? Decode(ref Rlp.ValueDecoderContext decoderContext,
         RlpBehaviors rlpBehaviors = RlpBehaviors.None)
     {
         if (decoderContext.IsNextItemNull())
@@ -75,7 +75,7 @@ public sealed class XdcHeaderDecoder : IHeaderDecoder
         return blockHeader;
     }
 
-    public BlockHeader? Decode(RlpStream rlpStream, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+    public XdcBlockHeader? Decode(RlpStream rlpStream, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
     {
         if (rlpStream.IsNextItemNull())
         {
@@ -139,7 +139,7 @@ public sealed class XdcHeaderDecoder : IHeaderDecoder
         return blockHeader;
     }
 
-    public void Encode(RlpStream rlpStream, BlockHeader? header, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+    public void Encode(RlpStream rlpStream, XdcBlockHeader? header, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
     {
         if (header is null)
         {
@@ -177,7 +177,7 @@ public sealed class XdcHeaderDecoder : IHeaderDecoder
 
     }
 
-    public Rlp Encode(BlockHeader? item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+    public Rlp Encode(XdcBlockHeader? item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
     {
         if (item is null)
         {
@@ -226,7 +226,7 @@ public sealed class XdcHeaderDecoder : IHeaderDecoder
         return contentLength;
     }
 
-    public int GetLength(BlockHeader? item, RlpBehaviors rlpBehaviors)
+    public int GetLength(XdcBlockHeader? item, RlpBehaviors rlpBehaviors)
     {
         if (item is not XdcBlockHeader header)
             throw new ArgumentException("XdcHeaderRlpCodec expects XdcBlockHeader.", nameof(header));
