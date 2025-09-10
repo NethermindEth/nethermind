@@ -66,7 +66,7 @@ public class GenesisBuilderTests
             specProvider,
             stateProvider,
             transactionProcessor,
-            [genesisPostProcessor]);
+            genesisPostProcessor);
 
         using var _ = stateProvider.BeginScope(IWorldState.PreGenesis);
         return genesisLoader.Build();
