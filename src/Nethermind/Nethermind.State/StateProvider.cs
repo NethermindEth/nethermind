@@ -824,18 +824,15 @@ namespace Nethermind.State
             return ref account;
         }
 
-        // TODO: Return readonly ref
         private ref readonly AccountStruct? GetThroughCache(Address address)
         {
             if (_intraTxCache.TryGetValue(address, out Stack<int> value))
             {
-                return ref  CollectionsMarshal.AsSpan(_changes)[value.Peek()].Account;
+                return ref CollectionsMarshal.AsSpan(_changes)[value.Peek()].Account;
             }
 
-            ref readonly AccountStruct? account = ref GetAndAddToCache(address);
-            return ref account;
+            return ref GetAndAddToCache(address);
         }
-
 
         private ref readonly AccountStruct GetThroughCacheOrThrowIfNull(Address address)
         {

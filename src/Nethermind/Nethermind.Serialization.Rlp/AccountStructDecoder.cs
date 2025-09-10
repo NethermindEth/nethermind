@@ -33,15 +33,6 @@ public class AccountStructDecoder : IRlpObjectDecoder<AccountStruct?>, IRlpStrea
         return (codeHash, storageRoot);
     }
 
-    public ValueHash256 DecodeStorageRootOnly(ref Rlp.ValueDecoderContext context)
-    {
-        context.SkipLength();
-        context.SkipItem();
-        context.SkipItem();
-        ValueHash256 storageRoot = DecodeStorageRoot(context);
-        return storageRoot;
-    }
-
     public AccountStruct? Decode(RlpStream rlpStream, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
     {
         int length = rlpStream.ReadSequenceLength();
@@ -115,23 +106,6 @@ public class AccountStructDecoder : IRlpObjectDecoder<AccountStruct?>, IRlpStrea
         }
     }
 
-    public int GetLength(AccountStruct[] accounts)
-    {
-        int length = 0;
-
-        if (accounts is null || accounts.Length == 0)
-        {
-            return 1;
-        }
-
-        for (int i = 0; i < accounts.Length; i++)
-        {
-            length += GetLength(accounts[i]);
-        }
-
-        return length;
-    }
-
     public int GetLength(AccountStruct? item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
     {
         if (item is null)
@@ -194,23 +168,6 @@ public class AccountStructDecoder : IRlpObjectDecoder<AccountStruct?>, IRlpStrea
         return storageRoot;
     }
 
-    private ValueHash256 DecodeStorageRoot(Rlp.ValueDecoderContext context)
-    {
-        ValueHash256 storageRoot;
-        if (_slimFormat && context.IsNextItemEmptyArray())
-        {
-            context.ReadByte();
-            storageRoot = ValueKeccak.EmptyTreeHash;
-        }
-        else
-        {
-            storageRoot = context.DecodeKeccak()!;
-        }
-
-        return storageRoot;
-    }
-
-
     private ValueHash256 DecodeCodeHash(RlpStream rlpStream)
     {
         ValueHash256 codeHash;
@@ -249,33 +206,23 @@ public class AccountStructDecoder : IRlpObjectDecoder<AccountStruct?>, IRlpStrea
 
     private ValueHash256 DecodeStorageRoot(ref Rlp.ValueDecoderContext rlpStream)
     {
-        ValueHash256 storageRoot;
         if (_slimFormat && rlpStream.IsNextItemEmptyArray())
         {
             rlpStream.ReadByte();
-            storageRoot = ValueKeccak.EmptyTreeHash;
-        }
-        else
-        {
-            storageRoot = rlpStream.DecodeKeccak();
+            return ValueKeccak.EmptyTreeHash;
         }
 
-        return storageRoot;
+        return rlpStream.DecodeValueKeccakNonNull();
     }
 
     private ValueHash256 DecodeCodeHash(ref Rlp.ValueDecoderContext rlpStream)
     {
-        ValueHash256 codeHash;
         if (_slimFormat && rlpStream.IsNextItemEmptyArray())
         {
             rlpStream.ReadByte();
-            codeHash = ValueKeccak.OfAnEmptyString;
-        }
-        else
-        {
-            codeHash = rlpStream.DecodeKeccak();
+            return ValueKeccak.OfAnEmptyString;
         }
 
-        return codeHash;
+        return rlpStream.DecodeValueKeccakNonNull();
     }
 }
