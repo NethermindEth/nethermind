@@ -22,7 +22,7 @@ public class GenesisBuilder(
     ISpecProvider specProvider,
     IWorldState stateProvider,
     ITransactionProcessor transactionProcessor,
-    IGenesisPostProcessor[] postProcessors
+    params Span<IGenesisPostProcessor> postProcessors
 ) : IGenesisBuilder
 {
 
