@@ -6,6 +6,7 @@ using System.Collections.Generic;
 using System.Runtime.CompilerServices;
 using System.Threading;
 using Nethermind.Core;
+using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Serialization.Rlp;
 using Nethermind.State;
@@ -56,6 +57,7 @@ namespace Nethermind.Synchronization.SnapSync
             List<ValueHash256> codeHashes = new();
             bool hasExtraStorage = false;
 
+            using ArrayPoolList<PatriciaTree.BulkSetEntry> entries = new ArrayPoolList<PatriciaTree.BulkSetEntry>(accounts.Count);
             for (var index = 0; index < accounts.Count; index++)
             {
                 PathWithAccount account = accounts[index];
@@ -76,13 +78,16 @@ namespace Nethermind.Synchronization.SnapSync
                     codeHashes.Add(account.Account.CodeHash);
                 }
 
-                Rlp rlp = tree.Set(account.Path, account.Account);
-                if (rlp is not null)
+                var account_ = account.Account;
+                Rlp rlp = account_ is null ? null : account_.IsTotallyEmpty ? StateTree.EmptyAccountRlp : Rlp.Encode(account_);
+                entries.Add(new PatriciaTree.BulkSetEntry(account.Path, rlp?.Bytes));
+                if (account is not null)
                 {
                     Interlocked.Add(ref Metrics.SnapStateSynced, rlp.Bytes.Length);
                 }
             }
 
+            tree.BulkSet(entries, PatriciaTree.Flags.WasSorted);
             tree.UpdateRootHash();
 
             if (tree.RootHash.ValueHash256 != expectedRootHash)
@@ -151,13 +156,15 @@ namespace Nethermind.Synchronization.SnapSync
                 return (result, true);
             }
 
+            using ArrayPoolList<PatriciaTree.BulkSetEntry> entries = new ArrayPoolList<PatriciaTree.BulkSetEntry>(slots.Count);
             for (var index = 0; index < slots.Count; index++)
             {
                 PathWithStorageSlot slot = slots[index];
                 Interlocked.Add(ref Metrics.SnapStateSynced, slot.SlotRlpValue.Length);
-                tree.Set(in slot.Path, slot.SlotRlpValue, rlpEncode: false);
+                entries.Add(new PatriciaTree.BulkSetEntry(slot.Path, slot.SlotRlpValue));
             }
 
+            tree.BulkSet(entries, PatriciaTree.Flags.WasSorted);
             tree.UpdateRootHash();
 
             if (tree.RootHash.ValueHash256 != account.Account.StorageRoot)

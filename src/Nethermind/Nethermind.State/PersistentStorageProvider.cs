@@ -17,6 +17,8 @@ using Nethermind.Core.Threading;
 using Nethermind.Evm.Tracing.State;
 using Nethermind.Int256;
 using Nethermind.Logging;
+using Nethermind.Serialization.Rlp;
+using Nethermind.Trie;
 using Nethermind.Trie.Pruning;
 
 namespace Nethermind.State;
@@ -447,6 +449,7 @@ internal sealed class PersistentStorageProvider : PartialStorageProviderBase
     {
         private bool _missingAreDefault;
         private readonly Dictionary<UInt256, ChangeTrace> _dictionary = new(Comparer.Instance);
+        public int EstimatedSize => _dictionary.Count;
 
         public void ClearAndSetMissingAsDefault()
         {
@@ -619,7 +622,9 @@ internal sealed class PersistentStorageProvider : PartialStorageProviderBase
             Db.Metrics.IncrementStorageTreeReads();
 
             EnsureStorageTree();
-            return !storageCell.IsHash ? StorageTree.Get(storageCell.Index) : StorageTree.GetArray(storageCell.Hash.Bytes);
+            return !storageCell.IsHash
+                ? StorageTree.Get(storageCell.Index)
+                : StorageTree.GetArray(storageCell.Hash.Bytes);
         }
 
         public (int writes, int skipped) ProcessStorageChanges()
@@ -628,25 +633,52 @@ internal sealed class PersistentStorageProvider : PartialStorageProviderBase
 
             int writes = 0;
             int skipped = 0;
-            foreach (var kvp in BlockChange)
+            if (BlockChange.EstimatedSize < PatriciaTree.MinEntriesToParallelizeThreshold)
             {
-                byte[] after = kvp.Value.After;
-                if (!Bytes.AreEqual(kvp.Value.Before, after)
-                    || kvp.Value.IsInitialValue) // IsInitialValue is so that it does not skip change if it does not know existing value.
+                foreach (var kvp in BlockChange)
                 {
-                    BlockChange[kvp.Key] = new(after, after);
-                    StorageTree.Set(kvp.Key, after);
-                    writes++;
+                    byte[] after = kvp.Value.After;
+                    if (!Bytes.AreEqual(kvp.Value.Before, after) || kvp.Value.IsInitialValue)
+                    {
+                        BlockChange[kvp.Key] = new(after, after);
+                        StorageTree.Set(kvp.Key, after);
+                        writes++;
+                    }
+                    else
+                    {
+                        skipped++;
+                    }
                 }
-                else
+            }
+            else
+            {
+                using ArrayPoolList<PatriciaTree.BulkSetEntry> bulkWrite = new(BlockChange.EstimatedSize);
+
+                Span<byte> keyBuf = stackalloc byte[32];
+                foreach (var kvp in BlockChange)
                 {
-                    skipped++;
+                    byte[] after = kvp.Value.After;
+                    if (!Bytes.AreEqual(kvp.Value.Before, after))
+                    {
+                        BlockChange[kvp.Key] = new(after, after);
+
+                        StorageTree.ComputeKeyWithLookup(kvp.Key, keyBuf);
+                        bulkWrite.Add(StorageTree.CreateBulkSetEntry(new ValueHash256(keyBuf), after));
+
+                        writes++;
+                    }
+                    else
+                    {
+                        skipped++;
+                    }
                 }
+
+                StorageTree.BulkSet(bulkWrite);
             }
 
             if (writes > 0)
             {
-                StorageTree.UpdateRootHash(canBeParallel: true);
+                StorageTree.UpdateRootHash(canBeParallel: writes > 64);
             }
 
             return (writes, skipped);
