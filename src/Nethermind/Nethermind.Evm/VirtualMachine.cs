@@ -79,7 +79,7 @@ public unsafe partial class VirtualMachine(
     protected readonly ILogger _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
     protected readonly Stack<EvmState> _stateStack = new();
 
-    private IWorldState _worldState;
+    protected IWorldState _worldState;
     private (Address Address, bool ShouldDelete) _parityTouchBugAccount = (Address.FromNumber(3), false);
 
     protected ITxTracer _txTracer = NullTxTracer.Instance;
@@ -115,7 +115,7 @@ public unsafe partial class VirtualMachine(
     /// </summary>
     public void SetTxExecutionContext(in TxExecutionContext txExecutionContext) => _txExecutionContext = txExecutionContext;
 
-    public EvmState EvmState { get => _currentState; private set => _currentState = value; }
+    public EvmState EvmState { get => _currentState; protected set => _currentState = value; }
     public int SectionIndex { get; set; }
     public int OpCodeCount { get; set; }
 
