@@ -136,7 +136,7 @@ partial class LogIndexStorage
 
                 var postfixBlock = GetValBlockNum(dbValue);
 
-                Span<byte> key = SpecialPostfix.RemoveFrom(dbKey);
+                ReadOnlySpan<byte> key = ExtractKey(dbKey);
                 Span<byte> dbKeyComp = new byte[key.Length + BlockNumSize];
                 key.CopyTo(dbKeyComp);
                 SetKeyBlockNum(dbKeyComp[key.Length..], postfixBlock);

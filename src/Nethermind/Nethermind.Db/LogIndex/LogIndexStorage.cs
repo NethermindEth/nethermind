@@ -25,36 +25,22 @@ namespace Nethermind.Db
     {
         private static class SpecialKey
         {
-            private const int MaxCommonLength = Hash256.Size; // Math.Max(Address.Size, Hash256.Size)
-
             // Use values that we won't encounter during iterator Seek or SeekForPrev
-            public static readonly byte[] MinBlockNum = Enumerable.Repeat(byte.MaxValue, MaxCommonLength)
+            public static readonly byte[] MinBlockNum = Enumerable.Repeat(byte.MaxValue, MaxDbKeyLength)
                 .Concat(new byte[] { 1 }).ToArray();
 
             // Use values that we won't encounter during iterator Seek or SeekForPrev
-            public static readonly byte[] MaxBlockNum = Enumerable.Repeat(byte.MaxValue, MaxCommonLength)
+            public static readonly byte[] MaxBlockNum = Enumerable.Repeat(byte.MaxValue, MaxDbKeyLength)
                 .Concat(new byte[] { 2 }).ToArray();
         }
 
         private static class SpecialPostfix
         {
             // Any ordered prefix seeking will start on it
-            public static readonly byte[] BackwardMerge = Enumerable.Repeat((byte)0, BackwardMergeLength).ToArray();
-            public const int BackwardMergeLength = BlockNumSize - 1;
+            public static readonly byte[] BackwardMerge = Enumerable.Repeat((byte)0, BlockNumSize).ToArray();
 
             // Any ordered prefix seeking will end on it.
-            public static readonly byte[] ForwardMerge = Enumerable.Repeat(byte.MaxValue, ForwardMergeLength).ToArray();
-            public const int ForwardMergeLength = BlockNumSize + 1;
-
-            public static Span<byte> RemoveFrom(Span<byte> dbKey)
-            {
-                if (dbKey.EndsWith(BackwardMerge))
-                    return dbKey[..^BackwardMergeLength];
-                else if (dbKey.EndsWith(ForwardMerge))
-                    return dbKey[..^ForwardMergeLength];
-                else
-                    throw new ArgumentException($"Key {Convert.ToHexString(dbKey)} does not have a special postfix.", nameof(dbKey));
-            }
+            public static readonly byte[] ForwardMerge = Enumerable.Repeat(byte.MaxValue, BlockNumSize).ToArray();
         }
 
         private static class Defaults
@@ -67,7 +53,8 @@ namespace Nethermind.Db
 
         public const int MaxTopics = 4;
 
-        private const int MaxKeyLength = Hash256.Size + SpecialPostfix.ForwardMergeLength;
+        private const int MaxKeyLength = Hash256.Size + 1; // Math.Max(Address.Size, Hash256.Size)
+        private const int MaxDbKeyLength = MaxKeyLength + BlockNumSize;
 
         // TODO: consider using ArrayPoolList just for `using` syntax
         private static readonly ArrayPool<byte> _arrayPool = ArrayPool<byte>.Shared;
@@ -278,11 +265,6 @@ namespace Nethermind.Db
 
         private Dictionary<byte[], int[]> GetKeysFor(int? index, byte[] key, int from, int to, bool includeValues = false)
         {
-            static bool IsInKeyBounds(IIterator<byte[], byte[]> iterator, ReadOnlySpan<byte> key)
-            {
-                return iterator.Valid() && iterator.Key().AsSpan().StartsWith(key);
-            }
-
             byte[] dbKeyBuffer = null;
             var result = new Dictionary<byte[], int[]>(Bytes.EqualityComparer);
 
@@ -296,9 +278,9 @@ namespace Nethermind.Db
                 using IIterator<byte[], byte[]> iterator = db.GetIterator(true);
 
                 // Find the last index for the given key, starting at or before `from`
-                dbKeyBuffer = _arrayPool.Rent(MaxKeyLength);
+                dbKeyBuffer = _arrayPool.Rent(MaxDbKeyLength);
                 ReadOnlySpan<byte> dbKey = CreateDbKey(index, key, from, dbKeyBuffer);
-                ReadOnlySpan<byte> normalizedKey = dbKey[..^BlockNumSize];
+                ReadOnlySpan<byte> normalizedKey = ExtractKey(dbKey);
                 iterator.SeekForPrev(dbKey);
 
                 // Otherwise, find the first index for the given key
@@ -352,11 +334,6 @@ namespace Nethermind.Db
 
         private List<int> GetBlockNumbersFor(int? index, byte[] keyPrefix, int from, int to)
         {
-            static bool IsInKeyBounds(IIterator<byte[], byte[]> iterator, ReadOnlySpan<byte> key)
-            {
-                return iterator.Valid() && iterator.Key().AsSpan().StartsWith(key);
-            }
-
             var timestamp = Stopwatch.GetTimestamp();
             byte[] dbKeyBuffer = null;
 
@@ -372,9 +349,9 @@ namespace Nethermind.Db
                 using IIterator<byte[], byte[]> iterator = db.GetIterator(true);
 
                 // Find the last index for the given key, starting at or before `from`
-                dbKeyBuffer = _arrayPool.Rent(MaxKeyLength);
+                dbKeyBuffer = _arrayPool.Rent(MaxDbKeyLength);
                 ReadOnlySpan<byte> dbKey = CreateDbKey(index, keyPrefix, from, dbKeyBuffer);
-                ReadOnlySpan<byte> normalizedKey = dbKey[..^BlockNumSize];
+                ReadOnlySpan<byte> normalizedKey = ExtractKey(dbKey);
                 iterator.SeekForPrev(dbKey);
 
                 // Otherwise, find the first index for the given key
@@ -408,6 +385,11 @@ namespace Nethermind.Db
 
                 if (_logger.IsTrace) _logger.Trace($"GetBlockNumbersFor({Convert.ToHexString(keyPrefix)}, {from}, {to}) in {Stopwatch.GetElapsedTime(timestamp)}");
             }
+        }
+
+        private static bool IsInKeyBounds(IIterator<byte[], byte[]> iterator, ReadOnlySpan<byte> key)
+        {
+            return iterator.Valid() && ExtractKey(iterator.Key()).SequenceEqual(key);
         }
 
         private static IEnumerable<int> EnumerateBlockNumbers(byte[]? data, int from)
@@ -518,7 +500,7 @@ namespace Nethermind.Db
 
             try
             {
-                keyArray = _arrayPool.Rent(MaxKeyLength);
+                keyArray = _arrayPool.Rent(MaxDbKeyLength);
                 valueArray = _arrayPool.Rent(BlockNumSize + 1);
 
                 IWriteBatch addressBatch = _addressDb.StartWriteBatch();
@@ -711,7 +693,7 @@ namespace Nethermind.Db
             bool isBackwardSync, LogIndexUpdateStats? stats
         )
         {
-            var dbKeyArray = _arrayPool.Rent(key.Length + SpecialPostfix.ForwardMergeLength);
+            var dbKeyArray = _arrayPool.Rent(MaxDbKeyLength);
 
             try
             {
@@ -753,6 +735,8 @@ namespace Nethermind.Db
             return buffer[..length];
         }
 
+        private static ReadOnlySpan<byte> ExtractKey(ReadOnlySpan<byte> dbKey) => dbKey[..^BlockNumSize];
+
         /// <summary>
         /// Generates a key consisting of the <c>key || block-number</c> byte array.
         /// </summary>
@@ -776,8 +760,8 @@ namespace Nethermind.Db
         }
 
         // RocksDB uses big-endian (lexicographic) ordering
-        private static int GetKeyBlockNum(ReadOnlySpan<byte> dbKey) => BinaryPrimitives.ReadInt32BigEndian(dbKey[^BlockNumSize..]);
-        private static void SetKeyBlockNum(Span<byte> dbKeyEnd, int blockNumber) => BinaryPrimitives.WriteInt32BigEndian(dbKeyEnd, blockNumber);
+        private static int GetKeyBlockNum(ReadOnlySpan<byte> dbKey) => BinaryPrimitives.ReadInt32BigEndian(dbKey[^BlockNumSize..]) - 1;
+        private static void SetKeyBlockNum(Span<byte> dbKeyEnd, int blockNumber) => BinaryPrimitives.WriteInt32BigEndian(dbKeyEnd, blockNumber + 1);
 
         private static bool UseBackwardSyncFor(ReadOnlySpan<byte> dbKey) => dbKey.EndsWith(SpecialPostfix.BackwardMerge);
 
