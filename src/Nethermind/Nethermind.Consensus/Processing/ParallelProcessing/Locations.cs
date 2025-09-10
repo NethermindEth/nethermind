@@ -19,8 +19,8 @@ public class Locations : ILocations<Address>, ILocations<StorageCell>
     private readonly ConcurrentDictionary<AddressAsKey, int> _addressLocations = new();
     private readonly ConcurrentDictionary<StorageCell, int> _storageCellLocations = new();
 
-    public int GetLocation(Address address) => _addressLocations.GetOrAdd(address, _ => Interlocked.Increment(ref _index));
-    public int GetLocation(StorageCell storageCell) => _storageCellLocations.GetOrAdd(storageCell, _ => Interlocked.Increment(ref _index));
+    public int GetLocation(Address address) => _addressLocations.GetOrAdd(address, Interlocked.Increment(ref _index));
+    public int GetLocation(StorageCell storageCell) => _storageCellLocations.GetOrAdd(storageCell, -Interlocked.Increment(ref _index));
 
     public void Clear()
     {

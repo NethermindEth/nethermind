@@ -153,11 +153,11 @@ public class ParallelRunnerTests
     private async Task Run<T>(int blockSize, Operation[][] operationsPerTx, Dictionary<int, byte[]> expected) where T : struct, IIsTracing
     {
         ParallelTrace<T> parallelTrace = new ParallelTrace<T>();
-        MultiVersionMemory<int, T> multiVersionMemory = new MultiVersionMemory<int, T>(blockSize, parallelTrace);
+        MultiVersionMemory<int, byte[], T> multiVersionMemory = new MultiVersionMemory<int, byte[], T>(blockSize, parallelTrace);
         ObjectPool<HashSet<int>> setObjectPool = new DefaultObjectPool<HashSet<int>>(new DefaultPooledObjectPolicy<HashSet<int>>(), 1024);
         ParallelScheduler<T> parallelScheduler = new ParallelScheduler<T>(blockSize, parallelTrace, setObjectPool);
         VmMock<T> vmMock = new VmMock<T>(blockSize, multiVersionMemory, operationsPerTx);
-        ParallelRunner<int, T> runner = new ParallelRunner<int, T>(parallelScheduler, multiVersionMemory, parallelTrace, vmMock, 12);
+        ParallelRunner<int, byte[], T> runner = new ParallelRunner<int, byte[], T>(parallelScheduler, multiVersionMemory, parallelTrace, vmMock, 12);
 
         long start = Stopwatch.GetTimestamp();
         Task runnerTask = runner.Run();
@@ -193,7 +193,7 @@ public class ParallelRunnerTests
 
     }
 
-    public class VmMock<TLogger>(int blockSize, MultiVersionMemory<int, TLogger> memory, Operation[][] operationsPerTx) : IVm<int> where TLogger : struct, IIsTracing
+    public class VmMock<TLogger>(int blockSize, MultiVersionMemory<int, byte[], TLogger> memory, Operation[][] operationsPerTx) : IVm<int, byte[]> where TLogger : struct, IIsTracing
     {
         private readonly HashSet<Read<int>>[] _readSets = Enumerable.Range(0, blockSize).Select(_ => new HashSet<Read<int>>()).ToArray();
         private readonly Dictionary<int, byte[]>[] _writeSets = Enumerable.Range(0, blockSize).Select(_ => new Dictionary<int, byte[]>()).ToArray();

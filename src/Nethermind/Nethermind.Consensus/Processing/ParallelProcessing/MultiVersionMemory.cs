@@ -19,19 +19,20 @@ namespace Nethermind.Consensus.Processing.ParallelProcessing;
 /// <param name="parallelTrace">Tracing helper</param>
 /// <typeparam name="TLocation">Location key type</typeparam>
 /// <typeparam name="TLogger">Should log trace</typeparam>
-public class MultiVersionMemory<TLocation, TLogger>(int txCount, ParallelTrace<TLogger> parallelTrace) where TLogger : struct, IIsTracing where TLocation : notnull
+/// <typeparam name="TData">Data type</typeparam>
+public class MultiVersionMemory<TLocation, TData, TLogger>(int txCount, ParallelTrace<TLogger> parallelTrace) where TLogger : struct, IIsTracing where TLocation : notnull
 {
     /// <summary>
     /// Information about stored value for a given location
     /// </summary>
     /// <param name="Incarnation">Incarnation of the transaction that stored value</param>
-    /// <param name="Bytes">Actual value written by transaction</param>
-    private readonly record struct Value(int Incarnation, byte[] Bytes) // TODO: Maybe instead of byte[] I should use Account and StorageValue?
+    /// <param name="Data">Actual value written by transaction</param>
+    private readonly record struct Value(int Incarnation, TData Data)
     {
         /// <summary>
         /// Special case when we know the transaction will be re-executed, so we can mark it's writes as estimates.
         /// </summary>
-        public static readonly Value Estimate = new(-1, []);
+        public static readonly Value Estimate = new(-1, default);
         public bool IsEstimate => Incarnation == -1;
     }
 
@@ -60,14 +61,14 @@ public class MultiVersionMemory<TLocation, TLogger>(int txCount, ParallelTrace<T
     private readonly HashSet<Read<TLocation>>?[] _lastReads = new HashSet<Read<TLocation>>[txCount];
 
     // For given transaction incarnation it stores it's writeset into _data and updates _lastWrittenLocations
-    private bool ApplyWriteSet(Version version, Dictionary<TLocation, byte[]> writeSet)
+    private bool ApplyWriteSet(Version version, Dictionary<TLocation, TData> writeSet)
     {
         DataDictionary<TLocation, Value> txData = _data[version.TxIndex]; // writes of current tx (currently from previous incarnation)
         ref HashSet<TLocation>? lastWritten = ref _lastWrittenLocations[version.TxIndex];
         lastWritten ??= new HashSet<TLocation>();
 
         txData.Lock.EnterWriteLock();
-        foreach (KeyValuePair<TLocation, byte[]> write in writeSet)
+        foreach (KeyValuePair<TLocation, TData> write in writeSet)
         {
             // TODO: We could potentially not overwrite the key if the value is the same - leaving same lower incarnation
             // This could help in ValidateReadSet where we wouldn't have to check actual value
@@ -81,7 +82,7 @@ public class MultiVersionMemory<TLocation, TLogger>(int txCount, ParallelTrace<T
         {
             // grab all the locations that were written in previous incarnation, but are not written in current incarnation
             using ArrayPoolList<TLocation> toRemove = new(lastWritten.Count);
-            foreach (var id in lastWritten)
+            foreach (TLocation id in lastWritten)
             {
                 if (!writeSet.ContainsKey(id))
                 {
@@ -90,7 +91,7 @@ public class MultiVersionMemory<TLocation, TLogger>(int txCount, ParallelTrace<T
             }
 
             // remove them from both last written and txData
-            foreach (var id in toRemove)
+            foreach (TLocation id in toRemove)
             {
                 lastWritten.Remove(id);
                 txData.Dictionary.Remove(id, out _);
@@ -114,9 +115,9 @@ public class MultiVersionMemory<TLocation, TLogger>(int txCount, ParallelTrace<T
     /// <param name="readSet">Reads</param>
     /// <param name="writeSet">Writes</param>
     /// <returns>If any new location was written, that wasn't written by previous incarnation</returns>
-    public bool Record(Version version, HashSet<Read<TLocation>> readSet, Dictionary<TLocation, byte[]> writeSet)
+    public bool Record(Version version, HashSet<Read<TLocation>> readSet, Dictionary<TLocation, TData> writeSet)
     {
-        if (typeof(TLogger) == typeof(IsTracing)) parallelTrace.Add($"{version} Record read-set: {{{string.Join(",", readSet.Select(r => $"{r.Location}:{r.Version}"))}}}, write-set: {{{string.Join(",", writeSet.Select(r => $"{r.Key}:{r.Value.ToHexString()}"))}}}.");
+        if (typeof(TLogger) == typeof(IsTracing)) parallelTrace.Add($"{version} Record read-set: {{{string.Join(",", readSet.Select(r => $"{r.Location}:{r.Version}"))}}}, write-set: {{{string.Join(",", writeSet.Select(r => $"{r.Key}:{parallelTrace.Format(r.Value)}"))}}}.");
         bool wroteNewLocation = ApplyWriteSet(version, writeSet);
         _lastReads[version.TxIndex] = readSet;
         return wroteNewLocation;
@@ -138,7 +139,7 @@ public class MultiVersionMemory<TLocation, TLogger>(int txCount, ParallelTrace<T
         {
             DataDictionary<TLocation, Value> txData = _data[txIndex];
             txData.Lock.EnterWriteLock();
-            foreach (var location in previousLocations)
+            foreach (TLocation location in previousLocations)
             {
                 txData.Dictionary[location] = Value.Estimate;
             }
@@ -158,7 +159,7 @@ public class MultiVersionMemory<TLocation, TLogger>(int txCount, ParallelTrace<T
     /// <see cref="Status.NotFound"/> when value for location is not in memory and needs to be read from database.
     /// <see cref="Status.ReadError"/> when we know previous transaction needs to be re-executed first to correctly read the location.
     /// </returns>
-    public Status TryRead(TLocation location, int txIndex, out Version version, out byte[]? value)
+    public Status TryRead(TLocation location, int txIndex, out Version version, out TData value)
     {
         long id = parallelTrace.ReserveId();
         // start from previous transaction and go back through all the previous transactions
@@ -175,15 +176,15 @@ public class MultiVersionMemory<TLocation, TLogger>(int txCount, ParallelTrace<T
                     if (v.IsEstimate)
                     {
                         // if estimate (prevTx needs re-execution) return ReadError.
-                        value = null;
+                        value = default;
                         if (typeof(TLogger) == typeof(IsTracing)) parallelTrace.Add(id, $"Tx {txIndex} TryRead at location {location} returned {Status.ReadError} with blocking {version}.");
                         return Status.ReadError;
                     }
                     else
                     {
                         // else we can return the value
-                        value = v.Bytes;
-                        if (typeof(TLogger) == typeof(IsTracing)) parallelTrace.Add(id, $"Tx {txIndex} TryRead at location {location} returned {Status.Ok} with value {value.ToHexString()} from {version}.");
+                        value = v.Data;
+                        if (typeof(TLogger) == typeof(IsTracing)) parallelTrace.Add(id, $"Tx {txIndex} TryRead at location {location} returned {Status.Ok} with value {parallelTrace.Format(value)} from {version}.");
                         return Status.Ok;
                     }
                 }
@@ -196,7 +197,7 @@ public class MultiVersionMemory<TLocation, TLogger>(int txCount, ParallelTrace<T
 
         // we iterated through all transactions and didn't find any
         version = Version.Empty;
-        value = null;
+        value = default;
         if (typeof(TLogger) == typeof(IsTracing)) parallelTrace.Add(id, $"Tx {txIndex} TryRead at location {location} returned {Status.NotFound}.");
         return Status.NotFound;
     }
@@ -205,9 +206,9 @@ public class MultiVersionMemory<TLocation, TLogger>(int txCount, ParallelTrace<T
     /// Grabs the end result write-set of whole block
     /// </summary>
     /// <returns>Write set of the block</returns>
-    public Dictionary<TLocation, byte[]> Snapshot()
+    public Dictionary<TLocation, TData> Snapshot()
     {
-        Dictionary<TLocation, byte[]> result = new Dictionary<TLocation, byte[]>();
+        Dictionary<TLocation, TData> result = new();
         // need to iterate backwards, as the later transaction writes are the final writes to the same location
         for (var index = _data.Length - 1; index >= 0; index--)
         {
@@ -215,7 +216,7 @@ public class MultiVersionMemory<TLocation, TLogger>(int txCount, ParallelTrace<T
             foreach (KeyValuePair<TLocation, Value> location in data.Dictionary)
             {
                 // only add if previously not added
-                result.TryAdd(location.Key, location.Value.Bytes);
+                result.TryAdd(location.Key, location.Value.Data);
             }
         }
 

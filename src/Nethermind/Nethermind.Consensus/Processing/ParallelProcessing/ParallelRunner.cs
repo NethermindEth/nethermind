@@ -15,11 +15,11 @@ namespace Nethermind.Consensus.Processing.ParallelProcessing;
 /// This class is main entry point to Block-STM algorithm, directly responsible for scheduling .net multithreaded code
 /// and processing transactions.
 /// </summary>
-public class ParallelRunner<TLocation, TLogger>(
+public class ParallelRunner<TLocation, TData, TLogger>(
     ParallelScheduler<TLogger> scheduler,
-    MultiVersionMemory<TLocation, TLogger> memory,
+    MultiVersionMemory<TLocation, TData, TLogger> memory,
     ParallelTrace<TLogger> parallelTrace,
-    IVm<TLocation> vm,
+    IVm<TLocation, TData> vm,
     int? concurrencyLevel = null) where TLogger : struct, IIsTracing where TLocation : notnull
 {
     private int _threadIndex = -1;
@@ -91,7 +91,7 @@ public class ParallelRunner<TLocation, TLogger>(
     /// Scheduler may return a validation task for this transaction as it will be next high-priority.
     /// </remarks>
     private TxTask TryExecute(TxTask task) =>
-        vm.TryExecute(task.Version.TxIndex, out Version? blockingTx, out var readSet, out var writeSet) == Status.ReadError
+        vm.TryExecute(task.Version.TxIndex, out Version? blockingTx, out HashSet<Read<TLocation>> readSet, out Dictionary<TLocation, TData> writeSet) == Status.ReadError
             ? !scheduler.AbortExecution(task.Version.TxIndex, blockingTx!.Value.TxIndex)
                 ? task
                 : TxTask.Empty
@@ -122,7 +122,7 @@ public class ParallelRunner<TLocation, TLogger>(
 /// <summary>
 /// Abstraction of transaction execution.
 /// </summary>
-public interface IVm<TLocation> where TLocation : notnull
+public interface IVm<TLocation, TData> where TLocation : notnull
 {
     /// <summary>
     /// Execute transaction
@@ -132,5 +132,5 @@ public interface IVm<TLocation> where TLocation : notnull
     /// <param name="readSet">All locations read by the transaction</param>
     /// <param name="writeSet">All locations and values written by the transaction</param>
     /// <returns><see cref="Status.Ok"/> if no dependency detected, <see cref="Status.ReadError"/> if transaction is blocked by other</returns>
-    public Status TryExecute(int txIndex, out Version? blockingTx, out HashSet<Read<TLocation>> readSet, out Dictionary<TLocation, byte[]> writeSet);
+    public Status TryExecute(int txIndex, out Version? blockingTx, out HashSet<Read<TLocation>> readSet, out Dictionary<TLocation, TData> writeSet);
 }
