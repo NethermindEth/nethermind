@@ -17,7 +17,6 @@ using Nethermind.State;
 
 namespace Nethermind.Benchmarks.Store;
 
-[MemoryDiagnoser]
 public class WorldStateBenchmarks
 {
     private IContainer _container;
@@ -141,7 +140,6 @@ public class WorldStateBenchmarks
         worldState.Reset();
     }
 
-    /*
     [Benchmark]
     public void SlotRead()
     {
@@ -227,5 +225,4 @@ public class WorldStateBenchmarks
         worldState.CommitTree(1);
         worldState.Reset();
     }
-    */
 }
