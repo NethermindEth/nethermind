@@ -33,7 +33,7 @@ namespace Nethermind.Synchronization.FastSync
 
         private const StateSyncBatch EmptyBatch = null;
 
-        private static readonly AccountDecoder AccountDecoder = new();
+        private static readonly AccountStructDecoder AccountDecoder = AccountStructDecoder.Instance;
 
         private readonly DetailedProgress _data;
         private readonly IPendingSyncItems _pendingItems;
@@ -918,10 +918,10 @@ namespace Nethermind.Synchronization.FastSync
                         _pendingItems.MaxStateLevel = 64;
                         DependentItem dependentItem = new(currentStateSyncItem, currentResponseItem, 2, true);
                         Rlp.ValueDecoderContext ctx = new Rlp.ValueDecoderContext(trieNode.Value.Span);
-                        (Hash256 codeHash, Hash256 storageRoot) = AccountDecoder.DecodeHashesOnly(ref ctx);
-                        if (codeHash != Keccak.OfAnEmptyString)
+                        (ValueHash256 codeHash, ValueHash256 storageRoot) = AccountDecoder.DecodeHashesOnly(ref ctx);
+                        if (codeHash != ValueKeccak.OfAnEmptyString)
                         {
-                            AddNodeResult addCodeResult = AddNodeToPending(new StateSyncItem(codeHash, null, TreePath.Empty, NodeDataType.Code, 0, currentStateSyncItem.Rightness), dependentItem, "code");
+                            AddNodeResult addCodeResult = AddNodeToPending(new StateSyncItem(codeHash.ToCommitment(), null, TreePath.Empty, NodeDataType.Code, 0, currentStateSyncItem.Rightness), dependentItem, "code");
                             if (addCodeResult == AddNodeResult.AlreadySaved) dependentItem.Counter--;
                         }
                         else
@@ -938,7 +938,7 @@ namespace Nethermind.Synchronization.FastSync
 
                             Hash256 address = finalStorageRoot.Path.ToCommitment();
 
-                            AddNodeResult addStorageNodeResult = AddNodeToPending(new StateSyncItem(storageRoot, address, TreePath.Empty, NodeDataType.Storage, 0, currentStateSyncItem.Rightness), dependentItem, "storage");
+                            AddNodeResult addStorageNodeResult = AddNodeToPending(new StateSyncItem(storageRoot.ToCommitment(), address, TreePath.Empty, NodeDataType.Storage, 0, currentStateSyncItem.Rightness), dependentItem, "storage");
                             if (addStorageNodeResult == AddNodeResult.AlreadySaved)
                             {
                                 dependentItem.Counter--;
