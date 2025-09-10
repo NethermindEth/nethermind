@@ -19,6 +19,7 @@ using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
+using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Core.Test.Container;
 using Nethermind.Core.Timers;
@@ -39,6 +40,7 @@ using Nethermind.TxPool;
 using NSubstitute;
 using NUnit.Framework;
 using ILogManager = Nethermind.Logging.ILogManager;
+using ITimer = Nethermind.Core.Timers.ITimer;
 
 namespace Nethermind.Merge.Plugin.Test;
 
@@ -68,11 +70,21 @@ public partial class EngineModuleTests
     [Obsolete]
     public async Task getPayloadV1_should_return_error_if_called_after_cleanup_timer()
     {
+        ITimer cancellationTimer = null!;
+
         MergeConfig mergeConfig = new() { SecondsPerSlot = 1, TerminalTotalDifficulty = "0" };
         TimeSpan timePerSlot = TimeSpan.FromMilliseconds(10);
         using MergeTestBlockchain chain = await CreateBlockchainWithImprovementContext(
             static ctx => new BlockImprovementContextFactory(ctx.Resolve<IBlockProducer>(), TimeSpan.FromSeconds(1)),
-            timePerSlot, mergeConfig);
+            timePerSlot, mergeConfig,
+            configurer: builder => builder
+                .UpdateSingleton<IPayloadPreparationService>((builder) => builder
+                    .AddSingleton<ITimerFactory>(new FunctionalTimerFactory((interval) =>
+                    {
+                        cancellationTimer = Substitute.For<ITimer>();
+                        return cancellationTimer;
+                    })))
+            );
 
         IEngineRpcModule rpc = chain.EngineRpcModule;
         Hash256 startingHead = chain.BlockTree.HeadHash;
@@ -85,6 +97,7 @@ public partial class EngineModuleTests
             .PayloadId!;
 
         await Task.Delay(PayloadPreparationService.SlotsPerOldPayloadCleanup * 2 * timePerSlot + timePerSlot);
+        cancellationTimer.Elapsed += Raise.Event();
 
         ResultWrapper<ExecutionPayload?> response = await rpc.engine_getPayloadV1(Bytes.FromHexString(payloadId));
 
@@ -495,7 +508,7 @@ public partial class EngineModuleTests
         chain.AddTransactions(BuildTransactions(chain, startingHead, TestItem.PrivateKeyC, TestItem.AddressA, 3, 10, out _, out _));
 
         IBlockImprovementContext cancelledContext = await cancelledContextTask;
-        improvementContextFactory.CreatedContexts.Should().HaveCount(2);
+        Assert.That(() => improvementContextFactory.CreatedContexts.Count, Is.EqualTo(2).After(1000, 10));
 
         ExecutionPayload getPayloadResult = (await rpc.engine_getPayloadV1(Bytes.FromHexString(payloadId))).Data!;
 

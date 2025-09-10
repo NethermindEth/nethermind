@@ -75,7 +75,7 @@ namespace Nethermind.Api
         public ISignerStore? EngineSignerStore { get; set; }
         public IEnode? Enode { get; set; }
         public IEthereumEcdsa EthereumEcdsa => Context.Resolve<IEthereumEcdsa>();
-        public IFileSystem FileSystem { get; set; } = new FileSystem();
+        public IFileSystem FileSystem => Context.Resolve<IFileSystem>();
         public IEngineRequestsTracker EngineRequestsTracker => Context.Resolve<IEngineRequestsTracker>();
 
         public IManualBlockProductionTrigger ManualBlockProductionTrigger { get; set; } =
@@ -109,8 +109,8 @@ namespace Nethermind.Api
         public IStateReader? StateReader => Context.Resolve<IStateReader>();
         public IStaticNodesManager StaticNodesManager => Context.Resolve<IStaticNodesManager>();
         public ITrustedNodesManager TrustedNodesManager => Context.Resolve<ITrustedNodesManager>();
-        public ITimestamper Timestamper { get; } = Core.Timestamper.Default;
-        public ITimerFactory TimerFactory { get; } = Core.Timers.TimerFactory.Default;
+        public ITimestamper Timestamper => Context.Resolve<ITimestamper>();
+        public ITimerFactory TimerFactory => Context.Resolve<ITimerFactory>();
         public IMainProcessingContext MainProcessingContext => Context.Resolve<IMainProcessingContext>();
         public ITxSender? TxSender { get; set; }
         public INonceManager? NonceManager { get; set; }

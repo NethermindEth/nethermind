@@ -266,12 +266,6 @@ namespace Nethermind.State
             return ref _stateProvider.GetBalance(address);
         }
 
-        UInt256 IAccountStateProvider.GetBalance(Address address)
-        {
-            DebugGuardInScope();
-            return _stateProvider.GetBalance(address);
-        }
-
         public ValueHash256 GetStorageRoot(Address address)
         {
             DebugGuardInScope();

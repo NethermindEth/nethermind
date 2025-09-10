@@ -52,14 +52,12 @@ public class PseudoNethermindModule(ChainSpec spec, IConfigProvider configProvid
             .AddModule(new TestBlockProcessingModule())
 
             // Environments
-            .AddSingleton<ITimerFactory, TimerFactory>()
             .AddSingleton<IBackgroundTaskScheduler, IMainProcessingContext, IChainHeadInfoProvider>((blockProcessingContext, chainHeadInfoProvider) => new BackgroundTaskScheduler(
                 blockProcessingContext.BranchProcessor,
                 chainHeadInfoProvider,
                 initConfig.BackgroundTaskConcurrency,
                 initConfig.BackgroundTaskMaxNumber,
                 logManager))
-            .AddSingleton<IFileSystem>(new FileSystem())
             .AddSingleton<IProcessExitSource>(new ProcessExitSource(default))
             .AddSingleton<IJsonSerializer, EthereumJsonSerializer>()
 

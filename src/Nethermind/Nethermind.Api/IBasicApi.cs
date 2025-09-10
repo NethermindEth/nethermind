@@ -33,7 +33,7 @@ namespace Nethermind.Api
         IEthereumEcdsa EthereumEcdsa { get; }
         [SkipServiceCollection]
         IJsonSerializer EthereumJsonSerializer { get; }
-        IFileSystem FileSystem { get; set; }
+        IFileSystem FileSystem { get; }
         IKeyStore? KeyStore { get; set; }
         [SkipServiceCollection]
         ILogManager LogManager { get; }

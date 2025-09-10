@@ -6,9 +6,6 @@ using Nethermind.Serialization.Rlp;
 
 using Nethermind.Core.Test.Builders;
 using Nethermind.Core.Extensions;
-using Nethermind.Crypto;
-using Nethermind.Xdc;
-using Nethermind.Core.Crypto;
 
 namespace Nethermind.Xdc.Test
 {
