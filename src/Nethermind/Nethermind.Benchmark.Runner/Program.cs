@@ -13,7 +13,6 @@ using System.Linq;
 using BenchmarkDotNet.Toolchains.InProcess.NoEmit;
 using BenchmarkDotNet.Columns;
 using Nethermind.Benchmarks.State;
-using Nethermind.Benchmarks.Store;
 using Nethermind.Precompiles.Benchmark;
 
 namespace Nethermind.Benchmark.Runner
@@ -50,7 +49,6 @@ namespace Nethermind.Benchmark.Runner
     {
         public static void Main(string[] args)
         {
-            /*
             List<Assembly> additionalJobAssemblies = [
                 typeof(JsonRpc.Benchmark.EthModuleBenchmarks).Assembly,
                 typeof(Benchmarks.Core.Keccak256Benchmarks).Assembly,
@@ -80,9 +78,6 @@ namespace Nethermind.Benchmark.Runner
 
                 BenchmarkRunner.Run(typeof(KeccakBenchmark).Assembly, new PrecompileBenchmarkConfig(), args);
             }
-            */
-
-            BenchmarkRunner.Run<WorldStateBenchmarks>(new DebugInProcessConfig(), args);
         }
     }
 }
