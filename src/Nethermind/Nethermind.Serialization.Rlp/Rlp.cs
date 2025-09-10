@@ -950,7 +950,7 @@ namespace Nethermind.Serialization.Rlp
             public ValueHash256? DecodeValueKeccak()
             {
                 int prefix = ReadByte();
-                if (prefix == 128)
+                if (prefix == EmptyArrayByte)
                 {
                     return null;
                 }
@@ -960,18 +960,18 @@ namespace Nethermind.Serialization.Rlp
                     throw new DecodeKeccakRlpException(prefix, Position, Data.Length);
                 }
 
-                ReadOnlySpan<byte> keccakSpan = Read(32);
-                if (keccakSpan.SequenceEqual(Keccak.OfAnEmptyString.Bytes))
+                return new ValueHash256(Read(32));
+            }
+
+            public ValueHash256 DecodeValueKeccakNonNull()
+            {
+                int prefix = ReadByte();
+                if (prefix != 128 + 32)
                 {
-                    return Keccak.OfAnEmptyString.ValueHash256;
+                    throw new DecodeKeccakRlpException(prefix, Position, Data.Length);
                 }
 
-                if (keccakSpan.SequenceEqual(Keccak.EmptyTreeHash.Bytes))
-                {
-                    return Keccak.EmptyTreeHash.ValueHash256;
-                }
-
-                return new ValueHash256(keccakSpan);
+                return new ValueHash256(Read(32));
             }
 
             public Hash256? DecodeZeroPrefixKeccak()
