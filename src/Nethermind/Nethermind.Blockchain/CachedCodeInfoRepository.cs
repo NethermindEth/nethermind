@@ -63,12 +63,6 @@ public class CachedCodeInfoRepository(
         return baseCodeInfoRepository.TryGetDelegation(address, spec, out delegatedAddress);
     }
 
-    public bool TryGetDelegation(in ValueHash256 codeHash, IReleaseSpec spec,
-        [NotNullWhen(true)] out Address? delegatedAddress)
-    {
-        return baseCodeInfoRepository.TryGetDelegation(in codeHash, spec, out delegatedAddress);
-    }
-
     private static PrecompileInfo CreateCachedPrecompile(
         in KeyValuePair<AddressAsKey, PrecompileInfo> originalPrecompile,
         ConcurrentDictionary<PreBlockCaches.PrecompileCacheKey, (byte[], bool)> cache) =>

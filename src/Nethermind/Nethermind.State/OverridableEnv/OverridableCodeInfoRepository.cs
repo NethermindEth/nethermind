@@ -52,9 +52,6 @@ public class OverridableCodeInfoRepository(ICodeInfoRepository codeInfoRepositor
     public bool TryGetDelegation(Address address, IReleaseSpec vmSpec, [NotNullWhen(true)] out Address? delegatedAddress) =>
         codeInfoRepository.TryGetDelegation(address, vmSpec, out delegatedAddress);
 
-    public bool TryGetDelegation(in ValueHash256 codeHash, IReleaseSpec spec, [NotNullWhen(true)] out Address? delegatedAddress) =>
-        codeInfoRepository.TryGetDelegation(in codeHash, spec, out delegatedAddress);
-
     public ValueHash256 GetExecutableCodeHash(Address address, IReleaseSpec spec) =>
         codeInfoRepository.GetExecutableCodeHash(address, spec);
 
