@@ -23,6 +23,7 @@ public interface IMainProcessingContext : IStoppableService
     IBlockProcessor BlockProcessor { get; }
     IBlockchainProcessor BlockchainProcessor { get; }
     IWorldState WorldState { get; }
+    GenesisLoader GenesisLoader { get; }
 
     Task IStoppableService.StopAsync() => BlockchainProcessor.StopAsync();
     string IStoppableService.Description => "blockchain processor";

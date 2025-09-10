@@ -45,7 +45,6 @@ public class MainProcessingContext : IMainProcessingContext, IAsyncDisposable
                 .AddSingleton<IWorldState>(mainWorldState)
                 .AddModule(blockValidationModules)
                 .AddScoped<ITransactionProcessorAdapter, ExecuteTransactionProcessorAdapter>()
-                .AddScoped<GenesisLoader>()
                 .AddModule(mainProcessingModules)
 
                 .AddScoped<IBlockchainProcessor, IBranchProcessor>((branchProcessor) => new BlockchainProcessor(
