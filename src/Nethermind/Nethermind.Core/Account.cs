@@ -133,7 +133,6 @@ namespace Nethermind.Core
     {
         private static readonly AccountStruct _totallyEmpty = Account.TotallyEmpty.ToStruct();
         public static ref readonly AccountStruct TotallyEmpty => ref _totallyEmpty;
-        public static readonly AccountStruct? Null = null;
 
         private readonly UInt256 _nonce = default;
         public readonly ValueHash256 CodeHash = Keccak.OfAnEmptyString.ValueHash256;

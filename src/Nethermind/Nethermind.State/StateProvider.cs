@@ -33,6 +33,8 @@ namespace Nethermind.State
     {
         private static readonly UInt256 _zero = UInt256.Zero;
 
+        private static readonly AccountStruct? NullAccountStruct = null; // Cannot put in AccountStruct for some reason.
+
         private readonly Dictionary<AddressAsKey, Stack<int>> _intraTxCache = new();
         private readonly HashSet<AddressAsKey> _committedThisRound = new();
         private readonly HashSet<AddressAsKey> _nullAccountReads = new();
@@ -806,7 +808,7 @@ namespace Nethermind.State
 
         private ref readonly AccountStruct? GetAndAddToCache(Address address)
         {
-            if (_nullAccountReads.Contains(address)) return ref AccountStruct.Null;
+            if (_nullAccountReads.Contains(address)) return ref NullAccountStruct;
 
             ref AccountStruct? account = ref GetState(address);
             if (account is not null)
