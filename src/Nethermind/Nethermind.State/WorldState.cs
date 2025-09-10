@@ -190,21 +190,27 @@ namespace Nethermind.State
             DebugGuardInScope();
             return _stateProvider.InsertCode(address, codeHash, code, spec, isGenesis);
         }
-        public void AddToBalance(Address address, in UInt256 balanceChange, IReleaseSpec spec)
+        public void AddToBalance(Address address, in UInt256 balanceChange, IReleaseSpec spec, out UInt256 oldBalance)
         {
             DebugGuardInScope();
-            _stateProvider.AddToBalance(address, balanceChange, spec);
+            _stateProvider.AddToBalance(address, balanceChange, spec, out oldBalance);
+        }
+        public void AddToBalance(Address address, in UInt256 balanceChange, IReleaseSpec spec)
+            => AddToBalance(address, balanceChange, spec, out _);
+        public bool AddToBalanceAndCreateIfNotExists(Address address, in UInt256 balanceChange, IReleaseSpec spec, out UInt256 oldBalance)
+        {
+            DebugGuardInScope();
+            return _stateProvider.AddToBalanceAndCreateIfNotExists(address, balanceChange, spec, out oldBalance);
         }
         public bool AddToBalanceAndCreateIfNotExists(Address address, in UInt256 balanceChange, IReleaseSpec spec)
+            => AddToBalanceAndCreateIfNotExists(address, balanceChange, spec, out _);
+        public void SubtractFromBalance(Address address, in UInt256 balanceChange, IReleaseSpec spec, out UInt256 oldBalance)
         {
             DebugGuardInScope();
-            return _stateProvider.AddToBalanceAndCreateIfNotExists(address, balanceChange, spec);
+            _stateProvider.SubtractFromBalance(address, balanceChange, spec, out oldBalance);
         }
         public void SubtractFromBalance(Address address, in UInt256 balanceChange, IReleaseSpec spec)
-        {
-            DebugGuardInScope();
-            _stateProvider.SubtractFromBalance(address, balanceChange, spec);
-        }
+            => SubtractFromBalance(address, balanceChange, spec, out _);
         public void UpdateStorageRoot(Address address, Hash256 storageRoot)
         {
             DebugGuardInScope();

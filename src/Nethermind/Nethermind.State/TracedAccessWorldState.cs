@@ -24,19 +24,22 @@ public class TracedAccessWorldState(IWorldState innerWorldState) : WrappedWorldS
     // public bool AccountExists(Address address) => innerWorldState.AccountExists(address);
 
     public override void AddToBalance(Address address, in UInt256 balanceChange, IReleaseSpec spec)
+        => AddToBalance(address, balanceChange, spec, out _);
+    public override void AddToBalance(Address address, in UInt256 balanceChange, IReleaseSpec spec, out UInt256 oldBalance)
     {
-        UInt256 before = _innerWorldState.GetBalance(address);
-        UInt256 after = before + balanceChange;
-        BlockAccessList.AddBalanceChange(address, before, after);
-        _innerWorldState.AddToBalance(address, balanceChange, spec);
+        _innerWorldState.AddToBalance(address, balanceChange, spec, out oldBalance);
+        UInt256 newBalance = oldBalance + balanceChange;
+        BlockAccessList.AddBalanceChange(address, oldBalance, newBalance);
     }
 
     public override bool AddToBalanceAndCreateIfNotExists(Address address, in UInt256 balanceChange, IReleaseSpec spec)
+        => AddToBalanceAndCreateIfNotExists(address, balanceChange, spec, out _);
+    public override bool AddToBalanceAndCreateIfNotExists(Address address, in UInt256 balanceChange, IReleaseSpec spec, out UInt256 oldBalance)
     {
-        UInt256 before = _innerWorldState.GetBalance(address);
-        UInt256 after = before + balanceChange;
-        BlockAccessList.AddBalanceChange(address, before, after);
-        return _innerWorldState.AddToBalanceAndCreateIfNotExists(address, balanceChange, spec);
+        bool res = _innerWorldState.AddToBalanceAndCreateIfNotExists(address, balanceChange, spec, out oldBalance);
+        UInt256 newBalance = oldBalance + balanceChange;
+        BlockAccessList.AddBalanceChange(address, oldBalance, newBalance);
+        return res;
     }
 
     public override IDisposable BeginScope(BlockHeader? baseBlock)
@@ -101,10 +104,7 @@ public class TracedAccessWorldState(IWorldState innerWorldState) : WrappedWorldS
     //     innerWorldState.HasStateForBlock(baseBlock);
 
     public override void IncrementNonce(Address address, UInt256 delta)
-    {
-        _innerWorldState.IncrementNonce(address, delta, out UInt256 oldNonce);
-        BlockAccessList.AddNonceChange(address, (ulong)(oldNonce + delta));
-    }
+        => IncrementNonce(address, delta, out _);
 
     public override void IncrementNonce(Address address, UInt256 delta, out UInt256 oldNonce)
     {

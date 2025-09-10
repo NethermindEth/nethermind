@@ -26,8 +26,14 @@ public class WrappedWorldState(IWorldState innerWorldState) : IWorldState
     public virtual void AddToBalance(Address address, in UInt256 balanceChange, IReleaseSpec spec)
         => _innerWorldState.AddToBalance(address, balanceChange, spec);
 
+    public virtual void AddToBalance(Address address, in UInt256 balanceChange, IReleaseSpec spec, out UInt256 oldBalance)
+        => _innerWorldState.AddToBalance(address, balanceChange, spec, out oldBalance);
+
     public virtual bool AddToBalanceAndCreateIfNotExists(Address address, in UInt256 balanceChange, IReleaseSpec spec)
         => _innerWorldState.AddToBalanceAndCreateIfNotExists(address, balanceChange, spec);
+
+    public virtual bool AddToBalanceAndCreateIfNotExists(Address address, in UInt256 balanceChange, IReleaseSpec spec, out UInt256 oldBalance)
+        => _innerWorldState.AddToBalanceAndCreateIfNotExists(address, balanceChange, spec, out oldBalance);
 
     public virtual IDisposable BeginScope(BlockHeader? baseBlock)
         => _innerWorldState.BeginScope(baseBlock);
@@ -121,6 +127,9 @@ public class WrappedWorldState(IWorldState innerWorldState) : IWorldState
 
     public virtual void SubtractFromBalance(Address address, in UInt256 balanceChange, IReleaseSpec spec)
         => _innerWorldState.SubtractFromBalance(address, balanceChange, spec);
+
+    public virtual void SubtractFromBalance(Address address, in UInt256 balanceChange, IReleaseSpec spec, out UInt256 oldBalance)
+        => _innerWorldState.SubtractFromBalance(address, balanceChange, spec, out oldBalance);
 
     public Snapshot TakeSnapshot(bool newTransactionStart = false)
         => _innerWorldState.TakeSnapshot(newTransactionStart);

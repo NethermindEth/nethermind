@@ -50,7 +50,7 @@ public class PruningTrieStateFactory(
 
     public (IWorldStateManager, IPruningTrieStateAdminRpcModule) Build()
     {
-        CompositePruningTrigger compositePruningTrigger = new CompositePruningTrigger();
+        CompositePruningTrigger compositePruningTrigger = new();
 
         IPruningTrieStore trieStore = mainPruningTrieStoreFactory.PruningTrieStore;
         ITrieStore mainWorldTrieStore = trieStore;
