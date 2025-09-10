@@ -6,6 +6,7 @@ using System.Collections.Generic;
 using System.Runtime.CompilerServices;
 using System.Threading;
 using Nethermind.Core;
+using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Serialization.Rlp;
 using Nethermind.State;
@@ -56,6 +57,7 @@ namespace Nethermind.Synchronization.SnapSync
             List<ValueHash256> codeHashes = new();
             bool hasExtraStorage = false;
 
+            using ArrayPoolList<PatriciaTree.BulkSetEntry> entries = new ArrayPoolList<PatriciaTree.BulkSetEntry>(accounts.Count);
             for (var index = 0; index < accounts.Count; index++)
             {
                 PathWithAccount account = accounts[index];
@@ -76,13 +78,16 @@ namespace Nethermind.Synchronization.SnapSync
                     codeHashes.Add(account.Account.CodeHash);
                 }
 
-                Rlp rlp = tree.Set(account.Path, account.Account);
-                if (rlp is not null)
+                var account_ = account.Account;
+                Rlp rlp = account_ is null ? null : account_.IsTotallyEmpty ? StateTree.EmptyAccountRlp : Rlp.Encode(account_);
+                entries.Add(new PatriciaTree.BulkSetEntry(account.Path, rlp?.Bytes));
+                if (account is not null)
                 {
                     Interlocked.Add(ref Metrics.SnapStateSynced, rlp.Bytes.Length);
                 }
             }
 
+            tree.BulkSet(entries, PatriciaTree.Flags.WasSorted);
             tree.UpdateRootHash();
 
             if (tree.RootHash.ValueHash256 != expectedRootHash)
@@ -151,13 +156,15 @@ namespace Nethermind.Synchronization.SnapSync
                 return (result, true);
             }
 
+            using ArrayPoolList<PatriciaTree.BulkSetEntry> entries = new ArrayPoolList<PatriciaTree.BulkSetEntry>(slots.Count);
             for (var index = 0; index < slots.Count; index++)
             {
                 PathWithStorageSlot slot = slots[index];
                 Interlocked.Add(ref Metrics.SnapStateSynced, slot.SlotRlpValue.Length);
-                tree.Set(in slot.Path, slot.SlotRlpValue, rlpEncode: false);
+                entries.Add(new PatriciaTree.BulkSetEntry(slot.Path, slot.SlotRlpValue));
             }
 
+            tree.BulkSet(entries, PatriciaTree.Flags.WasSorted);
             tree.UpdateRootHash();
 
             if (tree.RootHash.ValueHash256 != account.Account.StorageRoot)
@@ -202,6 +209,17 @@ namespace Nethermind.Synchronization.SnapSync
             if (!dict.TryGetValue(expectedRootHash, out TrieNode root))
             {
                 return (AddRangeResult.MissingRootHashInProofs, null, true);
+            }
+
+            if (dict.Count == 1 && root.IsLeaf)
+            {
+                // Special case with some server sending proof where the root is the same as the only path.
+                // Without this the proof's IsBoundaryNode flag will cause the key to not get saved.
+                var rootPath = TreePath.FromNibble(root.Key);
+                if (rootPath.Length == 64 && rootPath.Path.Equals(endHash))
+                {
+                    return (AddRangeResult.OK, null, false);
+                }
             }
 
             TreePath leftBoundaryPath = TreePath.FromPath(effectiveStartingHAsh.Bytes);
@@ -315,7 +333,7 @@ namespace Nethermind.Synchronization.SnapSync
 
                 TreePath emptyPath = TreePath.Empty;
                 node.ResolveNode(store, emptyPath);
-                node.ResolveKey(store, ref emptyPath, isRoot: i == 0);
+                node.ResolveKey(store, ref emptyPath);
 
                 dict[node.Keccak] = node;
             }

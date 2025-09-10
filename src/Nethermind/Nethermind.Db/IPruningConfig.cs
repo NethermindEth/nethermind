@@ -97,4 +97,7 @@ public interface IPruningConfig : IConfig
 
     [ConfigItem(Description = "Minimum number of block worth of unpersisted state in memory. Prevent memory pruning too often due to insufficient dirty cache memory.", DefaultValue = "8")]
     long MinUnpersistedBlockCount { get; set; }
+
+    [ConfigItem(Description = "Maximum number of block in commit buffer before blocking.", DefaultValue = "128", HiddenFromDocs = true)]
+    int MaxBufferedCommitCount { get; set; }
 }

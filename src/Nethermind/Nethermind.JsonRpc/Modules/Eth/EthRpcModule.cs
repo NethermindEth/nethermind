@@ -3,17 +3,13 @@
 
 using System;
 using System.Collections.Generic;
-using System.Diagnostics.CodeAnalysis;
 using System.Linq;
 using System.Security;
 using System.Text;
 using System.Text.Json;
 using System.Text.Json.Nodes;
-using System.Text.RegularExpressions;
 using System.Threading;
 using System.Threading.Tasks;
-using DotNetty.Buffers;
-using Force.Crc32;
 using Nethermind.Blockchain.Filters;
 using Nethermind.Blockchain.Find;
 using Nethermind.Blockchain.Receipts;
@@ -343,7 +339,7 @@ public partial class EthRpcModule(
         }
     }
 
-    public ResultWrapper<string> eth_call(TransactionForRpc transactionCall, BlockParameter? blockParameter = null, Dictionary<Address, AccountOverride>? stateOverride = null) =>
+    public virtual ResultWrapper<string> eth_call(TransactionForRpc transactionCall, BlockParameter? blockParameter = null, Dictionary<Address, AccountOverride>? stateOverride = null) =>
         new CallTxExecutor(_blockchainBridge, _blockFinder, _rpcConfig)
             .ExecuteTx(transactionCall, blockParameter, stateOverride);
 
@@ -351,11 +347,11 @@ public partial class EthRpcModule(
         new SimulateTxExecutor<SimulateCallResult>(_blockchainBridge, _blockFinder, _rpcConfig, new SimulateBlockMutatorTracerFactory(), secondsPerSlot: _secondsPerSlot)
             .Execute(payload, blockParameter);
 
-    public ResultWrapper<UInt256?> eth_estimateGas(TransactionForRpc transactionCall, BlockParameter? blockParameter, Dictionary<Address, AccountOverride>? stateOverride = null) =>
+    public virtual ResultWrapper<UInt256?> eth_estimateGas(TransactionForRpc transactionCall, BlockParameter? blockParameter, Dictionary<Address, AccountOverride>? stateOverride = null) =>
         new EstimateGasTxExecutor(_blockchainBridge, _blockFinder, _rpcConfig)
             .ExecuteTx(transactionCall, blockParameter, stateOverride);
 
-    public ResultWrapper<AccessListResultForRpc?> eth_createAccessList(TransactionForRpc transactionCall, BlockParameter? blockParameter = null, bool optimize = true) =>
+    public virtual ResultWrapper<AccessListResultForRpc?> eth_createAccessList(TransactionForRpc transactionCall, BlockParameter? blockParameter = null, bool optimize = true) =>
         new CreateAccessListTxExecutor(_blockchainBridge, _blockFinder, _rpcConfig, optimize)
             .ExecuteTx(transactionCall, blockParameter);
 
@@ -738,13 +734,35 @@ public partial class EthRpcModule(
             return GetFailureResult<AccountForRpc?, BlockHeader>(searchResult, _ethSyncingInfo.SyncMode.HaveNotSyncedHeadersYet());
         }
 
-        BlockHeader header = searchResult.Object;
-        return !_blockchainBridge.HasStateForBlock(header!)
-            ? GetStateFailureResult<AccountForRpc?>(header)
-            : ResultWrapper<AccountForRpc?>.Success(
-                _stateReader.TryGetAccount(header!, accountAddress, out AccountStruct account)
-                    ? new AccountForRpc(account)
-                    : null);
+        BlockHeader header = searchResult.Object!;
+        if (!_blockchainBridge.HasStateForBlock(header))
+            return GetStateFailureResult<AccountForRpc?>(header);
+        return ResultWrapper<AccountForRpc?>.Success(
+            _stateReader.TryGetAccount(header, accountAddress, out AccountStruct account)
+                ? new AccountForRpc(account)
+                : null);
+    }
+
+    public ResultWrapper<AccountInfoForRpc?> eth_getAccountInfo(Address accountAddress, BlockParameter? blockParameter)
+    {
+        SearchResult<BlockHeader> searchResult = _blockFinder.SearchForHeader(blockParameter);
+        if (searchResult.IsError)
+        {
+            return GetFailureResult<AccountInfoForRpc?, BlockHeader>(searchResult, _ethSyncingInfo.SyncMode.HaveNotSyncedHeadersYet());
+        }
+
+        BlockHeader header = searchResult.Object!;
+        if (!_blockchainBridge.HasStateForBlock(header))
+            return GetStateFailureResult<AccountInfoForRpc?>(header);
+        return ResultWrapper<AccountInfoForRpc?>.Success(
+            _stateReader.TryGetAccount(header, accountAddress, out AccountStruct account)
+                ? new AccountInfoForRpc
+                {
+                    Balance = account.Balance,
+                    Nonce = account.Nonce,
+                    Code = _stateReader.GetCode(account.CodeHash) ?? []
+                }
+                : AccountInfoForRpc.Empty);
     }
 
     protected static ResultWrapper<TResult> GetFailureResult<TResult, TSearch>(SearchResult<TSearch> searchResult, bool isTemporary) where TSearch : class =>

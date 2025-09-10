@@ -85,7 +85,7 @@
     "cl_image": "",
     "checkpoint-sync-url": "",
     "timeout": 600,
-    "agent": "g6-standard-8"
+    "agent": "g6-standard-16"
   },
   {
     "network": "world-mainnet",

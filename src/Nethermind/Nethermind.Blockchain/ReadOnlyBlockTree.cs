@@ -10,20 +10,16 @@ using Nethermind.Blockchain.Visitors;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
+using Nethermind.State.Repositories;
 
 namespace Nethermind.Blockchain
 {
     /// <summary>
     /// Safe to be reused for all classes reading the same wrapped block tree.
     /// </summary>
-    public class ReadOnlyBlockTree : IReadOnlyBlockTree
+    public class ReadOnlyBlockTree(IBlockTree wrapped) : IReadOnlyBlockTree
     {
-        private readonly IBlockTree _wrapped;
-
-        public ReadOnlyBlockTree(IBlockTree wrapped)
-        {
-            _wrapped = wrapped;
-        }
+        private readonly IBlockTree _wrapped = wrapped;
 
         public ulong NetworkId => _wrapped.NetworkId;
         public ulong ChainId => _wrapped.ChainId;
@@ -213,5 +209,9 @@ namespace Nethermind.Blockchain
         public void ForkChoiceUpdated(Hash256? finalizedBlockHash, Hash256? safeBlockBlockHash) => throw new InvalidOperationException($"{nameof(ReadOnlyBlockTree)} does not expect {nameof(ForkChoiceUpdated)} calls");
 
         public long GetLowestBlock() => _wrapped.GetLowestBlock();
+
+        public void NewOldestBlock(long oldestBlock) => throw new InvalidOperationException($"{nameof(ReadOnlyBlockTree)} does not expect {nameof(NewOldestBlock)} calls");
+
+        public void DeleteOldBlock(long blockNumber, Hash256 blockHash) => throw new InvalidOperationException($"{nameof(ReadOnlyBlockTree)} does not expect {nameof(DeleteOldBlock)} calls");
     }
 }

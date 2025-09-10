@@ -125,7 +125,7 @@ namespace Nethermind.Core.Collections
                 var block = Expression.Block(clearBuckets, clearCountPerLock);
 
                 // Compile the expression into a lambda
-                return Expression.Lambda<Action<ConcurrentDictionary<TKey, TValue>>>(block, dictionaryParam).Compile();
+                return Expression.Lambda<Action<ConcurrentDictionary<TKey, TValue>>>(block, name: "ConcurrentDictionary_FastClear", new ParameterExpression[] { dictionaryParam }).Compile();
             }
         }
     }

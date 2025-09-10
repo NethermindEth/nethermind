@@ -340,6 +340,18 @@ public partial class DbOnTheRocks : IDb, ITunableDb, IReadOnlyNativeKeyValueStor
 
     public IDbMeta.DbMetric GatherMetric(bool includeSharedCache = false)
     {
+        if (_isDisposed)
+        {
+            return new IDbMeta.DbMetric()
+            {
+                Size = 0,
+                CacheSize = 0,
+                IndexSize = 0,
+                MemtableSize = 0,
+                TotalReads = _totalReads,
+                TotalWrites = _totalWrites,
+            };
+        }
         return new IDbMeta.DbMetric()
         {
             Size = GetSize(),
@@ -907,8 +919,8 @@ public partial class DbOnTheRocks : IDb, ITunableDb, IReadOnlyNativeKeyValueStor
         fixed (byte* ptr = &MemoryMarshal.GetReference(key))
         {
             slice = cf is null
-                        ? Native.Instance.rocksdb_get_pinned(db, read_options, ptr, skLength, out errPtr)
-                        : Native.Instance.rocksdb_get_pinned_cf(db, read_options, cf.Handle, ptr, skLength, out errPtr);
+                ? Native.Instance.rocksdb_get_pinned(db, read_options, ptr, skLength, out errPtr)
+                : Native.Instance.rocksdb_get_pinned_cf(db, read_options, cf.Handle, ptr, skLength, out errPtr);
         }
 
         if (errPtr != IntPtr.Zero) ThrowRocksDbException(errPtr);

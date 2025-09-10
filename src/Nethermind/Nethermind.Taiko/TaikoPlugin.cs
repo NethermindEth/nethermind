@@ -87,8 +87,6 @@ public class TaikoPlugin(ChainSpec chainSpec) : IConsensusPlugin
         L1SloadPrecompile.L1StorageProvider = storageProvider;
     }
 
-    public ValueTask DisposeAsync() => ValueTask.CompletedTask;
-
     public bool MustInitialize => true;
 
     // IConsensusPlugin
@@ -149,6 +147,7 @@ public class TaikoModule : Module
 
             // Blok processing
             .AddSingleton<IBlockValidationModule, TaikoBlockValidationModule>()
+            .AddSingleton<IMainProcessingModule, TaikoMainBlockProcessingModule>()
             .AddScoped<ITransactionProcessor, TaikoTransactionProcessor>()
             .AddScoped<IBlockProducerEnvFactory, TaikoBlockProductionEnvFactory>()
 
@@ -228,6 +227,14 @@ public class TaikoModule : Module
         protected override void Load(ContainerBuilder builder)
         {
             builder.AddScoped<IBlockProcessor.IBlockTransactionsExecutor, TaikoBlockValidationTransactionExecutor>();
+        }
+    }
+
+    private class TaikoMainBlockProcessingModule : Module, IMainProcessingModule
+    {
+        protected override void Load(ContainerBuilder builder)
+        {
+            builder.AddScoped<IBlockProcessor.IBlockTransactionsExecutor, BlockInvalidTxExecutor>();
         }
     }
 

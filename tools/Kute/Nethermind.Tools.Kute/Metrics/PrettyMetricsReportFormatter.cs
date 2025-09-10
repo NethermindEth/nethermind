@@ -16,11 +16,18 @@ public sealed class PrettyMetricsReportFormatter : IMetricsReportFormatter
         await writer.WriteLineAsync($"Ignored: {report.Ignored}", token);
         await writer.WriteLineAsync($"Responses: {report.Responses}\n", token);
         await writer.WriteLineAsync("Singles:", token);
-        await writer.WriteLineAsync($"  Count: {report.Singles.Count}", token);
-        await writer.WriteLineAsync($"  Max: {report.SinglesMetrics.Max.TotalMilliseconds} ms", token);
-        await writer.WriteLineAsync($"  Average: {report.SinglesMetrics.Average.TotalMilliseconds} ms", token);
-        await writer.WriteLineAsync($"  Min: {report.SinglesMetrics.Min.TotalMilliseconds} ms", token);
-        await writer.WriteLineAsync($"  Stddev: {report.SinglesMetrics.StandardDeviation.TotalMilliseconds} ms", token);
+        foreach (var single in report.SinglesMetrics)
+        {
+            var methodName = single.Key;
+            var metrics = single.Value;
+            await writer.WriteLineAsync($"  {methodName}:", token);
+            await writer.WriteLineAsync($"    Count: {report.Singles[methodName].Count}", token);
+            await writer.WriteLineAsync($"    Max: {metrics.Max.TotalMilliseconds} ms", token);
+            await writer.WriteLineAsync($"    Average: {metrics.Average.TotalMilliseconds} ms", token);
+            await writer.WriteLineAsync($"    Min: {metrics.Min.TotalMilliseconds} ms", token);
+            await writer.WriteLineAsync($"    Stddev: {metrics.StandardDeviation.TotalMilliseconds} ms", token);
+        }
+
         await writer.WriteLineAsync("Batches:", token);
         await writer.WriteLineAsync($"  Count: {report.Batches.Count}", token);
         await writer.WriteLineAsync($"  Max: {report.BatchesMetrics.Max.TotalMilliseconds} ms", token);

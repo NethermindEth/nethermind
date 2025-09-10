@@ -24,6 +24,7 @@ using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Blockchain;
 using Nethermind.Core.Test.Builders;
+using Nethermind.Core.Test.Container;
 using Nethermind.Crypto;
 using Nethermind.Evm;
 using Nethermind.Facade;
@@ -862,6 +863,48 @@ public partial class EthRpcModuleTests
         serialized.Should().Be(expected);
     }
 
+    [Test]
+    public async Task Eth_get_account_info_notfound()
+    {
+        using Context ctx = await Context.Create();
+        string serialized = await ctx.Test.TestEthRpc("eth_getAccountInfo", "0x000000000000000000000000000000000000dead", "latest");
+
+        serialized.Should().Be("{\"jsonrpc\":\"2.0\",\"result\":{\"code\":\"0x\",\"balance\":\"0x0\",\"nonce\":\"0x0\"},\"id\":67}");
+    }
+
+    [Test]
+    public async Task Eth_get_account_info_found()
+    {
+        using Context ctx = await Context.Create();
+        string account_address = TestBlockchain.AccountC.ToString();
+
+        string serialized = await ctx.Test.TestEthRpc("eth_getAccountInfo", account_address, "latest");
+
+        serialized.Should().Be("{\"jsonrpc\":\"2.0\",\"result\":{\"code\":\"0x\",\"balance\":\"0x3635c9adc5dea00000\",\"nonce\":\"0x0\"},\"id\":67}");
+    }
+
+    [Test]
+    public async Task Eth_get_account_info_incorrect_block()
+    {
+        using Context ctx = await Context.Create();
+        string account_address = TestBlockchain.AccountC.ToString();
+
+        string serialized = await ctx.Test.TestEthRpc("eth_getAccountInfo", account_address, "0xffff");
+
+        serialized.Should().Be("{\"jsonrpc\":\"2.0\",\"error\":{\"code\":-32001,\"message\":\"65535 could not be found\"},\"id\":67}");
+    }
+
+    [Test]
+    public async Task Eth_get_account_info_no_block_argument()
+    {
+        using Context ctx = await Context.Create();
+        string account_address = TestBlockchain.AccountC.ToString();
+
+        string serialized = await ctx.Test.TestEthRpc("eth_getAccountInfo", account_address);
+
+        serialized.Should().Be("{\"jsonrpc\":\"2.0\",\"result\":{\"code\":\"0x\",\"balance\":\"0x3635c9adc5dea00000\",\"nonce\":\"0x0\"},\"id\":67}");
+    }
+
 
     [Test]
     public async Task Eth_get_block_by_number_with_recovering_sender_from_receipts()
@@ -1601,7 +1644,17 @@ public partial class EthRpcModuleTests
                     .WithConfig(new JsonRpcConfig() { EstimateErrorMargin = 0 })
                     .Build(wrappedConfigurer),
                 AuraTest = await TestRpcBlockchain.ForTest(SealEngineType.AuRa)
-                    .Build(wrappedConfigurer)
+                    .Build(configurer: builder =>
+                    {
+                        builder
+                            .WithGenesisPostProcessor((block, state) =>
+                                {
+                                    block.Header.AuRaStep = 0;
+                                    block.Header.AuRaSignature = new byte[65];
+                                }
+                            );
+                        wrappedConfigurer(builder);
+                    })
             };
         }
 
