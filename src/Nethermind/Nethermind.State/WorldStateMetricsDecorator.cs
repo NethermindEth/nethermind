@@ -8,7 +8,6 @@ using Nethermind.Evm.Tracing.State;
 
 namespace Nethermind.State;
 
-// use WrappedWorldState
 public class WorldStateMetricsDecorator(IWorldState innerWorldState) : WrappedWorldState(innerWorldState)
 {
     public override void Reset(bool resetBlockChanges = true)

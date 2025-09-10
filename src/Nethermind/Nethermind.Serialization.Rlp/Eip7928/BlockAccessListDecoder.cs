@@ -28,8 +28,23 @@ public class BlockAccessListDecoder : IRlpValueDecoder<BlockAccessList>, IRlpStr
             throw new RlpException("Number of accounts exceeded maximum.");
         }
 
-        SortedDictionary<Address, AccountChanges> accountChangesMap = new(accountChanges.ToDictionary(a => a.Address, a => a));
+        Address lastAddress = Address.Zero;
+        SortedDictionary<Address, AccountChanges> accountChangesMap = new(accountChanges.ToDictionary(a =>
+        {
+            Address address = a.Address;
+            if (address.CompareTo(lastAddress) <= 0)
+            {
+                throw new RlpException("Account changes were in incorrect order.");
+            }
+            lastAddress = address;
+            return address;
+        }, a => a));
         BlockAccessList blockAccessList = new(accountChangesMap);
+
+        if (!accountChanges.SequenceEqual(accountChangesMap.Values))
+        {
+            throw new RlpException("Accounts were in incorrect order.");
+        }
 
         if (!rlpBehaviors.HasFlag(RlpBehaviors.AllowExtraBytes))
         {

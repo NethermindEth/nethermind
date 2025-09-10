@@ -21,20 +21,76 @@ public class AccountChangesDecoder : IRlpValueDecoder<AccountChanges>, IRlpStrea
         int check = length + ctx.Position;
 
         Address address = ctx.DecodeAddress();
+
         SlotChanges[] slotChanges = ctx.DecodeArray(SlotChangesDecoder.Instance);
-        SortedDictionary<byte[], SlotChanges> slotChangesMap = new(slotChanges.ToDictionary(s => s.Slot, s => s), Bytes.Comparer);
+        byte[] lastSlot = Bytes32.Zero.Unwrap();
+        SortedDictionary<byte[], SlotChanges> slotChangesMap = new(slotChanges.ToDictionary(s =>
+        {
+            byte[] slot = s.Slot;
+            if (Bytes.BytesComparer.Compare(slot, lastSlot) <= 0)
+            {
+                throw new RlpException("Storage changes were in incorrect order.");
+            }
+            lastSlot = slot;
+            return slot;
+        }, s => s), Bytes.Comparer);
+
         StorageRead[] storageReads = ctx.DecodeArray(StorageReadDecoder.Instance);
+        SortedSet<StorageRead> storareReadsList = [];
+        StorageRead lastRead = new(Bytes32.Zero);
+        foreach (StorageRead storageRead in storageReads)
+        {
+            if (storageRead.CompareTo(lastRead) <= 0)
+            {
+                throw new RlpException("Storage reads were in incorrect order.");
+            }
+            storareReadsList.Add(storageRead);
+            lastRead = storageRead;
+        }
+    
         BalanceChange[] balanceChanges = ctx.DecodeArray(BalanceChangeDecoder.Instance);
-        SortedList<ushort, BalanceChange> balanceChangesList = new(balanceChanges.ToDictionary(s => s.BlockAccessIndex, s => s));
+        ushort lastIndex = 0;
+        SortedList<ushort, BalanceChange> balanceChangesList = new(balanceChanges.ToDictionary(s => {
+            ushort index = s.BlockAccessIndex;
+            if (index <= lastIndex)
+            {
+                throw new RlpException("Balance changes were in incorrect order.");
+            }
+            lastIndex = index;
+            return index;
+        }, s => s));
+
+        lastIndex = 0;
         NonceChange[] nonceChanges = ctx.DecodeArray(NonceChangeDecoder.Instance);
-        SortedList<ushort, NonceChange> nonceChangesList = new(nonceChanges.ToDictionary(s => s.BlockAccessIndex, s => s));
+        SortedList<ushort, NonceChange> nonceChangesList = new(nonceChanges.ToDictionary(s =>
+        {
+            ushort index = s.BlockAccessIndex;
+            if (index <= lastIndex)
+            {
+                throw new RlpException("Nonce changes were in incorrect order.");
+            }
+            lastIndex = index;
+            return index;
+        }, s => s));
+
         CodeChange[] codeChanges = ctx.DecodeArray(CodeChangeDecoder.Instance);
-        SortedList<ushort, CodeChange> codeChangesList = new(codeChanges.ToDictionary(s => s.BlockAccessIndex, s => s));
 
         if (codeChanges.Length > Eip7928Constants.MaxCodeChanges)
         {
             throw new RlpException("Number of code changes exceeded maximum.");
         }
+
+        lastIndex = 0;
+        SortedList<ushort, CodeChange> codeChangesList = new(codeChanges.ToDictionary(s =>
+        {
+            ushort index = s.BlockAccessIndex;
+            if (index <= lastIndex)
+            {
+                throw new RlpException("Code changes were in incorrect order.");
+            }
+            lastIndex = index;
+            return index;
+        }, s => s));
 
         if (!rlpBehaviors.HasFlag(RlpBehaviors.AllowExtraBytes))
         {
@@ -45,7 +101,7 @@ public class AccountChangesDecoder : IRlpValueDecoder<AccountChanges>, IRlpStrea
         {
             Address = address,
             StorageChanges = slotChangesMap,
-            StorageReads = [.. storageReads],
+            StorageReads = storareReadsList,
             BalanceChanges = balanceChangesList,
             NonceChanges = nonceChangesList,
             CodeChanges = codeChangesList
