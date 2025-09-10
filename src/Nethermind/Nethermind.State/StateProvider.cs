@@ -18,12 +18,12 @@ using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Resettables;
 using Nethermind.Core.Specs;
+using Nethermind.Evm.Tracing.State;
 using Nethermind.Int256;
 using Nethermind.Logging;
-using Nethermind.State.Tracing;
+using Nethermind.Serialization.Rlp;
 using Nethermind.Trie;
 using Nethermind.Trie.Pruning;
-
 using Metrics = Nethermind.Db.Metrics;
 using static Nethermind.State.StateProvider;
 
@@ -113,15 +113,6 @@ namespace Nethermind.State
             _intraTxCache.TryGetValue(address, out Stack<int> value)
                 ? _changes[value.Peek()]!.ChangeType != ChangeType.Delete
                 : GetAndAddToCache(address) is not null;
-
-        public bool IsEmptyAccount(Address address)
-        {
-            Account? account = GetThroughCache(address);
-            return account?.IsEmpty ?? ThrowIfNull(address);
-
-            [DoesNotReturn, StackTraceHidden]
-            static bool ThrowIfNull(Address address) => throw new InvalidOperationException($"Account {address} is null when checking if empty");
-        }
 
         public Account GetAccount(Address address) => GetThroughCache(address) ?? Account.TotallyEmpty;
 
@@ -717,13 +708,21 @@ namespace Nethermind.State
         {
             int writes = 0;
             int skipped = 0;
+
+            using ArrayPoolList<PatriciaTree.BulkSetEntry> bulkWrite = new(_blockChanges.Count);
             foreach (var key in _blockChanges.Keys)
             {
                 ref var change = ref CollectionsMarshal.GetValueRefOrNullRef(_blockChanges, key);
                 if (change.Before != change.After)
                 {
                     change.Before = change.After;
-                    _tree.Set(key, change.After);
+
+                    KeccakCache.ComputeTo(key.Value.Bytes, out ValueHash256 keccak);
+
+                    var account = change.After;
+                    Rlp accountRlp = account is null ? null : account.IsTotallyEmpty ? StateTree.EmptyAccountRlp : Rlp.Encode(account);
+
+                    bulkWrite.Add(new PatriciaTree.BulkSetEntry(keccak, accountRlp?.Bytes));
                     writes++;
                 }
                 else
@@ -731,6 +730,8 @@ namespace Nethermind.State
                     skipped++;
                 }
             }
+
+            _tree.BulkSet(bulkWrite);
 
             if (writes > 0)
                 Metrics.IncrementStateTreeWrites(writes);

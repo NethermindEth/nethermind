@@ -4,6 +4,7 @@
 
 using Nethermind.Abi;
 using Nethermind.Blockchain;
+using Nethermind.Blockchain.Tracing;
 using Nethermind.Consensus.Messages;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
@@ -11,10 +12,9 @@ using Nethermind.Core.ExecutionRequest;
 using Nethermind.Core.Specs;
 using Nethermind.Crypto;
 using Nethermind.Evm;
-using Nethermind.Evm.Tracing;
+using Nethermind.Evm.State;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Int256;
-using Nethermind.State;
 using System;
 using System.Linq;
 
@@ -119,6 +119,7 @@ public class ExecutionRequestsProcessor : IExecutionRequestsProcessor
         try
         {
             result = _abiEncoder.Decode(AbiEncodingStyle.None, DepositEventAbi, log.Data);
+            ValidateLayout(result, block);
         }
         catch (Exception e) when (e is AbiException or OverflowException)
         {
@@ -134,16 +135,28 @@ public class ExecutionRequestsProcessor : IExecutionRequestsProcessor
                 byteArray.CopyTo(buffer.Slice(offset, byteArray.Length));
                 offset += byteArray.Length;
             }
-            else
-            {
-                throw new InvalidBlockException(block, BlockErrorMessages.InvalidDepositEventLayout("Decoded ABI result contains non-byte array elements."));
-            }
         }
+    }
 
-        // make sure the flattened result is of the correct size
-        if (offset != ExecutionRequestExtensions.DepositRequestsBytesSize)
+    private static void ValidateLayout(object[] result, Block block)
+    {
+        Validate(block, result[0], "pubkey", ExecutionRequestExtensions.PublicKeySize);
+        Validate(block, result[1], "withdrawalCredentials", ExecutionRequestExtensions.WithdrawalCredentialsSize);
+        Validate(block, result[2], "amount", ExecutionRequestExtensions.AmountSize);
+        Validate(block, result[3], "signature", ExecutionRequestExtensions.SignatureSize);
+        Validate(block, result[4], "index", ExecutionRequestExtensions.IndexSize);
+
+        static void Validate(Block block, object obj, string name, int expectedSize)
         {
-            throw new InvalidBlockException(block, BlockErrorMessages.InvalidDepositEventLayout($"Decoded ABI result has incorrect size. Expected {ExecutionRequestExtensions.DepositRequestsBytesSize} bytes, got {offset} bytes."));
+            if (obj is not byte[] byteArray)
+            {
+                throw new InvalidBlockException(block, BlockErrorMessages.InvalidDepositEventLayout($"Decoded ABI result contains {name} as non-byte array element."));
+            }
+
+            if (byteArray.Length != expectedSize)
+            {
+                throw new InvalidBlockException(block, BlockErrorMessages.InvalidDepositEventLayout($"Decoded ABI result contains invalid {name} element, size does not match, expected {expectedSize}, got {byteArray.Length}."));
+            }
         }
     }
 

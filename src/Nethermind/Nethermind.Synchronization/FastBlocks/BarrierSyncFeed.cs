@@ -13,9 +13,6 @@ namespace Nethermind.Synchronization.FastBlocks;
 
 public abstract class BarrierSyncFeed<T> : ActivatedSyncFeed<T>
 {
-    internal const int DepositContractBarrier = 11052984;
-    internal const int OldBarrierDefaultExtraRange = 64_000;
-
     protected abstract long? LowestInsertedNumber { get; }
     protected abstract int BarrierWhenStartedMetadataDbKey { get; }
     protected abstract long SyncConfigBarrierCalc { get; }
@@ -28,13 +25,6 @@ public abstract class BarrierSyncFeed<T> : ActivatedSyncFeed<T>
     protected long? _barrierWhenStarted;
 
     protected readonly IDb _metadataDb;
-
-    // This property was introduced when we switched defaults of barriers on mainnet from 11052984 to 0 to not disturb existing node operators
-    protected bool WithinOldBarrierDefault => _specProvider.ChainId == BlockchainIds.Mainnet
-        && _barrier == 1
-        && _barrierWhenStarted == DepositContractBarrier
-        && LowestInsertedNumber <= DepositContractBarrier
-        && LowestInsertedNumber > DepositContractBarrier - OldBarrierDefaultExtraRange; // this is intentional. this is a magic number as to the amount of possible blocks that had been synced. We noticed on previous versions that the client synced a bit below the default barrier by more than just the GethRequest limit (128).
 
     public BarrierSyncFeed(IDb metadataDb, ISpecProvider specProvider, ILogger logger)
     {
@@ -53,12 +43,6 @@ public abstract class BarrierSyncFeed<T> : ActivatedSyncFeed<T>
         else if (_metadataDb.KeyExists(BarrierWhenStartedMetadataDbKey))
         {
             _barrierWhenStarted = _metadataDb.Get(BarrierWhenStartedMetadataDbKey).ToLongFromBigEndianByteArrayWithoutLeadingZeros();
-        }
-        else if (_specProvider.ChainId == BlockchainIds.Mainnet)
-        {
-            // Assume the  barrier was the previous default (deposit contract barrier) only for mainnet
-            _barrierWhenStarted = DepositContractBarrier;
-            _metadataDb.Set(BarrierWhenStartedMetadataDbKey, _barrierWhenStarted.Value.ToBigEndianByteArrayWithoutLeadingZeros());
         }
         else
         {

@@ -11,6 +11,7 @@ using Autofac.Core;
 using Nethermind.Api;
 using Nethermind.Api.Extensions;
 using Nethermind.Api.Steps;
+using Nethermind.Blockchain;
 using Nethermind.Blockchain.Services;
 using Nethermind.Consensus.AuRa.Config;
 using Nethermind.Consensus.AuRa.InitializationSteps;
@@ -18,13 +19,13 @@ using Nethermind.Consensus.AuRa.Transactions;
 using Nethermind.Consensus.AuRa.Validators;
 using Nethermind.Consensus.AuRa.Rewards;
 using Nethermind.Consensus.AuRa.Services;
+using Nethermind.Consensus.Processing;
 using Nethermind.Consensus.Rewards;
+using Nethermind.Consensus.Transactions;
 using Nethermind.Consensus.Validators;
 using Nethermind.Core;
 using Nethermind.Core.Container;
-using Nethermind.JsonRpc.Modules;
-using Nethermind.JsonRpc.Modules.DebugModule;
-using Nethermind.JsonRpc.Modules.Trace;
+using Nethermind.Core.Specs;
 using Nethermind.Logging;
 using Nethermind.Serialization.Rlp;
 using Nethermind.Specs.ChainSpecStyle;
@@ -53,11 +54,6 @@ namespace Nethermind.Consensus.AuRa
         private StartBlockProducerAuRa BlockProducerStarter => _blockProducerStarter ??= _nethermindApi!.CreateStartBlockProducer();
 
         public bool Enabled => chainSpec.SealEngineType == SealEngineType;
-        public ValueTask DisposeAsync()
-        {
-            return default;
-        }
-
         public Task Init(INethermindApi nethermindApi)
         {
             _nethermindApi = nethermindApi as AuRaNethermindApi;
@@ -92,6 +88,7 @@ namespace Nethermind.Consensus.AuRa
 
             builder
                 .AddSingleton<NethermindApi, AuRaNethermindApi>()
+                .AddDecorator<ISpecProvider, AuRaSpecProvider>()
                 .AddSingleton<AuRaChainSpecEngineParameters>(specParam)
                 .AddDecorator<IBetterPeerStrategy, AuRaBetterPeerStrategy>()
                 .Add<StartBlockProducerAuRa>() // Note: Stateful. Probably just some strange unintentional side effect though.
@@ -107,9 +104,13 @@ namespace Nethermind.Consensus.AuRa
 
                 // Steps override
                 .AddStep(typeof(InitializeBlockchainAuRa))
-                .AddStep(typeof(LoadGenesisBlockAuRa))
 
                 // Block processing components
+                .AddSingleton<IBlockValidationModule, AuraValidationModule>()
+                .AddSingleton<IMainProcessingModule, AuraMainProcessingModule>()
+                .AddScoped<IAuRaValidator, NullAuRaValidator>() // Note: for main block processor this is not the case
+                .AddScoped<IBlockProcessor, AuRaBlockProcessor>()
+
                 .AddSingleton<IRewardCalculatorSource, AuRaRewardCalculator.AuRaRewardCalculatorSource>()
                 .AddSingleton<IValidSealerStrategy, ValidSealerStrategy>()
                 .AddSingleton<IAuRaStepCalculator, AuRaChainSpecEngineParameters, ITimestamper, ILogManager>((param, timestamper, logManager)
@@ -118,13 +119,9 @@ namespace Nethermind.Consensus.AuRa
                 .Bind<ISealValidator, AuRaSealValidator>()
                 .AddSingleton<ISealer, AuRaSealer>()
                 .AddSingleton<AuRaGasLimitOverrideFactory>()
+                .AddScoped<IGenesisPostProcessor, AuraGenesisPostProcessor>()
 
                 // Rpcs
-                .AddScoped<AuRaRpcBlockProcessorFactory>()
-                .AddSingleton<IRpcModuleFactory<ITraceRpcModule>, AuRaTraceModuleFactory>()
-                .AddSingleton<IAuRaBlockProcessorFactory, AuRaBlockProcessorFactory>()
-                .AddSingleton<IRpcModuleFactory<IDebugRpcModule>, AuRaDebugModuleFactory>()
-
                 .AddSingleton<IHealthHintService, AuraHealthHintService>()
 
                 ;
@@ -135,6 +132,34 @@ namespace Nethermind.Consensus.AuRa
             }
 
             if (Rlp.GetStreamDecoder<ValidatorInfo>() is null) Rlp.RegisterDecoder(typeof(ValidatorInfo), new ValidatorInfoDecoder());
+        }
+
+        /// <summary>
+        /// Some validation component that is active in rpc and validation but not in block produccer.
+        /// </summary>
+        /// <param name="parameters"></param>
+        /// <param name="specProvider"></param>
+        /// <param name="txAuRaFilterBuilders"></param>
+        /// <param name="gasLimitOverrideFactory"></param>
+        private class AuraValidationModule(
+            AuRaChainSpecEngineParameters parameters,
+            TxAuRaFilterBuilders txAuRaFilterBuilders,
+            AuRaGasLimitOverrideFactory gasLimitOverrideFactory
+        ) : Module, IBlockValidationModule
+        {
+            protected override void Load(ContainerBuilder builder)
+            {
+                ITxFilter txFilter = txAuRaFilterBuilders.CreateAuRaTxFilter(new ServiceTxFilter());
+
+                IDictionary<long, IDictionary<Address, byte[]>> rewriteBytecode = parameters.RewriteBytecode;
+                ContractRewriter? contractRewriter = rewriteBytecode?.Count > 0 ? new ContractRewriter(rewriteBytecode) : null;
+
+                AuRaContractGasLimitOverride? gasLimitOverride = gasLimitOverrideFactory.GetGasLimitCalculator();
+
+                builder.AddSingleton(txFilter);
+                if (contractRewriter is not null) builder.AddSingleton(contractRewriter);
+                if (gasLimitOverride is not null) builder.AddSingleton(gasLimitOverride);
+            }
         }
     }
 }

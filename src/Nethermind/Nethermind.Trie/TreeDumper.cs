@@ -10,9 +10,10 @@ using Nethermind.Serialization.Rlp;
 
 namespace Nethermind.Trie
 {
-    public class TreeDumper : ITreeVisitor<OldStyleTrieVisitContext>
+    public class TreeDumper(bool expectAccounts = true) : ITreeVisitor<OldStyleTrieVisitContext>
     {
         private readonly StringBuilder _builder = new();
+        public bool ExpectAccounts => expectAccounts;
 
         public void Reset()
         {
@@ -60,6 +61,10 @@ namespace Nethermind.Trie
 
         public void VisitLeaf(in OldStyleTrieVisitContext context, TrieNode node)
         {
+            if (!expectAccounts)
+            {
+                _builder.AppendLine($"{GetPrefix(context)}LEAF {Nibbles.FromBytes(node.Key).ToPackedByteArray().ToHexString(false)} -> {KeccakOrRlpStringOfNode(node)}");
+            }
         }
 
         public void VisitAccount(in OldStyleTrieVisitContext context, TrieNode node, in AccountStruct account)

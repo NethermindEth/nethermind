@@ -18,6 +18,7 @@ public class ChainParameters
     public Address Registrar { get; set; }
     public long MaximumExtraDataSize { get; set; }
     public long MinGasLimit { get; set; }
+    public long MinHistoryRetentionEpochs { get; set; }
     public Hash256 ForkCanonHash { get; set; }
     public long? ForkBlock { get; set; }
     public long? Eip7Transition { get; set; }
@@ -129,6 +130,7 @@ public class ChainParameters
     public ulong? Eip2935TransitionTimestamp { get; set; }
     public Address Eip2935ContractAddress { get; set; }
     public ulong? Eip7951TransitionTimestamp { get; set; }
+    public ulong? Rip7212TransitionTimestamp { get; set; }
     public ulong? Eip7692TransitionTimestamp { get; set; }
     public ulong? Eip7702TransitionTimestamp { get; set; }
     public ulong? OpGraniteTransitionTimestamp { get; set; }
@@ -169,4 +171,6 @@ public class ChainParameters
     public ulong? Eip7939TransitionTimestamp { get; set; }
 
     #endregion
+
+    public ulong? Rip7728TransitionTimestamp { get; set; }
 }

@@ -5,6 +5,7 @@ using System;
 using System.Threading;
 using Nethermind.Core;
 using Nethermind.Db;
+using Nethermind.Evm.State;
 using Nethermind.Logging;
 using Nethermind.State.Healing;
 using Nethermind.State.SnapServer;
@@ -90,12 +91,6 @@ public class WorldStateManager : IWorldStateManager
     public IOverridableWorldScope CreateOverridableWorldScope()
     {
         return new OverridableWorldStateManager(_dbProvider, _readOnlyTrieStore, _logManager);
-    }
-
-    public IWorldState CreateOverlayWorldState(IKeyValueStoreWithBatching overlayState, IKeyValueStoreWithBatching overlayCode)
-    {
-        OverlayTrieStore overlayTrieStore = new(overlayState, _readOnlyTrieStore);
-        return new WorldState(overlayTrieStore, overlayCode, _logManager);
     }
 
     public bool VerifyTrie(BlockHeader stateAtBlock, CancellationToken cancellationToken)

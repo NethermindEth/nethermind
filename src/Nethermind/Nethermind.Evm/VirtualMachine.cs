@@ -7,7 +7,6 @@ using System.Diagnostics.CodeAnalysis;
 using System.Numerics;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
-using System.Runtime.Intrinsics;
 using System.Threading;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
@@ -18,7 +17,7 @@ using Nethermind.Evm.EvmObjectFormat.Handlers;
 using Nethermind.Evm.Precompiles;
 using Nethermind.Evm.Tracing;
 using Nethermind.Logging;
-using Nethermind.State;
+using Nethermind.Evm.State;
 
 using static Nethermind.Evm.EvmObjectFormat.EofValidator;
 
@@ -32,7 +31,15 @@ namespace Nethermind.Evm;
 using unsafe OpCode = delegate*<VirtualMachine, ref EvmStack, ref long, ref int, EvmExceptionType>;
 using Int256;
 
-public sealed unsafe partial class VirtualMachine(
+public sealed unsafe class EthereumVirtualMachine(
+    IBlockhashProvider? blockHashProvider,
+    ISpecProvider? specProvider,
+    ILogManager? logManager
+) : VirtualMachine(blockHashProvider, specProvider, logManager)
+{
+}
+
+public unsafe partial class VirtualMachine(
     IBlockhashProvider? blockHashProvider,
     ISpecProvider? specProvider,
     ILogManager? logManager) : IVirtualMachine
@@ -85,6 +92,7 @@ public sealed unsafe partial class VirtualMachine(
     private ReadOnlyMemory<byte>? _previousCallResult;
     private UInt256 _previousCallOutputDestination;
 
+    public ILogger Logger => _logger;
     public ICodeInfoRepository CodeInfoRepository => _codeInfoRepository;
     public IReleaseSpec Spec => _blockExecutionContext.Spec;
     public ITxTracer TxTracer => _txTracer;
@@ -93,6 +101,7 @@ public sealed unsafe partial class VirtualMachine(
     public ReadOnlyMemory<byte> ReturnDataBuffer { get; set; } = Array.Empty<byte>();
     public object ReturnData { get; set; }
     public IBlockhashProvider BlockHashProvider => _blockHashProvider;
+    protected Stack<EvmState> StateStack => _stateStack;
 
     private BlockExecutionContext _blockExecutionContext;
     public void SetBlockExecutionContext(in BlockExecutionContext blockExecutionContext) => _blockExecutionContext = blockExecutionContext;
@@ -107,6 +116,7 @@ public sealed unsafe partial class VirtualMachine(
 
     public EvmState EvmState { get => _currentState; private set => _currentState = value; }
     public int SectionIndex { get; set; }
+    public int OpCodeCount { get; set; }
 
     /// <summary>
     /// Executes a transaction by iteratively processing call frames until a top-level call returns
@@ -125,7 +135,7 @@ public sealed unsafe partial class VirtualMachine(
     /// <exception cref="EvmException">
     /// Thrown when an EVM-specific error occurs during execution.
     /// </exception>
-    public TransactionSubstate ExecuteTransaction<TTracingInst>(
+    public virtual TransactionSubstate ExecuteTransaction<TTracingInst>(
         EvmState evmState,
         IWorldState worldState,
         ITxTracer txTracer)
@@ -138,7 +148,7 @@ public sealed unsafe partial class VirtualMachine(
         // Prepare the specification and opcode mapping based on the current block header.
         IReleaseSpec spec = BlockExecutionContext.Spec;
         PrepareOpcodes<TTracingInst>(spec);
-
+        OpCodeCount = 0;
         // Initialize the code repository and set up the initial execution state.
         _codeInfoRepository = TxExecutionContext.CodeInfoRepository;
         _currentState = evmState;
@@ -514,6 +524,7 @@ public sealed unsafe partial class VirtualMachine(
             _currentState.AccessTracker.Logs,
             callResult.ShouldRevert,
             isTracerConnected: _txTracer.IsTracing,
+            callResult.ExceptionType,
             _logger);
     }
 
@@ -736,7 +747,7 @@ public sealed unsafe partial class VirtualMachine(
     }
 
     /// <summary>
-    /// Executes a precompiled contract operation based on the current execution state. 
+    /// Executes a precompiled contract operation based on the current execution state.
     /// If tracing is enabled, reports the precompile action. It then runs the precompile operation,
     /// checks for failure conditions, and adjusts the execution state accordingly.
     /// </summary>
@@ -843,17 +854,21 @@ public sealed unsafe partial class VirtualMachine(
                     _logger.Debug("Refreshing EVM instruction cache");
                 }
                 // Regenerate the non-traced opcode set to pick up any updated PGO optimized methods.
-                spec.EvmInstructionsNoTrace = EvmInstructions.GenerateOpCodes<TTracingInst>(spec);
+                spec.EvmInstructionsNoTrace = GenerateOpCodes<TTracingInst>(spec);
             }
             // Ensure the non-traced opcode set is generated and assign it to the _opcodeMethods field.
-            _opcodeMethods = (OpCode[])(spec.EvmInstructionsNoTrace ??= EvmInstructions.GenerateOpCodes<TTracingInst>(spec));
+            _opcodeMethods = (OpCode[])(spec.EvmInstructionsNoTrace ??= GenerateOpCodes<TTracingInst>(spec));
         }
         else
         {
             // For tracing-enabled execution, generate (if necessary) and cache the traced opcode set.
-            _opcodeMethods = (OpCode[])(spec.EvmInstructionsTraced ??= EvmInstructions.GenerateOpCodes<TTracingInst>(spec));
+            _opcodeMethods = (OpCode[])(spec.EvmInstructionsTraced ??= GenerateOpCodes<TTracingInst>(spec));
         }
     }
+
+    protected virtual OpCode[] GenerateOpCodes<TTracingInst>(IReleaseSpec spec)
+        where TTracingInst : struct, IFlag
+        => EvmInstructions.GenerateOpCodes<TTracingInst>(spec);
 
     /// <summary>
     /// Reports the final outcome of a transaction action to the transaction tracer, taking into account
@@ -955,7 +970,7 @@ public sealed unsafe partial class VirtualMachine(
         SSTORE
     }
 
-    private CallResult RunPrecompile(EvmState state)
+    protected virtual CallResult RunPrecompile(EvmState state)
     {
         ReadOnlyMemory<byte> callData = state.Env.InputData;
         UInt256 transferValue = state.Env.TransferValue;
@@ -965,7 +980,7 @@ public sealed unsafe partial class VirtualMachine(
 
         IReleaseSpec spec = BlockExecutionContext.Spec;
         long baseGasCost = precompile.BaseGasCost(spec);
-        long blobGasCost = precompile.DataGasCost(callData, spec);
+        long dataGasCost = precompile.DataGasCost(callData, spec);
 
         bool wasCreated = _worldState.AddToBalanceAndCreateIfNotExists(state.Env.ExecutingAccount, transferValue, spec);
 
@@ -985,7 +1000,7 @@ public sealed unsafe partial class VirtualMachine(
             _parityTouchBugAccount.ShouldDelete = true;
         }
 
-        if (!UpdateGas(checked(baseGasCost + blobGasCost), ref gasAvailable))
+        if (!UpdateGas(checked(baseGasCost + dataGasCost), ref gasAvailable))
         {
             return new(default, false, 0, true, EvmExceptionType.OutOfGas);
         }
@@ -1190,6 +1205,7 @@ public sealed unsafe partial class VirtualMachine(
         // Or have bounds checks (however only 256 opcodes and opcode is a byte so know always in bounds).
         fixed (OpCode* opcodeMethods = &_opcodeMethods[0])
         {
+            int opCodeCount = 0;
             ref Instruction code = ref MemoryMarshal.GetReference(codeSection);
             // Iterate over the instructions using a while loop because opcodes may modify the program counter.
             while ((uint)programCounter < (uint)codeSection.Length)
@@ -1211,6 +1227,7 @@ public sealed unsafe partial class VirtualMachine(
 
                 // Advance the program counter to point to the next instruction.
                 programCounter++;
+                opCodeCount++;
 
                 // For the very common POP opcode, use an inlined implementation to reduce overhead.
                 if (Instruction.POP == instruction)
@@ -1228,7 +1245,10 @@ public sealed unsafe partial class VirtualMachine(
 
                 // If gas is exhausted, jump to the out-of-gas handler.
                 if (gasAvailable < 0)
+                {
+                    OpCodeCount += opCodeCount;
                     goto OutOfGas;
+                }
                 // If an exception occurred, exit the loop.
                 if (exceptionType != EvmExceptionType.None)
                     break;
@@ -1241,6 +1261,7 @@ public sealed unsafe partial class VirtualMachine(
                 if (ReturnData is not null)
                     break;
             }
+            OpCodeCount += opCodeCount;
         }
 
         // Update the current VM state if no fatal exception occurred, or if the exception is of type Stop or Revert.
@@ -1286,7 +1307,7 @@ public sealed unsafe partial class VirtualMachine(
 
     Revert:
         // Return a CallResult indicating a revert.
-        return new CallResult(null, (byte[])ReturnData, null, codeInfo.Version, shouldRevert: true);
+        return new CallResult(null, (byte[])ReturnData, null, codeInfo.Version, shouldRevert: true, exceptionType);
 
     OutOfGas:
         gasAvailable = 0;

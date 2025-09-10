@@ -2,7 +2,9 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using Nethermind.Core;
 using Nethermind.Db;
+using Nethermind.Evm.State;
 using Nethermind.Logging;
 using Nethermind.Trie.Pruning;
 
@@ -23,6 +25,16 @@ public class OverridableWorldStateManager : IOverridableWorldScope
     }
 
     public IWorldState WorldState { get; }
+    public IDisposable BeginScope(BlockHeader? header)
+    {
+        IDisposable closer = WorldState.BeginScope(header);
+        return new Reactive.AnonymousDisposable(() =>
+        {
+            closer.Dispose();
+            ResetOverrides();
+        });
+    }
+
     public IStateReader GlobalStateReader => _reader;
     public void ResetOverrides()
     {

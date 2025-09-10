@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2023 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using Autofac;
 using FluentAssertions;
 using Nethermind.Blockchain;
@@ -8,10 +9,12 @@ using Nethermind.Config;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Test.Builders;
+using Nethermind.Core.Test.Db;
 using Nethermind.Core.Test.Modules;
 using Nethermind.Db;
 using Nethermind.Logging;
 using Nethermind.Specs.Forks;
+using Nethermind.Evm.State;
 using Nethermind.State;
 using Nethermind.Trie.Pruning;
 using NSubstitute;
@@ -86,17 +89,30 @@ public class WorldStateManagerTests
 
             IWorldState worldState = ctx.Resolve<IWorldStateManager>().GlobalWorldState;
 
-            worldState.StateRoot = Keccak.EmptyTreeHash;
+            Hash256 stateRoot;
 
-            worldState.CreateAccount(TestItem.AddressA, 1, 2);
-            worldState.Commit(Cancun.Instance);
-            worldState.CommitTree(1);
+            using (worldState.BeginScope(IWorldState.PreGenesis))
+            {
+                worldState.CreateAccount(TestItem.AddressA, 1, 2);
+                worldState.Commit(Cancun.Instance);
+                worldState.CommitTree(1);
+                stateRoot = worldState.StateRoot;
+            }
 
             for (int i = 2; i <= lastBlock; i++)
             {
-                worldState.IncrementNonce(TestItem.AddressA, 1);
-                worldState.Commit(Cancun.Instance);
-                worldState.CommitTree(i);
+                BlockHeader baseBlock = Build.A.BlockHeader
+                    .WithStateRoot(stateRoot)
+                    .WithNumber(i - 1)
+                    .TestObject;
+
+                using (worldState.BeginScope(baseBlock))
+                {
+                    worldState.IncrementNonce(TestItem.AddressA, 1);
+                    worldState.Commit(Cancun.Instance);
+                    worldState.CommitTree(i);
+                    stateRoot = worldState.StateRoot;
+                }
             }
         }
 

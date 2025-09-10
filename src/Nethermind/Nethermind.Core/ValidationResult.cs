@@ -3,7 +3,7 @@
 
 namespace Nethermind.Core;
 
-public record struct ValidationResult(string? Error)
+public record struct ValidationResult(string? Error, bool AllowTxPoolReentrance = false)
 {
     public static ValidationResult Success => new(null);
     public static implicit operator bool(ValidationResult result) => result.AsBool();

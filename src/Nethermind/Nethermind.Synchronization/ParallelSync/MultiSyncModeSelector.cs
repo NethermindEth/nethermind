@@ -5,7 +5,6 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.ComponentModel;
-using System.Diagnostics;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Blockchain.Synchronization;
@@ -108,7 +107,7 @@ namespace Nethermind.Synchronization.ParallelSync
                     {
                         Update();
                     }
-                    catch (Exception exception)
+                    catch (Exception exception) when (exception is not OperationCanceledException)
                     {
                         if (_logger.IsError) _logger.Error("Sync mode update failed", exception);
                     }

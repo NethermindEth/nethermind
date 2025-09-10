@@ -9,6 +9,7 @@ using System.Numerics;
 using System.Threading;
 using System.Threading.Tasks;
 using Autofac;
+using Nethermind.Api;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Find;
 using Nethermind.Config;
@@ -30,6 +31,8 @@ using Nethermind.Specs;
 using Nethermind.Specs.Forks;
 using Nethermind.Specs.Test;
 using Nethermind.State;
+using Nethermind.Evm.State;
+using Nethermind.Init.Modules;
 using Nethermind.TxPool;
 using NUnit.Framework;
 
@@ -38,7 +41,7 @@ namespace Ethereum.Test.Base;
 public abstract class BlockchainTestBase
 {
     private static ILogger _logger;
-    private static ILogManager _logManager = new TestLogManager(LogLevel.Info);
+    private static ILogManager _logManager = new TestLogManager(LogLevel.Warn);
     private static ISealValidator Sealer { get; }
     private static DifficultyCalculatorWrapper DifficultyCalculator { get; }
 
@@ -133,37 +136,43 @@ public abstract class BlockchainTestBase
             .AddSingleton<ITxPool>(NullTxPool.Instance)
             .Build();
 
-        MainBlockProcessingContext mainBlockProcessingContext = container.Resolve<MainBlockProcessingContext>();
+        IMainProcessingContext mainBlockProcessingContext = container.Resolve<IMainProcessingContext>();
         IWorldState stateProvider = mainBlockProcessingContext.WorldState;
         IBlockchainProcessor blockchainProcessor = mainBlockProcessingContext.BlockchainProcessor;
         IBlockTree blockTree = container.Resolve<IBlockTree>();
         IBlockValidator blockValidator = container.Resolve<IBlockValidator>();
-
-        InitializeTestState(test, stateProvider, specProvider);
-
-        stopwatch?.Start();
-        List<(Block Block, string ExpectedException)> correctRlp = DecodeRlps(test, failOnInvalidRlp);
-
-        test.GenesisRlp ??= Rlp.Encode(new Block(JsonToEthereumTest.Convert(test.GenesisBlockHeader)));
-
-        Block genesisBlock = Rlp.Decode<Block>(test.GenesisRlp.Bytes);
-        Assert.That(genesisBlock.Header.Hash, Is.EqualTo(new Hash256(test.GenesisBlockHeader.Hash)));
-
-        ManualResetEvent genesisProcessed = new(false);
-
-        blockTree.NewHeadBlock += (_, args) =>
-        {
-            if (args.Block.Number == 0)
-            {
-                Assert.That(stateProvider.StateRoot, Is.EqualTo(genesisBlock.Header.StateRoot));
-                genesisProcessed.Set();
-            }
-        };
-
         blockchainProcessor.Start();
-        blockTree.SuggestBlock(genesisBlock);
 
-        genesisProcessed.WaitOne();
+        BlockHeader parentHeader;
+        // Genesis processing
+        using (stateProvider.BeginScope(null))
+        {
+            InitializeTestState(test, stateProvider, specProvider);
+
+            stopwatch?.Start();
+
+            test.GenesisRlp ??= Rlp.Encode(new Block(JsonToEthereumTest.Convert(test.GenesisBlockHeader)));
+
+            Block genesisBlock = Rlp.Decode<Block>(test.GenesisRlp.Bytes);
+            Assert.That(genesisBlock.Header.Hash, Is.EqualTo(new Hash256(test.GenesisBlockHeader.Hash)));
+
+            ManualResetEvent genesisProcessed = new(false);
+
+            blockTree.NewHeadBlock += (_, args) =>
+            {
+                if (args.Block.Number == 0)
+                {
+                    Assert.That(stateProvider.HasStateForBlock(genesisBlock.Header), Is.EqualTo(true));
+                    genesisProcessed.Set();
+                }
+            };
+
+            blockTree.SuggestBlock(genesisBlock);
+            genesisProcessed.WaitOne();
+            parentHeader = genesisBlock.Header;
+        }
+
+        List<(Block Block, string ExpectedException)> correctRlp = DecodeRlps(test, failOnInvalidRlp);
         for (int i = 0; i < correctRlp.Count; i++)
         {
             if (correctRlp[i].Block.Hash is null)
@@ -175,7 +184,7 @@ public abstract class BlockchainTestBase
             {
                 // TODO: mimic the actual behaviour where block goes through validating sync manager?
                 correctRlp[i].Block.Header.IsPostMerge = correctRlp[i].Block.Difficulty == 0;
-                if (!test.SealEngineUsed || blockValidator.ValidateSuggestedBlock(correctRlp[i].Block, out _))
+                if (!test.SealEngineUsed || blockValidator.ValidateSuggestedBlock(correctRlp[i].Block, parentHeader, out var _error))
                 {
                     blockTree.SuggestBlock(correctRlp[i].Block);
                 }
@@ -198,19 +207,26 @@ public abstract class BlockchainTestBase
             {
                 Assert.Fail($"Unexpected exception during processing: {e}");
             }
+
+            parentHeader = correctRlp[i].Block.Header;
         }
 
         await blockchainProcessor.StopAsync(true);
         stopwatch?.Stop();
 
-        IBlockCachePreWarmer? preWarmer = container.Resolve<MainBlockProcessingContext>().LifetimeScope.ResolveOptional<IBlockCachePreWarmer>();
+        IBlockCachePreWarmer? preWarmer = container.Resolve<MainProcessingContext>().LifetimeScope.ResolveOptional<IBlockCachePreWarmer>();
         if (preWarmer is not null)
         {
             // Caches are cleared async, which is a problem as read for the MainWorldState with prewarmer is not correct if its not cleared.
             preWarmer.ClearCaches();
         }
 
-        List<string> differences = RunAssertions(test, blockTree.RetrieveHeadBlock(), stateProvider);
+        Block? headBlock = blockTree.RetrieveHeadBlock();
+        List<string> differences;
+        using (stateProvider.BeginScope(headBlock.Header))
+        {
+            differences = RunAssertions(test, blockTree.RetrieveHeadBlock(), stateProvider);
+        }
 
         Assert.That(differences.Count, Is.Zero, "differences");
 

@@ -96,8 +96,8 @@ public class DiscoveryV5App : IDiscoveryApp
         EnrBuilder enrBuilder = new EnrBuilder()
             .WithIdentityScheme(_sessionOptions.Verifier, _sessionOptions.Signer)
             .WithEntry(EnrEntryKey.Id, new EntryId("v4"))
-            .WithEntry(EnrEntryKey.Secp256K1, new EntrySecp256K1(_sessionOptions.Signer.PublicKey))
             .WithEntry(EnrEntryKey.Ip, new EntryIp(ipResolver.ExternalIp))
+            .WithEntry(EnrEntryKey.Secp256K1, new EntrySecp256K1(_sessionOptions.Signer.PublicKey))
             .WithEntry(EnrEntryKey.Tcp, new EntryTcp(networkConfig.P2PPort))
             .WithEntry(EnrEntryKey.Udp, new EntryUdp(networkConfig.DiscoveryPort));
 
@@ -110,7 +110,7 @@ public class DiscoveryV5App : IDiscoveryApp
             .WithTableOptions(new TableOptions(bootstrapEnrs.Select(enr => enr.ToString()).ToArray()))
             .WithEnrBuilder(enrBuilder)
             .WithTalkResponder(new TalkReqAndRespHandler())
-            .WithLoggerFactory(new NethermindLoggerFactory(logManager, true))
+            .WithLoggerFactory(new NethermindLoggerFactory(logManager, true, Microsoft.Extensions.Logging.LogLevel.Debug))
             .WithServices(s =>
             {
                 s.AddSingleton(logManager);
@@ -176,24 +176,27 @@ public class DiscoveryV5App : IDiscoveryApp
         IPAddress ip = enr.GetEntry<EntryIp>(EnrEntryKey.Ip).Value;
         int tcpPort = enr.GetEntry<EntryTcp>(EnrEntryKey.Tcp).Value;
 
-        node = new(key, ip.ToString(), tcpPort);
+        node = new(key, ip.ToString(), tcpPort)
+        {
+            Enr = enr.ToString()
+        };
         return true;
     }
 
     private Lantern.Discv5.Enr.Enr GetEnr(Enode node) => new EnrBuilder()
-        .WithIdentityScheme(_sessionOptions.Verifier, _sessionOptions.Signer)
+        .WithIdentityScheme(_sessionOptions.Verifier!, _sessionOptions.Signer!)
         .WithEntry(EnrEntryKey.Id, new EntryId("v4"))
-        .WithEntry(EnrEntryKey.Secp256K1, new EntrySecp256K1(Context.Instance.CreatePubKey(node.PublicKey.PrefixedBytes).ToBytes(false)))
         .WithEntry(EnrEntryKey.Ip, new EntryIp(node.HostIp))
+        .WithEntry(EnrEntryKey.Secp256K1, new EntrySecp256K1(Context.Instance.CreatePubKey(node.PublicKey.PrefixedBytes).ToBytes(false)))
         .WithEntry(EnrEntryKey.Tcp, new EntryTcp(node.Port))
         .WithEntry(EnrEntryKey.Udp, new EntryUdp(node.DiscoveryPort))
         .Build();
 
     private Lantern.Discv5.Enr.Enr GetEnr(Node node) => new EnrBuilder()
-        .WithIdentityScheme(_sessionOptions.Verifier, _sessionOptions.Signer)
+        .WithIdentityScheme(_sessionOptions.Verifier!, _sessionOptions.Signer!)
         .WithEntry(EnrEntryKey.Id, new EntryId("v4"))
-        .WithEntry(EnrEntryKey.Secp256K1, new EntrySecp256K1(node.Id.PrefixedBytes))
         .WithEntry(EnrEntryKey.Ip, new EntryIp(node.Address.Address))
+        .WithEntry(EnrEntryKey.Secp256K1, new EntrySecp256K1(node.Id.PrefixedBytes))
         .WithEntry(EnrEntryKey.Tcp, new EntryTcp(node.Address.Port))
         .WithEntry(EnrEntryKey.Udp, new EntryUdp(node.Address.Port))
         .Build();
@@ -210,7 +213,6 @@ public class DiscoveryV5App : IDiscoveryApp
     public async Task StartAsync()
     {
         await _discv5Protocol.InitAsync();
-
         if (_logger.IsDebug) _logger.Debug($"Initially discovered {_discv5Protocol.GetActiveNodes.Count()} active peers, {_discv5Protocol.GetAllNodes.Count()} in total.");
     }
 

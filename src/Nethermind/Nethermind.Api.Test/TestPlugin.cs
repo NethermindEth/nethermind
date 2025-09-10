@@ -8,11 +8,6 @@ namespace Nethermind.Api.Test
 {
     public class TestPlugin : INethermindPlugin
     {
-        public ValueTask DisposeAsync()
-        {
-            throw new System.NotImplementedException();
-        }
-
         public string Name { get; }
         public string Description { get; }
         public string Author { get; }

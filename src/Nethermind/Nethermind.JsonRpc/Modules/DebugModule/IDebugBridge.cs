@@ -7,7 +7,7 @@ using System.Threading.Tasks;
 using Nethermind.Blockchain.Find;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
-using Nethermind.Evm.Tracing.GethStyle;
+using Nethermind.Blockchain.Tracing.GethStyle;
 using Nethermind.Serialization.Rlp;
 using Nethermind.Synchronization.Reporting;
 
@@ -24,10 +24,8 @@ public interface IDebugBridge
     IReadOnlyCollection<GethLikeTxTrace> GetBlockTrace(BlockParameter blockParameter, CancellationToken cancellationToken, GethTraceOptions gethTraceOptions = null);
     IReadOnlyCollection<GethLikeTxTrace> GetBlockTrace(Rlp blockRlp, CancellationToken cancellationToken, GethTraceOptions? gethTraceOptions = null);
     IReadOnlyCollection<GethLikeTxTrace> GetBlockTrace(Block block, CancellationToken cancellationToken, GethTraceOptions? gethTraceOptions = null);
-    byte[] GetBlockRlp(BlockParameter param);
     Block? GetBlock(BlockParameter param);
-    byte[] GetBlockRlp(Hash256 blockHash);
-    byte[] GetBlockRlp(long number);
+    byte[] GetBlockRlp(BlockParameter param);
     byte[] GetDbValue(string dbName, byte[] key);
     object GetConfigValue(string category, string name);
     ChainLevelInfo GetLevelInfo(long number);

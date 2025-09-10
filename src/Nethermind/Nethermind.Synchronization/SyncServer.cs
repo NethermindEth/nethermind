@@ -18,8 +18,11 @@ using Nethermind.Core.Attributes;
 using Nethermind.Core.Caching;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
+using Nethermind.Core.Threading;
 using Nethermind.Db;
+using Nethermind.History;
 using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.State;
@@ -45,6 +48,7 @@ namespace Nethermind.Synchronization
         private readonly IReadOnlyKeyValueStore _codeDb;
         private readonly IGossipPolicy _gossipPolicy;
         private readonly ISpecProvider _specProvider;
+        private readonly IHistoryPruner _historyPruner;
         private bool _gossipStopped = false;
         private readonly Random _broadcastRandomizer = new();
 
@@ -53,8 +57,11 @@ namespace Nethermind.Synchronization
         private readonly long _pivotNumber;
         private readonly Hash256 _pivotHash;
         private BlockHeader? _pivotHeader;
+        private CancellationTokenSource _rangeBroadcastCts = new();
+        private Task _rangeBroadcastTask = Task.CompletedTask;
 
-        private const int BlockRangeUpdateFrequency = 32;
+        private const int NewHeadBlockRangeUpdateFrequency = 32;
+        private const int NewOldestBlockRangeUpdateFrequency = 10000;
 
         public SyncServer(
             IWorldStateManager worldStateManager,
@@ -67,6 +74,7 @@ namespace Nethermind.Synchronization
             ISyncModeSelector syncModeSelector,
             ISyncConfig syncConfig,
             IGossipPolicy gossipPolicy,
+            IHistoryPruner historyPruner,
             ISpecProvider specProvider,
             ILogManager logManager)
         {
@@ -81,6 +89,7 @@ namespace Nethermind.Synchronization
             _blockTree = blockTree ?? throw new ArgumentNullException(nameof(blockTree));
             _receiptFinder = receiptFinder ?? throw new ArgumentNullException(nameof(receiptFinder));
             _blockValidator = blockValidator ?? throw new ArgumentNullException(nameof(blockValidator));
+            _historyPruner = historyPruner ?? throw new ArgumentNullException(nameof(historyPruner));
             _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
             _pivotNumber = _blockTree.SyncPivot.BlockNumber;
             _pivotHash = new Hash256(config.PivotHash ?? Keccak.Zero.ToString());
@@ -88,6 +97,7 @@ namespace Nethermind.Synchronization
             _blockTree.NewHeadBlock += OnNewHeadBlock;
             _blockTree.NewHeadBlock += OnNewRange;
             _pool.NotifyPeerBlock += OnNotifyPeerBlock;
+            _historyPruner.NewOldestBlock += OnNewRange;
         }
 
         public ulong NetworkId => _blockTree.NetworkId;
@@ -184,7 +194,7 @@ namespace Nethermind.Synchronization
 
                     // Recalculate total difficulty as we don't trust total difficulty from gossip
                     block.Header.TotalDifficulty = parent.TotalDifficulty + block.Header.Difficulty;
-                    if (!_blockValidator.ValidateSuggestedBlock(block, out _))
+                    if (!_blockValidator.ValidateSuggestedBlock(block, parent.Header, out _))
                     {
                         ThrowOnInvalidBlock(block, nodeWhoSentTheBlock);
                     }
@@ -425,36 +435,84 @@ namespace Nethermind.Synchronization
             }
         }
 
+        private void OnNewRange(object? sender, OnNewOldestBlockArgs onNewOldestBlockArgs)
+        {
+            if (_blockTree.Head is null)
+                return;
+
+            // Don't send new range for every single deletion
+            if (!onNewOldestBlockArgs.isFinalUpdate &&
+                onNewOldestBlockArgs.OldestBlockHeader.Number % NewOldestBlockRangeUpdateFrequency != 0)
+            {
+                return;
+            }
+
+            OnNewRange(onNewOldestBlockArgs.OldestBlockHeader, _blockTree.Head.Header);
+        }
+
         private void OnNewRange(object? sender, BlockEventArgs latestBlockEventArgs)
         {
             if (Genesis is null)
                 return;
 
-            if (_pool.PeerCount == 0)
-                return;
-
             Block latestBlock = latestBlockEventArgs.Block;
 
             // Notify every 32 blocks
-            if (latestBlock.Number % BlockRangeUpdateFrequency != 0)
+            if (latestBlock.Number % NewHeadBlockRangeUpdateFrequency != 0)
                 return;
 
-            Task.Run(() =>
+            BlockHeader oldestBlockHeader = _historyPruner.OldestBlockHeader ?? Genesis;
+            OnNewRange(oldestBlockHeader, latestBlock.Header);
+        }
+
+        private void OnNewRange(BlockHeader earliest, BlockHeader latest)
+        {
+            if (_pool.PeerCount == 0)
+                return;
+
+            CancellationTokenExtensions.CancelDisposeAndClear(ref _rangeBroadcastCts);
+            CancellationTokenSource cts = _rangeBroadcastCts = new();
+
+            if (_rangeBroadcastTask.IsCompleted)
+            {
+                _rangeBroadcastTask = Task.Run(() => RangeBroadcast(earliest, latest, cts), cts.Token);
+            }
+            else
+            {
+                _rangeBroadcastTask.ContinueWith(
+                    t => RangeBroadcast(earliest, latest, cts),
+                    TaskContinuationOptions.RunContinuationsAsynchronously);
+            }
+        }
+
+        private void RangeBroadcast(BlockHeader earliest, BlockHeader latest, CancellationTokenSource cts)
+        {
+            if (cts.IsCancellationRequested)
+            {
+                return;
+            }
+
+            using ArrayPoolList<PeerInfo> allPeers = _pool.AllPeers.ToPooledList(_pool.PeerCount);
+            var counter = 0;
+
+            ParallelUnbalancedWork.For(0, allPeers.Count,
+                (i) =>
                 {
-                    var counter = 0;
-                    (BlockHeader earliest, BlockHeader latest) = (Genesis, latestBlock.Header);
-
-                    foreach (PeerInfo peerInfo in _pool.AllPeers)
+                    if (cts.IsCancellationRequested)
                     {
-                        // TODO: use actual earliest available block - once history expiry is implemented
-                        NotifyOfNewRange(peerInfo, Genesis, latest);
-                        counter++;
+                        if (_logger.IsDebug) _logger.Debug("Cancelled broadcasting block range update due to cancellation request.");
+                        return;
                     }
+                    PeerInfo peerInfo = allPeers[i];
+                    if (peerInfo.ShouldNotifyNewRange(earliest.Number, latest.Number))
+                    {
+                        NotifyOfNewRange(peerInfo, earliest, latest);
+                        Interlocked.Increment(ref counter);
+                    }
+                });
 
-                    if (counter > 0 && _logger.IsDebug)
-                        _logger.Debug($"Broadcasting range update {earliest.Number}-{latest.Number} to {counter} peers.");
-                }
-            );
+            if (counter > 0 && _logger.IsDebug)
+                _logger.Debug($"Broadcasting range update {earliest.Number}-{latest.Number} to {counter} peers.");
         }
 
         private void NotifyOfNewBlock(PeerInfo? peerInfo, ISyncPeer syncPeer, Block broadcastedBlock, SendBlockMode mode)

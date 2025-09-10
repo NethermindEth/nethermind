@@ -9,6 +9,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using Autofac;
 using FluentAssertions;
+using Nethermind.Blockchain.Tracing;
 using Nethermind.Consensus.Processing;
 using Nethermind.Core;
 using Nethermind.Core.Attributes;
@@ -21,6 +22,7 @@ using Nethermind.Core.Test.Builders;
 using Nethermind.Evm;
 using Nethermind.Evm.Tracing;
 using Nethermind.Logging;
+using Nethermind.Evm.State;
 using Nethermind.State;
 using Nethermind.TxPool;
 using NSubstitute;
@@ -35,7 +37,7 @@ public class BlockchainProcessorTests
     {
         private readonly ILogManager _logManager = LimboLogs.Instance;
 
-        private class BlockProcessorMock : IBlockProcessor
+        private class BranchProcessorMock : IBranchProcessor
         {
             private readonly ILogger _logger;
 
@@ -47,10 +49,10 @@ public class BlockchainProcessorTests
 
             private readonly HashSet<Hash256> _rootProcessed = new();
 
-            public BlockProcessorMock(ILogManager logManager, IStateReader stateReader)
+            public BranchProcessorMock(ILogManager logManager, IStateReader stateReader)
             {
                 _logger = logManager.GetClassLogger();
-                stateReader.HasStateForRoot(Arg.Any<Hash256>()).Returns(x => _rootProcessed.Contains(x[0]));
+                stateReader.HasStateForBlock(Arg.Any<BlockHeader>()).Returns(x => _rootProcessed.Contains(((BlockHeader?)x[0])?.StateRoot!));
             }
 
             public void Allow(Hash256 hash)
@@ -65,7 +67,7 @@ public class BlockchainProcessorTests
                 _allowedToFail.Add(hash);
             }
 
-            public Block[] Process(Hash256 newBranchStateRoot, IReadOnlyList<Block> suggestedBlocks, ProcessingOptions processingOptions, IBlockTracer blockTracer, CancellationToken token)
+            public Block[] Process(BlockHeader? baseBlock, IReadOnlyList<Block> suggestedBlocks, ProcessingOptions processingOptions, IBlockTracer blockTracer, CancellationToken token)
             {
                 if (blockTracer != NullBlockTracer.Instance)
                 {
@@ -176,7 +178,7 @@ public class BlockchainProcessorTests
         private readonly AutoResetEvent _resetEvent;
         private readonly AutoResetEvent _queueEmptyResetEvent;
         private readonly IStateReader _stateReader;
-        private readonly BlockProcessorMock _blockProcessor;
+        private readonly BranchProcessorMock _branchProcessor;
         private readonly RecoveryStepMock _recoveryStep;
         private readonly BlockchainProcessor _processor;
         private readonly ILogger _logger;
@@ -193,9 +195,9 @@ public class BlockchainProcessorTests
             _blockTree = Build.A.BlockTree()
                 .WithoutSettingHead
                 .TestObject;
-            _blockProcessor = new BlockProcessorMock(_logManager, _stateReader);
+            _branchProcessor = new BranchProcessorMock(_logManager, _stateReader);
             _recoveryStep = new RecoveryStepMock(_logManager);
-            _processor = new BlockchainProcessor(_blockTree, _blockProcessor, _recoveryStep, _stateReader, LimboLogs.Instance, BlockchainProcessor.Options.Default);
+            _processor = new BlockchainProcessor(_blockTree, _branchProcessor, _recoveryStep, _stateReader, LimboLogs.Instance, BlockchainProcessor.Options.Default);
             _resetEvent = new AutoResetEvent(false);
             _queueEmptyResetEvent = new AutoResetEvent(false);
 
@@ -233,7 +235,7 @@ public class BlockchainProcessorTests
             _headBefore = _blockTree.Head?.Hash;
             ManualResetEvent processedEvent = new(false);
             bool wasProcessed = false;
-            _blockProcessor.BlockProcessed += (_, args) =>
+            _branchProcessor.BlockProcessed += (_, args) =>
             {
                 if (args.Block.Hash == block.Hash)
                 {
@@ -243,7 +245,7 @@ public class BlockchainProcessorTests
             };
 
             _logger.Info($"Waiting for {block.ToString(Block.Format.Short)} to process");
-            _blockProcessor.Allow(block.Hash!);
+            _branchProcessor.Allow(block.Hash!);
             processedEvent.WaitOne(ProcessingWait);
             Assert.That(wasProcessed, Is.True, $"Expected this block to get processed but it was not: {block.ToString(Block.Format.Short)}");
 
@@ -254,7 +256,7 @@ public class BlockchainProcessorTests
         {
             _headBefore = _blockTree.Head?.Hash;
             _logger.Info($"Waiting for {block.ToString(Block.Format.Short)} to be skipped");
-            _blockProcessor.Allow(block.Hash!);
+            _branchProcessor.Allow(block.Hash!);
             return new AfterBlock(_logManager, this, block);
         }
 
@@ -263,7 +265,7 @@ public class BlockchainProcessorTests
             _headBefore = _blockTree.Head?.Hash;
             ManualResetEvent processedEvent = new(false);
             bool wasProcessed = false;
-            _blockProcessor.BlockProcessed += (_, args) =>
+            _branchProcessor.BlockProcessed += (_, args) =>
             {
                 if (args.Block.Hash == block.Hash)
                 {
@@ -273,7 +275,7 @@ public class BlockchainProcessorTests
             };
 
             _logger.Info($"Waiting for {block.ToString(Block.Format.Short)} to fail processing");
-            _blockProcessor.AllowToFail(block.Hash!);
+            _branchProcessor.AllowToFail(block.Hash!);
             processedEvent.WaitOne(ProcessingWait);
             Assert.That(wasProcessed, Is.True, $"Block was never processed {block.ToString(Block.Format.Short)}");
             Assert.That(_blockTree.Head?.Hash, Is.EqualTo(_headBefore), $"Processing did not fail - {block.ToString(Block.Format.Short)} became a new head block");
@@ -302,7 +304,7 @@ public class BlockchainProcessorTests
             }
 
             _blockTree.UpdateMainChain(new[] { block }, false);
-            _blockProcessor.Allow(block.Hash!);
+            _branchProcessor.Allow(block.Hash!);
             _recoveryStep.Allow(block.Hash!);
 
             return this;
@@ -420,13 +422,13 @@ public class BlockchainProcessorTests
 
         public ProcessingTestContext AssertProcessedBlocks(params IEnumerable<Block> blocks)
         {
-            _blockProcessor.Processed.Should().BeEquivalentTo(blocks.Select(b => b.Hash));
+            _branchProcessor.Processed.Should().BeEquivalentTo(blocks.Select(b => b.Hash));
             return this;
         }
 
         public ProcessingTestContext StateSyncedTo(Block block4D8)
         {
-            _stateReader.HasStateForRoot(block4D8.StateRoot!).Returns(true);
+            _stateReader.HasStateForBlock(block4D8.Header).Returns(true);
             return this;
         }
     }
@@ -517,12 +519,13 @@ public class BlockchainProcessorTests
             {
                 ISpecProvider specProvider = ctx.Resolve<ISpecProvider>();
                 IBlockTree blockTree = ctx.Resolve<IBlockTree>();
-                IReadOnlyStateProvider readOnlyState = ctx.Resolve<IReadOnlyStateProvider>();
+                IStateReader stateReader = ctx.Resolve<IStateReader>();
+                ICodeInfoRepository codeInfoRepository = ctx.ResolveKeyed<ICodeInfoRepository>(nameof(IWorldStateManager.GlobalWorldState));
                 return new ChainHeadInfoProvider(
                     new FixedForkActivationChainHeadSpecProvider(specProvider, fixedBlock: 10_000_000),
                     blockTree,
-                    readOnlyState,
-                    new CodeInfoRepository())
+                    new ChainHeadReadOnlyStateProvider(blockTree, stateReader), // Need to use the non  ChainHeadSpecProvider constructor.
+                    codeInfoRepository)
                 {
                     HasSynced = true
                 };

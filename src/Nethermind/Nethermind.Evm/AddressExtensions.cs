@@ -7,7 +7,7 @@ using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
 using Nethermind.Int256;
 using Nethermind.Serialization.Rlp;
-using Nethermind.State;
+using Nethermind.Evm.State;
 
 namespace Nethermind.Evm
 {
@@ -43,7 +43,7 @@ namespace Nethermind.Evm
         {
             return codeInfoRepository.GetCachedCodeInfo(state, contractAddress, spec).CodeSpan.Length != 0 ||
                    state.GetNonce(contractAddress) != 0 ||
-                   state.GetStorageRoot(contractAddress) != Keccak.EmptyTreeHash;
+                   !state.IsStorageEmpty(contractAddress);
         }
     }
 }

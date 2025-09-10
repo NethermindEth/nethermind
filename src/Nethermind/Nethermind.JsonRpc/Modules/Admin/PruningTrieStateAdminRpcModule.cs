@@ -33,7 +33,7 @@ public class PruningTrieStateAdminRpcModule(
             return ResultWrapper<string>.Fail(MissingBlockError, ErrorCodes.ResourceNotFound);
         }
 
-        if (!stateReader.HasStateForBlock(header))
+        if (!stateReader.HasStateForBlock(header!))
         {
             return ResultWrapper<string>.Fail(MissingStateError, ErrorCodes.ResourceNotFound);
         }

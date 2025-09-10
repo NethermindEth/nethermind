@@ -22,10 +22,9 @@ using Nethermind.Evm.Tracing;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.JsonRpc.Test.Modules;
 using Nethermind.Logging;
-using Nethermind.Serialization.Rlp;
 using Nethermind.Specs;
 using Nethermind.Specs.Forks;
-using Nethermind.State;
+using Nethermind.Evm.State;
 using Nethermind.TxPool;
 using NSubstitute;
 using NUnit.Framework;
@@ -34,6 +33,8 @@ using System.Collections.Generic;
 using System.Security;
 using System.Threading;
 using System.Threading.Tasks;
+using Nethermind.Blockchain.Tracing;
+using Nethermind.State;
 
 namespace Nethermind.Blockchain.Test;
 
@@ -56,11 +57,17 @@ public class BlockProcessorTests
             LimboLogs.Instance,
             new WithdrawalProcessor(stateProvider, LimboLogs.Instance),
             new ExecutionRequestsProcessor(transactionProcessor));
+        BranchProcessor branchProcessor = new BranchProcessor(
+            processor,
+            HoleskySpecProvider.Instance,
+            stateProvider,
+            new BeaconBlockRootHandler(transactionProcessor, stateProvider),
+            LimboLogs.Instance);
 
         BlockHeader header = Build.A.BlockHeader.WithAuthor(TestItem.AddressD).TestObject;
         Block block = Build.A.Block.WithHeader(header).TestObject;
-        Block[] processedBlocks = processor.Process(
-            Keccak.EmptyTreeHash,
+        Block[] processedBlocks = branchProcessor.Process(
+            null,
             new List<Block> { block },
             ProcessingOptions.None,
             NullBlockTracer.Instance);
@@ -86,17 +93,23 @@ public class BlockProcessorTests
             LimboLogs.Instance,
             new WithdrawalProcessor(stateProvider, LimboLogs.Instance),
             new ExecutionRequestsProcessor(transactionProcessor));
+        BranchProcessor branchProcessor = new BranchProcessor(
+            processor,
+            HoleskySpecProvider.Instance,
+            stateProvider,
+            new BeaconBlockRootHandler(transactionProcessor, stateProvider),
+            LimboLogs.Instance);
 
         BlockHeader header = Build.A.BlockHeader.WithNumber(1).WithAuthor(TestItem.AddressD).TestObject;
         Block block = Build.A.Block.WithTransactions(1, MuirGlacier.Instance).WithHeader(header).TestObject;
-        Assert.Throws<OperationCanceledException>(() => processor.Process(
-            Keccak.EmptyTreeHash,
+        Assert.Throws<OperationCanceledException>(() => branchProcessor.Process(
+            null,
             new List<Block> { block },
             ProcessingOptions.None,
             AlwaysCancelBlockTracer.Instance));
 
-        Assert.Throws<OperationCanceledException>(() => processor.Process(
-            Keccak.EmptyTreeHash,
+        Assert.Throws<OperationCanceledException>(() => branchProcessor.Process(
+            null,
             new List<Block> { block },
             ProcessingOptions.None,
             AlwaysCancelBlockTracer.Instance));
@@ -149,6 +162,8 @@ public class BlockProcessorTests
         BlockProcessor.BlockProductionTransactionPicker txPicker = new(specProvider, transactionWithNetworkForm.GetLength(true) / 1.KiB() - 1);
         BlockToProduce newBlock = new(Build.A.BlockHeader.WithExcessBlobGas(0).TestObject);
         WorldStateStab stateProvider = new();
+
+        using var _ = stateProvider.BeginScope(IWorldState.PreGenesis);
 
         Transaction? addedTransaction = null;
         txPicker.AddingTransaction += (s, e) => addedTransaction = e.Transaction;

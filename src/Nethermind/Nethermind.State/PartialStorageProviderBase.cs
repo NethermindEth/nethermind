@@ -7,8 +7,8 @@ using System.Runtime.InteropServices;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Resettables;
+using Nethermind.Evm.Tracing.State;
 using Nethermind.Logging;
-using Nethermind.State.Tracing;
 
 namespace Nethermind.State
 {
@@ -163,10 +163,12 @@ namespace Nethermind.State
             {
                 After = after ?? StorageTree.ZeroBytes;
                 Before = StorageTree.ZeroBytes;
+                IsInitialValue = true;
             }
 
             public byte[] Before;
             public byte[] After;
+            public bool IsInitialValue;
         }
 
         /// <summary>

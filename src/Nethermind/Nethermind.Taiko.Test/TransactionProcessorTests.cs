@@ -1,23 +1,23 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using Nethermind.Core;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.Specs;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Crypto;
-using Nethermind.Db;
 using Nethermind.Int256;
 using Nethermind.Evm.Tracing;
 using Nethermind.Logging;
-using Nethermind.State;
-using Nethermind.Trie.Pruning;
+using Nethermind.Evm.State;
 using NUnit.Framework;
 using System.Collections;
+using Nethermind.Blockchain;
 using Nethermind.Core.Test;
 using Nethermind.Evm;
-using Nethermind.Evm.Test;
+using Nethermind.State;
 using Nethermind.Taiko.TaikoSpec;
 
 namespace Nethermind.Taiko.Test;
@@ -29,6 +29,7 @@ public class TransactionProcessorTests
     private readonly IEthereumEcdsa _ethereumEcdsa;
     private TaikoTransactionProcessor? _transactionProcessor;
     private IWorldState? _stateProvider;
+    private IDisposable _worldStateCloser;
 
     public TransactionProcessorTests()
     {
@@ -46,15 +47,21 @@ public class TransactionProcessorTests
 
         IWorldStateManager worldStateManager = TestWorldStateFactory.CreateForTest();
         _stateProvider = worldStateManager.GlobalWorldState;
+        _worldStateCloser = _stateProvider.BeginScope(IWorldState.PreGenesis);
         _stateProvider.CreateAccount(TestItem.AddressA, AccountBalance);
         _stateProvider.Commit(_specProvider.GenesisSpec);
         _stateProvider.CommitTree(0);
 
-        CodeInfoRepository codeInfoRepository = new();
+        EthereumCodeInfoRepository codeInfoRepository = new();
         VirtualMachine virtualMachine = new(new TestBlockhashProvider(_specProvider), _specProvider, LimboLogs.Instance);
         _transactionProcessor = new TaikoTransactionProcessor(_specProvider, _stateProvider, virtualMachine, codeInfoRepository, LimboLogs.Instance);
     }
 
+    [TearDown]
+    public void TearDown()
+    {
+        _worldStateCloser.Dispose();
+    }
 
     [TestCaseSource(nameof(FeesDistributionTests))]
     public void Fees_distributed_correctly(byte basefeeSharingPctg, UInt256 goesToTreasury, UInt256 goesToBeneficiary, ulong gasPrice)

@@ -9,11 +9,10 @@ using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
-using Nethermind.Db;
+using Nethermind.Evm.State;
 using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.State;
-using Nethermind.Trie.Pruning;
 using NSubstitute;
 using NUnit.Framework;
 
@@ -31,6 +30,7 @@ public class OptimismWithdrawalTests
     {
         IWorldStateManager worldStateManager = TestWorldStateFactory.CreateForTest();
         var state = worldStateManager.GlobalWorldState;
+        using var _ = state.BeginScope(IWorldState.PreGenesis);
 
         var genesis = Build.A.BlockHeader
             .WithNumber(0)
@@ -83,6 +83,7 @@ public class OptimismWithdrawalTests
     {
         IWorldStateManager worldStateManager = TestWorldStateFactory.CreateForTest();
         var state = worldStateManager.GlobalWorldState;
+        using var _ = state.BeginScope(IWorldState.PreGenesis);
         var processor = new OptimismWithdrawalProcessor(state, TestLogManager.Instance, Spec.Instance);
         var releaseSpec = Substitute.For<IReleaseSpec>();
 

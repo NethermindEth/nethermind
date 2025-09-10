@@ -10,7 +10,7 @@ using Nethermind.Blockchain.Find;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
-using Nethermind.Evm.Tracing.GethStyle;
+using Nethermind.Blockchain.Tracing.GethStyle;
 using Nethermind.JsonRpc.Data;
 using Nethermind.Logging;
 using Nethermind.Serialization.Rlp;
@@ -19,7 +19,6 @@ using System.Collections.Generic;
 using Nethermind.JsonRpc.Modules.Eth;
 using Nethermind.Core.Specs;
 using Nethermind.Facade.Eth.RpcTransaction;
-using DotNetty.Buffers;
 using Nethermind.Config;
 using Nethermind.TxPool;
 using Nethermind.Facade.Proxy.Models.Simulate;
@@ -44,7 +43,7 @@ public class DebugRpcModule(
 
     private static bool HasStateForBlock(IBlockchainBridge blockchainBridge, BlockHeader header)
     {
-        return blockchainBridge.HasStateForRoot(header.StateRoot!);
+        return blockchainBridge.HasStateForBlock(header);
     }
 
     public ResultWrapper<ChainLevelForRpc> debug_getChainLevel(in long number)
@@ -376,11 +375,8 @@ public class DebugRpcModule(
 
         RlpBehaviors encodingSettings = RlpBehaviors.SkipTypedWrapping | (transaction.IsInMempoolForm() ? RlpBehaviors.InMempoolForm : RlpBehaviors.None);
 
-        IByteBuffer buffer = PooledByteBufferAllocator.Default.Buffer(TxDecoder.Instance.GetLength(transaction, encodingSettings));
-        using NettyRlpStream stream = new(buffer);
-        TxDecoder.Instance.Encode(stream, transaction, encodingSettings);
-
-        return ResultWrapper<string?>.Success(buffer.AsSpan().ToHexString(false));
+        using NettyRlpStream stream = TxDecoder.Instance.EncodeToNewNettyStream(transaction, encodingSettings);
+        return ResultWrapper<string?>.Success(stream.AsSpan().ToHexString(false));
     }
 
     public ResultWrapper<byte[][]> debug_getRawReceipts(BlockParameter blockParameter)

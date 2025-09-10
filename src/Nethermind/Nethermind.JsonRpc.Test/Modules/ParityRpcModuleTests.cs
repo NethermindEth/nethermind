@@ -23,19 +23,19 @@ using Nethermind.Db;
 using Nethermind.Int256;
 using Nethermind.JsonRpc.Modules.Parity;
 using Nethermind.Logging;
-using Nethermind.State;
+using Nethermind.Evm.State;
 using Nethermind.KeyStore;
 using Nethermind.Network;
 using Nethermind.Network.Contract.P2P;
 using Nethermind.Network.P2P;
 using Nethermind.Network.P2P.ProtocolHandlers;
 using Nethermind.Stats.Model;
-using Nethermind.Trie.Pruning;
 using Nethermind.TxPool;
 using NSubstitute;
 using NUnit.Framework;
 using System;
-using Nethermind.Evm;
+using Nethermind.Core.Test.Db;
+using Nethermind.State;
 
 namespace Nethermind.JsonRpc.Test.Modules
 {
@@ -67,9 +67,7 @@ namespace Nethermind.JsonRpc.Test.Modules
             peerManager.ConnectedPeers.Returns(new List<Peer> { peerA, peerB, peerA, peerC, peerB });
             peerManager.MaxActivePeers.Returns(15);
 
-            IDbProvider dbProvider = TestMemDbProvider.Init();
-            WorldStateManager worldStateManager = TestWorldStateFactory.CreateForTest(dbProvider, LimboLogs.Instance);
-            IWorldState stateProvider = worldStateManager.GlobalWorldState;
+            TestReadOnlyStateProvider stateProvider = new TestReadOnlyStateProvider();
 
             _blockTree = Build.A.BlockTree()
                 .WithoutSettingHead
@@ -78,7 +76,7 @@ namespace Nethermind.JsonRpc.Test.Modules
 
             _txPool = new TxPool.TxPool(_ethereumEcdsa,
                 new BlobTxStorage(),
-                new ChainHeadInfoProvider(new FixedForkActivationChainHeadSpecProvider(specProvider), _blockTree, stateProvider, new CodeInfoRepository()) { HasSynced = true },
+                new ChainHeadInfoProvider(new FixedForkActivationChainHeadSpecProvider(specProvider), _blockTree, stateProvider, new EthereumCodeInfoRepository()) { HasSynced = true },
                 new TxPoolConfig(),
                 new TxValidator(specProvider.ChainId),
                 LimboLogs.Instance,

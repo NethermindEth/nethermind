@@ -14,11 +14,9 @@ using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.Specs.Forks;
 using Nethermind.Core.Test.Builders;
-using Nethermind.Db;
 using Nethermind.Int256;
 using Nethermind.Logging;
-using Nethermind.State;
-using Nethermind.Trie.Pruning;
+using Nethermind.Evm.State;
 using Nethermind.TxPool;
 using Nethermind.TxPool.Comparison;
 using NSubstitute;
@@ -27,6 +25,7 @@ using Nethermind.Config;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Test;
 using Nethermind.Crypto;
+using Nethermind.State;
 
 namespace Nethermind.Blockchain.Test
 {
@@ -481,9 +480,11 @@ namespace Nethermind.Blockchain.Test
             IStateReader _ = worldStateManager.GlobalStateReader;
             ISpecProvider specProvider = Substitute.For<ISpecProvider>();
 
-            void SetAccountStates(IEnumerable<Address> missingAddresses)
+            Hash256 SetAccountStates(IEnumerable<Address> missingAddresses)
             {
                 HashSet<Address> missingAddressesSet = missingAddresses.ToHashSet();
+
+                using var _ = stateProvider.BeginScope(IWorldState.PreGenesis);
 
                 foreach (KeyValuePair<Address, (UInt256 Balance, UInt256 Nonce)> accountState in testCase.AccountStates
                              .Where(v => !missingAddressesSet.Contains(v.Key)))
@@ -497,6 +498,7 @@ namespace Nethermind.Blockchain.Test
 
                 stateProvider.Commit(Homestead.Instance);
                 stateProvider.CommitTree(0);
+                return stateProvider.StateRoot;
             }
 
             ITxPool transactionPool = Substitute.For<ITxPool>();
@@ -535,16 +537,16 @@ namespace Nethermind.Blockchain.Test
 
             BlocksConfig blocksConfig = new() { MinGasPrice = testCase.MinGasPriceForMining };
             ITxFilterPipeline txFilterPipeline = new TxFilterPipelineBuilder(LimboLogs.Instance)
-                .WithMinGasPriceFilter(blocksConfig, specProvider)
-                .WithBaseFeeFilter(specProvider)
+                .WithMinGasPriceFilter(blocksConfig)
+                .WithBaseFeeFilter()
                 .Build;
 
-            SetAccountStates(testCase.MissingAddresses);
+            Hash256 stateRoot = SetAccountStates(testCase.MissingAddresses);
 
             TxPoolTxSource poolTxSource = new(transactionPool, specProvider,
-                transactionComparerProvider, LimboLogs.Instance, txFilterPipeline);
+                transactionComparerProvider, LimboLogs.Instance, txFilterPipeline, blocksConfig);
 
-            BlockHeaderBuilder parentHeader = Build.A.BlockHeader.WithStateRoot(stateProvider.StateRoot).WithBaseFee(testCase.BaseFee);
+            BlockHeaderBuilder parentHeader = Build.A.BlockHeader.WithStateRoot(stateRoot).WithBaseFee(testCase.BaseFee);
             if (spec.IsEip4844Enabled)
             {
                 parentHeader = parentHeader.WithExcessBlobGas(0);

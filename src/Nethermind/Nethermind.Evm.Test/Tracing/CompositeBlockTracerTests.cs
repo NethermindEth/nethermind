@@ -3,12 +3,13 @@
 
 using System.Collections.Generic;
 using FluentAssertions;
+using Nethermind.Blockchain.Tracing;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Evm.Tracing;
-using Nethermind.Evm.Tracing.GethStyle;
-using Nethermind.Evm.Tracing.ParityStyle;
+using Nethermind.Blockchain.Tracing.GethStyle;
+using Nethermind.Blockchain.Tracing.ParityStyle;
 using NUnit.Framework;
 
 namespace Nethermind.Evm.Test.Tracing;

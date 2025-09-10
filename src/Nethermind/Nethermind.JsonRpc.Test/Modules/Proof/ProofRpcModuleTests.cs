@@ -18,7 +18,7 @@ using Nethermind.Logging;
 using Nethermind.Serialization.Rlp;
 using Nethermind.Specs;
 using Nethermind.Specs.Forks;
-using Nethermind.State;
+using Nethermind.Evm.State;
 using Nethermind.State.Proofs;
 using Nethermind.TxPool;
 using NUnit.Framework;
@@ -30,10 +30,12 @@ using Nethermind.Consensus.Processing;
 using Nethermind.Core.Buffers;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Test;
+using Nethermind.Core.Test.Db;
 using Nethermind.Core.Test.Modules;
+using Nethermind.Evm.Tracing.State;
 using Nethermind.Facade.Eth.RpcTransaction;
 using Nethermind.JsonRpc.Modules;
-using Nethermind.State.Tracing;
+using Nethermind.State;
 using NSubstitute;
 
 namespace Nethermind.JsonRpc.Test.Modules.Proof;
@@ -65,14 +67,19 @@ public class ProofRpcModuleTests
         _dbProvider = await TestMemDbProvider.InitAsync();
         _worldStateManager = TestWorldStateFactory.CreateForTest(_dbProvider, LimboLogs.Instance);
 
+        Hash256 stateRoot;
         IWorldState worldState = _worldStateManager.GlobalWorldState;
-        worldState.CreateAccount(TestItem.AddressA, 100000);
-        worldState.Commit(London.Instance);
-        worldState.CommitTree(0);
+        using (var _ = worldState.BeginScope(IWorldState.PreGenesis))
+        {
+            worldState.CreateAccount(TestItem.AddressA, 100000);
+            worldState.Commit(London.Instance);
+            worldState.CommitTree(0);
+            stateRoot = worldState.StateRoot;
+        }
 
         InMemoryReceiptStorage receiptStorage = new();
         _specProvider = new TestSpecProvider(London.Instance);
-        _blockTree = Build.A.BlockTree(new Block(Build.A.BlockHeader.WithStateRoot(worldState.StateRoot).TestObject, new BlockBody()), _specProvider)
+        _blockTree = Build.A.BlockTree(new Block(Build.A.BlockHeader.WithStateRoot(stateRoot).TestObject, new BlockBody()), _specProvider)
             .WithTransactions(receiptStorage)
             .OfChainLength(10)
             .TestObject;
@@ -256,9 +263,8 @@ public class ProofRpcModuleTests
     [TestCase]
     public async Task Can_call()
     {
-        IWorldState stateProvider = CreateInitialState(null);
+        (IWorldState stateProvider, Hash256 root) = CreateInitialState(null);
 
-        Hash256 root = stateProvider.StateRoot;
         Block block = Build.A.Block.WithParent(_blockTree.Head!).WithStateRoot(root).TestObject;
         BlockTreeBuilder.AddBlock(_blockTree, block);
 
@@ -280,9 +286,8 @@ public class ProofRpcModuleTests
     [TestCase]
     public async Task Can_call_by_hash()
     {
-        IWorldState stateProvider = CreateInitialState(null);
+        (IWorldState stateProvider, Hash256 root) = CreateInitialState(null);
 
-        Hash256 root = stateProvider.StateRoot;
         Block block = Build.A.Block.WithParent(_blockTree.Head!).WithStateRoot(root).TestObject;
         BlockTreeBuilder.AddBlock(_blockTree, block);
 
@@ -453,7 +458,7 @@ public class ProofRpcModuleTests
     [TestCase]
     public async Task Can_call_with_extcodehash()
     {
-        _specProvider.SpecToReturn = MuirGlacier.Instance;
+        _specProvider.NextForkSpec = MuirGlacier.Instance;
         byte[] code = Prepare.EvmCode
             .PushData(TestItem.AddressC)
             .Op(Instruction.EXTCODEHASH)
@@ -465,7 +470,7 @@ public class ProofRpcModuleTests
     [TestCase]
     public async Task Can_call_with_extcodehash_to_system_account()
     {
-        _specProvider.SpecToReturn = MuirGlacier.Instance;
+        _specProvider.NextForkSpec = MuirGlacier.Instance;
         byte[] code = Prepare.EvmCode
             .PushData(Address.SystemUser)
             .Op(Instruction.EXTCODEHASH)
@@ -477,7 +482,7 @@ public class ProofRpcModuleTests
     [TestCase]
     public async Task Can_call_with_just_basic_addresses()
     {
-        _specProvider.SpecToReturn = MuirGlacier.Instance;
+        _specProvider.NextForkSpec = MuirGlacier.Instance;
         byte[] code = Prepare.EvmCode
             .Op(Instruction.STOP)
             .Done;
@@ -488,7 +493,7 @@ public class ProofRpcModuleTests
     [TestCase]
     public async Task Can_call_with_balance()
     {
-        _specProvider.SpecToReturn = MuirGlacier.Instance;
+        _specProvider.NextForkSpec = MuirGlacier.Instance;
         byte[] code = Prepare.EvmCode
             .PushData(TestItem.AddressC)
             .Op(Instruction.BALANCE)
@@ -501,7 +506,7 @@ public class ProofRpcModuleTests
     [TestCase]
     public async Task Can_call_with_self_balance()
     {
-        _specProvider.SpecToReturn = MuirGlacier.Instance;
+        _specProvider.NextForkSpec = MuirGlacier.Instance;
         byte[] code = Prepare.EvmCode
             .Op(Instruction.SELFBALANCE)
             .Done;
@@ -513,7 +518,7 @@ public class ProofRpcModuleTests
     [TestCase]
     public async Task Can_call_with_balance_of_system_account()
     {
-        _specProvider.SpecToReturn = MuirGlacier.Instance;
+        _specProvider.NextForkSpec = MuirGlacier.Instance;
         byte[] code = Prepare.EvmCode
             .PushData(Address.SystemUser)
             .Op(Instruction.BALANCE)
@@ -525,7 +530,7 @@ public class ProofRpcModuleTests
     [TestCase]
     public async Task Can_call_with_call_to_system_account_with_zero_value()
     {
-        _specProvider.SpecToReturn = MuirGlacier.Instance;
+        _specProvider.NextForkSpec = MuirGlacier.Instance;
         byte[] code = Prepare.EvmCode
             .PushData(0)
             .PushData(0)
@@ -543,7 +548,7 @@ public class ProofRpcModuleTests
     [TestCase]
     public async Task Can_call_with_static_call_to_system_account()
     {
-        _specProvider.SpecToReturn = MuirGlacier.Instance;
+        _specProvider.NextForkSpec = MuirGlacier.Instance;
         byte[] code = Prepare.EvmCode
             .PushData(0)
             .PushData(0)
@@ -560,7 +565,7 @@ public class ProofRpcModuleTests
     [TestCase]
     public async Task Can_call_with_delegate_call_to_system_account()
     {
-        _specProvider.SpecToReturn = MuirGlacier.Instance;
+        _specProvider.NextForkSpec = MuirGlacier.Instance;
         byte[] code = Prepare.EvmCode
             .PushData(0)
             .PushData(0)
@@ -577,7 +582,7 @@ public class ProofRpcModuleTests
     [TestCase]
     public async Task Can_call_with_call_to_system_account_with_non_zero_value()
     {
-        _specProvider.SpecToReturn = MuirGlacier.Instance;
+        _specProvider.NextForkSpec = MuirGlacier.Instance;
         byte[] code = Prepare.EvmCode
             .PushData(0)
             .PushData(0)
@@ -595,7 +600,7 @@ public class ProofRpcModuleTests
     [TestCase]
     public async Task Can_call_with_call_with_zero_value()
     {
-        _specProvider.SpecToReturn = MuirGlacier.Instance;
+        _specProvider.NextForkSpec = MuirGlacier.Instance;
         byte[] code = Prepare.EvmCode
             .PushData(0)
             .PushData(0)
@@ -613,7 +618,7 @@ public class ProofRpcModuleTests
     [TestCase]
     public async Task Can_call_with_static_call()
     {
-        _specProvider.SpecToReturn = MuirGlacier.Instance;
+        _specProvider.NextForkSpec = MuirGlacier.Instance;
         byte[] code = Prepare.EvmCode
             .PushData(0)
             .PushData(0)
@@ -630,7 +635,7 @@ public class ProofRpcModuleTests
     [TestCase]
     public async Task Can_call_with_delegate_call()
     {
-        _specProvider.SpecToReturn = MuirGlacier.Instance;
+        _specProvider.NextForkSpec = MuirGlacier.Instance;
         byte[] code = Prepare.EvmCode
             .PushData(0)
             .PushData(0)
@@ -647,7 +652,7 @@ public class ProofRpcModuleTests
     [TestCase]
     public async Task Can_call_with_call_with_non_zero_value()
     {
-        _specProvider.SpecToReturn = MuirGlacier.Instance;
+        _specProvider.NextForkSpec = MuirGlacier.Instance;
         byte[] code = Prepare.EvmCode
             .PushData(0)
             .PushData(0)
@@ -665,7 +670,7 @@ public class ProofRpcModuleTests
     [TestCase]
     public async Task Can_call_with_self_destruct()
     {
-        _specProvider.SpecToReturn = MuirGlacier.Instance;
+        _specProvider.NextForkSpec = MuirGlacier.Instance;
         byte[] code = Prepare.EvmCode
             .PushData(TestItem.AddressC)
             .Op(Instruction.SELFDESTRUCT)
@@ -678,7 +683,7 @@ public class ProofRpcModuleTests
     [TestCase]
     public async Task Can_call_with_self_destruct_to_system_account()
     {
-        _specProvider.SpecToReturn = MuirGlacier.Instance;
+        _specProvider.NextForkSpec = MuirGlacier.Instance;
         byte[] code = Prepare.EvmCode
             .PushData(Address.SystemUser)
             .Op(Instruction.SELFDESTRUCT)
@@ -780,9 +785,8 @@ public class ProofRpcModuleTests
 
     private async Task<CallResultWithProof> TestCallWithCode(byte[] code, Address? from = null)
     {
-        IWorldState stateProvider = CreateInitialState(code);
+        (IWorldState stateProvider, Hash256 root) = CreateInitialState(code);
 
-        Hash256 root = stateProvider.StateRoot;
         Block block = Build.A.Block.WithParent(_blockTree.Head!).WithStateRoot(root).WithBeneficiary(TestItem.AddressD).TestObject;
         BlockTreeBuilder.AddBlock(_blockTree, block);
         Block blockOnTop = Build.A.Block.WithParent(block).WithStateRoot(root).WithBeneficiary(TestItem.AddressD).TestObject;
@@ -817,21 +821,25 @@ public class ProofRpcModuleTests
 
     private async Task TestCallWithStorageAndCode(byte[] code, UInt256 gasPrice, Address? from = null)
     {
-        IWorldState stateProvider = CreateInitialState(code);
+        (IWorldState stateProvider, Hash256 root) = CreateInitialState(code);
 
-        for (int i = 0; i < 10000; i++)
+        BlockHeader baseBlock;
+        using (var _ = stateProvider.BeginScope(_blockTree.Head?.Header))
         {
-            stateProvider.Set(new StorageCell(TestItem.AddressB, (UInt256)i), i.ToBigEndianByteArray());
+            for (int i = 0; i < 10000; i++)
+            {
+                stateProvider.Set(new StorageCell(TestItem.AddressB, (UInt256)i), i.ToBigEndianByteArray());
+            }
+
+            stateProvider.Commit(MainnetSpecProvider.Instance.GenesisSpec, NullStateTracer.Instance);
+            stateProvider.CommitTree(0);
+            baseBlock = Build.A.BlockHeader.WithStateRoot(stateProvider.StateRoot).TestObject;
+            _blockTree.SuggestBlock(Build.A.Block.WithHeader(baseBlock).TestObject).Should().Be(AddBlockResult.Added);
         }
 
-        stateProvider.Commit(MainnetSpecProvider.Instance.GenesisSpec, NullStateTracer.Instance);
-        stateProvider.CommitTree(0);
-
-        Hash256 root = stateProvider.StateRoot;
-
-        Block block = Build.A.Block.WithParent(_blockTree.Head!).WithStateRoot(root).TestObject;
+        Block block = Build.A.Block.WithParent(baseBlock).WithStateRoot(root).TestObject;
         BlockTreeBuilder.AddBlock(_blockTree, block);
-        Block blockOnTop = Build.A.Block.WithParent(block).WithStateRoot(root).TestObject;
+        Block blockOnTop = Build.A.Block.WithParent(block).TestObject;
         BlockTreeBuilder.AddBlock(_blockTree, blockOnTop);
 
         // would need to setup state root somehow...
@@ -887,9 +895,11 @@ public class ProofRpcModuleTests
         Assert.That(response.Contains("\"result\""), Is.True);
     }
 
-    private IWorldState CreateInitialState(byte[]? code)
+    private (IWorldState, Hash256) CreateInitialState(byte[]? code)
     {
         IWorldState stateProvider = _worldStateManager.GlobalWorldState;
+        using var _ = stateProvider.BeginScope(IWorldState.PreGenesis);
+
         AddAccount(stateProvider, TestItem.AddressA, 1.Ether());
         AddAccount(stateProvider, TestItem.AddressB, 1.Ether());
 
@@ -905,7 +915,7 @@ public class ProofRpcModuleTests
 
         stateProvider.CommitTree(0);
 
-        return stateProvider;
+        return (stateProvider, stateProvider.StateRoot);
     }
 
     private void AddAccount(IWorldState stateProvider, Address account, UInt256 initialBalance)

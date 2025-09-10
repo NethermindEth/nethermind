@@ -52,8 +52,8 @@ jobs:
     steps:
       - name: Set up parameters
         run: |
-          echo "TEST_SUITE=${{ github.event.inputs.test-suite || 'ethereum/rpc-compat' }}" >> $GITHUB_ENV
-          echo "LIMIT=${{ github.event.inputs.limit || '/eth_simulateV1' }}" >> $GITHUB_ENV
+          echo "TEST_SUITE=${{ github.event.inputs.test-suite || 'ethereum/engine' }}" >> $GITHUB_ENV
+          echo "LIMIT=${{ github.event.inputs.limit || '' }}" >> $GITHUB_ENV
           echo "LOG_LEVEL=${{ github.event.inputs.log-level || '3' }}" >> $GITHUB_ENV
           echo "HIVE_REPO=${{ github.event.inputs.hive-repo || 'ethereum/hive' }}" >> $GITHUB_ENV
           echo "HIVE_BRANCH=${{ github.event.inputs.hive-branch || 'master' }}" >> $GITHUB_ENV

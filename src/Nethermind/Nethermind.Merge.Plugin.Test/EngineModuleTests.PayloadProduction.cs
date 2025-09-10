@@ -17,12 +17,14 @@ using Nethermind.Consensus.Producers;
 using Nethermind.Consensus.Transactions;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
-using Nethermind.Core.Events;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
+using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
+using Nethermind.Core.Test.Container;
 using Nethermind.Core.Timers;
 using Nethermind.Crypto;
+using Nethermind.Evm.State;
 using Nethermind.Int256;
 using Nethermind.JsonRpc;
 using Nethermind.JsonRpc.Test;
@@ -37,6 +39,8 @@ using Nethermind.State;
 using Nethermind.TxPool;
 using NSubstitute;
 using NUnit.Framework;
+using ILogManager = Nethermind.Logging.ILogManager;
+using ITimer = Nethermind.Core.Timers.ITimer;
 
 namespace Nethermind.Merge.Plugin.Test;
 
@@ -46,7 +50,7 @@ public partial class EngineModuleTests
     public async Task getPayloadV1_should_allow_asking_multiple_times_by_same_payload_id()
     {
         using MergeTestBlockchain chain = await CreateBlockchain();
-        IEngineRpcModule rpc = CreateEngineModule(chain);
+        IEngineRpcModule rpc = chain.EngineRpcModule;
 
         Hash256 startingHead = chain.BlockTree.HeadHash;
         ForkchoiceStateV1 forkchoiceState = new(startingHead, Keccak.Zero, startingHead);
@@ -66,13 +70,23 @@ public partial class EngineModuleTests
     [Obsolete]
     public async Task getPayloadV1_should_return_error_if_called_after_cleanup_timer()
     {
+        ITimer cancellationTimer = null!;
+
         MergeConfig mergeConfig = new() { SecondsPerSlot = 1, TerminalTotalDifficulty = "0" };
         TimeSpan timePerSlot = TimeSpan.FromMilliseconds(10);
         using MergeTestBlockchain chain = await CreateBlockchainWithImprovementContext(
             static ctx => new BlockImprovementContextFactory(ctx.Resolve<IBlockProducer>(), TimeSpan.FromSeconds(1)),
-            timePerSlot, mergeConfig);
+            timePerSlot, mergeConfig,
+            configurer: builder => builder
+                .UpdateSingleton<IPayloadPreparationService>((builder) => builder
+                    .AddSingleton<ITimerFactory>(new FunctionalTimerFactory((interval) =>
+                    {
+                        cancellationTimer = Substitute.For<ITimer>();
+                        return cancellationTimer;
+                    })))
+            );
 
-        IEngineRpcModule rpc = CreateEngineModule(chain);
+        IEngineRpcModule rpc = chain.EngineRpcModule;
         Hash256 startingHead = chain.BlockTree.HeadHash;
         ulong timestamp = Timestamper.UnixTime.Seconds;
         Hash256 random = Keccak.Zero;
@@ -83,6 +97,7 @@ public partial class EngineModuleTests
             .PayloadId!;
 
         await Task.Delay(PayloadPreparationService.SlotsPerOldPayloadCleanup * 2 * timePerSlot + timePerSlot);
+        cancellationTimer.Elapsed += Raise.Event();
 
         ResultWrapper<ExecutionPayload?> response = await rpc.engine_getPayloadV1(Bytes.FromHexString(payloadId));
 
@@ -94,7 +109,7 @@ public partial class EngineModuleTests
     {
         using SemaphoreSlim blockImprovementLock = new(0);
         using MergeTestBlockchain chain = await CreateBlockchain();
-        IEngineRpcModule rpc = CreateEngineModule(chain);
+        IEngineRpcModule rpc = chain.EngineRpcModule;
         Hash256 startingHead = chain.BlockTree.HeadHash;
         uint count = 3;
         int value = 10;
@@ -125,7 +140,8 @@ public partial class EngineModuleTests
         executePayloadResult.Data.Status.Should().Be(PayloadStatus.Valid);
 
         UInt256 totalValue = ((int)(count * value)).GWei();
-        chain.StateReader.GetBalance(getPayloadResult.StateRoot, recipient).Should().Be(totalValue);
+        BlockHeader? payloadBlock = chain.BlockFinder.FindHeader(getPayloadResult.BlockHash);
+        chain.StateReader.GetBalance(payloadBlock, recipient).Should().Be(totalValue);
     }
 
     public static IEnumerable WaitTestCases
@@ -189,7 +205,7 @@ public partial class EngineModuleTests
                 return factory;
             }));
 
-        IEngineRpcModule rpc = CreateEngineModule(chain);
+        IEngineRpcModule rpc = chain.EngineRpcModule;
         Hash256 startingHead = chain.BlockTree.HeadHash;
 
         string payloadId = (await rpc.engine_forkchoiceUpdatedV1(
@@ -220,7 +236,7 @@ public partial class EngineModuleTests
     public async Task getPayloadV1_return_correct_block_values_for_empty_block()
     {
         using MergeTestBlockchain chain = await CreateBlockchain();
-        IEngineRpcModule rpc = CreateEngineModule(chain);
+        IEngineRpcModule rpc = chain.EngineRpcModule;
         Hash256 startingHead = chain.BlockTree.HeadHash;
         Hash256? random = TestItem.KeccakF;
         ulong timestamp = chain.BlockTree.Head!.Timestamp + 5;
@@ -245,7 +261,7 @@ public partial class EngineModuleTests
     public async Task getPayloadV1_should_return_error_if_there_was_no_corresponding_prepare_call()
     {
         using MergeTestBlockchain chain = await CreateBlockchain();
-        IEngineRpcModule rpc = CreateEngineModule(chain);
+        IEngineRpcModule rpc = chain.EngineRpcModule;
         Hash256 startingHead = chain.BlockTree.HeadHash;
         ulong timestamp = Timestamper.UnixTime.Seconds;
         Hash256 random = Keccak.Zero;
@@ -273,7 +289,7 @@ public partial class EngineModuleTests
         payloadPreparationService.GetPayload(Arg.Any<string>(), Arg.Any<bool>()).Returns(improvementContext);
         using MergeTestBlockchain chain = await CreateBlockchain(null, null, payloadPreparationService);
 
-        IEngineRpcModule rpc = CreateEngineModule(chain);
+        IEngineRpcModule rpc = chain.EngineRpcModule;
         string result = await RpcTest.TestSerializedRequest(rpc, "engine_getPayloadV1", payload.ToHexString(true));
         Assert.That(chain.JsonSerializer.Serialize(new
         {
@@ -311,7 +327,7 @@ public partial class EngineModuleTests
     public async Task getPayload_should_serialize_unknown_payload_response_properly()
     {
         using MergeTestBlockchain chain = await CreateBlockchain();
-        IEngineRpcModule rpc = CreateEngineModule(chain);
+        IEngineRpcModule rpc = chain.EngineRpcModule;
         byte[] payloadId = Bytes.FromHexString("0x1111111111111111");
 
         string parameters = payloadId.ToHexString(true);
@@ -339,7 +355,7 @@ public partial class EngineModuleTests
 
         StoringBlockImprovementContextFactory improvementContextFactory = chain.StoringBlockImprovementContextFactory!;
 
-        IEngineRpcModule rpc = CreateEngineModule(chain);
+        IEngineRpcModule rpc = chain.EngineRpcModule;
         Hash256 startingHead = chain.BlockTree.HeadHash;
         ulong timestamp = Timestamper.UnixTime.Seconds;
         Hash256 random = Keccak.Zero;
@@ -380,9 +396,8 @@ public partial class EngineModuleTests
         using MergeTestBlockchain chain = await CreateBlockchainWithImprovementContext(
             ctx => new StoringBlockImprovementContextFactory(new BlockImprovementContextFactory(ctx.Resolve<IBlockProducer>()!, TimeSpan.FromSeconds(ctx.Resolve<IMergeConfig>().SecondsPerSlot))),
             timePerSlot, delay: delay);
-        StoringBlockImprovementContextFactory improvementContextFactory = (StoringBlockImprovementContextFactory)chain.BlockImprovementContextFactory;
 
-        IEngineRpcModule rpc = CreateEngineModule(chain);
+        IEngineRpcModule rpc = chain.EngineRpcModule;
         Hash256 startingHead = chain.BlockTree.HeadHash;
         Task improvementWaitTask = chain.WaitForImprovedBlock();
         chain.AddTransactions(BuildTransactions(chain, startingHead, TestItem.PrivateKeyB, TestItem.AddressF, 3, 10, out _, out _));
@@ -402,6 +417,7 @@ public partial class EngineModuleTests
 
         ExecutionPayload getPayloadResult = (await rpc.engine_getPayloadV1(Bytes.FromHexString(payloadId))).Data!;
 
+        var improvementContextFactory = (StoringBlockImprovementContextFactory)chain.Container.Resolve<IBlockImprovementContextFactory>();
         List<int?> transactionsLength = improvementContextFactory.CreatedContexts
             .Select(c => c.CurrentBestBlock?.Transactions.Length).ToList();
 
@@ -423,25 +439,23 @@ public partial class EngineModuleTests
         Transaction tx2 = TxDecoder.Instance.Decode(new RlpStream(Bytes.FromHexString(tx2Hex)), RlpBehaviors.SkipTypedWrapping)!;
 
         MergeTestBlockchain blockchain = CreateBaseBlockchain();
-        blockchain.InitialStateMutator = state =>
-        {
-            state.CreateAccount(new Address("0xBC2Fd1637C49839aDB7Bb57F9851EAE3194A90f7"), (UInt256)1200482917041833040, 1);
-        };
-
-
         TimeSpan delay = TimeSpan.FromMilliseconds(10);
         TimeSpan timePerSlot = 1000 * delay;
         using MergeTestBlockchain chain = await blockchain.BuildMergeTestBlockchain(builder =>
         {
             builder
                 .AddSingleton<ISpecProvider>(SepoliaSpecProvider.Instance)
+                .WithGenesisPostProcessor((genesis, state) =>
+                {
+                    state.CreateAccount(new Address("0xBC2Fd1637C49839aDB7Bb57F9851EAE3194A90f7"), (UInt256)1200482917041833040, 1);
+                })
                 .AddSingleton(ConfigurePayloadPreparationService(timePerSlot, delay))
                 ;
 
         });
         ;
 
-        IEngineRpcModule rpc = CreateEngineModule(chain);
+        IEngineRpcModule rpc = chain.EngineRpcModule;
         Hash256 startingHead = chain.BlockTree.HeadHash;
         chain.AddTransactions(tx1);
 
@@ -479,7 +493,7 @@ public partial class EngineModuleTests
             timePerSlot, delay: delay);
         StoringBlockImprovementContextFactory improvementContextFactory = (StoringBlockImprovementContextFactory)chain.BlockImprovementContextFactory;
 
-        IEngineRpcModule rpc = CreateEngineModule(chain);
+        IEngineRpcModule rpc = chain.EngineRpcModule;
         Hash256 startingHead = chain.BlockTree.HeadHash;
         Task blockImprovement = chain.WaitForImprovedBlock();
         chain.AddTransactions(BuildTransactions(chain, startingHead, TestItem.PrivateKeyB, TestItem.AddressF, 3, 10, out _, out _));
@@ -494,7 +508,7 @@ public partial class EngineModuleTests
         chain.AddTransactions(BuildTransactions(chain, startingHead, TestItem.PrivateKeyC, TestItem.AddressA, 3, 10, out _, out _));
 
         IBlockImprovementContext cancelledContext = await cancelledContextTask;
-        improvementContextFactory.CreatedContexts.Should().HaveCount(2);
+        Assert.That(() => improvementContextFactory.CreatedContexts.Count, Is.EqualTo(2).After(1000, 10));
 
         ExecutionPayload getPayloadResult = (await rpc.engine_getPayloadV1(Bytes.FromHexString(payloadId))).Data!;
 
@@ -517,7 +531,7 @@ public partial class EngineModuleTests
             .AddSingleton(ConfigurePayloadPreparationService(timePerSlot, delay))
         );
 
-        IEngineRpcModule rpc = CreateEngineModule(chain);
+        IEngineRpcModule rpc = chain.EngineRpcModule;
 
         // creating chain with 30 blocks
         Task blockImprovementWait = chain.WaitForImprovedBlock();
@@ -597,7 +611,7 @@ public partial class EngineModuleTests
             (ctx) => new StoringBlockImprovementContextFactory(new BlockImprovementContextFactory(ctx.Resolve<IBlockProducer>()!, TimeSpan.FromSeconds(ctx.Resolve<IMergeConfig>().SecondsPerSlot))),
             timePerSlot, delay: delay);
 
-        IEngineRpcModule rpc = CreateEngineModule(chain);
+        IEngineRpcModule rpc = chain.EngineRpcModule;
         Hash256 blockX = chain.BlockTree.HeadHash;
         chain.AddTransactions(BuildTransactions(chain, blockX, TestItem.PrivateKeyB, TestItem.AddressF, 3, 10, out _, out _));
 
@@ -663,7 +677,7 @@ public partial class EngineModuleTests
     {
         using SemaphoreSlim blockImprovementLock = new(0);
         using MergeTestBlockchain chain = await CreateBlockchain(new TestSingleReleaseSpecProvider(London.Instance));
-        IEngineRpcModule rpc = CreateEngineModule(chain);
+        IEngineRpcModule rpc = chain.EngineRpcModule;
         Hash256 blockX = chain.BlockTree.HeadHash;
         await rpc.engine_forkchoiceUpdatedV1(
             new ForkchoiceStateV1(blockX, Keccak.Zero, blockX));
@@ -687,7 +701,7 @@ public partial class EngineModuleTests
     {
         using SemaphoreSlim blockImprovementLock = new(0);
         using MergeTestBlockchain chain = await CreateBlockchain(new TestSingleReleaseSpecProvider(Shanghai.Instance));
-        IEngineRpcModule rpc = CreateEngineModule(chain);
+        IEngineRpcModule rpc = chain.EngineRpcModule;
         Hash256 blockX = chain.BlockTree.HeadHash;
         await rpc.engine_forkchoiceUpdatedV2(
             new ForkchoiceStateV1(blockX, Keccak.Zero, blockX));
@@ -737,5 +751,87 @@ public partial class EngineModuleTests
             logManager,
             timePerSlot,
             improvementDelay: delay);
+    }
+
+    [TestCaseSource(nameof(OsakaTransitionInvalidatedTransactionsTestCaseSource))]
+    public async Task Lightweight_transaction_validation_is_applied_on_new_head(Transaction tx, IReleaseSpec initialSpec, IReleaseSpec nextBlockSpec, bool isForked)
+    {
+        using MergeTestBlockchain chain = await CreateBlockchain(configurer: builder => builder
+            .WithGenesisPostProcessor((genesis, state) =>
+            {
+                genesis.Header.GasLimit = Eip7825Constants.DefaultTxGasLimitCap * 2;
+            })
+            .AddSingleton<ISpecProvider>(new TestSpecProvider(initialSpec) { NextForkSpec = isForked ? nextBlockSpec : initialSpec }));
+
+        IEngineRpcModule rpc = chain.EngineRpcModule;
+        Hash256 blockHash = chain.BlockTree.HeadHash;
+        await rpc.engine_forkchoiceUpdatedV2(new ForkchoiceStateV1(blockHash, Keccak.Zero, blockHash));
+
+        AcceptTxResult initiallyAccepted = chain.TxPool.SubmitTx(tx, TxHandlingOptions.None);
+        Assert.That(initiallyAccepted, Is.EqualTo(AcceptTxResult.Accepted));
+
+        IBlockProducer blockProducer = chain!.BlockProducer;
+        PayloadAttributes payloadAttributes = new()
+        {
+            Timestamp = chain.BlockTree.Head!.Header.Timestamp + 1,
+            PrevRandao = TestItem.KeccakA,
+            SuggestedFeeRecipient = Address.Zero,
+            Withdrawals = [TestItem.WithdrawalA_1Eth]
+        };
+
+        Block? emptyBlock = await blockProducer.BuildBlock(chain.BlockTree.Head!.Header, payloadAttributes: payloadAttributes);
+
+        Assert.That(emptyBlock, Is.Not.Null);
+        Assert.That(emptyBlock.Transactions, Has.Length.EqualTo(isForked ? 0 : 1));
+    }
+
+    public static IEnumerable<TestCaseData> OsakaTransitionInvalidatedTransactionsTestCaseSource
+    {
+        get
+        {
+            ReleaseSpecDecorator osakaWithSmallerBlobCap = new(Osaka.Instance) { MaxBlobsPerTx = 1 };
+            ReleaseSpecDecorator osakaWithNoTxGasCap = new(Osaka.Instance) { IsEip7825Enabled = false };
+
+            foreach (bool isForked in new[] { false, true })
+            {
+                string nameSuffix = isForked ? ", when forked" : ", same fork";
+                yield return new TestCaseData(
+                   Build.A.Transaction
+                   .WithMaxFeePerGas(10000000000)
+                   .WithMaxPriorityFeePerGas(10000000000)
+                   .WithShardBlobTxTypeAndFields(1)
+                   .SignedAndResolved(TestItem.PrivateKeyA)
+                   .TestObject,
+                   Prague.Instance,
+                   Osaka.Instance,
+                   isForked
+                   )
+                { TestName = "Proof version is old" + nameSuffix };
+
+                yield return new TestCaseData(
+                    Build.A.Transaction
+                    .WithGasLimit(Eip7825Constants.DefaultTxGasLimitCap + 1)
+                    .WithMaxFeePerGas(10000000000)
+                    .WithMaxPriorityFeePerGas(10000000000)
+                    .WithShardBlobTxTypeAndFields(1, spec: Osaka.Instance)
+                    .SignedAndResolved(TestItem.PrivateKeyA)
+                    .TestObject,
+                    osakaWithNoTxGasCap,
+                    Osaka.Instance,
+                    isForked)
+                { TestName = "Gas limit exceeds gas cap" + nameSuffix };
+
+                yield return new TestCaseData(Build.A.Transaction
+                    .WithMaxFeePerGas(10000000000)
+                    .WithMaxPriorityFeePerGas(10000000000)
+                    .WithShardBlobTxTypeAndFields(2, spec: Osaka.Instance)
+                    .SignedAndResolved(TestItem.PrivateKeyA)
+                    .TestObject,
+                    Osaka.Instance,
+                    osakaWithSmallerBlobCap,
+                    isForked)
+                { TestName = "Blob count higher than lowered maximum" + nameSuffix };
+            }
+        }
     }
 }

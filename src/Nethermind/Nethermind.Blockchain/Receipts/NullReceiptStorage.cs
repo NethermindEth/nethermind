@@ -45,5 +45,9 @@ namespace Nethermind.Blockchain.Receipts
         public void EnsureCanonical(Block block)
         {
         }
+
+        public void RemoveReceipts(Block block)
+        {
+        }
     }
 }

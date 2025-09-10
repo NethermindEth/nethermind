@@ -10,6 +10,7 @@ using Nethermind.Core.ServiceStopper;
 using Nethermind.Logging;
 using Nethermind.Network.Config;
 using Nethermind.Network.Discovery.Discv5;
+using Nethermind.Serialization.Rlp;
 using Nethermind.Stats.Model;
 
 namespace Nethermind.Network.Discovery;
@@ -67,8 +68,11 @@ public class CompositeDiscoveryApp : IDiscoveryApp
     {
         if (_v4 == null && _v5 == null) return;
 
-        Bootstrap bootstrap = new();
-        bootstrap.Group(new MultithreadEventLoopGroup(1));
+        Bootstrap bootstrap = new Bootstrap()
+            .Group(new MultithreadEventLoopGroup(1))
+            .Option(ChannelOption.Allocator, NethermindBuffers.DiscoveryAllocator)
+            .Option(ChannelOption.RcvbufAllocator, new FixedRecvByteBufAllocator(2048 * 2))
+            ;
 
         if (_channelFactory is not null)
             bootstrap.ChannelFactory(() => _channelFactory!.CreateDatagramChannel());

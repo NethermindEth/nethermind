@@ -3,14 +3,11 @@
 
 using System;
 using System.Threading.Tasks;
-using Autofac;
-using Autofac.Core;
 using Nethermind.Api;
 using Nethermind.Api.Extensions;
 using Nethermind.Api.Steps;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Find;
-using Nethermind.Blockchain.Receipts;
 using Nethermind.Blockchain.Services;
 using Nethermind.Config;
 using Nethermind.Consensus;
@@ -19,22 +16,23 @@ using Nethermind.Consensus.Producers;
 using Nethermind.Consensus.Validators;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
-using Nethermind.Db;
+using Nethermind.Evm.Precompiles;
 using Nethermind.Evm.TransactionProcessing;
-using Nethermind.HealthChecks;
 using Nethermind.JsonRpc.Client;
 using Nethermind.JsonRpc.Modules;
-using Nethermind.JsonRpc.Modules.Eth.GasPrice;
 using Nethermind.Logging;
 using Nethermind.Merge.Plugin;
 using Nethermind.Merge.Plugin.BlockProduction;
-using Nethermind.Merge.Plugin.GC;
 using Nethermind.Merge.Plugin.Handlers;
-using Nethermind.Merge.Plugin.InvalidChainTracker;
 using Nethermind.Merge.Plugin.Synchronization;
-using Nethermind.Serialization.Json;
-using Nethermind.Serialization.Rlp;
 using Nethermind.Specs.ChainSpecStyle;
+using Nethermind.Serialization.Rlp;
+using Autofac;
+using Autofac.Core;
+using Nethermind.Init.Modules;
+using Nethermind.Core.Container;
+using Nethermind.JsonRpc.Modules.Eth.GasPrice;
+using Nethermind.Serialization.Json;
 using Nethermind.Taiko.BlockTransactionExecutors;
 using Nethermind.Taiko.Config;
 using Nethermind.Taiko.Rpc;
@@ -50,130 +48,44 @@ public class TaikoPlugin(ChainSpec chainSpec) : IConsensusPlugin
     public string Description => "Taiko support for Nethermind";
 
     private TaikoNethermindApi? _api;
-    private ILogger _logger;
-
-    private IMergeConfig _mergeConfig = null!;
-
-    private IBlockCacheService? _blockCacheService;
-
     public bool Enabled => chainSpec.SealEngineType == SealEngineType;
 
     public Task Init(INethermindApi api)
     {
         _api = (TaikoNethermindApi)api;
-        _mergeConfig = _api.Config<IMergeConfig>();
-        _logger = _api.LogManager.GetClassLogger();
 
-        ArgumentNullException.ThrowIfNull(_api.BlockTree);
-        ArgumentNullException.ThrowIfNull(_api.EthereumEcdsa);
-
-        _blockCacheService = _api.Context.Resolve<IBlockCacheService>();
         _api.FinalizationManager = new ManualBlockFinalizationManager();
 
         _api.GossipPolicy = ShouldNotGossip.Instance;
 
         _api.BlockPreprocessor.AddFirst(new MergeProcessingRecoveryStep(_api.Context.Resolve<IPoSSwitcher>()));
 
+        InitializeL1SloadIfEnabled();
+
         return Task.CompletedTask;
     }
 
-    public Task InitRpcModules()
+    private void InitializeL1SloadIfEnabled()
     {
-        if (_api is null)
-            return Task.CompletedTask;
+        ArgumentNullException.ThrowIfNull(_api?.SpecProvider);
 
-        ArgumentNullException.ThrowIfNull(_api.SpecProvider);
-        ArgumentNullException.ThrowIfNull(_api.BlockProcessingQueue);
-        ArgumentNullException.ThrowIfNull(_api.SyncModeSelector);
-        ArgumentNullException.ThrowIfNull(_api.BlockTree);
-        ArgumentNullException.ThrowIfNull(_api.BlockValidator);
-        ArgumentNullException.ThrowIfNull(_api.RpcModuleProvider);
-        ArgumentNullException.ThrowIfNull(_api.ReceiptStorage);
-        ArgumentNullException.ThrowIfNull(_api.StateReader);
-        ArgumentNullException.ThrowIfNull(_api.TxPool);
-        ArgumentNullException.ThrowIfNull(_api.FinalizationManager);
-        ArgumentNullException.ThrowIfNull(_api.WorldStateManager);
-        ArgumentNullException.ThrowIfNull(_api.SyncPeerPool);
-        ArgumentNullException.ThrowIfNull(_api.EthereumEcdsa);
-        ArgumentNullException.ThrowIfNull(_api.EngineRequestsTracker);
+        var taikoSpec = (TaikoReleaseSpec)_api.SpecProvider.GetFinalSpec();
 
-        ArgumentNullException.ThrowIfNull(_blockCacheService);
+        if (!taikoSpec.IsRip7728Enabled)
+            return;
 
-        IInitConfig initConfig = _api.Config<IInitConfig>();
+        ISurgeConfig surgeConfig = _api.Context.Resolve<ISurgeConfig>();
 
-        ReadOnlyBlockTree readonlyBlockTree = _api.BlockTree.AsReadOnly();
-        IRlpStreamDecoder<Transaction> txDecoder = Rlp.GetStreamDecoder<Transaction>() ?? throw new ArgumentNullException(nameof(IRlpStreamDecoder<Transaction>));
-        IPayloadPreparationService payloadPreparationService = _api.Context.Resolve<IPayloadPreparationService>();
-        _api.RpcCapabilitiesProvider = new EngineRpcCapabilitiesProvider(_api.SpecProvider);
+        if (string.IsNullOrEmpty(surgeConfig.L1EthApiEndpoint))
+            throw new ArgumentException($"{nameof(surgeConfig.L1EthApiEndpoint)} must be provided in the Surge configuration to use L1SLOAD precompile");
 
-        IPoSSwitcher poSSwitcher = _api.Context.Resolve<IPoSSwitcher>();
-        IInvalidChainTracker invalidChainTracker = _api.Context.Resolve<IInvalidChainTracker>();
-        IPeerRefresher peerRefresher = _api.Context.Resolve<IPeerRefresher>();
-        IBeaconPivot beaconPivot = _api.Context.Resolve<IBeaconPivot>();
-        BeaconSync beaconSync = _api.Context.Resolve<BeaconSync>();
+        var storageProvider = new JsonRpcL1StorageProvider(
+            surgeConfig.L1EthApiEndpoint,
+            _api.Context.Resolve<IJsonSerializer>(),
+            _api.Context.Resolve<ILogManager>());
 
-        ITaikoEngineRpcModule engine = new TaikoEngineRpcModule(
-            new GetPayloadV1Handler(payloadPreparationService, _api.SpecProvider, _api.LogManager),
-            new GetPayloadV2Handler(payloadPreparationService, _api.SpecProvider, _api.LogManager),
-            new GetPayloadV3Handler(payloadPreparationService, _api.SpecProvider, _api.LogManager),
-            new GetPayloadV4Handler(payloadPreparationService, _api.SpecProvider, _api.LogManager),
-            new GetPayloadV5Handler(payloadPreparationService, _api.SpecProvider, _api.LogManager),
-            new NewPayloadHandler(
-                payloadPreparationService,
-                _api.BlockValidator,
-                _api.BlockTree,
-                poSSwitcher,
-                beaconSync,
-                beaconPivot,
-                _blockCacheService,
-                _api.BlockProcessingQueue,
-                invalidChainTracker,
-                beaconSync,
-                _mergeConfig,
-                _api.Config<IReceiptConfig>(),
-                _api.LogManager),
-            new TaikoForkchoiceUpdatedHandler(
-                _api.BlockTree,
-                (ManualBlockFinalizationManager)_api.FinalizationManager,
-                poSSwitcher,
-                payloadPreparationService,
-                _api.BlockProcessingQueue,
-                _blockCacheService,
-                invalidChainTracker,
-                beaconSync,
-                beaconPivot,
-                peerRefresher,
-                _api.SpecProvider,
-                _api.SyncPeerPool,
-                _mergeConfig,
-                _api.LogManager),
-            new GetPayloadBodiesByHashV1Handler(_api.BlockTree, _api.LogManager),
-            new GetPayloadBodiesByRangeV1Handler(_api.BlockTree, _api.LogManager),
-            new ExchangeTransitionConfigurationV1Handler(poSSwitcher, _api.LogManager),
-            new ExchangeCapabilitiesHandler(_api.RpcCapabilitiesProvider, _api.LogManager),
-            new GetBlobsHandler(_api.TxPool),
-            new GetBlobsHandlerV2(_api.TxPool),
-            _api.EngineRequestsTracker,
-            _api.SpecProvider,
-            new GCKeeper(
-                initConfig.DisableGcOnNewPayload
-                    ? NoGCStrategy.Instance
-                    : new NoSyncGcRegionStrategy(_api.SyncModeSelector, _mergeConfig), _api.LogManager),
-            _api.LogManager,
-            _api.TxPool,
-            readonlyBlockTree,
-            _api.ReadOnlyTxProcessingEnvFactory,
-            txDecoder,
-            _api.L1OriginStore
-        );
-
-        _api.RpcModuleProvider.RegisterSingle(engine);
-
-        if (_logger.IsInfo) _logger.Info("Taiko Engine Module has been enabled");
-        return Task.CompletedTask;
+        L1SloadPrecompile.L1StorageProvider = storageProvider;
     }
-
-    public ValueTask DisposeAsync() => ValueTask.CompletedTask;
 
     public bool MustInitialize => true;
 
@@ -215,8 +127,7 @@ public class TaikoModule : Module
 
             // L1 origin store
             .AddSingleton<IRlpStreamDecoder<L1Origin>, L1OriginDecoder>()
-            .AddKeyedSingleton<IDb>(L1OriginStore.L1OriginDbName, ctx => ctx
-                .Resolve<IDbFactory>().CreateDb(new DbSettings(L1OriginStore.L1OriginDbName, L1OriginStore.L1OriginDbName.ToLower())))
+            .AddDatabase(L1OriginStore.L1OriginDbName, L1OriginStore.L1OriginDbName, L1OriginStore.L1OriginDbName.ToLower())
             .AddSingleton<IL1OriginStore, L1OriginStore>()
 
             // Sync modification
@@ -235,7 +146,8 @@ public class TaikoModule : Module
             .AddSingleton<IUnclesValidator>(Always.Valid)
 
             // Blok processing
-            .AddScoped<IValidationTransactionExecutor, TaikoBlockValidationTransactionExecutor>()
+            .AddSingleton<IBlockValidationModule, TaikoBlockValidationModule>()
+            .AddSingleton<IMainProcessingModule, TaikoMainBlockProcessingModule>()
             .AddScoped<ITransactionProcessor, TaikoTransactionProcessor>()
             .AddScoped<IBlockProducerEnvFactory, TaikoBlockProductionEnvFactory>()
 
@@ -281,6 +193,8 @@ public class TaikoModule : Module
 
             // Rpc
             .RegisterSingletonJsonRpcModule<ITaikoExtendedEthRpcModule, TaikoExtendedEthModule>()
+            .RegisterSingletonJsonRpcModule<ITaikoEngineRpcModule, TaikoEngineRpcModule>()
+                .AddSingleton<IForkchoiceUpdatedHandler, TaikoForkchoiceUpdatedHandler>()
 
             // Need to set the rlp globally
             .OnBuild(ctx =>
@@ -306,6 +220,22 @@ public class TaikoModule : Module
             txDecoder);
 
         return payloadPreparationService;
+    }
+
+    private class TaikoBlockValidationModule : Module, IBlockValidationModule
+    {
+        protected override void Load(ContainerBuilder builder)
+        {
+            builder.AddScoped<IBlockProcessor.IBlockTransactionsExecutor, TaikoBlockValidationTransactionExecutor>();
+        }
+    }
+
+    private class TaikoMainBlockProcessingModule : Module, IMainProcessingModule
+    {
+        protected override void Load(ContainerBuilder builder)
+        {
+            builder.AddScoped<IBlockProcessor.IBlockTransactionsExecutor, BlockInvalidTxExecutor>();
+        }
     }
 
 }

@@ -65,7 +65,7 @@ namespace Nethermind.Synchronization.Test
             Block head = Build.A.Block.WithHeader(Build.A.BlockHeader.WithNumber(5).WithStateRoot(TestItem.KeccakA).TestObject).TestObject;
             blockTree.Head.Returns(head);
             blockTree.BestSuggestedHeader.Returns(head.Header);
-            stateReader.HasStateForRoot(head.StateRoot!).Returns(true);
+            stateReader.HasStateForBlock(head.Header).Returns(true);
             Assert.That(syncProgressResolver.FindBestFullState(), Is.EqualTo(head.Number));
         }
 
@@ -86,8 +86,8 @@ namespace Nethermind.Synchronization.Test
             blockTree.BestSuggestedHeader.Returns(suggested);
             blockTree.FindHeader(Arg.Any<Hash256>(), BlockTreeLookupOptions.TotalDifficultyNotNeeded).Returns(head.Header);
 
-            stateReader.HasStateForRoot(head.StateRoot!).Returns(true);
-            stateReader.HasStateForRoot(suggested.StateRoot!).Returns(true);
+            stateReader.HasStateForBlock(head.Header!).Returns(true);
+            stateReader.HasStateForBlock(suggested).Returns(true);
             Assert.That(syncProgressResolver.FindBestFullState(), Is.EqualTo(suggested.Number));
         }
 
@@ -107,8 +107,8 @@ namespace Nethermind.Synchronization.Test
             blockTree.Head.Returns(head);
             blockTree.BestSuggestedHeader.Returns(suggested);
             blockTree.FindHeader(Arg.Any<Hash256>(), BlockTreeLookupOptions.TotalDifficultyNotNeeded).Returns(head.Header);
-            stateReader.HasStateForRoot(head.StateRoot!).Returns(true);
-            stateReader.HasStateForRoot(suggested.StateRoot!).Returns(false);
+            stateReader.HasStateForBlock(head.Header!).Returns(true);
+            stateReader.HasStateForBlock(suggested).Returns(false);
             Assert.That(syncProgressResolver.FindBestFullState(), Is.EqualTo(head.Number));
         }
 

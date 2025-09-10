@@ -1,7 +1,7 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System;
+using System.Collections.Generic;
 using Autofac;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Consensus.Processing;
@@ -9,49 +9,45 @@ using Nethermind.Consensus.Rewards;
 using Nethermind.Consensus.Tracing;
 using Nethermind.Consensus.Validators;
 using Nethermind.Core;
+using Nethermind.Core.Container;
 using Nethermind.Core.Crypto;
+using Nethermind.Evm.State;
 using Nethermind.Evm.TransactionProcessing;
-using Nethermind.State;
+using Nethermind.State.OverridableEnv;
 
 namespace Nethermind.JsonRpc.Modules.Proof
 {
     public class ProofModuleFactory(
         ILifetimeScope rootLifetimeScope,
-        IReadOnlyTxProcessingEnvFactory readOnlyTxProcessingEnvFactory
+        IOverridableEnvFactory overridableEnvFactory,
+        IReadOnlyList<IBlockValidationModule> validationBlockProcessingModules
     ) : ModuleFactoryBase<IProofRpcModule>
     {
 
         public override IProofRpcModule Create()
         {
-            // Note: No overridable world scope here. So there aren't any risk of leaking KV store.
-            IReadOnlyTxProcessingScope txProcessingEnv = readOnlyTxProcessingEnvFactory.Create().Build(Keccak.EmptyTreeHash);
+            IOverridableEnv overridableEnv = overridableEnvFactory.Create();
 
-            ILifetimeScope tracerScope = rootLifetimeScope.BeginLifetimeScope((builder) =>
-            {
-                builder
+            ILifetimeScope tracerScope = rootLifetimeScope.BeginLifetimeScope((builder) => builder
+                .AddModule(overridableEnv)
 
-                    // Standard read only chain setting
-                    .Bind<IBlockProcessor.IBlockTransactionsExecutor, IValidationTransactionExecutor>()
-                    .AddScoped<ITransactionProcessorAdapter, TraceTransactionProcessorAdapter>()
-                    .AddDecorator<IBlockchainProcessor, OneTimeChainProcessor>()
-                    .AddScoped<BlockchainProcessor.Options>(BlockchainProcessor.Options.NoReceipts)
-                    .AddScoped<IBlockValidator>(Always.Valid) // Why?
+                // Standard read only chain setting
+                .AddModule(validationBlockProcessingModules)
+                .AddScoped<ITransactionProcessorAdapter, TraceTransactionProcessorAdapter>()
+                .AddDecorator<IBlockchainProcessor, OneTimeChainProcessor>()
+                .AddScoped<BlockchainProcessor.Options>(BlockchainProcessor.Options.NoReceipts)
+                .AddScoped<IBlockValidator>(Always.Valid) // Why?
 
-                    // Specific for proof rpc
-                    .AddScoped<IReceiptStorage>(new InMemoryReceiptStorage()) // Umm.... not `NullReceiptStorage`?
-                    .AddScoped<IRewardCalculator>(NoBlockRewards.Instance)
+                // Specific for proof rpc
+                .AddScoped<IReceiptStorage>(new InMemoryReceiptStorage()) // Umm.... not `NullReceiptStorage`?
+                .AddScoped<IRewardCalculator>(NoBlockRewards.Instance)
 
-                    .AddScoped<IWorldState>(txProcessingEnv.WorldState)
-                    .AddScoped<ITracer, Tracer>()
-                    ;
-            });
+                .AddScoped<ITracer, Tracer>());
 
             // The tracer need a in memory receipts while the proof RPC does not.
             // Eh, its a good idea to separate what need block processing and what does not anyway.
-            ILifetimeScope proofRpcScope = rootLifetimeScope.BeginLifetimeScope((builder) =>
-            {
-                builder.AddSingleton<ITracer>(tracerScope.Resolve<ITracer>());
-            });
+            ILifetimeScope proofRpcScope = rootLifetimeScope.BeginLifetimeScope((builder) => builder
+                .AddSingleton<IOverridableEnv<ITracer>>(tracerScope.Resolve<IOverridableEnv<ITracer>>()));
 
             proofRpcScope.Disposer.AddInstanceForAsyncDisposal(tracerScope);
             rootLifetimeScope.Disposer.AddInstanceForDisposal(proofRpcScope);

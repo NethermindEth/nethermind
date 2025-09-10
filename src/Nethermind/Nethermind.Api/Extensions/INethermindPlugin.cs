@@ -7,7 +7,7 @@ using Autofac.Core;
 
 namespace Nethermind.Api.Extensions;
 
-public interface INethermindPlugin : IAsyncDisposable
+public interface INethermindPlugin
 {
     string Name { get; }
 

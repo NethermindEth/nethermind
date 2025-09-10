@@ -15,7 +15,7 @@ namespace Nethermind.Core.Collections
     /// </summary>
     /// <typeparam name="T">Item type.</typeparam>
     /// <remarks>Due to snapshots <see cref="Remove"/> is not supported.</remarks>
-    public sealed class JournalCollection<T> : ICollection<T>, IReadOnlyCollection<T>, IJournal<int>
+    public sealed class JournalCollection<T> : IToArrayCollection<T>, ICollection<T>, IJournal<int>
     {
         private readonly List<T> _list = new();
         public int TakeSnapshot() => Count - 1;
@@ -42,6 +42,7 @@ namespace Nethermind.Core.Collections
         public bool Contains(T item) => _list.Contains(item);
         public void CopyTo(T[] array, int arrayIndex) => _list.CopyTo(array, arrayIndex);
         public bool Remove(T item) => throw new NotSupportedException("Cannot remove from Journal, use Restore(int snapshot) instead.");
+        public T[] ToArray() => _list.ToArray();
         public int Count => _list.Count;
         public bool IsReadOnly => false;
     }

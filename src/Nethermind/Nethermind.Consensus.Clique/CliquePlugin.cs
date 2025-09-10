@@ -7,22 +7,11 @@ using Autofac;
 using Autofac.Core;
 using Nethermind.Api;
 using Nethermind.Api.Extensions;
-using Nethermind.Blockchain;
-using Nethermind.Blockchain.BeaconBlockRoot;
-using Nethermind.Blockchain.Blocks;
-using Nethermind.Blockchain.Receipts;
 using Nethermind.Blockchain.Services;
 using Nethermind.Config;
-using Nethermind.Consensus.Comparers;
-using Nethermind.Consensus.ExecutionRequests;
 using Nethermind.Consensus.Processing;
-using Nethermind.Consensus.Producers;
-using Nethermind.Consensus.Rewards;
 using Nethermind.Consensus.Transactions;
-using Nethermind.Consensus.Withdrawals;
 using Nethermind.Core;
-using Nethermind.Core.Crypto;
-using Nethermind.Evm.TransactionProcessing;
 using Nethermind.JsonRpc.Modules;
 using Nethermind.Specs.ChainSpecStyle;
 
@@ -128,8 +117,6 @@ namespace Nethermind.Consensus.Clique
 
         public string SealEngineType => Nethermind.Core.SealEngineType.Clique;
 
-        public ValueTask DisposeAsync() { return ValueTask.CompletedTask; }
-
         private INethermindApi? _nethermindApi;
 
         private ISnapshotManager? _snapshotManager;
@@ -154,7 +141,7 @@ namespace Nethermind.Consensus.Clique
 
                 .AddDecorator<ICliqueConfig>((ctx, cfg) =>
                 {
-                    CliqueChainSpecEngineParameters? param = ctx.Resolve<CliqueChainSpecEngineParameters>();
+                    CliqueChainSpecEngineParameters param = ctx.Resolve<CliqueChainSpecEngineParameters>();
                     cfg.BlockPeriod = param.Period;
                     cfg.Epoch = param.Epoch;
 

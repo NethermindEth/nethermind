@@ -162,10 +162,6 @@ public class PluginLoader(string pluginPath, IFileSystem fileSystem, ILogger log
                 {
                     plugins.Add(plugin);
                 }
-                else
-                {
-                    await plugin.DisposeAsync();
-                }
             }
             catch (Exception ex)
             {

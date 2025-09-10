@@ -4,9 +4,10 @@
 using System;
 using System.Threading;
 using System.Threading.Tasks;
+using Nethermind.Blockchain.Tracing;
 using Nethermind.Core;
+using Nethermind.Evm.State;
 using Nethermind.Evm.Tracing;
-using Nethermind.State;
 
 namespace Nethermind.Consensus.Processing
 {
@@ -52,6 +53,7 @@ namespace Nethermind.Consensus.Processing
         public event EventHandler<BlockProcessedEventArgs> BlockProcessed;
         public event EventHandler<BlockProcessedEventArgs> BlockInvalid;
         public event EventHandler<IBlockchainProcessor.InvalidBlockEventArgs>? InvalidBlock;
+        public event EventHandler<BlockStatistics> NewProcessingStatistics;
 #pragma warning restore 67
 
         public ValueTask DisposeAsync() => _processor?.DisposeAsync() ?? default;

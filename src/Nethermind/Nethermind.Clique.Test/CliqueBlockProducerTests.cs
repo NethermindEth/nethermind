@@ -2,18 +2,11 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using Nethermind.Blockchain;
-using Nethermind.Blockchain.BeaconBlockRoot;
-using Nethermind.Blockchain.Blocks;
-using Nethermind.Blockchain.Receipts;
 using Nethermind.Config;
 using Nethermind.Consensus;
 using Nethermind.Consensus.Clique;
-using Nethermind.Consensus.Comparers;
 using Nethermind.Consensus.Processing;
 using Nethermind.Consensus.Producers;
-using Nethermind.Consensus.Rewards;
-using Nethermind.Consensus.Transactions;
-using Nethermind.Consensus.Validators;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
@@ -21,14 +14,10 @@ using Nethermind.Core.Specs;
 using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Crypto;
-using Nethermind.Db;
-using Nethermind.Evm;
-using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.Specs;
-using Nethermind.State;
-using Nethermind.Trie.Pruning;
+using Nethermind.Evm.State;
 using Nethermind.TxPool;
 using NUnit.Framework;
 using System;
@@ -37,28 +26,32 @@ using System.Diagnostics;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
-using Nethermind.Consensus.ExecutionRequests;
-using Nethermind.Consensus.Withdrawals;
+using Autofac;
+using FluentAssertions;
+using Nethermind.Api;
+using Nethermind.Consensus.Validators;
+using Nethermind.Core.Test.Modules;
+using Nethermind.State;
 
 namespace Nethermind.Clique.Test;
 
 [Parallelizable(ParallelScope.All)]
 public class CliqueBlockProducerTests
 {
-    private class On
+    private class On : IDisposable
     {
         private readonly ILogManager _logManager = LimboLogs.Instance;
-        //            private ILogManager _logManager = new OneLoggerLogManager(new ConsoleAsyncLogger(LogLevel.Debug));
         private readonly ILogger _logger;
         private static readonly ITimestamper _timestamper = Timestamper.Default;
         private readonly CliqueConfig _cliqueConfig;
         private readonly EthereumEcdsa _ethereumEcdsa = new(BlockchainIds.Sepolia);
         private readonly Dictionary<PrivateKey, ILogManager> _logManagers = new();
         private readonly Dictionary<PrivateKey, ISnapshotManager> _snapshotManager = new();
-        private readonly Dictionary<PrivateKey, BlockTree> _blockTrees = new();
+        private readonly Dictionary<PrivateKey, IBlockTree> _blockTrees = new();
         private readonly Dictionary<PrivateKey, AutoResetEvent> _blockEvents = new();
         private readonly Dictionary<PrivateKey, CliqueBlockProducerRunner> _producers = new();
-        private readonly Dictionary<PrivateKey, TxPool.TxPool> _pools = new();
+        private readonly Dictionary<PrivateKey, ITxPool> _pools = new();
+        private readonly Dictionary<PrivateKey, IContainer> _containers = new();
 
         private On()
             : this(15)
@@ -79,143 +72,92 @@ public class CliqueBlockProducerTests
         {
             if (_logger.IsInfo) _logger.Info($"CREATING NODE {privateKey.Address}");
             _logManagers[privateKey] = LimboLogs.Instance;
-            //                _logManagers[privateKey] = new OneLoggerLogManager(new ConsoleAsyncLogger(LogLevel.Debug, $"{privateKey.Address} "));
             ILogManager nodeLogManager = _logManagers[privateKey];
 
             AutoResetEvent newHeadBlockEvent = new(false);
             _blockEvents.Add(privateKey, newHeadBlockEvent);
 
-            MemDb blocksDb = new();
+            IContainer container = new ContainerBuilder()
 
-            ISpecProvider specProvider = SepoliaSpecProvider.Instance;
+                .AddModule(new TestNethermindModule())
+                .AddModule(new CliqueModule())
+                .AddSingleton<IBlockPreprocessorStep, AuthorRecoveryStep>()
+                .AddSingleton<IBlockValidator>(Always.Valid)
+                .AddSingleton<ISpecProvider>(SepoliaSpecProvider.Instance)
+                .AddSingleton<CliqueChainSpecEngineParameters>(new CliqueChainSpecEngineParameters()
+                {
+                    Epoch = _cliqueConfig.Epoch,
+                    Period = _cliqueConfig.BlockPeriod,
+                })
+                .AddSingleton<ICliqueConfig>(_cliqueConfig)
+                .AddSingleton<IBlocksConfig>(new BlocksConfig()
+                {
+                    MinGasPrice = 0
+                })
 
-            IWorldStateManager worldStateManager = TestWorldStateFactory.CreateForTest();
-            IStateReader stateReader = worldStateManager.GlobalStateReader;
-            IWorldState stateProvider = worldStateManager.GlobalWorldState;
-            stateProvider.CreateAccount(TestItem.PrivateKeyD.Address, 100.Ether());
+                .AddKeyedSingleton<IProtectedPrivateKey>(IProtectedPrivateKey.NodeKey, new InsecureProtectedPrivateKey(privateKey))
+                .AddSingleton<ISigner>(new Signer(BlockchainIds.Sepolia, privateKey, LimboLogs.Instance))
+
+                .Build();
+
+            _containers[privateKey] = container;
+
             SepoliaSpecProvider testnetSpecProvider = SepoliaSpecProvider.Instance;
-
             IReleaseSpec finalSpec = testnetSpecProvider.GetFinalSpec();
 
-            if (finalSpec.WithdrawalsEnabled)
+            IWorldState stateProvider = container.Resolve<IWorldStateManager>().GlobalWorldState;
+            using (stateProvider.BeginScope(IWorldState.PreGenesis))
             {
-                stateProvider.CreateAccount(Eip7002Constants.WithdrawalRequestPredeployAddress, 0, Eip7002TestConstants.Nonce);
-                stateProvider.InsertCode(Eip7002Constants.WithdrawalRequestPredeployAddress, Eip7002TestConstants.CodeHash, Eip7002TestConstants.Code, testnetSpecProvider.GenesisSpec);
+                stateProvider.CreateAccount(TestItem.PrivateKeyD.Address, 100.Ether());
+                if (finalSpec.WithdrawalsEnabled)
+                {
+                    stateProvider.CreateAccount(Eip7002Constants.WithdrawalRequestPredeployAddress, 0, Eip7002TestConstants.Nonce);
+                    stateProvider.InsertCode(Eip7002Constants.WithdrawalRequestPredeployAddress, Eip7002TestConstants.CodeHash, Eip7002TestConstants.Code, testnetSpecProvider.GenesisSpec);
+                }
+
+                if (finalSpec.ConsolidationRequestsEnabled)
+                {
+                    stateProvider.CreateAccount(Eip7251Constants.ConsolidationRequestPredeployAddress, 0, Eip7251TestConstants.Nonce);
+                    stateProvider.InsertCode(Eip7251Constants.ConsolidationRequestPredeployAddress, Eip7251TestConstants.CodeHash, Eip7251TestConstants.Code, testnetSpecProvider.GenesisSpec);
+                }
+
+                stateProvider.Commit(testnetSpecProvider.GenesisSpec);
+                stateProvider.CommitTree(0);
+                _genesis.Header.StateRoot = _genesis3Validators.Header.StateRoot = stateProvider.StateRoot;
             }
 
-            if (finalSpec.ConsolidationRequestsEnabled)
-            {
-                stateProvider.CreateAccount(Eip7251Constants.ConsolidationRequestPredeployAddress, 0, Eip7251TestConstants.Nonce);
-                stateProvider.InsertCode(Eip7251Constants.ConsolidationRequestPredeployAddress, Eip7251TestConstants.CodeHash, Eip7251TestConstants.Code, testnetSpecProvider.GenesisSpec);
-            }
-
-            stateProvider.Commit(testnetSpecProvider.GenesisSpec);
-            stateProvider.CommitTree(0);
-
-            BlockTree blockTree = Build.A.BlockTree()
-                .WithSpecProvider(testnetSpecProvider)
-                .WithBlocksDb(blocksDb)
-                .WithoutSettingHead
-                .TestObject;
-
+            IBlockTree blockTree = container.Resolve<IBlockTree>();
             blockTree.NewHeadBlock += (sender, args) => { _blockEvents[privateKey].Set(); };
-            ITransactionComparerProvider transactionComparerProvider =
-                new TransactionComparerProvider(specProvider, blockTree);
 
-            CodeInfoRepository codeInfoRepository = new();
-            TxPool.TxPool txPool = new(_ethereumEcdsa,
-                new BlobTxStorage(),
-                new ChainHeadInfoProvider(new FixedForkActivationChainHeadSpecProvider(SepoliaSpecProvider.Instance), blockTree, stateProvider, codeInfoRepository),
-                new TxPoolConfig(),
-                new TxValidator(testnetSpecProvider.ChainId),
-                _logManager,
-                transactionComparerProvider.GetDefaultComparer());
-            _pools[privateKey] = txPool;
-
-            BlockhashProvider blockhashProvider = new(blockTree, specProvider, stateProvider, LimboLogs.Instance);
+            _pools[privateKey] = container.Resolve<ITxPool>();
             _blockTrees.Add(privateKey, blockTree);
 
-            SnapshotManager snapshotManager = new(_cliqueConfig, blocksDb, blockTree, _ethereumEcdsa, nodeLogManager);
+            ISnapshotManager snapshotManager = container.Resolve<ISnapshotManager>();
             _snapshotManager[privateKey] = snapshotManager;
-            CliqueSealer cliqueSealer = new(new Signer(BlockchainIds.Sepolia, privateKey, LimboLogs.Instance), _cliqueConfig, snapshotManager, nodeLogManager);
 
-            _genesis.Header.StateRoot = _genesis3Validators.Header.StateRoot = stateProvider.StateRoot;
             _genesis.Header.Hash = _genesis.Header.CalculateHash();
             _genesis3Validators.Header.Hash = _genesis3Validators.Header.CalculateHash();
 
-            TransactionProcessor transactionProcessor = new(testnetSpecProvider, stateProvider,
-                new VirtualMachine(blockhashProvider, specProvider, nodeLogManager),
-                codeInfoRepository,
-                nodeLogManager);
-            BlockProcessor blockProcessor = new BlockProcessor(
-                testnetSpecProvider,
-                Always.Valid,
-                NoBlockRewards.Instance,
-                new BlockProcessor.BlockValidationTransactionsExecutor(new ExecuteTransactionProcessorAdapter(transactionProcessor), stateProvider),
-                stateProvider,
-                NullReceiptStorage.Instance,
-                new BeaconBlockRootHandler(transactionProcessor, stateProvider),
-                new BlockhashStore(testnetSpecProvider, stateProvider),
-                nodeLogManager,
-                new WithdrawalProcessor(stateProvider, nodeLogManager),
-                new ExecutionRequestsProcessor(transactionProcessor));
+            IMainProcessingContext mainProcessingContext = container.Resolve<IMainProcessingContext>();
+            mainProcessingContext.BlockchainProcessor.Start();
 
-            BlockchainProcessor processor = new(blockTree, blockProcessor, new AuthorRecoveryStep(snapshotManager), stateReader, nodeLogManager, BlockchainProcessor.Options.NoReceipts);
-            processor.Start();
-
-            IWorldState minerStateProvider = worldStateManager.CreateResettableWorldState();
-
-            if (finalSpec.WithdrawalsEnabled)
-            {
-                minerStateProvider.CreateAccount(Eip7002Constants.WithdrawalRequestPredeployAddress, 0, Eip7002TestConstants.Nonce);
-                minerStateProvider.InsertCode(Eip7002Constants.WithdrawalRequestPredeployAddress, Eip7002TestConstants.CodeHash, Eip7002TestConstants.Code, testnetSpecProvider.GenesisSpec);
-            }
-
-            if (finalSpec.ConsolidationRequestsEnabled)
-            {
-                minerStateProvider.CreateAccount(Eip7251Constants.ConsolidationRequestPredeployAddress, 0, Eip7251TestConstants.Nonce);
-                minerStateProvider.InsertCode(Eip7251Constants.ConsolidationRequestPredeployAddress, Eip7251TestConstants.CodeHash, Eip7251TestConstants.Code, testnetSpecProvider.GenesisSpec);
-            }
-
-            minerStateProvider.Commit(testnetSpecProvider.GenesisSpec);
-            minerStateProvider.CommitTree(0);
-
-            VirtualMachine minerVirtualMachine = new(blockhashProvider, specProvider, nodeLogManager);
-            TransactionProcessor minerTransactionProcessor = new(testnetSpecProvider, minerStateProvider, minerVirtualMachine, codeInfoRepository, nodeLogManager);
-
-            BlockProcessor minerBlockProcessor = new BlockProcessor(
-                testnetSpecProvider,
-                Always.Valid,
-                NoBlockRewards.Instance,
-                new BlockProcessor.BlockProductionTransactionsExecutor(new BuildUpTransactionProcessorAdapter(minerTransactionProcessor), minerStateProvider, new BlockProcessor.BlockProductionTransactionPicker(testnetSpecProvider, BlocksConfig.DefaultMaxTxKilobytes), _logManager),
-                minerStateProvider,
-                NullReceiptStorage.Instance,
-                new BeaconBlockRootHandler(minerTransactionProcessor, minerStateProvider),
-                new BlockhashStore(testnetSpecProvider, minerStateProvider),
-                nodeLogManager,
-                new WithdrawalProcessor(minerStateProvider, nodeLogManager),
-                new ExecutionRequestsProcessor(minerTransactionProcessor));
-
-            BlockchainProcessor minerProcessor = new(blockTree, minerBlockProcessor, new AuthorRecoveryStep(snapshotManager), stateReader, nodeLogManager, BlockchainProcessor.Options.NoReceipts);
+            IBlockProducerEnvFactory envFactory = container.Resolve<IBlockProducerEnvFactory>();
+            IBlockProducerEnv producerEnv = envFactory.Create();
+            IWorldState minerStateProvider = producerEnv.ReadOnlyStateProvider;
 
             if (withGenesisAlreadyProcessed)
             {
                 ProcessGenesis(privateKey);
             }
-            BlocksConfig blocksConfig = new()
-            {
-                MinGasPrice = 0
-            };
-            ITxFilterPipeline txFilterPipeline = TxFilterPipelineBuilder.CreateStandardFilteringPipeline(nodeLogManager, specProvider, blocksConfig);
-            TxPoolTxSource txPoolTxSource = new(txPool, specProvider, transactionComparerProvider, nodeLogManager, txFilterPipeline);
+
             CliqueBlockProducer blockProducer = new(
-                txPoolTxSource,
-                minerProcessor,
+                producerEnv.TxSource,
+                producerEnv.ChainProcessor,
                 minerStateProvider,
                 _timestamper,
                 new CryptoRandom(),
                 snapshotManager,
-                cliqueSealer,
+                container.Resolve<ISealer>(),
                 new TargetAdjustedGasLimitCalculator(testnetSpecProvider, new BlocksConfig()),
                 MainnetSpecProvider.Instance,
                 _cliqueConfig,
@@ -308,7 +250,7 @@ public class CliqueBlockProducerTests
 
         public On ProcessGenesis()
         {
-            foreach (KeyValuePair<PrivateKey, BlockTree> node in _blockTrees)
+            foreach (KeyValuePair<PrivateKey, IBlockTree> node in _blockTrees)
             {
                 ProcessGenesis(node.Key);
             }
@@ -318,7 +260,7 @@ public class CliqueBlockProducerTests
 
         public On ProcessGenesis3Validators()
         {
-            foreach (KeyValuePair<PrivateKey, BlockTree> node in _blockTrees)
+            foreach (KeyValuePair<PrivateKey, IBlockTree> node in _blockTrees)
             {
                 ProcessGenesis3Validators(node.Key);
             }
@@ -328,7 +270,7 @@ public class CliqueBlockProducerTests
 
         public On ProcessBadGenesis()
         {
-            foreach (KeyValuePair<PrivateKey, BlockTree> node in _blockTrees)
+            foreach (KeyValuePair<PrivateKey, IBlockTree> node in _blockTrees)
             {
                 ProcessBadGenesis(node.Key);
             }
@@ -338,14 +280,16 @@ public class CliqueBlockProducerTests
 
         public On ProcessGenesis(PrivateKey nodeKey)
         {
+            using var _ = _containers[nodeKey].Resolve<IWorldStateManager>().GlobalWorldState.BeginScope(IWorldState.PreGenesis);
             if (_logger.IsInfo) _logger.Info($"SUGGESTING GENESIS ON {nodeKey.Address}");
-            _blockTrees[nodeKey].SuggestBlock(_genesis);
+            _blockTrees[nodeKey].SuggestBlock(_genesis).Should().Be(AddBlockResult.Added);
             _blockEvents[nodeKey].WaitOne(_timeout);
             return this;
         }
 
         public On ProcessGenesis3Validators(PrivateKey nodeKey)
         {
+            using var _ = _containers[nodeKey].Resolve<IWorldStateManager>().GlobalWorldState.BeginScope(IWorldState.PreGenesis);
             _blockTrees[nodeKey].SuggestBlock(_genesis3Validators);
             _blockEvents[nodeKey].WaitOne(_timeout);
             return this;
@@ -472,10 +416,11 @@ public class CliqueBlockProducerTests
             return block;
         }
 
-        public async Task<On> StopNode(PrivateKey privateKeyA)
+        public async Task<On> StopNode(PrivateKey privateKeyA, bool dontDispose = false)
         {
             if (_logger.IsInfo) _logger.Info($"STOPPING {privateKeyA.Address}");
             await _producers[privateKeyA].StopAsync();
+            if (!dontDispose) await _containers[privateKeyA].DisposeAsync();
             return this;
         }
 
@@ -589,6 +534,14 @@ public class CliqueBlockProducerTests
             if (_logger.IsInfo) _logger.Info($"WAIT {i}");
             Thread.Sleep(i);
             return this;
+        }
+
+        public void Dispose()
+        {
+            foreach (var kv in _containers)
+            {
+                kv.Value.Dispose();
+            }
         }
     }
 
@@ -909,7 +862,7 @@ public class CliqueBlockProducerTests
         On goerli = On.Goerli
             .CreateNode(TestItem.PrivateKeyA);
 
-        await goerli.StopNode(TestItem.PrivateKeyA);
+        await goerli.StopNode(TestItem.PrivateKeyA, dontDispose: true);
 
         goerli.ProcessGenesis();
         await Task.Delay(1000);

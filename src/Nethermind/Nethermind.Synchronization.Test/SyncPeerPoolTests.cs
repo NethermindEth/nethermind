@@ -17,13 +17,10 @@ using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.Stats;
 using Nethermind.Stats.Model;
-using Nethermind.Synchronization.Blocks;
 using Nethermind.Synchronization.Peers;
 using Nethermind.Synchronization.Peers.AllocationStrategies;
-using Nethermind.Synchronization.Test.Mocks;
 using NSubstitute;
 using NUnit.Framework;
-using ZstdSharp.Unsafe;
 
 namespace Nethermind.Synchronization.Test;
 
@@ -614,19 +611,11 @@ public class SyncPeerPoolTests
         using CancellationTokenSource cts = new CancellationTokenSource();
         cts.CancelAfter(100);
 
-        bool wasCancelled = false;
-        try
-        {
-            await ctx.Pool.AllocateAndRun(
-                static (peer) => { return peer.GetBlockHeaders(0, 1, 1, CancellationToken.None); },
-                BySpeedStrategy.FastestHeader, AllocationContexts.Headers, cts.Token);
-        }
-        catch (OperationCanceledException)
-        {
-            wasCancelled = true;
-        }
+        var result = await ctx.Pool.AllocateAndRun(
+            static (peer) => { return peer.GetBlockHeaders(0, 1, 1, CancellationToken.None); },
+            BySpeedStrategy.FastestHeader, AllocationContexts.Headers, cts.Token);
 
-        wasCancelled.Should().BeTrue();
+        result.Should().BeNull();
     }
 
     private async Task<SimpleSyncPeerMock[]> SetupPeers(Context ctx, int count)

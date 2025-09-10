@@ -4,6 +4,7 @@
 using System;
 using System.Threading;
 using Nethermind.Core;
+using Nethermind.Evm.State;
 using Nethermind.State.Healing;
 using Nethermind.State.SnapServer;
 using Nethermind.Trie.Pruning;
@@ -32,9 +33,7 @@ public interface IWorldStateManager
 
     event EventHandler<ReorgBoundaryReached>? ReorgBoundaryReached;
 
-    // TODO: These two method can be combined
     IOverridableWorldScope CreateOverridableWorldScope();
-    IWorldState CreateOverlayWorldState(IKeyValueStoreWithBatching overlayState, IKeyValueStoreWithBatching overlayCode);
 
     void InitializeNetwork(IPathRecovery pathRecovery);
 
@@ -55,7 +54,7 @@ public interface IWorldStateManager
 
 public interface IOverridableWorldScope
 {
+    IDisposable BeginScope(BlockHeader? header);
     IWorldState WorldState { get; }
     IStateReader GlobalStateReader { get; }
-    void ResetOverrides();
 }

@@ -1,8 +1,10 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using System.Linq;
 using System.Threading.Tasks;
+using Autofac;
 using FluentAssertions;
 using Nethermind.Abi;
 using Nethermind.AuRa.Test.Contract;
@@ -19,10 +21,11 @@ using Nethermind.Consensus.Validators;
 using Nethermind.Consensus.Withdrawals;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
+using Nethermind.Core.Test.Blockchain;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Logging;
-using Nethermind.State;
+using Nethermind.Evm.State;
 using Nethermind.TxPool;
 using NSubstitute;
 using NSubstitute.ExceptionExtensions;
@@ -44,14 +47,14 @@ public class TxCertifierFilterTests
         _notCertifiedFilter = Substitute.For<ITxFilter>();
         _specProvider = Substitute.For<ISpecProvider>();
 
-        _notCertifiedFilter.IsAllowed(Arg.Any<Transaction>(), Arg.Any<BlockHeader>())
+        _notCertifiedFilter.IsAllowed(Arg.Any<Transaction>(), Arg.Any<BlockHeader>(), Arg.Any<IReleaseSpec>())
             .Returns(AcceptTxResult.Invalid);
 
         _certifierContract.Certified(Arg.Any<BlockHeader>(),
             Arg.Is<Address>(static a => TestItem.Addresses.Take(3).Contains(a)))
             .Returns(true);
 
-        _filter = new TxCertifierFilter(_certifierContract, _notCertifiedFilter, _specProvider, LimboLogs.Instance);
+        _filter = new TxCertifierFilter(_certifierContract, _notCertifiedFilter, LimboLogs.Instance);
     }
 
     [Test]
@@ -87,7 +90,7 @@ public class TxCertifierFilterTests
     [TestCase(true)]
     public void should_default_to_inner_contract_on_non_zero_transactions(bool expected)
     {
-        _notCertifiedFilter.IsAllowed(Arg.Any<Transaction>(), Arg.Any<BlockHeader>())
+        _notCertifiedFilter.IsAllowed(Arg.Any<Transaction>(), Arg.Any<BlockHeader>(), Arg.Any<IReleaseSpec>())
             .Returns(expected ? AcceptTxResult.Accepted : AcceptTxResult.Invalid);
 
         ShouldAllowAddress(TestItem.Addresses.First(), 1ul, expected);
@@ -97,7 +100,7 @@ public class TxCertifierFilterTests
     {
         _filter.IsAllowed(
             Build.A.Transaction.WithGasPrice(gasPrice).WithSenderAddress(address).TestObject,
-            Build.A.BlockHeader.TestObject).Equals(AcceptTxResult.Accepted).Should().Be(expected);
+            Build.A.BlockHeader.TestObject, Substitute.For<IReleaseSpec>()).Equals(AcceptTxResult.Accepted).Should().Be(expected);
     }
 
     [Test]
@@ -136,29 +139,16 @@ public class TxCertifierFilterTests
         public RegisterContract RegisterContract { get; private set; }
         public CertifierContract CertifierContract { get; private set; }
 
-        protected override BlockProcessor CreateBlockProcessor(IWorldState worldState)
+        protected override async Task<TestBlockchain> Build(Action<ContainerBuilder>? configurer = null)
         {
+            TestBlockchain blockchain = await base.Build(configurer);
             AbiEncoder abiEncoder = AbiEncoder.Instance;
             RegisterContract = new RegisterContract(abiEncoder, ChainSpec.Parameters.Registrar, ReadOnlyTxProcessingEnvFactory.Create());
             CertifierContract = new CertifierContract(
                 abiEncoder,
                 RegisterContract,
                 ReadOnlyTxProcessingEnvFactory.Create());
-
-            return new AuRaBlockProcessor(
-                SpecProvider,
-                Always.Valid,
-                new RewardCalculator(SpecProvider),
-                new BlockProcessor.BlockValidationTransactionsExecutor(new ExecuteTransactionProcessorAdapter(TxProcessor), worldState),
-                worldState,
-                ReceiptStorage,
-                new BeaconBlockRootHandler(TxProcessor, worldState),
-                LimboLogs.Instance,
-                BlockTree,
-                NullWithdrawalProcessor.Instance,
-                new ExecutionRequestsProcessor(TxProcessor),
-                auRaValidator: null,
-                preWarmer: CreateBlockCachePreWarmer());
+            return blockchain;
         }
 
         protected override Task AddBlocksOnStart() => Task.CompletedTask;

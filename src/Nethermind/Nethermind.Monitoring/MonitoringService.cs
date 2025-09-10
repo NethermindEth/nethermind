@@ -54,7 +54,7 @@ public class MonitoringService : IMonitoringService, IStoppableService
         _options = GetOptions(metricsConfig);
     }
 
-    public async Task StartAsync()
+    public Task StartAsync()
     {
         if (_pushGatewayUrl is not null)
         {
@@ -85,9 +85,10 @@ public class MonitoringService : IMonitoringService, IStoppableService
             new NethermindKestrelMetricServer(_exposeHost, _exposePort.Value).Start();
         }
 
-        await Task.Factory.StartNew(_metricsController.StartUpdating, TaskCreationOptions.LongRunning);
+        _metricsController.StartUpdating();
 
         if (_logger.IsInfo) _logger.Info($"Started monitoring for the group: {_options.Group}, instance: {_options.Instance}");
+        return Task.CompletedTask;
     }
 
     public void AddMetricsUpdateAction(Action callback)

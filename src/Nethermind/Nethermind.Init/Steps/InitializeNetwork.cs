@@ -192,10 +192,10 @@ public class InitializeNetwork : IStep
 
         ProductInfo.InitializePublicClientId(_networkConfig.PublicClientIdFormat);
 
-        ThisNodeInfo.AddInfo("Ethereum     :", $"tcp://{_api.Enode.HostIp}:{_api.Enode.Port}");
+        ThisNodeInfo.AddInfo("Ethereum     :", $"tcp://{_api.Enode.HostIp}:{_api.Enode.Port} ");
         ThisNodeInfo.AddInfo("Client id    :", ProductInfo.ClientId);
         ThisNodeInfo.AddInfo("Public id    :", ProductInfo.PublicClientId);
-        ThisNodeInfo.AddInfo("This node    :", $"{_api.Enode.Info}");
+        ThisNodeInfo.AddInfo("This node    :", $"{_api.Enode.Info} ");
         ThisNodeInfo.AddInfo("Node address :", $"{_api.Enode.Address} (do not use as an account)");
     }
 

@@ -250,6 +250,11 @@ namespace Nethermind.Core
             builder.AppendLine($"{indent}ChainId:   {Signature?.ChainId}");
             builder.AppendLine($"{indent}Timestamp: {Timestamp}");
 
+            if (AccessList is not null)
+            {
+                builder.AppendLine($"{indent}{nameof(AccessList)}: {AccessList?.Count}");
+            }
+
             if (SupportsBlobs)
             {
                 builder.AppendLine($"{indent}{nameof(MaxFeePerBlobGas)}: {MaxFeePerBlobGas}");
