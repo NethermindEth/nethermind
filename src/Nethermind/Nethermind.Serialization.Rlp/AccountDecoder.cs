@@ -21,18 +21,6 @@ namespace Nethermind.Serialization.Rlp
             _slimFormat = slimFormat;
         }
 
-        public (Hash256 CodeHash, Hash256 StorageRoot) DecodeHashesOnly(RlpStream rlpStream)
-        {
-            rlpStream.SkipLength();
-            rlpStream.SkipItem();
-            rlpStream.SkipItem();
-
-            Hash256 storageRoot = DecodeStorageRoot(rlpStream);
-            Hash256 codeHash = DecodeCodeHash(rlpStream);
-
-            return (codeHash, storageRoot);
-        }
-
         public (Hash256 CodeHash, Hash256 StorageRoot) DecodeHashesOnly(ref Rlp.ValueDecoderContext context)
         {
             context.SkipLength();

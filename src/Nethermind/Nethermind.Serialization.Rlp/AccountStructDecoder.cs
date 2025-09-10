@@ -21,18 +21,6 @@ public class AccountStructDecoder : IRlpObjectDecoder<AccountStruct?>, IRlpStrea
         _slimFormat = slimFormat;
     }
 
-    public (ValueHash256 CodeHash, ValueHash256 StorageRoot) DecodeHashesOnly(RlpStream rlpStream)
-    {
-        rlpStream.SkipLength();
-        rlpStream.SkipItem();
-        rlpStream.SkipItem();
-
-        ValueHash256 storageRoot = DecodeStorageRoot(rlpStream);
-        ValueHash256 codeHash = DecodeCodeHash(rlpStream);
-
-        return (codeHash, storageRoot);
-    }
-
     public (ValueHash256 CodeHash, ValueHash256 StorageRoot) DecodeHashesOnly(ref Rlp.ValueDecoderContext context)
     {
         context.SkipLength();
