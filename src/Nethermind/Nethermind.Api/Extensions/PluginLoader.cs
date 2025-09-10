@@ -94,6 +94,9 @@ public class PluginLoader(string pluginPath, IFileSystem fileSystem, ILogger log
         List<string> order = pluginConfig.PluginOrder.Select(s => s.ToLower() + "plugin").ToList();
         _pluginTypes.Sort((f, s) =>
         {
+            if (f.Name == "HealthChecksPlugin") return -1;
+            if (s.Name == "HealthChecksPlugin") return 1;
+
             bool fIsConsensus = typeof(IConsensusPlugin).IsAssignableFrom(f);
             bool sIsConsensus = typeof(IConsensusPlugin).IsAssignableFrom(s);
 
