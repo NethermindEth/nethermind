@@ -46,19 +46,15 @@ public abstract class TransactionForRpc
     [JsonIgnore(Condition = JsonIgnoreCondition.Never)]
     public long? Gas { get; set; }
 
-    [JsonIgnore(Condition = JsonIgnoreCondition.Never)]
-    public ulong? ChainId { get; set; }
-
     [JsonConstructor]
     protected TransactionForRpc() { }
 
-    protected TransactionForRpc(Transaction transaction, int? txIndex = null, Hash256? blockHash = null, long? blockNumber = null, ulong? chainId = null)
+    protected TransactionForRpc(Transaction transaction, int? txIndex = null, Hash256? blockHash = null, long? blockNumber = null)
     {
         Hash = transaction.Hash;
         TransactionIndex = txIndex;
         BlockHash = blockHash;
         BlockNumber = blockNumber;
-        ChainId = transaction.ChainId ?? chainId ?? BlockchainIds.Mainnet;
     }
 
     public virtual Transaction ToTransaction()
