@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Serialization.Rlp;
@@ -17,7 +18,9 @@ namespace Nethermind.Core.Test.Encoding
             Account account = new Account(100).WithChangedCodeHash(TestItem.KeccakA).WithChangedStorageRoot(TestItem.KeccakB);
             AccountDecoder decoder = new();
             Rlp rlp = decoder.Encode(account);
-            (Hash256 codeHash, Hash256 storageRoot) = decoder.DecodeHashesOnly(new RlpStream(rlp.Bytes));
+            ReadOnlySpan<byte> data = rlp.Bytes.AsSpan();
+            Rlp.ValueDecoderContext ctx = new Rlp.ValueDecoderContext(data);
+            (Hash256 codeHash, Hash256 storageRoot) = decoder.DecodeHashesOnly(ref ctx);
             Assert.That(TestItem.KeccakA, Is.EqualTo(codeHash));
             Assert.That(TestItem.KeccakB, Is.EqualTo(storageRoot));
         }
