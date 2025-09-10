@@ -47,10 +47,11 @@ public class AccountChangesDecoder : IRlpValueDecoder<AccountChanges>, IRlpStrea
             storareReadsList.Add(storageRead);
             lastRead = storageRead;
         }
-    
+
         BalanceChange[] balanceChanges = ctx.DecodeArray(BalanceChangeDecoder.Instance);
         ushort lastIndex = 0;
-        SortedList<ushort, BalanceChange> balanceChangesList = new(balanceChanges.ToDictionary(s => {
+        SortedList<ushort, BalanceChange> balanceChangesList = new(balanceChanges.ToDictionary(s =>
+        {
             ushort index = s.BlockAccessIndex;
             if (index <= lastIndex)
             {
