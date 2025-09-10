@@ -114,8 +114,7 @@ public class TracedAccessWorldState(IWorldState innerWorldState) : WrappedWorldS
 
     public override bool InsertCode(Address address, in ValueHash256 codeHash, ReadOnlyMemory<byte> code, IReleaseSpec spec, bool isGenesis = false)
     {
-        byte[] oldCode = _innerWorldState.GetCode(address);
-        BlockAccessList.AddCodeChange(address, oldCode, code.ToArray());
+        BlockAccessList.AddCodeChange(address, code.ToArray());
         return _innerWorldState.InsertCode(address, codeHash, code, spec, isGenesis);
     }
 

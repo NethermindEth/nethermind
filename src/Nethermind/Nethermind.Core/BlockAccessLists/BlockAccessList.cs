@@ -77,7 +77,7 @@ public struct BlockAccessList : IEquatable<BlockAccessList>
         balanceChanges.Add(balanceChange.BlockAccessIndex, balanceChange);
     }
 
-    public void AddCodeChange(Address address, byte[] before, byte[] after)
+    public void AddCodeChange(Address address, byte[] after)
     {
         CodeChange codeChange = new()
         {
