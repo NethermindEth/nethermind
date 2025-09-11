@@ -17,6 +17,7 @@ using Nethermind.Consensus.Withdrawals;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
+using Nethermind.Core.Test.Container;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Int256;
 using Nethermind.Merge.AuRa.Contracts;
@@ -109,6 +110,11 @@ public class AuRaMergeEngineModuleTests : EngineModuleTests
                     if (unwrappedSpecProvider is TestSingleReleaseSpecProvider provider)
                         provider.SealEngine = SealEngineType;
                     return specProvider;
+                })
+                .WithGenesisPostProcessor((block, state) =>
+                {
+                    block.Header.AuRaStep = 0;
+                    block.Header.AuRaSignature = new byte[65];
                 })
 
                 // Aura uses `AuRaNethermindApi` for initialization, so need to do some additional things here
