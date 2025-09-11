@@ -2,9 +2,11 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using Nethermind.Evm;
+using Nethermind.Evm.State;
 
 namespace Nethermind.Blockchain;
 
-public class EthereumCodeInfoRepository() : CodeInfoRepository(new EthereumPrecompileProvider())
+// Mainly used by tests
+public class EthereumCodeInfoRepository(IWorldState worldState) : CodeInfoRepository(worldState, new EthereumPrecompileProvider())
 {
 }
