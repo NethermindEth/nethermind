@@ -26,7 +26,9 @@ public class OverridableCodeInfoRepository(ICodeInfoRepository codeInfoRepositor
     }
 
     public bool IsPrecompile(Address address, IReleaseSpec spec) =>
-        codeInfoRepository.IsPrecompile(address, spec);
+        _codeOverwrites.TryGetValue(address, out ICodeInfo result)
+            ? result.IsPrecompile
+            : codeInfoRepository.IsPrecompile(address, spec);
 
     public void InsertCode(IWorldState state, ReadOnlyMemory<byte> code, Address codeOwner, IReleaseSpec spec) =>
         codeInfoRepository.InsertCode(state, code, codeOwner, spec);

@@ -571,6 +571,11 @@ namespace Nethermind.Evm.TransactionProcessing
                 if (spec.UseTxAccessLists)
                     accessTracker.WarmUp(tx.AccessList); // eip-2930
 
+                foreach (AddressAsKey precompile in spec.Precompiles)
+                {
+                    accessTracker.WarmUp(precompile);
+                }
+
                 if (spec.AddCoinbaseToTxAccessList)
                     accessTracker.WarmUp(VirtualMachine.BlockExecutionContext.Header.GasBeneficiary!);
 
