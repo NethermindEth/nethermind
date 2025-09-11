@@ -101,6 +101,13 @@ namespace Nethermind.Evm.TransactionProcessing
         public void SetBlockExecutionContext(in BlockExecutionContext blockExecutionContext)
             => VirtualMachine.SetBlockExecutionContext(in blockExecutionContext);
 
+        public void SetBlockExecutionContext(BlockHeader header)
+        {
+            IReleaseSpec spec = SpecProvider.GetSpec(header);
+            BlockExecutionContext blockExecutionContext = new(header, spec);
+            SetBlockExecutionContext(in blockExecutionContext);
+        }
+
         public TransactionResult CallAndRestore(Transaction transaction, ITxTracer txTracer) =>
             ExecuteCore(transaction, txTracer, ExecutionOptions.CommitAndRestore);
 
@@ -889,22 +896,6 @@ namespace Nethermind.Evm.TransactionProcessing
 
         [DoesNotReturn, StackTraceHidden]
         private static void ThrowInvalidDataException(string message) => throw new InvalidDataException(message);
-
-        public TransactionResult Execute(Transaction transaction, BlockHeader header, ITxTracer txTracer)
-        {
-            IReleaseSpec spec = SpecProvider.GetSpec(header);
-            BlockExecutionContext blockExecutionContext = new(header, spec);
-            SetBlockExecutionContext(in blockExecutionContext);
-            return Execute(transaction, txTracer);
-        }
-
-        public TransactionResult CallAndRestore(Transaction transaction, BlockHeader header, ITxTracer txTracer)
-        {
-            IReleaseSpec spec = SpecProvider.GetSpec(header);
-            BlockExecutionContext blockExecutionContext = new(header, spec);
-            SetBlockExecutionContext(in blockExecutionContext);
-            return CallAndRestore(transaction, txTracer);
-        }
     }
 
     public readonly struct TransactionResult(string? error, EvmExceptionType evmException = EvmExceptionType.None) : IEquatable<TransactionResult>
