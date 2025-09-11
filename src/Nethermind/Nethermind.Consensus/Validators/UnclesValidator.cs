@@ -25,7 +25,7 @@ namespace Nethermind.Consensus.Validators
             _headerValidator = headerValidator ?? throw new ArgumentNullException(nameof(headerValidator));
         }
 
-        public bool Validate(BlockHeader header, BlockHeader? parentHeader, BlockHeader[] uncles)
+        public bool Validate(BlockHeader header, BlockHeader[] uncles)
         {
             if (uncles.Length > 2)
             {

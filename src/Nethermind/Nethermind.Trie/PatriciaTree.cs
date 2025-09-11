@@ -8,7 +8,6 @@ using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
 using System.IO;
 using System.Runtime.CompilerServices;
-using System.Runtime.ExceptionServices;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Core;
@@ -23,7 +22,7 @@ using Nethermind.Trie.Pruning;
 namespace Nethermind.Trie
 {
     [DebuggerDisplay("{RootHash}")]
-    public class PatriciaTree
+    public partial class PatriciaTree
     {
         private const int MaxKeyStackAlloc = 64;
         private readonly static byte[][] _singleByteKeys = [[0], [1], [2], [3], [4], [5], [6], [7], [8], [9], [10], [11], [12], [13], [14], [15]];
@@ -39,8 +38,8 @@ namespace Nethermind.Trie
 
         public TrieType TrieType { get; init; }
 
-        private Stack<StackedNode>? _nodeStack;
-        public IScopedTrieStore TrieStore { get; }
+        private Stack<TraverseStack>? _traverseStack;
+        public readonly IScopedTrieStore TrieStore;
         public ICappedArrayPool? _bufferPool;
 
         private readonly bool _allowCommits;
@@ -147,9 +146,10 @@ namespace Nethermind.Trie
             {
                 TreePath path = TreePath.Empty;
                 RootRef = Commit(committer, ref path, RootRef, skipSelf: skipRoot, maxLevelForConcurrentCommit: maxLevelForConcurrentCommit);
-
-                SetRootHash(RootRef.Keccak!, true);
             }
+
+            // Sometimes RootRef is set to null, so we still need to reset roothash to empty tree hash.
+            SetRootHash(RootRef?.Keccak, true);
         }
 
         private TrieNode Commit(ICommitter committer, ref TreePath path, TrieNode node, int maxLevelForConcurrentCommit, bool skipSelf = false)
@@ -339,8 +339,17 @@ namespace Nethermind.Trie
                     [..nibblesCount]; // Slice to exact size;
 
                 Nibbles.BytesToNibbleBytes(rawKey, nibbles);
-                TreePath updatePathTreePath = TreePath.Empty; // Only used on update.
-                SpanSource result = Run(ref updatePathTreePath, SpanSource.Empty, nibbles, isUpdate: false, startRootHash: rootHash);
+
+                TreePath emptyPath = TreePath.Empty;
+                TrieNode root = RootRef;
+
+                if (rootHash is not null)
+                {
+                    root = TrieStore.FindCachedOrUnknown(emptyPath, rootHash);
+                }
+
+                SpanSource result = GetNew(nibbles, ref emptyPath, root, isNodeRead: false);
+
                 if (array is not null) ArrayPool<byte>.Shared.Return(array);
 
                 return result.IsNull ? ReadOnlySpan<byte>.Empty : result.Span;
@@ -357,9 +366,13 @@ namespace Nethermind.Trie
         {
             try
             {
-                TreePath updatePathTreePath = TreePath.Empty; // Only used on update.
-                SpanSource result = Run(ref updatePathTreePath, SpanSource.Empty, nibbles, false, startRootHash: rootHash,
-                    isNodeRead: true);
+                TreePath emptyPath = TreePath.Empty;
+                TrieNode root = RootRef;
+                if (rootHash is not null)
+                {
+                    root = TrieStore.FindCachedOrUnknown(emptyPath, rootHash);
+                }
+                SpanSource result = GetNew(nibbles, ref emptyPath, root, isNodeRead: true);
                 return result.ToArray();
             }
             catch (TrieException e)
@@ -381,9 +394,15 @@ namespace Nethermind.Trie
                         : array = ArrayPool<byte>.Shared.Rent(nibblesCount))
                     [..nibblesCount]; // Slice to exact size;
                 Nibbles.BytesToNibbleBytes(rawKey, nibbles);
-                TreePath updatePathTreePath = TreePath.Empty; // Only used on update.
-                SpanSource result = Run(ref updatePathTreePath, SpanSource.Empty, nibbles, false, startRootHash: rootHash,
-                    isNodeRead: true);
+
+                TreePath emptyPath = TreePath.Empty;
+                TrieNode root = RootRef;
+                if (rootHash is not null)
+                {
+                    root = TrieStore.FindCachedOrUnknown(emptyPath, rootHash);
+                }
+                SpanSource result = GetNew(nibbles, ref emptyPath, root, isNodeRead: true);
+
                 if (array is not null) ArrayPool<byte>.Shared.Return(array);
                 return result.ToArray() ?? [];
             }
@@ -443,7 +462,7 @@ namespace Nethermind.Trie
 
         [SkipLocalsInit]
         [DebuggerStepThrough]
-        public virtual void Set(ReadOnlySpan<byte> rawKey, SpanSource value)
+        public void Set(ReadOnlySpan<byte> rawKey, SpanSource value)
         {
             if (_logger.IsTrace) Trace(in rawKey, value);
 
@@ -464,10 +483,12 @@ namespace Nethermind.Trie
                     [..nibblesCount]; // Slice to exact size
 
                 Nibbles.BytesToNibbleBytes(rawKey, nibbles);
-                // lazy stack cleaning after the previous update
-                ClearNodeStack();
-                TreePath updatePathTreePath = TreePath.FromPath(rawKey); // Only used on update.
-                Run(ref updatePathTreePath, value, nibbles, isUpdate: true);
+
+                if (_traverseStack is null) _traverseStack = new Stack<TraverseStack>();
+                else if (_traverseStack.Count > 0) _traverseStack.Clear();
+
+                TreePath empty = TreePath.Empty;
+                RootRef = SetNew(_traverseStack, nibbles, value, ref empty, RootRef);
 
                 if (array is not null) ArrayPool<byte>.Shared.Return(array);
             }
@@ -502,720 +523,318 @@ namespace Nethermind.Trie
             }
         }
 
-        private SpanSource Run(
-            ref TreePath updatePathTreePath,
-            SpanSource updateValue,
-            Span<byte> updatePath,
-            bool isUpdate,
-            Hash256? startRootHash = null,
-            bool isNodeRead = false)
+        private TrieNode? SetNew(Stack<TraverseStack> traverseStack, Span<byte> remainingKey, SpanSource value, ref TreePath path, TrieNode? node)
         {
-            TraverseContext traverseContext =
-                new(updatePath, ref updatePathTreePath, updateValue, isUpdate, isNodeRead: isNodeRead);
+            TrieNode? originalNode = node;
+            int originalPathLength = path.Length;
 
-            if (startRootHash is not null)
+            while (true)
             {
-                if (_logger.IsTrace) TraceStart(startRootHash, in traverseContext);
-                TreePath startingPath = TreePath.Empty;
-                TrieNode startNode = TrieStore.FindCachedOrUnknown(startingPath, startRootHash);
-                ResolveNode(startNode, in traverseContext, in startingPath);
-                return startNode.IsBranch ?
-                    TraverseBranches(startNode, ref startingPath, traverseContext) :
-                    TraverseNode(startNode, traverseContext, ref startingPath);
-            }
-            else
-            {
-                bool trieIsEmpty = RootRef is null;
-                if (trieIsEmpty)
+                if (node is null)
                 {
-                    if (traverseContext.UpdateValue.IsNotNull)
+                    node = value.IsNullOrEmpty ? null : TrieNodeFactory.CreateLeaf(remainingKey.ToArray(), value);
+
+                    // End traverse
+                    break;
+                }
+
+                node.ResolveNode(TrieStore, path);
+
+                if (node.IsLeaf || node.IsExtension)
+                {
+                    int commonPrefixLength = remainingKey.CommonPrefixLength(node.Key);
+                    if (commonPrefixLength == node.Key!.Length)
                     {
-                        if (_logger.IsTrace) TraceNewLeaf(in traverseContext);
-                        byte[] key = updatePath.ToArray();
-                        RootRef = TrieNodeFactory.CreateLeaf(key, traverseContext.UpdateValue);
+                        if (node.IsExtension)
+                        {
+                            // Continue traversal to the child of the extension
+                            path.AppendMut(node.Key);
+                            TrieNode? extensionChild = node.GetChildWithChildPath(TrieStore, ref path, 0);
+
+                            traverseStack.Push(new TraverseStack()
+                            {
+                                Node = node,
+                                OriginalChild = extensionChild,
+                                ChildIdx = 0,
+                            });
+
+                            // Continue loop with the child as current node
+                            remainingKey = remainingKey[node!.Key.Length..];
+                            node = extensionChild;
+
+                            continue;
+                        }
+
+                        if (value.IsNullOrEmpty)
+                        {
+                            // Deletion
+                            node = null;
+                        }
+                        else if (node.Value.Equals(value))
+                        {
+                            // SHORTCUT!
+                            path.TruncateMut(originalPathLength);
+                            traverseStack.Clear();
+                            return originalNode;
+                        }
+                        else if (node.IsSealed)
+                        {
+                            node = node.CloneWithChangedValue(value);
+                        }
+                        else
+                        {
+                            node.Value = value;
+                            node.Keccak = null; // For parent node usually done in SetChild.
+                        }
+
+                        // end traverse
+                        break;
                     }
 
-                    if (_logger.IsTrace) TraceNull(in traverseContext);
-                    return traverseContext.UpdateValue;
+                    // We are suppose to create a branch, but no change in structure
+                    if (value.IsNullOrEmpty)
+                    {
+                        // SHORTCUT!
+                        path.TruncateMut(originalPathLength);
+                        traverseStack.Clear();
+                        return originalNode;
+                    }
+
+                    // Making a T branch here.
+                    // If the commonPrefixLength > 0, we'll also need to also make an extension in front of the branch.
+                    TrieNode theBranch = TrieNodeFactory.CreateBranch();
+
+                    // This is the current node branch
+                    int currentNodeNib = node.Key[commonPrefixLength];
+                    if (node.Key.Length == commonPrefixLength + 1 && node.IsExtension)
+                    {
+                        // Collapsing the extension, taking the child directly and set the branch
+                        int originalLength = path.Length;
+                        path.AppendMut(node.Key);
+                        theBranch[currentNodeNib] = node.GetChildWithChildPath(TrieStore, ref path, 0);
+                        path.TruncateMut(originalLength);
+                    }
+                    else
+                    {
+                        // Note: could be a leaf at the end of the tree which now have zero length key
+                        theBranch[currentNodeNib] = node.CloneWithChangedKey(node.Key.Slice(commonPrefixLength + 1));
+                    }
+
+                    // This is the new branch
+                    theBranch[remainingKey[commonPrefixLength]] =
+                        TrieNodeFactory.CreateLeaf(remainingKey[(commonPrefixLength + 1)..].ToArray(), value);
+
+                    // Extension in front of the branch
+                    node = commonPrefixLength == 0 ?
+                        theBranch :
+                        TrieNodeFactory.CreateExtension(remainingKey[..commonPrefixLength].ToArray(), theBranch);
+
+                    break;
                 }
-                else
+
+                int nib = remainingKey[0];
+                path.AppendMut(nib);
+                TrieNode? child = node.GetChildWithChildPath(TrieStore, ref path, nib);
+
+                traverseStack.Push(new TraverseStack()
                 {
-                    TreePath startingPath = TreePath.Empty;
-                    ResolveNode(RootRef, in traverseContext, in startingPath);
-                    if (_logger.IsTrace) TraceNode(in traverseContext);
-                    return RootRef.IsBranch ?
-                        TraverseBranches(RootRef, ref startingPath, traverseContext) :
-                        TraverseNode(RootRef, traverseContext, ref startingPath);
+                    Node = node,
+                    OriginalChild = child,
+                    ChildIdx = nib,
+                });
+
+                // Continue loop with child as current node
+                node = child;
+                remainingKey = remainingKey[1..];
+            }
+
+            while (traverseStack.TryPop(out TraverseStack cStack))
+            {
+                TrieNode? child = node;
+                node = cStack.Node;
+
+                if (node.IsExtension)
+                {
+                    path.TruncateMut(path.Length - node.Key!.Length);
+
+                    if (ShouldUpdateChild(node, cStack.OriginalChild, child))
+                    {
+                        if (child is null)
+                        {
+                            node = null; // Remove extension
+                            continue;
+                        }
+
+                        if (child.IsExtension || child.IsLeaf)
+                        {
+                            // Merge current node with child
+                            node = child.CloneWithChangedKey(Bytes.Concat(node.Key, child.Key));
+                        }
+                        else
+                        {
+                            if (node.IsSealed) node = node.Clone();
+                            node.SetChild(0, child);
+                        }
+                    }
+
+                    continue;
                 }
+
+                // Branch only
+                int nib = cStack.ChildIdx;
+
+                bool hasRemove = false;
+                path.TruncateOne();
+
+                if (ShouldUpdateChild(node, cStack.OriginalChild, child))
+                {
+                    if (child is null) hasRemove = true;
+                    if (node.IsSealed) node = node.Clone();
+
+                    node.SetChild(nib, child);
+                }
+
+                if (!hasRemove)
+                {
+                    // 99%
+                    continue;
+                }
+
+                // About 1% reach here
+                node = MaybeCombineNode(ref path, node);
             }
 
-            void TraceStart(Hash256 startRootHash, in TraverseContext traverseContext)
-            {
-                _logger.Trace($"Starting from {startRootHash} - {traverseContext.ToString()}");
-            }
-
-            void TraceNewLeaf(in TraverseContext traverseContext)
-            {
-                _logger.Trace($"Setting new leaf node with value {traverseContext.UpdateValue}");
-            }
-
-            void TraceNull(in TraverseContext traverseContext)
-            {
-                _logger.Trace($"Keeping the root as null in {traverseContext.ToString()}");
-            }
-
-            void TraceNode(in TraverseContext traverseContext)
-            {
-                _logger.Trace($"{traverseContext.ToString()}");
-            }
+            return node;
         }
 
-        private void ResolveNode(TrieNode node, in TraverseContext traverseContext, in TreePath path)
+        internal bool ShouldUpdateChild(TrieNode parent, TrieNode? oldChild, TrieNode? newChild)
         {
-            if (node.NodeType != NodeType.Unknown) return;
+            if (oldChild is null && newChild is null) return false;
+            if (!ReferenceEquals(oldChild, newChild)) return true;
+            if (newChild.Keccak is null && parent.Keccak is not null) return true; // So that recalculate root knows to recalculate the parent root.
+            return false;
+        }
+
+        /// <summary>
+        /// Tries to make the current node an extension or null if it has only one child left.
+        /// </summary>
+        /// <param name="path"></param>
+        /// <param name="node"></param>
+        /// <returns></returns>
+        internal TrieNode? MaybeCombineNode(ref TreePath path, in TrieNode? node)
+        {
+            int onlyChildIdx = -1;
+            TrieNode? onlyChildNode = null;
+            path.AppendMut(0);
+            var iterator = node.CreateChildIterator();
+            for (int i = 0; i < TrieNode.BranchesCount; i++)
+            {
+                path.SetLast(i);
+                TrieNode? child = iterator.GetChildWithChildPath(TrieStore, ref path, i);
+
+                if (child is not null)
+                {
+                    if (onlyChildIdx == -1)
+                    {
+                        onlyChildIdx = i;
+                        onlyChildNode = child;
+                    }
+                    else
+                    {
+                        // 63%
+                        // More than one non null child. We don't care anymore.
+                        path.TruncateOne();
+                        return node;
+                    }
+                }
+
+            }
+            path.TruncateOne();
+
+            if (onlyChildIdx == -1) return null; // No child at all.
+
+            path.AppendMut(onlyChildIdx);
+            onlyChildNode.ResolveNode(TrieStore, path);
+            path.TruncateOne();
+
+            if (onlyChildNode.IsBranch)
+            {
+                return TrieNodeFactory.CreateExtension([(byte)onlyChildIdx], onlyChildNode);
+            }
+
+            // 35%
+            // Replace the only child with something with extra key.
+            byte[] newKey = Bytes.Concat((byte)onlyChildIdx, onlyChildNode.Key);
+            TrieNode tn = onlyChildNode.CloneWithChangedKey(newKey);
+            return tn;
+        }
+
+        private record struct TraverseStack
+        {
+            public TrieNode Node;
+            public int ChildIdx;
+            public TrieNode? OriginalChild;
+        }
+
+        private SpanSource GetNew(Span<byte> remainingKey, ref TreePath path, TrieNode? node, bool isNodeRead)
+        {
+            int originalPathLength = path.Length;
 
             try
             {
-                node.ResolveUnknownNode(TrieStore, path);
-            }
-            catch (RlpException rlpException)
-            {
-                ThrowDecodingError(node, in path, rlpException);
-            }
-
-            [DoesNotReturn, StackTraceHidden]
-            static void ThrowDecodingError(TrieNode node, in TreePath path, RlpException rlpException)
-            {
-                var exception = new TrieNodeException($"Error when decoding node {node.Keccak}", path, node.Keccak ?? Keccak.Zero, rlpException);
-                exception = (TrieNodeException)ExceptionDispatchInfo.SetCurrentStackTrace(exception);
-                throw exception;
-            }
-        }
-
-        private SpanSource TraverseNode(TrieNode node, scoped in TraverseContext traverseContext, scoped ref TreePath path)
-        {
-            if (_logger.IsTrace) Trace(node, traverseContext);
-
-            if (traverseContext.IsNodeRead && traverseContext.RemainingUpdatePathLength == 0)
-            {
-                return node.FullRlp;
-            }
-
-            switch (node.NodeType)
-            {
-                case NodeType.Extension:
-                    return TraverseExtension(node, in traverseContext, ref path);
-                case NodeType.Leaf:
-                    return TraverseLeaf(node, in traverseContext, ref path);
-                default:
-                    return TraverseInvalid(node);
-            }
-
-            [MethodImpl(MethodImplOptions.NoInlining)]
-            void Trace(TrieNode node, in TraverseContext traverseContext)
-            {
-                _logger.Trace($"Traversing {node} to {(traverseContext.IsReadValue ? "READ" : traverseContext.IsDelete ? "DELETE" : "UPDATE")}");
-            }
-
-            [DoesNotReturn, StackTraceHidden]
-            static SpanSource TraverseInvalid(TrieNode node)
-            {
-                switch (node.NodeType)
+                while (true)
                 {
-                    case NodeType.Branch:
-                        return TraverseBranch(node);
-                    case NodeType.Unknown:
-                        return TraverseUnknown(node);
-                    default:
-                        return ThrowNotSupported(node);
-                }
-            }
+                    if (node is null)
+                    {
+                        // If node read, then missing node. If value read.... what is it suppose to be then?
+                        return default;
+                    }
 
-            [DoesNotReturn, StackTraceHidden]
-            static SpanSource TraverseBranch(TrieNode node)
-            {
-                throw new InvalidOperationException($"Branch node {node.Keccak} should already be handled");
-            }
+                    node.ResolveNode(TrieStore, path);
 
-            [DoesNotReturn, StackTraceHidden]
-            static SpanSource TraverseUnknown(TrieNode node)
-            {
-                throw new InvalidOperationException($"Cannot traverse unresolved node {node.Keccak}");
-            }
+                    if (isNodeRead && remainingKey.Length == 0)
+                    {
+                        return node.FullRlp;
+                    }
 
-            [DoesNotReturn, StackTraceHidden]
-            static SpanSource ThrowNotSupported(TrieNode node)
-            {
-                throw new NotSupportedException($"Unknown node type {node.NodeType}");
-            }
-        }
-
-        private void ConnectNodes(TrieNode? node, in TraverseContext traverseContext)
-        {
-            // Fast tail-calls into generic
-            if (_logger.IsTrace)
-            {
-                ConnectNodes<OnFlag>(node, in traverseContext);
-            }
-            else
-            {
-                // branch eliminates _loggerTrace statements
-                ConnectNodes<OffFlag>(node, in traverseContext);
-            }
-        }
-
-        private void ConnectNodes<IsTrace>(TrieNode? node, in TraverseContext traverseContext)
-            where IsTrace : IFlag
-        {
-            TreePath path = traverseContext.UpdatePathTreePath;
-            bool isRoot = IsNodeStackEmpty();
-            TrieNode nextNode = node;
-
-            while (!isRoot)
-            {
-                StackedNode parentOnStack = PopFromNodeStack();
-                node = parentOnStack.Node;
-                path.TruncateMut(parentOnStack.PathLength);
-
-                isRoot = IsNodeStackEmpty();
-                // Use NodeType once to reduce virtual calls
-                // and switch statement to not add additional long lived local variable
-                switch (node.NodeType)
-                {
-                    case NodeType.Branch:
-                        if (!(nextNode is null && !node.IsValidWithOneNodeLess))
+                    if (node.IsLeaf || node.IsExtension)
+                    {
+                        int commonPrefixLength = remainingKey.CommonPrefixLength(node.Key);
+                        if (commonPrefixLength == node.Key!.Length)
                         {
-                            if (node.IsSealed)
+                            if (node.IsLeaf)
                             {
-                                node = node.Clone();
+                                if (!isNodeRead && commonPrefixLength == remainingKey.Length) return node.Value;
+
+                                // Um..... leaf cannot have child
+                                return default;
                             }
 
-                            node.SetChild(parentOnStack.PathIndex, nextNode);
-                            nextNode = node;
-                        }
-                        else
-                        {
-                            /* all the cases below are when we have a branch that becomes something else
-                                as a result of deleting one of the last two children */
-                            /* case 1) - extension from branch
-                                this is particularly interesting - we create an extension from
-                                the implicit path in the branch children positions (marked as P)
-                                P B B B B B B B B B B B B B B B
-                                B X - - - - - - - - - - - - - -
-                                case 2) - extended extension
-                                B B B B B B B B B B B B B B B B
-                                E X - - - - - - - - - - - - - -
-                                case 3) - extended leaf
-                                B B B B B B B B B B B B B B B B
-                                L X - - - - - - - - - - - - - - */
+                            // Continue traversal to the child of the extension
+                            path.AppendMut(node.Key);
+                            TrieNode? extensionChild = node.GetChildWithChildPath(TrieStore, ref path, 0);
+                            remainingKey = remainingKey[node!.Key.Length..];
+                            node = extensionChild;
 
-                            int childNodeIndex = 0;
-                            for (int i = 0; i < 16; i++)
-                            {
-                                if (i != parentOnStack.PathIndex && !node.IsChildNull(i))
-                                {
-                                    childNodeIndex = i;
-                                    break;
-                                }
-                            }
-
-                            path.AppendMut(childNodeIndex);
-                            TrieNode childNode = node.GetChildWithChildPath(TrieStore, ref path, childNodeIndex);
-                            if (childNode is null)
-                            {
-                                /* potential corrupted trie data state when we find a branch that has only one child */
-                                goto Corruption;
-                            }
-
-                            ResolveNode(childNode, in traverseContext, in path);
-                            path.TruncateOne();
-
-                            NodeType childType = childNode.NodeType;
-                            if (childType == NodeType.Branch)
-                            {
-                                TrieNode extensionFromBranch = TrieNodeFactory.CreateExtension(_singleByteKeys[childNodeIndex], childNode);
-                                if (IsTrace.IsActive) _logger.Trace($"Extending child {childNodeIndex} {childNode} of {node} into {extensionFromBranch}");
-
-                                nextNode = extensionFromBranch;
-                            }
-                            else if (childType == NodeType.Extension || childType == NodeType.Leaf)
-                            {
-                                byte[] newKey = Bytes.Concat((byte)childNodeIndex, childNode.Key);
-                                TrieNode extendedNode = childNode.CloneWithChangedKey(newKey);
-
-                                if (IsTrace.IsActive)
-                                {
-                                    if (childNode.IsExtension)
-                                    {
-                                        /* to test this case we need something like this initially */
-                                        /* R
-                                            B B B B B B B B B B B B B B B B
-                                            E L - - - - - - - - - - - - - -
-                                            E - - - - - - - - - - - - - - -
-                                            B B B B B B B B B B B B B B B B
-                                            L L - - - - - - - - - - - - - - */
-
-                                        /* then we delete the leaf (marked as X) */
-                                        /* R
-                                            B B B B B B B B B B B B B B B B
-                                            E X - - - - - - - - - - - - - -
-                                            E - - - - - - - - - - - - - - -
-                                            B B B B B B B B B B B B B B B B
-                                            L L - - - - - - - - - - - - - - */
-
-                                        /* and we end up with an extended extension (marked with +)
-                                            replacing what was previously a top-level branch */
-                                        /* R
-                                            +
-                                            +
-                                            + - - - - - - - - - - - - - - -
-                                            B B B B B B B B B B B B B B B B
-                                            L L - - - - - - - - - - - - - - */
-
-                                        _logger.Trace($"Extending child {childNodeIndex} {childNode} of {node} into {extendedNode}");
-                                    }
-                                    else if (childNode.IsLeaf)
-                                    {
-                                        _logger.Trace($"Extending branch child {childNodeIndex} {childNode} into {extendedNode}");
-                                        _logger.Trace($"Decrementing ref on a leaf extended up to eat a branch {childNode}");
-                                        if (node.IsSealed)
-                                        {
-                                            _logger.Trace($"Decrementing ref on a branch replaced by a leaf {node}");
-                                        }
-                                    }
-                                }
-                                nextNode = extendedNode;
-                            }
-                            else
-                            {
-                                node = childNode;
-                                goto InvalidNodeType;
-                            }
-                        }
-                        break;
-                    case NodeType.Extension:
-                        if (nextNode is null)
-                        {
-                            goto NullNode;
+                            continue;
                         }
 
-                        NodeType nextType = nextNode.NodeType;
-                        if (nextType == NodeType.Branch)
-                        {
-                            if (node.IsSealed)
-                            {
-                                node = node.Clone();
-                            }
+                        // No node match
+                        return default;
+                    }
 
-                            if (IsTrace.IsActive) _logger.Trace($"Connecting {node} with {nextNode}");
-                            node.SetChild(0, nextNode);
-                            nextNode = node;
-                        }
-                        else if (nextType == NodeType.Extension || nextType == NodeType.Leaf)
-                        {
-                            /* to test the Extension case we need something like this initially */
-                            /* R
-                               E - - - - - - - - - - - - - - -
-                               B B B B B B B B B B B B B B B B
-                               E L - - - - - - - - - - - - - -
-                               E - - - - - - - - - - - - - - -
-                               B B B B B B B B B B B B B B B B
-                               L L - - - - - - - - - - - - - - */
+                    int nib = remainingKey[0];
+                    path.AppendMut(nib);
+                    TrieNode? child = node.GetChildWithChildPath(TrieStore, ref path, nib);
 
-                            /* then we delete the leaf (marked as X) */
-                            /* R
-                               B B B B B B B B B B B B B B B B
-                               E X - - - - - - - - - - - - - -
-                               E - - - - - - - - - - - - - - -
-                               B B B B B B B B B B B B B B B B
-                               L L - - - - - - - - - - - - - - */
-
-                            /* and we end up with an extended extension replacing what was previously a top-level branch*/
-                            /* R
-                               E
-                               E
-                               E - - - - - - - - - - - - - - -
-                               B B B B B B B B B B B B B B B B
-                               L L - - - - - - - - - - - - - - */
-
-                            byte[] newKey = Bytes.Concat(node.Key, nextNode.Key);
-                            TrieNode extendedNode = nextNode.CloneWithChangedKey(newKey);
-                            if (IsTrace.IsActive) _logger.Trace($"Combining {node} and {nextNode} into {extendedNode}");
-                            nextNode = extendedNode;
-                        }
-                        else
-                        {
-                            node = nextNode;
-                            goto InvalidNodeType;
-                        }
-                        break;
-                    case NodeType.Leaf:
-                        goto LeafCannotBeParent;
-                    default:
-                        goto InvalidNodeType;
+                    // Continue loop with child as current node
+                    node = child;
+                    remainingKey = remainingKey[1..];
                 }
             }
-
-            RootRef = nextNode;
-            return;
-
-        Corruption:
-            ThrowTrieExceptionCorruption();
-        InvalidNodeType:
-            ThrowInvalidNodeType(node);
-        NullNode:
-            ThrowInvalidNullNode(node);
-        LeafCannotBeParent:
-            ThrowTrieExceptionLeafCannotBeParent(node, nextNode);
-
-            [DoesNotReturn, StackTraceHidden]
-            static void ThrowTrieExceptionLeafCannotBeParent(TrieNode node, TrieNode nextNode)
-                => throw new TrieException($"{nameof(NodeType.Leaf)} {node} cannot be a parent of {nextNode}");
-
-            [DoesNotReturn, StackTraceHidden]
-            static void ThrowTrieExceptionCorruption()
-                => throw new TrieException("Before updating branch should have had at least two non-empty children");
-
-            [DoesNotReturn, StackTraceHidden]
-            static void ThrowInvalidNodeType(TrieNode node)
-                => throw new InvalidOperationException($"Unknown node type {node.NodeType}");
-
-            [DoesNotReturn, StackTraceHidden]
-            static void ThrowInvalidNullNode(TrieNode node)
-                => throw new InvalidOperationException($"An attempt to set a null node as a child of the {node}");
-        }
-
-        private SpanSource TraverseBranches(TrieNode node, scoped ref TreePath path, TraverseContext traverseContext)
-        {
-            while (true)
+            finally
             {
-                if (traverseContext.RemainingUpdatePathLength == 0)
-                {
-                    return ResolveBranchNode(node, in traverseContext);
-                }
-
-                int childIdx = traverseContext.UpdatePath[traverseContext.CurrentIndex];
-                path.AppendMut(childIdx);
-                TrieNode childNode = node.GetChildWithChildPath(TrieStore, ref path, childIdx);
-                if (traverseContext.IsUpdate)
-                {
-                    PushToNodeStack(node, traverseContext.CurrentIndex, childIdx);
-                }
-
-                if (childNode is null)
-                {
-                    return ResolveCurrent(in traverseContext);
-                }
-
-                ResolveNode(childNode, in traverseContext, in path);
-
-                traverseContext = traverseContext.WithNewIndex(traverseContext.CurrentIndex + 1);
-                if (!childNode.IsBranch)
-                {
-                    return TraverseNode(childNode, in traverseContext, ref path);
-                }
-
-                // Traverse next branch
-                node = childNode;
-            }
-        }
-
-        private SpanSource TraverseLeaf(TrieNode node, scoped in TraverseContext traverseContext, scoped ref TreePath path)
-        {
-            if (node.Key is null)
-            {
-                ThrowMissingPrefixException();
-            }
-
-            ReadOnlySpan<byte> remaining = traverseContext.GetRemainingUpdatePath();
-            ReadOnlySpan<byte> shorterPath;
-            ReadOnlySpan<byte> longerPath;
-            if (traverseContext.RemainingUpdatePathLength - node.Key.Length < 0)
-            {
-                shorterPath = remaining;
-                longerPath = node.Key;
-            }
-            else
-            {
-                shorterPath = node.Key;
-                longerPath = remaining;
-            }
-
-            SpanSource shorterPathValue = default;
-            SpanSource longerPathValue = default;
-            if (Bytes.AreEqual(shorterPath, node.Key))
-            {
-                shorterPathValue = node.Value;
-                longerPathValue = traverseContext.UpdateValue;
-            }
-            else
-            {
-                shorterPathValue = traverseContext.UpdateValue;
-                longerPathValue = node.Value;
-            }
-
-            int extensionLength = shorterPath.CommonPrefixLength(longerPath);
-            if (extensionLength == shorterPath.Length && extensionLength == longerPath.Length)
-            {
-                if (traverseContext.IsNodeRead)
-                {
-                    return node.FullRlp;
-                }
-                if (traverseContext.IsReadValue)
-                {
-                    return node.Value;
-                }
-
-                if (traverseContext.IsDelete)
-                {
-                    ConnectNodes(null, in traverseContext);
-                    return traverseContext.UpdateValue;
-                }
-
-                if (!node.Value.Equals(traverseContext.UpdateValue))
-                {
-                    TrieNode withUpdatedValue = node.CloneWithChangedValue(traverseContext.UpdateValue);
-                    ConnectNodes(withUpdatedValue, in traverseContext);
-                    return traverseContext.UpdateValue;
-                }
-
-                return traverseContext.UpdateValue;
-            }
-
-            if (traverseContext.IsRead || traverseContext.IsDelete)
-            {
-                return SpanSource.Null;
-            }
-
-            if (extensionLength != 0)
-            {
-                ReadOnlySpan<byte> extensionPath = longerPath[..extensionLength];
-                TrieNode extension = TrieNodeFactory.CreateExtension(extensionPath.ToArray());
-                PushToNodeStack(extension, traverseContext.CurrentIndex, 0);
-            }
-
-            TrieNode branch = TrieNodeFactory.CreateBranch();
-            if (extensionLength == shorterPath.Length)
-            {
-                branch.Value = shorterPathValue;
-            }
-            else
-            {
-                ReadOnlySpan<byte> shortLeafPath = shorterPath[(extensionLength + 1)..];
-                TrieNode shortLeaf = TrieNodeFactory.CreateLeaf(shortLeafPath.ToArray(), shorterPathValue);
-                branch.SetChild(shorterPath[extensionLength], shortLeaf);
-            }
-
-            ReadOnlySpan<byte> leafPath = longerPath[(extensionLength + 1)..];
-            TrieNode withUpdatedKeyAndValue = node.CloneWithChangedKeyAndValue(
-                leafPath.ToArray(), longerPathValue);
-
-            PushToNodeStack(branch, traverseContext.CurrentIndex, longerPath[extensionLength]);
-            ConnectNodes(withUpdatedKeyAndValue, in traverseContext);
-
-            return traverseContext.UpdateValue;
-        }
-
-        private SpanSource TraverseExtension(TrieNode node, scoped in TraverseContext traverseContext, scoped ref TreePath path)
-        {
-            if (node.Key is null)
-            {
-                ThrowMissingPrefixException();
-            }
-
-            TrieNode originalNode = node;
-            ReadOnlySpan<byte> remaining = traverseContext.GetRemainingUpdatePath();
-
-            int extensionLength = remaining.CommonPrefixLength(node.Key);
-            if (extensionLength == node.Key.Length)
-            {
-                if (traverseContext.IsUpdate)
-                {
-                    PushToNodeStack(node, traverseContext.CurrentIndex, 0);
-                }
-
-                node.AppendChildPath(ref path, 0);
-                TrieNode next = node.GetChildWithChildPath(TrieStore, ref path, 0);
-                if (next is null)
-                {
-                    ThrowMissingChildException(node);
-                }
-
-                ResolveNode(next, in traverseContext, in path);
-                TraverseContext newContext = traverseContext.WithNewIndex(traverseContext.CurrentIndex + extensionLength);
-                return next.IsBranch ?
-                    TraverseBranches(next, ref path, newContext) :
-                    TraverseNode(next, newContext, ref path);
-            }
-
-            if (traverseContext.IsRead || traverseContext.IsDelete)
-            {
-                return SpanSource.Null;
-            }
-
-            byte[] pathBeforeUpdate = node.Key;
-            if (extensionLength != 0)
-            {
-                byte[] extensionPath = node.Key.Slice(0, extensionLength);
-                node = node.CloneWithChangedKey(extensionPath);
-                PushToNodeStack(node, traverseContext.CurrentIndex, 0);
-            }
-
-            // The node from extension become a branch
-            TrieNode branch = TrieNodeFactory.CreateBranch();
-            if (extensionLength == remaining.Length)
-            {
-                branch.Value = traverseContext.UpdateValue;
-            }
-            else
-            {
-                byte[] remainingPath = remaining[(extensionLength + 1)..].ToArray();
-                TrieNode shortLeaf = TrieNodeFactory.CreateLeaf(remainingPath, traverseContext.UpdateValue);
-                branch.SetChild(remaining[extensionLength], shortLeaf);
-            }
-
-            TrieNode originalNodeChild = originalNode.GetChild(TrieStore, ref path, 0);
-            if (originalNodeChild is null)
-            {
-                ThrowInvalidDataException(originalNode);
-            }
-
-            if (pathBeforeUpdate.Length - extensionLength > 1)
-            {
-                byte[] extensionPath = pathBeforeUpdate.Slice(extensionLength + 1, pathBeforeUpdate.Length - extensionLength - 1);
-                TrieNode secondExtension
-                    = TrieNodeFactory.CreateExtension(extensionPath, originalNodeChild);
-                branch.SetChild(pathBeforeUpdate[extensionLength], secondExtension);
-            }
-            else
-            {
-                TrieNode childNode = originalNodeChild;
-                branch.SetChild(pathBeforeUpdate[extensionLength], childNode);
-            }
-
-            ConnectNodes(branch, in traverseContext);
-            return traverseContext.UpdateValue;
-        }
-
-        private SpanSource ResolveCurrent(scoped in TraverseContext traverseContext)
-        {
-            if (traverseContext.IsRead || traverseContext.IsDelete)
-            {
-                return default;
-            }
-
-            int currentIndex = traverseContext.CurrentIndex + 1;
-            byte[] leafPath = traverseContext.UpdatePath[
-                currentIndex..].ToArray();
-            TrieNode leaf = TrieNodeFactory.CreateLeaf(leafPath, traverseContext.UpdateValue);
-            ConnectNodes(leaf, in traverseContext);
-
-            return traverseContext.UpdateValue;
-        }
-
-        private SpanSource ResolveBranchNode(TrieNode node, scoped in TraverseContext traverseContext)
-        {
-            // all these cases when the path ends on the branch assume a trie with values in the branches
-            // which is not possible within the Ethereum protocol which has keys of the same length (64)
-
-            if (traverseContext.IsNodeRead)
-            {
-                return node.FullRlp;
-            }
-            if (traverseContext.IsReadValue)
-            {
-                return node.Value;
-            }
-
-            if (traverseContext.IsDelete)
-            {
-                if (node.Value.IsNull)
-                {
-                    return SpanSource.Null;
-                }
-
-                ConnectNodes(null, in traverseContext);
-            }
-            else if (traverseContext.UpdateValue.Equals(node.Value))
-            {
-                return traverseContext.UpdateValue;
-            }
-            else
-            {
-                TrieNode withUpdatedValue = node.CloneWithChangedValue(traverseContext.UpdateValue);
-                ConnectNodes(withUpdatedValue, in traverseContext);
-            }
-
-            return traverseContext.UpdateValue;
-        }
-
-        private readonly ref struct TraverseContext
-        {
-            public readonly SpanSource UpdateValue;
-            public readonly ReadOnlySpan<byte> UpdatePath;
-            public readonly ref readonly TreePath UpdatePathTreePath;
-            public bool IsUpdate { get; }
-            public bool IsNodeRead { get; }
-            public bool IsReadValue => !IsUpdate && !IsNodeRead;
-            public bool IsRead => IsNodeRead || IsReadValue;
-            public bool IsDelete => IsUpdate && UpdateValue.IsNull;
-            public int CurrentIndex { get; }
-            public int RemainingUpdatePathLength => UpdatePath.Length - CurrentIndex;
-
-            public TraverseContext WithNewIndex(int index)
-            {
-                return new TraverseContext(in this, index);
-            }
-
-            public ReadOnlySpan<byte> GetRemainingUpdatePath()
-            {
-                return UpdatePath.Slice(CurrentIndex, RemainingUpdatePathLength);
-            }
-
-            public TraverseContext(scoped in TraverseContext context, int index)
-            {
-                this = context;
-                CurrentIndex = index;
-            }
-
-            public TraverseContext(
-                Span<byte> updatePath,
-                ref TreePath updatePathTreePath,
-                SpanSource updateValue,
-                bool isUpdate,
-                bool ignoreMissingDelete = true,
-                bool isNodeRead = false)
-            {
-                UpdatePath = updatePath;
-                UpdatePathTreePath = ref updatePathTreePath;
-                UpdateValue = updateValue.IsNotNull && updateValue.Length == 0 ? SpanSource.Null : updateValue;
-                IsUpdate = isUpdate;
-                CurrentIndex = 0;
-                IsNodeRead = isNodeRead;
-            }
-
-            public override string ToString()
-            {
-                return $"{(IsDelete ? "DELETE" : IsUpdate ? "UPDATE" : "READ")} {UpdatePath.ToHexString()}{(IsReadValue ? string.Empty : $" -> {UpdateValue}")}";
-            }
-        }
-
-        private readonly struct StackedNode
-        {
-            public StackedNode(TrieNode node, int pathLength, int pathIndex)
-            {
-                Node = node;
-                PathLength = pathLength;
-                PathIndex = pathIndex;
-            }
-
-            public TrieNode Node { get; }
-            public int PathLength { get; }
-            public int PathIndex { get; }
-
-            public override string ToString()
-            {
-                return $"{PathIndex} {Node}";
+                path.TruncateMut(originalPathLength);
             }
         }
 
@@ -1321,37 +940,6 @@ namespace Nethermind.Trie
                 visitor.VisitTree(default, rootHash);
                 rootRef?.Accept(visitor, default, resolver, ref emptyPath, trieVisitContext);
             }
-        }
-
-        bool IsNodeStackEmpty()
-        {
-            Stack<StackedNode> nodeStack = _nodeStack;
-            if (nodeStack is null) return true;
-            return nodeStack.Count == 0;
-        }
-
-        void ClearNodeStack() => _nodeStack?.Clear();
-
-        [MethodImpl(MethodImplOptions.NoInlining)]
-        void PushToNodeStack(TrieNode node, int pathLength, int pathIndex)
-        {
-            // Allocated the _nodeStack if first push
-            _nodeStack ??= new();
-            _nodeStack.Push(new StackedNode(node, pathLength, pathIndex));
-        }
-
-        StackedNode PopFromNodeStack()
-        {
-            Stack<StackedNode> stackedNodes = _nodeStack;
-            if (stackedNodes is null)
-            {
-                Throw();
-            }
-
-            return stackedNodes.Pop();
-
-            [DoesNotReturn, StackTraceHidden]
-            static void Throw() => throw new InvalidOperationException($"Nothing on {nameof(_nodeStack)}");
         }
 
         [DoesNotReturn, StackTraceHidden]

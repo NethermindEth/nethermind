@@ -35,6 +35,7 @@ public sealed class BlockCachePreWarmer(
     private int _concurrencyLevel = (concurrency == 0 ? Math.Min(Environment.ProcessorCount - 1, 16) : concurrency);
     private readonly ObjectPool<IReadOnlyTxProcessorSource> _envPool = new DefaultObjectPool<IReadOnlyTxProcessorSource>(new ReadOnlyTxProcessingEnvPooledObjectPolicy(envFactory, worldStateToWarmup), Environment.ProcessorCount * 2);
     private readonly ILogger _logger = logManager.GetClassLogger<BlockCachePreWarmer>();
+    private BlockStateSource? _currentBlockState = null;
 
     public BlockCachePreWarmer(
         IReadOnlyTxProcessingEnvFactory envFactory,
@@ -55,6 +56,7 @@ public sealed class BlockCachePreWarmer(
     {
         if (preBlockCaches is not null)
         {
+            _currentBlockState = new(this, suggestedBlock, parent, spec);
             CacheType result = preBlockCaches.ClearCaches();
             if (result != default)
             {
@@ -69,7 +71,7 @@ public sealed class BlockCachePreWarmer(
                 var addressWarmer = new AddressWarmer(parallelOptions, suggestedBlock, parent, spec, systemAccessLists, this);
                 ThreadPool.UnsafeQueueUserWorkItem(addressWarmer, preferLocal: false);
                 // Do not pass cancellation token to the task, we don't want exceptions to be thrown in main processing thread
-                return Task.Run(() => PreWarmCachesParallel(suggestedBlock, parent, spec, parallelOptions, addressWarmer, cancellationToken));
+                return Task.Run(() => PreWarmCachesParallel(_currentBlockState, suggestedBlock, parent, spec, parallelOptions, addressWarmer, cancellationToken));
             }
         }
 
@@ -85,7 +87,7 @@ public sealed class BlockCachePreWarmer(
         return cachesCleared;
     }
 
-    private void PreWarmCachesParallel(Block suggestedBlock, BlockHeader parent, IReleaseSpec spec, ParallelOptions parallelOptions, AddressWarmer addressWarmer, CancellationToken cancellationToken)
+    private void PreWarmCachesParallel(BlockStateSource blockState, Block suggestedBlock, BlockHeader parent, IReleaseSpec spec, ParallelOptions parallelOptions, AddressWarmer addressWarmer, CancellationToken cancellationToken)
     {
         try
         {
@@ -93,7 +95,7 @@ public sealed class BlockCachePreWarmer(
 
             if (_logger.IsDebug) _logger.Debug($"Started pre-warming caches for block {suggestedBlock.Number}.");
 
-            WarmupTransactions(parallelOptions, spec, suggestedBlock, parent);
+            WarmupTransactions(blockState, parallelOptions);
             WarmupWithdrawals(parallelOptions, spec, suggestedBlock, parent);
 
             if (_logger.IsDebug) _logger.Debug($"Finished pre-warming caches for block {suggestedBlock.Number}.");
@@ -107,6 +109,11 @@ public sealed class BlockCachePreWarmer(
             // Don't compete task until address warmer is also done.
             addressWarmer.Wait();
         }
+    }
+
+    public void OnBeforeTxExecution(Transaction transaction)
+    {
+        _currentBlockState?.IncrementTransactionCounter();
     }
 
     private void WarmupWithdrawals(ParallelOptions parallelOptions, IReleaseSpec spec, Block block, BlockHeader? parent)
@@ -148,13 +155,13 @@ public sealed class BlockCachePreWarmer(
         }
     }
 
-    private void WarmupTransactions(ParallelOptions parallelOptions, IReleaseSpec spec, Block block, BlockHeader parent)
+    private void WarmupTransactions(BlockStateSource blockState, ParallelOptions parallelOptions)
     {
         if (parallelOptions.CancellationToken.IsCancellationRequested) return;
 
         try
         {
-            BlockStateSource blockState = new(this, block, parent, spec);
+            Block block = blockState.Block;
             ParallelUnbalancedWork.For(
                 0,
                 block.Transactions.Length,
@@ -166,7 +173,10 @@ public sealed class BlockCachePreWarmer(
                 try
                 {
                     // If the transaction has already been processed or being processed, exit early
-                    if (state.Block.TransactionProcessed > i) return state;
+                    if (state.LastExecutedTransaction >= i)
+                    {
+                        return state;
+                    }
 
                     tx = state.Block.Transactions[i];
 
@@ -377,6 +387,7 @@ public sealed class BlockCachePreWarmer(
         public readonly Block Block = block;
         public readonly BlockHeader Parent = parent;
         public readonly IReleaseSpec Spec = spec;
+        public volatile int LastExecutedTransaction = 0;
 
         public BlockState InitThreadState()
         {
@@ -384,6 +395,11 @@ public sealed class BlockCachePreWarmer(
         }
 
         private static void DisposeThreadState(BlockState state) => state.Dispose();
+
+        public void IncrementTransactionCounter()
+        {
+            Interlocked.Increment(ref LastExecutedTransaction);
+        }
     }
 
     private readonly struct BlockState
@@ -395,6 +411,7 @@ public sealed class BlockCachePreWarmer(
         public ref readonly ILogger Logger => ref Src.PreWarmer._logger;
         public IReleaseSpec Spec => Src.Spec;
         public Block Block => Src.Block;
+        public int LastExecutedTransaction => Src.LastExecutedTransaction;
 
         public BlockState(BlockStateSource src)
         {
@@ -411,4 +428,3 @@ public sealed class BlockCachePreWarmer(
         }
     }
 }
-

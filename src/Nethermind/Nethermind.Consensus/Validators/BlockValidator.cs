@@ -103,7 +103,7 @@ public class BlockValidator(
             return false;
         }
 
-        if (block.Uncles.Length > 0 && !_unclesValidator.Validate(block.Header, parent, block.Uncles))
+        if (block.Uncles.Length > 0 && !_unclesValidator.Validate(block.Header, block.Uncles))
         {
             if (_logger.IsDebug) _logger.Debug($"{Invalid(block)} Invalid uncles");
             errorMessage = BlockErrorMessages.InvalidUncle;
