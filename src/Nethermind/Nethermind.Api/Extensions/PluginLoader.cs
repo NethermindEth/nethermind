@@ -146,7 +146,7 @@ public class PluginLoader(string pluginPath, IFileSystem fileSystem, ILogger log
         return plugins;
     }
 
-    private IList<INethermindPlugin> OrderPlugins(IList<INethermindPlugin> plugins, IReadOnlyList<string> customOrder)
+    public IList<INethermindPlugin> OrderPlugins(IList<INethermindPlugin> plugins, IReadOnlyList<string> customOrder)
     {
         Dictionary<string, int> priorities = customOrder
             .Select((name, index) =>

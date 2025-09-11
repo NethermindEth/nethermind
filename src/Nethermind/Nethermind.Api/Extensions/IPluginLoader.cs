@@ -11,4 +11,6 @@ public interface IPluginLoader
     IEnumerable<Type> PluginTypes { get; }
 
     void Load();
+
+    IList<INethermindPlugin> OrderPlugins(IList<INethermindPlugin> plugins, IReadOnlyList<string> customOrder);
 }
