@@ -167,7 +167,7 @@ public sealed class BlockCachePreWarmer(
                 block.Transactions.Length,
                 parallelOptions,
                 blockState.InitThreadState,
-            (i, state) =>
+            static (i, state) =>
             {
                 Transaction? tx = null;
                 try
