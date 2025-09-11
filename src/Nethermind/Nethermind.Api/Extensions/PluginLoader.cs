@@ -148,9 +148,11 @@ public class PluginLoader(string pluginPath, IFileSystem fileSystem, ILogger log
 
     private IList<INethermindPlugin> OrderPlugins(IList<INethermindPlugin> plugins, IReadOnlyList<string> customOrder)
     {
-        var priorities = customOrder
+        Dictionary<string, int> priorities = customOrder
             .Select((name, index) => {
-                var normalizedName = name.EndsWith("Plugin") ? name : name + "Plugin";
+                var normalizedName = name.EndsWith("Plugin", StringComparison.OrdinalIgnoreCase)
+                    ? name
+                    : name + "Plugin";
                 return (normalizedName, index);
             })
             .ToDictionary(x => x.normalizedName, x => x.index, StringComparer.OrdinalIgnoreCase);
