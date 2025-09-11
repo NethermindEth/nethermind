@@ -317,6 +317,18 @@ namespace Nethermind.Serialization.Rlp
         public static Rlp Encode(LogEntry item, RlpBehaviors behaviors = RlpBehaviors.None)
             => LogEntryDecoder.Instance.Encode(item, behaviors);
 
+        public static ValueHash256 EncodeForHash<T>(T item, RlpBehaviors behaviors = RlpBehaviors.None)
+        {
+            KeccakRlpStream stream = new();
+            IRlpStreamDecoder<T>? rlpStreamDecoder = GetStreamDecoder<T>();
+            if (rlpStreamDecoder is null)
+                throw new RlpException($"Decoder not found for {typeof(T).Name}");
+
+            int totalLength = rlpStreamDecoder.GetLength(item, behaviors);
+            rlpStreamDecoder.Encode(stream, item, behaviors);
+            return stream.GetValueHash();
+        }
+
         public static Rlp Encode<T>(T item, RlpBehaviors behaviors = RlpBehaviors.None)
         {
             if (item is Rlp rlp)
