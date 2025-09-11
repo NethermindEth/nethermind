@@ -5,6 +5,7 @@ using System;
 using System.Diagnostics;
 using Nethermind.Core;
 using Nethermind.Core.Buffers;
+using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Db;
 using Nethermind.Evm.State;
@@ -72,6 +73,31 @@ namespace Nethermind.State
         {
             KeccakCache.ComputeTo(address.Bytes, out ValueHash256 keccak);
             Set(keccak.BytesAsSpan, account is null ? null : account.IsTotallyEmpty ? EmptyAccountRlp : Rlp.Encode(account));
+        }
+
+        public IWorldStateBackend.IStateSetter BeginSet(int estimatedEntries)
+        {
+            return new StateTreeBulkSetter(estimatedEntries, this);
+        }
+
+        private class StateTreeBulkSetter(int estimatedEntries, StateTree tree) : IWorldStateBackend.IStateSetter
+        {
+            ArrayPoolList<PatriciaTree.BulkSetEntry> _bulkWrite = new(estimatedEntries);
+
+            public void Set(Address key, Account account)
+            {
+                KeccakCache.ComputeTo(key.Bytes, out ValueHash256 keccak);
+
+                Rlp accountRlp = account is null ? null : account.IsTotallyEmpty ? StateTree.EmptyAccountRlp : Rlp.Encode(account);
+
+                _bulkWrite.Add(new BulkSetEntry(keccak, accountRlp?.Bytes));
+            }
+
+            public void Dispose()
+            {
+                tree.BulkSet(_bulkWrite);
+                _bulkWrite.Dispose();
+            }
         }
 
         [DebuggerStepThrough]
