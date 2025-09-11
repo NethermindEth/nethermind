@@ -143,7 +143,7 @@ public class GasEstimator(
         transaction.CopyTo(txClone);
         txClone.GasLimit = gasLimit;
 
-        transactionProcessor.SetBlockExecutionContext(new(block, specProvider.GetSpec(block)));
+        transactionProcessor.SetBlockExecutionContext(new BlockExecutionContext(block, specProvider.GetSpec(block)));
         TransactionResult result = transactionProcessor.CallAndRestore(txClone, gasTracer.WithCancellation(token));
 
         return result.TransactionExecuted && gasTracer.StatusCode == StatusCode.Success && !gasTracer.OutOfGas;
