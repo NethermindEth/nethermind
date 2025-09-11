@@ -72,6 +72,7 @@ public class MainProcessingContext : IMainProcessingContext, BlockProcessor.Bloc
                 builder
                     .AddScoped<PreBlockCaches>((mainWorldState as IPreBlockCaches)!.Caches)
                     .AddScoped<IBlockCachePreWarmer, BlockCachePreWarmer>()
+                    .AddDecorator<ITransactionProcessorAdapter, PrewarmerTxAdapter>()
                     ;
             }
         });
