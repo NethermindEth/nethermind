@@ -7,6 +7,7 @@ using System.Collections.Generic;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using Nethermind.Core;
+using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Evm.State;
@@ -167,9 +168,27 @@ namespace Nethermind.State
             }
         }
 
-        public void UpdateRootHash()
+        public IWorldStateBackend.IStorageSetter BeginSet(int estimatedEntries)
         {
-            UpdateRootHash(canBeParallel: true);
+            return new StorageTreeBulkSetter(estimatedEntries, this);
+        }
+
+        private class StorageTreeBulkSetter(int estimatedEntries, StorageTree storageTree) : IWorldStateBackend.IStorageSetter
+        {
+            ArrayPoolList<PatriciaTree.BulkSetEntry> _bulkWrite = new(estimatedEntries);
+            private ValueHash256 _keyBuff = new ValueHash256();
+
+            public void Set(in UInt256 index, byte[] value)
+            {
+                StorageTree.ComputeKeyWithLookup(index, _keyBuff.BytesAsSpan);
+                _bulkWrite.Add(StorageTree.CreateBulkSetEntry(_keyBuff, value));
+            }
+
+            public void Dispose()
+            {
+                storageTree.BulkSet(_bulkWrite);
+                _bulkWrite.Dispose();
+            }
         }
 
         public void Set(in ValueHash256 key, byte[] value, bool rlpEncode = true)

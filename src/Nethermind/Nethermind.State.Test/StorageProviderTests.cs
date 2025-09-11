@@ -460,7 +460,8 @@ public class StorageProviderTests
     [TestCase(1000)]
     public void Set_empty_value_for_storage_cell_without_read_clears_data(int numItems)
     {
-        IWorldState worldState = new WorldState(TestTrieStoreFactory.Build(new MemDb(), LimboLogs.Instance), Substitute.For<IDb>(), LogManager);
+        IWorldState worldState = new WorldState(
+            new TrieStoreBackend(TestTrieStoreFactory.Build(new MemDb(), LimboLogs.Instance), LimboLogs.Instance), Substitute.For<IDb>(), LogManager);
 
         using var disposable = worldState.BeginScope(IWorldState.PreGenesis);
         worldState.CreateAccount(TestItem.AddressA, 1);
@@ -494,7 +495,8 @@ public class StorageProviderTests
     [Test]
     public void Set_empty_value_for_storage_cell_with_read_clears_data()
     {
-        IWorldState worldState = new WorldState(TestTrieStoreFactory.Build(new MemDb(), LimboLogs.Instance), Substitute.For<IDb>(), LogManager);
+        IWorldState worldState = new WorldState(
+            new TrieStoreBackend(TestTrieStoreFactory.Build(new MemDb(), LimboLogs.Instance), LimboLogs.Instance), Substitute.For<IDb>(), LogManager);
 
         using var disposable = worldState.BeginScope(IWorldState.PreGenesis);
         worldState.CreateAccount(TestItem.AddressA, 1);
