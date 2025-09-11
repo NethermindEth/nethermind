@@ -6,6 +6,7 @@ using System.Threading.Tasks;
 using Nethermind.Api;
 using Nethermind.Api.Steps;
 using Nethermind.Blockchain;
+using Nethermind.Consensus.Processing;
 using Nethermind.Logging;
 
 namespace Nethermind.Init.Steps

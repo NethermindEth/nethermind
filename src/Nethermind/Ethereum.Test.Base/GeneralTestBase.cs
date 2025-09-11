@@ -8,6 +8,7 @@ using Autofac;
 using Nethermind.Api;
 using NUnit.Framework;
 using Nethermind.Config;
+using Nethermind.Consensus.Processing;
 using Nethermind.Consensus.Validators;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;

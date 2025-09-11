@@ -4,8 +4,8 @@
 using System.Threading;
 using Autofac;
 using FluentAssertions;
-using Nethermind.Api;
 using Nethermind.Consensus;
+using Nethermind.Consensus.Processing;
 using Nethermind.Consensus.Producers;
 using Nethermind.Consensus.Transactions;
 using Nethermind.Consensus.Validators;
