@@ -428,17 +428,3 @@ public sealed class BlockCachePreWarmer(
         }
     }
 }
-
-public class PrewarmerTxAdapter(ITransactionProcessorAdapter baseAdapter, BlockCachePreWarmer preWarmer, IWorldState worldState) : ITransactionProcessorAdapter
-{
-    public TransactionResult Execute(Transaction transaction, ITxTracer txTracer)
-    {
-        if (worldState is IPreBlockCaches preBlockCaches && preBlockCaches.IsToBeWarmedWorldState)
-        {
-            preWarmer.OnBeforeTxExecution(transaction);
-        }
-        return baseAdapter.Execute(transaction, txTracer);
-    }
-
-    public void SetBlockExecutionContext(in BlockExecutionContext blockExecutionContext) => baseAdapter.SetBlockExecutionContext(in blockExecutionContext);
-}

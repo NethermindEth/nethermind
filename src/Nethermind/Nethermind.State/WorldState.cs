@@ -36,7 +36,7 @@ namespace Nethermind.State
         private bool _isInScope = false;
         private readonly ILogger _logger;
         private PreBlockCaches? PreBlockCaches { get; }
-        public bool IsToBeWarmedWorldState { get; }
+        public bool IsWarmWorldState { get; }
 
         public Hash256 StateRoot
         {
@@ -67,7 +67,7 @@ namespace Nethermind.State
             bool populatePreBlockCache = true)
         {
             PreBlockCaches = preBlockCaches;
-            IsToBeWarmedWorldState = populatePreBlockCache;
+            IsWarmWorldState = !populatePreBlockCache;
             _trieStore = trieStore;
             _stateProvider = new StateProvider(trieStore.GetTrieStore(null), codeDb, logManager, stateTree, PreBlockCaches?.StateCache, populatePreBlockCache);
             _persistentStorageProvider = new PersistentStorageProvider(trieStore, _stateProvider, logManager, storageTreeFactory, PreBlockCaches?.StorageCache, populatePreBlockCache);
