@@ -20,7 +20,7 @@ using Nethermind.State;
 
 namespace Nethermind.Init.Modules;
 
-public class MainProcessingContext : IMainProcessingContext, IAsyncDisposable
+public class MainProcessingContext : IMainProcessingContext, BlockProcessor.BlockValidationTransactionsExecutor.ITransactionProcessedEventHandler, IAsyncDisposable
 {
     public MainProcessingContext(
         ILifetimeScope rootLifetimeScope,
@@ -45,6 +45,7 @@ public class MainProcessingContext : IMainProcessingContext, IAsyncDisposable
                 .AddSingleton<IWorldState>(mainWorldState)
                 .AddModule(blockValidationModules)
                 .AddScoped<ITransactionProcessorAdapter, ExecuteTransactionProcessorAdapter>()
+                .AddSingleton<BlockProcessor.BlockValidationTransactionsExecutor.ITransactionProcessedEventHandler>(this)
                 .AddModule(mainProcessingModules)
 
                 .AddScoped<IBlockchainProcessor, IBranchProcessor>((branchProcessor) => new BlockchainProcessor(
@@ -93,6 +94,11 @@ public class MainProcessingContext : IMainProcessingContext, IAsyncDisposable
     public IBlockProcessor BlockProcessor => _components.BlockProcessor;
     public ITransactionProcessor TransactionProcessor => _components.TransactionProcessor;
     public GenesisLoader GenesisLoader => _components.GenesisLoader;
+    public event EventHandler<TxProcessedEventArgs>? TransactionProcessed;
+    public void OnTransactionProcessed(TxProcessedEventArgs txProcessedEventArgs)
+    {
+        TransactionProcessed?.Invoke(this, txProcessedEventArgs);
+    }
 
     private record Components(
         ITransactionProcessor TransactionProcessor,
