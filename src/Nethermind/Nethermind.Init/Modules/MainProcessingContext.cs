@@ -71,6 +71,7 @@ public class MainProcessingContext : IMainProcessingContext, IAsyncDisposable
                 builder
                     .AddScoped<PreBlockCaches>((mainWorldState as IPreBlockCaches)!.Caches)
                     .AddScoped<IBlockCachePreWarmer, BlockCachePreWarmer>()
+                    .AddDecorator<ITransactionProcessorAdapter, PrewarmerTxAdapter>()
                     ;
             }
         });
