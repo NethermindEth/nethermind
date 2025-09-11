@@ -41,7 +41,7 @@ public class Tests
             .WithGeneratedExtraConsensusData()
             .WithMixHash(Hash256.Zero)
             .WithParent(headerParent);
-            blockHeaderBuilder.WithHash(blockHeaderBuilder.TestObject.GetOrCalculateHash());
+            blockHeaderBuilder.WithHash(blockHeaderBuilder.TestObject.CalculateHash());
   
         yield return new TestCaseData(headerParent, blockHeaderBuilder.WithHash(blockHeaderBuilder.TestObject.CalculateHash()).TestObject.Clone(), true);
 
