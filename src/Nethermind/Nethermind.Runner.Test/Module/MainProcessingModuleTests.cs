@@ -3,8 +3,8 @@
 
 using Autofac;
 using FluentAssertions;
-using Nethermind.Api;
 using Nethermind.Blockchain;
+using Nethermind.Consensus.Processing;
 using Nethermind.Core;
 using Nethermind.Core.Test.Modules;
 using Nethermind.Evm;
