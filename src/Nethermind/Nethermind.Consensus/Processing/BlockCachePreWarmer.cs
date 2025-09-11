@@ -429,7 +429,7 @@ public sealed class BlockCachePreWarmer(
     }
 }
 
-public class PrewarmerTxAdapter(ITransactionProcessorAdapter baseAdapter, BlockCachePreWarmer preWarmer, IWorldState worldState): ITransactionProcessorAdapter
+public class PrewarmerTxAdapter(ITransactionProcessorAdapter baseAdapter, BlockCachePreWarmer preWarmer, IWorldState worldState) : ITransactionProcessorAdapter
 {
     public TransactionResult Execute(Transaction transaction, ITxTracer txTracer)
     {
