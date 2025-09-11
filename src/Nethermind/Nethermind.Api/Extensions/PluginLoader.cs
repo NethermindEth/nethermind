@@ -149,7 +149,8 @@ public class PluginLoader(string pluginPath, IFileSystem fileSystem, ILogger log
     private IList<INethermindPlugin> OrderPlugins(IList<INethermindPlugin> plugins, IReadOnlyList<string> customOrder)
     {
         Dictionary<string, int> priorities = customOrder
-            .Select((name, index) => {
+            .Select((name, index) =>
+            {
                 var normalizedName = name.EndsWith("Plugin", StringComparison.OrdinalIgnoreCase)
                     ? name
                     : name + "Plugin";
@@ -158,7 +159,8 @@ public class PluginLoader(string pluginPath, IFileSystem fileSystem, ILogger log
             .ToDictionary(x => x.normalizedName, x => x.index, StringComparer.OrdinalIgnoreCase);
 
         return plugins
-            .OrderBy(p => {
+            .OrderBy(p =>
+            {
                 if (p.GetType().Name == "HealthChecksPlugin")
                     return -2000;
 
