@@ -158,7 +158,17 @@ public class PluginLoader(string pluginPath, IFileSystem fileSystem, ILogger log
             .ToDictionary(x => x.normalizedName, x => x.index, StringComparer.OrdinalIgnoreCase);
 
         return plugins
-            .OrderBy(p => priorities.GetValueOrDefault(p.GetType().Name, int.MaxValue))
+            .OrderBy(p => {
+                if (p.GetType().Name == "HealthChecksPlugin")
+                    return -2000;
+
+                if (p is IConsensusPlugin)
+                {
+                    return -1000 + (priorities.TryGetValue(p.GetType().Name, out int v) ? v : 0);
+                }
+
+                return priorities.TryGetValue(p.GetType().Name, out int v2) ? v2 : int.MaxValue;
+            })
             .ThenBy(p => p.Priority)
             .ThenBy(p => p.GetType().Name, StringComparer.OrdinalIgnoreCase)
             .ToList();
