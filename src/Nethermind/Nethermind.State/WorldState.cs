@@ -347,9 +347,9 @@ namespace Nethermind.State
             DebugGuardInScope();
             int persistentSnapshot = _persistentStorageProvider.TakeSnapshot(newTransactionStart);
             int transientSnapshot = _transientStorageProvider.TakeSnapshot(newTransactionStart);
-            Snapshot.Storage storageSnapshot = new Snapshot.Storage(persistentSnapshot, transientSnapshot);
+            Snapshot.Storage storageSnapshot = new (persistentSnapshot, transientSnapshot);
             int stateSnapshot = _stateProvider.TakeSnapshot();
-            return new Snapshot(storageSnapshot, stateSnapshot);
+            return new Snapshot(storageSnapshot, stateSnapshot, -1);
         }
 
         public void Restore(Snapshot snapshot)
@@ -363,7 +363,7 @@ namespace Nethermind.State
         internal void Restore(int state, int persistentStorage, int transientStorage)
         {
             DebugGuardInScope();
-            Restore(new Snapshot(new Snapshot.Storage(persistentStorage, transientStorage), state));
+            Restore(new Snapshot(new Snapshot.Storage(persistentStorage, transientStorage), state, -1));
         }
 
         public void SetNonce(Address address, in UInt256 nonce)

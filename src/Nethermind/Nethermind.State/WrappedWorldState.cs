@@ -113,7 +113,7 @@ public class WrappedWorldState(IWorldState innerWorldState) : IWorldState
     public void ResetTransient()
         => _innerWorldState.ResetTransient();
 
-    public void Restore(Snapshot snapshot)
+    public virtual void Restore(Snapshot snapshot)
         => _innerWorldState.Restore(snapshot);
 
     public virtual void Set(in StorageCell storageCell, byte[] newValue)
@@ -131,7 +131,7 @@ public class WrappedWorldState(IWorldState innerWorldState) : IWorldState
     public virtual void SubtractFromBalance(Address address, in UInt256 balanceChange, IReleaseSpec spec, out UInt256 oldBalance)
         => _innerWorldState.SubtractFromBalance(address, balanceChange, spec, out oldBalance);
 
-    public Snapshot TakeSnapshot(bool newTransactionStart = false)
+    public virtual Snapshot TakeSnapshot(bool newTransactionStart = false)
         => _innerWorldState.TakeSnapshot(newTransactionStart);
 
     public virtual bool TryGetAccount(Address address, out AccountStruct account)

@@ -8,10 +8,10 @@ using Nethermind.Int256;
 
 namespace Nethermind.Core.BlockAccessLists;
 
-public struct BlockAccessList : IEquatable<BlockAccessList>
+public struct BlockAccessList : IEquatable<BlockAccessList>, IJournal<int>
 {
-    private SortedDictionary<Address, AccountChanges> _accountChanges { get; init; }
-    private ushort _blockAccessIndex = 0;
+    private readonly SortedDictionary<Address, AccountChanges> _accountChanges;
+    public ushort Index = 0;
 
     public BlockAccessList()
     {
@@ -42,7 +42,7 @@ public struct BlockAccessList : IEquatable<BlockAccessList>
     public readonly AccountChanges? GetAccountChanges(Address address) => _accountChanges.TryGetValue(address, out AccountChanges value) ? value : null;
 
     public void IncrementBlockAccessIndex()
-        => _blockAccessIndex++;
+        => Index++;
 
     public void AddBalanceChange(Address address, UInt256? before, UInt256? after)
     {
@@ -53,7 +53,7 @@ public struct BlockAccessList : IEquatable<BlockAccessList>
 
         BalanceChange balanceChange = new()
         {
-            BlockAccessIndex = _blockAccessIndex,
+            BlockAccessIndex = Index,
             PostBalance = after!.Value
         };
 
@@ -70,7 +70,7 @@ public struct BlockAccessList : IEquatable<BlockAccessList>
         }
 
         SortedList<ushort, BalanceChange> balanceChanges = accountChanges.BalanceChanges;
-        if (balanceChanges.Count != 0 && balanceChanges.Last().Key == _blockAccessIndex)
+        if (balanceChanges.Count != 0 && balanceChanges.Last().Key == Index)
         {
             balanceChanges.RemoveAt(balanceChanges.Count - 1);
         }
@@ -81,7 +81,7 @@ public struct BlockAccessList : IEquatable<BlockAccessList>
     {
         CodeChange codeChange = new()
         {
-            BlockAccessIndex = _blockAccessIndex,
+            BlockAccessIndex = Index,
             NewCode = after
         };
 
@@ -92,7 +92,7 @@ public struct BlockAccessList : IEquatable<BlockAccessList>
         }
 
         SortedList<ushort, CodeChange> codeChanges = accountChanges.CodeChanges;
-        if (codeChanges.Count != 0 && codeChanges.Last().Key == _blockAccessIndex)
+        if (codeChanges.Count != 0 && codeChanges.Last().Key == Index)
         {
             codeChanges.RemoveAt(codeChanges.Count - 1);
         }
@@ -108,7 +108,7 @@ public struct BlockAccessList : IEquatable<BlockAccessList>
 
         NonceChange nonceChange = new()
         {
-            BlockAccessIndex = _blockAccessIndex,
+            BlockAccessIndex = Index,
             NewNonce = newNonce
         };
 
@@ -119,7 +119,7 @@ public struct BlockAccessList : IEquatable<BlockAccessList>
         }
 
         SortedList<ushort, NonceChange> nonceChanges = accountChanges.NonceChanges;
-        if (nonceChanges.Count != 0 && nonceChanges.Last().Key == _blockAccessIndex)
+        if (nonceChanges.Count != 0 && nonceChanges.Last().Key == Index)
         {
             nonceChanges.RemoveAt(nonceChanges.Count - 1);
         }
@@ -188,7 +188,7 @@ public struct BlockAccessList : IEquatable<BlockAccessList>
         value.CopyTo(newValue[(32 - value.Length)..]);
         StorageChange storageChange = new()
         {
-            BlockAccessIndex = _blockAccessIndex,
+            BlockAccessIndex = Index,
             NewValue = new(newValue.ToArray())
         };
 
@@ -198,11 +198,22 @@ public struct BlockAccessList : IEquatable<BlockAccessList>
         {
             storageChanges = new(storageKey);
         }
-        else if (storageChanges.Changes is not [] && storageChanges.Changes[^1].BlockAccessIndex == _blockAccessIndex)
+        else if (storageChanges.Changes is not [] && storageChanges.Changes[^1].BlockAccessIndex == Index)
         {
             storageChanges.Changes.RemoveAt(storageChanges.Changes.Count - 1);
         }
         storageChanges.Changes.Add(storageChange);
         accountChanges.StorageChanges[storageKey] = storageChanges;
+    }
+
+    public int TakeSnapshot()
+    {
+        // throw new NotImplementedException();
+        return 0;
+    }
+
+    public void Restore(int snapshot)
+    {
+        throw new NotImplementedException();
     }
 }

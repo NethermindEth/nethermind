@@ -85,4 +85,17 @@ public class TracedAccessWorldState(IWorldState innerWorldState) : WrappedWorldS
         BlockAccessList.AddAccountRead(address);
         return _innerWorldState.TryGetAccount(address, out account);
     }
+
+    public override void Restore(Snapshot snapshot)
+    {
+        BlockAccessList.Restore(snapshot.BlockAccessListSnapshot);
+        _innerWorldState.Restore(snapshot);
+    }
+
+    public override Snapshot TakeSnapshot(bool newTransactionStart = false)
+    {
+        int blockAccessListSnapshot = BlockAccessList.TakeSnapshot();
+        Snapshot snapshot = _innerWorldState.TakeSnapshot(newTransactionStart);
+        return new(snapshot.StorageSnapshot, snapshot.StateSnapshot, blockAccessListSnapshot);
+    }
 }

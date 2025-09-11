@@ -29,13 +29,13 @@ using static Nethermind.State.StateProvider;
 
 namespace Nethermind.State
 {
-    internal class StateProvider
+    internal class StateProvider : IJournal<int>
     {
         private static readonly UInt256 _zero = UInt256.Zero;
 
-        private readonly Dictionary<AddressAsKey, Stack<int>> _intraTxCache = new();
-        private readonly HashSet<AddressAsKey> _committedThisRound = new();
-        private readonly HashSet<AddressAsKey> _nullAccountReads = new();
+        private readonly Dictionary<AddressAsKey, Stack<int>> _intraTxCache = [];
+        private readonly HashSet<AddressAsKey> _committedThisRound = [];
+        private readonly HashSet<AddressAsKey> _nullAccountReads = [];
         // Only guarding against hot duplicates so filter doesn't need to be too big
         // Note:
         // False negatives are fine as they will just result in a overwrite set
@@ -44,7 +44,7 @@ namespace Nethermind.State
         private readonly Dictionary<AddressAsKey, ChangeTrace> _blockChanges = new(4_096);
         private readonly ConcurrentDictionary<AddressAsKey, Account>? _preBlockCache;
 
-        private readonly List<Change> _keptInCache = new();
+        private readonly List<Change> _keptInCache = [];
         private readonly ILogger _logger;
         private readonly IKeyValueStoreWithBatching _codeDb;
         private Dictionary<Hash256AsKey, byte[]> _codeBatch;
