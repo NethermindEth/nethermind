@@ -166,10 +166,6 @@ namespace Nethermind.JsonRpc.Test.Modules
                     // TODO: Double check if block production have the same reward calculator
                     builder.UpdateSingleton<IRpcModuleFactory<ITraceRpcModule>>(builder => builder.AddSingleton<IRewardCalculatorSource, RewardCalculator>());
 
-                    // Filter manager need the block processor, but the block processor is currently not completely DI, so need to patch it in.
-                    builder.AddSingleton<IFilterManager, IFilterStore, ITxPool, ILogManager>((store, txPool, logManager) =>
-                            new FilterManager(store, _blockchain.BranchProcessor, txPool, logManager));
-
                     if (_blockFinderOverride is not null) builder.AddSingleton(_blockFinderOverride);
                     if (_receiptFinderOverride is not null) builder.AddSingleton(_receiptFinderOverride);
                     if (_blockchainBridgeOverride is not null) builder.AddSingleton(_blockchainBridgeOverride);
