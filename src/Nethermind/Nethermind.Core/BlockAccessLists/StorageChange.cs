@@ -7,7 +7,7 @@ using System.Linq;
 
 namespace Nethermind.Core.BlockAccessLists;
 
-public readonly struct StorageChange(ushort blockAccessIndex, Bytes32 newValue) : IEquatable<StorageChange>
+public readonly struct StorageChange(ushort blockAccessIndex, Bytes32 newValue) : IEquatable<StorageChange>, IIndexedChange
 {
     public ushort BlockAccessIndex { get; init; } = blockAccessIndex;
     public Bytes32 NewValue { get; init; } = newValue;

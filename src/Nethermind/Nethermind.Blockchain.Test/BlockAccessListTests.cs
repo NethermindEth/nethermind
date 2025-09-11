@@ -163,6 +163,7 @@ public class BlockAccessListTests()
         (worldState as TracedAccessWorldState)!.BlockAccessList = new();
 
         const long gasUsed = 167340;
+        const long gasUsedBeforeFinal = 92100;
         const ulong gasPrice = 2;
         const long gasLimit = 100000;
         const ulong timestamp = 1000000;
@@ -265,7 +266,8 @@ public class BlockAccessListTests()
         StorageChange zeroStorageChangeEnd = new(3, Bytes32.Zero);
 
         UInt256 addressABalance = _accountBalance - gasPrice * GasCostOf.Transaction;
-        UInt256 addressABalance2 = _accountBalance - gasPrice * gasUsed;
+        UInt256 addressABalance2 = _accountBalance - gasPrice * gasUsedBeforeFinal;
+        UInt256 addressABalance3 = _accountBalance - gasPrice * gasUsed;
 
         using (Assert.EnterMultipleScope())
         {
@@ -274,8 +276,8 @@ public class BlockAccessListTests()
                 Address = TestItem.AddressA,
                 StorageChanges = [],
                 StorageReads = [],
-                BalanceChanges = new SortedList<ushort, BalanceChange> { { 1, new(1, addressABalance) }, { 2, new(2, addressABalance2) } },
-                NonceChanges = new SortedList<ushort, NonceChange> { { 1, new(1, 1) }, { 2, new(2, 2) } },
+                BalanceChanges = new SortedList<ushort, BalanceChange> { { 1, new(1, addressABalance) }, { 2, new(2, addressABalance2) }, { 3, new(3, addressABalance3) } },
+                NonceChanges = new SortedList<ushort, NonceChange> { { 1, new(1, 1) }, { 2, new(2, 2) }, { 3, new(3, 3) } },
                 CodeChanges = []
             }));
 
@@ -294,7 +296,7 @@ public class BlockAccessListTests()
                 Address = TestItem.AddressC,
                 StorageChanges = [],
                 StorageReads = [],
-                BalanceChanges = new SortedList<ushort, BalanceChange> { { 1, new(1, new UInt256(GasCostOf.Transaction)) }, { 2, new(2, new UInt256(gasUsed)) } },
+                BalanceChanges = new SortedList<ushort, BalanceChange> { { 1, new(1, new UInt256(GasCostOf.Transaction)) }, { 2, new(2, new UInt256(gasUsedBeforeFinal)) }, { 3, new(3, new UInt256(gasUsed)) } },
                 NonceChanges = [],
                 CodeChanges = []
             }));
@@ -304,7 +306,7 @@ public class BlockAccessListTests()
                 Address = TestItem.AddressD,
                 StorageChanges = [],
                 StorageReads = [],
-                BalanceChanges = new SortedList<ushort, BalanceChange> { { 3, new(3, 1.GWei()) } },
+                BalanceChanges = new SortedList<ushort, BalanceChange> { { 4, new(4, 1.GWei()) } },
                 NonceChanges = [],
                 CodeChanges = []
             }));
@@ -321,11 +323,11 @@ public class BlockAccessListTests()
 
             Assert.That(newContractChanges2, Is.EqualTo(new AccountChanges()
             {
-                Address = newContractAddress,
+                Address = newContractAddress2,
                 StorageChanges = [],
                 StorageReads = [ToStorageRead(slot1)],
                 BalanceChanges = [],
-                NonceChanges = new SortedList<ushort, NonceChange> { { 3, new(3, 1) } },
+                NonceChanges = [],
                 CodeChanges = []
             }));
 

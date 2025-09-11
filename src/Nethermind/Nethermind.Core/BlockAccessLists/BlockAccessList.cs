@@ -10,17 +10,20 @@ namespace Nethermind.Core.BlockAccessLists;
 
 public struct BlockAccessList : IEquatable<BlockAccessList>, IJournal<int>
 {
-    private readonly SortedDictionary<Address, AccountChanges> _accountChanges;
     public ushort Index = 0;
+    private readonly SortedDictionary<Address, AccountChanges> _accountChanges;
+    private readonly Stack<Change> _changes;
 
     public BlockAccessList()
     {
         _accountChanges = [];
+        _changes = new();
     }
 
     public BlockAccessList(SortedDictionary<Address, AccountChanges> accountChanges)
     {
         _accountChanges = accountChanges;
+        _changes = new();
     }
 
     public readonly bool Equals(BlockAccessList other) =>
@@ -42,7 +45,10 @@ public struct BlockAccessList : IEquatable<BlockAccessList>, IJournal<int>
     public readonly AccountChanges? GetAccountChanges(Address address) => _accountChanges.TryGetValue(address, out AccountChanges value) ? value : null;
 
     public void IncrementBlockAccessIndex()
-        => Index++;
+    {
+        _changes.Clear();
+        Index++;
+    }
 
     public void AddBalanceChange(Address address, UInt256? before, UInt256? after)
     {
@@ -72,7 +78,22 @@ public struct BlockAccessList : IEquatable<BlockAccessList>, IJournal<int>
         SortedList<ushort, BalanceChange> balanceChanges = accountChanges.BalanceChanges;
         if (balanceChanges.Count != 0 && balanceChanges.Last().Key == Index)
         {
+            _changes.Push(new()
+            {
+                Address = address,
+                Type = ChangeType.BalanceChange,
+                PreviousValue = balanceChanges.Last().Value
+            });
             balanceChanges.RemoveAt(balanceChanges.Count - 1);
+        }
+        else
+        {
+            _changes.Push(new()
+            {
+                Address = address,
+                Type = ChangeType.BalanceChange,
+                PreviousValue = null
+            });
         }
         balanceChanges.Add(balanceChange.BlockAccessIndex, balanceChange);
     }
@@ -94,7 +115,22 @@ public struct BlockAccessList : IEquatable<BlockAccessList>, IJournal<int>
         SortedList<ushort, CodeChange> codeChanges = accountChanges.CodeChanges;
         if (codeChanges.Count != 0 && codeChanges.Last().Key == Index)
         {
+            _changes.Push(new()
+            {
+                Address = address,
+                Type = ChangeType.CodeChange,
+                PreviousValue = codeChanges.Last().Value
+            });
             codeChanges.RemoveAt(codeChanges.Count - 1);
+        }
+        else
+        {
+            _changes.Push(new()
+            {
+                Address = address,
+                Type = ChangeType.CodeChange,
+                PreviousValue = null
+            });
         }
         codeChanges.Add(codeChange.BlockAccessIndex, codeChange);
     }
@@ -121,7 +157,22 @@ public struct BlockAccessList : IEquatable<BlockAccessList>, IJournal<int>
         SortedList<ushort, NonceChange> nonceChanges = accountChanges.NonceChanges;
         if (nonceChanges.Count != 0 && nonceChanges.Last().Key == Index)
         {
+            _changes.Push(new()
+            {
+                Address = address,
+                Type = ChangeType.NonceChange,
+                PreviousValue = nonceChanges.Last().Value
+            });
             nonceChanges.RemoveAt(nonceChanges.Count - 1);
+        }
+        else
+        {
+            _changes.Push(new()
+            {
+                Address = address,
+                Type = ChangeType.NonceChange,
+                PreviousValue = null
+            });
         }
         nonceChanges.Add(nonceChange.BlockAccessIndex, nonceChange);
     }
@@ -193,6 +244,7 @@ public struct BlockAccessList : IEquatable<BlockAccessList>, IJournal<int>
         };
 
         byte[] storageKey = [.. key];
+        StorageChange? previousStorage = null;
 
         if (!accountChanges.StorageChanges.TryGetValue(storageKey, out SlotChanges storageChanges))
         {
@@ -200,20 +252,94 @@ public struct BlockAccessList : IEquatable<BlockAccessList>, IJournal<int>
         }
         else if (storageChanges.Changes is not [] && storageChanges.Changes[^1].BlockAccessIndex == Index)
         {
+            previousStorage = storageChanges.Changes[^1];
             storageChanges.Changes.RemoveAt(storageChanges.Changes.Count - 1);
         }
         storageChanges.Changes.Add(storageChange);
         accountChanges.StorageChanges[storageKey] = storageChanges;
+        _changes.Push(new()
+        {
+            Address = accountChanges.Address,
+            Slot = storageKey,
+            Type = ChangeType.StorageChange,
+            PreviousValue = previousStorage
+        });
     }
 
-    public int TakeSnapshot()
-    {
-        // throw new NotImplementedException();
-        return 0;
-    }
+    public readonly int TakeSnapshot()
+        => _changes.Count;
 
     public void Restore(int snapshot)
     {
+        snapshot = int.Max(0, snapshot);
+        while (_changes.Count > snapshot)
+        {
+            Change change = _changes.Pop();
+            switch (change.Type)
+            {
+                case ChangeType.BalanceChange:
+                    BalanceChange? previousBalance = change.PreviousValue is null ? null : (BalanceChange)change.PreviousValue;
+                    SortedList<ushort, BalanceChange> balanceChanges = _accountChanges[change.Address].BalanceChanges;
+
+                    balanceChanges.RemoveAt(balanceChanges.Count - 1);
+                    if (previousBalance is not null)
+                    {
+                        balanceChanges.Add(Index, previousBalance.Value);
+                    }
+                    break;
+                case ChangeType.CodeChange:
+                    CodeChange? previousCode = change.PreviousValue is null ? null : (CodeChange)change.PreviousValue;
+                    SortedList<ushort, CodeChange> codeChanges = _accountChanges[change.Address].CodeChanges;
+
+                    codeChanges.RemoveAt(codeChanges.Count - 1);
+                    if (previousCode is not null)
+                    {
+                        codeChanges.Add(Index, previousCode.Value);
+                    }
+                    break;
+                case ChangeType.NonceChange:
+                    NonceChange? previousNode = change.PreviousValue is null ? null : (NonceChange)change.PreviousValue;
+                    SortedList<ushort, NonceChange> nonceChanges = _accountChanges[change.Address].NonceChanges;
+
+                    nonceChanges.RemoveAt(nonceChanges.Count - 1);
+                    if (previousNode is not null)
+                    {
+                        nonceChanges.Add(Index, previousNode.Value);
+                    }
+                    break;
+                case ChangeType.StorageChange:
+                    StorageChange? previousStorage = change.PreviousValue is null ? null : (StorageChange)change.PreviousValue;
+                    SlotChanges storageChanges = _accountChanges[change.Address].StorageChanges[change.Slot!];
+
+                    storageChanges.Changes.RemoveAt(storageChanges.Changes.Count - 1);
+                    if (previousStorage is not null)
+                    {
+                        storageChanges.Changes.Add(previousStorage.Value);
+                    }
+
+                    if (storageChanges.Changes.Count == 0)
+                    {
+                        _accountChanges[change.Address].StorageChanges.Remove(change.Slot!);
+                    }
+                    break;
+            }
+        }
+
         // throw new NotImplementedException();
+    }
+
+    private enum ChangeType
+    {
+        BalanceChange = 0,
+        CodeChange = 1,
+        NonceChange = 2,
+        StorageChange = 3
+    }
+    private readonly struct Change
+    {
+        public Address Address { get; init; }
+        public byte[]? Slot { get; init; }
+        public ChangeType Type { get; init; }
+        public IIndexedChange? PreviousValue { get; init; }
     }
 }

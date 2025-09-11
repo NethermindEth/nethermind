@@ -347,7 +347,7 @@ namespace Nethermind.State
             DebugGuardInScope();
             int persistentSnapshot = _persistentStorageProvider.TakeSnapshot(newTransactionStart);
             int transientSnapshot = _transientStorageProvider.TakeSnapshot(newTransactionStart);
-            Snapshot.Storage storageSnapshot = new (persistentSnapshot, transientSnapshot);
+            Snapshot.Storage storageSnapshot = new(persistentSnapshot, transientSnapshot);
             int stateSnapshot = _stateProvider.TakeSnapshot();
             return new Snapshot(storageSnapshot, stateSnapshot, -1);
         }

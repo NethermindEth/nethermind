@@ -5,7 +5,7 @@ using System;
 
 namespace Nethermind.Core.BlockAccessLists;
 
-public readonly struct NonceChange(ushort blockAccessIndex, ulong newNonce) : IEquatable<NonceChange>
+public readonly struct NonceChange(ushort blockAccessIndex, ulong newNonce) : IEquatable<NonceChange>, IIndexedChange
 {
     public ushort BlockAccessIndex { get; init; } = blockAccessIndex;
     public ulong NewNonce { get; init; } = newNonce;

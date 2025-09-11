@@ -132,10 +132,11 @@ public partial class BlockProcessor
         BlockHeader header = block.Header;
 
         ReceiptsTracer.SetOtherTracer(blockTracer);
-
         ReceiptsTracer.StartNewBlockTrace(block);
 
         _blockTransactionsExecutor.SetBlockExecutionContext(new BlockExecutionContext(block.Header, spec));
+
+        _tracedAccessWorldState.Enabled = spec.BlockLevelAccessListsEnabled;
 
         StoreBeaconRoot(block, spec);
         _blockHashStore.ApplyBlockhashStateChanges(header, spec);

@@ -13,6 +13,7 @@ namespace Nethermind.State;
 
 public class TracedAccessWorldState(IWorldState innerWorldState) : WrappedWorldState(innerWorldState), IPreBlockCaches
 {
+    public bool Enabled { get; set; } = false;
     public BlockAccessList BlockAccessList = new();
 
     public PreBlockCaches Caches => (_innerWorldState as IPreBlockCaches).Caches;
@@ -23,8 +24,12 @@ public class TracedAccessWorldState(IWorldState innerWorldState) : WrappedWorldS
     public override void AddToBalance(Address address, in UInt256 balanceChange, IReleaseSpec spec, out UInt256 oldBalance)
     {
         _innerWorldState.AddToBalance(address, balanceChange, spec, out oldBalance);
-        UInt256 newBalance = oldBalance + balanceChange;
-        BlockAccessList.AddBalanceChange(address, oldBalance, newBalance);
+
+        if (Enabled)
+        {
+            UInt256 newBalance = oldBalance + balanceChange;
+            BlockAccessList.AddBalanceChange(address, oldBalance, newBalance);
+        }
     }
 
     public override bool AddToBalanceAndCreateIfNotExists(Address address, in UInt256 balanceChange, IReleaseSpec spec)
@@ -33,8 +38,13 @@ public class TracedAccessWorldState(IWorldState innerWorldState) : WrappedWorldS
     public override bool AddToBalanceAndCreateIfNotExists(Address address, in UInt256 balanceChange, IReleaseSpec spec, out UInt256 oldBalance)
     {
         bool res = _innerWorldState.AddToBalanceAndCreateIfNotExists(address, balanceChange, spec, out oldBalance);
-        UInt256 newBalance = oldBalance + balanceChange;
-        BlockAccessList.AddBalanceChange(address, oldBalance, newBalance);
+
+        if (Enabled)
+        {
+            UInt256 newBalance = oldBalance + balanceChange;
+            BlockAccessList.AddBalanceChange(address, oldBalance, newBalance);
+        }
+
         return res;
     }
 
@@ -46,7 +56,10 @@ public class TracedAccessWorldState(IWorldState innerWorldState) : WrappedWorldS
 
     public override ReadOnlySpan<byte> Get(in StorageCell storageCell)
     {
-        BlockAccessList.AddStorageRead(storageCell);
+        if (Enabled)
+        {
+            BlockAccessList.AddStorageRead(storageCell);
+        }
         return _innerWorldState.Get(storageCell);
     }
 
@@ -56,19 +69,29 @@ public class TracedAccessWorldState(IWorldState innerWorldState) : WrappedWorldS
     public override void IncrementNonce(Address address, UInt256 delta, out UInt256 oldNonce)
     {
         _innerWorldState.IncrementNonce(address, delta, out oldNonce);
-        BlockAccessList.AddNonceChange(address, (ulong)(oldNonce + delta));
+
+        if (Enabled)
+        {
+            BlockAccessList.AddNonceChange(address, (ulong)(oldNonce + delta));
+        }
     }
 
     public override bool InsertCode(Address address, in ValueHash256 codeHash, ReadOnlyMemory<byte> code, IReleaseSpec spec, bool isGenesis = false)
     {
-        BlockAccessList.AddCodeChange(address, code.ToArray());
+        if (Enabled)
+        {
+            BlockAccessList.AddCodeChange(address, code.ToArray());
+        }
         return _innerWorldState.InsertCode(address, codeHash, code, spec, isGenesis);
     }
 
     public override void Set(in StorageCell storageCell, byte[] newValue)
     {
-        ReadOnlySpan<byte> oldValue = _innerWorldState.Get(storageCell);
-        BlockAccessList.AddStorageChange(storageCell, [.. oldValue], newValue);
+        if (Enabled)
+        {
+            ReadOnlySpan<byte> oldValue = _innerWorldState.Get(storageCell);
+            BlockAccessList.AddStorageChange(storageCell, [.. oldValue], newValue);
+        }
         _innerWorldState.Set(storageCell, newValue);
     }
 
@@ -77,18 +100,28 @@ public class TracedAccessWorldState(IWorldState innerWorldState) : WrappedWorldS
         UInt256 before = _innerWorldState.GetBalance(address);
         UInt256 after = before - balanceChange;
         _innerWorldState.SubtractFromBalance(address, balanceChange, spec);
-        BlockAccessList.AddBalanceChange(address, before, after);
+
+        if (Enabled)
+        {
+            BlockAccessList.AddBalanceChange(address, before, after);
+        }
     }
 
     public override bool TryGetAccount(Address address, out AccountStruct account)
     {
-        BlockAccessList.AddAccountRead(address);
+        if (Enabled)
+        {
+            BlockAccessList.AddAccountRead(address);
+        }
         return _innerWorldState.TryGetAccount(address, out account);
     }
 
     public override void Restore(Snapshot snapshot)
     {
-        BlockAccessList.Restore(snapshot.BlockAccessListSnapshot);
+        if (Enabled)
+        {
+            BlockAccessList.Restore(snapshot.BlockAccessListSnapshot);
+        }
         _innerWorldState.Restore(snapshot);
     }
 
