@@ -214,6 +214,6 @@ public struct BlockAccessList : IEquatable<BlockAccessList>, IJournal<int>
 
     public void Restore(int snapshot)
     {
-        throw new NotImplementedException();
+        // throw new NotImplementedException();
     }
 }

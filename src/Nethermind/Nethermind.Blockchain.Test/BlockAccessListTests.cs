@@ -162,7 +162,7 @@ public class BlockAccessListTests()
 
         (worldState as TracedAccessWorldState)!.BlockAccessList = new();
 
-        const long gasUsed = 92100;
+        const long gasUsed = 167340;
         const ulong gasPrice = 2;
         const long gasLimit = 100000;
         const ulong timestamp = 1000000;
@@ -186,12 +186,32 @@ public class BlockAccessListTests()
             .WithCode(Eip2935TestConstants.InitCode)
             .TestObject;
 
+        /*
+        Store followed by revert should undo storage change
+        PUSH1 1
+        PUSH1 1
+        SSTORE
+        PUSH0
+        PUSH0
+        REVERT
+        */
+        byte[] code = Bytes.FromHexString("0x60016001555f5ffd");
+        Transaction tx3 = Build.A.Transaction
+            .WithTo(null)
+            .WithSenderAddress(TestItem.AddressA)
+            .WithValue(0)
+            .WithNonce(2)
+            .WithGasPrice(gasPrice)
+            .WithGasLimit(gasLimit)
+            .WithCode(code)
+            .TestObject;
+
         BlockHeader header = Build.A.BlockHeader
             .WithBaseFee(1)
             .WithNumber(1)
             .WithGasUsed(gasUsed)
-            .WithReceiptsRoot(new("0x6ade9745ba09d7b426314ec12280d510e4811867c2b56f215385842ffb43edf9"))
-            .WithStateRoot(new("0x18a32a11a465a81922828c9b2289924065a37a6961cbbef6633e57b465c11c9d"))
+            .WithReceiptsRoot(new("0x3d4548dff4e45f6e7838b223bf9476cd5ba4fd05366e8cb4e6c9b65763209569"))
+            .WithStateRoot(new("0x9399acd9f2603778c11646f05f7827509b5319815da74b5721a07defb6285c8d"))
             .WithBlobGasUsed(0)
             .WithBeneficiary(TestItem.AddressC)
             .WithParentBeaconBlockRoot(Hash256.Zero)
@@ -209,7 +229,7 @@ public class BlockAccessListTests()
         };
 
         Block block = Build.A.Block
-            .WithTransactions([tx, tx2])
+            .WithTransactions([tx, tx2, tx3])
             .WithBaseFeePerGas(1)
             .WithWithdrawals([withdrawal])
             .WithHeader(header).TestObject;
@@ -217,15 +237,17 @@ public class BlockAccessListTests()
         (Block processedBlock, TxReceipt[] _) = testBlockchain.BlockProcessor.ProcessOne(block, ProcessingOptions.None, NullBlockTracer.Instance, _spec, CancellationToken.None);
 
         BlockAccessList blockAccessList = Rlp.Decode<BlockAccessList>(processedBlock.BlockAccessList);
-        Assert.That(blockAccessList.GetAccountChanges().Count, Is.EqualTo(9));
+        Assert.That(blockAccessList.GetAccountChanges().Count, Is.EqualTo(10));
 
         Address newContractAddress = ContractAddress.From(TestItem.AddressA, 1);
+        Address newContractAddress2 = ContractAddress.From(TestItem.AddressA, 2);
 
         AccountChanges addressAChanges = blockAccessList.GetAccountChanges(TestItem.AddressA)!.Value;
         AccountChanges addressBChanges = blockAccessList.GetAccountChanges(TestItem.AddressB)!.Value;
         AccountChanges addressCChanges = blockAccessList.GetAccountChanges(TestItem.AddressC)!.Value;
         AccountChanges addressDChanges = blockAccessList.GetAccountChanges(TestItem.AddressD)!.Value;
         AccountChanges newContractChanges = blockAccessList.GetAccountChanges(newContractAddress)!.Value;
+        AccountChanges newContractChanges2 = blockAccessList.GetAccountChanges(newContractAddress2)!.Value;
         AccountChanges eip2935Changes = blockAccessList.GetAccountChanges(Eip2935Constants.BlockHashHistoryAddress)!.Value;
         AccountChanges eip4788Changes = blockAccessList.GetAccountChanges(Eip4788Constants.BeaconRootsAddress)!.Value;
         AccountChanges eip7002Changes = blockAccessList.GetAccountChanges(Eip7002Constants.WithdrawalRequestPredeployAddress)!.Value;
@@ -295,6 +317,16 @@ public class BlockAccessListTests()
                 BalanceChanges = [],
                 NonceChanges = new SortedList<ushort, NonceChange> { { 2, new(2, 1) } },
                 CodeChanges = new SortedList<ushort, CodeChange> { { 2, new(2, Eip2935TestConstants.Code) } }
+            }));
+
+            Assert.That(newContractChanges2, Is.EqualTo(new AccountChanges()
+            {
+                Address = newContractAddress,
+                StorageChanges = [],
+                StorageReads = [ToStorageRead(slot1)],
+                BalanceChanges = [],
+                NonceChanges = new SortedList<ushort, NonceChange> { { 3, new(3, 1) } },
+                CodeChanges = []
             }));
 
             Assert.That(eip2935Changes, Is.EqualTo(new AccountChanges()
