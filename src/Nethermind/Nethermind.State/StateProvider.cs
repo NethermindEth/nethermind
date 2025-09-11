@@ -704,20 +704,15 @@ namespace Nethermind.State
             int writes = 0;
             int skipped = 0;
 
-            using ArrayPoolList<PatriciaTree.BulkSetEntry> bulkWrite = new(_blockChanges.Count);
+            using IWorldStateBackend.IStateSetter treeSetter = _tree.BeginSet(_blockChanges.Count);
+
             foreach (var key in _blockChanges.Keys)
             {
                 ref var change = ref CollectionsMarshal.GetValueRefOrNullRef(_blockChanges, key);
                 if (change.Before != change.After)
                 {
                     change.Before = change.After;
-
-                    KeccakCache.ComputeTo(key.Value.Bytes, out ValueHash256 keccak);
-
-                    var account = change.After;
-                    Rlp accountRlp = account is null ? null : account.IsTotallyEmpty ? StateTree.EmptyAccountRlp : Rlp.Encode(account);
-
-                    bulkWrite.Add(new PatriciaTree.BulkSetEntry(keccak, accountRlp?.Bytes));
+                    treeSetter.Set(key, change.After);
                     writes++;
                 }
                 else
@@ -725,8 +720,6 @@ namespace Nethermind.State
                     skipped++;
                 }
             }
-
-            _tree.BulkSet(bulkWrite);
 
             if (writes > 0)
                 Metrics.IncrementStateTreeWrites(writes);

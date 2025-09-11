@@ -602,18 +602,15 @@ internal sealed class PersistentStorageProvider : PartialStorageProviderBase
             }
             else
             {
-                using ArrayPoolList<PatriciaTree.BulkSetEntry> bulkWrite = new(BlockChange.EstimatedSize);
+                using IWorldStateBackend.IStorageSetter setter = _backend.BeginSet(BlockChange.EstimatedSize);
 
-                Span<byte> keyBuf = stackalloc byte[32];
                 foreach (var kvp in BlockChange)
                 {
                     byte[] after = kvp.Value.After;
                     if (!Bytes.AreEqual(kvp.Value.Before, after))
                     {
                         BlockChange[kvp.Key] = new(after, after);
-
-                        StorageTree.ComputeKeyWithLookup(kvp.Key, keyBuf);
-                        bulkWrite.Add(StorageTree.CreateBulkSetEntry(new ValueHash256(keyBuf), after));
+                        setter.Set(kvp.Key, after);
 
                         writes++;
                     }
@@ -622,8 +619,6 @@ internal sealed class PersistentStorageProvider : PartialStorageProviderBase
                         skipped++;
                     }
                 }
-
-                _backend.BulkSet(bulkWrite);
             }
 
             if (writes > 0)

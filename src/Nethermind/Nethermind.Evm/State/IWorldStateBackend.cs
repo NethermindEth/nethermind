@@ -47,7 +47,13 @@ public interface IWorldStateBackend
         Hash256 RootHash { get; }
         Account? Get(Address address);
 
-        void Set(Address key, Account account);
+        void Set(Address key, Account account)
+        {
+            using IStateSetter stateSetter = BeginSet(1);
+            stateSetter.Set(key, account);
+        }
+
+        IStateSetter BeginSet(int estimatedEntries);
         void UpdateRootHash();
     }
 
@@ -70,7 +76,24 @@ public interface IWorldStateBackend
         /// Self-destruct. Maybe costly.
         /// </summary>
         void Clear();
+
+        void Set(in UInt256 index, byte[] value)
+        {
+            using IStorageSetter setter = BeginSet(1);
+            setter.Set(index, value);
+        }
+
+        IStorageSetter BeginSet(int estimatedEntries);
+        void UpdateRootHash(bool canBeParallel = true);
+    }
+
+    public interface IStorageSetter: IDisposable
+    {
         void Set(in UInt256 index, byte[] value);
-        void UpdateRootHash();
+    }
+
+    public interface IStateSetter: IDisposable
+    {
+        void Set(Address key, Account account);
     }
 }
