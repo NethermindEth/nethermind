@@ -15,6 +15,8 @@ namespace Nethermind.Consensus.Ethash
 {
     public class EthashPlugin(ChainSpec chainSpec, IMiningConfig miningConfig) : IConsensusPlugin
     {
+        public int Priority => PluginPriorities.Ethash;
+
         private INethermindApi _nethermindApi;
 
         public string Name => SealEngineType;

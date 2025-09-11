@@ -11,6 +11,4 @@ public interface IPluginLoader
     IEnumerable<Type> PluginTypes { get; }
 
     void Load();
-
-    public void OrderPlugins(IPluginConfig pluginConfig);
 }

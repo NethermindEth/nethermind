@@ -3,9 +3,9 @@
 
 using System;
 using System.Linq;
-using System.Threading.Tasks;
 using Autofac;
 using Autofac.Core;
+using Nethermind.Api;
 using Nethermind.Api.Extensions;
 using Nethermind.Flashbots.Modules.Flashbots;
 using Nethermind.Flashbots.Modules.Rbuilder;
@@ -16,6 +16,7 @@ namespace Nethermind.Flashbots;
 
 public class Flashbots(IFlashbotsConfig flashbotsConfig, IJsonRpcConfig jsonRpcConfig) : INethermindPlugin
 {
+    public int Priority => PluginPriorities.Flashbots;
     public virtual string Name => "Flashbots";
     public virtual string Description => "Flashbots";
     public string Author => "Nethermind";

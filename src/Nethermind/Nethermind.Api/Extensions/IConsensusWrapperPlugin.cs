@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using Nethermind.Consensus;
-using Nethermind.Consensus.Transactions;
 
 namespace Nethermind.Api.Extensions
 {
@@ -19,10 +18,5 @@ namespace Nethermind.Api.Extensions
         /// </remarks>
         IBlockProducerRunner InitBlockProducerRunner(IBlockProducerRunnerFactory baseRunnerFactory,
             IBlockProducer blockProducer) => baseRunnerFactory.InitBlockProducerRunner(blockProducer);
-
-        /// <summary>
-        /// Priorities for ordering multiple plugin. Only used to determine the wrapping order of block production.
-        /// </summary>
-        int Priority => 0;
     }
 }

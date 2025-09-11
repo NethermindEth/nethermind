@@ -38,7 +38,6 @@ using NLog.Config;
 using ILogger = Nethermind.Logging.ILogger;
 using NullLogger = Nethermind.Logging.NullLogger;
 using DotNettyLoggerFactory = DotNetty.Common.Internal.Logging.InternalLoggerFactory;
-using DotNettyLeakDetector = DotNetty.Common.ResourceLeakDetector;
 
 DataFeed.StartTime = Environment.TickCount64;
 Console.Title = ProductInfo.Name;
@@ -142,10 +141,6 @@ async Task<int> RunAsync(ParseResult parseResult, PluginLoader pluginLoader, Can
     IInitConfig initConfig = configProvider.GetConfig<IInitConfig>();
     IKeyStoreConfig keyStoreConfig = configProvider.GetConfig<IKeyStoreConfig>();
     ISnapshotConfig snapshotConfig = configProvider.GetConfig<ISnapshotConfig>();
-    IPluginConfig pluginConfig = configProvider.GetConfig<IPluginConfig>();
-
-    pluginLoader.OrderPlugins(pluginConfig);
-
     ResolveDataDirectory(parseResult.GetValue(BasicOptions.DataDirectory),
         initConfig, keyStoreConfig, snapshotConfig);
 

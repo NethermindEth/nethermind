@@ -49,6 +49,7 @@ namespace Nethermind.Optimism;
 
 public class OptimismPlugin(ChainSpec chainSpec) : IConsensusPlugin
 {
+    public int Priority => PluginPriorities.Optimism;
     public string Author => "Nethermind";
     public string Name => "Optimism";
     public string Description => "Optimism support for Nethermind";
