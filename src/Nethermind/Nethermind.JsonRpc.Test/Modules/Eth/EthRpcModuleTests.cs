@@ -1653,11 +1653,11 @@ public partial class EthRpcModuleTests
 
             return Task.FromResult(new Context
             {
-                // Did it make... both? all the time?
-                TestFactory = () => TestRpcBlockchain.ForTest(SealEngineType.NethDev)
+                Test = TestRpcBlockchain.ForTest(SealEngineType.NethDev)
                     .WithBlockchainBridge(blockchainBridge!)
                     .WithConfig(new JsonRpcConfig() { EstimateErrorMargin = 0 })
                     .Build(wrappedConfigurer).Result,
+
                 AuraTestFactory = () => TestRpcBlockchain.ForTest(SealEngineType.AuRa)
                     .Build(configurer: builder =>
                     {
