@@ -4,6 +4,7 @@
 using System;
 using System.Threading;
 using Nethermind.Blockchain;
+using Nethermind.Core;
 using Nethermind.Int256;
 using Nethermind.JsonRpc;
 using Nethermind.Logging;
@@ -26,7 +27,8 @@ namespace Nethermind.Analytics
 
         public ResultWrapper<UInt256> analytics_verifySupply()
         {
-            SupplyVerifier supplyVerifier = new SupplyVerifier(_logManager.GetClassLogger());
+            ProgressLogger progressLogger = new ProgressLogger("Supply Verification", _logManager);
+            SupplyVerifier supplyVerifier = new SupplyVerifier(_logManager.GetClassLogger(), progressLogger);
             _stateReader.RunTreeVisitor(supplyVerifier, _blockTree.Head.StateRoot);
             return ResultWrapper<UInt256>.Success(supplyVerifier.Balance);
         }

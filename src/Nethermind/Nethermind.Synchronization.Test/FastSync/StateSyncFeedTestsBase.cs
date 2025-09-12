@@ -257,7 +257,8 @@ public abstract class StateSyncFeedTestsBase
             if (stage == "END")
             {
                 Assert.That(local, Is.EqualTo(remote), $"{stage}{Environment.NewLine}{remote}{Environment.NewLine}{local}");
-                TrieStatsCollector collector = new(LocalCodeDb, LimboLogs.Instance);
+                ProgressLogger progressLogger = new ProgressLogger("Stats Collection", LimboLogs.Instance);
+            TrieStatsCollector collector = new(LocalCodeDb, LimboLogs.Instance, progressLogger, default);
                 LocalStateTree.Accept(collector, LocalStateTree.RootHash);
                 Assert.That(collector.Stats.MissingNodes, Is.EqualTo(0));
                 Assert.That(collector.Stats.MissingCode, Is.EqualTo(0));
