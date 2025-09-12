@@ -8,6 +8,7 @@ using System.Linq;
 using System.Runtime.CompilerServices;
 using System.Threading.Tasks;
 using Nethermind.Blockchain.Blocks;
+using Nethermind.Config;
 using Nethermind.Core;
 using Nethermind.Core.Caching;
 using Nethermind.Core.Crypto;
@@ -72,24 +73,34 @@ namespace Nethermind.Blockchain.Receipts
 
         private void BlockTreeOnBlockAddedToMain(object? sender, BlockReplacementEventArgs e)
         {
-            EnsureCanonical(e.Block);
+            Block newMain = e.Block;
+            EnsureCanonical(newMain);
             ReceiptsInserted?.Invoke(this, e);
 
-            // Dont block main loop
-            Task.Run(() =>
-            {
-                Block newMain = e.Block;
+            long txLookupLimit = _receiptConfig.TxLookupLimit.GetValueOrDefault();
 
-                // Delete old tx index
-                if (_receiptConfig.TxLookupLimit > 0 && newMain.Number > _receiptConfig.TxLookupLimit.Value)
-                {
-                    Block newOldTx = _blockTree.FindBlock(newMain.Number - _receiptConfig.TxLookupLimit.Value);
-                    if (newOldTx is not null)
-                    {
-                        RemoveBlockTx(newOldTx);
-                    }
-                }
-            });
+            if (txLookupLimit <= 0 || newMain.Number <= txLookupLimit)
+            {
+                // Nothing to do
+                return;
+            }
+
+            long blockNumber = newMain.Number - txLookupLimit;
+            // Don't block main loop
+            Task.Run(() => RemoveOldReceipts(blockNumber));
+        }
+
+        private async Task RemoveOldReceipts(long blockNumber)
+        {
+            await Task.Delay(GCConfig.GCBlockProcessingDelayMs / 2);
+            // Delete old tx index
+            Block newOldTx = _blockTree.FindBlock(
+                blockNumber,
+                BlockTreeLookupOptions.RequireCanonical | BlockTreeLookupOptions.OnlyTxHashes);
+            if (newOldTx is not null)
+            {
+                RemoveBlockTx(newOldTx);
+            }
         }
 
         public Hash256 FindBlockHash(Hash256 txHash)
