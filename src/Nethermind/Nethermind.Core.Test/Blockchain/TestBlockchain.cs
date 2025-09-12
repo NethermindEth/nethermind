@@ -390,6 +390,13 @@ public class TestBlockchain : IDisposable
         await AddBlock();
         await AddBlock(CreateTransactionBuilder().WithNonce(0).TestObject);
         await AddBlock(CreateTransactionBuilder().WithNonce(1).TestObject, CreateTransactionBuilder().WithNonce(2).TestObject);
+
+        while (true)
+        {
+            CancellationToken.ThrowIfCancellationRequested();
+            if (BlockTree.Head?.Number == 3) return;
+            await Task.Delay(1, CancellationToken);
+        }
     }
 
     private TransactionBuilder<Transaction> CreateTransactionBuilder()
