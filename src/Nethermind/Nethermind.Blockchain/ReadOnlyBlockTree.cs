@@ -24,7 +24,12 @@ namespace Nethermind.Blockchain
         public ulong NetworkId => _wrapped.NetworkId;
         public ulong ChainId => _wrapped.ChainId;
         public BlockHeader Genesis => _wrapped.Genesis;
-        public BlockHeader BestSuggestedHeader => _wrapped.BestSuggestedHeader;
+        public BlockHeader BestSuggestedHeader
+        {
+            get => _wrapped.BestSuggestedHeader;
+            set => _wrapped.BestSuggestedHeader = value;
+        }
+
         public BlockHeader BestSuggestedBeaconHeader => _wrapped.BestSuggestedBeaconHeader;
         public BlockHeader? LowestInsertedHeader
         {
@@ -45,8 +50,18 @@ namespace Nethermind.Blockchain
             set => _wrapped.LowestInsertedBeaconHeader = value;
         }
 
-        public Block BestSuggestedBody => _wrapped.BestSuggestedBody;
-        public long BestKnownNumber => _wrapped.BestKnownNumber;
+        public Block BestSuggestedBody
+        {
+            get => _wrapped.BestSuggestedBody;
+            set => _wrapped.BestSuggestedBody = value;
+        }
+
+        public long BestKnownNumber
+        {
+            get => _wrapped.BestKnownNumber;
+            set => _wrapped.BestKnownNumber = value;
+        }
+
         public long BestKnownBeaconNumber => _wrapped.BestKnownBeaconNumber;
         public Block Head => _wrapped.Head;
         public void MarkChainAsProcessed(IReadOnlyList<Block> blocks) => throw new InvalidOperationException($"{nameof(ReadOnlyBlockTree)} does not expect {nameof(MarkChainAsProcessed)} calls");

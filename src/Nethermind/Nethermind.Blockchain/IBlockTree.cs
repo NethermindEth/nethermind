@@ -34,12 +34,12 @@ namespace Nethermind.Blockchain
         /// <summary>
         /// Best header that has been suggested for processing
         /// </summary>
-        BlockHeader? BestSuggestedHeader { get; }
+        BlockHeader? BestSuggestedHeader { get; set; }
 
         /// <summary>
         /// Best block that has been suggested for processing
         /// </summary>
-        Block? BestSuggestedBody { get; }
+        Block? BestSuggestedBody { get; set; }
 
         BlockHeader? BestSuggestedBeaconHeader { get; }
 
@@ -56,7 +56,7 @@ namespace Nethermind.Blockchain
         /// <summary>
         /// Best downloaded block number (highest number of chain level on the chain)
         /// </summary>
-        long BestKnownNumber { get; }
+        long BestKnownNumber { get; set; }
 
         long BestKnownBeaconNumber { get; }
 

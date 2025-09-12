@@ -58,9 +58,9 @@ namespace Nethermind.Blockchain
         public BlockHeader? Genesis { get; private set; }
         public Block? Head { get; private set; }
 
-        public BlockHeader? BestSuggestedHeader { get; private set; }
+        public BlockHeader? BestSuggestedHeader { get; set; }
 
-        public Block? BestSuggestedBody { get; private set; }
+        public Block? BestSuggestedBody { get; set; }
         public BlockHeader? LowestInsertedHeader
         {
             get => _lowestInsertedHeader;
@@ -91,7 +91,7 @@ namespace Nethermind.Blockchain
 
         private long? _highestPersistedState;
 
-        public long BestKnownNumber { get; private set; }
+        public long BestKnownNumber { get; set; }
 
         public long BestKnownBeaconNumber { get; private set; }
 

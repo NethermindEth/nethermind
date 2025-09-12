@@ -32,8 +32,18 @@ public class BlockTreeOverlay : IBlockTree
     public ulong NetworkId => _baseTree.NetworkId;
     public ulong ChainId => _baseTree.ChainId;
     public BlockHeader? Genesis => _baseTree.Genesis;
-    public BlockHeader? BestSuggestedHeader => _overlayTree.BestSuggestedHeader ?? _baseTree.BestSuggestedHeader;
-    public Block? BestSuggestedBody => _overlayTree.BestSuggestedBody ?? _baseTree.BestSuggestedBody;
+    public BlockHeader? BestSuggestedHeader
+    {
+        get => _overlayTree.BestSuggestedHeader ?? _baseTree.BestSuggestedHeader;
+        set => _overlayTree.BestSuggestedHeader = value;
+    }
+
+    public Block? BestSuggestedBody
+    {
+        get => _overlayTree.BestSuggestedBody ?? _baseTree.BestSuggestedBody;
+        set =>  _overlayTree.BestSuggestedBody = value;
+    }
+
     public BlockHeader? BestSuggestedBeaconHeader => _overlayTree.BestSuggestedBeaconHeader ?? _baseTree.BestSuggestedBeaconHeader;
     public BlockHeader? LowestInsertedHeader
     {
@@ -47,7 +57,12 @@ public class BlockTreeOverlay : IBlockTree
         set => _overlayTree.LowestInsertedBeaconHeader = value;
     }
 
-    public long BestKnownNumber => Math.Max(_overlayTree.BestKnownNumber, _baseTree.BestKnownNumber);
+    public long BestKnownNumber
+    {
+        get => Math.Max(_overlayTree.BestKnownNumber, _baseTree.BestKnownNumber);
+        set => _overlayTree.BestKnownNumber = value;
+    }
+
     public long BestKnownBeaconNumber => Math.Max(_overlayTree.BestKnownBeaconNumber, _baseTree.BestKnownBeaconNumber);
     public Hash256 HeadHash => _overlayTree.HeadHash ?? _baseTree.HeadHash;
     public Hash256 GenesisHash => _baseTree.GenesisHash;
