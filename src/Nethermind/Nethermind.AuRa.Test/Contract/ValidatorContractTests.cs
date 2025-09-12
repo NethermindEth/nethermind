@@ -85,8 +85,9 @@ namespace Nethermind.AuRa.Test.Contract
 
             contract.FinalizeChange(_block.Header);
 
+            _transactionProcessor.Received().SetBlockExecutionContext(Arg.Is<BlockHeader>(header => header.Equals(_block.Header)));
             _transactionProcessor.Received().Execute(
-                Arg.Is<Transaction>(t => IsEquivalentTo(expectation, t)), Arg.Is<BlockHeader>(header => header.Equals(_block.Header)), Arg.Any<ITxTracer>());
+                Arg.Is<Transaction>(t => IsEquivalentTo(expectation, t)), Arg.Any<ITxTracer>());
         }
 
         private static bool IsEquivalentTo(Transaction expected, Transaction item)
