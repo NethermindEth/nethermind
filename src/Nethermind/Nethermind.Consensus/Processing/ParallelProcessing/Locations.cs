@@ -15,16 +15,17 @@ public interface ILocations<in TKey>
 
 public class Locations : ILocations<Address>, ILocations<StorageCell>
 {
-    private int _index = -1;
+    private int _addressIndex = -1;
+    private int _storageIndex = 0;
     private readonly ConcurrentDictionary<AddressAsKey, int> _addressLocations = new();
     private readonly ConcurrentDictionary<StorageCell, int> _storageCellLocations = new();
 
-    public int GetLocation(Address address) => _addressLocations.GetOrAdd(address, Interlocked.Increment(ref _index));
-    public int GetLocation(StorageCell storageCell) => _storageCellLocations.GetOrAdd(storageCell, -Interlocked.Increment(ref _index));
+    public int GetLocation(Address address) => _addressLocations.GetOrAdd(address, Interlocked.Increment(ref _addressIndex));
+    public int GetLocation(StorageCell storageCell) => _storageCellLocations.GetOrAdd(storageCell, Interlocked.Decrement(ref _storageIndex));
 
     public void Clear()
     {
-        _index = -1;
+        _addressIndex = -1;
         _addressLocations.NoResizeClear();
         _storageCellLocations.NoResizeClear();
     }

@@ -35,4 +35,9 @@ public class ParallelTrace<TLogger> where TLogger : struct, IIsTracing
     public string Format<TData>(TData data) => data is byte[]  bytes ? bytes.ToHexString() : data?.ToString() ?? "";
 }
 
+public abstract class ParallelTrace : ParallelTrace<NotTracing>
+{
+    public static ParallelTrace<NotTracing> Empty = new();
+}
+
 

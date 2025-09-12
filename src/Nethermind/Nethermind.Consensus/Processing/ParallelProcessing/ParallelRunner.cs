@@ -35,7 +35,7 @@ public class ParallelRunner<TLocation, TData, TLogger>(
         // TODO: revisit when integrated with block processing
 
         int concurrency = concurrencyLevel ?? Environment.ProcessorCount;
-        using ArrayPoolList<Task> tasks = new ArrayPoolList<Task>(concurrency);
+        using ArrayPoolList<Task> tasks = new(concurrency);
         for (int i = 0; i < concurrency; i++)
         {
 
@@ -86,7 +86,7 @@ public class ParallelRunner<TLocation, TData, TLogger>(
     ///
     /// If dependency was added, we return empty task, for the main loop to fetch next one.
     ///
-    /// If execution succeeds, we record read and write sets of it in <see cref="MultiVersionMemory{TLocation,TLogger}"/>
+    /// If execution succeeds, we record read and write sets of it in <see cref="MultiVersionMemory{TLocation,TData,TLogger}"/>
     /// and inform <see cref="ParallelScheduler{TLogger}"/> that it finished.
     /// Scheduler may return a validation task for this transaction as it will be next high-priority.
     /// </remarks>
@@ -102,7 +102,7 @@ public class ParallelRunner<TLocation, TData, TLogger>(
     /// Checks if transaction need to be re-executed.
     /// </summary>
     /// <remarks>
-    /// First the <see cref="MultiVersionMemory{TLocation,TLogger}.ValidateReadSet"/> is called to check if any of transaction reads are still dependent of pending writes.
+    /// First the <see cref="MultiVersionMemory{TLocation,TData,TLogger}.ValidateReadSet"/> is called to check if any of transaction reads are still dependent of pending writes.
     /// If that is the case it uses <see cref="ParallelScheduler{TLogger}.TryValidationAbort"/> to abort the execution and marks all the transaction writes as estimates.
     ///
     /// After that is calls <see cref="ParallelScheduler{TLogger}.FinishValidation"/> to progress the work. This potentially can return a transaction task to execute.
@@ -131,6 +131,6 @@ public interface IVm<TLocation, TData> where TLocation : notnull
     /// <param name="blockingTx">Information about transaction this one depends on as it is expected to write to a location this one reads</param>
     /// <param name="readSet">All locations read by the transaction</param>
     /// <param name="writeSet">All locations and values written by the transaction</param>
-    /// <returns><see cref="Status.Ok"/> if no dependency detected, <see cref="Status.ReadError"/> if transaction is blocked by other</returns>
+    /// <returns><see cref="Status.Ok"/> if no dependency detected, <see cref="Status.ReadError"/> if transaction is blocked by another</returns>
     public Status TryExecute(int txIndex, out Version? blockingTx, out HashSet<Read<TLocation>> readSet, out Dictionary<TLocation, TData> writeSet);
 }

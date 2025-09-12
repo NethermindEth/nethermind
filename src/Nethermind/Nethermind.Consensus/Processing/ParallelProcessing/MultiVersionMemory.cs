@@ -332,7 +332,7 @@ public enum Status
 
     /// <summary>
     /// Location was read as estimate.
-    /// This indicates need to add dependency on transaction that has estimate and re-execute later.
+    /// This indicates the need to add dependency on transaction that has estimate and re-execute later.
     /// </summary>
     ReadError
 }
