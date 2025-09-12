@@ -44,7 +44,7 @@ using Nethermind.Network.Rlpx;
 
 namespace Nethermind.JsonRpc.Test.Modules
 {
-    [Parallelizable(ParallelScope.Self)]
+    [Parallelizable(ParallelScope.None)]
     [TestFixture]
     public class SubscribeModuleTests
     {
