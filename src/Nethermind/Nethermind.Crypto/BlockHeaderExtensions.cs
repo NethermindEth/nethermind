@@ -10,12 +10,17 @@ namespace Nethermind.Crypto
 {
     public static class BlockHeaderExtensions
     {
+        private static readonly HeaderDecoder _headerDecoder = new();
+
         public static Hash256 CalculateHash(this BlockHeader header, RlpBehaviors behaviors = RlpBehaviors.None)
             => new Hash256(CalculateValueHash(header, behaviors));
 
         public static ValueHash256 CalculateValueHash(this BlockHeader header, RlpBehaviors behaviors = RlpBehaviors.None)
         {
-            return Rlp.EncodeForHash(header, behaviors);
+            KeccakRlpStream stream = new();
+            _headerDecoder.Encode(stream, header, behaviors);
+
+            return stream.GetValueHash();
         }
 
         public static Hash256 CalculateHash(this Block block, RlpBehaviors behaviors = RlpBehaviors.None) => CalculateHash(block.Header, behaviors);
