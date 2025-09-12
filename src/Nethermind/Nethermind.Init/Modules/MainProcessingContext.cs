@@ -72,6 +72,7 @@ public class MainProcessingContext : IMainProcessingContext, BlockProcessor.Bloc
                 builder
                     .AddScoped<PreBlockCaches>((mainWorldState as IPreBlockCaches)!.Caches)
                     .AddScoped<IBlockCachePreWarmer, BlockCachePreWarmer>()
+                    .AddDecorator<ITransactionProcessorAdapter, PrewarmerTxAdapter>()
                     ;
             }
         });
@@ -93,7 +94,7 @@ public class MainProcessingContext : IMainProcessingContext, BlockProcessor.Bloc
     public IBranchProcessor BranchProcessor => _components.BranchProcessor;
     public IBlockProcessor BlockProcessor => _components.BlockProcessor;
     public ITransactionProcessor TransactionProcessor => _components.TransactionProcessor;
-    public GenesisLoader GenesisLoader => _components.GenesisLoader;
+    public IGenesisLoader GenesisLoader => _components.GenesisLoader;
     public event EventHandler<TxProcessedEventArgs>? TransactionProcessed;
     public void OnTransactionProcessed(TxProcessedEventArgs txProcessedEventArgs)
     {
@@ -106,6 +107,6 @@ public class MainProcessingContext : IMainProcessingContext, BlockProcessor.Bloc
         IBlockProcessor BlockProcessor,
         IBlockchainProcessor BlockchainProcessor,
         IWorldState WorldState,
-        GenesisLoader GenesisLoader
+        IGenesisLoader GenesisLoader
     );
 }

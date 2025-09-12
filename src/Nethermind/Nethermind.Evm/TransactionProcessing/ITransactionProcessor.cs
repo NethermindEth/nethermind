@@ -12,56 +12,74 @@ public interface ITransactionProcessor
     /// Execute transaction, commit state
     /// </summary>
     TransactionResult Execute(Transaction transaction, ITxTracer txTracer);
-    TransactionResult Execute(Transaction transaction, in BlockExecutionContext blockExecutionContext, ITxTracer txTracer)
-    {
-        SetBlockExecutionContext(in blockExecutionContext);
-        return Execute(transaction, txTracer);
-    }
-
-    TransactionResult Execute(Transaction transaction, BlockHeader header, ITxTracer txTracer);
 
     /// <summary>
     /// Call transaction, rollback state
     /// </summary>
     TransactionResult CallAndRestore(Transaction transaction, ITxTracer txTracer);
-    TransactionResult CallAndRestore(Transaction transaction, BlockHeader header, ITxTracer txTracer);
-    TransactionResult CallAndRestore(Transaction transaction, in BlockExecutionContext blockExecutionContext, ITxTracer txTracer)
-    {
-        SetBlockExecutionContext(in blockExecutionContext);
-        return CallAndRestore(transaction, txTracer);
-    }
 
     /// <summary>
     /// Execute transaction, keep the state uncommitted
     /// </summary>
     TransactionResult BuildUp(Transaction transaction, ITxTracer txTracer);
-    TransactionResult BuildUp(Transaction transaction, in BlockExecutionContext blockExecutionContext, ITxTracer txTracer)
-    {
-        SetBlockExecutionContext(in blockExecutionContext);
-        return BuildUp(transaction, txTracer);
-    }
 
     /// <summary>
     /// Call transaction, no validations, commit state
     /// Will NOT charge gas from sender account, so stateDiff will miss gas fee
     /// </summary>
     TransactionResult Trace(Transaction transaction, ITxTracer txTracer);
-    TransactionResult Trace(Transaction transaction, in BlockExecutionContext blockExecutionContext, ITxTracer txTracer)
-    {
-        SetBlockExecutionContext(in blockExecutionContext);
-        return Trace(transaction, txTracer);
-    }
 
     /// <summary>
     /// Call transaction, no validations, don't commit state
     /// Will NOT charge gas from sender account
     /// </summary>
     TransactionResult Warmup(Transaction transaction, ITxTracer txTracer);
-    TransactionResult Warmup(Transaction transaction, in BlockExecutionContext blockExecutionContext, ITxTracer txTracer)
+
+
+    void SetBlockExecutionContext(BlockHeader blockHeader);
+    void SetBlockExecutionContext(in BlockExecutionContext blockExecutionContext);
+}
+
+public static class ITransactionProcessorExtensions
+{
+    public static TransactionResult Execute(this ITransactionProcessor transactionProcessor, Transaction transaction, BlockHeader header, ITxTracer txTracer)
     {
-        SetBlockExecutionContext(in blockExecutionContext);
-        return Warmup(transaction, txTracer);
+        transactionProcessor.SetBlockExecutionContext(header);
+        return transactionProcessor.Execute(transaction, txTracer);
     }
 
-    void SetBlockExecutionContext(in BlockExecutionContext blockExecutionContext);
+    public static TransactionResult CallAndRestore(this ITransactionProcessor transactionProcessor, Transaction transaction, BlockHeader header, ITxTracer txTracer)
+    {
+        transactionProcessor.SetBlockExecutionContext(header);
+        return transactionProcessor.CallAndRestore(transaction, txTracer);
+    }
+
+    public static TransactionResult Execute(this ITransactionProcessor transactionProcessor, Transaction transaction, in BlockExecutionContext blockExecutionContext, ITxTracer txTracer)
+    {
+        transactionProcessor.SetBlockExecutionContext(in blockExecutionContext);
+        return transactionProcessor.Execute(transaction, txTracer);
+    }
+
+    public static TransactionResult CallAndRestore(this ITransactionProcessor transactionProcessor, Transaction transaction, in BlockExecutionContext blockExecutionContext, ITxTracer txTracer)
+    {
+        transactionProcessor.SetBlockExecutionContext(in blockExecutionContext);
+        return transactionProcessor.CallAndRestore(transaction, txTracer);
+    }
+
+    public static TransactionResult BuildUp(this ITransactionProcessor transactionProcessor, Transaction transaction, in BlockExecutionContext blockExecutionContext, ITxTracer txTracer)
+    {
+        transactionProcessor.SetBlockExecutionContext(in blockExecutionContext);
+        return transactionProcessor.BuildUp(transaction, txTracer);
+    }
+    public static TransactionResult Trace(this ITransactionProcessor transactionProcessor, Transaction transaction, in BlockExecutionContext blockExecutionContext, ITxTracer txTracer)
+    {
+        transactionProcessor.SetBlockExecutionContext(in blockExecutionContext);
+        return transactionProcessor.Trace(transaction, txTracer);
+    }
+
+    public static TransactionResult Warmup(this ITransactionProcessor transactionProcessor, Transaction transaction, in BlockExecutionContext blockExecutionContext, ITxTracer txTracer)
+    {
+        transactionProcessor.SetBlockExecutionContext(in blockExecutionContext);
+        return transactionProcessor.Warmup(transaction, txTracer);
+    }
 }

@@ -21,7 +21,7 @@ namespace Nethermind.Consensus.Processing
         IBlockchainProcessor blockchainProcessor,
         GenesisLoader.Config genesisConfig,
         ILogManager logManager
-    )
+    ) : IGenesisLoader
     {
         // cant import IInitConfig here, so we use a config record.
         public record Config(Hash256? ExpectedGenesisHash, TimeSpan GenesisTimeout);
