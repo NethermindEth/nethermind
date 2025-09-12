@@ -1643,7 +1643,7 @@ public partial class EthRpcModuleTests
             });
         }
 
-        public static Task<Context> Create(ISpecProvider? specProvider = null, IBlockchainBridge? blockchainBridge = null, Action<ContainerBuilder>? configurer = null)
+        public static async Task<Context> Create(ISpecProvider? specProvider = null, IBlockchainBridge? blockchainBridge = null, Action<ContainerBuilder>? configurer = null)
         {
             Action<ContainerBuilder> wrappedConfigurer = builder =>
             {
@@ -1651,12 +1651,12 @@ public partial class EthRpcModuleTests
                 configurer?.Invoke(builder);
             };
 
-            return Task.FromResult(new Context
+            return new Context
             {
-                Test = TestRpcBlockchain.ForTest(SealEngineType.NethDev)
+                Test = await TestRpcBlockchain.ForTest(SealEngineType.NethDev)
                     .WithBlockchainBridge(blockchainBridge!)
                     .WithConfig(new JsonRpcConfig() { EstimateErrorMargin = 0 })
-                    .Build(wrappedConfigurer).Result,
+                    .Build(wrappedConfigurer),
 
                 AuraTestFactory = () => TestRpcBlockchain.ForTest(SealEngineType.AuRa)
                     .Build(configurer: builder =>
@@ -1670,7 +1670,7 @@ public partial class EthRpcModuleTests
                             );
                         wrappedConfigurer(builder);
                     }).Result
-            });
+            };
         }
 
         public void Dispose()
