@@ -66,7 +66,7 @@ public class TestBlockchainUtil(
                 bool hasExtraTx = expectedHashes.Count > matchingHashes;
                 if (hasExtraTx && mayHaveExtraTx) break;
 
-                bool hasExactlyTheRightTx = expectedHashes.Count == matchingHashes;
+                bool hasExactlyTheRightTx = expectedHashes.Count == blockTxs.Count;
                 if (hasExactlyTheRightTx) break;
             }
 
