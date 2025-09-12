@@ -117,7 +117,7 @@ public class RbuilderRpcModuleTests
             worldState.CreateAccount(caller, 0xFFFFF);
             worldState.CreateAccount(to, 0);
             worldState.Commit(London.Instance);
-            worldState.CommitTree(10);
+            worldState.CommitTree(0);
         }
 
         var revmTransaction = new RevmTransaction
