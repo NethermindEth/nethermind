@@ -27,6 +27,8 @@ public class AuthorizationListForRpc : IEnumerable<RpcAuthTuple>
         _tuples = tuples;
     }
 
+    public static readonly AuthorizationListForRpc Empty = new([]);
+
     public class RpcAuthTuple
     {
         public UInt256 ChainId { get; set; }
