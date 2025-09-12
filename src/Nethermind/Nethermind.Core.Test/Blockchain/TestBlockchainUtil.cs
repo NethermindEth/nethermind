@@ -21,9 +21,11 @@ public class TestBlockchainUtil(
     ManualTimestamper timestamper,
     IBlockTree blockTree,
     ITxPool txPool,
-    long slotTime
+    TestBlockchainUtil.Config config
 )
 {
+    public record Config(long SlotTime = 10);
+
     private Task _previousAddBlock = Task.CompletedTask;
 
     public async Task<AcceptTxResult[]> AddBlockDoNotWaitForHead(bool mayMissTx, CancellationToken cancellationToken, params Transaction[] transactions)
@@ -38,7 +40,7 @@ public class TestBlockchainUtil(
             .Select((item, _) => item.Second.Hash!)
             .ToList();
 
-        timestamper.Add(TimeSpan.FromSeconds(slotTime));
+        timestamper.Add(TimeSpan.FromSeconds(config.SlotTime));
         Block? block;
         int iteration = 0;
         while (true)

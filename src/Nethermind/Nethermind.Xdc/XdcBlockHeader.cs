@@ -18,8 +18,9 @@ using System.Text;
 using System.Threading.Tasks;
 
 namespace Nethermind.Xdc;
-public class XdcBlockHeader : BlockHeader
+public class XdcBlockHeader : BlockHeader, IHashResolver
 {
+    private static XdcHeaderDecoder _headerDecoder = new();
     private static readonly ExtraConsensusDataDecoder _extraConsensusDataDecoder = new();
     public XdcBlockHeader(
         Hash256 parentHash,
@@ -122,3 +123,11 @@ public class XdcBlockHeader : BlockHeader
     }
 }
 
+
+    public ValueHash256 CalculateHash()
+    {
+        KeccakRlpStream rlpStream = new KeccakRlpStream();
+        _headerDecoder.Encode(rlpStream, this);
+        return rlpStream.GetHash();
+    }
+}

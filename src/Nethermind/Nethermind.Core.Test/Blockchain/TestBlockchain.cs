@@ -183,9 +183,6 @@ public class TestBlockchain : IDisposable
         Container = builder.Build();
         _fromContainer = Container.Resolve<FromContainer>();
 
-        IWorldState state = _fromContainer.WorldStateManager.GlobalWorldState;
-
-        ISpecProvider specProvider = SpecProvider;
         Configuration testConfiguration = _fromContainer.Configuration;
 
         BlockchainProcessor.Start();
@@ -229,13 +226,7 @@ public class TestBlockchain : IDisposable
             .AddSingleton<IBlockProducer>((_) => this.BlockProducer)
             .AddSingleton<IBlockProducerRunner>((_) => this.BlockProducerRunner)
 
-            .AddSingleton<TestBlockchainUtil>((ctx) => new TestBlockchainUtil(
-                ctx.Resolve<IBlockProducer>(),
-                ctx.Resolve<ManualTimestamper>(),
-                ctx.Resolve<IBlockTree>(),
-                ctx.Resolve<ITxPool>(),
-                ctx.Resolve<Configuration>().SlotTime
-            ))
+            .AddSingleton<TestBlockchainUtil.Config, Configuration>((cfg) => new TestBlockchainUtil.Config(cfg.SlotTime))
 
             .AddSingleton<PoWTestBlockchainUtil>((ctx) => new PoWTestBlockchainUtil(
                 ctx.Resolve<IBlockProducerRunner>(),

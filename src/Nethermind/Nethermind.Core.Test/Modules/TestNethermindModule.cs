@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Collections.Generic;
 using Autofac;
 using Nethermind.Config;
 using Nethermind.Core.Specs;
@@ -28,7 +29,14 @@ public class TestNethermindModule(IConfigProvider configProvider, ChainSpec chai
     {
     }
 
-    public TestNethermindModule(IConfigProvider configProvider) : this(configProvider, new ChainSpec() { Parameters = new ChainParameters() })
+    public TestNethermindModule(IConfigProvider configProvider) : this(configProvider, new ChainSpec()
+    {
+        Parameters = new ChainParameters(),
+        Allocations = new Dictionary<Address, ChainSpecAllocation>(),
+        Genesis = Build.A.Block
+            .WithBlobGasUsed(0) // Non null post 4844
+            .TestObject
+    })
     {
     }
 
