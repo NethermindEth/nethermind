@@ -17,6 +17,7 @@ using Nethermind.JsonRpc.Test;
 using Nethermind.Specs;
 using Nethermind.Specs.Forks;
 using Nethermind.Evm.State;
+using Nethermind.Facade.Eth.RpcTransaction;
 using Nethermind.JsonRpc;
 using Nethermind.State;
 using NUnit.Framework;
@@ -102,5 +103,42 @@ public class RbuilderRpcModuleTests
 
         string response = await RpcTest.TestSerializedRequest(_rbuilderRpcModule, "rbuilder_calculateStateRoot", "LATEST", accountDiff);
         response.Should().Contain("0x1df26ab740de451d16a6a902ccd0510943e6e70fae9739e65cf1aa16d8862a34");
+    }
+
+    [Test]
+    public void test_bundle_ok_inner_tx_profits()
+    {
+        var caller = new Address("0x1fb09fa5326edc6eb54683657aa97a60d7a8d0ce");
+        var to = new Address("0xfa1c5c79cf655b3d8cf94be2b697bf0449ecc03e");
+
+        IWorldState worldState = _worldStateManager.GlobalWorldState;
+        using (worldState.BeginScope(IWorldState.PreGenesis))
+        {
+            worldState.CreateAccount(caller, 0xFFFFF);
+            worldState.CreateAccount(to, 0);
+            worldState.Commit(London.Instance);
+            worldState.CommitTree(10);
+        }
+
+        var revmTransaction = new RevmTransaction
+        {
+            TxType = 2,
+            Caller = caller,
+            Kind = to,
+            GasLimit = 1000000,
+            GasPrice = 1,
+            Value = 0x186A0,
+            Data = Bytes.FromHexString("0xf9da581d"),
+            Nonce = 0,
+            ChainId = 1,
+            AccessList = AccessListForRpc.Empty,
+            GasPriorityFee = 0,
+            BlobHashes = [],
+            MaxFeePerBlobGas = 0,
+            AuthorizationList = AuthorizationListForRpc.Empty,
+        };
+        var bundleState = new BundleState();
+
+        var result = _rbuilderRpcModule.rbuilder_transact(revmTransaction, bundleState);
     }
 }
