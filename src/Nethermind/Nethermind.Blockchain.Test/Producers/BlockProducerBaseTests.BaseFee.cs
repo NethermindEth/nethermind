@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using System.IO;
 using System.Security;
 using System.Threading.Tasks;
@@ -8,6 +9,7 @@ using Nethermind.Abi;
 using Nethermind.Core;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
+using Nethermind.Core.Test.Blockchain;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Core.Test.Container;
 using Nethermind.Evm;
@@ -168,7 +170,7 @@ public partial class BlockProducerBaseTests
                 Assert.That(startingBlock.Header.BaseFeePerGas, Is.EqualTo(UInt256.Zero));
                 for (long i = startingBlock.Number; i < _eip1559TransitionBlock - 1; ++i)
                 {
-                    await _testRpcBlockchain.AddBlock();
+                    await _testRpcBlockchain.AddBlock(TestBlockchainUtil.AddBlockFlags.MayHaveExtraTx);
                     Block currentBlock = blockTree.Head!;
                     Assert.That(currentBlock.Header.BaseFeePerGas, Is.EqualTo(UInt256.Zero));
                 }

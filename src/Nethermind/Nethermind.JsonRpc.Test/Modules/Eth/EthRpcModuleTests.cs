@@ -1676,7 +1676,7 @@ public partial class EthRpcModuleTests
         public void Dispose()
         {
             _testCtx?.Dispose();
-            _testCtx?.Dispose();
+            _auraCtx?.Dispose();
         }
     }
 }

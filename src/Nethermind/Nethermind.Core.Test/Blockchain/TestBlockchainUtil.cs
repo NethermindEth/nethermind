@@ -28,8 +28,15 @@ public class TestBlockchainUtil(
 
     private Task _previousAddBlock = Task.CompletedTask;
 
-    public async Task<AcceptTxResult[]> AddBlockDoNotWaitForHead(bool mayMissTx, CancellationToken cancellationToken, params Transaction[] transactions)
+    public async Task<AcceptTxResult[]> AddBlock(AddBlockFlags flags, CancellationToken cancellationToken, params Transaction[] transactions)
     {
+        Task waitforHead = flags.HasFlag(AddBlockFlags.DoNotWaitForHead)
+            ? Task.CompletedTask
+            : WaitAsync(blockTree.WaitForNewBlock(cancellationToken), "timeout waiting for new head");
+
+        bool mayMissTx = (flags & AddBlockFlags.MayMissTx) != 0;
+        bool mayHaveExtraTx = (flags & AddBlockFlags.MayHaveExtraTx) != 0;
+
         _previousAddBlock.IsCompleted.Should().BeTrue("Multiple block produced at once. Please make sure this does not happen for test consistency.");
         TaskCompletionSource tcs = new();
         _previousAddBlock = tcs.Task;
@@ -51,11 +58,17 @@ public class TestBlockchainUtil(
             if (block is not null)
             {
                 HashSet<Hash256> blockTxs = block.Transactions.Select((tx) => tx.Hash!).ToHashSet();
-                // Note: It is possible that the block can contain more tx.
-                if (expectedHashes.All((tx) => blockTxs.Contains(tx))) break;
-            }
 
-            if (mayMissTx) break;
+                int matchingHashes = expectedHashes.Count((tx) => blockTxs.Contains(tx));
+                bool allExpectedHashAvailable = matchingHashes == expectedHashes.Count;
+                if (!allExpectedHashAvailable && mayMissTx) break;
+
+                bool hasExtraTx = expectedHashes.Count > matchingHashes;
+                if (hasExtraTx && mayHaveExtraTx) break;
+
+                bool hasExactlyTheRightTx = expectedHashes.Count == matchingHashes;
+                if (hasExactlyTheRightTx) break;
+            }
 
             await Task.Yield();
             if (iteration > 0)
@@ -71,16 +84,26 @@ public class TestBlockchainUtil(
         blockTree.SuggestBlock(block!).Should().Be(AddBlockResult.Added);
 
         tcs.TrySetResult();
+
+        await waitforHead;
+
         return txResults;
+    }
+
+    public async Task<AcceptTxResult[]> AddBlockDoNotWaitForHead(bool mayMissTx, CancellationToken cancellationToken, params Transaction[] transactions)
+    {
+        AddBlockFlags flags = AddBlockFlags.DoNotWaitForHead;
+        if (mayMissTx) flags |= AddBlockFlags.MayMissTx;
+
+        return await AddBlock(flags, cancellationToken, transactions);
     }
 
     public async Task AddBlockAndWaitForHead(bool mayMissTx, CancellationToken cancellationToken, params Transaction[] transactions)
     {
-        Task waitforHead = WaitAsync(blockTree.WaitForNewBlock(cancellationToken), "timeout waiting for new head");
+        AddBlockFlags flags = AddBlockFlags.None;
+        if (mayMissTx) flags |= AddBlockFlags.MayMissTx;
 
-        await AddBlockDoNotWaitForHead(mayMissTx, cancellationToken, transactions);
-
-        await waitforHead;
+        await AddBlock(flags, cancellationToken, transactions);
     }
 
     private static async Task WaitAsync(Task task, string error)
@@ -93,5 +116,14 @@ public class TestBlockchainUtil(
         {
             throw new InvalidOperationException(error);
         }
+    }
+
+    [Flags]
+    public enum AddBlockFlags
+    {
+        None = 0,
+        DoNotWaitForHead = 1,
+        MayMissTx = 2,
+        MayHaveExtraTx = 4,
     }
 }
