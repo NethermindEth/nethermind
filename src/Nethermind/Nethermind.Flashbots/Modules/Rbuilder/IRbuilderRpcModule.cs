@@ -119,6 +119,9 @@ public sealed class RevmTransaction
     [JsonPropertyName("gas_price")]
     public UInt128 GasPrice { get; init; } = 0;
 
+    [JsonPropertyName("kind")]
+    public Address Kind { get; init; } = Address.Zero; // TODO: Verify default
+
     [JsonPropertyName("value")]
     public UInt256 Value { get; init; } = 0;
 
@@ -144,7 +147,7 @@ public sealed class RevmTransaction
     public UInt128 MaxFeePerBlobGas { get; init; } = 0;
 
     [JsonPropertyName("authorization_list")]
-    public AuthorizationListForRpc AuthorizationList { get; init; } = [];
+    public AuthorizationListForRpc AuthorizationList { get; init; } = AuthorizationListForRpc.Empty;
 
     public Transaction ToTransaction()
     {
@@ -155,6 +158,7 @@ public sealed class RevmTransaction
             SenderAddress = Caller,
             GasLimit = (long)GasLimit,
             GasPrice = (ulong)GasPrice,
+            To = Kind,
             Value = Value,
             Data = Data,
             Nonce = Nonce,
