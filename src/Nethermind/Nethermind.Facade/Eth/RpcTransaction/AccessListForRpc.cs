@@ -43,7 +43,7 @@ public class AccessListForRpc
         }
     }
 
-    public static readonly AccessListForRpc Empty = new();
+    public static readonly AccessListForRpc Empty = new([]);
 
     public static AccessListForRpc FromAccessList(AccessList? accessList) =>
         accessList is null
