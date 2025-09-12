@@ -108,9 +108,8 @@ public class PluginLoader(string pluginPath, IFileSystem fileSystem, ILogger log
         await using IContainer container = builder.Build();
         IList<INethermindPlugin> allPlugins = container.Resolve<IList<INethermindPlugin>>();
 
-        List<string> customOrder = configProvider.GetConfig<IPluginConfig>()
-            .PluginOrder
-            .ToList();
+        var customOrder = configProvider.GetConfig<IPluginConfig>().PluginOrder;
+
 
         allPlugins = OrderPlugins(allPlugins, customOrder);
 
