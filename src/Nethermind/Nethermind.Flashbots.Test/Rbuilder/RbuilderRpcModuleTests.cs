@@ -139,6 +139,7 @@ public class RbuilderRpcModuleTests
         };
         var bundleState = new BundleState();
 
-        var result = _rbuilderRpcModule.rbuilder_transact(revmTransaction, bundleState);
+        var wrapper = _rbuilderRpcModule.rbuilder_transact(revmTransaction, bundleState);
+        wrapper.Result.Error.Should().BeNull();
     }
 }
