@@ -484,6 +484,29 @@ namespace Nethermind.State
                 => _logger.Trace($"Creating account: {address} with balance {balance.ToHexString(skipLeadingZeros: true)} and nonce {nonce.ToHexString(skipLeadingZeros: true)}");
         }
 
+        public void CreateEmptyAccountIfDeletedOrNew(Address address)
+        {
+            if (_intraTxCache.TryGetValue(address, out Stack<int> value))
+            {
+                //we only want to persist empty accounts if they were deleted or created as empty
+                //we don't want to do it for account empty due to a change (e.g. changed balance to zero)
+                var lastChange = _changes[value.Peek()];
+                if (lastChange.ChangeType == ChangeType.Delete ||
+                    (lastChange.ChangeType is ChangeType.Touch or ChangeType.New && lastChange.Account.IsEmpty))
+                {
+                    _needsStateRootUpdate = true;
+                    if (_logger.IsTrace) Trace(address);
+
+                    Account account = Account.TotallyEmpty;
+                    PushRecreateEmpty(address, account);
+                }
+            }
+
+            [MethodImpl(MethodImplOptions.NoInlining)]
+            void Trace(Address address)
+                => _logger.Trace($"Creating zombie account: {address}");
+        }
+
         public void CreateAccountIfNotExists(Address address, in UInt256 balance, in UInt256 nonce = default)
         {
             if (!AccountExists(address))
@@ -595,6 +618,17 @@ namespace Nethermind.State
                     case ChangeType.New:
                         {
                             if (!releaseSpec.IsEip158Enabled || !change.Account.IsEmpty || isGenesis)
+                            {
+                                if (isTracing) TraceCreate(change);
+                                SetState(change.Address, change.Account);
+                                trace?.AddToTrace(change.Address, change.Account);
+                            }
+
+                            break;
+                        }
+                    case ChangeType.RecreateEmpty:
+                        {
+                            if (change.Account.IsEmpty)
                             {
                                 if (isTracing) TraceCreate(change);
                                 SetState(change.Address, change.Account);
@@ -858,6 +892,12 @@ namespace Nethermind.State
             stack.Push(_changes.Count);
             _changes.Add(new Change(address, account, ChangeType.New));
         }
+        private void PushRecreateEmpty(Address address, Account account)
+        {
+            Stack<int> stack = SetupCache(address);
+            stack.Push(_changes.Count);
+            _changes.Add(new Change(address, account, ChangeType.RecreateEmpty));
+        }
 
         private Stack<int> SetupCache(Address address)
         {
@@ -942,7 +982,8 @@ namespace Nethermind.State
             Touch,
             Update,
             New,
-            Delete
+            Delete,
+            RecreateEmpty,
         }
 
         private readonly struct Change(Address address, Account? account, ChangeType type)
