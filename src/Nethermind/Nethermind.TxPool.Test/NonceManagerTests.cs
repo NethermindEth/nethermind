@@ -40,8 +40,7 @@ public class NonceManagerTests
         _headInfo = new ChainHeadInfoProvider(
             new ChainHeadSpecProvider(_specProvider, _blockTree),
             _blockTree,
-            _stateProvider,
-            new EthereumCodeInfoRepository());
+            _stateProvider);
         _nonceManager = new NonceManager(_headInfo.ReadOnlyStateProvider);
     }
 

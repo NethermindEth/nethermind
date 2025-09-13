@@ -16,8 +16,6 @@ namespace Nethermind.TxPool
 
         IReadOnlyStateProvider ReadOnlyStateProvider { get; }
 
-        ICodeInfoRepository CodeInfoRepository { get; }
-
         long HeadNumber { get; }
 
         long? BlockGasLimit { get; }

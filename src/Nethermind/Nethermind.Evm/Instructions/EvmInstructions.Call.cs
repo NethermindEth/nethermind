@@ -177,7 +177,7 @@ internal static partial class EvmInstructions
             goto OutOfGas;
 
         // Retrieve code information for the call and schedule background analysis if needed.
-        ICodeInfo codeInfo = vm.CodeInfoRepository.GetCachedCodeInfo(state, codeSource, spec);
+        ICodeInfo codeInfo = vm.CodeInfoRepository.GetCachedCodeInfo(codeSource, spec);
 
         // If contract is large, charge for access
         if (spec.IsEip7907Enabled)

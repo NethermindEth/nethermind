@@ -16,6 +16,7 @@ public class BuiltInStepsModule : Module
         typeof(EraStep),
         typeof(InitDatabase),
         typeof(InitializeBlockchain),
+        typeof(EvmWarmer),
         typeof(InitializeBlockProducer),
         typeof(InitializeBlockTree),
         typeof(InitializeNetwork),

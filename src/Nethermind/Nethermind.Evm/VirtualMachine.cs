@@ -393,7 +393,7 @@ public unsafe partial class VirtualMachine(
         {
             // 4 - set state[new_address].code to the updated deploy container
             // push new_address onto the stack (already done before the ifs)
-            _codeInfoRepository.InsertCode(_worldState, bytecodeResultArray, callCodeOwner, spec);
+            _codeInfoRepository.InsertCode(bytecodeResultArray, callCodeOwner, spec);
             _currentState.GasAvailable -= codeDepositGasCost;
 
             if (_txTracer.IsTracingActions)
@@ -469,7 +469,7 @@ public unsafe partial class VirtualMachine(
         {
             // Deposit the contract code into the repository.
             ReadOnlyMemory<byte> code = callResult.Output.Bytes;
-            _codeInfoRepository.InsertCode(_worldState, code, callCodeOwner, spec);
+            _codeInfoRepository.InsertCode(code, callCodeOwner, spec);
 
             // Deduct the gas cost for the code deposit from the current state's available gas.
             _currentState.GasAvailable -= codeDepositGasCost;

@@ -80,12 +80,11 @@ public class ReorgTests
             .WithSpecProvider(specProvider)
             .TestObject;
 
-        EthereumCodeInfoRepository codeInfoRepository = new();
         TxPool.TxPool txPool = new(
             ecdsa,
             new BlobTxStorage(),
             new ChainHeadInfoProvider(
-                new ChainHeadSpecProvider(specProvider, _blockTree), _blockTree, worldStateManager.GlobalStateReader, codeInfoRepository),
+                new ChainHeadSpecProvider(specProvider, _blockTree), _blockTree, worldStateManager.GlobalStateReader),
             new TxPoolConfig(),
             new TxValidator(specProvider.ChainId),
             LimboLogs.Instance,
@@ -99,7 +98,7 @@ public class ReorgTests
             specProvider,
             stateProvider,
             virtualMachine,
-            codeInfoRepository,
+            new EthereumCodeInfoRepository(stateProvider),
             LimboLogs.Instance);
 
         BlockProcessor blockProcessor = new BlockProcessor(

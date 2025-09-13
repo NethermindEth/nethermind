@@ -88,7 +88,6 @@ public static class StateOverridesExtensions
             stateProvider.InsertCode(address, accountOverride.Code, currentSpec);
 
             overridableCodeInfoRepository.SetCodeOverwrite(
-                stateProvider,
                 currentSpec,
                 address,
                 new CodeInfo(accountOverride.Code),
