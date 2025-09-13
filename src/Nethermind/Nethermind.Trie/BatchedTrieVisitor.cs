@@ -46,7 +46,7 @@ public class BatchedTrieVisitor<TNodeContext>
 {
     // Not using shared pool so GC can reclaim them later.
     private readonly ArrayPool<Job> _jobArrayPool = ArrayPool<Job>.Create();
-    private static readonly AccountDecoder _accountDecoder = new();
+    private static readonly AccountStructDecoder _accountDecoder = new();
 
     private readonly ArrayPool<(TrieNode, TNodeContext, SmallTrieVisitContext)> _trieNodePool =
         ArrayPool<(TrieNode, TNodeContext, SmallTrieVisitContext)>.Create();
@@ -439,7 +439,8 @@ public class BatchedTrieVisitor<TNodeContext>
                         TNodeContext childContext = nodeContext.Add(node.Key!);
 
                         Rlp.ValueDecoderContext decoderContext = new Rlp.ValueDecoderContext(node.Value.Span);
-                        if (!_accountDecoder.TryDecodeStruct(ref decoderContext, out AccountStruct account))
+                        AccountStruct? accountStruct = _accountDecoder.Decode(ref decoderContext);
+                        if (accountStruct is not {} account)
                         {
                             throw new InvalidDataException("Non storage leaf should be an account");
                         }
