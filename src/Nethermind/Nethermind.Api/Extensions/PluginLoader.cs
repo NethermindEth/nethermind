@@ -89,46 +89,6 @@ public class PluginLoader(string pluginPath, IFileSystem fileSystem, ILogger log
         }
     }
 
-    public void OrderPlugins(IPluginConfig pluginConfig)
-    {
-        List<string> order = pluginConfig.PluginOrder.Select(s => s.ToLower() + "plugin").ToList();
-        _pluginTypes.Sort((f, s) =>
-        {
-            bool fIsConsensus = typeof(IConsensusPlugin).IsAssignableFrom(f);
-            bool sIsConsensus = typeof(IConsensusPlugin).IsAssignableFrom(s);
-
-            // Consensus plugins always at front
-            if (fIsConsensus && !sIsConsensus)
-            {
-                return -1;
-            }
-
-            if (sIsConsensus && !fIsConsensus)
-            {
-                return 1;
-            }
-
-            int fPos = order.IndexOf(f.Name.ToLower());
-            int sPos = order.IndexOf(s.Name.ToLower());
-            if (fPos == -1)
-            {
-                if (sPos == -1)
-                {
-                    return f.Name.CompareTo(s.Name);
-                }
-
-                return 1;
-            }
-
-            if (sPos == -1)
-            {
-                return -1;
-            }
-
-            return fPos.CompareTo(sPos);
-        });
-    }
-
     public async Task<IList<INethermindPlugin>> LoadPlugins(IConfigProvider configProvider, ChainSpec chainSpec)
     {
         ContainerBuilder builder = new ContainerBuilder()
@@ -147,6 +107,12 @@ public class PluginLoader(string pluginPath, IFileSystem fileSystem, ILogger log
 
         await using IContainer container = builder.Build();
         IList<INethermindPlugin> allPlugins = container.Resolve<IList<INethermindPlugin>>();
+
+        var customOrder = configProvider.GetConfig<IPluginConfig>().PluginOrder;
+
+
+        allPlugins = OrderPlugins(allPlugins, customOrder);
+
         IList<INethermindPlugin> plugins = new List<INethermindPlugin>();
         if (logger.IsInfo) logger.Info($"Detected {PluginTypes.Count()} plugins");
         foreach (INethermindPlugin plugin in allPlugins)
@@ -177,5 +143,35 @@ public class PluginLoader(string pluginPath, IFileSystem fileSystem, ILogger log
         }
 
         return plugins;
+    }
+
+    public IList<INethermindPlugin> OrderPlugins(IList<INethermindPlugin> plugins, IReadOnlyList<string> customOrder)
+    {
+        Dictionary<string, int> priorities = customOrder
+            .Select((name, index) =>
+            {
+                var normalizedName = name.EndsWith("Plugin", StringComparison.OrdinalIgnoreCase)
+                    ? name
+                    : name + "Plugin";
+                return (normalizedName, index);
+            })
+            .ToDictionary(x => x.normalizedName, x => x.index, StringComparer.OrdinalIgnoreCase);
+
+        return plugins
+            .OrderBy(p =>
+            {
+                if (p.GetType().Name == "HealthChecksPlugin")
+                    return -2000;
+
+                if (p is IConsensusPlugin)
+                {
+                    return -1000 + (priorities.TryGetValue(p.GetType().Name, out int v) ? v : 0);
+                }
+
+                return priorities.TryGetValue(p.GetType().Name, out int v2) ? v2 : int.MaxValue;
+            })
+            .ThenBy(p => p.Priority)
+            .ThenBy(p => p.GetType().Name, StringComparer.OrdinalIgnoreCase)
+            .ToList();
     }
 }

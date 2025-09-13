@@ -142,10 +142,6 @@ async Task<int> RunAsync(ParseResult parseResult, PluginLoader pluginLoader, Can
     IInitConfig initConfig = configProvider.GetConfig<IInitConfig>();
     IKeyStoreConfig keyStoreConfig = configProvider.GetConfig<IKeyStoreConfig>();
     ISnapshotConfig snapshotConfig = configProvider.GetConfig<ISnapshotConfig>();
-    IPluginConfig pluginConfig = configProvider.GetConfig<IPluginConfig>();
-
-    pluginLoader.OrderPlugins(pluginConfig);
-
     ResolveDataDirectory(parseResult.GetValue(BasicOptions.DataDirectory),
         initConfig, keyStoreConfig, snapshotConfig);
 

@@ -40,6 +40,7 @@ namespace Nethermind.Consensus.AuRa
     /// </summary>
     public class AuRaPlugin(ChainSpec chainSpec) : IConsensusPlugin
     {
+        public int Priority => PluginPriorities.Aura;
         private AuRaNethermindApi? _nethermindApi;
         public string Name => SealEngineType;
 

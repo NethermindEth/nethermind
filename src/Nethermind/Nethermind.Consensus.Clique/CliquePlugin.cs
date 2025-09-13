@@ -19,6 +19,7 @@ namespace Nethermind.Consensus.Clique
 {
     public class CliquePlugin(ChainSpec chainSpec) : IConsensusPlugin
     {
+        public int Priority => PluginPriorities.Clique;
         public string Name => SealEngineType;
 
         public string Description => $"{SealEngineType} Consensus Engine";

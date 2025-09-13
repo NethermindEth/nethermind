@@ -21,6 +21,8 @@ public class SinglePluginLoader<T> : IPluginLoader where T : INethermindPlugin
     public IEnumerable<Type> PluginTypes => Enumerable.Repeat(typeof(T), 1);
 
     public void Load() { }
-
-    public void OrderPlugins(IPluginConfig pluginConfig) { }
+    public IList<INethermindPlugin> OrderPlugins(IList<INethermindPlugin> plugins, IReadOnlyList<string> customOrder)
+    {
+        throw new NotImplementedException();
+    }
 }

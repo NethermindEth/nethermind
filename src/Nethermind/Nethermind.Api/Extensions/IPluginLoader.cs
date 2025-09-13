@@ -12,5 +12,5 @@ public interface IPluginLoader
 
     void Load();
 
-    public void OrderPlugins(IPluginConfig pluginConfig);
+    IList<INethermindPlugin> OrderPlugins(IList<INethermindPlugin> plugins, IReadOnlyList<string> customOrder);
 }

@@ -42,6 +42,7 @@ namespace Nethermind.Taiko;
 
 public class TaikoPlugin(ChainSpec chainSpec) : IConsensusPlugin
 {
+    public int Priority => PluginPriorities.Taiko;
     public const string Taiko = "Taiko";
     public string Author => "Nethermind";
     public string Name => Taiko;
