@@ -4,6 +4,7 @@
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
+using Nethermind.Crypto;
 using Nethermind.Int256;
 using System;
 using System.Collections.Generic;
@@ -12,8 +13,9 @@ using System.Text;
 using System.Threading.Tasks;
 
 namespace Nethermind.Xdc;
-public class XdcBlockHeader : BlockHeader
+public class XdcBlockHeader : BlockHeader, IHashResolver
 {
+    private static XdcHeaderDecoder _headerDecoder = new();
     public XdcBlockHeader(
         Hash256 parentHash,
         Hash256 unclesHash,
@@ -41,5 +43,12 @@ public class XdcBlockHeader : BlockHeader
             masterNodes[i] = new Address(Validators.AsSpan(i * 20, 20));
         }
         return masterNodes;
+    }
+
+    public ValueHash256 CalculateHash()
+    {
+        KeccakRlpStream rlpStream = new KeccakRlpStream();
+        _headerDecoder.Encode(rlpStream, this);
+        return rlpStream.GetHash();
     }
 }
