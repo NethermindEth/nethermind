@@ -24,7 +24,7 @@ public class RocksDbIteratorWrapper : IIterator<byte[], byte[]>
         _iterator.SeekToFirst();
     }
 
-    public void Seek(byte[] key)
+    public void Seek(ReadOnlySpan<byte> key)
     {
         _iterator.Seek(key);
     }

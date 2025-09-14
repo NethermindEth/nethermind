@@ -19,10 +19,8 @@ partial class LogIndexStorage
     {
         PostMergeProcessingStats Stats { get; }
         PostMergeProcessingStats GetAndResetStats();
-        bool TryEnqueueAddress(ReadOnlySpan<byte> dbKey, ReadOnlySpan<byte> dbValue);
-        bool TryEnqueueTopic(ReadOnlySpan<byte> dbKey, ReadOnlySpan<byte> dbValue);
-        Task EnqueueAddressAsync(byte[] dbKey);
-        Task EnqueueTopicAsync(byte[] dbKey);
+        bool TryEnqueue(int? topicIndex, ReadOnlySpan<byte> dbKey, ReadOnlySpan<byte> dbValue);
+        Task EnqueueAsync(int? topicIndex, byte[] dbKey);
         void WaitUntilEmpty();
         Task StopAsync();
     }
@@ -36,8 +34,7 @@ partial class LogIndexStorage
         private readonly ConcurrentDictionary<byte[], bool> _compressQueue = new(Bytes.EqualityComparer);
         private readonly LogIndexStorage _storage;
         private readonly ILogger _logger;
-        private readonly ActionBlock<byte[]> _addressBlock;
-        private readonly ActionBlock<byte[]> _topicBlock;
+        private readonly ActionBlock<(int?, byte[])> _block;
         private readonly ManualResetEventSlim _queueEmptyEvent = new(true); // TODO: fix event being used for both blocks
 
         private PostMergeProcessingStats _stats = new();
@@ -45,7 +42,7 @@ partial class LogIndexStorage
 
         public PostMergeProcessingStats GetAndResetStats()
         {
-            _stats.QueueLength = _addressBlock.InputCount;
+            _stats.QueueLength = _block.InputCount;
             return Interlocked.Exchange(ref _stats, new());
         }
 
@@ -55,14 +52,10 @@ partial class LogIndexStorage
             _logger = logger;
 
             if (ioParallelism < 1) throw new ArgumentException("IO parallelism degree must be a positive value.", nameof(ioParallelism));
-            _addressBlock = new(CompressAddress, new() { MaxDegreeOfParallelism = ioParallelism, BoundedCapacity = 10_000 });
-            _topicBlock = new(CompressTopic, new() { MaxDegreeOfParallelism = ioParallelism, BoundedCapacity = 10_000 });
+            _block = new(x => CompressValue(x.Item1, x.Item2), new() { MaxDegreeOfParallelism = ioParallelism, BoundedCapacity = 10_000 });
         }
 
-        public bool TryEnqueueAddress(ReadOnlySpan<byte> dbKey, ReadOnlySpan<byte> dbValue) => TryEnqueue(_addressBlock, dbKey, dbValue);
-        public bool TryEnqueueTopic(ReadOnlySpan<byte> dbKey, ReadOnlySpan<byte> dbValue) => TryEnqueue(_topicBlock, dbKey, dbValue);
-
-        private bool TryEnqueue(ActionBlock<byte[]> block, ReadOnlySpan<byte> dbKey, ReadOnlySpan<byte> dbValue)
+        public bool TryEnqueue(int? topicIndex, ReadOnlySpan<byte> dbKey, ReadOnlySpan<byte> dbValue)
         {
             // ReSharper disable once ConditionIsAlwaysTrueOrFalse - may not initialized yet, compression can be started from the constructor
             // TODO: add to queue, but start processing later?
@@ -76,19 +69,16 @@ partial class LogIndexStorage
             if (!_compressQueue.TryAdd(dbKeyArr, true))
                 return false;
 
-            if (_addressBlock.Post(dbKeyArr))
+            if (_block.Post((topicIndex, dbKeyArr)))
                 return true;
 
             _compressQueue.TryRemove(dbKeyArr, out _);
             return false;
         }
 
-        public Task EnqueueAddressAsync(byte[] dbKey) => EnqueueAsync(_addressBlock, dbKey);
-        public Task EnqueueTopicAsync(byte[] dbKey) => EnqueueAsync(_topicBlock, dbKey);
-
-        private async Task EnqueueAsync(ActionBlock<byte[]> block, byte[] dbKey)
+        public async Task EnqueueAsync(int? topicIndex, byte[] dbKey)
         {
-            await block.SendAsync(dbKey);
+            await _block.SendAsync((topicIndex, dbKey));
             _queueEmptyEvent.Reset();
         }
 
@@ -96,28 +86,17 @@ partial class LogIndexStorage
 
         public Task StopAsync()
         {
-            _addressBlock.Complete();
-            return _addressBlock.Completion;
-        }
-
-        private void CompressAddress(byte[] dbKey)
-        {
-            CompressValue(_storage._addressDb, dbKey);
-            Interlocked.Increment(ref _stats.CompressedAddressKeys);
-        }
-
-        private void CompressTopic(byte[] dbKey)
-        {
-            CompressValue(_storage._topicsDb, dbKey);
-            Interlocked.Increment(ref _stats.CompressedTopicKeys);
+            _block.Complete();
+            return _block.Completion;
         }
 
         // TODO: optimize allocations
-        private void CompressValue(IDb db, byte[] dbKey)
+        private void CompressValue(int? topicIndex, byte[] dbKey)
         {
             try
             {
                 var execTimestamp = Stopwatch.GetTimestamp();
+                IDb db = _storage.GetDb(topicIndex);
 
                 var timestamp = Stopwatch.GetTimestamp();
                 Span<byte> dbValue = db.Get(dbKey);
@@ -155,6 +134,11 @@ partial class LogIndexStorage
 
                 _stats.PuttingValues.Include(Stopwatch.GetElapsedTime(timestamp));
 
+                if (topicIndex is null)
+                    Interlocked.Increment(ref _stats.CompressedAddressKeys);
+                else
+                    Interlocked.Increment(ref _stats.CompressedTopicKeys);
+
                 _stats.Execution.Include(Stopwatch.GetElapsedTime(execTimestamp));
             }
             catch (Exception ex)
@@ -165,7 +149,7 @@ partial class LogIndexStorage
             {
                 _compressQueue.TryRemove(dbKey, out _);
 
-                if (_addressBlock.InputCount == 0)
+                if (_block.InputCount == 0)
                     _queueEmptyEvent.Set();
             }
         }
@@ -175,10 +159,8 @@ partial class LogIndexStorage
     {
         public PostMergeProcessingStats Stats { get; } = new();
         public PostMergeProcessingStats GetAndResetStats() => Stats;
-        public bool TryEnqueueAddress(ReadOnlySpan<byte> dbKey, ReadOnlySpan<byte> dbValue) => false;
-        public bool TryEnqueueTopic(ReadOnlySpan<byte> dbKey, ReadOnlySpan<byte> dbValue) => false;
-        public Task EnqueueAddressAsync(byte[] dbKey) => Task.CompletedTask;
-        public Task EnqueueTopicAsync(byte[] dbKey) => Task.CompletedTask;
+        public bool TryEnqueue(int? topicIndex, ReadOnlySpan<byte> dbKey, ReadOnlySpan<byte> dbValue) => false;
+        public Task EnqueueAsync(int? topicIndex, byte[] dbKey) => Task.CompletedTask;
         public void WaitUntilEmpty() { }
         public Task StopAsync() => Task.CompletedTask;
     }

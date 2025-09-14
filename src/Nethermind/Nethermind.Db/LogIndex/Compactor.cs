@@ -109,22 +109,12 @@ partial class LogIndexStorage
                     if (_logger.IsTrace)
                         _logger.Trace("Compacting log index");
 
-                    var addrTimestamp = Stopwatch.GetTimestamp();
-                    _storage._addressDb.Compact();
-                    _stats.Addresses.Include(Stopwatch.GetElapsedTime(addrTimestamp));
-
-                    if (cancellation.IsCancellationRequested)
-                        return;
-
-                    var topicTimestamp = Stopwatch.GetTimestamp();
-                    _storage._topicsDb.Compact();
-                    _stats.Topics.Include(Stopwatch.GetElapsedTime(topicTimestamp));
-
-                    TimeSpan total = Stopwatch.GetElapsedTime(addrTimestamp) + Stopwatch.GetElapsedTime(topicTimestamp);
-                    _stats.Total.Include(total);
+                    var timestamp = Stopwatch.GetTimestamp();
+                    _storage._columnsDb.Compact();
+                    _stats.Total.Include(Stopwatch.GetElapsedTime(timestamp));
 
                     if (_logger.IsTrace)
-                        _logger.Trace($"Compacted log index in {total}");
+                        _logger.Trace($"Compacted log index in {Stopwatch.GetElapsedTime(timestamp)}");
                 }
                 catch (TaskCanceledException ex) when (ex.CancellationToken == cancellation)
                 {

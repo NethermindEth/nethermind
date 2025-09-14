@@ -685,12 +685,14 @@ namespace Nethermind.Db.Test.LogIndex
                 Address[] customAddresses =
                 [
                     Address.Zero, Address.MaxValue,
-                    new(new byte[] { 1 }.PadLeft(Address.Size)), new(new byte[] { 1 }.PadRight(Address.Size))
+                    new(new byte[] { 1 }.PadLeft(Address.Size)), new(new byte[] { 1, 1 }.PadLeft(Address.Size)),
+                    new(new byte[] { 1 }.PadRight(Address.Size)), new(new byte[] { 1, 1 }.PadRight(Address.Size))
                 ];
 
                 Hash256[] customTopics =
                 [
                     Hash256.Zero, new(Enumerable.Repeat((byte)0xFF, Hash256.Size).ToArray()),
+                    new(Enumerable.Repeat((byte)0xFF, Hash256.Size - 1).Concat<byte>([0]).ToArray()),
                     new(new byte[] { 1 }.PadLeft(Hash256.Size)), new(new byte[] { 1 }.PadRight(Hash256.Size))
                 ];
 

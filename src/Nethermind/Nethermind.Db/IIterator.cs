@@ -5,10 +5,11 @@ using System;
 
 namespace Nethermind.Db;
 
-public interface IIterator<TKey, TValue> : IDisposable
+// TODO: remove generics?
+public interface IIterator<TKey, out TValue> : IDisposable
 {
     void SeekToFirst();
-    void Seek(TKey key);
+    void Seek(ReadOnlySpan<byte> key);
     void SeekForPrev(TKey key);
     void SeekForPrev(ReadOnlySpan<byte> key);
     void Next();

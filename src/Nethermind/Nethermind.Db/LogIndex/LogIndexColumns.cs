@@ -6,5 +6,8 @@ namespace Nethermind.Db;
 public enum LogIndexColumns
 {
     Addresses,
-    Topics
+    Topics0,
+    Topics1,
+    Topics2,
+    Topics3
 }

@@ -98,8 +98,6 @@ public class LogIndexUpdateStats(ILogIndexStorage storage) : IFormattable
                {tab}{tab}In queue: {PostMergeProcessing.QueueLength:N0}
 
                {tab}Compacting: {Compacting.Total}
-               {tab}{tab}Addresses: {Compacting.Addresses}
-               {tab}{tab}Topics: {Compacting.Topics}
                """;
     }
 
