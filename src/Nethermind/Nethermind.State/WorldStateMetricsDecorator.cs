@@ -74,9 +74,6 @@ public class WorldStateMetricsDecorator(IWorldState innerState) : IWorldState
     public void SubtractFromBalance(Address address, in UInt256 balanceChange, IReleaseSpec spec) =>
         innerState.SubtractFromBalance(address, in balanceChange, spec);
 
-    public void UpdateStorageRoot(Address address, Hash256 storageRoot)
-        => innerState.UpdateStorageRoot(address, storageRoot);
-
     public void IncrementNonce(Address address, UInt256 delta) => innerState.IncrementNonce(address, delta);
 
     public void DecrementNonce(Address address, UInt256 delta) => innerState.DecrementNonce(address, delta);
