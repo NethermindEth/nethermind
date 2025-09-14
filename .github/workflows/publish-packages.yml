@@ -43,7 +43,7 @@ jobs:
           awk -i inplace -v n=1 '/hash/ { if (++count == n) sub(/hash.*/, "hash='$arm64_hash'"); } 1' debian/postinst
           awk -i inplace -v n=2 '/hash/ { if (++count == n) sub(/hash.*/, "hash='$x64_hash'"); } 1' debian/postinst
 
-          changelog="nethermind ($version) jammy; urgency=high\n"
+          changelog="nethermind ($version) noble; urgency=high\n"
           changelog+="  * Nethermind v$version\n"
           changelog+=" -- Nethermind <devops@nethermind.io>  $(date -R)"
           echo -e "$changelog" > debian/changelog
@@ -56,30 +56,3 @@ jobs:
 
 
 
-  copy-ppa:
-    name: Copy PPA package
-    runs-on: ubuntu-latest
-    needs: publish-ppa
-    steps:
-      - name: Wait for PPA package to be published
-        if: github.run_attempt == 1
-        run: sleep 2h
-      - name: Install PPA dependencies
-        run: |
-          sudo apt-get update
-          sudo apt-get install debhelper devscripts ubuntu-dev-tools -y
-      - name: Set up Python
-        uses: actions/setup-python@v5
-      - name: Install launchpadlib
-        run: pip install launchpadlib --upgrade
-      - name: Copy to other series
-        env:
-          LP_CREDENTIALS_FILE: /tmp/lp_credentials
-        run: |
-          echo ${{ secrets.PPA_COPY_TOKEN }} | base64 --decode > /tmp/lp_credentials
-          git clone https://git.launchpad.net/ubuntu-archive-tools
-          cd ubuntu-archive-tools
-          for release in "noble"; do
-            python3 copy-package -y -b -p nethermindeth --ppa-name=nethermind -s jammy --to-suite=$release nethermind
-          done
-          rm -f /tmp/lp_credentials
