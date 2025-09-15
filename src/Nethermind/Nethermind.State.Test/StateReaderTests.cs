@@ -262,7 +262,8 @@ namespace Nethermind.Store.Test
             }
 
             IStateReader stateReader = worldStateManager.GlobalStateReader;
-            var stats = stateReader.CollectStats(stateRoot, new MemDb(), Logger);
+            ProgressLogger progressLogger = new ProgressLogger("Stats Collection", Logger);
+            var stats = stateReader.CollectStats(stateRoot, new MemDb(), Logger, progressLogger, default);
             stats.AccountCount.Should().Be(1);
         }
 
@@ -401,7 +402,8 @@ namespace Nethermind.Store.Test
                 stateRoot = provider.StateRoot;
             }
 
-            TrieStatsCollector visitor = new(new MemDb(), LimboLogs.Instance);
+            ProgressLogger progressLogger = new ProgressLogger("Stats Collection", LimboLogs.Instance);
+            TrieStatsCollector visitor = new(new MemDb(), LimboLogs.Instance, progressLogger, default);
             worldStateManager.GlobalStateReader.RunTreeVisitor(visitor, stateRoot);
         }
 

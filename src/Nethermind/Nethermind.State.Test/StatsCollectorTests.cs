@@ -61,7 +61,8 @@ namespace Nethermind.Store.Test
             Hash256 storageKey = new("0x345e54154080bfa9e8f20c99d7a0139773926479bc59e5b4f830ad94b6425332");
             nodeStorage.Set(address, path, storageKey, null);
 
-            TrieStatsCollector statsCollector = new(codeDb, LimboLogs.Instance);
+            ProgressLogger progressLogger = new ProgressLogger("Stats Collection", LimboLogs.Instance);
+            TrieStatsCollector statsCollector = new(codeDb, LimboLogs.Instance, progressLogger, default);
             VisitingOptions visitingOptions = new VisitingOptions()
             {
                 MaxDegreeOfParallelism = parallel ? 0 : 1

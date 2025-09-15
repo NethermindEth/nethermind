@@ -44,9 +44,9 @@ namespace Nethermind.State
             return account.CodeHash;
         }
 
-        public static TrieStats CollectStats(this IStateReader stateProvider, Hash256 root, IKeyValueStore codeStorage, ILogManager logManager, CancellationToken cancellationToken = default)
+        public static TrieStats CollectStats(this IStateReader stateProvider, Hash256 root, IKeyValueStore codeStorage, ILogManager logManager, ProgressLogger progressLogger, CancellationToken cancellationToken = default)
         {
-            TrieStatsCollector collector = new(codeStorage, logManager, cancellationToken);
+            TrieStatsCollector collector = new(codeStorage, logManager, progressLogger, cancellationToken);
             stateProvider.RunTreeVisitor(collector, root, new VisitingOptions
             {
                 MaxDegreeOfParallelism = Environment.ProcessorCount,

@@ -18,10 +18,12 @@ namespace Nethermind.Analytics
         private readonly HashSet<Hash256AsKey>.AlternateLookup<ValueHash256> _ignoreThisOneLookup;
         private int _accountsVisited;
         private int _nodesVisited;
+        private readonly ProgressLogger _progressLogger;
 
-        public SupplyVerifier(ILogger logger)
+        public SupplyVerifier(ILogger logger, ProgressLogger progressLogger)
         {
             _logger = logger;
+            _progressLogger = progressLogger ?? throw new ArgumentNullException(nameof(progressLogger));
             _ignoreThisOneLookup = _ignoreThisOne.GetAlternateLookup<ValueHash256>();
         }
 
@@ -46,6 +48,7 @@ namespace Nethermind.Analytics
 
         public void VisitTree(in OldStyleTrieVisitContext _, in ValueHash256 rootHash)
         {
+            _progressLogger.Reset(0, 0); // We'll update as we go since we don't know total nodes upfront
         }
 
         public void VisitMissingNode(in OldStyleTrieVisitContext _, in ValueHash256 nodeHash)
@@ -55,8 +58,15 @@ namespace Nethermind.Analytics
 
         public void VisitBranch(in OldStyleTrieVisitContext trieVisitContext, TrieNode node)
         {
-            _logger.Info($"Balance after visiting {_accountsVisited} accounts and {_nodesVisited} nodes: {Balance}");
             _nodesVisited++;
+
+            _progressLogger.Update(_nodesVisited);
+
+            // Log progress every 1000 nodes
+            if (_nodesVisited % 1000 == 0)
+            {
+                _progressLogger.LogProgress();
+            }
 
             if (trieVisitContext.IsStorage)
             {
@@ -74,6 +84,9 @@ namespace Nethermind.Analytics
         public void VisitExtension(in OldStyleTrieVisitContext trieVisitContext, TrieNode node)
         {
             _nodesVisited++;
+
+            _progressLogger.Update(_nodesVisited);
+
             if (trieVisitContext.IsStorage)
             {
                 _ignoreThisOne.Add(node.GetChildHash(0));
@@ -90,7 +103,13 @@ namespace Nethermind.Analytics
             Balance += account.Balance;
             _accountsVisited++;
 
-            _logger.Info($"Balance after visiting {_accountsVisited} accounts and {_nodesVisited} nodes: {Balance}");
+            _progressLogger.Update(_nodesVisited);
+
+            // Log progress every 1000 accounts
+            if (_accountsVisited % 1000 == 0)
+            {
+                _progressLogger.LogProgress();
+            }
         }
     }
 }

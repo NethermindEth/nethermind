@@ -25,23 +25,29 @@ namespace Nethermind.Blockchain.FullPruning
         private readonly ILogger _logger;
         private readonly Stopwatch _stopwatch;
         private long _persistedNodes = 0;
+        private long _totalNodesToProcess = 0;
         private bool _finished = false;
         private readonly WriteFlags _writeFlags;
         private readonly CancellationToken _cancellationToken;
         private const int Million = 1_000_000;
         private readonly ConcurrentNodeWriteBatcher _concurrentWriteBatcher;
+        private readonly ProgressLogger _progressLogger;
+        private readonly INodeStorage _sourceNodeStorage;
 
         public CopyTreeVisitor(
             INodeStorage nodeStorage,
             WriteFlags writeFlags,
             ILogManager logManager,
-            CancellationToken cancellationToken)
+            CancellationToken cancellationToken,
+            ProgressLogger progressLogger)
         {
             _cancellationToken = cancellationToken;
             _writeFlags = writeFlags;
             _logger = logManager.GetClassLogger();
             _stopwatch = new Stopwatch();
             _concurrentWriteBatcher = new ConcurrentNodeWriteBatcher(nodeStorage);
+            _progressLogger = progressLogger ?? throw new ArgumentNullException(nameof(progressLogger));
+            _sourceNodeStorage = nodeStorage;
         }
 
         public bool IsFullDbScan => true;
@@ -54,6 +60,13 @@ namespace Nethermind.Blockchain.FullPruning
         {
             _stopwatch.Start();
             if (_logger.IsInfo) _logger.Info($"Full Pruning Started on root hash {rootHash}: do not close the node until finished or progress will be lost.");
+
+            // Initialize total nodes to process - we don't estimate since full pruning
+            // may not copy all nodes and the actual count depends on pruning strategy
+            _totalNodesToProcess = 0; // We'll track progress without a target
+
+            // Initialize progress logger
+            _progressLogger.Reset(0, _totalNodesToProcess);
         }
 
         [DoesNotReturn, StackTraceHidden]
@@ -82,12 +95,14 @@ namespace Nethermind.Blockchain.FullPruning
             {
                 // simple copy of nodes RLP
                 _concurrentWriteBatcher.Set(storage, path, node.Keccak, node.FullRlp.ToArray(), _writeFlags);
-                Interlocked.Increment(ref _persistedNodes);
+                long currentNodes = Interlocked.Increment(ref _persistedNodes);
 
-                // log message every 1 mln nodes
-                if (_persistedNodes % Million == 0)
+                _progressLogger.Update(currentNodes);
+
+                // Log progress every 1 million nodes or when progress logger suggests
+                if (currentNodes % Million == 0)
                 {
-                    LogProgress("In Progress");
+                    _progressLogger.LogProgress();
                 }
             }
         }
@@ -95,7 +110,28 @@ namespace Nethermind.Blockchain.FullPruning
         private void LogProgress(string state)
         {
             if (_logger.IsInfo)
-                _logger.Info($"Full Pruning {state}: {_stopwatch.Elapsed} {_persistedNodes / (double)Million:N} mln nodes mirrored.");
+            {
+                var elapsed = _stopwatch.Elapsed;
+                var nodesPerSecond = elapsed.TotalSeconds > 0 ? _persistedNodes / elapsed.TotalSeconds : 0;
+
+                _logger.Info($"Full Pruning {state}: {elapsed} | " +
+                           $"Nodes: {_persistedNodes:N0} | " +
+                           $"Speed: {nodesPerSecond:N0} nodes/sec | " +
+                           $"Mirrored: {_persistedNodes / (double)Million:N} mln nodes");
+            }
+        }
+
+        /// <summary>
+        /// Estimates the number of nodes in the state trie for progress tracking.
+        /// This is a rough estimate since full pruning may not copy all nodes.
+        /// </summary>
+        private long EstimateNodesInState(ValueHash256 rootHash)
+        {
+            // Since we cannot accurately estimate the number of nodes that will be copied
+            // during full pruning (as it depends on the pruning strategy and state structure),
+            // we return 0 to indicate that we don't have a target value.
+            // ProgressLogger will handle this by showing only current progress without percentage.
+            return 0;
         }
 
         public void Dispose()
@@ -109,7 +145,10 @@ namespace Nethermind.Blockchain.FullPruning
         public void Finish()
         {
             _finished = true;
-            LogProgress("Finished");
+
+            _progressLogger.MarkEnd();
+            _progressLogger.LogProgress();
+
             _concurrentWriteBatcher.Dispose();
         }
     }
