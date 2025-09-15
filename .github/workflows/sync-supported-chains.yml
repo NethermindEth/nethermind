@@ -223,7 +223,9 @@ jobs:
             mkdir -p execution-data-op/logs/configs
             mv ../tests/predefined_configs/customNLog.config execution-data-op/logs/configs/customNLog.config
 
-            for f in "${{ inputs.nethermind_args }}"; do extra_param+=" --el-op-extra-flag $f"; done
+            if [ -n "${{ inputs.nethermind_args }}" ]; then
+              for f in "${{ inputs.nethermind_args }}"; do extra_param+=" --el-op-extra-flag $f"; done
+            fi
 
             ./build/sedge generate \
               --logging none \
@@ -262,7 +264,9 @@ jobs:
             mkdir -p execution-data-taiko/logs/configs
             mv ../tests/predefined_configs/customNLog.config execution-data-taiko/logs/configs/customNLog.config
             
-            for f in "${{ inputs.nethermind_args }}"; do extra_param+=" --el-l2-extra-flag $f"; done
+            if [ -n "${{ inputs.nethermind_args }}" ]; then
+              for f in "${{ inputs.nethermind_args }}"; do extra_param+=" --el-l2-extra-flag $f"; done
+            fi
 
             ./build/sedge generate \
               --logging none \
@@ -286,7 +290,9 @@ jobs:
             mkdir -p execution-data/logs/configs
             mv ../tests/predefined_configs/customNLog.config execution-data/logs/configs/customNLog.config
 
-            for f in "${{ inputs.nethermind_args }}"; do extra_param+=" --el-extra-flag $f"; done
+            if [ -n "${{ inputs.nethermind_args }}" ]; then
+              for f in "${{ inputs.nethermind_args }}"; do extra_param+=" --el-extra-flag $f"; done
+            fi
             
             ./build/sedge generate \
               --logging none \
