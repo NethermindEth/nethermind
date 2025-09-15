@@ -10,6 +10,7 @@ using FluentAssertions;
 using Nethermind.Blockchain;
 using Nethermind.Consensus;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Events;
 using Nethermind.Core.Test.Builders;
 using Nethermind.TxPool;
 using NUnit.Framework;
@@ -18,6 +19,7 @@ namespace Nethermind.Core.Test.Blockchain;
 
 public class TestBlockchainUtil(
     IBlockProducer blockProducer,
+    InvalidBlockDetector invalidBlockDetector,
     ManualTimestamper timestamper,
     IBlockTree blockTree,
     ITxPool txPool,
@@ -33,6 +35,21 @@ public class TestBlockchainUtil(
         Task waitforHead = flags.HasFlag(AddBlockFlags.DoNotWaitForHead)
             ? Task.CompletedTask
             : WaitAsync(blockTree.WaitForNewBlock(cancellationToken), "timeout waiting for new head");
+
+        Task txNewHead = flags.HasFlag(AddBlockFlags.DoNotWaitForHead)
+            ? Task.CompletedTask
+            : Wait.ForEventCondition<Block>(cancellationToken,
+                (h) => txPool.TxPoolHeadChanged += h,
+                (h) => txPool.TxPoolHeadChanged -= h,
+                b => true);
+
+        Block? invalidBlock = null;
+        void OnInvalidBlock(object? sender, InvalidBlockDetector.InvalidBlockEventArgs e)
+        {
+            invalidBlock = e.InvalidBlock;
+        }
+
+        invalidBlockDetector.OnInvalidBlock += OnInvalidBlock;
 
         bool mayMissTx = (flags & AddBlockFlags.MayMissTx) != 0;
         bool mayHaveExtraTx = (flags & AddBlockFlags.MayHaveExtraTx) != 0;
@@ -55,6 +72,8 @@ public class TestBlockchainUtil(
             cancellationToken.ThrowIfCancellationRequested();
             block = await blockProducer.BuildBlock(parentHeader: blockTree.GetProducedBlockParent(null), cancellationToken: cancellationToken);
 
+            if (invalidBlock is not null) Assert.Fail($"Invalid block {invalidBlock} produced");
+
             if (block is not null)
             {
                 HashSet<Hash256> blockTxs = block.Transactions.Select((tx) => tx.Hash!).ToHashSet();
@@ -63,7 +82,7 @@ public class TestBlockchainUtil(
                 bool allExpectedHashAvailable = matchingHashes == expectedHashes.Count;
                 if (!allExpectedHashAvailable && mayMissTx) break;
 
-                bool hasExtraTx = expectedHashes.Count > matchingHashes;
+                bool hasExtraTx = allExpectedHashAvailable && blockTxs.Count > expectedHashes.Count;
                 if (hasExtraTx && mayHaveExtraTx) break;
 
                 bool hasExactlyTheRightTx = expectedHashes.Count == blockTxs.Count;
@@ -87,6 +106,9 @@ public class TestBlockchainUtil(
 
         await waitforHead;
 
+        await txNewHead; // Wait for tx new head event so that processed tx was removed from txpool
+
+        invalidBlockDetector.OnInvalidBlock -= OnInvalidBlock;
         return txResults;
     }
 

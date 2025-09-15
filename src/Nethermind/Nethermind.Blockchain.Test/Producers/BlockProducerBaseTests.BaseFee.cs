@@ -182,7 +182,7 @@ public partial class BlockProducerBaseTests
                 params Transaction[] transactions)
             {
                 await ExecuteAntecedentIfNeeded();
-                await _testRpcBlockchain.AddBlock(transactions);
+                await _testRpcBlockchain.AddBlock(TestBlockchainUtil.AddBlockFlags.MayHaveExtraTx, transactions);
                 IBlockTree blockTree = _testRpcBlockchain.BlockTree;
                 Block headBlock = blockTree.Head!;
                 Assert.That(headBlock.Header.BaseFeePerGas, Is.EqualTo(expectedBaseFee));

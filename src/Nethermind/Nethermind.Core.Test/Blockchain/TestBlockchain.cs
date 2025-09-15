@@ -223,7 +223,13 @@ public class TestBlockchain : IDisposable
 
         _cts = AutoCancelTokenSource.ThatCancelAfter(Debugger.IsAttached ? TimeSpan.FromMilliseconds(-1) : TimeSpan.FromMilliseconds(TestTimout));
 
-        if (testConfiguration.SuggestGenesisOnStart) MainProcessingContext.GenesisLoader.Load();
+        if (testConfiguration.SuggestGenesisOnStart)
+        {
+            // The block added event is not waited by genesis, but its needed to wait here so that `AddBlock` wait correctly.
+            Task newBlockWaiter = BlockTree.WaitForNewBlock(this.CancellationToken);
+            MainProcessingContext.GenesisLoader.Load();
+            await newBlockWaiter;
+        }
 
         if (testConfiguration.AddBlockOnStart)
             await AddBlocksOnStart();
