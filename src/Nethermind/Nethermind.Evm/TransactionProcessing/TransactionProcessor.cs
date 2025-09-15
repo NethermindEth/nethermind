@@ -667,7 +667,7 @@ namespace Nethermind.Evm.TransactionProcessing
             if (tracer.IsTracingAccess)
             {
                 tracer.ReportAccess(
-                    accessedItems.AccessedAddresses.Except(spec.Precompiles.Select(addr => addr.Value)).ToArray(),
+                    accessedItems.AccessedAddresses.Except(spec.Precompiles.Select(addr => addr.Value)),
                     accessedItems.AccessedStorageCells);
             }
 
