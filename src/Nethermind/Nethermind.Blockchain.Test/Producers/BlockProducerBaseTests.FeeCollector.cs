@@ -4,6 +4,7 @@
 using System.Threading.Tasks;
 using Nethermind.Core;
 using Nethermind.Core.Extensions;
+using Nethermind.Core.Test.Blockchain;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Int256;
 using NUnit.Framework;
@@ -34,7 +35,7 @@ public partial class BlockProducerBaseTests
             {
                 await ExecuteAntecedentIfNeeded();
                 UInt256 balanceBefore = _testRpcBlockchain.ReadOnlyState.GetBalance(_feeCollector);
-                await _testRpcBlockchain.AddBlock(transactions);
+                await _testRpcBlockchain.AddBlock(TestBlockchainUtil.AddBlockFlags.MayHaveExtraTx, transactions);
                 UInt256 balanceAfter = _testRpcBlockchain.ReadOnlyState.GetBalance(_feeCollector);
                 Assert.That(balanceAfter - balanceBefore, Is.EqualTo(expectedFeeCollected));
 

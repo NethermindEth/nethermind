@@ -100,7 +100,7 @@ public class BlockProcessingModule(IInitConfig initConfig) : Module
                 string.IsNullOrWhiteSpace(initConfig?.GenesisHash) ? null : new Hash256(initConfig.GenesisHash),
                 TimeSpan.FromMilliseconds(ctx.Resolve<IBlocksConfig>().GenesisTimeoutMs)))
             .AddScoped<IGenesisBuilder, GenesisBuilder>()
-            .AddScoped<GenesisLoader>()
+            .AddScoped<IGenesisLoader, GenesisLoader>()
             ;
 
         if (initConfig.ExitOnInvalidBlock) builder.AddStep(typeof(ExitOnInvalidBlock));
