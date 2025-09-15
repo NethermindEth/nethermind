@@ -17,6 +17,7 @@ using Nethermind.Core.Specs;
 using Nethermind.Evm;
 using Nethermind.Int256;
 using Nethermind.Logging;
+using Nethermind.Serialization.Rlp;
 using Nethermind.TxPool;
 using Nethermind.TxPool.Comparison;
 
@@ -60,6 +61,11 @@ namespace Nethermind.Consensus.Producers
             int checkedTransactions = 0;
             int selectedTransactions = 0;
             using ArrayPoolList<Transaction> selectedBlobTxs = new((int)spec.MaxBlobCount);
+            
+            // EIP-7934: Block size tracking to prevent creating oversized blocks
+            const int MAX_HEADER_SIZE = 1024; // Conservative estimate for header, receipts, and other block overhead
+            int cumulativeBlockSize = MAX_HEADER_SIZE;
+            int maxRlpBlockSize = spec.IsEip7934Enabled ? spec.Eip7934MaxRlpBlockSize : int.MaxValue;
 
             SelectBlobTransactions(blobTransactions, parent, spec, baseFee, selectedBlobTxs);
 
@@ -72,6 +78,19 @@ namespace Nethermind.Consensus.Producers
                     _transactionPool.RemoveTransaction(tx.Hash!);
                     if (_logger.IsDebug) _logger.Debug($"Rejecting (null sender) {tx.ToShortString()}");
                     continue;
+                }
+
+                // EIP-7934: Check if adding this transaction would exceed block size limit
+                if (spec.IsEip7934Enabled)
+                {
+                    int txSize = GetTransactionSizeForBlockInclusion(tx);
+                    if (cumulativeBlockSize + txSize > maxRlpBlockSize)
+                    {
+                        if (_logger.IsDebug) 
+                            _logger.Debug($"Stopping transaction selection - would exceed block size limit. Current: {cumulativeBlockSize} bytes, Tx would add: {txSize} bytes, Limit: {maxRlpBlockSize} bytes");
+                        break; // Stop adding transactions to prevent oversized block
+                    }
+                    cumulativeBlockSize += txSize;
                 }
 
                 foreach (Transaction blobTx in PickBlobTxsBetterThanCurrentTx(selectedBlobTxs, tx, comparer))
@@ -444,6 +463,17 @@ namespace Nethermind.Consensus.Producers
         public bool SupportsBlobs => _transactionPool.SupportsBlobs;
 
         public override string ToString() => $"{nameof(TxPoolTxSource)}";
+        
+        /// <summary>
+        /// Calculates the exact RLP-encoded size of a transaction for block inclusion.
+        /// This is used for EIP-7934 block size limit enforcement.
+        /// </summary>
+        private static int GetTransactionSizeForBlockInclusion(Transaction tx)
+        {
+            // Use the exact RLP encoding size from TxDecoder
+            // RlpBehaviors.None gives us the standard encoding for block inclusion
+            return TxDecoder.Instance.GetLength(tx, RlpBehaviors.None);
+        }
 
         private readonly ref struct ArrayPoolBitMap : IDisposable
         {
