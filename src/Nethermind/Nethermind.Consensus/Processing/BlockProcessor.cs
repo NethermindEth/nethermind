@@ -130,7 +130,10 @@ public partial class BlockProcessor
 
         _blockTransactionsExecutor.SetBlockExecutionContext(new BlockExecutionContext(block.Header, spec));
 
-        _tracedAccessWorldState.Enabled = spec.BlockLevelAccessListsEnabled;
+        if (_tracedAccessWorldState is not null)
+        {
+            _tracedAccessWorldState.Enabled = spec.BlockLevelAccessListsEnabled;
+        }
 
         StoreBeaconRoot(block, spec);
         _blockHashStore.ApplyBlockhashStateChanges(header, spec);
@@ -176,7 +179,7 @@ public partial class BlockProcessor
 
         header.Hash = header.CalculateHash();
 
-        if (spec.BlockLevelAccessListsEnabled)
+        if (_tracedAccessWorldState is not null && spec.BlockLevelAccessListsEnabled)
         {
             body.BlockAccessList = Rlp.Encode(_tracedAccessWorldState.BlockAccessList).Bytes;
         }
