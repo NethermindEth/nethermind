@@ -61,10 +61,4 @@ public class SimulateBlockValidationTransactionsExecutor(
 
         return result;
     }
-
-    public event EventHandler<TxProcessedEventArgs>? TransactionProcessed
-    {
-        add => baseTransactionExecutor.TransactionProcessed += value;
-        remove => baseTransactionExecutor.TransactionProcessed -= value;
-    }
 }

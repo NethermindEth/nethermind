@@ -10,6 +10,7 @@ using Nethermind.Config;
 using Nethermind.Consensus;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
+using Nethermind.Core.Test.Blockchain;
 using Nethermind.Crypto;
 using Nethermind.Db;
 using Nethermind.Db.Blooms;
@@ -46,6 +47,9 @@ public class TestEnvironmentModule(PrivateKey nodeKey, string? networkGroup) : M
             .AddSingleton<IChannelFactory, INetworkConfig>(networkConfig => new LocalChannelFactory(networkGroup ?? nameof(TestEnvironmentModule), networkConfig))
 
             .AddSingleton<PseudoNethermindRunner>()
+            .AddSingleton<TestBlockchainUtil>()
+            .AddSingleton<TestBlockchainUtil.Config>()
+
             .AddSingleton<ISealer>(new NethDevSealEngine(nodeKey.Address))
             .AddSingleton<ITimestamper, ManualTimestamper>()
             .AddSingleton<IIPResolver, FixedIpResolver>()
