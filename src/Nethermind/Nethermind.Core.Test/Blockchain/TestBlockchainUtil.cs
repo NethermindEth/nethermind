@@ -9,6 +9,7 @@ using System.Threading.Tasks;
 using FluentAssertions;
 using Nethermind.Blockchain;
 using Nethermind.Consensus;
+using Nethermind.Consensus.Processing;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Events;
 using Nethermind.Core.Test.Builders;
@@ -44,7 +45,7 @@ public class TestBlockchainUtil(
                 b => true);
 
         Block? invalidBlock = null;
-        void OnInvalidBlock(object? sender, InvalidBlockDetector.InvalidBlockEventArgs e)
+        void OnInvalidBlock(object? sender, IBlockchainProcessor.InvalidBlockEventArgs e)
         {
             invalidBlock = e.InvalidBlock;
         }
