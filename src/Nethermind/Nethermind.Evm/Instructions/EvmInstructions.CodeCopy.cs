@@ -158,7 +158,7 @@ internal static partial class EvmInstructions
                 goto OutOfGas;
 
             ICodeInfo codeInfo = vm.CodeInfoRepository
-                .GetCachedCodeInfo(vm.WorldState, address, followDelegation: false, spec, out _);
+                .GetCachedCodeInfo(address, followDelegation: false, spec, out _);
 
             // Get the external code from the repository.
             ReadOnlySpan<byte> externalCode = codeInfo.CodeSpan;
@@ -285,7 +285,7 @@ internal static partial class EvmInstructions
 
         // No optimization applied: load the account's code from storage.
         ReadOnlySpan<byte> accountCode = vm.CodeInfoRepository
-            .GetCachedCodeInfo(vm.WorldState, address, followDelegation: false, spec, out _)
+            .GetCachedCodeInfo(address, followDelegation: false, spec, out _)
             .CodeSpan;
         // If EOF is enabled and the code is an EOF contract, push a fixed size (2).
         if (spec.IsEofEnabled && EofValidator.IsEof(accountCode, out _))
