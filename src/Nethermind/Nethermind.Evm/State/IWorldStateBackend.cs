@@ -87,12 +87,12 @@ public interface IWorldStateBackend
         void UpdateRootHash(bool canBeParallel = true);
     }
 
-    public interface IStorageSetter: IDisposable
+    public interface IStorageSetter : IDisposable
     {
         void Set(in UInt256 index, byte[] value);
     }
 
-    public interface IStateSetter: IDisposable
+    public interface IStateSetter : IDisposable
     {
         void Set(Address key, Account account);
     }
