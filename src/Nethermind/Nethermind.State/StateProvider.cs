@@ -52,7 +52,7 @@ namespace Nethermind.State
         private Dictionary<Hash256AsKey, byte[]>.AlternateLookup<ValueHash256> _codeBatchAlternate;
 
         private readonly List<Change> _changes = new(Resettable.StartCapacity);
-        internal IWorldStateBackend.IStateTree _tree;
+        internal IWorldStateScopeProvider.IStateTree _tree;
         private readonly Func<AddressAsKey, Account> _getStateFromTrie;
 
         private readonly bool _populatePreBlockCache;
@@ -93,7 +93,7 @@ namespace Nethermind.State
             }
         }
 
-        public void SetBackendTree(IWorldStateBackend.IStateTree stateTree)
+        public void SetBackendTree(IWorldStateScopeProvider.IStateTree stateTree)
         {
             _tree = stateTree;
         }
@@ -736,7 +736,7 @@ namespace Nethermind.State
             int writes = 0;
             int skipped = 0;
 
-            using IWorldStateBackend.IStateSetter treeSetter = _tree.BeginSet(_blockChanges.Count);
+            using IWorldStateScopeProvider.IStateSetter treeSetter = _tree.BeginSet(_blockChanges.Count);
 
             foreach (var key in _blockChanges.Keys)
             {
