@@ -13,14 +13,14 @@ using Nethermind.Trie.Pruning;
 
 namespace Nethermind.State;
 
-public class TrieStoreBackend : IWorldStateBackend
+public class TrieStoreScopeProvider : IWorldStateScopeProvider
 {
     private readonly ITrieStore _trieStore;
     private readonly ILogManager _logManager;
     protected StateTree _backingStateTree;
     private readonly Dictionary<AddressAsKey, StorageTree> _storages = new();
 
-    public TrieStoreBackend(ITrieStore trieStore, ILogManager logManager)
+    public TrieStoreScopeProvider(ITrieStore trieStore, ILogManager logManager)
     {
         _trieStore = trieStore;
         _logManager = logManager;
@@ -38,7 +38,7 @@ public class TrieStoreBackend : IWorldStateBackend
         return _trieStore.HasRoot(baseBlock?.StateRoot ?? Keccak.EmptyTreeHash);
     }
 
-    public IWorldStateBackend.IScope BeginScope(BlockHeader? baseBlock)
+    public IWorldStateScopeProvider.IScope BeginScope(BlockHeader? baseBlock)
     {
         var trieStoreCloser = _trieStore.BeginScope(baseBlock);
         _backingStateTree.RootHash = baseBlock?.StateRoot ?? Keccak.EmptyTreeHash;
@@ -58,7 +58,7 @@ public class TrieStoreBackend : IWorldStateBackend
         return new StorageTree(_trieStore.GetTrieStore(address), storageRoot, _logManager);
     }
 
-    private IWorldStateBackend.IStorageTree CreateAndTrackStorageTree(Address address)
+    private IWorldStateScopeProvider.IStorageTree CreateAndTrackStorageTree(Address address)
     {
         if (_storages.TryGetValue(address, out var storageTree))
         {
@@ -100,24 +100,24 @@ public class TrieStoreBackend : IWorldStateBackend
         _storages.Clear();
     }
 
-    private class TrieStoreWorldStateBackendScope(StateTree backingStateTree, TrieStoreBackend backend, IDisposable trieStoreCloser) : IWorldStateBackend.IScope
+    private class TrieStoreWorldStateBackendScope(StateTree backingStateTree, TrieStoreScopeProvider scopeProvider, IDisposable trieStoreCloser) : IWorldStateScopeProvider.IScope
     {
         public void Dispose()
         {
             trieStoreCloser.Dispose();
-            backend.Reset();
+            scopeProvider.Reset();
         }
 
-        public IWorldStateBackend.IStateTree StateTree => backingStateTree;
+        public IWorldStateScopeProvider.IStateTree StateTree => backingStateTree;
 
-        public IWorldStateBackend.IStorageTree CreateStorageTree(Address address)
+        public IWorldStateScopeProvider.IStorageTree CreateStorageTree(Address address)
         {
-            return backend.CreateAndTrackStorageTree(address);
+            return scopeProvider.CreateAndTrackStorageTree(address);
         }
 
         public void Commit(long blockNumber)
         {
-            backend.Commit(blockNumber);
+            scopeProvider.Commit(blockNumber);
         }
     }
 }
