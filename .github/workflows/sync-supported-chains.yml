@@ -224,7 +224,7 @@ jobs:
             mv ../tests/predefined_configs/customNLog.config execution-data-op/logs/configs/customNLog.config
 
             if [ -n "${{ inputs.nethermind_args }}" ]; then
-              for f in "${{ inputs.nethermind_args }}"; do extra_param+=" --el-op-extra-flag $f"; done
+              for f in ${{ inputs.nethermind_args }}; do extra_param+=" --el-op-extra-flag $f"; done
             fi
 
             ./build/sedge generate \
@@ -265,7 +265,7 @@ jobs:
             mv ../tests/predefined_configs/customNLog.config execution-data-taiko/logs/configs/customNLog.config
             
             if [ -n "${{ inputs.nethermind_args }}" ]; then
-              for f in "${{ inputs.nethermind_args }}"; do extra_param+=" --el-l2-extra-flag $f"; done
+              for f in ${{ inputs.nethermind_args }}; do extra_param+=" --el-l2-extra-flag $f"; done
             fi
 
             ./build/sedge generate \
@@ -291,7 +291,7 @@ jobs:
             mv ../tests/predefined_configs/customNLog.config execution-data/logs/configs/customNLog.config
 
             if [ -n "${{ inputs.nethermind_args }}" ]; then
-              for f in "${{ inputs.nethermind_args }}"; do extra_param+=" --el-extra-flag $f"; done
+              for f in ${{ inputs.nethermind_args }}; do extra_param+=" --el-extra-flag $f"; done
             fi
             
             ./build/sedge generate \
