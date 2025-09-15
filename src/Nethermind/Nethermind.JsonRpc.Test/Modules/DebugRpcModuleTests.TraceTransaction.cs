@@ -5,6 +5,7 @@ using System;
 using System.Collections.Generic;
 using System.Text.Json;
 using System.Threading.Tasks;
+using FluentAssertions;
 using Nethermind.Core;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Evm;
@@ -13,6 +14,7 @@ using Nethermind.Blockchain.Tracing.GethStyle.Custom.Native.Call;
 using Nethermind.Blockchain.Tracing.GethStyle.Custom.Native.FourByte;
 using Nethermind.Blockchain.Tracing.GethStyle.Custom.Native.Prestate;
 using Nethermind.Serialization.Rlp;
+using Newtonsoft.Json.Linq;
 using NUnit.Framework;
 
 namespace Nethermind.JsonRpc.Test.Modules;
@@ -30,10 +32,7 @@ public partial class DebugRpcModuleTests
 
         var response = await RpcTest.TestSerializedRequest(context.DebugRpcModule, "debug_traceTransaction", transaction.Hash, options);
 
-        Assert.That(JsonElement.DeepEquals(
-            JsonDocument.Parse(response).RootElement,
-            JsonDocument.Parse(expected).RootElement),
-            response);
+        JToken.Parse(response).Should().BeEquivalentTo(JToken.Parse(expected));
     }
 
     [TestCaseSource(nameof(TraceTransactionTransferSource))]
@@ -48,10 +47,7 @@ public partial class DebugRpcModuleTests
         var blockNumber = context.Blockchain.BlockTree.Head!.Number;
         var response = await RpcTest.TestSerializedRequest(context.DebugRpcModule, "debug_traceTransactionByBlockAndIndex", blockNumber, 0, options);
 
-        Assert.That(JsonElement.DeepEquals(
-            JsonDocument.Parse(response).RootElement,
-            JsonDocument.Parse(expected).RootElement),
-            response);
+        JToken.Parse(response).Should().BeEquivalentTo(JToken.Parse(expected));
     }
 
     [TestCaseSource(nameof(TraceTransactionTransferSource))]
@@ -66,10 +62,7 @@ public partial class DebugRpcModuleTests
         var blockHash = context.Blockchain.BlockTree.Head!.Hash;
         var response = await RpcTest.TestSerializedRequest(context.DebugRpcModule, "debug_traceTransactionByBlockhashAndIndex", blockHash, 0, options);
 
-        Assert.That(JsonElement.DeepEquals(
-            JsonDocument.Parse(response).RootElement,
-            JsonDocument.Parse(expected).RootElement),
-            response);
+        JToken.Parse(response).Should().BeEquivalentTo(JToken.Parse(expected));
     }
 
     [TestCaseSource(nameof(TraceTransactionTransferSource))]
@@ -84,10 +77,7 @@ public partial class DebugRpcModuleTests
         var blockRlp = Rlp.Encode(context.Blockchain.BlockTree.Head!).ToString();
         var response = await RpcTest.TestSerializedRequest(context.DebugRpcModule, "debug_traceTransactionInBlockByHash", blockRlp, transaction.Hash, options);
 
-        Assert.That(JsonElement.DeepEquals(
-            JsonDocument.Parse(response).RootElement,
-            JsonDocument.Parse(expected).RootElement),
-            response);
+        JToken.Parse(response).Should().BeEquivalentTo(JToken.Parse(expected));
     }
 
     [TestCaseSource(nameof(TraceTransactionTransferSource))]
@@ -102,10 +92,7 @@ public partial class DebugRpcModuleTests
         var blockRlp = Rlp.Encode(context.Blockchain.BlockTree.Head!).ToString();
         var response = await RpcTest.TestSerializedRequest(context.DebugRpcModule, "debug_traceTransactionInBlockByIndex", blockRlp, 0, options);
 
-        Assert.That(JsonElement.DeepEquals(
-            JsonDocument.Parse(response).RootElement,
-            JsonDocument.Parse(expected).RootElement),
-            response);
+        JToken.Parse(response).Should().BeEquivalentTo(JToken.Parse(expected));
     }
 
     private static IEnumerable<TestCaseData> TraceTransactionTransferSource()
