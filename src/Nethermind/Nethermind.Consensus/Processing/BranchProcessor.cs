@@ -39,12 +39,6 @@ public class BranchProcessor(
 
     public event EventHandler<BlockEventArgs>? BlockProcessing;
 
-    public event EventHandler<TxProcessedEventArgs> TransactionProcessed
-    {
-        add => blockProcessor.TransactionProcessed += value;
-        remove => blockProcessor.TransactionProcessed -= value;
-    }
-
     private void PreCommitBlock(BlockHeader block)
     {
         if (_logger.IsTrace) _logger.Trace($"Committing the branch - {block.ToString(BlockHeader.Format.Short)} state root {block.StateRoot}");

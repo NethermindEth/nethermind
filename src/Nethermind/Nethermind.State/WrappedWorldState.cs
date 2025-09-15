@@ -50,16 +50,16 @@ public class WrappedWorldState(IWorldState innerWorldState) : IWorldState
     public virtual void CommitTree(long blockNumber)
         => _innerWorldState.CommitTree(blockNumber);
 
-    public void CreateAccount(Address address, in UInt256 balance, in UInt256 nonce = default)
+    public virtual void CreateAccount(Address address, in UInt256 balance, in UInt256 nonce = default)
         => _innerWorldState.CreateAccount(address, balance, nonce);
 
-    public void CreateAccountIfNotExists(Address address, in UInt256 balance, in UInt256 nonce = default)
+    public virtual void CreateAccountIfNotExists(Address address, in UInt256 balance, in UInt256 nonce = default)
         => _innerWorldState.CreateAccountIfNotExists(address, balance, nonce);
 
-    public void DecrementNonce(Address address, UInt256 delta)
+    public virtual void DecrementNonce(Address address, UInt256 delta)
         => _innerWorldState.DecrementNonce(address, delta);
 
-    public void DeleteAccount(Address address)
+    public virtual void DeleteAccount(Address address)
         => _innerWorldState.DeleteAccount(address);
 
     public virtual ReadOnlySpan<byte> Get(in StorageCell storageCell)
@@ -119,7 +119,7 @@ public class WrappedWorldState(IWorldState innerWorldState) : IWorldState
     public virtual void Set(in StorageCell storageCell, byte[] newValue)
         => _innerWorldState.Set(storageCell, newValue);
 
-    public void SetNonce(Address address, in UInt256 nonce)
+    public virtual void SetNonce(Address address, in UInt256 nonce)
         => _innerWorldState.SetNonce(address, nonce);
 
     public void SetTransientState(in StorageCell storageCell, byte[] newValue)
@@ -136,9 +136,6 @@ public class WrappedWorldState(IWorldState innerWorldState) : IWorldState
 
     public virtual bool TryGetAccount(Address address, out AccountStruct account)
         => _innerWorldState.TryGetAccount(address, out account);
-
-    public void UpdateStorageRoot(Address address, Hash256 storageRoot)
-        => _innerWorldState.UpdateStorageRoot(address, storageRoot);
 
     public void WarmUp(AccessList? accessList)
         => _innerWorldState.WarmUp(accessList);

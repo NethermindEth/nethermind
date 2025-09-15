@@ -10,6 +10,7 @@ using Nethermind.Config;
 using Nethermind.Consensus;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
+using Nethermind.Core.Test.Blockchain;
 using Nethermind.Crypto;
 using Nethermind.Db;
 using Nethermind.Db.Blooms;
@@ -43,10 +44,12 @@ public class TestEnvironmentModule(PrivateKey nodeKey, string? networkGroup) : M
             // These two dont use db provider
             .AddKeyedSingleton<IFullDb>(DbNames.PeersDb, (_) => new MemDb())
             .AddKeyedSingleton<IFullDb>(DbNames.DiscoveryNodes, (_) => new MemDb())
-            .AddSingleton<IFileStoreFactory>(new InMemoryDictionaryFileStoreFactory())
             .AddSingleton<IChannelFactory, INetworkConfig>(networkConfig => new LocalChannelFactory(networkGroup ?? nameof(TestEnvironmentModule), networkConfig))
 
             .AddSingleton<PseudoNethermindRunner>()
+            .AddSingleton<TestBlockchainUtil>()
+            .AddSingleton<TestBlockchainUtil.Config>()
+
             .AddSingleton<ISealer>(new NethDevSealEngine(nodeKey.Address))
             .AddSingleton<ITimestamper, ManualTimestamper>()
             .AddSingleton<IIPResolver, FixedIpResolver>()
@@ -58,6 +61,7 @@ public class TestEnvironmentModule(PrivateKey nodeKey, string? networkGroup) : M
                 return new Enode(nodeKey.PublicKey, ipAddress, networkConfig.P2PPort);
             })
             .AddKeyedSingleton(NodeKey, nodeKey)
+            .AddKeyedSingleton<IFileStoreFactory>(nameof(BloomStorage), (_) => new InMemoryDictionaryFileStoreFactory())
 
             .AddSingleton<IChainHeadInfoProvider, IComponentContext>((ctx) =>
             {

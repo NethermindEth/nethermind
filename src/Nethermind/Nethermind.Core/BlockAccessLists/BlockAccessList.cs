@@ -269,7 +269,7 @@ public struct BlockAccessList : IEquatable<BlockAccessList>, IJournal<int>
     public readonly int TakeSnapshot()
         => _changes.Count;
 
-    public void Restore(int snapshot)
+    public readonly void Restore(int snapshot)
     {
         snapshot = int.Max(0, snapshot);
         while (_changes.Count > snapshot)
@@ -324,8 +324,6 @@ public struct BlockAccessList : IEquatable<BlockAccessList>, IJournal<int>
                     break;
             }
         }
-
-        // throw new NotImplementedException();
     }
 
     private enum ChangeType

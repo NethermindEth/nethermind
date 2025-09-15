@@ -18,6 +18,8 @@ public class TracedAccessWorldState(IWorldState innerWorldState) : WrappedWorldS
 
     public PreBlockCaches Caches => (_innerWorldState as IPreBlockCaches).Caches;
 
+    public bool IsWarmWorldState => (_innerWorldState as IPreBlockCaches).IsWarmWorldState;
+
     public override void AddToBalance(Address address, in UInt256 balanceChange, IReleaseSpec spec)
         => AddToBalance(address, balanceChange, spec, out _);
 

@@ -43,7 +43,7 @@ namespace Nethermind.Evm
         {
             return codeInfoRepository.GetCachedCodeInfo(state, contractAddress, spec).CodeSpan.Length != 0 ||
                    state.GetNonce(contractAddress) != 0 ||
-                   state.GetStorageRoot(contractAddress) != Keccak.EmptyTreeHash;
+                   !state.IsStorageEmpty(contractAddress);
         }
     }
 }

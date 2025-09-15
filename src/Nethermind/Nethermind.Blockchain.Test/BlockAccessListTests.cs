@@ -168,6 +168,7 @@ public class BlockAccessListTests()
         const long gasLimit = 100000;
         const ulong timestamp = 1000000;
         Hash256 parentHash = new("0xff483e972a04a9a62bb4b7d04ae403c615604e4090521ecc5bb7af67f71be09c");
+        // Hash256 parentHash = new("0x2971654f1af575a158b8541be71bea738a64d0c715c190e9c99ae5207c108d7d");
 
         Transaction tx = Build.A.Transaction
             .WithTo(TestItem.AddressB)
@@ -219,6 +220,7 @@ public class BlockAccessListTests()
             .WithRequestsHash(new("0xe3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"))
             .WithTimestamp(timestamp)
             .WithParentHash(parentHash)
+            // .WithTotalDifficulty(1000000000L)
             .TestObject;
 
         Withdrawal withdrawal = new()
@@ -236,6 +238,12 @@ public class BlockAccessListTests()
             .WithHeader(header).TestObject;
 
         (Block processedBlock, TxReceipt[] _) = testBlockchain.BlockProcessor.ProcessOne(block, ProcessingOptions.None, NullBlockTracer.Instance, _spec, CancellationToken.None);
+        // Block processedBlock = testBlockchain.BlockchainProcessor.Process(block, ProcessingOptions.None, NullBlockTracer.Instance)!;
+        // Block[] res = testBlockchain.BranchProcessor.Process(header, [block], ProcessingOptions.None, NullBlockTracer.Instance, CancellationToken.None);
+        // Blockchain.AddBlockResult res = testBlockchain.BlockTree.SuggestBlock(block);
+        // testBlockchain.BlockTree.UpdateMainChain([block], true);
+        // Block processedBlock = res[0];
+        // Block processedBlock = Build.A.Block.TestObject;
 
         BlockAccessList blockAccessList = Rlp.Decode<BlockAccessList>(processedBlock.BlockAccessList);
         Assert.That(blockAccessList.GetAccountChanges().Count, Is.EqualTo(10));

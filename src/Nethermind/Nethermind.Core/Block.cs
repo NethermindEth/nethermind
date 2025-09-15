@@ -13,7 +13,6 @@ using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Int256;
 using Nethermind.Core.BlockAccessLists;
-using Nethermind.Serialization.Json;
 
 namespace Nethermind.Core;
 
@@ -133,10 +132,6 @@ public class Block
 
     [JsonIgnore]
     public BlockAccessList? DecodedBlockAccessList { get; set; }
-
-
-    [JsonIgnore]
-    internal volatile int TransactionProcessed;
 
     public override string ToString() => ToString(Format.Short);
 

@@ -8,7 +8,6 @@ using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using Autofac;
-using Nethermind.Api;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Find;
 using Nethermind.Blockchain.Receipts;
@@ -41,7 +40,6 @@ using Nethermind.Network;
 using Nethermind.State;
 using Nethermind.State.Repositories;
 using Nethermind.TxPool;
-using Nethermind.Blockchain.Blocks;
 using Nethermind.Init.Modules;
 
 namespace Nethermind.Core.Test.Blockchain;
@@ -54,7 +52,6 @@ public class TestBlockchain : IDisposable
     public IEthereumEcdsa EthereumEcdsa => _fromContainer.EthereumEcdsa;
     public INonceManager NonceManager => _fromContainer.NonceManager;
     public ITransactionProcessor TxProcessor => _fromContainer.MainProcessingContext.TransactionProcessor;
-    public IGenesisPostProcessor GenesisPostProcessor => new NullGenesisPostProcessor();
     public IMainProcessingContext MainProcessingContext => _fromContainer.MainProcessingContext;
     public IReceiptStorage ReceiptStorage => _fromContainer.ReceiptStorage;
     public ITxPool TxPool => _fromContainer.TxPool;
@@ -62,15 +59,12 @@ public class TestBlockchain : IDisposable
     public IWorldStateManager WorldStateManager => _fromContainer.WorldStateManager;
     public IReadOnlyTxProcessingEnvFactory ReadOnlyTxProcessingEnvFactory => _fromContainer.ReadOnlyTxProcessingEnvFactory;
     public IShareableTxProcessorSource ShareableTxProcessorSource => _fromContainer.ShareableTxProcessorSource;
-    public IBlockProcessor BlockProcessor => _fromContainer.MainProcessingContext.BlockProcessor;
     public IBranchProcessor BranchProcessor => _fromContainer.MainProcessingContext.BranchProcessor;
+    public IBlockProcessor BlockProcessor => _fromContainer.MainProcessingContext.BlockProcessor;
     public IBlockchainProcessor BlockchainProcessor => _fromContainer.MainProcessingContext.BlockchainProcessor;
     public IBlockPreprocessorStep BlockPreprocessorStep => _fromContainer.BlockPreprocessorStep;
 
     public IBlockTree BlockTree => _fromContainer.BlockTree;
-    public IBlockStore BlockStore => _fromContainer.BlockStore;
-
-    public Action<IWorldState>? InitialStateMutator { get; set; }
 
     public IBlockFinder BlockFinder => _fromContainer.BlockFinder;
 
@@ -139,7 +133,6 @@ public class TestBlockchain : IDisposable
         IWorldStateManager WorldStateManager,
         IBlockPreprocessorStep BlockPreprocessorStep,
         IBlockTree BlockTree,
-        IBlockStore BlockStore,
         IBlockFinder BlockFinder,
         ILogFinder LogFinder,
         IChainHeadInfoProvider ChainHeadInfoProvider,
@@ -170,7 +163,6 @@ public class TestBlockchain : IDisposable
         public bool AddBlockOnStart = true;
         public UInt256 AccountInitialValue = InitialValue;
         public long SlotTime = 1;
-        public Action<IWorldState>? InitialStateMutator = null;
     }
 
     // Please don't add any new parameter to this method. Pass any customization via autofac's configuration
@@ -189,9 +181,6 @@ public class TestBlockchain : IDisposable
         Container = builder.Build();
         _fromContainer = Container.Resolve<FromContainer>();
 
-        IWorldState state = _fromContainer.WorldStateManager.GlobalWorldState;
-
-        ISpecProvider specProvider = SpecProvider;
         Configuration testConfiguration = _fromContainer.Configuration;
 
         BlockchainProcessor.Start();
@@ -203,56 +192,7 @@ public class TestBlockchain : IDisposable
 
         _cts = AutoCancelTokenSource.ThatCancelAfter(Debugger.IsAttached ? TimeSpan.FromMilliseconds(-1) : TimeSpan.FromMilliseconds(TestTimout));
 
-        if (testConfiguration.SuggestGenesisOnStart)
-        {
-            Task waitGenesis = WaitForNewHead();
-
-            using var _ = state.BeginScope(IWorldState.PreGenesis);
-
-            // Eip4788 precompile state account
-            if (specProvider?.GenesisSpec?.IsBeaconBlockRootAvailable ?? false)
-            {
-                state.CreateAccount(SpecProvider.GenesisSpec.Eip4788ContractAddress!, 1);
-            }
-
-            // Eip2935
-            if (specProvider?.GenesisSpec?.IsBlockHashInStateAvailable ?? false)
-            {
-                state.CreateAccount(SpecProvider.GenesisSpec.Eip2935ContractAddress, 1);
-            }
-
-            state.CreateAccount(TestItem.AddressA, testConfiguration.AccountInitialValue);
-            state.CreateAccount(TestItem.AddressB, testConfiguration.AccountInitialValue);
-            state.CreateAccount(TestItem.AddressC, testConfiguration.AccountInitialValue);
-
-            InitialStateMutator?.Invoke(state);
-            Container.Resolve<Configuration>().InitialStateMutator?.Invoke(state);
-
-            byte[] code = Bytes.FromHexString("0xabcd");
-            state.InsertCode(TestItem.AddressA, code, SpecProvider.GenesisSpec);
-            state.Set(new StorageCell(TestItem.AddressA, UInt256.One), Bytes.FromHexString("0xabcdef"));
-
-            IReleaseSpec? finalSpec = specProvider?.GetFinalSpec();
-
-            if (finalSpec?.WithdrawalsEnabled is true)
-            {
-                state.CreateAccount(Eip7002Constants.WithdrawalRequestPredeployAddress, 0, Eip7002TestConstants.Nonce);
-                state.InsertCode(Eip7002Constants.WithdrawalRequestPredeployAddress, Eip7002TestConstants.CodeHash, Eip7002TestConstants.Code, SpecProvider.GenesisSpec);
-            }
-
-            if (finalSpec?.ConsolidationRequestsEnabled is true)
-            {
-                state.CreateAccount(Eip7251Constants.ConsolidationRequestPredeployAddress, 0, Eip7251TestConstants.Nonce);
-                state.InsertCode(Eip7251Constants.ConsolidationRequestPredeployAddress, Eip7251TestConstants.CodeHash, Eip7251TestConstants.Code, SpecProvider.GenesisSpec);
-            }
-
-            state.Commit(SpecProvider.GenesisSpec);
-            state.CommitTree(0);
-
-            Block? genesis = GetGenesisBlock(WorldStateManager.GlobalWorldState);
-            BlockTree.SuggestBlock(genesis);
-            waitGenesis.Wait(_cts.Token);
-        }
+        if (testConfiguration.SuggestGenesisOnStart) MainProcessingContext.GenesisLoader.Load();
 
         if (testConfiguration.AddBlockOnStart)
             await AddBlocksOnStart();
@@ -274,6 +214,7 @@ public class TestBlockchain : IDisposable
             .AddSingleton<ManualTimestamper>(new ManualTimestamper(InitialTimestamp))
             .AddSingleton<Configuration>()
             .AddSingleton<FromContainer>()
+            .AddScoped<IGenesisBuilder, TestGenesisBuilder>()
 
             // Some validator configurations
             .AddSingleton<ISealValidator>(Always.Valid)
@@ -283,13 +224,7 @@ public class TestBlockchain : IDisposable
             .AddSingleton<IBlockProducer>((_) => this.BlockProducer)
             .AddSingleton<IBlockProducerRunner>((_) => this.BlockProducerRunner)
 
-            .AddSingleton<TestBlockchainUtil>((ctx) => new TestBlockchainUtil(
-                ctx.Resolve<IBlockProducer>(),
-                ctx.Resolve<ManualTimestamper>(),
-                ctx.Resolve<IBlockTree>(),
-                ctx.Resolve<ITxPool>(),
-                ctx.Resolve<Configuration>().SlotTime
-            ))
+            .AddSingleton<TestBlockchainUtil.Config, Configuration>((cfg) => new TestBlockchainUtil.Config(cfg.SlotTime))
 
             .AddSingleton<PoWTestBlockchainUtil>((ctx) => new PoWTestBlockchainUtil(
                 ctx.Resolve<IBlockProducerRunner>(),
@@ -338,40 +273,97 @@ public class TestBlockchain : IDisposable
 
     public ILogManager LogManager => Container.Resolve<ILogManager>();
 
-    public BlockBuilder GenesisBlockBuilder { get; set; } = null!;
-
-    protected virtual Block GetGenesisBlock(IWorldState state)
+    private class TestGenesisBuilder(
+        ISpecProvider specProvider,
+        IWorldState state,
+        IGenesisPostProcessor[] postProcessors,
+        Configuration testConfiguration
+    ) : IGenesisBuilder
     {
-        BlockBuilder genesisBlockBuilder = Builders.Build.A.Block.Genesis;
-        if (GenesisBlockBuilder is not null)
+        public Block Build()
         {
-            genesisBlockBuilder = GenesisBlockBuilder;
+            // Eip4788 precompile state account
+            if (specProvider.GenesisSpec.IsBeaconBlockRootAvailable)
+            {
+                state.CreateAccount(specProvider.GenesisSpec.Eip4788ContractAddress!, 1);
+            }
+
+            // Eip2935
+            if (specProvider.GenesisSpec.IsBlockHashInStateAvailable)
+            {
+                state.CreateAccount(specProvider.GenesisSpec.Eip2935ContractAddress, 1);
+            }
+
+            state.CreateAccount(TestItem.AddressA, testConfiguration.AccountInitialValue);
+            state.CreateAccount(TestItem.AddressB, testConfiguration.AccountInitialValue);
+            state.CreateAccount(TestItem.AddressC, testConfiguration.AccountInitialValue);
+
+            byte[] code = Bytes.FromHexString("0xabcd");
+            state.InsertCode(TestItem.AddressA, code, specProvider.GenesisSpec);
+            state.Set(new StorageCell(TestItem.AddressA, UInt256.One), Bytes.FromHexString("0xabcdef"));
+
+            IReleaseSpec? finalSpec = specProvider.GetFinalSpec();
+
+            if (finalSpec?.WithdrawalsEnabled is true)
+            {
+                state.CreateAccount(Eip7002Constants.WithdrawalRequestPredeployAddress, 0, Eip7002TestConstants.Nonce);
+                state.InsertCode(Eip7002Constants.WithdrawalRequestPredeployAddress, Eip7002TestConstants.CodeHash, Eip7002TestConstants.Code, specProvider.GenesisSpec);
+            }
+
+            if (finalSpec?.ConsolidationRequestsEnabled is true)
+            {
+                state.CreateAccount(Eip7251Constants.ConsolidationRequestPredeployAddress, 0, Eip7251TestConstants.Nonce);
+                state.InsertCode(Eip7251Constants.ConsolidationRequestPredeployAddress, Eip7251TestConstants.CodeHash, Eip7251TestConstants.Code, specProvider.GenesisSpec);
+            }
+
+            // if (finalSpec?.IsEip2935Enabled is true)
+            // {
+            //     state.CreateAccount(Eip2935Constants.BlockHashHistoryAddress, 0, Eip2935TestConstants.Nonce);
+            //     state.InsertCode(Eip2935Constants.BlockHashHistoryAddress, Eip2935TestConstants.CodeHash, Eip2935TestConstants.Code, specProvider.GenesisSpec);
+            // }
+
+            // if (finalSpec?.IsEip4788Enabled is true)
+            // {
+            //     state.CreateAccount(Eip4788Constants.BeaconRootsAddress, 0, Eip4788TestConstants.Nonce);
+            //     state.InsertCode(Eip4788Constants.BeaconRootsAddress, Eip4788TestConstants.CodeHash, Eip4788TestConstants.Code, specProvider.GenesisSpec);
+            // }
+
+            BlockBuilder genesisBlockBuilder = Builders.Build.A.Block.Genesis;
+
+            if (specProvider.SealEngine == Core.SealEngineType.AuRa)
+            {
+                genesisBlockBuilder.WithAura(0, new byte[65]);
+            }
+
+            if (specProvider.GenesisSpec.IsEip4844Enabled)
+            {
+                genesisBlockBuilder.WithBlobGasUsed(0);
+                genesisBlockBuilder.WithExcessBlobGas(0);
+            }
+
+            if (specProvider.GenesisSpec.IsBeaconBlockRootAvailable)
+            {
+                genesisBlockBuilder.WithParentBeaconBlockRoot(Keccak.Zero);
+            }
+
+            if (specProvider.GenesisSpec.RequestsEnabled)
+            {
+                genesisBlockBuilder.WithEmptyRequestsHash();
+            }
+
+            Block genesisBlock = genesisBlockBuilder.TestObject;
+
+            foreach (IGenesisPostProcessor genesisPostProcessor in postProcessors)
+            {
+                genesisPostProcessor.PostProcess(genesisBlock);
+            }
+
+            state.Commit(specProvider.GenesisSpec!);
+            state.CommitTree(0);
+            genesisBlock.Header.StateRoot = state.StateRoot;
+            genesisBlock.Header.Hash = genesisBlock.Header.CalculateHash();
+            return genesisBlock;
         }
-
-        if (SealEngineType == Core.SealEngineType.AuRa)
-        {
-            genesisBlockBuilder.WithAura(0, new byte[65]);
-        }
-
-        if (SpecProvider.GenesisSpec.IsEip4844Enabled)
-        {
-            genesisBlockBuilder.WithBlobGasUsed(0);
-            genesisBlockBuilder.WithExcessBlobGas(0);
-        }
-
-
-        if (SpecProvider.GenesisSpec.IsBeaconBlockRootAvailable)
-        {
-            genesisBlockBuilder.WithParentBeaconBlockRoot(Keccak.Zero);
-        }
-
-        if (SpecProvider.GenesisSpec.RequestsEnabled)
-        {
-            genesisBlockBuilder.WithEmptyRequestsHash();
-        }
-
-        genesisBlockBuilder.WithStateRoot(state.StateRoot);
-        return genesisBlockBuilder.TestObject;
     }
 
     protected virtual async Task AddBlocksOnStart()

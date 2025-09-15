@@ -20,11 +20,10 @@ namespace Nethermind.Consensus.Processing
     {
         public class BlockValidationTransactionsExecutor(
             ITransactionProcessorAdapter transactionProcessor,
-            IWorldState stateProvider)
+            IWorldState stateProvider,
+            BlockValidationTransactionsExecutor.ITransactionProcessedEventHandler? transactionProcessedEventHandler = null)
             : IBlockProcessor.IBlockTransactionsExecutor
         {
-            public event EventHandler<TxProcessedEventArgs>? TransactionProcessed;
-
             public void SetBlockExecutionContext(in BlockExecutionContext blockExecutionContext)
             {
                 transactionProcessor.SetBlockExecutionContext(in blockExecutionContext);
@@ -37,7 +36,6 @@ namespace Nethermind.Consensus.Processing
                 for (int i = 0; i < block.Transactions.Length; i++)
                 {
                     (stateProvider as TracedAccessWorldState)?.BlockAccessList.IncrementBlockAccessIndex();
-                    block.TransactionProcessed = i;
                     Transaction currentTx = block.Transactions[i];
                     ProcessTransaction(block, currentTx, i, receiptsTracer, processingOptions);
                 }
@@ -50,13 +48,21 @@ namespace Nethermind.Consensus.Processing
             {
                 TransactionResult result = transactionProcessor.ProcessTransaction(currentTx, receiptsTracer, processingOptions, stateProvider);
                 if (!result) ThrowInvalidBlockException(result, block.Header, currentTx, index);
-                TransactionProcessed?.Invoke(this, new TxProcessedEventArgs(index, currentTx, receiptsTracer.TxReceipts[index]));
+                transactionProcessedEventHandler?.OnTransactionProcessed(new TxProcessedEventArgs(index, currentTx, receiptsTracer.TxReceipts[index]));
             }
 
             [DoesNotReturn, StackTraceHidden]
             private static void ThrowInvalidBlockException(TransactionResult result, BlockHeader header, Transaction currentTx, int index)
             {
                 throw new InvalidBlockException(header, $"Transaction {currentTx.Hash} at index {index} failed with error {result.Error}");
+            }
+
+            /// <summary>
+            /// Used by <see cref="FilterManager"/> through <see cref="IMainProcessingContext"/>
+            /// </summary>
+            public interface ITransactionProcessedEventHandler
+            {
+                void OnTransactionProcessed(TxProcessedEventArgs txProcessedEventArgs);
             }
         }
     }

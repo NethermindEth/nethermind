@@ -53,7 +53,7 @@ public class Always : IBlockValidator, ISealValidator, IUnclesValidator, ITxVali
         return _result;
     }
 
-    public bool Validate(BlockHeader header, BlockHeader? parent, BlockHeader[] uncles)
+    public bool Validate(BlockHeader header, BlockHeader[] uncles)
     {
         return _result;
     }

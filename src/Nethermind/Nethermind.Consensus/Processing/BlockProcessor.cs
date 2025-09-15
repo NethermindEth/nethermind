@@ -83,12 +83,6 @@ public partial class BlockProcessor
         _stateProvider = new(stateProvider);
     }
 
-    public event EventHandler<TxProcessedEventArgs> TransactionProcessed
-    {
-        add { _blockTransactionsExecutor.TransactionProcessed += value; }
-        remove { _blockTransactionsExecutor.TransactionProcessed -= value; }
-    }
-
     public (Block Block, TxReceipt[] Receipts) ProcessOne(Block suggestedBlock, ProcessingOptions options, IBlockTracer blockTracer, IReleaseSpec spec, CancellationToken token)
     {
         if (_logger.IsTrace) _logger.Trace($"Processing block {suggestedBlock.ToString(Block.Format.Short)} ({options})");

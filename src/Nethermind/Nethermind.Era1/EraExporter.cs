@@ -3,11 +3,14 @@
 
 using System.Diagnostics;
 using System.IO.Abstractions;
+using System.Runtime.CompilerServices;
+using System.Text;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.Logging;
 using Nethermind.Serialization.Rlp;
@@ -23,7 +26,10 @@ public class EraExporter(
     ILogManager logManager)
     : IEraExporter
 {
-    private readonly string _networkName = (string.IsNullOrWhiteSpace(eraConfig.NetworkName)) ? throw new ArgumentException("Cannot be null or whitespace.", nameof(eraConfig.NetworkName)) : eraConfig.NetworkName.Trim().ToLower();
+    private readonly string _networkName = (string.IsNullOrWhiteSpace(eraConfig.NetworkName))
+        ? throw new ArgumentException("Cannot be null or whitespace.", nameof(eraConfig.NetworkName))
+        : eraConfig.NetworkName.Trim().ToLower();
+
     private readonly ILogger _logger = logManager.GetClassLogger<EraExporter>();
     private readonly int _era1Size = eraConfig.MaxEra1Size;
 
@@ -70,24 +76,26 @@ public class EraExporter(
 
         using ArrayPoolList<ValueHash256> accumulators = new((int)epochCount, (int)epochCount);
         using ArrayPoolList<ValueHash256> checksums = new((int)epochCount, (int)epochCount);
+        using ArrayPoolList<string> fileNames = new((int)epochCount, (int)epochCount);
 
-        await Parallel.ForEachAsync(epochIdxs, new ParallelOptions()
+        await Parallel.ForEachAsync(epochIdxs, new ParallelOptions
         {
-            MaxDegreeOfParallelism = (eraConfig.Concurrency == 0 ? Environment.ProcessorCount : eraConfig.Concurrency),
+            MaxDegreeOfParallelism = eraConfig.Concurrency == 0 ? Environment.ProcessorCount : eraConfig.Concurrency,
             CancellationToken = cancellation
         },
-        async (epochIdx, cancel) =>
+        async (epochIdx, cancel)
+            =>
         {
             await WriteEpoch(epochIdx);
         });
 
         string accumulatorPath = Path.Combine(destinationPath, AccumulatorFileName);
         fileSystem.File.Delete(accumulatorPath);
-        await fileSystem.File.WriteAllLinesAsync(accumulatorPath, accumulators.Select((v) => v.ToString()), cancellation);
+        await WriteFileAsync(accumulatorPath, accumulators, fileNames, cancellation);
 
         string checksumPath = Path.Combine(destinationPath, ChecksumsFileName);
         fileSystem.File.Delete(checksumPath);
-        await fileSystem.File.WriteAllLinesAsync(checksumPath, checksums.Select((v) => v.ToString()), cancellation);
+        await WriteFileAsync(checksumPath, checksums, fileNames, cancellation);
 
         progress.LogProgress();
 
@@ -138,13 +146,27 @@ public class EraExporter(
             (ValueHash256 accumulator, ValueHash256 sha256) = await eraWriter.Finalize(cancellation);
             accumulators[(int)epochIdx] = accumulator;
             checksums[(int)epochIdx] = sha256;
-
+            fileNames[(int)epochIdx] = Path.GetFileName(filePath);
             string rename = Path.Combine(
                 destinationPath,
                 EraPathUtils.Filename(_networkName, epoch, new Hash256(accumulator)));
             fileSystem.File.Move(
                 filePath,
                 rename, true);
+        }
+    }
+
+    private async Task WriteFileAsync(string path, ArrayPoolList<ValueHash256> hashes, ArrayPoolList<string> fileNames, CancellationToken cancellationToken)
+    {
+        await using FileSystemStream stream = fileSystem.FileStream.New(path, FileMode.Create, FileAccess.Write, FileShare.None);
+        await using StreamWriter writer = new(stream);
+
+        for (int i = 0; i < hashes.Count; i++)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            await writer.WriteAsync(hashes[i].ToString());
+            await writer.WriteAsync(' ');
+            await writer.WriteLineAsync(fileNames[i]);
         }
     }
 }
