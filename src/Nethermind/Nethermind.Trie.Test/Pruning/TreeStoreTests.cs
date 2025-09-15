@@ -1119,7 +1119,7 @@ namespace Nethermind.Trie.Test.Pruning
                 });
 
             WorldState worldState = new WorldState(
-                new TrieStoreBackend(fullTrieStore, _logManager),
+                new TrieStoreScopeProvider(fullTrieStore, _logManager),
                 memDbProvider.CodeDb,
                 LimboLogs.Instance);
 
@@ -1142,7 +1142,7 @@ namespace Nethermind.Trie.Test.Pruning
             (Hash256, ValueHash256) SetupStartingState()
             {
                 WorldState worldState = new WorldState(
-                    new TrieStoreBackend(new TestRawTrieStore(nodeStorage), LimboLogs.Instance), memDbProvider.CodeDb, LimboLogs.Instance);
+                    new TrieStoreScopeProvider(new TestRawTrieStore(nodeStorage), LimboLogs.Instance), memDbProvider.CodeDb, LimboLogs.Instance);
                 using var _ = worldState.BeginScope(IWorldState.PreGenesis);
                 worldState.CreateAccountIfNotExists(address, UInt256.One);
                 worldState.Set(new StorageCell(address, slot), TestItem.KeccakB.BytesToArray());

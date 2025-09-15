@@ -8,7 +8,7 @@ using Nethermind.Trie.Pruning;
 
 namespace Nethermind.State.Healing;
 
-public class HealingWorldStateBackend(ITrieStore trieStore, INodeStorage nodeStorage, ILogManager logManager) : TrieStoreBackend(trieStore, logManager)
+public class HealingWorldStateScopeProvider(ITrieStore trieStore, INodeStorage nodeStorage, ILogManager logManager) : TrieStoreScopeProvider(trieStore, logManager)
 {
     private IPathRecovery? _recovery;
     private readonly ILogManager? _logManager = logManager;
