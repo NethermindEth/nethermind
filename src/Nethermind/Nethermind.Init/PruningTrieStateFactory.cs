@@ -64,18 +64,18 @@ public class PruningTrieStateFactory(
         }
 
         IKeyValueStoreWithBatching codeDb = dbProvider.CodeDb;
-        IWorldStateBackend backend = syncConfig.TrieHealing
-            ? new HealingWorldStateBackend(
+        IWorldStateScopeProvider scopeProvider = syncConfig.TrieHealing
+            ? new HealingWorldStateScopeProvider(
                 mainWorldTrieStore,
                 mainNodeStorage,
                 pathRecovery,
                 logManager)
-            : new TrieStoreBackend(
+            : new TrieStoreScopeProvider(
                 mainWorldTrieStore,
                 logManager);
 
         IWorldState worldState = new WorldState(
-                backend,
+                scopeProvider,
                 codeDb,
                 logManager,
                 preBlockCaches,
