@@ -13,6 +13,12 @@ namespace Nethermind.Consensus.Producers
     {
         public event EventHandler<BlockProductionEventArgs>? TriggerBlockProduction;
 
+        public Task<Block?> BuildBlock(BlockProductionEventArgs args)
+        {
+            TriggerBlockProduction?.Invoke(this, args);
+            return args.BlockProductionTask;
+        }
+
         public Task<Block?> BuildBlock(
             BlockHeader? parentHeader = null,
             CancellationToken? cancellationToken = null,
@@ -20,8 +26,7 @@ namespace Nethermind.Consensus.Producers
             PayloadAttributes payloadAttributes = null)
         {
             BlockProductionEventArgs args = new(parentHeader, cancellationToken, blockTracer, payloadAttributes);
-            TriggerBlockProduction?.Invoke(this, args);
-            return args.BlockProductionTask;
+            return BuildBlock(args);
         }
     }
 }
