@@ -1,0 +1,19 @@
+{
+  "$schema": "https://raw.githubusercontent.com/NethermindEth/core-scripts/refs/heads/main/schemas/config.json",
+  "Init": {
+    "ChainSpecPath": "chainspec/taiko-alethia.json",
+    "GenesisHash": "0x90bc60466882de9637e269e87abab53c9108cf9113188bc4f80bcfcb10e489b9",
+    "BaseDbPath": "nethermind_db/taiko-alethia_archive",
+    "LogFileName": "taiko-alethia_archive.log"
+  },
+  "TxPool": {
+    "BlobsSupport": "Disabled"
+  },
+  "Pruning": {
+    "Mode": "None"
+  },
+  "JsonRpc": {
+    "Enabled": true,
+    "EnginePort": 8551
+  }
+}
