@@ -16,7 +16,7 @@ using Nethermind.Trie.Pruning;
 
 namespace Nethermind.State
 {
-    public class StateTree : PatriciaTree, IWorldStateBackend.IStateTree
+    public class StateTree : PatriciaTree, IWorldStateScopeProvider.IStateTree
     {
         private readonly AccountDecoder _decoder = new();
 
@@ -75,12 +75,12 @@ namespace Nethermind.State
             Set(keccak.BytesAsSpan, account is null ? null : account.IsTotallyEmpty ? EmptyAccountRlp : Rlp.Encode(account));
         }
 
-        public IWorldStateBackend.IStateSetter BeginSet(int estimatedEntries)
+        public IWorldStateScopeProvider.IStateSetter BeginSet(int estimatedEntries)
         {
             return new StateTreeBulkSetter(estimatedEntries, this);
         }
 
-        private class StateTreeBulkSetter(int estimatedEntries, StateTree tree) : IWorldStateBackend.IStateSetter
+        private class StateTreeBulkSetter(int estimatedEntries, StateTree tree) : IWorldStateScopeProvider.IStateSetter
         {
             ArrayPoolList<PatriciaTree.BulkSetEntry> _bulkWrite = new(estimatedEntries);
 

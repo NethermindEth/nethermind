@@ -445,7 +445,7 @@ public class StorageProviderTests
     public void Set_empty_value_for_storage_cell_without_read_clears_data()
     {
         IWorldState worldState = new WorldState(
-            new TrieStoreBackend(TestTrieStoreFactory.Build(new MemDb(), LimboLogs.Instance), LimboLogs.Instance), Substitute.For<IDb>(), LogManager);
+            new TrieStoreScopeProvider(TestTrieStoreFactory.Build(new MemDb(), LimboLogs.Instance), LimboLogs.Instance), Substitute.For<IDb>(), LogManager);
 
         using var disposable = worldState.BeginScope(IWorldState.PreGenesis);
         worldState.CreateAccount(TestItem.AddressA, 1);
@@ -475,7 +475,7 @@ public class StorageProviderTests
     public void Set_empty_value_for_storage_cell_with_read_clears_data()
     {
         IWorldState worldState = new WorldState(
-            new TrieStoreBackend(TestTrieStoreFactory.Build(new MemDb(), LimboLogs.Instance), LimboLogs.Instance), Substitute.For<IDb>(), LogManager);
+            new TrieStoreScopeProvider(TestTrieStoreFactory.Build(new MemDb(), LimboLogs.Instance), LimboLogs.Instance), Substitute.For<IDb>(), LogManager);
 
         using var disposable = worldState.BeginScope(IWorldState.PreGenesis);
         worldState.CreateAccount(TestItem.AddressA, 1);
@@ -513,7 +513,7 @@ public class StorageProviderTests
         public Context(PreBlockCaches preBlockCaches = null, bool setInitialState = true)
         {
             StateProvider = new WorldState(
-                new TrieStoreBackend(TestTrieStoreFactory.Build(new MemDb(), LimboLogs.Instance), LimboLogs.Instance), Substitute.For<IDb>(), LogManager, preBlockCaches);
+                new TrieStoreScopeProvider(TestTrieStoreFactory.Build(new MemDb(), LimboLogs.Instance), LimboLogs.Instance), Substitute.For<IDb>(), LogManager, preBlockCaches);
             if (setInitialState)
             {
                 StateProvider.BeginScope(IWorldState.PreGenesis);
