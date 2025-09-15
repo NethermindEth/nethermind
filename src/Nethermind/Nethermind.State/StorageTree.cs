@@ -19,7 +19,7 @@ using Nethermind.Trie.Pruning;
 
 namespace Nethermind.State
 {
-    public class StorageTree : PatriciaTree, IWorldStateBackend.IStorageTree
+    public class StorageTree : PatriciaTree, IWorldStateScopeProvider.IStorageTree
     {
         private const int LookupSize = 1024;
         private static readonly FrozenDictionary<UInt256, byte[]> Lookup = CreateLookup();
@@ -168,12 +168,12 @@ namespace Nethermind.State
             }
         }
 
-        public IWorldStateBackend.IStorageSetter BeginSet(int estimatedEntries)
+        public IWorldStateScopeProvider.IStorageSetter BeginSet(int estimatedEntries)
         {
             return new StorageTreeBulkSetter(estimatedEntries, this);
         }
 
-        private class StorageTreeBulkSetter(int estimatedEntries, StorageTree storageTree) : IWorldStateBackend.IStorageSetter
+        private class StorageTreeBulkSetter(int estimatedEntries, StorageTree storageTree) : IWorldStateScopeProvider.IStorageSetter
         {
             ArrayPoolList<PatriciaTree.BulkSetEntry> _bulkWrite = new(estimatedEntries);
             private ValueHash256 _keyBuff = new ValueHash256();

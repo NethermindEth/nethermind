@@ -744,14 +744,9 @@ namespace Nethermind.State
             int writes = 0;
             int skipped = 0;
 
-<<<<<<< HEAD
-            using ArrayPoolListRef<PatriciaTree.BulkSetEntry> bulkWrite = new(_blockChanges.Count);
-            foreach (AddressAsKey key in _blockChanges.Keys)
-=======
             using IWorldStateBackend.IStateSetter treeSetter = _tree.BeginSet(_blockChanges.Count);
 
             foreach (var key in _blockChanges.Keys)
->>>>>>> 71b514eb1a (Different setter)
             {
                 ref ChangeTrace change = ref CollectionsMarshal.GetValueRefOrNullRef(_blockChanges, key);
                 if (change.Before != change.After)

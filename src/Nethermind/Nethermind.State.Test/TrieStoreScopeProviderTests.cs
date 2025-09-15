@@ -13,16 +13,16 @@ using NUnit.Framework;
 
 namespace Nethermind.Store.Test;
 
-public class TrieStoreBackendTests
+public class TrieStoreScopeProviderTests
 {
     [Test]
     public void Test_CanSaveToState()
     {
         TestMemDb kv = new TestMemDb();
-        IWorldStateBackend backend = new TrieStoreBackend(new TestRawTrieStore(kv), LimboLogs.Instance);
+        IWorldStateScopeProvider scopeProvider = new TrieStoreScopeProvider(new TestRawTrieStore(kv), LimboLogs.Instance);
 
         Hash256 stateRoot;
-        using (var scope = backend.BeginScope(null))
+        using (var scope = scopeProvider.BeginScope(null))
         {
             scope.StateTree.Get(TestItem.AddressA).Should().Be(null);
             scope.StateTree.Set(TestItem.AddressA, new Account(100, 100));
@@ -33,7 +33,7 @@ public class TrieStoreBackendTests
         stateRoot.Should().NotBe(Keccak.EmptyTreeHash);
         kv.WritesCount.Should().Be(1);
 
-        using (var scope = backend.BeginScope(Build.A.BlockHeader.WithStateRoot(stateRoot).WithNumber(1).TestObject))
+        using (var scope = scopeProvider.BeginScope(Build.A.BlockHeader.WithStateRoot(stateRoot).WithNumber(1).TestObject))
         {
             scope.StateTree.Get(TestItem.AddressA).Balance.Should().Be(100);
         }
@@ -43,10 +43,10 @@ public class TrieStoreBackendTests
     public void Test_CanSaveToStorage()
     {
         TestMemDb kv = new TestMemDb();
-        IWorldStateBackend backend = new TrieStoreBackend(new TestRawTrieStore(kv), LimboLogs.Instance);
+        IWorldStateScopeProvider scopeProvider = new TrieStoreScopeProvider(new TestRawTrieStore(kv), LimboLogs.Instance);
 
         Hash256 stateRoot;
-        using (var scope = backend.BeginScope(null))
+        using (var scope = scopeProvider.BeginScope(null))
         {
             scope.StateTree.Get(TestItem.AddressA).Should().Be(null);
 
@@ -62,7 +62,7 @@ public class TrieStoreBackendTests
         stateRoot.Should().NotBe(Keccak.EmptyTreeHash);
         kv.WritesCount.Should().Be(2);
 
-        using (var scope = backend.BeginScope(Build.A.BlockHeader.WithStateRoot(stateRoot).WithNumber(1).TestObject))
+        using (var scope = scopeProvider.BeginScope(Build.A.BlockHeader.WithStateRoot(stateRoot).WithNumber(1).TestObject))
         {
             var storage = scope.CreateStorageTree(TestItem.AddressA);
             storage.Get(1).Should().BeEquivalentTo([1, 2, 3]);

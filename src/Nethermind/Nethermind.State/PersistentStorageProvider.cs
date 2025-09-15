@@ -29,7 +29,7 @@ using Nethermind.Core.Cpu;
 /// </summary>
 internal sealed class PersistentStorageProvider : PartialStorageProviderBase
 {
-    private IWorldStateBackend.IScope _currentScope;
+    private IWorldStateScopeProvider.IScope _currentScope;
     private readonly StateProvider _stateProvider;
     private readonly Dictionary<AddressAsKey, PerContractState> _storages = new(4_096);
     private readonly Dictionary<AddressAsKey, bool> _toUpdateRoots = new();
@@ -74,7 +74,7 @@ internal sealed class PersistentStorageProvider : PartialStorageProviderBase
         }
     }
 
-    public void SetBackendScope(IWorldStateBackend.IScope scope)
+    public void SetBackendScope(IWorldStateScopeProvider.IScope scope)
     {
         _currentScope = scope;
     }
@@ -463,7 +463,7 @@ internal sealed class PersistentStorageProvider : PartialStorageProviderBase
 
     private sealed class PerContractState
     {
-        private IWorldStateBackend.IStorageTree? _backend;
+        private IWorldStateScopeProvider.IStorageTree? _backend;
         private DefaultableDictionary BlockChange = new DefaultableDictionary();
         private bool _wasWritten = false;
         private readonly Func<StorageCell, byte[]> _loadFromTreeStorageFunc;
@@ -606,7 +606,7 @@ internal sealed class PersistentStorageProvider : PartialStorageProviderBase
             }
             else
             {
-                using IWorldStateBackend.IStorageSetter setter = _backend.BeginSet(BlockChange.EstimatedSize);
+                using IWorldStateScopeProvider.IStorageSetter setter = _backend.BeginSet(BlockChange.EstimatedSize);
 
                 foreach (var kvp in BlockChange)
                 {

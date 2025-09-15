@@ -12,7 +12,7 @@ namespace Nethermind.Evm.State;
 /// An interface for storage backend for <see cref="WorldState"/>. This interface does not have
 /// logic for snapshot/rollback and code. Operations must be done using <see cref="IScope"/>.
 /// </summary>
-public interface IWorldStateBackend
+public interface IWorldStateScopeProvider
 {
     bool HasRoot(BlockHeader? baseBlock);
     IScope BeginScope(BlockHeader? baseBlock);

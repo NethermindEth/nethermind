@@ -22,7 +22,7 @@ public class OverridableWorldStateManager : IOverridableWorldScope
         OverlayTrieStore overlayTrieStore = new(readOnlyDbProvider.StateDb, trieStore);
         _reader = new(overlayTrieStore, readOnlyDbProvider.CodeDb, logManager);
         WorldState = new WorldState(
-            new TrieStoreBackend(overlayTrieStore, logManager), readOnlyDbProvider.CodeDb, logManager, null, true);
+            new TrieStoreScopeProvider(overlayTrieStore, logManager), readOnlyDbProvider.CodeDb, logManager, null, true);
     }
 
     public IWorldState WorldState { get; }

@@ -30,7 +30,7 @@ namespace Nethermind.State
         internal readonly StateProvider _stateProvider;
         internal readonly PersistentStorageProvider _persistentStorageProvider;
         private readonly TransientStorageProvider _transientStorageProvider;
-        private IWorldStateBackend.IScope? _currentScope;
+        private IWorldStateScopeProvider.IScope? _currentScope;
         private readonly ILogger _logger;
         private PreBlockCaches? PreBlockCaches { get; }
         public bool IsWarmWorldState { get; }
@@ -45,7 +45,7 @@ namespace Nethermind.State
         }
 
         public WorldState(
-            IWorldStateBackend backend,
+            IWorldStateScopeProvider scopeProvider,
             IKeyValueStoreWithBatching? codeDb,
             ILogManager? logManager,
             PreBlockCaches? preBlockCaches = null,
@@ -53,7 +53,7 @@ namespace Nethermind.State
         {
             PreBlockCaches = preBlockCaches;
             IsWarmWorldState = !populatePreBlockCache;
-            Backend = backend;
+            ScopeProvider = scopeProvider;
             _stateProvider = new StateProvider(codeDb, logManager, PreBlockCaches?.StateCache, populatePreBlockCache);
             _persistentStorageProvider = new PersistentStorageProvider(_stateProvider, logManager, PreBlockCaches?.StorageCache, populatePreBlockCache);
             _transientStorageProvider = new TransientStorageProvider(logManager);
@@ -229,7 +229,7 @@ namespace Nethermind.State
 
             if (_logger.IsTrace) _logger.Trace($"Beginning WorldState scope with baseblock {baseBlock?.ToString(BlockHeader.Format.Short) ?? "null"} with stateroot {baseBlock?.StateRoot?.ToString() ?? "null"}.");
 
-            _currentScope = Backend.BeginScope(baseBlock);
+            _currentScope = ScopeProvider.BeginScope(baseBlock);
             _stateProvider.SetBackendTree(_currentScope.StateTree);
             _persistentStorageProvider.SetBackendScope(_currentScope);
 
@@ -243,7 +243,7 @@ namespace Nethermind.State
         }
 
         public bool IsInScope => _currentScope is not null;
-        public IWorldStateBackend Backend { get; }
+        public IWorldStateScopeProvider ScopeProvider { get; }
 
         public ref readonly UInt256 GetBalance(Address address)
         {
@@ -295,7 +295,7 @@ namespace Nethermind.State
 
         public bool HasStateForBlock(BlockHeader? header)
         {
-            return Backend.HasRoot(header);
+            return ScopeProvider.HasRoot(header);
         }
 
         public void Commit(IReleaseSpec releaseSpec, bool isGenesis = false, bool commitRoots = true)

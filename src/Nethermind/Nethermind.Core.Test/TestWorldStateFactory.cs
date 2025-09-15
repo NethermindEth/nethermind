@@ -52,7 +52,7 @@ public static class TestWorldStateFactory
             new PruningConfig(),
             LimboLogs.Instance);
         var worldState = new WorldState(
-            new TrieStoreBackend(trieStore, logManager), dbProvider.CodeDb, logManager);
+            new TrieStoreScopeProvider(trieStore, logManager), dbProvider.CodeDb, logManager);
 
         return new WorldStateManager(worldState, trieStore, dbProvider, logManager);
     }
