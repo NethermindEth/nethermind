@@ -101,8 +101,8 @@ public class TestBlockchain : IDisposable
     protected AutoCancelTokenSource _cts;
     public CancellationToken CancellationToken => _cts.Token;
 
-    private TestBlockchainUtil TestUtil => _fromContainer.TestBlockchainUtil.Value;
-    private PoWTestBlockchainUtil PoWTestUtil => _fromContainer.PoWTestBlockchainUtil.Value;
+    private TestBlockchainUtil TestUtil => _fromContainer.TestBlockchainUtil;
+    private PoWTestBlockchainUtil PoWTestUtil => _fromContainer.PoWTestBlockchainUtil;
     private IManualBlockProductionTrigger BlockProductionTrigger => _fromContainer.BlockProductionTrigger;
 
     public ManualTimestamper Timestamper => _fromContainer.ManualTimestamper;
@@ -124,37 +124,65 @@ public class TestBlockchain : IDisposable
 
     // Resolving all these component at once is faster.
     private FromContainer _fromContainer = null!;
-    private record FromContainer(
-        IStateReader StateReader,
-        IEthereumEcdsa EthereumEcdsa,
-        INonceManager NonceManager,
-        IReceiptStorage ReceiptStorage,
-        ITxPool TxPool,
-        IWorldStateManager WorldStateManager,
-        IBlockPreprocessorStep BlockPreprocessorStep,
-        IBlockTree BlockTree,
-        IBlockFinder BlockFinder,
-        ILogFinder LogFinder,
-        IChainHeadInfoProvider ChainHeadInfoProvider,
-        IDbProvider DbProvider,
-        ISpecProvider SpecProvider,
-        ISealEngine SealEngine,
-        ITransactionComparerProvider TransactionComparerProvider,
-        IPoSSwitcher PoSSwitcher,
-        IChainLevelInfoRepository ChainLevelInfoRepository,
-        IMainProcessingContext MainProcessingContext,
-        IReadOnlyTxProcessingEnvFactory ReadOnlyTxProcessingEnvFactory,
-        IBlockProducerEnvFactory BlockProducerEnvFactory,
-        Configuration Configuration,
-        Lazy<TestBlockchainUtil> TestBlockchainUtil,
-        Lazy<PoWTestBlockchainUtil> PoWTestBlockchainUtil,
-        ManualTimestamper ManualTimestamper,
-        IManualBlockProductionTrigger BlockProductionTrigger,
-        IShareableTxProcessorSource ShareableTxProcessorSource,
-        ISealer Sealer,
-        IForkInfo ForkInfo
+    public class FromContainer(
+        Lazy<IStateReader> stateReader,
+        Lazy<IEthereumEcdsa> ethereumEcdsa,
+        Lazy<INonceManager> nonceManager,
+        Lazy<IReceiptStorage> receiptStorage,
+        Lazy<ITxPool> txPool,
+        Lazy<IWorldStateManager> worldStateManager,
+        Lazy<IBlockPreprocessorStep> blockPreprocessorStep,
+        Lazy<IBlockTree> blockTree,
+        Lazy<IBlockFinder> blockFinder,
+        Lazy<ILogFinder> logFinder,
+        Lazy<IChainHeadInfoProvider> chainHeadInfoProvider,
+        Lazy<IDbProvider> dbProvider,
+        Lazy<ISpecProvider> specProvider,
+        Lazy<ISealEngine> sealEngine,
+        Lazy<ITransactionComparerProvider> transactionComparerProvider,
+        Lazy<IPoSSwitcher> poSSwitcher,
+        Lazy<IChainLevelInfoRepository> chainLevelInfoRepository,
+        Lazy<IMainProcessingContext> mainProcessingContext,
+        Lazy<IReadOnlyTxProcessingEnvFactory> readOnlyTxProcessingEnvFactory,
+        Lazy<IBlockProducerEnvFactory> blockProducerEnvFactory,
+        Lazy<Configuration> configuration,
+        Lazy<TestBlockchainUtil> testBlockchainUtil,
+        Lazy<PoWTestBlockchainUtil> poWTestBlockchainUtil,
+        Lazy<ManualTimestamper> manualTimestamper,
+        Lazy<IManualBlockProductionTrigger> blockProductionTrigger,
+        Lazy<IShareableTxProcessorSource> shareableTxProcessorSource,
+        Lazy<ISealer> sealer,
+        Lazy<IForkInfo> forkInfo
     )
     {
+        public IStateReader StateReader => stateReader.Value;
+        public IEthereumEcdsa EthereumEcdsa => ethereumEcdsa.Value;
+        public INonceManager NonceManager => nonceManager.Value;
+        public IReceiptStorage ReceiptStorage => receiptStorage.Value;
+        public ITxPool TxPool => txPool.Value;
+        public IWorldStateManager WorldStateManager => worldStateManager.Value;
+        public IBlockPreprocessorStep BlockPreprocessorStep => blockPreprocessorStep.Value;
+        public IBlockTree BlockTree => blockTree.Value;
+        public IBlockFinder BlockFinder => blockFinder.Value;
+        public ILogFinder LogFinder => logFinder.Value;
+        public IChainHeadInfoProvider ChainHeadInfoProvider => chainHeadInfoProvider.Value;
+        public IDbProvider DbProvider => dbProvider.Value;
+        public ISpecProvider SpecProvider => specProvider.Value;
+        public ISealEngine SealEngine => sealEngine.Value;
+        public ITransactionComparerProvider TransactionComparerProvider => transactionComparerProvider.Value;
+        public IPoSSwitcher PoSSwitcher => poSSwitcher.Value;
+        public IChainLevelInfoRepository ChainLevelInfoRepository => chainLevelInfoRepository.Value;
+        public IMainProcessingContext MainProcessingContext => mainProcessingContext.Value;
+        public IReadOnlyTxProcessingEnvFactory ReadOnlyTxProcessingEnvFactory => readOnlyTxProcessingEnvFactory.Value;
+        public IBlockProducerEnvFactory BlockProducerEnvFactory => blockProducerEnvFactory.Value;
+        public Configuration Configuration => configuration.Value;
+        public TestBlockchainUtil TestBlockchainUtil => testBlockchainUtil.Value;
+        public PoWTestBlockchainUtil PoWTestBlockchainUtil => poWTestBlockchainUtil.Value;
+        public ManualTimestamper ManualTimestamper => manualTimestamper.Value;
+        public IManualBlockProductionTrigger BlockProductionTrigger => blockProductionTrigger.Value;
+        public IShareableTxProcessorSource ShareableTxProcessorSource => shareableTxProcessorSource.Value;
+        public ISealer Sealer => sealer.Value;
+        public IForkInfo ForkInfo => forkInfo.Value;
     }
 
     public class Configuration
@@ -192,7 +220,13 @@ public class TestBlockchain : IDisposable
 
         _cts = AutoCancelTokenSource.ThatCancelAfter(Debugger.IsAttached ? TimeSpan.FromMilliseconds(-1) : TimeSpan.FromMilliseconds(TestTimout));
 
-        if (testConfiguration.SuggestGenesisOnStart) MainProcessingContext.GenesisLoader.Load();
+        if (testConfiguration.SuggestGenesisOnStart)
+        {
+            // The block added event is not waited by genesis, but its needed to wait here so that `AddBlock` wait correctly.
+            Task newBlockWaiter = BlockTree.WaitForNewBlock(this.CancellationToken);
+            MainProcessingContext.GenesisLoader.Load();
+            await newBlockWaiter;
+        }
 
         if (testConfiguration.AddBlockOnStart)
             await AddBlocksOnStart();
@@ -371,6 +405,13 @@ public class TestBlockchain : IDisposable
         await AddBlock();
         await AddBlock(CreateTransactionBuilder().WithNonce(0).TestObject);
         await AddBlock(CreateTransactionBuilder().WithNonce(1).TestObject, CreateTransactionBuilder().WithNonce(2).TestObject);
+
+        while (true)
+        {
+            CancellationToken.ThrowIfCancellationRequested();
+            if (BlockTree.Head?.Number == 3) return;
+            await Task.Delay(1, CancellationToken);
+        }
     }
 
     private TransactionBuilder<Transaction> CreateTransactionBuilder()
@@ -411,6 +452,11 @@ public class TestBlockchain : IDisposable
     public virtual async Task AddBlock(params Transaction[] transactions)
     {
         await TestUtil.AddBlockAndWaitForHead(false, _cts.Token, transactions);
+    }
+
+    public async Task AddBlock(TestBlockchainUtil.AddBlockFlags flags, params Transaction[] transactions)
+    {
+        await TestUtil.AddBlock(flags, _cts.Token, transactions);
     }
 
     public async Task AddBlockMayMissTx(params Transaction[] transactions)
