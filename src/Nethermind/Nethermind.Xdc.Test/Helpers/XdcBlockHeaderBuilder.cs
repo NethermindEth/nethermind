@@ -8,6 +8,8 @@ using Nethermind.Xdc.Types;
 using System.Linq;
 using Nethermind.Crypto;
 using Nethermind.Serialization.Rlp;
+using System.Collections.Generic;
+using Nethermind.Xdc.RLP;
 
 namespace Nethermind.Core.Test.Builders;
 
@@ -45,15 +47,19 @@ public class XdcBlockHeaderBuilder : BlockHeaderBuilder
 
     public XdcBlockHeaderBuilder WithGeneratedExtraConsensusData()
     {
-        var encoder = new QuorumCertificateDecoder();
-        var ecdsa = new EthereumEcdsa(0);
-        var keyBuilder = new PrivateKeyGenerator();
-        var blockRoundInfo = new BlockRoundInfo(Hash256.Zero, 1, 1);
-        var quorumForSigning = new QuorumCert(blockRoundInfo, null, 450);
-        var signatures = Enumerable.Range(0, 72).Select(i => keyBuilder.Generate()).Select(k => ecdsa.Sign(k, Keccak.Compute(encoder.Encode(quorumForSigning, RlpBehaviors.ForSealing).Bytes)));
-        var quorumCert = new QuorumCert(blockRoundInfo, signatures.ToArray(), 450);
-        var extraFieldsV2 = new ExtraFieldsV2(1, quorumCert);
-        XdcTestObjectInternal.ExtraConsensusData = extraFieldsV2;
+        QuorumCertificateDecoder qcEncoder = new QuorumCertificateDecoder();
+        EthereumEcdsa ecdsa = new EthereumEcdsa(0);
+        PrivateKeyGenerator keyBuilder = new PrivateKeyGenerator();
+        BlockRoundInfo blockRoundInfo = new BlockRoundInfo(Hash256.Zero, 1, 1);
+        QuorumCert quorumForSigning = new QuorumCert(blockRoundInfo, null, 450);
+        IEnumerable<Signature> signatures = Enumerable.Range(0, 72).Select(i => keyBuilder.Generate()).Select(k => ecdsa.Sign(k, Keccak.Compute(qcEncoder.Encode(quorumForSigning, RlpBehaviors.ForSealing).Bytes)));
+        QuorumCert quorumCert = new QuorumCert(blockRoundInfo, [.. signatures], 450);
+        ExtraFieldsV2 extraFieldsV2 = new ExtraFieldsV2(1, quorumCert);
+
+        ExtraConsensusDataDecoder exctraEncoder = new ExtraConsensusDataDecoder();
+        Rlp extraEncoded = exctraEncoder.Encode(extraFieldsV2);
+
+        XdcTestObjectInternal.ExtraData = [0x2, ..extraEncoded.Bytes];
         return this;
     }
 

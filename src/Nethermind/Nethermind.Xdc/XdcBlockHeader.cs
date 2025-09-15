@@ -121,8 +121,6 @@ public class XdcBlockHeader : BlockHeader, IHashResolver
         }
         return addresses.ToImmutableSortedSet();
     }
-}
-
 
     public ValueHash256 CalculateHash()
     {

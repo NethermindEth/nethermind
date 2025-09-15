@@ -30,27 +30,89 @@ public class Tests
         Assert.That(() => validator.Validate(header, null, false, out string? error), Throws.TypeOf<ArgumentException>());
     }
 
-    public static IEnumerable<TestCaseData> HeaderTestCases()
+    public static IEnumerable<object[]> HeaderTestCases()
     {
         BlockHeader headerParent = Build.A
             .XdcBlockHeader()
             .WithMixHash(Hash256.Zero)
             .TestObject;
-        XdcBlockHeaderBuilder blockHeaderBuilder = (XdcBlockHeaderBuilder)Build.A
-            .XdcBlockHeader()
-            .WithGeneratedExtraConsensusData()
-            .WithMixHash(Hash256.Zero)
-            .WithParent(headerParent);
-            blockHeaderBuilder.WithHash(blockHeaderBuilder.TestObject.CalculateHash());
-  
-        yield return new TestCaseData(headerParent, blockHeaderBuilder.WithHash(blockHeaderBuilder.TestObject.CalculateHash()).TestObject.Clone(), true);
+        XdcBlockHeaderBuilder blockHeaderBuilder = CreateValidHeader(headerParent);
 
+        yield return new object[]
+        {
+            headerParent,
+            blockHeaderBuilder.WithHash(blockHeaderBuilder.TestObject.CalculateHash().ToHash256()).TestObject,
+            true
+        };
+
+        blockHeaderBuilder = CreateValidHeader(headerParent);
         blockHeaderBuilder.WithValidator(Array.Empty<byte>());
-        yield return new TestCaseData(headerParent, blockHeaderBuilder.WithHash(blockHeaderBuilder.TestObject.CalculateHash()).TestObject.Clone(), false);
+        yield return new object[]
+        {
+            headerParent,
+            blockHeaderBuilder.WithHash(blockHeaderBuilder.TestObject.CalculateHash().ToHash256()).TestObject,
+            false
+        };
+
+        blockHeaderBuilder = CreateValidHeader(headerParent);
+        blockHeaderBuilder.WithExtraData([]);
+        yield return new object[]
+        {
+            headerParent,
+            blockHeaderBuilder.WithHash(blockHeaderBuilder.TestObject.CalculateHash().ToHash256()).TestObject,
+            false
+        };
+
+        blockHeaderBuilder = CreateValidHeader(headerParent);
+        blockHeaderBuilder.WithNonce(XdcConstants.NonceDropVoteValue + 1);
+        yield return new object[]
+        {
+            headerParent,
+            blockHeaderBuilder.WithHash(blockHeaderBuilder.TestObject.CalculateHash().ToHash256()).TestObject,
+            false
+        };
+
+        blockHeaderBuilder = CreateValidHeader(headerParent);
+        blockHeaderBuilder.WithNonce(XdcConstants.NonceAuthVoteValue - 1);
+        yield return new object[]
+        {
+            headerParent,
+            blockHeaderBuilder.WithHash(blockHeaderBuilder.TestObject.CalculateHash().ToHash256()).TestObject,
+            false
+        };
+
+        blockHeaderBuilder = CreateValidHeader(headerParent);
+        blockHeaderBuilder.WithMixHash(Hash256.FromBytesWithPadding([0x01]));
+        yield return new object[]
+        {
+            headerParent,
+            blockHeaderBuilder.WithHash(blockHeaderBuilder.TestObject.CalculateHash().ToHash256()).TestObject,
+            false
+        };
+
+        blockHeaderBuilder = CreateValidHeader(headerParent);
+        blockHeaderBuilder.WithUnclesHash(Hash256.FromBytesWithPadding([0x01]));
+        yield return new object[]
+        {
+            headerParent,
+            blockHeaderBuilder.WithHash(blockHeaderBuilder.TestObject.CalculateHash().ToHash256()).TestObject,
+            false
+        };
+
+        static XdcBlockHeaderBuilder CreateValidHeader(BlockHeader headerParent)
+        {
+            XdcBlockHeaderBuilder blockHeaderBuilder = (XdcBlockHeaderBuilder)Build.A
+                .XdcBlockHeader()
+                .WithGeneratedExtraConsensusData()
+                .WithMixHash(Hash256.Zero)
+                .WithParent(headerParent);
+            blockHeaderBuilder.WithHash(new Hash256(blockHeaderBuilder.TestObject.CalculateHash()));
+            return blockHeaderBuilder;
+        }
     }
 
     [TestCaseSource(nameof(HeaderTestCases))]
-    public void Validate_(XdcBlockHeader parent, XdcBlockHeader header, bool expected)
+    public void Validate_HeaderWithDifferentValues_ReturnsExpected(XdcBlockHeader parent, XdcBlockHeader header, bool expected)
     {
         ISealValidator sealValidator = Substitute.For<ISealValidator>();
         sealValidator.ValidateSeal(Arg.Any<BlockHeader>(), Arg.Any<bool>()).Returns(true);
