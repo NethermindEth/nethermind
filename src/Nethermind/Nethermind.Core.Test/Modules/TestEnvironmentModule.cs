@@ -8,6 +8,7 @@ using Nethermind.Blockchain;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Config;
 using Nethermind.Consensus;
+using Nethermind.Consensus.Processing;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Blockchain;
@@ -48,7 +49,9 @@ public class TestEnvironmentModule(PrivateKey nodeKey, string? networkGroup) : M
 
             .AddSingleton<PseudoNethermindRunner>()
             .AddSingleton<TestBlockchainUtil>()
-            .AddSingleton<TestBlockchainUtil.Config>()
+                .AddSingleton<TestBlockchainUtil.Config>()
+                .AddSingleton<InvalidBlockDetector>()
+                .AddDecorator<IBlockProcessor, InvalidBlockDetector.BlockProcessorInterceptor>()
 
             .AddSingleton<ISealer>(new NethDevSealEngine(nodeKey.Address))
             .AddSingleton<ITimestamper, ManualTimestamper>()
