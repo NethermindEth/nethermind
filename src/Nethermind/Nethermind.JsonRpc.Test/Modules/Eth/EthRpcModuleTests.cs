@@ -167,7 +167,7 @@ public partial class EthRpcModuleTests
         using Context ctx = await Context.Create();
         string serialized = await ctx.Test.TestEthRpc("eth_getBlockReceipts", "latest");
         string expectedResult = "{\"jsonrpc\":\"2.0\",\"result\":[{\"transactionHash\":\"0x681c2b6f99e37fd6fe6046db8b51ec3460d699cacd6a376143fd5842ac50621f\",\"transactionIndex\":\"0x0\",\"blockHash\":\"0x29f141925d2d8e357ae5b6040c97aa12d7ac6dfcbe2b20e7b616d8907ac8e1f3\",\"blockNumber\":\"0x3\",\"cumulativeGasUsed\":\"0x5208\",\"gasUsed\":\"0x5208\",\"effectiveGasPrice\":\"0x1\",\"from\":\"0xb7705ae4c6f81b66cdb323c65f4e8133690fc099\",\"to\":\"0x942921b14f1b1c385cd7e0cc2ef7abe5598c8358\",\"contractAddress\":null,\"logs\":[],\"logsBloom\":\"0x00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000\",\"status\":\"0x1\",\"type\":\"0x0\"},{\"transactionHash\":\"0x7126cf20a0ad8bd51634837d9049615c34c1bff5e1a54e5663f7e23109bff48b\",\"transactionIndex\":\"0x1\",\"blockHash\":\"0x29f141925d2d8e357ae5b6040c97aa12d7ac6dfcbe2b20e7b616d8907ac8e1f3\",\"blockNumber\":\"0x3\",\"cumulativeGasUsed\":\"0xa410\",\"gasUsed\":\"0x5208\",\"effectiveGasPrice\":\"0x1\",\"from\":\"0xb7705ae4c6f81b66cdb323c65f4e8133690fc099\",\"to\":\"0x942921b14f1b1c385cd7e0cc2ef7abe5598c8358\",\"contractAddress\":null,\"logs\":[],\"logsBloom\":\"0x00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000\",\"status\":\"0x1\",\"type\":\"0x0\"}],\"id\":67}";
-        Assert.That(serialized, Is.EqualTo(expectedResult));
+        JToken.Parse(serialized).Should().BeEquivalentTo(expectedResult);
     }
 
     [Test]
@@ -1592,8 +1592,23 @@ public partial class EthRpcModuleTests
 
     protected class Context : IDisposable
     {
-        public TestRpcBlockchain Test { get; set; } = null!;
-        public TestRpcBlockchain AuraTest { get; set; } = null!;
+        private TestRpcBlockchain? _testCtx;
+        private TestRpcBlockchain? _auraCtx;
+
+        public Func<TestRpcBlockchain> TestFactory { get; set; } = null!;
+        public Func<TestRpcBlockchain> AuraTestFactory { get; set; } = null!;
+
+        public TestRpcBlockchain Test
+        {
+            get => _testCtx ??= TestFactory();
+            set => _testCtx = value;
+        }
+
+        public TestRpcBlockchain AuraTest
+        {
+            get => _auraCtx ??= AuraTestFactory();
+            set => _auraCtx = value;
+        }
 
         private Context() { }
 
@@ -1628,7 +1643,7 @@ public partial class EthRpcModuleTests
             });
         }
 
-        public static async Task<Context> Create(ISpecProvider? specProvider = null, IBlockchainBridge? blockchainBridge = null, Action<ContainerBuilder>? configurer = null)
+        public static Task<Context> Create(ISpecProvider? specProvider = null, IBlockchainBridge? blockchainBridge = null, Action<ContainerBuilder>? configurer = null)
         {
             Action<ContainerBuilder> wrappedConfigurer = builder =>
             {
@@ -1636,14 +1651,14 @@ public partial class EthRpcModuleTests
                 configurer?.Invoke(builder);
             };
 
-            return new Context
+            return Task.FromResult(new Context
             {
-                // Did it make... both? all the time?
-                Test = await TestRpcBlockchain.ForTest(SealEngineType.NethDev)
+                TestFactory = () => TestRpcBlockchain.ForTest(SealEngineType.NethDev)
                     .WithBlockchainBridge(blockchainBridge!)
                     .WithConfig(new JsonRpcConfig() { EstimateErrorMargin = 0 })
-                    .Build(wrappedConfigurer),
-                AuraTest = await TestRpcBlockchain.ForTest(SealEngineType.AuRa)
+                    .Build(wrappedConfigurer).Result,
+
+                AuraTestFactory = () => TestRpcBlockchain.ForTest(SealEngineType.AuRa)
                     .Build(configurer: builder =>
                     {
                         builder
@@ -1654,14 +1669,14 @@ public partial class EthRpcModuleTests
                                 }
                             );
                         wrappedConfigurer(builder);
-                    })
-            };
+                    }).Result
+            });
         }
 
         public void Dispose()
         {
-            Test?.Dispose();
-            AuraTest?.Dispose();
+            _testCtx?.Dispose();
+            _auraCtx?.Dispose();
         }
     }
 }
