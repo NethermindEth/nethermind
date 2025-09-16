@@ -88,6 +88,14 @@ namespace Nethermind.HealthChecks
         {
             base.Load(builder);
 
+            builder.RegisterType<ClHealthRequestsTracker>()
+                .As<IClHealthTracker>()
+                .PreserveExistingDefaults();
+
+            builder.RegisterType<ClHealthRequestsTracker>()
+                .As<IEngineRequestsTracker>()
+                .PreserveExistingDefaults();
+
             builder
                 .AddSingleton<IHealthHintService, HealthHintService>()
                 .AddSingleton<INodeHealthService, NodeHealthService>()
@@ -101,9 +109,6 @@ namespace Nethermind.HealthChecks
                 .AddSingleton<IJsonRpcServiceConfigurer, HealthCheckJsonRpcConfigurer>()
 
                 .AddSingleton<ClHealthRequestsTracker>() // Note: Not resolved without merge plugin
-                .Bind<IClHealthTracker, ClHealthRequestsTracker>()
-                .Bind<IEngineRequestsTracker, ClHealthRequestsTracker>()
-
                 .RegisterSingletonJsonRpcModule<IHealthRpcModule, HealthRpcModule>()
                 ;
         }
