@@ -101,7 +101,4 @@ public interface IDbConfig : IConfig
 
     string L1OriginDbRocksDbOptions { get; set; }
     string? L1OriginDbAdditionalRocksDbOptions { get; set; }
-
-    string WasmDbRocksDbOptions { get; set; }
-    string? WasmDbAdditionalRocksDbOptions { get; set; }
 }
