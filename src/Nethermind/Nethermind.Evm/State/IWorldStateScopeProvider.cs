@@ -25,6 +25,11 @@ public interface IWorldStateScopeProvider
         IStateTree StateTree { get; }
 
         /// <summary>
+        /// The code db
+        /// </summary>
+        ICodeDb CodeDb { get; }
+
+        /// <summary>
         /// Create a per address storage tree. Multiple call to the same
         /// address yield the same <see cref="IStorageTree"/>. The returned object
         /// must not be used after <see cref="Commit"/>, and should be re-created.
@@ -55,6 +60,13 @@ public interface IWorldStateScopeProvider
 
         IStateSetter BeginSet(int estimatedEntries);
         void UpdateRootHash();
+    }
+
+    public interface ICodeDb
+    {
+        byte[]? GetCode(in ValueHash256 codeHash);
+
+        ICodeSetter BeginCodeWrite();
     }
 
     public interface IStorageTree
@@ -95,5 +107,10 @@ public interface IWorldStateScopeProvider
     public interface IStateSetter : IDisposable
     {
         void Set(Address key, Account account);
+    }
+
+    public interface ICodeSetter : IDisposable
+    {
+        void Set(in ValueHash256 codeHash, byte[] code);
     }
 }

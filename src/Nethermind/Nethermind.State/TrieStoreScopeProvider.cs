@@ -3,6 +3,7 @@
 
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using System.Threading.Tasks;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
@@ -19,11 +20,13 @@ public class TrieStoreScopeProvider : IWorldStateScopeProvider
     private readonly ILogManager _logManager;
     protected StateTree _backingStateTree;
     private readonly Dictionary<AddressAsKey, StorageTree> _storages = new();
+    private readonly KeyValueWithBatchingBackedCodeDb _codeDb;
 
-    public TrieStoreScopeProvider(ITrieStore trieStore, ILogManager logManager)
+    public TrieStoreScopeProvider(ITrieStore trieStore, IKeyValueStoreWithBatching codeDb, ILogManager logManager)
     {
         _trieStore = trieStore;
         _logManager = logManager;
+        _codeDb = new KeyValueWithBatchingBackedCodeDb(codeDb);
 
         _backingStateTree = CreateStateTree();
     }
@@ -43,7 +46,7 @@ public class TrieStoreScopeProvider : IWorldStateScopeProvider
         var trieStoreCloser = _trieStore.BeginScope(baseBlock);
         _backingStateTree.RootHash = baseBlock?.StateRoot ?? Keccak.EmptyTreeHash;
 
-        return new TrieStoreWorldStateBackendScope(_backingStateTree, this, trieStoreCloser);
+        return new TrieStoreWorldStateBackendScope(_backingStateTree, this, _codeDb, trieStoreCloser);
     }
 
     private void Reset()
@@ -100,7 +103,7 @@ public class TrieStoreScopeProvider : IWorldStateScopeProvider
         _storages.Clear();
     }
 
-    private class TrieStoreWorldStateBackendScope(StateTree backingStateTree, TrieStoreScopeProvider scopeProvider, IDisposable trieStoreCloser) : IWorldStateScopeProvider.IScope
+    private class TrieStoreWorldStateBackendScope(StateTree backingStateTree, TrieStoreScopeProvider scopeProvider, IWorldStateScopeProvider.ICodeDb codeDb, IDisposable trieStoreCloser) : IWorldStateScopeProvider.IScope
     {
         public void Dispose()
         {
@@ -110,6 +113,8 @@ public class TrieStoreScopeProvider : IWorldStateScopeProvider
 
         public IWorldStateScopeProvider.IStateTree StateTree => backingStateTree;
 
+        public IWorldStateScopeProvider.ICodeDb CodeDb => codeDb;
+
         public IWorldStateScopeProvider.IStorageTree CreateStorageTree(Address address)
         {
             return scopeProvider.CreateAndTrackStorageTree(address);
@@ -118,6 +123,32 @@ public class TrieStoreScopeProvider : IWorldStateScopeProvider
         public void Commit(long blockNumber)
         {
             scopeProvider.Commit(blockNumber);
+        }
+    }
+
+    private class KeyValueWithBatchingBackedCodeDb(IKeyValueStoreWithBatching codeDb) : IWorldStateScopeProvider.ICodeDb
+    {
+        public byte[]? GetCode(in ValueHash256 codeHash)
+        {
+            return codeDb[codeHash.Bytes]?.ToArray();
+        }
+
+        public IWorldStateScopeProvider.ICodeSetter BeginCodeWrite()
+        {
+            return new CodeSetter(codeDb.StartWriteBatch());
+        }
+
+        private class CodeSetter(IWriteBatch writeBatch): IWorldStateScopeProvider.ICodeSetter
+        {
+            public void Set(in ValueHash256 codeHash, byte[] code)
+            {
+                writeBatch[codeHash.Bytes] = code;
+            }
+
+            public void Dispose()
+            {
+                writeBatch.Dispose();
+            }
         }
     }
 }

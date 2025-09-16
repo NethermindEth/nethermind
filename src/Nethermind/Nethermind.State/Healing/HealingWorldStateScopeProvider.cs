@@ -3,12 +3,13 @@
 
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Evm.State;
 using Nethermind.Logging;
 using Nethermind.Trie.Pruning;
 
 namespace Nethermind.State.Healing;
 
-public class HealingWorldStateScopeProvider(ITrieStore trieStore, INodeStorage nodeStorage, ILogManager logManager) : TrieStoreScopeProvider(trieStore, logManager)
+public class HealingWorldStateScopeProvider(ITrieStore trieStore, IKeyValueStoreWithBatching codeDb, INodeStorage nodeStorage, ILogManager logManager) : TrieStoreScopeProvider(trieStore, codeDb, logManager)
 {
     private IPathRecovery? _recovery;
     private readonly ILogManager? _logManager = logManager;
