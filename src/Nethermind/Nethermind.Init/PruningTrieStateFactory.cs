@@ -76,15 +76,13 @@ public class PruningTrieStateFactory(
                 codeDb,
                 logManager);
 
-        IWorldState worldState = new WorldState(
-                scopeProvider,
-                logManager,
-                preBlockCaches,
-                // Main thread should only read from prewarm caches, not spend extra time updating them.
-                populatePreBlockCache: false);
+        if (blockConfig.PreWarmStateOnBlockProcessing)
+        {
+            scopeProvider = new PrewarmerScopeProvider(scopeProvider, preBlockCaches!, false);
+        }
 
         IWorldStateManager stateManager = new WorldStateManager(
-            worldState,
+            scopeProvider,
             trieStore,
             dbProvider,
             logManager,

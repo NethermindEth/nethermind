@@ -23,11 +23,13 @@ using Nethermind.Core.Container;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
 using Nethermind.Evm;
+using Nethermind.Evm.State;
 using Nethermind.State.OverridableEnv;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Init.Steps;
 using Nethermind.JsonRpc.Modules.Eth.GasPrice;
 using Nethermind.Logging;
+using Nethermind.State;
 using Nethermind.TxPool;
 
 namespace Nethermind.Init.Modules;
@@ -49,6 +51,7 @@ public class BlockProcessingModule(IInitConfig initConfig) : Module
             .AddScoped<ICodeInfoRepository, CodeInfoRepository>()
                 .AddSingleton<IPrecompileProvider, EthereumPrecompileProvider>()
             .AddScoped<IVirtualMachine, VirtualMachine>()
+            .AddScoped<IWorldState, WorldState>()
             .AddScoped<IBlockhashProvider, BlockhashProvider>()
             .AddScoped<IBeaconBlockRootHandler, BeaconBlockRootHandler>()
             .AddScoped<IBlockhashStore, BlockhashStore>()

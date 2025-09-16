@@ -11,12 +11,13 @@ using Nethermind.State.Healing;
 using Nethermind.State.SnapServer;
 using Nethermind.Trie;
 using Nethermind.Trie.Pruning;
+using Org.BouncyCastle.Pqc.Crypto.Picnic;
 
 namespace Nethermind.State;
 
 public class WorldStateManager : IWorldStateManager
 {
-    private readonly IWorldState _worldState;
+    private readonly IWorldStateScopeProvider _worldState;
     private readonly IPruningTrieStore _trieStore;
     private readonly IReadOnlyTrieStore _readOnlyTrieStore;
     private readonly ILogManager _logManager;
@@ -26,7 +27,7 @@ public class WorldStateManager : IWorldStateManager
     private readonly ILastNStateRootTracker _lastNStateRootTracker;
 
     public WorldStateManager(
-        IWorldState worldState,
+        IWorldStateScopeProvider worldState,
         IPruningTrieStore trieStore,
         IDbProvider dbProvider,
         ILogManager logManager,
@@ -46,7 +47,7 @@ public class WorldStateManager : IWorldStateManager
         _lastNStateRootTracker = lastNStateRootTracker;
     }
 
-    public IWorldState GlobalWorldState => _worldState;
+    public IWorldStateScopeProvider GlobalWorldState => _worldState;
 
     public IReadOnlyKeyValueStore? HashServer => _trieStore.Scheme != INodeStorage.KeyScheme.Hash ? null : _trieStore.TrieNodeRlpStore;
 
@@ -60,22 +61,24 @@ public class WorldStateManager : IWorldStateManager
 
     public ISnapServer? SnapServer => _trieStore.Scheme == INodeStorage.KeyScheme.Hash ? null : new SnapServer.SnapServer(_readOnlyTrieStore, _readaOnlyCodeCb, GlobalStateReader, _logManager, _lastNStateRootTracker);
 
-    public IWorldState CreateResettableWorldState()
+    public IWorldStateScopeProvider CreateResettableWorldState()
     {
-        return new WorldState(
-            new TrieStoreScopeProvider(_readOnlyTrieStore, _readaOnlyCodeCb, _logManager),
-            _logManager);
+        return new TrieStoreScopeProvider(_readOnlyTrieStore, _readaOnlyCodeCb, _logManager);
     }
 
-    public IWorldState CreateWorldStateForWarmingUp(IWorldState forWarmup)
+    public IWorldStateScopeProvider CreateWorldStateForWarmingUp(IWorldStateScopeProvider forWarmup)
     {
-        PreBlockCaches? preBlockCaches = (forWarmup as IPreBlockCaches)?.Caches;
-        return preBlockCaches is not null
-            ? new WorldState(
-                new TrieStoreScopeProvider(new PreCachedTrieStore(_readOnlyTrieStore, preBlockCaches.RlpCache), _readaOnlyCodeCb, _logManager),
-                _logManager,
-                preBlockCaches)
-            : CreateResettableWorldState();
+        if (forWarmup is IPreBlockCaches preBlockCaches)
+        {
+            return new PrewarmerScopeProvider(
+                new TrieStoreScopeProvider(new PreCachedTrieStore(_readOnlyTrieStore, preBlockCaches.Caches.RlpCache),
+                    _readaOnlyCodeCb, _logManager),
+                preBlockCaches.Caches,
+                populatePreBlockCache: true
+            );
+        }
+
+        return CreateResettableWorldState();
     }
 
     public IOverridableWorldScope CreateOverridableWorldScope()

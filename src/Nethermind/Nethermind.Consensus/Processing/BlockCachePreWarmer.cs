@@ -26,7 +26,7 @@ namespace Nethermind.Consensus.Processing;
 
 public sealed class BlockCachePreWarmer(
     IReadOnlyTxProcessingEnvFactory envFactory,
-    IWorldState worldStateToWarmup,
+    IWorldStateScopeProvider worldStateToWarmup,
     int concurrency,
     ILogManager logManager,
     PreBlockCaches? preBlockCaches = null
@@ -39,7 +39,7 @@ public sealed class BlockCachePreWarmer(
 
     public BlockCachePreWarmer(
         IReadOnlyTxProcessingEnvFactory envFactory,
-        IWorldState worldStateToWarmup,
+        IWorldStateScopeProvider worldStateToWarmup,
         IBlocksConfig blocksConfig,
         ILogManager logManager,
         PreBlockCaches? preBlockCaches = null
@@ -373,7 +373,7 @@ public sealed class BlockCachePreWarmer(
         private static void DisposeThreadState(AddressWarmingState state) => state.Dispose();
     }
 
-    private class ReadOnlyTxProcessingEnvPooledObjectPolicy(IReadOnlyTxProcessingEnvFactory envFactory, IWorldState worldStateToWarmUp) : IPooledObjectPolicy<IReadOnlyTxProcessorSource>
+    private class ReadOnlyTxProcessingEnvPooledObjectPolicy(IReadOnlyTxProcessingEnvFactory envFactory, IWorldStateScopeProvider worldStateToWarmUp) : IPooledObjectPolicy<IReadOnlyTxProcessorSource>
     {
         public IReadOnlyTxProcessorSource Create() => envFactory.CreateForWarmingUp(worldStateToWarmUp);
         public bool Return(IReadOnlyTxProcessorSource obj) => true;

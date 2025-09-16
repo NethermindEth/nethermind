@@ -68,7 +68,7 @@ public class ProofRpcModuleTests
         _worldStateManager = TestWorldStateFactory.CreateWorldStateManagerForTest(_dbProvider, LimboLogs.Instance);
 
         Hash256 stateRoot;
-        IWorldState worldState = _worldStateManager.GlobalWorldState;
+        IWorldState worldState = new WorldState(_worldStateManager.GlobalWorldState, LimboLogs.Instance);
         using (var _ = worldState.BeginScope(IWorldState.PreGenesis))
         {
             worldState.CreateAccount(TestItem.AddressA, 100000);
@@ -897,7 +897,7 @@ public class ProofRpcModuleTests
 
     private (IWorldState, Hash256) CreateInitialState(byte[]? code)
     {
-        IWorldState stateProvider = _worldStateManager.GlobalWorldState;
+        IWorldState stateProvider = new WorldState(_worldStateManager.GlobalWorldState, LimboLogs.Instance);
         using var _ = stateProvider.BeginScope(IWorldState.PreGenesis);
 
         AddAccount(stateProvider, TestItem.AddressA, 1.Ether());

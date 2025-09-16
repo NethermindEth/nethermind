@@ -40,7 +40,7 @@ public partial class BlockProducerBaseTests
         DevBlockProducer blockProducer = new(
             Substitute.For<ITxSource>(),
             testRpc.BlockchainProcessor,
-            testRpc.WorldStateManager.GlobalWorldState,
+            testRpc.MainWorldState,
             testRpc.BlockTree,
             testRpc.Timestamper,
             testRpc.SpecProvider,
@@ -59,7 +59,7 @@ public partial class BlockProducerBaseTests
         TestBlockProducer blockProducer = new(
             Substitute.For<ITxSource>(),
             testRpc.BlockchainProcessor,
-            testRpc.WorldStateManager.GlobalWorldState,
+            testRpc.MainWorldState,
             Substitute.For<ISealer>(),
             testRpc.BlockTree,
             testRpc.Timestamper,
@@ -81,7 +81,7 @@ public partial class BlockProducerBaseTests
             testRpc.BlockchainProcessor,
             Substitute.For<ISealer>(),
             testRpc.BlockTree,
-            testRpc.WorldStateManager.GlobalWorldState,
+            testRpc.MainWorldState,
             Substitute.For<IGasLimitCalculator>(),
             testRpc.Timestamper,
             testRpc.SpecProvider,
@@ -123,7 +123,7 @@ public partial class BlockProducerBaseTests
         CliqueBlockProducer blockProducer = new(
             Substitute.For<ITxSource>(),
             testRpc.BlockchainProcessor,
-            testRpc.WorldStateManager.GlobalWorldState,
+            testRpc.MainWorldState,
             testRpc.Timestamper,
             Substitute.For<ICryptoRandom>(),
             Substitute.For<ISnapshotManager>(),

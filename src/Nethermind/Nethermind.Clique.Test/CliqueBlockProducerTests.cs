@@ -105,7 +105,7 @@ public class CliqueBlockProducerTests
             SepoliaSpecProvider testnetSpecProvider = SepoliaSpecProvider.Instance;
             IReleaseSpec finalSpec = testnetSpecProvider.GetFinalSpec();
 
-            IWorldState stateProvider = container.Resolve<IWorldStateManager>().GlobalWorldState;
+            IWorldState stateProvider = container.Resolve<IMainProcessingContext>().WorldState;
             using (stateProvider.BeginScope(IWorldState.PreGenesis))
             {
                 stateProvider.CreateAccount(TestItem.PrivateKeyD.Address, 100.Ether());
@@ -280,7 +280,7 @@ public class CliqueBlockProducerTests
 
         public On ProcessGenesis(PrivateKey nodeKey)
         {
-            using var _ = _containers[nodeKey].Resolve<IWorldStateManager>().GlobalWorldState.BeginScope(IWorldState.PreGenesis);
+            using var _ = _containers[nodeKey].Resolve<IMainProcessingContext>().WorldState.BeginScope(IWorldState.PreGenesis);
             if (_logger.IsInfo) _logger.Info($"SUGGESTING GENESIS ON {nodeKey.Address}");
             _blockTrees[nodeKey].SuggestBlock(_genesis).Should().Be(AddBlockResult.Added);
             _blockEvents[nodeKey].WaitOne(_timeout);
@@ -289,7 +289,7 @@ public class CliqueBlockProducerTests
 
         public On ProcessGenesis3Validators(PrivateKey nodeKey)
         {
-            using var _ = _containers[nodeKey].Resolve<IWorldStateManager>().GlobalWorldState.BeginScope(IWorldState.PreGenesis);
+            using var _ = _containers[nodeKey].Resolve<IMainProcessingContext>().WorldState.BeginScope(IWorldState.PreGenesis);
             _blockTrees[nodeKey].SuggestBlock(_genesis3Validators);
             _blockEvents[nodeKey].WaitOne(_timeout);
             return this;

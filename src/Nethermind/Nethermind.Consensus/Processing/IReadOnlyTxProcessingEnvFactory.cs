@@ -9,5 +9,5 @@ namespace Nethermind.Consensus.Processing;
 public interface IReadOnlyTxProcessingEnvFactory
 {
     public IReadOnlyTxProcessorSource Create();
-    public IReadOnlyTxProcessorSource CreateForWarmingUp(IWorldState worldState);
+    public IReadOnlyTxProcessorSource CreateForWarmingUp(IWorldStateScopeProvider worldState);
 }

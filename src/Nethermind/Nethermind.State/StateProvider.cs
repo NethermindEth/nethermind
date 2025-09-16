@@ -43,7 +43,6 @@ namespace Nethermind.State
         // False positives would be problematic as the code _must_ be persisted
         private readonly ClockKeyCacheNonConcurrent<ValueHash256> _codeInsertFilter = new(1_024);
         private readonly Dictionary<AddressAsKey, ChangeTrace> _blockChanges = new(4_096);
-        private readonly ConcurrentDictionary<AddressAsKey, Account>? _preBlockCache;
 
         private readonly List<Change> _keptInCache = new();
         private readonly ILogger _logger;
@@ -52,25 +51,14 @@ namespace Nethermind.State
 
         private readonly List<Change> _changes = new(Resettable.StartCapacity);
         internal IWorldStateScopeProvider.IScope? _tree;
-        private readonly Func<AddressAsKey, Account> _getStateFromTrie;
 
-        private readonly bool _populatePreBlockCache;
         private bool _needsStateRootUpdate;
         private IWorldStateScopeProvider.ICodeDb? _codeDb;
 
         public StateProvider(
-            ILogManager logManager,
-            ConcurrentDictionary<AddressAsKey, Account>? preBlockCache = null,
-            bool populatePreBlockCache = true)
+            ILogManager logManager)
         {
-            _preBlockCache = preBlockCache;
-            _populatePreBlockCache = populatePreBlockCache;
             _logger = logManager?.GetClassLogger<StateProvider>() ?? throw new ArgumentNullException(nameof(logManager));
-            _getStateFromTrie = address =>
-            {
-                Metrics.IncrementStateTreeReads();
-                return _tree.Get(address);
-            };
         }
 
         public void RecalculateStateRoot()
@@ -737,9 +725,8 @@ namespace Nethermind.State
             ref ChangeTrace accountChanges = ref CollectionsMarshal.GetValueRefOrAddDefault(_blockChanges, addressAsKey, out bool exists);
             if (!exists)
             {
-                Account? account = !_populatePreBlockCache ?
-                    GetStateReadPreWarmCache(addressAsKey) :
-                    GetStatePopulatePrewarmCache(addressAsKey);
+                Metrics.IncrementStateTreeReads();
+                Account? account = _tree.Get(address);
 
                 accountChanges = new(account, account);
             }
@@ -748,33 +735,6 @@ namespace Nethermind.State
                 Metrics.IncrementStateTreeCacheHits();
             }
             return accountChanges.After;
-        }
-
-        private Account? GetStatePopulatePrewarmCache(AddressAsKey addressAsKey)
-        {
-            long priorReads = Metrics.ThreadLocalStateTreeReads;
-            Account? account = _preBlockCache is not null
-                ? _preBlockCache.GetOrAdd(addressAsKey, _getStateFromTrie)
-                : _getStateFromTrie(addressAsKey);
-
-            if (Metrics.ThreadLocalStateTreeReads == priorReads)
-            {
-                Metrics.IncrementStateTreeCacheHits();
-            }
-            return account;
-        }
-
-        private Account? GetStateReadPreWarmCache(AddressAsKey addressAsKey)
-        {
-            if (_preBlockCache?.TryGetValue(addressAsKey, out Account? account) ?? false)
-            {
-                Metrics.IncrementStateTreeCacheHits();
-            }
-            else
-            {
-                account = _getStateFromTrie(addressAsKey);
-            }
-            return account;
         }
 
         private void SetState(Address address, Account? account)
