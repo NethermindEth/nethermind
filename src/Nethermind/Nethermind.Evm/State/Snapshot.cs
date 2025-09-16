@@ -20,7 +20,7 @@ public readonly struct Snapshot
     {
         StorageSnapshot = storageSnapshot;
         StateSnapshot = stateSnapshot;
-        BlockAccessListSnapshot = 0;
+        BlockAccessListSnapshot = EmptyPosition;
     }
 
     public static readonly Snapshot Empty = new(Storage.Empty, EmptyPosition, EmptyPosition);
