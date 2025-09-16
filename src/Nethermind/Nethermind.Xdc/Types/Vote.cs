@@ -20,7 +20,7 @@ public class Vote(Address signer, BlockRoundInfo proposedBlockInfo, Signature si
     public long GapNumber { get; set; } = gapNumber;
 
     public override string ToString() =>
-        $"{ProposedBlockInfo.Round}:{GapNumber}:{ProposedBlockInfo.Number}:{ProposedBlockInfo.SigHash()}";
+        $"{ProposedBlockInfo.Round}:{GapNumber}:{ProposedBlockInfo.BlockNumber}:{ProposedBlockInfo.SigHash()}";
 
     public Address GetSigner() => _signer;
     public void SetSigner(Address signer) => _signer = signer;

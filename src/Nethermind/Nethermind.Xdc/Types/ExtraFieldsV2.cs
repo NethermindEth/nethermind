@@ -7,6 +7,6 @@ namespace Nethermind.Xdc.Types;
 
 public class ExtraFieldsV2(ulong round, QuorumCert quorumCert)
 {
-    public ulong Round { get; } = round;
+    public ulong CurrentRound { get; } = round;
     public QuorumCert QuorumCert { get; } = quorumCert;
 }

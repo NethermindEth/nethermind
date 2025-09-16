@@ -1,15 +1,16 @@
 // SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
-using System;
-using Nethermind.Xdc;
 using Nethermind.Core.Crypto;
-using Nethermind.Int256;
-using Nethermind.Xdc.Types;
-using System.Linq;
 using Nethermind.Crypto;
+using Nethermind.Int256;
 using Nethermind.Serialization.Rlp;
-using System.Collections.Generic;
+using Nethermind.Xdc;
 using Nethermind.Xdc.RLP;
+using Nethermind.Xdc.Types;
+using System;
+using System.Collections.Generic;
+using System.Linq;
+using System.Reflection.PortableExecutable;
 
 namespace Nethermind.Core.Test.Builders;
 
@@ -17,7 +18,7 @@ public class XdcBlockHeaderBuilder : BlockHeaderBuilder
 {
     private XdcBlockHeader XdcTestObjectInternal => (XdcBlockHeader)TestObjectInternal;
 
-    public new XdcBlockHeader TestObject => (XdcBlockHeader)TestObjectInternal;
+    public new XdcBlockHeader TestObject => (XdcBlockHeader)base.TestObject;
 
 
     public XdcBlockHeaderBuilder()
@@ -45,22 +46,36 @@ public class XdcBlockHeaderBuilder : BlockHeaderBuilder
         };
     }
 
-    public XdcBlockHeaderBuilder WithGeneratedExtraConsensusData()
+    public XdcBlockHeaderBuilder WithExtraFieldsV2(ExtraFieldsV2 extraFieldsV2)
+    {
+        EncodeExtraData(extraFieldsV2);
+        return this;
+    }
+
+    public XdcBlockHeaderBuilder WithGeneratedExtraConsensusData(int signatureNumber = 72)
+    {
+        PrivateKeyGenerator keyBuilder = new PrivateKeyGenerator();
+        return WithGeneratedExtraConsensusData(Enumerable.Range(0, signatureNumber).Select(i => keyBuilder.Generate()));
+    }
+
+    public XdcBlockHeaderBuilder WithGeneratedExtraConsensusData(IEnumerable<PrivateKey> keys)
     {
         QuorumCertificateDecoder qcEncoder = new QuorumCertificateDecoder();
         EthereumEcdsa ecdsa = new EthereumEcdsa(0);
-        PrivateKeyGenerator keyBuilder = new PrivateKeyGenerator();
         BlockRoundInfo blockRoundInfo = new BlockRoundInfo(Hash256.Zero, 1, 1);
         QuorumCert quorumForSigning = new QuorumCert(blockRoundInfo, null, 450);
-        IEnumerable<Signature> signatures = Enumerable.Range(0, 72).Select(i => keyBuilder.Generate()).Select(k => ecdsa.Sign(k, Keccak.Compute(qcEncoder.Encode(quorumForSigning, RlpBehaviors.ForSealing).Bytes)));
+        IEnumerable<Signature> signatures = keys.Select(k => ecdsa.Sign(k, Keccak.Compute(qcEncoder.Encode(quorumForSigning, RlpBehaviors.ForSealing).Bytes)));
         QuorumCert quorumCert = new QuorumCert(blockRoundInfo, [.. signatures], 450);
         ExtraFieldsV2 extraFieldsV2 = new ExtraFieldsV2(1, quorumCert);
 
+        EncodeExtraData(extraFieldsV2);
+        return this;
+    }
+    private void EncodeExtraData(ExtraFieldsV2 extraFieldsV2)
+    {
         ExtraConsensusDataDecoder exctraEncoder = new ExtraConsensusDataDecoder();
         Rlp extraEncoded = exctraEncoder.Encode(extraFieldsV2);
-
-        XdcTestObjectInternal.ExtraData = [0x2, ..extraEncoded.Bytes];
-        return this;
+        XdcTestObjectInternal.ExtraData = [0x2, .. extraEncoded.Bytes];
     }
 
     public XdcBlockHeaderBuilder WithExtraConsensusData(ExtraFieldsV2 extraFieldsV2)
@@ -72,6 +87,12 @@ public class XdcBlockHeaderBuilder : BlockHeaderBuilder
     public new XdcBlockHeaderBuilder WithBaseFee(UInt256 baseFee)
     {
         TestObjectInternal.BaseFeePerGas = baseFee;
+        return this;
+    }
+
+    public new XdcBlockHeaderBuilder WithHash(Hash256 hash256)
+    {
+        TestObjectInternal.Hash = hash256;
         return this;
     }
 

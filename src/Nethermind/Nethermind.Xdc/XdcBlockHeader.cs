@@ -106,7 +106,16 @@ public class XdcBlockHeader : BlockHeader, IHashResolver
             return true;
         }
         ExtraFieldsV2? extraFields = ExtraConsensusData;
-        throw new NotImplementedException();
+        if (extraFields is null)
+        {
+            //Should this throw instead?
+            return false;
+        }
+        ulong parentRound = extraFields.QuorumCert.ProposedBlockInfo.Round;
+        ulong epochStart = extraFields.CurrentRound - extraFields.CurrentRound % (ulong)spec.EpochLength; 
+        //ulong epochNumber = (ulong)spec.SwitchEpoch + extraFields.Round / (ulong)spec.EpochLength;
+
+        return parentRound < epochStart;
     }
 
     private static ImmutableSortedSet<Address>? ExtractAddresses(byte[]? data)

@@ -51,7 +51,7 @@ internal class XdcBlockInfoDecoder : IRlpValueDecoder<BlockRoundInfo>, IRlpStrea
         stream.StartSequence(GetContentLength(item, rlpBehaviors));
         stream.Encode(item.Hash);
         stream.Encode(item.Round);
-        stream.Encode(item.Number);
+        stream.Encode(item.BlockNumber);
     }
 
     public int GetLength(BlockRoundInfo item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
@@ -65,7 +65,7 @@ internal class XdcBlockInfoDecoder : IRlpValueDecoder<BlockRoundInfo>, IRlpStrea
             return 0;
         return Rlp.LengthOf(item.Hash) +
                Rlp.LengthOf(item.Round) +
-               Rlp.LengthOf(item.Number);
+               Rlp.LengthOf(item.BlockNumber);
     }
 
 }
