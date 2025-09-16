@@ -338,7 +338,7 @@ public static unsafe partial class EvmInstructions
         }
         bool notOutOfGas = ChargeAccountAccessGas(ref gasAvailable, vm, address, chargeForWarm);
         return notOutOfGas
-               && (!vm.TxExecutionContext.CodeInfoRepository.TryGetDelegation(vm.WorldState, address, spec, out Address delegated)
+               && (!vm.TxExecutionContext.CodeInfoRepository.TryGetDelegation(address, spec, out Address delegated)
                    // Charge additional gas for the delegated account if it exists.
                    || ChargeAccountAccessGas(ref gasAvailable, vm, delegated, chargeForWarm));
     }
