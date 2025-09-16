@@ -40,7 +40,7 @@ public class MainProcessingContext : IMainProcessingContext, BlockProcessor.Bloc
         {
             builder
                 // These are main block processing specific
-                .AddSingleton<IWorldState>(mainWorldState)
+                .AddSingleton<IWorldStateScopeProvider>(mainWorldState)
                 .AddModule(blockValidationModules)
                 .AddScoped<ITransactionProcessorAdapter, ExecuteTransactionProcessorAdapter>()
                 .AddSingleton<BlockProcessor.BlockValidationTransactionsExecutor.ITransactionProcessedEventHandler>(this)
