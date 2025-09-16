@@ -14,7 +14,6 @@ using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Logging;
-#pragma warning disable CS0162 // Unreachable code detected
 
 namespace Nethermind.Db
 {
@@ -354,24 +353,28 @@ namespace Nethermind.Db
                 if (from < 0) from = 0;
                 if (to < from) return;
 
-                // Find the last index for the given key, starting at or before `from`
                 dbKeyBuffer = _arrayPool.Rent(MaxDbKeyLength);
                 ReadOnlySpan<byte> dbKey = CreateDbKey(key, from, dbKeyBuffer);
                 ReadOnlySpan<byte> normalizedKey = ExtractKey(dbKey);
 
                 IDb? db = GetDb(topicIndex);
                 using IIterator iterator = db.GetIterator(true); // TODO: specify lower/upper bounds?
-                iterator.Seek(normalizedKey);
 
-                while (iterator.Valid() && iterator.Key().StartsWith(normalizedKey))
+                // Find the last index for the given key, starting at or before `from`
+                iterator.SeekForPrev(dbKey);
+
+                // Otherwise, find the first index for the given key
+                // TODO: achieve in a single seek?
+                if (!IsInKeyBounds(iterator, normalizedKey))
                 {
-                    var iteratorKey = iterator.Key();
+                    iterator.SeekToFirst();
+                    iterator.Seek(key);
+                }
 
-                    if (ExtractKey(iteratorKey).SequenceEqual(normalizedKey) && GetKeyBlockNum(iteratorKey) <= to)
-                    {
-                        if (!callback(iterator))
-                            return;
-                    }
+                while (IsInKeyBounds(iterator, normalizedKey))
+                {
+                    if (!callback(iterator))
+                        return;
 
                     iterator.Next();
                 }
@@ -739,14 +742,13 @@ namespace Nethermind.Db
             }
         }
 
-        private static ReadOnlySpan<byte> GetNormalizedKey(ReadOnlySpan<byte> key, Span<byte> buffer)
+        private static ReadOnlySpan<byte> WriteKey(ReadOnlySpan<byte> key, Span<byte> buffer)
         {
-            ReadOnlySpan<byte> normalized = key.WithoutLeadingZeros();
+            //ReadOnlySpan<byte> normalized = key.WithoutLeadingZeros();
+            //normalized = normalized.Length > 0 ? normalized : ZeroArray;
 
-            normalized = normalized.Length > 0 ? normalized : ZeroArray;
-            normalized.CopyTo(buffer);
-
-            return buffer[..normalized.Length];
+            key.CopyTo(buffer);
+            return buffer[..key.Length];
         }
 
         private static ReadOnlySpan<byte> ExtractKey(ReadOnlySpan<byte> dbKey) => dbKey[..^BlockNumSize];
@@ -756,7 +758,7 @@ namespace Nethermind.Db
         /// </summary>
         private static ReadOnlySpan<byte> CreateDbKey(ReadOnlySpan<byte> key, int blockNumber, Span<byte> buffer)
         {
-            key = GetNormalizedKey(key, buffer);
+            key = WriteKey(key, buffer);
             SetKeyBlockNum(buffer[key.Length..], blockNumber);
 
             var length = key.Length + BlockNumSize;
@@ -765,7 +767,7 @@ namespace Nethermind.Db
 
         private static ReadOnlySpan<byte> CreateMergeDbKey(ReadOnlySpan<byte> key, Span<byte> buffer, bool isBackwardSync)
         {
-            key = GetNormalizedKey(key, buffer);
+            key = WriteKey(key, buffer);
             var postfix = isBackwardSync ? SpecialPostfix.BackwardMerge : SpecialPostfix.ForwardMerge;
             postfix.CopyTo(buffer[key.Length..]);
 
