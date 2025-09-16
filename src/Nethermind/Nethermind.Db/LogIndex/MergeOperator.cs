@@ -89,7 +89,7 @@ partial class LogIndexStorage
                     if (MergeOps.IsAny(operand))
                         continue;
 
-                    // For reorg - order matters, so need to always traverse from the current position
+                    // For reorg - order matters, so we need to always traverse from the current position
                     iReorg = Math.Max(iReorg, i + 1);
                     if (FindNext(MergeOp.ReorgOp, enumerator, ref iReorg) is { } reorgBlock)
                         operand = MergeOps.ApplyTo(operand, MergeOp.ReorgOp, reorgBlock, isBackwards);

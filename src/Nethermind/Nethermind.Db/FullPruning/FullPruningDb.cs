@@ -353,12 +353,12 @@ namespace Nethermind.Db.FullPruning
             }
         }
 
-        public IIterator<byte[], byte[]> GetIterator(bool isTailing = false)
+        public IIterator GetIterator(bool isTailing = false)
         {
             return _currentDb.GetIterator(isTailing);
         }
 
-        public IIterator<byte[], byte[]> GetIterator(ref IteratorOptions options)
+        public IIterator GetIterator(ref IteratorOptions options)
         {
             return _currentDb.GetIterator(ref options);
         }

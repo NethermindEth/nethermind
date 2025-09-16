@@ -162,12 +162,12 @@ public class ColumnDb : IDb
         _mainDb.DangerousReleaseMemory(span);
     }
 
-    public IIterator<byte[], byte[]> GetIterator(bool isTailing = false)
+    public IIterator GetIterator(bool isTailing = false)
     {
         return _mainDb.GetIterator(isTailing, _columnFamily);
     }
 
-    public IIterator<byte[], byte[]> GetIterator(ref IteratorOptions options)
+    public IIterator GetIterator(ref IteratorOptions options)
     {
         return _mainDb.GetIterator(ref options, _columnFamily);
     }

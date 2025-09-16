@@ -1745,24 +1745,24 @@ public partial class DbOnTheRocks : IDb, ITunableDb, IReadOnlyNativeKeyValueStor
         };
     }
 
-    public IIterator<byte[], byte[]> GetIterator(bool isTailing = false)
+    public IIterator GetIterator(bool isTailing = false)
     {
         var iterator = CreateIterator(isTailing);
         return new RocksDbIteratorWrapper(iterator);
     }
 
-    public IIterator<byte[], byte[]> GetIterator(ref IteratorOptions options)
+    public IIterator GetIterator(ref IteratorOptions options)
     {
         return GetIterator(ref options, null);
     }
 
-    public IIterator<byte[], byte[]> GetIterator(bool isTailing, ColumnFamilyHandle familyHandle)
+    public IIterator GetIterator(bool isTailing, ColumnFamilyHandle familyHandle)
     {
         var options = new IteratorOptions { IsTailing = isTailing };
         return GetIterator(ref options, familyHandle);
     }
 
-    public IIterator<byte[], byte[]> GetIterator(ref IteratorOptions options, ColumnFamilyHandle? familyHandle)
+    public IIterator GetIterator(ref IteratorOptions options, ColumnFamilyHandle? familyHandle)
     {
         var iterator = CreateIterator(options, familyHandle);
         return new RocksDbIteratorWrapper(iterator);

@@ -180,12 +180,12 @@ namespace Nethermind.Db
                     tunable.Tune(type);
             }
 
-            public IIterator<byte[], byte[]> GetIterator(bool isTailing = false)
+            public IIterator GetIterator(bool isTailing = false)
             {
                 return _wrapped.GetIterator(isTailing);
             }
 
-            public IIterator<byte[], byte[]> GetIterator(ref IteratorOptions options)
+            public IIterator GetIterator(ref IteratorOptions options)
             {
                 return _wrapped.GetIterator(ref options);
             }

@@ -14,8 +14,8 @@ namespace Nethermind.Db
         IEnumerable<KeyValuePair<byte[], byte[]?>> GetAll(bool ordered = false);
         IEnumerable<byte[]> GetAllKeys(bool ordered = false);
         IEnumerable<byte[]> GetAllValues(bool ordered = false);
-        IIterator<byte[], byte[]> GetIterator(bool isTailing = false);
-        IIterator<byte[], byte[]> GetIterator(ref IteratorOptions options);
+        IIterator GetIterator(bool isTailing = false);
+        IIterator GetIterator(ref IteratorOptions options);
         public IReadOnlyDb CreateReadOnly(bool createInMemWriteStore) => new ReadOnlyDb(this, createInMemWriteStore);
 
         // TODO: move to IWriteOnlyKeyValueStore?
