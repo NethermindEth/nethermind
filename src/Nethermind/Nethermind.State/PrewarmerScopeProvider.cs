@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using System.Collections.Concurrent;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
@@ -10,11 +11,11 @@ using Nethermind.Int256;
 
 namespace Nethermind.State;
 
-public sealed class PrewarmerScopeProvider(
+public class PrewarmerScopeProvider(
     IWorldStateScopeProvider baseProvider,
     PreBlockCaches preBlockCaches,
     bool populatePreBlockCache = true
-) : IWorldStateScopeProvider, IPreBlockCaches
+): IWorldStateScopeProvider , IPreBlockCaches
 {
     public bool HasRoot(BlockHeader? baseBlock) => baseProvider.HasRoot(baseBlock);
 
@@ -29,31 +30,34 @@ public sealed class PrewarmerScopeProvider(
         bool populatePreBlockCache)
         : IWorldStateScopeProvider.IScope
     {
-        private readonly IWorldStateScopeProvider.IStateTree _wrappedStateTree = new StateTreeWrapper(baseScope.StateTree, preBlockCaches.StateCache, populatePreBlockCache);
+        ConcurrentDictionary<AddressAsKey, Account> preBlockCache = preBlockCaches.StateCache;
 
         public void Dispose() => baseScope.Dispose();
 
-        public IWorldStateScopeProvider.IStateTree StateTree => _wrappedStateTree;
-
         public IWorldStateScopeProvider.ICodeDb CodeDb => baseScope.CodeDb;
 
-        public IWorldStateScopeProvider.IStorageTree CreateStorageTree(Address address) =>
-            new StorageTreeWrapper(
+        public IWorldStateScopeProvider.IStorageTree CreateStorageTree(Address address)
+        {
+            return new StorageTreeWrapper(
                 baseScope.CreateStorageTree(address),
                 preBlockCaches.StorageCache,
                 address,
                 populatePreBlockCache);
+        }
+
+        public IWorldStateScopeProvider.IWorldStateWriteBatch StartWriteBatch(int estimatedAccountNum, Action<Address, Account> onAccountUpdated)
+        {
+            return baseScope.StartWriteBatch(estimatedAccountNum, onAccountUpdated);
+        }
 
         public void Commit(long blockNumber) => baseScope.Commit(blockNumber);
-    }
 
-    private sealed class StateTreeWrapper(
-        IWorldStateScopeProvider.IStateTree baseStateTree,
-        ConcurrentDictionary<AddressAsKey, Account> preBlockCache,
-        bool populatePreBlockCache
-    ) : IWorldStateScopeProvider.IStateTree
-    {
-        public Hash256 RootHash => baseStateTree.RootHash;
+        public Hash256 RootHash => baseScope.RootHash;
+
+        public void UpdateRootHash()
+        {
+            baseScope.UpdateRootHash();
+        }
 
         public Account? Get(Address address)
         {
@@ -83,11 +87,10 @@ public sealed class PrewarmerScopeProvider(
             }
         }
 
-        private Account? GetFromBaseTree(AddressAsKey address) => baseStateTree.Get(address);
-
-        public IWorldStateScopeProvider.IStateSetter BeginSet(int estimatedEntries) => baseStateTree.BeginSet(estimatedEntries);
-
-        public void UpdateRootHash() => baseStateTree.UpdateRootHash();
+        private Account? GetFromBaseTree(AddressAsKey address)
+        {
+            return baseScope.Get(address);
+        }
     }
 
     private sealed class StorageTreeWrapper(
@@ -97,7 +100,7 @@ public sealed class PrewarmerScopeProvider(
         bool populatePreBlockCache
     ) : IWorldStateScopeProvider.IStorageTree
     {
-        public Hash256 RootHash => baseStorageTree.RootHash;
+        public bool WasEmptyTree => baseStorageTree.WasEmptyTree;
 
         public byte[] Get(in UInt256 index)
         {
@@ -141,11 +144,5 @@ public sealed class PrewarmerScopeProvider(
         public byte[] Get(in ValueHash256 hash) =>
             // Not a critical path. so we just forward for simplicity
             baseStorageTree.Get(in hash);
-
-        public void Clear() => baseStorageTree.Clear();
-
-        public IWorldStateScopeProvider.IStorageSetter BeginSet(int estimatedEntries) => baseStorageTree.BeginSet(estimatedEntries);
-
-        public void UpdateRootHash(bool canBeParallel = true) => baseStorageTree.UpdateRootHash(canBeParallel);
     }
 }
