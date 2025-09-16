@@ -46,7 +46,6 @@ namespace Nethermind.State
 
         public WorldState(
             IWorldStateScopeProvider scopeProvider,
-            IKeyValueStoreWithBatching? codeDb,
             ILogManager? logManager,
             PreBlockCaches? preBlockCaches = null,
             bool populatePreBlockCache = true)
@@ -54,7 +53,7 @@ namespace Nethermind.State
             PreBlockCaches = preBlockCaches;
             IsWarmWorldState = !populatePreBlockCache;
             ScopeProvider = scopeProvider;
-            _stateProvider = new StateProvider(codeDb, logManager, PreBlockCaches?.StateCache, populatePreBlockCache);
+            _stateProvider = new StateProvider(logManager, PreBlockCaches?.StateCache, populatePreBlockCache);
             _persistentStorageProvider = new PersistentStorageProvider(_stateProvider, logManager, PreBlockCaches?.StorageCache, populatePreBlockCache);
             _transientStorageProvider = new TransientStorageProvider(logManager);
             _logger = logManager.GetClassLogger<WorldState>();
@@ -224,12 +223,13 @@ namespace Nethermind.State
             if (_logger.IsTrace) _logger.Trace($"Beginning WorldState scope with baseblock {baseBlock?.ToString(BlockHeader.Format.Short) ?? "null"} with stateroot {baseBlock?.StateRoot?.ToString() ?? "null"}.");
 
             _currentScope = ScopeProvider.BeginScope(baseBlock);
-            _stateProvider.SetBackendTree(_currentScope.StateTree);
+            _stateProvider.SetScope(_currentScope);
             _persistentStorageProvider.SetBackendScope(_currentScope);
 
             return new Reactive.AnonymousDisposable(() =>
             {
                 Reset();
+                _stateProvider.SetScope(null);
                 _currentScope.Dispose();
                 _currentScope = null;
                 if (_logger.IsTrace) _logger.Trace($"WorldState scope for baseblock {baseBlock?.ToString(BlockHeader.Format.Short) ?? "null"} closed");

@@ -67,16 +67,17 @@ public class PruningTrieStateFactory(
         IWorldStateScopeProvider scopeProvider = syncConfig.TrieHealing
             ? new HealingWorldStateScopeProvider(
                 mainWorldTrieStore,
+                codeDb,
                 mainNodeStorage,
                 pathRecovery,
                 logManager)
             : new TrieStoreScopeProvider(
                 mainWorldTrieStore,
+                codeDb,
                 logManager);
 
         IWorldState worldState = new WorldState(
                 scopeProvider,
-                codeDb,
                 logManager,
                 preBlockCaches,
                 // Main thread should only read from prewarm caches, not spend extra time updating them.

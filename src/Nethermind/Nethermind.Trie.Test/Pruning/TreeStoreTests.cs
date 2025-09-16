@@ -1118,8 +1118,7 @@ namespace Nethermind.Trie.Test.Pruning
                 });
 
             WorldState worldState = new WorldState(
-                new TrieStoreScopeProvider(fullTrieStore, _logManager),
-                memDbProvider.CodeDb,
+                new TrieStoreScopeProvider(fullTrieStore, memDbProvider.CodeDb, _logManager),
                 LimboLogs.Instance);
 
             // Simulate some kind of cache access which causes unresolved node to remain.
@@ -1141,7 +1140,7 @@ namespace Nethermind.Trie.Test.Pruning
             (Hash256, ValueHash256) SetupStartingState()
             {
                 WorldState worldState = new WorldState(
-                    new TrieStoreScopeProvider(new TestRawTrieStore(nodeStorage), LimboLogs.Instance), memDbProvider.CodeDb, LimboLogs.Instance);
+                    new TrieStoreScopeProvider(new TestRawTrieStore(nodeStorage), memDbProvider.CodeDb, LimboLogs.Instance), LimboLogs.Instance);
                 using var _ = worldState.BeginScope(IWorldState.PreGenesis);
                 worldState.CreateAccountIfNotExists(address, UInt256.One);
                 worldState.Set(new StorageCell(address, slot), TestItem.KeccakB.BytesToArray());
