@@ -423,8 +423,8 @@ namespace Nethermind.Db.Test.LogIndex
             await TestContext.Out.WriteLineAsync(
                 $"""
                  x{count} {nameof(LogIndexStorage.SetReceiptsAsync)}({length}) in {Stopwatch.GetElapsedTime(timestamp)}:
-                 {totalStats}
-                 {'\t'}DB size: {GetFolderSize(Path.Combine(_dbPath, DbNames.LogIndex))}
+                 {totalStats:d}
+                 {'\t'}DB size: {logIndexStorage.GetDbSize()}
 
                  """
             );
@@ -606,38 +606,10 @@ namespace Nethermind.Db.Test.LogIndex
             await TestContext.Out.WriteLineAsync(
                 $"""
                  {nameof(LogIndexStorage.CompactAsync)}({flush}) in {Stopwatch.GetElapsedTime(timestamp)}:
-                 {'\t'}DB size: {GetFolderSize(Path.Combine(_dbPath, DbNames.LogIndex))}
+                 {'\t'}DB size: {logIndexStorage.GetDbSize()}
 
                  """
             );
-        }
-
-        private static readonly string[] SizeSuffixes = ["B", "KB", "MB", "GB", "TB", "PB"];
-
-        private static string GetFolderSize(string path)
-        {
-            var info = new DirectoryInfo(path);
-
-            double size = info.Exists ? info.GetFiles().Sum(f =>
-            {
-                try
-                {
-                    return f.Length;
-                }
-                catch (FileNotFoundException)
-                {
-                    return 0;
-                }
-            }) : 0;
-
-            int index = 0;
-            while (size >= 1024 && index < SizeSuffixes.Length - 1)
-            {
-                size /= 1024;
-                index++;
-            }
-
-            return $"{size:0.##} {SizeSuffixes[index]}";
         }
 
         public class TestData
