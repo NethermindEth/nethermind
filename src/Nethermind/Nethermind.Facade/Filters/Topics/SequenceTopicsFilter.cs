@@ -3,7 +3,6 @@
 
 using System;
 using System.Collections.Generic;
-using System.Collections.ObjectModel;
 using System.Linq;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Core;
@@ -17,7 +16,7 @@ namespace Nethermind.Blockchain.Filters.Topics
 
         private readonly TopicExpression[] _expressions;
 
-        public ReadOnlyCollection<TopicExpression> Expressions => _expressions.AsReadOnly();
+        public override IReadOnlyList<TopicExpression> Expressions => _expressions.AsReadOnly();
 
         public SequenceTopicsFilter(params TopicExpression[] expressions)
         {
@@ -107,7 +106,7 @@ namespace Nethermind.Blockchain.Filters.Topics
 
         public override IEnumerable<Hash256> Topics => _expressions.SelectMany(e => e.Topics);
 
-        public override List<int> FilterBlockNumbers(IDictionary<int, IDictionary<Hash256, List<int>>> byTopic)
+        public override List<int> FilterBlockNumbers(IDictionary<Hash256, List<int>>[] byTopic)
         {
             List<int>? result = null;
             for (var i = 0; i < _expressions.Length; i++)

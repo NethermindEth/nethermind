@@ -1,11 +1,11 @@
 // SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Linq;
 using System.Threading;
 using Nethermind.Blockchain.Filters;
+using Nethermind.Blockchain.Filters.Topics;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
@@ -15,57 +15,46 @@ namespace Nethermind.Facade.Find;
 
 public static class LogIndexStorageRpcExtensions
 {
+    // Done sequentially, as with a single address/topic fetching averaging at 0.01s,
+    // using parallelization here introduces more problems than it solves.
     public static List<int> GetBlockNumbersFor(this ILogIndexStorage storage,
         LogFilter filter, long fromBlock, long toBlock,
         CancellationToken cancellationToken = default)
     {
-        ConcurrentDictionary<Address, List<int>> byAddress = null;
+        (int from, int to) = ((int)fromBlock, (int)toBlock);
+
+        List<int>? addressNumbers = null;
         if (filter.AddressFilter.Address is { } address)
-        {
-            byAddress = new() { [address] = null };
-        }
+            addressNumbers = storage.GetBlockNumbersFor(address, from, to);
         else if (filter.AddressFilter.Addresses is { Count: > 0 } addresses)
-        {
-            byAddress = new();
-            byAddress.AddRange(addresses.Select(a => KeyValuePair.Create(a.Value, (List<int>)null)));
-        }
+            addressNumbers = AscListHelper.UnionAll(addresses.Select(a => storage.GetBlockNumbersFor(a, from, to)));
 
-        var index = 0;
-        Dictionary<int, IDictionary<Hash256, List<int>>> byTopic = null;
-        foreach (Hash256 topic in filter.TopicsFilter.Topics)
+        // TODO: consider passing storage directly to keep abstractions
+        var topicIndex = 0;
+        Dictionary<Hash256, List<int>>[]? byTopic = null;
+        foreach (TopicExpression expression in filter.TopicsFilter.Expressions)
         {
-            byTopic ??= new();
-            byTopic[index] ??= new ConcurrentDictionary<Hash256, List<int>>();
-            byTopic[index][topic] = null;
-            index++;
-        }
+            byTopic ??= new Dictionary<Hash256, List<int>>[LogIndexStorage.MaxTopics];
+            byTopic[topicIndex] = new();
 
-        Enumerable.Empty<object>()
-            .Union(byAddress?.Keys ?? Enumerable.Empty<Address>())
-            .Union((IEnumerable<object>)(byTopic?.SelectMany(byIdx => byIdx.Value.Keys.Select(tpc => (byIdx.Key, tpc))) ?? []))
-            .AsParallel() // TODO utilize canRunParallel from LogFinder?
-            .ForAll(x =>
+            foreach (Hash256 topic in expression.Topics)
             {
-                if (x is Address addr)
-                    byAddress![addr] = storage.GetBlockNumbersFor(addr, (int)fromBlock, (int)toBlock);
-                if (x is (int idx, Hash256 tpc))
-                    byTopic![idx][tpc] = storage.GetBlockNumbersFor(idx, tpc, (int)fromBlock, (int)toBlock);
-            });
+                var i = topicIndex;
+                byTopic[topicIndex].GetOrAdd(topic, _ => storage.GetBlockNumbersFor(i, topic, from, to));
+            }
+
+            topicIndex++;
+        }
 
         if (byTopic is null)
-            return AscListHelper.UnionAll(byAddress?.Values ?? []);
+            return addressNumbers ?? [];
 
-        List<int> blockNumbers = filter.TopicsFilter.FilterBlockNumbers(byTopic);
+        // ReSharper disable once CoVariantArrayConversion
+        List<int> topicNumbers = filter.TopicsFilter.FilterBlockNumbers(byTopic);
 
-        if (byAddress is null)
-            return blockNumbers;
+        if (addressNumbers is null)
+            return topicNumbers;
 
-        blockNumbers = AscListHelper.Intersect(
-            AscListHelper.UnionAll(byAddress.Values),
-            blockNumbers
-        );
-
-        return blockNumbers;
+        return AscListHelper.Intersect(addressNumbers, topicNumbers);
     }
-
 }
