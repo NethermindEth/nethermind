@@ -47,19 +47,18 @@ namespace Nethermind.State
 
         private readonly List<Change> _keptInCache = new();
         private readonly ILogger _logger;
-        private readonly IKeyValueStoreWithBatching _codeDb;
         private Dictionary<Hash256AsKey, byte[]> _codeBatch;
         private Dictionary<Hash256AsKey, byte[]>.AlternateLookup<ValueHash256> _codeBatchAlternate;
 
         private readonly List<Change> _changes = new(Resettable.StartCapacity);
-        internal IWorldStateScopeProvider.IStateTree _tree;
+        internal IWorldStateScopeProvider.IStateTree? _tree;
         private readonly Func<AddressAsKey, Account> _getStateFromTrie;
 
         private readonly bool _populatePreBlockCache;
         private bool _needsStateRootUpdate;
+        private IWorldStateScopeProvider.ICodeDb? _codeDb;
 
         public StateProvider(
-            IKeyValueStoreWithBatching codeDb,
             ILogManager logManager,
             ConcurrentDictionary<AddressAsKey, Account>? preBlockCache = null,
             bool populatePreBlockCache = true)
@@ -67,7 +66,6 @@ namespace Nethermind.State
             _preBlockCache = preBlockCache;
             _populatePreBlockCache = populatePreBlockCache;
             _logger = logManager?.GetClassLogger<StateProvider>() ?? throw new ArgumentNullException(nameof(logManager));
-            _codeDb = codeDb ?? throw new ArgumentNullException(nameof(codeDb));
             _getStateFromTrie = address =>
             {
                 Metrics.IncrementStateTreeReads();
@@ -93,9 +91,10 @@ namespace Nethermind.State
             }
         }
 
-        public void SetBackendTree(IWorldStateScopeProvider.IStateTree stateTree)
+        public void SetScope(IWorldStateScopeProvider.IScope? scope)
         {
-            _tree = stateTree;
+            _tree = scope?.StateTree;
+            _codeDb = scope?.CodeDb;
         }
 
         public bool IsContract(Address address)
@@ -354,7 +353,7 @@ namespace Nethermind.State
 
             if (_codeBatch is null || !_codeBatchAlternate.TryGetValue(codeHash, out byte[]? code))
             {
-                code = _codeDb[codeHash.Bytes];
+                code = _codeDb.GetCode(codeHash);
             }
             return code ?? ThrowMissingCode(in codeHash);
 
@@ -531,7 +530,7 @@ namespace Nethermind.State
         {
             Task codeFlushTask = !commitRoots || _codeBatch is null || _codeBatch.Count == 0
                 ? Task.CompletedTask
-                : CommitCodeAsync();
+                : CommitCodeAsync(_codeDb);
 
             bool isTracing = _logger.IsTrace;
             int stepsBack = _changes.Count - 1;
@@ -672,7 +671,7 @@ namespace Nethermind.State
 
             codeFlushTask.GetAwaiter().GetResult();
 
-            Task CommitCodeAsync()
+            Task CommitCodeAsync(IWorldStateScopeProvider.ICodeDb codeDb)
             {
                 Dictionary<Hash256AsKey, byte[]> dict = Interlocked.Exchange(ref _codeBatch, null);
                 if (dict is null) return Task.CompletedTask;
@@ -680,12 +679,12 @@ namespace Nethermind.State
 
                 return Task.Run(() =>
                 {
-                    using (var batch = _codeDb.StartWriteBatch())
+                    using (var batch = codeDb.BeginCodeWrite())
                     {
                         // Insert ordered for improved performance
                         foreach (var kvp in dict.OrderBy(static kvp => kvp.Key))
                         {
-                            batch.PutSpan(kvp.Key.Value.Bytes, kvp.Value);
+                            batch.Set(kvp.Key.Value, kvp.Value);
                         }
                     }
 
