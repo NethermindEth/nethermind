@@ -98,7 +98,7 @@ configs = {
     }
 }
 
-def fastBlocksSettings(configuration, apiUrl, blockReduced, multiplierRequirement, isPoS):
+def fastBlocksSettings(configuration, apiUrl, blockReduced, multiplierRequirement, isPoS, key):
     if "etherscan" in apiUrl:
         params = {
             'module': 'proxy',
@@ -163,4 +163,4 @@ if __name__ == "__main__":
             continue
 
         print(emoji.emojize(f"{config.capitalize()} section                                     :white_check_mark: "))
-        fastBlocksSettings(config, value['url'], value['blockReduced'], value['multiplierRequirement'], value['isPoS'])
+        fastBlocksSettings(config, value['url'], value['blockReduced'], value['multiplierRequirement'], value['isPoS'], key)
