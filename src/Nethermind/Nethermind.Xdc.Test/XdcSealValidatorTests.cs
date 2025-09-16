@@ -186,7 +186,7 @@ internal class XdcSealValidatorTests
     }
 
     [TestCaseSource(nameof(SealParameterCases))]
-    public void ValidateParams_HeaderIsEpochSwitch_ReturnsExpected(XdcBlockHeaderBuilder headerBuilder, IEnumerable<Address> epochCandidates, IEnumerable<Address> penalties, bool expected)
+    public void ValidateParams_HeaderHasDifferentSealParameters_ReturnsExpected(XdcBlockHeaderBuilder headerBuilder, IEnumerable<Address> epochCandidates, IEnumerable<Address> penalties, bool expected)
     {
         XdcBlockHeader parent =
             Build.A.XdcBlockHeader()
