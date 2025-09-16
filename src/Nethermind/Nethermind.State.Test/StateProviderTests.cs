@@ -30,8 +30,7 @@ public class StateProviderTests
     [Test]
     public void Eip_158_zero_value_transfer_deletes()
     {
-        WorldStateManager worldStateManager = TestWorldStateFactory.CreateForTest();
-        IWorldState frontierProvider = worldStateManager.GlobalWorldState;
+        IWorldState frontierProvider = TestWorldStateFactory.CreateForTest();
         BlockHeader baseBlock;
         using (var _ = frontierProvider.BeginScope(IWorldState.PreGenesis))
         {
@@ -41,7 +40,7 @@ public class StateProviderTests
             baseBlock = Build.A.BlockHeader.WithStateRoot(frontierProvider.StateRoot).TestObject;
         }
 
-        IWorldState provider = worldStateManager.GlobalWorldState;
+        IWorldState provider = frontierProvider;
         using (var _ = provider.BeginScope(baseBlock))
         {
             provider.AddToBalance(_address1, 0, SpuriousDragon.Instance);
@@ -53,8 +52,7 @@ public class StateProviderTests
     [Test]
     public void Eip_158_touch_zero_value_system_account_is_not_deleted()
     {
-        WorldStateManager worldStateManager = TestWorldStateFactory.CreateForTest();
-        IWorldState provider = worldStateManager.GlobalWorldState;
+        IWorldState provider = TestWorldStateFactory.CreateForTest();
         using var _ = provider.BeginScope(IWorldState.PreGenesis);
         var systemUser = Address.SystemUser;
 
@@ -71,8 +69,7 @@ public class StateProviderTests
     [Test]
     public void Empty_commit_restore()
     {
-        WorldStateManager worldStateManager = TestWorldStateFactory.CreateForTest();
-        IWorldState provider = worldStateManager.GlobalWorldState;
+        IWorldState provider = TestWorldStateFactory.CreateForTest();
         using var _ = provider.BeginScope(IWorldState.PreGenesis);
         provider.Commit(Frontier.Instance);
         provider.Restore(Snapshot.Empty);
@@ -81,8 +78,7 @@ public class StateProviderTests
     [Test]
     public void Update_balance_on_non_existing_account_throws()
     {
-        WorldStateManager worldStateManager = TestWorldStateFactory.CreateForTest();
-        IWorldState provider = worldStateManager.GlobalWorldState;
+        IWorldState provider = TestWorldStateFactory.CreateForTest();
         using var _ = provider.BeginScope(IWorldState.PreGenesis);
         Assert.Throws<InvalidOperationException>(() => provider.AddToBalance(TestItem.AddressA, 1.Ether(), Olympic.Instance));
     }
@@ -90,8 +86,7 @@ public class StateProviderTests
     [Test]
     public void Is_empty_account()
     {
-        WorldStateManager worldStateManager = TestWorldStateFactory.CreateForTest();
-        IWorldState provider = worldStateManager.GlobalWorldState;
+        IWorldState provider = TestWorldStateFactory.CreateForTest();
         using var _ = provider.BeginScope(IWorldState.PreGenesis);
         provider.CreateAccount(_address1, 0);
         provider.Commit(Frontier.Instance);
@@ -102,8 +97,7 @@ public class StateProviderTests
     [Test]
     public void Returns_empty_byte_code_for_non_existing_accounts()
     {
-        WorldStateManager worldStateManager = TestWorldStateFactory.CreateForTest();
-        IWorldState provider = worldStateManager.GlobalWorldState;
+        IWorldState provider = TestWorldStateFactory.CreateForTest();
         using var _ = provider.BeginScope(IWorldState.PreGenesis);
         byte[] code = provider.GetCode(TestItem.AddressA);
         code.Should().BeEmpty();
@@ -112,8 +106,7 @@ public class StateProviderTests
     [Test]
     public void Restore_update_restore()
     {
-        WorldStateManager worldStateManager = TestWorldStateFactory.CreateForTest();
-        IWorldState provider = worldStateManager.GlobalWorldState;
+        IWorldState provider = TestWorldStateFactory.CreateForTest();
         using var _ = provider.BeginScope(IWorldState.PreGenesis);
         provider.CreateAccount(_address1, 0);
         provider.AddToBalance(_address1, 1, Frontier.Instance);
@@ -140,8 +133,7 @@ public class StateProviderTests
     [Test]
     public void Keep_in_cache()
     {
-        WorldStateManager worldStateManager = TestWorldStateFactory.CreateForTest();
-        IWorldState provider = worldStateManager.GlobalWorldState;
+        IWorldState provider = TestWorldStateFactory.CreateForTest();
         using var _ = provider.BeginScope(IWorldState.PreGenesis);
         provider.CreateAccount(_address1, 0);
         provider.Commit(Frontier.Instance);
@@ -160,8 +152,7 @@ public class StateProviderTests
     {
         byte[] code = [1];
 
-        WorldStateManager worldStateManager = TestWorldStateFactory.CreateForTest();
-        IWorldState provider = worldStateManager.GlobalWorldState;
+        IWorldState provider = TestWorldStateFactory.CreateForTest();
         using var _ = provider.BeginScope(IWorldState.PreGenesis);
         provider.CreateAccount(_address1, 1);
         provider.AddToBalance(_address1, 1, Frontier.Instance);
@@ -196,8 +187,7 @@ public class StateProviderTests
     {
         ParityLikeTxTracer tracer = new(Build.A.Block.TestObject, null, ParityTraceTypes.StateDiff);
 
-        WorldStateManager worldStateManager = TestWorldStateFactory.CreateForTest();
-        IWorldState provider = worldStateManager.GlobalWorldState;
+        IWorldState provider = TestWorldStateFactory.CreateForTest();
 
         using var _ = provider.BeginScope(IWorldState.PreGenesis);
 
@@ -216,8 +206,7 @@ public class StateProviderTests
     [Test]
     public void Does_not_allow_calling_stateroot_after_scope()
     {
-        WorldStateManager worldStateManager = TestWorldStateFactory.CreateForTest();
-        IWorldState provider = worldStateManager.GlobalWorldState;
+        IWorldState provider = TestWorldStateFactory.CreateForTest();
 
         Action action = () => { _ = provider.StateRoot; };
         {

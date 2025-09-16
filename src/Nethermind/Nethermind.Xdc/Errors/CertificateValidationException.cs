@@ -18,7 +18,10 @@ public enum CertificateType
 public enum CertificateValidationFailure
 {
     InvalidContent,
-    InvalidSignatures
+    InvalidSignatures,
+    InvalidRound,
+    InvalidGapNumber
+
 }
 
 [Serializable]

@@ -5,22 +5,64 @@ using System;
 using System.Collections.Concurrent;
 using System.Collections.Frozen;
 using System.Collections.Generic;
+using System.Diagnostics.CodeAnalysis;
 using Nethermind.Core;
+using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
 using Nethermind.Evm;
 using Nethermind.Evm.CodeAnalysis;
 using Nethermind.Evm.Precompiles;
+using Nethermind.Evm.State;
 using Nethermind.State;
 
 namespace Nethermind.Blockchain;
 
 public class CachedCodeInfoRepository(
-    FrozenDictionary<AddressAsKey, PrecompileInfo> precompiles,
-    ConcurrentDictionary<PreBlockCaches.PrecompileCacheKey, (byte[], bool)>? precompileCache) : CodeInfoRepository(
-    precompileCache is null
-        ? precompiles
-        : precompiles.ToFrozenDictionary(kvp => kvp.Key, kvp => CreateCachedPrecompile(kvp, precompileCache)))
+    IPrecompileProvider precompileProvider,
+    ICodeInfoRepository baseCodeInfoRepository,
+    ConcurrentDictionary<PreBlockCaches.PrecompileCacheKey, (byte[], bool)>? precompileCache) : ICodeInfoRepository
 {
+    private readonly FrozenDictionary<AddressAsKey, PrecompileInfo> _cachedPrecompile = precompileCache is null
+        ? precompileProvider.GetPrecompiles()
+        : precompileProvider.GetPrecompiles().ToFrozenDictionary(kvp => kvp.Key, kvp => CreateCachedPrecompile(kvp, precompileCache));
+
+    public ICodeInfo GetCachedCodeInfo(Address codeSource, bool followDelegation, IReleaseSpec vmSpec,
+        out Address? delegationAddress)
+    {
+        if (IsPrecompile(codeSource, vmSpec) && _cachedPrecompile.TryGetValue(codeSource, out var cachedCodeInfo))
+        {
+            delegationAddress = null;
+            return cachedCodeInfo;
+        }
+        return baseCodeInfoRepository.GetCachedCodeInfo(codeSource, followDelegation, vmSpec, out delegationAddress);
+    }
+
+    public ValueHash256 GetExecutableCodeHash(Address address, IReleaseSpec spec)
+    {
+        return baseCodeInfoRepository.GetExecutableCodeHash(address, spec);
+    }
+
+    public bool IsPrecompile(Address address, IReleaseSpec spec)
+    {
+        return baseCodeInfoRepository.IsPrecompile(address, spec);
+    }
+
+    public void InsertCode(ReadOnlyMemory<byte> code, Address codeOwner, IReleaseSpec spec)
+    {
+        baseCodeInfoRepository.InsertCode(code, codeOwner, spec);
+    }
+
+    public void SetDelegation(Address codeSource, Address authority, IReleaseSpec spec)
+    {
+        baseCodeInfoRepository.SetDelegation(codeSource, authority, spec);
+    }
+
+    public bool TryGetDelegation(Address address, IReleaseSpec spec,
+        [NotNullWhen(true)] out Address? delegatedAddress)
+    {
+        return baseCodeInfoRepository.TryGetDelegation(address, spec, out delegatedAddress);
+    }
+
     private static PrecompileInfo CreateCachedPrecompile(
         in KeyValuePair<AddressAsKey, PrecompileInfo> originalPrecompile,
         ConcurrentDictionary<PreBlockCaches.PrecompileCacheKey, (byte[], bool)> cache) =>
