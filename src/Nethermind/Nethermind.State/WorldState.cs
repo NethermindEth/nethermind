@@ -25,15 +25,13 @@ using Nethermind.Logging;
 
 namespace Nethermind.State
 {
-    public class WorldState : IWorldState, IPreBlockCaches
+    public class WorldState : IWorldState
     {
         internal readonly StateProvider _stateProvider;
         internal readonly PersistentStorageProvider _persistentStorageProvider;
         private readonly TransientStorageProvider _transientStorageProvider;
         private IWorldStateScopeProvider.IScope? _currentScope;
         private readonly ILogger _logger;
-        private PreBlockCaches? PreBlockCaches { get; }
-        public bool IsWarmWorldState { get; }
 
         public Hash256 StateRoot
         {
@@ -46,15 +44,11 @@ namespace Nethermind.State
 
         public WorldState(
             IWorldStateScopeProvider scopeProvider,
-            ILogManager? logManager,
-            PreBlockCaches? preBlockCaches = null,
-            bool populatePreBlockCache = true)
+            ILogManager? logManager)
         {
-            PreBlockCaches = preBlockCaches;
-            IsWarmWorldState = !populatePreBlockCache;
             ScopeProvider = scopeProvider;
-            _stateProvider = new StateProvider(logManager, PreBlockCaches?.StateCache, populatePreBlockCache);
-            _persistentStorageProvider = new PersistentStorageProvider(_stateProvider, logManager, PreBlockCaches?.StorageCache, populatePreBlockCache);
+            _stateProvider = new StateProvider(logManager);
+            _persistentStorageProvider = new PersistentStorageProvider(_stateProvider, logManager);
             _transientStorageProvider = new TransientStorageProvider(logManager);
             _logger = logManager.GetClassLogger<WorldState>();
         }
@@ -355,7 +349,5 @@ namespace Nethermind.State
             DebugGuardInScope();
             _transientStorageProvider.Reset();
         }
-
-        PreBlockCaches? IPreBlockCaches.Caches => PreBlockCaches;
     }
 }
