@@ -106,9 +106,19 @@ public class XdcBlockHeaderBuilder : BlockHeaderBuilder
         XdcTestObjectInternal.Validator = bytes;
         return this;
     }
+    public XdcBlockHeaderBuilder WithValidators(Address[] validators)
+    {
+        XdcTestObjectInternal.Validators = validators.SelectMany(a=>a.Bytes).ToArray();
+        return this;
+    }
     public XdcBlockHeaderBuilder WithValidators(byte[] validators)
     {
         XdcTestObjectInternal.Validators = validators;
+        return this;
+    }
+    public XdcBlockHeaderBuilder WithPenalties(Address[] penalties)
+    {
+        XdcTestObjectInternal.Penalties = penalties.SelectMany(a=>a.Bytes).ToArray();
         return this;
     }
     public XdcBlockHeaderBuilder WithPenalties(byte[] penalties)

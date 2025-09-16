@@ -10,8 +10,10 @@ using Nethermind.Serialization.Rlp;
 using Nethermind.Xdc.Spec;
 using Nethermind.Xdc.Types;
 using System;
+using System.Collections.Frozen;
 using System.Collections.Generic;
 using System.Collections.Immutable;
+using System.Collections.ObjectModel;
 
 namespace Nethermind.Xdc;
 internal class XdcSealValidator(ISnapshotManager snapshotManager, ISpecProvider specProvider) : ISealValidator
@@ -46,7 +48,7 @@ internal class XdcSealValidator(ISnapshotManager snapshotManager, ISpecProvider 
 
         IXdcReleaseSpec xdcSpec = specProvider.GetXdcSpec(xdcHeader); // will throw if no spec found  
 
-        ImmutableSortedSet<Address> masternodes;
+        Address[] masternodes;
 
         if (xdcHeader.IsEpochSwitch(specProvider))
         {
@@ -95,8 +97,8 @@ internal class XdcSealValidator(ISnapshotManager snapshotManager, ISpecProvider 
             //TODO get masternodes from snapshot
             masternodes = snapshotManager.GetMasternodes(xdcHeader);
         }
-
-        ulong currentLeaderIndex = (xdcHeader.ExtraConsensusData.CurrentRound % (ulong)xdcSpec.EpochLength % (ulong)masternodes.Count);
+        
+        ulong currentLeaderIndex = (xdcHeader.ExtraConsensusData.CurrentRound % (ulong)xdcSpec.EpochLength % (ulong)masternodes.Length);
         if (masternodes[(int)currentLeaderIndex] != header.Author)
         {
             error = $"Block proposer {header.Author} is not the current leader.";

@@ -5,6 +5,7 @@ using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Xdc.Types;
 using System;
+using System.Collections.Frozen;
 using System.Collections.Generic;
 using System.Collections.Immutable;
 using System.Linq;
@@ -14,7 +15,7 @@ using System.Threading.Tasks;
 namespace Nethermind.Xdc;
 internal class SnapshotManager : ISnapshotManager
 {
-    public ImmutableSortedSet<Address> CalculateNextEpochMasternodes(XdcBlockHeader xdcHeader)
+    public Address[] CalculateNextEpochMasternodes(XdcBlockHeader xdcHeader)
     {
         throw new NotImplementedException();
     }
@@ -29,7 +30,7 @@ internal class SnapshotManager : ISnapshotManager
         throw new NotImplementedException();
     }
 
-    public ImmutableSortedSet<Address> GetPenalties(XdcBlockHeader xdcHeader)
+    public Address[] GetPenalties(XdcBlockHeader xdcHeader)
     {
         throw new NotImplementedException();
     }
@@ -74,12 +75,12 @@ internal class SnapshotManager : ISnapshotManager
         throw new NotImplementedException();
     }
 
-    internal ImmutableSortedSet<Address> GetMasternodes(XdcBlockHeader xdcHeader)
+    internal Address[] GetMasternodes(XdcBlockHeader xdcHeader)
     {
         throw new NotImplementedException();
     }
 
-    ImmutableSortedSet<Address> ISnapshotManager.GetMasternodes(XdcBlockHeader xdcHeader)
+    Address[] ISnapshotManager.GetMasternodes(XdcBlockHeader xdcHeader)
     {
         return GetMasternodes(xdcHeader);
     }

@@ -98,28 +98,73 @@ internal class XdcSealValidatorTests
 
     public static IEnumerable<TestCaseData> SealParameterCases()
     {
-        yield return new TestCaseData(901, new BlockRoundInfo(Hash256.Zero, 899, 1), 72, Array.Empty<Address>(), false);
-        yield return new TestCaseData(901, new BlockRoundInfo(Hash256.Zero, 899, 1), 72, Array.Empty<Address>(), false);
+
+        (XdcBlockHeaderBuilder headerBuilder, PrivateKey[] masterSigners) = CreateValidEpochSwitchHeader();
+        //Base valid control case
+        yield return new TestCaseData(headerBuilder, masterSigners.Select(m => m.Address), Array.Empty<Address>(), true);
+
+        (headerBuilder, masterSigners) = CreateValidEpochSwitchHeader();
+        headerBuilder.WithExtraData(Array.Empty<byte>());
+        yield return new TestCaseData(headerBuilder, masterSigners.Select(m => m.Address), Array.Empty<Address>(), false);
+
+        (headerBuilder, masterSigners) = CreateValidEpochSwitchHeader();
+        //Current round is same as QC round
+        headerBuilder.WithExtraFieldsV2(new ExtraFieldsV2(1, CreateQc(new BlockRoundInfo(Hash256.Zero, 1, 1), masterSigners, 1)));
+        yield return new TestCaseData(headerBuilder, masterSigners.Select(m => m.Address), Array.Empty<Address>(), false);
+
+        (headerBuilder, masterSigners) = CreateValidEpochSwitchHeader();
+        //Invalid nonce for epoch switch
+        headerBuilder.WithNonce(1);
+        yield return new TestCaseData(headerBuilder, masterSigners.Select(m => m.Address), Array.Empty<Address>(), false);
+
+        (headerBuilder, masterSigners) = CreateValidEpochSwitchHeader();
+        //Remove one from validator list
+        headerBuilder.WithValidators(masterSigners.Select(m=>m.Address).Take(masterSigners.Length - 1).ToArray());
+        yield return new TestCaseData(headerBuilder, masterSigners.Select(m => m.Address), Array.Empty<Address>(), false);
+
+        (headerBuilder, masterSigners) = CreateValidEpochSwitchHeader();
+        //Remove one from epoch candidates
+        yield return new TestCaseData(headerBuilder, masterSigners.Select(m => m.Address).Take(masterSigners.Length - 1), Array.Empty<Address>(), false);
+
+        (headerBuilder, masterSigners) = CreateValidEpochSwitchHeader();
+        //Header penalties not matching epoch snapshot
+        headerBuilder.WithPenalties(new[] {Address.Zero});
+        yield return new TestCaseData(headerBuilder, masterSigners.Select(m => m.Address), Array.Empty<Address>(), false);
+
+        (headerBuilder, masterSigners) = CreateValidEpochSwitchHeader();
+        //Header penalties not matching epoch snapshot
+        yield return new TestCaseData(headerBuilder, masterSigners.Select(m => m.Address), new[] {Address.Zero}, false);
+
+        (headerBuilder, masterSigners) = CreateValidEpochSwitchHeader();
+        //Block sealer is not the leader in this round
+        headerBuilder.WithAuthor(masterSigners[1].Address);
+        yield return new TestCaseData(headerBuilder, masterSigners.Select(m => m.Address), Array.Empty<Address>(), false);
+
+        (XdcBlockHeaderBuilder headerBuilder, PrivateKey[] masterSigners) CreateValidEpochSwitchHeader()
+        {
+            XdcBlockHeaderBuilder headerBuilder = Build.A.XdcBlockHeader();
+
+            PrivateKeyGenerator keyBuilder = new PrivateKeyGenerator();
+            PrivateKey[] masterSigners = Enumerable.Range(0, 108).Select(i => keyBuilder.Generate()).ToArray();
+            PrivateKey[] qcSigners = masterSigners.Take(72).ToArray();
+
+            var extraFieldsV2 = new ExtraFieldsV2(1800, CreateQc(new BlockRoundInfo(Hash256.Zero, 1, 1), masterSigners, 1));
+            headerBuilder.WithExtraFieldsV2(extraFieldsV2);
+            headerBuilder.WithValidators(masterSigners.Select(m => m.Address).ToArray());
+            headerBuilder.WithAuthor(masterSigners[0].Address);
+            return (headerBuilder, masterSigners);
+        }
     }
 
     [TestCaseSource(nameof(SealParameterCases))]
-    public void ValidateParams_Test(int currentRound, BlockRoundInfo blockRoundInfo, int numberOfSigners, Address[] penalties, bool expected)
+    public void ValidateParams_HeaderIsEpochSwitch_ReturnsExpected(XdcBlockHeaderBuilder headerBuilder, IEnumerable<Address> epochCandidates, IEnumerable<Address> penalties, bool expected)
     {
-        PrivateKeyGenerator keyBuilder = new PrivateKeyGenerator();
-        PrivateKey[] masterSigners = Enumerable.Range(0, 108).Select(i => keyBuilder.Generate()).ToArray();
-
         XdcBlockHeader parent =
             Build.A.XdcBlockHeader()
             .TestObject;
-        ExtraFieldsV2 extraFieldsV2 = new ExtraFieldsV2((ulong)currentRound, CreateQc(new BlockRoundInfo(Hash256.Zero, 1, 1), masterSigners, numberOfSigners, 1));
-        XdcBlockHeader header =
-                (XdcBlockHeader)Build.A.XdcBlockHeader()
-            .WithExtraFieldsV2(extraFieldsV2)
-            .WithValidators(masterSigners.Select(k => k.Address.Bytes).SelectMany(b => b).ToArray())
-            .WithPenalties(penalties.Select(k => k.Bytes).SelectMany(b => b).ToArray())
-            .WithNumber(1)
-            .TestObject;
-        header.Author = TestItem.AddressA;
+        headerBuilder.WithParent(parent); 
+
+        XdcBlockHeader header = headerBuilder.TestObject;
 
         ISpecProvider specProvider = Substitute.For<ISpecProvider>();
         IXdcReleaseSpec releaseSpec = Substitute.For<IXdcReleaseSpec>();
@@ -129,22 +174,22 @@ internal class XdcSealValidatorTests
         ISnapshotManager snapshotManager = Substitute.For<ISnapshotManager>();
         snapshotManager
             .CalculateNextEpochMasternodes(Arg.Any<XdcBlockHeader>())
-            .Returns(masterSigners.Select(k => k.Address).ToImmutableSortedSet());
+            .Returns(epochCandidates.ToArray());
         snapshotManager
             .GetPenalties(Arg.Any<XdcBlockHeader>())
-            .Returns([]);
+            .Returns(penalties.ToArray());
         XdcSealValidator validator = new XdcSealValidator(snapshotManager, specProvider);
 
         Assert.That(validator.ValidateParams(parent, header), Is.EqualTo(expected));
     }
 
-    private static QuorumCert CreateQc(BlockRoundInfo roundInfo, PrivateKey[] keys, int numberOfSigners, ulong gapNumber)
+    private static QuorumCert CreateQc(BlockRoundInfo roundInfo, PrivateKey[] keys, ulong gapNumber)
     {
         EthereumEcdsa ecdsa = new EthereumEcdsa(0);
         QuorumCert quorumForSigning = new QuorumCert(roundInfo, null, gapNumber);
         QuorumCertificateDecoder qcEncoder = new QuorumCertificateDecoder();
 
-        IEnumerable<Signature> signatures = Enumerable.Range(0, numberOfSigners).Select(i => ecdsa.Sign(keys[i], Keccak.Compute(qcEncoder.Encode(quorumForSigning, RlpBehaviors.ForSealing).Bytes)));
+        IEnumerable<Signature> signatures = keys.Select(k => ecdsa.Sign(k, Keccak.Compute(qcEncoder.Encode(quorumForSigning, RlpBehaviors.ForSealing).Bytes)));
 
         return new QuorumCert(roundInfo, signatures.ToArray(), gapNumber);
     }
