@@ -41,7 +41,6 @@ internal sealed class PersistentStorageProvider : PartialStorageProviderBase
     private readonly Dictionary<StorageCell, byte[]> _originalValues = new();
 
     private readonly HashSet<StorageCell> _committedThisRound = new();
-    private readonly ConcurrentDictionary<StorageCell, byte[]>? _preBlockCache;
 
     /// <summary>
     /// Manages persistent storage allowing for snapshotting and restoring
@@ -49,16 +48,10 @@ internal sealed class PersistentStorageProvider : PartialStorageProviderBase
     /// </summary>
     public PersistentStorageProvider(
         StateProvider stateProvider,
-        ILogManager logManager,
-        ConcurrentDictionary<StorageCell, byte[]>? preBlockCache,
-        bool populatePreBlockCache) : base(logManager)
+        ILogManager logManager) : base(logManager)
     {
         _stateProvider = stateProvider;
-        _preBlockCache = preBlockCache;
-        _populatePreBlockCache = populatePreBlockCache;
     }
-
-    private readonly bool _populatePreBlockCache;
 
     /// <summary>
     /// Reset the storage state
@@ -351,10 +344,6 @@ internal sealed class PersistentStorageProvider : PartialStorageProviderBase
     {
         if (isEmpty)
         {
-            if (_preBlockCache is not null)
-            {
-                _preBlockCache[storageCell] = [];
-            }
         }
         else
         {
@@ -468,7 +457,6 @@ internal sealed class PersistentStorageProvider : PartialStorageProviderBase
         private IWorldStateScopeProvider.IStorageTree? _backend;
         private DefaultableDictionary BlockChange = new DefaultableDictionary();
         private bool _wasWritten = false;
-        private readonly Func<StorageCell, byte[]> _loadFromTreeStorageFunc;
         private readonly Address _address;
         private readonly PersistentStorageProvider _provider;
 
@@ -477,7 +465,6 @@ internal sealed class PersistentStorageProvider : PartialStorageProviderBase
         {
             _address = address;
             _provider = provider;
-            _loadFromTreeStorageFunc = LoadFromTreeStorage;
         }
 
         public int EstimatedChanges => BlockChange.EstimatedSize;
@@ -530,9 +517,7 @@ internal sealed class PersistentStorageProvider : PartialStorageProviderBase
             ref ChangeTrace valueChange = ref BlockChange.GetValueRefOrAddDefault(storageCell.Index, out bool exists);
             if (!exists)
             {
-                byte[] value = !_provider._populatePreBlockCache ?
-                    LoadFromTreeReadPreWarmCache(in storageCell) :
-                    LoadFromTreePopulatePrewarmCache(in storageCell);
+                byte[] value = LoadFromTreeStorage(storageCell);
 
                 valueChange = new(value, value);
             }
@@ -543,35 +528,6 @@ internal sealed class PersistentStorageProvider : PartialStorageProviderBase
 
             if (!storageCell.IsHash) _provider.PushToRegistryOnly(storageCell, valueChange.After);
             return valueChange.After;
-        }
-
-        private byte[] LoadFromTreeReadPreWarmCache(in StorageCell storageCell)
-        {
-            if (_provider._preBlockCache?.TryGetValue(storageCell, out byte[] value) ?? false)
-            {
-                Db.Metrics.IncrementStorageTreeCache();
-            }
-            else
-            {
-                value = LoadFromTreeStorage(storageCell);
-            }
-            return value;
-        }
-
-        private byte[] LoadFromTreePopulatePrewarmCache(in StorageCell storageCell)
-        {
-            long priorReads = Db.Metrics.ThreadLocalStorageTreeReads;
-
-            byte[] value = _provider._preBlockCache is not null
-                ? _provider._preBlockCache.GetOrAdd(storageCell, _loadFromTreeStorageFunc)
-                : LoadFromTreeStorage(storageCell);
-
-            if (Db.Metrics.ThreadLocalStorageTreeReads == priorReads)
-            {
-                // Read from Concurrent Cache
-                Db.Metrics.IncrementStorageTreeCache();
-            }
-            return value;
         }
 
         private byte[] LoadFromTreeStorage(StorageCell storageCell)
