@@ -301,5 +301,11 @@ namespace Nethermind.Core.Test.Builders
             TestObjectInternal.EncodedSize = encodedSize;
             return this;
         }
+
+        public BlockBuilder WithBlockAccessListHash(Hash256? hash)
+        {
+            TestObjectInternal.Header.BlockAccessListHash = hash;
+            return this;
+        }
     }
 }
