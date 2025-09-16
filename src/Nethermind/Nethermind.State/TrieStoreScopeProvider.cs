@@ -138,7 +138,7 @@ public class TrieStoreScopeProvider : IWorldStateScopeProvider
             return new CodeSetter(codeDb.StartWriteBatch());
         }
 
-        private class CodeSetter(IWriteBatch writeBatch): IWorldStateScopeProvider.ICodeSetter
+        private class CodeSetter(IWriteBatch writeBatch) : IWorldStateScopeProvider.ICodeSetter
         {
             public void Set(in ValueHash256 codeHash, byte[] code)
             {
