@@ -9,7 +9,7 @@ using System.Text;
 using System.Threading.Tasks;
 
 namespace Nethermind.Xdc;
-internal class EpochSwitchInfo
+public class EpochSwitchInfo
 {
     public Address[] Penalties { get; set; }
     public Address[] Masternodes { get; set; }

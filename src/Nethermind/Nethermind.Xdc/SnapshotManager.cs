@@ -2,6 +2,8 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using Nethermind.Core;
+using Nethermind.Core.Crypto;
+using Nethermind.Xdc.Types;
 using System;
 using System.Collections.Generic;
 using System.Collections.Immutable;
@@ -17,7 +19,57 @@ internal class SnapshotManager : ISnapshotManager
         throw new NotImplementedException();
     }
 
+    public Address GetBlockSealer(BlockHeader header)
+    {
+        throw new NotImplementedException();
+    }
+
+    public ulong GetLastSignersCount()
+    {
+        throw new NotImplementedException();
+    }
+
     public ImmutableSortedSet<Address> GetPenalties(XdcBlockHeader xdcHeader)
+    {
+        throw new NotImplementedException();
+    }
+
+    public bool HasSignedRecently(Snapshot snapshot, long number, Address signer)
+    {
+        throw new NotImplementedException();
+    }
+
+    public bool IsInTurn(Snapshot snapshot, long number, Address signer)
+    {
+        throw new NotImplementedException();
+    }
+
+    public bool IsValidVote(Snapshot snapshot, Address address, bool authorize)
+    {
+        throw new NotImplementedException();
+    }
+
+    public void TryCacheSnapshot(Snapshot snapshot)
+    {
+        throw new NotImplementedException();
+    }
+
+    public bool TryGetSnapshot(long number, Hash256 hash, out Snapshot snapshot)
+    {
+        throw new NotImplementedException();
+    }
+
+    public bool TryGetSnapshot(XdcBlockHeader header, out Snapshot snapshot)
+    {
+        throw new NotImplementedException();
+    }
+
+    public bool TryGetSnapshot(ulong gapNumber, bool isGapNumber, out Snapshot snap)
+    {
+        throw new NotImplementedException();
+    }
+
+    public bool TryStoreSnapshot(Snapshot snapshot)
     {
         throw new NotImplementedException();
     }
