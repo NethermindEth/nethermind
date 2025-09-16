@@ -148,8 +148,7 @@ public class EvmPooledMemoryTests : EvmMemoryTestsBase
         long blocknr = 12965000;
         long gas = 34218;
         ulong ts = 123456;
-        IWorldStateManager worldStateManager = TestWorldStateFactory.CreateForTest();
-        IWorldState stateProvider = worldStateManager.GlobalWorldState;
+        IWorldState stateProvider = TestWorldStateFactory.CreateForTest();
         ISpecProvider specProvider = new TestSpecProvider(London.Instance);
         EthereumCodeInfoRepository codeInfoRepository = new(stateProvider);
         VirtualMachine virtualMachine = new(
