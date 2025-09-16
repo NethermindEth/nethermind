@@ -350,18 +350,6 @@ public class TestBlockchain : IDisposable
                 state.InsertCode(Eip7251Constants.ConsolidationRequestPredeployAddress, Eip7251TestConstants.CodeHash, Eip7251TestConstants.Code, specProvider.GenesisSpec);
             }
 
-            // if (finalSpec?.IsEip2935Enabled is true)
-            // {
-            //     state.CreateAccount(Eip2935Constants.BlockHashHistoryAddress, 0, Eip2935TestConstants.Nonce);
-            //     state.InsertCode(Eip2935Constants.BlockHashHistoryAddress, Eip2935TestConstants.CodeHash, Eip2935TestConstants.Code, specProvider.GenesisSpec);
-            // }
-
-            // if (finalSpec?.IsEip4788Enabled is true)
-            // {
-            //     state.CreateAccount(Eip4788Constants.BeaconRootsAddress, 0, Eip4788TestConstants.Nonce);
-            //     state.InsertCode(Eip4788Constants.BeaconRootsAddress, Eip4788TestConstants.CodeHash, Eip4788TestConstants.Code, specProvider.GenesisSpec);
-            // }
-
             BlockBuilder genesisBlockBuilder = Builders.Build.A.Block.Genesis;
 
             if (specProvider.SealEngine == Core.SealEngineType.AuRa)
