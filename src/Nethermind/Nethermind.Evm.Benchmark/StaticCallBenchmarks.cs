@@ -82,8 +82,7 @@ namespace Nethermind.Evm.Benchmark
         [GlobalSetup]
         public void GlobalSetup()
         {
-            IWorldStateManager worldStateManager = TestWorldStateFactory.CreateForTest();
-            _stateProvider = worldStateManager.GlobalWorldState;
+            _stateProvider = TestWorldStateFactory.CreateForTest();
             _stateProvider.CreateAccount(Address.Zero, 1000.Ether());
             _stateProvider.Commit(_spec);
 
