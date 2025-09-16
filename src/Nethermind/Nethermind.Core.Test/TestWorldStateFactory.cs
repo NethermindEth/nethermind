@@ -14,13 +14,10 @@ namespace Nethermind.Core.Test;
 
 public static class TestWorldStateFactory
 {
-    public static IWorldState CreateForTest()
+    public static IWorldState CreateForTest(IDbProvider? dbProvider = null, ILogManager? logManager = null)
     {
-        return CreateForTest(TestMemDbProvider.Init(), LimboLogs.Instance);
-    }
-
-    public static IWorldState CreateForTest(IDbProvider dbProvider, ILogManager logManager)
-    {
+        dbProvider ??= TestMemDbProvider.Init();
+        logManager ??= LimboLogs.Instance;
         IPruningTrieStore trieStore = new TrieStore(
             new NodeStorage(dbProvider.StateDb),
             No.Pruning,
@@ -51,8 +48,7 @@ public static class TestWorldStateFactory
             Persist.EveryBlock,
             new PruningConfig(),
             LimboLogs.Instance);
-        var worldState = new WorldState(
-            new TrieStoreScopeProvider(trieStore, dbProvider.CodeDb, logManager), logManager);
+        var worldState = new TrieStoreScopeProvider(trieStore, dbProvider.CodeDb, logManager);
 
         return new WorldStateManager(worldState, trieStore, dbProvider, logManager);
     }

@@ -24,14 +24,12 @@ public class MainProcessingContext : IMainProcessingContext, BlockProcessor.Bloc
     public MainProcessingContext(
         ILifetimeScope rootLifetimeScope,
         IReceiptConfig receiptConfig,
-        IBlocksConfig blocksConfig,
         IInitConfig initConfig,
         IBlockValidationModule[] blockValidationModules,
         IMainProcessingModule[] mainProcessingModules,
         IWorldStateManager worldStateManager,
         CompositeBlockPreprocessorStep compositeBlockPreprocessorStep,
         IBlockTree blockTree,
-        IPrecompileProvider precompileProvider,
         ILogManager logManager)
     {
 
@@ -40,7 +38,7 @@ public class MainProcessingContext : IMainProcessingContext, BlockProcessor.Bloc
         {
             builder
                 // These are main block processing specific
-                .AddSingleton<IWorldState>(mainWorldState)
+                .AddSingleton<IWorldStateScopeProvider>(mainWorldState)
                 .AddModule(blockValidationModules)
                 .AddScoped<ITransactionProcessorAdapter, ExecuteTransactionProcessorAdapter>()
                 .AddSingleton<BlockProcessor.BlockValidationTransactionsExecutor.ITransactionProcessedEventHandler>(this)
@@ -64,20 +62,6 @@ public class MainProcessingContext : IMainProcessingContext, BlockProcessor.Bloc
                 // And finally, to wrap things up.
                 .AddScoped<Components>()
                 ;
-
-            if (blocksConfig.PreWarmStateOnBlockProcessing)
-            {
-                builder
-                    .AddScoped<PreBlockCaches>((mainWorldState as IPreBlockCaches)!.Caches)
-                    .AddScoped<IBlockCachePreWarmer, BlockCachePreWarmer>()
-                    .AddDecorator<ICodeInfoRepository>((ctx, originalCodeInfoRepository) =>
-                    {
-                        PreBlockCaches preBlockCaches = ctx.Resolve<PreBlockCaches>();
-                        // Note: The use of FrozenDictionary means that this cannot be used for other processing env also due to risk of memory leak.
-                        return new CachedCodeInfoRepository(precompileProvider, originalCodeInfoRepository, preBlockCaches?.PrecompileCache);
-                    })
-                    ;
-            }
         });
 
         _components = innerScope.Resolve<Components>();
