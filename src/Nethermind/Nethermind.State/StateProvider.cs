@@ -498,7 +498,7 @@ namespace Nethermind.State
                     if (_logger.IsTrace) Trace(address);
 
                     Account account = Account.TotallyEmpty;
-                    PushRecreateEmpty(address, account);
+                    PushRecreateEmpty(address, account, value);
                 }
             }
 
@@ -628,12 +628,9 @@ namespace Nethermind.State
                         }
                     case ChangeType.RecreateEmpty:
                         {
-                            if (change.Account.IsEmpty)
-                            {
-                                if (isTracing) TraceCreate(change);
-                                SetState(change.Address, change.Account);
-                                trace?.AddToTrace(change.Address, change.Account);
-                            }
+                            if (isTracing) TraceCreate(change);
+                            SetState(change.Address, change.Account);
+                            trace?.AddToTrace(change.Address, change.Account);
 
                             break;
                         }
@@ -892,9 +889,9 @@ namespace Nethermind.State
             stack.Push(_changes.Count);
             _changes.Add(new Change(address, account, ChangeType.New));
         }
-        private void PushRecreateEmpty(Address address, Account account)
+
+        private void PushRecreateEmpty(Address address, Account account, Stack<int> stack)
         {
-            Stack<int> stack = SetupCache(address);
             stack.Push(_changes.Count);
             _changes.Add(new Change(address, account, ChangeType.RecreateEmpty));
         }
