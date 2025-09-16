@@ -69,6 +69,9 @@ internal class XdcHeaderValidator(IBlockTree blockTree, ISealValidator sealValid
 
     protected override bool ValidateSeal(BlockHeader header, BlockHeader parent, bool isUncle, ref string? error)
     {
+        if (_sealValidator is XdcSealValidator xdcSealValidator)
+            return xdcSealValidator.ValidateParams(header, parent, out error);
+
         if (!_sealValidator.ValidateParams(parent, header, isUncle))
         {
             error = "Invalid validator signature.";
