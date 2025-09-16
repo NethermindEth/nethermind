@@ -82,8 +82,12 @@ finally
 
 async Task<int> ConfigureAsync(string[] args)
 {
-    CommandLineConfiguration cli = ConfigureCli();
-    ParseResult parseResult = cli.Parse(args);
+    RootCommand rootCommand = CreateRootCommand();
+    ParseResult parseResult = rootCommand.Parse(args);
+
+    parseResult.InvocationConfiguration.EnableDefaultExceptionHandler = false;
+    parseResult.InvocationConfiguration.ProcessTerminationTimeout = Timeout.InfiniteTimeSpan;
+
     // Suppress logs if run with `--help` or `--version`
     bool silent = parseResult.CommandResult.Children
         .Any(c => c is OptionResult { Option: HelpOption or VersionOption });
@@ -121,13 +125,13 @@ async Task<int> ConfigureAsync(string[] args)
 
     TypeDiscovery.Initialize(typeof(INethermindPlugin));
 
-    AddConfigurationOptions(cli.RootCommand);
+    AddConfigurationOptions(rootCommand);
 
-    cli.RootCommand.SetAction((result, token) => RunAsync(result, pluginLoader, token));
+    rootCommand.SetAction((result, token) => RunAsync(result, pluginLoader, token));
 
     try
     {
-        return await cli.InvokeAsync(args);
+        return await parseResult.InvokeAsync();
     }
     finally
     {
@@ -285,44 +289,6 @@ void CheckForDeprecatedOptions(ParseResult parseResult)
     }
 }
 
-CommandLineConfiguration ConfigureCli()
-{
-    RootCommand rootCommand =
-    [
-        BasicOptions.Configuration,
-        BasicOptions.ConfigurationDirectory,
-        BasicOptions.DatabasePath,
-        BasicOptions.DataDirectory,
-        BasicOptions.LoggerConfigurationSource,
-        BasicOptions.LogLevel,
-        BasicOptions.PluginsDirectory
-    ];
-
-    var versionOption = (VersionOption)rootCommand.Children.SingleOrDefault(c => c is VersionOption);
-
-    if (versionOption is not null)
-    {
-        versionOption.Action = new AsynchronousCommandLineAction(parseResult =>
-        {
-            parseResult.Configuration.Output.WriteLine($"""
-                Version:    {ProductInfo.Version}
-                Commit:     {ProductInfo.Commit}
-                Build date: {ProductInfo.BuildTimestamp:u}
-                Runtime:    {ProductInfo.Runtime}
-                Platform:   {ProductInfo.OS} {ProductInfo.OSArchitecture}
-                """);
-
-            return ExitCodes.Ok;
-        });
-    }
-
-    return new(rootCommand)
-    {
-        EnableDefaultExceptionHandler = false,
-        ProcessTerminationTimeout = Timeout.InfiniteTimeSpan
-    };
-}
-
 void ConfigureLogger(ParseResult parseResult)
 {
     string nLogConfig = Path.GetFullPath(
@@ -447,6 +413,40 @@ IConfigProvider CreateConfigProvider(ParseResult parseResult)
         logger.Warn($"Invalid configuration settings:\n{ErrorMsg}");
 
     return configProvider;
+}
+
+RootCommand CreateRootCommand()
+{
+    RootCommand rootCommand =
+    [
+        BasicOptions.Configuration,
+        BasicOptions.ConfigurationDirectory,
+        BasicOptions.DatabasePath,
+        BasicOptions.DataDirectory,
+        BasicOptions.LoggerConfigurationSource,
+        BasicOptions.LogLevel,
+        BasicOptions.PluginsDirectory
+    ];
+
+    var versionOption = (VersionOption)rootCommand.Children.SingleOrDefault(c => c is VersionOption);
+
+    if (versionOption is not null)
+    {
+        versionOption.Action = new AsynchronousCommandLineAction(parseResult =>
+        {
+            parseResult.InvocationConfiguration.Output.WriteLine($"""
+                Version:    {ProductInfo.Version}
+                Commit:     {ProductInfo.Commit}
+                Build date: {ProductInfo.BuildTimestamp:u}
+                Runtime:    {ProductInfo.Runtime}
+                Platform:   {ProductInfo.OS} {ProductInfo.OSArchitecture}
+                """);
+
+            return ExitCodes.Ok;
+        });
+    }
+
+    return rootCommand;
 }
 
 ILogger GetCriticalLogger()
