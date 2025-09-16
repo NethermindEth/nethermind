@@ -111,6 +111,6 @@ public interface IWorldStateScopeProvider
 
     public interface ICodeSetter : IDisposable
     {
-        void Set(in ValueHash256 codeHash, byte[] code);
+        void Set(in ValueHash256 codeHash, ReadOnlySpan<byte> code);
     }
 }

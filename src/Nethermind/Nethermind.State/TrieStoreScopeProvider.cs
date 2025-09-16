@@ -140,9 +140,9 @@ public class TrieStoreScopeProvider : IWorldStateScopeProvider
 
         private class CodeSetter(IWriteBatch writeBatch) : IWorldStateScopeProvider.ICodeSetter
         {
-            public void Set(in ValueHash256 codeHash, byte[] code)
+            public void Set(in ValueHash256 codeHash, ReadOnlySpan<byte> code)
             {
-                writeBatch[codeHash.Bytes] = code;
+                writeBatch.PutSpan(codeHash.Bytes, code);
             }
 
             public void Dispose()
