@@ -7,9 +7,9 @@ using System.Text.Json.Serialization;
 
 namespace Nethermind.Xdc.Types;
 
-public class Vote(Address signer, BlockInfo proposedBlockInfo, Signature signature, long gapNumber)
+public class Vote(Address signer, BlockInfo proposedBlockInfo, Signature signature, ulong gapNumber)
 {
-    public Vote(BlockInfo proposedBlockInfo, Signature signature, long gapNumber)
+    public Vote(BlockInfo proposedBlockInfo, Signature signature, ulong gapNumber)
         : this(default, proposedBlockInfo, signature, gapNumber)
     {
     }
@@ -17,7 +17,7 @@ public class Vote(Address signer, BlockInfo proposedBlockInfo, Signature signatu
     private Address _signer = signer;
     public BlockInfo ProposedBlockInfo { get; set; } = proposedBlockInfo;
     public Signature Signature { get; set; } = signature;
-    public long GapNumber { get; set; } = gapNumber;
+    public ulong GapNumber { get; set; } = gapNumber;
 
     public override string ToString() =>
         $"{ProposedBlockInfo.Round}:{GapNumber}:{ProposedBlockInfo.Number}:{ProposedBlockInfo.SigHash()}";
