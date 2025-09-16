@@ -18,7 +18,7 @@ namespace Nethermind.State.OverridableEnv;
 /// </summary>
 public interface IOverridableEnv : IModule
 {
-    IDisposable BuildAndOverride(BlockHeader header, Dictionary<Address, AccountOverride>? stateOverride);
+    IDisposable BuildAndOverride(BlockHeader? header, Dictionary<Address, AccountOverride>? stateOverride);
 }
 
 /// <summary>

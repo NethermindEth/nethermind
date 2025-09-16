@@ -17,7 +17,11 @@ on:
         default: ""
         required: false
       network_filter:
-        description: "Usefull for manual execution on only specified networks - provide partial or full name. Will execute action only on networks which contains phrase."
+        description: "Useful for manual execution on only specified networks - provide partial or full name. Will execute action only on networks which contains phrase."
+        default: ""
+        required: false
+      nethermind_args:
+        description: "Additional arguments that will be passed to Nethermind, without leading dashes. Example: log=DEBUG"
         default: ""
         required: false
 
@@ -219,6 +223,10 @@ jobs:
             mkdir -p execution-data-op/logs/configs
             mv ../tests/predefined_configs/customNLog.config execution-data-op/logs/configs/customNLog.config
 
+            if [ -n "${{ inputs.nethermind_args }}" ]; then
+              for f in ${{ inputs.nethermind_args }}; do extra_param+=" --el-op-extra-flag $f"; done
+            fi
+
             ./build/sedge generate \
               --logging none \
               -p $GITHUB_WORKSPACE/sedge \
@@ -255,6 +263,10 @@ jobs:
 
             mkdir -p execution-data-taiko/logs/configs
             mv ../tests/predefined_configs/customNLog.config execution-data-taiko/logs/configs/customNLog.config
+            
+            if [ -n "${{ inputs.nethermind_args }}" ]; then
+              for f in ${{ inputs.nethermind_args }}; do extra_param+=" --el-l2-extra-flag $f"; done
+            fi
 
             ./build/sedge generate \
               --logging none \
@@ -278,6 +290,10 @@ jobs:
             mkdir -p execution-data/logs/configs
             mv ../tests/predefined_configs/customNLog.config execution-data/logs/configs/customNLog.config
 
+            if [ -n "${{ inputs.nethermind_args }}" ]; then
+              for f in ${{ inputs.nethermind_args }}; do extra_param+=" --el-extra-flag $f"; done
+            fi
+            
             ./build/sedge generate \
               --logging none \
               -p $GITHUB_WORKSPACE/sedge \
@@ -296,6 +312,7 @@ jobs:
               --el-extra-flag loggerConfigSource=/nethermind/data/logs/configs/customNLog.config \
               --el-extra-flag Sync.SnapSync=true \
               "${GENERIC_METRICS_FLAGS[@]}" \
+              $extra_param \
               --checkpoint-sync-url=${{ matrix.config.checkpoint-sync-url }}
           fi
 
@@ -332,7 +349,7 @@ jobs:
           retention-days: 7
 
       - name: Get Consensus Logs
-        if: always() && matrix.config.network != 'joc-mainnet' && matrix.config.network != 'joc-testnet' && matrix.config.network != 'linea-mainnet' && matrix.config.network != 'linea-sepolia' && matrix.config.network != 'energyweb' && matrix.config.network != 'volta'
+        if: always() && matrix.config.network != 'joc-mainnet' && matrix.config.network != 'joc-testnet' && matrix.config.network != 'linea-mainnet' && matrix.config.network != 'linea-sepolia'
         run: |
           network="${{ matrix.config.network }}"
           if [[ "$network" == base-* || "$network" == op-* || "$network" == world-* ]]; then

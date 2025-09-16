@@ -101,6 +101,13 @@ namespace Nethermind.Evm.TransactionProcessing
         public void SetBlockExecutionContext(in BlockExecutionContext blockExecutionContext)
             => VirtualMachine.SetBlockExecutionContext(in blockExecutionContext);
 
+        public void SetBlockExecutionContext(BlockHeader header)
+        {
+            IReleaseSpec spec = SpecProvider.GetSpec(header);
+            BlockExecutionContext blockExecutionContext = new(header, spec);
+            SetBlockExecutionContext(in blockExecutionContext);
+        }
+
         public TransactionResult CallAndRestore(Transaction transaction, ITxTracer txTracer) =>
             ExecuteCore(transaction, txTracer, ExecutionOptions.CommitAndRestore);
 
@@ -259,7 +266,7 @@ namespace Nethermind.Evm.TransactionProcessing
                         WorldState.IncrementNonce(authority);
                     }
 
-                    _codeInfoRepository.SetDelegation(WorldState, authTuple.CodeAddress, authority, spec);
+                    _codeInfoRepository.SetDelegation(authTuple.CodeAddress, authority, spec);
                 }
             }
 
@@ -294,7 +301,7 @@ namespace Nethermind.Evm.TransactionProcessing
 
                 accessTracker.WarmUp(authorizationTuple.Authority);
 
-                if (WorldState.HasCode(authorizationTuple.Authority) && !_codeInfoRepository.TryGetDelegation(WorldState, authorizationTuple.Authority, spec, out _))
+                if (WorldState.HasCode(authorizationTuple.Authority) && !_codeInfoRepository.TryGetDelegation(authorizationTuple.Authority, spec, out _))
                 {
                     error = $"Authority ({authorizationTuple.Authority}) has code deployed.";
                     return false;
@@ -564,7 +571,7 @@ namespace Nethermind.Evm.TransactionProcessing
             }
             else
             {
-                codeInfo = codeInfoRepository.GetCachedCodeInfo(WorldState, recipient, spec, out Address? delegationAddress);
+                codeInfo = codeInfoRepository.GetCachedCodeInfo(recipient, spec, out Address? delegationAddress);
 
                 //We assume eip-7702 must be active if it is a delegation
                 if (delegationAddress is not null)
@@ -728,7 +735,7 @@ namespace Nethermind.Evm.TransactionProcessing
             {
                 // Copy the bytes so it's not live memory that will be used in another tx
                 byte[] code = substate.Output.Bytes.ToArray();
-                _codeInfoRepository.InsertCode(WorldState, code, codeOwner, spec);
+                _codeInfoRepository.InsertCode(code, codeOwner, spec);
                 if (code.Length > CodeSizeConstants.MaxCodeSizeEip170)
                 {
                     accessedItems.WarmUpLargeContract(codeOwner);
@@ -782,7 +789,7 @@ namespace Nethermind.Evm.TransactionProcessing
             {
                 // 4 - set state[new_address].code to the updated deploy container
                 // push new_address onto the stack (already done before the ifs)
-                _codeInfoRepository.InsertCode(WorldState, bytecodeResult, codeOwner, spec);
+                _codeInfoRepository.InsertCode(bytecodeResult, codeOwner, spec);
                 if (bytecodeResult.Length > CodeSizeConstants.MaxCodeSizeEip170)
                 {
                     accessedItems.WarmUpLargeContract(codeOwner);
@@ -889,22 +896,6 @@ namespace Nethermind.Evm.TransactionProcessing
 
         [DoesNotReturn, StackTraceHidden]
         private static void ThrowInvalidDataException(string message) => throw new InvalidDataException(message);
-
-        public TransactionResult Execute(Transaction transaction, BlockHeader header, ITxTracer txTracer)
-        {
-            IReleaseSpec spec = SpecProvider.GetSpec(header);
-            BlockExecutionContext blockExecutionContext = new(header, spec);
-            SetBlockExecutionContext(in blockExecutionContext);
-            return Execute(transaction, txTracer);
-        }
-
-        public TransactionResult CallAndRestore(Transaction transaction, BlockHeader header, ITxTracer txTracer)
-        {
-            IReleaseSpec spec = SpecProvider.GetSpec(header);
-            BlockExecutionContext blockExecutionContext = new(header, spec);
-            SetBlockExecutionContext(in blockExecutionContext);
-            return CallAndRestore(transaction, txTracer);
-        }
     }
 
     public readonly struct TransactionResult(string? error, EvmExceptionType evmException = EvmExceptionType.None) : IEquatable<TransactionResult>

@@ -4,7 +4,6 @@
 using System;
 using System.Threading.Tasks;
 using Autofac;
-using Autofac.Features.AttributeFilters;
 using Nethermind.Api;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Receipts;
@@ -30,9 +29,9 @@ public class MainProcessingContext : IMainProcessingContext, BlockProcessor.Bloc
         IBlockValidationModule[] blockValidationModules,
         IMainProcessingModule[] mainProcessingModules,
         IWorldStateManager worldStateManager,
-        [KeyFilter(nameof(IWorldStateManager.GlobalWorldState))] ICodeInfoRepository mainCodeInfoRepository,
         CompositeBlockPreprocessorStep compositeBlockPreprocessorStep,
         IBlockTree blockTree,
+        IPrecompileProvider precompileProvider,
         ILogManager logManager)
     {
 
@@ -41,7 +40,6 @@ public class MainProcessingContext : IMainProcessingContext, BlockProcessor.Bloc
         {
             builder
                 // These are main block processing specific
-                .AddScoped<ICodeInfoRepository>(mainCodeInfoRepository)
                 .AddSingleton<IWorldState>(mainWorldState)
                 .AddModule(blockValidationModules)
                 .AddScoped<ITransactionProcessorAdapter, ExecuteTransactionProcessorAdapter>()
@@ -72,7 +70,12 @@ public class MainProcessingContext : IMainProcessingContext, BlockProcessor.Bloc
                 builder
                     .AddScoped<PreBlockCaches>((mainWorldState as IPreBlockCaches)!.Caches)
                     .AddScoped<IBlockCachePreWarmer, BlockCachePreWarmer>()
-                    .AddDecorator<ITransactionProcessorAdapter, PrewarmerTxAdapter>()
+                    .AddDecorator<ICodeInfoRepository>((ctx, originalCodeInfoRepository) =>
+                    {
+                        PreBlockCaches preBlockCaches = ctx.Resolve<PreBlockCaches>();
+                        // Note: The use of FrozenDictionary means that this cannot be used for other processing env also due to risk of memory leak.
+                        return new CachedCodeInfoRepository(precompileProvider, originalCodeInfoRepository, preBlockCaches?.PrecompileCache);
+                    })
                     ;
             }
         });
@@ -94,7 +97,7 @@ public class MainProcessingContext : IMainProcessingContext, BlockProcessor.Bloc
     public IBranchProcessor BranchProcessor => _components.BranchProcessor;
     public IBlockProcessor BlockProcessor => _components.BlockProcessor;
     public ITransactionProcessor TransactionProcessor => _components.TransactionProcessor;
-    public GenesisLoader GenesisLoader => _components.GenesisLoader;
+    public IGenesisLoader GenesisLoader => _components.GenesisLoader;
     public event EventHandler<TxProcessedEventArgs>? TransactionProcessed;
     public void OnTransactionProcessed(TxProcessedEventArgs txProcessedEventArgs)
     {
@@ -107,6 +110,6 @@ public class MainProcessingContext : IMainProcessingContext, BlockProcessor.Bloc
         IBlockProcessor BlockProcessor,
         IBlockchainProcessor BlockchainProcessor,
         IWorldState WorldState,
-        GenesisLoader GenesisLoader
+        IGenesisLoader GenesisLoader
     );
 }
