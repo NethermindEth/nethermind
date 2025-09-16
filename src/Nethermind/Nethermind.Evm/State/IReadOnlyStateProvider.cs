@@ -19,4 +19,7 @@ public interface IReadOnlyStateProvider : IAccountStateProvider
     bool AccountExists(Address address);
 
     bool IsDeadAccount(Address address);
+
+    bool IsDelegatedCode(Address address) => Eip7702Constants.IsDelegatedCode(GetCode(address));
+    bool IsDelegatedCode(in ValueHash256 codeHash) => Eip7702Constants.IsDelegatedCode(GetCode(codeHash));
 }
