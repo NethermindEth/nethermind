@@ -112,7 +112,7 @@ public class XdcBlockHeader : BlockHeader, IHashResolver
             return false;
         }
         ulong parentRound = extraFields.QuorumCert.ProposedBlockInfo.Round;
-        ulong epochStart = extraFields.CurrentRound - extraFields.CurrentRound % (ulong)spec.EpochLength; 
+        ulong epochStart = extraFields.CurrentRound - extraFields.CurrentRound % (ulong)spec.EpochLength;
         //ulong epochNumber = (ulong)spec.SwitchEpoch + extraFields.Round / (ulong)spec.EpochLength;
 
         return parentRound < epochStart;

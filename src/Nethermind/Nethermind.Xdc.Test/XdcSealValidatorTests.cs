@@ -129,7 +129,7 @@ internal class XdcSealValidatorTests
         ISnapshotManager snapshotManager = Substitute.For<ISnapshotManager>();
         snapshotManager
             .CalculateNextEpochMasternodes(Arg.Any<XdcBlockHeader>())
-            .Returns(masterSigners.Select(k=>k.Address).ToImmutableSortedSet());
+            .Returns(masterSigners.Select(k => k.Address).ToImmutableSortedSet());
         snapshotManager
             .GetPenalties(Arg.Any<XdcBlockHeader>())
             .Returns([]);
@@ -144,7 +144,7 @@ internal class XdcSealValidatorTests
         QuorumCert quorumForSigning = new QuorumCert(roundInfo, null, gapNumber);
         QuorumCertificateDecoder qcEncoder = new QuorumCertificateDecoder();
 
-        IEnumerable<Signature> signatures = Enumerable.Range(0, numberOfSigners).Select(i => ecdsa.Sign(keys[i], Keccak.Compute(qcEncoder.Encode(quorumForSigning, RlpBehaviors.ForSealing).Bytes))) ;
+        IEnumerable<Signature> signatures = Enumerable.Range(0, numberOfSigners).Select(i => ecdsa.Sign(keys[i], Keccak.Compute(qcEncoder.Encode(quorumForSigning, RlpBehaviors.ForSealing).Bytes)));
 
         return new QuorumCert(roundInfo, signatures.ToArray(), gapNumber);
     }
