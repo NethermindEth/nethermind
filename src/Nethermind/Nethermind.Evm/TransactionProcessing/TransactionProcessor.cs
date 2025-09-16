@@ -583,11 +583,6 @@ namespace Nethermind.Evm.TransactionProcessing
                 if (spec.UseTxAccessLists)
                     accessTracker.WarmUp(tx.AccessList); // eip-2930
 
-                foreach (AddressAsKey precompile in spec.Precompiles)
-                {
-                    accessTracker.WarmUp(precompile);
-                }
-
                 if (spec.AddCoinbaseToTxAccessList)
                     accessTracker.WarmUp(VirtualMachine.BlockExecutionContext.Header.GasBeneficiary!);
 
@@ -666,9 +661,7 @@ namespace Nethermind.Evm.TransactionProcessing
 
             if (tracer.IsTracingAccess)
             {
-                tracer.ReportAccess(
-                    accessedItems.AccessedAddresses.Except(spec.Precompiles.Select(addr => addr.Value)),
-                    accessedItems.AccessedStorageCells);
+                tracer.ReportAccess(accessedItems.AccessedAddresses, accessedItems.AccessedStorageCells);
             }
 
             if (substate.ShouldRevert || substate.IsError)

@@ -366,7 +366,7 @@ internal static unsafe partial class EvmInstructions
             }
 
             // If the account is cold (and not a precompile), charge the cold access cost.
-            if (vmState.AccessTracker.WarmUp(address))
+            if (!spec.IsPrecompile(address) && vmState.AccessTracker.WarmUp(address))
             {
                 result = UpdateGas(GasCostOf.ColdAccountAccess, ref gasAvailable);
             }
