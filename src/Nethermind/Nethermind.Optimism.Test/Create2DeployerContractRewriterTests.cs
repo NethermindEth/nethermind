@@ -26,8 +26,7 @@ internal class Create2DeployerContractRewriterTests
             CanyonTimestamp = canyonHeader.Timestamp,
         });
 
-        IWorldStateManager worldStateManager = TestWorldStateFactory.CreateForTest();
-        IWorldState ws = worldStateManager.GlobalWorldState;
+        IWorldState ws = TestWorldStateFactory.CreateForTest();
         using var _ = ws.BeginScope(IWorldState.PreGenesis);
 
         Create2DeployerContractRewriter rewriter = new(specHelper, new TestSingleReleaseSpecProvider(Cancun.Instance), blockTree);

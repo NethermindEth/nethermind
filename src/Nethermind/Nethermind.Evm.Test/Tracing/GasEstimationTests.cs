@@ -625,14 +625,13 @@ namespace Nethermind.Evm.Test.Tracing
             public TestEnvironment()
             {
                 _specProvider = MainnetSpecProvider.Instance;
-                IWorldStateManager worldStateManager = TestWorldStateFactory.CreateForTest();
-                _stateProvider = worldStateManager.GlobalWorldState;
+                _stateProvider = TestWorldStateFactory.CreateForTest();
                 _closer = _stateProvider.BeginScope(IWorldState.PreGenesis);
                 _stateProvider.CreateAccount(TestItem.AddressA, 1.Ether());
                 _stateProvider.Commit(_specProvider.GenesisSpec);
                 _stateProvider.CommitTree(0);
 
-                EthereumCodeInfoRepository codeInfoRepository = new();
+                EthereumCodeInfoRepository codeInfoRepository = new(_stateProvider);
                 VirtualMachine virtualMachine = new(new TestBlockhashProvider(_specProvider), _specProvider, LimboLogs.Instance);
                 _transactionProcessor = new TransactionProcessor(_specProvider, _stateProvider, virtualMachine, codeInfoRepository, LimboLogs.Instance);
                 _ethereumEcdsa = new EthereumEcdsa(_specProvider.ChainId);
