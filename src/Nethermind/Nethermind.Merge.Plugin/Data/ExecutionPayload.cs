@@ -169,7 +169,7 @@ public class ExecutionPayload : IForkValidator, IExecutionPayloadParams, IExecut
             TotalDifficulty = totalDifficulty,
             TxRoot = TxTrie.CalculateRoot(transactions.Transactions),
             WithdrawalsRoot = BuildWithdrawalsRoot(),
-            BlockAccessListHash = new Hash256(BlockAccessList) //valuehash
+            BlockAccessListHash = new(ValueKeccak.Compute(BlockAccessList).Bytes)
         };
 
         return new BlockDecodingResult(new Block(header, transactions.Transactions, Array.Empty<BlockHeader>(), Withdrawals, BlockAccessList));
