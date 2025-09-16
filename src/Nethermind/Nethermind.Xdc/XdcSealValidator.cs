@@ -96,6 +96,8 @@ internal class XdcSealValidator(ISnapshotManager snapshotManager, ISpecProvider 
             }
             //TODO get masternodes from snapshot
             masternodes = snapshotManager.GetMasternodes(xdcHeader);
+            if (masternodes is null || masternodes.Length == 0)
+                throw new InvalidOperationException($"Snap shot returned no master nodes for header \n{xdcHeader.ToString()}");
         }
 
         ulong currentLeaderIndex = (xdcHeader.ExtraConsensusData.CurrentRound % (ulong)xdcSpec.EpochLength % (ulong)masternodes.Length);

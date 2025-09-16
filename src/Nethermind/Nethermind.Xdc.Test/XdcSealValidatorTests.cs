@@ -98,7 +98,6 @@ internal class XdcSealValidatorTests
 
     public static IEnumerable<TestCaseData> SealParameterCases()
     {
-
         (XdcBlockHeaderBuilder headerBuilder, PrivateKey[] masterSigners) = CreateValidEpochSwitchHeader();
         //Base valid control case
         yield return new TestCaseData(headerBuilder, masterSigners.Select(m => m.Address), Array.Empty<Address>(), true);
@@ -140,6 +139,21 @@ internal class XdcSealValidatorTests
         headerBuilder.WithAuthor(masterSigners[1].Address);
         yield return new TestCaseData(headerBuilder, masterSigners.Select(m => m.Address), Array.Empty<Address>(), false);
 
+        (headerBuilder, masterSigners) = CreateValidNonEpochSwitchHeader();
+        //Non-epoch switch valid control case
+        yield return new TestCaseData(headerBuilder, masterSigners.Select(m => m.Address), Array.Empty<Address>(), true);
+
+        (headerBuilder, masterSigners) = CreateValidNonEpochSwitchHeader();
+        //Validators is not empty
+        headerBuilder.WithValidators([Address.Zero]);
+        yield return new TestCaseData(headerBuilder, masterSigners.Select(m => m.Address), Array.Empty<Address>(), false);
+
+        (headerBuilder, masterSigners) = CreateValidNonEpochSwitchHeader();
+        //Penalties is not empty
+        headerBuilder.WithPenalties([Address.Zero]);
+        yield return new TestCaseData(headerBuilder, masterSigners.Select(m => m.Address), Array.Empty<Address>(), false);
+
+
         (XdcBlockHeaderBuilder headerBuilder, PrivateKey[] masterSigners) CreateValidEpochSwitchHeader()
         {
             XdcBlockHeaderBuilder headerBuilder = Build.A.XdcBlockHeader();
@@ -152,6 +166,21 @@ internal class XdcSealValidatorTests
             headerBuilder.WithExtraFieldsV2(extraFieldsV2);
             headerBuilder.WithValidators(masterSigners.Select(m => m.Address).ToArray());
             headerBuilder.WithAuthor(masterSigners[0].Address);
+            return (headerBuilder, masterSigners);
+        }
+
+        (XdcBlockHeaderBuilder headerBuilder, PrivateKey[] masterSigners) CreateValidNonEpochSwitchHeader()
+        {
+            XdcBlockHeaderBuilder headerBuilder = Build.A.XdcBlockHeader();
+
+            PrivateKeyGenerator keyBuilder = new PrivateKeyGenerator();
+            PrivateKey[] masterSigners = Enumerable.Range(0, 108).Select(i => keyBuilder.Generate()).ToArray();
+            PrivateKey[] qcSigners = masterSigners.Take(72).ToArray();
+
+            var extraFieldsV2 = new ExtraFieldsV2(901, CreateQc(new BlockRoundInfo(Hash256.Zero, 900, 1), masterSigners, 1));
+            headerBuilder.WithExtraFieldsV2(extraFieldsV2);
+            headerBuilder.WithValidators(Array.Empty<byte>());
+            headerBuilder.WithAuthor(masterSigners[1].Address);
             return (headerBuilder, masterSigners);
         }
     }
@@ -174,6 +203,9 @@ internal class XdcSealValidatorTests
         ISnapshotManager snapshotManager = Substitute.For<ISnapshotManager>();
         snapshotManager
             .CalculateNextEpochMasternodes(Arg.Any<XdcBlockHeader>())
+            .Returns(epochCandidates.ToArray());
+        snapshotManager
+            .GetMasternodes(Arg.Any<XdcBlockHeader>())
             .Returns(epochCandidates.ToArray());
         snapshotManager
             .GetPenalties(Arg.Any<XdcBlockHeader>())
