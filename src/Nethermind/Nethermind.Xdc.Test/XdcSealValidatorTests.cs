@@ -119,7 +119,7 @@ internal class XdcSealValidatorTests
 
         (headerBuilder, masterSigners) = CreateValidEpochSwitchHeader();
         //Remove one from validator list
-        headerBuilder.WithValidators(masterSigners.Select(m=>m.Address).Take(masterSigners.Length - 1).ToArray());
+        headerBuilder.WithValidators(masterSigners.Select(m => m.Address).Take(masterSigners.Length - 1).ToArray());
         yield return new TestCaseData(headerBuilder, masterSigners.Select(m => m.Address), Array.Empty<Address>(), false);
 
         (headerBuilder, masterSigners) = CreateValidEpochSwitchHeader();
@@ -128,12 +128,12 @@ internal class XdcSealValidatorTests
 
         (headerBuilder, masterSigners) = CreateValidEpochSwitchHeader();
         //Header penalties not matching epoch snapshot
-        headerBuilder.WithPenalties(new[] {Address.Zero});
+        headerBuilder.WithPenalties(new[] { Address.Zero });
         yield return new TestCaseData(headerBuilder, masterSigners.Select(m => m.Address), Array.Empty<Address>(), false);
 
         (headerBuilder, masterSigners) = CreateValidEpochSwitchHeader();
         //Header penalties not matching epoch snapshot
-        yield return new TestCaseData(headerBuilder, masterSigners.Select(m => m.Address), new[] {Address.Zero}, false);
+        yield return new TestCaseData(headerBuilder, masterSigners.Select(m => m.Address), new[] { Address.Zero }, false);
 
         (headerBuilder, masterSigners) = CreateValidEpochSwitchHeader();
         //Block sealer is not the leader in this round
@@ -162,7 +162,7 @@ internal class XdcSealValidatorTests
         XdcBlockHeader parent =
             Build.A.XdcBlockHeader()
             .TestObject;
-        headerBuilder.WithParent(parent); 
+        headerBuilder.WithParent(parent);
 
         XdcBlockHeader header = headerBuilder.TestObject;
 

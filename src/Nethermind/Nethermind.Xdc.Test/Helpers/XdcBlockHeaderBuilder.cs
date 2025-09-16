@@ -108,7 +108,7 @@ public class XdcBlockHeaderBuilder : BlockHeaderBuilder
     }
     public XdcBlockHeaderBuilder WithValidators(Address[] validators)
     {
-        XdcTestObjectInternal.Validators = validators.SelectMany(a=>a.Bytes).ToArray();
+        XdcTestObjectInternal.Validators = validators.SelectMany(a => a.Bytes).ToArray();
         return this;
     }
     public XdcBlockHeaderBuilder WithValidators(byte[] validators)
@@ -118,7 +118,7 @@ public class XdcBlockHeaderBuilder : BlockHeaderBuilder
     }
     public XdcBlockHeaderBuilder WithPenalties(Address[] penalties)
     {
-        XdcTestObjectInternal.Penalties = penalties.SelectMany(a=>a.Bytes).ToArray();
+        XdcTestObjectInternal.Penalties = penalties.SelectMany(a => a.Bytes).ToArray();
         return this;
     }
     public XdcBlockHeaderBuilder WithPenalties(byte[] penalties)

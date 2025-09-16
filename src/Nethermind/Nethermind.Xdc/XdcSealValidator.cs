@@ -97,7 +97,7 @@ internal class XdcSealValidator(ISnapshotManager snapshotManager, ISpecProvider 
             //TODO get masternodes from snapshot
             masternodes = snapshotManager.GetMasternodes(xdcHeader);
         }
-        
+
         ulong currentLeaderIndex = (xdcHeader.ExtraConsensusData.CurrentRound % (ulong)xdcSpec.EpochLength % (ulong)masternodes.Length);
         if (masternodes[(int)currentLeaderIndex] != header.Author)
         {
