@@ -422,7 +422,7 @@ public class BlockValidator(
 
         if (block.BlockAccessList is not null)
         {
-            if (!ValidateBlockLevelAccessListHashMatces(block.Header, block.Body, out Hash256 blockLevelAccessListRoot))
+            if (!ValidateBlockLevelAccessListHashMatches(block.Header, block.Body, out Hash256 blockLevelAccessListRoot))
             {
                 error = BlockErrorMessages.InvalidBlockLevelAccessListRoot(block.Header.BlockAccessListHash, blockLevelAccessListRoot);
                 if (_logger.IsWarn) _logger.Warn($"Block level access list root hash mismatch in block {block.ToString(Block.Format.FullHashAndNumber)}: expected {block.Header.BlockAccessListHash}, got {blockLevelAccessListRoot}");
@@ -463,7 +463,7 @@ public class BlockValidator(
         return (withdrawalsRoot = new WithdrawalTrie(body.Withdrawals).RootHash) == header.WithdrawalsRoot;
     }
 
-    public static bool ValidateBlockLevelAccessListHashMatces(BlockHeader header, BlockBody body, out Hash256? blockLevelAccessListRoot)
+    public static bool ValidateBlockLevelAccessListHashMatches(BlockHeader header, BlockBody body, out Hash256? blockLevelAccessListRoot)
     {
         if (body.BlockAccessList is null)
         {
@@ -471,8 +471,9 @@ public class BlockValidator(
             return header.BlockAccessListHash is null;
         }
 
-        // todo: SSZ encode here
-        return (blockLevelAccessListRoot = Hash256.Zero) == header.BlockAccessListHash;
+        blockLevelAccessListRoot = new(ValueKeccak.Compute(body.BlockAccessList).Bytes);
+
+        return blockLevelAccessListRoot == header.BlockAccessListHash;
     }
 
     private static string Invalid(Block block) =>
