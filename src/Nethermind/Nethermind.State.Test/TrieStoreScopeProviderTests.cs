@@ -69,4 +69,22 @@ public class TrieStoreScopeProviderTests
             storage.Get(1).Should().BeEquivalentTo([1, 2, 3]);
         }
     }
+
+    [Test]
+    public void Test_CanSaveToCode()
+    {
+        TestMemDb kv = new TestMemDb();
+        TestMemDb codeKv = new TestMemDb();
+        IWorldStateScopeProvider scopeProvider = new TrieStoreScopeProvider(new TestRawTrieStore(kv), codeKv, LimboLogs.Instance);
+
+        using (var scope = scopeProvider.BeginScope(null))
+        {
+            using (var writer = scope.CodeDb.BeginCodeWrite())
+            {
+                writer.Set(TestItem.KeccakA, [1, 2, 3]);
+            }
+        }
+
+        codeKv.WritesCount.Should().Be(1);
+    }
 }
