@@ -100,8 +100,9 @@ jobs:
       uses: actions/setup-dotnet@v4
     - name: ${{ matrix.project }}
       id: test
+      working-directory: src/Nethermind/${{ matrix.project }}
       run: |
-        dotnet run --project src/Nethermind/${{ matrix.project }} -c release \
+        dotnet test --project ${{ matrix.project }}.csproj -c release \
           ${{ env.COLLECT_COVERAGE == 'true' && '--coverage --coverage-output-format cobertura --coverage-settings $GITHUB_WORKSPACE/src/Nethermind/codecoverage.config' || '' }}
     - name: Save test outcome
       if: success() || failure()
