@@ -686,23 +686,25 @@ namespace Nethermind.Db.Test.LogIndex
                 [
                     Address.Zero, Address.MaxValue,
                     new(new byte[] { 1 }.PadLeft(Address.Size)), new(new byte[] { 1, 1 }.PadLeft(Address.Size)),
-                    new(new byte[] { 1 }.PadRight(Address.Size)), new(new byte[] { 1, 1 }.PadRight(Address.Size))
+                    new(new byte[] { 1 }.PadRight(Address.Size)), new(new byte[] { 1, 1 }.PadRight(Address.Size)),
+                    new(new byte[] { 0 }.PadLeft(Address.Size, 0xFF)), new(new byte[] { 0 }.PadRight(Address.Size, 0xFF)),
                 ];
 
                 Hash256[] customTopics =
                 [
-                    Hash256.Zero, new(Enumerable.Repeat((byte)0xFF, Hash256.Size).ToArray()),
-                    new(Enumerable.Repeat((byte)0xFF, Hash256.Size - 1).Concat<byte>([0]).ToArray()),
-                    new(new byte[] { 1 }.PadLeft(Hash256.Size)), new(new byte[] { 1 }.PadRight(Hash256.Size))
+                    Hash256.Zero, new(Array.Empty<byte>().PadRight(Hash256.Size, 0xFF)),
+                    new(new byte[] { 0 }.PadLeft(Hash256.Size)), new(new byte[] { 1 }.PadLeft(Hash256.Size)),
+                    new(new byte[] { 0 }.PadRight(Hash256.Size)), new(new byte[] { 1 }.PadRight(Hash256.Size)),
+                    new(new byte[] { 0 }.PadLeft(Hash256.Size, 0xFF)), new(new byte[] { 0 }.PadRight(Hash256.Size, 0xFF)),
                 ];
 
-                //var addresses = Enumerable.Repeat(0, Math.Max(10, blocksCount / 5) - customAddresses.Length)
-                var addresses = Enumerable.Repeat(0, 0)
+                var addresses = Enumerable.Repeat(0, Math.Max(10, blocksCount / 5) - customAddresses.Length)
+                //var addresses = Enumerable.Repeat(0, 0)
                     .Select(_ => new Address(random.NextBytes(Address.Size)))
                     .Concat(customAddresses)
                     .ToArray();
-                //var topics = Enumerable.Repeat(0, addresses.Length * 7 - customTopics.Length)
-                var topics = Enumerable.Repeat(0, 0)
+                var topics = Enumerable.Repeat(0, addresses.Length * 7 - customTopics.Length)
+                //var topics = Enumerable.Repeat(0, 0)
                     .Select(_ => new Hash256(random.NextBytes(Hash256.Size)))
                     .Concat(customTopics)
                     .ToArray();

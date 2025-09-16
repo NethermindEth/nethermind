@@ -90,6 +90,7 @@ namespace Nethermind.Db
             _logger = logManager.GetClassLogger<LogIndexStorage>();
             _compressor = new Compressor(this, _logger, ioParallelism ?? Defaults.IOParallelism);
             _compactor = compactionDistance.HasValue ? new Compactor(this, _logger, compactionDistance.Value) : new NoOpCompactor();
+
             _mergeOperators = new()
             {
                 { LogIndexColumns.Addresses, new(this, _compressor, topicIndex: null) },
@@ -119,12 +120,12 @@ namespace Nethermind.Db
         }
 
         // TODO: remove if unused
-        static IEnumerable<(TKey key, TValue value)> Enumerate<TKey, TValue>(IIterator<TKey, TValue> iterator)
+        private static IEnumerable<(byte[] key, byte[] value)> Enumerate(IIterator iterator)
         {
             iterator.SeekToFirst();
             while (iterator.Valid())
             {
-                yield return (iterator.Key(), iterator.Value());
+                yield return (iterator.Key().ToArray(), iterator.Value().ToArray());
                 iterator.Next();
             }
         }
@@ -276,65 +277,37 @@ namespace Nethermind.Db
         public Dictionary<byte[], int[]> GetKeysFor(int index, Hash256 topic, int from, int to, bool includeValues = false) =>
             GetKeysFor(index, topic.Bytes.ToArray(), from, to, includeValues);
 
+        [SuppressMessage("ReSharper", "AccessToDisposedClosure")]
         private Dictionary<byte[], int[]> GetKeysFor(int? topicIndex, byte[] key, int from, int to, bool includeValues = false)
         {
-            byte[] dbKeyBuffer = null;
             var result = new Dictionary<byte[], int[]>(Bytes.EqualityComparer);
+            using var buffer = new ArrayPoolList<int>(includeValues ? 128 : 0);
 
-            try
+            IterateBlockNumbersFor(topicIndex, key, from, to, iterator =>
             {
-                // Adjust parameters to avoid composing invalid lookup keys
-                if (from < 0) from = 0;
-                if (to < from) return result;
-
-                IDb db = GetDb(topicIndex);
-                using IIterator<byte[], byte[]> iterator = db.GetIterator(true);
-
-                // Find the last index for the given key, starting at or before `from`
-                dbKeyBuffer = _arrayPool.Rent(MaxDbKeyLength);
-                ReadOnlySpan<byte> dbKey = CreateDbKey(key, from, dbKeyBuffer);
-                ReadOnlySpan<byte> normalizedKey = ExtractKey(dbKey);
-                iterator.SeekForPrev(dbKey);
-
-                // Otherwise, find the first index for the given key
-                // TODO: achieve in a single seek?
-                if (!IsInKeyBounds(iterator, normalizedKey))
+                var iteratorKey = iterator.Key().ToArray();
+                var value = iterator.Value().ToArray();
+                foreach (var block in EnumerateBlockNumbers(value, from))
                 {
-                    iterator.SeekToFirst();
-                    iterator.Seek(normalizedKey);
-                }
-
-                using var buffer = new ArrayPoolList<int>(includeValues ? 128 : 0);
-                while (IsInKeyBounds(iterator, normalizedKey))
-                {
-                    var value = iterator.Value();
-                    foreach (var block in EnumerateBlockNumbers(value, from))
+                    if (block > to)
                     {
-                        if (block > to)
-                        {
-                            result.Add(iterator.Key(), buffer.AsSpan().ToArray());
-                            return result;
-                        }
-
-                        if (includeValues)
-                            buffer.Add(block);
+                        result.Add(iteratorKey, buffer.AsSpan().ToArray());
+                        return false;
                     }
 
-                    result.Add(iterator.Key(), buffer.AsSpan().ToArray());
-
-                    buffer.Clear();
-                    iterator.Next();
+                    if (includeValues)
+                        buffer.Add(block);
                 }
 
-                return result;
-            }
-            finally
-            {
-                if (dbKeyBuffer != null) _arrayPool.Return(dbKeyBuffer);
-            }
+                result.Add(iteratorKey, buffer.AsSpan().ToArray());
+                buffer.Clear();
+
+                return true;
+            });
+
+            return result;
         }
 
-        // TODO: use ArrayPoolList?
         public List<int> GetBlockNumbersFor(Address address, int from, int to)
         {
             return GetBlockNumbersFor(null, address.Bytes, from, to);
@@ -345,69 +318,80 @@ namespace Nethermind.Db
             return GetBlockNumbersFor(index, topic.Bytes.ToArray(), from, to);
         }
 
-        private List<int> GetBlockNumbersFor(int? topicIndex, byte[] keyPrefix, int from, int to)
+        private List<int> GetBlockNumbersFor(int? topicIndex, byte[] key, int from, int to)
+        {
+            // TODO: use ArrayPoolList?
+            var result = new List<int>(128);
+
+            IterateBlockNumbersFor(topicIndex, key, from, to, iterator =>
+            {
+                var value = iterator.Value().ToArray();
+                foreach (var block in EnumerateBlockNumbers(value, from))
+                {
+                    if (block > to)
+                        return false;
+
+                    result.Add(block);
+                }
+
+                return true;
+            });
+
+            return result;
+        }
+
+        private void IterateBlockNumbersFor(
+            int? topicIndex, byte[] key, int from, int to,
+            Func<IIterator, bool> callback
+        )
         {
             var timestamp = Stopwatch.GetTimestamp();
             byte[] dbKeyBuffer = null;
-
-            var result = new List<int>();
 
             try
             {
                 // Adjust parameters to avoid composing invalid lookup keys
                 if (from < 0) from = 0;
-                if (to < from) return result;
-
-                IDb? db = GetDb(topicIndex);
-                using IIterator<byte[], byte[]> iterator = db.GetIterator(true);
+                if (to < from) return;
 
                 // Find the last index for the given key, starting at or before `from`
                 dbKeyBuffer = _arrayPool.Rent(MaxDbKeyLength);
-                ReadOnlySpan<byte> dbKey = CreateDbKey(keyPrefix, from, dbKeyBuffer);
+                ReadOnlySpan<byte> dbKey = CreateDbKey(key, from, dbKeyBuffer);
                 ReadOnlySpan<byte> normalizedKey = ExtractKey(dbKey);
-                iterator.SeekForPrev(dbKey);
 
-                // Otherwise, find the first index for the given key
-                // TODO: achieve in a single seek?
-                if (!IsInKeyBounds(iterator, normalizedKey))
+                IDb? db = GetDb(topicIndex);
+                using IIterator iterator = db.GetIterator(true); // TODO: specify lower/upper bounds?
+                iterator.Seek(normalizedKey);
+
+                while (iterator.Valid() && iterator.Key().StartsWith(normalizedKey))
                 {
-                    iterator.SeekToFirst();
-                    iterator.Seek(keyPrefix);
-                }
+                    var iteratorKey = iterator.Key();
 
-                while (IsInKeyBounds(iterator, normalizedKey))
-                {
-                    var value = iterator.Value();
-
-                    foreach (var block in EnumerateBlockNumbers(value, from))
+                    if (ExtractKey(iteratorKey).SequenceEqual(normalizedKey) && GetKeyBlockNum(iteratorKey) <= to)
                     {
-                        if (block > to)
-                            return result;
-
-                        result.Add(block);
+                        if (!callback(iterator))
+                            return;
                     }
 
                     iterator.Next();
                 }
-
-                return result;
             }
             finally
             {
                 if (dbKeyBuffer != null) _arrayPool.Return(dbKeyBuffer);
 
-                if (_logger.IsTrace) _logger.Trace($"GetBlockNumbersFor({Convert.ToHexString(keyPrefix)}, {from}, {to}) in {Stopwatch.GetElapsedTime(timestamp)}");
+                if (_logger.IsTrace) _logger.Trace($"{nameof(IterateBlockNumbersFor)}({Convert.ToHexString(key)}, {from}, {to}) in {Stopwatch.GetElapsedTime(timestamp)}");
             }
         }
 
-        private static bool IsInKeyBounds(IIterator<byte[], byte[]> iterator, ReadOnlySpan<byte> key)
+        private static bool IsInKeyBounds(IIterator iterator, ReadOnlySpan<byte> key)
         {
             return iterator.Valid() && ExtractKey(iterator.Key()).SequenceEqual(key);
         }
 
-        private static IEnumerable<int> EnumerateBlockNumbers(byte[]? data, int from)
+        private static IEnumerable<int> EnumerateBlockNumbers(byte[] data, int from)
         {
-            if (data == null)
+            if (data.Length == 0)
                 yield break;
 
             var blockNums = data.Length == 0 || !IsCompressed(data, out _)
@@ -855,7 +839,7 @@ namespace Nethermind.Db
             }
         }
 
-        public static int[] ReadBlockNums(Span<byte> source)
+        public static int[] ReadBlockNums(ReadOnlySpan<byte> source)
         {
             if (source.Length % 4 != 0)
                 throw ValidationException("Invalid length for array of block numbers.");

@@ -262,7 +262,7 @@ namespace Nethermind.Core.Extensions
             return result;
         }
 
-        public static byte[] PadRight(this byte[] bytes, int length)
+        public static byte[] PadRight(this byte[] bytes, int length, byte padding = 0)
         {
             if (bytes.Length == length)
             {
@@ -276,6 +276,15 @@ namespace Nethermind.Core.Extensions
 
             byte[] result = new byte[length];
             Buffer.BlockCopy(bytes, 0, result, 0, bytes.Length);
+
+            if (padding != 0)
+            {
+                for (int i = bytes.Length; i < length; i++)
+                {
+                    result[i] = padding;
+                }
+            }
+
             return result;
         }
 
