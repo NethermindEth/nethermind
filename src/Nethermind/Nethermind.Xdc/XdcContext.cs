@@ -1,0 +1,40 @@
+// SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
+
+using Nethermind.Blockchain;
+using Nethermind.Core;
+using Nethermind.Core.Crypto;
+using Nethermind.Xdc.Types;
+using System;
+using System.Collections.Generic;
+using System.Linq;
+using System.Text;
+using System.Threading.Tasks;
+using static Org.BouncyCastle.Asn1.Cmp.Challenge;
+
+namespace Nethermind.Xdc;
+public class XdcContext
+{
+    public Address Leader { get; set; }
+    public int TimeoutCounter { get; set; } = 0;
+    public ulong CurrentRound { get; set; }
+    public ulong HighestSelfMindeRound { get; set; }
+    public ulong HighestVotedRound { get; set; }
+    public QuorumCert HighestQC { get; set; }
+    public QuorumCert LockQC { get; set; }
+    public TimeoutCert HighestTC { get; set; }
+    public Types.BlockInfo HighestCommitBlock { get; set; }
+    public SignFn SignFun { get; set; }
+
+    public bool IsInitialized { get; set; } = false;
+
+    public event Action<IBlockTree, ulong> NewRoundSetEvent;
+    internal void SetNewRound(IBlockTree chain, ulong round)
+    {
+        CurrentRound = round;
+        TimeoutCounter = 0;
+
+        // timer should be reset outside
+        NewRoundSetEvent.Invoke(chain, round);
+    }
+}
