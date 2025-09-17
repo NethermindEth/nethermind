@@ -8,8 +8,6 @@ namespace Nethermind.History;
 
 public interface IHistoryConfig : IConfig
 {
-    bool Enabled { get; }
-
     [ConfigItem(
         Description = "Pruning mode.",
         DefaultValue = "Disabled")]

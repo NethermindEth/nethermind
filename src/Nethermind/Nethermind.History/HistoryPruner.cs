@@ -82,13 +82,13 @@ public class HistoryPruner : IHistoryPruner
         _processExitSource = processExitSource;
         _backgroundTaskScheduler = backgroundTaskScheduler;
         _historyConfig = historyConfig;
-        _enabled = historyConfig.Enabled;
+        _enabled = historyConfig.Pruning != PruningModes.Disabled;
         _epochLength = (long)blocksConfig.SecondsPerSlot * 32; // must be changed if slot length changes
         _minHistoryRetentionEpochs = specProvider.GenesisSpec.MinHistoryRetentionEpochs;
 
         CheckConfig();
 
-        if (historyConfig.Enabled)
+        if (_enabled)
         {
             if (historyConfig.Pruning == PruningModes.UseAncientBarriers)
             {

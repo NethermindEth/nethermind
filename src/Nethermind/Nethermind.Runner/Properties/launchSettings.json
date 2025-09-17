@@ -35,13 +35,6 @@
         "ASPNETCORE_ENVIRONMENT": "Development"
       }
     },
-    "Hive": {
-      "commandName": "Project",
-      "commandLineArgs": "-c hive --data-dir .data --init-diagnosticmode MemDb",
-      "environmentVariables": {
-        "ASPNETCORE_ENVIRONMENT": "Development"
-      }
-    },
     "Holesky": {
       "commandName": "Project",
       "commandLineArgs": "-c holesky --data-dir .data",
