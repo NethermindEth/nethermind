@@ -2,10 +2,10 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using Nethermind.Blockchain;
-using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Crypto;
+using Nethermind.Serialization.Rlp;
 using Nethermind.Xdc.Spec;
 using Nethermind.Xdc.Types;
 using NSubstitute;
@@ -21,20 +21,45 @@ public class QuorumCertificateManagerTest
 {
     public static IEnumerable<TestCaseData> QcCases()
     {
+        PrivateKeyBuilder keyBuilder = Build.A.PrivateKey;
         XdcBlockHeaderBuilder headerBuilder = Build.A.XdcBlockHeader();
 
         //Base valid control case
-        yield return new TestCaseData(Build.A.QuorumCertificate().TestObject, headerBuilder, true);
+        yield return new TestCaseData(CreateQc(new BlockInfo(Hash256.Zero, 1, 1), 1, keyBuilder.TestObjectNTimes(20)), headerBuilder, true);
     }
 
     [TestCaseSource(nameof(QcCases))]
     public void VerifyCertificate_(QuorumCertificate quorumCert, XdcBlockHeaderBuilder xdcBlockHeaderBuilder, bool expected)
     {
-        var quorumCertificateManager = new QuorumCertificateManager(new XdcContext(),
+        var quorumCertificateManager = new QuorumCertificateManager(
+            new XdcContext(),
             Substitute.For<IBlockTree>(),
             Substitute.For<IXdcReleaseSpec>(),
             Substitute.For<IEpochSwitchManager>());
 
-        quorumCertificateManager.VerifyCertificate(quorumCert, xdcBlockHeaderBuilder.TestObject, out _);
+        Assert.That(quorumCertificateManager.VerifyCertificate(quorumCert, xdcBlockHeaderBuilder.TestObject, out _), Is.EqualTo(expected));
+    }
+
+    private static QuorumCertificate CreateQc(BlockInfo roundInfo, ulong gapNumber, PrivateKey[] keys)
+    {
+        EthereumEcdsa ecdsa = new EthereumEcdsa(0);
+        var qcEncoder = new VoteDecoder();
+
+        IEnumerable<Signature> signatures = CreateVoteSignatures(roundInfo, gapNumber, keys);
+
+        return new QuorumCertificate(roundInfo, signatures.ToArray(), gapNumber);
+    }
+
+    private static Signature[] CreateVoteSignatures(BlockInfo roundInfo, ulong gapnumber, PrivateKey[] keys)
+    {
+        EthereumEcdsa ecdsa = new EthereumEcdsa(0);
+        var encoder = new VoteDecoder();
+        IEnumerable<Signature> signatures = keys.Select(k =>
+        {
+            var stream = new KeccakRlpStream();
+            encoder.Encode(stream, new Vote(roundInfo, gapnumber), RlpBehaviors.ForSealing);
+            return ecdsa.Sign(k, stream.GetValueHash());
+        }).ToArray();
+        return signatures.ToArray();
     }
 }

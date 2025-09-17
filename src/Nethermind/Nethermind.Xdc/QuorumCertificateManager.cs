@@ -145,7 +145,7 @@ internal class QuorumCertificateManager : IQuorumCertificateManager
         CancellationTokenSource cts = new();
         Parallel.ForEach(uniqueSignatures, new ParallelOptions() { MaxDegreeOfParallelism = Environment.ProcessorCount, CancellationToken = cts.Token }, (s) =>
         {
-            Address signer = _ethereumEcdsa.RecoverVoteSigner(new Vote(qc.ProposedBlockInfo, s, qc.GapNumber));
+            Address signer = _ethereumEcdsa.RecoverVoteSigner(new Vote(qc.ProposedBlockInfo, qc.GapNumber, s));
             if (!epochSwitchInfo.Masternodes.Contains(signer))
             {
                 allValid = false;

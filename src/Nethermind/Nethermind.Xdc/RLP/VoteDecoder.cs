@@ -37,7 +37,7 @@ public class VoteDecoder : IRlpValueDecoder<Vote>, IRlpStreamDecoder<Vote>
         {
             decoderContext.Check(endPosition);
         }
-        return new Vote(proposedBlockInfo, signature, gapNumber);
+        return new Vote(proposedBlockInfo, gapNumber, signature);
     }
 
     public Vote Decode(RlpStream rlpStream, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
@@ -61,7 +61,7 @@ public class VoteDecoder : IRlpValueDecoder<Vote>, IRlpStreamDecoder<Vote>
         {
             rlpStream.Check(endPosition);
         }
-        return new Vote(proposedBlockInfo, signature, gapNumber);
+        return new Vote(proposedBlockInfo, gapNumber, signature);
     }
 
     public void Encode(RlpStream stream, Vote item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
@@ -87,7 +87,7 @@ public class VoteDecoder : IRlpValueDecoder<Vote>, IRlpStreamDecoder<Vote>
     {
         return
             (rlpBehaviors & RlpBehaviors.ForSealing) != RlpBehaviors.ForSealing ? Rlp.LengthOfSequence(Signature.Size) : 0
-            + Rlp.LengthOf(item.GapNumber) +
-            _xdcBlockInfoDecoder.GetLength(item.ProposedBlockInfo, rlpBehaviors);
+            + Rlp.LengthOf(item.GapNumber) 
+            + _xdcBlockInfoDecoder.GetLength(item.ProposedBlockInfo, rlpBehaviors);
     }
 }

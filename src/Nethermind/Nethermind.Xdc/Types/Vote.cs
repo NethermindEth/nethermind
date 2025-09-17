@@ -7,11 +7,11 @@ using System.Text.Json.Serialization;
 
 namespace Nethermind.Xdc.Types;
 
-public class Vote(BlockInfo proposedBlockInfo, Signature signature, ulong gapNumber)
+public class Vote(BlockInfo proposedBlockInfo, ulong gapNumber, Signature? signature = null)
 {
     private Address Signer { set; get; }
     public BlockInfo ProposedBlockInfo { get; set; } = proposedBlockInfo;
-    public Signature Signature { get; set; } = signature;
+    public Signature? Signature { get; set; } = signature;
     public ulong GapNumber { get; set; } = gapNumber;
 
     public override string ToString() =>
