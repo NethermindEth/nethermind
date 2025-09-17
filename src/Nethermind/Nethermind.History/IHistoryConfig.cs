@@ -21,7 +21,7 @@ public interface IHistoryConfig : IConfig
 
     // This member needs to be a method instead of a property
     // not to be picked up by the configuration handler
-    public bool Enabled() => Pruning != PruningModes.Disabled;
+    bool Enabled() => Pruning != PruningModes.Disabled;
 }
 
 public enum PruningModes
