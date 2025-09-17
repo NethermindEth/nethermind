@@ -8,6 +8,10 @@
   </PropertyGroup>
 
   <ItemGroup>
+    <PackageReference Include="System.CommandLine" />
+  </ItemGroup>
+
+  <ItemGroup>
     <ProjectReference Include="..\..\src\Nethermind\Nethermind.Core\Nethermind.Core.csproj" />
     <ProjectReference Include="..\..\src\Nethermind\Nethermind.Facade\Nethermind.Facade.csproj" />
     <ProjectReference Include="..\..\src\Nethermind\Nethermind.Db\Nethermind.Db.csproj" />
