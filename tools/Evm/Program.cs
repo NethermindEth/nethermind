@@ -8,4 +8,6 @@ RootCommand rootCmd = [];
 
 T8nCommand.Configure(ref rootCmd);
 
-return rootCmd.Parse(args).Invoke();
+CommandLineConfiguration cli = new(rootCmd);
+
+return cli.Invoke(args);
