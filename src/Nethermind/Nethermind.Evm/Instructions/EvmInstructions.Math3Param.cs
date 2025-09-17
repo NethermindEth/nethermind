@@ -7,7 +7,7 @@ using Nethermind.Core;
 namespace Nethermind.Evm;
 using Int256;
 
-public static partial class EvmInstructions
+internal static partial class EvmInstructions
 {
     public interface IOpMath3Param
     {

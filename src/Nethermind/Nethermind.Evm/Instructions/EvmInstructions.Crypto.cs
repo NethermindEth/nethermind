@@ -10,7 +10,7 @@ namespace Nethermind.Evm;
 
 using Int256;
 
-public static partial class EvmInstructions
+internal static partial class EvmInstructions
 {
     /// <summary>
     /// Computes the Keccak-256 hash of a specified memory region.

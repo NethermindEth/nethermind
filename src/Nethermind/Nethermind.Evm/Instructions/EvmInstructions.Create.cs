@@ -17,7 +17,7 @@ namespace Nethermind.Evm;
 /// <summary>
 /// Contains implementations for EVM instructions including contract creation (CREATE and CREATE2).
 /// </summary>
-public static partial class EvmInstructions
+internal static partial class EvmInstructions
 {
     private static readonly ReadOnlyMemory<byte> _emptyMemory = default;
     /// <summary>

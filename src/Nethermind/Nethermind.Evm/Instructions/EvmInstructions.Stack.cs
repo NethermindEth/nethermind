@@ -14,7 +14,7 @@ using Int256;
 using Word = Vector256<byte>;
 using static Unsafe;
 
-public static partial class EvmInstructions
+internal static partial class EvmInstructions
 {
     /// <summary>
     /// Pops a value from the EVM stack.
