@@ -12,5 +12,5 @@ namespace Nethermind.Xdc;
 public interface IQuorumCertificateManager
 {
     void CommitCertificate(QuorumCert qc);
-    void VerifyCertificate(QuorumCert qc, XdcBlockHeader parentHeader);
+    bool VerifyCertificate(QuorumCert qc, XdcBlockHeader parentHeader, out string error);
 }

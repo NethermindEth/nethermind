@@ -13,9 +13,11 @@ using Nethermind.Blockchain;
 using Nethermind.Config;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Crypto;
 using Nethermind.Logging;
 using Nethermind.Xdc;
 using Nethermind.Xdc.Errors;
+using Nethermind.Xdc.Spec;
 using Nethermind.Xdc.Types;
 using BlockInfo = Nethermind.Xdc.Types.BlockInfo;
 
@@ -25,28 +27,20 @@ internal class QuorumCertificateManager : IQuorumCertificateManager
     public QuorumCertificateManager(
         XdcContext context,
         IBlockTree chain,
-        IXdcConfig xdcConfig,
-        ISignatureManager xdcSignatureManager,
-        IEpochSwitchManager epochSwitchManager,
-        IBlockInfoValidator blockInfoProcessor,
-        IForensicsProcessor forensicsProcessor)
+        IXdcReleaseSpec xdcConfig,
+        IEpochSwitchManager epochSwitchManager)
     {
         _context = context;
-        _chain = chain;
+        _blockTree = chain;
         _config = xdcConfig;
-        _signatureManager = xdcSignatureManager;
         _epochSwitchManager = epochSwitchManager;
-        _blockInfoProcessor = blockInfoProcessor;
-        _forensicsProcessor = forensicsProcessor;
     }
 
     private XdcContext _context { get; }
-    private IBlockTree _chain { get; }
-    private IXdcConfig _config { get; }
-    private ISignatureManager _signatureManager { get; }
+    private IBlockTree _blockTree;
+    private IXdcReleaseSpec _config { get; }
     private IEpochSwitchManager _epochSwitchManager { get; }
-    private IBlockInfoValidator _blockInfoProcessor { get; }
-    private IForensicsProcessor _forensicsProcessor { get; }
+    private EthereumEcdsa _ethereumEcdsa = new EthereumEcdsa(0);
 
     public void CommitCertificate(QuorumCert qc)
     {
@@ -55,7 +49,7 @@ internal class QuorumCertificateManager : IQuorumCertificateManager
             _context.HighestQC = qc;
         }
 
-        var proposedBlockHeader = (XdcBlockHeader)_chain.FindHeader(qc.ProposedBlockInfo.Hash);
+        var proposedBlockHeader = (XdcBlockHeader)_blockTree.FindHeader(qc.ProposedBlockInfo.Hash);
         if (proposedBlockHeader is null)
         {
             throw new InvalidBlockException(proposedBlockHeader, "Proposed block header not found in chain");
@@ -63,7 +57,7 @@ internal class QuorumCertificateManager : IQuorumCertificateManager
 
         if (proposedBlockHeader.Number > 0)
         {
-            if (!Utils.TryGetExtraFields(proposedBlockHeader, _config.SwitchBlock, out QuorumCert proposedQc, out ulong round, out _))
+            if (!Utils.TryGetExtraFields(proposedBlockHeader, (long)_config.SwitchBlock, out QuorumCert proposedQc, out ulong round, out _))
             {
                 throw new ConsensusHeaderDataExtractionException(nameof(ExtraFieldsV2));
             }
@@ -73,12 +67,12 @@ internal class QuorumCertificateManager : IQuorumCertificateManager
                 _context.LockQC = proposedQc;
             }
 
-            CommitBlock(_chain, proposedBlockHeader, round, qc);
+            CommitBlock(_blockTree, proposedBlockHeader, round, qc);
         }
 
         if (qc.ProposedBlockInfo.Round >= _context.CurrentRound)
         {
-            _context.SetNewRound(_chain, qc.ProposedBlockInfo.Round);
+            _context.SetNewRound(_blockTree, qc.ProposedBlockInfo.Round);
         }
     }
 
@@ -89,9 +83,9 @@ internal class QuorumCertificateManager : IQuorumCertificateManager
             return false;
         }
 
-        XdcBlockHeader parentHeader = (XdcBlockHeader)_chain.FindHeader(proposedBlockHeader.ParentHash);
+        XdcBlockHeader parentHeader = (XdcBlockHeader)_blockTree.FindHeader(proposedBlockHeader.ParentHash);
 
-        if (!Utils.TryGetExtraFields(parentHeader, _config.SwitchBlock, out _, out ulong round, out _))
+        if (!Utils.TryGetExtraFields(parentHeader, (long)_config.SwitchBlock, out _, out ulong round, out _))
         {
             return false;
         }
@@ -101,9 +95,9 @@ internal class QuorumCertificateManager : IQuorumCertificateManager
             return false;
         }
 
-        XdcBlockHeader grandParentHeader = (XdcBlockHeader)_chain.FindHeader(parentHeader.ParentHash);
+        XdcBlockHeader grandParentHeader = (XdcBlockHeader)_blockTree.FindHeader(parentHeader.ParentHash);
 
-        if (!Utils.TryGetExtraFields(grandParentHeader, _config.SwitchBlock, out _, out round, out _))
+        if (!Utils.TryGetExtraFields(grandParentHeader, (long)_config.SwitchBlock, out _, out round, out _))
         {
             return false;
         }
@@ -121,12 +115,11 @@ internal class QuorumCertificateManager : IQuorumCertificateManager
         _context.HighestCommitBlock = new BlockInfo(grandParentHeader.Hash, round, grandParentHeader.Number);
 
         var headerQcToBeCommitted = new List<XdcBlockHeader> { parentHeader, proposedBlockHeader };
-        _ = _forensicsProcessor.ForensicsMonitoring(headerQcToBeCommitted, proposedQuorumCert);
 
         return true;
     }
 
-    public void VerifyCertificate(QuorumCert qc, XdcBlockHeader parentHeader)
+    public bool VerifyCertificate(QuorumCert qc, XdcBlockHeader parentHeader, out string error)
     {
         if (qc is null)
             throw new ArgumentNullException(nameof(qc));
@@ -148,52 +141,40 @@ internal class QuorumCertificateManager : IQuorumCertificateManager
             throw new CertificateValidationException(CertificateType.QuorumCertificate, CertificateValidationFailure.InvalidSignatures);
         }
 
-        try
+        bool allValid = true;
+        CancellationTokenSource cts = new();
+        Parallel.ForEach(uniqueSignatures, new ParallelOptions() { MaxDegreeOfParallelism = Environment.ProcessorCount, CancellationToken = cts.Token }, (s) =>
         {
-            //bool allValid = true;
-            //CancellationTokenSource cts = new();
-            //Parallel.ForEach( uniqueSignatures, new ParallelOptions() { CancellationToken = cts.Token }, (s) =>
-            //{
-            //    if (!_signatureManager.VerifyMessageSignature(voteForSignObj, signature, epochSwitchInfo.Masternodes, out Address _))
-            //    {
-            //        allValid = false;
-            //        cts.Cancel();
-            //    }
-            //});
-            // Launch one Task per signature
-            var tasks = new List<Task>();
-
-            var voteForSignObj = new VoteForSign(qc.ProposedBlockInfo, qc.GapNumber).SigHash();
-
-            foreach (var signature in uniqueSignatures)
+            Address signer = _ethereumEcdsa.RecoverVoteSigner(new Vote(qc.ProposedBlockInfo, s, qc.GapNumber));
+            if (!epochSwitchInfo.Masternodes.Contains(signer))
             {
-                tasks.Add(Task.Run(() =>
-                {
-                    if (!_signatureManager.VerifyMessageSignature(voteForSignObj, signature, epochSwitchInfo.Masternodes, out Address _))
-                    {
-                        throw new CertificateValidationException(CertificateType.QuorumCertificate, CertificateValidationFailure.InvalidSignatures);
-                    }
-                }));
-
-                Task.WaitAll(tasks);
+                allValid = false;
+                cts.Cancel();
             }
+        });
 
-            long epochSwitchNumber = epochSwitchInfo.EpochSwitchParentBlockInfo.Number;
-            long gapNumber = epochSwitchNumber - (epochSwitchNumber % (long)_config.Epoch) - (long)_config.Gap;
-
-            if (gapNumber < 0) gapNumber = 0;
-
-            if (gapNumber != qc.GapNumber)
-            {
-                throw new CertificateValidationException(CertificateType.QuorumCertificate, CertificateValidationFailure.InvalidGapNumber);
-            }
-
-            // Note : this method should be moved outside of Context
-            _blockInfoProcessor.VerifyBlockInfo(qc.ProposedBlockInfo, parentHeader);
-        }
-        catch
+        if (!allValid)
         {
-            throw;
+            error = "Invalid vote signature";
+            return false;
         }
+
+        long epochSwitchNumber = epochSwitchInfo.EpochSwitchBlockInfo.Number;
+        long gapNumber = epochSwitchNumber - (epochSwitchNumber % (long)_config.EpochLength) - (long)_config.Gap;
+
+        if (epochSwitchNumber - (epochSwitchNumber % (long)_config.EpochLength) < (long)_config.Gap)
+            gapNumber = 0;
+
+        if (gapNumber != (long)qc.GapNumber)
+        {
+            error = $"Gap number mismatch between QC Gap {qc.GapNumber} and {gapNumber}";
+            return false;
+        }
+
+        // Note : this method should be moved outside of Context
+        //TODO verify block info matches the parent header
+
+        error = null;
+        return true;
     }
 }

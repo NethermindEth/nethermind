@@ -10,17 +10,7 @@ using System.Text;
 using System.Threading.Tasks;
 
 namespace Nethermind.Xdc;
-public interface IXdcConfig : IConfig
-{
-    public IXdcSubConfig CurrentConfig { get; set; }
-    public ulong SwitchEpoch { get; set; }
-    public long SwitchBlock { get; set; }
-    public IXdcSubConfig[] Configs { get; set; }
-    public ulong[] ConfigIndex { get; set; }
-    ulong Gap { get; set; }
-    ulong Period { get; }
-    ulong Epoch { get; }
-}
+
 public interface IXdcSubConfig
 {
     public int MaxMasternodes { get; set; }
