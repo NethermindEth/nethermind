@@ -91,21 +91,21 @@ public class PluginLoader(string pluginPath, IFileSystem fileSystem, ILogger log
 
     public void OrderPlugins(IPluginConfig pluginConfig)
     {
-        var order = pluginConfig.PluginOrder
+        var pluginPriorities = pluginConfig.PluginOrder
             .Select((name, index) => (name: name.ToLower() + "plugin", index))
             .ToDictionary(x => x.name, x => x.index);
 
-        _pluginTypes.Sort((f, s) =>
+        _pluginTypes.Sort((firstPlugin, secondPlugin) =>
         {
-            bool fInOrder = order.TryGetValue(f.Name.ToLower(), out int fPos);
-            bool sInOrder = order.TryGetValue(s.Name.ToLower(), out int sPos);
+            bool firstHasPriority = pluginPriorities.TryGetValue(firstPlugin.Name.ToLower(), out int firstPriorityIndex);
+            bool secondHasPriority = pluginPriorities.TryGetValue(secondPlugin.Name.ToLower(), out int secondPriorityIndex);
 
-            return (fInOrder, sInOrder) switch
+            return (firstHasPriority, secondHasPriority) switch
             {
-                (true, true) => fPos.CompareTo(sPos),
+                (true, true) => firstPriorityIndex.CompareTo(secondPriorityIndex),
                 (true, false) => -1,
                 (false, true) => 1,
-                (false, false) => String.Compare(f.Name, s.Name, StringComparison.Ordinal)
+                (false, false) => string.Compare(firstPlugin.Name, secondPlugin.Name, StringComparison.Ordinal)
             };
         });
     }
