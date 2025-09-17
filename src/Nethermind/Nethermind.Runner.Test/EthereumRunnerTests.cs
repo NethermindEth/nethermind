@@ -161,6 +161,8 @@ public class EthereumRunnerTests
 
         if (testCase.file.Contains("none.json")) Assert.Ignore("engine port missing");
         if (testCase.file.Contains("radius_testnet-sepolia.json")) Assert.Ignore("sequencer url not specified");
+        // TODO: enable when XDC consensus plugin is implemented.
+        if (testCase.file.Contains("xdc.json")) Assert.Ignore("xdc consensus plugin not implemented yet");
 
         await SmokeTest(testCase.configProvider, testIndex, 30330);
     }
@@ -174,7 +176,8 @@ public class EthereumRunnerTests
             // some weird thing, not worth investigating
             return;
         }
-
+        // TODO: enable when XDC consensus plugin is implemented.
+        if (testCase.file.Contains("xdc.json")) Assert.Ignore("xdc consensus plugin not implemented yet");
         await SmokeTest(testCase.configProvider, testIndex, 30430, true);
     }
 
@@ -186,6 +189,8 @@ public class EthereumRunnerTests
         {
             return;
         }
+        // TODO: enable when XDC consensus plugin is implemented.
+        if (testCase.file.Contains("xdc.json")) Assert.Ignore("xdc consensus plugin not implemented yet");
 
         PluginLoader pluginLoader = new(
             "plugins",
