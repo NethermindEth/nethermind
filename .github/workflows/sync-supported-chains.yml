@@ -36,7 +36,7 @@ jobs:
       matrix: ${{ steps.set-matrix.outputs.matrix }}
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
         with:
           path: nethermind
           ref: ${{ github.event.workflow_run.head_branch || github.ref_name || 'master' }}
@@ -67,7 +67,7 @@ jobs:
 
       - name: Authenticate App
         id: gh-app
-        uses: actions/create-github-app-token@v1
+        uses: actions/create-github-app-token@v2
         with:
           app-id: ${{ vars.ADMIN_APP_ID }}
           private-key: ${{ secrets.ADMIN_APP_PRIVATE_KEY }}
@@ -102,20 +102,20 @@ jobs:
     steps:
       - name: Authenticate App
         id: gh-app
-        uses: actions/create-github-app-token@v1
+        uses: actions/create-github-app-token@v2
         with:
           app-id: ${{ vars.APP_ID }}
           private-key: ${{ secrets.APP_PRIVATE_KEY }}
           repositories: "nethermind,post-merge-smoke-tests"
 
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
         with:
           clean: true
           ref: ${{ github.event.workflow_run.head_branch || github.ref_name || 'master' }}
 
       - name: Checkout tests repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
         with:
           repository: NethermindEth/post-merge-smoke-tests
           path: tests
@@ -128,14 +128,14 @@ jobs:
           sudo apt-get install -y make build-essential jq screen lshw dmidecode fio zip
 
       - name: Setup Go environment
-        uses: actions/setup-go@v5
+        uses: actions/setup-go@v6
         with:
           go-version: 'stable'
           check-latest: true
           cache: true
 
       - name: Set up Python
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@v6
         with:
           python-version: "3.X"
 
@@ -387,7 +387,7 @@ jobs:
     steps:
       - name: Authenticate App
         id: gh-app
-        uses: actions/create-github-app-token@v1
+        uses: actions/create-github-app-token@v2
         with:
           app-id: ${{ vars.ADMIN_APP_ID }}
           private-key: ${{ secrets.ADMIN_APP_PRIVATE_KEY }}
@@ -423,7 +423,7 @@ jobs:
     steps:
       - name: Authenticate App
         id: gh-app
-        uses: actions/create-github-app-token@v1
+        uses: actions/create-github-app-token@v2
         with:
           app-id: ${{ vars.APP_ID }}
           private-key: ${{ secrets.APP_PRIVATE_KEY }}
