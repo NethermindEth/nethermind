@@ -91,41 +91,22 @@ public class PluginLoader(string pluginPath, IFileSystem fileSystem, ILogger log
 
     public void OrderPlugins(IPluginConfig pluginConfig)
     {
-        List<string> order = pluginConfig.PluginOrder.Select(s => s.ToLower() + "plugin").ToList();
+        var order = pluginConfig.PluginOrder
+            .Select((name, index) => (name: name.ToLower() + "plugin", index))
+            .ToDictionary(x => x.name, x => x.index);
+
         _pluginTypes.Sort((f, s) =>
         {
-            bool fIsConsensus = typeof(IConsensusPlugin).IsAssignableFrom(f);
-            bool sIsConsensus = typeof(IConsensusPlugin).IsAssignableFrom(s);
+            bool fInOrder = order.TryGetValue(f.Name.ToLower(), out int fPos);
+            bool sInOrder = order.TryGetValue(s.Name.ToLower(), out int sPos);
 
-            // Consensus plugins always at front
-            if (fIsConsensus && !sIsConsensus)
+            return (fInOrder, sInOrder) switch
             {
-                return -1;
-            }
-
-            if (sIsConsensus && !fIsConsensus)
-            {
-                return 1;
-            }
-
-            int fPos = order.IndexOf(f.Name.ToLower());
-            int sPos = order.IndexOf(s.Name.ToLower());
-            if (fPos == -1)
-            {
-                if (sPos == -1)
-                {
-                    return f.Name.CompareTo(s.Name);
-                }
-
-                return 1;
-            }
-
-            if (sPos == -1)
-            {
-                return -1;
-            }
-
-            return fPos.CompareTo(sPos);
+                (true, true) => fPos.CompareTo(sPos),
+                (true, false) => -1,
+                (false, true) => 1,
+                (false, false) => String.Compare(f.Name, s.Name, StringComparison.Ordinal)
+            };
         });
     }
 

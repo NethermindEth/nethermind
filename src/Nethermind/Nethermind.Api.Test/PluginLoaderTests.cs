@@ -46,8 +46,8 @@ public class PluginLoaderTests
             typeof(AuRaPlugin),
             typeof(CliquePlugin),
             typeof(EthashPlugin),
-            typeof(NethDevPlugin),
             typeof(HivePlugin),
+            typeof(NethDevPlugin),
             typeof(TestPlugin)
         };
         Assert.That(expected, Is.EqualTo(loader.PluginTypes).AsCollection);
@@ -66,17 +66,17 @@ public class PluginLoaderTests
             typeof(TestPlugin));
         loader.Load();
         IPluginConfig pluginConfig =
-            new PluginConfig { PluginOrder = ["Hive", "TestPlugin", "NethDev", "Ethash", "Clique", "Aura"] };
+            new PluginConfig { PluginOrder = ["Hive", "Test", "NethDev", "Ethash", "Clique", "Aura"] };
         loader.OrderPlugins(pluginConfig);
 
         var expected = new List<Type>
         {
+            typeof(HivePlugin),
+            typeof(TestPlugin),
             typeof(NethDevPlugin),
             typeof(EthashPlugin),
             typeof(CliquePlugin),
             typeof(AuRaPlugin),
-            typeof(HivePlugin),
-            typeof(TestPlugin)
         };
         Assert.That(expected, Is.EqualTo(loader.PluginTypes).AsCollection);
     }
@@ -119,11 +119,11 @@ public class PluginLoaderTests
 
         var expected = new List<Type>
         {
+            typeof(HivePlugin),
             typeof(NethDevPlugin),
             typeof(EthashPlugin),
             typeof(AuRaPlugin),
             typeof(CliquePlugin),
-            typeof(HivePlugin),
             typeof(TestPlugin)
         };
         Assert.That(expected, Is.EqualTo(loader.PluginTypes).AsCollection);
@@ -142,11 +142,11 @@ public class PluginLoaderTests
 
         var expected = new List<Type>
         {
-            typeof(EthashPlugin),
-            typeof(NethDevPlugin),
-            typeof(MergePlugin),
             typeof(HealthChecksPlugin),
-            typeof(HivePlugin)
+            typeof(EthashPlugin),
+            typeof(MergePlugin),
+            typeof(HivePlugin),
+            typeof(NethDevPlugin)
         };
         Assert.That(expected, Is.EqualTo(loader.PluginTypes).AsCollection);
     }
