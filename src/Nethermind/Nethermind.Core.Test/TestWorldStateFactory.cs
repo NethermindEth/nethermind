@@ -27,7 +27,7 @@ public static class TestWorldStateFactory
             Persist.EveryBlock,
             new PruningConfig(),
             LimboLogs.Instance);
-        return new WorldState(trieStore, dbProvider.CodeDb, logManager);
+        return new WorldState(new TrieStoreScopeProvider(trieStore, dbProvider.CodeDb, logManager), logManager);
     }
 
     public static (IWorldState, IStateReader) CreateForTestWithStateReader(IDbProvider? dbProvider = null, ILogManager? logManager = null)
@@ -40,7 +40,7 @@ public static class TestWorldStateFactory
             Persist.EveryBlock,
             new PruningConfig(),
             LimboLogs.Instance);
-        return (new WorldState(trieStore, dbProvider.CodeDb, logManager), new StateReader(trieStore, dbProvider.CodeDb, logManager));
+        return (new WorldState(new TrieStoreScopeProvider(trieStore, dbProvider.CodeDb, logManager), logManager), new StateReader(trieStore, dbProvider.CodeDb, logManager));
     }
 
     public static WorldStateManager CreateWorldStateManagerForTest(IDbProvider dbProvider, ILogManager logManager)
