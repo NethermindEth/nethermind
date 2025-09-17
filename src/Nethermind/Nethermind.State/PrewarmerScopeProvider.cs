@@ -14,7 +14,7 @@ public class PrewarmerScopeProvider(
     IWorldStateScopeProvider baseProvider,
     PreBlockCaches preBlockCaches,
     bool populatePreBlockCache = true
-): IWorldStateScopeProvider , IPreBlockCaches
+) : IWorldStateScopeProvider, IPreBlockCaches
 {
     public bool HasRoot(BlockHeader? baseBlock)
     {
