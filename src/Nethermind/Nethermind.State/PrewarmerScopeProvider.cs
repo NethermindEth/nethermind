@@ -10,26 +10,20 @@ using Nethermind.Int256;
 
 namespace Nethermind.State;
 
-public class PrewarmerScopeProvider(
+public sealed class PrewarmerScopeProvider(
     IWorldStateScopeProvider baseProvider,
     PreBlockCaches preBlockCaches,
     bool populatePreBlockCache = true
 ) : IWorldStateScopeProvider, IPreBlockCaches
 {
-    public bool HasRoot(BlockHeader? baseBlock)
-    {
-        return baseProvider.HasRoot(baseBlock);
-    }
+    public bool HasRoot(BlockHeader? baseBlock) => baseProvider.HasRoot(baseBlock);
 
-    public IWorldStateScopeProvider.IScope BeginScope(BlockHeader? baseBlock)
-    {
-        return new ScopeWrapper(baseProvider.BeginScope(baseBlock), preBlockCaches, populatePreBlockCache);
-    }
+    public IWorldStateScopeProvider.IScope BeginScope(BlockHeader? baseBlock) => new ScopeWrapper(baseProvider.BeginScope(baseBlock), preBlockCaches, populatePreBlockCache);
 
     public PreBlockCaches? Caches => preBlockCaches;
     public bool IsWarmWorldState => !populatePreBlockCache;
 
-    private class ScopeWrapper(
+    private sealed class ScopeWrapper(
         IWorldStateScopeProvider.IScope baseScope,
         PreBlockCaches preBlockCaches,
         bool populatePreBlockCache)
@@ -37,31 +31,23 @@ public class PrewarmerScopeProvider(
     {
         private readonly IWorldStateScopeProvider.IStateTree _wrappedStateTree = new StateTreeWrapper(baseScope.StateTree, preBlockCaches.StateCache, populatePreBlockCache);
 
-        public void Dispose()
-        {
-            baseScope.Dispose();
-        }
+        public void Dispose() => baseScope.Dispose();
 
         public IWorldStateScopeProvider.IStateTree StateTree => _wrappedStateTree;
 
         public IWorldStateScopeProvider.ICodeDb CodeDb => baseScope.CodeDb;
 
-        public IWorldStateScopeProvider.IStorageTree CreateStorageTree(Address address)
-        {
-            return new StorageTreeWrapper(
+        public IWorldStateScopeProvider.IStorageTree CreateStorageTree(Address address) =>
+            new StorageTreeWrapper(
                 baseScope.CreateStorageTree(address),
                 preBlockCaches.StorageCache,
                 address,
                 populatePreBlockCache);
-        }
 
-        public void Commit(long blockNumber)
-        {
-            baseScope.Commit(blockNumber);
-        }
+        public void Commit(long blockNumber) => baseScope.Commit(blockNumber);
     }
 
-    private class StateTreeWrapper(
+    private sealed class StateTreeWrapper(
         IWorldStateScopeProvider.IStateTree baseStateTree,
         ConcurrentDictionary<AddressAsKey, Account> preBlockCache,
         bool populatePreBlockCache
@@ -97,23 +83,14 @@ public class PrewarmerScopeProvider(
             }
         }
 
-        private Account? GetFromBaseTree(AddressAsKey address)
-        {
-            return baseStateTree.Get(address);
-        }
+        private Account? GetFromBaseTree(AddressAsKey address) => baseStateTree.Get(address);
 
-        public IWorldStateScopeProvider.IStateSetter BeginSet(int estimatedEntries)
-        {
-            return baseStateTree.BeginSet(estimatedEntries);
-        }
+        public IWorldStateScopeProvider.IStateSetter BeginSet(int estimatedEntries) => baseStateTree.BeginSet(estimatedEntries);
 
-        public void UpdateRootHash()
-        {
-            baseStateTree.UpdateRootHash();
-        }
+        public void UpdateRootHash() => baseStateTree.UpdateRootHash();
     }
 
-    private class StorageTreeWrapper(
+    private sealed class StorageTreeWrapper(
         IWorldStateScopeProvider.IStorageTree baseStorageTree,
         ConcurrentDictionary<StorageCell, byte[]> preBlockCache,
         Address address,
@@ -161,25 +138,14 @@ public class PrewarmerScopeProvider(
                 : baseStorageTree.Get(storageCell.Hash);
         }
 
-        public byte[] Get(in ValueHash256 hash)
-        {
+        public byte[] Get(in ValueHash256 hash) =>
             // Not a critical path. so we just forward for simplicity
-            return baseStorageTree.Get(in hash);
-        }
+            baseStorageTree.Get(in hash);
 
-        public void Clear()
-        {
-            baseStorageTree.Clear();
-        }
+        public void Clear() => baseStorageTree.Clear();
 
-        public IWorldStateScopeProvider.IStorageSetter BeginSet(int estimatedEntries)
-        {
-            return baseStorageTree.BeginSet(estimatedEntries);
-        }
+        public IWorldStateScopeProvider.IStorageSetter BeginSet(int estimatedEntries) => baseStorageTree.BeginSet(estimatedEntries);
 
-        public void UpdateRootHash(bool canBeParallel = true)
-        {
-            baseStorageTree.UpdateRootHash(canBeParallel);
-        }
+        public void UpdateRootHash(bool canBeParallel = true) => baseStorageTree.UpdateRootHash(canBeParallel);
     }
 }
