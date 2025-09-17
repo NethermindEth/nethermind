@@ -94,9 +94,7 @@ public class SimulateBridgeHelper(IBlocksConfig blocksConfig, ISpecProvider spec
         IWorldState stateProvider = env.WorldState;
         parent = GetParent(parent, payload, blockTree);
 
-        long globalGasCap = parent.GasLimit;
-        if (globalGasCap > gasCapLimit) globalGasCap = gasCapLimit;
-        env.SimulateRequestState.TotalGasLeft = globalGasCap;
+        env.SimulateRequestState.TotalGasLeft = long.Min(parent.GasLimit, gasCapLimit);
 
         if (payload.BlockStateCalls is not null)
         {

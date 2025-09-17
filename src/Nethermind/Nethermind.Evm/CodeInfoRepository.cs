@@ -28,13 +28,10 @@ public class CodeInfoRepository : ICodeInfoRepository
         _worldState = worldState;
     }
 
-    public bool IsPrecompile(Address address, IReleaseSpec spec) =>
-        spec.IsPrecompile(address) && _localPrecompiles.ContainsKey(address);
-
     public ICodeInfo GetCachedCodeInfo(Address codeSource, bool followDelegation, IReleaseSpec vmSpec, out Address? delegationAddress)
     {
         delegationAddress = null;
-        if (IsPrecompile(codeSource, vmSpec))
+        if (vmSpec.IsPrecompile(codeSource)) // _localPrecompiles have to have all precompiles
         {
             return _localPrecompiles[codeSource];
         }

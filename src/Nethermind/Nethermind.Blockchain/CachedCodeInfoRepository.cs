@@ -29,7 +29,7 @@ public class CachedCodeInfoRepository(
     public ICodeInfo GetCachedCodeInfo(Address codeSource, bool followDelegation, IReleaseSpec vmSpec,
         out Address? delegationAddress)
     {
-        if (IsPrecompile(codeSource, vmSpec) && _cachedPrecompile.TryGetValue(codeSource, out var cachedCodeInfo))
+        if (vmSpec.IsPrecompile(codeSource) && _cachedPrecompile.TryGetValue(codeSource, out var cachedCodeInfo))
         {
             delegationAddress = null;
             return cachedCodeInfo;
@@ -40,11 +40,6 @@ public class CachedCodeInfoRepository(
     public ValueHash256 GetExecutableCodeHash(Address address, IReleaseSpec spec)
     {
         return baseCodeInfoRepository.GetExecutableCodeHash(address, spec);
-    }
-
-    public bool IsPrecompile(Address address, IReleaseSpec spec)
-    {
-        return baseCodeInfoRepository.IsPrecompile(address, spec);
     }
 
     public void InsertCode(ReadOnlyMemory<byte> code, Address codeOwner, IReleaseSpec spec)

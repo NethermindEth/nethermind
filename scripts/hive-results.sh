@@ -2,6 +2,11 @@
 # SPDX-FileCopyrightText: 2023 Demerzel Solutions Limited
 # SPDX-License-Identifier: LGPL-3.0-only
 
+knownFailingTests=$(cat nethermind/scripts/known-failing-hive-tests.txt)
+
+shouldNotPass=()
+shouldPass=()
+
 for passed in "true" "false"
 do
   tmp=()
@@ -12,12 +17,36 @@ do
   then
     echo -e "\nPassed: ${#results[@]}\n"
 
-    for each in "${results[@]}"; do echo -e "\033[0;32m\u2714\033[0m $each"; done
+    for each in "${results[@]}";
+    do
+      echo -e "\033[0;32m\u2714\033[0m $each"
+      if grep -qx "$each" <<< "$knownFailingTests"; then
+        shouldNotPass+=("$each")
+      fi
+    done
   else
     echo -e "\nFailed: ${#results[@]}\n"
 
-    for each in "${results[@]}"; do echo -e "\033[0;31m\u2716\033[0m $each"; done
-
-    if [ ${#results[@]} -gt 0 ]; then exit 1; fi
+    for each in "${results[@]}";
+    do
+      echo -e "\033[0;31m\u2716\033[0m $each"
+      if ! grep -qx "$each" <<< "$knownFailingTests"; then
+        shouldPass+=("$each")
+      fi
+    done
   fi
 done
+
+if [ ${#shouldPass[@]} -gt 0 ]; then
+  echo -e "\nTests expected to pass but failed ${#shouldPass[@]}\n"
+  for each in "${shouldPass[@]}"; do echo -e "$each"; done
+fi
+
+if [ ${#shouldNotPass[@]} -gt 0 ]; then
+  echo -e "\nTests expected to fail but passed ${#shouldNotPass[@]}\n"
+  for each in "${shouldNotPass[@]}"; do echo -e "$each"; done
+fi
+
+if [[ ${#shouldNotPass[@]} -gt 0 || ${#shouldPass[@]} -gt 0 ]]; then
+  exit 1
+fi

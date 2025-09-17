@@ -260,7 +260,7 @@ public class StateTestTxTracer : ITxTracer, IDisposable
         throw new NotImplementedException();
     }
 
-    public void ReportAccess(IReadOnlyCollection<Address> accessedAddresses, IReadOnlyCollection<StorageCell> accessedStorageCells)
+    public void ReportAccess(IEnumerable<Address> accessedAddresses, IEnumerable<StorageCell> accessedStorageCells)
     {
         throw new NotImplementedException();
     }

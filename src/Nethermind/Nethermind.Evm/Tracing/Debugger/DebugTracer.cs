@@ -260,7 +260,7 @@ public class DebugTracer : ITxTracer, ITxTracerWrapper, IDisposable
     public void ReportExtraGasPressure(long extraGasPressure)
         => InnerTracer.ReportExtraGasPressure(extraGasPressure);
 
-    public void ReportAccess(IReadOnlyCollection<Address> accessedAddresses, IReadOnlyCollection<StorageCell> accessedStorageCells)
+    public void ReportAccess(IEnumerable<Address> accessedAddresses, IEnumerable<StorageCell> accessedStorageCells)
         => InnerTracer.ReportAccess(accessedAddresses, accessedStorageCells);
 
     public void ReportFees(UInt256 fees, UInt256 burntFees)
