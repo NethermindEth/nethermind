@@ -54,6 +54,7 @@ namespace Nethermind.Specs
                 "Paris" => Paris.Instance,
                 "Prague" => Prague.Instance,
                 "Osaka" => Osaka.Instance,
+                "Amsterdam" => Amsterdam.Instance,
                 _ => throw new NotSupportedException()
             };
         }
