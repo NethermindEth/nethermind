@@ -5,12 +5,14 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Text;
+using System.Threading;
 using System.Threading.Tasks;
 
 using Microsoft.Extensions.Logging;
 using Nethermind.Blockchain;
 using Nethermind.Config;
 using Nethermind.Core;
+using Nethermind.Core.Crypto;
 using Nethermind.Logging;
 using Nethermind.Xdc;
 using Nethermind.Xdc.Errors;
@@ -128,30 +130,42 @@ internal class QuorumCertificateManager : IQuorumCertificateManager
     {
         if (qc is null)
             throw new ArgumentNullException(nameof(qc));
+        if (parentHeader is null)
+            throw new ArgumentNullException(nameof(parentHeader));
 
         if (!_epochSwitchManager.TryGetEpochSwitchInfo(parentHeader, qc.ProposedBlockInfo.Hash, out EpochSwitchInfo epochSwitchInfo))
         {
             throw new ConsensusHeaderDataExtractionException(nameof(EpochSwitchInfo));
         }
 
-        (var signatures, var duplicates) = Utils.FilterSignatures(qc.Signatures);
+        Signature[] uniqueSignatures = qc.Signatures.Distinct().ToArray();
 
         ulong qcRound = qc.ProposedBlockInfo.Round;
         double certThreshold = _config.Configs[qcRound].CertThreshold;
 
-        if ((qcRound > 0) && (signatures is null || signatures.Count < epochSwitchInfo.Masternodes.Length * certThreshold))
+        if ((qcRound > 0) && (uniqueSignatures is null || uniqueSignatures.Length < epochSwitchInfo.Masternodes.Length * certThreshold))
         {
             throw new CertificateValidationException(CertificateType.QuorumCertificate, CertificateValidationFailure.InvalidSignatures);
         }
 
         try
         {
+            //bool allValid = true;
+            //CancellationTokenSource cts = new();
+            //Parallel.ForEach( uniqueSignatures, new ParallelOptions() { CancellationToken = cts.Token }, (s) =>
+            //{
+            //    if (!_signatureManager.VerifyMessageSignature(voteForSignObj, signature, epochSwitchInfo.Masternodes, out Address _))
+            //    {
+            //        allValid = false;
+            //        cts.Cancel();
+            //    }
+            //});
             // Launch one Task per signature
             var tasks = new List<Task>();
 
             var voteForSignObj = new VoteForSign(qc.ProposedBlockInfo, qc.GapNumber).SigHash();
 
-            foreach (var signature in signatures)
+            foreach (var signature in uniqueSignatures)
             {
                 tasks.Add(Task.Run(() =>
                 {
