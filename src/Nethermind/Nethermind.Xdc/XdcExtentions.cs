@@ -25,21 +25,12 @@ public static class XdcExtentions
         return ecdsa.Sign(privateKey, in hash);
     }
 
-    public static Hash256 CalculateHash(this XdcBlockHeader header)
-        => new Hash256(header.CalculateValueHash(RlpBehaviors.None));
-
-    public static ValueHash256 CalculateValueHash(this XdcBlockHeader header, RlpBehaviors behaviors = RlpBehaviors.None)
+    public static IXdcReleaseSpec GetXdcSpec(this ISpecProvider specProvider, XdcBlockHeader xdcBlockHeader)
     {
-        KeccakRlpStream stream = new();
-        _headerDecoder.Encode(stream, header, behaviors);
-        return stream.GetValueHash();
-    }
-
-    public static XdcReleaseSpec GetXdcSpec(this ISpecProvider specProvider, XdcBlockHeader xdcBlockHeader)
-    {
-        XdcReleaseSpec spec = specProvider.GetSpec(xdcBlockHeader) as XdcReleaseSpec;
+        IXdcReleaseSpec spec = specProvider.GetSpec(xdcBlockHeader) as IXdcReleaseSpec;
         if (spec is null)
-            throw new InvalidOperationException($"Expected {nameof(XdcReleaseSpec)}.");
+            throw new InvalidOperationException($"Expected {nameof(IXdcReleaseSpec)}.");
+        //TODO return spec based on the current round
         return spec;
     }
 }
