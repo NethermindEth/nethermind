@@ -27,10 +27,11 @@ using NUnit.Framework.Interfaces;
 namespace Nethermind.Db.Test.LogIndex
 {
     // TODO: test for different block ranges intersection
-    // TODO: run internal state verification for each test
+    // TODO: run internal state verification for all/some tests
     // TODO: test for process crash via Thread.Abort
     // TODO: test for reorg out-of-order
     // TODO: test for concurrent forward and backward sync after first block is added
+    // TODO: rename to IntegrationTests?
     [TestFixtureSource(nameof(TestCases))]
     [Parallelizable(ParallelScope.All)]
     [FixtureLifeCycle(LifeCycle.InstancePerTestCase)]
@@ -219,7 +220,7 @@ namespace Nethermind.Db.Test.LogIndex
             await SetReceiptsAsync(logIndexStorage, testData.Batches);
 
             var lastBlock = testData.Batches[^1][^1].BlockNumber;
-            BlockReceipts[] reorgBlocks = GenerateBlocks(new Random(42), lastBlock - reorgDepth + 1, reorgDepth);
+            BlockReceipts[] reorgBlocks = GenerateBlocks(new Random(4242), lastBlock - reorgDepth + 1, reorgDepth);
             foreach (BlockReceipts block in reorgBlocks)
                 await logIndexStorage.ReorgFrom(block);
 
