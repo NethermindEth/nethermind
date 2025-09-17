@@ -77,6 +77,8 @@ public class Eip7883Tests
         { Lp = 14, FusakaEnabled = true, BaseLength = 32, ExpLength = 8, ModulusLength = 40, Result = 3150L };
         yield return new Eip7883TestCase        // testing base&modulo >32bytes
         { Lp = 15, FusakaEnabled = true, BaseLength = 40, ExpLength = 8, ModulusLength = 40, Result = 3150L };
+        yield return new Eip7883TestCase
+        { Lp = 16, FusakaEnabled = true, BaseLength = 0, ExpLength = 34, ModulusLength = 33, Result = 3150L };
 
         // eip disabled test cases
         yield return new Eip7883TestCase
@@ -109,6 +111,8 @@ public class Eip7883Tests
         { Lp = 114, FusakaEnabled = false, BaseLength = 32, ExpLength = 8, ModulusLength = 40, Result = 525L };
         yield return new Eip7883TestCase
         { Lp = 115, FusakaEnabled = false, BaseLength = 40, ExpLength = 8, ModulusLength = 40, Result = 525L };
+        yield return new Eip7883TestCase
+        { Lp = 116, FusakaEnabled = false, BaseLength = 0, ExpLength = 34, ModulusLength = 33, Result = 3150L };
     }
 
     private static ReadOnlyMemory<byte> PrepareInput(UInt256 baseLength, UInt256 expLength, UInt256 modulusLength)
@@ -129,7 +133,14 @@ public class Eip7883Tests
     {
         for (int i = 0; i < length; i++)
         {
-            yield return 0xFF;
+            if (length == 34)
+            {
+                yield return 0x00;
+            }
+            else
+            {
+                yield return 0xFF;
+            }
         }
     }
 }
