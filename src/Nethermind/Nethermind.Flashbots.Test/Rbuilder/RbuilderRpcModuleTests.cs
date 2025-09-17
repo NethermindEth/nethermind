@@ -18,6 +18,7 @@ using Nethermind.Specs;
 using Nethermind.Specs.Forks;
 using Nethermind.Evm.State;
 using Nethermind.Facade.Eth.RpcTransaction;
+using Nethermind.Flashbots.Data;
 using Nethermind.JsonRpc;
 using Nethermind.State;
 using NUnit.Framework;
@@ -112,13 +113,11 @@ public class RbuilderRpcModuleTests
         var to = new Address("0xfa1c5c79cf655b3d8cf94be2b697bf0449ecc03e");
 
         IWorldState worldState = _worldStateManager.GlobalWorldState;
-        using (worldState.BeginScope(IWorldState.PreGenesis))
-        {
-            worldState.CreateAccount(caller, 0xFFFFF);
-            worldState.CreateAccount(to, 0);
-            worldState.Commit(London.Instance);
-            worldState.CommitTree(0);
-        }
+        using var _ = worldState.BeginScope(IWorldState.PreGenesis);
+        worldState.CreateAccount(caller, 100000);
+        worldState.CreateAccount(to, 0);
+        worldState.Commit(London.Instance);
+        worldState.CommitTree(0);
 
         var revmTransaction = new RevmTransaction
         {
