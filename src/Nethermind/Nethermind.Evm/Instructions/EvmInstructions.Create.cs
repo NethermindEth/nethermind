@@ -119,17 +119,17 @@ internal static partial class EvmInstructions
         // Calculate the gas cost for the creation, including fixed cost and per-word cost for init code.
         // Also include an extra cost for CREATE2 if applicable.
         long gasCost = GasCostOf.Create +
-                       (spec.IsEip3860Enabled ? GasCostOf.InitCodeWord * EvmInstructionsUtils.Div32Ceiling(in initCodeLength, out outOfGas) : 0) +
+                       (spec.IsEip3860Enabled ? GasCostOf.InitCodeWord * EvmCalculations.Div32Ceiling(in initCodeLength, out outOfGas) : 0) +
                        (typeof(TOpCreate) == typeof(OpCreate2)
-                           ? GasCostOf.Sha3Word * EvmInstructionsUtils.Div32Ceiling(in initCodeLength, out outOfGas)
+                           ? GasCostOf.Sha3Word * EvmCalculations.Div32Ceiling(in initCodeLength, out outOfGas)
                            : 0);
 
         // Check gas sufficiency: if outOfGas flag was set during gas division or if gas update fails.
-        if (outOfGas || !EvmInstructionsUtils.UpdateGas(gasCost, ref gasAvailable))
+        if (outOfGas || !EvmCalculations.UpdateGas(gasCost, ref gasAvailable))
             goto OutOfGas;
 
         // Update memory gas cost based on the required memory expansion for the init code.
-        if (!EvmInstructionsUtils.UpdateMemoryCost(vm.EvmState, ref gasAvailable, in memoryPositionOfInitCode, in initCodeLength))
+        if (!EvmCalculations.UpdateMemoryCost(vm.EvmState, ref gasAvailable, in memoryPositionOfInitCode, in initCodeLength))
             goto OutOfGas;
 
         // Verify call depth does not exceed the maximum allowed. If exceeded, return early with empty data.
@@ -170,7 +170,7 @@ internal static partial class EvmInstructions
         // Calculate gas available for the contract creation call.
         // Use the 63/64 gas rule if specified in the current EVM specification.
         long callGas = spec.Use63Over64Rule ? gasAvailable - gasAvailable / 64L : gasAvailable;
-        if (!EvmInstructionsUtils.UpdateGas(callGas, ref gasAvailable))
+        if (!EvmCalculations.UpdateGas(callGas, ref gasAvailable))
             goto OutOfGas;
 
         // Compute the contract address:
@@ -192,7 +192,7 @@ internal static partial class EvmInstructions
         {
             vm.ReturnDataBuffer = Array.Empty<byte>();
             stack.PushZero<TTracingInst>();
-            EvmInstructionsUtils.UpdateGasUp(callGas, ref gasAvailable);
+            EvmCalculations.UpdateGasUp(callGas, ref gasAvailable);
             goto None;
         }
 

@@ -10,10 +10,7 @@ using Nethermind.Int256;
 
 namespace Nethermind.Evm;
 
-
-
-
-public static class EvmInstructionsUtils
+public static class EvmCalculations
 {
     /// <summary>
     /// Charges gas for accessing an account, including potential delegation lookups.

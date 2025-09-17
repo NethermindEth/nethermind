@@ -586,9 +586,9 @@ internal static partial class EvmInstructions
         long topicsCount = TOpCount.Count;
 
         // Ensure that the memory expansion for the log data is accounted for.
-        if (!EvmInstructionsUtils.UpdateMemoryCost(vmState, ref gasAvailable, in position, length)) goto OutOfGas;
+        if (!EvmCalculations.UpdateMemoryCost(vmState, ref gasAvailable, in position, length)) goto OutOfGas;
         // Deduct gas for the log entry itself, including per-topic and per-byte data costs.
-        if (!EvmInstructionsUtils.UpdateGas(
+        if (!EvmCalculations.UpdateGas(
                 GasCostOf.Log + topicsCount * GasCostOf.LogTopic +
                 (long)length * GasCostOf.LogData, ref gasAvailable)) goto OutOfGas;
 
