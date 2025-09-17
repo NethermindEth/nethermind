@@ -18,29 +18,41 @@ namespace Nethermind.Flashbots.Data;
 /// </remarks>
 public sealed class RevmTransaction
 {
-    [JsonPropertyName("tx_type")] public byte TxType { get; init; } = 0;
+    [JsonPropertyName("tx_type")]
+    public byte TxType { get; init; } = 0;
 
-    [JsonPropertyName("caller")] public Address Caller { get; init; } = Address.Zero; // TODO: Verify default
+    [JsonPropertyName("caller")]
+    public Address Caller { get; init; } = Address.Zero; // TODO: Verify default
 
-    [JsonPropertyName("gas_limit")] public UInt64 GasLimit { get; init; } = 30_000_000;
+    [JsonPropertyName("gas_limit")]
+    public UInt64 GasLimit { get; init; } = 30_000_000;
 
-    [JsonPropertyName("gas_price")] public UInt128 GasPrice { get; init; } = 0;
+    [JsonPropertyName("gas_price")]
+    public UInt128 GasPrice { get; init; } = 0;
 
-    [JsonPropertyName("kind")] public Address Kind { get; init; } = Address.Zero; // TODO: Verify default
+    [JsonPropertyName("kind")]
+    public Address Kind { get; init; } = Address.Zero; // TODO: Verify default
 
-    [JsonPropertyName("value")] public UInt256 Value { get; init; } = 0;
+    [JsonPropertyName("value")]
+    public UInt256 Value { get; init; } = 0;
 
-    [JsonPropertyName("data")] public byte[] Data { get; init; } = [];
+    [JsonPropertyName("data")]
+    public byte[] Data { get; init; } = [];
 
-    [JsonPropertyName("nonce")] public UInt64 Nonce { get; init; } = 0;
+    [JsonPropertyName("nonce")]
+    public UInt64 Nonce { get; init; } = 0;
 
-    [JsonPropertyName("chan_id")] public UInt64 ChainId { get; init; } = 1; // Mainnet chain ID is 1
+    [JsonPropertyName("chan_id")]
+    public UInt64 ChainId { get; init; } = 1; // Mainnet chain ID is 1
 
-    [JsonPropertyName("access_list")] public AccessListForRpc AccessList { get; init; } = AccessListForRpc.Empty;
+    [JsonPropertyName("access_list")]
+    public AccessListForRpc AccessList { get; init; } = AccessListForRpc.Empty;
 
-    [JsonPropertyName("gas_priority_fee")] public UInt128? GasPriorityFee { get; init; } = null;
+    [JsonPropertyName("gas_priority_fee")]
+    public UInt128? GasPriorityFee { get; init; } = null;
 
-    [JsonPropertyName("blob_hashes")] public byte[][]? BlobHashes { get; init; } = [];
+    [JsonPropertyName("blob_hashes")]
+    public byte[][]? BlobHashes { get; init; } = [];
 
     [JsonPropertyName("max_fee_per_blob_gas")]
     public UInt128 MaxFeePerBlobGas { get; init; } = 0;
@@ -77,13 +89,13 @@ public sealed class RevmTransaction
 public sealed class BundleState
 {
     [JsonPropertyName("state")]
-    public IReadOnlyDictionary<Address, BundleAccount> State { get; init; } = new Dictionary<Address, BundleAccount>();
+    public IReadOnlyDictionary<Address, BundleAccount> State { get; init; } = [];
 
     [JsonPropertyName("contracts")]
-    public IReadOnlyDictionary<byte[], object> Contracts { get; init; } =
-        new Dictionary<byte[], object>(); // TODO: Adjust types
+    public IReadOnlyDictionary<byte[], object> Contracts { get; init; } = []; // TODO: Adjust types
 
-    [JsonPropertyName("reverts")] public IReadOnlyList<object> Reverts { get; init; } = []; // TODO: Adjust type
+    [JsonPropertyName("reverts")]
+    public IReadOnlyList<object> Reverts { get; init; } = []; // TODO: Adjust type
 }
 
 /// <remarks>
@@ -91,14 +103,17 @@ public sealed class BundleState
 /// </remarks>
 public sealed class BundleAccount
 {
-    [JsonPropertyName("info")] public RevmStateAccountInfo? Info { get; init; } = new();
+    [JsonPropertyName("info")]
+    public RevmStateAccountInfo? Info { get; init; } = new();
 
-    [JsonPropertyName("original_info")] public RevmStateAccountInfo? OriginalInfo { get; init; } = new();
+    [JsonPropertyName("original_info")]
+    public RevmStateAccountInfo? OriginalInfo { get; init; } = new();
 
     [JsonPropertyName("storage")]
-    public IReadOnlyDictionary<UInt256, StorageSlot> Storage { get; init; } = new Dictionary<UInt256, StorageSlot>();
+    public IReadOnlyDictionary<UInt256, StorageSlot> Storage { get; init; } = [];
 
-    [JsonPropertyName("account_status")] public DatabaseAccountStatus DatabaseAccountStatus { get; init; }
+    [JsonPropertyName("account_status")]
+    public DatabaseAccountStatus DatabaseAccountStatus { get; init; }
 
     public AccountChange ToAccountChange()
     {
@@ -123,13 +138,17 @@ public sealed class BundleAccount
 /// </remarks>
 public sealed class RevmStateAccountInfo
 {
-    [JsonPropertyName("balance")] public UInt256 Balance { get; init; } = UInt256.Zero;
+    [JsonPropertyName("balance")]
+    public UInt256 Balance { get; init; } = UInt256.Zero;
 
-    [JsonPropertyName("nonce")] public UInt64 Nonce { get; init; } = 0;
+    [JsonPropertyName("nonce")]
+    public UInt64 Nonce { get; init; } = 0;
 
-    [JsonPropertyName("code_hash")] public Hash256 CodeHash { get; init; } = Hash256.Zero;
+    [JsonPropertyName("code_hash")]
+    public Hash256 CodeHash { get; init; } = Hash256.Zero;
 
-    [JsonPropertyName("code")] public byte[]? Code { get; init; } = null;
+    [JsonPropertyName("code")]
+    public byte[]? Code { get; init; } = null;
 }
 
 /// <remarks>
@@ -155,7 +174,8 @@ public sealed class StorageSlot
     [JsonPropertyName("previous_or_original_value")]
     public UInt256 PreviousOrOriginalValue { get; init; } = UInt256.Zero;
 
-    [JsonPropertyName("present_value")] public UInt256 PresentValue { get; init; } = UInt256.Zero;
+    [JsonPropertyName("present_value")]
+    public UInt256 PresentValue { get; init; } = UInt256.Zero;
 }
 
 /// <remarks>
@@ -164,6 +184,7 @@ public sealed class StorageSlot
 public sealed class RevmExecutionResultAndState
 {
     public required RevmExecutionResult Result { get; init; }
+
     public required IReadOnlyDictionary<Address, RevmStateAccount> State { get; init; }
 }
 
@@ -173,7 +194,9 @@ public sealed class RevmExecutionResultAndState
 public sealed class RevmStateAccount
 {
     public RevmStateAccountInfo Info { get; init; } = new();
+
     public IReadOnlyDictionary<UInt256, RevmStorageSlot> Storage { get; init; } = [];
+
     public byte Status { get; init; } = RevmStateAccountStatus.Loaded;
 }
 
@@ -182,9 +205,14 @@ public sealed class RevmStateAccount
 /// </remarks>
 public sealed class RevmStorageSlot
 {
-    [JsonPropertyName("original_value")] public UInt256 OriginalValue { get; init; }
-    [JsonPropertyName("present_value")] public UInt256 PresentValue { get; init; }
-    [JsonPropertyName("is_cold")] public bool IsCold { get; init; }
+    [JsonPropertyName("original_value")]
+    public UInt256 OriginalValue { get; init; }
+
+    [JsonPropertyName("present_value")]
+    public UInt256 PresentValue { get; init; }
+
+    [JsonPropertyName("is_cold")]
+    public bool IsCold { get; init; }
 }
 
 /// <remarks>
@@ -206,16 +234,24 @@ public static class RevmStateAccountStatus
 public sealed class RevmExecutionResult
 {
     public RevmExecutionResultSuccess? Success { get; init; } = null;
+
     public RevmExecutionResultRevert? Revert { get; init; } = null;
+
     public RevmExecutionResultHalt? Halt { get; init; } = null;
 }
 
 public sealed class RevmExecutionResultSuccess
 {
     public required ResultSuccessReason Reason { get; init; }
-    [JsonPropertyName("gas_used")] public required UInt64 GasUsed { get; init; }
-    [JsonPropertyName("gas_refunded")] public required UInt64 GasRefunded { get; init; }
+
+    [JsonPropertyName("gas_used")]
+    public required UInt64 GasUsed { get; init; }
+
+    [JsonPropertyName("gas_refunded")]
+    public required UInt64 GasRefunded { get; init; }
+
     public required IReadOnlyList<RevmLog> Logs { get; init; }
+
     public required ResultSuccessOutput Output { get; init; }
 
     /// <remarks>
@@ -235,19 +271,23 @@ public sealed class RevmExecutionResultSuccess
     public class ResultSuccessOutput
     {
         public byte[]? Call { get; init; } = null;
+
         public (byte[], Address?)? Create { get; init; } = null;
     }
 }
 
 public sealed class RevmExecutionResultRevert
 {
-    [JsonPropertyName("gas_used")] public UInt64 GasUsed { get; init; }
+    [JsonPropertyName("gas_used")]
+    public UInt64 GasUsed { get; init; }
+
     public byte[] Output { get; init; } = [];
 }
 
 public sealed class RevmExecutionResultHalt
 {
-    [JsonPropertyName("gas_used")] public required UInt64 GasUsed { get; init; }
+    [JsonPropertyName("gas_used")]
+    public required UInt64 GasUsed { get; init; }
 
     /// <remarks>
     /// See: https://github.com/bluealloy/revm/blob/0ca6564f02004976f533cacf8821fed09d801e0a/crates/context/interface/src/result.rs#L573
@@ -261,6 +301,7 @@ public sealed class RevmExecutionResultHalt
 public sealed class RevmLog
 {
     public Address Address { get; init; } = Address.Zero;
+
     public RevmLogData Data { get; init; } = new();
 }
 
@@ -270,5 +311,6 @@ public sealed class RevmLog
 public class RevmLogData
 {
     public IReadOnlyList<Hash256> Topics { get; init; } = [];
+
     public byte[] Data { get; init; } = [];
 }
