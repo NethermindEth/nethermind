@@ -27,7 +27,7 @@ using NUnit.Framework;
 namespace Nethermind.Blockchain.Test.Find;
 
 // TODO: tests with different LogIndexStorage states
-public partial class LogFinderTests
+public class LogFinderTests
 {
     private IBlockTree _blockTree = null!;
     private BlockTree _rawBlockTree = null!;
@@ -36,7 +36,7 @@ public partial class LogFinderTests
     private IBloomStorage _bloomStorage = null!;
     private IReceiptsRecovery _receiptsRecovery = null!;
     private Block _headTestBlock = null!;
-    private ILogIndexStorage _logIndexStorage = null!;
+    private ILogIndexStorage? _logIndexStorage = null;
 
     [SetUp]
     public void SetUp()
@@ -45,10 +45,9 @@ public partial class LogFinderTests
     }
 
     [TearDown]
-    public async Task TearDown()
+    public void TearDown()
     {
         _bloomStorage?.Dispose();
-        await _logIndexStorage.DisposeAsync();
     }
 
     private void SetUp(bool allowReceiptIterator)
@@ -63,7 +62,6 @@ public partial class LogFinderTests
         _blockTree = _rawBlockTree;
         _bloomStorage = new BloomStorage(new BloomConfig(), new MemDb(), new InMemoryDictionaryFileStoreFactory());
         _receiptsRecovery = Substitute.For<IReceiptsRecovery>();
-        _logIndexStorage = Substitute.For<ILogIndexStorage>();
         _logFinder = new LogFinder(_blockTree, _receiptStorage, _receiptStorage, _bloomStorage, LimboLogs.Instance, _receiptsRecovery, _logIndexStorage);
     }
 

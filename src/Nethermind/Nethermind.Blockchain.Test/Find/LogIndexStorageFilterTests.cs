@@ -6,6 +6,7 @@ using System.Collections;
 using System.Collections.Generic;
 using System.Linq;
 using System.Threading;
+using System.Threading.Tasks;
 using Nethermind.Blockchain.Filters;
 using Nethermind.Blockchain.Test.Builders;
 using Nethermind.Core;
@@ -18,12 +19,26 @@ using NUnit.Framework;
 
 namespace Nethermind.Blockchain.Test.Find;
 
-public partial class LogFinderTests
+public class LogIndexStorageFilterTests
 {
     private record Ranges(Dictionary<Address, List<int>> Address, Dictionary<Hash256, List<int>>[] Topic)
     {
         public List<int> this[Address address] => Address[address];
         public List<int> this[int topicIndex, Hash256 hash] => Topic[topicIndex][hash];
+    }
+
+    private ILogIndexStorage _logIndexStorage = null!;
+
+    [SetUp]
+    public void SetUp()
+    {
+        _logIndexStorage = Substitute.For<ILogIndexStorage>();
+    }
+
+    [TearDown]
+    public async Task TearDownAsync()
+    {
+        await _logIndexStorage.DisposeAsync();
     }
 
     public static IEnumerable LogIndexTestsData
@@ -189,7 +204,7 @@ public partial class LogFinderTests
     }
 
     [TestCaseSource(nameof(LogIndexTestsData))]
-    public void selects_correct_numbers_from_log_index(string name, LogFilter filter, List<int> expected)
+    public void Filter_Test(string name, LogFilter filter, List<int> expected)
     {
         Assert.That(expected, Is.Not.Empty, "Unreliable test: no block numbers are selected.");
         Assert.That(expected, Has.Count.LessThan(LogIndexTo - LogIndexFrom + 1), "Unreliable test: all block numbers are selected.");
@@ -221,11 +236,13 @@ public partial class LogFinderTests
             .Range(0, LogIndexStorage.MaxTopics)
             .Select(_ => new Dictionary<Hash256, List<int>>()).ToArray();
 
-        foreach (Dictionary<Hash256, List<int>> t in topicRanges)
-        foreach (Hash256 topic in new[] { TestItem.KeccakA, TestItem.KeccakB, TestItem.KeccakC, TestItem.KeccakD, TestItem.KeccakE })
+        foreach (Dictionary<Hash256, List<int>> ranges in topicRanges)
         {
-            var range = Enumerable.Range((int)LogIndexFrom, (int)(LogIndexTo + 1)).Where(_ => random.NextDouble() < 0.2).ToList();
-            t.Add(topic, range);
+            foreach (Hash256 topic in new[] { TestItem.KeccakA, TestItem.KeccakB, TestItem.KeccakC, TestItem.KeccakD, TestItem.KeccakE })
+            {
+                var range = Enumerable.Range((int)LogIndexFrom, (int)(LogIndexTo + 1)).Where(_ => random.NextDouble() < 0.2).ToList();
+                ranges.Add(topic, range);
+            }
         }
 
         return new(addressRanges, topicRanges);

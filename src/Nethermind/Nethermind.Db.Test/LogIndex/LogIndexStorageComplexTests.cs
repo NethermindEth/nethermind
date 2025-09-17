@@ -487,36 +487,38 @@ namespace Nethermind.Db.Test.LogIndex
             }
 
             foreach (var (idx, byTopic) in testData.TopicMap)
-            foreach (var (topic, nums) in byTopic)
             {
-                IEnumerable<int> expectedNums = nums;
-
-                if (excludedTopics != null && excludedTopics[idx].TryGetValue(topic, out HashSet<int> topicExcludedBlocks))
-                    expectedNums = expectedNums.Except(topicExcludedBlocks);
-
-                if (excludedBlockNums != null)
-                    expectedNums = expectedNums.Except(excludedBlockNums);
-
-                if (addedTopics != null && addedTopics[idx].TryGetValue(topic, out HashSet<int> topicAddedBlocks))
-                    expectedNums = expectedNums.Concat(topicAddedBlocks);
-
-                expectedNums = expectedNums.Order();
-
-                if (minBlock > testData.Batches[0][0].BlockNumber)
-                    expectedNums = expectedNums.SkipWhile(b => b < minBlock);
-
-                if (maxBlock < testData.Batches[^1][^1].BlockNumber)
-                    expectedNums = expectedNums.TakeWhile(b => b <= maxBlock);
-
-                expectedNums = expectedNums.ToArray();
-
-                foreach (var (from, to) in testData.Ranges)
+                foreach (var (topic, nums) in byTopic)
                 {
-                    Assert.That(
-                        logIndexStorage.GetBlockNumbersFor(idx, topic, from, to),
-                        Is.EqualTo(expectedNums.SkipWhile(i => i < from).TakeWhile(i => i <= to)),
-                        $"Topic: [{idx}] {topic}, {from} - {to}"
-                    );
+                    IEnumerable<int> expectedNums = nums;
+
+                    if (excludedTopics != null && excludedTopics[idx].TryGetValue(topic, out HashSet<int> topicExcludedBlocks))
+                        expectedNums = expectedNums.Except(topicExcludedBlocks);
+
+                    if (excludedBlockNums != null)
+                        expectedNums = expectedNums.Except(excludedBlockNums);
+
+                    if (addedTopics != null && addedTopics[idx].TryGetValue(topic, out HashSet<int> topicAddedBlocks))
+                        expectedNums = expectedNums.Concat(topicAddedBlocks);
+
+                    expectedNums = expectedNums.Order();
+
+                    if (minBlock > testData.Batches[0][0].BlockNumber)
+                        expectedNums = expectedNums.SkipWhile(b => b < minBlock);
+
+                    if (maxBlock < testData.Batches[^1][^1].BlockNumber)
+                        expectedNums = expectedNums.TakeWhile(b => b <= maxBlock);
+
+                    expectedNums = expectedNums.ToArray();
+
+                    foreach (var (from, to) in testData.Ranges)
+                    {
+                        Assert.That(
+                            logIndexStorage.GetBlockNumbersFor(idx, topic, from, to),
+                            Is.EqualTo(expectedNums.SkipWhile(i => i < from).TakeWhile(i => i <= to)),
+                            $"Topic: [{idx}] {topic}, {from} - {to}"
+                        );
+                    }
                 }
             }
         }
