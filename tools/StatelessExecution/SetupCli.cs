@@ -48,14 +48,32 @@ internal static class SetupCli
             string blockFileName = parseResult.GetValue(blockFile)!;
             string? execWitnessFileName = parseResult.GetValue(witnessFile)!;
 
+            Console.WriteLine("🚀  Starting stateless execution...\n");
+            Console.WriteLine($"📁  Block file: {blockFileName}");
+            Console.WriteLine($"🔍  Witness file: {execWitnessFileName}\n");
 
             var serializer = new EthereumJsonSerializer();
 
+            Console.WriteLine("📖  Reading input files...");
+            if (!File.Exists(execWitnessFileName))
+            {
+                Console.WriteLine($"❌  Witness file not found: {execWitnessFileName}");
+                return Task.FromResult(1);
+            }
+            if (!File.Exists(blockFileName))
+            {
+                Console.WriteLine($"❌  Block file not found: {blockFileName}");
+                return Task.FromResult(1);
+            }
+
             var witnessBytes = File.ReadAllText(execWitnessFileName);
             var blockBytes = File.ReadAllText(blockFileName);
+            Console.WriteLine("✅  Files read successfully\n");
 
+            Console.WriteLine("🔍  Deserializing witness and block data...");
             Witness witness = serializer.Deserialize<Witness>(witnessBytes);
             BlockForRpc suggestedBlockForRpc = serializer.Deserialize<BlockForRpc>(blockBytes);
+            Console.WriteLine("✅  Deserialization completed\n");
 
             BlockHeader suggestedBlockHeader = new BlockHeader(
                 suggestedBlockForRpc.ParentHash,
@@ -86,7 +104,10 @@ internal static class SetupCli
                 Hash = suggestedBlockForRpc.Hash,
             };
 
-            // suggestedBlockHeader.Hash = suggestedBlockHeader.CalculateHash();
+            Console.WriteLine("🔗  Searching for parent block in witness headers...");
+            Console.WriteLine($"    Block number: #{suggestedBlockForRpc.Number}");
+            Console.WriteLine($"    Parent hash: {suggestedBlockHeader.ParentHash}");
+            Console.WriteLine($"    Witness contains {witness.DecodedHeaders.Length} headers");
 
             BlockHeader? baseBlock = null;
             foreach (BlockHeader header in witness.DecodedHeaders)
@@ -94,16 +115,22 @@ internal static class SetupCli
                 if (header.Hash == suggestedBlockHeader.ParentHash)
                 {
                     baseBlock = header;
+                    break;
                 }
             }
 
             if (baseBlock is null)
             {
-                // Invalid witness headers
-                Console.WriteLine("\u2717 Decoding witness file failed - Parent block header not found.");
+                Console.WriteLine("❌  Decoding witness file failed - Parent block header not found.");
+                Console.WriteLine($"    Expected parent hash: {suggestedBlockHeader.ParentHash}");
                 return Task.FromResult(1);
             }
 
+            Console.WriteLine($"✅  Found parent block #{baseBlock.Number}\n");
+
+            Console.WriteLine("⚙️  Initializing block processing environment...");
+            Console.WriteLine("🔄  Processing block...");
+            Console.WriteLine($"📋  Processing {suggestedBlockForRpc.Transactions.Length} transactions...");
             var transactions = new Transaction[suggestedBlockForRpc.Transactions.Length];
             for (int j = 0; j < transactions.Length; j++)
             {
@@ -124,19 +151,32 @@ internal static class SetupCli
             {
                 (Block processed, TxReceipt[] _) = blockProcessor.ProcessOne(suggestedBlock,
                     ProcessingOptions.ReadOnlyChain, NullBlockTracer.Instance, specProvider.GetSpec(suggestedBlock.Header));
+
                 if (processed.Hash != suggestedBlock.Hash)
                 {
-                    Console.WriteLine($"\u2717 Block processing failed");
-                    Console.WriteLine($"ProcessedBlockHash:{processed.Hash} != SuggestedBlockHash{suggestedBlock.Hash}");
+                    Console.WriteLine("❌  Block processing failed - Hash mismatch");
+                    Console.WriteLine($"    Expected: {suggestedBlock.Hash}");
+                    Console.WriteLine($"    Actual:   {processed.Hash}");
                     return Task.FromResult(1);
                 }
             }
-            catch (MissingTrieNodeException)
+            catch (MissingTrieNodeException ex)
             {
-                Console.WriteLine("\u2717 Decoding witness file failed - Invalid merkle proof");
+                Console.WriteLine("❌  Decoding witness file failed - Invalid merkle proof");
+                Console.WriteLine($"    Error: {ex.Message}");
                 return Task.FromResult(1);
             }
-            Console.WriteLine("\u2713 Block processed successfully!");
+            catch (Exception ex)
+            {
+                Console.WriteLine("❌  Block processing failed with unexpected error");
+                Console.WriteLine($"    Error: {ex.Message}");
+                return Task.FromResult(1);
+            }
+
+            Console.WriteLine();
+            Console.WriteLine("🎉  Block processed successfully!");
+            Console.WriteLine($"    Block #{suggestedBlockForRpc.Number} validated");
+            Console.WriteLine($"    Hash: {suggestedBlock.Hash}");
             return Task.FromResult(0);
         });
     }
