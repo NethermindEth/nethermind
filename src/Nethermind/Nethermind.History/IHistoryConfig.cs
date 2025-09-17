@@ -18,6 +18,10 @@ public interface IHistoryConfig : IConfig
         Description = "The number of epochs to retain historical blocks and receipts when using 'Rolling' pruning mode. For mainnet this must be at least 82125.",
         DefaultValue = "82125")]
     long RetentionEpochs { get; set; }
+
+    // This member needs to be a method instead of a property
+    // not to be picked up by the configuration handler
+    public bool Enabled() => Pruning != PruningModes.Disabled;
 }
 
 public enum PruningModes
