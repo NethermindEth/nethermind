@@ -11,21 +11,7 @@ using Nethermind.Int256;
 namespace Nethermind.Evm;
 
 
-/// <summary>
-/// Enumeration for specifying the type of storage access.
-/// </summary>
-public enum StorageAccessType
-{
-    /// <summary>
-    /// Indicates a persistent storage read (SLOAD) operation.
-    /// </summary>
-    SLOAD,
 
-    /// <summary>
-    /// Indicates a persistent storage write (SSTORE) operation.
-    /// </summary>
-    SSTORE
-}
 
 public static class EvmInstructionsUtils
 {
