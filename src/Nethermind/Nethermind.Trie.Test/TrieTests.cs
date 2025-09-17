@@ -1095,8 +1095,7 @@ namespace Nethermind.Trie.Test
 
             Queue<BlockHeader> rootQueue = new();
 
-            IWorldStateManager worldStateManager = TestWorldStateFactory.CreateForTest();
-            IWorldState stateProvider = worldStateManager.GlobalWorldState;
+            IWorldState stateProvider = TestWorldStateFactory.CreateForTest();
 
             Account[] accounts = new Account[accountsCount];
             Address[] addresses = new Address[accountsCount];
