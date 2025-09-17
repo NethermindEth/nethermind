@@ -71,7 +71,9 @@ internal class Program
         ];
         rootCommand.SetAction(Run);
 
-        return await rootCommand.Parse(args).InvokeAsync();
+        CommandLineConfiguration configuration = new(rootCommand);
+
+        return await configuration.InvokeAsync(args);
     }
 
     private static async Task<int> Run(ParseResult parseResult, CancellationToken cancellationToken)

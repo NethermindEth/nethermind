@@ -14,6 +14,7 @@ using Nethermind.JsonRpc.Modules;
 using Nethermind.JsonRpc.Modules.Admin;
 using Nethermind.Logging;
 using Nethermind.State;
+using Nethermind.State.FlatCache;
 using Nethermind.Trie;
 
 namespace Nethermind.Init.Modules;
@@ -89,6 +90,10 @@ public class WorldStateModule(IInitConfig initConfig) : Module
         {
             builder.AddStep(typeof(RunVerifyTrie));
         }
+
+        builder
+            .AddSingleton<FlatCacheRepository>()
+            .AddDecorator<IWorldStateManager, FlatCacheWorldStateManager>();
     }
 
     // Just a wrapper to easily extract the output of `PruningTrieStateFactory` which do the actual initializations.
