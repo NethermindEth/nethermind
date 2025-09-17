@@ -205,7 +205,7 @@ namespace Nethermind.State
         public void CommitTree(long blockNumber)
         {
             DebugGuardInScope();
-            _stateProvider.UpdateStorageRootIfNeeded();
+            _stateProvider.UpdateStateRootIfNeeded();
             _currentScope.Commit(blockNumber);
             _persistentStorageProvider.ClearStorageMap();
         }

@@ -893,7 +893,7 @@ namespace Nethermind.State
             void Trace() => _logger.Trace("Clearing state provider caches");
         }
 
-        public void UpdateStorageRootIfNeeded()
+        public void UpdateStateRootIfNeeded()
         {
             if (_needsStateRootUpdate)
             {
