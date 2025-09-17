@@ -91,6 +91,7 @@ jobs:
           - Nethermind.Trie.Test
           - Nethermind.TxPool.Test
           - Nethermind.Wallet.Test
+          - Nethermind.Xdc.Test
     steps:
     - name: Check out repository
       uses: actions/checkout@v4
