@@ -127,9 +127,7 @@ internal class QuorumCertificateManager : IQuorumCertificateManager
     public void VerifyCertificate(QuorumCert qc, XdcBlockHeader parentHeader)
     {
         if (qc is null)
-        {
-            throw new CertificateValidationException(CertificateType.QuorumCertificate, CertificateValidationFailure.InvalidContent);
-        }
+            throw new ArgumentNullException(nameof(qc));
 
         if (!_epochSwitchManager.TryGetEpochSwitchInfo(parentHeader, qc.ProposedBlockInfo.Hash, out EpochSwitchInfo epochSwitchInfo))
         {
