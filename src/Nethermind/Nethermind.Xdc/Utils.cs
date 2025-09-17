@@ -10,6 +10,7 @@ using Nethermind.Serialization.Rlp;
 using Nethermind.Xdc;
 using Nethermind.Xdc.Errors;
 using Nethermind.Xdc.RLP;
+using Nethermind.Xdc.Spec;
 using Nethermind.Xdc.Types;
 using System;
 using System.Collections;
@@ -21,16 +22,8 @@ using System.Threading.Tasks;
 namespace Nethermind.Xdc;
 internal static class Utils
 {
-    public static ExpCountDown FromConfig(IXdcConfig hotStuffConfig)
-        => new ExpCountDown(TimeSpan.FromSeconds(hotStuffConfig.CurrentConfig.TimeoutPeriod).Nanoseconds, hotStuffConfig.CurrentConfig.ExpTimeoutConfig.Base, hotStuffConfig.CurrentConfig.ExpTimeoutConfig.MaxExponent);
-    public static Hash256 SignHash(XdcBlockHeader header)
-    {
-        XdcHeaderDecoder headerDecoder = new();
-        RlpStream rlpStream = new RlpStream(headerDecoder.GetLength(header, RlpBehaviors.None));
-        headerDecoder.Encode(rlpStream, header, RlpBehaviors.None);
-        Span<byte> bytes = rlpStream.Read(rlpStream.Length);
-        return Keccak.Compute(bytes);
-    }
+    public static ExpCountDown FromConfig(IXdcSubConfig consensusConfig)
+        => new ExpCountDown(TimeSpan.FromSeconds(consensusConfig.TimeoutPeriod).Nanoseconds, consensusConfig.TimeoutBase, consensusConfig.TimeoutMaxExponent);
 
     public static Address[] GetMasternodesFromEpochSwitchHeader(IBlockTree chain, XdcBlockHeader epochSwitchHeader)
     {
@@ -123,7 +116,7 @@ internal static class Utils
 
         return Addresses;
     }
-    internal static bool TryGetExtraFields(XdcBlockHeader header, long switchBlock, out QuorumCert quorumCert, out ulong round, out Address[] masterNodes)
+    internal static bool TryGetExtraFields(XdcBlockHeader header, long switchBlock, out QuorumCertificate quorumCert, out ulong round, out Address[] masterNodes)
     {
         if (header.Number == switchBlock)
         {

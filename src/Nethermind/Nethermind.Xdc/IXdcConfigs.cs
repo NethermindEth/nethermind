@@ -27,5 +27,6 @@ public interface IXdcSubConfig
     public int MinimumMinerBlockPerEpoch { get; set; }
     public int LimitPenaltyEpoch { get; set; }
     public int MinimumSigningTx { get; set; }
-    public ExpTimeoutConfig ExpTimeoutConfig { get; set; }
+    public int TimeoutBase { get; set; }
+    public byte TimeoutMaxExponent { get; set; }
 }

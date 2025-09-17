@@ -17,10 +17,10 @@ using System.Threading.Tasks;
 using BlockInfo = Nethermind.Xdc.Types.BlockInfo;
 
 namespace Nethermind.Xdc;
-internal class QuorumCertificateDecoder : IRlpValueDecoder<QuorumCert>, IRlpStreamDecoder<QuorumCert>
+internal class QuorumCertificateDecoder : IRlpValueDecoder<QuorumCertificate>, IRlpStreamDecoder<QuorumCertificate>
 {
     private XdcBlockInfoDecoder _blockInfoDecoder = new XdcBlockInfoDecoder();
-    public QuorumCert Decode(ref Rlp.ValueDecoderContext decoderContext, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+    public QuorumCertificate Decode(ref Rlp.ValueDecoderContext decoderContext, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
     {
         if (decoderContext.IsNextItemNull())
             return null;
@@ -43,10 +43,10 @@ internal class QuorumCertificateDecoder : IRlpValueDecoder<QuorumCert>, IRlpStre
         }
 
         ulong gap = decoderContext.DecodeULong();
-        return new QuorumCert(blockInfo, signatures, gap);
+        return new QuorumCertificate(blockInfo, signatures, gap);
     }
 
-    public QuorumCert Decode(RlpStream rlpStream, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+    public QuorumCertificate Decode(RlpStream rlpStream, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
     {
         if (rlpStream.IsNextItemNull())
             return null;
@@ -69,10 +69,10 @@ internal class QuorumCertificateDecoder : IRlpValueDecoder<QuorumCert>, IRlpStre
         }
 
         ulong gap = rlpStream.DecodeULong();
-        return new QuorumCert(blockInfo, signatures, gap);
+        return new QuorumCertificate(blockInfo, signatures, gap);
     }
 
-    public void Encode(RlpStream stream, QuorumCert item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+    public void Encode(RlpStream stream, QuorumCertificate item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
     {
         if (item is null)
         {
@@ -97,11 +97,11 @@ internal class QuorumCertificateDecoder : IRlpValueDecoder<QuorumCert>, IRlpStre
         stream.Encode(item.GapNumber);
     }
 
-    public int GetLength(QuorumCert item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+    public int GetLength(QuorumCertificate item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
     {
         return Rlp.LengthOfSequence(GetContentLength(item, rlpBehaviors));
     }
-    private int GetContentLength(QuorumCert? item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+    private int GetContentLength(QuorumCertificate? item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
     {
         if (item is null)
             return 0;
@@ -112,7 +112,7 @@ internal class QuorumCertificateDecoder : IRlpValueDecoder<QuorumCert>, IRlpStre
             + sigLength;
     }
 
-    private static int SignaturesLength(QuorumCert item)
+    private static int SignaturesLength(QuorumCertificate item)
     {
         return Rlp.LengthOfSequence(Signature.Size) * (item.Signatures != null ? item.Signatures.Length : 0);
     }

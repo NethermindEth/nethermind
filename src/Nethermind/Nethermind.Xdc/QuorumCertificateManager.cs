@@ -42,7 +42,7 @@ internal class QuorumCertificateManager : IQuorumCertificateManager
     private IEpochSwitchManager _epochSwitchManager { get; }
     private EthereumEcdsa _ethereumEcdsa = new EthereumEcdsa(0);
 
-    public void CommitCertificate(QuorumCert qc)
+    public void CommitCertificate(QuorumCertificate qc)
     {
         if (qc.ProposedBlockInfo.Round > _context.HighestQC.ProposedBlockInfo.Round)
         {
@@ -57,7 +57,7 @@ internal class QuorumCertificateManager : IQuorumCertificateManager
 
         if (proposedBlockHeader.Number > 0)
         {
-            if (!Utils.TryGetExtraFields(proposedBlockHeader, (long)_config.SwitchBlock, out QuorumCert proposedQc, out ulong round, out _))
+            if (!Utils.TryGetExtraFields(proposedBlockHeader, (long)_config.SwitchBlock, out QuorumCertificate proposedQc, out ulong round, out _))
             {
                 throw new ConsensusHeaderDataExtractionException(nameof(ExtraFieldsV2));
             }
@@ -76,7 +76,7 @@ internal class QuorumCertificateManager : IQuorumCertificateManager
         }
     }
 
-    private bool CommitBlock(IBlockTree chain, XdcBlockHeader proposedBlockHeader, ulong proposedRound, QuorumCert proposedQuorumCert)
+    private bool CommitBlock(IBlockTree chain, XdcBlockHeader proposedBlockHeader, ulong proposedRound, QuorumCertificate proposedQuorumCert)
     {
         if ((proposedBlockHeader.Number - 2) <= _config.SwitchBlock)
         {
@@ -119,7 +119,7 @@ internal class QuorumCertificateManager : IQuorumCertificateManager
         return true;
     }
 
-    public bool VerifyCertificate(QuorumCert qc, XdcBlockHeader parentHeader, out string error)
+    public bool VerifyCertificate(QuorumCertificate qc, XdcBlockHeader parentHeader, out string error)
     {
         if (qc is null)
             throw new ArgumentNullException(nameof(qc));

@@ -31,7 +31,7 @@ internal class ExtraConsensusDataDecoderTests
     [TestCase(false)]
     public void Decode_XdcExtraDataRlp_IsEquivalentAfterReencoding(bool useRlpStream)
     {
-        ExtraFieldsV2 extraFields = new ExtraFieldsV2(1, new QuorumCert(new BlockInfo(Hash256.Zero, 1, 1), [new Signature(new byte[64], 0), new Signature(new byte[64], 0), new Signature(new byte[64], 0)], 0));
+        ExtraFieldsV2 extraFields = new ExtraFieldsV2(1, new QuorumCertificate(new BlockInfo(Hash256.Zero, 1, 1), [new Signature(new byte[64], 0), new Signature(new byte[64], 0), new Signature(new byte[64], 0)], 0));
         ExtraConsensusDataDecoder decoder = new();
         var stream = new RlpStream(decoder.GetLength(extraFields));
         decoder.Encode(stream, extraFields);

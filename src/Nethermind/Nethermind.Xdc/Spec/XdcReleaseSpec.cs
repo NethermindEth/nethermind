@@ -1,17 +1,17 @@
 // SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using Nethermind.Core.Specs;
 using Nethermind.Int256;
-using Nethermind.Specs;
-using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Text;
-using System.Threading.Tasks;
 
 namespace Nethermind.Xdc.Spec;
-internal class XdcV2ReleaseSpec : ReleaseSpec, IXdcReleaseSpec
+
+public class XdcReleaseSpec(IReleaseSpec spec) : ReleaseSpecDecorator(spec), IXdcReleaseSpec
 {
+    //TODO should not work like this probably
+    public IXdcSubConfig[] Configs { get; set; }
+    public long Gap { get; }
+    public int EpochLength { get; }
     public int SwitchEpoch { get; set; }
     public UInt256 SwitchBlock { get; set; }
     public int MaxMasternodes { get; set; }          // v2 max masternodes
@@ -28,5 +28,4 @@ internal class XdcV2ReleaseSpec : ReleaseSpec, IXdcReleaseSpec
     public int MinimumMinerBlockPerEpoch { get; set; }   // Minimum block per epoch for a miner to not be penalized
     public int LimitPenaltyEpoch { get; set; }           // Epochs in a row that a penalty node needs to be penalized
     public int MinimumSigningTx { get; set; }            // Signing txs that a node needs to produce to get out of penalty, after `LimitPenaltyEpoch`
-
 }

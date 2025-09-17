@@ -20,8 +20,8 @@ public class XdcContext
     public ulong CurrentRound { get; set; }
     public ulong HighestSelfMindeRound { get; set; }
     public ulong HighestVotedRound { get; set; }
-    public QuorumCert HighestQC { get; set; }
-    public QuorumCert LockQC { get; set; }
+    public QuorumCertificate HighestQC { get; set; }
+    public QuorumCertificate LockQC { get; set; }
     public TimeoutCert HighestTC { get; set; }
     public Types.BlockInfo HighestCommitBlock { get; set; }
     public bool IsInitialized { get; set; } = false;
