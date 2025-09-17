@@ -40,6 +40,7 @@ public class XdcHeaderValidator(IBlockTree blockTree, ISealValidator sealValidat
         }
 
         //TODO verify QC
+        certificateManager?.VerifyCertificate(extraFields.QuorumCert, (XdcBlockHeader)parent);
 
         if (xdcHeader.Nonce != XdcConstants.NonceDropVoteValue && xdcHeader.Nonce != XdcConstants.NonceAuthVoteValue)
         {
