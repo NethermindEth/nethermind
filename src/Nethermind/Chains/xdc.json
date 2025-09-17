@@ -11,13 +11,56 @@
         "foundationWalletAddr": "xdc92a289fe95a85c53b8d0d113cbaef0c1ec98ac65",
         "switchEpoch": 89300,
         "switchBlock": 80370000,
-        "MaxMasternodes": 108,
-        "SwitchRound": 0,
-        "CertThreshold": 0.667,
-        "TimeoutSyncThreshold": 3,
-        "TimeoutPeriod": 30,
-        "MinePeriod": 2,
-        "ExpTimeoutConfig": 1
+        "v2Configs": [
+          {
+            "MaxMasternodes": 108,
+            "SwitchRound": 0,
+            "CertThreshold": 0.667,
+            "TimeoutSyncThreshold": 3,
+            "TimeoutPeriod": 30,
+            "MinePeriod": 2
+          },
+          {
+            "MaxMasternodes": 108,
+            "SwitchRound": 2000,
+            "CertThreshold": 0.667,
+            "TimeoutSyncThreshold": 2,
+            "TimeoutPeriod": 600,
+            "MinePeriod": 2
+          },
+          {
+            "MaxMasternodes": 108,
+            "SwitchRound": 8000,
+            "CertThreshold": 0.667,
+            "TimeoutSyncThreshold": 2,
+            "TimeoutPeriod": 60,
+            "MinePeriod": 2
+          },
+          {
+            "MaxMasternodes": 108,
+            "SwitchRound": 220000,
+            "CertThreshold": 0.667,
+            "TimeoutSyncThreshold": 2,
+            "TimeoutPeriod": 30,
+            "MinePeriod": 2
+          },
+          {
+            "MaxMasternodes":       108,
+            "SwitchRound":          460000,
+            "CertThreshold":        0.667,
+            "TimeoutSyncThreshold": 2,
+            "TimeoutPeriod":        20,
+            "MinePeriod":           2
+          },
+          {
+            "MaxMasternodes":       108,
+            "SwitchRound":          3200000,
+            "CertThreshold":        0.667,
+            "TimeoutSyncThreshold": 3,
+            "TimeoutPeriod":        10,
+            "MinePeriod":           2
+          }
+        ]
       }
     }
   },
