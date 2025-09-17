@@ -249,9 +249,9 @@ public struct EvmPooledMemory : IEvmMemory
 
         if (newSize > Size)
         {
-            long newActiveWords = EvmInstructions.Div32Ceiling(newSize, out outOfGas);
+            long newActiveWords = EvmInstructionsUtils.Div32Ceiling(newSize, out outOfGas);
             if (outOfGas) return 0;
-            long activeWords = EvmInstructions.Div32Ceiling(Size, out outOfGas);
+            long activeWords = EvmInstructionsUtils.Div32Ceiling(Size, out outOfGas);
             if (outOfGas) return 0;
 
             // TODO: guess it would be well within ranges but this needs to be checked and comment need to be added with calculations

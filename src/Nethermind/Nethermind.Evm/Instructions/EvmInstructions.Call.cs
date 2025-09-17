@@ -110,7 +110,7 @@ public static partial class EvmInstructions
         if (codeSource is null) goto StackUnderflow;
 
         // Charge gas for accessing the account's code (including delegation logic if applicable).
-        if (!ChargeAccountAccessGasWithDelegation(ref gasAvailable, vm, codeSource)) goto OutOfGas;
+        if (!EvmInstructionsUtils.ChargeAccountAccessGasWithDelegation(ref gasAvailable, vm, codeSource)) goto OutOfGas;
 
         ref readonly ExecutionEnvironment env = ref vm.EvmState.Env;
         // Determine the call value based on the call type.
@@ -170,10 +170,10 @@ public static partial class EvmInstructions
             goto StackUnderflow;
 
         // Update gas: call cost, memory expansion for input and output, and extra gas.
-        if (!UpdateGas(spec.GetCallCost(), ref gasAvailable) ||
-            !UpdateMemoryCost(vm.EvmState, ref gasAvailable, in dataOffset, dataLength) ||
-            !UpdateMemoryCost(vm.EvmState, ref gasAvailable, in outputOffset, outputLength) ||
-            !UpdateGas(gasExtra, ref gasAvailable))
+        if (!EvmInstructionsUtils.UpdateGas(spec.GetCallCost(), ref gasAvailable) ||
+            !EvmInstructionsUtils.UpdateMemoryCost(vm.EvmState, ref gasAvailable, in dataOffset, dataLength) ||
+            !EvmInstructionsUtils.UpdateMemoryCost(vm.EvmState, ref gasAvailable, in outputOffset, outputLength) ||
+            !EvmInstructionsUtils.UpdateGas(gasExtra, ref gasAvailable))
             goto OutOfGas;
 
         // Retrieve code information for the call and schedule background analysis if needed.
@@ -196,7 +196,7 @@ public static partial class EvmInstructions
         if (gasLimit >= long.MaxValue) goto OutOfGas;
 
         long gasLimitUl = (long)gasLimit;
-        if (!UpdateGas(gasLimitUl, ref gasAvailable)) goto OutOfGas;
+        if (!EvmInstructionsUtils.UpdateGas(gasLimitUl, ref gasAvailable)) goto OutOfGas;
 
         // Add call stipend if value is being transferred.
         if (!transferValue.IsZero)
@@ -229,7 +229,7 @@ public static partial class EvmInstructions
             }
 
             // Refund the remaining gas to the caller.
-            UpdateGasUp(gasLimitUl, ref gasAvailable);
+            EvmInstructionsUtils.UpdateGasUp(gasLimitUl, ref gasAvailable);
             if (TTracingInst.IsActive)
             {
                 vm.TxTracer.ReportGasUpdateForVmTrace(gasLimitUl, gasAvailable);
@@ -247,7 +247,7 @@ public static partial class EvmInstructions
         {
             vm.ReturnDataBuffer = default;
             stack.PushBytes<TTracingInst>(StatusCode.SuccessBytes.Span);
-            UpdateGasUp(gasLimitUl, ref gasAvailable);
+            EvmInstructionsUtils.UpdateGasUp(gasLimitUl, ref gasAvailable);
             return FastCall(vm, spec, in transferValue, target);
         }
 
@@ -308,8 +308,8 @@ public static partial class EvmInstructions
     {
         if (accessTracer.WarmUpLargeContract(codeAddress))
         {
-            long largeContractCost = GasCostOf.InitCodeWord * Div32Ceiling(excessContractSize, out bool outOfGas);
-            if (outOfGas || !UpdateGas(largeContractCost, ref gasAvailable)) return false;
+            long largeContractCost = GasCostOf.InitCodeWord * EvmInstructionsUtils.Div32Ceiling(excessContractSize, out bool outOfGas);
+            if (outOfGas || !EvmInstructionsUtils.UpdateGas(largeContractCost, ref gasAvailable)) return false;
         }
 
         return true;
@@ -347,7 +347,7 @@ public static partial class EvmInstructions
             goto StackUnderflow;
 
         // Update the memory cost for the region being returned.
-        if (!UpdateMemoryCost(vm.EvmState, ref gasAvailable, in position, in length))
+        if (!EvmInstructionsUtils.UpdateMemoryCost(vm.EvmState, ref gasAvailable, in position, in length))
         {
             goto OutOfGas;
         }

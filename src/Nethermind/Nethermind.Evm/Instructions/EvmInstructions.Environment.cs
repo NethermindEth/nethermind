@@ -505,7 +505,7 @@ public static partial class EvmInstructions
         if (address is null) goto StackUnderflow;
 
         // Charge gas for account access. If insufficient gas remains, abort.
-        if (!ChargeAccountAccessGas(ref gasAvailable, vm, address)) goto OutOfGas;
+        if (!EvmInstructionsUtils.ChargeAccountAccessGas(ref gasAvailable, vm, address)) goto OutOfGas;
 
         ref readonly UInt256 result = ref vm.WorldState.GetBalance(address);
         stack.PushUInt256<TTracingInst>(in result);
@@ -564,7 +564,7 @@ public static partial class EvmInstructions
         Address address = stack.PopAddress();
         if (address is null) goto StackUnderflow;
         // Check if enough gas for account access and charge accordingly.
-        if (!ChargeAccountAccessGas(ref gasAvailable, vm, address)) goto OutOfGas;
+        if (!EvmInstructionsUtils.ChargeAccountAccessGas(ref gasAvailable, vm, address)) goto OutOfGas;
 
         IWorldState state = vm.WorldState;
         // For dead accounts, the specification requires pushing zero.
@@ -609,7 +609,7 @@ public static partial class EvmInstructions
 
         Address address = stack.PopAddress();
         if (address is null) goto StackUnderflow;
-        if (!ChargeAccountAccessGas(ref gasAvailable, vm, address)) goto OutOfGas;
+        if (!EvmInstructionsUtils.ChargeAccountAccessGas(ref gasAvailable, vm, address)) goto OutOfGas;
 
         IWorldState state = vm.WorldState;
         if (state.IsDeadAccount(address))

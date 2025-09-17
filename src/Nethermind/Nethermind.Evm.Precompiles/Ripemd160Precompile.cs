@@ -32,7 +32,7 @@ public class Ripemd160Precompile : IPrecompile<Ripemd160Precompile>
     public long BaseGasCost(IReleaseSpec releaseSpec) => 600L;
 
     public long DataGasCost(ReadOnlyMemory<byte> inputData, IReleaseSpec releaseSpec) =>
-        120L * EvmInstructions.Div32Ceiling((ulong)inputData.Length);
+        120L * EvmInstructionsUtils.Div32Ceiling((ulong)inputData.Length);
 
     public (byte[], bool) Run(ReadOnlyMemory<byte> inputData, IReleaseSpec releaseSpec)
     {

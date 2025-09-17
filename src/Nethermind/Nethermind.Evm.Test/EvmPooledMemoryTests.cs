@@ -38,7 +38,7 @@ public class EvmPooledMemoryTests : EvmMemoryTestsBase
     [TestCase(int.MaxValue, int.MaxValue / 32 + 1)]
     public void Div32Ceiling(int input, int expectedResult)
     {
-        long result = EvmInstructions.Div32Ceiling((ulong)input);
+        long result = EvmInstructionsUtils.Div32Ceiling((ulong)input);
         TestContext.Out.WriteLine($"Memory cost (gas): {result}");
         Assert.That(result, Is.EqualTo(expectedResult));
     }
