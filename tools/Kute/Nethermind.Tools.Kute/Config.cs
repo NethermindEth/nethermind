@@ -17,7 +17,7 @@ public static class Config
 
     public static Option<string> HostAddress { get; } = new("--address", "-a")
     {
-        DefaultValueFactory = r => "http://localhost:8551",
+        DefaultValueFactory = _ => "http://localhost:8551",
         Description = "Address where to send JSON RPC requests",
         HelpName = "url",
         Required = true,
@@ -27,25 +27,25 @@ public static class Config
     {
         Description = "Path to file with hex-encoded secret for JWT authentication",
         HelpName = "path",
-        Required = true
+        Required = true,
     };
 
     public static Option<int> AuthTtl { get; } = new("--ttl", "-t")
     {
-        DefaultValueFactory = r => 60,
+        DefaultValueFactory = _ => 60,
         Description = "Authentication time to live (TTL), in seconds",
-        HelpName = "number"
+        HelpName = "number",
     };
 
     public static Option<bool> ShowProgress { get; } = new("--progress", "-p")
     {
         Description = "Show progress",
-        DefaultValueFactory = r => false,
+        DefaultValueFactory = _ => false,
     };
 
     public static Option<MetricsReportFormat> MetricsReportFormatter { get; } = new("--output", "-o")
     {
-        DefaultValueFactory = r => MetricsReportFormat.Pretty,
+        DefaultValueFactory = _ => MetricsReportFormat.Pretty,
         Description = "Strategy to report metrics",
         HelpName = "path",
     };
@@ -55,20 +55,20 @@ public static class Config
         Description = "A comma separated List of regexes of methods to be executed with optional limits",
         HelpName = "regexes",
         CustomParser = r => r.Tokens.Count == 1 ? r.Tokens[0].Value.Split(',') : null,
-        DefaultValueFactory = r => [],
+        DefaultValueFactory = _ => [],
     };
 
     public static Option<string> ResponsesTraceFile { get; } = new("--responses", "-r")
     {
         Description = "Path to file to store JSON-RPC responses",
-        HelpName = "path"
+        HelpName = "path",
     };
 
     public static Option<int> ConcurrentRequests { get; } = new("--concurrency", "-c")
     {
         Description = "Process at most <number> request concurrently",
         HelpName = "number",
-        DefaultValueFactory = r => 1
+        DefaultValueFactory = _ => 1,
     };
 
     public static Option<string?> PrometheusPushGateway { get; } = new("--gateway", "-g")
@@ -91,12 +91,12 @@ public static class Config
 
     public static Option<bool> UnwrapBatch { get; } = new("--unwrapBatch", "-u")
     {
-        Description = "Batch requests will be unwraped to single requests"
+        Description = "Batch requests will be unwraped to single requests",
     };
 
     public static Option<Dictionary<string, string>> Labels { get; } = new("--labels", "-l")
     {
-        DefaultValueFactory = r => new Dictionary<string, string>(),
+        DefaultValueFactory = _ => new Dictionary<string, string>(),
         CustomParser = r =>
         {
             var labels = new Dictionary<string, string>();

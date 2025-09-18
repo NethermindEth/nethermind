@@ -17,7 +17,7 @@ using System.CommandLine;
 
 namespace Nethermind.Tools.Kute;
 
-static class Program
+public static class Program
 {
     public static async Task<int> Main(string[] args)
     {
@@ -68,7 +68,7 @@ static class Program
                 TimeSpan.FromSeconds(parseResult.GetValue(Config.AuthTtl))
             )
         );
-        collection.AddSingleton<IMessageProvider<JsonRpc>>(serviceProvider =>
+        collection.AddSingleton<IMessageProvider<JsonRpc>>(_ =>
         {
             FileMessageProvider ofStrings = new FileMessageProvider(parseResult.GetValue(Config.MessagesFilePath)!);
             JsonRpcMessageProvider ofJsonRpc = new JsonRpcMessageProvider(ofStrings);
@@ -87,7 +87,7 @@ static class Program
             new ComposedJsonRpcMethodFilter(
                 [..parseResult
                     .GetValue(Config.MethodFilters)!
-                    .Select(pattern => new PatternJsonRpcMethodFilter(pattern) as IJsonRpcMethodFilter)]
+                    .Select(IJsonRpcMethodFilter (pattern) => new PatternJsonRpcMethodFilter(pattern))]
             )
         );
         collection.AddSingleton<IJsonRpcSubmitter>(provider =>
@@ -118,7 +118,7 @@ static class Program
         {
             MemoryMetricsReporter memoryReporter = new MemoryMetricsReporter();
             ConsoleTotalReporter consoleReporter = new ConsoleTotalReporter(memoryReporter, provider.GetRequiredService<IMetricsReportFormatter>());
-            IMetricsReporter progresReporter = parseResult.GetValue(Config.ShowProgress)
+            IMetricsReporter progressReporter = parseResult.GetValue(Config.ShowProgress)
                 ? new ConsoleProgressReporter()
                 : new NullMetricsReporter();
 
@@ -130,9 +130,9 @@ static class Program
                 ? new PrometheusPushGatewayMetricsReporter(prometheusGateway, labels, prometheusGatewayUser, prometheusGatewayPassword)
                 : new NullMetricsReporter();
 
-            return new ComposedMetricsReporter([memoryReporter, progresReporter, consoleReporter, prometheusReporter]);
+            return new ComposedMetricsReporter(memoryReporter, progressReporter, consoleReporter, prometheusReporter);
         });
-        collection.AddSingleton<IAsyncProcessor>(provider =>
+        collection.AddSingleton<IAsyncProcessor>(_ =>
         {
             int concurrentRequests = parseResult.GetValue(Config.ConcurrentRequests);
             if (concurrentRequests > 1)

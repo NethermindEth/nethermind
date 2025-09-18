@@ -11,7 +11,8 @@ namespace Nethermind.Tools.Kute.Metrics;
 
 public sealed class PrometheusPushGatewayMetricsReporter : IMetricsReporter
 {
-    private readonly string _endpoint;
+    private const string JobName = "kute";
+
     private readonly MetricPusher _pusher;
     private readonly MetricPushServer _server;
 
@@ -27,8 +28,7 @@ public sealed class PrometheusPushGatewayMetricsReporter : IMetricsReporter
         string endpoint,
         Dictionary<string, string> labels,
         string? user,
-        string? password
-    )
+        string? password)
     {
         var registry = new CollectorRegistry();
         var factory = new MetricFactory(registry);
@@ -38,21 +38,23 @@ public sealed class PrometheusPushGatewayMetricsReporter : IMetricsReporter
         _failedCounter = factory.CreateCounter(GetMetricName("messages_failed"), "");
         _ignoredCounter = factory.CreateCounter(GetMetricName("messages_ignored"), "");
         _responseCounter = factory.CreateCounter(GetMetricName("responses_total"), "");
-        _singleDuration = factory.CreateHistogram(GetMetricName("single_duration_seconds"), "", labelNames: new[] { "jsonrpc_id", "method" });
-        _batchDuration = factory.CreateHistogram(GetMetricName("batch_duration_seconds"), "", labelNames: new[] { "jsonrpc_id" });
+        _singleDuration = factory.CreateHistogram(GetMetricName("single_duration_seconds"), "", labelNames: ["jsonrpc_id", "method"]);
+        _batchDuration = factory.CreateHistogram(GetMetricName("batch_duration_seconds"), "", labelNames: ["jsonrpc_id"]);
 
-        _endpoint = endpoint;
         string instanceLabel = labels.TryGetValue("instance", out var instance) ? instance : Guid.NewGuid().ToString();
         labels.Remove("instance");
+
         var httpClient = new HttpClient();
         if (user is not null && password is not null)
         {
-            httpClient.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Basic", Convert.ToBase64String(Encoding.UTF8.GetBytes($"{user}:{password}")));
+            var authParameter = Convert.ToBase64String(Encoding.UTF8.GetBytes($"{user}:{password}"));
+            httpClient.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Basic", authParameter);
         }
+
         _pusher = new MetricPusher(new MetricPusherOptions
         {
             CollectorRegistry = registry,
-            Endpoint = _endpoint,
+            Endpoint = endpoint,
             Job = JobName,
             Instance = instanceLabel,
             AdditionalLabels = labels,
@@ -115,8 +117,7 @@ public sealed class PrometheusPushGatewayMetricsReporter : IMetricsReporter
         _server.Stop();
     }
 
-    public static string JobName => "kute";
-    public static string GetMetricName(string name)
+    private static string GetMetricName(string name)
     {
         var lowerName = name.ToLower();
         var sanitizedName = lowerName.Replace(" ", "_").Replace("-", "_");
