@@ -92,8 +92,8 @@ public class PluginLoader(string pluginPath, IFileSystem fileSystem, ILogger log
     public void OrderPlugins(IPluginConfig pluginConfig)
     {
         var pluginPriorities = pluginConfig.PluginOrder
-            .Select((name, index) => (name: name.ToLower() + "plugin", index))
-            .ToDictionary(x => x.name, x => x.index);
+            .Select((name, index) => (name: name + "plugin", index))
+            .ToDictionary(x => x.name, x => x.index, StringComparer.OrdinalIgnoreCase);
 
         _pluginTypes.Sort((firstPlugin, secondPlugin) =>
         {
