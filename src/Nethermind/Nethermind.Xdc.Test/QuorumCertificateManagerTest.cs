@@ -56,7 +56,8 @@ public class QuorumCertificateManagerTest
     public void VerifyCertificate_(QuorumCertificate quorumCert, XdcBlockHeaderBuilder xdcBlockHeaderBuilder, bool expected)
     {
         IEpochSwitchManager epochSwitchManager = Substitute.For<IEpochSwitchManager>();
-        epochSwitchManager.TryGetEpochSwitchInfo(Arg.Any<XdcBlockHeader>(), Arg.Any<Hash256>(), out EpochSwitchInfo epochSwitch).Returns(true);
+        epochSwitchManager.GetEpochSwitchInfo(Arg.Any<XdcBlockHeader>(), Arg.Any<Hash256>())
+            .Returns(new EpochSwitchInfo([], [], [], new BlockInfo(Hash256.Zero, 1, 1)));
         var quorumCertificateManager = new QuorumCertificateManager(
             new XdcContext(),
             Substitute.For<IBlockTree>(),
