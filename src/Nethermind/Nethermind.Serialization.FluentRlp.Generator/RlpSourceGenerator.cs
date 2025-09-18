@@ -200,7 +200,7 @@ public sealed class RlpSourceGenerator : IIncrementalGenerator
                   public static void Write(ref RlpWriter w, {{fullTypeName}} value)
                   {
                     {{(constLength > 0
-                        ? $"if (w.UNSAFE_FixedLengthWrite({constLength})) return;"
+                        ? $"if (w.UnsafeCurrentMode == RlpWriter.LengthMode) {{ w.UnsafeLengthWrite({constLength}); return; }}"
                         : "")}}
 
                     {{(representation == RlpRepresentation.Record
