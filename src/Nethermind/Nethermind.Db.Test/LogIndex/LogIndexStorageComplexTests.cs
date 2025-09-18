@@ -152,6 +152,35 @@ namespace Nethermind.Db.Test.LogIndex
             VerifyReceipts(logIndexStorage, testData);
         }
 
+        [Repeat(3)]
+        [Combinatorial]
+        public async Task Concurrent_BackwardsSet_Set_Get_Test(
+            [Values(100, int.MaxValue)] int compactionDistance
+        )
+        {
+            var logIndexStorage = CreateLogIndexStorage(compactionDistance);
+
+            var batches = testData.Batches;
+            var half = batches.Length / 2;
+
+            var forwardTask = Task.Run(async () =>
+            {
+                for (var i = half; i < batches.Length; i++)
+                    await SetReceiptsAsync(logIndexStorage, [batches[i]], isBackwardsSync: false);
+            });
+
+            var backwardTask = Task.Run(async () =>
+            {
+                for (var i = half - 1; i >= 0; i--)
+                    await SetReceiptsAsync(logIndexStorage, Reverse([batches[i]]), isBackwardsSync: true);
+            });
+
+            await forwardTask;
+            await backwardTask;
+
+            VerifyReceipts(logIndexStorage, testData);
+        }
+
         [Combinatorial]
         public async Task Set_ReorgLast_Get_Test(
             [Values(1, 5, 20)] int reorgDepth,

@@ -48,8 +48,6 @@ namespace Nethermind.Db
             public const int MaxReorgDepth = 64;
         }
 
-        private static readonly byte[] ZeroArray = [0];
-
         public const int MaxTopics = 4;
 
         private const int MaxKeyLength = Hash256.Size + 1; // Math.Max(Address.Size, Hash256.Size)
@@ -76,8 +74,15 @@ namespace Nethermind.Db
         private int?[] _topicMinBlocks;
         private int?[] _topicMaxBlocks;
 
+        private readonly Lock _firstRunLock = new();
+        private bool HasRunBefore => _addressMinBlock is not null; // TODO: check other metadata values?
+
         private readonly TaskCompletionSource _firstBlockAddedSource = new();
         public Task FirstBlockAdded => _firstBlockAddedSource.Task;
+
+        // Not thread safe
+        private bool _stopped;
+        private bool _disposed;
 
         // TODO: ensure class is singleton
         public LogIndexStorage(IDbFactory dbFactory, ILogManager logManager,
@@ -111,11 +116,8 @@ namespace Nethermind.Db
             _topicMaxBlocks = _topicsDbs.Select(static db => LoadBlockNumber(db, SpecialKey.MaxBlockNum)).ToArray();
             _topicMinBlocks = _topicsDbs.Select(static db => LoadBlockNumber(db, SpecialKey.MinBlockNum)).ToArray();
 
-            if ((_addressMinBlock ?? _addressMaxBlock) is not null ||
-                _topicMinBlocks.Any(x => x is not null) || _topicMaxBlocks.Any(x => x is not null))
-            {
+            if (HasRunBefore)
                 _firstBlockAddedSource.SetResult();
-            }
         }
 
         // TODO: remove if unused
@@ -129,21 +131,22 @@ namespace Nethermind.Db
             }
         }
 
-        // Not thread safe
-        private bool _stopped;
-        private bool _disposed;
-
         // Used for:
         // - blocking concurrent executions
         // - ensuring the current migration task is completed before stopping
-        private readonly SemaphoreSlim _setReceiptsSemaphore = new(1, 1);
+        private readonly Dictionary<bool, SemaphoreSlim> _setReceiptsSemaphores = new()
+        {
+            { false, new(1, 1) },
+            { true, new(1, 1) }
+        };
 
         public async Task StopAsync()
         {
             if (_stopped)
                 return;
 
-            await _setReceiptsSemaphore.WaitAsync();
+            await _setReceiptsSemaphores[false].WaitAsync();
+            await _setReceiptsSemaphores[true].WaitAsync();
 
             try
             {
@@ -162,7 +165,9 @@ namespace Nethermind.Db
             finally
             {
                 _stopped = true;
-                _setReceiptsSemaphore.Release();
+
+                _setReceiptsSemaphores[false].Release();
+                _setReceiptsSemaphores[true].Release();
             }
         }
 
@@ -173,7 +178,8 @@ namespace Nethermind.Db
 
             await StopAsync();
 
-            _setReceiptsSemaphore.Dispose();
+            _setReceiptsSemaphores[false].Dispose();
+            _setReceiptsSemaphores[true].Dispose();
             _columnsDb.Dispose();
             _addressDb.Dispose();
             _topicsDbs.ForEach(static db => db.Dispose());
@@ -492,10 +498,21 @@ namespace Nethermind.Db
             return Task.CompletedTask;
         }
 
+        private async ValueTask LockRunAsync(SemaphoreSlim semaphore)
+        {
+            if (!await semaphore.WaitAsync(TimeSpan.Zero, CancellationToken.None))
+                throw new InvalidOperationException($"{nameof(LogIndexStorage)} does not support concurrent invocations in the same direction.");
+        }
+
         public async Task ReorgFrom(BlockReceipts block)
         {
-            if (!await _setReceiptsSemaphore.WaitAsync(TimeSpan.Zero, CancellationToken.None))
-                throw new InvalidOperationException($"{nameof(LogIndexStorage)} does not support concurrent invocations.");
+            if (!HasRunBefore)
+                throw new InvalidOperationException("Reorg before first block is added.");
+
+            const bool isBackwardSync = false;
+
+            SemaphoreSlim semaphore = _setReceiptsSemaphores[isBackwardSync];
+            await LockRunAsync(semaphore);
 
             byte[]? keyArray = null, valueArray = null;
 
@@ -530,7 +547,7 @@ namespace Nethermind.Db
                 var blockNum = block.BlockNumber - 1;
 
                 (int min, int max) addressRange =
-                    SaveAddressBlockNumbers(addressBatch, blockNum, isBackwardSync: false, isReorg: true);
+                    SaveAddressBlockNumbers(addressBatch, blockNum, isBackwardSync, isReorg: true);
 
                 (int?[] min, int?[] max) topicRanges = (min: _topicMinBlocks.ToArray(), max: _topicMaxBlocks.ToArray());
                 for (var topicIndex = 0; topicIndex < topicBatches.Length; topicIndex++)
@@ -544,12 +561,11 @@ namespace Nethermind.Db
                 addressBatch.Dispose();
                 topicBatches.ForEach(static b => b.Dispose());
 
-                (_addressMinBlock, _addressMaxBlock) = addressRange;
-                (_topicMinBlocks, _topicMaxBlocks) = topicRanges;
+                (_addressMaxBlock, _topicMaxBlocks) = (addressRange.max, topicRanges.max);
             }
             finally
             {
-                _setReceiptsSemaphore.Release();
+                semaphore.Release();
 
                 if (keyArray is not null) _arrayPool.Return(keyArray);
                 if (valueArray is not null) _arrayPool.Return(valueArray);
@@ -558,25 +574,15 @@ namespace Nethermind.Db
 
         public async Task CompactAsync(bool flush, LogIndexUpdateStats? stats = null)
         {
-            if (!await _setReceiptsSemaphore.WaitAsync(TimeSpan.Zero, CancellationToken.None))
-                throw new InvalidOperationException($"{nameof(LogIndexStorage)} does not support concurrent invocations.");
-
-            try
+            // TODO: include time to stats
+            if (flush)
             {
-                // TODO: include time to stats
-                if (flush)
-                {
-                    _addressDb.Flush();
-                    _topicsDbs.ForEach(static db => db.Flush());
-                }
+                _addressDb.Flush();
+                _topicsDbs.ForEach(static db => db.Flush());
+            }
 
-                CompactingStats compactStats = await _compactor.ForceAsync();
-                stats?.Compacting.Combine(compactStats);
-            }
-            finally
-            {
-                _setReceiptsSemaphore.Release();
-            }
+            CompactingStats compactStats = await _compactor.ForceAsync();
+            stats?.Compacting.Combine(compactStats);
         }
 
         public async Task RecompactAsync(int minLengthToCompress = -1, LogIndexUpdateStats? stats = null)
@@ -625,8 +631,8 @@ namespace Nethermind.Db
         {
             long totalTimestamp = Stopwatch.GetTimestamp();
 
-            if (!await _setReceiptsSemaphore.WaitAsync(TimeSpan.Zero, CancellationToken.None))
-                throw new InvalidOperationException($"{nameof(LogIndexStorage)} does not support concurrent invocations.");
+            SemaphoreSlim semaphore = _setReceiptsSemaphores[isBackwardSync];
+            await LockRunAsync(semaphore);
 
             try
             {
@@ -657,11 +663,19 @@ namespace Nethermind.Db
                     stats?.Processing.Include(Stopwatch.GetElapsedTime(timestamp));
                 }
 
-                // Update block numbers
                 timestamp = Stopwatch.GetTimestamp();
 
-                (int min, int max) addressRange =
-                    SaveAddressBlockNumbers(addressBatch, aggregate, isBackwardSync);
+                // Update ranges in DB
+                (int min, int max) addressRange;
+                if (HasRunBefore)
+                {
+                    addressRange = SaveAddressBlockNumbers(addressBatch, aggregate, isBackwardSync);
+                }
+                else
+                {
+                    lock (_firstRunLock)
+                        addressRange = SaveAddressBlockNumbers(addressBatch, aggregate, isBackwardSync);
+                }
 
                 (int?[] min, int?[] max) topicRanges = (min: _topicMinBlocks.ToArray(), max: _topicMaxBlocks.ToArray());
                 for (var topicIndex = 0; topicIndex < topicBatches.Length; topicIndex++)
@@ -684,16 +698,29 @@ namespace Nethermind.Db
                 topicBatches.ForEach(static b => b.Dispose());
                 stats?.WaitingBatch.Include(Stopwatch.GetElapsedTime(timestamp));
 
-                // Update availability ranges
-                (_addressMinBlock, _addressMaxBlock) = addressRange;
-                (_topicMinBlocks, _topicMaxBlocks) = topicRanges;
+                // Update ranges in memory
+                if (HasRunBefore)
+                {
+                    if (isBackwardSync)
+                        (_addressMinBlock, _topicMinBlocks) = (addressRange.min, topicRanges.min);
+                    else
+                        (_addressMaxBlock, _topicMaxBlocks) = (addressRange.max, topicRanges.max);
+                }
+                else
+                {
+                    lock (_firstRunLock)
+                    {
+                        (_addressMinBlock, _addressMaxBlock) = addressRange;
+                        (_topicMinBlocks, _topicMaxBlocks) = topicRanges;
+                    }
+                }
 
                 // Enqueue compaction if needed
                 _compactor.TryEnqueue();
             }
             finally
             {
-                _setReceiptsSemaphore.Release();
+                semaphore.Release();
             }
 
             foreach (MergeOperator mergeOperator in _mergeOperators.Values)
