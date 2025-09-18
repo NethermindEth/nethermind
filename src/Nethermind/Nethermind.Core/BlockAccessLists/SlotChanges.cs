@@ -5,6 +5,7 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using Nethermind.Core.Extensions;
 
 namespace Nethermind.Core.BlockAccessLists;
 
@@ -41,4 +42,10 @@ public readonly struct SlotChanges(byte[] slot, List<StorageChange> changes) : I
 
     public static bool operator !=(SlotChanges left, SlotChanges right) =>
         !(left == right);
+
+    public override readonly string? ToString()
+    {
+        string changes = string.Join(", ", [.. Changes.Select(s => s.ToString())]);
+        return $"[0x{Bytes.ToHexString(Slot)}, [{changes}]]";
+    }
 }

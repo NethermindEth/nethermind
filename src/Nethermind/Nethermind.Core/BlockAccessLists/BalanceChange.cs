@@ -26,4 +26,7 @@ public readonly struct BalanceChange(ushort blockAccessIndex, UInt256 postBalanc
 
     public static bool operator !=(BalanceChange left, BalanceChange right) =>
         !(left == right);
+
+    public override readonly string? ToString()
+        => $"{BlockAccessIndex}, {PostBalance}";
 }

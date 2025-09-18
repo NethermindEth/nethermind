@@ -326,6 +326,9 @@ public struct BlockAccessList : IEquatable<BlockAccessList>, IJournal<int>
         }
     }
 
+    public override readonly string? ToString()
+        => "[\n" + string.Join(",\n", [.. _accountChanges.Values.Select(account => account.ToString())]) + "\n]";
+
     private enum ChangeType
     {
         BalanceChange = 0,
