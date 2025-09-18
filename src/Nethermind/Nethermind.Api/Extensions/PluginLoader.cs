@@ -105,7 +105,7 @@ public class PluginLoader(string pluginPath, IFileSystem fileSystem, ILogger log
                 (true, true) => firstPriorityIndex.CompareTo(secondPriorityIndex),
                 (true, false) => -1,
                 (false, true) => 1,
-                (false, false) => string.Compare(firstPlugin.Name, secondPlugin.Name, StringComparison.Ordinal)
+                (false, false) => string.Compare(firstPlugin.Name, secondPlugin.Name, StringComparison.OrdinalIgnoreCase)
             };
         });
     }
