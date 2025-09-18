@@ -130,3 +130,19 @@ eth_simulateV1/ethSimulate-use-as-many-features-as-possible (nethermind)
 
 Blob Transaction Ordering, Multiple Accounts (Cancun) (nethermind)
 Blob Transaction Ordering, Multiple Clients (Cancun) (nethermind)
+
+#devp2p
+
+BlobViolations (nethermind)
+client launch (nethermind)
+ENRRequest (nethermind)
+Findnode/BasicFindnode (nethermind)
+Findnode/UnsolicitedNeighbors (nethermind)
+FindnodeResults (nethermind)
+GetNonexistentBlockHeaders (nethermind)
+nethermind
+PingMultiIP (nethermind)
+SameRequestID (nethermind)
+TalkRequest (nethermind)
+TestBlobTxWithMismatchedSidecar (nethermind)
+TestBlobTxWithoutSidecar (nethermind)
