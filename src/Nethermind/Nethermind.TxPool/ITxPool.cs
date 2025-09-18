@@ -60,5 +60,7 @@ namespace Nethermind.TxPool
         public bool AcceptTxWhenNotSynced { get; set; }
         bool SupportsBlobs { get; }
         long PendingTransactionsAdded { get; }
+
+        SimpleRetryCache<ValueHash256, Guid> SimpleRetryCache { get; }
     }
 }

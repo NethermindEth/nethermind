@@ -100,7 +100,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V65
             long startTime = Stopwatch.GetTimestamp();
 
             TxPool.Metrics.PendingTransactionsHashesReceived += msg.Hashes.Count;
-            _pooledTxsRequestor.RequestTransactions(Send, msg.Hashes);
+            _pooledTxsRequestor.RequestTransactions(Send, msg.Hashes, Session.SessionId);
 
             if (Logger.IsTrace)
                 Logger.Trace($"OUT {Counter:D5} {nameof(NewPooledTransactionHashesMessage)} to {Node:c} " +
