@@ -1,9 +1,11 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using Nethermind.Core.BlockAccessLists;
+
 namespace Nethermind.Core
 {
-    public class BlockBody(Transaction[]? transactions, BlockHeader[]? uncles, Withdrawal[]? withdrawals = null, byte[]? blockLevelAccessList = null)
+    public class BlockBody(Transaction[]? transactions, BlockHeader[]? uncles, Withdrawal[]? withdrawals = null, BlockAccessList? blockLevelAccessList = null)
     {
         public BlockBody() : this(null, null, null) { }
 
@@ -20,7 +22,7 @@ namespace Nethermind.Core
         public BlockHeader[] Uncles { get; } = uncles ?? [];
 
         public Withdrawal[]? Withdrawals { get; } = withdrawals;
-        public byte[]? BlockAccessList { get; internal set; } = blockLevelAccessList ?? [];
+        public BlockAccessList? BlockAccessList { get; internal set; } = blockLevelAccessList;
 
         public bool IsEmpty => Transactions.Length == 0 && Uncles.Length == 0 && (Withdrawals?.Length ?? 0) == 0;
     }

@@ -135,23 +135,23 @@ public class BlockValidator(
 
         if (spec.BlockLevelAccessListsEnabled)
         {
-            if (block.BlockAccessList is null || block.BlockAccessList.Length == 0)
+            if (block.BlockAccessList is null)
             {
                 if (_logger.IsDebug) _logger.Debug($"{Invalid(block)} Block-level access list was missing or empty");
                 errorMessage = BlockErrorMessages.InvalidBlockLevelAccessList;
                 return false;
             }
 
-            try
-            {
-                block.DecodedBlockAccessList = Rlp.Decode<BlockAccessList>(block.BlockAccessList);
-            }
-            catch (RlpException e)
-            {
-                if (_logger.IsDebug) _logger.Debug($"{Invalid(block)} Block-level access list could not be decoded: {e}");
-                errorMessage = BlockErrorMessages.InvalidBlockLevelAccessList;
-                return false;
-            }
+            // try
+            // {
+            //     block.DecodedBlockAccessList = Rlp.Decode<BlockAccessList>(block.BlockAccessList);
+            // }
+            // catch (RlpException e)
+            // {
+            //     if (_logger.IsDebug) _logger.Debug($"{Invalid(block)} Block-level access list could not be decoded: {e}");
+            //     errorMessage = BlockErrorMessages.InvalidBlockLevelAccessList;
+            //     return false;
+            // }
         }
 
         return true;
@@ -234,6 +234,18 @@ public class BlockValidator(
         {
             if (_logger.IsWarn) _logger.Warn($"- requests root : expected {suggestedBlock.Header.RequestsHash}, got {processedBlock.Header.RequestsHash}");
             error ??= BlockErrorMessages.InvalidRequestsHash(suggestedBlock.Header.RequestsHash, processedBlock.Header.RequestsHash);
+        }
+
+        if (processedBlock.Header.WithdrawalsRoot != suggestedBlock.Header.WithdrawalsRoot)
+        {
+            if (_logger.IsWarn) _logger.Warn($"- withdrawals root : expected {suggestedBlock.Header.WithdrawalsRoot}, got {processedBlock.Header.WithdrawalsRoot}");
+            error ??= BlockErrorMessages.InvalidWithdrawalsRoot(suggestedBlock.Header.WithdrawalsRoot, processedBlock.Header.WithdrawalsRoot);
+        }
+
+        if (processedBlock.Header.BlockAccessListHash != suggestedBlock.Header.BlockAccessListHash)
+        {
+            if (_logger.IsWarn) _logger.Warn($"- block access list hash : expected {suggestedBlock.Header.BlockAccessListHash}, got {processedBlock.Header.BlockAccessListHash}");
+            error ??= BlockErrorMessages.InvalidBlockLevelAccessListRoot(suggestedBlock.Header.BlockAccessListHash, processedBlock.Header.BlockAccessListHash);
         }
 
         for (int i = 0; i < processedBlock.Transactions.Length; i++)
@@ -413,7 +425,7 @@ public class BlockValidator(
 
         if (!spec.BlockLevelAccessListsEnabled && block.BlockAccessList is not null)
         {
-            error = BlockErrorMessages.WithdrawalsNotEnabled;
+            error = BlockErrorMessages.BlockLevelAccessListNotEnabled;
 
             if (_logger.IsWarn) _logger.Warn($"Block level access list must be null in block {block.Hash} when EIP-7928 not activated.");
 
@@ -422,7 +434,7 @@ public class BlockValidator(
 
         if (block.BlockAccessList is not null)
         {
-            if (!ValidateBlockLevelAccessListHashMatches(block.Header, block.Body, out Hash256 blockLevelAccessListRoot))
+            if (!ValidateBlockLevelAccessListHashMatches(block, out Hash256 blockLevelAccessListRoot))
             {
                 error = BlockErrorMessages.InvalidBlockLevelAccessListRoot(block.Header.BlockAccessListHash, blockLevelAccessListRoot);
                 if (_logger.IsWarn) _logger.Warn($"Block level access list root hash mismatch in block {block.ToString(Block.Format.FullHashAndNumber)}: expected {block.Header.BlockAccessListHash}, got {blockLevelAccessListRoot}");
@@ -463,15 +475,17 @@ public class BlockValidator(
         return (withdrawalsRoot = new WithdrawalTrie(body.Withdrawals).RootHash) == header.WithdrawalsRoot;
     }
 
-    public static bool ValidateBlockLevelAccessListHashMatches(BlockHeader header, BlockBody body, out Hash256? blockLevelAccessListRoot)
+    public static bool ValidateBlockLevelAccessListHashMatches(Block block, out Hash256? blockLevelAccessListRoot)
     {
+        BlockBody body = block.Body;
+        BlockHeader header = block.Header;
         if (body.BlockAccessList is null)
         {
             blockLevelAccessListRoot = null;
             return header.BlockAccessListHash is null;
         }
 
-        blockLevelAccessListRoot = new(ValueKeccak.Compute(body.BlockAccessList).Bytes);
+        blockLevelAccessListRoot = new(ValueKeccak.Compute(block.EncodedBlockAccessList!).Bytes);
 
         return blockLevelAccessListRoot == header.BlockAccessListHash;
     }

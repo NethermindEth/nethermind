@@ -245,7 +245,8 @@ public class BlockAccessListTests()
         // Block processedBlock = res[0];
         // Block processedBlock = Build.A.Block.TestObject;
 
-        BlockAccessList blockAccessList = Rlp.Decode<BlockAccessList>(processedBlock.BlockAccessList);
+        // BlockAccessList blockAccessList = Rlp.Decode<BlockAccessList>(processedBlock.BlockAccessList);
+        BlockAccessList blockAccessList = processedBlock.BlockAccessList!.Value;
         Assert.That(blockAccessList.GetAccountChanges().Count, Is.EqualTo(10));
 
         Address newContractAddress = ContractAddress.From(TestItem.AddressA, 1);

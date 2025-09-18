@@ -21,5 +21,7 @@ namespace Ethereum.Test.Base
         public string Timestamp { get; set; }
         public string TransactionsTrie { get; set; }
         public string UncleHash { get; set; }
+        public string WithdrawalsRoot { get; set; }
+        public string BlockAccessListHash { get; set; }
     }
 }

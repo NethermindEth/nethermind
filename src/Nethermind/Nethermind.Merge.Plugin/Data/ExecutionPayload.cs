@@ -12,6 +12,7 @@ using Nethermind.Serialization.Rlp;
 using Nethermind.State.Proofs;
 using System.Text.Json.Serialization;
 using Nethermind.Core.ExecutionRequest;
+using Nethermind.Core.BlockAccessLists;
 
 namespace Nethermind.Merge.Plugin.Data;
 
@@ -126,7 +127,7 @@ public class ExecutionPayload : IForkValidator, IExecutionPayloadParams, IExecut
             Timestamp = block.Timestamp,
             BaseFeePerGas = block.BaseFeePerGas,
             Withdrawals = block.Withdrawals,
-            BlockAccessList = block.BlockAccessList!,
+            BlockAccessList = block.EncodedBlockAccessList!,
         };
         executionPayload.SetTransactions(block.Transactions);
         return executionPayload;
@@ -172,7 +173,7 @@ public class ExecutionPayload : IForkValidator, IExecutionPayloadParams, IExecut
             BlockAccessListHash = BlockAccessList.Length == 0 ? null : new(ValueKeccak.Compute(BlockAccessList).Bytes)
         };
 
-        return new BlockDecodingResult(new Block(header, transactions.Transactions, Array.Empty<BlockHeader>(), Withdrawals, BlockAccessList));
+        return new BlockDecodingResult(new Block(header, transactions.Transactions, Array.Empty<BlockHeader>(), Withdrawals, Rlp.Decode<BlockAccessList>(BlockAccessList)));
     }
 
     protected virtual Hash256? BuildWithdrawalsRoot()

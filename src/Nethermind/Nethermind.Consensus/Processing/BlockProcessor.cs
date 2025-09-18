@@ -15,6 +15,7 @@ using Nethermind.Consensus.Rewards;
 using Nethermind.Consensus.Validators;
 using Nethermind.Consensus.Withdrawals;
 using Nethermind.Core;
+using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Threading;
 using Nethermind.Crypto;
@@ -177,12 +178,17 @@ public partial class BlockProcessor
             header.StateRoot = _stateProvider.StateRoot;
         }
 
-        header.Hash = header.CalculateHash();
-
         if (_tracedAccessWorldState is not null && spec.BlockLevelAccessListsEnabled)
         {
-            body.BlockAccessList = Rlp.Encode(_tracedAccessWorldState.BlockAccessList).Bytes;
+            body.BlockAccessList = _tracedAccessWorldState.BlockAccessList;
+            header.BlockAccessListHash = new(ValueKeccak.Compute(Rlp.Encode(_tracedAccessWorldState.BlockAccessList).Bytes).Bytes);
         }
+        else
+        {
+            header.BlockAccessListHash = new(ValueKeccak.Compute([Rlp.NullObjectByte]));
+        }
+
+        header.Hash = header.CalculateHash();
 
         return receipts;
     }

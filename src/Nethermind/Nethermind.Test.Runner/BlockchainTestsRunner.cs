@@ -29,9 +29,18 @@ public class BlockchainTestsRunner : BlockchainTestBase, IBlockchainTestRunner
     public async Task<IEnumerable<EthereumTestResult>> RunTestsAsync()
     {
         List<EthereumTestResult> testResults = new();
-        IEnumerable<BlockchainTest> tests = _testsSource.LoadTests<BlockchainTest>();
-        foreach (BlockchainTest test in tests)
+        IEnumerable<EthereumTest> tests = _testsSource.LoadTests<EthereumTest>();
+        foreach (EthereumTest loadedTest in tests)
         {
+            if (loadedTest as FailedToLoadTest is not null)
+            {
+                WriteRed(loadedTest.LoadFailure);
+                testResults.Add(new EthereumTestResult(loadedTest.Name, loadedTest.LoadFailure));
+                continue;
+            }
+
+            BlockchainTest test = loadedTest as BlockchainTest;
+
             if (_filter is not null && !Regex.Match(test.Name, $"^({_filter})").Success)
                 continue;
             Setup();

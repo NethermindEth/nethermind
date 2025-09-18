@@ -11,11 +11,13 @@ using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using System.Text;
 using Nethermind.Core;
+using Nethermind.Core.BlockAccessLists;
 using Nethermind.Core.Buffers;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Int256;
+using Nethermind.Serialization.Rlp.Eip7928;
 
 namespace Nethermind.Serialization.Rlp
 {
@@ -28,6 +30,7 @@ namespace Nethermind.Serialization.Rlp
         private static readonly TxDecoder _txDecoder = TxDecoder.Instance;
         private static readonly ReceiptMessageDecoder _receiptDecoder = new();
         private static readonly WithdrawalDecoder _withdrawalDecoder = new();
+        private static readonly BlockAccessListDecoder _blockAccessListDecoder = BlockAccessListDecoder.Instance;
         private static readonly LogEntryDecoder _logEntryDecoder = LogEntryDecoder.Instance;
 
         private readonly CappedArray<byte> _data;
@@ -68,37 +71,32 @@ namespace Nethermind.Serialization.Rlp
 
             StartSequence(contentLength);
 
-            foreach (var item in items)
+            foreach (T item in items)
             {
                 decoder.Encode(this, item, rlpBehaviors);
             }
         }
+
         public void Encode(Block value)
-        {
-            _blockDecoder.Encode(this, value);
-        }
+            => _blockDecoder.Encode(this, value);
 
         public void Encode(BlockHeader value)
-        {
-            _headerDecoder.Encode(this, value);
-        }
+            => _headerDecoder.Encode(this, value);
 
         public void Encode(Transaction value, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
-        {
-            _txDecoder.Encode(this, value, rlpBehaviors);
-        }
+            => _txDecoder.Encode(this, value, rlpBehaviors);
 
-        public void Encode(Withdrawal value) => _withdrawalDecoder.Encode(this, value);
+        public void Encode(Withdrawal value)
+            => _withdrawalDecoder.Encode(this, value);
 
         public void Encode(LogEntry value)
-        {
-            _logEntryDecoder.Encode(this, value);
-        }
+            => _logEntryDecoder.Encode(this, value);
 
         public void Encode(BlockInfo value)
-        {
-            _blockInfoDecoder.Encode(this, value);
-        }
+            => _blockInfoDecoder.Encode(this, value);
+
+        public void Encode(BlockAccessList value)
+            => _blockAccessListDecoder.Encode(this, value);
 
         public void StartByteArray(int contentLength, bool firstByteLessThan128)
         {
@@ -207,9 +205,7 @@ namespace Nethermind.Serialization.Rlp
         public virtual bool HasBeenRead => Position >= Data!.Length;
 
         public bool IsSequenceNext()
-        {
-            return PeekByte() >= 192;
-        }
+            => PeekByte() >= 192;
 
         public void Encode(Hash256? keccak)
         {

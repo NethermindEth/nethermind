@@ -156,6 +156,9 @@ public static class BlockErrorMessages
     public const string InvalidBlockLevelAccessList =
         $"InvalidBlockLevelAccessList: Unable to decode.";
 
+    public const string BlockLevelAccessListNotEnabled =
+        "BlockLevelAccessListNotEnabled: Block body cannot have block level access list.";
+
     public static string InvalidBlockLevelAccessListRoot(Hash256 expected, Hash256 actual) =>
         $"InvalidBlockLevelAccessListRoot: Expected {expected}, got {actual}";
 

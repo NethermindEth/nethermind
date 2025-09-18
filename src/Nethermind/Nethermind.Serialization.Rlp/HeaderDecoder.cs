@@ -75,6 +75,7 @@ namespace Nethermind.Serialization.Rlp
             if (decoderContext.Position != headerCheck) blockHeader.ExcessBlobGas = decoderContext.DecodeULong();
             if (decoderContext.Position != headerCheck) blockHeader.ParentBeaconBlockRoot = decoderContext.DecodeKeccak();
             if (decoderContext.Position != headerCheck) blockHeader.RequestsHash = decoderContext.DecodeKeccak();
+            if (decoderContext.Position != headerCheck) blockHeader.BlockAccessListHash = decoderContext.DecodeKeccak();
 
             if ((rlpBehaviors & RlpBehaviors.AllowExtraBytes) != RlpBehaviors.AllowExtraBytes)
             {
@@ -145,6 +146,7 @@ namespace Nethermind.Serialization.Rlp
             if (rlpStream.Position != headerCheck) blockHeader.ExcessBlobGas = rlpStream.DecodeULong();
             if (rlpStream.Position != headerCheck) blockHeader.ParentBeaconBlockRoot = rlpStream.DecodeKeccak();
             if (rlpStream.Position != headerCheck) blockHeader.RequestsHash = rlpStream.DecodeKeccak();
+            if (rlpStream.Position != headerCheck) blockHeader.BlockAccessListHash = rlpStream.DecodeKeccak();
 
             if ((rlpBehaviors & RlpBehaviors.AllowExtraBytes) != RlpBehaviors.AllowExtraBytes)
             {
@@ -193,15 +195,16 @@ namespace Nethermind.Serialization.Rlp
                 }
             }
 
-            Span<bool> requiredItems = stackalloc bool[6];
+            Span<bool> requiredItems = stackalloc bool[7];
             requiredItems[0] = !header.BaseFeePerGas.IsZero;
-            requiredItems[1] = (header.WithdrawalsRoot is not null);
-            requiredItems[2] = (header.BlobGasUsed is not null);
-            requiredItems[3] = (header.BlobGasUsed is not null || header.ExcessBlobGas is not null);
-            requiredItems[4] = (header.ParentBeaconBlockRoot is not null);
-            requiredItems[5] = (header.RequestsHash is not null);
+            requiredItems[1] = header.WithdrawalsRoot is not null;
+            requiredItems[2] = header.BlobGasUsed is not null;
+            requiredItems[3] = header.BlobGasUsed is not null || header.ExcessBlobGas is not null;
+            requiredItems[4] = header.ParentBeaconBlockRoot is not null;
+            requiredItems[5] = header.RequestsHash is not null;
+            requiredItems[6] = header.BlockAccessListHash is not null;
 
-            for (int i = 4; i >= 0; i--)
+            for (int i = 5; i >= 0; i--)
             {
                 requiredItems[i] |= requiredItems[i + 1];
             }
@@ -212,6 +215,7 @@ namespace Nethermind.Serialization.Rlp
             if (requiredItems[3]) rlpStream.Encode(header.ExcessBlobGas.GetValueOrDefault());
             if (requiredItems[4]) rlpStream.Encode(header.ParentBeaconBlockRoot);
             if (requiredItems[5]) rlpStream.Encode(header.RequestsHash);
+            if (requiredItems[6]) rlpStream.Encode(header.BlockAccessListHash);
         }
 
         public Rlp Encode(BlockHeader? item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
@@ -266,15 +270,16 @@ namespace Nethermind.Serialization.Rlp
             }
 
 
-            Span<bool> requiredItems = stackalloc bool[6];
+            Span<bool> requiredItems = stackalloc bool[7];
             requiredItems[0] = !item.BaseFeePerGas.IsZero;
-            requiredItems[1] = (item.WithdrawalsRoot is not null);
-            requiredItems[2] = (item.BlobGasUsed is not null);
-            requiredItems[3] = (item.BlobGasUsed is not null || item.ExcessBlobGas is not null);
-            requiredItems[4] = (item.ParentBeaconBlockRoot is not null);
-            requiredItems[5] = (item.RequestsHash is not null);
+            requiredItems[1] = item.WithdrawalsRoot is not null;
+            requiredItems[2] = item.BlobGasUsed is not null;
+            requiredItems[3] = item.BlobGasUsed is not null || item.ExcessBlobGas is not null;
+            requiredItems[4] = item.ParentBeaconBlockRoot is not null;
+            requiredItems[5] = item.RequestsHash is not null;
+            requiredItems[6] = item.BlockAccessListHash is not null;
 
-            for (int i = 4; i >= 0; i--)
+            for (int i = 5; i >= 0; i--)
             {
                 requiredItems[i] |= requiredItems[i + 1];
             }
@@ -285,12 +290,12 @@ namespace Nethermind.Serialization.Rlp
             if (requiredItems[3]) contentLength += Rlp.LengthOf(item.ExcessBlobGas.GetValueOrDefault());
             if (requiredItems[4]) contentLength += Rlp.LengthOf(item.ParentBeaconBlockRoot);
             if (requiredItems[5]) contentLength += Rlp.LengthOf(item.RequestsHash);
+            if (requiredItems[6]) contentLength += Rlp.LengthOf(item.BlockAccessListHash);
+
             return contentLength;
         }
 
         public int GetLength(BlockHeader? item, RlpBehaviors rlpBehaviors)
-        {
-            return Rlp.LengthOfSequence(GetContentLength(item, rlpBehaviors));
-        }
+            => Rlp.LengthOfSequence(GetContentLength(item, rlpBehaviors));
     }
 }

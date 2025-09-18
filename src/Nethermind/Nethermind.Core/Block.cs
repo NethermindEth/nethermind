@@ -29,7 +29,7 @@ public class Block
         IEnumerable<Transaction> transactions,
         IEnumerable<BlockHeader> uncles,
         IEnumerable<Withdrawal>? withdrawals = null,
-        byte[]? blockAccessList = null)
+        BlockAccessList? blockAccessList = null)
     {
         Header = header ?? throw new ArgumentNullException(nameof(header));
         Body = new(transactions.ToArray(), uncles.ToArray(), withdrawals?.ToArray(), blockAccessList);
@@ -118,7 +118,8 @@ public class Block
     public Hash256? ParentBeaconBlockRoot => Header.ParentBeaconBlockRoot; // do not add setter here
 
     public Hash256? RequestsHash => Header.RequestsHash; // do not add setter here
-    public byte[]? BlockAccessList => Body.BlockAccessList; // do not add setter here
+    public Hash256? BlockAccessListHash => Header.BlockAccessListHash; // do not add setter here
+    public BlockAccessList? BlockAccessList => Body.BlockAccessList; // do not add setter here
 
     [JsonIgnore]
     public byte[][]? ExecutionRequests { get; set; }
@@ -130,8 +131,11 @@ public class Block
     public int? EncodedSize { get; set; }
 
 
+    // [JsonIgnore]
+    // public BlockAccessList? DecodedBlockAccessList { get; set; }
+
     [JsonIgnore]
-    public BlockAccessList? DecodedBlockAccessList { get; set; }
+    public byte[]? EncodedBlockAccessList { get; set; }
 
     public override string ToString() => ToString(Format.Short);
 

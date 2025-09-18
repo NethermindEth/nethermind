@@ -67,6 +67,8 @@ namespace Ethereum.Test.Base
             header.ReceiptsRoot = new Hash256(headerJson.ReceiptTrie);
             header.StateRoot = new Hash256(headerJson.StateRoot);
             header.TxRoot = new Hash256(headerJson.TransactionsTrie);
+            header.WithdrawalsRoot = new Hash256(headerJson.WithdrawalsRoot);
+            header.BlockAccessListHash = new Hash256(headerJson.BlockAccessListHash);
             return header;
         }
 
