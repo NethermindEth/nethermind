@@ -69,67 +69,56 @@ public sealed class NethermindKestrelMetricServer : MetricHandler
 
     protected override Task StartServer(CancellationToken cancel)
     {
-        var s = _certificate is not null ? "s" : "";
+        var s = _certificate is null ? string.Empty : "s";
         var hostAddress = $"http{s}://{_hostname}:{_port}";
 
         // If the caller needs to customize any of this, they can just set up their own web host and inject the middleware.
-        var builder = new WebHostBuilder()
-            // Explicitly build from UseKestrelCore rather than UseKestrel to
-            // not add additional transports that we don't use e.g. msquic as that
-            // adds a lot of additional idle threads to the process.
-            .UseKestrelCore()
-            .UseKestrelHttpsConfiguration()
-            .Configure(app =>
-            {
-                app.UseOutputCache();
-                app.UseMetricServer(_configureExporter, _url);
+        var host = new HostBuilder()
+            .ConfigureWebHost(builder => {
+                builder
+                    // Explicitly build from UseKestrelCore rather than UseKestrel to
+                    // not add additional transports that we don't use e.g. msquic as that
+                    // adds a lot of additional idle threads to the process.
+                    .UseKestrelCore()
+                    .UseKestrelHttpsConfiguration()
+                    .Configure(app =>
+                    {
+                        app.UseOutputCache();
+                        app.UseMetricServer(_configureExporter, _url);
 
-                // If there is any URL prefix, we just redirect people going to root URL to our prefix.
-                if (!string.IsNullOrWhiteSpace(_url.Trim('/')))
-                {
-                    app.MapWhen(context => context.Request.Path.Value?.Trim('/') == "",
-                        configuration =>
+                        // If there is any URL prefix, we just redirect people going to root URL to our prefix.
+                        if (!string.IsNullOrWhiteSpace(_url.Trim('/')))
                         {
-                            configuration.Use((HttpContext context, RequestDelegate next) =>
-                            {
-                                context.Response.Redirect(_url);
-                                return Task.CompletedTask;
-                            });
-                        });
-                }
-            });
+                            app.MapWhen(
+                                context => string.IsNullOrEmpty(context.Request.Path.Value?.Trim('/')),
+                                appBuilder => appBuilder.Use((HttpContext context, RequestDelegate _) =>
+                                {
+                                    context.Response.Redirect(_url);
+                                    return Task.CompletedTask;
+                                })
+                            );
+                        }
+                    });
 
-        builder.ConfigureServices(services =>
-        {
-            services.AddOutputCache(options =>
-                options.AddBasePolicy(builder => builder.Expire(TimeSpan.FromSeconds(1))));
-        });
+                builder.ConfigureServices(services =>
+                    services.AddOutputCache(options =>
+                        options.AddBasePolicy(builder => builder.Expire(TimeSpan.FromSeconds(1)))
+                    ));
 
-        if (_certificate is not null)
-        {
-            builder.ConfigureServices(services =>
-            {
-                services.Configure<KestrelServerOptions>(options =>
+                if (_certificate is not null)
                 {
-                    options.Listen(
-                        IPAddress.Any,
-                        _port,
-                        listenOptions => listenOptions.UseHttps(_certificate)
-                    );
-                });
-            });
-        }
-        else
-        {
-            builder.UseUrls(hostAddress);
-        }
+                    builder.ConfigureServices(services =>
+                        services.Configure<KestrelServerOptions>(options =>
+                            options.Listen(IPAddress.Any, _port, listenOptions => listenOptions.UseHttps(_certificate))
+                        ));
+                }
+                else
+                {
+                    builder.UseUrls(hostAddress);
+                }
+            })
+            .Build();
 
-        IWebHost webHost = builder.Build();
-
-        // This is what changed
-        // webHost.Start();
-        // return webHost.WaitForShutdownAsync(cancel);
-
-        return webHost.RunAsync(cancel);
+        return host.RunAsync(cancel);
     }
 }
