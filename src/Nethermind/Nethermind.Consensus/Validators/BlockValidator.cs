@@ -6,6 +6,7 @@ using System.Text;
 using Nethermind.Blockchain;
 using Nethermind.Consensus.Messages;
 using Nethermind.Core;
+using Nethermind.Core.BlockAccessLists;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
@@ -128,6 +129,27 @@ public class BlockValidator(
 
             if (!ValidateWithdrawals(block, spec, out errorMessage))
             {
+                return false;
+            }
+        }
+
+        if (spec.BlockLevelAccessListsEnabled)
+        {
+            if (block.BlockAccessList is null || block.BlockAccessList.Length == 0)
+            {
+                if (_logger.IsDebug) _logger.Debug($"{Invalid(block)} Block-level access list was missing or empty");
+                errorMessage = BlockErrorMessages.InvalidBlockLevelAccessList;
+                return false;
+            }
+
+            try
+            {
+                block.DecodedBlockAccessList = Rlp.Decode<BlockAccessList>(block.BlockAccessList);
+            }
+            catch (RlpException e)
+            {
+                if (_logger.IsDebug) _logger.Debug($"{Invalid(block)} Block-level access list could not be decoded: {e}");
+                errorMessage = BlockErrorMessages.InvalidBlockLevelAccessList;
                 return false;
             }
         }
@@ -378,6 +400,43 @@ public class BlockValidator(
         return true;
     }
 
+    public virtual bool ValidateBlockLevelAccessList(Block block, IReleaseSpec spec, out string? error)
+    {
+        if (spec.BlockLevelAccessListsEnabled && block.BlockAccessList is null)
+        {
+            error = BlockErrorMessages.MissingBlockLevelAccessList;
+
+            if (_logger.IsWarn) _logger.Warn($"Block level access list cannot be null in block {block.Hash} when EIP-7928 activated.");
+
+            return false;
+        }
+
+        if (!spec.BlockLevelAccessListsEnabled && block.BlockAccessList is not null)
+        {
+            error = BlockErrorMessages.WithdrawalsNotEnabled;
+
+            if (_logger.IsWarn) _logger.Warn($"Block level access list must be null in block {block.Hash} when EIP-7928 not activated.");
+
+            return false;
+        }
+
+        if (block.BlockAccessList is not null)
+        {
+            if (!ValidateBlockLevelAccessListHashMatches(block.Header, block.Body, out Hash256 blockLevelAccessListRoot))
+            {
+                error = BlockErrorMessages.InvalidBlockLevelAccessListRoot(block.Header.BlockAccessListHash, blockLevelAccessListRoot);
+                if (_logger.IsWarn) _logger.Warn($"Block level access list root hash mismatch in block {block.ToString(Block.Format.FullHashAndNumber)}: expected {block.Header.BlockAccessListHash}, got {blockLevelAccessListRoot}");
+
+                return false;
+            }
+        }
+
+        error = null;
+
+        return true;
+
+    }
+
     public static bool ValidateTxRootMatchesTxs(Block block, out Hash256 txRoot) =>
         ValidateTxRootMatchesTxs(block.Header, block.Body, out txRoot);
 
@@ -402,6 +461,19 @@ public class BlockValidator(
         }
 
         return (withdrawalsRoot = new WithdrawalTrie(body.Withdrawals).RootHash) == header.WithdrawalsRoot;
+    }
+
+    public static bool ValidateBlockLevelAccessListHashMatches(BlockHeader header, BlockBody body, out Hash256? blockLevelAccessListRoot)
+    {
+        if (body.BlockAccessList is null)
+        {
+            blockLevelAccessListRoot = null;
+            return header.BlockAccessListHash is null;
+        }
+
+        blockLevelAccessListRoot = new(ValueKeccak.Compute(body.BlockAccessList).Bytes);
+
+        return blockLevelAccessListRoot == header.BlockAccessListHash;
     }
 
     private static string Invalid(Block block) =>

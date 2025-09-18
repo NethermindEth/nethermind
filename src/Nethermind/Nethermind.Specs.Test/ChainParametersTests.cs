@@ -40,7 +40,8 @@ public class ChainParametersTests
             "MaxCodeSizeTransitionTimestamp",
             "Eip4844FeeCollectorTransitionTimestamp",
             "Eip6110TransitionTimestamp",
-            "Eip7692TransitionTimestamp"
+            "Eip7692TransitionTimestamp",
+            "Eip7928TransitionTimestamp" // tmp
         ];
 
         const ulong testValue = 1ul;
