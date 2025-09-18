@@ -15,14 +15,6 @@ public static class Config
         Required = true,
     };
 
-    public static Option<string> HostAddress { get; } = new("--address", "-a")
-    {
-        DefaultValueFactory = _ => "http://localhost:8551",
-        Description = "Address where to send JSON RPC requests",
-        HelpName = "url",
-        Required = true,
-    };
-
     public static Option<string> JwtSecretFilePath { get; } = new("--secret", "-s")
     {
         Description = "Path to file with hex-encoded secret for JWT authentication",
@@ -30,11 +22,18 @@ public static class Config
         Required = true,
     };
 
+    public static Option<string> HostAddress { get; } = new("--address", "-a")
+    {
+        Description = "Address where to send JSON RPC requests",
+        HelpName = "url",
+        DefaultValueFactory = _ => "http://localhost:8551",
+    };
+
     public static Option<int> AuthTtl { get; } = new("--ttl", "-t")
     {
-        DefaultValueFactory = _ => 60,
         Description = "Authentication time to live (TTL), in seconds",
         HelpName = "number",
+        DefaultValueFactory = _ => 60,
     };
 
     public static Option<bool> ShowProgress { get; } = new("--progress", "-p")
@@ -45,9 +44,8 @@ public static class Config
 
     public static Option<MetricsReportFormat> MetricsReportFormatter { get; } = new("--output", "-o")
     {
-        DefaultValueFactory = _ => MetricsReportFormat.Pretty,
         Description = "Strategy to report metrics",
-        HelpName = "path",
+        DefaultValueFactory = _ => MetricsReportFormat.Pretty,
     };
 
     public static Option<IEnumerable<string>> MethodFilters { get; } = new("--filters", "-f")

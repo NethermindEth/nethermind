@@ -23,9 +23,9 @@ public static class Program
     {
         RootCommand rootCommand =
         [
-            Config.HostAddress,
             Config.JwtSecretFilePath,
             Config.MessagesFilePath,
+            Config.HostAddress,
             Config.ResponsesTraceFile,
             Config.MethodFilters,
             Config.MetricsReportFormatter,
