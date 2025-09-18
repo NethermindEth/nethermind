@@ -11,11 +11,11 @@ jobs:
     if: ${{ !github.event.release.prerelease }}
     steps:
       - name: Check out Nethermind repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
         with:
           ref: ${{ github.event.release.tag_name }}
       - name: Set up .NET
-        uses: actions/setup-dotnet@v4
+        uses: actions/setup-dotnet@v5
       - name: Download Nethermind reference assemblies
         run: |
           json=$(curl -s ${{ github.event.release.assets_url }})

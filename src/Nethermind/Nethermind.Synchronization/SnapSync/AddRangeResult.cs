@@ -10,6 +10,7 @@ namespace Nethermind.Synchronization.SnapSync
         DifferentRootHash,
         ExpiredRootHash,
         InvalidOrder,
-        OutOfBounds
+        OutOfBounds,
+        EmptySlots
     }
 }
