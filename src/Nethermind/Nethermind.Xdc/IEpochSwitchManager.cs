@@ -13,12 +13,12 @@ using System.Threading.Tasks;
 namespace Nethermind.Xdc;
 public interface IEpochSwitchManager
 {
-    bool TryGetPreviousEpochSwitchInfoByHash(Hash256 parentHash, int limit, out EpochSwitchInfo epochInfo);
+    EpochSwitchInfo? GetPreviousEpochSwitchInfoByHash(Hash256 parentHash, int limit);
     bool IsEpochSwitchAtRound(ulong currentRound, XdcBlockHeader parent, out ulong epochNumber);
     bool IsEpochSwitchAtBlock(XdcBlockHeader header, out ulong epochNumber);
-    bool TryGetEpochSwitchInfo(XdcBlockHeader header, Hash256 parentHash, out EpochSwitchInfo epochInfo);
+    EpochSwitchInfo? GetEpochSwitchInfo(XdcBlockHeader header, Hash256 parentHash);
     bool IsEpochSwitch(XdcBlockHeader header, out ulong epochNumber);
-    bool TryGetEpochSwitchBetween(XdcBlockHeader start, XdcBlockHeader end, out List<EpochSwitchInfo> epochSwitchInfos);
-    bool TryGetCurrentEpochSwitchBlock(ulong blockNumber, out ulong currentCheckpointNumber, out ulong epochNumber);
-    bool TryGetTimeoutCertificateEpochInfo(TimeoutCert timeoutCert, out EpochSwitchInfo epochInfo);
+    EpochSwitchInfo[] GetEpochSwitchBetween(XdcBlockHeader start, XdcBlockHeader end);
+    (ulong currentCheckpointNumber, ulong epochNumber) GetCurrentEpochNumbers(ulong blockNumber);
+    EpochSwitchInfo? GetTimeoutCertificateEpochInfo(TimeoutCert timeoutCert);
 }
