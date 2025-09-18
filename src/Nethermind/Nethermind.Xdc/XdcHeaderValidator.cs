@@ -34,7 +34,6 @@ public class XdcHeaderValidator : HeaderValidator
             return false;
         }
 
-
         return base.Validate(header, parent, isUncle, out error);
     }
 

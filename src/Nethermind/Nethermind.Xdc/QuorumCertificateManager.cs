@@ -19,6 +19,7 @@ using Nethermind.Xdc;
 using Nethermind.Xdc.Errors;
 using Nethermind.Xdc.Spec;
 using Nethermind.Xdc.Types;
+using static Nethermind.Core.BlockHeader;
 using BlockInfo = Nethermind.Xdc.Types.BlockInfo;
 
 namespace Nethermind.Xdc;
@@ -125,20 +126,26 @@ internal class QuorumCertificateManager : IQuorumCertificateManager
             throw new ArgumentNullException(nameof(qc));
         if (parentHeader is null)
             throw new ArgumentNullException(nameof(parentHeader));
+        if (qc.Signatures is null)
+            throw new ArgumentException("QC must contain vote signatures.", nameof(qc));
 
-        if (!_epochSwitchManager.TryGetEpochSwitchInfo(parentHeader, qc.ProposedBlockInfo.Hash, out EpochSwitchInfo epochSwitchInfo))
+        EpochSwitchInfo epochSwitchInfo = _epochSwitchManager.GetEpochSwitchInfo(parentHeader, qc.ProposedBlockInfo.Hash);
+        if (epochSwitchInfo is null)
         {
-            throw new ConsensusHeaderDataExtractionException(nameof(EpochSwitchInfo));
+            error = $"Epoch switch info not found for header {parentHeader?.ToString(Format.FullHashAndNumber)}";
+            return false;
         }
 
+        //Possible optimize here
         Signature[] uniqueSignatures = qc.Signatures.Distinct().ToArray();
 
         ulong qcRound = qc.ProposedBlockInfo.Round;
         double certThreshold = _config.Configs[qcRound].CertThreshold;
 
-        if ((qcRound > 0) && (uniqueSignatures is null || uniqueSignatures.Length < epochSwitchInfo.Masternodes.Length * certThreshold))
+        if ((qcRound > 0) && (uniqueSignatures.Length < epochSwitchInfo.Masternodes.Length * certThreshold))
         {
-            throw new CertificateValidationException(CertificateType.QuorumCertificate, CertificateValidationFailure.InvalidSignatures);
+            error = $"Number of votes ({uniqueSignatures.Length}) does not meet threshold of {certThreshold}";
+            return false;
         }
 
         bool allValid = true;
@@ -155,7 +162,7 @@ internal class QuorumCertificateManager : IQuorumCertificateManager
 
         if (!allValid)
         {
-            error = "Invalid vote signature";
+            error = $"Quorum certificate contains one or more invalid vote signatures";
             return false;
         }
 
@@ -173,8 +180,23 @@ internal class QuorumCertificateManager : IQuorumCertificateManager
 
         // Note : this method should be moved outside of Context
         //TODO verify block info matches the parent header
+        if (!ValidateBlockInfo(qc, parentHeader))
+        {
+            error = "Block info does not match QC.";
+            return false;
+        }
 
         error = null;
+        return true;
+    }
+
+    private bool ValidateBlockInfo(QuorumCertificate qc, XdcBlockHeader parentHeader)
+    {
+        if (qc.ProposedBlockInfo.Number != parentHeader.Number)
+            return false;
+        if (qc.ProposedBlockInfo.Hash != parentHeader.Hash)
+            return false;
+        //TODO also check the round number from extra data after https://github.com/NethermindEth/nethermind/pull/9293
         return true;
     }
 }

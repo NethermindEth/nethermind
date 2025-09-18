@@ -19,6 +19,30 @@ using System.Threading.Tasks;
 namespace Nethermind.Xdc.Test;
 public class QuorumCertificateManagerTest
 {
+    [Test]
+    public void VerifyCertificate_CertificateIsNull_ThrowsArgumentNullException()
+    {
+        var quorumCertificateManager = new QuorumCertificateManager(
+            new XdcContext(),
+            Substitute.For<IBlockTree>(),
+            Substitute.For<IXdcReleaseSpec>(),
+            Substitute.For<IEpochSwitchManager>());
+
+        Assert.That(() => quorumCertificateManager.VerifyCertificate(null!, Build.A.XdcBlockHeader().TestObject, out _), Throws.ArgumentNullException);
+    }
+
+    [Test]
+    public void VerifyCertificate_HeaderIsNull_ThrowsArgumentNullException()
+    {
+        var quorumCertificateManager = new QuorumCertificateManager(
+            new XdcContext(),
+            Substitute.For<IBlockTree>(),
+            Substitute.For<IXdcReleaseSpec>(),
+            Substitute.For<IEpochSwitchManager>());
+
+        Assert.That(() => quorumCertificateManager.VerifyCertificate(Build.A.QuorumCertificate().TestObject, null!, out _), Throws.ArgumentNullException);
+    }
+
     public static IEnumerable<TestCaseData> QcCases()
     {
         PrivateKeyBuilder keyBuilder = Build.A.PrivateKey;
@@ -31,11 +55,13 @@ public class QuorumCertificateManagerTest
     [TestCaseSource(nameof(QcCases))]
     public void VerifyCertificate_(QuorumCertificate quorumCert, XdcBlockHeaderBuilder xdcBlockHeaderBuilder, bool expected)
     {
+        IEpochSwitchManager epochSwitchManager = Substitute.For<IEpochSwitchManager>();
+        epochSwitchManager.TryGetEpochSwitchInfo(Arg.Any<XdcBlockHeader>(), Arg.Any<Hash256>(), out EpochSwitchInfo epochSwitch).Returns(true);
         var quorumCertificateManager = new QuorumCertificateManager(
             new XdcContext(),
             Substitute.For<IBlockTree>(),
             Substitute.For<IXdcReleaseSpec>(),
-            Substitute.For<IEpochSwitchManager>());
+            epochSwitchManager);
 
         Assert.That(quorumCertificateManager.VerifyCertificate(quorumCert, xdcBlockHeaderBuilder.TestObject, out _), Is.EqualTo(expected));
     }
