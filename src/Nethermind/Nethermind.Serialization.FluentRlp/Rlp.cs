@@ -63,13 +63,13 @@ internal class FixedArrayBufferWriter<T> : IBufferWriter<T>
 
     public Memory<T> GetMemory(int sizeHint = 0)
     {
-        Debug.Assert(_buffer.Length > _index);
+        Debug.Assert(_buffer.Length >= _index);
         return _buffer.AsMemory(_index);
     }
 
     public Span<T> GetSpan(int sizeHint = 0)
     {
-        Debug.Assert(_buffer.Length > _index);
+        Debug.Assert(_buffer.Length >= _index);
         return _buffer.AsSpan(_index);
     }
 }
