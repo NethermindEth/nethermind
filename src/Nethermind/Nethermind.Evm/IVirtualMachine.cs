@@ -16,5 +16,6 @@ namespace Nethermind.Evm
         ref readonly TxExecutionContext TxExecutionContext { get; }
         void SetBlockExecutionContext(in BlockExecutionContext blockExecutionContext);
         void SetTxExecutionContext(in TxExecutionContext txExecutionContext);
+        int OpCodeCount { get; }
     }
 }

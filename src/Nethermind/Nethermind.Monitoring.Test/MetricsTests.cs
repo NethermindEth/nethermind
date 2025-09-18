@@ -7,7 +7,6 @@ using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Reflection;
-using System.Runtime.InteropServices.ComTypes;
 using System.Runtime.Serialization;
 using FluentAssertions;
 using Nethermind.Core;
@@ -129,8 +128,8 @@ public class MetricsTests
         metricsController.RegisterMetrics(typeof(TestMetrics));
         metricsController.UpdateAllMetrics();
 
-        var updater = metricsController._individualUpdater;
-        var metricName = "TestMetrics.DetailedMetric";
+        Dictionary<string, MetricsController.IMetricUpdater> updater = metricsController._individualUpdater;
+        string metricName = "TestMetrics.DetailedMetric";
         Assert.That(updater.ContainsKey(metricName), Is.EqualTo(enableDetailedMetric));
     }
 
@@ -141,8 +140,8 @@ public class MetricsTests
         {
             Enabled = true
         };
-        List<Type> knownMetricsTypes = new()
-        {
+        List<Type> knownMetricsTypes =
+        [
             typeof(TxPool.Metrics),
             typeof(Blockchain.Metrics),
             typeof(Consensus.AuRa.Metrics),
@@ -154,11 +153,12 @@ public class MetricsTests
             typeof(Synchronization.Metrics),
             typeof(Trie.Metrics),
             typeof(Trie.Pruning.Metrics),
-            typeof(Shutter.Metrics)
-        };
+            typeof(Shutter.Metrics),
+            typeof(History.Metrics)
+        ];
         MetricsController metricsController = new(metricsConfig);
         MonitoringService monitoringService = new(metricsController, metricsConfig, LimboLogs.Instance);
-        List<Type> metrics = TypeDiscovery.FindNethermindBasedTypes(nameof(Metrics)).ToList();
+        List<Type> metrics = [.. TypeDiscovery.FindNethermindBasedTypes(nameof(Metrics))];
         metrics.AddRange(knownMetricsTypes);
 
         Assert.DoesNotThrow(() =>

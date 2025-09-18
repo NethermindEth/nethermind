@@ -135,10 +135,10 @@ namespace Nethermind.Facade
 
             return new CallOutput
             {
-                Error = ConstructError(tryCallResult, callOutputTracer.Error, tx.GasLimit),
+                Error = ConstructError(tryCallResult, callOutputTracer.Error),
                 GasSpent = callOutputTracer.GasSpent,
                 OutputData = callOutputTracer.ReturnValue,
-                InputError = !tryCallResult.Success
+                InputError = !tryCallResult.TransactionExecuted
             };
         }
 
@@ -161,7 +161,7 @@ namespace Nethermind.Facade
 
             GasEstimator gasEstimator = new(components.TransactionProcessor, components.WorldState, specProvider, blocksConfig);
 
-            string? error = ConstructError(tryCallResult, estimateGasTracer.Error, tx.GasLimit);
+            string? error = ConstructError(tryCallResult, estimateGasTracer.Error);
 
             long estimate = gasEstimator.Estimate(tx, header, estimateGasTracer, out string? err, errorMargin, cancellationToken);
             if (err is not null)
@@ -173,7 +173,7 @@ namespace Nethermind.Facade
             {
                 Error = error,
                 GasSpent = estimate,
-                InputError = !tryCallResult.Success || err is not null
+                InputError = !tryCallResult.TransactionExecuted || err is not null
             };
         }
 
@@ -194,11 +194,11 @@ namespace Nethermind.Facade
 
             return new CallOutput
             {
-                Error = ConstructError(tryCallResult, callOutputTracer.Error, tx.GasLimit),
+                Error = ConstructError(tryCallResult, callOutputTracer.Error),
                 GasSpent = accessTxTracer.GasSpent,
                 OperationGas = callOutputTracer.OperationGas,
                 OutputData = callOutputTracer.ReturnValue,
-                InputError = !tryCallResult.Success,
+                InputError = !tryCallResult.TransactionExecuted,
                 AccessList = accessTxTracer.AccessList
             };
         }
@@ -396,16 +396,17 @@ namespace Nethermind.Facade
             return logFinder.FindLogs(filter, cancellationToken);
         }
 
-        private static string? ConstructError(TransactionResult txResult, string? tracerError, long gasLimit)
+        private static string? ConstructError(TransactionResult txResult, string? tracerError)
         {
             var error = txResult switch
             {
-                { Success: true } when tracerError is not null => tracerError,
-                { Success: false, Error: not null } => txResult.Error,
+                { TransactionExecuted: true } when txResult.EvmExceptionType is not EvmExceptionType.None => txResult.EvmExceptionType.GetEvmExceptionDescription(),
+                { TransactionExecuted: true } when tracerError is not null => tracerError,
+                { TransactionExecuted: false, Error: not null } => txResult.Error,
                 _ => null
             };
 
-            return error is null ? null : $"err: {error} (supplied gas {gasLimit})";
+            return error;
         }
         public bool ExecuteWitness(Block blockParameter, Witness witness)
         {

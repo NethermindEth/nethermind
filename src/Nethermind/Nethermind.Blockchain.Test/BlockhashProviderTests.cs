@@ -21,18 +21,19 @@ namespace Nethermind.Blockchain.Test;
 [Parallelizable(ParallelScope.All)]
 public class BlockhashProviderTests
 {
-    private static IWorldState CreateWorldState()
+    private static (IWorldState, Hash256) CreateWorldState()
     {
-        IWorldStateManager worldStateManager = TestWorldStateFactory.CreateForTest();
-        IWorldState worldState = worldStateManager.GlobalWorldState;
+        IWorldState worldState = TestWorldStateFactory.CreateForTest();
+        using var _ = worldState.BeginScope(IWorldState.PreGenesis);
         worldState.CreateAccount(Eip2935Constants.BlockHashHistoryAddress, 0, 1);
         worldState.Commit(Frontier.Instance);
-        return worldState;
+        worldState.CommitTree(0);
+        return (worldState, worldState.StateRoot);
     }
 
     private static BlockhashProvider CreateBlockHashProvider(IBlockFinder tree, IReleaseSpec spec)
     {
-        IWorldState worldState = CreateWorldState();
+        (IWorldState worldState, Hash256 _) = CreateWorldState();
         BlockhashProvider provider = new(tree, new TestSpecProvider(spec), worldState, LimboLogs.Instance);
         return provider;
     }
@@ -251,15 +252,19 @@ public class BlockhashProviderTests
 
         BlockHeader? head = tree.FindHeader(chainLength - 1, BlockTreeLookupOptions.None);
         // number = chainLength
-        Block current = Build.A.Block.WithParent(head!).TestObject;
+
+        (IWorldState worldState, Hash256 stateRoot) = CreateWorldState();
+
+        Block current = Build.A.Block.WithParent(head!).WithStateRoot(stateRoot).TestObject;
         tree.SuggestHeader(current.Header);
 
-        IWorldState worldState = CreateWorldState();
         var specProvider = new CustomSpecProvider(
             (new ForkActivation(0, genesis.Timestamp), Frontier.Instance),
             (new ForkActivation(0, current.Timestamp), Prague.Instance));
         BlockhashProvider provider = new(tree, specProvider, worldState, LimboLogs.Instance);
         BlockhashStore store = new(specProvider, worldState);
+
+        using var _ = worldState.BeginScope(current.Header);
 
         Hash256? result = provider.GetBlockhash(current.Header, chainLength - 1);
         Assert.That(result, Is.EqualTo(head?.Hash));
@@ -296,14 +301,17 @@ public class BlockhashProviderTests
 
         BlockHeader? head = tree.FindHeader(chainLength - 1, BlockTreeLookupOptions.None);
         // number = chainLength
-        Block current = Build.A.Block.WithParent(head!).TestObject;
+
+        (IWorldState worldState, Hash256 stateRoot) = CreateWorldState();
+        Block current = Build.A.Block.WithParent(head!).WithStateRoot(stateRoot).TestObject;
         tree.SuggestHeader(current.Header);
 
-        IWorldState worldState = CreateWorldState();
         var specProvider = new CustomSpecProvider(
             (new ForkActivation(0, genesis.Timestamp), Frontier.Instance),
             (new ForkActivation(0, current.Timestamp), Prague.Instance));
         BlockhashStore store = new(specProvider, worldState);
+
+        using var _ = worldState.BeginScope(current.Header);
 
         // 1. Set some code to pass IsContract check
         byte[] code = [1, 2, 3];

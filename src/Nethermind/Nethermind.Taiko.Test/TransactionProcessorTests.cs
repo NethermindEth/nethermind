@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using Nethermind.Core;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
@@ -28,6 +29,7 @@ public class TransactionProcessorTests
     private readonly IEthereumEcdsa _ethereumEcdsa;
     private TaikoTransactionProcessor? _transactionProcessor;
     private IWorldState? _stateProvider;
+    private IDisposable _worldStateCloser;
 
     public TransactionProcessorTests()
     {
@@ -43,17 +45,22 @@ public class TransactionProcessorTests
     {
         _spec.FeeCollector = TestItem.AddressB;
 
-        IWorldStateManager worldStateManager = TestWorldStateFactory.CreateForTest();
-        _stateProvider = worldStateManager.GlobalWorldState;
+        _stateProvider = TestWorldStateFactory.CreateForTest();
+        _worldStateCloser = _stateProvider.BeginScope(IWorldState.PreGenesis);
         _stateProvider.CreateAccount(TestItem.AddressA, AccountBalance);
         _stateProvider.Commit(_specProvider.GenesisSpec);
         _stateProvider.CommitTree(0);
 
-        EthereumCodeInfoRepository codeInfoRepository = new();
+        EthereumCodeInfoRepository codeInfoRepository = new(_stateProvider);
         VirtualMachine virtualMachine = new(new TestBlockhashProvider(_specProvider), _specProvider, LimboLogs.Instance);
         _transactionProcessor = new TaikoTransactionProcessor(_specProvider, _stateProvider, virtualMachine, codeInfoRepository, LimboLogs.Instance);
     }
 
+    [TearDown]
+    public void TearDown()
+    {
+        _worldStateCloser.Dispose();
+    }
 
     [TestCaseSource(nameof(FeesDistributionTests))]
     public void Fees_distributed_correctly(byte basefeeSharingPctg, UInt256 goesToTreasury, UInt256 goesToBeneficiary, ulong gasPrice)

@@ -6,12 +6,6 @@ using System.Collections.Generic;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Blockchain.BeaconBlockRoot;
-using Nethermind.Blockchain.Blocks;
-using Nethermind.Blockchain.Receipts;
-using Nethermind.Consensus.ExecutionRequests;
-using Nethermind.Consensus.Rewards;
-using Nethermind.Consensus.Validators;
-using Nethermind.Consensus.Withdrawals;
 using Nethermind.Core;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
@@ -45,41 +39,10 @@ public class BranchProcessor(
 
     public event EventHandler<BlockEventArgs>? BlockProcessing;
 
-    public event EventHandler<TxProcessedEventArgs> TransactionProcessed
-    {
-        add => blockProcessor.TransactionProcessed += value;
-        remove => blockProcessor.TransactionProcessed -= value;
-    }
-
-    private void InitBranch(BlockHeader? baseBlock, bool incrementReorgMetric = true)
-    {
-        /* Please note that we do not reset the state if branch state root is null.
-           That said, I do not remember in what cases we receive null here.*/
-        if (baseBlock is not null && _stateProvider.StateRoot != baseBlock.StateRoot)
-        {
-            /* Discarding the other branch data - chain reorganization.
-               We cannot use cached values any more because they may have been written
-               by blocks that are being reorganized out.*/
-
-            if (incrementReorgMetric)
-                Metrics.Reorganizations++;
-            _stateProvider.Reset();
-            _stateProvider.SetBaseBlock(baseBlock);
-        }
-    }
-
     private void PreCommitBlock(BlockHeader block)
     {
         if (_logger.IsTrace) _logger.Trace($"Committing the branch - {block.ToString(BlockHeader.Format.Short)} state root {block.StateRoot}");
         _stateProvider.CommitTree(block.Number);
-    }
-
-    private void RestoreBranch(BlockHeader? branchingPointHeader)
-    {
-        if (_logger.IsTrace) _logger.Trace($"Restoring the branch checkpoint - {branchingPointHeader?.ToString(BlockHeader.Format.Short)}");
-        _stateProvider.Reset();
-        _stateProvider.SetBaseBlock(branchingPointHeader);
-        if (_logger.IsTrace) _logger.Trace($"Restored the branch checkpoint - {branchingPointHeader?.ToString(BlockHeader.Format.Short)} | {_stateProvider.StateRoot}");
     }
 
     public Block[] Process(BlockHeader? baseBlock, IReadOnlyList<Block> suggestedBlocks, ProcessingOptions options, IBlockTracer blockTracer, CancellationToken token = default)
@@ -87,9 +50,28 @@ public class BranchProcessor(
         if (suggestedBlocks.Count == 0) return [];
 
         BlockHeader? previousBranchStateRoot = baseBlock;
-        InitBranch(baseBlock);
-
         Block suggestedBlock = suggestedBlocks[0];
+
+        IDisposable? worldStateCloser = null;
+        if (stateProvider.IsInScope)
+        {
+            if (baseBlock is null && suggestedBlock.IsGenesis)
+            {
+                // Super special ultra mega - I dont wanna deal with this right now - special case where genesis is handled
+                // specially from outside where the state are added from `GenesisLoader` but not part of the block processor
+                // but it still pass through the blocktree suggest to blockchain processor event chain
+                // Meaning dont set state when handling genesis.
+            }
+            else
+            {
+                throw new InvalidOperationException($"State must not be handled from outside of {nameof(IBranchProcessor)} except for genesis block.");
+            }
+        }
+        else
+        {
+            worldStateCloser = stateProvider.BeginScope(baseBlock);
+        }
+
         // Start prewarming as early as possible
         WaitForCacheClear();
         IReleaseSpec spec = specProvider.GetSpec(suggestedBlock.Header);
@@ -172,7 +154,9 @@ public class BranchProcessor(
                 {
                     if (_logger.IsInfo) _logger.Info($"Commit part of a long blocks branch {i}/{blocksCount}");
                     previousBranchStateRoot = suggestedBlock.Header;
-                    InitBranch(suggestedBlock.Header, false);
+
+                    worldStateCloser.Dispose();
+                    worldStateCloser = stateProvider.BeginScope(previousBranchStateRoot);
                 }
 
                 preBlockBaseBlock = processedBlock.Header;
@@ -187,11 +171,6 @@ public class BranchProcessor(
                 TxHashCalculator.CalculateInBackground(suggestedBlock);
             }
 
-            if (options.ContainsFlag(ProcessingOptions.DoNotUpdateHead))
-            {
-                RestoreBranch(previousBranchStateRoot);
-            }
-
             return processedBlocks;
         }
         catch (Exception ex) // try to restore at all cost
@@ -200,8 +179,11 @@ public class BranchProcessor(
             CancellationTokenExtensions.CancelDisposeAndClear(ref prewarmCancellation);
             QueueClearCaches(preWarmTask);
             preWarmTask?.GetAwaiter().GetResult();
-            RestoreBranch(previousBranchStateRoot);
             throw;
+        }
+        finally
+        {
+            worldStateCloser?.Dispose();
         }
     }
 

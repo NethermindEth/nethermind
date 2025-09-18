@@ -15,6 +15,7 @@ using Nethermind.Blockchain.Services;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Config;
 using Nethermind.Consensus;
+using Nethermind.Consensus.Processing;
 using Nethermind.Consensus.Producers;
 using Nethermind.Consensus.Rewards;
 using Nethermind.Consensus.Validators;
@@ -215,9 +216,6 @@ public partial class MergePlugin(ChainSpec chainSpec, IMergeConfig mergeConfig) 
             _api.BlockProductionPolicy = _mergeBlockProductionPolicy;
             _api.FinalizationManager = InitializeMergeFinilizationManager();
 
-            // Need to do it here because blockprocessor is not available in init
-            _invalidChainTracker.SetupBlockchainProcessorInterceptor(_api.MainProcessingContext!.BlockchainProcessor!);
-
             if (_poSSwitcher.TransitionFinished)
             {
                 AddEth69();
@@ -242,8 +240,6 @@ public partial class MergePlugin(ChainSpec chainSpec, IMergeConfig mergeConfig) 
     {
         return new MergeFinalizationManager(_api.Context.Resolve<IManualBlockFinalizationManager>(), _api.FinalizationManager, _poSSwitcher);
     }
-
-    public ValueTask DisposeAsync() => ValueTask.CompletedTask;
 
     public bool MustInitialize { get => true; }
 
@@ -290,6 +286,11 @@ public class BaseMergePluginModule : Module
                 .Bind<IPivot, IBeaconPivot>()
             .AddSingleton<InvalidChainTracker.InvalidChainTracker>()
                 .Bind<IInvalidChainTracker, InvalidChainTracker.InvalidChainTracker>()
+            .OnActivate<IMainProcessingContext>(((context, ctx) =>
+            {
+                ctx.Resolve<InvalidChainTracker.InvalidChainTracker>().SetupBlockchainProcessorInterceptor(context.BlockchainProcessor);
+            }))
+
             .AddSingleton<IPoSSwitcher, PoSSwitcher>()
             .AddDecorator<IBetterPeerStrategy, MergeBetterPeerStrategy>()
 

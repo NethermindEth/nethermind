@@ -127,6 +127,7 @@ internal static partial class EvmInstructions
         Instruction nextInstruction;
         if (!TTracingInst.IsActive &&
             remainingCode > Size &&
+            stack.Head < EvmStack.MaxStackSize - 1 &&
             ((nextInstruction = (Instruction)Add(ref bytes, programCounter + Size))
                 is Instruction.JUMP or Instruction.JUMPI))
         {
@@ -140,10 +141,12 @@ internal static partial class EvmInstructions
             if (nextInstruction == Instruction.JUMP)
             {
                 gasAvailable -= GasCostOf.Jump;
+                vm.OpCodeCount++;
             }
             else
             {
                 gasAvailable -= GasCostOf.JumpI;
+                vm.OpCodeCount++;
                 bool shouldJump = TestJumpCondition(ref stack, out bool isOverflow);
                 if (isOverflow) goto StackUnderflow;
                 if (!shouldJump)
@@ -583,9 +586,9 @@ internal static partial class EvmInstructions
         long topicsCount = TOpCount.Count;
 
         // Ensure that the memory expansion for the log data is accounted for.
-        if (!UpdateMemoryCost(vmState, ref gasAvailable, in position, length)) goto OutOfGas;
+        if (!EvmCalculations.UpdateMemoryCost(vmState, ref gasAvailable, in position, length)) goto OutOfGas;
         // Deduct gas for the log entry itself, including per-topic and per-byte data costs.
-        if (!UpdateGas(
+        if (!EvmCalculations.UpdateGas(
                 GasCostOf.Log + topicsCount * GasCostOf.LogTopic +
                 (long)length * GasCostOf.LogData, ref gasAvailable)) goto OutOfGas;
 

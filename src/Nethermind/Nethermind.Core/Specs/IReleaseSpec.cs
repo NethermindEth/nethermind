@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Collections.Generic;
 using Nethermind.Int256;
 
 namespace Nethermind.Core.Specs
@@ -17,6 +18,7 @@ namespace Nethermind.Core.Specs
         //EIP-3860: Limit and meter initcode
         long MaxInitCodeSize => 2 * MaxCodeSize;
         long MinGasLimit { get; }
+        long MinHistoryRetentionEpochs { get; }
         long GasLimitBoundDivisor { get; }
         UInt256 BlockReward { get; }
         long DifficultyBombDelay { get; }
@@ -494,6 +496,19 @@ namespace Nethermind.Core.Specs
         /// even though it internally represents a typed array of function pointers.
         /// </remarks>
         public Array? EvmInstructionsTraced { get; set; }
+
+        /// <summary>
+        /// Determines whether the specified address is a precompiled contract for this release specification.
+        /// </summary>
+        /// <param name="address">The address to check for precompile status.</param>
+        /// <returns>True if the address is a precompiled contract; otherwise, false.</returns>
+        bool IsPrecompile(Address address) => Precompiles.Contains(address);
+
+        /// <summary>
+        /// Gets a cached set of all precompiled contract addresses for this release specification.
+        /// Chain-specific implementations can override this to include their own precompiled contracts.
+        /// </summary>
+        HashSet<AddressAsKey> Precompiles { get; }
 
         public ProofVersion BlobProofVersion => IsEip7594Enabled ? ProofVersion.V1 : ProofVersion.V0;
 

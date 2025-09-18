@@ -21,6 +21,7 @@ public class PublicKeyConverter : JsonConverter<PublicKey>
         {
             return null;
         }
+
         if (bytes.Length < 64)
         {
             var newArray = new byte[64];

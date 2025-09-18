@@ -164,7 +164,7 @@ namespace Nethermind.TxPool
                 new FutureNonceFilter(txPoolConfig),
                 new GapNonceFilter(_transactions, _blobTransactions, _logger),
                 new RecoverAuthorityFilter(ecdsa),
-                new DelegatedAccountFilter(_specProvider, _transactions, _blobTransactions, chainHeadInfoProvider.ReadOnlyStateProvider, chainHeadInfoProvider.CodeInfoRepository, _pendingDelegations),
+                new DelegatedAccountFilter(_specProvider, _transactions, _blobTransactions, chainHeadInfoProvider.ReadOnlyStateProvider, _pendingDelegations),
             ];
 
             if (incomingTxFilter is not null)
@@ -172,7 +172,7 @@ namespace Nethermind.TxPool
                 postHashFilters.Add(incomingTxFilter);
             }
 
-            postHashFilters.Add(new DeployedCodeFilter(chainHeadInfoProvider.ReadOnlyStateProvider, chainHeadInfoProvider.CodeInfoRepository, _specProvider));
+            postHashFilters.Add(new DeployedCodeFilter(chainHeadInfoProvider.ReadOnlyStateProvider, _specProvider));
 
             _postHashFilters = postHashFilters.ToArray();
 
@@ -324,6 +324,7 @@ namespace Nethermind.TxPool
         {
             if (previousBlock is not null)
             {
+                Metrics.TransactionsReorged += previousBlock.Transactions.Length;
                 bool isEip155Enabled = _specProvider.GetSpec(previousBlock.Header).IsEip155Enabled;
                 Transaction[] txs = previousBlock.Transactions;
                 for (int i = 0; i < txs.Length; i++)
@@ -361,6 +362,7 @@ namespace Nethermind.TxPool
             using ArrayPoolList<Transaction> blobTxsToSave = new((int)_specProvider.GetSpec(block.Header).MaxBlobCount);
             long discoveredForPendingTxs = 0;
             long discoveredForHashCache = 0;
+            long notInMempoool = 0;
             long eip1559Txs = 0;
             long eip7702Txs = 0;
             long blobTxs = 0;
@@ -397,14 +399,26 @@ namespace Nethermind.TxPool
                     }
                 }
 
-                if (!IsKnown(txHash))
+                if (blockTx.Type == TxType.SetCode)
+                {
+                    eip7702Txs++;
+                }
+
+                bool isKnown = IsKnown(txHash);
+                if (!isKnown)
                 {
                     discoveredForHashCache++;
                 }
 
-                if (!RemoveIncludedTransaction(blockTx))
+                bool isPending = RemoveIncludedTransaction(blockTx);
+                if (!isPending)
                 {
                     discoveredForPendingTxs++;
+                }
+
+                if (!isKnown && !isPending)
+                {
+                    notInMempoool++;
                 }
             }
 
@@ -422,6 +436,8 @@ namespace Nethermind.TxPool
                 Metrics.Eip7702TransactionsInBlock = eip7702Txs;
                 Metrics.BlobTransactionsInBlock = blobTxs;
                 Metrics.BlobsInBlock = blobs;
+                Metrics.TransactionsSourcedPrivateOrderFlow += notInMempoool;
+                Metrics.TransactionsSourcedMemPool += transactionsInBlock - notInMempoool;
             }
         }
 
@@ -1049,21 +1065,23 @@ Received
 ------------------------------------------------
 Discarded at Filter Stage:
 1.  NotSupportedTxType  {Metrics.PendingTransactionsNotSupportedTxType,24:N0}
-2.  GasLimitTooHigh:    {Metrics.PendingTransactionsGasLimitTooHigh,24:N0}
-3.  TooLow PriorityFee: {Metrics.PendingTransactionsTooLowPriorityFee,24:N0}
-4.  Too Low Fee:        {Metrics.PendingTransactionsTooLowFee,24:N0}
-5.  Malformed           {Metrics.PendingTransactionsMalformed,24:N0}
-6.  Duplicate:          {Metrics.PendingTransactionsKnown,24:N0}
-7.  Unknown Sender:     {Metrics.PendingTransactionsUnresolvableSender,24:N0}
-8.  Conflicting TxType  {Metrics.PendingTransactionsConflictingTxType,24:N0}
-9.  NonceTooFarInFuture {Metrics.PendingTransactionsNonceTooFarInFuture,24:N0}
-10. Zero Balance:       {Metrics.PendingTransactionsZeroBalance,24:N0}
-11. Balance < tx.value: {Metrics.PendingTransactionsBalanceBelowValue,24:N0}
-12. Balance Too Low:    {Metrics.PendingTransactionsTooLowBalance,24:N0}
-13. Nonce used:         {Metrics.PendingTransactionsLowNonce,24:N0}
-14. Nonces skipped:     {Metrics.PendingTransactionsNonceGap,24:N0}
-15. Failed replacement  {Metrics.PendingTransactionsPassedFiltersButCannotReplace,24:N0}
-16. Cannot Compete:     {Metrics.PendingTransactionsPassedFiltersButCannotCompeteOnFees,24:N0}
+2.  Tx Too Large:       {Metrics.PendingTransactionsSizeTooLarge,24:N0}
+3.  GasLimitTooHigh:    {Metrics.PendingTransactionsGasLimitTooHigh,24:N0}
+4.  TooLow PriorityFee: {Metrics.PendingTransactionsTooLowPriorityFee,24:N0}
+5.  Too Low Fee:        {Metrics.PendingTransactionsTooLowFee,24:N0}
+6.  Malformed:          {Metrics.PendingTransactionsMalformed,24:N0}
+7.  Null Hash:          {Metrics.PendingTransactionsNullHash,24:N0}
+8.  Duplicate:          {Metrics.PendingTransactionsKnown,24:N0}
+9.  Unknown Sender:     {Metrics.PendingTransactionsUnresolvableSender,24:N0}
+10. Conflicting TxType: {Metrics.PendingTransactionsConflictingTxType,24:N0}
+11. NonceTooFarInFuture {Metrics.PendingTransactionsNonceTooFarInFuture,24:N0}
+12. Zero Balance:       {Metrics.PendingTransactionsZeroBalance,24:N0}
+13. Balance < tx.value: {Metrics.PendingTransactionsBalanceBelowValue,24:N0}
+14. Balance Too Low:    {Metrics.PendingTransactionsTooLowBalance,24:N0}
+15. Nonce used:         {Metrics.PendingTransactionsLowNonce,24:N0}
+16. Nonces skipped:     {Metrics.PendingTransactionsNonceGap,24:N0}
+17. Failed replacement  {Metrics.PendingTransactionsPassedFiltersButCannotReplace,24:N0}
+18. Cannot Compete:     {Metrics.PendingTransactionsPassedFiltersButCannotCompeteOnFees,24:N0}
 ------------------------------------------------
 Validated via State:    {Metrics.PendingTransactionsWithExpensiveFiltering,24:N0}
 ------------------------------------------------

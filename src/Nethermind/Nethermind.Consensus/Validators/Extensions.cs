@@ -10,8 +10,4 @@ public static class Extensions
     {
         return headerValidator.Validate(header, parent, isUncle, out _);
     }
-    public static bool Validate(this IHeaderValidator headerValidator, BlockHeader header, bool isUncle = false)
-    {
-        return headerValidator.Validate(header, isUncle, out _);
-    }
 }

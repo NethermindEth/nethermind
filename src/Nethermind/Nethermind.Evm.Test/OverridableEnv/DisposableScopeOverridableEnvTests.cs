@@ -61,7 +61,6 @@ public class DisposableScopeOverridableEnvTests
         IOverridableEnv<Components> env = childLifetime.Resolve<IOverridableEnv<Components>>();
 
         {
-            childComponents.WorldState.StateRoot.Should().Be(Keccak.EmptyTreeHash);
             using var scope = env.BuildAndOverride(Build.A.BlockHeader.TestObject,
                 new Dictionary<Address, AccountOverride>()
                 {
@@ -76,9 +75,6 @@ public class DisposableScopeOverridableEnvTests
             childComponents.WorldState.StateRoot.Should().NotBe(Keccak.EmptyTreeHash);
             scope.Component.WorldState.GetBalance(TestItem.AddressA).Should().Be(123);
         }
-
-        childComponents.WorldState.StateRoot.Should().Be(Keccak.EmptyTreeHash);
-        childComponents.WorldState.GetBalance(TestItem.AddressA).Should().NotBe(123);
     }
 
     private record Components(
@@ -97,17 +93,7 @@ public class DisposableScopeOverridableEnvTests
             throw new System.NotImplementedException();
         }
 
-        public TransactionResult Execute(Transaction transaction, BlockHeader header, ITxTracer txTracer)
-        {
-            throw new System.NotImplementedException();
-        }
-
         public TransactionResult CallAndRestore(Transaction transaction, ITxTracer txTracer)
-        {
-            throw new System.NotImplementedException();
-        }
-
-        public TransactionResult CallAndRestore(Transaction transaction, BlockHeader header, ITxTracer txTracer)
         {
             throw new System.NotImplementedException();
         }
@@ -123,6 +109,11 @@ public class DisposableScopeOverridableEnvTests
         }
 
         public TransactionResult Warmup(Transaction transaction, ITxTracer txTracer)
+        {
+            throw new System.NotImplementedException();
+        }
+
+        public void SetBlockExecutionContext(BlockHeader blockHeader)
         {
             throw new System.NotImplementedException();
         }

@@ -85,7 +85,7 @@
     "cl_image": "",
     "checkpoint-sync-url": "",
     "timeout": 600,
-    "agent": "g6-standard-8"
+    "agent": "g6-standard-16"
   },
   {
     "network": "world-mainnet",
@@ -137,22 +137,6 @@
   },
   {
     "network": "linea-sepolia",
-    "cl": "",
-    "cl_image": "",
-    "checkpoint-sync-url": "",
-    "timeout": 180,
-    "agent": "g6-standard-6"
-  },
-  {
-    "network": "energyweb",
-    "cl": "",
-    "cl_image": "",
-    "checkpoint-sync-url": "",
-    "timeout": 180,
-    "agent": "g6-standard-6"
-  },
-  {
-    "network": "volta",
     "cl": "",
     "cl_image": "",
     "checkpoint-sync-url": "",

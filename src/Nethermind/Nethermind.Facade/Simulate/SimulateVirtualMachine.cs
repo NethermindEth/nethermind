@@ -47,4 +47,5 @@ public class SimulateVirtualMachine(IVirtualMachine virtualMachine) : IVirtualMa
 
     public void SetTxExecutionContext(in TxExecutionContext txExecutionContext)
         => virtualMachine.SetTxExecutionContext(txExecutionContext);
+    public int OpCodeCount => virtualMachine.OpCodeCount;
 }

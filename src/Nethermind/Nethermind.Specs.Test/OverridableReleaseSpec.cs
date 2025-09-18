@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Collections.Generic;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
 using Nethermind.Int256;
@@ -23,6 +24,8 @@ namespace Nethermind.Specs.Test
         public long MaxInitCodeSize => spec.MaxInitCodeSize;
 
         public long MinGasLimit => spec.MinGasLimit;
+
+        public long MinHistoryRetentionEpochs => spec.MinHistoryRetentionEpochs;
 
         public long GasLimitBoundDivisor => spec.GasLimitBoundDivisor;
 
@@ -196,5 +199,6 @@ namespace Nethermind.Specs.Test
         public bool IsEip7939Enabled => spec.IsEip7939Enabled;
         public bool IsEip7907Enabled => spec.IsEip7907Enabled;
         public bool IsRip7728Enabled => spec.IsRip7728Enabled;
+        HashSet<AddressAsKey> IReleaseSpec.Precompiles => spec.Precompiles;
     }
 }

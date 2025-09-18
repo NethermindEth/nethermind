@@ -88,7 +88,7 @@ namespace Nethermind.Synchronization.ParallelSync
         private async Task DispatchLoop(CancellationToken cancellationToken)
         {
             bool wasCancelTriggered = false;
-            while (true)
+            while (!cancellationToken.IsCancellationRequested)
             {
                 try
                 {

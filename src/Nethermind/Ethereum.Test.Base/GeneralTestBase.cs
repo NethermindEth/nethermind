@@ -8,6 +8,7 @@ using Autofac;
 using Nethermind.Api;
 using NUnit.Framework;
 using Nethermind.Config;
+using Nethermind.Consensus.Processing;
 using Nethermind.Consensus.Validators;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
@@ -87,6 +88,7 @@ namespace Ethereum.Test.Base
 
             IMainProcessingContext mainBlockProcessingContext = container.Resolve<IMainProcessingContext>();
             IWorldState stateProvider = mainBlockProcessingContext.WorldState;
+            using var _ = stateProvider.BeginScope(null);
             ITransactionProcessor transactionProcessor = mainBlockProcessingContext.TransactionProcessor;
 
             InitializeTestState(test.Pre, stateProvider, specProvider);

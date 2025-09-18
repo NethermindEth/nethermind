@@ -74,9 +74,6 @@ public class WorldStateMetricsDecorator(IWorldState innerState) : IWorldState
     public void SubtractFromBalance(Address address, in UInt256 balanceChange, IReleaseSpec spec) =>
         innerState.SubtractFromBalance(address, in balanceChange, spec);
 
-    public void UpdateStorageRoot(Address address, Hash256 storageRoot)
-        => innerState.UpdateStorageRoot(address, storageRoot);
-
     public void IncrementNonce(Address address, UInt256 delta) => innerState.IncrementNonce(address, delta);
 
     public void DecrementNonce(Address address, UInt256 delta) => innerState.DecrementNonce(address, delta);
@@ -122,7 +119,8 @@ public class WorldStateMetricsDecorator(IWorldState innerState) : IWorldState
 
     public bool HasStateForBlock(BlockHeader? stateRoot) => innerState.HasStateForBlock(stateRoot);
 
-    public void SetBaseBlock(BlockHeader? header) => innerState.SetBaseBlock(header);
+    public IDisposable BeginScope(BlockHeader? baseBlock) => innerState.BeginScope(baseBlock);
+    public bool IsInScope => innerState.IsInScope;
 
     public ref readonly UInt256 GetBalance(Address account) => ref innerState.GetBalance(account);
 

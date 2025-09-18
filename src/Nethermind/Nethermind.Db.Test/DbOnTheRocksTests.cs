@@ -397,6 +397,13 @@ namespace Nethermind.Db.Test
             parsedOptions["optimize_filters_for_hits"].Should().Be("false");
             parsedOptions["memtable_whole_key_filtering"].Should().Be("true");
         }
+
+        [Test]
+        public void Can_GetMetric_AfterDispose()
+        {
+            _db.Dispose();
+            _db.GatherMetric().Size.Should().Be(0);
+        }
     }
 
     class CorruptedDbOnTheRocks : DbOnTheRocks

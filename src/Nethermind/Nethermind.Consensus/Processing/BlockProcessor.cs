@@ -2,11 +2,9 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using System.Collections.Generic;
 using System.Numerics;
 using System.Runtime.CompilerServices;
 using System.Threading;
-using System.Threading.Tasks;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.BeaconBlockRoot;
 using Nethermind.Blockchain.Blocks;
@@ -17,8 +15,6 @@ using Nethermind.Consensus.Rewards;
 using Nethermind.Consensus.Validators;
 using Nethermind.Consensus.Withdrawals;
 using Nethermind.Core;
-using Nethermind.Core.Crypto;
-using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Threading;
 using Nethermind.Crypto;
@@ -30,8 +26,6 @@ using Nethermind.Logging;
 using Nethermind.Specs.Forks;
 using Nethermind.State;
 using static Nethermind.Consensus.Processing.IBlockProcessor;
-
-using Metrics = Nethermind.Blockchain.Metrics;
 
 namespace Nethermind.Consensus.Processing;
 
@@ -58,12 +52,6 @@ public partial class BlockProcessor(
     /// to any block-specific tracers.
     /// </summary>
     protected BlockReceiptsTracer ReceiptsTracer { get; set; } = new();
-
-    public event EventHandler<TxProcessedEventArgs> TransactionProcessed
-    {
-        add { blockTransactionsExecutor.TransactionProcessed += value; }
-        remove { blockTransactionsExecutor.TransactionProcessed -= value; }
-    }
 
     public (Block Block, TxReceipt[] Receipts) ProcessOne(Block suggestedBlock, ProcessingOptions options, IBlockTracer blockTracer, IReleaseSpec spec, CancellationToken token)
     {

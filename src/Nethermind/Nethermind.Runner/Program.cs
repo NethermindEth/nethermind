@@ -30,6 +30,7 @@ using Nethermind.Runner;
 using Nethermind.Runner.Ethereum;
 using Nethermind.Runner.Ethereum.Api;
 using Nethermind.Runner.Logging;
+using Nethermind.Runner.Monitoring;
 using Nethermind.Seq.Config;
 using Nethermind.Serialization.Json;
 using NLog;
@@ -39,6 +40,7 @@ using NullLogger = Nethermind.Logging.NullLogger;
 using DotNettyLoggerFactory = DotNetty.Common.Internal.Logging.InternalLoggerFactory;
 using DotNettyLeakDetector = DotNetty.Common.ResourceLeakDetector;
 
+DataFeed.StartTime = Environment.TickCount64;
 Console.Title = ProductInfo.Name;
 // Increase regex cache size as more added in log coloring matches
 Regex.CacheSize = 128;
@@ -239,7 +241,18 @@ void AddConfigurationOptions(Command command)
                 Option option = prop.PropertyType == typeof(bool)
                     ? CreateOption<bool>(prop.Name, configType)
                     : CreateOption<string>(prop.Name, configType);
-                option.Description = configItemAttribute?.Description;
+
+                string description = configItemAttribute?.Description ?? "";
+
+                // Add default value to description if available
+                if (!string.IsNullOrEmpty(configItemAttribute?.DefaultValue))
+                {
+                    description = string.IsNullOrEmpty(description)
+                        ? $"Defaults to `{configItemAttribute.DefaultValue}`."
+                        : $"{description} Defaults to `{configItemAttribute.DefaultValue}`.";
+                }
+
+                option.Description = description;
                 option.HelpName = "value";
                 option.Hidden = categoryHidden || configItemAttribute?.HiddenFromDocs == true;
 

@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2023 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using Nethermind.Core;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
@@ -28,19 +29,25 @@ internal class TransactionProcessorEip4844Tests
     private IEthereumEcdsa _ethereumEcdsa = null!;
     private ITransactionProcessor _transactionProcessor = null!;
     private IWorldState _stateProvider = null!;
+    private IDisposable _worldStateCloser;
 
     [SetUp]
     public void Setup()
     {
         _specProvider = new TestSpecProvider(Cancun.Instance);
-        IWorldStateManager worldStateManager = TestWorldStateFactory.CreateForTest();
-        _stateProvider = worldStateManager.GlobalWorldState;
-        EthereumCodeInfoRepository codeInfoRepository = new();
+        _stateProvider = TestWorldStateFactory.CreateForTest();
+        _worldStateCloser = _stateProvider.BeginScope(IWorldState.PreGenesis);
+        EthereumCodeInfoRepository codeInfoRepository = new(_stateProvider);
         VirtualMachine virtualMachine = new(new TestBlockhashProvider(_specProvider), _specProvider, LimboLogs.Instance);
         _transactionProcessor = new TransactionProcessor(_specProvider, _stateProvider, virtualMachine, codeInfoRepository, LimboLogs.Instance);
         _ethereumEcdsa = new EthereumEcdsa(_specProvider.ChainId);
     }
 
+    [TearDown]
+    public void TearDown()
+    {
+        _worldStateCloser?.Dispose();
+    }
 
     [TestCaseSource(nameof(BalanceIsAffectedByBlobGasTestCaseSource))]
     [TestCaseSource(nameof(BalanceIsNotAffectedWhenNotEnoughFunds))]

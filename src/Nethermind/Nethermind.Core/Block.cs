@@ -126,10 +126,6 @@ public class Block
     [JsonIgnore]
     public int? EncodedSize { get; set; }
 
-
-    [JsonIgnore]
-    internal volatile int TransactionProcessed;
-
     public override string ToString() => ToString(Format.Short);
 
     public string ToString(Format format) => format switch
