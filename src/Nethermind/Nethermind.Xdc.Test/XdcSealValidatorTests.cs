@@ -34,15 +34,7 @@ internal class XdcSealValidatorTests
     public void ValidateSeal_NotXdcHeader_ThrowArgumentException()
     {
         XdcSealValidator validator = new XdcSealValidator(Substitute.For<ISnapshotManager>(), Substitute.For<ISpecProvider>());
-        BlockHeader header = new BlockHeader(
-            parentHash: Hash256.Zero,
-            unclesHash: Hash256.Zero,
-            beneficiary: Address.Zero,
-            difficulty: 0,
-            number: 0,
-            gasLimit: 0,
-            timestamp: 0,
-            extraData: Array.Empty<byte>());
+        BlockHeader header = Build.A.BlockHeader.TestObject;
 
         Assert.That(() => validator.ValidateSeal(header), Throws.InstanceOf<ArgumentException>());
     }

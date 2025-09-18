@@ -73,8 +73,8 @@ public class XdcBlockHeaderBuilder : BlockHeaderBuilder
     }
     private void EncodeExtraData(ExtraFieldsV2 extraFieldsV2)
     {
-        ExtraConsensusDataDecoder exctraEncoder = new ExtraConsensusDataDecoder();
-        Rlp extraEncoded = exctraEncoder.Encode(extraFieldsV2);
+        ExtraConsensusDataDecoder extraEncoder = new ExtraConsensusDataDecoder();
+        Rlp extraEncoded = extraEncoder.Encode(extraFieldsV2);
         XdcTestObjectInternal.ExtraData = [0x2, .. extraEncoded.Bytes];
     }
 

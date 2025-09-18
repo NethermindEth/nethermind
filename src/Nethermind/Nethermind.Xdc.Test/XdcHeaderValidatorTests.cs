@@ -32,10 +32,6 @@ public class Tests
 
     public static IEnumerable<object[]> HeaderTestCases()
     {
-        BlockHeader headerParent = Build.A
-            .XdcBlockHeader()
-            .WithMixHash(Hash256.Zero)
-            .TestObject;
         XdcBlockHeaderBuilder blockHeaderBuilder = CreateValidHeader();
 
         yield return new object[]

@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using Nethermind.Core;
+using Nethermind.Xdc.Types;
 using System;
 using System.Collections.Generic;
 using System.Linq;
@@ -13,6 +14,6 @@ public class EpochSwitchInfo
 {
     public Address[] Penalties { get; set; }
     public Address[] Masternodes { get; set; }
-    public BlockInfo EpochSwitchBlockInfo { get; set; }
-    public BlockInfo EpochSwitchParentBlockInfo { get; set; }
+    public BlockRoundInfo EpochSwitchBlockInfo { get; set; }
+    public BlockRoundInfo EpochSwitchParentBlockInfo { get; set; }
 }

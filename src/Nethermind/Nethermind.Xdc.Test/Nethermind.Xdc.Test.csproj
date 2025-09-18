@@ -13,10 +13,4 @@
     <ProjectReference Include="..\Nethermind.Serialization.Rlp\Nethermind.Serialization.Rlp.csproj" />
     <ProjectReference Include="..\Nethermind.Xdc\Nethermind.Xdc.csproj" />
   </ItemGroup>
-
-  <ItemGroup>
-    <ProjectReference Include="..\Nethermind.Core.Test\Nethermind.Core.Test.csproj" />
-    <ProjectReference Include="..\Nethermind.Xdc\Nethermind.Xdc.csproj" />
-  </ItemGroup>
-
 </Project>
