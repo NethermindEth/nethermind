@@ -15,11 +15,6 @@ namespace Nethermind.Core.Test.Db
 {
     public class TestMemDbProvider
     {
-        public static Task<IDbProvider> InitAsync()
-        {
-            return Task.FromResult(Init());
-        }
-
         public static IDbProvider Init()
         {
             return new ContainerBuilder()

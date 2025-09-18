@@ -62,9 +62,9 @@ public class ProofRpcModuleTests
     }
 
     [SetUp]
-    public async Task Setup()
+    public void Setup()
     {
-        _dbProvider = await TestMemDbProvider.InitAsync();
+        _dbProvider = TestMemDbProvider.Init();
         _worldStateManager = TestWorldStateFactory.CreateWorldStateManagerForTest(_dbProvider, LimboLogs.Instance);
 
         Hash256 stateRoot;
@@ -99,6 +99,7 @@ public class ProofRpcModuleTests
     [TearDown]
     public void TearDown()
     {
+        _dbProvider.Dispose();
         _container.Dispose();
     }
 
