@@ -3,31 +3,27 @@
 
 using System;
 using System.Buffers;
-using System.Runtime.CompilerServices;
+using System.Diagnostics;
 
 namespace Nethermind.Serialization.FluentRlp;
 
 public static class Rlp
 {
-    public static ReadOnlyMemory<byte> Write(RefRlpWriterAction action)
+    public static byte[] Write(RefRlpWriterAction action)
         => Write(action, static (ref RlpWriter w, RefRlpWriterAction action) => action(ref w));
 
-    public static ReadOnlyMemory<byte> Write<TContext>(TContext ctx, RefRlpWriterAction<TContext> action)
+    public static byte[] Write<TContext>(TContext ctx, RefRlpWriterAction<TContext> action)
         where TContext : allows ref struct
     {
         var lengthWriter = RlpWriter.LengthWriter();
         action(ref lengthWriter, ctx);
-        var buffer = new ArrayBufferWriter<byte>(lengthWriter.Length);
-        var contentWriter = RlpWriter.ContentWriter(buffer);
+        var bufferWriter = new FixedArrayBufferWriter<byte>(lengthWriter.Length);
+        var contentWriter = RlpWriter.ContentWriter(bufferWriter);
         action(ref contentWriter, ctx);
 
-        return buffer.WrittenMemory;
+        return bufferWriter.Buffer;
     }
 
-    public static T Read<T>(ReadOnlyMemory<byte> source, RefRlpReaderFunc<T> func) where T : allows ref struct
-        => Read(source.Span, func);
-
-    [OverloadResolutionPriority(1)]
     public static T Read<T>(ReadOnlySpan<byte> source, RefRlpReaderFunc<T> func)
         where T : allows ref struct
     {
@@ -67,13 +63,13 @@ internal class FixedArrayBufferWriter<T> : IBufferWriter<T>
 
     public Memory<T> GetMemory(int sizeHint = 0)
     {
-        Debug.Assert(_buffer.Length > _index);
+        Debug.Assert(_buffer.Length >= _index);
         return _buffer.AsMemory(_index);
     }
 
     public Span<T> GetSpan(int sizeHint = 0)
     {
-        Debug.Assert(_buffer.Length > _index);
+        Debug.Assert(_buffer.Length >= _index);
         return _buffer.AsSpan(_index);
     }
 }
