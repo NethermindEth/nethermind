@@ -239,6 +239,12 @@ namespace Nethermind.Synchronization.SnapSync
                     _logger.Trace(
                         $"SNAP - AddStorageRange failed, slots are out of bounds, startingHash:{request.StartingHash}");
             }
+            else if (result == AddRangeResult.EmptySlots)
+            {
+                if (_logger.IsTrace)
+                    _logger.Trace(
+                        $"SNAP - AddStorageRange failed, slots list is empty, startingHash:{request.StartingHash}");
+            }
 
             _progressTracker.EnqueueAccountRefresh(pathWithAccount, request.StartingHash, request.LimitHash);
             return result;
