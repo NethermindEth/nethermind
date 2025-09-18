@@ -97,8 +97,8 @@ public class PluginLoader(string pluginPath, IFileSystem fileSystem, ILogger log
 
         _pluginTypes.Sort((firstPlugin, secondPlugin) =>
         {
-            bool firstHasPriority = pluginPriorities.TryGetValue(firstPlugin.Name.ToLower(), out int firstPriorityIndex);
-            bool secondHasPriority = pluginPriorities.TryGetValue(secondPlugin.Name.ToLower(), out int secondPriorityIndex);
+            bool firstHasPriority = pluginPriorities.TryGetValue(firstPlugin.Name, out int firstPriorityIndex);
+            bool secondHasPriority = pluginPriorities.TryGetValue(secondPlugin.Name, out int secondPriorityIndex);
 
             return (firstHasPriority, secondHasPriority) switch
             {
