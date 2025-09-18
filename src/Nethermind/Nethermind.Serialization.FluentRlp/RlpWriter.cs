@@ -15,10 +15,11 @@ public delegate void RefRlpWriterAction(ref RlpWriter arg);
 
 public ref struct RlpWriter
 {
-    private const bool LengthMode = false;
-    private const bool ContentMode = true;
+    public const bool LengthMode = false;
+    public const bool ContentMode = true;
 
     private bool _mode;
+    public readonly bool UnsafeCurrentMode => _mode;
 
     public int Length { get; private set; }
 
@@ -46,15 +47,15 @@ public ref struct RlpWriter
         switch (_mode)
         {
             case LengthMode:
-                LengthWrite(value);
+                UnsafeLengthWrite(value);
                 break;
             case ContentMode:
-                ContentWrite(value);
+                UnsafeContentWrite(value);
                 break;
         }
     }
 
-    private unsafe void LengthWrite<T>(T value) where T : unmanaged, IBinaryInteger<T>
+    public unsafe void UnsafeLengthWrite<T>(T value) where T : unmanaged, IBinaryInteger<T>
     {
         var size = sizeof(T);
         Span<byte> bigEndian = stackalloc byte[size];
@@ -71,11 +72,11 @@ public ref struct RlpWriter
         }
         else
         {
-            LengthWrite(bigEndian);
+            UnsafeLengthWrite(bigEndian.Length);
         }
     }
 
-    private unsafe void ContentWrite<T>(T value) where T : unmanaged, IBinaryInteger<T>
+    public unsafe void UnsafeContentWrite<T>(T value) where T : unmanaged, IBinaryInteger<T>
     {
         var size = sizeof(T);
         Span<byte> bigEndian = stackalloc byte[size];
@@ -92,7 +93,7 @@ public ref struct RlpWriter
         }
         else
         {
-            ContentWrite(bigEndian);
+            UnsafeContentWrite(bigEndian);
         }
     }
 
@@ -101,18 +102,15 @@ public ref struct RlpWriter
         switch (_mode)
         {
             case LengthMode:
-                LengthWrite(value);
+                UnsafeLengthWrite(value.Length);
                 break;
             case ContentMode:
-                ContentWrite(value);
+                UnsafeContentWrite(value);
                 break;
         }
     }
 
-    private void LengthWrite(scoped ReadOnlySpan<byte> value) => UNSAFE_FixedLengthWrite(value.Length);
-
-    // TODO: Figure out how to make this method accessible only to the source generator
-    public bool UNSAFE_FixedLengthWrite(int length)
+    public bool UnsafeLengthWrite(int length)
     {
         if (_mode != LengthMode) return false;
 
@@ -133,7 +131,7 @@ public ref struct RlpWriter
         return true;
     }
 
-    private void ContentWrite(scoped ReadOnlySpan<byte> value)
+    public readonly void UnsafeContentWrite(scoped ReadOnlySpan<byte> value)
     {
         if (value.Length < 55)
         {
@@ -160,15 +158,15 @@ public ref struct RlpWriter
         switch (_mode)
         {
             case LengthMode:
-                LengthWriteSequence(ctx, action);
+                UnsafeLengthWriteSequence(ctx, action);
                 break;
             case ContentMode:
-                ContentWriteSequence(ctx, action);
+                UnsafeContentWriteSequence(ctx, action);
                 break;
         }
     }
 
-    private void LengthWriteSequence<TContext>(TContext ctx, RefRlpWriterAction<TContext> action)
+    public void UnsafeLengthWriteSequence<TContext>(TContext ctx, RefRlpWriterAction<TContext> action)
     {
         var inner = LengthWriter();
         action(ref inner, ctx);
@@ -185,7 +183,7 @@ public ref struct RlpWriter
         }
     }
 
-    private void ContentWriteSequence<TContext>(TContext ctx, RefRlpWriterAction<TContext> action)
+    public void UnsafeContentWriteSequence<TContext>(TContext ctx, RefRlpWriterAction<TContext> action)
     {
         var lengthWriter = LengthWriter();
         action(ref lengthWriter, ctx);
