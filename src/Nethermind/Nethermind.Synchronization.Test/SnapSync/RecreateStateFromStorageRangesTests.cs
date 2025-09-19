@@ -191,6 +191,27 @@ namespace Nethermind.Synchronization.Test.SnapSync
             testMemDb.WritesCount.Should().Be(1);
         }
 
+        [Test]
+        public void AddStorageRange_EmptySlots_ReturnsEmptySlots()
+        {
+            Hash256 account = TestItem.KeccakA;
+            TestMemDb testMemDb = new();
+            var rawTrieStore = new RawScopedTrieStore(new NodeStorage(testMemDb), account);
+            StorageTree tree = new(rawTrieStore, LimboLogs.Instance);
+
+            (AddRangeResult result, bool moreChildrenToRight) = SnapProviderHelper.AddStorageRange(
+                tree,
+                new PathWithAccount(account, new Account(1, 1, new Hash256("0xeb8594ba5b3314111518b584bbd3801fb3aed5970bd8b47fd9ff744505fe101c"), TestItem.KeccakA)),
+                Array.Empty<PathWithStorageSlot>(), // Empty slots list
+                Keccak.Zero,
+                null,
+                proofs: null);
+
+            result.Should().Be(AddRangeResult.EmptySlots);
+            moreChildrenToRight.Should().BeFalse();
+            testMemDb.WritesCount.Should().Be(0); // No writes should happen
+        }
+
         private static StorageRange PrepareStorageRequest(ValueHash256 accountPath, Hash256 storageRoot, ValueHash256 startingHash)
         {
             return new StorageRange()
