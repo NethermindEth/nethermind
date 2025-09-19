@@ -89,10 +89,10 @@ public sealed class RevmTransaction
 public sealed class BundleState
 {
     [JsonPropertyName("state")]
-    public IReadOnlyDictionary<Address, BundleAccount> State { get; init; } = [];
+    public IReadOnlyDictionary<Address, BundleAccount> State { get; init; } = new Dictionary<Address, BundleAccount>();
 
     [JsonPropertyName("contracts")]
-    public IReadOnlyDictionary<byte[], object> Contracts { get; init; } = []; // TODO: Adjust types
+    public IReadOnlyDictionary<byte[], object> Contracts { get; init; } = new Dictionary<byte[], object>(); // TODO: Adjust types
 
     [JsonPropertyName("reverts")]
     public IReadOnlyList<object> Reverts { get; init; } = []; // TODO: Adjust type
@@ -110,7 +110,7 @@ public sealed class BundleAccount
     public RevmStateAccountInfo? OriginalInfo { get; init; } = new();
 
     [JsonPropertyName("storage")]
-    public IReadOnlyDictionary<UInt256, StorageSlot> Storage { get; init; } = [];
+    public IReadOnlyDictionary<UInt256, StorageSlot> Storage { get; init; } = new Dictionary<UInt256, StorageSlot>();
 
     [JsonPropertyName("account_status")]
     public DatabaseAccountStatus DatabaseAccountStatus { get; init; }
@@ -195,7 +195,7 @@ public sealed class RevmStateAccount
 {
     public RevmStateAccountInfo Info { get; init; } = new();
 
-    public IReadOnlyDictionary<UInt256, RevmStorageSlot> Storage { get; init; } = [];
+    public IReadOnlyDictionary<UInt256, RevmStorageSlot> Storage { get; init; } = new Dictionary<UInt256, RevmStorageSlot>();
 
     public byte Status { get; init; } = RevmStateAccountStatus.Loaded;
 }
