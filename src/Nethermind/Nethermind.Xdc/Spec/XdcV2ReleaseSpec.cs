@@ -10,7 +10,7 @@ using System.Text;
 using System.Threading.Tasks;
 
 namespace Nethermind.Xdc.Spec;
-internal class XdcV2ReleaseSpec : ReleaseSpec, IXdcReleaseSpec
+internal class XdcV2ReleaseSpec : ReleaseSpec
 {
     public int SwitchEpoch { get; set; }
     public UInt256 SwitchBlock { get; set; }
@@ -28,5 +28,4 @@ internal class XdcV2ReleaseSpec : ReleaseSpec, IXdcReleaseSpec
     public int MinimumMinerBlockPerEpoch { get; set; }   // Minimum block per epoch for a miner to not be penalized
     public int LimitPenaltyEpoch { get; set; }           // Epochs in a row that a penalty node needs to be penalized
     public int MinimumSigningTx { get; set; }            // Signing txs that a node needs to produce to get out of penalty, after `LimitPenaltyEpoch`
-
 }

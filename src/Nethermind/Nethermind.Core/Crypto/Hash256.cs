@@ -99,7 +99,7 @@ namespace Nethermind.Core.Crypto
         public static bool operator !=(in ValueHash256 a, Hash256? b) => !(a == b);
 
         public UInt256 ToUInt256(bool isBigEndian = true) => new UInt256(Bytes, isBigEndian: isBigEndian);
-
+        public Hash256 ToHash256() => new Hash256(this);
         private bool IsZero => _bytes == default;
     }
 

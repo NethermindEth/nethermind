@@ -7,11 +7,11 @@ using Nethermind.Core.Crypto;
 using Nethermind.Int256;
 using Nethermind.Serialization.Rlp;
 namespace Nethermind.Xdc;
-public sealed class XdcHeaderDecoder : IHeaderDecoder
+public sealed class XdcHeaderDecoder : IHeaderDecoder<XdcBlockHeader>
 {
     private const int NonceLength = 8;
 
-    public BlockHeader? Decode(ref Rlp.ValueDecoderContext decoderContext,
+    public XdcBlockHeader? Decode(ref Rlp.ValueDecoderContext decoderContext,
         RlpBehaviors rlpBehaviors = RlpBehaviors.None)
     {
         if (decoderContext.IsNextItemNull())
@@ -75,7 +75,7 @@ public sealed class XdcHeaderDecoder : IHeaderDecoder
         return blockHeader;
     }
 
-    public BlockHeader? Decode(RlpStream rlpStream, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+    public XdcBlockHeader? Decode(RlpStream rlpStream, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
     {
         if (rlpStream.IsNextItemNull())
         {
@@ -139,45 +139,43 @@ public sealed class XdcHeaderDecoder : IHeaderDecoder
         return blockHeader;
     }
 
-    public void Encode(RlpStream rlpStream, BlockHeader? header, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+    public void Encode(RlpStream rlpStream, XdcBlockHeader? header, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
     {
         if (header is null)
         {
             rlpStream.EncodeNullObject();
             return;
         }
-        if (header is not XdcBlockHeader h)
-            throw new ArgumentException("XdcHeaderRlpCodec expects XdcBlockHeader.", nameof(header));
 
         bool notForSealing = (rlpBehaviors & RlpBehaviors.ForSealing) != RlpBehaviors.ForSealing;
-        rlpStream.StartSequence(GetContentLength(h, rlpBehaviors));
-        rlpStream.Encode(h.ParentHash);
-        rlpStream.Encode(h.UnclesHash);
-        rlpStream.Encode(h.Beneficiary);
-        rlpStream.Encode(h.StateRoot);
-        rlpStream.Encode(h.TxRoot);
-        rlpStream.Encode(h.ReceiptsRoot);
-        rlpStream.Encode(h.Bloom);
-        rlpStream.Encode(h.Difficulty);
-        rlpStream.Encode(h.Number);
-        rlpStream.Encode(h.GasLimit);
-        rlpStream.Encode(h.GasUsed);
-        rlpStream.Encode(h.Timestamp);
-        rlpStream.Encode(h.ExtraData);
-        rlpStream.Encode(h.MixHash);
-        rlpStream.Encode(h.Nonce, NonceLength);
-        rlpStream.Encode(h.Validators);
+        rlpStream.StartSequence(GetContentLength(header, rlpBehaviors));
+        rlpStream.Encode(header.ParentHash);
+        rlpStream.Encode(header.UnclesHash);
+        rlpStream.Encode(header.Beneficiary);
+        rlpStream.Encode(header.StateRoot);
+        rlpStream.Encode(header.TxRoot);
+        rlpStream.Encode(header.ReceiptsRoot);
+        rlpStream.Encode(header.Bloom);
+        rlpStream.Encode(header.Difficulty);
+        rlpStream.Encode(header.Number);
+        rlpStream.Encode(header.GasLimit);
+        rlpStream.Encode(header.GasUsed);
+        rlpStream.Encode(header.Timestamp);
+        rlpStream.Encode(header.ExtraData);
+        rlpStream.Encode(header.MixHash);
+        rlpStream.Encode(header.Nonce, NonceLength);
+        rlpStream.Encode(header.Validators);
         if (notForSealing)
         {
-            rlpStream.Encode(h.Validator);
+            rlpStream.Encode(header.Validator);
         }
-        rlpStream.Encode(h.Penalties);
+        rlpStream.Encode(header.Penalties);
 
-        if (!h.BaseFeePerGas.IsZero) rlpStream.Encode(h.BaseFeePerGas);
+        if (!header.BaseFeePerGas.IsZero) rlpStream.Encode(header.BaseFeePerGas);
 
     }
 
-    public Rlp Encode(BlockHeader? item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+    public Rlp Encode(XdcBlockHeader? item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
     {
         if (item is null)
         {
@@ -226,7 +224,7 @@ public sealed class XdcHeaderDecoder : IHeaderDecoder
         return contentLength;
     }
 
-    public int GetLength(BlockHeader? item, RlpBehaviors rlpBehaviors)
+    public int GetLength(XdcBlockHeader? item, RlpBehaviors rlpBehaviors)
     {
         if (item is not XdcBlockHeader header)
             throw new ArgumentException("XdcHeaderRlpCodec expects XdcBlockHeader.", nameof(header));
