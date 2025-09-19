@@ -350,14 +350,16 @@ namespace Nethermind.Trie
 
                 SpanSource result = GetNew(nibbles, ref emptyPath, root, isNodeRead: false);
 
-                if (array is not null) ArrayPool<byte>.Shared.Return(array);
-
                 return result.IsNull ? ReadOnlySpan<byte>.Empty : result.Span;
             }
             catch (TrieException e)
             {
                 EnhanceException(rawKey, rootHash ?? RootHash, e);
                 throw;
+            }
+            finally
+            {
+                if (array is not null) ArrayPool<byte>.Shared.Return(array);
             }
         }
 
@@ -403,13 +405,16 @@ namespace Nethermind.Trie
                 }
                 SpanSource result = GetNew(nibbles, ref emptyPath, root, isNodeRead: true);
 
-                if (array is not null) ArrayPool<byte>.Shared.Return(array);
                 return result.ToArray() ?? [];
             }
             catch (TrieException e)
             {
                 EnhanceException(rawKey, rootHash ?? RootHash, e);
                 throw;
+            }
+            finally
+            {
+                if (array is not null) ArrayPool<byte>.Shared.Return(array);
             }
         }
 
