@@ -87,7 +87,8 @@ internal class SnapshotManager : ISnapshotManager
         if (isGapNumber)
         {
             gapBlockNum = number;
-        } else
+        }
+        else
         {
             gapBlockNum = Math.Max(0, number - number % _xdcConfig.Epoch - _xdcConfig.Gap);
         }

@@ -43,7 +43,7 @@ internal class SnapshotDecoder : IRlpStreamDecoder<Snapshot>
         stream.Encode(item.Number);
         stream.Encode(item.Hash);
 
-        if(item.NextEpochCandidates is null)
+        if (item.NextEpochCandidates is null)
             stream.EncodeArray<Address>([]);
         else
             EncodeNextEpochSigners(stream, item.NextEpochCandidates);
