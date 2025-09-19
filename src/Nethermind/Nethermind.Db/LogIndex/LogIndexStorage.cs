@@ -69,22 +69,40 @@ namespace Nethermind.Db
         private readonly ICompressor _compressor;
         private readonly ICompactor _compactor;
 
+        private readonly Lock _rangeInitLock = new(); // May not be needed, but added for safety
         private int? _addressMaxBlock;
         private int? _addressMinBlock;
         private int?[] _topicMinBlocks;
         private int?[] _topicMaxBlocks;
 
-        private readonly Lock _firstRunLock = new();
-        private bool HasRunBefore => _addressMinBlock is not null; // TODO: check other metadata values?
+        /// <summary>
+        /// Whether a first batch was already added.
+        /// </summary>
+        private bool WasInitialized => _addressMinBlock is not null; // TODO: check other metadata values?
 
         private readonly TaskCompletionSource _firstBlockAddedSource = new();
         public Task FirstBlockAdded => _firstBlockAddedSource.Task;
+
+        /// <summary>
+        /// Guarantees initialization won't be run concurrently
+        /// </summary>
+        private readonly SemaphoreSlim _initSemaphore = new(1, 1);
+
+        /// <summary>
+        /// Maps a syncing direction to semaphore.
+        /// Used for blocking concurrent executions and
+        /// ensuring the current iteration is completed before stopping/disposing.
+        /// </summary>
+        private readonly Dictionary<bool, SemaphoreSlim> _setReceiptsSemaphores = new()
+        {
+            { false, new(1, 1) },
+            { true, new(1, 1) }
+        };
 
         // Not thread safe
         private bool _stopped;
         private bool _disposed;
 
-        // TODO: ensure class is singleton
         public LogIndexStorage(IDbFactory dbFactory, ILogManager logManager,
             int? ioParallelism = null, int? compactionDistance = null, int? maxReorgDepth = null)
         {
@@ -111,12 +129,12 @@ namespace Nethermind.Db
             _addressDb = _columnsDb.GetColumnDb(LogIndexColumns.Addresses);
             _topicsDbs = _mergeOperators.Keys.Where(cl => $"{cl}".Contains("Topic")).Select(cl => _columnsDb.GetColumnDb(cl)).ToArray();
 
-            _addressMaxBlock = LoadBlockNumber(_addressDb, SpecialKey.MaxBlockNum);
-            _addressMinBlock = LoadBlockNumber(_addressDb, SpecialKey.MinBlockNum);
-            _topicMaxBlocks = _topicsDbs.Select(static db => LoadBlockNumber(db, SpecialKey.MaxBlockNum)).ToArray();
-            _topicMinBlocks = _topicsDbs.Select(static db => LoadBlockNumber(db, SpecialKey.MinBlockNum)).ToArray();
+            _addressMaxBlock = LoadRangeBound(_addressDb, SpecialKey.MaxBlockNum);
+            _addressMinBlock = LoadRangeBound(_addressDb, SpecialKey.MinBlockNum);
+            _topicMaxBlocks = _topicsDbs.Select(static db => LoadRangeBound(db, SpecialKey.MaxBlockNum)).ToArray();
+            _topicMinBlocks = _topicsDbs.Select(static db => LoadRangeBound(db, SpecialKey.MinBlockNum)).ToArray();
 
-            if (HasRunBefore)
+            if (WasInitialized)
                 _firstBlockAddedSource.SetResult();
         }
 
@@ -130,15 +148,6 @@ namespace Nethermind.Db
                 iterator.Next();
             }
         }
-
-        // Used for:
-        // - blocking concurrent executions
-        // - ensuring the current migration task is completed before stopping
-        private readonly Dictionary<bool, SemaphoreSlim> _setReceiptsSemaphores = new()
-        {
-            { false, new(1, 1) },
-            { true, new(1, 1) }
-        };
 
         public async Task StopAsync()
         {
@@ -187,13 +196,32 @@ namespace Nethermind.Db
             _disposed = true;
         }
 
-        private static int? LoadBlockNumber(IDb db, byte[] key)
+        private static int? LoadRangeBound(IDb db, byte[] key)
         {
             var value = db.Get(key);
             return value is { Length: > 1 } ? GetValBlockNum(value) : null;
         }
 
-        private static int SaveBlockNumber(IWriteOnlyKeyValueStore dbBatch, byte[] key, int value)
+        private void UpdateRange((int min, int max) addressRange, (int?[] min, int?[] max) topicRanges, bool isBackwardSync)
+        {
+            if (!WasInitialized)
+            {
+                using Lock.Scope _ = _rangeInitLock.EnterScope();
+
+                (_addressMinBlock, _addressMaxBlock) = addressRange;
+                (_topicMinBlocks, _topicMaxBlocks) = topicRanges;
+            }
+            else if (isBackwardSync)
+            {
+                (_addressMinBlock, _topicMinBlocks) = (addressRange.min, topicRanges.min);
+            }
+            else
+            {
+                (_addressMaxBlock, _topicMaxBlocks) = (addressRange.max, topicRanges.max);
+            }
+        }
+
+        private static int SaveRangeBound(IWriteOnlyKeyValueStore dbBatch, byte[] key, int value)
         {
             var bufferArr = _arrayPool.Rent(BlockNumSize);
             Span<byte> buffer = bufferArr.AsSpan(BlockNumSize);
@@ -210,42 +238,42 @@ namespace Nethermind.Db
             }
         }
 
-        private static (int min, int max) SaveBlockNumbers(IWriteOnlyKeyValueStore dbBatch, int batchFirst, int batchLast,
+        private static (int min, int max) SaveRange(IWriteOnlyKeyValueStore dbBatch, int batchFirst, int batchLast,
             int? lastMin, int? lastMax, bool isBackwardSync, bool isReorg)
         {
             var batchMin = Math.Min(batchFirst, batchLast);
             var batchMax = Math.Max(batchFirst, batchLast);
 
-            var min = lastMin ?? SaveBlockNumber(dbBatch, SpecialKey.MinBlockNum, batchMin);
-            var max = lastMax ??= SaveBlockNumber(dbBatch, SpecialKey.MaxBlockNum, batchMax);
+            var min = lastMin ?? SaveRangeBound(dbBatch, SpecialKey.MinBlockNum, batchMin);
+            var max = lastMax ??= SaveRangeBound(dbBatch, SpecialKey.MaxBlockNum, batchMax);
 
             if (!isBackwardSync)
             {
                 if ((isReorg && batchMax < lastMax) || (!isReorg && batchMax > lastMax))
-                    max = SaveBlockNumber(dbBatch, SpecialKey.MaxBlockNum, batchMax);
+                    max = SaveRangeBound(dbBatch, SpecialKey.MaxBlockNum, batchMax);
             }
             else
             {
                 if (isReorg)
                     throw ValidationException("Backwards sync does not support reorgs.");
                 if (batchMin < lastMin)
-                    min = SaveBlockNumber(dbBatch, SpecialKey.MinBlockNum, batchMin);
+                    min = SaveRangeBound(dbBatch, SpecialKey.MinBlockNum, batchMin);
             }
 
             return (min, max);
         }
 
-        private (int min, int max) SaveAddressBlockNumbers(IWriteBatch dbBatch, LogIndexAggregate aggregate, bool isBackwardSync, bool isReorg = false) =>
-            SaveBlockNumbers(dbBatch, aggregate.FirstBlockNum, aggregate.LastBlockNum, _addressMinBlock, _addressMaxBlock, isBackwardSync, isReorg);
+        private (int min, int max) SaveAddressRange(IWriteBatch dbBatch, LogIndexAggregate aggregate, bool isBackwardSync, bool isReorg = false) =>
+            SaveRange(dbBatch, aggregate.FirstBlockNum, aggregate.LastBlockNum, _addressMinBlock, _addressMaxBlock, isBackwardSync, isReorg);
 
-        private (int min, int max) SaveAddressBlockNumbers(IWriteBatch dbBatch, int block, bool isBackwardSync, bool isReorg = false) =>
-            SaveBlockNumbers(dbBatch, block, block, _addressMinBlock, _addressMaxBlock, isBackwardSync, isReorg);
+        private (int min, int max) SaveAddressRange(IWriteBatch dbBatch, int block, bool isBackwardSync, bool isReorg = false) =>
+            SaveRange(dbBatch, block, block, _addressMinBlock, _addressMaxBlock, isBackwardSync, isReorg);
 
         private (int min, int max) SaveTopicBlockNumbers(int topicIndex, IWriteBatch dbBatch, LogIndexAggregate aggregate, bool isBackwardSync, bool isReorg = false) =>
-            SaveBlockNumbers(dbBatch, aggregate.FirstBlockNum, aggregate.LastBlockNum, _topicMinBlocks[topicIndex], _topicMaxBlocks[topicIndex], isBackwardSync, isReorg);
+            SaveRange(dbBatch, aggregate.FirstBlockNum, aggregate.LastBlockNum, _topicMinBlocks[topicIndex], _topicMaxBlocks[topicIndex], isBackwardSync, isReorg);
 
         private (int min, int max) SaveTopicBlockNumbers(int topicIndex, IWriteBatch dbBatch, int block, bool isBackwardSync, bool isReorg = false) =>
-            SaveBlockNumbers(dbBatch, block, block, _topicMinBlocks[topicIndex], _topicMaxBlocks[topicIndex], isBackwardSync, isReorg);
+            SaveRange(dbBatch, block, block, _topicMinBlocks[topicIndex], _topicMaxBlocks[topicIndex], isBackwardSync, isReorg);
 
         private int GetLastReorgableBlockNumber() => Math.Min(_addressMaxBlock ?? 0, _topicMaxBlocks.Min() ?? 0) - _maxReorgDepth;
 
@@ -498,7 +526,7 @@ namespace Nethermind.Db
             return Task.CompletedTask;
         }
 
-        private async ValueTask LockRunAsync(SemaphoreSlim semaphore)
+        private static async ValueTask LockRunAsync(SemaphoreSlim semaphore)
         {
             if (!await semaphore.WaitAsync(TimeSpan.Zero, CancellationToken.None))
                 throw new InvalidOperationException($"{nameof(LogIndexStorage)} does not support concurrent invocations in the same direction.");
@@ -506,8 +534,8 @@ namespace Nethermind.Db
 
         public async Task ReorgFrom(BlockReceipts block)
         {
-            if (!HasRunBefore)
-                throw new InvalidOperationException("Reorg before first block is added.");
+            if (!WasInitialized)
+                return;
 
             const bool isBackwardSync = false;
 
@@ -547,7 +575,7 @@ namespace Nethermind.Db
                 var blockNum = block.BlockNumber - 1;
 
                 (int min, int max) addressRange =
-                    SaveAddressBlockNumbers(addressBatch, blockNum, isBackwardSync, isReorg: true);
+                    SaveAddressRange(addressBatch, blockNum, isBackwardSync, isReorg: true);
 
                 (int?[] min, int?[] max) topicRanges = (min: _topicMinBlocks.ToArray(), max: _topicMaxBlocks.ToArray());
                 for (var topicIndex = 0; topicIndex < topicBatches.Length; topicIndex++)
@@ -561,7 +589,7 @@ namespace Nethermind.Db
                 addressBatch.Dispose();
                 topicBatches.ForEach(static b => b.Dispose());
 
-                (_addressMaxBlock, _topicMaxBlocks) = (addressRange.max, topicRanges.max);
+                UpdateRange(addressRange, topicRanges, isBackwardSync);
             }
             finally
             {
@@ -634,6 +662,10 @@ namespace Nethermind.Db
             SemaphoreSlim semaphore = _setReceiptsSemaphores[isBackwardSync];
             await LockRunAsync(semaphore);
 
+            var wasInitialized = WasInitialized;
+            if (!wasInitialized)
+                await _initSemaphore.WaitAsync();
+
             try
             {
                 IWriteBatch addressBatch = _addressDb.StartWriteBatch();
@@ -666,16 +698,7 @@ namespace Nethermind.Db
                 timestamp = Stopwatch.GetTimestamp();
 
                 // Update ranges in DB
-                (int min, int max) addressRange;
-                if (HasRunBefore)
-                {
-                    addressRange = SaveAddressBlockNumbers(addressBatch, aggregate, isBackwardSync);
-                }
-                else
-                {
-                    lock (_firstRunLock)
-                        addressRange = SaveAddressBlockNumbers(addressBatch, aggregate, isBackwardSync);
-                }
+                (int min, int max) addressRange = SaveAddressRange(addressBatch, aggregate, isBackwardSync);
 
                 (int?[] min, int?[] max) topicRanges = (min: _topicMinBlocks.ToArray(), max: _topicMaxBlocks.ToArray());
                 for (var topicIndex = 0; topicIndex < topicBatches.Length; topicIndex++)
@@ -699,27 +722,16 @@ namespace Nethermind.Db
                 stats?.WaitingBatch.Include(Stopwatch.GetElapsedTime(timestamp));
 
                 // Update ranges in memory
-                if (HasRunBefore)
-                {
-                    if (isBackwardSync)
-                        (_addressMinBlock, _topicMinBlocks) = (addressRange.min, topicRanges.min);
-                    else
-                        (_addressMaxBlock, _topicMaxBlocks) = (addressRange.max, topicRanges.max);
-                }
-                else
-                {
-                    lock (_firstRunLock)
-                    {
-                        (_addressMinBlock, _addressMaxBlock) = addressRange;
-                        (_topicMinBlocks, _topicMaxBlocks) = topicRanges;
-                    }
-                }
+                UpdateRange(addressRange, topicRanges, isBackwardSync);
 
                 // Enqueue compaction if needed
                 _compactor.TryEnqueue();
             }
             finally
             {
+                if (!wasInitialized)
+                    _initSemaphore.Release();
+
                 semaphore.Release();
             }
 

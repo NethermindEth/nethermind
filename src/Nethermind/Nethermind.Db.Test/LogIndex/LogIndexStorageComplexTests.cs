@@ -30,13 +30,15 @@ namespace Nethermind.Db.Test.LogIndex
     // TODO: run internal state verification for all/some tests
     // TODO: test for process crash via Thread.Abort
     // TODO: test for reorg out-of-order
-    // TODO: test for concurrent forward and backward sync after first block is added
+    // TODO: test for concurrent reorg and backward sync
     // TODO: rename to IntegrationTests?
     [TestFixtureSource(nameof(TestCases))]
     [Parallelizable(ParallelScope.All)]
     [FixtureLifeCycle(LifeCycle.InstancePerTestCase)]
     public class LogIndexStorageComplexTests(LogIndexStorageComplexTests.TestData testData)
     {
+        private const int RaceConditionTestRepeat = 3;
+
         public static readonly TestFixtureData[] TestCases =
         [
             new(new TestData(10, 100)),
@@ -143,42 +145,60 @@ namespace Nethermind.Db.Test.LogIndex
 
             for (var i = 0; i < half + 1; i++)
             {
-                if (half - i >= 0)
-                    await SetReceiptsAsync(logIndexStorage, Reverse([batches[half - i]]), isBackwardsSync: true);
                 if (half + i < batches.Length)
                     await SetReceiptsAsync(logIndexStorage, [batches[half + i]], isBackwardsSync: false);
+                if (i != 0 && half - i >= 0)
+                    await SetReceiptsAsync(logIndexStorage, Reverse([batches[half - i]]), isBackwardsSync: true);
             }
 
             VerifyReceipts(logIndexStorage, testData);
         }
 
-        [Repeat(3)]
         [Combinatorial]
+        [Repeat(RaceConditionTestRepeat)]
+        [SuppressMessage("ReSharper", "AccessToDisposedClosure")]
         public async Task Concurrent_BackwardsSet_Set_Get_Test(
             [Values(100, int.MaxValue)] int compactionDistance
         )
         {
-            var logIndexStorage = CreateLogIndexStorage(compactionDistance);
-
-            var batches = testData.Batches;
-            var half = batches.Length / 2;
-
-            var forwardTask = Task.Run(async () =>
+            await using (var setStorage = CreateLogIndexStorage(compactionDistance))
             {
-                for (var i = half; i < batches.Length; i++)
-                    await SetReceiptsAsync(logIndexStorage, [batches[i]], isBackwardsSync: false);
-            });
+                var half = testData.Batches.Length / 2;
+                var batches = testData.Batches
+                    .Select((b, i) => i >= half ? b : b.Reverse().ToArray())
+                    .ToArray();
 
-            var backwardTask = Task.Run(async () =>
-            {
-                for (var i = half - 1; i >= 0; i--)
-                    await SetReceiptsAsync(logIndexStorage, Reverse([batches[i]]), isBackwardsSync: true);
-            });
+                var forwardTask = Task.Run(async () =>
+                {
+                    for (var i = half; i < batches.Length; i++)
+                    {
+                        BlockReceipts[] batch = batches[i];
+                        await SetReceiptsAsync(setStorage, [batch], isBackwardsSync: false);
 
-            await forwardTask;
-            await backwardTask;
+                        Assert.That(setStorage.GetMinBlockNumber(), Is.LessThanOrEqualTo(batch[0].BlockNumber));
+                        Assert.That(setStorage.GetMaxBlockNumber(), Is.EqualTo(batch[^1].BlockNumber));
+                    }
+                });
 
-            VerifyReceipts(logIndexStorage, testData);
+                var backwardTask = Task.Run(async () =>
+                {
+                    for (var i = half - 1; i >= 0; i--)
+                    {
+                        BlockReceipts[] batch = batches[i];
+                        await SetReceiptsAsync(setStorage, [batch], isBackwardsSync: true);
+
+                        Assert.That(setStorage.GetMinBlockNumber(), Is.EqualTo(batch[^1].BlockNumber));
+                        Assert.That(setStorage.GetMaxBlockNumber(), Is.GreaterThanOrEqualTo(batch[0].BlockNumber));
+                    }
+                });
+
+                await forwardTask;
+                await backwardTask;
+            }
+
+            // Create new storage to force-load everything from DB
+            await using (var testStorage = CreateLogIndexStorage(compactionDistance))
+                VerifyReceipts(testStorage, testData);
         }
 
         [Combinatorial]
@@ -402,7 +422,7 @@ namespace Nethermind.Db.Test.LogIndex
         }
 
         [Combinatorial]
-        [Repeat(3)] // race condition does not always trigger
+        [Repeat(RaceConditionTestRepeat)]
         [SuppressMessage("ReSharper", "AccessToDisposedClosure")]
         public async Task Set_ConcurrentGet_Test(
             [Values(100, int.MaxValue)] int compactionDistance,
@@ -452,7 +472,7 @@ namespace Nethermind.Db.Test.LogIndex
             // Log statistics
             await TestContext.Out.WriteLineAsync(
                 $"""
-                 x{count} {nameof(LogIndexStorage.SetReceiptsAsync)}({length}) in {Stopwatch.GetElapsedTime(timestamp)}:
+                 x{count} {nameof(LogIndexStorage.SetReceiptsAsync)}([{length}], {isBackwardsSync}) in {Stopwatch.GetElapsedTime(timestamp)}:
                  {totalStats:d}
                  {'\t'}DB size: {logIndexStorage.GetDbSize()}
 
