@@ -15,7 +15,7 @@ public class HoodiSpecProvider : ISpecProvider
     public const ulong ShanghaiTimestamp = 0x0;
     public const ulong CancunTimestamp = 0x0;
     public const ulong PragueTimestamp = 0x67e41118;
-    public const ulong OsakaTimestamp = 0x68dceac0;
+    public const ulong OsakaTimestamp = 0x69011118;
     public const ulong BPO1Timestamp = 0x690b9118;
     public const ulong BPO2Timestamp = 0x69149118;
 
