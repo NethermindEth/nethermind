@@ -56,7 +56,8 @@ public class HoleskySpecProvider : ISpecProvider
     [
         (1, ShanghaiTimestamp),
         (2, CancunTimestamp),
-        (3, PragueTimestamp)
+        (3, PragueTimestamp),
+        (4, OsakaTimestamp)
     ];
 
     public static readonly HoleskySpecProvider Instance = new();

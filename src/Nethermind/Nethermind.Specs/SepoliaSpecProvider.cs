@@ -58,6 +58,7 @@ public class SepoliaSpecProvider : ISpecProvider
         (1735371, ShanghaiTimestamp),
         (1735371, CancunTimestamp),
         (1735371, PragueTimestamp),
+        (1735371, OsakaTimestamp),
     ];
 
     public static SepoliaSpecProvider Instance { get; } = new();
