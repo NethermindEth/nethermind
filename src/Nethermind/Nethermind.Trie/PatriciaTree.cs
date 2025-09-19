@@ -329,10 +329,10 @@ namespace Nethermind.Trie
         [DebuggerStepThrough]
         public virtual ReadOnlySpan<byte> Get(ReadOnlySpan<byte> rawKey, Hash256? rootHash = null)
         {
+            byte[]? array = null;
             try
             {
                 int nibblesCount = 2 * rawKey.Length;
-                byte[]? array = null;
                 Span<byte> nibbles = (rawKey.Length <= MaxKeyStackAlloc
                         ? stackalloc byte[MaxKeyStackAlloc]
                         : array = ArrayPool<byte>.Shared.Rent(nibblesCount))
@@ -387,7 +387,7 @@ namespace Nethermind.Trie
         [DebuggerStepThrough]
         public byte[]? GetNodeByKey(Span<byte> rawKey, Hash256? rootHash = null)
         {
-            byte[] array = null;
+            byte[]? array = null;
             try
             {
                 int nibblesCount = 2 * rawKey.Length;
