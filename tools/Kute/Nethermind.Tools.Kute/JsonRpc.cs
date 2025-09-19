@@ -7,7 +7,6 @@ namespace Nethermind.Tools.Kute;
 
 public abstract class JsonRpc
 {
-    public abstract string? Id { get; }
     private readonly JsonNode _node;
 
     private JsonRpc(JsonNode node)
@@ -28,14 +27,14 @@ public abstract class JsonRpc
             private readonly Lazy<string?> _id;
             private readonly Lazy<string?> _methodName;
 
-            public override string? Id { get => _id.Value; }
+            public string? Id { get => _id.Value; }
             public string? MethodName { get => _methodName.Value; }
 
             public Single(JsonNode node) : base(node)
             {
                 _id = new(() =>
                 {
-                    if (_node["id"] is JsonNode id)
+                    if (_node["id"] is { } id)
                     {
                         return ((Int64)id).ToString();
                     }
@@ -44,7 +43,7 @@ public abstract class JsonRpc
                 });
                 _methodName = new(() =>
                 {
-                    if (_node["method"] is JsonNode method)
+                    if (_node["method"] is { } method)
                     {
                         return (string?)method;
                     }
@@ -60,7 +59,7 @@ public abstract class JsonRpc
         {
             private readonly Lazy<string?> _id;
 
-            public override string? Id { get => _id.Value; }
+            public string? Id { get => _id.Value; }
 
             public Batch(JsonNode node) : base(node)
             {
@@ -68,8 +67,8 @@ public abstract class JsonRpc
                 {
                     if (Items().Any())
                     {
-                        var first = Items().First()?.Id?.ToString();
-                        var last = Items().Last()?.Id?.ToString();
+                        var first = Items().First()?.Id;
+                        var last = Items().Last()?.Id;
 
                         if (first is not null && last is not null)
                         {
@@ -97,13 +96,13 @@ public abstract class JsonRpc
     {
         private readonly Lazy<string?> _id;
 
-        public override string? Id { get => _id.Value; }
+        public string? Id { get => _id.Value; }
 
         public Response(JsonNode node) : base(node)
         {
             _id = new(() =>
             {
-                if (_node["id"] is JsonNode id)
+                if (_node["id"] is { } id)
                 {
                     return ((Int64)id).ToString();
                 }
