@@ -15,7 +15,7 @@ public class SepoliaSpecProvider : ISpecProvider
     public const ulong ShanghaiTimestamp = 0x63fd7d60;
     public const ulong CancunTimestamp = 0x65B97D60;
     public const ulong PragueTimestamp = 0x67C7FD60;
-    public const ulong OsakaTimestamp = 0xFFFFFFFF;
+    public const ulong OsakaTimestamp = 0x68edfd60;
 
     private static IReleaseSpec? _prague;
 
@@ -43,7 +43,7 @@ public class SepoliaSpecProvider : ISpecProvider
             TerminalTotalDifficulty = terminalTotalDifficulty;
     }
 
-    public ulong NetworkId => Core.BlockchainIds.Sepolia;
+    public ulong NetworkId => BlockchainIds.Sepolia;
     public ulong ChainId => NetworkId;
     public string SealEngine => SealEngineType.Clique;
     public long? DaoBlockNumber => null;

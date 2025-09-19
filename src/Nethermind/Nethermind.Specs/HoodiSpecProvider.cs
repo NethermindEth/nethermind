@@ -15,6 +15,7 @@ public class HoodiSpecProvider : ISpecProvider
     public const ulong ShanghaiTimestamp = 0x0;
     public const ulong CancunTimestamp = 0x0;
     public const ulong PragueTimestamp = 0x67e41118;
+    public const ulong OsakaTimestamp = 0x68dceac0;
 
     private static IReleaseSpec? _prague;
 
@@ -29,7 +30,8 @@ public class HoodiSpecProvider : ISpecProvider
         {
             null or < ShanghaiTimestamp => GenesisSpec,
             < PragueTimestamp => Cancun.Instance,
-            _ => Prague
+            < OsakaTimestamp => Prague,
+            _ => Osaka.Instance
         };
     }
 
@@ -50,11 +52,11 @@ public class HoodiSpecProvider : ISpecProvider
     public UInt256? TerminalTotalDifficulty { get; private set; } = 0;
     public IReleaseSpec GenesisSpec { get; } = London.Instance;
     public ForkActivation[] TransitionActivations { get; } =
-    {
+    [
         (1, ShanghaiTimestamp),
         (2, CancunTimestamp),
         (3, PragueTimestamp)
-    };
+    ];
 
     public static readonly HoodiSpecProvider Instance = new();
 }
