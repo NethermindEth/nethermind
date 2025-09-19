@@ -8,9 +8,11 @@ using FluentAssertions;
 using Nethermind.Blockchain;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Core.Test.Modules;
+using Nethermind.Db;
 using Nethermind.Flashbots.Modules.Rbuilder;
 using Nethermind.Int256;
 using Nethermind.JsonRpc.Test;
@@ -30,23 +32,30 @@ public class RbuilderRpcModuleTests
 {
     private IRbuilderRpcModule _rbuilderRpcModule;
     private IWorldStateManager _worldStateManager;
+    private IBlockTree _blockTree;
     private IContainer _container;
 
     [SetUp]
     public void Setup()
     {
-        IBlockTree blockTree = Build.A.BlockTree()
-            .OfChainLength(10)
-            .TestObject;
+        BlockTreeBuilder blockTree = Build.A.BlockTree()
+            .OfChainLength(10);
 
         _container = new ContainerBuilder()
             .AddModule(new TestNethermindModule())
             .AddModule(new FlashbotsModule(new FlashbotsConfig(), new JsonRpcConfig()))
-            .AddSingleton<IBlockTree>(blockTree)
+            .AddSingleton<IBlockTree>(blockTree.TestObject)
+            .AddKeyedSingleton(DbNames.BlockInfos, blockTree.BlockInfoDb)
+            .AddKeyedSingleton(DbNames.Blocks, blockTree.BlocksDb)
+            .AddKeyedSingleton(DbNames.Headers, blockTree.HeadersDb)
+            .AddKeyedSingleton(DbNames.BlockNumbers, blockTree.BlockNumbersDb)
+            .AddKeyedSingleton(DbNames.Metadata, blockTree.MetadataDb)
+            .AddKeyedSingleton(DbNames.BadBlocks, blockTree.BadBlocksDb)
             .AddSingleton<ISpecProvider>(MainnetSpecProvider.Instance)
             .Build();
 
         _worldStateManager = _container.Resolve<IWorldStateManager>();
+        _blockTree = _container.Resolve<IBlockTree>();
         _rbuilderRpcModule = _container.Resolve<IRbuilderRpcModule>();
     }
 
@@ -114,10 +123,11 @@ public class RbuilderRpcModuleTests
 
         IWorldState worldState = _worldStateManager.GlobalWorldState;
         using var _ = worldState.BeginScope(IWorldState.PreGenesis);
-        worldState.CreateAccount(caller, 100000);
+        worldState.CreateAccount(caller, 1.Ether());
         worldState.CreateAccount(to, 0);
         worldState.Commit(London.Instance);
         worldState.CommitTree(0);
+        _blockTree.FindLatestBlock()!.Header.StateRoot = worldState.StateRoot;
 
         var revmTransaction = new RevmTransaction
         {
