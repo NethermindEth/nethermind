@@ -11,6 +11,7 @@ using Nethermind.Xdc.Types;
 using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
+using System.IO;
 using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
@@ -61,7 +62,10 @@ internal class SnapshotManager : ISnapshotManager
             return false;
         }
         SnapshotDecoder snapshotDecoder = new();
-        var decoded = snapshotDecoder.Decode(value, RlpBehaviors.None);
+
+        var stream = new RlpStream(value.ToArray());
+
+        var decoded = snapshotDecoder.Decode(stream, RlpBehaviors.None);
         snapshot = decoded;
         _snapshotsByHash.TryAdd(hash, snapshot);
         return true;
@@ -115,9 +119,11 @@ internal class SnapshotManager : ISnapshotManager
 
         SnapshotDecoder snapshotDecoder = new();
 
-        var contentLength = snapshotDecoder.GetContentLength(snapshot, RlpBehaviors.None);
+        var contentLength = snapshotDecoder.GetLength(snapshot, RlpBehaviors.None);
         RlpStream stream = new(contentLength);
         snapshotDecoder.Encode(stream, snapshot, RlpBehaviors.None);
+
+        stream.Reset();
         Span<byte> value = stream.Read(stream.Length);
 
         _snapshotDb.Set(key, value.ToArray());

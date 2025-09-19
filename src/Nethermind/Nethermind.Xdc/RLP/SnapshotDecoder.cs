@@ -12,18 +12,8 @@ using System.Text;
 using System.Threading.Tasks;
 
 namespace Nethermind.Xdc.RLP;
-internal class SnapshotDecoder : IRlpValueDecoder<Snapshot>, IRlpStreamDecoder<Snapshot>
+internal class SnapshotDecoder : IRlpStreamDecoder<Snapshot>
 {
-    public Snapshot Decode(ref Rlp.ValueDecoderContext decoderContext, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
-    {
-        if (decoderContext.IsNextItemNull())
-            return null;
-        long number = decoderContext.DecodeLong();
-        Hash256 hash256 = decoderContext.DecodeKeccak();
-        Address[] nextSigners  = decoderContext.DecodeArray<Address>() ?? [];
-
-        return new Snapshot(number, hash256, nextSigners);
-    }
 
     public Snapshot Decode(RlpStream rlpStream, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
     {
@@ -31,6 +21,7 @@ internal class SnapshotDecoder : IRlpValueDecoder<Snapshot>, IRlpStreamDecoder<S
             return null;
 
         rlpStream.ReadSequenceLength();
+
         long number = rlpStream.DecodeLong();
         Hash256 hash256 = rlpStream.DecodeKeccak();
         Address[] nextSigners = rlpStream.DecodeArray<Address>(s => s.DecodeAddress()) ?? [];
@@ -46,7 +37,7 @@ internal class SnapshotDecoder : IRlpValueDecoder<Snapshot>, IRlpStreamDecoder<S
             return;
         }
 
-        var contentLength = GetContentLength(item, rlpBehaviors);
+        var contentLength = GetLength(item, rlpBehaviors);
 
         stream.StartSequence(contentLength);
         stream.Encode(item.Number);
@@ -55,14 +46,24 @@ internal class SnapshotDecoder : IRlpValueDecoder<Snapshot>, IRlpStreamDecoder<S
         if(item.NextEpochCandidates is null)
             stream.EncodeArray<Address>([]);
         else
-            stream.EncodeArray(item.NextEpochCandidates);
+            EncodeNextEpochSigners(stream, item.NextEpochCandidates);
+    }
+
+    private void EncodeNextEpochSigners(RlpStream stream, Address[] nextEpochCandidates)
+    {
+        int length = nextEpochCandidates.Length;
+        stream.StartSequence(Rlp.LengthOfAddressRlp * length);
+        for (int i = 0; i < length; i++)
+        {
+            stream.Encode(nextEpochCandidates[i]);
+        }
     }
 
     public int GetLength(Snapshot item, RlpBehaviors rlpBehaviors)
     {
         return Rlp.LengthOfSequence(GetContentLength(item, rlpBehaviors));
     }
-    public int GetContentLength(Snapshot item, RlpBehaviors rlpBehaviors)
+    private int GetContentLength(Snapshot item, RlpBehaviors rlpBehaviors)
     {
         if (item is null)
             return 0;
