@@ -193,6 +193,11 @@ public class ChainSpecBasedSpecProviderTests
 
         IReleaseSpec postPragueSpec = provider.GetSpec((2, SepoliaSpecProvider.PragueTimestamp));
         VerifyPragueSpecificsForMainnetHoleskyHoodiAndSepolia(provider.ChainId, postPragueSpec);
+
+        IReleaseSpec postOsakaSpec = provider.GetSpec((2, SepoliaSpecProvider.OsakaTimestamp));
+        IReleaseSpec postBPO1Spec = provider.GetSpec((2, SepoliaSpecProvider.BPO1Timestamp));
+        IReleaseSpec postBPO2Spec = provider.GetSpec((2, SepoliaSpecProvider.BPO2Timestamp));
+        VerifyOsakaSpecificsForMainnetHoleskyHoodiAndSepolia(provider.ChainId, postOsakaSpec, postBPO1Spec, postBPO2Spec);
     }
 
     public static IEnumerable<TestCaseData> HoleskyActivations
@@ -236,8 +241,14 @@ public class ChainSpecBasedSpecProviderTests
 
         IReleaseSpec postCancunSpec = provider.GetSpec((2, HoleskySpecProvider.CancunTimestamp));
         VerifyCancunSpecificsForMainnetAndHoleskyAndSepolia(postCancunSpec);
+
         IReleaseSpec postPragueSpec = provider.GetSpec((2, HoleskySpecProvider.PragueTimestamp));
         VerifyPragueSpecificsForMainnetHoleskyHoodiAndSepolia(provider.ChainId, postPragueSpec);
+
+        IReleaseSpec postOsakaSpec = provider.GetSpec((2, HoleskySpecProvider.OsakaTimestamp));
+        IReleaseSpec postBPO1Spec = provider.GetSpec((2, HoleskySpecProvider.BPO1Timestamp));
+        IReleaseSpec postBPO2Spec = provider.GetSpec((2, HoleskySpecProvider.BPO2Timestamp));
+        VerifyOsakaSpecificsForMainnetHoleskyHoodiAndSepolia(provider.ChainId, postOsakaSpec, postBPO1Spec, postBPO2Spec);
 
         // because genesis time for holesky is set 5 minutes before the launch of the chain. this test fails.
         //GetTransitionTimestamps(chainSpec.Parameters).Should().AllSatisfy(
@@ -288,6 +299,20 @@ public class ChainSpecBasedSpecProviderTests
         Assert.That(spec.DepositContractAddress, Is.EqualTo(expectedDepositContractAddress));
     }
 
+    private static void VerifyOsakaSpecificsForMainnetHoleskyHoodiAndSepolia(ulong chainId, IReleaseSpec postOsakaSpec, IReleaseSpec postBPO1Spec, IReleaseSpec postBPO2Spec)
+    {
+        VerifyPragueSpecificsForMainnetHoleskyHoodiAndSepolia(chainId, postOsakaSpec);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(postBPO1Spec.BlobBaseFeeUpdateFraction, Is.EqualTo((UInt256)5007716));
+            Assert.That(postBPO1Spec.MaxBlobCount, Is.EqualTo(15));
+            Assert.That(postBPO1Spec.TargetBlobCount, Is.EqualTo(10));
+            Assert.That(postBPO2Spec.BlobBaseFeeUpdateFraction, Is.EqualTo((UInt256)5007716));
+            Assert.That(postBPO2Spec.MaxBlobCount, Is.EqualTo(21));
+            Assert.That(postBPO2Spec.TargetBlobCount, Is.EqualTo(14));
+        }
+    }
+
     public static IEnumerable<TestCaseData> HoodiActivations
     {
         get
@@ -329,8 +354,15 @@ public class ChainSpecBasedSpecProviderTests
 
         IReleaseSpec postCancunSpec = provider.GetSpec((2, HoodiSpecProvider.CancunTimestamp));
         VerifyCancunSpecificsForMainnetAndHoleskyAndSepolia(postCancunSpec);
+
         IReleaseSpec postPragueSpec = provider.GetSpec((2, HoodiSpecProvider.PragueTimestamp));
         VerifyPragueSpecificsForMainnetHoleskyHoodiAndSepolia(provider.ChainId, postPragueSpec);
+
+        IReleaseSpec postOsakaSpec = provider.GetSpec((2, HoodiSpecProvider.OsakaTimestamp));
+        IReleaseSpec postBPO1Spec = provider.GetSpec((2, HoodiSpecProvider.BPO1Timestamp));
+        IReleaseSpec postBPO2Spec = provider.GetSpec((2, HoodiSpecProvider.BPO2Timestamp));
+        VerifyOsakaSpecificsForMainnetHoleskyHoodiAndSepolia(provider.ChainId, postOsakaSpec, postBPO1Spec, postBPO2Spec);
+
     }
 
     public static IEnumerable<TestCaseData> ChiadoActivations
