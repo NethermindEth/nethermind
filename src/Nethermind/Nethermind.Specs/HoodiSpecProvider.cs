@@ -16,6 +16,8 @@ public class HoodiSpecProvider : ISpecProvider
     public const ulong CancunTimestamp = 0x0;
     public const ulong PragueTimestamp = 0x67e41118;
     public const ulong OsakaTimestamp = 0x68dceac0;
+    public const ulong BPO1Timestamp = 0x690b9118;
+    public const ulong BPO2Timestamp = 0x69149118;
 
     private static IReleaseSpec? _prague;
 
@@ -31,7 +33,9 @@ public class HoodiSpecProvider : ISpecProvider
             null or < ShanghaiTimestamp => GenesisSpec,
             < PragueTimestamp => Cancun.Instance,
             < OsakaTimestamp => Prague,
-            _ => Osaka.Instance
+            < BPO1Timestamp => Osaka.Instance,
+            < BPO2Timestamp => BPO1.Instance,
+            _ => BPO2.Instance
         };
     }
 
@@ -56,7 +60,9 @@ public class HoodiSpecProvider : ISpecProvider
         (1, ShanghaiTimestamp),
         (2, CancunTimestamp),
         (3, PragueTimestamp),
-        (4, OsakaTimestamp)
+        (4, OsakaTimestamp),
+        (5, BPO1Timestamp),
+        (6, BPO2Timestamp),
     ];
 
     public static readonly HoodiSpecProvider Instance = new();

@@ -125,10 +125,10 @@ public class ChainSpecBasedSpecProviderTests
         expectedSpec.IsEip3855Enabled = isEip3855Enabled;
         expectedSpec.Eip1559TransitionBlock = 0;
         expectedSpec.DifficultyBombDelay = 0;
-        List<ForkActivation> forkActivationsToTest = new()
-        {
+        List<ForkActivation> forkActivationsToTest =
+        [
             (blockNumber, timestamp),
-        };
+        ];
 
         foreach (ForkActivation activation in forkActivationsToTest)
         {
@@ -160,7 +160,11 @@ public class ChainSpecBasedSpecProviderTests
             yield return new TestCaseData(new ForkActivation(1735372, SepoliaSpecProvider.PragueTimestamp)) { TestName = "First Prague" };
             yield return new TestCaseData(new ForkActivation(1735372, SepoliaSpecProvider.PragueTimestamp + 100000000)) { TestName = "Prague" };
             yield return new TestCaseData(new ForkActivation(1735372, SepoliaSpecProvider.OsakaTimestamp)) { TestName = "First Osaka" };
-            yield return new TestCaseData(new ForkActivation(1735372, SepoliaSpecProvider.OsakaTimestamp + 100000000)) { TestName = "Osaka" };
+            yield return new TestCaseData(new ForkActivation(1735372, SepoliaSpecProvider.OsakaTimestamp + 10)) { TestName = "Osaka" };
+            yield return new TestCaseData(new ForkActivation(1735372, SepoliaSpecProvider.BPO1Timestamp)) { TestName = "First BPO1" };
+            yield return new TestCaseData(new ForkActivation(1735372, SepoliaSpecProvider.BPO1Timestamp + 100000000)) { TestName = "BPO1" };
+            yield return new TestCaseData(new ForkActivation(1735372, SepoliaSpecProvider.BPO2Timestamp)) { TestName = "First BPO2" };
+            yield return new TestCaseData(new ForkActivation(1735372, SepoliaSpecProvider.BPO2Timestamp + 100000000)) { TestName = "BPO2" };
         }
     }
 
@@ -205,7 +209,11 @@ public class ChainSpecBasedSpecProviderTests
             yield return new TestCaseData(new ForkActivation(8, HoleskySpecProvider.PragueTimestamp)) { TestName = "Prague" };
             yield return new TestCaseData(new ForkActivation(9, HoleskySpecProvider.OsakaTimestamp - 1)) { TestName = "Before Osaka" };
             yield return new TestCaseData(new ForkActivation(10, HoleskySpecProvider.OsakaTimestamp)) { TestName = "Osaka" };
-            yield return new TestCaseData(new ForkActivation(11, HoleskySpecProvider.OsakaTimestamp + 100000000)) { TestName = "Future Osaka" };
+            yield return new TestCaseData(new ForkActivation(11, HoleskySpecProvider.BPO1Timestamp - 1)) { TestName = "Before BPO1" };
+            yield return new TestCaseData(new ForkActivation(12, HoleskySpecProvider.BPO1Timestamp)) { TestName = "BPO1" };
+            yield return new TestCaseData(new ForkActivation(13, HoleskySpecProvider.BPO2Timestamp - 1)) { TestName = "Before BPO2" };
+            yield return new TestCaseData(new ForkActivation(14, HoleskySpecProvider.BPO2Timestamp)) { TestName = "BPO2" };
+            yield return new TestCaseData(new ForkActivation(15, HoleskySpecProvider.BPO2Timestamp + 100000000)) { TestName = "Future BPO2" };
         }
     }
 
@@ -294,7 +302,11 @@ public class ChainSpecBasedSpecProviderTests
             yield return new TestCaseData(new ForkActivation(8, HoodiSpecProvider.PragueTimestamp)) { TestName = "Prague" };
             yield return new TestCaseData(new ForkActivation(9, HoodiSpecProvider.OsakaTimestamp - 1)) { TestName = "Before Osaka" };
             yield return new TestCaseData(new ForkActivation(10, HoodiSpecProvider.OsakaTimestamp)) { TestName = "Osaka" };
-            yield return new TestCaseData(new ForkActivation(11, HoodiSpecProvider.OsakaTimestamp + 100000000)) { TestName = "Future Osaka" };
+            yield return new TestCaseData(new ForkActivation(11, HoodiSpecProvider.BPO1Timestamp - 1)) { TestName = "Before BPO1" };
+            yield return new TestCaseData(new ForkActivation(12, HoodiSpecProvider.BPO1Timestamp)) { TestName = "BPO1" };
+            yield return new TestCaseData(new ForkActivation(13, HoodiSpecProvider.BPO2Timestamp - 1)) { TestName = "Before BPO2" };
+            yield return new TestCaseData(new ForkActivation(14, HoodiSpecProvider.BPO2Timestamp)) { TestName = "BPO2" };
+            yield return new TestCaseData(new ForkActivation(15, HoodiSpecProvider.BPO2Timestamp + 100000000)) { TestName = "Future BPO2" };
         }
     }
 

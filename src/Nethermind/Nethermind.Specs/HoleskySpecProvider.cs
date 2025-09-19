@@ -16,6 +16,8 @@ public class HoleskySpecProvider : ISpecProvider
     public const ulong CancunTimestamp = 0x65C36AC0;
     public const ulong PragueTimestamp = 0x67BCEAC0;
     public const ulong OsakaTimestamp = 0x68dceac0;
+    public const ulong BPO1Timestamp = 0x68e46ac0;
+    public const ulong BPO2Timestamp = 0x68ed6ac0;
 
     private static IReleaseSpec? _prague;
 
@@ -32,7 +34,9 @@ public class HoleskySpecProvider : ISpecProvider
             < CancunTimestamp => Shanghai.Instance,
             < PragueTimestamp => Cancun.Instance,
             < OsakaTimestamp => Prague,
-            _ => Osaka.Instance
+            < BPO1Timestamp => Osaka.Instance,
+            < BPO2Timestamp => BPO1.Instance,
+            _ => BPO2.Instance
         };
     }
 
@@ -57,7 +61,9 @@ public class HoleskySpecProvider : ISpecProvider
         (1, ShanghaiTimestamp),
         (2, CancunTimestamp),
         (3, PragueTimestamp),
-        (4, OsakaTimestamp)
+        (4, OsakaTimestamp),
+        (5, BPO1Timestamp),
+        (6, BPO2Timestamp),
     ];
 
     public static readonly HoleskySpecProvider Instance = new();
