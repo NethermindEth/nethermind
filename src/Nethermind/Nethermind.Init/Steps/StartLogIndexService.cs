@@ -13,11 +13,13 @@ namespace Nethermind.Init.Steps
     [RunnerStepDependencies(typeof(StartBlockProcessor))]
     public class StartLogIndexService(IBasicApi api, IServiceStopper serviceStopper, ILogIndexService logIndexService) : IStep
     {
-        public async Task Execute(CancellationToken cancellationToken)
+        public Task Execute(CancellationToken cancellationToken)
         {
-            await logIndexService.StartAsync();
+            _ = logIndexService.StartAsync();
             api.DisposeStack.Push(logIndexService);
             serviceStopper.AddStoppable(logIndexService);
+
+            return Task.CompletedTask;
         }
 
         public bool MustInitialize => false;
