@@ -9,8 +9,7 @@ using System.Text;
 using System.Threading.Tasks;
 
 namespace Nethermind.Xdc;
-public interface IQuorumCertificateManager
+internal interface IBlockInfoValidator
 {
-    void CommitCertificate(QuorumCertificate qc);
-    bool VerifyCertificate(QuorumCertificate qc, XdcBlockHeader parentHeader, out string error);
+    void VerifyBlockInfo(BlockInfo blockInfo, XdcBlockHeader blockHeader);
 }

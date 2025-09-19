@@ -3,12 +3,6 @@
 
 using Nethermind.Blockchain;
 using Nethermind.Consensus;
-
-
-
-// SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
-// SPDX-License-Identifier: LGPL-3.0-only
-
 using Nethermind.Consensus.Validators;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
@@ -33,7 +27,6 @@ public class XdcHeaderValidator : HeaderValidator
             error = "Validator field is required in XDC header.";
             return false;
         }
-
 
         return base.Validate(header, parent, isUncle, out error);
     }

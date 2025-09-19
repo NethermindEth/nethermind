@@ -14,6 +14,6 @@ internal interface IVotesManager
     Task CastVote(BlockInfo blockInfo);
     Task HandleVote(Vote vote);
     Task VerifyVotes(List<Vote> votes, XdcBlockHeader header);
-    bool VerifyVotingRules(BlockInfo blockInfo, QuorumCert qc);
+    bool VerifyVotingRules(BlockInfo blockInfo, QuorumCertificate qc);
     List<Vote> GetVotes();
 }
