@@ -4,6 +4,7 @@
 using System;
 using Nethermind.Api.Extensions;
 using Nethermind.Consensus;
+using Nethermind.Consensus.Validators;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
 using Nethermind.Specs.ChainSpecStyle;
@@ -44,7 +45,12 @@ public class XdcModule : Module
         builder
             .AddSingleton<ISpecProvider, XdcChainSpecBasedSpecProvider>()
             .Map<XdcChainSpecEngineParameters, ChainSpec>(chainSpec =>
-                chainSpec.EngineChainSpecParametersProvider.GetChainSpecParameters<XdcChainSpecEngineParameters>());
+                chainSpec.EngineChainSpecParametersProvider.GetChainSpecParameters<XdcChainSpecEngineParameters>())
+
+            // Validators
+            .AddSingleton<IHeaderValidator, XdcHeaderValidator>()
+
+            ;
     }
 
 }
