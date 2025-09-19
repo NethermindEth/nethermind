@@ -478,10 +478,10 @@ namespace Nethermind.Trie
 
             _writeBeforeCommit++;
 
+            byte[]? array = null;
             try
             {
                 int nibblesCount = 2 * rawKey.Length;
-                byte[] array = null;
                 Span<byte> nibbles = (rawKey.Length <= MaxKeyStackAlloc
                         ? stackalloc byte[MaxKeyStackAlloc] // Fixed size stack allocation
                         : array = ArrayPool<byte>.Shared.Rent(nibblesCount))
@@ -495,11 +495,11 @@ namespace Nethermind.Trie
                 TreePath empty = TreePath.Empty;
                 RootRef = SetNew(_traverseStack, nibbles, value, ref empty, RootRef);
 
-                if (array is not null) ArrayPool<byte>.Shared.Return(array);
             }
             finally
             {
                 Volatile.Write(ref _isWriteInProgress, 0);
+                if (array is not null) ArrayPool<byte>.Shared.Return(array);
             }
 
             void Trace(in ReadOnlySpan<byte> rawKey, SpanSource value)
