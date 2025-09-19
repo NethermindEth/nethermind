@@ -74,6 +74,7 @@ public class LogIndexUpdateStats(ILogIndexStorage storage) : IFormattable
         return !string.Equals(format, "D", StringComparison.OrdinalIgnoreCase)
             ? $"{MinBlockNumber:N0} - {MaxBlockNumber:N0} (blocks: +{_blocksAdded:N0} | txs: +{_txAdded:N0} | logs: +{_logsAdded:N0} | topics: +{_topicsAdded:N0})"
             : $"""
+
                {tab}Blocks: {MinBlockNumber:N0} - {MaxBlockNumber:N0} (+{_blocksAdded:N0})
 
                {tab}Txs: +{_txAdded:N0}

@@ -207,18 +207,15 @@ namespace Nethermind.Db
             if (!WasInitialized)
             {
                 using Lock.Scope _ = _rangeInitLock.EnterScope();
-
                 (_addressMinBlock, _addressMaxBlock) = addressRange;
                 (_topicMinBlocks, _topicMaxBlocks) = topicRanges;
+                return;
             }
-            else if (isBackwardSync)
-            {
+
+            if (isBackwardSync)
                 (_addressMinBlock, _topicMinBlocks) = (addressRange.min, topicRanges.min);
-            }
             else
-            {
                 (_addressMaxBlock, _topicMaxBlocks) = (addressRange.max, topicRanges.max);
-            }
         }
 
         private static int SaveRangeBound(IWriteOnlyKeyValueStore dbBatch, byte[] key, int value)
