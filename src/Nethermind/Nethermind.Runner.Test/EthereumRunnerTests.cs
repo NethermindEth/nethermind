@@ -68,6 +68,7 @@ using NUnit.Framework;
 using Build = Nethermind.Runner.Test.Ethereum.Build;
 using Nethermind.Api.Steps;
 using Nethermind.Consensus.Scheduler;
+using Nethermind.Xdc.Spec;
 
 namespace Nethermind.Runner.Test;
 
@@ -88,7 +89,7 @@ public class EthereumRunnerTests
     private static ICollection InitOnce()
     {
         // we need this to discover ChainSpecEngineParameters
-        _ = new[] { typeof(CliqueChainSpecEngineParameters), typeof(OptimismChainSpecEngineParameters), typeof(TaikoChainSpecEngineParameters) };
+        _ = new[] { typeof(CliqueChainSpecEngineParameters), typeof(OptimismChainSpecEngineParameters), typeof(TaikoChainSpecEngineParameters), typeof(XdcChainSpecEngineParameters) };
 
         // by pre-caching configs providers we make the tests do lot less work
         ConcurrentQueue<(string, ConfigProvider)> resultQueue = new();
@@ -161,8 +162,6 @@ public class EthereumRunnerTests
 
         if (testCase.file.Contains("none.json")) Assert.Ignore("engine port missing");
         if (testCase.file.Contains("radius_testnet-sepolia.json")) Assert.Ignore("sequencer url not specified");
-        // TODO: enable when XDC consensus plugin is implemented.
-        if (testCase.file.Contains("xdc.json")) Assert.Ignore("xdc consensus plugin not implemented yet");
 
         await SmokeTest(testCase.configProvider, testIndex, 30330);
     }
@@ -176,8 +175,7 @@ public class EthereumRunnerTests
             // some weird thing, not worth investigating
             return;
         }
-        // TODO: enable when XDC consensus plugin is implemented.
-        if (testCase.file.Contains("xdc.json")) Assert.Ignore("xdc consensus plugin not implemented yet");
+
         await SmokeTest(testCase.configProvider, testIndex, 30430, true);
     }
 
@@ -189,8 +187,6 @@ public class EthereumRunnerTests
         {
             return;
         }
-        // TODO: enable when XDC consensus plugin is implemented.
-        if (testCase.file.Contains("xdc.json")) Assert.Ignore("xdc consensus plugin not implemented yet");
 
         PluginLoader pluginLoader = new(
             "plugins",
