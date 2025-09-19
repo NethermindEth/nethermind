@@ -22,10 +22,10 @@ jobs:
           large-packages: false
           tool-cache: false
       - name: Check out repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
         with:
           submodules: ${{ matrix.solution == 'EthereumTests' }}
       - name: Set up .NET
-        uses: actions/setup-dotnet@v4
+        uses: actions/setup-dotnet@v5
       - name: Build ${{ matrix.solution }}.slnx
         run: dotnet build src/Nethermind/${{ matrix.solution }}.slnx -c ${{ matrix.config }}

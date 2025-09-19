@@ -172,7 +172,7 @@ internal static partial class EvmInstructions
         }
 
         // Ensure sufficient gas for any required memory expansion.
-        if (!UpdateMemoryCost(vm.EvmState, ref gasAvailable, in position, in length))
+        if (!EvmCalculations.UpdateMemoryCost(vm.EvmState, ref gasAvailable, in position, in length))
         {
             goto OutOfGas;
         }
@@ -219,7 +219,7 @@ internal static partial class EvmInstructions
             goto StackUnderflow;
 
         // Charge gas for account access; if insufficient, signal out-of-gas.
-        if (!ChargeAccountAccessGas(ref gasAvailable, vm, inheritor, chargeForWarm: false))
+        if (!EvmCalculations.ChargeAccountAccessGas(ref gasAvailable, vm, inheritor, chargeForWarm: false))
             goto OutOfGas;
 
         Address executingAccount = vmState.Env.ExecutingAccount;
@@ -236,7 +236,7 @@ internal static partial class EvmInstructions
         // For certain specs, charge gas if transferring to a dead account.
         if (spec.ClearEmptyAccountWhenTouched && !result.IsZero && state.IsDeadAccount(inheritor))
         {
-            if (!UpdateGas(GasCostOf.NewAccount, ref gasAvailable))
+            if (!EvmCalculations.UpdateGas(GasCostOf.NewAccount, ref gasAvailable))
                 goto OutOfGas;
         }
 
@@ -244,7 +244,7 @@ internal static partial class EvmInstructions
         bool inheritorAccountExists = state.AccountExists(inheritor);
         if (!spec.ClearEmptyAccountWhenTouched && !inheritorAccountExists && spec.UseShanghaiDDosProtection)
         {
-            if (!UpdateGas(GasCostOf.NewAccount, ref gasAvailable))
+            if (!EvmCalculations.UpdateGas(GasCostOf.NewAccount, ref gasAvailable))
                 goto OutOfGas;
         }
 

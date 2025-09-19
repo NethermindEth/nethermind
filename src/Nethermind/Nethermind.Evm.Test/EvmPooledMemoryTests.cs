@@ -38,7 +38,7 @@ public class EvmPooledMemoryTests : EvmMemoryTestsBase
     [TestCase(int.MaxValue, int.MaxValue / 32 + 1)]
     public void Div32Ceiling(int input, int expectedResult)
     {
-        long result = EvmInstructions.Div32Ceiling((ulong)input);
+        long result = EvmCalculations.Div32Ceiling((ulong)input);
         TestContext.Out.WriteLine($"Memory cost (gas): {result}");
         Assert.That(result, Is.EqualTo(expectedResult));
     }
@@ -148,8 +148,7 @@ public class EvmPooledMemoryTests : EvmMemoryTestsBase
         long blocknr = 12965000;
         long gas = 34218;
         ulong ts = 123456;
-        IWorldStateManager worldStateManager = TestWorldStateFactory.CreateForTest();
-        IWorldState stateProvider = worldStateManager.GlobalWorldState;
+        IWorldState stateProvider = TestWorldStateFactory.CreateForTest();
         ISpecProvider specProvider = new TestSpecProvider(London.Instance);
         EthereumCodeInfoRepository codeInfoRepository = new(stateProvider);
         VirtualMachine virtualMachine = new(
