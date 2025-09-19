@@ -13,7 +13,6 @@ namespace Ethereum.Blockchain.Block.Test
     [Parallelizable(ParallelScope.All)]
     public class StateTests : BlockchainTestBase
     {
-        [Todo(Improve.TestCoverage, "SuicideStorage tests")]
         [TestCaseSource(nameof(LoadTests)), Retry(3)]
         public async Task Test(BlockchainTest test)
         {
