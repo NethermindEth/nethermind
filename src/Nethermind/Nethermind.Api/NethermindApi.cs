@@ -46,7 +46,7 @@ namespace Nethermind.Api
     public class NethermindApi(NethermindApi.Dependencies dependencies) : INethermindApi
     {
 
-        // A simple class to prevent having to modify subclass of NethermindApi many time
+        // A simple class to prevent having to modify subclass of NethermindApi many times
         public record Dependencies(
             IConfigProvider ConfigProvider,
             IJsonSerializer JsonSerializer,

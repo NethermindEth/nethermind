@@ -1,0 +1,16 @@
+{
+  "$schema": "https://raw.githubusercontent.com/NethermindEth/core-scripts/refs/heads/main/schemas/config.json",
+  "Init": {
+    "ChainSpecPath": "chainspec/xdc.json",
+    "BaseDbPath": "nethermind_db/xdc",
+    "LogFileName": "xdc.log"
+  },
+  "TxPool": {
+    "BlobsSupport": "Disabled"
+  },
+  "Sync": {
+    "FastSync": true,
+    "SnapSync": true,
+    "PivotNumber": 80370000
+  }
+}

@@ -68,6 +68,7 @@ using NUnit.Framework;
 using Build = Nethermind.Runner.Test.Ethereum.Build;
 using Nethermind.Api.Steps;
 using Nethermind.Consensus.Scheduler;
+using Nethermind.Xdc.Spec;
 
 namespace Nethermind.Runner.Test;
 
@@ -88,7 +89,7 @@ public class EthereumRunnerTests
     private static ICollection InitOnce()
     {
         // we need this to discover ChainSpecEngineParameters
-        _ = new[] { typeof(CliqueChainSpecEngineParameters), typeof(OptimismChainSpecEngineParameters), typeof(TaikoChainSpecEngineParameters) };
+        _ = new[] { typeof(CliqueChainSpecEngineParameters), typeof(OptimismChainSpecEngineParameters), typeof(TaikoChainSpecEngineParameters), typeof(XdcChainSpecEngineParameters) };
 
         // by pre-caching configs providers we make the tests do lot less work
         ConcurrentQueue<(string, ConfigProvider)> resultQueue = new();
