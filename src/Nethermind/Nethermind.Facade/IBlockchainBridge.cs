@@ -5,7 +5,6 @@ using System.Collections.Generic;
 using System.Threading;
 using Nethermind.Blockchain.Filters;
 using Nethermind.Blockchain.Find;
-using Nethermind.Consensus.Stateless;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Evm;

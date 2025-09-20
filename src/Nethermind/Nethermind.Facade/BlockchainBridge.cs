@@ -31,8 +31,6 @@ using Transaction = Nethermind.Core.Transaction;
 using Autofac;
 using Nethermind.Blockchain.Tracing;
 using Nethermind.Consensus;
-using Nethermind.Consensus.Processing;
-using Nethermind.Consensus.Stateless;
 using Nethermind.Evm.State;
 using Nethermind.State.OverridableEnv;
 
@@ -406,10 +404,6 @@ namespace Nethermind.Facade
             };
 
             return error;
-        }
-        public bool ExecuteWitness(Block blockParameter, Witness witness)
-        {
-            throw new NotImplementedException();
         }
 
         public record BlockProcessingComponents(
