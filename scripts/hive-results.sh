@@ -3,6 +3,8 @@
 # SPDX-License-Identifier: LGPL-3.0-only
 
 knownFailingTests=$(cat nethermind/scripts/known-failing-hive-tests.txt)
+# in some test suits this test is a client setup and in some it's a master test. So just ignore it
+launchTestName='client launch (nethermind)'
 
 shouldNotPass=()
 shouldPass=()
@@ -20,7 +22,7 @@ do
     for each in "${results[@]}";
     do
       echo -e "\033[0;32m\u2714\033[0m $each"
-      if grep -qx "$each" <<< "$knownFailingTests"; then
+      if [ grep -qx "$each" <<< "$knownFailingTests" ] -a [ "$each" -eq "$launchTestName" ]; then
         shouldNotPass+=("$each")
       fi
     done
@@ -30,7 +32,7 @@ do
     for each in "${results[@]}";
     do
       echo -e "\033[0;31m\u2716\033[0m $each"
-      if ! grep -qx "$each" <<< "$knownFailingTests"; then
+      if [ ! grep -qx "$each" <<< "$knownFailingTests"] -a [ "$each" -eq "$launchTestName" ]; then
         shouldPass+=("$each")
       fi
     done

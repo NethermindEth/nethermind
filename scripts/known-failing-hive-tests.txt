@@ -134,7 +134,6 @@ Blob Transaction Ordering, Multiple Clients (Cancun) (nethermind)
 #devp2p
 
 BlobViolations (nethermind)
-client launch (nethermind)
 ENRRequest (nethermind)
 Findnode/BasicFindnode (nethermind)
 Findnode/UnsolicitedNeighbors (nethermind)
