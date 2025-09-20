@@ -423,7 +423,6 @@ public sealed class TrieStore : ITrieStore, IPruningTrieStore
     private void FinishBlockCommit(BlockCommitSet set, TrieNode? root)
     {
         if (_logger.IsTrace) _logger.Trace($"Enqueued blocks {_commitSetQueue?.Count ?? 0}");
-        // Note: root is null when the state trie is empty. It will therefore make the block commit set not sealed.
         set.Seal(root);
         set.Prune();
 
