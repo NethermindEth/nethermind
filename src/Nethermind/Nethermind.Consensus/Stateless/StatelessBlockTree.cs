@@ -31,7 +31,6 @@ public class StatelessBlockTree(BlockHeader[] headers) : IBlockTree
     public bool HasBlock(long blockNumber, Hash256 blockHash) =>
         throw new NotSupportedException();
 
-    // TODO: why we have blockNumber here?
     public BlockHeader? FindHeader(Hash256 blockHash, BlockTreeLookupOptions options, long? blockNumber = null)
          => _hashToHeader.GetValueOrDefault(blockHash);
 
