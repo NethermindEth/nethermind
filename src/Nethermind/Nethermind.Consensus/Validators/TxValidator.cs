@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Collections.Concurrent;
 using Nethermind.Consensus.Messages;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
@@ -116,10 +117,28 @@ public sealed class IntrinsicGasTxValidator : ITxValidator
     public static readonly IntrinsicGasTxValidator Instance = new();
     private IntrinsicGasTxValidator() { }
 
+    // Cache to avoid double calculation of intrinsic gas
+    private static readonly ConcurrentDictionary<(string TxHash, string SpecName), IntrinsicGas> _intrinsicGasCache = new();
+
     public ValidationResult IsWellFormed(Transaction transaction, IReleaseSpec releaseSpec)
     {
-        // This is unnecessarily calculated twice - at validation and execution times.
-        IntrinsicGas intrinsicGas = IntrinsicGasCalculator.Calculate(transaction, releaseSpec);
+        // Use cache to avoid double calculation of intrinsic gas between validation and execution
+        var cacheKey = (transaction.Hash?.ToString() ?? string.Empty, releaseSpec.Name);
+        
+        IntrinsicGas intrinsicGas = _intrinsicGasCache.GetOrAdd(cacheKey, _ =>
+        {
+            return IntrinsicGasCalculator.Calculate(transaction, releaseSpec);
+        });
+
+        return IsWellFormed(transaction, intrinsicGas);
+    }
+
+    /// <summary>
+    /// Validates intrinsic gas using pre-calculated value to avoid double calculation.
+    /// This method should be used when intrinsic gas is already calculated elsewhere.
+    /// </summary>
+    public ValidationResult IsWellFormed(Transaction transaction, IntrinsicGas intrinsicGas)
+    {
         return transaction.GasLimit < intrinsicGas.MinimalGas
             ? TxErrorMessages.IntrinsicGasTooLow
             : ValidationResult.Success;
