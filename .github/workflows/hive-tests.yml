@@ -63,7 +63,7 @@ jobs:
           echo "HIVE_BRANCH=${{ github.event.inputs.hive-branch || 'master' }}" >> $GITHUB_ENV
           echo "BUILDARG=${{ github.event.inputs.buildarg || '' }}" >> $GITHUB_ENV
       - name: Check out Nethermind repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
         with:
           path: nethermind
       - name: Set up Docker Buildx
@@ -78,7 +78,7 @@ jobs:
           tags: nethermind:test-${{ github.sha }}
           outputs: type=docker,dest=/tmp/image.tar
       - name: Check out Hive repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
         with:
           repository: ${{ env.HIVE_REPO }}
           ref: ${{ env.HIVE_BRANCH }}
