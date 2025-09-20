@@ -2,10 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 using System.CommandLine;
 using Nethermind.Core;
-using System;
-using System.IO;
 using System.Text.Json;
-using System.Threading.Tasks;
 using Nethermind.Blockchain.Tracing;
 using Nethermind.Consensus.Processing;
 using Nethermind.Consensus.Validators;
@@ -143,9 +140,11 @@ internal static class SetupCli
             ISpecProvider specProvider = HoodiSpecProvider.Instance;
 
             StatelessBlockProcessingEnv blockProcessingEnv =
-                new(specProvider, Always.Valid, new NLogManager());
+                new(witness, specProvider, Always.Valid, new NLogManager());
 
-            IBlockProcessor blockProcessor = blockProcessingEnv.GetProcessor(witness, baseBlock.StateRoot!);
+            IBlockProcessor blockProcessor = blockProcessingEnv.BlockProcessor;
+
+            using var scope = blockProcessingEnv.WorldState.BeginScope(baseBlock);
 
             try
             {

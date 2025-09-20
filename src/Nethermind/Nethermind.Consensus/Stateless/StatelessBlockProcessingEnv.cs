@@ -26,22 +26,33 @@ using Nethermind.Trie.Pruning;
 namespace Nethermind.Consensus.Stateless;
 
 public class StatelessBlockProcessingEnv(
+    Witness witness,
     ISpecProvider specProvider,
     ISealValidator sealValidator,
     ILogManager logManager)
 {
     private readonly ILogger _logger = logManager.GetClassLogger();
 
-    public IBlockProcessor GetProcessor(Witness witness, Hash256 stateRoot)
+    private IBlockProcessor? _blockProcessor;
+    public IBlockProcessor BlockProcessor
     {
-        WorldState state = new(CreateTrie(witness), CreateCodeDb(witness), logManager);
-        state.StateRoot = stateRoot;
+        get => _blockProcessor ??= GetProcessor();
+    }
+
+    private IWorldState? _worldState;
+    public IWorldState WorldState
+    {
+        get => _worldState ??= new WorldState(CreateTrie(), CreateCodeDb(), logManager);
+    }
+
+    private IBlockProcessor GetProcessor()
+    {
         IBlockTree statelessBlockTree = new StatelessBlockTree(witness.DecodedHeaders);
-        ITransactionProcessor txProcessor = CreateTransactionProcessor(state, statelessBlockTree);
+        ITransactionProcessor txProcessor = CreateTransactionProcessor(WorldState, statelessBlockTree);
         IBlockProcessor.IBlockTransactionsExecutor txExecutor =
             new BlockProcessor.BlockValidationTransactionsExecutor(
                 new ExecuteTransactionProcessorAdapter(txProcessor),
-                state);
+                WorldState);
 
         IHeaderValidator headerValidator = new HeaderValidator(statelessBlockTree, sealValidator, specProvider, logManager);
         IBlockValidator blockValidator = new BlockValidator(new TxValidator(specProvider.ChainId), headerValidator,
@@ -52,17 +63,17 @@ public class StatelessBlockProcessingEnv(
             blockValidator,
             NoBlockRewards.Instance,
             txExecutor,
-            state,
+            WorldState,
             NullReceiptStorage.Instance,
-            new BeaconBlockRootHandler(txProcessor, state),
-            new BlockhashStore(specProvider, state),
+            new BeaconBlockRootHandler(txProcessor, WorldState),
+            new BlockhashStore(specProvider, WorldState),
             logManager,
-            new WithdrawalProcessor(state, logManager),
+            new WithdrawalProcessor(WorldState, logManager),
             new ExecutionRequestsProcessor(txProcessor)
         );
     }
 
-    private ITrieStore CreateTrie(Witness witness)
+    private ITrieStore CreateTrie()
     {
         IKeyValueStore db = new MemDb();
         foreach (var stateElement in witness.State)
@@ -75,7 +86,7 @@ public class StatelessBlockProcessingEnv(
         return new TrieStore(nodeStorage, NoPruning.Instance, NoPersistence.Instance, new PruningConfig(), NullLogManager.Instance);
     }
 
-    private IKeyValueStoreWithBatching CreateCodeDb(Witness witness)
+    private IKeyValueStoreWithBatching CreateCodeDb()
     {
         IKeyValueStoreWithBatching db = new MemDb();
         foreach (var code in witness.Codes)
@@ -90,6 +101,6 @@ public class StatelessBlockProcessingEnv(
     {
         var blockhashProvider = new BlockhashProvider(blockFinder, specProvider, state, logManager);
         var vm = new VirtualMachine(blockhashProvider, specProvider, logManager);
-        return new TransactionProcessor(specProvider, state, vm, new EthereumCodeInfoRepository(), logManager);
+        return new TransactionProcessor(specProvider, state, vm, new EthereumCodeInfoRepository(state), logManager);
     }
 }

@@ -549,21 +549,4 @@ public class DebugRpcModule(
         error = default!;
         return block;
     }
-
-    public ResultWrapper<Witness> debug_executionWitness(BlockParameter blockParameter)
-    {
-        Block? block = blockFinder.FindBlock(blockParameter);
-        if (block is null)
-        {
-            return ResultWrapper<Witness>.Fail($"Unable to find block {blockParameter}");
-        }
-
-        BlockHeader? parent = blockFinder.FindHeader(block.ParentHash);
-        if (parent is null)
-        {
-            return ResultWrapper<Witness>.Fail($"Unable to find parent for block {blockParameter}");
-        }
-        return ResultWrapper<Witness>.Success(
-            blockchainBridge.GenerateExecutionWitness(parent, block));
-    }
 }

@@ -121,7 +121,4 @@ public interface IDebugRpcModule : IRpcModule
     [JsonRpcMethod(Description = "Retrieves geth like traces of the simulated blocks")]
     ResultWrapper<IReadOnlyList<SimulateBlockResult<GethLikeTxTrace>>> debug_simulateV1(
         SimulatePayload<TransactionForRpc> payload, BlockParameter? blockParameter = null, GethTraceOptions? options = null);
-
-    [JsonRpcMethod(Description = "TODO")]
-    ResultWrapper<Witness> debug_executionWitness(BlockParameter blockParameter);
 }

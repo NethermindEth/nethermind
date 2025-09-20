@@ -199,4 +199,14 @@ public class StatelessBlockTree(BlockHeader[] headers) : IBlockTree
         get => throw new NotSupportedException();
         set => throw new NotSupportedException();
     }
+
+    public void NewOldestBlock(long oldestBlock) => throw new NotImplementedException();
+
+    public void DeleteOldBlock(long blockNumber, Hash256 blockHash) => throw new NotImplementedException();
+
+    public event EventHandler<IBlockTree.ForkChoiceUpdateEventArgs>? OnForkChoiceUpdated
+    {
+        add => throw new NotSupportedException();
+        remove => throw new NotSupportedException();
+    }
 }
