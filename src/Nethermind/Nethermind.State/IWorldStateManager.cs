@@ -35,8 +35,6 @@ public interface IWorldStateManager
 
     IOverridableWorldScope CreateOverridableWorldScope();
 
-    void InitializeNetwork(IPathRecovery pathRecovery);
-
     /// <summary>
     /// Probably should be called `verifyState` but the name stuck. Run an internal check for the integrity of the state.
     /// Return false if error is found.
