@@ -189,7 +189,8 @@ public class StatelessBlockTree(BlockHeader[] headers) : IBlockTree
     public void RecalculateTreeLevels()
         => throw new NotSupportedException();
 
-    public (long BlockNumber, Hash256 BlockHash) SyncPivot {
+    public (long BlockNumber, Hash256 BlockHash) SyncPivot
+    {
         get => throw new NotSupportedException();
         set => throw new NotSupportedException();
     }
