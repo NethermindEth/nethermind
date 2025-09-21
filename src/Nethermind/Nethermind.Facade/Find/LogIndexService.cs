@@ -3,6 +3,7 @@
 
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
 using System.Threading;
 using System.Threading.Channels;
@@ -113,6 +114,8 @@ public sealed class LogIndexService : ILogIndexService
 
             await _pivotTask;
 
+            _stats = new(_logIndexStorage);
+
             _processingQueues = new()
             {
                 { true, BuildQueue(isForward: true) },
@@ -178,7 +181,7 @@ public sealed class LogIndexService : ILogIndexService
             LogIndexUpdateStats stats = Interlocked.Exchange(ref _stats, new(_logIndexStorage));
 
             if (_logger.IsInfo) // TODO: log at debug/trace
-                _logger.Info($"{GetLogPrefix()}: {stats}");
+                _logger.Info($"{GetLogPrefix()}: {stats:d}");
         }
     }
 
@@ -221,8 +224,6 @@ public sealed class LogIndexService : ILogIndexService
     // TODO: adjust queue sizes & parallelism
     private ProcessingQueue BuildQueue(bool isForward)
     {
-        _stats ??= new(_logIndexStorage);
-
         var aggregateBlock = new TransformBlock<IReadOnlyList<BlockReceipts>, LogIndexAggregate>(
             batch => Aggregate(batch, isForward),
             new() {
@@ -325,6 +326,7 @@ public sealed class LogIndexService : ILogIndexService
                     ? (start, Math.Min(end, GetMaxTargetBlockNumber()) + 1)
                     : (end, Math.Max(start, GetMinTargetBlockNumber()) + 1);
 
+                var timestamp = Stopwatch.GetTimestamp();
                 Array.Clear(buffer);
                 ReadOnlySpan<BlockReceipts> batch = GetNextBatch(from, to, buffer, isForward, CancellationToken);
 
@@ -346,6 +348,8 @@ public sealed class LogIndexService : ILogIndexService
                     await Task.Delay(NewBlockWaitTimeout, CancellationToken);
                     continue;
                 }
+
+                _stats?.LoadingReceipts.Include(Stopwatch.GetElapsedTime(timestamp));
 
                 start = GetNextBlockNumber(batch[^1].BlockNumber, isForward);
                 await queue.WriteAsync(batch.ToArray(), CancellationToken);

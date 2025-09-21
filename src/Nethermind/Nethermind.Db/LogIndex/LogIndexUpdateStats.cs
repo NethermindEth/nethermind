@@ -39,6 +39,8 @@ public class LogIndexUpdateStats(ILogIndexStorage storage) : IFormattable
     public PostMergeProcessingStats PostMergeProcessing { get; } = new();
     public CompactingStats Compacting { get; } = new();
 
+    public ExecTimeStats LoadingReceipts { get; } = new();
+
     public void Combine(LogIndexUpdateStats other)
     {
         _blocksAdded += other._blocksAdded;
@@ -60,6 +62,8 @@ public class LogIndexUpdateStats(ILogIndexStorage storage) : IFormattable
 
         PostMergeProcessing.Combine(other.PostMergeProcessing);
         Compacting.Combine(other.Compacting);
+
+        LoadingReceipts.Combine(other.LoadingReceipts);
     }
 
     public void IncrementBlocks() => Interlocked.Increment(ref _blocksAdded);
@@ -80,6 +84,8 @@ public class LogIndexUpdateStats(ILogIndexStorage storage) : IFormattable
                {tab}Txs: +{_txAdded:N0}
                {tab}Logs: +{_logsAdded:N0}
                {tab}Topics: +{_topicsAdded:N0}
+
+               {tab}Loading receipts: {LoadingReceipts}
 
                {tab}Keys per batch: {KeysCount:N0}
                {tab}SetReceipts: {SetReceipts}
