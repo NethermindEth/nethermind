@@ -53,7 +53,8 @@ public sealed class LogIndexService : ILogIndexService
     private const int BatchSize = 256;
     private const int MaxBatchQueueSize = 4096;
     private const int MaxAggregateQueueSize = 512;
-    private static readonly int IOParallelism = Math.Max(Environment.ProcessorCount / 2, 1);
+    private static readonly int IOParallelism = 16;
+    private static readonly int AggregateParallelism = Math.Max(Environment.ProcessorCount / 2, 1);
     private static readonly TimeSpan NewBlockWaitTimeout = TimeSpan.FromSeconds(5);
 
     private readonly ILogIndexStorage _logIndexStorage;
@@ -221,13 +222,12 @@ public sealed class LogIndexService : ILogIndexService
         return (int)(_syncConfig.AncientReceiptsBarrierCalc <= 1 ? 0 : _syncConfig.AncientReceiptsBarrierCalc);
     }
 
-    // TODO: adjust queue sizes & parallelism
     private ProcessingQueue BuildQueue(bool isForward)
     {
         var aggregateBlock = new TransformBlock<IReadOnlyList<BlockReceipts>, LogIndexAggregate>(
             batch => Aggregate(batch, isForward),
             new() {
-                BoundedCapacity = MaxBatchQueueSize, MaxDegreeOfParallelism = IOParallelism,
+                BoundedCapacity = MaxBatchQueueSize / BatchSize, MaxDegreeOfParallelism = AggregateParallelism,
                 CancellationToken = CancellationToken, SingleProducerConstrained = true
             }
         );
