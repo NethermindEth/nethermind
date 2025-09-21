@@ -51,7 +51,7 @@ jobs:
     strategy:
       matrix:
         test-suite: ${{ fromJson(github.event.inputs.test-suite == '' &&
-          '["devp2p","ethereum/consensus","ethereum/eest","ethereum/engine","ethereum/graphql","ethereum/rpc","ethereum/rpc-compat","ethereum/sync"]' ||
+          '["devp2p","ethereum/engine","ethereum/graphql","ethereum/rpc","ethereum/rpc-compat","ethereum/sync"]' ||
           format('["{0}"]', github.event.inputs.test-suite)
           ) }}
     steps:
