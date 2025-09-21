@@ -35,7 +35,7 @@ namespace Nethermind.Blockchain.Receipts
         private readonly IReceiptConfig _receiptConfig;
         private readonly bool _legacyHashKey;
 
-        private const int CacheSize = 64;
+        private const int CacheSize = 1024; // TODO: lower?
         private readonly LruCache<ValueHash256, TxReceipt[]> _receiptsCache = new(CacheSize, CacheSize, "receipts");
 
         public event EventHandler<BlockReplacementEventArgs> ReceiptsInserted;
