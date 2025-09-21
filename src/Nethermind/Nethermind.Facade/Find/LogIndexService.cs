@@ -3,15 +3,15 @@
 
 using System;
 using System.Collections.Generic;
+using System.Diagnostics.CodeAnalysis;
 using System.Threading;
 using System.Threading.Channels;
 using System.Threading.Tasks;
+using System.Threading.Tasks.Dataflow;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Core;
-using Nethermind.Core.Caching;
-using Nethermind.Core.Extensions;
 using Nethermind.Db;
 using Nethermind.Logging;
 using Timer = System.Timers.Timer;
@@ -22,6 +22,24 @@ namespace Nethermind.Facade.Find;
 // TODO: reduce periodic logging
 public sealed class LogIndexService : ILogIndexService
 {
+    private sealed class ProcessingQueue
+    {
+        private readonly TransformBlock<IReadOnlyList<BlockReceipts>, LogIndexAggregate> _aggregateBlock;
+        private readonly ActionBlock<LogIndexAggregate> _setReceiptsBlock;
+
+        public int QueueCount => _aggregateBlock.InputCount + _setReceiptsBlock.InputCount;
+        public Task WriteAsync(IReadOnlyList<BlockReceipts> batch, CancellationToken cancellation) => _aggregateBlock.SendAsync(batch, cancellation);
+        public Task Completion => Task.WhenAll(_aggregateBlock.Completion, _setReceiptsBlock.Completion);
+
+        public ProcessingQueue(
+            TransformBlock<IReadOnlyList<BlockReceipts>, LogIndexAggregate> aggregateBlock,
+            ActionBlock<LogIndexAggregate> setReceiptsBlock)
+        {
+            _aggregateBlock = aggregateBlock;
+            _setReceiptsBlock = setReceiptsBlock;
+        }
+    }
+
     private readonly IBlockTree _blockTree;
     private readonly ISyncConfig _syncConfig;
     private readonly ILogger _logger;
@@ -31,9 +49,9 @@ public sealed class LogIndexService : ILogIndexService
 
     // TODO: take some/all values from chain config
     private const int MaxReorgDepth = 8;
-    private const int MaxCacheSize = 256;
     private const int BatchSize = 256;
-    private const int MaxQueueSize = 4096;
+    private const int MaxBatchQueueSize = 4096;
+    private const int MaxAggregateQueueSize = 512;
     private static readonly int IOParallelism = Math.Max(Environment.ProcessorCount / 2, 1);
     private static readonly TimeSpan NewBlockWaitTimeout = TimeSpan.FromSeconds(5);
 
@@ -42,25 +60,20 @@ public sealed class LogIndexService : ILogIndexService
     private readonly IReceiptStorage _receiptStorage;
     private readonly ProgressLogger _forwardProgressLogger;
     private readonly ProgressLogger _backwardProgressLogger;
-    private readonly Timer _progressLoggerTimer = new(TimeSpan.FromSeconds(30));
+    private Timer? _progressLoggerTimer;
 
     // TODO: handle risk or potential reorg loss on restart
     private readonly Channel<BlockReceipts> _reorgChannel = Channel.CreateUnbounded<BlockReceipts>();
 
-    private readonly Channel<BlockReceipts> _forwardChannel = Channel.CreateBounded<BlockReceipts>(MaxQueueSize);
-    private readonly LruCache<int, BlockReceipts> _forwardBlockCache = new(MaxCacheSize, nameof(LogIndexService));
-    private readonly AutoResetEvent _newForwardBlockEvent = new(false);
-
-    private readonly Channel<BlockReceipts> _backwardChannel = Channel.CreateBounded<BlockReceipts>(MaxQueueSize);
-    private readonly LruCache<int, BlockReceipts> _backwardBlockCache = new(MaxCacheSize, nameof(LogIndexService));
-    private readonly AutoResetEvent _newBackwardBlockEvent = new(false);
-
     private readonly TaskCompletionSource<int> _pivotSource = new(TaskCreationOptions.RunContinuationsAsynchronously);
     private readonly Task<int> _pivotTask;
 
-    private Task? _processTask;
-    private Task? _queueForwardBlocksTask;
-    private Task? _queueBackwardBlocksTask;
+    [SuppressMessage("ReSharper", "CollectionNeverQueried.Local")]
+    private readonly CompositeDisposable _disposables = new();
+    private readonly List<Task> _tasks = new();
+
+    private Dictionary<bool, ProcessingQueue>? _processingQueues;
+    private LogIndexUpdateStats? _stats;
 
     public string Description => "log index service";
 
@@ -98,41 +111,60 @@ public sealed class LogIndexService : ILogIndexService
             if (!_pivotTask.IsCompleted && _logger.IsInfo)
                 _logger.Info($"{GetLogPrefix()}: waiting for the first block...");
 
-            var pivotNumber = await _pivotTask;
+            await _pivotTask;
 
-            UpdateProgress(pivotNumber);
+            _processingQueues = new()
+            {
+                { true, BuildQueue(isForward: true) },
+                { false, BuildQueue(isForward: false) }
+            };
+
+            _tasks.AddRange(
+                Task.Run(() => DoQueueBlocks(isForward: true), CancellationToken),
+                Task.Run(() => DoQueueBlocks(isForward: false), CancellationToken), // TODO: don't start if old receipts download is disabled
+                _processingQueues[true].Completion,
+                _processingQueues[false].Completion
+            );
+
+            UpdateProgress();
             LogProgress();
+
+            _disposables.Add(_progressLoggerTimer = new(TimeSpan.FromSeconds(30)));
             _progressLoggerTimer.AutoReset = true;
             _progressLoggerTimer.Elapsed += (_, _) => LogProgress();
             _progressLoggerTimer.Start();
-
-            _queueForwardBlocksTask = Task.Run(() => DoQueueBlocks(isForward: true), CancellationToken);
-            // TODO: log and don't start backward sync if old receipts download is disabled
-            _queueBackwardBlocksTask = Task.Run(() => DoQueueBlocks(isForward: false), CancellationToken);
-            _processTask = Task.Run(DoProcess, CancellationToken);
         }
-        catch (OperationCanceledException canceledEx) when (canceledEx.CancellationToken == CancellationToken)
+        catch (Exception ex)
         {
-            // Cancelled
+            HandleException(ex);
         }
     }
 
     public async Task StopAsync()
     {
         await _cancellationSource.CancelAsync();
+
         _pivotSource.TrySetCanceled(CancellationToken);
-        _progressLoggerTimer.Stop();
-        await (_queueForwardBlocksTask ?? Task.CompletedTask);
-        await (_queueBackwardBlocksTask ?? Task.CompletedTask);
-        await (_processTask ?? Task.CompletedTask);
+        _progressLoggerTimer?.Stop();
+
+        foreach (Task task in _tasks)
+        {
+            try
+            {
+                await task;
+            }
+            catch (Exception ex)
+            {
+                HandleException(ex);
+            }
+        }
+
         await _logIndexStorage.StopAsync();
     }
 
     public async ValueTask DisposeAsync()
     {
-        _progressLoggerTimer.Dispose();
-        _newForwardBlockEvent.Dispose();
-        _newBackwardBlockEvent.Dispose();
+        _disposables.Dispose();
         await _logIndexStorage.DisposeAsync();
     }
 
@@ -141,7 +173,7 @@ public sealed class LogIndexService : ILogIndexService
         _forwardProgressLogger.LogProgress(false);
         _backwardProgressLogger.LogProgress(false);
 
-        if (_stats is not null)
+        if (_stats is { BlocksAdded: > 0 })
         {
             LogIndexUpdateStats stats = Interlocked.Exchange(ref _stats, new(_logIndexStorage));
 
@@ -159,7 +191,7 @@ public sealed class LogIndexService : ILogIndexService
         //     return;
         // }
 
-        _logger.Info($"[TRACE] {nameof(OnReceiptsInserted)}: {args.BlockHeader.ToString(BlockHeader.Format.FullHashAndNumber)} [{args.TxReceipts.Length}]");
+        //_logger.Info($"[TRACE] {nameof(OnReceiptsInserted)}: {args.BlockHeader.ToString(BlockHeader.Format.FullHashAndNumber)} [{args.TxReceipts.Length}]");
 
         var next = (int)args.BlockHeader.Number;
 
@@ -186,93 +218,81 @@ public sealed class LogIndexService : ILogIndexService
         return (int)(_syncConfig.AncientReceiptsBarrierCalc <= 1 ? 0 : _syncConfig.AncientReceiptsBarrierCalc);
     }
 
-    private async Task DoProcess()
+    // TODO: adjust queue sizes & parallelism
+    private ProcessingQueue BuildQueue(bool isForward)
     {
-        try
-        {
-            while (!CancellationToken.IsCancellationRequested)
-            {
-                // var reorgQueue = _reorgChannel.Reader;
-                // while (reorgQueue.TryPeek(out BlockReceipts reorgBlock) &&
-                //        reorgBlock.BlockNumber <= _logIndexStorage.GetMaxBlockNumber() &&
-                //        reorgQueue.TryRead(out reorgBlock))
-                // {
-                //     await _logIndexStorage.ReorgFrom(reorgBlock);
-                // }
+        _stats ??= new(_logIndexStorage);
 
-                await ProcessQueued(isForward: true);
-
-                if (_logIndexStorage.GetMinBlockNumber() != GetMinTargetBlockNumber())
-                    await ProcessQueued(isForward: false);
+        var aggregateBlock = new TransformBlock<IReadOnlyList<BlockReceipts>, LogIndexAggregate>(
+            batch => Aggregate(batch, isForward),
+            new() {
+                BoundedCapacity = MaxBatchQueueSize, MaxDegreeOfParallelism = IOParallelism,
+                CancellationToken = CancellationToken, SingleProducerConstrained = true
             }
-        }
-        catch (OperationCanceledException canceledEx) when (canceledEx.CancellationToken == CancellationToken)
-        {
-            // Cancelled
-        }
-        catch (Exception ex)
-        {
-            if (_logger.IsError)
-                _logger.Error("Log index block addition failed. Please restart the client.", ex);
-        }
+        );
 
-        if (_logger.IsInfo)
-            _logger.Info($"{GetLogPrefix()}: processing completed.");
+        var setReceiptsBlock = new ActionBlock<LogIndexAggregate>(
+            aggr => SetReceiptsAsync(aggr, isForward),
+            new()
+            {
+                BoundedCapacity = MaxAggregateQueueSize, MaxDegreeOfParallelism = 1,
+                CancellationToken = CancellationToken, SingleProducerConstrained = true
+            }
+        );
+
+        aggregateBlock.Completion.ContinueWith(t => HandleException(t.Exception), TaskContinuationOptions.OnlyOnFaulted);
+        setReceiptsBlock.Completion.ContinueWith(t => HandleException(t.Exception), TaskContinuationOptions.OnlyOnFaulted);
+
+        aggregateBlock.LinkTo(setReceiptsBlock, new() { PropagateCompletion = true });
+        return new(aggregateBlock, setReceiptsBlock);
     }
 
-    private LogIndexUpdateStats? _stats;
-
-    private async Task<int> ProcessQueued(bool isForward)
+    private void HandleException(Exception? exception)
     {
-        // var reorgQueue = _reorgChannel.Reader;
-        // while (reorgQueue.TryPeek(out BlockReceipts reorgBlock) &&
-        //        reorgBlock.BlockNumber <= _logIndexStorage.GetMaxBlockNumber() &&
-        //        reorgQueue.TryRead(out reorgBlock))
-        // {
-        //     await _logIndexStorage.ReorgFrom(reorgBlock);
-        // }
+        if (exception is null)
+            return;
 
-        var pivotNumber = await _pivotTask;
-        ChannelReader<BlockReceipts> queue = isForward ? _forwardChannel.Reader : _backwardChannel.Reader;
+        if (exception is OperationCanceledException oc && oc.CancellationToken == CancellationToken)
+            return; // Cancelled
 
-        // await _logIndexStorage.CompactAsync(flush: false);
-        // ((LogIndexStorage)_logIndexStorage).FixMinBlockNumber();
+        if (exception is AggregateException a)
+            exception = a.InnerException;
 
-        var count = 0;
-        // TODO: reuse buffer
-        while (!CancellationToken.IsCancellationRequested && queue.ReadBatch(BatchSize) is { Count: > 0 } batch)
-        {
-            // TODO: remove check to save time?
-            if ((isForward && !IsSeqAsc(batch)) ||
-                (!isForward && !IsSeqDesc(batch)) ||
-                (GetNextBlockNumber(isForward) is { } next && next != batch[0].BlockNumber))
-            {
-                throw new Exception($"Non-sequential block numbers in log index queue, batch: ({batch[0]} -> {batch[^1]}).");
-            }
+        if (_logger.IsError)
+            _logger.Error($"{GetLogPrefix()} syncing failed. Please restart the client.", exception);
 
-            // TODO: do aggregation separately and in parallel?
-            _stats ??= new(_logIndexStorage);
-            await _logIndexStorage.SetReceiptsAsync(batch, isBackwardSync: !isForward, _stats);
-
-            if (_logIndexStorage.GetMinBlockNumber() == 0)
-                _receiptStorage.AnyReceiptsInserted -= OnReceiptsInserted;
-
-            UpdateProgress(pivotNumber);
-            count++;
-        }
-
-        return count;
+        _cancellationSource.Cancel();
     }
 
-    // TODO: aggregate to dictionary beforehand (in multiple threads?), should save a lot of time
+    private LogIndexAggregate Aggregate(IReadOnlyList<BlockReceipts> batch, bool isForward)
+    {
+        // TODO: remove ordering check to save time?
+        if ((isForward && !IsSeqAsc(batch)) || (!isForward && !IsSeqDesc(batch)))
+            throw new($"{GetLogPrefix(isForward)}: non-ordered batch in queue: ({batch[0]} -> {batch[^1]}).");
+
+        return _logIndexStorage.Aggregate(batch, !isForward, _stats);
+    }
+
+    private async Task SetReceiptsAsync(LogIndexAggregate aggregate, bool isForward)
+    {
+        if (GetNextBlockNumber(_logIndexStorage, isForward) is { } next && next != aggregate.FirstBlockNum)
+            throw new($"{GetLogPrefix(isForward)}: non sequential batches: ({aggregate.FirstBlockNum} instead of {next}).");
+
+        await _logIndexStorage.SetReceiptsAsync(aggregate, !isForward, _stats);
+
+        if (aggregate.LastBlockNum == 0)
+            _receiptStorage.AnyReceiptsInserted -= OnReceiptsInserted;
+
+        UpdateProgress();
+    }
+
     private async Task DoQueueBlocks(bool isForward)
     {
         try
         {
             var pivotNumber = await _pivotTask;
 
-            ChannelWriter<BlockReceipts> queue = isForward ? _forwardChannel.Writer : _backwardChannel.Writer;
-            AutoResetEvent newBlockEvent = isForward ? _newForwardBlockEvent : _newBackwardBlockEvent;
+            ProcessingQueue queue = _processingQueues![isForward];
 
             var next = GetNextBlockNumber(isForward);
             if (next is not { } start)
@@ -288,7 +308,6 @@ public sealed class LogIndexService : ILogIndexService
             }
 
             var buffer = new BlockReceipts[BatchSize];
-            var lastQueuedNum = -1;
             while (!CancellationToken.IsCancellationRequested)
             {
                 if (!isForward && start < GetMinTargetBlockNumber())
@@ -307,9 +326,9 @@ public sealed class LogIndexService : ILogIndexService
                     : (end, Math.Max(start, GetMinTargetBlockNumber()) + 1);
 
                 Array.Clear(buffer);
-                PopulateBlocks(from, to, buffer, isForward, CancellationToken);
+                ReadOnlySpan<BlockReceipts> batch = GetNextBatch(from, to, buffer, isForward, CancellationToken);
 
-                if (buffer[0] == default)
+                if (batch.Length == 0)
                 {
                     next = isForward ? from : to - 1;
 
@@ -324,59 +343,35 @@ public sealed class LogIndexService : ILogIndexService
                     };
                     _logger.Info($"[TRACE] {GetLogPrefix(isForward)}: waiting for receipts of block {next}: {status}");
 
-                    await newBlockEvent.WaitOneAsync(NewBlockWaitTimeout, CancellationToken);
+                    await Task.Delay(NewBlockWaitTimeout, CancellationToken);
                     continue;
                 }
 
-                foreach (BlockReceipts block in buffer)
-                {
-                    CancellationToken.ThrowIfCancellationRequested();
-
-                    if (block == default)
-                    {
-                        break;
-                    }
-
-                    if (lastQueuedNum != -1 && block.BlockNumber != GetNextBlockNumber(lastQueuedNum, isForward))
-                    {
-                        if (_logger.IsError)
-                        {
-                            _logger.Error(
-                                $"Non-sequential block number {block.BlockNumber} in log index queue, previous block: {lastQueuedNum}. " +
-                                $"Please restart the client."
-                            );
-                        }
-
-                        return;
-                    }
-
-                    await queue.WriteAsync(block, CancellationToken);
-                    lastQueuedNum = block.BlockNumber;
-                    start = GetNextBlockNumber(block.BlockNumber, isForward);
-                }
+                start = GetNextBlockNumber(batch[^1].BlockNumber, isForward);
+                await queue.WriteAsync(batch.ToArray(), CancellationToken);
             }
-        }
-        catch (OperationCanceledException canceledEx) when (canceledEx.CancellationToken == CancellationToken)
-        {
-            // Cancelled
         }
         catch (Exception ex)
         {
-            if (_logger.IsError)
-                _logger.Error("Log index block enumeration failed. Please restart the client.", ex);
+            HandleException(ex);
         }
 
         if (_logger.IsInfo)
             _logger.Info($"{GetLogPrefix(isForward)}: queueing completed.");
     }
 
-    private void UpdateProgress(int pivotNumber)
+    private void UpdateProgress()
     {
+        if (!_pivotTask.IsCompletedSuccessfully) return;
+        var pivotNumber = _pivotTask.Result;
+
+        if (_processingQueues is null) return;
+
         if (!_forwardProgressLogger.HasEnded)
         {
             _forwardProgressLogger.TargetValue = Math.Max(0, _blockTree.BestKnownNumber - MaxReorgDepth - pivotNumber + 1);
             _forwardProgressLogger.Update(_logIndexStorage.GetMaxBlockNumber() is { } max ? max - pivotNumber + 1 : 0);
-            _forwardProgressLogger.CurrentQueued = _forwardChannel.Reader.Count;
+            _forwardProgressLogger.CurrentQueued = _processingQueues[true].QueueCount;
 
             // if (_forwardProgressLogger.CurrentValue == _forwardProgressLogger.TargetValue)
             //     _forwardProgressLogger.MarkEnd();
@@ -386,7 +381,7 @@ public sealed class LogIndexService : ILogIndexService
         {
             _backwardProgressLogger.TargetValue = pivotNumber - GetMinTargetBlockNumber();
             _backwardProgressLogger.Update(_logIndexStorage.GetMinBlockNumber() is { } min ? pivotNumber - min : 0);
-            _backwardProgressLogger.CurrentQueued = _backwardChannel.Reader.Count;
+            _backwardProgressLogger.CurrentQueued = _processingQueues[false].QueueCount;
 
             if (_backwardProgressLogger.CurrentValue >= _backwardProgressLogger.TargetValue)
             {
@@ -398,28 +393,32 @@ public sealed class LogIndexService : ILogIndexService
         }
     }
 
-    private int? GetNextBlockNumber(bool isForward)
+    private static int? GetNextBlockNumber(ILogIndexStorage storage, bool isForward)
     {
-        return isForward ? _logIndexStorage.GetMaxBlockNumber() + 1 : _logIndexStorage.GetMinBlockNumber() - 1;
+        return isForward ? storage.GetMaxBlockNumber() + 1 : storage.GetMinBlockNumber() - 1;
     }
+
+    private int? GetNextBlockNumber(bool isForward) => GetNextBlockNumber(_logIndexStorage, isForward);
 
     private static int GetNextBlockNumber(int last, bool isForward)
     {
         return isForward ? last + 1 : last - 1;
     }
 
-    private void PopulateBlocks(int from, int to, BlockReceipts[] buffer, bool isForward, CancellationToken token)
+    private ReadOnlySpan<BlockReceipts> GetNextBatch(int from, int to, BlockReceipts[] buffer, bool isForward, CancellationToken token)
     {
         if (to <= from)
-            return;
+            return ReadOnlySpan<BlockReceipts>.Empty;
 
         if (to - from > buffer.Length)
-            throw new InvalidOperationException($"Buffer size is too small: {buffer.Length} / {to - from}");
+            throw new InvalidOperationException($"{GetLogPrefix()}: buffer size is too small: {buffer.Length} / {to - from}");
 
         // Check the immediate next block first
         var nextIndex = isForward ? from : to - 1;
         buffer[0] = GetBlockReceipts(nextIndex);
-        if (buffer[0] == default) return;
+
+        if (buffer[0] == default)
+            return ReadOnlySpan<BlockReceipts>.Empty;
 
         Parallel.For(from, to, new()
         {
@@ -432,6 +431,8 @@ public sealed class LogIndexService : ILogIndexService
                 buffer[bufferIndex] = GetBlockReceipts(i);
         });
 
+        var endIndex = Array.IndexOf(buffer, default);
+        return endIndex < 0 ? buffer : buffer.AsSpan(..endIndex);
     }
 
     // TODO: move to IReceiptStorage as `TryGet`?
@@ -451,7 +452,7 @@ public sealed class LogIndexService : ILogIndexService
         return new(i, receipts);
     }
 
-    private static bool IsSeqAsc(List<BlockReceipts> blocks)
+    private static bool IsSeqAsc(IReadOnlyList<BlockReceipts> blocks)
     {
         int j = blocks.Count - 1;
         int i = 1, d = blocks[0].BlockNumber;
@@ -459,7 +460,7 @@ public sealed class LogIndexService : ILogIndexService
         return i > j;
     }
 
-    private static bool IsSeqDesc(List<BlockReceipts> blocks)
+    private static bool IsSeqDesc(IReadOnlyList<BlockReceipts> blocks)
     {
         int j = blocks.Count - 1;
         int i = 1, d = blocks[0].BlockNumber;
