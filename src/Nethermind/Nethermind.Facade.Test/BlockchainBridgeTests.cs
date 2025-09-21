@@ -551,7 +551,7 @@ public class BlockchainBridgeTests
     {
         BlockHeader header = Build.A.BlockHeader
             .TestObject;
-        Transaction tx = new() {GasLimit = 30_000_000, Data = new byte[1_680_000]};
+        Transaction tx = new() { GasLimit = 30_000_000, Data = new byte[1_680_000] };
 
         CallOutput callOutput = _blockchainBridge.EstimateGas(header, tx, 1);
 
