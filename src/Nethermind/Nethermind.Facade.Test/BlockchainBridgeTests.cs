@@ -52,8 +52,8 @@ public class BlockchainBridgeTests
             .AddSingleton<IReceiptFinder>(_receiptStorage)
             .AddSingleton(_timestamper)
             .AddSingleton(Substitute.For<ILogFinder>())
-            .AddSingleton<IMiningConfig>(new MiningConfig() { Enabled = false })
-            .AddScoped<ITransactionProcessor>(_transactionProcessor)
+            .AddSingleton<IMiningConfig>(new MiningConfig { Enabled = false })
+            .AddScoped(_transactionProcessor)
             .Build();
 
         _blockchainBridge = _container.Resolve<IBlockchainBridge>();
@@ -544,6 +544,18 @@ public class BlockchainBridgeTests
         CallOutput callOutput = _blockchainBridge.EstimateGas(header, tx, 1);
 
         Assert.That(callOutput.Error, Is.EqualTo("gas limit below intrinsic gas"));
+    }
+
+    [Test]
+    public void EstimateGas_tx_returns_GasLimitOverCap()
+    {
+        BlockHeader header = Build.A.BlockHeader
+            .TestObject;
+        Transaction tx = new() {GasLimit = 30_000_000, Data = new byte[1_680_000]};
+
+        CallOutput callOutput = _blockchainBridge.EstimateGas(header, tx, 1);
+
+        Assert.That(callOutput.Error, Is.EqualTo("Cannot estimate gas, gas spent exceeded transaction and block gas limit or transaction gas limit cap"));
     }
 
     [Test]
