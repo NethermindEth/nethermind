@@ -12,7 +12,7 @@ using System.Text;
 using System.Threading.Tasks;
 
 namespace Nethermind.Xdc.RLP;
-internal class SnapshotDecoder : IRlpStreamDecoder<Snapshot>
+internal class SnapshotDecoder : IRlpStreamDecoder<Snapshot>, IRlpValueDecoder<Snapshot>
 {
 
     public Snapshot Decode(RlpStream rlpStream, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
@@ -73,5 +73,19 @@ internal class SnapshotDecoder : IRlpStreamDecoder<Snapshot>
         length += Rlp.LengthOf(item.Hash);
         length += Rlp.LengthOfSequence(Rlp.LengthOfAddressRlp * item.NextEpochCandidates?.Length ?? 0);
         return length;
+    }
+
+    public Snapshot Decode(ref Rlp.ValueDecoderContext decoderContext, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+    {
+        if (decoderContext.IsNextItemNull())
+            return null;
+
+        decoderContext.ReadSequenceLength();
+
+        long number = decoderContext.DecodeLong();
+        Hash256 hash256 = decoderContext.DecodeKeccak();
+        Address[] nextSigners = decoderContext.DecodeArray<Address>() ?? [];
+
+        return new Snapshot(number, hash256, nextSigners);
     }
 }

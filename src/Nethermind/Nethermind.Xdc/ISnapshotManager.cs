@@ -5,17 +5,21 @@ using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Xdc.Types;
 using System;
+using System.Collections.Frozen;
 using System.Collections.Generic;
-using System.Linq;
-using System.Text;
-using System.Threading.Tasks;
+using System.Collections.Immutable;
+using System.Collections.ObjectModel;
 
 namespace Nethermind.Xdc;
-internal interface ISnapshotManager
+public interface ISnapshotManager
 {
     bool TryGetSnapshot(Hash256 hash, out Snapshot snapshot);
     bool TryStoreSnapshot(Snapshot snapshot);
-    bool TryGetSnapshot(XdcBlockHeader header, out Snapshot snapshot);
-    void TryCacheSnapshot(Snapshot snapshot);
-    bool TryGetSnapshot(ulong gapNumber, bool isGapNumber, out Snapshot snap);
+    bool TryCacheSnapshot(Snapshot snapshot);
+    bool TryGetSnapshotByGapNumber(ulong gapNumber, out Snapshot snap);
+    bool TryGetSnapshotByHeaderNumber(ulong gapNumber, out Snapshot snap);
+    bool TryGetSnapshotByHeader(XdcBlockHeader? header, out Snapshot snapshot);
+    Address[] CalculateNextEpochMasternodes(XdcBlockHeader xdcHeader);
+    Address[] GetMasternodes(XdcBlockHeader xdcHeader);
+    Address[] GetPenalties(XdcBlockHeader xdcHeader);
 }

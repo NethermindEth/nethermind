@@ -49,11 +49,11 @@ internal class SnapshotManager : ISnapshotManager
         {
             return true;
         }
-        Span<byte> key = hash.Bytes;
-        if (!_snapshotDb.KeyExists(key))
+            Span<byte> key = hash.Bytes;
+            if (!_snapshotDb.KeyExists(key))
         {
-            snapshot = null;
-            return false;
+                snapshot = null;
+                return false;
         }
         Span<byte> value = _snapshotDb.Get(key);
         if (value.IsEmpty)
@@ -71,7 +71,7 @@ internal class SnapshotManager : ISnapshotManager
         return true;
     }
 
-    public bool TryGetSnapshot(XdcBlockHeader header, out Snapshot snapshot)
+    public bool TryGetSnapshot(XdcBlockHeader? header, out Snapshot snapshot)
     {
         if (header is null)
         {
@@ -81,18 +81,16 @@ internal class SnapshotManager : ISnapshotManager
         return TryGetSnapshot(header.Hash, out snapshot);
     }
 
-    public bool TryGetSnapshot(ulong number, bool isGapNumber, out Snapshot snap)
+    public bool TryGetSnapshotByHeaderNumber(ulong number, out Snapshot snap)
     {
-        ulong gapBlockNum;
-        if (isGapNumber)
-        {
-            gapBlockNum = number;
-        }
-        else
-        {
-            gapBlockNum = Math.Max(0, number - number % _xdcConfig.Epoch - _xdcConfig.Gap);
-        }
+        ulong gapBlockNum = Math.Max(0, number - number % _xdcConfig.Epoch - _xdcConfig.Gap);
 
+        return TryGetSnapshotByGapNumber(gapBlockNum, out snap);
+    }
+
+
+    public bool TryGetSnapshotByGapNumber(ulong gapBlockNum, out Snapshot snap)
+    {
         Hash256 gapBlockHash = _tree.FindHeader((long)gapBlockNum)?.Hash;
 
         if (gapBlockHash is null)
