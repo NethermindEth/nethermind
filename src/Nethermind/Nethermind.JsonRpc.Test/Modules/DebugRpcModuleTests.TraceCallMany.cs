@@ -39,7 +39,7 @@ public partial class DebugRpcModuleTests
 
     private static async Task<Context> CreateContext()
     {
-        Context ctx = await Context.Create();;
+        Context ctx = await Context.Create();
         try
         {
             await ctx.Blockchain.AddFunds(TestItem.AddressD, 100.Ether());
