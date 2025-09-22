@@ -123,7 +123,7 @@ public class ForkInfoTests
     [TestCase(7, 1_741_159_776ul, "0xed88b5fd", 0ul, "First BPO1 timestamp")]
     [TestCase(7, 1_761_159_776ul, "0xed88b5fd", 0ul, "Future BPO1 timestamp")]
     [TestCase(8, 1_741_159_776ul, "0xed88b5fd", 0ul, "First BPO2 timestamp")]
-    [TestCase(8, 1_761_159_776ul, "0xed88b5fd", 0ul, "Future BPO12timestamp")]
+    [TestCase(8, 1_761_159_776ul, "0xed88b5fd", 0ul, "Future BPO2timestamp")]
     public void Fork_id_and_hash_as_expected_on_holesky(long head, ulong headTimestamp, string forkHashHex, ulong next, string description)
     {
         Test(head, headTimestamp, KnownHashes.HoleskyGenesis, forkHashHex, next, description, HoleskySpecProvider.Instance, "holesky.json");
@@ -144,7 +144,7 @@ public class ForkInfoTests
     [TestCase(1735373, 1_741_159_776ul, "0xed88b5fd", 0ul, "First BPO1 timestamp")]
     [TestCase(1735374, 1_761_159_776ul, "0xed88b5fd", 0ul, "Future BPO1 timestamp")]
     [TestCase(1735373, 1_741_159_776ul, "0xed88b5fd", 0ul, "First BPO2 timestamp")]
-    [TestCase(1735374, 1_761_159_776ul, "0xed88b5fd", 0ul, "Future BPO12timestamp")]
+    [TestCase(1735374, 1_761_159_776ul, "0xed88b5fd", 0ul, "Future BPO2timestamp")]
     public void Fork_id_and_hash_as_expected_on_sepolia(long head, ulong headTimestamp, string forkHashHex, ulong next, string description)
     {
         Test(head, headTimestamp, KnownHashes.SepoliaGenesis, forkHashHex, next, description, SepoliaSpecProvider.Instance, "sepolia.json");
