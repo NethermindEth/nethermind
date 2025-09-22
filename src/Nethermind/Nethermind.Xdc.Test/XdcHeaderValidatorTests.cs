@@ -34,12 +34,14 @@ public class Tests
     {
         XdcBlockHeaderBuilder blockHeaderBuilder = CreateValidHeader();
 
+        //Base control case
         yield return new object[]
         {
             blockHeaderBuilder,
             true
         };
 
+        //Missing block seal
         blockHeaderBuilder = CreateValidHeader();
         blockHeaderBuilder.WithValidator(Array.Empty<byte>());
         yield return new object[]
@@ -48,6 +50,7 @@ public class Tests
             false
         };
 
+        //No consensus data
         blockHeaderBuilder = CreateValidHeader();
         blockHeaderBuilder.WithExtraData([]);
         yield return new object[]
@@ -56,6 +59,7 @@ public class Tests
             false
         };
 
+        //Invalid nonce value
         blockHeaderBuilder = CreateValidHeader();
         blockHeaderBuilder.WithNonce(XdcConstants.NonceDropVoteValue + 1);
         yield return new object[]
@@ -64,6 +68,7 @@ public class Tests
             false
         };
 
+        //Invalid nonce value
         blockHeaderBuilder = CreateValidHeader();
         blockHeaderBuilder.WithNonce(XdcConstants.NonceAuthVoteValue - 1);
         yield return new object[]
@@ -72,6 +77,7 @@ public class Tests
             false
         };
 
+        //Invalid mix hash
         blockHeaderBuilder = CreateValidHeader();
         blockHeaderBuilder.WithMixHash(Hash256.FromBytesWithPadding([0x01]));
         yield return new object[]
@@ -80,6 +86,7 @@ public class Tests
             false
         };
 
+        //Invalid uncles hash
         blockHeaderBuilder = CreateValidHeader();
         blockHeaderBuilder.WithUnclesHash(Hash256.FromBytesWithPadding([0x01]));
         yield return new object[]

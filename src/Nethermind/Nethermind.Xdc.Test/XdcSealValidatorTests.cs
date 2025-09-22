@@ -72,7 +72,6 @@ internal class XdcSealValidatorTests
     [TestCaseSource(nameof(InvalidSignatureCases))]
     public void ValidateSeal_SignatureIsInvalid_ReturnsFalse(XdcBlockHeader header, byte[] validatorSig)
     {
-        EthereumEcdsa ecdsa = new EthereumEcdsa(0);
         XdcSealValidator validator = new XdcSealValidator(Substitute.For<ISnapshotManager>(), Substitute.For<ISpecProvider>());
         header.Validator = validatorSig;
 

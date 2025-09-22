@@ -15,7 +15,7 @@ using Nethermind.Xdc.Spec;
 using Nethermind.Core.Specs;
 
 namespace Nethermind.Crypto;
-public static class XdcExtentions
+public static class XdcExtensions
 {
     //TODO can we wire up this so we can use Rlp.Encode()?
     private static XdcHeaderDecoder _headerDecoder = new();

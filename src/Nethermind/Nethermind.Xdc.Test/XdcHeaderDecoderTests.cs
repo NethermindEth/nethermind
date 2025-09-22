@@ -84,7 +84,7 @@ namespace Nethermind.Xdc.Test
         {
             var decoder = new XdcHeaderDecoder();
 
-            XdcBlockHeader? unencoded = decoder.Decode(new RlpStream(Bytes.FromHexString(hexRlp)));
+            XdcBlockHeader? unencoded = (XdcBlockHeader?)decoder.Decode(new RlpStream(Bytes.FromHexString(hexRlp)));
 
             string encoded = decoder.Encode(unencoded).ToString();
 

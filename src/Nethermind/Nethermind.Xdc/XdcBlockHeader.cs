@@ -37,8 +37,8 @@ public class XdcBlockHeader : BlockHeader, IHashResolver
 
     public byte[]? Validators { get; set; }
 
-    private ImmutableSortedSet<Address>? _validatorsAddress;
-    public ImmutableSortedSet<Address>? ValidatorsAddress
+    private ImmutableArray<Address>? _validatorsAddress;
+    public ImmutableArray<Address>? ValidatorsAddress
     {
         get
         {
@@ -52,8 +52,8 @@ public class XdcBlockHeader : BlockHeader, IHashResolver
     public byte[]? Validator { get; set; }
     public byte[]? Penalties { get; set; }
 
-    private ImmutableSortedSet<Address>? _penaltiesAddress;
-    public ImmutableSortedSet<Address>? PenaltiesAddress
+    private ImmutableArray<Address>? _penaltiesAddress;
+    public ImmutableArray<Address>? PenaltiesAddress
     {
         get
         {
@@ -98,9 +98,8 @@ public class XdcBlockHeader : BlockHeader, IHashResolver
         set { _extraFieldsV2 = value; }
     }
 
-    public bool IsEpochSwitch(ISpecProvider specProvider)
+    public bool IsEpochSwitch(IXdcReleaseSpec spec)
     {
-        IXdcReleaseSpec spec = specProvider.GetXdcSpec(this);
         if (spec.SwitchBlock == this.Number)
         {
             return true;
@@ -113,12 +112,11 @@ public class XdcBlockHeader : BlockHeader, IHashResolver
         }
         ulong parentRound = extraFields.QuorumCert.ProposedBlockInfo.Round;
         ulong epochStart = extraFields.CurrentRound - extraFields.CurrentRound % (ulong)spec.EpochLength;
-        //ulong epochNumber = (ulong)spec.SwitchEpoch + extraFields.Round / (ulong)spec.EpochLength;
 
         return parentRound < epochStart;
     }
 
-    private static ImmutableSortedSet<Address>? ExtractAddresses(byte[]? data)
+    private static ImmutableArray<Address>? ExtractAddresses(byte[]? data)
     {
         if (data is null || data.Length % Address.Size != 0)
             return null;
@@ -128,7 +126,7 @@ public class XdcBlockHeader : BlockHeader, IHashResolver
         {
             addresses[i] = new Address(data.AsSpan(i * Address.Size, Address.Size));
         }
-        return addresses.ToImmutableSortedSet();
+        return addresses.ToImmutableArray();
     }
 
     public ValueHash256 CalculateHash()
