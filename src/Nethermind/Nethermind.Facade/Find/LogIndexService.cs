@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
@@ -75,7 +76,7 @@ public sealed class LogIndexService : ILogIndexService
     private readonly List<Task> _tasks = new();
 
     private Dictionary<bool, ProcessingQueue>? _processingQueues;
-    private LogIndexUpdateStats? _stats;
+    private ConcurrentDictionary<bool, LogIndexUpdateStats>? _stats;
 
     public string Description => "log index service";
 
@@ -115,12 +116,16 @@ public sealed class LogIndexService : ILogIndexService
 
             await _pivotTask;
 
-            _stats = new(_logIndexStorage);
+            _stats = new()
+            {
+                [true] = new(_logIndexStorage),
+                [false] = new(_logIndexStorage)
+            };
 
             _processingQueues = new()
             {
-                { true, BuildQueue(isForward: true) },
-                { false, BuildQueue(isForward: false) }
+                [true] = BuildQueue(isForward: true),
+                [false] = BuildQueue(isForward: false)
             };
 
             _tasks.AddRange(
@@ -172,18 +177,26 @@ public sealed class LogIndexService : ILogIndexService
         await _logIndexStorage.DisposeAsync();
     }
 
+    private void LogStats(bool isForward)
+    {
+        LogIndexUpdateStats stats = _stats?[isForward];
+
+        if (stats is not { BlocksAdded: > 0 })
+            return;
+
+        _stats[isForward] = new(_logIndexStorage);
+
+        if (_logger.IsInfo) // TODO: log at debug/trace
+            _logger.Info($"{GetLogPrefix(isForward)}: {stats:d}");
+    }
+
     private void LogProgress()
     {
         _forwardProgressLogger.LogProgress(false);
+        LogStats(isForward: true);
+
         _backwardProgressLogger.LogProgress(false);
-
-        if (_stats is { BlocksAdded: > 0 })
-        {
-            LogIndexUpdateStats stats = Interlocked.Exchange(ref _stats, new(_logIndexStorage));
-
-            if (_logger.IsInfo) // TODO: log at debug/trace
-                _logger.Info($"{GetLogPrefix()}: {stats:d}");
-        }
+        LogStats(isForward: false);
     }
 
     // TODO: add receipts to cache
@@ -271,7 +284,7 @@ public sealed class LogIndexService : ILogIndexService
         if ((isForward && !IsSeqAsc(batch)) || (!isForward && !IsSeqDesc(batch)))
             throw new($"{GetLogPrefix(isForward)}: non-ordered batch in queue: ({batch[0]} -> {batch[^1]}).");
 
-        return _logIndexStorage.Aggregate(batch, !isForward, _stats);
+        return _logIndexStorage.Aggregate(batch, !isForward, _stats?[isForward]);
     }
 
     private async Task SetReceiptsAsync(LogIndexAggregate aggregate, bool isForward)
@@ -279,7 +292,7 @@ public sealed class LogIndexService : ILogIndexService
         if (GetNextBlockNumber(_logIndexStorage, isForward) is { } next && next != aggregate.FirstBlockNum)
             throw new($"{GetLogPrefix(isForward)}: non sequential batches: ({aggregate.FirstBlockNum} instead of {next}).");
 
-        await _logIndexStorage.SetReceiptsAsync(aggregate, !isForward, _stats);
+        await _logIndexStorage.SetReceiptsAsync(aggregate, !isForward, _stats?[isForward]);
 
         if (aggregate.LastBlockNum == 0)
             _receiptStorage.AnyReceiptsInserted -= OnReceiptsInserted;
@@ -349,7 +362,7 @@ public sealed class LogIndexService : ILogIndexService
                     continue;
                 }
 
-                _stats?.LoadingReceipts.Include(Stopwatch.GetElapsedTime(timestamp));
+                _stats?[isForward].LoadingReceipts.Include(Stopwatch.GetElapsedTime(timestamp));
 
                 start = GetNextBlockNumber(batch[^1].BlockNumber, isForward);
                 await queue.WriteAsync(batch.ToArray(), CancellationToken);
