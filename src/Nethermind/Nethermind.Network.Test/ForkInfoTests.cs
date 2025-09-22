@@ -136,7 +136,7 @@ public class ForkInfoTests
     [TestCase(1735373, 1_706_655_072ul, "0x88cf81d9", 1_741_159_776ul, "First Cancun timestamp")]
     [TestCase(1735374, 1_716_655_072ul, "0x88cf81d9", 1_741_159_776ul, "Future Cancun timestamp")]
     [TestCase(1735373, 1_741_159_776ul, "0xed88b5fd", 1_760_427_360ul, "First Prague timestamp")]
-    [TestCase(1735374, 1_761_159_776ul, "0xed88b5fd", 1_760_427_360ul, "Future Prague timestamp")]
+    [TestCase(1735374, 1_751_159_776ul, "0xed88b5fd", 1_760_427_360ul, "Future Prague timestamp")]
     [TestCase(1735373, 1_760_427_360ul, "0xe2ae4999", 1_761_017_184ul, "First Osaka timestamp")]
     [TestCase(1735374, 1_760_428_360ul, "0xe2ae4999", 1_761_017_184ul, "Future Osaka timestamp")]
     [TestCase(1735373, 1_761_017_184ul, "0x56078a1e", 1_761_607_008ul, "First BPO1 timestamp")]
