@@ -1,7 +1,6 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.Threading;
@@ -55,7 +54,6 @@ namespace Nethermind.JsonRpc.Modules.Eth
             {
                 NoBaseFee = !transactionCall.ShouldSetBaseFee();
 
-
                 // default to previous block gas if unspecified
                 if (transactionCall.Gas is null)
                 {
@@ -69,8 +67,7 @@ namespace Nethermind.JsonRpc.Modules.Eth
                 // enforces gas cap
                 transactionCall.EnsureDefaults(_rpcConfig.GasCap);
 
-                // return base.Execute(transactionCall, blockParameter, stateOverride, searchResult);
-                throw new Exception();
+                return base.Execute(transactionCall, blockParameter, stateOverride, searchResult);
             }
 
             public ResultWrapper<TResult> ExecuteTx(TransactionForRpc transactionCall, BlockParameter? blockParameter, Dictionary<Address, AccountOverride>? stateOverride = null)
