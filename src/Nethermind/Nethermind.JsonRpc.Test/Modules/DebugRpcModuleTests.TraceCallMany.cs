@@ -61,7 +61,7 @@ public partial class DebugRpcModuleTests
 
         var result = ctx.DebugRpcModule.debug_traceCallMany([bundle], BlockParameter.Latest);
 
-        result.Data[0][0].Should().NotBeNull();
+        result.Data.First().First().Should().NotBeNull();
     }
 
     [Test]
@@ -71,7 +71,7 @@ public partial class DebugRpcModuleTests
 
         var result = ctx.DebugRpcModule.debug_traceCallMany([CreateBundle(CreateTransaction()), CreateBundle(CreateTransaction(to: TestItem.AddressD))], BlockParameter.Latest);
 
-        result.Data.Select(r => r.Length).Should().BeEquivalentTo([1, 1]);
+        result.Data.Select(r => r.Count()).Should().BeEquivalentTo([1, 1]);
     }
 
     [Test]
@@ -82,7 +82,7 @@ public partial class DebugRpcModuleTests
 
         var result = ctx.DebugRpcModule.debug_traceCallMany([bundle], BlockParameter.Latest);
 
-        result.Data.Select(r => r.Length).Should().BeEquivalentTo([2]);
+        result.Data.Select(r => r.Count()).Should().BeEquivalentTo([2]);
     }
 
     [Test]
@@ -92,18 +92,9 @@ public partial class DebugRpcModuleTests
         TransactionBundle bundle = CreateBundle(CreateTransaction(value: 200.Ether()));
 
         var result = ctx.DebugRpcModule.debug_traceCallMany([bundle], BlockParameter.Latest);
+        result.Data.Select(r => r.Count()).Should().BeEquivalentTo([1]);
 
-        result.Should().NotBeNull();
-        result.Should().BeOfType<ResultWrapper<IReadOnlyList<GethLikeTxTrace[]>>>();
-        result.ErrorCode.Should().Be(0);
-
-        result.Data.Should().NotBeNull();
-        result.Data.Select(r => r.Length).Should().BeEquivalentTo([1]);
-
-        var trace = result.Data[0][0];
-        trace.Should().NotBeNull();
-        trace.Failed.Should().BeTrue();
-
+        GethLikeTxTrace trace = result.Data.First().First();
         trace.Gas.Should().BeGreaterThan(0);
     }
 
@@ -128,7 +119,7 @@ public partial class DebugRpcModuleTests
 
         var result = ctx.DebugRpcModule.debug_traceCallMany([bundle], BlockParameter.Latest, options);
 
-        result.Data.Select(r => r.Length).Should().BeEquivalentTo([1]);
+        result.Data.Select(r => r.Count()).Should().BeEquivalentTo([1]);
     }
 
     [Test]
@@ -142,8 +133,8 @@ public partial class DebugRpcModuleTests
         };
 
         var result = ctx.DebugRpcModule.debug_traceCallMany([bundle], BlockParameter.Latest);
-        result.Data.Select(r => r.Length).Should().BeEquivalentTo([1]);
-        result.Data[0][0].Should().NotBeNull();
+        result.Data.Select(r => r.Count()).Should().BeEquivalentTo([1]);
+        result.Data.First().First().Should().NotBeNull();
     }
 
     [Test]
@@ -160,8 +151,8 @@ public partial class DebugRpcModuleTests
 
         var result = ctx.DebugRpcModule.debug_traceCallMany([bundle], BlockParameter.Latest);
 
-        result.Data.Select(r => r.Length).Should().BeEquivalentTo([1]);
-        result.Data[0][0].Should().NotBeNull();
+        result.Data.Select(r => r.Count()).Should().BeEquivalentTo([1]);
+        result.Data.First().First().Should().NotBeNull();
     }
 
     [Test]
@@ -171,8 +162,8 @@ public partial class DebugRpcModuleTests
         TransactionBundle bundle = CreateBundle(CreateTransaction(gas: 25_000_000));
         bundle.BlockOverride = new BlockOverride { GasLimit = 50_000_000 };
 
-        var r = ctx.DebugRpcModule.debug_traceCallMany([bundle], BlockParameter.Latest);
-        r.Data[0][0].Failed.Should().BeFalse();
+        var result = ctx.DebugRpcModule.debug_traceCallMany([bundle], BlockParameter.Latest);
+        result.Data.First().First().Failed.Should().BeFalse();
     }
 
     [Test]
@@ -184,6 +175,6 @@ public partial class DebugRpcModuleTests
         withOverride.BlockOverride = new BlockOverride { GasLimit = 30_000_000 };
         var result = ctx.DebugRpcModule.debug_traceCallMany([simple, withOverride], BlockParameter.Latest);
 
-        result.Data.Select(r => r.Length).Should().BeEquivalentTo([1, 1]);
+        result.Data.Select(r => r.Count()).Should().BeEquivalentTo([1, 1]);
     }
 }
