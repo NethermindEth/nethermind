@@ -10,6 +10,7 @@ using System.Text;
 using System.Threading.Tasks;
 
 namespace Nethermind.Xdc;
+
 internal static class XdcConstants
 {
     public static readonly ulong EpochLength = 900UL; // Default number of blocks after which to checkpoint and reset the pending votes
@@ -17,8 +18,8 @@ internal static class XdcConstants
     public static readonly int ExtraVanity = 32; // Fixed number of extra-data prefix bytes reserved for signer vanity
     public static readonly int ExtraSeal = 65;   // Fixed number of extra-data suffix bytes reserved for signer seal
 
-    public static readonly UInt256 NonceAuthVote = UInt256.Parse("0xffffffffffffffff"); // Magic nonce number to vote on adding a new signer
-    public static readonly UInt256 NonceDropVote = UInt256.Parse("0000000000000000"); // Magic nonce number to vote on removing a signer
+    public const ulong NonceAuthVoteValue = 0xffffffffffffffff; // Magic nonce number to vote on adding a new signer
+    public const ulong NonceDropVoteValue = 0x0000000000000000; // Magic nonce number to vote on removing a signer
 
     public static readonly Hash256 UncleHash = Keccak.OfAnEmptySequenceRlp; // Always Keccak256(RLP([])) as uncles are meaningless outside of PoW
     public static readonly ulong InMemoryEpochs = 5 * 900UL;   // Number of mapping from block to epoch switch infos to keep in memory

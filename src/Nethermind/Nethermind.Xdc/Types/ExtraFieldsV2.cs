@@ -7,13 +7,6 @@ namespace Nethermind.Xdc.Types;
 
 public class ExtraFieldsV2(ulong round, QuorumCertificate quorumCert)
 {
-    public ulong Round { get; set; } = round;
-    public QuorumCertificate QuorumCert { get; set; } = quorumCert;
-
-    public byte[] EncodeToBytes()
-    {
-        var bytes = Rlp.Encode(this).Bytes;
-
-        return [2, .. bytes];
-    }
+    public ulong CurrentRound { get; } = round;
+    public QuorumCertificate QuorumCert { get; } = quorumCert;
 }

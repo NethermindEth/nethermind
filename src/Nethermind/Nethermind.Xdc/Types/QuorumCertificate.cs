@@ -9,7 +9,7 @@ namespace Nethermind.Xdc.Types;
 
 public class QuorumCertificate(BlockInfo proposedBlockInfo, Signature[] signatures, ulong gapNumber)
 {
-    public BlockInfo ProposedBlockInfo { get; set; } = proposedBlockInfo;
+    public BlockRoundInfo ProposedBlockInfo { get; set; } = proposedBlockInfo;
     public Signature[] Signatures { get; set; } = signatures;
     public ulong GapNumber { get; set; } = gapNumber;
 }

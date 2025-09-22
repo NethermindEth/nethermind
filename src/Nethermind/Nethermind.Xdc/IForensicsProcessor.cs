@@ -23,7 +23,7 @@ public interface IForensicsProcessor
     Task SendForensicProof(QuorumCertificate firstQc, QuorumCertificate secondQc);
 
     (Hash256 AncestorHash, IList<string> FirstPath, IList<string> SecondPath)
-        FindAncestorBlockHash(Types.BlockInfo firstBlockInfo, Types.BlockInfo secondBlockInfo);
+        FindAncestorBlockHash(BlockRoundInfo firstBlockInfo, BlockRoundInfo secondBlockInfo);
 
     Task ProcessVoteEquivocation(Vote incomingVote);
 

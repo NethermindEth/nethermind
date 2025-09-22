@@ -515,6 +515,12 @@ public partial class EthRpcModule(
 
     public ResultWrapper<bool?> eth_uninstallFilter(UInt256 filterId)
     {
+        // Nethermind uses int for filter IDs, which is okay, but other clients use UInt256.
+        // If filterId is greater than int.MaxValue, it could not have been created by Nethermind.
+        // In that case, return false instead of throwing an internal cast error.
+        if (filterId > int.MaxValue)
+            return ResultWrapper<bool?>.Success(false);
+
         _blockchainBridge.UninstallFilter((int)filterId);
         return ResultWrapper<bool?>.Success(true);
     }

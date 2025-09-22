@@ -14,7 +14,7 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
-using BlockInfo = Nethermind.Xdc.Types.BlockInfo;
+using BlockRoundInfo = Nethermind.Xdc.Types.BlockRoundInfo;
 
 namespace Nethermind.Xdc;
 internal class QuorumCertificateDecoder : IRlpValueDecoder<QuorumCertificate>, IRlpStreamDecoder<QuorumCertificate>
@@ -27,7 +27,7 @@ internal class QuorumCertificateDecoder : IRlpValueDecoder<QuorumCertificate>, I
         int sequenceLength = decoderContext.ReadSequenceLength();
         int endPosition = decoderContext.Position + sequenceLength;
 
-        BlockInfo? blockInfo = _blockInfoDecoder.Decode(ref decoderContext, rlpBehaviors);
+        BlockRoundInfo? blockInfo = _blockInfoDecoder.Decode(ref decoderContext, rlpBehaviors);
 
         byte[][]? signatureBytes = decoderContext.DecodeByteArrays();
         if (signatureBytes is not null && signatureBytes.Any(s => s.Length != 65))
@@ -53,7 +53,7 @@ internal class QuorumCertificateDecoder : IRlpValueDecoder<QuorumCertificate>, I
         int sequenceLength = rlpStream.ReadSequenceLength();
         int endPosition = rlpStream.Position + sequenceLength;
 
-        BlockInfo? blockInfo = _blockInfoDecoder.Decode(rlpStream, rlpBehaviors);
+        BlockRoundInfo? blockInfo = _blockInfoDecoder.Decode(rlpStream, rlpBehaviors);
 
         byte[][]? signatureBytes = rlpStream.DecodeByteArrays();
         if (signatureBytes is not null && signatureBytes.Any(s => s.Length != 65))
@@ -72,7 +72,18 @@ internal class QuorumCertificateDecoder : IRlpValueDecoder<QuorumCertificate>, I
         return new QuorumCertificate(blockInfo, signatures, gap);
     }
 
-    public void Encode(RlpStream stream, QuorumCertificate item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+    public Rlp Encode(QuorumCert item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+    {
+        if (item is null)
+            return Rlp.OfEmptySequence;
+
+        RlpStream rlpStream = new(GetLength(item, rlpBehaviors));
+        Encode(rlpStream, item, rlpBehaviors);
+
+        return new Rlp(rlpStream.Data.ToArray());
+    }
+
+    public void Encode(RlpStream stream, QuorumCert item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
     {
         if (item is null)
         {
@@ -82,18 +93,23 @@ internal class QuorumCertificateDecoder : IRlpValueDecoder<QuorumCertificate>, I
         stream.StartSequence(GetContentLength(item, rlpBehaviors));
         _blockInfoDecoder.Encode(stream, item.ProposedBlockInfo, rlpBehaviors);
 
-        if (item.Signatures is null)
-            stream.EncodeNullObject();
-        else
+        // When encoding for sealing, we do not include the signatures
+        if ((rlpBehaviors & RlpBehaviors.ForSealing) != RlpBehaviors.ForSealing)
         {
-            int signatureContentLength = SignaturesLength(item);
-            stream.StartSequence(signatureContentLength);
-            foreach (var sig in item.Signatures)
+            if (item.Signatures is null)
+                stream.EncodeNullObject();
+            else
             {
-                //TODO Signature class should be optimized to store full 65 bytes
-                stream.Encode(sig.BytesWithRecovery);
+                int signatureContentLength = SignaturesLength(item);
+                stream.StartSequence(signatureContentLength);
+                foreach (var sig in item.Signatures)
+                {
+                    //TODO Signature class should be optimized to store full 65 bytes
+                    stream.Encode(sig.BytesWithRecovery);
+                }
             }
         }
+
         stream.Encode(item.GapNumber);
     }
 
@@ -105,7 +121,9 @@ internal class QuorumCertificateDecoder : IRlpValueDecoder<QuorumCertificate>, I
     {
         if (item is null)
             return 0;
-        var sigLength = Rlp.LengthOfSequence(SignaturesLength(item));
+        int sigLength = 0;
+        if ((rlpBehaviors & RlpBehaviors.ForSealing) != RlpBehaviors.ForSealing)
+            sigLength = Rlp.LengthOfSequence(SignaturesLength(item));
 
         return _blockInfoDecoder.GetLength(item.ProposedBlockInfo, rlpBehaviors)
             + Rlp.LengthOf(item.GapNumber)
