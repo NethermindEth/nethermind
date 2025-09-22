@@ -15,6 +15,7 @@ public class BPO2 : BPO1
         Name = "bpo2";
         MaxBlobCount = 21;
         TargetBlobCount = 14;
+        BlobBaseFeeUpdateFraction = 11684671;
     }
 
     public new static IReleaseSpec Instance => LazyInitializer.EnsureInitialized(ref _instance, static () => new BPO2());

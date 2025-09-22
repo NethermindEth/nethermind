@@ -156,15 +156,15 @@ public class ChainSpecBasedSpecProviderTests
             yield return new TestCaseData((ForkActivation)(1735372, 1677557087)) { TestName = "1677557087" };
             yield return new TestCaseData(new ForkActivation(1735372, SepoliaSpecProvider.CancunTimestamp - 1)) { TestName = "Before Cancun" };
             yield return new TestCaseData(new ForkActivation(1735372, SepoliaSpecProvider.CancunTimestamp)) { TestName = "First Cancun" };
-            yield return new TestCaseData(new ForkActivation(1735372, SepoliaSpecProvider.CancunTimestamp + 100000000)) { TestName = "Cancun" };
+            yield return new TestCaseData(new ForkActivation(1735372, SepoliaSpecProvider.CancunTimestamp + 1000)) { TestName = "Cancun" };
             yield return new TestCaseData(new ForkActivation(1735372, SepoliaSpecProvider.PragueTimestamp)) { TestName = "First Prague" };
-            yield return new TestCaseData(new ForkActivation(1735372, SepoliaSpecProvider.PragueTimestamp + 100000000)) { TestName = "Prague" };
+            yield return new TestCaseData(new ForkActivation(1735372, SepoliaSpecProvider.PragueTimestamp + 1000)) { TestName = "Prague" };
             yield return new TestCaseData(new ForkActivation(1735372, SepoliaSpecProvider.OsakaTimestamp)) { TestName = "First Osaka" };
-            yield return new TestCaseData(new ForkActivation(1735372, SepoliaSpecProvider.OsakaTimestamp + 10)) { TestName = "Osaka" };
+            yield return new TestCaseData(new ForkActivation(1735372, SepoliaSpecProvider.OsakaTimestamp + 1000)) { TestName = "Osaka" };
             yield return new TestCaseData(new ForkActivation(1735372, SepoliaSpecProvider.BPO1Timestamp)) { TestName = "First BPO1" };
-            yield return new TestCaseData(new ForkActivation(1735372, SepoliaSpecProvider.BPO1Timestamp + 100000000)) { TestName = "BPO1" };
+            yield return new TestCaseData(new ForkActivation(1735372, SepoliaSpecProvider.BPO1Timestamp + 1000)) { TestName = "BPO1" };
             yield return new TestCaseData(new ForkActivation(1735372, SepoliaSpecProvider.BPO2Timestamp)) { TestName = "First BPO2" };
-            yield return new TestCaseData(new ForkActivation(1735372, SepoliaSpecProvider.BPO2Timestamp + 100000000)) { TestName = "BPO2" };
+            yield return new TestCaseData(new ForkActivation(1735372, SepoliaSpecProvider.BPO2Timestamp + 1000)) { TestName = "BPO2" };
         }
     }
 
