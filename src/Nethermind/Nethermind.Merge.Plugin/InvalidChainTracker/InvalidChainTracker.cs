@@ -123,17 +123,11 @@ public class InvalidChainTracker : IInvalidChainTracker
     {
         if (_logger.IsDebug) _logger.Debug($"OnInvalidBlock: {failedBlock} {parent}");
 
-        // TODO: This port can now be removed? We should never get null here?
+        System.Diagnostics.Debug.Assert(parent is not null, "Parent should not be null for invalid block event");
         if (parent is null)
         {
-            BlockHeader? failedBlockHeader = TryGetBlockHeaderIncludingInvalid(failedBlock);
-            if (failedBlockHeader is null)
-            {
-                if (_logger.IsWarn) _logger.Warn($"Unable to resolve block to determine parent. Block {failedBlock}");
-                return;
-            }
-
-            parent = failedBlockHeader.ParentHash!;
+            if (_logger.IsWarn) _logger.Warn($"Invalid block parent was null for {failedBlock}. This indicates a bug in emitters.");
+            return;
         }
 
         Hash256 effectiveParent = parent;
