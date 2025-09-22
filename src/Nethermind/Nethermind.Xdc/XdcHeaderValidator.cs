@@ -75,7 +75,7 @@ public class XdcHeaderValidator(IBlockTree blockTree, ISealValidator sealValidat
 
         if (!_sealValidator.ValidateParams(parent, header, isUncle))
         {
-            error = "Invalid validator signature.";
+            error = "Invalid consensus data in header.";
             return false;
         }
         if (!_sealValidator.ValidateSeal(header, false))
