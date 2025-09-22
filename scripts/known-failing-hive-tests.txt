@@ -141,7 +141,7 @@ FindnodeResults (nethermind)
 GetNonexistentBlockHeaders (nethermind)
 nethermind
 PingMultiIP (nethermind)
-SameRequestID (nethermind)
 TalkRequest (nethermind)
+SimultaneousRequests (nethermind)
 TestBlobTxWithMismatchedSidecar (nethermind)
 TestBlobTxWithoutSidecar (nethermind)
