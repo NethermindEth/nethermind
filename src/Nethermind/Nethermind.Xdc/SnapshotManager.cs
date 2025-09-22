@@ -125,7 +125,7 @@ internal class SnapshotManager : ISnapshotManager
         stream.Reset();
         Span<byte> value = stream.Read(stream.Length);
 
-        _snapshotDb.Set(key, value.ToArray());
+        _snapshotDb.PutSpan(key, value);
         return true;
     }
 }
