@@ -1,4 +1,4 @@
-git clone git@github.com:NethermindEth / core - scripts.git
+git clone git@github.com:NethermindEth/core-scripts.git
 dotnet run -v 0 --property WarningLevel=0 > ./core-scripts/schemas/config.json
 cd core-scripts
 git add .
