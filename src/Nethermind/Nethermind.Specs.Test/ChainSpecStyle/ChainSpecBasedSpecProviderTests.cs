@@ -304,10 +304,10 @@ public class ChainSpecBasedSpecProviderTests
         VerifyPragueSpecificsForMainnetHoleskyHoodiAndSepolia(chainId, postOsakaSpec);
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(postBPO1Spec.BlobBaseFeeUpdateFraction, Is.EqualTo((UInt256)5007716));
+            Assert.That(postBPO1Spec.BlobBaseFeeUpdateFraction, Is.EqualTo((UInt256)8346193));
             Assert.That(postBPO1Spec.MaxBlobCount, Is.EqualTo(15));
             Assert.That(postBPO1Spec.TargetBlobCount, Is.EqualTo(10));
-            Assert.That(postBPO2Spec.BlobBaseFeeUpdateFraction, Is.EqualTo((UInt256)5007716));
+            Assert.That(postBPO2Spec.BlobBaseFeeUpdateFraction, Is.EqualTo((UInt256)11684671));
             Assert.That(postBPO2Spec.MaxBlobCount, Is.EqualTo(21));
             Assert.That(postBPO2Spec.TargetBlobCount, Is.EqualTo(14));
         }

@@ -98,14 +98,14 @@
         "timestamp": "0x68f6fd60",
         "target": 10,
         "max": 15,
-        "baseFeeUpdateFraction": "0x4c6964"
+        "baseFeeUpdateFraction": "0x7f5a51"
       },
       {
         "name": "bpo2",
         "timestamp": "0x68fffd60",
         "target": 14,
         "max": 21,
-        "baseFeeUpdateFraction": "0x4c6964"
+        "baseFeeUpdateFraction": "0xb24b3f"
       }
     ]
   },
