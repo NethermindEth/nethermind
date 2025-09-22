@@ -480,33 +480,15 @@ public class DebugRpcModule(
 
         blockParameter ??= BlockParameter.Latest;
 
-        var header = TryGetHeader<IReadOnlyList<GethLikeTxTrace[]>>(blockParameter, out var headerError);
+        BlockHeader header = TryGetHeader(blockParameter, out ResultWrapper<IReadOnlyList<GethLikeTxTrace[]>>? headerError);
         if (headerError is not null)
         {
             return headerError;
         }
 
-        // Smart Path Bifurcation: Mixed-Mode Handling Trade-offs
-        // 
-        // DESIGN DECISION: All-or-Nothing Override Processing
-        // We route ALL bundles to simulation infrastructure if ANY bundle contains overrides.
-        // This "all-or-nothing" approach was chosen for several reasons:
-        //
-        // PERFORMANCE vs COMPLEXITY TRADE-OFF:
-        // - Simple Path (DebugBridge.GetBundleTraces): ~2-3x faster, minimal memory allocation
-        // - Override Path (SimulateTxExecutor): Full simulation infrastructure, higher overhead
-        //
-        // CURRENT APPROACH BENEFITS:
-        // - Guaranteed execution consistency across all bundles in a single request
-        // - Simplified error handling and timeout management
-        // - No complex result merging or ordering issues
-        // - Clear, predictable performance characteristics
-        if (bundles.Any(b => b.BlockOverride is not null || b.StateOverrides is not null))
-        {
-            return TraceCallManyWithOverrides(bundles, blockParameter, options, header);
-        }
-
-        return TraceCallMany(bundles, blockParameter, options, header);
+        return bundles.Any(b => b.BlockOverride is not null || b.StateOverrides is not null)
+            ? TraceCallManyWithOverrides(bundles, blockParameter, options, header)
+            : TraceCallMany(bundles, blockParameter, options, header);
     }
 
     private ResultWrapper<IReadOnlyList<GethLikeTxTrace[]>> TraceCallMany(TransactionBundle[] bundles, BlockParameter blockParameter, GethTraceOptions? options, BlockHeader header)
@@ -535,7 +517,7 @@ public class DebugRpcModule(
         {
             BlockStateCalls = bundles.Select(bundle =>
             {
-                PrepareTransactions(new[] { bundle }, header);
+                PrepareTransactions([bundle], header);
 
                 return new BlockStateCall<TransactionForRpc>
                 {
@@ -546,26 +528,23 @@ public class DebugRpcModule(
             }).ToList()
         };
 
-        var concreteBlockParameter = new BlockParameter(header.Number);
+        BlockParameter concreteBlockParameter = new(header.Number);
 
         using CancellationTokenSource timeout = BuildTimeoutCancellationTokenSource();
-        CancellationToken cancellationToken = timeout.Token;
 
-        var simulationResult = new SimulateTxExecutor<GethLikeTxTrace>(
-            blockchainBridge,
-            blockFinder,
-            jsonRpcConfig,
-            new GethStyleSimulateBlockTracerFactory(options: options ?? GethTraceOptions.Default),
-            _secondsPerSlot
-        ).Execute(simulatePayload, concreteBlockParameter);
+        ResultWrapper<IReadOnlyList<SimulateBlockResult<GethLikeTxTrace>>> simulationResult =
+            new SimulateTxExecutor<GethLikeTxTrace>(
+                blockchainBridge,
+                blockFinder,
+                jsonRpcConfig,
+                new GethStyleSimulateBlockTracerFactory(options: options ?? GethTraceOptions.Default),
+                _secondsPerSlot
+            ).Execute(simulatePayload, concreteBlockParameter);
 
         if (simulationResult.ErrorCode != 0)
         {
             string errorMessage = simulationResult.Result?.ToString() ?? "Simulation failed";
-
-            if (_logger.IsWarn)
-                _logger.Warn($"debug_traceCallMany simulation failed: Code={simulationResult.ErrorCode}, Details={errorMessage}");
-
+            if (_logger.IsWarn) _logger.Warn($"debug_traceCallMany simulation failed: Code={simulationResult.ErrorCode}, Details={errorMessage}");
             return ResultWrapper<IReadOnlyList<GethLikeTxTrace[]>>.Fail(errorMessage, simulationResult.ErrorCode);
         }
 
