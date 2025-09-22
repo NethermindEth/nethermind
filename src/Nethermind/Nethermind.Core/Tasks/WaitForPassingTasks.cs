@@ -18,8 +18,9 @@ public static class Wait
     /// <param name="tasks"></param>
     /// <typeparam name="T"></typeparam>
     /// <returns></returns>
-    public static async Task<T> AnyWhere<T>(Func<T, bool> cond, params IEnumerable<Task<T>> tasks)
+    public static async Task<T> AnyWhere<T>(Func<T, bool> cond, params Task<T>[] tasks)
     {
+        // Accept tasks directly rather than IEnumerable<Task<T>> to avoid params flattening issues
         HashSet<Task<T>> taskSet = new HashSet<Task<T>>(tasks);
         while (taskSet.Count != 0)
         {
