@@ -117,13 +117,12 @@ public class ForkInfoTests
     [TestCase(5, 1_717_305_664ul, "0x9b192ad0", 1_740_434_112ul, "Future Cancun timestamp")]
     [TestCase(5, 1_740_434_112ul, "0xdfbd9bed", 0ul, "First Prague timestamp")]
     [TestCase(5, 1_760_434_112ul, "0xdfbd9bed", 0ul, "Future Prague timestamp")]
-    //todo
-    [TestCase(6, 1_741_159_776ul, "0xed88b5fd", 0ul, "First Osaka timestamp")]
-    [TestCase(6, 1_761_159_776ul, "0xed88b5fd", 0ul, "Future Osaka timestamp")]
-    [TestCase(7, 1_741_159_776ul, "0xed88b5fd", 0ul, "First BPO1 timestamp")]
-    [TestCase(7, 1_761_159_776ul, "0xed88b5fd", 0ul, "Future BPO1 timestamp")]
-    [TestCase(8, 1_741_159_776ul, "0xed88b5fd", 0ul, "First BPO2 timestamp")]
-    [TestCase(8, 1_761_159_776ul, "0xed88b5fd", 0ul, "Future BPO2timestamp")]
+    [TestCase(6, 1_741_159_776ul, "0x783def52", 0ul, "First Osaka timestamp")]
+    [TestCase(6, 1_761_159_776ul, "0x783def52", 0ul, "Future Osaka timestamp")]
+    [TestCase(7, 1_741_159_776ul, "0xa280a45c", 0ul, "First BPO1 timestamp")]
+    [TestCase(7, 1_761_159_776ul, "0xa280a45c", 0ul, "Future BPO1 timestamp")]
+    [TestCase(8, 1_741_159_776ul, "0x9bc6cb31", 0ul, "First BPO2 timestamp")]
+    [TestCase(8, 1_761_159_776ul, "0x9bc6cb31", 0ul, "Future BPO2 timestamp")]
     public void Fork_id_and_hash_as_expected_on_holesky(long head, ulong headTimestamp, string forkHashHex, ulong next, string description)
     {
         Test(head, headTimestamp, KnownHashes.HoleskyGenesis, forkHashHex, next, description, HoleskySpecProvider.Instance, "holesky.json");
@@ -138,13 +137,12 @@ public class ForkInfoTests
     [TestCase(1735374, 1_716_655_072ul, "0x88cf81d9", 1_741_159_776ul, "Future Cancun timestamp")]
     [TestCase(1735373, 1_741_159_776ul, "0xed88b5fd", 0ul, "First Prague timestamp")]
     [TestCase(1735374, 1_761_159_776ul, "0xed88b5fd", 0ul, "Future Prague timestamp")]
-    //todo
-    [TestCase(1735373, 1_741_159_776ul, "0xed88b5fd", 0ul, "First Osaka timestamp")]
-    [TestCase(1735374, 1_761_159_776ul, "0xed88b5fd", 0ul, "Future Osaka timestamp")]
-    [TestCase(1735373, 1_741_159_776ul, "0xed88b5fd", 0ul, "First BPO1 timestamp")]
-    [TestCase(1735374, 1_761_159_776ul, "0xed88b5fd", 0ul, "Future BPO1 timestamp")]
-    [TestCase(1735373, 1_741_159_776ul, "0xed88b5fd", 0ul, "First BPO2 timestamp")]
-    [TestCase(1735374, 1_761_159_776ul, "0xed88b5fd", 0ul, "Future BPO2timestamp")]
+    [TestCase(1735373, 1_741_159_776ul, "0xe2ae4999", 0ul, "First Osaka timestamp")]
+    [TestCase(1735374, 1_761_159_776ul, "0xe2ae4999", 0ul, "Future Osaka timestamp")]
+    [TestCase(1735373, 1_741_159_776ul, "0x56078a1e", 0ul, "First BPO1 timestamp")]
+    [TestCase(1735374, 1_761_159_776ul, "0x56078a1e", 0ul, "Future BPO1 timestamp")]
+    [TestCase(1735373, 1_741_159_776ul, "0x268956b6", 0ul, "First BPO2 timestamp")]
+    [TestCase(1735374, 1_761_159_776ul, "0x268956b6", 0ul, "Future BPO2 timestamp")]
     public void Fork_id_and_hash_as_expected_on_sepolia(long head, ulong headTimestamp, string forkHashHex, ulong next, string description)
     {
         Test(head, headTimestamp, KnownHashes.SepoliaGenesis, forkHashHex, next, description, SepoliaSpecProvider.Instance, "sepolia.json");
@@ -195,13 +193,12 @@ public class ForkInfoTests
     [TestCase(5_000_000, HoodiSpecProvider.PragueTimestamp - 1, "0xBEF71D30", 1742999832UL, "Future Cancun timestamp")]
     [TestCase(5_000_000, HoodiSpecProvider.PragueTimestamp, "0x929E24E", 0ul, "First Prague timestamp")]
     [TestCase(5_000_000, HoodiSpecProvider.OsakaTimestamp - 1, "0x929E24E", 0ul, "Future Prague timestamp")]
-    //todo
-    [TestCase(6_000_000, HoodiSpecProvider.OsakaTimestamp, "0xed88b5fd", 0ul, "First Osaka timestamp")]
-    [TestCase(6_000_000, HoodiSpecProvider.BPO1Timestamp - 1, "0xed88b5fd", 0ul, "Future Osaka timestamp")]
-    [TestCase(6_000_000, HoodiSpecProvider.BPO1Timestamp, "0xed88b5fd", 0ul, "First BPO1 timestamp")]
-    [TestCase(6_000_000, HoodiSpecProvider.BPO2Timestamp - 1, "0xed88b5fd", 0ul, "Future BPO1 timestamp")]
-    [TestCase(6_000_000, HoodiSpecProvider.BPO2Timestamp, "0xed88b5fd", 0ul, "First BPO2 timestamp")]
-    [TestCase(6_000_000, HoodiSpecProvider.BPO2Timestamp + 100000, "0xed88b5fd", 0ul, "Future BPO2 timestamp")]
+    [TestCase(6_000_000, HoodiSpecProvider.OsakaTimestamp, "0xe7e0e7ff", 0ul, "First Osaka timestamp")]
+    [TestCase(6_000_000, HoodiSpecProvider.BPO1Timestamp - 1, "0xe7e0e7ff", 0ul, "Future Osaka timestamp")]
+    [TestCase(6_000_000, HoodiSpecProvider.BPO1Timestamp, "0x3893353e", 0ul, "First BPO1 timestamp")]
+    [TestCase(6_000_000, HoodiSpecProvider.BPO2Timestamp - 1, "0x3893353e", 0ul, "Future BPO1 timestamp")]
+    [TestCase(6_000_000, HoodiSpecProvider.BPO2Timestamp, "0x23aa1351", 0ul, "First BPO2 timestamp")]
+    [TestCase(6_000_000, HoodiSpecProvider.BPO2Timestamp + 100000, "0x23aa1351", 0ul, "Future BPO2 timestamp")]
     public void Fork_id_and_hash_as_expected_on_hoodi(long head, ulong headTimestamp, string forkHashHex, ulong next, string description)
     {
         var loader = new ChainSpecFileLoader(new EthereumJsonSerializer(), LimboTraceLogger.Instance);
