@@ -40,7 +40,9 @@ public class TaikoTransactionProcessor(
         UInt256 tipFees = (UInt256)spentGas * premiumPerGas;
         UInt256 baseFees = (UInt256)spentGas * header.BaseFeePerGas;
 
-        // n.b. destroyed accounts already set to zero balance
+        // If the account has been destroyed during the execution, the balance is already set 
+        // as zero. So there is no need to create the account and pay the fees to the beneficiary,
+        // except for the case when a restore is required due to a failure.
         bool gasBeneficiaryNotDestroyed = !substate.DestroyList.Contains(header.GasBeneficiary);
         if (statusCode == StatusCode.Failure || gasBeneficiaryNotDestroyed)
         {
@@ -54,7 +56,11 @@ public class TaikoTransactionProcessor(
                 byte basefeeSharingPctg = header.DecodeOntakeExtraData() ?? 0;
 
                 UInt256 feeCoinbase = baseFees * basefeeSharingPctg / 100;
-                WorldState.AddToBalanceAndCreateIfNotExists(header.GasBeneficiary!, feeCoinbase, spec);
+
+                if (statusCode == StatusCode.Failure || gasBeneficiaryNotDestroyed)
+                {
+                    WorldState.AddToBalanceAndCreateIfNotExists(header.GasBeneficiary!, feeCoinbase, spec);
+                }
 
                 UInt256 feeTreasury = baseFees - feeCoinbase;
                 WorldState.AddToBalanceAndCreateIfNotExists(spec.FeeCollector, feeTreasury, spec);
