@@ -19,9 +19,6 @@ public class BlockAccessListDecoder : IRlpValueDecoder<BlockAccessList>, IRlpStr
 
     public BlockAccessList Decode(ref Rlp.ValueDecoderContext ctx, RlpBehaviors rlpBehaviors)
     {
-        int length = ctx.ReadSequenceLength();
-        int check = length + ctx.Position;
-
         AccountChanges[] accountChanges = ctx.DecodeArray(AccountChangesDecoder.Instance);
         if (accountChanges.Length > Eip7928Constants.MaxAccounts)
         {
@@ -44,11 +41,6 @@ public class BlockAccessListDecoder : IRlpValueDecoder<BlockAccessList>, IRlpStr
         if (!accountChanges.SequenceEqual(accountChangesMap.Values))
         {
             throw new RlpException("Accounts were in incorrect order.");
-        }
-
-        if (!rlpBehaviors.HasFlag(RlpBehaviors.AllowExtraBytes))
-        {
-            ctx.Check(check);
         }
 
         return blockAccessList;

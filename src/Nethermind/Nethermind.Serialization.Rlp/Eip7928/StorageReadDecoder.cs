@@ -16,9 +16,6 @@ public class StorageReadDecoder : IRlpValueDecoder<StorageRead>, IRlpStreamDecod
 
     public StorageRead Decode(ref Rlp.ValueDecoderContext ctx, RlpBehaviors rlpBehaviors)
     {
-        int length = ctx.ReadSequenceLength();
-        int check = length + ctx.Position;
-
         byte[] key = ctx.DecodeByteArray();
         if (key.Length != 32)
         {
@@ -29,11 +26,6 @@ public class StorageReadDecoder : IRlpValueDecoder<StorageRead>, IRlpStreamDecod
         {
             Key = new(key),
         };
-
-        if (!rlpBehaviors.HasFlag(RlpBehaviors.AllowExtraBytes))
-        {
-            ctx.Check(check);
-        }
 
         return storageRead;
     }

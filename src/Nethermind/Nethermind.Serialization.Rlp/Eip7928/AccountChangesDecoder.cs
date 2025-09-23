@@ -23,11 +23,11 @@ public class AccountChangesDecoder : IRlpValueDecoder<AccountChanges>, IRlpStrea
         Address address = ctx.DecodeAddress();
 
         SlotChanges[] slotChanges = ctx.DecodeArray(SlotChangesDecoder.Instance);
-        byte[] lastSlot = Bytes32.Zero.Unwrap();
+        byte[]? lastSlot = null;
         SortedDictionary<byte[], SlotChanges> slotChangesMap = new(slotChanges.ToDictionary(s =>
         {
             byte[] slot = s.Slot;
-            if (Bytes.BytesComparer.Compare(slot, lastSlot) <= 0)
+            if (lastSlot is not null && Bytes.BytesComparer.Compare(slot, lastSlot) <= 0)
             {
                 throw new RlpException("Storage changes were in incorrect order.");
             }
@@ -37,10 +37,10 @@ public class AccountChangesDecoder : IRlpValueDecoder<AccountChanges>, IRlpStrea
 
         StorageRead[] storageReads = ctx.DecodeArray(StorageReadDecoder.Instance);
         SortedSet<StorageRead> storareReadsList = [];
-        StorageRead lastRead = new(Bytes32.Zero);
+        StorageRead? lastRead = null;
         foreach (StorageRead storageRead in storageReads)
         {
-            if (storageRead.CompareTo(lastRead) <= 0)
+            if (lastRead is not null && storageRead.CompareTo(lastRead.Value) <= 0)
             {
                 throw new RlpException("Storage reads were in incorrect order.");
             }
@@ -92,11 +92,6 @@ public class AccountChangesDecoder : IRlpValueDecoder<AccountChanges>, IRlpStrea
             lastIndex = index;
             return index;
         }, s => s));
-
-        if (!rlpBehaviors.HasFlag(RlpBehaviors.AllowExtraBytes))
-        {
-            ctx.Check(check);
-        }
 
         return new()
         {

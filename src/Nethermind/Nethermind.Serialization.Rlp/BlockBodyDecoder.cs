@@ -96,7 +96,7 @@ public class BlockBodyDecoder : IRlpValueDecoder<BlockBody>, IRlpStreamDecoder<B
         return DecodeUnwrapped(ref ctx, startingPosition + sequenceLength);
     }
 
-    public BlockBody? DecodeUnwrapped(ref Rlp.ValueDecoderContext ctx, int lastPosition)
+    public BlockBody? DecodeUnwrapped(ref Rlp.ValueDecoderContext ctx, int lastPosition, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
     {
         // quite significant allocations (>0.5%) here based on a sample 3M blocks sync
         // (just on these delegates)
@@ -105,7 +105,7 @@ public class BlockBodyDecoder : IRlpValueDecoder<BlockBody>, IRlpStreamDecoder<B
         Withdrawal[]? withdrawals = null;
         BlockAccessList? blockAccessList = null;
 
-        int remaining = ctx.PeekNumberOfItemsRemaining(lastPosition, 1);
+        int remaining = ctx.PeekNumberOfItemsRemaining(lastPosition, 2);
         if (remaining > 0)
         {
             withdrawals = ctx.DecodeArray(_withdrawalDecoderDecoder);
@@ -113,7 +113,7 @@ public class BlockBodyDecoder : IRlpValueDecoder<BlockBody>, IRlpStreamDecoder<B
 
         if (remaining > 1)
         {
-            blockAccessList = _blockAccessListDecoder.Decode(ref ctx, RlpBehaviors.None);
+            blockAccessList = _blockAccessListDecoder.Decode(ref ctx, rlpBehaviors);
         }
 
         return new BlockBody(transactions, uncles, withdrawals, blockAccessList);
