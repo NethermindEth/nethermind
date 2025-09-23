@@ -5,7 +5,7 @@ using Nethermind.Int256;
 using Nethermind.Specs;
 
 namespace Nethermind.Xdc.Spec;
-public class XdcV2ReleaseSpec : ReleaseSpec, IXdcReleaseSpec
+public class XdcV2ReleaseSpec : ReleaseSpec
 {
     public int SwitchEpoch { get; set; }
     public UInt256 SwitchBlock { get; set; }

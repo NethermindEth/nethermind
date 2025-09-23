@@ -6,6 +6,7 @@ using System.Collections.Generic;
 using System.Numerics;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
+using System.Threading.Tasks;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Threading;
@@ -188,10 +189,10 @@ public partial class PatriciaTree
                 jobs[nib] = (GetSpanOffset(originalEntriesArray, jobEntry), jobEntry.Length, nib, childPath, child, null);
             }
 
-            ParallelUnbalancedWork.For(0, TrieNode.BranchesCount,
+            Parallel.For(0, TrieNode.BranchesCount,
                 ParallelUnbalancedWork.DefaultOptions,
                 GetTraverseStack,
-                (i, workerTraverseStack) =>
+                (i, _, workerTraverseStack) =>
                 {
                     (int startIdx, int count, int nib, TreePath childPath, TrieNode child, TrieNode? outNode) = jobs[i];
 
