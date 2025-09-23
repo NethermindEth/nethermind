@@ -605,6 +605,9 @@ internal sealed class PersistentStorageProvider : PartialStorageProviderBase
                     BlockChange[kvp.Key] = new(after, after);
                     storageWriteBatch.Set(kvp.Key, after);
 
+                    if (Out.TraceShowDeepstate && Out.IsTargetBlock)
+                        Out.Log($"deepstate[{_address}]", kvp.Key.ToValueHash().ToString(), after.PadLeft(32).ToHexString(withZeroX: true));
+
                     writes++;
                 }
                 else

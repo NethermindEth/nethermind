@@ -81,6 +81,10 @@ public class BranchProcessor(
             // Start prewarming as early as possible
             WaitForCacheClear();
             IReleaseSpec spec = specProvider.GetSpec(suggestedBlock.Header);
+
+            if (Out.IsTargetBlock)
+                Out.Log($"spec provider={specProvider.GetType().Name} spec={spec.GetType().Name} blockNumber={suggestedBlock.Header.Number} eip3860={spec.IsEip3860Enabled}");
+
             preWarmTask = PreWarmTransactions(suggestedBlock, baseBlock!, spec, backgroundCancellation.Token);
             Task? prefetchBlockhash = blockhashProvider.Prefetch(suggestedBlock.Header, backgroundCancellation.Token);
 
@@ -96,6 +100,10 @@ public class BranchProcessor(
             {
                 WaitForCacheClear();
                 suggestedBlock = suggestedBlocks[i];
+
+                Out.Reset();
+                Out.CurrentBlockNumber = suggestedBlock.Number;
+
                 if (i > 0)
                 {
                     // Refresh spec
