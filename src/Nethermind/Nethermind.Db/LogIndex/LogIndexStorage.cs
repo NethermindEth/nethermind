@@ -22,13 +22,15 @@ namespace Nethermind.Db
     [SuppressMessage("ReSharper", "PrivateFieldCanBeConvertedToLocalVariable")] // TODO: get rid of unused fields
     public sealed partial class LogIndexStorage : ILogIndexStorage
     {
+        // Use values that we won't encounter during regular iteration
         private static class SpecialKey
         {
-            // Use values that we won't encounter during iterator Seek or SeekForPrev
+            public static readonly byte[] Version = Enumerable.Repeat(byte.MaxValue, MaxDbKeyLength)
+                .Concat(new byte[] { 0 }).ToArray();
+
             public static readonly byte[] MinBlockNum = Enumerable.Repeat(byte.MaxValue, MaxDbKeyLength)
                 .Concat(new byte[] { 1 }).ToArray();
 
-            // Use values that we won't encounter during iterator Seek or SeekForPrev
             public static readonly byte[] MaxBlockNum = Enumerable.Repeat(byte.MaxValue, MaxDbKeyLength)
                 .Concat(new byte[] { 2 }).ToArray();
         }
@@ -47,6 +49,8 @@ namespace Nethermind.Db
             public const int IOParallelism = 1;
             public const int MaxReorgDepth = 64;
         }
+
+        public const byte Version = 1;
 
         public const int MaxTopics = 4;
 
@@ -133,6 +137,8 @@ namespace Nethermind.Db
             _addressMinBlock = LoadRangeBound(_addressDb, SpecialKey.MinBlockNum);
             _topicMaxBlocks = _topicsDbs.Select(static db => LoadRangeBound(db, SpecialKey.MaxBlockNum)).ToArray();
             _topicMinBlocks = _topicsDbs.Select(static db => LoadRangeBound(db, SpecialKey.MinBlockNum)).ToArray();
+
+            _addressDb.Set(SpecialKey.Version, [Version]);
 
             if (WasInitialized)
                 _firstBlockAddedSource.SetResult();
