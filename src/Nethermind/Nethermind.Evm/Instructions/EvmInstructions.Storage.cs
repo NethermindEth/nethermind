@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Diagnostics;
 using System.Runtime.CompilerServices;
 using Nethermind.Core;
 using Nethermind.Core.Extensions;
@@ -333,6 +334,8 @@ internal static partial class EvmInstructions
     internal static EvmExceptionType InstructionSStoreUnmetered<TTracingInst>(VirtualMachine vm, ref EvmStack stack, ref long gasAvailable, ref int programCounter)
         where TTracingInst : struct, IFlag
     {
+        long startTime = Stopwatch.GetTimestamp();
+
         // Increment the SSTORE opcode metric.
         Metrics.IncrementSStoreOpcode();
 
@@ -405,6 +408,9 @@ internal static partial class EvmInstructions
             vm.TxTracer.SetOperationStorage(storageCell.Address, result, bytes, currentValue);
         }
 
+        long endTime = (long)Stopwatch.GetElapsedTime(startTime).TotalNanoseconds;
+        ProcessingMetrics.SStoreDurationNanos += endTime;
+
         return EvmExceptionType.None;
     // Jump forward to be unpredicted by the branch predictor.
     OutOfGas:
@@ -434,6 +440,8 @@ internal static partial class EvmInstructions
         where TTracingInst : struct, IFlag
         where TUseNetGasStipendFix : struct, IFlag
     {
+        long startTime = Stopwatch.GetTimestamp();
+
         // Increment the SSTORE opcode metric.
         Metrics.IncrementSStoreOpcode();
 
@@ -549,7 +557,7 @@ internal static partial class EvmInstructions
         }
 
         // Only update storage if the new value differs from the current value.
-        if (!newSameAsCurrent)
+        if (!newSameAsCurrent || Out.TraceShowOpcodes)
         {
             vm.WorldState.Set(in storageCell, newIsZero ? BytesZero : bytes.ToArray());
         }
@@ -564,6 +572,9 @@ internal static partial class EvmInstructions
         {
             vm.TxTracer.SetOperationStorage(storageCell.Address, result, bytes, currentValue);
         }
+
+        long endTime = (long)Stopwatch.GetElapsedTime(startTime).TotalNanoseconds;
+        ProcessingMetrics.SStoreDurationNanos += endTime;
 
         return EvmExceptionType.None;
     // Jump forward to be unpredicted by the branch predictor.
@@ -600,6 +611,8 @@ internal static partial class EvmInstructions
     internal static EvmExceptionType InstructionSLoad<TTracingInst>(VirtualMachine vm, ref EvmStack stack, ref long gasAvailable, ref int programCounter)
         where TTracingInst : struct, IFlag
     {
+        long startTime = Stopwatch.GetTimestamp();
+
         IReleaseSpec spec = vm.Spec;
 
         // Increment the SLOAD opcode metric.
@@ -630,6 +643,9 @@ internal static partial class EvmInstructions
         {
             vm.TxTracer.LoadOperationStorage(executingAccount, result, value);
         }
+
+        long endTime = (long)Stopwatch.GetElapsedTime(startTime).TotalNanoseconds;
+        ProcessingMetrics.SLoadDurationNanos += endTime;
 
         return EvmExceptionType.None;
     // Jump forward to be unpredicted by the branch predictor.
