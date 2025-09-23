@@ -544,7 +544,7 @@ internal static partial class EvmInstructions
         }
 
         // Only update storage if the new value differs from the current value.
-        if (!newSameAsCurrent)
+        if (!newSameAsCurrent || Environment.GetEnvironmentVariable("TRACE_SHOW_OPCODES") == "true")
         {
             vm.WorldState.Set(in storageCell, newIsZero ? BytesZero : bytes.ToArray());
         }

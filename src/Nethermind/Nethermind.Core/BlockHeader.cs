@@ -2,7 +2,9 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Collections.Generic;
 using System.Diagnostics;
+using System.IO;
 using System.Text;
 using Nethermind.Core.Attributes;
 using Nethermind.Core.Crypto;
@@ -10,6 +12,172 @@ using Nethermind.Core.Extensions;
 using Nethermind.Int256;
 
 namespace Nethermind.Core;
+
+public static class Out
+{
+    public static void LogAlways(string log)
+    {
+        if (Environment.GetEnvironmentVariable("TRACE_SHOW_STACKTRACE") == "true")
+            Console.WriteLine(GetCallStackString());
+
+        Console.WriteLine(log);
+    }
+
+    public static void Log(string log)
+    {
+        string? targetBlock = Environment.GetEnvironmentVariable("TARGET_BLOCK_NUMBER");
+        if (targetBlock == null)
+            return;
+
+        string currentBlock = Environment.GetEnvironmentVariable("CURRENT_BLOCK_NUMBER") ?? "0";
+        if (currentBlock != targetBlock)
+            return;
+
+        string transactionIndex = Environment.GetEnvironmentVariable("TRANSACTION_INDEX") ?? "";
+
+        if (Environment.GetEnvironmentVariable("TRACE_SHOW_STACKTRACE") == "true")
+            Console.WriteLine($"b={currentBlock}, t={transactionIndex}, {GetCallStackString()}");
+
+        Console.WriteLine($"b={currentBlock}, t={transactionIndex} {log}");
+    }
+
+    public static void LogFast(string log)
+    {
+        string? targetBlock = Environment.GetEnvironmentVariable("TARGET_BLOCK_NUMBER");
+        if (targetBlock == null)
+            return;
+
+        string currentBlock = Environment.GetEnvironmentVariable("CURRENT_BLOCK_NUMBER") ?? "0";
+        if (currentBlock != targetBlock)
+            return;
+
+        string transactionIndex = Environment.GetEnvironmentVariable("TRANSACTION_INDEX") ?? "";
+
+        Console.WriteLine($"b={currentBlock}, t={transactionIndex} {log}");
+    }
+
+    public static void Log(string scope, string key, string value)
+    {
+        string? targetBlock = Environment.GetEnvironmentVariable("TARGET_BLOCK_NUMBER");
+        if (targetBlock == null)
+            return;
+
+        string currentBlock = Environment.GetEnvironmentVariable("CURRENT_BLOCK_NUMBER") ?? "0";
+        if (currentBlock != targetBlock)
+            return;
+
+        string transactionIndex = Environment.GetEnvironmentVariable("TRANSACTION_INDEX") ?? "";
+
+        if (Environment.GetEnvironmentVariable("TRACE_SHOW_STACKTRACE") == "true")
+            Console.WriteLine($"b={currentBlock}, t={transactionIndex}, {GetCallStackString()}");
+
+        Console.WriteLine($"b={currentBlock}, t={transactionIndex}, s={scope}: {key} {value}");
+    }
+
+    private static List<StackFrame> GetCallStack(int skipFrames = 2, int maxDepth = 20)
+    {
+        var stackTrace = new StackTrace(skipFrames, fNeedFileInfo: true);
+        var frames = new List<StackFrame>();
+
+        var frameCount = Math.Min(stackTrace.FrameCount, maxDepth);
+
+        for (int i = 0; i < frameCount; i++)
+        {
+            var frame = stackTrace.GetFrame(i);
+            if (frame == null) continue;
+
+            var method = frame.GetMethod();
+            var fileName = frame.GetFileName() ?? string.Empty;
+
+            // Extract just the filename without full path
+            if (!string.IsNullOrEmpty(fileName))
+                fileName = Path.GetFileName(fileName);
+
+            var structureName = string.Empty;
+            var methodName = method?.Name ?? "Unknown";
+
+            if (method?.DeclaringType != null)
+            {
+                // Check if it's a method on a class/struct (not a static class method)
+                var declaringType = method.DeclaringType;
+
+                // Use the type name without namespace for compactness
+                structureName = declaringType.IsNested
+                    ? $"{declaringType.DeclaringType?.Name}.{declaringType.Name}"
+                    : declaringType.Name;
+
+                // Clean up compiler-generated names for async methods, lambdas, etc.
+                if (methodName.Contains("<") && methodName.Contains(">"))
+                {
+                    // Extract the actual method name from compiler-generated names like <MethodName>b__0
+                    var startIdx = methodName.IndexOf('<') + 1;
+                    var endIdx = methodName.IndexOf('>');
+                    if (startIdx < endIdx)
+                        methodName = methodName.Substring(startIdx, endIdx - startIdx);
+                }
+
+                // Remove generic type parameters for readability
+                if (structureName.Contains('`'))
+                    structureName = structureName.Substring(0, structureName.IndexOf('`'));
+            }
+
+            frames.Add(new StackFrame
+            {
+                File = fileName,
+                LineNumber = frame.GetFileLineNumber(),
+                StructureName = structureName,
+                MethodName = methodName
+            });
+        }
+
+        // Reverse to show in chronological order (oldest to newest)
+        frames.Reverse();
+
+        return frames;
+    }
+
+    private static string GetCallStackString(int skipFrames = 3)
+    {
+        var frames = GetCallStack(skipFrames);
+        if (frames.Count == 0) return string.Empty;
+
+        var sb = new StringBuilder(frames.Count * 30);
+
+        for (int i = 0; i < frames.Count; i++)
+        {
+            if (i > 0)
+                sb.Append(" → ");
+
+            var frame = frames[i];
+
+            // Format: file:line [ClassName.]MethodName
+            if (!string.IsNullOrEmpty(frame.File))
+            {
+                sb.Append(frame.File);
+                sb.Append(':');
+                sb.Append(frame.LineNumber);
+                sb.Append(' ');
+            }
+
+            if (!string.IsNullOrEmpty(frame.StructureName))
+            {
+                sb.Append(frame.StructureName);
+                sb.Append('.');
+            }
+            sb.Append(frame.MethodName);
+        }
+
+        return sb.ToString();
+    }
+
+    private record StackFrame
+    {
+        public string File { get; init; } = string.Empty;
+        public int LineNumber { get; init; }
+        public string StructureName { get; init; } = string.Empty;
+        public string MethodName { get; init; } = string.Empty;
+    }
+}
 
 [DebuggerDisplay("{Hash} ({Number})")]
 public class BlockHeader
@@ -50,7 +218,17 @@ public class BlockHeader
     public Address? Author { get; set; }
     public Address? Beneficiary { get; set; }
     public Address? GasBeneficiary => Author ?? Beneficiary;
-    public Hash256? StateRoot { get; set; }
+
+    public Hash256? StateRoot
+    {
+        get => _stateRoot;
+        set
+        {
+            Out.Log($"block set stateRoot={value}");
+            _stateRoot = value;
+        }
+    }
+
     public Hash256? TxRoot { get; set; }
     public Hash256? ReceiptsRoot { get; set; }
     public Bloom? Bloom { get; set; }
@@ -69,6 +247,7 @@ public class BlockHeader
     public byte[]? AuRaSignature { get; set; }
     public long? AuRaStep { get; set; }
     public UInt256 BaseFeePerGas;
+    private Hash256? _stateRoot;
     public Hash256? WithdrawalsRoot { get; set; }
     public Hash256? ParentBeaconBlockRoot { get; set; }
     public Hash256? RequestsHash { get; set; }
