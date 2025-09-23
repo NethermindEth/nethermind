@@ -14,6 +14,9 @@ namespace Nethermind.Evm;
 public class Metrics
 {
     [CounterMetric]
+    [Description("Number of Stylus transactions executed.")]
+    public static long StylusTransactions { get; set; }
+    [CounterMetric]
     [Description("Number of Code DB cache reads.")]
     public static long CodeDbCache => _codeDbCache.GetTotalValue();
     private static readonly ZeroContentionCounter _codeDbCache = new();
