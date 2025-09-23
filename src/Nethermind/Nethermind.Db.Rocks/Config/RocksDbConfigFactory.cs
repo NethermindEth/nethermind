@@ -36,6 +36,9 @@ public class RocksDbConfigFactory(IDbConfig dbConfig, IPruningConfig pruningConf
                 }
 
                 dbConfig.MaxOpenFiles = perDbLimit;
+
+                // Speeds up DB open on MacOS with large number of SST files (1tb)
+                dbConfig.RocksDbOptions += "skip_checking_sst_file_sizes_on_db_open=true;";
             }
 
             bool skipSstChecks = dbConfig.SkipCheckingSstFileSizesOnDbOpen ?? RuntimeInformation.IsOSPlatform(OSPlatform.OSX);

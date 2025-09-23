@@ -546,12 +546,18 @@ namespace Nethermind.State
                         {
                             if (releaseSpec.IsEip158Enabled && change.Account.IsEmpty && !isGenesis)
                             {
+                                if (Out.IsTargetBlock && Out.TraceShowStateRootChange)
+                                    Out.Log($"s=commit update-delete address={change.Address}");
+
                                 if (isTracing) TraceRemoveEmpty(change);
                                 SetState(change.Address, null);
                                 trace?.AddToTrace(change.Address, null);
                             }
                             else
                             {
+                                if (Out.IsTargetBlock && Out.TraceShowStateRootChange)
+                                    Out.Log($"s=commit update address={change.Address} balance={change.Account.Balance} storageRoot={change.Account.StorageRoot} nonce={change.Account.Nonce}");
+
                                 if (isTracing) TraceUpdate(change);
                                 SetState(change.Address, change.Account);
                                 trace?.AddToTrace(change.Address, change.Account);
@@ -563,6 +569,9 @@ namespace Nethermind.State
                         {
                             if (!releaseSpec.IsEip158Enabled || !change.Account.IsEmpty || isGenesis)
                             {
+                                if (Out.IsTargetBlock && Out.TraceShowStateRootChange)
+                                    Out.Log($"s=commit new address={change.Address} balance={change.Account.Balance} storageRoot={change.Account.StorageRoot} nonce={change.Account.Nonce}");
+
                                 if (isTracing) TraceCreate(change);
                                 SetState(change.Address, change.Account);
                                 trace?.AddToTrace(change.Address, change.Account);
@@ -572,6 +581,9 @@ namespace Nethermind.State
                         }
                     case ChangeType.RecreateEmpty:
                         {
+                            if (Out.IsTargetBlock && Out.TraceShowStateRootChange)
+                                Out.Log($"s=commit recreate address={change.Address} balance={change.Account.Balance} storageRoot={change.Account.StorageRoot} nonce={change.Account.Nonce}");
+
                             if (isTracing) TraceCreate(change);
                             SetState(change.Address, change.Account);
                             trace?.AddToTrace(change.Address, change.Account);
@@ -594,6 +606,9 @@ namespace Nethermind.State
 
                             if (!wasItCreatedNow)
                             {
+                                if (Out.IsTargetBlock && Out.TraceShowStateRootChange)
+                                    Out.Log($"s=commit delete address={change.Address}");
+
                                 SetState(change.Address, null);
                                 trace?.AddToTrace(change.Address, null);
                             }

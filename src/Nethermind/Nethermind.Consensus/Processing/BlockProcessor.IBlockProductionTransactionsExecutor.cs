@@ -25,6 +25,10 @@ namespace Nethermind.Consensus.Processing
             {
                 Action = action;
                 Reason = reason;
+
+                if (Out.IsTargetBlock)
+                    Out.Log($"picker tx index={Index} type={Transaction.Type} action={Action} reason={Reason}");
+
                 return this;
             }
 
