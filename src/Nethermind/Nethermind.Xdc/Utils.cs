@@ -136,7 +136,7 @@ internal static class Utils
         }
 
         quorumCert = extraFields.QuorumCert;
-        round = extraFields.Round;
+        round = extraFields.CurrentRound;
 
         return true;
     }

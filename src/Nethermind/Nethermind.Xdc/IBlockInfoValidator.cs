@@ -11,5 +11,5 @@ using System.Threading.Tasks;
 namespace Nethermind.Xdc;
 internal interface IBlockInfoValidator
 {
-    void VerifyBlockInfo(BlockInfo blockInfo, XdcBlockHeader blockHeader);
+    void VerifyBlockInfo(BlockRoundInfo blockInfo, XdcBlockHeader blockHeader);
 }

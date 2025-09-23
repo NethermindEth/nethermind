@@ -3,6 +3,7 @@
 
 using Nethermind.Blockchain;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Crypto;
 using Nethermind.Serialization.Rlp;
@@ -25,7 +26,7 @@ public class QuorumCertificateManagerTest
         var quorumCertificateManager = new QuorumCertificateManager(
             new XdcContext(),
             Substitute.For<IBlockTree>(),
-            Substitute.For<IXdcReleaseSpec>(),
+            Substitute.For<ISpecProvider>(),
             Substitute.For<IEpochSwitchManager>());
 
         Assert.That(() => quorumCertificateManager.VerifyCertificate(null!, Build.A.XdcBlockHeader().TestObject, out _), Throws.ArgumentNullException);
@@ -37,7 +38,7 @@ public class QuorumCertificateManagerTest
         var quorumCertificateManager = new QuorumCertificateManager(
             new XdcContext(),
             Substitute.For<IBlockTree>(),
-            Substitute.For<IXdcReleaseSpec>(),
+            Substitute.For<ISpecProvider>(),
             Substitute.For<IEpochSwitchManager>());
 
         Assert.That(() => quorumCertificateManager.VerifyCertificate(Build.A.QuorumCertificate().TestObject, null!, out _), Throws.ArgumentNullException);
@@ -49,7 +50,7 @@ public class QuorumCertificateManagerTest
         XdcBlockHeaderBuilder headerBuilder = Build.A.XdcBlockHeader();
 
         //Base valid control case
-        yield return new TestCaseData(CreateQc(new BlockInfo(Hash256.Zero, 1, 1), 1, keyBuilder.TestObjectNTimes(20)), headerBuilder, true);
+        yield return new TestCaseData(CreateQc(new BlockRoundInfo(Hash256.Zero, 1, 1), 1, keyBuilder.TestObjectNTimes(20)), headerBuilder, true);
     }
 
     [TestCaseSource(nameof(QcCases))]
@@ -57,17 +58,23 @@ public class QuorumCertificateManagerTest
     {
         IEpochSwitchManager epochSwitchManager = Substitute.For<IEpochSwitchManager>();
         epochSwitchManager.GetEpochSwitchInfo(Arg.Any<XdcBlockHeader>(), Arg.Any<Hash256>())
-            .Returns(new EpochSwitchInfo([], [], [], new BlockInfo(Hash256.Zero, 1, 1)));
+            .Returns(new EpochSwitchInfo([], [], new BlockRoundInfo(Hash256.Zero, 1, 1)));
+        ISpecProvider specProvider = Substitute.For<ISpecProvider>();
+        IXdcReleaseSpec xdcReleaseSpec = Substitute.For<IXdcReleaseSpec>();
+        IXdcSubConfig xdcSubConfig = Substitute.For<IXdcSubConfig>();
+        xdcSubConfig.CertThreshold.Returns(0.667);
+        xdcReleaseSpec.Configs.Returns([Substitute.For<IXdcSubConfig>(), xdcSubConfig]);
+        specProvider.GetSpec(Arg.Any<ForkActivation>()).Returns(xdcReleaseSpec);
         var quorumCertificateManager = new QuorumCertificateManager(
             new XdcContext(),
             Substitute.For<IBlockTree>(),
-            Substitute.For<IXdcReleaseSpec>(),
+            specProvider,
             epochSwitchManager);
 
         Assert.That(quorumCertificateManager.VerifyCertificate(quorumCert, xdcBlockHeaderBuilder.TestObject, out _), Is.EqualTo(expected));
     }
 
-    private static QuorumCertificate CreateQc(BlockInfo roundInfo, ulong gapNumber, PrivateKey[] keys)
+    private static QuorumCertificate CreateQc(BlockRoundInfo roundInfo, ulong gapNumber, PrivateKey[] keys)
     {
         EthereumEcdsa ecdsa = new EthereumEcdsa(0);
         var qcEncoder = new VoteDecoder();
@@ -77,7 +84,7 @@ public class QuorumCertificateManagerTest
         return new QuorumCertificate(roundInfo, signatures.ToArray(), gapNumber);
     }
 
-    private static Signature[] CreateVoteSignatures(BlockInfo roundInfo, ulong gapnumber, PrivateKey[] keys)
+    private static Signature[] CreateVoteSignatures(BlockRoundInfo roundInfo, ulong gapnumber, PrivateKey[] keys)
     {
         EthereumEcdsa ecdsa = new EthereumEcdsa(0);
         var encoder = new VoteDecoder();

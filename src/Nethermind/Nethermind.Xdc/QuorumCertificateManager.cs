@@ -13,6 +13,7 @@ using Nethermind.Blockchain;
 using Nethermind.Config;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Specs;
 using Nethermind.Crypto;
 using Nethermind.Logging;
 using Nethermind.Xdc;
@@ -20,7 +21,6 @@ using Nethermind.Xdc.Errors;
 using Nethermind.Xdc.Spec;
 using Nethermind.Xdc.Types;
 using static Nethermind.Core.BlockHeader;
-using BlockInfo = Nethermind.Xdc.Types.BlockInfo;
 
 namespace Nethermind.Xdc;
 internal class QuorumCertificateManager : IQuorumCertificateManager
@@ -28,18 +28,18 @@ internal class QuorumCertificateManager : IQuorumCertificateManager
     public QuorumCertificateManager(
         XdcContext context,
         IBlockTree chain,
-        IXdcReleaseSpec xdcConfig,
+        ISpecProvider xdcConfig,
         IEpochSwitchManager epochSwitchManager)
     {
         _context = context;
         _blockTree = chain;
-        _config = xdcConfig;
+        _specProvider = xdcConfig;
         _epochSwitchManager = epochSwitchManager;
     }
 
     private XdcContext _context { get; }
     private IBlockTree _blockTree;
-    private IXdcReleaseSpec _config { get; }
+    private ISpecProvider _specProvider { get; }
     private IEpochSwitchManager _epochSwitchManager { get; }
     private EthereumEcdsa _ethereumEcdsa = new EthereumEcdsa(0);
 
@@ -58,17 +58,22 @@ internal class QuorumCertificateManager : IQuorumCertificateManager
 
         if (proposedBlockHeader.Number > 0)
         {
-            if (!Utils.TryGetExtraFields(proposedBlockHeader, (long)_config.SwitchBlock, out QuorumCertificate proposedQc, out ulong round, out _))
+            //TODO this could be wrong way of fetching spec if a release spec is defined on a round basis 
+
+            IXdcReleaseSpec spec = _specProvider.GetXdcSpec(proposedBlockHeader);
+            QuorumCertificate? parentQc = proposedBlockHeader.ExtraConsensusData?.QuorumCert;
+
+            if (parentQc is null)
             {
-                throw new ConsensusHeaderDataExtractionException(nameof(ExtraFieldsV2));
+                throw new BlockchainException("QC is targeting a block without required consensus data.");
             }
 
-            if (_context.LockQC is null || proposedQc.ProposedBlockInfo.Round > _context.LockQC.ProposedBlockInfo.Round)
+            if (_context.LockQC is null || parentQc.ProposedBlockInfo.Round > _context.LockQC.ProposedBlockInfo.Round)
             {
-                _context.LockQC = proposedQc;
+                _context.LockQC = parentQc;
             }
 
-            CommitBlock(_blockTree, proposedBlockHeader, round, qc);
+            CommitBlock(_blockTree, proposedBlockHeader, proposedBlockHeader.ExtraConsensusData.CurrentRound, qc);
         }
 
         if (qc.ProposedBlockInfo.Round >= _context.CurrentRound)
@@ -79,14 +84,15 @@ internal class QuorumCertificateManager : IQuorumCertificateManager
 
     private bool CommitBlock(IBlockTree chain, XdcBlockHeader proposedBlockHeader, ulong proposedRound, QuorumCertificate proposedQuorumCert)
     {
-        if ((proposedBlockHeader.Number - 2) <= _config.SwitchBlock)
+        IXdcReleaseSpec spec = _specProvider.GetXdcSpec(proposedBlockHeader);
+        if ((proposedBlockHeader.Number - 2) <= spec.SwitchBlock)
         {
             return false;
         }
 
         XdcBlockHeader parentHeader = (XdcBlockHeader)_blockTree.FindHeader(proposedBlockHeader.ParentHash);
 
-        if (!Utils.TryGetExtraFields(parentHeader, (long)_config.SwitchBlock, out _, out ulong round, out _))
+        if (!Utils.TryGetExtraFields(parentHeader, (long)spec.SwitchBlock, out _, out ulong round, out _))
         {
             return false;
         }
@@ -98,7 +104,7 @@ internal class QuorumCertificateManager : IQuorumCertificateManager
 
         XdcBlockHeader grandParentHeader = (XdcBlockHeader)_blockTree.FindHeader(parentHeader.ParentHash);
 
-        if (!Utils.TryGetExtraFields(grandParentHeader, (long)_config.SwitchBlock, out _, out round, out _))
+        if (!Utils.TryGetExtraFields(grandParentHeader, (long)spec.SwitchBlock, out _, out round, out _))
         {
             return false;
         }
@@ -108,12 +114,12 @@ internal class QuorumCertificateManager : IQuorumCertificateManager
             return false;
         }
 
-        if (_context.HighestCommitBlock is not null && (_context.HighestCommitBlock.Round >= round || _context.HighestCommitBlock.Number > grandParentHeader.Number))
+        if (_context.HighestCommitBlock is not null && (_context.HighestCommitBlock.Round >= round || _context.HighestCommitBlock.BlockNumber > grandParentHeader.Number))
         {
             return false;
         }
 
-        _context.HighestCommitBlock = new BlockInfo(grandParentHeader.Hash, round, grandParentHeader.Number);
+        _context.HighestCommitBlock = new BlockRoundInfo(grandParentHeader.Hash, round, grandParentHeader.Number);
 
         var headerQcToBeCommitted = new List<XdcBlockHeader> { parentHeader, proposedBlockHeader };
 
@@ -139,8 +145,9 @@ internal class QuorumCertificateManager : IQuorumCertificateManager
         //Possible optimize here
         Signature[] uniqueSignatures = qc.Signatures.Distinct().ToArray();
 
+        IXdcReleaseSpec spec = _specProvider.GetXdcSpec(parentHeader); 
         ulong qcRound = qc.ProposedBlockInfo.Round;
-        double certThreshold = _config.Configs[qcRound].CertThreshold;
+        double certThreshold = spec.Configs[qcRound].CertThreshold;
 
         if ((qcRound > 0) && (uniqueSignatures.Length < epochSwitchInfo.Masternodes.Length * certThreshold))
         {
@@ -149,27 +156,26 @@ internal class QuorumCertificateManager : IQuorumCertificateManager
         }
 
         bool allValid = true;
-        CancellationTokenSource cts = new();
-        Parallel.ForEach(uniqueSignatures, new ParallelOptions() { MaxDegreeOfParallelism = Environment.ProcessorCount, CancellationToken = cts.Token }, (s) =>
+        Parallel.ForEach(uniqueSignatures, new ParallelOptions() { MaxDegreeOfParallelism = Environment.ProcessorCount }, (s, state) =>
         {
             Address signer = _ethereumEcdsa.RecoverVoteSigner(new Vote(qc.ProposedBlockInfo, qc.GapNumber, s));
             if (!epochSwitchInfo.Masternodes.Contains(signer))
             {
                 allValid = false;
-                cts.Cancel();
+                state.Break();
             }
         });
-
+        
         if (!allValid)
         {
             error = $"Quorum certificate contains one or more invalid vote signatures";
             return false;
         }
 
-        long epochSwitchNumber = epochSwitchInfo.EpochSwitchBlockInfo.Number;
-        long gapNumber = epochSwitchNumber - (epochSwitchNumber % (long)_config.EpochLength) - (long)_config.Gap;
+        long epochSwitchNumber = epochSwitchInfo.EpochSwitchBlockInfo.BlockNumber;
+        long gapNumber = epochSwitchNumber - (epochSwitchNumber % (long)spec.EpochLength) - (long)spec.Gap;
 
-        if (epochSwitchNumber - (epochSwitchNumber % (long)_config.EpochLength) < (long)_config.Gap)
+        if (epochSwitchNumber - (epochSwitchNumber % (long)spec.EpochLength) < (long)spec.Gap)
             gapNumber = 0;
 
         if (gapNumber != (long)qc.GapNumber)
@@ -182,7 +188,7 @@ internal class QuorumCertificateManager : IQuorumCertificateManager
         //TODO verify block info matches the parent header
         if (!ValidateBlockInfo(qc, parentHeader))
         {
-            error = "Block info does not match QC.";
+            error = "QC block data does not match header data.";
             return false;
         }
 
@@ -192,11 +198,12 @@ internal class QuorumCertificateManager : IQuorumCertificateManager
 
     private bool ValidateBlockInfo(QuorumCertificate qc, XdcBlockHeader parentHeader)
     {
-        if (qc.ProposedBlockInfo.Number != parentHeader.Number)
+        if (qc.ProposedBlockInfo.BlockNumber != parentHeader.Number)
             return false;
         if (qc.ProposedBlockInfo.Hash != parentHeader.Hash)
             return false;
-        //TODO also check the round number from extra data after https://github.com/NethermindEth/nethermind/pull/9293
+        if (qc.ProposedBlockInfo.Round != parentHeader.ExtraConsensusData.CurrentRound)
+            return false;
         return true;
     }
 }

@@ -23,7 +23,7 @@ public class VoteDecoder : IRlpValueDecoder<Vote>, IRlpStreamDecoder<Vote>
         int sequenceLength = decoderContext.ReadSequenceLength();
         int endPosition = decoderContext.Position + sequenceLength;
 
-        BlockInfo proposedBlockInfo = _xdcBlockInfoDecoder.Decode(ref decoderContext, rlpBehaviors);
+        BlockRoundInfo proposedBlockInfo = _xdcBlockInfoDecoder.Decode(ref decoderContext, rlpBehaviors);
         Signature signature = null;
         if ((rlpBehaviors & RlpBehaviors.ForSealing) != RlpBehaviors.ForSealing)
         {
@@ -47,7 +47,7 @@ public class VoteDecoder : IRlpValueDecoder<Vote>, IRlpStreamDecoder<Vote>
         int sequenceLength = rlpStream.ReadSequenceLength();
         int endPosition = rlpStream.Position + sequenceLength;
 
-        BlockInfo proposedBlockInfo = _xdcBlockInfoDecoder.Decode(rlpStream, rlpBehaviors);
+        BlockRoundInfo proposedBlockInfo = _xdcBlockInfoDecoder.Decode(rlpStream, rlpBehaviors);
         Signature signature = null;
         if ((rlpBehaviors & RlpBehaviors.ForSealing) != RlpBehaviors.ForSealing)
         {

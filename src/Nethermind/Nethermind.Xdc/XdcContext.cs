@@ -23,7 +23,7 @@ public class XdcContext
     public QuorumCertificate HighestQC { get; set; }
     public QuorumCertificate LockQC { get; set; }
     public TimeoutCert HighestTC { get; set; }
-    public Types.BlockInfo HighestCommitBlock { get; set; }
+    public BlockRoundInfo HighestCommitBlock { get; set; }
     public bool IsInitialized { get; set; } = false;
 
     public event Action<IBlockTree, ulong> NewRoundSetEvent;

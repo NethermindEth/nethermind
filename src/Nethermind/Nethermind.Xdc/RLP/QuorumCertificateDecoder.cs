@@ -72,7 +72,7 @@ internal class QuorumCertificateDecoder : IRlpValueDecoder<QuorumCertificate>, I
         return new QuorumCertificate(blockInfo, signatures, gap);
     }
 
-    public Rlp Encode(QuorumCert item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+    public Rlp Encode(QuorumCertificate item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
     {
         if (item is null)
             return Rlp.OfEmptySequence;
@@ -83,7 +83,7 @@ internal class QuorumCertificateDecoder : IRlpValueDecoder<QuorumCertificate>, I
         return new Rlp(rlpStream.Data.ToArray());
     }
 
-    public void Encode(RlpStream stream, QuorumCert item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+    public void Encode(RlpStream stream, QuorumCertificate item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
     {
         if (item is null)
         {

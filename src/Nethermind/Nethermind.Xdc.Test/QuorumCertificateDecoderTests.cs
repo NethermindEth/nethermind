@@ -38,7 +38,7 @@ internal class QuorumCertificateDecoderTests
     [TestCase(false)]
     public void Encode_UseBothRlpStreamAndValueDecoderContext_IsEquivalentAfterReencoding(bool useRlpStream)
     {
-        QuorumCert quorumCert = new(new BlockRoundInfo(Hash256.Zero, 1, 1), [new Signature(new byte[64], 0), new Signature(new byte[64], 0), new Signature(new byte[64], 0)], 0);
+        QuorumCertificate quorumCert = new(new BlockRoundInfo(Hash256.Zero, 1, 1), [new Signature(new byte[64], 0), new Signature(new byte[64], 0), new Signature(new byte[64], 0)], 0);
         QuorumCertificateDecoder decoder = new();
         RlpStream stream = new RlpStream(decoder.GetLength(quorumCert));
         decoder.Encode(stream, quorumCert);
