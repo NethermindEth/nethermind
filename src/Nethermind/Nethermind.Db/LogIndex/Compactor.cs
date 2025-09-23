@@ -110,7 +110,7 @@ partial class LogIndexStorage
                         _logger.Trace("Compacting log index");
 
                     var timestamp = Stopwatch.GetTimestamp();
-                    _storage._columnsDb.Compact();
+                    _storage._rootDb.Compact();
                     _stats.Total.Include(Stopwatch.GetElapsedTime(timestamp));
 
                     if (_logger.IsTrace)

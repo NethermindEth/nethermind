@@ -22,6 +22,7 @@ partial class LogIndexStorage
         bool TryEnqueue(int? topicIndex, ReadOnlySpan<byte> dbKey, ReadOnlySpan<byte> dbValue);
         Task EnqueueAsync(int? topicIndex, byte[] dbKey);
         void WaitUntilEmpty();
+        void Start();
         Task StopAsync();
     }
 
@@ -35,6 +36,7 @@ partial class LogIndexStorage
         private readonly LogIndexStorage _storage;
         private readonly ILogger _logger;
         private readonly ActionBlock<(int?, byte[])> _block;
+        private readonly ManualResetEventSlim _startEvent = new(false);
         private readonly ManualResetEventSlim _queueEmptyEvent = new(true); // TODO: fix event being used for both blocks
 
         private PostMergeProcessingStats _stats = new();
@@ -57,11 +59,6 @@ partial class LogIndexStorage
 
         public bool TryEnqueue(int? topicIndex, ReadOnlySpan<byte> dbKey, ReadOnlySpan<byte> dbValue)
         {
-            // ReSharper disable once ConditionIsAlwaysTrueOrFalse - may not initialized yet, compression can be started from the constructor
-            // TODO: add to queue, but start processing later?
-            if (_storage._columnsDb is null)
-                return false;
-
             if (dbValue.Length < MinLengthToCompress)
                 return false;
 
@@ -84,6 +81,8 @@ partial class LogIndexStorage
 
         public void WaitUntilEmpty() => _queueEmptyEvent.Wait();
 
+        public void Start() => _startEvent.Set();
+
         public Task StopAsync()
         {
             _block.Complete();
@@ -95,6 +94,8 @@ partial class LogIndexStorage
         {
             try
             {
+                _startEvent.Wait();
+
                 var execTimestamp = Stopwatch.GetTimestamp();
                 IDb db = _storage.GetDb(topicIndex);
 
@@ -149,7 +150,7 @@ partial class LogIndexStorage
             {
                 _compressQueue.TryRemove(dbKey, out _);
 
-                if (_block.InputCount == 0)
+                if (_block.InputCount == 0) // TODO: take processing items into account
                     _queueEmptyEvent.Set();
             }
         }
@@ -162,6 +163,7 @@ partial class LogIndexStorage
         public bool TryEnqueue(int? topicIndex, ReadOnlySpan<byte> dbKey, ReadOnlySpan<byte> dbValue) => false;
         public Task EnqueueAsync(int? topicIndex, byte[] dbKey) => Task.CompletedTask;
         public void WaitUntilEmpty() { }
+        public void Start() { }
         public Task StopAsync() => Task.CompletedTask;
     }
 }
