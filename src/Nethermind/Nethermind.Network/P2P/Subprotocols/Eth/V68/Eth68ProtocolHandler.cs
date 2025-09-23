@@ -96,7 +96,7 @@ public class Eth68ProtocolHandler : Eth67ProtocolHandler
 
         long startTime = isTrace ? Stopwatch.GetTimestamp() : 0;
 
-        _pooledTxsRequestor.RequestTransactionsEth68(_sendAction, message.Hashes, message.Sizes, message.Types);
+        _pooledTxsRequestor.RequestTransactionsEth68(_sendAction, message.Hashes, message.Sizes, message.Types, Session.SessionId);
 
         if (isTrace) Logger.Trace($"OUT {Counter:D5} {nameof(NewPooledTransactionHashesMessage68)} to {Node:c} in {Stopwatch.GetElapsedTime(startTime).TotalMilliseconds}ms");
     }
