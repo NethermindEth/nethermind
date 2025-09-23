@@ -102,6 +102,9 @@ internal static partial class EvmInstructions
         // Increment global call metrics.
         Metrics.IncrementCalls();
 
+        if (Out.IsTargetBlock && Out.TraceShowOpcodes)
+            Out.Log($"call start gasAvailable={TGasPolicy.GetRemainingGas(in gas)}");
+
         // Clear previous return data.
         vm.ReturnData = null;
 
@@ -138,6 +141,9 @@ internal static partial class EvmInstructions
             goto StackUnderflow;
         }
 
+        if (Out.IsTargetBlock && Out.TraceShowOpcodes)
+            Out.Log($"call account access charged gasAvailable={TGasPolicy.GetRemainingGas(in gas)}");
+
         // For non-delegate calls, the transfer value is the call value.
         UInt256 transferValue = typeof(TOpCall) == typeof(OpDelegateCall) ? UInt256.Zero : callValue;
         // Enforce static call restrictions: no value transfer allowed unless it's a CALLCODE.
@@ -160,11 +166,17 @@ internal static partial class EvmInstructions
 
         IWorldState state = vm.WorldState;
 
+        if (Out.IsTargetBlock && Out.TraceShowOpcodes)
+            Out.Log($"call account creation charged gasAvailable={TGasPolicy.GetRemainingGas(in gas)}");
+
         // Update gas: call cost and memory expansion for input and output.
         if (!TGasPolicy.UpdateGas(ref gas, spec.GasCosts.CallCost) ||
             !TGasPolicy.UpdateMemoryCost(ref gas, in dataOffset, dataLength, vm.VmState) ||
             !TGasPolicy.UpdateMemoryCost(ref gas, in outputOffset, outputLength, vm.VmState))
             goto OutOfGas;
+
+        if (Out.IsTargetBlock && Out.TraceShowOpcodes)
+            Out.Log($"call call memory and call charged gasAvailable={TGasPolicy.GetRemainingGas(in gas)} callCost={spec.GasCosts.CallCost}");
 
         // Charge gas for accessing the account's code (including delegation logic if applicable).
         if (!TGasPolicy.ConsumeAccountAccessGas(ref gas, vm.Spec, in vm.VmState.AccessTracker,
@@ -216,6 +228,9 @@ internal static partial class EvmInstructions
         long gasLimitUl = (long)gasLimit;
         if (!TGasPolicy.UpdateGas(ref gas, gasLimitUl)) goto OutOfGas;
 
+        if (Out.IsTargetBlock && Out.TraceShowOpcodes)
+            Out.Log($"call gasAvailable={gasAvailable} gasLimitUl={gasLimitUl}");
+
         // Add call stipend if value is being transferred.
         if (!transferValue.IsZero)
         {
@@ -248,6 +263,10 @@ internal static partial class EvmInstructions
 
             // Refund the remaining gas to the caller.
             TGasPolicy.UpdateGasUp(ref gas, gasLimitUl);
+
+            if (Out.IsTargetBlock && Out.TraceShowOpcodes)
+                Out.Log($"call refund gasAvailable={gasAvailable} gasLimitUl={gasLimitUl}");
+
             if (TTracingInst.IsActive)
             {
                 vm.TxTracer.ReportGasUpdateForVmTrace(gasLimitUl, TGasPolicy.GetRemainingGas(in gas));

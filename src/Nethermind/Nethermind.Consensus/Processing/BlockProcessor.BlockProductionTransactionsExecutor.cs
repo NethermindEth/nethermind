@@ -3,12 +3,14 @@
 
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using System.Runtime.CompilerServices;
 using System.Threading;
 using Nethermind.Blockchain.Tracing;
 using Nethermind.Consensus.Producers;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
+using Nethermind.Core.Extensions;
 using Nethermind.Evm;
 using Nethermind.Evm.State;
 using Nethermind.Evm.TransactionProcessing;
@@ -97,6 +99,8 @@ namespace Nethermind.Consensus.Processing
                 ProcessingOptions processingOptions,
                 HashSet<Transaction> transactionsInBlock)
             {
+                Out.CurrentTransactionIndex = index;
+
                 AddingTxEventArgs args = txPicker.CanAddTransaction(block, currentTx, transactionsInBlock, _txSelectionStateProvider);
 
                 if (args.Action != TxAction.Add)
@@ -107,6 +111,12 @@ namespace Nethermind.Consensus.Processing
                 {
                     _balBuilder?.GeneratedBlockAccessList.IncrementBlockAccessIndex();
                     TransactionResult result = transactionProcessor.ProcessTransaction(currentTx, receiptsTracer, processingOptions, stateProvider);
+                    if (Out.IsTargetBlock)
+                        Out.Log($"transaction code={result.EvmExceptionType} result={result.Error}");
+
+                    if (receiptsTracer.TxReceipts.Length > 0 && Out.IsTargetBlock)
+                        Out.Log($"receipt gas={receiptsTracer.LastReceipt.GasUsed} status={receiptsTracer.LastReceipt.StatusCode} " +
+                                $"logs={string.Join(";", receiptsTracer.LastReceipt.Logs?.Select(l => $"a={l.Address}, d={l.Data.ToHexString()}") ?? [])}");
 
                     if (result)
                     {

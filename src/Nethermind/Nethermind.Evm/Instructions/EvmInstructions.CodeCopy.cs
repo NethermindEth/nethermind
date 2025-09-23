@@ -338,6 +338,10 @@ internal static partial class EvmInstructions
                 {
                     stack.PushZero<TTracingInst>();
                 }
+
+                if (Out.TraceShowOpcodes && Out.IsTargetBlock)
+                    Out.Log($"evm EXTCODESIZE address={address} optimized next={nextInstruction} isCodeLengthNotZero={isCodeLengthNotZero}");
+
                 return EvmExceptionType.None;
             }
         }
@@ -346,6 +350,10 @@ internal static partial class EvmInstructions
         ReadOnlySpan<byte> accountCode = vm.CodeInfoRepository
             .GetCachedCodeInfo(address, followDelegation: false, spec, out _)
             .CodeSpan;
+
+        if (Out.TraceShowOpcodes && Out.IsTargetBlock)
+            Out.Log($"evm EXTCODESIZE address={address} size={accountCode.Length}");
+
         stack.PushUInt32<TTracingInst>((uint)accountCode.Length);
         return EvmExceptionType.None;
         // Jump forward to be unpredicted by the branch predictor.
