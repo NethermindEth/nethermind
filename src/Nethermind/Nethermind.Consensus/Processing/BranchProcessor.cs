@@ -6,6 +6,7 @@ using System.Collections.Generic;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Blockchain.BeaconBlockRoot;
+using Nethermind.Blockchain.Tracing.GethStyle.Custom.JavaScript;
 using Nethermind.Core;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
@@ -45,6 +46,11 @@ public class BranchProcessor(
         _stateProvider.CommitTree(block.Number);
     }
 
+    public interface IWorldStateDependableSpecProvider
+    {
+        IWorldState? WorldState { get; set; }
+    }
+
     public Block[] Process(BlockHeader? baseBlock, IReadOnlyList<Block> suggestedBlocks, ProcessingOptions options, IBlockTracer blockTracer, CancellationToken token = default)
     {
         if (suggestedBlocks.Count == 0) return [];
@@ -74,7 +80,15 @@ public class BranchProcessor(
 
         // Start prewarming as early as possible
         WaitForCacheClear();
+
+        ((IWorldStateDependableSpecProvider)specProvider).WorldState = stateProvider;
+
         IReleaseSpec spec = specProvider.GetSpec(suggestedBlock.Header);
+
+        ((IWorldStateDependableSpecProvider)specProvider).WorldState = null;
+
+        Out.Log($"arbos spec eip3860={spec.IsEip3860Enabled}");
+
         (CancellationTokenSource? prewarmCancellation, Task? preWarmTask)
             = PreWarmTransactions(suggestedBlock, baseBlock, spec);
 
