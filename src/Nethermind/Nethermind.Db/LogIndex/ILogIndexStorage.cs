@@ -54,6 +54,6 @@ public interface ILogIndexStorage : IAsyncDisposable, IStoppableService
     Task SetReceiptsAsync(IReadOnlyList<BlockReceipts> batch, bool isBackwardSync, LogIndexUpdateStats? stats = null);
     Task SetReceiptsAsync(LogIndexAggregate aggregate, bool isBackwardSync, LogIndexUpdateStats? stats = null);
     Task ReorgFrom(BlockReceipts block);
-    Task CompactAsync(bool flush, LogIndexUpdateStats? stats = null);
+    Task CompactAsync(bool flush = false, int mergeIterations = 0, LogIndexUpdateStats? stats = null);
     Task RecompactAsync(int maxUncompressedLength = -1, LogIndexUpdateStats? stats = null);
 }

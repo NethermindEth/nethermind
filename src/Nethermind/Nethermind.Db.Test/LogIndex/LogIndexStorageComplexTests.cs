@@ -649,15 +649,13 @@ namespace Nethermind.Db.Test.LogIndex
 
         private async Task CompactAsync(ILogIndexStorage logIndexStorage)
         {
-            const bool flush = true;
-
             var timestamp = Stopwatch.GetTimestamp();
-            await logIndexStorage.CompactAsync(flush);
+            await logIndexStorage.CompactAsync();
 
             // Log statistics
             await TestContext.Out.WriteLineAsync(
                 $"""
-                 {nameof(LogIndexStorage.CompactAsync)}({flush}) in {Stopwatch.GetElapsedTime(timestamp)}:
+                 {nameof(LogIndexStorage.CompactAsync)}() in {Stopwatch.GetElapsedTime(timestamp)}:
                  {'\t'}DB size: {logIndexStorage.GetDbSize()}
 
                  """

@@ -21,7 +21,7 @@ partial class LogIndexStorage
         PostMergeProcessingStats GetAndResetStats();
         bool TryEnqueue(int? topicIndex, ReadOnlySpan<byte> dbKey, ReadOnlySpan<byte> dbValue);
         Task EnqueueAsync(int? topicIndex, byte[] dbKey);
-        void WaitUntilEmpty();
+        Task WaitUntilEmptyAsync(TimeSpan waitTime = default, CancellationToken cancellationToken = default);
         void Start();
         Task StopAsync();
     }
@@ -79,7 +79,8 @@ partial class LogIndexStorage
             _queueEmptyEvent.Reset();
         }
 
-        public void WaitUntilEmpty() => _queueEmptyEvent.Wait();
+        public Task WaitUntilEmptyAsync(TimeSpan waitTime, CancellationToken cancellationToken) =>
+            _queueEmptyEvent.WaitHandle.WaitOneAsync(waitTime, cancellationToken);
 
         public void Start() => _startEvent.Set();
 
@@ -162,7 +163,7 @@ partial class LogIndexStorage
         public PostMergeProcessingStats GetAndResetStats() => Stats;
         public bool TryEnqueue(int? topicIndex, ReadOnlySpan<byte> dbKey, ReadOnlySpan<byte> dbValue) => false;
         public Task EnqueueAsync(int? topicIndex, byte[] dbKey) => Task.CompletedTask;
-        public void WaitUntilEmpty() { }
+        public Task WaitUntilEmptyAsync(TimeSpan waitTime, CancellationToken cancellationToken) => Task.CompletedTask;
         public void Start() { }
         public Task StopAsync() => Task.CompletedTask;
     }

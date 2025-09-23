@@ -15,6 +15,7 @@ partial class LogIndexStorage
     private class MergeOperator(ILogIndexStorage logIndexStorage, ICompressor compressor, int? topicIndex) : IMergeOperator
     {
         private LogIndexUpdateStats _stats = new(logIndexStorage);
+        public LogIndexUpdateStats Stats => _stats;
         public LogIndexUpdateStats GetAndResetStats() => Interlocked.Exchange(ref _stats, new(logIndexStorage));
 
         public string Name => $"{nameof(LogIndexStorage)}.{nameof(MergeOperator)}";

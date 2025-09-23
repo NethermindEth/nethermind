@@ -184,6 +184,19 @@ namespace Nethermind.Db
             }
         }
 
+        private static void ForceMerge(IDb db)
+        {
+            using IIterator iterator = db.GetIterator();
+
+            // Iterator seeking forces RocksDB to merge corresponding key values
+            iterator.SeekToFirst();
+            while (iterator.Valid())
+            {
+                _ = iterator.Value();
+                iterator.Next();
+            }
+        }
+
         public async Task StopAsync()
         {
             if (_stopped)
@@ -630,14 +643,36 @@ namespace Nethermind.Db
             }
         }
 
-        public async Task CompactAsync(bool flush, LogIndexUpdateStats? stats = null)
+        public async Task CompactAsync(bool flush = false, int mergeIterations = 0, LogIndexUpdateStats? stats = null)
         {
-            // TODO: include time to stats
+            if (_logger.IsInfo)
+                _logger.Info($"Log index forced compaction started, DB size: {GetDbSize()}");
+
+            var timestamp = Stopwatch.GetTimestamp();
+
             if (flush)
+            {
                 DBColumns.ForEach(static db => db.Flush());
+            }
+
+            for (var i = 0; i < mergeIterations; i++)
+            {
+                Task[] tasks = DBColumns
+                    .Select(static db => Task.Run(() => ForceMerge(db)))
+                    .ToArray();
+
+                await Task.WhenAll(tasks);
+                await _compressor.WaitUntilEmptyAsync(TimeSpan.FromSeconds(30));
+            }
 
             CompactingStats compactStats = await _compactor.ForceAsync();
             stats?.Compacting.Combine(compactStats);
+
+            foreach (MergeOperator mergeOperator in _mergeOperators.Values)
+                stats?.Combine(mergeOperator.Stats);
+
+            if (_logger.IsInfo)
+                _logger.Info($"Log index forced compaction finished in {Stopwatch.GetElapsedTime(timestamp)}, DB size: {GetDbSize()} {stats:d}");
         }
 
         public async Task RecompactAsync(int minLengthToCompress = -1, LogIndexUpdateStats? stats = null)
@@ -645,7 +680,7 @@ namespace Nethermind.Db
             if (minLengthToCompress < 0)
                 minLengthToCompress = Compressor.MinLengthToCompress;
 
-            await CompactAsync(flush: true, stats);
+            await CompactAsync(flush: true, mergeIterations: 2, stats: stats);
 
             var timestamp = Stopwatch.GetTimestamp();
             var addressCount = await QueueLargeKeysCompression(topicIndex: null, minLengthToCompress);
@@ -659,8 +694,8 @@ namespace Nethermind.Db
 
             _logger.Info($"Queued keys for compaction: {addressCount:N0} address, {topicCount:N0} topic");
 
-            _compressor.WaitUntilEmpty();
-            await CompactAsync(flush: true, stats);
+            await _compressor.WaitUntilEmptyAsync(TimeSpan.FromSeconds(30));
+            await CompactAsync(flush: true, mergeIterations: 2, stats: stats);
         }
 
         private async Task<int> QueueLargeKeysCompression(int? topicIndex, int minLengthToCompress)

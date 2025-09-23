@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Collections.Generic;
+using System.Threading.Tasks;
 using Nethermind.Blockchain.Filters;
 using Nethermind.Blockchain.Find;
 using Nethermind.Db;
@@ -57,6 +58,12 @@ public class LogIndexRpcModule(ILogIndexStorage storage, ILogIndexService servic
             },
             DbSize = storage.GetDbSize()
         });
+    }
+
+    public ResultWrapper<bool> logIndex_compact(LogIndexCompactRequest request)
+    {
+        _ = Task.Run(async () => await storage.CompactAsync(request.Flush, request.MergeIterations, new(storage)));
+        return ResultWrapper<bool>.Success(true);
     }
 
     private int GetBlockNumber(BlockParameter parameter)
