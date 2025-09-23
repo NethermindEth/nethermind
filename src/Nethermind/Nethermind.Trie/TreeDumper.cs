@@ -56,21 +56,21 @@ namespace Nethermind.Trie
 
         public void VisitExtension(in OldStyleTrieVisitContext context, TrieNode node)
         {
-            _builder.AppendLine($"{GetPrefix(context)}EXTENSION {Nibbles.FromBytes(node.Key).ToPackedByteArray().ToHexString(false)} -> {KeccakOrRlpStringOfNode(node)}");
+            _builder.AppendLine($"{GetPrefix(context)}EXTENSION {Nibbles.ToCompactHexEncoding(node.Key).ToHexString(false)} -> {KeccakOrRlpStringOfNode(node)}");
         }
 
         public void VisitLeaf(in OldStyleTrieVisitContext context, TrieNode node)
         {
             if (!expectAccounts)
             {
-                _builder.AppendLine($"{GetPrefix(context)}LEAF {Nibbles.FromBytes(node.Key).ToPackedByteArray().ToHexString(false)} -> {KeccakOrRlpStringOfNode(node)}");
+                _builder.AppendLine($"{GetPrefix(context)}LEAF {Nibbles.ToCompactHexEncoding(node.Key).ToHexString(false)} -> {node.Value.Span.ToHexString()}");
             }
         }
 
         public void VisitAccount(in OldStyleTrieVisitContext context, TrieNode node, in AccountStruct account)
         {
             string leafDescription = context.IsStorage ? "LEAF " : "ACCOUNT ";
-            _builder.AppendLine($"{GetPrefix(context)}{leafDescription} {Nibbles.FromBytes(node.Key).ToPackedByteArray().ToHexString(false)} -> {KeccakOrRlpStringOfNode(node)}");
+            _builder.AppendLine($"{GetPrefix(context)}{leafDescription} {Nibbles.ToCompactHexEncoding(node.Key).ToHexString(false)} -> {KeccakOrRlpStringOfNode(node)}");
             Rlp.ValueDecoderContext valueDecoderContext = new(node.Value.Span);
             if (!context.IsStorage)
             {

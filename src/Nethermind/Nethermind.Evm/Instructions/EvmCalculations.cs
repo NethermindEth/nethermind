@@ -140,6 +140,9 @@ public static class EvmCalculations
             {
                 return false;
             }
+
+            if (Out.IsTargetBlock && Out.TraceShowOpcodes)
+                Out.Log($"call memory memoryCost={memoryCost}");
         }
 
         return !outOfGas;
