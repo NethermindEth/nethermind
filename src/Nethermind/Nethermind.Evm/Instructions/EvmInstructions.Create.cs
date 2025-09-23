@@ -135,6 +135,9 @@ public static partial class EvmInstructions
         long create2HashCost = typeof(TOpCreate) == typeof(OpCreate2) ? GasCostOf.Sha3Word * initCodeWords : 0;
         long extraCost = initCodeWordCost + create2HashCost;
 
+        if (Out.TraceShowOpcodes && Out.IsTargetBlock)
+            Out.Log($"evm CREATE gasAvailable={TGasPolicy.GetRemainingGas(in gas)} extraCost={extraCost} initCodeLength={initCodeLength} eip3860={spec.IsEip3860Enabled}");
+
         bool createOutOfGas = TEip8037.IsActive switch
         {
             true => !TGasPolicy.UpdateGas(ref gas, GasCostOf.CreateRegular + extraCost) || !TGasPolicy.ConsumeStateGas(ref gas, GasCostOf.CreateState),
@@ -146,6 +149,9 @@ public static partial class EvmInstructions
         // Update memory gas cost based on the required memory expansion for the init code.
         if (!TGasPolicy.UpdateMemoryCost(ref gas, in memoryPositionOfInitCode, in initCodeLength, vm.VmState))
             goto OutOfGas;
+
+        if (Out.TraceShowOpcodes && Out.IsTargetBlock)
+            Out.Log($"evm CREATE after memoryCost gasAvailable={TGasPolicy.GetRemainingGas(in gas)}");
 
         // Verify call depth does not exceed the maximum allowed. If exceeded, return early with empty data.
         // This guard ensures we do not create nested contract calls beyond EVM limits.
@@ -192,6 +198,9 @@ public static partial class EvmInstructions
         if (!TGasPolicy.UpdateGas(ref gas, callGas))
             goto OutOfGas;
 
+        if (Out.TraceShowOpcodes && Out.IsTargetBlock)
+            Out.Log($"evm CREATE after Use63Over64Rule gasAvailable={gasAvailable} callGas={callGas}");
+
         // Compute the contract address:
         // - For CREATE: based on the executing account and its current nonce.
         // - For CREATE2: based on the executing account, the provided salt, and the init code.
@@ -232,6 +241,9 @@ public static partial class EvmInstructions
 
         // Deduct the transfer value from the executing account's balance.
         state.SubtractFromBalance(env.ExecutingAccount, value, spec);
+
+        if (Out.TraceShowOpcodes && Out.IsTargetBlock)
+            Out.Log($"evm CREATE before return gasAvailable={gasAvailable} callGas={callGas}");
 
         // Construct a new execution environment for the contract creation call.
         // This environment sets up the call frame for executing the contract's initialization code.

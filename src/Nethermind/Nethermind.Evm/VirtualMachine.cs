@@ -256,6 +256,10 @@ public unsafe partial class VirtualMachine<TGasPolicy>(
                 {
                     // Restore the previous state from the stack and mark it as a continuation.
                     _currentState = _stateStack.Pop();
+
+                    if (Out.IsTargetBlock)
+                        Out.Log($"evm stack pop stackSize={_stateStack.Count} depth={_currentState.Env.CallDepth} refund={_currentState.Refund}");
+
                     _currentState.IsContinuation = true;
                     bool previousStateSucceeded = true;
 
@@ -584,6 +588,9 @@ public unsafe partial class VirtualMachine<TGasPolicy>(
 
         PopAndRestoreParentState();
 
+        if (Out.IsTargetBlock)
+            Out.Log($"evm stack pop stackSize={_stateStack.Count} depth={_currentState.Env.CallDepth} refund={_currentState.Refund}");
+
         shouldExit = false;
         return default;
     }
@@ -614,6 +621,9 @@ public unsafe partial class VirtualMachine<TGasPolicy>(
     /// </param>
     protected void PrepareNextCallFrame(in CallResult callResult, ref ZeroPaddedSpan previousCallOutput)
     {
+        if (Out.IsTargetBlock)
+            Out.Log($"evm stack push stackSize={_stateStack.Count} depth={_currentState.Env.CallDepth} refund={_currentState.Refund}");
+
         // Push the current execution state onto the state stack so it can be restored later.
         _stateStack.Push(_currentState);
 
@@ -678,6 +688,9 @@ public unsafe partial class VirtualMachine<TGasPolicy>(
 
         PopAndRestoreParentState();
 
+        if (Out.IsTargetBlock)
+            Out.Log($"evm stack pop stackSize={_stateStack.Count} depth={_currentState.Env.CallDepth} refund={_currentState.Refund}");
+
         // Return null to indicate that the failure was handled and execution should continue in the parent frame.
         shouldExit = false;
         return default;
@@ -721,6 +734,10 @@ public unsafe partial class VirtualMachine<TGasPolicy>(
 
         // Execute the precompile operation with the current state.
         CallResult callResult = RunPrecompile(currentState);
+
+        if (Out.IsTargetBlock)
+            Out.Log($"precompile gasLeft={TGasPolicy.GetRemainingGas(in currentState.Gas)} shouldRevert={callResult.ShouldRevert} success={callResult.PrecompileSuccess} " +
+                    $"exception={callResult.IsException} err={callResult.ExceptionType}");
 
         // If the precompile did not succeed, handle the failure conditions.
         if (callResult.PrecompileSuccess == false)
@@ -896,6 +913,9 @@ public unsafe partial class VirtualMachine<TGasPolicy>(
         {
             _parityTouchBugAccount.ShouldDelete = true;
         }
+
+        if (Out.IsTargetBlock)
+            Out.Log($"precompile eth gasAvailable={TGasPolicy.GetRemainingGas(in gas)} baseGasCost={baseGasCost} dataGasCost={dataGasCost} codeSource={state.Env.CodeSource} executingAccount={state.Env.ExecutingAccount}");
 
         if ((ulong)baseGasCost + (ulong)dataGasCost > (ulong)long.MaxValue ||
             !TGasPolicy.UpdateGas(ref gas, baseGasCost + dataGasCost))
@@ -1165,6 +1185,9 @@ public unsafe partial class VirtualMachine<TGasPolicy>(
                     // Is executed using fast delegate* via calli (see: C# function pointers https://learn.microsoft.com/en-us/dotnet/csharp/language-reference/unsafe-code#function-pointers)
                     exceptionType = opcodeMethod(this, ref stack, ref gas, ref programCounter);
                 }
+
+                if (Out.TraceShowOpcodes && Out.IsTargetBlock)
+                    Out.LogFast($"d={VmState.Env.CallDepth} pc={programCounter} i={instruction} ga={TGasPolicy.GetRemainingGas(in gas)} ex={exceptionType}");
 
                 // If gas is exhausted, jump to the out-of-gas handler.
                 if (TGasPolicy.GetRemainingGas(in gas) < 0)
