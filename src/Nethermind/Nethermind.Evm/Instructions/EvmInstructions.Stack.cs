@@ -6,6 +6,7 @@ using System.Buffers.Binary;
 using System.Runtime.CompilerServices;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Extensions;
 using Nethermind.Evm.GasPolicy;
 using Nethermind.Int256;
 
@@ -1111,6 +1112,9 @@ public static partial class EvmInstructions
             vmState.Env.ExecutingAccount,
             data.ToArray(),
             topics);
+
+        if (Out.TraceShowOpcodes && Out.IsTargetBlock)
+            Out.Log($"a={logEntry.Address}, d={logEntry.Data.ToHexString()}");
 
         vm.AddLog(logEntry);
 

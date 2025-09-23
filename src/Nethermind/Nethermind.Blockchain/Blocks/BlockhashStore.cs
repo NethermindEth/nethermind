@@ -20,6 +20,9 @@ public class BlockhashStore(IWorldState worldState) : IBlockhashStore
 
     public void ApplyBlockhashStateChanges(BlockHeader blockHeader, IReleaseSpec spec)
     {
+        // Arbitrum has it's own custom code for storing block hashes in state, so we skip EIP-2935 processing here.
+        // See Precompiles.HistoryStorageCodeArbitrum
+
         if (!spec.IsEip2935Enabled || blockHeader.IsGenesis || blockHeader.ParentHash is null) return;
 
         Address? eip2935Account = spec.Eip2935ContractAddress ?? Eip2935Constants.BlockHashHistoryAddress;
