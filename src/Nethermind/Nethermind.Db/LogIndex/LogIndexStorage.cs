@@ -54,18 +54,19 @@ namespace Nethermind.Db
 
         public const int MaxTopics = 4;
 
+        private const int BlockNumSize = sizeof(int);
         private const int MaxKeyLength = Hash256.Size + 1; // Math.Max(Address.Size, Hash256.Size)
         private const int MaxDbKeyLength = MaxKeyLength + BlockNumSize;
 
         // TODO: consider using ArrayPoolList just for `using` syntax
         private static readonly ArrayPool<byte> _arrayPool = ArrayPool<byte>.Shared;
 
-        private readonly IColumnsDb<LogIndexColumns> _columnsDb;
+        private readonly IColumnsDb<LogIndexColumns> _rootDb;
         private readonly IDb _addressDb;
-        private readonly IDb[] _topicsDbs;
-        private readonly ILogger _logger;
+        private readonly IDb[] _topicDbs;
+        private IEnumerable<IDb> DBColumns => new[] { _addressDb }.Concat(_topicDbs);
 
-        private const int BlockNumSize = sizeof(int);
+        private readonly ILogger _logger;
 
         private readonly int _maxReorgDepth;
 
@@ -126,22 +127,50 @@ namespace Nethermind.Db
                 { LogIndexColumns.Topics3, new(this, _compressor, topicIndex: 3) }
             };
 
-            _columnsDb = dbFactory.CreateColumnsDb<LogIndexColumns>(new("logIndexStorage", DbNames.LogIndex)
-            {
-                MergeOperatorByColumn = _mergeOperators.ToDictionary(x => $"{x.Key}", x => (IMergeOperator)x.Value)
-            });
-            _addressDb = _columnsDb.GetColumnDb(LogIndexColumns.Addresses);
-            _topicsDbs = _mergeOperators.Keys.Where(cl => $"{cl}".Contains("Topic")).Select(cl => _columnsDb.GetColumnDb(cl)).ToArray();
+            _rootDb = GetDbEnsureVersion(dbFactory);
+            _addressDb = _rootDb.GetColumnDb(LogIndexColumns.Addresses);
+            _topicDbs = _mergeOperators.Keys.Where(cl => $"{cl}".Contains("Topic")).Select(cl => _rootDb.GetColumnDb(cl)).ToArray();
 
             _addressMaxBlock = LoadRangeBound(_addressDb, SpecialKey.MaxBlockNum);
             _addressMinBlock = LoadRangeBound(_addressDb, SpecialKey.MinBlockNum);
-            _topicMaxBlocks = _topicsDbs.Select(static db => LoadRangeBound(db, SpecialKey.MaxBlockNum)).ToArray();
-            _topicMinBlocks = _topicsDbs.Select(static db => LoadRangeBound(db, SpecialKey.MinBlockNum)).ToArray();
+            _topicMaxBlocks = _topicDbs.Select(static db => LoadRangeBound(db, SpecialKey.MaxBlockNum)).ToArray();
+            _topicMinBlocks = _topicDbs.Select(static db => LoadRangeBound(db, SpecialKey.MinBlockNum)).ToArray();
 
-            _addressDb.Set(SpecialKey.Version, [Version]);
+            _compressor.Start();
 
             if (WasInitialized)
                 _firstBlockAddedSource.SetResult();
+        }
+
+        private IColumnsDb<LogIndexColumns> GetDbEnsureVersion(IDbFactory dbFactory)
+        {
+            (IColumnsDb<LogIndexColumns> root, IDb meta) = CreateDb();
+
+            var version = meta.Get(SpecialKey.Version) is { Length: > 0 } versionBytes ? versionBytes[0] : 0;
+            if (version == Version)
+                return root;
+
+            if (_logger.IsWarn)
+                _logger.Warn($"Log index storage version is incorrect: {version} < {Version}, resetting data...");
+
+            root.Clear();
+
+            // `Clear` removes the DB folder, need to create a new instance
+            root.Dispose();
+            (root, meta) = CreateDb();
+
+            meta.Set(SpecialKey.Version, [Version]);
+            return root;
+
+            (IColumnsDb<LogIndexColumns> root, IDb meta) CreateDb()
+            {
+                IColumnsDb<LogIndexColumns> db = dbFactory.CreateColumnsDb<LogIndexColumns>(new("logIndexStorage", DbNames.LogIndex)
+                {
+                    MergeOperatorByColumn = _mergeOperators.ToDictionary(x => $"{x.Key}", x => (IMergeOperator)x.Value)
+                });
+
+                return (db, db.GetColumnDb(LogIndexColumns.Addresses));
+            }
         }
 
         // TODO: remove if unused
@@ -172,8 +201,7 @@ namespace Nethermind.Db
                 await _compressor.StopAsync(); // TODO: consider not waiting for compression queue to finish
 
                 // TODO: check if needed
-                _addressDb.Flush();
-                _topicsDbs.ForEach(static db => db.Flush());
+                DBColumns.ForEach(static db => db.Flush());
 
                 if (_logger.IsInfo) _logger.Info("Log index storage stopped");
             }
@@ -195,9 +223,8 @@ namespace Nethermind.Db
 
             _setReceiptsSemaphores[false].Dispose();
             _setReceiptsSemaphores[true].Dispose();
-            _columnsDb.Dispose();
-            _addressDb.Dispose();
-            _topicsDbs.ForEach(static db => db.Dispose());
+            DBColumns.ForEach(static db => db.Dispose());
+            _rootDb.Dispose();
 
             _disposed = true;
         }
@@ -304,7 +331,7 @@ namespace Nethermind.Db
 
         public string GetDbSize()
         {
-            return FormatSize(_columnsDb.GatherMetric().Size);
+            return FormatSize(_rootDb.GatherMetric().Size);
         }
 
         public Dictionary<byte[], int[]> GetKeysFor(Address address, int from, int to, bool includeValues = false) =>
@@ -553,7 +580,7 @@ namespace Nethermind.Db
                 valueArray = _arrayPool.Rent(BlockNumSize + 1);
 
                 IWriteBatch addressBatch = _addressDb.StartWriteBatch();
-                IWriteBatch[] topicBatches = _topicsDbs.Select(static db => db.StartWriteBatch()).ToArray();
+                IWriteBatch[] topicBatches = _topicDbs.Select(static db => db.StartWriteBatch()).ToArray();
 
                 Span<byte> dbValue = MergeOps.Create(MergeOp.ReorgOp, block.BlockNumber, valueArray);
 
@@ -607,10 +634,7 @@ namespace Nethermind.Db
         {
             // TODO: include time to stats
             if (flush)
-            {
-                _addressDb.Flush();
-                _topicsDbs.ForEach(static db => db.Flush());
-            }
+                DBColumns.ForEach(static db => db.Flush());
 
             CompactingStats compactStats = await _compactor.ForceAsync();
             stats?.Compacting.Combine(compactStats);
@@ -629,7 +653,7 @@ namespace Nethermind.Db
 
             timestamp = Stopwatch.GetTimestamp();
             var topicCount = 0;
-            for (var topicIndex = 0; topicIndex < _topicsDbs.Length; topicIndex++)
+            for (var topicIndex = 0; topicIndex < _topicDbs.Length; topicIndex++)
                 topicCount += await QueueLargeKeysCompression(topicIndex, minLengthToCompress);
             stats?.QueueingTopicCompression.Include(Stopwatch.GetElapsedTime(timestamp));
 
@@ -672,7 +696,7 @@ namespace Nethermind.Db
             try
             {
                 IWriteBatch addressBatch = _addressDb.StartWriteBatch();
-                IWriteBatch[] topicBatches = _topicsDbs.Select(static db => db.StartWriteBatch()).ToArray();
+                IWriteBatch[] topicBatches = _topicDbs.Select(static db => db.StartWriteBatch()).ToArray();
 
                 // Add values to batches
                 long timestamp;
@@ -902,7 +926,7 @@ namespace Nethermind.Db
             return value;
         }
 
-        private IDb GetDb(int? topicIndex) => topicIndex.HasValue ? _topicsDbs[topicIndex.Value] : _addressDb;
+        private IDb GetDb(int? topicIndex) => topicIndex.HasValue ? _topicDbs[topicIndex.Value] : _addressDb;
 
         private static byte[] CompressDbValue(Span<byte> data)
         {
