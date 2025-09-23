@@ -96,6 +96,7 @@ namespace Nethermind.Core
                 {
                     _hash = hash = Keccak.Compute(_preHash.Span);
                     ClearPreHashInternal();
+                    Out.Log($"transaction hash={_hash}");
                 }
             }
 
@@ -116,6 +117,9 @@ namespace Nethermind.Core
                 lock (this)
                 {
                     ClearPreHash();
+
+                    Out.Log($"transaction hash={value}");
+
                     _hash = value;
                 }
             }

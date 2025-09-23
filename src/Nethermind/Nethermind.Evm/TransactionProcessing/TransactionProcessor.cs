@@ -9,6 +9,7 @@ using System.Linq;
 using System.Runtime.CompilerServices;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.Crypto;
 using Nethermind.Evm.CodeAnalysis;
@@ -158,6 +159,8 @@ namespace Nethermind.Evm.TransactionProcessing
 
         protected virtual TransactionResult Execute(Transaction tx, ITxTracer tracer, ExecutionOptions opts)
         {
+            Out.Log($"evm execute options={opts}");
+
             BlockHeader header = VirtualMachine.BlockExecutionContext.Header;
             IReleaseSpec spec = GetSpec(header);
 
@@ -170,6 +173,9 @@ namespace Nethermind.Evm.TransactionProcessing
 
             TransactionResult result;
             IntrinsicGas intrinsicGas = CalculateIntrinsicGas(tx, spec);
+
+            Out.Log($"intrinsic gas standard={intrinsicGas.Standard} floor={intrinsicGas.FloorGas}");
+
             if (!(result = ValidateStatic(tx, header, spec, opts, in intrinsicGas))) return result;
 
             UInt256 effectiveGasPrice = CalculateEffectiveGasPrice(tx, spec.IsEip1559Enabled, header.BaseFeePerGas);
@@ -193,6 +199,8 @@ namespace Nethermind.Evm.TransactionProcessing
 
             if (!(result = CalculateAvailableGas(tx, intrinsicGas, out long gasAvailable))) return result;
             if (!(result = BuildExecutionEnvironment(tx, spec, _codeInfoRepository, accessTracker, out ExecutionEnvironment env))) return result;
+
+            Out.Log($"evm call from={tx.SenderAddress} to={tx.To} gasAvailable={gasAvailable} value={tx.Value}");
 
             int statusCode = !tracer.IsTracingInstructions ?
                 ExecuteEvmCall<OffFlag>(tx, header, spec, tracer, opts, delegationRefunds, intrinsicGas, accessTracker, gasAvailable, env, out TransactionSubstate substate, out GasConsumed spentGas) :
@@ -236,15 +244,21 @@ namespace Nethermind.Evm.TransactionProcessing
                     stateRoot = WorldState.StateRoot;
                 }
 
+                Out.Log($"receipt statusCode={statusCode} spentGas={spentGas} error={substate.Error} " +
+                        $"logsCount={substate.Logs.Count} evmExceptionType={substate.EvmExceptionType}");
+
                 if (statusCode == StatusCode.Failure)
                 {
                     byte[] output = substate.ShouldRevert ? substate.Output.Bytes.ToArray() : [];
                     tracer.MarkAsFailed(env.ExecutingAccount, spentGas, output, substate.Error, stateRoot);
+                    Out.Log($"receipt markAsFailed evmExceptionType={result.EvmExceptionType} result={result.ToString()}");
                 }
                 else
                 {
                     LogEntry[] logs = substate.Logs.Count != 0 ? substate.Logs.ToArray() : [];
                     tracer.MarkAsSuccess(env.ExecutingAccount, spentGas, substate.Output.Bytes.ToArray(), logs, stateRoot);
+                    Out.Log($"receipt markAsSuccess evmExceptionType={result.EvmExceptionType} result={result.ToString()} " +
+                            $"logs={string.Join(";", logs?.Select(l => $"a={l.Address}, d={l.Data.ToHexString()}") ?? [])}");
                 }
             }
 
@@ -533,7 +547,7 @@ namespace Nethermind.Evm.TransactionProcessing
                 overflows = UInt256.MultiplyOverflow((UInt256)tx.GasLimit, effectiveGasPrice, out senderReservedGasPayment);
                 if (!overflows && tx.SupportsBlobs)
                 {
-                    overflows = !_blobBaseFeeCalculator.TryCalculateBlobBaseFee(header, tx, spec.BlobBaseFeeUpdateFraction, out blobBaseFee);
+                    overflows = !BlobGasCalculator.TryCalculateBlobBaseFee(header, tx, spec.BlobBaseFeeUpdateFraction, out blobBaseFee);
                     if (!overflows)
                     {
                         overflows = UInt256.AddOverflow(senderReservedGasPayment, blobBaseFee, out senderReservedGasPayment);
@@ -554,9 +568,11 @@ namespace Nethermind.Evm.TransactionProcessing
 
         protected virtual TransactionResult IncrementNonce(Transaction tx, BlockHeader header, IReleaseSpec spec, ITxTracer tracer, ExecutionOptions opts)
         {
-            if (tx.Nonce != WorldState.GetNonce(tx.SenderAddress!))
+            UInt256 expectedNonce = WorldState.GetNonce(tx.SenderAddress!);
+            if (tx.Nonce != expectedNonce)
             {
                 TraceLogInvalidTx(tx, $"WRONG_TRANSACTION_NONCE: {tx.Nonce} (expected {WorldState.GetNonce(tx.SenderAddress)})");
+                Out.Log($"transaction wrong nonce={tx.Nonce} expected={expectedNonce}");
                 return TransactionResult.WrongTransactionNonce;
             }
 
@@ -655,6 +671,7 @@ namespace Nethermind.Evm.TransactionProcessing
                     // if transaction is a contract creation then recipient address is the contract deployment address
                     if (!PrepareAccountForContractDeployment(env.ExecutingAccount, _codeInfoRepository, spec))
                     {
+                        Out.Log("evm failed to prepare account for contract deployment");
                         goto FailContractCreate;
                     }
                 }
@@ -679,6 +696,8 @@ namespace Nethermind.Evm.TransactionProcessing
                 gasAvailable = state.GasAvailable;
             }
 
+            Out.Log($"evm finished gasAvailable={gasAvailable} isError={substate.IsError} error={substate.Error}");
+
             if (tracer.IsTracingAccess)
             {
                 tracer.ReportAccess(accessedItems.AccessedAddresses, accessedItems.AccessedStorageCells);
@@ -697,6 +716,7 @@ namespace Nethermind.Evm.TransactionProcessing
                     {
                         if (!DeployLegacyContract(spec, env.ExecutingAccount, in substate, in accessedItems, ref gasAvailable))
                         {
+                            Out.Log($"evm failed to deploy legacy contract executingAccount={env.ExecutingAccount} gasAvailable={gasAvailable}");
                             goto FailContractCreate;
                         }
                     }
@@ -704,6 +724,7 @@ namespace Nethermind.Evm.TransactionProcessing
                     {
                         if (!DeployEofContract(spec, env.ExecutingAccount, in substate, in accessedItems, ref gasAvailable))
                         {
+                            Out.Log($"evm failed to deploy EOF contract executingAccount={env.ExecutingAccount} gasAvailable={gasAvailable}");
                             goto FailContractCreate;
                         }
                     }
@@ -730,6 +751,7 @@ namespace Nethermind.Evm.TransactionProcessing
         FailContractCreate:
             if (Logger.IsTrace) Logger.Trace("Restoring state from before transaction");
             WorldState.Restore(snapshot);
+            Out.Log("evm restored state before transaction");
 
         Complete:
             if (!opts.HasFlag(ExecutionOptions.SkipValidation))
@@ -743,11 +765,13 @@ namespace Nethermind.Evm.TransactionProcessing
             long codeDepositGasCost = CodeDepositHandler.CalculateCost(spec, substate.Output.Bytes.Length);
             if (unspentGas < codeDepositGasCost && spec.ChargeForTopLevelCreate)
             {
+                Out.Log($"evm failed deploy contract unspentGas={unspentGas} codeDepositGasCost={codeDepositGasCost} chargeForTopLevelCreate={spec.ChargeForTopLevelCreate}");
                 return false;
             }
 
             if (CodeDepositHandler.CodeIsInvalid(spec, substate.Output.Bytes, 0))
             {
+                Out.Log("evm failed deploy contract code is invalid");
                 return false;
             }
 
@@ -764,6 +788,7 @@ namespace Nethermind.Evm.TransactionProcessing
                 unspentGas -= codeDepositGasCost;
             }
 
+            Out.Log($"evm deployed legacy contract unspentGas={unspentGas}");
             return true;
         }
 
