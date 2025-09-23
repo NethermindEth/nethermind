@@ -31,8 +31,6 @@ public class StatelessBlockProcessingEnv(
     ISealValidator sealValidator,
     ILogManager logManager)
 {
-    private readonly ILogger _logger = logManager.GetClassLogger();
-
     private IBlockProcessor? _blockProcessor;
     public IBlockProcessor BlockProcessor
     {
@@ -83,7 +81,7 @@ public class StatelessBlockProcessingEnv(
         }
 
         NodeStorage nodeStorage = new(db, INodeStorage.KeyScheme.Hash);
-        return new TrieStore(nodeStorage, NoPruning.Instance, NoPersistence.Instance, new PruningConfig(), NullLogManager.Instance);
+        return new TrieStore(nodeStorage, NoPruning.Instance, NoPersistence.Instance, new PruningConfig(), logManager);
     }
 
     private IKeyValueStoreWithBatching CreateCodeDb()
@@ -91,7 +89,7 @@ public class StatelessBlockProcessingEnv(
         IKeyValueStoreWithBatching db = new MemDb();
         foreach (var code in witness.Codes)
         {
-            var hash = Keccak.Compute(code).Bytes;
+            var hash = ValueKeccak.Compute(code).Bytes;
             db.PutSpan(hash, code);
         }
         return db;

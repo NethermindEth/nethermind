@@ -14,7 +14,11 @@ using Nethermind.Core.Crypto;
 
 namespace Nethermind.Consensus.Stateless;
 
-public class StatelessBlockTree(BlockHeader[] headers) : IBlockTree
+/// <summary>
+/// This class is part of the StatelessExecution tool. It's intended to be used only inside the processing pipeline.
+/// </summary>
+/// <param name="headers"></param>
+public class StatelessBlockTree(IReadOnlyCollection<BlockHeader> headers) : IBlockTree
 {
     private readonly Dictionary<Hash256, BlockHeader> _hashToHeader =
         headers.ToDictionary(header => header.Hash ?? throw new ArgumentNullException(), header => header);

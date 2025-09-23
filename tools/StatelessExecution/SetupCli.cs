@@ -43,7 +43,7 @@ internal static class SetupCli
         command.SetAction((parseResult, _) =>
         {
             string blockFileName = parseResult.GetValue(blockFile)!;
-            string? execWitnessFileName = parseResult.GetValue(witnessFile)!;
+            string execWitnessFileName = parseResult.GetValue(witnessFile)!;
 
             Console.WriteLine("🚀  Starting stateless execution...\n");
             Console.WriteLine($"📁  Block file: {blockFileName}");
@@ -104,17 +104,9 @@ internal static class SetupCli
             Console.WriteLine("🔗  Searching for parent block in witness headers...");
             Console.WriteLine($"    Block number: #{suggestedBlockForRpc.Number}");
             Console.WriteLine($"    Parent hash: {suggestedBlockHeader.ParentHash}");
-            Console.WriteLine($"    Witness contains {witness.DecodedHeaders.Length} headers");
+            Console.WriteLine($"    Witness contains {witness.DecodedHeaders.Count} headers");
 
-            BlockHeader? baseBlock = null;
-            foreach (BlockHeader header in witness.DecodedHeaders)
-            {
-                if (header.Hash == suggestedBlockHeader.ParentHash)
-                {
-                    baseBlock = header;
-                    break;
-                }
-            }
+            BlockHeader? baseBlock = witness.DecodedHeaders.FirstOrDefault(h => h.Hash == suggestedBlockHeader.ParentHash);
 
             if (baseBlock is null)
             {

@@ -21,20 +21,20 @@ public struct Witness
     public byte[][] Headers;
 
     [JsonIgnore]
-    public BlockHeader[] DecodedHeaders => _decodedHeaders ??= DecodeHeaders();
+    public IReadOnlyCollection<BlockHeader> DecodedHeaders => _decodedHeaders ??= DecodeHeaders();
 
-    private BlockHeader[] DecodeHeaders()
+    private IReadOnlyCollection<BlockHeader> DecodeHeaders()
     {
         List<BlockHeader> headers = new(Headers.Length);
         HeaderDecoder decoder = new();
         foreach (var encodedHeader in Headers)
         {
-            RlpStream stream = new(encodedHeader);
-            headers.Add(decoder.Decode(stream) ?? throw new ArgumentException());
+            Rlp.ValueDecoderContext stream = new(encodedHeader);
+            headers.Add(decoder.Decode(ref stream) ?? throw new ArgumentException());
         }
-        return headers.ToArray();
+        return headers;
     }
 
     [JsonIgnore]
-    private BlockHeader[]? _decodedHeaders;
+    private IReadOnlyCollection<BlockHeader>? _decodedHeaders;
 }
