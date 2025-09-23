@@ -46,4 +46,12 @@ public static class Wait
 
         throw new UnreachableException();
     }
-}
+    
+    /// <summary>
+    /// Overload for callers that provide a collection (not an array) of tasks.
+    /// </summary>
+    public static Task<T> AnyWhere<T>(Func<T, bool> cond, IEnumerable<Task<T>> tasks)
+    {
+        // Avoid forcing callers to allocate arrays; convert here if needed
+        return AnyWhere(cond, tasks as Task<T>[] ?? tasks.ToArray());
+    }
