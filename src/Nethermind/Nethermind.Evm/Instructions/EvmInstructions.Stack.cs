@@ -8,6 +8,8 @@ using System.Runtime.InteropServices;
 using System.Runtime.Intrinsics;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Extensions;
+using Nethermind.Evm.State;
 
 namespace Nethermind.Evm;
 
@@ -607,6 +609,10 @@ internal static partial class EvmInstructions
             vmState.Env.ExecutingAccount,
             data.ToArray(),
             topics);
+
+        if (Out.TraceShowOpcodes && Out.IsTargetBlock)
+            Out.Log($"a={logEntry.Address}, d={logEntry.Data.ToHexString()}");
+
         vmState.AccessTracker.Logs.Add(logEntry);
 
         // Optionally report the log if tracing is enabled.
@@ -625,4 +631,3 @@ internal static partial class EvmInstructions
         return EvmExceptionType.OutOfGas;
     }
 }
-
