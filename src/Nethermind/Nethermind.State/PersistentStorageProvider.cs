@@ -204,8 +204,12 @@ internal sealed class PersistentStorageProvider : PartialStorageProviderBase
 
         foreach (AddressAsKey address in toUpdateRoots)
         {
+            bool exists = _stateProvider.AccountExists(address);
+            if (Out.IsTargetBlock)
+                Out.Log($"storage commit check address={address} exists={exists}");
+
             // since the accounts could be empty accounts that are removing (EIP-158)
-            if (_stateProvider.AccountExists(address))
+            if (exists)
             {
                 _toUpdateRoots[address] = true;
                 // Add storage tree, will accessed later, which may be in parallel
@@ -259,9 +263,14 @@ internal sealed class PersistentStorageProvider : PartialStorageProviderBase
             {
                 if (!_toUpdateRoots.TryGetValue(kvp.Key, out bool hasChanges) || !hasChanges)
                 {
+                    if (Out.IsTargetBlock)
+                        Out.Log($"storage flush skip addr={kvp.Key} inToUpdateRoots={_toUpdateRoots.ContainsKey(kvp.Key)} hasChanges={hasChanges}");
                     // Wasn't updated don't recalculate
                     continue;
                 }
+
+                if (Out.IsTargetBlock)
+                    Out.Log($"storage flush process addr={kvp.Key}");
 
                 PerContractState contractState = kvp.Value;
                 (int writes, int skipped) = contractState.ProcessStorageChanges(writeBatch.CreateStorageWriteBatch(kvp.Key, kvp.Value.EstimatedChanges));
@@ -593,6 +602,9 @@ internal sealed class PersistentStorageProvider : PartialStorageProviderBase
                 {
                     BlockChange[kvp.Key] = new(after, after);
                     storageWriteBatch.Set(kvp.Key, after);
+
+                    if (Out.TraceShowDeepstate && Out.IsTargetBlock)
+                        Out.Log($"deepstate[{_address}]", kvp.Key.ToValueHash().ToString(), after.PadLeft(32).ToHexString(withZeroX: true));
 
                     writes++;
                 }

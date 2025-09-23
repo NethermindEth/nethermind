@@ -289,6 +289,10 @@ internal static partial class EvmInstructions
                 {
                     stack.PushZero<TTracingInst>();
                 }
+
+                if (Out.TraceShowOpcodes && Out.IsTargetBlock)
+                    Out.Log($"evm EXTCODESIZE address={address} optimized next={nextInstruction} isCodeLengthNotZero={isCodeLengthNotZero}");
+
                 return EvmExceptionType.None;
             }
         }
@@ -297,6 +301,10 @@ internal static partial class EvmInstructions
         ReadOnlySpan<byte> accountCode = vm.CodeInfoRepository
             .GetCachedCodeInfo(address, followDelegation: false, spec, out _)
             .CodeSpan;
+
+        if (Out.TraceShowOpcodes && Out.IsTargetBlock)
+            Out.Log($"evm EXTCODESIZE address={address} size={accountCode.Length}");
+
         // If EOF is enabled and the code is an EOF contract, push a fixed size (2).
         if (spec.IsEofEnabled && EofValidator.IsEof(accountCode, out _))
         {

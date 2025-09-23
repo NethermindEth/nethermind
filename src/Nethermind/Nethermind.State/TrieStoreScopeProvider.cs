@@ -190,21 +190,45 @@ public class TrieStoreScopeProvider : IWorldStateScopeProvider
 
         public void Dispose()
         {
+            if (Out.IsTargetBlock)
+                Out.Log($"storage callback start dirtyStorageTree.Count={_dirtyStorageTree.Count}");
+
             while (_dirtyStorageTree.TryDequeue(out (AddressAsKey, Hash256) entry))
             {
                 (AddressAsKey key, Hash256 storageRoot) = entry;
-                if (!_dirtyAccounts.TryGetValue(key, out var account))
+                bool inDirtyAccounts = _dirtyAccounts.TryGetValue(key, out var account);
+
+                if (Out.IsTargetBlock)
+                    Out.Log($"storage callback addr={key} storageRoot={storageRoot} inDirty={inDirtyAccounts}");
+
+                if (!inDirtyAccounts)
+                {
                     account = scope.Get(key);
+                    if (Out.IsTargetBlock)
+                        Out.Log($"storage callback fallback addr={key} account={account != null} balance={account?.Balance} nonce={account?.Nonce}");
+                }
 
                 // Account may be null when EIP-161 deletes an empty account that had storage
                 // changes in the same block. Skip the storage root update since the account
                 // will not exist in the state trie.
-                if (account is null) continue;
+                if (account is null)
+                {
+                    if (Out.IsTargetBlock)
+                        Out.Log($"storage callback SKIP null+emptyTree addr={key}");
+                    continue;
+                }
                 account = account.WithChangedStorageRoot(storageRoot);
                 _dirtyAccounts[key] = account;
+
+                if (Out.IsTargetBlock)
+                    Out.Log($"storage callback invoke OnAccountUpdated addr={key} hasHandler={OnAccountUpdated != null}");
+
                 OnAccountUpdated?.Invoke(key, new IWorldStateScopeProvider.AccountUpdated(key, account));
                 if (logger.IsTrace) Trace(key, storageRoot, account);
             }
+
+            if (Out.IsTargetBlock)
+                Out.Log($"storage callback done _dirtyAccounts.Count={_dirtyAccounts.Count}");
 
             using (var stateSetter = scope._backingStateTree.BeginSet(_dirtyAccounts.Count))
             {

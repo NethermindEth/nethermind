@@ -291,6 +291,9 @@ public class VmState<TGasPolicy> : IDisposable
         ObjectDisposedException.ThrowIf(_isDisposed, this);
         parentState.Refund += Refund;
         _canRestore = false; // we can't restore if we committed
+
+        if (Out.IsTargetBlock)
+            Out.Log($"evm refund currentState={parentState.Refund} previousState={Refund}");
     }
 }
 
