@@ -18,6 +18,16 @@ public readonly struct AccountChanges : IEquatable<AccountChanges>
     public SortedList<ushort, NonceChange> NonceChanges { get; init; }
     public SortedList<ushort, CodeChange> CodeChanges { get; init; }
 
+    public AccountChanges()
+    {
+        Address = Address.Zero;
+        StorageChanges = new(Bytes.Comparer);
+        StorageReads = [];
+        BalanceChanges = [];
+        NonceChanges = [];
+        CodeChanges = [];
+    }
+
     public AccountChanges(Address address)
     {
         Address = address;
