@@ -156,6 +156,9 @@ namespace Nethermind.Evm.TransactionProcessing
 
             TransactionResult result;
             IntrinsicGas intrinsicGas = CalculateIntrinsicGas(tx, spec);
+
+            Out.Log($"intrinsic gas standard={intrinsicGas.Standard} floor={intrinsicGas.FloorGas}");
+
             if (!(result = ValidateStatic(tx, header, spec, opts, in intrinsicGas))) return result;
 
             UInt256 effectiveGasPrice = CalculateEffectiveGasPrice(tx, spec.IsEip1559Enabled, header.BaseFeePerGas);
@@ -177,8 +180,12 @@ namespace Nethermind.Evm.TransactionProcessing
 
             int delegationRefunds = (!spec.IsEip7702Enabled || !tx.HasAuthorizationList) ? 0 : ProcessDelegations(tx, spec, accessTracker);
 
-            long gasAvailable = tx.GasLimit - intrinsicGas.Standard;
+            long gasAvailable = CalculateAvailableGas(tx, in intrinsicGas);
             if (!(result = BuildExecutionEnvironment(tx, spec, _codeInfoRepository, accessTracker, out ExecutionEnvironment env))) return result;
+
+            // types.OLog2(fmt.Sprintf("evm call from=%s to=%s gasAvailable=%d value=%s",
+            //     strings.ToLower(msg.From.String()), strings.ToLower(msg.To.String()), st.gasRemaining, value.String()))
+            Out.Log($"evm call from={tx.SenderAddress} to={tx.To} gasAvailable={gasAvailable} value={tx.Value}");
 
             int statusCode = !tracer.IsTracingInstructions ?
                 ExecuteEvmCall<OffFlag>(tx, header, spec, tracer, opts, delegationRefunds, intrinsicGas, accessTracker, gasAvailable, env, out TransactionSubstate substate, out GasConsumed spentGas) :
@@ -186,6 +193,8 @@ namespace Nethermind.Evm.TransactionProcessing
 
             PayFees(tx, header, spec, tracer, in substate, spentGas.SpentGas, premiumPerGas, blobBaseFee, statusCode);
             tx.SpentGas = spentGas.SpentGas;
+
+            Out.Log($"evm statusCode={statusCode} spentGas={spentGas.SpentGas}");
 
             // Finalize
             if (restore)
@@ -238,6 +247,11 @@ namespace Nethermind.Evm.TransactionProcessing
                 return TransactionResult.EvmException(substate.EvmExceptionType);
 
             return TransactionResult.Ok;
+        }
+
+        protected virtual long CalculateAvailableGas(Transaction tx, in IntrinsicGas intrinsicGas)
+        {
+            return tx.GasLimit - intrinsicGas.Standard;
         }
 
         [MethodImpl(MethodImplOptions.NoInlining)]

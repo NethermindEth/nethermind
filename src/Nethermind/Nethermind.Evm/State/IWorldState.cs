@@ -31,8 +31,23 @@ public static class Out
 
         string transactionIndex = Environment.GetEnvironmentVariable("TRANSACTION_INDEX") ?? "";
 
-        if (Environment.GetEnvironmentVariable("DEBUG_DETAILS") == "verbose")
+        if (Environment.GetEnvironmentVariable("TRACE_SHOW_STACKTRACE") == "true")
             Console.WriteLine($"b={currentBlock}, t={transactionIndex}, {GetCallStackString()}");
+
+        Console.WriteLine($"b={currentBlock}, t={transactionIndex} {log}");
+    }
+
+    public static void LogFast(string log)
+    {
+        string targetBlock = Environment.GetEnvironmentVariable("TARGET_BLOCK_NUMBER");
+        if (targetBlock == null)
+            return;
+
+        string currentBlock = Environment.GetEnvironmentVariable("CURRENT_BLOCK_NUMBER") ?? "0";
+        if (currentBlock != targetBlock)
+            return;
+
+        string transactionIndex = Environment.GetEnvironmentVariable("TRANSACTION_INDEX") ?? "";
 
         Console.WriteLine($"b={currentBlock}, t={transactionIndex} {log}");
     }
@@ -49,7 +64,7 @@ public static class Out
 
         string transactionIndex = Environment.GetEnvironmentVariable("TRANSACTION_INDEX") ?? "";
 
-        if (Environment.GetEnvironmentVariable("DEBUG_DETAILS") == "verbose")
+        if (Environment.GetEnvironmentVariable("TRACE_SHOW_STACKTRACE") == "true")
             Console.WriteLine($"b={currentBlock}, t={transactionIndex}, {GetCallStackString()}");
 
         Console.WriteLine($"b={currentBlock}, t={transactionIndex}, s={scope}: {key} {value}");
