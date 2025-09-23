@@ -80,15 +80,15 @@ public class ColumnDb : IDb
 
     public IWriteBatch StartWriteBatch()
     {
-        return new ColumnsDbWriteBatch(this, (DbOnTheRocks.RocksDbWriteBatch)_mainDb.StartWriteBatch());
+        return new ColumnDbWriteBatch(this, (DbOnTheRocks.RocksDbWriteBatch)_mainDb.StartWriteBatch());
     }
 
-    private class ColumnsDbWriteBatch : IWriteBatch
+    private class ColumnDbWriteBatch : IWriteBatch
     {
         private readonly ColumnDb _columnDb;
         private readonly DbOnTheRocks.RocksDbWriteBatch _underlyingWriteBatch;
 
-        public ColumnsDbWriteBatch(ColumnDb columnDb, DbOnTheRocks.RocksDbWriteBatch underlyingWriteBatch)
+        public ColumnDbWriteBatch(ColumnDb columnDb, DbOnTheRocks.RocksDbWriteBatch underlyingWriteBatch)
         {
             _columnDb = columnDb;
             _underlyingWriteBatch = underlyingWriteBatch;
