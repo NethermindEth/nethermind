@@ -75,7 +75,7 @@ public abstract class TxTracer : ITxTracer
     public virtual void ReportGasUpdateForVmTrace(long refund, long gasAvailable) { }
     public virtual void ReportRefund(long refund) { }
     public virtual void ReportExtraGasPressure(long extraGasPressure) { }
-    public virtual void ReportAccess(IReadOnlyCollection<Address> accessedAddresses, IReadOnlyCollection<StorageCell> accessedStorageCells) { }
+    public virtual void ReportAccess(IEnumerable<Address> accessedAddresses, IEnumerable<StorageCell> accessedStorageCells) { }
     public virtual void ReportFees(UInt256 fees, UInt256 burntFees) { }
     public virtual void Dispose() { }
 }

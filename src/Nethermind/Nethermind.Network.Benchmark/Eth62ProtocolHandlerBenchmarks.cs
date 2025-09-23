@@ -56,13 +56,12 @@ namespace Nethermind.Network.Benchmarks
             NodeStatsManager stats = new NodeStatsManager(TimerFactory.Default, LimboLogs.Instance);
             var ecdsa = new EthereumEcdsa(TestBlockchainIds.ChainId);
             var tree = Build.A.BlockTree().TestObject;
-            WorldStateManager worldStateManager = TestWorldStateFactory.CreateForTest();
-            IWorldState stateProvider = worldStateManager.GlobalWorldState;
+            IWorldState stateProvider = TestWorldStateFactory.CreateForTest();
             var specProvider = MainnetSpecProvider.Instance;
             TxPool.TxPool txPool = new TxPool.TxPool(
                 ecdsa,
                 new BlobTxStorage(),
-                new ChainHeadInfoProvider(new FixedForkActivationChainHeadSpecProvider(MainnetSpecProvider.Instance), tree, stateProvider, new EthereumCodeInfoRepository()),
+                new ChainHeadInfoProvider(new FixedForkActivationChainHeadSpecProvider(MainnetSpecProvider.Instance), tree, stateProvider),
                 new TxPoolConfig(),
                 new TxValidator(TestBlockchainIds.ChainId),
                 LimboLogs.Instance,

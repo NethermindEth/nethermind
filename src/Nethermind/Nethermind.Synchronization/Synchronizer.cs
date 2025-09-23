@@ -14,6 +14,7 @@ using Nethermind.Core.Extensions;
 using Nethermind.Logging;
 using Nethermind.Specs.ChainSpecStyle;
 using Nethermind.State;
+using Nethermind.State.Healing;
 using Nethermind.Stats;
 using Nethermind.Stats.Model;
 using Nethermind.Synchronization;
@@ -349,17 +350,12 @@ public class SynchronizerModule(ISyncConfig syncConfig) : Module
             .AddSingleton<SyncPeerPool>()
                 .Bind<ISyncPeerPool, SyncPeerPool>()
                 .Bind<IPeerDifficultyRefreshPool, SyncPeerPool>()
-                .OnActivate<ISyncPeerPool>((peerPool, ctx) =>
-                {
-                    ILogManager logManager = ctx.Resolve<ILogManager>();
-                    ctx.Resolve<IWorldStateManager>().InitializeNetwork(
-                        new PathNodeRecovery(
-                            new NodeDataRecovery(peerPool!, ctx.Resolve<INodeStorage>(), logManager),
-                            new SnapRangeRecovery(peerPool!, logManager),
-                            logManager
-                        )
-                    );
-                })
+
+            .AddSingleton<IPathRecovery, ISyncPeerPool, INodeStorage, ILogManager>((peerPool, nodeStorage, logManager) => new PathNodeRecovery(
+                new NodeDataRecovery(peerPool!, nodeStorage, logManager),
+                new SnapRangeRecovery(peerPool!, logManager),
+                logManager
+            ))
 
             .AddSingleton<ISyncServer, SyncServer>();
 

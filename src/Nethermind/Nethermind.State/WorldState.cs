@@ -36,6 +36,7 @@ namespace Nethermind.State
         private bool _isInScope = false;
         private readonly ILogger _logger;
         private PreBlockCaches? PreBlockCaches { get; }
+        public bool IsWarmWorldState { get; }
 
         public Hash256 StateRoot
         {
@@ -66,6 +67,7 @@ namespace Nethermind.State
             bool populatePreBlockCache = true)
         {
             PreBlockCaches = preBlockCaches;
+            IsWarmWorldState = !populatePreBlockCache;
             _trieStore = trieStore;
             _stateProvider = new StateProvider(trieStore.GetTrieStore(null), codeDb, logManager, stateTree, PreBlockCaches?.StateCache, populatePreBlockCache);
             _persistentStorageProvider = new PersistentStorageProvider(trieStore, _stateProvider, logManager, storageTreeFactory, PreBlockCaches?.StorageCache, populatePreBlockCache);
@@ -185,6 +187,12 @@ namespace Nethermind.State
             DebugGuardInScope();
             _stateProvider.CreateAccount(address, balance, nonce);
         }
+
+        public void CreateEmptyAccountIfDeleted(Address address)
+        {
+            _stateProvider.CreateEmptyAccountIfDeletedOrNew(address);
+        }
+
         public bool InsertCode(Address address, in ValueHash256 codeHash, ReadOnlyMemory<byte> code, IReleaseSpec spec, bool isGenesis = false)
         {
             DebugGuardInScope();
@@ -264,12 +272,6 @@ namespace Nethermind.State
         {
             DebugGuardInScope();
             return ref _stateProvider.GetBalance(address);
-        }
-
-        UInt256 IAccountStateProvider.GetBalance(Address address)
-        {
-            DebugGuardInScope();
-            return _stateProvider.GetBalance(address);
         }
 
         public ValueHash256 GetStorageRoot(Address address)

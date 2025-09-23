@@ -33,16 +33,15 @@ namespace Nethermind.Blockchain.Filters
 
         public FilterManager(
             IFilterStore filterStore,
-            IBranchProcessor blockProcessor,
+            IMainProcessingContext mainProcessingContext,
             ITxPool txPool,
             ILogManager logManager)
         {
             _filterStore = filterStore ?? throw new ArgumentNullException(nameof(filterStore));
-            blockProcessor = blockProcessor ?? throw new ArgumentNullException(nameof(blockProcessor));
             txPool = txPool ?? throw new ArgumentNullException(nameof(txPool));
             _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
-            blockProcessor.BlockProcessed += OnBlockProcessed;
-            blockProcessor.TransactionProcessed += OnTransactionProcessed;
+            mainProcessingContext.BranchProcessor.BlockProcessed += OnBlockProcessed;
+            mainProcessingContext.TransactionProcessed += OnTransactionProcessed;
             _filterStore.FilterRemoved += OnFilterRemoved;
             txPool.NewPending += OnNewPendingTransaction;
             txPool.RemovedPending += OnRemovedPendingTransaction;

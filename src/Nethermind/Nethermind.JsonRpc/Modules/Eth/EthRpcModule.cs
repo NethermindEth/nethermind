@@ -3,17 +3,13 @@
 
 using System;
 using System.Collections.Generic;
-using System.Diagnostics.CodeAnalysis;
 using System.Linq;
 using System.Security;
 using System.Text;
 using System.Text.Json;
 using System.Text.Json.Nodes;
-using System.Text.RegularExpressions;
 using System.Threading;
 using System.Threading.Tasks;
-using DotNetty.Buffers;
-using Force.Crc32;
 using Nethermind.Blockchain.Filters;
 using Nethermind.Blockchain.Find;
 using Nethermind.Blockchain.Receipts;
@@ -343,7 +339,7 @@ public partial class EthRpcModule(
         }
     }
 
-    public ResultWrapper<string> eth_call(TransactionForRpc transactionCall, BlockParameter? blockParameter = null, Dictionary<Address, AccountOverride>? stateOverride = null) =>
+    public virtual ResultWrapper<string> eth_call(TransactionForRpc transactionCall, BlockParameter? blockParameter = null, Dictionary<Address, AccountOverride>? stateOverride = null) =>
         new CallTxExecutor(_blockchainBridge, _blockFinder, _rpcConfig)
             .ExecuteTx(transactionCall, blockParameter, stateOverride);
 
@@ -351,11 +347,11 @@ public partial class EthRpcModule(
         new SimulateTxExecutor<SimulateCallResult>(_blockchainBridge, _blockFinder, _rpcConfig, new SimulateBlockMutatorTracerFactory(), secondsPerSlot: _secondsPerSlot)
             .Execute(payload, blockParameter);
 
-    public ResultWrapper<UInt256?> eth_estimateGas(TransactionForRpc transactionCall, BlockParameter? blockParameter, Dictionary<Address, AccountOverride>? stateOverride = null) =>
+    public virtual ResultWrapper<UInt256?> eth_estimateGas(TransactionForRpc transactionCall, BlockParameter? blockParameter, Dictionary<Address, AccountOverride>? stateOverride = null) =>
         new EstimateGasTxExecutor(_blockchainBridge, _blockFinder, _rpcConfig)
             .ExecuteTx(transactionCall, blockParameter, stateOverride);
 
-    public ResultWrapper<AccessListResultForRpc?> eth_createAccessList(TransactionForRpc transactionCall, BlockParameter? blockParameter = null, bool optimize = true) =>
+    public virtual ResultWrapper<AccessListResultForRpc?> eth_createAccessList(TransactionForRpc transactionCall, BlockParameter? blockParameter = null, bool optimize = true) =>
         new CreateAccessListTxExecutor(_blockchainBridge, _blockFinder, _rpcConfig, optimize)
             .ExecuteTx(transactionCall, blockParameter);
 
@@ -519,6 +515,12 @@ public partial class EthRpcModule(
 
     public ResultWrapper<bool?> eth_uninstallFilter(UInt256 filterId)
     {
+        // Nethermind uses int for filter IDs, which is okay, but other clients use UInt256.
+        // If filterId is greater than int.MaxValue, it could not have been created by Nethermind.
+        // In that case, return false instead of throwing an internal cast error.
+        if (filterId > int.MaxValue)
+            return ResultWrapper<bool?>.Success(false);
+
         _blockchainBridge.UninstallFilter((int)filterId);
         return ResultWrapper<bool?>.Success(true);
     }

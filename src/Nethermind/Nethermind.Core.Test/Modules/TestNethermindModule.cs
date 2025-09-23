@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Collections.Generic;
 using Autofac;
 using Nethermind.Config;
 using Nethermind.Core.Specs;
@@ -20,15 +21,25 @@ namespace Nethermind.Core.Test.Modules;
 /// <param name="configProvider"></param>
 public class TestNethermindModule(IConfigProvider configProvider, ChainSpec chainSpec) : Module
 {
-    public TestNethermindModule() : this(new ConfigProvider())
+    private readonly IReleaseSpec? _releaseSpec;
+
+    public TestNethermindModule(IReleaseSpec? releaseSpec = null) : this(new ConfigProvider())
     {
+        _releaseSpec = releaseSpec;
     }
 
     public TestNethermindModule(params IConfig[] configs) : this(new ConfigProvider(configs))
     {
     }
 
-    public TestNethermindModule(IConfigProvider configProvider) : this(configProvider, new ChainSpec() { Parameters = new ChainParameters() })
+    public TestNethermindModule(IConfigProvider configProvider) : this(configProvider, new ChainSpec()
+    {
+        Parameters = new ChainParameters(),
+        Allocations = new Dictionary<Address, ChainSpecAllocation>(),
+        Genesis = Build.A.Block
+            .WithBlobGasUsed(0) // Non null post 4844
+            .TestObject
+    })
     {
     }
 
@@ -45,6 +56,6 @@ public class TestNethermindModule(IConfigProvider configProvider, ChainSpec chai
         builder
             .AddModule(new PseudoNethermindModule(chainSpec, configProvider, LimboLogs.Instance))
             .AddModule(new TestEnvironmentModule(TestItem.PrivateKeyA, Random.Shared.Next().ToString()))
-            .AddSingleton<ISpecProvider>(new TestSpecProvider(Cancun.Instance));
+            .AddSingleton<ISpecProvider>(_ => new TestSpecProvider(_releaseSpec ?? Osaka.Instance));
     }
 }

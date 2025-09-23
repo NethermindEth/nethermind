@@ -1,13 +1,13 @@
 // SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using System.Threading.Tasks;
-using Nethermind.Consensus.Processing;
 using Nethermind.Core.ServiceStopper;
 using Nethermind.Evm.State;
 using Nethermind.Evm.TransactionProcessing;
 
-namespace Nethermind.Api;
+namespace Nethermind.Consensus.Processing;
 
 /// <summary>
 /// These classes share the same IWorldState as the main block validation pipeline.
@@ -23,6 +23,12 @@ public interface IMainProcessingContext : IStoppableService
     IBlockProcessor BlockProcessor { get; }
     IBlockchainProcessor BlockchainProcessor { get; }
     IWorldState WorldState { get; }
+    IGenesisLoader GenesisLoader { get; }
+
+    /// <summary>
+    /// Fired after a transaction has been processed (even if inside the block).
+    /// </summary>
+    event EventHandler<TxProcessedEventArgs> TransactionProcessed;
 
     Task IStoppableService.StopAsync() => BlockchainProcessor.StopAsync();
     string IStoppableService.Description => "blockchain processor";

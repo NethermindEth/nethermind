@@ -14,6 +14,7 @@ using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Test.Blockchain;
 using Nethermind.Core.Test.Builders;
+using Nethermind.Core.Test.Container;
 using Nethermind.Evm;
 using Nethermind.Facade.Eth.RpcTransaction;
 using Nethermind.Init;
@@ -124,13 +125,11 @@ public partial class EthRpcModuleTests
     {
         OverridableReleaseSpec releaseSpec = new(London.Instance) { Eip1559TransitionBlock = 1, IsEip3607Enabled = true };
         TestSpecProvider specProvider = new(releaseSpec) { AllowTestChainOverride = false };
-        using Context ctx = await Context.Create(specProvider, configurer: builder => builder.Intercept<TestBlockchain.Configuration>((cfg) =>
-        {
-            cfg.InitialStateMutator = (worldState) =>
+        using Context ctx = await Context.Create(specProvider, configurer: builder => builder
+            .WithGenesisPostProcessor((block, state) =>
             {
-                worldState.InsertCode(TestItem.AddressA, "H"u8.ToArray(), London.Instance);
-            };
-        }));
+                state.InsertCode(TestItem.AddressA, "H"u8.ToArray(), London.Instance);
+            }));
 
         Transaction tx = Build.A.Transaction.SignedAndResolved(TestItem.PrivateKeyA).TestObject;
         LegacyTransactionForRpc transaction = new(tx, 1, Keccak.Zero, 1L)

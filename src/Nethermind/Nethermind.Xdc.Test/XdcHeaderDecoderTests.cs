@@ -6,9 +6,6 @@ using Nethermind.Serialization.Rlp;
 
 using Nethermind.Core.Test.Builders;
 using Nethermind.Core.Extensions;
-using Nethermind.Crypto;
-using Nethermind.Xdc;
-using Nethermind.Core.Crypto;
 
 namespace Nethermind.Xdc.Test
 {
@@ -87,7 +84,7 @@ namespace Nethermind.Xdc.Test
         {
             var decoder = new XdcHeaderDecoder();
 
-            BlockHeader? unencoded = decoder.Decode(new RlpStream(Bytes.FromHexString(hexRlp)));
+            XdcBlockHeader? unencoded = (XdcBlockHeader?)decoder.Decode(new RlpStream(Bytes.FromHexString(hexRlp)));
 
             string encoded = decoder.Encode(unencoded).ToString();
 
