@@ -122,9 +122,15 @@ internal static partial class EvmInstructions
         if (outOfGas || !EvmCalculations.UpdateGas(gasCost, ref gasAvailable))
             goto OutOfGas;
 
+        if (Out.TraceShowOpcodes && Out.IsTargetBlock)
+            Out.Log($"evm CREATE gasAvailable={gasAvailable} gasCos={gasCost} initCodeLength={initCodeLength} eip3860={spec.IsEip3860Enabled}");
+
         // Update memory gas cost based on the required memory expansion for the init code.
         if (!EvmCalculations.UpdateMemoryCost(vm.EvmState, ref gasAvailable, in memoryPositionOfInitCode, in initCodeLength))
             goto OutOfGas;
+
+        if (Out.TraceShowOpcodes && Out.IsTargetBlock)
+            Out.Log($"evm CREATE after memoryCost gasAvailable={gasAvailable}");
 
         // Verify call depth does not exceed the maximum allowed. If exceeded, return early with empty data.
         // This guard ensures we do not create nested contract calls beyond EVM limits.
@@ -166,6 +172,9 @@ internal static partial class EvmInstructions
         long callGas = spec.Use63Over64Rule ? gasAvailable - gasAvailable / 64L : gasAvailable;
         if (!EvmCalculations.UpdateGas(callGas, ref gasAvailable))
             goto OutOfGas;
+
+        if (Out.TraceShowOpcodes && Out.IsTargetBlock)
+            Out.Log($"evm CREATE after Use63Over64Rule gasAvailable={gasAvailable} callGas={callGas}");
 
         // Compute the contract address:
         // - For CREATE: based on the executing account and its current nonce.
@@ -211,6 +220,9 @@ internal static partial class EvmInstructions
 
         // Deduct the transfer value from the executing account's balance.
         state.SubtractFromBalance(env.ExecutingAccount, value, spec);
+
+        if (Out.TraceShowOpcodes && Out.IsTargetBlock)
+            Out.Log($"evm CREATE before return gasAvailable={gasAvailable} callGas={callGas}");
 
         // Construct a new execution environment for the contract creation call.
         // This environment sets up the call frame for executing the contract's initialization code.

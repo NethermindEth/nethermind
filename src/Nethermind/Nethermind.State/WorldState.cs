@@ -9,6 +9,7 @@ using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Eip2930;
+using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.Evm.State;
 using Nethermind.Evm.Tracing.State;
@@ -47,6 +48,9 @@ namespace Nethermind.State
             }
             private set
             {
+                if (Out.IsTargetBlock)
+                    Out.Log($"state set root={value}");
+
                 _stateProvider.StateRoot = value;
                 _persistentStorageProvider.StateRoot = value;
             }
@@ -130,6 +134,8 @@ namespace Nethermind.State
         }
         public void Set(in StorageCell storageCell, byte[] newValue)
         {
+            if (Out.IsTargetBlock)
+                Out.Log($"state[{storageCell.Address}]", storageCell.Index.ToValueHash().ToString(), newValue.PadLeft(32).ToHexString(withZeroX: true));
             DebugGuardInScope();
             _persistentStorageProvider.Set(storageCell, newValue);
         }
@@ -140,6 +146,8 @@ namespace Nethermind.State
         }
         public void SetTransientState(in StorageCell storageCell, byte[] newValue)
         {
+            if (Out.IsTargetBlock)
+                Out.Log($"state-t[{storageCell.Address}]", storageCell.Index.ToValueHash().ToString(), newValue.PadLeft(32).ToHexString(withZeroX: true));
             DebugGuardInScope();
             _transientStorageProvider.Set(storageCell, newValue);
         }
@@ -179,37 +187,51 @@ namespace Nethermind.State
         }
         public void DeleteAccount(Address address)
         {
+            if (Out.IsTargetBlock)
+                Out.Log("account", address.ToString(), "deleted");
             DebugGuardInScope();
             _stateProvider.DeleteAccount(address);
         }
         public void CreateAccount(Address address, in UInt256 balance, in UInt256 nonce = default)
         {
+            if (Out.IsTargetBlock)
+                Out.Log("account", address.ToString(), $"created[b={balance}, n={nonce}]");
             DebugGuardInScope();
             _stateProvider.CreateAccount(address, balance, nonce);
         }
 
         public void CreateEmptyAccountIfDeleted(Address address)
         {
+            if (Out.IsTargetBlock)
+                Out.Log("account", address.ToString(), "created-if-deleted");
             _stateProvider.CreateEmptyAccountIfDeletedOrNew(address);
         }
 
         public bool InsertCode(Address address, in ValueHash256 codeHash, ReadOnlyMemory<byte> code, IReleaseSpec spec, bool isGenesis = false)
         {
+            if (Out.IsTargetBlock)
+                Out.Log("code", address.ToString(), codeHash.ToString());
             DebugGuardInScope();
             return _stateProvider.InsertCode(address, codeHash, code, spec, isGenesis);
         }
         public void AddToBalance(Address address, in UInt256 balanceChange, IReleaseSpec spec)
         {
+            if (Out.IsTargetBlock)
+                Out.Log("account", address.ToString(), $"balance+={balanceChange}");
             DebugGuardInScope();
             _stateProvider.AddToBalance(address, balanceChange, spec);
         }
         public bool AddToBalanceAndCreateIfNotExists(Address address, in UInt256 balanceChange, IReleaseSpec spec)
         {
+            if (Out.IsTargetBlock)
+                Out.Log("account", address.ToString(), $"balance+={balanceChange}, create-if-not-exists");
             DebugGuardInScope();
             return _stateProvider.AddToBalanceAndCreateIfNotExists(address, balanceChange, spec);
         }
         public void SubtractFromBalance(Address address, in UInt256 balanceChange, IReleaseSpec spec)
         {
+            if (Out.IsTargetBlock)
+                Out.Log("account", address.ToString(), $"balance-={balanceChange}");
             DebugGuardInScope();
             _stateProvider.SubtractFromBalance(address, balanceChange, spec);
         }
@@ -220,11 +242,15 @@ namespace Nethermind.State
         }
         public void IncrementNonce(Address address, UInt256 delta)
         {
+            if (Out.IsTargetBlock)
+                Out.Log("account", address.ToString(), $"nonce+={delta}");
             DebugGuardInScope();
             _stateProvider.IncrementNonce(address, delta);
         }
         public void DecrementNonce(Address address, UInt256 delta)
         {
+            if (Out.IsTargetBlock)
+                Out.Log("account", address.ToString(), $"nonce-={delta}");
             DebugGuardInScope();
             _stateProvider.DecrementNonce(address, delta);
         }

@@ -35,6 +35,8 @@ namespace Nethermind.Consensus.Processing
 
                 for (int i = 0; i < block.Transactions.Length; i++)
                 {
+                    Out.CurrentTransactionIndex = i;
+
                     Transaction currentTx = block.Transactions[i];
                     ProcessTransaction(block, currentTx, i, receiptsTracer, processingOptions);
                 }
@@ -44,6 +46,8 @@ namespace Nethermind.Consensus.Processing
             protected virtual void ProcessTransaction(Block block, Transaction currentTx, int index, BlockReceiptsTracer receiptsTracer, ProcessingOptions processingOptions)
             {
                 TransactionResult result = transactionProcessor.ProcessTransaction(currentTx, receiptsTracer, processingOptions, stateProvider);
+                if (Out.IsTargetBlock)
+                    Out.Log($"transaction code={result.EvmExceptionType} result={result.Error}");
                 if (!result) ThrowInvalidTransactionException(result, block.Header, currentTx, index);
                 transactionProcessedEventHandler?.OnTransactionProcessed(new TxProcessedEventArgs(index, currentTx, block.Header, receiptsTracer.TxReceipts[index]));
             }

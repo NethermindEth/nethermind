@@ -74,7 +74,12 @@ public class BranchProcessor(
 
         // Start prewarming as early as possible
         WaitForCacheClear();
+
         IReleaseSpec spec = specProvider.GetSpec(suggestedBlock.Header);
+
+        if (Out.IsTargetBlock)
+            Out.Log($"arbos spec eip3860={spec.IsEip3860Enabled}");
+
         (CancellationTokenSource? prewarmCancellation, Task? preWarmTask)
             = PreWarmTransactions(suggestedBlock, baseBlock, spec);
 

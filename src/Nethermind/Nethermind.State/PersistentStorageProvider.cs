@@ -14,6 +14,7 @@ using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Threading;
+using Nethermind.Evm.State;
 using Nethermind.Evm.Tracing.State;
 using Nethermind.Int256;
 using Nethermind.Logging;
@@ -646,6 +647,10 @@ internal sealed class PersistentStorageProvider : PartialStorageProviderBase
                     {
                         BlockChange[kvp.Key] = new(after, after);
                         StorageTree.Set(kvp.Key, after);
+
+                        if (Out.TraceShowDeepstate && Out.IsTargetBlock)
+                            Out.Log($"deepstate[{_address}]", kvp.Key.ToValueHash().ToString(), after.PadLeft(32).ToHexString(withZeroX: true));
+
                         writes++;
                     }
                     else
@@ -665,6 +670,9 @@ internal sealed class PersistentStorageProvider : PartialStorageProviderBase
                     if (!Bytes.AreEqual(kvp.Value.Before, after) || kvp.Value.IsInitialValue)
                     {
                         BlockChange[kvp.Key] = new(after, after);
+
+                        if (Out.TraceShowDeepstate && Out.IsTargetBlock)
+                            Out.Log($"deepstate[{_address}]", kvp.Key.ToValueHash().ToString(), after.PadLeft(32).ToHexString(withZeroX: true));
 
                         StorageTree.ComputeKeyWithLookup(kvp.Key, keyBuf);
                         bulkWrite.Add(StorageTree.CreateBulkSetEntry(new ValueHash256(keyBuf), after));
