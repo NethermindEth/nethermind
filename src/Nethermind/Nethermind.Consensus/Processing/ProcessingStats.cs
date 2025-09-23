@@ -69,6 +69,9 @@ namespace Nethermind.Consensus.Processing
         private long _contractsAnalyzed;
         private long _cachedContractsUsed;
 
+        private long _startStylusTransactions;
+        private long _stylusTransactions;
+
         public ProcessingStats(IStateReader stateReader, ILogger logger)
         {
             _executeFromThreadPool = ExecuteFromThreadPool;
@@ -94,6 +97,7 @@ namespace Nethermind.Consensus.Processing
             _startCreateOps = Evm.Metrics.ThreadLocalCreates;
             _startSelfDestructOps = Evm.Metrics.ThreadLocalSelfDestructs;
             _startOpCodes = Evm.Metrics.ThreadLocalOpCodes;
+            _startStylusTransactions = Evm.Metrics.StylusTransactions;
         }
 
         public void UpdateStats(Block? block, BlockHeader? baseBlock, long blockProcessingTimeInMicros)
@@ -124,6 +128,9 @@ namespace Nethermind.Consensus.Processing
             blockData.CurrentContractsAnalyzed = Evm.Metrics.ThreadLocalContractsAnalysed;
             blockData.CurrentCreatesOps = Evm.Metrics.ThreadLocalCreates;
             blockData.CurrentSelfDestructOps = Evm.Metrics.ThreadLocalSelfDestructs;
+
+            blockData.StartStylusTransactions = _startStylusTransactions;
+            blockData.CurrentStylusTransactions = Evm.Metrics.StylusTransactions;
 
             CaptureReportData(blockData);
         }
@@ -202,6 +209,7 @@ namespace Nethermind.Consensus.Processing
             long chunkCreates = (_createOps += data.CurrentCreatesOps - data.StartCreateOps);
             long contractsAnalysed = (_contractsAnalyzed += data.CurrentContractsAnalyzed - data.StartContractsAnalyzed);
             long cachedContractsUsed = (_cachedContractsUsed += data.CurrentCachedContractsUsed - data.StartCachedContractsUsed);
+            long stylusTransactions = (_stylusTransactions += data.CurrentStylusTransactions - data.StartStylusTransactions);
 
             Address beneficiary = block.Header.GasBeneficiary ?? Address.Zero;
             Transaction lastTx = txs.Length > 0 ? txs[^1] : null;
@@ -272,6 +280,7 @@ namespace Nethermind.Consensus.Processing
             _createOps = 0;
             _contractsAnalyzed = 0;
             _cachedContractsUsed = 0;
+            _stylusTransactions = 0;
 
             double mgasPerSecond;
             if (chunkMicroseconds == 0)
@@ -317,7 +326,7 @@ namespace Nethermind.Consensus.Processing
             {
                 if (chunkBlocks > 1)
                 {
-                    _logger.Info($"Processed    {block.Number - chunkBlocks + 1,10}...{block.Number,9}   | {chunkMs,10:N1} ms  | slot    {runMs,11:N0} ms |{blockGas}");
+                    _logger.Info($"Processed    {block.Number - chunkBlocks + 1,10}...{block.Number,9}   | {chunkMs,10:N1} ms  | stylus   {stylusTransactions,8:N0} txs{(stylusTransactions > 2 ? "✨" : "  ")}|{blockGas}");
                 }
                 else
                 {
@@ -344,7 +353,7 @@ namespace Nethermind.Consensus.Processing
                         < 2000 => orangeText,
                         _ => redText
                     };
-                    _logger.Info($"Processed          {block.Number,10}         | {chunkColor}{chunkMs,10:N1}{resetColor} ms  | slot    {runMs,11:N0} ms |{blockGas}");
+                    _logger.Info($"Processed          {block.Number,10}         | {chunkColor}{chunkMs,10:N1}{resetColor} ms  | stylus   {stylusTransactions,8:N0} txs{(stylusTransactions > 10 ? "✨" : "  ")}|{blockGas}");
                 }
 
                 string mgasPerSecondColor = (mgasPerSecond / (block.GasLimit / 1_000_000.0)) switch
@@ -468,6 +477,9 @@ namespace Nethermind.Consensus.Processing
             public long StartCallOps;
             public long StartSStoreOps;
             public long StartSLoadOps;
+
+            public long StartStylusTransactions;
+            public long CurrentStylusTransactions;
         }
     }
 }
