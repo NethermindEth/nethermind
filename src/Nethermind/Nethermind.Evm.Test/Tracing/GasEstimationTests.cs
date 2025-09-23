@@ -310,7 +310,7 @@ namespace Nethermind.Evm.Test.Tracing
             {
                 using (Assert.EnterMultipleScope())
                 {
-                    Assert.That(err, Is.EqualTo("Cannot estimate gas, gas spent exceeded transaction and block gas limit"));
+                    Assert.That(err, Is.EqualTo("Cannot estimate gas, gas spent exceeded transaction and block gas limit or transaction gas limit cap"));
                     Assert.That(result, Is.EqualTo(0));
                 }
             }
@@ -540,7 +540,7 @@ namespace Nethermind.Evm.Test.Tracing
             long estimate = testEnvironment.estimator.Estimate(tx, block.Header, tracer, out string? err);
 
             estimate.Should().Be(0, "Should return 0 when gas spent exceeds limits");
-            err.Should().Be("Cannot estimate gas, gas spent exceeded transaction and block gas limit",
+            err.Should().Be("Cannot estimate gas, gas spent exceeded transaction and block gas limit or transaction gas limit cap",
                 "Should provide gas limit exceeded error message");
         }
 
