@@ -7,6 +7,7 @@ using System.Collections.Generic;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Eip2930;
+using Nethermind.Core.Extensions;
 using Nethermind.Int256;
 
 namespace Nethermind.Evm;
@@ -35,7 +36,12 @@ public struct StackAccessTracker() : IDisposable
         => _trackingState.AccessedAddresses.Add(address);
 
     public readonly bool WarmUp(in StorageCell storageCell)
-        => _trackingState.AccessedStorageCells.Add(storageCell);
+    {
+        if (Out.IsTargetBlock)
+            Out.Log($"state journal accesslist add address={storageCell.Address} slot={storageCell.Index.ToValueHash().ToString()}");
+
+        return _trackingState.AccessedStorageCells.Add(storageCell);
+    }
 
     public readonly bool WarmUpLargeContract(Address address)
         => _trackingState.LargeContractList.Add(address);
@@ -49,6 +55,9 @@ public struct StackAccessTracker() : IDisposable
                 _trackingState.AccessedAddresses.Add(address);
                 foreach (UInt256 storage in storages)
                 {
+                    if (Out.IsTargetBlock)
+                        Out.Log($"state journal accesslist add address={address} slot={storage.ToValueHash().ToString()}");
+
                     _trackingState.AccessedStorageCells.Add(new StorageCell(address, in storage));
                 }
             }
@@ -67,6 +76,9 @@ public struct StackAccessTracker() : IDisposable
 
     public void TakeSnapshot()
     {
+        if (Out.IsTargetBlock)
+            Out.Log("state journal accesslist snapshot");
+
         _addressesSnapshots = _trackingState.AccessedAddresses.TakeSnapshot();
         _storageKeysSnapshots = _trackingState.AccessedStorageCells.TakeSnapshot();
         _destroyListSnapshots = _trackingState.DestroyList.TakeSnapshot();
@@ -76,6 +88,9 @@ public struct StackAccessTracker() : IDisposable
 
     public readonly void Restore()
     {
+        if (Out.IsTargetBlock)
+            Out.Log("state journal accesslist revert");
+
         _trackingState.AccessedAddresses.Restore(_addressesSnapshots);
         _trackingState.AccessedStorageCells.Restore(_storageKeysSnapshots);
         _trackingState.DestroyList.Restore(_destroyListSnapshots);
@@ -110,6 +125,9 @@ public struct StackAccessTracker() : IDisposable
 
         private void Clear()
         {
+            if (Out.IsTargetBlock)
+                Out.Log("state journal accesslist clear");
+
             AccessedAddresses.Clear();
             AccessedStorageCells.Clear();
             Logs.Clear();

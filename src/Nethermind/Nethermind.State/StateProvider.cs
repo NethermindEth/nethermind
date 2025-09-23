@@ -543,12 +543,18 @@ namespace Nethermind.State
                         {
                             if (releaseSpec.IsEip158Enabled && change.Account.IsEmpty && !isGenesis)
                             {
+                                if (Out.IsTargetBlock && Out.TraceShowStateRootChange)
+                                    Out.Log($"s=commit update-delete address={change.Address}");
+
                                 if (isTracing) TraceRemoveEmpty(change);
                                 SetState(change.Address, null);
                                 trace?.AddToTrace(change.Address, null);
                             }
                             else
                             {
+                                if (Out.IsTargetBlock && Out.TraceShowStateRootChange)
+                                    Out.Log($"s=commit update address={change.Address} balance={change.Account.Balance} storageRoot={change.Account.StorageRoot} nonce={change.Account.Nonce}");
+
                                 if (isTracing) TraceUpdate(change);
                                 SetState(change.Address, change.Account);
                                 trace?.AddToTrace(change.Address, change.Account);
@@ -560,6 +566,9 @@ namespace Nethermind.State
                         {
                             if (!releaseSpec.IsEip158Enabled || !change.Account.IsEmpty || isGenesis)
                             {
+                                if (Out.IsTargetBlock && Out.TraceShowStateRootChange)
+                                    Out.Log($"s=commit new address={change.Address} balance={change.Account.Balance} storageRoot={change.Account.StorageRoot} nonce={change.Account.Nonce}");
+
                                 if (isTracing) TraceCreate(change);
                                 SetState(change.Address, change.Account);
                                 trace?.AddToTrace(change.Address, change.Account);
@@ -569,6 +578,9 @@ namespace Nethermind.State
                         }
                     case ChangeType.RecreateEmpty:
                         {
+                            if (Out.IsTargetBlock && Out.TraceShowStateRootChange)
+                                Out.Log($"s=commit recreate address={change.Address} balance={change.Account.Balance} storageRoot={change.Account.StorageRoot} nonce={change.Account.Nonce}");
+
                             if (isTracing) TraceCreate(change);
                             SetState(change.Address, change.Account);
                             trace?.AddToTrace(change.Address, change.Account);
@@ -591,6 +603,9 @@ namespace Nethermind.State
 
                             if (!wasItCreatedNow)
                             {
+                                if (Out.IsTargetBlock && Out.TraceShowStateRootChange)
+                                    Out.Log($"s=commit delete address={change.Address}");
+
                                 SetState(change.Address, null);
                                 trace?.AddToTrace(change.Address, null);
                             }
@@ -682,9 +697,15 @@ namespace Nethermind.State
             int writes = 0;
             int skipped = 0;
 
+            if (Out.IsTargetBlock)
+                Out.Log($"flushToTree start _blockChanges.Count={_blockChanges.Count}");
+
             foreach (AddressAsKey key in _blockChanges.Keys)
             {
                 ref ChangeTrace change = ref CollectionsMarshal.GetValueRefOrNullRef(_blockChanges, key);
+                if (Out.IsTargetBlock)
+                    Out.Log($"flushToTree addr={key} before={change.Before != null} after={change.After != null} equal={change.Before == change.After}");
+
                 if (change.Before != change.After)
                 {
                     change.Before = change.After;
@@ -696,6 +717,9 @@ namespace Nethermind.State
                     skipped++;
                 }
             }
+
+            if (Out.IsTargetBlock)
+                Out.Log($"flushToTree done writes={writes} skipped={skipped}");
 
             if (writes > 0)
                 Metrics.IncrementStateTreeWrites(writes);
@@ -726,6 +750,9 @@ namespace Nethermind.State
 
         internal void SetState(Address address, Account? account)
         {
+            if (Out.IsTargetBlock)
+                Out.Log($"setState addr={address} account={account != null} storageRoot={account?.StorageRoot}");
+
             ref ChangeTrace accountChanges = ref CollectionsMarshal.GetValueRefOrAddDefault(_blockChanges, address, out _);
             accountChanges.After = account;
             _needsStateRootUpdate = true;
