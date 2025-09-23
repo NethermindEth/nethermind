@@ -76,8 +76,8 @@ public class StatelessBlockProcessingEnv(
         IKeyValueStore db = new MemDb();
         foreach (var stateElement in witness.State)
         {
-            var hash = Keccak.Compute(stateElement);
-            db.PutSpan(hash.Bytes, stateElement);
+            var hash = ValueKeccak.Compute(stateElement).Bytes;
+            db.PutSpan(hash, stateElement);
         }
 
         NodeStorage nodeStorage = new(db, INodeStorage.KeyScheme.Hash);
