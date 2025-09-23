@@ -146,6 +146,7 @@ namespace Nethermind.Db
         {
             (IColumnsDb<LogIndexColumns> root, IDb meta) = CreateDb();
 
+            // TODO: treat null version as an empty DB
             var version = meta.Get(SpecialKey.Version) is { Length: > 0 } versionBytes ? versionBytes[0] : 0;
             if (version == Version)
                 return root;
