@@ -781,6 +781,8 @@ public unsafe partial class VirtualMachine(
         // Execute the precompile operation with the current state.
         CallResult callResult = RunPrecompile(currentState);
 
+        Out.Log($"precompile gasLeft={callResult.StateToExecute?.GasAvailable}");
+
         // If the precompile did not succeed, handle the failure conditions.
         if (!callResult.PrecompileSuccess.Value)
         {
@@ -1243,6 +1245,9 @@ public unsafe partial class VirtualMachine(
                     // Is executed using fast delegate* via calli (see: C# function pointers https://learn.microsoft.com/en-us/dotnet/csharp/language-reference/unsafe-code#function-pointers)
                     exceptionType = opcodeMethod(this, ref stack, ref gasAvailable, ref programCounter);
                 }
+
+                if (Environment.GetEnvironmentVariable("TRACE_SHOW_OPCODES") == "true")
+                    Out.LogFast($"pc={programCounter} i={instruction} ga={gasAvailable} ex={exceptionType}");
 
                 // If gas is exhausted, jump to the out-of-gas handler.
                 if (gasAvailable < 0)
