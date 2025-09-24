@@ -3,6 +3,7 @@
 
 using System.Collections.Generic;
 using System.Diagnostics;
+using System.Diagnostics.CodeAnalysis;
 using System.Threading;
 using Nethermind.Blockchain.Find;
 using Nethermind.Core;
@@ -25,45 +26,48 @@ namespace Nethermind.JsonRpc.Modules.Eth
         {
             private bool NoBaseFee { get; set; }
 
-            private ResultWrapper<Transaction> Fail(string error) => ResultWrapper<Transaction>.Fail(error, ErrorCodes.InvalidInput);
-
-            protected override ResultWrapper<Transaction> Prepare(TransactionForRpc call)
+            protected override string? Validate(TransactionForRpc call)
             {
                 if (call is LegacyTransactionForRpc legacyTransaction)
                 {
                     if (legacyTransaction.To is null && legacyTransaction.Input is null or { Length: 0 })
-                        return Fail(ContractCreationWithoutDataError);
+                        return ContractCreationWithoutDataError;
                 }
 
                 if (call is EIP1559TransactionForRpc eip1559Transaction)
                 {
                     if (eip1559Transaction.GasPrice != null)
-                        return Fail(GasPriceInEip1559Error);
+                        return GasPriceInEip1559Error;
 
                     if (eip1559Transaction.MaxFeePerGas is not null && eip1559Transaction.MaxFeePerGas == 0)
-                        return Fail(ZeroMaxFeePerGasError);
+                        return ZeroMaxFeePerGasError;
 
                     if (eip1559Transaction.MaxFeePerGas < eip1559Transaction.MaxPriorityFeePerGas)
-                        return Fail(MaxFeePerGasSmallerThenMaxPriorityFeePerGasError(
+                        return MaxFeePerGasSmallerThenMaxPriorityFeePerGasError(
                             eip1559Transaction.MaxFeePerGas,
-                            eip1559Transaction.MaxPriorityFeePerGas));
+                            eip1559Transaction.MaxPriorityFeePerGas);
                 }
 
                 if (call is BlobTransactionForRpc blobTransaction)
                 {
                     if (blobTransaction.BlobVersionedHashes is null || blobTransaction.BlobVersionedHashes.Length == 0)
-                        return Fail(AtLeastOneBlobInBlobTransactionError);
+                        return AtLeastOneBlobInBlobTransactionError;
 
                     if (blobTransaction.To is null)
-                        return Fail(MissingToInBlobTxError);
+                        return MissingToInBlobTxError;
 
                     if (blobTransaction.MaxFeePerBlobGas is not null && blobTransaction.MaxFeePerBlobGas == 0)
-                        return Fail(ZeroMaxFeePerBlobGasError);
+                        return ZeroMaxFeePerBlobGasError;
                 }
 
+                return null;
+            }
+
+            protected override Transaction Prepare(TransactionForRpc call)
+            {
                 var tx = call.ToTransaction();
                 tx.ChainId = _blockchainBridge.GetChainId();
-                return ResultWrapper<Transaction>.Success(tx);
+                return tx;
             }
 
             protected override ResultWrapper<TResult> Execute(BlockHeader header, Transaction tx, Dictionary<Address, AccountOverride>? stateOverride, CancellationToken token)

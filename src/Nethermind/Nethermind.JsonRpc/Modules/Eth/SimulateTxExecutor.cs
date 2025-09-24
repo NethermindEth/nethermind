@@ -25,7 +25,7 @@ public class SimulateTxExecutor<TTrace>(IBlockchainBridge blockchainBridge, IBlo
     private long _gasCapBudget = rpcConfig.GasCap ?? long.MaxValue;
     private readonly ulong _secondsPerSlot = secondsPerSlot ?? new BlocksConfig().SecondsPerSlot;
 
-    protected override ResultWrapper<SimulatePayload<TransactionWithSourceDetails>> Prepare(SimulatePayload<TransactionForRpc> call)
+    protected override SimulatePayload<TransactionWithSourceDetails> Prepare(SimulatePayload<TransactionForRpc> call)
     {
         SimulatePayload<TransactionWithSourceDetails> result = new()
         {
@@ -72,7 +72,7 @@ public class SimulateTxExecutor<TTrace>(IBlockchainBridge blockchainBridge, IBlo
             }).ToList()
         };
 
-        return ResultWrapper<SimulatePayload<TransactionWithSourceDetails>>.Success(result);
+        return result;
     }
 
     private static TransactionForRpc UpdateTxType(TransactionForRpc rpcTransaction)
@@ -190,8 +190,8 @@ public class SimulateTxExecutor<TTrace>(IBlockchainBridge blockchainBridge, IBlo
         }
 
         using CancellationTokenSource timeout = _rpcConfig.BuildTimeoutCancellationToken();
-        ResultWrapper<SimulatePayload<TransactionWithSourceDetails>> toProcess = Prepare(call);
-        return Execute(header.Clone(), toProcess.Data, stateOverride, timeout.Token);
+        SimulatePayload<TransactionWithSourceDetails> toProcess = Prepare(call);
+        return Execute(header.Clone(), toProcess, stateOverride, timeout.Token);
     }
 
     protected override ResultWrapper<IReadOnlyList<SimulateBlockResult<TTrace>>> Execute(
