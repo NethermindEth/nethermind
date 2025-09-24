@@ -194,8 +194,6 @@ namespace Nethermind.Evm.TransactionProcessing
             PayFees(tx, header, spec, tracer, in substate, spentGas.SpentGas, premiumPerGas, blobBaseFee, statusCode);
             tx.SpentGas = spentGas.SpentGas;
 
-            Out.Log($"evm statusCode={statusCode} spentGas={spentGas.SpentGas}");
-
             // Finalize
             if (restore)
             {
@@ -672,6 +670,8 @@ namespace Nethermind.Evm.TransactionProcessing
                 Metrics.IncrementOpCodes(VirtualMachine.OpCodeCount);
                 gasAvailable = state.GasAvailable;
             }
+
+            Out.Log($"evm finished gasAvailable={gasAvailable} isError={substate.IsError} error={substate.Error}");
 
             if (tracer.IsTracingAccess)
             {
