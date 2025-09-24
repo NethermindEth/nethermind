@@ -22,7 +22,7 @@ using Nethermind.Specs;
 using Nethermind.Specs.Forks;
 using Nethermind.Specs.Test;
 using Nethermind.Evm.State;
-using Nethermind.Trie.Pruning;
+using Nethermind.Int256;
 using Newtonsoft.Json.Linq;
 using NUnit.Framework;
 
@@ -192,7 +192,7 @@ public partial class EthRpcModuleTests
         };
         string serialized =
             await ctx.Test.TestEthRpc("eth_call", transaction, "latest");
-        serialized.Should().BeEquivalentTo("{\"jsonrpc\":\"2.0\",\"error\":{\"code\":-32000,\"message\":\"Contract creation without any data provided.\"},\"id\":67}");
+        serialized.Should().BeEquivalentTo("{\"jsonrpc\":\"2.0\",\"error\":{\"code\":-32000,\"message\":\"Contract creation without any data provided\"},\"id\":67}");
     }
 
     [Test]
@@ -434,7 +434,142 @@ public partial class EthRpcModuleTests
 
         Assert.That(
             serialized, Is.EqualTo("{\"jsonrpc\":\"2.0\",\"result\":\"0x\",\"id\":67}"));
+    }
 
+    [Test]
+    public async Task Eth_call_contract_creation()
+    {
+        using Context ctx = await Context.Create();
+        byte[] code = Prepare.EvmCode
+            .Op(Instruction.STOP)
+            .Done;
+        LegacyTransactionForRpc transaction = new(Build.A.Transaction
+            .WithData(code)
+            .WithGasLimit(100000)
+            .SignedAndResolved(TestItem.PrivateKeyA)
+            .TestObject);
+        transaction.To = null;
+        string serialized = await ctx.Test.TestEthRpc("eth_call", transaction);
+
+        Assert.That(
+            serialized, Is.EqualTo("{\"jsonrpc\":\"2.0\",\"result\":\"0x\",\"id\":67}"));
+    }
+
+    [TestCase(null)]
+    [TestCase(new byte[0])]
+    public async Task Eth_call_to_is_null_and_not_contract_creation(byte[]? data)
+    {
+        using Context ctx = await Context.Create();
+        LegacyTransactionForRpc transaction = new(Build.A.Transaction
+            .WithGasLimit(100000)
+            .SignedAndResolved(TestItem.PrivateKeyA)
+            .TestObject);
+        transaction.To = null;
+        transaction.Data = data;
+        string serialized = await ctx.Test.TestEthRpc("eth_call", transaction);
+
+        Assert.That(
+            serialized, Is.EqualTo("{\"jsonrpc\":\"2.0\",\"error\":{\"code\":-32000,\"message\":\"contract creation without any data provided\"},\"id\":67}"));
+    }
+
+    [Test]
+    public async Task Eth_call_gas_price_in_eip1559_tx()
+    {
+        using Context ctx = await Context.Create();
+        EIP1559TransactionForRpc transaction = new(Build.A.Transaction
+            .WithGasLimit(100000)
+            .To(TestItem.AddressA)
+            .SignedAndResolved(TestItem.PrivateKeyA)
+            .TestObject);
+        transaction.GasPrice = new UInt256(1);
+        string serialized = await ctx.Test.TestEthRpc("eth_call", transaction);
+
+        Assert.That(
+            serialized, Is.EqualTo("{\"jsonrpc\":\"2.0\",\"error\":{\"code\":-32000,\"message\":\"both gasPrice and (maxFeePerGas or maxPriorityFeePerGas) specified\"},\"id\":67}"));
+    }
+
+    [TestCase(true)]
+    [TestCase(false)]
+    public async Task Eth_call_no_blobs_in_blob_tx(bool isNull)
+    {
+        using Context ctx = await Context.Create();
+        BlobTransactionForRpc transaction = new(Build.A.Transaction
+            .WithGasLimit(100000)
+            .WithBlobVersionedHashes(isNull ? null : [])
+            .To(TestItem.AddressA)
+            .SignedAndResolved(TestItem.PrivateKeyA)
+            .TestObject);
+        string serialized = await ctx.Test.TestEthRpc("eth_call", transaction);
+
+        Assert.That(
+            serialized, Is.EqualTo("{\"jsonrpc\":\"2.0\",\"error\":{\"code\":-32000,\"message\":\"need at least 1 blob for a blob transaction\"},\"id\":67}"));
+    }
+
+    [Test]
+    public async Task Eth_call_maxFeePerBlobGas_is_zero()
+    {
+        using Context ctx = await Context.Create();
+        BlobTransactionForRpc transaction = new(Build.A.Transaction
+            .WithGasLimit(100000)
+            .WithBlobVersionedHashes([[]])
+            .SignedAndResolved(TestItem.PrivateKeyA)
+            .TestObject);
+        string serialized = await ctx.Test.TestEthRpc("eth_call", transaction);
+
+        Assert.That(
+            serialized, Is.EqualTo("{\"jsonrpc\":\"2.0\",\"error\":{\"code\":-32000,\"message\":\"maxFeePerBlobGas, if specified, must be non-zero\"},\"id\":67}"));
+    }
+
+    [Test]
+    public async Task Eth_call_missing_to_in_blob_tx()
+    {
+        using Context ctx = await Context.Create();
+        byte[] code = Prepare.EvmCode
+            .Op(Instruction.STOP)
+            .Done;
+        BlobTransactionForRpc transaction = new(Build.A.Transaction
+            .WithData(code)
+            .WithGasLimit(100000)
+            .WithMaxFeePerBlobGas(1)
+            .WithBlobVersionedHashes([[]])
+            .SignedAndResolved(TestItem.PrivateKeyA)
+            .TestObject);
+        transaction.To = null;
+        string serialized = await ctx.Test.TestEthRpc("eth_call", transaction);
+
+        Assert.That(
+            serialized, Is.EqualTo("{\"jsonrpc\":\"2.0\",\"error\":{\"code\":-32000,\"message\":\"missing \\\"to\\\" in blob transaction\"},\"id\":67}"));
+    }
+
+    [Test]
+    public async Task Eth_call_maxFeePerGas_is_zero()
+    {
+        using Context ctx = await Context.Create();
+        EIP1559TransactionForRpc transaction = new(Build.A.Transaction
+            .WithGasLimit(100000)
+            .SignedAndResolved(TestItem.PrivateKeyA)
+            .TestObject);
+        transaction.MaxFeePerGas = 0;
+        string serialized = await ctx.Test.TestEthRpc("eth_call", transaction);
+
+        Assert.That(
+            serialized, Is.EqualTo("{\"jsonrpc\":\"2.0\",\"error\":{\"code\":-32000,\"message\":\"maxFeePerGas must be non-zero\"},\"id\":67}"));
+    }
+
+    [Test]
+    public async Task Eth_call_maxFeePerGas_smaller_then_maxPriorityFeePerGas()
+    {
+        using Context ctx = await Context.Create();
+        EIP1559TransactionForRpc transaction = new(Build.A.Transaction
+            .WithGasLimit(100000)
+            .SignedAndResolved(TestItem.PrivateKeyA)
+            .TestObject);
+        transaction.MaxFeePerGas = 1;
+        transaction.MaxPriorityFeePerGas = 2;
+        string serialized = await ctx.Test.TestEthRpc("eth_call", transaction);
+
+        Assert.That(
+            serialized, Is.EqualTo("{\"jsonrpc\":\"2.0\",\"error\":{\"code\":-32000,\"message\":\"maxFeePerGas (1) < maxPriorityFeePerGas (2)\"},\"id\":67}"));
     }
 
     private static async Task TestEthCallOutOfGas(Context ctx, long? specifiedGasLimit, long expectedGasLimit)
