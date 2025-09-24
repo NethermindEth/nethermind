@@ -12,14 +12,11 @@ namespace Nethermind.JsonRpc.Modules.DebugModule
         public BlockInfoForRpc(BlockInfo blockInfo)
         {
             BlockHash = blockInfo.BlockHash;
-            TotalDifficulty = blockInfo.TotalDifficulty;
             WasProcessed = blockInfo.WasProcessed;
             IsFinalized = blockInfo.IsFinalized;
         }
 
         public Hash256 BlockHash { get; set; }
-
-        public UInt256 TotalDifficulty { get; set; }
 
         public bool WasProcessed { get; set; }
 
