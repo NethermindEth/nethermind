@@ -31,7 +31,9 @@ public class EIP1559TransactionForRpc : AccessListTransactionForRpc, IFromTransa
     {
         MaxFeePerGas = transaction.MaxFeePerGas;
         MaxPriorityFeePerGas = transaction.MaxPriorityFeePerGas;
-        GasPrice = null;
+        GasPrice = baseFee is not null
+            ? transaction.CalculateEffectiveGasPrice(eip1559Enabled: true, baseFee.Value)
+            : transaction.MaxFeePerGas;
     }
 
     public override Transaction ToTransaction()
