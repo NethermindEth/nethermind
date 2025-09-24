@@ -12,7 +12,7 @@ cd $GITHUB_WORKSPACE/src/Nethermind/Nethermind.Runner
 echo "Building Nethermind"
 echo "  Build timestamp: $2"
 
-dotnet restore
+dotnet restore --locked-mode
 
 for rid in "linux-x64" "linux-arm64" "win-x64" "osx-x64" "osx-arm64"; do
   echo "  Publishing for $rid"

@@ -14,15 +14,15 @@ COPY Directory.*.props .
 COPY nuget.config .
 
 RUN arch=$([ "$TARGETARCH" = "amd64" ] && echo "x64" || echo "$TARGETARCH") && \
-    dotnet add src/Nethermind/Nethermind.Runner package JetBrains.dotMemory.Console.linux-$arch \
-      --package-directory /tmp && \
-    dotnet publish src/Nethermind/Nethermind.Runner -c $BUILD_CONFIG -a $arch -o /publish --sc false \
-      -p:BuildTimestamp=$BUILD_TIMESTAMP -p:Commit=$COMMIT_HASH
+  dotnet add src/Nethermind/Nethermind.Runner package JetBrains.dotMemory.Console.linux-$arch \
+    --package-directory /tmp && \
+  dotnet publish src/Nethermind/Nethermind.Runner -c $BUILD_CONFIG -a $arch -o /publish --no-self-contained \
+    -p:BuildTimestamp=$BUILD_TIMESTAMP -p:Commit=$COMMIT_HASH
 
 RUN dotnet tool install -g dotnet-dump && \
-    dotnet tool install -g dotnet-gcdump && \
-    dotnet tool install -g dotnet-trace && \
-    dotnet tool install -g JetBrains.dotTrace.GlobalTools
+  dotnet tool install -g dotnet-gcdump && \
+  dotnet tool install -g dotnet-trace && \
+  dotnet tool install -g JetBrains.dotTrace.GlobalTools
 
 FROM mcr.microsoft.com/dotnet/aspnet:9.0-noble
 

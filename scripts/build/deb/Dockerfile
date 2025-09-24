@@ -18,7 +18,7 @@ COPY scripts/build/deb deb
 WORKDIR /src/Nethermind/Nethermind.Runner
 
 RUN arch=$([ "$TARGETARCH" = "amd64" ] && echo "x64" || echo "$TARGETARCH") && \
-  dotnet restore && \
+  dotnet restore --locked-mode && \
   dotnet publish -c release -a $arch -o /deb/nethermind/opt/nethermind --sc --no-restore \
   -p:BuildTimestamp=$BUILD_TIMESTAMP -p:Commit=$COMMIT_HASH \
   -p:DebugType=embedded -p:IncludeAllContentForSelfExtract=true -p:PublishSingleFile=true
