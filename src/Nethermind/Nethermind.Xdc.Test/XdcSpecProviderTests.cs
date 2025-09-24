@@ -76,7 +76,7 @@ public class XdcSpecProviderTests
             new() { SwitchRound = 220000 },
         };
 
-        V2ConfigParams cfg = XdcChainSpecBasedSpecProvider.GetConfigAtRound(v2Configs, round);
+        V2ConfigParams cfg = XdcReleaseSpec.GetConfigAtRound(v2Configs, round);
 
         cfg.SwitchRound.Should().Be(expectedSwitchRound);
     }
