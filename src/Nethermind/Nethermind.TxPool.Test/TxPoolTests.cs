@@ -266,6 +266,39 @@ namespace Nethermind.TxPool.Test
         }
 
         [Test]
+        public void should_ignore_transactions_with_nonce_exceeding_u64_max()
+        {
+            _txPool = CreatePool();
+            UInt256 maxNonce = UInt256.UInt64MaxValue;
+            UInt256 invalidNonce = maxNonce + 1;
+
+            Transaction tx = Build.A.Transaction
+                .WithNonce(invalidNonce)
+                .SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA).TestObject;
+            EnsureSenderBalance(tx);
+
+            AcceptTxResult result = _txPool.SubmitTx(tx, TxHandlingOptions.PersistentBroadcast);
+            _txPool.GetPendingTransactionsCount().Should().Be(0);
+            result.Should().Be(AcceptTxResult.NonceTooHigh);
+        }
+
+        [Test]
+        public void should_accept_transactions_with_nonce_equal_to_u64_max()
+        {
+            _txPool = CreatePool();
+            UInt256 maxNonce = UInt256.UInt64MaxValue;
+
+            Transaction tx = Build.A.Transaction
+                .WithNonce(maxNonce)
+                .SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA).TestObject;
+            EnsureSenderBalance(tx);
+
+            AcceptTxResult result = _txPool.SubmitTx(tx, TxHandlingOptions.PersistentBroadcast);
+            _txPool.GetPendingTransactionsCount().Should().Be(1);
+            result.Should().Be(AcceptTxResult.Accepted);
+        }
+
+        [Test]
         public void get_next_pending_nonce()
         {
             _txPool = CreatePool();
