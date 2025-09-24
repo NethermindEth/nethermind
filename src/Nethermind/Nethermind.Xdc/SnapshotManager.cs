@@ -3,6 +3,7 @@
 
 using Nethermind.Blockchain;
 using Nethermind.Core;
+using Nethermind.Core.Caching;
 using Nethermind.Core.Crypto;
 using Nethermind.Db;
 using Nethermind.Serialization.Rlp;
@@ -20,10 +21,13 @@ namespace Nethermind.Xdc;
 internal class SnapshotManager : ISnapshotManager
 {
 
-    private ConcurrentDictionary<Hash256, Snapshot> _snapshotsByHash = new();
+    private LruCache<Hash256, Snapshot> _snapshotsByHash = new(128, 128, "XDC Snapshot cache");
     private IBlockTree _tree { get; }
     private IXdcConfig _xdcConfig { get; }
     private IDb _snapshotDb { get; }
+
+    private SnapshotDecoder _snapshotDecoder = new();
+
 
     public SnapshotManager(IDb snapshotDb, IBlockTree tree, IXdcConfig xdcConfig)
     {
@@ -32,95 +36,67 @@ internal class SnapshotManager : ISnapshotManager
         _xdcConfig = xdcConfig;
     }
 
-
-    public bool TryCacheSnapshot(Snapshot snapshot)
+    public Snapshot? GetSnapshot(Hash256 hash)
     {
-        if (snapshot is null)
+        Snapshot snapshot = _snapshotsByHash.Get(hash);
+        if (snapshot is not null)
         {
-            return false;
+            return snapshot;
         }
 
-        return _snapshotsByHash.TryAdd(snapshot.Hash, snapshot);
-    }
-
-    public bool TryGetSnapshot(Hash256 hash, out Snapshot snapshot)
-    {
-        if (_snapshotsByHash.TryGetValue(hash, out snapshot))
-        {
-            return true;
-        }
-            Span<byte> key = hash.Bytes;
-            if (!_snapshotDb.KeyExists(key))
-        {
-                snapshot = null;
-                return false;
-        }
+        Span<byte> key = hash.Bytes;
+        if (!_snapshotDb.KeyExists(key))
+            return null;
         Span<byte> value = _snapshotDb.Get(key);
         if (value.IsEmpty)
-        {
-            snapshot = null;
-            return false;
-        }
+            return null;
         SnapshotDecoder snapshotDecoder = new();
 
         var stream = new RlpStream(value.ToArray());
 
         var decoded = snapshotDecoder.Decode(stream, RlpBehaviors.None);
         snapshot = decoded;
-        _snapshotsByHash.TryAdd(hash, snapshot);
-        return true;
+        _snapshotsByHash.Set(hash, snapshot);
+        return snapshot;
     }
 
-    public bool TryGetSnapshotByHeader(XdcBlockHeader? header, out Snapshot snapshot)
+    public Snapshot? GetSnapshotByHeader(XdcBlockHeader? header)
     {
         if (header is null)
-        {
-            snapshot = null;
-            return false;
-        }
-        return TryGetSnapshot(header.Hash, out snapshot);
+            return null;
+        return GetSnapshot(header.Hash);
     }
 
-    public bool TryGetSnapshotByHeaderNumber(ulong number, out Snapshot snap)
+    public Snapshot? GetSnapshotByHeaderNumber(ulong number)
     {
         ulong gapBlockNum = Math.Max(0, number - number % _xdcConfig.Epoch - _xdcConfig.Gap);
 
-        return TryGetSnapshotByGapNumber(gapBlockNum, out snap);
+        return GetSnapshotByGapNumber(gapBlockNum);
     }
 
 
-    public bool TryGetSnapshotByGapNumber(ulong gapBlockNum, out Snapshot snap)
+    public Snapshot? GetSnapshotByGapNumber(ulong gapBlockNum)
     {
         Hash256 gapBlockHash = _tree.FindHeader((long)gapBlockNum)?.Hash;
 
         if (gapBlockHash is null)
-        {
-            snap = null;
-            return false;
-        }
+            return null;
 
-        return TryGetSnapshot(gapBlockHash, out snap);
+        return GetSnapshot(gapBlockHash);
     }
 
-    public bool TryStoreSnapshot(Snapshot snapshot)
+    public bool StoreSnapshot(Snapshot snapshot)
     {
         if (snapshot is null)
-        {
             return false;
-        }
         Span<byte> key = snapshot.Hash.Bytes;
 
-
         if (_snapshotDb.KeyExists(key))
-        {
             return false;
-        }
 
-        SnapshotDecoder snapshotDecoder = new();
-
-        var contentLength = snapshotDecoder.GetLength(snapshot, RlpBehaviors.None);
+        var contentLength = _snapshotDecoder.GetLength(snapshot, RlpBehaviors.None);
         RlpStream stream = new(contentLength);
-        snapshotDecoder.Encode(stream, snapshot, RlpBehaviors.None);
+        _snapshotDecoder.Encode(stream, snapshot, RlpBehaviors.None);
 
         stream.Reset();
         Span<byte> value = stream.Read(stream.Length);
@@ -131,49 +107,38 @@ internal class SnapshotManager : ISnapshotManager
 
     public Address[] CalculateNextEpochMasternodes(XdcBlockHeader xdcHeader)
     {
-        if (TryGetSnapshotByHeader(xdcHeader, out Snapshot snap) && snap is not null)
-        {
-            Address[] masternodes = new Address[snap.MasterNodes.Length - snap.PenalizedNodes.Length];
+        Snapshot snapshot = GetSnapshotByHeader(xdcHeader);
+        if (snapshot is null)
+           throw new InvalidOperationException($"No snapshot found for header {xdcHeader.Number}:{xdcHeader.Hash.ToShortString()}");
 
-            int index = 0;
-            foreach (var addr in snap.MasterNodes)
+        Address[] masternodes = new Address[snapshot.MasterNodes.Length - snapshot.PenalizedNodes.Length];
+
+        int index = 0;
+        foreach (var addr in snapshot.MasterNodes)
+        {
+            if (snapshot.PenalizedNodes.Contains(addr))
             {
-                if(snap.PenalizedNodes.Contains(addr))
-                {
-                    continue;
-                }
-
-                masternodes[index++] = addr;
+                continue;
             }
-            return masternodes;
+
+            masternodes[index++] = addr;
         }
-        else
-        {
-            throw new InvalidOperationException($"No snapshot found for header {xdcHeader.Number}:{xdcHeader.Hash.ToShortString()}");
-        }
+        return masternodes;
     }
 
     public Address[] GetMasternodes(XdcBlockHeader xdcHeader)
     {
-        if (TryGetSnapshotByHeader(xdcHeader, out Snapshot snap) && snap is not null)
-        {
-            return snap.MasterNodes;
-        }
-        else
-        {
+        Snapshot snapshot = GetSnapshotByHeader(xdcHeader);
+        if (snapshot is null)
             throw new InvalidOperationException($"No snapshot found for header {xdcHeader.Number}:{xdcHeader.Hash.ToShortString()}");
-        }
+        return snapshot.MasterNodes;
     }
 
     public Address[] GetPenalties(XdcBlockHeader xdcHeader)
     {
-        if (TryGetSnapshotByHeader(xdcHeader, out Snapshot snap) && snap is not null)
-        {
-            return snap.PenalizedNodes;
-        }
-        else
-        {
+        Snapshot snapshot = GetSnapshotByHeader(xdcHeader);
+        if (snapshot is null)
             throw new InvalidOperationException($"No snapshot found for header {xdcHeader.Number}:{xdcHeader.Hash.ToShortString()}");
-        }
+        return snapshot.PenalizedNodes;
     }
 }

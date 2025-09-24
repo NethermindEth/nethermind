@@ -13,12 +13,11 @@ using System.Collections.ObjectModel;
 namespace Nethermind.Xdc;
 public interface ISnapshotManager
 {
-    bool TryGetSnapshot(Hash256 hash, out Snapshot snapshot);
-    bool TryStoreSnapshot(Snapshot snapshot);
-    bool TryCacheSnapshot(Snapshot snapshot);
-    bool TryGetSnapshotByGapNumber(ulong gapNumber, out Snapshot snap);
-    bool TryGetSnapshotByHeaderNumber(ulong gapNumber, out Snapshot snap);
-    bool TryGetSnapshotByHeader(XdcBlockHeader? header, out Snapshot snapshot);
+    Snapshot? GetSnapshot(Hash256 hash);
+    bool StoreSnapshot(Snapshot snapshot);
+    Snapshot? GetSnapshotByGapNumber(ulong gapNumber);
+    Snapshot? GetSnapshotByHeaderNumber(ulong gapNumber);
+    Snapshot? GetSnapshotByHeader(XdcBlockHeader? header);
     Address[] CalculateNextEpochMasternodes(XdcBlockHeader xdcHeader);
     Address[] GetMasternodes(XdcBlockHeader xdcHeader);
     Address[] GetPenalties(XdcBlockHeader xdcHeader);

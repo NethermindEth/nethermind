@@ -37,153 +37,129 @@ internal class SnapshotManagerTests
     }
 
     [Test]
-    public void TryCacheSnapshot_ShouldCacheSnapshot()
+    public void GetSnapshot_ShouldReturnFalseForNonExistentSnapshot()
     {
-        // Arrange
-        var snapshot = new Snapshot(1, TestItem.KeccakC, [Address.Zero, Address.MaxValue], [Address.FromNumber(1)]);
         // Act
-        _snapshotManager.TryCacheSnapshot(snapshot);
+        var result = _snapshotManager.GetSnapshot(TestItem.KeccakD);
         // Assert
-        var result = _snapshotManager.TryGetSnapshot(TestItem.KeccakC, out var cachedSnapshot);
 
-        result.Should().BeTrue();
-        cachedSnapshot.Should().BeEquivalentTo(snapshot);
+        result.Should().BeNull();
     }
 
     [Test]
-    public void TryGetSnapshot_ShouldReturnFalseForNonExistentSnapshot()
-    {
-        // Act
-        var result = _snapshotManager.TryGetSnapshot(TestItem.KeccakD, out var snapshot);
-        // Assert
-
-        result.Should().BeFalse();
-        snapshot.Should().BeNull();
-    }
-
-    [Test]
-    public void TryGetSnapshot_ShouldRetrieveFromCacheIfFound()
+    public void GetSnapshot_ShouldRetrieveFromIfFound()
     {
         // Arrange
         var snapshot = new Snapshot(2, TestItem.KeccakE, [Address.FromNumber(1), Address.FromNumber(2)], [Address.FromNumber(1)]);
 
-        // does not store in DB, only in cache
-        _snapshotManager.TryCacheSnapshot(snapshot);
+        _snapshotManager.StoreSnapshot(snapshot);
+
         // Act
-        var result = _snapshotManager.TryGetSnapshot(TestItem.KeccakE, out var retrievedSnapshot);
+        var result = _snapshotManager.GetSnapshot(TestItem.KeccakE);
 
         // assert that it was retrieved from cache
-
-        result.Should().BeTrue();
-        retrievedSnapshot.Should().BeEquivalentTo(snapshot);
+        result.Should().BeEquivalentTo(snapshot);
     }
 
     [Test]
-    public void TryGetSnapshot_ShouldReturnFalseForEmptyDb()
+    public void GetSnapshot_ShouldReturnFalseForEmptyDb()
     {
         // Arrange
         var hash = TestItem.KeccakF;
         // Act
-        var result = _snapshotManager.TryGetSnapshot(hash, out var snapshot);
+        var result = _snapshotManager.GetSnapshot(hash);
         // Assert
-        result.Should().BeFalse();
-        snapshot.Should().BeNull();
+        result.Should().BeNull();
     }
 
     [Test]
-    public void TryGetSnapshot_ShouldRetrieveFromDbIfNotInCache()
+    public void GetSnapshot_ShouldRetrieveFromDbIfNotInCache()
     {
         // Arrange
         var snapshot = new Snapshot(3, TestItem.KeccakG, [Address.FromNumber(3)], [Address.FromNumber(3)]);
 
-        var result = _snapshotManager.TryStoreSnapshot(snapshot);
+        var result = _snapshotManager.StoreSnapshot(snapshot);
         Assert.That(result, Is.True);
 
         // Act
-        result = _snapshotManager.TryGetSnapshot(TestItem.KeccakG, out var retrievedSnapshot);
+        var saved = _snapshotManager.GetSnapshot(TestItem.KeccakG);
 
         // Assert
-        result.Should().BeTrue();
-        retrievedSnapshot.Should().BeEquivalentTo(snapshot);
+        saved.Should().BeEquivalentTo(snapshot);
     }
 
     [Test]
-    public void TryStoreSnapshot_ShouldStoreSnapshotInDb()
+    public void StoreSnapshot_ShouldStoreSnapshotInDb()
     {
         // Arrange
         var snapshot = new Snapshot(4, TestItem.KeccakH, [Address.FromNumber(4)], [Address.FromNumber(4)]);
         // Act
-        var result = _snapshotManager.TryStoreSnapshot(snapshot);
+        var result = _snapshotManager.StoreSnapshot(snapshot);
         result.Should().BeTrue();
         // Assert
 
-        var existsInDb = _snapshotManager.TryGetSnapshot(TestItem.KeccakH, out var retrievedSnapshot);
-        existsInDb.Should().BeTrue();
+        var fromDb = _snapshotManager.GetSnapshot(TestItem.KeccakH);
 
-        retrievedSnapshot.Should().BeEquivalentTo(snapshot);
+        fromDb.Should().BeEquivalentTo(snapshot);
     }
 
     [Test]
-    public void TryStoreSnapshot_ShouldReturnFalseForNullSnapshot()
+    public void StoreSnapshot_ShouldReturnFalseForNullSnapshot()
     {
         // Act
-        var result = _snapshotManager.TryStoreSnapshot(null!);
+        var result = _snapshotManager.StoreSnapshot(null!);
         // Assert
 
         result.Should().BeFalse();
     }
 
     [Test]
-    public void TryGetSnapshot_ShouldReturnSnapshotIfExists()
+    public void GetSnapshot_ShouldReturnSnapshotIfExists()
     {
         // Arrange
         var snapshot1 = new Snapshot(5, TestItem.KeccakA, [Address.FromNumber(5)], [Address.FromNumber(5)]);
-        _snapshotManager.TryStoreSnapshot(snapshot1);
+        _snapshotManager.StoreSnapshot(snapshot1);
         // Act
-        var result = _snapshotManager.TryGetSnapshot(TestItem.KeccakA, out var retrievedSnapshot);
+        var result = _snapshotManager.GetSnapshot(TestItem.KeccakA);
         // Assert
 
-        result.Should().BeTrue();
-        retrievedSnapshot.Should().BeEquivalentTo(snapshot1);
+        result.Should().BeEquivalentTo(snapshot1);
 
         var snapshot2 = new Snapshot(6, TestItem.KeccakA, [Address.FromNumber(5)], [Address.FromNumber(5)]);
-        result = _snapshotManager.TryStoreSnapshot(snapshot2);
-        result.Should().BeFalse();
+        var wasSaved = _snapshotManager.StoreSnapshot(snapshot2);
+        wasSaved.Should().BeFalse();
 
-        result = _snapshotManager.TryGetSnapshot(TestItem.KeccakA, out retrievedSnapshot);
-        result.Should().BeTrue();
+        result = _snapshotManager.GetSnapshot(TestItem.KeccakA);
 
-        retrievedSnapshot.Should().BeEquivalentTo(snapshot1);
+        result.Should().BeEquivalentTo(snapshot1);
     }
 
     [Test]
-    public void TryGetSnapshotByHeader_ShouldReturnFalseIfNotExists()
+    public void GetSnapshotByHeader_ShouldReturnFalseIfNotExists()
     {
         XdcBlockHeaderBuilder builder = Build.A.XdcBlockHeader();
         XdcBlockHeader header = builder.WithBaseFee((UInt256)1_000_000_000).TestObject;
         header.Hash = TestItem.KeccakH;
         // Act
-        var result = _snapshotManager.TryGetSnapshotByHeader(header, out var snapshot);
+        var result = _snapshotManager.GetSnapshotByHeader(header);
         // Assert
-        result.Should().BeFalse();
-        snapshot.Should().BeNull();
+        result.Should().BeNull();
     }
 
     [Test]
-    public void TryGetSnapshotByHeader_ShouldReturnSnapshotIfExists()
+    public void GetSnapshotByHeader_ShouldReturnSnapshotIfExists()
     {
         // Arrange
         var snapshot = new Snapshot(7, TestItem.KeccakB, [Address.FromNumber(6)], [Address.FromNumber(6)]);
-        _snapshotManager.TryStoreSnapshot(snapshot);
+        _snapshotManager.StoreSnapshot(snapshot);
         XdcBlockHeaderBuilder builder = Build.A.XdcBlockHeader();
         XdcBlockHeader header = builder.WithBaseFee((UInt256)1_000_000_000).TestObject;
         header.Hash = TestItem.KeccakB;
 
         // Act
-        var result = _snapshotManager.TryGetSnapshotByHeader(header, out var retrievedSnapshot);
-        // Assert
+        var result = _snapshotManager.GetSnapshotByHeader(header);
 
-        result.Should().BeTrue();
-        retrievedSnapshot.Should().BeEquivalentTo(snapshot);
+        // Assert
+        result.Should().BeEquivalentTo(snapshot);
     }
 }
