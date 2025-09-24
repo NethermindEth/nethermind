@@ -644,6 +644,30 @@ public class TxValidatorTests
         }
     }
 
+    [TestCase("18446744073709551615", false)] // nonce == MaxNonce (2^64-1)
+    [TestCase("18446744073709551616", false)] // nonce > MaxNonce (2^64-1)
+    public void IsWellFormed_TransactionWithNonceAtOrAboveMaxValue_ReturnsFalse(string nonceStr, bool expectedValid)
+    {
+        UInt256 nonce = UInt256.Parse(nonceStr);
+        Transaction tx = Build.A.Transaction
+            .WithNonce(nonce)
+            .WithChainId(TestBlockchainIds.ChainId)
+            .SignedAndResolved().TestObject;
+
+        TxValidator txValidator = new(TestBlockchainIds.ChainId);
+        IReleaseSpec releaseSpec = MainnetSpecProvider.Instance.GenesisSpec;
+        ValidationResult result = txValidator.IsWellFormed(tx, releaseSpec);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.AsBool, Is.EqualTo(expectedValid));
+            if (!expectedValid)
+            {
+                Assert.That(result.Error, Is.EqualTo(TxErrorMessages.NonceTooHigh));
+            }
+        }
+    }
+
     private static byte[] MakeArray(int count, params byte[] elements) =>
         elements.Take(Math.Min(count, elements.Length))
             .Concat(new byte[Math.Max(0, count - elements.Length)])

@@ -265,37 +265,20 @@ namespace Nethermind.TxPool.Test
             result.Should().Be(AcceptTxResult.OldNonce);
         }
 
-        [Test]
-        public void should_ignore_transactions_with_nonce_exceeding_u64_max()
+        [TestCase("18446744073709551615", AcceptTxResult.NonceTooHigh)] // nonce == MaxNonce (2^64-1)
+        [TestCase("18446744073709551616", AcceptTxResult.NonceTooHigh)] // nonce > MaxNonce (2^64-1)
+        public void should_validate_transaction_nonce_limits(string nonceStr, AcceptTxResult expectedResult)
         {
             _txPool = CreatePool();
-            UInt256 maxNonce = Transaction.MaxNonce;
-            UInt256 invalidNonce = maxNonce + 1;
+            UInt256 nonce = UInt256.Parse(nonceStr);
 
             Transaction tx = Build.A.Transaction
-                .WithNonce(invalidNonce)
+                .WithNonce(nonce)
                 .SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA).TestObject;
             EnsureSenderBalance(tx);
 
             AcceptTxResult result = _txPool.SubmitTx(tx, TxHandlingOptions.PersistentBroadcast);
-            _txPool.GetPendingTransactionsCount().Should().Be(0);
-            result.Should().Be(AcceptTxResult.NonceTooHigh);
-        }
-
-        [Test]
-        public void should_accept_transactions_with_nonce_equal_to_u64_max()
-        {
-            _txPool = CreatePool();
-            UInt256 maxNonce = Transaction.MaxNonce;
-
-            Transaction tx = Build.A.Transaction
-                .WithNonce(maxNonce)
-                .SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA).TestObject;
-            EnsureSenderBalance(tx);
-
-            AcceptTxResult result = _txPool.SubmitTx(tx, TxHandlingOptions.PersistentBroadcast);
-            _txPool.GetPendingTransactionsCount().Should().Be(1);
-            result.Should().Be(AcceptTxResult.Accepted);
+            result.Should().Be(expectedResult);
         }
 
         [Test]
