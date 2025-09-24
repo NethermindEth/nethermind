@@ -52,9 +52,7 @@ internal class QuorumCertificateManager : IQuorumCertificateManager
 
         var proposedBlockHeader = (XdcBlockHeader)_blockTree.FindHeader(qc.ProposedBlockInfo.Hash);
         if (proposedBlockHeader is null)
-        {
             throw new InvalidBlockException(proposedBlockHeader, "Proposed block header not found in chain");
-        }
 
         if (proposedBlockHeader.Number > 0)
         {
