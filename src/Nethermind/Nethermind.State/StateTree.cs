@@ -5,8 +5,10 @@ using System;
 using System.Diagnostics;
 using Nethermind.Core;
 using Nethermind.Core.Buffers;
+using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Db;
+using Nethermind.Evm.State;
 using Nethermind.Logging;
 using Nethermind.Serialization.Rlp;
 using Nethermind.Trie;
@@ -14,7 +16,7 @@ using Nethermind.Trie.Pruning;
 
 namespace Nethermind.State
 {
-    public class StateTree : PatriciaTree
+    public class StateTree : PatriciaTree, IWorldStateScopeProvider.IStateTree
     {
         private readonly AccountDecoder _decoder = new();
 
@@ -73,6 +75,31 @@ namespace Nethermind.State
             Set(keccak.BytesAsSpan, account is null ? null : account.IsTotallyEmpty ? EmptyAccountRlp : Rlp.Encode(account));
         }
 
+        public IWorldStateScopeProvider.IStateSetter BeginSet(int estimatedEntries)
+        {
+            return new StateTreeBulkSetter(estimatedEntries, this);
+        }
+
+        private class StateTreeBulkSetter(int estimatedEntries, StateTree tree) : IWorldStateScopeProvider.IStateSetter
+        {
+            ArrayPoolList<PatriciaTree.BulkSetEntry> _bulkWrite = new(estimatedEntries);
+
+            public void Set(Address key, Account account)
+            {
+                KeccakCache.ComputeTo(key.Bytes, out ValueHash256 keccak);
+
+                Rlp accountRlp = account is null ? null : account.IsTotallyEmpty ? StateTree.EmptyAccountRlp : Rlp.Encode(account);
+
+                _bulkWrite.Add(new BulkSetEntry(keccak, accountRlp?.Bytes));
+            }
+
+            public void Dispose()
+            {
+                tree.BulkSet(_bulkWrite);
+                _bulkWrite.Dispose();
+            }
+        }
+
         [DebuggerStepThrough]
         public Rlp? Set(Hash256 keccak, Account? account)
         {
@@ -88,6 +115,21 @@ namespace Nethermind.State
 
             Set(keccak.Bytes, rlp);
             return rlp;
+        }
+
+        public Account? Get(Address address)
+        {
+            return Get(address, null);
+        }
+
+        public void UpdateRootHash()
+        {
+            UpdateRootHash(true);
+        }
+
+        public void Commit()
+        {
+            Commit(false, WriteFlags.None);
         }
     }
 }
