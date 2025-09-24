@@ -18,11 +18,10 @@ public sealed class XdcHeaderDecoder : IHeaderDecoder
         {
             return null;
         }
-
         ReadOnlySpan<byte> headerRlp = decoderContext.PeekNextItem();
         int headerSequenceLength = decoderContext.ReadSequenceLength();
         int headerCheck = decoderContext.Position + headerSequenceLength;
-
+        var x = new BlockDecoder(new XdcHeaderDecoder());
         Hash256? parentHash = decoderContext.DecodeKeccak();
         Hash256? unclesHash = decoderContext.DecodeKeccak();
         Address? beneficiary = decoderContext.DecodeAddress();
@@ -146,8 +145,9 @@ public sealed class XdcHeaderDecoder : IHeaderDecoder
             rlpStream.EncodeNullObject();
             return;
         }
+
         if (header is not XdcBlockHeader h)
-            throw new ArgumentException("XdcHeaderRlpCodec expects XdcBlockHeader.", nameof(header));
+            throw new ArgumentException("Must be XdcBlockHeader.", nameof(header));
 
         bool notForSealing = (rlpBehaviors & RlpBehaviors.ForSealing) != RlpBehaviors.ForSealing;
         rlpStream.StartSequence(GetContentLength(h, rlpBehaviors));
@@ -184,7 +184,10 @@ public sealed class XdcHeaderDecoder : IHeaderDecoder
             return Rlp.OfEmptySequence;
         }
 
-        RlpStream rlpStream = new(GetLength(item, rlpBehaviors));
+        if (item is not XdcBlockHeader header)
+            throw new ArgumentException("Must be XdcBlockHeader.", nameof(header));
+
+        RlpStream rlpStream = new(GetLength(header, rlpBehaviors));
         Encode(rlpStream, item, rlpBehaviors);
 
         return new Rlp(rlpStream.Data.ToArray());
@@ -229,7 +232,7 @@ public sealed class XdcHeaderDecoder : IHeaderDecoder
     public int GetLength(BlockHeader? item, RlpBehaviors rlpBehaviors)
     {
         if (item is not XdcBlockHeader header)
-            throw new ArgumentException("XdcHeaderRlpCodec expects XdcBlockHeader.", nameof(header));
+            throw new ArgumentException("Must be XdcBlockHeader.", nameof(header));
         return Rlp.LengthOfSequence(GetContentLength(header, rlpBehaviors));
     }
 }

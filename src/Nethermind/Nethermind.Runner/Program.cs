@@ -85,9 +85,6 @@ async Task<int> ConfigureAsync(string[] args)
     RootCommand rootCommand = CreateRootCommand();
     ParseResult parseResult = rootCommand.Parse(args);
 
-    parseResult.InvocationConfiguration.EnableDefaultExceptionHandler = false;
-    parseResult.InvocationConfiguration.ProcessTerminationTimeout = Timeout.InfiniteTimeSpan;
-
     // Suppress logs if run with `--help` or `--version`
     bool silent = parseResult.CommandResult.Children
         .Any(c => c is OptionResult { Option: HelpOption or VersionOption });
@@ -129,6 +126,10 @@ async Task<int> ConfigureAsync(string[] args)
 
     rootCommand.SetAction((result, token) => RunAsync(result, pluginLoader, token));
 
+    parseResult = rootCommand.Parse(args);
+    parseResult.InvocationConfiguration.EnableDefaultExceptionHandler = false;
+    parseResult.InvocationConfiguration.ProcessTerminationTimeout = Timeout.InfiniteTimeSpan;
+
     try
     {
         return await parseResult.InvokeAsync();
@@ -141,7 +142,6 @@ async Task<int> ConfigureAsync(string[] args)
 
 async Task<int> RunAsync(ParseResult parseResult, PluginLoader pluginLoader, CancellationToken cancellationToken)
 {
-
     IConfigProvider configProvider = CreateConfigProvider(parseResult);
     IInitConfig initConfig = configProvider.GetConfig<IInitConfig>();
     IKeyStoreConfig keyStoreConfig = configProvider.GetConfig<IKeyStoreConfig>();
@@ -246,14 +246,15 @@ void AddConfigurationOptions(Command command)
                     ? CreateOption<bool>(prop.Name, configType)
                     : CreateOption<string>(prop.Name, configType);
 
-                string description = configItemAttribute?.Description ?? "";
+                string? description = configItemAttribute?.Description;
 
-                // Add default value to description if available
                 if (!string.IsNullOrEmpty(configItemAttribute?.DefaultValue))
                 {
+                    string defaultValue = $"Defaults to `{configItemAttribute.DefaultValue}`.";
+
                     description = string.IsNullOrEmpty(description)
-                        ? $"Defaults to `{configItemAttribute.DefaultValue}`."
-                        : $"{description} Defaults to `{configItemAttribute.DefaultValue}`.";
+                        ? defaultValue
+                        : $"{description} {defaultValue}";
                 }
 
                 option.Description = description;
@@ -339,9 +340,9 @@ IConfigProvider CreateConfigProvider(ParseResult parseResult)
     ConfigProvider configProvider = new();
     Dictionary<string, string> configArgs = [];
 
-    foreach (SymbolResult child in parseResult.RootCommandResult.Children)
+    foreach (SymbolResult child in parseResult.CommandResult.Children)
     {
-        if (child is OptionResult result)
+        if (child is OptionResult result && !result.Implicit)
         {
             var isBoolean = result.Option.GetType().GenericTypeArguments.SingleOrDefault() == typeof(bool);
             var value = isBoolean
