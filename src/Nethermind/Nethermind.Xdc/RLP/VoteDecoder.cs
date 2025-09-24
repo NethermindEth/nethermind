@@ -87,7 +87,7 @@ public class VoteDecoder : IRlpValueDecoder<Vote>, IRlpStreamDecoder<Vote>
     {
         return
             (rlpBehaviors & RlpBehaviors.ForSealing) != RlpBehaviors.ForSealing ? Rlp.LengthOfSequence(Signature.Size) : 0
-            + Rlp.LengthOf(item.GapNumber) 
+            + Rlp.LengthOf(item.GapNumber)
             + _xdcBlockInfoDecoder.GetLength(item.ProposedBlockInfo, rlpBehaviors);
     }
 }

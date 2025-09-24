@@ -54,7 +54,7 @@ internal class QuorumCertificateManager : IQuorumCertificateManager
         {
             _context.HighestQC = qc;
         }
-
+        
         var proposedBlockHeader = (XdcBlockHeader)_blockTree.FindHeader(qc.ProposedBlockInfo.Hash);
         if (proposedBlockHeader is null)
             throw new InvalidBlockException(proposedBlockHeader, "Proposed block header not found in chain");
@@ -148,7 +148,7 @@ internal class QuorumCertificateManager : IQuorumCertificateManager
         //Possible optimize here
         Signature[] uniqueSignatures = qc.Signatures.Distinct().ToArray();
 
-        IXdcReleaseSpec spec = _specProvider.GetXdcSpec(parentHeader); 
+        IXdcReleaseSpec spec = _specProvider.GetXdcSpec(parentHeader);
         ulong qcRound = qc.ProposedBlockInfo.Round;
         double certThreshold = spec.Configs[qcRound].CertThreshold;
 
@@ -168,7 +168,7 @@ internal class QuorumCertificateManager : IQuorumCertificateManager
                 state.Break();
             }
         });
-        
+
         if (!allValid)
         {
             error = $"Quorum certificate contains one or more invalid vote signatures";

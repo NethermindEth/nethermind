@@ -7,6 +7,7 @@ using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Crypto;
+using Nethermind.Db;
 using Nethermind.Serialization.Rlp;
 using Nethermind.Xdc.Spec;
 using Nethermind.Xdc.Types;
@@ -27,6 +28,7 @@ public class QuorumCertificateManagerTest
         var quorumCertificateManager = new QuorumCertificateManager(
             new XdcContext(),
             Substitute.For<IBlockTree>(),
+            Substitute.For<IDb>(),
             Substitute.For<ISpecProvider>(),
             Substitute.For<IEpochSwitchManager>());
 
@@ -39,6 +41,7 @@ public class QuorumCertificateManagerTest
         var quorumCertificateManager = new QuorumCertificateManager(
             new XdcContext(),
             Substitute.For<IBlockTree>(),
+            Substitute.For<IDb>(),
             Substitute.For<ISpecProvider>(),
             Substitute.For<IEpochSwitchManager>());
 
@@ -52,25 +55,25 @@ public class QuorumCertificateManagerTest
         //Base valid control case
         PrivateKey[] keys = keyBuilder.Generate(20).ToArray();
         IEnumerable<Address> masterNodes = keys.Select(k => k.Address);
-        yield return new TestCaseData ( CreateQc(new BlockRoundInfo(headerBuilder.TestObject.Hash!, 1, 1), 0, keys), headerBuilder, keys.Select(k => k.Address), true );
+        yield return new TestCaseData(CreateQc(new BlockRoundInfo(headerBuilder.TestObject.Hash!, 1, 1), 0, keys), headerBuilder, keys.Select(k => k.Address), true);
 
         //Not enough signatures
-        yield return new TestCaseData ( CreateQc(new BlockRoundInfo(headerBuilder.TestObject.Hash!, 1, 1), 0, keys.Take(13).ToArray()), headerBuilder, keys.Select(k => k.Address), false );
+        yield return new TestCaseData(CreateQc(new BlockRoundInfo(headerBuilder.TestObject.Hash!, 1, 1), 0, keys.Take(13).ToArray()), headerBuilder, keys.Select(k => k.Address), false);
 
         //1 Vote is not master node
-        yield return new TestCaseData (CreateQc(new BlockRoundInfo(headerBuilder.TestObject.Hash!, 1, 1), 0, keys), headerBuilder, keys.Skip(1).Select(k => k.Address), false);
+        yield return new TestCaseData(CreateQc(new BlockRoundInfo(headerBuilder.TestObject.Hash!, 1, 1), 0, keys), headerBuilder, keys.Skip(1).Select(k => k.Address), false);
 
         //Wrong gap number
-        yield return new TestCaseData (CreateQc(new BlockRoundInfo(headerBuilder.TestObject.Hash!, 1, 1), 1, keys), headerBuilder, masterNodes, false);
+        yield return new TestCaseData(CreateQc(new BlockRoundInfo(headerBuilder.TestObject.Hash!, 1, 1), 1, keys), headerBuilder, masterNodes, false);
 
         //Wrong block number in QC
-        yield return new TestCaseData (CreateQc(new BlockRoundInfo(headerBuilder.TestObject.Hash!, 1, 2), 0, keys), headerBuilder, masterNodes, false);
+        yield return new TestCaseData(CreateQc(new BlockRoundInfo(headerBuilder.TestObject.Hash!, 1, 2), 0, keys), headerBuilder, masterNodes, false);
 
         //Wrong hash in QC
-        yield return new TestCaseData ( CreateQc(new BlockRoundInfo(Hash256.Zero, 1, 1), 0, keys), headerBuilder, masterNodes, false );
+        yield return new TestCaseData(CreateQc(new BlockRoundInfo(Hash256.Zero, 1, 1), 0, keys), headerBuilder, masterNodes, false);
 
         //Wrong round number in QC
-        yield return new TestCaseData (CreateQc(new BlockRoundInfo(headerBuilder.TestObject.Hash!, 0, 1), 0, keys), headerBuilder, masterNodes, false);
+        yield return new TestCaseData(CreateQc(new BlockRoundInfo(headerBuilder.TestObject.Hash!, 0, 1), 0, keys), headerBuilder, masterNodes, false);
     }
 
     [TestCaseSource(nameof(QcCases))]
@@ -91,6 +94,7 @@ public class QuorumCertificateManagerTest
         var quorumCertificateManager = new QuorumCertificateManager(
             new XdcContext(),
             Substitute.For<IBlockTree>(),
+            Substitute.For<IDb>(),
             specProvider,
             epochSwitchManager);
 
