@@ -667,14 +667,13 @@ public class TxValidatorTests
         TransactionBuilder<Transaction> builder = Build.A.Transaction
             .WithType(txType)
             .WithNonce(nonce)
-            .WithChainId(TestBlockchainIds.ChainId)
-            .SignedAndResolved();
+            .WithChainId(TestBlockchainIds.ChainId);
         if (txType == TxType.Blob)
         {
             builder.WithMaxFeePerBlobGas(UInt256.One)
-                .WithBlobVersionedHashes([]);
+                .WithBlobVersionedHashes([[0]]);
         }
-        Transaction tx = builder.TestObject;
+        Transaction tx = builder.SignedAndResolved().TestObject;
 
         TxValidator txValidator = new(TestBlockchainIds.ChainId);
         IReleaseSpec releaseSpec = Osaka.Instance;
