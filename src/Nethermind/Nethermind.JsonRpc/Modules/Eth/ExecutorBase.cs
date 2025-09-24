@@ -38,11 +38,15 @@ public abstract class ExecutorBase<TResult, TRequest, TProcessing>
                 ErrorCodes.ResourceUnavailable);
 
         using CancellationTokenSource timeout = _rpcConfig.BuildTimeoutCancellationToken();
-        TProcessing? toProcess = Prepare(call);
-        return Execute(header.Clone(), toProcess, stateOverride, timeout.Token);
+        ResultWrapper<TProcessing> toProcess = Prepare(call);
+        if (toProcess.Result != Result.Success)
+        {
+            return ResultWrapper<TResult>.From(toProcess);
+        }
+        return Execute(header.Clone(), toProcess.Data, stateOverride, timeout.Token);
     }
 
-    protected abstract TProcessing Prepare(TRequest call);
+    protected abstract ResultWrapper<TProcessing> Prepare(TRequest call);
 
     protected abstract ResultWrapper<TResult> Execute(BlockHeader header, TProcessing tx, Dictionary<Address, AccountOverride>? stateOverride, CancellationToken token);
 
