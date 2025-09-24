@@ -222,7 +222,7 @@ internal sealed class PersistentStorageProvider : PartialStorageProviderBase
             else
             {
                 _toUpdateRoots.Remove(address);
-                if (_storages.TryGetValue(address, out var storage))
+                if (_storages.TryGetValue(address, out PerContractState? storage))
                 {
                     // BlockChange need to be kept to keep selfdestruct marker (via DefaultableDictionary) working.
                     storage.RemoveStorageTree();
