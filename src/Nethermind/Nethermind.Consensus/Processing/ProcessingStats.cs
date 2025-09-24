@@ -7,13 +7,13 @@ using System.Diagnostics;
 using System.Text.Json.Serialization;
 using System.Threading;
 using Microsoft.Extensions.ObjectPool;
-using Nethermind.Blockchain;
 using Nethermind.Config;
 using Nethermind.Core;
 using Nethermind.Core.Extensions;
 using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.State;
+using Metrics = Nethermind.Blockchain.Metrics;
 
 namespace Nethermind.Consensus.Processing
 {
@@ -41,6 +41,7 @@ namespace Nethermind.Consensus.Processing
         private readonly IStateReader _stateReader;
         private readonly ILogger _logger;
         private readonly Stopwatch _runStopwatch = new();
+        private readonly int _pruningBoundary;
 
         private bool _showBlobs;
         private long _lastElapsedRunningMicroseconds;
@@ -69,12 +70,13 @@ namespace Nethermind.Consensus.Processing
         private long _contractsAnalyzed;
         private long _cachedContractsUsed;
 
-        public ProcessingStats(IStateReader stateReader, ILogger logger)
+        public ProcessingStats(IStateReader stateReader, ILogger logger, int? pruningBoundary)
         {
             _executeFromThreadPool = ExecuteFromThreadPool;
 
             _stateReader = stateReader;
             _logger = logger;
+            _pruningBoundary = pruningBoundary ?? (int)Reorganization.MaxDepth;
 
             // the line below just to avoid compilation errors
             if (_logger.IsTrace) _logger.Trace($"Processing Stats in debug mode?: {_logger.IsDebug}");
@@ -214,6 +216,14 @@ namespace Nethermind.Consensus.Processing
 
             if (data.BaseBlock is null || !_stateReader.HasStateForBlock(data.BaseBlock) || block.StateRoot is null || !_stateReader.HasStateForBlock(block.Header))
                 return;
+
+            // Skip reward calculation if block age exceeds pruning boundary
+            long blockAge = block.Number - data.BaseBlock.Number;
+            if (blockAge > _pruningBoundary)
+            {
+                if (_logger.IsDebug) _logger.Debug($"Skipping reward calculation - block age {blockAge} exceeds pruning boundary {_pruningBoundary}");
+                return;
+            }
 
             UInt256 rewards = default;
             try
