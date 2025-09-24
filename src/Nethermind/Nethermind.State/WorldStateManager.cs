@@ -66,21 +66,6 @@ public class WorldStateManager : IWorldStateManager
         return new TrieStoreScopeProvider(_readOnlyTrieStore, _readaOnlyCodeCb, _logManager);
     }
 
-    public IWorldStateScopeProvider CreateWorldStateForWarmingUp(IWorldStateScopeProvider forWarmup)
-    {
-        if (forWarmup is IPreBlockCaches preBlockCaches)
-        {
-            return new PrewarmerScopeProvider(
-                new TrieStoreScopeProvider(new PreCachedTrieStore(_readOnlyTrieStore, preBlockCaches.Caches.RlpCache),
-                    _readaOnlyCodeCb, _logManager),
-                preBlockCaches.Caches,
-                populatePreBlockCache: true
-            );
-        }
-
-        return CreateResettableWorldState();
-    }
-
     public IOverridableWorldScope CreateOverridableWorldScope()
     {
         return new OverridableWorldStateManager(_dbProvider, _readOnlyTrieStore, _logManager);

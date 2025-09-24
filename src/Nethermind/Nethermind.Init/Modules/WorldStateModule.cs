@@ -7,7 +7,6 @@ using Autofac;
 using Nethermind.Api;
 using Nethermind.Api.Steps;
 using Nethermind.Blockchain.Synchronization;
-using Nethermind.Config;
 using Nethermind.Core;
 using Nethermind.Db;
 using Nethermind.Db.FullPruning;
