@@ -13,7 +13,6 @@ namespace Nethermind.TxPool.Filters
     internal sealed class MaxNonceFilter : IIncomingTxFilter
     {
         private readonly ILogger _logger;
-        private static readonly UInt256 MaxNonce = UInt256.UInt64MaxValue;
 
         public MaxNonceFilter(ILogger logger)
         {
@@ -22,11 +21,11 @@ namespace Nethermind.TxPool.Filters
 
         public AcceptTxResult Accept(Transaction tx, ref TxFilteringState state, TxHandlingOptions handlingOptions)
         {
-            if (tx.Nonce > MaxNonce)
+            if (tx.Nonce > Transaction.MaxNonce)
             {
                 if (_logger.IsTrace)
                 {
-                    _logger.Trace($"Skipped adding transaction {tx.ToString("  ")}, nonce {tx.Nonce} exceeds maximum allowed value {MaxNonce}.");
+                    _logger.Trace($"Skipped adding transaction {tx.ToString("  ")}, nonce {tx.Nonce} exceeds maximum allowed value {Transaction.MaxNonce}.");
                 }
 
                 return AcceptTxResult.NonceTooHigh;

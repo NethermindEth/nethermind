@@ -24,6 +24,7 @@ namespace Nethermind.Core
         public static ReadOnlySpan<byte> EofMagic => [0xEF, 0x00];
         public const byte MaxTxType = 0x7F;
         public const int BaseTxGasCost = 21000;
+        public static readonly UInt256 MaxNonce = ulong.MaxValue;
 
         public ulong? ChainId { get; set; }
 

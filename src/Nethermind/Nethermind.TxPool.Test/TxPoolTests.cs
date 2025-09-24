@@ -269,7 +269,7 @@ namespace Nethermind.TxPool.Test
         public void should_ignore_transactions_with_nonce_exceeding_u64_max()
         {
             _txPool = CreatePool();
-            UInt256 maxNonce = UInt256.UInt64MaxValue;
+            UInt256 maxNonce = Transaction.MaxNonce;
             UInt256 invalidNonce = maxNonce + 1;
 
             Transaction tx = Build.A.Transaction
@@ -286,7 +286,7 @@ namespace Nethermind.TxPool.Test
         public void should_accept_transactions_with_nonce_equal_to_u64_max()
         {
             _txPool = CreatePool();
-            UInt256 maxNonce = UInt256.UInt64MaxValue;
+            UInt256 maxNonce = Transaction.MaxNonce;
 
             Transaction tx = Build.A.Transaction
                 .WithNonce(maxNonce)
