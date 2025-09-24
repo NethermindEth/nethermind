@@ -15,6 +15,7 @@ using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
 using Nethermind.Crypto;
+using Nethermind.Db;
 using Nethermind.Logging;
 using Nethermind.Xdc;
 using Nethermind.Xdc.Errors;
@@ -28,17 +29,21 @@ internal class QuorumCertificateManager : IQuorumCertificateManager
     public QuorumCertificateManager(
         XdcContext context,
         IBlockTree chain,
+        IDb qcDb,
         ISpecProvider xdcConfig,
         IEpochSwitchManager epochSwitchManager)
     {
         _context = context;
         _blockTree = chain;
+        _qcDb = qcDb;
         _specProvider = xdcConfig;
         _epochSwitchManager = epochSwitchManager;
     }
 
     private XdcContext _context { get; }
     private IBlockTree _blockTree;
+    private readonly IDb _qcDb;
+
     private ISpecProvider _specProvider { get; }
     private IEpochSwitchManager _epochSwitchManager { get; }
     private EthereumEcdsa _ethereumEcdsa = new EthereumEcdsa(0);
@@ -54,13 +59,13 @@ internal class QuorumCertificateManager : IQuorumCertificateManager
         if (proposedBlockHeader is null)
             throw new InvalidBlockException(proposedBlockHeader, "Proposed block header not found in chain");
 
-        if (proposedBlockHeader.Number > 0)
+        //TODO this could be wrong way of fetching spec if a release spec is defined on a round basis 
+        IXdcReleaseSpec spec = _specProvider.GetXdcSpec(proposedBlockHeader);
+
+        //Can only look for a QC in proposed block after the switch block
+        if (proposedBlockHeader.Number > spec.SwitchBlock)
         {
-            //TODO this could be wrong way of fetching spec if a release spec is defined on a round basis 
-
-            IXdcReleaseSpec spec = _specProvider.GetXdcSpec(proposedBlockHeader);
             QuorumCertificate? parentQc = proposedBlockHeader.ExtraConsensusData?.QuorumCert;
-
             if (parentQc is null)
             {
                 throw new BlockchainException("QC is targeting a block without required consensus data.");
@@ -68,6 +73,7 @@ internal class QuorumCertificateManager : IQuorumCertificateManager
 
             if (_context.LockQC is null || parentQc.ProposedBlockInfo.Round > _context.LockQC.ProposedBlockInfo.Round)
             {
+                //Basically finalize parent QC
                 _context.LockQC = parentQc;
             }
 
@@ -83,6 +89,7 @@ internal class QuorumCertificateManager : IQuorumCertificateManager
     private bool CommitBlock(IBlockTree chain, XdcBlockHeader proposedBlockHeader, ulong proposedRound, QuorumCertificate proposedQuorumCert)
     {
         IXdcReleaseSpec spec = _specProvider.GetXdcSpec(proposedBlockHeader);
+        //Can only commit a QC if the proposed block is at least 2 blocks after the switch block, since we want to check grand parent of proposed QC
         if ((proposedBlockHeader.Number - 2) <= spec.SwitchBlock)
         {
             return false;
@@ -90,34 +97,32 @@ internal class QuorumCertificateManager : IQuorumCertificateManager
 
         XdcBlockHeader parentHeader = (XdcBlockHeader)_blockTree.FindHeader(proposedBlockHeader.ParentHash);
 
-        if (!Utils.TryGetExtraFields(parentHeader, (long)spec.SwitchBlock, out _, out ulong round, out _))
-        {
+        if (parentHeader.ExtraConsensusData is null)
             return false;
-        }
 
-        if (proposedRound - 1 != round)
+        if (proposedRound - 1 != parentHeader.ExtraConsensusData.CurrentRound)
         {
-            return false;
+            throw new QuorumCertificateException(proposedQuorumCert, "QC round does not match parent QC round.");
         }
 
         XdcBlockHeader grandParentHeader = (XdcBlockHeader)_blockTree.FindHeader(parentHeader.ParentHash);
 
-        if (!Utils.TryGetExtraFields(grandParentHeader, (long)spec.SwitchBlock, out _, out round, out _))
+        if (grandParentHeader.ExtraConsensusData is null)
+        {
+            throw new QuorumCertificateException(proposedQuorumCert, "QC grand parent does not have a QC.");
+        }
+
+        if (proposedRound - 2 != parentHeader.ExtraConsensusData.CurrentRound)
+        {
+            throw new QuorumCertificateException(proposedQuorumCert, "QC round does not match grand parent QC round.");
+        }
+
+        if (_context.HighestCommitBlock is not null && (_context.HighestCommitBlock.Round >= parentHeader.ExtraConsensusData.CurrentRound || _context.HighestCommitBlock.BlockNumber > grandParentHeader.Number))
         {
             return false;
         }
 
-        if (proposedRound - 2 != round)
-        {
-            return false;
-        }
-
-        if (_context.HighestCommitBlock is not null && (_context.HighestCommitBlock.Round >= round || _context.HighestCommitBlock.BlockNumber > grandParentHeader.Number))
-        {
-            return false;
-        }
-
-        _context.HighestCommitBlock = new BlockRoundInfo(grandParentHeader.Hash, round, grandParentHeader.Number);
+        _context.HighestCommitBlock = new BlockRoundInfo(grandParentHeader.Hash, parentHeader.ExtraConsensusData.CurrentRound, grandParentHeader.Number);
 
         var headerQcToBeCommitted = new List<XdcBlockHeader> { parentHeader, proposedBlockHeader };
 

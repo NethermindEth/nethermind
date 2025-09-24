@@ -78,6 +78,9 @@ public class XdcBlockHeader : BlockHeader, IHashResolver
     }
 
     private ExtraFieldsV2 _extraFieldsV2;
+    /// <summary>
+    /// Consensus data that much be included in a V2 block, which contains the quorum certificate and round information. 
+    /// </summary>
     public ExtraFieldsV2? ExtraConsensusData
     {
         get
