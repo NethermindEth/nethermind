@@ -18,7 +18,7 @@ COPY scripts/build/deb deb
 WORKDIR /src/Nethermind/Nethermind.Runner
 
 RUN arch=$([ "$TARGETARCH" = "amd64" ] && echo "x64" || echo "$TARGETARCH") && \
-  dotnet restore -a $arch && \
+  dotnet restore && \
   dotnet publish -c release -a $arch -o /deb/nethermind/opt/nethermind --sc --no-restore \
   -p:BuildTimestamp=$BUILD_TIMESTAMP -p:Commit=$COMMIT_HASH \
   -p:DebugType=embedded -p:IncludeAllContentForSelfExtract=true -p:PublishSingleFile=true
@@ -30,7 +30,8 @@ RUN version=$(xmlstarlet sel -t -v "//Project/PropertyGroup/VersionPrefix" ../Di
 
 WORKDIR /deb
 
-RUN dpkg-deb --build --root-owner-group nethermind
+RUN chmod 0755 nethermind/DEBIAN && \
+  dpkg-deb --build --root-owner-group nethermind
 
 VOLUME /output
 

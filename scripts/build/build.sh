@@ -10,6 +10,7 @@ output_path=$GITHUB_WORKSPACE/$PUB_DIR
 cd $GITHUB_WORKSPACE/src/Nethermind/Nethermind.Runner
 
 echo "Building Nethermind"
+echo "  Build timestamp: $2"
 
 dotnet restore
 
