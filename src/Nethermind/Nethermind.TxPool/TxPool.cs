@@ -22,6 +22,7 @@ using System.Threading;
 using System.Threading.Channels;
 using System.Threading.Tasks;
 using Autofac.Features.AttributeFilters;
+using Nethermind.Core.Messages;
 using static Nethermind.TxPool.Collections.TxDistinctSortedPool;
 using ITimer = Nethermind.Core.Timers.ITimer;
 
@@ -725,7 +726,7 @@ namespace Nethermind.TxPool
 
                     if (!valid)
                     {
-                        MarkForEviction(tx, valid.AllowTxPoolReentrance);
+                        MarkForEviction(tx, valid.Error == TxErrorMessages.InvalidProofVersion);
                         continue;
                     }
 

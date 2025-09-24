@@ -1,10 +1,7 @@
 // SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using Nethermind.Core;
-using Nethermind.Crypto;
-
-namespace Nethermind.Consensus.Messages;
+namespace Nethermind.Core.Messages;
 public static class TxErrorMessages
 {
     public static string InvalidTxType(string name) =>
@@ -53,7 +50,7 @@ public static class TxErrorMessages
         "MissingBlobVersionedHash: Must be set.";
 
     public static readonly string InvalidBlobVersionedHashSize =
-        $"InvalidBlobVersionedHashSize: Cannot exceed {KzgPolynomialCommitments.BytesPerBlobVersionedHash}.";
+        $"InvalidBlobVersionedHashSize: Cannot exceed {Eip4844Constants.BytesPerBlobVersionedHash}.";
 
     public const string InvalidBlobVersionedHashVersion =
         "InvalidBlobVersionedHashVersion: Blob version not supported.";

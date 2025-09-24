@@ -3,9 +3,9 @@
 
 using Nethermind.Blockchain;
 using Nethermind.Consensus;
-using Nethermind.Consensus.Messages;
 using Nethermind.Consensus.Validators;
 using Nethermind.Core;
+using Nethermind.Core.Messages;
 using Nethermind.Core.Specs;
 using Nethermind.Logging;
 

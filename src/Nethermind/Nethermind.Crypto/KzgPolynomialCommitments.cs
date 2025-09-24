@@ -6,6 +6,7 @@ using System.IO;
 using System.Security.Cryptography;
 using System.Threading.Tasks;
 using CkzgLib;
+using Nethermind.Core;
 using Nethermind.Int256;
 using Nethermind.Logging;
 
@@ -19,7 +20,7 @@ public static class KzgPolynomialCommitments
             System.Globalization.NumberStyles.Integer);
 
     public const byte KzgBlobHashVersionV1 = 1;
-    public const byte BytesPerBlobVersionedHash = 32;
+    public const byte BytesPerBlobVersionedHash = Eip4844Constants.BytesPerBlobVersionedHash;
 
     private static IntPtr _ckzgSetup = IntPtr.Zero;
     internal static IntPtr CkzgSetup => _ckzgSetup;

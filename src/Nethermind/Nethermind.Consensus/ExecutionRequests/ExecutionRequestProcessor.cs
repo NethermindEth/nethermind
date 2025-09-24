@@ -5,7 +5,6 @@
 using Nethermind.Abi;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Tracing;
-using Nethermind.Consensus.Messages;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Core.ExecutionRequest;
@@ -17,6 +16,7 @@ using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Int256;
 using System;
 using System.Linq;
+using Nethermind.Core.Messages;
 
 namespace Nethermind.Consensus.ExecutionRequests;
 
