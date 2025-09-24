@@ -44,7 +44,7 @@ public class NethermindRunnerModule(
         IEnumerable<IConsensusPlugin> consensusPlugins = plugins.OfType<IConsensusPlugin>();
         if (consensusPlugins.Count() != 1)
         {
-            throw new NotSupportedException($"Thse should be exactly one consensus plugin are enabled. Seal engine type: {chainSpec.SealEngineType}. {string.Join(", ", consensusPlugins.Select(x => x.Name))}");
+            throw new NotSupportedException($"There should be exactly one consensus plugin enabled. Seal engine type: {chainSpec.SealEngineType}. {string.Join(", ", consensusPlugins.Select(x => x.Name))}");
         }
 
         IConsensusPlugin consensusPlugin = consensusPlugins.FirstOrDefault();
