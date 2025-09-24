@@ -2,13 +2,12 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using Nethermind.Core;
-using Nethermind.Int256;
 using Nethermind.Logging;
 
 namespace Nethermind.TxPool.Filters
 {
     /// <summary>
-    /// Filters out transactions where nonce exceeds 2^64-1 (EIP-2681).
+    /// Filters out transactions where nonce exceeds or equals to 2^64-1 (EIP-2681).
     /// </summary>
     internal sealed class MaxNonceFilter : IIncomingTxFilter
     {
@@ -21,11 +20,11 @@ namespace Nethermind.TxPool.Filters
 
         public AcceptTxResult Accept(Transaction tx, ref TxFilteringState state, TxHandlingOptions handlingOptions)
         {
-            if (tx.Nonce > Transaction.MaxNonce)
+            if (tx.Nonce >= Transaction.MaxNonce)
             {
                 if (_logger.IsTrace)
                 {
-                    _logger.Trace($"Skipped adding transaction {tx.ToString("  ")}, nonce {tx.Nonce} exceeds maximum allowed value {Transaction.MaxNonce}.");
+                    _logger.Trace($"Skipped adding transaction {tx.ToString("  ")}, nonce {tx.Nonce} exceeds or equals to maximum allowed value {Transaction.MaxNonce}.");
                 }
 
                 return AcceptTxResult.NonceTooHigh;

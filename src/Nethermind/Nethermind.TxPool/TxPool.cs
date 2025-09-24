@@ -145,6 +145,7 @@ namespace Nethermind.TxPool
             [
                 new NotSupportedTxFilter(txPoolConfig, _logger),
                 new SizeTxFilter(txPoolConfig, _logger),
+                new MaxNonceFilter(_logger), // static check, no DB access needed
                 new GasLimitTxFilter(_headInfo, txPoolConfig, logManager),
                 new PriorityFeeTooLowFilter(_logger),
                 new FeeTooLowFilter(_headInfo, _transactions, _blobTransactions, thereIsPriorityContract, _logger),
@@ -161,7 +162,6 @@ namespace Nethermind.TxPool
                 new BalanceZeroFilter(thereIsPriorityContract, _logger),
                 new BalanceTooLowFilter(_transactions, _blobTransactions, _logger),
                 new LowNonceFilter(_logger), // has to be after UnknownSenderFilter as it uses sender
-                new MaxNonceFilter(_logger), // check nonce doesn't exceed 2^64-1 (EIP-2681)
                 new FutureNonceFilter(txPoolConfig),
                 new GapNonceFilter(_transactions, _blobTransactions, _logger),
                 new RecoverAuthorityFilter(ecdsa),
@@ -1124,4 +1124,3 @@ Db usage:
         }
     }
 }
-

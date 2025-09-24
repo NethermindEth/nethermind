@@ -95,4 +95,7 @@ public static class TxErrorMessages
 
     public const string EofContractSizeInvalid
         = "EofContractSizeInvalid: Eof initcode size is invalid (either 0 or too big)";
+
+    public const string NonceTooHigh
+        = "NonceTooHigh: Transaction nonce exceeds or equals to maximum allowed value of 2^64-1 (EIP-2681)";
 }

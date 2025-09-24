@@ -88,10 +88,18 @@ public sealed class TxValidator : ITxValidator
     /// As such, we can decide whether tx is well formed as long as we also validate nonce
     /// just before the execution of the block / tx.
     /// </remarks>
-    public ValidationResult IsWellFormed(Transaction transaction, IReleaseSpec releaseSpec) =>
-        _validators.TryGetByTxType(transaction.Type, out ITxValidator validator)
+    public ValidationResult IsWellFormed(Transaction transaction, IReleaseSpec releaseSpec)
+    {
+        // Common validation for all transaction types
+        if (transaction.Nonce >= Transaction.MaxNonce)
+        {
+            return TxErrorMessages.NonceTooHigh;
+        }
+
+        return _validators.TryGetByTxType(transaction.Type, out ITxValidator validator)
             ? validator.IsWellFormed(transaction, releaseSpec)
             : TxErrorMessages.InvalidTxType(releaseSpec.Name);
+    }
 }
 
 public class CompositeTxValidator(params ITxValidator[] validators) : ITxValidator
