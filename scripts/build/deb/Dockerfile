@@ -10,14 +10,15 @@ ARG TARGETARCH
 ENV CI=true
 ENV SOURCE_DATE_EPOCH=$BUILD_TIMESTAMP
 
+WORKDIR /nethermind
+
 COPY src/Nethermind src/Nethermind
 COPY Directory.*.props .
 COPY nuget.config .
 COPY scripts/build/deb deb
 
-WORKDIR /src/Nethermind/Nethermind.Runner
-
 RUN arch=$([ "$TARGETARCH" = "amd64" ] && echo "x64" || echo "$TARGETARCH") && \
+  cd src/Nethermind/Nethermind.Runner && \
   dotnet restore --locked-mode && \
   dotnet publish -c release -a $arch -o /deb/nethermind/opt/nethermind --sc --no-restore \
   -p:BuildTimestamp=$BUILD_TIMESTAMP -p:Commit=$COMMIT_HASH \
@@ -25,14 +26,14 @@ RUN arch=$([ "$TARGETARCH" = "amd64" ] && echo "x64" || echo "$TARGETARCH") && \
 
 RUN apt-get update && apt-get install xmlstarlet -y --no-install-recommends
 
-RUN version=$(xmlstarlet sel -t -v "//Project/PropertyGroup/VersionPrefix" ../Directory.Build.props) && \
-  sed -i "s/^Version: .*/Version: $version/" /deb/nethermind/DEBIAN/control
+RUN version=$(xmlstarlet sel -t -v "//Project/PropertyGroup/VersionPrefix" src/Nethermind/Directory.Build.props) && \
+  sed -i "s/^Version: .*/Version: $version/" deb/nethermind/DEBIAN/control
 
-WORKDIR /deb
+WORKDIR /nethermind/deb
 
 RUN chmod 0755 nethermind/DEBIAN && \
   dpkg-deb --build --root-owner-group nethermind
 
 VOLUME /output
 
-CMD ["cp", "/deb/nethermind.deb", "/output/nethermind.deb"]
+CMD ["cp", "nethermind.deb", "/output/nethermind.deb"]

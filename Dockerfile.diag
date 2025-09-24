@@ -9,6 +9,8 @@ ARG CI
 ARG COMMIT_HASH
 ARG TARGETARCH
 
+WORKDIR /nethermind
+
 COPY src/Nethermind src/Nethermind
 COPY Directory.*.props .
 COPY nuget.config .
