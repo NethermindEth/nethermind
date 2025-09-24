@@ -586,7 +586,7 @@ public sealed class TrieStore : ITrieStore, IPruningTrieStore
 
     private void SaveSnapshot()
     {
-        if (_logger.IsInfo) _logger.Info("Elevated pruning starting");
+        if (_logger.IsDebug) _logger.Debug("Elevated pruning starting");
 
         int count = _commitSetQueue?.Count ?? 0;
         if (count == 0) return;
@@ -1022,7 +1022,7 @@ public sealed class TrieStore : ITrieStore, IPruningTrieStore
                && lastCommit < LatestCommittedBlockNumber - _maxDepth;
     }
 
-    public bool IsStillNeeded(long lastCommit)
+    private bool IsStillNeeded(long lastCommit)
     {
         return !IsNoLongerNeeded(lastCommit);
     }
@@ -1492,7 +1492,7 @@ public sealed class TrieStore : ITrieStore, IPruningTrieStore
                     var rlp = nodeRecord.Node.FullRlp;
                     if (rlp.IsNull)
                     {
-                        bufferShard.GetOrAdd(key, new TrieStoreDirtyNodesCache.NodeRecord(nodeRecord.Node, -1));
+                        bufferShard.GetOrAdd(key, nodeRecord);
                         if (!isReadOnly) return nodeRecord.Node;
                     }
                     else
@@ -1502,7 +1502,7 @@ public sealed class TrieStore : ITrieStore, IPruningTrieStore
                         if (nodeRecord.Node.IsSealed) node.Seal();
                         if (nodeRecord.Node.IsPersisted) node.IsPersisted = true;
                         node.Keccak = nodeRecord.Node.Keccak;
-                        bufferShard.GetOrAdd(key, new TrieStoreDirtyNodesCache.NodeRecord(node, -1));
+                        bufferShard.GetOrAdd(key, nodeRecord);
                         if (!isReadOnly) return nodeRecord.Node;
                     }
                 }
