@@ -423,12 +423,13 @@ public partial class EthRpcModuleTests
         byte[] code = Prepare.EvmCode
          .Op(Instruction.STOP)
          .Done;
-        TransactionForRpc transaction = new EIP1559TransactionForRpc(Build.A.Transaction
+        EIP1559TransactionForRpc transaction = new(Build.A.Transaction
             .WithNonce(123)
             .WithGasLimit(100000)
             .WithData(code)
             .SignedAndResolved(TestItem.PrivateKeyA)
             .TestObject);
+        transaction.GasPrice = null;
 
         string serialized = await ctx.Test.TestEthRpc("eth_call", transaction);
 
@@ -499,6 +500,7 @@ public partial class EthRpcModuleTests
             .To(TestItem.AddressA)
             .SignedAndResolved(TestItem.PrivateKeyA)
             .TestObject);
+        transaction.GasPrice = null;
         string serialized = await ctx.Test.TestEthRpc("eth_call", transaction);
 
         Assert.That(
@@ -514,6 +516,7 @@ public partial class EthRpcModuleTests
             .WithBlobVersionedHashes([[]])
             .SignedAndResolved(TestItem.PrivateKeyA)
             .TestObject);
+        transaction.GasPrice = null;
         string serialized = await ctx.Test.TestEthRpc("eth_call", transaction);
 
         Assert.That(
@@ -535,6 +538,7 @@ public partial class EthRpcModuleTests
             .SignedAndResolved(TestItem.PrivateKeyA)
             .TestObject);
         transaction.To = null;
+        transaction.GasPrice = null;
         string serialized = await ctx.Test.TestEthRpc("eth_call", transaction);
 
         Assert.That(
@@ -550,6 +554,7 @@ public partial class EthRpcModuleTests
             .SignedAndResolved(TestItem.PrivateKeyA)
             .TestObject);
         transaction.MaxFeePerGas = 0;
+        transaction.GasPrice = null;
         string serialized = await ctx.Test.TestEthRpc("eth_call", transaction);
 
         Assert.That(
@@ -566,6 +571,7 @@ public partial class EthRpcModuleTests
             .TestObject);
         transaction.MaxFeePerGas = 1;
         transaction.MaxPriorityFeePerGas = 2;
+        transaction.GasPrice = null;
         string serialized = await ctx.Test.TestEthRpc("eth_call", transaction);
 
         Assert.That(
