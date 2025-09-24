@@ -16,24 +16,24 @@ public class AutoReadOnlyTxProcessingEnvFactory(ILifetimeScope parentLifetime, I
 {
     public IReadOnlyTxProcessorSource Create()
     {
-        IWorldState worldState = worldStateManager.CreateResettableWorldState();
+        IWorldStateScopeProvider worldState = worldStateManager.CreateResettableWorldState();
         ILifetimeScope childScope = parentLifetime.BeginLifetimeScope((builder) =>
         {
             builder
-                .AddSingleton<IWorldState>(worldState)
+                .AddSingleton<IWorldStateScopeProvider>(worldState)
                 .AddSingleton<AutoReadOnlyTxProcessingEnv>();
         });
 
         return childScope.Resolve<AutoReadOnlyTxProcessingEnv>();
     }
 
-    public IReadOnlyTxProcessorSource CreateForWarmingUp(IWorldState worldStateToWarmUp)
+    public IReadOnlyTxProcessorSource CreateForWarmingUp(IWorldStateScopeProvider worldStateToWarmUp)
     {
-        IWorldState worldState = worldStateManager.CreateWorldStateForWarmingUp(worldStateToWarmUp);
+        IWorldStateScopeProvider worldState = worldStateManager.CreateWorldStateForWarmingUp(worldStateToWarmUp);
         ILifetimeScope childScope = parentLifetime.BeginLifetimeScope((builder) =>
         {
             builder
-                .AddSingleton<IWorldState>(worldState)
+                .AddSingleton<IWorldStateScopeProvider>(worldState)
                 .AddSingleton<AutoReadOnlyTxProcessingEnv>();
         });
 
