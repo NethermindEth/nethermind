@@ -33,14 +33,14 @@ internal class SnapshotManager : ISnapshotManager
     }
 
 
-    public void TryCacheSnapshot(Snapshot snapshot)
+    public bool TryCacheSnapshot(Snapshot snapshot)
     {
         if (snapshot is null)
         {
-            return;
+            return false;
         }
 
-        _snapshotsByHash.TryAdd(snapshot.Hash, snapshot);
+        return _snapshotsByHash.TryAdd(snapshot.Hash, snapshot);
     }
 
     public bool TryGetSnapshot(Hash256 hash, out Snapshot snapshot)
@@ -71,7 +71,7 @@ internal class SnapshotManager : ISnapshotManager
         return true;
     }
 
-    public bool TryGetSnapshot(XdcBlockHeader? header, out Snapshot snapshot)
+    public bool TryGetSnapshotByHeader(XdcBlockHeader? header, out Snapshot snapshot)
     {
         if (header is null)
         {
@@ -127,5 +127,53 @@ internal class SnapshotManager : ISnapshotManager
 
         _snapshotDb.PutSpan(key, value);
         return true;
+    }
+
+    public Address[] CalculateNextEpochMasternodes(XdcBlockHeader xdcHeader)
+    {
+        if (TryGetSnapshotByHeader(xdcHeader, out Snapshot snap) && snap is not null)
+        {
+            Address[] masternodes = new Address[snap.MasterNodes.Length - snap.PenalizedNodes.Length];
+
+            int index = 0;
+            foreach (var addr in snap.MasterNodes)
+            {
+                if(snap.PenalizedNodes.Contains(addr))
+                {
+                    continue;
+                }
+
+                masternodes[index++] = addr;
+            }
+            return masternodes;
+        }
+        else
+        {
+            throw new InvalidOperationException($"No snapshot found for header {xdcHeader.Number}:{xdcHeader.Hash.ToShortString()}");
+        }
+    }
+
+    public Address[] GetMasternodes(XdcBlockHeader xdcHeader)
+    {
+        if (TryGetSnapshotByHeader(xdcHeader, out Snapshot snap) && snap is not null)
+        {
+            return snap.MasterNodes;
+        }
+        else
+        {
+            throw new InvalidOperationException($"No snapshot found for header {xdcHeader.Number}:{xdcHeader.Hash.ToShortString()}");
+        }
+    }
+
+    public Address[] GetPenalties(XdcBlockHeader xdcHeader)
+    {
+        if (TryGetSnapshotByHeader(xdcHeader, out Snapshot snap) && snap is not null)
+        {
+            return snap.PenalizedNodes;
+        }
+        else
+        {
+            throw new InvalidOperationException($"No snapshot found for header {xdcHeader.Number}:{xdcHeader.Hash.ToShortString()}");
+        }
     }
 }

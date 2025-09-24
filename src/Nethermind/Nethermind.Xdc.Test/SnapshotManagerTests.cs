@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using FluentAssertions;
 using Nethermind.Blockchain;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
@@ -26,8 +27,7 @@ internal class SnapshotManagerTests
     {
         IBlockTree blockTree = NSubstitute.Substitute.For<IBlockTree>();
         IXdcConfig xdcConfig = NSubstitute.Substitute.For<IXdcConfig>();
-        // Initialize _snapshotManager with a mock or real implementation
-        _snapshotManager = new SnapshotManager(_snapshotDb, blockTree, xdcConfig); // Replace with actual initialization
+        _snapshotManager = new SnapshotManager(_snapshotDb, blockTree, xdcConfig);
     }
 
     [TearDown]
@@ -40,12 +40,14 @@ internal class SnapshotManagerTests
     public void TryCacheSnapshot_ShouldCacheSnapshot()
     {
         // Arrange
-        var snapshot = new Snapshot(1, TestItem.KeccakC, [Address.Zero, Address.MaxValue]);
+        var snapshot = new Snapshot(1, TestItem.KeccakC, [Address.Zero, Address.MaxValue], [Address.FromNumber(1)]);
         // Act
         _snapshotManager.TryCacheSnapshot(snapshot);
         // Assert
-        Assert.That(_snapshotManager.TryGetSnapshot(TestItem.KeccakC, out var cachedSnapshot), Is.True);
-        Assert.That(snapshot, Is.EqualTo(cachedSnapshot));
+        var result = _snapshotManager.TryGetSnapshot(TestItem.KeccakC, out var cachedSnapshot);
+
+        result.Should().BeTrue();
+        cachedSnapshot.Should().BeEquivalentTo(snapshot);
     }
 
     [Test]
@@ -54,24 +56,16 @@ internal class SnapshotManagerTests
         // Act
         var result = _snapshotManager.TryGetSnapshot(TestItem.KeccakD, out var snapshot);
         // Assert
-        Assert.That(result, Is.False);
-        Assert.That(snapshot, Is.Null);
-    }
 
-    [Test]
-    public void TryCacheSnapshot_ShouldHandleNullSnapshot()
-    {
-        // Act
-        _snapshotManager.TryCacheSnapshot(null!);
-        // Assert
-        Assert.Pass("No exception thrown for null snapshot");
+        result.Should().BeFalse();
+        snapshot.Should().BeNull();
     }
 
     [Test]
     public void TryGetSnapshot_ShouldRetrieveFromCacheIfFound()
     {
         // Arrange
-        var snapshot = new Snapshot(2, TestItem.KeccakE, [Address.FromNumber(1), Address.FromNumber(2)]);
+        var snapshot = new Snapshot(2, TestItem.KeccakE, [Address.FromNumber(1), Address.FromNumber(2)], [Address.FromNumber(1)]);
 
         // does not store in DB, only in cache
         _snapshotManager.TryCacheSnapshot(snapshot);
@@ -79,8 +73,9 @@ internal class SnapshotManagerTests
         var result = _snapshotManager.TryGetSnapshot(TestItem.KeccakE, out var retrievedSnapshot);
 
         // assert that it was retrieved from cache
-        Assert.That(result, Is.True);
-        Assert.That(retrievedSnapshot, Is.EqualTo(snapshot));
+
+        result.Should().BeTrue();
+        retrievedSnapshot.Should().BeEquivalentTo(snapshot);
     }
 
     [Test]
@@ -91,15 +86,15 @@ internal class SnapshotManagerTests
         // Act
         var result = _snapshotManager.TryGetSnapshot(hash, out var snapshot);
         // Assert
-        Assert.That(result, Is.False);
-        Assert.That(snapshot, Is.Null);
+        result.Should().BeFalse();
+        snapshot.Should().BeNull();
     }
 
     [Test]
     public void TryGetSnapshot_ShouldRetrieveFromDbIfNotInCache()
     {
         // Arrange
-        var snapshot = new Snapshot(3, TestItem.KeccakG, [Address.FromNumber(3)]);
+        var snapshot = new Snapshot(3, TestItem.KeccakG, [Address.FromNumber(3)], [Address.FromNumber(3)]);
 
         var result = _snapshotManager.TryStoreSnapshot(snapshot);
         Assert.That(result, Is.True);
@@ -108,21 +103,24 @@ internal class SnapshotManagerTests
         result = _snapshotManager.TryGetSnapshot(TestItem.KeccakG, out var retrievedSnapshot);
 
         // Assert
-        Assert.That(result, Is.True);
-        Assert.That(retrievedSnapshot, Is.EqualTo(snapshot));
+        result.Should().BeTrue();
+        retrievedSnapshot.Should().BeEquivalentTo(snapshot);
     }
 
     [Test]
     public void TryStoreSnapshot_ShouldStoreSnapshotInDb()
     {
         // Arrange
-        var snapshot = new Snapshot(4, TestItem.KeccakH, [Address.FromNumber(4)]);
+        var snapshot = new Snapshot(4, TestItem.KeccakH, [Address.FromNumber(4)], [Address.FromNumber(4)]);
         // Act
         var result = _snapshotManager.TryStoreSnapshot(snapshot);
+        result.Should().BeTrue();
         // Assert
-        Assert.That(result, Is.True);
-        Assert.That(_snapshotManager.TryGetSnapshot(TestItem.KeccakH, out var retrievedSnapshot), Is.True);
-        Assert.That(retrievedSnapshot, Is.EqualTo(snapshot));
+
+        var existsInDb = _snapshotManager.TryGetSnapshot(TestItem.KeccakH, out var retrievedSnapshot);
+        existsInDb.Should().BeTrue();
+
+        retrievedSnapshot.Should().BeEquivalentTo(snapshot);
     }
 
     [Test]
@@ -131,28 +129,31 @@ internal class SnapshotManagerTests
         // Act
         var result = _snapshotManager.TryStoreSnapshot(null!);
         // Assert
-        Assert.That(result, Is.False);
+
+        result.Should().BeFalse();
     }
 
     [Test]
     public void TryGetSnapshot_ShouldReturnSnapshotIfExists()
     {
         // Arrange
-        var snapshot1 = new Snapshot(5, TestItem.KeccakA, [Address.FromNumber(5)]);
+        var snapshot1 = new Snapshot(5, TestItem.KeccakA, [Address.FromNumber(5)], [Address.FromNumber(5)]);
         _snapshotManager.TryStoreSnapshot(snapshot1);
         // Act
         var result = _snapshotManager.TryGetSnapshot(TestItem.KeccakA, out var retrievedSnapshot);
         // Assert
-        Assert.That(result, Is.True);
-        Assert.That(retrievedSnapshot, Is.EqualTo(snapshot1));
 
-        var snapshot2 = new Snapshot(6, TestItem.KeccakA, [Address.FromNumber(5)]);
+        result.Should().BeTrue();
+        retrievedSnapshot.Should().BeEquivalentTo(snapshot1);
+
+        var snapshot2 = new Snapshot(6, TestItem.KeccakA, [Address.FromNumber(5)], [Address.FromNumber(5)]);
         result = _snapshotManager.TryStoreSnapshot(snapshot2);
-        Assert.That(result, Is.False);
+        result.Should().BeFalse();
 
         result = _snapshotManager.TryGetSnapshot(TestItem.KeccakA, out retrievedSnapshot);
-        Assert.That(result, Is.True);
-        Assert.That(retrievedSnapshot, Is.Not.Null);
+        result.Should().BeTrue();
+
+        retrievedSnapshot.Should().BeEquivalentTo(snapshot1);
     }
 
     [Test]
@@ -162,26 +163,27 @@ internal class SnapshotManagerTests
         XdcBlockHeader header = builder.WithBaseFee((UInt256)1_000_000_000).TestObject;
         header.Hash = TestItem.KeccakH;
         // Act
-        var result = _snapshotManager.TryGetSnapshot(header, out var snapshot);
+        var result = _snapshotManager.TryGetSnapshotByHeader(header, out var snapshot);
         // Assert
-        Assert.That(result, Is.False);
-        Assert.That(snapshot, Is.Null);
+        result.Should().BeFalse();
+        snapshot.Should().BeNull();
     }
 
     [Test]
     public void TryGetSnapshotByHeader_ShouldReturnSnapshotIfExists()
     {
         // Arrange
-        var snapshot = new Snapshot(7, TestItem.KeccakB, [Address.FromNumber(6)]);
+        var snapshot = new Snapshot(7, TestItem.KeccakB, [Address.FromNumber(6)], [Address.FromNumber(6)]);
         _snapshotManager.TryStoreSnapshot(snapshot);
         XdcBlockHeaderBuilder builder = Build.A.XdcBlockHeader();
         XdcBlockHeader header = builder.WithBaseFee((UInt256)1_000_000_000).TestObject;
         header.Hash = TestItem.KeccakB;
 
         // Act
-        var result = _snapshotManager.TryGetSnapshot(header, out var retrievedSnapshot);
+        var result = _snapshotManager.TryGetSnapshotByHeader(header, out var retrievedSnapshot);
         // Assert
-        Assert.That(result, Is.True);
-        Assert.That(retrievedSnapshot, Is.EqualTo(snapshot));
+
+        result.Should().BeTrue();
+        retrievedSnapshot.Should().BeEquivalentTo(snapshot);
     }
 }

@@ -14,6 +14,42 @@ using System.Threading.Tasks;
 namespace Nethermind.Xdc.RLP;
 internal class SnapshotDecoder : IRlpStreamDecoder<Snapshot>, IRlpValueDecoder<Snapshot>
 {
+    public Snapshot Decode(ref Rlp.ValueDecoderContext decoderContext, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+    {
+        if (decoderContext.IsNextItemNull())
+            return null;
+
+        decoderContext.ReadSequenceLength();
+
+        long number = decoderContext.DecodeLong();
+        Hash256 hash256 = decoderContext.DecodeKeccak();
+        Address[] signers = DecodeAddressArray(ref decoderContext);
+        Address[] penalties = DecodeAddressArray(ref decoderContext);
+
+        return new Snapshot(number, hash256, signers, penalties);
+    }
+
+    private Address[] DecodeAddressArray(ref Rlp.ValueDecoderContext decoderContext)
+    {
+        if (decoderContext.IsNextItemNull())
+        {
+            _ = decoderContext.ReadByte();
+            return [];
+        }
+
+        int length = decoderContext.ReadSequenceLength();
+
+        Address[] addresses = new Address[length / Rlp.LengthOfAddressRlp];
+
+        int index = 0;
+        while (length > 0)
+        {
+            addresses[index++] = decoderContext.DecodeAddress();
+            length -= Rlp.LengthOfAddressRlp;
+        }
+
+        return addresses;
+    }
 
     public Snapshot Decode(RlpStream rlpStream, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
     {
@@ -24,9 +60,10 @@ internal class SnapshotDecoder : IRlpStreamDecoder<Snapshot>, IRlpValueDecoder<S
 
         long number = rlpStream.DecodeLong();
         Hash256 hash256 = rlpStream.DecodeKeccak();
-        Address[] nextSigners = rlpStream.DecodeArray<Address>(s => s.DecodeAddress()) ?? [];
+        Address[] signers = rlpStream.DecodeArray<Address>(s => s.DecodeAddress()) ?? [];
+        Address[] penalties = rlpStream.DecodeArray<Address>(s => s.DecodeAddress()) ?? [];
 
-        return new Snapshot(number, hash256, nextSigners);
+        return new Snapshot(number, hash256, signers, penalties);
     }
 
     public void Encode(RlpStream stream, Snapshot item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
@@ -43,13 +80,18 @@ internal class SnapshotDecoder : IRlpStreamDecoder<Snapshot>, IRlpValueDecoder<S
         stream.Encode(item.Number);
         stream.Encode(item.Hash);
 
-        if (item.NextEpochCandidates is null)
+        if (item.MasterNodes is null)
             stream.EncodeArray<Address>([]);
         else
-            EncodeNextEpochSigners(stream, item.NextEpochCandidates);
+            EncodeAddressSequence(stream, item.MasterNodes);
+
+        if (item.PenalizedNodes is null)
+            stream.EncodeArray<Address>([]);
+        else
+            EncodeAddressSequence(stream, item.PenalizedNodes);
     }
 
-    private void EncodeNextEpochSigners(RlpStream stream, Address[] nextEpochCandidates)
+    private void EncodeAddressSequence(RlpStream stream, Address[] nextEpochCandidates)
     {
         int length = nextEpochCandidates.Length;
         stream.StartSequence(Rlp.LengthOfAddressRlp * length);
@@ -71,21 +113,8 @@ internal class SnapshotDecoder : IRlpStreamDecoder<Snapshot>, IRlpValueDecoder<S
         int length = 0;
         length += Rlp.LengthOf(item.Number);
         length += Rlp.LengthOf(item.Hash);
-        length += Rlp.LengthOfSequence(Rlp.LengthOfAddressRlp * item.NextEpochCandidates?.Length ?? 0);
+        length += Rlp.LengthOfSequence(Rlp.LengthOfAddressRlp * item.MasterNodes?.Length ?? 0);
+        length += Rlp.LengthOfSequence(Rlp.LengthOfAddressRlp * item.PenalizedNodes?.Length ?? 0);
         return length;
-    }
-
-    public Snapshot Decode(ref Rlp.ValueDecoderContext decoderContext, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
-    {
-        if (decoderContext.IsNextItemNull())
-            return null;
-
-        decoderContext.ReadSequenceLength();
-
-        long number = decoderContext.DecodeLong();
-        Hash256 hash256 = decoderContext.DecodeKeccak();
-        Address[] nextSigners = decoderContext.DecodeArray<Address>() ?? [];
-
-        return new Snapshot(number, hash256, nextSigners);
     }
 }
