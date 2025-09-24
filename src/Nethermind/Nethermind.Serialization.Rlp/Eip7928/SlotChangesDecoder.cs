@@ -15,8 +15,17 @@ public class SlotChangesDecoder : IRlpValueDecoder<SlotChanges>, IRlpStreamDecod
 
     public SlotChanges Decode(ref Rlp.ValueDecoderContext ctx, RlpBehaviors rlpBehaviors)
     {
+        // var tmp = ctx.Data[ctx.Position..].ToArray();
+
+        // Console.WriteLine("slot change uncut:");
+        // Console.WriteLine(Bytes.ToHexString(tmp));
+
         int length = ctx.ReadSequenceLength();
         int check = length + ctx.Position;
+
+        // tmp = tmp[..(length + 2)];
+        // Console.WriteLine("slot change:" + length);
+        // Console.WriteLine(Bytes.ToHexString(tmp));
 
         byte[] slot = ctx.DecodeByteArray();
         if (slot.Length != 32)

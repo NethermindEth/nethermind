@@ -12,7 +12,7 @@ public class StorageReadDecoder : IRlpValueDecoder<StorageRead>, IRlpStreamDecod
     public static StorageReadDecoder Instance => _instance ??= new();
 
     public int GetLength(StorageRead item, RlpBehaviors rlpBehaviors)
-        => Rlp.LengthOfSequence(GetContentLength(item, rlpBehaviors));
+        => GetContentLength(item, rlpBehaviors);
 
     public StorageRead Decode(ref Rlp.ValueDecoderContext ctx, RlpBehaviors rlpBehaviors)
     {
@@ -41,10 +41,7 @@ public class StorageReadDecoder : IRlpValueDecoder<StorageRead>, IRlpStreamDecod
     }
 
     public void Encode(RlpStream stream, StorageRead item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
-    {
-        stream.StartSequence(GetContentLength(item, rlpBehaviors));
-        stream.Encode(item.Key.Unwrap());
-    }
+        => stream.Encode(item.Key.Unwrap());
 
     public static int GetContentLength(StorageRead item, RlpBehaviors rlpBehaviors)
         => Rlp.LengthOf(item.Key.Unwrap());

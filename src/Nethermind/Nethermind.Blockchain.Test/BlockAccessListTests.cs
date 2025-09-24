@@ -21,6 +21,7 @@ using Nethermind.Core.Test.Builders;
 using Nethermind.Evm.State;
 using Nethermind.Int256;
 using Nethermind.Serialization.Rlp;
+using Nethermind.Serialization.Rlp.Eip7928;
 using Nethermind.Specs;
 using Nethermind.Specs.Forks;
 using Nethermind.Specs.Test;
@@ -111,8 +112,117 @@ public class BlockAccessListTests()
         // Console.WriteLine(expected);
         Assert.That(bal, Is.EqualTo(expected));
 
-        byte[] hash = [.. ValueKeccak.Compute(Rlp.Encode(bal).Bytes).Bytes];
-        Assert.That(hash, Is.EqualTo(Bytes.FromHexString("0xc616d499eecff62312242ac084a62f9c04aa4cc65cab20ef6b43f46dcf779322")));
+        string encoded = "0x" + Bytes.ToHexString(Rlp.Encode(bal).Bytes);
+        Console.WriteLine(encoded);
+        Console.WriteLine(rlp);
+        Assert.That(encoded, Is.EqualTo(rlp));
+    }
+
+    [Test]
+    public void Can_decode_then_encode_balance_change()
+    {
+        const string rlp = "0xc801861319718811c8";
+        Rlp.ValueDecoderContext ctx = new(Bytes.FromHexString(rlp));
+        BalanceChange balanceChange = BalanceChangeDecoder.Instance.Decode(ref ctx, RlpBehaviors.None);
+        BalanceChange expected = new(1, 0x1319718811c8);
+        Assert.That(balanceChange, Is.EqualTo(expected));
+
+        string encoded = "0x" + Bytes.ToHexString(Rlp.Encode(balanceChange).Bytes);
+        Console.WriteLine(encoded);
+        Console.WriteLine(rlp);
+        Assert.That(encoded, Is.EqualTo(rlp));
+    }
+
+    [Test]
+    public void Can_decode_then_encode_nonce_change()
+    {
+        const string rlp = "0xc20101";
+        Rlp.ValueDecoderContext ctx = new(Bytes.FromHexString(rlp));
+        NonceChange nonceChange = NonceChangeDecoder.Instance.Decode(ref ctx, RlpBehaviors.None);
+        NonceChange expected = new(1, 1);
+        Assert.That(nonceChange, Is.EqualTo(expected));
+
+        string encoded = "0x" + Bytes.ToHexString(Rlp.Encode(nonceChange).Bytes);
+        Console.WriteLine(encoded);
+        Console.WriteLine(rlp);
+        Assert.That(encoded, Is.EqualTo(rlp));
+    }
+
+    [Test]
+    public void Can_decode_then_encode_slot_change()
+    {
+        byte[] slot0 = ToStorageSlot(0);
+        StorageChange parentHashStorageChange = new(0, Bytes32.Wrap(Bytes.FromHexString("0xc382836f81d7e4055a0e280268371e17cc69a531efe2abee082e9b922d6050fd")));
+        const string rlp = "0xf845a00000000000000000000000000000000000000000000000000000000000000000e3e280a0c382836f81d7e4055a0e280268371e17cc69a531efe2abee082e9b922d6050fd";
+
+        Rlp.ValueDecoderContext ctx = new(Bytes.FromHexString(rlp));
+        SlotChanges slotChange = SlotChangesDecoder.Instance.Decode(ref ctx, RlpBehaviors.None);
+        SlotChanges expected = new(slot0, [parentHashStorageChange]);
+        Assert.That(slotChange, Is.EqualTo(expected));
+
+        string encoded = "0x" + Bytes.ToHexString(Rlp.Encode(slotChange).Bytes);
+        Console.WriteLine(encoded);
+        Console.WriteLine(rlp);
+        Assert.That(encoded, Is.EqualTo(rlp));
+    }
+
+    [Test]
+    public void Can_decode_then_encode_storage_change()
+    {
+        const string rlp = "0xe280a0c382836f81d7e4055a0e280268371e17cc69a531efe2abee082e9b922d6050fd";
+
+        Rlp.ValueDecoderContext ctx = new(Bytes.FromHexString(rlp));
+        StorageChange storageChange = StorageChangeDecoder.Instance.Decode(ref ctx, RlpBehaviors.None);
+        StorageChange expected = new(0, Bytes32.Wrap(Bytes.FromHexString("0xc382836f81d7e4055a0e280268371e17cc69a531efe2abee082e9b922d6050fd")));
+        Assert.That(storageChange, Is.EqualTo(expected));
+
+        string encoded = "0x" + Bytes.ToHexString(Rlp.Encode(storageChange).Bytes);
+        Console.WriteLine(encoded);
+        Console.WriteLine(rlp);
+        Assert.That(encoded, Is.EqualTo(rlp));
+    }
+
+    // todo: code change test
+    // move to RLP tests?
+
+    private static IEnumerable<TestCaseData> AccountChangesTestSource
+    {
+        get
+        {
+            yield return new TestCaseData(
+                "0xf89f9400000961ef480eb55e80d19ad83579a64c007002c0f884a00000000000000000000000000000000000000000000000000000000000000000a00000000000000000000000000000000000000000000000000000000000000001a00000000000000000000000000000000000000000000000000000000000000002a00000000000000000000000000000000000000000000000000000000000000003c0c0c0",
+                new AccountChanges()
+                {
+                    Address = Eip7002Constants.WithdrawalRequestPredeployAddress,
+                    StorageReads = [
+                            ToStorageRead(ToStorageSlot(0)),
+                            ToStorageRead(ToStorageSlot(1)),
+                            ToStorageRead(ToStorageSlot(2)),
+                            ToStorageRead(ToStorageSlot(3))
+                        ],
+                });
+
+            yield return new TestCaseData(
+                "0xf862940000f90827f1c53a10cb7a02335b175320002935f847f845a00000000000000000000000000000000000000000000000000000000000000000e3e280a0c382836f81d7e4055a0e280268371e17cc69a531efe2abee082e9b922d6050fdc0c0c0c0",
+                new AccountChanges()
+                {
+                    Address = Eip2935Constants.BlockHashHistoryAddress,
+                    StorageChanges = new(Bytes.Comparer) { { ToStorageSlot(0), new SlotChanges(ToStorageSlot(0), [new(0, Bytes32.Wrap(Bytes.FromHexString("0xc382836f81d7e4055a0e280268371e17cc69a531efe2abee082e9b922d6050fd")))]) } },
+                });
+        }
+    }
+    [TestCaseSource(nameof(AccountChangesTestSource))]
+    public void Can_decode_then_encode_account_change(string rlp, AccountChanges expected)
+    {
+        Rlp.ValueDecoderContext ctx = new(Bytes.FromHexString(rlp));
+        AccountChanges accountChange = AccountChangesDecoder.Instance.Decode(ref ctx, RlpBehaviors.None);
+
+        Assert.That(accountChange, Is.EqualTo(expected));
+
+        string encoded = "0x" + Bytes.ToHexString(Rlp.Encode(accountChange).Bytes);
+        Console.WriteLine(encoded);
+        Console.WriteLine(rlp);
+        Assert.That(encoded, Is.EqualTo(rlp));
     }
 
     [Test]

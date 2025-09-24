@@ -4,6 +4,7 @@
 using System;
 using Nethermind.Core;
 using Nethermind.Core.BlockAccessLists;
+using Nethermind.Core.Extensions;
 
 namespace Nethermind.Serialization.Rlp.Eip7928;
 
@@ -14,8 +15,14 @@ public class CodeChangeDecoder : IRlpValueDecoder<CodeChange>, IRlpStreamDecoder
 
     public CodeChange Decode(ref Rlp.ValueDecoderContext ctx, RlpBehaviors rlpBehaviors)
     {
+        // var tmp = ctx.Data[ctx.Position..].ToArray();
+
         int length = ctx.ReadSequenceLength();
         int check = length + ctx.Position;
+
+        // tmp = tmp[..(length + 1)];
+        // Console.WriteLine("code change:" + length);
+        // Console.WriteLine(Bytes.ToHexString(tmp));
 
         ushort blockAccessIndex = ctx.DecodeUShort();
         byte[] newCode = ctx.DecodeByteArray();

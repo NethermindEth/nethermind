@@ -17,8 +17,17 @@ public class AccountChangesDecoder : IRlpValueDecoder<AccountChanges>, IRlpStrea
 
     public AccountChanges Decode(ref Rlp.ValueDecoderContext ctx, RlpBehaviors rlpBehaviors)
     {
+        // var tmp = ctx.Data[ctx.Position..].ToArray();
+
+        // Console.WriteLine("account change uncut:");
+        // Console.WriteLine(Bytes.ToHexString(tmp));
+
         int length = ctx.ReadSequenceLength();
         int check = length + ctx.Position;
+
+        // tmp = tmp[..(length + 1)];
+        // Console.WriteLine("account change:" + length);
+        // Console.WriteLine(Bytes.ToHexString(tmp));
 
         Address address = ctx.DecodeAddress();
 
