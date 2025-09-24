@@ -5,7 +5,6 @@ using System;
 using Autofac;
 using Nethermind.Blockchain;
 using Nethermind.Core;
-using Nethermind.Core.Crypto;
 using Nethermind.Evm.State;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.State;
@@ -17,19 +16,6 @@ public class AutoReadOnlyTxProcessingEnvFactory(ILifetimeScope parentLifetime, I
     public IReadOnlyTxProcessorSource Create()
     {
         IWorldStateScopeProvider worldState = worldStateManager.CreateResettableWorldState();
-        ILifetimeScope childScope = parentLifetime.BeginLifetimeScope((builder) =>
-        {
-            builder
-                .AddSingleton<IWorldStateScopeProvider>(worldState)
-                .AddSingleton<AutoReadOnlyTxProcessingEnv>();
-        });
-
-        return childScope.Resolve<AutoReadOnlyTxProcessingEnv>();
-    }
-
-    public IReadOnlyTxProcessorSource CreateForWarmingUp(IWorldStateScopeProvider worldStateToWarmUp)
-    {
-        IWorldStateScopeProvider worldState = worldStateManager.CreateWorldStateForWarmingUp(worldStateToWarmUp);
         ILifetimeScope childScope = parentLifetime.BeginLifetimeScope((builder) =>
         {
             builder
