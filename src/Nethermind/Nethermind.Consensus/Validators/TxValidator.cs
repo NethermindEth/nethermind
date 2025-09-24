@@ -20,6 +20,7 @@ public sealed class TxValidator : ITxValidator
     public TxValidator(ulong chainId)
     {
         RegisterValidator(TxType.Legacy, new CompositeTxValidator([
+            MaxNonceTxValidator.Instance,
             IntrinsicGasTxValidator.Instance,
             new LegacySignatureTxValidator(chainId),
             ContractSizeTxValidator.Instance,
@@ -31,6 +32,7 @@ public sealed class TxValidator : ITxValidator
         var expectedChainIdTxValidator = new ExpectedChainIdTxValidator(chainId);
         RegisterValidator(TxType.AccessList, new CompositeTxValidator([
             new ReleaseSpecTxValidator(static spec => spec.IsEip2930Enabled),
+            MaxNonceTxValidator.Instance,
             IntrinsicGasTxValidator.Instance,
             SignatureTxValidator.Instance,
             expectedChainIdTxValidator,
@@ -41,6 +43,7 @@ public sealed class TxValidator : ITxValidator
         ]));
         RegisterValidator(TxType.EIP1559, new CompositeTxValidator([
             new ReleaseSpecTxValidator(static spec => spec.IsEip1559Enabled),
+            MaxNonceTxValidator.Instance,
             IntrinsicGasTxValidator.Instance,
             SignatureTxValidator.Instance,
             expectedChainIdTxValidator,
@@ -52,6 +55,7 @@ public sealed class TxValidator : ITxValidator
         ]));
         RegisterValidator(TxType.Blob, new CompositeTxValidator([
             new ReleaseSpecTxValidator(static spec => spec.IsEip4844Enabled),
+            MaxNonceTxValidator.Instance,
             IntrinsicGasTxValidator.Instance,
             SignatureTxValidator.Instance,
             expectedChainIdTxValidator,
@@ -65,6 +69,7 @@ public sealed class TxValidator : ITxValidator
         ]));
         RegisterValidator(TxType.SetCode, new CompositeTxValidator([
             new ReleaseSpecTxValidator(static spec => spec.IsEip7702Enabled),
+            MaxNonceTxValidator.Instance,
             IntrinsicGasTxValidator.Instance,
             SignatureTxValidator.Instance,
             expectedChainIdTxValidator,
@@ -88,18 +93,10 @@ public sealed class TxValidator : ITxValidator
     /// As such, we can decide whether tx is well formed as long as we also validate nonce
     /// just before the execution of the block / tx.
     /// </remarks>
-    public ValidationResult IsWellFormed(Transaction transaction, IReleaseSpec releaseSpec)
-    {
-        // Common validation for all transaction types
-        if (transaction.Nonce >= Transaction.MaxNonce)
-        {
-            return TxErrorMessages.NonceTooHigh;
-        }
-
-        return _validators.TryGetByTxType(transaction.Type, out ITxValidator validator)
+    public ValidationResult IsWellFormed(Transaction transaction, IReleaseSpec releaseSpec) =>
+        _validators.TryGetByTxType(transaction.Type, out ITxValidator validator)
             ? validator.IsWellFormed(transaction, releaseSpec)
             : TxErrorMessages.InvalidTxType(releaseSpec.Name);
-    }
 }
 
 public class CompositeTxValidator(params ITxValidator[] validators) : ITxValidator
@@ -396,4 +393,13 @@ public sealed class GasLimitCapTxValidator : ITxValidator
         return transaction.GasLimit > gasLimitCap ?
             TxErrorMessages.TxGasLimitCapExceeded(transaction.GasLimit, gasLimitCap) : ValidationResult.Success;
     }
+}
+
+public sealed class MaxNonceTxValidator : ITxValidator
+{
+    public static readonly MaxNonceTxValidator Instance = new();
+    private MaxNonceTxValidator() { }
+
+    public ValidationResult IsWellFormed(Transaction transaction, IReleaseSpec releaseSpec) =>
+        transaction.Nonce >= Transaction.MaxNonce ? TxErrorMessages.NonceTooHigh : ValidationResult.Success;
 }
