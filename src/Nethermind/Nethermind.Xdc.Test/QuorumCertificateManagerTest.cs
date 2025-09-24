@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using Nethermind.Blockchain;
+using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Builders;
@@ -46,24 +47,46 @@ public class QuorumCertificateManagerTest
 
     public static IEnumerable<TestCaseData> QcCases()
     {
-        PrivateKeyBuilder keyBuilder = Build.A.PrivateKey;
-        XdcBlockHeaderBuilder headerBuilder = Build.A.XdcBlockHeader();
-
+        XdcBlockHeaderBuilder headerBuilder = Build.A.XdcBlockHeader().WithGeneratedExtraConsensusData();
+        var keyBuilder = new PrivateKeyGenerator();
         //Base valid control case
-        yield return new TestCaseData(CreateQc(new BlockRoundInfo(Hash256.Zero, 1, 1), 1, keyBuilder.TestObjectNTimes(20)), headerBuilder, true);
+        PrivateKey[] keys = keyBuilder.Generate(20).ToArray();
+        IEnumerable<Address> masterNodes = keys.Select(k => k.Address);
+        yield return new TestCaseData ( CreateQc(new BlockRoundInfo(headerBuilder.TestObject.Hash!, 1, 1), 0, keys), headerBuilder, keys.Select(k => k.Address), true );
+
+        //Not enough signatures
+        yield return new TestCaseData ( CreateQc(new BlockRoundInfo(headerBuilder.TestObject.Hash!, 1, 1), 0, keys.Take(13).ToArray()), headerBuilder, keys.Select(k => k.Address), false );
+
+        //1 Vote is not master node
+        yield return new TestCaseData (CreateQc(new BlockRoundInfo(headerBuilder.TestObject.Hash!, 1, 1), 0, keys), headerBuilder, keys.Skip(1).Select(k => k.Address), false);
+
+        //Wrong gap number
+        yield return new TestCaseData (CreateQc(new BlockRoundInfo(headerBuilder.TestObject.Hash!, 1, 1), 1, keys), headerBuilder, masterNodes, false);
+
+        //Wrong block number in QC
+        yield return new TestCaseData (CreateQc(new BlockRoundInfo(headerBuilder.TestObject.Hash!, 1, 2), 0, keys), headerBuilder, masterNodes, false);
+
+        //Wrong hash in QC
+        yield return new TestCaseData ( CreateQc(new BlockRoundInfo(Hash256.Zero, 1, 1), 0, keys), headerBuilder, masterNodes, false );
+
+        //Wrong round number in QC
+        yield return new TestCaseData (CreateQc(new BlockRoundInfo(headerBuilder.TestObject.Hash!, 0, 1), 0, keys), headerBuilder, masterNodes, false);
     }
 
     [TestCaseSource(nameof(QcCases))]
-    public void VerifyCertificate_(QuorumCertificate quorumCert, XdcBlockHeaderBuilder xdcBlockHeaderBuilder, bool expected)
+    public void VerifyCertificate_(QuorumCertificate quorumCert, XdcBlockHeaderBuilder xdcBlockHeaderBuilder, IEnumerable<Address> masternodes, bool expected)
     {
         IEpochSwitchManager epochSwitchManager = Substitute.For<IEpochSwitchManager>();
-        epochSwitchManager.GetEpochSwitchInfo(Arg.Any<XdcBlockHeader>(), Arg.Any<Hash256>())
-            .Returns(new EpochSwitchInfo([], [], new BlockRoundInfo(Hash256.Zero, 1, 1)));
+        epochSwitchManager
+            .GetEpochSwitchInfo(Arg.Any<XdcBlockHeader>(), Arg.Any<Hash256>())
+            .Returns(new EpochSwitchInfo(masternodes.ToArray(), [], new BlockRoundInfo(Hash256.Zero, 1, 10)));
         ISpecProvider specProvider = Substitute.For<ISpecProvider>();
         IXdcReleaseSpec xdcReleaseSpec = Substitute.For<IXdcReleaseSpec>();
+        xdcReleaseSpec.EpochLength.Returns(900);
+        xdcReleaseSpec.Gap.Returns(450);
         IXdcSubConfig xdcSubConfig = Substitute.For<IXdcSubConfig>();
         xdcSubConfig.CertThreshold.Returns(0.667);
-        xdcReleaseSpec.Configs.Returns([Substitute.For<IXdcSubConfig>(), xdcSubConfig]);
+        xdcReleaseSpec.Configs.Returns([xdcSubConfig, xdcSubConfig]);
         specProvider.GetSpec(Arg.Any<ForkActivation>()).Returns(xdcReleaseSpec);
         var quorumCertificateManager = new QuorumCertificateManager(
             new XdcContext(),

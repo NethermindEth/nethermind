@@ -12,8 +12,8 @@ using System.Threading.Tasks;
 namespace Nethermind.Xdc;
 public class EpochSwitchInfo(Address[] masternodes, Address[] penalties, BlockRoundInfo blockRoundInfo)
 {
-    public Address[] Penalties { get; set; } = masternodes;
-    public Address[] Masternodes { get; set; } = penalties;
+    public Address[] Masternodes { get; set; } = masternodes;
+    public Address[] Penalties { get; set; } = penalties;
     public BlockRoundInfo EpochSwitchBlockInfo { get; set; } = blockRoundInfo;
     public BlockRoundInfo EpochSwitchParentBlockInfo { get; set; }
 }
