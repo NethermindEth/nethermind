@@ -35,8 +35,7 @@ public class TxValidatorTests
     [Test, MaxTime(Timeout.MaxTestTime)]
     public void Curve_is_correct()
     {
-        BigInteger N =
-            BigInteger.Parse("115792089237316195423570985008687907852837564279074904382605163141518161494337");
+        BigInteger N = BigInteger.Parse("115792089237316195423570985008687907852837564279074904382605163141518161494337");
         BigInteger HalfN = N / 2;
 
         Secp256K1Curve.N.Convert(out BigInteger n);
@@ -642,6 +641,44 @@ public class TxValidatorTests
             Assert.That(result.AsBool, Is.False);
             Assert.That(result.Error, Is.EqualTo(TxErrorMessages.TxGasLimitCapExceeded(tx.GasLimit, Eip7825Constants.DefaultTxGasLimitCap)));
         }
+    }
+
+    [Test]
+    public void IsWellFormed_Nonce_Under_Limit([Values(TxType.AccessList, TxType.Legacy)] TxType txType)
+    {
+        ValidationResult result = IsWellFormed_Nonce_Limit(ulong.MaxValue - 1, txType);
+        Assert.That(result.AsBool, Is.True);
+    }
+
+    [Test]
+    public void IsWellFormed_Nonce_Over_Limit([Values(TxType.AccessList, TxType.Blob, TxType.EIP1559, TxType.Legacy, TxType.SetCode)] TxType txType)
+    {
+        ValidationResult result = IsWellFormed_Nonce_Limit(ulong.MaxValue, txType);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.AsBool, Is.False);
+            Assert.That(result.Error, Is.EqualTo(TxErrorMessages.NonceTooHigh));
+        }
+    }
+
+    private static ValidationResult IsWellFormed_Nonce_Limit(ulong nonce, TxType txType)
+    {
+        TransactionBuilder<Transaction> builder = Build.A.Transaction
+            .WithType(txType)
+            .WithNonce(nonce)
+            .WithChainId(TestBlockchainIds.ChainId)
+            .SignedAndResolved();
+        if (txType == TxType.Blob)
+        {
+            builder.WithMaxFeePerBlobGas(UInt256.One)
+                .WithBlobVersionedHashes([]);
+        }
+        Transaction tx = builder.TestObject;
+
+        TxValidator txValidator = new(TestBlockchainIds.ChainId);
+        IReleaseSpec releaseSpec = Osaka.Instance;
+        return txValidator.IsWellFormed(tx, releaseSpec);
     }
 
     private static byte[] MakeArray(int count, params byte[] elements) =>
