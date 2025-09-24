@@ -1,7 +1,7 @@
 # SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 # SPDX-License-Identifier: LGPL-3.0-only
 
-FROM --platform=$BUILDPLATFORM mcr.microsoft.com/dotnet/sdk:9.0.305-noble@sha256:802e64ab9e113bdfa5d476ae00c7b40ab5c42da1792731c41a47f43bc4e74bdb
+FROM --platform=$BUILDPLATFORM mcr.microsoft.com/dotnet/sdk:9.0.305-noble@sha256:802e64ab9e113bdfa5d476ae00c7b40ab5c42da1792731c41a47f43bc4e74bdb AS build
 
 ARG BUILD_TIMESTAMP
 ARG COMMIT_HASH
@@ -20,11 +20,14 @@ COPY scripts/build/deb deb
 RUN arch=$([ "$TARGETARCH" = "amd64" ] && echo "x64" || echo "$TARGETARCH") && \
   cd src/Nethermind/Nethermind.Runner && \
   dotnet restore --locked-mode && \
-  dotnet publish -c release -a $arch -o /deb/nethermind/opt/nethermind --sc --no-restore \
+  dotnet publish -c release -a $arch -o /nethermind/deb/nethermind/opt/nethermind --sc --no-restore \
   -p:BuildTimestamp=$BUILD_TIMESTAMP -p:Commit=$COMMIT_HASH \
   -p:DebugType=embedded -p:IncludeAllContentForSelfExtract=true -p:PublishSingleFile=true
 
-RUN apt-get update && apt-get install xmlstarlet -y --no-install-recommends
+FROM build AS package
+
+RUN apt-get update && apt-get install xmlstarlet -y --no-install-recommends && \
+  rm -rf /var/lib/apt/lists/*
 
 RUN version=$(xmlstarlet sel -t -v "//Project/PropertyGroup/VersionPrefix" src/Nethermind/Directory.Build.props) && \
   sed -i "s/^Version: .*/Version: $version/" deb/nethermind/DEBIAN/control
