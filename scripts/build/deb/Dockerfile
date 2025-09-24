@@ -13,25 +13,25 @@ ENV SOURCE_DATE_EPOCH=$BUILD_TIMESTAMP
 COPY src/Nethermind src/Nethermind
 COPY Directory.*.props .
 COPY nuget.config .
-COPY scripts/dpkg dpkg
+COPY scripts/build/deb deb
 
 WORKDIR /src/Nethermind/Nethermind.Runner
 
 RUN arch=$([ "$TARGETARCH" = "amd64" ] && echo "x64" || echo "$TARGETARCH") && \
   dotnet restore -a $arch && \
-  dotnet publish -c release -a $arch -o /dpkg/nethermind/opt/nethermind --sc --no-restore \
+  dotnet publish -c release -a $arch -o /deb/nethermind/opt/nethermind --sc --no-restore \
   -p:BuildTimestamp=$BUILD_TIMESTAMP -p:Commit=$COMMIT_HASH \
   -p:DebugType=embedded -p:IncludeAllContentForSelfExtract=true -p:PublishSingleFile=true
 
 RUN apt-get update && apt-get install xmlstarlet -y --no-install-recommends
 
 RUN version=$(xmlstarlet sel -t -v "//Project/PropertyGroup/VersionPrefix" ../Directory.Build.props) && \
-  sed -i "s/^Version: .*/Version: $version/" /dpkg/nethermind/DEBIAN/control
+  sed -i "s/^Version: .*/Version: $version/" /deb/nethermind/DEBIAN/control
 
-WORKDIR /dpkg
+WORKDIR /deb
 
 RUN dpkg-deb --build --root-owner-group nethermind
 
 VOLUME /output
 
-CMD ["cp", "/dpkg/nethermind.deb", "/output/nethermind.deb"]
+CMD ["cp", "/deb/nethermind.deb", "/output/nethermind.deb"]
