@@ -23,7 +23,7 @@ public class XdcChainSpecEngineParameters : IChainSpecEngineParameters
 
 
     private List<V2ConfigParams> _v2Configs = new();
-    public List<V2ConfigParams> V2Configs
+        public List<V2ConfigParams> V2Configs
     {
         get => _v2Configs;
         set
