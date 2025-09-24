@@ -106,6 +106,11 @@ namespace Nethermind.TxPool
         public static readonly AcceptTxResult DelegatorHasPendingTx = new(18, nameof(DelegatorHasPendingTx));
 
         /// <summary>
+        /// The nonce exceeds the maximum allowed value of 2^64-1 (EIP-2681).
+        /// </summary>
+        public static readonly AcceptTxResult NonceTooHigh = new(19, nameof(NonceTooHigh));
+
+        /// <summary>
         /// The node is syncing and cannot accept transactions at this time.
         /// </summary>
         public static readonly AcceptTxResult Syncing = new(503, nameof(Syncing));
