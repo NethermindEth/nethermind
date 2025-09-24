@@ -6,6 +6,7 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Numerics;
 using CkzgLib;
+using FastEnumUtility;
 using FluentAssertions;
 using Nethermind.Consensus.Messages;
 using Nethermind.Consensus.Validators;
@@ -650,8 +651,10 @@ public class TxValidatorTests
         Assert.That(result.AsBool, Is.True);
     }
 
+    public static IEnumerable<TxType> TxTypes = FastEnum.GetValues<TxType>().Where(t => t != TxType.DepositTx);
+
     [Test]
-    public void IsWellFormed_Nonce_Over_Limit([Values(TxType.AccessList, TxType.Blob, TxType.EIP1559, TxType.Legacy, TxType.SetCode)] TxType txType)
+    public void IsWellFormed_Nonce_Over_Limit([ValueSource(nameof(TxTypes))] TxType txType)
     {
         ValidationResult result = IsWellFormed_Nonce_Limit(ulong.MaxValue, txType);
 
