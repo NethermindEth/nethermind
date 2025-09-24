@@ -25,8 +25,8 @@ public class MainProcessingContextTests
     public async Task Test_TransactionProcessed_EventIsFired(CancellationToken cancelationToken)
     {
         await using IContainer ctx = new ContainerBuilder()
-            .AddModule(new TestNethermindModule())
-            .WithGenesisPostProcessor((block, state) =>
+            .AddModule(new TestNethermindModule(Cancun.Instance))
+            .WithGenesisPostProcessor((_, state) =>
             {
                 state.AddToBalanceAndCreateIfNotExists(TestItem.AddressA, 10.Ether(), Osaka.Instance);
             })
@@ -34,7 +34,7 @@ public class MainProcessingContextTests
 
         var mainProcessingContext = ctx.Resolve<IMainProcessingContext>();
         int totalTransactionProcessed = 0;
-        mainProcessingContext.TransactionProcessed += (sender, args) => totalTransactionProcessed++;
+        mainProcessingContext.TransactionProcessed += (_, _) => totalTransactionProcessed++;
 
         await ctx.Resolve<PseudoNethermindRunner>().StartBlockProcessing(cancelationToken);
         await ctx.Resolve<TestBlockchainUtil>().AddBlockAndWaitForHead(false, cancelationToken,
