@@ -471,7 +471,7 @@ public class StorageProviderTests
         for (int i = 0; i < numItems; i++)
         {
             UInt256 asUInt256 = (UInt256)(i + 1);
-            worldState.Set(new StorageCell(TestItem.AddressA, (UInt256) i), asUInt256.ToBigEndian());
+            worldState.Set(new StorageCell(TestItem.AddressA, (UInt256)i), asUInt256.ToBigEndian());
         }
         worldState.Commit(Prague.Instance);
         worldState.CommitTree(1);
@@ -481,7 +481,7 @@ public class StorageProviderTests
 
         for (int i = 0; i < numItems; i++)
         {
-            worldState.Set(new StorageCell(TestItem.AddressA, (UInt256) i), [0]);
+            worldState.Set(new StorageCell(TestItem.AddressA, (UInt256)i), [0]);
         }
         worldState.Commit(Prague.Instance);
         worldState.CommitTree(2);
