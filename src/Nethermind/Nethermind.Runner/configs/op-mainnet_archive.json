@@ -11,10 +11,6 @@
   "TxPool": {
     "BlobsSupport": "Disabled"
   },
-  "Sync": {
-    "AncientBodiesBarrier": 105235063,
-    "AncientReceiptsBarrier": 105235063
-  },
   "Discovery": {
     "DiscoveryVersion": "V5"
   },
