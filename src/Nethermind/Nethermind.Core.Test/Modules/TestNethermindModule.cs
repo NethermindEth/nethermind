@@ -21,8 +21,11 @@ namespace Nethermind.Core.Test.Modules;
 /// <param name="configProvider"></param>
 public class TestNethermindModule(IConfigProvider configProvider, ChainSpec chainSpec) : Module
 {
-    public TestNethermindModule() : this(new ConfigProvider())
+    private readonly IReleaseSpec? _releaseSpec;
+
+    public TestNethermindModule(IReleaseSpec? releaseSpec = null) : this(new ConfigProvider())
     {
+        _releaseSpec = releaseSpec;
     }
 
     public TestNethermindModule(params IConfig[] configs) : this(new ConfigProvider(configs))
@@ -53,6 +56,6 @@ public class TestNethermindModule(IConfigProvider configProvider, ChainSpec chai
         builder
             .AddModule(new PseudoNethermindModule(chainSpec, configProvider, LimboLogs.Instance))
             .AddModule(new TestEnvironmentModule(TestItem.PrivateKeyA, Random.Shared.Next().ToString()))
-            .AddSingleton<ISpecProvider>(_ => new TestSpecProvider(Cancun.Instance));
+            .AddSingleton<ISpecProvider>(_ => new TestSpecProvider(_releaseSpec ?? Osaka.Instance));
     }
 }

@@ -12,6 +12,7 @@ using Nethermind.Consensus.Validators;
 using Nethermind.Core;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Core.Test.Modules;
+using Nethermind.Specs.Forks;
 using NUnit.Framework;
 
 namespace Nethermind.Blockchain.Test.Producers;
@@ -22,21 +23,21 @@ public class DevBlockProducerTests
     public void Test()
     {
         using IContainer container = new ContainerBuilder()
-            .AddModule(new TestNethermindModule())
+            .AddModule(new TestNethermindModule(Cancun.Instance))
             .AddSingleton<IBlockValidator>(Always.Valid)
             .AddSingleton<IBlockProducerTxSourceFactory, EmptyTxSourceFactory>()
             .AddScoped<IBlockProducerFactory, TestBlockProcessingModule.AutoBlockProducerFactory<DevBlockProducer>>()
             .Build();
 
         IBlockTree blockTree = container.Resolve<IBlockTree>();
+        AutoResetEvent autoResetEvent = new(false);
+        blockTree.NewHeadBlock += (_, _) => autoResetEvent.Set();
+
         IManualBlockProductionTrigger trigger = container.Resolve<IManualBlockProductionTrigger>();
 
         container.Resolve<IMainProcessingContext>().BlockchainProcessor.Start();
         container.Resolve<IBlockProducerRunner>().Start();
 
-        AutoResetEvent autoResetEvent = new(false);
-
-        blockTree.NewHeadBlock += (_, _) => autoResetEvent.Set();
         blockTree.SuggestBlock(Build.A.Block.Genesis.TestObject);
 
         autoResetEvent.WaitOne(1000).Should().BeTrue("genesis");
