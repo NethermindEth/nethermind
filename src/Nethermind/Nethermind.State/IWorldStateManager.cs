@@ -24,13 +24,6 @@ public interface IWorldStateManager
     /// <returns></returns>
     IWorldStateScopeProvider CreateResettableWorldState();
 
-    /// <summary>
-    /// Create a read only world state to warm up another world state
-    /// </summary>
-    /// <param name="forWarmup">Specify a world state to warm up by the returned world state.</param>
-    /// <returns></returns>
-    IWorldStateScopeProvider CreateWorldStateForWarmingUp(IWorldStateScopeProvider forWarmup);
-
     event EventHandler<ReorgBoundaryReached>? ReorgBoundaryReached;
 
     IOverridableWorldScope CreateOverridableWorldScope();
