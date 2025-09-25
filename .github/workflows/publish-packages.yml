@@ -13,7 +13,7 @@ jobs:
       - name: Check out Nethermind repository
         uses: actions/checkout@v4
         with:
-          ref: v1.34.0
+          ref: 1.34.0
       - name: Set up GPG
         env:
           GPG_PASSPHRASE: ${{ secrets.PPA_GPG_PASSPHRASE }}
