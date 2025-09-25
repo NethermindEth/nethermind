@@ -61,7 +61,7 @@ internal class ExtraConsensusDataDecoder : IRlpValueDecoder<ExtraFieldsV2>, IRlp
         }
 
         stream.StartSequence(GetContentLength(item, rlpBehaviors));
-        stream.Encode(item.Round);
+        stream.Encode(item.CurrentRound);
         _quorumCertificateDecoder.Encode(stream, item.QuorumCert, rlpBehaviors);
     }
 
@@ -74,7 +74,7 @@ internal class ExtraConsensusDataDecoder : IRlpValueDecoder<ExtraFieldsV2>, IRlp
         if (item is null)
             return 0;
         int length = _quorumCertificateDecoder.GetLength(item.QuorumCert, rlpBehaviors);
-        return Rlp.LengthOf(item.Round) + length;
+        return Rlp.LengthOf(item.CurrentRound) + length;
     }
 
 }

@@ -319,6 +319,14 @@ public partial class EthRpcModuleTests
     }
 
     [Test]
+    public async Task Eth_uninstall_filter_overflow_int()
+    {
+        using Context ctx = await Context.Create();
+        string serialized = await ctx.Test.TestEthRpc("eth_uninstallFilter", "0xd003d345df");
+        Assert.That(serialized, Is.EqualTo("{\"jsonrpc\":\"2.0\",\"result\":false,\"id\":67}"));
+    }
+
+    [Test]
     public async Task Eth_get_filter_changes_with_block()
     {
         using Context ctx = await Context.Create();

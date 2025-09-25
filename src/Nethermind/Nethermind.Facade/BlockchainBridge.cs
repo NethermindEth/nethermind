@@ -238,7 +238,7 @@ namespace Nethermind.Facade
                     blockHeader.Number + 1,
                     blockHeader.GasLimit,
                     Math.Max(blockHeader.Timestamp + blocksConfig.SecondsPerSlot, timestamper.UnixTime.Seconds),
-                    Array.Empty<byte>())
+                    [])
                 : new(
                     blockHeader.ParentHash!,
                     blockHeader.UnclesHash!,

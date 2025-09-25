@@ -26,5 +26,6 @@ public static class NethermindPlugins
         typeof(Nethermind.Shutter.ShutterPlugin),
         typeof(Nethermind.Taiko.TaikoPlugin),
         typeof(Nethermind.UPnP.Plugin.UPnPPlugin),
+        typeof(Nethermind.Xdc.XdcPlugin),
     ];
 }
