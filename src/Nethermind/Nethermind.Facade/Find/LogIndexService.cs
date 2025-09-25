@@ -345,18 +345,18 @@ public sealed class LogIndexService : ILogIndexService
 
                 if (batch.Length == 0)
                 {
-                    next = isForward ? from : to - 1;
-
-                    var block = _blockTree.FindBlock((long)next);
-                    var status = new
-                    {
-                        Block = block,
-                        HasTransactions = block?.Header.HasTransactions,
-                        HasBlock = block == null ? (bool?)null : _receiptStorage.HasBlock(block.Number, block.Hash!),
-                        ReceiptsLength = block == null ? null : _receiptStorage.Get(block)?.Length,
-                        BestKnownNumber = _blockTree.BestKnownNumber
-                    };
-                    _logger.Info($"[TRACE] {GetLogPrefix(isForward)}: waiting for receipts of block {next}: {status}");
+                    // next = isForward ? from : to - 1;
+                    //
+                    // var block = _blockTree.FindBlock((long)next);
+                    // var status = new
+                    // {
+                    //     Block = block,
+                    //     HasTransactions = block?.Header.HasTransactions,
+                    //     HasBlock = block == null ? (bool?)null : _receiptStorage.HasBlock(block.Number, block.Hash!),
+                    //     ReceiptsLength = block == null ? null : _receiptStorage.Get(block)?.Length,
+                    //     BestKnownNumber = _blockTree.BestKnownNumber
+                    // };
+                    // _logger.Info($"[TRACE] {GetLogPrefix(isForward)}: waiting for receipts of block {next}: {status}");
 
                     await Task.Delay(NewBlockWaitTimeout, CancellationToken);
                     continue;
