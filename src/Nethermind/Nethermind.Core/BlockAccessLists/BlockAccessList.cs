@@ -195,7 +195,9 @@ public struct BlockAccessList : IEquatable<BlockAccessList>, IJournal<int>
 
         if (before != after)
         {
-            StorageChange(accountChanges, new StorageCell(address, storageIndex).Hash.BytesAsSpan, after);
+            Span<byte> key = new byte[32];
+            storageIndex.ToBigEndian(key);
+            StorageChange(accountChanges, key, after);
         }
     }
 
@@ -211,15 +213,19 @@ public struct BlockAccessList : IEquatable<BlockAccessList>, IJournal<int>
 
         if (before is null || !Enumerable.SequenceEqual(before, after))
         {
-            StorageChange(accountChanges, storageCell.Hash.BytesAsSpan, after.AsSpan());
+            Span<byte> key = new byte[32];
+            storageCell.Index.ToBigEndian(key);
+            StorageChange(accountChanges, key, after.AsSpan());
         }
     }
 
     public void AddStorageRead(in StorageCell storageCell)
     {
+        Span<byte> key = new byte[32];
+        storageCell.Index.ToBigEndian(key);
         StorageRead storageRead = new()
         {
-            Key = new(storageCell.Hash.ToByteArray())
+            Key = new(key)
         };
         Address address = storageCell.Address;
 
