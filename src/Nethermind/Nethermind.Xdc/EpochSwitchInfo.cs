@@ -12,6 +12,14 @@ using System.Threading.Tasks;
 namespace Nethermind.Xdc;
 public class EpochSwitchInfo
 {
+    public EpochSwitchInfo(Address[] penalties, Address[] masternodes, BlockRoundInfo epochSwitchBlockInfo, BlockRoundInfo epochSwitchParentBlockInfo)
+    {
+        Penalties = penalties;
+        Masternodes = masternodes;
+        EpochSwitchBlockInfo = epochSwitchBlockInfo;
+        EpochSwitchParentBlockInfo = epochSwitchParentBlockInfo;
+    }
+
     public Address[] Penalties { get; set; }
     public Address[] Masternodes { get; set; }
     public BlockRoundInfo EpochSwitchBlockInfo { get; set; }

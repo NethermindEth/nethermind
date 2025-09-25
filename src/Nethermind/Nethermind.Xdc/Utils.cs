@@ -10,6 +10,7 @@ using Nethermind.Serialization.Rlp;
 using Nethermind.Xdc;
 using Nethermind.Xdc.Errors;
 using Nethermind.Xdc.RLP;
+using Nethermind.Xdc.Spec;
 using Nethermind.Xdc.Types;
 using System;
 using System.Collections;
@@ -22,45 +23,6 @@ using ZstdSharp.Unsafe;
 namespace Nethermind.Xdc;
 internal static class Utils
 {
-    public static ExpCountDown FromConfig(IXdcConfig hotStuffConfig)
-        => new ExpCountDown(TimeSpan.FromSeconds(hotStuffConfig.CurrentConfig.TimeoutPeriod).Nanoseconds, hotStuffConfig.CurrentConfig.ExpTimeoutConfig.Base, hotStuffConfig.CurrentConfig.ExpTimeoutConfig.MaxExponent);
-    public static Hash256 SignHash(XdcBlockHeader header)
-    {
-        XdcHeaderDecoder headerDecoder = new();
-        RlpStream rlpStream = new RlpStream(headerDecoder.GetLength(header, RlpBehaviors.None));
-        headerDecoder.Encode(rlpStream, header, RlpBehaviors.None);
-        Span<byte> bytes = rlpStream.Read(rlpStream.Length);
-        return Keccak.Compute(bytes);
-    }
-
-    public static Address[] GetMasternodesFromEpochSwitchHeader(IBlockTree chain, XdcBlockHeader epochSwitchHeader)
-    {
-        if (epochSwitchHeader == null)
-        {
-            return [];
-        }
-
-        Address[] masterNodes = new Address[epochSwitchHeader.Validators.Length / Address.Size];
-
-        for (int i = 0; i < masterNodes.Length; i++)
-        {
-            masterNodes[i] = new Address(epochSwitchHeader.Validators.Slice(i * Address.Size, Address.Size));
-        }
-
-        return masterNodes;
-    }
-
-    public static bool IsAllowedToSend(IMasternodesManager masternodesManager, XdcBlockHeader header, Address signer)
-    {
-        if (signer == null || header == null)
-        {
-            return false;
-        }
-
-        var addresses = masternodesManager.GetMasternodes(header);
-
-        return Array.BinarySearch(addresses, signer) >= 0;
-    }
 
     public static Address[] GetMasternodesFromGenesisHeader(IBlockTree chain, XdcBlockHeader genesisHeader)
     {
@@ -156,7 +118,7 @@ internal static class Utils
         }
 
         quorumCert = extraFields.QuorumCert;
-        round = extraFields.Round;
+        round = extraFields.CurrentRound;
 
         return true;
     }
