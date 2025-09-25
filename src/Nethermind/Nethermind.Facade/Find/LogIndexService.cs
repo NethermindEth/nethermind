@@ -53,7 +53,7 @@ public sealed class LogIndexService : ILogIndexService
     private const int MaxReorgDepth = 8;
     private const int BatchSize = 256;
     private const int MaxBatchQueueSize = 4096;
-    private const int MaxAggregateQueueSize = 512;
+    private const int MaxAggregateQueueSize = 16; // each entry is BatchSize of blocks
     private static readonly int IOParallelism = 16;
     private static readonly int AggregateParallelism = Math.Max(Environment.ProcessorCount / 2, 1);
     private static readonly TimeSpan NewBlockWaitTimeout = TimeSpan.FromSeconds(5);
