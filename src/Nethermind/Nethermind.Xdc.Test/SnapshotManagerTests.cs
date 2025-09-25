@@ -26,7 +26,6 @@ internal class SnapshotManagerTests
     public void Setup()
     {
         IBlockTree blockTree = NSubstitute.Substitute.For<IBlockTree>();
-        IXdcConfig xdcConfig = NSubstitute.Substitute.For<IXdcConfig>();
         _snapshotManager = new SnapshotManager(_snapshotDb, blockTree);
     }
 
