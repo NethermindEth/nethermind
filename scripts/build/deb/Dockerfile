@@ -1,35 +1,21 @@
 # SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 # SPDX-License-Identifier: LGPL-3.0-only
 
-FROM --platform=$BUILDPLATFORM mcr.microsoft.com/dotnet/sdk:9.0.305-noble@sha256:802e64ab9e113bdfa5d476ae00c7b40ab5c42da1792731c41a47f43bc4e74bdb AS build
+FROM ubuntu:noble@sha256:985be7c735afdf6f18aaa122c23f87d989c30bba4e9aa24c8278912aac339a8d
 
-ARG BUILD_TIMESTAMP
-ARG COMMIT_HASH
-ARG TARGETARCH
-
-ENV CI=true
-ENV SOURCE_DATE_EPOCH=$BUILD_TIMESTAMP
+ARG ARTIFACTS
+ARG SOURCE_DATE_EPOCH
 
 WORKDIR /nethermind
 
-COPY src/Nethermind src/Nethermind
-COPY Directory.*.props .
-COPY nuget.config .
+COPY src/Nethermind/Directory.Build.props .
 COPY scripts/build/deb deb
-
-RUN arch=$([ "$TARGETARCH" = "amd64" ] && echo "x64" || echo "$TARGETARCH") && \
-  cd src/Nethermind/Nethermind.Runner && \
-  dotnet restore --locked-mode && \
-  dotnet publish -c release -a $arch -o /nethermind/deb/nethermind/opt/nethermind --sc --no-restore \
-  -p:BuildTimestamp=$BUILD_TIMESTAMP -p:Commit=$COMMIT_HASH \
-  -p:DebugType=embedded -p:IncludeAllContentForSelfExtract=true -p:PublishSingleFile=true
-
-FROM build AS package
+COPY $ARTIFACTS/linux-x64 deb/nethermind/opt/nethermind
 
 RUN apt-get update && apt-get install xmlstarlet -y --no-install-recommends && \
   rm -rf /var/lib/apt/lists/*
 
-RUN version=$(xmlstarlet sel -t -v "//Project/PropertyGroup/VersionPrefix" src/Nethermind/Directory.Build.props) && \
+RUN version=$(xmlstarlet sel -t -v "//Project/PropertyGroup/VersionPrefix" Directory.Build.props) && \
   sed -i "s/^Version: .*/Version: $version/" deb/nethermind/DEBIAN/control
 
 WORKDIR /nethermind/deb
