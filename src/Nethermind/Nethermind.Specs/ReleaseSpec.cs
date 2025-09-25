@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using System.Collections.Frozen;
 using System.Collections.Generic;
 using Nethermind.Core;
 using Nethermind.Core.Precompiles;
@@ -164,10 +163,10 @@ namespace Nethermind.Specs
         public bool IsEip7939Enabled { get; set; }
         public bool IsRip7728Enabled { get; set; }
 
-        private FrozenSet<AddressAsKey>? _precompiles;
-        FrozenSet<AddressAsKey> IReleaseSpec.Precompiles => _precompiles ??= BuildPrecompilesCache();
+        private HashSet<AddressAsKey>? _precompiles;
+        HashSet<AddressAsKey> IReleaseSpec.Precompiles => _precompiles ??= BuildPrecompilesCache();
 
-        public virtual FrozenSet<AddressAsKey> BuildPrecompilesCache()
+        public virtual HashSet<AddressAsKey> BuildPrecompilesCache()
         {
             HashSet<AddressAsKey> cache = new();
 
@@ -198,7 +197,7 @@ namespace Nethermind.Specs
             if (IsRip7212Enabled || IsEip7951Enabled) cache.Add(PrecompiledAddresses.P256Verify);
             if (IsRip7728Enabled) cache.Add(PrecompiledAddresses.L1Sload);
 
-            return cache.ToFrozenSet();
+            return cache;
         }
     }
 }
