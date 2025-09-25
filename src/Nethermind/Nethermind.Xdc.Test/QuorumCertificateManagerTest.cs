@@ -77,7 +77,7 @@ public class QuorumCertificateManagerTest
     }
 
     [TestCaseSource(nameof(QcCases))]
-    public void VerifyCertificate_(QuorumCertificate quorumCert, XdcBlockHeaderBuilder xdcBlockHeaderBuilder, IEnumerable<Address> masternodes, bool expected)
+    public void VerifyCertificate_QcWithDifferentParameters_ReturnsExpected(QuorumCertificate quorumCert, XdcBlockHeaderBuilder xdcBlockHeaderBuilder, IEnumerable<Address> masternodes, bool expected)
     {
         IEpochSwitchManager epochSwitchManager = Substitute.For<IEpochSwitchManager>();
         epochSwitchManager
