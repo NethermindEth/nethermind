@@ -1855,6 +1855,14 @@
           "Nethermind.TxPool": "[1.34.0-unstable, )"
         }
       },
+      "nethermind.xdc": {
+        "type": "Project",
+        "dependencies": {
+          "Nethermind.Api": "[1.34.0-unstable, )",
+          "Nethermind.Consensus": "[1.34.0-unstable, )",
+          "Nethermind.Core": "[1.34.0-unstable, )"
+        }
+      },
       "AspNetCore.HealthChecks.UI": {
         "type": "CentralTransitive",
         "requested": "[9.0.0, )",
