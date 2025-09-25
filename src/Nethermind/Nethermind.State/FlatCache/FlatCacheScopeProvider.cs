@@ -25,11 +25,10 @@ public readonly record struct StateId(long blockNumber, ValueHash256 stateRoot) 
     }
 }
 
-public readonly record struct StateIdRange(StateId From, StateId To);
-
 public sealed class FlatCacheScopeProvider : IWorldStateScopeProvider, IPreBlockCaches
 {
-    private Gauge _gatheredSize = Metrics.CreateGauge("flatcache_known_states_size", "size");
+    private static Gauge _gatheredSize = Metrics.CreateGauge("flatcache_known_states_size", "size");
+
     private readonly IWorldStateScopeProvider _baseScopeProvider;
     private readonly FlatCacheRepository _repository;
     private readonly bool _isReadOnly;
@@ -52,9 +51,8 @@ public sealed class FlatCacheScopeProvider : IWorldStateScopeProvider, IPreBlock
     {
         StateId baseBlockId = new StateId(baseBlock?.Number ?? -1, baseBlock?.StateRoot ?? Keccak.EmptyTreeHash);
 
-        (ArrayPoolList<StateId> statesAdded, SnapshotBundle gatheredCache) = _repository.GatherCache(baseBlockId);
+        SnapshotBundle gatheredCache = _repository.GatherCache(baseBlockId);
         _gatheredSize.Set(gatheredCache.SnapshotCount);
-        statesAdded.Dispose();
 
         return new ScopeWrapper(_baseScopeProvider.BeginScope(baseBlock), this, gatheredCache, baseBlockId);
     }
@@ -107,16 +105,19 @@ public sealed class FlatCacheScopeProvider : IWorldStateScopeProvider, IPreBlock
         private static Prometheus.Counter _cacheHit =
             Prometheus.Metrics.CreateCounter("flatcache_state_tree_cachehit", "hit rate", "cachehit");
 
+        private static Counter.Child _cacheHitHit = _cacheHit.WithLabels("hit");
+        private static Counter.Child _cacheHitMiss = _cacheHit.WithLabels("miss");
+
         public Hash256 RootHash => baseStateTree.RootHash;
 
         public Account? Get(Address address)
         {
             if (snapshotBundle.TryGetAccount(address, out var account))
             {
-                _cacheHit.WithLabels("hit").Inc();
+                _cacheHitHit.Inc();
                 return account;
             }
-            _cacheHit.WithLabels("miss").Inc();
+            _cacheHitMiss.Inc();
             return baseStateTree.Get(address);
         }
 
@@ -152,8 +153,9 @@ public sealed class FlatCacheScopeProvider : IWorldStateScopeProvider, IPreBlock
         IWorldStateScopeProvider.IStorageTree baseStorageTree,
         StorageSnapshotBundle cache) : IWorldStateScopeProvider.IStorageTree
     {
-        private static Prometheus.Counter _cacheHit =
-            Prometheus.Metrics.CreateCounter("flatcache_storage_tree_cachehit", "hit rate", "cachehit");
+        private static Counter _cacheHit = Metrics.CreateCounter("flatcache_storage_tree_cachehit", "hit rate", "cachehit");
+        private static Counter.Child _cacheHitHit = _cacheHit.WithLabels("hit");
+        private static Counter.Child _cacheHitMiss = _cacheHit.WithLabels("miss");
 
         public Hash256 RootHash => baseStorageTree.RootHash;
 
@@ -162,11 +164,11 @@ public sealed class FlatCacheScopeProvider : IWorldStateScopeProvider, IPreBlock
         {
             if (cache.TryGet(index, out var value))
             {
-                _cacheHit.WithLabels("hit").Inc();
+                _cacheHitHit.Inc();
                 return value;
             }
 
-            _cacheHit.WithLabels("miss").Inc();
+            _cacheHitMiss.Inc();
             byte[] actualValue = baseStorageTree.Get(in index);
 
             cache.Set(index, actualValue);

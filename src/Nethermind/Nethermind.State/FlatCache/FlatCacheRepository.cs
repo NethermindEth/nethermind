@@ -2,10 +2,8 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Diagnostics;
-using System.Diagnostics.Metrics;
 using System.Linq;
 using System.Threading;
 using System.Threading.Channels;
@@ -39,7 +37,7 @@ public sealed class FlatCacheRepository
         int MaxStateInMemory = 1024 * 1024,
         int MaxInFlightCompactJob = 32,
         int CompactSize = 64,
-        bool InlineCompaction = true
+        bool InlineCompaction = false
     );
 
     public FlatCacheRepository(IProcessExitSource exitSource, ILogManager logManager, Configuration? config = null)
@@ -86,8 +84,8 @@ public sealed class FlatCacheRepository
             if (blockNumber == 0) return;
             long startingBlockNumber = ((blockNumber - 1) / _compactSize) * _compactSize;
 
-            (ArrayPoolList<StateId> statesAdded, SnapshotBundle gatheredCache) = GatherCache(stateId, startingBlockNumber);
-            if (statesAdded.Count == 1) return;
+            SnapshotBundle gatheredCache = GatherCache(stateId, startingBlockNumber);
+            if (gatheredCache.SnapshotCount == 1) return;
 
             if (_logger.IsDebug) _logger.Debug($"Compacting {stateId}");
             Snapshot snapshot = gatheredCache.CompactToKnownState();
@@ -96,7 +94,6 @@ public sealed class FlatCacheRepository
             _compactedKnownStates[stateId] = snapshot;
 
             gatheredCache.Dispose();
-            statesAdded.Clear();
         }
         catch (Exception e)
         {
@@ -104,12 +101,11 @@ public sealed class FlatCacheRepository
         }
     }
 
-    public (ArrayPoolList<StateId>, SnapshotBundle) GatherCache(StateId baseBlock, long? earliestBlockNumber = null)
+    public SnapshotBundle GatherCache(StateId baseBlock, long? earliestBlockNumber = null)
     {
         using var _ = _repoLock.EnterScope();
 
         ArrayPoolList<Snapshot> knownStates = new(_knownStates.Count / 32);
-        ArrayPoolList<StateId> statesAdded = new(_knownStates.Count / 32);
 
         if (_logger.IsTrace) _logger.Trace($"Gathering {baseBlock}. Earliest is {earliestBlockNumber}");
 
@@ -122,7 +118,6 @@ public sealed class FlatCacheRepository
             Snapshot state = entry;
             if (_logger.IsTrace) _logger.Trace($"Got {state.From} -> {state.To}");
             knownStates.Add(state);
-            statesAdded.Add(current);
             if (current.blockNumber == earliestBlockNumber) break;
             if (current.blockNumber <= _bigCache.CurrentBlockNumber) break;
             if (state.From == current) break; // Some test commit two block with the same id, so we dont know the parent anymore.
@@ -132,10 +127,9 @@ public sealed class FlatCacheRepository
         }
 
         knownStates.Reverse();
-        statesAdded.Reverse();
 
         if (_logger.IsTrace) _logger.Trace($"Gathered {baseBlock}. Earliest is {earliestBlockNumber}, Got {knownStates.Count} known states");
-        return (statesAdded, new SnapshotBundle(knownStates, _bigCache));
+        return new SnapshotBundle(knownStates, _bigCache);
     }
 
     public void RegisterKnownState(StateId startingBlock, StateId endBlock, Snapshot snapshot)
