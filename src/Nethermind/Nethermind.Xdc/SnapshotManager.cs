@@ -23,17 +23,15 @@ internal class SnapshotManager : ISnapshotManager
 
     private LruCache<Hash256, Snapshot> _snapshotsByHash = new(128, 128, "XDC Snapshot cache");
     private IBlockTree _tree { get; }
-    private IXdcConfig _xdcConfig { get; }
     private IDb _snapshotDb { get; }
 
     private SnapshotDecoder _snapshotDecoder = new();
 
 
-    public SnapshotManager(IDb snapshotDb, IBlockTree tree, IXdcConfig xdcConfig)
+    public SnapshotManager(IDb snapshotDb, IBlockTree tree)
     {
         _snapshotDb = snapshotDb;
         _tree = tree;
-        _xdcConfig = xdcConfig;
     }
 
     public Snapshot? GetSnapshot(Hash256 hash)
@@ -65,9 +63,9 @@ internal class SnapshotManager : ISnapshotManager
         return GetSnapshot(header.Hash);
     }
 
-    public Snapshot? GetSnapshotByHeaderNumber(ulong number)
+    public Snapshot? GetSnapshotByHeaderNumber(ulong number, ulong xdcEpoch, ulong xdcGap)
     {
-        ulong gapBlockNum = Math.Max(0, number - number % _xdcConfig.Epoch - _xdcConfig.Gap);
+        ulong gapBlockNum = Math.Max(0, number - number % xdcEpoch - xdcGap);
 
         return GetSnapshotByGapNumber(gapBlockNum);
     }
@@ -92,14 +90,9 @@ internal class SnapshotManager : ISnapshotManager
         if (_snapshotDb.KeyExists(key))
             return false;
 
-        var contentLength = _snapshotDecoder.GetLength(snapshot, RlpBehaviors.None);
-        RlpStream stream = new(contentLength);
-        _snapshotDecoder.Encode(stream, snapshot, RlpBehaviors.None);
+        var rlpEncodedSnapshot = _snapshotDecoder.Encode(snapshot, RlpBehaviors.None);
 
-        stream.Reset();
-        Span<byte> value = stream.Read(stream.Length);
-
-        _snapshotDb.PutSpan(key, value);
+        _snapshotDb.Set(key, rlpEncodedSnapshot.Bytes);
         return true;
     }
 

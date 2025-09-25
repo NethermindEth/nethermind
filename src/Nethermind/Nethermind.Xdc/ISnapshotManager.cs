@@ -16,7 +16,7 @@ public interface ISnapshotManager
     Snapshot? GetSnapshot(Hash256 hash);
     bool StoreSnapshot(Snapshot snapshot);
     Snapshot? GetSnapshotByGapNumber(ulong gapNumber);
-    Snapshot? GetSnapshotByHeaderNumber(ulong gapNumber);
+    Snapshot? GetSnapshotByHeaderNumber(ulong number, ulong xdcEpoch, ulong xdcGap);
     Snapshot? GetSnapshotByHeader(XdcBlockHeader? header);
     Address[] CalculateNextEpochMasternodes(XdcBlockHeader xdcHeader);
     Address[] GetMasternodes(XdcBlockHeader xdcHeader);
