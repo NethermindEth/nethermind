@@ -52,9 +52,7 @@ internal class SnapshotManager : ISnapshotManager
             return null;
         SnapshotDecoder snapshotDecoder = new();
 
-        var stream = new RlpStream(value.ToArray());
-
-        var decoded = snapshotDecoder.Decode(stream, RlpBehaviors.None);
+        var decoded = snapshotDecoder.Decode(value, RlpBehaviors.None);
         snapshot = decoded;
         _snapshotsByHash.Set(hash, snapshot);
         return snapshot;
