@@ -8,7 +8,7 @@ namespace Nethermind.Logging
     /// <summary>
     /// Just use before the logger is configured
     /// </summary>
-    public class SimpleConsoleLogger(LogLevel logLevel = LogLevel.Trace, string dateFormat = "yyyy-MM-dd HH-mm-ss.ffff|") : InterfaceLogger
+    public class SimpleConsoleLogger(LogLevel logLevel = LogLevel.Trace, string dateFormat = "yyyy-MM-dd HH-mm-ss.ffff|") : InerfaceLogger
     {
         public static SimpleConsoleLogger Instance { get; } = new();
 
