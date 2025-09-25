@@ -30,14 +30,16 @@ public readonly record struct StateIdRange(StateId From, StateId To);
 public sealed class FlatCacheScopeProvider : IWorldStateScopeProvider, IPreBlockCaches
 {
     private Gauge _gatheredSize = Metrics.CreateGauge("flatcache_known_states_size", "size");
-    private readonly FlatCacheRepository _repository;
-    private ILogger _logger;
     private readonly IWorldStateScopeProvider _baseScopeProvider;
+    private readonly FlatCacheRepository _repository;
+    private readonly bool _isReadOnly;
+    private ILogger _logger;
 
-    public FlatCacheScopeProvider(IWorldStateScopeProvider baseScopeProvider, FlatCacheRepository repository, ILogManager logManager)
+    public FlatCacheScopeProvider(IWorldStateScopeProvider baseScopeProvider, FlatCacheRepository repository, bool isReadOnly, ILogManager logManager)
     {
-        _repository = repository;
         _baseScopeProvider = baseScopeProvider;
+        _repository = repository;
+        _isReadOnly = isReadOnly;
         _logger = logManager.GetClassLogger<FlatCacheScopeProvider>();
     }
 
@@ -78,14 +80,18 @@ public sealed class FlatCacheScopeProvider : IWorldStateScopeProvider, IPreBlock
         {
             baseScope.Commit(blockNumber);
             Snapshot snapshot = snapshotBundle.CollectAndApplyKnownState();
-
             var newId = new StateId(blockNumber, StateTree.RootHash);
-            snapshot = snapshot with
+
+            if (!flatCache._isReadOnly)
             {
-                From = _currentBaseBlock,
-                To = newId
-            };
-            flatCache._repository.RegisterKnownState(_currentBaseBlock, newId, snapshot);
+                snapshot = snapshot with
+                {
+                    From = _currentBaseBlock,
+                    To = newId
+                };
+                flatCache._repository.RegisterKnownState(_currentBaseBlock, newId, snapshot);
+            }
+
             _currentBaseBlock = newId;
         }
 

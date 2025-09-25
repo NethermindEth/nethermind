@@ -14,7 +14,7 @@ namespace Nethermind.State.FlatCache;
 
 public class FlatCacheWorldStateManager(IWorldStateManager baseWorldStateManager, FlatCacheRepository cacheRepository, ILogManager logManager): IWorldStateManager
 {
-    FlatCacheScopeProvider _globalWorldState = new FlatCacheScopeProvider(baseWorldStateManager.GlobalWorldState, cacheRepository, logManager);
+    FlatCacheScopeProvider _globalWorldState = new FlatCacheScopeProvider(baseWorldStateManager.GlobalWorldState, cacheRepository, isReadOnly: false, logManager);
 
     public IWorldStateScopeProvider GlobalWorldState => _globalWorldState;
 
@@ -26,7 +26,7 @@ public class FlatCacheWorldStateManager(IWorldStateManager baseWorldStateManager
 
     public IWorldStateScopeProvider CreateResettableWorldState()
     {
-        return baseWorldStateManager.CreateResettableWorldState();
+        return new FlatCacheScopeProvider(baseWorldStateManager.CreateResettableWorldState(), cacheRepository, isReadOnly: true, logManager);
     }
 
     public event EventHandler<ReorgBoundaryReached>? ReorgBoundaryReached
