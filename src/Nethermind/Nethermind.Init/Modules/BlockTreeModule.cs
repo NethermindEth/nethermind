@@ -43,7 +43,6 @@ public class BlockTreeModule(IReceiptConfig receiptConfig) : Autofac.Module
 
             .AddSingleton<IBlockTree, BlockTree>()
             .Bind<IBlockFinder, IBlockTree>()
-            .AddSingleton<ILogIndexStorage, LogIndexStorage>()
             .AddSingleton<ILogFinder, LogFinder>()
             .AddSingleton<ILogIndexStorage, LogIndexStorage>()
             .AddSingleton<IReadOnlyBlockTree, IBlockTree>((bt) => bt.AsReadOnly())
