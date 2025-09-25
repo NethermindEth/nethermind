@@ -48,6 +48,7 @@ jobs:
         id: archive
         run: |
           package_prefix=nethermind-${{ github.event.inputs.tag }}-${GITHUB_SHA:0:8}
+          export PACKAGE_PREFIX=$package_prefix
           echo "PACKAGE_PREFIX=$package_prefix" >> $GITHUB_ENV
           echo "package-prefix=$package_prefix" >> $GITHUB_OUTPUT
           $SCRIPTS_PATH/archive.sh

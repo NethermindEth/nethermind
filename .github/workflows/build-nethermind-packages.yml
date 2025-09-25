@@ -30,7 +30,9 @@ jobs:
 
       - name: Archive packages
         run: |
-          echo "PACKAGE_PREFIX=nethermind-preview-${GITHUB_SHA:0:8}" >> $GITHUB_ENV
+          package_prefix=nethermind-preview-${GITHUB_SHA:0:8}
+          export PACKAGE_PREFIX=$package_prefix
+          echo "PACKAGE_PREFIX=$package_prefix" >> $GITHUB_ENV
           $SCRIPTS_PATH/archive.sh
 
       - name: Upload Nethermind Linux arm64 package
