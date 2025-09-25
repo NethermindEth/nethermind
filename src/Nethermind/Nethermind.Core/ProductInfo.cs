@@ -19,10 +19,10 @@ public static class ProductInfo
         var productAttr = assembly.GetCustomAttribute<AssemblyProductAttribute>()!;
         var versionAttr = assembly.GetCustomAttribute<AssemblyInformationalVersionAttribute>()!;
         var timestamp = metadataAttrs
-            ?.FirstOrDefault(static a => a.Key.Equals("BuildTimestamp", StringComparison.Ordinal))
+            ?.FirstOrDefault(static a => a.Key.Equals("SourceDate", StringComparison.Ordinal))
             ?.Value;
 
-        BuildTimestamp = long.TryParse(timestamp, out var t)
+        SourceDate = long.TryParse(timestamp, out var t)
             ? DateTimeOffset.FromUnixTimeSeconds(t)
             : DateTimeOffset.MinValue;
         Name = productAttr?.Product ?? "Nethermind";
@@ -51,7 +51,7 @@ public static class ProductInfo
         PublicClientId = ClientId;
     }
 
-    public static DateTimeOffset BuildTimestamp { get; }
+    public static DateTimeOffset SourceDate { get; }
 
     private static string FormatClientId(string formatString)
     {

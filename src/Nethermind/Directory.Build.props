@@ -3,16 +3,17 @@
   <Import Project="../../Directory.Build.props" />
 
   <PropertyGroup Label="ProductInfo">
-    <BuildTimestamp Condition="'$(BuildTimestamp)' == ''">$([System.DateTimeOffset]::UtcNow.ToUnixTimeSeconds())</BuildTimestamp>
-    <SourceRevisionId Condition="'$(Commit)' != ''">$(Commit)</SourceRevisionId>
+    <SourceDate>$(SOURCE_DATE_EPOCH)</SourceDate>
+    <SourceDate Condition="'$(SOURCE_DATE_EPOCH)' == ''">$([System.DateTimeOffset]::UtcNow.ToUnixTimeSeconds())</SourceDate>
+    <SourceRevisionId Condition="'$(CommitHash)' != ''">$(CommitHash)</SourceRevisionId>
     <VersionPrefix>1.34.0</VersionPrefix>
     <VersionSuffix>unstable</VersionSuffix>
   </PropertyGroup>
 
   <ItemGroup Label="AssemblyCustomMetadata">
     <AssemblyAttribute Include="System.Reflection.AssemblyMetadataAttribute">
-      <_Parameter1>BuildTimestamp</_Parameter1>
-      <_Parameter2>$(BuildTimestamp)</_Parameter2>
+      <_Parameter1>SourceDate</_Parameter1>
+      <_Parameter2>$(SourceDate)</_Parameter2>
     </AssemblyAttribute>
   </ItemGroup>
 
