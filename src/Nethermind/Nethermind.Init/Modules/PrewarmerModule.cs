@@ -43,11 +43,15 @@ public class PrewarmerModule(IBlocksConfig blocksConfig) : Module
                 .Add<PrewarmerEnvFactory>()
 
                 // These are the actual decorated component that provide cached result
-                .AddDecorator<IWorldStateScopeProvider>((ctx, worldStateScopeProvider) => new PrewarmerScopeProvider(
-                    worldStateScopeProvider,
-                    ctx.Resolve<PreBlockCaches>(),
-                    populatePreBlockCache: false
-                ))
+                .AddDecorator<IWorldStateScopeProvider>((ctx, worldStateScopeProvider) =>
+                {
+                    if (worldStateScopeProvider is PrewarmerScopeProvider) return worldStateScopeProvider; // Inner world state
+                    return new PrewarmerScopeProvider(
+                        worldStateScopeProvider,
+                        ctx.Resolve<PreBlockCaches>(),
+                        populatePreBlockCache: false
+                    );
+                })
                 .AddDecorator<ICodeInfoRepository>((ctx, originalCodeInfoRepository) =>
                 {
                     PreBlockCaches preBlockCaches = ctx.Resolve<PreBlockCaches>();
