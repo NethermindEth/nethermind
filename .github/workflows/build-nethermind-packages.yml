@@ -16,6 +16,17 @@ jobs:
       - name: Check out repository
         uses: actions/checkout@v5
 
+      - name: Detect version
+        id: version
+        working-directory: src/Nethermind
+        run: |
+          sudo apt-get update && sudo apt-get install xmlstarlet -y --no-install-recommends
+          version_prefix=$(xmlstarlet sel -t -v "//Project/PropertyGroup/VersionPrefix" Directory.Build.props)
+          version_suffix=$(xmlstarlet sel -t -v "//Project/PropertyGroup/VersionSuffix" Directory.Build.props)
+          version=$([[ -n "$version_suffix" ]] && echo "$version_prefix-$version_suffix" || echo "$version_prefix")
+          echo "Detected version $version"
+          echo "PACKAGE_PREFIX=nethermind-$version-${GITHUB_SHA:0:8}" >> $GITHUB_ENV
+
       - name: Build Nethermind.Runner
         run: |
           export SOURCE_DATE_EPOCH=$(git log -1 --pretty=%ct)
@@ -29,11 +40,7 @@ jobs:
           docker run --rm --mount type=bind,source=$GITHUB_WORKSPACE/$PUB_DIR,target=/output nethermind-build
 
       - name: Archive packages
-        run: |
-          package_prefix=nethermind-preview-${GITHUB_SHA:0:8}
-          export PACKAGE_PREFIX=$package_prefix
-          echo "PACKAGE_PREFIX=$package_prefix" >> $GITHUB_ENV
-          $SCRIPTS_PATH/archive.sh
+        run: $SCRIPTS_PATH/archive.sh
 
       - name: Upload Nethermind Linux arm64 package
         uses: actions/upload-artifact@v4

@@ -2,10 +2,6 @@ name: Release
 
 on:
   workflow_dispatch:
-    inputs:
-      tag:
-        description: Version tag
-        required: true
 
 permissions:
   deployments: write
@@ -23,18 +19,32 @@ jobs:
     name: Build Nethermind packages
     runs-on: ubuntu-latest
     outputs:
-      package-prefix: ${{ steps.archive.outputs.package-prefix }}
-      prerelease: ${{ steps.build.outputs.prerelease }}
+      version: ${{ steps.version.outputs.version }}
+      package-prefix: ${{ steps.version.outputs.package-prefix }}
+      prerelease: ${{ steps.version.outputs.prerelease }}
     steps:
       - name: Check out repository
         uses: actions/checkout@v5
+
+      - name: Detect version
+        id: version
+        working-directory: src/Nethermind
+        run: |
+          sudo apt-get update && sudo apt-get install xmlstarlet -y --no-install-recommends
+          version_prefix=$(xmlstarlet sel -t -v "//Project/PropertyGroup/VersionPrefix" Directory.Build.props)
+          version_suffix=$(xmlstarlet sel -t -v "//Project/PropertyGroup/VersionSuffix" Directory.Build.props)
+          version=$([[ -n "$version_suffix" ]] && echo "$version_prefix-$version_suffix" || echo "$version_prefix")
+          package_prefix=nethermind-$version-${GITHUB_SHA:0:8}
+          echo "Detected version $version"
+          echo "version=$version" >> $GITHUB_OUTPUT
+          echo "prerelease=$([[ -n "$version_suffix" ]] && echo 'true' || echo 'false')" >> $GITHUB_OUTPUT
+          echo "package-prefix=$package_prefix" >> $GITHUB_OUTPUT
+          echo "PACKAGE_PREFIX=$package_prefix" >> $GITHUB_ENV
 
       - name: Build Nethermind.Runner
         id: build
         run: |
           export SOURCE_DATE_EPOCH=$(git log -1 --pretty=%ct)
-
-          echo "prerelease=${{ contains(github.event.inputs.tag, '-') }}" >> $GITHUB_OUTPUT
 
           mkdir $GITHUB_WORKSPACE/$PUB_DIR
 
@@ -45,13 +55,7 @@ jobs:
           docker run --rm --mount type=bind,source=$GITHUB_WORKSPACE/$PUB_DIR,target=/output nethermind-build
 
       - name: Archive packages
-        id: archive
-        run: |
-          package_prefix=nethermind-${{ github.event.inputs.tag }}-${GITHUB_SHA:0:8}
-          export PACKAGE_PREFIX=$package_prefix
-          echo "PACKAGE_PREFIX=$package_prefix" >> $GITHUB_ENV
-          echo "package-prefix=$package_prefix" >> $GITHUB_OUTPUT
-          $SCRIPTS_PATH/archive.sh
+        run: $SCRIPTS_PATH/archive.sh
 
       - name: Upload Nethermind Linux arm64 package
         uses: actions/upload-artifact@v4
@@ -101,7 +105,7 @@ jobs:
     needs: build
     environment:
       name: Releases
-      url: https://github.com/NethermindEth/nethermind/releases/tag/${{ github.event.inputs.tag }}
+      url: https://github.com/NethermindEth/nethermind/releases/tag/${{ needs.build.outputs.version }}
     steps:
       - name: Wait for approval
         run: echo "Waiting for approval..."
@@ -128,7 +132,7 @@ jobs:
 
       - name: Publish
         env:
-          GIT_TAG: ${{ github.event.inputs.tag }}
+          GIT_TAG: ${{ needs.build.outputs.version }}
           GITHUB_TOKEN: ${{ steps.gh-app.outputs.token }}
           PACKAGE_PREFIX: ${{ needs.build.outputs.package-prefix }}
           PRERELEASE: ${{ needs.build.outputs.prerelease }}
@@ -203,7 +207,7 @@ jobs:
 
             docker buildx build --platform=linux/amd64,linux/arm64 -f Dockerfile$suffix \
               ${{ needs.build.outputs.prerelease == 'false' && '-t $image:latest$tag_suffix' || '' }} \
-              -t "$image:${{ github.event.inputs.tag }}$tag_suffix" \
+              -t "$image:${{ needs.build.outputs.version }}$tag_suffix" \
               --build-arg CI=$CI \
               --build-arg COMMIT_HASH=$GITHUB_SHA \
               --build-arg SOURCE_DATE_EPOCH=$SOURCE_DATE_EPOCH \
