@@ -239,9 +239,12 @@ public sealed class LogIndexService : ILogIndexService
     {
         var aggregateBlock = new TransformBlock<IReadOnlyList<BlockReceipts>, LogIndexAggregate>(
             batch => Aggregate(batch, isForward),
-            new() {
-                BoundedCapacity = MaxBatchQueueSize / BatchSize, MaxDegreeOfParallelism = AggregateParallelism,
-                CancellationToken = CancellationToken, SingleProducerConstrained = true
+            new()
+            {
+                BoundedCapacity = MaxBatchQueueSize / BatchSize,
+                MaxDegreeOfParallelism = AggregateParallelism,
+                CancellationToken = CancellationToken,
+                SingleProducerConstrained = true
             }
         );
 
@@ -249,8 +252,10 @@ public sealed class LogIndexService : ILogIndexService
             aggr => SetReceiptsAsync(aggr, isForward),
             new()
             {
-                BoundedCapacity = MaxAggregateQueueSize, MaxDegreeOfParallelism = 1,
-                CancellationToken = CancellationToken, SingleProducerConstrained = true
+                BoundedCapacity = MaxAggregateQueueSize,
+                MaxDegreeOfParallelism = 1,
+                CancellationToken = CancellationToken,
+                SingleProducerConstrained = true
             }
         );
 
