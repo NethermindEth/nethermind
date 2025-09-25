@@ -13,6 +13,7 @@ using Nethermind.Core.Extensions;
 using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.State;
+using Nethermind.Trie;
 using Metrics = Nethermind.Blockchain.Metrics;
 
 namespace Nethermind.Consensus.Processing
@@ -102,6 +103,8 @@ namespace Nethermind.Consensus.Processing
         {
             if (block is null) return;
 
+            if (_logger.IsDebug) _logger.Debug($"ProcessingStats: UpdateStats called for block {block.Number} (base: {baseBlock?.Number})");
+
             BlockData blockData = _dataPool.Get();
             blockData.Block = block;
             blockData.BaseBlock = baseBlock;
@@ -137,15 +140,17 @@ namespace Nethermind.Consensus.Processing
         {
             try
             {
+                if (_logger.IsDebug) _logger.Debug($"ProcessingStats: Executing report for block {data.Block?.Number} (base: {data.BaseBlock?.Number})");
                 lock (_reportLock)
                 {
                     GenerateReport(data);
                 }
+                if (_logger.IsDebug) _logger.Debug($"ProcessingStats: Completed report for block {data.Block?.Number}");
             }
             catch (Exception ex)
             {
                 // Don't allow exception to escape to ThreadPool
-                if (_logger.IsError) _logger.Error("Error when generating processing statistics", ex);
+                if (_logger.IsError) _logger.Error($"Error when generating processing statistics for block {data.Block?.Number} (base: {data.BaseBlock?.Number})", ex);
             }
             finally
             {
@@ -215,7 +220,10 @@ namespace Nethermind.Consensus.Processing
             }
 
             if (data.BaseBlock is null || !_stateReader.HasStateForBlock(data.BaseBlock) || block.StateRoot is null || !_stateReader.HasStateForBlock(block.Header))
+            {
+                if (_logger.IsDebug) _logger.Debug($"Skipping reward calculation - missing state data. BaseBlock: {data.BaseBlock?.Number}, HasStateForBaseBlock: {_stateReader.HasStateForBlock(data.BaseBlock)}, StateRoot: {block.StateRoot}, HasStateForBlock: {_stateReader.HasStateForBlock(block.Header)}");
                 return;
+            }
 
             // Skip reward calculation if block age exceeds pruning boundary
             long blockAge = block.Number - data.BaseBlock.Number;
@@ -225,11 +233,20 @@ namespace Nethermind.Consensus.Processing
                 return;
             }
 
+            // Log detailed information about the blocks being accessed
+            if (_logger.IsDebug)
+            {
+                _logger.Debug($"ProcessingStats: Calculating rewards for block {block.Number} (base: {data.BaseBlock.Number}, age: {blockAge}, beneficiary: {beneficiary}, isMev: {isMev})");
+                _logger.Debug($"ProcessingStats: State root for base block {data.BaseBlock.Number}: {data.BaseBlock.StateRoot}");
+                _logger.Debug($"ProcessingStats: State root for current block {block.Number}: {block.StateRoot}");
+            }
+
             UInt256 rewards = default;
             try
             {
                 if (!isMev)
                 {
+                    if (_logger.IsDebug) _logger.Debug($"ProcessingStats: Getting balance for beneficiary {beneficiary} at base block {data.BaseBlock.Number}");
                     rewards = CalculateBalanceChange(data.BaseBlock, block.Header, beneficiary);
                 }
                 else
@@ -239,6 +256,7 @@ namespace Nethermind.Consensus.Processing
                     rewards = lastTx.Value;
                     if (rewards.IsZero)
                     {
+                        if (_logger.IsDebug) _logger.Debug($"ProcessingStats: Getting balance for MEV beneficiary {lastTx.To} at base block {data.BaseBlock.Number}");
                         rewards = CalculateBalanceChange(data.BaseBlock, block.Header, lastTx.To);
                     }
                 }
@@ -417,8 +435,31 @@ namespace Nethermind.Consensus.Processing
 
             UInt256 CalculateBalanceChange(BlockHeader? startBlock, BlockHeader endBlock, Address beneficiary)
             {
-                UInt256 beforeBalance = _stateReader.GetBalance(startBlock, beneficiary);
-                UInt256 afterBalance = _stateReader.GetBalance(endBlock, beneficiary);
+                UInt256 beforeBalance;
+                UInt256 afterBalance;
+
+                try
+                {
+                    beforeBalance = _stateReader.GetBalance(startBlock, beneficiary);
+                }
+                catch (MissingTrieNodeException ex)
+                {
+                    if (_logger.IsError) _logger.Error($"MissingTrieNodeException when getting before balance for {beneficiary} at block {startBlock?.Number}. " +
+                        $"StartBlock StateRoot: {startBlock?.StateRoot}, Exception: {ex.Message}", ex);
+                    throw;
+                }
+
+                try
+                {
+                    afterBalance = _stateReader.GetBalance(endBlock, beneficiary);
+                }
+                catch (MissingTrieNodeException ex)
+                {
+                    if (_logger.IsError) _logger.Error($"MissingTrieNodeException when getting after balance for {beneficiary} at block {endBlock.Number}. " +
+                        $"EndBlock StateRoot: {endBlock.StateRoot}, Exception: {ex.Message}", ex);
+                    throw;
+                }
+
                 return beforeBalance < afterBalance ? afterBalance - beforeBalance : default;
             }
         }
