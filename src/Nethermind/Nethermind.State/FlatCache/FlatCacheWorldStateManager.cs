@@ -29,15 +29,6 @@ public class FlatCacheWorldStateManager(IWorldStateManager baseWorldStateManager
         return baseWorldStateManager.CreateResettableWorldState();
     }
 
-    public IWorldStateScopeProvider CreateWorldStateForWarmingUp(IWorldStateScopeProvider forWarmup)
-    {
-        if (forWarmup is FlatCacheScopeProvider cachedScopeProvider)
-        {
-            forWarmup = cachedScopeProvider.BaseScopeProvider;
-        }
-        return baseWorldStateManager.CreateWorldStateForWarmingUp(forWarmup);
-    }
-
     public event EventHandler<ReorgBoundaryReached>? ReorgBoundaryReached
     {
         add => baseWorldStateManager.ReorgBoundaryReached += value;
