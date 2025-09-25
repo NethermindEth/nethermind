@@ -13,47 +13,46 @@ using System.Collections;
 using System.Collections.Generic;
 using System.Text;
 
-namespace Nethermind.Xdc.Test
+namespace Nethermind.Xdc.Test;
+
+[TestFixture]
+public class SnapshotDecoderTests
 {
-    [TestFixture]
-    public class SnapshotDecoderTests
+    private static IEnumerable<Snapshot> Objects => [
+        new Snapshot(3, Keccak.EmptyTreeHash, [], [Address.FromNumber(1), Address.FromNumber(2)]),
+    ];
+
+    [Test, TestCaseSource(nameof(Objects))]
+    public void RoundTrip_valuedecoder(Snapshot original)
     {
-        private static IEnumerable<Snapshot> Objects => [
-            new Snapshot(3, Keccak.EmptyTreeHash, [], [Address.FromNumber(1), Address.FromNumber(2)]),
-        ];
+        SnapshotDecoder encoder = new();
+        RlpStream rlpStream = new(10000);
+        encoder.Encode(rlpStream, original);
+        rlpStream.Position = 0;
 
-        [Test, TestCaseSource(nameof(Objects))]
-        public void RoundTrip_valuedecoder(Snapshot original)
+        Rlp.ValueDecoderContext ctx = rlpStream.Data.AsSpan().AsRlpValueContext();
+        Snapshot decoded = encoder.Decode(ref ctx)!;
+        if (original is null)
         {
-            SnapshotDecoder encoder = new();
-            RlpStream rlpStream = new(10000);
-            encoder.Encode(rlpStream, original);
-            rlpStream.Position = 0;
-
-            Rlp.ValueDecoderContext ctx = rlpStream.Data.AsSpan().AsRlpValueContext();
-            Snapshot decoded = encoder.Decode(ref ctx)!;
-            if (original is null)
-            {
-                decoded.Should().BeNull();
-            }
-            else
-            {
-                decoded.Should().BeEquivalentTo(original);
-            }
+            decoded.Should().BeNull();
         }
-
-        [Test, TestCaseSource(nameof(Objects))]
-        public void RoundTrip_stream(Snapshot original)
+        else
         {
-            SnapshotDecoder encoder = new();
-            RlpStream stream = new(encoder.GetLength(original, RlpBehaviors.None));
-            encoder.Encode(stream, original);
-
-            stream.Reset();
-
-            SnapshotDecoder decoder = new();
-            Snapshot decoded = decoder.Decode(stream);
             decoded.Should().BeEquivalentTo(original);
         }
+    }
+
+    [Test, TestCaseSource(nameof(Objects))]
+    public void RoundTrip_stream(Snapshot original)
+    {
+        SnapshotDecoder encoder = new();
+        RlpStream stream = new(encoder.GetLength(original, RlpBehaviors.None));
+        encoder.Encode(stream, original);
+
+        stream.Reset();
+
+        SnapshotDecoder decoder = new();
+        Snapshot decoded = decoder.Decode(stream);
+        decoded.Should().BeEquivalentTo(original);
     }
 }
