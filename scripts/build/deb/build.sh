@@ -12,7 +12,7 @@ package_output=${1:-.}
 mkdir -p $build_output
 
 docker build . -t nethermind-build -f scripts/build/Dockerfile \
-  --build-arg COMMIT_HASH=$(git -C . rev-parse HEAD) \
+  --build-arg COMMIT_HASH=$(git rev-parse HEAD) \
   --build-arg SOURCE_DATE_EPOCH=$SOURCE_DATE_EPOCH
 
 docker run --rm --mount type=bind,source=$build_output,target=/output nethermind-build
