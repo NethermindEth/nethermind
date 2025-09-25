@@ -13,6 +13,7 @@ WORKDIR /nethermind
 COPY src/Nethermind src/Nethermind
 COPY Directory.*.props .
 COPY nuget.config .
+COPY global.json .
 COPY scripts/build/build.sh .
 
 RUN chmod +x build.sh && \
