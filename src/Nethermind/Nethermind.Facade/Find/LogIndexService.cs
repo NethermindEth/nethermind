@@ -145,7 +145,7 @@ public sealed class LogIndexService : ILogIndexService
         }
         catch (Exception ex)
         {
-            HandleException(ex);
+            await HandleExceptionAsync(ex);
         }
     }
 
@@ -164,7 +164,7 @@ public sealed class LogIndexService : ILogIndexService
             }
             catch (Exception ex)
             {
-                HandleException(ex);
+                await HandleExceptionAsync(ex, isStopping: true);
             }
         }
 
@@ -254,14 +254,14 @@ public sealed class LogIndexService : ILogIndexService
             }
         );
 
-        aggregateBlock.Completion.ContinueWith(t => HandleException(t.Exception), TaskContinuationOptions.OnlyOnFaulted);
-        setReceiptsBlock.Completion.ContinueWith(t => HandleException(t.Exception), TaskContinuationOptions.OnlyOnFaulted);
+        aggregateBlock.Completion.ContinueWith(t => HandleExceptionAsync(t.Exception), TaskContinuationOptions.OnlyOnFaulted);
+        setReceiptsBlock.Completion.ContinueWith(t => HandleExceptionAsync(t.Exception), TaskContinuationOptions.OnlyOnFaulted);
 
         aggregateBlock.LinkTo(setReceiptsBlock, new() { PropagateCompletion = true });
         return new(aggregateBlock, setReceiptsBlock);
     }
 
-    private void HandleException(Exception? exception)
+    private async Task HandleExceptionAsync(Exception? exception, bool isStopping = false)
     {
         if (exception is null)
             return;
@@ -275,7 +275,8 @@ public sealed class LogIndexService : ILogIndexService
         if (_logger.IsError)
             _logger.Error($"{GetLogPrefix()} syncing failed. Please restart the client.", exception);
 
-        _cancellationSource.Cancel();
+        if (!isStopping)
+            await StopAsync();
     }
 
     private LogIndexAggregate Aggregate(IReadOnlyList<BlockReceipts> batch, bool isForward)
@@ -370,7 +371,7 @@ public sealed class LogIndexService : ILogIndexService
         }
         catch (Exception ex)
         {
-            HandleException(ex);
+            await HandleExceptionAsync(ex);
         }
 
         if (_logger.IsInfo)
