@@ -17,8 +17,6 @@ namespace Nethermind.Consensus.Ethash
     {
         private INethermindApi _nethermindApi;
 
-        public ValueTask DisposeAsync() { return ValueTask.CompletedTask; }
-
         public string Name => SealEngineType;
 
         public string Description => $"{SealEngineType} Consensus";
@@ -30,8 +28,6 @@ namespace Nethermind.Consensus.Ethash
         public Task Init(INethermindApi nethermindApi)
         {
             _nethermindApi = nethermindApi;
-
-            var (getFromApi, setInApi) = _nethermindApi.ForInit;
 
             return Task.CompletedTask;
         }

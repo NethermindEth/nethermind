@@ -14,6 +14,7 @@ namespace Nethermind.Core.Crypto
     public class Signature : MemoryManager<byte>, IEquatable<Signature>
     {
         public const int VOffset = 27;
+        public const int Size = 65;
         private Vector512<byte> _signature;
 
         public Signature(ReadOnlySpan<byte> bytes, int recoveryId)

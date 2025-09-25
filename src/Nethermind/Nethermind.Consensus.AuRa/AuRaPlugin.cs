@@ -11,6 +11,7 @@ using Autofac.Core;
 using Nethermind.Api;
 using Nethermind.Api.Extensions;
 using Nethermind.Api.Steps;
+using Nethermind.Blockchain;
 using Nethermind.Blockchain.Services;
 using Nethermind.Consensus.AuRa.Config;
 using Nethermind.Consensus.AuRa.InitializationSteps;
@@ -53,11 +54,6 @@ namespace Nethermind.Consensus.AuRa
         private StartBlockProducerAuRa BlockProducerStarter => _blockProducerStarter ??= _nethermindApi!.CreateStartBlockProducer();
 
         public bool Enabled => chainSpec.SealEngineType == SealEngineType;
-        public ValueTask DisposeAsync()
-        {
-            return default;
-        }
-
         public Task Init(INethermindApi nethermindApi)
         {
             _nethermindApi = nethermindApi as AuRaNethermindApi;
@@ -92,6 +88,7 @@ namespace Nethermind.Consensus.AuRa
 
             builder
                 .AddSingleton<NethermindApi, AuRaNethermindApi>()
+                .AddDecorator<ISpecProvider, AuRaSpecProvider>()
                 .AddSingleton<AuRaChainSpecEngineParameters>(specParam)
                 .AddDecorator<IBetterPeerStrategy, AuRaBetterPeerStrategy>()
                 .Add<StartBlockProducerAuRa>() // Note: Stateful. Probably just some strange unintentional side effect though.
@@ -107,7 +104,6 @@ namespace Nethermind.Consensus.AuRa
 
                 // Steps override
                 .AddStep(typeof(InitializeBlockchainAuRa))
-                .AddStep(typeof(LoadGenesisBlockAuRa))
 
                 // Block processing components
                 .AddSingleton<IBlockValidationModule, AuraValidationModule>()
@@ -123,6 +119,7 @@ namespace Nethermind.Consensus.AuRa
                 .Bind<ISealValidator, AuRaSealValidator>()
                 .AddSingleton<ISealer, AuRaSealer>()
                 .AddSingleton<AuRaGasLimitOverrideFactory>()
+                .AddScoped<IGenesisPostProcessor, AuraGenesisPostProcessor>()
 
                 // Rpcs
                 .AddSingleton<IHealthHintService, AuraHealthHintService>()

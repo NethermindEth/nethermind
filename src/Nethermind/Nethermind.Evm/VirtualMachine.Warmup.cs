@@ -150,7 +150,7 @@ public unsafe partial class VirtualMachine
     {
         const int WarmUpIterations = 40;
 
-        OpCode[] opcodes = EvmInstructions.GenerateOpCodes<TTracingInst>(spec);
+        OpCode[] opcodes = vm.GenerateOpCodes<TTracingInst>(spec);
         ITxTracer txTracer = new FeesTracer();
         vm._txTracer = txTracer;
         EvmStack stack = new(0, txTracer, evmState.DataStack);

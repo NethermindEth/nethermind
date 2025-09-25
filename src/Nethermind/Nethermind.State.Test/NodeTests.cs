@@ -132,7 +132,7 @@ namespace Nethermind.Store.Test
         {
             TreePath emptyPath = TreePath.Empty;
             SpanSource rlp = node.RlpEncode(null, ref emptyPath);
-            node.ResolveKey(null, ref emptyPath, true);
+            node.ResolveKey(null, ref emptyPath);
 
             MemDb memDb = new();
             memDb[NodeStorage.GetHalfPathNodeStoragePath(null, TreePath.Empty, node.Keccak)] = rlp.ToArray();

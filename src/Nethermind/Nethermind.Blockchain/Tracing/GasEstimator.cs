@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using System.Threading;
 using Nethermind.Config;
 using Nethermind.Core;
@@ -31,19 +32,17 @@ public class GasEstimator(
     {
         err = null;
 
-        if (errorMargin < 0)
+        switch (errorMargin)
         {
-            err = "Invalid error margin, cannot be negative.";
-            return 0;
-        }
-        else if (errorMargin >= MaxErrorMargin)
-        {
-            err = $"Invalid error margin, must be lower than {MaxErrorMargin}.";
-            return 0;
+            case < 0:
+                err = "Invalid error margin, cannot be negative.";
+                return 0;
+            case >= MaxErrorMargin:
+                err = $"Invalid error margin, must be lower than {MaxErrorMargin}.";
+                return 0;
         }
 
-        IReleaseSpec releaseSpec =
-            specProvider.GetSpec(header.Number + 1, header.Timestamp + blocksConfig.SecondsPerSlot);
+        IReleaseSpec releaseSpec = specProvider.GetSpec(header.Number + 1, header.Timestamp + blocksConfig.SecondsPerSlot);
 
         tx.SenderAddress ??= Address.Zero; // If sender is not specified, use zero address.
 
@@ -60,19 +59,20 @@ public class GasEstimator(
             return additionalGas;
         }
 
-        var lowerBound = IntrinsicGasCalculator.Calculate(tx, releaseSpec).MinimalGas;
+        long lowerBound = IntrinsicGasCalculator.Calculate(tx, releaseSpec).MinimalGas;
 
         // Setting boundaries for binary search - determine lowest and highest gas can be used during the estimation:
-        long leftBound = (gasTracer.GasSpent != 0 && gasTracer.GasSpent >= lowerBound)
+        long leftBound = gasTracer.GasSpent != 0 && gasTracer.GasSpent >= lowerBound
             ? gasTracer.GasSpent - 1
             : lowerBound - 1;
-        long rightBound = (tx.GasLimit != 0 && tx.GasLimit >= lowerBound)
+        long rightBound = tx.GasLimit != 0 && tx.GasLimit >= lowerBound
             ? tx.GasLimit
             : header.GasLimit;
+        rightBound = Math.Min(rightBound, releaseSpec.GetTxGasLimitCap());
 
         if (leftBound > rightBound)
         {
-            err = "Cannot estimate gas, gas spent exceeded transaction and block gas limit";
+            err = "Cannot estimate gas, gas spent exceeded transaction and block gas limit or transaction gas limit cap";
             return 0;
         }
 
@@ -143,7 +143,7 @@ public class GasEstimator(
         transaction.CopyTo(txClone);
         txClone.GasLimit = gasLimit;
 
-        transactionProcessor.SetBlockExecutionContext(new(block, specProvider.GetSpec(block)));
+        transactionProcessor.SetBlockExecutionContext(new BlockExecutionContext(block, specProvider.GetSpec(block)));
         TransactionResult result = transactionProcessor.CallAndRestore(txClone, gasTracer.WithCancellation(token));
 
         return result.TransactionExecuted && gasTracer.StatusCode == StatusCode.Success && !gasTracer.OutOfGas;

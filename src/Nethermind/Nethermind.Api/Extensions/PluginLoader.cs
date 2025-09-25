@@ -91,41 +91,22 @@ public class PluginLoader(string pluginPath, IFileSystem fileSystem, ILogger log
 
     public void OrderPlugins(IPluginConfig pluginConfig)
     {
-        List<string> order = pluginConfig.PluginOrder.Select(s => s.ToLower() + "plugin").ToList();
-        _pluginTypes.Sort((f, s) =>
+        var pluginPriorities = pluginConfig.PluginOrder
+            .Select((name, index) => (name: name + "plugin", index))
+            .ToDictionary(x => x.name, x => x.index, StringComparer.OrdinalIgnoreCase);
+
+        _pluginTypes.Sort((firstPlugin, secondPlugin) =>
         {
-            bool fIsConsensus = typeof(IConsensusPlugin).IsAssignableFrom(f);
-            bool sIsConsensus = typeof(IConsensusPlugin).IsAssignableFrom(s);
+            bool firstHasPriority = pluginPriorities.TryGetValue(firstPlugin.Name, out int firstPriorityIndex);
+            bool secondHasPriority = pluginPriorities.TryGetValue(secondPlugin.Name, out int secondPriorityIndex);
 
-            // Consensus plugins always at front
-            if (fIsConsensus && !sIsConsensus)
+            return (firstHasPriority, secondHasPriority) switch
             {
-                return -1;
-            }
-
-            if (sIsConsensus && !fIsConsensus)
-            {
-                return 1;
-            }
-
-            int fPos = order.IndexOf(f.Name.ToLower());
-            int sPos = order.IndexOf(s.Name.ToLower());
-            if (fPos == -1)
-            {
-                if (sPos == -1)
-                {
-                    return f.Name.CompareTo(s.Name);
-                }
-
-                return 1;
-            }
-
-            if (sPos == -1)
-            {
-                return -1;
-            }
-
-            return fPos.CompareTo(sPos);
+                (true, true) => firstPriorityIndex.CompareTo(secondPriorityIndex),
+                (true, false) => -1,
+                (false, true) => 1,
+                (false, false) => string.Compare(firstPlugin.Name, secondPlugin.Name, StringComparison.OrdinalIgnoreCase)
+            };
         });
     }
 
@@ -161,10 +142,6 @@ public class PluginLoader(string pluginPath, IFileSystem fileSystem, ILogger log
                 if (plugin.Enabled)
                 {
                     plugins.Add(plugin);
-                }
-                else
-                {
-                    await plugin.DisposeAsync();
                 }
             }
             catch (Exception ex)

@@ -17,7 +17,7 @@ jobs:
     steps:
       - name: Create GitHub app token
         id: gh-app
-        uses: actions/create-github-app-token@v1
+        uses: actions/create-github-app-token@v2
         with:
           app-id: ${{ vars.APP_ID }}
           private-key: ${{ secrets.APP_PRIVATE_KEY }}
@@ -25,18 +25,18 @@ jobs:
             nethermind
             docs
       - name: Check out Nethermind repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
         with:
           ref: ${{ github.event.inputs.ref || github.ref }}
           path: n
       - name: Check out Nethermind docs repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
         with:
           repository: NethermindEth/docs
           path: d
           token: ${{ steps.gh-app.outputs.token }}
       - name: Set up .NET
-        uses: actions/setup-dotnet@v4
+        uses: actions/setup-dotnet@v5
         with:
           global-json-file: n/global.json
       - name: Build DocGen

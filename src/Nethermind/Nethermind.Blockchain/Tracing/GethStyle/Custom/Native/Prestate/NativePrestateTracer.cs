@@ -16,7 +16,7 @@ using Nethermind.Evm.Tracing;
 
 namespace Nethermind.Blockchain.Tracing.GethStyle.Custom.Native.Prestate;
 
-public sealed class NativePrestateTracer : GethLikeNativeTxTracer
+public class NativePrestateTracer : GethLikeNativeTxTracer
 {
     public const string PrestateTracer = "prestateTracer";
 
@@ -189,7 +189,7 @@ public sealed class NativePrestateTracer : GethLikeNativeTxTracer
         _error = error;
     }
 
-    private void LookupAccount(Address addr)
+    protected void LookupAccount(Address addr)
     {
         if (!_prestate.ContainsKey(addr))
         {
@@ -209,7 +209,7 @@ public sealed class NativePrestateTracer : GethLikeNativeTxTracer
         }
     }
 
-    private void LookupStorage(Address addr, UInt256 index)
+    protected void LookupStorage(Address addr, UInt256 index)
     {
         NativePrestateTracerAccount account = _prestate[addr];
         account.Storage ??= new Dictionary<UInt256, UInt256>();

@@ -110,23 +110,15 @@ namespace Nethermind.Runner.Test.Ethereum
             api.Enode = Substitute.For<IEnode>();
             api.TxPool = Substitute.For<ITxPool>();
             api.Wallet = Substitute.For<IWallet>();
-            api.BlockTree = Substitute.For<IBlockTree>();
-            api.ReceiptStorage = Substitute.For<IReceiptStorage>();
-            api.BloomStorage = Substitute.For<IBloomStorage>();
             api.BlockProducer = Substitute.For<IBlockProducer>();
             api.EngineSigner = Substitute.For<ISigner>();
-            api.FileSystem = Substitute.For<IFileSystem>();
             api.KeyStore = Substitute.For<IKeyStore>();
-            api.LogIndexStorage = Substitute.For<ILogIndexStorage>();
-            api.LogFinder = Substitute.For<ILogFinder>();
             api.ProtocolsManager = Substitute.For<IProtocolsManager>();
             api.ProtocolValidator = Substitute.For<IProtocolValidator>();
             api.TxSender = Substitute.For<ITxSender>();
             api.EngineSignerStore = Substitute.For<ISignerStore>();
-            api.ChainLevelInfoRepository = Substitute.For<IChainLevelInfoRepository>();
             api.TransactionComparerProvider = Substitute.For<ITransactionComparerProvider>();
             api.BlockProductionPolicy = Substitute.For<IBlockProductionPolicy>();
-            api.BadBlocksStore = Substitute.For<IBadBlockStore>();
         }
     }
 }

@@ -1,23 +1,14 @@
 // SPDX-FileCopyrightText: 2024 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System;
-using System.IO.Abstractions;
 using System.Reflection;
 using Autofac;
 using Nethermind.Api;
-using Nethermind.Blockchain;
 using Nethermind.Config;
 using Nethermind.Consensus;
+using Nethermind.Consensus.Processing;
 using Nethermind.Consensus.Scheduler;
-using Nethermind.Core.Crypto;
-using Nethermind.Core.Specs;
-using Nethermind.Core.Timers;
-using Nethermind.Crypto;
-using Nethermind.Evm;
-using Nethermind.Evm.State;
 using Nethermind.Init.Modules;
-using Nethermind.Int256;
 using Nethermind.JsonRpc;
 using Nethermind.KeyStore;
 using Nethermind.Logging;
@@ -49,24 +40,19 @@ public class PseudoNethermindModule(ChainSpec spec, IConfigProvider configProvid
         builder
             .AddModule(new NethermindModule(spec, configProvider, logManager))
             .AddModule(new PseudoNetworkModule())
-            .AddModule(new BlockTreeModule())
             .AddModule(new TestBlockProcessingModule())
 
             // Environments
-            .AddSingleton<ITimerFactory, TimerFactory>()
             .AddSingleton<IBackgroundTaskScheduler, IMainProcessingContext, IChainHeadInfoProvider>((blockProcessingContext, chainHeadInfoProvider) => new BackgroundTaskScheduler(
                 blockProcessingContext.BranchProcessor,
                 chainHeadInfoProvider,
                 initConfig.BackgroundTaskConcurrency,
                 initConfig.BackgroundTaskMaxNumber,
                 logManager))
-            .AddSingleton<IFileSystem>(new FileSystem())
             .AddSingleton<IProcessExitSource>(new ProcessExitSource(default))
             .AddSingleton<IJsonSerializer, EthereumJsonSerializer>()
 
             // Crypto
-            .AddSingleton<ICryptoRandom>(new CryptoRandom())
-
             .AddSingleton<ISignerStore>(NullSigner.Instance)
             .AddSingleton<IKeyStore>(Substitute.For<IKeyStore>())
             .AddSingleton<IWallet, DevWallet>()
@@ -74,9 +60,6 @@ public class PseudoNethermindModule(ChainSpec spec, IConfigProvider configProvid
 
             // Rpc
             .AddSingleton<IJsonRpcService, JsonRpcService>()
-
-            // Genesis
-            .AddSingleton<IGenesisPostProcessor, NullGenesisPostProcessor>()
             ;
 
 
