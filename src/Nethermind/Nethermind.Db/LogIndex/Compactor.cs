@@ -120,7 +120,7 @@ partial class LogIndexStorage
                 {
                     return;
                 }
-                catch (Exception ex)
+                catch (Exception ex) // TODO: forward any error to storage or caller
                 {
                     if (_logger.IsError)
                         _logger.Error("Failed to compact log index", ex);

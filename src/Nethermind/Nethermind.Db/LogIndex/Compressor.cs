@@ -143,7 +143,7 @@ partial class LogIndexStorage
 
                 _stats.Execution.Include(Stopwatch.GetElapsedTime(execTimestamp));
             }
-            catch (Exception ex)
+            catch (Exception ex) // TODO: forward any error to storage or caller
             {
                 if (_logger.IsError) _logger.Error("Error during post-merge compression.", ex);
             }
