@@ -10,7 +10,7 @@ using Nethermind.Facade.Find;
 
 namespace Nethermind.Init.Steps
 {
-    [RunnerStepDependencies(typeof(StartBlockProcessor))]
+    [RunnerStepDependencies(typeof(InitDatabase), typeof(StartBlockProcessor))]
     public class StartLogIndexService(IBasicApi api, IServiceStopper serviceStopper, ILogIndexService logIndexService) : IStep
     {
         public Task Execute(CancellationToken cancellationToken)
