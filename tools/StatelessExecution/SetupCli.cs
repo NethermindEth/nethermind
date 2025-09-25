@@ -1,5 +1,6 @@
 // SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
+
 using System.CommandLine;
 using Nethermind.Core;
 using System.Text.Json;
@@ -8,7 +9,6 @@ using Nethermind.Consensus.Processing;
 using Nethermind.Consensus.Validators;
 using Nethermind.Facade.Eth;
 using Nethermind.Facade.Eth.RpcTransaction;
-using Nethermind.Logging.NLog;
 using Nethermind.Serialization.Json;
 using Nethermind.Specs;
 using Nethermind.Consensus.Stateless;
@@ -64,100 +64,78 @@ internal static class SetupCli
                 "mainnet" => MainnetSpecProvider.Instance,
                 _ => throw new ArgumentException($"Unsupported network {networkName}")
             };
+            logger.Info($"   Suggested Block file: {blockFileName}");
+            logger.Info($"   Witness file: {execWitnessFileName}");
 
-            logger.Info("🚀  Starting stateless execution...\n");
-            logger.Info($"📁  Block file: {blockFileName}");
-            logger.Info($"🔍  Witness file: {execWitnessFileName}\n");
+            (Witness witness, Block suggestedBlock, BlockHeader parent) = ReadData(blockFileName, execWitnessFileName);
 
-            var serializer = new EthereumJsonSerializer();
-
-            logger.Info("📖  Reading input files...");
-            if (!File.Exists(execWitnessFileName))
-            {
-                logger.Info($"❌  Witness file not found: {execWitnessFileName}");
-                return Task.FromResult(1);
-            }
-            if (!File.Exists(blockFileName))
-            {
-                logger.Info($"❌  Block file not found: {blockFileName}");
-                return Task.FromResult(1);
-            }
-
-            var witnessBytes = File.ReadAllText(execWitnessFileName);
-            var blockBytes = File.ReadAllText(blockFileName);
-            logger.Info("✅  Files read successfully\n");
-
-            logger.Info("🔍  Deserializing witness and block data...");
-            Witness witness = serializer.Deserialize<Witness>(witnessBytes);
-            BlockForRpc suggestedBlockForRpc = serializer.Deserialize<BlockForRpc>(blockBytes);
-            logger.Info("✅  Deserialization completed\n");
-
-            BlockHeader suggestedBlockHeader = new BlockHeader(
-                suggestedBlockForRpc.ParentHash,
-                suggestedBlockForRpc.Sha3Uncles,
-                suggestedBlockForRpc.Miner,
-                suggestedBlockForRpc.Difficulty,
-                suggestedBlockForRpc.Number!.Value,
-                suggestedBlockForRpc.GasLimit,
-                (ulong)suggestedBlockForRpc.Timestamp,
-                suggestedBlockForRpc.ExtraData,
-                suggestedBlockForRpc.BlobGasUsed,
-                suggestedBlockForRpc.ExcessBlobGas,
-                suggestedBlockForRpc.ParentBeaconBlockRoot,
-                suggestedBlockForRpc.RequestsHash)
-            {
-                StateRoot = suggestedBlockForRpc.StateRoot,
-                TxRoot = suggestedBlockForRpc.TransactionsRoot,
-                ReceiptsRoot = suggestedBlockForRpc.ReceiptsRoot,
-                Bloom = suggestedBlockForRpc.LogsBloom,
-                GasUsed = suggestedBlockForRpc.GasUsed,
-                MixHash = suggestedBlockForRpc.MixHash,
-                BaseFeePerGas = suggestedBlockForRpc.BaseFeePerGas!.Value,
-                WithdrawalsRoot = suggestedBlockForRpc.WithdrawalsRoot,
-                ParentBeaconBlockRoot = suggestedBlockForRpc.ParentBeaconBlockRoot,
-                RequestsHash = suggestedBlockForRpc.RequestsHash,
-                BlobGasUsed = suggestedBlockForRpc.BlobGasUsed,
-                ExcessBlobGas = suggestedBlockForRpc.ExcessBlobGas,
-                Hash = suggestedBlockForRpc.Hash,
-            };
-
-            logger.Info("🔗  Searching for parent block in witness headers...");
-            logger.Info($"    Block number: #{suggestedBlockForRpc.Number}");
-            logger.Info($"    Parent hash: {suggestedBlockHeader.ParentHash}");
-            logger.Info($"    Witness contains {witness.DecodedHeaders.Count} headers");
-
-            BlockHeader? baseBlock = witness.DecodedHeaders.FirstOrDefault(h => h.Hash == suggestedBlockHeader.ParentHash);
-
-            if (baseBlock is null)
-            {
-                logger.Info("❌  Decoding witness file failed - Parent block header not found.");
-                logger.Info($"    Expected parent hash: {suggestedBlockHeader.ParentHash}");
-                return Task.FromResult(1);
-            }
-
-            logger.Info($"✅  Found parent block #{baseBlock.Number}\n");
-
-            logger.Info("⚙️  Initializing block processing environment...");
-            logger.Info("🔄  Processing block...");
-            logger.Info($"📋  Processing {suggestedBlockForRpc.Transactions.Length} transactions...");
-            var transactions = new Transaction[suggestedBlockForRpc.Transactions.Length];
-            for (int j = 0; j < transactions.Length; j++)
-            {
-                var tx = (JsonElement)suggestedBlockForRpc.Transactions[j];
-                transactions[j] = serializer.Deserialize<TransactionForRpc>(tx.GetRawText()).ToTransaction();
-            }
-
-            Block suggestedBlock = new Block(suggestedBlockHeader, transactions, [], suggestedBlockForRpc.Withdrawals);
-
-            if (!ProcessBlock(baseBlock, witness, suggestedBlock, specProvider, logManager))
+            logger.Info($"   Processing block: {suggestedBlock.ToString(Block.Format.Short)} with {suggestedBlock.Transactions.Length} transactions...");
+            if (!ProcessBlock(parent, witness, suggestedBlock, specProvider, logManager))
             {
                 return Task.FromResult(1);
             }
+
             return Task.FromResult(0);
         });
     }
 
-    private static bool ProcessBlock(BlockHeader baseBlock, Witness witness, Block suggestedBlock, ISpecProvider specProvider, ILogManager logManager)
+    private static (Witness witness, Block block, BlockHeader parent) ReadData(string blockFileName, string witnessFileName)
+    {
+        var serializer = new EthereumJsonSerializer();
+        var witnessBytes = File.ReadAllText(witnessFileName);
+        var blockBytes = File.ReadAllText(blockFileName);
+
+        Witness witness = serializer.Deserialize<Witness>(witnessBytes);
+        BlockForRpc suggestedBlockForRpc = serializer.Deserialize<BlockForRpc>(blockBytes);
+
+        BlockHeader suggestedBlockHeader = new BlockHeader(
+            suggestedBlockForRpc.ParentHash,
+            suggestedBlockForRpc.Sha3Uncles,
+            suggestedBlockForRpc.Miner,
+            suggestedBlockForRpc.Difficulty,
+            suggestedBlockForRpc.Number!.Value,
+            suggestedBlockForRpc.GasLimit,
+            (ulong)suggestedBlockForRpc.Timestamp,
+            suggestedBlockForRpc.ExtraData,
+            suggestedBlockForRpc.BlobGasUsed,
+            suggestedBlockForRpc.ExcessBlobGas,
+            suggestedBlockForRpc.ParentBeaconBlockRoot,
+            suggestedBlockForRpc.RequestsHash)
+        {
+            StateRoot = suggestedBlockForRpc.StateRoot,
+            TxRoot = suggestedBlockForRpc.TransactionsRoot,
+            ReceiptsRoot = suggestedBlockForRpc.ReceiptsRoot,
+            Bloom = suggestedBlockForRpc.LogsBloom,
+            GasUsed = suggestedBlockForRpc.GasUsed,
+            MixHash = suggestedBlockForRpc.MixHash,
+            BaseFeePerGas = suggestedBlockForRpc.BaseFeePerGas!.Value,
+            WithdrawalsRoot = suggestedBlockForRpc.WithdrawalsRoot,
+            ParentBeaconBlockRoot = suggestedBlockForRpc.ParentBeaconBlockRoot,
+            RequestsHash = suggestedBlockForRpc.RequestsHash,
+            BlobGasUsed = suggestedBlockForRpc.BlobGasUsed,
+            ExcessBlobGas = suggestedBlockForRpc.ExcessBlobGas,
+            Hash = suggestedBlockForRpc.Hash,
+        };
+
+        BlockHeader? baseBlock = witness.DecodedHeaders.FirstOrDefault(h => h.Hash == suggestedBlockHeader.ParentHash);
+        if (baseBlock is null)
+        {
+            throw new ArgumentException($"No base block header in witness. Expected header with hash {suggestedBlockHeader.ParentHash}");
+        }
+
+        var transactions = new Transaction[suggestedBlockForRpc.Transactions.Length];
+        for (int j = 0; j < transactions.Length; j++)
+        {
+            var tx = (JsonElement)suggestedBlockForRpc.Transactions[j];
+            transactions[j] = serializer.Deserialize<TransactionForRpc>(tx.GetRawText()).ToTransaction();
+        }
+
+        Block suggestedBlock = new Block(suggestedBlockHeader, transactions, [], suggestedBlockForRpc.Withdrawals);
+        return (witness, suggestedBlock, baseBlock);
+    }
+
+    private static bool ProcessBlock(BlockHeader baseBlock, Witness witness, Block suggestedBlock,
+        ISpecProvider specProvider, ILogManager logManager)
     {
         ILogger logger = logManager.GetClassLogger();
         StatelessBlockProcessingEnv blockProcessingEnv =
@@ -191,8 +169,6 @@ internal static class SetupCli
             logger.Info($"    Error: {ex.Message}");
             return false;
         }
-
-        logger.Info("");
         logger.Info("🎉  Block processed successfully!");
         logger.Info($"    Block #{suggestedBlock.Number} validated");
         logger.Info($"    Hash: {suggestedBlock.Hash}");
