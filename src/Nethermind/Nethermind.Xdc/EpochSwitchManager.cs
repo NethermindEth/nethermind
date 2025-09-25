@@ -454,7 +454,7 @@ internal class EpochSwitchManager : IEpochSwitchManager
         ulong epochRound = epochSwitchInfo.EpochSwitchBlockInfo.Round;
         ulong tempTCEpoch = (ulong)xdcSpec.SwitchEpoch + epochRound / (ulong)xdcSpec.EpochLength;
 
-        var epochBlockInfo = new BlockInfo(epochSwitchInfo.EpochSwitchBlockInfo.Hash, epochRound, epochSwitchInfo.EpochSwitchBlockInfo.Number);
+        var epochBlockInfo = new BlockInfo(epochSwitchInfo.EpochSwitchBlockInfo.Hash, epochRound, epochSwitchInfo.EpochSwitchBlockInfo.BlockNumber);
 
         while (epochBlockInfo.Round > timeoutCert.Round)
         {
