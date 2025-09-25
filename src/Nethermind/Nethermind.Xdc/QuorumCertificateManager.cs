@@ -43,9 +43,8 @@ internal class QuorumCertificateManager : IQuorumCertificateManager
     private XdcContext _context { get; }
     private IBlockTree _blockTree;
     private readonly IDb _qcDb;
-
-    private ISpecProvider _specProvider { get; }
     private IEpochSwitchManager _epochSwitchManager { get; }
+    private ISpecProvider _specProvider { get; }
     private EthereumEcdsa _ethereumEcdsa = new EthereumEcdsa(0);
 
     public void CommitCertificate(QuorumCertificate qc)
