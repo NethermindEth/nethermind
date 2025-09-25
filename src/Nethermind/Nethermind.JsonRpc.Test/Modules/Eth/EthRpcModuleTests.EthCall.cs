@@ -12,7 +12,6 @@ using FluentAssertions.Json;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
-using Nethermind.Core.Test.Blockchain;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Core.Test.Container;
 using Nethermind.Evm;
@@ -192,7 +191,7 @@ public partial class EthRpcModuleTests
         };
         string serialized =
             await ctx.Test.TestEthRpc("eth_call", transaction, "latest");
-        serialized.Should().BeEquivalentTo("{\"jsonrpc\":\"2.0\",\"error\":{\"code\":-32000,\"message\":\"Contract creation without any data provided\"},\"id\":67}");
+        serialized.Should().Be("{\"jsonrpc\":\"2.0\",\"error\":{\"code\":-32000,\"message\":\"contract creation without any data provided\"},\"id\":67}");
     }
 
     [Test]
@@ -516,6 +515,7 @@ public partial class EthRpcModuleTests
             .WithBlobVersionedHashes([[]])
             .SignedAndResolved(TestItem.PrivateKeyA)
             .TestObject);
+        transaction.MaxFeePerBlobGas = 0;
         transaction.GasPrice = null;
         string serialized = await ctx.Test.TestEthRpc("eth_call", transaction);
 
