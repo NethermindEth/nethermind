@@ -23,7 +23,7 @@ public interface IMainProcessingContext : IStoppableService
     IBlockProcessor BlockProcessor { get; }
     IBlockchainProcessor BlockchainProcessor { get; }
     IWorldState WorldState { get; }
-    GenesisLoader GenesisLoader { get; }
+    IGenesisLoader GenesisLoader { get; }
 
     /// <summary>
     /// Fired after a transaction has been processed (even if inside the block).

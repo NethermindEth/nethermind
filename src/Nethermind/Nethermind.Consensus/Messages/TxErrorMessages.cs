@@ -82,7 +82,7 @@ public static class TxErrorMessages
         "InvalidBlobCommitmentHash: Commitment hash does not match.";
 
     public static string TxGasLimitCapExceeded(long gasLimit, long gasLimitCap)
-        => $"TxGasLimitCapExceeded: Gas limit {gasLimit} exceeed cap of {gasLimitCap}.";
+        => $"TxGasLimitCapExceeded: Gas limit {gasLimit} exceeded cap of {gasLimitCap}.";
 
     public const string InvalidCreateTxData
         = "InvalidCreateTxData: Legacy createTx cannot create Eof code";
@@ -95,4 +95,7 @@ public static class TxErrorMessages
 
     public const string EofContractSizeInvalid
         = "EofContractSizeInvalid: Eof initcode size is invalid (either 0 or too big)";
+
+    public const string NonceTooHigh = "NonceTooHigh: Nonce exceeds max nonce";
+
 }

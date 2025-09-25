@@ -45,8 +45,7 @@ public class ReorgTests
     {
         ISpecProvider specProvider = MainnetSpecProvider.Instance;
         IDbProvider memDbProvider = TestMemDbProvider.Init();
-        IWorldStateManager worldStateManager = TestWorldStateFactory.CreateForTest(memDbProvider, LimboLogs.Instance);
-        IWorldState stateProvider = worldStateManager.GlobalWorldState;
+        (IWorldState stateProvider, IStateReader stateReader) = TestWorldStateFactory.CreateForTestWithStateReader(memDbProvider, LimboLogs.Instance);
 
         IReleaseSpec finalSpec = specProvider.GetFinalSpec();
 
@@ -70,7 +69,6 @@ public class ReorgTests
             _genesis = Build.A.BlockHeader.WithStateRoot(stateProvider.StateRoot).TestObject;
         }
 
-        IStateReader stateReader = worldStateManager.GlobalStateReader;
         EthereumEcdsa ecdsa = new(1);
         ITransactionComparerProvider transactionComparerProvider =
             new TransactionComparerProvider(specProvider, _blockTree);
@@ -80,12 +78,11 @@ public class ReorgTests
             .WithSpecProvider(specProvider)
             .TestObject;
 
-        EthereumCodeInfoRepository codeInfoRepository = new();
         TxPool.TxPool txPool = new(
             ecdsa,
             new BlobTxStorage(),
             new ChainHeadInfoProvider(
-                new ChainHeadSpecProvider(specProvider, _blockTree), _blockTree, worldStateManager.GlobalStateReader, codeInfoRepository),
+                new ChainHeadSpecProvider(specProvider, _blockTree), _blockTree, stateReader),
             new TxPoolConfig(),
             new TxValidator(specProvider.ChainId),
             LimboLogs.Instance,
@@ -99,7 +96,7 @@ public class ReorgTests
             specProvider,
             stateProvider,
             virtualMachine,
-            codeInfoRepository,
+            new EthereumCodeInfoRepository(stateProvider),
             LimboLogs.Instance);
 
         BlockProcessor blockProcessor = new BlockProcessor(

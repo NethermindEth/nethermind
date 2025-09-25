@@ -1,6 +1,6 @@
 name: Hive tests
-   
-on: 
+
+on:
   push:
     tags: ['*']
     branches: [master]
@@ -8,10 +8,9 @@ on:
     inputs:
       test-suite:
         description: Test suite
-        required: true
-        default: ethereum/engine
         type: choice
         options:
+          - ''
           - devp2p
           - ethereum/consensus
           - ethereum/eest
@@ -23,7 +22,7 @@ on:
       limit:
         description: Limit
         required: false
-        type: string 
+        type: string
       log-level:
         description: Log level
         required: true
@@ -34,7 +33,7 @@ on:
         description: Hive repo
         required: true
         default: ethereum/hive
-        type: string        
+        type: string
       hive-branch:
         description: Hive branch
         required: false
@@ -49,17 +48,22 @@ jobs:
   test:
     name: Build and run tests
     runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        test-suite: ${{ fromJson(github.event.inputs.test-suite == '' &&
+          '["ethereum/engine","ethereum/graphql","ethereum/rpc","ethereum/rpc-compat","ethereum/sync"]' ||
+          format('["{0}"]', github.event.inputs.test-suite)
+          ) }}
     steps:
       - name: Set up parameters
         run: |
-          echo "TEST_SUITE=${{ github.event.inputs.test-suite || 'ethereum/engine' }}" >> $GITHUB_ENV
           echo "LIMIT=${{ github.event.inputs.limit || '' }}" >> $GITHUB_ENV
           echo "LOG_LEVEL=${{ github.event.inputs.log-level || '3' }}" >> $GITHUB_ENV
           echo "HIVE_REPO=${{ github.event.inputs.hive-repo || 'ethereum/hive' }}" >> $GITHUB_ENV
           echo "HIVE_BRANCH=${{ github.event.inputs.hive-branch || 'master' }}" >> $GITHUB_ENV
           echo "BUILDARG=${{ github.event.inputs.buildarg || '' }}" >> $GITHUB_ENV
       - name: Check out Nethermind repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
         with:
           path: nethermind
       - name: Set up Docker Buildx
@@ -68,13 +72,13 @@ jobs:
         uses: docker/build-push-action@v6
         env:
           DOCKER_BUILD_SUMMARY: false
-        with: 
+        with:
           context: nethermind
           file: nethermind/Dockerfile
           tags: nethermind:test-${{ github.sha }}
           outputs: type=docker,dest=/tmp/image.tar
       - name: Check out Hive repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
         with:
           repository: ${{ env.HIVE_REPO }}
           ref: ${{ env.HIVE_BRANCH }}
@@ -90,17 +94,17 @@ jobs:
         continue-on-error: true
         working-directory: hive
         run: |
-          HIVE_ARGS="--client nethermind --sim $TEST_SUITE --sim.loglevel $LOG_LEVEL"
+          HIVE_ARGS="--client nethermind --sim ${{ matrix.test-suite }} --sim.loglevel $LOG_LEVEL"
           [[ -n "$LIMIT" ]] && HIVE_ARGS="$HIVE_ARGS --sim.limit $LIMIT"
           [[ -n "$BUILDARG" ]] && HIVE_ARGS="$HIVE_ARGS --sim.buildarg \"$BUILDARG\""
           ./hive $HIVE_ARGS
       - name: Upload results
         uses: actions/upload-artifact@v4
         with:
-          name: results-${{ github.run_number }}-${{ github.run_attempt }}
+          name: results-${{ strategy.job-index }}-${{ github.run_number }}-${{ github.run_attempt }}
           path: hive/workspace
           retention-days: 7
       - name: Print results
         run: |
-          rm hive/workspace/logs/hive.json # redundant: remove to avoid jq error
+          rm hive/workspace/logs/hive.json
           nethermind/scripts/hive-results.sh "hive/workspace/logs/*.json"

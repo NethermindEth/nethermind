@@ -16,9 +16,9 @@ public sealed class HealingStorageTree : StorageTree
     private readonly INodeStorage _nodeStorage;
     private readonly Address _address;
     private readonly Hash256 _stateRoot;
-    private readonly IPathRecovery? _recovery;
+    private readonly Lazy<IPathRecovery> _recovery;
 
-    public HealingStorageTree(IScopedTrieStore? trieStore, INodeStorage nodeStorage, Hash256 rootHash, ILogManager? logManager, Address address, Hash256 stateRoot, IPathRecovery? recovery)
+    public HealingStorageTree(IScopedTrieStore? trieStore, INodeStorage nodeStorage, Hash256 rootHash, ILogManager? logManager, Address address, Hash256 stateRoot, Lazy<IPathRecovery> recovery)
         : base(trieStore, rootHash, logManager)
     {
         _nodeStorage = nodeStorage;
@@ -69,7 +69,7 @@ public sealed class HealingStorageTree : StorageTree
     {
         if (_recovery is not null)
         {
-            using IOwnedReadOnlyList<(TreePath, byte[])>? rlps = _recovery.Recover(_stateRoot, Keccak.Compute(_address.Bytes), missingNodePath, hash, fullPath).GetAwaiter().GetResult();
+            using IOwnedReadOnlyList<(TreePath, byte[])>? rlps = _recovery.Value.Recover(_stateRoot, Keccak.Compute(_address.Bytes), missingNodePath, hash, fullPath).GetAwaiter().GetResult();
             if (rlps is not null)
             {
                 Hash256 addressHash = _address.ToAccountPath.ToCommitment();
