@@ -221,7 +221,7 @@ public struct BlockAccessList : IEquatable<BlockAccessList>, IJournal<int>
 
     public void AddStorageRead(in StorageCell storageCell)
     {
-        Span<byte> key = new byte[32];
+        byte[] key = new byte[32];
         storageCell.Index.ToBigEndian(key);
         StorageRead storageRead = new()
         {
@@ -235,7 +235,10 @@ public struct BlockAccessList : IEquatable<BlockAccessList>, IJournal<int>
             _accountChanges.Add(address, accountChanges);
         }
 
-        accountChanges.StorageReads.Add(storageRead);
+        if (!accountChanges.StorageChanges.ContainsKey(key))
+        {
+            accountChanges.StorageReads.Add(storageRead);
+        }
     }
 
     private void StorageChange(AccountChanges accountChanges, in ReadOnlySpan<byte> key, in ReadOnlySpan<byte> value)
@@ -270,6 +273,8 @@ public struct BlockAccessList : IEquatable<BlockAccessList>, IJournal<int>
             Type = ChangeType.StorageChange,
             PreviousValue = previousStorage
         });
+
+        accountChanges.StorageReads.Remove(new(Bytes32.Wrap(storageKey)));
     }
 
     public readonly int TakeSnapshot()
