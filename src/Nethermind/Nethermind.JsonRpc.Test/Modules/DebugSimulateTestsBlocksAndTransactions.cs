@@ -7,13 +7,16 @@ using System.Linq;
 using System.Threading.Tasks;
 using Nethermind.Blockchain.Find;
 using Nethermind.Core;
+using Nethermind.Core.Extensions;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Blockchain.Tracing.GethStyle;
+using Nethermind.Facade;
 using Nethermind.Facade.Eth.RpcTransaction;
 using Nethermind.Facade.Proxy.Models.Simulate;
 using Nethermind.Facade.Simulate;
 using Nethermind.Int256;
 using Nethermind.JsonRpc.Modules.Eth;
+using NSubstitute;
 using NUnit.Framework;
 
 namespace Nethermind.JsonRpc.Test.Modules.Eth;
@@ -144,5 +147,39 @@ public class DebugSimulateTestsBlocksAndTransactions
         string serialized = await RpcTest.TestSerializedRequest(chain.DebugRpcModule, "debug_simulateV1", payload!, "latest");
 
         Assert.That(serialized, Does.Contain("\"traces\":"));
+    }
+
+    [Test]
+    public async Task Test_simulate_error_message_includes_block_number()
+    {
+        TestRpcBlockchain chain = await EthRpcSimulateTestsBase.CreateChain();
+
+        // Create a simple payload
+        SimulatePayload<TransactionForRpc> payload = new()
+        {
+            BlockStateCalls = [new BlockStateCall<TransactionForRpc>
+            {
+                Calls = [new LegacyTransactionForRpc
+                {
+                    From = TestItem.AddressA,
+                    To = TestItem.AddressB,
+                    Value = 1000.Ether()
+                }]
+            }]
+        };
+
+        // Mock the blockchain bridge to return false for HasStateForBlock
+        var mockBridge = Substitute.For<IBlockchainBridge>();
+        mockBridge.HasStateForBlock(Arg.Any<BlockHeader>()).Returns(false);
+
+        SimulateTxExecutor<GethLikeTxTrace> executor = new(mockBridge, chain.BlockFinder, new JsonRpcConfig(), new GethStyleSimulateBlockTracerFactory(GethTraceOptions.Default));
+
+        // Execute and verify the error message includes block number
+        ResultWrapper<IReadOnlyList<SimulateBlockResult<GethLikeTxTrace>>> result = executor.Execute(payload, BlockParameter.Latest);
+
+        Assert.That(result.Result.ResultType, Is.EqualTo(Core.ResultType.Failure));
+        Assert.That(result.Result.Error, Does.Contain("No state available for block"));
+        // Verify the error message includes both block number and hash (format: "{number} ({hash})")
+        Assert.That(result.Result.Error, Does.Match(@"No state available for block \d+ \(0x[a-fA-F0-9]{64}\)"));
     }
 }
