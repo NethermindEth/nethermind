@@ -13,6 +13,7 @@ using Nethermind.Serialization.Json;
 using Nethermind.Specs;
 using Nethermind.Consensus.Stateless;
 using Nethermind.Core.Specs;
+using Nethermind.Logging;
 using Nethermind.Trie;
 
 namespace StatelessExecution;
@@ -37,40 +38,59 @@ internal static class SetupCli
             Required = true
         };
 
+        Option<string> network = new("--network")
+        {
+            HelpName = "Network",
+            Required = true
+        };
+        network.AcceptOnlyFromAmong("hoodi", "mainnet");
+
         command.Add(witnessFile);
         command.Add(blockFile);
+        command.Add(network);
 
         command.SetAction((parseResult, _) =>
         {
-            string blockFileName = parseResult.GetValue(blockFile)!;
-            string execWitnessFileName = parseResult.GetValue(witnessFile)!;
+            ILogManager logManager = new SimpleConsoleLogManager(LogLevel.Info, "HH:mm:ss|");
+            ILogger logger = logManager.GetClassLogger();
 
-            Console.WriteLine("🚀  Starting stateless execution...\n");
-            Console.WriteLine($"📁  Block file: {blockFileName}");
-            Console.WriteLine($"🔍  Witness file: {execWitnessFileName}\n");
+            string blockFileName = parseResult.GetRequiredValue(blockFile);
+            string execWitnessFileName = parseResult.GetRequiredValue(witnessFile);
+            string networkName = parseResult.GetRequiredValue(network);
+
+            ISpecProvider specProvider = networkName switch
+            {
+                "hoodi" => HoodiSpecProvider.Instance,
+                "mainnet" => MainnetSpecProvider.Instance,
+                _ => throw new ArgumentException($"Unsupported network {networkName}")
+            };
+
+            logger.Info("🚀  Starting stateless execution...\n");
+            logger.Info($"📁  Block file: {blockFileName}");
+            logger.Info($"🔍  Witness file: {execWitnessFileName}\n");
 
             var serializer = new EthereumJsonSerializer();
 
-            Console.WriteLine("📖  Reading input files...");
+            logger.Info("📖  Reading input files...");
             if (!File.Exists(execWitnessFileName))
             {
-                Console.WriteLine($"❌  Witness file not found: {execWitnessFileName}");
+                logger.Info($"❌  Witness file not found: {execWitnessFileName}");
                 return Task.FromResult(1);
             }
             if (!File.Exists(blockFileName))
             {
-                Console.WriteLine($"❌  Block file not found: {blockFileName}");
+                logger.Info($"❌  Block file not found: {blockFileName}");
                 return Task.FromResult(1);
             }
 
             var witnessBytes = File.ReadAllText(execWitnessFileName);
             var blockBytes = File.ReadAllText(blockFileName);
-            Console.WriteLine("✅  Files read successfully\n");
+            logger.Info("✅  Files read successfully\n");
 
-            Console.WriteLine("🔍  Deserializing witness and block data...");
+            logger.Info("🔍  Deserializing witness and block data...");
             Witness witness = serializer.Deserialize<Witness>(witnessBytes);
             BlockForRpc suggestedBlockForRpc = serializer.Deserialize<BlockForRpc>(blockBytes);
-            Console.WriteLine("✅  Deserialization completed\n");
+            logger.Info("✅  Deserialization completed\n");
 
             BlockHeader suggestedBlockHeader = new BlockHeader(
                 suggestedBlockForRpc.ParentHash,
@@ -101,25 +121,25 @@ internal static class SetupCli
                 Hash = suggestedBlockForRpc.Hash,
             };
 
-            Console.WriteLine("🔗  Searching for parent block in witness headers...");
-            Console.WriteLine($"    Block number: #{suggestedBlockForRpc.Number}");
-            Console.WriteLine($"    Parent hash: {suggestedBlockHeader.ParentHash}");
-            Console.WriteLine($"    Witness contains {witness.DecodedHeaders.Count} headers");
+            logger.Info("🔗  Searching for parent block in witness headers...");
+            logger.Info($"    Block number: #{suggestedBlockForRpc.Number}");
+            logger.Info($"    Parent hash: {suggestedBlockHeader.ParentHash}");
+            logger.Info($"    Witness contains {witness.DecodedHeaders.Count} headers");
 
             BlockHeader? baseBlock = witness.DecodedHeaders.FirstOrDefault(h => h.Hash == suggestedBlockHeader.ParentHash);
 
             if (baseBlock is null)
             {
-                Console.WriteLine("❌  Decoding witness file failed - Parent block header not found.");
-                Console.WriteLine($"    Expected parent hash: {suggestedBlockHeader.ParentHash}");
+                logger.Info("❌  Decoding witness file failed - Parent block header not found.");
+                logger.Info($"    Expected parent hash: {suggestedBlockHeader.ParentHash}");
                 return Task.FromResult(1);
             }
 
-            Console.WriteLine($"✅  Found parent block #{baseBlock.Number}\n");
+            logger.Info($"✅  Found parent block #{baseBlock.Number}\n");
 
-            Console.WriteLine("⚙️  Initializing block processing environment...");
-            Console.WriteLine("🔄  Processing block...");
-            Console.WriteLine($"📋  Processing {suggestedBlockForRpc.Transactions.Length} transactions...");
+            logger.Info("⚙️  Initializing block processing environment...");
+            logger.Info("🔄  Processing block...");
+            logger.Info($"📋  Processing {suggestedBlockForRpc.Transactions.Length} transactions...");
             var transactions = new Transaction[suggestedBlockForRpc.Transactions.Length];
             for (int j = 0; j < transactions.Length; j++)
             {
@@ -129,46 +149,53 @@ internal static class SetupCli
 
             Block suggestedBlock = new Block(suggestedBlockHeader, transactions, [], suggestedBlockForRpc.Withdrawals);
 
-            ISpecProvider specProvider = HoodiSpecProvider.Instance;
-
-            StatelessBlockProcessingEnv blockProcessingEnv =
-                new(witness, specProvider, Always.Valid, new NLogManager());
-
-            IBlockProcessor blockProcessor = blockProcessingEnv.BlockProcessor;
-
-            using var scope = blockProcessingEnv.WorldState.BeginScope(baseBlock);
-
-            try
+            if (!ProcessBlock(baseBlock, witness, suggestedBlock, specProvider, logManager))
             {
-                (Block processed, TxReceipt[] _) = blockProcessor.ProcessOne(suggestedBlock,
-                    ProcessingOptions.ReadOnlyChain, NullBlockTracer.Instance, specProvider.GetSpec(suggestedBlock.Header));
-
-                if (processed.Hash != suggestedBlock.Hash)
-                {
-                    Console.WriteLine("❌  Block processing failed - Hash mismatch");
-                    Console.WriteLine($"    Expected: {suggestedBlock.Hash}");
-                    Console.WriteLine($"    Actual:   {processed.Hash}");
-                    return Task.FromResult(1);
-                }
-            }
-            catch (MissingTrieNodeException ex)
-            {
-                Console.WriteLine("❌  Decoding witness file failed - Invalid merkle proof");
-                Console.WriteLine($"    Error: {ex.Message}");
                 return Task.FromResult(1);
             }
-            catch (Exception ex)
-            {
-                Console.WriteLine("❌  Block processing failed with unexpected error");
-                Console.WriteLine($"    Error: {ex.Message}");
-                return Task.FromResult(1);
-            }
-
-            Console.WriteLine();
-            Console.WriteLine("🎉  Block processed successfully!");
-            Console.WriteLine($"    Block #{suggestedBlockForRpc.Number} validated");
-            Console.WriteLine($"    Hash: {suggestedBlock.Hash}");
             return Task.FromResult(0);
         });
+    }
+
+    private static bool ProcessBlock(BlockHeader baseBlock, Witness witness, Block suggestedBlock, ISpecProvider specProvider, ILogManager logManager)
+    {
+        ILogger logger = logManager.GetClassLogger();
+        StatelessBlockProcessingEnv blockProcessingEnv =
+            new(witness, specProvider, Always.Valid, logManager);
+
+        IBlockProcessor blockProcessor = blockProcessingEnv.BlockProcessor;
+
+        using var scope = blockProcessingEnv.WorldState.BeginScope(baseBlock);
+        try
+        {
+            (Block processed, TxReceipt[] _) = blockProcessor.ProcessOne(suggestedBlock,
+                ProcessingOptions.ReadOnlyChain, NullBlockTracer.Instance, specProvider.GetSpec(suggestedBlock.Header));
+
+            if (processed.Hash != suggestedBlock.Hash)
+            {
+                logger.Info("❌  Block processing failed - Hash mismatch");
+                logger.Info($"    Expected: {suggestedBlock.Hash}");
+                logger.Info($"    Actual:   {processed.Hash}");
+                return false;
+            }
+        }
+        catch (MissingTrieNodeException ex)
+        {
+            logger.Info("❌  Decoding witness file failed - Invalid merkle proof");
+            logger.Info($"    Error: {ex.Message}");
+            return false;
+        }
+        catch (Exception ex)
+        {
+            logger.Info("❌  Block processing failed with unexpected error");
+            logger.Info($"    Error: {ex.Message}");
+            return false;
+        }
+
+        logger.Info("");
+        logger.Info("🎉  Block processed successfully!");
+        logger.Info($"    Block #{suggestedBlock.Number} validated");
+        logger.Info($"    Hash: {suggestedBlock.Hash}");
+        return true;
     }
 }
