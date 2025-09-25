@@ -17,9 +17,9 @@ COPY nuget.config .
 
 RUN arch=$([ "$TARGETARCH" = "amd64" ] && echo "x64" || echo "$TARGETARCH") && \
   dotnet add src/Nethermind/Nethermind.Runner package JetBrains.dotMemory.Console.linux-$arch \
-  --package-directory /tmp && \
+    --package-directory /tmp && \
   dotnet publish src/Nethermind/Nethermind.Runner -c $BUILD_CONFIG -a $arch -o /publish --no-self-contained \
-  -p:CommitHash=$COMMIT_HASH
+    -p:CommitHash=$COMMIT_HASH
 
 RUN dotnet tool install -g dotnet-dump && \
   dotnet tool install -g dotnet-gcdump && \
