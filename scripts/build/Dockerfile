@@ -16,8 +16,7 @@ COPY nuget.config .
 COPY global.json .
 COPY scripts/build/build.sh .
 
-RUN chmod +x build.sh && \
-  ./build.sh $COMMIT_HASH $SOURCE_DATE_EPOCH
+RUN chmod +x build.sh && ./build.sh $COMMIT_HASH
 
 VOLUME /output
 
