@@ -87,9 +87,7 @@ public class QuorumCertificateManagerTest
         IXdcReleaseSpec xdcReleaseSpec = Substitute.For<IXdcReleaseSpec>();
         xdcReleaseSpec.EpochLength.Returns(900);
         xdcReleaseSpec.Gap.Returns(450);
-        IXdcSubConfig xdcSubConfig = Substitute.For<IXdcSubConfig>();
-        xdcSubConfig.CertThreshold.Returns(0.667);
-        xdcReleaseSpec.Configs.Returns([xdcSubConfig, xdcSubConfig]);
+        xdcReleaseSpec.CertThreshold.Returns(0.667);
         specProvider.GetSpec(Arg.Any<ForkActivation>()).Returns(xdcReleaseSpec);
         var quorumCertificateManager = new QuorumCertificateManager(
             new XdcContext(),

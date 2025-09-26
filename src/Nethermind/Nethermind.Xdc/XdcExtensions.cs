@@ -8,6 +8,7 @@ using Nethermind.Xdc;
 using Nethermind.Xdc.Spec;
 using Nethermind.Core.Specs;
 using Nethermind.Xdc.Types;
+using Nethermind.Core;
 
 namespace Nethermind.Crypto;
 public static class XdcExtensions
@@ -30,7 +31,7 @@ public static class XdcExtensions
         return ecdsa.RecoverAddress(vote.Signature, in hash);
     }
 
-    public static IXdcReleaseSpec GetXdcSpec(this ISpecProvider specProvider, XdcBlockHeader xdcBlockHeader)
+    public static IXdcReleaseSpec GetXdcSpec(this ISpecProvider specProvider, XdcBlockHeader xdcBlockHeader, ulong round = 0)
     {
         IXdcReleaseSpec spec = specProvider.GetSpec(xdcBlockHeader) as IXdcReleaseSpec;
         if (spec is null)

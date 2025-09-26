@@ -157,9 +157,9 @@ internal class QuorumCertificateManager : IQuorumCertificateManager
         //Possible optimize here
         Signature[] uniqueSignatures = qc.Signatures.Distinct().ToArray();
 
-        IXdcReleaseSpec spec = _specProvider.GetXdcSpec(parentHeader);
         ulong qcRound = qc.ProposedBlockInfo.Round;
-        double certThreshold = spec.Configs[qcRound].CertThreshold;
+        IXdcReleaseSpec spec = _specProvider.GetXdcSpec(parentHeader, qcRound);
+        double certThreshold = spec.CertThreshold;
 
         if ((qcRound > 0) && (uniqueSignatures.Length < epochSwitchInfo.Masternodes.Length * certThreshold))
         {
