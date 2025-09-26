@@ -20,15 +20,15 @@ public class SimulateBlockResult<TTrace>(Block source, bool includeFullTransacti
     : BlockForRpc(source, includeFullTransactionData, specProvider)
 {
     private static bool ShouldSerializeCalls => typeof(TTrace) == typeof(SimulateCallResult);
-    private IReadOnlyCollection<TTrace> _calls = [];
+    private readonly IReadOnlyCollection<TTrace> _calls = [];
 
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
-    public IReadOnlyCollection<TTrace> Calls
+    public IReadOnlyCollection<TTrace>? Calls
     {
         get { return ShouldSerializeCalls ? _calls : null; }
-        set { _calls = value; }
+        init { _calls = value ?? []; }
     }
 
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
-    public IReadOnlyCollection<TTrace> Traces => ShouldSerializeCalls ? null : _calls;
+    public IReadOnlyCollection<TTrace>? Traces => ShouldSerializeCalls ? null : _calls;
 }

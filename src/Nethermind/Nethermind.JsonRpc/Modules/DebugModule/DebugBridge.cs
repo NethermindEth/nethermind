@@ -235,15 +235,6 @@ public class DebugBridge : IDebugBridge
                     gethTraceOptions ?? GethTraceOptions.Default,
                     cancellationToken);
             }
-            catch (InsufficientBalanceException)
-            {
-                trace = new GethLikeTxTrace
-                {
-                    Failed = true,
-                    Gas = tx.GasLimit,
-                    ReturnValue = []
-                };
-            }
             catch (Exception)
             {
                 trace = new GethLikeTxTrace
