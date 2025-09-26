@@ -2,11 +2,11 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using Nethermind.Consensus.Messages;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
 using Nethermind.TxPool;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Messages;
 using Nethermind.Crypto;
 using Nethermind.Evm;
 using Nethermind.Int256;
@@ -20,6 +20,7 @@ public sealed class TxValidator : ITxValidator
     public TxValidator(ulong chainId)
     {
         RegisterValidator(TxType.Legacy, new CompositeTxValidator([
+            NonceCapTxValidator.Instance,
             IntrinsicGasTxValidator.Instance,
             new LegacySignatureTxValidator(chainId),
             ContractSizeTxValidator.Instance,
@@ -31,6 +32,7 @@ public sealed class TxValidator : ITxValidator
         var expectedChainIdTxValidator = new ExpectedChainIdTxValidator(chainId);
         RegisterValidator(TxType.AccessList, new CompositeTxValidator([
             new ReleaseSpecTxValidator(static spec => spec.IsEip2930Enabled),
+            NonceCapTxValidator.Instance,
             IntrinsicGasTxValidator.Instance,
             SignatureTxValidator.Instance,
             expectedChainIdTxValidator,
@@ -41,6 +43,7 @@ public sealed class TxValidator : ITxValidator
         ]));
         RegisterValidator(TxType.EIP1559, new CompositeTxValidator([
             new ReleaseSpecTxValidator(static spec => spec.IsEip1559Enabled),
+            NonceCapTxValidator.Instance,
             IntrinsicGasTxValidator.Instance,
             SignatureTxValidator.Instance,
             expectedChainIdTxValidator,
@@ -52,6 +55,7 @@ public sealed class TxValidator : ITxValidator
         ]));
         RegisterValidator(TxType.Blob, new CompositeTxValidator([
             new ReleaseSpecTxValidator(static spec => spec.IsEip4844Enabled),
+            NonceCapTxValidator.Instance,
             IntrinsicGasTxValidator.Instance,
             SignatureTxValidator.Instance,
             expectedChainIdTxValidator,
@@ -65,6 +69,7 @@ public sealed class TxValidator : ITxValidator
         ]));
         RegisterValidator(TxType.SetCode, new CompositeTxValidator([
             new ReleaseSpecTxValidator(static spec => spec.IsEip7702Enabled),
+            NonceCapTxValidator.Instance,
             IntrinsicGasTxValidator.Instance,
             SignatureTxValidator.Instance,
             expectedChainIdTxValidator,
@@ -217,8 +222,8 @@ public sealed class BlobFieldsTxValidator : ITxValidator
             switch (transaction.BlobVersionedHashes[i])
             {
                 case null: return TxErrorMessages.MissingBlobVersionedHash;
-                case { Length: not KzgPolynomialCommitments.BytesPerBlobVersionedHash }: return TxErrorMessages.InvalidBlobVersionedHashSize;
-                case { Length: KzgPolynomialCommitments.BytesPerBlobVersionedHash } when transaction.BlobVersionedHashes[i][0] != KzgPolynomialCommitments.KzgBlobHashVersionV1: return TxErrorMessages.InvalidBlobVersionedHashVersion;
+                case { Length: not Eip4844Constants.BytesPerBlobVersionedHash }: return TxErrorMessages.InvalidBlobVersionedHashSize;
+                case { Length: Eip4844Constants.BytesPerBlobVersionedHash } when transaction.BlobVersionedHashes[i][0] != KzgPolynomialCommitments.KzgBlobHashVersionV1: return TxErrorMessages.InvalidBlobVersionedHashVersion;
             }
         }
 
@@ -311,7 +316,7 @@ public sealed class MempoolBlobTxProofVersionValidator : ITxValidator
         };
 
         static ValidationResult ValidateProofVersion(ProofVersion txProofVersion, IReleaseSpec spec) =>
-            txProofVersion != spec.BlobProofVersion ? new ValidationResult(TxErrorMessages.InvalidProofVersion, true) : ValidationResult.Success;
+            txProofVersion != spec.BlobProofVersion ? TxErrorMessages.InvalidProofVersion : ValidationResult.Success;
     }
 }
 
@@ -384,8 +389,20 @@ public sealed class GasLimitCapTxValidator : ITxValidator
 
     public ValidationResult IsWellFormed(Transaction transaction, IReleaseSpec releaseSpec)
     {
-        long gasLimitCap = Eip7825Constants.GetTxGasLimitCap(releaseSpec);
+        long gasLimitCap = releaseSpec.GetTxGasLimitCap();
         return transaction.GasLimit > gasLimitCap ?
             TxErrorMessages.TxGasLimitCapExceeded(transaction.GasLimit, gasLimitCap) : ValidationResult.Success;
     }
+}
+
+/// <summary>
+/// EIP-2681 validation.
+/// </summary>
+public sealed class NonceCapTxValidator : ITxValidator
+{
+    public static readonly NonceCapTxValidator Instance = new();
+    private NonceCapTxValidator() { }
+
+    public ValidationResult IsWellFormed(Transaction transaction, IReleaseSpec releaseSpec) =>
+        transaction.Nonce < ulong.MaxValue ? ValidationResult.Success : TxErrorMessages.NonceTooHigh;
 }

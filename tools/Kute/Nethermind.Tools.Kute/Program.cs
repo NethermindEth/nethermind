@@ -47,9 +47,7 @@ static class Program
         });
         rootCommand.Description = "Send JSON RPC messages to an Ethereum node and report metrics.";
 
-        CommandLineConfiguration cli = new(rootCommand);
-
-        return await cli.InvokeAsync(args);
+        return await rootCommand.Parse(args).InvokeAsync();
     }
 
     private static IServiceProvider BuildServiceProvider(ParseResult parseResult)

@@ -487,7 +487,7 @@ public class CompositeTxTracer : ITxTracer
         }
     }
 
-    public void ReportAccess(IReadOnlyCollection<Address> accessedAddresses, IReadOnlyCollection<StorageCell> accessedStorageCells)
+    public void ReportAccess(IEnumerable<Address> accessedAddresses, IEnumerable<StorageCell> accessedStorageCells)
     {
         for (int index = 0; index < _txTracers.Count; index++)
         {

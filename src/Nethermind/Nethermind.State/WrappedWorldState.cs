@@ -56,6 +56,9 @@ public class WrappedWorldState(IWorldState innerWorldState) : IWorldState
     public virtual void CreateAccountIfNotExists(Address address, in UInt256 balance, in UInt256 nonce = default)
         => _innerWorldState.CreateAccountIfNotExists(address, balance, nonce);
 
+    public virtual void CreateEmptyAccountIfDeleted(Address address) =>
+        _innerWorldState.CreateEmptyAccountIfDeleted(address);
+
     public virtual void DecrementNonce(Address address, UInt256 delta)
         => _innerWorldState.DecrementNonce(address, delta);
 

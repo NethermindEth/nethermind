@@ -6,9 +6,9 @@ using Nethermind.Serialization.Rlp;
 
 namespace Nethermind.Xdc.Types;
 
-public class VoteForSign(BlockInfo proposedBlockInfo, long gapNumber)
+public class VoteForSign(BlockRoundInfo proposedBlockInfo, long gapNumber)
 {
-    public BlockInfo ProposedBlockInfo { get; set; } = proposedBlockInfo;
+    public BlockRoundInfo ProposedBlockInfo { get; set; } = proposedBlockInfo;
     public long GapNumber { get; set; } = gapNumber;
     public Hash256 SigHash() => Keccak.Compute(Rlp.Encode(this).Bytes);
 }

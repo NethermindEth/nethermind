@@ -464,6 +464,102 @@ public class DebugRpcModule(
             .Execute(payload, blockParameter);
     }
 
+    public ResultWrapper<IEnumerable<IEnumerable<GethLikeTxTrace>>> debug_traceCallMany(TransactionBundle[] bundles, BlockParameter? blockParameter = null, GethTraceOptions? options = null)
+    {
+        if (bundles is null)
+            return ResultWrapper<IEnumerable<IEnumerable<GethLikeTxTrace>>>.Fail("Bundles array cannot be null", ErrorCodes.InvalidParams);
+
+        if (bundles.Length == 0)
+            return ResultWrapper<IEnumerable<IEnumerable<GethLikeTxTrace>>>.Success(Array.Empty<GethLikeTxTrace[]>());
+
+        for (int i = 0; i < bundles.Length; i++)
+        {
+            if (bundles[i]?.Transactions is null)
+                return ResultWrapper<IEnumerable<IEnumerable<GethLikeTxTrace>>>.Fail($"Bundle at index {i} has null transactions", ErrorCodes.InvalidParams);
+        }
+
+        blockParameter ??= BlockParameter.Latest;
+
+        BlockHeader header = TryGetHeader(blockParameter, out ResultWrapper<IEnumerable<IEnumerable<GethLikeTxTrace>>>? headerError);
+        if (headerError is not null)
+        {
+            return headerError;
+        }
+
+        return bundles.Any(b => b.BlockOverride is not null || b.StateOverrides is not null)
+            ? TraceCallManyWithOverrides(bundles, options, header)
+            : TraceCallMany(bundles, blockParameter, options, header);
+    }
+
+    private ResultWrapper<IEnumerable<IEnumerable<GethLikeTxTrace>>> TraceCallMany(TransactionBundle[] bundles, BlockParameter blockParameter, GethTraceOptions? options, BlockHeader header)
+    {
+        PrepareTransactions(bundles, header);
+
+        using CancellationTokenSource timeout = BuildTimeoutCancellationTokenSource();
+        CancellationToken cancellationToken = timeout.Token;
+
+        IEnumerable<IEnumerable<GethLikeTxTrace>> bundleTraces = debugBridge
+            .GetBundleTraces(bundles, blockParameter, cancellationToken, options);
+
+        if (_logger.IsTrace)
+        {
+            int totalTransactions = bundles.Sum(b => b.Transactions?.Length ?? 0);
+            _logger.Trace($"{nameof(debug_traceCallMany)} completed: {bundles.Length} bundles, {totalTransactions} transactions via simple path");
+        }
+
+        return ResultWrapper<IEnumerable<IEnumerable<GethLikeTxTrace>>>.Success(bundleTraces);
+    }
+
+    private ResultWrapper<IEnumerable<IEnumerable<GethLikeTxTrace>>> TraceCallManyWithOverrides(TransactionBundle[] bundles, GethTraceOptions? options, BlockHeader header)
+    {
+        PrepareTransactions(bundles, header);
+        var simulatePayload = new SimulatePayload<TransactionForRpc>
+        {
+            BlockStateCalls = bundles.Select(bundle => new BlockStateCall<TransactionForRpc>
+            {
+                BlockOverrides = bundle.BlockOverride,
+                StateOverrides = bundle.StateOverrides,
+                Calls = bundle.Transactions
+            }).ToList()
+        };
+
+        BlockParameter concreteBlockParameter = new(header.Number);
+
+        using CancellationTokenSource timeout = BuildTimeoutCancellationTokenSource();
+
+        ResultWrapper<IReadOnlyList<SimulateBlockResult<GethLikeTxTrace>>> simulationResult =
+            new SimulateTxExecutor<GethLikeTxTrace>(
+                blockchainBridge,
+                blockFinder,
+                jsonRpcConfig,
+                new GethStyleSimulateBlockTracerFactory(options: options ?? GethTraceOptions.Default),
+                _secondsPerSlot
+            ).Execute(simulatePayload, concreteBlockParameter);
+
+        if (simulationResult.ErrorCode != 0)
+        {
+            string errorMessage = simulationResult.Result?.ToString() ?? $"Simulation failed with error code {simulationResult.ErrorCode}.";
+            if (_logger.IsWarn) _logger.Warn($"debug_traceCallMany simulation failed: Code={simulationResult.ErrorCode}, Details={errorMessage}");
+            return ResultWrapper<IEnumerable<IEnumerable<GethLikeTxTrace>>>.Fail(errorMessage, simulationResult.ErrorCode);
+        }
+
+        IEnumerable<IEnumerable<GethLikeTxTrace>> bundleTraces = simulationResult.Data.Select(blockResult => blockResult.Traces);
+
+        return ResultWrapper<IEnumerable<IEnumerable<GethLikeTxTrace>>>.Success(bundleTraces);
+    }
+
+    private void PrepareTransactions(TransactionBundle[] bundles, BlockHeader header)
+    {
+        foreach (TransactionBundle bundle in bundles)
+        {
+            foreach (TransactionForRpc call in bundle.Transactions)
+            {
+                call.Gas ??= header.GasLimit;
+                call.EnsureDefaults(jsonRpcConfig.GasCap);
+            }
+        }
+    }
+
     private static ResultWrapper<TResult> GetFailureResult<TResult, TSearch>(SearchResult<TSearch> searchResult, bool isTemporary)
         where TSearch : class =>
         ResultWrapper<TResult>.Fail(searchResult, isTemporary && searchResult.ErrorCode == ErrorCodes.ResourceNotFound);

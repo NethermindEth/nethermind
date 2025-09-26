@@ -17,12 +17,12 @@ jobs:
     steps:
       - name: Create GitHub app token
         id: gh-app
-        uses: actions/create-github-app-token@v1
+        uses: actions/create-github-app-token@v2
         with:
           app-id: ${{ vars.APP_ID }}
           private-key: ${{ secrets.APP_PRIVATE_KEY }}
       - name: Check out repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
         with:
           ref: ${{ github.event.inputs.ref || github.ref }}
           token: ${{ steps.gh-app.outputs.token }}

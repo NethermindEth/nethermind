@@ -178,4 +178,16 @@ public partial class EngineModuleTests
             result.Data!.Select(static b => b.Proofs).Should().BeEquivalentTo(wrapper.Proofs.Chunk(128));
         }
     }
+
+    [Test]
+    public async Task GetBlobsV1_should_return_invalid_fork_post_osaka()
+    {
+        MergeTestBlockchain chain = await CreateBlockchain(releaseSpec: Osaka.Instance);
+        IEngineRpcModule rpcModule = chain.EngineRpcModule;
+
+        ResultWrapper<IEnumerable<BlobAndProofV1?>> result = await rpcModule.engine_getBlobsV1([]);
+
+        result.Result.Should().BeEquivalentTo(Result.Fail(MergeErrorMessages.UnsupportedFork));
+        result.ErrorCode.Should().Be(MergeErrorCodes.UnsupportedFork);
+    }
 }
