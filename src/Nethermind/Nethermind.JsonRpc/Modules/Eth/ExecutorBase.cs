@@ -34,7 +34,7 @@ public abstract class ExecutorBase<TResult, TRequest, TProcessing>
 
         BlockHeader header = searchResult.Value.Object;
         if (!_blockchainBridge.HasStateForBlock(header!))
-            return ResultWrapper<TResult>.Fail($"No state available for block {header.Hash}",
+            return ResultWrapper<TResult>.Fail($"No state available for block {header.ToString(BlockHeader.Format.FullHashAndNumber)}",
                 ErrorCodes.ResourceUnavailable);
 
         using CancellationTokenSource timeout = _rpcConfig.BuildTimeoutCancellationToken();
