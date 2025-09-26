@@ -23,12 +23,12 @@ public class SimulateBlockResult<TTrace>(Block source, bool includeFullTransacti
     private readonly IReadOnlyCollection<TTrace> _calls = [];
 
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
-    public IReadOnlyCollection<TTrace>? Calls
+    public IReadOnlyCollection<TTrace> Calls
     {
-        get { return ShouldSerializeCalls ? _calls : null; }
-        init { _calls = value ?? []; }
+        get { return (ShouldSerializeCalls ? _calls : null)!; }
+        init { _calls = value; }
     }
 
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
-    public IReadOnlyCollection<TTrace>? Traces => ShouldSerializeCalls ? null : _calls;
+    public IReadOnlyCollection<TTrace> Traces => (ShouldSerializeCalls ? null : _calls)!;
 }
