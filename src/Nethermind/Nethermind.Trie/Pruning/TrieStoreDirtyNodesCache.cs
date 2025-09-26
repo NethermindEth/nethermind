@@ -144,10 +144,7 @@ internal class TrieStoreDirtyNodesCache
 
     public bool TryGetValue(in Key key, out TrieNode node)
     {
-        NodeRecord nodeRecord;
-        bool ok = _storeByHash
-            ? _byHashObjectCache.TryGetValue(key.Keccak, out nodeRecord)
-            : _byKeyObjectCache.TryGetValue(key, out nodeRecord);
+        bool ok = TryGetRecord(key, out NodeRecord nodeRecord);
 
         if (ok)
         {
@@ -157,6 +154,13 @@ internal class TrieStoreDirtyNodesCache
 
         node = null;
         return false;
+    }
+
+    public bool TryGetRecord(Key key, out NodeRecord nodeRecord)
+    {
+        return _storeByHash
+            ? _byHashObjectCache.TryGetValue(key.Keccak, out nodeRecord)
+            : _byKeyObjectCache.TryGetValue(key, out nodeRecord);
     }
 
     private NodeRecord GetOrAdd(in Key key, TrieStoreDirtyNodesCache cache) => _storeByHash
