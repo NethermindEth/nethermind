@@ -80,7 +80,11 @@ namespace Nethermind.JsonRpc.Modules.Eth
                 if (inputError)
                     return ResultWrapper<TResult>.Fail(errorMessage, ErrorCodes.InvalidInput);
                 if (errorMessage is not null)
-                    return ResultWrapper<TResult>.Fail(errorMessage, ErrorCodes.InvalidInput, bodyData);
+                {
+                    // Use Geth-compatible error code for execution reverted
+                    int errorCode = errorMessage == "execution reverted" ? ErrorCodes.ExecutionReverted : ErrorCodes.InvalidInput;
+                    return ResultWrapper<TResult>.Fail(errorMessage, errorCode, bodyData);
+                }
 
                 return ResultWrapper<TResult>.Success(bodyData);
             }
