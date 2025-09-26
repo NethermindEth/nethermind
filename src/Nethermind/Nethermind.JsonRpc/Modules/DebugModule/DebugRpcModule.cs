@@ -499,8 +499,7 @@ public class DebugRpcModule(
         CancellationToken cancellationToken = timeout.Token;
 
         IEnumerable<IEnumerable<GethLikeTxTrace>> bundleTraces = debugBridge
-            .GetBundleTraces(bundles, blockParameter, cancellationToken, options)
-            .Select(bundleTrace => bundleTrace);
+            .GetBundleTraces(bundles, blockParameter, cancellationToken, options);
 
         if (_logger.IsTrace)
         {
