@@ -40,7 +40,8 @@ public class Block
         new(
             null,
             null,
-            header.WithdrawalsRoot is null ? null : [])
+            header.WithdrawalsRoot is null ? null : [],
+            header.BlockAccessListHash is null ? null : new())
     )
     { }
 

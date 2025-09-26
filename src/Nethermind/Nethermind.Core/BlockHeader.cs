@@ -77,7 +77,8 @@ public class BlockHeader
     public ulong? ExcessBlobGas { get; set; }
     public bool HasBody => (TxRoot is not null && TxRoot != Keccak.EmptyTreeHash)
                            || (UnclesHash is not null && UnclesHash != Keccak.OfAnEmptySequenceRlp)
-                           || (WithdrawalsRoot is not null && WithdrawalsRoot != Keccak.EmptyTreeHash);
+                           || (WithdrawalsRoot is not null && WithdrawalsRoot != Keccak.EmptyTreeHash)
+                           || (BlockAccessListHash is not null && BlockAccessListHash != Keccak.OfAnEmptySequenceRlp);
 
     public bool HasTransactions => TxRoot is not null && TxRoot != Keccak.EmptyTreeHash;
 

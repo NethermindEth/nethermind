@@ -56,7 +56,11 @@ namespace Ethereum.Test.Base
                 (long)Bytes.FromHexString(headerJson.Number).ToUInt256(),
                 (long)Bytes.FromHexString(headerJson.GasLimit).ToUnsignedBigInteger(),
                 (ulong)Bytes.FromHexString(headerJson.Timestamp).ToUnsignedBigInteger(),
-                Bytes.FromHexString(headerJson.ExtraData)
+                Bytes.FromHexString(headerJson.ExtraData),
+                (ulong)Bytes.FromHexString(headerJson.BlobGasUsed).ToUnsignedBigInteger(),
+                (ulong)Bytes.FromHexString(headerJson.ExcessBlobGas).ToUnsignedBigInteger(),
+                new Hash256(headerJson.ParentBeaconBlockRoot),
+                new Hash256(headerJson.RequestsHash)
             );
 
             header.Bloom = new Bloom(Bytes.FromHexString(headerJson.Bloom));
@@ -69,6 +73,7 @@ namespace Ethereum.Test.Base
             header.TxRoot = new Hash256(headerJson.TransactionsTrie);
             header.WithdrawalsRoot = new Hash256(headerJson.WithdrawalsRoot);
             header.BlockAccessListHash = new Hash256(headerJson.BlockAccessListHash);
+            header.BaseFeePerGas = (ulong)Bytes.FromHexString(headerJson.BaseFeePerGas).ToUnsignedBigInteger();
             return header;
         }
 
