@@ -1,0 +1,654 @@
+// SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
+
+using System;
+using System.Collections.Generic;
+using System.Linq;
+using System.Numerics;
+using System.Threading;
+using System.Threading.Tasks;
+using Autofac;
+using Nethermind.Blockchain.Tracing;
+using Nethermind.Consensus.Processing;
+using Nethermind.Core;
+using Nethermind.Core.BlockAccessLists;
+using Nethermind.Core.Crypto;
+using Nethermind.Core.Extensions;
+using Nethermind.Core.Specs;
+using Nethermind.Core.Test;
+using Nethermind.Core.Test.Blockchain;
+using Nethermind.Core.Test.Builders;
+using Nethermind.Evm.State;
+using Nethermind.Int256;
+using Nethermind.Serialization.Rlp;
+using Nethermind.Serialization.Rlp.Eip7928;
+using Nethermind.Specs;
+using Nethermind.Specs.Forks;
+using Nethermind.Specs.Test;
+using Nethermind.State;
+using NUnit.Framework;
+
+//move all to correct folder
+namespace Nethermind.Evm.Test;
+
+[TestFixture]
+public class BlockAccessListTests()
+{
+    private static readonly OverridableReleaseSpec _spec = new(Prague.Instance)
+    {
+        IsEip7928Enabled = true
+    };
+
+    private static readonly ISpecProvider _specProvider = new TestSpecProvider(_spec);
+    private static readonly UInt256 _accountBalance = 10.Ether();
+
+    // todo: move to RLP tests?
+    [TestCaseSource(nameof(BlockAccessListTestSource))]
+    public void Can_decode_then_encode(string rlp, BlockAccessList expected)
+    {
+        BlockAccessList bal = Rlp.Decode<BlockAccessList>(Bytes.FromHexString(rlp).AsRlpStream());
+
+        // Console.WriteLine(bal);
+        // Console.WriteLine(expected);
+        Assert.That(bal, Is.EqualTo(expected));
+
+        string encoded = "0x" + Bytes.ToHexString(Rlp.Encode(bal).Bytes);
+        Console.WriteLine(encoded);
+        Console.WriteLine(rlp);
+        Assert.That(encoded, Is.EqualTo(rlp));
+    }
+
+    [Test]
+    public void Can_decode_then_encode_balance_change()
+    {
+        const string rlp = "0xc801861319718811c8";
+        Rlp.ValueDecoderContext ctx = new(Bytes.FromHexString(rlp));
+        BalanceChange balanceChange = BalanceChangeDecoder.Instance.Decode(ref ctx, RlpBehaviors.None);
+        BalanceChange expected = new(1, 0x1319718811c8);
+        Assert.That(balanceChange, Is.EqualTo(expected));
+
+        string encoded = "0x" + Bytes.ToHexString(Rlp.Encode(balanceChange).Bytes);
+        Console.WriteLine(encoded);
+        Console.WriteLine(rlp);
+        Assert.That(encoded, Is.EqualTo(rlp));
+    }
+
+    [Test]
+    public void Can_decode_then_encode_nonce_change()
+    {
+        const string rlp = "0xc20101";
+        Rlp.ValueDecoderContext ctx = new(Bytes.FromHexString(rlp));
+        NonceChange nonceChange = NonceChangeDecoder.Instance.Decode(ref ctx, RlpBehaviors.None);
+        NonceChange expected = new(1, 1);
+        Assert.That(nonceChange, Is.EqualTo(expected));
+
+        string encoded = "0x" + Bytes.ToHexString(Rlp.Encode(nonceChange).Bytes);
+        Console.WriteLine(encoded);
+        Console.WriteLine(rlp);
+        Assert.That(encoded, Is.EqualTo(rlp));
+    }
+
+    [Test]
+    public void Can_decode_then_encode_slot_change()
+    {
+        byte[] slot0 = ToStorageSlot(0);
+        StorageChange parentHashStorageChange = new(0, Bytes32.Wrap(Bytes.FromHexString("0xc382836f81d7e4055a0e280268371e17cc69a531efe2abee082e9b922d6050fd")));
+        const string rlp = "0xf845a00000000000000000000000000000000000000000000000000000000000000000e3e280a0c382836f81d7e4055a0e280268371e17cc69a531efe2abee082e9b922d6050fd";
+
+        Rlp.ValueDecoderContext ctx = new(Bytes.FromHexString(rlp));
+        SlotChanges slotChange = SlotChangesDecoder.Instance.Decode(ref ctx, RlpBehaviors.None);
+        SlotChanges expected = new(slot0, [parentHashStorageChange]);
+        Assert.That(slotChange, Is.EqualTo(expected));
+
+        string encoded = "0x" + Bytes.ToHexString(Rlp.Encode(slotChange).Bytes);
+        Console.WriteLine(encoded);
+        Console.WriteLine(rlp);
+        Assert.That(encoded, Is.EqualTo(rlp));
+    }
+
+    [Test]
+    public void Can_decode_then_encode_storage_change()
+    {
+        const string rlp = "0xe280a0c382836f81d7e4055a0e280268371e17cc69a531efe2abee082e9b922d6050fd";
+
+        Rlp.ValueDecoderContext ctx = new(Bytes.FromHexString(rlp));
+        StorageChange storageChange = StorageChangeDecoder.Instance.Decode(ref ctx, RlpBehaviors.None);
+        StorageChange expected = new(0, Bytes32.Wrap(Bytes.FromHexString("0xc382836f81d7e4055a0e280268371e17cc69a531efe2abee082e9b922d6050fd")));
+        Assert.That(storageChange, Is.EqualTo(expected));
+
+        string encoded = "0x" + Bytes.ToHexString(Rlp.Encode(storageChange).Bytes);
+        Console.WriteLine(encoded);
+        Console.WriteLine(rlp);
+        Assert.That(encoded, Is.EqualTo(rlp));
+    }
+
+    [Test]
+    public void Can_decode_then_encode_code_change()
+    {
+        const string rlp = "0xc20100";
+
+        Rlp.ValueDecoderContext ctx = new(Bytes.FromHexString(rlp));
+        CodeChange codeChange = CodeChangeDecoder.Instance.Decode(ref ctx, RlpBehaviors.None);
+        CodeChange expected = new(1, [0x0]);
+        Assert.That(codeChange, Is.EqualTo(expected));
+
+        string encoded = "0x" + Bytes.ToHexString(Rlp.Encode(codeChange).Bytes);
+        Console.WriteLine(encoded);
+        Console.WriteLine(rlp);
+        Assert.That(encoded, Is.EqualTo(rlp));
+    }
+
+
+    [TestCaseSource(nameof(AccountChangesTestSource))]
+    public void Can_decode_then_encode_account_change(string rlp, AccountChanges expected)
+    {
+        Rlp.ValueDecoderContext ctx = new(Bytes.FromHexString(rlp));
+        AccountChanges accountChange = AccountChangesDecoder.Instance.Decode(ref ctx, RlpBehaviors.None);
+
+        Assert.That(accountChange, Is.EqualTo(expected));
+
+        string encoded = "0x" + Bytes.ToHexString(Rlp.Encode(accountChange).Bytes);
+        Console.WriteLine(encoded);
+        Console.WriteLine(rlp);
+        Assert.That(encoded, Is.EqualTo(rlp));
+    }
+
+    [Test]
+    public void Can_encode_then_decode()
+    {
+        StorageChange storageChange = new()
+        {
+            BlockAccessIndex = 10,
+            NewValue = new([.. Enumerable.Repeat<byte>(50, 32)])
+        };
+        byte[] storageChangeBytes = Rlp.Encode(storageChange, RlpBehaviors.None).Bytes;
+        StorageChange storageChangeDecoded = Rlp.Decode<StorageChange>(storageChangeBytes, RlpBehaviors.None);
+        Assert.That(storageChange, Is.EqualTo(storageChangeDecoded));
+
+        SlotChanges slotChanges = new()
+        {
+            Slot = [.. Enumerable.Repeat<byte>(100, 32)],
+            Changes = [storageChange, storageChange]
+        };
+        byte[] slotChangesBytes = Rlp.Encode(slotChanges, RlpBehaviors.None).Bytes;
+        SlotChanges slotChangesDecoded = Rlp.Decode<SlotChanges>(slotChangesBytes, RlpBehaviors.None);
+        Assert.That(slotChanges, Is.EqualTo(slotChangesDecoded));
+
+        StorageRead storageRead = new(new Bytes32([.. Enumerable.Repeat<byte>(50, 32)]));
+        StorageRead storageRead2 = new(new Bytes32([.. Enumerable.Repeat<byte>(60, 32)]));
+        byte[] storageReadBytes = Rlp.Encode(storageRead, RlpBehaviors.None).Bytes;
+        StorageRead storageReadDecoded = Rlp.Decode<StorageRead>(storageReadBytes, RlpBehaviors.None);
+        Assert.That(storageRead, Is.EqualTo(storageReadDecoded));
+
+        BalanceChange balanceChange = new()
+        {
+            BlockAccessIndex = 10,
+            PostBalance = 0
+        };
+        BalanceChange balanceChange2 = new()
+        {
+            BlockAccessIndex = 11,
+            PostBalance = 1
+        };
+        byte[] balanceChangeBytes = Rlp.Encode(balanceChange, RlpBehaviors.None).Bytes;
+        BalanceChange balanceChangeDecoded = Rlp.Decode<BalanceChange>(balanceChangeBytes, RlpBehaviors.None);
+        Assert.That(balanceChange, Is.EqualTo(balanceChangeDecoded));
+
+        NonceChange nonceChange = new()
+        {
+            BlockAccessIndex = 10,
+            NewNonce = 0
+        };
+        NonceChange nonceChange2 = new()
+        {
+            BlockAccessIndex = 11,
+            NewNonce = 0
+        };
+        byte[] nonceChangeBytes = Rlp.Encode(nonceChange, RlpBehaviors.None).Bytes;
+        NonceChange nonceChangeDecoded = Rlp.Decode<NonceChange>(nonceChangeBytes, RlpBehaviors.None);
+        Assert.That(nonceChange, Is.EqualTo(nonceChangeDecoded));
+
+        CodeChange codeChange = new()
+        {
+            BlockAccessIndex = 10,
+            NewCode = [0, 50]
+        };
+        byte[] codeChangeBytes = Rlp.Encode(codeChange, RlpBehaviors.None).Bytes;
+        CodeChange codeChangeDecoded = Rlp.Decode<CodeChange>(codeChangeBytes, RlpBehaviors.None);
+        Assert.That(codeChange, Is.EqualTo(codeChangeDecoded));
+
+        SortedDictionary<byte[], SlotChanges> storageChangesDict = new()
+        {
+            { slotChanges.Slot, slotChanges }
+        };
+
+        SortedList<ushort, BalanceChange> balanceChangesList = new()
+        {
+            { balanceChange.BlockAccessIndex, balanceChange },
+            { balanceChange2.BlockAccessIndex, balanceChange2 }
+        };
+
+        SortedList<ushort, NonceChange> nonceChangesList = new()
+        {
+            { nonceChange.BlockAccessIndex, nonceChange },
+            { nonceChange2.BlockAccessIndex, nonceChange2 }
+        };
+
+        SortedList<ushort, CodeChange> codeChangesList = new()
+        {
+            { codeChange.BlockAccessIndex, codeChange },
+        };
+
+        AccountChanges accountChanges = new()
+        {
+            Address = TestItem.AddressA,
+            StorageChanges = storageChangesDict,
+            StorageReads = [storageRead, storageRead2],
+            BalanceChanges = balanceChangesList,
+            NonceChanges = nonceChangesList,
+            CodeChanges = codeChangesList
+        };
+        byte[] accountChangesBytes = Rlp.Encode(accountChanges, RlpBehaviors.None).Bytes;
+        AccountChanges accountChangesDecoded = Rlp.Decode<AccountChanges>(accountChangesBytes, RlpBehaviors.None);
+        Assert.That(accountChanges, Is.EqualTo(accountChangesDecoded));
+
+        SortedDictionary<Address, AccountChanges> accountChangesDict = new()
+        {
+            { accountChanges.Address, accountChanges }
+        };
+
+        BlockAccessList blockAccessList = new(accountChangesDict);
+        byte[] blockAccessListBytes = Rlp.Encode(blockAccessList, RlpBehaviors.None).Bytes;
+        BlockAccessList blockAccessListDecoded = Rlp.Decode<BlockAccessList>(blockAccessListBytes, RlpBehaviors.None);
+        Assert.That(blockAccessList, Is.EqualTo(blockAccessListDecoded));
+    }
+
+    [Test]
+    public async Task Can_construct_BAL()
+    {
+        using BasicTestBlockchain testBlockchain = await BasicTestBlockchain.Create(BuildContainer());
+
+        IWorldState worldState = testBlockchain.WorldStateManager.GlobalWorldState;
+        using IDisposable _ = worldState.BeginScope(IWorldState.PreGenesis);
+        InitWorldState(worldState);
+
+        (worldState as TracedAccessWorldState)!.BlockAccessList = new();
+
+        const long gasUsed = 167340;
+        const long gasUsedBeforeFinal = 92100;
+        const ulong gasPrice = 2;
+        const long gasLimit = 100000;
+        const ulong timestamp = 1000000;
+        Hash256 parentHash = new("0xff483e972a04a9a62bb4b7d04ae403c615604e4090521ecc5bb7af67f71be09c");
+        // Hash256 parentHash = new("0x2971654f1af575a158b8541be71bea738a64d0c715c190e9c99ae5207c108d7d");
+
+        Transaction tx = Build.A.Transaction
+            .WithTo(TestItem.AddressB)
+            .WithSenderAddress(TestItem.AddressA)
+            .WithValue(0)
+            .WithGasPrice(gasPrice)
+            .WithGasLimit(gasLimit)
+            .TestObject;
+
+        Transaction tx2 = Build.A.Transaction
+            .WithTo(null)
+            .WithSenderAddress(TestItem.AddressA)
+            .WithValue(0)
+            .WithNonce(1)
+            .WithGasPrice(gasPrice)
+            .WithGasLimit(gasLimit)
+            .WithCode(Eip2935TestConstants.InitCode)
+            .TestObject;
+
+        /*
+        Store followed by revert should undo storage change
+        PUSH1 1
+        PUSH1 1
+        SSTORE
+        PUSH0
+        PUSH0
+        REVERT
+        */
+        byte[] code = Bytes.FromHexString("0x60016001555f5ffd");
+        Transaction tx3 = Build.A.Transaction
+            .WithTo(null)
+            .WithSenderAddress(TestItem.AddressA)
+            .WithValue(0)
+            .WithNonce(2)
+            .WithGasPrice(gasPrice)
+            .WithGasLimit(gasLimit)
+            .WithCode(code)
+            .TestObject;
+
+        BlockHeader header = Build.A.BlockHeader
+            .WithBaseFee(1)
+            .WithNumber(1)
+            .WithGasUsed(gasUsed)
+            .WithReceiptsRoot(new("0x3d4548dff4e45f6e7838b223bf9476cd5ba4fd05366e8cb4e6c9b65763209569"))
+            .WithStateRoot(new("0x9399acd9f2603778c11646f05f7827509b5319815da74b5721a07defb6285c8d"))
+            .WithBlobGasUsed(0)
+            .WithBeneficiary(TestItem.AddressC)
+            .WithParentBeaconBlockRoot(Hash256.Zero)
+            .WithRequestsHash(new("0xe3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"))
+            .WithTimestamp(timestamp)
+            .WithParentHash(parentHash)
+            // .WithTotalDifficulty(1000000000L)
+            .TestObject;
+
+        Withdrawal withdrawal = new()
+        {
+            Index = 0,
+            ValidatorIndex = 0,
+            Address = TestItem.AddressD,
+            AmountInGwei = 1
+        };
+
+        Block block = Build.A.Block
+            .WithTransactions([tx, tx2, tx3])
+            .WithBaseFeePerGas(1)
+            .WithWithdrawals([withdrawal])
+            .WithHeader(header).TestObject;
+
+        (Block processedBlock, TxReceipt[] _) = testBlockchain.BlockProcessor.ProcessOne(block, ProcessingOptions.None, NullBlockTracer.Instance, _spec, CancellationToken.None);
+        // Block processedBlock = testBlockchain.BlockchainProcessor.Process(block, ProcessingOptions.None, NullBlockTracer.Instance)!;
+        // Block[] res = testBlockchain.BranchProcessor.Process(header, [block], ProcessingOptions.None, NullBlockTracer.Instance, CancellationToken.None);
+        // Blockchain.AddBlockResult res = testBlockchain.BlockTree.SuggestBlock(block);
+        // testBlockchain.BlockTree.UpdateMainChain([block], true);
+        // Block processedBlock = res[0];
+        // Block processedBlock = Build.A.Block.TestObject;
+
+        // BlockAccessList blockAccessList = Rlp.Decode<BlockAccessList>(processedBlock.BlockAccessList);
+        BlockAccessList blockAccessList = processedBlock.BlockAccessList!.Value;
+        Assert.That(blockAccessList.GetAccountChanges().Count, Is.EqualTo(10));
+
+        Address newContractAddress = ContractAddress.From(TestItem.AddressA, 1);
+        Address newContractAddress2 = ContractAddress.From(TestItem.AddressA, 2);
+
+        AccountChanges addressAChanges = blockAccessList.GetAccountChanges(TestItem.AddressA)!.Value;
+        AccountChanges addressBChanges = blockAccessList.GetAccountChanges(TestItem.AddressB)!.Value;
+        AccountChanges addressCChanges = blockAccessList.GetAccountChanges(TestItem.AddressC)!.Value;
+        AccountChanges addressDChanges = blockAccessList.GetAccountChanges(TestItem.AddressD)!.Value;
+        AccountChanges newContractChanges = blockAccessList.GetAccountChanges(newContractAddress)!.Value;
+        AccountChanges newContractChanges2 = blockAccessList.GetAccountChanges(newContractAddress2)!.Value;
+        AccountChanges eip2935Changes = blockAccessList.GetAccountChanges(Eip2935Constants.BlockHashHistoryAddress)!.Value;
+        AccountChanges eip4788Changes = blockAccessList.GetAccountChanges(Eip4788Constants.BeaconRootsAddress)!.Value;
+        AccountChanges eip7002Changes = blockAccessList.GetAccountChanges(Eip7002Constants.WithdrawalRequestPredeployAddress)!.Value;
+        AccountChanges eip7251Changes = blockAccessList.GetAccountChanges(Eip7251Constants.ConsolidationRequestPredeployAddress)!.Value;
+
+        byte[] slot0 = ToStorageSlot(0);
+        byte[] slot1 = ToStorageSlot(1);
+        byte[] slot2 = ToStorageSlot(2);
+        byte[] slot3 = ToStorageSlot(3);
+        byte[] eip4788Slot1 = ToStorageSlot(timestamp % Eip4788Constants.RingBufferSize);
+        byte[] eip4788Slot2 = ToStorageSlot((timestamp % Eip4788Constants.RingBufferSize) + Eip4788Constants.RingBufferSize);
+        StorageChange parentHashStorageChange = new(0, Bytes32.Wrap(parentHash.BytesToArray()));
+        StorageChange calldataStorageChange = new(0, Bytes32.Zero);
+        StorageChange timestampStorageChange = new(0, Bytes32.Wrap(Bytes.FromHexString("0x00000000000000000000000000000000000000000000000000000000000F4240")));
+        StorageChange zeroStorageChangeEnd = new(3, Bytes32.Zero);
+
+        UInt256 addressABalance = _accountBalance - gasPrice * GasCostOf.Transaction;
+        UInt256 addressABalance2 = _accountBalance - gasPrice * gasUsedBeforeFinal;
+        UInt256 addressABalance3 = _accountBalance - gasPrice * gasUsed;
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(addressAChanges, Is.EqualTo(new AccountChanges()
+            {
+                Address = TestItem.AddressA,
+                StorageChanges = [],
+                StorageReads = [],
+                BalanceChanges = new SortedList<ushort, BalanceChange> { { 1, new(1, addressABalance) }, { 2, new(2, addressABalance2) }, { 3, new(3, addressABalance3) } },
+                NonceChanges = new SortedList<ushort, NonceChange> { { 1, new(1, 1) }, { 2, new(2, 2) }, { 3, new(3, 3) } },
+                CodeChanges = []
+            }));
+
+            Assert.That(addressBChanges, Is.EqualTo(new AccountChanges()
+            {
+                Address = TestItem.AddressB,
+                StorageChanges = [],
+                StorageReads = [],
+                BalanceChanges = [],
+                NonceChanges = [],
+                CodeChanges = []
+            }));
+
+            Assert.That(addressCChanges, Is.EqualTo(new AccountChanges()
+            {
+                Address = TestItem.AddressC,
+                StorageChanges = [],
+                StorageReads = [],
+                BalanceChanges = new SortedList<ushort, BalanceChange> { { 1, new(1, new UInt256(GasCostOf.Transaction)) }, { 2, new(2, new UInt256(gasUsedBeforeFinal)) }, { 3, new(3, new UInt256(gasUsed)) } },
+                NonceChanges = [],
+                CodeChanges = []
+            }));
+
+            Assert.That(addressDChanges, Is.EqualTo(new AccountChanges()
+            {
+                Address = TestItem.AddressD,
+                StorageChanges = [],
+                StorageReads = [],
+                BalanceChanges = new SortedList<ushort, BalanceChange> { { 4, new(4, 1.GWei()) } },
+                NonceChanges = [],
+                CodeChanges = []
+            }));
+
+            Assert.That(newContractChanges, Is.EqualTo(new AccountChanges()
+            {
+                Address = newContractAddress,
+                StorageChanges = [],
+                StorageReads = [],
+                BalanceChanges = [],
+                NonceChanges = new SortedList<ushort, NonceChange> { { 2, new(2, 1) } },
+                CodeChanges = new SortedList<ushort, CodeChange> { { 2, new(2, Eip2935TestConstants.Code) } }
+            }));
+
+            Assert.That(newContractChanges2, Is.EqualTo(new AccountChanges()
+            {
+                Address = newContractAddress2,
+                StorageChanges = [],
+                StorageReads = [ToStorageRead(slot1)],
+                BalanceChanges = [],
+                NonceChanges = [],
+                CodeChanges = []
+            }));
+
+            Assert.That(eip2935Changes, Is.EqualTo(new AccountChanges()
+            {
+                Address = Eip2935Constants.BlockHashHistoryAddress,
+                StorageChanges = new(Bytes.Comparer) { { slot0, new SlotChanges(slot0, [parentHashStorageChange]) } },
+                StorageReads = [],
+                BalanceChanges = [],
+                NonceChanges = [],
+                CodeChanges = []
+            }));
+
+            // second storage read is not a change, so not recorded
+            Assert.That(eip4788Changes, Is.EqualTo(new AccountChanges()
+            {
+                Address = Eip4788Constants.BeaconRootsAddress,
+                StorageChanges = new(Bytes.Comparer) { { eip4788Slot1, new SlotChanges(eip4788Slot1, [timestampStorageChange]) } },
+                StorageReads = [ToStorageRead(eip4788Slot1), ToStorageRead(eip4788Slot2)],
+                BalanceChanges = [],
+                NonceChanges = [],
+                CodeChanges = []
+            }));
+
+            // storage reads make no changes
+            Assert.That(eip7002Changes, Is.EqualTo(new AccountChanges()
+            {
+                Address = Eip7002Constants.WithdrawalRequestPredeployAddress,
+                StorageChanges = [],
+                StorageReads = [
+                    ToStorageRead(slot0),
+                    ToStorageRead(slot1),
+                    ToStorageRead(slot2),
+                    ToStorageRead(slot3),
+                ],
+                BalanceChanges = [],
+                NonceChanges = [],
+                CodeChanges = []
+            }));
+
+            // storage reads make no changes
+            Assert.That(eip7251Changes, Is.EqualTo(new AccountChanges()
+            {
+                Address = Eip7251Constants.ConsolidationRequestPredeployAddress,
+                StorageChanges = [],
+                StorageReads = [
+                    ToStorageRead(slot0),
+                    ToStorageRead(slot1),
+                    ToStorageRead(slot2),
+                    ToStorageRead(slot3),
+                ],
+                BalanceChanges = [],
+                NonceChanges = [],
+                CodeChanges = []
+            }));
+        }
+    }
+
+    private static Action<ContainerBuilder> BuildContainer()
+        => containerBuilder => containerBuilder.AddSingleton(_specProvider);
+
+    private static void InitWorldState(IWorldState worldState)
+    {
+        worldState.CreateAccount(TestItem.AddressA, _accountBalance);
+
+        worldState.CreateAccount(Eip2935Constants.BlockHashHistoryAddress, 0, Eip2935TestConstants.Nonce);
+        worldState.InsertCode(Eip2935Constants.BlockHashHistoryAddress, Eip2935TestConstants.CodeHash, Eip2935TestConstants.Code, _specProvider.GenesisSpec);
+
+        worldState.CreateAccount(Eip4788Constants.BeaconRootsAddress, 0, Eip4788TestConstants.Nonce);
+        worldState.InsertCode(Eip4788Constants.BeaconRootsAddress, Eip4788TestConstants.CodeHash, Eip4788TestConstants.Code, _specProvider.GenesisSpec);
+
+        worldState.CreateAccount(Eip7002Constants.WithdrawalRequestPredeployAddress, 0, Eip7002TestConstants.Nonce);
+        worldState.InsertCode(Eip7002Constants.WithdrawalRequestPredeployAddress, Eip7002TestConstants.CodeHash, Eip7002TestConstants.Code, _specProvider.GenesisSpec);
+
+        worldState.CreateAccount(Eip7251Constants.ConsolidationRequestPredeployAddress, 0, Eip7251TestConstants.Nonce);
+        worldState.InsertCode(Eip7251Constants.ConsolidationRequestPredeployAddress, Eip7251TestConstants.CodeHash, Eip7251TestConstants.Code, _specProvider.GenesisSpec);
+
+        worldState.Commit(_specProvider.GenesisSpec);
+        worldState.CommitTree(0);
+        worldState.RecalculateStateRoot();
+        // Hash256 stateRoot = worldState.StateRoot;
+    }
+
+    // should hash?
+    private static byte[] ToStorageSlot(ulong x)
+        => new BigInteger(x).ToBytes32(true);
+        // => ValueKeccak.Compute(new BigInteger(x).ToBytes32(true)).ToByteArray();
+
+    private static StorageRead ToStorageRead(byte[] x)
+    {
+        Span<byte> newValue = new byte[32];
+        newValue.Clear();
+        x.CopyTo(newValue[(32 - x.Length)..]);
+        return new(Bytes32.Wrap([.. newValue]));
+    }
+
+    private static IEnumerable<TestCaseData> AccountChangesTestSource
+    {
+        get
+        {
+            yield return new TestCaseData(
+                "0xf89f9400000961ef480eb55e80d19ad83579a64c007002c0f884a00000000000000000000000000000000000000000000000000000000000000000a00000000000000000000000000000000000000000000000000000000000000001a00000000000000000000000000000000000000000000000000000000000000002a00000000000000000000000000000000000000000000000000000000000000003c0c0c0",
+                new AccountChanges()
+                {
+                    Address = Eip7002Constants.WithdrawalRequestPredeployAddress,
+                    StorageReads = [
+                            ToStorageRead(ToStorageSlot(0)),
+                            ToStorageRead(ToStorageSlot(1)),
+                            ToStorageRead(ToStorageSlot(2)),
+                            ToStorageRead(ToStorageSlot(3))
+                        ],
+                })
+            { TestName = "storage_reads" };
+
+            yield return new TestCaseData(
+                "0xf862940000f90827f1c53a10cb7a02335b175320002935f847f845a00000000000000000000000000000000000000000000000000000000000000000e3e280a0c382836f81d7e4055a0e280268371e17cc69a531efe2abee082e9b922d6050fdc0c0c0c0",
+                new AccountChanges()
+                {
+                    Address = Eip2935Constants.BlockHashHistoryAddress,
+                    StorageChanges = new(Bytes.Comparer) { { ToStorageSlot(0), new SlotChanges(ToStorageSlot(0), [new(0, Bytes32.Wrap(Bytes.FromHexString("0xc382836f81d7e4055a0e280268371e17cc69a531efe2abee082e9b922d6050fd")))]) } },
+                })
+            { TestName = "storage_changes" };
+        }
+    }
+
+    private static IEnumerable<TestCaseData> BlockAccessListTestSource
+    {
+        get
+        {
+            byte[] slot0 = ToStorageSlot(0);
+            byte[] slot1 = ToStorageSlot(1);
+            byte[] slot2 = ToStorageSlot(2);
+            byte[] slot3 = ToStorageSlot(3);
+            byte[] eip4788Slot1 = ToStorageSlot(0xc);
+            StorageChange parentHashStorageChange = new(0, Bytes32.Wrap(Bytes.FromHexString("0xc382836f81d7e4055a0e280268371e17cc69a531efe2abee082e9b922d6050fd")));
+            StorageChange timestampStorageChange = new(0, Bytes32.Wrap(Bytes.FromHexString("0x000000000000000000000000000000000000000000000000000000000000000c")));
+            SortedDictionary<Address, AccountChanges> expectedAccountChanges = new()
+            {
+                {Eip7002Constants.WithdrawalRequestPredeployAddress, new()
+                {
+                    Address = Eip7002Constants.WithdrawalRequestPredeployAddress,
+                    StorageReads = [
+                        ToStorageRead(slot0),
+                        ToStorageRead(slot1),
+                        ToStorageRead(slot2),
+                        ToStorageRead(slot3),
+                    ],
+                }},
+                {Eip7251Constants.ConsolidationRequestPredeployAddress, new()
+                {
+                    Address = Eip7251Constants.ConsolidationRequestPredeployAddress,
+                    StorageReads = [
+                        ToStorageRead(slot0),
+                        ToStorageRead(slot1),
+                        ToStorageRead(slot2),
+                        ToStorageRead(slot3),
+                    ],
+                }},
+                {Eip2935Constants.BlockHashHistoryAddress, new()
+                {
+                    Address = Eip2935Constants.BlockHashHistoryAddress,
+                    StorageChanges = new(Bytes.Comparer) { { slot0, new SlotChanges(slot0, [parentHashStorageChange]) } },
+                }},
+                {Eip4788Constants.BeaconRootsAddress, new()
+                {
+                    Address = Eip4788Constants.BeaconRootsAddress,
+                    StorageChanges = new(Bytes.Comparer) { { eip4788Slot1, new SlotChanges(eip4788Slot1, [timestampStorageChange]) } },
+                    StorageReads = [
+                        ToStorageRead([0x20, 0x0b])
+                    ],
+                }},
+                {new("0x2adc25665018aa1fe0e6bc666dac8fc2697ff9ba"), new()
+                {
+                    Address = new("0x2adc25665018aa1fe0e6bc666dac8fc2697ff9ba"),
+                    BalanceChanges = new SortedList<ushort, BalanceChange> { { 1, new(1, 0x1319718811c8) } },
+                }},
+                {new("0xaccc7d92b051544a255b8a899071040739bada75"), new()
+                {
+                    Address = new("0xaccc7d92b051544a255b8a899071040739bada75"),
+                    NonceChanges = new SortedList<ushort, NonceChange> { { 1, new(1, 1) } },
+                    BalanceChanges = new SortedList<ushort, BalanceChange> { { 1, new(1, new(Bytes.FromHexString("0x3635c99aac6d15af9c"))) } },
+                }},
+                {new("0xd9c0e57d447779673b236c7423aeab84e931f3ba"), new()
+                {
+                    Address = new("0xd9c0e57d447779673b236c7423aeab84e931f3ba"),
+                    BalanceChanges = new SortedList<ushort, BalanceChange> { { 1, new(1, 0x64) } },
+                }},
+            };
+            BlockAccessList expected = new(expectedAccountChanges);
+            yield return new TestCaseData(
+                "0xf90297f89f9400000961ef480eb55e80d19ad83579a64c007002c0f884a00000000000000000000000000000000000000000000000000000000000000000a00000000000000000000000000000000000000000000000000000000000000001a00000000000000000000000000000000000000000000000000000000000000002a00000000000000000000000000000000000000000000000000000000000000003c0c0c0f89f940000bbddc7ce488642fb579f8b00f3a590007251c0f884a00000000000000000000000000000000000000000000000000000000000000000a00000000000000000000000000000000000000000000000000000000000000001a00000000000000000000000000000000000000000000000000000000000000002a00000000000000000000000000000000000000000000000000000000000000003c0c0c0f862940000f90827f1c53a10cb7a02335b175320002935f847f845a00000000000000000000000000000000000000000000000000000000000000000e3e280a0c382836f81d7e4055a0e280268371e17cc69a531efe2abee082e9b922d6050fdc0c0c0c0f88394000f3df6d732807ef1319fb7b8bb8522d0beac02f847f845a0000000000000000000000000000000000000000000000000000000000000000ce3e280a0000000000000000000000000000000000000000000000000000000000000000ce1a0000000000000000000000000000000000000000000000000000000000000200bc0c0c0e3942adc25665018aa1fe0e6bc666dac8fc2697ff9bac0c0c9c801861319718811c8c0c0e994accc7d92b051544a255b8a899071040739bada75c0c0cccb01893635c99aac6d15af9cc3c20101c0dd94d9c0e57d447779673b236c7423aeab84e931f3bac0c0c3c20164c0c0",
+                expected)
+            { TestName = "balance_changes" };
+
+            yield return new TestCaseData(
+                "0xf902b5f89f9400000961ef480eb55e80d19ad83579a64c007002c0f884a00000000000000000000000000000000000000000000000000000000000000000a00000000000000000000000000000000000000000000000000000000000000001a00000000000000000000000000000000000000000000000000000000000000002a00000000000000000000000000000000000000000000000000000000000000003c0c0c0f89f940000bbddc7ce488642fb579f8b00f3a590007251c0f884a00000000000000000000000000000000000000000000000000000000000000000a00000000000000000000000000000000000000000000000000000000000000001a00000000000000000000000000000000000000000000000000000000000000002a00000000000000000000000000000000000000000000000000000000000000003c0c0c0f862940000f90827f1c53a10cb7a02335b175320002935f847f845a00000000000000000000000000000000000000000000000000000000000000000e3e280a0a0f0963cedb68172fe724f0b345a86ee23926af1874e31a5fc50e9cc521d1556c0c0c0c0f88394000f3df6d732807ef1319fb7b8bb8522d0beac02f847f845a0000000000000000000000000000000000000000000000000000000000000000ce3e280a0000000000000000000000000000000000000000000000000000000000000000ce1a0000000000000000000000000000000000000000000000000000000000000200bc0c0c0dd941a7d50de1c4dc7d5b696f53b65594f21aa55a826c0c0c0c3c20102c0e0942adc25665018aa1fe0e6bc666dac8fc2697ff9bac0c0c6c50183026ffdc0c0e0947a8a0e14723feddb342a0273c72c07b88b25a5ffc0c0c0c3c20101c3c20100e994eed26eb981405168f24f2c9ad9cf427e1e39de43c0c0cccb01893635c9adc5de97e00ac3c20101c0",
+                expected
+            )
+            { TestName = "code_changes" };
+        }
+    }
+
+}

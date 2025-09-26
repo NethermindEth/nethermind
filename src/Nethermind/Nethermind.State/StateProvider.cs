@@ -29,13 +29,13 @@ using static Nethermind.State.StateProvider;
 
 namespace Nethermind.State
 {
-    internal class StateProvider
+    internal class StateProvider : IJournal<int>
     {
         private static readonly UInt256 _zero = UInt256.Zero;
 
-        private readonly Dictionary<AddressAsKey, Stack<int>> _intraTxCache = new();
-        private readonly HashSet<AddressAsKey> _committedThisRound = new();
-        private readonly HashSet<AddressAsKey> _nullAccountReads = new();
+        private readonly Dictionary<AddressAsKey, Stack<int>> _intraTxCache = [];
+        private readonly HashSet<AddressAsKey> _committedThisRound = [];
+        private readonly HashSet<AddressAsKey> _nullAccountReads = [];
         // Only guarding against hot duplicates so filter doesn't need to be too big
         // Note:
         // False negatives are fine as they will just result in a overwrite set
@@ -44,7 +44,7 @@ namespace Nethermind.State
         private readonly Dictionary<AddressAsKey, ChangeTrace> _blockChanges = new(4_096);
         private readonly ConcurrentDictionary<AddressAsKey, Account>? _preBlockCache;
 
-        private readonly List<Change> _keptInCache = new();
+        private readonly List<Change> _keptInCache = [];
         private readonly ILogger _logger;
         private readonly IKeyValueStoreWithBatching _codeDb;
         private Dictionary<Hash256AsKey, byte[]> _codeBatch;
@@ -205,7 +205,7 @@ namespace Nethermind.State
                 => throw new InvalidOperationException($"Account {address} is null when updating code hash");
         }
 
-        private void SetNewBalance(Address address, in UInt256 balanceChange, IReleaseSpec releaseSpec, bool isSubtracting)
+        private void SetNewBalance(Address address, in UInt256 balanceChange, IReleaseSpec releaseSpec, bool isSubtracting, out UInt256 oldBalance)
         {
             _needsStateRootUpdate = true;
 
@@ -241,6 +241,7 @@ namespace Nethermind.State
                     }
                 }
 
+                oldBalance = 0;
                 return;
             }
 
@@ -251,6 +252,7 @@ namespace Nethermind.State
                 ThrowInsufficientBalanceException(address);
             }
 
+            oldBalance = account.Balance;
             UInt256 newBalance = isSubtracting ? account.Balance - balanceChange : account.Balance + balanceChange;
 
             Account changedAccount = account.WithChangedBalance(newBalance);
@@ -271,15 +273,20 @@ namespace Nethermind.State
         }
 
         public void SubtractFromBalance(Address address, in UInt256 balanceChange, IReleaseSpec releaseSpec)
+            => SubtractFromBalance(address, balanceChange, releaseSpec, out _);
+        public void SubtractFromBalance(Address address, in UInt256 balanceChange, IReleaseSpec releaseSpec, out UInt256 oldBalance)
         {
             _needsStateRootUpdate = true;
-            SetNewBalance(address, balanceChange, releaseSpec, true);
+            SetNewBalance(address, balanceChange, releaseSpec, true, out oldBalance);
         }
 
         public void AddToBalance(Address address, in UInt256 balanceChange, IReleaseSpec releaseSpec)
+            => AddToBalance(address, balanceChange, releaseSpec, out _);
+
+        public void AddToBalance(Address address, in UInt256 balanceChange, IReleaseSpec releaseSpec, out UInt256 oldBalance)
         {
             _needsStateRootUpdate = true;
-            SetNewBalance(address, balanceChange, releaseSpec, false);
+            SetNewBalance(address, balanceChange, releaseSpec, false, out oldBalance);
         }
 
         /// <summary>
@@ -309,10 +316,14 @@ namespace Nethermind.State
         }
 
         public void IncrementNonce(Address address, UInt256 delta)
+            => IncrementNonce(address, delta, out _);
+
+        public void IncrementNonce(Address address, UInt256 delta, out UInt256 oldNonce)
         {
             _needsStateRootUpdate = true;
             Account account = GetThroughCache(address) ?? ThrowNullAccount(address);
-            Account changedAccount = account.WithChangedNonce(account.Nonce + delta);
+            oldNonce = account.Nonce;
+            Account changedAccount = account.WithChangedNonce(oldNonce + delta);
             if (_logger.IsTrace) Trace(address, account, changedAccount);
 
             PushUpdate(address, changedAccount);
@@ -515,19 +526,23 @@ namespace Nethermind.State
             }
         }
 
-        public bool AddToBalanceAndCreateIfNotExists(Address address, in UInt256 balance, IReleaseSpec spec)
+        public bool AddToBalanceAndCreateIfNotExists(Address address, in UInt256 balance, IReleaseSpec spec, out UInt256 oldBalance)
         {
             if (AccountExists(address))
             {
-                AddToBalance(address, balance, spec);
+                AddToBalance(address, balance, spec, out oldBalance);
                 return false;
             }
             else
             {
+                oldBalance = 0;
                 CreateAccount(address, balance);
                 return true;
             }
         }
+
+        public bool AddToBalanceAndCreateIfNotExists(Address address, in UInt256 balance, IReleaseSpec spec)
+            => AddToBalanceAndCreateIfNotExists(address, balance, spec, out _);
 
         public void Commit(IReleaseSpec releaseSpec, bool commitRoots, bool isGenesis)
             => Commit(releaseSpec, NullStateTracer.Instance, commitRoots, isGenesis);
