@@ -72,14 +72,14 @@ public interface IWorldStateScopeProvider
     {
         Hash256 RootHash { get; }
 
-        byte[] Get(in UInt256 index);
+        byte[]? Get(in UInt256 index);
 
         /// <summary>
         /// Used by JS tracer. May not work on some database layout.
         /// </summary>
         /// <param name="hash"></param>
         /// <returns></returns>
-        byte[] Get(in ValueHash256 hash);
+        byte[]? Get(in ValueHash256 hash);
     }
 
     public interface IWorldStateWriteBatch : IDisposable

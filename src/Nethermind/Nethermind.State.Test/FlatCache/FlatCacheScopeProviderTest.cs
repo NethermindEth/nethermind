@@ -39,7 +39,7 @@ public class FlatCacheScopeProviderTest
             CompactSize: 32,
             InlineCompaction: true
         ));
-        _cachedScopeProvider = new FlatCacheScopeProvider(_baseScopeProvider, _cacheRepository, logManager);
+        _cachedScopeProvider = new FlatCacheScopeProvider(_baseScopeProvider, _cacheRepository, false, logManager);
     }
 
     private (FlatCacheScopeProvider, FlatCacheRepository, TestMemDb) CustomFlatCacheProvider(FlatCacheRepository.Configuration config)
@@ -48,7 +48,7 @@ public class FlatCacheScopeProviderTest
         var codeDb = new TestMemDb();
         var baseScopeProvider = new TrieStoreScopeProvider(new TestRawTrieStore(stateDb), codeDb, LimboLogs.Instance);
         var cacheRepository = new FlatCacheRepository(Substitute.For<IProcessExitSource>(), LimboLogs.Instance, config);
-        var cachedScopeProvider = new FlatCacheScopeProvider(baseScopeProvider, cacheRepository, LimboLogs.Instance);
+        var cachedScopeProvider = new FlatCacheScopeProvider(baseScopeProvider, cacheRepository, false, LimboLogs.Instance);
         return (cachedScopeProvider, cacheRepository, stateDb);
     }
 
@@ -74,7 +74,7 @@ public class FlatCacheScopeProviderTest
         }
 
         var cacheRepository = new FlatCacheRepository(Substitute.For<IProcessExitSource>(), LimboLogs.Instance);
-        var cachedScopeProvider = new FlatCacheScopeProvider(_baseScopeProvider, cacheRepository, LimboLogs.Instance);
+        var cachedScopeProvider = new FlatCacheScopeProvider(_baseScopeProvider, cacheRepository, false, LimboLogs.Instance);
         var cachedWorldState = new WorldState(cachedScopeProvider, LimboLogs.Instance);
 
         using (cachedWorldState.BeginScope(baseBlock))
