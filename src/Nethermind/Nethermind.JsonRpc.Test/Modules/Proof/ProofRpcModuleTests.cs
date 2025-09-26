@@ -65,7 +65,7 @@ public class ProofRpcModuleTests
     public async Task Setup()
     {
         _dbProvider = await TestMemDbProvider.InitAsync();
-        _worldStateManager = TestWorldStateFactory.CreateForTest(_dbProvider, LimboLogs.Instance);
+        _worldStateManager = TestWorldStateFactory.CreateWorldStateManagerForTest(_dbProvider, LimboLogs.Instance);
 
         Hash256 stateRoot;
         IWorldState worldState = _worldStateManager.GlobalWorldState;

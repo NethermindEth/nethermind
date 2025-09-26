@@ -41,11 +41,10 @@ namespace Nethermind.Evm.Benchmark
             ByteCode = Bytes.FromHexString(Environment.GetEnvironmentVariable("NETH.BENCHMARK.BYTECODE") ?? string.Empty);
             Console.WriteLine($"Running benchmark for bytecode {ByteCode?.ToHexString()}");
 
-            IWorldStateManager worldStateManager = TestWorldStateFactory.CreateForTest();
-            _stateProvider = worldStateManager.GlobalWorldState;
+            _stateProvider = TestWorldStateFactory.CreateForTest();
             _stateProvider.CreateAccount(Address.Zero, 1000.Ether());
             _stateProvider.Commit(_spec);
-            EthereumCodeInfoRepository codeInfoRepository = new();
+            EthereumCodeInfoRepository codeInfoRepository = new(_stateProvider);
             _virtualMachine = new VirtualMachine(_blockhashProvider, MainnetSpecProvider.Instance, LimboLogs.Instance);
             _virtualMachine.SetBlockExecutionContext(new BlockExecutionContext(_header, _spec));
             _virtualMachine.SetTxExecutionContext(new TxExecutionContext(Address.Zero, codeInfoRepository, null, 0));

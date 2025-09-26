@@ -249,9 +249,9 @@ public struct EvmPooledMemory : IEvmMemory
 
         if (newSize > Size)
         {
-            long newActiveWords = EvmInstructions.Div32Ceiling(newSize, out outOfGas);
+            long newActiveWords = EvmCalculations.Div32Ceiling(newSize, out outOfGas);
             if (outOfGas) return 0;
-            long activeWords = EvmInstructions.Div32Ceiling(Size, out outOfGas);
+            long activeWords = EvmCalculations.Div32Ceiling(Size, out outOfGas);
             if (outOfGas) return 0;
 
             // TODO: guess it would be well within ranges but this needs to be checked and comment need to be added with calculations
@@ -368,7 +368,7 @@ public struct EvmPooledMemory : IEvmMemory
     }
 }
 
-internal static class UInt256Extensions
+public static class UInt256Extensions
 {
     public static bool IsLargerThanULong(in this UInt256 value) => (value.u1 | value.u2 | value.u3) != 0;
     public static bool IsLargerThanLong(in this UInt256 value) => value.IsLargerThanULong() || value.u0 > long.MaxValue;

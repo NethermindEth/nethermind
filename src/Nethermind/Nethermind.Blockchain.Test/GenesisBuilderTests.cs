@@ -55,8 +55,7 @@ public class GenesisBuilderTests
     {
         string path = Path.Combine(TestContext.CurrentContext.WorkDirectory, chainspecPath);
         ChainSpec chainSpec = LoadChainSpec(path);
-        IWorldStateManager worldStateManager = TestWorldStateFactory.CreateForTest();
-        IWorldState stateProvider = worldStateManager.GlobalWorldState;
+        IWorldState stateProvider = TestWorldStateFactory.CreateForTest();
         ISpecProvider specProvider = Substitute.For<ISpecProvider>();
         specProvider.GetSpec(Arg.Any<ForkActivation>()).Returns(Berlin.Instance);
         ITransactionProcessor transactionProcessor = Substitute.For<ITransactionProcessor>();

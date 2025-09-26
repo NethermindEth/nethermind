@@ -1,26 +1,18 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System;
 using System.Collections.Generic;
 using System.Threading.Tasks;
-using Nethermind.Abi;
-using Autofac;
 using Nethermind.Api;
 using Nethermind.Blockchain.Data;
-using Nethermind.Config;
 using Nethermind.Consensus.AuRa.Config;
 using Nethermind.Consensus.AuRa.Contracts;
 using Nethermind.Consensus.AuRa.Contracts.DataStore;
 using Nethermind.Consensus.AuRa.Transactions;
 using Nethermind.Consensus.AuRa.Validators;
 using Nethermind.Consensus.Comparers;
-using Nethermind.Consensus.Processing;
 using Nethermind.Consensus.Transactions;
 using Nethermind.Core;
-using Nethermind.Core.Container;
-using Nethermind.Evm.State;
-using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Init.Steps;
 using Nethermind.Logging;
 using Nethermind.TxPool;
@@ -33,21 +25,9 @@ public class InitializeBlockchainAuRa : InitializeBlockchain
     private readonly AuRaNethermindApi _api;
     private INethermindApi NethermindApi => _api;
 
-    private readonly ILifetimeScope _rootLifetimeScope;
-    private readonly IBlockValidationModule[] _validationBlockProcessingModules;
-    private readonly IAbiEncoder _abiEncoder;
-
-    public InitializeBlockchainAuRa(
-        AuRaNethermindApi api,
-        ILifetimeScope rootLifetimeScope,
-        IBlockValidationModule[] validationBlockProcessingModules,
-        IAbiEncoder abiEncoder
-    ) : base(api)
+    public InitializeBlockchainAuRa(AuRaNethermindApi api, IChainHeadInfoProvider chainHeadInfoProvider) : base(api, chainHeadInfoProvider)
     {
         _api = api;
-        _rootLifetimeScope = rootLifetimeScope;
-        _validationBlockProcessingModules = validationBlockProcessingModules;
-        _abiEncoder = abiEncoder;
     }
 
     protected override async Task InitBlockchain()

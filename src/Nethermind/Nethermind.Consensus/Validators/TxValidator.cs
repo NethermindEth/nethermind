@@ -20,6 +20,7 @@ public sealed class TxValidator : ITxValidator
     public TxValidator(ulong chainId)
     {
         RegisterValidator(TxType.Legacy, new CompositeTxValidator([
+            NonceCapTxValidator.Instance,
             IntrinsicGasTxValidator.Instance,
             new LegacySignatureTxValidator(chainId),
             ContractSizeTxValidator.Instance,
@@ -31,6 +32,7 @@ public sealed class TxValidator : ITxValidator
         var expectedChainIdTxValidator = new ExpectedChainIdTxValidator(chainId);
         RegisterValidator(TxType.AccessList, new CompositeTxValidator([
             new ReleaseSpecTxValidator(static spec => spec.IsEip2930Enabled),
+            NonceCapTxValidator.Instance,
             IntrinsicGasTxValidator.Instance,
             SignatureTxValidator.Instance,
             expectedChainIdTxValidator,
@@ -41,6 +43,7 @@ public sealed class TxValidator : ITxValidator
         ]));
         RegisterValidator(TxType.EIP1559, new CompositeTxValidator([
             new ReleaseSpecTxValidator(static spec => spec.IsEip1559Enabled),
+            NonceCapTxValidator.Instance,
             IntrinsicGasTxValidator.Instance,
             SignatureTxValidator.Instance,
             expectedChainIdTxValidator,
@@ -52,6 +55,7 @@ public sealed class TxValidator : ITxValidator
         ]));
         RegisterValidator(TxType.Blob, new CompositeTxValidator([
             new ReleaseSpecTxValidator(static spec => spec.IsEip4844Enabled),
+            NonceCapTxValidator.Instance,
             IntrinsicGasTxValidator.Instance,
             SignatureTxValidator.Instance,
             expectedChainIdTxValidator,
@@ -65,6 +69,7 @@ public sealed class TxValidator : ITxValidator
         ]));
         RegisterValidator(TxType.SetCode, new CompositeTxValidator([
             new ReleaseSpecTxValidator(static spec => spec.IsEip7702Enabled),
+            NonceCapTxValidator.Instance,
             IntrinsicGasTxValidator.Instance,
             SignatureTxValidator.Instance,
             expectedChainIdTxValidator,
@@ -388,4 +393,16 @@ public sealed class GasLimitCapTxValidator : ITxValidator
         return transaction.GasLimit > gasLimitCap ?
             TxErrorMessages.TxGasLimitCapExceeded(transaction.GasLimit, gasLimitCap) : ValidationResult.Success;
     }
+}
+
+/// <summary>
+/// EIP-2681 validation.
+/// </summary>
+public sealed class NonceCapTxValidator : ITxValidator
+{
+    public static readonly NonceCapTxValidator Instance = new();
+    private NonceCapTxValidator() { }
+
+    public ValidationResult IsWellFormed(Transaction transaction, IReleaseSpec releaseSpec) =>
+        transaction.Nonce < ulong.MaxValue ? ValidationResult.Success : TxErrorMessages.NonceTooHigh;
 }
