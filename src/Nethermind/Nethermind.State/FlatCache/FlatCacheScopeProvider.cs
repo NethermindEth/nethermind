@@ -42,8 +42,6 @@ public sealed class FlatCacheScopeProvider : IWorldStateScopeProvider, IPreBlock
         _logger = logManager.GetClassLogger<FlatCacheScopeProvider>();
     }
 
-    public IWorldStateScopeProvider BaseScopeProvider => _baseScopeProvider;
-
     public bool HasRoot(BlockHeader? baseBlock) => _baseScopeProvider.HasRoot(baseBlock);
 
 

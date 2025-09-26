@@ -59,7 +59,8 @@ public sealed class FlatCacheRepository
         {
             try
             {
-                RunCompactJob(stateId);
+                await NotifyWhenSlow($"compact {stateId}", () => CompactLevel(stateId));
+                await CleanIfNeeded();
             }
             catch (Exception ex)
             {
@@ -69,10 +70,27 @@ public sealed class FlatCacheRepository
         }
     }
 
+    private async Task NotifyWhenSlow(string name, Action closure)
+    {
+        Task jobTask = Task.Run(closure);
+        Task waiterTask = Task.Run(async () =>
+        {
+            Stopwatch sw = Stopwatch.StartNew();
+            while (true)
+            {
+                await Task.Delay(1000);
+                if (jobTask.IsCompleted) break;
+                _logger.Info($"Task {name} took {sw.Elapsed}");
+            }
+        });
+
+        await Task.WhenAny(jobTask, waiterTask);
+    }
+
     private void RunCompactJob(StateId stateId)
     {
         CompactLevel(stateId);
-        CleanIfNeeded();
+        CleanIfNeeded().Wait();
     }
 
     private void CompactLevel(StateId stateId)
@@ -90,8 +108,10 @@ public sealed class FlatCacheRepository
             if (_logger.IsDebug) _logger.Debug($"Compacting {stateId}");
             Snapshot snapshot = gatheredCache.CompactToKnownState();
 
-            using var _ = _repoLock.EnterScope();
-            _compactedKnownStates[stateId] = snapshot;
+            using (_repoLock.EnterScope())
+            {
+                _compactedKnownStates[stateId] = snapshot;
+            }
 
             gatheredCache.Dispose();
         }
@@ -134,24 +154,26 @@ public sealed class FlatCacheRepository
 
     public void RegisterKnownState(StateId startingBlock, StateId endBlock, Snapshot snapshot)
     {
-        using var _ = _repoLock.EnterScope();
-        if (snapshot.Storages is null) throw new Exception("No null storages pplease");
-
-
-        if (_logger.IsTrace) _logger.Trace($"Registering {startingBlock.blockNumber} to {endBlock.blockNumber}");
-        if (endBlock.blockNumber <= _bigCache.CurrentBlockNumber)
-            throw new InvalidOperationException(
-                $"Cannot register snapshot earlier than bigcache. Snapshot number {endBlock.blockNumber}, bigcache number: {_bigCache.CurrentBlockNumber}");
-
-        if (_sortedKnownStates.GetViewBetween(new StateId(endBlock.blockNumber, Keccak.Zero),
-                new StateId(long.MaxValue, Keccak.Zero)).Count > 0)
+        using (_repoLock.EnterScope())
         {
-            _logger.Warn($"Ignoring {endBlock} as non consecutive. Not implemented yet.");
-            return;
-        }
+            if (snapshot.Storages is null) throw new Exception("No null storages pplease");
 
-        _knownStates[endBlock] = snapshot;
-        _sortedKnownStates.Add(endBlock);
+
+            if (_logger.IsTrace) _logger.Trace($"Registering {startingBlock.blockNumber} to {endBlock.blockNumber}");
+            if (endBlock.blockNumber <= _bigCache.CurrentBlockNumber)
+                throw new InvalidOperationException(
+                    $"Cannot register snapshot earlier than bigcache. Snapshot number {endBlock.blockNumber}, bigcache number: {_bigCache.CurrentBlockNumber}");
+
+            if (_sortedKnownStates.GetViewBetween(new StateId(endBlock.blockNumber, Keccak.Zero),
+                    new StateId(long.MaxValue, Keccak.Zero)).Count > 0)
+            {
+                _logger.Warn($"Ignoring {endBlock} as non consecutive. Not implemented yet.");
+                return;
+            }
+
+            _knownStates[endBlock] = snapshot;
+            _sortedKnownStates.Add(endBlock);
+        }
 
         if (_inlineCompaction)
         {
@@ -167,83 +189,98 @@ public sealed class FlatCacheRepository
     }
 
     private int _boundary = 128;
-    private void CleanIfNeeded()
+    private async Task CleanIfNeeded()
     {
-        using var _ = _repoLock.EnterScope();
+        await NotifyWhenSlow("add to bigcache", () => AddToBigCache());
+        await NotifyWhenSlow("subtract from bigcache", () => SubtractFromBigCache());
+    }
 
-        // Attempt to add snapshots into bigcache
+    private void SubtractFromBigCache()
+    {
         int tryCount = 0;
-        while (_knownStates.Count - _bigCache.SnapshotCount > _boundary)
-        {
-            tryCount++;
-            if (tryCount > 100000) throw new Exception("Many try 2");
-            var toAddCandidate = _sortedKnownStates.GetViewBetween(new StateId(_bigCache.CurrentBlockNumber + 1, ValueKeccak.Zero), new StateId(long.MaxValue, ValueKeccak.Zero));
-            List<StateId> candidateToAdd = new List<StateId>();
-            long? blockNumber = null;
-            foreach (var stateId in toAddCandidate)
-            {
-                if (blockNumber is null)
-                {
-                    blockNumber = stateId.blockNumber;
-                    candidateToAdd.Add(stateId);
-                }
-                else if (blockNumber == stateId.blockNumber)
-                {
-                    candidateToAdd.Add(stateId);
-                }
-                else
-                {
-                    break;
-                }
-            }
-
-            Debug.Assert(candidateToAdd.Count > 0);
-
-            StateId pickedSnapshot = candidateToAdd[0];
-            if (candidateToAdd.Count > 1)
-            {
-                // TODO: Fix
-                // TODO: Remove reorg from known states
-                throw new NotImplementedException("Reorg handling incomplete, sorry.");
-            }
-
-            // TODO: Need to make sure no processing is using other branch at this point
-            var pickedState = _knownStates[pickedSnapshot];
-
-            _repoLock.Exit();
-            try
-            {
-                _bigCache.Add(pickedSnapshot, pickedState);
-            }
-            finally
-            {
-                _repoLock.EnterScope();
-            }
-
-            _compactedKnownStates.Remove(pickedSnapshot);
-        }
-
-        tryCount = 0;
         while(_knownStates.Count > _maxStateInMemory)
         {
             tryCount++;
             if (tryCount > 100000) throw new Exception("Many try 3");
-            var firstKey = _sortedKnownStates.First();
-            Snapshot snapshot = _knownStates[firstKey];
 
-            _repoLock.Exit();
-            try
+            StateId firstKey;
+            Snapshot snapshot;
+
+            using (_repoLock.EnterScope())
             {
-                _bigCache.Subtract(firstKey, snapshot);
-            }
-            finally
-            {
-                _repoLock.EnterScope();
+                firstKey = _sortedKnownStates.First();
+                snapshot = _knownStates[firstKey];
             }
 
-            _knownStates.Remove(firstKey);
-            _sortedKnownStates.Remove(firstKey);
-            _compactedKnownStates.Remove(firstKey);
+            _bigCache.Subtract(firstKey, snapshot);
+
+            using (_repoLock.EnterScope())
+            {
+                _knownStates.Remove(firstKey);
+                _sortedKnownStates.Remove(firstKey);
+                _compactedKnownStates.Remove(firstKey);
+            }
+        }
+    }
+
+    private void AddToBigCache()
+    {
+        // Attempt to add snapshots into bigcache
+        int tryCount = 0;
+        while (true)
+        {
+            tryCount++;
+            if (tryCount > 100000) throw new Exception("Many try 2");
+
+            Snapshot pickedState;
+            StateId pickedSnapshot;
+            using (_repoLock.EnterScope())
+            {
+                if (_knownStates.Count - _bigCache.SnapshotCount <= _boundary)
+                {
+                    break;
+                }
+                var toAddCandidate = _sortedKnownStates.GetViewBetween(new StateId(_bigCache.CurrentBlockNumber + 1, ValueKeccak.Zero), new StateId(long.MaxValue, ValueKeccak.Zero));
+
+                List<StateId> candidateToAdd = new List<StateId>();
+                long? blockNumber = null;
+                foreach (var stateId in toAddCandidate)
+                {
+                    if (blockNumber is null)
+                    {
+                        blockNumber = stateId.blockNumber;
+                        candidateToAdd.Add(stateId);
+                    }
+                    else if (blockNumber == stateId.blockNumber)
+                    {
+                        candidateToAdd.Add(stateId);
+                    }
+                    else
+                    {
+                        break;
+                    }
+                }
+
+                Debug.Assert(candidateToAdd.Count > 0);
+
+                pickedSnapshot = candidateToAdd[0];
+                if (candidateToAdd.Count > 1)
+                {
+                    // TODO: Fix
+                    // TODO: Remove reorg from known states
+                    throw new NotImplementedException("Reorg handling incomplete, sorry.");
+                }
+
+                // TODO: Need to make sure no processing is using other branch at this point
+                pickedState = _knownStates[pickedSnapshot];
+            }
+
+            _bigCache.Add(pickedSnapshot, pickedState);
+
+            using (_repoLock.EnterScope())
+            {
+                _compactedKnownStates.Remove(pickedSnapshot);
+            }
         }
     }
 }

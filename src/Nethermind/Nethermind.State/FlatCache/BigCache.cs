@@ -11,10 +11,12 @@ using Prometheus;
 
 namespace Nethermind.State.FlatCache;
 
-public class BigCache
+public sealed class BigCache
 {
     private ConcurrentDictionary<Address, (long, Account)> Accounts = new ConcurrentDictionary<Address, (long, Account)>();
-    private ConcurrentDictionary<Address, ConcurrentDictionary<UInt256, (long, byte[])>> Storages = new ConcurrentDictionary<Address, ConcurrentDictionary<UInt256, (long, byte[])>>();
+    internal ConcurrentDictionary<Address, long> SelfDestructBlockNum = new ConcurrentDictionary<Address, long>();
+
+    private ConcurrentDictionary<StorageCell, (long, byte[])> Storages = new ConcurrentDictionary<StorageCell, (long, byte[])>();
 
     private Snapshot? _copyingSnapshot;
 
@@ -39,7 +41,7 @@ public class BigCache
 
     public BigCacheStorageReader GetStorageReader(Address address)
     {
-        return new BigCacheStorageReader(address, Storages.GetOrAdd(address, (_) => new ConcurrentDictionary<UInt256, (long, byte[])>()), this);
+        return new BigCacheStorageReader(address, this);
     }
 
     private Gauge _snapshotCount = Metrics.CreateGauge("flatcache_bigcache_snapshot_count", "snapshot count");
@@ -47,17 +49,12 @@ public class BigCache
     private Gauge _estimatedAccount = Metrics.CreateGauge("flatcache_bigcache_account_count", "snapshot count");
 
 #pragma warning disable CS9113 // Parameter is unread.
-    public class BigCacheStorageReader(Address address, ConcurrentDictionary<UInt256, (long, byte[])> bigCacheStorage, BigCache theCacheItself)
+    public sealed class BigCacheStorageReader(Address address, BigCache theCacheItself)
 #pragma warning restore CS9113 // Parameter is unread.
     {
         [MethodImpl(MethodImplOptions.NoOptimization)]
         public bool TryGetValue(UInt256 slot, out byte[]? value)
         {
-            if (bigCacheStorage is null)
-            {
-                Console.Error.WriteLine("BigCacheStorageReader storage is null");
-            }
-
             /*
             Snapshot? copyingSnapshot = theCacheItself._copyingSnapshot;
             if (copyingSnapshot is { Storages: null })
@@ -83,7 +80,13 @@ public class BigCache
             }
             */
 
-            if (bigCacheStorage.TryGetValue(slot, out (long, byte[]) entry))
+            if (!theCacheItself.SelfDestructBlockNum.TryGetValue(address, out long selfDestructTime))
+            {
+                selfDestructTime = 0;
+            }
+
+            StorageCell key = new StorageCell(address, slot);
+            if (theCacheItself.Storages.TryGetValue(key, out (long, byte[]) entry) && entry.Item1 >= selfDestructTime)
             {
                 value = entry.Item2;
                 return true;
@@ -116,23 +119,21 @@ public class BigCache
 
         foreach (var knownStateStorage in knownState.Storages)
         {
-            ConcurrentDictionary<UInt256, (long, byte[])> currentStorageWrites;
             if (knownStateStorage.Value.HasSelfDestruct)
             {
-                currentStorageWrites = Storages.AddOrUpdate(knownStateStorage.Key, (_) => new ConcurrentDictionary<UInt256, (long, byte[])>(), (_, _) => new ConcurrentDictionary<UInt256, (long, byte[])>());
-            }
-            else
-            {
-                currentStorageWrites = Storages.GetOrAdd(knownStateStorage.Key, (_) => new ConcurrentDictionary<UInt256, (long, byte[])>());
+                // Self destruct first. Concurrent reader will just drop existing entries with block number lower than selfdestruct
+                SelfDestructBlockNum.TryAdd(knownStateStorage.Key, blockNumber);
             }
 
+            Address addr = knownStateStorage.Key;
             foreach (var kv in knownStateStorage.Value.Slots)
             {
-                if (!currentStorageWrites.ContainsKey(kv.Key))
+                StorageCell key = new StorageCell(addr, kv.Key);
+                if (!Storages.ContainsKey(key))
                 {
                     _estimatedSlot.Inc();
                 }
-                currentStorageWrites[kv.Key] = (blockNumber, kv.Value);
+                Storages[key] = (blockNumber, kv.Value);
             }
         }
 
@@ -161,21 +162,17 @@ public class BigCache
 
         foreach (var knownStateStorage in knownState.Storages)
         {
-            if (Storages.TryGetValue(knownStateStorage.Key, out var storageMap))
+            Address addr = knownStateStorage.Key;
+            foreach (var kv in knownStateStorage.Value.Slots)
             {
-                foreach (var kv in knownStateStorage.Value.Slots)
+                StorageCell key = new StorageCell(addr, kv.Key);
+
+                if (Storages.TryGetValue(key, out var entry) && entry.Item1 <= blockNumber)
                 {
-                    if (storageMap.TryGetValue(kv.Key, out var entry) && entry.Item1 == blockNumber)
-                    {
-                        storageMap.Remove(kv.Key, out var _);
-                        _estimatedSlot.Dec();
-                    }
+                    Storages.Remove(key, out var _);
+                    _estimatedSlot.Dec();
                 }
 
-                if (storageMap.Count == 0)
-                {
-                    Storages.Remove(knownStateStorage.Key, out var _);
-                }
             }
         }
 
