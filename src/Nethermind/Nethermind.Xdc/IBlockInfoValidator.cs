@@ -9,11 +9,7 @@ using System.Text;
 using System.Threading.Tasks;
 
 namespace Nethermind.Xdc;
-internal interface IVotesManager
+internal interface IBlockInfoValidator
 {
-    Task CastVote(BlockRoundInfo blockInfo);
-    Task HandleVote(Vote vote);
-    Task VerifyVotes(List<Vote> votes, XdcBlockHeader header);
-    bool VerifyVotingRules(BlockRoundInfo blockInfo, QuorumCertificate qc);
-    List<Vote> GetVotes();
+    void VerifyBlockInfo(BlockRoundInfo blockInfo, XdcBlockHeader blockHeader);
 }

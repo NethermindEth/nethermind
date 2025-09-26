@@ -2,6 +2,8 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Collections.Generic;
+using System.Linq;
 
 namespace Nethermind.Crypto
 {
@@ -23,12 +25,20 @@ namespace Nethermind.Crypto
 
         public PrivateKey Generate()
         {
+            return Generate(1).First();
+        }
+        public IEnumerable<PrivateKey> Generate(int number)
+        {
             do
             {
                 var bytes = _cryptoRandom.GenerateRandomBytes(32);
                 if (SecP256k1.VerifyPrivateKey(bytes))
                 {
-                    return new PrivateKey(bytes);
+                    yield return new PrivateKey(bytes);
+                    if (--number == 0)
+                    {
+                        yield break;
+                    }
                 }
             } while (true);
         }

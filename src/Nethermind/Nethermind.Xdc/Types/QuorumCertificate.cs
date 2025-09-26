@@ -7,7 +7,7 @@ using System.Text.Json.Serialization;
 
 namespace Nethermind.Xdc.Types;
 
-public class QuorumCert(BlockRoundInfo proposedBlockInfo, Signature[]? signatures, ulong gapNumber)
+public class QuorumCertificate(BlockRoundInfo proposedBlockInfo, Signature[]? signatures, ulong gapNumber)
 {
     public BlockRoundInfo ProposedBlockInfo { get; set; } = proposedBlockInfo;
     public Signature[] Signatures { get; set; } = signatures;

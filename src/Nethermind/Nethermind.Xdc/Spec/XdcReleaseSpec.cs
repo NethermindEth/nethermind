@@ -10,6 +10,7 @@ namespace Nethermind.Xdc.Spec;
 public class XdcReleaseSpec : ReleaseSpec, IXdcReleaseSpec
 {
     public int EpochLength { get; set; }
+    public long Gap { get; }
     public int SwitchEpoch { get; set; }
     public UInt256 SwitchBlock { get; set; }
     public int MaxMasternodes { get; set; }              // v2 max masternodes
@@ -56,6 +57,7 @@ public class XdcReleaseSpec : ReleaseSpec, IXdcReleaseSpec
 public interface IXdcReleaseSpec : IReleaseSpec
 {
     public int EpochLength { get; }
+    public long Gap { get; }
     public int SwitchEpoch { get; set; }
     public UInt256 SwitchBlock { get; set; }
     public int MaxMasternodes { get; set; }          // v2 max masternodes
