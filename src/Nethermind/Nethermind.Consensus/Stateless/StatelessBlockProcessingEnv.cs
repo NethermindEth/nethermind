@@ -40,7 +40,10 @@ public class StatelessBlockProcessingEnv(
     private IWorldState? _worldState;
     public IWorldState WorldState
     {
-        get => _worldState ??= new WorldState(CreateTrie(), CreateCodeDb(), logManager);
+        get => _worldState ??= new WorldState(
+            new TrieStore(witness.NodeStorage, NoPruning.Instance, NoPersistence.Instance, new PruningConfig(),
+                logManager),
+            witness.CodeDb, logManager);
     }
 
     private IBlockProcessor GetProcessor()
@@ -71,29 +74,6 @@ public class StatelessBlockProcessingEnv(
         );
     }
 
-    private ITrieStore CreateTrie()
-    {
-        IKeyValueStore db = new MemDb();
-        foreach (var stateElement in witness.State)
-        {
-            var hash = ValueKeccak.Compute(stateElement).Bytes;
-            db.PutSpan(hash, stateElement);
-        }
-
-        NodeStorage nodeStorage = new(db, INodeStorage.KeyScheme.Hash);
-        return new TrieStore(nodeStorage, NoPruning.Instance, NoPersistence.Instance, new PruningConfig(), logManager);
-    }
-
-    private IKeyValueStoreWithBatching CreateCodeDb()
-    {
-        IKeyValueStoreWithBatching db = new MemDb();
-        foreach (var code in witness.Codes)
-        {
-            var hash = ValueKeccak.Compute(code).Bytes;
-            db.PutSpan(hash, code);
-        }
-        return db;
-    }
 
     private ITransactionProcessor CreateTransactionProcessor(IWorldState state, IBlockFinder blockFinder)
     {
