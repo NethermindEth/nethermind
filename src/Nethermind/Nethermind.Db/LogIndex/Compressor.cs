@@ -17,6 +17,7 @@ partial class LogIndexStorage
 {
     private interface ICompressor
     {
+        int MinLengthToCompress { get; }
         PostMergeProcessingStats Stats { get; }
         PostMergeProcessingStats GetAndResetStats();
         bool TryEnqueue(int? topicIndex, ReadOnlySpan<byte> dbKey, ReadOnlySpan<byte> dbValue);
@@ -28,7 +29,7 @@ partial class LogIndexStorage
 
     private class Compressor : ICompressor
     {
-        public const int MinLengthToCompress = 128 * BlockNumSize;
+        public int MinLengthToCompress { get; }
 
         // A lot of duplicates in case of a regular Channel
         // TODO: find a better way to guarantee uniqueness?
@@ -48,13 +49,15 @@ partial class LogIndexStorage
             return Interlocked.Exchange(ref _stats, new());
         }
 
-        public Compressor(LogIndexStorage storage, ILogger logger, int ioParallelism)
+        public Compressor(LogIndexStorage storage, ILogger logger, int compressionDistance, int parallelism)
         {
             _storage = storage;
             _logger = logger;
 
-            if (ioParallelism < 1) throw new ArgumentException("IO parallelism degree must be a positive value.", nameof(ioParallelism));
-            _block = new(x => CompressValue(x.Item1, x.Item2), new() { MaxDegreeOfParallelism = ioParallelism, BoundedCapacity = 10_000 });
+            MinLengthToCompress = compressionDistance * BlockNumSize;
+
+            if (parallelism < 1) throw new ArgumentException("Compression parallelism degree must be a positive value.", nameof(parallelism));
+            _block = new(x => CompressValue(x.Item1, x.Item2), new() { MaxDegreeOfParallelism = parallelism, BoundedCapacity = 10_000 });
         }
 
         public bool TryEnqueue(int? topicIndex, ReadOnlySpan<byte> dbKey, ReadOnlySpan<byte> dbValue)
@@ -159,6 +162,7 @@ partial class LogIndexStorage
 
     public class NoOpCompressor : ICompressor
     {
+        public int MinLengthToCompress => 256;
         public PostMergeProcessingStats Stats { get; } = new();
         public PostMergeProcessingStats GetAndResetStats() => Stats;
         public bool TryEnqueue(int? topicIndex, ReadOnlySpan<byte> dbKey, ReadOnlySpan<byte> dbValue) => false;

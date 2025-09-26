@@ -23,7 +23,7 @@ using Nethermind.TxPool;
 
 namespace Nethermind.Init.Modules;
 
-public class BlockTreeModule(IReceiptConfig receiptConfig) : Autofac.Module
+public class BlockTreeModule(IReceiptConfig receiptConfig, ILogIndexConfig logIndexConfig) : Autofac.Module
 {
     protected override void Load(ContainerBuilder builder)
     {
@@ -44,10 +44,18 @@ public class BlockTreeModule(IReceiptConfig receiptConfig) : Autofac.Module
             .AddSingleton<IBlockTree, BlockTree>()
             .Bind<IBlockFinder, IBlockTree>()
             .AddSingleton<ILogFinder, LogFinder>()
-            .AddSingleton<ILogIndexStorage, LogIndexStorage>()
             .AddSingleton<IReadOnlyBlockTree, IBlockTree>((bt) => bt.AsReadOnly())
 
             ;
+
+        if (logIndexConfig.Enabled)
+        {
+            builder.AddSingleton<ILogIndexStorage, LogIndexStorage>();
+        }
+        else
+        {
+            builder.AddSingleton<ILogIndexStorage, DisabledLogIndexStorage>();
+        }
 
         if (!receiptConfig.StoreReceipts)
         {

@@ -6,6 +6,7 @@ using System.Threading.Tasks;
 using Nethermind.Api;
 using Nethermind.Api.Steps;
 using Nethermind.Core.ServiceStopper;
+using Nethermind.Db;
 using Nethermind.Facade.Find;
 
 namespace Nethermind.Init.Steps
@@ -15,10 +16,13 @@ namespace Nethermind.Init.Steps
     {
         public Task Execute(CancellationToken cancellationToken)
         {
-            _ = logIndexService.StartAsync();
-            api.DisposeStack.Push(logIndexService);
-            serviceStopper.AddStoppable(logIndexService);
+            if (api.Config<ILogIndexConfig>().Enabled)
+            {
+                _ = logIndexService.StartAsync();
+                serviceStopper.AddStoppable(logIndexService);
+            }
 
+            api.DisposeStack.Push(logIndexService);
             return Task.CompletedTask;
         }
 

@@ -52,9 +52,11 @@ namespace Nethermind.Db.Test.LogIndex
         private IDbFactory _dbFactory = null!;
         private readonly List<ILogIndexStorage> _createdStorages = [];
 
-        private LogIndexStorage CreateLogIndexStorage(int compactionDistance = 262_144, int ioParallelism = 16, int maxReorgDepth = 32, IDbFactory? dbFactory = null)
+        private LogIndexStorage CreateLogIndexStorage(int compactionDistance = 262_144, int compressionParallelism = 16, int maxReorgDepth = 64, IDbFactory? dbFactory = null)
         {
-            LogIndexStorage storage = new(dbFactory ?? _dbFactory, LimboLogs.Instance, ioParallelism, compactionDistance, maxReorgDepth);
+            LogIndexConfig config = new() { CompactionDistance = compactionDistance, CompressionParallelism = compressionParallelism, MaxReorgDepth = maxReorgDepth };
+
+            LogIndexStorage storage = new(dbFactory ?? _dbFactory, LimboLogs.Instance, config);
             _createdStorages.Add(storage);
             return storage;
         }

@@ -196,7 +196,7 @@ namespace Nethermind.Facade.Find
         // TODO: Do not use for single block after testing - scanning it will be usually faster
         private (int from, int to)? CanUseLogIndex(LogFilter filter, BlockHeader fromBlock, BlockHeader toBlock)
         {
-            if (!filter.UseIndex || _logIndexStorage == null || filter.AcceptsAnyBlock)
+            if (!filter.UseIndex || _logIndexStorage?.Enabled != true || filter.AcceptsAnyBlock)
                 return null;
 
             if (_logIndexStorage.GetMinBlockNumber() is not { } indexFrom || _logIndexStorage.GetMaxBlockNumber() is not { } indexTo)

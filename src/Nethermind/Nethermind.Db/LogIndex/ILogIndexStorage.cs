@@ -36,6 +36,8 @@ public struct LogIndexAggregate(int firstBlockNum, int lastBlockNum)
 // TODO: remove testing methods
 public interface ILogIndexStorage : IAsyncDisposable, IStoppableService
 {
+    bool Enabled { get; }
+
     int? GetMaxBlockNumber();
     int? GetMinBlockNumber();
 

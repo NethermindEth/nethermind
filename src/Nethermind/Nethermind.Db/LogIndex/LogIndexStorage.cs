@@ -17,6 +17,7 @@ using Nethermind.Logging;
 
 namespace Nethermind.Db
 {
+
     // TODO: get rid of InvalidOperationExceptions - these are for state validation
     // TODO: verify all MemoryMarshal usages - needs to be CPU-cross-compatible
     [SuppressMessage("ReSharper", "PrivateFieldCanBeConvertedToLocalVariable")] // TODO: get rid of unused fields
@@ -44,15 +45,11 @@ namespace Nethermind.Db
             public static readonly byte[] ForwardMerge = Enumerable.Repeat(byte.MaxValue, BlockNumSize).ToArray();
         }
 
-        private static class Defaults
-        {
-            public const int IOParallelism = 1;
-            public const int MaxReorgDepth = 64;
-        }
-
-        public const byte Version = 1;
+        private static readonly byte[] VersionBytes = [1];
 
         public const int MaxTopics = 4;
+
+        public bool Enabled { get; }
 
         private const int BlockNumSize = sizeof(int);
         private const int MaxKeyLength = Hash256.Size + 1; // Math.Max(Address.Size, Hash256.Size)
@@ -108,15 +105,15 @@ namespace Nethermind.Db
         private bool _stopped;
         private bool _disposed;
 
-        public LogIndexStorage(IDbFactory dbFactory, ILogManager logManager,
-            int? ioParallelism = null, int? compactionDistance = null, int? maxReorgDepth = null)
+        public LogIndexStorage(IDbFactory dbFactory, ILogManager logManager, ILogIndexConfig config)
         {
-            if (maxReorgDepth < 0) throw new ArgumentException("Compaction distance must be a positive value.", nameof(compactionDistance));
-            _maxReorgDepth = maxReorgDepth ?? Defaults.MaxReorgDepth;
+            Enabled = config.Enabled;
+
+            _maxReorgDepth = config.MaxReorgDepth;
 
             _logger = logManager.GetClassLogger<LogIndexStorage>();
-            _compressor = new Compressor(this, _logger, ioParallelism ?? Defaults.IOParallelism);
-            _compactor = compactionDistance.HasValue ? new Compactor(this, _logger, compactionDistance.Value) : new NoOpCompactor();
+            _compressor = new Compressor(this, _logger, config.CompressionDistance, config.CompressionParallelism);
+            _compactor = config.CompactionDistance < 0 ? new Compactor(this, _logger, config.CompactionDistance) : new NoOpCompactor();
 
             _mergeOperators = new()
             {
@@ -127,7 +124,7 @@ namespace Nethermind.Db
                 { LogIndexColumns.Topics3, new(this, _compressor, topicIndex: 3) }
             };
 
-            _rootDb = GetDbEnsureVersion(dbFactory);
+            _rootDb = GetDbEnsureVersion(dbFactory, config.Reset);
             _addressDb = _rootDb.GetColumnDb(LogIndexColumns.Addresses);
             _topicDbs = _mergeOperators.Keys.Where(cl => $"{cl}".Contains("Topic")).Select(cl => _rootDb.GetColumnDb(cl)).ToArray();
 
@@ -136,38 +133,45 @@ namespace Nethermind.Db
             _topicMaxBlocks = _topicDbs.Select(static db => LoadRangeBound(db, SpecialKey.MaxBlockNum)).ToArray();
             _topicMinBlocks = _topicDbs.Select(static db => LoadRangeBound(db, SpecialKey.MinBlockNum)).ToArray();
 
-            _compressor.Start();
+            if (Enabled)
+                _compressor.Start();
 
             if (WasInitialized)
                 _firstBlockAddedSource.SetResult();
         }
 
-        private IColumnsDb<LogIndexColumns> GetDbEnsureVersion(IDbFactory dbFactory)
+        private IColumnsDb<LogIndexColumns> GetDbEnsureVersion(IDbFactory dbFactory, bool reset)
         {
             (IColumnsDb<LogIndexColumns> root, IDb meta) = CreateDb();
+
+            if (reset)
+                return ResetAndCreateNew(root, "Log index storage: resetting data per configuration...");
 
             var versionBytes = meta.Get(SpecialKey.Version);
             if (versionBytes is null) // DB is empty
             {
-                meta.Set(SpecialKey.Version, [Version]);
+                meta.Set(SpecialKey.Version, VersionBytes);
                 return root;
             }
 
-            var version = versionBytes[0];
-            if (version == Version)
-                return root;
+            return versionBytes.SequenceEqual(VersionBytes)
+                ? root
+                : ResetAndCreateNew(root, $"Log index storage: version is incorrect: {versionBytes[0]} < {VersionBytes}, resetting data...");
 
-            if (_logger.IsWarn)
-                _logger.Warn($"Log index storage version is incorrect: {version} < {Version}, resetting data...");
+            IColumnsDb<LogIndexColumns> ResetAndCreateNew(IColumnsDb<LogIndexColumns> db, string message)
+            {
+                if (_logger.IsWarn)
+                    _logger.Warn(message);
 
-            root.Clear();
+                db.Clear();
 
-            // `Clear` removes the DB folder, need to create a new instance
-            root.Dispose();
-            (root, meta) = CreateDb();
+                // `Clear` removes the DB folder, need to create a new instance
+                db.Dispose();
+                (db, meta) = CreateDb();
 
-            meta.Set(SpecialKey.Version, [Version]);
-            return root;
+                meta.Set(SpecialKey.Version, VersionBytes);
+                return db;
+            }
 
             (IColumnsDb<LogIndexColumns> root, IDb meta) CreateDb()
             {
@@ -685,7 +689,7 @@ namespace Nethermind.Db
         public async Task RecompactAsync(int minLengthToCompress = -1, LogIndexUpdateStats? stats = null)
         {
             if (minLengthToCompress < 0)
-                minLengthToCompress = Compressor.MinLengthToCompress;
+                minLengthToCompress = _compressor.MinLengthToCompress;
 
             await CompactAsync(flush: true, mergeIterations: 2, stats: stats);
 

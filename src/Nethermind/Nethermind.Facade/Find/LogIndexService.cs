@@ -49,16 +49,11 @@ public sealed class LogIndexService : ILogIndexService
     private readonly CancellationTokenSource _cancellationSource = new();
     private CancellationToken CancellationToken => _cancellationSource.Token;
 
-    // TODO: take some/all values from chain config
     private const int MaxReorgDepth = 8;
-    private const int BatchSize = 256;
-    private const int MaxBatchQueueSize = 4096;
-    private const int MaxAggregateQueueSize = 16; // each entry is BatchSize of blocks
-    private static readonly int IOParallelism = 16;
-    private static readonly int AggregateParallelism = Math.Max(Environment.ProcessorCount / 2, 1);
     private static readonly TimeSpan NewBlockWaitTimeout = TimeSpan.FromSeconds(5);
 
     private readonly ILogIndexStorage _logIndexStorage;
+    private readonly ILogIndexConfig _config;
     private readonly IReceiptFinder _receiptFinder;
     private readonly IReceiptStorage _receiptStorage;
     private readonly ProgressLogger _forwardProgressLogger;
@@ -80,7 +75,8 @@ public sealed class LogIndexService : ILogIndexService
 
     public string Description => "log index service";
 
-    public LogIndexService(ILogIndexStorage logIndexStorage, IBlockTree blockTree, ISyncConfig syncConfig,
+    public LogIndexService(ILogIndexStorage logIndexStorage, ILogIndexConfig config,
+        IBlockTree blockTree, ISyncConfig syncConfig,
         IReceiptFinder receiptFinder, IReceiptStorage receiptStorage, ILogManager logManager)
     {
         ArgumentNullException.ThrowIfNull(logIndexStorage);
@@ -90,6 +86,7 @@ public sealed class LogIndexService : ILogIndexService
         ArgumentNullException.ThrowIfNull(logManager);
         ArgumentNullException.ThrowIfNull(syncConfig);
 
+        _config = config;
         _logIndexStorage = logIndexStorage;
         _blockTree = blockTree;
         _syncConfig = syncConfig;
@@ -241,8 +238,8 @@ public sealed class LogIndexService : ILogIndexService
             batch => Aggregate(batch, isForward),
             new()
             {
-                BoundedCapacity = MaxBatchQueueSize / BatchSize,
-                MaxDegreeOfParallelism = AggregateParallelism,
+                BoundedCapacity = _config.SyncAggregateBatchQueueSize,
+                MaxDegreeOfParallelism = _config.SyncAggregateParallelism,
                 CancellationToken = CancellationToken,
                 SingleProducerConstrained = true
             }
@@ -252,7 +249,7 @@ public sealed class LogIndexService : ILogIndexService
             aggr => SetReceiptsAsync(aggr, isForward),
             new()
             {
-                BoundedCapacity = MaxAggregateQueueSize,
+                BoundedCapacity = _config.SyncSaveBatchQueueSize,
                 MaxDegreeOfParallelism = 1,
                 CancellationToken = CancellationToken,
                 SingleProducerConstrained = true
@@ -327,7 +324,7 @@ public sealed class LogIndexService : ILogIndexService
                 }
             }
 
-            var buffer = new BlockReceipts[BatchSize];
+            var buffer = new BlockReceipts[_config.SyncBatchSize];
             while (!CancellationToken.IsCancellationRequested)
             {
                 if (!isForward && start < GetMinTargetBlockNumber())
@@ -338,7 +335,8 @@ public sealed class LogIndexService : ILogIndexService
                     return;
                 }
 
-                var end = isForward ? start + BatchSize - 1 : Math.Max(0, start - BatchSize + 1);
+                var batchSize = _config.SyncBatchSize;
+                var end = isForward ? start + batchSize - 1 : Math.Max(0, start - batchSize + 1);
 
                 // from - inclusive, to - exclusive
                 var (from, to) = isForward
@@ -446,7 +444,7 @@ public sealed class LogIndexService : ILogIndexService
         Parallel.For(from, to, new()
         {
             CancellationToken = token,
-            MaxDegreeOfParallelism = IOParallelism
+            MaxDegreeOfParallelism = _config.SyncFetchBatchParallelism
         }, i =>
         {
             var bufferIndex = isForward ? i - from : to - 1 - i;
