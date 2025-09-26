@@ -1508,9 +1508,20 @@ public sealed class TrieStore : ITrieStore, IPruningTrieStore
                 }
             }
 
-            if (!isReadOnly && hasInBuffer)
+            if (hasInBuffer)
             {
-                return bufferNode;
+                if (!isReadOnly)
+                {
+                    return bufferNode;
+                }
+                else
+                {
+                    // we returning a copy to avoid multithreaded access
+                    var trieNode = new TrieNode(NodeType.Unknown, key.Keccak, bufferNode.FullRlp);
+                    trieNode.ResolveNode(_trieStore.GetTrieStore(key.Address), key.Path);
+                    trieNode.Keccak = key.Keccak;
+                    return trieNode;
+                }
             }
 
             return isReadOnly ? bufferShard.FromCachedRlpOrUnknown(key) : bufferShard.FindCachedOrUnknown(key);
