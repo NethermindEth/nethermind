@@ -183,6 +183,13 @@ namespace Nethermind.State.Proofs
                         value.StorageIndices.Add(storageIndex);
                         _nodeToVisitFilter.Add(childHash);
                     }
+                    else
+                    {
+                        // Node may be inline
+                        byte[] value = node.GetInlineNodeValue((byte)childIndex);
+
+                        _accountProof.StorageProofs[storageIndex].Value = value;
+                    }
                 }
             }
             else
