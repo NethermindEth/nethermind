@@ -73,7 +73,7 @@ public class BlockForRpc
         Size = _blockDecoder.GetLength(block, RlpBehaviors.None);
         StateRoot = block.StateRoot;
         Timestamp = block.Timestamp;
-        TotalDifficulty = block.Difficulty.IsZero ? null : block.TotalDifficulty ?? UInt256.Zero;
+
         if (!skipTxs)
         {
             Transactions = includeFullTransactionData
@@ -121,8 +121,6 @@ public class BlockForRpc
     [JsonConverter(typeof(NullableRawLongConverter))]
     public long? Step { get; set; }
 
-    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
-    public UInt256? TotalDifficulty { get; set; }
     public bool ShouldSerializeStep() => _isAuRaBlock;
     public UInt256 Timestamp { get; set; }
 
