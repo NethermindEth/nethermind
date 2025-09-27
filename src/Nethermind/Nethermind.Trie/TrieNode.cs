@@ -560,6 +560,34 @@ namespace Nethermind.Trie
             return length == 32 ? rlpStream.DecodeKeccak() : null;
         }
 
+        public byte[]? GetInlineNodeValue(int i)
+        {
+            SpanSource rlp = _rlp;
+            if (rlp.IsNull)
+            {
+                return null;
+            }
+
+            ValueRlpStream rlpStream = new(rlp);
+            SeekChild(ref rlpStream, i);
+            (_, int length) = rlpStream.PeekPrefixAndContentLength();
+
+            if (length >= 32)
+            {
+                return null;
+            }
+
+            if (rlpStream.PeekByte() < 192)
+            {
+                return null;
+            }
+
+            rlpStream.ReadSequenceLength();
+            _ = rlpStream.DecodeByteArraySpan();
+            ReadOnlySpan<byte> value = rlpStream.DecodeByteArraySpan();
+            return value.ToArray();
+        }
+
         public bool GetChildHashAsValueKeccak(int i, out ValueHash256 keccak)
         {
             Unsafe.SkipInit(out keccak);
