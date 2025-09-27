@@ -25,7 +25,7 @@ for rid in "linux-arm64" "linux-x64" "osx-arm64" "osx-x64" "win-x64"; do
   mkdir $output_path/$rid/keystore
 
   # A temporary symlink for Linux to support the old executable name
-  [[ $rid == linux-x64 ]] && ln -sr $output_path/$rid/nethermind $output_path/$rid/Nethermind.Runner
+  [[ "$rid" == linux-* ]] && ln -sr $output_path/$rid/nethermind $output_path/$rid/Nethermind.Runner
 done
 
 mkdir $output_path/ref
