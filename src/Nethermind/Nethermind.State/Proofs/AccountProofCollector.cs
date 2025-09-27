@@ -188,7 +188,10 @@ namespace Nethermind.State.Proofs
                         // Node may be inline
                         byte[] value = node.GetInlineNodeValue((byte)childIndex);
 
-                        _accountProof.StorageProofs[storageIndex].Value = value;
+                        if (value is not null)
+                        {
+                            _accountProof.StorageProofs[storageIndex].Value = value;
+                        }
                     }
                 }
             }

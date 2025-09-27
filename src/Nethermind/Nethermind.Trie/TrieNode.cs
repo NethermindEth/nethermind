@@ -571,18 +571,15 @@ namespace Nethermind.Trie
             ValueRlpStream rlpStream = new(rlp);
             SeekChild(ref rlpStream, i);
             (_, int length) = rlpStream.PeekPrefixAndContentLength();
-            ReadOnlySpan<byte> item = rlpStream.PeekNextItem();
 
             if (length >= 32)
             {
                 return null;
             }
 
-
-            var leafRlpStream = new RlpStream(item.ToArray());
-            leafRlpStream.ReadSequenceLength(); // Skip list header
-            _ = leafRlpStream.DecodeByteArraySpan(); // encodedKey (ignored)
-            ReadOnlySpan<byte> value = leafRlpStream.DecodeByteArraySpan();
+            rlpStream.ReadSequenceLength();
+            _ = rlpStream.DecodeByteArraySpan();
+            ReadOnlySpan<byte> value = rlpStream.DecodeByteArraySpan();
             return value.ToArray();
         }
 
