@@ -11,6 +11,7 @@ using Nethermind.Config;
 using Nethermind.Consensus.Processing;
 using Nethermind.Core;
 using Nethermind.Core.Container;
+using Nethermind.Db;
 using Nethermind.Evm;
 using Nethermind.Evm.State;
 using Nethermind.Evm.TransactionProcessing;
@@ -32,7 +33,8 @@ public class MainProcessingContext : IMainProcessingContext, BlockProcessor.Bloc
         CompositeBlockPreprocessorStep compositeBlockPreprocessorStep,
         IBlockTree blockTree,
         IPrecompileProvider precompileProvider,
-        ILogManager logManager)
+        ILogManager logManager,
+        IPruningConfig pruningConfig)
     {
 
         var mainWorldState = worldStateManager.GlobalWorldState;
@@ -56,7 +58,8 @@ public class MainProcessingContext : IMainProcessingContext, BlockProcessor.Bloc
                     {
                         StoreReceiptsByDefault = receiptConfig.StoreReceipts,
                         DumpOptions = initConfig.AutoDump
-                    })
+                    },
+                    pruningConfig)
                 {
                     IsMainProcessor = true // Manual construction because of this flag
                 })

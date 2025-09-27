@@ -18,6 +18,7 @@ using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Threading;
+using Nethermind.Db;
 using Nethermind.Evm.Tracing;
 using Nethermind.Blockchain.Tracing.GethStyle;
 using Nethermind.Blockchain.Tracing.ParityStyle;
@@ -89,13 +90,15 @@ public sealed class BlockchainProcessor : IBlockchainProcessor, IBlockProcessing
     /// <param name="stateReader"></param>
     /// <param name="logManager"></param>
     /// <param name="options"></param>
+    /// <param name="pruningConfig"></param>
     public BlockchainProcessor(
         IBlockTree blockTree,
         IBranchProcessor branchProcessor,
         IBlockPreprocessorStep recoveryStep,
         IStateReader stateReader,
         ILogManager logManager,
-        Options options)
+        Options options,
+        IPruningConfig? pruningConfig = null)
     {
         _logger = logManager.GetClassLogger();
         _blockTree = blockTree;
@@ -104,7 +107,7 @@ public sealed class BlockchainProcessor : IBlockchainProcessor, IBlockProcessing
         _stateReader = stateReader;
         _options = options;
 
-        _stats = new ProcessingStats(stateReader, logManager.GetClassLogger<ProcessingStats>());
+        _stats = new ProcessingStats(stateReader, logManager.GetClassLogger<ProcessingStats>(), pruningConfig?.PruningBoundary);
         _loopCancellationSource = new CancellationTokenSource();
         _stats.NewProcessingStatistics += OnNewProcessingStatistics;
     }
