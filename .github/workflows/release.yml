@@ -44,13 +44,11 @@ jobs:
       - name: Build Nethermind.Runner
         id: build
         run: |
-          export SOURCE_DATE_EPOCH=$(git log -1 --pretty=%ct)
-
           mkdir $GITHUB_WORKSPACE/$PUB_DIR
 
           docker build . -t nethermind-build -f $SCRIPTS_PATH/Dockerfile \
             --build-arg COMMIT_HASH=$GITHUB_SHA \
-            --build-arg SOURCE_DATE_EPOCH=$SOURCE_DATE_EPOCH
+            --build-arg SOURCE_DATE_EPOCH=$(git log -1 --pretty=%ct)
 
           docker run --rm --mount type=bind,source=$GITHUB_WORKSPACE/$PUB_DIR,target=/output nethermind-build
 
@@ -203,13 +201,13 @@ jobs:
           image=nethermind/nethermind
 
           for suffix in "" ".chiseled"; do
-            if [[ $suffix == ".chiseled" ]]; then tag_suffix="-chiseled"; else tag_suffix=""; fi
+            tag_suffix=$([[ -z "$suffix" ]] && echo "" || echo "-${suffix:1}")
 
-            docker buildx build --platform=linux/amd64,linux/arm64 -f Dockerfile$suffix \
+            docker buildx build . --platform=linux/amd64,linux/arm64 -f Dockerfile$suffix \
               ${{ needs.build.outputs.prerelease == 'false' && '-t $image:latest$tag_suffix' || '' }} \
               -t "$image:${{ needs.build.outputs.version }}$tag_suffix" \
               --build-arg CI=$CI \
               --build-arg COMMIT_HASH=$GITHUB_SHA \
-              --build-arg SOURCE_DATE_EPOCH=$SOURCE_DATE_EPOCH \
-              . --push
+              --build-arg SOURCE_DATE_EPOCH=$(git log -1 --pretty=%ct) \
+              --push
           done
