@@ -139,6 +139,8 @@ public sealed class LogIndexService : ILogIndexService
             _progressLoggerTimer.AutoReset = true;
             _progressLoggerTimer.Elapsed += (_, _) => LogProgress();
             _progressLoggerTimer.Start();
+
+            IsRunning = true;
         }
         catch (Exception ex)
         {
@@ -166,6 +168,8 @@ public sealed class LogIndexService : ILogIndexService
         }
 
         await _logIndexStorage.StopAsync();
+
+        IsRunning = false;
     }
 
     public async ValueTask DisposeAsync()
@@ -221,16 +225,14 @@ public sealed class LogIndexService : ILogIndexService
         //     _newForwardBlockEvent.Set();
     }
 
-    public int GetMaxTargetBlockNumber()
-    {
-        return (int)Math.Max(_blockTree.BestKnownNumber - MaxReorgDepth, 0);
-    }
+    public int MaxTargetBlockNumber => (int)Math.Max(_blockTree.BestKnownNumber - MaxReorgDepth, 0);
 
-    public int GetMinTargetBlockNumber()
-    {
-        // Block 0 should always be present
-        return (int)(_syncConfig.AncientReceiptsBarrierCalc <= 1 ? 0 : _syncConfig.AncientReceiptsBarrierCalc);
-    }
+    // Block 0 should always be present
+    public int MinTargetBlockNumber => (int)(_syncConfig.AncientReceiptsBarrierCalc <= 1 ? 0 : _syncConfig.AncientReceiptsBarrierCalc);
+
+    public bool IsRunning { get; private set; }
+    public DateTime? LastUpdateUtc { get; private set; }
+    public Exception? LastError { get; private set; }
 
     private ProcessingQueue BuildQueue(bool isForward)
     {
@@ -277,6 +279,8 @@ public sealed class LogIndexService : ILogIndexService
         if (_logger.IsError)
             _logger.Error($"{GetLogPrefix()} syncing failed. Please restart the client.", exception);
 
+        LastError = exception;
+
         if (!isStopping)
             await StopAsync();
     }
@@ -296,6 +300,7 @@ public sealed class LogIndexService : ILogIndexService
             throw new($"{GetLogPrefix(isForward)}: non sequential batches: ({aggregate.FirstBlockNum} instead of {next}).");
 
         await _logIndexStorage.SetReceiptsAsync(aggregate, !isForward, _stats?[isForward]);
+        LastUpdateUtc = DateTime.UtcNow;
 
         if (aggregate.LastBlockNum == 0)
             _receiptStorage.AnyReceiptsInserted -= OnReceiptsInserted;
@@ -327,7 +332,7 @@ public sealed class LogIndexService : ILogIndexService
             var buffer = new BlockReceipts[_config.SyncBatchSize];
             while (!CancellationToken.IsCancellationRequested)
             {
-                if (!isForward && start < GetMinTargetBlockNumber())
+                if (!isForward && start < MinTargetBlockNumber)
                 {
                     if (_logger.IsTrace)
                         _logger.Trace($"{GetLogPrefix(isForward)}: queued last block");
@@ -340,8 +345,8 @@ public sealed class LogIndexService : ILogIndexService
 
                 // from - inclusive, to - exclusive
                 var (from, to) = isForward
-                    ? (start, Math.Min(end, GetMaxTargetBlockNumber()) + 1)
-                    : (end, Math.Max(start, GetMinTargetBlockNumber()) + 1);
+                    ? (start, Math.Min(end, MaxTargetBlockNumber) + 1)
+                    : (end, Math.Max(start, MinTargetBlockNumber) + 1);
 
                 var timestamp = Stopwatch.GetTimestamp();
                 Array.Clear(buffer);
@@ -400,7 +405,7 @@ public sealed class LogIndexService : ILogIndexService
 
         if (!_backwardProgressLogger.HasEnded)
         {
-            _backwardProgressLogger.TargetValue = pivotNumber - GetMinTargetBlockNumber();
+            _backwardProgressLogger.TargetValue = pivotNumber - MinTargetBlockNumber;
             _backwardProgressLogger.Update(_logIndexStorage.GetMinBlockNumber() is { } min ? pivotNumber - min : 0);
             _backwardProgressLogger.CurrentQueued = _processingQueues[false].QueueCount;
 
