@@ -436,11 +436,11 @@ RootCommand CreateRootCommand()
         versionOption.Action = new AsynchronousCommandLineAction(parseResult =>
         {
             parseResult.InvocationConfiguration.Output.WriteLine($"""
-                Version:    {ProductInfo.Version}
-                Commit:     {ProductInfo.Commit}
-                Build date: {ProductInfo.BuildTimestamp:u}
-                Runtime:    {ProductInfo.Runtime}
-                Platform:   {ProductInfo.OS} {ProductInfo.OSArchitecture}
+                Version:     {ProductInfo.Version}
+                Commit:      {ProductInfo.Commit}
+                Source date: {ProductInfo.SourceDate:u}
+                Runtime:     {ProductInfo.Runtime}
+                Platform:    {ProductInfo.OS} {ProductInfo.OSArchitecture}
                 """);
 
             return ExitCodes.Ok;
