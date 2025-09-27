@@ -57,6 +57,11 @@ public class ColumnDb : IDb
         _mainDb.SetWithColumnFamily(key, _columnFamily, value, writeFlags);
     }
 
+    public void Merge(ReadOnlySpan<byte> key, ReadOnlySpan<byte> value, WriteFlags writeFlags = WriteFlags.None)
+    {
+        _mainDb.MergeWithColumnFamily(key, _columnFamily, value, writeFlags);
+    }
+
     public KeyValuePair<byte[], byte[]?>[] this[byte[][] keys] =>
         _rocksDb.MultiGet(keys, keys.Select(k => _columnFamily).ToArray());
 
@@ -115,6 +120,11 @@ public class ColumnDb : IDb
         {
             _underlyingWriteBatch.Set(key, value, _columnDb._columnFamily, flags);
         }
+
+        public void Merge(ReadOnlySpan<byte> key, ReadOnlySpan<byte> value, WriteFlags flags = WriteFlags.None)
+        {
+            _underlyingWriteBatch.Merge(key, value, _columnDb._columnFamily, flags);
+        }
     }
 
     public void Remove(ReadOnlySpan<byte> key)
@@ -130,7 +140,7 @@ public class ColumnDb : IDb
 
     public void Flush(bool onlyWal)
     {
-        _mainDb.Flush(onlyWal);
+        _mainDb.FlushWithColumnFamily(_columnFamily);
     }
 
     public void Compact()
@@ -150,5 +160,15 @@ public class ColumnDb : IDb
     public void DangerousReleaseMemory(in ReadOnlySpan<byte> span)
     {
         _mainDb.DangerousReleaseMemory(span);
+    }
+
+    public IIterator GetIterator(bool isTailing = false)
+    {
+        return _mainDb.GetIterator(isTailing, _columnFamily);
+    }
+
+    public IIterator GetIterator(ref IteratorOptions options)
+    {
+        return _mainDb.GetIterator(ref options, _columnFamily);
     }
 }

@@ -52,6 +52,11 @@ namespace Nethermind.Db
                     _wrapped.PutSpan(key, Compress(value, stackalloc byte[value.Length]), flags);
                 }
 
+                public void Merge(ReadOnlySpan<byte> key, ReadOnlySpan<byte> value, WriteFlags flags = WriteFlags.None)
+                {
+                    throw new InvalidOperationException("EOA compressing DB does not support merging");
+                }
+
                 public bool PreferWriteByArray => _wrapped.PreferWriteByArray;
 
                 public byte[]? this[ReadOnlySpan<byte> key]
@@ -133,6 +138,11 @@ namespace Nethermind.Db
             public IEnumerable<byte[]> GetAllValues(bool ordered = false) =>
                 _wrapped.GetAllValues(ordered).Select(Decompress);
 
+            public void Merge(ReadOnlySpan<byte> key, ReadOnlySpan<byte> value, WriteFlags flags = WriteFlags.None)
+            {
+                _wrapped.Merge(key, value, flags);
+            }
+
             public void Remove(ReadOnlySpan<byte> key) => _wrapped.Remove(key);
 
             public bool KeyExists(ReadOnlySpan<byte> key) => _wrapped.KeyExists(key);
@@ -168,6 +178,16 @@ namespace Nethermind.Db
             {
                 if (_wrapped is ITunableDb tunable)
                     tunable.Tune(type);
+            }
+
+            public IIterator GetIterator(bool isTailing = false)
+            {
+                return _wrapped.GetIterator(isTailing);
+            }
+
+            public IIterator GetIterator(ref IteratorOptions options)
+            {
+                return _wrapped.GetIterator(ref options);
             }
         }
     }

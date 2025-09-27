@@ -19,8 +19,13 @@ namespace Nethermind.Blockchain.Receipts
         void RemoveReceipts(Block block);
 
         /// <summary>
-        /// Receipts for a block are inserted
+        /// Receipts for a new main block are inserted
         /// </summary>
         event EventHandler<BlockReplacementEventArgs> ReceiptsInserted;
+
+        /// <summary>
+        /// Any receipts are inserted
+        /// </summary>
+        event EventHandler<ReceiptsEventArgs> AnyReceiptsInserted;
     }
 }
