@@ -17,7 +17,7 @@ public class LogIndexStatus
     public required Range Current { get; init; }
     public required Range Target { get; init; }
     public bool IsRunning { get; init; }
-    public DateTime? LastUpdateUtc { get; init; }
+    public DateTimeOffset? LastUpdate { get; init; }
     public string? LastError { get; init; }
     public required string DbSize { get; init; }
 }

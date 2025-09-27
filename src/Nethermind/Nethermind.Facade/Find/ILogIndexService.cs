@@ -11,7 +11,7 @@ namespace Nethermind.Facade.Find
         bool IsRunning { get; }
         int MaxTargetBlockNumber { get; }
         int MinTargetBlockNumber { get; }
-        DateTime? LastUpdateUtc { get; }
+        DateTimeOffset? LastUpdate { get; }
         Exception? LastError { get; }
     }
 }

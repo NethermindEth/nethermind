@@ -57,7 +57,7 @@ public class LogIndexRpcModule(ILogIndexStorage storage, ILogIndexService servic
                 ToBlock = service.MaxTargetBlockNumber
             },
             IsRunning = service.IsRunning,
-            LastUpdateUtc = service.LastUpdateUtc,
+            LastUpdate = service.LastUpdate,
             LastError = service.LastError?.ToString(),
             DbSize = storage.GetDbSize()
         });

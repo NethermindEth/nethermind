@@ -231,7 +231,7 @@ public sealed class LogIndexService : ILogIndexService
     public int MinTargetBlockNumber => (int)(_syncConfig.AncientReceiptsBarrierCalc <= 1 ? 0 : _syncConfig.AncientReceiptsBarrierCalc);
 
     public bool IsRunning { get; private set; }
-    public DateTime? LastUpdateUtc { get; private set; }
+    public DateTimeOffset? LastUpdate { get; private set; }
     public Exception? LastError { get; private set; }
 
     private ProcessingQueue BuildQueue(bool isForward)
@@ -300,7 +300,7 @@ public sealed class LogIndexService : ILogIndexService
             throw new($"{GetLogPrefix(isForward)}: non sequential batches: ({aggregate.FirstBlockNum} instead of {next}).");
 
         await _logIndexStorage.SetReceiptsAsync(aggregate, !isForward, _stats?[isForward]);
-        LastUpdateUtc = DateTime.UtcNow;
+        LastUpdate = DateTimeOffset.Now;
 
         if (aggregate.LastBlockNum == 0)
             _receiptStorage.AnyReceiptsInserted -= OnReceiptsInserted;
