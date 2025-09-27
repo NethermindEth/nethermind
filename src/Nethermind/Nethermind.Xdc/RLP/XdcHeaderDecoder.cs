@@ -21,7 +21,6 @@ public sealed class XdcHeaderDecoder : IHeaderDecoder
         ReadOnlySpan<byte> headerRlp = decoderContext.PeekNextItem();
         int headerSequenceLength = decoderContext.ReadSequenceLength();
         int headerCheck = decoderContext.Position + headerSequenceLength;
-        var x = new BlockDecoder(new XdcHeaderDecoder());
         Hash256? parentHash = decoderContext.DecodeKeccak();
         Hash256? unclesHash = decoderContext.DecodeKeccak();
         Address? beneficiary = decoderContext.DecodeAddress();
