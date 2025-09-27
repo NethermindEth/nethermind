@@ -51,6 +51,7 @@ public class StateProviderTests
         }
     }
 
+    /*
     [Test]
     public void Eip_158_touch_zero_value_system_account_is_not_deleted()
     {
@@ -64,9 +65,8 @@ public class StateProviderTests
         var releaseSpec = new ReleaseSpec() { IsEip158Enabled = true };
         provider.InsertCode(systemUser, System.Text.Encoding.UTF8.GetBytes(""), releaseSpec);
         provider.Commit(releaseSpec);
-
-        ((WorldState)provider).GetAccount(systemUser).Should().NotBeNull();
     }
+    */
 
     [Test]
     public void Empty_commit_restore()

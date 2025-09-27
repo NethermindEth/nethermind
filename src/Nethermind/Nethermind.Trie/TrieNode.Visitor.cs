@@ -31,7 +31,7 @@ namespace Nethermind.Trie
 
     public class TrieNodeTraverser<TNodeContext>(ITreeVisitor<TNodeContext> visitor, TrieVisitContext options) where TNodeContext : struct, INodeContext<TNodeContext>
     {
-        private static readonly AccountDecoder _accountDecoder = new();
+        private static readonly AccountStructDecoder _accountDecoder = new();
         private int _maxDegreeOfParallelism = options.MaxDegreeOfParallelism;
         private ConcurrencyController _threadLimiter = new(options.MaxDegreeOfParallelism);
         private const long SubtreeSizeThreshold = 256 * 1024;
@@ -120,7 +120,8 @@ namespace Nethermind.Trie
                         if (!isStorage && visitor.ExpectAccounts)
                         {
                             Rlp.ValueDecoderContext decoderContext = new Rlp.ValueDecoderContext(node.Value.Span);
-                            if (!_accountDecoder.TryDecodeStruct(ref decoderContext, out AccountStruct account))
+                            AccountStruct? accountStruct = _accountDecoder.Decode(ref decoderContext);
+                            if (accountStruct is not {} account)
                             {
                                 throw new InvalidDataException("Non storage leaf should be an account");
                             }
