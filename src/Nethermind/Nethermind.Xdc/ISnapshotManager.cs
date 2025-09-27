@@ -13,15 +13,11 @@ using System.Collections.ObjectModel;
 namespace Nethermind.Xdc;
 public interface ISnapshotManager
 {
-    ulong GetLastSignersCount();
-    bool TryGetSnapshot(long number, Hash256 hash, out Snapshot snapshot);
-    bool TryStoreSnapshot(Snapshot snapshot);
-    bool IsValidVote(Snapshot snapshot, Address address, bool authorize);
-    bool IsInTurn(Snapshot snapshot, long number, Address signer);
-    bool HasSignedRecently(Snapshot snapshot, long number, Address signer);
-    bool TryGetSnapshot(XdcBlockHeader header, out Snapshot snapshot);
-    void TryCacheSnapshot(Snapshot snapshot);
-    bool TryGetSnapshot(ulong gapNumber, bool isGapNumber, out Snapshot snap);
+    Snapshot? GetSnapshot(Hash256 hash);
+    bool StoreSnapshot(Snapshot snapshot);
+    Snapshot? GetSnapshotByGapNumber(ulong gapNumber);
+    Snapshot? GetSnapshotByHeaderNumber(ulong number, ulong xdcEpoch, ulong xdcGap);
+    Snapshot? GetSnapshotByHeader(XdcBlockHeader? header);
     Address[] CalculateNextEpochMasternodes(XdcBlockHeader xdcHeader);
     Address[] GetMasternodes(XdcBlockHeader xdcHeader);
     Address[] GetPenalties(XdcBlockHeader xdcHeader);
