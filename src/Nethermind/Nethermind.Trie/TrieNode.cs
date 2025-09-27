@@ -577,6 +577,11 @@ namespace Nethermind.Trie
                 return null;
             }
 
+            if (rlpStream.PeekByte() < 192)
+            {
+                return null;
+            }
+
             rlpStream.ReadSequenceLength();
             _ = rlpStream.DecodeByteArraySpan();
             ReadOnlySpan<byte> value = rlpStream.DecodeByteArraySpan();
