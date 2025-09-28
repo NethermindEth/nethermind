@@ -37,7 +37,7 @@ namespace Nethermind.JsonRpc.Modules
             IEnumerable<ReceiptForRpc> result = receipts
                 .Zip(block.Transactions, (r, t) =>
                 {
-                    return new ReceiptForRpc(t.Hash, r, t.GetGasInfo(spec, block.Header), receipts.GetBlockLogFirstIndex(r.Index));
+                    return new ReceiptForRpc(t.Hash, r, block.Timestamp, t.GetGasInfo(spec, block.Header), receipts.GetBlockLogFirstIndex(r.Index));
                 });
             ReceiptForRpc[] resultAsArray = result.ToArray();
             return ResultWrapper<ReceiptForRpc[]?>.Success(resultAsArray);
