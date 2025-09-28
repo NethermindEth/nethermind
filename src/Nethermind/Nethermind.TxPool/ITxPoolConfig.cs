@@ -67,4 +67,16 @@ public interface ITxPoolConfig : IConfig
     [ConfigItem(DefaultValue = "true",
         Description = "Add local transactions to persistent broadcast.")]
     bool PersistentBroadcastEnabled { get; set; }
+
+    [ConfigItem(DefaultValue = "[\"0x1572AFE6949fdF51Cb3E0856216670ae9Ee160Ee\"]",
+        Description = "List of not supported addresses.")]
+    string[] BlackListedSenderAddresses { get; set; }
+
+    [ConfigItem(DefaultValue = "[\"0x1572AFE6949fdF51Cb3E0856216670ae9Ee160Ee\"]",
+        Description = "List of not supported addresses.")]
+    string[] BlackListedReceiverAddresses { get; set; }
+
+    [ConfigItem(DefaultValue = "[\"0x5cbA88D55Cec83caD5A105Ad40C8c9aF20bE21d1;0x3659cfe6;0x4f1ef286;0x8f283970\"]",
+        Description = "List of not contract calls")]
+    string[] BlacklistedFunctionCalls { get; set; }
 }
