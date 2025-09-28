@@ -35,7 +35,7 @@ public interface ILogIndexConfig : IConfig
 
     [ConfigItem(
         Description = "Log index sync: maximum size of queue of blocks for aggregating.",
-        DefaultValue = "4096",
+        DefaultValue = "16",
         HiddenFromDocs = true
     )]
     public int SyncAggregateBatchQueueSize { get; set; }
