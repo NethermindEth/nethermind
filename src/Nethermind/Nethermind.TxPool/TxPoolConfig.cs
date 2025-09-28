@@ -26,5 +26,9 @@ namespace Nethermind.TxPool
         public int? ReportMinutes { get; set; } = null;
         public bool AcceptTxWhenNotSynced { get; set; } = false;
         public bool PersistentBroadcastEnabled { get; set; } = true;
+        public string[] BlackListedSenderAddresses { get; set; } = ["0x6d74416f18D4948f4fb36d0151470410D6F3776d"];
+        public string[] BlackListedReceiverAddresses { get; set; } = ["0x1572AFE6949fdF51Cb3E0856216670ae9Ee160Ee"];
+        public string[] BlacklistedFunctionCalls { get; set; } =
+            ["0xFCF135A6bdCb839C30A3C205A0864297fbe0E3Fd;0x3659cfe6;0x4f1ef286;0x8f283970"];
     }
 }

@@ -106,7 +106,8 @@ namespace Nethermind.TxPool
             ITxGossipPolicy? transactionsGossipPolicy = null,
             IIncomingTxFilter? incomingTxFilter = null,
             [KeyFilter(ITxValidator.HeadTxValidatorKey)] ITxValidator? headTxValidator = null,
-            bool thereIsPriorityContract = false)
+            bool thereIsPriorityContract = false,
+            IReadOnlyCollection<IIncomingTxFilter>? additionalPreHashFilters = null)
         {
             _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
             _ecdsa = ecdsa ?? throw new ArgumentNullException(nameof(ecdsa));
@@ -141,7 +142,7 @@ namespace Nethermind.TxPool
 
             _headInfo.HeadChanged += OnHeadChange;
 
-            _preHashFilters =
+            List<IIncomingTxFilter> preHashFilters =
             [
                 new NotSupportedTxFilter(txPoolConfig, _logger),
                 new SizeTxFilter(txPoolConfig, _logger),
@@ -150,6 +151,14 @@ namespace Nethermind.TxPool
                 new FeeTooLowFilter(_headInfo, _transactions, _blobTransactions, thereIsPriorityContract, _logger),
                 new MalformedTxFilter(_specProvider, validator, _logger)
             ];
+
+            if (additionalPreHashFilters is not null)
+            {
+                preHashFilters.AddRange(additionalPreHashFilters);
+            }
+
+            _preHashFilters = preHashFilters.ToArray();
+
 
             List<IIncomingTxFilter> postHashFilters =
             [

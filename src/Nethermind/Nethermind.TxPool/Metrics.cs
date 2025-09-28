@@ -164,5 +164,10 @@ namespace Nethermind.TxPool
 
         [Description("Number of transactions reorganized during chain reorg.")]
         public static long TransactionsReorged { get; internal set; }
+
+        [CounterMetric]
+        [Description("Number of blacklisted transactions.")]
+        public static long BlacklistedTransactions { get; set; }
+
     }
 }

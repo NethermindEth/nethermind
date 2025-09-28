@@ -17,12 +17,17 @@ using Nethermind.Consensus.Processing;
 using Nethermind.Consensus.Processing.CensorshipDetector;
 using Nethermind.Consensus.Producers;
 using Nethermind.Consensus.Scheduler;
+using Nethermind.Consensus.Tracing;
 using Nethermind.Core;
 using Nethermind.Core.Attributes;
 using Nethermind.Evm;
 using Nethermind.Evm.State;
+using Nethermind.Init.Steps.Migrations;
+using Nethermind.JsonRpc;
+using Nethermind.JsonRpc.Modules.DebugModule;
 using Nethermind.State;
 using Nethermind.TxPool;
+using Nethermind.TxPool.Filters;
 using Nethermind.Wallet;
 
 namespace Nethermind.Init.Steps
@@ -33,7 +38,7 @@ namespace Nethermind.Init.Steps
         typeof(SetupKeyStore),
         typeof(InitializePrecompiles)
     )]
-    public class InitializeBlockchain(INethermindApi api) : IStep
+    public class InitializeBlockchain(INethermindApi api, CompliantNodeFilters compliantNodeFilters) : IStep
     {
         private readonly INethermindApi _api = api;
 
@@ -135,7 +140,8 @@ namespace Nethermind.Init.Steps
                 CreateTxPoolTxComparer(),
                 _api.TxGossipPolicy,
                 null,
-                _api.HeadTxValidator
+                _api.HeadTxValidator,
+                additionalPreHashFilters: compliantNodeFilters.Filters
             );
 
             _api.DisposeStack.Push(txPool);

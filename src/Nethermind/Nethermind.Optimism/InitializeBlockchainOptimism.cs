@@ -7,13 +7,14 @@ using Nethermind.Consensus.Producers;
 using Nethermind.Consensus.Validators;
 using Nethermind.Core;
 using Nethermind.Facade.Eth.RpcTransaction;
+using Nethermind.Init;
 using Nethermind.Init.Steps;
 using Nethermind.Optimism.Rpc;
 using Nethermind.TxPool;
 
 namespace Nethermind.Optimism;
 
-public class InitializeBlockchainOptimism(OptimismNethermindApi api) : InitializeBlockchain(api)
+public class InitializeBlockchainOptimism(OptimismNethermindApi api) : InitializeBlockchain(api, new CompliantNodeFilters([]))
 {
     protected override async Task InitBlockchain()
     {

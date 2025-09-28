@@ -21,6 +21,7 @@ using Nethermind.Core;
 using Nethermind.Core.Container;
 using Nethermind.Evm.State;
 using Nethermind.Evm.TransactionProcessing;
+using Nethermind.Init;
 using Nethermind.Init.Steps;
 using Nethermind.Logging;
 using Nethermind.TxPool;
@@ -42,7 +43,7 @@ public class InitializeBlockchainAuRa : InitializeBlockchain
         ILifetimeScope rootLifetimeScope,
         IBlockValidationModule[] validationBlockProcessingModules,
         IAbiEncoder abiEncoder
-    ) : base(api)
+    ) : base(api, new CompliantNodeFilters([]))
     {
         _api = api;
         _rootLifetimeScope = rootLifetimeScope;
