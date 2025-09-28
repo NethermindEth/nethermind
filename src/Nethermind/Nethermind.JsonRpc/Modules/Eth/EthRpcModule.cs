@@ -806,16 +806,20 @@ public partial class EthRpcModule(
     {
         ForkActivationsSummary forks = forkInfo.GetForkActivationsSummary(_blockFinder.Head?.Header);
 
+        ForkConfig? current = GetForkConfig(forks.Current, _specProvider);
+        ForkConfig? next = GetForkConfig(forks.Next, _specProvider);
+        ForkConfig? last = next is not null ? GetForkConfig(forks.Last, _specProvider) : null;
+
         return ResultWrapper<JsonNode>.Success(JsonNode.Parse(JsonSerializer.Serialize((new ForkConfigSummary
         {
-            Current = GetForkConfig(forks.Current, _specProvider)!,
-            Next = GetForkConfig(forks.Next, _specProvider),
-            Last = GetForkConfig(forks.Last, _specProvider)
+            Current = current,
+            Next = next,
+            Last = last
         }), UnchangedDictionaryKeyOptions)));
 
         static ForkConfig? GetForkConfig(Fork? fork, ISpecProvider specProvider)
         {
-            if (fork is null)
+            if (fork is null || fork.Value.Activation.Timestamp is null)
             {
                 return null;
             }
@@ -824,8 +828,8 @@ public partial class EthRpcModule(
 
             return new ForkConfig
             {
-                ActivationTime = fork.Value.Activation.Timestamp is not null ? (int)fork.Value.Activation.Timestamp : null,
-                ActivationBlock = fork.Value.Activation.Timestamp is null ? (int)fork.Value.Activation.BlockNumber : null,
+                ActivationTime = (int)fork.Value.Activation.Timestamp,
+                ActivationBlock = (int)fork.Value.Activation.BlockNumber,
                 BlobSchedule = spec.IsEip4844Enabled ? new BlobScheduleSettingsForRpc
                 {
                     BaseFeeUpdateFraction = (int)spec.BlobBaseFeeUpdateFraction,
