@@ -442,11 +442,11 @@ public sealed class LogIndexService : ILogIndexService
 
     private void MarkCompleted(bool isForward)
     {
+        if (!_completions[isForward].TrySetResult())
+            return;
+
         if (_progressLoggers.TryGetValue(isForward, out ProgressLogger progress))
             progress.MarkEnd();
-
-        if (_completions.TryGetValue(isForward, out TaskCompletionSource completion))
-            completion.TrySetResult();
 
         if (_logger.IsInfo)
             _logger.Info($"{GetLogPrefix(isForward: false)}: completed.");
