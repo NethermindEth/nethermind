@@ -21,6 +21,11 @@ namespace Nethermind.TxPool
         public static readonly AcceptTxResult AlreadyKnown = new(1, nameof(AlreadyKnown));
 
         /// <summary>
+        /// The address is part of the blacklist.
+        /// </summary>
+        public static readonly AcceptTxResult BlacklistedAddress = new(403, nameof(BlacklistedAddress));
+
+        /// <summary>
         /// Covers scenarios where sender recovery fails.
         /// </summary>
         public static readonly AcceptTxResult FailedToResolveSender = new(2, nameof(FailedToResolveSender));
@@ -96,7 +101,7 @@ namespace Nethermind.TxPool
         public static readonly AcceptTxResult MaxTxSizeExceeded = new(16, nameof(MaxTxSizeExceeded));
 
         /// <summary>
-        /// Only one tx with current state matching nonce is allowed per delegated account or pending delegation. 
+        /// Only one tx with current state matching nonce is allowed per delegated account or pending delegation.
         /// </summary>
         public static readonly AcceptTxResult NotCurrentNonceForDelegation = new(17, nameof(NotCurrentNonceForDelegation));
 

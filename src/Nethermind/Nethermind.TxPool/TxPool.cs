@@ -106,7 +106,8 @@ namespace Nethermind.TxPool
             ITxGossipPolicy? transactionsGossipPolicy = null,
             IIncomingTxFilter? incomingTxFilter = null,
             [KeyFilter(ITxValidator.HeadTxValidatorKey)] ITxValidator? headTxValidator = null,
-            bool thereIsPriorityContract = false)
+            bool thereIsPriorityContract = false,
+            IIncomingTxFilter? preHashFilter = null)
         {
             _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
             _ecdsa = ecdsa ?? throw new ArgumentNullException(nameof(ecdsa));
@@ -141,7 +142,7 @@ namespace Nethermind.TxPool
 
             _headInfo.HeadChanged += OnHeadChange;
 
-            _preHashFilters =
+            List<IIncomingTxFilter> preHashFilters =
             [
                 new NotSupportedTxFilter(txPoolConfig, _logger),
                 new SizeTxFilter(txPoolConfig, _logger),
@@ -150,6 +151,27 @@ namespace Nethermind.TxPool
                 new FeeTooLowFilter(_headInfo, _transactions, _blobTransactions, thereIsPriorityContract, _logger),
                 new MalformedTxFilter(_specProvider, validator, _logger)
             ];
+
+            var senderBlacklist = txPoolConfig.BlackListedSenderAddresses
+                .Select(address => new AddressAsKey(new Address(address)))
+                .ToHashSet();
+
+            var receiverBlacklist = txPoolConfig.BlackListedReceiverAddresses
+                .Select(address => new AddressAsKey(new Address(address)))
+                .ToHashSet();
+
+            if (senderBlacklist.Count > 0 || receiverBlacklist.Count > 0)
+            {
+                preHashFilters.Add(new AddressFilter(receiverBlacklist, senderBlacklist, _logger));
+            }
+
+            if (preHashFilter is not null)
+            {
+                preHashFilters.AddRange(preHashFilter);
+            }
+
+            _preHashFilters = preHashFilters.ToArray();
+
 
             List<IIncomingTxFilter> postHashFilters =
             [
