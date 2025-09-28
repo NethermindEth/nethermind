@@ -513,7 +513,7 @@ namespace Nethermind.Evm.TransactionProcessing
                 overflows = UInt256.MultiplyOverflow((UInt256)tx.GasLimit, effectiveGasPrice, out senderReservedGasPayment);
                 if (!overflows && tx.SupportsBlobs)
                 {
-                    overflows = !BlobGasCalculator.TryCalculateBlobBaseFee(header, tx, spec.BlobBaseFeeUpdateFraction, out blobBaseFee);
+                    overflows = !TryCalculateBlobBaseFee(header, tx, spec.BlobBaseFeeUpdateFraction, out blobBaseFee);
                     if (!overflows)
                     {
                         overflows = UInt256.AddOverflow(senderReservedGasPayment, blobBaseFee, out senderReservedGasPayment);
@@ -531,6 +531,10 @@ namespace Nethermind.Evm.TransactionProcessing
 
             return TransactionResult.Ok;
         }
+
+        protected virtual bool TryCalculateBlobBaseFee(BlockHeader header, Transaction transaction,
+            UInt256 blobGasPriceUpdateFraction, out UInt256 blobBaseFee) =>
+            BlobGasCalculator.TryCalculateBlobBaseFee(header, transaction, blobGasPriceUpdateFraction, out blobBaseFee);
 
         protected virtual TransactionResult IncrementNonce(Transaction tx, BlockHeader header, IReleaseSpec spec, ITxTracer tracer, ExecutionOptions opts)
         {
