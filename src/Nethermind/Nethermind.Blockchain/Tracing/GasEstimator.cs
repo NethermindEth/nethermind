@@ -31,6 +31,7 @@ public class GasEstimator(
         int errorMargin = DefaultErrorMargin, CancellationToken token = new())
     {
         err = null;
+        errorMargin = 0;
 
         switch (errorMargin)
         {
@@ -75,6 +76,7 @@ public class GasEstimator(
             err = "Cannot estimate gas, gas spent exceeded transaction and block gas limit or transaction gas limit cap";
             return 0;
         }
+        Console.WriteLine($"Bounds: {leftBound}, {rightBound}");
 
         // Execute binary search to find the optimal gas estimation.
         return BinarySearchEstimate(leftBound, rightBound, tx, header, gasTracer, errorMargin, token, out err);
@@ -111,10 +113,12 @@ public class GasEstimator(
             long mid = (leftBound + rightBound) / 2;
             if (!TryExecutableTransaction(tx, header, mid, token, gasTracer))
             {
+                Console.WriteLine($"GoLEFT {mid}");
                 leftBound = mid;
             }
             else
             {
+                Console.WriteLine($"GoRIGHT {mid}");
                 rightBound = mid;
             }
         }
@@ -124,6 +128,9 @@ public class GasEstimator(
             err = GetError(gasTracer);
             return 0;
         }
+
+
+        Console.WriteLine($"Estimated {rightBound}");
 
         return rightBound;
     }
