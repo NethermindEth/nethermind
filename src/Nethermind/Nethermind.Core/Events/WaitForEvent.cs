@@ -10,6 +10,16 @@ namespace Nethermind.Core.Events;
 public static class Wait
 {
     public static async Task ForEventCondition<T>(
+        TimeSpan timeout,
+        Action<EventHandler<T>> register,
+        Action<EventHandler<T>> unregister,
+        Func<T, bool> condition)
+    {
+        using var timeoutSource = new CancellationTokenSource(timeout);
+        await ForEventCondition(timeoutSource.Token, register, unregister, condition);
+    }
+
+    public static async Task ForEventCondition<T>(
         CancellationToken cancellationToken,
         Action<EventHandler<T>> register,
         Action<EventHandler<T>> unregister,
