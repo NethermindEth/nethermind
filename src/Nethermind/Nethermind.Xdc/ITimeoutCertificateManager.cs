@@ -4,16 +4,12 @@
 
 using Nethermind.Xdc.Types;
 using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Text;
-using System.Threading.Tasks;
 
 namespace Nethermind.Xdc;
-internal interface ITimeoutCertificateManager
+public interface ITimeoutCertificateManager
 {
     void HandleTimeout(Timeout timeout);
     void OnCountdownTimer(DateTime time);
     void ProcessTimeoutCertificate(TimeoutCert timeoutCert);
-    void VerifyTimeoutCertificate(TimeoutCert timeoutCert);
+    bool VerifyTimeoutCertificate(TimeoutCert timeoutCert, out string errorMessage);
 }
