@@ -31,7 +31,6 @@ public class GasEstimator(
         int errorMargin = DefaultErrorMargin, CancellationToken token = new())
     {
         err = null;
-        errorMargin = 0;
 
         switch (errorMargin)
         {
@@ -61,7 +60,6 @@ public class GasEstimator(
         }
 
         long lowerBound = IntrinsicGasCalculator.Calculate(tx, releaseSpec).MinimalGas;
-
         // Setting boundaries for binary search - determine lowest and highest gas can be used during the estimation:
         long leftBound = gasTracer.GasSpent != 0 && gasTracer.GasSpent >= lowerBound
             ? gasTracer.GasSpent - 1
@@ -76,7 +74,9 @@ public class GasEstimator(
             err = "Cannot estimate gas, gas spent exceeded transaction and block gas limit or transaction gas limit cap";
             return 0;
         }
-        Console.WriteLine($"Bounds: {leftBound}, {rightBound}");
+
+        // If transaction is simple transfer return intrinsic gas
+        if (tx.To is not null && tx.Data.IsEmpty) return lowerBound;
 
         // Execute binary search to find the optimal gas estimation.
         return BinarySearchEstimate(leftBound, rightBound, tx, header, gasTracer, errorMargin, token, out err);
@@ -113,12 +113,10 @@ public class GasEstimator(
             long mid = (leftBound + rightBound) / 2;
             if (!TryExecutableTransaction(tx, header, mid, token, gasTracer))
             {
-                Console.WriteLine($"GoLEFT {mid}");
                 leftBound = mid;
             }
             else
             {
-                Console.WriteLine($"GoRIGHT {mid}");
                 rightBound = mid;
             }
         }
