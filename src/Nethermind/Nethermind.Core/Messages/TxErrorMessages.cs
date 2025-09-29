@@ -1,10 +1,7 @@
 // SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using Nethermind.Core;
-using Nethermind.Crypto;
-
-namespace Nethermind.Consensus.Messages;
+namespace Nethermind.Core.Messages;
 public static class TxErrorMessages
 {
     public static string InvalidTxType(string name) =>
@@ -53,7 +50,7 @@ public static class TxErrorMessages
         "MissingBlobVersionedHash: Must be set.";
 
     public static readonly string InvalidBlobVersionedHashSize =
-        $"InvalidBlobVersionedHashSize: Cannot exceed {KzgPolynomialCommitments.BytesPerBlobVersionedHash}.";
+        $"InvalidBlobVersionedHashSize: Cannot exceed {Eip4844Constants.BytesPerBlobVersionedHash}.";
 
     public const string InvalidBlobVersionedHashVersion =
         "InvalidBlobVersionedHashVersion: Blob version not supported.";
@@ -82,7 +79,7 @@ public static class TxErrorMessages
         "InvalidBlobCommitmentHash: Commitment hash does not match.";
 
     public static string TxGasLimitCapExceeded(long gasLimit, long gasLimitCap)
-        => $"TxGasLimitCapExceeded: Gas limit {gasLimit} exceeed cap of {gasLimitCap}.";
+        => $"TxGasLimitCapExceeded: Gas limit {gasLimit} exceeded cap of {gasLimitCap}.";
 
     public const string InvalidCreateTxData
         = "InvalidCreateTxData: Legacy createTx cannot create Eof code";
@@ -95,4 +92,7 @@ public static class TxErrorMessages
 
     public const string EofContractSizeInvalid
         = "EofContractSizeInvalid: Eof initcode size is invalid (either 0 or too big)";
+
+    public const string NonceTooHigh = "NonceTooHigh: Nonce exceeds max nonce";
+
 }
