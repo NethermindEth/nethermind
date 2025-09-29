@@ -73,7 +73,7 @@ public abstract class VirtualMachineTestsBase
         IBlockhashProvider blockhashProvider = new TestBlockhashProvider(SpecProvider);
         CodeInfoRepository = new EthereumCodeInfoRepository(TestState);
         Machine = new VirtualMachine(blockhashProvider, SpecProvider, logManager);
-        _processor = new TransactionProcessor(SpecProvider, TestState, Machine, CodeInfoRepository, logManager);
+        _processor = new TransactionProcessor(GasCalculator.Instance, SpecProvider, TestState, Machine, CodeInfoRepository, logManager);
     }
 
     [TearDown]

@@ -3,6 +3,7 @@
 
 using Nethermind.Core;
 using Nethermind.Evm.Tracing;
+using Nethermind.Int256;
 
 namespace Nethermind.Evm.TransactionProcessing;
 
@@ -38,6 +39,12 @@ public interface ITransactionProcessor
 
     void SetBlockExecutionContext(BlockHeader blockHeader);
     void SetBlockExecutionContext(in BlockExecutionContext blockExecutionContext);
+
+    public interface IGasCalculator
+    {
+        bool TryCalculateBlobBaseFee(BlockHeader header, Transaction transaction,
+            UInt256 blobGasPriceUpdateFraction, out UInt256 blobBaseFee);
+    }
 }
 
 public static class ITransactionProcessorExtensions

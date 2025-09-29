@@ -21,12 +21,14 @@ public sealed class SystemTransactionProcessor : TransactionProcessorBase
     /// </summary>
     private const int OriginalValidate = 2 << 30;
 
-    public SystemTransactionProcessor(ISpecProvider? specProvider,
+    public SystemTransactionProcessor(
+        ITransactionProcessor.IGasCalculator gasCalculator,
+        ISpecProvider? specProvider,
         IWorldState? worldState,
         IVirtualMachine? virtualMachine,
         ICodeInfoRepository? codeInfoRepository,
         ILogManager? logManager)
-        : base(specProvider, worldState, virtualMachine, codeInfoRepository, logManager)
+        : base(gasCalculator, specProvider, worldState, virtualMachine, codeInfoRepository, logManager)
     {
         _isAura = SpecProvider.SealEngine == SealEngineType.AuRa;
     }

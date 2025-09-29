@@ -48,7 +48,7 @@ public class SimulateReadOnlyBlocksProcessingEnvFactory(
             .AddDecorator<IBlockhashProvider, SimulateBlockhashProvider>()
             .AddDecorator<IVirtualMachine, SimulateVirtualMachine>()
             .AddDecorator<IBlockValidator, SimulateBlockValidatorProxy>()
-            .AddSingleton<ITransactionProcessor, SimulateTransactionProcessor>()
+            .AddDecorator<ITransactionProcessor.IGasCalculator, SimulateGasCalculatorDecorator>()
             .AddDecorator<IBlockProcessor.IBlockTransactionsExecutor, SimulateBlockValidationTransactionsExecutor>()
             .AddSingleton<ITransactionProcessorAdapter, SimulateTransactionProcessorAdapter>()
             .AddSingleton<IReceiptStorage>(NullReceiptStorage.Instance)

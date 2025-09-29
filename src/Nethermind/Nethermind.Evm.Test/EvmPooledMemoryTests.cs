@@ -153,14 +153,15 @@ public class EvmPooledMemoryTests : EvmMemoryTestsBase
         EthereumCodeInfoRepository codeInfoRepository = new(stateProvider);
         VirtualMachine virtualMachine = new(
             new TestBlockhashProvider(specProvider),
-                specProvider,
-                LimboLogs.Instance);
+            specProvider,
+            LimboLogs.Instance);
         ITransactionProcessor transactionProcessor = new TransactionProcessor(
-                specProvider,
-                stateProvider,
-                virtualMachine,
-                codeInfoRepository,
-                LimboLogs.Instance);
+            GasCalculator.Instance,
+            specProvider,
+            stateProvider,
+            virtualMachine,
+            codeInfoRepository,
+            LimboLogs.Instance);
 
         Hash256 stateRoot = null;
         using var _ = stateProvider.BeginScope(IWorldState.PreGenesis);

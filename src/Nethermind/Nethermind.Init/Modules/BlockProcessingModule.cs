@@ -45,6 +45,7 @@ public class BlockProcessingModule(IInitConfig initConfig) : Module
             .AddSingleton<IUnclesValidator, UnclesValidator>()
 
             // Block processing components common between rpc, validation and production
+            .AddScoped<ITransactionProcessor.IGasCalculator, GasCalculator>()
             .AddScoped<ITransactionProcessor, TransactionProcessor>()
             .AddScoped<ICodeInfoRepository, CodeInfoRepository>()
                 .AddSingleton<IPrecompileProvider, EthereumPrecompileProvider>()

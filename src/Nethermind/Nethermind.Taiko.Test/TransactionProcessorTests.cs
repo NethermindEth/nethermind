@@ -20,6 +20,7 @@ using Nethermind.Evm;
 using Nethermind.State;
 using Nethermind.Taiko.TaikoSpec;
 using FluentAssertions;
+using Nethermind.Evm.TransactionProcessing;
 
 namespace Nethermind.Taiko.Test;
 
@@ -51,7 +52,7 @@ public class TransactionProcessorTests
 
         EthereumCodeInfoRepository codeInfoRepository = new(_stateProvider);
         VirtualMachine virtualMachine = new(new TestBlockhashProvider(_specProvider), _specProvider, LimboLogs.Instance);
-        _transactionProcessor = new TaikoTransactionProcessor(_specProvider, _stateProvider, virtualMachine, codeInfoRepository, LimboLogs.Instance);
+        _transactionProcessor = new TaikoTransactionProcessor(GasCalculator.Instance, _specProvider, _stateProvider, virtualMachine, codeInfoRepository, LimboLogs.Instance);
     }
 
     [TearDown]
