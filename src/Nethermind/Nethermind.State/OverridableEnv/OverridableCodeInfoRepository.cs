@@ -24,11 +24,6 @@ public class OverridableCodeInfoRepository(ICodeInfoRepository codeInfoRepositor
             : codeInfoRepository.GetCachedCodeInfo(codeSource, followDelegation, vmSpec, out delegationAddress);
     }
 
-    public bool IsPrecompile(Address address, IReleaseSpec spec) =>
-        _codeOverwrites.TryGetValue(address, out ICodeInfo result)
-            ? result.IsPrecompile
-            : codeInfoRepository.IsPrecompile(address, spec);
-
     public void InsertCode(ReadOnlyMemory<byte> code, Address codeOwner, IReleaseSpec spec) =>
         codeInfoRepository.InsertCode(code, codeOwner, spec);
 

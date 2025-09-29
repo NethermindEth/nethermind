@@ -183,7 +183,7 @@ jobs:
     if: always() && needs.aggregate_rpcs.result == 'success'
     timeout-minutes: 1440
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       
       - name: Wait for the nodes to sync
         timeout-minutes: 1440
@@ -320,7 +320,7 @@ jobs:
     needs: [wait_for_node_to_sync, aggregate_rpcs]
     if: always() && needs.aggregate_rpcs.result == 'success' && needs.wait_for_node_to_sync.result == 'success'
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - name: Install flood
         run: pip install --force-reinstall --no-deps git+https://github.com/kamilchodola/flood.git
         

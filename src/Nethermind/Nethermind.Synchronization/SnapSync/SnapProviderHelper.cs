@@ -135,7 +135,7 @@ namespace Nethermind.Synchronization.SnapSync
         )
         {
             if (slots.Count == 0)
-                throw new ArgumentException("Cannot be empty.", nameof(slots));
+                return (AddRangeResult.EmptySlots, false);
 
             // Validate sorting order
             for (int i = 1; i < slots.Count; i++)
