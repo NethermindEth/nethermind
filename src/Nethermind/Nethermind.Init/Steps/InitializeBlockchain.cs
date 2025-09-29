@@ -16,10 +16,12 @@ using Nethermind.Consensus.Processing;
 using Nethermind.Consensus.Processing.CensorshipDetector;
 using Nethermind.Consensus.Producers;
 using Nethermind.Consensus.Scheduler;
+using Nethermind.Consensus.Tracing;
 using Nethermind.Core;
 using Nethermind.Core.Attributes;
 using Nethermind.State;
 using Nethermind.TxPool;
+using Nethermind.TxPool.Filters;
 using Nethermind.Wallet;
 
 namespace Nethermind.Init.Steps
@@ -105,6 +107,7 @@ namespace Nethermind.Init.Steps
 
         protected virtual ITxPool CreateTxPool(IChainHeadInfoProvider chainHeadInfoProvider)
         {
+            var callFilter = new CallFilter(_api.Config<ITxPoolConfig>().BlacklistedFunctionCalls, _api.GethStyleTracer);
             TxPool.TxPool txPool = new(_api.EthereumEcdsa!,
                 _api.BlobTxStorage ?? NullBlobTxStorage.Instance,
                 chainHeadInfoProvider,
@@ -114,7 +117,8 @@ namespace Nethermind.Init.Steps
                 CreateTxPoolTxComparer(),
                 _api.TxGossipPolicy,
                 null,
-                _api.HeadTxValidator
+                _api.HeadTxValidator,
+                additionalPreHashFilters: [callFilter]
             );
 
             _api.DisposeStack.Push(txPool);

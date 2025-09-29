@@ -9,6 +9,7 @@ using Nethermind.Consensus.Processing;
 using Nethermind.Consensus.Processing.CensorshipDetector;
 using Nethermind.Consensus.Producers;
 using Nethermind.Consensus.Scheduler;
+using Nethermind.Consensus.Tracing;
 using Nethermind.Consensus.Validators;
 using Nethermind.Core;
 using Nethermind.Facade;
@@ -62,5 +63,6 @@ namespace Nethermind.Api
         IBlockProductionPolicy? BlockProductionPolicy { get; set; }
         IBackgroundTaskScheduler BackgroundTaskScheduler { get; set; }
         ICensorshipDetector CensorshipDetector { get; set; }
+        IGethStyleTracer GethStyleTracer { get; }
     }
 }
