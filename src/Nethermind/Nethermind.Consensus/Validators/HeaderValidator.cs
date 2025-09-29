@@ -4,10 +4,10 @@
 using System;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Find;
-using Nethermind.Consensus.Messages;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
+using Nethermind.Core.Messages;
 using Nethermind.Core.Specs;
 using Nethermind.Crypto;
 using Nethermind.Evm;
@@ -20,7 +20,7 @@ namespace Nethermind.Consensus.Validators
     {
         private static readonly byte[] DaoExtraData = Bytes.FromHexString("0x64616f2d686172642d666f726b");
 
-        private readonly ISealValidator _sealValidator;
+        protected readonly ISealValidator _sealValidator;
         protected readonly ISpecProvider _specProvider;
         private readonly long? _daoBlockNumber;
         protected readonly ILogger _logger;

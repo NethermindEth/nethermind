@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using FluentAssertions;
 using Nethermind.Blockchain.Blocks;
 using Nethermind.Blockchain.Find;
 using Nethermind.Core;
@@ -23,8 +24,7 @@ public class BlockhashProviderTests
 {
     private static (IWorldState, Hash256) CreateWorldState()
     {
-        IWorldStateManager worldStateManager = TestWorldStateFactory.CreateForTest();
-        IWorldState worldState = worldStateManager.GlobalWorldState;
+        IWorldState worldState = TestWorldStateFactory.CreateForTest();
         using var _ = worldState.BeginScope(IWorldState.PreGenesis);
         worldState.CreateAccount(Eip2935Constants.BlockHashHistoryAddress, 0, 1);
         worldState.Commit(Frontier.Instance);
@@ -68,6 +68,32 @@ public class BlockhashProviderTests
         Block current = Build.A.Block.WithParent(head).TestObject;
         Hash256? result = provider.GetBlockhash(current.Header, chainLength - 256);
         Assert.That(result, Is.EqualTo(tree.FindHeader(256, BlockTreeLookupOptions.None)!.Hash));
+    }
+
+    [Test, MaxTime(Timeout.MaxTestTime)]
+    public void Can_lookup_correctly_on_disconnected_main_chain()
+    {
+        const int chainLength = 512;
+
+        Block genesis = Build.A.Block.Genesis.TestObject;
+        BlockTree tree = Build.A.BlockTree(genesis).OfChainLength(chainLength).TestObject;
+        BlockhashProvider provider = CreateBlockHashProvider(tree, Frontier.Instance);
+
+        BlockHeader notCanonParent = tree.FindHeader(chainLength - 4, BlockTreeLookupOptions.None)!;
+        BlockHeader expectedHeader = tree.FindHeader(chainLength - 3, BlockTreeLookupOptions.None)!;
+        Block headParent = tree.FindBlock(chainLength - 2, BlockTreeLookupOptions.None)!;
+        Block head = tree.FindBlock(chainLength - 1, BlockTreeLookupOptions.None)!;
+
+        Block branch = Build.A.Block.WithParent(notCanonParent).WithTransactions(Build.A.Transaction.TestObject).TestObject;
+        tree.Insert(branch, BlockTreeInsertBlockOptions.SaveHeader).Should().Be(AddBlockResult.Added);
+        tree.UpdateMainChain(branch); // Update branch
+
+        tree.UpdateMainChain([headParent, head], true); // Update back to original again, but skipping the branch block.
+
+        Block current = Build.A.Block.WithParent(head).TestObject; // At chainLength
+
+        Hash256? result = provider.GetBlockhash(current.Header, chainLength - 3);
+        Assert.That(result, Is.EqualTo(expectedHeader.Hash));
     }
 
     [Test, MaxTime(Timeout.MaxTestTime)]

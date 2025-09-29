@@ -22,6 +22,7 @@ using System.Threading;
 using System.Threading.Channels;
 using System.Threading.Tasks;
 using Autofac.Features.AttributeFilters;
+using Nethermind.Core.Messages;
 using static Nethermind.TxPool.Collections.TxDistinctSortedPool;
 using ITimer = Nethermind.Core.Timers.ITimer;
 
@@ -167,7 +168,7 @@ namespace Nethermind.TxPool
                 new FutureNonceFilter(txPoolConfig),
                 new GapNonceFilter(_transactions, _blobTransactions, _logger),
                 new RecoverAuthorityFilter(ecdsa),
-                new DelegatedAccountFilter(_specProvider, _transactions, _blobTransactions, chainHeadInfoProvider.ReadOnlyStateProvider, chainHeadInfoProvider.CodeInfoRepository, _pendingDelegations),
+                new DelegatedAccountFilter(_specProvider, _transactions, _blobTransactions, chainHeadInfoProvider.ReadOnlyStateProvider, _pendingDelegations),
             ];
 
             if (incomingTxFilter is not null)
@@ -175,7 +176,7 @@ namespace Nethermind.TxPool
                 postHashFilters.Add(incomingTxFilter);
             }
 
-            postHashFilters.Add(new DeployedCodeFilter(chainHeadInfoProvider.ReadOnlyStateProvider, chainHeadInfoProvider.CodeInfoRepository, _specProvider));
+            postHashFilters.Add(new DeployedCodeFilter(chainHeadInfoProvider.ReadOnlyStateProvider, _specProvider));
 
             _postHashFilters = postHashFilters.ToArray();
 
@@ -733,7 +734,7 @@ namespace Nethermind.TxPool
 
                     if (!valid)
                     {
-                        MarkForEviction(tx, valid.AllowTxPoolReentrance);
+                        MarkForEviction(tx, valid.Error == TxErrorMessages.InvalidProofVersion);
                         continue;
                     }
 

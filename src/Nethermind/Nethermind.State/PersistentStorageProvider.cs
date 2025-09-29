@@ -222,7 +222,11 @@ internal sealed class PersistentStorageProvider : PartialStorageProviderBase
             else
             {
                 _toUpdateRoots.Remove(address);
-                _storages.Remove(address);
+                if (_storages.TryGetValue(address, out PerContractState? storage))
+                {
+                    // BlockChange need to be kept to keep selfdestruct marker (via DefaultableDictionary) working.
+                    storage.RemoveStorageTree();
+                }
             }
         }
         toUpdateRoots.Clear();
@@ -658,7 +662,7 @@ internal sealed class PersistentStorageProvider : PartialStorageProviderBase
                 foreach (var kvp in BlockChange)
                 {
                     byte[] after = kvp.Value.After;
-                    if (!Bytes.AreEqual(kvp.Value.Before, after))
+                    if (!Bytes.AreEqual(kvp.Value.Before, after) || kvp.Value.IsInitialValue)
                     {
                         BlockChange[kvp.Key] = new(after, after);
 
@@ -682,6 +686,11 @@ internal sealed class PersistentStorageProvider : PartialStorageProviderBase
             }
 
             return (writes, skipped);
+        }
+
+        public void RemoveStorageTree()
+        {
+            StorageTree = null;
         }
     }
 }

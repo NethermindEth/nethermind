@@ -23,6 +23,7 @@ public class FilterManagerTests
 {
     private IFilterStore _filterStore = null!;
     private IBranchProcessor _branchProcessor = null!;
+    private IMainProcessingContext _mainProcessingContext = null!;
     private ITxPool _txPool = null!;
     private ILogManager _logManager = null!;
     private FilterManager _filterManager = null!;
@@ -35,6 +36,8 @@ public class FilterManagerTests
         _currentFilterId = 0;
         _filterStore = Substitute.For<IFilterStore>();
         _branchProcessor = Substitute.For<IBranchProcessor>();
+        _mainProcessingContext = Substitute.For<IMainProcessingContext>();
+        _mainProcessingContext.BranchProcessor.Returns(_branchProcessor);
         _txPool = Substitute.For<ITxPool>();
         _logManager = LimboLogs.Instance;
     }
@@ -323,14 +326,14 @@ public class FilterManagerTests
 
         _filterStore.GetFilters<LogFilter>().Returns(filters.OfType<LogFilter>().ToArray());
         _filterStore.GetFilters<BlockFilter>().Returns(filters.OfType<BlockFilter>().ToArray());
-        _filterManager = new FilterManager(_filterStore, _branchProcessor, _txPool, _logManager);
+        _filterManager = new FilterManager(_filterStore, _mainProcessingContext, _txPool, _logManager);
 
         _branchProcessor.BlockProcessed += Raise.EventWith(_branchProcessor, new BlockProcessedEventArgs(block, []));
 
         int index = 1;
         foreach (TxReceipt receipt in receipts)
         {
-            _branchProcessor.TransactionProcessed += Raise.EventWith(_branchProcessor,
+            _mainProcessingContext.TransactionProcessed += Raise.EventWith(_branchProcessor,
                 new TxProcessedEventArgs(index, Build.A.Transaction.TestObject, receipt));
             index++;
         }

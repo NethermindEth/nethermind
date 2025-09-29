@@ -122,6 +122,7 @@ namespace Nethermind.TxPool
         }
 
         public static implicit operator bool(AcceptTxResult result) => result.Id == Accepted.Id;
+        public static implicit operator AcceptTxResult(bool result) => result ? Accepted : Invalid;
         public AcceptTxResult WithMessage(string message) => new(Id, Code, message);
         public static bool operator ==(AcceptTxResult a, AcceptTxResult b) => a.Equals(b);
         public static bool operator !=(AcceptTxResult a, AcceptTxResult b) => !(a == b);
