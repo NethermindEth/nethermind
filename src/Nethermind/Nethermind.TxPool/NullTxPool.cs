@@ -7,6 +7,7 @@ using System.Diagnostics.CodeAnalysis;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Int256;
+using Nethermind.Logging;
 
 namespace Nethermind.TxPool
 {
@@ -112,6 +113,6 @@ namespace Nethermind.TxPool
         }
         public bool AcceptTxWhenNotSynced { get; set; }
 
-        public SimpleRetryCache<ValueHash256, Guid> SimpleRetryCache { get; } = new(null);
+        public SimpleRetryCache<ValueHash256, Guid> SimpleRetryCache { get; } = new(LimboLogs.Instance);
     }
 }
