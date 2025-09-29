@@ -560,7 +560,7 @@ namespace Nethermind.Trie
             return length == 32 ? rlpStream.DecodeKeccak() : null;
         }
 
-        // Gets child hash or the RLP of the node in case it's an inline.
+        /// Gets child hash or the RLP of the node in case it's an inline.
         public byte[]? GetChildHashOrRlp(int i)
         {
             SpanSource rlp = _rlp;

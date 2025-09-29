@@ -169,7 +169,7 @@ namespace Nethermind.State.Proofs
 
                     if (child?.Length == 32)
                     {
-                        // If the length is 32 it's the hash of another node
+                        // If the length is 32 it's the hash of the child
                         Hash256 childHash = new(child);
                         ref StorageNodeInfo? value = ref CollectionsMarshal.GetValueRefOrAddDefault(_storageNodeInfos, childHash, out bool exists);
                         if (!exists)
@@ -188,7 +188,7 @@ namespace Nethermind.State.Proofs
                     }
                     else if (child is not null)
                     {
-                        // Decode RLP and get storage value
+                        // Child is an inline node, decode RLP and get storage value
                         var rlpStream = new RlpStream(child);
                         _ = rlpStream.ReadSequenceLength();
                         _ = rlpStream.DecodeByteArraySpan();
