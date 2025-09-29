@@ -40,6 +40,7 @@ namespace Nethermind.Blockchain.Filters
             _filterStore = filterStore ?? throw new ArgumentNullException(nameof(filterStore));
             txPool = txPool ?? throw new ArgumentNullException(nameof(txPool));
             _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
+            mainProcessingContext.BranchProcessor.BlockProcessing += OnBlockProcessing;
             mainProcessingContext.BranchProcessor.BlockProcessed += OnBlockProcessed;
             mainProcessingContext.TransactionProcessed += OnTransactionProcessed;
             _filterStore.FilterRemoved += OnFilterRemoved;
@@ -55,6 +56,13 @@ namespace Nethermind.Blockchain.Filters
             _pendingTransactions.TryRemove(id, out _);
         }
 
+        private readonly ConcurrentDictionary<long, Block> _pendingBlocks = new();
+
+        private void OnBlockProcessing(object sender, BlockEventArgs e)
+        {
+            _pendingBlocks[e.Block.Number] = e.Block;
+        }
+
         private void OnBlockProcessed(object sender, BlockProcessedEventArgs e)
         {
             _lastBlockHash = e.Block.Hash;
@@ -64,7 +72,12 @@ namespace Nethermind.Blockchain.Filters
 
         private void OnTransactionProcessed(object sender, TxProcessedEventArgs e)
         {
-            AddReceipts(e.TxReceipt);
+            Block currentBlock = _pendingBlocks[e.TxReceipt.BlockNumber];
+            AddReceipts(e.TxReceipt, currentBlock.Timestamp);
+            if (e.TxReceipt.Index == currentBlock.Transactions.Length - 1)
+            {
+                _pendingBlocks.Remove(currentBlock.Number, out _);
+            }
         }
 
         private void OnNewPendingTransaction(object sender, TxPool.TxEventArgs e)
@@ -159,14 +172,14 @@ namespace Nethermind.Blockchain.Filters
             return existingPendingTransactions;
         }
 
-        private void AddReceipts(TxReceipt txReceipt)
+        private void AddReceipts(TxReceipt txReceipt, ulong blockTimestamp)
         {
             ArgumentNullException.ThrowIfNull(txReceipt);
 
             IEnumerable<LogFilter> filters = _filterStore.GetFilters<LogFilter>();
             foreach (LogFilter filter in filters)
             {
-                StoreLogs(filter, txReceipt, _logIndex);
+                StoreLogs(filter, txReceipt, _logIndex, blockTimestamp);
             }
 
             _logIndex += txReceipt.Logs?.Length ?? 0;
@@ -196,7 +209,7 @@ namespace Nethermind.Blockchain.Filters
             if (_logger.IsTrace) _logger.Trace($"Filter with id: {filter.Id} contains {blocks.Count} blocks.");
         }
 
-        private void StoreLogs(LogFilter filter, TxReceipt txReceipt, long logIndex)
+        private void StoreLogs(LogFilter filter, TxReceipt txReceipt, long logIndex, ulong blockTimestamp)
         {
             if (txReceipt.Logs is null || txReceipt.Logs.Length == 0)
             {
@@ -207,7 +220,7 @@ namespace Nethermind.Blockchain.Filters
             for (int i = 0; i < txReceipt.Logs.Length; i++)
             {
                 LogEntry? logEntry = txReceipt.Logs[i];
-                FilterLog? filterLog = CreateLog(filter, txReceipt, logEntry, logIndex++);
+                FilterLog? filterLog = CreateLog(filter, txReceipt, logEntry, logIndex++, blockTimestamp);
                 if (filterLog is not null)
                 {
                     logs.Add(filterLog);
@@ -222,7 +235,7 @@ namespace Nethermind.Blockchain.Filters
             if (_logger.IsTrace) _logger.Trace($"Filter with id: {filter.Id} contains {logs.Count} logs.");
         }
 
-        private static FilterLog? CreateLog(LogFilter logFilter, TxReceipt txReceipt, LogEntry logEntry, long index)
+        private static FilterLog? CreateLog(LogFilter logFilter, TxReceipt txReceipt, LogEntry logEntry, long index, ulong blockTimestamp)
         {
             if (logFilter.FromBlock.Type == BlockParameterType.BlockNumber &&
                 logFilter.FromBlock.BlockNumber > txReceipt.BlockNumber)
@@ -245,16 +258,16 @@ namespace Nethermind.Blockchain.Filters
                 || logFilter.ToBlock.Type == BlockParameterType.Earliest
                 || logFilter.ToBlock.Type == BlockParameterType.Pending)
             {
-                return new FilterLog(index, txReceipt, logEntry);
+                return new FilterLog(index, txReceipt, logEntry, blockTimestamp);
             }
 
             if (logFilter.FromBlock.Type == BlockParameterType.Latest || logFilter.ToBlock.Type == BlockParameterType.Latest)
             {
                 //TODO: check if is last mined block
-                return new FilterLog(index, txReceipt, logEntry);
+                return new FilterLog(index, txReceipt, logEntry, blockTimestamp);
             }
 
-            return new FilterLog(index, txReceipt, logEntry);
+            return new FilterLog(index, txReceipt, logEntry, blockTimestamp);
         }
     }
 }
