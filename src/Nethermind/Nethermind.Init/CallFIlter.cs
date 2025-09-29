@@ -115,7 +115,7 @@ internal sealed class CallFilter:  IIncomingTxFilter
         {
             var selector = frame.Input!.AsSpan()[..4];
             Console.WriteLine($"This is inside frame checker {frame.To} {selector.ToHexString()}");
-            if (value.Contains(selector.ToHexString())) return false;
+            if (value.Contains(selector.ToHexString(withZeroX:true))) return false;
         }
 
         return true;
