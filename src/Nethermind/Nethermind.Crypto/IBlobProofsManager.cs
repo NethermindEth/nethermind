@@ -27,7 +27,7 @@ public interface IBlobProofsBuilder
         byte[][] hashes = new byte[wrapper.Blobs.Length][];
         for (int i = 0; i < wrapper.Blobs.Length; i++)
         {
-            hashes[i] = new byte[KzgPolynomialCommitments.BytesPerBlobVersionedHash];
+            hashes[i] = new byte[Eip4844Constants.BytesPerBlobVersionedHash];
             KzgPolynomialCommitments.TryComputeCommitmentHashV1(wrapper.Commitments[i], hashes[i]);
         }
         return hashes;
@@ -43,11 +43,11 @@ public interface IBlobProofsVerifier
     bool ValidateLengths(ShardBlobNetworkWrapper blobs);
     public bool ValidateHashes(ShardBlobNetworkWrapper blobs, byte[][] blobVersionedHashes)
     {
-        Span<byte> hash = stackalloc byte[KzgPolynomialCommitments.BytesPerBlobVersionedHash];
+        Span<byte> hash = stackalloc byte[Eip4844Constants.BytesPerBlobVersionedHash];
 
         for (int i = 0; i < blobVersionedHashes.Length; i++)
         {
-            if (blobVersionedHashes[i].Length != KzgPolynomialCommitments.BytesPerBlobVersionedHash || blobVersionedHashes[i][0] != KzgPolynomialCommitments.KzgBlobHashVersionV1)
+            if (blobVersionedHashes[i].Length != Eip4844Constants.BytesPerBlobVersionedHash || blobVersionedHashes[i][0] != KzgPolynomialCommitments.KzgBlobHashVersionV1)
             {
                 return false;
             }
