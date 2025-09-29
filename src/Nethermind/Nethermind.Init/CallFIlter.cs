@@ -7,6 +7,7 @@ using System.Threading;
 using Nethermind.Blockchain.Find;
 using Nethermind.Blockchain.Tracing.GethStyle;
 using Nethermind.Blockchain.Tracing.GethStyle.Custom.Native.Call;
+using Nethermind.Consensus.Tracing;
 using Nethermind.Core;
 using Nethermind.Core.Extensions;
 using Nethermind.JsonRpc.Modules.DebugModule;
@@ -18,21 +19,20 @@ namespace Nethermind.Init;
 internal sealed class CallFilter:  IIncomingTxFilter
 {
     private readonly Dictionary<AddressAsKey, HashSet<string>> _blacklistedFunctionCalls = new();
-    private readonly IDebugBridge _blockchainBridge;
-    public CallFilter(string[] blackList, IDebugBridge bridge)
+    private readonly IGethStyleTracer _gethStyleTracer;
+    public CallFilter(string[] blackList, IGethStyleTracer bridge)
     {
         foreach (var stuff in blackList)
         {
             var data = stuff.Split(';');
             _blacklistedFunctionCalls[new AddressAsKey(new Address(data[0]))] = new HashSet<string>(data[1..]);
         }
-        _blockchainBridge = bridge;
+        _gethStyleTracer = bridge;
     }
     public AcceptTxResult Accept(Transaction tx, ref TxFilteringState state, TxHandlingOptions txHandlingOptions)
     {
         var options = new GethTraceOptions() { Tracer = NativeCallTracer.CallTracer };
-        GethLikeTxTrace? trace = _blockchainBridge.GetTransactionTrace(tx, BlockParameter.Latest, CancellationToken.None,
-            options);
+        GethLikeTxTrace? trace = _gethStyleTracer.Trace(BlockParameter.Latest, tx, options, CancellationToken.None);
 
         var traces = (NativeCallTracerCallFrame)(trace!.CustomTracerResult!.Value);
         if (_blacklistedFunctionCalls.Count != 0)

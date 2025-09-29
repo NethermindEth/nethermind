@@ -107,7 +107,7 @@ namespace Nethermind.TxPool
             IIncomingTxFilter? incomingTxFilter = null,
             [KeyFilter(ITxValidator.HeadTxValidatorKey)] ITxValidator? headTxValidator = null,
             bool thereIsPriorityContract = false,
-            IIncomingTxFilter? preHashFilter = null)
+            IReadOnlyCollection<IIncomingTxFilter>? additionalPreHashFilters = null)
         {
             _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
             _ecdsa = ecdsa ?? throw new ArgumentNullException(nameof(ecdsa));
@@ -165,9 +165,9 @@ namespace Nethermind.TxPool
                 preHashFilters.Add(new AddressFilter(receiverBlacklist, senderBlacklist, _logger));
             }
 
-            if (preHashFilter is not null)
+            if (additionalPreHashFilters is not null)
             {
-                preHashFilters.AddRange(preHashFilter);
+                preHashFilters.AddRange(additionalPreHashFilters);
             }
 
             _preHashFilters = preHashFilters.ToArray();

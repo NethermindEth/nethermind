@@ -11,6 +11,7 @@ using Nethermind.Blockchain.Receipts;
 using Nethermind.Blockchain.Spec;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Config;
+using Nethermind.Consensus.Tracing;
 using Nethermind.Core;
 using Nethermind.Core.ServiceStopper;
 using Nethermind.Core.Specs;
@@ -20,6 +21,7 @@ using Nethermind.Db;
 using Nethermind.Era1;
 using Nethermind.History;
 using Nethermind.JsonRpc;
+using Nethermind.JsonRpc.Modules.DebugModule;
 using Nethermind.Logging;
 using Nethermind.Network.Config;
 using Nethermind.Runner.Ethereum.Modules;
@@ -74,6 +76,7 @@ public class NethermindModule(ChainSpec chainSpec, IConfigProvider configProvide
             .AddSingleton<ITimestamper>(_ => Core.Timestamper.Default)
             .AddSingleton<ITimerFactory>(_ => Core.Timers.TimerFactory.Default)
             .AddSingleton<IFileSystem>(_ => new FileSystem())
+            .AddScoped<IGethStyleTracer, GethStyleTracer>()
             ;
 
         if (!configProvider.GetConfig<ITxPoolConfig>().BlobsSupport.IsPersistentStorage())

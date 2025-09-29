@@ -38,6 +38,7 @@ using Nethermind.Synchronization.Peers;
 using Nethermind.TxPool;
 using Nethermind.Wallet;
 using Nethermind.Consensus.Processing.CensorshipDetector;
+using Nethermind.Consensus.Tracing;
 using Nethermind.Facade.Find;
 using Nethermind.History;
 
@@ -123,6 +124,7 @@ namespace Nethermind.Api
         public IBlockProductionPolicy? BlockProductionPolicy { get; set; }
         public IBackgroundTaskScheduler BackgroundTaskScheduler { get; set; } = null!;
         public ICensorshipDetector CensorshipDetector { get; set; } = new NoopCensorshipDetector();
+        public IGethStyleTracer GethStyleTracer => Context.Resolve<IGethStyleTracer>();
         public IWallet? Wallet { get; set; }
         public ITransactionComparerProvider? TransactionComparerProvider { get; set; }
 
