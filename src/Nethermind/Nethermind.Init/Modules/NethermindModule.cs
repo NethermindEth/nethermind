@@ -63,6 +63,8 @@ public class NethermindModule(ChainSpec chainSpec, IConfigProvider configProvide
             .AddSingleton<IAbiEncoder>(AbiEncoder.Instance)
             .AddSingleton<IEciesCipher, EciesCipher>()
             .AddSingleton<ICryptoRandom, CryptoRandom>()
+            .AddSingleton<CompliantNodeFilterFactory>()
+            .AddScoped<CompliantNodeFilters>((ctx) => ctx.Resolve<CompliantNodeFilterFactory>().Create())
 
             .AddSingleton<IEthereumEcdsa, ISpecProvider>((specProvider) => new EthereumEcdsa(specProvider.ChainId))
             .Bind<IEcdsa, IEthereumEcdsa>()

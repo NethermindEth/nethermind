@@ -152,19 +152,6 @@ namespace Nethermind.TxPool
                 new MalformedTxFilter(_specProvider, validator, _logger)
             ];
 
-            var senderBlacklist = txPoolConfig.BlackListedSenderAddresses
-                .Select(address => new AddressAsKey(new Address(address)))
-                .ToHashSet();
-
-            var receiverBlacklist = txPoolConfig.BlackListedReceiverAddresses
-                .Select(address => new AddressAsKey(new Address(address)))
-                .ToHashSet();
-
-            if (senderBlacklist.Count > 0 || receiverBlacklist.Count > 0)
-            {
-                preHashFilters.Add(new AddressFilter(receiverBlacklist, senderBlacklist, _logger));
-            }
-
             if (additionalPreHashFilters is not null)
             {
                 preHashFilters.AddRange(additionalPreHashFilters);

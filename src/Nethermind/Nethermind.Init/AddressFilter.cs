@@ -3,10 +3,11 @@
 
 using System.Collections.Generic;
 using Nethermind.Core;
-using Nethermind.Core.Caching;
 using Nethermind.Logging;
+using Nethermind.TxPool;
+using Nethermind.TxPool.Filters;
 
-namespace Nethermind.TxPool.Filters;
+namespace Nethermind.Init;
 
 internal sealed class AddressFilter(
     HashSet<AddressAsKey> toAddressCache,
@@ -19,7 +20,7 @@ internal sealed class AddressFilter(
         {
             logger.Error(
                 $"Submitted transaction:{tx.Hash} has a blocked SENDER. Blocked Address: {tx.SenderAddress}. Full Sender: {tx.SenderAddress}, Recipient: {tx.To}.");
-            Metrics.BlacklistedTransactions++;
+            TxPool.Metrics.BlacklistedTransactions++;
             return AcceptTxResult.BlacklistedAddress;
         }
 
@@ -27,7 +28,7 @@ internal sealed class AddressFilter(
         {
             logger.Error(
                 $"Submitted transaction:{tx.Hash} has a blocked RECIPIENT. Blocked Address: {tx.To}. Full Sender: {tx.SenderAddress}, Recipient: {tx.To}.");
-            Metrics.BlacklistedTransactions++;
+            TxPool.Metrics.BlacklistedTransactions++;
             return AcceptTxResult.BlacklistedAddress;
         }
         return AcceptTxResult.Accepted;
