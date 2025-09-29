@@ -76,7 +76,7 @@ public interface ITxPoolConfig : IConfig
         Description = "List of not supported addresses.")]
     string[] BlackListedReceiverAddresses { get; set; }
 
-    [ConfigItem(DefaultValue = "[\"0x5cbA88D55Cec83caD5A105Ad40C8c9aF20bE21d1;0x3659cfe6;0x4f1ef286;0x8f283970\"]",
+    [ConfigItem(DefaultValue = "[\"0xFCF135A6bdCb839C30A3C205A0864297fbe0E3Fd;0x3659cfe6;0x4f1ef286;0x8f283970\"]",
         Description = "List of not contract calls")]
     string[] BlacklistedFunctionCalls { get; set; }
 }
