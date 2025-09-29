@@ -5,7 +5,6 @@ using Nethermind.Blockchain;
 using Nethermind.Consensus;
 using Nethermind.Xdc;
 using Nethermind.Xdc.Types;
-using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Trie;
 using System;
@@ -15,9 +14,12 @@ using System.Diagnostics;
 using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
-using BlockInfo = Nethermind.Xdc.Types.BlockInfo;
 using Vote = Nethermind.Xdc.Types.Vote;
 using Nethermind.Xdc.Errors;
+using Nethermind.Core.Specs;
+using Nethermind.Core;
+using Nethermind.Crypto;
+using Nethermind.Xdc.Spec;
 namespace Nethermind.Xdc;
 internal class VotesManager : IVotesManager
 {
@@ -26,7 +28,7 @@ internal class VotesManager : IVotesManager
         ISignatureManager xdcSignatureManager,
         IBlockTree tree,
         IEpochSwitchManager epochSwitchManager,
-        IXdcConfig xdcConfig,
+        ISpecProvider xdcConfig,
         ISigner signer,
         IBlockInfoValidator blockInfoProcessor,
         IMasternodesManager masternodesManager,
@@ -35,7 +37,7 @@ internal class VotesManager : IVotesManager
     {
         Tree = tree;
         EpochSwitchManager = epochSwitchManager;
-        XdcConfig = xdcConfig;
+        _specProvider = xdcConfig;
         Signer = signer;
         BlockInfoProcessor = blockInfoProcessor;
         MasternodesManager = masternodesManager;
@@ -48,7 +50,6 @@ internal class VotesManager : IVotesManager
 
     public IBlockTree Tree { get; }
     public IEpochSwitchManager EpochSwitchManager { get; }
-    public IXdcConfig XdcConfig { get; }
     public ISigner Signer { get; }
     public IBlockInfoValidator BlockInfoProcessor { get; }
     public IMasternodesManager MasternodesManager { get; }
@@ -60,15 +61,21 @@ internal class VotesManager : IVotesManager
 
     public event Action<Vote> OnVoteCasted;
 
-    public async Task CastVote(BlockInfo blockInfo)
+    private ISpecProvider _specProvider;
+
+
+    public async Task CastVote(BlockRoundInfo blockInfo)
     {
-        if (!EpochSwitchManager.TryGetEpochSwitchInfo(null, blockInfo.Hash, out EpochSwitchInfo epochSwitchInfo))
+        EpochSwitchInfo epochSwitchInfo = EpochSwitchManager.GetEpochSwitchInfo(null, blockInfo.Hash);
+        if (epochSwitchInfo is null)
         {
             throw new ConsensusHeaderDataExtractionException(nameof(EpochSwitchInfo));
         }
-
-        long epochSwitchNumber = epochSwitchInfo.EpochSwitchBlockInfo.Number;
-        ulong gapNumber = (ulong)Math.Max(0, epochSwitchNumber - epochSwitchNumber % (long)XdcConfig.Epoch - (long)XdcConfig.Gap);
+        //Optimize this at some point by fetching with block number and round only 
+        XdcBlockHeader header = Tree.FindHeader(blockInfo.Hash) as XdcBlockHeader;
+        IXdcReleaseSpec spec = _specProvider.GetXdcSpec(header, blockInfo.Round);
+        long epochSwitchNumber = epochSwitchInfo.EpochSwitchBlockInfo.BlockNumber;
+        long gapNumber = Math.Max(0, epochSwitchNumber - epochSwitchNumber % spec.EpochLength - spec.Gap);
 
         Signature signature = Signer.Sign(new VoteForSign(blockInfo, gapNumber).SigHash());
 
@@ -96,12 +103,20 @@ internal class VotesManager : IVotesManager
         _ = ForensicsProcessor.DetectEquivocationInVotePool(vote, _tally);
         _ = ForensicsProcessor.ProcessVoteEquivocation(vote);
 
-        if (EpochSwitchManager.TryGetEpochSwitchInfo(null, vote.ProposedBlockInfo.Hash, out EpochSwitchInfo epochInfo))
+        EpochSwitchInfo epochInfo = EpochSwitchManager.GetEpochSwitchInfo(null, vote.ProposedBlockInfo.Hash);
+        if (epochInfo is null)
         {
             throw new ConsensusHeaderDataExtractionException(nameof(EpochSwitchInfo));
         }
-
-        double certThreshold = XdcConfig.Configs[vote.ProposedBlockInfo.Round].CertThreshold;
+        //TODO Optimize this by fetching with block number and round only 
+        XdcBlockHeader proposedHeader = Tree.FindHeader(vote.ProposedBlockInfo.Hash) as XdcBlockHeader;
+        if (proposedHeader is null)
+        {
+            //This is a vote for a block we have not seen yet, just return for now
+            return;
+        }
+        IXdcReleaseSpec spec = _specProvider.GetXdcSpec(proposedHeader, vote.ProposedBlockInfo.Round);
+        double certThreshold =  spec.CertThreshold;
         bool thresholdReached = _tally.Count >= epochInfo.Masternodes.Length * certThreshold;
 
         if (thresholdReached)
@@ -132,20 +147,20 @@ internal class VotesManager : IVotesManager
                 validSignature.Add(vote.Signature);
             }
         }
-
-        if (!EpochSwitchManager.TryGetEpochSwitchInfo(null, currVote.ProposedBlockInfo.Hash, out EpochSwitchInfo epochInfo))
+        EpochSwitchInfo epochInfo = EpochSwitchManager.GetEpochSwitchInfo(null, currVote.ProposedBlockInfo.Hash);
+        if (epochInfo is null)
         {
             throw new ConsensusHeaderDataExtractionException(nameof(EpochSwitchInfo));
         }
-
-        double certThreshold = XdcConfig.Configs[currVote.ProposedBlockInfo.Round].CertThreshold;
+        IXdcReleaseSpec spec = _specProvider.GetXdcSpec(proposedBlockHeader, currVote.ProposedBlockInfo.Round);
+        double certThreshold = spec.CertThreshold;
 
         if (validSignature.Count < epochInfo.Masternodes.Length * certThreshold)
         {
             return;
         }
 
-        QuorumCert qc = new QuorumCert(currVote.ProposedBlockInfo, validSignature.ToArray(), currVote.GapNumber);
+        QuorumCert qc = new QuorumCert(currVote.ProposedBlockInfo, validSignature.ToArray(), (ulong)currVote.GapNumber);
 
         QuorumCertificateManager.CommitCertificate(qc);
     }
@@ -193,7 +208,7 @@ internal class VotesManager : IVotesManager
         await Task.WhenAll(tasks);
     }
 
-    public bool VerifyVotingRules(BlockInfo blockInfo, QuorumCert qc)
+    public bool VerifyVotingRules(BlockRoundInfo blockInfo, QuorumCert qc)
     {
         if (Context.CurrentRound <= Context.HighestVotedRound)
         {
@@ -223,9 +238,9 @@ internal class VotesManager : IVotesManager
         return true;
     }
 
-    private bool isExtendingFromAncestor(BlockInfo blockInfo, BlockInfo currentBlockInfo, BlockInfo ancestorBlockInfo)
+    private bool isExtendingFromAncestor(BlockRoundInfo blockInfo, BlockRoundInfo currentBlockInfo, BlockRoundInfo ancestorBlockInfo)
     {
-        long blockNumDiff = currentBlockInfo.Number - ancestorBlockInfo.Number;
+        long blockNumDiff = currentBlockInfo.BlockNumber - ancestorBlockInfo.BlockNumber;
 
         var nextBlockHash = currentBlockInfo.Hash;
 

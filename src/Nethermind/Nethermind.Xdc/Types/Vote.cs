@@ -17,7 +17,7 @@ public class Vote(Address signer, BlockRoundInfo proposedBlockInfo, Signature si
     private Address _signer = signer;
     public BlockRoundInfo ProposedBlockInfo { get; set; } = proposedBlockInfo;
     public Signature Signature { get; set; } = signature;
-    public ulong GapNumber { get; set; } = gapNumber;
+    public long GapNumber { get; set; } = gapNumber;
 
     public override string ToString() =>
         $"{ProposedBlockInfo.Round}:{GapNumber}:{ProposedBlockInfo.BlockNumber}:{ProposedBlockInfo.SigHash()}";
