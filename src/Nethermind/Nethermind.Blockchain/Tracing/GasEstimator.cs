@@ -60,6 +60,7 @@ public class GasEstimator(
         }
 
         long lowerBound = IntrinsicGasCalculator.Calculate(tx, releaseSpec).MinimalGas;
+
         // Setting boundaries for binary search - determine lowest and highest gas can be used during the estimation:
         long leftBound = gasTracer.GasSpent != 0 && gasTracer.GasSpent >= lowerBound
             ? gasTracer.GasSpent - 1
@@ -126,9 +127,6 @@ public class GasEstimator(
             err = GetError(gasTracer);
             return 0;
         }
-
-
-        Console.WriteLine($"Estimated {rightBound}");
 
         return rightBound;
     }
