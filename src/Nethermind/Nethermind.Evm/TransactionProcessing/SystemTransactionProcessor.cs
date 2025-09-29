@@ -22,13 +22,13 @@ public sealed class SystemTransactionProcessor : TransactionProcessorBase
     private const int OriginalValidate = 2 << 30;
 
     public SystemTransactionProcessor(
-        ITransactionProcessor.IGasCalculator gasCalculator,
+        ITransactionProcessor.IBlobBaseFeeCalculator blobBaseFeeCalculator,
         ISpecProvider? specProvider,
         IWorldState? worldState,
         IVirtualMachine? virtualMachine,
         ICodeInfoRepository? codeInfoRepository,
         ILogManager? logManager)
-        : base(gasCalculator, specProvider, worldState, virtualMachine, codeInfoRepository, logManager)
+        : base(blobBaseFeeCalculator, specProvider, worldState, virtualMachine, codeInfoRepository, logManager)
     {
         _isAura = SpecProvider.SealEngine == SealEngineType.AuRa;
     }

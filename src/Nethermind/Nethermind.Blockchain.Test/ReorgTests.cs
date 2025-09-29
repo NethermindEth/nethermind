@@ -93,7 +93,7 @@ public class ReorgTests
             specProvider,
             LimboLogs.Instance);
         TransactionProcessor transactionProcessor = new(
-            GasCalculator.Instance,
+            BlobBaseFeeCalculator.Instance,
             specProvider,
             stateProvider,
             virtualMachine,

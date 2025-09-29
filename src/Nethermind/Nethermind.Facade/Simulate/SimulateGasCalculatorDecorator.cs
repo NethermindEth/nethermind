@@ -8,7 +8,7 @@ using Nethermind.Int256;
 
 namespace Nethermind.Facade.Simulate;
 
-public class SimulateGasCalculatorDecorator(ITransactionProcessor.IGasCalculator gasCalculatorBase, SimulateRequestState simulateState) : ITransactionProcessor.IGasCalculator
+public class SimulateBlobBaseFeeCalculatorDecorator(ITransactionProcessor.IBlobBaseFeeCalculator blobBaseFeeCalculatorBase, SimulateRequestState simulateState) : ITransactionProcessor.IBlobBaseFeeCalculator
 {
     public bool TryCalculateBlobBaseFee(BlockHeader header, Transaction transaction, UInt256 blobGasPriceUpdateFraction,
         out UInt256 blobBaseFee)
@@ -19,6 +19,6 @@ public class SimulateGasCalculatorDecorator(ITransactionProcessor.IGasCalculator
                 out blobBaseFee);
         }
 
-        return gasCalculatorBase.TryCalculateBlobBaseFee(header, transaction, blobGasPriceUpdateFraction, out blobBaseFee);
+        return blobBaseFeeCalculatorBase.TryCalculateBlobBaseFee(header, transaction, blobGasPriceUpdateFraction, out blobBaseFee);
     }
 }

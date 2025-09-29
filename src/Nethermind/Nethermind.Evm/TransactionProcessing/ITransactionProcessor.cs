@@ -40,7 +40,7 @@ public interface ITransactionProcessor
     void SetBlockExecutionContext(BlockHeader blockHeader);
     void SetBlockExecutionContext(in BlockExecutionContext blockExecutionContext);
 
-    public interface IGasCalculator
+    public interface IBlobBaseFeeCalculator
     {
         bool TryCalculateBlobBaseFee(BlockHeader header, Transaction transaction,
             UInt256 blobGasPriceUpdateFraction, out UInt256 blobBaseFee);

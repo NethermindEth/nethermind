@@ -156,7 +156,7 @@ public class EvmPooledMemoryTests : EvmMemoryTestsBase
             specProvider,
             LimboLogs.Instance);
         ITransactionProcessor transactionProcessor = new TransactionProcessor(
-            GasCalculator.Instance,
+            BlobBaseFeeCalculator.Instance,
             specProvider,
             stateProvider,
             virtualMachine,

@@ -15,13 +15,13 @@ using Nethermind.Taiko.TaikoSpec;
 namespace Nethermind.Taiko;
 
 public class TaikoTransactionProcessor(
-    ITransactionProcessor.IGasCalculator gasCalculator,
+    ITransactionProcessor.IBlobBaseFeeCalculator blobBaseFeeCalculator,
     ISpecProvider specProvider,
     IWorldState worldState,
     IVirtualMachine virtualMachine,
     ICodeInfoRepository? codeInfoRepository,
     ILogManager? logManager
-    ) : TransactionProcessorBase(gasCalculator, specProvider, worldState, virtualMachine, codeInfoRepository, logManager)
+    ) : TransactionProcessorBase(blobBaseFeeCalculator, specProvider, worldState, virtualMachine, codeInfoRepository, logManager)
 {
     protected override TransactionResult ValidateStatic(Transaction tx, BlockHeader header, IReleaseSpec spec, ExecutionOptions opts,
         in IntrinsicGas intrinsicGas)
