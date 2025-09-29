@@ -18,7 +18,7 @@ public class LogIndexConfig : ILogIndexConfig
     public int SyncAggregateBatchQueueSize { get; set; } = 16;
     public int SyncSaveBatchQueueSize { get; set; } = 16;
 
-    public int SyncFetchBatchParallelism { get; set; } = 16;
+    public int SyncFetchBatchParallelism { get; set; } = Math.Max(Environment.ProcessorCount / 2, 1);
     public int SyncAggregateParallelism { get; set; } = Math.Max(Environment.ProcessorCount / 2, 1);
     public int CompressionParallelism { get; set; } = Math.Max(Environment.ProcessorCount / 2, 1);
 

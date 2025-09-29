@@ -49,7 +49,7 @@ public interface ILogIndexConfig : IConfig
 
     [ConfigItem(
         Description = "Log index sync: degree of parallelism for fetching receipts.",
-        DefaultValue = "16",
+        DefaultValue = "Max(ProcessorCount / 2, 1)",
         HiddenFromDocs = true
     )]
     public int SyncFetchBatchParallelism { get; set; }
