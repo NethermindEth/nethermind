@@ -10,10 +10,10 @@ using System.Text;
 using System.Threading.Tasks;
 
 namespace Nethermind.Xdc;
-public class EpochSwitchInfo
+public class EpochSwitchInfo(Address[] masternodes, Address[] penalties, BlockRoundInfo blockRoundInfo)
 {
-    public Address[] Penalties { get; set; }
-    public Address[] Masternodes { get; set; }
-    public BlockRoundInfo EpochSwitchBlockInfo { get; set; }
+    public Address[] Masternodes { get; set; } = masternodes;
+    public Address[] Penalties { get; set; } = penalties;
+    public BlockRoundInfo EpochSwitchBlockInfo { get; set; } = blockRoundInfo;
     public BlockRoundInfo EpochSwitchParentBlockInfo { get; set; }
 }
