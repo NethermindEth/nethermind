@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Threading;
@@ -22,6 +23,7 @@ using Nethermind.Serialization.Json;
 using Nethermind.State.OverridableEnv;
 using Nethermind.TxPool;
 using Nethermind.TxPool.Filters;
+using ZstdSharp.Unsafe;
 
 namespace Nethermind.Init;
 
@@ -79,10 +81,12 @@ internal sealed class CallFilter:  IIncomingTxFilter
     private readonly ILogger _logger;
     public CallFilter(ITxPoolConfig txPoolConfig, IGethStyleTracer bridge, ILogger logger)
     {
+        logger.Info("Initializing Call Filter");
         foreach (var stuff in txPoolConfig.BlacklistedFunctionCalls)
         {
             var data = stuff.Split(';');
             _blacklistedFunctionCalls[new AddressAsKey(new Address(data[0]))] = new HashSet<string>(data[1..]);
+            logger.Info($"{data[0]} {data[1]} {data[2]}");
         }
         _gethStyleTracer = bridge;
         _logger = logger;
@@ -96,7 +100,7 @@ internal sealed class CallFilter:  IIncomingTxFilter
         EthereumJsonSerializer ser = new();
 
         var traces = (NativeCallTracerCallFrame)(trace!.CustomTracerResult!.Value);
-        _logger.Info(ser.Serialize(traces));
+        // _logger.Info(ser.Serialize(traces));
         if (_blacklistedFunctionCalls.Count != 0)
         {
             if (!IsFrameValid(_blacklistedFunctionCalls, traces) || traces.Calls.Any(tr => !IsFrameValid(_blacklistedFunctionCalls, traces)))
@@ -107,9 +111,10 @@ internal sealed class CallFilter:  IIncomingTxFilter
 
     private static bool IsFrameValid(Dictionary<AddressAsKey, HashSet<string>> list, NativeCallTracerCallFrame frame)
     {
-        if (list.TryGetValue(new AddressAsKey(frame.To!), out var value))
+        if (list.TryGetValue(new AddressAsKey(frame.To!), out HashSet<string>? value))
         {
             var selector = frame.Input!.AsSpan()[..4];
+            Console.WriteLine($"This is inside frame checker {frame.To} {selector.ToHexString()}");
             if (value.Contains(selector.ToHexString())) return false;
         }
 
