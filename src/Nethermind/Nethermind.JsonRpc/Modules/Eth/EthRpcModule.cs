@@ -819,7 +819,7 @@ public partial class EthRpcModule(
 
         static ForkConfig? GetForkConfig(Fork? fork, ISpecProvider specProvider)
         {
-            if (fork is null || fork.Value.Activation.Timestamp is null)
+            if (fork is null)
             {
                 return null;
             }
