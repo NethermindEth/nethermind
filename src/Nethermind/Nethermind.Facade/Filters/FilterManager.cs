@@ -40,7 +40,6 @@ namespace Nethermind.Blockchain.Filters
             _filterStore = filterStore ?? throw new ArgumentNullException(nameof(filterStore));
             txPool = txPool ?? throw new ArgumentNullException(nameof(txPool));
             _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
-            mainProcessingContext.BranchProcessor.BlockProcessing += OnBlockProcessing;
             mainProcessingContext.BranchProcessor.BlockProcessed += OnBlockProcessed;
             mainProcessingContext.TransactionProcessed += OnTransactionProcessed;
             _filterStore.FilterRemoved += OnFilterRemoved;
@@ -56,13 +55,6 @@ namespace Nethermind.Blockchain.Filters
             _pendingTransactions.TryRemove(id, out _);
         }
 
-        private readonly ConcurrentDictionary<long, Block> _pendingBlocks = new();
-
-        private void OnBlockProcessing(object sender, BlockEventArgs e)
-        {
-            _pendingBlocks[e.Block.Number] = e.Block;
-        }
-
         private void OnBlockProcessed(object sender, BlockProcessedEventArgs e)
         {
             _lastBlockHash = e.Block.Hash;
@@ -72,12 +64,7 @@ namespace Nethermind.Blockchain.Filters
 
         private void OnTransactionProcessed(object sender, TxProcessedEventArgs e)
         {
-            Block currentBlock = _pendingBlocks[e.TxReceipt.BlockNumber];
-            AddReceipts(e.TxReceipt, currentBlock.Timestamp);
-            if (e.TxReceipt.Index == currentBlock.Transactions.Length - 1)
-            {
-                _pendingBlocks.Remove(currentBlock.Number, out _);
-            }
+            AddReceipts(e.TxReceipt, e.BlockHeader.Timestamp);
         }
 
         private void OnNewPendingTransaction(object sender, TxPool.TxEventArgs e)
