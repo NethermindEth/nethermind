@@ -13,7 +13,7 @@ using Nethermind.TxPool;
 
 namespace Nethermind.Optimism;
 
-public class InitializeBlockchainOptimism(OptimismNethermindApi api, IChainHeadInfoProvider chainHeadInfoProvider) : InitializeBlockchain(api, chainHeadInfoProvider)
+public class InitializeBlockchainOptimism(OptimismNethermindApi api) : InitializeBlockchain(api, new CompliantNodeFilters([]))
 {
     protected override async Task InitBlockchain()
     {

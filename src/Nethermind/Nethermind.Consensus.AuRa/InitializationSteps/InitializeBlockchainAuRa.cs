@@ -25,7 +25,7 @@ public class InitializeBlockchainAuRa : InitializeBlockchain
     private readonly AuRaNethermindApi _api;
     private INethermindApi NethermindApi => _api;
 
-    public InitializeBlockchainAuRa(AuRaNethermindApi api, IChainHeadInfoProvider chainHeadInfoProvider) : base(api, chainHeadInfoProvider)
+    public InitializeBlockchainAuRa(AuRaNethermindApi api, IChainHeadInfoProvider chainHeadInfoProvider) : base(api, chainHeadInfoProvider, new CompliantNodeFilters([]))
     {
         _api = api;
     }

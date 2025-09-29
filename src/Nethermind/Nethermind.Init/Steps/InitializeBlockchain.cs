@@ -32,7 +32,7 @@ namespace Nethermind.Init.Steps
         typeof(SetupKeyStore),
         typeof(InitializePrecompiles)
     )]
-    public class InitializeBlockchain(INethermindApi api, IChainHeadInfoProvider chainHeadInfoProvider) : IStep
+    public class InitializeBlockchain(INethermindApi api, IChainHeadInfoProvider chainHeadInfoProvider, CompliantNodeFilters compliantNodeFilters) : IStep
     {
         private readonly INethermindApi _api = api;
 
@@ -107,7 +107,6 @@ namespace Nethermind.Init.Steps
 
         protected virtual ITxPool CreateTxPool(IChainHeadInfoProvider chainHeadInfoProvider)
         {
-            var callFilter = new CallFilter(_api.Config<ITxPoolConfig>().BlacklistedFunctionCalls, _api.GethStyleTracer);
             TxPool.TxPool txPool = new(_api.EthereumEcdsa!,
                 _api.BlobTxStorage ?? NullBlobTxStorage.Instance,
                 chainHeadInfoProvider,
@@ -118,7 +117,7 @@ namespace Nethermind.Init.Steps
                 _api.TxGossipPolicy,
                 null,
                 _api.HeadTxValidator,
-                additionalPreHashFilters: [callFilter]
+                additionalPreHashFilters: compliantNodeFilters.Filters
             );
 
             _api.DisposeStack.Push(txPool);
