@@ -137,6 +137,8 @@ namespace Nethermind.State
             RootHash = EmptyTreeHash;
         }
 
+        public bool WasEmptyTree => RootHash == EmptyTreeHash;
+
         public byte[] Get(in UInt256 index)
         {
             return Get(index, null);
@@ -165,29 +167,6 @@ namespace Nethermind.State
                 Span<byte> key = stackalloc byte[32];
                 ComputeKey(index, key);
                 SetInternal(key, value);
-            }
-        }
-
-        public IWorldStateScopeProvider.IStorageSetter BeginSet(int estimatedEntries)
-        {
-            return new StorageTreeBulkSetter(estimatedEntries, this);
-        }
-
-        private class StorageTreeBulkSetter(int estimatedEntries, StorageTree storageTree) : IWorldStateScopeProvider.IStorageSetter
-        {
-            ArrayPoolList<PatriciaTree.BulkSetEntry> _bulkWrite = new(estimatedEntries);
-            private ValueHash256 _keyBuff = new ValueHash256();
-
-            public void Set(in UInt256 index, byte[] value)
-            {
-                StorageTree.ComputeKeyWithLookup(index, _keyBuff.BytesAsSpan);
-                _bulkWrite.Add(StorageTree.CreateBulkSetEntry(_keyBuff, value));
-            }
-
-            public void Dispose()
-            {
-                storageTree.BulkSet(_bulkWrite);
-                _bulkWrite.Dispose();
             }
         }
 
