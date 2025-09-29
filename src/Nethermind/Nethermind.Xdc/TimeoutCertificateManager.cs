@@ -61,7 +61,12 @@ public class TimeoutCertificateManager(ISnapshotManager snapshotManager, IEpochS
         if (header is not XdcBlockHeader xdcHeader)
             throw new ArgumentException($"Only type of {nameof(XdcBlockHeader)} is allowed");
         IXdcReleaseSpec spec = _specProvider.GetXdcSpec(xdcHeader, timeoutCert.Round);
-        EpochSwitchInfo epochInfo = GetTCEpochInfo(timeoutCert, xdcHeader, spec);
+        EpochSwitchInfo epochInfo = _epochSwitchManager.GetTimeoutCertificateEpochInfo(timeoutCert);
+        if (epochInfo is null)
+        {
+            errorMessage = "Failed to get epoch switch info for timeout certificate";
+            return false;
+        }
         if (signatures.Count < epochInfo.Masternodes.Length * spec.CertThreshold)
         {
             errorMessage = "Invalid TC Signatures";
@@ -89,30 +94,6 @@ public class TimeoutCertificateManager(ISnapshotManager snapshotManager, IEpochS
 
         errorMessage = null;
         return true;
-    }
-
-    private EpochSwitchInfo GetTCEpochInfo(TimeoutCert timeoutCert, XdcBlockHeader xdcHeader, IXdcReleaseSpec spec)
-    {
-
-        EpochSwitchInfo epochSwitchInfo = _epochSwitchManager.GetEpochSwitchInfo(xdcHeader, xdcHeader.Hash);
-        if (epochSwitchInfo is null) throw new Exception("Failed to get epoch switch info");
-        var epochRound = epochSwitchInfo.EpochSwitchBlockInfo.Round;
-        var tcEpoch = (ulong)spec.SwitchEpoch + epochRound / (ulong)spec.EpochLength;
-
-        var epochBlockInfo = new BlockRoundInfo(epochSwitchInfo.EpochSwitchBlockInfo.Hash, epochRound,
-            epochSwitchInfo.EpochSwitchBlockInfo.BlockNumber);
-
-        // Reference: https://github.com/XinFinOrg/XDPoSChain/blob/af4178b2c7f9d668d8ba1f3a0244606a20ce303d/consensus/XDPoS/engines/engine_v2/timeout.go#L99
-        while (epochBlockInfo.Round > timeoutCert.Round)
-        {
-            tcEpoch--;
-            epochBlockInfo = _epochSwitchManager.GetBlockByEpochNumber(tcEpoch);
-            if (epochBlockInfo is null) throw new Exception($"Failed to get block info for epoch={tcEpoch}");
-        }
-
-        EpochSwitchInfo epochInfo = _epochSwitchManager.GetEpochSwitchInfo(null, epochBlockInfo.Hash);
-        if (epochInfo is null) throw new Exception("Failed to get epoch switch info");
-        return epochInfo;
     }
 }
 
