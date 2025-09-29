@@ -2,25 +2,39 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using System.Buffers.Binary;
 using System.Collections.Generic;
+using System.Diagnostics.CodeAnalysis;
 using System.Linq;
-using System.Runtime.InteropServices;
-using System.Threading.Tasks;
 using NUnit.Framework;
-using NUnit.Framework.Legacy;
 
 namespace Nethermind.Db.Test;
 
-// More for documenting how the library works and comparing compression sizes
-public class TurboPForTests
+[Parallelizable(ParallelScope.All)]
+[TestFixtureSource(nameof(Algorithms))]
+public class TurboPForTests(TurboPForTests.Algorithm algorithm)
 {
+    [SuppressMessage("ReSharper", "MemberHidesStaticFromOuterClass")]
+    public record Algorithm(string Name, CompressFunc Compress, DecompressFunc Decompress)
+    {
+        public override string ToString() => Name;
+    }
+
+    private static Algorithm[] Algorithms() =>
+    [
+        new("p4nd1*256v32", TurboPFor.p4nd1enc256v32, TurboPFor.p4nd1dec256v32),
+        new("p4nd1*128v32", TurboPFor.p4nd1enc128v32, TurboPFor.p4nd1dec128v32),
+
+        // Mixed version - don't work
+        //new("p4nd1enc256v32 / p4nd1dec128v32", TurboPFor.p4nd1enc256v32, TurboPFor.p4nd1dec128v32),
+        //new("p4nd1enc128v32 / p4nd1dec256v32", TurboPFor.p4nd1enc128v32, TurboPFor.p4nd1dec256v32)
+    ];
+
     private static IEnumerable<int> Lengths()
     {
         yield return 1;
         yield return 10;
 
-        for (var i = 32; i <= 1024; i <<= 1)
+        for (var i = 32; i <= 2048; i <<= 1)
         {
             yield return i - 1;
             yield return i;
@@ -37,96 +51,70 @@ public class TurboPForTests
         yield return 1000;
     }
 
-    [TestCaseSource(nameof(Lengths))]
-    public unsafe void p4nd1enc256v32_Increasing_Consecutive(int length)
-    {
-        var values = Enumerable.Range(0, length).ToArray();
-        var compressed = Compress(values, TurboPFor.p4nd1enc256v32);
-        var decompressed = Decompress(compressed, values.Length, TurboPFor.p4nd1dec256v32);
-
-        Assert.That(decompressed, Is.EquivalentTo(values));
-    }
-
-    [TestCaseSource(nameof(Lengths))]
-    public unsafe void p4nd1enc128v32_Increasing_Consecutive(int length)
-    {
-        var values = Enumerable.Range(0, length).ToArray();
-        var compressed = Compress(values, TurboPFor.p4nd1enc128v32);
-        var decompressed = Decompress(compressed, values.Length, TurboPFor.p4nd1dec128v32);
-
-        Assert.That(decompressed, Is.EquivalentTo(values));
-    }
-
+    [Test]
     [Combinatorial]
-    public unsafe void p4nd1enc256v32_Increasing_Random(
-        [ValueSource(nameof(Lengths))] int length,
-        [ValueSource(nameof(Deltas))] int maxDelta
+    public void Increasing_Consecutive(
+        [ValueSource(nameof(Lengths))] int length
     )
     {
-        var values = RandomIncreasingRange(new(42), length, maxDelta).ToArray();
-        var compressed = Compress(values, TurboPFor.p4nd1enc256v32);
-        var decompressed = Decompress(compressed, values.Length, TurboPFor.p4nd1dec256v32);
-
-        Assert.That(decompressed, Is.EquivalentTo(values));
+        var values = Enumerable.Range(0, length).ToArray();
+        Verify(values);
     }
 
+    [Test]
     [Combinatorial]
-    public unsafe void p4nd1enc128v32_Increasing_Random(
-        [ValueSource(nameof(Lengths))] int length,
-        [ValueSource(nameof(Deltas))] int maxDelta
+    public void Increasing_Consecutive_Negative(
+        [ValueSource(nameof(Lengths))] int length
     )
-    {
-        var values = RandomIncreasingRange(new(42), length, maxDelta).ToArray();
-        var compressed = Compress(values, TurboPFor.p4nd1enc128v32);
-        var decompressed = Decompress(compressed, values.Length, TurboPFor.p4nd1dec128v32);
-
-        Assert.That(decompressed, Is.EquivalentTo(values));
-    }
-
-    [TestCaseSource(nameof(Lengths))]
-    public unsafe void p4nd1enc256v32_Increasing_Consecutive_Negative(int length)
     {
         var values = Enumerable.Range(0, length).Reverse().Select(x => -x).ToArray();
-        var compressed = Compress(values, TurboPFor.p4nd1enc256v32);
-        var decompressed = Decompress(compressed, values.Length, TurboPFor.p4nd1dec256v32);
-
-        Assert.That(decompressed, Is.EquivalentTo(values));
+        Verify(values);
     }
 
-    [TestCaseSource(nameof(Lengths))]
-    public unsafe void p4nd1enc256v32_Decreasing_Consecutive(int length)
-    {
-        var values = Enumerable.Range(0, length).Reverse().ToArray();
-        var compressed = Compress(values, TurboPFor.p4nd1enc256v32);
-        var decompressed = Decompress(compressed, values.Length, TurboPFor.p4nd1dec256v32);
-
-        Assert.That(decompressed, Is.EquivalentTo(values));
-    }
-
+    [Test]
     [Combinatorial]
-    public unsafe void p4nd1enc256v32_Increasing_Random_Negative(
+    public void Increasing_Random(
+        [Values(42, 4242, 424242)] int seed,
         [ValueSource(nameof(Lengths))] int length,
         [ValueSource(nameof(Deltas))] int maxDelta
     )
     {
-        var values = RandomIncreasingRange(new(42), length, maxDelta).Reverse().Select(x => -x).ToArray();
-        var compressed = Compress(values, TurboPFor.p4nd1enc256v32);
-        var decompressed = Decompress(compressed, values.Length, TurboPFor.p4nd1dec256v32);
-
-        Assert.That(decompressed, Is.EquivalentTo(values));
+        var values = RandomIncreasingRange(new Random(seed), length, maxDelta).ToArray();
+        Verify(values);
     }
 
+    [Test]
     [Combinatorial]
-    public unsafe void p4nd1enc256v32_Decreasing_Random(
+    public void Increasing_Random_Negative(
+        [Values(42, 4242, 424242)] int seed,
+        [ValueSource(nameof(Lengths))] int length,
+        [ValueSource(nameof(Deltas))] int maxDelta
+    )
+    {
+        var values = RandomIncreasingRange(new Random(seed), length, maxDelta).Reverse().Select(x => -x).ToArray();
+        Verify(values);
+    }
+
+    [Test]
+    [Combinatorial]
+    public void Decreasing_Consecutive(
+        [ValueSource(nameof(Lengths))] int length
+    )
+    {
+        var values = Enumerable.Range(0, length).Reverse().ToArray();
+        Verify(values);
+    }
+
+    [Test]
+    [Combinatorial]
+    public void Decreasing_Random(
+        [Values(42, 4242, 424242)] int seed,
         [ValueSource(nameof(Lengths))] int length,
         [ValueSource(nameof(Deltas))] int maxDelta
     )
     {
         var values = RandomIncreasingRange(new(42), length, maxDelta).Reverse().ToArray();
-        var compressed = Compress(values, TurboPFor.p4nd1enc256v32);
-        var decompressed = Decompress(compressed, values.Length, TurboPFor.p4nd1dec256v32);
-
-        Assert.That(decompressed, Is.EquivalentTo(values));
+        Verify(values);
     }
 
     private static IEnumerable<int> RandomIncreasingRange(Random random, int length, int maxDelta)
@@ -139,71 +127,38 @@ public class TurboPForTests
         }
     }
 
-    private unsafe delegate nuint CompressFunc(int* @in, nuint n, byte* @out);
+    public delegate nuint CompressFunc(ReadOnlySpan<int> @in, nuint n, Span<byte> @out);
 
-    private unsafe delegate nuint DecompressFunc(byte* @in, nuint n, int* @out);
+    public delegate nuint DecompressFunc(ReadOnlySpan<byte> @in, nuint n, Span<int> @out);
 
-    private unsafe delegate byte* CompressBlockFunc(int* @in, int n, byte* @out, int start);
+    private void Verify(int[] values)
+    {
+        if (!TurboPFor.Supports256Blocks && algorithm.Name.Contains("256"))
+            Assert.Ignore("256 blocks are not supported on this platform.");
 
-    private unsafe delegate byte* DecompressBlockFunc(byte* @in, int n, int* @out, int start);
+        var compressed = Compress(values, algorithm.Compress);
+        var decompressed = Decompress(compressed, values.Length, algorithm.Decompress);
 
-    private static unsafe byte[] Compress(int[] values, CompressBlockFunc compressFunc, int deltaStart = 0)
+        Assert.That(decompressed, Is.EqualTo(values));
+    }
+
+    private static byte[] Compress(int[] values, CompressFunc compressFunc)
     {
         var buffer = new byte[values.Length * sizeof(int) + 1024];
 
-        int resultLength;
-        fixed (int* inputPtr = values)
-        fixed (byte* resultPtr = buffer)
-        {
-            var endPtr = compressFunc(inputPtr, values.Length, resultPtr, deltaStart);
-            resultLength = (int)(endPtr - (long)resultPtr);
-        }
+        var resultLength = (int) compressFunc(values, (nuint) values.Length, buffer);
 
-        //TestContext.Out.WriteLine($"Compressed: {resultLength} bytes");
+        TestContext.Out.WriteLine($"Compressed: {resultLength} bytes");
         return buffer[..resultLength];
     }
 
-    private static unsafe int[] Decompress(byte[] data, int count, DecompressBlockFunc decompressFunc, int deltaStart = 0)
+    private static int[] Decompress(byte[] data, int count, DecompressFunc decompressFunc)
     {
-        var buffer = new int[count + 1024];
-
-        fixed (byte* inputPtr = data)
-        fixed (int* resultPtr = buffer)
-        {
-            var endPtr = decompressFunc(inputPtr, count, resultPtr, deltaStart);
-        }
-
-        return buffer[..count];
-    }
-
-    private static unsafe byte[] Compress(int[] values, CompressFunc compressFunc)
-    {
-        var buffer = new byte[values.Length * sizeof(int) + 1024];
-
-        int resultLength;
-        fixed (int* inputPtr = values)
-        fixed (byte* resultPtr = buffer)
-        {
-            resultLength = (int)compressFunc(inputPtr, (nuint)values.Length, resultPtr);
-        }
-
-        //TestContext.Out.WriteLine($"Compressed: {resultLength} bytes");
-        return buffer[..resultLength];
-    }
-
-    private static unsafe int[] Decompress(byte[] data, int count, DecompressFunc decompressFunc)
-    {
-        //var buffer = new int[count];
-
-        var buffer = new int[count * 2];
+        var buffer = new int[count + 1];
         for (var i = count; i < buffer.Length; i++)
             buffer[i] = -1;
 
-        fixed (byte* inputPtr = data)
-        fixed (int* resultPtr = buffer)
-        {
-            _ = decompressFunc(inputPtr, (nuint)count, resultPtr);
-        }
+        _ = decompressFunc(data, (nuint) count, buffer);
 
         for (var i = count; i < buffer.Length; i++) Assert.That(buffer[i], Is.EqualTo(-1));
 

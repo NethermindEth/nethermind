@@ -17,7 +17,6 @@ using Nethermind.Logging;
 
 namespace Nethermind.Db
 {
-
     // TODO: get rid of InvalidOperationExceptions - these are for state validation
     // TODO: verify all MemoryMarshal usages - needs to be CPU-cross-compatible
     [SuppressMessage("ReSharper", "PrivateFieldCanBeConvertedToLocalVariable")] // TODO: get rid of unused fields
@@ -900,28 +899,17 @@ namespace Nethermind.Db
             return index < 0 ? ~index : index;
         }
 
-        private static unsafe ReadOnlySpan<int> Decompress(ReadOnlySpan<byte> data, ReadOnlySpan<int> decompressedBlockNumbers)
+        private static ReadOnlySpan<int> Decompress(ReadOnlySpan<byte> data, Span<int> decompressedBlockNumbers)
         {
-            fixed (byte* dataPtr = data)
-            fixed (int* decompressedPtr = decompressedBlockNumbers)
-                _ = TurboPFor.p4nd1dec256v32(dataPtr, (nuint)decompressedBlockNumbers.Length, decompressedPtr);
-
+            _ = TurboPFor.p4nd1dec256v32(data, (nuint)decompressedBlockNumbers.Length, decompressedBlockNumbers);
             return decompressedBlockNumbers;
         }
 
         // TODO: test on big-endian system?
-        private static unsafe ReadOnlySpan<byte> Compress(Span<byte> data, Span<byte> buffer)
+        private static ReadOnlySpan<byte> Compress(Span<byte> data, Span<byte> buffer)
         {
-            int length;
             ReadOnlySpan<int> blockNumbers = MemoryMarshal.Cast<byte, int>(data);
-
-            fixed (int* blockNumbersPtr = blockNumbers)
-            fixed (byte* compressedPtr = buffer)
-            {
-                // TODO: test different deltas and block sizes
-                length = (int)TurboPFor.p4nd1enc256v32(blockNumbersPtr, (nuint)blockNumbers.Length, compressedPtr);
-            }
-
+            var length = (int)TurboPFor.p4nd1enc256v32(blockNumbers, (nuint)blockNumbers.Length, buffer);
             return buffer[..length];
         }
 
@@ -996,7 +984,7 @@ namespace Nethermind.Db
                 throw new ValidationException("Data is not compressed");
 
             // TODO: reuse buffer
-            ReadOnlySpan<int> buffer = new int[len + 1]; // +1 fixes TurboPFor reading outside of array bounds
+            Span<int> buffer = new int[len + 1]; // +1 fixes TurboPFor reading outside of array bounds
             buffer = buffer[..^1];
 
             var result = Decompress(data[BlockNumSize..], buffer);
