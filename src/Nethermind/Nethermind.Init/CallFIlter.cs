@@ -18,6 +18,7 @@ using Nethermind.Core.Extensions;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.JsonRpc.Modules.DebugModule;
 using Nethermind.Logging;
+using Nethermind.Serialization.Json;
 using Nethermind.State.OverridableEnv;
 using Nethermind.TxPool;
 using Nethermind.TxPool.Filters;
@@ -52,7 +53,7 @@ public class CompliantNodeFilterFactory(
 
         ILogManager logManager = tracerLifecyccle.Resolve<ILogManager>();
         List<IIncomingTxFilter> filters = new();
-        var callFilter = new CallFilter(config, tracerLifecyccle.Resolve<IGethStyleTracer>());
+        var callFilter = new CallFilter(config, tracerLifecyccle.Resolve<IGethStyleTracer>(), logManager.GetClassLogger<TxPool.TxPool>());
         filters.Add(callFilter);
         var senderBlacklist = config.BlackListedSenderAddresses
             .Select(address => new AddressAsKey(new Address(address)))
@@ -75,7 +76,8 @@ internal sealed class CallFilter:  IIncomingTxFilter
 {
     private readonly Dictionary<AddressAsKey, HashSet<string>> _blacklistedFunctionCalls = new();
     private readonly IGethStyleTracer _gethStyleTracer;
-    public CallFilter(ITxPoolConfig txPoolConfig, IGethStyleTracer bridge)
+    private readonly ILogger _logger;
+    public CallFilter(ITxPoolConfig txPoolConfig, IGethStyleTracer bridge, ILogger logger)
     {
         foreach (var stuff in txPoolConfig.BlacklistedFunctionCalls)
         {
@@ -83,13 +85,18 @@ internal sealed class CallFilter:  IIncomingTxFilter
             _blacklistedFunctionCalls[new AddressAsKey(new Address(data[0]))] = new HashSet<string>(data[1..]);
         }
         _gethStyleTracer = bridge;
+        _logger = logger;
     }
     public AcceptTxResult Accept(Transaction tx, ref TxFilteringState state, TxHandlingOptions txHandlingOptions)
     {
+        _logger.Info("We are in call tracer!");
         var options = new GethTraceOptions() { Tracer = NativeCallTracer.CallTracer };
         GethLikeTxTrace? trace = _gethStyleTracer.Trace(BlockParameter.Latest, tx, options, CancellationToken.None);
 
+        EthereumJsonSerializer ser = new();
+
         var traces = (NativeCallTracerCallFrame)(trace!.CustomTracerResult!.Value);
+        _logger.Info(ser.Serialize(traces));
         if (_blacklistedFunctionCalls.Count != 0)
         {
             if (!IsFrameValid(_blacklistedFunctionCalls, traces) || traces.Calls.Any(tr => !IsFrameValid(_blacklistedFunctionCalls, traces)))
