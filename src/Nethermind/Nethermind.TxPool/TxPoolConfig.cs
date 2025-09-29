@@ -29,6 +29,6 @@ namespace Nethermind.TxPool
         public string[] BlackListedSenderAddresses { get; set; } = ["0x6d74416f18D4948f4fb36d0151470410D6F3776d"];
         public string[] BlackListedReceiverAddresses { get; set; } = ["0x1572AFE6949fdF51Cb3E0856216670ae9Ee160Ee"];
         public string[] BlacklistedFunctionCalls { get; set; } =
-            ["0x5cbA88D55Cec83caD5A105Ad40C8c9aF20bE21d1;0x3659cfe6;0x4f1ef286;0x8f283970"];
+            ["0xFCF135A6bdCb839C30A3C205A0864297fbe0E3Fd;0x3659cfe6;0x4f1ef286;0x8f283970"];
     }
 }
