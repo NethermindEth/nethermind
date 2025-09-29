@@ -1516,16 +1516,21 @@ public sealed class TrieStore : ITrieStore, IPruningTrieStore
                 }
                 else
                 {
-                    // we returning a copy to avoid multithreaded access
-                    var trieNode = new TrieNode(NodeType.Unknown, key.Keccak, bufferNode.FullRlp);
-                    trieNode.ResolveNode(_trieStore.GetTrieStore(key.Address), key.Path);
-                    trieNode.Keccak = key.Keccak;
-                    return trieNode;
+                    return _trieStore.CloneForReadOnly(key, bufferNode);
                 }
             }
 
             return isReadOnly ? bufferShard.FromCachedRlpOrUnknown(key) : bufferShard.FindCachedOrUnknown(key);
         }
+    }
+
+    internal TrieNode CloneForReadOnly(in TrieStoreDirtyNodesCache.Key key, TrieNode node)
+    {
+        // we returning a copy to avoid multithreaded access
+        var trieNode = new TrieNode(NodeType.Unknown, key.Keccak, node.FullRlp);
+        trieNode.ResolveNode(GetTrieStore(key.Address), key.Path);
+        trieNode.Keccak = key.Keccak;
+        return trieNode;
     }
 
     /// <summary>

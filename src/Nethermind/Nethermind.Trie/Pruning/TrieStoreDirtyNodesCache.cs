@@ -94,10 +94,7 @@ internal class TrieStoreDirtyNodesCache
                 return new TrieNode(NodeType.Unknown, key.Keccak);
             }
 
-            // we returning a copy to avoid multithreaded access
-            trieNode = new TrieNode(NodeType.Unknown, key.Keccak, trieNode.FullRlp);
-            trieNode.ResolveNode(_trieStore.GetTrieStore(key.Address), key.Path);
-            trieNode.Keccak = key.Keccak;
+            trieNode = _trieStore.CloneForReadOnly(key, trieNode);
 
             Metrics.LoadedFromCacheNodesCount++;
         }
