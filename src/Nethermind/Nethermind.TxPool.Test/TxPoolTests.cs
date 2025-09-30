@@ -2368,7 +2368,7 @@ namespace Nethermind.TxPool.Test
                 : new BlockReplacementEventArgs(block ?? Build.A.Block.TestObject, previousBlock);
 
             Task waitTask = Wait.ForEventCondition<Block>(
-                default,
+                CancellationToken.None,
                 e => _txPool.TxPoolHeadChanged += e,
                 e => _txPool.TxPoolHeadChanged -= e,
                 e => e.Number == block.Number
