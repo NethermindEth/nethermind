@@ -179,6 +179,16 @@ public class Block
         return builder.ToString();
     }
 
+    /// <summary>
+    /// Disposes the AccountChanges ArrayPoolList if present, returning the pooled array.
+    /// This should be called when the block is no longer needed to prevent memory leaks.
+    /// </summary>
+    public void DisposeAccountChanges()
+    {
+        AccountChanges?.Dispose();
+        AccountChanges = null;
+    }
+
     public enum Format
     {
         Full,
