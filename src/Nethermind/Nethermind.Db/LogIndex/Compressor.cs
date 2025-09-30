@@ -126,7 +126,7 @@ partial class LogIndexStorage
                 SetKeyBlockNum(dbKeyComp[key.Length..], postfixBlock);
 
                 timestamp = Stopwatch.GetTimestamp();
-                dbValue = CompressDbValue(dbValue);
+                dbValue = _storage.CompressDbValue(dbValue);
                 _stats.CompressingValue.Include(Stopwatch.GetElapsedTime(timestamp));
 
                 // Put compressed value at a new key and clear the uncompressed one

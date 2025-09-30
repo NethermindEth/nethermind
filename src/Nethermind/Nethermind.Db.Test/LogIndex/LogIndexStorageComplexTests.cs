@@ -41,11 +41,11 @@ namespace Nethermind.Db.Test.LogIndex
 
         public static readonly TestFixtureData[] TestCases =
         [
-            new(new TestData(10, 100)),
-            new(new TestData(5, 200)),
+            new(new TestData(10, 100) { Compression = LogIndexStorage.CompressionAlgorithm.Best.Key }),
+            new(new TestData(5, 200) { Compression = nameof(TurboPFor.p4nd1enc128v32) }),
             new(new TestData(10, 100) { ExtendedGetRanges = true }) { RunState = RunState.Explicit },
-            new(new TestData(100, 100)) { RunState = RunState.Explicit },
-            new(new TestData(100, 200)) { RunState = RunState.Explicit }
+            new(new TestData(100, 100) { Compression = nameof(TurboPFor.p4nd1enc128v32) }) { RunState = RunState.Explicit },
+            new(new TestData(100, 200) { Compression = LogIndexStorage.CompressionAlgorithm.Best.Key }) { RunState = RunState.Explicit }
         ];
 
         private string _dbPath = null!;
@@ -684,6 +684,7 @@ namespace Nethermind.Db.Test.LogIndex
             public List<(int, Hash256)> Topics { get; private set; }
 
             public bool ExtendedGetRanges { get; init; }
+            public string? Compression { get; init; }
 
             public TestData(Random random, int batchCount, int blocksPerBatch, int startNum = 0)
             {
@@ -839,7 +840,8 @@ namespace Nethermind.Db.Test.LogIndex
                 _startNum, _startNum + _batchCount * _blocksPerBatch - 1
             );
 
-            public override string ToString() => $"{_batchCount} * {_blocksPerBatch} blocks (ex-ranges: {ExtendedGetRanges})";
+            public override string ToString() =>
+                $"{_batchCount} * {_blocksPerBatch} blocks (ex-ranges: {ExtendedGetRanges}, compression: {Compression})";
         }
     }
 }

@@ -81,4 +81,11 @@ public interface ILogIndexConfig : IConfig
         HiddenFromDocs = true
     )]
     public int CompactionDistance { get; set; }
+
+    [ConfigItem(
+        Description = "Log index sync: compression algorithm to use for block numbers.",
+        DefaultValue = nameof(TurboPFor.p4nd1enc256v32) + " if supported, otherwise " + nameof(TurboPFor.p4nd1enc128v32),
+        HiddenFromDocs = true
+    )]
+    string? CompressionAlgorithm { get; set; }
 }

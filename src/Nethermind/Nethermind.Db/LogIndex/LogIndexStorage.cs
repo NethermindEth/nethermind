@@ -7,6 +7,7 @@ using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
 using System.Linq;
 using System.Runtime.InteropServices;
+using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Core;
@@ -33,6 +34,9 @@ namespace Nethermind.Db
 
             public static readonly byte[] MaxBlockNum = Enumerable.Repeat(byte.MaxValue, MaxDbKeyLength)
                 .Concat(new byte[] { 2 }).ToArray();
+
+            public static readonly byte[] CompressionAlgo = Enumerable.Repeat(byte.MaxValue, MaxDbKeyLength)
+                .Concat(new byte[] { 3 }).ToArray();
         }
 
         private static class SpecialPostfix
@@ -69,6 +73,7 @@ namespace Nethermind.Db
         private readonly Dictionary<LogIndexColumns, MergeOperator> _mergeOperators;
         private readonly ICompressor _compressor;
         private readonly ICompactor _compactor;
+        private readonly CompressionAlgorithm _compressionAlgorithm;
 
         private readonly Lock _rangeInitLock = new(); // May not be needed, but added for safety
         private int? _addressMaxBlock;
@@ -123,9 +128,10 @@ namespace Nethermind.Db
                 { LogIndexColumns.Topics3, new(this, _compressor, topicIndex: 3) }
             };
 
-            _rootDb = GetDbEnsureVersion(dbFactory, config.Reset);
+            _rootDb = CreateRootDb(dbFactory, config.Reset);
             _addressDb = _rootDb.GetColumnDb(LogIndexColumns.Addresses);
             _topicDbs = _mergeOperators.Keys.Where(cl => $"{cl}".Contains("Topic")).Select(cl => _rootDb.GetColumnDb(cl)).ToArray();
+            _compressionAlgorithm = SelectCompressionAlgo(config.CompressionAlgorithm);
 
             _addressMaxBlock = LoadRangeBound(_addressDb, SpecialKey.MaxBlockNum);
             _addressMinBlock = LoadRangeBound(_addressDb, SpecialKey.MinBlockNum);
@@ -139,7 +145,7 @@ namespace Nethermind.Db
                 _firstBlockAddedSource.SetResult();
         }
 
-        private IColumnsDb<LogIndexColumns> GetDbEnsureVersion(IDbFactory dbFactory, bool reset)
+        private IColumnsDb<LogIndexColumns> CreateRootDb(IDbFactory dbFactory, bool reset)
         {
             (IColumnsDb<LogIndexColumns> root, IDb meta) = CreateDb();
 
@@ -179,8 +185,53 @@ namespace Nethermind.Db
                     MergeOperatorByColumn = _mergeOperators.ToDictionary(x => $"{x.Key}", x => (IMergeOperator)x.Value)
                 });
 
-                return (db, db.GetColumnDb(LogIndexColumns.Addresses));
+                return (db, GetMetaDb(db));
             }
+        }
+
+        private CompressionAlgorithm SelectCompressionAlgo(string? configAlgoName)
+        {
+            IDb meta = GetMetaDb(_rootDb);
+
+            CompressionAlgorithm? configAlgo = null;
+            if (configAlgoName is not null && !CompressionAlgorithm.Supported.TryGetValue(configAlgoName, out configAlgo))
+            {
+                throw new NotSupportedException(
+                    $"Configured compression algorithm ({configAlgoName}) is not supported on this platform."
+                );
+            }
+
+            var algoBytes = meta.Get(SpecialKey.CompressionAlgo);
+            if (algoBytes is null)
+            {
+                KeyValuePair<string, CompressionAlgorithm> selected = configAlgo is not null
+                    ? KeyValuePair.Create(configAlgoName, configAlgo)
+                    : CompressionAlgorithm.Best;
+
+                meta.Set(SpecialKey.CompressionAlgo, Encoding.ASCII.GetBytes(selected.Key));
+                return selected.Value;
+            }
+
+            var usedAlgoName = Encoding.ASCII.GetString(algoBytes);
+            if (!CompressionAlgorithm.Supported.TryGetValue(usedAlgoName, out CompressionAlgorithm usedAlgo))
+            {
+                // TODO: discuss how to handle here and below
+                throw new NotSupportedException(
+                    $"Used compression algorithm ({usedAlgoName}) is not supported on this platform. " +
+                    "Log index need to be reset to use a different compression algorithm."
+                );
+            }
+
+            configAlgoName ??= usedAlgoName;
+            if (usedAlgoName != configAlgoName)
+            {
+                throw new NotSupportedException(
+                    $"Used compression algorithm ({usedAlgoName}) is different from the one configured ({configAlgoName}). " +
+                    "Log index need to be reset to use a different compression algorithm."
+                );
+            }
+
+            return usedAlgo;
         }
 
         // TODO: remove if unused
@@ -479,7 +530,7 @@ namespace Nethermind.Db
             return iterator.Valid() && ExtractKey(iterator.Key()).SequenceEqual(key);
         }
 
-        private static IEnumerable<int> EnumerateBlockNumbers(byte[] data, int from)
+        private IEnumerable<int> EnumerateBlockNumbers(byte[] data, int from)
         {
             if (data.Length == 0)
                 yield break;
@@ -899,17 +950,17 @@ namespace Nethermind.Db
             return index < 0 ? ~index : index;
         }
 
-        private static ReadOnlySpan<int> Decompress(ReadOnlySpan<byte> data, Span<int> decompressedBlockNumbers)
+        private ReadOnlySpan<int> Decompress(ReadOnlySpan<byte> data, Span<int> decompressedBlockNumbers)
         {
-            _ = TurboPFor.p4nd1dec256v32(data, (nuint)decompressedBlockNumbers.Length, decompressedBlockNumbers);
+            _ = _compressionAlgorithm.Decompress(data, (nuint)decompressedBlockNumbers.Length, decompressedBlockNumbers);
             return decompressedBlockNumbers;
         }
 
         // TODO: test on big-endian system?
-        private static ReadOnlySpan<byte> Compress(Span<byte> data, Span<byte> buffer)
+        private ReadOnlySpan<byte> Compress(Span<byte> data, Span<byte> buffer)
         {
             ReadOnlySpan<int> blockNumbers = MemoryMarshal.Cast<byte, int>(data);
-            var length = (int)TurboPFor.p4nd1enc256v32(blockNumbers, (nuint)blockNumbers.Length, buffer);
+            var length = (int)_compressionAlgorithm.Compress(blockNumbers, (nuint)blockNumbers.Length, buffer);
             return buffer[..length];
         }
 
@@ -962,7 +1013,9 @@ namespace Nethermind.Db
 
         private IDb GetDb(int? topicIndex) => topicIndex.HasValue ? _topicDbs[topicIndex.Value] : _addressDb;
 
-        private static byte[] CompressDbValue(Span<byte> data)
+        private static IDb GetMetaDb(IColumnsDb<LogIndexColumns> rootDb) => rootDb.GetColumnDb(LogIndexColumns.Addresses);
+
+        private byte[] CompressDbValue(Span<byte> data)
         {
             if (IsCompressed(data, out _))
                 throw ValidationException("Data is already compressed.");
@@ -978,7 +1031,7 @@ namespace Nethermind.Db
             return compressed.ToArray();
         }
 
-        private static int[] DecompressDbValue(ReadOnlySpan<byte> data)
+        private int[] DecompressDbValue(ReadOnlySpan<byte> data)
         {
             if (!IsCompressed(data, out int len))
                 throw new ValidationException("Data is not compressed");
