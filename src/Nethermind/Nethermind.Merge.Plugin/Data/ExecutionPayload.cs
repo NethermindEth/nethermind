@@ -52,7 +52,7 @@ public class ExecutionPayload : IForkValidator, IExecutionPayloadParams, IExecut
 
     public ulong Timestamp { get; set; }
 
-    public byte[] BlockAccessList { get; set; } = [];
+    public byte[]? BlockAccessList { get; set; } = [];
 
     protected byte[][] _encodedTransactions = [];
 
@@ -170,7 +170,7 @@ public class ExecutionPayload : IForkValidator, IExecutionPayloadParams, IExecut
             TotalDifficulty = totalDifficulty,
             TxRoot = TxTrie.CalculateRoot(transactions.Transactions),
             WithdrawalsRoot = BuildWithdrawalsRoot(),
-            BlockAccessListHash = BlockAccessList.Length == 0 ? null : new(ValueKeccak.Compute(BlockAccessList).Bytes)
+            BlockAccessListHash = BlockAccessList is null || BlockAccessList.Length == 0 ? null : new(ValueKeccak.Compute(BlockAccessList).Bytes)
         };
 
         return new BlockDecodingResult(new Block(header, transactions.Transactions, Array.Empty<BlockHeader>(), Withdrawals, Rlp.Decode<BlockAccessList>(BlockAccessList)));

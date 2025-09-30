@@ -3,6 +3,7 @@
 
 using System;
 using System.Text;
+using System.Text.Json;
 using Nethermind.Blockchain;
 using Nethermind.Core;
 using Nethermind.Core.BlockAccessLists;
@@ -135,7 +136,7 @@ public class BlockValidator(
 
         if (spec.BlockLevelAccessListsEnabled)
         {
-            if (block.BlockAccessList is null)
+            if (block.BlockAccessList is null || block.BlockAccessListHash is null)
             {
                 if (_logger.IsDebug) _logger.Debug($"{Invalid(block)} Block-level access list was missing or empty");
                 errorMessage = BlockErrorMessages.InvalidBlockLevelAccessList;
@@ -244,6 +245,8 @@ public class BlockValidator(
 
         if (processedBlock.Header.BlockAccessListHash != suggestedBlock.Header.BlockAccessListHash)
         {
+            // Console.WriteLine("processed block:");
+            // Console.WriteLine(processedBlock.BlockAccessList.ToString());
             if (_logger.IsWarn) _logger.Warn($"- block access list hash : expected {suggestedBlock.Header.BlockAccessListHash}, got {processedBlock.Header.BlockAccessListHash}");
             error ??= BlockErrorMessages.InvalidBlockLevelAccessListRoot(suggestedBlock.Header.BlockAccessListHash, processedBlock.Header.BlockAccessListHash);
         }
