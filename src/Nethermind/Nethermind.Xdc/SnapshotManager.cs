@@ -36,7 +36,7 @@ internal class SnapshotManager : ISnapshotManager
 
     public Snapshot? GetSnapshot(Hash256 hash)
     {
-        Snapshot snapshot = _snapshotsByHash.Get(hash);
+        Snapshot? snapshot = _snapshotsByHash.Get(hash);
         if (snapshot is not null)
         {
             return snapshot;
