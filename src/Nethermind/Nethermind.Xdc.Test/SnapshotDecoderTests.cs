@@ -26,7 +26,7 @@ public class SnapshotDecoderTests
     public void RoundTrip_valuedecoder(Snapshot original)
     {
         SnapshotDecoder encoder = new();
-        RlpStream rlpStream = new(10000);
+        RlpStream rlpStream = new(encoder.GetLength(original, RlpBehaviors.None));
         encoder.Encode(rlpStream, original);
         rlpStream.Position = 0;
 
