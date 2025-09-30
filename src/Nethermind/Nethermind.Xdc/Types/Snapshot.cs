@@ -12,7 +12,7 @@ namespace Nethermind.Xdc.Types;
 public class Snapshot(long number, Hash256 hash, Address[] masterNodes, Address[] penalizedNodes) : ICloneable
 {
     public long BlockNumber { get; set; } = number;
-    public Hash256 Hash { get; set; } = hash;
+    public Hash256 HeaderHash { get; set; } = hash;
     public Address[] MasterNodes { get; set; } = masterNodes;
     public Address[] PenalizedNodes { get; set; } = penalizedNodes;
 
