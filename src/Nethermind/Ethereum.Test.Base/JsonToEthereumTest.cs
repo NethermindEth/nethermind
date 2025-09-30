@@ -80,7 +80,7 @@ namespace Ethereum.Test.Base
             return header;
         }
 
-        public static IEnumerable<ExecutionPayload> Convert(TestEngineNewPayloadsJson[]? executionPayloadsJson)
+        public static IEnumerable<(ExecutionPayload, string[]?, string[]?, string?)> Convert(TestEngineNewPayloadsJson[]? executionPayloadsJson)
         {
             if (executionPayloadsJson is null)
             {
@@ -93,12 +93,11 @@ namespace Ethereum.Test.Base
                 string[]? blobVersionedHashes = engineNewPayload.Params[1].Deserialize<string[]?>(EthereumJsonSerializer.JsonOptions);
                 string? parentBeaconBlockRoot = engineNewPayload.Params[2].Deserialize<string?>(EthereumJsonSerializer.JsonOptions);
                 string[]? validationError = engineNewPayload.Params[3].Deserialize<string[]?>(EthereumJsonSerializer.JsonOptions);
-                yield return new ExecutionPayloadV3()
+                yield return (new ExecutionPayloadV3()
                 {
-
                     BaseFeePerGas = (ulong)Bytes.FromHexString(executionPayload.BaseFeePerGas).ToUnsignedBigInteger(),
                     BlockHash = new(executionPayload.BlockHash),
-                    BlockNumber = (long)Bytes.FromHexString(executionPayload.BaseFeePerGas).ToUnsignedBigInteger(),
+                    BlockNumber = (long)Bytes.FromHexString(executionPayload.BlockNumber).ToUnsignedBigInteger(),
                     ExtraData = Bytes.FromHexString(executionPayload.ExtraData),
                     FeeRecipient = new(executionPayload.FeeRecipient),
                     GasLimit = (long)Bytes.FromHexString(executionPayload.GasLimit).ToUnsignedBigInteger(),
@@ -111,8 +110,12 @@ namespace Ethereum.Test.Base
                     Timestamp = (ulong)Bytes.FromHexString(executionPayload.Timestamp).ToUnsignedBigInteger(),
                     BlockAccessList = Bytes.FromHexString(executionPayload.BlockAccessList),
                     BlobGasUsed = (ulong)Bytes.FromHexString(executionPayload.BlobGasUsed).ToUnsignedBigInteger(),
+                    ExcessBlobGas = (ulong)Bytes.FromHexString(executionPayload.ExcessBlobGas).ToUnsignedBigInteger(),
                     ParentBeaconBlockRoot = parentBeaconBlockRoot is null ? null : new(parentBeaconBlockRoot),
-                };
+                    Withdrawals = [.. executionPayload.Withdrawals.Select(x => Rlp.Decode<Withdrawal>(Bytes.FromHexString(x)))],
+                    Transactions = [.. executionPayload.Transactions.Select(x => Bytes.FromHexString(x))],
+                    ExecutionRequests = []
+                }, blobVersionedHashes, validationError, engineNewPayload.NewPayloadVersion);
             }
         }
 

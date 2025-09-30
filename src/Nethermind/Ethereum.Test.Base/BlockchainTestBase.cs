@@ -35,6 +35,7 @@ using Nethermind.TxPool;
 using NUnit.Framework;
 using Nethermind.Merge.Plugin.Data;
 using Nethermind.Merge.Plugin;
+using Nethermind.JsonRpc;
 
 namespace Ethereum.Test.Base;
 
@@ -143,7 +144,7 @@ public abstract class BlockchainTestBase
         blockchainProcessor.Start();
 
         BlockHeader parentHeader;
-        ExecutionPayload[] payloads;
+        (ExecutionPayload, string[]?, string[]?, string?)[] payloads;
         // Genesis processing
         using (stateProvider.BeginScope(null))
         {
@@ -165,7 +166,7 @@ public abstract class BlockchainTestBase
             {
                 if (args.Block.Number == 0)
                 {
-                    Assert.That(stateProvider.HasStateForBlock(genesisBlock.Header), Is.EqualTo(true));
+                    Assert.That(stateProvider.HasStateForBlock(genesisBlock.Header), Is.True);
                     genesisProcessed.Set();
                 }
             };
@@ -183,9 +184,28 @@ public abstract class BlockchainTestBase
         else if (test.EngineNewPayloads is not null)
         {
             // blockchain test engine
-            foreach (ExecutionPayload executionPayload in payloads)
+            foreach ((ExecutionPayload executionPayload, string[]? blobVersionedHashes, string[]? validationError, string? newPayloadVersion) in payloads)
             {
-                await engineRpcModule.engine_newPayloadV4((ExecutionPayloadV3)executionPayload, [], executionPayload.ParentBeaconBlockRoot, []);
+                ResultWrapper<PayloadStatusV1> res;
+                switch (newPayloadVersion ?? "4")
+                {
+                    case "1":
+                        res = await engineRpcModule.engine_newPayloadV1(executionPayload);
+                        break;
+                    case "2":
+                        res = await engineRpcModule.engine_newPayloadV2(executionPayload);
+                        break;
+                    case "3":
+                        res = await engineRpcModule.engine_newPayloadV3((ExecutionPayloadV3)executionPayload, [], executionPayload.ParentBeaconBlockRoot);
+                        break;
+                    case "4":
+                        ExecutionPayloadV3 payload = (ExecutionPayloadV3)executionPayload;
+                        res = await engineRpcModule.engine_newPayloadV4(payload, [], executionPayload.ParentBeaconBlockRoot, []);
+                        break;
+                    default:
+                        Assert.Fail("Invalid blockchain engine test, version not recognised.");
+                        break;
+                }
             }
         }
         else
