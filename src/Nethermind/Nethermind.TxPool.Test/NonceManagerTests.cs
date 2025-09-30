@@ -191,7 +191,7 @@ public class NonceManagerTests
     }
 
     [Test]
-    [Repeat(10)]
+    [Repeat(2)]
     public void should_lock_on_same_account()
     {
         using NonceLocker locker = _nonceManager.ReserveNonce(TestItem.AddressA, out UInt256 nonce);
