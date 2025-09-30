@@ -85,9 +85,9 @@ internal class SnapshotManager : ISnapshotManager
     {
         if (snapshot is null)
             return false;
-        Span<byte> key = snapshot.Hash.Bytes;
+        Span<byte> key = snapshot.HeaderHash.Bytes;
 
-        if (_snapshotDb.KeyExists(key))
+        if (!_snapshotDb.KeyExists(key))
             return false;
 
         var rlpEncodedSnapshot = _snapshotDecoder.Encode(snapshot, RlpBehaviors.None);
