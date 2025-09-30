@@ -35,6 +35,8 @@ using Nethermind.Evm.State;
 using Nethermind.Init.Modules;
 using Nethermind.TxPool;
 using NUnit.Framework;
+using Nethermind.Merge.Plugin.Data;
+using Nethermind.Merge.Plugin;
 
 namespace Ethereum.Test.Base;
 
@@ -129,6 +131,7 @@ public abstract class BlockchainTestBase
         // configProvider.GetConfig<IBlocksConfig>().PreWarmStateOnBlockProcessing = false;
         await using IContainer container = new ContainerBuilder()
             .AddModule(new TestNethermindModule(configProvider))
+            .AddModule(new TestMergeModule(configProvider))
             .AddSingleton(specProvider)
             .AddSingleton(_logManager)
             .AddSingleton(rewardCalculator)
@@ -141,9 +144,11 @@ public abstract class BlockchainTestBase
         IBlockchainProcessor blockchainProcessor = mainBlockProcessingContext.BlockchainProcessor;
         IBlockTree blockTree = container.Resolve<IBlockTree>();
         IBlockValidator blockValidator = container.Resolve<IBlockValidator>();
+        IEngineRpcModule engineRpcModule = container.Resolve<IEngineRpcModule>();
         blockchainProcessor.Start();
 
         BlockHeader parentHeader;
+        ExecutionPayload[] payloads;
         // Genesis processing
         using (stateProvider.BeginScope(null))
         {
@@ -154,7 +159,10 @@ public abstract class BlockchainTestBase
             test.GenesisRlp ??= Rlp.Encode(new Block(JsonToEthereumTest.Convert(test.GenesisBlockHeader)));
 
             Block genesisBlock = Rlp.Decode<Block>(test.GenesisRlp.Bytes);
+            // Console.WriteLine(genesisBlock.ToString(Block.Format.Full));
             Assert.That(genesisBlock.Header.Hash, Is.EqualTo(new Hash256(test.GenesisBlockHeader.Hash)));
+
+            payloads = [.. JsonToEthereumTest.Convert(test.EngineNewPayloads)];
 
             ManualResetEvent genesisProcessed = new(false);
 
@@ -172,6 +180,53 @@ public abstract class BlockchainTestBase
             parentHeader = genesisBlock.Header;
         }
 
+        if (test.Blocks is not null)
+        {
+            // blockchain test
+            parentHeader = SuggestBlocks(test, failOnInvalidRlp, blockValidator, blockTree, parentHeader);
+        }
+        else if (test.EngineNewPayloads is not null)
+        {
+            // blockchain test engine
+            foreach (ExecutionPayload executionPayload in payloads)
+            {
+                await engineRpcModule.engine_newPayloadV4((ExecutionPayloadV3)executionPayload, [], executionPayload.ParentBeaconBlockRoot, []);
+            }
+        }
+        else
+        {
+            Assert.Fail("Invalid blockchain test, did not contain blocks or new payloads.");
+        }
+
+        await blockchainProcessor.StopAsync(true);
+        stopwatch?.Stop();
+
+        IBlockCachePreWarmer? preWarmer = container.Resolve<MainProcessingContext>().LifetimeScope.ResolveOptional<IBlockCachePreWarmer>();
+        if (preWarmer is not null)
+        {
+            // Caches are cleared async, which is a problem as read for the MainWorldState with prewarmer is not correct if its not cleared.
+            preWarmer.ClearCaches();
+        }
+
+        Block? headBlock = blockTree.RetrieveHeadBlock();
+        List<string> differences;
+        using (stateProvider.BeginScope(headBlock.Header))
+        {
+            differences = RunAssertions(test, blockTree.RetrieveHeadBlock(), stateProvider);
+        }
+
+        Assert.That(differences.Count, Is.Zero, "differences");
+
+        return new EthereumTestResult
+        (
+            test.Name,
+            null,
+            differences.Count == 0
+        );
+    }
+
+    private BlockHeader SuggestBlocks(BlockchainTest test, bool failOnInvalidRlp, IBlockValidator blockValidator, IBlockTree blockTree, BlockHeader parentHeader)
+    {
         List<(Block Block, string ExpectedException)> correctRlp = DecodeRlps(test, failOnInvalidRlp);
         for (int i = 0; i < correctRlp.Count; i++)
         {
@@ -211,31 +266,7 @@ public abstract class BlockchainTestBase
             parentHeader = correctRlp[i].Block.Header;
         }
 
-        await blockchainProcessor.StopAsync(true);
-        stopwatch?.Stop();
-
-        IBlockCachePreWarmer? preWarmer = container.Resolve<MainProcessingContext>().LifetimeScope.ResolveOptional<IBlockCachePreWarmer>();
-        if (preWarmer is not null)
-        {
-            // Caches are cleared async, which is a problem as read for the MainWorldState with prewarmer is not correct if its not cleared.
-            preWarmer.ClearCaches();
-        }
-
-        Block? headBlock = blockTree.RetrieveHeadBlock();
-        List<string> differences;
-        using (stateProvider.BeginScope(headBlock.Header))
-        {
-            differences = RunAssertions(test, blockTree.RetrieveHeadBlock(), stateProvider);
-        }
-
-        Assert.That(differences.Count, Is.Zero, "differences");
-
-        return new EthereumTestResult
-        (
-            test.Name,
-            null,
-            differences.Count == 0
-        );
+        return parentHeader;
     }
 
     private List<(Block Block, string ExpectedException)> DecodeRlps(BlockchainTest test, bool failOnInvalidRlp)
@@ -248,6 +279,9 @@ public abstract class BlockchainTestBase
             {
                 var rlpContext = Bytes.FromHexString(testBlockJson.Rlp).AsRlpStream();
                 Block suggestedBlock = Rlp.Decode<Block>(rlpContext);
+                // Console.WriteLine("suggested block:");
+                // Console.WriteLine(suggestedBlock.BlockAccessList);
+                // Hash256 tmp = new(ValueKeccak.Compute(Rlp.Encode(suggestedBlock.BlockAccessList!.Value).Bytes).Bytes);
                 suggestedBlock.Header.SealEngineType =
                     test.SealEngineUsed ? SealEngineType.Ethash : SealEngineType.None;
 

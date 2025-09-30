@@ -5,6 +5,7 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
+using System.Text.Json;
 using Nethermind.Config;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
@@ -14,6 +15,7 @@ using Nethermind.Core.Specs;
 using Nethermind.Crypto;
 using Nethermind.Evm.EvmObjectFormat;
 using Nethermind.Int256;
+using Nethermind.Merge.Plugin.Data;
 using Nethermind.Serialization.Json;
 using Nethermind.Serialization.Rlp;
 using Nethermind.Specs;
@@ -76,6 +78,42 @@ namespace Ethereum.Test.Base
                 BaseFeePerGas = (ulong)Bytes.FromHexString(headerJson.BaseFeePerGas).ToUnsignedBigInteger()
             };
             return header;
+        }
+
+        public static IEnumerable<ExecutionPayload> Convert(TestEngineNewPayloadsJson[]? executionPayloadsJson)
+        {
+            if (executionPayloadsJson is null)
+            {
+                throw new InvalidDataException("Execution payloads JSON was null when constructing test.");
+            }
+
+            foreach (TestEngineNewPayloadsJson engineNewPayload in executionPayloadsJson)
+            {
+                TestEngineNewPayloadsJson.ParamsExecutionPayload executionPayload = engineNewPayload.Params[0].Deserialize<TestEngineNewPayloadsJson.ParamsExecutionPayload>(EthereumJsonSerializer.JsonOptions);
+                string[]? blobVersionedHashes = engineNewPayload.Params[1].Deserialize<string[]?>(EthereumJsonSerializer.JsonOptions);
+                string? parentBeaconBlockRoot = engineNewPayload.Params[2].Deserialize<string?>(EthereumJsonSerializer.JsonOptions);
+                string[]? validationError = engineNewPayload.Params[3].Deserialize<string[]?>(EthereumJsonSerializer.JsonOptions);
+                yield return new ExecutionPayloadV3()
+                {
+
+                    BaseFeePerGas = (ulong)Bytes.FromHexString(executionPayload.BaseFeePerGas).ToUnsignedBigInteger(),
+                    BlockHash = new(executionPayload.BlockHash),
+                    BlockNumber = (long)Bytes.FromHexString(executionPayload.BaseFeePerGas).ToUnsignedBigInteger(),
+                    ExtraData = Bytes.FromHexString(executionPayload.ExtraData),
+                    FeeRecipient = new(executionPayload.FeeRecipient),
+                    GasLimit = (long)Bytes.FromHexString(executionPayload.GasLimit).ToUnsignedBigInteger(),
+                    GasUsed = (long)Bytes.FromHexString(executionPayload.GasUsed).ToUnsignedBigInteger(),
+                    LogsBloom = new(Bytes.FromHexString(executionPayload.LogsBloom)),
+                    ParentHash = new(executionPayload.ParentHash),
+                    PrevRandao = new(executionPayload.PrevRandao),
+                    ReceiptsRoot = new(executionPayload.ReceiptsRoot),
+                    StateRoot = new(executionPayload.StateRoot),
+                    Timestamp = (ulong)Bytes.FromHexString(executionPayload.Timestamp).ToUnsignedBigInteger(),
+                    BlockAccessList = Bytes.FromHexString(executionPayload.BlockAccessList),
+                    BlobGasUsed = (ulong)Bytes.FromHexString(executionPayload.BlobGasUsed).ToUnsignedBigInteger(),
+                    ParentBeaconBlockRoot = parentBeaconBlockRoot is null ? null : new(parentBeaconBlockRoot),
+                };
+            }
         }
 
         public static Transaction Convert(PostStateJson postStateJson, TransactionJson transactionJson)
@@ -264,6 +302,7 @@ namespace Ethereum.Test.Base
                 GenesisRlp = testJson.GenesisRlp is null ? null : new Rlp(Bytes.FromHexString(testJson.GenesisRlp)),
                 GenesisBlockHeader = testJson.GenesisBlockHeader,
                 Blocks = testJson.Blocks,
+                EngineNewPayloads = testJson.EngineNewPayloads,
                 Pre = testJson.Pre.ToDictionary(p => p.Key, p => p.Value)
             };
 
@@ -321,7 +360,7 @@ namespace Ethereum.Test.Base
             return tests;
 
             static ValidationStrategy ParseContainerKind(string containerKind)
-                => ("INITCODE".Equals(containerKind) ? ValidationStrategy.ValidateInitCodeMode : ValidationStrategy.ValidateRuntimeMode);
+                => "INITCODE".Equals(containerKind) ? ValidationStrategy.ValidateInitCodeMode : ValidationStrategy.ValidateRuntimeMode;
 
             static void GetTestMetaData(KeyValuePair<string, EofTestJson> namedTest, out string? description, out string? url, out string? spec)
             {
@@ -365,8 +404,9 @@ namespace Ethereum.Test.Base
             {
                 testsInFile = _serializer.Deserialize<Dictionary<string, BlockchainTestJson>>(json);
             }
-            catch (Exception)
+            catch (Exception e)
             {
+                Console.WriteLine(e);
                 Dictionary<string, HalfBlockchainTestJson> half =
                     _serializer.Deserialize<Dictionary<string, HalfBlockchainTestJson>>(json);
                 testsInFile = [];
