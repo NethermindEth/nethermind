@@ -25,10 +25,14 @@ public class TrieStoreScopeProviderTests
         Hash256 stateRoot;
         using (var scope = scopeProvider.BeginScope(null))
         {
-            scope.StateTree.Get(TestItem.AddressA).Should().Be(null);
-            scope.StateTree.Set(TestItem.AddressA, new Account(100, 100));
+            scope.Get(TestItem.AddressA).Should().Be(null);
+            using (var writeBatch = scope.StartWriteBatch(1, null))
+            {
+                writeBatch.Set(TestItem.AddressA, new Account(100, 100));
+            }
+
             scope.Commit(1);
-            stateRoot = scope.StateTree.RootHash;
+            stateRoot = scope.RootHash;
         }
 
         stateRoot.Should().NotBe(Keccak.EmptyTreeHash);
@@ -36,7 +40,7 @@ public class TrieStoreScopeProviderTests
 
         using (var scope = scopeProvider.BeginScope(Build.A.BlockHeader.WithStateRoot(stateRoot).WithNumber(1).TestObject))
         {
-            scope.StateTree.Get(TestItem.AddressA).Balance.Should().Be(100);
+            scope.Get(TestItem.AddressA).Balance.Should().Be(100);
         }
     }
 
@@ -49,15 +53,20 @@ public class TrieStoreScopeProviderTests
         Hash256 stateRoot;
         using (var scope = scopeProvider.BeginScope(null))
         {
-            scope.StateTree.Get(TestItem.AddressA).Should().Be(null);
+            scope.Get(TestItem.AddressA).Should().Be(null);
 
-            var storage = scope.CreateStorageTree(TestItem.AddressA);
-            storage.Set(1, [1, 2, 3]);
-            storage.UpdateRootHash();
-            scope.StateTree.Set(TestItem.AddressA, new Account(100, 100, storage.RootHash, Hash256.Zero));
+            using (var writeBatch = scope.StartWriteBatch(1, null))
+            {
+                writeBatch.Set(TestItem.AddressA, new Account(100, 100));
+
+                using (var storageSet = writeBatch.CreateStorageWriteBatch(TestItem.AddressA, 1))
+                {
+                    storageSet.Set(1, [1, 2, 3]);
+                }
+            }
 
             scope.Commit(1);
-            stateRoot = scope.StateTree.RootHash;
+            stateRoot = scope.RootHash;
         }
 
         stateRoot.Should().NotBe(Keccak.EmptyTreeHash);

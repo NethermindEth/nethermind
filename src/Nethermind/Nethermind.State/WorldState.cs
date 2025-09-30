@@ -192,11 +192,6 @@ namespace Nethermind.State
             DebugGuardInScope();
             _stateProvider.SubtractFromBalance(address, balanceChange, spec);
         }
-        public void UpdateStorageRoot(Address address, Hash256 storageRoot)
-        {
-            DebugGuardInScope();
-            _stateProvider.UpdateStorageRoot(address, storageRoot);
-        }
         public void IncrementNonce(Address address, UInt256 delta)
         {
             DebugGuardInScope();
@@ -298,20 +293,19 @@ namespace Nethermind.State
             return ScopeProvider.HasRoot(header);
         }
 
-        public void Commit(IReleaseSpec releaseSpec, bool isGenesis = false, bool commitRoots = true)
-        {
-            DebugGuardInScope();
-            _persistentStorageProvider.Commit(commitRoots);
-            _transientStorageProvider.Commit(commitRoots);
-            _stateProvider.Commit(releaseSpec, commitRoots, isGenesis);
-        }
-
         public void Commit(IReleaseSpec releaseSpec, IWorldStateTracer tracer, bool isGenesis = false, bool commitRoots = true)
         {
             DebugGuardInScope();
-            _persistentStorageProvider.Commit(tracer, commitRoots);
-            _transientStorageProvider.Commit(tracer, commitRoots);
+            _transientStorageProvider.Commit(tracer);
+            _persistentStorageProvider.Commit(tracer);
             _stateProvider.Commit(releaseSpec, tracer, commitRoots, isGenesis);
+
+            if (commitRoots)
+            {
+                using IWorldStateScopeProvider.IWorldStateWriteBatch writeBatch = _currentScope.StartWriteBatch(_stateProvider.ChangedAccountCount, _stateProvider.OnAccountUpdated);
+                _persistentStorageProvider.FlushToTree(writeBatch);
+                _stateProvider.FlushToTree(writeBatch);
+            }
         }
 
         public Snapshot TakeSnapshot(bool newTransactionStart = false)

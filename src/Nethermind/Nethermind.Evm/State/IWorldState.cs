@@ -130,9 +130,6 @@ public interface IWorldState : IJournal<Snapshot>, IReadOnlyStateProvider
     void SetNonce(Address address, in UInt256 nonce);
 
     /* snapshots */
-
-    void Commit(IReleaseSpec releaseSpec, bool isGenesis = false, bool commitRoots = true);
-
     void Commit(IReleaseSpec releaseSpec, IWorldStateTracer tracer, bool isGenesis = false, bool commitRoots = true);
 
     /// <summary>
