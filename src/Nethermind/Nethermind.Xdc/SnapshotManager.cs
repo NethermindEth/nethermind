@@ -21,7 +21,7 @@ namespace Nethermind.Xdc;
 internal class SnapshotManager : ISnapshotManager
 {
 
-    private LruCache<Hash256, Snapshot> _snapshotsByHash = new(128, 128, "XDC Snapshot cache");
+    private LruCache<Hash256, Snapshot> _snapshotCache = new(128, 128, "XDC Snapshot cache");
     private IBlockTree _tree { get; }
     private IDb _snapshotDb { get; }
 
@@ -36,7 +36,7 @@ internal class SnapshotManager : ISnapshotManager
 
     public Snapshot? GetSnapshot(Hash256 hash)
     {
-        Snapshot? snapshot = _snapshotsByHash.Get(hash);
+        Snapshot? snapshot = _snapshotCache.Get(hash);
         if (snapshot is not null)
         {
             return snapshot;
@@ -52,7 +52,7 @@ internal class SnapshotManager : ISnapshotManager
 
         var decoded = snapshotDecoder.Decode(value, RlpBehaviors.None);
         snapshot = decoded;
-        _snapshotsByHash.Set(hash, snapshot);
+        _snapshotCache.Set(hash, snapshot);
         return snapshot;
     }
 
@@ -81,22 +81,19 @@ internal class SnapshotManager : ISnapshotManager
         return GetSnapshot(gapBlockHash);
     }
 
-    public bool StoreSnapshot(Snapshot snapshot)
+    public void StoreSnapshot(Snapshot snapshot)
     {
-        if (snapshot is null)
-            return false;
         Span<byte> key = snapshot.HeaderHash.Bytes;
 
         if (_snapshotDb.KeyExists(key))
-            return false;
+            return;
 
         var rlpEncodedSnapshot = _snapshotDecoder.Encode(snapshot, RlpBehaviors.None);
 
         _snapshotDb.Set(key, rlpEncodedSnapshot.Bytes);
-        return true;
     }
 
-    public Address[] CalculateNextEpochMasternodes(XdcBlockHeader xdcHeader)
+    public Address[] CalculateNextEpochMasternodes(XdcBlockHeader? xdcHeader)
     {
         Snapshot? snapshot = GetSnapshotByHeader(xdcHeader);
         if (snapshot is null)

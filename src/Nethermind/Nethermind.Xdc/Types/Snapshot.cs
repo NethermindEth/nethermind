@@ -9,16 +9,10 @@ using Nethermind.Core.Crypto;
 
 namespace Nethermind.Xdc.Types;
 
-public class Snapshot(long number, Hash256 hash, Address[] masterNodes, Address[] penalizedNodes) : ICloneable
+public class Snapshot(long number, Hash256 hash, Address[] masterNodes, Address[] penalizedNodes)
 {
     public long BlockNumber { get; set; } = number;
     public Hash256 HeaderHash { get; set; } = hash;
     public Address[] MasterNodes { get; set; } = masterNodes;
     public Address[] PenalizedNodes { get; set; } = penalizedNodes;
-
-    public object Clone() =>
-        new Snapshot(BlockNumber,
-            HeaderHash,
-            [.. MasterNodes],
-            [.. PenalizedNodes]);
 }

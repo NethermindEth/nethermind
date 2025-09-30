@@ -14,7 +14,8 @@ namespace Nethermind.Xdc;
 public interface ISnapshotManager
 {
     Snapshot? GetSnapshot(Hash256 hash);
-    bool StoreSnapshot(Snapshot snapshot);
+    void StoreSnapshot(Snapshot snapshot);
+
     Snapshot? GetSnapshotByGapNumber(ulong gapNumber);
     Snapshot? GetSnapshotByHeaderNumber(ulong number, ulong xdcEpoch, ulong xdcGap);
     Snapshot? GetSnapshotByHeader(XdcBlockHeader? header);

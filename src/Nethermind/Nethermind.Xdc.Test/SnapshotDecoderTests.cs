@@ -19,10 +19,13 @@ namespace Nethermind.Xdc.Test;
 public class SnapshotDecoderTests
 {
     private static IEnumerable<Snapshot> Snapshots => [
+        new Snapshot(1, Keccak.EmptyTreeHash, [], []),
+        new Snapshot(2, Keccak.EmptyTreeHash, [Address.FromNumber(1), Address.FromNumber(2)], []),
         new Snapshot(3, Keccak.EmptyTreeHash, [], [Address.FromNumber(1), Address.FromNumber(2)]),
+        new Snapshot(4, Keccak.EmptyTreeHash, [Address.FromNumber(1), Address.FromNumber(2)], [Address.FromNumber(1), Address.FromNumber(2)]),
     ];
 
-    [Test, TestCaseSource(nameof(Objects))]
+    [Test, TestCaseSource(nameof(Snapshots))]
     public void RoundTrip_valuedecoder(Snapshot original)
     {
         SnapshotDecoder encoder = new();
@@ -42,7 +45,7 @@ public class SnapshotDecoderTests
         }
     }
 
-    [Test, TestCaseSource(nameof(Objects))]
+    [Test, TestCaseSource(nameof(Snapshots))]
     public void RoundTrip_stream(Snapshot original)
     {
         SnapshotDecoder encoder = new();
