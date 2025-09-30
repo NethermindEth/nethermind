@@ -571,63 +571,63 @@ namespace Nethermind.State
                         break;
                     case ChangeType.Touch:
                     case ChangeType.Update:
-                    {
-                        if (releaseSpec.IsEip158Enabled && change.Account.IsEmpty && !isGenesis)
                         {
-                            if (isTracing) TraceRemoveEmpty(change);
-                            SetState(change.Address, null);
-                            trace?.AddToTrace(change.Address, null);
-                        }
-                        else
-                        {
-                            if (isTracing) TraceUpdate(change);
-                            SetState(change.Address, change.Account);
-                            trace?.AddToTrace(change.Address, change.Account);
-                        }
+                            if (releaseSpec.IsEip158Enabled && change.Account.IsEmpty && !isGenesis)
+                            {
+                                if (isTracing) TraceRemoveEmpty(change);
+                                SetState(change.Address, null);
+                                trace?.AddToTrace(change.Address, null);
+                            }
+                            else
+                            {
+                                if (isTracing) TraceUpdate(change);
+                                SetState(change.Address, change.Account);
+                                trace?.AddToTrace(change.Address, change.Account);
+                            }
 
-                        break;
-                    }
+                            break;
+                        }
                     case ChangeType.New:
-                    {
-                        if (!releaseSpec.IsEip158Enabled || !change.Account.IsEmpty || isGenesis)
+                        {
+                            if (!releaseSpec.IsEip158Enabled || !change.Account.IsEmpty || isGenesis)
+                            {
+                                if (isTracing) TraceCreate(change);
+                                SetState(change.Address, change.Account);
+                                trace?.AddToTrace(change.Address, change.Account);
+                            }
+
+                            break;
+                        }
+                    case ChangeType.RecreateEmpty:
                         {
                             if (isTracing) TraceCreate(change);
                             SetState(change.Address, change.Account);
                             trace?.AddToTrace(change.Address, change.Account);
+
+                            break;
                         }
-
-                        break;
-                    }
-                    case ChangeType.RecreateEmpty:
-                    {
-                        if (isTracing) TraceCreate(change);
-                        SetState(change.Address, change.Account);
-                        trace?.AddToTrace(change.Address, change.Account);
-
-                        break;
-                    }
                     case ChangeType.Delete:
-                    {
-                        if (isTracing) TraceRemove(change);
-                        bool wasItCreatedNow = false;
-                        while (stack.Count > 0)
                         {
-                            int previousOne = stack.Pop();
-                            wasItCreatedNow |= _changes[previousOne].ChangeType == ChangeType.New;
-                            if (wasItCreatedNow)
+                            if (isTracing) TraceRemove(change);
+                            bool wasItCreatedNow = false;
+                            while (stack.Count > 0)
                             {
-                                break;
+                                int previousOne = stack.Pop();
+                                wasItCreatedNow |= _changes[previousOne].ChangeType == ChangeType.New;
+                                if (wasItCreatedNow)
+                                {
+                                    break;
+                                }
                             }
-                        }
 
-                        if (!wasItCreatedNow)
-                        {
-                            SetState(change.Address, null);
-                            trace?.AddToTrace(change.Address, null);
-                        }
+                            if (!wasItCreatedNow)
+                            {
+                                SetState(change.Address, null);
+                                trace?.AddToTrace(change.Address, null);
+                            }
 
-                        break;
-                    }
+                            break;
+                        }
                     default:
                         ThrowUnknownChangeType();
                         break;
