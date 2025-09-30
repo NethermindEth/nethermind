@@ -9,7 +9,6 @@ using System.Numerics;
 using System.Threading;
 using System.Threading.Tasks;
 using Autofac;
-using Nethermind.Api;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Find;
 using Nethermind.Config;
@@ -30,7 +29,6 @@ using Nethermind.Serialization.Rlp;
 using Nethermind.Specs;
 using Nethermind.Specs.Forks;
 using Nethermind.Specs.Test;
-using Nethermind.State;
 using Nethermind.Evm.State;
 using Nethermind.Init.Modules;
 using Nethermind.TxPool;
@@ -42,16 +40,13 @@ namespace Ethereum.Test.Base;
 
 public abstract class BlockchainTestBase
 {
-    private static ILogger _logger;
-    private static ILogManager _logManager = new TestLogManager(LogLevel.Warn);
-    private static ISealValidator Sealer { get; }
+    private static readonly ILogger _logger;
+    private static readonly ILogManager _logManager = new TestLogManager(LogLevel.Warn);
     private static DifficultyCalculatorWrapper DifficultyCalculator { get; }
 
     static BlockchainTestBase()
     {
         DifficultyCalculator = new DifficultyCalculatorWrapper();
-        Sealer = new EthashSealValidator(_logManager, DifficultyCalculator, new CryptoRandom(), new Ethash(_logManager), Timestamper.Default); // temporarily keep reusing the same one as otherwise it would recreate cache for each test
-
         _logManager ??= LimboLogs.Instance;
         _logger = _logManager.GetClassLogger();
     }
@@ -202,11 +197,9 @@ public abstract class BlockchainTestBase
         stopwatch?.Stop();
 
         IBlockCachePreWarmer? preWarmer = container.Resolve<MainProcessingContext>().LifetimeScope.ResolveOptional<IBlockCachePreWarmer>();
-        if (preWarmer is not null)
-        {
-            // Caches are cleared async, which is a problem as read for the MainWorldState with prewarmer is not correct if its not cleared.
-            preWarmer.ClearCaches();
-        }
+
+        // Caches are cleared async, which is a problem as read for the MainWorldState with prewarmer is not correct if its not cleared.
+        preWarmer?.ClearCaches();
 
         Block? headBlock = blockTree.RetrieveHeadBlock();
         List<string> differences;
@@ -215,7 +208,7 @@ public abstract class BlockchainTestBase
             differences = RunAssertions(test, blockTree.RetrieveHeadBlock(), stateProvider);
         }
 
-        Assert.That(differences.Count, Is.Zero, "differences");
+        Assert.That(differences, Is.Empty, "differences");
 
         return new EthereumTestResult
         (
@@ -225,7 +218,7 @@ public abstract class BlockchainTestBase
         );
     }
 
-    private BlockHeader SuggestBlocks(BlockchainTest test, bool failOnInvalidRlp, IBlockValidator blockValidator, IBlockTree blockTree, BlockHeader parentHeader)
+    private static BlockHeader SuggestBlocks(BlockchainTest test, bool failOnInvalidRlp, IBlockValidator blockValidator, IBlockTree blockTree, BlockHeader parentHeader)
     {
         List<(Block Block, string ExpectedException)> correctRlp = DecodeRlps(test, failOnInvalidRlp);
         for (int i = 0; i < correctRlp.Count; i++)
@@ -269,15 +262,15 @@ public abstract class BlockchainTestBase
         return parentHeader;
     }
 
-    private List<(Block Block, string ExpectedException)> DecodeRlps(BlockchainTest test, bool failOnInvalidRlp)
+    private static List<(Block Block, string ExpectedException)> DecodeRlps(BlockchainTest test, bool failOnInvalidRlp)
     {
-        List<(Block Block, string ExpectedException)> correctRlp = new();
+        List<(Block Block, string ExpectedException)> correctRlp = [];
         for (int i = 0; i < test.Blocks.Length; i++)
         {
             TestBlockJson testBlockJson = test.Blocks[i];
             try
             {
-                var rlpContext = Bytes.FromHexString(testBlockJson.Rlp).AsRlpStream();
+                RlpStream rlpContext = Bytes.FromHexString(testBlockJson.Rlp).AsRlpStream();
                 Block suggestedBlock = Rlp.Decode<Block>(rlpContext);
                 // Console.WriteLine("suggested block:");
                 // Console.WriteLine(suggestedBlock.BlockAccessList);
@@ -322,17 +315,20 @@ public abstract class BlockchainTestBase
 
         if (correctRlp.Count == 0)
         {
-            Assert.That(test.GenesisBlockHeader, Is.Not.Null);
-            Assert.That(test.LastBlockHash, Is.EqualTo(new Hash256(test.GenesisBlockHeader.Hash)));
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(test.GenesisBlockHeader, Is.Not.Null);
+                Assert.That(test.LastBlockHash, Is.EqualTo(new Hash256(test.GenesisBlockHeader.Hash)));
+            }
         }
 
         return correctRlp;
     }
 
-    private void InitializeTestState(BlockchainTest test, IWorldState stateProvider, ISpecProvider specProvider)
+    private static void InitializeTestState(BlockchainTest test, IWorldState stateProvider, ISpecProvider specProvider)
     {
         foreach (KeyValuePair<Address, AccountState> accountState in
-            ((IEnumerable<KeyValuePair<Address, AccountState>>)test.Pre ?? Array.Empty<KeyValuePair<Address, AccountState>>()))
+            (IEnumerable<KeyValuePair<Address, AccountState>>)test.Pre ?? Array.Empty<KeyValuePair<Address, AccountState>>())
         {
             foreach (KeyValuePair<UInt256, byte[]> storageItem in accountState.Value.Storage)
             {
@@ -350,18 +346,18 @@ public abstract class BlockchainTestBase
         stateProvider.Reset();
     }
 
-    private List<string> RunAssertions(BlockchainTest test, Block headBlock, IWorldState stateProvider)
+    private static List<string> RunAssertions(BlockchainTest test, Block headBlock, IWorldState stateProvider)
     {
         if (test.PostStateRoot is not null)
         {
-            return test.PostStateRoot != stateProvider.StateRoot ? new List<string> { "state root mismatch" } : Enumerable.Empty<string>().ToList();
+            return test.PostStateRoot != stateProvider.StateRoot ? ["state root mismatch"] : [];
         }
 
         TestBlockHeaderJson testHeaderJson = (test.Blocks?
                                                  .Where(b => b.BlockHeader is not null)
                                                  .SingleOrDefault(b => new Hash256(b.BlockHeader.Hash) == headBlock.Hash)?.BlockHeader) ?? test.GenesisBlockHeader;
         BlockHeader testHeader = JsonToEthereumTest.Convert(testHeaderJson);
-        List<string> differences = new();
+        List<string> differences = [];
 
         IEnumerable<KeyValuePair<Address, AccountState>> deletedAccounts = test.Pre?
             .Where(pre => !(test.PostState?.ContainsKey(pre.Key) ?? false)) ?? Array.Empty<KeyValuePair<Address, AccountState>>();
@@ -385,8 +381,8 @@ public abstract class BlockchainTestBase
             }
 
             bool accountExists = stateProvider.AccountExists(acountAddress);
-            UInt256? balance = accountExists ? stateProvider.GetBalance(acountAddress) : (UInt256?)null;
-            UInt256? nonce = accountExists ? stateProvider.GetNonce(acountAddress) : (UInt256?)null;
+            UInt256? balance = accountExists ? stateProvider.GetBalance(acountAddress) : null;
+            UInt256? nonce = accountExists ? stateProvider.GetNonce(acountAddress) : null;
 
             if (accountState.Balance != balance)
             {
@@ -398,7 +394,7 @@ public abstract class BlockchainTestBase
                 differences.Add($"{acountAddress} nonce exp: {accountState.Nonce}, actual: {nonce}");
             }
 
-            byte[] code = accountExists ? stateProvider.GetCode(acountAddress) : new byte[0];
+            byte[] code = accountExists ? stateProvider.GetCode(acountAddress) : [];
             if (!Bytes.AreEqual(accountState.Code, code))
             {
                 differences.Add($"{acountAddress} code exp: {accountState.Code?.Length}, actual: {code?.Length}");
@@ -411,10 +407,10 @@ public abstract class BlockchainTestBase
 
             differencesBefore = differences.Count;
 
-            KeyValuePair<UInt256, byte[]>[] clearedStorages = new KeyValuePair<UInt256, byte[]>[0];
+            KeyValuePair<UInt256, byte[]>[] clearedStorages = [];
             if (test.Pre.ContainsKey(acountAddress))
             {
-                clearedStorages = test.Pre[acountAddress].Storage.Where(s => !accountState.Storage.ContainsKey(s.Key)).ToArray();
+                clearedStorages = [.. test.Pre[acountAddress].Storage.Where(s => !accountState.Storage.ContainsKey(s.Key))];
             }
 
             foreach (KeyValuePair<UInt256, byte[]> clearedStorage in clearedStorages)
