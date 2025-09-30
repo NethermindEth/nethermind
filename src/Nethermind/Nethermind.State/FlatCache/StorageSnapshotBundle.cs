@@ -45,8 +45,13 @@ public class StorageSnapshotBundle(ArrayPoolList<StorageWrites> storages, BigCac
         return bigCacheStorage.TryGetValue(index, out value);
     }
 
-    public void ApplyStateChanges(Dictionary<UInt256, byte[]> changedValues)
+    public void ApplyStateChanges(Dictionary<UInt256, byte[]> changedValues, bool hasSelfDestruct)
     {
+        if (hasSelfDestruct)
+        {
+            _changedSlots.Clear();
+            _hasSelfDestruct = true;
+        }
         foreach (var kv in changedValues)
         {
             _changedSlots[kv.Key] = kv.Value;
@@ -56,12 +61,6 @@ public class StorageSnapshotBundle(ArrayPoolList<StorageWrites> storages, BigCac
     public void Set(UInt256 key,  byte[] value)
     {
         _changedSlots[key] = value;
-    }
-
-    public void SelfDestruct()
-    {
-        _changedSlots.Clear();
-        _hasSelfDestruct = true;
     }
 
     public StorageWrites CollectAndApplyKnownState()
