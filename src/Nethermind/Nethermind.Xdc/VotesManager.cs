@@ -14,12 +14,12 @@ using System.Diagnostics;
 using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
-using Vote = Nethermind.Xdc.Types.Vote;
 using Nethermind.Xdc.Errors;
 using Nethermind.Core.Specs;
 using Nethermind.Core;
 using Nethermind.Crypto;
 using Nethermind.Xdc.Spec;
+using Nethermind.Serialization.Rlp;
 namespace Nethermind.Xdc;
 internal class VotesManager : IVotesManager
 {
@@ -29,7 +29,7 @@ internal class VotesManager : IVotesManager
         IBlockTree tree,
         IEpochSwitchManager epochSwitchManager,
         ISpecProvider xdcConfig,
-        ISigner signer,
+        PrivateKey signer,
         IBlockInfoValidator blockInfoProcessor,
         IMasternodesManager masternodesManager,
         IQuorumCertificateManager quorumCertificateManager,
@@ -38,7 +38,7 @@ internal class VotesManager : IVotesManager
         Tree = tree;
         EpochSwitchManager = epochSwitchManager;
         _specProvider = xdcConfig;
-        Signer = signer;
+        _signerKey = signer;
         BlockInfoProcessor = blockInfoProcessor;
         MasternodesManager = masternodesManager;
         QuorumCertificateManager = quorumCertificateManager;
@@ -46,61 +46,62 @@ internal class VotesManager : IVotesManager
         SignatureManager = xdcSignatureManager;
         ForensicsProcessor = forensicsProcessor;
     }
-    private List<Vote> _tally => new();
+    private ConcurrentBag<Vote> _votePool => new();
 
     public IBlockTree Tree { get; }
     public IEpochSwitchManager EpochSwitchManager { get; }
-    public ISigner Signer { get; }
     public IBlockInfoValidator BlockInfoProcessor { get; }
     public IMasternodesManager MasternodesManager { get; }
-    public IQuorumCertificateManager QuorumCertificateManager { get; }
+    private IQuorumCertificateManager QuorumCertificateManager { get; }
     public XdcContext Context { get; }
     public ISignatureManager SignatureManager { get; }
     public IForensicsProcessor ForensicsProcessor { get; }
-    private DateTime _votePoolCollectionTime { get; set; }
-
-    public event Action<Vote> OnVoteCasted;
 
     private ISpecProvider _specProvider;
 
+    private PrivateKey _signerKey;
 
-    public async Task CastVote(BlockRoundInfo blockInfo)
+    private static VoteDecoder _voteDecoder = new();
+    private static EthereumEcdsa _ethereumEcdsa = new(0);
+
+
+    public Task CastVote(BlockRoundInfo blockInfo)
     {
         EpochSwitchInfo epochSwitchInfo = EpochSwitchManager.GetEpochSwitchInfo(null, blockInfo.Hash);
         if (epochSwitchInfo is null)
         {
             throw new ConsensusHeaderDataExtractionException(nameof(EpochSwitchInfo));
         }
-        //Optimize this at some point by fetching with block number and round only 
+        //Optimize this by fetching with block number and round only 
         XdcBlockHeader header = Tree.FindHeader(blockInfo.Hash) as XdcBlockHeader;
         IXdcReleaseSpec spec = _specProvider.GetXdcSpec(header, blockInfo.Round);
         long epochSwitchNumber = epochSwitchInfo.EpochSwitchBlockInfo.BlockNumber;
         long gapNumber = Math.Max(0, epochSwitchNumber - epochSwitchNumber % spec.EpochLength - spec.Gap);
 
-        Signature signature = Signer.Sign(new VoteForSign(blockInfo, gapNumber).SigHash());
+        var vote = new Vote(blockInfo, (ulong)gapNumber);
+        Sign(vote);
 
-        Context.HighestVotedRound = Context.CurrentRound;
+        Context.HighestVotedRound = blockInfo.Round;
 
-        var vote = new Vote(blockInfo, signature, gapNumber);
-        await HandleVote(vote);
-
-        OnVoteCasted?.Invoke(vote);
+        HandleVote(vote);
+        return Task.CompletedTask;
     }
 
-    public async Task HandleVote(Vote vote)
+    private void Sign(Vote vote)
+    {
+        KeccakRlpStream stream = new();
+        _voteDecoder.Encode(stream, vote, RlpBehaviors.ForSealing);
+        vote.Signature = _ethereumEcdsa.Sign(_signerKey, stream.GetValueHash());
+    }
+
+    public Task HandleVote(Vote vote)
     {
         if ((vote.ProposedBlockInfo.Round != Context.CurrentRound) && (vote.ProposedBlockInfo.Round != Context.CurrentRound + 1))
         {
-            throw new Exception("ErrIncomingMessageRoundTooFarFromCurrentRound");
+            return Task.CompletedTask;
         }
 
-        if (_votePoolCollectionTime == default)
-        {
-            _votePoolCollectionTime = DateTime.UtcNow;
-        }
-
-        _tally.Add(vote);
-        _ = ForensicsProcessor.DetectEquivocationInVotePool(vote, _tally);
+        _ = ForensicsProcessor.DetectEquivocationInVotePool(vote, _votePool);
         _ = ForensicsProcessor.ProcessVoteEquivocation(vote);
 
         EpochSwitchInfo epochInfo = EpochSwitchManager.GetEpochSwitchInfo(null, vote.ProposedBlockInfo.Hash);
@@ -108,41 +109,38 @@ internal class VotesManager : IVotesManager
         {
             throw new ConsensusHeaderDataExtractionException(nameof(EpochSwitchInfo));
         }
+        _votePool.Add(vote);
+
         //TODO Optimize this by fetching with block number and round only 
         XdcBlockHeader proposedHeader = Tree.FindHeader(vote.ProposedBlockInfo.Hash) as XdcBlockHeader;
         if (proposedHeader is null)
         {
             //This is a vote for a block we have not seen yet, just return for now
-            return;
+            return Task.CompletedTask;
         }
         IXdcReleaseSpec spec = _specProvider.GetXdcSpec(proposedHeader, vote.ProposedBlockInfo.Round);
         double certThreshold =  spec.CertThreshold;
-        bool thresholdReached = _tally.Count >= epochInfo.Masternodes.Length * certThreshold;
+        bool thresholdReached = _votePool.Count >= epochInfo.Masternodes.Length * certThreshold;
 
         if (thresholdReached)
         {
-            var proposedBlockHeader = (XdcBlockHeader)Tree.FindHeader(vote.ProposedBlockInfo.Hash);
-            if (proposedBlockHeader is null)
-            {
-                return;
-            }
-
             BlockInfoProcessor.VerifyBlockInfo(vote.ProposedBlockInfo, null);
 
-            await VerifyVotes(_tally, proposedBlockHeader);
+            EnsureVotesRecovered(_votePool, proposedHeader);
 
-            onVotePoolThresholdReached(_tally, vote, proposedBlockHeader);
+            OnVotePoolThresholdReached(_votePool, vote, proposedHeader);
 
-            _votePoolCollectionTime = default;
+            _votePool.Clear();
         }
+        return Task.CompletedTask;
     }
 
-    private void onVotePoolThresholdReached(List<Vote> tally, Vote currVote, XdcBlockHeader proposedBlockHeader)
+    private void OnVotePoolThresholdReached(IEnumerable<Vote> tally, Vote currVote, XdcBlockHeader proposedBlockHeader)
     {
         List<Signature> validSignature = new List<Signature>();
-        foreach (var vote in _tally)
+        foreach (var vote in _votePool)
         {
-            if (vote.GetSigner() != default)
+            if (vote.Signature is not null)
             {
                 validSignature.Add(vote.Signature);
             }
@@ -160,55 +158,23 @@ internal class VotesManager : IVotesManager
             return;
         }
 
-        QuorumCert qc = new QuorumCert(currVote.ProposedBlockInfo, validSignature.ToArray(), (ulong)currVote.GapNumber);
+        QuorumCertificate qc = new (currVote.ProposedBlockInfo, validSignature.ToArray(), (ulong)currVote.GapNumber);
 
         QuorumCertificateManager.CommitCertificate(qc);
     }
 
-    public async Task VerifyVotes(List<Vote> votes, XdcBlockHeader header)
+    public void EnsureVotesRecovered(IEnumerable<Vote> votes, XdcBlockHeader header)
     {
-        Address[] masternodes = MasternodesManager.GetMasternodes(header);
-
-        List<Task> tasks = new List<Task>();
-
-        foreach (var vote in votes)
+        Parallel.ForEach(votes, (v, s, a) =>
         {
-            tasks.Add(Task.Factory.StartNew(() =>
+            if (v.Signer is null)
             {
-                Address signerAddress = vote.GetSigner();
-                if (signerAddress != default)
-                {
-                    if (masternodes.Length == 0)
-                    {
-                        throw new Exception("empty masternode list detected when verifying message signatures");
-                    }
-
-                    foreach (var masternode in masternodes)
-                    {
-                        if (masternode == signerAddress)
-                        {
-                            return;
-                        }
-
-                        vote.SetSigner(default);
-                        return;
-                    }
-                }
-
-                Hash256 signedVote = new VoteForSign(vote.ProposedBlockInfo, vote.GapNumber).SigHash();
-                if (!SignatureManager.VerifyMessageSignature(signedVote, vote.Signature, masternodes, out Address masterNode))
-                {
-                    return;
-                }
-
-                vote.SetSigner(masterNode);
-            }));
-        }
-
-        await Task.WhenAll(tasks);
+                v.Signer = _ethereumEcdsa.RecoverVoteSigner(v);                
+            }
+        });
     }
 
-    public bool VerifyVotingRules(BlockRoundInfo blockInfo, QuorumCert qc)
+    public bool VerifyVotingRules(BlockRoundInfo blockInfo, QuorumCertificate qc)
     {
         if (Context.CurrentRound <= Context.HighestVotedRound)
         {
@@ -260,10 +226,5 @@ internal class VotesManager : IVotesManager
         }
 
         return nextBlockHash == ancestorBlockInfo.Hash;
-    }
-
-    public List<Vote> GetVotes()
-    {
-        return _tally;
     }
 }

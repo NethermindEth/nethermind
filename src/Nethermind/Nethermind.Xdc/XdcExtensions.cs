@@ -25,7 +25,6 @@ public static class XdcExtensions
     public static Address RecoverVoteSigner(this IEthereumEcdsa ecdsa, Vote vote)
     {
         KeccakRlpStream stream = new();
-        //TODO this could be optimized to encoding directly to KeccakRlpStream to avoid several allocation
         _voteDecoder.Encode(stream, vote, RlpBehaviors.ForSealing);
         ValueHash256 hash = stream.GetValueHash();
         return ecdsa.RecoverAddress(vote.Signature, in hash);
