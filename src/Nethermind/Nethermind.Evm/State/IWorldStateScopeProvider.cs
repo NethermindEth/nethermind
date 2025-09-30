@@ -19,10 +19,11 @@ public interface IWorldStateScopeProvider
 
     public interface IScope : IDisposable
     {
-        /// <summary>
-        /// The top level tree that holds account information.
-        /// </summary>
-        IStateTree StateTree { get; }
+        Hash256 RootHash { get; }
+
+        void UpdateRootHash();
+
+        Account? Get(Address address);
 
         /// <summary>
         /// The code db
@@ -39,27 +40,20 @@ public interface IWorldStateScopeProvider
         IStorageTree CreateStorageTree(Address address);
 
         /// <summary>
+        /// Begin a write batch to update the world state.
+        /// </summary>
+        /// <param name="estimatedAccountNum">For optimization, estimated account number.</param>
+        /// <param name="onAccountUpdated">Called when a storage root for an account is updated</param>
+        /// <returns></returns>
+        IWorldStateWriteBatch StartWriteBatch(int estimatedAccountNum, Action<Address, Account> onAccountUpdated);
+
+        /// <summary>
         /// A commit will traverse the dirty nodes in the tree, calculate the hash and save
         /// the tree to underlying store.
         /// That said, <see cref="WorldState"/> will always call <see cref="IStateTree.UpdateRootHash"/>
         /// first.
         /// </summary>
         void Commit(long blockNumber);
-    }
-
-    public interface IStateTree
-    {
-        Hash256 RootHash { get; }
-        Account? Get(Address address);
-
-        void Set(Address key, Account account)
-        {
-            using IStateSetter stateSetter = BeginSet(1);
-            stateSetter.Set(key, account);
-        }
-
-        IStateSetter BeginSet(int estimatedEntries);
-        void UpdateRootHash();
     }
 
     public interface ICodeDb
@@ -71,10 +65,8 @@ public interface IWorldStateScopeProvider
 
     public interface IStorageTree
     {
-        // RootHash of the storage tree.
-        // May need to call `UpdateRootHash`.
-        // Note: StorageRoot of the account is not set by the backend.
-        Hash256 RootHash { get; }
+        bool WasEmptyTree { get; }
+
         byte[] Get(in UInt256 index);
 
         /// <summary>
@@ -83,30 +75,22 @@ public interface IWorldStateScopeProvider
         /// <param name="hash"></param>
         /// <returns></returns>
         byte[] Get(in ValueHash256 hash);
-
-        /// <summary>
-        /// Self-destruct. Maybe costly.
-        /// </summary>
-        void Clear();
-
-        void Set(in UInt256 index, byte[] value)
-        {
-            using IStorageSetter setter = BeginSet(1);
-            setter.Set(index, value);
-        }
-
-        IStorageSetter BeginSet(int estimatedEntries);
-        void UpdateRootHash(bool canBeParallel = true);
     }
 
-    public interface IStorageSetter : IDisposable
+    public interface IWorldStateWriteBatch : IDisposable
+    {
+        void Set(Address key, Account? account);
+        IStorageWriteBatch CreateStorageWriteBatch(Address key, int estimatedEntries);
+    }
+
+    public interface IStorageWriteBatch : IDisposable
     {
         void Set(in UInt256 index, byte[] value);
-    }
 
-    public interface IStateSetter : IDisposable
-    {
-        void Set(Address key, Account account);
+        /// <summary>
+        /// Self-destruct. Maybe costly. Must be called first.
+        /// </summary>
+        void Clear();
     }
 
     public interface ICodeSetter : IDisposable
