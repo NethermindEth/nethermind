@@ -33,9 +33,6 @@ public class BlockValidator(
     private readonly BlockDecoder _blockDecoder = new();
     private readonly ILogger _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
 
-    public bool Validate(BlockHeader header, BlockHeader parent, bool isUncle) =>
-        _headerValidator.Validate(header, parent, isUncle, out _);
-
     public bool Validate(BlockHeader header, BlockHeader parent, bool isUncle, out string? error) =>
         _headerValidator.Validate(header, parent, isUncle, out error);
 
