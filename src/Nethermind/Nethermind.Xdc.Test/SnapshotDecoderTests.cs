@@ -18,7 +18,7 @@ namespace Nethermind.Xdc.Test;
 [TestFixture]
 public class SnapshotDecoderTests
 {
-    private static IEnumerable<Snapshot> Objects => [
+    private static IEnumerable<Snapshot> Snapshots => [
         new Snapshot(3, Keccak.EmptyTreeHash, [], [Address.FromNumber(1), Address.FromNumber(2)]),
     ];
 
