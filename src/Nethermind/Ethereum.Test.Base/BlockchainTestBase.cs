@@ -200,7 +200,8 @@ public abstract class BlockchainTestBase
                         break;
                     case "4":
                         ExecutionPayloadV3 payload = (ExecutionPayloadV3)executionPayload;
-                        res = await engineRpcModule.engine_newPayloadV4(payload, [], executionPayload.ParentBeaconBlockRoot, []);
+                        byte[]?[] hashes = blobVersionedHashes is null ? null : [.. blobVersionedHashes.Select(x => Bytes.FromHexString(x))];
+                        res = await engineRpcModule.engine_newPayloadV4(payload, hashes, executionPayload.ParentBeaconBlockRoot, []);
                         break;
                     default:
                         Assert.Fail("Invalid blockchain engine test, version not recognised.");

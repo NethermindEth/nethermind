@@ -21,12 +21,12 @@ namespace Ethereum.Test.Base
         public string Timestamp { get; set; }
         public string TransactionsTrie { get; set; }
         public string UncleHash { get; set; }
-        public string WithdrawalsRoot { get; set; }
-        public string ParentBeaconBlockRoot { get; set; }
-        public string RequestsHash { get; set; }
-        public string BlockAccessListHash { get; set; }
-        public string BlobGasUsed { get; set; }
-        public string ExcessBlobGas { get; set; }
-        public string BaseFeePerGas { get; set; }
+        public string? WithdrawalsRoot { get; set; }
+        public string? ParentBeaconBlockRoot { get; set; }
+        public string? RequestsHash { get; set; }
+        public string? BlockAccessListHash { get; set; }
+        public string? BlobGasUsed { get; set; }
+        public string? ExcessBlobGas { get; set; }
+        public string? BaseFeePerGas { get; set; }
     }
 }
