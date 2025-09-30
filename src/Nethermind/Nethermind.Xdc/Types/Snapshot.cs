@@ -19,6 +19,6 @@ public class Snapshot(long number, Hash256 hash, Address[] masterNodes, Address[
     public object Clone() =>
         new Snapshot(Number,
             Hash,
-            [..MasterNodes],
-            [..PenalizedNodes]);
+            [.. MasterNodes],
+            [.. PenalizedNodes]);
 }

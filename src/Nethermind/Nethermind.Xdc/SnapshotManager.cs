@@ -100,7 +100,7 @@ internal class SnapshotManager : ISnapshotManager
     {
         Snapshot snapshot = GetSnapshotByHeader(xdcHeader);
         if (snapshot is null)
-           throw new InvalidOperationException($"No snapshot found for header {xdcHeader.Number}:{xdcHeader.Hash.ToShortString()}");
+            throw new InvalidOperationException($"No snapshot found for header {xdcHeader.Number}:{xdcHeader.Hash.ToShortString()}");
 
         Address[] masternodes = new Address[snapshot.MasterNodes.Length - snapshot.PenalizedNodes.Length];
 
