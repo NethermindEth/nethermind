@@ -87,8 +87,8 @@ internal class SnapshotDecoder : IRlpStreamDecoder<Snapshot>, IRlpValueDecoder<S
         var contentLength = GetLength(item, rlpBehaviors);
 
         stream.StartSequence(contentLength);
-        stream.Encode(item.Number);
-        stream.Encode(item.Hash);
+        stream.Encode(item.BlockNumber);
+        stream.Encode(item.HeaderHash);
 
         if (item.MasterNodes is null)
             stream.EncodeArray<Address>([]);
@@ -121,8 +121,8 @@ internal class SnapshotDecoder : IRlpStreamDecoder<Snapshot>, IRlpValueDecoder<S
             return 0;
 
         int length = 0;
-        length += Rlp.LengthOf(item.Number);
-        length += Rlp.LengthOf(item.Hash);
+        length += Rlp.LengthOf(item.BlockNumber);
+        length += Rlp.LengthOf(item.HeaderHash);
         length += Rlp.LengthOfSequence(Rlp.LengthOfAddressRlp * item.MasterNodes?.Length ?? 0);
         length += Rlp.LengthOfSequence(Rlp.LengthOfAddressRlp * item.PenalizedNodes?.Length ?? 0);
         return length;
