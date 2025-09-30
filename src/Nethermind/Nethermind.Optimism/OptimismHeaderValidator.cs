@@ -18,7 +18,7 @@ public class PreBedrockHeaderValidator(
     ISpecProvider? specProvider,
     ILogManager? logManager) : HeaderValidator(blockTree, sealValidator, specProvider, logManager)
 {
-    public override bool Validate(BlockHeader header, BlockHeader? parent, bool isUncle, [NotNullWhen(false)] out string? error)
+    public override bool Validate(BlockHeader header, BlockHeader parent, bool isUncle, [NotNullWhen(false)] out string? error)
     {
         error = null;
         return ValidateParent(header, parent, ref error);
@@ -37,7 +37,7 @@ public class OptimismHeaderValidator(
         new PreBedrockHeaderValidator(blockTree, sealValidator, specProvider, logManager),
         blockTree, specProvider, sealValidator, logManager)
 {
-    public override bool Validate(BlockHeader header, BlockHeader? parent, bool isUncle, out string? error)
+    public override bool Validate(BlockHeader header, BlockHeader parent, bool isUncle, out string? error)
     {
         if (specHelper.IsHolocene(header))
         {

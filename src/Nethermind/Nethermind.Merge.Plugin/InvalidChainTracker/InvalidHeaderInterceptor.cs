@@ -24,7 +24,7 @@ public class InvalidHeaderInterceptor : IHeaderValidator
         _logger = logManager.GetClassLogger<InvalidHeaderInterceptor>();
     }
 
-    public bool Validate(BlockHeader header, BlockHeader? parent, bool isUncle, [NotNullWhen(false)] out string? error)
+    public bool Validate(BlockHeader header, BlockHeader parent, bool isUncle, [NotNullWhen(false)] out string? error)
     {
         bool result = _baseValidator.Validate(header, parent, isUncle, out error);
         if (!result)

@@ -30,14 +30,14 @@ public class TestBlockValidator : IBlockValidator
         _processedValidationResults = processedValidationResults ?? throw new ArgumentNullException(nameof(processedValidationResults));
     }
 
-    public bool Validate(BlockHeader header, BlockHeader? parent, bool isUncle, [NotNullWhen(false)] out string? error)
+    public bool Validate(BlockHeader header, BlockHeader parent, bool isUncle, [NotNullWhen(false)] out string? error)
     {
         var result = _alwaysSameResultForSuggested ?? _suggestedValidationResults.Dequeue();
         error = result ? null : "";
         return result;
     }
 
-    public bool ValidateSuggestedBlock(Block block, BlockHeader? parent, [NotNullWhen(false)] out string? error, bool validateHashes = true)
+    public bool ValidateSuggestedBlock(Block block, BlockHeader parent, [NotNullWhen(false)] out string? error, bool validateHashes = true)
     {
         error = null;
         return _alwaysSameResultForSuggested ?? _suggestedValidationResults.Dequeue();

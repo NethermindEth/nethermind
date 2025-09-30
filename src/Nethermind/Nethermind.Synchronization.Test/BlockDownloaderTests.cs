@@ -658,7 +658,7 @@ public partial class BlockDownloaderTests
     private class SlowHeaderValidator : IBlockValidator
     {
 
-        public bool Validate(BlockHeader header, BlockHeader? parent, bool isUncle)
+        public bool Validate(BlockHeader header, BlockHeader parent, bool isUncle)
         {
             Thread.Sleep(1000);
             return true;
@@ -696,7 +696,7 @@ public partial class BlockDownloaderTests
             return true;
         }
 
-        public bool ValidateSuggestedBlock(Block block, BlockHeader? parent, [NotNullWhen(false)] out string? error, bool validateHashes = true)
+        public bool ValidateSuggestedBlock(Block block, BlockHeader parent, [NotNullWhen(false)] out string? error, bool validateHashes = true)
         {
             Thread.Sleep(1000);
             error = null;
@@ -710,7 +710,7 @@ public partial class BlockDownloaderTests
             return true;
         }
 
-        public bool Validate(BlockHeader header, BlockHeader? parent, bool isUncle, [NotNullWhen(false)] out string? error)
+        public bool Validate(BlockHeader header, BlockHeader parent, bool isUncle, [NotNullWhen(false)] out string? error)
         {
             Thread.Sleep(1000);
             error = null;

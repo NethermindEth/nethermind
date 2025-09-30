@@ -8,7 +8,7 @@ namespace Nethermind.Consensus.Validators
 {
     public class NeverValidBlockValidator : IBlockValidator
     {
-        public bool Validate(BlockHeader header, BlockHeader? parent, bool isUncle, out string? error)
+        public bool Validate(BlockHeader header, BlockHeader parent, bool isUncle, out string? error)
         {
             error = null;
             return false;
@@ -32,7 +32,7 @@ namespace Nethermind.Consensus.Validators
             return false;
         }
 
-        public bool ValidateSuggestedBlock(Block block, BlockHeader? parent, out string? error, bool validateHashes = true)
+        public bool ValidateSuggestedBlock(Block block, BlockHeader parent, out string? error, bool validateHashes = true)
         {
             error = null;
             return false;

@@ -8,6 +8,6 @@ namespace Nethermind.Consensus.Validators
 {
     public interface IHeaderValidator
     {
-        bool Validate(BlockHeader header, BlockHeader? parent, bool isUncle, [NotNullWhen(false)] out string? error);
+        bool Validate(BlockHeader header, BlockHeader parent, bool isUncle, [NotNullWhen(false)] out string? error);
     }
 }

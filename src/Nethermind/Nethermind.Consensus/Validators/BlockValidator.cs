@@ -33,10 +33,10 @@ public class BlockValidator(
     private readonly BlockDecoder _blockDecoder = new();
     private readonly ILogger _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
 
-    public bool Validate(BlockHeader header, BlockHeader? parent, bool isUncle) =>
+    public bool Validate(BlockHeader header, BlockHeader parent, bool isUncle) =>
         _headerValidator.Validate(header, parent, isUncle, out _);
 
-    public bool Validate(BlockHeader header, BlockHeader? parent, bool isUncle, out string? error) =>
+    public bool Validate(BlockHeader header, BlockHeader parent, bool isUncle, out string? error) =>
         _headerValidator.Validate(header, parent, isUncle, out error);
 
     /// <summary>
@@ -67,7 +67,10 @@ public class BlockValidator(
     /// <returns>
     /// <c>true</c> if the <paramref name="block"/> is valid; otherwise, <c>false</c>.
     /// </returns>
-    public bool ValidateSuggestedBlock(Block block, BlockHeader? parent, out string? errorMessage, bool validateHashes = true)
+    public bool ValidateSuggestedBlock(Block block, BlockHeader parent, out string? errorMessage, bool validateHashes = true) =>
+        ValidateBlock(block, parent, out errorMessage, validateHashes);
+
+    private bool ValidateBlock(Block block, BlockHeader? parent, out string? errorMessage, bool validateHashes)
     {
         IReleaseSpec spec = _specProvider.GetSpec(block.Header);
 

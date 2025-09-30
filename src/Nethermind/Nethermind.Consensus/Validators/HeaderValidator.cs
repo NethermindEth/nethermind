@@ -68,7 +68,7 @@ namespace Nethermind.Consensus.Validators
         /// <param name="parent">BlockHeader which is the parent of <paramref name="header"/></param>
         /// <param name="isUncle"><value>True</value> if uncle block, otherwise <value>False</value></param>
         /// <returns><value>True</value> if validation succeeds otherwise <value>false</value></returns>
-        public virtual bool Validate(BlockHeader header, BlockHeader? parent, bool isUncle = false)
+        public virtual bool Validate(BlockHeader header, BlockHeader parent, bool isUncle = false)
         {
             return Validate(header, parent, isUncle, out _);
         }
@@ -81,7 +81,7 @@ namespace Nethermind.Consensus.Validators
         /// <param name="isUncle"><value>True</value> if uncle block, otherwise <value>False</value></param>
         /// <param name="error">Detailed error message if validation fails, otherwise <value>null</value>.</param>
         /// <returns><value>True</value> if validation succeeds otherwise <value>false</value></returns>
-        public virtual bool Validate(BlockHeader header, BlockHeader? parent, bool isUncle, out string? error)
+        public virtual bool Validate(BlockHeader header, BlockHeader parent, bool isUncle, out string? error)
         {
             IReleaseSpec spec;
             error = null;

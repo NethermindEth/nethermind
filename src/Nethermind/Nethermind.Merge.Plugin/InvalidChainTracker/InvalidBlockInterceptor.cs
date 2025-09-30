@@ -18,7 +18,7 @@ public class InvalidBlockInterceptor(
 
     public bool ValidateOrphanedBlock(Block block, [NotNullWhen(false)] out string? error) => blockValidator.ValidateOrphanedBlock(block, out error);
 
-    public bool Validate(BlockHeader header, BlockHeader? parent, bool isUncle, [NotNullWhen(false)] out string? error)
+    public bool Validate(BlockHeader header, BlockHeader parent, bool isUncle, [NotNullWhen(false)] out string? error)
     {
         bool result = blockValidator.Validate(header, parent, isUncle, out error);
         if (!result)
@@ -35,7 +35,7 @@ public class InvalidBlockInterceptor(
         return result;
     }
 
-    public bool ValidateSuggestedBlock(Block block, BlockHeader? parent, [NotNullWhen(false)] out string? error, bool validateHashes = true)
+    public bool ValidateSuggestedBlock(Block block, BlockHeader parent, [NotNullWhen(false)] out string? error, bool validateHashes = true)
     {
         bool result = blockValidator.ValidateSuggestedBlock(block, parent, out error, validateHashes);
         if (!result)

@@ -37,11 +37,11 @@ namespace Nethermind.Merge.Plugin
             _blockTree = blockTree;
         }
 
-        public override bool Validate(BlockHeader header, BlockHeader? parent, bool isUncle = false)
+        public override bool Validate(BlockHeader header, BlockHeader parent, bool isUncle = false)
         {
             return Validate(header, parent, isUncle, out _);
         }
-        public override bool Validate(BlockHeader header, BlockHeader? parent, bool isUncle, out string? error)
+        public override bool Validate(BlockHeader header, BlockHeader parent, bool isUncle, out string? error)
         {
             error = null;
             return _poSSwitcher.IsPostMerge(header)
