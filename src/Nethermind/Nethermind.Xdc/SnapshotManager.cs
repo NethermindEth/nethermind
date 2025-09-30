@@ -25,8 +25,7 @@ internal class SnapshotManager : ISnapshotManager
     private IBlockTree _tree { get; }
     private IDb _snapshotDb { get; }
 
-    private SnapshotDecoder _snapshotDecoder = new();
-
+    private readonly SnapshotDecoder _snapshotDecoder = new();
 
     public SnapshotManager(IDb snapshotDb, IBlockTree tree)
     {
@@ -48,9 +47,8 @@ internal class SnapshotManager : ISnapshotManager
         Span<byte> value = _snapshotDb.Get(key);
         if (value.IsEmpty)
             return null;
-        SnapshotDecoder snapshotDecoder = new();
 
-        var decoded = snapshotDecoder.Decode(value, RlpBehaviors.None);
+        var decoded = _snapshotDecoder.Decode(value, RlpBehaviors.None);
         snapshot = decoded;
         _snapshotCache.Set(hash, snapshot);
         return snapshot;
