@@ -190,8 +190,8 @@ namespace Nethermind.State.Proofs
                     {
                         // Child is an inline node, decode RLP and get storage value
                         var rlpStream = new RlpStream(child);
-                        _ = rlpStream.ReadSequenceLength();
-                        _ = rlpStream.DecodeByteArraySpan();
+                        rlpStream.SkipLength();
+                        rlpStream.SkipItem();
                         ReadOnlySpan<byte> value = rlpStream.DecodeByteArraySpan();
                         _accountProof.StorageProofs[storageIndex].Value = value.ToArray();
                     }
