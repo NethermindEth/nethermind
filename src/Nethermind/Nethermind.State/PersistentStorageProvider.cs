@@ -606,7 +606,7 @@ internal sealed class PersistentStorageProvider : PartialStorageProviderBase
 
         public void RemoveStorageTree()
         {
-            StorageTree = null;
+            _backend = null;
         }
     }
 }
