@@ -78,7 +78,7 @@ namespace Nethermind.Consensus.Validators
         /// </summary>
         /// <param name="header">BlockHeader to validate</param>
         /// <param name="parent">BlockHeader which is the parent of <paramref name="header"/></param>
-        /// <param name="isUncle"><value>True</value> if uncle block, otherwise <value>False</value></param>
+        /// <param name="isUncle"><value>True</value> if is an uncle block, otherwise <value>False</value></param>
         /// <param name="error">Detailed error message if validation fails, otherwise <value>null</value>.</param>
         /// <returns><value>True</value> if validation succeeds otherwise <value>false</value></returns>
         public virtual bool Validate(BlockHeader header, BlockHeader parent, bool isUncle, out string? error)

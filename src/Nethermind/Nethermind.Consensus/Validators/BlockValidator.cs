@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Diagnostics.CodeAnalysis;
 using System.Text;
 using Nethermind.Blockchain;
 using Nethermind.Core;
@@ -45,14 +46,8 @@ public class BlockValidator(
     /// <remarks>
     /// Parent may be absent during BeaconSync
     /// </remarks>
-    public bool ValidateOrphanedBlock(Block block, out string? error)
-    {
-        if (!ValidateEip4844Fields(block, _specProvider.GetSpec(block.Header), out error))
-            return false;
-
-        error = null;
-        return true;
-    }
+    public bool ValidateOrphanedBlock(Block block, out string? error) =>
+        ValidateBlock<OnFlag>(block, null, out error);
 
     /// <summary>
     /// Suggested block validation runs basic checks that can be executed before going through the expensive EVM processing.
@@ -65,30 +60,40 @@ public class BlockValidator(
     /// <c>true</c> if the <paramref name="block"/> is valid; otherwise, <c>false</c>.
     /// </returns>
     public bool ValidateSuggestedBlock(Block block, BlockHeader parent, out string? errorMessage, bool validateHashes = true) =>
-        ValidateBlock(block, parent, out errorMessage, validateHashes);
+        ValidateBlock<OffFlag>(block, parent, out errorMessage, validateHashes);
 
-    private bool ValidateBlock(Block block, BlockHeader? parent, out string? errorMessage, bool validateHashes)
+    private bool ValidateBlock<TSuggested>(Block block, BlockHeader? parent, out string? errorMessage, bool validateHashes = true) where TSuggested : struct, IFlag
     {
         IReleaseSpec spec = _specProvider.GetSpec(block.Header);
+        errorMessage = null;
 
-        int encodedSize = block.EncodedSize ?? _blockDecoder.GetLength(block, RlpBehaviors.None);
-        if (spec.IsEip7934Enabled && encodedSize > spec.Eip7934MaxRlpBlockSize)
+        return ValidateBlockSize(block, spec, ref errorMessage) &&
+               ValidateTransactions(block, spec, ref errorMessage) &&
+               ValidateEip4844Fields(block, spec, ref errorMessage) &&
+               ValidateUncles(block, spec, validateHashes, ref errorMessage) &&
+               ValidateHeader<TSuggested>(block, parent, ref errorMessage) &&
+               ValidateTxRootMatchesTxs(block, validateHashes, ref errorMessage) &&
+               ValidateWithdrawals(block, spec, validateHashes, ref errorMessage);
+    }
+
+    private bool ValidateHeader<TSuggested>(Block block, BlockHeader? parent, ref string? errorMessage)
+        where TSuggested : struct, IFlag
+    {
+        bool blockHeaderValid = typeof(TSuggested) == typeof(OffFlag)
+            ? parent is not null && _headerValidator.Validate(block.Header, parent, false, out errorMessage)
+            : parent is null && _headerValidator.Validate(block.Header, null, false, out errorMessage);
+
+        if (!blockHeaderValid)
         {
-            if (_logger.IsDebug) _logger.Debug($"{Invalid(block)} RLP encoded size of {encodedSize} bytes exceeds the max limit of {spec.Eip7934MaxRlpBlockSize} bytes");
-            errorMessage = BlockErrorMessages.ExceededBlockSizeLimit(spec.Eip7934MaxRlpBlockSize);
+            if (_logger.IsDebug) _logger.Debug($"{Invalid(block)} Invalid header");
             return false;
         }
 
-        if (!ValidateTransactions(block, spec, out errorMessage))
-        {
-            return false;
-        }
+        return true;
+    }
 
-        if (!ValidateEip4844Fields(block, spec, out errorMessage))
-        {
-            return false;
-        }
-
+    private bool ValidateUncles(Block block, IReleaseSpec spec, bool validateHashes, ref string? errorMessage)
+    {
         if (spec.MaximumUncleCount < block.Uncles.Length)
         {
             if (_logger.IsDebug) _logger.Debug($"{Invalid(block)} Uncle count of {block.Uncles.Length} exceeds the max limit of {spec.MaximumUncleCount}");
@@ -110,26 +115,17 @@ public class BlockValidator(
             return false;
         }
 
-        bool blockHeaderValid = _headerValidator.Validate(block.Header, parent, false, out errorMessage);
-        if (!blockHeaderValid)
+        return true;
+    }
+
+    private bool ValidateBlockSize(Block block, IReleaseSpec spec, ref string? errorMessage)
+    {
+        int encodedSize = block.EncodedSize ?? _blockDecoder.GetLength(block, RlpBehaviors.None);
+        if (spec.IsEip7934Enabled && encodedSize > spec.Eip7934MaxRlpBlockSize)
         {
-            if (_logger.IsDebug) _logger.Debug($"{Invalid(block)} Invalid header");
+            if (_logger.IsDebug) _logger.Debug($"{Invalid(block)} RLP encoded size of {encodedSize} bytes exceeds the max limit of {spec.Eip7934MaxRlpBlockSize} bytes");
+            errorMessage = BlockErrorMessages.ExceededBlockSizeLimit(spec.Eip7934MaxRlpBlockSize);
             return false;
-        }
-
-        if (validateHashes)
-        {
-            if (!ValidateTxRootMatchesTxs(block, out Hash256 txRoot))
-            {
-                if (_logger.IsDebug) _logger.Debug($"{Invalid(block)} Transaction root hash mismatch: expected {block.Header.TxRoot}, got {txRoot}");
-                errorMessage = BlockErrorMessages.InvalidTxRoot(block.Header.TxRoot!, txRoot);
-                return false;
-            }
-
-            if (!ValidateWithdrawals(block, spec, out errorMessage))
-            {
-                return false;
-            }
         }
 
         return true;
@@ -231,46 +227,45 @@ public class BlockValidator(
         return false;
     }
 
-    public bool ValidateWithdrawals(Block block, out string? error) =>
-        ValidateWithdrawals(block, _specProvider.GetSpec(block.Header), out error);
-
-    protected virtual bool ValidateWithdrawals(Block block, IReleaseSpec spec, out string? error)
+    public bool ValidateWithdrawals(Block block, out string? error)
     {
-        if (spec.WithdrawalsEnabled && block.Withdrawals is null)
+        error = null;
+        return ValidateWithdrawals(block, _specProvider.GetSpec(block.Header), true, ref error);
+    }
+
+    protected virtual bool ValidateWithdrawals(Block block, IReleaseSpec spec, bool validateHashes, ref string? error)
+    {
+        if (validateHashes)
         {
-            error = BlockErrorMessages.MissingWithdrawals;
-
-            if (_logger.IsWarn) _logger.Warn($"Withdrawals cannot be null in block {block.Hash} when EIP-4895 activated.");
-
-            return false;
-        }
-
-        if (!spec.WithdrawalsEnabled && block.Withdrawals is not null)
-        {
-            error = BlockErrorMessages.WithdrawalsNotEnabled;
-
-            if (_logger.IsWarn) _logger.Warn($"Withdrawals must be null in block {block.Hash} when EIP-4895 not activated.");
-
-            return false;
-        }
-
-        if (block.Withdrawals is not null)
-        {
-            if (!ValidateWithdrawalsHashMatches(block, out Hash256 withdrawalsRoot))
+            if (spec.WithdrawalsEnabled && block.Withdrawals is null)
             {
-                error = BlockErrorMessages.InvalidWithdrawalsRoot(block.Header.WithdrawalsRoot, withdrawalsRoot);
-                if (_logger.IsWarn) _logger.Warn($"Withdrawals root hash mismatch in block {block.ToString(Block.Format.FullHashAndNumber)}: expected {block.Header.WithdrawalsRoot}, got {withdrawalsRoot}");
-
+                error = BlockErrorMessages.MissingWithdrawals;
+                if (_logger.IsWarn) _logger.Warn($"Withdrawals cannot be null in block {block.Hash} when EIP-4895 activated.");
                 return false;
             }
-        }
 
-        error = null;
+            if (!spec.WithdrawalsEnabled && block.Withdrawals is not null)
+            {
+                error = BlockErrorMessages.WithdrawalsNotEnabled;
+                if (_logger.IsWarn) _logger.Warn($"Withdrawals must be null in block {block.Hash} when EIP-4895 not activated.");
+                return false;
+            }
+
+            if (block.Withdrawals is not null)
+            {
+                if (!ValidateWithdrawalsHashMatches(block, out Hash256 withdrawalsRoot))
+                {
+                    error = BlockErrorMessages.InvalidWithdrawalsRoot(block.Header.WithdrawalsRoot, withdrawalsRoot);
+                    if (_logger.IsWarn) _logger.Warn($"Withdrawals root hash mismatch in block {block.ToString(Block.Format.FullHashAndNumber)}: expected {block.Header.WithdrawalsRoot}, got {withdrawalsRoot}");
+                    return false;
+                }
+            }
+        }
 
         return true;
     }
 
-    protected virtual bool ValidateTransactions(Block block, IReleaseSpec spec, out string? errorMessage)
+    protected virtual bool ValidateTransactions(Block block, IReleaseSpec spec, ref string? errorMessage)
     {
         Transaction[] transactions = block.Transactions;
 
@@ -286,15 +281,14 @@ public class BlockValidator(
                 return false;
             }
         }
-        errorMessage = null;
+
         return true;
     }
 
-    protected virtual bool ValidateEip4844Fields(Block block, IReleaseSpec spec, out string? error)
+    protected virtual bool ValidateEip4844Fields(Block block, IReleaseSpec spec, ref string? error)
     {
         if (!spec.IsEip4844Enabled)
         {
-            error = null;
             return true;
         }
 
@@ -347,7 +341,6 @@ public class BlockValidator(
             return false;
         }
 
-        error = null;
         return true;
     }
 
@@ -378,8 +371,17 @@ public class BlockValidator(
         return true;
     }
 
-    public static bool ValidateTxRootMatchesTxs(Block block, out Hash256 txRoot) =>
-        ValidateTxRootMatchesTxs(block.Header, block.Body, out txRoot);
+    private bool ValidateTxRootMatchesTxs(Block block, bool validateHashes, [NotNullWhen(false)] ref string? errorMessage)
+    {
+        if (validateHashes && !ValidateTxRootMatchesTxs(block.Header, block.Body, out Hash256 txRoot))
+        {
+            if (_logger.IsDebug) _logger.Debug($"{Invalid(block)} Transaction root hash mismatch: expected {block.Header.TxRoot}, got {txRoot}");
+            errorMessage = BlockErrorMessages.InvalidTxRoot(block.Header.TxRoot!, txRoot);
+            return false;
+        }
+
+        return true;
+    }
 
     public static bool ValidateTxRootMatchesTxs(BlockHeader header, BlockBody body, out Hash256 txRoot) =>
         (txRoot = TxTrie.CalculateRoot(body.Transactions)) == header.TxRoot;
@@ -404,6 +406,5 @@ public class BlockValidator(
         return (withdrawalsRoot = new WithdrawalTrie(body.Withdrawals).RootHash) == header.WithdrawalsRoot;
     }
 
-    private static string Invalid(Block block) =>
-        $"Invalid block {block.ToString(Block.Format.FullHashAndNumber)}:";
+    private static string Invalid(Block block) => $"Invalid block {block.ToString(Block.Format.FullHashAndNumber)}:";
 }
