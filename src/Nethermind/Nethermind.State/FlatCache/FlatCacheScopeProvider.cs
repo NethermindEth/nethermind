@@ -59,9 +59,30 @@ public sealed class FlatCacheScopeProvider : IWorldStateScopeProvider, IPreBlock
     {
         private StateId _currentBaseBlock = baseBlock;
 
-        private StateTreeWrapper _stateTreeWrapper = new StateTreeWrapper(baseScope.StateTree, snapshotBundle);
+        private static Prometheus.Counter _cacheHit =
+            Prometheus.Metrics.CreateCounter("flatcache_state_tree_cachehit", "hit rate", "cachehit");
 
-        public IWorldStateScopeProvider.IStateTree StateTree => _stateTreeWrapper;
+        private static Counter.Child _cacheHitHit = _cacheHit.WithLabels("hit");
+        private static Counter.Child _cacheHitMiss = _cacheHit.WithLabels("miss");
+
+        public Hash256 RootHash => baseScope.RootHash;
+
+        public Account? Get(Address address)
+        {
+            if (snapshotBundle.TryGetAccount(address, out var account))
+            {
+                _cacheHitHit.Inc();
+                return account;
+            }
+            _cacheHitMiss.Inc();
+            return baseScope.Get(address);
+        }
+
+        public void UpdateRootHash()
+        {
+            baseScope.UpdateRootHash();
+        }
+
 
         public IWorldStateScopeProvider.ICodeDb CodeDb => baseScope.CodeDb;
 
@@ -72,11 +93,16 @@ public sealed class FlatCacheScopeProvider : IWorldStateScopeProvider, IPreBlock
             return wrapper;
         }
 
+        public IWorldStateScopeProvider.IWorldStateWriteBatch StartWriteBatch(int estimatedAccountNum, Action<Address, Account> onAccountUpdated)
+        {
+            return new WriteBatchWrapper(baseScope.StartWriteBatch(estimatedAccountNum, onAccountUpdated), snapshotBundle);
+        }
+
         public void Commit(long blockNumber)
         {
             baseScope.Commit(blockNumber);
             Snapshot snapshot = snapshotBundle.CollectAndApplyKnownState();
-            var newId = new StateId(blockNumber, StateTree.RootHash);
+            var newId = new StateId(blockNumber, RootHash);
 
             if (!flatCache._isReadOnly)
             {
@@ -98,55 +124,6 @@ public sealed class FlatCacheScopeProvider : IWorldStateScopeProvider, IPreBlock
         }
     }
 
-    private sealed class StateTreeWrapper(IWorldStateScopeProvider.IStateTree baseStateTree, SnapshotBundle snapshotBundle) : IWorldStateScopeProvider.IStateTree
-    {
-        private static Prometheus.Counter _cacheHit =
-            Prometheus.Metrics.CreateCounter("flatcache_state_tree_cachehit", "hit rate", "cachehit");
-
-        private static Counter.Child _cacheHitHit = _cacheHit.WithLabels("hit");
-        private static Counter.Child _cacheHitMiss = _cacheHit.WithLabels("miss");
-
-        public Hash256 RootHash => baseStateTree.RootHash;
-
-        public Account? Get(Address address)
-        {
-            if (snapshotBundle.TryGetAccount(address, out var account))
-            {
-                _cacheHitHit.Inc();
-                return account;
-            }
-            _cacheHitMiss.Inc();
-            return baseStateTree.Get(address);
-        }
-
-        public IWorldStateScopeProvider.IStateSetter BeginSet(int estimatedEntries)
-        {
-            return new StateSetterWrapper(baseStateTree.BeginSet(estimatedEntries), snapshotBundle);
-        }
-
-        public void UpdateRootHash()
-        {
-            baseStateTree.UpdateRootHash();
-        }
-    }
-
-    private sealed class StateSetterWrapper(IWorldStateScopeProvider.IStateSetter setter, SnapshotBundle snapshotBundle) : IWorldStateScopeProvider.IStateSetter
-    {
-        private Dictionary<Address, Account> _changedValues = new();
-
-        public void Set(Address key, Account account)
-        {
-            setter.Set(key, account);
-            _changedValues[key] = account;
-        }
-
-        public void Dispose()
-        {
-            setter.Dispose();
-            snapshotBundle.ApplyStateChanges(_changedValues);
-        }
-    }
-
     private sealed class StorageTreeWrapper(
         IWorldStateScopeProvider.IStorageTree baseStorageTree,
         StorageSnapshotBundle cache) : IWorldStateScopeProvider.IStorageTree
@@ -155,7 +132,7 @@ public sealed class FlatCacheScopeProvider : IWorldStateScopeProvider, IPreBlock
         private static Counter.Child _cacheHitHit = _cacheHit.WithLabels("hit");
         private static Counter.Child _cacheHitMiss = _cacheHit.WithLabels("miss");
 
-        public Hash256 RootHash => baseStorageTree.RootHash;
+        public bool WasEmptyTree => baseStorageTree.WasEmptyTree;
 
         [MethodImpl(MethodImplOptions.NoOptimization)]
         public byte[] Get(in UInt256 index)
@@ -177,37 +154,51 @@ public sealed class FlatCacheScopeProvider : IWorldStateScopeProvider, IPreBlock
         {
             return baseStorageTree.Get(in hash);
         }
-
-        public void Clear()
-        {
-            baseStorageTree.Clear();
-            cache.SelfDestruct();
-        }
-
-        public IWorldStateScopeProvider.IStorageSetter BeginSet(int estimatedEntries)
-        {
-            return new StorageSetterWrapper(baseStorageTree.BeginSet(estimatedEntries), cache);
-        }
-
-        public void UpdateRootHash(bool canBeParallel = true)
-        {
-            baseStorageTree.UpdateRootHash(canBeParallel);
-        }
     }
 
-    private sealed class StorageSetterWrapper(IWorldStateScopeProvider.IStorageSetter storageSetter, StorageSnapshotBundle cache) : IWorldStateScopeProvider.IStorageSetter
+    private sealed class WriteBatchWrapper(IWorldStateScopeProvider.IWorldStateWriteBatch baseWriteBatch, SnapshotBundle snapshotBundle) : IWorldStateScopeProvider.IWorldStateWriteBatch
     {
-        private Dictionary<UInt256, byte[]> _changedValues = new();
-        public void Set(in UInt256 index, byte[] value)
+        private Dictionary<Address, Account> _changedValues = new();
+
+        public void Set(Address key, Account account)
         {
-            storageSetter.Set(in index, value);
-            _changedValues[index] = value;
+            baseWriteBatch.Set(key, account);
+            _changedValues[key] = account;
         }
 
         public void Dispose()
         {
-            storageSetter.Dispose();
-            cache.ApplyStateChanges(_changedValues);
+            baseWriteBatch.Dispose();
+            snapshotBundle.ApplyStateChanges(_changedValues);
+        }
+
+        public IWorldStateScopeProvider.IStorageWriteBatch CreateStorageWriteBatch(Address key, int estimatedEntries)
+        {
+            return new StorageWriteBatchWrapper(baseWriteBatch.CreateStorageWriteBatch(key, estimatedEntries), snapshotBundle.GatherStorageCache(key));
+        }
+    }
+
+    private sealed class StorageWriteBatchWrapper(IWorldStateScopeProvider.IStorageWriteBatch storageWriteBatch, StorageSnapshotBundle storageSnapshots) : IWorldStateScopeProvider.IStorageWriteBatch
+    {
+        private Dictionary<UInt256, byte[]> _changedValues = new();
+        private bool _hasSelfDestruct = false;
+
+        public void Set(in UInt256 index, byte[] value)
+        {
+            storageWriteBatch.Set(in index, value);
+            _changedValues[index] = value;
+        }
+
+        public void Clear()
+        {
+            storageWriteBatch.Clear();
+            _hasSelfDestruct = true;
+        }
+
+        public void Dispose()
+        {
+            storageWriteBatch.Dispose();
+            storageSnapshots.ApplyStateChanges(_changedValues, _hasSelfDestruct);
         }
     }
 

@@ -34,7 +34,7 @@ public sealed class FlatCacheRepository
     private ILogger _logger;
 
     public record Configuration(
-        int MaxStateInMemory = 1024 * 1024,
+        int MaxStateInMemory = 1024,
         int MaxInFlightCompactJob = 32,
         int CompactSize = 64,
         bool InlineCompaction = false
