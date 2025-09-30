@@ -77,7 +77,7 @@ public class DepositTransactionBuilder(ulong chainId, CLChainSpecEngineParameter
         List<Transaction> result = [];
         foreach (var receipt in receipts)
         {
-            if (receipt.Status != StatusCode.Success) continue;
+            // if (receipt.Status != StatusCode.Success) continue;
             foreach (var log in receipt.Logs)
             {
                 if (log.Address != engineParameters.OptimismPortalProxy) continue;

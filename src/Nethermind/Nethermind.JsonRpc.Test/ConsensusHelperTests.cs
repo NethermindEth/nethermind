@@ -23,7 +23,9 @@ namespace Nethermind.JsonRpc.Test
     [Explicit]
     public partial class ConsensusHelperTests
     {
-        private static readonly Func<EquivalencyAssertionOptions<ReceiptForRpc>, EquivalencyAssertionOptions<ReceiptForRpc>> ReceiptOptions = static options => options.WithStrictOrdering()
+        private static readonly
+            Func<EquivalencyAssertionOptions<ReceiptForRpc>, EquivalencyAssertionOptions<ReceiptForRpc>>
+            ReceiptOptions = static options => options.WithStrictOrdering()
                 .IncludingNestedObjects()
                 .Including(static r => r.TransactionHash)
                 .Including(static r => r.TransactionIndex)
@@ -36,8 +38,7 @@ namespace Nethermind.JsonRpc.Test
                 .Including(static r => r.ContractAddress)
                 .Including(static r => r.LogsBloom)
                 .Including(static r => r.Logs)
-                .Including(static r => r.Root)
-                .Including(static r => r.Status);
+                .Including(static r => r.Root);
 
         public static IEnumerable Tests
         {

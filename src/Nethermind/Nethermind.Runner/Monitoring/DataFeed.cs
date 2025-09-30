@@ -383,7 +383,6 @@ public class DataFeed
                                 Data = l.Data,
                                 Topics = l.Topics
                             })],
-                            Status = r.Status,
                             BlobGasPrice = r.BlobGasPrice ?? UInt256.Zero,
                             BlobGasUsed = r.BlobGasUsed ?? 0,
                         })]

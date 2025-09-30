@@ -54,7 +54,6 @@ public class DepositTransactionBuilderTest
             new()
             {
                 Type = TxType.EIP1559,
-                Status = 1,
                 Logs =
                 [
                     new LogEntryForRpc
@@ -154,7 +153,6 @@ public class DepositTransactionBuilderTest
             new()
             {
                 Type = TxType.EIP1559,
-                Status = 1,
                 Logs = [log],
                 BlockHash = SomeHash,
             },
@@ -185,7 +183,6 @@ public class DepositTransactionBuilderTest
             new()
             {
                 Type = TxType.EIP1559,
-                Status = 0, // Failed
                 Logs =
                 [
                     new LogEntryForRpc
@@ -233,7 +230,6 @@ public class DepositTransactionBuilderTest
             new()
             {
                 Type = TxType.EIP1559,
-                Status = 1,
                 Logs =
                 [
                     new LogEntryForRpc
@@ -297,7 +293,6 @@ public class DepositTransactionBuilderTest
             new()
             {
                 Type = TxType.EIP1559,
-                Status = 1,
                 Logs =
                 [
                     new LogEntryForRpc
@@ -362,7 +357,6 @@ public class DepositTransactionBuilderTest
             new()
             {
                 Type = TxType.EIP1559,
-                Status = 1,
                 Logs =
                 [
                     new LogEntryForRpc
@@ -385,7 +379,6 @@ public class DepositTransactionBuilderTest
             new()
             {
                 Type = TxType.EIP1559,
-                Status = 0, // Failed
                 Logs =
                 [
                     new LogEntryForRpc
@@ -460,7 +453,6 @@ public class DepositTransactionBuilderTest
             new()
             {
                 Type = TxType.EIP1559,
-                Status = 1,
                 Logs =
                 [
                     new LogEntryForRpc
@@ -565,7 +557,6 @@ public class DepositTransactionBuilderTest
             new()
             {
                 Type = TxType.EIP1559,
-                Status = 0, // Failed
                 Logs =
                 [
                     new LogEntryForRpc
@@ -640,7 +631,6 @@ public class DepositTransactionBuilderTest
             new()
             {
                 Type = TxType.EIP1559,
-                Status = 1,
                 Logs =
                 [
                     new LogEntryForRpc

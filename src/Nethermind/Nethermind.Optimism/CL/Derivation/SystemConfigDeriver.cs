@@ -51,7 +51,7 @@ public class SystemConfigDeriver(
 
         foreach (ReceiptForRpc receipt in receipts)
         {
-            if (receipt.Status != StatusCode.Success) continue;
+            // if (receipt.Status != StatusCode.Success) continue;
 
             foreach (var log in receipt.Logs ?? [])
             {

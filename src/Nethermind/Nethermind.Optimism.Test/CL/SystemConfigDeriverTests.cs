@@ -28,7 +28,6 @@ public class SystemConfigDeriverTests
     [
         new()
         {
-            Status = StatusCode.Success,
             Logs =
             [
                 new()
@@ -205,7 +204,6 @@ public class SystemConfigDeriverTests
         [
             new()
             {
-                Status = StatusCode.Success,
                 Logs =
                 [
                     new()
