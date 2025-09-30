@@ -40,6 +40,3 @@ jobs:
 
       - name: Build ${{ matrix.solution }}.slnx
         run: dotnet build src/Nethermind/${{ matrix.solution }}.slnx -c ${{ matrix.config }} --no-restore
-
-      - name: Restore in locked mode
-        run: dotnet restore src/Nethermind/Nethermind.Runner --locked-mode
