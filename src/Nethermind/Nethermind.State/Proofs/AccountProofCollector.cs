@@ -167,7 +167,7 @@ namespace Nethermind.State.Proofs
                     Nibble childIndex = _fullStoragePaths[storageIndex][_pathTraversalIndex];
                     byte[] child = node.GetChildHashOrRlp((byte)childIndex);
 
-                    if (child?.Length == 32)
+                    if (child?.Length == Hash256.Size)
                     {
                         // If the length is 32 it's the hash of the child
                         Hash256 childHash = new(child);
