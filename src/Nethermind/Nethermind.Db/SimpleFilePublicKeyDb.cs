@@ -325,5 +325,20 @@ namespace Nethermind.Db
         public void Dispose()
         {
         }
+
+        public IIterator GetIterator(bool isTailing = false)
+        {
+            throw new NotSupportedException();
+        }
+
+        public IIterator GetIterator(ref IteratorOptions options)
+        {
+            throw new NotSupportedException();
+        }
+
+        public void Merge(ReadOnlySpan<byte> key, ReadOnlySpan<byte> value, WriteFlags flags = WriteFlags.None)
+        {
+            throw new NotSupportedException();
+        }
     }
 }

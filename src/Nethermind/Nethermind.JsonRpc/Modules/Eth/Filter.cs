@@ -19,6 +19,8 @@ public class Filter : IJsonRpcParam
 
     public IEnumerable<object?>? Topics { get; set; }
 
+    public bool UseIndex { get; set; } = true; // TODO: remove after testing
+
     public void ReadJson(JsonElement filter, JsonSerializerOptions options)
     {
         JsonDocument doc = null;
@@ -58,6 +60,16 @@ public class Filter : IJsonRpcParam
             else
             {
                 Topics = null;
+            }
+
+            if (filter.TryGetProperty("useIndex"u8, out JsonElement useIndex))
+            {
+                UseIndex = useIndex.ValueKind switch
+                {
+                    JsonValueKind.False => false,
+                    JsonValueKind.True => true,
+                    _ => UseIndex
+                };
             }
         }
         finally

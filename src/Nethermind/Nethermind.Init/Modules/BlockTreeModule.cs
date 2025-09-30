@@ -17,12 +17,13 @@ using Nethermind.Db;
 using Nethermind.Db.Blooms;
 using Nethermind.Facade.Find;
 using Nethermind.History;
+using Nethermind.Logging;
 using Nethermind.State.Repositories;
 using Nethermind.TxPool;
 
 namespace Nethermind.Init.Modules;
 
-public class BlockTreeModule(IReceiptConfig receiptConfig) : Autofac.Module
+public class BlockTreeModule(IReceiptConfig receiptConfig, ILogIndexConfig logIndexConfig) : Autofac.Module
 {
     protected override void Load(ContainerBuilder builder)
     {
@@ -46,6 +47,15 @@ public class BlockTreeModule(IReceiptConfig receiptConfig) : Autofac.Module
             .AddSingleton<IReadOnlyBlockTree, IBlockTree>((bt) => bt.AsReadOnly())
 
             ;
+
+        if (logIndexConfig.Enabled)
+        {
+            builder.AddSingleton<ILogIndexStorage, LogIndexStorage>();
+        }
+        else
+        {
+            builder.AddSingleton<ILogIndexStorage, DisabledLogIndexStorage>();
+        }
 
         if (!receiptConfig.StoreReceipts)
         {

@@ -173,7 +173,7 @@ public class ByteArrayConverter : JsonConverter<byte[]>
     private static void ThrowFormatException() => throw new FormatException();
 
     [DoesNotReturn, StackTraceHidden]
-    private static void ThrowInvalidOperationException() => throw new InvalidOperationException();
+    private static Exception ThrowInvalidOperationException() => throw new InvalidOperationException();
 
     public override void Write(
         Utf8JsonWriter writer,
@@ -245,5 +245,15 @@ public class ByteArrayConverter : JsonConverter<byte[]>
 
         if (array is not null)
             ArrayPool<byte>.Shared.Return(array);
+    }
+
+    public override byte[] ReadAsPropertyName(ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options)
+    {
+        return Convert(ref reader) ?? throw ThrowInvalidOperationException();
+    }
+
+    public override void WriteAsPropertyName(Utf8JsonWriter writer, byte[] value, JsonSerializerOptions options)
+    {
+        Convert(writer, value, static (w, h) => w.WritePropertyName(h), skipLeadingZeros: false, addQuotations: false, addHexPrefix: true);
     }
 }
