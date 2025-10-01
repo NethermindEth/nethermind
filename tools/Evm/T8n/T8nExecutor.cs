@@ -47,6 +47,7 @@ public static class T8nExecutor
             test.SpecProvider,
             _logManager);
         TransactionProcessor transactionProcessor = new(
+            BlobBaseFeeCalculator.Instance,
             test.SpecProvider,
             stateProvider,
             virtualMachine,

@@ -224,11 +224,6 @@ public class BlockReceiptsTracer : IBlockTracer, ITxTracer, IJournal<int>, ITxTr
 
     public void StartNewBlockTrace(Block block)
     {
-        if (_otherTracer is null)
-        {
-            throw new InvalidOperationException("other tracer not set in receipts tracer");
-        }
-
         Block = block;
         _currentIndex = 0;
         _txReceipts.Clear();
@@ -262,10 +257,12 @@ public class BlockReceiptsTracer : IBlockTracer, ITxTracer, IJournal<int>, ITxTr
                 blockBloom.Accumulate(receipt.Bloom!);
             }
         }
+        _otherTracer = NullBlockTracer.Instance;
     }
 
     public void SetOtherTracer(IBlockTracer blockTracer)
     {
+        ArgumentNullException.ThrowIfNull(blockTracer);
         _otherTracer = blockTracer;
     }
 
