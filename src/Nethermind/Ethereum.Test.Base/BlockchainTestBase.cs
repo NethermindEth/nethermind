@@ -144,7 +144,6 @@ public abstract class BlockchainTestBase
         blockchainProcessor.Start();
 
         BlockHeader parentHeader;
-        (ExecutionPayload, string[]?, string[]?, string?)[] payloads;
         // Genesis processing
         using (stateProvider.BeginScope(null))
         {
@@ -157,8 +156,6 @@ public abstract class BlockchainTestBase
             Block genesisBlock = Rlp.Decode<Block>(test.GenesisRlp.Bytes);
             // Console.WriteLine(genesisBlock.ToString(Block.Format.Full));
             Assert.That(genesisBlock.Header.Hash, Is.EqualTo(new Hash256(test.GenesisBlockHeader.Hash)));
-
-            payloads = [.. JsonToEthereumTest.Convert(test.EngineNewPayloads)];
 
             ManualResetEvent genesisProcessed = new(false);
 
@@ -183,6 +180,8 @@ public abstract class BlockchainTestBase
         }
         else if (test.EngineNewPayloads is not null)
         {
+            (ExecutionPayload, string[]?, string[]?, string?)[] payloads = [.. JsonToEthereumTest.Convert(test.EngineNewPayloads)];
+
             // blockchain test engine
             foreach ((ExecutionPayload executionPayload, string[]? blobVersionedHashes, string[]? validationError, string? newPayloadVersion) in payloads)
             {
