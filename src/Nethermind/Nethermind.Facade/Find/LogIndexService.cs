@@ -449,7 +449,7 @@ public sealed class LogIndexService : ILogIndexService
             progress.MarkEnd();
 
         if (_logger.IsInfo)
-            _logger.Info($"{GetLogPrefix(isForward: false)}: completed.");
+            _logger.Info($"{GetLogPrefix(isForward)}: completed.");
     }
 
     private static int? GetNextBlockNumber(ILogIndexStorage storage, bool isForward)
