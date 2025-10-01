@@ -83,7 +83,7 @@ public class BlockValidator(
     {
         bool blockHeaderValid = typeof(TSuggested) == typeof(OffFlag)
             ? parent is not null && _headerValidator.Validate(block.Header, parent, false, out errorMessage)
-            : parent is null && _headerValidator.Validate(block.Header, null, false, out errorMessage);
+            : parent is null && _headerValidator.ValidateOrphaned(block.Header, out errorMessage);
 
         if (!blockHeaderValid)
         {

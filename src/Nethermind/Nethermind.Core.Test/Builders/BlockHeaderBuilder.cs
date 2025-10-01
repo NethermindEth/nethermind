@@ -49,6 +49,12 @@ public class BlockHeaderBuilder : BuilderBase<BlockHeader>
         return this;
     }
 
+    public BlockHeaderBuilder WithParentOptional(BlockHeader? parentHeader)
+    {
+        if (parentHeader is not null) WithParent(parentHeader);
+        return this;
+    }
+
     public BlockHeaderBuilder WithParentHash(Hash256 parentHash)
     {
         TestObjectInternal.ParentHash = parentHash;
