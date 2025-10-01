@@ -52,11 +52,21 @@ namespace Nethermind.Db.Test.LogIndex
         private IDbFactory _dbFactory = null!;
         private readonly List<ILogIndexStorage> _createdStorages = [];
 
-        private LogIndexStorage CreateLogIndexStorage(int compactionDistance = 262_144, int compressionParallelism = 16, int maxReorgDepth = 64, IDbFactory? dbFactory = null)
+        private ILogIndexStorage CreateLogIndexStorage(
+            int compactionDistance = 262_144, int compressionParallelism = 16, int maxReorgDepth = 64, IDbFactory? dbFactory = null,
+            int? failOnBlock = null, int? failOnCallN = null
+        )
         {
             LogIndexConfig config = new() { CompactionDistance = compactionDistance, CompressionParallelism = compressionParallelism, MaxReorgDepth = maxReorgDepth };
 
-            LogIndexStorage storage = new(dbFactory ?? _dbFactory, LimboLogs.Instance, config);
+            ILogIndexStorage storage = failOnBlock is not null || failOnCallN is not null
+                ? new SaveFailingLogIndexStorage(dbFactory ?? _dbFactory, LimboLogs.Instance, config)
+                {
+                    FailOnBlock = failOnBlock ?? 0,
+                    FailOnCallN = failOnCallN ?? 0
+                }
+                : new LogIndexStorage(dbFactory ?? _dbFactory, LimboLogs.Instance, config);
+
             _createdStorages.Add(storage);
             return storage;
         }
@@ -456,10 +466,65 @@ namespace Nethermind.Db.Test.LogIndex
             VerifyReceipts(logIndexStorage, testData);
         }
 
+        [Combinatorial]
+        public async Task SetFailure_Get_Test(
+            [Values(10, 100, 200)] int failOnCallN,
+            [Values] bool isBackwardsSync
+        )
+        {
+            BlockReceipts[][] batches = isBackwardsSync ? Reverse(testData.Batches) : testData.Batches;
+            var midBlock = testData.Batches[^1][^1].BlockNumber / 2;
+
+            await using var failLogIndexStorage = CreateLogIndexStorage(failOnBlock: midBlock, failOnCallN: failOnCallN);
+
+            Exception exception = Assert.ThrowsAsync<Exception>(() => SetReceiptsAsync(failLogIndexStorage, batches, isBackwardsSync));
+            Assert.That(exception, Has.Message.EqualTo(SaveFailingLogIndexStorage.FailMessage));
+
+            VerifyReceipts(
+                failLogIndexStorage, testData,
+                minBlock: failLogIndexStorage.GetMinBlockNumber() ?? 0, maxBlock: failLogIndexStorage.GetMaxBlockNumber() ?? 0
+            );
+        }
+
+        [Combinatorial]
+        public async Task SetFailure_Set_Test(
+            [Values(10)] int failOnCallN,
+            [Values] bool isBackwardsSync
+        )
+        {
+            BlockReceipts[][] batches = isBackwardsSync ? Reverse(testData.Batches) : testData.Batches;
+
+            await using var failLogIndexStorage = CreateLogIndexStorage(failOnBlock: 0, failOnCallN: failOnCallN);
+
+            Assert.ThrowsAsync<Exception>(() => SetReceiptsAsync(failLogIndexStorage, batches, isBackwardsSync));
+            Assert.ThrowsAsync<InvalidOperationException>(() => SetReceiptsAsync(failLogIndexStorage, batches, isBackwardsSync));
+        }
+
+        [Combinatorial]
+        public async Task SetFailure_Set_Get_Test(
+            [Values(10, 100, 200)] int failOnCallN,
+            [Values] bool isBackwardsSync
+        )
+        {
+            BlockReceipts[][] batches = isBackwardsSync ? Reverse(testData.Batches) : testData.Batches;
+            var midBlock = testData.Batches[^1][^1].BlockNumber / 2;
+
+            await using (var failLogIndexStorage = CreateLogIndexStorage(failOnBlock: midBlock, failOnCallN: failOnCallN))
+            {
+                Exception exception = Assert.ThrowsAsync<Exception>(() => SetReceiptsAsync(failLogIndexStorage, batches, isBackwardsSync));
+                Assert.That(exception, Has.Message.EqualTo(SaveFailingLogIndexStorage.FailMessage));
+            };
+
+            await using var logIndexStorage = CreateLogIndexStorage();
+            await SetReceiptsAsync(logIndexStorage, batches, isBackwardsSync);
+
+            VerifyReceipts(logIndexStorage, testData);
+        }
+
         private static BlockReceipts[] GenerateBlocks(Random random, int from, int count) =>
             new TestData(random, 1, count, startNum: from).Batches[0];
 
-        private async Task SetReceiptsAsync(ILogIndexStorage logIndexStorage, IEnumerable<BlockReceipts[]> batches, bool isBackwardsSync = false)
+        private static async Task SetReceiptsAsync(ILogIndexStorage logIndexStorage, IEnumerable<BlockReceipts[]> batches, bool isBackwardsSync = false)
         {
             var timestamp = Stopwatch.GetTimestamp();
             var totalStats = new LogIndexUpdateStats(logIndexStorage);
@@ -842,6 +907,29 @@ namespace Nethermind.Db.Test.LogIndex
 
             public override string ToString() =>
                 $"{_batchCount} * {_blocksPerBatch} blocks (ex-ranges: {ExtendedGetRanges}, compression: {Compression})";
+        }
+
+        private class SaveFailingLogIndexStorage(IDbFactory dbFactory, ILogManager logManager, ILogIndexConfig config)
+            : LogIndexStorage(dbFactory, logManager, config)
+        {
+            public const string FailMessage = "Test exception.";
+
+            public int FailOnBlock { get; init; }
+            public int FailOnCallN { get; init; }
+
+            private int _count = 0;
+
+            protected override void SaveBlockNumbersByKey(IWriteBatch dbBatch, ReadOnlySpan<byte> key, IReadOnlyList<int> blockNums, bool isBackwardSync, LogIndexUpdateStats? stats)
+            {
+                var isFailBlock =
+                    FailOnBlock >= Math.Min(blockNums[0], blockNums[^1]) &&
+                    FailOnBlock <= Math.Max(blockNums[0], blockNums[^1]);
+
+                if (isFailBlock && Interlocked.Increment(ref _count) > FailOnCallN)
+                    throw new(FailMessage);
+
+                base.SaveBlockNumbersByKey(dbBatch, key, blockNums, isBackwardSync, stats);
+            }
         }
     }
 }

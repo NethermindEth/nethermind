@@ -13,6 +13,7 @@ namespace Nethermind.Db;
 
 public readonly record struct BlockReceipts(int BlockNumber, TxReceipt[] Receipts);
 
+// TODO: store sync direction?
 public struct LogIndexAggregate(int firstBlockNum, int lastBlockNum)
 {
     private Dictionary<Address, List<int>>? _address;

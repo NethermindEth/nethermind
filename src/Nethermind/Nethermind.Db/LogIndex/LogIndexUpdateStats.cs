@@ -28,7 +28,7 @@ public class LogIndexUpdateStats(ILogIndexStorage storage) : IFormattable
 
     public ExecTimeStats CallingMerge { get; } = new();
     public ExecTimeStats UpdatingMeta { get; } = new();
-    public ExecTimeStats WaitingBatch { get; } = new();
+    public ExecTimeStats CommitingBatch { get; } = new();
     public ExecTimeStats InMemoryMerging { get; } = new();
 
     public AverageStats KeysCount { get; } = new();
@@ -53,7 +53,7 @@ public class LogIndexUpdateStats(ILogIndexStorage storage) : IFormattable
         Processing.Combine(other.Processing);
         UpdatingMeta.Combine(other.UpdatingMeta);
         CallingMerge.Combine(other.CallingMerge);
-        WaitingBatch.Combine(other.WaitingBatch);
+        CommitingBatch.Combine(other.CommitingBatch);
         InMemoryMerging.Combine(other.InMemoryMerging);
         KeysCount.Combine(other.KeysCount);
 
@@ -94,7 +94,7 @@ public class LogIndexUpdateStats(ILogIndexStorage storage) : IFormattable
 
                {tab}Merge call: {CallingMerge}
                {tab}Updating metadata: {UpdatingMeta}
-               {tab}Waiting batch: {WaitingBatch}
+               {tab}Commiting batch: {CommitingBatch}
                {tab}In-memory merging: {InMemoryMerging}
 
                {tab}Post-merge processing: {PostMergeProcessing.Execution}
