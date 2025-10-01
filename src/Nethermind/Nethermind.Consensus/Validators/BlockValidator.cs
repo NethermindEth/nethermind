@@ -64,7 +64,7 @@ public class BlockValidator(
     public bool ValidateSuggestedBlock(Block block, BlockHeader parent, out string? errorMessage, bool validateHashes = true) =>
         ValidateBlock<OffFlag>(block, parent, out errorMessage, validateHashes);
 
-    private bool ValidateBlock<TSuggested>(Block block, BlockHeader? parent, out string? errorMessage, bool validateHashes = true) where TSuggested : struct, IFlag
+    private bool ValidateBlock<TOrphaned>(Block block, BlockHeader? parent, out string? errorMessage, bool validateHashes = true) where TOrphaned : struct, IFlag
     {
         IReleaseSpec spec = _specProvider.GetSpec(block.Header);
         errorMessage = null;
@@ -73,25 +73,21 @@ public class BlockValidator(
                ValidateTransactions(block, spec, ref errorMessage) &&
                ValidateEip4844Fields(block, spec, ref errorMessage) &&
                ValidateUncles(block, spec, validateHashes, ref errorMessage) &&
-               ValidateHeader<TSuggested>(block, parent, ref errorMessage) &&
+               ValidateHeader<TOrphaned>(block, parent, ref errorMessage) &&
                ValidateTxRootMatchesTxs(block, validateHashes, ref errorMessage) &&
                ValidateWithdrawals(block, spec, validateHashes, ref errorMessage);
     }
 
-    private bool ValidateHeader<TSuggested>(Block block, BlockHeader? parent, ref string? errorMessage)
-        where TSuggested : struct, IFlag
+    private bool ValidateHeader<TOrphaned>(Block block, BlockHeader? parent, ref string? errorMessage)
+        where TOrphaned : struct, IFlag
     {
-        bool blockHeaderValid = typeof(TSuggested) == typeof(OffFlag)
+        bool blockHeaderValid = typeof(TOrphaned) == typeof(OffFlag)
             ? parent is not null && _headerValidator.Validate(block.Header, parent, false, out errorMessage)
             : parent is null && _headerValidator.ValidateOrphaned(block.Header, out errorMessage);
 
-        if (!blockHeaderValid)
-        {
-            if (_logger.IsDebug) _logger.Debug($"{Invalid(block)} Invalid header");
-            return false;
-        }
+        if (_logger.IsDebug && !blockHeaderValid) _logger.Debug($"{Invalid(block)} Invalid header: {errorMessage}");
 
-        return true;
+        return blockHeaderValid;
     }
 
     private bool ValidateUncles(Block block, IReleaseSpec spec, bool validateHashes, ref string? errorMessage)
