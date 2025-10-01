@@ -95,13 +95,10 @@ public class OptimismBlockValidator(
                 return false;
             }
         }
-        else
+        else if (header.WithdrawalsRoot is not null)
         {
-            if (header.WithdrawalsRoot is not null)
-            {
-                error = NonNullWithdrawalsRootError;
-                return false;
-            }
+            error = NonNullWithdrawalsRootError;
+            return false;
         }
 
         error = null;

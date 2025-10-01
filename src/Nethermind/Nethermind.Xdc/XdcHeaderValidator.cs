@@ -9,12 +9,8 @@ using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
 using Nethermind.Crypto;
 using Nethermind.Logging;
-using Nethermind.Xdc.Spec;
 using Nethermind.Xdc.Types;
 using System;
-using System.Collections;
-using System.Collections.Generic;
-using System.Linq;
 
 namespace Nethermind.Xdc;
 
@@ -85,11 +81,8 @@ public class XdcHeaderValidator(IBlockTree blockTree, ISealValidator sealValidat
         return true;
     }
 
-    protected override bool ValidateExtraData(BlockHeader header, IReleaseSpec spec, bool isUncle, ref string? error)
-    {
-        //Extra consensus data is validated in SealValidator
-        return true;
-    }
+    // Extra consensus data is validated in SealValidator
+    protected override bool ValidateExtraData(BlockHeader header, IReleaseSpec spec, bool isUncle, ref string? error) => true;
 
     protected override bool ValidateTotalDifficulty(BlockHeader header, BlockHeader parent, ref string? error)
     {

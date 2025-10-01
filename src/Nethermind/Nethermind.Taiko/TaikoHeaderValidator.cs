@@ -46,9 +46,6 @@ public class TaikoHeaderValidator(
         return true;
     }
 
-    protected override bool ValidateBlobGasFields(BlockHeader header, BlockHeader parent, IReleaseSpec spec, ref string? error)
-    {
-        // not validated in taiko-geth
-        return true;
-    }
+    // not validated in taiko-geth
+    protected override bool ValidateBlobGasFields(BlockHeader header, BlockHeader parent, IReleaseSpec spec, ref string? error) => true;
 }

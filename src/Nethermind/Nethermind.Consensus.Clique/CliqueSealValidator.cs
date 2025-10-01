@@ -8,18 +8,11 @@ using Nethermind.Logging;
 
 namespace Nethermind.Consensus.Clique
 {
-    internal class CliqueSealValidator : ISealValidator
+    internal class CliqueSealValidator(ICliqueConfig cliqueConfig, ISnapshotManager snapshotManager, ILogManager logManager) : ISealValidator
     {
-        private readonly ICliqueConfig _cliqueConfig;
-        private readonly ISnapshotManager _snapshotManager;
-        private readonly ILogger _logger;
-
-        public CliqueSealValidator(ICliqueConfig cliqueConfig, ISnapshotManager snapshotManager, ILogManager logManager)
-        {
-            _cliqueConfig = cliqueConfig ?? throw new ArgumentNullException(nameof(cliqueConfig));
-            _snapshotManager = snapshotManager ?? throw new ArgumentNullException(nameof(snapshotManager));
-            _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
-        }
+        private readonly ICliqueConfig _cliqueConfig = cliqueConfig ?? throw new ArgumentNullException(nameof(cliqueConfig));
+        private readonly ISnapshotManager _snapshotManager = snapshotManager ?? throw new ArgumentNullException(nameof(snapshotManager));
+        private readonly ILogger _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
 
         public bool ValidateParams(BlockHeader parent, BlockHeader header, bool isUncle = false)
         {

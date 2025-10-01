@@ -26,7 +26,6 @@ namespace Nethermind.Merge.Plugin
         // https://eips.ethereum.org/EIPS/eip-3675#constants
         private const int MaxExtraDataBytes = 32;
 
-        private readonly IBlockTree _blockTree = blockTree;
 
         protected override bool Validate<TOrphaned>(BlockHeader header, BlockHeader? parent, bool isUncle, out string? error)
         {
