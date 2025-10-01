@@ -100,8 +100,8 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth
                 {
                     if (txPool.RetryCache.Announced(hash, sessionId, () =>
                     {
-                        ArrayPoolList<Hash256> discoveredTxHashes = new(1) { hash };
-                        GetPooledTransactionsMessage msg65 = new(discoveredTxHashes);
+                        ArrayPoolList<Hash256> hashesToRetry = new(1) { hash };
+                        GetPooledTransactionsMessage msg65 = new(hashesToRetry);
                         send(msg65);
                     }) is AnnounceResult.New)
                     {
@@ -123,8 +123,8 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth
                 {
                     if (txPool.RetryCache.Announced(hash, sessionId, () =>
                     {
-                        ArrayPoolList<Hash256> discoveredTxHashes = new(1) { hash };
-                        V66.Messages.GetPooledTransactionsMessage msg66 = new(MessageConstants.Random.NextLong(), new GetPooledTransactionsMessage(discoveredTxHashes));
+                        ArrayPoolList<Hash256> hashesToRetry = new(1) { hash };
+                        V66.Messages.GetPooledTransactionsMessage msg66 = new(MessageConstants.Random.NextLong(), new GetPooledTransactionsMessage(hashesToRetry));
                         send(msg66);
                     }) is AnnounceResult.New)
                     {
@@ -146,8 +146,8 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth
                 {
                     if (txPool.RetryCache.Announced(hash, sessionId, () =>
                     {
-                        ArrayPoolList<Hash256> discoveredTxHashes = new(1) { hash };
-                        V66.Messages.GetPooledTransactionsMessage msg66 = new(MessageConstants.Random.NextLong(), new GetPooledTransactionsMessage(discoveredTxHashes));
+                        ArrayPoolList<Hash256> hashesToRetry = new(1) { hash };
+                        V66.Messages.GetPooledTransactionsMessage msg66 = new(MessageConstants.Random.NextLong(), new GetPooledTransactionsMessage(hashesToRetry));
                         send(msg66);
                     }) is AnnounceResult.New)
                     {
