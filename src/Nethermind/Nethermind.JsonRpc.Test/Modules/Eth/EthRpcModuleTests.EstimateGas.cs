@@ -387,6 +387,24 @@ public partial class EthRpcModuleTests
 
     }
 
+    [Test]
+    public async Task Eth_estimateGas_simple_transfer()
+    {
+        using Context ctx = await Context.Create();
+        byte[] code = [];
+        TransactionForRpc transaction = new EIP1559TransactionForRpc(Build.A.Transaction
+            .WithTo(TestItem.AddressB)
+            .WithGasLimit(100000)
+            .WithData(code)
+            .SignedAndResolved(TestItem.PrivateKeyA)
+            .TestObject);
+
+        string serialized = await ctx.Test.TestEthRpc("eth_estimateGas", transaction);
+
+        Assert.That(
+            serialized, Is.EqualTo("{\"jsonrpc\":\"2.0\",\"result\":\"0x5208\",\"id\":67}"));
+    }
+
     private static async Task TestEstimateGasOutOfGas(Context ctx, long? specifiedGasLimit, long expectedGasLimit)
     {
         string gasParam = specifiedGasLimit.HasValue ? $", \"gas\": \"0x{specifiedGasLimit.Value:X}\"" : "";
