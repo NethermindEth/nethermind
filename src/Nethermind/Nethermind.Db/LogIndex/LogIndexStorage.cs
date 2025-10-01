@@ -288,6 +288,12 @@ namespace Nethermind.Db
             }
         }
 
+        private void ThrowIfStopped()
+        {
+            if (_stopped)
+                throw new InvalidOperationException("Log index storage is stopped.");
+        }
+
         async ValueTask IAsyncDisposable.DisposeAsync()
         {
             if (_disposed)
@@ -297,7 +303,7 @@ namespace Nethermind.Db
 
             _setReceiptsSemaphores[false].Dispose();
             _setReceiptsSemaphores[true].Dispose();
-            DBColumns.ForEach(static db => db.Dispose());
+            DBColumns.DisposeItems();
             _rootDb.Dispose();
 
             _disposed = true;
@@ -554,6 +560,8 @@ namespace Nethermind.Db
         // TODO: optimize allocations
         public LogIndexAggregate Aggregate(IReadOnlyList<BlockReceipts> batch, bool isBackwardSync, LogIndexUpdateStats? stats)
         {
+            ThrowIfStopped();
+
             if (!IsBlockNewer(batch[^1].BlockNumber, isBackwardSync))
                 return new(batch);
 
@@ -638,6 +646,8 @@ namespace Nethermind.Db
 
         public async Task ReorgFrom(BlockReceipts block)
         {
+            ThrowIfStopped();
+
             if (!WasInitialized)
                 return;
 
