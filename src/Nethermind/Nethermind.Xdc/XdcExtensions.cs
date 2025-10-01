@@ -1,12 +1,16 @@
 // SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using Nethermind.Blockchain;
+using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Specs;
 using Nethermind.Serialization.Rlp;
-using System;
 using Nethermind.Xdc;
 using Nethermind.Xdc.Spec;
-using Nethermind.Core.Specs;
+using Nethermind.Xdc.Types;
+using System;
+using System.Linq;
 
 namespace Nethermind.Crypto;
 public static class XdcExtensions
@@ -27,5 +31,38 @@ public static class XdcExtensions
             throw new InvalidOperationException($"Expected {nameof(IXdcReleaseSpec)}.");
         spec.ApplyV2Config(round);
         return spec;
+    }
+
+    public static Snapshot? GetSnapshotByHeader(this ISnapshotManager snapshotManager, XdcBlockHeader? header)
+    {
+        if (header is null)
+            return null;
+        return snapshotManager.GetSnapshot(header.Hash);
+    }
+
+    public static Snapshot? GetSnapshotByHeaderNumber(this ISnapshotManager snapshotManager, IBlockTree tree, ulong number, ulong xdcEpoch, ulong xdcGap)
+    {
+        ulong gapBlockNum = Math.Max(0, number - number % xdcEpoch - xdcGap);
+
+        return snapshotManager.GetSnapshotByGapNumber(tree, gapBlockNum);
+    }
+
+
+    public static Snapshot? GetSnapshotByGapNumber(this ISnapshotManager snapshotManager, IBlockTree tree, ulong gapBlockNum)
+    {
+        Hash256 gapBlockHash = tree.FindHeader((long)gapBlockNum)?.Hash;
+
+        if (gapBlockHash is null)
+            return null;
+
+        return snapshotManager.GetSnapshot(gapBlockHash);
+    }
+
+    public static Address[] CalculateNextEpochMasternodesFromHeader(this ISnapshotManager snapshotManager, XdcBlockHeader? header)
+    {
+        Snapshot? snapshot = snapshotManager.GetSnapshotByHeader(header);
+        if (snapshot is null)
+            throw new InvalidOperationException($"No snapshot found for header {header?.Number}:{header?.Hash.ToShortString()}");
+        return snapshotManager.CalculateNextEpochMasternodes(snapshot);
     }
 }

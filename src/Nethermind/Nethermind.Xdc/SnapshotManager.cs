@@ -17,20 +17,20 @@ using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
 
+using Nethermind.Crypto;
+
 namespace Nethermind.Xdc;
 internal class SnapshotManager : ISnapshotManager
 {
 
     private LruCache<Hash256, Snapshot> _snapshotCache = new(128, 128, "XDC Snapshot cache");
-    private IBlockTree _tree { get; }
     private IDb _snapshotDb { get; }
 
     private readonly SnapshotDecoder _snapshotDecoder = new();
 
-    public SnapshotManager(IDb snapshotDb, IBlockTree tree)
+    public SnapshotManager(IDb snapshotDb)
     {
         _snapshotDb = snapshotDb;
-        _tree = tree;
     }
 
     public Snapshot? GetSnapshot(Hash256 hash)
@@ -54,31 +54,6 @@ internal class SnapshotManager : ISnapshotManager
         return snapshot;
     }
 
-    public Snapshot? GetSnapshotByHeader(XdcBlockHeader? header)
-    {
-        if (header is null)
-            return null;
-        return GetSnapshot(header.Hash);
-    }
-
-    public Snapshot? GetSnapshotByHeaderNumber(ulong number, ulong xdcEpoch, ulong xdcGap)
-    {
-        ulong gapBlockNum = Math.Max(0, number - number % xdcEpoch - xdcGap);
-
-        return GetSnapshotByGapNumber(gapBlockNum);
-    }
-
-
-    public Snapshot? GetSnapshotByGapNumber(ulong gapBlockNum)
-    {
-        Hash256 gapBlockHash = _tree.FindHeader((long)gapBlockNum)?.Hash;
-
-        if (gapBlockHash is null)
-            return null;
-
-        return GetSnapshot(gapBlockHash);
-    }
-
     public void StoreSnapshot(Snapshot snapshot)
     {
         Span<byte> key = snapshot.HeaderHash.Bytes;
@@ -91,12 +66,9 @@ internal class SnapshotManager : ISnapshotManager
         _snapshotDb.Set(key, rlpEncodedSnapshot.Bytes);
     }
 
-    public Address[] CalculateNextEpochMasternodes(XdcBlockHeader? xdcHeader)
+    public Address[] CalculateNextEpochMasternodes(Snapshot? snapshot)
     {
-        Snapshot? snapshot = GetSnapshotByHeader(xdcHeader);
-        if (snapshot is null)
-            throw new InvalidOperationException($"No snapshot found for header {xdcHeader.Number}:{xdcHeader.Hash.ToShortString()}");
-
+        // TODO : will possibly need to truncate or pad the masternode list to a fixed size
         Address[] masternodes = new Address[snapshot.MasterNodes.Length - snapshot.PenalizedNodes.Length];
 
         int index = 0;
@@ -110,21 +82,5 @@ internal class SnapshotManager : ISnapshotManager
             masternodes[index++] = addr;
         }
         return masternodes;
-    }
-
-    public Address[] GetMasternodes(XdcBlockHeader xdcHeader)
-    {
-        Snapshot snapshot = GetSnapshotByHeader(xdcHeader);
-        if (snapshot is null)
-            throw new InvalidOperationException($"No snapshot found for header {xdcHeader.Number}:{xdcHeader.Hash.ToShortString()}");
-        return snapshot.MasterNodes;
-    }
-
-    public Address[] GetPenalties(XdcBlockHeader xdcHeader)
-    {
-        Snapshot snapshot = GetSnapshotByHeader(xdcHeader);
-        if (snapshot is null)
-            throw new InvalidOperationException($"No snapshot found for header {xdcHeader.Number}:{xdcHeader.Hash.ToShortString()}");
-        return snapshot.PenalizedNodes;
     }
 }
