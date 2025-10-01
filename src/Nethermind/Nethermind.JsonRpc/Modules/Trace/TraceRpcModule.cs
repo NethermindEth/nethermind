@@ -230,7 +230,7 @@ namespace Nethermind.JsonRpc.Modules.Trace
                 return GetStateFailureResult<IEnumerable<ParityTxTraceFromStore>>(block.Header);
             }
 
-            IReadOnlyCollection<ParityLikeTxTrace> txTraces = ExecuteBlock(block, new(ParityTraceTypes.Trace | ParityTraceTypes.Rewards), forkName);
+            IReadOnlyCollection<ParityLikeTxTrace> txTraces = ExecuteBlock(block, new(ParityTraceTypes.Trace | ParityTraceTypes.Rewards), forkName: forkName);
             return ResultWrapper<IEnumerable<ParityTxTraceFromStore>>.Success(txTraces.SelectMany(ParityTxTraceFromStore.FromTxTrace));
         }
 
@@ -264,7 +264,7 @@ namespace Nethermind.JsonRpc.Modules.Trace
         /// <summary>
         /// Traces one transaction. As it replays existing transaction will charge gas
         /// </summary>
-        public ResultWrapper<IEnumerable<ParityTxTraceFromStore>> trace_transaction(Hash256 txHash)
+        public ResultWrapper<IEnumerable<ParityTxTraceFromStore>> trace_transaction(Hash256 txHash, string? forkName = null)
         {
             SearchResult<Hash256> blockHashSearch = receiptFinder.SearchForReceiptBlockHash(txHash);
             if (blockHashSearch.IsError)
@@ -285,7 +285,7 @@ namespace Nethermind.JsonRpc.Modules.Trace
                 return GetStateFailureResult<IEnumerable<ParityTxTraceFromStore>>(block.Header);
             }
 
-            IReadOnlyCollection<ParityLikeTxTrace> txTrace = ExecuteBlock(block, new(txHash, ParityTraceTypes.Trace));
+            IReadOnlyCollection<ParityLikeTxTrace> txTrace = ExecuteBlock(block, new(txHash, ParityTraceTypes.Trace), forkName: forkName);
             return ResultWrapper<IEnumerable<ParityTxTraceFromStore>>.Success(ParityTxTraceFromStore.FromTxTrace(txTrace));
         }
 

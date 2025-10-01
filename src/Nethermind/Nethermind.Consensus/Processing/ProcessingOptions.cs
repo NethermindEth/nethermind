@@ -56,6 +56,8 @@ namespace Nethermind.Consensus.Processing
         /// </summary>
         ForceSameBlock = 1 << 8,
 
+        TracingMode = 512,
+
         /// <summary>
         /// Combination of switches for block producers when they preprocess block for state root calculation.
         /// </summary>

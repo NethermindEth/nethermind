@@ -173,7 +173,7 @@ public class TraceStoreRpcModule : ITraceRpcModule
         return ResultWrapper<IEnumerable<ParityTxTraceFromStore>>.Success(traces);
     }
 
-    public ResultWrapper<IEnumerable<ParityTxTraceFromStore>> trace_transaction(Hash256 txHash) =>
+    public ResultWrapper<IEnumerable<ParityTxTraceFromStore>> trace_transaction(Hash256 txHash, string? forkName = null) =>
         TryTraceTransaction(
             txHash,
             ParityTraceTypes.Trace,

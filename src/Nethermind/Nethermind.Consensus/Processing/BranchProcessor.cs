@@ -94,9 +94,27 @@ public class BranchProcessor(
         // Start prewarming as early as possible
         WaitForCacheClear();
 
-        IReleaseSpec spec = forkName is not null && forkName.Equals("fusaka")
-            ? Osaka.Instance
-            : specProvider.GetSpec(suggestedBlock.Header);
+        IReleaseSpec spec;
+
+        if (forkName is not null)
+        {
+            options |= ProcessingOptions.TracingMode;
+            _logger.Warn("Using Tracing Mode");
+
+            if (forkName.Equals("fusaka"))
+            {
+                spec = Osaka.Instance;
+                _logger.Warn($"Using Osaka spec");
+            }
+            else
+            {
+                spec = specProvider.GetSpec(suggestedBlock.Header);
+            }
+        }
+        else
+        {
+            spec = specProvider.GetSpec(suggestedBlock.Header);
+        }
 
         (CancellationTokenSource? prewarmCancellation, Task? preWarmTask)
             = PreWarmTransactions(suggestedBlock, baseBlock, spec);
@@ -117,9 +135,15 @@ public class BranchProcessor(
                 if (i > 0)
                 {
                     // Refresh spec
-                    spec = forkName is not null && forkName.Equals("fusaka")
-                        ? Osaka.Instance
-                        : specProvider.GetSpec(suggestedBlock.Header);
+                    if (forkName is not null && forkName.Equals("fusaka"))
+                    {
+                        spec = Osaka.Instance;
+                        _logger.Warn($"Using Osaka spec for block {suggestedBlock.Number} hash: {suggestedBlock.Hash}");
+                    }
+                    else
+                    {
+                        spec = specProvider.GetSpec(suggestedBlock.Header);
+                    }
                 }
                 // If prewarmCancellation is not null it means we are in first iteration of loop
                 // and started prewarming at method entry, so don't start it again
