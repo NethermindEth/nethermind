@@ -87,6 +87,8 @@
       <ExcludeFromSingleFile>true</ExcludeFromSingleFile>
     </None>
     <None Remove="keystore\**" />
+    <Content Remove="runtimeconfig.template.json" />
+    <None Include="runtimeconfig.template.json" />
     <Content Update="wwwroot\**">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </Content>
