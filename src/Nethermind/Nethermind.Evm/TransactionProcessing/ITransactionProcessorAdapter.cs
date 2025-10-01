@@ -8,7 +8,7 @@ namespace Nethermind.Evm.TransactionProcessing
 {
     public interface ITransactionProcessorAdapter
     {
-        TransactionResult Execute(Transaction transaction, ITxTracer txTracer);
+        TransactionResult Execute(Transaction transaction, ITxTracer txTracer, bool? isFromTraceEndpoint = null);
         void SetBlockExecutionContext(in BlockExecutionContext blockExecutionContext);
     }
 }

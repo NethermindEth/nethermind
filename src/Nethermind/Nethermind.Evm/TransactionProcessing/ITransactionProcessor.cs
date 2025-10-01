@@ -11,7 +11,7 @@ public interface ITransactionProcessor
     /// <summary>
     /// Execute transaction, commit state
     /// </summary>
-    TransactionResult Execute(Transaction transaction, ITxTracer txTracer);
+    TransactionResult Execute(Transaction transaction, ITxTracer txTracer, bool? isFromTraceEndpoint = null);
     TransactionResult Execute(Transaction transaction, in BlockExecutionContext blockExecutionContext, ITxTracer txTracer)
     {
         SetBlockExecutionContext(in blockExecutionContext);

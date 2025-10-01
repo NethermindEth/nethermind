@@ -22,7 +22,7 @@ namespace Nethermind.Evm.TransactionProcessing
             TransactionProcessor = transactionProcessor;
         }
 
-        public TransactionResult Execute(Transaction transaction, ITxTracer txTracer) =>
+        public TransactionResult Execute(Transaction transaction, ITxTracer txTracer, bool? isFromTraceEndpoint = null) =>
             CurrentAdapter.Execute(transaction, txTracer);
         public void SetBlockExecutionContext(in BlockExecutionContext blockExecutionContext)
             => CurrentAdapter.SetBlockExecutionContext(in blockExecutionContext);

@@ -92,7 +92,7 @@ public class DisposableScopeOverridableEnvTests
     {
         public IWorldState WorldState => worldState;
 
-        public TransactionResult Execute(Transaction transaction, ITxTracer txTracer)
+        public TransactionResult Execute(Transaction transaction, ITxTracer txTracer, bool? isFromTraceEndpoint = null)
         {
             throw new System.NotImplementedException();
         }

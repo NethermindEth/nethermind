@@ -23,7 +23,13 @@ internal static class TransactionProcessorAdapterExtensions
         }
 
         using ITxTracer tracer = receiptsTracer.StartNewTxTrace(currentTx);
-        TransactionResult result = transactionProcessor.Execute(currentTx, receiptsTracer);
+
+        bool? isFromTraceEndpoint = null;
+        if ((processingOptions & ProcessingOptions.TracingMode) != 0)
+        {
+            isFromTraceEndpoint = true;
+        }
+        TransactionResult result = transactionProcessor.Execute(currentTx, receiptsTracer, isFromTraceEndpoint);
         receiptsTracer.EndTxTrace();
         return result;
     }

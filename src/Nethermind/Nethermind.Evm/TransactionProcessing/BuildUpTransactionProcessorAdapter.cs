@@ -8,7 +8,7 @@ namespace Nethermind.Evm.TransactionProcessing
 {
     public class BuildUpTransactionProcessorAdapter(ITransactionProcessor transactionProcessor) : ITransactionProcessorAdapter
     {
-        public TransactionResult Execute(Transaction transaction, ITxTracer txTracer) =>
+        public TransactionResult Execute(Transaction transaction, ITxTracer txTracer, bool? isFromTraceEndpoint = null) =>
             transactionProcessor.BuildUp(transaction, txTracer);
         public void SetBlockExecutionContext(in BlockExecutionContext blockExecutionContext)
             => transactionProcessor.SetBlockExecutionContext(in blockExecutionContext);

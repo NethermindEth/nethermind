@@ -13,7 +13,7 @@ namespace Nethermind.Facade.Simulate;
 public class SimulateTransactionProcessorAdapter(ITransactionProcessor transactionProcessor, SimulateRequestState simulateRequestState) : ITransactionProcessorAdapter
 {
     private int _currentTxIndex = 0;
-    public TransactionResult Execute(Transaction transaction, ITxTracer txTracer)
+    public TransactionResult Execute(Transaction transaction, ITxTracer txTracer, bool? isFromTraceEndpoint = null)
     {
         // The gas limit per tx go down as the block is processed.
         if (!simulateRequestState.TxsWithExplicitGas[_currentTxIndex])

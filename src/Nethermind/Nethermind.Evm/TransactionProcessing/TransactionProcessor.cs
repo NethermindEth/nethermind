@@ -64,6 +64,8 @@ namespace Nethermind.Evm.TransactionProcessing
             /// </summary>
             SkipValidation = 4,
 
+            IncreaseGasLimit = 8,
+
             /// <summary>
             /// Skip potential fail checks and commit state after execution
             /// </summary>
@@ -112,8 +114,16 @@ namespace Nethermind.Evm.TransactionProcessing
             return ExecuteCore(transaction, txTracer, ExecutionOptions.None);
         }
 
-        public TransactionResult Execute(Transaction transaction, ITxTracer txTracer) =>
-            ExecuteCore(transaction, txTracer, ExecutionOptions.Commit);
+        public TransactionResult Execute(Transaction transaction, ITxTracer txTracer, bool? isFromTraceEndpoint = null)
+        {
+            ExecutionOptions executionOptions = ExecutionOptions.Commit;
+
+            if (isFromTraceEndpoint != null && isFromTraceEndpoint.Value)
+            {
+                executionOptions |= ExecutionOptions.IncreaseGasLimit;
+            }
+            return ExecuteCore(transaction, txTracer, executionOptions);
+        }
 
         public TransactionResult Trace(Transaction transaction, ITxTracer txTracer) =>
             ExecuteCore(transaction, txTracer, ExecutionOptions.SkipValidationAndCommit);
@@ -171,6 +181,10 @@ namespace Nethermind.Evm.TransactionProcessing
             int delegationRefunds = (!spec.IsEip7702Enabled || !tx.HasAuthorizationList) ? 0 : ProcessDelegations(tx, spec, accessTracker);
 
             long gasAvailable = tx.GasLimit - intrinsicGas.Standard;
+            if ((opts & ExecutionOptions.IncreaseGasLimit) != 0)
+            {
+                gasAvailable *= 1000;
+            }
             if (!(result = BuildExecutionEnvironment(tx, spec, _codeInfoRepository, accessTracker, out ExecutionEnvironment env))) return result;
 
             int statusCode = !tracer.IsTracingInstructions ?
