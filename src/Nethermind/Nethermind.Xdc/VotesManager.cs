@@ -3,10 +3,18 @@
 
 using Nethermind.Blockchain;
 using Nethermind.Consensus;
-using Nethermind.Xdc;
-using Nethermind.Xdc.Types;
+using Nethermind.Core;
+using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Specs;
+using Nethermind.Core.Threading;
+using Nethermind.Crypto;
+using Nethermind.Serialization.Rlp;
 using Nethermind.Trie;
+using Nethermind.Xdc;
+using Nethermind.Xdc.Errors;
+using Nethermind.Xdc.Spec;
+using Nethermind.Xdc.Types;
 using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
@@ -14,12 +22,6 @@ using System.Diagnostics;
 using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
-using Nethermind.Xdc.Errors;
-using Nethermind.Core.Specs;
-using Nethermind.Core;
-using Nethermind.Crypto;
-using Nethermind.Xdc.Spec;
-using Nethermind.Serialization.Rlp;
 namespace Nethermind.Xdc;
 internal class VotesManager : IVotesManager
 {
@@ -46,7 +48,7 @@ internal class VotesManager : IVotesManager
         SignatureManager = xdcSignatureManager;
         ForensicsProcessor = forensicsProcessor;
     }
-    private ConcurrentBag<Vote> _votePool => new();
+    private VotePool _votePool => new();
 
     public IBlockTree Tree { get; }
     public IEpochSwitchManager EpochSwitchManager { get; }
@@ -98,19 +100,31 @@ internal class VotesManager : IVotesManager
     {
         if ((vote.ProposedBlockInfo.Round != Context.CurrentRound) && (vote.ProposedBlockInfo.Round != Context.CurrentRound + 1))
         {
+            //We only care about votes for the current round or the next round
             return Task.CompletedTask;
         }
 
-        _ = ForensicsProcessor.DetectEquivocationInVotePool(vote, _votePool);
+        IReadOnlyCollection<Vote> roundVotes = _votePool.GetRoundVotes(vote.ProposedBlockInfo.Round);
+        _ = ForensicsProcessor.DetectEquivocationInVotePool(vote, roundVotes);
         _ = ForensicsProcessor.ProcessVoteEquivocation(vote);
 
         EpochSwitchInfo epochInfo = EpochSwitchManager.GetEpochSwitchInfo(null, vote.ProposedBlockInfo.Hash);
         if (epochInfo is null)
         {
-            throw new ConsensusHeaderDataExtractionException(nameof(EpochSwitchInfo));
+            //Unknown epoch switch info, cannot process vote
+            return Task.CompletedTask;
         }
-        _votePool.Add(vote);
+        if (epochInfo.Masternodes.Length == 0)
+        {
+            throw new InvalidOperationException($"Epoch has empty master node list for {vote.ProposedBlockInfo.Hash}");
+        }
 
+        _votePool.Add(vote);
+        if (vote.ProposedBlockInfo.Round == Context.CurrentRound + 1)
+        {
+            //This vote is for the next round, so no need to go further
+            return Task.CompletedTask;
+        }
         //TODO Optimize this by fetching with block number and round only 
         XdcBlockHeader proposedHeader = Tree.FindHeader(vote.ProposedBlockInfo.Hash) as XdcBlockHeader;
         if (proposedHeader is null)
@@ -120,17 +134,15 @@ internal class VotesManager : IVotesManager
         }
         IXdcReleaseSpec spec = _specProvider.GetXdcSpec(proposedHeader, vote.ProposedBlockInfo.Round);
         double certThreshold =  spec.CertThreshold;
-        bool thresholdReached = _votePool.Count >= epochInfo.Masternodes.Length * certThreshold;
+        bool thresholdReached = roundVotes.Count >= epochInfo.Masternodes.Length * certThreshold;
 
         if (thresholdReached)
         {
             BlockInfoProcessor.VerifyBlockInfo(vote.ProposedBlockInfo, null);
 
-            EnsureVotesRecovered(_votePool, proposedHeader);
+            EnsureVotesRecovered(roundVotes, proposedHeader);
 
-            OnVotePoolThresholdReached(_votePool, vote, proposedHeader);
-
-            _votePool.Clear();
+            OnVotePoolThresholdReached(roundVotes, vote, proposedHeader);
         }
         return Task.CompletedTask;
     }
@@ -138,7 +150,7 @@ internal class VotesManager : IVotesManager
     private void OnVotePoolThresholdReached(IEnumerable<Vote> tally, Vote currVote, XdcBlockHeader proposedBlockHeader)
     {
         List<Signature> validSignature = new List<Signature>();
-        foreach (var vote in _votePool)
+        foreach (var vote in tally)
         {
             if (vote.Signature is not null)
             {
@@ -158,9 +170,11 @@ internal class VotesManager : IVotesManager
             return;
         }
 
-        QuorumCertificate qc = new (currVote.ProposedBlockInfo, validSignature.ToArray(), (ulong)currVote.GapNumber);
+        QuorumCertificate qc = new(currVote.ProposedBlockInfo, validSignature.ToArray(), currVote.GapNumber);
 
         QuorumCertificateManager.CommitCertificate(qc);
+
+        _votePool.EndRoundVote(currVote.ProposedBlockInfo.Round);
     }
 
     public void EnsureVotesRecovered(IEnumerable<Vote> votes, XdcBlockHeader header)
@@ -226,5 +240,63 @@ internal class VotesManager : IVotesManager
         }
 
         return nextBlockHash == ancestorBlockInfo.Hash;
+    }
+
+    private class VotePool
+    {
+        private readonly Dictionary<ulong, ArrayPoolList<Vote>> _votes = new();
+        private readonly McsLock _lock = new();
+
+        public void Add(Vote vote)
+        {
+            using var lockRelease = _lock.Acquire();
+            {
+                if (!_votes.TryGetValue(vote.ProposedBlockInfo.Round, out var list))
+                {
+                    //128 should be enough to cover all master nodes and some extras
+                    list = new ArrayPoolList<Vote>(128);
+                    _votes[vote.ProposedBlockInfo.Round] = list;
+                }
+                list.Add(vote);
+            }
+        }
+
+        public void EndRoundVote(ulong round)
+        {
+            using var lockRelease = _lock.Acquire();
+            {
+                foreach (var key in _votes.Keys)
+                {
+                    if (key <= round && _votes.Remove(key, out ArrayPoolList<Vote> list))
+                    {
+                        list?.Dispose();
+                    }
+                }
+            }
+        }
+
+        public IReadOnlyCollection<Vote> GetRoundVotes(ulong round)
+        {
+            using var lockRelease = _lock.Acquire();
+            {
+                if (_votes.TryGetValue(round, out ArrayPoolList<Vote> list))
+                {
+                    return list.ToArray();
+                }
+                return [];
+            }
+        }
+
+        public long GetRoundCount(ulong round)
+        {
+            using var lockRelease = _lock.Acquire();
+            {
+                if (_votes.TryGetValue(round, out ArrayPoolList<Vote> list))
+                {
+                    return list.Count;
+                }
+                return 0;
+            }
+        }
     }
 }
