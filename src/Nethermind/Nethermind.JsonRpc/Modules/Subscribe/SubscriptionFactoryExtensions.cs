@@ -17,6 +17,7 @@ using Nethermind.Network.Rlpx;
 using Nethermind.TxPool;
 
 namespace Nethermind.JsonRpc.Modules.Subscribe;
+
 public static class SubscriptionFactoryExtensions
 {
     public static void RegisterNewHeadSubscription(

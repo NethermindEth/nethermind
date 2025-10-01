@@ -23,6 +23,7 @@ using Nethermind.Evm.State;
 using NSubstitute;
 
 namespace Nethermind.Era1.Test;
+
 public class Era1ModuleTests
 {
     [Test]

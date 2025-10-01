@@ -8,6 +8,7 @@ using System.Linq;
 using System.Reflection;
 
 namespace Nethermind.Config;
+
 public static class ConfigExtensions
 {
     private static readonly ConcurrentDictionary<string, bool> PortOptions = new();

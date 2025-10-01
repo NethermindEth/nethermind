@@ -10,6 +10,7 @@ using System.Text;
 using System.Threading.Tasks;
 
 namespace Nethermind.Xdc;
+
 public class EpochSwitchInfo
 {
     public Address[] Penalties { get; set; }

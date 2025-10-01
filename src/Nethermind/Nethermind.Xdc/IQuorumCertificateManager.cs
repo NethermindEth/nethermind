@@ -9,6 +9,7 @@ using System.Text;
 using System.Threading.Tasks;
 
 namespace Nethermind.Xdc;
+
 public interface IQuorumCertificateManager
 {
     void CommitCertificate(QuorumCert qc);

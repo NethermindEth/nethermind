@@ -18,6 +18,7 @@ using System.Collections.Generic;
 using Nethermind.Core.Test;
 
 namespace Nethermind.TxPool.Test;
+
 internal class DelegatedAccountFilterTest
 {
     [Test]

@@ -11,6 +11,7 @@ using System.Text;
 using System.Threading.Tasks;
 
 namespace Nethermind.Xdc;
+
 public interface IEpochSwitchManager
 {
     EpochSwitchInfo? GetPreviousEpochSwitchInfoByHash(Hash256 parentHash, int limit);

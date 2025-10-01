@@ -9,6 +9,7 @@ using System.Text;
 using System.Threading.Tasks;
 
 namespace Nethermind.Xdc;
+
 internal interface IMasternodesManager
 {
     void UpdateMasterNodes(XdcBlockHeader header, Address[] ms);

@@ -11,6 +11,7 @@ using System.Collections.Immutable;
 using System.Collections.ObjectModel;
 
 namespace Nethermind.Xdc;
+
 public interface ISnapshotManager
 {
     ulong GetLastSignersCount();

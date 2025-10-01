@@ -9,6 +9,7 @@ using System.IO.Abstractions;
 using Autofac;
 
 namespace Nethermind.Era1.Test;
+
 public class EraExporterTests
 {
     [TestCase(1, 0, 1 - 1, 1, 1)]

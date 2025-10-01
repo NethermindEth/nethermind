@@ -4,6 +4,7 @@
 using System;
 
 namespace Nethermind.Logging;
+
 public static class Progress
 {
     private const int Width = 40;

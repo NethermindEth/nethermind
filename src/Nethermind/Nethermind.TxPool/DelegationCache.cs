@@ -12,6 +12,7 @@ using System.Text;
 using System.Threading.Tasks;
 
 namespace Nethermind.TxPool;
+
 internal sealed class DelegationCache
 {
     private readonly ConcurrentDictionary<AddressAsKey, int> _pendingDelegations = new();

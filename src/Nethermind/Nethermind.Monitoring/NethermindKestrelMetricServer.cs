@@ -74,7 +74,8 @@ public sealed class NethermindKestrelMetricServer : MetricHandler
 
         // If the caller needs to customize any of this, they can just set up their own web host and inject the middleware.
         var host = new HostBuilder()
-            .ConfigureWebHost(builder => {
+            .ConfigureWebHost(builder =>
+            {
                 builder
                     // Explicitly build from UseKestrelCore rather than UseKestrel to
                     // not add additional transports that we don't use e.g. msquic as that

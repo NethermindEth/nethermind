@@ -11,6 +11,7 @@ using System.Threading.Tasks;
 using Nethermind.Core.Crypto;
 
 namespace Nethermind.Era1.Test;
+
 public class AccumulatorCalculatorTests
 {
     [Test]

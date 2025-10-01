@@ -5,6 +5,7 @@ using Lantern.Discv5.WireProtocol;
 using Nethermind.Logging;
 
 namespace Nethermind.Network.Discovery.Discv5;
+
 internal class DiscoveryReport
 {
     int RecentlyChecked = 0;

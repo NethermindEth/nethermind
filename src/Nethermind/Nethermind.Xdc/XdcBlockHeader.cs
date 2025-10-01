@@ -18,6 +18,7 @@ using System.Text;
 using System.Threading.Tasks;
 
 namespace Nethermind.Xdc;
+
 public class XdcBlockHeader : BlockHeader, IHashResolver
 {
     private static XdcHeaderDecoder _headerDecoder = new();

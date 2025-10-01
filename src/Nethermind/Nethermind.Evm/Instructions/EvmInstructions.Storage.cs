@@ -9,6 +9,7 @@ using Nethermind.Core.Specs;
 using static Nethermind.Evm.VirtualMachine;
 
 namespace Nethermind.Evm;
+
 using Int256;
 
 /// <summary>
