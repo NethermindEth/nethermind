@@ -19,10 +19,8 @@ namespace Nethermind.Xdc.Test;
 public class SnapshotDecoderTests
 {
     private static IEnumerable<Snapshot> Snapshots => [
-        new Snapshot(1, Keccak.EmptyTreeHash, [], []),
-        new Snapshot(2, Keccak.EmptyTreeHash, [Address.FromNumber(1), Address.FromNumber(2)], []),
-        new Snapshot(3, Keccak.EmptyTreeHash, [], [Address.FromNumber(1), Address.FromNumber(2)]),
-        new Snapshot(4, Keccak.EmptyTreeHash, [Address.FromNumber(1), Address.FromNumber(2)], [Address.FromNumber(1), Address.FromNumber(2)]),
+        new Snapshot(1, Keccak.EmptyTreeHash, []),
+        new Snapshot(3, Keccak.EmptyTreeHash, [Address.FromNumber(1), Address.FromNumber(2)]),
     ];
 
     [Test, TestCaseSource(nameof(Snapshots))]

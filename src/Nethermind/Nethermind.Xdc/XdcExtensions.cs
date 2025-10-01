@@ -5,14 +5,16 @@ using Nethermind.Blockchain;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
+using Nethermind.Crypto;
 using Nethermind.Serialization.Rlp;
 using Nethermind.Xdc;
 using Nethermind.Xdc.Spec;
 using Nethermind.Xdc.Types;
 using System;
+using System.Collections.Generic;
 using System.Linq;
 
-namespace Nethermind.Crypto;
+namespace Nethermind.Xdc;
 public static class XdcExtensions
 {
     //TODO can we wire up this so we can use Rlp.Encode()?
@@ -58,11 +60,31 @@ public static class XdcExtensions
         return snapshotManager.GetSnapshot(gapBlockHash);
     }
 
-    public static Address[] CalculateNextEpochMasternodesFromHeader(this ISnapshotManager snapshotManager, XdcBlockHeader? header)
+    public static T[] RemoveItemFromArray<T>(T[] candidates, T[] penalties, int withMaxCap = int.MaxValue)
     {
-        Snapshot? snapshot = snapshotManager.GetSnapshotByHeader(header);
-        if (snapshot is null)
-            throw new InvalidOperationException($"No snapshot found for header {header?.Number}:{header?.Hash.ToShortString()}");
-        return snapshotManager.CalculateNextEpochMasternodes(snapshot);
+        if (penalties == null || penalties.Length == 0)
+            return candidates; // nothing to remove
+
+        var penaltySet = new HashSet<T>(penalties); // O(penalties.Length)
+
+        // allocate result with upper bound = candidates.Length
+        var result = new T[candidates.Length];
+        int idx = 0;
+
+        for (int i = 0; i < candidates.Length; i++)
+        {
+            if (!penaltySet.Contains(candidates[i]))
+            {
+                result[idx++] = candidates[i];
+            }
+        }
+
+        if (idx == result.Length)
+            return result; // no removals happened
+
+        // trim excess
+        Array.Resize(ref result, Math.Min(withMaxCap, idx));
+        return result;
     }
+
 }

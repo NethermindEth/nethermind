@@ -193,11 +193,8 @@ internal class XdcSealValidatorTests
 
         ISnapshotManager snapshotManager = Substitute.For<ISnapshotManager>();
         snapshotManager
-            .CalculateNextEpochMasternodes(Arg.Any<XdcBlockHeader>())
-            .Returns(epochCandidates.ToArray());
-        snapshotManager
-            .GetPenalties(Arg.Any<XdcBlockHeader>())
-            .Returns(penalties.ToArray());
+            .CalculateNextEpochMasternodes(Arg.Any<XdcBlockHeader>(), Arg.Any<IXdcReleaseSpec>())
+            .Returns((epochCandidates.ToArray(), penalties.ToArray()));
         IEpochSwitchManager epochSwitchManager = Substitute.For<IEpochSwitchManager>();
         epochSwitchManager.GetEpochSwitchInfo(Arg.Any<XdcBlockHeader>(), Arg.Any<Hash256>()).Returns(new EpochSwitchInfo()
         {

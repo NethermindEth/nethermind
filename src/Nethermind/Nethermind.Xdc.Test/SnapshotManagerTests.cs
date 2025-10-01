@@ -25,8 +25,8 @@ internal class SnapshotManagerTests
     [SetUp]
     public void Setup()
     {
-        IBlockTree blockTree = NSubstitute.Substitute.For<IBlockTree>();
-        _snapshotManager = new SnapshotManager(_snapshotDb, blockTree);
+        IPenaltyHandler penaltyHandler = NSubstitute.Substitute.For<IPenaltyHandler>();
+        _snapshotManager = new SnapshotManager(_snapshotDb, penaltyHandler);
     }
 
     [TearDown]
@@ -49,7 +49,7 @@ internal class SnapshotManagerTests
     public void GetSnapshot_ShouldRetrieveFromIfFound()
     {
         // Arrange
-        var snapshot = new Snapshot(2, TestItem.KeccakE, [Address.FromNumber(1), Address.FromNumber(2)], [Address.FromNumber(1)]);
+        var snapshot = new Snapshot(2, TestItem.KeccakE, [Address.FromNumber(1)]);
         _snapshotManager.StoreSnapshot(snapshot);
 
         // Act
@@ -74,7 +74,7 @@ internal class SnapshotManagerTests
     public void GetSnapshot_ShouldRetrieveFromDbIfNotInCache()
     {
         // Arrange
-        var snapshot = new Snapshot(3, TestItem.KeccakG, [Address.FromNumber(3)], [Address.FromNumber(3)]);
+        var snapshot = new Snapshot(3, TestItem.KeccakG, [Address.FromNumber(3)]);
         _snapshotManager.StoreSnapshot(snapshot);
 
         // Act
@@ -88,7 +88,7 @@ internal class SnapshotManagerTests
     public void StoreSnapshot_ShouldStoreSnapshotInDb()
     {
         // Arrange
-        var snapshot = new Snapshot(4, TestItem.KeccakH, [Address.FromNumber(4)], [Address.FromNumber(4)]);
+        var snapshot = new Snapshot(4, TestItem.KeccakH, [Address.FromNumber(4)]);
 
         // Act
         _snapshotManager.StoreSnapshot(snapshot);
@@ -102,7 +102,7 @@ internal class SnapshotManagerTests
     public void GetSnapshot_ShouldReturnSnapshotIfExists()
     {
         // setup a snapshot and store it
-        var snapshot1 = new Snapshot(5, TestItem.KeccakA, [Address.FromNumber(5)], [Address.FromNumber(5)]);
+        var snapshot1 = new Snapshot(5, TestItem.KeccakA, [Address.FromNumber(5)]);
         _snapshotManager.StoreSnapshot(snapshot1);
         var result = _snapshotManager.GetSnapshot(TestItem.KeccakA);
 
@@ -110,7 +110,7 @@ internal class SnapshotManagerTests
         result.Should().BeEquivalentTo(snapshot1);
 
         // store another snapshot with the same hash but different data
-        var snapshot2 = new Snapshot(6, TestItem.KeccakA, [Address.FromNumber(5)], [Address.FromNumber(5)]);
+        var snapshot2 = new Snapshot(6, TestItem.KeccakA, [Address.FromNumber(5)]);
         _snapshotManager.StoreSnapshot(snapshot2);
         result = _snapshotManager.GetSnapshot(TestItem.KeccakA);
 
@@ -143,7 +143,7 @@ internal class SnapshotManagerTests
     public void GetSnapshotByHeader_ShouldReturnSnapshotIfExists()
     {
         // Arrange
-        var snapshot = new Snapshot(7, TestItem.KeccakB, [Address.FromNumber(6)], [Address.FromNumber(6)]);
+        var snapshot = new Snapshot(7, TestItem.KeccakB, [Address.FromNumber(6)]);
         _snapshotManager.StoreSnapshot(snapshot);
         XdcBlockHeaderBuilder builder = Build.A.XdcBlockHeader();
         XdcBlockHeader header = builder.WithBaseFee((UInt256)1_000_000_000).TestObject;

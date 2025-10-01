@@ -23,10 +23,9 @@ internal class SnapshotDecoder : IRlpStreamDecoder<Snapshot>, IRlpValueDecoder<S
 
         long number = decoderContext.DecodeLong();
         Hash256 hash256 = decoderContext.DecodeKeccak();
-        Address[] signers = DecodeAddressArray(ref decoderContext);
-        Address[] penalties = DecodeAddressArray(ref decoderContext);
+        Address[] candidates = DecodeAddressArray(ref decoderContext);
 
-        return new Snapshot(number, hash256, signers, penalties);
+        return new Snapshot(number, hash256, candidates);
     }
 
     public Rlp Encode(Snapshot item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
@@ -70,10 +69,9 @@ internal class SnapshotDecoder : IRlpStreamDecoder<Snapshot>, IRlpValueDecoder<S
 
         long number = rlpStream.DecodeLong();
         Hash256 hash256 = rlpStream.DecodeKeccak();
-        Address[] signers = rlpStream.DecodeArray<Address>(s => s.DecodeAddress()) ?? [];
-        Address[] penalties = rlpStream.DecodeArray<Address>(s => s.DecodeAddress()) ?? [];
+        Address[] candidate = rlpStream.DecodeArray<Address>(s => s.DecodeAddress()) ?? [];
 
-        return new Snapshot(number, hash256, signers, penalties);
+        return new Snapshot(number, hash256, candidate);
     }
 
     public void Encode(RlpStream stream, Snapshot item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
@@ -90,15 +88,10 @@ internal class SnapshotDecoder : IRlpStreamDecoder<Snapshot>, IRlpValueDecoder<S
         stream.Encode(item.BlockNumber);
         stream.Encode(item.HeaderHash);
 
-        if (item.MasterNodes is null)
+        if (item.NextEpochCandidates is null)
             stream.EncodeArray<Address>([]);
         else
-            EncodeAddressSequence(stream, item.MasterNodes);
-
-        if (item.PenalizedNodes is null)
-            stream.EncodeArray<Address>([]);
-        else
-            EncodeAddressSequence(stream, item.PenalizedNodes);
+            EncodeAddressSequence(stream, item.NextEpochCandidates);
     }
 
     private void EncodeAddressSequence(RlpStream stream, Address[] nextEpochCandidates)
@@ -123,8 +116,7 @@ internal class SnapshotDecoder : IRlpStreamDecoder<Snapshot>, IRlpValueDecoder<S
         int length = 0;
         length += Rlp.LengthOf(item.BlockNumber);
         length += Rlp.LengthOf(item.HeaderHash);
-        length += Rlp.LengthOfSequence(Rlp.LengthOfAddressRlp * item.MasterNodes?.Length ?? 0);
-        length += Rlp.LengthOfSequence(Rlp.LengthOfAddressRlp * item.PenalizedNodes?.Length ?? 0);
+        length += Rlp.LengthOfSequence(Rlp.LengthOfAddressRlp * item.NextEpochCandidates?.Length ?? 0);
         return length;
     }
 }

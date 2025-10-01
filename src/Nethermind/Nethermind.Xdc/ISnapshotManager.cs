@@ -3,6 +3,7 @@
 
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Xdc.Spec;
 using Nethermind.Xdc.Types;
 using System;
 using System.Collections.Frozen;
@@ -15,5 +16,5 @@ public interface ISnapshotManager
 {
     Snapshot? GetSnapshot(Hash256 hash);
     void StoreSnapshot(Snapshot snapshot);
-    Address[] CalculateNextEpochMasternodes(Snapshot snapshot);
+    (Address[] Masternodes, Address[] PenalizedNodes) CalculateNextEpochMasternodes(XdcBlockHeader header, IXdcReleaseSpec spec);
 }

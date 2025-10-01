@@ -16,6 +16,8 @@ using System.Collections.Immutable;
 using System.Collections.ObjectModel;
 using System.Linq;
 
+using static Nethermind.Xdc.XdcExtensions;
+
 namespace Nethermind.Xdc;
 internal class XdcSealValidator(ISnapshotManager snapshotManager, IEpochSwitchManager epochSwitchManager, ISpecProvider specProvider) : ISealValidator
 {
@@ -70,14 +72,14 @@ internal class XdcSealValidator(ISnapshotManager snapshotManager, IEpochSwitchMa
             }
 
             //TODO init masternodes by reading from most recent checkpoint
-            masternodes = snapshotManager.CalculateNextEpochMasternodes(xdcHeader);
+            (masternodes, var penaltiesAddresses) = snapshotManager.CalculateNextEpochMasternodes(xdcHeader, xdcSpec);
             if (!xdcHeader.ValidatorsAddress.SequenceEqual(masternodes))
             {
                 error = "Validators does not match what's stored in snapshot minus its penalty.";
                 return false;
             }
 
-            if (!xdcHeader.PenaltiesAddress.SequenceEqual(snapshotManager.GetPenalties(xdcHeader)))
+            if (!xdcHeader.PenaltiesAddress.SequenceEqual(penaltiesAddresses))
             {
                 error = "Penalties does not match.";
                 return false;

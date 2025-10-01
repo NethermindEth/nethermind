@@ -4,10 +4,13 @@
 using Nethermind.Blockchain;
 using Nethermind.Core;
 using Nethermind.Core.Caching;
+using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Specs;
 using Nethermind.Db;
 using Nethermind.Serialization.Rlp;
 using Nethermind.Xdc.RLP;
+using Nethermind.Xdc.Spec;
 using Nethermind.Xdc.Types;
 using System;
 using System.Collections.Concurrent;
@@ -17,20 +20,20 @@ using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
 
-using Nethermind.Crypto;
-
 namespace Nethermind.Xdc;
 internal class SnapshotManager : ISnapshotManager
 {
 
     private LruCache<Hash256, Snapshot> _snapshotCache = new(128, 128, "XDC Snapshot cache");
     private IDb _snapshotDb { get; }
+    private IPenaltyHandler _penaltyHandler { get; }
 
     private readonly SnapshotDecoder _snapshotDecoder = new();
 
-    public SnapshotManager(IDb snapshotDb)
+    public SnapshotManager(IDb snapshotDb, IPenaltyHandler penaltyHandler)
     {
         _snapshotDb = snapshotDb;
+        _penaltyHandler = penaltyHandler;
     }
 
     public Snapshot? GetSnapshot(Hash256 hash)
@@ -66,21 +69,36 @@ internal class SnapshotManager : ISnapshotManager
         _snapshotDb.Set(key, rlpEncodedSnapshot.Bytes);
     }
 
-    public Address[] CalculateNextEpochMasternodes(Snapshot? snapshot)
+    public (Address[] Masternodes, Address[] PenalizedNodes) CalculateNextEpochMasternodes(XdcBlockHeader header, IXdcReleaseSpec spec)
     {
-        // TODO : will possibly need to truncate or pad the masternode list to a fixed size
-        Address[] masternodes = new Address[snapshot.MasterNodes.Length - snapshot.PenalizedNodes.Length];
+        int maxMasternodes = spec.MaxMasternodes;
+        var previousSnapshot = GetSnapshot(header.Hash);
 
-        int index = 0;
-        foreach (var addr in snapshot.MasterNodes)
+        if (previousSnapshot is null)
+            throw new InvalidOperationException($"No snapshot found for header {header.Number}:{header.Hash.ToShortString()}");
+
+        var candidates = previousSnapshot.NextEpochCandidates;
+
+        if(header.Number == spec.SwitchBlock + 1)
         {
-            if (snapshot.PenalizedNodes.Contains(addr))
+            if(candidates.Length > maxMasternodes)
             {
-                continue;
+                Array.Resize(ref candidates, maxMasternodes);
+                return (candidates, []) ;
             }
 
-            masternodes[index++] = addr;
+            return (candidates, []);
         }
-        return masternodes;
+
+        var penalties = _penaltyHandler.HandlePenalties(header.Number, header.ParentHash, candidates);
+
+        candidates = XdcExtensions.RemoveItemFromArray(candidates, penalties, maxMasternodes);
+
+        if (candidates.Length > maxMasternodes)
+        {
+            Array.Resize(ref candidates, maxMasternodes);
+            return (candidates, penalties);
+        }
+        return (candidates, penalties);
     }
 }
