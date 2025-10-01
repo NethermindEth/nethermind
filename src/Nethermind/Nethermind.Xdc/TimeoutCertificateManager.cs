@@ -59,27 +59,26 @@ public class TimeoutCertificateManager(ISnapshotManager snapshotManager, IEpochS
         var signatures = new HashSet<Signature>(timeoutCert.Signatures);
         BlockHeader header = _blockTree.Head?.Header;
         if (header is not XdcBlockHeader xdcHeader)
-            throw new ArgumentException($"Only type of {nameof(XdcBlockHeader)} is allowed");
+            throw new InvalidOperationException($"Only type of {nameof(XdcBlockHeader)} is allowed");
         IXdcReleaseSpec spec = _specProvider.GetXdcSpec(xdcHeader, timeoutCert.Round);
         EpochSwitchInfo epochInfo = _epochSwitchManager.GetTimeoutCertificateEpochInfo(timeoutCert);
         if (epochInfo is null)
         {
-            errorMessage = "Failed to get epoch switch info for timeout certificate";
+            errorMessage = $"Failed to get epoch switch info for timeout certificate with round {timeoutCert.Round}";
             return false;
         }
         if (signatures.Count < epochInfo.Masternodes.Length * spec.CertThreshold)
         {
-            errorMessage = "Invalid TC Signatures";
+            errorMessage = $"Number of unique signatures {signatures.Count} does not meet threshold of {epochInfo.Masternodes.Length * spec.CertThreshold}";
             return false;
         }
 
-        ValueHash256 signedTimeoutObj = new TimeoutForSign(timeoutCert.Round, timeoutCert.GapNumber).SigHash().ValueHash256;
+        ValueHash256 timeoutMsgHash = timeoutCert.SigHash();
         bool allValid = true;
         Parallel.ForEach(signatures,
-            new ParallelOptions { MaxDegreeOfParallelism = Environment.ProcessorCount },
             (signature, state) =>
             {
-                Address signer = _ethereumEcdsa.RecoverAddress(signature, in signedTimeoutObj);
+                Address signer = _ethereumEcdsa.RecoverAddress(signature, in timeoutMsgHash);
                 if (!snapshot.NextEpochCandidates.Contains(signer))
                 {
                     allValid = false;

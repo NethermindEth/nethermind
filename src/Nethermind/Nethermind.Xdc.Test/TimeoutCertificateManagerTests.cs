@@ -12,6 +12,7 @@ using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Crypto;
+using Nethermind.Xdc.RLP;
 using Nethermind.Xdc.Spec;
 using Nethermind.Xdc.Types;
 
@@ -31,14 +32,14 @@ public class TimeoutCertificateManagerTests
     public void VerifyTC_NullSignatures_Throws()
     {
         TimeoutCertificateManager tcManager = BuildTimeoutCertificateManager();
-        var tc = new TimeoutCert(10, null!, 0);
+        var tc = new TimeoutCert(1, null!, 0);
         Assert.That(() => tcManager.VerifyTimeoutCertificate(tc, out _), Throws.ArgumentNullException);
     }
 
     [Test]
     public void VerifyTC_SnapshotMissing_ReturnsFalse()
     {
-        var tc = new TimeoutCert(10, Array.Empty<Signature>(), 0);
+        var tc = new TimeoutCert(1, Array.Empty<Signature>(), 0);
         ISnapshotManager snapshotManager = Substitute.For<ISnapshotManager>();
         snapshotManager.TryGetSnapshot(0, true, out Arg.Any<Snapshot>())
                     .Returns(x =>
@@ -60,7 +61,7 @@ public class TimeoutCertificateManagerTests
     [Test]
     public void VerifyTC_EmptyCandidates_ReturnsFalse()
     {
-        var tc = new TimeoutCert(10, Array.Empty<Signature>(), 0);
+        var tc = new TimeoutCert(1, Array.Empty<Signature>(), 0);
         ISnapshotManager snapshotManager = Substitute.For<ISnapshotManager>();
         snapshotManager.TryGetSnapshot(0, true, out Arg.Any<Snapshot>())
             .Returns(x =>
@@ -145,13 +146,11 @@ public class TimeoutCertificateManagerTests
             Substitute.For<IBlockTree>());
     }
 
-    private static TimeoutCert BuildTimeoutCertificate(PrivateKey[] keys)
+    private static TimeoutCert BuildTimeoutCertificate(PrivateKey[] keys, ulong round = 1, ulong gap = 0)
     {
         var ecdsa = new EthereumEcdsa(0);
-        ulong round = 1;
-        ulong gap = 0;
-        ValueHash256 msgHash = new TimeoutForSign(round, gap).SigHash().ValueHash256;
-        IEnumerable<Signature> signatures = keys.Select(k => ecdsa.Sign(k, msgHash));
-        return new TimeoutCert(round, signatures.ToArray(), gap);
+        ValueHash256 msgHash = new TimeoutCert(round, Array.Empty<Signature>(), gap).SigHash();
+        Signature[] signatures = keys.Select(k => ecdsa.Sign(k, msgHash)).ToArray();
+        return new TimeoutCert(round, signatures, gap);
     }
 }
