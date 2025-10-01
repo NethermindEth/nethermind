@@ -37,6 +37,8 @@ public class BlockValidator(
     public bool Validate(BlockHeader header, BlockHeader parent, bool isUncle, out string? error) =>
         _headerValidator.Validate(header, parent, isUncle, out error);
 
+    public bool ValidateOrphaned(BlockHeader header, [NotNullWhen(false)] out string? error) =>
+        _headerValidator.ValidateOrphaned(header, out error);
     /// <summary>
     /// Applies to blocks without parent
     /// </summary>
@@ -347,27 +349,27 @@ public class BlockValidator(
     public bool ValidateBodyAgainstHeader(BlockHeader header, BlockBody toBeValidated) =>
         ValidateBodyAgainstHeader(header, toBeValidated, out _);
 
-    public virtual bool ValidateBodyAgainstHeader(BlockHeader header, BlockBody toBeValidated, out string? errorMessage)
+    public virtual bool ValidateBodyAgainstHeader(BlockHeader header, BlockBody toBeValidated, out string? error)
     {
         if (!ValidateTxRootMatchesTxs(header, toBeValidated, out Hash256? txRoot))
         {
-            errorMessage = BlockErrorMessages.InvalidTxRoot(header.TxRoot, txRoot);
+            error = BlockErrorMessages.InvalidTxRoot(header.TxRoot, txRoot);
             return false;
         }
 
         if (!ValidateUnclesHashMatches(header, toBeValidated, out _))
         {
-            errorMessage = BlockErrorMessages.InvalidUnclesHash;
+            error = BlockErrorMessages.InvalidUnclesHash;
             return false;
         }
 
         if (!ValidateWithdrawalsHashMatches(header, toBeValidated, out Hash256? withdrawalsRoot))
         {
-            errorMessage = BlockErrorMessages.InvalidWithdrawalsRoot(header.WithdrawalsRoot, withdrawalsRoot);
+            error = BlockErrorMessages.InvalidWithdrawalsRoot(header.WithdrawalsRoot, withdrawalsRoot);
             return false;
         }
 
-        errorMessage = null;
+        error = null;
         return true;
     }
 

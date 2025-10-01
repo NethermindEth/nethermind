@@ -35,6 +35,9 @@ public class InvalidBlockInterceptor(
         return result;
     }
 
+    public bool ValidateOrphaned(BlockHeader header, [NotNullWhen(false)] out string? error) =>
+        blockValidator.ValidateOrphaned(header, out error);
+
     public bool ValidateSuggestedBlock(Block block, BlockHeader parent, [NotNullWhen(false)] out string? error, bool validateHashes = true)
     {
         bool result = blockValidator.ValidateSuggestedBlock(block, parent, out error, validateHashes);
@@ -97,8 +100,8 @@ public class InvalidBlockInterceptor(
         return result;
     }
 
-    public bool ValidateBodyAgainstHeader(BlockHeader header, BlockBody toBeValidated, [NotNullWhen(false)] out string? errorMessage) =>
-        blockValidator.ValidateBodyAgainstHeader(header, toBeValidated, out errorMessage);
+    public bool ValidateBodyAgainstHeader(BlockHeader header, BlockBody toBeValidated, [NotNullWhen(false)] out string? error) =>
+        blockValidator.ValidateBodyAgainstHeader(header, toBeValidated, out error);
 
     private bool ShouldNotTrackInvalidation(Block block) =>
         ShouldNotTrackInvalidation(block.Header) ||

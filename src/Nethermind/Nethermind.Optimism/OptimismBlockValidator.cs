@@ -38,31 +38,31 @@ public class OptimismBlockValidator(
     private const string NonNullWithdrawalsRootError =
         $"{nameof(BlockHeader.WithdrawalsRoot)} is not null";
 
-    public override bool ValidateBodyAgainstHeader(BlockHeader header, BlockBody toBeValidated, out string? errorMessage)
+    public override bool ValidateBodyAgainstHeader(BlockHeader header, BlockBody toBeValidated, out string? error)
     {
         if (!ValidateTxRootMatchesTxs(header, toBeValidated, out Hash256? txRoot))
         {
-            errorMessage = BlockErrorMessages.InvalidTxRoot(header.TxRoot!, txRoot);
+            error = BlockErrorMessages.InvalidTxRoot(header.TxRoot!, txRoot);
             return false;
         }
 
         if (!ValidateUnclesHashMatches(header, toBeValidated, out _))
         {
-            errorMessage = BlockErrorMessages.InvalidUnclesHash;
+            error = BlockErrorMessages.InvalidUnclesHash;
             return false;
         }
 
-        if (!ValidateWithdrawals(header, toBeValidated, out errorMessage))
+        if (!ValidateWithdrawals(header, toBeValidated, out error))
         {
             return false;
         }
 
-        errorMessage = null;
+        error = null;
         return true;
     }
 
-    protected override bool ValidateWithdrawals(Block block, IReleaseSpec spec, out string? error) =>
-        ValidateWithdrawals(block.Header, block.Body, out error);
+    protected override bool ValidateWithdrawals(Block block, IReleaseSpec spec, bool validateHashes, ref string? error) =>
+        !validateHashes || ValidateWithdrawals(block.Header, block.Body, out error);
 
     private bool ValidateWithdrawals(BlockHeader header, BlockBody body, out string? error)
     {
@@ -75,7 +75,7 @@ public class OptimismBlockValidator(
                 return false;
             }
 
-            if (header.WithdrawalsRoot == null)
+            if (header.WithdrawalsRoot is null)
             {
                 error = MissingWithdrawalsRootError;
                 return false;
@@ -97,7 +97,7 @@ public class OptimismBlockValidator(
         }
         else
         {
-            if (header.WithdrawalsRoot != null)
+            if (header.WithdrawalsRoot is not null)
             {
                 error = NonNullWithdrawalsRootError;
                 return false;

@@ -25,7 +25,7 @@ namespace Nethermind.Consensus.Clique
         {
             long number = header.Number;
             // Retrieve the snapshot needed to validate this header and cache it
-            Snapshot snapshot = _snapshotManager.GetOrCreateSnapshot(number - 1, header.ParentHash);
+            Snapshot snapshot = _snapshotManager.GetOrCreateSnapshot(number - 1, header.ParentHash!);
             // Resolve the authorization key and check against signers
             header.Author ??= _snapshotManager.GetBlockSealer(header);
             Address signer = header.Author;

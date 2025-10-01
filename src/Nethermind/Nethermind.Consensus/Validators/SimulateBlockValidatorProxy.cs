@@ -26,6 +26,10 @@ public class SimulateBlockValidatorProxy(IBlockValidator baseBlockValidator) : I
     public bool Validate(BlockHeader header, BlockHeader parent, bool isUncle, out string? error) =>
         baseBlockValidator.Validate(header, parent, isUncle, out error);
 
-    public bool ValidateBodyAgainstHeader(BlockHeader header, BlockBody toBeValidated, [NotNullWhen(false)] out string? errorMessage) =>
-        baseBlockValidator.ValidateBodyAgainstHeader(header, toBeValidated, out errorMessage);
+    public bool ValidateOrphaned(BlockHeader header, [NotNullWhen(false)] out string? error) =>
+        baseBlockValidator.ValidateOrphaned(header, out error);
+
+
+    public bool ValidateBodyAgainstHeader(BlockHeader header, BlockBody toBeValidated, [NotNullWhen(false)] out string? error) =>
+        baseBlockValidator.ValidateBodyAgainstHeader(header, toBeValidated, out error);
 }

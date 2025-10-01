@@ -20,13 +20,12 @@ namespace Nethermind.Xdc;
 
 public class XdcHeaderValidator(IBlockTree blockTree, ISealValidator sealValidator, ISpecProvider specProvider, ILogManager? logManager = null) : HeaderValidator(blockTree, sealValidator, specProvider, logManager)
 {
-
-    public override bool Validate(BlockHeader header, BlockHeader parent, bool isUncle, out string? error)
+    protected override bool Validate<TOrphaned>(BlockHeader header, BlockHeader? parent, bool isUncle, out string? error)
     {
         if (header is not XdcBlockHeader xdcHeader)
             throw new ArgumentException($"Only type of {nameof(XdcBlockHeader)} is allowed, but got type {header.GetType().Name}.", nameof(header));
 
-        if (xdcHeader.Validator == null || xdcHeader.Validator.Length == 0)
+        if (xdcHeader.Validator is null || xdcHeader.Validator.Length == 0)
         {
             error = "Validator field is required in XDC header.";
             return false;
@@ -49,17 +48,17 @@ public class XdcHeaderValidator(IBlockTree blockTree, ISealValidator sealValidat
 
         if (xdcHeader.MixHash != Hash256.Zero)
         {
-            error = $"Non-zero mix hash.";
+            error = "Non-zero mix hash.";
             return false;
         }
 
         if (xdcHeader.UnclesHash != Keccak.OfAnEmptySequenceRlp)
         {
-            error = $"Cannot contain uncles.";
+            error = "Cannot contain uncles.";
             return false;
         }
 
-        if (!base.Validate(header, parent, isUncle, out error))
+        if (!base.Validate<TOrphaned>(header, parent, isUncle, out error))
         {
             return false;
         }
@@ -86,13 +85,13 @@ public class XdcHeaderValidator(IBlockTree blockTree, ISealValidator sealValidat
         return true;
     }
 
-    protected override bool ValidateExtraData(BlockHeader header, BlockHeader? parent, IReleaseSpec spec, bool isUncle, ref string? error)
+    protected override bool ValidateExtraData(BlockHeader header, IReleaseSpec spec, bool isUncle, ref string? error)
     {
         //Extra consensus data is validated in SealValidator
         return true;
     }
 
-    protected override bool ValidateTotalDifficulty(BlockHeader parent, BlockHeader header, ref string? error)
+    protected override bool ValidateTotalDifficulty(BlockHeader header, BlockHeader parent, ref string? error)
     {
         if (header.Difficulty != 1)
         {
