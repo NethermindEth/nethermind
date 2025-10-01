@@ -3,8 +3,10 @@
 
 using System;
 using System.Text;
+using System.Text.Json;
 using Nethermind.Blockchain;
 using Nethermind.Core;
+using Nethermind.Core.BlockAccessLists;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Messages;
@@ -132,6 +134,27 @@ public class BlockValidator(
             }
         }
 
+        if (spec.BlockLevelAccessListsEnabled)
+        {
+            if (block.BlockAccessList is null || block.BlockAccessListHash is null)
+            {
+                if (_logger.IsDebug) _logger.Debug($"{Invalid(block)} Block-level access list was missing or empty");
+                errorMessage = BlockErrorMessages.InvalidBlockLevelAccessList;
+                return false;
+            }
+
+            // try
+            // {
+            //     block.DecodedBlockAccessList = Rlp.Decode<BlockAccessList>(block.BlockAccessList);
+            // }
+            // catch (RlpException e)
+            // {
+            //     if (_logger.IsDebug) _logger.Debug($"{Invalid(block)} Block-level access list could not be decoded: {e}");
+            //     errorMessage = BlockErrorMessages.InvalidBlockLevelAccessList;
+            //     return false;
+            // }
+        }
+
         return true;
     }
 
@@ -212,6 +235,20 @@ public class BlockValidator(
         {
             if (_logger.IsWarn) _logger.Warn($"- requests root : expected {suggestedBlock.Header.RequestsHash}, got {processedBlock.Header.RequestsHash}");
             error ??= BlockErrorMessages.InvalidRequestsHash(suggestedBlock.Header.RequestsHash, processedBlock.Header.RequestsHash);
+        }
+
+        if (processedBlock.Header.WithdrawalsRoot != suggestedBlock.Header.WithdrawalsRoot)
+        {
+            if (_logger.IsWarn) _logger.Warn($"- withdrawals root : expected {suggestedBlock.Header.WithdrawalsRoot}, got {processedBlock.Header.WithdrawalsRoot}");
+            error ??= BlockErrorMessages.InvalidWithdrawalsRoot(suggestedBlock.Header.WithdrawalsRoot, processedBlock.Header.WithdrawalsRoot);
+        }
+
+        if (processedBlock.Header.BlockAccessListHash != suggestedBlock.Header.BlockAccessListHash)
+        {
+            // Console.WriteLine("processed block:");
+            // Console.WriteLine(processedBlock.BlockAccessList.ToString());
+            if (_logger.IsWarn) _logger.Warn($"- block access list hash : expected {suggestedBlock.Header.BlockAccessListHash}, got {processedBlock.Header.BlockAccessListHash}");
+            error ??= BlockErrorMessages.InvalidBlockLevelAccessListRoot(suggestedBlock.Header.BlockAccessListHash, processedBlock.Header.BlockAccessListHash);
         }
 
         for (int i = 0; i < processedBlock.Transactions.Length; i++)
@@ -378,6 +415,43 @@ public class BlockValidator(
         return true;
     }
 
+    public virtual bool ValidateBlockLevelAccessList(Block block, IReleaseSpec spec, out string? error)
+    {
+        if (spec.BlockLevelAccessListsEnabled && block.BlockAccessList is null)
+        {
+            error = BlockErrorMessages.MissingBlockLevelAccessList;
+
+            if (_logger.IsWarn) _logger.Warn($"Block level access list cannot be null in block {block.Hash} when EIP-7928 activated.");
+
+            return false;
+        }
+
+        if (!spec.BlockLevelAccessListsEnabled && block.BlockAccessList is not null)
+        {
+            error = BlockErrorMessages.BlockLevelAccessListNotEnabled;
+
+            if (_logger.IsWarn) _logger.Warn($"Block level access list must be null in block {block.Hash} when EIP-7928 not activated.");
+
+            return false;
+        }
+
+        if (block.BlockAccessList is not null)
+        {
+            if (!ValidateBlockLevelAccessListHashMatches(block, out Hash256 blockLevelAccessListRoot))
+            {
+                error = BlockErrorMessages.InvalidBlockLevelAccessListRoot(block.Header.BlockAccessListHash, blockLevelAccessListRoot);
+                if (_logger.IsWarn) _logger.Warn($"Block level access list root hash mismatch in block {block.ToString(Block.Format.FullHashAndNumber)}: expected {block.Header.BlockAccessListHash}, got {blockLevelAccessListRoot}");
+
+                return false;
+            }
+        }
+
+        error = null;
+
+        return true;
+
+    }
+
     public static bool ValidateTxRootMatchesTxs(Block block, out Hash256 txRoot) =>
         ValidateTxRootMatchesTxs(block.Header, block.Body, out txRoot);
 
@@ -402,6 +476,21 @@ public class BlockValidator(
         }
 
         return (withdrawalsRoot = new WithdrawalTrie(body.Withdrawals).RootHash) == header.WithdrawalsRoot;
+    }
+
+    public static bool ValidateBlockLevelAccessListHashMatches(Block block, out Hash256? blockLevelAccessListRoot)
+    {
+        BlockBody body = block.Body;
+        BlockHeader header = block.Header;
+        if (body.BlockAccessList is null)
+        {
+            blockLevelAccessListRoot = null;
+            return header.BlockAccessListHash is null;
+        }
+
+        blockLevelAccessListRoot = new(ValueKeccak.Compute(block.EncodedBlockAccessList!).Bytes);
+
+        return blockLevelAccessListRoot == header.BlockAccessListHash;
     }
 
     private static string Invalid(Block block) =>

@@ -12,6 +12,7 @@ using Nethermind.Serialization.Rlp;
 using Nethermind.State.Proofs;
 using System.Text.Json.Serialization;
 using Nethermind.Core.ExecutionRequest;
+using Nethermind.Core.BlockAccessLists;
 
 namespace Nethermind.Merge.Plugin.Data;
 
@@ -50,6 +51,8 @@ public class ExecutionPayload : IForkValidator, IExecutionPayloadParams, IExecut
     public Hash256 StateRoot { get; set; } = Keccak.Zero;
 
     public ulong Timestamp { get; set; }
+
+    public byte[]? BlockAccessList { get; set; } = [];
 
     protected byte[][] _encodedTransactions = [];
 
@@ -124,6 +127,7 @@ public class ExecutionPayload : IForkValidator, IExecutionPayloadParams, IExecut
             Timestamp = block.Timestamp,
             BaseFeePerGas = block.BaseFeePerGas,
             Withdrawals = block.Withdrawals,
+            BlockAccessList = block.EncodedBlockAccessList!,
         };
         executionPayload.SetTransactions(block.Transactions);
         return executionPayload;
@@ -140,7 +144,7 @@ public class ExecutionPayload : IForkValidator, IExecutionPayloadParams, IExecut
         TransactionDecodingResult transactions = TryGetTransactions();
         if (transactions.Error is not null)
         {
-            return new BlockDecodingResult(transactions.Error);
+            return new(transactions.Error);
         }
 
         BlockHeader header = new(
@@ -166,9 +170,25 @@ public class ExecutionPayload : IForkValidator, IExecutionPayloadParams, IExecut
             TotalDifficulty = totalDifficulty,
             TxRoot = TxTrie.CalculateRoot(transactions.Transactions),
             WithdrawalsRoot = BuildWithdrawalsRoot(),
+            BlockAccessListHash = BlockAccessList is null || BlockAccessList.Length == 0 ? null : new(ValueKeccak.Compute(BlockAccessList).Bytes)
         };
 
-        return new BlockDecodingResult(new Block(header, transactions.Transactions, Array.Empty<BlockHeader>(), Withdrawals));
+        BlockAccessList? blockAccessList = null;
+
+        if (BlockAccessList is not null)
+        {
+            try
+            {
+                blockAccessList = Rlp.Decode<BlockAccessList>(BlockAccessList);
+            }
+            catch (RlpException)
+            {
+                return new("Could not decode block access list.");
+            }
+        }
+
+        Block block = new(header, transactions.Transactions, Array.Empty<BlockHeader>(), Withdrawals, blockAccessList);
+        return new(block);
     }
 
     protected virtual Hash256? BuildWithdrawalsRoot()

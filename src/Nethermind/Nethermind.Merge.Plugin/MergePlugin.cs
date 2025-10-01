@@ -22,7 +22,6 @@ using Nethermind.Consensus.Validators;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Exceptions;
-using Nethermind.Core.Timers;
 using Nethermind.Db;
 using Nethermind.Facade.Proxy;
 using Nethermind.HealthChecks;
@@ -329,6 +328,7 @@ public class BaseMergePluginModule : Module
                     .AddSingleton<IRpcCapabilitiesProvider, EngineRpcCapabilitiesProvider>()
                 .AddSingleton<IAsyncHandler<byte[][], IEnumerable<BlobAndProofV1?>>, GetBlobsHandler>()
                 .AddSingleton<IAsyncHandler<byte[][], IEnumerable<BlobAndProofV2>?>, GetBlobsHandlerV2>()
+                .AddSingleton<IEngineRequestsTracker, NoEngineRequestsTracker>()
 
                 .AddSingleton<NoSyncGcRegionStrategy>()
                 .AddSingleton<GCKeeper>((ctx) =>
