@@ -95,7 +95,15 @@ public sealed class FlatCacheScopeProvider : IWorldStateScopeProvider, IPreBlock
 
         public IWorldStateScopeProvider.IWorldStateWriteBatch StartWriteBatch(int estimatedAccountNum, Action<Address, Account> onAccountUpdated)
         {
-            return new WriteBatchWrapper(baseScope.StartWriteBatch(estimatedAccountNum, onAccountUpdated), snapshotBundle);
+            WriteBatchWrapper wrapper = null;
+            wrapper = new WriteBatchWrapper(baseScope.StartWriteBatch(estimatedAccountNum, OnAccountUpdated), snapshotBundle);
+            // Ugh!
+            void OnAccountUpdated(Address address, Account account)
+            {
+                wrapper!.Set(address, account);
+            }
+
+            return wrapper;
         }
 
         public void Commit(long blockNumber)
