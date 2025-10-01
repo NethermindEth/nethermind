@@ -144,7 +144,7 @@ public class ExecutionPayload : IForkValidator, IExecutionPayloadParams, IExecut
         TransactionDecodingResult transactions = TryGetTransactions();
         if (transactions.Error is not null)
         {
-            return new BlockDecodingResult(transactions.Error);
+            return new(transactions.Error);
         }
 
         BlockHeader header = new(
@@ -173,7 +173,22 @@ public class ExecutionPayload : IForkValidator, IExecutionPayloadParams, IExecut
             BlockAccessListHash = BlockAccessList is null || BlockAccessList.Length == 0 ? null : new(ValueKeccak.Compute(BlockAccessList).Bytes)
         };
 
-        return new BlockDecodingResult(new Block(header, transactions.Transactions, Array.Empty<BlockHeader>(), Withdrawals, Rlp.Decode<BlockAccessList>(BlockAccessList)));
+        BlockAccessList? blockAccessList = null;
+
+        if (BlockAccessList is not null)
+        {
+            try
+            {
+                blockAccessList = Rlp.Decode<BlockAccessList>(BlockAccessList);
+            }
+            catch (RlpException)
+            {
+                return new("Could not decode block access list.");
+            }
+        }
+
+        Block block = new(header, transactions.Transactions, Array.Empty<BlockHeader>(), Withdrawals, blockAccessList);
+        return new(block);
     }
 
     protected virtual Hash256? BuildWithdrawalsRoot()
