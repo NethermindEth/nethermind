@@ -23,6 +23,7 @@ using Nethermind.Db.Rocks.Config;
 using Nethermind.Logging;
 using NUnit.Framework;
 using NUnit.Framework.Interfaces;
+using static Nethermind.Db.LogIndexStorage;
 
 namespace Nethermind.Db.Test.LogIndex
 {
@@ -41,11 +42,11 @@ namespace Nethermind.Db.Test.LogIndex
 
         public static readonly TestFixtureData[] TestCases =
         [
-            new(new TestData(10, 100) { Compression = LogIndexStorage.CompressionAlgorithm.Best.Key }),
+            new(new TestData(10, 100) { Compression = CompressionAlgorithm.Best.Key }),
             new(new TestData(5, 200) { Compression = nameof(TurboPFor.p4nd1enc128v32) }),
-            new(new TestData(10, 100) { ExtendedGetRanges = true }) { RunState = RunState.Explicit },
+            new(new TestData(10, 100) { Compression = CompressionAlgorithm.Best.Key, ExtendedGetRanges = true }) { RunState = RunState.Explicit },
             new(new TestData(100, 100) { Compression = nameof(TurboPFor.p4nd1enc128v32) }) { RunState = RunState.Explicit },
-            new(new TestData(100, 200) { Compression = LogIndexStorage.CompressionAlgorithm.Best.Key }) { RunState = RunState.Explicit }
+            new(new TestData(100, 200) { Compression = CompressionAlgorithm.Best.Key }) { RunState = RunState.Explicit }
         ];
 
         private string _dbPath = null!;
@@ -54,10 +55,14 @@ namespace Nethermind.Db.Test.LogIndex
 
         private ILogIndexStorage CreateLogIndexStorage(
             int compactionDistance = 262_144, int compressionParallelism = 16, int maxReorgDepth = 64, IDbFactory? dbFactory = null,
-            int? failOnBlock = null, int? failOnCallN = null
+            string? compressionAlgo = null, int? failOnBlock = null, int? failOnCallN = null
         )
         {
-            LogIndexConfig config = new() { CompactionDistance = compactionDistance, CompressionParallelism = compressionParallelism, MaxReorgDepth = maxReorgDepth };
+            LogIndexConfig config = new()
+            {
+                CompactionDistance = compactionDistance, CompressionParallelism = compressionParallelism,
+                MaxReorgDepth = maxReorgDepth, CompressionAlgorithm = compressionAlgo ?? testData.Compression
+            };
 
             ILogIndexStorage storage = failOnBlock is not null || failOnCallN is not null
                 ? new SaveFailingLogIndexStorage(dbFactory ?? _dbFactory, LimboLogs.Instance, config)
@@ -468,7 +473,7 @@ namespace Nethermind.Db.Test.LogIndex
 
         [Combinatorial]
         public async Task SetFailure_Get_Test(
-            [Values(10, 100, 200)] int failOnCallN,
+            [Values(1, 20, 51, 100)] int failOnCallN,
             [Values] bool isBackwardsSync
         )
         {
@@ -488,7 +493,7 @@ namespace Nethermind.Db.Test.LogIndex
 
         [Combinatorial]
         public async Task SetFailure_Set_Get_Test(
-            [Values(10, 100, 200)] int failOnCallN,
+            [Values(1, 20, 51, 100)] int failOnCallN,
             [Values] bool isBackwardsSync
         )
         {
@@ -499,12 +504,27 @@ namespace Nethermind.Db.Test.LogIndex
             {
                 Exception exception = Assert.ThrowsAsync<Exception>(() => SetReceiptsAsync(failLogIndexStorage, batches, isBackwardsSync));
                 Assert.That(exception, Has.Message.EqualTo(SaveFailingLogIndexStorage.FailMessage));
-            };
+            }
 
             await using var logIndexStorage = CreateLogIndexStorage();
             await SetReceiptsAsync(logIndexStorage, batches, isBackwardsSync);
 
             VerifyReceipts(logIndexStorage, testData);
+        }
+
+        [Combinatorial]
+        public async Task Set_AlgoChange_Test()
+        {
+            if (CompressionAlgorithm.Supported.Count < 2) Assert.Ignore();
+
+            await using (var logIndexStorage1 = CreateLogIndexStorage())
+                await SetReceiptsAsync(logIndexStorage1, [testData.Batches[0]]);
+
+            var oldAlgo = testData.Compression ?? CompressionAlgorithm.Best.Key;
+            var newAlgo = CompressionAlgorithm.Supported.First(c => c.Key != oldAlgo).Key;
+
+            NotSupportedException exception = Assert.Throws<NotSupportedException>(() => CreateLogIndexStorage(compressionAlgo: newAlgo));
+            Assert.That(exception, Has.Message.Contain(oldAlgo).And.Message.Contain(newAlgo));
         }
 
         private static BlockReceipts[] GenerateBlocks(Random random, int from, int count) =>
@@ -911,7 +931,7 @@ namespace Nethermind.Db.Test.LogIndex
                     FailOnBlock >= Math.Min(blockNums[0], blockNums[^1]) &&
                     FailOnBlock <= Math.Max(blockNums[0], blockNums[^1]);
 
-                if (isFailBlock && Interlocked.Increment(ref _count) > FailOnCallN)
+                if (isFailBlock && Interlocked.Increment(ref _count) >= FailOnCallN)
                     throw new(FailMessage);
 
                 base.SaveBlockNumbersByKey(dbBatch, key, blockNums, isBackwardSync, stats);

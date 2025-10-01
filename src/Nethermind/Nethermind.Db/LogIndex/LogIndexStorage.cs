@@ -247,7 +247,7 @@ namespace Nethermind.Db
             }
 
             var algoBytes = meta.Get(SpecialKey.CompressionAlgo);
-            if (algoBytes is null)
+            if (algoBytes is null) // DB is empty
             {
                 KeyValuePair<string, CompressionAlgorithm> selected = configAlgo is not null
                     ? KeyValuePair.Create(configAlgoName, configAlgo)
@@ -434,7 +434,6 @@ namespace Nethermind.Db
 
             return (addressRange, topicRanges);
         }
-
 
         private int GetLastReorgableBlockNumber() => Math.Min(_addressMaxBlock ?? 0, _topicMaxBlocks.Min() ?? 0) - _maxReorgDepth;
 

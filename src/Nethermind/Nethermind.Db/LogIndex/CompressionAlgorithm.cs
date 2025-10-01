@@ -4,6 +4,7 @@
 using System;
 using System.Collections.Generic;
 using System.Runtime.CompilerServices;
+using static Nethermind.Db.TurboPFor;
 
 namespace Nethermind.Db;
 
@@ -23,22 +24,22 @@ partial class LogIndexStorage
         public static IReadOnlyDictionary<string, CompressionAlgorithm> Supported => _supported;
 
         public static KeyValuePair<string, CompressionAlgorithm> Best =>
-            _supported.TryGetValue(nameof(TurboPFor.p4nd1enc256v32), out CompressionAlgorithm p256)
-                ? KeyValuePair.Create(nameof(TurboPFor.p4nd1enc256v32), p256)
-                : KeyValuePair.Create(nameof(TurboPFor.p4nd1enc128v32), _supported[nameof(TurboPFor.p4nd1enc128v32)]);
+            _supported.TryGetValue(nameof(p4nd1enc256v32), out CompressionAlgorithm p256)
+                ? KeyValuePair.Create(nameof(p4nd1enc256v32), p256)
+                : KeyValuePair.Create(nameof(p4nd1enc128v32), _supported[nameof(p4nd1enc128v32)]);
 
         static CompressionAlgorithm()
         {
             _supported.Add(
-                nameof(TurboPFor.p4nd1enc128v32),
-                new(nameof(TurboPFor.p4nd1enc128v32), TurboPFor.p4nd1enc128v32, TurboPFor.p4nd1dec128v32)
+                nameof(p4nd1enc128v32),
+                new(nameof(p4nd1enc128v32), p4nd1enc128v32, p4nd1dec128v32)
             );
 
-            if (TurboPFor.Supports256Blocks)
+            if (Supports256Blocks)
             {
                 _supported.Add(
-                    nameof(TurboPFor.p4nd1enc256v32),
-                    new(nameof(TurboPFor.p4nd1enc256v32), TurboPFor.p4nd1enc256v32, TurboPFor.p4nd1dec256v32)
+                    nameof(p4nd1enc256v32),
+                    new(nameof(p4nd1enc256v32), p4nd1enc256v32, p4nd1dec256v32)
                 );
             }
         }
