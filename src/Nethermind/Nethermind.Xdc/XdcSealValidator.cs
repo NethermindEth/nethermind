@@ -17,7 +17,7 @@ using System.Collections.ObjectModel;
 using System.Linq;
 
 namespace Nethermind.Xdc;
-internal class XdcSealValidator(ISnapshotManager snapshotManager, ISpecProvider specProvider) : ISealValidator
+internal class XdcSealValidator(ISnapshotManager snapshotManager, IEpochSwitchManager epochSwitchManager, ISpecProvider specProvider) : ISealValidator
 {
     private EthereumEcdsa _ethereumEcdsa = new(0); //Ignore chainId since we don't sign transactions here
     private XdcHeaderDecoder _headerDecoder = new();
@@ -96,7 +96,8 @@ internal class XdcSealValidator(ISnapshotManager snapshotManager, ISpecProvider 
                 return false;
             }
             //TODO get masternodes from snapshot
-            masternodes = snapshotManager.GetMasternodes(xdcHeader);
+            EpochSwitchInfo epochSwitchInfo = epochSwitchManager.GetEpochSwitchInfo(xdcHeader, xdcHeader.ParentHash);
+            masternodes = epochSwitchInfo.Masternodes;
             if (masternodes is null || masternodes.Length == 0)
                 throw new InvalidOperationException($"Snap shot returned no master nodes for header \n{xdcHeader.ToString()}");
         }

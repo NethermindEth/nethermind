@@ -63,7 +63,7 @@ public unsafe partial class VirtualMachine
             RunOpCodes<OffFlag>(vm, state, evmState, spec);
         }
 
-        TransactionProcessor processor = new(MainnetSpecProvider.Instance, state, vm, codeInfoRepository, lm);
+        TransactionProcessor processor = new(BlobBaseFeeCalculator.Instance, MainnetSpecProvider.Instance, state, vm, codeInfoRepository, lm);
         processor.SetBlockExecutionContext(new BlockExecutionContext(_header, spec));
 
         RunTransactions(processor, state, spec);
