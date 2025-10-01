@@ -18,11 +18,11 @@ public static class ProductInfo
         var metadataAttrs = assembly.GetCustomAttributes<AssemblyMetadataAttribute>()!;
         var productAttr = assembly.GetCustomAttribute<AssemblyProductAttribute>()!;
         var versionAttr = assembly.GetCustomAttribute<AssemblyInformationalVersionAttribute>()!;
-        var timestamp = metadataAttrs
-            ?.FirstOrDefault(static a => a.Key.Equals("SourceDate", StringComparison.Ordinal))
+        var sourceDateEpoch = metadataAttrs
+            ?.FirstOrDefault(static a => a.Key.Equals("SourceDateEpoch", StringComparison.Ordinal))
             ?.Value;
 
-        SourceDate = long.TryParse(timestamp, out var t)
+        SourceDate = long.TryParse(sourceDateEpoch, out var t)
             ? DateTimeOffset.FromUnixTimeSeconds(t)
             : DateTimeOffset.MinValue;
         Name = productAttr?.Product ?? "Nethermind";
