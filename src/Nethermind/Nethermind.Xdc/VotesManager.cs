@@ -9,6 +9,7 @@ using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Threading;
 using Nethermind.Crypto;
+using Nethermind.Logging;
 using Nethermind.Serialization.Rlp;
 using Nethermind.Trie;
 using Nethermind.Xdc;
@@ -27,26 +28,24 @@ internal class VotesManager : IVotesManager
 {
     public VotesManager(
         XdcContext context,
-        ISignatureManager xdcSignatureManager,
         IBlockTree tree,
         IEpochSwitchManager epochSwitchManager,
         ISpecProvider xdcConfig,
         PrivateKey signer,
         IBlockInfoValidator blockInfoProcessor,
-        IMasternodesManager masternodesManager,
         IQuorumCertificateManager quorumCertificateManager,
-        IForensicsProcessor forensicsProcessor)
+        IForensicsProcessor forensicsProcessor,
+        ILogManager logManager)
     {
         Tree = tree;
         EpochSwitchManager = epochSwitchManager;
         _specProvider = xdcConfig;
         _signerKey = signer;
         BlockInfoProcessor = blockInfoProcessor;
-        MasternodesManager = masternodesManager;
         QuorumCertificateManager = quorumCertificateManager;
         Context = context;
-        SignatureManager = xdcSignatureManager;
         ForensicsProcessor = forensicsProcessor;
+        _logger = logManager?.GetClassLogger() ?? NullLogger.Instance;
     }
     private VotePool _votePool => new();
 
@@ -58,6 +57,8 @@ internal class VotesManager : IVotesManager
     public XdcContext Context { get; }
     public ISignatureManager SignatureManager { get; }
     public IForensicsProcessor ForensicsProcessor { get; }
+
+    private ILogger _logger;
 
     private ISpecProvider _specProvider;
 
@@ -71,10 +72,9 @@ internal class VotesManager : IVotesManager
     {
         EpochSwitchInfo epochSwitchInfo = EpochSwitchManager.GetEpochSwitchInfo(null, blockInfo.Hash);
         if (epochSwitchInfo is null)
-        {
-            throw new ConsensusHeaderDataExtractionException(nameof(EpochSwitchInfo));
-        }
+            throw new ArgumentException($"Cannot find epoch info for block {blockInfo.Hash}",nameof(EpochSwitchInfo));
         //Optimize this by fetching with block number and round only 
+
         XdcBlockHeader header = Tree.FindHeader(blockInfo.Hash) as XdcBlockHeader;
         IXdcReleaseSpec spec = _specProvider.GetXdcSpec(header, blockInfo.Round);
         long epochSwitchNumber = epochSwitchInfo.EpochSwitchBlockInfo.BlockNumber;
@@ -119,6 +119,11 @@ internal class VotesManager : IVotesManager
             throw new InvalidOperationException($"Epoch has empty master node list for {vote.ProposedBlockInfo.Hash}");
         }
 
+        if (ValidateVote(vote, epochInfo))
+        {
+
+        }
+
         _votePool.Add(vote);
         if (vote.ProposedBlockInfo.Round == Context.CurrentRound + 1)
         {
@@ -142,12 +147,24 @@ internal class VotesManager : IVotesManager
 
             EnsureVotesRecovered(roundVotes, proposedHeader);
 
-            OnVotePoolThresholdReached(roundVotes, vote, proposedHeader);
+            OnVotePoolThresholdReached(roundVotes, vote, proposedHeader, epochInfo);
         }
         return Task.CompletedTask;
     }
 
-    private void OnVotePoolThresholdReached(IEnumerable<Vote> tally, Vote currVote, XdcBlockHeader proposedBlockHeader)
+    private bool ValidateVote(Vote vote, EpochSwitchInfo epochInfo)
+    {
+        if (vote.Signer is null)
+        {
+            vote.Signer = _ethereumEcdsa.RecoverVoteSigner(vote);
+            if (vote.Signer is null)
+            {
+                return false;
+            }
+        }
+    }
+
+    private void OnVotePoolThresholdReached(IEnumerable<Vote> tally, Vote currVote, XdcBlockHeader proposedBlockHeader, EpochSwitchInfo epochInfo)
     {
         List<Signature> validSignature = new List<Signature>();
         foreach (var vote in tally)
@@ -156,11 +173,6 @@ internal class VotesManager : IVotesManager
             {
                 validSignature.Add(vote.Signature);
             }
-        }
-        EpochSwitchInfo epochInfo = EpochSwitchManager.GetEpochSwitchInfo(null, currVote.ProposedBlockInfo.Hash);
-        if (epochInfo is null)
-        {
-            throw new ConsensusHeaderDataExtractionException(nameof(EpochSwitchInfo));
         }
         IXdcReleaseSpec spec = _specProvider.GetXdcSpec(proposedBlockHeader, currVote.ProposedBlockInfo.Round);
         double certThreshold = spec.CertThreshold;
@@ -177,7 +189,7 @@ internal class VotesManager : IVotesManager
         _votePool.EndRoundVote(currVote.ProposedBlockInfo.Round);
     }
 
-    public void EnsureVotesRecovered(IEnumerable<Vote> votes, XdcBlockHeader header)
+    private void EnsureVotesRecovered(IEnumerable<Vote> votes, XdcBlockHeader header)
     {
         Parallel.ForEach(votes, (v, s, a) =>
         {
@@ -281,6 +293,7 @@ internal class VotesManager : IVotesManager
             {
                 if (_votes.TryGetValue(round, out ArrayPoolList<Vote> list))
                 {
+                    //Allocating a new array since it goes outside of the lock
                     return list.ToArray();
                 }
                 return [];

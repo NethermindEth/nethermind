@@ -13,6 +13,5 @@ internal interface IVotesManager
 {
     Task CastVote(BlockRoundInfo blockInfo);
     Task HandleVote(Vote vote);
-    void EnsureVotesRecovered(IEnumerable<Vote> votes, XdcBlockHeader header);
     bool VerifyVotingRules(BlockRoundInfo blockInfo, QuorumCertificate qc);
 }
