@@ -487,20 +487,6 @@ namespace Nethermind.Db.Test.LogIndex
         }
 
         [Combinatorial]
-        public async Task SetFailure_Set_Test(
-            [Values(10)] int failOnCallN,
-            [Values] bool isBackwardsSync
-        )
-        {
-            BlockReceipts[][] batches = isBackwardsSync ? Reverse(testData.Batches) : testData.Batches;
-
-            await using var failLogIndexStorage = CreateLogIndexStorage(failOnBlock: 0, failOnCallN: failOnCallN);
-
-            Assert.ThrowsAsync<Exception>(() => SetReceiptsAsync(failLogIndexStorage, batches, isBackwardsSync));
-            Assert.ThrowsAsync<InvalidOperationException>(() => SetReceiptsAsync(failLogIndexStorage, batches, isBackwardsSync));
-        }
-
-        [Combinatorial]
         public async Task SetFailure_Set_Get_Test(
             [Values(10, 100, 200)] int failOnCallN,
             [Values] bool isBackwardsSync

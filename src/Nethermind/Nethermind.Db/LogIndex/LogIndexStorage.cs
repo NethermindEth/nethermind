@@ -303,19 +303,13 @@ namespace Nethermind.Db
             }
         }
 
-        private async Task StopAsync(Exception? exception, bool hasLock)
+        public async Task StopAsync()
         {
             if (_stopped)
                 return;
 
-            if (exception is not null && _logger.IsError)
-                _logger.Error("Stopping log index storage due to an error", exception);
-
-            if (!hasLock)
-            {
-                await _setReceiptsSemaphores[false].WaitAsync();
-                await _setReceiptsSemaphores[true].WaitAsync();
-            }
+            await _setReceiptsSemaphores[false].WaitAsync();
+            await _setReceiptsSemaphores[true].WaitAsync();
 
             try
             {
@@ -334,15 +328,10 @@ namespace Nethermind.Db
             {
                 _stopped = true;
 
-                if (!hasLock)
-                {
-                    _setReceiptsSemaphores[false].Release();
-                    _setReceiptsSemaphores[true].Release();
-                }
+                _setReceiptsSemaphores[false].Release();
+                _setReceiptsSemaphores[true].Release();
             }
         }
-
-        public Task StopAsync() => StopAsync(exception: null, hasLock: false);
 
         private void ThrowIfStopped()
         {
@@ -757,11 +746,6 @@ namespace Nethermind.Db
 
                 UpdateRanges(addressRange, topicRanges, isBackwardSync);
             }
-            catch (Exception exception)
-            {
-                await StopAsync(exception, hasLock: true);
-                throw;
-            }
             finally
             {
                 semaphore.Release();
@@ -907,11 +891,7 @@ namespace Nethermind.Db
                 // Enqueue compaction if needed
                 _compactor.TryEnqueue();
             }
-            catch (Exception exception)
-            {
-                await StopAsync(exception, hasLock: true);
-                throw;
-            }
+            // TODO: stop or block index on error?
             finally
             {
                 if (!wasInitialized)
