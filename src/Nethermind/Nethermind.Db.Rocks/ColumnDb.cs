@@ -104,6 +104,11 @@ public class ColumnDb : IDb
             _underlyingWriteBatch.Dispose();
         }
 
+        public void Clear()
+        {
+            _underlyingWriteBatch.Clear();
+        }
+
         public void Set(ReadOnlySpan<byte> key, byte[]? value, WriteFlags flags = WriteFlags.None)
         {
             if (value is null)

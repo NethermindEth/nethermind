@@ -130,6 +130,11 @@ public class ColumnsDb<T> : DbOnTheRocks, IColumnsDb<T> where T : struct, Enum
             _writeBatch.Dispose();
         }
 
+        public void Clear()
+        {
+            _writeBatch._writeBatch.Clear();
+        }
+
         public void Set(ReadOnlySpan<byte> key, byte[]? value, WriteFlags flags = WriteFlags.None)
         {
             _writeBatch._writeBatch.Set(key, value, _column._columnFamily, flags);

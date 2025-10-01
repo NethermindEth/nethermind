@@ -333,6 +333,12 @@ namespace Nethermind.Db.FullPruning
                 _clonedWriteBatch.Dispose();
             }
 
+            public void Clear()
+            {
+                _writeBatch.Clear();
+                _clonedWriteBatch.Clear();
+            }
+
             public void Set(ReadOnlySpan<byte> key, byte[]? value, WriteFlags flags = WriteFlags.None)
             {
                 _writeBatch.Set(key, value, flags);

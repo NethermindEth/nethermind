@@ -606,6 +606,11 @@ namespace Nethermind.Trie.Test.Pruning
                 {
                     throw new NotSupportedException("Merging is not supported by this implementation.");
                 }
+
+                public void Clear()
+                {
+                    throw new NotSupportedException("Clearing is not supported by this implementation.");
+                }
             }
         }
 

@@ -36,5 +36,10 @@ namespace Nethermind.Core
         {
             throw new NotSupportedException("Merging is not supported by this implementation.");
         }
+
+        public void Clear()
+        {
+            throw new NotSupportedException("Cancelling is not supported by this implementation.");
+        }
     }
 }

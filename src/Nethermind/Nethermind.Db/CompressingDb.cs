@@ -44,6 +44,8 @@ namespace Nethermind.Db
 
                 public void Dispose() => _wrapped.Dispose();
 
+                public void Clear() => _wrapped.Clear();
+
                 public void Set(ReadOnlySpan<byte> key, byte[]? value, WriteFlags flags = WriteFlags.None)
                     => _wrapped.Set(key, Compress(value), flags);
 

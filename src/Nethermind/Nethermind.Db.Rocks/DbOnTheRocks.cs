@@ -1274,6 +1274,13 @@ public partial class DbOnTheRocks : IDb, ITunableDb, IReadOnlyNativeKeyValueStor
             _reusableWriteBatch = batch;
         }
 
+        public void Clear()
+        {
+            ObjectDisposedException.ThrowIf(_dbOnTheRocks._isDisposed, _dbOnTheRocks);
+
+            _rocksBatch.Clear();
+        }
+
         public void Dispose()
         {
             ObjectDisposedException.ThrowIf(_dbOnTheRocks._isDisposed, _dbOnTheRocks);
