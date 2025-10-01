@@ -15,42 +15,35 @@ using System.Runtime;
 using System.Text.RegularExpressions;
 using System.Threading;
 using System.Threading.Tasks;
-#if !DEBUG
-using DotNetty.Common;
-#endif
 using Nethermind.Api;
 using Nethermind.Api.Extensions;
 using Nethermind.Config;
-using Nethermind.Consensus.AuRa;
-using Nethermind.Consensus.Clique;
-using Nethermind.Consensus.Ethash;
 using Nethermind.Core;
 using Nethermind.Core.Exceptions;
 using Nethermind.Db.Rocks;
-using Nethermind.Hive;
 using Nethermind.Init.Snapshot;
 using Nethermind.KeyStore.Config;
 using Nethermind.Logging;
 using Nethermind.Logging.NLog;
+using Nethermind.Network.Discovery;
 using Nethermind.Runner;
 using Nethermind.Runner.Ethereum;
 using Nethermind.Runner.Ethereum.Api;
 using Nethermind.Runner.Logging;
+using Nethermind.Runner.Monitoring;
 using Nethermind.Seq.Config;
 using Nethermind.Serialization.Json;
-using Nethermind.Specs.ChainSpecStyle;
-using Nethermind.UPnP.Plugin;
 using NLog;
 using NLog.Config;
 using ILogger = Nethermind.Logging.ILogger;
 using NullLogger = Nethermind.Logging.NullLogger;
+using DotNettyLoggerFactory = DotNetty.Common.Internal.Logging.InternalLoggerFactory;
+using DotNettyLeakDetector = DotNetty.Common.ResourceLeakDetector;
 
+DataFeed.StartTime = Environment.TickCount64;
 Console.Title = ProductInfo.Name;
 // Increase regex cache size as more added in log coloring matches
 Regex.CacheSize = 128;
-#if !DEBUG
-ResourceLeakDetector.Level = ResourceLeakDetector.DetectionLevel.Disabled;
-#endif
 BlocksConfig.SetDefaultExtraDataWithVersion();
 
 ManualResetEventSlim exit = new(true);
@@ -89,8 +82,9 @@ finally
 
 async Task<int> ConfigureAsync(string[] args)
 {
-    CommandLineConfiguration cli = ConfigureCli();
-    ParseResult parseResult = cli.Parse(args);
+    RootCommand rootCommand = CreateRootCommand();
+    ParseResult parseResult = rootCommand.Parse(args);
+
     // Suppress logs if run with `--help` or `--version`
     bool silent = parseResult.CommandResult.Children
         .Any(c => c is OptionResult { Option: HelpOption or VersionOption });
@@ -128,13 +122,17 @@ async Task<int> ConfigureAsync(string[] args)
 
     TypeDiscovery.Initialize(typeof(INethermindPlugin));
 
-    AddConfigurationOptions(cli.RootCommand);
+    AddConfigurationOptions(rootCommand);
 
-    cli.RootCommand.SetAction((result, token) => RunAsync(result, pluginLoader, token));
+    rootCommand.SetAction((result, token) => RunAsync(result, pluginLoader, token));
+
+    parseResult = rootCommand.Parse(args);
+    parseResult.InvocationConfiguration.EnableDefaultExceptionHandler = false;
+    parseResult.InvocationConfiguration.ProcessTerminationTimeout = Timeout.InfiniteTimeSpan;
 
     try
     {
-        return await cli.InvokeAsync(args);
+        return await parseResult.InvokeAsync();
     }
     finally
     {
@@ -144,7 +142,6 @@ async Task<int> ConfigureAsync(string[] args)
 
 async Task<int> RunAsync(ParseResult parseResult, PluginLoader pluginLoader, CancellationToken cancellationToken)
 {
-
     IConfigProvider configProvider = CreateConfigProvider(parseResult);
     IInitConfig initConfig = configProvider.GetConfig<IInitConfig>();
     IKeyStoreConfig keyStoreConfig = configProvider.GetConfig<IKeyStoreConfig>();
@@ -157,6 +154,10 @@ async Task<int> RunAsync(ParseResult parseResult, PluginLoader pluginLoader, Can
         initConfig, keyStoreConfig, snapshotConfig);
 
     NLogManager logManager = new(initConfig.LogFileName, initConfig.LogDirectory, initConfig.LogRules);
+    DotNettyLoggerFactory.DefaultFactory = new NethermindLoggerFactory(logManager, lowerLogLevel: true);
+#if !DEBUG
+    DotNettyLeakDetector.Level = DotNettyLeakDetector.DetectionLevel.Disabled;
+#endif
 
     logger = logManager.GetClassLogger();
 
@@ -244,7 +245,19 @@ void AddConfigurationOptions(Command command)
                 Option option = prop.PropertyType == typeof(bool)
                     ? CreateOption<bool>(prop.Name, configType)
                     : CreateOption<string>(prop.Name, configType);
-                option.Description = configItemAttribute?.Description;
+
+                string? description = configItemAttribute?.Description;
+
+                if (!string.IsNullOrEmpty(configItemAttribute?.DefaultValue))
+                {
+                    string defaultValue = $"Defaults to `{configItemAttribute.DefaultValue}`.";
+
+                    description = string.IsNullOrEmpty(description)
+                        ? defaultValue
+                        : $"{description} {defaultValue}";
+                }
+
+                option.Description = description;
                 option.HelpName = "value";
                 option.Hidden = categoryHidden || configItemAttribute?.HiddenFromDocs == true;
 
@@ -275,44 +288,6 @@ void CheckForDeprecatedOptions(ParseResult parseResult)
                 logger.Warn($"{token} option is deprecated. Use {option.Name} instead.");
         }
     }
-}
-
-CommandLineConfiguration ConfigureCli()
-{
-    RootCommand rootCommand =
-    [
-        BasicOptions.Configuration,
-        BasicOptions.ConfigurationDirectory,
-        BasicOptions.DatabasePath,
-        BasicOptions.DataDirectory,
-        BasicOptions.LoggerConfigurationSource,
-        BasicOptions.LogLevel,
-        BasicOptions.PluginsDirectory
-    ];
-
-    var versionOption = (VersionOption)rootCommand.Children.SingleOrDefault(c => c is VersionOption);
-
-    if (versionOption is not null)
-    {
-        versionOption.Action = new AsynchronousCommandLineAction(parseResult =>
-        {
-            parseResult.Configuration.Output.WriteLine($"""
-                Version:    {ProductInfo.Version}
-                Commit:     {ProductInfo.Commit}
-                Build date: {ProductInfo.BuildTimestamp:u}
-                Runtime:    {ProductInfo.Runtime}
-                Platform:   {ProductInfo.OS} {ProductInfo.OSArchitecture}
-                """);
-
-            return ExitCodes.Ok;
-        });
-    }
-
-    return new(rootCommand)
-    {
-        EnableDefaultExceptionHandler = false,
-        ProcessTerminationTimeout = Timeout.InfiniteTimeSpan
-    };
 }
 
 void ConfigureLogger(ParseResult parseResult)
@@ -365,9 +340,9 @@ IConfigProvider CreateConfigProvider(ParseResult parseResult)
     ConfigProvider configProvider = new();
     Dictionary<string, string> configArgs = [];
 
-    foreach (SymbolResult child in parseResult.RootCommandResult.Children)
+    foreach (SymbolResult child in parseResult.CommandResult.Children)
     {
-        if (child is OptionResult result)
+        if (child is OptionResult result && !result.Implicit)
         {
             var isBoolean = result.Option.GetType().GenericTypeArguments.SingleOrDefault() == typeof(bool);
             var value = isBoolean
@@ -439,6 +414,40 @@ IConfigProvider CreateConfigProvider(ParseResult parseResult)
         logger.Warn($"Invalid configuration settings:\n{ErrorMsg}");
 
     return configProvider;
+}
+
+RootCommand CreateRootCommand()
+{
+    RootCommand rootCommand =
+    [
+        BasicOptions.Configuration,
+        BasicOptions.ConfigurationDirectory,
+        BasicOptions.DatabasePath,
+        BasicOptions.DataDirectory,
+        BasicOptions.LoggerConfigurationSource,
+        BasicOptions.LogLevel,
+        BasicOptions.PluginsDirectory
+    ];
+
+    var versionOption = (VersionOption)rootCommand.Children.SingleOrDefault(c => c is VersionOption);
+
+    if (versionOption is not null)
+    {
+        versionOption.Action = new AsynchronousCommandLineAction(parseResult =>
+        {
+            parseResult.InvocationConfiguration.Output.WriteLine($"""
+                Version:    {ProductInfo.Version}
+                Commit:     {ProductInfo.Commit}
+                Build date: {ProductInfo.BuildTimestamp:u}
+                Runtime:    {ProductInfo.Runtime}
+                Platform:   {ProductInfo.OS} {ProductInfo.OSArchitecture}
+                """);
+
+            return ExitCodes.Ok;
+        });
+    }
+
+    return rootCommand;
 }
 
 ILogger GetCriticalLogger()

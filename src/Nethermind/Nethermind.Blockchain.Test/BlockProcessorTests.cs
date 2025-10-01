@@ -43,8 +43,7 @@ public class BlockProcessorTests
     [Test, MaxTime(Timeout.MaxTestTime)]
     public void Prepared_block_contains_author_field()
     {
-        IWorldStateManager worldStateManager = TestWorldStateFactory.CreateForTest();
-        IWorldState stateProvider = worldStateManager.GlobalWorldState;
+        IWorldState stateProvider = TestWorldStateFactory.CreateForTest();
         ITransactionProcessor transactionProcessor = Substitute.For<ITransactionProcessor>();
         BlockProcessor processor = new BlockProcessor(HoleskySpecProvider.Instance,
             TestBlockValidator.AlwaysValid,
@@ -78,8 +77,7 @@ public class BlockProcessorTests
     [Test, MaxTime(Timeout.MaxTestTime)]
     public void Recovers_state_on_cancel()
     {
-        IWorldStateManager worldStateManager = TestWorldStateFactory.CreateForTest();
-        IWorldState stateProvider = worldStateManager.GlobalWorldState;
+        IWorldState stateProvider = TestWorldStateFactory.CreateForTest();
         ITransactionProcessor transactionProcessor = Substitute.For<ITransactionProcessor>();
         BlockProcessor processor = new BlockProcessor(
             HoleskySpecProvider.Instance,
@@ -162,6 +160,8 @@ public class BlockProcessorTests
         BlockProcessor.BlockProductionTransactionPicker txPicker = new(specProvider, transactionWithNetworkForm.GetLength(true) / 1.KiB() - 1);
         BlockToProduce newBlock = new(Build.A.BlockHeader.WithExcessBlobGas(0).TestObject);
         WorldStateStab stateProvider = new();
+
+        using var _ = stateProvider.BeginScope(IWorldState.PreGenesis);
 
         Transaction? addedTransaction = null;
         txPicker.AddingTransaction += (s, e) => addedTransaction = e.Transaction;

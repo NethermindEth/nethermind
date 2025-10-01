@@ -80,7 +80,10 @@ public class ContractBasedValidatorTests
         _stateProvider.IsContract(_contractAddress).Returns(true);
 
         _readOnlyTxProcessorSource = Substitute.For<IReadOnlyTxProcessorSource>();
-        _readOnlyTxProcessorSource.Build(Arg.Any<BlockHeader>()).Returns(new ReadOnlyTxProcessingScope(_transactionProcessor, _stateProvider));
+        _readOnlyTxProcessorSource.Build(Arg.Any<BlockHeader>()).Returns(new ReadOnlyTxProcessingScope(
+            _transactionProcessor,
+            new Reactive.AnonymousDisposable(() => { }),
+            _stateProvider));
         _blockTree.Head.Returns(_block);
 
         _abiEncoder
@@ -186,13 +189,11 @@ public class ContractBasedValidatorTests
         _transactionProcessor.Received()
             .CallAndRestore(
                 Arg.Is<Transaction>(t => CheckTransaction(t, _getValidatorsData)),
-                Arg.Is<BlockHeader>(header => header.Equals(_parentHeader)),
                 Arg.Is<ITxTracer>(t => t is CallOutputTracer));
 
         // finalizeChange should be called
         _transactionProcessor.Received(finalizeChangeCalled ? 1 : 0)
             .Execute(Arg.Is<Transaction>(t => CheckTransaction(t, _finalizeChangeData)),
-                Arg.Is<BlockHeader>(header => header.Equals(block.Header)),
                 Arg.Is<ITxTracer>(t => t is CallOutputTracer));
 
         // initial validator should be true
@@ -605,7 +606,6 @@ public class ContractBasedValidatorTests
         // finalizeChange should be called or not based on test spec
         _transactionProcessor.Received(chain.ExpectedFinalizationCount)
             .Execute(Arg.Is<Transaction>(t => CheckTransaction(t, _finalizeChangeData)),
-                Arg.Is<BlockHeader>(header => header.Equals(_block.Header)),
                 Arg.Is<ITxTracer>(t => t is CallOutputTracer));
 
         _transactionProcessor.ClearReceivedCalls();
@@ -636,7 +636,6 @@ public class ContractBasedValidatorTests
 
         _transactionProcessor.When(x => x.CallAndRestore(
                 Arg.Is<Transaction>(t => CheckTransaction(t, _getValidatorsData)),
-                Arg.Any<BlockHeader>(),
                 Arg.Is<ITxTracer>(t => t is CallOutputTracer)))
             .Do(args =>
                 args.Arg<ITxTracer>().MarkAsSuccess(

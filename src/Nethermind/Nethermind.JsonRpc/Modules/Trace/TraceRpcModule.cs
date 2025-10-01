@@ -148,12 +148,18 @@ namespace Nethermind.JsonRpc.Modules.Trace
             }
 
             Block block = blockSearch.Object!;
-            if (!stateReader.HasStateForBlock(block.Header))
+            SearchResult<BlockHeader> parentSearch = blockFinder.SearchForHeader(new BlockParameter(block.Header.ParentHash));
+            if (parentSearch.IsError)
             {
-                return GetStateFailureResult<ParityTxTraceFromReplay>(block.Header);
+                return ResultWrapper<ParityTxTraceFromReplay>.Fail(parentSearch);
             }
 
-            IReadOnlyCollection<ParityLikeTxTrace>? txTrace = ExecuteBlock(block, new ParityLikeBlockTracer(txHash, GetParityTypes(traceTypes)));
+            if (!stateReader.HasStateForBlock(parentSearch.Object))
+            {
+                return GetStateFailureResult<ParityTxTraceFromReplay>(parentSearch.Object);
+            }
+
+            IReadOnlyCollection<ParityLikeTxTrace>? txTrace = ExecuteBlock(parentSearch.Object, block, new ParityLikeBlockTracer(txHash, GetParityTypes(traceTypes)));
             return ResultWrapper<ParityTxTraceFromReplay>.Success(new ParityTxTraceFromReplay(txTrace));
         }
 
@@ -169,14 +175,19 @@ namespace Nethermind.JsonRpc.Modules.Trace
             }
 
             Block block = blockSearch.Object!;
-
-            if (!stateReader.HasStateForBlock(block.Header))
+            SearchResult<BlockHeader> parentSearch = blockFinder.SearchForHeader(new BlockParameter(block.Header.ParentHash));
+            if (parentSearch.IsError)
             {
-                return GetStateFailureResult<IEnumerable<ParityTxTraceFromReplay>>(block.Header);
+                return ResultWrapper<IEnumerable<ParityTxTraceFromReplay>>.Fail(parentSearch);
+            }
+
+            if (!stateReader.HasStateForBlock(parentSearch.Object))
+            {
+                return GetStateFailureResult<IEnumerable<ParityTxTraceFromReplay>>(parentSearch.Object);
             }
 
             ParityTraceTypes traceTypes1 = GetParityTypes(traceTypes);
-            IReadOnlyCollection<ParityLikeTxTrace> txTraces = ExecuteBlock(block, new(traceTypes1));
+            IReadOnlyCollection<ParityLikeTxTrace> txTraces = ExecuteBlock(parentSearch.Object, block, new(traceTypes1));
 
             // ReSharper disable once CoVariantArrayConversion
             return ResultWrapper<IEnumerable<ParityTxTraceFromReplay>>.Success(txTraces.Select(static t => new ParityTxTraceFromReplay(t, true)));
@@ -205,7 +216,18 @@ namespace Nethermind.JsonRpc.Modules.Trace
                     return GetStateFailureResult<IEnumerable<ParityTxTraceFromStore>>(block.Header);
                 }
 
-                IReadOnlyCollection<ParityLikeTxTrace> txTracesFromOneBlock = ExecuteBlock(block!, new(ParityTraceTypes.Trace | ParityTraceTypes.Rewards));
+                SearchResult<BlockHeader> parentSearch = blockFinder.SearchForHeader(new BlockParameter(block.Header.ParentHash));
+                if (parentSearch.IsError)
+                {
+                    return ResultWrapper<IEnumerable<ParityTxTraceFromStore>>.Fail(parentSearch);
+                }
+
+                if (!stateReader.HasStateForBlock(parentSearch.Object))
+                {
+                    return GetStateFailureResult<IEnumerable<ParityTxTraceFromStore>>(parentSearch.Object);
+                }
+
+                IReadOnlyCollection<ParityLikeTxTrace> txTracesFromOneBlock = ExecuteBlock(parentSearch.Object, block!, new(ParityTraceTypes.Trace | ParityTraceTypes.Rewards));
                 txTraces.AddRange(txTracesFromOneBlock);
             }
 
@@ -229,8 +251,18 @@ namespace Nethermind.JsonRpc.Modules.Trace
             {
                 return GetStateFailureResult<IEnumerable<ParityTxTraceFromStore>>(block.Header);
             }
+            SearchResult<BlockHeader> parentSearch = blockFinder.SearchForHeader(new BlockParameter(block.Header.ParentHash));
+            if (parentSearch.IsError)
+            {
+                return ResultWrapper<IEnumerable<ParityTxTraceFromStore>>.Fail(parentSearch);
+            }
 
-            IReadOnlyCollection<ParityLikeTxTrace> txTraces = ExecuteBlock(block, new(ParityTraceTypes.Trace | ParityTraceTypes.Rewards), forkName: forkName);
+            if (!stateReader.HasStateForBlock(parentSearch.Object))
+            {
+                return GetStateFailureResult<IEnumerable<ParityTxTraceFromStore>>(parentSearch.Object);
+            }
+
+            IReadOnlyCollection<ParityLikeTxTrace> txTraces = ExecuteBlock(parentSearch.Object, block, new(ParityTraceTypes.Trace | ParityTraceTypes.Rewards), forkName: forkName);
             return ResultWrapper<IEnumerable<ParityTxTraceFromStore>>.Success(txTraces.SelectMany(ParityTxTraceFromStore.FromTxTrace));
         }
 
@@ -279,13 +311,18 @@ namespace Nethermind.JsonRpc.Modules.Trace
             }
 
             Block block = blockSearch.Object!;
-
-            if (!stateReader.HasStateForBlock(block.Header))
+            SearchResult<BlockHeader> parentSearch = blockFinder.SearchForHeader(new BlockParameter(block.Header.ParentHash));
+            if (parentSearch.IsError)
             {
-                return GetStateFailureResult<IEnumerable<ParityTxTraceFromStore>>(block.Header);
+                return ResultWrapper<IEnumerable<ParityTxTraceFromStore>>.Fail(parentSearch);
             }
 
-            IReadOnlyCollection<ParityLikeTxTrace> txTrace = ExecuteBlock(block, new(txHash, ParityTraceTypes.Trace), forkName: forkName);
+            if (!stateReader.HasStateForBlock(parentSearch.Object))
+            {
+                return GetStateFailureResult<IEnumerable<ParityTxTraceFromStore>>(parentSearch.Object);
+            }
+
+            IReadOnlyCollection<ParityLikeTxTrace> txTrace = ExecuteBlock(parentSearch.Object!, block, new(txHash, ParityTraceTypes.Trace), forkName: forkName);
             return ResultWrapper<IEnumerable<ParityTxTraceFromStore>>.Success(ParityTxTraceFromStore.FromTxTrace(txTrace));
         }
 
@@ -305,9 +342,9 @@ namespace Nethermind.JsonRpc.Modules.Trace
             return parityTracer.BuildResult();
         }
 
-        private IReadOnlyCollection<ParityLikeTxTrace> ExecuteBlock(Block block, ParityLikeBlockTracer tracer, string? forkName = null)
+        private IReadOnlyCollection<ParityLikeTxTrace> ExecuteBlock(BlockHeader baseBlock, Block block, ParityLikeBlockTracer tracer, forkName: forkName)
         {
-            using var env = tracerEnv.BuildAndOverride(block.Header);
+            using var env = tracerEnv.BuildAndOverride(baseBlock);
             ITracer tracer2 = env.Component;
 
             using CancellationTokenSource timeout = BuildTimeoutCancellationTokenSource();

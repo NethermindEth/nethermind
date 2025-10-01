@@ -8,6 +8,7 @@ using Nethermind.Blockchain.Synchronization;
 using Nethermind.Consensus;
 using Nethermind.Consensus.Scheduler;
 using Nethermind.Core;
+using Nethermind.Core.Crypto;
 using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.Network.Contract.P2P;
@@ -126,6 +127,14 @@ public class Eth69ProtocolHandler : Eth68ProtocolHandler, ISyncPeer
             );
         }
 
+        if (blockRangeUpdate.LatestBlockHash.IsZero)
+        {
+            Disconnect(
+                DisconnectReason.InvalidBlockRangeUpdate,
+                "BlockRangeUpdate with latest block hash as zero."
+            );
+        }
+
         _remoteHeadBlockHash = blockRangeUpdate.LatestBlockHash;
         HeadNumber = blockRangeUpdate.LatestBlock;
         HeadHash = blockRangeUpdate.LatestBlockHash;
@@ -158,7 +167,7 @@ public class Eth69ProtocolHandler : Eth68ProtocolHandler, ISyncPeer
         if (earliest.Number > latest.Number)
             throw new ArgumentException($"Earliest block ({earliest.Number}) greater than latest ({latest.Number}) in BlockRangeUpdate.");
 
-        if (latest.Hash is null)
+        if (latest.Hash is null || latest.Hash.IsZero)
             throw new ArgumentException($"Latest block ({latest.Number}) hash is not provided.");
 
         if (Logger.IsTrace)

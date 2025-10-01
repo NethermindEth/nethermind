@@ -38,7 +38,7 @@ public class EvmPooledMemoryTests : EvmMemoryTestsBase
     [TestCase(int.MaxValue, int.MaxValue / 32 + 1)]
     public void Div32Ceiling(int input, int expectedResult)
     {
-        long result = EvmInstructions.Div32Ceiling((ulong)input);
+        long result = EvmCalculations.Div32Ceiling((ulong)input);
         TestContext.Out.WriteLine($"Memory cost (gas): {result}");
         Assert.That(result, Is.EqualTo(expectedResult));
     }
@@ -148,21 +148,23 @@ public class EvmPooledMemoryTests : EvmMemoryTestsBase
         long blocknr = 12965000;
         long gas = 34218;
         ulong ts = 123456;
-        IWorldStateManager worldStateManager = TestWorldStateFactory.CreateForTest();
-        IWorldState stateProvider = worldStateManager.GlobalWorldState;
+        IWorldState stateProvider = TestWorldStateFactory.CreateForTest();
         ISpecProvider specProvider = new TestSpecProvider(London.Instance);
-        EthereumCodeInfoRepository codeInfoRepository = new();
+        EthereumCodeInfoRepository codeInfoRepository = new(stateProvider);
         VirtualMachine virtualMachine = new(
             new TestBlockhashProvider(specProvider),
-                specProvider,
-                LimboLogs.Instance);
+            specProvider,
+            LimboLogs.Instance);
         ITransactionProcessor transactionProcessor = new TransactionProcessor(
-                specProvider,
-                stateProvider,
-                virtualMachine,
-                codeInfoRepository,
-                LimboLogs.Instance);
+            BlobBaseFeeCalculator.Instance,
+            specProvider,
+            stateProvider,
+            virtualMachine,
+            codeInfoRepository,
+            LimboLogs.Instance);
 
+        Hash256 stateRoot = null;
+        using var _ = stateProvider.BeginScope(IWorldState.PreGenesis);
         stateProvider.CreateAccount(to, 123);
         stateProvider.InsertCode(to, input, specProvider.GenesisSpec);
 
@@ -170,6 +172,7 @@ public class EvmPooledMemoryTests : EvmMemoryTestsBase
         stateProvider.Commit(specProvider.GenesisSpec);
 
         stateProvider.CommitTree(0);
+        stateRoot = stateProvider.StateRoot;
 
         Transaction tx = Build.A.Transaction.
             WithData(input).
@@ -186,6 +189,7 @@ public class EvmPooledMemoryTests : EvmMemoryTestsBase
             WithTransactions(tx).
             WithGasLimit(30000000).
             WithDifficulty(0).
+            WithStateRoot(stateRoot).
             TestObject;
         MyTracer tracer = new();
         transactionProcessor.Execute(
@@ -368,7 +372,7 @@ public class MyTracer : ITxTracer, IDisposable
         throw new NotImplementedException();
     }
 
-    public void ReportAccess(IReadOnlyCollection<Address> accessedAddresses, IReadOnlyCollection<StorageCell> accessedStorageCells)
+    public void ReportAccess(IEnumerable<Address> accessedAddresses, IEnumerable<StorageCell> accessedStorageCells)
     {
         throw new NotImplementedException();
     }

@@ -23,6 +23,7 @@ namespace Nethermind.Consensus.Processing
         bool IsProcessingBlocks(ulong? maxProcessingInterval);
 
         event EventHandler<InvalidBlockEventArgs> InvalidBlock;
+        event EventHandler<BlockStatistics> NewProcessingStatistics;
 
         public class InvalidBlockEventArgs : EventArgs
         {

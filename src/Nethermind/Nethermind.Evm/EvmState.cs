@@ -84,7 +84,7 @@ public sealed class EvmState : IDisposable // TODO: rename to CallState
     public long Refund { get; set; }
     public int DataStackHead;
     public int ReturnStackHead;
-    internal ExecutionType ExecutionType { get; private set; } // TODO: move to CallEnv
+    public ExecutionType ExecutionType { get; private set; } // TODO: move to CallEnv
     public int ProgramCounter { get; set; }
     public int FunctionIndex { get; set; }
     public bool IsTopLevel { get; private set; } // TODO: move to CallEnv
@@ -141,7 +141,8 @@ public sealed class EvmState : IDisposable // TODO: rename to CallState
         bool isCreateOnPreExistingAccount,
         in ExecutionEnvironment env,
         in StackAccessTracker stateForAccessLists,
-        in Snapshot snapshot)
+        in Snapshot snapshot,
+        bool isTopLevel = false)
     {
         EvmState state = Rent();
         state.Initialize(
@@ -149,7 +150,7 @@ public sealed class EvmState : IDisposable // TODO: rename to CallState
             outputDestination,
             outputLength,
             executionType,
-            isTopLevel: false,
+            isTopLevel: isTopLevel,
             isStatic: isStatic,
             isCreateOnPreExistingAccount: isCreateOnPreExistingAccount,
             env: env,
@@ -222,7 +223,7 @@ public sealed class EvmState : IDisposable // TODO: rename to CallState
     };
 
     public Address To => Env.CodeSource ?? Env.ExecutingAccount;
-    internal bool IsPrecompile => Env.CodeInfo?.IsPrecompile ?? false;
+    public bool IsPrecompile => Env.CodeInfo?.IsPrecompile ?? false;
 
     public ref readonly StackAccessTracker AccessTracker => ref _accessTracker;
     public ref readonly ExecutionEnvironment Env => ref _env;
@@ -269,7 +270,7 @@ public sealed class EvmState : IDisposable // TODO: rename to CallState
     {
         if (!_isDisposed)
         {
-            throw new InvalidOperationException($"{nameof(EvmState)} hasn't been disposed. Created {_creationStackTrace}");
+            Console.Error.WriteLine($"Warning: {nameof(EvmState)} was not disposed. Created at: {_creationStackTrace}");
         }
     }
 #endif

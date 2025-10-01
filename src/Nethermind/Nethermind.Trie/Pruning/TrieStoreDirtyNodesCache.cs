@@ -26,8 +26,8 @@ internal class TrieStoreDirtyNodesCache
     private long _totalDirtyMemory = 0;
     private readonly ILogger _logger;
     private readonly bool _storeByHash;
-    private readonly ConcurrentDictionary<Key, TrieNode> _byKeyObjectCache;
-    private readonly ConcurrentDictionary<Hash256AsKey, TrieNode> _byHashObjectCache;
+    private readonly ConcurrentDictionary<Key, NodeRecord> _byKeyObjectCache;
+    private readonly ConcurrentDictionary<Hash256AsKey, NodeRecord> _byHashObjectCache;
 
     public long Count => _count;
     public long DirtyCount => _dirtyCount;
@@ -63,17 +63,17 @@ internal class TrieStoreDirtyNodesCache
 
     public TrieNode FindCachedOrUnknown(in Key key)
     {
-        TrieNode trieNode = GetOrAdd(in key, this);
-        if (trieNode.NodeType != NodeType.Unknown)
+        NodeRecord nodeRecord = GetOrAdd(in key, this);
+        if (nodeRecord.Node.NodeType != NodeType.Unknown)
         {
             Metrics.LoadedFromCacheNodesCount++;
         }
         else
         {
-            if (_logger.IsTrace) Trace(trieNode);
+            if (_logger.IsTrace) Trace(nodeRecord.Node);
         }
 
-        return trieNode;
+        return nodeRecord.Node;
 
         [MethodImpl(MethodImplOptions.NoInlining)]
         void Trace(TrieNode trieNode)
@@ -122,41 +122,95 @@ internal class TrieStoreDirtyNodesCache
         return _byKeyObjectCache.ContainsKey(key);
     }
 
-    public IEnumerable<KeyValuePair<Key, TrieNode>> AllNodes
+    public readonly struct NodeRecord(TrieNode node, long lastCommit)
+    {
+        public readonly TrieNode Node = node;
+        public readonly long LastCommit = lastCommit;
+    }
+
+    public IEnumerable<KeyValuePair<Key, NodeRecord>> AllNodes
     {
         get
         {
             if (_storeByHash)
             {
                 return _byHashObjectCache.Select(
-                    static pair => new KeyValuePair<Key, TrieNode>(new Key(null, TreePath.Empty, pair.Key.Value), pair.Value));
+                    static pair => new KeyValuePair<Key, NodeRecord>(new Key(null, TreePath.Empty, pair.Key.Value), pair.Value));
             }
 
             return _byKeyObjectCache;
         }
     }
 
-    public bool TryGetValue(in Key key, out TrieNode node) => _storeByHash
-        ? _byHashObjectCache.TryGetValue(key.Keccak, out node)
-        : _byKeyObjectCache.TryGetValue(key, out node);
+    public bool TryGetValue(in Key key, out TrieNode node)
+    {
+        NodeRecord nodeRecord;
+        bool ok = _storeByHash
+            ? _byHashObjectCache.TryGetValue(key.Keccak, out nodeRecord)
+            : _byKeyObjectCache.TryGetValue(key, out nodeRecord);
 
-    private TrieNode GetOrAdd(in Key key, TrieStoreDirtyNodesCache cache) => _storeByHash
+        if (ok)
+        {
+            node = nodeRecord.Node;
+            return true;
+        }
+
+        node = null;
+        return false;
+    }
+
+    private NodeRecord GetOrAdd(in Key key, TrieStoreDirtyNodesCache cache) => _storeByHash
         ? _byHashObjectCache.GetOrAdd(key.Keccak, static (keccak, cache) =>
         {
             TrieNode trieNode = new(NodeType.Unknown, keccak);
             cache.IncrementMemory(trieNode);
-            return trieNode;
+            return new NodeRecord(trieNode, -1);
         }, cache)
         : _byKeyObjectCache.GetOrAdd(key, static (key, cache) =>
         {
             TrieNode trieNode = new(NodeType.Unknown, key.Keccak);
             cache.IncrementMemory(trieNode);
-            return trieNode;
+            return new NodeRecord(trieNode, -1);
         }, cache);
 
-    public TrieNode GetOrAdd(in Key key, TrieNode node) => _storeByHash
-        ? _byHashObjectCache.GetOrAdd(key.Keccak, node)
-        : _byKeyObjectCache.GetOrAdd(key, node);
+    public NodeRecord GetOrAdd(in Key key, NodeRecord record)
+    {
+        return _storeByHash
+            ? _byHashObjectCache.AddOrUpdate(key.Keccak, static (key, arg) => arg,
+                RecordReplacementLogic, record)
+            : _byKeyObjectCache.AddOrUpdate(key, static (key, arg) => arg,
+                RecordReplacementLogic, record);
+    }
+
+    private static NodeRecord RecordReplacementLogic(Key key, NodeRecord current, NodeRecord arg)
+    {
+        return RecordReplacementLogic(null, current, arg);
+    }
+
+    private static NodeRecord RecordReplacementLogic(Hash256AsKey keyHash, NodeRecord current, NodeRecord arg)
+    {
+        long lastCommit = current.LastCommit;
+        if (arg.LastCommit > lastCommit)
+        {
+            lastCommit = arg.LastCommit;
+        }
+
+        TrieNode node = current.Node;
+        if (node.IsPersisted && !arg.Node.IsPersisted)
+        {
+            // This code path happens around 0.8% of the time at 4GB of dirty cache and 16GB total cache.
+            //
+            // If the cache node is persisted, we replace it completely.
+            // This is because although very rare, it is possible that this node is persisted, but its child is not
+            // persisted. This can happen when a path is not replaced with another node, but its child is and hence,
+            // the child is removed, but the parent is not and remain in the cache as persisted node.
+            // Additionally, it may hold a reference to its child which is marked as persisted eventhough it was
+            // deleted from the cached map.
+            node = arg.Node;
+        }
+
+        return new NodeRecord(node, lastCommit);
+    }
 
     public void IncrementMemory(TrieNode node)
     {
@@ -188,34 +242,17 @@ internal class TrieStoreDirtyNodesCache
     {
         if (_storeByHash)
         {
-            if (_byHashObjectCache.Remove(key.Keccak, out TrieNode node))
+            if (_byHashObjectCache.Remove(key.Keccak, out NodeRecord nodeRecord))
             {
-                DecrementMemory(node);
+                DecrementMemory(nodeRecord.Node);
             }
 
             return;
         }
-        if (_byKeyObjectCache.Remove<Key, TrieNode>(key, out TrieNode node2))
+        if (_byKeyObjectCache.Remove(key, out NodeRecord nodeRecord2))
         {
-            DecrementMemory(node2);
+            DecrementMemory(nodeRecord2.Node);
         }
-    }
-
-    private MapLock AcquireMapLock()
-    {
-        if (_storeByHash)
-        {
-            return new MapLock()
-            {
-                _storeByHash = _storeByHash,
-                _byHashLock = _byHashObjectCache.AcquireLock()
-            };
-        }
-        return new MapLock()
-        {
-            _storeByHash = _storeByHash,
-            _byKeyLock = _byKeyObjectCache.AcquireLock<Key, TrieNode>()
-        };
     }
 
     /// <summary>
@@ -234,10 +271,7 @@ internal class TrieStoreDirtyNodesCache
             ? new ConcurrentNodeWriteBatcher(nodeStorage, 256) : null;
 
         long totalMemory, dirtyMemory, totalNode, dirtyNode;
-        using (AcquireMapLock())
-        {
-            (totalMemory, dirtyMemory, totalNode, dirtyNode) = PruneCacheUnlocked(prunePersisted, forceRemovePersistedNodes, persistedHashes, writeBatcher);
-        }
+        (totalMemory, dirtyMemory, totalNode, dirtyNode) = PruneCacheUnlocked(prunePersisted, forceRemovePersistedNodes, persistedHashes, writeBatcher);
 
         writeBatcher?.Dispose();
 
@@ -257,8 +291,10 @@ internal class TrieStoreDirtyNodesCache
         long dirtyMemory = 0;
         long totalNode = 0;
         long dirtyNode = 0;
-        foreach ((Key key, TrieNode node) in AllNodes)
+        foreach ((Key key, NodeRecord nodeRecord) in AllNodes)
         {
+            var node = nodeRecord.Node;
+            var lastCommit = nodeRecord.LastCommit;
             if (node.IsPersisted)
             {
                 // Remove persisted node based on `persistedHashes` if available.
@@ -267,7 +303,7 @@ internal class TrieStoreDirtyNodesCache
                     HashAndTinyPath tinyKey = new(key.Address, new TinyTreePath(key.Path));
                     if (persistedHashes.TryGetValue(tinyKey, out Hash256? lastPersistedHash))
                     {
-                        if (CanDelete(key, lastPersistedHash))
+                        if (CanDelete(key, lastCommit, lastPersistedHash))
                         {
                             Delete(key, writeBatcher);
                             continue;
@@ -279,7 +315,7 @@ internal class TrieStoreDirtyNodesCache
                 {
                     // If its persisted and has last seen meaning it was recommitted,
                     // we keep it to prevent key removal from removing it from DB.
-                    if (node.LastSeen == -1 || forceRemovePersistedNodes)
+                    if (lastCommit == -1 || forceRemovePersistedNodes)
                     {
                         if (_logger.IsTrace) LogPersistedNodeRemoval(node);
 
@@ -288,14 +324,14 @@ internal class TrieStoreDirtyNodesCache
                         continue;
                     }
 
-                    if (_trieStore.IsNoLongerNeeded(node))
+                    if (_trieStore.IsNoLongerNeeded(lastCommit))
                     {
                         RemoveNodeFromCache(key, node, ref Metrics.PrunedPersistedNodesCount);
                         continue;
                     }
                 }
             }
-            else if (_trieStore.IsNoLongerNeeded(node))
+            else if (_trieStore.IsNoLongerNeeded(lastCommit))
             {
                 RemoveNodeFromCache(key, node, ref Metrics.DeepPrunedPersistedNodesCount);
                 continue;
@@ -319,7 +355,7 @@ internal class TrieStoreDirtyNodesCache
         {
             Hash256 keccak;
             TreePath path2 = key.Path;
-            keccak = node.GenerateKey(_trieStore.GetTrieStore(key.Address), ref path2, isRoot: true);
+            keccak = node.GenerateKey(_trieStore.GetTrieStore(key.Address), ref path2);
             if (keccak != key.Keccak)
             {
                 ThrowPersistedNodeDoesNotMatch(key, node, keccak);
@@ -362,7 +398,7 @@ internal class TrieStoreDirtyNodesCache
         writeBatch?.Set(key.Address, key.Path, key.Keccak, default, WriteFlags.DisableWAL);
     }
 
-    bool CanDelete(in Key key, Hash256? currentlyPersistingKeccak)
+    bool CanDelete(in Key key, long lastCommit, Hash256? currentlyPersistingKeccak)
     {
         // Multiple current hash that we don't keep track for simplicity. Just ignore this case.
         if (currentlyPersistingKeccak is null) return false;
@@ -371,8 +407,7 @@ internal class TrieStoreDirtyNodesCache
         if (currentlyPersistingKeccak == key.Keccak) return false;
 
         // We have it in cache and it is still needed.
-        if (TryGetValue(in key, out TrieNode node) &&
-            !_trieStore.IsNoLongerNeeded(node)) return false;
+        if (!_trieStore.IsNoLongerNeeded(lastCommit)) return false;
 
         return true;
     }
@@ -395,16 +430,13 @@ internal class TrieStoreDirtyNodesCache
             }
         }
 
-        using (AcquireMapLock())
+        foreach (KeyValuePair<Key, NodeRecord> kv in AllNodes)
         {
-            foreach (KeyValuePair<Key, TrieNode> kv in AllNodes)
-            {
-                if (cancellationToken.IsCancellationRequested) return persistedCount;
-                Key key = kv.Key;
-                TreePath path = key.Path;
-                Hash256? address = key.Address;
-                kv.Value.CallRecursively(PersistNode, address, ref path, _trieStore.GetTrieStore(address), false, _logger, resolveStorageRoot: false);
-            }
+            if (cancellationToken.IsCancellationRequested) return persistedCount;
+            Key key = kv.Key;
+            TreePath path = key.Path;
+            Hash256? address = key.Address;
+            kv.Value.Node.CallRecursively(PersistNode, address, ref path, _trieStore.GetTrieStore(address), false, _logger, resolveStorageRoot: false);
         }
 
         return persistedCount;
@@ -415,7 +447,7 @@ internal class TrieStoreDirtyNodesCache
         if (_logger.IsTrace)
         {
             _logger.Trace($"Trie node dirty cache ({Count})");
-            foreach (KeyValuePair<Key, TrieNode> keyValuePair in AllNodes)
+            foreach (KeyValuePair<Key, NodeRecord> keyValuePair in AllNodes)
             {
                 _logger.Trace($"  {keyValuePair.Value}");
             }
@@ -425,9 +457,8 @@ internal class TrieStoreDirtyNodesCache
     public void Clear()
     {
         _byHashObjectCache.NoResizeClear();
-        _byKeyObjectCache.NoResizeClear<Key, TrieNode>();
+        _byKeyObjectCache.NoResizeClear();
         Interlocked.Exchange(ref _count, 0);
-        _trieStore.MemoryUsedByDirtyCache = 0;
     }
 
     internal readonly struct Key : IEquatable<Key>
@@ -469,22 +500,9 @@ internal class TrieStoreDirtyNodesCache
         }
     }
 
-    internal ref struct MapLock
+    public void CopyTo(TrieStoreDirtyNodesCache otherCache)
     {
-        public bool _storeByHash;
-        public ConcurrentDictionaryLock<Hash256AsKey, TrieNode>.Lock _byHashLock;
-        public ConcurrentDictionaryLock<Key, TrieNode>.Lock _byKeyLock;
-
-        public readonly void Dispose()
-        {
-            if (_storeByHash)
-            {
-                _byHashLock.Dispose();
-            }
-            else
-            {
-                _byKeyLock.Dispose();
-            }
-        }
+        foreach (var kv in AllNodes) otherCache.GetOrAdd(kv.Key, kv.Value);
+        Clear();
     }
 }

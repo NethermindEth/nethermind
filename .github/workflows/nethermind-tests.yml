@@ -63,6 +63,7 @@ jobs:
           - Nethermind.Facade.Test
           - Nethermind.Flashbots.Test
           - Nethermind.HealthChecks.Test
+          - Nethermind.History.Test
           - Nethermind.Hive.Test
           - Nethermind.JsonRpc.Test
           - Nethermind.JsonRpc.TraceStore.Test
@@ -90,13 +91,14 @@ jobs:
           - Nethermind.Trie.Test
           - Nethermind.TxPool.Test
           - Nethermind.Wallet.Test
+          - Nethermind.Xdc.Test
     steps:
     - name: Check out repository
-      uses: actions/checkout@v4
+      uses: actions/checkout@v5
       with:
         submodules: ${{ startsWith(matrix.project, 'Ethereum.') && 'recursive' || 'false' }}
     - name: Set up .NET
-      uses: actions/setup-dotnet@v4
+      uses: actions/setup-dotnet@v5
     - name: ${{ matrix.project }}
       id: test
       run: |

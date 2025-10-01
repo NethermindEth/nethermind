@@ -53,6 +53,8 @@ public class PreCachedTrieStore : ITrieStore
 
     public bool HasRoot(Hash256 stateRoot) => _inner.HasRoot(stateRoot);
 
+    public IDisposable BeginScope(BlockHeader? baseBlock) => _inner.BeginScope(baseBlock);
+
     public IScopedTrieStore GetTrieStore(Hash256? address) => new ScopedTrieStore(this, address);
 
     public TrieNode FindCachedOrUnknown(Hash256? address, in TreePath path, Hash256 hash) => _inner.FindCachedOrUnknown(address, in path, hash);

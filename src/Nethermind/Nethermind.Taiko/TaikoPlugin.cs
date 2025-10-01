@@ -16,6 +16,7 @@ using Nethermind.Consensus.Producers;
 using Nethermind.Consensus.Validators;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
+using Nethermind.Evm.Precompiles;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.JsonRpc.Client;
 using Nethermind.JsonRpc.Modules;
@@ -59,10 +60,32 @@ public class TaikoPlugin(ChainSpec chainSpec) : IConsensusPlugin
 
         _api.BlockPreprocessor.AddFirst(new MergeProcessingRecoveryStep(_api.Context.Resolve<IPoSSwitcher>()));
 
+        InitializeL1SloadIfEnabled();
+
         return Task.CompletedTask;
     }
 
-    public ValueTask DisposeAsync() => ValueTask.CompletedTask;
+    private void InitializeL1SloadIfEnabled()
+    {
+        ArgumentNullException.ThrowIfNull(_api?.SpecProvider);
+
+        var taikoSpec = (TaikoReleaseSpec)_api.SpecProvider.GetFinalSpec();
+
+        if (!taikoSpec.IsRip7728Enabled)
+            return;
+
+        ISurgeConfig surgeConfig = _api.Context.Resolve<ISurgeConfig>();
+
+        if (string.IsNullOrEmpty(surgeConfig.L1EthApiEndpoint))
+            throw new ArgumentException($"{nameof(surgeConfig.L1EthApiEndpoint)} must be provided in the Surge configuration to use L1SLOAD precompile");
+
+        var storageProvider = new JsonRpcL1StorageProvider(
+            surgeConfig.L1EthApiEndpoint,
+            _api.Context.Resolve<IJsonSerializer>(),
+            _api.Context.Resolve<ILogManager>());
+
+        L1SloadPrecompile.L1StorageProvider = storageProvider;
+    }
 
     public bool MustInitialize => true;
 
@@ -124,6 +147,7 @@ public class TaikoModule : Module
 
             // Blok processing
             .AddSingleton<IBlockValidationModule, TaikoBlockValidationModule>()
+            .AddSingleton<IMainProcessingModule, TaikoMainBlockProcessingModule>()
             .AddScoped<ITransactionProcessor, TaikoTransactionProcessor>()
             .AddScoped<IBlockProducerEnvFactory, TaikoBlockProductionEnvFactory>()
 
@@ -203,6 +227,14 @@ public class TaikoModule : Module
         protected override void Load(ContainerBuilder builder)
         {
             builder.AddScoped<IBlockProcessor.IBlockTransactionsExecutor, TaikoBlockValidationTransactionExecutor>();
+        }
+    }
+
+    private class TaikoMainBlockProcessingModule : Module, IMainProcessingModule
+    {
+        protected override void Load(ContainerBuilder builder)
+        {
+            builder.AddScoped<IBlockProcessor.IBlockTransactionsExecutor, BlockInvalidTxExecutor>();
         }
     }
 

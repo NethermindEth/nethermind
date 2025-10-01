@@ -4,10 +4,10 @@
 using System;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Find;
-using Nethermind.Consensus.Messages;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
+using Nethermind.Core.Messages;
 using Nethermind.Core.Specs;
 using Nethermind.Crypto;
 using Nethermind.Evm;
@@ -20,7 +20,7 @@ namespace Nethermind.Consensus.Validators
     {
         private static readonly byte[] DaoExtraData = Bytes.FromHexString("0x64616f2d686172642d666f726b");
 
-        private readonly ISealValidator _sealValidator;
+        protected readonly ISealValidator _sealValidator;
         protected readonly ISpecProvider _specProvider;
         private readonly long? _daoBlockNumber;
         protected readonly ILogger _logger;
@@ -324,24 +324,6 @@ namespace Nethermind.Consensus.Validators
 
             return result;
         }
-
-        /// <summary>
-        /// Validates all the header elements (usually in relation to parent). Difficulty calculation is validated in <see cref="ISealValidator"/>
-        /// </summary>
-        /// <param name="header">Block header to validate</param>
-        /// <param name="isUncle"><value>True</value> if the <paramref name="header"/> is an uncle, otherwise <value>False</value></param>
-        /// <returns><value>True</value> if <paramref name="header"/> is valid, otherwise <value>False</value></returns>
-        public virtual bool Validate(BlockHeader header, bool isUncle = false) => Validate(header, isUncle, out _);
-
-        /// <summary>
-        /// Validates all the header elements (usually in relation to parent). Difficulty calculation is validated in <see cref="ISealValidator"/>
-        /// </summary>
-        /// <param name="header">Block header to validate</param>
-        /// <param name="isUncle"><value>True</value> if the <paramref name="header"/> is an uncle, otherwise <value>False</value></param>
-        /// <param name="error">Detailed error message if validation fails, otherwise <value>False</value></param>
-        /// <returns><value>True</value> if <paramref name="header"/> is valid, otherwise <value>False</value></returns>
-        public virtual bool Validate(BlockHeader header, bool isUncle, out string? error) =>
-            Validate(header, _blockTree.FindParentHeader(header, BlockTreeLookupOptions.TotalDifficultyNotNeeded), isUncle, out error);
 
         private bool ValidateGenesis(BlockHeader header) =>
             header.GasUsed < header.GasLimit &&

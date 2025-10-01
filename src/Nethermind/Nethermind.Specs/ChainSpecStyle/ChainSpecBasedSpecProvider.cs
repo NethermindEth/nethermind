@@ -187,6 +187,7 @@ namespace Nethermind.Specs.ChainSpecStyle
             releaseSpec.IsTimeAdjustmentPostOlympic = true; // TODO: this is Duration, review
             releaseSpec.MaximumExtraDataSize = chainSpec.Parameters.MaximumExtraDataSize;
             releaseSpec.MinGasLimit = chainSpec.Parameters.MinGasLimit;
+            releaseSpec.MinHistoryRetentionEpochs = chainSpec.Parameters.MinHistoryRetentionEpochs;
             releaseSpec.GasLimitBoundDivisor = chainSpec.Parameters.GasLimitBoundDivisor;
             releaseSpec.IsEip170Enabled = (chainSpec.Parameters.MaxCodeSizeTransition ?? long.MaxValue) <= releaseStartBlock ||
                                           (chainSpec.Parameters.MaxCodeSizeTransitionTimestamp ?? ulong.MaxValue) <= releaseStartTimestamp;
@@ -289,6 +290,8 @@ namespace Nethermind.Specs.ChainSpecStyle
             releaseSpec.Eip7934MaxRlpBlockSize = chainSpec.Parameters.Eip7934MaxRlpBlockSize;
 
             releaseSpec.IsEip7939Enabled = (chainSpec.Parameters.Eip7939TransitionTimestamp ?? ulong.MaxValue) <= releaseStartTimestamp;
+
+            releaseSpec.IsRip7728Enabled = (chainSpec.Parameters.Rip7728TransitionTimestamp ?? ulong.MaxValue) <= releaseStartTimestamp;
 
             foreach (IChainSpecEngineParameters item in _chainSpec.EngineChainSpecParametersProvider
                          .AllChainSpecParameters)

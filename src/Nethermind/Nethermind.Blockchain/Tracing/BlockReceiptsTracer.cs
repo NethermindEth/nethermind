@@ -45,8 +45,7 @@ public class BlockReceiptsTracer : IBlockTracer, ITxTracer, IJournal<int>, ITxTr
 
         if (_currentTxTracer.IsTracingReceipt)
         {
-            // TODO: is no stateRoot a bug?
-            _currentTxTracer.MarkAsSuccess(recipient, gasSpent, output, logs);
+            _currentTxTracer.MarkAsSuccess(recipient, gasSpent, output, logs, stateRoot);
         }
     }
 
@@ -62,8 +61,7 @@ public class BlockReceiptsTracer : IBlockTracer, ITxTracer, IJournal<int>, ITxTr
 
         if (_currentTxTracer.IsTracingReceipt)
         {
-            // TODO: is no stateRoot a bug?
-            _currentTxTracer.MarkAsFailed(recipient, gasSpent, output, error, null);
+            _currentTxTracer.MarkAsFailed(recipient, gasSpent, output, error, stateRoot);
         }
     }
 
@@ -174,7 +172,7 @@ public class BlockReceiptsTracer : IBlockTracer, ITxTracer, IJournal<int>, ITxTr
     public void ReportExtraGasPressure(long extraGasPressure) =>
         _currentTxTracer.ReportExtraGasPressure(extraGasPressure);
 
-    public void ReportAccess(IReadOnlyCollection<Address> accessedAddresses, IReadOnlyCollection<StorageCell> accessedStorageCells) =>
+    public void ReportAccess(IEnumerable<Address> accessedAddresses, IEnumerable<StorageCell> accessedStorageCells) =>
         _currentTxTracer.ReportAccess(accessedAddresses, accessedStorageCells);
 
     public void SetOperationStack(TraceStack stack) =>
@@ -226,11 +224,6 @@ public class BlockReceiptsTracer : IBlockTracer, ITxTracer, IJournal<int>, ITxTr
 
     public void StartNewBlockTrace(Block block)
     {
-        if (_otherTracer is null)
-        {
-            throw new InvalidOperationException("other tracer not set in receipts tracer");
-        }
-
         Block = block;
         _currentIndex = 0;
         _txReceipts.Clear();
@@ -264,10 +257,12 @@ public class BlockReceiptsTracer : IBlockTracer, ITxTracer, IJournal<int>, ITxTr
                 blockBloom.Accumulate(receipt.Bloom!);
             }
         }
+        _otherTracer = NullBlockTracer.Instance;
     }
 
     public void SetOtherTracer(IBlockTracer blockTracer)
     {
+        ArgumentNullException.ThrowIfNull(blockTracer);
         _otherTracer = blockTracer;
     }
 

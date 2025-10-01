@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Threading;
-using Nethermind.Core;
 using Nethermind.Core.Specs;
 
 namespace Nethermind.Specs.Forks;
@@ -22,8 +21,6 @@ public class Osaka : Prague
         IsEip7934Enabled = true;
         IsEip7939Enabled = true;
         IsEip7951Enabled = true;
-        IsEip7907Enabled = true;
-        Released = false;
     }
 
     public new static IReleaseSpec Instance => LazyInitializer.EnsureInitialized(ref _instance, static () => new Osaka());

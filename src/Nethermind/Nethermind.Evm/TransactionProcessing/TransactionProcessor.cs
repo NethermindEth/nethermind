@@ -23,12 +23,22 @@ using static Nethermind.Evm.EvmObjectFormat.EofValidator;
 namespace Nethermind.Evm.TransactionProcessing
 {
     public sealed class TransactionProcessor(
+        ITransactionProcessor.IBlobBaseFeeCalculator blobBaseFeeCalculator,
         ISpecProvider? specProvider,
         IWorldState? worldState,
         IVirtualMachine? virtualMachine,
         ICodeInfoRepository? codeInfoRepository,
         ILogManager? logManager)
-        : TransactionProcessorBase(specProvider, worldState, virtualMachine, codeInfoRepository, logManager);
+        : TransactionProcessorBase(blobBaseFeeCalculator, specProvider, worldState, virtualMachine, codeInfoRepository, logManager);
+
+    public class BlobBaseFeeCalculator : ITransactionProcessor.IBlobBaseFeeCalculator
+    {
+        public static BlobBaseFeeCalculator Instance { get; } = new BlobBaseFeeCalculator();
+
+        public bool TryCalculateBlobBaseFee(BlockHeader header, Transaction transaction,
+            UInt256 blobGasPriceUpdateFraction, out UInt256 blobBaseFee) =>
+            BlobGasCalculator.TryCalculateBlobBaseFee(header, transaction, blobGasPriceUpdateFraction, out blobBaseFee);
+    }
 
     public abstract class TransactionProcessorBase : ITransactionProcessor
     {
@@ -39,6 +49,7 @@ namespace Nethermind.Evm.TransactionProcessing
         protected IVirtualMachine VirtualMachine { get; }
         private readonly ICodeInfoRepository _codeInfoRepository;
         private SystemTransactionProcessor? _systemTransactionProcessor;
+        private readonly ITransactionProcessor.IBlobBaseFeeCalculator _blobBaseFeeCalculator;
         private readonly ILogManager _logManager;
 
         [Flags]
@@ -78,6 +89,7 @@ namespace Nethermind.Evm.TransactionProcessing
         }
 
         protected TransactionProcessorBase(
+            ITransactionProcessor.IBlobBaseFeeCalculator? blobBaseFeeCalculator,
             ISpecProvider? specProvider,
             IWorldState? worldState,
             IVirtualMachine? virtualMachine,
@@ -89,12 +101,14 @@ namespace Nethermind.Evm.TransactionProcessing
             ArgumentNullException.ThrowIfNull(worldState, nameof(worldState));
             ArgumentNullException.ThrowIfNull(virtualMachine, nameof(virtualMachine));
             ArgumentNullException.ThrowIfNull(codeInfoRepository, nameof(codeInfoRepository));
+            ArgumentNullException.ThrowIfNull(blobBaseFeeCalculator, nameof(blobBaseFeeCalculator));
 
             Logger = logManager.GetClassLogger();
             SpecProvider = specProvider;
             WorldState = worldState;
             VirtualMachine = virtualMachine;
             _codeInfoRepository = codeInfoRepository;
+            _blobBaseFeeCalculator = blobBaseFeeCalculator;
 
             Ecdsa = new EthereumEcdsa(specProvider.ChainId);
             _logManager = logManager;
@@ -102,6 +116,13 @@ namespace Nethermind.Evm.TransactionProcessing
 
         public void SetBlockExecutionContext(in BlockExecutionContext blockExecutionContext)
             => VirtualMachine.SetBlockExecutionContext(in blockExecutionContext);
+
+        public void SetBlockExecutionContext(BlockHeader header)
+        {
+            IReleaseSpec spec = SpecProvider.GetSpec(header);
+            BlockExecutionContext blockExecutionContext = new(header, spec);
+            SetBlockExecutionContext(in blockExecutionContext);
+        }
 
         public TransactionResult CallAndRestore(Transaction transaction, ITxTracer txTracer) =>
             ExecuteCore(transaction, txTracer, ExecutionOptions.CommitAndRestore);
@@ -128,7 +149,7 @@ namespace Nethermind.Evm.TransactionProcessing
         public TransactionResult Trace(Transaction transaction, ITxTracer txTracer) =>
             ExecuteCore(transaction, txTracer, ExecutionOptions.SkipValidationAndCommit);
 
-        public TransactionResult Warmup(Transaction transaction, ITxTracer txTracer) =>
+        public virtual TransactionResult Warmup(Transaction transaction, ITxTracer txTracer) =>
             ExecuteCore(transaction, txTracer, ExecutionOptions.SkipValidation);
 
         private TransactionResult ExecuteCore(Transaction tx, ITxTracer tracer, ExecutionOptions opts)
@@ -136,7 +157,7 @@ namespace Nethermind.Evm.TransactionProcessing
             if (Logger.IsTrace) Logger.Trace($"Executing tx {tx.Hash}");
             if (tx.IsSystem() || opts == ExecutionOptions.SkipValidation)
             {
-                _systemTransactionProcessor ??= new SystemTransactionProcessor(SpecProvider, WorldState, VirtualMachine, _codeInfoRepository, _logManager);
+                _systemTransactionProcessor ??= new SystemTransactionProcessor(_blobBaseFeeCalculator, SpecProvider, WorldState, VirtualMachine, _codeInfoRepository, _logManager);
                 return _systemTransactionProcessor.Execute(tx, tracer, opts);
             }
 
@@ -161,7 +182,7 @@ namespace Nethermind.Evm.TransactionProcessing
             IntrinsicGas intrinsicGas = CalculateIntrinsicGas(tx, spec);
             if (!(result = ValidateStatic(tx, header, spec, opts, in intrinsicGas))) return result;
 
-            UInt256 effectiveGasPrice = tx.CalculateEffectiveGasPrice(spec.IsEip1559Enabled, header.BaseFeePerGas);
+            UInt256 effectiveGasPrice = CalculateEffectiveGasPrice(tx, spec.IsEip1559Enabled, header.BaseFeePerGas);
 
             VirtualMachine.SetTxExecutionContext(new(tx.SenderAddress, _codeInfoRepository, tx.BlobVersionedHashes, in effectiveGasPrice));
 
@@ -241,6 +262,9 @@ namespace Nethermind.Evm.TransactionProcessing
                 }
             }
 
+            if (substate.EvmExceptionType != EvmExceptionType.None)
+                return TransactionResult.EvmException(substate.EvmExceptionType);
+
             return TransactionResult.Ok;
         }
 
@@ -270,7 +294,7 @@ namespace Nethermind.Evm.TransactionProcessing
                         WorldState.IncrementNonce(authority);
                     }
 
-                    _codeInfoRepository.SetDelegation(WorldState, authTuple.CodeAddress, authority, spec);
+                    _codeInfoRepository.SetDelegation(authTuple.CodeAddress, authority, spec);
                 }
             }
 
@@ -305,7 +329,7 @@ namespace Nethermind.Evm.TransactionProcessing
 
                 accessTracker.WarmUp(authorizationTuple.Authority);
 
-                if (WorldState.HasCode(authorizationTuple.Authority) && !_codeInfoRepository.TryGetDelegation(WorldState, authorizationTuple.Authority, spec, out _))
+                if (WorldState.HasCode(authorizationTuple.Authority) && !_codeInfoRepository.TryGetDelegation(authorizationTuple.Authority, spec, out _))
                 {
                     error = $"Authority ({authorizationTuple.Authority}) has code deployed.";
                     return false;
@@ -394,7 +418,7 @@ namespace Nethermind.Evm.TransactionProcessing
             if (tx.GasLimit < minGasRequired)
             {
                 TraceLogInvalidTx(tx, $"GAS_LIMIT_BELOW_INTRINSIC_GAS {tx.GasLimit} < {minGasRequired}");
-                return "gas limit below intrinsic gas";
+                return TransactionResult.GasLimitBelowIntrinsicGas;
             }
 
             if (validate && tx.GasLimit > header.GasLimit - header.GasUsed)
@@ -450,6 +474,11 @@ namespace Nethermind.Evm.TransactionProcessing
         protected virtual IntrinsicGas CalculateIntrinsicGas(Transaction tx, IReleaseSpec spec)
             => IntrinsicGasCalculator.Calculate(tx, spec);
 
+        protected virtual UInt256 CalculateEffectiveGasPrice(Transaction tx, bool eip1559Enabled, in UInt256 baseFee) =>
+            tx.CalculateEffectiveGasPrice(eip1559Enabled, in baseFee);
+
+        protected virtual bool TryCalculatePremiumPerGas(Transaction tx, in UInt256 baseFee, out UInt256 premiumPerGas) =>
+            tx.TryCalculatePremiumPerGas(baseFee, out premiumPerGas);
 
         protected virtual TransactionResult ValidateSender(Transaction tx, BlockHeader header, IReleaseSpec spec, ITxTracer tracer, ExecutionOptions opts)
         {
@@ -475,7 +504,7 @@ namespace Nethermind.Evm.TransactionProcessing
             if (validate)
             {
                 BlockHeader header = VirtualMachine.BlockExecutionContext.Header;
-                if (!tx.TryCalculatePremiumPerGas(header.BaseFeePerGas, out premiumPerGas))
+                if (!TryCalculatePremiumPerGas(tx, header.BaseFeePerGas, out premiumPerGas))
                 {
                     TraceLogInvalidTx(tx, "MINER_PREMIUM_IS_NEGATIVE");
                     return TransactionResult.MinerPremiumNegative;
@@ -512,7 +541,7 @@ namespace Nethermind.Evm.TransactionProcessing
                 overflows = UInt256.MultiplyOverflow((UInt256)tx.GasLimit, effectiveGasPrice, out senderReservedGasPayment);
                 if (!overflows && tx.SupportsBlobs)
                 {
-                    overflows = !BlobGasCalculator.TryCalculateBlobBaseFee(header, tx, spec.BlobBaseFeeUpdateFraction, out blobBaseFee);
+                    overflows = !_blobBaseFeeCalculator.TryCalculateBlobBaseFee(header, tx, spec.BlobBaseFeeUpdateFraction, out blobBaseFee);
                     if (!overflows)
                     {
                         overflows = UInt256.AddOverflow(senderReservedGasPayment, blobBaseFee, out senderReservedGasPayment);
@@ -570,7 +599,7 @@ namespace Nethermind.Evm.TransactionProcessing
             }
             else
             {
-                codeInfo = codeInfoRepository.GetCachedCodeInfo(WorldState, recipient, spec, out Address? delegationAddress);
+                codeInfo = codeInfoRepository.GetCachedCodeInfo(recipient, spec, out Address? delegationAddress);
 
                 //We assume eip-7702 must be active if it is a delegation
                 if (delegationAddress is not null)
@@ -601,6 +630,8 @@ namespace Nethermind.Evm.TransactionProcessing
 
             return TransactionResult.Ok;
         }
+
+        protected virtual bool ShouldValidate(ExecutionOptions opts) => !opts.HasFlag(ExecutionOptions.SkipValidation);
 
         private int ExecuteEvmCall<TTracingInst>(
             Transaction tx,
@@ -652,6 +683,7 @@ namespace Nethermind.Evm.TransactionProcessing
             using (EvmState state = EvmState.RentTopLevel(gasAvailable, executionType, in env, in accessedItems, in snapshot))
             {
                 substate = VirtualMachine.ExecuteTransaction<TTracingInst>(state, WorldState, tracer);
+                Metrics.IncrementOpCodes(VirtualMachine.OpCodeCount);
                 gasAvailable = state.GasAvailable;
             }
 
@@ -714,7 +746,7 @@ namespace Nethermind.Evm.TransactionProcessing
             return statusCode;
         }
 
-        private bool DeployLegacyContract(IReleaseSpec spec, Address codeOwner, in TransactionSubstate substate, in StackAccessTracker accessedItems, ref long unspentGas)
+        protected virtual bool DeployLegacyContract(IReleaseSpec spec, Address codeOwner, in TransactionSubstate substate, in StackAccessTracker accessedItems, ref long unspentGas)
         {
             long codeDepositGasCost = CodeDepositHandler.CalculateCost(spec, substate.Output.Bytes.Length);
             if (unspentGas < codeDepositGasCost && spec.ChargeForTopLevelCreate)
@@ -731,7 +763,7 @@ namespace Nethermind.Evm.TransactionProcessing
             {
                 // Copy the bytes so it's not live memory that will be used in another tx
                 byte[] code = substate.Output.Bytes.ToArray();
-                _codeInfoRepository.InsertCode(WorldState, code, codeOwner, spec);
+                _codeInfoRepository.InsertCode(code, codeOwner, spec);
                 if (code.Length > CodeSizeConstants.MaxCodeSizeEip170)
                 {
                     accessedItems.WarmUpLargeContract(codeOwner);
@@ -785,7 +817,7 @@ namespace Nethermind.Evm.TransactionProcessing
             {
                 // 4 - set state[new_address].code to the updated deploy container
                 // push new_address onto the stack (already done before the ifs)
-                _codeInfoRepository.InsertCode(WorldState, bytecodeResult, codeOwner, spec);
+                _codeInfoRepository.InsertCode(bytecodeResult, codeOwner, spec);
                 if (bytecodeResult.Length > CodeSizeConstants.MaxCodeSizeEip170)
                 {
                     accessedItems.WarmUpLargeContract(codeOwner);
@@ -862,7 +894,7 @@ namespace Nethermind.Evm.TransactionProcessing
                 long totalToRefund = codeInsertRefund;
                 if (!substate.ShouldRevert)
                     totalToRefund += substate.Refund + substate.DestroyList.Count * RefundOf.Destroy(spec.IsEip3529Enabled);
-                long actualRefund = RefundHelper.CalculateClaimableRefund(spentGas, totalToRefund, spec);
+                long actualRefund = CalculateClaimableRefund(spentGas, totalToRefund, spec);
 
                 if (Logger.IsTrace)
                     Logger.Trace("Refunding unused gas of " + unspentGas + " and refund of " + actualRefund);
@@ -870,7 +902,7 @@ namespace Nethermind.Evm.TransactionProcessing
             }
             else if (codeInsertRefund > 0)
             {
-                long refund = RefundHelper.CalculateClaimableRefund(spentGas, codeInsertRefund, spec);
+                long refund = CalculateClaimableRefund(spentGas, codeInsertRefund, spec);
 
                 if (Logger.IsTrace)
                     Logger.Trace("Refunding delegations only: " + refund);
@@ -887,43 +919,34 @@ namespace Nethermind.Evm.TransactionProcessing
             return new GasConsumed(spentGas, operationGas);
         }
 
+        protected virtual long CalculateClaimableRefund(long spentGas, long totalRefund, IReleaseSpec spec)
+            => RefundHelper.CalculateClaimableRefund(spentGas, totalRefund, spec);
+
         [DoesNotReturn, StackTraceHidden]
         private static void ThrowInvalidDataException(string message) => throw new InvalidDataException(message);
-
-        public TransactionResult Execute(Transaction transaction, BlockHeader header, ITxTracer txTracer)
-        {
-            IReleaseSpec spec = SpecProvider.GetSpec(header);
-            BlockExecutionContext blockExecutionContext = new(header, spec);
-            SetBlockExecutionContext(in blockExecutionContext);
-            return Execute(transaction, txTracer);
-        }
-
-        public TransactionResult CallAndRestore(Transaction transaction, BlockHeader header, ITxTracer txTracer)
-        {
-            IReleaseSpec spec = SpecProvider.GetSpec(header);
-            BlockExecutionContext blockExecutionContext = new(header, spec);
-            SetBlockExecutionContext(in blockExecutionContext);
-            return CallAndRestore(transaction, txTracer);
-        }
     }
 
-    public readonly struct TransactionResult(string? error) : IEquatable<TransactionResult>
+    public readonly struct TransactionResult(string? error, EvmExceptionType evmException = EvmExceptionType.None) : IEquatable<TransactionResult>
     {
-        [MemberNotNullWhen(true, nameof(Fail))]
-        [MemberNotNullWhen(false, nameof(Success))]
+        [MemberNotNullWhen(false, nameof(TransactionExecuted))]
         public string? Error { get; } = error;
-        public bool Fail => Error is not null;
-        public bool Success => Error is null;
+        public bool TransactionExecuted => Error is null;
+        public EvmExceptionType EvmExceptionType { get; } = evmException;
 
         public static implicit operator TransactionResult(string? error) => new(error);
-        public static implicit operator bool(TransactionResult result) => result.Success;
-        public bool Equals(TransactionResult other) => (Success && other.Success) || (Error == other.Error);
+        public static implicit operator bool(TransactionResult result) => result.TransactionExecuted;
+        public bool Equals(TransactionResult other) => (TransactionExecuted && other.TransactionExecuted) || (Error == other.Error);
         public static bool operator ==(TransactionResult obj1, TransactionResult obj2) => obj1.Equals(obj2);
         public static bool operator !=(TransactionResult obj1, TransactionResult obj2) => !obj1.Equals(obj2);
         public override bool Equals(object? obj) => obj is TransactionResult result && Equals(result);
-        public override int GetHashCode() => Success ? 1 : Error.GetHashCode();
+        public override int GetHashCode() => TransactionExecuted ? 1 : Error.GetHashCode();
 
         public override string ToString() => Error is not null ? $"Fail : {Error}" : "Success";
+
+        public static TransactionResult EvmException(EvmExceptionType evmExceptionType)
+        {
+            return new TransactionResult(null, evmExceptionType);
+        }
 
         public static readonly TransactionResult Ok = new();
 

@@ -78,6 +78,7 @@ public sealed class BlockchainProcessor : IBlockchainProcessor, IBlockProcessing
     private readonly Stopwatch _stopwatch = new();
 
     public event EventHandler<IBlockchainProcessor.InvalidBlockEventArgs>? InvalidBlock;
+    public event EventHandler<BlockStatistics>? NewProcessingStatistics;
 
     /// <summary>
     ///
@@ -105,7 +106,11 @@ public sealed class BlockchainProcessor : IBlockchainProcessor, IBlockProcessing
 
         _stats = new ProcessingStats(stateReader, logManager.GetClassLogger<ProcessingStats>());
         _loopCancellationSource = new CancellationTokenSource();
+        _stats.NewProcessingStatistics += OnNewProcessingStatistics;
     }
+
+    private void OnNewProcessingStatistics(object? sender, BlockStatistics stats)
+        => NewProcessingStatistics?.Invoke(sender, stats);
 
     private void OnNewHeadBlock(object? sender, BlockEventArgs e)
     {
@@ -130,9 +135,8 @@ public sealed class BlockchainProcessor : IBlockchainProcessor, IBlockProcessing
     {
         if (_logger.IsTrace) _logger.Trace($"Enqueuing a new block {block.ToString(Block.Format.Short)} for processing.");
 
-        int currentRecoveryQueueSize = Interlocked.Add(ref _currentRecoveryQueueSize, block.Transactions.Length);
         Hash256? blockHash = block.Hash!;
-        BlockRef blockRef = currentRecoveryQueueSize >= SoftMaxRecoveryQueueSizeInTx
+        BlockRef blockRef = _currentRecoveryQueueSize >= SoftMaxRecoveryQueueSizeInTx
             ? new BlockRef(blockHash, processingOptions)
             : new BlockRef(block, processingOptions);
 
@@ -147,6 +151,7 @@ public sealed class BlockchainProcessor : IBlockchainProcessor, IBlockProcessing
                     if (_logger.IsTrace) _logger.Trace($"A new block {block.ToString(Block.Format.Short)} enqueued for processing.");
                     if (_queueCount > 1)
                     {
+                        Interlocked.Add(ref _currentRecoveryQueueSize, block.Transactions.Length);
                         _recoveryQueue.Writer.TryWrite(blockRef);
                     }
                     else
@@ -866,6 +871,9 @@ public sealed class BlockchainProcessor : IBlockchainProcessor, IBlockProcessing
 
     public async ValueTask DisposeAsync()
     {
+        _stats.NewProcessingStatistics -= OnNewProcessingStatistics;
+        _blockTree.NewBestSuggestedBlock -= OnNewBestBlock;
+        _blockTree.NewHeadBlock -= OnNewHeadBlock;
         await StopAsync(processRemainingBlocks: false);
     }
 

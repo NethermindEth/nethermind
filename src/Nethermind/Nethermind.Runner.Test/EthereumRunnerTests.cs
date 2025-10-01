@@ -19,8 +19,6 @@ using Autofac.Core.Lifetime;
 using FluentAssertions;
 using Nethermind.Api;
 using Nethermind.Api.Extensions;
-using Nethermind.Blockchain;
-using Nethermind.Blockchain.Receipts;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Config;
 using Nethermind.Consensus;
@@ -68,6 +66,9 @@ using Nethermind.TxPool;
 using NSubstitute;
 using NUnit.Framework;
 using Build = Nethermind.Runner.Test.Ethereum.Build;
+using Nethermind.Api.Steps;
+using Nethermind.Consensus.Scheduler;
+using Nethermind.Xdc.Spec;
 
 namespace Nethermind.Runner.Test;
 
@@ -76,6 +77,10 @@ public class EthereumRunnerTests
 {
     static EthereumRunnerTests()
     {
+        // Trigger plugins loading early to ensure TypeDiscovery caches plugin's types
+        PluginLoader pluginLoader = new("plugins", new FileSystem(), NullLogger.Instance);
+        pluginLoader.Load();
+
         AssemblyLoadContext.Default.Resolving += static (_, _) => null;
     }
 
@@ -84,7 +89,7 @@ public class EthereumRunnerTests
     private static ICollection InitOnce()
     {
         // we need this to discover ChainSpecEngineParameters
-        _ = new[] { typeof(CliqueChainSpecEngineParameters), typeof(OptimismChainSpecEngineParameters), typeof(TaikoChainSpecEngineParameters) };
+        _ = new[] { typeof(CliqueChainSpecEngineParameters), typeof(OptimismChainSpecEngineParameters), typeof(TaikoChainSpecEngineParameters), typeof(XdcChainSpecEngineParameters) };
 
         // by pre-caching configs providers we make the tests do lot less work
         ConcurrentQueue<(string, ConfigProvider)> resultQueue = new();
@@ -191,7 +196,7 @@ public class EthereumRunnerTests
         );
         pluginLoader.Load();
 
-        ApiBuilder builder = new ApiBuilder(Substitute.For<IProcessExitSource>(), testCase.configProvider, LimboLogs.Instance);
+        ApiBuilder builder = new(Substitute.For<IProcessExitSource>(), testCase.configProvider, LimboLogs.Instance);
         IList<INethermindPlugin> plugins = await pluginLoader.LoadPlugins(testCase.configProvider, builder.ChainSpec);
         plugins.Add(new RunnerTestPlugin(true));
         EthereumRunner runner = builder.CreateEthereumRunner(plugins);
@@ -206,10 +211,9 @@ public class EthereumRunnerTests
         _ = api.Config<IHealthChecksConfig>(); // Randomly fail type disccovery if not resolved early.
 
         api.NodeKey = new InsecureProtectedPrivateKey(TestItem.PrivateKeyA);
-        api.FileSystem = Substitute.For<IFileSystem>();
-        api.BlockTree = Substitute.For<IBlockTree>();
-        api.ReceiptStorage = Substitute.For<IReceiptStorage>();
         api.BlockProducerRunner = Substitute.For<IBlockProducerRunner>();
+        api.BackgroundTaskScheduler = Substitute.For<IBackgroundTaskScheduler>();
+        api.NonceManager = Substitute.For<INonceManager>();
 
         if (api is AuRaNethermindApi auRaNethermindApi)
         {
@@ -218,14 +222,14 @@ public class EthereumRunnerTests
 
         try
         {
-            var stepsLoader = runner.LifetimeScope.Resolve<IEthereumStepsLoader>();
-            foreach (var step in stepsLoader.ResolveStepsImplementations())
+            IEthereumStepsLoader stepsLoader = runner.LifetimeScope.Resolve<IEthereumStepsLoader>();
+            foreach (StepInfo step in stepsLoader.ResolveStepsImplementations())
             {
                 runner.LifetimeScope.Resolve(step.StepType);
             }
 
             // Many components are not part of the step constructor param, so we have resolve them manually here
-            foreach (var propertyInfo in api.GetType().Properties())
+            foreach (PropertyInfo? propertyInfo in api.GetType().Properties())
             {
                 // Property with `SkipServiceCollection` make property from container.
                 if (propertyInfo.GetCustomAttribute<SkipServiceCollectionAttribute>() is not null)
@@ -272,11 +276,11 @@ public class EthereumRunnerTests
             // A root registration should not have both keyed and unkeyed registration. This is confusing and may
             // cause unexpected registration. Either have a single non-keyed registration or all keyed-registration,
             // or put them in an unambiguous container class.
-            Dictionary<Type, object> keyedTypes = new();
-            foreach (var registrations in api.Context.ComponentRegistry.Registrations)
+            Dictionary<Type, object> keyedTypes = [];
+            foreach (IComponentRegistration registrations in api.Context.ComponentRegistry.Registrations)
             {
                 if (registrations.Lifetime != RootScopeLifetime.Instance) continue;
-                foreach (var registrationsService in registrations.Services)
+                foreach (Service registrationsService in registrations.Services)
                 {
                     if (registrationsService is KeyedService keyedService)
                     {
@@ -305,10 +309,10 @@ public class EthereumRunnerTests
                 typeof(string),
             ];
 
-            foreach (var registrations in api.Context.ComponentRegistry.Registrations)
+            foreach (IComponentRegistration registrations in api.Context.ComponentRegistry.Registrations)
             {
                 if (registrations.Lifetime != RootScopeLifetime.Instance) continue;
-                foreach (var registrationsService in registrations.Services)
+                foreach (Service registrationsService in registrations.Services)
                 {
                     if (registrationsService is TypedService typedService)
                     {
@@ -426,8 +430,6 @@ public class EthereumRunnerTests
         public string Author { get; } = "";
         public bool Enabled { get; } = true;
 
-        public ValueTask DisposeAsync() => ValueTask.CompletedTask;
-
         public IModule Module => new RunnerTestModule(forStepTest);
 
         private class RunnerTestModule(bool forStepTest) : Autofac.Module
@@ -436,7 +438,7 @@ public class EthereumRunnerTests
             {
                 base.Load(builder);
 
-                var ipResolver = Substitute.For<IIPResolver>();
+                IIPResolver ipResolver = Substitute.For<IIPResolver>();
                 ipResolver.ExternalIp.Returns(IPAddress.Parse("127.0.0.1"));
                 ipResolver.LocalIp.Returns(IPAddress.Parse("127.0.0.1"));
 

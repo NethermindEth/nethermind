@@ -1,9 +1,12 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using System.Collections.Generic;
 using FluentAssertions;
+using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Test.Builders;
 using NUnit.Framework;
 
 namespace Nethermind.Core.Test;
@@ -20,4 +23,16 @@ internal class BlockTests
             (new BlockHeader(), (int?)null),
             (new BlockHeader { WithdrawalsRoot = Keccak.EmptyTreeHash }, 0)
         };
+
+    [Test]
+    public void DisposeAccountChanges_should_dispose_and_null_account_changes()
+    {
+        Block block = new(new BlockHeader());
+        block.AccountChanges = new ArrayPoolList<AddressAsKey>(10);
+        block.AccountChanges.Add(TestItem.AddressA);
+
+        block.DisposeAccountChanges();
+
+        block.AccountChanges.Should().BeNull();
+    }
 }

@@ -43,6 +43,8 @@ public class TransactionProcessorTests
     private IEthereumEcdsa _ethereumEcdsa;
     private ITransactionProcessor _transactionProcessor;
     private IWorldState _stateProvider;
+    private BlockHeader _baseBlock = null!;
+    private IDisposable _stateCloser;
 
     public TransactionProcessorTests(bool eip155Enabled)
     {
@@ -55,16 +57,23 @@ public class TransactionProcessorTests
     [SetUp]
     public void Setup()
     {
-        IWorldStateManager worldStateManager = TestWorldStateFactory.CreateForTest();
-        _stateProvider = worldStateManager.GlobalWorldState;
+        _stateProvider = TestWorldStateFactory.CreateForTest();
+        _stateCloser = _stateProvider.BeginScope(IWorldState.PreGenesis);
         _stateProvider.CreateAccount(TestItem.AddressA, AccountBalance);
         _stateProvider.Commit(_specProvider.GenesisSpec);
         _stateProvider.CommitTree(0);
+        _baseBlock = Build.A.BlockHeader.WithStateRoot(_stateProvider.StateRoot).TestObject;
 
-        EthereumCodeInfoRepository codeInfoRepository = new();
+        EthereumCodeInfoRepository codeInfoRepository = new(_stateProvider);
         VirtualMachine virtualMachine = new(new TestBlockhashProvider(_specProvider), _specProvider, LimboLogs.Instance);
-        _transactionProcessor = new TransactionProcessor(_specProvider, _stateProvider, virtualMachine, codeInfoRepository, LimboLogs.Instance);
+        _transactionProcessor = new TransactionProcessor(BlobBaseFeeCalculator.Instance, _specProvider, _stateProvider, virtualMachine, codeInfoRepository, LimboLogs.Instance);
         _ethereumEcdsa = new EthereumEcdsa(_specProvider.ChainId);
+    }
+
+    [TearDown]
+    public void Teardown()
+    {
+        _stateCloser.Dispose();
     }
 
     [TestCase(true, true)]
@@ -76,7 +85,7 @@ public class TransactionProcessorTests
         Transaction tx = Build.A.Transaction.SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA, _isEip155Enabled).WithGasLimit(100000).TestObject;
         Block block = Build.A.Block.WithNumber(1).WithTransactions(tx).TestObject;
         TransactionResult result = Execute(tx, block);
-        Assert.That(result.Success, Is.True);
+        Assert.That(result.TransactionExecuted, Is.True);
     }
 
     [TestCase(true, true)]
@@ -114,7 +123,7 @@ public class TransactionProcessorTests
         Transaction tx = Build.A.Transaction.SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA, _isEip155Enabled).WithGasLimit(20000).TestObject;
         Block block = Build.A.Block.WithNumber(1).WithTransactions(tx).TestObject;
         TransactionResult result = Execute(tx, block);
-        Assert.That(result.Fail, Is.True);
+        Assert.That(result.TransactionExecuted, Is.False);
     }
 
     [TestCase(true, true)]
@@ -126,7 +135,7 @@ public class TransactionProcessorTests
         Transaction tx = Build.A.Transaction.Signed(_ethereumEcdsa, TestItem.PrivateKeyA, _isEip155Enabled).WithGasLimit(100000).TestObject;
         Block block = Build.A.Block.WithNumber(1).WithTransactions(tx).TestObject;
         TransactionResult result = Execute(tx, block);
-        Assert.That(result.Fail, Is.True);
+        Assert.That(result.TransactionExecuted, Is.False);
     }
 
     [TestCase(true, true)]
@@ -138,7 +147,7 @@ public class TransactionProcessorTests
         Transaction tx = Build.A.Transaction.SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyB, _isEip155Enabled).WithGasLimit(100000).TestObject;
         Block block = Build.A.Block.WithNumber(1).WithTransactions(tx).TestObject;
         TransactionResult result = Execute(tx, block);
-        Assert.That(result.Fail, Is.True);
+        Assert.That(result.TransactionExecuted, Is.False);
     }
 
     [TestCase(true, true)]
@@ -150,7 +159,7 @@ public class TransactionProcessorTests
         Transaction tx = Build.A.Transaction.SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA, _isEip155Enabled).WithGasLimit(100000).WithNonce(100).TestObject;
         Block block = Build.A.Block.WithNumber(1).WithTransactions(tx).TestObject;
         TransactionResult result = Execute(tx, block);
-        Assert.That(result.Fail, Is.True);
+        Assert.That(result.TransactionExecuted, Is.False);
     }
 
     [TestCase(true, true)]
@@ -176,7 +185,7 @@ public class TransactionProcessorTests
         Block block = Build.A.Block.WithNumber(MainnetSpecProvider.BerlinBlockNumber).WithTransactions(tx).TestObject;
 
         TransactionResult result = Execute(tx, block);
-        Assert.That(result.Fail, Is.True);
+        Assert.That(result.TransactionExecuted, Is.False);
     }
 
     [TestCase(true, true)]
@@ -194,7 +203,7 @@ public class TransactionProcessorTests
 
         Block block = Build.A.Block.WithNumber(MainnetSpecProvider.BerlinBlockNumber).WithTransactions(tx).TestObject;
         TransactionResult result = Execute(tx, block);
-        Assert.That(result.Fail, Is.True);
+        Assert.That(result.TransactionExecuted, Is.False);
     }
 
     [TestCase(true, true)]
@@ -211,7 +220,7 @@ public class TransactionProcessorTests
 
         Block block = Build.A.Block.WithNumber(MainnetSpecProvider.LondonBlockNumber).WithTransactions(tx).TestObject;
         TransactionResult result = Execute(tx, block);
-        Assert.That(result.Fail, Is.True);
+        Assert.That(result.TransactionExecuted, Is.False);
     }
 
     [TestCase(true, true)]
@@ -223,7 +232,7 @@ public class TransactionProcessorTests
         Transaction tx = Build.A.Transaction.SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA, _isEip155Enabled).WithGasLimit(100000).TestObject;
         Block block = Build.A.Block.WithNumber(1).WithTransactions(tx).WithGasLimit(20000).TestObject;
         TransactionResult result = Execute(tx, block);
-        Assert.That(result.Fail, Is.True);
+        Assert.That(result.TransactionExecuted, Is.False);
     }
 
     [TestCase(true, true)]
@@ -235,7 +244,7 @@ public class TransactionProcessorTests
         Transaction tx = Build.A.Transaction.SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA, _isEip155Enabled).WithGasLimit(100000).TestObject;
         Block block = Build.A.Block.WithNumber(1).WithTransactions(tx).WithGasLimit(20000).TestObject;
         TransactionResult result = CallAndRestore(tx, block);
-        Assert.That(result.Success, Is.True);
+        Assert.That(result.TransactionExecuted, Is.True);
     }
 
     [Test]
@@ -289,7 +298,7 @@ public class TransactionProcessorTests
         long gasLimit = 100000;
         Transaction tx = Build.A.Transaction.WithValue(UInt256.MaxValue).WithGasLimit(gasLimit)
             .WithSenderAddress(systemUser ? Address.SystemUser : TestItem.AddressA).TestObject;
-        Block block = Build.A.Block.WithNumber(1).WithTransactions(tx).WithGasLimit(gasLimit).TestObject;
+        Block block = Build.A.Block.WithParent(_baseBlock).WithTransactions(tx).WithGasLimit(gasLimit).TestObject;
 
         EstimateGasTracer tracer = new();
         Action action = () => _transactionProcessor.CallAndRestore(tx, new BlockExecutionContext(block.Header, _specProvider.GetSpec(block.Header)), tracer);
@@ -308,6 +317,7 @@ public class TransactionProcessorTests
     public long Should_not_estimate_tx_with_high_value(UInt256 txValue)
     {
         long gasLimit = 100000;
+
         Transaction tx = Build.A.Transaction
             .WithValue(txValue)
             .WithGasLimit(gasLimit)
@@ -320,7 +330,16 @@ public class TransactionProcessorTests
         GasEstimator estimator = new(_transactionProcessor, _stateProvider, _specProvider, blocksConfig);
 
         long estimate = estimator.Estimate(tx, block.Header, tracer, out string? err, 0);
-        Assert.That(err, Is.Null);
+
+        if (txValue > AccountBalance)
+        {
+            Assert.That(err, Is.Not.Null); // Should have error
+            Assert.That(err, Is.EqualTo("Transaction execution fails"));
+        }
+        else
+        {
+            Assert.That(err, Is.Null); // Should succeed
+        }
 
         return estimate;
     }
@@ -360,7 +379,7 @@ public class TransactionProcessorTests
         long blockNumber = MainnetSpecProvider.LondonBlockNumber;
         Block block = Build.A.Block.WithNumber(blockNumber).WithTransactions(tx).TestObject;
         TransactionResult result = Execute(tx, block);
-        Assert.That(result.Fail, Is.True);
+        Assert.That(result.TransactionExecuted, Is.False);
     }
 
     [TestCase]
@@ -368,11 +387,12 @@ public class TransactionProcessorTests
     {
         long gasLimit = 100000;
         Transaction tx = Build.A.Transaction.SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA, _isEip155Enabled).WithGasLimit(gasLimit).TestObject;
-        Block block = Build.A.Block.WithNumber(1).WithTransactions(tx).WithGasLimit(gasLimit).TestObject;
+        Block block = Build.A.Block.WithParent(_baseBlock).WithTransactions(tx).WithGasLimit(gasLimit).TestObject;
 
         EstimateGasTracer tracer = new();
         BlocksConfig blocksConfig = new();
         GasEstimator estimator = new(_transactionProcessor, _stateProvider, _specProvider, blocksConfig);
+
         _transactionProcessor.CallAndRestore(tx, new BlockExecutionContext(block.Header, _specProvider.GetSpec(block.Header)), tracer);
 
         tracer.GasSpent.Should().Be(21000);
@@ -621,6 +641,7 @@ public class TransactionProcessorTests
     public void Disables_Eip158_for_system_transactions()
     {
         long blockNumber = MainnetSpecProvider.SpuriousDragonBlockNumber + 1;
+
         _stateProvider.CreateAccount(TestItem.PrivateKeyA.Address, 0.Ether());
         IReleaseSpec spec = _specProvider.GetSpec((ForkActivation)blockNumber);
         _stateProvider.Commit(spec);

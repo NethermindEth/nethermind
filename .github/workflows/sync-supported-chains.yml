@@ -17,7 +17,11 @@ on:
         default: ""
         required: false
       network_filter:
-        description: "Usefull for manual execution on only specified networks - provide partial or full name. Will execute action only on networks which contains phrase."
+        description: "Useful for manual execution on only specified networks - provide partial or full name. Will execute action only on networks which contains phrase."
+        default: ""
+        required: false
+      nethermind_args:
+        description: "Additional arguments that will be passed to Nethermind, without leading dashes. Example: log=DEBUG"
         default: ""
         required: false
 
@@ -32,7 +36,7 @@ jobs:
       matrix: ${{ steps.set-matrix.outputs.matrix }}
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
         with:
           path: nethermind
           ref: ${{ github.event.workflow_run.head_branch || github.ref_name || 'master' }}
@@ -61,12 +65,19 @@ jobs:
       - name: Install sshpass
         run: sudo apt-get update && sudo apt-get install -y sshpass
 
+      - name: Authenticate App
+        id: gh-app
+        uses: actions/create-github-app-token@v2
+        with:
+          app-id: ${{ vars.ADMIN_APP_ID }}
+          private-key: ${{ secrets.ADMIN_APP_PRIVATE_KEY }}
+
       - name: Create a Runner
         id: run-linode-action
         uses: kamilchodola/linode-github-runner/.github/actions/linode-machine-manager@main
         with:
           linode_token: ${{ secrets.LINODE_TOKEN }}
-          github_token: "${{ secrets.REPOSITORY_DISPATCH_TOKEN }}"
+          github_token: "${{ steps.gh-app.outputs.token }}"
           action: "create"
           runner_label: t-${{ github.run_id }}-${{ matrix.config.network }}
           root_password: ${{ secrets.LINODE_ROOT_PASSWORD }}
@@ -91,20 +102,20 @@ jobs:
     steps:
       - name: Authenticate App
         id: gh-app
-        uses: actions/create-github-app-token@v1
+        uses: actions/create-github-app-token@v2
         with:
           app-id: ${{ vars.APP_ID }}
           private-key: ${{ secrets.APP_PRIVATE_KEY }}
           repositories: "nethermind,post-merge-smoke-tests"
 
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
         with:
           clean: true
           ref: ${{ github.event.workflow_run.head_branch || github.ref_name || 'master' }}
 
       - name: Checkout tests repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
         with:
           repository: NethermindEth/post-merge-smoke-tests
           path: tests
@@ -117,14 +128,14 @@ jobs:
           sudo apt-get install -y make build-essential jq screen lshw dmidecode fio zip
 
       - name: Setup Go environment
-        uses: actions/setup-go@v5
+        uses: actions/setup-go@v6
         with:
           go-version: 'stable'
           check-latest: true
           cache: true
 
       - name: Set up Python
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@v6
         with:
           python-version: "3.X"
 
@@ -212,6 +223,10 @@ jobs:
             mkdir -p execution-data-op/logs/configs
             mv ../tests/predefined_configs/customNLog.config execution-data-op/logs/configs/customNLog.config
 
+            if [ -n "${{ inputs.nethermind_args }}" ]; then
+              for f in ${{ inputs.nethermind_args }}; do extra_param+=" --el-op-extra-flag $f"; done
+            fi
+
             ./build/sedge generate \
               --logging none \
               -p $GITHUB_WORKSPACE/sedge \
@@ -248,6 +263,10 @@ jobs:
 
             mkdir -p execution-data-taiko/logs/configs
             mv ../tests/predefined_configs/customNLog.config execution-data-taiko/logs/configs/customNLog.config
+            
+            if [ -n "${{ inputs.nethermind_args }}" ]; then
+              for f in ${{ inputs.nethermind_args }}; do extra_param+=" --el-l2-extra-flag $f"; done
+            fi
 
             ./build/sedge generate \
               --logging none \
@@ -271,6 +290,10 @@ jobs:
             mkdir -p execution-data/logs/configs
             mv ../tests/predefined_configs/customNLog.config execution-data/logs/configs/customNLog.config
 
+            if [ -n "${{ inputs.nethermind_args }}" ]; then
+              for f in ${{ inputs.nethermind_args }}; do extra_param+=" --el-extra-flag $f"; done
+            fi
+            
             ./build/sedge generate \
               --logging none \
               -p $GITHUB_WORKSPACE/sedge \
@@ -289,12 +312,13 @@ jobs:
               --el-extra-flag loggerConfigSource=/nethermind/data/logs/configs/customNLog.config \
               --el-extra-flag Sync.SnapSync=true \
               "${GENERIC_METRICS_FLAGS[@]}" \
+              $extra_param \
               --checkpoint-sync-url=${{ matrix.config.checkpoint-sync-url }}
           fi
 
-          echo 'Running sedge...'          
+          echo 'Running sedge...'
           ./build/sedge run -p $GITHUB_WORKSPACE/sedge
-          
+
       - name: Wait for ${{ matrix.config.network }} to sync
         id: wait
         env:
@@ -325,7 +349,7 @@ jobs:
           retention-days: 7
 
       - name: Get Consensus Logs
-        if: always() && matrix.config.network != 'joc-mainnet' && matrix.config.network != 'joc-testnet' && matrix.config.network != 'linea-mainnet' && matrix.config.network != 'linea-sepolia' && matrix.config.network != 'energyweb' && matrix.config.network != 'volta'
+        if: always() && matrix.config.network != 'joc-mainnet' && matrix.config.network != 'joc-testnet' && matrix.config.network != 'linea-mainnet' && matrix.config.network != 'linea-sepolia'
         run: |
           network="${{ matrix.config.network }}"
           if [[ "$network" == base-* || "$network" == op-* || "$network" == world-* ]]; then
@@ -361,12 +385,19 @@ jobs:
         config: ${{fromJson(needs.setup-matrix.outputs.matrix)}}
     runs-on: ubuntu-latest
     steps:
+      - name: Authenticate App
+        id: gh-app
+        uses: actions/create-github-app-token@v2
+        with:
+          app-id: ${{ vars.ADMIN_APP_ID }}
+          private-key: ${{ secrets.ADMIN_APP_PRIVATE_KEY }}
+
       - name: Destroy VM (make sure is removed)
         uses: kamilchodola/linode-github-runner/.github/actions/linode-machine-manager@main
         continue-on-error: true
         with:
           linode_token: ${{ secrets.LINODE_TOKEN }}
-          github_token: "${{ secrets.REPOSITORY_DISPATCH_TOKEN }}"
+          github_token: "${{ steps.gh-app.outputs.token }}"
           action: "destroy-machine"
           runner_label: t-${{ github.run_id }}-${{ matrix.config.network }}
           search_phrase: t-${{ github.run_id }}-${{ matrix.config.network }}
@@ -378,7 +409,7 @@ jobs:
         uses: kamilchodola/linode-github-runner/.github/actions/linode-machine-manager@main
         with:
           linode_token: ${{ secrets.LINODE_TOKEN }}
-          github_token: "${{ secrets.REPOSITORY_DISPATCH_TOKEN }}"
+          github_token: "${{ steps.gh-app.outputs.token }}"
           action: "destroy-runner"
           runner_label: t-${{ github.run_id }}-${{ matrix.config.network }}
           search_phrase: t-${{ github.run_id }}-${{ matrix.config.network }}
@@ -392,7 +423,7 @@ jobs:
     steps:
       - name: Authenticate App
         id: gh-app
-        uses: actions/create-github-app-token@v1
+        uses: actions/create-github-app-token@v2
         with:
           app-id: ${{ vars.APP_ID }}
           private-key: ${{ secrets.APP_PRIVATE_KEY }}

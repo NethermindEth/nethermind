@@ -13,7 +13,6 @@ using Nethermind.Consensus;
 using Nethermind.Consensus.Comparers;
 using Nethermind.Consensus.Processing;
 using Nethermind.Consensus.Producers;
-using Nethermind.Consensus.Rewards;
 using Nethermind.Consensus.Scheduler;
 using Nethermind.Consensus.Validators;
 using Nethermind.Core;
@@ -25,7 +24,6 @@ using Nethermind.Db.Blooms;
 using Nethermind.Facade;
 using Nethermind.JsonRpc;
 using Nethermind.JsonRpc.Modules;
-using Nethermind.JsonRpc.Modules.Eth.GasPrice;
 using Nethermind.KeyStore;
 using Nethermind.Logging;
 using Nethermind.Network;
@@ -41,17 +39,14 @@ using Nethermind.TxPool;
 using Nethermind.Wallet;
 using Nethermind.Consensus.Processing.CensorshipDetector;
 using Nethermind.Facade.Find;
+using Nethermind.History;
 
 namespace Nethermind.Api
 {
-    public class NethermindApi : INethermindApi
+    public class NethermindApi(NethermindApi.Dependencies dependencies) : INethermindApi
     {
-        public NethermindApi(Dependencies dependencies)
-        {
-            _dependencies = dependencies;
-        }
 
-        // A simple class to prevent having to modify subclass of NethermindApi many time
+        // A simple class to prevent having to modify subclass of NethermindApi many times
         public record Dependencies(
             IConfigProvider ConfigProvider,
             IJsonSerializer JsonSerializer,
@@ -63,22 +58,16 @@ namespace Nethermind.Api
             ILifetimeScope Context
         );
 
-        private Dependencies _dependencies;
-
-        public IBlockchainBridge CreateBlockchainBridge()
-        {
-            return Context.Resolve<IBlockchainBridgeFactory>().CreateBlockchainBridge();
-        }
+        private Dependencies _dependencies = dependencies;
 
         public IBlobTxStorage BlobTxStorage => Context.Resolve<IBlobTxStorage>();
         public CompositeBlockPreprocessorStep BlockPreprocessor { get; } = new();
-        public IBlockProcessingQueue? BlockProcessingQueue { get; set; }
+        public IBlockProcessingQueue BlockProcessingQueue => Context.Resolve<IBlockProcessingQueue>();
         public IBlockProducer? BlockProducer { get; set; }
         public IBlockProducerRunner BlockProducerRunner { get; set; } = new NoBlockProducerRunner();
-        public IBlockTree? BlockTree { get; set; }
-        public IBlockValidator BlockValidator => Context.Resolve<IBlockValidator>();
-        public IBloomStorage? BloomStorage { get; set; }
-        public IChainLevelInfoRepository? ChainLevelInfoRepository { get; set; }
+        public IBlockTree BlockTree => Context.Resolve<IBlockTree>();
+        public IBloomStorage? BloomStorage => Context.Resolve<IBloomStorage>();
+        public IChainLevelInfoRepository? ChainLevelInfoRepository => Context.Resolve<IChainLevelInfoRepository>();
         public IConfigProvider ConfigProvider => _dependencies.ConfigProvider;
         public ICryptoRandom CryptoRandom => Context.Resolve<ICryptoRandom>();
         public IDbProvider DbProvider => Context.Resolve<IDbProvider>();
@@ -86,7 +75,7 @@ namespace Nethermind.Api
         public ISignerStore? EngineSignerStore { get; set; }
         public IEnode? Enode { get; set; }
         public IEthereumEcdsa EthereumEcdsa => Context.Resolve<IEthereumEcdsa>();
-        public IFileSystem FileSystem { get; set; } = new FileSystem();
+        public IFileSystem FileSystem => Context.Resolve<IFileSystem>();
         public IEngineRequestsTracker EngineRequestsTracker => Context.Resolve<IEngineRequestsTracker>();
 
         public IManualBlockProductionTrigger ManualBlockProductionTrigger { get; set; } =
@@ -95,22 +84,19 @@ namespace Nethermind.Api
         public IIPResolver IpResolver => Context.Resolve<IIPResolver>();
         public IJsonSerializer EthereumJsonSerializer => _dependencies.JsonSerializer;
         public IKeyStore? KeyStore { get; set; }
-        public ILogFinder? LogFinder { get; set; }
         public ILogManager LogManager => _dependencies.LogManager;
         public IMessageSerializationService MessageSerializationService => Context.Resolve<IMessageSerializationService>();
         public IGossipPolicy GossipPolicy { get; set; } = Policy.FullGossip;
         public IPeerManager? PeerManager => Context.Resolve<IPeerManager>();
         public IProtocolsManager? ProtocolsManager { get; set; }
         public IProtocolValidator? ProtocolValidator { get; set; }
-        public IReceiptStorage? ReceiptStorage { get; set; }
+        public IReceiptStorage? ReceiptStorage => Context.Resolve<IReceiptStorage>();
         public IReceiptFinder ReceiptFinder => Context.Resolve<IReceiptFinder>();
-        public IRewardCalculatorSource RewardCalculatorSource => Context.Resolve<IRewardCalculatorSource>();
         public IRlpxHost RlpxPeer => Context.Resolve<IRlpxHost>();
         public IRpcModuleProvider? RpcModuleProvider => Context.Resolve<IRpcModuleProvider>();
         public IJsonRpcLocalStats JsonRpcLocalStats => Context.Resolve<IJsonRpcLocalStats>();
         public ISealer Sealer => Context.Resolve<ISealer>();
         public string SealEngineType => ChainSpec.SealEngineType;
-        public ISealValidator SealValidator => Context.Resolve<ISealValidator>();
         public ISealEngine SealEngine => Context.Resolve<ISealEngine>();
 
         public ISessionMonitor SessionMonitor => Context.Resolve<ISessionMonitor>();
@@ -123,10 +109,9 @@ namespace Nethermind.Api
         public IStateReader? StateReader => Context.Resolve<IStateReader>();
         public IStaticNodesManager StaticNodesManager => Context.Resolve<IStaticNodesManager>();
         public ITrustedNodesManager TrustedNodesManager => Context.Resolve<ITrustedNodesManager>();
-        public ITimestamper Timestamper { get; } = Core.Timestamper.Default;
-        public ITimerFactory TimerFactory { get; } = Core.Timers.TimerFactory.Default;
-        public IMainProcessingContext? MainProcessingContext { get; set; }
-        public IReadOnlyTxProcessingEnvFactory ReadOnlyTxProcessingEnvFactory => Context.Resolve<IReadOnlyTxProcessingEnvFactory>();
+        public ITimestamper Timestamper => Context.Resolve<ITimestamper>();
+        public ITimerFactory TimerFactory => Context.Resolve<ITimerFactory>();
+        public IMainProcessingContext MainProcessingContext => Context.Resolve<IMainProcessingContext>();
         public ITxSender? TxSender { get; set; }
         public INonceManager? NonceManager { get; set; }
         public ITxPool? TxPool { get; set; }
@@ -135,12 +120,10 @@ namespace Nethermind.Api
         public IBlockFinalizationManager? FinalizationManager { get; set; }
 
         public IBlockProducerEnvFactory BlockProducerEnvFactory => Context.Resolve<IBlockProducerEnvFactory>();
-        public IGasPriceOracle GasPriceOracle => Context.Resolve<IGasPriceOracle>();
         public IBlockProductionPolicy? BlockProductionPolicy { get; set; }
-        public BackgroundTaskScheduler BackgroundTaskScheduler { get; set; } = null!;
+        public IBackgroundTaskScheduler BackgroundTaskScheduler { get; set; } = null!;
         public ICensorshipDetector CensorshipDetector { get; set; } = new NoopCensorshipDetector();
         public IWallet? Wallet { get; set; }
-        public IBadBlockStore? BadBlocksStore { get; set; }
         public ITransactionComparerProvider? TransactionComparerProvider { get; set; }
 
         public IProtectedPrivateKey? NodeKey { get; set; }

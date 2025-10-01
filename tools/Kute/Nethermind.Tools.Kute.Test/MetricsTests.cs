@@ -11,9 +11,9 @@ namespace Nethermind.Tools.Kute.Test;
 
 public class MetricsTests
 {
-    private static JsonRpc.Request.Single Single(int id)
+    private static JsonRpc.Request.Single Single(int id, string method = "test")
     {
-        var json = $$"""{ "id": {{id}}, "method": "test", "params": [] }""";
+        var json = $$"""{ "id": {{id}}, "method": "{{method}}", "params": [] }""";
         return new JsonRpc.Request.Single(JsonNode.Parse(json)!);
     }
 
@@ -31,7 +31,7 @@ public class MetricsTests
         var totalTimer = new Timer();
         using (totalTimer.Time())
         {
-            var single = Single(42);
+            var single = Single(42, "method1");
             var batch = Batch(Single(43), Single(44), Single(45));
 
             var singleTimer = new Timer();
@@ -57,7 +57,9 @@ public class MetricsTests
         report.TotalTime.Should().BeLessThan(TimeSpan.FromMilliseconds(110));
 
         report.Singles.Should().HaveCount(1);
-        report.Singles.Should().ContainKey("42");
+        report.Singles.Should().ContainKey("method1");
+        report.Singles["method1"].Should().HaveCount(1);
+        report.Singles["method1"].Should().ContainKey("42");
 
         report.Batches.Should().HaveCount(1);
         report.Batches.Should().ContainKey("43:45");

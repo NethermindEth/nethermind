@@ -165,7 +165,6 @@ namespace Nethermind.Core.Test.Builders
             TestObjectInternal.Header.Number = blockHeader?.Number + 1 ?? 0;
             TestObjectInternal.Header.Timestamp = blockHeader?.Timestamp + 1 ?? 0;
             TestObjectInternal.Header.ParentHash = blockHeader is null ? Keccak.Zero : blockHeader.Hash;
-            TestObjectInternal.Header.MaybeParent = blockHeader is null ? null : new WeakReference<BlockHeader>(blockHeader);
             return this;
         }
 
@@ -247,6 +246,12 @@ namespace Nethermind.Core.Test.Builders
         public BlockBuilder WithReceiptsRoot(Hash256 keccak)
         {
             TestObjectInternal.Header.ReceiptsRoot = keccak;
+            return this;
+        }
+
+        public BlockBuilder WithRequestsHash(Hash256 hash)
+        {
+            TestObjectInternal.Header.RequestsHash = hash;
             return this;
         }
 

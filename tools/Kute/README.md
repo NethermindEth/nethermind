@@ -6,7 +6,7 @@ Kute - /kjuːt/ - is a benchmarking tool developed at Nethermind to simulate an 
 
 This is a C# project and as such, it requires the [dotnet 9](https://dotnet.microsoft.com/en-us/download) SDK. Once installed, just run:
 
-```
+```bash
 dotnet build [-c Release]
 ```
 
@@ -24,59 +24,71 @@ Some typical usages are as follows:
 
 ### Connect to a Nethermind Client running at a specific address using a single file
 
-```
+```bash
 -a http://localhost:8551 -s /keystore/jwt-secret -i /rpc.0
 ```
 
 ### Use all messages in the directory `/rpc-logs`
 
-```
+```bash
 -a http://localhost:8551 -s /keystore/jwt-secret -i /rpc-logs
 ```
 
-### Use a single messages file and emit results as JSON
+### Use a single messages file and emit results as HTML
 
-```
+```bash
 -a http://localhost:8551 -s /keystore/jwt-secret -i /rpc.0 -o Json
 ```
 
 ### Use a single message file and emit results as JSON, while reporting metrics to a Prometheus Push Gateway (*)
 
-```
+```bash
 -a http://localhost:8551 -s /keystore/jwt-secret -i /rpc.0 -o Json -g http://localhost:9091
+```
+
+### Use a single message file and report to a Prometheus Push Gateway with additional metrics labels
+
+```bash
+-a http://localhost:8551 -s /keystore/jwt-secret -i /rpc.0 -g http://localhost:9091 -l key1=value1,key2=value2 -l key3=value3
+```
+
+### Use a single message file and report to a Prometheus Push Gateway with basic auth
+
+```bash
+-a http://localhost:8551 -s /keystore/jwt-secret -i /rpc.0 -g http://localhost:9091 --gateway-user user --gateway-pass pass
 ```
 
 ### Use a single messages file and record all responses into a new file
 
-```
+```bash
 -a http://localhost:8551 -s /keystore/jwt-secret -i /rpc.0 -r rpc.responses.txt
 ```
 
 ### Use a single message file, using only `engine` and `eth` methods
 
-```
+```bash
 -a http://localhost:8551 -s /keystore/jwt-secret -i /rpc.0 -f engine,eth
 ```
 
 ### Use a single message file, using only the first 100 methods
 
-```
+```bash
 -a http://localhost:8551 -s /keystore/jwt-secret -i /rpc.0 -f .*=100
 ```
 
 ### Use a single message file, using only the first 50 `engine_newPayloadV2` or `engine_newPayloadV3` methods
 
-```
+```bash
 -a http://localhost:8551 -s /keystore/jwt-secret -i /rpc.0 -f engine_newPayloadV[23]=50
 ```
 
 ### Prometheus Push Gateway
 
-Since Kute is not a long-lived application it's unreasonable for Prometheus and similar tools to scrape for metrics. Instead, Kute leverages [Prometheus Push Gateway](https://github.com/prometheus/pushgateway), a service that is intended to be used for ephemeral and batch jobs. Once Kute finishes processing all requests, it will report the metrics to the Gateway, which later will be scraped by Prometheus or similar tools.
+Since Kute is not a long-lived application it's unreasonable for Prometheus or similar tools to scrape for metrics. Instead, Kute leverages [Prometheus Push Gateway](https://github.com/prometheus/pushgateway), a service that is intended to be used for ephemeral and batch jobs. Once Kute finishes processing all requests, it will report the metrics to the Gateway, which later will be scraped by Prometheus or similar tools.
 
 ### TODO
 
 There are some features that we might add in the future, if they end up being required:
 
 - Validate the responses from the Nethermind Client (a "pedantic" mode)
-- Other report outputs (ex. CSV, HTML)
+- Other report outputs (ex. CSV)

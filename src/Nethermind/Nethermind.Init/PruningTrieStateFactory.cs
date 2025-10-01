@@ -44,6 +44,7 @@ public class PruningTrieStateFactory(
     IProcessExitSource processExit,
     ChainSpec chainSpec,
     IDisposableStack disposeStack,
+    Lazy<IPathRecovery> pathRecovery,
     ILogManager logManager
 )
 {
@@ -68,6 +69,7 @@ public class PruningTrieStateFactory(
                 mainWorldTrieStore,
                 mainNodeStorage,
                 codeDb,
+                pathRecovery,
                 logManager,
                 preBlockCaches,
                 // Main thread should only read from prewarm caches, not spend extra time updating them.
@@ -113,9 +115,6 @@ public class PruningTrieStateFactory(
             stateManager.GlobalStateReader,
             verifyTrieStarter!
         );
-
-        // Init state if we need system calls before actual processing starts
-        worldState.SetBaseBlock(blockTree.Head?.Header);
 
         return (stateManager, adminRpcModule);
     }

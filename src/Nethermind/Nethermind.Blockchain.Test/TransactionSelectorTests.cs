@@ -475,14 +475,14 @@ namespace Nethermind.Blockchain.Test
         [TestCaseSource(nameof(BlobTransactionOrderingTestCases))]
         public void Proper_transactions_selected(ProperTransactionsSelectedTestCase testCase)
         {
-            IWorldStateManager worldStateManager = TestWorldStateFactory.CreateForTest();
-            IWorldState stateProvider = worldStateManager.GlobalWorldState;
-            IStateReader _ = worldStateManager.GlobalStateReader;
+            IWorldState stateProvider = TestWorldStateFactory.CreateForTest();
             ISpecProvider specProvider = Substitute.For<ISpecProvider>();
 
-            void SetAccountStates(IEnumerable<Address> missingAddresses)
+            Hash256 SetAccountStates(IEnumerable<Address> missingAddresses)
             {
                 HashSet<Address> missingAddressesSet = missingAddresses.ToHashSet();
+
+                using var _ = stateProvider.BeginScope(IWorldState.PreGenesis);
 
                 foreach (KeyValuePair<Address, (UInt256 Balance, UInt256 Nonce)> accountState in testCase.AccountStates
                              .Where(v => !missingAddressesSet.Contains(v.Key)))
@@ -496,6 +496,7 @@ namespace Nethermind.Blockchain.Test
 
                 stateProvider.Commit(Homestead.Instance);
                 stateProvider.CommitTree(0);
+                return stateProvider.StateRoot;
             }
 
             ITxPool transactionPool = Substitute.For<ITxPool>();
@@ -538,12 +539,12 @@ namespace Nethermind.Blockchain.Test
                 .WithBaseFeeFilter()
                 .Build;
 
-            SetAccountStates(testCase.MissingAddresses);
+            Hash256 stateRoot = SetAccountStates(testCase.MissingAddresses);
 
             TxPoolTxSource poolTxSource = new(transactionPool, specProvider,
                 transactionComparerProvider, LimboLogs.Instance, txFilterPipeline, blocksConfig);
 
-            BlockHeaderBuilder parentHeader = Build.A.BlockHeader.WithStateRoot(stateProvider.StateRoot).WithBaseFee(testCase.BaseFee);
+            BlockHeaderBuilder parentHeader = Build.A.BlockHeader.WithStateRoot(stateRoot).WithBaseFee(testCase.BaseFee);
             if (spec.IsEip4844Enabled)
             {
                 parentHeader = parentHeader.WithExcessBlobGas(0);

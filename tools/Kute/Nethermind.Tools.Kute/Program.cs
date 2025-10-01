@@ -33,7 +33,10 @@ static class Program
             Config.ConcurrentRequests,
             Config.ShowProgress,
             Config.UnwrapBatch,
-            Config.PrometheusPushGateway
+            Config.PrometheusPushGateway,
+            Config.PrometheusPushGatewayUser,
+            Config.PrometheusPushGatewayPassword,
+            Config.Labels,
         ];
         rootCommand.SetAction(async (parseResult, cancellationToken) =>
         {
@@ -44,9 +47,7 @@ static class Program
         });
         rootCommand.Description = "Send JSON RPC messages to an Ethereum node and report metrics.";
 
-        CommandLineConfiguration cli = new(rootCommand);
-
-        return await cli.InvokeAsync(args);
+        return await rootCommand.Parse(args).InvokeAsync();
     }
 
     private static IServiceProvider BuildServiceProvider(ParseResult parseResult)
@@ -105,24 +106,28 @@ static class Program
 
             return new FileResponseTracer(tracesFilePath);
         });
-        collection.AddSingleton<IMetricsReporter>(provider =>
-        {
-            IMetricsReportFormatter formatter = parseResult.GetValue(Config.MetricsReportFormatter) switch
+        collection.AddSingleton<IMetricsReportFormatter>(_ =>
+            parseResult.GetValue(Config.MetricsReportFormatter) switch
             {
                 MetricsReportFormat.Pretty => new PrettyMetricsReportFormatter(),
                 MetricsReportFormat.Json => new JsonMetricsReportFormatter(),
+                MetricsReportFormat.Html => new HtmlMetricsReportFormatter(),
                 _ => throw new ArgumentOutOfRangeException(nameof(Config.MetricsReportFormatter)),
-            };
-
+            });
+        collection.AddSingleton<IMetricsReporter>(provider =>
+        {
             MemoryMetricsReporter memoryReporter = new MemoryMetricsReporter();
-            ConsoleTotalReporter consoleReporter = new ConsoleTotalReporter(memoryReporter, formatter);
+            ConsoleTotalReporter consoleReporter = new ConsoleTotalReporter(memoryReporter, provider.GetRequiredService<IMetricsReportFormatter>());
             IMetricsReporter progresReporter = parseResult.GetValue(Config.ShowProgress)
                 ? new ConsoleProgressReporter()
                 : new NullMetricsReporter();
 
+            Dictionary<string, string> labels = parseResult.GetValue(Config.Labels) ?? new();
             string? prometheusGateway = parseResult.GetValue(Config.PrometheusPushGateway);
+            string? prometheusGatewayUser = parseResult.GetValue(Config.PrometheusPushGatewayUser);
+            string? prometheusGatewayPassword = parseResult.GetValue(Config.PrometheusPushGatewayPassword);
             IMetricsReporter prometheusReporter = prometheusGateway is not null
-                ? new PrometheusPushGatewayMetricsReporter(prometheusGateway)
+                ? new PrometheusPushGatewayMetricsReporter(prometheusGateway, labels, prometheusGatewayUser, prometheusGatewayPassword)
                 : new NullMetricsReporter();
 
             return new ComposedMetricsReporter([memoryReporter, progresReporter, consoleReporter, prometheusReporter]);
