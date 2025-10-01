@@ -33,17 +33,17 @@ public class TimeoutCertificateManager(ISnapshotManager snapshotManager, IEpochS
         throw new NotImplementedException();
     }
 
-    public void ProcessTimeoutCertificate(TimeoutCert timeoutCert)
+    public void ProcessTimeoutCertificate(TimeoutCertificate timeoutCertificate)
     {
         throw new NotImplementedException();
     }
 
-    public bool VerifyTimeoutCertificate(TimeoutCert timeoutCert, out string errorMessage)
+    public bool VerifyTimeoutCertificate(TimeoutCertificate timeoutCertificate, out string errorMessage)
     {
-        if (timeoutCert is null) throw new ArgumentNullException(nameof(timeoutCert));
-        if (timeoutCert.Signatures is null) throw new ArgumentNullException(nameof(timeoutCert.Signatures));
+        if (timeoutCertificate is null) throw new ArgumentNullException(nameof(timeoutCertificate));
+        if (timeoutCertificate.Signatures is null) throw new ArgumentNullException(nameof(timeoutCertificate.Signatures));
 
-        bool ok = _snapshotManager.TryGetSnapshot(timeoutCert.GapNumber, true, out Snapshot snapshot);
+        bool ok = _snapshotManager.TryGetSnapshot(timeoutCertificate.GapNumber, true, out Snapshot snapshot);
         if (!ok || snapshot is null)
         {
             errorMessage = "Failed to get snapshot";
@@ -56,15 +56,15 @@ public class TimeoutCertificateManager(ISnapshotManager snapshotManager, IEpochS
             return false;
         }
 
-        var signatures = new HashSet<Signature>(timeoutCert.Signatures);
+        var signatures = new HashSet<Signature>(timeoutCertificate.Signatures);
         BlockHeader header = _blockTree.Head?.Header;
         if (header is not XdcBlockHeader xdcHeader)
             throw new InvalidOperationException($"Only type of {nameof(XdcBlockHeader)} is allowed");
-        IXdcReleaseSpec spec = _specProvider.GetXdcSpec(xdcHeader, timeoutCert.Round);
-        EpochSwitchInfo epochInfo = _epochSwitchManager.GetTimeoutCertificateEpochInfo(timeoutCert);
+        IXdcReleaseSpec spec = _specProvider.GetXdcSpec(xdcHeader, timeoutCertificate.Round);
+        EpochSwitchInfo epochInfo = _epochSwitchManager.GetTimeoutCertificateEpochInfo(timeoutCertificate);
         if (epochInfo is null)
         {
-            errorMessage = $"Failed to get epoch switch info for timeout certificate with round {timeoutCert.Round}";
+            errorMessage = $"Failed to get epoch switch info for timeout certificate with round {timeoutCertificate.Round}";
             return false;
         }
         if (signatures.Count < epochInfo.Masternodes.Length * spec.CertThreshold)
@@ -73,7 +73,7 @@ public class TimeoutCertificateManager(ISnapshotManager snapshotManager, IEpochS
             return false;
         }
 
-        ValueHash256 timeoutMsgHash = timeoutCert.SigHash();
+        ValueHash256 timeoutMsgHash = timeoutCertificate.SigHash();
         bool allValid = true;
         Parallel.ForEach(signatures,
             (signature, state) =>

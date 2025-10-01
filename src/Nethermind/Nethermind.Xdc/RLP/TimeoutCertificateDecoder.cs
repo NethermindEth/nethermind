@@ -9,9 +9,9 @@ using Nethermind.Xdc.Types;
 
 namespace Nethermind.Xdc.RLP;
 
-public class TimeoutCertificateDecoder : IRlpValueDecoder<TimeoutCert>, IRlpStreamDecoder<TimeoutCert>
+public class TimeoutCertificateDecoder : IRlpValueDecoder<TimeoutCertificate>, IRlpStreamDecoder<TimeoutCertificate>
 {
-    public TimeoutCert Decode(ref Rlp.ValueDecoderContext decoderContext, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+    public TimeoutCertificate Decode(ref Rlp.ValueDecoderContext decoderContext, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
     {
         if (decoderContext.IsNextItemNull())
             return null;
@@ -35,10 +35,10 @@ public class TimeoutCertificateDecoder : IRlpValueDecoder<TimeoutCert>, IRlpStre
 
         ulong gapNumber = decoderContext.DecodeULong();
 
-        return new TimeoutCert(round, signatures, gapNumber);
+        return new TimeoutCertificate(round, signatures, gapNumber);
     }
 
-    public TimeoutCert Decode(RlpStream rlpStream, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+    public TimeoutCertificate Decode(RlpStream rlpStream, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
     {
         if (rlpStream.IsNextItemNull())
             return null;
@@ -61,10 +61,10 @@ public class TimeoutCertificateDecoder : IRlpValueDecoder<TimeoutCert>, IRlpStre
         }
         ulong gapNumber = rlpStream.DecodeUlong();
 
-        return new TimeoutCert(round, signatures, gapNumber);
+        return new TimeoutCertificate(round, signatures, gapNumber);
     }
 
-    public Rlp Encode(TimeoutCert item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+    public Rlp Encode(TimeoutCertificate item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
     {
         if (item is null)
             return Rlp.OfEmptySequence;
@@ -75,7 +75,7 @@ public class TimeoutCertificateDecoder : IRlpValueDecoder<TimeoutCert>, IRlpStre
         return new Rlp(rlpStream.Data.ToArray());
     }
 
-    public void Encode(RlpStream stream, TimeoutCert item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+    public void Encode(RlpStream stream, TimeoutCertificate item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
     {
         if (item is null)
         {
@@ -103,11 +103,11 @@ public class TimeoutCertificateDecoder : IRlpValueDecoder<TimeoutCert>, IRlpStre
         stream.Encode(item.GapNumber);
     }
 
-    public int GetLength(TimeoutCert item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+    public int GetLength(TimeoutCertificate item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
     {
         return Rlp.LengthOfSequence(GetContentLength(item, rlpBehaviors));
     }
-    private int GetContentLength(TimeoutCert? item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+    private int GetContentLength(TimeoutCertificate? item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
     {
         if (item is null)
             return 0;
@@ -120,7 +120,7 @@ public class TimeoutCertificateDecoder : IRlpValueDecoder<TimeoutCert>, IRlpStre
         return contentLength;
     }
 
-    private static int SignaturesLength(TimeoutCert item)
+    private static int SignaturesLength(TimeoutCertificate item)
     {
         return item.Signatures is not null ? item.Signatures.Length * Rlp.LengthOfSequence(Signature.Size) : 0;
     }

@@ -7,7 +7,7 @@ using Nethermind.Xdc.RLP;
 
 namespace Nethermind.Xdc.Types;
 
-public class TimeoutCert(ulong round, Signature[] signatures, ulong gapNumber)
+public class TimeoutCertificate(ulong round, Signature[] signatures, ulong gapNumber)
 {
     public ulong Round { get; set; } = round;
     public Signature[] Signatures { get; set; } = signatures;

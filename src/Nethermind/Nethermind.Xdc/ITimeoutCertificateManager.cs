@@ -10,6 +10,6 @@ public interface ITimeoutCertificateManager
 {
     void HandleTimeout(Timeout timeout);
     void OnCountdownTimer(DateTime time);
-    void ProcessTimeoutCertificate(TimeoutCert timeoutCert);
-    bool VerifyTimeoutCertificate(TimeoutCert timeoutCert, out string errorMessage);
+    void ProcessTimeoutCertificate(TimeoutCertificate timeoutCertificate);
+    bool VerifyTimeoutCertificate(TimeoutCertificate timeoutCertificate, out string errorMessage);
 }
