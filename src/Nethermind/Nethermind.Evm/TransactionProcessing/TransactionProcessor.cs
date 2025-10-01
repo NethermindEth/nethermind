@@ -191,7 +191,7 @@ namespace Nethermind.Evm.TransactionProcessing
 
             int delegationRefunds = (!spec.IsEip7702Enabled || !tx.HasAuthorizationList) ? 0 : ProcessDelegations(tx, spec, accessTracker);
 
-            long gasAvailable = tx.GasLimit - intrinsicGas.Standard;
+            long gasAvailable = CalculateAvailableGas(tx, intrinsicGas);
             if (!(result = BuildExecutionEnvironment(tx, spec, _codeInfoRepository, accessTracker, out ExecutionEnvironment env))) return result;
 
             int statusCode = !tracer.IsTracingInstructions ?
@@ -253,6 +253,9 @@ namespace Nethermind.Evm.TransactionProcessing
 
             return TransactionResult.Ok;
         }
+
+        protected virtual long CalculateAvailableGas(Transaction tx, IntrinsicGas intrinsicGas)
+            => tx.GasLimit - intrinsicGas.Standard;
 
         [MethodImpl(MethodImplOptions.NoInlining)]
         private int ProcessDelegations(Transaction tx, IReleaseSpec spec, in StackAccessTracker accessTracker)
