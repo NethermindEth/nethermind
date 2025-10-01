@@ -60,8 +60,10 @@ namespace Nethermind.Db.Test.LogIndex
         {
             LogIndexConfig config = new()
             {
-                CompactionDistance = compactionDistance, CompressionParallelism = compressionParallelism,
-                MaxReorgDepth = maxReorgDepth, CompressionAlgorithm = compressionAlgo ?? testData.Compression
+                CompactionDistance = compactionDistance,
+                CompressionParallelism = compressionParallelism,
+                MaxReorgDepth = maxReorgDepth,
+                CompressionAlgorithm = compressionAlgo ?? testData.Compression
             };
 
             ILogIndexStorage storage = failOnBlock is not null || failOnCallN is not null

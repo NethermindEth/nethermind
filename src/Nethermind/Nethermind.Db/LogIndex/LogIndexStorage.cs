@@ -48,7 +48,7 @@ namespace Nethermind.Db
             public static readonly byte[] ForwardMerge = Enumerable.Repeat(byte.MaxValue, BlockNumSize).ToArray();
         }
 
-        private struct Batches: IDisposable
+        private struct Batches : IDisposable
         {
             private bool _completed;
 

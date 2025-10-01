@@ -146,7 +146,7 @@ public class TurboPForTests(TurboPForTests.Algorithm algorithm)
     {
         var buffer = new byte[values.Length * sizeof(int) + 1024];
 
-        var resultLength = (int) compressFunc(values, (nuint) values.Length, buffer);
+        var resultLength = (int)compressFunc(values, (nuint)values.Length, buffer);
 
         TestContext.Out.WriteLine($"Compressed: {resultLength} bytes");
         return buffer[..resultLength];
@@ -158,7 +158,7 @@ public class TurboPForTests(TurboPForTests.Algorithm algorithm)
         for (var i = count; i < buffer.Length; i++)
             buffer[i] = -1;
 
-        _ = decompressFunc(data, (nuint) count, buffer);
+        _ = decompressFunc(data, (nuint)count, buffer);
 
         for (var i = count; i < buffer.Length; i++) Assert.That(buffer[i], Is.EqualTo(-1));
 
