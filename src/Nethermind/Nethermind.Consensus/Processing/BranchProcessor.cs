@@ -6,12 +6,6 @@ using System.Collections.Generic;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Blockchain.BeaconBlockRoot;
-using Nethermind.Blockchain.Blocks;
-using Nethermind.Blockchain.Receipts;
-using Nethermind.Consensus.ExecutionRequests;
-using Nethermind.Consensus.Rewards;
-using Nethermind.Consensus.Validators;
-using Nethermind.Consensus.Withdrawals;
 using Nethermind.Core;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
@@ -44,12 +38,6 @@ public class BranchProcessor(
     public event EventHandler<BlocksProcessingEventArgs>? BlocksProcessing;
 
     public event EventHandler<BlockEventArgs>? BlockProcessing;
-
-    public event EventHandler<TxProcessedEventArgs> TransactionProcessed
-    {
-        add => blockProcessor.TransactionProcessed += value;
-        remove => blockProcessor.TransactionProcessed -= value;
-    }
 
     private void PreCommitBlock(BlockHeader block)
     {

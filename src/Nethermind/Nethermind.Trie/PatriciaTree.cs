@@ -8,7 +8,6 @@ using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
 using System.IO;
 using System.Runtime.CompilerServices;
-using System.Runtime.ExceptionServices;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Core;
@@ -23,7 +22,7 @@ using Nethermind.Trie.Pruning;
 namespace Nethermind.Trie
 {
     [DebuggerDisplay("{RootHash}")]
-    public class PatriciaTree
+    public partial class PatriciaTree
     {
         private const int MaxKeyStackAlloc = 64;
         private readonly static byte[][] _singleByteKeys = [[0], [1], [2], [3], [4], [5], [6], [7], [8], [9], [10], [11], [12], [13], [14], [15]];
@@ -330,10 +329,10 @@ namespace Nethermind.Trie
         [DebuggerStepThrough]
         public virtual ReadOnlySpan<byte> Get(ReadOnlySpan<byte> rawKey, Hash256? rootHash = null)
         {
+            byte[]? array = null;
             try
             {
                 int nibblesCount = 2 * rawKey.Length;
-                byte[]? array = null;
                 Span<byte> nibbles = (rawKey.Length <= MaxKeyStackAlloc
                         ? stackalloc byte[MaxKeyStackAlloc]
                         : array = ArrayPool<byte>.Shared.Rent(nibblesCount))
@@ -351,14 +350,16 @@ namespace Nethermind.Trie
 
                 SpanSource result = GetNew(nibbles, ref emptyPath, root, isNodeRead: false);
 
-                if (array is not null) ArrayPool<byte>.Shared.Return(array);
-
                 return result.IsNull ? ReadOnlySpan<byte>.Empty : result.Span;
             }
             catch (TrieException e)
             {
                 EnhanceException(rawKey, rootHash ?? RootHash, e);
                 throw;
+            }
+            finally
+            {
+                if (array is not null) ArrayPool<byte>.Shared.Return(array);
             }
         }
 
@@ -386,7 +387,7 @@ namespace Nethermind.Trie
         [DebuggerStepThrough]
         public byte[]? GetNodeByKey(Span<byte> rawKey, Hash256? rootHash = null)
         {
-            byte[] array = null;
+            byte[]? array = null;
             try
             {
                 int nibblesCount = 2 * rawKey.Length;
@@ -404,13 +405,16 @@ namespace Nethermind.Trie
                 }
                 SpanSource result = GetNew(nibbles, ref emptyPath, root, isNodeRead: true);
 
-                if (array is not null) ArrayPool<byte>.Shared.Return(array);
                 return result.ToArray() ?? [];
             }
             catch (TrieException e)
             {
                 EnhanceException(rawKey, rootHash ?? RootHash, e);
                 throw;
+            }
+            finally
+            {
+                if (array is not null) ArrayPool<byte>.Shared.Return(array);
             }
         }
 
@@ -474,10 +478,10 @@ namespace Nethermind.Trie
 
             _writeBeforeCommit++;
 
+            byte[]? array = null;
             try
             {
                 int nibblesCount = 2 * rawKey.Length;
-                byte[] array = null;
                 Span<byte> nibbles = (rawKey.Length <= MaxKeyStackAlloc
                         ? stackalloc byte[MaxKeyStackAlloc] // Fixed size stack allocation
                         : array = ArrayPool<byte>.Shared.Rent(nibblesCount))
@@ -491,11 +495,11 @@ namespace Nethermind.Trie
                 TreePath empty = TreePath.Empty;
                 RootRef = SetNew(_traverseStack, nibbles, value, ref empty, RootRef);
 
-                if (array is not null) ArrayPool<byte>.Shared.Return(array);
             }
             finally
             {
                 Volatile.Write(ref _isWriteInProgress, 0);
+                if (array is not null) ArrayPool<byte>.Shared.Return(array);
             }
 
             void Trace(in ReadOnlySpan<byte> rawKey, SpanSource value)
@@ -713,7 +717,7 @@ namespace Nethermind.Trie
             if (oldChild is null && newChild is null) return false;
             if (!ReferenceEquals(oldChild, newChild)) return true;
             if (newChild.Keccak is null && parent.Keccak is not null) return true; // So that recalculate root knows to recalculate the parent root.
-            return true;
+            return false;
         }
 
         /// <summary>
@@ -777,7 +781,7 @@ namespace Nethermind.Trie
             public TrieNode? OriginalChild;
         }
 
-        internal SpanSource GetNew(Span<byte> remainingKey, ref TreePath path, TrieNode? node, bool isNodeRead)
+        private SpanSource GetNew(Span<byte> remainingKey, ref TreePath path, TrieNode? node, bool isNodeRead)
         {
             int originalPathLength = path.Length;
 

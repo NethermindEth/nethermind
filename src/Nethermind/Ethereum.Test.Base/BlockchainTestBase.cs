@@ -170,6 +170,9 @@ public abstract class BlockchainTestBase
             blockTree.SuggestBlock(genesisBlock);
             genesisProcessed.WaitOne();
             parentHeader = genesisBlock.Header;
+
+            // Dispose genesis block's AccountChanges
+            genesisBlock.DisposeAccountChanges();
         }
 
         List<(Block Block, string ExpectedException)> correctRlp = DecodeRlps(test, failOnInvalidRlp);
@@ -206,6 +209,11 @@ public abstract class BlockchainTestBase
             catch (Exception e)
             {
                 Assert.Fail($"Unexpected exception during processing: {e}");
+            }
+            finally
+            {
+                // Dispose AccountChanges to prevent memory leaks in tests
+                correctRlp[i].Block.DisposeAccountChanges();
             }
 
             parentHeader = correctRlp[i].Block.Header;

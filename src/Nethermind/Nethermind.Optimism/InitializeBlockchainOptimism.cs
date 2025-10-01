@@ -13,15 +13,11 @@ using Nethermind.TxPool;
 
 namespace Nethermind.Optimism;
 
-public class InitializeBlockchainOptimism(OptimismNethermindApi api) : InitializeBlockchain(api)
+public class InitializeBlockchainOptimism(OptimismNethermindApi api, IChainHeadInfoProvider chainHeadInfoProvider) : InitializeBlockchain(api, chainHeadInfoProvider)
 {
     protected override async Task InitBlockchain()
     {
         await base.InitBlockchain();
-
-        var withdrawalProcessor = new OptimismWithdrawalProcessor(api.WorldStateManager!.GlobalWorldState, api.LogManager, api.SpecHelper);
-        var genesisPostProcessor = new OptimismGenesisPostProcessor(withdrawalProcessor, api.SpecProvider);
-        api.GenesisPostProcessor = genesisPostProcessor;
 
         api.RegisterTxType<DepositTransactionForRpc>(new OptimismTxDecoder<Transaction>(), Always.Valid);
         api.RegisterTxType<LegacyTransactionForRpc>(new OptimismLegacyTxDecoder(), new OptimismLegacyTxValidator(api.SpecProvider!.ChainId));

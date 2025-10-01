@@ -46,7 +46,7 @@ namespace Nethermind.Api
     public class NethermindApi(NethermindApi.Dependencies dependencies) : INethermindApi
     {
 
-        // A simple class to prevent having to modify subclass of NethermindApi many time
+        // A simple class to prevent having to modify subclass of NethermindApi many times
         public record Dependencies(
             IConfigProvider ConfigProvider,
             IJsonSerializer JsonSerializer,
@@ -62,7 +62,6 @@ namespace Nethermind.Api
 
         public IBlobTxStorage BlobTxStorage => Context.Resolve<IBlobTxStorage>();
         public CompositeBlockPreprocessorStep BlockPreprocessor { get; } = new();
-        public IGenesisPostProcessor GenesisPostProcessor { get; set; } = new NullGenesisPostProcessor();
         public IBlockProcessingQueue BlockProcessingQueue => Context.Resolve<IBlockProcessingQueue>();
         public IBlockProducer? BlockProducer { get; set; }
         public IBlockProducerRunner BlockProducerRunner { get; set; } = new NoBlockProducerRunner();

@@ -127,6 +127,14 @@ public class Eth69ProtocolHandler : Eth68ProtocolHandler, ISyncPeer
             );
         }
 
+        if (blockRangeUpdate.LatestBlockHash.IsZero)
+        {
+            Disconnect(
+                DisconnectReason.InvalidBlockRangeUpdate,
+                "BlockRangeUpdate with latest block hash as zero."
+            );
+        }
+
         _remoteHeadBlockHash = blockRangeUpdate.LatestBlockHash;
         HeadNumber = blockRangeUpdate.LatestBlock;
         HeadHash = blockRangeUpdate.LatestBlockHash;

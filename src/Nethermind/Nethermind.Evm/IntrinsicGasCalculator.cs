@@ -39,7 +39,7 @@ public static class IntrinsicGasCalculator
     private static long DataCost(Transaction transaction, IReleaseSpec releaseSpec)
     {
         long baseDataCost = transaction.IsContractCreation && releaseSpec.IsEip3860Enabled
-            ? EvmInstructions.Div32Ceiling((UInt256)transaction.Data.Length) *
+            ? EvmCalculations.Div32Ceiling((UInt256)transaction.Data.Length) *
               GasCostOf.InitCodeWord
             : 0;
 
