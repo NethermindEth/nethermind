@@ -411,7 +411,7 @@ namespace Nethermind.Db
 
         public string GetDbSize()
         {
-            return FormatSize(_rootDb.GatherMetric().Size);
+            return _rootDb.GatherMetric().Size.SizeToString(useSi: true, addSpace: true);
         }
 
         public Dictionary<byte[], int[]> GetKeysFor(Address address, int from, int to, bool includeValues = false) =>
@@ -1135,20 +1135,6 @@ namespace Nethermind.Db
             }
 
             return ~(left * BlockNumSize);
-        }
-
-        private static readonly string[] SizeSuffixes = ["B", "KB", "MB", "GB", "TB", "PB"];
-
-        private static string FormatSize(double size)
-        {
-            int index = 0;
-            while (size >= 1024 && index < SizeSuffixes.Length - 1)
-            {
-                size /= 1024;
-                index++;
-            }
-
-            return $"{size:0.##} {SizeSuffixes[index]}";
         }
     }
 }
