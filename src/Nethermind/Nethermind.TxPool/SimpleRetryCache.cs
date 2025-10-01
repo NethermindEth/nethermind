@@ -12,21 +12,21 @@ using System.Threading.Tasks;
 namespace Nethermind.TxPool;
 
 /// <summary>
-/// Allows to announce request for a resource and track other nodes to request it from in case of timeout
+/// Allows to announce request for a resource and track other nodes to request it from in case of timeout. The code does not request the resource initially, but does so on timeout.
 /// </summary>
 /// <typeparam name="TResourceId">Resource identifier</typeparam>
-/// <typeparam name="TNodeId"></typeparam>
+/// <typeparam name="TNodeId">Node that can be queried for the resource</typeparam>
 public class SimpleRetryCache<TResourceId, TNodeId>
     where TResourceId : struct, IEquatable<TResourceId>
     where TNodeId : notnull, IEquatable<TNodeId>
 {
-    public int TimeoutMs = 2000;
-    public int CheckMs = 300;
+    private const int TimeoutMs = 2500;
+    private const int CheckMs = 300;
 
-    private readonly ConcurrentDictionary<TResourceId, Dictionary<TNodeId, Action>> _dict = new();
-    private readonly ConcurrentQueue<(TResourceId TxHash, DateTimeOffset Expires)> expiringQueue = new();
-    private readonly ClockKeyCache<TResourceId> _pendingHashes = new(MemoryAllowance.TxHashCacheSize / 10);
-    private ILogger _logger;
+    private readonly ConcurrentDictionary<TResourceId, Dictionary<TNodeId, Action>> _retryRequests = new();
+    private readonly ConcurrentQueue<(TResourceId ResourceId, DateTimeOffset Expires)> expiringQueue = new();
+    private readonly ClockKeyCache<TResourceId> _requestingResources = new(MemoryAllowance.TxHashCacheSize / 10);
+    private readonly ILogger _logger;
 
     public SimpleRetryCache(ILogManager logManager, CancellationToken token = default)
     {
@@ -34,20 +34,22 @@ public class SimpleRetryCache<TResourceId, TNodeId>
 
         Task.Run(async () =>
         {
-            while (!token.IsCancellationRequested)
+            PeriodicTimer timer = new(TimeSpan.FromMilliseconds(CheckMs));
+
+            while (await timer.WaitForNextTickAsync(token))
             {
-                while (!token.IsCancellationRequested && expiringQueue.TryPeek(out (TResourceId ResId, DateTimeOffset Expires) item) && item.Expires <= DateTimeOffset.UtcNow)
+                while (!token.IsCancellationRequested && expiringQueue.TryPeek(out (TResourceId ResourceId, DateTimeOffset ExpiresAfter) item) && item.ExpiresAfter <= DateTimeOffset.UtcNow)
                 {
                     expiringQueue.TryDequeue(out item);
 
-                    if (_dict.TryRemove(item.ResId, out Dictionary<TNodeId, Action>? requests))
+                    if (_retryRequests.TryRemove(item.ResourceId, out Dictionary<TNodeId, Action>? requests))
                     {
                         if (requests.Count > 0)
                         {
-                            _pendingHashes.Set(item.ResId);
+                            _requestingResources.Set(item.ResourceId);
                         }
 
-                        if (_logger.IsTrace) _logger.Trace($"Sending retry requests for {item.ResId} after timeout");
+                        if (_logger.IsTrace) _logger.Trace($"Sending retry requests for {item.ResourceId} after timeout");
 
 
                         foreach ((TNodeId nodeId, Action request) in requests)
@@ -58,53 +60,51 @@ public class SimpleRetryCache<TResourceId, TNodeId>
                             }
                             catch (Exception ex)
                             {
-                                if (_logger.IsTrace) _logger.Error($"Failed to send retry request to {nodeId} for tx {item.ResId}", ex);
+                                if (_logger.IsTrace) _logger.Error($"Failed to send retry request to {nodeId} for {item.ResourceId}", ex);
                             }
                         }
                     }
                 }
-
-                await Task.Delay(CheckMs, token);
             }
         }, token);
     }
 
-    public AnnounceResult Announced(TResourceId txHash, TNodeId nodeId, Action request)
+    public AnnounceResult Announced(TResourceId resourceId, TNodeId nodeId, Action request)
     {
-        if (!_pendingHashes.Contains(txHash))
+        if (!_requestingResources.Contains(resourceId))
         {
             bool added = false;
-            _dict.AddOrUpdate(txHash, (txHash) => Add(nodeId, txHash, ref added), (txhash, dict) => Update(nodeId, txHash, request, dict));
+            _retryRequests.AddOrUpdate(resourceId, (resourceId) => Add(nodeId, resourceId, ref added), (resourceId, dict) => Update(nodeId, resourceId, request, dict));
             return added ? AnnounceResult.New : AnnounceResult.Enqueued;
         }
 
-        if(_logger.IsTrace)_logger.Trace($"Announced {txHash} by {nodeId}: PENDING");
+        if (_logger.IsTrace) _logger.Trace($"Announced {resourceId} by {nodeId}, but a retry is in progress already, immidietly firing");
+        return AnnounceResult.New;
 
-        return AnnounceResult.PendingRequest;
+        Dictionary<TNodeId, Action> Add(TNodeId nodeId, TResourceId resourceId, ref bool added)
+        {
+            if (_logger.IsTrace) _logger.Trace($"Announced {resourceId} by {nodeId}: NEW");
+
+            expiringQueue.Enqueue((resourceId, DateTimeOffset.UtcNow.AddMilliseconds(TimeoutMs)));
+            added = true;
+
+            return [];
+        }
+
+        Dictionary<TNodeId, Action> Update(TNodeId nodeId, TResourceId resourceId, Action request, Dictionary<TNodeId, Action> dictionary)
+        {
+            if (_logger.IsTrace) _logger.Trace($"Announced {resourceId} by {nodeId}: UPDATE");
+
+            dictionary[nodeId] = request;
+            return dictionary;
+        }
     }
 
-    private Dictionary<TNodeId, Action> Add(TNodeId nodeId, TResourceId txHash, ref bool added)
+    public void Received(TResourceId resourceId)
     {
-        if (_logger.IsTrace) _logger.Trace($"Announced {txHash} by {nodeId}: NEW");
+        if (_logger.IsTrace) _logger.Trace($"Received {resourceId}");
 
-        expiringQueue.Enqueue((txHash, DateTimeOffset.UtcNow.AddMilliseconds(TimeoutMs)));
-        added = true;
-
-        return [];
-    }
-
-    private Dictionary<TNodeId, Action> Update(TNodeId nodeId, TResourceId txHash, Action request, Dictionary<TNodeId, Action> dictionary)
-    {
-        if (_logger.IsTrace) _logger.Trace($"Announced {txHash} by {nodeId}: UPDATE");
-
-        dictionary.TryAdd(nodeId, request);
-        return dictionary;
-    }
-
-    public void Received(TResourceId txHash)
-    {
-        if (_logger.IsTrace) _logger.Trace($"Received {txHash}");
-        _dict.TryRemove(txHash, out Dictionary<TNodeId, Action>? _);
+        _retryRequests.TryRemove(resourceId, out Dictionary<TNodeId, Action>? _);
     }
 }
 

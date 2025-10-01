@@ -61,6 +61,6 @@ namespace Nethermind.TxPool
         bool SupportsBlobs { get; }
         long PendingTransactionsAdded { get; }
 
-        SimpleRetryCache<ValueHash256, Guid> SimpleRetryCache { get; }
+        SimpleRetryCache<ValueHash256, Guid> RetryCache { get; }
     }
 }

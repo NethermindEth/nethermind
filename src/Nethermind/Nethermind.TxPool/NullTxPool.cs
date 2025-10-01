@@ -113,6 +113,6 @@ namespace Nethermind.TxPool
         }
         public bool AcceptTxWhenNotSynced { get; set; }
 
-        public SimpleRetryCache<ValueHash256, Guid> SimpleRetryCache { get; } = new(LimboLogs.Instance);
+        public SimpleRetryCache<ValueHash256, Guid> RetryCache { get; } = new(LimboLogs.Instance);
     }
 }

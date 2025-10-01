@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
@@ -92,13 +92,13 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth
 
         private ArrayPoolList<Hash256> AddMarkUnknownHashes(ReadOnlySpan<Hash256> hashes, Action<GetPooledTransactionsMessage> send, Guid sessionId)
         {
-            ArrayPoolList<Hash256> discoveredTxHashes = new ArrayPoolList<Hash256>(hashes.Length);
+            ArrayPoolList<Hash256> discoveredTxHashes = new(hashes.Length);
             for (int i = 0; i < hashes.Length; i++)
             {
                 Hash256 hash = hashes[i];
                 if (!txPool.IsKnown(hash))
                 {
-                    if (txPool.SimpleRetryCache.Announced(hash, sessionId, () =>
+                    if (txPool.RetryCache.Announced(hash, sessionId, () =>
                     {
                         ArrayPoolList<Hash256> discoveredTxHashes = new(1) { hash };
                         GetPooledTransactionsMessage msg65 = new(discoveredTxHashes);
@@ -115,13 +115,13 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth
 
         private ArrayPoolList<Hash256> AddMarkUnknownHashes(ReadOnlySpan<Hash256> hashes, Action<V66.Messages.GetPooledTransactionsMessage> send, Guid sessionId)
         {
-            ArrayPoolList<Hash256> discoveredTxHashes = new ArrayPoolList<Hash256>(hashes.Length);
+            ArrayPoolList<Hash256> discoveredTxHashes = new(hashes.Length);
             for (int i = 0; i < hashes.Length; i++)
             {
                 Hash256 hash = hashes[i];
                 if (!txPool.IsKnown(hash))
                 {
-                    if (txPool.SimpleRetryCache.Announced(hash, sessionId, () =>
+                    if (txPool.RetryCache.Announced(hash, sessionId, () =>
                     {
                         ArrayPoolList<Hash256> discoveredTxHashes = new(1) { hash };
                         V66.Messages.GetPooledTransactionsMessage msg66 = new(MessageConstants.Random.NextLong(), new GetPooledTransactionsMessage(discoveredTxHashes));
@@ -144,7 +144,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth
                 Hash256 hash = hashes[i];
                 if (!txPool.IsKnown(hash) && !txPool.ContainsTx(hash, (TxType)types[i]))
                 {
-                    if (txPool.SimpleRetryCache.Announced(hash, sessionId, () =>
+                    if (txPool.RetryCache.Announced(hash, sessionId, () =>
                     {
                         ArrayPoolList<Hash256> discoveredTxHashes = new(1) { hash };
                         V66.Messages.GetPooledTransactionsMessage msg66 = new(MessageConstants.Random.NextLong(), new GetPooledTransactionsMessage(discoveredTxHashes));
