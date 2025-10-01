@@ -1,6 +1,11 @@
 // SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using Microsoft.Extensions.ObjectPool;
+using Nethermind.Core.Crypto;
+using Nethermind.Core.Eip2930;
+using Nethermind.Core.Extensions;
+using Nethermind.Int256;
 using System;
 using System.Buffers;
 using System.Diagnostics;
@@ -8,11 +13,6 @@ using System.Diagnostics.CodeAnalysis;
 using System.Runtime.CompilerServices;
 using System.Text;
 using System.Text.Json.Serialization;
-using Microsoft.Extensions.ObjectPool;
-using Nethermind.Core.Crypto;
-using Nethermind.Core.Eip2930;
-using Nethermind.Core.Extensions;
-using Nethermind.Int256;
 
 [assembly: InternalsVisibleTo("Nethermind.Consensus")]
 [assembly: InternalsVisibleTo("Nethermind.State")]
@@ -366,7 +366,54 @@ namespace Nethermind.Core
     /// <summary>
     /// Holds network form fields for <see cref="TxType.Blob" /> transactions
     /// </summary>
-    public record ShardBlobNetworkWrapper(byte[][] Blobs, byte[][] Commitments, byte[][] Proofs, ProofVersion Version);
+    public class ShardBlobNetworkWrapper : IDisposable
+    {
+        private static int CalculateDataLength(int blobCount, ProofVersion version) =>
+            blobCount * (Ckzg.BytesPerBlob + Ckzg.BytesPerCommitment + (version == ProofVersion.V0 ? Ckzg.BytesPerProof : Ckzg.BytesPerProof * Ckzg.CellsPerExtBlob));
+
+        public void Dispose()
+        {
+            data.Dispose();
+        }
+
+        private readonly ArrayPoolSpan<byte> data;
+
+        public readonly struct At(int count, int size, Memory<byte> data)
+        {
+            public Memory<byte> this[int index] => index < count ? data.Slice(index * size, size) : throw new IndexOutOfRangeException();
+        }
+
+        public At Blobs { get; }
+        public At Commitments { get; }
+        public At Proofs { get; }
+        public Memory<byte> FlatBlobs { get; }
+        public Memory<byte> FlatCommitments { get; }
+        public Memory<byte> FlatProofs { get; }
+
+        public ProofVersion Version { get; }
+
+        public ShardBlobNetworkWrapper(int blobCount, ProofVersion version)
+        {
+            Version = version;
+            data = new(CalculateDataLength(blobCount, version));
+
+            int blobSize = Ckzg.BytesPerBlob;
+            int commitmentSize = Ckzg.BytesPerCommitment;
+            int proofSize = version == ProofVersion.V0 ? Ckzg.BytesPerProof : Ckzg.BytesPerProof * Ckzg.CellsPerExtBlob;
+
+            int offset = 0;
+
+            FlatBlobs = data.AsMemory(offset, blobCount * blobSize);
+            offset += blobCount * blobSize;
+            FlatCommitments = data.AsMemory(offset, blobCount * commitmentSize);
+            offset += blobCount * commitmentSize;
+            FlatProofs = data.AsMemory(offset, blobCount * proofSize);
+
+            Blobs = new At(blobCount, blobSize, FlatBlobs);
+            Commitments = new At(blobCount, commitmentSize, FlatCommitments);
+            Proofs = new At(blobCount, proofSize, FlatProofs);
+        }
+    }
 
     public enum ProofVersion : byte
     {

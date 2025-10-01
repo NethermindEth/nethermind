@@ -39,6 +39,7 @@ public readonly struct ArrayPoolSpan<T>(ArrayPool<T> arrayPool, int length) : ID
     public static implicit operator ReadOnlySpan<T>(ArrayPoolSpan<T> arrayPoolSpan) => arrayPoolSpan._array.AsSpan(0, arrayPoolSpan._length);
 
     public Span<T> Slice(int start, int length) => _array.AsSpan(start, length);
+    public Memory<T> AsMemory(int start, int length) => _array.AsMemory(start, length);
 
     public readonly void Dispose() => arrayPool.Return(_array);
 
