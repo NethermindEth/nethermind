@@ -118,12 +118,15 @@ public class BlockValidator(
 
     private bool ValidateBlockSize(Block block, IReleaseSpec spec, ref string? errorMessage)
     {
-        int encodedSize = block.EncodedSize ?? _blockDecoder.GetLength(block, RlpBehaviors.None);
-        if (spec.IsEip7934Enabled && encodedSize > spec.Eip7934MaxRlpBlockSize)
+        if (spec.IsEip7934Enabled)
         {
-            if (_logger.IsDebug) _logger.Debug($"{Invalid(block)} RLP encoded size of {encodedSize} bytes exceeds the max limit of {spec.Eip7934MaxRlpBlockSize} bytes");
-            errorMessage = BlockErrorMessages.ExceededBlockSizeLimit(spec.Eip7934MaxRlpBlockSize);
-            return false;
+            int encodedSize = block.EncodedSize ?? _blockDecoder.GetLength(block, RlpBehaviors.None);
+            if (encodedSize > spec.Eip7934MaxRlpBlockSize)
+            {
+                if (_logger.IsDebug) _logger.Debug($"{Invalid(block)} RLP encoded size of {encodedSize} bytes exceeds the max limit of {spec.Eip7934MaxRlpBlockSize} bytes");
+                errorMessage = BlockErrorMessages.ExceededBlockSizeLimit(spec.Eip7934MaxRlpBlockSize);
+                return false;
+            }
         }
 
         return true;
