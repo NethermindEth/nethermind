@@ -219,6 +219,9 @@ public abstract class BlockchainTestBase
         // Caches are cleared async, which is a problem as read for the MainWorldState with prewarmer is not correct if its not cleared.
         preWarmer?.ClearCaches();
 
+        // Dispose genesis block's AccountChanges
+        genesisBlock.DisposeAccountChanges();
+
         Block? headBlock = blockTree.RetrieveHeadBlock();
         List<string> differences;
         using (stateProvider.BeginScope(headBlock.Header))
@@ -272,6 +275,11 @@ public abstract class BlockchainTestBase
             catch (Exception e)
             {
                 Assert.Fail($"Unexpected exception during processing: {e}");
+            }
+            finally
+            {
+                // Dispose AccountChanges to prevent memory leaks in tests
+                correctRlp[i].Block.DisposeAccountChanges();
             }
 
             parentHeader = correctRlp[i].Block.Header;
