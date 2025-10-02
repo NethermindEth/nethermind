@@ -143,6 +143,7 @@ public abstract class BlockchainTestBase
         IEngineRpcModule engineRpcModule = container.Resolve<IEngineRpcModule>();
         blockchainProcessor.Start();
 
+        Block genesisBlock;
         BlockHeader parentHeader;
         // Genesis processing
         using (stateProvider.BeginScope(null))
@@ -153,7 +154,7 @@ public abstract class BlockchainTestBase
 
             test.GenesisRlp ??= Rlp.Encode(new Block(JsonToEthereumTest.Convert(test.GenesisBlockHeader)));
 
-            Block genesisBlock = Rlp.Decode<Block>(test.GenesisRlp.Bytes);
+            genesisBlock = Rlp.Decode<Block>(test.GenesisRlp.Bytes);
             Assert.That(genesisBlock.Header.Hash, Is.EqualTo(new Hash256(test.GenesisBlockHeader.Hash)));
 
             ManualResetEvent genesisProcessed = new(false);
