@@ -19,12 +19,13 @@ using System.Diagnostics.CodeAnalysis;
 using System.Linq;
 using System.Runtime.InteropServices;
 using System.Threading;
+using Nethermind.Consensus;
 using Nethermind.Evm.State;
 using Transaction = Nethermind.Core.Transaction;
 
 namespace Nethermind.Facade.Simulate;
 
-public class SimulateBridgeHelper(IBlocksConfig blocksConfig, ISpecProvider specProvider)
+public class SimulateBridgeHelper(IBlocksConfig blocksConfig, IPoSSwitcher poSSwitcher, ISpecProvider specProvider)
 {
     private const ProcessingOptions SimulateProcessingOptions =
         ProcessingOptions.ForceProcessing
@@ -253,9 +254,19 @@ public class SimulateBridgeHelper(IBlocksConfig blocksConfig, ISpecProvider spec
             requestsHash: parent.RequestsHash)
         {
             MixHash = parent.MixHash,
-            IsPostMerge = parent.Difficulty == 0,
             RequestsHash = parent.RequestsHash,
         };
+
+        if (poSSwitcher.IsPostMerge(result))
+        {
+            result.Difficulty = UInt256.Zero;
+            result.IsPostMerge = true;
+        }
+        else
+        {
+            result.Difficulty =  parent.Difficulty;
+            result.IsPostMerge = false;
+        }
 
         IReleaseSpec spec = specProvider.GetSpec(result);
 

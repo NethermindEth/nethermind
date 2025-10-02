@@ -40,6 +40,7 @@ namespace Nethermind.Facade
     public class BlockchainBridge(
         IOverridableEnv<BlockchainBridge.BlockProcessingComponents> processingEnv,
         Lazy<ISimulateReadOnlyBlocksProcessingEnv> lazySimulateProcessingEnv,
+        IPoSSwitcher poSSwitcher,
         IBlockTree blockTree,
         IStateReader stateReader,
         ITxPool txPool,
@@ -54,7 +55,7 @@ namespace Nethermind.Facade
         IMiningConfig miningConfig)
         : IBlockchainBridge
     {
-        private readonly SimulateBridgeHelper _simulateBridgeHelper = new(blocksConfig, specProvider);
+        private readonly SimulateBridgeHelper _simulateBridgeHelper = new(blocksConfig, poSSwitcher, specProvider);
 
         public Block? HeadBlock
         {
