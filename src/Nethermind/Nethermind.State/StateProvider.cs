@@ -33,8 +33,6 @@ namespace Nethermind.State
     {
         private static readonly UInt256 _zero = UInt256.Zero;
 
-        private static readonly AccountStruct? NullAccountStruct = null; // Cannot put in AccountStruct for some reason.
-
         private readonly Dictionary<AddressAsKey, Stack<int>> _intraTxCache = new();
         private readonly HashSet<AddressAsKey> _committedThisRound = new();
         private readonly HashSet<AddressAsKey> _nullAccountReads = new();
@@ -44,7 +42,7 @@ namespace Nethermind.State
         // False positives would be problematic as the code _must_ be persisted
         private readonly ClockKeyCacheNonConcurrent<ValueHash256> _codeInsertFilter = new(1_024);
         private readonly Dictionary<AddressAsKey, ChangeTrace> _blockChanges = new(4_096);
-        private readonly ConcurrentDictionary<AddressAsKey, AccountStruct?>? _preBlockCache;
+        private readonly ConcurrentDictionary<AddressAsKey, Account>? _preBlockCache;
 
         private readonly List<Change> _keptInCache = new();
         private readonly ILogger _logger;
@@ -54,7 +52,7 @@ namespace Nethermind.State
 
         private readonly List<Change> _changes = new(Resettable.StartCapacity);
         internal readonly StateTree _tree;
-        private readonly Func<AddressAsKey, AccountStruct?> _getStateFromTrie;
+        private readonly Func<AddressAsKey, Account> _getStateFromTrie;
 
         private readonly bool _populatePreBlockCache;
         private bool _needsStateRootUpdate;
@@ -63,7 +61,7 @@ namespace Nethermind.State
             IKeyValueStoreWithBatching codeDb,
             ILogManager logManager,
             StateTree? stateTree = null,
-            ConcurrentDictionary<AddressAsKey, AccountStruct?>? preBlockCache = null,
+            ConcurrentDictionary<AddressAsKey, Account>? preBlockCache = null,
             bool populatePreBlockCache = true)
         {
             _preBlockCache = preBlockCache;
@@ -74,8 +72,16 @@ namespace Nethermind.State
             _getStateFromTrie = address =>
             {
                 Metrics.IncrementStateTreeReads();
-                return _tree.GetStruct(address);
+                return _tree.Get(address);
             };
+        }
+
+        public void Accept<TCtx>(ITreeVisitor<TCtx> visitor, Hash256? stateRoot, VisitingOptions? visitingOptions = null) where TCtx : struct, INodeContext<TCtx>
+        {
+            ArgumentNullException.ThrowIfNull(visitor);
+            ArgumentNullException.ThrowIfNull(stateRoot);
+
+            _tree.Accept(visitor, stateRoot, visitingOptions);
         }
 
         public void RecalculateStateRoot()
@@ -99,8 +105,8 @@ namespace Nethermind.State
 
         public bool IsContract(Address address)
         {
-            ref readonly AccountStruct? account = ref GetThroughCache(address);
-            return account is not null && account.Value.IsContract;
+            Account? account = GetThroughCache(address);
+            return account is not null && account.IsContract;
         }
 
         public bool AccountExists(Address address) =>
@@ -108,27 +114,24 @@ namespace Nethermind.State
                 ? _changes[value.Peek()]!.ChangeType != ChangeType.Delete
                 : GetAndAddToCache(address) is not null;
 
-        public ref readonly AccountStruct? GetAccount(Address address)
-        {
-            return ref GetThroughCache(address);
-        }
+        public Account GetAccount(Address address) => GetThroughCache(address) ?? Account.TotallyEmpty;
 
         public bool IsDeadAccount(Address address)
         {
-            ref readonly AccountStruct? account = ref GetThroughCache(address);
+            Account? account = GetThroughCache(address);
             return account?.IsEmpty ?? true;
         }
 
         public UInt256 GetNonce(Address address)
         {
-            ref readonly AccountStruct? account = ref GetThroughCache(address);
+            Account? account = GetThroughCache(address);
             return account?.Nonce ?? UInt256.Zero;
         }
 
-        public Hash256 GetStorageRoot(Address address) // TODO: Check if ValueHash
+        public Hash256 GetStorageRoot(Address address)
         {
-            ref readonly AccountStruct? account = ref GetThroughCache(address);
-            return account is not null ? account.Value.StorageRoot.ToCommitment() : ThrowIfNull(address);
+            Account? account = GetThroughCache(address);
+            return account is not null ? account.StorageRoot : ThrowIfNull(address);
 
             [DoesNotReturn, StackTraceHidden]
             static Hash256 ThrowIfNull(Address address)
@@ -137,8 +140,8 @@ namespace Nethermind.State
 
         public ref readonly UInt256 GetBalance(Address address)
         {
-            ref readonly AccountStruct? account = ref GetThroughCache(address);
-            return ref account is not null ? ref Nullable.GetValueRefOrDefaultRef(in account).Balance : ref _zero;
+            Account? account = GetThroughCache(address);
+            return ref account is not null ? ref account.Balance : ref _zero;
         }
 
         public bool InsertCode(Address address, in ValueHash256 codeHash, ReadOnlyMemory<byte> code, IReleaseSpec spec, bool isGenesis = false)
@@ -170,12 +173,12 @@ namespace Nethermind.State
                 inserted = true;
             }
 
-            ref readonly AccountStruct account = ref GetThroughCacheOrThrowIfNull(address);
-            if (account.CodeHash != codeHash)
+            Account? account = GetThroughCache(address) ?? ThrowIfNull(address);
+            if (account.CodeHash.ValueHash256 != codeHash)
             {
                 _needsStateRootUpdate = true;
                 if (_logger.IsDebug) Debug(address, codeHash, account);
-                AccountStruct changedAccount = account.WithChangedCodeHash((Hash256)codeHash);
+                Account changedAccount = account.WithChangedCodeHash((Hash256)codeHash);
 
                 PushUpdate(address, changedAccount);
             }
@@ -191,26 +194,30 @@ namespace Nethermind.State
             return inserted;
 
             [MethodImpl(MethodImplOptions.NoInlining)]
-            void Debug(Address address, in ValueHash256 codeHash, in AccountStruct account)
+            void Debug(Address address, in ValueHash256 codeHash, Account account)
                 => _logger.Debug($"Update {address} C {account.CodeHash} -> {codeHash}");
 
             [MethodImpl(MethodImplOptions.NoInlining)]
             void Trace(Address address) => _logger.Trace($"Touch {address} (code hash)");
+
+            [DoesNotReturn, StackTraceHidden]
+            static Account ThrowIfNull(Address address)
+                => throw new InvalidOperationException($"Account {address} is null when updating code hash");
         }
 
         private void SetNewBalance(Address address, in UInt256 balanceChange, IReleaseSpec releaseSpec, bool isSubtracting)
         {
             _needsStateRootUpdate = true;
 
-            AccountStruct GetThroughCacheCheckExists()
+            Account GetThroughCacheCheckExists()
             {
-                ref readonly AccountStruct? result = ref GetThroughCache(address);
+                Account result = GetThroughCache(address);
                 if (result is null)
                 {
                     ThrowNonExistingAccount();
                 }
 
-                return result.Value;
+                return result;
 
                 [DoesNotReturn, StackTraceHidden]
                 static void ThrowNonExistingAccount()
@@ -225,7 +232,7 @@ namespace Nethermind.State
                 // hitting non-existing account when subtracting Zero-value from the sender
                 if (releaseSpec.IsEip158Enabled && !isSubtracting)
                 {
-                    AccountStruct touched = GetThroughCacheCheckExists();
+                    Account touched = GetThroughCacheCheckExists();
 
                     if (_logger.IsTrace) TraceTouch(address);
                     if (touched.IsEmpty)
@@ -237,7 +244,7 @@ namespace Nethermind.State
                 return;
             }
 
-            AccountStruct account = GetThroughCacheCheckExists();
+            Account account = GetThroughCacheCheckExists();
 
             if (isSubtracting && account.Balance < balanceChange)
             {
@@ -246,7 +253,7 @@ namespace Nethermind.State
 
             UInt256 newBalance = isSubtracting ? account.Balance - balanceChange : account.Balance + balanceChange;
 
-            AccountStruct changedAccount = account.WithChangedBalance(newBalance);
+            Account changedAccount = account.WithChangedBalance(newBalance);
             if (_logger.IsTrace) TraceUpdate(address, in balanceChange, isSubtracting, account, in newBalance);
 
             PushUpdate(address, changedAccount);
@@ -255,7 +262,7 @@ namespace Nethermind.State
             void TraceTouch(Address address) => _logger.Trace($"Touch {address} (balance)");
 
             [MethodImpl(MethodImplOptions.NoInlining)]
-            void TraceUpdate(Address address, in UInt256 balanceChange, bool isSubtracting, in AccountStruct account, in UInt256 newBalance)
+            void TraceUpdate(Address address, in UInt256 balanceChange, bool isSubtracting, Account account, in UInt256 newBalance)
                 => _logger.Trace($"Update {address} B {account.Balance.ToHexString(skipLeadingZeros: true)} -> {newBalance.ToHexString(skipLeadingZeros: true)} ({(isSubtracting ? "-" : "+")}{balanceChange})");
 
             [DoesNotReturn, StackTraceHidden]
@@ -284,51 +291,63 @@ namespace Nethermind.State
         public void UpdateStorageRoot(Address address, Hash256 storageRoot)
         {
             _needsStateRootUpdate = true;
-            ref readonly AccountStruct account = ref GetThroughCacheOrThrowIfNull(address);
+            Account account = GetThroughCache(address) ?? ThrowNullAccount(address);
             if (account.StorageRoot != storageRoot)
             {
                 if (_logger.IsTrace) Trace(address, storageRoot, account);
-                AccountStruct changedAccount = account.WithChangedStorageRoot(storageRoot);
+                Account changedAccount = account.WithChangedStorageRoot(storageRoot);
                 PushUpdate(address, changedAccount);
             }
 
             [MethodImpl(MethodImplOptions.NoInlining)]
-            void Trace(Address address, Hash256 storageRoot, in AccountStruct account)
+            void Trace(Address address, Hash256 storageRoot, Account account)
                 => _logger.Trace($"Update {address} S {account.StorageRoot} -> {storageRoot}");
+
+            [DoesNotReturn, StackTraceHidden]
+            static Account ThrowNullAccount(Address address)
+                => throw new InvalidOperationException($"Account {address} is null when updating storage hash");
         }
 
         public void IncrementNonce(Address address, UInt256 delta)
         {
             _needsStateRootUpdate = true;
-            ref readonly AccountStruct account = ref GetThroughCacheOrThrowIfNull(address);
-            AccountStruct changedAccount = account.WithChangedNonce(account.Nonce + delta);
+            Account account = GetThroughCache(address) ?? ThrowNullAccount(address);
+            Account changedAccount = account.WithChangedNonce(account.Nonce + delta);
             if (_logger.IsTrace) Trace(address, account, changedAccount);
 
             PushUpdate(address, changedAccount);
 
             [MethodImpl(MethodImplOptions.NoInlining)]
-            void Trace(Address address, in AccountStruct account, in AccountStruct changedAccount)
+            void Trace(Address address, Account account, Account changedAccount)
                 => _logger.Trace($"Update {address} N {account.Nonce.ToHexString(skipLeadingZeros: true)} -> {changedAccount.Nonce.ToHexString(skipLeadingZeros: true)}");
+
+            [DoesNotReturn, StackTraceHidden]
+            static Account ThrowNullAccount(Address address)
+                => throw new InvalidOperationException($"Account {address} is null when incrementing nonce");
         }
 
         public void DecrementNonce(Address address, UInt256 delta)
         {
             _needsStateRootUpdate = true;
-            ref readonly AccountStruct account = ref GetThroughCacheOrThrowIfNull(address);
-            AccountStruct changedAccount = account.WithChangedNonce(account.Nonce - delta);
+            Account? account = GetThroughCache(address) ?? ThrowNullAccount(address);
+            Account changedAccount = account.WithChangedNonce(account.Nonce - delta);
             if (_logger.IsTrace) Trace(address, account, changedAccount);
 
             PushUpdate(address, changedAccount);
 
             [MethodImpl(MethodImplOptions.NoInlining)]
-            void Trace(Address address, in AccountStruct account, in AccountStruct changedAccount)
+            void Trace(Address address, Account account, Account changedAccount)
                 => _logger.Trace($"  Update {address} N {account.Nonce.ToHexString(skipLeadingZeros: true)} -> {changedAccount.Nonce.ToHexString(skipLeadingZeros: true)}");
+
+            [DoesNotReturn, StackTraceHidden]
+            static Account ThrowNullAccount(Address address)
+                => throw new InvalidOperationException($"Account {address} is null when decrementing nonce");
         }
 
         public ref readonly ValueHash256 GetCodeHash(Address address)
         {
-            ref readonly AccountStruct? account = ref GetThroughCache(address);
-            return ref account is not null ? ref Nullable.GetValueRefOrDefaultRef(in account).CodeHash : ref Keccak.OfAnEmptyString.ValueHash256;
+            Account? account = GetThroughCache(address);
+            return ref account is not null ? ref account.CodeHash.ValueHash256 : ref Keccak.OfAnEmptyString.ValueHash256;
         }
 
         public byte[] GetCode(in ValueHash256 codeHash)
@@ -351,13 +370,13 @@ namespace Nethermind.State
 
         public byte[] GetCode(Address address)
         {
-            ref readonly AccountStruct? account = ref GetThroughCache(address);
+            Account? account = GetThroughCache(address);
             if (account is null)
             {
                 return [];
             }
 
-            return GetCode(account.Value!.CodeHash);
+            return GetCode(in account.CodeHash.ValueHash256);
         }
 
         public void DeleteAccount(Address address)
@@ -457,7 +476,7 @@ namespace Nethermind.State
             _needsStateRootUpdate = true;
             if (_logger.IsTrace) Trace(address, balance, nonce);
 
-            AccountStruct account = (balance.IsZero && nonce.IsZero) ? AccountStruct.TotallyEmpty : new AccountStruct(nonce, balance);
+            Account account = (balance.IsZero && nonce.IsZero) ? Account.TotallyEmpty : new Account(nonce, balance);
             PushNew(address, account);
 
             [MethodImpl(MethodImplOptions.NoInlining)]
@@ -581,7 +600,7 @@ namespace Nethermind.State
                     case ChangeType.Touch:
                     case ChangeType.Update:
                         {
-                            if (releaseSpec.IsEip158Enabled && change.Account.Value!.IsEmpty && !isGenesis)
+                            if (releaseSpec.IsEip158Enabled && change.Account.IsEmpty && !isGenesis)
                             {
                                 if (isTracing) TraceRemoveEmpty(change);
                                 SetState(change.Address, null);
@@ -598,7 +617,7 @@ namespace Nethermind.State
                         }
                     case ChangeType.New:
                         {
-                            if (!releaseSpec.IsEip158Enabled || !change.Account.Value!.IsEmpty || isGenesis)
+                            if (!releaseSpec.IsEip158Enabled || !change.Account.IsEmpty || isGenesis)
                             {
                                 if (isTracing) TraceCreate(change);
                                 SetState(change.Address, change.Account);
@@ -694,15 +713,15 @@ namespace Nethermind.State
 
             [MethodImpl(MethodImplOptions.NoInlining)]
             void TraceCreate(in Change change)
-                => _logger.Trace($"Commit create {change.Address} B = {change.Account?.Balance.ToHexString(skipLeadingZeros: true)} N = {change.Account?.Nonce.ToHexString(skipLeadingZeros: true)}");
+                => _logger.Trace($"Commit create {change.Address} B = {change.Account.Balance.ToHexString(skipLeadingZeros: true)} N = {change.Account.Nonce.ToHexString(skipLeadingZeros: true)}");
 
             [MethodImpl(MethodImplOptions.NoInlining)]
             void TraceUpdate(in Change change)
-                => _logger.Trace($"Commit update {change.Address} B = {change.Account?.Balance.ToHexString(skipLeadingZeros: true)} N = {change.Account?.Nonce.ToHexString(skipLeadingZeros: true)} C = {change.Account?.CodeHash}");
+                => _logger.Trace($"Commit update {change.Address} B = {change.Account.Balance.ToHexString(skipLeadingZeros: true)} N = {change.Account.Nonce.ToHexString(skipLeadingZeros: true)} C = {change.Account.CodeHash}");
 
             [MethodImpl(MethodImplOptions.NoInlining)]
             void TraceRemoveEmpty(in Change change)
-                => _logger.Trace($"Commit remove empty {change.Address} B = {change.Account?.Balance.ToHexString(skipLeadingZeros: true)} N = {change.Account?.Nonce.ToHexString(skipLeadingZeros: true)}");
+                => _logger.Trace($"Commit remove empty {change.Address} B = {change.Account.Balance.ToHexString(skipLeadingZeros: true)} N = {change.Account.Nonce.ToHexString(skipLeadingZeros: true)}");
 
             [DoesNotReturn, StackTraceHidden]
             static void ThrowStartOfCommitIsNull(int currentPosition)
@@ -728,10 +747,11 @@ namespace Nethermind.State
                 if (change.Before != change.After)
                 {
                     change.Before = change.After;
+
                     KeccakCache.ComputeTo(key.Value.Bytes, out ValueHash256 keccak);
 
                     var account = change.After;
-                    Rlp accountRlp = account is not {} notNullAccount ? null : notNullAccount.IsTotallyEmpty ? StateTree.EmptyAccountRlp : Rlp.Encode(account);
+                    Rlp accountRlp = account is null ? null : account.IsTotallyEmpty ? StateTree.EmptyAccountRlp : Rlp.Encode(account);
 
                     bulkWrite.Add(new PatriciaTree.BulkSetEntry(keccak, accountRlp?.Bytes));
                     writes++;
@@ -753,13 +773,13 @@ namespace Nethermind.State
         public bool WarmUp(Address address)
             => GetState(address) is not null;
 
-        private ref AccountStruct? GetState(Address address)
+        private Account? GetState(Address address)
         {
             AddressAsKey addressAsKey = address;
             ref ChangeTrace accountChanges = ref CollectionsMarshal.GetValueRefOrAddDefault(_blockChanges, addressAsKey, out bool exists);
             if (!exists)
             {
-                AccountStruct? account = !_populatePreBlockCache ?
+                Account? account = !_populatePreBlockCache ?
                     GetStateReadPreWarmCache(addressAsKey) :
                     GetStatePopulatePrewarmCache(addressAsKey);
 
@@ -769,13 +789,13 @@ namespace Nethermind.State
             {
                 Metrics.IncrementStateTreeCacheHits();
             }
-            return ref accountChanges.After;
+            return accountChanges.After;
         }
 
-        private AccountStruct? GetStatePopulatePrewarmCache(AddressAsKey addressAsKey)
+        private Account? GetStatePopulatePrewarmCache(AddressAsKey addressAsKey)
         {
             long priorReads = Metrics.ThreadLocalStateTreeReads;
-            AccountStruct? account = _preBlockCache is not null
+            Account? account = _preBlockCache is not null
                 ? _preBlockCache.GetOrAdd(addressAsKey, _getStateFromTrie)
                 : _getStateFromTrie(addressAsKey);
 
@@ -786,9 +806,9 @@ namespace Nethermind.State
             return account;
         }
 
-        private AccountStruct? GetStateReadPreWarmCache(AddressAsKey addressAsKey)
+        private Account? GetStateReadPreWarmCache(AddressAsKey addressAsKey)
         {
-            if (_preBlockCache?.TryGetValue(addressAsKey, out AccountStruct? account) ?? false)
+            if (_preBlockCache?.TryGetValue(addressAsKey, out Account? account) ?? false)
             {
                 Metrics.IncrementStateTreeCacheHits();
             }
@@ -799,21 +819,21 @@ namespace Nethermind.State
             return account;
         }
 
-        private void SetState(Address address, AccountStruct? account)
+        private void SetState(Address address, Account? account)
         {
             ref ChangeTrace accountChanges = ref CollectionsMarshal.GetValueRefOrAddDefault(_blockChanges, address, out _);
             accountChanges.After = account;
             _needsStateRootUpdate = true;
         }
 
-        private ref readonly AccountStruct? GetAndAddToCache(Address address)
+        private Account? GetAndAddToCache(Address address)
         {
-            if (_nullAccountReads.Contains(address)) return ref NullAccountStruct;
+            if (_nullAccountReads.Contains(address)) return null;
 
-            ref AccountStruct? account = ref GetState(address);
+            Account? account = GetState(address);
             if (account is not null)
             {
-                PushJustCache(address, account.Value);
+                PushJustCache(address, account);
             }
             else
             {
@@ -821,40 +841,27 @@ namespace Nethermind.State
                 _nullAccountReads.Add(address);
             }
 
-            return ref account;
+            return account;
         }
 
-        private ref readonly AccountStruct? GetThroughCache(Address address)
+        private Account? GetThroughCache(Address address)
         {
             if (_intraTxCache.TryGetValue(address, out Stack<int> value))
             {
-                return ref CollectionsMarshal.AsSpan(_changes)[value.Peek()].Account;
+                return _changes[value.Peek()].Account;
             }
 
-            return ref GetAndAddToCache(address);
+            Account account = GetAndAddToCache(address);
+            return account;
         }
 
-        private ref readonly AccountStruct GetThroughCacheOrThrowIfNull(Address address)
-        {
-            ref readonly AccountStruct? account = ref GetThroughCache(address);
-            if (account.HasValue)
-            {
-                return ref Nullable.GetValueRefOrDefaultRef(in account);
-            }
-
-            return ref ThrowIfNull(address);
-
-            static ref readonly AccountStruct ThrowIfNull(Address address)
-                => throw new InvalidOperationException($"Account {address} is null when accessing storage root");
-        }
-
-        private void PushJustCache(Address address, AccountStruct account)
+        private void PushJustCache(Address address, Account account)
             => Push(address, account, ChangeType.JustCache);
 
-        private void PushUpdate(Address address, AccountStruct account)
+        private void PushUpdate(Address address, Account account)
             => Push(address, account, ChangeType.Update);
 
-        private void PushTouch(Address address, AccountStruct account, IReleaseSpec releaseSpec, bool isZero)
+        private void PushTouch(Address address, Account account, IReleaseSpec releaseSpec, bool isZero)
         {
             if (isZero && releaseSpec.IsEip158IgnoredAccount(address)) return;
             Push(address, account, ChangeType.Touch);
@@ -863,7 +870,7 @@ namespace Nethermind.State
         private void PushDelete(Address address)
             => Push(address, null, ChangeType.Delete);
 
-        private void Push(Address address, AccountStruct? touchedAccount, ChangeType changeType)
+        private void Push(Address address, Account? touchedAccount, ChangeType changeType)
         {
             Stack<int> stack = SetupCache(address);
             if (changeType == ChangeType.Touch
@@ -876,7 +883,7 @@ namespace Nethermind.State
             _changes.Add(new Change(address, touchedAccount, changeType));
         }
 
-        private void PushNew(Address address, AccountStruct account)
+        private void PushNew(Address address, Account account)
         {
             Stack<int> stack = SetupCache(address);
             stack.Push(_changes.Count);
@@ -950,18 +957,18 @@ namespace Nethermind.State
         internal void SetNonce(Address address, in UInt256 nonce)
         {
             _needsStateRootUpdate = true;
-            AccountStruct account = GetThroughCache(address) ?? ThrowNullAccount(address);
-            AccountStruct changedAccount = account.WithChangedNonce(nonce);
+            Account account = GetThroughCache(address) ?? ThrowNullAccount(address);
+            Account changedAccount = account.WithChangedNonce(nonce);
             if (_logger.IsTrace) Trace(address, account, changedAccount);
 
             PushUpdate(address, changedAccount);
 
             [MethodImpl(MethodImplOptions.NoInlining)]
-            void Trace(Address address, AccountStruct account, AccountStruct changedAccount)
+            void Trace(Address address, Account account, Account changedAccount)
                 => _logger.Trace($"Update {address} N {account.Nonce} -> {changedAccount.Nonce}");
 
             [DoesNotReturn, StackTraceHidden]
-            static AccountStruct ThrowNullAccount(Address address)
+            static Account ThrowNullAccount(Address address)
                 => throw new InvalidOperationException($"Account {address} is null when incrementing nonce");
         }
 
@@ -976,36 +983,36 @@ namespace Nethermind.State
             RecreateEmpty,
         }
 
-        private readonly struct Change(Address address, AccountStruct? account, ChangeType type)
+        private readonly struct Change(Address address, Account? account, ChangeType type)
         {
             public readonly Address Address = address;
-            public readonly AccountStruct? Account = account;
+            public readonly Account? Account = account;
             public readonly ChangeType ChangeType = type;
 
             public bool IsNull => ChangeType == ChangeType.Null;
         }
 
-        internal struct ChangeTrace(AccountStruct? before, AccountStruct? after)
+        internal struct ChangeTrace(Account? before, Account? after)
         {
-            public ChangeTrace(AccountStruct? after) : this(null, after)
+            public ChangeTrace(Account? after) : this(null, after)
             {
             }
 
-            public AccountStruct? Before = before;
-            public AccountStruct? After = after;
+            public Account? Before { get; set; } = before;
+            public Account? After { get; set; } = after;
         }
     }
 
     internal static class Extensions
     {
         [MethodImpl(MethodImplOptions.NoInlining)]
-        public static void AddToTrace(this Dictionary<AddressAsKey, ChangeTrace> trace, Address address, AccountStruct? change)
+        public static void AddToTrace(this Dictionary<AddressAsKey, ChangeTrace> trace, Address address, Account? change)
         {
             trace.Add(address, new ChangeTrace(change));
         }
 
         [MethodImpl(MethodImplOptions.NoInlining)]
-        public static void UpdateTrace(this Dictionary<AddressAsKey, ChangeTrace> trace, Address address, AccountStruct? change)
+        public static void UpdateTrace(this Dictionary<AddressAsKey, ChangeTrace> trace, Address address, Account? change)
         {
             trace[address] = new ChangeTrace(change, trace[address].After);
         }
@@ -1027,8 +1034,8 @@ namespace Nethermind.State
             {
                 bool someChangeReported = false;
 
-                AccountStruct? before = change.Before;
-                AccountStruct? after = change.After;
+                Account? before = change.Before;
+                Account? after = change.After;
 
                 UInt256? beforeBalance = before?.Balance;
                 UInt256? afterBalance = after?.Balance;
@@ -1036,8 +1043,8 @@ namespace Nethermind.State
                 UInt256? beforeNonce = before?.Nonce;
                 UInt256? afterNonce = after?.Nonce;
 
-                ValueHash256? beforeCodeHash = before?.CodeHash;
-                ValueHash256? afterCodeHash = after?.CodeHash;
+                Hash256? beforeCodeHash = before?.CodeHash;
+                Hash256? afterCodeHash = after?.CodeHash;
 
                 if (beforeCodeHash != afterCodeHash)
                 {
@@ -1045,12 +1052,12 @@ namespace Nethermind.State
                         ? null
                         : beforeCodeHash == Keccak.OfAnEmptyString
                             ? []
-                            : stateProvider.GetCode(beforeCodeHash.Value);
+                            : stateProvider.GetCode(in beforeCodeHash.ValueHash256);
                     byte[]? afterCode = afterCodeHash is null
                         ? null
                         : afterCodeHash == Keccak.OfAnEmptyString
                             ? []
-                            : stateProvider.GetCode(afterCodeHash.Value);
+                            : stateProvider.GetCode(in afterCodeHash.ValueHash256);
 
                     if (!((beforeCode?.Length ?? 0) == 0 && (afterCode?.Length ?? 0) == 0))
                     {

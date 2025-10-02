@@ -100,9 +100,15 @@ namespace Nethermind.State
             throw new InvalidOperationException($"{nameof(IWorldState)} must only be used within scope");
         }
 
+        public Account GetAccount(Address address)
+        {
+            DebugGuardInScope();
+            return _stateProvider.GetAccount(address);
+        }
+
         bool IAccountStateProvider.TryGetAccount(Address address, out AccountStruct account)
         {
-            account = _stateProvider.GetAccount(address) ?? AccountStruct.TotallyEmpty;
+            account = _stateProvider.GetAccount(address).ToStruct();
             return !account.IsTotallyEmpty;
         }
 
@@ -206,6 +212,11 @@ namespace Nethermind.State
         {
             DebugGuardInScope();
             _stateProvider.SubtractFromBalance(address, balanceChange, spec);
+        }
+        public void UpdateStorageRoot(Address address, Hash256 storageRoot)
+        {
+            DebugGuardInScope();
+            _stateProvider.UpdateStorageRoot(address, storageRoot);
         }
         public void IncrementNonce(Address address, UInt256 delta)
         {
