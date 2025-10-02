@@ -6,6 +6,7 @@ using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
+using System.Text.Json;
 using System.Threading;
 using System.Threading.Channels;
 using System.Threading.Tasks;
@@ -81,6 +82,8 @@ public sealed class LogIndexService : ILogIndexService
 
     public string Description => "log index service";
 
+    private long _startTimestamp = Stopwatch.GetTimestamp(); // TODO: remove after testing
+
     public LogIndexService(ILogIndexStorage logIndexStorage, ILogIndexConfig config,
         IBlockTree blockTree, ISyncConfig syncConfig,
         IReceiptFinder receiptFinder, IReceiptStorage receiptStorage,
@@ -133,6 +136,7 @@ public sealed class LogIndexService : ILogIndexService
                 _logger.Info($"{GetLogPrefix()}: waiting for the first block...");
 
             await _pivotTask;
+            _startTimestamp = Stopwatch.GetTimestamp();
 
             StartProcessing(isForward: true);
             StartProcessing(isForward: false);
@@ -449,7 +453,13 @@ public sealed class LogIndexService : ILogIndexService
             progress.MarkEnd();
 
         if (_logger.IsInfo)
-            _logger.Info($"{GetLogPrefix(isForward)}: completed.");
+        {
+            var elapsed = Stopwatch.GetElapsedTime(_startTimestamp);
+            var config = JsonSerializer.Serialize(_config, JsonSerializerOptions.Default);
+            var dbSize = _logIndexStorage.GetDbSize();
+
+            _logger.Info($"{GetLogPrefix(isForward)}: completed in {elapsed} with DB size of {dbSize} using config {config}.");
+        }
     }
 
     private static int? GetNextBlockNumber(ILogIndexStorage storage, bool isForward)
