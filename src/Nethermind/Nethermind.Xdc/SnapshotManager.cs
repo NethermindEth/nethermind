@@ -79,9 +79,9 @@ internal class SnapshotManager : ISnapshotManager
 
         var candidates = previousSnapshot.NextEpochCandidates;
 
-        if(header.Number == spec.SwitchBlock + 1)
+        if (header.Number == spec.SwitchBlock + 1)
         {
-            if(candidates.Length > maxMasternodes)
+            if (candidates.Length > maxMasternodes)
             {
                 Array.Resize(ref candidates, maxMasternodes);
                 return (candidates, []);

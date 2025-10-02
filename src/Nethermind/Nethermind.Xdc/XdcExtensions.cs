@@ -60,6 +60,6 @@ public static class XdcExtensions
         return snapshotManager.GetSnapshot(gapBlockHash);
     }
 
-    
+
 
 }
