@@ -26,7 +26,7 @@ using Transaction = Nethermind.Core.Transaction;
 
 namespace Nethermind.Facade.Simulate;
 
-public class SimulateBridgeHelper(IBlocksConfig blocksConfig, ISpecProvider specProvider, ILogger logger)
+public class SimulateBridgeHelper(IBlocksConfig blocksConfig, ISpecProvider specProvider)
 {
     private const ProcessingOptions SimulateProcessingOptions =
         ProcessingOptions.ForceProcessing
@@ -289,19 +289,6 @@ public class SimulateBridgeHelper(IBlocksConfig blocksConfig, ISpecProvider spec
         result.ExcessBlobGas = spec.IsEip4844Enabled ? BlobGasCalculator.CalculateExcessBlobGas(parent, spec) : null;
 
         block.BlockOverrides?.ApplyOverrides(result);
-
-        Span<bool> requiredItems = stackalloc bool[6];
-        requiredItems[0] = !result.BaseFeePerGas.IsZero;
-        requiredItems[1] = (result.WithdrawalsRoot is not null);
-        requiredItems[2] = (result.BlobGasUsed is not null);
-        requiredItems[3] = (result.BlobGasUsed is not null || result.ExcessBlobGas is not null);
-        requiredItems[4] = (result.ParentBeaconBlockRoot is not null);
-        requiredItems[5] = (result.RequestsHash is not null);
-
-        for (int i = 0; i < 6; ++i)
-        {
-            logger.Error($"Num: {result.Number}. {i}, {requiredItems[i]}");
-        }
 
         return (result, spec);
     }
