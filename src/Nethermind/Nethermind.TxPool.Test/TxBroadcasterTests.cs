@@ -126,7 +126,7 @@ public class TxBroadcasterTests
         int addedTxsCount = TestItem.PrivateKeys.Length;
         Transaction[] transactions = new Transaction[addedTxsCount];
 
-        for (int i = 0; i < addedTxsCount; i++)
+        Parallel.For(0, addedTxsCount, i =>
         {
             transactions[i] = Build.A.Transaction
                 .WithGasPrice(i.GWei())
@@ -134,7 +134,7 @@ public class TxBroadcasterTests
                 .TestObject;
 
             _broadcaster.Broadcast(transactions[i], true);
-        }
+        });
 
         _broadcaster.GetSnapshot().Length.Should().Be(addedTxsCount);
 
@@ -265,12 +265,9 @@ public class TxBroadcasterTests
                 .WithShardBlobTxTypeAndFieldsIfBlobTx()
                 .SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeys[i])
                 .TestObject;
-        });
 
-        for (int i = 0; i < addedTxsCount; i++)
-        {
             _broadcaster.Broadcast(transactions[i], true);
-        }
+        });
 
         _broadcaster.GetSnapshot().Length.Should().Be(addedTxsCount);
 
