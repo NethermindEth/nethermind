@@ -200,7 +200,7 @@ public class NonceManagerTests
         {
             using NonceLocker locker = _nonceManager.ReserveNonce(TestItem.AddressA, out UInt256 _);
         });
-        TimeSpan ts = TimeSpan.FromMilliseconds(1000);
+        TimeSpan ts = TimeSpan.FromMilliseconds(100);
         task.Wait(ts);
         task.IsCompleted.Should().Be(false);
     }
