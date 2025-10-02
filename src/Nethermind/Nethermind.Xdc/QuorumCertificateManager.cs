@@ -56,7 +56,7 @@ internal class QuorumCertificateManager : IQuorumCertificateManager
             _context.HighestQC = qc;
             SaveHighestQc(qc);
         }
-        
+
         var proposedBlockHeader = (XdcBlockHeader)_blockTree.FindHeader(qc.ProposedBlockInfo.Hash);
         if (proposedBlockHeader is null)
             throw new InvalidBlockException(proposedBlockHeader, "Proposed block header not found in chain");
@@ -168,7 +168,7 @@ internal class QuorumCertificateManager : IQuorumCertificateManager
         }
 
         bool allValid = true;
-        Parallel.ForEach(uniqueSignatures, new ParallelOptions() { MaxDegreeOfParallelism = Environment.ProcessorCount }, (s, state) =>
+        Parallel.ForEach(uniqueSignatures, (s, state) =>
         {
             Address signer = _ethereumEcdsa.RecoverVoteSigner(new Vote(qc.ProposedBlockInfo, qc.GapNumber, s));
             if (!epochSwitchInfo.Masternodes.Contains(signer))

@@ -19,6 +19,7 @@ public class XdcChainSpecBasedSpecProvider(ChainSpec chainSpec,
         var releaseSpec = (XdcReleaseSpec)base.CreateReleaseSpec(chainSpec, releaseStartBlock, releaseStartTimestamp);
 
         releaseSpec.EpochLength = chainSpecEngineParameters.Epoch;
+        releaseSpec.Gap = chainSpecEngineParameters.Gap;
         releaseSpec.SwitchEpoch = chainSpecEngineParameters.SwitchEpoch;
         releaseSpec.SwitchBlock = chainSpecEngineParameters.SwitchBlock;
         releaseSpec.V2Configs = chainSpecEngineParameters.V2Configs;
