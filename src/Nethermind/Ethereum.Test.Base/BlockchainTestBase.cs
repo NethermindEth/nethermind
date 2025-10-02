@@ -154,7 +154,6 @@ public abstract class BlockchainTestBase
             test.GenesisRlp ??= Rlp.Encode(new Block(JsonToEthereumTest.Convert(test.GenesisBlockHeader)));
 
             Block genesisBlock = Rlp.Decode<Block>(test.GenesisRlp.Bytes);
-            // Console.WriteLine(genesisBlock.ToString(Block.Format.Full));
             Assert.That(genesisBlock.Header.Hash, Is.EqualTo(new Hash256(test.GenesisBlockHeader.Hash)));
 
             ManualResetEvent genesisProcessed = new(false);
@@ -291,9 +290,6 @@ public abstract class BlockchainTestBase
             {
                 RlpStream rlpContext = Bytes.FromHexString(testBlockJson.Rlp).AsRlpStream();
                 Block suggestedBlock = Rlp.Decode<Block>(rlpContext);
-                // Console.WriteLine("suggested block:");
-                // Console.WriteLine(suggestedBlock.BlockAccessList);
-                // Hash256 tmp = new(ValueKeccak.Compute(Rlp.Encode(suggestedBlock.BlockAccessList!.Value).Bytes).Bytes);
                 suggestedBlock.Header.SealEngineType =
                     test.SealEngineUsed ? SealEngineType.Ethash : SealEngineType.None;
 
