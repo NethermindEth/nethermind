@@ -32,6 +32,7 @@ using Nethermind.Specs.Forks;
 using Nethermind.Specs.Test;
 using Nethermind.State;
 using Nethermind.Evm.State;
+using Nethermind.Evm.Tracing;
 using Nethermind.Init.Modules;
 using Nethermind.TxPool;
 using NUnit.Framework;
@@ -75,7 +76,7 @@ public abstract class BlockchainTestBase
         }
     }
 
-    protected async Task<EthereumTestResult> RunTest(BlockchainTest test, Stopwatch? stopwatch = null, bool failOnInvalidRlp = true)
+    protected async Task<EthereumTestResult> RunTest(BlockchainTest test, Stopwatch? stopwatch = null, bool failOnInvalidRlp = true, IBlockTracer? tracer = null)
     {
         _logger.Info($"Running {test.Name}, Network: [{test.Network.Name}] at {DateTime.UtcNow:HH:mm:ss.ffffff}");
         if (test.NetworkAfterTransition is not null)
@@ -143,9 +144,17 @@ public abstract class BlockchainTestBase
         IBlockValidator blockValidator = container.Resolve<IBlockValidator>();
         blockchainProcessor.Start();
 
-        BlockHeader parentHeader;
-        // Genesis processing
-        using (stateProvider.BeginScope(null))
+        // Register tracer if provided for blocktest tracing
+        if (tracer is not null)
+        {
+            blockchainProcessor.Tracers.Add(tracer);
+        }
+
+        try
+        {
+            BlockHeader parentHeader;
+            // Genesis processing
+            using (stateProvider.BeginScope(null))
         {
             InitializeTestState(test, stateProvider, specProvider);
 
@@ -218,8 +227,17 @@ public abstract class BlockchainTestBase
 
             parentHeader = correctRlp[i].Block.Header;
         }
+        }
 
+        // NOTE: Tracer removal must happen AFTER StopAsync to ensure all blocks are traced
+        // Blocks are queued asynchronously, so we need to wait for processing to complete
         await blockchainProcessor.StopAsync(true);
+
+        // Remove tracer after all processing is complete
+        if (tracer is not null)
+        {
+            blockchainProcessor.Tracers.Remove(tracer);
+        }
         stopwatch?.Stop();
 
         IBlockCachePreWarmer? preWarmer = container.Resolve<MainProcessingContext>().LifetimeScope.ResolveOptional<IBlockCachePreWarmer>();
