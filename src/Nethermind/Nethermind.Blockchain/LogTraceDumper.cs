@@ -104,7 +104,7 @@ public static class BlockTraceDumper
         }
         else
         {
-            blocksOrHash.As(out IList<Block> blocks);
+            blocksOrHash.To(out IList<Block> blocks);
             condition = "valid on rerun";
 
             if (blocks.Count == 1)

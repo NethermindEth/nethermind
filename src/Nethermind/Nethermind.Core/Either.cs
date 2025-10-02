@@ -40,7 +40,7 @@ public readonly struct Either<T1, T2>
         return Value2 != null;
     }
 
-    public void As(out T1 val) => val = Value1 ?? throw new ArgumentException(nameof(T1));
+    public void To(out T1 val) => val = Value1 ?? throw new ArgumentException(nameof(T1));
 
-    public void As(out T2 val) => val = Value2 ?? throw new ArgumentException(nameof(T2));
+    public void To(out T2 val) => val = Value2 ?? throw new ArgumentException(nameof(T2));
 }
