@@ -165,7 +165,7 @@ namespace Nethermind.State.Proofs
                 foreach (int storageIndex in _storageNodeInfos[node.Keccak].StorageIndices)
                 {
                     Nibble childIndex = _fullStoragePaths[storageIndex][_pathTraversalIndex];
-                    byte[] child = node.GetChildHashOrRlp((byte)childIndex);
+                    byte[] child = node.GetChildHashOrInlineValue((byte)childIndex);
 
                     if (child?.Length == Hash256.Size)
                     {
@@ -188,12 +188,8 @@ namespace Nethermind.State.Proofs
                     }
                     else if (child is not null)
                     {
-                        // Child is an inline node, decode RLP and get storage value
-                        var rlpStream = new RlpStream(child);
-                        rlpStream.SkipLength();
-                        rlpStream.SkipItem();
-                        ReadOnlySpan<byte> value = rlpStream.DecodeByteArraySpan();
-                        _accountProof.StorageProofs[storageIndex].Value = value.ToArray();
+                        // Child is an inline node
+                        _accountProof.StorageProofs[storageIndex].Value = child;
                     }
                 }
             }
