@@ -7,40 +7,40 @@ namespace Nethermind.Core;
 
 public readonly struct Either<T1, T2>
 {
+    private readonly T1? value1;
+    private readonly T2? value2;
+
     [Obsolete("Do not use", error: true)]
     public Either() { }
 
     public Either(T1 val)
     {
-        Value1 = val;
-        Value2 = default;
+        value1 = val;
+        value2 = default;
     }
 
     public Either(T2 val)
     {
-        Value2 = val;
-        Value1 = default;
+        value2 = val;
+        value1 = default;
     }
-
-    public T1? Value1 { get; }
-    public T2? Value2 { get; }
 
     public static implicit operator Either<T1, T2>(T1 val) => new(val);
     public static implicit operator Either<T1, T2>(T2 val) => new(val);
 
     public bool Is(out T1? val)
     {
-        val = Value1;
-        return Value1 != null;
+        val = value1;
+        return value1 != null;
     }
 
     public bool Is(out T2? val)
     {
-        val = Value2;
-        return Value2 != null;
+        val = value2;
+        return value2 != null;
     }
 
-    public void To(out T1 val) => val = Value1 ?? throw new ArgumentException(nameof(T1));
+    public void To(out T1 val) => val = value1 ?? throw new ArgumentException(nameof(T1));
 
-    public void To(out T2 val) => val = Value2 ?? throw new ArgumentException(nameof(T2));
+    public void To(out T2 val) => val = value2 ?? throw new ArgumentException(nameof(T2));
 }
