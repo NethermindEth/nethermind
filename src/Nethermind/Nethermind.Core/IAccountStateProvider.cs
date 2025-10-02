@@ -38,5 +38,8 @@ namespace Nethermind.Core
             TryGetAccount(address, out AccountStruct account);
             return account.CodeHash;
         }
+
+        [SkipLocalsInit]
+        bool HasCode(Address address) => TryGetAccount(address, out AccountStruct account) && account.HasCode;
     }
 }

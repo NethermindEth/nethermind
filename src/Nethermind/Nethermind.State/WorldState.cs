@@ -102,7 +102,7 @@ namespace Nethermind.State
 
         bool IAccountStateProvider.TryGetAccount(Address address, out AccountStruct account)
         {
-            account = _stateProvider.GetAccount(address) ?? AccountStruct.TotallyEmpty;
+            account = _stateProvider.GetAccount(address)?.ToStruct() ?? AccountStruct.TotallyEmpty;
             return !account.IsTotallyEmpty;
         }
 
