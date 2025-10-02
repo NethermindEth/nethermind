@@ -17,6 +17,7 @@ using Nethermind.Db;
 using Nethermind.Db.Blooms;
 using Nethermind.Facade.Find;
 using Nethermind.History;
+using Nethermind.State.FlatCache;
 using Nethermind.State.Repositories;
 using Nethermind.TxPool;
 
@@ -39,6 +40,7 @@ public class BlockTreeModule(IReceiptConfig receiptConfig) : Autofac.Module
                 new ReceiptsRecovery(ecdsa, specProvider, !receiptConfig.CompactReceiptStore))
             .AddSingleton<IReceiptFinder, FullInfoReceiptFinder>()
             .AddSingleton<IHistoryPruner, HistoryPruner>()
+            .AddSingleton<ICanonicalStateRootFinder, CanonicalStateRootFinder>()
 
             .AddSingleton<IBlockTree, BlockTree>()
             .Bind<IBlockFinder, IBlockTree>()
