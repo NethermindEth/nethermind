@@ -75,8 +75,13 @@ namespace Ethereum.Test.Base
                 TxRoot = new Hash256(headerJson.TransactionsTrie),
                 WithdrawalsRoot = headerJson.WithdrawalsRoot is null ? null : new Hash256(headerJson.WithdrawalsRoot),
                 // BlockAccessListHash = headerJson.BlockAccessListHash is null ? null : new Hash256(headerJson.BlockAccessListHash),
-                BaseFeePerGas = (ulong)Bytes.FromHexString(headerJson.BaseFeePerGas).ToUnsignedBigInteger()
             };
+
+            if (headerJson.BaseFeePerGas is not null)
+            {
+                header.BaseFeePerGas = (ulong)Bytes.FromHexString(headerJson.BaseFeePerGas).ToUnsignedBigInteger();
+            }
+
             return header;
         }
 
