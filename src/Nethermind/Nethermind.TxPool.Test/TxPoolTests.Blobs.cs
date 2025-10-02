@@ -1064,7 +1064,7 @@ namespace Nethermind.TxPool.Test
             test.BlockTree.FindBestSuggestedHeader().Returns(head.Header);
             test.EnsureSenderBalance(TestItem.AddressA, UInt256.MaxValue);
 
-            test.TxPool.SubmitTx(test.CreateBlobTx(TestItem.PrivateKeyA, 0, regularMaxBlobCount), TxHandlingOptions.None);
+            test.TxPool.SubmitTx(test.CreateBlobTx(TestItem.PrivateKeyA, 0, regularMaxBlobCount), TxHandlingOptions.None).Should().Be(AcceptTxResult.Accepted);
             Assert.That(test.TxPool.GetPendingBlobTransactionsCount(), Is.EqualTo(1));
 
             await test.AddEmptyBlock();

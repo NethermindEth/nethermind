@@ -82,7 +82,7 @@ namespace Nethermind.TxPool
             // Allocate closure once
             _gossipFilter = _txGossipPolicy.ShouldGossipTransaction;
             _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
-            _persistentTxs = new TxDistinctSortedPool(MemoryAllowance.MemPoolSize, comparer, logManager);
+            _persistentTxs = new TxDistinctSortedPool(txPoolConfig.Size, comparer, logManager);
             _accumulatedTemporaryTxs = new ResettableList<Transaction>(512, 4);
             _txsToSend = new ResettableList<Transaction>(512, 4);
 

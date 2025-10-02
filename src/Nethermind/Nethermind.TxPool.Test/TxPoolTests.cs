@@ -52,14 +52,14 @@ namespace Nethermind.TxPool.Test
             public ChainHeadInfoProvider HeadInfo;
             public TxPool TxPool;
 
-            public Test(ISpecProvider specProvider = null)
+            public Test(ISpecProvider specProvider = null, ITxPoolConfig config = null)
             {
                 Block block = Build.A.Block.WithNumber(10000000 - 1).TestObject;
                 BlockTree.Head.Returns(block);
                 BlockTree.FindBestSuggestedHeader().Returns(Build.A.BlockHeader.WithNumber(10000000).TestObject);
                 SpecProvider = specProvider ?? _specProvider;
                 EthereumEcdsa = new EthereumEcdsa(SpecProvider.ChainId);
-                TxPool = CreatePool();
+                TxPool = CreatePool(config: config);
             }
 
             public TxPool CreatePool(
@@ -230,11 +230,13 @@ namespace Nethermind.TxPool.Test
 
                 SemaphoreSlim semaphoreSlim = new(0, txCount);
                 TxPool.NewPending += (o, e) => semaphoreSlim.Release();
+                Task waitRemoved = WaitForTxPoolHeadChange(default);
                 BlockTree.BlockAddedToMain += Raise.EventWith(blockReplacementEventArgs);
                 for (int i = 0; i < txCount; i++)
                 {
                     await semaphoreSlim.WaitAsync(10);
                 }
+                await waitRemoved;
             }
 
             public async Task RaiseBlockAddedToMainAndWaitForNewHead(Block block, Block previousBlock = null)
@@ -262,6 +264,14 @@ namespace Nethermind.TxPool.Test
                 return Task.Delay(300);
             }
 
+            public Task WaitForTxPoolHeadChange(CancellationToken cancellationToken)
+            {
+                return Wait.ForEventCondition<Block>(
+                    cancellationToken,
+                    e => TxPool.TxPoolHeadChanged += e,
+                    e => TxPool.TxPoolHeadChanged -= e,
+                    (_) => true);
+            }
         }
 
         [Test]
@@ -1055,7 +1065,7 @@ namespace Nethermind.TxPool.Test
         [TestCase(10, 5)]
         [TestCase(10, 8)]
         [TestCase(10, 9)]
-        public void should_remove_stale_txs_from_persistent_transactions(int numberOfTxs, int nonceIncludedInBlock)
+        public async Task should_remove_stale_txs_from_persistent_transactions(int numberOfTxs, int nonceIncludedInBlock)
         {
             Test test = new();
 
@@ -1077,10 +1087,9 @@ namespace Nethermind.TxPool.Test
             Block block = Build.A.Block.WithTransactions(transactions[nonceIncludedInBlock]).TestObject;
             BlockReplacementEventArgs blockReplacementEventArgs = new(block, null);
 
-            ManualResetEvent manualResetEvent = new(false);
-            test.TxPool.RemoveTransaction(Arg.Do<Hash256>(t => manualResetEvent.Set()));
+            Task waitNewHead = test.WaitForTxPoolHeadChange(default);
             test.BlockTree.BlockAddedToMain += Raise.EventWith(new object(), blockReplacementEventArgs);
-            manualResetEvent.WaitOne(TimeSpan.FromMilliseconds(200));
+            await waitNewHead;
 
             // transactions[nonceIncludedInBlock] was included in the block and should be removed, as well as all lower nonces.
             test.TxPool.GetOwnPendingTransactions().Length.Should().Be(numberOfTxs - nonceIncludedInBlock - 1);
@@ -1188,7 +1197,7 @@ namespace Nethermind.TxPool.Test
         [TestCase(true, false, 100)]
         [TestCase(false, false, 100)]
 
-        public void should_remove_tx_fromtest_txPool_when_included_in_block(bool sameTransactionSenderPerPeer, bool sameNoncePerPeer, int expectedTransactions)
+        public async Task should_remove_tx_fromtest_txPool_when_included_in_block(bool sameTransactionSenderPerPeer, bool sameNoncePerPeer, int expectedTransactions)
         {
             Test test = new();
 
@@ -1199,10 +1208,9 @@ namespace Nethermind.TxPool.Test
             Block block = Build.A.Block.WithTransactions(transactions).TestObject;
             BlockReplacementEventArgs blockReplacementEventArgs = new(block, null);
 
-            ManualResetEvent manualResetEvent = new(false);
-            test.TxPool.RemoveTransaction(Arg.Do<Hash256>(t => manualResetEvent.Set()));
+            Task waitNewHead = test.WaitForTxPoolHeadChange(default);
             test.BlockTree.BlockAddedToMain += Raise.EventWith(new object(), blockReplacementEventArgs);
-            manualResetEvent.WaitOne(TimeSpan.FromMilliseconds(200));
+            await waitNewHead;
 
             test.TxPool.GetPendingTransactionsCount().Should().Be(0);
         }
@@ -1324,6 +1332,7 @@ namespace Nethermind.TxPool.Test
         }
 
         [Test]
+        [Parallelizable(ParallelScope.None)] // Timing sensitive due to a concurrent timer
         public async Task should_notify_peer_only_once()
         {
             Test test = new();
@@ -1622,7 +1631,7 @@ namespace Nethermind.TxPool.Test
         [Test]
         public void should_increase_nonce_when_transaction_not_included_intest_txPool_but_broadcasted()
         {
-            Test test = new(GetLondonSpecProvider());
+            Test test = new(GetLondonSpecProvider(), config: new TxPoolConfig { Size = 2 });
 
             ITxPoolPeer peer = Substitute.For<ITxPoolPeer>();
             peer.Id.Returns(TestItem.PublicKeyA);
@@ -1677,7 +1686,8 @@ namespace Nethermind.TxPool.Test
         }
 
         [Test]
-        public async Task should_include_transaction_after_removal()
+        [CancelAfter(10000)]
+        public async Task should_include_transaction_after_removal(CancellationToken cancellationToken)
         {
             Test test = new(GetLondonSpecProvider());
             test.TxPool = test.CreatePool(new TxPoolConfig { Size = 2 });
@@ -1711,8 +1721,12 @@ namespace Nethermind.TxPool.Test
             test.TxPool.SubmitTx(expensiveTx1, TxHandlingOptions.None).Should().Be(AcceptTxResult.Accepted);
             test.TxPool.SubmitTx(expensiveTx2, TxHandlingOptions.None).Should().Be(AcceptTxResult.Accepted);
 
+            Task waitTask = test.WaitForTxPoolHeadChange(cancellationToken);
+
             // Rise new block event to cleanup cash and remove one expensive tx
             test.BlockTree.BlockAddedToMain += Raise.Event<EventHandler<BlockReplacementEventArgs>>(this, new BlockReplacementEventArgs(Build.A.Block.WithTransactions(expensiveTx1).TestObject));
+
+            await waitTask;
 
             // Wait for event processing
             await Task.Delay(100);
@@ -2291,13 +2305,13 @@ namespace Nethermind.TxPool.Test
             result.Should().Be(AcceptTxResult.Accepted);
 
             Transaction thirdTx = Build.A.Transaction
-            .WithNonce(1)
-            .WithType(TxType.EIP1559)
-            .WithMaxFeePerGas(9.GWei())
-            .WithMaxPriorityFeePerGas(9.GWei())
-            .WithGasLimit(GasCostOf.Transaction)
-            .WithTo(TestItem.AddressB)
-            .SignedAndResolved(test.EthereumEcdsa, signer).TestObject;
+                .WithNonce(1)
+                .WithType(TxType.EIP1559)
+                .WithMaxFeePerGas(9.GWei())
+                .WithMaxPriorityFeePerGas(9.GWei())
+                .WithGasLimit(GasCostOf.Transaction)
+                .WithTo(TestItem.AddressB)
+                .SignedAndResolved(test.EthereumEcdsa, signer).TestObject;
 
             result = test.TxPool.SubmitTx(thirdTx, TxHandlingOptions.PersistentBroadcast);
 
@@ -2344,12 +2358,12 @@ namespace Nethermind.TxPool.Test
                 UInt256 feeCap;
                 1.GWei().Multiply((UInt256)type, out feeCap);
                 TransactionBuilder<Transaction> builder = Build.A.Transaction
-                .WithNonce(0)
-                .WithType((TxType)type)
-                .WithMaxFeePerGas(feeCap)
-                .WithMaxPriorityFeePerGas(feeCap)
-                .WithGasLimit(100_000)
-                .WithTo(TestItem.AddressB);
+                    .WithNonce(0)
+                    .WithType((TxType)type)
+                    .WithMaxFeePerGas(feeCap)
+                    .WithMaxPriorityFeePerGas(feeCap)
+                    .WithGasLimit(100_000)
+                    .WithTo(TestItem.AddressB);
                 switch ((TxType)type)
                 {
                     case TxType.Legacy:
@@ -2478,4 +2492,3 @@ namespace Nethermind.TxPool.Test
         }
     }
 }
-
