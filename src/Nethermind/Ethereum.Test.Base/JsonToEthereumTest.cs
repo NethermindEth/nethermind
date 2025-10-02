@@ -74,7 +74,7 @@ namespace Ethereum.Test.Base
                 StateRoot = new Hash256(headerJson.StateRoot),
                 TxRoot = new Hash256(headerJson.TransactionsTrie),
                 WithdrawalsRoot = headerJson.WithdrawalsRoot is null ? null : new Hash256(headerJson.WithdrawalsRoot),
-                BlockAccessListHash = headerJson.BlockAccessListHash is null ? null : new Hash256(headerJson.BlockAccessListHash),
+                // BlockAccessListHash = headerJson.BlockAccessListHash is null ? null : new Hash256(headerJson.BlockAccessListHash),
                 BaseFeePerGas = (ulong)Bytes.FromHexString(headerJson.BaseFeePerGas).ToUnsignedBigInteger()
             };
             return header;
@@ -108,7 +108,7 @@ namespace Ethereum.Test.Base
                     ReceiptsRoot = new(executionPayload.ReceiptsRoot),
                     StateRoot = new(executionPayload.StateRoot),
                     Timestamp = (ulong)Bytes.FromHexString(executionPayload.Timestamp).ToUnsignedBigInteger(),
-                    BlockAccessList = executionPayload.BlockAccessList is null ? null : Bytes.FromHexString(executionPayload.BlockAccessList),
+                    // BlockAccessList = executionPayload.BlockAccessList is null ? null : Bytes.FromHexString(executionPayload.BlockAccessList),
                     BlobGasUsed = executionPayload.BlobGasUsed is null ? null : (ulong)Bytes.FromHexString(executionPayload.BlobGasUsed).ToUnsignedBigInteger(),
                     ExcessBlobGas = executionPayload.ExcessBlobGas is null ? null : (ulong)Bytes.FromHexString(executionPayload.ExcessBlobGas).ToUnsignedBigInteger(),
                     ParentBeaconBlockRoot = parentBeaconBlockRoot is null ? null : new(parentBeaconBlockRoot),
