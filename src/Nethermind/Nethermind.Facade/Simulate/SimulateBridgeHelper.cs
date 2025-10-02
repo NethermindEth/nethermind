@@ -26,7 +26,7 @@ using Transaction = Nethermind.Core.Transaction;
 
 namespace Nethermind.Facade.Simulate;
 
-public class SimulateBridgeHelper(IBlocksConfig blocksConfig, IPoSSwitcher poSSwitcher, ISpecProvider specProvider, ILogger logger)
+public class SimulateBridgeHelper(IBlocksConfig blocksConfig, ISpecProvider specProvider)
 {
     private const ProcessingOptions SimulateProcessingOptions =
         ProcessingOptions.ForceProcessing
@@ -258,10 +258,7 @@ public class SimulateBridgeHelper(IBlocksConfig blocksConfig, IPoSSwitcher poSSw
             RequestsHash = parent.RequestsHash,
         };
 
-        logger.Error($"Building block: {parent.Number}, {parent.Difficulty}, {poSSwitcher.IsPostMerge(result)}, {poSSwitcher.IsPostMerge(parent)}");
-        logger.Error($"TTD: {specProvider.TerminalTotalDifficulty}, merge bn: {specProvider.MergeBlockNumber}");
-
-        if (poSSwitcher.IsPostMerge(result))
+        if ((ForkActivation)result.Number >= specProvider.MergeBlockNumber)
         {
             result.Difficulty = UInt256.Zero;
             result.IsPostMerge = true;
