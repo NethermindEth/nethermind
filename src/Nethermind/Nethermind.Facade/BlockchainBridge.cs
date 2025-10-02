@@ -32,6 +32,7 @@ using Autofac;
 using Nethermind.Blockchain.Tracing;
 using Nethermind.Consensus;
 using Nethermind.Evm.State;
+using Nethermind.Logging;
 using Nethermind.State.OverridableEnv;
 
 namespace Nethermind.Facade
@@ -52,10 +53,11 @@ namespace Nethermind.Facade
         ILogFinder logFinder,
         ISpecProvider specProvider,
         IBlocksConfig blocksConfig,
-        IMiningConfig miningConfig)
+        IMiningConfig miningConfig,
+        ILogManager logManager)
         : IBlockchainBridge
     {
-        private readonly SimulateBridgeHelper _simulateBridgeHelper = new(blocksConfig, poSSwitcher, specProvider);
+        private readonly SimulateBridgeHelper _simulateBridgeHelper = new(blocksConfig, poSSwitcher, specProvider, logManager.GetClassLogger());
 
         public Block? HeadBlock
         {

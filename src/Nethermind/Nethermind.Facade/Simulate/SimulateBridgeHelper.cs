@@ -21,11 +21,12 @@ using System.Runtime.InteropServices;
 using System.Threading;
 using Nethermind.Consensus;
 using Nethermind.Evm.State;
+using Nethermind.Logging;
 using Transaction = Nethermind.Core.Transaction;
 
 namespace Nethermind.Facade.Simulate;
 
-public class SimulateBridgeHelper(IBlocksConfig blocksConfig, IPoSSwitcher poSSwitcher, ISpecProvider specProvider)
+public class SimulateBridgeHelper(IBlocksConfig blocksConfig, IPoSSwitcher poSSwitcher, ISpecProvider specProvider, ILogger logger)
 {
     private const ProcessingOptions SimulateProcessingOptions =
         ProcessingOptions.ForceProcessing
@@ -256,6 +257,9 @@ public class SimulateBridgeHelper(IBlocksConfig blocksConfig, IPoSSwitcher poSSw
             MixHash = parent.MixHash,
             RequestsHash = parent.RequestsHash,
         };
+
+        logger.Error($"Building block: {parent.Number}, {parent.Difficulty}, {poSSwitcher.IsPostMerge(result)}, {poSSwitcher.IsPostMerge(parent)}");
+        logger.Error($"TTD: {specProvider.TerminalTotalDifficulty}, merge bn: {specProvider.MergeBlockNumber}");
 
         if (poSSwitcher.IsPostMerge(result))
         {
