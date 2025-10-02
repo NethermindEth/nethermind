@@ -6,6 +6,7 @@ using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Runtime.CompilerServices;
 using Nethermind.Core;
+using Nethermind.Core.Crypto;
 using Nethermind.Int256;
 using Prometheus;
 
@@ -97,6 +98,7 @@ public sealed class BigCache
     }
 
     public long CurrentBlockNumber = -1;
+    public ValueHash256? CurrentStateRoot = null;
     public int SnapshotCount = 0;
 
     public void Add(StateId pickedSnapshot, Snapshot knownState)
@@ -138,6 +140,7 @@ public sealed class BigCache
         }
 
         CurrentBlockNumber = pickedSnapshot.blockNumber;
+        CurrentStateRoot = pickedSnapshot.stateRoot;
         SnapshotCount++;
         _snapshotCount.Set(SnapshotCount);
         _copyingSnapshot = null;
