@@ -97,6 +97,12 @@ public class TracedAccessWorldState(IWorldState innerWorldState) : WrappedWorldS
         _innerWorldState.Set(storageCell, newValue);
     }
 
+    public override UInt256 GetBalance(Address address)
+    {
+        BlockAccessList.AddAccountRead(address);
+        return _innerWorldState.GetBalance(address);
+    }
+
     public override void SubtractFromBalance(Address address, in UInt256 balanceChange, IReleaseSpec spec)
     {
         UInt256 before = _innerWorldState.GetBalance(address);

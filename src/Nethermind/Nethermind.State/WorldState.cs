@@ -275,16 +275,16 @@ namespace Nethermind.State
 
         public bool IsInScope => _isInScope;
 
-        public ref readonly UInt256 GetBalance(Address address)
+        public UInt256 GetBalance(Address address)
         {
             DebugGuardInScope();
-            return ref _stateProvider.GetBalance(address);
+            return _stateProvider.GetBalance(address);
         }
 
         public ValueHash256 GetStorageRoot(Address address)
         {
             DebugGuardInScope();
-            if (address == null) throw new ArgumentNullException(nameof(address));
+            ArgumentNullException.ThrowIfNull(address);
             return _stateProvider.GetStorageRoot(address);
         }
 

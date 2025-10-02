@@ -71,8 +71,8 @@ public class WrappedWorldState(IWorldState innerWorldState) : IWorldState
     public ArrayPoolList<AddressAsKey>? GetAccountChanges()
         => _innerWorldState.GetAccountChanges();
 
-    public ref readonly UInt256 GetBalance(Address address)
-        => ref _innerWorldState.GetBalance(address);
+    public virtual UInt256 GetBalance(Address address)
+        => _innerWorldState.GetBalance(address);
 
     public byte[]? GetCode(Address address)
         => _innerWorldState.GetCode(address);
