@@ -186,7 +186,9 @@ public abstract class BlockchainTestBase
             foreach ((ExecutionPayload executionPayload, string[]? blobVersionedHashes, string[]? validationError, string? newPayloadVersion) in payloads)
             {
                 ResultWrapper<PayloadStatusV1> res;
-                switch (newPayloadVersion ?? "4")
+                byte[]?[] hashes = blobVersionedHashes is null ? null : [.. blobVersionedHashes.Select(x => Bytes.FromHexString(x))];
+
+                switch (newPayloadVersion ?? "5")
                 {
                     case "1":
                         res = await engineRpcModule.engine_newPayloadV1(executionPayload);
@@ -198,7 +200,9 @@ public abstract class BlockchainTestBase
                         res = await engineRpcModule.engine_newPayloadV3((ExecutionPayloadV3)executionPayload, [], executionPayload.ParentBeaconBlockRoot);
                         break;
                     case "4":
-                        byte[]?[] hashes = blobVersionedHashes is null ? null : [.. blobVersionedHashes.Select(x => Bytes.FromHexString(x))];
+                        res = await engineRpcModule.engine_newPayloadV4((ExecutionPayloadV3)executionPayload, hashes, executionPayload.ParentBeaconBlockRoot, []);
+                        break;
+                    case "5":
                         res = await engineRpcModule.engine_newPayloadV4((ExecutionPayloadV3)executionPayload, hashes, executionPayload.ParentBeaconBlockRoot, []);
                         break;
                     default:
