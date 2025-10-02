@@ -181,6 +181,7 @@ public class ForkInfoTests
     [TestCase(5_000_000, 1741254219u, "0x5fbc16bc", 1741254220ul, "Future Cancun timestamp")]
     [TestCase(5_000_000, 1741254220u, "0x8BA51786", 0ul, "First Prague timestamp")]
     [TestCase(5_000_000, 1741254420u, "0x8BA51786", 0ul, "Future Prague timestamp")]
+    // todo: add osaka here
     public void Fork_id_and_hash_as_expected_on_chiado(long head, ulong headTimestamp, string forkHashHex, ulong next, string description)
     {
         var loader = new ChainSpecFileLoader(new EthereumJsonSerializer(), LimboTraceLogger.Instance);
