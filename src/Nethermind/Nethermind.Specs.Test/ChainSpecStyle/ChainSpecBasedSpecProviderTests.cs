@@ -505,7 +505,6 @@ public class ChainSpecBasedSpecProviderTests
         using (Assert.EnterMultipleScope())
         {
             Assert.That(spec.FeeCollector, Is.EqualTo(feeCollector));
-            Assert.That(spec.IsEip4844FeeCollectorEnabled, Is.False);
             Assert.That(spec.IsEip4844FeeCollectorEnabled, Is.True);
         }
 
