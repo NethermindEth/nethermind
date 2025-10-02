@@ -52,10 +52,11 @@ namespace Nethermind.Facade
         ILogFinder logFinder,
         ISpecProvider specProvider,
         IBlocksConfig blocksConfig,
-        IMiningConfig miningConfig)
+        IMiningConfig miningConfig,
+        ILogManager logManager)
         : IBlockchainBridge
     {
-        private readonly SimulateBridgeHelper _simulateBridgeHelper = new(blocksConfig, specProvider);
+        private readonly SimulateBridgeHelper _simulateBridgeHelper = new(blocksConfig, specProvider, logManager.GetClassLogger());
 
         public Block? HeadBlock
         {
