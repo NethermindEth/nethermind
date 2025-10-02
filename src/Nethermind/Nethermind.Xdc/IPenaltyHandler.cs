@@ -12,7 +12,7 @@ using System.Text;
 using System.Threading.Tasks;
 
 namespace Nethermind.Xdc;
-internal interface IPenaltyHandler
+public interface IPenaltyHandler
 {
     Address[] HandlePenalties(long number, Hash256 currentHash, Address[] candidates);
 }
