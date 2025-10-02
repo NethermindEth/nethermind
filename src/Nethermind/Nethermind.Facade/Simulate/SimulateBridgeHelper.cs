@@ -286,6 +286,10 @@ public class SimulateBridgeHelper(IBlocksConfig blocksConfig, ISpecProvider spec
             result.BaseFeePerGas = 0;
         }
 
+        result.ExcessBlobGas = spec.IsEip4844Enabled ? BlobGasCalculator.CalculateExcessBlobGas(parent, spec) : (ulong?)0;
+
+        block.BlockOverrides?.ApplyOverrides(result);
+
         Span<bool> requiredItems = stackalloc bool[6];
         requiredItems[0] = !result.BaseFeePerGas.IsZero;
         requiredItems[1] = (result.WithdrawalsRoot is not null);
@@ -298,10 +302,6 @@ public class SimulateBridgeHelper(IBlocksConfig blocksConfig, ISpecProvider spec
         {
             logger.Error($"Num: {result.Number}. {i}, {requiredItems[i]}");
         }
-
-        result.ExcessBlobGas = spec.IsEip4844Enabled ? BlobGasCalculator.CalculateExcessBlobGas(parent, spec) : (ulong?)0;
-
-        block.BlockOverrides?.ApplyOverrides(result);
 
         return (result, spec);
     }
