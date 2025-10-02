@@ -31,13 +31,13 @@ public readonly struct Either<T1, T2>
     public bool Is(out T1? val)
     {
         val = value1;
-        return value1 != null;
+        return value1 is not null;
     }
 
     public bool Is(out T2? val)
     {
         val = value2;
-        return value2 != null;
+        return value2 is not null;
     }
 
     public void To(out T1 val) => val = value1 ?? throw new ArgumentException(nameof(T1));
