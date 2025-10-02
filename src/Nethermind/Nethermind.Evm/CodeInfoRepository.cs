@@ -49,7 +49,7 @@ public class CodeInfoRepository : ICodeInfoRepository
 
     private ICodeInfo InternalGetCachedCode(Address codeSource, IReleaseSpec vmSpec)
     {
-        ref readonly ValueHash256 codeHash = ref _worldState.GetCodeHash(codeSource);
+        ValueHash256 codeHash = _worldState.GetCodeHash(codeSource);
         return InternalGetCachedCode(_worldState, in codeHash, vmSpec);
     }
 

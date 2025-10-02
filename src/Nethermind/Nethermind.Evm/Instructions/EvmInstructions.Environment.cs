@@ -575,7 +575,7 @@ internal static partial class EvmInstructions
         else
         {
             // Otherwise, push the account's code hash.
-            ref readonly ValueHash256 hash = ref state.GetCodeHash(address);
+            ValueHash256 hash = state.GetCodeHash(address);
             stack.Push32Bytes<TTracingInst>(in hash);
         }
 

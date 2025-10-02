@@ -80,8 +80,8 @@ public class WrappedWorldState(IWorldState innerWorldState) : IWorldState
     public byte[]? GetCode(in ValueHash256 codeHash)
         => _innerWorldState.GetCode(codeHash);
 
-    public ref readonly ValueHash256 GetCodeHash(Address address)
-        => ref _innerWorldState.GetCodeHash(address);
+    public virtual ValueHash256 GetCodeHash(Address address)
+        => _innerWorldState.GetCodeHash(address);
 
     public byte[] GetOriginal(in StorageCell storageCell)
         => _innerWorldState.GetOriginal(storageCell);

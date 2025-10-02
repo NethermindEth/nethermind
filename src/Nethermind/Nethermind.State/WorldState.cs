@@ -300,10 +300,10 @@ namespace Nethermind.State
             return _stateProvider.GetCode(in codeHash);
         }
 
-        public ref readonly ValueHash256 GetCodeHash(Address address)
+        public ValueHash256 GetCodeHash(Address address)
         {
             DebugGuardInScope();
-            return ref _stateProvider.GetCodeHash(address);
+            return _stateProvider.GetCodeHash(address);
         }
 
         ValueHash256 IAccountStateProvider.GetCodeHash(Address address)

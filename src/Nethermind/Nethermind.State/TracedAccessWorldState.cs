@@ -103,6 +103,12 @@ public class TracedAccessWorldState(IWorldState innerWorldState) : WrappedWorldS
         return _innerWorldState.GetBalance(address);
     }
 
+    public override ValueHash256 GetCodeHash(Address address)
+    {
+        BlockAccessList.AddAccountRead(address);
+        return _innerWorldState.GetCodeHash(address);
+    }
+
     public override void SubtractFromBalance(Address address, in UInt256 balanceChange, IReleaseSpec spec)
     {
         UInt256 before = _innerWorldState.GetBalance(address);
