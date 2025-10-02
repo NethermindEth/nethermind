@@ -18,6 +18,7 @@ namespace Nethermind.State.FlatCache;
 public sealed class FlatCacheRepository
 {
     private Lock _repoLock = new Lock();
+    private readonly ICanonicalStateRootFinder _stateRootFinder;
     private Dictionary<StateId, Snapshot> _compactedKnownStates = new();
     private Dictionary<StateId, Snapshot> _knownStates = new();
     private SortedSet<StateId> _sortedKnownStates = new();
@@ -34,18 +35,19 @@ public sealed class FlatCacheRepository
     private ILogger _logger;
 
     public record Configuration(
-        int MaxStateInMemory = 1024,
+        int MaxStateInMemory = 1024 * 8,
         int MaxInFlightCompactJob = 32,
         int CompactSize = 64,
         bool InlineCompaction = false
     );
 
-    public FlatCacheRepository(IProcessExitSource exitSource, ILogManager logManager, Configuration? config = null)
+    public FlatCacheRepository(IProcessExitSource exitSource, ICanonicalStateRootFinder stateRootFinder, ILogManager logManager, Configuration? config = null)
     {
         if (config is null) config = new Configuration();
         _maxStateInMemory = config.MaxStateInMemory;
         _compactSize = config.CompactSize;
         _inlineCompaction = config.InlineCompaction;
+        _stateRootFinder = stateRootFinder;
         _logger = logManager.GetClassLogger<FlatCacheRepository>();
 
         _compactorJobs = Channel.CreateBounded<StateId>(config.MaxInFlightCompactJob);
@@ -164,13 +166,6 @@ public sealed class FlatCacheRepository
                 throw new InvalidOperationException(
                     $"Cannot register snapshot earlier than bigcache. Snapshot number {endBlock.blockNumber}, bigcache number: {_bigCache.CurrentBlockNumber}");
 
-            if (_sortedKnownStates.GetViewBetween(new StateId(endBlock.blockNumber, Keccak.Zero),
-                    new StateId(long.MaxValue, Keccak.Zero)).Count > 0)
-            {
-                _logger.Warn($"Ignoring {endBlock} as non consecutive. Not implemented yet.");
-                return;
-            }
-
             _knownStates[endBlock] = snapshot;
             _sortedKnownStates.Add(endBlock);
         }
@@ -233,7 +228,7 @@ public sealed class FlatCacheRepository
             if (tryCount > 100000) throw new Exception("Many try 2");
 
             Snapshot pickedState;
-            StateId pickedSnapshot;
+            StateId? pickedSnapshot = null;
             using (_repoLock.EnterScope())
             {
                 if (_knownStates.Count - _bigCache.SnapshotCount <= _boundary)
@@ -263,24 +258,49 @@ public sealed class FlatCacheRepository
 
                 Debug.Assert(candidateToAdd.Count > 0);
 
-                pickedSnapshot = candidateToAdd[0];
                 if (candidateToAdd.Count > 1)
                 {
-                    // TODO: Fix
-                    // TODO: Remove reorg from known states
-                    throw new NotImplementedException("Reorg handling incomplete, sorry.");
+                    Hash256? canonicalStateRoot = _stateRootFinder.GetCanonicalStateRootAtBlock(blockNumber.Value);
+                    if (canonicalStateRoot is null)
+                    {
+                        _logger.Warn($"Canonical state root for block {blockNumber} not known");
+                        return;
+                    }
+
+                    foreach (var stateId in candidateToAdd)
+                    {
+                        if (stateId.stateRoot == canonicalStateRoot)
+                        {
+                            pickedSnapshot = stateId;
+                        }
+                    }
+                }
+                else
+                {
+                    pickedSnapshot = candidateToAdd[0];
+                }
+
+                if (!pickedSnapshot.HasValue)
+                {
+                    _logger.Warn($"Unable to determine canonicaal snapshot");
+                    return;
                 }
 
                 // TODO: Need to make sure no processing is using other branch at this point
-                pickedState = _knownStates[pickedSnapshot];
+                pickedState = _knownStates[pickedSnapshot.Value];
             }
 
-            _bigCache.Add(pickedSnapshot, pickedState);
+            _bigCache.Add(pickedSnapshot.Value, pickedState);
 
             using (_repoLock.EnterScope())
             {
-                _compactedKnownStates.Remove(pickedSnapshot);
+                _compactedKnownStates.Remove(pickedSnapshot.Value);
             }
         }
     }
+}
+
+public interface ICanonicalStateRootFinder
+{
+    public Hash256? GetCanonicalStateRootAtBlock(long blockNumber);
 }

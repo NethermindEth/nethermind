@@ -27,6 +27,7 @@ public class FlatCacheScopeProviderTest
     private TestMemDb _stateDb;
     private FlatCacheScopeProvider _cachedScopeProvider;
     private FlatCacheRepository _cacheRepository;
+    private ICanonicalStateRootFinder _canonicalStateRootFinder;
 
     [SetUp]
     public void Setup()
@@ -34,8 +35,9 @@ public class FlatCacheScopeProviderTest
         var logManager = SimpleConsoleLogManager.Instance;
         _stateDb = new TestMemDb();
         var codeDb = new TestMemDb();
+        _canonicalStateRootFinder = Substitute.For<ICanonicalStateRootFinder>();
         _baseScopeProvider = new TrieStoreScopeProvider(new TestRawTrieStore(_stateDb), codeDb, LimboLogs.Instance);
-        _cacheRepository = new FlatCacheRepository(Substitute.For<IProcessExitSource>(), logManager, new FlatCacheRepository.Configuration(
+        _cacheRepository = new FlatCacheRepository(Substitute.For<IProcessExitSource>(), _canonicalStateRootFinder, logManager, new FlatCacheRepository.Configuration(
             MaxInFlightCompactJob: 32,
             CompactSize: 32,
             InlineCompaction: true
@@ -48,7 +50,7 @@ public class FlatCacheScopeProviderTest
         var stateDb = new TestMemDb();
         var codeDb = new TestMemDb();
         var baseScopeProvider = new TrieStoreScopeProvider(new TestRawTrieStore(stateDb), codeDb, LimboLogs.Instance);
-        var cacheRepository = new FlatCacheRepository(Substitute.For<IProcessExitSource>(), LimboLogs.Instance, config);
+        var cacheRepository = new FlatCacheRepository(Substitute.For<IProcessExitSource>(), _canonicalStateRootFinder, LimboLogs.Instance, config);
         var cachedScopeProvider = new FlatCacheScopeProvider(baseScopeProvider, cacheRepository, false, LimboLogs.Instance);
         return (cachedScopeProvider, cacheRepository, stateDb);
     }
@@ -74,7 +76,7 @@ public class FlatCacheScopeProviderTest
             baseBlock = Build.A.BlockHeader.WithStateRoot(baseWorldState.StateRoot).TestObject;
         }
 
-        var cacheRepository = new FlatCacheRepository(Substitute.For<IProcessExitSource>(), LimboLogs.Instance);
+        var cacheRepository = new FlatCacheRepository(Substitute.For<IProcessExitSource>(), _canonicalStateRootFinder, LimboLogs.Instance);
         var cachedScopeProvider = new FlatCacheScopeProvider(_baseScopeProvider, cacheRepository, false, LimboLogs.Instance);
         var cachedWorldState = new WorldState(cachedScopeProvider, LimboLogs.Instance);
 
