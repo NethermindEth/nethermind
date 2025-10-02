@@ -84,7 +84,7 @@ internal class SnapshotManager : ISnapshotManager
             if(candidates.Length > maxMasternodes)
             {
                 Array.Resize(ref candidates, maxMasternodes);
-                return (candidates, []) ;
+                return (candidates, []);
             }
 
             return (candidates, []);
@@ -92,13 +92,11 @@ internal class SnapshotManager : ISnapshotManager
 
         var penalties = _penaltyHandler.HandlePenalties(header.Number, header.ParentHash, candidates);
 
-        candidates = XdcExtensions.RemoveItemFromArray(candidates, penalties, maxMasternodes);
+        candidates = candidates
+            .Except(penalties)        // remove penalties
+            .Take(maxMasternodes)     // enforce max cap
+            .ToArray();
 
-        if (candidates.Length > maxMasternodes)
-        {
-            Array.Resize(ref candidates, maxMasternodes);
-            return (candidates, penalties);
-        }
         return (candidates, penalties);
     }
 }

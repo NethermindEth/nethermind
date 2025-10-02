@@ -60,31 +60,6 @@ public static class XdcExtensions
         return snapshotManager.GetSnapshot(gapBlockHash);
     }
 
-    public static T[] RemoveItemFromArray<T>(T[] candidates, T[] penalties, int withMaxCap = int.MaxValue)
-    {
-        if (penalties == null || penalties.Length == 0)
-            return candidates; // nothing to remove
-
-        var penaltySet = new HashSet<T>(penalties); // O(penalties.Length)
-
-        // allocate result with upper bound = candidates.Length
-        var result = new T[candidates.Length];
-        int idx = 0;
-
-        for (int i = 0; i < candidates.Length; i++)
-        {
-            if (!penaltySet.Contains(candidates[i]))
-            {
-                result[idx++] = candidates[i];
-            }
-        }
-
-        if (idx == result.Length)
-            return result; // no removals happened
-
-        // trim excess
-        Array.Resize(ref result, Math.Min(withMaxCap, idx));
-        return result;
-    }
+    
 
 }
