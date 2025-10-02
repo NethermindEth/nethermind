@@ -53,8 +53,8 @@ public class AuRaMergeBlockProcessor(
         gasLimitOverride,
         contractRewriter)
 {
-    protected override TxReceipt[] ProcessBlock(Block block, IBlockTracer blockTracer, ProcessingOptions options, IReleaseSpec spec, CancellationToken token) =>
+    protected override TxReceipt[] ProcessBlock(Block block, IBlockTracer blockTracer, ProcessingOptions options, IReleaseSpec spec, CancellationToken token, string? forkName = null) =>
         block.IsPostMerge
-            ? PostMergeProcessBlock(block, blockTracer, options, spec, token)
-            : base.ProcessBlock(block, blockTracer, options, spec, token);
+            ? PostMergeProcessBlock(block, blockTracer, options, spec, token, forkName: forkName)
+            : base.ProcessBlock(block, blockTracer, options, spec, token, forkName: forkName);
 }

@@ -22,14 +22,14 @@ public sealed class BlockchainProcessorFacade(
     CompositeBlockPreprocessorStep preprocessorStep
 )
 {
-    public Block? Process(Block block, ProcessingOptions options, IBlockTracer tracer, CancellationToken token = default)
+    public Block? Process(Block block, ProcessingOptions options, IBlockTracer tracer, CancellationToken token = default, string? forkName = null)
     {
         preprocessorStep.RecoverData(block);
 
         IReleaseSpec spec = specProvider.GetSpec(block.Header);
         try
         {
-            (Block? processedBlock, TxReceipt[] _) = blockProcessor.ProcessOne(block, options, tracer, spec, token);
+            (Block? processedBlock, TxReceipt[] _) = blockProcessor.ProcessOne(block, options, tracer, spec, token, forkName: forkName);
             return processedBlock;
         }
         catch (InvalidBlockException)

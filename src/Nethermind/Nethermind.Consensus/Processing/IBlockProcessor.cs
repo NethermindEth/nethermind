@@ -24,7 +24,8 @@ namespace Nethermind.Consensus.Processing
             ProcessingOptions options,
             IBlockTracer blockTracer,
             IReleaseSpec spec,
-            CancellationToken token = default);
+            CancellationToken token = default,
+            string? forkName = null);
 
         public interface IBlockTransactionsExecutor
         {

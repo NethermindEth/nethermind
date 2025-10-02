@@ -12,7 +12,7 @@ namespace Nethermind.Consensus.Processing;
 
 public class PrewarmerTxAdapter(ITransactionProcessorAdapter baseAdapter, BlockCachePreWarmer preWarmer, IWorldState worldState) : ITransactionProcessorAdapter
 {
-    public TransactionResult Execute(Transaction transaction, ITxTracer txTracer)
+    public TransactionResult Execute(Transaction transaction, ITxTracer txTracer, bool? isFromTraceEndpoint = null)
     {
         if (worldState is IPreBlockCaches preBlockCaches && preBlockCaches.IsWarmWorldState)
         {
