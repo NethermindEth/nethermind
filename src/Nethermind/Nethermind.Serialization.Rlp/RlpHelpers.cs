@@ -15,6 +15,7 @@ namespace Nethermind.Serialization.Rlp;
 /// </summary>
 internal static class RlpHelpers
 {
+    public const int SmallPrefixBarrier = 56;
     /// <summary>
     /// Branchless implementation of RLP prefix length calculation.
     /// See RLP specification: https://github.com/ethereum/wiki/wiki/RLP

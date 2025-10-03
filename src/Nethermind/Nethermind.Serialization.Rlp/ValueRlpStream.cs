@@ -50,7 +50,7 @@ public ref struct ValueRlpStream(SpanSource data)
             {
                 int lengthOfLength = prefix - 183;
                 int length = DeserializeLength(lengthOfLength);
-                if (length < 56)
+                if (length < RlpHelpers.SmallPrefixBarrier)
                 {
                     throw new RlpException("Expected length greater or equal 56 and was {length}");
                 }
@@ -129,7 +129,7 @@ public ref struct ValueRlpStream(SpanSource data)
         }
 
         int length = PeekDeserializeLength(1, lengthOfLength);
-        if (length < 56)
+        if (length < RlpHelpers.SmallPrefixBarrier)
         {
             RlpHelpers.ThrowLengthTooLong(length);
         }
@@ -148,7 +148,7 @@ public ref struct ValueRlpStream(SpanSource data)
         }
 
         int length = PeekDeserializeLength(1, lengthOfLength);
-        if (length < 56)
+        if (length < RlpHelpers.SmallPrefixBarrier)
         {
             RlpHelpers.ThrowLengthTooLong(length);
         }
@@ -161,7 +161,7 @@ public ref struct ValueRlpStream(SpanSource data)
     {
         int lengthOfContentLength = prefix - 247;
         int contentLength = PeekDeserializeLength(1, lengthOfContentLength);
-        if (contentLength < 56)
+        if (contentLength < RlpHelpers.SmallPrefixBarrier)
         {
             RlpHelpers.ThrowLengthTooLong(contentLength);
         }
@@ -174,7 +174,7 @@ public ref struct ValueRlpStream(SpanSource data)
     {
         int lengthOfContentLength = prefix - 247;
         int contentLength = PeekDeserializeLength(1, lengthOfContentLength);
-        if (contentLength < 56)
+        if (contentLength < RlpHelpers.SmallPrefixBarrier)
         {
             RlpHelpers.ThrowLengthTooLong(contentLength);
         }
@@ -200,7 +200,7 @@ public ref struct ValueRlpStream(SpanSource data)
 
         int lengthOfContentLength = prefix - 247;
         int contentLength = DeserializeLength(lengthOfContentLength);
-        if (contentLength < 56)
+        if (contentLength < RlpHelpers.SmallPrefixBarrier)
         {
             throw new RlpException($"Expected length greater or equal 56 and got {contentLength}");
         }
@@ -364,7 +364,7 @@ public ref struct ValueRlpStream(SpanSource data)
             }
 
             int length = DeserializeLength(lengthOfLength);
-            if (length < 56)
+            if (length < RlpHelpers.SmallPrefixBarrier)
             {
                 ThrowUnexpectedLength(length);
             }
@@ -398,10 +398,6 @@ public ref struct ValueRlpStream(SpanSource data)
     public void SkipItem() => SkipBytes(PeekNextRlpLength());
 
     public void Reset() => _position = 0;
-
-    private const byte EmptyArrayByte = 128;
-
-    private const byte EmptySequenceByte = 192;
 
     public override readonly string ToString() => $"[{nameof(RlpStream)}|{_position}/{Data.Length}]";
 }

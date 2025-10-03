@@ -96,7 +96,7 @@ namespace Nethermind.Serialization.Rlp
                 case 1 when firstByteLessThan128:
                     // the single byte of content will be written without any prefix
                     break;
-                case < SmallPrefixBarrier:
+                case < RlpHelpers.SmallPrefixBarrier:
                     {
                         byte smallPrefix = (byte)(contentLength + 128);
                         WriteByte(smallPrefix);
@@ -116,7 +116,7 @@ namespace Nethermind.Serialization.Rlp
         public void StartSequence(int contentLength)
         {
             byte prefix;
-            if (contentLength < SmallPrefixBarrier)
+            if (contentLength < RlpHelpers.SmallPrefixBarrier)
             {
                 prefix = (byte)(192 + contentLength);
                 WriteByte(prefix);
@@ -458,7 +458,7 @@ namespace Nethermind.Serialization.Rlp
             {
                 WriteByte(input[0]);
             }
-            else if (input.Length < SmallPrefixBarrier)
+            else if (input.Length < RlpHelpers.SmallPrefixBarrier)
             {
                 byte smallPrefix = (byte)(input.Length + 128);
                 WriteByte(smallPrefix);
@@ -508,7 +508,7 @@ namespace Nethermind.Serialization.Rlp
                 {
                     int lengthOfLength = prefix - 183;
                     int length = DeserializeLength(lengthOfLength);
-                    if (length < SmallPrefixBarrier)
+                    if (length < RlpHelpers.SmallPrefixBarrier)
                     {
                         throw new RlpException("Expected length greater or equal 56 and was {length}");
                     }
@@ -594,7 +594,7 @@ namespace Nethermind.Serialization.Rlp
             }
 
             int length = PeekDeserializeLength(1, lengthOfLength);
-            if (length < SmallPrefixBarrier)
+            if (length < RlpHelpers.SmallPrefixBarrier)
             {
                 RlpHelpers.ThrowLengthTooLong(length);
             }
@@ -613,7 +613,7 @@ namespace Nethermind.Serialization.Rlp
             }
 
             int length = PeekDeserializeLength(1, lengthOfLength);
-            if (length < SmallPrefixBarrier)
+            if (length < RlpHelpers.SmallPrefixBarrier)
             {
                 RlpHelpers.ThrowLengthTooLong(length);
             }
@@ -626,7 +626,7 @@ namespace Nethermind.Serialization.Rlp
         {
             int lengthOfContentLength = prefix - 247;
             int contentLength = PeekDeserializeLength(1, lengthOfContentLength);
-            if (contentLength < SmallPrefixBarrier)
+            if (contentLength < RlpHelpers.SmallPrefixBarrier)
             {
                 RlpHelpers.ThrowLengthTooLong(contentLength);
             }
@@ -639,7 +639,7 @@ namespace Nethermind.Serialization.Rlp
         {
             int lengthOfContentLength = prefix - 247;
             int contentLength = PeekDeserializeLength(1, lengthOfContentLength);
-            if (contentLength < SmallPrefixBarrier)
+            if (contentLength < RlpHelpers.SmallPrefixBarrier)
             {
                 RlpHelpers.ThrowLengthTooLong(contentLength);
             }
@@ -663,7 +663,7 @@ namespace Nethermind.Serialization.Rlp
 
             int lengthOfContentLength = prefix - 247;
             int contentLength = DeserializeLength(lengthOfContentLength);
-            if (contentLength < SmallPrefixBarrier)
+            if (contentLength < RlpHelpers.SmallPrefixBarrier)
             {
                 throw new RlpException($"Expected length greater or equal 56 and got {contentLength}");
             }
@@ -927,7 +927,7 @@ namespace Nethermind.Serialization.Rlp
                 }
 
                 int length = DeserializeLength(lengthOfLength);
-                if (length < SmallPrefixBarrier)
+                if (length < RlpHelpers.SmallPrefixBarrier)
                 {
                     throw new RlpException("Expected length greater or equal 56 and was {length}");
                 }
@@ -1185,10 +1185,7 @@ namespace Nethermind.Serialization.Rlp
             return DecodeLargerByteArraySpan(prefix);
 
             [DoesNotReturn, StackTraceHidden]
-            static void ThrowUnexpectedValue(int buffer0)
-            {
-                throw new RlpException($"Unexpected byte value {buffer0}");
-            }
+            static void ThrowUnexpectedValue(int buffer0) => throw new RlpException($"Unexpected byte value {buffer0}");
         }
 
         [MethodImpl(MethodImplOptions.NoInlining)]
@@ -1204,7 +1201,7 @@ namespace Nethermind.Serialization.Rlp
                 }
 
                 int length = DeserializeLength(lengthOfLength);
-                if (length < SmallPrefixBarrier)
+                if (length < RlpHelpers.SmallPrefixBarrier)
                 {
                     ThrowUnexpectedLength(length);
                 }
@@ -1216,22 +1213,13 @@ namespace Nethermind.Serialization.Rlp
             return default;
 
             [DoesNotReturn, StackTraceHidden]
-            static void ThrowUnexpectedPrefix(int prefix)
-            {
-                throw new RlpException($"Unexpected prefix value of {prefix} when decoding a byte array.");
-            }
+            static void ThrowUnexpectedPrefix(int prefix) => throw new RlpException($"Unexpected prefix value of {prefix} when decoding a byte array.");
 
             [DoesNotReturn, StackTraceHidden]
-            static void ThrowUnexpectedLength(int length)
-            {
-                throw new RlpException($"Expected length greater or equal 56 and was {length}");
-            }
+            static void ThrowUnexpectedLength(int length) => throw new RlpException($"Expected length greater or equal 56 and was {length}");
 
             [DoesNotReturn, StackTraceHidden]
-            static void ThrowUnexpectedLengthOfLength()
-            {
-                throw new RlpException("Expected length of length less or equal 4");
-            }
+            static void ThrowUnexpectedLengthOfLength() => throw new RlpException("Expected length of length less or equal 4");
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
@@ -1245,7 +1233,6 @@ namespace Nethermind.Serialization.Rlp
 
         private const byte EmptyArrayByte = 128;
         private const byte EmptySequenceByte = 192;
-        private const int SmallPrefixBarrier = 56;
 
         public override string ToString() => $"[{nameof(RlpStream)}|{Position}/{Length}]";
 

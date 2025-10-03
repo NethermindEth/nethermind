@@ -417,7 +417,7 @@ namespace Nethermind.Serialization.Rlp
                 return position;
             }
 
-            if (input.Length < 56)
+            if (input.Length < RlpHelpers.SmallPrefixBarrier)
             {
                 byte smallPrefix = (byte)(input.Length + 128);
                 buffer[position++] = smallPrefix;
@@ -473,7 +473,7 @@ namespace Nethermind.Serialization.Rlp
             }
 
             // For lengths < 56, the encoding is one byte of prefix + the data
-            if (length < 56)
+            if (length < RlpHelpers.SmallPrefixBarrier)
             {
                 // Allocate exactly what we need: 1 prefix byte + input length
                 byte[] rlpResult = GC.AllocateUninitializedArray<byte>(1 + length);
@@ -563,7 +563,7 @@ namespace Nethermind.Serialization.Rlp
             byte prefix;
             int beforeLength = position + 1;
             int afterLength = position + 1;
-            if (sequenceLength < 56)
+            if (sequenceLength < RlpHelpers.SmallPrefixBarrier)
             {
                 prefix = (byte)(192 + sequenceLength);
             }
@@ -589,7 +589,7 @@ namespace Nethermind.Serialization.Rlp
             int lengthOfLength = 0;
             byte prefix;
 
-            if (contentLength < 56)
+            if (contentLength < RlpHelpers.SmallPrefixBarrier)
             {
                 // Single-byte prefix: 0xc0 + length
                 prefix = (byte)(0xc0 + contentLength);
@@ -679,7 +679,7 @@ namespace Nethermind.Serialization.Rlp
                     {
                         int lengthOfLength = prefix - 183;
                         int length = DeserializeLength(lengthOfLength);
-                        if (length < 56)
+                        if (length < RlpHelpers.SmallPrefixBarrier)
                         {
                             throw new RlpException("Expected length greater or equal 56 and was {length}");
                         }
@@ -1851,7 +1851,7 @@ namespace Nethermind.Serialization.Rlp
                 return 1;
             }
 
-            if (spanString.Length < 56)
+            if (spanString.Length < RlpHelpers.SmallPrefixBarrier)
             {
                 return spanString.Length + 1;
             }
