@@ -36,6 +36,7 @@ namespace Nethermind.JsonRpc.Data
             Status = receipt.StatusCode;
             Error = string.IsNullOrEmpty(receipt.Error) ? null : receipt.Error;
             Type = receipt.TxType;
+            BlockTimestamp = blockTimestamp;
         }
 
         public Hash256 TransactionHash { get; set; }
@@ -65,6 +66,7 @@ namespace Nethermind.JsonRpc.Data
         public long Status { get; set; }
         public string? Error { get; set; }
         public TxType Type { get; set; }
+        public ulong BlockTimestamp { get; set; }
 
         public TxReceipt ToReceipt()
         {
