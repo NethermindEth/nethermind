@@ -101,12 +101,12 @@ public partial class BlockProcessor(
         if (forkName is not null)
         {
             options |= ProcessingOptions.TracingMode;
-            _logger.Warn("Using Tracing Mode");
+            // _logger.Warn("Using Tracing Mode");
 
             if (forkName.Equals("fusaka"))
             {
                 spec = Osaka.Instance;
-                _logger.Warn($"Using Osaka spec");
+                // _logger.Warn($"Using Osaka spec");
             }
         }
 
