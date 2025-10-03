@@ -121,6 +121,30 @@ public class TracedAccessWorldState(IWorldState innerWorldState) : WrappedWorldS
         }
     }
 
+    public override void DeleteAccount(Address address)
+    {
+        BlockAccessList.DeleteAccount(address);
+        _innerWorldState.DeleteAccount(address);
+    }
+
+    public override void CreateAccount(Address address, in UInt256 balance, in UInt256 nonce = default)
+    {
+        BlockAccessList.AddAccountRead(address);
+        if (balance != 0)
+        {
+            BlockAccessList.AddBalanceChange(address, 0, balance);
+        }
+        _innerWorldState.CreateAccount(address, balance, nonce);
+    }
+
+    public override void CreateAccountIfNotExists(Address address, in UInt256 balance, in UInt256 nonce = default)
+    {
+        if (!_innerWorldState.AccountExists(address))
+        {
+            CreateAccount(address, balance, nonce);
+        }
+    }
+
     public override bool TryGetAccount(Address address, out AccountStruct account)
     {
         if (Enabled)
