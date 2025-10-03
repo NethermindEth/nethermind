@@ -560,6 +560,41 @@ namespace Nethermind.Trie
             return length == 32 ? rlpStream.DecodeKeccak() : null;
         }
 
+        /// Gets child hash or the Value of the node in case it's an inline.
+        public byte[]? GetChildHashOrInlineValue(int i)
+        {
+            SpanSource rlp = _rlp;
+            if (rlp.IsNull)
+            {
+                return null;
+            }
+
+            ValueRlpStream rlpStream = new(rlp);
+            SeekChild(ref rlpStream, i);
+
+            int prefix = rlpStream.PeekByte();
+
+            // If it's a hash (32 bytes), decode and return it
+            if (prefix == 160)
+            {
+                return rlpStream.DecodeKeccak().Bytes.ToArray();
+            }
+
+            int prefixValue = rlpStream.PeekByte();
+            if (prefixValue < 192)
+            {
+                return null;
+            }
+            else
+            {
+                // If it's an RLP list (inline node), return the full item as a byte array
+                rlpStream.PeekNextItem();
+                rlpStream.SkipLength();
+                rlpStream.SkipItem();
+                return rlpStream.DecodeByteArraySpan().ToArray();
+            }
+        }
+
         public bool GetChildHashAsValueKeccak(int i, out ValueHash256 keccak)
         {
             Unsafe.SkipInit(out keccak);

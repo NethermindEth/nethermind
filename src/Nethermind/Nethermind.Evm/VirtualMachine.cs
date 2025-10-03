@@ -763,7 +763,7 @@ public unsafe partial class VirtualMachine(
     /// A <see cref="CallResult"/> containing the results of the precompile execution. In case of a failure,
     /// returns the default value of <see cref="CallResult"/>.
     /// </returns>
-    protected CallResult ExecutePrecompile(EvmState currentState, bool isTracingActions, out Exception? failure)
+    protected virtual CallResult ExecutePrecompile(EvmState currentState, bool isTracingActions, out Exception? failure)
     {
         // Report the precompile action if tracing is enabled.
         if (isTracingActions)
@@ -971,7 +971,7 @@ public unsafe partial class VirtualMachine(
         SSTORE
     }
 
-    protected virtual CallResult RunPrecompile(EvmState state)
+    private CallResult RunPrecompile(EvmState state)
     {
         ReadOnlyMemory<byte> callData = state.Env.InputData;
         UInt256 transferValue = state.Env.TransferValue;
