@@ -73,32 +73,18 @@ namespace Nethermind.Serialization.Rlp
                 decoder.Encode(this, item, rlpBehaviors);
             }
         }
-        public void Encode(Block value)
-        {
-            _blockDecoder.Encode(this, value);
-        }
+        public void Encode(Block value) => _blockDecoder.Encode(this, value);
 
-        public void Encode(BlockHeader value)
-        {
-            _headerDecoder.Encode(this, value);
-        }
+        public void Encode(BlockHeader value) => _headerDecoder.Encode(this, value);
 
         public void Encode(Transaction value, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
-        {
-            _txDecoder.Encode(this, value, rlpBehaviors);
-        }
+            => _txDecoder.Encode(this, value, rlpBehaviors);
 
         public void Encode(Withdrawal value) => _withdrawalDecoder.Encode(this, value);
 
-        public void Encode(LogEntry value)
-        {
-            _logEntryDecoder.Encode(this, value);
-        }
+        public void Encode(LogEntry value) => _logEntryDecoder.Encode(this, value);
 
-        public void Encode(BlockInfo value)
-        {
-            _blockInfoDecoder.Encode(this, value);
-        }
+        public void Encode(BlockInfo value) => _blockInfoDecoder.Encode(this, value);
 
         public void StartByteArray(int contentLength, bool firstByteLessThan128)
         {
@@ -168,16 +154,10 @@ namespace Nethermind.Serialization.Rlp
             }
         }
 
-        public virtual void WriteByte(byte byteToWrite)
-        {
-            Data[_position++] = byteToWrite;
-        }
+        public virtual void WriteByte(byte byteToWrite) => Data[_position++] = byteToWrite;
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public void Write(byte[] bytesToWrite)
-        {
-            Write(bytesToWrite.AsSpan());
-        }
+        public void Write(byte[] bytesToWrite) => Write(bytesToWrite.AsSpan());
 
         public virtual void Write(ReadOnlySpan<byte> bytesToWrite)
         {
@@ -206,10 +186,7 @@ namespace Nethermind.Serialization.Rlp
 
         public virtual bool HasBeenRead => Position >= Data!.Length;
 
-        public bool IsSequenceNext()
-        {
-            return PeekByte() >= 192;
-        }
+        public bool IsSequenceNext() => PeekByte() >= 192;
 
         public void Encode(Hash256? keccak)
         {
@@ -363,10 +340,7 @@ namespace Nethermind.Serialization.Rlp
             }
         }
 
-        protected virtual void WriteZero(int length)
-        {
-            Position += 256;
-        }
+        protected virtual void WriteZero(int length) => Position += 256;
 
         public void Encode(byte value)
         {
@@ -457,10 +431,7 @@ namespace Nethermind.Serialization.Rlp
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public void Encode(byte[] input)
-        {
-            Encode(input.AsSpan());
-        }
+        public void Encode(byte[] input) => Encode(input.AsSpan());
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public void Encode(Memory<byte>? input)
@@ -562,16 +533,10 @@ namespace Nethermind.Serialization.Rlp
             return numberOfItems;
         }
 
-        public void SkipLength()
-        {
-            SkipBytes(PeekPrefixLength());
-        }
+        public void SkipLength() => SkipBytes(PeekPrefixLength());
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public int PeekPrefixLength()
-        {
-            return RlpHelpers.CalculatePrefixLength(PeekByte());
-        }
+        public int PeekPrefixLength() => RlpHelpers.CalculatePrefixLength(PeekByte());
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public int PeekNextRlpLength()
@@ -738,25 +703,13 @@ namespace Nethermind.Serialization.Rlp
 
 
 
-        public virtual byte ReadByte()
-        {
-            return Data![_position++];
-        }
+        public virtual byte ReadByte() => Data![_position++];
 
-        public virtual byte PeekByte()
-        {
-            return Data![_position];
-        }
+        public virtual byte PeekByte() => Data![_position];
 
-        protected virtual byte PeekByte(int offset)
-        {
-            return Data![_position + offset];
-        }
+        protected virtual byte PeekByte(int offset) => Data![_position + offset];
 
-        protected virtual void SkipBytes(int length)
-        {
-            _position += length;
-        }
+        protected virtual void SkipBytes(int length) => _position += length;
 
         public virtual Span<byte> Read(int length)
         {
@@ -935,25 +888,13 @@ namespace Nethermind.Serialization.Rlp
             return Peek(length);
         }
 
-        public Span<byte> Peek(int length)
-        {
-            return Peek(0, length);
-        }
+        public Span<byte> Peek(int length) => Peek(0, length);
 
-        public virtual Span<byte> Peek(int offset, int length)
-        {
-            return Data.AsSpan(_position + offset, length);
-        }
+        public virtual Span<byte> Peek(int offset, int length) => Data.AsSpan(_position + offset, length);
 
-        public bool IsNextItemEmptyArray()
-        {
-            return PeekByte() == Rlp.EmptyArrayByte;
-        }
+        public bool IsNextItemEmptyArray() => PeekByte() == Rlp.EmptyArrayByte;
 
-        public bool IsNextItemNull()
-        {
-            return PeekByte() == Rlp.NullObjectByte;
-        }
+        public bool IsNextItemNull() => PeekByte() == Rlp.NullObjectByte;
 
         public bool DecodeBool()
         {
@@ -1211,15 +1152,9 @@ namespace Nethermind.Serialization.Rlp
             return bytes.Length == 0 ? 0L : bytes.ReadEthUInt64();
         }
 
-        public byte[] DecodeByteArray()
-        {
-            return Rlp.ByteSpanToArray(DecodeByteArraySpan());
-        }
+        public byte[] DecodeByteArray() => Rlp.ByteSpanToArray(DecodeByteArraySpan());
 
-        public ArrayPoolList<byte> DecodeByteArrayPoolList()
-        {
-            return Rlp.ByteSpanToArrayPool(DecodeByteArraySpan());
-        }
+        public ArrayPoolList<byte> DecodeByteArrayPoolList() => Rlp.ByteSpanToArrayPool(DecodeByteArraySpan());
 
         public ReadOnlySpan<byte> DecodeByteArraySpan()
         {
@@ -1300,34 +1235,19 @@ namespace Nethermind.Serialization.Rlp
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public void SkipItem()
-        {
-            SkipBytes(PeekNextRlpLength());
-        }
+        public void SkipItem() => SkipBytes(PeekNextRlpLength());
 
-        public void Reset()
-        {
-            Position = 0;
-        }
+        public void Reset() => Position = 0;
 
-        public void EncodeNullObject()
-        {
-            WriteByte(EmptySequenceByte);
-        }
+        public void EncodeNullObject() => WriteByte(EmptySequenceByte);
 
-        public void EncodeEmptyByteArray()
-        {
-            WriteByte(EmptyArrayByte);
-        }
+        public void EncodeEmptyByteArray() => WriteByte(EmptyArrayByte);
 
         private const byte EmptyArrayByte = 128;
         private const byte EmptySequenceByte = 192;
         private const int SmallPrefixBarrier = 56;
 
-        public override string ToString()
-        {
-            return $"[{nameof(RlpStream)}|{Position}/{Length}]";
-        }
+        public override string ToString() => $"[{nameof(RlpStream)}|{Position}/{Length}]";
 
         public byte[][] DecodeByteArrays()
         {

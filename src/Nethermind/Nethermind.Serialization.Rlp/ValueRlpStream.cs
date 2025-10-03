@@ -75,16 +75,10 @@ public ref struct ValueRlpStream(SpanSource data)
         return numberOfItems;
     }
 
-    public void SkipLength()
-    {
-        SkipBytes(PeekPrefixLength());
-    }
+    public void SkipLength() => SkipBytes(PeekPrefixLength());
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public readonly int PeekPrefixLength()
-    {
-        return RlpHelpers.CalculatePrefixLength(PeekByte());
-    }
+    public readonly int PeekPrefixLength() => RlpHelpers.CalculatePrefixLength(PeekByte());
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public readonly int PeekNextRlpLength()
@@ -244,28 +238,16 @@ public ref struct ValueRlpStream(SpanSource data)
         return DeserializeLengthRef(ref firstElement, lengthOfLength);
     }
 
-    private static int DeserializeLengthRef(ref byte firstElement, int lengthOfLength)
-    {
-        return RlpHelpers.DeserializeLengthRef(ref firstElement, lengthOfLength);
-    }
+    private static int DeserializeLengthRef(ref byte firstElement, int lengthOfLength) => RlpHelpers.DeserializeLengthRef(ref firstElement, lengthOfLength);
 
 
 
-    public byte ReadByte()
-    {
-        return Data[_position++];
-    }
+    public byte ReadByte() => Data[_position++];
 
-    public readonly byte PeekByte()
-    {
-        return Data[_position];
-    }
+    public readonly byte PeekByte() => Data[_position];
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public void SkipBytes(int length)
-    {
-        _position += length;
-    }
+    public void SkipBytes(int length) => _position += length;
 
     public ReadOnlySpan<byte> Read(int length)
     {
@@ -328,20 +310,11 @@ public ref struct ValueRlpStream(SpanSource data)
         return Peek(length);
     }
 
-    public readonly ReadOnlySpan<byte> Peek(int length)
-    {
-        return Peek(0, length);
-    }
+    public readonly ReadOnlySpan<byte> Peek(int length) => Peek(0, length);
 
-    public readonly ReadOnlySpan<byte> Peek(int offset, int length)
-    {
-        return Data.Slice(_position + offset, length);
-    }
+    public readonly ReadOnlySpan<byte> Peek(int offset, int length) => Data.Slice(_position + offset, length);
 
-    public byte[] DecodeByteArray()
-    {
-        return Rlp.ByteSpanToArray(DecodeByteArraySpan());
-    }
+    public byte[] DecodeByteArray() => Rlp.ByteSpanToArray(DecodeByteArraySpan());
 
     public ReadOnlySpan<byte> DecodeByteArraySpan()
     {
@@ -422,22 +395,13 @@ public ref struct ValueRlpStream(SpanSource data)
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public void SkipItem()
-    {
-        SkipBytes(PeekNextRlpLength());
-    }
+    public void SkipItem() => SkipBytes(PeekNextRlpLength());
 
-    public void Reset()
-    {
-        _position = 0;
-    }
+    public void Reset() => _position = 0;
 
     private const byte EmptyArrayByte = 128;
 
     private const byte EmptySequenceByte = 192;
 
-    public override readonly string ToString()
-    {
-        return $"[{nameof(RlpStream)}|{_position}/{Data.Length}]";
-    }
+    public override readonly string ToString() => $"[{nameof(RlpStream)}|{_position}/{Data.Length}]";
 }
