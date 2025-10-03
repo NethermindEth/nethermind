@@ -36,7 +36,7 @@ namespace Nethermind.JsonRpc.Modules.Eth
 
                 if (call is EIP1559TransactionForRpc eip1559Transaction)
                 {
-                    if (eip1559Transaction.GasPrice != null)
+                    if (eip1559Transaction.GasPrice is not null)
                         return GasPriceInEip1559Error;
 
                     if (eip1559Transaction.MaxFeePerGas is not null && eip1559Transaction.MaxFeePerGas == 0)

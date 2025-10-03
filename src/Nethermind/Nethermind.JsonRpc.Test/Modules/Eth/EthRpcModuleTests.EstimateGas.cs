@@ -19,6 +19,7 @@ using Nethermind.Specs;
 using Nethermind.Specs.Forks;
 using Nethermind.Specs.Test;
 using Nethermind.Evm.State;
+using Nethermind.Int256;
 using Newtonsoft.Json.Linq;
 using NUnit.Framework;
 
@@ -398,7 +399,10 @@ public partial class EthRpcModuleTests
             .WithGasLimit(100000)
             .WithData(code)
             .SignedAndResolved(TestItem.PrivateKeyA)
-            .TestObject);
+            .TestObject)
+        {
+            GasPrice = null,
+        };
 
         string serialized = await ctx.Test.TestEthRpc("eth_estimateGas", transaction);
 
