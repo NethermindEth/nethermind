@@ -1428,7 +1428,7 @@ namespace Nethermind.Serialization.Rlp
             static void ThrowUnexpectedValue(int buffer0) => throw new RlpException($"Unexpected byte value {buffer0}");
 
             [DoesNotReturn, StackTraceHidden]
-            static void ThrowUnexpectedLengthOfLength() => throw new RlpException("Expected length of length less or equal 4");
+            static void ThrowUnexpectedLengthOfLength() => throw new RlpException("Expected length of length less than or equal to 4");
 
             [MethodImpl(MethodImplOptions.AggressiveInlining)]
             public void SkipItem() => Position += PeekNextRlpLength();
