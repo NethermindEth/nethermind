@@ -580,7 +580,7 @@ namespace Nethermind.Serialization.Rlp
             return prefix switch
             {
                 // Single byte (0x00..0x7f). The byte is its own content. Prefix = 0, Content = 1.
-                <= 128 => 1,
+                < 128 => 1,
                 // Short string (0x80..0xb7). Prefix = 1, Content = prefix - 0x80 (0..55).
                 <= 183 => 1 + prefix - 0x80,
                 // Long string (0xb8..0xbf). Content length >= 56. The next (prefix-0xb7) bytes encode the length.
@@ -606,7 +606,7 @@ namespace Nethermind.Serialization.Rlp
             return prefix switch
             {
                 // Single byte (0x00..0x7f). The byte is its own content. Prefix = 0, Content = 1.
-                <= 128 => (0, 1),
+                < 128 => (0, 1),
                 // Short string (0x80..0xb7). Prefix = 1, Content = prefix - 0x80 (0..55).
                 <= 183 => (1, prefix - 128),
                 // Long string (0xb8..0xbf). Content length >= 56. The next (prefix-0xb7) bytes encode the length.
