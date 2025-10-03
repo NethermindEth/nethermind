@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: 2023 Demerzel Solutions Limited
+// SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using Nethermind.Consensus.Transactions;
@@ -36,7 +36,7 @@ public class TxPoolSourceTests
         txPool.GetPendingLightBlobTransactionsBySender().Returns(transactionsWithBlobs);
 
         ITxFilterPipeline txFilterPipeline = Substitute.For<ITxFilterPipeline>();
-        txFilterPipeline.Execute(Arg.Any<Transaction>(), Arg.Any<BlockHeader>(), Arg.Any<IReleaseSpec>()).Returns((bool)AcceptTxResult.Accepted);
+        txFilterPipeline.Execute(Arg.Any<Transaction>(), Arg.Any<BlockHeader>(), Arg.Any<IReleaseSpec>()).Returns(true);
 
         TxPoolTxSource transactionSelector = new(txPool, specProvider, transactionComparerProvider, LimboLogs.Instance, txFilterPipeline, new BlocksConfig { SecondsPerSlot = 12 });
 

@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
@@ -61,6 +61,6 @@ namespace Nethermind.TxPool
         bool SupportsBlobs { get; }
         long PendingTransactionsAdded { get; }
 
-        SimpleRetryCache<ValueHash256, Guid> RetryCache { get; }
+        ISimpleRetryCache<ValueHash256, Guid> RetryCache { get; }
     }
 }

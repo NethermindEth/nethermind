@@ -16,13 +16,23 @@ namespace Nethermind.TxPool;
 /// </summary>
 /// <typeparam name="TResourceId">Resource identifier</typeparam>
 /// <typeparam name="TNodeId">Node that can be queried for the resource</typeparam>
-public class SimpleRetryCache<TResourceId, TNodeId>
+public interface ISimpleRetryCache<TResourceId, TNodeId>
     where TResourceId : struct, IEquatable<TResourceId>
     where TNodeId : notnull, IEquatable<TNodeId>
 {
-    private const int TimeoutMs = 2500;
-    private const int CheckMs = 300;
+    AnnounceResult Announced(TResourceId resourceId, TNodeId nodeId, Action request);
+    void Received(TResourceId resourceId);
+}
+public abstract class SimpleRetryCache
+{
+    public const int TimeoutMs = 2500;
+    public const int CheckMs = 300;
+}
 
+public class SimpleRetryCache<TResourceId, TNodeId> : SimpleRetryCache, ISimpleRetryCache<TResourceId, TNodeId>
+    where TResourceId : struct, IEquatable<TResourceId>
+    where TNodeId : notnull, IEquatable<TNodeId>
+{
     private readonly ConcurrentDictionary<TResourceId, Dictionary<TNodeId, Action>> _retryRequests = new();
     private readonly ConcurrentQueue<(TResourceId ResourceId, DateTimeOffset Expires)> expiringQueue = new();
     private readonly ClockKeyCache<TResourceId> _requestingResources = new(MemoryAllowance.TxHashCacheSize / 10);
@@ -113,4 +123,13 @@ public enum AnnounceResult
     New,
     Enqueued,
     PendingRequest
+}
+
+
+public class NullSimpleRetryCache<TResourceId, TNodeId> : ISimpleRetryCache<TResourceId, TNodeId>
+    where TResourceId : struct, IEquatable<TResourceId>
+    where TNodeId : notnull, IEquatable<TNodeId>
+{
+    public AnnounceResult Announced(TResourceId resourceId, TNodeId nodeId, Action request) => AnnounceResult.New;
+    public void Received(TResourceId resourceId) { }
 }
