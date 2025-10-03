@@ -707,13 +707,13 @@ namespace Nethermind.Serialization.Rlp
             public void SkipLength() => Position += PeekPrefixLength();
 
             [MethodImpl(MethodImplOptions.AggressiveInlining)]
-            public readonly int PeekPrefixLength() => RlpHelpers.CalculatePrefixLength(Data[Position]);
+            public readonly int PeekPrefixLength() => RlpHelpers.GetPrefixLength(Data[Position]);
 
             [MethodImpl(MethodImplOptions.AggressiveInlining)]
             public int PeekNextRlpLength()
             {
                 int prefix = Data[Position];
-                int preLen = RlpHelpers.GetPrefixLength(prefix);
+                int preLen = RlpHelpers.GetPrefixLengthWithLookup(prefix);
                 if (preLen >= 0)
                     return preLen + RlpHelpers.GetContentLength(prefix);
 
@@ -733,7 +733,7 @@ namespace Nethermind.Serialization.Rlp
             public (int PrefixLength, int ContentLength) ReadPrefixAndContentLength()
             {
                 int prefix = ReadByte();
-                int preLen = RlpHelpers.GetPrefixLength(prefix);
+                int preLen = RlpHelpers.GetPrefixLengthWithLookup(prefix);
                 if (preLen >= 0)
                     return (preLen, RlpHelpers.GetContentLength(prefix));
 
@@ -746,7 +746,7 @@ namespace Nethermind.Serialization.Rlp
             public (int PrefixLength, int ContentLength) PeekPrefixAndContentLength()
             {
                 int prefix = Data[Position];
-                int preLen = RlpHelpers.GetPrefixLength(prefix);
+                int preLen = RlpHelpers.GetPrefixLengthWithLookup(prefix);
                 if (preLen >= 0)
                     return (preLen, RlpHelpers.GetContentLength(prefix));
 

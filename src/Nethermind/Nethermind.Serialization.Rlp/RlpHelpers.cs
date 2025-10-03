@@ -18,19 +18,48 @@ internal static class RlpHelpers
 {
     public const int SmallPrefixBarrier = 56;
 
-    private static readonly sbyte[] _prefixLenTable = BuildPrefixLenTable();
-    private static readonly sbyte[] _contentLenTable = BuildContentLenTable();
+    private static readonly sbyte[] _prefixLengthWithLookupTable = BuildPrefixLenTable();
+    private static readonly sbyte[] _contentLengthTable = BuildContentLenTable();
+    private static readonly byte[] _prefixLengthTable = BuildPrefixLengthTable();
+    
 
-    public static sbyte GetPrefixLength(int prefixByte)
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public static int GetPrefixLength(byte prefixByte)
     {
-        Debug.Assert((uint)prefixByte <= byte.MaxValue);
-        return Unsafe.Add(ref MemoryMarshal.GetArrayDataReference(_prefixLenTable), prefixByte);
+        return Unsafe.Add(ref MemoryMarshal.GetArrayDataReference(_prefixLengthTable), prefixByte);
     }
 
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public static sbyte GetPrefixLengthWithLookup(int prefixByte)
+    {
+        Debug.Assert((uint)prefixByte <= byte.MaxValue);
+        return Unsafe.Add(ref MemoryMarshal.GetArrayDataReference(_prefixLengthWithLookupTable), prefixByte);
+    }
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static sbyte GetContentLength(int prefixByte)
     {
         Debug.Assert((uint)prefixByte <= byte.MaxValue);
-        return Unsafe.Add(ref MemoryMarshal.GetArrayDataReference(_contentLenTable), prefixByte);
+        return Unsafe.Add(ref MemoryMarshal.GetArrayDataReference(_contentLengthTable), prefixByte);
+    }
+
+    private static byte[] BuildPrefixLengthTable()
+    {
+        var table = new byte[256];
+        for (int p = 0; p < 256; p++)
+        {
+            if (p < 0x80)
+                table[p] = 0; // single byte
+            else if (p <= 0xB7)
+                table[p] = 1; // short string
+            else if (p <= 0xBF)
+                table[p] = (byte)(1 + (p - 0xB7)); // long string (2..9)
+            else if (p <= 0xF7)
+                table[p] = 1; // short list
+            else
+                table[p] = (byte)(1 + (p - 0xF7)); // long list (2..9)
+        }
+        return table;
     }
 
     private static sbyte[] BuildPrefixLenTable()
@@ -69,36 +98,6 @@ internal static class RlpHelpers
                 table[i] = -2;                // long list marker
         }
         return table;
-    }
-
-    /// <summary>
-    /// Branchless implementation of RLP prefix length calculation.
-    /// See RLP specification: https://github.com/ethereum/wiki/wiki/RLP
-    /// </summary>
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public static int CalculatePrefixLength(byte prefixByte)
-    {
-        // RLP encoding rules:
-        // - For a single byte < 0x80: prefix length is 0 (no prefix).
-        // - For short strings (0x80..0xb7): prefix length is 1.
-        // - For long strings (0xb8..0xbf): prefix length is 1 + (prefix - 0xb7).
-        // - For short lists (0xc0..0xf7): prefix length is 1.
-        // - For long lists (0xf8..0xff): prefix length is 1 + (prefix - 0xf7).
-        //
-        // The following bit manipulations encode these rules without branches:
-
-        uint p = prefixByte; // The prefix byte (0..255)
-        uint v = p >> 3;     // Used to classify the prefix range (0..31)
-        uint r = v >> 4;     // r = 0 for <0x80, r = 1 for >=0x80 (single byte vs. prefixed)
-        uint t = 1u + (p & 7u); // t = 1..8, used for long string/list prefix length
-
-        // longMask is 1 for 0xB8..0xBF or 0xF8..0xFF (long string/list prefixes), else 0
-        // v | 8u == 31u is true for v == 23 (0xB8..0xBF) or v == 31 (0xF8..0xFF)
-        uint longMask = ((v | 8u) == 31u) ? 1u : 0u;
-
-        // If longMask == 1, add t to r; else add 0. This selects the correct prefix length for long string/list.
-        uint add = (0u - longMask) & t;
-        return (int)(r + add);
     }
 
     /// <summary>

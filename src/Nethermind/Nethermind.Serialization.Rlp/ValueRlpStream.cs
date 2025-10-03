@@ -75,13 +75,13 @@ public ref struct ValueRlpStream(SpanSource data)
     public void SkipLength() => SkipBytes(PeekPrefixLength());
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public readonly int PeekPrefixLength() => RlpHelpers.CalculatePrefixLength(PeekByte());
+    public readonly int PeekPrefixLength() => RlpHelpers.GetPrefixLength(PeekByte());
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public readonly int PeekNextRlpLength()
     {
         int prefix = PeekByte();
-        int preLen = RlpHelpers.GetPrefixLength(prefix);
+        int preLen = RlpHelpers.GetPrefixLengthWithLookup(prefix);
         if (preLen >= 0)
             return preLen + RlpHelpers.GetContentLength(prefix);
 
@@ -94,7 +94,7 @@ public ref struct ValueRlpStream(SpanSource data)
     public readonly (int PrefixLength, int ContentLength) PeekPrefixAndContentLength()
     {
         int prefix = PeekByte();
-        int preLen = RlpHelpers.GetPrefixLength(prefix);
+        int preLen = RlpHelpers.GetPrefixLengthWithLookup(prefix);
         if (preLen >= 0)
             return (preLen, RlpHelpers.GetContentLength(prefix));
 
