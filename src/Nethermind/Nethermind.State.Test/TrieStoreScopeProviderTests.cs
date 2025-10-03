@@ -26,7 +26,7 @@ public class TrieStoreScopeProviderTests
         using (var scope = scopeProvider.BeginScope(null))
         {
             scope.Get(TestItem.AddressA).Should().Be(null);
-            using (var writeBatch = scope.StartWriteBatch(1, null))
+            using (var writeBatch = scope.StartWriteBatch(1))
             {
                 writeBatch.Set(TestItem.AddressA, new Account(100, 100));
             }
@@ -55,7 +55,7 @@ public class TrieStoreScopeProviderTests
         {
             scope.Get(TestItem.AddressA).Should().Be(null);
 
-            using (var writeBatch = scope.StartWriteBatch(1, null))
+            using (var writeBatch = scope.StartWriteBatch(1))
             {
                 writeBatch.Set(TestItem.AddressA, new Account(100, 100));
 

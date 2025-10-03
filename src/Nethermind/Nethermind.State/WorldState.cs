@@ -87,8 +87,32 @@ namespace Nethermind.State
 
         bool IAccountStateProvider.TryGetAccount(Address address, out AccountStruct account)
         {
-            account = _stateProvider.GetAccount(address).ToStruct();
+            // Note: This call is for compatibility with `IAccountStateProvider` and should not be called directly by VM. Because its slower.
+            account = _stateProvider.GetAccount(address)
+                .WithChangedStorageRoot(_persistentStorageProvider.GetStorageRoot(address))
+                .ToStruct();
+
             return !account.IsTotallyEmpty;
+        }
+
+        UInt256 IAccountStateProvider.GetNonce(Address address)
+        {
+            return _stateProvider.GetAccount(address).Nonce;
+        }
+
+        UInt256 IAccountStateProvider.GetBalance(Address address)
+        {
+            return _stateProvider.GetAccount(address).Balance;
+        }
+
+        bool IAccountStateProvider.IsStorageEmpty(Address address)
+        {
+            return _persistentStorageProvider.GetStorageRoot(address) == Keccak.EmptyTreeHash;
+        }
+
+        bool IAccountStateProvider.HasCode(Address address)
+        {
+            return _stateProvider.GetAccount(address).HasCode;
         }
 
         public bool IsContract(Address address)
@@ -250,7 +274,7 @@ namespace Nethermind.State
         {
             DebugGuardInScope();
             if (address == null) throw new ArgumentNullException(nameof(address));
-            return _stateProvider.GetStorageRoot(address);
+            return _persistentStorageProvider.GetStorageRoot(address);
         }
 
         public byte[] GetCode(Address address)
@@ -302,7 +326,7 @@ namespace Nethermind.State
 
             if (commitRoots)
             {
-                using IWorldStateScopeProvider.IWorldStateWriteBatch writeBatch = _currentScope.StartWriteBatch(_stateProvider.ChangedAccountCount, _stateProvider.OnAccountUpdated);
+                using IWorldStateScopeProvider.IWorldStateWriteBatch writeBatch = _currentScope.StartWriteBatch(_stateProvider.ChangedAccountCount);
                 _persistentStorageProvider.FlushToTree(writeBatch);
                 _stateProvider.FlushToTree(writeBatch);
             }

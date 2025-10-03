@@ -134,4 +134,10 @@ public class WorldStateMetricsDecorator(IWorldState innerState) : IWorldState
     public ref readonly ValueHash256 GetCodeHash(Address address) => ref innerState.GetCodeHash(address);
 
     ValueHash256 IAccountStateProvider.GetCodeHash(Address address) => innerState.GetCodeHash(address);
+
+    UInt256 IAccountStateProvider.GetNonce(Address address) => innerState.GetNonce(address);
+
+    bool IAccountStateProvider.IsStorageEmpty(Address address) => innerState.IsStorageEmpty(address);
+
+    bool IAccountStateProvider.HasCode(Address address) => innerState.HasCode(address);
 }
