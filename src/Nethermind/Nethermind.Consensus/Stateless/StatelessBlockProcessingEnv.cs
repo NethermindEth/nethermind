@@ -79,6 +79,6 @@ public class StatelessBlockProcessingEnv(
     {
         var blockhashProvider = new BlockhashProvider(blockFinder, specProvider, state, logManager);
         var vm = new VirtualMachine(blockhashProvider, specProvider, logManager);
-        return new TransactionProcessor(specProvider, state, vm, new EthereumCodeInfoRepository(state), logManager);
+        return new TransactionProcessor(BlobBaseFeeCalculator.Instance, specProvider, state, vm, new EthereumCodeInfoRepository(state), logManager);
     }
 }
