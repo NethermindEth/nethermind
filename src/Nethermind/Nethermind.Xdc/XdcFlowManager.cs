@@ -10,6 +10,7 @@ using Nethermind.Core.Specs;
 using Nethermind.Crypto;
 using Nethermind.Evm.Tracing;
 using Nethermind.Logging;
+using Nethermind.Network;
 using Nethermind.Xdc.Spec;
 using Nethermind.Xdc.Types;
 using System;
@@ -22,12 +23,19 @@ using System.Threading.Channels;
 using System.Threading.Tasks;
 
 namespace Nethermind.Xdc;
-internal class XdcFlowManager(IBlockTree blockTree, ISpecProvider specProvider, IQuorumCertificateManager quorumCertificateManager, ITimeoutCertificateManager timeoutCertificateManager, ILogManager logManager) : IBlockProducerRunner
+internal class XdcFlowManager(
+    IBlockTree blockTree,
+    ISpecProvider specProvider,
+    IEpochSwitchManager epochSwitchManager,
+    IQuorumCertificateManager quorumCertificateManager,
+    ITimeoutCertificateManager timeoutCertificateManager,
+    ILogManager logManager) : IBlockProducerRunner
 {
     public event EventHandler<BlockEventArgs> BlockProduced;
     private RoundCount _roundCount;
     private CancellationTokenSource _cancellationTokenSource = new();
     private bool _isRunning = false;
+    private Task _mainFlowTask;
     private readonly Channel<RoundSignal> _newRoundSignals = Channel.CreateBounded<RoundSignal>(new BoundedChannelOptions(1)
     {
         SingleReader = true,
@@ -47,10 +55,10 @@ internal class XdcFlowManager(IBlockTree blockTree, ISpecProvider specProvider, 
             return;
         _isRunning = true;
         //Return control right away
-        Task.Run(InternalStart);
+        _mainFlowTask = Task.Run(Run);
     }
 
-    private async Task InternalStart()
+    private async Task Run()
     {
         while (blockTree.Head is null)
         {
@@ -59,7 +67,18 @@ internal class XdcFlowManager(IBlockTree blockTree, ISpecProvider specProvider, 
         }
         blockTree.NewHeadBlock += OnNewHeadBlock;
 
-
+        try
+        {
+            await MainFlow();
+        }
+        catch (OperationCanceledException)
+        {
+        }
+        catch (Exception e)
+        {
+            _logger.Error("XdcFlowManager crashed", e);
+            throw;
+        }
     }
 
     private async Task MainFlow()
@@ -67,17 +86,21 @@ internal class XdcFlowManager(IBlockTree blockTree, ISpecProvider specProvider, 
         //TODO what do we do when we are syncing?
         await foreach (RoundSignal newRoundSignal in _newRoundSignals.Reader.ReadAllAsync(_cancellationTokenSource.Token))
         {
-            XdcBlockHeader currentHead = newRoundSignal.NewHeader ?? (XdcBlockHeader)blockTree.Head.Header;
-            //TODO this is not the right way to get the correct round
+            XdcBlockHeader currentHead = newRoundSignal.CurrentHead ?? (XdcBlockHeader)blockTree.Head.Header;
+            //TODO this is not the right way to get the current round
             IXdcReleaseSpec spec = specProvider.GetXdcSpec(currentHead, currentHead.ExtraConsensusData.CurrentRound);
-            if (newRoundSignal.NewHeader is not null)
+
+            //Technically we have to apply timeout exponents from spec, but they are always 1
+            Task timeoutTask = Task.Delay(TimeSpan.FromSeconds(spec.TimeoutPeriod));
+
+            //TODO make sure epoch switch is handled correctly
+            EpochSwitchInfo? epochSwitchInfo = epochSwitchManager.GetEpochSwitchInfo(currentHead, currentHead.ParentHash);
+
+
+            if (newRoundSignal.CurrentHead is not null)
             {
                 //Start block production for the new block
 
-
-            }
-            else if (newRoundSignal.TimeoutCertificate is not null)
-            {
 
             }
             else
@@ -87,19 +110,53 @@ internal class XdcFlowManager(IBlockTree blockTree, ISpecProvider specProvider, 
         }
     }
 
+    private bool IsMyTurn(XdcBlockHeader currentHead, Address[] masterNodes, long currentRound, IXdcReleaseSpec spec)
+    {
+        if (epochSwitchManager.IsEpochSwitchAtRound((ulong)currentRound, currentHead, out _))
+        {
+            //TODO calculate master nodes based on the current round 
+        }
+        else
+        {
+            EpochSwitchInfo epochSwitchInfo = epochSwitchManager.GetEpochSwitchInfo(currentHead, null);
+        }   
+
+    }
+
+    private bool IsNextEpochSwitch(XdcBlockHeader currentHead, long currentRound, IXdcReleaseSpec spec)
+    {
+        //First V2 block counts as an epoch switch
+        if (currentHead.Number == spec.SwitchBlock)
+            return true;
+
+        long lastRound = (long)currentHead.ExtraConsensusData.CurrentRound;
+        if (currentRound <= lastRound)
+        {
+            //This should never happen
+            _logger.Warn($"The current round {currentRound} is not greater than round {lastRound} from current head block.");
+            return false;
+        }
+        var epochStartRound = currentRound - currentRound % spec.EpochLength;
+        return lastRound < epochStartRound;
+    }
+
+
     private void OnNewHeadBlock(object? sender, BlockEventArgs e)
     {
         StartNewRound();
-        _newRoundSignals.Writer.TryWrite(new RoundSignal((XdcBlockHeader)e.Block.Header));
+        _newRoundSignals.Writer.TryWrite(new RoundSignal((XdcBlockHeader)e.Block.Header, _roundCount.CurrentRound));
     }
 
     private void StartNewRound()
     {
+        DateTime lastRoundStart = _roundCount.CurrentRoundStartTime;
+        long lastRound = _roundCount.CurrentRound;
         _roundCount.StartNewRound();
         if (_logger.IsInfo)
-            _logger.Info($"Starting new round {_roundCount.CurrentRound} at {_roundCount.CurrentRoundStartTime}");
-
-
+        {
+            _logger.Info($"Current round {lastRound} finished in {_roundCount.CurrentRoundStartTime - lastRoundStart}");
+            _logger.Info($"Starting next round { _roundCount.CurrentRound }");
+        }
     }
 
     public Task StopAsync()
@@ -113,28 +170,25 @@ internal class XdcFlowManager(IBlockTree blockTree, ISpecProvider specProvider, 
 
     private class RoundSignal
     {
-        public RoundSignal(XdcBlockHeader block)
+        public RoundSignal(XdcBlockHeader block, long round)
         {
-            this.NewHeader = block;
-        }
-        public RoundSignal(TimeoutCert timeoutCert)
-        {
-            this.TimeoutCertificate = timeoutCert;
+            this.CurrentHead = block;
+            this.CurrentRound = round;
         }
 
-        public XdcBlockHeader? NewHeader { get; }
-        public TimeoutCert? TimeoutCertificate { get; }
+        public XdcBlockHeader CurrentHead { get; }
+        public long CurrentRound { get; }
     }
 
     private class RoundCount(long startingRound)
     {
         public long CurrentRound { get; private set; } = startingRound;
-        public DateTime CurrentRoundStartTime { get; private set; } = DateTime.Now;
+        public DateTime CurrentRoundStartTime { get; private set; } = DateTime.UtcNow;
 
         public void StartNewRound()
         {
             CurrentRound++;
-            CurrentRoundStartTime = DateTime.Now;
+            CurrentRoundStartTime = DateTime.UtcNow;
         }
     }
 
