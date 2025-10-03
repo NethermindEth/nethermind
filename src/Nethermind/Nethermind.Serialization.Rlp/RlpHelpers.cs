@@ -120,5 +120,5 @@ internal static class RlpHelpers
 
     [DoesNotReturn, StackTraceHidden]
     public static void ThrowLengthTooLong(int length)
-        => throw new RlpException($"Expected length greater or equal 56 and was {length}");
+        => throw new RlpException($"Expected length greater than or equal to 56 and was {length}");
 }
