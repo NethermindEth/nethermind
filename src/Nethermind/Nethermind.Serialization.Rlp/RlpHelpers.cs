@@ -116,7 +116,7 @@ internal static class RlpHelpers
 
     [DoesNotReturn, StackTraceHidden]
     public static void ThrowSequenceLengthTooLong()
-        => throw new RlpException("Expected length of length less or equal 4");
+        => throw new RlpException("Expected length of length less than or equal to 4");
 
     [DoesNotReturn, StackTraceHidden]
     public static void ThrowLengthTooLong(int length)
