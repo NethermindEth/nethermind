@@ -249,6 +249,22 @@ public class Eth69ProtocolHandlerTests
         _session.Received().InitiateDisconnect(DisconnectReason.InvalidBlockRangeUpdate, Arg.Any<string>());
     }
 
+    [Test]
+    public void Should_disconnect_on_invalid_BlockRangeUpdate_empty_hash()
+    {
+        using var msg = new BlockRangeUpdateMessage
+        {
+            EarliestBlock = 1,
+            LatestBlock = 2,
+            LatestBlockHash = Keccak.Zero
+        };
+
+        HandleIncomingStatusMessage();
+        HandleZeroMessage(msg, Eth69MessageCode.BlockRangeUpdate);
+
+        _session.Received().InitiateDisconnect(DisconnectReason.InvalidBlockRangeUpdate, Arg.Any<string>());
+    }
+
     private void HandleIncomingStatusMessage()
     {
         using var statusMsg = new StatusMessage69 { ProtocolVersion = 69, GenesisHash = _genesisBlock.Hash!, LatestBlockHash = _genesisBlock.Hash! };

@@ -244,7 +244,7 @@ public class SimulateBridgeHelper(IBlocksConfig blocksConfig, ISpecProvider spec
         BlockHeader result = new BlockHeader(
             parent.Hash!,
             Keccak.OfAnEmptySequenceRlp,
-            Address.Zero,
+            parent.Beneficiary,
             UInt256.Zero,
             parent.Number + 1,
             parent.GasLimit,

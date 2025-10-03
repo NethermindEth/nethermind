@@ -3,9 +3,9 @@
 
 using Nethermind.Blockchain;
 using Nethermind.Consensus;
-using Nethermind.Consensus.Messages;
 using Nethermind.Consensus.Validators;
 using Nethermind.Core;
+using Nethermind.Core.Messages;
 using Nethermind.Core.Specs;
 using Nethermind.Logging;
 
@@ -35,7 +35,7 @@ public class TaikoHeaderValidator(
         return true;
     }
 
-    protected override bool ValidateTotalDifficulty(BlockHeader parent, BlockHeader header, ref string? error)
+    protected override bool ValidateTotalDifficulty(BlockHeader header, BlockHeader parent, ref string? error)
     {
         if (header.Difficulty != 0 || header.TotalDifficulty != 0 && header.TotalDifficulty != null)
         {
@@ -46,9 +46,5 @@ public class TaikoHeaderValidator(
         return true;
     }
 
-    protected override bool ValidateBlobGasFields(BlockHeader header, BlockHeader parentHeader, IReleaseSpec spec, ref string? error)
-    {
-        // not validated in taiko-geth
-        return true;
-    }
+    protected override bool ValidateBlobGasFields(BlockHeader header, BlockHeader parent, IReleaseSpec spec, ref string? error) => true; // not validated in taiko-geth
 }

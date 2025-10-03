@@ -13,6 +13,7 @@ using Nethermind.Logging;
 namespace Nethermind.Optimism;
 
 public class OptimismTransactionProcessor(
+    ITransactionProcessor.IBlobBaseFeeCalculator blobBaseFeeCalculator,
     ISpecProvider specProvider,
     IWorldState worldState,
     IVirtualMachine virtualMachine,
@@ -20,7 +21,7 @@ public class OptimismTransactionProcessor(
     ICostHelper costHelper,
     IOptimismSpecHelper opSpecHelper,
     ICodeInfoRepository? codeInfoRepository
-    ) : TransactionProcessorBase(specProvider, worldState, virtualMachine, codeInfoRepository, logManager)
+    ) : TransactionProcessorBase(blobBaseFeeCalculator, specProvider, worldState, virtualMachine, codeInfoRepository, logManager)
 {
     private UInt256? _currentTxL1Cost;
 

@@ -36,7 +36,7 @@ public class InputData
                 var transaction = Txs[i].ToTransaction();
                 transaction.SenderAddress = null; // t8n does not accept SenderAddress from input, so need to reset senderAddress
 
-                SignTransaction(transaction, TransactionMetaDataList[i], (LegacyTransactionForRpc) Txs[i]);
+                SignTransaction(transaction, TransactionMetaDataList[i], (LegacyTransactionForRpc)Txs[i]);
 
                 transaction.ChainId ??= chainId;
                 transaction.SenderAddress ??= ecdsa.RecoverAddress(transaction);

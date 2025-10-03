@@ -46,7 +46,7 @@ namespace Nethermind.Consensus.Processing
             {
                 TransactionResult result = transactionProcessor.ProcessTransaction(currentTx, receiptsTracer, processingOptions, stateProvider);
                 if (!result) ThrowInvalidBlockException(result, block.Header, currentTx, index);
-                transactionProcessedEventHandler?.OnTransactionProcessed(new TxProcessedEventArgs(index, currentTx, receiptsTracer.TxReceipts[index]));
+                transactionProcessedEventHandler?.OnTransactionProcessed(new TxProcessedEventArgs(index, currentTx, block.Header, receiptsTracer.TxReceipts[index]));
             }
 
             [DoesNotReturn, StackTraceHidden]
