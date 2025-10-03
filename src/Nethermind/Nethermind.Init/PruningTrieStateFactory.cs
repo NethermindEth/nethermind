@@ -64,19 +64,20 @@ public class PruningTrieStateFactory(
         }
 
         IKeyValueStoreWithBatching codeDb = dbProvider.CodeDb;
-        IWorldState worldState = syncConfig.TrieHealing
-            ? new HealingWorldState(
+        IWorldStateScopeProvider scopeProvider = syncConfig.TrieHealing
+            ? new HealingWorldStateScopeProvider(
                 mainWorldTrieStore,
+                codeDb,
                 mainNodeStorage,
-                codeDb,
                 pathRecovery,
-                logManager,
-                preBlockCaches,
-                // Main thread should only read from prewarm caches, not spend extra time updating them.
-                populatePreBlockCache: false)
-            : new WorldState(
+                logManager)
+            : new TrieStoreScopeProvider(
                 mainWorldTrieStore,
                 codeDb,
+                logManager);
+
+        IWorldState worldState = new WorldState(
+                scopeProvider,
                 logManager,
                 preBlockCaches,
                 // Main thread should only read from prewarm caches, not spend extra time updating them.
