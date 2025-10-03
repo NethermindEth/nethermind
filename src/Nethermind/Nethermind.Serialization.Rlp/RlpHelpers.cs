@@ -21,7 +21,6 @@ internal static class RlpHelpers
     private static readonly sbyte[] _prefixLengthWithLookupTable = BuildPrefixLenTable();
     private static readonly sbyte[] _contentLengthTable = BuildContentLenTable();
     private static readonly byte[] _prefixLengthTable = BuildPrefixLengthTable();
-    
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static int GetPrefixLength(byte prefixByte)
@@ -45,19 +44,19 @@ internal static class RlpHelpers
 
     private static byte[] BuildPrefixLengthTable()
     {
-        var table = new byte[256];
-        for (int p = 0; p < 256; p++)
+        byte[] table = new byte[byte.MaxValue];
+        for (int i = 0; i < table.Length; i++)
         {
-            if (p < 0x80)
-                table[p] = 0; // single byte
-            else if (p <= 0xB7)
-                table[p] = 1; // short string
-            else if (p <= 0xBF)
-                table[p] = (byte)(1 + (p - 0xB7)); // long string (2..9)
-            else if (p <= 0xF7)
-                table[p] = 1; // short list
+            if (i < 0x80)
+                table[i] = 0; // single byte
+            else if (i <= 0xB7)
+                table[i] = 1; // short string
+            else if (i <= 0xBF)
+                table[i] = (byte)(1 + (i - 0xB7)); // long string (2..9)
+            else if (i <= 0xF7)
+                table[i] = 1; // short list
             else
-                table[p] = (byte)(1 + (p - 0xF7)); // long list (2..9)
+                table[i] = (byte)(1 + (i - 0xF7)); // long list (2..9)
         }
         return table;
     }
