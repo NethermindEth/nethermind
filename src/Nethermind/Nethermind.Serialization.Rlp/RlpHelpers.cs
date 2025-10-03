@@ -6,6 +6,7 @@ using System.Buffers.Binary;
 using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
 using System.Runtime.CompilerServices;
+using System.Runtime.InteropServices;
 
 namespace Nethermind.Serialization.Rlp;
 
@@ -16,6 +17,60 @@ namespace Nethermind.Serialization.Rlp;
 internal static class RlpHelpers
 {
     public const int SmallPrefixBarrier = 56;
+
+    private static readonly sbyte[] _prefixLenTable = BuildPrefixLenTable();
+    private static readonly sbyte[] _contentLenTable = BuildContentLenTable();
+
+    public static sbyte GetPrefixLength(int prefixByte)
+    {
+        Debug.Assert((uint)prefixByte <= byte.MaxValue);
+        return Unsafe.Add(ref MemoryMarshal.GetArrayDataReference(_prefixLenTable), prefixByte);
+    }
+
+    public static sbyte GetContentLength(int prefixByte)
+    {
+        Debug.Assert((uint)prefixByte <= byte.MaxValue);
+        return Unsafe.Add(ref MemoryMarshal.GetArrayDataReference(_contentLenTable), prefixByte);
+    }
+
+    private static sbyte[] BuildPrefixLenTable()
+    {
+        sbyte[] table = new sbyte[byte.MaxValue];
+        for (int i = 0; i < table.Length; i++)
+        {
+            if (i < 128)
+                table[i] = 0;  // single byte
+            else if (i <= 183)
+                table[i] = 1;  // short string
+            else if (i < 192)
+                table[i] = -1; // long string marker
+            else if (i <= 247)
+                table[i] = 1;  // short list
+            else
+                table[i] = -2; // long list marker
+        }
+        return table;
+    }
+
+    private static sbyte[] BuildContentLenTable()
+    {
+        sbyte[] table = new sbyte[byte.MaxValue];
+        for (int i = 0; i < table.Length; i++)
+        {
+            if (i < 128)
+                table[i] = 1;                 // single byte
+            else if (i <= 183)
+                table[i] = (sbyte)(i - 0x80); // short string
+            else if (i < 192)
+                table[i] = -1;                // long string marker
+            else if (i <= 247)
+                table[i] = (sbyte)(i - 0xc0); // short list
+            else
+                table[i] = -2;                // long list marker
+        }
+        return table;
+    }
+
     /// <summary>
     /// Branchless implementation of RLP prefix length calculation.
     /// See RLP specification: https://github.com/ethereum/wiki/wiki/RLP

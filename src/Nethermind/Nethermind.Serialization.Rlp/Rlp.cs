@@ -713,19 +713,13 @@ namespace Nethermind.Serialization.Rlp
             public int PeekNextRlpLength()
             {
                 int prefix = Data[Position];
-                return prefix switch
-                {
-                    // Single byte (0x00..0x7f). The byte is its own content. Prefix = 0, Content = 1.
-                    < 128 => 1,
-                    // Short string (0x80..0xb7). Prefix = 1, Content = prefix - 0x80 (0..55).
-                    <= 183 => 1 + prefix - 0x80,
-                    // Long string (0xb8..0xbf). Content length >= 56. The next (prefix-0xb7) bytes encode the length.
-                    < 192 => PeekLongStringRlpLength(prefix),
-                    // Short list (0xc0..0xf7). Prefix = 1, Content = prefix - 0xc0 (0..55).
-                    <= 247 => 1 + prefix - 0xc0,
-                    // Long list (0xf8..0xff). Content >= 56. The next (prefix-0xf7) bytes encode the length.
-                    _ => PeekLongListRlpLength(prefix),
-                };
+                int preLen = RlpHelpers.GetPrefixLength(prefix);
+                if (preLen >= 0)
+                    return preLen + RlpHelpers.GetContentLength(prefix);
+
+                return preLen == -1
+                    ? PeekLongStringRlpLength(prefix)
+                    : PeekLongListRlpLength(prefix);
             }
 
             public ReadOnlySpan<byte> Peek(int length)
@@ -739,38 +733,26 @@ namespace Nethermind.Serialization.Rlp
             public (int PrefixLength, int ContentLength) ReadPrefixAndContentLength()
             {
                 int prefix = ReadByte();
-                return prefix switch
-                {
-                    // Single byte (0x00..0x7f). The byte is its own content. Prefix = 0, Content = 1.
-                    < 128 => (0, 1),
-                    // Short string (0x80..0xb7). Prefix = 1, Content = prefix - 0x80 (0..55).
-                    <= 183 => (1, prefix - 128),
-                    // Long string (0xb8..0xbf). Content length >= 56. The next (prefix-0xb7) bytes encode the length.
-                    < 192 => ReadLongStringPrefixAndContentLength(prefix),
-                    // Short list (0xc0..0xf7). Prefix = 1, Content = prefix - 0xc0 (0..55).
-                    <= 247 => (1, prefix - 192),
-                    // Long list (0xf8..0xff). Content >= 56. The next (prefix-0xf7) bytes encode the length.
-                    _ => ReadLongListPrefixAndContentLength(prefix),
-                };
+                int preLen = RlpHelpers.GetPrefixLength(prefix);
+                if (preLen >= 0)
+                    return (preLen, RlpHelpers.GetContentLength(prefix));
+
+                return preLen == -1
+                    ? ReadLongStringPrefixAndContentLength(prefix)
+                    : ReadLongListPrefixAndContentLength(prefix);
             }
 
             [MethodImpl(MethodImplOptions.AggressiveInlining)]
             public (int PrefixLength, int ContentLength) PeekPrefixAndContentLength()
             {
                 int prefix = Data[Position];
-                return prefix switch
-                {
-                    // Single byte (0x00..0x7f). The byte is its own content. Prefix = 0, Content = 1.
-                    < 128 => (0, 1),
-                    // Short string (0x80..0xb7). Prefix = 1, Content = prefix - 0x80 (0..55).
-                    <= 183 => (1, prefix - 128),
-                    // Long string (0xb8..0xbf). Content length >= 56. The next (prefix-0xb7) bytes encode the length.
-                    < 192 => PeekLongStringPrefixAndContentLength(prefix),
-                    // Short list (0xc0..0xf7). Prefix = 1, Content = prefix - 0xc0 (0..55).
-                    <= 247 => (1, prefix - 192),
-                    // Long list (0xf8..0xff). Content >= 56. The next (prefix-0xf7) bytes encode the length.
-                    _ => PeekLongListPrefixAndContentLength(prefix),
-                };
+                int preLen = RlpHelpers.GetPrefixLength(prefix);
+                if (preLen >= 0)
+                    return (preLen, RlpHelpers.GetContentLength(prefix));
+
+                return preLen == -1
+                    ? PeekLongStringPrefixAndContentLength(prefix)
+                    : PeekLongListPrefixAndContentLength(prefix);
             }
 
             [MethodImpl(MethodImplOptions.NoInlining)]
