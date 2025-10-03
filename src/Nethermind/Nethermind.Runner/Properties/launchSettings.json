@@ -51,7 +51,7 @@
     },
     "JOC Mainnet": {
       "commandName": "Project",
-      "commandLineArgs": "-c joc-mainnet --data-dir .data",
+      "commandLineArgs": "-c joc-mainnet -dd .data",
       "environmentVariables": {
         "ASPNETCORE_ENVIRONMENT": "Development"
       }
