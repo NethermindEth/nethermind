@@ -32,7 +32,6 @@ using Autofac;
 using Nethermind.Blockchain.Tracing;
 using Nethermind.Consensus;
 using Nethermind.Evm.State;
-using Nethermind.Logging;
 using Nethermind.State.OverridableEnv;
 
 namespace Nethermind.Facade
