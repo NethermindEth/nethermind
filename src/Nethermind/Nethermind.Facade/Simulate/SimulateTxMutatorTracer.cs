@@ -41,6 +41,7 @@ public sealed class SimulateTxMutatorTracer : TxTracer, ITxLogsMutator
         _txIndex = txIndex;
         IsTracingReceipt = true;
         IsTracingActions = IsMutatingLogs = isTracingTransfers;
+        IsMutatingLogs = false;
     }
 
     public SimulateCallResult? TraceResult { get; set; }
