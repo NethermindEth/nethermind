@@ -393,12 +393,14 @@ public partial class EthRpcModuleTests
     {
         using Context ctx = await Context.Create();
         byte[] code = [];
-        TransactionForRpc transaction = new EIP1559TransactionForRpc(Build.A.Transaction
+        EIP1559TransactionForRpc transaction = new(Build.A.Transaction
             .WithTo(TestItem.AddressB)
             .WithGasLimit(100000)
             .WithData(code)
             .SignedAndResolved(TestItem.PrivateKeyA)
             .TestObject);
+
+        transaction.GasPrice = null;
 
         string serialized = await ctx.Test.TestEthRpc("eth_estimateGas", transaction);
 
