@@ -10,10 +10,10 @@ build-tool-local:
 	dotnet build -c release .
 
 run-docker:
-	docker run -v $(ARTIFACTS_DIR):/nethermind -v $(ROOT_DIR):$(ROOT_DIR) -w $(ROOT_DIR) -it maximmenshikov/bflat-riscv64  /bin/bash
+	docker run -v $(ARTIFACTS_DIR):/nethermind -v $(ROOT_DIR):$(ROOT_DIR) -w $(ROOT_DIR) -it maximmenshikov/bflat-riscv64-zk  /bin/bash
 
 build-riscv:
-		docker run -v $(ARTIFACTS_DIR):/nethermind -v $(ROOT_DIR):$(ROOT_DIR) -w $(ROOT_DIR) -it maximmenshikov/bflat-riscv64 bflat build --arch riscv64 --os linux --no-debug-info -x --no-pthread --no-pie --libc musl \
+		docker run -v $(ARTIFACTS_DIR):/nethermind -v $(ROOT_DIR):$(ROOT_DIR) -w $(ROOT_DIR) -it maximmenshikov/bflat-riscv64-zk bflat build --arch riscv64 --os linux --no-debug-info -x --no-pthread --no-pie --libc musl \
 				--extra-ld {libpath}/libbrotlienc.a --extra-ld {libpath}/libbrotlicommon.a --extra-ld {libpath}/libbrotlidec.a \
 				-r /nethermind/Autofac.dll \
 				-r /nethermind/Autofac.Extensions.DependencyInjection.dll \
