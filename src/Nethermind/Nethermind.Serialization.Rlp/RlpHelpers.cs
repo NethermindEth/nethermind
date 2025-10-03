@@ -110,16 +110,26 @@ internal static class RlpHelpers
     }
 
     [DoesNotReturn, StackTraceHidden]
-    public static void ThrowArgumentOutOfRangeException(int lengthOfLength)
-    {
-        throw new InvalidOperationException($"Invalid length of length = {lengthOfLength}");
-    }
+    public static void ThrowUnexpectedByteValue(int buffer0)
+        => throw new RlpException($"Unexpected byte value {buffer0}");
+
+    [DoesNotReturn, StackTraceHidden]
+    public static void ThrowInvalidLength(int actualLength, int decodedLength)
+        => throw new RlpException($"Invalid actual length {actualLength} decoded {decodedLength}");
+
+    [DoesNotReturn, StackTraceHidden]
+    public static void ThrowInvalidLength(int lengthOfLength)
+        => throw new RlpException($"Invalid length of length = {lengthOfLength}");
+
+    [DoesNotReturn, StackTraceHidden]
+    public static void ThrowUnexpectedPrefix(int prefix)
+        => throw new RlpException($"Expected a sequence prefix to be in the range of <192, 255> and got {prefix}");
 
     [DoesNotReturn, StackTraceHidden]
     public static void ThrowSequenceLengthTooLong()
         => throw new RlpException("Expected length of length less than or equal to 4");
 
     [DoesNotReturn, StackTraceHidden]
-    public static void ThrowLengthTooLong(int length)
+    public static void ThrowUnexpectedLength(int length)
         => throw new RlpException($"Expected length greater than or equal to 56 and was {length}");
 }

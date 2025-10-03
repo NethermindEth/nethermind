@@ -681,7 +681,7 @@ namespace Nethermind.Serialization.Rlp
                         int length = DeserializeLength(lengthOfLength);
                         if (length < RlpHelpers.SmallPrefixBarrier)
                         {
-                            throw new RlpException("Expected length greater or equal 56 and was {length}");
+                            RlpHelpers.ThrowUnexpectedLength(length);
                         }
 
                         Position += length;
@@ -786,7 +786,7 @@ namespace Nethermind.Serialization.Rlp
                 int length = PeekDeserializeLength(lengthOfLength);
                 if (length < 56)
                 {
-                    RlpHelpers.ThrowLengthTooLong(length);
+                    RlpHelpers.ThrowUnexpectedLength(length);
                 }
 
                 return lengthOfLength + 1 + length;
@@ -805,7 +805,7 @@ namespace Nethermind.Serialization.Rlp
                 int length = PeekDeserializeLength(lengthOfLength);
                 if (length < 56)
                 {
-                    RlpHelpers.ThrowLengthTooLong(length);
+                    RlpHelpers.ThrowUnexpectedLength(length);
                 }
 
                 return (lengthOfLength + 1, length);
@@ -824,7 +824,7 @@ namespace Nethermind.Serialization.Rlp
                 int length = DeserializeLength(lengthOfLength);
                 if (length < 56)
                 {
-                    RlpHelpers.ThrowLengthTooLong(length);
+                    RlpHelpers.ThrowUnexpectedLength(length);
                 }
 
                 return (lengthOfLength + 1, length);
@@ -837,7 +837,7 @@ namespace Nethermind.Serialization.Rlp
                 int contentLength = PeekDeserializeLength(lengthOfContentLength);
                 if (contentLength < 56)
                 {
-                    RlpHelpers.ThrowLengthTooLong(contentLength);
+                    RlpHelpers.ThrowUnexpectedLength(contentLength);
                 }
 
                 return lengthOfContentLength + 1 + contentLength;
@@ -850,7 +850,7 @@ namespace Nethermind.Serialization.Rlp
                 int contentLength = PeekDeserializeLength(lengthOfContentLength);
                 if (contentLength < 56)
                 {
-                    RlpHelpers.ThrowLengthTooLong(contentLength);
+                    RlpHelpers.ThrowUnexpectedLength(contentLength);
                 }
 
                 return (lengthOfContentLength + 1, contentLength);
@@ -863,7 +863,7 @@ namespace Nethermind.Serialization.Rlp
                 int contentLength = DeserializeLength(lengthOfContentLength);
                 if (contentLength < 56)
                 {
-                    RlpHelpers.ThrowLengthTooLong(contentLength);
+                    RlpHelpers.ThrowUnexpectedLength(contentLength);
                 }
 
                 return (lengthOfContentLength + 1, contentLength);
@@ -873,7 +873,7 @@ namespace Nethermind.Serialization.Rlp
             {
                 if (lengthOfLength == 0 || (uint)lengthOfLength > 4)
                 {
-                    RlpHelpers.ThrowArgumentOutOfRangeException(lengthOfLength);
+                    RlpHelpers.ThrowInvalidLength(lengthOfLength);
                 }
 
                 return RlpHelpers.DeserializeLengthRef(ref MemoryMarshal.GetReference(Data.Slice(Position + 1, lengthOfLength)), lengthOfLength);
@@ -884,7 +884,7 @@ namespace Nethermind.Serialization.Rlp
                 int prefix = ReadByte();
                 if (prefix < 192)
                 {
-                    throw new RlpException($"Expected a sequence prefix to be in the range of <192, 255> and got {prefix} at position {Position} in the message of length {Data.Length} starting with {Data[..Math.Min(DebugMessageContentLength, Data.Length)].ToHexString()}");
+                    RlpHelpers.ThrowUnexpectedPrefix(prefix);
                 }
 
                 if (prefix <= 247)
@@ -896,7 +896,7 @@ namespace Nethermind.Serialization.Rlp
                 int contentLength = DeserializeLength(lengthOfContentLength);
                 if (contentLength < 56)
                 {
-                    throw new RlpException($"Expected length greater or equal 56 and got {contentLength}");
+                    RlpHelpers.ThrowUnexpectedLength(contentLength);
                 }
 
                 return contentLength;
@@ -906,7 +906,7 @@ namespace Nethermind.Serialization.Rlp
             {
                 if (lengthOfLength == 0 || (uint)lengthOfLength > 4)
                 {
-                    RlpHelpers.ThrowArgumentOutOfRangeException(lengthOfLength);
+                    RlpHelpers.ThrowInvalidLength(lengthOfLength);
                 }
 
                 int result = RlpHelpers.DeserializeLengthRef(ref MemoryMarshal.GetReference(Data.Slice(Position, lengthOfLength)), lengthOfLength);
@@ -1123,16 +1123,11 @@ namespace Nethermind.Serialization.Rlp
 
                 if (prefix != 128 + 20)
                 {
-                    ThrowInvalidPrefix(ref this, prefix);
+                    RlpHelpers.ThrowUnexpectedPrefix(prefix);
                 }
 
                 byte[] buffer = Read(20).ToArray();
                 return new Address(buffer);
-
-                static void ThrowInvalidPrefix(ref ValueDecoderContext ctx, int prefix)
-                {
-                    throw new RlpException($"Unexpected prefix of {prefix} when decoding {nameof(Hash256)} at position {ctx.Position} in the message of length {ctx.Data.Length} starting with {ctx.Data[..Math.Min(DebugMessageContentLength, ctx.Data.Length)].ToHexString()}");
-                }
             }
 
             public void DecodeAddressStructRef(out AddressStructRef address)
@@ -1145,14 +1140,11 @@ namespace Nethermind.Serialization.Rlp
                 }
                 else if (prefix != 128 + 20)
                 {
-                    ThrowInvalidPrefix(ref this, prefix);
+                    RlpHelpers.ThrowUnexpectedPrefix(prefix);
                 }
 
                 address = new AddressStructRef(Read(20));
             }
-
-            [DoesNotReturn, StackTraceHidden]
-            private static void ThrowInvalidPrefix(ref ValueDecoderContext ctx, int prefix) => throw new RlpException($"Unexpected prefix of {prefix} when decoding {nameof(Hash256)} at position {ctx.Position} in the message of length {ctx.Data.Length} starting with {ctx.Data[..Math.Min(DebugMessageContentLength, ctx.Data.Length)].ToHexString()}");
 
             public UInt256 DecodeUInt256(int length = -1)
             {
@@ -1323,7 +1315,7 @@ namespace Nethermind.Serialization.Rlp
                     ReadOnlySpan<byte> buffer = Read(length);
                     if (length == 1 && buffer[0] < 128)
                     {
-                        ThrowUnexpectedValue(buffer[0]);
+                        RlpHelpers.ThrowUnexpectedByteValue(buffer[0]);
                     }
 
                     return buffer;
@@ -1340,20 +1332,19 @@ namespace Nethermind.Serialization.Rlp
                     int lengthOfLength = prefix - 183;
                     if (lengthOfLength > 4)
                     {
-                        // strange but needed to pass tests - seems that spec gives int64 length and tests int32 length
-                        ThrowUnexpectedLengthOfLength();
+                        RlpHelpers.ThrowSequenceLengthTooLong();
                     }
 
                     int length = DeserializeLength(lengthOfLength);
                     if (length < 56)
                     {
-                        ThrowUnexpectedLength(length);
+                        RlpHelpers.ThrowUnexpectedLength(length);
                     }
 
                     return Read(length);
                 }
 
-                ThrowUnexpectedPrefix(prefix);
+                RlpHelpers.ThrowUnexpectedPrefix(prefix);
                 return default;
             }
 
@@ -1384,7 +1375,7 @@ namespace Nethermind.Serialization.Rlp
                             Span<byte> asSpan = buffer.Span;
                             if (length == 1 && asSpan[0] < 128)
                             {
-                                ThrowUnexpectedValue(asSpan[0]);
+                                RlpHelpers.ThrowUnexpectedByteValue(asSpan[0]);
                             }
 
                             return buffer;
@@ -1394,21 +1385,20 @@ namespace Nethermind.Serialization.Rlp
                             int lengthOfLength = prefix - 183;
                             if (lengthOfLength > 4)
                             {
-                                // strange but needed to pass tests - seems that spec gives int64 length and tests int32 length
-                                ThrowUnexpectedLengthOfLength();
+                                RlpHelpers.ThrowSequenceLengthTooLong();
                             }
 
                             int length = DeserializeLength(lengthOfLength);
                             if (length < 56)
                             {
-                                ThrowUnexpectedLength(length);
+                                RlpHelpers.ThrowUnexpectedLength(length);
                             }
 
                             return ReadSlicedMemory(length);
                         }
                 }
 
-                ThrowUnexpectedPrefix(prefix);
+                RlpHelpers.ThrowUnexpectedPrefix(prefix);
                 return default;
 
                 [DoesNotReturn, StackTraceHidden]
@@ -1417,18 +1407,6 @@ namespace Nethermind.Serialization.Rlp
                     throw new RlpException("Rlp not backed by a Memory<byte>");
                 }
             }
-
-            [DoesNotReturn, StackTraceHidden]
-            static void ThrowUnexpectedPrefix(int prefix) => throw new RlpException($"Unexpected prefix value of {prefix} when decoding a byte array.");
-
-            [DoesNotReturn, StackTraceHidden]
-            static void ThrowUnexpectedLength(int length) => throw new RlpException($"Expected length greater or equal 56 and was {length}");
-
-            [DoesNotReturn, StackTraceHidden]
-            static void ThrowUnexpectedValue(int buffer0) => throw new RlpException($"Unexpected byte value {buffer0}");
-
-            [DoesNotReturn, StackTraceHidden]
-            static void ThrowUnexpectedLengthOfLength() => throw new RlpException("Expected length of length less than or equal to 4");
 
             [MethodImpl(MethodImplOptions.AggressiveInlining)]
             public void SkipItem() => Position += PeekNextRlpLength();
@@ -1446,12 +1424,13 @@ namespace Nethermind.Serialization.Rlp
                 if (prefix <= 183)
                 {
                     int length = prefix - 128;
-                    if (length == 1 && PeekByte() < 128)
+                    int byteValue = PeekByte();
+                    if (length == 1 && byteValue < 128)
                     {
-                        throw new RlpException($"Unexpected byte value {PeekByte()}");
+                        RlpHelpers.ThrowUnexpectedByteValue(byteValue);
                     }
 
-                    bool result = PeekByte() == 1;
+                    bool result = byteValue == 1;
                     SkipBytes(length);
                     return result;
                 }
@@ -1461,14 +1440,13 @@ namespace Nethermind.Serialization.Rlp
                     int lengthOfLength = prefix - 183;
                     if (lengthOfLength > 4)
                     {
-                        // strange but needed to pass tests - seems that spec gives int64 length and tests int32 length
-                        throw new RlpException("Expected length of length less or equal 4");
+                        RlpHelpers.ThrowSequenceLengthTooLong();
                     }
 
                     int length = DeserializeLength(lengthOfLength);
                     if (length < 56)
                     {
-                        throw new RlpException("Expected length greater or equal 56 and was {length}");
+                        RlpHelpers.ThrowUnexpectedLength(length);
                     }
 
                     bool result = PeekByte() == 1;
@@ -1476,10 +1454,9 @@ namespace Nethermind.Serialization.Rlp
                     return result;
                 }
 
-                throw new RlpException($"Unexpected prefix of {prefix} when decoding a byte array at position {Position} in the message of length {Length} starting with {Description}");
+                RlpHelpers.ThrowUnexpectedPrefix(prefix);
+                return default;
             }
-
-            private readonly string Description => Data[..Math.Min(DebugMessageContentLength, Length)].ToHexString();
 
             public readonly byte PeekByte() => Data[Position];
 

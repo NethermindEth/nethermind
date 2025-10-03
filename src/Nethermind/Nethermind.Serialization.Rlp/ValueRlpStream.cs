@@ -52,7 +52,7 @@ public ref struct ValueRlpStream(SpanSource data)
                 int length = DeserializeLength(lengthOfLength);
                 if (length < RlpHelpers.SmallPrefixBarrier)
                 {
-                    throw new RlpException("Expected length greater or equal 56 and was {length}");
+                    RlpHelpers.ThrowUnexpectedLength(length);
                 }
 
                 SkipBytes(length);
@@ -131,7 +131,7 @@ public ref struct ValueRlpStream(SpanSource data)
         int length = PeekDeserializeLength(1, lengthOfLength);
         if (length < RlpHelpers.SmallPrefixBarrier)
         {
-            RlpHelpers.ThrowLengthTooLong(length);
+            RlpHelpers.ThrowUnexpectedLength(length);
         }
 
         return lengthOfLength + 1 + length;
@@ -150,7 +150,7 @@ public ref struct ValueRlpStream(SpanSource data)
         int length = PeekDeserializeLength(1, lengthOfLength);
         if (length < RlpHelpers.SmallPrefixBarrier)
         {
-            RlpHelpers.ThrowLengthTooLong(length);
+            RlpHelpers.ThrowUnexpectedLength(length);
         }
 
         return (lengthOfLength + 1, length);
@@ -163,7 +163,7 @@ public ref struct ValueRlpStream(SpanSource data)
         int contentLength = PeekDeserializeLength(1, lengthOfContentLength);
         if (contentLength < RlpHelpers.SmallPrefixBarrier)
         {
-            RlpHelpers.ThrowLengthTooLong(contentLength);
+            RlpHelpers.ThrowUnexpectedLength(contentLength);
         }
 
         return lengthOfContentLength + 1 + contentLength;
@@ -176,7 +176,7 @@ public ref struct ValueRlpStream(SpanSource data)
         int contentLength = PeekDeserializeLength(1, lengthOfContentLength);
         if (contentLength < RlpHelpers.SmallPrefixBarrier)
         {
-            RlpHelpers.ThrowLengthTooLong(contentLength);
+            RlpHelpers.ThrowUnexpectedLength(contentLength);
         }
 
         return (lengthOfContentLength + 1, contentLength);
@@ -189,8 +189,7 @@ public ref struct ValueRlpStream(SpanSource data)
         int prefix = ReadByte();
         if (prefix < 192)
         {
-            throw new RlpException(
-                $"Expected a sequence prefix to be in the range of <192, 255> and got {prefix} at position {_position} in the message of length {Data.Length} starting with {Description}");
+            RlpHelpers.ThrowUnexpectedPrefix(prefix);
         }
 
         if (prefix <= 247)
@@ -202,7 +201,7 @@ public ref struct ValueRlpStream(SpanSource data)
         int contentLength = DeserializeLength(lengthOfContentLength);
         if (contentLength < RlpHelpers.SmallPrefixBarrier)
         {
-            throw new RlpException($"Expected length greater or equal 56 and got {contentLength}");
+            RlpHelpers.ThrowUnexpectedLength(contentLength);
         }
 
         return contentLength;
@@ -212,7 +211,7 @@ public ref struct ValueRlpStream(SpanSource data)
     {
         if (lengthOfLength == 0 || (uint)lengthOfLength > 4)
         {
-            RlpHelpers.ThrowArgumentOutOfRangeException(lengthOfLength);
+            RlpHelpers.ThrowInvalidLength(lengthOfLength);
         }
 
         // Will use Unsafe.ReadUnaligned as we know the length of the span is same
@@ -227,7 +226,7 @@ public ref struct ValueRlpStream(SpanSource data)
     {
         if (lengthOfLength == 0 || (uint)lengthOfLength > 4)
         {
-            RlpHelpers.ThrowArgumentOutOfRangeException(lengthOfLength);
+            RlpHelpers.ThrowInvalidLength(lengthOfLength);
         }
 
         // Will use Unsafe.ReadUnaligned as we know the length of the span is same
@@ -266,8 +265,7 @@ public ref struct ValueRlpStream(SpanSource data)
 
         if (prefix != 128 + 32)
         {
-            throw new RlpException(
-                $"Unexpected prefix of {prefix} when decoding {nameof(Hash256)} at position {_position} in the message of length {Data.Length} starting with {Description}");
+            RlpHelpers.ThrowUnexpectedPrefix(prefix);
         }
 
         ReadOnlySpan<byte> keccakSpan = Read(32);
@@ -295,8 +293,7 @@ public ref struct ValueRlpStream(SpanSource data)
 
         if (prefix != 128 + 32)
         {
-            throw new RlpException(
-                $"Unexpected prefix of {prefix} when decoding {nameof(Hash256)} at position {_position} in the message of length {Data.Length} starting with {Description}");
+            RlpHelpers.ThrowUnexpectedPrefix(prefix);
         }
 
         ReadOnlySpan<byte> keccakSpan = Read(32);
@@ -336,19 +333,13 @@ public ref struct ValueRlpStream(SpanSource data)
             ReadOnlySpan<byte> buffer = Read(length);
             if (buffer.Length == 1 && buffer[0] < 128)
             {
-                ThrowUnexpectedValue(buffer[0]);
+                RlpHelpers.ThrowUnexpectedByteValue(buffer[0]);
             }
 
             return buffer;
         }
 
         return DecodeLargerByteArraySpan(prefix);
-
-        [DoesNotReturn, StackTraceHidden]
-        static void ThrowUnexpectedValue(int buffer0)
-        {
-            throw new RlpException($"Unexpected byte value {buffer0}");
-        }
     }
 
     [MethodImpl(MethodImplOptions.NoInlining)]
@@ -359,39 +350,20 @@ public ref struct ValueRlpStream(SpanSource data)
             int lengthOfLength = prefix - 183;
             if (lengthOfLength > 4)
             {
-                // strange but needed to pass tests - seems that spec gives int64 length and tests int32 length
-                ThrowUnexpectedLengthOfLength();
+                RlpHelpers.ThrowSequenceLengthTooLong();
             }
 
             int length = DeserializeLength(lengthOfLength);
             if (length < RlpHelpers.SmallPrefixBarrier)
             {
-                ThrowUnexpectedLength(length);
+                RlpHelpers.ThrowUnexpectedLength(length);
             }
 
             return Read(length);
         }
 
-        ThrowUnexpectedPrefix(prefix);
+        RlpHelpers.ThrowUnexpectedPrefix(prefix);
         return default;
-
-        [DoesNotReturn, StackTraceHidden]
-        static void ThrowUnexpectedPrefix(int prefix)
-        {
-            throw new RlpException($"Unexpected prefix value of {prefix} when decoding a byte array.");
-        }
-
-        [DoesNotReturn, StackTraceHidden]
-        static void ThrowUnexpectedLength(int length)
-        {
-            throw new RlpException($"Expected length greater or equal 56 and was {length}");
-        }
-
-        [DoesNotReturn, StackTraceHidden]
-        static void ThrowUnexpectedLengthOfLength()
-        {
-            throw new RlpException("Expected length of length less or equal 4");
-        }
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
