@@ -12,7 +12,7 @@ using Prometheus;
 
 namespace Nethermind.State.FlatCache;
 
-public sealed class BigCache
+public sealed class BigCache: IBigCache
 {
     private ConcurrentDictionary<Address, (long, Account)> Accounts = new ConcurrentDictionary<Address, (long, Account)>();
     internal ConcurrentDictionary<Address, long> SelfDestructBlockNum = new ConcurrentDictionary<Address, long>();
@@ -20,6 +20,12 @@ public sealed class BigCache
     private ConcurrentDictionary<StorageCell, (long, byte[])> Storages = new ConcurrentDictionary<StorageCell, (long, byte[])>();
 
     private Snapshot? _copyingSnapshot;
+
+    private long _currentBlockNumber = -1;
+    public long CurrentBlockNumber => _currentBlockNumber;
+
+    private int _snapshotCount = 0;
+    public int SnapshotCount => _snapshotCount;
 
     public bool TryGetValue(Address address, out Account? acc)
     {
@@ -40,21 +46,21 @@ public sealed class BigCache
         return false;
     }
 
-    public BigCacheStorageReader GetStorageReader(Address address)
+    public IBigCache.IStorageReader GetStorageReader(Address address)
     {
         return new BigCacheStorageReader(address, this);
     }
 
-    private Gauge _snapshotCount = Metrics.CreateGauge("flatcache_bigcache_snapshot_count", "snapshot count");
+    private Gauge _snapshotCountMetric = Metrics.CreateGauge("flatcache_bigcache_snapshot_count", "snapshot count");
     private Gauge _estimatedSlot = Metrics.CreateGauge("flatcache_bigcache_slot_count", "snapshot count");
     private Gauge _estimatedAccount = Metrics.CreateGauge("flatcache_bigcache_account_count", "snapshot count");
 
 #pragma warning disable CS9113 // Parameter is unread.
-    public sealed class BigCacheStorageReader(Address address, BigCache theCacheItself)
+    public sealed class BigCacheStorageReader(Address address, BigCache theCacheItself): IBigCache.IStorageReader
 #pragma warning restore CS9113 // Parameter is unread.
     {
         [MethodImpl(MethodImplOptions.NoOptimization)]
-        public bool TryGetValue(UInt256 slot, out byte[]? value)
+        public bool TryGetValue(in UInt256 slot, out byte[]? value)
         {
             /*
             Snapshot? copyingSnapshot = theCacheItself._copyingSnapshot;
@@ -97,9 +103,7 @@ public sealed class BigCache
         }
     }
 
-    public long CurrentBlockNumber = -1;
     public ValueHash256? CurrentStateRoot = null;
-    public int SnapshotCount = 0;
 
     public void Add(StateId pickedSnapshot, Snapshot knownState)
     {
@@ -139,10 +143,10 @@ public sealed class BigCache
             }
         }
 
-        CurrentBlockNumber = pickedSnapshot.blockNumber;
+        _currentBlockNumber = pickedSnapshot.blockNumber;
         CurrentStateRoot = pickedSnapshot.stateRoot;
-        SnapshotCount++;
-        _snapshotCount.Set(SnapshotCount);
+        _snapshotCount++;
+        _snapshotCountMetric.Set(SnapshotCount);
         _copyingSnapshot = null;
     }
 
@@ -179,6 +183,6 @@ public sealed class BigCache
             }
         }
 
-        SnapshotCount--;
+        _snapshotCount--;
     }
 }

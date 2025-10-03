@@ -22,7 +22,7 @@ public sealed class FlatCacheRepository
     private Dictionary<StateId, Snapshot> _compactedKnownStates = new();
     private Dictionary<StateId, Snapshot> _knownStates = new();
     private SortedSet<StateId> _sortedKnownStates = new();
-    private BigCache _bigCache = new BigCache();
+    private IBigCache _bigCache;
 
     // private ConcurrentBag<(StateId, StateId)> _usedRange = new ConcurrentBag<(StateId, StateId)>();
 
@@ -41,10 +41,12 @@ public sealed class FlatCacheRepository
         bool InlineCompaction = false
     );
 
-    public FlatCacheRepository(IProcessExitSource exitSource, ICanonicalStateRootFinder stateRootFinder, ILogManager logManager, Configuration? config = null)
+    public FlatCacheRepository(IProcessExitSource exitSource, PersistedBigCache bigCache, ICanonicalStateRootFinder stateRootFinder, ILogManager logManager, Configuration? config = null)
     {
         if (config is null) config = new Configuration();
         _maxStateInMemory = config.MaxStateInMemory;
+        // _bigCache = bigCache;
+        _bigCache = new BigCache();
         _compactSize = config.CompactSize;
         _inlineCompaction = config.InlineCompaction;
         _stateRootFinder = stateRootFinder;

@@ -3,15 +3,13 @@
 
 using System;
 using System.Collections.Generic;
-using System.Runtime.InteropServices.Marshalling;
 using Nethermind.Core.Collections;
 using Nethermind.Int256;
-using NonBlocking;
 
 namespace Nethermind.State.FlatCache;
 
 #pragma warning disable CS9113 // Parameter is unread.
-public class StorageSnapshotBundle(ArrayPoolList<StorageWrites> storages, BigCache.BigCacheStorageReader bigCacheStorage) : IDisposable
+public class StorageSnapshotBundle(ArrayPoolList<StorageWrites> storages, IBigCache.IStorageReader bigCacheStorage) : IDisposable
 #pragma warning restore CS9113 // Parameter is unread.
 {
     Dictionary<UInt256, byte[]> _changedSlots = new();

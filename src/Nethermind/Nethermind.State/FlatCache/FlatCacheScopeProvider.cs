@@ -93,17 +93,9 @@ public sealed class FlatCacheScopeProvider : IWorldStateScopeProvider, IPreBlock
             return wrapper;
         }
 
-        public IWorldStateScopeProvider.IWorldStateWriteBatch StartWriteBatch(int estimatedAccountNum, Action<Address, Account> onAccountUpdated)
+        public IWorldStateScopeProvider.IWorldStateWriteBatch StartWriteBatch(int estimatedAccountNum)
         {
-            WriteBatchWrapper wrapper = null;
-            wrapper = new WriteBatchWrapper(baseScope.StartWriteBatch(estimatedAccountNum, OnAccountUpdated), snapshotBundle);
-            // Ugh!
-            void OnAccountUpdated(Address address, Account account)
-            {
-                wrapper!.Set(address, account);
-            }
-
-            return wrapper;
+            return new WriteBatchWrapper(baseScope.StartWriteBatch(estimatedAccountNum), snapshotBundle);
         }
 
         public void Commit(long blockNumber)
@@ -140,7 +132,7 @@ public sealed class FlatCacheScopeProvider : IWorldStateScopeProvider, IPreBlock
         private static Counter.Child _cacheHitHit = _cacheHit.WithLabels("hit");
         private static Counter.Child _cacheHitMiss = _cacheHit.WithLabels("miss");
 
-        public bool WasEmptyTree => baseStorageTree.WasEmptyTree;
+        public Hash256 RootHash => baseStorageTree.RootHash;
 
         [MethodImpl(MethodImplOptions.NoOptimization)]
         public byte[] Get(in UInt256 index)
