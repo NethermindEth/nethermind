@@ -983,7 +983,7 @@ namespace Nethermind.Serialization.Rlp
 
                 if (prefix != 128 + 32)
                 {
-                    throw new DecodeKeccakRlpException(prefix, Position, Data.Length);
+                    ThrowKeccakDecodeException(prefix);
                 }
 
                 ReadOnlySpan<byte> keccakSpan = Read(32);
@@ -1010,7 +1010,7 @@ namespace Nethermind.Serialization.Rlp
 
                 if (prefix != 128 + 32)
                 {
-                    throw new DecodeKeccakRlpException(prefix, Position, Data.Length);
+                    ThrowKeccakDecodeException(prefix);
                 }
 
                 ReadOnlySpan<byte> keccakSpan = Read(32);
@@ -1051,7 +1051,8 @@ namespace Nethermind.Serialization.Rlp
                 }
                 else if (prefix != 128 + 32)
                 {
-                    throw new DecodeKeccakRlpException(prefix, Position, Data.Length);
+                    ThrowKeccakDecodeException(prefix);
+                    keccak = default;
                 }
                 else
                 {
@@ -1082,7 +1083,8 @@ namespace Nethermind.Serialization.Rlp
                 else if (prefix > 128 + 32)
                 {
                     ReadByte();
-                    throw new DecodeKeccakRlpException(prefix, Position, Data.Length);
+                    ThrowKeccakDecodeException(prefix);
+                    keccak = default;
                 }
                 else if (prefix == 128 + 32)
                 {
@@ -1151,32 +1153,23 @@ namespace Nethermind.Serialization.Rlp
                 ReadOnlySpan<byte> byteSpan = DecodeByteArraySpan();
                 if (byteSpan.Length > 32)
                 {
-                    ThrowDataTooLong();
+                    RlpHelpers.ThrowUnexpectedIntegerLength(byteSpan.Length);
                 }
 
                 if (length == -1)
                 {
                     if (byteSpan.Length > 1 && byteSpan[0] == 0)
                     {
-                        ThrowNonCanonicalUInt256(Position);
+                        RlpHelpers.ThrowNonCanonicalInteger(Position);
                     }
                 }
                 else if (byteSpan.Length != length)
                 {
-                    ThrowInvalidLength(Position);
+                    RlpHelpers.ThrowInvalidLength(byteSpan.Length, length);
                 }
 
 
                 return new UInt256(byteSpan, true);
-
-                [DoesNotReturn, StackTraceHidden]
-                static void ThrowDataTooLong() => throw new RlpException("UInt256 cannot be longer than 32 bytes");
-
-                [DoesNotReturn, StackTraceHidden]
-                static void ThrowNonCanonicalUInt256(int position) => throw new RlpException($"Non-canonical UInt256 (leading zero bytes) at position {position}");
-
-                [DoesNotReturn, StackTraceHidden]
-                static void ThrowInvalidLength(int position) => throw new RlpException($"Invalid length at position {position}");
             }
 
             public BigInteger DecodeUBigInt()
@@ -1184,7 +1177,7 @@ namespace Nethermind.Serialization.Rlp
                 ReadOnlySpan<byte> bytes = DecodeByteArraySpan();
                 if (bytes.Length > 1 && bytes[0] == 0)
                 {
-                    throw new RlpException($"Non-canonical UBigInt (leading zero bytes) at position {Position}");
+                    RlpHelpers.ThrowNonCanonicalInteger(Position);
                 }
                 return bytes.ToUnsignedBigInteger();
             }
@@ -1261,7 +1254,7 @@ namespace Nethermind.Serialization.Rlp
                 switch (prefix)
                 {
                     case 0:
-                        throw new RlpException($"Non-canonical integer (leading zero bytes) at position {Position}");
+                        return (int)RlpHelpers.ThrowNonCanonicalInteger(Position);
                     case < 128:
                         return prefix;
                     case 128:
@@ -1271,7 +1264,7 @@ namespace Nethermind.Serialization.Rlp
                 int length = prefix - 128;
                 if (length > 4)
                 {
-                    throw new RlpException($"Unexpected length of int value: {length}");
+                    RlpHelpers.ThrowUnexpectedIntegerLength(length);
                 }
 
                 int result = 0;
@@ -1283,7 +1276,7 @@ namespace Nethermind.Serialization.Rlp
                         result |= Data[Position + length - i];
                         if (result == 0)
                         {
-                            throw new RlpException($"Non-canonical integer (leading zero bytes) at position {Position}");
+                            RlpHelpers.ThrowNonCanonicalInteger(Position);
                         }
                     }
                 }
@@ -1477,7 +1470,7 @@ namespace Nethermind.Serialization.Rlp
                 switch (prefix)
                 {
                     case 0:
-                        throw new RlpException($"Non-canonical long (leading zero bytes) at position {Position}");
+                        return RlpHelpers.ThrowNonCanonicalInteger(Position);
                     case < 128:
                         return prefix;
                     case 128:
@@ -1487,7 +1480,7 @@ namespace Nethermind.Serialization.Rlp
                 int length = prefix - 128;
                 if (length > 8)
                 {
-                    throw new RlpException($"Unexpected length of long value: {length}");
+                    RlpHelpers.ThrowUnexpectedIntegerLength(length);
                 }
 
                 long result = 0;
@@ -1499,7 +1492,7 @@ namespace Nethermind.Serialization.Rlp
                         result |= PeekByte(length - i);
                         if (result == 0)
                         {
-                            throw new RlpException($"Non-canonical long (leading zero bytes) at position {Position}");
+                            RlpHelpers.ThrowNonCanonicalInteger(Position);
                         }
                     }
                 }
@@ -1516,7 +1509,7 @@ namespace Nethermind.Serialization.Rlp
                 switch (prefix)
                 {
                     case 0:
-                        throw new RlpException($"Non-canonical ulong (leading zero bytes) at position {Position}");
+                        return RlpHelpers.ThrowNonCanonicalInteger(Position);
                     case < 128:
                         return (ulong)prefix;
                     case 128:
@@ -1526,7 +1519,7 @@ namespace Nethermind.Serialization.Rlp
                 int length = prefix - 128;
                 if (length > 8)
                 {
-                    throw new RlpException($"Unexpected length of long value: {length}");
+                    RlpHelpers.ThrowUnexpectedIntegerLength(length);
                 }
 
                 ulong result = 0ul;
@@ -1538,7 +1531,7 @@ namespace Nethermind.Serialization.Rlp
                         result |= PeekByte(length - i);
                         if (result == 0)
                         {
-                            throw new RlpException($"Non-canonical ulong (leading zero bytes) at position {Position}");
+                            RlpHelpers.ThrowNonCanonicalInteger(Position);
                         }
                     }
                 }
@@ -1588,7 +1581,8 @@ namespace Nethermind.Serialization.Rlp
                     return ReadByte();
                 }
 
-                throw new RlpException($"Unexpected value while decoding byte {byteValue}");
+                RlpHelpers.ThrowUnexpectedByteValue(byteValue);
+                return default;
             }
 
             public T[] DecodeArray<T>(IRlpValueDecoder<T>? decoder = null, bool checkPositions = true,
@@ -1623,6 +1617,9 @@ namespace Nethermind.Serialization.Rlp
 
             public readonly bool IsNextItemEmptyArray() => PeekByte() == EmptyArrayByte;
 
+            [DoesNotReturn, StackTraceHidden]
+            private readonly void ThrowKeccakDecodeException(int prefix)
+                => throw new DecodeKeccakRlpException(prefix, Position, Data.Length);
         }
 
         public override bool Equals(object? other) => Equals(other as Rlp);

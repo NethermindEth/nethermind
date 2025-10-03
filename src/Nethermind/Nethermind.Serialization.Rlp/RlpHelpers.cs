@@ -132,4 +132,12 @@ internal static class RlpHelpers
     [DoesNotReturn, StackTraceHidden]
     public static void ThrowUnexpectedLength(int length)
         => throw new RlpException($"Expected length greater than or equal to 56 and was {length}");
+
+    [DoesNotReturn, StackTraceHidden]
+    public static uint ThrowNonCanonicalInteger(int position)
+        => throw new RlpException($"Non-canonical integer (leading zero bytes) at position {position}");
+
+    [DoesNotReturn, StackTraceHidden]
+    public static uint ThrowUnexpectedIntegerLength(int length)
+        => throw new RlpException($"Unexpected length of long value: {length}");
 }
