@@ -18,7 +18,7 @@ internal static class RlpHelpers
 {
     public const int SmallPrefixBarrier = 56;
 
-    private static readonly sbyte[] _prefixLengthWithLookupTable = BuildPrefixLengthLookupTable();
+    private static readonly sbyte[] _prefixLengthForContentTable = BuildPrefixLengthForContentTable();
     private static readonly sbyte[] _contentLengthTable = BuildContentLengthTable();
     private static readonly byte[] _prefixLengthTable = BuildPrefixLengthTable();
 
@@ -29,10 +29,10 @@ internal static class RlpHelpers
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public static sbyte GetPrefixLengthWithLookup(int prefixByte)
+    public static sbyte GetPrefixLengthForContent(int prefixByte)
     {
         Debug.Assert((uint)prefixByte <= byte.MaxValue);
-        return Unsafe.Add(ref MemoryMarshal.GetArrayDataReference(_prefixLengthWithLookupTable), prefixByte);
+        return Unsafe.Add(ref MemoryMarshal.GetArrayDataReference(_prefixLengthForContentTable), prefixByte);
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
@@ -47,35 +47,31 @@ internal static class RlpHelpers
         byte[] table = new byte[byte.MaxValue];
         for (int i = 0; i < table.Length; i++)
         {
-            if (i < 0x80)
-                table[i] = 0; // single byte
-            else if (i <= 0xB7)
-                table[i] = 1; // short string
-            else if (i <= 0xBF)
-                table[i] = (byte)(1 + (i - 0xB7)); // long string (2..9)
-            else if (i <= 0xF7)
-                table[i] = 1; // short list
-            else
-                table[i] = (byte)(1 + (i - 0xF7)); // long list (2..9)
+            table[i] = i switch
+            {
+                < 0x80 => 0, // single byte
+                <= 0xB7 => 1,// short string
+                <= 0xBF => (byte)(1 + (i - 0xB7)),// long string (2..9)
+                <= 0xF7 => 1,// short list
+                _ => (byte)(1 + (i - 0xF7)),// long list (2..9)
+            };
         }
         return table;
     }
 
-    private static sbyte[] BuildPrefixLengthLookupTable()
+    private static sbyte[] BuildPrefixLengthForContentTable()
     {
         sbyte[] table = new sbyte[byte.MaxValue];
         for (int i = 0; i < table.Length; i++)
         {
-            if (i < 128)
-                table[i] = 0;  // single byte
-            else if (i <= 183)
-                table[i] = 1;  // short string
-            else if (i < 192)
-                table[i] = -1; // long string marker
-            else if (i <= 247)
-                table[i] = 1;  // short list
-            else
-                table[i] = -2; // long list marker
+            table[i] = i switch
+            {
+                < 128 => 0,  // single byte
+                <= 183 => 1, // short string
+                < 192 => -1, // long string marker
+                <= 247 => 1, // short list
+                _ => -2,     // long list marker
+            };
         }
         return table;
     }
@@ -85,19 +81,20 @@ internal static class RlpHelpers
         sbyte[] table = new sbyte[byte.MaxValue];
         for (int i = 0; i < table.Length; i++)
         {
-            if (i < 128)
-                table[i] = 1;                 // single byte
-            else if (i <= 183)
-                table[i] = (sbyte)(i - 0x80); // short string
-            else if (i < 192)
-                table[i] = -1;                // long string marker
-            else if (i <= 247)
-                table[i] = (sbyte)(i - 0xc0); // short list
-            else
-                table[i] = -2;                // long list marker
+            table[i] = i switch
+            {
+                < 128 => 1, // single byte
+                <= 183 => (sbyte)(i - 0x80), // short string
+                < 192 => -1, // long string marker
+                <= 247 => (sbyte)(i - 0xc0), // short list
+                _ => -2, // long list marker
+            };
         }
         return table;
     }
+
+    public static bool IsLongString(int prefixLength)
+        => prefixLength == -1;
 
     /// <summary>
     /// Deserializes a length value from a byte reference using unsafe operations.
@@ -119,38 +116,23 @@ internal static class RlpHelpers
         }
         else if (lengthOfLength == 2)
         {
-            if (BitConverter.IsLittleEndian)
-            {
-                result = BinaryPrimitives.ReverseEndianness(Unsafe.ReadUnaligned<ushort>(ref firstElement));
-            }
-            else
-            {
-                result = Unsafe.ReadUnaligned<ushort>(ref firstElement);
-            }
+            result = BitConverter.IsLittleEndian
+                ? BinaryPrimitives.ReverseEndianness(Unsafe.ReadUnaligned<ushort>(ref firstElement))
+                : Unsafe.ReadUnaligned<ushort>(ref firstElement);
         }
         else if (lengthOfLength == 3)
         {
-            if (BitConverter.IsLittleEndian)
-            {
-                result = BinaryPrimitives.ReverseEndianness(Unsafe.ReadUnaligned<ushort>(ref Unsafe.Add(ref firstElement, 1)))
+            result = BitConverter.IsLittleEndian
+                ? BinaryPrimitives.ReverseEndianness(Unsafe.ReadUnaligned<ushort>(ref Unsafe.Add(ref firstElement, 1)))
+                    | (result << 16)
+                : Unsafe.ReadUnaligned<ushort>(ref Unsafe.Add(ref firstElement, 1))
                     | (result << 16);
-            }
-            else
-            {
-                result = Unsafe.ReadUnaligned<ushort>(ref Unsafe.Add(ref firstElement, 1))
-                    | (result << 16);
-            }
         }
         else
         {
-            if (BitConverter.IsLittleEndian)
-            {
-                result = BinaryPrimitives.ReverseEndianness(Unsafe.ReadUnaligned<int>(ref firstElement));
-            }
-            else
-            {
-                result = Unsafe.ReadUnaligned<int>(ref firstElement);
-            }
+            result = BitConverter.IsLittleEndian
+                ? BinaryPrimitives.ReverseEndianness(Unsafe.ReadUnaligned<int>(ref firstElement))
+                : Unsafe.ReadUnaligned<int>(ref firstElement);
         }
 
         return result;

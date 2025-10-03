@@ -713,11 +713,11 @@ namespace Nethermind.Serialization.Rlp
             public int PeekNextRlpLength()
             {
                 int prefix = Data[Position];
-                int preLen = RlpHelpers.GetPrefixLengthWithLookup(prefix);
-                if (preLen >= 0)
-                    return preLen + RlpHelpers.GetContentLength(prefix);
+                int prefixLength = RlpHelpers.GetPrefixLengthForContent(prefix);
+                if (prefixLength >= 0)
+                    return prefixLength + RlpHelpers.GetContentLength(prefix);
 
-                return preLen == -1
+                return RlpHelpers.IsLongString(prefixLength)
                     ? PeekLongStringRlpLength(prefix)
                     : PeekLongListRlpLength(prefix);
             }
@@ -733,11 +733,11 @@ namespace Nethermind.Serialization.Rlp
             public (int PrefixLength, int ContentLength) ReadPrefixAndContentLength()
             {
                 int prefix = ReadByte();
-                int preLen = RlpHelpers.GetPrefixLengthWithLookup(prefix);
-                if (preLen >= 0)
-                    return (preLen, RlpHelpers.GetContentLength(prefix));
+                int prefixLength = RlpHelpers.GetPrefixLengthForContent(prefix);
+                if (prefixLength >= 0)
+                    return (prefixLength, RlpHelpers.GetContentLength(prefix));
 
-                return preLen == -1
+                return RlpHelpers.IsLongString(prefixLength)
                     ? ReadLongStringPrefixAndContentLength(prefix)
                     : ReadLongListPrefixAndContentLength(prefix);
             }
@@ -746,11 +746,11 @@ namespace Nethermind.Serialization.Rlp
             public (int PrefixLength, int ContentLength) PeekPrefixAndContentLength()
             {
                 int prefix = Data[Position];
-                int preLen = RlpHelpers.GetPrefixLengthWithLookup(prefix);
-                if (preLen >= 0)
-                    return (preLen, RlpHelpers.GetContentLength(prefix));
+                int prefixLength = RlpHelpers.GetPrefixLengthForContent(prefix);
+                if (prefixLength >= 0)
+                    return (prefixLength, RlpHelpers.GetContentLength(prefix));
 
-                return preLen == -1
+                return RlpHelpers.IsLongString(prefixLength)
                     ? PeekLongStringPrefixAndContentLength(prefix)
                     : PeekLongListPrefixAndContentLength(prefix);
             }
