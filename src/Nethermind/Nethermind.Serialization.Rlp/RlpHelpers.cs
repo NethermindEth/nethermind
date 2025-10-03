@@ -18,8 +18,8 @@ internal static class RlpHelpers
 {
     public const int SmallPrefixBarrier = 56;
 
-    private static readonly sbyte[] _prefixLengthWithLookupTable = BuildPrefixLenTable();
-    private static readonly sbyte[] _contentLengthTable = BuildContentLenTable();
+    private static readonly sbyte[] _prefixLengthWithLookupTable = BuildPrefixLengthLookupTable();
+    private static readonly sbyte[] _contentLengthTable = BuildContentLengthTable();
     private static readonly byte[] _prefixLengthTable = BuildPrefixLengthTable();
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
@@ -61,7 +61,7 @@ internal static class RlpHelpers
         return table;
     }
 
-    private static sbyte[] BuildPrefixLenTable()
+    private static sbyte[] BuildPrefixLengthLookupTable()
     {
         sbyte[] table = new sbyte[byte.MaxValue];
         for (int i = 0; i < table.Length; i++)
@@ -80,7 +80,7 @@ internal static class RlpHelpers
         return table;
     }
 
-    private static sbyte[] BuildContentLenTable()
+    private static sbyte[] BuildContentLengthTable()
     {
         sbyte[] table = new sbyte[byte.MaxValue];
         for (int i = 0; i < table.Length; i++)
