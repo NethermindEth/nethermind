@@ -404,8 +404,6 @@ public partial class EthRpcModuleTests
             GasPrice = null,
         };
 
-        transaction.GasPrice = null;
-
         string serialized = await ctx.Test.TestEthRpc("eth_estimateGas", transaction);
 
         Assert.That(serialized, Is.EqualTo("{\"jsonrpc\":\"2.0\",\"result\":\"0x5208\",\"id\":67}"));
