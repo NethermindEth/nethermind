@@ -749,7 +749,8 @@ namespace Nethermind.Core.Crypto
 
             Vector512<ulong> permute1 = Vector512.Create(1UL, 2UL, 3UL, 4UL, 0UL, 5UL, 6UL, 7UL);
             Vector512<ulong> permute2 = Vector512.Create(2UL, 3UL, 4UL, 0UL, 1UL, 5UL, 6UL, 7UL);
-            ulong[] roundConstants = RoundConstants;
+            Vector512<ulong> thetaIdxRot4 = Vector512.Create(4UL, 0UL, 1UL, 2UL, 3UL, 5UL, 6UL, 7UL);
+
             // Use constant for loop so Jit expects to loop; unroll once
             for (int round = 0; round < ROUNDS; round += 2)
             {
@@ -759,8 +760,8 @@ namespace Nethermind.Core.Crypto
                     Vector512<ulong> parity = Avx512F.TernaryLogic(Avx512F.TernaryLogic(c0, c1, c2, 0x96), c3, c4, 0x96);
 
                     // Compute Theta
-                    Vector512<ulong> bVecRot1Rotated = Avx512F.RotateLeft(Avx512F.PermuteVar8x64(parity, Vector512.Create(1UL, 2UL, 3UL, 4UL, 0UL, 5UL, 6UL, 7UL)), 1);
-                    Vector512<ulong> bVecRot4 = Avx512F.PermuteVar8x64(parity, Vector512.Create(4UL, 0UL, 1UL, 2UL, 3UL, 5UL, 6UL, 7UL));
+                    Vector512<ulong> bVecRot1Rotated = Avx512F.RotateLeft(Avx512F.PermuteVar8x64(parity, permute1), 1);
+                    Vector512<ulong> bVecRot4 = Avx512F.PermuteVar8x64(parity, thetaIdxRot4);
                     Vector512<ulong> theta = Avx512F.Xor(bVecRot4, bVecRot1Rotated);
 
                     c0 = Avx512F.Xor(c0, theta);
@@ -817,7 +818,6 @@ namespace Nethermind.Core.Crypto
                     c4 = c4Pi;
 
                     // Chi step
-
                     c0 = Avx512F.TernaryLogic(c0, Avx512F.PermuteVar8x64(c0, permute1), Avx512F.PermuteVar8x64(c0, permute2), 0xD2);
                     c1 = Avx512F.TernaryLogic(c1, Avx512F.PermuteVar8x64(c1, permute1), Avx512F.PermuteVar8x64(c1, permute2), 0xD2);
                     c2 = Avx512F.TernaryLogic(c2, Avx512F.PermuteVar8x64(c2, permute1), Avx512F.PermuteVar8x64(c2, permute2), 0xD2);
@@ -825,7 +825,7 @@ namespace Nethermind.Core.Crypto
                     c4 = Avx512F.TernaryLogic(c4, Avx512F.PermuteVar8x64(c4, permute1), Avx512F.PermuteVar8x64(c4, permute2), 0xD2);
 
                     // Iota step - single load + xor
-                    c0 = Avx512F.Xor(c0, IotaVec[round]);
+                    c0 = Vector512.Xor(c0, Unsafe.Add(ref MemoryMarshal.GetArrayDataReference(IotaVec), round));
                 }
                 // Iteration 2
                 {
@@ -833,8 +833,8 @@ namespace Nethermind.Core.Crypto
                     Vector512<ulong> parity = Avx512F.TernaryLogic(Avx512F.TernaryLogic(c0, c1, c2, 0x96), c3, c4, 0x96);
 
                     // Compute Theta
-                    Vector512<ulong> bVecRot1Rotated = Avx512F.RotateLeft(Avx512F.PermuteVar8x64(parity, Vector512.Create(1UL, 2UL, 3UL, 4UL, 0UL, 5UL, 6UL, 7UL)), 1);
-                    Vector512<ulong> bVecRot4 = Avx512F.PermuteVar8x64(parity, Vector512.Create(4UL, 0UL, 1UL, 2UL, 3UL, 5UL, 6UL, 7UL));
+                    Vector512<ulong> bVecRot1Rotated = Avx512F.RotateLeft(Avx512F.PermuteVar8x64(parity, permute1), 1);
+                    Vector512<ulong> bVecRot4 = Avx512F.PermuteVar8x64(parity, thetaIdxRot4);
                     Vector512<ulong> theta = Avx512F.Xor(bVecRot4, bVecRot1Rotated);
 
                     c0 = Avx512F.Xor(c0, theta);
@@ -891,7 +891,6 @@ namespace Nethermind.Core.Crypto
                     c4 = c4Pi;
 
                     // Chi step
-
                     c0 = Avx512F.TernaryLogic(c0, Avx512F.PermuteVar8x64(c0, permute1), Avx512F.PermuteVar8x64(c0, permute2), 0xD2);
                     c1 = Avx512F.TernaryLogic(c1, Avx512F.PermuteVar8x64(c1, permute1), Avx512F.PermuteVar8x64(c1, permute2), 0xD2);
                     c2 = Avx512F.TernaryLogic(c2, Avx512F.PermuteVar8x64(c2, permute1), Avx512F.PermuteVar8x64(c2, permute2), 0xD2);
@@ -899,7 +898,7 @@ namespace Nethermind.Core.Crypto
                     c4 = Avx512F.TernaryLogic(c4, Avx512F.PermuteVar8x64(c4, permute1), Avx512F.PermuteVar8x64(c4, permute2), 0xD2);
 
                     // Iota step - single load + xor
-                    c0 = Avx512F.Xor(c0, IotaVec[round + 1]);
+                    c0 = Vector512.Xor(c0, Unsafe.Add(ref MemoryMarshal.GetArrayDataReference(IotaVec), round + 1));
                 }
             }
 
