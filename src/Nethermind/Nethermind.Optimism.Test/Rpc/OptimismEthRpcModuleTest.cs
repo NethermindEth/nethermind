@@ -428,6 +428,7 @@ public class OptimismEthRpcModuleTest
                                     "type": "0x7e",
                                     "depositReceiptVersion": "0x1",
                                     "depositNonce": "0x2",
+                                    "blockTimestamp": "0xf4240"
                                 },
                                 {
                                     "transactionHash": "{{txB.Hash!.Bytes.ToHexString(withZeroX: true)}}",
@@ -443,7 +444,8 @@ public class OptimismEthRpcModuleTest
                                     "logs": [],
                                     "logsBloom": "0x00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000",
                                     "status": "0x0",
-                                    "type": "0x2"
+                                    "type": "0x2",
+                                    "blockTimestamp": "0xf4240"
                                 }
                             ],
                             "id":67
@@ -522,6 +524,7 @@ public class OptimismEthRpcModuleTest
                                 "status": "0x0",
                                 "type": "0x7e",
                                 "depositReceiptVersion": "0x1",
+                                "blockTimestamp": "0xa"
                             },
                             "id":67
                          }
