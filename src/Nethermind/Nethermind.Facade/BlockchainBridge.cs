@@ -135,7 +135,8 @@ namespace Nethermind.Facade
                 Error = ConstructError(tryCallResult, callOutputTracer.Error),
                 GasSpent = callOutputTracer.GasSpent,
                 OutputData = callOutputTracer.ReturnValue,
-                InputError = !tryCallResult.TransactionExecuted
+                InputError = !tryCallResult.TransactionExecuted,
+                ExecutionReverted = tryCallResult.EvmExceptionType == EvmExceptionType.Revert,
             };
         }
 
@@ -170,7 +171,8 @@ namespace Nethermind.Facade
             {
                 Error = error,
                 GasSpent = estimate,
-                InputError = !tryCallResult.TransactionExecuted || err is not null
+                InputError = !tryCallResult.TransactionExecuted || err is not null,
+                ExecutionReverted = tryCallResult.EvmExceptionType == EvmExceptionType.Revert
             };
         }
 
@@ -196,7 +198,7 @@ namespace Nethermind.Facade
                 OperationGas = callOutputTracer.OperationGas,
                 OutputData = callOutputTracer.ReturnValue,
                 InputError = !tryCallResult.TransactionExecuted,
-                AccessList = accessTxTracer.AccessList
+                AccessList = accessTxTracer.AccessList,
             };
         }
 
@@ -401,6 +403,7 @@ namespace Nethermind.Facade
             {
                 { TransactionExecuted: true } when txResult.EvmExceptionType is not EvmExceptionType.None => txResult.EvmExceptionType.GetEvmExceptionDescription(),
                 { TransactionExecuted: true } when tracerError is not null => tracerError,
+                { TransactionExecuted: false } when txResult.EvmExceptionType is not (EvmExceptionType.None or EvmExceptionType.Revert) => txResult.EvmExceptionType.GetEvmExceptionDescription(),
                 { TransactionExecuted: false, Error: not null } => txResult.Error,
                 _ => null
             };

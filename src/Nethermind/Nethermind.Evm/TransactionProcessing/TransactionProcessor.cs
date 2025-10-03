@@ -249,7 +249,7 @@ namespace Nethermind.Evm.TransactionProcessing
             }
 
             if (substate.EvmExceptionType != EvmExceptionType.None)
-                return TransactionResult.EvmException(substate.EvmExceptionType);
+                return TransactionResult.EvmException(substate.EvmExceptionType, substate.Error);
 
             return TransactionResult.Ok;
         }
@@ -935,9 +935,9 @@ namespace Nethermind.Evm.TransactionProcessing
 
         public override string ToString() => Error is not null ? $"Fail : {Error}" : "Success";
 
-        public static TransactionResult EvmException(EvmExceptionType evmExceptionType)
+        public static TransactionResult EvmException(EvmExceptionType evmExceptionType, string? error)
         {
-            return new TransactionResult(null, evmExceptionType);
+            return new TransactionResult(error, evmExceptionType);
         }
 
         public static readonly TransactionResult Ok = new();
