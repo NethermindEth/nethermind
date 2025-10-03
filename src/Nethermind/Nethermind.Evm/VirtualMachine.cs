@@ -1247,7 +1247,7 @@ public unsafe partial class VirtualMachine(
                 }
 
                 if (Environment.GetEnvironmentVariable("TRACE_SHOW_OPCODES") == "true")
-                    Out.LogFast($"pc={programCounter} i={instruction} ga={gasAvailable} ex={exceptionType}");
+                    Out.LogFast($"d={EvmState.Env.CallDepth} pc={programCounter} i={instruction} ga={gasAvailable} ex={exceptionType}");
 
                 // If gas is exhausted, jump to the out-of-gas handler.
                 if (gasAvailable < 0)
