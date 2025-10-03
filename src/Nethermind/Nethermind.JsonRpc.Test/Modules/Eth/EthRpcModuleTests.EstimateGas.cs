@@ -393,7 +393,7 @@ public partial class EthRpcModuleTests
     {
         using Context ctx = await Context.Create();
         byte[] code = [];
-        EIP1559TransactionForRpc transaction = new (Build.A.Transaction
+        EIP1559TransactionForRpc transaction = new(Build.A.Transaction
             .WithTo(TestItem.AddressB)
             .WithGasLimit(100000)
             .WithData(code)
