@@ -755,7 +755,6 @@ namespace Nethermind.Core.Crypto
             {
                 // Iteration 1
                 {
-                    ulong roundConstant = Unsafe.Add(ref MemoryMarshal.GetArrayDataReference(roundConstants), round);
                     // Theta step
                     Vector512<ulong> parity = Avx512F.TernaryLogic(Avx512F.TernaryLogic(c0, c1, c2, 0x96), c3, c4, 0x96);
 
@@ -825,12 +824,11 @@ namespace Nethermind.Core.Crypto
                     c3 = Avx512F.TernaryLogic(c3, Avx512F.PermuteVar8x64(c3, permute1), Avx512F.PermuteVar8x64(c3, permute2), 0xD2);
                     c4 = Avx512F.TernaryLogic(c4, Avx512F.PermuteVar8x64(c4, permute1), Avx512F.PermuteVar8x64(c4, permute2), 0xD2);
 
-                    // Iota step
-                    c0 = Vector512.Xor(c0, Vector512.Create(roundConstant, 0UL, 0UL, 0UL, 0UL, 0UL, 0UL, 0UL));
+                    // Iota step - single load + xor
+                    c0 = Avx512F.Xor(c0, IotaVec[round]);
                 }
                 // Iteration 2
                 {
-                    ulong roundConstant = Unsafe.Add(ref MemoryMarshal.GetArrayDataReference(roundConstants), round + 1);
                     // Theta step
                     Vector512<ulong> parity = Avx512F.TernaryLogic(Avx512F.TernaryLogic(c0, c1, c2, 0x96), c3, c4, 0x96);
 
@@ -900,8 +898,8 @@ namespace Nethermind.Core.Crypto
                     c3 = Avx512F.TernaryLogic(c3, Avx512F.PermuteVar8x64(c3, permute1), Avx512F.PermuteVar8x64(c3, permute2), 0xD2);
                     c4 = Avx512F.TernaryLogic(c4, Avx512F.PermuteVar8x64(c4, permute1), Avx512F.PermuteVar8x64(c4, permute2), 0xD2);
 
-                    // Iota step
-                    c0 = Vector512.Xor(c0, Vector512.Create(roundConstant, 0UL, 0UL, 0UL, 0UL, 0UL, 0UL, 0UL));
+                    // Iota step - single load + xor
+                    c0 = Avx512F.Xor(c0, IotaVec[round + 1]);
                 }
             }
 
@@ -913,6 +911,18 @@ namespace Nethermind.Core.Crypto
             // Can't over-write for last elements so write the upper Vector256 and then ulong
             Unsafe.As<ulong, Vector256<ulong>>(ref Unsafe.Add(ref MemoryMarshal.GetReference(state), 20)) = c4.GetLower();
             state[24] = c4.GetElement(4);
+        }
+
+        private static readonly Vector512<ulong>[] IotaVec = CreateIotaVectors();
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        private static Vector512<ulong>[] CreateIotaVectors()
+        {
+            var v = new Vector512<ulong>[ROUNDS];
+            // RoundConstants must be the standard 24 Keccak RCs
+            for (int i = 0; i < ROUNDS; i++)
+                v[i] = Vector512.Create(RoundConstants[i], 0UL, 0UL, 0UL, 0UL, 0UL, 0UL, 0UL);
+            return v;
         }
     }
 }
