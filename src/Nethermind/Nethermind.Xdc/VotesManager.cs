@@ -31,7 +31,7 @@ internal class VotesManager : IVotesManager
         IBlockTree tree,
         IEpochSwitchManager epochSwitchManager,
         ISpecProvider xdcConfig,
-        PrivateKey signer,
+        ISigner signer,
         IBlockInfoValidator blockInfoProcessor,
         IQuorumCertificateManager quorumCertificateManager,
         IForensicsProcessor forensicsProcessor,
@@ -40,7 +40,7 @@ internal class VotesManager : IVotesManager
         Tree = tree;
         EpochSwitchManager = epochSwitchManager;
         _specProvider = xdcConfig;
-        _signerKey = signer;
+        _signer = signer;
         BlockInfoProcessor = blockInfoProcessor;
         QuorumCertificateManager = quorumCertificateManager;
         Context = context;
@@ -62,7 +62,7 @@ internal class VotesManager : IVotesManager
 
     private ISpecProvider _specProvider;
 
-    private PrivateKey _signerKey;
+    private ISigner _signer;
 
     private static VoteDecoder _voteDecoder = new();
     private static EthereumEcdsa _ethereumEcdsa = new(0);
@@ -93,7 +93,7 @@ internal class VotesManager : IVotesManager
     {
         KeccakRlpStream stream = new();
         _voteDecoder.Encode(stream, vote, RlpBehaviors.ForSealing);
-        vote.Signature = _ethereumEcdsa.Sign(_signerKey, stream.GetValueHash());
+        vote.Signature = _signer.Sign(stream.GetValueHash());
     }
 
     public Task HandleVote(Vote vote)
