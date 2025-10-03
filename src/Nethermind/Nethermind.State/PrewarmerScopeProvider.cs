@@ -45,9 +45,9 @@ public class PrewarmerScopeProvider(
                 populatePreBlockCache);
         }
 
-        public IWorldStateScopeProvider.IWorldStateWriteBatch StartWriteBatch(int estimatedAccountNum, Action<Address, Account> onAccountUpdated)
+        public IWorldStateScopeProvider.IWorldStateWriteBatch StartWriteBatch(int estimatedAccountNum)
         {
-            return baseScope.StartWriteBatch(estimatedAccountNum, onAccountUpdated);
+            return baseScope.StartWriteBatch(estimatedAccountNum);
         }
 
         public void Commit(long blockNumber) => baseScope.Commit(blockNumber);
@@ -100,7 +100,7 @@ public class PrewarmerScopeProvider(
         bool populatePreBlockCache
     ) : IWorldStateScopeProvider.IStorageTree
     {
-        public bool WasEmptyTree => baseStorageTree.WasEmptyTree;
+        public Hash256 RootHash => baseStorageTree.RootHash;
 
         public byte[] Get(in UInt256 index)
         {
