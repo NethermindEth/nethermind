@@ -13,14 +13,14 @@ public class Osaka : Prague
     public Osaka()
     {
         Name = "Osaka";
-        IsEip7594Enabled = true;
+        // IsEip7594Enabled = true;
         IsEip7823Enabled = true;
-        IsEip7825Enabled = true;
+        // IsEip7825Enabled = true;
         IsEip7883Enabled = true;
-        IsEip7918Enabled = true;
-        IsEip7934Enabled = true;
-        IsEip7939Enabled = true;
-        IsEip7951Enabled = true;
+        // IsEip7918Enabled = true;
+        // IsEip7934Enabled = true;
+        // IsEip7939Enabled = true;
+        // IsEip7951Enabled = true;
     }
 
     public new static IReleaseSpec Instance => LazyInitializer.EnsureInitialized(ref _instance, static () => new Osaka());

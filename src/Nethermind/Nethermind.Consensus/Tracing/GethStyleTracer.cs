@@ -118,11 +118,11 @@ public class GethStyleTracer(
         }
     }
 
-    public IReadOnlyCollection<GethLikeTxTrace> TraceBlock(BlockParameter blockParameter, GethTraceOptions options, CancellationToken cancellationToken)
+    public IReadOnlyCollection<GethLikeTxTrace> TraceBlock(BlockParameter blockParameter, GethTraceOptions options, CancellationToken cancellationToken, string? forkName = null)
     {
         var block = blockTree.FindBlock(blockParameter);
 
-        return TraceBlockImpl(block, options, cancellationToken);
+        return TraceBlockImpl(block, options, cancellationToken, forkName: forkName);
     }
 
     public IReadOnlyCollection<GethLikeTxTrace> TraceBlock(Rlp blockRlp, GethTraceOptions options, CancellationToken cancellationToken)
@@ -190,6 +190,7 @@ public class GethStyleTracer(
         try
         {
             scope.Component.BlockchainProcessor.Process(block, processingOptions, tracer.WithCancellation(cancellationToken), cancellationToken);
+            // scope.Component.BlockchainProcessor.Process(block, processingOptions, tracer.WithCancellation(cancellationToken), cancellationToken, "fusaka");
             return tracer.BuildResult().SingleOrDefault();
         }
         catch
@@ -207,7 +208,7 @@ public class GethStyleTracer(
             _ => new GethLikeBlockMemoryTracer(options),
         };
 
-    private IReadOnlyCollection<GethLikeTxTrace> TraceBlockImpl(Block? block, GethTraceOptions options, CancellationToken cancellationToken)
+    private IReadOnlyCollection<GethLikeTxTrace> TraceBlockImpl(Block? block, GethTraceOptions options, CancellationToken cancellationToken, string? forkName = null)
     {
         ArgumentNullException.ThrowIfNull(block);
 
@@ -217,7 +218,7 @@ public class GethStyleTracer(
         IBlockTracer<GethLikeTxTrace> tracer = CreateOptionsTracer(block.Header, options, scope.Component.WorldState, specProvider);
         try
         {
-            scope.Component.BlockchainProcessor.Process(block, ProcessingOptions.Trace, tracer.WithCancellation(cancellationToken), cancellationToken);
+            scope.Component.BlockchainProcessor.Process(block, ProcessingOptions.Trace, tracer.WithCancellation(cancellationToken), cancellationToken, forkName: forkName);
             return new GethLikeTxTraceCollection(tracer.BuildResult());
         }
         catch

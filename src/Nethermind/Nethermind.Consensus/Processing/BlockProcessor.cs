@@ -98,6 +98,18 @@ public partial class BlockProcessor(
         ReceiptsTracer.SetOtherTracer(blockTracer);
         ReceiptsTracer.StartNewBlockTrace(block);
 
+        if (forkName is not null)
+        {
+            options |= ProcessingOptions.TracingMode;
+            _logger.Warn("Using Tracing Mode");
+
+            if (forkName.Equals("fusaka"))
+            {
+                spec = Osaka.Instance;
+                _logger.Warn($"Using Osaka spec");
+            }
+        }
+
         blockTransactionsExecutor.SetBlockExecutionContext(new BlockExecutionContext(block.Header, spec));
 
         StoreBeaconRoot(block, spec);
