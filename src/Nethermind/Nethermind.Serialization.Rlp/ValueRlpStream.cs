@@ -2,9 +2,6 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using System.Buffers.Binary;
-using System.Diagnostics;
-using System.Diagnostics.CodeAnalysis;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using Nethermind.Core.Buffers;
@@ -181,8 +178,6 @@ public ref struct ValueRlpStream(SpanSource data)
 
         return (lengthOfContentLength + 1, contentLength);
     }
-
-
 
     public int ReadSequenceLength()
     {
