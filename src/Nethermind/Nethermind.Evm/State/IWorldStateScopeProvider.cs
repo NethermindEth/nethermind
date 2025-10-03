@@ -23,6 +23,12 @@ public interface IWorldStateScopeProvider
 
         void UpdateRootHash();
 
+        /// <summary>
+        /// Get the account information for the following address.
+        /// Note: Do not rely on <see cref="Account.StorageRoot"/> as it may be modified after write. Instead use <see cref="IStorageTree.RootHash"/>.
+        /// </summary>
+        /// <param name="address"></param>
+        /// <returns></returns>
         Account? Get(Address address);
 
         /// <summary>
@@ -43,9 +49,8 @@ public interface IWorldStateScopeProvider
         /// Begin a write batch to update the world state.
         /// </summary>
         /// <param name="estimatedAccountNum">For optimization, estimated account number.</param>
-        /// <param name="onAccountUpdated">Called when a storage root for an account is updated</param>
         /// <returns></returns>
-        IWorldStateWriteBatch StartWriteBatch(int estimatedAccountNum, Action<Address, Account> onAccountUpdated);
+        IWorldStateWriteBatch StartWriteBatch(int estimatedAccountNum);
 
         /// <summary>
         /// A commit will traverse the dirty nodes in the tree, calculate the hash and save
@@ -65,7 +70,7 @@ public interface IWorldStateScopeProvider
 
     public interface IStorageTree
     {
-        bool WasEmptyTree { get; }
+        Hash256 RootHash { get; }
 
         byte[] Get(in UInt256 index);
 

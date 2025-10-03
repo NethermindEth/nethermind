@@ -22,9 +22,6 @@ using Nethermind.Evm.State;
 using Nethermind.Evm.Tracing.State;
 using Nethermind.Int256;
 using Nethermind.Logging;
-using Nethermind.Serialization.Rlp;
-using Nethermind.Trie;
-using Nethermind.Trie.Pruning;
 using Metrics = Nethermind.Db.Metrics;
 using static Nethermind.State.StateProvider;
 
@@ -94,12 +91,6 @@ namespace Nethermind.State
 
         public int ChangedAccountCount => _blockChanges.Count;
 
-        public void OnAccountUpdated(Address address, Account account)
-        {
-            ref ChangeTrace accountChanges = ref CollectionsMarshal.GetValueRefOrAddDefault(_blockChanges, address, out _);
-            accountChanges.After = account;
-        }
-
         public void SetScope(IWorldStateScopeProvider.IScope? scope)
         {
             _tree = scope;
@@ -129,16 +120,6 @@ namespace Nethermind.State
         {
             Account? account = GetThroughCache(address);
             return account?.Nonce ?? UInt256.Zero;
-        }
-
-        public Hash256 GetStorageRoot(Address address)
-        {
-            Account? account = GetThroughCache(address);
-            return account is not null ? account.StorageRoot : ThrowIfNull(address);
-
-            [DoesNotReturn, StackTraceHidden]
-            static Hash256 ThrowIfNull(Address address)
-                => throw new InvalidOperationException($"Account {address} is null when accessing storage root");
         }
 
         public ref readonly UInt256 GetBalance(Address address)

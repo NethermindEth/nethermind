@@ -8,6 +8,7 @@ using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
 using System.Linq;
 using System.Runtime.CompilerServices;
+using System.Runtime.InteropServices;
 using System.Threading.Tasks;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
@@ -55,9 +56,8 @@ public class TrieStoreScopeProvider : IWorldStateScopeProvider
         return new TrieStoreWorldStateBackendScope(_backingStateTree, this, _codeDb, trieStoreCloser, _logManager);
     }
 
-    protected virtual StorageTree CreateStorageTree(Address address)
+    protected virtual StorageTree CreateStorageTree(Address address, Hash256 storageRoot)
     {
-        Hash256 storageRoot = _backingStateTree.Get(address)?.StorageRoot ?? Keccak.EmptyTreeHash;
         return new StorageTree(_trieStore.GetTrieStore(address), storageRoot, _logManager);
     }
 
@@ -72,12 +72,23 @@ public class TrieStoreScopeProvider : IWorldStateScopeProvider
 
         public Hash256 RootHash => _backingStateTree.RootHash;
         public void UpdateRootHash() => _backingStateTree.UpdateRootHash();
-        public Account? Get(Address address) => _backingStateTree.Get(address);
+
+        public Account? Get(Address address)
+        {
+            ref Account? account = ref CollectionsMarshal.GetValueRefOrAddDefault(_loadedAccounts, address, out bool exists);
+            if (!exists)
+            {
+                account = _backingStateTree.Get(address);
+            }
+
+            return account;
+        }
 
         public IWorldStateScopeProvider.ICodeDb CodeDb => _codeDb1;
 
         internal StateTree _backingStateTree;
         private readonly Dictionary<AddressAsKey, StorageTree> _storages = new();
+        private readonly Dictionary<AddressAsKey, Account?> _loadedAccounts = new();
         private readonly TrieStoreScopeProvider _scopeProvider;
         private readonly IWorldStateScopeProvider.ICodeDb _codeDb1;
         private readonly IDisposable _trieStoreCloser;
@@ -92,9 +103,9 @@ public class TrieStoreScopeProvider : IWorldStateScopeProvider
             _trieStoreCloser = trieStoreCloser;
         }
 
-        public IWorldStateScopeProvider.IWorldStateWriteBatch StartWriteBatch(int estimatedAccountNumber, Action<Address, Account> onAccountUpdated)
+        public IWorldStateScopeProvider.IWorldStateWriteBatch StartWriteBatch(int estimatedAccountNumber)
         {
-            return new WorldStateWriteBatch(this, estimatedAccountNumber, onAccountUpdated, _logManager.GetClassLogger<WorldStateWriteBatch>());
+            return new WorldStateWriteBatch(this, estimatedAccountNumber, _logManager.GetClassLogger<WorldStateWriteBatch>());
         }
 
         public void Commit(long blockNumber)
@@ -133,9 +144,14 @@ public class TrieStoreScopeProvider : IWorldStateScopeProvider
                 return storageTree;
             }
 
-            storageTree = _scopeProvider.CreateStorageTree(address);
+            storageTree = _scopeProvider.CreateStorageTree(address, Get(address)?.StorageRoot ?? Keccak.EmptyTreeHash);
             _storages[address] = storageTree;
             return storageTree;
+        }
+
+        public void ClearLoadedAccounts()
+        {
+            _loadedAccounts.Clear();
         }
 
         public IWorldStateScopeProvider.IStorageTree CreateStorageTree(Address address)
@@ -147,7 +163,6 @@ public class TrieStoreScopeProvider : IWorldStateScopeProvider
     private class WorldStateWriteBatch(
         TrieStoreWorldStateBackendScope scope,
         int estimatedAccountCount,
-        Action<Address, Account>? onAccountUpdated,
         ILogger logger) : IWorldStateScopeProvider.IWorldStateWriteBatch
     {
         private readonly Dictionary<AddressAsKey, Account?> _dirtyAccounts = new(estimatedAccountCount);
@@ -170,31 +185,47 @@ public class TrieStoreScopeProvider : IWorldStateScopeProvider
 
         public void Dispose()
         {
+            Dictionary<AddressAsKey, Hash256> storageRootChange = new Dictionary<AddressAsKey, Hash256>();
+
             while (_dirtyStorageTree.TryDequeue(out var entry))
             {
                 (AddressAsKey key, Hash256 storageRoot) = entry;
-                Account account = _dirtyAccounts.GetValueOrDefault(key)
-                                  ?? scope.Get(key)
-                                  ?? ThrowNullAccount(key);
+                ref Account? account = ref CollectionsMarshal.GetValueRefOrAddDefault(_dirtyAccounts, key, out bool exists);
+                if (!exists) account = scope.Get(key) ?? ThrowNullAccount(key);
 
-                account = account!.WithChangedStorageRoot(storageRoot);
-                _dirtyAccounts[key] = account;
-                onAccountUpdated?.Invoke(key, account);
-                Trace(key, storageRoot, account);
+                storageRootChange[key] = storageRoot;
             }
 
             using (var stateSetter = scope._backingStateTree.BeginSet(_dirtyAccounts.Count))
             {
                 foreach (var kv in _dirtyAccounts)
                 {
-                    stateSetter.Set(kv.Key, kv.Value);
+                    Hash256? storageRoot = null;
+                    Account? account = kv.Value;
+                    if (account is not null)
+                    {
+                        if (!storageRootChange.TryGetValue(kv.Key, out storageRoot))
+                        {
+                            storageRoot = scope.Get(kv.Key)?.StorageRoot;
+                        }
+
+                        if (account.StorageRoot != storageRoot)
+                        {
+                            account = kv.Value.WithChangedStorageRoot(storageRoot);
+                        }
+                    }
+
+                    stateSetter.Set(kv.Key, account);
+                    if (logger.IsTrace) Trace(kv.Key, storageRoot, account);
                 }
             }
 
+            scope.ClearLoadedAccounts();
+
 
             [MethodImpl(MethodImplOptions.NoInlining)]
-            void Trace(Address address, Hash256 storageRoot, Account account)
-                => logger.Trace($"Update {address} S {account.StorageRoot} -> {storageRoot}");
+            void Trace(Address address, Hash256 storageRoot, Account? account)
+                => logger.Trace($"Update {address} S {account?.StorageRoot} -> {storageRoot}");
 
             [DoesNotReturn, StackTraceHidden]
             static Account ThrowNullAccount(Address address)
