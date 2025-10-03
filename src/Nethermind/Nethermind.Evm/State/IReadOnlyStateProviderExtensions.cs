@@ -9,11 +9,6 @@ namespace Nethermind.Evm.State
 {
     public static class IReadOnlyStateProviderExtensions
     {
-        public static byte[] GetCode(this IReadOnlyStateProvider stateProvider, Address address)
-        {
-            stateProvider.TryGetAccount(address, out AccountStruct account);
-            return !account.HasCode ? [] : stateProvider.GetCode(in account.CodeHash) ?? [];
-        }
         /// <summary>
         /// Checks if <paramref name="sender"/> has code that is not a delegation, according to the rules of eip-3607 and eip-7702.
         /// Where possible a cache for code lookup should be used, since the fallback will read from <see cref="GetCode(IReadOnlyStateProvider, Address)"/>.
@@ -31,7 +26,7 @@ namespace Nethermind.Evm.State
             spec.IsEip3607Enabled
             && stateProvider.HasCode(sender)
             && (!spec.IsEip7702Enabled
-                || (!isDelegatedCode?.Invoke(sender) ?? !Eip7702Constants.IsDelegatedCode(GetCode(stateProvider, sender))));
+                || (!isDelegatedCode?.Invoke(sender) ?? !Eip7702Constants.IsDelegatedCode(stateProvider.GetCode(sender))));
 
         /// <summary>
         /// Checks if <paramref name="sender"/> has code that is not a delegation, according to the rules of eip-3607 and eip-7702.

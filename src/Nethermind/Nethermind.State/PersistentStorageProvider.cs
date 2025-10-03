@@ -114,6 +114,11 @@ internal sealed class PersistentStorageProvider : PartialStorageProviderBase
         return value;
     }
 
+    public Hash256 GetStorageRoot(Address address)
+    {
+        return GetOrCreateStorage(address).StorageRoot;
+    }
+
     private HashSet<AddressAsKey>? _tempToUpdateRoots;
     /// <summary>
     /// Called by Commit
@@ -477,13 +482,22 @@ internal sealed class PersistentStorageProvider : PartialStorageProviderBase
 
         public int EstimatedChanges => BlockChange.EstimatedSize;
 
+        public Hash256 StorageRoot
+        {
+            get
+            {
+                EnsureStorageTree();
+                return _backend.RootHash;
+            }
+        }
+
         internal void EnsureStorageTree()
         {
             if (_backend is not null) return;
 
             _backend = _provider._currentScope.CreateStorageTree(_address);
 
-            bool isEmpty = _backend.WasEmptyTree;
+            bool isEmpty = _backend.RootHash == Keccak.EmptyTreeHash;
             if (isEmpty && !_wasWritten)
             {
                 // Slight optimization that skips the tree
