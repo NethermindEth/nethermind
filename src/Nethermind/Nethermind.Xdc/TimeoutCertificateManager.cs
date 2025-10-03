@@ -43,16 +43,16 @@ public class TimeoutCertificateManager(ISnapshotManager snapshotManager, IEpochS
         if (timeoutCertificate is null) throw new ArgumentNullException(nameof(timeoutCertificate));
         if (timeoutCertificate.Signatures is null) throw new ArgumentNullException(nameof(timeoutCertificate.Signatures));
 
-        bool ok = _snapshotManager.TryGetSnapshot(timeoutCertificate.GapNumber, true, out Snapshot snapshot);
-        if (!ok || snapshot is null)
+        Snapshot snapshot = _snapshotManager.GetSnapshotByGapNumber(_blockTree, timeoutCertificate.GapNumber);
+        if (snapshot is null)
         {
-            errorMessage = "Failed to get snapshot";
+            errorMessage = $"Failed to get snapshot using gap number {timeoutCertificate.GapNumber}";
             return false;
         }
 
         if (snapshot.NextEpochCandidates.Length == 0)
         {
-            errorMessage = "Empty master node lists from snapshot";
+            errorMessage = "Empty master node list from snapshot";
             return false;
         }
 

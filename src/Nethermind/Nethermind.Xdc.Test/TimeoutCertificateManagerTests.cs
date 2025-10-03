@@ -41,17 +41,16 @@ public class TimeoutCertificateManagerTests
     {
         var tc = new TimeoutCertificate(1, Array.Empty<Signature>(), 0);
         ISnapshotManager snapshotManager = Substitute.For<ISnapshotManager>();
-        snapshotManager.TryGetSnapshot(0, true, out Arg.Any<Snapshot>())
-                    .Returns(x =>
-                    {
-                        x[2] = null;
-                        return false;
-                    });
+        snapshotManager.GetSnapshot(Arg.Any<Hash256>())
+                    .Returns((Snapshot?)null);
+        IBlockTree blockTree = Substitute.For<IBlockTree>();
+        XdcBlockHeader header = Build.A.XdcBlockHeader().TestObject;
+        blockTree.FindHeader(Arg.Any<long>()).Returns(header);
         var tcManager = new TimeoutCertificateManager(
             snapshotManager,
             Substitute.For<IEpochSwitchManager>(),
             Substitute.For<ISpecProvider>(),
-            Substitute.For<IBlockTree>());
+            blockTree);
 
         var ok = tcManager.VerifyTimeoutCertificate(tc, out var err);
         Assert.That(ok, Is.False);
@@ -63,17 +62,16 @@ public class TimeoutCertificateManagerTests
     {
         var tc = new TimeoutCertificate(1, Array.Empty<Signature>(), 0);
         ISnapshotManager snapshotManager = Substitute.For<ISnapshotManager>();
-        snapshotManager.TryGetSnapshot(0, true, out Arg.Any<Snapshot>())
-            .Returns(x =>
-            {
-                x[2] = new Snapshot(0, Hash256.Zero, Array.Empty<Address>());
-                return true;
-            });
+        snapshotManager.GetSnapshot(Arg.Any<Hash256>())
+            .Returns(new Snapshot(0, Hash256.Zero, Array.Empty<Address>()));
+        IBlockTree blockTree = Substitute.For<IBlockTree>();
+        XdcBlockHeader header = Build.A.XdcBlockHeader().TestObject;
+        blockTree.FindHeader(Arg.Any<long>()).Returns(header);
         var tcManager = new TimeoutCertificateManager(
             snapshotManager,
             Substitute.For<IEpochSwitchManager>(),
             Substitute.For<ISpecProvider>(),
-            Substitute.For<IBlockTree>());
+            blockTree);
 
         var ok = tcManager.VerifyTimeoutCertificate(tc, out var err);
         Assert.That(ok, Is.False);
@@ -104,19 +102,16 @@ public class TimeoutCertificateManagerTests
     }
 
     [TestCaseSource(nameof(TcCases))]
-    public void VerifyTCWithDifferentParameters_ReturnsExpected(TimeoutCertificate timeoutCertificate, IEnumerable<Address> masternodes, bool expected)
+    public void VerifyTCWithDifferentParameters_ReturnsExpected(TimeoutCertificate timeoutCertificate, IEnumerable<Address> masternodesList, bool expected)
     {
+        Address[] masternodes = masternodesList.ToArray();
         ISnapshotManager snapshotManager = Substitute.For<ISnapshotManager>();
-        snapshotManager.TryGetSnapshot(0, true, out Arg.Any<Snapshot>())
-            .Returns(x =>
-            {
-                x[2] = new Snapshot(0, Hash256.Zero, masternodes.ToArray());
-                return true;
-            });
+        snapshotManager.GetSnapshot(Arg.Any<Hash256>())
+            .Returns(new Snapshot(0, Hash256.Zero, masternodes));
 
         IEpochSwitchManager epochSwitchManager = Substitute.For<IEpochSwitchManager>();
         var epochSwitchInfo = new EpochSwitchInfo([], [],
-            masternodes.ToArray(), new BlockRoundInfo(Hash256.Zero, 1, 10), new BlockRoundInfo(Hash256.Zero, 0, 0));
+            masternodes, new BlockRoundInfo(Hash256.Zero, 1, 10), new BlockRoundInfo(Hash256.Zero, 0, 0));
         epochSwitchManager
             .GetEpochSwitchInfo(Arg.Any<XdcBlockHeader>(), Arg.Any<Hash256>())
             .Returns(epochSwitchInfo);
@@ -130,7 +125,9 @@ public class TimeoutCertificateManagerTests
         specProvider.GetSpec(Arg.Any<ForkActivation>()).Returns(xdcReleaseSpec);
 
         IBlockTree blockTree = Substitute.For<IBlockTree>();
-        blockTree.Head.Returns(new Block(Build.A.XdcBlockHeader().TestObject, new BlockBody()));
+        XdcBlockHeader header = Build.A.XdcBlockHeader().TestObject;
+        blockTree.Head.Returns(new Block(header, new BlockBody()));
+        blockTree.FindHeader(Arg.Any<long>()).Returns(header);
 
         var tcManager = new TimeoutCertificateManager(snapshotManager, epochSwitchManager, specProvider, blockTree);
 
