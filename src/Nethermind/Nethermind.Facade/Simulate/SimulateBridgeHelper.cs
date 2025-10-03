@@ -265,7 +265,7 @@ public class SimulateBridgeHelper(IBlocksConfig blocksConfig, ISpecProvider spec
         }
         else
         {
-            result.Difficulty =  parent.Difficulty;
+            result.Difficulty = parent.Difficulty;
             result.IsPostMerge = false;
         }
 
