@@ -110,7 +110,7 @@ public class BlobTxDistinctSortedPool(int capacity, IComparer<Transaction> compa
         {
             foreach (var blobVersionedHash in blobTx.BlobVersionedHashes)
             {
-                if (blobVersionedHash?.Length == KzgPolynomialCommitments.BytesPerBlobVersionedHash)
+                if (blobVersionedHash?.Length == Eip4844Constants.BytesPerBlobVersionedHash)
                 {
                     ref List<Hash256>? list = ref CollectionsMarshal.GetValueRefOrAddDefault(BlobIndex, blobVersionedHash, out _);
                     list ??= new List<Hash256>();
