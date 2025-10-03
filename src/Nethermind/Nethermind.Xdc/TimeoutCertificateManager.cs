@@ -55,6 +55,7 @@ public class TimeoutCertificateManager(ISnapshotManager snapshotManager, IEpochS
             errorMessage = "Empty master node list from snapshot";
             return false;
         }
+        var nextEpochCandidates = new HashSet<Address>(snapshot.NextEpochCandidates);
 
         var signatures = new HashSet<Signature>(timeoutCertificate.Signatures);
         BlockHeader header = _blockTree.Head?.Header;
@@ -79,7 +80,7 @@ public class TimeoutCertificateManager(ISnapshotManager snapshotManager, IEpochS
             (signature, state) =>
             {
                 Address signer = _ethereumEcdsa.RecoverAddress(signature, in timeoutMsgHash);
-                if (!snapshot.NextEpochCandidates.Contains(signer))
+                if (!nextEpochCandidates.Contains(signer))
                 {
                     allValid = false;
                     state.Stop();
