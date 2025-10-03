@@ -13,7 +13,7 @@ namespace Nethermind.State.FlatCache;
 
 // Reversed order so that its easy to add new KnownState.
 // TODO: We can skip the reverse
-public class SnapshotBundle(ArrayPoolList<Snapshot> knownStates, BigCache bigCache) : IDisposable
+public class SnapshotBundle(ArrayPoolList<Snapshot> knownStates, IBigCache bigCache) : IDisposable
 {
     Dictionary<Address, StorageSnapshotBundle> _loadedAccounts = new();
     Dictionary<Address, Account> _changedAccounts = new();
@@ -85,7 +85,7 @@ public class SnapshotBundle(ArrayPoolList<Snapshot> knownStates, BigCache bigCac
             }
         }
 
-        BigCache.BigCacheStorageReader bigCacheStorage = bigCache.GetStorageReader(address);
+        IBigCache.IStorageReader bigCacheStorage = bigCache.GetStorageReader(address);
 
         StorageSnapshotBundle cache = new StorageSnapshotBundle(accounts, bigCacheStorage);
         _loadedAccounts[address] = cache;
