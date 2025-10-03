@@ -784,7 +784,7 @@ namespace Nethermind.Serialization.Rlp
                 }
 
                 int length = PeekDeserializeLength(lengthOfLength);
-                if (length < 56)
+                if (length < RlpHelpers.SmallPrefixBarrier)
                 {
                     RlpHelpers.ThrowUnexpectedLength(length);
                 }
@@ -803,7 +803,7 @@ namespace Nethermind.Serialization.Rlp
                 }
 
                 int length = PeekDeserializeLength(lengthOfLength);
-                if (length < 56)
+                if (length < RlpHelpers.SmallPrefixBarrier)
                 {
                     RlpHelpers.ThrowUnexpectedLength(length);
                 }
@@ -822,7 +822,7 @@ namespace Nethermind.Serialization.Rlp
                 }
 
                 int length = DeserializeLength(lengthOfLength);
-                if (length < 56)
+                if (length < RlpHelpers.SmallPrefixBarrier)
                 {
                     RlpHelpers.ThrowUnexpectedLength(length);
                 }
@@ -835,7 +835,7 @@ namespace Nethermind.Serialization.Rlp
             {
                 int lengthOfContentLength = prefix - 247;
                 int contentLength = PeekDeserializeLength(lengthOfContentLength);
-                if (contentLength < 56)
+                if (contentLength < RlpHelpers.SmallPrefixBarrier)
                 {
                     RlpHelpers.ThrowUnexpectedLength(contentLength);
                 }
@@ -848,7 +848,7 @@ namespace Nethermind.Serialization.Rlp
             {
                 int lengthOfContentLength = prefix - 247;
                 int contentLength = PeekDeserializeLength(lengthOfContentLength);
-                if (contentLength < 56)
+                if (contentLength < RlpHelpers.SmallPrefixBarrier)
                 {
                     RlpHelpers.ThrowUnexpectedLength(contentLength);
                 }
@@ -861,7 +861,7 @@ namespace Nethermind.Serialization.Rlp
             {
                 int lengthOfContentLength = prefix - 247;
                 int contentLength = DeserializeLength(lengthOfContentLength);
-                if (contentLength < 56)
+                if (contentLength < RlpHelpers.SmallPrefixBarrier)
                 {
                     RlpHelpers.ThrowUnexpectedLength(contentLength);
                 }
@@ -894,7 +894,7 @@ namespace Nethermind.Serialization.Rlp
 
                 int lengthOfContentLength = prefix - 247;
                 int contentLength = DeserializeLength(lengthOfContentLength);
-                if (contentLength < 56)
+                if (contentLength < RlpHelpers.SmallPrefixBarrier)
                 {
                     RlpHelpers.ThrowUnexpectedLength(contentLength);
                 }
@@ -1329,7 +1329,7 @@ namespace Nethermind.Serialization.Rlp
                     }
 
                     int length = DeserializeLength(lengthOfLength);
-                    if (length < 56)
+                    if (length < RlpHelpers.SmallPrefixBarrier)
                     {
                         RlpHelpers.ThrowUnexpectedLength(length);
                     }
@@ -1382,7 +1382,7 @@ namespace Nethermind.Serialization.Rlp
                             }
 
                             int length = DeserializeLength(lengthOfLength);
-                            if (length < 56)
+                            if (length < RlpHelpers.SmallPrefixBarrier)
                             {
                                 RlpHelpers.ThrowUnexpectedLength(length);
                             }
@@ -1437,7 +1437,7 @@ namespace Nethermind.Serialization.Rlp
                     }
 
                     int length = DeserializeLength(lengthOfLength);
-                    if (length < 56)
+                    if (length < RlpHelpers.SmallPrefixBarrier)
                     {
                         RlpHelpers.ThrowUnexpectedLength(length);
                     }
@@ -1756,7 +1756,7 @@ namespace Nethermind.Serialization.Rlp
 
         public static int LengthOfSequence(int contentLength)
         {
-            if (contentLength < 56)
+            if (contentLength < RlpHelpers.SmallPrefixBarrier)
             {
                 return 1 + contentLength;
             }
@@ -1803,7 +1803,7 @@ namespace Nethermind.Serialization.Rlp
                 return 1;
             }
 
-            if (length < 56)
+            if (length < RlpHelpers.SmallPrefixBarrier)
             {
                 return length + 1;
             }
