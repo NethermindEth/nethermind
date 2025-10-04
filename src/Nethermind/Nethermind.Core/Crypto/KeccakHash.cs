@@ -825,7 +825,7 @@ namespace Nethermind.Core.Crypto
                     c4 = Avx512F.TernaryLogic(c4, Avx512F.PermuteVar8x64(c4, permute1), Avx512F.PermuteVar8x64(c4, permute2), 0xD2);
 
                     // Iota step - single load + xor
-                    c0 = Vector512.Xor(c0, Unsafe.Add(ref MemoryMarshal.GetArrayDataReference(IotaVec), round));
+                    c0 = Vector512.Xor(c0, Vector512.CreateScalarUnsafe(Unsafe.Add(ref MemoryMarshal.GetArrayDataReference(RoundConstants), round)));
                 }
                 // Iteration 2
                 {
@@ -889,7 +889,7 @@ namespace Nethermind.Core.Crypto
                     c4 = Avx512F.TernaryLogic(c4, Avx512F.PermuteVar8x64(c4, permute1), Avx512F.PermuteVar8x64(c4, permute2), 0xD2);
 
                     // Iota step - single load + xor
-                    c0 = Vector512.Xor(c0, Unsafe.Add(ref MemoryMarshal.GetArrayDataReference(IotaVec), round + 1));
+                    c0 = Vector512.Xor(c0, Vector512.CreateScalarUnsafe(Unsafe.Add(ref MemoryMarshal.GetArrayDataReference(RoundConstants), round + 1)));
                 }
             }
 
@@ -913,17 +913,5 @@ namespace Nethermind.Core.Crypto
         private static readonly Vector512<ulong> RhoVec2 = Vector512.Create(3UL, 10UL, 43UL, 25UL, 39UL, 0UL, 0UL, 0UL);
         private static readonly Vector512<ulong> RhoVec3 = Vector512.Create(41UL, 45UL, 15UL, 21UL, 8UL, 0UL, 0UL, 0UL);
         private static readonly Vector512<ulong> RhoVec4 = Vector512.Create(18UL, 2UL, 61UL, 56UL, 14UL, 0UL, 0UL, 0UL);
-
-        private static readonly Vector512<ulong>[] IotaVec = CreateIotaVectors();
-
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        private static Vector512<ulong>[] CreateIotaVectors()
-        {
-            var v = new Vector512<ulong>[ROUNDS];
-            // RoundConstants must be the standard 24 Keccak RCs
-            for (int i = 0; i < ROUNDS; i++)
-                v[i] = Vector512.Create(RoundConstants[i], 0UL, 0UL, 0UL, 0UL, 0UL, 0UL, 0UL);
-            return v;
-        }
     }
 }
