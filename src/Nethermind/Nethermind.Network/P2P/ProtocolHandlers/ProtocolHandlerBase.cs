@@ -16,28 +16,23 @@ using Nethermind.Stats.Model;
 
 namespace Nethermind.Network.P2P.ProtocolHandlers
 {
-    public abstract class ProtocolHandlerBase : IProtocolHandler
+    public abstract class ProtocolHandlerBase(
+        ISession session,
+        INodeStatsManager nodeStats,
+        IMessageSerializationService serializer,
+        ILogManager logManager)
+        : IProtocolHandler
     {
         public abstract string Name { get; }
         public bool IsPriority { get; set; }
-        protected INodeStatsManager StatsManager { get; }
-        private readonly IMessageSerializationService _serializer;
-        protected internal ISession Session { get; }
+        protected INodeStatsManager StatsManager { get; } = nodeStats ?? throw new ArgumentNullException(nameof(nodeStats));
+        private readonly IMessageSerializationService _serializer = serializer ?? throw new ArgumentNullException(nameof(serializer));
+        protected internal ISession Session { get; } = session ?? throw new ArgumentNullException(nameof(session));
         protected long Counter;
 
-        private readonly TaskCompletionSource<MessageBase> _initCompletionSource;
+        private readonly TaskCompletionSource<MessageBase> _initCompletionSource = new();
 
-        protected ProtocolHandlerBase(ISession session, INodeStatsManager nodeStats, IMessageSerializationService serializer, ILogManager logManager)
-        {
-            Logger = logManager?.GetClassLogger<ProtocolHandlerBase>() ?? throw new ArgumentNullException(nameof(logManager));
-            StatsManager = nodeStats ?? throw new ArgumentNullException(nameof(nodeStats));
-            Session = session ?? throw new ArgumentNullException(nameof(session));
-
-            _serializer = serializer ?? throw new ArgumentNullException(nameof(serializer));
-            _initCompletionSource = new TaskCompletionSource<MessageBase>();
-        }
-
-        protected internal ILogger Logger { get; }
+        protected internal ILogger Logger { get; } = logManager?.GetClassLogger<ProtocolHandlerBase>() ?? throw new ArgumentNullException(nameof(logManager));
 
         protected abstract TimeSpan InitTimeout { get; }
 

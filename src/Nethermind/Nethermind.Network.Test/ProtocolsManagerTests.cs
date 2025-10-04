@@ -107,7 +107,7 @@ public class ProtocolsManagerTests
             _blockTree.NetworkId.Returns((ulong)TestBlockchainIds.NetworkId);
             _blockTree.ChainId.Returns((ulong)TestBlockchainIds.ChainId);
             _blockTree.Genesis.Returns(Build.A.Block.Genesis.TestObject.Header);
-            ForkInfo forkInfo = new ForkInfo(MainnetSpecProvider.Instance, _syncServer);
+            ForkInfo forkInfo = new(MainnetSpecProvider.Instance, _syncServer);
             _peerManager = Substitute.For<IPeerManager>();
             _networkConfig = new NetworkConfig();
             _protocolValidator = new ProtocolValidator(_nodeStatsManager, _blockTree, forkInfo, _peerManager, _networkConfig, LimboLogs.Instance);
@@ -129,6 +129,7 @@ public class ProtocolsManagerTests
                 forkInfo,
                 _gossipPolicy,
                 Substitute.For<IWorldStateManager>(),
+                _blockTree,
                 LimboLogs.Instance);
         }
 
