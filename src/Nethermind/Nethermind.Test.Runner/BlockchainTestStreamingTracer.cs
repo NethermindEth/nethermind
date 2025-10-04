@@ -6,6 +6,7 @@ using System.IO;
 using System.Text.Json;
 using Nethermind.Blockchain.Tracing.GethStyle;
 using Nethermind.Core;
+using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Evm.Tracing;
 using Nethermind.Int256;
@@ -22,6 +23,11 @@ public class BlockchainTestStreamingTracer : IBlockTracer, IDisposable
     private readonly TextWriter _output;
     private readonly GethTraceOptions _options;
     private GethLikeTxFileTracer? _currentTxTracer;
+
+    // Track metrics for test end marker
+    private int _transactionCount = 0;
+    private int _blockCount = 0;
+    private long _totalGasUsed = 0;
 
     public BlockchainTestStreamingTracer(GethTraceOptions options, TextWriter? output = null)
     {
@@ -57,7 +63,7 @@ public class BlockchainTestStreamingTracer : IBlockTracer, IDisposable
 
             // Write final summary line for this transaction
             using var stream = new MemoryStream();
-            using var writer = new Utf8JsonWriter(stream);
+            using var writer = new Utf8JsonWriter(stream, new JsonWriterOptions { Indented = false });
 
             writer.WriteStartObject();
             writer.WritePropertyName("output");
@@ -68,6 +74,10 @@ public class BlockchainTestStreamingTracer : IBlockTracer, IDisposable
 
             writer.Flush();
             _output.WriteLine(System.Text.Encoding.UTF8.GetString(stream.ToArray()));
+
+            // Track metrics for end marker
+            _transactionCount++;
+            _totalGasUsed += trace.Gas;
         }
         finally
         {
@@ -77,8 +87,57 @@ public class BlockchainTestStreamingTracer : IBlockTracer, IDisposable
 
     public void EndBlockTrace()
     {
-        // No-op: we don't separate blocks in the output
-        // All transactions are written continuously to stderr
+        // Track block count for end marker
+        _blockCount++;
+    }
+
+    /// <summary>
+    /// Writes a JSONL-compliant test end marker to the trace stream.
+    /// This MUST be the last line written to stderr for the test.
+    /// Format: {"testEnd":{"name":"...","pass":bool,"fork":"...","v":1,...}}
+    /// </summary>
+    public void WriteTestEndMarker(string testName, bool pass, string fork, TimeSpan? duration = null, Hash256? finalStateRoot = null)
+    {
+        using var stream = new MemoryStream();
+        using var writer = new Utf8JsonWriter(stream, new JsonWriterOptions
+        {
+            Indented = false  // Critical: Single line for JSONL compliance
+        });
+
+        writer.WriteStartObject();
+        writer.WritePropertyName("testEnd");
+        writer.WriteStartObject();
+
+        // Required fields
+        writer.WriteString("name", testName);
+        writer.WriteBoolean("pass", pass);
+        writer.WriteString("fork", fork);
+        writer.WriteNumber("v", 1);
+
+        // Optional fields (only if available)
+        if (duration.HasValue)
+            writer.WriteNumber("d", Math.Round(duration.Value.TotalSeconds, 3));
+
+        if (_totalGasUsed > 0)
+            writer.WriteString("gasUsed", $"0x{_totalGasUsed:x}");
+
+        if (_transactionCount > 0)
+            writer.WriteNumber("txs", _transactionCount);
+
+        if (_blockCount > 0)
+            writer.WriteNumber("blocks", _blockCount);
+
+        if (finalStateRoot != null)
+            writer.WriteString("root", finalStateRoot.ToString());
+
+        writer.WriteEndObject(); // testEnd
+        writer.WriteEndObject(); // root
+
+        writer.Flush();
+
+        // Write single line with newline - MUST be last line in trace
+        _output.WriteLine(System.Text.Encoding.UTF8.GetString(stream.ToArray()));
+        _output.Flush(); // Critical: ensure written before process exit
     }
 
     private void WriteTraceEntry(GethTxFileTraceEntry entry)
@@ -86,7 +145,7 @@ public class BlockchainTestStreamingTracer : IBlockTracer, IDisposable
         if (entry is null) return;
 
         using var stream = new MemoryStream();
-        using var writer = new Utf8JsonWriter(stream);
+        using var writer = new Utf8JsonWriter(stream, new JsonWriterOptions { Indented = false });
 
         // Write trace entry (same format as GethLikeTxTraceJsonLinesConverter)
         writer.WriteStartObject();

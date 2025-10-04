@@ -227,17 +227,11 @@ public abstract class BlockchainTestBase
 
             parentHeader = correctRlp[i].Block.Header;
         }
-        }
 
         // NOTE: Tracer removal must happen AFTER StopAsync to ensure all blocks are traced
         // Blocks are queued asynchronously, so we need to wait for processing to complete
         await blockchainProcessor.StopAsync(true);
 
-        // Remove tracer after all processing is complete
-        if (tracer is not null)
-        {
-            blockchainProcessor.Tracers.Remove(tracer);
-        }
         stopwatch?.Stop();
 
         IBlockCachePreWarmer? preWarmer = container.Resolve<MainProcessingContext>().LifetimeScope.ResolveOptional<IBlockCachePreWarmer>();
@@ -254,14 +248,43 @@ public abstract class BlockchainTestBase
             differences = RunAssertions(test, blockTree.RetrieveHeadBlock(), stateProvider);
         }
 
+        bool testPassed = differences.Count == 0;
+
+        // Write test end marker if using streaming tracer (JSONL format)
+        // This must be done BEFORE removing tracer and BEFORE Assert to ensure marker is written even on failure
+        if (tracer != null)
+        {
+            // Use reflection to check if it's BlockchainTestStreamingTracer and call WriteTestEndMarker
+            var writeMarkerMethod = tracer.GetType().GetMethod("WriteTestEndMarker");
+            if (writeMarkerMethod != null)
+            {
+                writeMarkerMethod.Invoke(tracer, new object[]
+                {
+                    test.Name,
+                    testPassed,
+                    test.Network.ToString(),
+                    stopwatch?.Elapsed,
+                    headBlock?.StateRoot
+                });
+            }
+
+            blockchainProcessor.Tracers.Remove(tracer);
+        }
+
         Assert.That(differences.Count, Is.Zero, "differences");
 
         return new EthereumTestResult
         (
             test.Name,
             null,
-            differences.Count == 0
+            testPassed
         );
+        }
+        catch (Exception)
+        {
+            await blockchainProcessor.StopAsync(true);
+            throw;
+        }
     }
 
     private List<(Block Block, string ExpectedException)> DecodeRlps(BlockchainTest test, bool failOnInvalidRlp)
