@@ -3,15 +3,19 @@
 
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using System.Runtime.CompilerServices;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Extensions;
 using Nethermind.Evm.State;
 using Nethermind.Int256;
 using Nethermind.Logging;
+using Nethermind.Serialization.Rlp;
 using NonBlocking;
 using Prometheus;
+using Metrics = Prometheus.Metrics;
 
 namespace Nethermind.State.FlatCache;
 
@@ -206,6 +210,59 @@ public sealed class FlatCacheScopeProvider : IWorldStateScopeProvider, IPreBlock
     public bool IsWarmWorldState => ((IPreBlockCaches)_baseScopeProvider).IsWarmWorldState;
 }
 
-public readonly record struct Snapshot(StateId From, StateId To, Dictionary<Address, Account> Accounts, Dictionary<Address, StorageWrites> Storages);
+
+public readonly record struct LazySerializeSnapshot(
+    StateId From,
+    StateId To,
+    Dictionary<Address, byte[]> Accounts,
+    Dictionary<Address, StorageWrites> Storages)
+{
+    public Snapshot GetSnapshot()
+    {
+        Dictionary<Address, Account> accounts = new();
+        foreach (var keyValuePair in Accounts)
+        {
+            try
+            {
+                if (keyValuePair.Value == null || keyValuePair.Value.Length == 0)
+                {
+                    accounts[keyValuePair.Key] = null;
+                }
+                else
+                {
+                    accounts[keyValuePair.Key] = AccountDecoder.Instance.Decode(keyValuePair.Value);
+                }
+            }
+            catch (Exception ex)
+            {
+                Console.Error.WriteLine($"Error decoding {keyValuePair.Value?.ToHexString()}, {ex}");
+                throw;
+            }
+        }
+
+
+        return new Snapshot(
+            From, To,
+            accounts,
+            Storages
+        );
+    }
+}
+
+
+public readonly record struct Snapshot(
+    StateId From,
+    StateId To,
+    Dictionary<Address, Account> Accounts,
+    Dictionary<Address, StorageWrites> Storages)
+{
+    public LazySerializeSnapshot ToSerializeSnapshot() => new LazySerializeSnapshot(From, To, Accounts.ToDictionary(
+        (kv) => kv.Key,
+        (kv) =>
+        {
+            if (kv.Value is null) return null;
+            return AccountDecoder.Instance.Encode(kv.Value)?.Bytes;
+        }), Storages);
+}
 
 public record struct StorageWrites(Dictionary<UInt256, byte[]> Slots, bool HasSelfDestruct);

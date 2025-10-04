@@ -93,7 +93,10 @@ public class WorldStateModule(IInitConfig initConfig) : Module
 
         builder
             .AddSingleton<FlatCacheRepository>()
-            .AddDecorator<IWorldStateManager, FlatCacheWorldStateManager>();
+            .AddScoped<SnapshotsStore>()
+            .AddDatabase(DbNames.FlatCache)
+            .AddDecorator<IWorldStateManager, FlatCacheWorldStateManager>()
+            ;
     }
 
     // Just a wrapper to easily extract the output of `PruningTrieStateFactory` which do the actual initializations.

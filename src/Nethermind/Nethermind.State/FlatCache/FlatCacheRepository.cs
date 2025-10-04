@@ -4,7 +4,6 @@
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
-using System.Linq;
 using System.Threading;
 using System.Threading.Channels;
 using System.Threading.Tasks;
@@ -17,16 +16,13 @@ namespace Nethermind.State.FlatCache;
 
 public sealed class FlatCacheRepository
 {
-    private Lock _repoLock = new Lock();
+    private Lock _repoLock = new Lock(); // Note: lock is for proteccting in memory and compacted states only
     private readonly ICanonicalStateRootFinder _stateRootFinder;
     private Dictionary<StateId, Snapshot> _compactedKnownStates = new();
-    private Dictionary<StateId, Snapshot> _knownStates = new();
-    private SortedSet<StateId> _sortedKnownStates = new();
+    private InMemorySnapshotStore _inMemorySnapshotStore;
+    private SnapshotsStore _snapshotsStore;
     private IBigCache _bigCache;
 
-    // private ConcurrentBag<(StateId, StateId)> _usedRange = new ConcurrentBag<(StateId, StateId)>();
-
-    internal int KnownStatesCount => _knownStates.Count;
     private readonly int _maxStateInMemory;
 
     private Channel<StateId> _compactorJobs;
@@ -35,17 +31,23 @@ public sealed class FlatCacheRepository
     private ILogger _logger;
 
     public record Configuration(
-        int MaxStateInMemory = 1024 * 8,
+        int MaxStateInMemory = 1024 * 1024,
         int MaxInFlightCompactJob = 32,
         int CompactSize = 64,
         bool InlineCompaction = false
     );
 
-    public FlatCacheRepository(IProcessExitSource exitSource, PersistedBigCache bigCache, ICanonicalStateRootFinder stateRootFinder, ILogManager logManager, Configuration? config = null)
+    public FlatCacheRepository(
+        IProcessExitSource exitSource,
+        SnapshotsStore snapshotsStore,
+        ICanonicalStateRootFinder stateRootFinder,
+        ILogManager logManager,
+        Configuration? config = null)
     {
         if (config is null) config = new Configuration();
         _maxStateInMemory = config.MaxStateInMemory;
-        // _bigCache = bigCache;
+        _inMemorySnapshotStore = new InMemorySnapshotStore();
+        _snapshotsStore = snapshotsStore;
         _bigCache = new BigCache();
         _compactSize = config.CompactSize;
         _inlineCompaction = config.InlineCompaction;
@@ -53,8 +55,38 @@ public sealed class FlatCacheRepository
         _logger = logManager.GetClassLogger<FlatCacheRepository>();
 
         _compactorJobs = Channel.CreateBounded<StateId>(config.MaxInFlightCompactJob);
+        WarmUp();
 
         _ = RunCompactor(exitSource.Token);
+    }
+
+    private void WarmUp()
+    {
+        _logger.Info($"Warming up here");
+
+        StateId? lastState;
+        using (_repoLock.EnterScope())
+        {
+            lastState = _snapshotsStore.GetLast();
+        }
+
+        if (lastState == null)
+        {
+            _logger.Info("No persisted snapshot");
+            return;
+        }
+
+        while (lastState.Value.blockNumber - _bigCache.CurrentBlockNumber >= _maxStateInMemory)
+        {
+            AddToBigCache();
+        }
+
+        foreach (var stateId in _snapshotsStore.GetKeysBetween(_bigCache.CurrentBlockNumber, long.MaxValue))
+        {
+            _snapshotsStore.TryGetValue(stateId, out var snapshot);
+            _inMemorySnapshotStore.AddBlock(stateId, snapshot);
+            CompactLevel(stateId);
+        }
     }
 
     private async Task RunCompactor(CancellationToken cancellationToken)
@@ -63,7 +95,8 @@ public sealed class FlatCacheRepository
         {
             try
             {
-                await NotifyWhenSlow($"compact {stateId}", () => CompactLevel(stateId));
+                PersistLevel(stateId);
+                CompactLevel(stateId);
                 await CleanIfNeeded();
             }
             catch (Exception ex)
@@ -76,7 +109,18 @@ public sealed class FlatCacheRepository
 
     private async Task NotifyWhenSlow(string name, Action closure)
     {
-        Task jobTask = Task.Run(closure);
+        Task jobTask = Task.Run(() =>
+        {
+            try
+            {
+                closure();
+            }
+            catch (Exception ex)
+            {
+                _logger.Error($"job {name} failed", ex);
+                throw;
+            }
+        });
         Task waiterTask = Task.Run(async () =>
         {
             Stopwatch sw = Stopwatch.StartNew();
@@ -93,8 +137,28 @@ public sealed class FlatCacheRepository
 
     private void RunCompactJob(StateId stateId)
     {
+        PersistLevel(stateId);
         CompactLevel(stateId);
         CleanIfNeeded().Wait();
+    }
+
+    private void PersistLevel(StateId stateId)
+    {
+        try
+        {
+            Snapshot snapshot;
+            using (_repoLock.EnterScope())
+            {
+                _inMemorySnapshotStore.TryGetValue(stateId, out snapshot);
+            }
+
+            _snapshotsStore.AddBlock(stateId, snapshot);
+        }
+        catch (Exception ex)
+        {
+            _logger.Info($"Persisting {stateId} ex {ex}");
+            throw;
+        }
     }
 
     private void CompactLevel(StateId stateId)
@@ -114,6 +178,7 @@ public sealed class FlatCacheRepository
 
             using (_repoLock.EnterScope())
             {
+                if (_logger.IsDebug) _logger.Debug($"Compacted {gatheredCache.SnapshotCount} to {stateId}");
                 _compactedKnownStates[stateId] = snapshot;
             }
 
@@ -129,30 +194,25 @@ public sealed class FlatCacheRepository
     {
         using var _ = _repoLock.EnterScope();
 
-        ArrayPoolList<Snapshot> knownStates = new(_knownStates.Count / 32);
+        ArrayPoolList<Snapshot> knownStates = new(_inMemorySnapshotStore.KnownStatesCount / 32);
 
         if (_logger.IsTrace) _logger.Trace($"Gathering {baseBlock}. Earliest is {earliestBlockNumber}");
 
         StateId current = baseBlock;
-
-        int tryCount = 0;
-
-        while(_compactedKnownStates.TryGetValue(current, out var entry) || _knownStates.TryGetValue(current, out entry))
+        while(_compactedKnownStates.TryGetValue(current, out var entry) || _inMemorySnapshotStore.TryGetValue(current, out entry))
         {
             Snapshot state = entry;
             if (_logger.IsTrace) _logger.Trace($"Got {state.From} -> {state.To}");
             knownStates.Add(state);
             if (current.blockNumber == earliestBlockNumber) break;
-            if (current.blockNumber <= _bigCache.CurrentBlockNumber) break;
+            if (current.blockNumber < _bigCache.CurrentBlockNumber) break;
             if (state.From == current) break; // Some test commit two block with the same id, so we dont know the parent anymore.
             current = state.From;
-            tryCount++;
-            if (tryCount > 100000) throw new Exception("Many try 1");
         }
 
         knownStates.Reverse();
 
-        if (_logger.IsTrace) _logger.Trace($"Gathered {baseBlock}. Earliest is {earliestBlockNumber}, Got {knownStates.Count} known states");
+        if (_logger.IsTrace) _logger.Trace($"Gathered {baseBlock}. Earliest is {earliestBlockNumber}, Got {knownStates.Count} known states, {_bigCache.CurrentBlockNumber}");
         return new SnapshotBundle(knownStates, _bigCache);
     }
 
@@ -160,16 +220,12 @@ public sealed class FlatCacheRepository
     {
         using (_repoLock.EnterScope())
         {
-            if (snapshot.Storages is null) throw new Exception("No null storages pplease");
-
-
             if (_logger.IsTrace) _logger.Trace($"Registering {startingBlock.blockNumber} to {endBlock.blockNumber}");
             if (endBlock.blockNumber <= _bigCache.CurrentBlockNumber)
                 throw new InvalidOperationException(
                     $"Cannot register snapshot earlier than bigcache. Snapshot number {endBlock.blockNumber}, bigcache number: {_bigCache.CurrentBlockNumber}");
 
-            _knownStates[endBlock] = snapshot;
-            _sortedKnownStates.Add(endBlock);
+            _inMemorySnapshotStore.AddBlock(endBlock, snapshot);
         }
 
         if (_inlineCompaction)
@@ -180,6 +236,7 @@ public sealed class FlatCacheRepository
         {
             if (!_compactorJobs.Writer.TryWrite(endBlock))
             {
+                _logger.Warn("Compactor job stall!");
                 _compactorJobs.Writer.WriteAsync(endBlock).AsTask().Wait();
             }
         }
@@ -194,54 +251,49 @@ public sealed class FlatCacheRepository
 
     private void SubtractFromBigCache()
     {
-        int tryCount = 0;
-        while(_knownStates.Count > _maxStateInMemory)
+        while(_bigCache.SnapshotCount > _maxStateInMemory)
         {
-            tryCount++;
-            if (tryCount > 100000) throw new Exception("Many try 3");
-
             StateId firstKey;
             Snapshot snapshot;
 
-            using (_repoLock.EnterScope())
-            {
-                firstKey = _sortedKnownStates.First();
-                snapshot = _knownStates[firstKey];
-            }
+            long sw = Stopwatch.GetTimestamp();
+            firstKey = _snapshotsStore.GetFirstEqualOrAfter(long.Max(0, _bigCache.CurrentBlockNumber - _maxStateInMemory)).Value;
+            SnapshotsStore._snapshotTimes.WithLabels("get_first").Inc(Stopwatch.GetTimestamp() - sw);
+            sw = Stopwatch.GetTimestamp();
+
+            _snapshotsStore.TryGetValue(firstKey, out snapshot);
+            SnapshotsStore._snapshotTimes.WithLabels("get_total").Inc(Stopwatch.GetTimestamp() - sw);
+            sw = Stopwatch.GetTimestamp();
 
             _bigCache.Subtract(firstKey, snapshot);
+            SnapshotsStore._snapshotTimes.WithLabels("subtract").Inc(Stopwatch.GetTimestamp() - sw);
+            sw = Stopwatch.GetTimestamp();
 
-            using (_repoLock.EnterScope())
-            {
-                _knownStates.Remove(firstKey);
-                _sortedKnownStates.Remove(firstKey);
-                _compactedKnownStates.Remove(firstKey);
-            }
+            _snapshotsStore.Remove(firstKey);
+            _compactedKnownStates.Remove(firstKey);
+
+            SnapshotsStore._snapshotTimes.WithLabels("remove").Inc(Stopwatch.GetTimestamp() - sw);
         }
     }
 
     private void AddToBigCache()
     {
         // Attempt to add snapshots into bigcache
-        int tryCount = 0;
         while (true)
         {
-            tryCount++;
-            if (tryCount > 100000) throw new Exception("Many try 2");
-
             Snapshot pickedState;
             StateId? pickedSnapshot = null;
             using (_repoLock.EnterScope())
             {
-                if (_knownStates.Count - _bigCache.SnapshotCount <= _boundary)
+                long lastSnapshotNumber = _snapshotsStore.GetLast()?.blockNumber ?? 0;
+                if (lastSnapshotNumber - _bigCache.CurrentBlockNumber <= _boundary)
                 {
                     break;
                 }
-                var toAddCandidate = _sortedKnownStates.GetViewBetween(new StateId(_bigCache.CurrentBlockNumber + 1, ValueKeccak.Zero), new StateId(long.MaxValue, ValueKeccak.Zero));
 
                 List<StateId> candidateToAdd = new List<StateId>();
                 long? blockNumber = null;
-                foreach (var stateId in toAddCandidate)
+                foreach (var stateId in _snapshotsStore.GetStatesAfterBlock(_bigCache.CurrentBlockNumber))
                 {
                     if (blockNumber is null)
                     {
@@ -288,15 +340,31 @@ public sealed class FlatCacheRepository
                     return;
                 }
 
-                // TODO: Need to make sure no processing is using other branch at this point
-                pickedState = _knownStates[pickedSnapshot.Value];
+                // Remove non-canon snapshots
+                using (_repoLock.EnterScope())
+                {
+                    foreach (var stateId in candidateToAdd)
+                    {
+                        if (stateId != pickedSnapshot)
+                        {
+                            _snapshotsStore.Remove(stateId);
+                            _compactedKnownStates.Remove(stateId);
+                            _inMemorySnapshotStore.Remove(stateId);
+                        }
+                    }
+                }
+
+                _inMemorySnapshotStore.TryGetValue(pickedSnapshot.Value, out pickedState);
             }
 
+            // Add the canon snapshot
             _bigCache.Add(pickedSnapshot.Value, pickedState);
 
+            // And we remove it from the in memory snapshot, but not the persisted one
             using (_repoLock.EnterScope())
             {
                 _compactedKnownStates.Remove(pickedSnapshot.Value);
+                _inMemorySnapshotStore.Remove(pickedSnapshot.Value);
             }
         }
     }
