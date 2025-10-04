@@ -426,7 +426,7 @@ public class ProofRpcModuleTests
             .PushData("0x20")
             .PushData("0x00")
             .PushData("0x00")
-            .PushData(Address.SystemUser)
+            .PushData(Address.Zero)
             .Op(Instruction.EXTCODECOPY)
             .Done;
         CallResultWithProof result = await TestCallWithCode(code);
@@ -448,7 +448,7 @@ public class ProofRpcModuleTests
     public async Task Can_call_with_extcodesize_to_system_account()
     {
         byte[] code = Prepare.EvmCode
-            .PushData(Address.SystemUser)
+            .PushData(Address.Zero)
             .Op(Instruction.EXTCODESIZE)
             .Done;
         CallResultWithProof result = await TestCallWithCode(code);
@@ -472,7 +472,7 @@ public class ProofRpcModuleTests
     {
         _specProvider.NextForkSpec = MuirGlacier.Instance;
         byte[] code = Prepare.EvmCode
-            .PushData(Address.SystemUser)
+            .PushData(Address.Zero)
             .Op(Instruction.EXTCODEHASH)
             .Done;
         CallResultWithProof result = await TestCallWithCode(code);
@@ -520,7 +520,7 @@ public class ProofRpcModuleTests
     {
         _specProvider.NextForkSpec = MuirGlacier.Instance;
         byte[] code = Prepare.EvmCode
-            .PushData(Address.SystemUser)
+            .PushData(Address.Zero)
             .Op(Instruction.BALANCE)
             .Done;
         CallResultWithProof result = await TestCallWithCode(code);
@@ -537,7 +537,7 @@ public class ProofRpcModuleTests
             .PushData(0)
             .PushData(0)
             .PushData(0)
-            .PushData(Address.SystemUser)
+            .PushData(Address.Zero)
             .PushData(1000000)
             .Op(Instruction.CALL)
             .Done;
@@ -554,7 +554,7 @@ public class ProofRpcModuleTests
             .PushData(0)
             .PushData(0)
             .PushData(0)
-            .PushData(Address.SystemUser)
+            .PushData(Address.Zero)
             .PushData(1000000)
             .Op(Instruction.STATICCALL)
             .Done;
@@ -571,7 +571,7 @@ public class ProofRpcModuleTests
             .PushData(0)
             .PushData(0)
             .PushData(0)
-            .PushData(Address.SystemUser)
+            .PushData(Address.Zero)
             .PushData(1000000)
             .Op(Instruction.DELEGATECALL)
             .Done;
@@ -589,7 +589,7 @@ public class ProofRpcModuleTests
             .PushData(0)
             .PushData(0)
             .PushData(1)
-            .PushData(Address.SystemUser)
+            .PushData(Address.Zero)
             .PushData(1000000)
             .Op(Instruction.CALL)
             .Done;
@@ -685,7 +685,7 @@ public class ProofRpcModuleTests
     {
         _specProvider.NextForkSpec = MuirGlacier.Instance;
         byte[] code = Prepare.EvmCode
-            .PushData(Address.SystemUser)
+            .PushData(Address.Zero)
             .Op(Instruction.SELFDESTRUCT)
             .Done;
         CallResultWithProof result = await TestCallWithCode(code);
@@ -910,7 +910,7 @@ public class ProofRpcModuleTests
 
         if (_createSystemAccount)
         {
-            AddAccount(stateProvider, Address.SystemUser, 1.Ether());
+            AddAccount(stateProvider, Address.Zero, 1.Ether());
         }
 
         stateProvider.CommitTree(0);
