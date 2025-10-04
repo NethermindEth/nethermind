@@ -123,23 +123,31 @@ namespace Nethermind.Network
             ISession session = (ISession)sender;
             session.Initialized -= SessionInitialized;
             session.Disconnected -= SessionDisconnected;
+            _sessions.TryRemove(session.SessionId, out _);
 
-            if (_syncPeers.TryRemove(session.SessionId, out var removed))
+            if (_logger.IsDebug && session.BestStateReached == SessionState.Initialized)
             {
-                _syncPool.RemovePeer(removed);
-                _txPool.RemovePeer(removed.Node.Id);
-                if (session.BestStateReached == SessionState.Initialized)
-                {
-                    if (_logger.IsDebug) _logger.Debug($"{session.Direction} {session.Node:s} disconnected {e.DisconnectType} {e.DisconnectReason} {e.Details}");
-                }
+                _logger.Debug($"{session.Direction} {session.Node:s} disconnected {e.DisconnectType} {e.DisconnectReason} {e.Details}");
             }
 
-            if (_hangingSatelliteProtocols.TryGetValue(session.Node, out var registrations))
+            if (_hangingSatelliteProtocols.TryGetValue(session.Node, out ConcurrentDictionary<Guid, ProtocolHandlerBase>? registrations) && registrations is not null)
             {
                 registrations.TryRemove(session.SessionId, out _);
             }
 
-            _sessions.TryRemove(session.SessionId, out session);
+            if (_syncPeers.TryRemove(session.SessionId, out SyncPeerProtocolHandlerBase? removed) && removed is not null)
+            {
+                _syncPool.RemovePeer(removed);
+                if (removed.Node?.Id is not null)
+                {
+                    _txPool.RemovePeer(removed.Node.Id);
+                }
+            }
+
+            if (session.Node?.Id is not null)
+            {
+                _txPool.RemovePeer(session.Node.Id);
+            }
         }
 
         private void SessionInitialized(object sender, EventArgs e)
