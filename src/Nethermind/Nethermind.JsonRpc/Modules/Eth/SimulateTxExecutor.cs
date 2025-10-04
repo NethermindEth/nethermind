@@ -55,8 +55,6 @@ public class SimulateTxExecutor<TTrace>(IBlockchainBridge blockchainBridge, IBlo
 
                         Transaction tx = callTransactionModel.ToTransaction();
 
-                        // The RPC set SystemUser as default, but we want to set it to zero to follow hive test.
-                        if (tx.SenderAddress == Address.SystemUser) tx.SenderAddress = Address.Zero;
                         tx.ChainId = _blockchainBridge.GetChainId();
 
                         TransactionWithSourceDetails? result = new()

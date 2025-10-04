@@ -97,7 +97,7 @@ public class LegacyTransactionForRpc : TransactionForRpc, ITxTyped, IFromTransac
         tx.Data = Input;
         tx.GasPrice = GasPrice ?? 0;
         tx.ChainId = ChainId;
-        tx.SenderAddress = From ?? Address.SystemUser;
+        tx.SenderAddress = From ?? Address.Zero;
         if ((R != 0 || S != 0) && (R is not null || S is not null))
         {
             ulong v;
@@ -129,7 +129,7 @@ public class LegacyTransactionForRpc : TransactionForRpc, ITxTyped, IFromTransac
             ? gasCap
             : Math.Min(gasCap.Value, Gas.Value);
 
-        From ??= Address.SystemUser;
+        From ??= Address.Zero;
     }
 
     public override bool ShouldSetBaseFee() => GasPrice.IsPositive();
