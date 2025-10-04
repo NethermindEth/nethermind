@@ -7,6 +7,7 @@ using Nethermind.Specs;
 using System.Collections.Generic;
 
 namespace Nethermind.Xdc.Spec;
+
 public class XdcReleaseSpec : ReleaseSpec, IXdcReleaseSpec
 {
     public int EpochLength { get; set; }

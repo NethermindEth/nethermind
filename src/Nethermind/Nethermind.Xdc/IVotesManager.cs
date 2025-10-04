@@ -9,6 +9,7 @@ using System.Text;
 using System.Threading.Tasks;
 
 namespace Nethermind.Xdc;
+
 internal interface IVotesManager
 {
     Task CastVote(BlockRoundInfo blockInfo);

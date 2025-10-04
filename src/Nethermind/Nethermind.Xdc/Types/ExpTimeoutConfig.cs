@@ -8,6 +8,7 @@ using System.Text.Json.Serialization;
 using System.Threading.Tasks;
 
 namespace Nethermind.Xdc.Types;
+
 public class ExpTimeoutConfig(int @base, byte maxExponent)
 {
     public int Base { get; set; } = @base;

@@ -7,6 +7,7 @@ using Nethermind.Core.Crypto;
 using Nethermind.Int256;
 using Nethermind.Serialization.Rlp;
 namespace Nethermind.Xdc;
+
 public sealed class XdcHeaderDecoder : IHeaderDecoder
 {
     private const int NonceLength = 8;

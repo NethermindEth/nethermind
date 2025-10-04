@@ -14,6 +14,7 @@ using System.Linq;
 using Nethermind.Core.Crypto;
 
 namespace Nethermind.Consensus.Test;
+
 [TestFixture]
 public class RecoverSignaturesTest
 {

@@ -15,12 +15,13 @@ using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Http.Features;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Hosting.Internal;
 using Nethermind.Logging;
 
 namespace Nethermind.Runner.JsonRpc;
 
-internal sealed partial class WebHost : IWebHost, IAsyncDisposable
+internal sealed partial class WebHost : IHost, IAsyncDisposable
 {
     private ApplicationLifetime? _applicationLifetime;
     private readonly IConfiguration _config;

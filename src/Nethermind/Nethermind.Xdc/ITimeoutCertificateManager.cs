@@ -10,6 +10,7 @@ using System.Text;
 using System.Threading.Tasks;
 
 namespace Nethermind.Xdc;
+
 internal interface ITimeoutCertificateManager
 {
     void HandleTimeout(Timeout timeout);

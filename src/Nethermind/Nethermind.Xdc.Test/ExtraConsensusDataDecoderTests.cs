@@ -10,6 +10,7 @@ using Nethermind.Xdc.Types;
 using NUnit.Framework;
 
 namespace Nethermind.Xdc.Test;
+
 internal class ExtraConsensusDataDecoderTests
 {
     [TestCase("0xec01eae5a02671d34ee512c8a06f194dca9801ecfa8eb6a3590d1b73e50666b07f53b8958180820384c08201c2")]
