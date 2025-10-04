@@ -69,6 +69,21 @@ namespace Nethermind.Core
         void Remove(ReadOnlySpan<byte> key) => Set(key, null);
     }
 
+    public interface ISortedKeyValueStore : IKeyValueStore
+    {
+        byte[]? FirstKey { get; }
+        byte[]? LastKey { get; }
+
+        ISortedView GetViewBetween(byte[] firstKey, byte[] lastKey);
+    }
+
+    public interface ISortedView: IDisposable
+    {
+        public bool MoveNext();
+        public ReadOnlySpan<byte> CurrentKey { get; }
+        public ReadOnlySpan<byte> CurrentValue { get; }
+    }
+
     [Flags]
     public enum ReadFlags
     {

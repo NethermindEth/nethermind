@@ -29,7 +29,7 @@ using IWriteBatch = Nethermind.Core.IWriteBatch;
 
 namespace Nethermind.Db.Rocks;
 
-public partial class DbOnTheRocks : IDb, ITunableDb, IReadOnlyNativeKeyValueStore
+public partial class DbOnTheRocks : IDb, ITunableDb, IReadOnlyNativeKeyValueStore, ISortedKeyValueStore
 {
     protected ILogger _logger;
 
@@ -1804,5 +1804,68 @@ public partial class DbOnTheRocks : IDb, ITunableDb, IReadOnlyNativeKeyValueStor
                 Interlocked.Exchange(ref Iterator, null)?.Dispose();
             }
         }
+    }
+
+    public byte[]? FirstKey
+    {
+        get
+        {
+            using Iterator iterator = _db.NewIterator();
+            iterator.SeekToFirst();
+            return iterator.Valid() ? iterator.GetKeySpan().ToArray() : null;
+        }
+    }
+
+    public byte[]? LastKey
+    {
+        get
+        {
+            using Iterator iterator = _db.NewIterator();
+            iterator.SeekToLast();
+            return iterator.Valid() ? iterator.GetKeySpan().ToArray() : null;
+        }
+    }
+
+    public ISortedView GetViewBetween(byte[] firstKey, byte[] lastKey)
+    {
+        ReadOptions readOptions = new ReadOptions();
+        readOptions.SetIterateLowerBound(firstKey);
+        readOptions.SetIterateUpperBound(lastKey);
+
+        Iterator iterator = _db.NewIterator(cf: null, readOptions);
+        return new RocksdbSortedView(iterator);
+    }
+
+    private class RocksdbSortedView : ISortedView
+    {
+        private readonly Iterator _iterator;
+        private bool _started = false;
+
+        public RocksdbSortedView(Iterator iterator)
+        {
+            _iterator = iterator;
+        }
+
+        public void Dispose()
+        {
+            _iterator.Dispose();
+        }
+
+        public bool MoveNext()
+        {
+            if (!_started)
+            {
+                _iterator.SeekToFirst();
+                _started = true;
+            }
+            else
+            {
+                _iterator.Next();
+            }
+            return _iterator.Valid();
+        }
+
+        public ReadOnlySpan<byte> CurrentKey => _iterator.GetKeySpan();
+        public ReadOnlySpan<byte> CurrentValue => _iterator.GetValueSpan();
     }
 }
