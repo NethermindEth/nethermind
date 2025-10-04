@@ -729,27 +729,36 @@ namespace Nethermind.Core.Crypto
                 _ = state[24];
             }
 
+            ref ulong stateRef = ref MemoryMarshal.GetReference(state);
             // Can straight load and over-read for start elements
             Vector512<ulong> mask = Vector512.Create(ulong.MaxValue, ulong.MaxValue, ulong.MaxValue, ulong.MaxValue, ulong.MaxValue, 0UL, 0UL, 0UL);
-            Vector512<ulong> c0 = Unsafe.As<ulong, Vector512<ulong>>(ref MemoryMarshal.GetReference(state));
+            Vector512<ulong> c0 = Unsafe.As<ulong, Vector512<ulong>>(ref stateRef);
             // Clear the over-read values from first vectors
             c0 = Vector512.BitwiseAnd(mask, c0);
-            Vector512<ulong> c1 = Unsafe.As<ulong, Vector512<ulong>>(ref Unsafe.Add(ref MemoryMarshal.GetReference(state), 5));
+            Vector512<ulong> c1 = Unsafe.As<ulong, Vector512<ulong>>(ref Unsafe.Add(ref stateRef, 5));
             c1 = Vector512.BitwiseAnd(mask, c1);
-            Vector512<ulong> c2 = Unsafe.As<ulong, Vector512<ulong>>(ref Unsafe.Add(ref MemoryMarshal.GetReference(state), 10));
+            Vector512<ulong> c2 = Unsafe.As<ulong, Vector512<ulong>>(ref Unsafe.Add(ref stateRef, 10));
             c2 = Vector512.BitwiseAnd(mask, c2);
-            Vector512<ulong> c3 = Unsafe.As<ulong, Vector512<ulong>>(ref Unsafe.Add(ref MemoryMarshal.GetReference(state), 15));
+            Vector512<ulong> c3 = Unsafe.As<ulong, Vector512<ulong>>(ref Unsafe.Add(ref stateRef, 15));
             c3 = Vector512.BitwiseAnd(mask, c3);
 
             // Can't over-read for the last elements (8 items in vector 5 to be remaining)
             // so read a Vector256 and ulong then combine
-            Vector256<ulong> c4a = Unsafe.As<ulong, Vector256<ulong>>(ref Unsafe.Add(ref MemoryMarshal.GetReference(state), 20));
-            Vector256<ulong> c4b = Vector256.Create(state[24], 0UL, 0UL, 0UL);
+            Vector256<ulong> c4a = Unsafe.As<ulong, Vector256<ulong>>(ref Unsafe.Add(ref stateRef, 20));
+            Vector256<ulong> c4b = Vector256.Create(Unsafe.Add(ref stateRef, 24), 0UL, 0UL, 0UL);
             Vector512<ulong> c4 = Vector512.Create(c4a, c4b);
 
-            Vector512<ulong> permute1 = Vector512.Create(1UL, 2UL, 3UL, 4UL, 0UL, 5UL, 6UL, 7UL);
-            Vector512<ulong> permute2 = Vector512.Create(2UL, 3UL, 4UL, 0UL, 1UL, 5UL, 6UL, 7UL);
-            Vector512<ulong> thetaIdxRot4 = Vector512.Create(4UL, 0UL, 1UL, 2UL, 3UL, 5UL, 6UL, 7UL);
+            // Hoisted, reused permutes - now from readonly fields
+            Vector512<ulong> permute1 = Permute1;
+            Vector512<ulong> permute2 = Permute2;
+            Vector512<ulong> thetaIdxRot4 = ThetaIdxRot4;
+
+            // Hoisted rho vectors - from readonly fields to avoid pre-spill before GC-static probe
+            Vector512<ulong> rhoVec0 = RhoVec0;
+            Vector512<ulong> rhoVec1 = RhoVec1;
+            Vector512<ulong> rhoVec2 = RhoVec2;
+            Vector512<ulong> rhoVec3 = RhoVec3;
+            Vector512<ulong> rhoVec4 = RhoVec4;
 
             // Use constant for loop so Jit expects to loop; unroll once
             for (int round = 0; round < ROUNDS; round += 2)
@@ -759,7 +768,7 @@ namespace Nethermind.Core.Crypto
                     // Theta step
                     Vector512<ulong> parity = Avx512F.TernaryLogic(Avx512F.TernaryLogic(c0, c1, c2, 0x96), c3, c4, 0x96);
 
-                    // Compute Theta
+                    // Compute Theta (reuse permutes)
                     Vector512<ulong> bVecRot1Rotated = Avx512F.RotateLeft(Avx512F.PermuteVar8x64(parity, permute1), 1);
                     Vector512<ulong> bVecRot4 = Avx512F.PermuteVar8x64(parity, thetaIdxRot4);
                     Vector512<ulong> theta = Avx512F.Xor(bVecRot4, bVecRot1Rotated);
@@ -771,19 +780,10 @@ namespace Nethermind.Core.Crypto
                     c4 = Avx512F.Xor(c4, theta);
 
                     // Rho step
-                    Vector512<ulong> rhoVec0 = Vector512.Create(0UL, 1UL, 62UL, 28UL, 27UL, 0UL, 0UL, 0UL);
                     c0 = Avx512F.RotateLeftVariable(c0, rhoVec0);
-
-                    Vector512<ulong> rhoVec1 = Vector512.Create(36UL, 44UL, 6UL, 55UL, 20UL, 0UL, 0UL, 0UL);
                     c1 = Avx512F.RotateLeftVariable(c1, rhoVec1);
-
-                    Vector512<ulong> rhoVec2 = Vector512.Create(3UL, 10UL, 43UL, 25UL, 39UL, 0UL, 0UL, 0UL);
                     c2 = Avx512F.RotateLeftVariable(c2, rhoVec2);
-
-                    Vector512<ulong> rhoVec3 = Vector512.Create(41UL, 45UL, 15UL, 21UL, 8UL, 0UL, 0UL, 0UL);
                     c3 = Avx512F.RotateLeftVariable(c3, rhoVec3);
-
-                    Vector512<ulong> rhoVec4 = Vector512.Create(18UL, 2UL, 61UL, 56UL, 14UL, 0UL, 0UL, 0UL);
                     c4 = Avx512F.RotateLeftVariable(c4, rhoVec4);
 
                     // Pi step
@@ -844,19 +844,10 @@ namespace Nethermind.Core.Crypto
                     c4 = Avx512F.Xor(c4, theta);
 
                     // Rho step
-                    Vector512<ulong> rhoVec0 = Vector512.Create(0UL, 1UL, 62UL, 28UL, 27UL, 0UL, 0UL, 0UL);
                     c0 = Avx512F.RotateLeftVariable(c0, rhoVec0);
-
-                    Vector512<ulong> rhoVec1 = Vector512.Create(36UL, 44UL, 6UL, 55UL, 20UL, 0UL, 0UL, 0UL);
                     c1 = Avx512F.RotateLeftVariable(c1, rhoVec1);
-
-                    Vector512<ulong> rhoVec2 = Vector512.Create(3UL, 10UL, 43UL, 25UL, 39UL, 0UL, 0UL, 0UL);
                     c2 = Avx512F.RotateLeftVariable(c2, rhoVec2);
-
-                    Vector512<ulong> rhoVec3 = Vector512.Create(41UL, 45UL, 15UL, 21UL, 8UL, 0UL, 0UL, 0UL);
                     c3 = Avx512F.RotateLeftVariable(c3, rhoVec3);
-
-                    Vector512<ulong> rhoVec4 = Vector512.Create(18UL, 2UL, 61UL, 56UL, 14UL, 0UL, 0UL, 0UL);
                     c4 = Avx512F.RotateLeftVariable(c4, rhoVec4);
 
                     // Pi step
@@ -903,14 +894,25 @@ namespace Nethermind.Core.Crypto
             }
 
             // Can over-write for first elements
-            Unsafe.As<ulong, Vector512<ulong>>(ref MemoryMarshal.GetReference(state)) = c0;
-            Unsafe.As<ulong, Vector512<ulong>>(ref Unsafe.Add(ref MemoryMarshal.GetReference(state), 5)) = c1;
-            Unsafe.As<ulong, Vector512<ulong>>(ref Unsafe.Add(ref MemoryMarshal.GetReference(state), 10)) = c2;
-            Unsafe.As<ulong, Vector512<ulong>>(ref Unsafe.Add(ref MemoryMarshal.GetReference(state), 15)) = c3;
-            // Can't over-write for last elements so write the upper Vector256 and then ulong
-            Unsafe.As<ulong, Vector256<ulong>>(ref Unsafe.Add(ref MemoryMarshal.GetReference(state), 20)) = c4.GetLower();
-            state[24] = c4.GetElement(4);
+            Unsafe.As<ulong, Vector512<ulong>>(ref stateRef) = c0;
+            Unsafe.As<ulong, Vector512<ulong>>(ref Unsafe.Add(ref stateRef, 5)) = c1;
+            Unsafe.As<ulong, Vector512<ulong>>(ref Unsafe.Add(ref stateRef, 10)) = c2;
+            Unsafe.As<ulong, Vector512<ulong>>(ref Unsafe.Add(ref stateRef, 15)) = c3;
+
+            // Tail - 256-bit for 20..23, scalar for 24 (avoid overrun)
+            Unsafe.As<ulong, Vector256<ulong>>(ref Unsafe.Add(ref stateRef, 20)) = c4.GetLower();
+            Unsafe.Add(ref stateRef, 24) = c4.GetElement(4);
         }
+
+        // Small constants as static readonly so the JIT won't pre-spill them
+        private static readonly Vector512<ulong> Permute1 = Vector512.Create(1UL, 2UL, 3UL, 4UL, 0UL, 5UL, 6UL, 7UL);
+        private static readonly Vector512<ulong> Permute2 = Vector512.Create(2UL, 3UL, 4UL, 0UL, 1UL, 5UL, 6UL, 7UL);
+        private static readonly Vector512<ulong> ThetaIdxRot4 = Vector512.Create(4UL, 0UL, 1UL, 2UL, 3UL, 5UL, 6UL, 7UL);
+        private static readonly Vector512<ulong> RhoVec0 = Vector512.Create(0UL, 1UL, 62UL, 28UL, 27UL, 0UL, 0UL, 0UL);
+        private static readonly Vector512<ulong> RhoVec1 = Vector512.Create(36UL, 44UL, 6UL, 55UL, 20UL, 0UL, 0UL, 0UL);
+        private static readonly Vector512<ulong> RhoVec2 = Vector512.Create(3UL, 10UL, 43UL, 25UL, 39UL, 0UL, 0UL, 0UL);
+        private static readonly Vector512<ulong> RhoVec3 = Vector512.Create(41UL, 45UL, 15UL, 21UL, 8UL, 0UL, 0UL, 0UL);
+        private static readonly Vector512<ulong> RhoVec4 = Vector512.Create(18UL, 2UL, 61UL, 56UL, 14UL, 0UL, 0UL, 0UL);
 
         private static readonly Vector512<ulong>[] IotaVec = CreateIotaVectors();
 
