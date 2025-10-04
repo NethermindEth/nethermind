@@ -25,17 +25,19 @@ public sealed class SimulateTxMutatorTracer : TxTracer, ITxLogsMutator
     private static readonly Address Erc20Sender = new("0xeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee");
     private readonly Hash256 _currentBlockHash;
     private readonly ulong _currentBlockNumber;
+    private readonly ulong _currentBlockTimestamp;
     private readonly ulong _txIndex;
     private ICollection<LogEntry>? _logsToMutate;
     private readonly Transaction _tx;
 
     public SimulateTxMutatorTracer(bool isTracingTransfers, Transaction tx, ulong currentBlockNumber, Hash256 currentBlockHash,
-        ulong txIndex)
+        ulong currentBlockTimestamp, ulong txIndex)
     {
         // Note: Tx hash will be mutated as tx is modified while processing block
         _tx = tx;
         _currentBlockNumber = currentBlockNumber;
         _currentBlockHash = currentBlockHash;
+        _currentBlockTimestamp = currentBlockTimestamp;
         _txIndex = txIndex;
         IsTracingReceipt = true;
         IsTracingActions = IsMutatingLogs = isTracingTransfers;
@@ -74,7 +76,8 @@ public sealed class SimulateTxMutatorTracer : TxTracer, ITxLogsMutator
                 TransactionHash = _tx.Hash!,
                 TransactionIndex = _txIndex,
                 BlockHash = _currentBlockHash,
-                BlockNumber = _currentBlockNumber
+                BlockNumber = _currentBlockNumber,
+                BlockTimestamp = _currentBlockTimestamp
             }).ToList()
         };
     }
