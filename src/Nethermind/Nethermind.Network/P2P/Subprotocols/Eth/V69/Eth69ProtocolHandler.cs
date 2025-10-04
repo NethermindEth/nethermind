@@ -4,11 +4,12 @@
 using System;
 using System.Threading;
 using System.Threading.Tasks;
+using Nethermind.Blockchain.Find;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Consensus;
 using Nethermind.Consensus.Scheduler;
 using Nethermind.Core;
-using Nethermind.Core.Crypto;
+
 using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.Network.Contract.P2P;
@@ -37,6 +38,7 @@ public class Eth69ProtocolHandler(
     IPooledTxsRequestor pooledTxsRequestor,
     IGossipPolicy gossipPolicy,
     IForkInfo forkInfo,
+    IBlockFinder blockFinder,
     ILogManager logManager,
     ITxGossipPolicy? transactionsGossipPolicy = null)
     : Eth68ProtocolHandler(session, serializer, nodeStatsManager, syncServer, backgroundTaskScheduler, txPool,
@@ -153,7 +155,7 @@ public class Eth69ProtocolHandler(
             NetworkId = SyncServer.NetworkId,
             GenesisHash = SyncServer.Genesis.Hash!,
             ForkId = _forkInfo.GetForkId(head.Number, head.Timestamp),
-            EarliestBlock = 0,
+            EarliestBlock = blockFinder.GetLowestBlock(),
             LatestBlock = head.Number,
             LatestBlockHash = head.Hash!
         };

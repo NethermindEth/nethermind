@@ -8,6 +8,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using DotNetty.Buffers;
 using FluentAssertions;
+using Nethermind.Blockchain.Find;
 using Nethermind.Consensus;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
@@ -52,6 +53,7 @@ public class Eth69ProtocolHandlerTests
     private Eth69ProtocolHandler _handler = null!;
     private ITxGossipPolicy _txGossipPolicy = null!;
     private ITimerFactory _timerFactory = null!;
+    private IBlockFinder _blockFinder = null!;
 
     [SetUp]
     public void Setup()
@@ -74,6 +76,7 @@ public class Eth69ProtocolHandlerTests
         _txGossipPolicy.ShouldListenToGossipedTransactions.Returns(true);
         _txGossipPolicy.ShouldGossipTransaction(Arg.Any<Transaction>()).Returns(true);
         _svc = Build.A.SerializationService().WithEth69(_specProvider).TestObject;
+        _blockFinder = Substitute.For<IBlockFinder>();
         _handler = new Eth69ProtocolHandler(
             _session,
             _svc,
@@ -84,6 +87,7 @@ public class Eth69ProtocolHandlerTests
             _pooledTxsRequestor,
             _gossipPolicy,
             new ForkInfo(_specProvider, _syncManager),
+            _blockFinder,
             LimboLogs.Instance,
             _txGossipPolicy);
         _handler.Init();
