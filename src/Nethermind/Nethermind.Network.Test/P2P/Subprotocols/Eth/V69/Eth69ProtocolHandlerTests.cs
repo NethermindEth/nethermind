@@ -19,6 +19,7 @@ using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Core.Timers;
 using Nethermind.Logging;
+using Nethermind.Network.Contract.P2P;
 using Nethermind.Network.P2P;
 using Nethermind.Network.P2P.Messages;
 using Nethermind.Network.P2P.Subprotocols;
@@ -77,6 +78,7 @@ public class Eth69ProtocolHandlerTests
         _txGossipPolicy.ShouldGossipTransaction(Arg.Any<Transaction>()).Returns(true);
         _svc = Build.A.SerializationService().WithEth69(_specProvider).TestObject;
         _blockFinder = Substitute.For<IBlockFinder>();
+        _blockFinder.GetLowestBlock().Returns(3);
         _handler = new Eth69ProtocolHandler(
             _session,
             _svc,
@@ -267,6 +269,18 @@ public class Eth69ProtocolHandlerTests
         HandleZeroMessage(msg, Eth69MessageCode.BlockRangeUpdate);
 
         _session.Received().InitiateDisconnect(DisconnectReason.InvalidBlockRangeUpdate, Arg.Any<string>());
+    }
+
+    [Test]
+    public void On_init_sends_a_status_message()
+    {
+        // init is called in Setup
+        _session.Received(1).DeliverMessage(Arg.Is<StatusMessage69>(m =>
+            m.ProtocolVersion == 69
+            && m.Protocol == Protocol.Eth
+            && m.GenesisHash == _genesisBlock.Hash
+            && m.LatestBlockHash == _genesisBlock.Hash
+            && m.EarliestBlock == 3));
     }
 
     private void HandleIncomingStatusMessage()
