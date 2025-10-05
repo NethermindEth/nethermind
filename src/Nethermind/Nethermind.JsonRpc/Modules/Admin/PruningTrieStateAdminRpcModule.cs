@@ -5,6 +5,7 @@ using Nethermind.Blockchain;
 using Nethermind.Blockchain.Find;
 using Nethermind.Blockchain.FullPruning;
 using Nethermind.Core;
+using Nethermind.Facade;
 using Nethermind.State;
 
 namespace Nethermind.JsonRpc.Modules.Admin;
@@ -12,7 +13,7 @@ namespace Nethermind.JsonRpc.Modules.Admin;
 public class PruningTrieStateAdminRpcModule(
     ManualPruningTrigger manualPruningTrigger,
     IBlockTree blockTree,
-    IStateReader stateReader,
+    IBlockchainBridge stateReader,
     IVerifyTrieStarter verifyTrieStarter
 ) : IPruningTrieStateAdminRpcModule
 {

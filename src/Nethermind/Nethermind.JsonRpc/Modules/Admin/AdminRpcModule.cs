@@ -18,6 +18,7 @@ using Nethermind.Specs.ChainSpecStyle;
 using Nethermind.Stats.Model;
 using Nethermind.JsonRpc.Modules.Subscribe;
 using System.Text.Json;
+using Nethermind.Facade;
 using Nethermind.State;
 using Nethermind.Network.Contract.P2P;
 
@@ -33,7 +34,7 @@ public class AdminRpcModule : IAdminRpcModule
     private readonly IStaticNodesManager _staticNodesManager;
     private readonly IEnode _enode;
     private readonly string _dataDir;
-    private readonly IStateReader _stateReader;
+    private readonly IBlockchainBridge _blockchainBridge;
     private NodeInfo _nodeInfo = null!;
     private readonly ITrustedNodesManager _trustedNodesManager;
     private readonly ISubscriptionManager _subscriptionManager;
@@ -43,7 +44,7 @@ public class AdminRpcModule : IAdminRpcModule
         INetworkConfig networkConfig,
         IPeerPool peerPool,
         IStaticNodesManager staticNodesManager,
-        IStateReader stateReader,
+        IBlockchainBridge blockchainBridge,
         IEnode enode,
         string dataDir,
         ChainParameters parameters,
@@ -56,7 +57,7 @@ public class AdminRpcModule : IAdminRpcModule
         _peerPool = peerPool ?? throw new ArgumentNullException(nameof(peerPool));
         _networkConfig = networkConfig ?? throw new ArgumentNullException(nameof(networkConfig));
         _staticNodesManager = staticNodesManager ?? throw new ArgumentNullException(nameof(staticNodesManager));
-        _stateReader = stateReader ?? throw new ArgumentNullException(nameof(stateReader));
+        _blockchainBridge = blockchainBridge ?? throw new ArgumentNullException(nameof(blockchainBridge));
         _parameters = parameters ?? throw new ArgumentNullException(nameof(parameters));
         _trustedNodesManager = trustedNodesManager ?? throw new ArgumentNullException(nameof(trustedNodesManager));
 
@@ -198,7 +199,7 @@ public class AdminRpcModule : IAdminRpcModule
             return ResultWrapper<bool>.Fail("Unable to find block. Unable to know state root to verify.");
         }
 
-        return ResultWrapper<bool>.Success(_stateReader.HasStateForBlock(header!));
+        return ResultWrapper<bool>.Success(_blockchainBridge.HasStateForBlock(header!));
     }
 
     public ResultWrapper<string> admin_subscribe(string subscriptionName, string? args = null)

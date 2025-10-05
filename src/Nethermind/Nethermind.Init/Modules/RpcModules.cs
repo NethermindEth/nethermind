@@ -111,7 +111,7 @@ public class RpcModules(IJsonRpcConfig jsonRpcConfig) : Module
             ctx.Resolve<INetworkConfig>(),
             ctx.Resolve<IPeerPool>(),
             ctx.Resolve<IStaticNodesManager>(),
-            ctx.Resolve<IStateReader>(),
+            ctx.Resolve<IBlockchainBridge>(),
             ctx.Resolve<IEnode>(),
             ctx.Resolve<IInitConfig>().BaseDbPath, // IInitConfig not accessible from IAdminRpcModule, so we construct it manually here
             ctx.Resolve<ChainSpec>().Parameters,

@@ -4,6 +4,7 @@
 using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
+using System.Runtime.InteropServices.JavaScript;
 using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
@@ -14,6 +15,7 @@ using Nethermind.Config;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Test.Builders;
+using Nethermind.Facade;
 using Nethermind.JsonRpc.Modules;
 using Nethermind.JsonRpc.Modules.Admin;
 using Nethermind.JsonRpc.Modules.Subscribe;
@@ -56,6 +58,7 @@ public class AdminModuleTests
     private IRlpxHost _rlpxPeer = null!;
     private ISession _existingSession1 = null!;
     private ISession _existingSession2 = null!;
+    private IBlockchainBridge _blockchainBridge;
 
     [SetUp]
     public void Setup()
@@ -105,13 +108,15 @@ public class AdminModuleTests
         _subscriptionManager = new SubscriptionManager(
             subscriptionFactory,
             _logManager);
+        _blockchainBridge = Substitute.For<IBlockchainBridge>();
+        _blockchainBridge.HasStateForBlock(Arg.Any<BlockHeader>()).Returns(true);
 
         _adminRpcModule = new AdminRpcModule(
             _blockTree,
             _networkConfig,
             peerPool,
             staticNodesManager,
-            _stateReader,
+            _blockchainBridge,
             enode,
             _exampleDataDir,
             chainSpec.Parameters,
@@ -305,7 +310,7 @@ public class AdminModuleTests
             _networkConfig,
             peerPool,
             Substitute.For<IStaticNodesManager>(),
-            Substitute.For<IStateReader>(),
+            _blockchainBridge,
             new Enode(_enodeString),
             _exampleDataDir,
             chainSpec.Parameters,
@@ -347,7 +352,7 @@ public class AdminModuleTests
             _networkConfig,
             peerPool,
             Substitute.For<IStaticNodesManager>(),
-            Substitute.For<IStateReader>(),
+            _blockchainBridge,
             new Enode(_enodeString),
             _exampleDataDir,
             chainSpec.Parameters,
@@ -556,7 +561,7 @@ public class AdminModuleTests
     {
         var blockTree = Build.A.BlockTree().OfChainLength(1).TestObject;
         var networkConfig = new NetworkConfig();
-        var stateReader = Substitute.For<IStateReader>();
+        var blockchainBridge = Substitute.For<IBlockchainBridge>();
         var subscriptionManager = Substitute.For<ISubscriptionManager>();
 
         return new AdminRpcModule(
@@ -564,7 +569,7 @@ public class AdminModuleTests
             networkConfig,
             peerPool,
             Substitute.For<IStaticNodesManager>(),
-            stateReader,
+            blockchainBridge,
             new Enode("enode://e1b7e0dc09aae610c9dec8a0bee62bab9946cc27ebdd2f9e3571ed6d444628f99e91e43f4a14d42d498217608bb3e1d1bc8ec2aa27d7f7e423413b851bae02bc@127.0.0.1:30303"),
             "/test/data",
             new ChainParameters(),
