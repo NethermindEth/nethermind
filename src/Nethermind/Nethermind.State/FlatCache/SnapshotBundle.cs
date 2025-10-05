@@ -49,6 +49,11 @@ public class SnapshotBundle(ArrayPoolList<Snapshot> knownStates, IBigCache bigCa
         }
     }
 
+    public void SetChangedAccount(Address address, Account? account)
+    {
+        _changedAccounts[address] = account;
+    }
+
     public Snapshot CollectAndApplyKnownState()
     {
         Dictionary<Address, StorageWrites> storages = new();
@@ -138,7 +143,7 @@ public class SnapshotBundle(ArrayPoolList<Snapshot> knownStates, IBigCache bigCa
 
     public void Dispose()
     {
-        knownStates.Dispose();
+        // knownStates.Dispose();
         foreach (var gatheredCacheStorage in _loadedAccounts)
         {
             gatheredCacheStorage.Value.Dispose();

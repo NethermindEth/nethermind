@@ -3,8 +3,13 @@
 
 using System;
 using System.Collections.Generic;
+using System.ComponentModel.DataAnnotations;
+using System.Diagnostics;
+using System.Diagnostics.CodeAnalysis;
 using System.Linq;
 using System.Runtime.CompilerServices;
+using System.Runtime.InteropServices;
+using System.Security.AccessControl;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
@@ -68,6 +73,7 @@ public sealed class FlatCacheScopeProvider : IWorldStateScopeProvider, IPreBlock
 
         private static Counter.Child _cacheHitHit = _cacheHit.WithLabels("hit");
         private static Counter.Child _cacheHitMiss = _cacheHit.WithLabels("miss");
+        private Dictionary<Address, StorageTreeWrapper> _loadedStorages = new Dictionary<Address, StorageTreeWrapper>();
 
         public Hash256 RootHash => baseScope.RootHash;
 
@@ -82,6 +88,12 @@ public sealed class FlatCacheScopeProvider : IWorldStateScopeProvider, IPreBlock
             return baseScope.Get(address);
         }
 
+        public void SetReadAccount(Address address, Account? account)
+        {
+            baseScope.SetReadAccount(address, account);
+            snapshotBundle.SetChangedAccount(address, account);
+        }
+
         public void UpdateRootHash()
         {
             baseScope.UpdateRootHash();
@@ -93,7 +105,14 @@ public sealed class FlatCacheScopeProvider : IWorldStateScopeProvider, IPreBlock
         public IWorldStateScopeProvider.IStorageTree CreateStorageTree(Address address)
         {
             // Note: baseScope.CreateStorageTree(address) cannot be lazy. I dont know why.
-            var wrapper = new StorageTreeWrapper(baseScope.CreateStorageTree(address), snapshotBundle.GatherStorageCache(address));
+            // TODO: Double check again. Maybe it just need the storage root correct.
+
+            ref StorageTreeWrapper wrapper = ref CollectionsMarshal.GetValueRefOrAddDefault(_loadedStorages, address, out var exists);
+            if (!exists)
+            {
+                wrapper = new StorageTreeWrapper(baseScope.CreateStorageTree(address), snapshotBundle.GatherStorageCache(address));
+            }
+
             return wrapper;
         }
 
@@ -160,25 +179,48 @@ public sealed class FlatCacheScopeProvider : IWorldStateScopeProvider, IPreBlock
         }
     }
 
-    private sealed class WriteBatchWrapper(IWorldStateScopeProvider.IWorldStateWriteBatch baseWriteBatch, SnapshotBundle snapshotBundle) : IWorldStateScopeProvider.IWorldStateWriteBatch
+    private sealed class WriteBatchWrapper : IWorldStateScopeProvider.IWorldStateWriteBatch
     {
         private Dictionary<Address, Account> _changedValues = new();
+        private Dictionary<Address, bool> _changedStorage = new();
+        private readonly IWorldStateScopeProvider.IWorldStateWriteBatch _baseWriteBatch;
+        private readonly SnapshotBundle _snapshotBundle;
+
+        public WriteBatchWrapper(IWorldStateScopeProvider.IWorldStateWriteBatch baseWriteBatch, SnapshotBundle snapshotBundle)
+        {
+            _baseWriteBatch = baseWriteBatch;
+            _snapshotBundle = snapshotBundle;
+
+            _baseWriteBatch.OnAccountChanged += BaseWriteBatchOnOnAccountChanged;
+        }
+
+        private void BaseWriteBatchOnOnAccountChanged(object? sender, IWorldStateScopeProvider.AccountChangeEvent e)
+        {
+            _changedValues[e.Address] = e.Account;
+        }
 
         public void Set(Address key, Account account)
         {
-            baseWriteBatch.Set(key, account);
+            _baseWriteBatch.Set(key, account);
             _changedValues[key] = account;
         }
 
         public void Dispose()
         {
-            baseWriteBatch.Dispose();
-            snapshotBundle.ApplyStateChanges(_changedValues);
+            _baseWriteBatch.Dispose();
+            _snapshotBundle.ApplyStateChanges(_changedValues);
         }
 
         public IWorldStateScopeProvider.IStorageWriteBatch CreateStorageWriteBatch(Address key, int estimatedEntries)
         {
-            return new StorageWriteBatchWrapper(baseWriteBatch.CreateStorageWriteBatch(key, estimatedEntries), snapshotBundle.GatherStorageCache(key));
+            _changedStorage[key] = true;
+            return new StorageWriteBatchWrapper(_baseWriteBatch.CreateStorageWriteBatch(key, estimatedEntries), _snapshotBundle.GatherStorageCache(key));
+        }
+
+        public event EventHandler<IWorldStateScopeProvider.AccountChangeEvent>? OnAccountChanged
+        {
+            add => _baseWriteBatch.OnAccountChanged += value;
+            remove => _baseWriteBatch.OnAccountChanged -= value;
         }
     }
 

@@ -3,8 +3,8 @@
 
 using System;
 using System.Collections.Concurrent;
+using System.Collections.Generic;
 using System.Diagnostics;
-using System.Security.AccessControl;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Evm.State;
@@ -17,14 +17,19 @@ namespace Nethermind.State;
 public class PrewarmerScopeProvider(
     IWorldStateScopeProvider baseProvider,
     PreBlockCaches preBlockCaches,
-    bool populatePreBlockCache = true)
+    bool populatePreBlockCache = true,
+    bool commitCachedRead = false)
     : IWorldStateScopeProvider, IPreBlockCaches
 {
     static Counter _prewarmerColdRead = Prometheus.Metrics.CreateCounter("prewarmer_cold_read", "", "type", "is_null");
     internal static Counter _prewarmerHitMissCount = Prometheus.Metrics.CreateCounter("prewarmer_hit_count", "", "type", "hit");
     public bool HasRoot(BlockHeader? baseBlock) => baseProvider.HasRoot(baseBlock);
 
-    public IWorldStateScopeProvider.IScope BeginScope(BlockHeader? baseBlock) => new ScopeWrapper(baseProvider.BeginScope(baseBlock), preBlockCaches, populatePreBlockCache);
+    public IWorldStateScopeProvider.IScope BeginScope(BlockHeader? baseBlock) => new ScopeWrapper(
+        baseProvider.BeginScope(baseBlock),
+        preBlockCaches,
+        populatePreBlockCache,
+        commitCachedRead);
 
     public PreBlockCaches? Caches => preBlockCaches;
     public bool IsWarmWorldState => !populatePreBlockCache;
@@ -32,26 +37,50 @@ public class PrewarmerScopeProvider(
     private sealed class ScopeWrapper(
         IWorldStateScopeProvider.IScope baseScope,
         PreBlockCaches preBlockCaches,
-        bool populatePreBlockCache)
+        bool populatePreBlockCache,
+        bool commitCachedRead)
         : IWorldStateScopeProvider.IScope
     {
         ConcurrentDictionary<AddressAsKey, Account> preBlockCache = preBlockCaches.StateCache;
 
+        internal Dictionary<AddressAsKey, Dictionary<UInt256, byte[]>>? readSlots = commitCachedRead
+            ? new Dictionary<AddressAsKey, Dictionary<UInt256, byte[]>>()
+            : null;
+
         public void Dispose() => baseScope.Dispose();
+
+        public void SetReadAccount(Address address, Account? account)
+        {
+            baseScope.SetReadAccount(address, account);
+        }
 
         public IWorldStateScopeProvider.ICodeDb CodeDb => baseScope.CodeDb;
 
         public IWorldStateScopeProvider.IStorageTree CreateStorageTree(Address address)
         {
+            Dictionary<UInt256, byte[]>? storageReadSlots = null;
+            if (readSlots is not null)
+            {
+                if (!readSlots.TryGetValue(address, out storageReadSlots))
+                {
+                    storageReadSlots = new Dictionary<UInt256, byte[]>();
+                }
+            }
+
             return new StorageTreeWrapper(
                 baseScope.CreateStorageTree(address),
                 preBlockCaches.StorageCache,
                 address,
-                populatePreBlockCache);
+                populatePreBlockCache,
+                storageReadSlots);
         }
 
         public IWorldStateScopeProvider.IWorldStateWriteBatch StartWriteBatch(int estimatedAccountNum)
         {
+            if (commitCachedRead)
+            {
+                return new CachedReadWriteCommitter(baseScope.StartWriteBatch(estimatedAccountNum), this);
+            }
             return baseScope.StartWriteBatch(estimatedAccountNum);
         }
 
@@ -82,6 +111,7 @@ public class PrewarmerScopeProvider(
             {
                 if (preBlockCache?.TryGetValue(addressAsKey, out Account? account) ?? false)
                 {
+                    SetReadAccount(address, account);
                     _stateReadHit.Inc();
                     Metrics.IncrementStateTreeCacheHits();
                 }
@@ -118,12 +148,71 @@ public class PrewarmerScopeProvider(
         }
     }
 
+    private class CachedReadWriteCommitter(
+        IWorldStateScopeProvider.IWorldStateWriteBatch baseWriteBatch,
+        ScopeWrapper scopeWrapper
+    )
+        : IWorldStateScopeProvider.IWorldStateWriteBatch
+    {
+        public void Dispose()
+        {
+            baseWriteBatch.Dispose();
+        }
+
+        public void Set(Address key, Account? account)
+        {
+            baseWriteBatch.Set(key, account);
+        }
+
+        public IWorldStateScopeProvider.IStorageWriteBatch CreateStorageWriteBatch(Address key, int estimatedEntries)
+        {
+            return new CachedReadStorageWriteBatchCommitter(
+                baseWriteBatch.CreateStorageWriteBatch(key, estimatedEntries),
+                scopeWrapper.readSlots?.GetValueOrDefault(key)
+            );
+        }
+
+        public event EventHandler<IWorldStateScopeProvider.AccountChangeEvent>? OnAccountChanged
+        {
+            add => baseWriteBatch.OnAccountChanged += value;
+            remove => baseWriteBatch.OnAccountChanged -= value;
+        }
+    }
+
+    private class CachedReadStorageWriteBatchCommitter(
+        IWorldStateScopeProvider.IStorageWriteBatch baseWriteBatch,
+        Dictionary<UInt256, byte[]>? readSlots): IWorldStateScopeProvider.IStorageWriteBatch
+    {
+        public void Dispose()
+        {
+            if (readSlots is not null)
+            {
+                foreach (var kv in readSlots)
+                {
+                    baseWriteBatch.Set(kv.Key, kv.Value);
+                }
+            }
+            baseWriteBatch.Dispose();
+        }
+
+        public void Set(in UInt256 index, byte[] value)
+        {
+            readSlots?.Remove(index);
+            baseWriteBatch.Set(in index, value);
+        }
+
+        public void Clear()
+        {
+            baseWriteBatch.Clear();
+        }
+    }
+
     private sealed class StorageTreeWrapper(
         IWorldStateScopeProvider.IStorageTree baseStorageTree,
         ConcurrentDictionary<StorageCell, byte[]> preBlockCache,
         Address address,
-        bool populatePreBlockCache
-    ) : IWorldStateScopeProvider.IStorageTree
+        bool populatePreBlockCache,
+        Dictionary<UInt256, byte[]>? storageReadSlots) : IWorldStateScopeProvider.IStorageTree
     {
         public Hash256 RootHash => baseStorageTree.RootHash;
         private static Counter.Child _storageReadHit = _prewarmerHitMissCount.WithLabels("storage", "hit");
@@ -149,6 +238,8 @@ public class PrewarmerScopeProvider(
             {
                 if (preBlockCache?.TryGetValue(storageCell, out byte[] value) ?? false)
                 {
+                    storageReadSlots?.TryAdd(index, value);
+
                     _storageReadHit.Inc();
                     Db.Metrics.IncrementStorageTreeCache();
                 }
@@ -175,7 +266,7 @@ public class PrewarmerScopeProvider(
             {
                 if (value is null) _storageReadTimeNull.Inc(Stopwatch.GetTimestamp() - sw);
 
-               else _storageReadTimeNotNull.Inc(Stopwatch.GetTimestamp() - sw);
+                else _storageReadTimeNotNull.Inc(Stopwatch.GetTimestamp() - sw);
             }
 
             return value;

@@ -32,6 +32,13 @@ public interface IWorldStateScopeProvider
         Account? Get(Address address);
 
         /// <summary>
+        /// Set account that was read from outside. Probably cached or precached somehow. This is done for performance reason
+        /// </summary>
+        /// <param name="address"></param>
+        /// <param name="account"></param>
+        void SetReadAccount(Address address, Account? account);
+
+        /// <summary>
         /// The code db
         /// </summary>
         ICodeDb CodeDb { get; }
@@ -86,7 +93,11 @@ public interface IWorldStateScopeProvider
     {
         void Set(Address key, Account? account);
         IStorageWriteBatch CreateStorageWriteBatch(Address key, int estimatedEntries);
+
+        event EventHandler<AccountChangeEvent> OnAccountChanged;
     }
+
+    public record AccountChangeEvent(Address Address, Account? Account);
 
     public interface IStorageWriteBatch : IDisposable
     {

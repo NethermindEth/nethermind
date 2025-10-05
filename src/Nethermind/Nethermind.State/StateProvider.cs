@@ -718,7 +718,7 @@ namespace Nethermind.State
             return accountChanges.After;
         }
 
-        private void SetState(Address address, Account? account)
+        public void SetState(Address address, Account? account)
         {
             ref ChangeTrace accountChanges = ref CollectionsMarshal.GetValueRefOrAddDefault(_blockChanges, address, out _);
             accountChanges.After = account;

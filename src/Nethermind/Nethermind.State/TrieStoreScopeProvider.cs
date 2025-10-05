@@ -19,6 +19,7 @@ using Nethermind.Logging;
 using Nethermind.Trie;
 using Nethermind.Trie.Pruning;
 using NonBlocking;
+using Prometheus;
 
 namespace Nethermind.State;
 
@@ -82,6 +83,11 @@ public class TrieStoreScopeProvider : IWorldStateScopeProvider
             }
 
             return account;
+        }
+
+        public void SetReadAccount(Address address, Account? account)
+        {
+            _loadedAccounts[address] = account;
         }
 
         public IWorldStateScopeProvider.ICodeDb CodeDb => _codeDb1;
@@ -178,47 +184,50 @@ public class TrieStoreScopeProvider : IWorldStateScopeProvider
             return new StorageTreeBulkWriteBatch(estimatedEntries, scope.LookupStorageTree(address), this, address);
         }
 
+        public event EventHandler<IWorldStateScopeProvider.AccountChangeEvent>? OnAccountChanged;
+
         public void MarkDirty(AddressAsKey address, Hash256 storageTreeRootHash)
         {
             _dirtyStorageTree.Enqueue((address, storageTreeRootHash));
         }
 
+        private static Counter _writeBatchDispose = Prometheus.Metrics.CreateCounter("flatcache_writebatch_dispose_time", "hit rate", "part");
+
         public void Dispose()
         {
-            Dictionary<AddressAsKey, Hash256> storageRootChange = new Dictionary<AddressAsKey, Hash256>();
-
+            long sw = Stopwatch.GetTimestamp();
             while (_dirtyStorageTree.TryDequeue(out var entry))
             {
                 (AddressAsKey key, Hash256 storageRoot) = entry;
-                ref Account? account = ref CollectionsMarshal.GetValueRefOrAddDefault(_dirtyAccounts, key, out bool exists);
-                if (!exists) account = scope.Get(key) ?? ThrowNullAccount(key);
+                if (!_dirtyAccounts.TryGetValue(key, out var account))
+                {
+                    account = scope.Get(key) ?? ThrowNullAccount(key);
+                }
 
-                storageRootChange[key] = storageRoot;
+                account = account.WithChangedStorageRoot(storageRoot);
+
+                OnAccountChanged?.Invoke(this, new IWorldStateScopeProvider.AccountChangeEvent(key, account));
+                _dirtyAccounts[key] = account;
+
+                if (logger.IsTrace) Trace(key, storageRoot, account);
             }
+            _writeBatchDispose.WithLabels("dirty_storage").Inc(Stopwatch.GetTimestamp() - sw);
+            sw = Stopwatch.GetTimestamp();
+
+            long storageRootUpdate = 0;
 
             using (var stateSetter = scope._backingStateTree.BeginSet(_dirtyAccounts.Count))
             {
+                long ssw = Stopwatch.GetTimestamp();
                 foreach (var kv in _dirtyAccounts)
                 {
-                    Hash256? storageRoot = null;
                     Account? account = kv.Value;
-                    if (account is not null)
-                    {
-                        if (!storageRootChange.TryGetValue(kv.Key, out storageRoot))
-                        {
-                            storageRoot = scope.Get(kv.Key)?.StorageRoot;
-                        }
-
-                        if (account.StorageRoot != storageRoot)
-                        {
-                            account = kv.Value.WithChangedStorageRoot(storageRoot);
-                        }
-                    }
-
                     stateSetter.Set(kv.Key, account);
-                    if (logger.IsTrace) Trace(kv.Key, storageRoot, account);
                 }
+                _writeBatchDispose.WithLabels("set").Inc(Stopwatch.GetTimestamp() - ssw);
             }
+            _writeBatchDispose.WithLabels("whole").Inc(Stopwatch.GetTimestamp() - sw);
+            _writeBatchDispose.WithLabels("storage_root_update").Inc(storageRootUpdate);
 
             scope.ClearLoadedAccounts();
 
