@@ -42,6 +42,7 @@ public sealed class FlatCacheRepository
         IProcessExitSource exitSource,
         SnapshotsStore snapshotsStore,
         ICanonicalStateRootFinder stateRootFinder,
+        PersistedBigCache persistedBigCache,
         ILogManager logManager,
         Configuration? config = null)
     {
@@ -49,7 +50,7 @@ public sealed class FlatCacheRepository
         _maxStateInMemory = config.MaxStateInMemory;
         _inMemorySnapshotStore = new InMemorySnapshotStore();
         _snapshotsStore = snapshotsStore;
-        _bigCache = new BigCache();
+        _bigCache = persistedBigCache;
         _compactSize = config.CompactSize;
         _inlineCompaction = config.InlineCompaction;
         _stateRootFinder = stateRootFinder;

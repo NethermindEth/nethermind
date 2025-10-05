@@ -19,6 +19,7 @@ namespace Nethermind.Db
         public const string BlobTransactions = "blobTransactions";
         public const string DiscoveryNodes = "discoveryNodes";
         public const string PeersDb = "peers";
+        public const string FlatCacheLog = "flatCacheLog";
         public const string FlatCache = "flatCache";
     }
 }

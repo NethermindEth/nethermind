@@ -29,7 +29,7 @@ public class SnapshotsStore
     private readonly IJsonSerializer _jsonSerialiver;
 
     public SnapshotsStore(
-        [KeyFilter(DbNames.FlatCache)] IDb snapshotStore,
+        [KeyFilter(DbNames.FlatCacheLog)] IDb snapshotStore,
         IJsonSerializer jsonSerializer,
         ILogManager logManager)
     {

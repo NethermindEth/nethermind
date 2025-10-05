@@ -25,7 +25,7 @@ public sealed class BigCache: IBigCache
     public long CurrentBlockNumber => _currentBlockNumber;
 
     private int _snapshotCount = 0;
-    public int SnapshotCount => _snapshotCount;
+    public long SnapshotCount => _snapshotCount;
 
     public bool TryGetValue(Address address, out Account? acc)
     {
@@ -107,10 +107,6 @@ public sealed class BigCache: IBigCache
 
     public void Add(StateId pickedSnapshot, Snapshot knownState)
     {
-        if (knownState.Storages is null)
-        {
-            throw new Exception($"How in the world is the storage for {pickedSnapshot} null?");
-        }
         long blockNumber = pickedSnapshot.blockNumber;
         _copyingSnapshot = knownState;
 
