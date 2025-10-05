@@ -22,7 +22,7 @@ namespace Nethermind.Benchmarks.Core
             new byte[100000],
         };
 
-        [Params(0,1,2,3)]
+        [Params(0, 1, 2, 3)]
         public int ScenarioIndex { get; set; }
 
         [GlobalSetup]
