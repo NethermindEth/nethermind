@@ -243,6 +243,14 @@ internal sealed class PersistentStorageProvider : PartialStorageProviderBase
             return;
         }
 
+        using ArrayPoolList<KeyValuePair<AddressAsKey, PerContractState>> sortedStorages = new ArrayPoolList<KeyValuePair<AddressAsKey, PerContractState>>(_storages.Count);
+        foreach (var kv in _storages)
+        {
+            sortedStorages.Add(kv);
+        }
+        sortedStorages.Sort((it1, it2) => it2.Value.EstimatedChanges.CompareTo(it1.Value.EstimatedChanges));
+
+
         // Is overhead of parallel foreach worth it?
         if (_toUpdateRoots.Count < 3)
         {
@@ -257,7 +265,7 @@ internal sealed class PersistentStorageProvider : PartialStorageProviderBase
 
         void UpdateRootHashesSingleThread()
         {
-            foreach (KeyValuePair<AddressAsKey, PerContractState> kvp in _storages)
+            foreach (KeyValuePair<AddressAsKey, PerContractState> kvp in sortedStorages)
             {
                 if (!_toUpdateRoots.TryGetValue(kvp.Key, out bool hasChanges) || !hasChanges)
                 {
@@ -274,13 +282,13 @@ internal sealed class PersistentStorageProvider : PartialStorageProviderBase
         void UpdateRootHashesMultiThread()
         {
             // We can recalculate the roots in parallel as they are all independent tries
-            using ArrayPoolList<(AddressAsKey Key, PerContractState ContractState, IWorldStateScopeProvider.IStorageWriteBatch WriteBatch)> storages = _storages
+            using ArrayPoolList<(AddressAsKey Key, PerContractState ContractState, IWorldStateScopeProvider.IStorageWriteBatch WriteBatch)> storages = sortedStorages
                 .Select((kv) => (
                     kv.Key,
                     kv.Value,
                     writeBatch.CreateStorageWriteBatch(kv.Key, kv.Value.EstimatedChanges)
                 ))
-                .ToPooledList(_storages.Count);
+                .ToPooledList(sortedStorages.Count);
 
             ParallelUnbalancedWork.For(
                 0,

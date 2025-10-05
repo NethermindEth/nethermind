@@ -8,6 +8,7 @@ using System.Threading;
 using System.Threading.Channels;
 using System.Threading.Tasks;
 using Nethermind.Config;
+using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Logging;
@@ -33,7 +34,7 @@ public sealed class FlatCacheRepository
     public record Configuration(
         int MaxStateInMemory = 1024 * 1024,
         int MaxInFlightCompactJob = 32,
-        int CompactSize = 64,
+        int CompactSize = 128,
         bool InlineCompaction = false
     );
 

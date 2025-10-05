@@ -49,7 +49,8 @@ public class PrewarmerModule(IBlocksConfig blocksConfig) : Module
                     return new PrewarmerScopeProvider(
                         worldStateScopeProvider,
                         ctx.Resolve<PreBlockCaches>(),
-                        populatePreBlockCache: false
+                        populatePreBlockCache: false,
+                        commitCachedRead: false
                     );
                 })
                 .AddDecorator<ICodeInfoRepository>((ctx, originalCodeInfoRepository) =>

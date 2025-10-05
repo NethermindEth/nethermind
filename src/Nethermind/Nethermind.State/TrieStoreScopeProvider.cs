@@ -19,6 +19,7 @@ using Nethermind.Logging;
 using Nethermind.Trie;
 using Nethermind.Trie.Pruning;
 using NonBlocking;
+using Prometheus;
 
 namespace Nethermind.State;
 
@@ -185,13 +186,18 @@ public class TrieStoreScopeProvider : IWorldStateScopeProvider
             return new StorageTreeBulkWriteBatch(estimatedEntries, scope.LookupStorageTree(address), this, address);
         }
 
+        public event EventHandler<IWorldStateScopeProvider.AccountChangeEvent>? OnAccountChanged;
+
         public void MarkDirty(AddressAsKey address, Hash256 storageTreeRootHash)
         {
             _dirtyStorageTree.Enqueue((address, storageTreeRootHash));
         }
 
+        private static Counter _writeBatchDispose = Prometheus.Metrics.CreateCounter("flatcache_writebatch_dispose_time", "hit rate", "part");
+
         public void Dispose()
         {
+            long sw = Stopwatch.GetTimestamp();
             while (_dirtyStorageTree.TryDequeue(out var entry))
             {
                 (AddressAsKey key, Hash256 storageRoot) = entry;
@@ -203,14 +209,22 @@ public class TrieStoreScopeProvider : IWorldStateScopeProvider
                 OnAccountUpdated?.Invoke(key, new IWorldStateScopeProvider.AccountUpdated(key, account));
                 if (logger.IsTrace) Trace(key, storageRoot, account);
             }
+            _writeBatchDispose.WithLabels("dirty_storage").Inc(Stopwatch.GetTimestamp() - sw);
+            sw = Stopwatch.GetTimestamp();
+
+            long storageRootUpdate = 0;
 
             using (var stateSetter = scope._backingStateTree.BeginSet(_dirtyAccounts.Count))
             {
+                long ssw = Stopwatch.GetTimestamp();
                 foreach (var kv in _dirtyAccounts)
                 {
                     stateSetter.Set(kv.Key, kv.Value);
                 }
+                _writeBatchDispose.WithLabels("set").Inc(Stopwatch.GetTimestamp() - ssw);
             }
+            _writeBatchDispose.WithLabels("whole").Inc(Stopwatch.GetTimestamp() - sw);
+            _writeBatchDispose.WithLabels("storage_root_update").Inc(storageRootUpdate);
 
             scope.ClearLoadedAccounts();
 
