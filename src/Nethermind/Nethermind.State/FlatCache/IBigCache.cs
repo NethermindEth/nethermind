@@ -9,13 +9,13 @@ namespace Nethermind.State.FlatCache;
 public interface IBigCache
 {
     long CurrentBlockNumber { get; }
-    int SnapshotCount { get; }
-    bool TryGetValue(Address address, out Account acc);
+    long SnapshotCount { get; }
+    bool TryGetValue(Address address, out Account? acc);
     IStorageReader GetStorageReader(Address address);
 
     public interface IStorageReader
     {
-        bool TryGetValue(in UInt256 index, out byte[] value);
+        bool TryGetValue(in UInt256 index, out byte[]? value);
     }
 
     void Subtract(StateId firstKey, Snapshot snapshot);

@@ -270,4 +270,59 @@ public class DbConfig : IDbConfig
     public string L1OriginDbRocksDbOptions { get; set; } = "";
 
     public string? L1OriginDbAdditionalRocksDbOptions { get; set; }
+
+
+    public ulong FlatCacheDbWriteBufferSize { get; set; } = (ulong)64.MB();
+    public string FlatCacheDbRocksDbOptions { get; set; } =
+        // LZ4 seems to be slightly faster here
+        "compression=kNoCompression;" +
+
+        // MaxBytesForLevelMultiplier is 10 by default. Lowering this will deepens the LSM, which may reduce write
+        // amplification (unless the LSM is too deep), at the expense of read performance. But then, you have bloom
+        // filter anyway, and recently written keys are likely to be read and they tend to be at the top of the LSM
+        // tree which means they are more cacheable, so at that point you are trading CPU for cacheability.
+        // These two config make the LSM level to be no more than 3 until the database grow to about 250GB.
+        "max_bytes_for_level_multiplier=30;" +
+        "max_bytes_for_level_base=350000000;" +
+
+        // Multiply the target size of SST file by this much every level down, reduce number of file.
+        // Does not have much downside on hash based DB, but might disable some move optimization on db with
+        // blocknumber key, or halfpath/flatdb layout.
+        "target_file_size_multiplier=2;" +
+
+        // This is basically useless on write only database. However, for halfpath with live pruning, flatdb, or
+        // (maybe?) full sync where keys are deleted, replaced, or re-inserted, two memtable can merge together
+        // resulting in a reduced total memtable size to be written. This does seems to reduce sync throughput though.
+        "min_write_buffer_number_to_merge=2;" +
+
+        // Default value is 16.
+        // So each block consist of several "restart" and each "restart" is BlockRestartInterval number of key.
+        // They key within the same restart is delta-encoded with the key before it. This mean a read will have to go
+        // through potentially "BlockRestartInterval" number of key, probably. That is my understanding.
+        // Reducing this is likely going to improve CPU usage at the cost of increased uncompressed size, which effect
+        // cache utilization.
+        "block_based_table_factory.block_restart_interval=4;" +
+
+        // This adds a hashtable-like index per block (the 32kb block)
+        // This reduce CPU and therefore latency under high block cache hit scenario.
+        // It seems to increase disk space use by about 1 GB.
+        "block_based_table_factory.data_block_index_type=kDataBlockBinaryAndHash;" +
+        "block_based_table_factory.data_block_hash_table_util_ratio=0.5;" +
+
+        "block_based_table_factory.block_size=4000;" +
+
+        "block_based_table_factory.filter_policy=bloomfilter:15;" +
+
+        // Note: This causes write batch to not be atomic. A concurrent read may read item on start of batch, but not end of batch.
+        // With state, this is fine as writes are done in parallel batch and therefore, not atomic, and the read goes
+        // through triestore first anyway.
+        "unordered_write=true;" +
+
+        // Default is 1 MB.
+        "max_write_batch_group_size_bytes=4000000;" +
+
+        "block_based_table_factory={index_type=kBinarySearch;partition_filters=0;};" +
+        "optimize_filters_for_hits=false;" +
+
+        "";
 }

@@ -237,7 +237,7 @@ namespace Nethermind.Serialization.Rlp
         protected override Account? DecodeInternal(ref Rlp.ValueDecoderContext decoderContext, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
         {
             int length = decoderContext.ReadSequenceLength();
-            if (length == 1)
+            if (length == 1 || length == 0)
             {
                 return null;
             }

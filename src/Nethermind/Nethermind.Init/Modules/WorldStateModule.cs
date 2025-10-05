@@ -93,8 +93,10 @@ public class WorldStateModule(IInitConfig initConfig) : Module
 
         builder
             .AddSingleton<FlatCacheRepository>()
+            .AddSingleton<PersistedBigCache>()
             .AddScoped<SnapshotsStore>()
             .AddDatabase(DbNames.FlatCache)
+            .AddDatabase(DbNames.FlatCacheLog)
             .AddDecorator<IWorldStateManager, FlatCacheWorldStateManager>()
             ;
     }
