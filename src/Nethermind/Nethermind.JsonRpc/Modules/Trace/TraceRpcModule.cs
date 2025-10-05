@@ -24,7 +24,6 @@ using Nethermind.Int256;
 using Nethermind.JsonRpc.Data;
 using Nethermind.JsonRpc.Modules.Eth;
 using Nethermind.Serialization.Rlp;
-using Nethermind.State;
 
 namespace Nethermind.JsonRpc.Modules.Trace
 {
@@ -41,7 +40,6 @@ namespace Nethermind.JsonRpc.Modules.Trace
         IOverridableEnv<ITracer> tracerEnv,
         IBlockFinder blockFinder,
         IJsonRpcConfig jsonRpcConfig,
-        IStateReader stateReader,
         IBlockchainBridge blockchainBridge,
         IBlocksConfig blocksConfig)
         : ITraceRpcModule
@@ -79,7 +77,7 @@ namespace Nethermind.JsonRpc.Modules.Trace
             }
 
             BlockHeader header = headerSearch.Object!;
-            if (!stateReader.HasStateForBlock(header))
+            if (!blockchainBridge.HasStateForBlock(header))
             {
                 return GetStateFailureResult<IEnumerable<ParityTxTraceFromReplay>>(header);
             }
@@ -154,7 +152,7 @@ namespace Nethermind.JsonRpc.Modules.Trace
                 return ResultWrapper<ParityTxTraceFromReplay>.Fail(parentSearch);
             }
 
-            if (!stateReader.HasStateForBlock(parentSearch.Object))
+            if (!blockchainBridge.HasStateForBlock(parentSearch.Object))
             {
                 return GetStateFailureResult<ParityTxTraceFromReplay>(parentSearch.Object);
             }
@@ -181,7 +179,7 @@ namespace Nethermind.JsonRpc.Modules.Trace
                 return ResultWrapper<IEnumerable<ParityTxTraceFromReplay>>.Fail(parentSearch);
             }
 
-            if (!stateReader.HasStateForBlock(parentSearch.Object))
+            if (!blockchainBridge.HasStateForBlock(parentSearch.Object))
             {
                 return GetStateFailureResult<IEnumerable<ParityTxTraceFromReplay>>(parentSearch.Object);
             }
@@ -211,7 +209,7 @@ namespace Nethermind.JsonRpc.Modules.Trace
                 }
 
                 Block block = blockSearch.Object;
-                if (!stateReader.HasStateForBlock(block?.Header))
+                if (!blockchainBridge.HasStateForBlock(block?.Header))
                 {
                     return GetStateFailureResult<IEnumerable<ParityTxTraceFromStore>>(block.Header);
                 }
@@ -222,7 +220,7 @@ namespace Nethermind.JsonRpc.Modules.Trace
                     return ResultWrapper<IEnumerable<ParityTxTraceFromStore>>.Fail(parentSearch);
                 }
 
-                if (!stateReader.HasStateForBlock(parentSearch.Object))
+                if (!blockchainBridge.HasStateForBlock(parentSearch.Object))
                 {
                     return GetStateFailureResult<IEnumerable<ParityTxTraceFromStore>>(parentSearch.Object);
                 }
@@ -247,7 +245,7 @@ namespace Nethermind.JsonRpc.Modules.Trace
 
             Block block = blockSearch.Object!;
 
-            if (!stateReader.HasStateForBlock(block.Header))
+            if (!blockchainBridge.HasStateForBlock(block.Header))
             {
                 return GetStateFailureResult<IEnumerable<ParityTxTraceFromStore>>(block.Header);
             }
@@ -257,7 +255,7 @@ namespace Nethermind.JsonRpc.Modules.Trace
                 return ResultWrapper<IEnumerable<ParityTxTraceFromStore>>.Fail(parentSearch);
             }
 
-            if (!stateReader.HasStateForBlock(parentSearch.Object))
+            if (!blockchainBridge.HasStateForBlock(parentSearch.Object))
             {
                 return GetStateFailureResult<IEnumerable<ParityTxTraceFromStore>>(parentSearch.Object);
             }
@@ -317,7 +315,7 @@ namespace Nethermind.JsonRpc.Modules.Trace
                 return ResultWrapper<IEnumerable<ParityTxTraceFromStore>>.Fail(parentSearch);
             }
 
-            if (!stateReader.HasStateForBlock(parentSearch.Object))
+            if (!blockchainBridge.HasStateForBlock(parentSearch.Object))
             {
                 return GetStateFailureResult<IEnumerable<ParityTxTraceFromStore>>(parentSearch.Object);
             }
