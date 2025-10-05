@@ -23,7 +23,7 @@
     "EnginePort": 8551
   },
   "Pruning": {
-    "PruningBoundary": 256
+    "PruningBoundary": 192
   },
   "Blocks": {
     "SecondsPerSlot": 10

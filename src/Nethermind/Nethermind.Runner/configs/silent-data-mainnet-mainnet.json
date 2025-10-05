@@ -1,10 +1,10 @@
 {
   "$schema": "https://raw.githubusercontent.com/NethermindEth/core-scripts/refs/heads/main/schemas/config.json",
   "Init": {
-    "ChainSpecPath": "chainspec/ink-sepolia.json.zst",
-    "GenesisHash": "0xe5fd5cf0be56af58ad5751b401410d6b7a09d830fa459789746a3d0dd1c79834",
-    "BaseDbPath": "nethermind_db/ink-sepolia",
-    "LogFileName": "ink-sepolia.log"
+    "ChainSpecPath": "chainspec/silent-data-mainnet-mainnet.json.zst",
+    "GenesisHash": "0xc46d5d70c0b72228124c217822261df39071bd2059f710bda0ef17551b2a05c3",
+    "BaseDbPath": "nethermind_db/silent-data-mainnet-mainnet",
+    "LogFileName": "silent-data-mainnet-mainnet.log"
   },
   "TxPool": {
     "BlobsSupport": "Disabled"
@@ -26,12 +26,12 @@
     "PruningBoundary": 192
   },
   "Blocks": {
-    "SecondsPerSlot": 1
+    "SecondsPerSlot": 2
   },
   "Merge": {
     "Enabled": true
   },
   "Optimism": {
-    "SequencerUrl": "https://rpc-gel-sepolia.inkonchain.com"
+    "SequencerUrl": ""
   }
 }

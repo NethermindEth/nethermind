@@ -15,8 +15,8 @@
     "FastSyncCatchUpHeightDelta": "10000000000",
     "AncientBodiesBarrier": 105235063,
     "AncientReceiptsBarrier": 105235063,
-    "PivotNumber": 141700000,
-    "PivotHash": "0x05cc432a277d3d0c04d934c51f44a540d474e1f50f0546ec3964dd07f48fbdfb"
+    "PivotNumber": 142000000,
+    "PivotHash": "0x2bf1713579ab399448f6ef750a51698fa93b45b7ad9f1b0e2641cac78e59c70d"
   },
   "Discovery": {
     "DiscoveryVersion": "V5"
@@ -27,7 +27,7 @@
     "EnginePort": 8551
   },
   "Pruning": {
-    "PruningBoundary": 256
+    "PruningBoundary": 192
   },
   "Blocks": {
     "SecondsPerSlot": 2
