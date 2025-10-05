@@ -746,7 +746,9 @@ namespace Nethermind.Core.Crypto
             // so read a Vector256 and ulong then combine
             Vector256<ulong> c4a = Unsafe.As<ulong, Vector256<ulong>>(ref Unsafe.Add(ref stateRef, 20));
             Vector256<ulong> c4b = Vector256.Create(Unsafe.Add(ref stateRef, 24), 0UL, 0UL, 0UL);
-            Vector512<ulong> c4 = Vector512.Create(c4a, c4b);
+            Vector512<ulong> c4 = Vector512<ulong>.Zero;
+            c4 = Avx512F.InsertVector256(c4, c4a, 0);
+            c4 = Avx512F.InsertVector256(c4, c4b, 1);
 
             // Hoisted, reused permutes - now from readonly fields
             Vector512<ulong> permute1 = Permute1;
