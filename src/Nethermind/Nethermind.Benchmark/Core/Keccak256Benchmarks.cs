@@ -5,25 +5,24 @@ using System;
 using BenchmarkDotNet.Attributes;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Test.Builders;
-//using Nethermind.HashLib;
+using Nethermind.Int256;
 
 namespace Nethermind.Benchmarks.Core
 {
     public class Keccak256Benchmarks
     {
-        //private static HashLib.Crypto.SHA3.Keccak256 _hash = HashFactory.Crypto.SHA3.CreateKeccak256();
-
         private byte[] _a;
+        byte[] _output = new byte[32];
 
-        private byte[][] _scenarios =
+        private static readonly byte[][] _scenarios =
         {
             new byte[]{},
-            new byte[]{1},
+            TestItem.AddressA.Bytes,
+            UInt256.One.ToBigEndian(),
             new byte[100000],
-            TestItem.AddressA.Bytes
         };
 
-        [Params(1)]
+        [Params(0,1,2,3)]
         public int ScenarioIndex { get; set; }
 
         [GlobalSetup]
@@ -33,33 +32,15 @@ namespace Nethermind.Benchmarks.Core
         }
 
         [Benchmark]
-        public void MeadowHashSpan()
+        public void Avx512()
         {
-            MeadowHashBenchmarks.ComputeHash(_a);
-        }
-
-        [Benchmark]
-        public byte[] MeadowHashBytes()
-        {
-            return MeadowHashBenchmarks.ComputeHashBytes(_a);
+            KeccakHash.BenchmarkHash(_a, _output, useAvx512: true);
         }
 
         [Benchmark(Baseline = true)]
-        public byte[] Current()
+        public void Scalar()
         {
-            return Keccak.Compute(_a).BytesToArray();
+            KeccakHash.BenchmarkHash(_a, _output, useAvx512: false);
         }
-
-        [Benchmark]
-        public Span<byte> ValueKeccak()
-        {
-            return Nethermind.Core.Crypto.ValueKeccak.Compute(_a).BytesAsSpan;
-        }
-
-        //[Benchmark]
-        //public byte[] HashLib()
-        //{
-        //    return _hash.ComputeBytes(_a).GetBytes();
-        //}
     }
 }
