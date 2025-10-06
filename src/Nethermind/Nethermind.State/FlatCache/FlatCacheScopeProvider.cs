@@ -86,7 +86,9 @@ public sealed class FlatCacheScopeProvider : IWorldStateScopeProvider, IPreBlock
                 return account;
             }
             _cacheHitMiss.Inc();
-            return baseScope.Get(address);
+            account = baseScope.Get(address);
+            if (!isReadOnly) snapshotBundle.HintAccountRead(address, account);
+            return account;
         }
 
         public void HintAccountRead(Address address, Account? account)

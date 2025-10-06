@@ -34,7 +34,7 @@ public sealed class FlatCacheRepository
     public record Configuration(
         int MaxStateInMemory = 512,
         int MaxInFlightCompactJob = 32,
-        int CompactSize = 128,
+        int CompactSize = 64,
         bool InlineCompaction = false
     );
 
