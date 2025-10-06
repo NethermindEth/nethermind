@@ -683,8 +683,10 @@ namespace Nethermind.State
                 if (dict is null) return Task.CompletedTask;
                 _codeBatchAlternate = default;
 
-                return Task.Run(() =>
+                return Task.Run(async () =>
                 {
+                    await Task.Delay(1000);
+
                     using (var batch = _codeDb.StartWriteBatch())
                     {
                         // Insert ordered for improved performance
@@ -693,8 +695,6 @@ namespace Nethermind.State
                             batch.PutSpan(kvp.Key.Value.Bytes, kvp.Value);
                         }
                     }
-
-                    Thread.Sleep(100); // The things
 
                     // Reuse Dictionary if not already re-initialized
                     dict.Clear();
