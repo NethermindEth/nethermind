@@ -852,6 +852,20 @@ public class TxValidatorTests
                 ExpectedResult = false
             };
             yield return new TestCaseData(Cancun.Instance, MakeTestObject()
+             .With(static tx => tx.NetworkWrapper = ((ShardBlobNetworkWrapper)tx.NetworkWrapper!) with { Blobs = [], Commitments = [], Proofs = [] })
+             .SignedAndResolved().TestObject)
+            {
+                TestName = "Blobs count does not match network wrapper items counts, empty blobs",
+                ExpectedResult = false
+            };
+            yield return new TestCaseData(Cancun.Instance, MakeTestObject(2)
+               .With(static tx => tx.BlobVersionedHashes = [.. tx.BlobVersionedHashes!.Take(1)])
+               .SignedAndResolved().TestObject)
+            {
+                TestName = "Blobs count does not match network wrapper items counts, less hashes",
+                ExpectedResult = false
+            };
+            yield return new TestCaseData(Cancun.Instance, MakeTestObject()
                 .With(static tx => ((ShardBlobNetworkWrapper)tx.NetworkWrapper!).Commitments[0][1] ^= 0xFF)
                 .SignedAndResolved().TestObject)
             {

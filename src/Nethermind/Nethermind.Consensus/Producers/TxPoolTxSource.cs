@@ -103,20 +103,31 @@ namespace Nethermind.Consensus.Producers
 
             bool ResolveBlob(Transaction blobTx, out Transaction fullBlobTx)
             {
-                if (TryGetFullBlobTx(blobTx, out fullBlobTx))
+                if (!TryGetFullBlobTx(blobTx, out fullBlobTx))
                 {
-                    ProofVersion? proofVersion = (fullBlobTx.NetworkWrapper as ShardBlobNetworkWrapper)?.Version;
-                    if (spec.BlobProofVersion != proofVersion)
-                    {
-                        if (_logger.IsTrace) _logger.Trace($"Declining {blobTx.ToShortString()}, {spec.BlobProofVersion} is wanted, but tx's proof version is {proofVersion}.");
-                        return false;
-                    }
-
-                    return true;
+                    if (_logger.IsTrace) _logger.Trace($"Declining {blobTx.ToShortString()}, failed to get full version of this blob tx from TxPool.");
+                    return false;
                 }
 
-                if (_logger.IsTrace) _logger.Trace($"Declining {blobTx.ToShortString()}, failed to get full version of this blob tx from TxPool.");
-                return false;
+                if (fullBlobTx.NetworkWrapper is not ShardBlobNetworkWrapper wrapper)
+                {
+                    if (_logger.IsTrace) _logger.Trace($"Declining {blobTx.ToShortString()}, missing blob data.");
+                    return false;
+                }
+
+                if (spec.BlobProofVersion != wrapper.Version)
+                {
+                    if (_logger.IsTrace) _logger.Trace($"Declining {blobTx.ToShortString()}, {spec.BlobProofVersion} is wanted, but tx's proof version is {wrapper.Version}.");
+                    return false;
+                }
+
+                if (wrapper.Blobs.Length != blobTx.BlobVersionedHashes.Length)
+                {
+                    if (_logger.IsTrace) _logger.Trace($"Declining {blobTx.ToShortString()}, incorrect blob count.");
+                    return false;
+                }
+
+                return true;
             }
         }
 
