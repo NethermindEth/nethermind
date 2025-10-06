@@ -35,11 +35,11 @@ public static class ExecutionRequestExtensions
         foreach (byte[] requests in flatEncodedRequests)
         {
             if (requests.Length <= 1) continue;
-            concatenatedHashes.AddRange(SHA256.HashData(requests));
+            concatenatedHashes.AddRange(Sha2.HashData(requests));
         }
 
         // Compute sha256 of the concatenated hashes
-        return new Hash256(SHA256.HashData(concatenatedHashes.UnsafeGetInternalArray().AsSpan(0, concatenatedHashes.Count)));
+        return new Hash256(Sha2.HashData(concatenatedHashes.UnsafeGetInternalArray().AsSpan(0, concatenatedHashes.Count).ToArray()));
     }
 
 
