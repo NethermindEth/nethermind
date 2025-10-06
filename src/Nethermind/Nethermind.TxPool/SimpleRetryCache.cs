@@ -11,29 +11,31 @@ using System.Threading.Tasks;
 
 namespace Nethermind.TxPool;
 
-public abstract class SimpleRetryCache
-{
-    public const int TimeoutMs = 2500;
-    public const int CheckMs = 300;
-    protected static int RequestingCacheSize = MemoryAllowance.TxHashCacheSize / 10;
-}
-
-public class SimpleRetryCache<TResourceId, TNodeId> : SimpleRetryCache
+public class SimpleRetryCache<TResourceId, TNodeId>
     where TResourceId : struct, IEquatable<TResourceId>
     where TNodeId : notnull, IEquatable<TNodeId>
 {
+    private readonly int _timeoutMs;
+    private readonly int _checkMs;
+    private readonly int _requestingCacheSize;
+
     private readonly ConcurrentDictionary<TResourceId, Dictionary<TNodeId, Action>> _retryRequests = new();
     private readonly ConcurrentQueue<(TResourceId ResourceId, DateTimeOffset Expires)> _expiringQueue = new();
-    private readonly ClockKeyCache<TResourceId> _requestingResources = new(RequestingCacheSize);
+    private readonly ClockKeyCache<TResourceId> _requestingResources;
     private readonly ILogger _logger;
 
-    public SimpleRetryCache(ILogManager logManager, CancellationToken token = default)
+    public SimpleRetryCache(ILogManager logManager, int timeoutMs = 2500, int requestingCacheSize = 1024, CancellationToken token = default)
     {
         _logger = logManager.GetClassLogger();
 
+        _timeoutMs = timeoutMs;
+        _checkMs = _timeoutMs / 5;
+        _requestingCacheSize = requestingCacheSize;
+        _requestingResources = new(_requestingCacheSize);
+
         Task.Run(async () =>
         {
-            PeriodicTimer timer = new(TimeSpan.FromMilliseconds(CheckMs));
+            PeriodicTimer timer = new(TimeSpan.FromMilliseconds(_checkMs));
 
             while (await timer.WaitForNextTickAsync(token))
             {
@@ -78,7 +80,7 @@ public class SimpleRetryCache<TResourceId, TNodeId> : SimpleRetryCache
             {
                 if (_logger.IsTrace) _logger.Trace($"Announced {resourceId} by {nodeId}: NEW");
 
-                _expiringQueue.Enqueue((resourceId, DateTimeOffset.UtcNow.AddMilliseconds(TimeoutMs)));
+                _expiringQueue.Enqueue((resourceId, DateTimeOffset.UtcNow.AddMilliseconds(_timeoutMs)));
                 added = true;
 
                 return [];

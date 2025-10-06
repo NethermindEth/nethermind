@@ -11,18 +11,18 @@ using NUnit.Framework;
 namespace Nethermind.TxPool.Test;
 
 [TestFixture]
-public class SimpleRetryCacheTests
+public class SimpleRetryCacheTests2
 {
     private CancellationTokenSource _cancellationTokenSource;
     private SimpleRetryCache<int, string> cache;
 
-    private readonly int Timeout = SimpleRetryCache.TimeoutMs + SimpleRetryCache.CheckMs * 2;
+    private readonly int Timeout = 3000;
 
     [SetUp]
     public void Setup()
     {
         _cancellationTokenSource = new CancellationTokenSource();
-        cache = new(TestLogManager.Instance, _cancellationTokenSource.Token);
+        cache = new(TestLogManager.Instance, token: _cancellationTokenSource.Token);
     }
 
     [TearDown]

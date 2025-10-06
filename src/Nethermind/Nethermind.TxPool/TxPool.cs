@@ -123,7 +123,7 @@ namespace Nethermind.TxPool
             _specProvider = _headInfo.SpecProvider;
             SupportsBlobs = _txPoolConfig.BlobsSupport != BlobsSupportMode.Disabled;
             _cts = new();
-            _retryCache = new SimpleRetryCache<ValueHash256, Guid>(logManager);
+            _retryCache = new SimpleRetryCache<ValueHash256, Guid>(logManager, requestingCacheSize: MemoryAllowance.TxHashCacheSize / 10, token: _cts.Token);
 
             MemoryAllowance.MemPoolSize = txPoolConfig.Size;
 

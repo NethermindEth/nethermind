@@ -53,8 +53,8 @@ public class PooledTransactionsRequestingTests
     private Block _genesisBlock = null!;
     private CompositeDisposable _disposables = null!;
 
-    private readonly int Timeout = SimpleRetryCache.TimeoutMs + SimpleRetryCache.CheckMs * 2;
-    private readonly int InTime = (int)(SimpleRetryCache.TimeoutMs * 0.6);
+    private readonly int Timeout = 3000;
+    private readonly int InTime = 1000;
 
     [SetUp]
     public void Setup()
