@@ -106,7 +106,8 @@ public class PersistedBigCache : IBigCache
         _db.PutSpan(_snapshotCountNumberKey, rlpBufferSpan[..8]);
     }
 
-    private Gauge _snapshotCountMetric = Prometheus.Metrics.CreateGauge("flatcache_bigcache_snapshot_count", "snapshot count");
+    private static Gauge _snapshotCountMetric = Prometheus.Metrics.CreateGauge("flatcache_bigcache_snapshot_count", "snapshot count");
+    private static Counter _selfDestructShortcut = Prometheus.Metrics.CreateCounter("flatcache_bigcache_selfdestruct_shortcut", "snapshot count");
 
     public void Add(StateId pickedSnapshot, Snapshot knownState)
     {
@@ -217,6 +218,13 @@ public class PersistedBigCache : IBigCache
             {
                 if (bytes.IsEmpty || bytes.IsNull())
                 {
+                    if (selfDestructBlockNumber >= 0)
+                    {
+                        _selfDestructShortcut.Inc();
+                        value = StorageTree.ZeroBytes;
+                        return true;
+                    }
+
                     value = null;
                     return false;
                 }
@@ -224,13 +232,9 @@ public class PersistedBigCache : IBigCache
                 long blockNumber = BinaryPrimitives.ReadInt64BigEndian(bytes);
                 if (blockNumber < selfDestructBlockNumber)
                 {
-                    value = null;
-
-                    if (selfDestructBlockNumber >= 0)
-                    {
-                        return true;
-                    }
-                    return false;
+                    _selfDestructShortcut.Inc();
+                    value = StorageTree.ZeroBytes;
+                    return true;
                 }
 
                 Span<byte> remainingBytes = bytes[8..];
