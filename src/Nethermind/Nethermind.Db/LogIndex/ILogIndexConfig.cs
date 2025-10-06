@@ -88,4 +88,11 @@ public interface ILogIndexConfig : IConfig
         HiddenFromDocs = true
     )]
     string? CompressionAlgorithm { get; set; }
+
+    [ConfigItem(
+        Description = "Log index sync: whether to show detailed stats in progress logs.",
+        DefaultValue = "false",
+        HiddenFromDocs = true
+    )]
+    bool DetailedLogs { get; set; }
 }
