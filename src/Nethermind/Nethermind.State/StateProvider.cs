@@ -548,6 +548,7 @@ namespace Nethermind.State
                     FlushToTree();
                 }
 
+                codeFlushTask.GetAwaiter().GetResult();
                 return;
             }
 
