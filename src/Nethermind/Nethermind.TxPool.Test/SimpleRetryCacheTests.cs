@@ -11,7 +11,7 @@ using NUnit.Framework;
 namespace Nethermind.TxPool.Test;
 
 [TestFixture]
-public class SimpleRetryCacheTests2
+public class SimpleRetryCacheTests
 {
     private CancellationTokenSource _cancellationTokenSource;
     private SimpleRetryCache<int, string> cache;
