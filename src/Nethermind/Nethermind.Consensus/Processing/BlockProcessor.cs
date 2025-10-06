@@ -178,7 +178,7 @@ public partial class BlockProcessor
             header.StateRoot = _stateProvider.StateRoot;
         }
 
-        if (_tracedAccessWorldState is not null && spec.BlockLevelAccessListsEnabled)
+        if (_tracedAccessWorldState is not null && spec.BlockLevelAccessListsEnabled && !block.IsGenesis)
         {
             body.BlockAccessList = _tracedAccessWorldState.BlockAccessList;
             header.BlockAccessListHash = new(ValueKeccak.Compute(Rlp.Encode(_tracedAccessWorldState.BlockAccessList).Bytes).Bytes);
