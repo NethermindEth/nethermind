@@ -23,13 +23,14 @@ using System.Threading.Channels;
 using System.Threading.Tasks;
 
 namespace Nethermind.Xdc;
-internal class XdcFlowManager(
+internal class XdcHotStuff(
     IBlockTree blockTree,
     ISpecProvider specProvider,
     IBlockProducer blockBuilder,
     IEpochSwitchManager epochSwitchManager,
     IQuorumCertificateManager quorumCertificateManager,
     ITimeoutCertificateManager timeoutCertificateManager,
+    ISigner signer,
     ILogManager logManager) : IBlockProducerRunner
 {
     public event EventHandler<BlockEventArgs> BlockProduced;
@@ -87,7 +88,7 @@ internal class XdcFlowManager(
         //TODO what do we do when we are syncing?
         await foreach (RoundSignal newRoundSignal in _newRoundSignals.Reader.ReadAllAsync(_cancellationTokenSource.Token))
         {
-            XdcBlockHeader currentHead = newRoundSignal.CurrentHead ?? (XdcBlockHeader)blockTree.Head.Header;
+            XdcBlockHeader currentHead = newRoundSignal.NewBlock ?? (XdcBlockHeader)blockTree.Head.Header;
             //TODO this is not the right way to get the current round
             IXdcReleaseSpec spec = specProvider.GetXdcSpec(currentHead, currentHead.ExtraConsensusData.CurrentRound);
 
@@ -97,10 +98,10 @@ internal class XdcFlowManager(
             //TODO make sure epoch switch is handled correctly
             EpochSwitchInfo? epochSwitchInfo = epochSwitchManager.GetEpochSwitchInfo(currentHead, currentHead.ParentHash);
 
-            if (newRoundSignal.CurrentHead is not null)
+            if (newRoundSignal.NewBlock is not null)
             {
                 //Start block production for the new block
-                Block myProposed = blockBuilder.BuildBlock(currentHead, epochSwitchInfo, spec);
+                Task<Block> blockProduction = blockBuilder.BuildBlock(currentHead, null,  null, IBlockProducer.Flags.None, _cancellationTokenSource.Token);
 
             }
             else
@@ -122,9 +123,14 @@ internal class XdcFlowManager(
         {
             epochSwitchInfo = epochSwitchManager.GetEpochSwitchInfo(currentHead, null);
         }
+        
+        int myIndex = Array.IndexOf(epochSwitchInfo.Masternodes, signer.Address);
+        if (myIndex < 0)
+            return false;
 
+        int currentLeaderIndex = (int)(currentRound % spec.EpochLength % epochSwitchInfo.Masternodes.Length);
 
-
+        return myIndex == currentLeaderIndex;
     }
 
     private bool IsNextEpochSwitch(XdcBlockHeader currentHead, long currentRound, IXdcReleaseSpec spec)
@@ -176,11 +182,11 @@ internal class XdcFlowManager(
     {
         public RoundSignal(XdcBlockHeader block, long round)
         {
-            this.CurrentHead = block;
+            this.NewBlock = block;
             this.CurrentRound = round;
         }
 
-        public XdcBlockHeader CurrentHead { get; }
+        public XdcBlockHeader NewBlock { get; }
         public long CurrentRound { get; }
     }
 
