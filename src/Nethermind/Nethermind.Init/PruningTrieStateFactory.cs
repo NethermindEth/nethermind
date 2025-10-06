@@ -69,10 +69,14 @@ public class PruningTrieStateFactory(
                 codeDb,
                 mainNodeStorage,
                 pathRecovery,
+                processExit,
+                true,
                 logManager)
             : new TrieStoreScopeProvider(
                 mainWorldTrieStore,
                 codeDb,
+                processExit,
+                true,
                 logManager);
 
         IWorldStateManager stateManager = new WorldStateManager(

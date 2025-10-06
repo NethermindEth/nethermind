@@ -5,6 +5,7 @@ using Nethermind.Db;
 using Nethermind.Evm.State;
 using Nethermind.Logging;
 using Nethermind.Trie.Pruning;
+using ZstdSharp.Unsafe;
 
 namespace Nethermind.State;
 
@@ -19,7 +20,7 @@ public class OverridableWorldStateManager : IOverridableWorldScope
         _dbProvider = readOnlyDbProvider;
         OverlayTrieStore overlayTrieStore = new(readOnlyDbProvider.StateDb, trieStore);
         _reader = new(overlayTrieStore, readOnlyDbProvider.CodeDb, logManager);
-        WorldState = new TrieStoreScopeProvider(overlayTrieStore, readOnlyDbProvider.CodeDb, logManager);
+        WorldState = new TrieStoreScopeProvider(overlayTrieStore, readOnlyDbProvider.CodeDb, null, false, logManager);
     }
 
     public IWorldStateScopeProvider WorldState { get; }

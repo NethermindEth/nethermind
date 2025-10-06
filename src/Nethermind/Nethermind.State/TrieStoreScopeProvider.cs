@@ -9,7 +9,9 @@ using System.Diagnostics.CodeAnalysis;
 using System.Linq;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
+using System.Threading.Channels;
 using System.Threading.Tasks;
+using Nethermind.Config;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
@@ -30,11 +32,16 @@ public class TrieStoreScopeProvider : IWorldStateScopeProvider
     protected StateTree _backingStateTree;
     private readonly KeyValueWithBatchingBackedCodeDb _codeDb;
 
-    public TrieStoreScopeProvider(ITrieStore trieStore, IKeyValueStoreWithBatching codeDb, ILogManager logManager)
+    private readonly IProcessExitSource _exitSource;
+    private bool _isPrimary = false;
+
+    public TrieStoreScopeProvider(ITrieStore trieStore, IKeyValueStoreWithBatching codeDb, IProcessExitSource exitSource, bool isPrimary, ILogManager logManager)
     {
         _trieStore = trieStore;
         _logManager = logManager;
         _codeDb = new KeyValueWithBatchingBackedCodeDb(codeDb);
+        _exitSource = exitSource;
+        _isPrimary = isPrimary;
 
         _backingStateTree = CreateStateTree();
     }
@@ -52,9 +59,17 @@ public class TrieStoreScopeProvider : IWorldStateScopeProvider
     public IWorldStateScopeProvider.IScope BeginScope(BlockHeader? baseBlock)
     {
         var trieStoreCloser = _trieStore.BeginScope(baseBlock);
-        _backingStateTree.RootHash = baseBlock?.StateRoot ?? Keccak.EmptyTreeHash;
+        var baseRootHash = baseBlock?.StateRoot ?? Keccak.EmptyTreeHash;
+        _backingStateTree.RootHash = baseRootHash;
 
-        return new TrieStoreWorldStateBackendScope(_backingStateTree, this, _codeDb, trieStoreCloser, _logManager);
+        return new TrieStoreWorldStateBackendScope(
+            _backingStateTree,
+            this,
+            _codeDb,
+            trieStoreCloser,
+            _exitSource,
+            _isPrimary,
+            _logManager);
     }
 
     protected virtual StorageTree CreateStorageTree(Address address, Hash256 storageRoot)
@@ -64,32 +79,6 @@ public class TrieStoreScopeProvider : IWorldStateScopeProvider
 
     private class TrieStoreWorldStateBackendScope : IWorldStateScopeProvider.IScope
     {
-        public void Dispose()
-        {
-            _trieStoreCloser.Dispose();
-            _backingStateTree.RootHash = Keccak.EmptyTreeHash;
-            _storages.Clear();
-        }
-
-        public Hash256 RootHash => _backingStateTree.RootHash;
-        public void UpdateRootHash() => _backingStateTree.UpdateRootHash();
-
-        public Account? Get(Address address)
-        {
-            ref Account? account = ref CollectionsMarshal.GetValueRefOrAddDefault(_loadedAccounts, address, out bool exists);
-            if (!exists)
-            {
-                account = _backingStateTree.Get(address);
-            }
-
-            return account;
-        }
-
-        public void HintGet(Address address, Account? account)
-        {
-            _loadedAccounts.TryAdd(address, account);
-        }
-
         public IWorldStateScopeProvider.ICodeDb CodeDb => _codeDb1;
 
         internal StateTree _backingStateTree;
@@ -99,23 +88,125 @@ public class TrieStoreScopeProvider : IWorldStateScopeProvider
         private readonly IWorldStateScopeProvider.ICodeDb _codeDb1;
         private readonly IDisposable _trieStoreCloser;
         private readonly ILogManager _logManager;
+        private bool _commitReached;
+        private bool _isPrimary = false;
+        private string _removedStack = "";
 
-        public TrieStoreWorldStateBackendScope(StateTree backingStateTree, TrieStoreScopeProvider scopeProvider, IWorldStateScopeProvider.ICodeDb codeDb, IDisposable trieStoreCloser, ILogManager logManager)
+        private static Counter _trieWarmEr = Prometheus.Metrics.CreateCounter("triestore_trie_warmer", "hit rate", "type");
+
+        private ChannelWriter<(Address, UInt256?)>? _trieWarmerJobs;
+        Task? _warmerJob = null;
+        public TrieStoreWorldStateBackendScope(
+            StateTree backingStateTree,
+            TrieStoreScopeProvider scopeProvider,
+            IWorldStateScopeProvider.ICodeDb codeDb,
+            IDisposable trieStoreCloser,
+            IProcessExitSource processExitSource,
+            bool isPrimary,
+            ILogManager logManager
+        )
         {
             _backingStateTree = backingStateTree;
             _logManager = logManager;
             _scopeProvider = scopeProvider;
             _codeDb1 = codeDb;
             _trieStoreCloser = trieStoreCloser;
+
+            if (isPrimary)
+            {
+                _isPrimary = isPrimary;
+
+                var chan = Channel.CreateBounded<(Address, UInt256?)>(new BoundedChannelOptions(1024)
+                {
+                    SingleWriter = true,
+                    AllowSynchronousContinuations = false,
+                    FullMode = BoundedChannelFullMode.DropWrite
+                });
+
+                _trieWarmerJobs = chan.Writer;
+                _warmerJob = Task.Run<Task>(async () =>
+                {
+                    int completed = 0;
+                    ArrayPoolList<Task> tasks = new ArrayPoolList<Task>(Environment.ProcessorCount);
+                    for (int i = 0; i < Environment.ProcessorCount; i++)
+                    {
+                        tasks.Add(Task.Run(async () =>
+                        {
+                            try
+                            {
+                                var reader = chan?.Reader;
+                                if (reader is null)
+                                {
+                                    Console.Error.WriteLine("Reader is null");
+                                    return;
+                                }
+
+                                await foreach (var job in reader.ReadAllAsync(processExitSource.Token))
+                                {
+                                    (Address address, UInt256? path) = job;
+
+                                    if (_commitReached)
+                                    {
+                                        if (path is null)
+                                        {
+                                            _trieWarmEr.WithLabels("state_skip").Inc();
+                                        }
+                                        else
+                                        {
+                                            _trieWarmEr.WithLabels("storage_skip").Inc();
+                                        }
+
+                                        continue;
+                                    }
+
+                                    if (path is null)
+                                    {
+                                        _backingStateTree.Get(address.ToAccountPath.ToCommitment());
+                                        _trieWarmEr.WithLabels("state").Inc();
+                                    }
+                                    else
+                                    {
+                                        LookupStorageTree(address).Get(path.Value);
+                                        _trieWarmEr.WithLabels("storage").Inc();
+                                    }
+                                }
+                            }
+                            catch (OperationCanceledException)
+                            {
+                            }
+                            catch (Exception ex)
+                            {
+                                Console.Error.WriteLine(ex);
+                                throw;
+                            }
+                            finally
+                            {
+                                completed++;
+                            }
+                        }));
+                    }
+
+                    await Task.WhenAll(tasks);;
+                    _trieWarmerJobs = null;
+                    _removedStack = _removedStack + $"in task {completed}";
+                });
+            }
         }
 
         public IWorldStateScopeProvider.IWorldStateWriteBatch StartWriteBatch(int estimatedAccountNumber)
         {
+            _removedStack += "write batch";
+            _trieWarmerJobs?.TryComplete();
             return new WorldStateWriteBatch(this, estimatedAccountNumber, _logManager.GetClassLogger<WorldStateWriteBatch>());
         }
 
         public void Commit(long blockNumber)
         {
+            if (_trieWarmerJobs is not null)
+            {
+                _removedStack += $"commit {Environment.StackTrace}";
+            }
+            _trieWarmerJobs?.TryComplete();
             using var blockCommitter = _scopeProvider._trieStore.BeginBlockCommit(blockNumber);
 
             // Note: These all runs in about 0.4ms. So the little overhead like attempting to sort the tasks
@@ -140,7 +231,36 @@ public class TrieStoreScopeProvider : IWorldStateScopeProvider
 
             Task.WaitAll(commitTask.AsSpan());
             _backingStateTree.Commit();
+            _commitReached = true; // At the end, then we stop it
+            _warmerJob?.Wait();
             _storages.Clear();
+        }
+
+        public void Dispose()
+        {
+            _trieStoreCloser.Dispose();
+            _backingStateTree.RootHash = Keccak.EmptyTreeHash;
+            _storages.Clear();
+        }
+
+        public Hash256 RootHash => _backingStateTree.RootHash;
+        public void UpdateRootHash() => _backingStateTree.UpdateRootHash();
+
+        public Account? Get(Address address)
+        {
+            ref Account? account = ref CollectionsMarshal.GetValueRefOrAddDefault(_loadedAccounts, address, out bool exists);
+            if (!exists)
+            {
+                account = _backingStateTree.Get(address);
+            }
+
+            return account;
+        }
+
+        public void HintGet(Address address, Account? account)
+        {
+            _trieWarmerJobs?.TryWrite((address, null));
+            _loadedAccounts[address] = account;
         }
 
         internal StorageTree LookupStorageTree(Address address)
@@ -162,7 +282,13 @@ public class TrieStoreScopeProvider : IWorldStateScopeProvider
 
         public IWorldStateScopeProvider.IStorageTree CreateStorageTree(Address address)
         {
-            return LookupStorageTree(address);
+            var storageTree = LookupStorageTree(address);
+            var writer = _trieWarmerJobs;
+            if (writer is null)
+            {
+                return storageTree;
+            }
+            return new StorageTreeHintWrapper(storageTree, writer, address);
         }
     }
 
@@ -185,8 +311,6 @@ public class TrieStoreScopeProvider : IWorldStateScopeProvider
         {
             return new StorageTreeBulkWriteBatch(estimatedEntries, scope.LookupStorageTree(address), this, address);
         }
-
-        public event EventHandler<IWorldStateScopeProvider.AccountChangeEvent>? OnAccountChanged;
 
         public void MarkDirty(AddressAsKey address, Hash256 storageTreeRootHash)
         {
@@ -236,6 +360,34 @@ public class TrieStoreScopeProvider : IWorldStateScopeProvider
             [DoesNotReturn, StackTraceHidden]
             static Account ThrowNullAccount(Address address)
                 => throw new InvalidOperationException($"Account {address} is null when updating storage hash");
+        }
+    }
+
+    private class StorageTreeHintWrapper(
+        IWorldStateScopeProvider.IStorageTree baseStorageTree,
+#pragma warning disable CS9113 // Parameter is unread.
+        ChannelWriter<(Address, UInt256?)> hintChan,
+        Address address
+#pragma warning restore CS9113 // Parameter is unread.
+    ) : IWorldStateScopeProvider.IStorageTree
+    {
+
+        public Hash256 RootHash => baseStorageTree.RootHash;
+
+        public byte[]? Get(in UInt256 index)
+        {
+            return baseStorageTree.Get(in index);
+        }
+
+        public void HintGet(in UInt256 index, byte[]? value)
+        {
+            // hintChan.TryWrite((address, index));
+            baseStorageTree.HintGet(in index, value);
+        }
+
+        public byte[]? Get(in ValueHash256 hash)
+        {
+            return baseStorageTree.Get(in hash);
         }
     }
 
