@@ -40,7 +40,7 @@ namespace Nethermind.State
         // Note:
         // False negatives are fine as they will just result in a overwrite set
         // False positives would be problematic as the code _must_ be persisted
-        private readonly ClockKeyCacheNonConcurrent<ValueHash256> _codeInsertFilter = new(1_024);
+        private readonly ClockKeyCacheNonConcurrent<ValueHash256> _codeInsertFilter = new(256);
         private readonly Dictionary<AddressAsKey, ChangeTrace> _blockChanges = new(4_096);
         private readonly ConcurrentDictionary<AddressAsKey, Account>? _preBlockCache;
 
@@ -893,6 +893,7 @@ namespace Nethermind.State
             if (_logger.IsTrace) Trace();
             if (resetBlockChanges)
             {
+                _codeInsertFilter.Clear();
                 _blockChanges.Clear();
                 _codeBatch?.Clear();
             }
