@@ -38,6 +38,7 @@ namespace Nethermind.TxPool
         void AddPeer(ITxPoolPeer peer);
         void RemovePeer(PublicKey nodeId);
         bool ContainsTx(Hash256 hash, TxType txType);
+        AnnounceResult AnnounceTx(ValueHash256 txhash, Guid sessionId, Action request);
         AcceptTxResult SubmitTx(Transaction tx, TxHandlingOptions handlingOptions);
         bool RemoveTransaction(Hash256? hash);
         Transaction? GetBestTx();
@@ -60,7 +61,5 @@ namespace Nethermind.TxPool
         public bool AcceptTxWhenNotSynced { get; set; }
         bool SupportsBlobs { get; }
         long PendingTransactionsAdded { get; }
-
-        ISimpleRetryCache<ValueHash256, Guid> RetryCache { get; }
     }
 }

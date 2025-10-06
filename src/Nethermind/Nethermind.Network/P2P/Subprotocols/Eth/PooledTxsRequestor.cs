@@ -98,7 +98,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth
                 Hash256 hash = hashes[i];
                 if (!txPool.IsKnown(hash))
                 {
-                    if (txPool.RetryCache.Announced(hash, sessionId, () =>
+                    if (txPool.AnnounceTx(hash, sessionId, () =>
                     {
                         ArrayPoolList<Hash256> hashesToRetry = new(1) { hash };
                         GetPooledTransactionsMessage msg65 = new(hashesToRetry);
@@ -121,7 +121,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth
                 Hash256 hash = hashes[i];
                 if (!txPool.IsKnown(hash))
                 {
-                    if (txPool.RetryCache.Announced(hash, sessionId, () =>
+                    if (txPool.AnnounceTx(hash, sessionId, () =>
                     {
                         ArrayPoolList<Hash256> hashesToRetry = new(1) { hash };
                         V66.Messages.GetPooledTransactionsMessage msg66 = new(MessageConstants.Random.NextLong(), new GetPooledTransactionsMessage(hashesToRetry));
@@ -144,7 +144,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth
                 Hash256 hash = hashes[i];
                 if (!txPool.IsKnown(hash) && !txPool.ContainsTx(hash, (TxType)types[i]))
                 {
-                    if (txPool.RetryCache.Announced(hash, sessionId, () =>
+                    if (txPool.AnnounceTx(hash, sessionId, () =>
                     {
                         ArrayPoolList<Hash256> hashesToRetry = new(1) { hash };
                         V66.Messages.GetPooledTransactionsMessage msg66 = new(MessageConstants.Random.NextLong(), new GetPooledTransactionsMessage(hashesToRetry));

@@ -2,12 +2,17 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using DotNetty.Buffers;
+using Nethermind.Blockchain;
+using Nethermind.Blockchain.Spec;
 using Nethermind.Consensus;
+using Nethermind.Consensus.Comparers;
+using Nethermind.Consensus.Validators;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
+using Nethermind.Core.Test.Db;
 using Nethermind.Core.Timers;
 using Nethermind.Crypto;
 using Nethermind.Logging;
@@ -27,6 +32,7 @@ using Nethermind.Stats.Model;
 using Nethermind.Synchronization;
 using Nethermind.TxPool;
 using NSubstitute;
+using NSubstitute.ReceivedExtensions;
 using NUnit.Framework;
 using System;
 using System.Linq;
@@ -56,7 +62,6 @@ public class PooledTransactionsRequestingTests
         _svc = Build.A.SerializationService().WithEth66().TestObject;
 
         IGossipPolicy _gossipPolicy = Substitute.For<IGossipPolicy>();
-
         _disposables = [];
 
         _session = Substitute.For<ISession>();
@@ -65,9 +70,18 @@ public class PooledTransactionsRequestingTests
 
         _genesisBlock = Build.A.Block.Genesis.TestObject;
 
-        ITxPool transactionPool = Substitute.For<ITxPool>();
-
         TestSingleReleaseSpecProvider specProvider = new(Osaka.Instance);
+        IBlockTree blockTree = Build.A.BlockTree().WithoutSettingHead.WithSpecProvider(specProvider).TestObject;
+
+        TxPool.TxPool transactionPool = new(
+            new EthereumEcdsa(specProvider.ChainId),
+            new BlobTxStorage(),
+            new ChainHeadInfoProvider(
+                new ChainHeadSpecProvider(specProvider, blockTree), blockTree, TestWorldStateFactory.CreateForTestWithStateReader(TestMemDbProvider.Init(), LimboLogs.Instance).Item2),
+            new TxPoolConfig(),
+            new TxValidator(specProvider.ChainId),
+            LimboLogs.Instance,
+            new TransactionComparerProvider(specProvider, blockTree).GetDefaultComparer());
 
         PooledTxsRequestor realPooledTxsRequestor = new(transactionPool, new TxPoolConfig(), specProvider);
 
@@ -94,10 +108,14 @@ public class PooledTransactionsRequestingTests
 
         Transaction tx = Build.A.Transaction.WithShardBlobTxTypeAndFields(1).WithMaxPriorityFeePerGas(1).WithGasLimit(100)
             .SignedAndResolved(new EthereumEcdsa(1), TestItem.PrivateKeyA).TestObject;
-        transactionPool.RetryCache.Returns(new SimpleRetryCache<ValueHash256, Guid>(LimboLogs.Instance));
-        transactionPool.SubmitTx(Arg.Any<Transaction>(), Arg.Any<TxHandlingOptions>())
-            .Returns(AcceptTxResult.Accepted)
-            .AndDoes(s => transactionPool.RetryCache.Received((s.Args()[0] as Transaction).Hash));
+
+        //transactionPool.AnnounceTx(Arg.Any<ValueHash256>(), Arg.Any<Guid>(), Arg.Any<Action>())
+        //    .Returns(AcceptTxResult.Accepted)
+        //    .AndDoes(s => transactionPool.Received((s.Args()[0] as Transaction).Hash));
+
+        //transactionPool.SubmitTx(Arg.Any<Transaction>(), Arg.Any<TxHandlingOptions>())
+        //    .Returns(AcceptTxResult.Accepted)
+        //    .AndDoes(s => transactionPool.Received((s.Args()[0] as Transaction).Hash));
 
         Hash256 _txHash = tx.CalculateHash();
         _txs = new(1) { tx };

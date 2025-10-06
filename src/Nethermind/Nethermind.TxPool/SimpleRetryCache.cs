@@ -11,19 +11,6 @@ using System.Threading.Tasks;
 
 namespace Nethermind.TxPool;
 
-/// <summary>
-/// Allows to announce request for a resource and track other nodes to request it from in case of timeout. The code does not request the resource initially, but does so on timeout.
-/// </summary>
-/// <typeparam name="TResourceId">Resource identifier</typeparam>
-/// <typeparam name="TNodeId">Node that can be queried for the resource</typeparam>
-public interface ISimpleRetryCache<TResourceId, TNodeId>
-    where TResourceId : struct, IEquatable<TResourceId>
-    where TNodeId : notnull, IEquatable<TNodeId>
-{
-    AnnounceResult Announced(TResourceId resourceId, TNodeId nodeId, Action request);
-    void Received(TResourceId resourceId);
-}
-
 public abstract class SimpleRetryCache
 {
     public const int TimeoutMs = 2500;
@@ -31,7 +18,7 @@ public abstract class SimpleRetryCache
     protected static int RequestingCacheSize = MemoryAllowance.TxHashCacheSize / 10;
 }
 
-public class SimpleRetryCache<TResourceId, TNodeId> : SimpleRetryCache, ISimpleRetryCache<TResourceId, TNodeId>
+public class SimpleRetryCache<TResourceId, TNodeId> : SimpleRetryCache
     where TResourceId : struct, IEquatable<TResourceId>
     where TNodeId : notnull, IEquatable<TNodeId>
 {
@@ -126,11 +113,3 @@ public enum AnnounceResult
     PendingRequest
 }
 
-
-public class NullSimpleRetryCache<TResourceId, TNodeId> : ISimpleRetryCache<TResourceId, TNodeId>
-    where TResourceId : struct, IEquatable<TResourceId>
-    where TNodeId : notnull, IEquatable<TNodeId>
-{
-    public AnnounceResult Announced(TResourceId resourceId, TNodeId nodeId, Action request) => AnnounceResult.New;
-    public void Received(TResourceId resourceId) { }
-}
