@@ -4,7 +4,6 @@
 using System;
 using System.Numerics;
 using System.Runtime.CompilerServices;
-using System.Runtime.Serialization;
 using System.Threading;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.BeaconBlockRoot;
@@ -179,19 +178,15 @@ public partial class BlockProcessor
             header.StateRoot = _stateProvider.StateRoot;
         }
 
-        if (spec.BlockLevelAccessListsEnabled)
+        if (_tracedAccessWorldState is not null && spec.BlockLevelAccessListsEnabled)
         {
-            if (_tracedAccessWorldState is not null)
-            {
-                body.BlockAccessList = _tracedAccessWorldState.BlockAccessList;
-                header.BlockAccessListHash = new(ValueKeccak.Compute(Rlp.Encode(_tracedAccessWorldState.BlockAccessList).Bytes).Bytes);
-            }
-            else
-            {
-                header.BlockAccessListHash = new(ValueKeccak.Compute([Rlp.NullObjectByte]));
-            }
+            body.BlockAccessList = _tracedAccessWorldState.BlockAccessList;
+            header.BlockAccessListHash = new(ValueKeccak.Compute(Rlp.Encode(_tracedAccessWorldState.BlockAccessList).Bytes).Bytes);
         }
-
+        else
+        {
+            header.BlockAccessListHash = new(ValueKeccak.Compute([Rlp.NullObjectByte]));
+        }
 
         header.Hash = header.CalculateHash();
 
