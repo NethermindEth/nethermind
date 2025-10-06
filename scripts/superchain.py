@@ -16,7 +16,7 @@ from urllib.request import urlopen
 from zipfile import ZipFile
 
 SUPERCHAIN_REPOSITORY = "https://github.com/ethereum-optimism/superchain-registry/archive/refs/heads/main.zip"
-IGNORED_CHAINS = ["arena-z-testnet", "creator-chain-testnet", "rehearsal-0-bn-0", "rehearsal-0-bn-1", "radius_testnet", "silent-data-mainnet"]
+IGNORED_CHAINS = ["arena-z-testnet", "creator-chain-testnet", "rehearsal-0-bn-0", "rehearsal-0-bn-1", "celo", "radius_testnet", "silent-data-mainnet"]
 IGNORED_L1S = ["sepolia-dev-0"]
 
 
