@@ -78,30 +78,6 @@ public class SnapshotsStore
         }
     }
 
-    public StateId GetFirst()
-    {
-        // Note: because of how rocksdb works, this is really slow.
-        // Use GetFirstEqualOrAfter where possible
-        byte[]? firstKey = _snapshotStore.FirstKey;
-        if (firstKey is null) return default;
-
-        return DecodeKey(firstKey);
-    }
-
-    public StateId? GetFirstEqualOrAfter(long blockNumber)
-    {
-        byte[] lowerBound = EncodeKey(new StateId(blockNumber, Keccak.Zero));
-        byte[] upperBound = EncodeKey(new StateId(long.MaxValue, Keccak.MaxValue));
-        using ISortedView sortedView = _snapshotStore.GetViewBetween(lowerBound, upperBound);
-
-        if (sortedView.MoveNext())
-        {
-            return DecodeKey(sortedView.CurrentKey);
-        }
-
-        return null;
-    }
-
     public void Remove(StateId firstKey)
     {
         byte[] key = EncodeKey(firstKey);

@@ -8,7 +8,6 @@ using System.Threading;
 using System.Threading.Channels;
 using System.Threading.Tasks;
 using Nethermind.Config;
-using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Logging;
@@ -78,12 +77,7 @@ public sealed class FlatCacheRepository
             return;
         }
 
-        while (lastState.Value.blockNumber - _bigCache.CurrentBlockNumber >= _maxStateInMemory)
-        {
-            AddToBigCache();
-        }
-
-        foreach (var stateId in _snapshotsStore.GetKeysBetween(_bigCache.CurrentBlockNumber, long.MaxValue))
+        foreach (var stateId in _snapshotsStore.GetKeysBetween(_bigCache.CurrentState.blockNumber, long.MaxValue))
         {
             _snapshotsStore.TryGetValue(stateId, out var snapshot);
             _inMemorySnapshotStore.AddBlock(stateId, snapshot);
@@ -205,16 +199,16 @@ public sealed class FlatCacheRepository
         {
             Snapshot state = entry;
             if (_logger.IsTrace) _logger.Trace($"Got {state.From} -> {state.To}");
+            if (current.blockNumber <= _bigCache.CurrentState.blockNumber) break; // Or equal?
             knownStates.Add(state);
             if (current.blockNumber == earliestBlockNumber) break;
-            if (current.blockNumber < _bigCache.CurrentBlockNumber) break;
             if (state.From == current) break; // Some test commit two block with the same id, so we dont know the parent anymore.
             current = state.From;
         }
 
         knownStates.Reverse();
 
-        if (_logger.IsTrace) _logger.Trace($"Gathered {baseBlock}. Earliest is {earliestBlockNumber}, Got {knownStates.Count} known states, {_bigCache.CurrentBlockNumber}");
+        if (_logger.IsTrace) _logger.Trace($"Gathered {baseBlock}. Earliest is {earliestBlockNumber}, Got {knownStates.Count} known states, {_bigCache.CurrentState}");
         return new SnapshotBundle(knownStates, _bigCache);
     }
 
@@ -223,9 +217,9 @@ public sealed class FlatCacheRepository
         using (_repoLock.EnterScope())
         {
             if (_logger.IsTrace) _logger.Trace($"Registering {startingBlock.blockNumber} to {endBlock.blockNumber}");
-            if (endBlock.blockNumber <= _bigCache.CurrentBlockNumber)
+            if (endBlock.blockNumber <= _bigCache.CurrentState.blockNumber)
                 throw new InvalidOperationException(
-                    $"Cannot register snapshot earlier than bigcache. Snapshot number {endBlock.blockNumber}, bigcache number: {_bigCache.CurrentBlockNumber}");
+                    $"Cannot register snapshot earlier than bigcache. Snapshot number {endBlock.blockNumber}, bigcache number: {_bigCache.CurrentState}");
 
             _inMemorySnapshotStore.AddBlock(endBlock, snapshot);
         }
@@ -248,44 +242,6 @@ public sealed class FlatCacheRepository
     private async Task CleanIfNeeded()
     {
         await NotifyWhenSlow("add to bigcache", () => AddToBigCache());
-        await NotifyWhenSlow("subtract from bigcache", () => SubtractFromBigCache());
-    }
-
-    private void SubtractFromBigCache()
-    {
-        try
-        {
-            while (_bigCache.SnapshotCount > _maxStateInMemory)
-            {
-                StateId firstKey;
-                Snapshot snapshot;
-
-                long sw = Stopwatch.GetTimestamp();
-                firstKey = _snapshotsStore
-                    .GetFirstEqualOrAfter(long.Max(0, _bigCache.CurrentBlockNumber - _maxStateInMemory)).Value;
-                SnapshotsStore._snapshotTimes.WithLabels("get_first").Inc(Stopwatch.GetTimestamp() - sw);
-                sw = Stopwatch.GetTimestamp();
-
-                _snapshotsStore.TryGetValue(firstKey, out snapshot);
-                SnapshotsStore._snapshotTimes.WithLabels("get_total").Inc(Stopwatch.GetTimestamp() - sw);
-                sw = Stopwatch.GetTimestamp();
-
-                _bigCache.Subtract(firstKey, snapshot);
-                SnapshotsStore._snapshotTimes.WithLabels("subtract").Inc(Stopwatch.GetTimestamp() - sw);
-                sw = Stopwatch.GetTimestamp();
-
-                _snapshotsStore.Remove(firstKey);
-                _compactedKnownStates.Remove(firstKey);
-
-                SnapshotsStore._snapshotTimes.WithLabels("remove").Inc(Stopwatch.GetTimestamp() - sw);
-            }
-        }
-        catch (Exception ex)
-        {
-            Console.Error.WriteLine(ex);
-            throw;
-        }
-
     }
 
     private void AddToBigCache()
@@ -298,14 +254,15 @@ public sealed class FlatCacheRepository
             using (_repoLock.EnterScope())
             {
                 long lastSnapshotNumber = _snapshotsStore.GetLast()?.blockNumber ?? 0;
-                if (lastSnapshotNumber - _bigCache.CurrentBlockNumber <= _boundary)
+                StateId currentState = _bigCache.CurrentState;
+                if (lastSnapshotNumber - currentState.blockNumber <= _boundary)
                 {
                     break;
                 }
 
                 List<StateId> candidateToAdd = new List<StateId>();
                 long? blockNumber = null;
-                foreach (var stateId in _snapshotsStore.GetStatesAfterBlock(_bigCache.CurrentBlockNumber))
+                foreach (var stateId in _snapshotsStore.GetStatesAfterBlock(currentState.blockNumber))
                 {
                     if (blockNumber is null)
                     {
@@ -372,11 +329,12 @@ public sealed class FlatCacheRepository
             // Add the canon snapshot
             _bigCache.Add(pickedSnapshot.Value, pickedState);
 
-            // And we remove it from the in memory snapshot, but not the persisted one
+            // And we remove it
             using (_repoLock.EnterScope())
             {
                 _compactedKnownStates.Remove(pickedSnapshot.Value);
                 _inMemorySnapshotStore.Remove(pickedSnapshot.Value);
+                _snapshotsStore.Remove(pickedSnapshot.Value);
             }
         }
     }

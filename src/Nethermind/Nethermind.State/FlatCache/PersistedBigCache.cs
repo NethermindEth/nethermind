@@ -6,6 +6,7 @@ using System.Buffers.Binary;
 using System.Collections.Generic;
 using Autofac.Features.AttributeFilters;
 using Nethermind.Core;
+using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Db;
 using Nethermind.Int256;
@@ -18,7 +19,12 @@ namespace Nethermind.State.FlatCache;
 public class PersistedBigCache : IBigCache
 {
     private byte[] _currentBlockNumberKey = Bytes.FromHexString("00000000");
-    private byte[] _snapshotCountNumberKey = Bytes.FromHexString("0000000f");
+    private StateId _currentState = new StateId(-1, Keccak.Zero);
+
+    public StateId CurrentState => _currentState;
+
+    private readonly IDb _db;
+    private readonly IDb _writtenDb; // For statistic.
 
     AccountDecoder _accountDecoder = AccountDecoder.Instance;
 
@@ -29,20 +35,12 @@ public class PersistedBigCache : IBigCache
 
         byte[]? currentBlockNumberBytes = db[_currentBlockNumberKey];
         if (currentBlockNumberBytes is not null)
-            _currentBlockNumber = BinaryPrimitives.ReadInt64BigEndian(currentBlockNumberBytes);
-
-        byte[]? snapshotCountBytes = db[_snapshotCountNumberKey];
-        if (snapshotCountBytes is not null)
-            _snapshotCount = BinaryPrimitives.ReadInt64BigEndian(snapshotCountBytes);
+        {
+            long blockNumber = BinaryPrimitives.ReadInt64BigEndian(currentBlockNumberBytes);
+            ValueHash256 stateRoot = new ValueHash256(currentBlockNumberBytes[8..]);
+            _currentState = new StateId(blockNumber, stateRoot);
+        }
     }
-
-    private long _currentBlockNumber = -1;
-    public long CurrentBlockNumber => _currentBlockNumber;
-
-    private long _snapshotCount = 0;
-    private readonly IDb _db;
-    private readonly IDb _writtenDb; // For statistic.
-    public long SnapshotCount => _snapshotCount;
 
     public bool TryGetValue(Address address, out Account? acc)
     {
@@ -97,20 +95,19 @@ public class PersistedBigCache : IBigCache
         return new PersistentBigCacheStorageReader(_db, address, selfDestructBlockNumber);
     }
 
-    public void Subtract(StateId firstKey, Snapshot snapshot)
-    {
-        _snapshotCount--;
-        byte[] rlpBuffer = new byte[1000];
-        Span<byte> rlpBufferSpan = rlpBuffer;
-        BinaryPrimitives.WriteInt64BigEndian(rlpBufferSpan, _snapshotCount);
-        _db.PutSpan(_snapshotCountNumberKey, rlpBufferSpan[..8]);
-    }
-
-    private static Gauge _snapshotCountMetric = Prometheus.Metrics.CreateGauge("flatcache_bigcache_snapshot_count", "snapshot count");
     private static Counter _selfDestructShortcut = Prometheus.Metrics.CreateCounter("flatcache_bigcache_selfdestruct_shortcut", "snapshot count");
 
     public void Add(StateId pickedSnapshot, Snapshot knownState)
     {
+        if (_currentState.blockNumber != -1)
+        {
+            if (_currentState != knownState.From)
+            {
+                throw new InvalidOperationException(
+                    $"Inconsistent state chain. Previous state {_currentState}, next state parent {knownState.From}, next state {knownState.To}");
+            }
+        }
+
         long blockNumber = pickedSnapshot.blockNumber;
         Span<byte> keyBuffer = stackalloc byte[53];
         byte[] rlpBuffer = new byte[1000];
@@ -170,15 +167,11 @@ public class PersistedBigCache : IBigCache
                 }
             }
 
-            _currentBlockNumber = blockNumber;
-            BinaryPrimitives.WriteInt64BigEndian(rlpBufferSpan, _currentBlockNumber);
-            writeBatch.PutSpan(_currentBlockNumberKey, rlpBufferSpan[..8]);
-
-            _snapshotCount++;
-            BinaryPrimitives.WriteInt64BigEndian(rlpBufferSpan, _snapshotCount);
-            writeBatch.PutSpan(_snapshotCountNumberKey, rlpBufferSpan[..8]);
+            _currentState = pickedSnapshot;
+            BinaryPrimitives.WriteInt64BigEndian(rlpBufferSpan, pickedSnapshot.blockNumber);
+            pickedSnapshot.stateRoot.BytesAsSpan.CopyTo(rlpBufferSpan[8..]);
+            writeBatch.PutSpan(_currentBlockNumberKey, rlpBufferSpan[..40]);
         }
-        _snapshotCountMetric.Set(SnapshotCount);
     }
 
     private Span<byte> EncodeAccountKey(Address address, Span<byte> key)
