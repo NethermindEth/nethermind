@@ -32,16 +32,18 @@ public class TrieStoreScopeProvider : IWorldStateScopeProvider
     protected StateTree _backingStateTree;
     private readonly KeyValueWithBatchingBackedCodeDb _codeDb;
 
-    private readonly IProcessExitSource _exitSource;
-    private bool _isPrimary = false;
+    private readonly TrieStoreTrieCacheWarmer? _trieWarmer;
 
-    public TrieStoreScopeProvider(ITrieStore trieStore, IKeyValueStoreWithBatching codeDb, IProcessExitSource exitSource, bool isPrimary, ILogManager logManager)
+    public TrieStoreScopeProvider(
+        ITrieStore trieStore,
+        IKeyValueStoreWithBatching codeDb,
+        TrieStoreTrieCacheWarmer? trieWarmer,
+        ILogManager logManager)
     {
         _trieStore = trieStore;
         _logManager = logManager;
         _codeDb = new KeyValueWithBatchingBackedCodeDb(codeDb);
-        _exitSource = exitSource;
-        _isPrimary = isPrimary;
+        _trieWarmer = trieWarmer;
 
         _backingStateTree = CreateStateTree();
     }
@@ -67,8 +69,7 @@ public class TrieStoreScopeProvider : IWorldStateScopeProvider
             this,
             _codeDb,
             trieStoreCloser,
-            _exitSource,
-            _isPrimary,
+            _trieWarmer,
             _logManager);
     }
 
@@ -77,7 +78,7 @@ public class TrieStoreScopeProvider : IWorldStateScopeProvider
         return new StorageTree(_trieStore.GetTrieStore(address), storageRoot, _logManager);
     }
 
-    private class TrieStoreWorldStateBackendScope : IWorldStateScopeProvider.IScope
+    internal class TrieStoreWorldStateBackendScope : IWorldStateScopeProvider.IScope
     {
         public IWorldStateScopeProvider.ICodeDb CodeDb => _codeDb1;
 
@@ -88,21 +89,14 @@ public class TrieStoreScopeProvider : IWorldStateScopeProvider
         private readonly IWorldStateScopeProvider.ICodeDb _codeDb1;
         private readonly IDisposable _trieStoreCloser;
         private readonly ILogManager _logManager;
-        private bool _commitReached;
-        private bool _isPrimary = false;
-        private string _removedStack = "";
+        private readonly TrieStoreTrieCacheWarmer? _trieWarmer;
 
-        private static Counter _trieWarmEr = Prometheus.Metrics.CreateCounter("triestore_trie_warmer", "hit rate", "type");
-
-        private ChannelWriter<(Address, UInt256?)>? _trieWarmerJobs;
-        Task? _warmerJob = null;
         public TrieStoreWorldStateBackendScope(
             StateTree backingStateTree,
             TrieStoreScopeProvider scopeProvider,
             IWorldStateScopeProvider.ICodeDb codeDb,
             IDisposable trieStoreCloser,
-            IProcessExitSource processExitSource,
-            bool isPrimary,
+            TrieStoreTrieCacheWarmer? trieWarmer,
             ILogManager logManager
         )
         {
@@ -111,102 +105,19 @@ public class TrieStoreScopeProvider : IWorldStateScopeProvider
             _scopeProvider = scopeProvider;
             _codeDb1 = codeDb;
             _trieStoreCloser = trieStoreCloser;
-
-            if (isPrimary)
-            {
-                _isPrimary = isPrimary;
-
-                var chan = Channel.CreateBounded<(Address, UInt256?)>(new BoundedChannelOptions(1024)
-                {
-                    SingleWriter = true,
-                    AllowSynchronousContinuations = false,
-                    FullMode = BoundedChannelFullMode.DropWrite
-                });
-
-                _trieWarmerJobs = chan.Writer;
-                _warmerJob = Task.Run<Task>(async () =>
-                {
-                    int completed = 0;
-                    ArrayPoolList<Task> tasks = new ArrayPoolList<Task>(Environment.ProcessorCount);
-                    for (int i = 0; i < Environment.ProcessorCount; i++)
-                    {
-                        tasks.Add(Task.Run(async () =>
-                        {
-                            try
-                            {
-                                var reader = chan?.Reader;
-                                if (reader is null)
-                                {
-                                    Console.Error.WriteLine("Reader is null");
-                                    return;
-                                }
-
-                                await foreach (var job in reader.ReadAllAsync(processExitSource.Token))
-                                {
-                                    (Address address, UInt256? path) = job;
-
-                                    if (_commitReached)
-                                    {
-                                        if (path is null)
-                                        {
-                                            _trieWarmEr.WithLabels("state_skip").Inc();
-                                        }
-                                        else
-                                        {
-                                            _trieWarmEr.WithLabels("storage_skip").Inc();
-                                        }
-
-                                        continue;
-                                    }
-
-                                    if (path is null)
-                                    {
-                                        _backingStateTree.Get(address.ToAccountPath.ToCommitment());
-                                        _trieWarmEr.WithLabels("state").Inc();
-                                    }
-                                    else
-                                    {
-                                        LookupStorageTree(address).Get(path.Value);
-                                        _trieWarmEr.WithLabels("storage").Inc();
-                                    }
-                                }
-                            }
-                            catch (OperationCanceledException)
-                            {
-                            }
-                            catch (Exception ex)
-                            {
-                                Console.Error.WriteLine(ex);
-                                throw;
-                            }
-                            finally
-                            {
-                                completed++;
-                            }
-                        }));
-                    }
-
-                    await Task.WhenAll(tasks);;
-                    _trieWarmerJobs = null;
-                    _removedStack = _removedStack + $"in task {completed}";
-                });
-            }
+            _trieWarmer = trieWarmer;
+            trieWarmer?.OnScope(this);
         }
 
         public IWorldStateScopeProvider.IWorldStateWriteBatch StartWriteBatch(int estimatedAccountNumber)
         {
-            _removedStack += "write batch";
-            _trieWarmerJobs?.TryComplete();
+            _trieWarmer.OnStartWriteBatch();
             return new WorldStateWriteBatch(this, estimatedAccountNumber, _logManager.GetClassLogger<WorldStateWriteBatch>());
         }
 
         public void Commit(long blockNumber)
         {
-            if (_trieWarmerJobs is not null)
-            {
-                _removedStack += $"commit {Environment.StackTrace}";
-            }
-            _trieWarmerJobs?.TryComplete();
+            _trieWarmer.OnCommit();
             using var blockCommitter = _scopeProvider._trieStore.BeginBlockCommit(blockNumber);
 
             // Note: These all runs in about 0.4ms. So the little overhead like attempting to sort the tasks
@@ -231,9 +142,9 @@ public class TrieStoreScopeProvider : IWorldStateScopeProvider
 
             Task.WaitAll(commitTask.AsSpan());
             _backingStateTree.Commit();
-            _commitReached = true; // At the end, then we stop it
-            _warmerJob?.Wait();
             _storages.Clear();
+
+            _trieWarmer.OnCommitDone();
         }
 
         public void Dispose()
@@ -241,6 +152,7 @@ public class TrieStoreScopeProvider : IWorldStateScopeProvider
             _trieStoreCloser.Dispose();
             _backingStateTree.RootHash = Keccak.EmptyTreeHash;
             _storages.Clear();
+            _trieWarmer?.OnScopeDone();
         }
 
         public Hash256 RootHash => _backingStateTree.RootHash;
@@ -259,7 +171,7 @@ public class TrieStoreScopeProvider : IWorldStateScopeProvider
 
         public void HintGet(Address address, Account? account)
         {
-            _trieWarmerJobs?.TryWrite((address, null));
+            _trieWarmer?.HintAccountRead(address);
             _loadedAccounts[address] = account;
         }
 
@@ -283,12 +195,11 @@ public class TrieStoreScopeProvider : IWorldStateScopeProvider
         public IWorldStateScopeProvider.IStorageTree CreateStorageTree(Address address)
         {
             var storageTree = LookupStorageTree(address);
-            var writer = _trieWarmerJobs;
-            if (writer is null)
+            if (_trieWarmer is null)
             {
                 return storageTree;
             }
-            return new StorageTreeHintWrapper(storageTree, writer, address);
+            return new StorageTreeHintWrapper(storageTree, _trieWarmer, address);
         }
     }
 
@@ -365,10 +276,8 @@ public class TrieStoreScopeProvider : IWorldStateScopeProvider
 
     private class StorageTreeHintWrapper(
         IWorldStateScopeProvider.IStorageTree baseStorageTree,
-#pragma warning disable CS9113 // Parameter is unread.
-        ChannelWriter<(Address, UInt256?)> hintChan,
+        TrieStoreTrieCacheWarmer trieWarmer,
         Address address
-#pragma warning restore CS9113 // Parameter is unread.
     ) : IWorldStateScopeProvider.IStorageTree
     {
 
@@ -381,7 +290,7 @@ public class TrieStoreScopeProvider : IWorldStateScopeProvider
 
         public void HintGet(in UInt256 index, byte[]? value)
         {
-            // hintChan.TryWrite((address, index));
+            trieWarmer.HintGet(address, index);
             baseStorageTree.HintGet(in index, value);
         }
 

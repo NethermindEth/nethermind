@@ -2,17 +2,15 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using Nethermind.Config;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
-using Nethermind.Evm.State;
 using Nethermind.Logging;
 using Nethermind.Trie.Pruning;
 
 namespace Nethermind.State.Healing;
 
-public class HealingWorldStateScopeProvider(ITrieStore trieStore, IKeyValueStoreWithBatching codeDb, INodeStorage nodeStorage, Lazy<IPathRecovery> recovery, IProcessExitSource processExitSource, bool isPrimary, ILogManager logManager) :
-    TrieStoreScopeProvider(trieStore, codeDb, processExitSource, isPrimary, logManager)
+public class HealingWorldStateScopeProvider(ITrieStore trieStore, IKeyValueStoreWithBatching codeDb, INodeStorage nodeStorage, Lazy<IPathRecovery> recovery, TrieStoreTrieCacheWarmer? warmer, ILogManager logManager) :
+    TrieStoreScopeProvider(trieStore, codeDb, warmer, logManager)
 {
     private readonly ILogManager? _logManager = logManager;
     private readonly ITrieStore _trieStore = trieStore;
