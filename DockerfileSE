@@ -1,0 +1,22 @@
+﻿# SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+# SPDX-License-Identifier: LGPL-3.0-only
+
+FROM --platform=$BUILDPLATFORM mcr.microsoft.com/dotnet/sdk:9.0-noble AS build
+
+ARG BUILD_CONFIG=release
+
+COPY . .
+
+RUN dotnet publish tools/StatelessExecution -c $BUILD_CONFIG -o /publish -p:NativeLib=static -p:IlcToolsPath=/root/.nuget/packages/runtime.linux-x64.microsoft.dotnet.ilcompiler/9.0.0/tools -p:SysRoot=/root/.nuget/packages/runtime.linux-x64.microsoft.dotnet.ilcompiler/9.0.0/framework -p:IlcSdkPath=/root/.nuget/packages/runtime.linux-x64.microsoft.dotnet.ilcompiler/9.0.0/sdk -p:TargetArchitecture=x64 -p:TargetOS=linux
+
+FROM mcr.microsoft.com/dotnet/aspnet:9.0-noble
+
+RUN apt-get update && apt-get install -y strace && rm -rf /var/lib/apt/lists/*
+
+WORKDIR /nethermind
+
+EXPOSE 8545 8551 30303
+
+COPY --from=build /publish .
+
+ENTRYPOINT ["strace", "-o", "/output/strace.txt", "/nethermind/StatelessExecution"]
