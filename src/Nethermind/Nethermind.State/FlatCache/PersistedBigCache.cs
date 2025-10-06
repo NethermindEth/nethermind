@@ -167,7 +167,7 @@ public class PersistedBigCache : IBigCache
         return key[..21];
     }
 
-    private Span<byte> EncodeSlotKey(Address address, in UInt256 index, Span<byte> key)
+    private static Span<byte> EncodeSlotKey(Address address, in UInt256 index, Span<byte> key)
     {
         if (key.Length < 21) throw new InvalidOperationException("Key length must be at least 53");
         address.Bytes.CopyTo(key);
@@ -181,7 +181,7 @@ public class PersistedBigCache : IBigCache
         public bool TryGetValue(in UInt256 index, out byte[]? value)
         {
             Span<byte> key = stackalloc byte[53];
-            key = EncodeSlotKey(index, key);
+            key = EncodeSlotKey(address, index, key);
 
             Span<byte> bytes = db.GetSpan(key);
             try
@@ -209,14 +209,6 @@ public class PersistedBigCache : IBigCache
             {
                 db.DangerousReleaseMemory(bytes);
             }
-        }
-
-        private Span<byte> EncodeSlotKey(in UInt256 index, Span<byte> key)
-        {
-            address.Bytes.CopyTo(key);
-            key[20] = 2;
-            index.ToBigEndian(key[21..]);
-            return key[..53];
         }
     }
 }
