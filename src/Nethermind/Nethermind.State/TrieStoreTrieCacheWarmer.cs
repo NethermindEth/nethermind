@@ -2,80 +2,112 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Threading;
 using System.Threading.Channels;
 using System.Threading.Tasks;
 using Nethermind.Config;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
+using Nethermind.Core.Crypto;
 using Nethermind.Int256;
+using Nethermind.Logging;
+using Nethermind.Trie;
+using Nethermind.Trie.Pruning;
 using Prometheus;
+using Metrics = Prometheus.Metrics;
 
 namespace Nethermind.State;
 
 public class TrieStoreTrieCacheWarmer
 {
-    private ChannelWriter<(Address, UInt256?)>? _trieWarmerJobs;
+    private SpmcRingBuffer<Job> _jobBuffer = new SpmcRingBuffer<Job>(1024);
+
+    private record struct Job(
+        TrieStoreScopeProvider.TrieStoreWorldStateBackendScope Scope,
+        Address Address,
+        UInt256? Slot,
+        Hash256 Root);
+
     Task? _warmerJob = null;
     private bool _commitReached;
     private static Counter _trieWarmEr = Metrics.CreateCounter("triestore_trie_warmer", "hit rate", "type");
     private TrieStoreScopeProvider.TrieStoreWorldStateBackendScope? _currentScope;
+    private ManualResetEventSlim _resetEvent = new ManualResetEventSlim(initialState: false);
 
-    public TrieStoreTrieCacheWarmer(IProcessExitSource processExitSource)
+    public TrieStoreTrieCacheWarmer(ITrieStore trieStore, IProcessExitSource processExitSource, ILogManager logManager)
     {
-        var chan = Channel.CreateBounded<(Address, UInt256?)>(new BoundedChannelOptions(1024)
-        {
-            SingleWriter = true,
-            AllowSynchronousContinuations = false,
-            FullMode = BoundedChannelFullMode.DropWrite
-        });
-
-        _trieWarmerJobs = chan.Writer;
         _warmerJob = Task.Run<Task>(async () =>
         {
             int completed = 0;
             ArrayPoolList<Task> tasks = new ArrayPoolList<Task>(Environment.ProcessorCount);
             for (int i = 0; i < Environment.ProcessorCount; i++)
             {
-                tasks.Add(Task.Run(async () =>
+                bool isMain = i == 0;
+                tasks.Add(Task.Run(() =>
                 {
+                    PatriciaTree tree = new PatriciaTree(trieStore.GetTrieStore(null), logManager);
                     try
                     {
-                        var reader = chan?.Reader;
-                        if (reader is null)
+                        while (true)
                         {
-                            Console.Error.WriteLine("Reader is null");
-                            return;
-                        }
+                            if (processExitSource.Token.IsCancellationRequested) break;
 
-                        await foreach (var job in reader.ReadAllAsync(processExitSource.Token))
-                        {
-                            (Address address, UInt256? path) = job;
-                            var scope = _currentScope;
-                            if (scope is null) continue;
-
-                            if (_commitReached)
+                            if (_jobBuffer.TryDequeue(out var job))
                             {
+                                if (isMain)
+                                {
+                                    if (_jobBuffer.EstimatedJobCount > 2) _resetEvent.Set();
+                                }
+
+                                (TrieStoreScopeProvider.TrieStoreWorldStateBackendScope scope,
+                                    Address address,
+                                    UInt256? path,
+                                    Hash256 root) = job;
+
+                                if (_commitReached || !ReferenceEquals(scope, _currentScope))
+                                {
+                                    if (path is null)
+                                    {
+                                        _trieWarmEr.WithLabels("state_skip").Inc();
+                                    }
+                                    else
+                                    {
+                                        _trieWarmEr.WithLabels("storage_skip").Inc();
+                                    }
+
+                                    continue;
+                                }
+
                                 if (path is null)
                                 {
-                                    _trieWarmEr.WithLabels("state_skip").Inc();
+                                    tree.Get(address.ToAccountPath.ToCommitment().Bytes, root);
+                                    _trieWarmEr.WithLabels("state").Inc();
                                 }
                                 else
                                 {
-                                    _trieWarmEr.WithLabels("storage_skip").Inc();
+                                    PatriciaTree storageTree = new PatriciaTree(trieStore.GetTrieStore(address), logManager);
+                                    ValueHash256 key = new ValueHash256();
+                                    StorageTree.ComputeKeyWithLookup(path.Value, key.BytesAsSpan);
+                                    storageTree.Get(key.BytesAsSpan, root);
+                                    _trieWarmEr.WithLabels("storage").Inc();
                                 }
-
-                                continue;
-                            }
-
-                            if (path is null)
-                            {
-                                scope._backingStateTree.Get(address.ToAccountPath.ToCommitment());
-                                _trieWarmEr.WithLabels("state").Inc();
                             }
                             else
                             {
-                                scope.LookupStorageTree(address).Get(path.Value);
-                                _trieWarmEr.WithLabels("storage").Inc();
+                                if (!isMain)
+                                {
+                                    _trieWarmEr.WithLabels("wait_not_main").Inc();
+                                    _resetEvent.Wait(processExitSource.Token);
+                                    _resetEvent.Reset();
+                                }
+                                else
+                                {
+                                    _trieWarmEr.WithLabels("wait_main").Inc();
+                                    if (_resetEvent.Wait(1, processExitSource.Token))
+                                    {
+                                        _resetEvent.Reset();
+                                    }
+                                }
                             }
                         }
                     }
@@ -95,39 +127,44 @@ public class TrieStoreTrieCacheWarmer
             }
 
             await Task.WhenAll(tasks);;
-            _trieWarmerJobs = null;
         });
     }
 
     public void OnStartWriteBatch()
     {
-        _trieWarmerJobs?.TryComplete();
     }
 
     public void OnCommit()
     {
-        _trieWarmerJobs?.TryComplete();
+        _commitReached = true;
     }
 
-    public void OnCommitDone()
+    private long _pushCount = 0;
+    private void PushJob(Address address, in UInt256? path, Hash256 rootHash)
     {
-        _commitReached = true; // At the end, then we stop it
-        _warmerJob?.Wait();
+        // WARNING: Very hot!
+        if (_jobBuffer.TryClaim(out var slot))
+        {
+            _jobBuffer[slot] = new Job(_currentScope, address, path, rootHash);
+            _jobBuffer.Publish(slot);
+            if ((_pushCount++) % 100 == 0) _resetEvent.Set();
+        }
     }
 
-    public void HintAccountRead(Address address)
+    public void HintAccountRead(Address address, Hash256 rootHash)
     {
-        _trieWarmerJobs?.TryWrite((address, null));
+        PushJob(address, null, rootHash);
     }
 
-    public void HintGet(Address address, in UInt256 index)
+    public void HintGet(Address address, in UInt256 index, Hash256 rootHash)
     {
-        _trieWarmerJobs?.TryWrite((address, index));
+        PushJob(address, index, rootHash);
     }
 
     internal void OnScope(TrieStoreScopeProvider.TrieStoreWorldStateBackendScope scope)
     {
         _currentScope = scope;
+        _commitReached = false;
     }
 
     public void OnScopeDone()

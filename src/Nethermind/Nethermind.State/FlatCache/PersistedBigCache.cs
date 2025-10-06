@@ -78,7 +78,7 @@ public class PersistedBigCache : IBigCache
     {
         Span<byte> key = stackalloc byte[21];
         Span<byte> selfDestructBytes = _db.GetSpan(EncodeAccountSelfDestructKey(address, key));
-        long selfDestructBlockNumber = 0;
+        long selfDestructBlockNumber = -1;
         try
         {
             if (selfDestructBytes.IsEmpty || selfDestructBytes.IsNull())
@@ -225,6 +225,11 @@ public class PersistedBigCache : IBigCache
                 if (blockNumber < selfDestructBlockNumber)
                 {
                     value = null;
+
+                    if (selfDestructBlockNumber >= 0)
+                    {
+                        return true;
+                    }
                     return false;
                 }
 

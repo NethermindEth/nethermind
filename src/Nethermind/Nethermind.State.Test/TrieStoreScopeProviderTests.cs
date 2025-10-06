@@ -20,7 +20,7 @@ public class TrieStoreScopeProviderTests
     public void Test_CanSaveToState()
     {
         TestMemDb kv = new TestMemDb();
-        IWorldStateScopeProvider scopeProvider = new TrieStoreScopeProvider(new TestRawTrieStore(kv), new MemDb(), LimboLogs.Instance);
+        IWorldStateScopeProvider scopeProvider = new TrieStoreScopeProvider(new TestRawTrieStore(kv), new MemDb(), null, LimboLogs.Instance);
 
         Hash256 stateRoot;
         using (var scope = scopeProvider.BeginScope(null))
@@ -48,7 +48,7 @@ public class TrieStoreScopeProviderTests
     public void Test_CanSaveToStorage()
     {
         TestMemDb kv = new TestMemDb();
-        IWorldStateScopeProvider scopeProvider = new TrieStoreScopeProvider(new TestRawTrieStore(kv), new MemDb(), LimboLogs.Instance);
+        IWorldStateScopeProvider scopeProvider = new TrieStoreScopeProvider(new TestRawTrieStore(kv), new MemDb(), null, LimboLogs.Instance);
 
         Hash256 stateRoot;
         using (var scope = scopeProvider.BeginScope(null))
@@ -84,7 +84,7 @@ public class TrieStoreScopeProviderTests
     {
         TestMemDb kv = new TestMemDb();
         TestMemDb codeKv = new TestMemDb();
-        IWorldStateScopeProvider scopeProvider = new TrieStoreScopeProvider(new TestRawTrieStore(kv), codeKv, LimboLogs.Instance);
+        IWorldStateScopeProvider scopeProvider = new TrieStoreScopeProvider(new TestRawTrieStore(kv), codeKv, null, LimboLogs.Instance);
 
         using (var scope = scopeProvider.BeginScope(null))
         {

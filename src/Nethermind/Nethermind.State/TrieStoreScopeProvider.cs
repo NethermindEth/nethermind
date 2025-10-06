@@ -37,6 +37,15 @@ public class TrieStoreScopeProvider : IWorldStateScopeProvider
     public TrieStoreScopeProvider(
         ITrieStore trieStore,
         IKeyValueStoreWithBatching codeDb,
+        ILogManager logManager)
+        : this(trieStore, codeDb, null, logManager)
+    {
+
+    }
+
+    public TrieStoreScopeProvider(
+        ITrieStore trieStore,
+        IKeyValueStoreWithBatching codeDb,
         TrieStoreTrieCacheWarmer? trieWarmer,
         ILogManager logManager)
     {
@@ -90,6 +99,7 @@ public class TrieStoreScopeProvider : IWorldStateScopeProvider
         private readonly IDisposable _trieStoreCloser;
         private readonly ILogManager _logManager;
         private readonly TrieStoreTrieCacheWarmer? _trieWarmer;
+        private readonly Hash256 _startingRootHash;
 
         public TrieStoreWorldStateBackendScope(
             StateTree backingStateTree,
@@ -106,18 +116,19 @@ public class TrieStoreScopeProvider : IWorldStateScopeProvider
             _codeDb1 = codeDb;
             _trieStoreCloser = trieStoreCloser;
             _trieWarmer = trieWarmer;
+            _startingRootHash = backingStateTree.RootHash;
             trieWarmer?.OnScope(this);
         }
 
         public IWorldStateScopeProvider.IWorldStateWriteBatch StartWriteBatch(int estimatedAccountNumber)
         {
-            _trieWarmer.OnStartWriteBatch();
+            _trieWarmer?.OnStartWriteBatch();
             return new WorldStateWriteBatch(this, estimatedAccountNumber, _logManager.GetClassLogger<WorldStateWriteBatch>());
         }
 
         public void Commit(long blockNumber)
         {
-            _trieWarmer.OnCommit();
+            _trieWarmer?.OnCommit();
             using var blockCommitter = _scopeProvider._trieStore.BeginBlockCommit(blockNumber);
 
             // Note: These all runs in about 0.4ms. So the little overhead like attempting to sort the tasks
@@ -143,8 +154,6 @@ public class TrieStoreScopeProvider : IWorldStateScopeProvider
             Task.WaitAll(commitTask.AsSpan());
             _backingStateTree.Commit();
             _storages.Clear();
-
-            _trieWarmer.OnCommitDone();
         }
 
         public void Dispose()
@@ -171,7 +180,7 @@ public class TrieStoreScopeProvider : IWorldStateScopeProvider
 
         public void HintGet(Address address, Account? account)
         {
-            _trieWarmer?.HintAccountRead(address);
+            _trieWarmer?.HintAccountRead(address, _startingRootHash);
             _loadedAccounts[address] = account;
         }
 
@@ -195,7 +204,7 @@ public class TrieStoreScopeProvider : IWorldStateScopeProvider
         public IWorldStateScopeProvider.IStorageTree CreateStorageTree(Address address)
         {
             var storageTree = LookupStorageTree(address);
-            if (_trieWarmer is null)
+            if (_trieWarmer is null || storageTree.WasEmptyTree)
             {
                 return storageTree;
             }
@@ -251,12 +260,10 @@ public class TrieStoreScopeProvider : IWorldStateScopeProvider
 
             using (var stateSetter = scope._backingStateTree.BeginSet(_dirtyAccounts.Count))
             {
-                long ssw = Stopwatch.GetTimestamp();
                 foreach (var kv in _dirtyAccounts)
                 {
                     stateSetter.Set(kv.Key, kv.Value);
                 }
-                _writeBatchDispose.WithLabels("set").Inc(Stopwatch.GetTimestamp() - ssw);
             }
             _writeBatchDispose.WithLabels("whole").Inc(Stopwatch.GetTimestamp() - sw);
             _writeBatchDispose.WithLabels("storage_root_update").Inc(storageRootUpdate);
@@ -280,6 +287,7 @@ public class TrieStoreScopeProvider : IWorldStateScopeProvider
         Address address
     ) : IWorldStateScopeProvider.IStorageTree
     {
+        Hash256 _startingRootHash = baseStorageTree.RootHash;
 
         public Hash256 RootHash => baseStorageTree.RootHash;
 
@@ -290,7 +298,7 @@ public class TrieStoreScopeProvider : IWorldStateScopeProvider
 
         public void HintGet(in UInt256 index, byte[]? value)
         {
-            trieWarmer.HintGet(address, index);
+            trieWarmer.HintGet(address, index, _startingRootHash);
             baseStorageTree.HintGet(in index, value);
         }
 
