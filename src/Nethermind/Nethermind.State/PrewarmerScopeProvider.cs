@@ -72,10 +72,6 @@ public class PrewarmerScopeProvider(
 
         public IWorldStateScopeProvider.IWorldStateWriteBatch StartWriteBatch(int estimatedAccountNum)
         {
-            if (commitCachedRead)
-            {
-                return new CachedReadWriteCommitter(baseScope.StartWriteBatch(estimatedAccountNum), this);
-            }
             return baseScope.StartWriteBatch(estimatedAccountNum);
         }
 
@@ -145,65 +141,6 @@ public class PrewarmerScopeProvider(
         }
     }
 
-    private class CachedReadWriteCommitter(
-        IWorldStateScopeProvider.IWorldStateWriteBatch baseWriteBatch,
-        ScopeWrapper scopeWrapper
-    )
-        : IWorldStateScopeProvider.IWorldStateWriteBatch
-    {
-        public void Dispose()
-        {
-            baseWriteBatch.Dispose();
-        }
-
-        public event EventHandler<IWorldStateScopeProvider.AccountUpdated>? OnAccountUpdated
-        {
-            add => baseWriteBatch.OnAccountUpdated += value;
-            remove => baseWriteBatch.OnAccountUpdated -= value;
-        }
-
-        public void Set(Address key, Account? account)
-        {
-            baseWriteBatch.Set(key, account);
-        }
-
-        public IWorldStateScopeProvider.IStorageWriteBatch CreateStorageWriteBatch(Address key, int estimatedEntries)
-        {
-            return new CachedReadStorageWriteBatchCommitter(
-                baseWriteBatch.CreateStorageWriteBatch(key, estimatedEntries),
-                scopeWrapper.readSlots?.GetValueOrDefault(key)
-            );
-        }
-    }
-
-    private class CachedReadStorageWriteBatchCommitter(
-        IWorldStateScopeProvider.IStorageWriteBatch baseWriteBatch,
-        Dictionary<UInt256, byte[]>? readSlots): IWorldStateScopeProvider.IStorageWriteBatch
-    {
-        public void Dispose()
-        {
-            if (readSlots is not null)
-            {
-                foreach (var kv in readSlots)
-                {
-                    baseWriteBatch.Set(kv.Key, kv.Value);
-                }
-            }
-            baseWriteBatch.Dispose();
-        }
-
-        public void Set(in UInt256 index, byte[] value)
-        {
-            readSlots?.Remove(index);
-            baseWriteBatch.Set(in index, value);
-        }
-
-        public void Clear()
-        {
-            baseWriteBatch.Clear();
-        }
-    }
-
     private sealed class StorageTreeWrapper(
         IWorldStateScopeProvider.IStorageTree baseStorageTree,
         ConcurrentDictionary<StorageCell, byte[]> preBlockCache,
@@ -238,6 +175,7 @@ public class PrewarmerScopeProvider(
                     baseStorageTree.HintGet(index, value);
                     storageReadSlots?.TryAdd(index, value);
 
+                    HintGet(index, value);
                     _storageReadHit.Inc();
                     Db.Metrics.IncrementStorageTreeCache();
                 }

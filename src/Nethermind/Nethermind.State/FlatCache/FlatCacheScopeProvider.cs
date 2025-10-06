@@ -88,9 +88,9 @@ public sealed class FlatCacheScopeProvider : IWorldStateScopeProvider, IPreBlock
             return baseScope.Get(address);
         }
 
-        public void SetReadAccount(Address address, Account? account)
+        public void HintAccountRead(Address address, Account? account)
         {
-            baseScope.SetReadAccount(address, account);
+            baseScope.HintAccountRead(address, account);
             snapshotBundle.SetChangedAccount(address, account);
         }
 
@@ -162,6 +162,7 @@ public sealed class FlatCacheScopeProvider : IWorldStateScopeProvider, IPreBlock
         {
             if (cache.TryGet(index, out var value))
             {
+                baseStorageTree.HintGet(index, value);
                 _cacheHitHit.Inc();
                 return value;
             }
@@ -171,6 +172,12 @@ public sealed class FlatCacheScopeProvider : IWorldStateScopeProvider, IPreBlock
 
             cache.Set(index, actualValue);
             return actualValue;
+        }
+
+        public void HintGet(in UInt256 index, byte[]? value)
+        {
+            cache.Set(index, value);
+            baseStorageTree.HintGet(in index, value);
         }
 
         public byte[] Get(in ValueHash256 hash)
