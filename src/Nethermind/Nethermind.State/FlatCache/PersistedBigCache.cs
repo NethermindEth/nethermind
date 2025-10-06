@@ -3,6 +3,7 @@
 
 using System;
 using System.Buffers.Binary;
+using System.Collections.Generic;
 using Autofac.Features.AttributeFilters;
 using Nethermind.Core;
 using Nethermind.Core.Extensions;
@@ -21,9 +22,10 @@ public class PersistedBigCache : IBigCache
 
     AccountDecoder _accountDecoder = AccountDecoder.Instance;
 
-    public PersistedBigCache([KeyFilter(DbNames.FlatCache)] IDb db)
+    public PersistedBigCache([KeyFilter(DbNames.FlatCache)] IDb db, [KeyFilter(DbNames.WrittenFlatCache)] IDb writtenDb)
     {
         _db = db;
+        _writtenDb = writtenDb;
 
         byte[]? currentBlockNumberBytes = db[_currentBlockNumberKey];
         if (currentBlockNumberBytes is not null)
@@ -39,6 +41,7 @@ public class PersistedBigCache : IBigCache
 
     private long _snapshotCount = 0;
     private readonly IDb _db;
+    private readonly IDb _writtenDb; // For statistic.
     public long SnapshotCount => _snapshotCount;
 
     public bool TryGetValue(Address address, out Account? acc)
@@ -96,18 +99,28 @@ public class PersistedBigCache : IBigCache
 
     public void Subtract(StateId firstKey, Snapshot snapshot)
     {
+        _snapshotCount--;
+        byte[] rlpBuffer = new byte[1000];
+        Span<byte> rlpBufferSpan = rlpBuffer;
+        BinaryPrimitives.WriteInt64BigEndian(rlpBufferSpan, _snapshotCount);
+        _db.PutSpan(_snapshotCountNumberKey, rlpBufferSpan[..8]);
     }
 
     private Gauge _snapshotCountMetric = Prometheus.Metrics.CreateGauge("flatcache_bigcache_snapshot_count", "snapshot count");
+
     public void Add(StateId pickedSnapshot, Snapshot knownState)
     {
         long blockNumber = pickedSnapshot.blockNumber;
         Span<byte> keyBuffer = stackalloc byte[53];
         byte[] rlpBuffer = new byte[1000];
         Span<byte> rlpBufferSpan = rlpBuffer;
+        HashSet<Address> wasWritten = new HashSet<Address>(knownState.AccountWrites);
+        HashSet<(Address, UInt256)> slotWritten = new HashSet<(Address, UInt256)>(knownState.SlotWrites);
 
         using (IWriteBatch writeBatch = _db.StartWriteBatch())
         {
+            using IWriteBatch writeBatch2 = _writtenDb.StartWriteBatch();
+
             foreach (var knownStateAccount in knownState.Accounts)
             {
                 int accountRlpLength = _accountDecoder.GetLength(knownStateAccount.Value);
@@ -117,6 +130,13 @@ public class PersistedBigCache : IBigCache
                 stream.AsSpan().CopyTo(valueBuffer[8..]);
 
                 writeBatch.PutSpan(EncodeAccountKey(knownStateAccount.Key, keyBuffer), valueBuffer);
+
+                if (wasWritten.Contains(knownStateAccount.Key))
+                {
+                    valueBuffer = rlpBuffer[..8];
+                    BinaryPrimitives.WriteInt64BigEndian(valueBuffer, blockNumber);
+                    writeBatch2.PutSpan(EncodeAccountKey(knownStateAccount.Key, keyBuffer), valueBuffer);
+                }
             }
 
             foreach (var knownStateStorage in knownState.Storages)
@@ -137,6 +157,15 @@ public class PersistedBigCache : IBigCache
                     encodedBytes.CopyTo(rlpBufferSpan[8..]);
 
                     writeBatch.PutSpan(EncodeSlotKey(addr, kv.Key, keyBuffer), rlpBufferSpan[..(8+encodedBytes.Length)]);
+
+                    var wKey = (addr, kv.Key);
+                    if (slotWritten.Contains(wKey))
+                    {
+                        Span<byte> valueBuffer = rlpBuffer[..8];
+                        BinaryPrimitives.WriteInt64BigEndian(valueBuffer, blockNumber);
+                        writeBatch2.PutSpan(EncodeSlotKey(addr, kv.Key, keyBuffer), valueBuffer);
+                    }
+
                 }
             }
 

@@ -32,7 +32,7 @@ public sealed class FlatCacheRepository
     private ILogger _logger;
 
     public record Configuration(
-        int MaxStateInMemory = 1024,
+        int MaxStateInMemory = 512,
         int MaxInFlightCompactJob = 32,
         int CompactSize = 128,
         bool InlineCompaction = false
@@ -253,29 +253,39 @@ public sealed class FlatCacheRepository
 
     private void SubtractFromBigCache()
     {
-        while(_bigCache.SnapshotCount > _maxStateInMemory)
+        try
         {
-            StateId firstKey;
-            Snapshot snapshot;
+            while (_bigCache.SnapshotCount > _maxStateInMemory)
+            {
+                StateId firstKey;
+                Snapshot snapshot;
 
-            long sw = Stopwatch.GetTimestamp();
-            firstKey = _snapshotsStore.GetFirstEqualOrAfter(long.Max(0, _bigCache.CurrentBlockNumber - _maxStateInMemory)).Value;
-            SnapshotsStore._snapshotTimes.WithLabels("get_first").Inc(Stopwatch.GetTimestamp() - sw);
-            sw = Stopwatch.GetTimestamp();
+                long sw = Stopwatch.GetTimestamp();
+                firstKey = _snapshotsStore
+                    .GetFirstEqualOrAfter(long.Max(0, _bigCache.CurrentBlockNumber - _maxStateInMemory)).Value;
+                SnapshotsStore._snapshotTimes.WithLabels("get_first").Inc(Stopwatch.GetTimestamp() - sw);
+                sw = Stopwatch.GetTimestamp();
 
-            _snapshotsStore.TryGetValue(firstKey, out snapshot);
-            SnapshotsStore._snapshotTimes.WithLabels("get_total").Inc(Stopwatch.GetTimestamp() - sw);
-            sw = Stopwatch.GetTimestamp();
+                _snapshotsStore.TryGetValue(firstKey, out snapshot);
+                SnapshotsStore._snapshotTimes.WithLabels("get_total").Inc(Stopwatch.GetTimestamp() - sw);
+                sw = Stopwatch.GetTimestamp();
 
-            _bigCache.Subtract(firstKey, snapshot);
-            SnapshotsStore._snapshotTimes.WithLabels("subtract").Inc(Stopwatch.GetTimestamp() - sw);
-            sw = Stopwatch.GetTimestamp();
+                _bigCache.Subtract(firstKey, snapshot);
+                SnapshotsStore._snapshotTimes.WithLabels("subtract").Inc(Stopwatch.GetTimestamp() - sw);
+                sw = Stopwatch.GetTimestamp();
 
-            _snapshotsStore.Remove(firstKey);
-            _compactedKnownStates.Remove(firstKey);
+                _snapshotsStore.Remove(firstKey);
+                _compactedKnownStates.Remove(firstKey);
 
-            SnapshotsStore._snapshotTimes.WithLabels("remove").Inc(Stopwatch.GetTimestamp() - sw);
+                SnapshotsStore._snapshotTimes.WithLabels("remove").Inc(Stopwatch.GetTimestamp() - sw);
+            }
         }
+        catch (Exception ex)
+        {
+            Console.Error.WriteLine(ex);
+            throw;
+        }
+
     }
 
     private void AddToBigCache()

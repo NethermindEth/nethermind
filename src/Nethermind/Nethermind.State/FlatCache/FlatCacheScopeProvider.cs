@@ -61,10 +61,10 @@ public sealed class FlatCacheScopeProvider : IWorldStateScopeProvider, IPreBlock
         SnapshotBundle gatheredCache = _repository.GatherCache(baseBlockId);
         _gatheredSize.Set(gatheredCache.SnapshotCount);
 
-        return new ScopeWrapper(_baseScopeProvider.BeginScope(baseBlock), this, gatheredCache, baseBlockId);
+        return new ScopeWrapper(_baseScopeProvider.BeginScope(baseBlock), this, gatheredCache, baseBlockId, _isReadOnly);
     }
 
-    private sealed class ScopeWrapper(IWorldStateScopeProvider.IScope baseScope, FlatCacheScopeProvider flatCache, SnapshotBundle snapshotBundle, StateId baseBlock) : IWorldStateScopeProvider.IScope
+    private sealed class ScopeWrapper(IWorldStateScopeProvider.IScope baseScope, FlatCacheScopeProvider flatCache, SnapshotBundle snapshotBundle, StateId baseBlock, bool isReadOnly) : IWorldStateScopeProvider.IScope
     {
         private StateId _currentBaseBlock = baseBlock;
 
@@ -91,7 +91,7 @@ public sealed class FlatCacheScopeProvider : IWorldStateScopeProvider, IPreBlock
         public void HintAccountRead(Address address, Account? account)
         {
             baseScope.HintAccountRead(address, account);
-            snapshotBundle.SetChangedAccount(address, account);
+            if (!isReadOnly) snapshotBundle.HintAccountRead(address, account);
         }
 
         public void UpdateRootHash()
@@ -110,7 +110,7 @@ public sealed class FlatCacheScopeProvider : IWorldStateScopeProvider, IPreBlock
             ref StorageTreeWrapper wrapper = ref CollectionsMarshal.GetValueRefOrAddDefault(_loadedStorages, address, out var exists);
             if (!exists)
             {
-                wrapper = new StorageTreeWrapper(baseScope.CreateStorageTree(address), snapshotBundle.GatherStorageCache(address));
+                wrapper = new StorageTreeWrapper(baseScope.CreateStorageTree(address), snapshotBundle.GatherStorageCache(address), isReadOnly);
             }
 
             return wrapper;
@@ -124,11 +124,12 @@ public sealed class FlatCacheScopeProvider : IWorldStateScopeProvider, IPreBlock
         public void Commit(long blockNumber)
         {
             baseScope.Commit(blockNumber);
-            Snapshot snapshot = snapshotBundle.CollectAndApplyKnownState();
             var newId = new StateId(blockNumber, RootHash);
 
             if (!flatCache._isReadOnly)
             {
+                Snapshot snapshot = snapshotBundle.CollectAndApplyKnownState();
+
                 snapshot = snapshot with
                 {
                     From = _currentBaseBlock,
@@ -149,7 +150,8 @@ public sealed class FlatCacheScopeProvider : IWorldStateScopeProvider, IPreBlock
 
     private sealed class StorageTreeWrapper(
         IWorldStateScopeProvider.IStorageTree baseStorageTree,
-        StorageSnapshotBundle cache) : IWorldStateScopeProvider.IStorageTree
+        StorageSnapshotBundle cache,
+        bool isReadOnly) : IWorldStateScopeProvider.IStorageTree
     {
         private static Counter _cacheHit = Metrics.CreateCounter("flatcache_storage_tree_cachehit", "hit rate", "cachehit");
         private static Counter.Child _cacheHitHit = _cacheHit.WithLabels("hit");
@@ -170,13 +172,13 @@ public sealed class FlatCacheScopeProvider : IWorldStateScopeProvider, IPreBlock
             _cacheHitMiss.Inc();
             byte[] actualValue = baseStorageTree.Get(in index);
 
-            cache.Set(index, actualValue);
+            if (!isReadOnly) cache.HintGet(index, actualValue);
             return actualValue;
         }
 
         public void HintGet(in UInt256 index, byte[]? value)
         {
-            cache.Set(index, value);
+            if (!isReadOnly) cache.HintGet(index, value);
             baseStorageTree.HintGet(in index, value);
         }
 
@@ -264,7 +266,10 @@ public readonly record struct LazySerializeSnapshot(
     StateId From,
     StateId To,
     Dictionary<Address, byte[]> Accounts,
-    Dictionary<Address, StorageWrites> Storages)
+    Dictionary<Address, StorageWrites> Storages,
+    HashSet<Address> AccountWrites,
+    HashSet<(Address, UInt256)> SlotWrites
+    )
 {
     public Snapshot GetSnapshot()
     {
@@ -293,7 +298,9 @@ public readonly record struct LazySerializeSnapshot(
         return new Snapshot(
             From, To,
             accounts,
-            Storages
+            Storages,
+            AccountWrites,
+            SlotWrites
         );
     }
 }
@@ -303,7 +310,9 @@ public readonly record struct Snapshot(
     StateId From,
     StateId To,
     Dictionary<Address, Account> Accounts,
-    Dictionary<Address, StorageWrites> Storages)
+    Dictionary<Address, StorageWrites> Storages,
+    HashSet<Address> AccountWrites,
+    HashSet<(Address, UInt256)> SlotWrites)
 {
     public LazySerializeSnapshot ToSerializeSnapshot() => new LazySerializeSnapshot(From, To, Accounts.ToDictionary(
         (kv) => kv.Key,
@@ -311,7 +320,9 @@ public readonly record struct Snapshot(
         {
             if (kv.Value is null) return null;
             return AccountDecoder.Instance.Encode(kv.Value)?.Bytes;
-        }), Storages);
+        }), Storages,
+        AccountWrites,
+        SlotWrites);
 }
 
 public record struct StorageWrites(Dictionary<UInt256, byte[]> Slots, bool HasSelfDestruct);
