@@ -33,7 +33,7 @@ internal class XdcSealValidatorTests
     [Test]
     public void ValidateSeal_NotXdcHeader_ThrowArgumentException()
     {
-        XdcSealValidator validator = new XdcSealValidator(Substitute.For<ISnapshotManager>(), Substitute.For<ISpecProvider>());
+        XdcSealValidator validator = new XdcSealValidator(Substitute.For<ISnapshotManager>(), Substitute.For<IEpochSwitchManager>(), Substitute.For<ISpecProvider>());
         BlockHeader header = Build.A.BlockHeader.TestObject;
 
         Assert.That(() => validator.ValidateSeal(header), Throws.InstanceOf<ArgumentException>());
@@ -43,7 +43,7 @@ internal class XdcSealValidatorTests
     public void ValidateSeal_ValidSeal_ReturnsTrue()
     {
         EthereumEcdsa ecdsa = new EthereumEcdsa(0);
-        XdcSealValidator validator = new XdcSealValidator(Substitute.For<ISnapshotManager>(), Substitute.For<ISpecProvider>());
+        XdcSealValidator validator = new XdcSealValidator(Substitute.For<ISnapshotManager>(), Substitute.For<IEpochSwitchManager>(), Substitute.For<ISpecProvider>());
         XdcBlockHeader header = Build.A.XdcBlockHeader()
         .TestObject;
         header.Beneficiary = TestItem.AddressA;
@@ -72,7 +72,7 @@ internal class XdcSealValidatorTests
     [TestCaseSource(nameof(InvalidSignatureCases))]
     public void ValidateSeal_SignatureIsInvalid_ReturnsFalse(XdcBlockHeader header, byte[] validatorSig)
     {
-        XdcSealValidator validator = new XdcSealValidator(Substitute.For<ISnapshotManager>(), Substitute.For<ISpecProvider>());
+        XdcSealValidator validator = new XdcSealValidator(Substitute.For<ISnapshotManager>(), Substitute.For<IEpochSwitchManager>(), Substitute.For<ISpecProvider>());
         header.Validator = validatorSig;
 
         Assert.That(validator.ValidateSeal(header), Is.False);
@@ -81,7 +81,7 @@ internal class XdcSealValidatorTests
     [Test]
     public void ValidateParams_NotXdcHeader_ThrowArgumentException()
     {
-        XdcSealValidator validator = new XdcSealValidator(Substitute.For<ISnapshotManager>(), Substitute.For<ISpecProvider>());
+        XdcSealValidator validator = new XdcSealValidator(Substitute.For<ISnapshotManager>(), Substitute.For<IEpochSwitchManager>(), Substitute.For<ISpecProvider>());
         BlockHeader header = Build.A.BlockHeader.TestObject;
 
         Assert.That(() => validator.ValidateSeal(header), Throws.InstanceOf<ArgumentException>());
@@ -193,20 +193,16 @@ internal class XdcSealValidatorTests
 
         ISnapshotManager snapshotManager = Substitute.For<ISnapshotManager>();
         snapshotManager
-            .CalculateNextEpochMasternodes(Arg.Any<XdcBlockHeader>())
-            .Returns(epochCandidates.ToArray());
-        snapshotManager
-            .GetMasternodes(Arg.Any<XdcBlockHeader>())
-            .Returns(epochCandidates.ToArray());
-        snapshotManager
-            .GetPenalties(Arg.Any<XdcBlockHeader>())
-            .Returns(penalties.ToArray());
-        XdcSealValidator validator = new XdcSealValidator(snapshotManager, specProvider);
+            .CalculateNextEpochMasternodes(Arg.Any<XdcBlockHeader>(), Arg.Any<IXdcReleaseSpec>())
+            .Returns((epochCandidates.ToArray(), penalties.ToArray()));
+        IEpochSwitchManager epochSwitchManager = Substitute.For<IEpochSwitchManager>();
+        epochSwitchManager.GetEpochSwitchInfo(Arg.Any<XdcBlockHeader>(), Arg.Any<Hash256>()).Returns(new EpochSwitchInfo(epochCandidates.ToArray(), [], new BlockRoundInfo(Hash256.Zero, 0, 0)));
+        XdcSealValidator validator = new XdcSealValidator(snapshotManager, epochSwitchManager, specProvider);
 
         Assert.That(validator.ValidateParams(parent, header), Is.EqualTo(expected));
     }
 
-    private static QuorumCert CreateQc(BlockRoundInfo roundInfo, PrivateKey[] keys, ulong gapNumber)
+    private static QuorumCertificate CreateQc(BlockRoundInfo roundInfo, PrivateKey[] keys, ulong gapNumber)
     {
         EthereumEcdsa ecdsa = new EthereumEcdsa(0);
         QuorumCertificateDecoder qcEncoder = new QuorumCertificateDecoder();
@@ -214,6 +210,6 @@ internal class XdcSealValidatorTests
         //Fake the sigs by signing empty hash
         IEnumerable<Signature> signatures = keys.Select(k => ecdsa.Sign(k, Keccak.Compute(Hash256.Zero.Bytes)));
 
-        return new QuorumCert(roundInfo, signatures.ToArray(), gapNumber);
+        return new QuorumCertificate(roundInfo, signatures.ToArray(), gapNumber);
     }
 }

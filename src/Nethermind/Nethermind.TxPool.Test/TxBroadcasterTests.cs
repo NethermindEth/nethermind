@@ -76,7 +76,7 @@ public class TxBroadcasterTests
         int addedTxsCount = TestItem.PrivateKeys.Length;
         Transaction[] transactions = new Transaction[addedTxsCount];
 
-        for (int i = 0; i < addedTxsCount; i++)
+        Parallel.For(0, addedTxsCount, i =>
         {
             transactions[i] = Build.A.Transaction
                 .WithGasPrice(i.GWei())
@@ -84,7 +84,7 @@ public class TxBroadcasterTests
                 .TestObject;
 
             _broadcaster.Broadcast(transactions[i], true);
-        }
+        });
 
         _broadcaster.GetSnapshot().Length.Should().Be(addedTxsCount);
 
@@ -126,7 +126,7 @@ public class TxBroadcasterTests
         int addedTxsCount = TestItem.PrivateKeys.Length;
         Transaction[] transactions = new Transaction[addedTxsCount];
 
-        for (int i = 0; i < addedTxsCount; i++)
+        Parallel.For(0, addedTxsCount, i =>
         {
             transactions[i] = Build.A.Transaction
                 .WithGasPrice(i.GWei())
@@ -134,7 +134,7 @@ public class TxBroadcasterTests
                 .TestObject;
 
             _broadcaster.Broadcast(transactions[i], true);
-        }
+        });
 
         _broadcaster.GetSnapshot().Length.Should().Be(addedTxsCount);
 
@@ -210,7 +210,7 @@ public class TxBroadcasterTests
         int addedTxsCount = TestItem.PrivateKeys.Length;
         Transaction[] transactions = new Transaction[addedTxsCount];
 
-        for (int i = 0; i < addedTxsCount; i++)
+        Parallel.For(0, addedTxsCount, i =>
         {
             bool isLarge = i % 10 == 0;
             transactions[i] = Build.A.Transaction
@@ -221,7 +221,7 @@ public class TxBroadcasterTests
                 .TestObject;
 
             _broadcaster.Broadcast(transactions[i], true);
-        }
+        });
 
         _broadcaster.GetSnapshot().Length.Should().Be(addedTxsCount);
 
@@ -256,7 +256,7 @@ public class TxBroadcasterTests
         int addedTxsCount = TestItem.PrivateKeys.Length;
         Transaction[] transactions = new Transaction[addedTxsCount];
 
-        for (int i = 0; i < addedTxsCount; i++)
+        Parallel.For(0, addedTxsCount, i =>
         {
             bool isBlob = i % 10 == 0;
             transactions[i] = Build.A.Transaction
@@ -267,7 +267,7 @@ public class TxBroadcasterTests
                 .TestObject;
 
             _broadcaster.Broadcast(transactions[i], true);
-        }
+        });
 
         _broadcaster.GetSnapshot().Length.Should().Be(addedTxsCount);
 
@@ -308,7 +308,7 @@ public class TxBroadcasterTests
         int addedTxsCount = TestItem.PrivateKeys.Length;
         Transaction[] transactions = new Transaction[addedTxsCount];
 
-        for (int i = 0; i < addedTxsCount; i++)
+        Parallel.For(0, addedTxsCount, i =>
         {
             transactions[i] = Build.A.Transaction
                 .WithGasPrice(i.GWei())
@@ -316,7 +316,7 @@ public class TxBroadcasterTests
                 .TestObject;
 
             _broadcaster.Broadcast(transactions[i], true);
-        }
+        });
 
         _broadcaster.GetSnapshot().Length.Should().Be(addedTxsCount);
 
@@ -382,7 +382,7 @@ public class TxBroadcasterTests
         int addedTxsCount = TestItem.PrivateKeys.Length;
         Transaction[] transactions = new Transaction[addedTxsCount];
 
-        for (int i = 0; i < addedTxsCount; i++)
+        Parallel.For(0, addedTxsCount, i =>
         {
             transactions[i] = Build.A.Transaction
                 .WithType(TxType.EIP1559)
@@ -391,7 +391,7 @@ public class TxBroadcasterTests
                 .TestObject;
 
             _broadcaster.Broadcast(transactions[i], true);
-        }
+        });
 
         _broadcaster.GetSnapshot().Length.Should().Be(addedTxsCount);
 
@@ -423,14 +423,17 @@ public class TxBroadcasterTests
         int addedTxsCount = TestItem.PrivateKeys.Length;
         Transaction[] transactions = new Transaction[addedTxsCount];
 
-        for (int i = 0; i < addedTxsCount; i++)
+        Parallel.For(0, addedTxsCount, i =>
         {
             transactions[i] = Build.A.Transaction
                 .WithShardBlobTxTypeAndFields()
                 .WithMaxFeePerBlobGas(i.GWei())
                 .SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeys[i])
                 .TestObject;
+        });
 
+        for (int i = 0; i < addedTxsCount; i++)
+        {
             _broadcaster.Broadcast(transactions[i], true);
         }
 
@@ -466,7 +469,7 @@ public class TxBroadcasterTests
         const int addedTxsCount = 5;
         Transaction[] transactions = new Transaction[addedTxsCount];
 
-        for (int i = 0; i < addedTxsCount; i++)
+        Parallel.For(0, addedTxsCount, i =>
         {
             transactions[i] = Build.A.Transaction
                 .WithNonce((UInt256)i)
@@ -475,7 +478,7 @@ public class TxBroadcasterTests
                 .TestObject;
 
             _broadcaster.Broadcast(transactions[i], true);
-        }
+        });
         _broadcaster.GetSnapshot().Length.Should().Be(addedTxsCount);
 
         IList<Transaction> pickedTxs = _broadcaster.GetPersistentTxsToSend().TransactionsToSend;
@@ -676,13 +679,13 @@ public class TxBroadcasterTests
         _txPoolConfig = new TxPoolConfig() { Size = 100, PeerNotificationThreshold = shouldBroadcastAll ? 100 : 5 };
         _broadcaster = new TxBroadcaster(_comparer, TimerFactory.Default, _txPoolConfig, _headInfo, _logManager);
 
-        for (int i = 0; i < _txPoolConfig.Size; i++)
+        Parallel.For(0, _txPoolConfig.Size, i =>
         {
             Transaction tx = Build.A.Transaction
                 .WithNonce((UInt256)i)
                 .SignedAndResolved(TestItem.PrivateKeyA).TestObject;
             _broadcaster.Broadcast(tx, true);
-        }
+        });
 
         Transaction[] pickedTxs = _broadcaster.GetPersistentTxsToSend().TransactionsToSend.ToArray();
         pickedTxs.Length.Should().Be(shouldBroadcastAll ? 100 : 1);

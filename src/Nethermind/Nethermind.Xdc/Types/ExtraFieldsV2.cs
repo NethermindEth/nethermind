@@ -5,8 +5,8 @@ using Nethermind.Serialization.Rlp;
 
 namespace Nethermind.Xdc.Types;
 
-public class ExtraFieldsV2(ulong round, QuorumCert quorumCert)
+public class ExtraFieldsV2(ulong round, QuorumCertificate quorumCert)
 {
     public ulong CurrentRound { get; } = round;
-    public QuorumCert QuorumCert { get; } = quorumCert;
+    public QuorumCertificate QuorumCert { get; } = quorumCert;
 }

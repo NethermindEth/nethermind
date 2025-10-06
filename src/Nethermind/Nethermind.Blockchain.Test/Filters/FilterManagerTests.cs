@@ -334,7 +334,7 @@ public class FilterManagerTests
         foreach (TxReceipt receipt in receipts)
         {
             _mainProcessingContext.TransactionProcessed += Raise.EventWith(_branchProcessor,
-                new TxProcessedEventArgs(index, Build.A.Transaction.TestObject, receipt));
+                new TxProcessedEventArgs(index, Build.A.Transaction.TestObject, block.Header, receipt));
             index++;
         }
 

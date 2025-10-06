@@ -527,6 +527,38 @@ namespace Nethermind.Store.Test.Proofs
             Assert.That(proof.StorageProofs?[2].Value?.Span.ToHexString(true), Is.EqualTo("0xab9a000000000000000000000000000000000000000000000000000000000000000000000000000000"));
         }
 
+
+        [Test]
+        public void Storage_proofs_have_values_set_complex_with_inline_nodes()
+        {
+            IDb memDb = new MemDb();
+            IScopedTrieStore scopedTrieStore = new RawScopedTrieStore(memDb);
+            StateTree tree = new(scopedTrieStore, LimboLogs.Instance);
+            StorageTree storageTree = new(new RawScopedTrieStore(memDb, TestItem.AddressA.ToAccountPath.ToCommitment()), Keccak.EmptyTreeHash, LimboLogs.Instance);
+            storageTree.Set(Bytes.FromHexString("1000000000000000000000000000000000000000000000000000000000000000"), Bytes.FromHexString("aa"));
+            storageTree.Set(Bytes.FromHexString("3000000000000000000000000000000000000000000000000000000000000000"), Bytes.FromHexString("ab"));
+            storageTree.Set(Bytes.FromHexString("3000000000000000000000000000000000000000000000000000000000000010"), Bytes.FromHexString("1111111111111111111111111111111111111111111111111111111111111111"));
+            storageTree.Commit();
+            storageTree = new(new RawScopedTrieStore(memDb, TestItem.AddressA.ToAccountPath.ToCommitment()), storageTree.RootHash, LimboLogs.Instance);
+            Account account1 = Build.An.Account.WithBalance(1).WithStorageRoot(storageTree.RootHash).TestObject;
+            Account account2 = Build.An.Account.WithBalance(2).TestObject;
+            tree.Set(TestItem.AddressA, account1);
+            tree.Set(TestItem.AddressB, account2);
+            tree.Commit();
+
+            TreeDumper dumper = new();
+            tree.Accept(dumper, tree.RootHash);
+            Console.WriteLine(dumper.ToString());
+
+            AccountProofCollector accountProofCollector = new(
+                TestItem.AddressA.ToAccountPath.ToCommitment().Bytes,
+                new ValueHash256[] { new ValueHash256(Bytes.FromHexString("3000000000000000000000000000000000000000000000000000000000000000")) }
+            );
+            tree.Accept(accountProofCollector, tree.RootHash);
+            AccountProof proof = accountProofCollector.BuildResult();
+            proof.StorageProofs[0].Value?.ToHexString().Should().Be("ab");
+        }
+
         private class AddressWithStorage
         {
             public Address Address { get; set; }
