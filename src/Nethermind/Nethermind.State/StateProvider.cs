@@ -694,6 +694,8 @@ namespace Nethermind.State
                         }
                     }
 
+                    Thread.Sleep(100); // The things
+
                     // Reuse Dictionary if not already re-initialized
                     dict.Clear();
                     if (Interlocked.CompareExchange(ref _codeBatch, dict, null) is null)
