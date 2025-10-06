@@ -46,7 +46,7 @@ public class Eth68ProtocolHandler : Eth67ProtocolHandler
         _pooledTxsRequestor = pooledTxsRequestor;
 
         // Capture Action once rather than per call
-        _sendAction = Send<V66.Messages.GetPooledTransactionsMessage>;
+        _sendAction = Send;
     }
 
     public override void HandleMessage(ZeroPacket message)
