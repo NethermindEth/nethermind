@@ -7,11 +7,8 @@ using Nethermind.Core;
 using Nethermind.Db;
 using Nethermind.Evm.State;
 using Nethermind.Logging;
-using Nethermind.State.Healing;
 using Nethermind.State.SnapServer;
-using Nethermind.Trie;
 using Nethermind.Trie.Pruning;
-using Org.BouncyCastle.Pqc.Crypto.Picnic;
 
 namespace Nethermind.State;
 
@@ -63,7 +60,7 @@ public class WorldStateManager : IWorldStateManager
 
     public IWorldStateScopeProvider CreateResettableWorldState()
     {
-        return new TrieStoreScopeProvider(_readOnlyTrieStore, _readaOnlyCodeCb, null, false, _logManager);
+        return new TrieStoreScopeProvider(_readOnlyTrieStore, _readaOnlyCodeCb, null, _logManager);
     }
 
     public IOverridableWorldScope CreateOverridableWorldScope()
