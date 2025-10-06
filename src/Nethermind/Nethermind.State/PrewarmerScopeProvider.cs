@@ -49,9 +49,9 @@ public class PrewarmerScopeProvider(
 
         public void Dispose() => baseScope.Dispose();
 
-        public void SetReadAccount(Address address, Account? account)
+        public void HintAccountRead(Address address, Account? account)
         {
-            baseScope.SetReadAccount(address, account);
+            baseScope.HintAccountRead(address, account);
         }
 
         public IWorldStateScopeProvider.ICodeDb CodeDb => baseScope.CodeDb;
@@ -77,10 +77,6 @@ public class PrewarmerScopeProvider(
 
         public IWorldStateScopeProvider.IWorldStateWriteBatch StartWriteBatch(int estimatedAccountNum)
         {
-            if (commitCachedRead)
-            {
-                return new CachedReadWriteCommitter(baseScope.StartWriteBatch(estimatedAccountNum), this);
-            }
             return baseScope.StartWriteBatch(estimatedAccountNum);
         }
 
@@ -111,7 +107,7 @@ public class PrewarmerScopeProvider(
             {
                 if (preBlockCache?.TryGetValue(addressAsKey, out Account? account) ?? false)
                 {
-                    SetReadAccount(address, account);
+                    HintAccountRead(address, account);
                     _stateReadHit.Inc();
                     Metrics.IncrementStateTreeCacheHits();
                 }
@@ -148,65 +144,6 @@ public class PrewarmerScopeProvider(
         }
     }
 
-    private class CachedReadWriteCommitter(
-        IWorldStateScopeProvider.IWorldStateWriteBatch baseWriteBatch,
-        ScopeWrapper scopeWrapper
-    )
-        : IWorldStateScopeProvider.IWorldStateWriteBatch
-    {
-        public void Dispose()
-        {
-            baseWriteBatch.Dispose();
-        }
-
-        public void Set(Address key, Account? account)
-        {
-            baseWriteBatch.Set(key, account);
-        }
-
-        public IWorldStateScopeProvider.IStorageWriteBatch CreateStorageWriteBatch(Address key, int estimatedEntries)
-        {
-            return new CachedReadStorageWriteBatchCommitter(
-                baseWriteBatch.CreateStorageWriteBatch(key, estimatedEntries),
-                scopeWrapper.readSlots?.GetValueOrDefault(key)
-            );
-        }
-
-        public event EventHandler<IWorldStateScopeProvider.AccountChangeEvent>? OnAccountChanged
-        {
-            add => baseWriteBatch.OnAccountChanged += value;
-            remove => baseWriteBatch.OnAccountChanged -= value;
-        }
-    }
-
-    private class CachedReadStorageWriteBatchCommitter(
-        IWorldStateScopeProvider.IStorageWriteBatch baseWriteBatch,
-        Dictionary<UInt256, byte[]>? readSlots): IWorldStateScopeProvider.IStorageWriteBatch
-    {
-        public void Dispose()
-        {
-            if (readSlots is not null)
-            {
-                foreach (var kv in readSlots)
-                {
-                    baseWriteBatch.Set(kv.Key, kv.Value);
-                }
-            }
-            baseWriteBatch.Dispose();
-        }
-
-        public void Set(in UInt256 index, byte[] value)
-        {
-            readSlots?.Remove(index);
-            baseWriteBatch.Set(in index, value);
-        }
-
-        public void Clear()
-        {
-            baseWriteBatch.Clear();
-        }
-    }
-
     private sealed class StorageTreeWrapper(
         IWorldStateScopeProvider.IStorageTree baseStorageTree,
         ConcurrentDictionary<StorageCell, byte[]> preBlockCache,
@@ -240,6 +177,7 @@ public class PrewarmerScopeProvider(
                 {
                     storageReadSlots?.TryAdd(index, value);
 
+                    HintGet(index, value);
                     _storageReadHit.Inc();
                     Db.Metrics.IncrementStorageTreeCache();
                 }
@@ -250,6 +188,11 @@ public class PrewarmerScopeProvider(
                 }
                 return value;
             }
+        }
+
+        public void HintGet(in UInt256 index, byte[]? value)
+        {
+            baseStorageTree.HintGet(in index, value);
         }
 
         private static Counter.Child _storageReadTimeNull = _prewarmerColdRead.WithLabels("storage", "true");

@@ -36,7 +36,7 @@ public interface IWorldStateScopeProvider
         /// </summary>
         /// <param name="address"></param>
         /// <param name="account"></param>
-        void SetReadAccount(Address address, Account? account);
+        void HintAccountRead(Address address, Account? account);
 
         /// <summary>
         /// The code db
@@ -80,6 +80,8 @@ public interface IWorldStateScopeProvider
         Hash256 RootHash { get; }
 
         byte[]? Get(in UInt256 index);
+
+        void HintGet(in UInt256 index, byte[]? value);
 
         /// <summary>
         /// Used by JS tracer. May not work on some database layout.

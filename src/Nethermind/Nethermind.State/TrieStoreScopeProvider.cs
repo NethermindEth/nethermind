@@ -85,7 +85,7 @@ public class TrieStoreScopeProvider : IWorldStateScopeProvider
             return account;
         }
 
-        public void SetReadAccount(Address address, Account? account)
+        public void HintAccountRead(Address address, Account? account)
         {
             _loadedAccounts[address] = account;
         }
