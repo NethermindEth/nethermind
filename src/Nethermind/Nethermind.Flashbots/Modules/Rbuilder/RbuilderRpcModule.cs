@@ -3,6 +3,7 @@
 
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Find;
 using Nethermind.Blockchain.Tracing.ParityStyle;
@@ -141,7 +142,7 @@ public class RbuilderRpcModule(
         return ResultWrapper<Hash256?>.Success(blockHeader?.Hash);
     }
 
-    public ResultWrapper<IReadOnlyList<SimulateBlockResult<ParityLikeTxTrace>>> rbuilder_transact(
+    public ResultWrapper<RevmExecutionResultAndState> rbuilder_transact(
         RevmTransaction revmTransaction,
         BundleState bundleState)
     {
@@ -156,7 +157,8 @@ public class RbuilderRpcModule(
         BlockHeader? blockHeader = blockFinder.FindHeader(blockParameter);
         if (blockHeader is null)
         {
-            return ResultWrapper<IReadOnlyList<SimulateBlockResult<ParityLikeTxTrace>>>.Fail("Latest Block not available", ErrorCodes.ResourceNotFound);
+            return ResultWrapper<RevmExecutionResultAndState>.Fail(
+                "Latest Block not available", ErrorCodes.ResourceNotFound);
         }
 
         // TODO: Apply `(address, accountChange)` changes
@@ -188,9 +190,76 @@ public class RbuilderRpcModule(
         };
 
         // TODO: Can we use the optional `stateOverride` parameter instead of manually applying changes?
-        var result = executor.Execute(payload, blockParameter);
+        ResultWrapper<IReadOnlyList<SimulateBlockResult<ParityLikeTxTrace>>> result =
+            executor.Execute(payload, blockParameter);
 
-        return result;
+        if (result.Result.Error is not null)
+        {
+            return null!;
+        }
+
+        if (result.Data.Count != 1)
+        {
+            throw new InvalidOperationException();
+        }
+
+        var simulatedBlock = result.Data[0];
+        var trace = simulatedBlock.Traces.First()!;
+        var call = simulatedBlock.Calls?.First();
+        var callAction = call?.Action?.Result;
+
+        var isCall = callAction?.Output is not null;
+        var callOutput = isCall ? callAction?.Output : null;
+
+        var isCreate = callAction?.Code is not null;
+        (byte[], Address?)? createOutput = isCreate ? (callAction?.Code!, callAction?.Address) : null;
+
+        var success = new RevmExecutionResultSuccess
+        {
+            GasUsed = (ulong)simulatedBlock.GasUsed,
+            Reason = default!,
+            GasRefunded = default!,
+            Logs = [], // TODO
+            Output = new RevmExecutionResultSuccess.ResultSuccessOutput
+            {
+                Call = callOutput,
+                Create = createOutput,
+            },
+        };
+        IReadOnlyDictionary<Address, RevmStateAccount> state = trace.StateChanges?.ToDictionary(
+            kv => kv.Key,
+            kv =>
+            {
+                return new RevmStateAccount
+                {
+                    // TODO: Why are there o many nulls here?
+                    Info = new RevmStateAccountInfo
+                    {
+                        Balance = kv.Value.Balance?.After ?? UInt256.Zero,
+                        Nonce = (ulong)(kv.Value.Nonce?.After ?? UInt256.Zero),
+                        Code = kv.Value.Code?.After,
+                        CodeHash = Keccak.Compute(kv.Value.Code?.After),
+                    },
+                    Status = default!,
+                    Storage = kv.Value.Storage?.ToDictionary(
+                        kv1 => kv1.Key,
+                        kv2 => new RevmStorageSlot
+                        {
+                            PresentValue = new UInt256(kv2.Value.After),
+                            OriginalValue = new UInt256(kv2.Value.Before),
+                            IsCold = default // TODO: What should this be?
+                        }
+                    ) ?? [],
+                };
+            }) ?? [];
+
+        RevmExecutionResultAndState revmResult = new RevmExecutionResultAndState
+        {
+            Result = new RevmExecutionResult { Success = success },
+            State = state,
+        };
+
+        return ResultWrapper<RevmExecutionResultAndState>.Success(revmResult);
     }
 }
 

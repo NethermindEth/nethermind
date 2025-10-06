@@ -124,7 +124,7 @@ public class RbuilderRpcModuleTests
         IWorldState worldState = _worldStateManager.GlobalWorldState;
         using var _ = worldState.BeginScope(IWorldState.PreGenesis);
         worldState.CreateAccount(caller, 1.Ether());
-        worldState.CreateAccount(to, 0);
+        worldState.CreateAccount(to, 1.Ether());
         worldState.Commit(London.Instance);
         worldState.CommitTree(0);
         _blockTree.FindLatestBlock()!.Header.StateRoot = worldState.StateRoot;
@@ -136,7 +136,7 @@ public class RbuilderRpcModuleTests
             Kind = to,
             GasLimit = 1000000,
             GasPrice = 1,
-            Value = 0x186A0,
+            Value = 100000,
             Data = Bytes.FromHexString("0xf9da581d"),
             Nonce = 0,
             ChainId = 1,
@@ -150,5 +150,13 @@ public class RbuilderRpcModuleTests
 
         var wrapper = _rbuilderRpcModule.rbuilder_transact(revmTransaction, bundleState);
         wrapper.Result.Error.Should().BeNull();
+
+        var revmExecutionResult = wrapper.Data.Result.Success;
+        revmExecutionResult.GasUsed.Should().Be(28159);
+
+        var revmState = wrapper.Data.State;
+        revmState.Count.Should().Be(3);
+        revmState[caller].Info.Balance.Should().Be(1.Ether() - 100000 - 28159);
+        revmState[to].Info.Balance.Should().Be(1.Ether() + 100000);
     }
 }

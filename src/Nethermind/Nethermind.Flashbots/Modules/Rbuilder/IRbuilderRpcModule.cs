@@ -48,7 +48,7 @@ public interface IRbuilderRpcModule
         Description = "Execute a call on top of the state trie at specified block given a set of changes.",
         IsSharable = false,
         ExampleResponse = "0xffff")]
-    ResultWrapper<IReadOnlyList<SimulateBlockResult<ParityLikeTxTrace>>> rbuilder_transact(
+    ResultWrapper<RevmExecutionResultAndState> rbuilder_transact(
         RevmTransaction revmTransaction, BundleState bundleState);
 }
 
