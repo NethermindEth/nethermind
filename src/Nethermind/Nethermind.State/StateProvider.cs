@@ -685,7 +685,7 @@ namespace Nethermind.State
 
                 return Task.Run(async () =>
                 {
-                    await Task.Delay(1000);
+                    await Task.Delay(100);
 
                     using (var batch = _codeDb.StartWriteBatch())
                     {
