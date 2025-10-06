@@ -685,8 +685,10 @@ namespace Nethermind.State
                 if (dict is null) return Task.CompletedTask;
                 _codeBatchAlternate = default;
 
-                return Task.Run(() =>
+                return Task.Run(async () =>
                 {
+                    await Task.Delay(100);
+
                     using (var batch = _codeDb.StartWriteBatch())
                     {
                         // Insert ordered for improved performance
