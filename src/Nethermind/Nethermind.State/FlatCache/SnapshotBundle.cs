@@ -3,6 +3,7 @@
 
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
@@ -17,6 +18,7 @@ public class SnapshotBundle(ArrayPoolList<Snapshot> knownStates, IBigCache bigCa
 {
     Dictionary<Address, StorageSnapshotBundle> _loadedAccounts = new();
     Dictionary<Address, Account> _changedAccounts = new();
+    ArrayPoolList<Address> _writtenAccounts = new(1);
     public int SnapshotCount => knownStates.Count;
 
     public bool TryGetAccount(Address address, out Account? acc)
@@ -45,11 +47,12 @@ public class SnapshotBundle(ArrayPoolList<Snapshot> knownStates, IBigCache bigCa
     {
         foreach (var kv in changedValues)
         {
+            _writtenAccounts.Add(kv.Key);
             _changedAccounts[kv.Key] = kv.Value;
         }
     }
 
-    public void SetChangedAccount(Address address, Account? account)
+    public void HintAccountRead(Address address, Account? account)
     {
         _changedAccounts[address] = account;
     }
@@ -57,18 +60,24 @@ public class SnapshotBundle(ArrayPoolList<Snapshot> knownStates, IBigCache bigCa
     public Snapshot CollectAndApplyKnownState()
     {
         Dictionary<Address, StorageWrites> storages = new();
+        ArrayPoolList<(Address, UInt256)> writes = new(1);
 
         foreach (var gatheredCacheStorage in _loadedAccounts)
         {
-            storages[gatheredCacheStorage.Key] = gatheredCacheStorage.Value.CollectAndApplyKnownState();
+            (StorageWrites storageChange, ArrayPoolList<(Address, UInt256)> writeArr) = gatheredCacheStorage.Value.CollectAndApplyKnownState();
+            storages[gatheredCacheStorage.Key] = storageChange;
+            writes.AddRange(writeArr);
         }
 
         var knownState = new Snapshot()
         {
             Accounts = _changedAccounts,
             Storages = storages,
+            AccountWrites = _writtenAccounts.ToHashSet(),
+            SlotWrites = writes.ToHashSet()
         };
         _changedAccounts = new();
+        _writtenAccounts.Clear();
         knownStates.Add(knownState);
 
         return knownState;
@@ -92,7 +101,7 @@ public class SnapshotBundle(ArrayPoolList<Snapshot> knownStates, IBigCache bigCa
 
         IBigCache.IStorageReader bigCacheStorage = bigCache.GetStorageReader(address);
 
-        StorageSnapshotBundle cache = new StorageSnapshotBundle(accounts, bigCacheStorage);
+        StorageSnapshotBundle cache = new StorageSnapshotBundle(accounts, bigCacheStorage, address);
         _loadedAccounts[address] = cache;
         return cache;
     }
@@ -102,7 +111,13 @@ public class SnapshotBundle(ArrayPoolList<Snapshot> knownStates, IBigCache bigCa
         Dictionary<Address, Account> accounts = new Dictionary<Address, Account>();
         Dictionary<Address, StorageWrites> storages = new Dictionary<Address, StorageWrites>();
 
-        if (knownStates.Count == 0) return new Snapshot(new StateId(-1, ValueKeccak.EmptyTreeHash), new StateId(-1, ValueKeccak.EmptyTreeHash),  new Dictionary<Address, Account>(), new Dictionary<Address, StorageWrites>());
+        if (knownStates.Count == 0) return new Snapshot(
+            new StateId(-1, ValueKeccak.EmptyTreeHash), new StateId(-1, ValueKeccak.EmptyTreeHash),
+            new Dictionary<Address, Account>(),
+            new Dictionary<Address, StorageWrites>(),
+            new HashSet<Address>(),
+            new HashSet<(Address, UInt256)>()
+        );
 
         if (knownStates.Count == 1) return knownStates[0];
 
@@ -138,7 +153,9 @@ public class SnapshotBundle(ArrayPoolList<Snapshot> knownStates, IBigCache bigCa
             }
         }
 
-        return new Snapshot(from, to, accounts, storages);
+        return new Snapshot(from, to, accounts, storages,
+            new HashSet<Address>(),
+            new HashSet<(Address, UInt256)>());
     }
 
     public void Dispose()

@@ -21,5 +21,6 @@ namespace Nethermind.Db
         public const string PeersDb = "peers";
         public const string FlatCacheLog = "flatCacheLog";
         public const string FlatCache = "flatCache";
+        public const string WrittenFlatCache = "writtenFlatCache";
     }
 }

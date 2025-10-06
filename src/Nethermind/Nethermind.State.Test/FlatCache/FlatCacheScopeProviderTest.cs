@@ -42,7 +42,7 @@ public class FlatCacheScopeProviderTest
         _canonicalStateRootFinder = Substitute.For<ICanonicalStateRootFinder>();
         _baseScopeProvider = new TrieStoreScopeProvider(new TestRawTrieStore(_stateDb), codeDb, LimboLogs.Instance);
         _snapshotsStore = new SnapshotsStore(new TestSortedMemDb(), new EthereumJsonSerializer(), LimboLogs.Instance);
-        _persistedBigCache = new PersistedBigCache(new MemDb());
+        _persistedBigCache = new PersistedBigCache(new MemDb(), new MemDb());
         _cacheRepository = new FlatCacheRepository(
             Substitute.For<IProcessExitSource>(),
             _snapshotsStore,
@@ -63,7 +63,7 @@ public class FlatCacheScopeProviderTest
         var codeDb = new TestMemDb();
         var baseScopeProvider = new TrieStoreScopeProvider(new TestRawTrieStore(stateDb), codeDb, LimboLogs.Instance);
         SnapshotsStore snapshotsStore = new SnapshotsStore(new TestSortedMemDb(), new EthereumJsonSerializer(), LimboLogs.Instance);
-        PersistedBigCache persistedBigCache = new PersistedBigCache(new MemDb());
+        PersistedBigCache persistedBigCache = new PersistedBigCache(new MemDb(), new MemDb());
         var cacheRepository = new FlatCacheRepository(
             Substitute.For<IProcessExitSource>(),
             snapshotsStore,

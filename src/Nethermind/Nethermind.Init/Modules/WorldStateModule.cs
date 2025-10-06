@@ -97,6 +97,7 @@ public class WorldStateModule(IInitConfig initConfig) : Module
             .AddScoped<SnapshotsStore>()
             .AddDatabase(DbNames.FlatCache)
             .AddDatabase(DbNames.FlatCacheLog)
+            .AddDatabase(DbNames.WrittenFlatCache)
             .AddDecorator<IWorldStateManager, FlatCacheWorldStateManager>()
             ;
     }

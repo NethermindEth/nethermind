@@ -3,16 +3,18 @@
 
 using System;
 using System.Collections.Generic;
+using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Int256;
 
 namespace Nethermind.State.FlatCache;
 
 #pragma warning disable CS9113 // Parameter is unread.
-public class StorageSnapshotBundle(ArrayPoolList<StorageWrites> storages, IBigCache.IStorageReader bigCacheStorage) : IDisposable
+public class StorageSnapshotBundle(ArrayPoolList<StorageWrites> storages, IBigCache.IStorageReader bigCacheStorage, Address address) : IDisposable
 #pragma warning restore CS9113 // Parameter is unread.
 {
     Dictionary<UInt256, byte[]> _changedSlots = new();
+    ArrayPoolList<(Address, UInt256)> _writtenSlots = new(0);
     internal bool _hasSelfDestruct = false;
 
     public bool TryGet(in UInt256 index, out byte[]? value)
@@ -52,16 +54,17 @@ public class StorageSnapshotBundle(ArrayPoolList<StorageWrites> storages, IBigCa
         }
         foreach (var kv in changedValues)
         {
+            _writtenSlots.Add((address, kv.Key));
             _changedSlots[kv.Key] = kv.Value;
         }
     }
 
-    public void Set(UInt256 key,  byte[] value)
+    public void HintGet(in UInt256 index, byte[]? value)
     {
-        _changedSlots[key] = value;
+        _changedSlots[index] = value;
     }
 
-    public StorageWrites CollectAndApplyKnownState()
+    public (StorageWrites, ArrayPoolList<(Address, UInt256)>) CollectAndApplyKnownState()
     {
         StorageWrites storageWrites = new StorageWrites()
         {
@@ -74,7 +77,7 @@ public class StorageSnapshotBundle(ArrayPoolList<StorageWrites> storages, IBigCa
         storages.Add(storageWrites);
 
         // TODO: Could be empty
-        return storageWrites;
+        return (storageWrites, _writtenSlots);
     }
 
     public void Dispose()
