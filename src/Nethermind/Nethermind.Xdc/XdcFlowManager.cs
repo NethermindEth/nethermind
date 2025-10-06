@@ -26,6 +26,7 @@ namespace Nethermind.Xdc;
 internal class XdcFlowManager(
     IBlockTree blockTree,
     ISpecProvider specProvider,
+    IBlockProducer blockBuilder,
     IEpochSwitchManager epochSwitchManager,
     IQuorumCertificateManager quorumCertificateManager,
     ITimeoutCertificateManager timeoutCertificateManager,
@@ -90,17 +91,16 @@ internal class XdcFlowManager(
             //TODO this is not the right way to get the current round
             IXdcReleaseSpec spec = specProvider.GetXdcSpec(currentHead, currentHead.ExtraConsensusData.CurrentRound);
 
-            //Technically we have to apply timeout exponents from spec, but they are always 1
+            //TODO Technically we have to apply timeout exponents from spec, but they are always 1
             Task timeoutTask = Task.Delay(TimeSpan.FromSeconds(spec.TimeoutPeriod));
 
             //TODO make sure epoch switch is handled correctly
             EpochSwitchInfo? epochSwitchInfo = epochSwitchManager.GetEpochSwitchInfo(currentHead, currentHead.ParentHash);
 
-
             if (newRoundSignal.CurrentHead is not null)
             {
                 //Start block production for the new block
-
+                Block myProposed = blockBuilder.BuildBlock(currentHead, epochSwitchInfo, spec);
 
             }
             else
@@ -112,14 +112,18 @@ internal class XdcFlowManager(
 
     private bool IsMyTurn(XdcBlockHeader currentHead, Address[] masterNodes, long currentRound, IXdcReleaseSpec spec)
     {
+        EpochSwitchInfo epochSwitchInfo = null;
         if (epochSwitchManager.IsEpochSwitchAtRound((ulong)currentRound, currentHead, out _))
         {
-            //TODO calculate master nodes based on the current round 
+            //TODO calculate master nodes based on the current round
+            
         }
         else
         {
-            EpochSwitchInfo epochSwitchInfo = epochSwitchManager.GetEpochSwitchInfo(currentHead, null);
-        }   
+            epochSwitchInfo = epochSwitchManager.GetEpochSwitchInfo(currentHead, null);
+        }
+
+
 
     }
 
