@@ -354,9 +354,9 @@ public class SynchronizerModule(ISyncConfig syncConfig) : Module
             .AddSingleton<IPathRecovery, ISyncPeerPool, INodeStorage, ILogManager>((peerPool, nodeStorage, logManager) => new PathNodeRecovery(
                 new NodeDataRecovery(peerPool!, nodeStorage, logManager),
                 new SnapRangeRecovery(peerPool!, logManager),
-                logManager
-            ))
+                logManager))
 
+            .AddSingleton<ICodeRecovery, CodeRecovery>()
             .AddSingleton<ISyncServer, SyncServer>();
 
         builder

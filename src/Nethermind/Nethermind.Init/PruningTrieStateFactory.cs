@@ -17,7 +17,6 @@ using Nethermind.Core.Extensions;
 using Nethermind.Core.Timers;
 using Nethermind.Db;
 using Nethermind.Db.FullPruning;
-using Nethermind.Db.Rocks.Config;
 using Nethermind.Evm.State;
 using Nethermind.JsonRpc.Modules.Admin;
 using Nethermind.Logging;
@@ -45,6 +44,7 @@ public class PruningTrieStateFactory(
     ChainSpec chainSpec,
     IDisposableStack disposeStack,
     Lazy<IPathRecovery> pathRecovery,
+    Lazy<ICodeRecovery> codeRecovery,
     ILogManager logManager
 )
 {
@@ -52,7 +52,7 @@ public class PruningTrieStateFactory(
 
     public (IWorldStateManager, IPruningTrieStateAdminRpcModule) Build()
     {
-        CompositePruningTrigger compositePruningTrigger = new CompositePruningTrigger();
+        CompositePruningTrigger compositePruningTrigger = new();
 
         IPruningTrieStore trieStore = mainPruningTrieStoreFactory.PruningTrieStore;
         ITrieStore mainWorldTrieStore = trieStore;
@@ -70,16 +70,17 @@ public class PruningTrieStateFactory(
                 mainNodeStorage,
                 codeDb,
                 pathRecovery,
+                codeRecovery,
                 logManager,
                 preBlockCaches,
-                // Main thread should only read from prewarm caches, not spend extra time updating them.
+                // The main thread should only read from prewarm caches, not spend extra time updating them.
                 populatePreBlockCache: false)
             : new WorldState(
                 mainWorldTrieStore,
                 codeDb,
                 logManager,
                 preBlockCaches,
-                // Main thread should only read from prewarm caches, not spend extra time updating them.
+                // The main thread should only read from prewarm caches, not spend extra time updating them.
                 populatePreBlockCache: false);
 
         IWorldStateManager stateManager = new WorldStateManager(
@@ -90,8 +91,8 @@ public class PruningTrieStateFactory(
             new LastNStateRootTracker(blockTree, 128));
 
         // NOTE: Don't forget this! Very important!
-        TrieStoreBoundaryWatcher trieStoreBoundaryWatcher = new(stateManager, blockTree!, logManager);
-        // Must be disposed after main trie store or the final persist on dispose will not set persisted state on blocktree.
+        TrieStoreBoundaryWatcher trieStoreBoundaryWatcher = new(stateManager, blockTree, logManager);
+        // Must be disposed after the main trie store or the final persist on dispose will not set persisted state on blocktree.
         disposeStack.Push(trieStoreBoundaryWatcher);
 
         disposeStack.Push(mainWorldTrieStore);
@@ -102,18 +103,17 @@ public class PruningTrieStateFactory(
             mainNodeStorage,
             nodeStorageFactory,
             trieStore,
-            compositePruningTrigger,
-            preBlockCaches
+            compositePruningTrigger
         );
 
-        var verifyTrieStarter = new VerifyTrieStarter(stateManager, processExit!, logManager);
+        var verifyTrieStarter = new VerifyTrieStarter(stateManager, processExit, logManager);
         ManualPruningTrigger pruningTrigger = new();
         compositePruningTrigger.Add(pruningTrigger);
-        PruningTrieStateAdminRpcModule adminRpcModule = new PruningTrieStateAdminRpcModule(
+        PruningTrieStateAdminRpcModule adminRpcModule = new(
             pruningTrigger,
             blockTree,
             stateManager.GlobalStateReader,
-            verifyTrieStarter!
+            verifyTrieStarter
         );
 
         return (stateManager, adminRpcModule);
@@ -124,8 +124,7 @@ public class PruningTrieStateFactory(
         INodeStorage mainNodeStorage,
         INodeStorageFactory nodeStorageFactory,
         IPruningTrieStore trieStore,
-        CompositePruningTrigger compositePruningTrigger,
-        PreBlockCaches? preBlockCaches)
+        CompositePruningTrigger compositePruningTrigger)
     {
         IPruningTrigger? CreateAutomaticTrigger(string dbPath)
         {
@@ -160,9 +159,9 @@ public class PruningTrieStateFactory(
                 mainNodeStorage,
                 compositePruningTrigger,
                 pruningConfig,
-                blockTree!,
+                blockTree,
                 stateReader,
-                processExit!,
+                processExit,
                 ChainSizes.CreateChainSizeInfo(chainSpec.ChainId),
                 drive,
                 trieStore,
@@ -181,14 +180,13 @@ public class MainPruningTrieStoreFactory
         IPruningConfig pruningConfig,
         IDbProvider dbProvider,
         INodeStorageFactory nodeStorageFactory,
-        IDbConfig dbConfig,
         IHardwareInfo hardwareInfo,
         ILogManager logManager
     )
     {
         _logger = logManager.GetClassLogger<MainPruningTrieStoreFactory>();
 
-        AdviseConfig(pruningConfig, dbConfig, hardwareInfo);
+        AdviseConfig(pruningConfig, hardwareInfo);
 
         if (syncConfig.SnapServingEnabled == true && pruningConfig.PruningBoundary < 128)
         {
@@ -203,15 +201,9 @@ public class MainPruningTrieStoreFactory
         }
 
         IDb stateDb = dbProvider.StateDb;
-        IPersistenceStrategy persistenceStrategy;
-        if (pruningConfig.Mode.IsMemory())
-        {
-            persistenceStrategy = No.Persistence;
-        }
-        else
-        {
-            persistenceStrategy = Persist.EveryNBlock(pruningConfig.PersistenceInterval);
-        }
+        IPersistenceStrategy persistenceStrategy = pruningConfig.Mode.IsMemory()
+            ? No.Persistence
+            : Persist.EveryNBlock(pruningConfig.PersistenceInterval);
 
         IPruningStrategy pruningStrategy = Prune
             .WhenCacheReaches(pruningConfig.DirtyCacheMb.MB())
@@ -240,12 +232,12 @@ public class MainPruningTrieStoreFactory
             logManager);
     }
 
-    private void AdviseConfig(IPruningConfig pruningConfig, IDbConfig dbConfig, IHardwareInfo hardwareInfo)
+    private void AdviseConfig(IPruningConfig pruningConfig, IHardwareInfo hardwareInfo)
     {
         if (hardwareInfo.AvailableMemoryBytes >= IHardwareInfo.StateDbLargerMemoryThreshold)
         {
             // Default is 1280 MB, which translate to 280 MB of persisted cache memory (dirty node cache is 1000 MB).
-            // So this actually increase it from 280 MB to 1000 MB, reducing dirty node load at DB by 50%.
+            // So this actually increases it from 280 MB to 1000 MB, reducing a dirty node load at DB by 50%.
             if (pruningConfig.CacheMb < 2000)
             {
                 if (_logger.IsDebug) _logger.Debug($"Increasing pruning cache to 2 GB due to available additional memory.");
@@ -253,16 +245,16 @@ public class MainPruningTrieStoreFactory
             }
         }
 
-        // On a 7950x (32 logical coree), assuming write buffer is large enough, the pruning time is about 3 second
-        // with 8GB of pruning cache. Lets assume that this is a safe estimate as the ssd can be a limitation also.
+        // On a 7950x (32 logical cores), assuming the write buffer is large enough, the pruning time is about 3 second
+        // with 8GB of pruning cache. Let's assume that this is a safe estimate as the ssd can be a limitation also.
         long maximumDirtyCacheMb = Environment.ProcessorCount * 250;
         // It must be at least 1GB as on mainnet at least 500MB will remain to support snap sync. So pruning cache only drop to about 500MB after pruning.
         maximumDirtyCacheMb = Math.Max(1000, maximumDirtyCacheMb);
         if (pruningConfig.DirtyCacheMb > maximumDirtyCacheMb)
         {
             // The user can also change `--Db.StateDbWriteBufferSize`.
-            // Which may or may not be better as each read will need to go through eacch write buffer.
-            // So having less of them is probably better..
+            // Which may or may not be better as each read will need to go through each write buffer.
+            // So having less of them is probably better.
             if (_logger.IsWarn) _logger.Warn($"Detected {pruningConfig.DirtyCacheMb}MB of dirty pruning cache config. Dirty cache more than {maximumDirtyCacheMb}MB is not recommended with {Environment.ProcessorCount} logical core as it may cause long memory pruning time which affect attestation.");
         }
 

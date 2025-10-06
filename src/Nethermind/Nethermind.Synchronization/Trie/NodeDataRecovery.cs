@@ -39,7 +39,7 @@ public class NodeDataRecovery(ISyncPeerPool peerPool, INodeStorage nodeStorage, 
 
         Hash256 currentHash = startingNodeHash;
         TreePath currentPath = startingPath;
-        TreePath queryPath = new TreePath(fullPath, 64);
+        TreePath queryPath = new(fullPath, 64);
 
         // Sometimes the start path for the missing node and the actual full path that the trie is working on is not the same.
         // So we change the query to match the missing node path.
@@ -66,7 +66,7 @@ public class NodeDataRecovery(ISyncPeerPool peerPool, INodeStorage nodeStorage, 
 
             recoveredNodes.Add((currentPath, nodeRlp));
 
-            TrieNode? node = new TrieNode(NodeType.Unknown, nodeRlp);
+            TrieNode node = new(NodeType.Unknown, nodeRlp);
             node.ResolveNode(EmptyTrieNodeResolver.Instance, currentPath);
 
             if (node.IsBranch)
@@ -97,7 +97,7 @@ public class NodeDataRecovery(ISyncPeerPool peerPool, INodeStorage nodeStorage, 
             {
                 return peerPool.AllocateAndRun(async (peer) =>
                 {
-                    if (peer == null) return null;
+                    if (peer is null) return null;
                     try
                     {
                         byte[]? res = await RecoverNodeFromPeer(peer.SyncPeer, rootHash, address, path, hash, cancellationToken);
@@ -149,21 +149,16 @@ public class NodeDataRecovery(ISyncPeerPool peerPool, INodeStorage nodeStorage, 
             PathGroup group;
             if (address is null)
             {
-                group = new PathGroup()
+                group = new PathGroup
                 {
-                    Group = [
-                        Nibbles.EncodePath(treePath)
-                    ]
+                    Group = [Nibbles.EncodePath(treePath)]
                 };
             }
             else
             {
-                group = new PathGroup()
+                group = new PathGroup
                 {
-                    Group = [
-                        address.Bytes.ToArray(),
-                        Nibbles.EncodePath(treePath)
-                    ]
+                    Group = [address.Bytes.ToArray(), Nibbles.EncodePath(treePath)]
                 };
             }
 
