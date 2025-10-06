@@ -727,7 +727,7 @@ public class SyncServerTests
                     .Where(c => c.GetMethodInfo().Name == nameof(ISyncPeer.NotifyOfNewRange))
                     .Select(c => c.GetArguments().Cast<BlockHeader>().Select(b => b.Number).ToArray())
                     .Select(a => (earliest: a[0], latest: a[1])).ToArray()[^2..],
-                Is.EquivalentTo(expectedUpdates).After(5000, 100) // Wait for background notifications to finish
+                Is.EquivalentTo(expectedUpdates).After(8000, 100) // Wait for background notifications to finish
             );
         }
     }

@@ -25,26 +25,21 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V65
     /// <summary>
     /// https://github.com/ethereum/EIPs/blob/master/EIPS/eip-2464.md
     /// </summary>
-    public class Eth65ProtocolHandler : Eth64ProtocolHandler
+    public class Eth65ProtocolHandler(
+        ISession session,
+        IMessageSerializationService serializer,
+        INodeStatsManager nodeStatsManager,
+        ISyncServer syncServer,
+        IBackgroundTaskScheduler backgroundTaskScheduler,
+        ITxPool txPool,
+        IPooledTxsRequestor pooledTxsRequestor,
+        IGossipPolicy gossipPolicy,
+        IForkInfo forkInfo,
+        ILogManager logManager,
+        ITxGossipPolicy? transactionsGossipPolicy = null)
+        : Eth64ProtocolHandler(session, serializer, nodeStatsManager, syncServer, backgroundTaskScheduler, txPool,
+            gossipPolicy, forkInfo, logManager, transactionsGossipPolicy)
     {
-        private readonly IPooledTxsRequestor _pooledTxsRequestor;
-
-        public Eth65ProtocolHandler(ISession session,
-            IMessageSerializationService serializer,
-            INodeStatsManager nodeStatsManager,
-            ISyncServer syncServer,
-            IBackgroundTaskScheduler backgroundTaskScheduler,
-            ITxPool txPool,
-            IPooledTxsRequestor pooledTxsRequestor,
-            IGossipPolicy gossipPolicy,
-            IForkInfo forkInfo,
-            ILogManager logManager,
-            ITxGossipPolicy? transactionsGossipPolicy = null)
-            : base(session, serializer, nodeStatsManager, syncServer, backgroundTaskScheduler, txPool, gossipPolicy, forkInfo, logManager, transactionsGossipPolicy)
-        {
-            _pooledTxsRequestor = pooledTxsRequestor;
-        }
-
         public override string Name => "eth65";
 
         public override byte ProtocolVersion => EthVersions.Eth65;
@@ -100,7 +95,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V65
             long startTime = Stopwatch.GetTimestamp();
 
             TxPool.Metrics.PendingTransactionsHashesReceived += msg.Hashes.Count;
-            _pooledTxsRequestor.RequestTransactions(Send, msg.Hashes, Session.SessionId);
+            pooledTxsRequestor.RequestTransactions(Send, msg.Hashes, Session.SessionId);
 
             if (Logger.IsTrace)
                 Logger.Trace($"OUT {Counter:D5} {nameof(NewPooledTransactionHashesMessage)} to {Node:c} " +

@@ -14,7 +14,7 @@ public class SimulateBlockValidatorProxy(IBlockValidator baseBlockValidator) : I
     public bool ValidateOrphanedBlock(Block block, out string? error) =>
         baseBlockValidator.ValidateOrphanedBlock(block, out error);
 
-    public bool ValidateSuggestedBlock(Block block, BlockHeader? parentHeader, out string? error, bool validateHashes = true) =>
+    public bool ValidateSuggestedBlock(Block block, BlockHeader parentHeader, out string? error, bool validateHashes = true) =>
         baseBlockValidator.ValidateSuggestedBlock(block, parentHeader, out error, validateHashes);
 
     public bool ValidateProcessedBlock(Block processedBlock, TxReceipt[] receipts, Block suggestedBlock, out string? error)
@@ -23,9 +23,12 @@ public class SimulateBlockValidatorProxy(IBlockValidator baseBlockValidator) : I
         return true;
     }
 
-    public bool Validate(BlockHeader header, BlockHeader? parent, bool isUncle, out string? error) =>
+    public bool Validate(BlockHeader header, BlockHeader parent, bool isUncle, out string? error) =>
         baseBlockValidator.Validate(header, parent, isUncle, out error);
 
-    public bool ValidateBodyAgainstHeader(BlockHeader header, BlockBody toBeValidated, [NotNullWhen(false)] out string? errorMessage) =>
-        baseBlockValidator.ValidateBodyAgainstHeader(header, toBeValidated, out errorMessage);
+    public bool ValidateOrphaned(BlockHeader header, [NotNullWhen(false)] out string? error) =>
+        baseBlockValidator.ValidateOrphaned(header, out error);
+
+    public bool ValidateBodyAgainstHeader(BlockHeader header, BlockBody toBeValidated, [NotNullWhen(false)] out string? error) =>
+        baseBlockValidator.ValidateBodyAgainstHeader(header, toBeValidated, out error);
 }
