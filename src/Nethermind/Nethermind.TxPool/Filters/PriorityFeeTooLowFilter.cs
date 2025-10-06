@@ -12,7 +12,7 @@ namespace Nethermind.TxPool.Filters;
 public class PriorityFeeTooLowFilter : IIncomingTxFilter
 {
     private readonly ILogger _logger;
-    private static readonly UInt256 _minBlobsPriorityFee = 0.GWei();
+    private static readonly UInt256 _minBlobsPriorityFee = 1.GWei();
 
     public PriorityFeeTooLowFilter(ILogger logger)
     {
