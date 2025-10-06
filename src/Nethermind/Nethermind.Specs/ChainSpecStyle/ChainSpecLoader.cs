@@ -329,17 +329,18 @@ public class ChainSpecLoader(IJsonSerializer serializer) : IChainSpecLoader
             0,
             (long)gasLimit,
             timestamp,
-            extraData);
-
-        genesisHeader.Author = beneficiary;
-        genesisHeader.Hash = Keccak.Zero; // need to run the block to know the actual hash
-        genesisHeader.Bloom = Bloom.Empty;
-        genesisHeader.MixHash = mixHash;
-        genesisHeader.Nonce = (ulong)nonce;
-        genesisHeader.ReceiptsRoot = Keccak.EmptyTreeHash;
-        genesisHeader.StateRoot = stateRoot;
-        genesisHeader.TxRoot = Keccak.EmptyTreeHash;
-        genesisHeader.BaseFeePerGas = baseFee;
+            extraData)
+        {
+            Author = beneficiary,
+            Hash = Keccak.Zero, // need to run the block to know the actual hash
+            Bloom = Bloom.Empty,
+            MixHash = mixHash,
+            Nonce = (ulong)nonce,
+            ReceiptsRoot = Keccak.EmptyTreeHash,
+            StateRoot = stateRoot,
+            TxRoot = Keccak.EmptyTreeHash,
+            BaseFeePerGas = baseFee
+        };
 
         bool withdrawalsEnabled = chainSpecJson.Params.Eip4895TransitionTimestamp is not null && genesisHeader.Timestamp >= chainSpecJson.Params.Eip4895TransitionTimestamp;
         bool depositsEnabled = chainSpecJson.Params.Eip6110TransitionTimestamp is not null && genesisHeader.Timestamp >= chainSpecJson.Params.Eip6110TransitionTimestamp;
