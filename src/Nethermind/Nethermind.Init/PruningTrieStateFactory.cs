@@ -63,7 +63,7 @@ public class PruningTrieStateFactory(
         }
 
         IKeyValueStoreWithBatching codeDb = dbProvider.CodeDb;
-        TrieStoreTrieCacheWarmer trieWarmer = new TrieStoreTrieCacheWarmer(processExit);
+        TrieStoreTrieCacheWarmer trieWarmer = new TrieStoreTrieCacheWarmer(mainWorldTrieStore, processExit, logManager);
         IWorldStateScopeProvider scopeProvider = syncConfig.TrieHealing
             ? new HealingWorldStateScopeProvider(
                 mainWorldTrieStore,
