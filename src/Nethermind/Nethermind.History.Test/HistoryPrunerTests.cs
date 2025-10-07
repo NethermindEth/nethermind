@@ -151,6 +151,7 @@ public class HistoryPrunerTests
         IHistoryConfig historyConfig = new HistoryConfig
         {
             Pruning = PruningModes.UseAncientBarriers,
+            PruningInterval = 0
         };
         using BasicTestBlockchain testBlockchain = await BasicTestBlockchain.Create(BuildContainer(historyConfig));
 
