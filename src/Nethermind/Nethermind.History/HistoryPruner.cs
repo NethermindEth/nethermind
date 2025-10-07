@@ -338,7 +338,7 @@ public class HistoryPruner : IHistoryPruner
     {
         cutoffTimestamp = null;
 
-        if (!_enabled || _blockTree.Head.Number % _pruningInterval != 0)
+        if (!_enabled || _blockTree.Head!.Number % _pruningInterval != 0)
         {
             return false;
         }
