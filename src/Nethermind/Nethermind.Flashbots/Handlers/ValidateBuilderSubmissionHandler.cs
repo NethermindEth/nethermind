@@ -174,7 +174,7 @@ public class ValidateSubmissionHandler
             return false;
         }
 
-        if (!IBlobProofsManager.For(releaseSpec.BlobProofVersion).ValidateProofs(new ShardBlobNetworkWrapper(blobsBundle.Blobs, blobsBundle.Commitments, blobsBundle.Proofs, ProofVersion.V1)))
+        if (!IBlobProofsManager.For(releaseSpec.BlobProofVersion).ValidateProofs(new ShardBlobNetworkWrapper(blobsBundle.Blobs, blobsBundle.Commitments, blobsBundle.Proofs, releaseSpec.BlobProofVersion)))
         {
             error = "Invalid KZG proofs";
             return false;
