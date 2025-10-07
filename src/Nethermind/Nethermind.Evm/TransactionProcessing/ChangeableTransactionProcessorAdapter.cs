@@ -23,7 +23,7 @@ namespace Nethermind.Evm.TransactionProcessing
         }
 
         public TransactionResult Execute(Transaction transaction, ITxTracer txTracer, bool? isFromTraceEndpoint = null) =>
-            CurrentAdapter.Execute(transaction, txTracer);
+            CurrentAdapter.Execute(transaction, txTracer, isFromTraceEndpoint: isFromTraceEndpoint);
         public void SetBlockExecutionContext(in BlockExecutionContext blockExecutionContext)
             => CurrentAdapter.SetBlockExecutionContext(in blockExecutionContext);
     }
