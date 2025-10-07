@@ -40,7 +40,8 @@ namespace Nethermind.State
         // Note:
         // False negatives are fine as they will just result in a overwrite set
         // False positives would be problematic as the code _must_ be persisted
-        private readonly ClockKeyCacheNonConcurrent<ValueHash256> _codeInsertFilter = new(1_024);
+        private readonly ClockKeyCacheNonConcurrent<ValueHash256> _persistedCodeInsertFilter = new(1_024);
+        private readonly ClockKeyCacheNonConcurrent<ValueHash256> _blockCodeInsertFilter = new(256);
         private readonly Dictionary<AddressAsKey, ChangeTrace> _blockChanges = new(4_096);
         private readonly ConcurrentDictionary<AddressAsKey, Account>? _preBlockCache;
 
@@ -151,7 +152,7 @@ namespace Nethermind.State
             // Don't reinsert if already inserted. This can be the case when the same
             // code is used by multiple deployments. Either from factory contracts (e.g. LPs)
             // or people copy and pasting popular contracts
-            if (!_codeInsertFilter.Get(codeHash))
+            if (!_blockCodeInsertFilter.Get(codeHash) && !_persistedCodeInsertFilter.Get(codeHash))
             {
                 if (_codeBatch is null)
                 {
@@ -169,7 +170,7 @@ namespace Nethermind.State
                     _codeBatchAlternate[codeHash] = code.ToArray();
                 }
 
-                _codeInsertFilter.Set(codeHash);
+                _blockCodeInsertFilter.Set(codeHash);
                 inserted = true;
             }
 
@@ -695,6 +696,12 @@ namespace Nethermind.State
                         }
                     }
 
+                    // Mark all inserted codes as persisted
+                    foreach (var kvp in dict)
+                    {
+                        _persistedCodeInsertFilter.Set(kvp.Key.Value.ValueHash256);
+                    }
+
                     // Reuse Dictionary if not already re-initialized
                     dict.Clear();
                     if (Interlocked.CompareExchange(ref _codeBatch, dict, null) is null)
@@ -932,6 +939,7 @@ namespace Nethermind.State
             if (_logger.IsTrace) Trace();
             if (resetBlockChanges)
             {
+                _blockCodeInsertFilter.Clear();
                 _blockChanges.Clear();
                 _codeBatch?.Clear();
             }
