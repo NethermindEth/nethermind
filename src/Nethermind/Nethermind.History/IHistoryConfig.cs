@@ -19,6 +19,7 @@ public interface IHistoryConfig : IConfig
         DefaultValue = "82125")]
     uint RetentionEpochs { get; set; }
 
+    // Set to 0 to prune every slot
     [ConfigItem(
         Description = "Number of epochs to wait between each history pruning.",
         DefaultValue = "8")]
