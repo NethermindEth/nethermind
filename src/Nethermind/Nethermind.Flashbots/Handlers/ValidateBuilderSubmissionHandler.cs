@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: 2024 Demerzel Solutions Limited
+// SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
@@ -93,7 +93,7 @@ public class ValidateSubmissionHandler
             return FlashbotsResult.Invalid(error ?? "Block validation failed");
         }
 
-        if (!ValidateBlobsBundle(block.Transactions, blobsBundle, out string? blobsError))
+        if (!ValidateBlobsBundle(block.Transactions, blobsBundle, _specProvider.GetSpec(block.Header), out string? blobsError))
         {
             if (_logger.IsWarn) _logger.Warn($"Invalid blobs bundle. Result of {payloadStr}. Error: {blobsError}");
             return FlashbotsResult.Invalid(blobsError ?? "Blobs bundle validation failed");
@@ -143,7 +143,7 @@ public class ValidateSubmissionHandler
         return true;
     }
 
-    private bool ValidateBlobsBundle(Transaction[] transactions, BlobsBundleV1 blobsBundle, out string? error)
+    private bool ValidateBlobsBundle(Transaction[] transactions, BlobsBundleV1 blobsBundle, IReleaseSpec releaseSpec, out string? error)
     {
         // get sum of length of blobs of each transaction
         int totalBlobsLength = 0;
@@ -174,7 +174,7 @@ public class ValidateSubmissionHandler
             return false;
         }
 
-        if (!IBlobProofsManager.For(ProofVersion.V1).ValidateProofs(new ShardBlobNetworkWrapper(blobsBundle.Blobs, blobsBundle.Commitments, blobsBundle.Proofs, ProofVersion.V1)))
+        if (!IBlobProofsManager.For(releaseSpec.BlobProofVersion).ValidateProofs(new ShardBlobNetworkWrapper(blobsBundle.Blobs, blobsBundle.Commitments, blobsBundle.Proofs, ProofVersion.V1)))
         {
             error = "Invalid KZG proofs";
             return false;
