@@ -6,12 +6,9 @@ using System.Buffers.Binary;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
-using System.Linq;
-using System.Text.Json;
 using Autofac.Features.AttributeFilters;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
-using Nethermind.Core.Extensions;
 using Nethermind.Db;
 using Nethermind.Logging;
 using Nethermind.Serialization.Json;
@@ -102,37 +99,6 @@ public class SnapshotsStore
         }
 
         _snapshotTimes.WithLabels("get_keys_after").Inc(Stopwatch.GetTimestamp() - sw);
-        return result;
-    }
-
-    public List<StateId> GetStatesAfterBlock(long startingBlockNumber)
-    {
-        if (startingBlockNumber < -1) throw new InvalidOperationException("block number cannot be negative I'm afraid"); // Because of binary order
-        long sw = Stopwatch.GetTimestamp();
-
-        using var iterator = _snapshotStore.GetViewBetween(
-            EncodeKey(new StateId(startingBlockNumber + 1, ValueKeccak.Zero)),
-            EncodeKey(new StateId(long.MaxValue, ValueKeccak.Zero))
-        );
-
-        List<StateId> result = new List<StateId>();
-        long? theBlockNumber = null;
-
-        while (iterator.MoveNext())
-        {
-            StateId id = DecodeKey(iterator.CurrentKey);
-            if (!theBlockNumber.HasValue)
-            {
-                theBlockNumber = id.blockNumber;
-            }
-            else
-            {
-                if (id.blockNumber != theBlockNumber.Value) break;
-            }
-            result.Add(id);
-        }
-
-        _snapshotTimes.WithLabels("get_keys_between").Inc(Stopwatch.GetTimestamp() - sw);
         return result;
     }
 

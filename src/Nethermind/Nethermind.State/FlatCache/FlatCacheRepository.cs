@@ -22,8 +22,7 @@ public sealed class FlatCacheRepository
     private InMemorySnapshotStore _inMemorySnapshotStore;
     private SnapshotsStore _snapshotsStore;
     private IBigCache _bigCache;
-
-    private readonly int _maxStateInMemory;
+    private int _boundary;
 
     private Channel<StateId> _compactorJobs;
     private long _compactSize;
@@ -34,8 +33,11 @@ public sealed class FlatCacheRepository
         int MaxStateInMemory = 512,
         int MaxInFlightCompactJob = 32,
         int CompactSize = 64,
-        bool InlineCompaction = false
-    );
+        int Boundary = 128,
+        bool InlineCompaction = true
+    )
+    {
+    }
 
     public FlatCacheRepository(
         IProcessExitSource exitSource,
@@ -46,7 +48,6 @@ public sealed class FlatCacheRepository
         Configuration? config = null)
     {
         if (config is null) config = new Configuration();
-        _maxStateInMemory = config.MaxStateInMemory;
         _inMemorySnapshotStore = new InMemorySnapshotStore();
         _snapshotsStore = snapshotsStore;
         _bigCache = persistedBigCache;
@@ -56,6 +57,7 @@ public sealed class FlatCacheRepository
         _logger = logManager.GetClassLogger<FlatCacheRepository>();
 
         _compactorJobs = Channel.CreateBounded<StateId>(config.MaxInFlightCompactJob);
+        _boundary = config.Boundary;
         WarmUp();
 
         _ = RunCompactor(exitSource.Token);
@@ -186,29 +188,29 @@ public sealed class FlatCacheRepository
         }
     }
 
-    public SnapshotBundle GatherCache(StateId baseBlock, long? earliestBlockNumber = null)
+    public SnapshotBundle GatherCache(StateId baseBlock, long? earliestExclusive = null)
     {
         using var _ = _repoLock.EnterScope();
 
         ArrayPoolList<Snapshot> knownStates = new(_inMemorySnapshotStore.KnownStatesCount / 32);
 
-        if (_logger.IsTrace) _logger.Trace($"Gathering {baseBlock}. Earliest is {earliestBlockNumber}");
+        if (_logger.IsTrace) _logger.Trace($"Gathering {baseBlock}. Earliest is {earliestExclusive}");
 
         StateId current = baseBlock;
         while(_compactedKnownStates.TryGetValue(current, out var entry) || _inMemorySnapshotStore.TryGetValue(current, out entry))
         {
             Snapshot state = entry;
             if (_logger.IsTrace) _logger.Trace($"Got {state.From} -> {state.To}");
-            if (current.blockNumber <= _bigCache.CurrentState.blockNumber) break; // Or equal?
             knownStates.Add(state);
-            if (current.blockNumber == earliestBlockNumber) break;
+            if (state.From.blockNumber <= _bigCache.CurrentState.blockNumber) break; // Or equal?
+            if (state.From.blockNumber <= earliestExclusive) break;
             if (state.From == current) break; // Some test commit two block with the same id, so we dont know the parent anymore.
             current = state.From;
         }
 
         knownStates.Reverse();
 
-        if (_logger.IsTrace) _logger.Trace($"Gathered {baseBlock}. Earliest is {earliestBlockNumber}, Got {knownStates.Count} known states, {_bigCache.CurrentState}");
+        if (_logger.IsTrace) _logger.Trace($"Gathered {baseBlock}. Earliest is {earliestExclusive}, Got {knownStates.Count} known states, {_bigCache.CurrentState}");
         return new SnapshotBundle(knownStates, _bigCache);
     }
 
@@ -238,7 +240,6 @@ public sealed class FlatCacheRepository
         }
     }
 
-    private int _boundary = 128;
     private async Task CleanIfNeeded()
     {
         await NotifyWhenSlow("add to bigcache", () => AddToBigCache());
@@ -262,7 +263,7 @@ public sealed class FlatCacheRepository
 
                 List<StateId> candidateToAdd = new List<StateId>();
                 long? blockNumber = null;
-                foreach (var stateId in _snapshotsStore.GetStatesAfterBlock(currentState.blockNumber))
+                foreach (var stateId in _inMemorySnapshotStore.GetStatesAfterBlock(currentState.blockNumber))
                 {
                     if (blockNumber is null)
                     {
