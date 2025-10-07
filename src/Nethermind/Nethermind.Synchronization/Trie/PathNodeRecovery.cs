@@ -29,7 +29,7 @@ public class PathNodeRecovery(NodeDataRecovery nodeDataRecovery, SnapRangeRecove
         try
         {
             IOwnedReadOnlyList<(TreePath, byte[])>? res = await Wait.AnyWhere(
-                (res) => res != null,
+                res => res != null,
                 nodeDataRecovery.Recover(rootHash, address, startingPath, startingNodeHash, fullPath, cts.Token),
                 snapRangeRecovery.Recover(rootHash, address, startingPath, startingNodeHash, fullPath, cts.Token)
             );

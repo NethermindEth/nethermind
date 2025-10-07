@@ -83,6 +83,8 @@ public class CodeRecovery(ISyncPeerPool peerPool, ILogManager logManager) : ICod
 
         using IOwnedReadOnlyList<byte[]> ownedReadOnlyList = await snapProtocol.GetByteCodes(hashes, token);
 
+        if (_logger.IsTrace) _logger.Trace($"Fetched code {key} from {peer}: {string.Join(", ", ownedReadOnlyList.Select(b => b.ToHexString()))}");
+
         return ownedReadOnlyList.Count switch
         {
             1 => ownedReadOnlyList[0],
