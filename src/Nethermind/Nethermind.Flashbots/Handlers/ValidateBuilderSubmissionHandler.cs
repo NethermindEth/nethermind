@@ -11,6 +11,7 @@ using Nethermind.Consensus;
 using Nethermind.Consensus.Processing;
 using Nethermind.Consensus.Validators;
 using Nethermind.Core;
+using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
 using Nethermind.Crypto;
@@ -149,6 +150,28 @@ public class ValidateSubmissionHandler
 
         IBlobProofsVerifier verifier = IBlobProofsManager.For(releaseSpec.BlobProofVersion);
 
+        using ArrayPoolList<byte[]> hashes = new(blobs.Blobs.Length);
+
+        foreach (Transaction tx in transactions)
+        {
+            if (tx.BlobVersionedHashes is not null)
+            {
+                foreach (byte[]? blobHash in tx.BlobVersionedHashes)
+                {
+                    if (blobHash is not null)
+                    {
+                        hashes.Add(blobHash);
+                    }
+                }
+            }
+        }
+
+        if (!verifier.ValidateHashes(blobs, hashes.AsSpan()))
+        {
+            error = "Invalid blob lengths";
+            return false;
+        }
+
         if (!verifier.ValidateLengths(blobs))
         {
             error = "Invalid blob lengths";
@@ -161,10 +184,9 @@ public class ValidateSubmissionHandler
             return false;
         }
 
-        error = null;
-
         _logger.Info($"Validated blobs bundle with {blobsBundle.Blobs.Length} blobs, commitments: {blobsBundle.Commitments.Length}, proofs: {blobsBundle.Proofs.Length}");
 
+        error = null;
         return true;
     }
 
@@ -254,9 +276,8 @@ public class ValidateSubmissionHandler
 
     private bool ValidateBlockMetadata(Block block, long registerGasLimit, BlockHeader parentHeader, out string? error)
     {
-        if (!_headerValidator.Validate(block.Header, parentHeader))
+        if (!_headerValidator.Validate(block.Header, parentHeader, false, out error))
         {
-            error = $"Invalid block header hash {block.Header.Hash}";
             return false;
         }
 
@@ -336,7 +357,7 @@ public class ValidateSubmissionHandler
 
         if (lastReceipt.StatusCode != StatusCode.Success)
         {
-            error = $"Proposer payment failed ";
+            error = $"Proposer payment failed";
             return false;
         }
 
@@ -352,7 +373,7 @@ public class ValidateSubmissionHandler
 
         if (paymentTx.To != feeRecipient)
         {
-            error = $"Proposer payment transaction recipient is not the proposer,received {paymentTx.To} expected {feeRecipient}";
+            error = $"Proposer payment transaction recipient is not the proposer, received {paymentTx.To} expected {feeRecipient}";
             return false;
         }
 

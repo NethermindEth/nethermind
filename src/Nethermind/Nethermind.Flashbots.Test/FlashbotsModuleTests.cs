@@ -5,7 +5,6 @@ using System;
 using System.Threading.Tasks;
 using Autofac;
 using FluentAssertions;
-using Nethermind.Consensus.Processing;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
@@ -57,7 +56,7 @@ public partial class FlashbotsModuleTests
         ResultWrapper<FlashbotsResult> result = await rpc.flashbots_validateBuilderSubmissionV3(BlockRequest);
         result.Should().NotBeNull();
 
-        Assert.That(result.Result.Error, Is.EqualTo("No proposer payment receipt"));
+        Assert.That(result.Result.Error, Does.StartWith("Proposer payment transaction recipient is not the proposer"));
         Assert.That(result.Data.Status, Is.EqualTo(FlashbotsStatus.Invalid));
 
         string response = await RpcTest.TestSerializedRequest(rpc, "flashbots_validateBuilderSubmissionV3", BlockRequest);
@@ -78,9 +77,21 @@ public partial class FlashbotsModuleTests
             Build.A.Withdrawal.WithIndex(1).WithValidatorIndex(1).WithAmount(100).WithRecipient(TestKeysAndAddress.TestAddr).TestObject
         ];
 
+        Transaction[] transactions = [
+            Build.A.Transaction.WithShardBlobTxTypeAndFields(1).WithMaxFeePerGas(1.GWei()).WithMaxPriorityFeePerGas(1).SignedAndResolved(TestItem.PrivateKeyA).TestObject,
+            Build.A.Transaction.WithShardBlobTxTypeAndFields(2).WithMaxFeePerGas(1.GWei()).WithMaxPriorityFeePerGas(0).SignedAndResolved(TestItem.PrivateKeyB).TestObject,
+            Build.A.Transaction
+                .WithMaxFeePerGas(0)
+                .WithMaxPriorityFeePerGas(0)
+                .WithTo(Address.Zero)
+                .WithValue(132912184722469)
+                .SignedAndResolved(TestItem.PrivateKeyC)
+                .TestObject,
+        ];
+
         Hash256 prevRandao = Keccak.Zero;
 
-        Hash256 expectedBlockHash = new("0xed7c356cda6ea2e7d79be86be2b11c24f97b6501bf5519a5826fd384a458a060");
+        Hash256 expectedBlockHash = new("0x850d7d58317a174e2eb71ebf345e5143666db74ec2214359ec1c29b0f7a1164c");
         string stateRoot = "0xa272b2f949e4a0e411c9b45542bd5d0ef3c311b5f26c4ed6b7a8d4f605a91154";
 
         return new(
@@ -95,7 +106,7 @@ public partial class FlashbotsModuleTests
                 Bytes.FromHexString("0x4e65746865726d696e64") // Nethermind
             )
             {
-                BlobGasUsed = 0,
+                BlobGasUsed = 3 * Eip4844Constants.GasPerBlob,
                 ExcessBlobGas = 0,
                 BaseFeePerGas = 0,
                 Bloom = Bloom.Empty,
@@ -106,7 +117,7 @@ public partial class FlashbotsModuleTests
                 ReceiptsRoot = chain.BlockTree.Head!.ReceiptsRoot!,
                 StateRoot = new(stateRoot),
             },
-            [],
+            transactions,
             Array.Empty<BlockHeader>(),
             withdrawals
         );
