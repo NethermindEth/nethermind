@@ -124,7 +124,7 @@ public class SnapshotBundle(ArrayPoolList<Snapshot> knownStates, IBigCache bigCa
         StateId to = knownStates[^1].To;
         StateId from = knownStates[1].From;
 
-        for (int i = 1; i < knownStates.Count; i++) // Note: Dont include the first state
+        for (int i = 0; i < knownStates.Count; i++)
         {
             var knownState = knownStates[i];
             foreach (var knownStateAccount in knownState.Accounts)

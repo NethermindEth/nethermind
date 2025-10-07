@@ -40,15 +40,15 @@ public class FlatCacheScopeProviderTest
         _stateDb = new TestMemDb();
         var codeDb = new TestMemDb();
         _canonicalStateRootFinder = Substitute.For<ICanonicalStateRootFinder>();
-        _baseScopeProvider = new TrieStoreScopeProvider(new TestRawTrieStore(_stateDb), codeDb, LimboLogs.Instance);
-        _snapshotsStore = new SnapshotsStore(new TestSortedMemDb(), new EthereumJsonSerializer(), LimboLogs.Instance);
+        _baseScopeProvider = new TrieStoreScopeProvider(new TestRawTrieStore(_stateDb), codeDb, logManager);
+        _snapshotsStore = new SnapshotsStore(new TestSortedMemDb(), new EthereumJsonSerializer(), logManager);
         _persistedBigCache = new PersistedBigCache(new MemDb(), new MemDb());
         _cacheRepository = new FlatCacheRepository(
             Substitute.For<IProcessExitSource>(),
             _snapshotsStore,
             _canonicalStateRootFinder,
             _persistedBigCache,
-            LimboLogs.Instance,
+            logManager,
             new FlatCacheRepository.Configuration(
                 MaxInFlightCompactJob: 32,
                 CompactSize: 32,
@@ -171,6 +171,9 @@ public class FlatCacheScopeProviderTest
     [TestCase(2)]
     [TestCase(10)]
     [TestCase(30)]
+    [TestCase(127)]
+    [TestCase(128)]
+    [TestCase(129)]
     [TestCase(256)]
     public void TestCacheMultipleBlock(int blockCount)
     {
@@ -212,6 +215,9 @@ public class FlatCacheScopeProviderTest
     [TestCase(2)]
     [TestCase(10)]
     [TestCase(11)]
+    [TestCase(127)]
+    [TestCase(128)]
+    [TestCase(129)]
     [TestCase(256)]
     public void TestSelfDestruct(int blockCount)
     {

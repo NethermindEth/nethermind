@@ -38,7 +38,7 @@ public class StorageSnapshotBundle(ArrayPoolList<StorageWrites> storages, IBigCa
 
             if (storages[i].HasSelfDestruct)
             {
-                return false;
+                return true;
             }
         }
 

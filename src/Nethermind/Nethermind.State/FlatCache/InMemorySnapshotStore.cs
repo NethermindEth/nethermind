@@ -3,6 +3,7 @@
 
 using System.Collections.Generic;
 using System.Linq;
+using Nethermind.Core.Crypto;
 
 namespace Nethermind.State.FlatCache;
 
@@ -40,5 +41,13 @@ public class InMemorySnapshotStore
     public List<StateId> GetKeysBetween(StateId start, StateId end)
     {
         return _sortedKnownStates.GetViewBetween(start, end).ToList();
+    }
+
+    public IEnumerable<StateId> GetStatesAfterBlock(long startingBlockNumber)
+    {
+        return GetKeysBetween(
+            new StateId(startingBlockNumber + 1, ValueKeccak.Zero),
+            new StateId(long.MaxValue, ValueKeccak.Zero)
+        );
     }
 }
