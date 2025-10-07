@@ -17,8 +17,6 @@ public class Timeout(ulong round, Signature? signature, ulong gapNumber)
     public Signature? Signature { get; set; } = signature;
     public ulong GapNumber { get; set; } = gapNumber;
 
-    public ValueHash256 SigHash() => Keccak.Compute(new TimeoutDecoder().Encode(this, RlpBehaviors.ForSealing).Bytes).ValueHash256;
-
     public override string ToString() => $"{Round}:{GapNumber}";
 
     public Address GetSigner() => signer;

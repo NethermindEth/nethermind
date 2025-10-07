@@ -3,13 +3,14 @@
 
 using System;
 using System.Collections.Generic;
-using System.Linq;
 using System.Threading.Tasks;
 using Nethermind.Blockchain;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
 using Nethermind.Crypto;
+using Nethermind.Serialization.Rlp;
+using Nethermind.Xdc.RLP;
 using Nethermind.Xdc.Types;
 using Nethermind.Xdc.Spec;
 
@@ -22,6 +23,7 @@ public class TimeoutCertificateManager(ISnapshotManager snapshotManager, IEpochS
     private ISpecProvider _specProvider = specProvider;
     private IBlockTree _blockTree = blockTree;
     private EthereumEcdsa _ethereumEcdsa = new EthereumEcdsa(0);
+    private static readonly TimeoutDecoder _timeoutDecoder = new();
 
     public void HandleTimeout(Timeout timeout)
     {
@@ -74,7 +76,7 @@ public class TimeoutCertificateManager(ISnapshotManager snapshotManager, IEpochS
             return false;
         }
 
-        ValueHash256 timeoutMsgHash = new Timeout(timeoutCertificate.Round, null, timeoutCertificate.GapNumber).SigHash();
+        ValueHash256 timeoutMsgHash = ComputeTimeoutMsgHash(timeoutCertificate.Round, timeoutCertificate.GapNumber);
         bool allValid = true;
         Parallel.ForEach(signatures,
             (signature, state) =>
@@ -94,6 +96,13 @@ public class TimeoutCertificateManager(ISnapshotManager snapshotManager, IEpochS
 
         errorMessage = null;
         return true;
+    }
+
+    internal static ValueHash256 ComputeTimeoutMsgHash(ulong round, ulong gap)
+    {
+        var timeout = new Timeout(round, null, gap);
+        Rlp encoded = _timeoutDecoder.Encode(timeout, RlpBehaviors.ForSealing);
+        return Keccak.Compute(encoded.Bytes).ValueHash256;
     }
 }
 

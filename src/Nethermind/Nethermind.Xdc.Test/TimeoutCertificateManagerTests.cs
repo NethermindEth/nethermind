@@ -145,7 +145,7 @@ public class TimeoutCertificateManagerTests
     private static TimeoutCertificate BuildTimeoutCertificate(PrivateKey[] keys, ulong round = 1, ulong gap = 0)
     {
         var ecdsa = new EthereumEcdsa(0);
-        ValueHash256 msgHash = new Timeout(round, null, gap).SigHash();
+        ValueHash256 msgHash = TimeoutCertificateManager.ComputeTimeoutMsgHash(round, gap);
         Signature[] signatures = keys.Select(k => ecdsa.Sign(k, msgHash)).ToArray();
         return new TimeoutCertificate(round, signatures, gap);
     }
