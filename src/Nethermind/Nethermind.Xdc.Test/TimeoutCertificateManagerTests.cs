@@ -110,8 +110,7 @@ public class TimeoutCertificateManagerTests
             .Returns(new Snapshot(0, Hash256.Zero, masternodes));
 
         IEpochSwitchManager epochSwitchManager = Substitute.For<IEpochSwitchManager>();
-        var epochSwitchInfo = new EpochSwitchInfo([], [],
-            masternodes, new BlockRoundInfo(Hash256.Zero, 1, 10), new BlockRoundInfo(Hash256.Zero, 0, 0));
+        var epochSwitchInfo = new EpochSwitchInfo(masternodes, [], new BlockRoundInfo(Hash256.Zero, 1, 10));
         epochSwitchManager
             .GetEpochSwitchInfo(Arg.Any<XdcBlockHeader>(), Arg.Any<Hash256>())
             .Returns(epochSwitchInfo);
