@@ -170,7 +170,7 @@ public class ValidateSubmissionHandler
 
         if (!verifier.ValidateHashes(blobs, hashes.AsSpan()))
         {
-            error = "Invalid blob lengths";
+            error = "Invalid blob hashes";
             return false;
         }
 
