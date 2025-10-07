@@ -4,11 +4,12 @@
 using System;
 using System.Threading;
 using System.Threading.Tasks;
+using Nethermind.Blockchain.Find;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Consensus;
 using Nethermind.Consensus.Scheduler;
 using Nethermind.Core;
-using Nethermind.Core.Crypto;
+
 using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.Network.Contract.P2P;
@@ -27,22 +28,22 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V69;
 /// <summary>
 /// https://eips.ethereum.org/EIPS/eip-7642
 /// </summary>
-public class Eth69ProtocolHandler : Eth68ProtocolHandler, ISyncPeer
+public class Eth69ProtocolHandler(
+    ISession session,
+    IMessageSerializationService serializer,
+    INodeStatsManager nodeStatsManager,
+    ISyncServer syncServer,
+    IBackgroundTaskScheduler backgroundTaskScheduler,
+    ITxPool txPool,
+    IPooledTxsRequestor pooledTxsRequestor,
+    IGossipPolicy gossipPolicy,
+    IForkInfo forkInfo,
+    IBlockFinder blockFinder,
+    ILogManager logManager,
+    ITxGossipPolicy? transactionsGossipPolicy = null)
+    : Eth68ProtocolHandler(session, serializer, nodeStatsManager, syncServer, backgroundTaskScheduler, txPool,
+        pooledTxsRequestor, gossipPolicy, forkInfo, logManager, transactionsGossipPolicy), ISyncPeer
 {
-    public Eth69ProtocolHandler(ISession session,
-        IMessageSerializationService serializer,
-        INodeStatsManager nodeStatsManager,
-        ISyncServer syncServer,
-        IBackgroundTaskScheduler backgroundTaskScheduler,
-        ITxPool txPool,
-        IPooledTxsRequestor pooledTxsRequestor,
-        IGossipPolicy gossipPolicy,
-        IForkInfo forkInfo,
-        ILogManager logManager,
-        ITxGossipPolicy? transactionsGossipPolicy = null)
-        : base(session, serializer, nodeStatsManager, syncServer, backgroundTaskScheduler, txPool, pooledTxsRequestor, gossipPolicy, forkInfo, logManager, transactionsGossipPolicy)
-    { }
-
     public override string Name => "eth69";
 
     public override byte ProtocolVersion => EthVersions.Eth69;
@@ -154,7 +155,7 @@ public class Eth69ProtocolHandler : Eth68ProtocolHandler, ISyncPeer
             NetworkId = SyncServer.NetworkId,
             GenesisHash = SyncServer.Genesis.Hash!,
             ForkId = _forkInfo.GetForkId(head.Number, head.Timestamp),
-            EarliestBlock = 0,
+            EarliestBlock = blockFinder.GetLowestBlock(),
             LatestBlock = head.Number,
             LatestBlockHash = head.Hash!
         };

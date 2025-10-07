@@ -2,6 +2,8 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using Nethermind.Core;
+using Nethermind.Core.Crypto;
+using Nethermind.Evm.State;
 using Nethermind.Xdc.Types;
 using System;
 using System.Collections.Generic;
@@ -10,10 +12,7 @@ using System.Text;
 using System.Threading.Tasks;
 
 namespace Nethermind.Xdc;
-public class EpochSwitchInfo
+public interface IPenaltyHandler
 {
-    public Address[] Penalties { get; set; }
-    public Address[] Masternodes { get; set; }
-    public BlockRoundInfo EpochSwitchBlockInfo { get; set; }
-    public BlockRoundInfo EpochSwitchParentBlockInfo { get; set; }
+    Address[] HandlePenalties(long number, Hash256 currentHash, Address[] candidates);
 }

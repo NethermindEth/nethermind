@@ -16,8 +16,10 @@ using System.Collections.Immutable;
 using System.Collections.ObjectModel;
 using System.Linq;
 
+using static Nethermind.Xdc.XdcExtensions;
+
 namespace Nethermind.Xdc;
-internal class XdcSealValidator(ISnapshotManager snapshotManager, ISpecProvider specProvider) : ISealValidator
+internal class XdcSealValidator(ISnapshotManager snapshotManager, IEpochSwitchManager epochSwitchManager, ISpecProvider specProvider) : ISealValidator
 {
     private EthereumEcdsa _ethereumEcdsa = new(0); //Ignore chainId since we don't sign transactions here
     private XdcHeaderDecoder _headerDecoder = new();
@@ -70,14 +72,14 @@ internal class XdcSealValidator(ISnapshotManager snapshotManager, ISpecProvider 
             }
 
             //TODO init masternodes by reading from most recent checkpoint
-            masternodes = snapshotManager.CalculateNextEpochMasternodes(xdcHeader);
+            (masternodes, var penaltiesAddresses) = snapshotManager.CalculateNextEpochMasternodes(xdcHeader, xdcSpec);
             if (!xdcHeader.ValidatorsAddress.SequenceEqual(masternodes))
             {
                 error = "Validators does not match what's stored in snapshot minus its penalty.";
                 return false;
             }
 
-            if (!xdcHeader.PenaltiesAddress.SequenceEqual(snapshotManager.GetPenalties(xdcHeader)))
+            if (!xdcHeader.PenaltiesAddress.SequenceEqual(penaltiesAddresses))
             {
                 error = "Penalties does not match.";
                 return false;
@@ -96,7 +98,8 @@ internal class XdcSealValidator(ISnapshotManager snapshotManager, ISpecProvider 
                 return false;
             }
             //TODO get masternodes from snapshot
-            masternodes = snapshotManager.GetMasternodes(xdcHeader);
+            EpochSwitchInfo epochSwitchInfo = epochSwitchManager.GetEpochSwitchInfo(xdcHeader, xdcHeader.ParentHash);
+            masternodes = epochSwitchInfo.Masternodes;
             if (masternodes is null || masternodes.Length == 0)
                 throw new InvalidOperationException($"Snap shot returned no master nodes for header \n{xdcHeader.ToString()}");
         }
