@@ -145,44 +145,25 @@ public class ValidateSubmissionHandler
 
     private bool ValidateBlobsBundle(Transaction[] transactions, BlobsBundleV1 blobsBundle, IReleaseSpec releaseSpec, out string? error)
     {
-        // get sum of length of blobs of each transaction
-        int totalBlobsLength = 0;
-        foreach (Transaction tx in transactions)
-        {
-            byte[]?[]? versionedHashes = tx.BlobVersionedHashes;
-            if (versionedHashes is not null)
-            {
-                totalBlobsLength += versionedHashes.Length;
-            }
-        }
+        ShardBlobNetworkWrapper blobs = new(blobsBundle.Blobs, blobsBundle.Commitments, blobsBundle.Proofs, releaseSpec.BlobProofVersion);
 
-        if (totalBlobsLength != blobsBundle.Blobs.Length)
+        IBlobProofsVerifier verifier = IBlobProofsManager.For(releaseSpec.BlobProofVersion);
+
+        if (!verifier.ValidateLengths(blobs))
         {
-            error = $"Total blobs length mismatch. Expected {totalBlobsLength} but got {blobsBundle.Blobs.Length}";
+            error = "Invalid blob lengths";
             return false;
         }
 
-        if (totalBlobsLength != blobsBundle.Commitments.Length)
+        if (!verifier.ValidateProofs(blobs))
         {
-            error = $"Total commitments length mismatch. Expected {totalBlobsLength} but got {blobsBundle.Commitments.Length}";
-            return false;
-        }
-
-        if (totalBlobsLength != blobsBundle.Proofs.Length)
-        {
-            error = $"Total proofs length mismatch. Expected {totalBlobsLength} but got {blobsBundle.Proofs.Length}";
-            return false;
-        }
-
-        if (!IBlobProofsManager.For(releaseSpec.BlobProofVersion).ValidateProofs(new ShardBlobNetworkWrapper(blobsBundle.Blobs, blobsBundle.Commitments, blobsBundle.Proofs, releaseSpec.BlobProofVersion)))
-        {
-            error = "Invalid KZG proofs";
+            error = "Invalid blob proofs";
             return false;
         }
 
         error = null;
 
-        _logger.Info($"Validated blobs bundle with {totalBlobsLength} blobs, commitments: {blobsBundle.Commitments.Length}, proofs: {blobsBundle.Proofs.Length}");
+        _logger.Info($"Validated blobs bundle with {blobsBundle.Blobs.Length} blobs, commitments: {blobsBundle.Commitments.Length}, proofs: {blobsBundle.Proofs.Length}");
 
         return true;
     }
