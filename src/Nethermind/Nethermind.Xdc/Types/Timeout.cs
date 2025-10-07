@@ -19,6 +19,5 @@ public class Timeout(ulong round, Signature? signature, ulong gapNumber)
 
     public override string ToString() => $"{Round}:{GapNumber}";
 
-    public Address GetSigner() => signer;
     public void SetSigner(Address signer) => this.signer = signer;
 }
