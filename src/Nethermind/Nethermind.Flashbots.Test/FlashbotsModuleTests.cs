@@ -56,7 +56,7 @@ public partial class FlashbotsModuleTests
         ResultWrapper<FlashbotsResult> result = await rpc.flashbots_validateBuilderSubmissionV3(BlockRequest);
         result.Should().NotBeNull();
 
-        Assert.That(result.Result.Error, Does.StartWith("Proposer payment transaction recipient is not the proposer"));
+        Assert.That(result.Result.Error, Is.EqualTo("Invalid blob proofs"));
         Assert.That(result.Data.Status, Is.EqualTo(FlashbotsStatus.Invalid));
 
         string response = await RpcTest.TestSerializedRequest(rpc, "flashbots_validateBuilderSubmissionV3", BlockRequest);
@@ -78,12 +78,12 @@ public partial class FlashbotsModuleTests
         ];
 
         Transaction[] transactions = [
-            Build.A.Transaction.WithShardBlobTxTypeAndFields(1).WithMaxFeePerGas(1.GWei()).WithMaxPriorityFeePerGas(1).SignedAndResolved(TestItem.PrivateKeyA).TestObject,
-            Build.A.Transaction.WithShardBlobTxTypeAndFields(2).WithMaxFeePerGas(1.GWei()).WithMaxPriorityFeePerGas(0).SignedAndResolved(TestItem.PrivateKeyB).TestObject,
+            Build.A.Transaction.WithShardBlobTxTypeAndFields(1, spec: Prague.Instance).WithMaxFeePerGas(1.GWei()).WithMaxPriorityFeePerGas(1).SignedAndResolved(TestItem.PrivateKeyA).TestObject,
+            Build.A.Transaction.WithShardBlobTxTypeAndFields(2, spec: Osaka.Instance).WithMaxFeePerGas(1.GWei()).WithMaxPriorityFeePerGas(0).SignedAndResolved(TestItem.PrivateKeyB).TestObject,
             Build.A.Transaction
                 .WithMaxFeePerGas(0)
                 .WithMaxPriorityFeePerGas(0)
-                .WithTo(Address.Zero)
+                .WithTo(TestKeysAndAddress.TestBuilderAddr)
                 .WithValue(132912184722469)
                 .SignedAndResolved(TestItem.PrivateKeyC)
                 .TestObject,
@@ -91,7 +91,7 @@ public partial class FlashbotsModuleTests
 
         Hash256 prevRandao = Keccak.Zero;
 
-        Hash256 expectedBlockHash = new("0x850d7d58317a174e2eb71ebf345e5143666db74ec2214359ec1c29b0f7a1164c");
+        Hash256 expectedBlockHash = new("0xf96547f16f2d140931e4a026b15a5490538d5479518bbd46338bbada948b403a");
         string stateRoot = "0xa272b2f949e4a0e411c9b45542bd5d0ef3c311b5f26c4ed6b7a8d4f605a91154";
 
         return new(
