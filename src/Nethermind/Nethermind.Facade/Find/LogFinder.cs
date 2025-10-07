@@ -97,6 +97,7 @@ namespace Nethermind.Facade.Find
                 return FilterLogsWithoutIndex(filter, fromBlock, toBlock, cancellationToken);
 
             // Combine results from regular scanning and index
+            // TODO: write tests for different scenarios!
             IEnumerable<FilterLog>? result = [];
 
             if (indexRange.from > fromBlock.Number)
@@ -202,10 +203,12 @@ namespace Nethermind.Facade.Find
             if (_logIndexStorage.GetMinBlockNumber() is not { } indexFrom || _logIndexStorage.GetMaxBlockNumber() is not { } indexTo)
                 return null;
 
-            return (
+            (int from, int to) range = (
                 Math.Max((int)fromBlock.Number, indexFrom),
                 Math.Min((int)toBlock.Number, indexTo)
             );
+
+            return range.from <= range.to ? range : null;
         }
 
         private bool CanUseBloomDatabase(BlockHeader toBlock, BlockHeader fromBlock)
