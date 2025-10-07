@@ -19,7 +19,7 @@
     "PruningBoundary": 1000
   },
   "Surge": {
-    "L1EthApiEndpoint": "https://l1-rpc.hoodi.surge.wtf/",
+    "L1EthApiEndpoint": "https://rpc.hoodi.ethpandaops.io/",
     "TaikoInboxAddress": "0x624ec8F33DA83707f360D6d25136AA0741713BC4"
   },
   "Metrics": {
