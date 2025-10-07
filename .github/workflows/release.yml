@@ -48,7 +48,7 @@ jobs:
 
           docker build . -t nethermind-build -f $SCRIPTS_PATH/Dockerfile \
             --build-arg COMMIT_HASH=$GITHUB_SHA \
-            --build-arg SOURCE_DATE_EPOCH=$(git log -1 --pretty=%ct)
+            --build-arg SOURCE_DATE_EPOCH=$(git log -1 --format=%ct)
 
           docker run --rm --mount type=bind,source=$GITHUB_WORKSPACE/$PUB_DIR,target=/output nethermind-build
 
@@ -208,6 +208,6 @@ jobs:
               -t "$image:${{ needs.build.outputs.version }}$tag_suffix" \
               --build-arg CI=$CI \
               --build-arg COMMIT_HASH=$GITHUB_SHA \
-              --build-arg SOURCE_DATE_EPOCH=$(git log -1 --pretty=%ct) \
+              --build-arg SOURCE_DATE_EPOCH=$(git log -1 --format=%ct) \
               --push
           done
