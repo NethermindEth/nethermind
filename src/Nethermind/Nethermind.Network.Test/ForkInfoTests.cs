@@ -101,11 +101,11 @@ public class ForkInfoTests
     [TestCase(21_811_000, 0ul, "0x3f5fd195", 1681338455UL, "Future Merge Fork Id test")]
     public void Fork_id_and_hash_as_expected_with_merge_fork_id(long head, ulong headTimestamp, string forkHashHex, ulong next, string description)
     {
-        var loader = new ChainSpecFileLoader(new EthereumJsonSerializer(), LimboTraceLogger.Instance);
+        ChainSpecFileLoader loader = new(new EthereumJsonSerializer(), LimboTraceLogger.Instance);
         ChainSpec spec = loader.LoadEmbeddedOrFromFile("../../../../Chains/foundation.json");
         spec.Parameters.MergeForkIdTransition = 21_000_000L;
         spec.MergeForkIdBlockNumber = 21_000_000L;
-        ChainSpecBasedSpecProvider provider = new ChainSpecBasedSpecProvider(spec);
+        ChainSpecBasedSpecProvider provider = new(spec);
         Test(head, headTimestamp, KnownHashes.MainnetGenesis, forkHashHex, next, description, provider);
     }
 
@@ -169,9 +169,9 @@ public class ForkInfoTests
     [TestCase(101735000, GnosisSpecProvider.PragueTimestamp, "0x2f095d4a", 0ul, "Future Prague timestamp")]
     public void Fork_id_and_hash_as_expected_on_gnosis(long head, ulong headTimestamp, string forkHashHex, ulong next, string description)
     {
-        var loader = new ChainSpecFileLoader(new EthereumJsonSerializer(), LimboTraceLogger.Instance);
+        ChainSpecFileLoader loader = new(new EthereumJsonSerializer(), LimboTraceLogger.Instance);
         ChainSpec spec = loader.LoadEmbeddedOrFromFile("../../../../Chains/gnosis.json");
-        ChainSpecBasedSpecProvider provider = new ChainSpecBasedSpecProvider(spec);
+        ChainSpecBasedSpecProvider provider = new(spec);
         Test(head, headTimestamp, KnownHashes.GnosisGenesis, forkHashHex, next, description, provider);
     }
 
@@ -179,22 +179,22 @@ public class ForkInfoTests
     [TestCase(3945317, ChiadoSpecProvider.ShanghaiTimestamp, "0xa15a4252", ChiadoSpecProvider.CancunTimestamp, "First Shanghai timestamp")]
     [TestCase(4_000_000, ChiadoSpecProvider.CancunTimestamp, "0x5fbc16bc", 1741254220ul, "First Cancun timestamp")]
     [TestCase(5_000_000, 1741254219u, "0x5fbc16bc", 1741254220ul, "Future Cancun timestamp")]
-    [TestCase(5_000_000, 1741254220u, "0x8BA51786", 1761037900ul, "First Prague timestamp")]
-    [TestCase(5_000_000, 1741254420u, "0x8BA51786", 1761037900ul, "Future Prague timestamp")]
+    [TestCase(5_000_000, 1741254220u, "0x8ba51786", 1761037900ul, "First Prague timestamp")]
+    [TestCase(5_000_000, 1741254420u, "0x8ba51786", 1761037900ul, "Future Prague timestamp")]
     [TestCase(5_000_000, 1761037900u, "0x82612523", 0ul, "First Osaka timestamp")]
     [TestCase(5_000_000, 1761038000u, "0x82612523", 0ul, "Future Osaka timestamp")]
     public void Fork_id_and_hash_as_expected_on_chiado(long head, ulong headTimestamp, string forkHashHex, ulong next, string description)
     {
-        var loader = new ChainSpecFileLoader(new EthereumJsonSerializer(), LimboTraceLogger.Instance);
+        ChainSpecFileLoader loader = new(new EthereumJsonSerializer(), LimboTraceLogger.Instance);
         ChainSpec spec = loader.LoadEmbeddedOrFromFile("../../../../Chains/chiado.json");
         ChainSpecBasedSpecProvider provider = new(spec);
         Test(head, headTimestamp, KnownHashes.ChiadoGenesis, forkHashHex, next, description, provider);
     }
 
-    [TestCase(0L, HoodiSpecProvider.CancunTimestamp, "0xBEF71D30", HoodiSpecProvider.PragueTimestamp, "First Cancun timestamp")]
-    [TestCase(5_000_000, HoodiSpecProvider.PragueTimestamp - 1, "0xBEF71D30", HoodiSpecProvider.PragueTimestamp, "Future Cancun timestamp")]
-    [TestCase(5_000_000, HoodiSpecProvider.PragueTimestamp, "0x929E24E", HoodiSpecProvider.OsakaTimestamp, "First Prague timestamp")]
-    [TestCase(5_000_000, HoodiSpecProvider.OsakaTimestamp - 1, "0x929E24E", HoodiSpecProvider.OsakaTimestamp, "Future Prague timestamp")]
+    [TestCase(0L, HoodiSpecProvider.CancunTimestamp, "0xbef71d30", HoodiSpecProvider.PragueTimestamp, "First Cancun timestamp")]
+    [TestCase(5_000_000, HoodiSpecProvider.PragueTimestamp - 1, "0xbef71d30", HoodiSpecProvider.PragueTimestamp, "Future Cancun timestamp")]
+    [TestCase(5_000_000, HoodiSpecProvider.PragueTimestamp, "0x929e24e", HoodiSpecProvider.OsakaTimestamp, "First Prague timestamp")]
+    [TestCase(5_000_000, HoodiSpecProvider.OsakaTimestamp - 1, "0x929e24e", HoodiSpecProvider.OsakaTimestamp, "Future Prague timestamp")]
     [TestCase(6_000_000, HoodiSpecProvider.OsakaTimestamp, "0xe7e0e7ff", HoodiSpecProvider.BPO1Timestamp, "First Osaka timestamp")]
     [TestCase(6_000_000, HoodiSpecProvider.BPO1Timestamp - 1, "0xe7e0e7ff", HoodiSpecProvider.BPO1Timestamp, "Future Osaka timestamp")]
     [TestCase(7_000_000, HoodiSpecProvider.BPO1Timestamp, "0x3893353e", HoodiSpecProvider.BPO2Timestamp, "First BPO1 timestamp")]
@@ -203,9 +203,9 @@ public class ForkInfoTests
     [TestCase(8_000_000, HoodiSpecProvider.BPO2Timestamp + 100000, "0x23aa1351", 0ul, "Future BPO2 timestamp")]
     public void Fork_id_and_hash_as_expected_on_hoodi(long head, ulong headTimestamp, string forkHashHex, ulong next, string description)
     {
-        var loader = new ChainSpecFileLoader(new EthereumJsonSerializer(), LimboTraceLogger.Instance);
+        ChainSpecFileLoader loader = new(new EthereumJsonSerializer(), LimboTraceLogger.Instance);
         ChainSpec spec = loader.LoadEmbeddedOrFromFile("../../../../Chains/hoodi.json");
-        ChainSpecBasedSpecProvider provider = new ChainSpecBasedSpecProvider(spec);
+        ChainSpecBasedSpecProvider provider = new(spec);
         Test(head, headTimestamp, KnownHashes.HoodiGenesis, forkHashHex, next, description, provider);
     }
 
@@ -456,8 +456,7 @@ public class ForkInfoTests
             },
             Genesis = new ChainSpecGenesisJson()
             {
-                Timestamp = 1,
-
+                Timestamp = 1
             }
         });
 
