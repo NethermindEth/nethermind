@@ -53,6 +53,7 @@ public class HistoryPrunerTests
         {
             Pruning = PruningModes.Rolling,
             RetentionEpochs = 2,
+            PruningInterval = 0
         };
 
         using BasicTestBlockchain testBlockchain = await BasicTestBlockchain.Create(BuildContainer(historyConfig));
@@ -101,6 +102,7 @@ public class HistoryPrunerTests
         {
             Pruning = PruningModes.UseAncientBarriers,
             RetentionEpochs = 100, // should have no effect
+            PruningInterval = 0
         };
         using BasicTestBlockchain testBlockchain = await BasicTestBlockchain.Create(BuildContainer(historyConfig));
 
@@ -198,6 +200,7 @@ public class HistoryPrunerTests
         {
             Pruning = PruningModes.Rolling,
             RetentionEpochs = 2,
+            PruningInterval = 0
         };
         using BasicTestBlockchain testBlockchain = await BasicTestBlockchain.Create(BuildContainer(historyConfig));
 
@@ -231,6 +234,7 @@ public class HistoryPrunerTests
         IHistoryConfig historyConfig = new HistoryConfig
         {
             Pruning = PruningModes.Disabled,
+            PruningInterval = 0
         };
         using BasicTestBlockchain testBlockchain = await BasicTestBlockchain.Create(BuildContainer(historyConfig));
 

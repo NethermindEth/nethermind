@@ -17,12 +17,12 @@ public interface IHistoryConfig : IConfig
     [ConfigItem(
         Description = "The number of epochs to retain historical blocks and receipts when using 'Rolling' pruning mode. For mainnet this must be at least 82125.",
         DefaultValue = "82125")]
-    long RetentionEpochs { get; set; }
+    uint RetentionEpochs { get; set; }
 
     [ConfigItem(
         Description = "Number of epochs to wait between each history pruning.",
         DefaultValue = "8")]
-    long PruningInterval { get; set; }
+    uint PruningInterval { get; set; }
 
     // This member needs to be a method instead of a property
     // not to be picked up by the configuration handler
