@@ -19,6 +19,11 @@ public interface IHistoryConfig : IConfig
         DefaultValue = "82125")]
     long RetentionEpochs { get; set; }
 
+    [ConfigItem(
+        Description = "Number of epochs to wait between each history pruning.",
+        DefaultValue = "8")]
+    long PruningInterval { get; set; }
+
     // This member needs to be a method instead of a property
     // not to be picked up by the configuration handler
     bool Enabled() => Pruning != PruningModes.Disabled;

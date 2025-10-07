@@ -7,4 +7,5 @@ public class HistoryConfig : IHistoryConfig
 {
     public PruningModes Pruning { get; set; } = PruningModes.Disabled;
     public long RetentionEpochs { get; set; } = 82125;
+    public long PruningInterval { get; set; } = 8;
 }

@@ -45,6 +45,7 @@ public class HistoryPruner : IHistoryPruner
     private readonly IHistoryConfig _historyConfig;
     private readonly bool _enabled;
     private readonly long _epochLength;
+    private readonly long _pruningInterval;
     private readonly long _minHistoryRetentionEpochs;
     private readonly int _deletionProgressLoggingInterval;
     private readonly long _ancientBarrier;
@@ -84,6 +85,7 @@ public class HistoryPruner : IHistoryPruner
         _historyConfig = historyConfig;
         _enabled = historyConfig.Enabled();
         _epochLength = (long)blocksConfig.SecondsPerSlot * 32; // must be changed if slot length changes
+        _pruningInterval = historyConfig.PruningInterval * 32;
         _minHistoryRetentionEpochs = specProvider.GenesisSpec.MinHistoryRetentionEpochs;
 
         CheckConfig();
@@ -336,7 +338,7 @@ public class HistoryPruner : IHistoryPruner
     {
         cutoffTimestamp = null;
 
-        if (!_enabled)
+        if (!_enabled || _blockTree.Head.Number % _pruningInterval != 0)
         {
             return false;
         }
