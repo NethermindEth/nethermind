@@ -45,7 +45,7 @@ public class HistoryPruner : IHistoryPruner
     private readonly IHistoryConfig _historyConfig;
     private readonly bool _enabled;
     private readonly long _epochLength;
-    private readonly ulong _pruningInterval;
+    private readonly long _pruningInterval;
     private readonly long _minHistoryRetentionEpochs;
     private readonly int _deletionProgressLoggingInterval;
     private readonly long _ancientBarrier;
