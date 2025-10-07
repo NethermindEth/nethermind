@@ -64,6 +64,12 @@ public class BlockForRpc
             {
                 ParentBeaconBlockRoot = block.ParentBeaconBlockRoot;
             }
+
+            // Set TD only if network is not merged
+            if (specProvider.MergeBlockNumber is null)
+            {
+                TotalDifficulty = block.Difficulty.IsZero ? null : block.TotalDifficulty ?? UInt256.Zero;
+            }
         }
 
         Number = block.Number;
@@ -73,6 +79,7 @@ public class BlockForRpc
         Size = _blockDecoder.GetLength(block, RlpBehaviors.None);
         StateRoot = block.StateRoot;
         Timestamp = block.Timestamp;
+
         if (!skipTxs)
         {
             Transactions = includeFullTransactionData
@@ -119,6 +126,8 @@ public class BlockForRpc
     public Hash256 StateRoot { get; set; }
     [JsonConverter(typeof(NullableRawLongConverter))]
     public long? Step { get; set; }
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public UInt256? TotalDifficulty { get; set; }
     public bool ShouldSerializeStep() => _isAuRaBlock;
     public UInt256 Timestamp { get; set; }
 
