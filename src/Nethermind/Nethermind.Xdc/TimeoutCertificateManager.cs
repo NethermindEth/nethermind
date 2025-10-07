@@ -74,7 +74,7 @@ public class TimeoutCertificateManager(ISnapshotManager snapshotManager, IEpochS
             return false;
         }
 
-        ValueHash256 timeoutMsgHash = timeoutCertificate.SigHash();
+        ValueHash256 timeoutMsgHash = new Timeout(timeoutCertificate.Round, null, timeoutCertificate.GapNumber).SigHash();
         bool allValid = true;
         Parallel.ForEach(signatures,
             (signature, state) =>

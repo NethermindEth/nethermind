@@ -12,6 +12,4 @@ public class TimeoutCertificate(ulong round, Signature[] signatures, ulong gapNu
     public ulong Round { get; set; } = round;
     public Signature[] Signatures { get; set; } = signatures;
     public ulong GapNumber { get; set; } = gapNumber;
-
-    public ValueHash256 SigHash() => Keccak.Compute(new TimeoutCertificateDecoder().Encode(this, RlpBehaviors.ForSealing).Bytes).ValueHash256;
 }

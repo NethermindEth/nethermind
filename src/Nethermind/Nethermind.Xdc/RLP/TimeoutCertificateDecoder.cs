@@ -35,6 +35,11 @@ public class TimeoutCertificateDecoder : IRlpValueDecoder<TimeoutCertificate>, I
 
         ulong gapNumber = decoderContext.DecodeULong();
 
+        if ((rlpBehaviors & RlpBehaviors.AllowExtraBytes) != RlpBehaviors.AllowExtraBytes)
+        {
+            decoderContext.Check(endPosition);
+        }
+
         return new TimeoutCertificate(round, signatures, gapNumber);
     }
 
@@ -59,7 +64,13 @@ public class TimeoutCertificateDecoder : IRlpValueDecoder<TimeoutCertificate>, I
                 signatures[i] = new Signature(signatureBytes[i].AsSpan(0, 64), signatureBytes[i][64]);
             }
         }
+
         ulong gapNumber = rlpStream.DecodeUlong();
+
+        if ((rlpBehaviors & RlpBehaviors.AllowExtraBytes) != RlpBehaviors.AllowExtraBytes)
+        {
+            rlpStream.Check(endPosition);
+        }
 
         return new TimeoutCertificate(round, signatures, gapNumber);
     }
@@ -87,17 +98,13 @@ public class TimeoutCertificateDecoder : IRlpValueDecoder<TimeoutCertificate>, I
 
         stream.Encode(item.Round);
 
-        // When encoding for sealing, signatures are not included
-        if ((rlpBehaviors & RlpBehaviors.ForSealing) != RlpBehaviors.ForSealing)
+        if (item.Signatures is null)
+            stream.EncodeNullObject();
+        else
         {
-            if (item.Signatures is null)
-                stream.EncodeNullObject();
-            else
-            {
-                stream.StartSequence(SignaturesLength(item));
-                foreach (Signature sig in item.Signatures)
-                    stream.Encode(sig.BytesWithRecovery);
-            }
+            stream.StartSequence(SignaturesLength(item));
+            foreach (Signature sig in item.Signatures)
+                stream.Encode(sig.BytesWithRecovery);
         }
 
         stream.Encode(item.GapNumber);
@@ -111,13 +118,10 @@ public class TimeoutCertificateDecoder : IRlpValueDecoder<TimeoutCertificate>, I
     {
         if (item is null)
             return 0;
-        int contentLength = Rlp.LengthOf(item.Round);
-        if ((rlpBehaviors & RlpBehaviors.ForSealing) != RlpBehaviors.ForSealing)
-        {
-            contentLength += Rlp.LengthOfSequence(SignaturesLength(item));
-        }
-        contentLength += Rlp.LengthOf(item.GapNumber);
-        return contentLength;
+
+        return Rlp.LengthOf(item.Round)
+               + Rlp.LengthOfSequence(SignaturesLength(item))
+               + Rlp.LengthOf(item.GapNumber);
     }
 
     private static int SignaturesLength(TimeoutCertificate item)
