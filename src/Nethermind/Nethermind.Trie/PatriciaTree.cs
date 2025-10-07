@@ -718,6 +718,7 @@ namespace Nethermind.Trie
             if (oldChild is null && newChild is null) return false;
             if (!ReferenceEquals(oldChild, newChild)) return true;
             if (newChild.Keccak is null && parent.Keccak is not null) return true; // So that recalculate root knows to recalculate the parent root.
+            if (newChild.Keccak is null && parent.Keccak is null) return true;
             return false;
         }
 
