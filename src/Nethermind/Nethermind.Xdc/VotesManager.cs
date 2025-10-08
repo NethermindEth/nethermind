@@ -86,6 +86,7 @@ internal class VotesManager : IVotesManager
         Context.HighestVotedRound = blockInfo.Round;
 
         HandleVote(vote);
+        //TODO Broadcast vote to peers
         return Task.CompletedTask;
     }
 
@@ -118,6 +119,8 @@ internal class VotesManager : IVotesManager
         {
             throw new InvalidOperationException($"Epoch has empty master node list for {vote.ProposedBlockInfo.Hash}");
         }
+
+        //TODO check for duplicate votes from the same signer
 
         if (ValidateVote(vote, epochInfo))
         {
