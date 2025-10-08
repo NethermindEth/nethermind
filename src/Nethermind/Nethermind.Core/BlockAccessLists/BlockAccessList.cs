@@ -4,7 +4,6 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
-using Nethermind.Core.Extensions;
 using Nethermind.Int256;
 
 namespace Nethermind.Core.BlockAccessLists;
@@ -78,9 +77,8 @@ public struct BlockAccessList : IEquatable<BlockAccessList>, IJournal<int>
 
         SortedList<ushort, BalanceChange> balanceChanges = accountChanges.BalanceChanges;
 
-        // selfdestruct edge case
-        // todo: check this couldn't happen in any other case than selfdestruct
-        if (after == 0 && !WasFundedPreTx(address, before))
+        // balance change edge case
+        if (!HasChangedDuringTx(address, before, after))
         {
             if (balanceChanges.Count != 0 && balanceChanges.Last().Key == Index)
             {
@@ -107,7 +105,7 @@ public struct BlockAccessList : IEquatable<BlockAccessList>, IJournal<int>
                 Address = address,
                 Type = ChangeType.BalanceChange,
                 PreviousValue = null,
-                WasPreFunded = before != 0
+                PreTxBalance = before
             });
         }
 
@@ -375,7 +373,7 @@ public struct BlockAccessList : IEquatable<BlockAccessList>, IJournal<int>
     public override readonly string? ToString()
         => "[\n" + string.Join(",\n", [.. _accountChanges.Values.Select(account => account.ToString())]) + "\n]";
 
-    private readonly bool WasFundedPreTx(Address address, UInt256 before)
+    private readonly bool HasChangedDuringTx(Address address, UInt256 beforeInstr, UInt256 afterInstr)
     {
         AccountChanges accountChanges = _accountChanges[address];
         int count = accountChanges.BalanceChanges.Count;
@@ -383,8 +381,8 @@ public struct BlockAccessList : IEquatable<BlockAccessList>, IJournal<int>
         if (count == 0)
         {
             // first balance change of block
-            // return balance prior to this selfdestruct instruction
-            return before == 0;
+            // return balance prior to this instruction
+            return beforeInstr != afterInstr;
         }
 
         foreach (BalanceChange balanceChange in accountChanges.BalanceChanges.Values.Reverse())
@@ -392,7 +390,7 @@ public struct BlockAccessList : IEquatable<BlockAccessList>, IJournal<int>
             if (balanceChange.BlockAccessIndex != Index)
             {
                 // balance changed in previous tx in block
-                return balanceChange.PostBalance == 0;
+                return balanceChange.PostBalance != afterInstr;
             }
         }
 
@@ -402,7 +400,7 @@ public struct BlockAccessList : IEquatable<BlockAccessList>, IJournal<int>
             if (change.Type == ChangeType.BalanceChange && change.Address == address && change.PreviousValue is null)
             {
                 // first change of this transaction & block
-                return change.WasPreFunded!.Value;
+                return change.PreTxBalance!.Value != afterInstr;
             }
         }
 
@@ -422,6 +420,6 @@ public struct BlockAccessList : IEquatable<BlockAccessList>, IJournal<int>
         public byte[]? Slot { get; init; }
         public ChangeType Type { get; init; }
         public IIndexedChange? PreviousValue { get; init; }
-        public bool? WasPreFunded { get; init; }
+        public UInt256? PreTxBalance { get; init; }
     }
 }
