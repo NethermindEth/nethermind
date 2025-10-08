@@ -29,6 +29,7 @@ public class HistoryPruner : IHistoryPruner
 {
     private const int MaxOptimisticSearchAttempts = 3;
     private const int LockWaitTimeoutMs = 100;
+    private const int SlotsPerEpoch = 32;
 
     // only one pruning and one searching thread at a time
     private readonly object _pruneLock = new();
@@ -84,8 +85,8 @@ public class HistoryPruner : IHistoryPruner
         _backgroundTaskScheduler = backgroundTaskScheduler;
         _historyConfig = historyConfig;
         _enabled = historyConfig.Enabled();
-        _epochLength = (long)blocksConfig.SecondsPerSlot * 32; // must be changed if slot length changes
-        _pruningInterval = historyConfig.PruningInterval * 32;
+        _epochLength = (long)blocksConfig.SecondsPerSlot * SlotsPerEpoch; // must be changed if slot length changes
+        _pruningInterval = historyConfig.PruningInterval * SlotsPerEpoch;
         _minHistoryRetentionEpochs = specProvider.GenesisSpec.MinHistoryRetentionEpochs;
 
         CheckConfig();
