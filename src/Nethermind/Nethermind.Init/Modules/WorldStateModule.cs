@@ -98,7 +98,7 @@ public class WorldStateModule(IInitConfig initConfig) : Module
             .AddDatabase(DbNames.FlatCache)
             .AddDatabase(DbNames.FlatCacheLog)
             .AddDatabase(DbNames.WrittenFlatCache)
-            // .AddDecorator<IWorldStateManager, FlatCacheWorldStateManager>()
+            .AddDecorator<IWorldStateManager, FlatCacheWorldStateManager>()
             ;
     }
 

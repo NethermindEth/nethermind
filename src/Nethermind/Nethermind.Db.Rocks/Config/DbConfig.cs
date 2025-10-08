@@ -310,6 +310,9 @@ public class DbConfig : IDbConfig
         "block_based_table_factory.data_block_hash_table_util_ratio=0.5;" +
 
         "block_based_table_factory.block_size=4000;" +
+        "block_based_table_factory.block_cache=512000000;" +
+        "block_based_table_factory.prepopulate_block_cache=kFlushOnly;" +
+
 
         "block_based_table_factory.filter_policy=bloomfilter:15;" +
 
