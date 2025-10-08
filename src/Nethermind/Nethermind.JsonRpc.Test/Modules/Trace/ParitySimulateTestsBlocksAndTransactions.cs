@@ -120,7 +120,7 @@ public class TraceSimulateTestsBlocksAndTransactions
         TestRpcBlockchain chain = await EthRpcSimulateTestsBase.CreateChain();
         Console.WriteLine("current test: simulateTransferOverBlockStateCalls");
         var result = chain.TraceRpcModule.trace_simulateV1(payload!, BlockParameter.Latest);
-        Assert.That(result.Data.First().Traces.First().BlockHash, Is.EqualTo(new Core.Crypto.Hash256("0x3d9a061c829399a2b232d7e9516d163cbfe685309d60ff32d4d4148f3bf7b19d")));
+        Assert.That(result.Data.First().Traces.First().BlockHash, Is.EqualTo(new Core.Crypto.Hash256("0x45635998c509d5571fcc391772c5af77f3f202b70ea9fafb48ea8eb475288b59")));
     }
 
     [Test]
@@ -132,7 +132,7 @@ public class TraceSimulateTestsBlocksAndTransactions
         Assert.That(response, Is.TypeOf<JsonRpcSuccessResponse>());
         JsonRpcSuccessResponse successResponse = (JsonRpcSuccessResponse)response;
         IReadOnlyList<SimulateBlockResult<ParityLikeTxTrace>> data = (IReadOnlyList<SimulateBlockResult<ParityLikeTxTrace>>)successResponse.Result!;
-        Assert.That(data.First().Traces.First().BlockHash, Is.EqualTo(new Core.Crypto.Hash256("0x3d9a061c829399a2b232d7e9516d163cbfe685309d60ff32d4d4148f3bf7b19d")));
+        Assert.That(data.First().Traces.First().BlockHash, Is.EqualTo(new Core.Crypto.Hash256("0x45635998c509d5571fcc391772c5af77f3f202b70ea9fafb48ea8eb475288b59")));
     }
 
     [Test]
