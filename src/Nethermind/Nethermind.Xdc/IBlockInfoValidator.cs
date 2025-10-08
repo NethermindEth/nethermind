@@ -9,6 +9,7 @@ using System.Text;
 using System.Threading.Tasks;
 
 namespace Nethermind.Xdc;
+
 internal interface IBlockInfoValidator
 {
     void VerifyBlockInfo(BlockRoundInfo blockInfo, XdcBlockHeader blockHeader);

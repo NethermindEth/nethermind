@@ -13,6 +13,7 @@ using System.Threading.Tasks;
 using static Org.BouncyCastle.Asn1.Cmp.Challenge;
 
 namespace Nethermind.Xdc;
+
 public class XdcContext
 {
     public Address Leader { get; set; }

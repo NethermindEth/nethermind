@@ -11,6 +11,7 @@ using System.Text;
 using System.Threading.Tasks;
 
 namespace Nethermind.Xdc.Test.Helpers;
+
 public class QuorumCertificateBuilder : BuilderBase<QuorumCertificate>
 {
     public QuorumCertificateBuilder()

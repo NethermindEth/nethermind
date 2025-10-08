@@ -17,6 +17,7 @@ using System.Threading.Tasks;
 using BlockRoundInfo = Nethermind.Xdc.Types.BlockRoundInfo;
 
 namespace Nethermind.Xdc;
+
 internal class QuorumCertificateDecoder : IRlpValueDecoder<QuorumCertificate>, IRlpStreamDecoder<QuorumCertificate>
 {
     private XdcBlockInfoDecoder _blockInfoDecoder = new XdcBlockInfoDecoder();

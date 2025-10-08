@@ -12,6 +12,7 @@ using System.Text;
 using System.Threading.Tasks;
 
 namespace Nethermind.Xdc;
+
 public class VoteDecoder : IRlpValueDecoder<Vote>, IRlpStreamDecoder<Vote>
 {
     private static readonly XdcBlockInfoDecoder _xdcBlockInfoDecoder = new();
