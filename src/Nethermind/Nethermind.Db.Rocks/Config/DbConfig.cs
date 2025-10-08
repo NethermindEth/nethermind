@@ -275,7 +275,7 @@ public class DbConfig : IDbConfig
     public ulong FlatCacheDbWriteBufferSize { get; set; } = (ulong)64.MB();
     public string FlatCacheDbRocksDbOptions { get; set; } =
         // LZ4 seems to be slightly faster here
-        "compression=kNoCompression;" +
+        "compression=kLZ4Compression;" +
 
         // MaxBytesForLevelMultiplier is 10 by default. Lowering this will deepens the LSM, which may reduce write
         // amplification (unless the LSM is too deep), at the expense of read performance. But then, you have bloom
@@ -301,7 +301,7 @@ public class DbConfig : IDbConfig
         // through potentially "BlockRestartInterval" number of key, probably. That is my understanding.
         // Reducing this is likely going to improve CPU usage at the cost of increased uncompressed size, which effect
         // cache utilization.
-        "block_based_table_factory.block_restart_interval=4;" +
+        "block_based_table_factory.block_restart_interval=1;" +
 
         // This adds a hashtable-like index per block (the 32kb block)
         // This reduce CPU and therefore latency under high block cache hit scenario.
