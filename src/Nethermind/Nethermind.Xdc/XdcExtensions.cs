@@ -20,13 +20,22 @@ public static class XdcExtensions
 {
     //TODO can we wire up this so we can use Rlp.Encode()?
     private static XdcHeaderDecoder _headerDecoder = new();
+    private static VoteDecoder _voteDecoder = new();
     public static Signature Sign(this IEthereumEcdsa ecdsa, PrivateKey privateKey, XdcBlockHeader header)
     {
         ValueHash256 hash = ValueKeccak.Compute(_headerDecoder.Encode(header, RlpBehaviors.ForSealing).Bytes);
         return ecdsa.Sign(privateKey, in hash);
     }
 
-    //TODO round parameter is given a default value since this function is being used in places where the current round is not known
+    public static Address RecoverVoteSigner(this IEthereumEcdsa ecdsa, Vote vote)
+    {
+        KeccakRlpStream stream = new();
+        //TODO this could be optimized to encoding directly to KeccakRlpStream to avoid several allocation
+        _voteDecoder.Encode(stream, vote, RlpBehaviors.ForSealing);
+        ValueHash256 hash = stream.GetValueHash();
+        return ecdsa.RecoverAddress(vote.Signature, in hash);
+    }
+
     public static IXdcReleaseSpec GetXdcSpec(this ISpecProvider specProvider, XdcBlockHeader xdcBlockHeader, ulong round = 0)
     {
         IXdcReleaseSpec spec = specProvider.GetSpec(xdcBlockHeader) as IXdcReleaseSpec;
