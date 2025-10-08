@@ -14,7 +14,7 @@ using System;
 
 namespace Nethermind.Xdc;
 
-public class XdcHeaderValidator(IBlockTree blockTree, ISealValidator sealValidator, ISpecProvider specProvider, ILogManager? logManager = null) : HeaderValidator(blockTree, sealValidator, specProvider, logManager)
+public class XdcHeaderValidator(IBlockTree blockTree, IQuorumCertificateManager quorumCertificateManager, ISealValidator sealValidator, ISpecProvider specProvider, ILogManager? logManager = null) : HeaderValidator(blockTree, sealValidator, specProvider, logManager)
 {
     protected override bool Validate<TOrphaned>(BlockHeader header, BlockHeader? parent, bool isUncle, out string? error)
     {

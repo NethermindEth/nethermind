@@ -41,7 +41,7 @@ internal class XdcSealValidator(ISnapshotManager snapshotManager, IEpochSwitchMa
 
         ExtraFieldsV2 extraFieldsV2 = xdcHeader.ExtraConsensusData!;
 
-        if (extraFieldsV2.CurrentRound <= extraFieldsV2.QuorumCert.ProposedBlockInfo.Round)
+        if (extraFieldsV2.BlockRound <= extraFieldsV2.QuorumCert.ProposedBlockInfo.Round)
         {
             error = "Round number is not greater than the round in the QC.";
             return false;
@@ -104,7 +104,7 @@ internal class XdcSealValidator(ISnapshotManager snapshotManager, IEpochSwitchMa
                 throw new InvalidOperationException($"Snap shot returned no master nodes for header \n{xdcHeader.ToString()}");
         }
 
-        ulong currentLeaderIndex = (xdcHeader.ExtraConsensusData.CurrentRound % (ulong)xdcSpec.EpochLength % (ulong)masternodes.Length);
+        ulong currentLeaderIndex = (xdcHeader.ExtraConsensusData.BlockRound % (ulong)xdcSpec.EpochLength % (ulong)masternodes.Length);
         if (masternodes[(int)currentLeaderIndex] != header.Author)
         {
             error = $"Block proposer {header.Author} is not the current leader.";

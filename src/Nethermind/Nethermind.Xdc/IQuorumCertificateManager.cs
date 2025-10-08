@@ -11,6 +11,7 @@ using System.Threading.Tasks;
 namespace Nethermind.Xdc;
 public interface IQuorumCertificateManager
 {
+    bool VerifyVotingRule(XdcBlockHeader header);
     void CommitCertificate(QuorumCertificate qc);
     bool VerifyCertificate(QuorumCertificate qc, XdcBlockHeader parentHeader, out string error);
 }

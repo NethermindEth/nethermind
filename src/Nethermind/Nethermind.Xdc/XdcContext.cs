@@ -10,7 +10,6 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
-using static Org.BouncyCastle.Asn1.Cmp.Challenge;
 
 namespace Nethermind.Xdc;
 public class XdcContext
@@ -20,9 +19,9 @@ public class XdcContext
     public ulong CurrentRound { get; set; }
     public ulong HighestSelfMindeRound { get; set; }
     public ulong HighestVotedRound { get; set; }
-    public QuorumCertificate HighestQC { get; set; }
-    public QuorumCertificate LockQC { get; set; }
-    public TimeoutCert HighestTC { get; set; }
+    public QuorumCertificate? HighestQC { get; set; }
+    public QuorumCertificate? LockQC { get; set; }
+    public TimeoutCert? HighestTC { get; set; }
     public BlockRoundInfo HighestCommitBlock { get; set; }
     public bool IsInitialized { get; set; } = false;
 

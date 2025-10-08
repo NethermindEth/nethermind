@@ -30,6 +30,7 @@ internal class XdcHotStuff(
     IEpochSwitchManager epochSwitchManager,
     IQuorumCertificateManager quorumCertificateManager,
     ITimeoutCertificateManager timeoutCertificateManager,
+    IVotesManager votesManager,
     ISigner signer,
     ILogManager logManager) : IBlockProducerRunner
 {
@@ -85,29 +86,56 @@ internal class XdcHotStuff(
 
     private async Task MainFlow()
     {
+        //P2P new block -> BlockValidator.ValidateSuggestedBlock -> Block is processed and set as head
+
+
+
         //TODO what do we do when we are syncing?
+
+        //TODO what if we restart and the current round is far ahead of the last block?
+
+        //
         await foreach (RoundSignal newRoundSignal in _newRoundSignals.Reader.ReadAllAsync(_cancellationTokenSource.Token))
         {
             XdcBlockHeader currentHead = newRoundSignal.NewBlock ?? (XdcBlockHeader)blockTree.Head.Header;
-            //TODO this is not the right way to get the current round
-            IXdcReleaseSpec spec = specProvider.GetXdcSpec(currentHead, currentHead.ExtraConsensusData.CurrentRound);
+            XdcBlockHeader parent = (XdcBlockHeader)blockTree.FindHeader(currentHead.ParentHash);
 
+            //TODO this is not the right way to get the current round
+            IXdcReleaseSpec spec = specProvider.GetXdcSpec(currentHead, currentHead.ExtraConsensusData.BlockRound);
+            
             //TODO Technically we have to apply timeout exponents from spec, but they are always 1
             Task timeoutTask = Task.Delay(TimeSpan.FromSeconds(spec.TimeoutPeriod));
 
-            //TODO make sure epoch switch is handled correctly
+            //TODO make sure epoch switch is handled correctly inside the manager
             EpochSwitchInfo? epochSwitchInfo = epochSwitchManager.GetEpochSwitchInfo(currentHead, currentHead.ParentHash);
 
-            if (newRoundSignal.NewBlock is not null)
+            if (IsMyTurn(currentHead, epochSwitchInfo.Masternodes, newRoundSignal.CurrentRound, spec))
             {
-                //Start block production for the new block
-                Task<Block> blockProduction = blockBuilder.BuildBlock(currentHead, null,  null, IBlockProducer.Flags.None, _cancellationTokenSource.Token);
+                //TODO Check numbers here, in case we get an old or block with a future timestamp
+                //Next block must have a timestamp after current head + mine period
+                TimeSpan minimumMiningTime = DateTimeOffset.FromUnixTimeSeconds((long)currentHead.Timestamp + spec.MinePeriod) - DateTimeOffset.UtcNow;
 
+                
+                //If its my turn produce a block and broadcast after minimum wait time
+                //This should be done by PayloadPreparationService
+                Task<Block> blockProduction = blockBuilder.BuildBlock(currentHead, null, null, IBlockProducer.Flags.None, _cancellationTokenSource.Token);
             }
-            else
+
+            quorumCertificateManager.CommitCertificate(currentHead.ExtraConsensusData.QuorumCert);
+
+            if (!epochSwitchInfo.Masternodes.Contains(signer.Address))
             {
-                _logger.Error("Received empty round signal");
+                _logger.Info($"Skipping voting in round {_roundCount.CurrentRound} since not a masternode");
+                continue;
             }
+
+            if (!quorumCertificateManager.VerifyVotingRule(currentHead))
+            {
+                _logger.Info($"Cannot vote on current head {currentHead.ToString(BlockHeader.Format.Short)}");
+                continue;
+            }
+
+            votesManager.CastVote(currentHead, parent, epochSwitchInfo, spec);
         }
     }
 
@@ -139,7 +167,7 @@ internal class XdcHotStuff(
         if (currentHead.Number == spec.SwitchBlock)
             return true;
 
-        long lastRound = (long)currentHead.ExtraConsensusData.CurrentRound;
+        long lastRound = (long)currentHead.ExtraConsensusData.BlockRound;
         if (currentRound <= lastRound)
         {
             //This should never happen
@@ -153,7 +181,6 @@ internal class XdcHotStuff(
 
     private void OnNewHeadBlock(object? sender, BlockEventArgs e)
     {
-        StartNewRound();
         _newRoundSignals.Writer.TryWrite(new RoundSignal((XdcBlockHeader)e.Block.Header, _roundCount.CurrentRound));
     }
 
@@ -200,6 +227,12 @@ internal class XdcHotStuff(
             CurrentRound++;
             CurrentRoundStartTime = DateTime.UtcNow;
         }
+
+        public void SetRound(long round)
+        {
+            CurrentRound = round;
+            CurrentRoundStartTime = DateTime.UtcNow;
+        }   
     }
 
 }
