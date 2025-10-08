@@ -17,8 +17,7 @@ namespace Nethermind.State;
 public class PrewarmerScopeProvider(
     IWorldStateScopeProvider baseProvider,
     PreBlockCaches preBlockCaches,
-    bool populatePreBlockCache = true,
-    bool commitCachedRead = false)
+    bool populatePreBlockCache = true)
     : IWorldStateScopeProvider, IPreBlockCaches
 {
     static Counter _prewarmerColdRead = Prometheus.Metrics.CreateCounter("prewarmer_cold_read", "", "type", "is_null");
@@ -28,8 +27,7 @@ public class PrewarmerScopeProvider(
     public IWorldStateScopeProvider.IScope BeginScope(BlockHeader? baseBlock) => new ScopeWrapper(
         baseProvider.BeginScope(baseBlock),
         preBlockCaches,
-        populatePreBlockCache,
-        commitCachedRead);
+        populatePreBlockCache);
 
     public PreBlockCaches? Caches => preBlockCaches;
     public bool IsWarmWorldState => !populatePreBlockCache;
@@ -37,15 +35,10 @@ public class PrewarmerScopeProvider(
     private sealed class ScopeWrapper(
         IWorldStateScopeProvider.IScope baseScope,
         PreBlockCaches preBlockCaches,
-        bool populatePreBlockCache,
-        bool commitCachedRead)
+        bool populatePreBlockCache)
         : IWorldStateScopeProvider.IScope
     {
         ConcurrentDictionary<AddressAsKey, Account> preBlockCache = preBlockCaches.StateCache;
-
-        internal Dictionary<AddressAsKey, Dictionary<UInt256, byte[]>>? readSlots = commitCachedRead
-            ? new Dictionary<AddressAsKey, Dictionary<UInt256, byte[]>>()
-            : null;
 
         public void Dispose() => baseScope.Dispose();
 
@@ -58,21 +51,11 @@ public class PrewarmerScopeProvider(
 
         public IWorldStateScopeProvider.IStorageTree CreateStorageTree(Address address)
         {
-            Dictionary<UInt256, byte[]>? storageReadSlots = null;
-            if (readSlots is not null)
-            {
-                if (!readSlots.TryGetValue(address, out storageReadSlots))
-                {
-                    storageReadSlots = new Dictionary<UInt256, byte[]>();
-                }
-            }
-
             return new StorageTreeWrapper(
                 baseScope.CreateStorageTree(address),
                 preBlockCaches.StorageCache,
                 address,
-                populatePreBlockCache,
-                storageReadSlots);
+                populatePreBlockCache);
         }
 
         public IWorldStateScopeProvider.IWorldStateWriteBatch StartWriteBatch(int estimatedAccountNum)
@@ -148,8 +131,7 @@ public class PrewarmerScopeProvider(
         IWorldStateScopeProvider.IStorageTree baseStorageTree,
         ConcurrentDictionary<StorageCell, byte[]> preBlockCache,
         Address address,
-        bool populatePreBlockCache,
-        Dictionary<UInt256, byte[]>? storageReadSlots) : IWorldStateScopeProvider.IStorageTree
+        bool populatePreBlockCache) : IWorldStateScopeProvider.IStorageTree
     {
         public Hash256 RootHash => baseStorageTree.RootHash;
         private static Counter.Child _storageReadHit = _prewarmerHitMissCount.WithLabels("storage", "hit");
@@ -175,8 +157,6 @@ public class PrewarmerScopeProvider(
             {
                 if (preBlockCache?.TryGetValue(storageCell, out byte[] value) ?? false)
                 {
-                    storageReadSlots?.TryAdd(index, value);
-
                     HintGet(index, value);
                     _storageReadHit.Inc();
                     Db.Metrics.IncrementStorageTreeCache();

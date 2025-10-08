@@ -167,11 +167,13 @@ public class PersistedBigCache : IBigCache
                 }
             }
 
-            _currentState = pickedSnapshot;
             BinaryPrimitives.WriteInt64BigEndian(rlpBufferSpan, pickedSnapshot.blockNumber);
             pickedSnapshot.stateRoot.BytesAsSpan.CopyTo(rlpBufferSpan[8..]);
             writeBatch.PutSpan(_currentBlockNumberKey, rlpBufferSpan[..40]);
         }
+
+        // Note: Only do this after write batch finished.
+        _currentState = pickedSnapshot;
     }
 
     private Span<byte> EncodeAccountKey(Address address, Span<byte> key)
