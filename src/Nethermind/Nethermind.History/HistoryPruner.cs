@@ -338,7 +338,7 @@ public class HistoryPruner : IHistoryPruner
     {
         cutoffTimestamp = null;
 
-        if (!_enabled || (_pruningInterval != 0 && _blockTree.Head!.Number % _pruningInterval != 0))
+        if (!_enabled || !PruningIntervalHasElapsed())
         {
             return false;
         }
@@ -351,6 +351,9 @@ public class HistoryPruner : IHistoryPruner
         cutoffTimestamp = CalculateCutoffTimestamp();
         return cutoffTimestamp is not null && (_lastPrunedTimestamp is null || cutoffTimestamp > _lastPrunedTimestamp);
     }
+
+    private bool PruningIntervalHasElapsed()
+        => _pruningInterval == 0 || _blockTree.Head!.Number % _pruningInterval == 0;
 
     private void PruneBlocksAndReceipts(ulong? cutoffTimestamp, CancellationToken cancellationToken)
     {
