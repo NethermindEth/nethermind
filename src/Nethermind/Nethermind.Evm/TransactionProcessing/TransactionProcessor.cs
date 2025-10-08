@@ -937,7 +937,7 @@ namespace Nethermind.Evm.TransactionProcessing
 
         public static TransactionResult EvmException(EvmExceptionType evmExceptionType, string? error)
         {
-            return new TransactionResult(error, evmExceptionType);
+            return new TransactionResult(evmExceptionType == EvmExceptionType.Revert ? error : null, evmExceptionType);
         }
 
         public static readonly TransactionResult Ok = new();
