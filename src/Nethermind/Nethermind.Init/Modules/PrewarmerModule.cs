@@ -49,10 +49,10 @@ public class PrewarmerModule(IBlocksConfig blocksConfig) : Module
                     return new PrewarmerScopeProvider(
                         worldStateScopeProvider,
                         ctx.Resolve<PreBlockCaches>(),
-                        populatePreBlockCache: false,
-                        commitCachedRead: false
+                        populatePreBlockCache: false
                     );
-                })
+                });
+                /*
                 .AddDecorator<ICodeInfoRepository>((ctx, originalCodeInfoRepository) =>
                 {
                     PreBlockCaches preBlockCaches = ctx.Resolve<PreBlockCaches>();
@@ -60,7 +60,9 @@ public class PrewarmerModule(IBlocksConfig blocksConfig) : Module
                     // Note: The use of FrozenDictionary means that this cannot be used for other processing env also due to risk of memory leak.
                     return new CachedCodeInfoRepository(precompileProvider, originalCodeInfoRepository,
                         preBlockCaches?.PrecompileCache);
-                });
+                })
+                */
+                ;
         }
     }
 }
