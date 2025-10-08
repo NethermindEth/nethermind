@@ -183,19 +183,19 @@ internal class QuorumCertificateManager : IQuorumCertificateManager
         return true;
     }
 
-    public bool VerifyCertificate(QuorumCertificate qc, XdcBlockHeader parentHeader, out string error)
+    public bool VerifyCertificate(QuorumCertificate qc, XdcBlockHeader certificateTarget, out string error)
     {
         if (qc is null)
             throw new ArgumentNullException(nameof(qc));
-        if (parentHeader is null)
-            throw new ArgumentNullException(nameof(parentHeader));
+        if (certificateTarget is null)
+            throw new ArgumentNullException(nameof(certificateTarget));
         if (qc.Signatures is null)
             throw new ArgumentException("QC must contain vote signatures.", nameof(qc));
 
-        EpochSwitchInfo epochSwitchInfo = _epochSwitchManager.GetEpochSwitchInfo(parentHeader, qc.ProposedBlockInfo.Hash);
+        EpochSwitchInfo epochSwitchInfo = _epochSwitchManager.GetEpochSwitchInfo(certificateTarget, qc.ProposedBlockInfo.Hash);
         if (epochSwitchInfo is null)
         {
-            error = $"Epoch switch info not found for header {parentHeader?.ToString(Format.FullHashAndNumber)}";
+            error = $"Epoch switch info not found for header {certificateTarget?.ToString(Format.FullHashAndNumber)}";
             return false;
         }
 
@@ -203,7 +203,7 @@ internal class QuorumCertificateManager : IQuorumCertificateManager
         Signature[] uniqueSignatures = qc.Signatures.Distinct().ToArray();
 
         ulong qcRound = qc.ProposedBlockInfo.Round;
-        IXdcReleaseSpec spec = _specProvider.GetXdcSpec(parentHeader, qcRound);
+        IXdcReleaseSpec spec = _specProvider.GetXdcSpec(certificateTarget, qcRound);
         double certThreshold = spec.CertThreshold;
 
         if ((qcRound > 0) && (uniqueSignatures.Length < epochSwitchInfo.Masternodes.Length * certThreshold))
@@ -242,7 +242,7 @@ internal class QuorumCertificateManager : IQuorumCertificateManager
             return false;
         }
 
-        if (!ValidateBlockInfo(qc, parentHeader))
+        if (!ValidateBlockInfo(qc, certificateTarget))
         {
             error = "QC block data does not match header data.";
             return false;

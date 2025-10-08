@@ -16,10 +16,12 @@ namespace Nethermind.Xdc;
 
 public class XdcHeaderValidator(IBlockTree blockTree, IQuorumCertificateManager quorumCertificateManager, ISealValidator sealValidator, ISpecProvider specProvider, ILogManager? logManager = null) : HeaderValidator(blockTree, sealValidator, specProvider, logManager)
 {
-    protected override bool Validate<TOrphaned>(BlockHeader header, BlockHeader? parent, bool isUncle, out string? error)
+    protected override bool Validate<TOrphaned>(BlockHeader header, BlockHeader parent, bool isUncle, out string? error)
     {
         if (header is not XdcBlockHeader xdcHeader)
             throw new ArgumentException($"Only type of {nameof(XdcBlockHeader)} is allowed, but got type {header.GetType().Name}.", nameof(header));
+        if (parent is not XdcBlockHeader parentXdcHeader)
+            throw new ArgumentException($"Only type of {nameof(XdcBlockHeader)} is allowed, but got type {header.GetType().Name}.", nameof(parent));
 
         if (xdcHeader.Validator is null || xdcHeader.Validator.Length == 0)
         {
@@ -34,7 +36,10 @@ public class XdcHeaderValidator(IBlockTree blockTree, IQuorumCertificateManager 
             return false;
         }
 
-        //TODO verify QC
+        if (!quorumCertificateManager.VerifyCertificate(extraFields.QuorumCert, parentXdcHeader, out error))
+        {
+            return false;
+        }
 
         if (xdcHeader.Nonce != XdcConstants.NonceDropVoteValue && xdcHeader.Nonce != XdcConstants.NonceAuthVoteValue)
         {

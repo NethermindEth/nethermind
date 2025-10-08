@@ -47,8 +47,6 @@ internal class XdcSealValidator(ISnapshotManager snapshotManager, IEpochSwitchMa
             return false;
         }
 
-        //TODO verify QC
-
         IXdcReleaseSpec xdcSpec = specProvider.GetXdcSpec(xdcHeader); // will throw if no spec found  
 
         Address[] masternodes;

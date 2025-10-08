@@ -137,10 +137,15 @@ internal class XdcHotStuff(
 
             Task voteTask = votesManager.CastVote(new BlockRoundInfo(currentHead.Hash, currentHead.ExtraConsensusData.BlockRound, currentHead.Number));
 
-            
-            votesManager.HandleVote();
+            //Handle own vote here
+            //votesManager.HandleVote();
+
 
         }
+    }
+    private Task WaitForSignal()
+    {
+
     }
 
     private bool IsMyTurn(XdcBlockHeader currentHead, Address[] masterNodes, long currentRound, IXdcReleaseSpec spec)
