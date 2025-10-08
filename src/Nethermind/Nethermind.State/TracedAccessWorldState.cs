@@ -99,40 +99,51 @@ public class TracedAccessWorldState(IWorldState innerWorldState) : WrappedWorldS
 
     public override UInt256 GetBalance(Address address)
     {
-        BlockAccessList.AddAccountRead(address);
+        if (Enabled)
+        {
+            BlockAccessList.AddAccountRead(address);
+        }
         return _innerWorldState.GetBalance(address);
     }
 
     public override ValueHash256 GetCodeHash(Address address)
     {
-        BlockAccessList.AddAccountRead(address);
+        if (Enabled)
+        {
+            BlockAccessList.AddAccountRead(address);
+        }
         return _innerWorldState.GetCodeHash(address);
     }
 
     public override void SubtractFromBalance(Address address, in UInt256 balanceChange, IReleaseSpec spec)
     {
-        UInt256 before = _innerWorldState.GetBalance(address);
-        UInt256 after = before - balanceChange;
-        _innerWorldState.SubtractFromBalance(address, balanceChange, spec);
-
         if (Enabled)
         {
+            UInt256 before = _innerWorldState.GetBalance(address);
+            UInt256 after = before - balanceChange;
             BlockAccessList.AddBalanceChange(address, before, after);
         }
+        _innerWorldState.SubtractFromBalance(address, balanceChange, spec);
     }
 
     public override void DeleteAccount(Address address)
     {
-        BlockAccessList.DeleteAccount(address);
+        if (Enabled)
+        {
+            BlockAccessList.DeleteAccount(address);
+        }
         _innerWorldState.DeleteAccount(address);
     }
 
     public override void CreateAccount(Address address, in UInt256 balance, in UInt256 nonce = default)
     {
-        BlockAccessList.AddAccountRead(address);
-        if (balance != 0)
+        if (Enabled)
         {
-            BlockAccessList.AddBalanceChange(address, 0, balance);
+            BlockAccessList.AddAccountRead(address);
+            if (balance != 0)
+            {
+                BlockAccessList.AddBalanceChange(address, 0, balance);
+            }
         }
         _innerWorldState.CreateAccount(address, balance, nonce);
     }
@@ -152,6 +163,14 @@ public class TracedAccessWorldState(IWorldState innerWorldState) : WrappedWorldS
             BlockAccessList.AddAccountRead(address);
         }
         return _innerWorldState.TryGetAccount(address, out account);
+    }
+
+    public void AddAccountRead(Address address)
+    {
+        if (Enabled)
+        {
+            BlockAccessList.AddAccountRead(address);
+        }
     }
 
     public override void Restore(Snapshot snapshot)
