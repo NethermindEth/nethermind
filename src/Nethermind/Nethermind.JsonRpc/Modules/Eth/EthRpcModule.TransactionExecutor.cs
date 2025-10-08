@@ -123,11 +123,11 @@ namespace Nethermind.JsonRpc.Modules.Eth
 
                         var errorData = errorMessage is not null ? Encoding.UTF8.GetBytes(errorMessage).ToHexString(true) : null;
                         return ResultWrapper<TResult, string?>.Fail("execution reverted: " + errorMessage, ErrorCodes.ExecutionReverted, errorData);
-                    }   
+                    }
 
                     return ResultWrapper<TResult>.Fail(errorMessage, ErrorCodes.InvalidInput, bodyData);
-                }                    
-                
+                }
+
                 return ResultWrapper<TResult>.Success(bodyData);
             }
 
