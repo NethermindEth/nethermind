@@ -401,9 +401,8 @@ namespace Nethermind.Facade
         {
             var error = txResult switch
             {
-                { TransactionExecuted: true } when txResult.EvmExceptionType is not EvmExceptionType.None => txResult.EvmExceptionType.GetEvmExceptionDescription(),
+                { TransactionExecuted: true } when txResult.EvmExceptionType is not (EvmExceptionType.None or EvmExceptionType.Revert) => txResult.EvmExceptionType.GetEvmExceptionDescription(),
                 { TransactionExecuted: true } when tracerError is not null => tracerError,
-                { TransactionExecuted: false } when txResult.EvmExceptionType is not (EvmExceptionType.None or EvmExceptionType.Revert) => txResult.EvmExceptionType.GetEvmExceptionDescription(),
                 { TransactionExecuted: false, Error: not null } => txResult.Error,
                 _ => null
             };
