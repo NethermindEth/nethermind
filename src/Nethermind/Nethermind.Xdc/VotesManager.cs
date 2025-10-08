@@ -33,7 +33,6 @@ internal class VotesManager : IVotesManager
         ISpecProvider xdcConfig,
         ISigner signer,
         IBlockInfoValidator blockInfoProcessor,
-        IQuorumCertificateManager quorumCertificateManager,
         IForensicsProcessor forensicsProcessor,
         ILogManager logManager)
     {
@@ -42,7 +41,6 @@ internal class VotesManager : IVotesManager
         _specProvider = xdcConfig;
         _signer = signer;
         BlockInfoProcessor = blockInfoProcessor;
-        QuorumCertificateManager = quorumCertificateManager;
         Context = context;
         ForensicsProcessor = forensicsProcessor;
         _logger = logManager?.GetClassLogger() ?? NullLogger.Instance;
@@ -53,10 +51,10 @@ internal class VotesManager : IVotesManager
     public IEpochSwitchManager EpochSwitchManager { get; }
     public IBlockInfoValidator BlockInfoProcessor { get; }
     public IMasternodesManager MasternodesManager { get; }
-    private IQuorumCertificateManager QuorumCertificateManager { get; }
     public XdcContext Context { get; }
-    public ISignatureManager SignatureManager { get; }
     public IForensicsProcessor ForensicsProcessor { get; }
+
+    public event EventHandler<VoteThresholdArgs>? RoundVoteThresholdReached;
 
     private ILogger _logger;
 
@@ -155,6 +153,11 @@ internal class VotesManager : IVotesManager
         return Task.CompletedTask;
     }
 
+    public void EndRound(ulong round)
+    {
+        _votePool.EndRoundVote(round);
+    }
+
     private bool ValidateVote(Vote vote, EpochSwitchInfo epochInfo)
     {
         if (vote.Signer is null)
@@ -169,27 +172,16 @@ internal class VotesManager : IVotesManager
 
     private void OnVotePoolThresholdReached(IEnumerable<Vote> tally, Vote currVote, XdcBlockHeader proposedBlockHeader, EpochSwitchInfo epochInfo)
     {
-        List<Signature> validSignature = new List<Signature>();
-        foreach (var vote in tally)
-        {
-            if (vote.Signature is not null)
-            {
-                validSignature.Add(vote.Signature);
-            }
-        }
+        //Make sure only one thread can enter and the event is only fired once per round vote
+        Signature[] validSignature = tally.Select(v=>v.Signature).ToArray();
         IXdcReleaseSpec spec = _specProvider.GetXdcSpec(proposedBlockHeader, currVote.ProposedBlockInfo.Round);
         double certThreshold = spec.CertThreshold;
 
-        if (validSignature.Count < epochInfo.Masternodes.Length * certThreshold)
-        {
+        if (validSignature.Count() < epochInfo.Masternodes.Length * certThreshold)
             return;
-        }
 
-        QuorumCertificate qc = new(currVote.ProposedBlockInfo, validSignature.ToArray(), currVote.GapNumber);
-
-        QuorumCertificateManager.CommitCertificate(qc);
-
-        _votePool.EndRoundVote(currVote.ProposedBlockInfo.Round);
+        //Invoke event here
+        QuorumCertificate qc = new(currVote.ProposedBlockInfo, validSignature, currVote.GapNumber);
     }
 
     private void EnsureVotesRecovered(IEnumerable<Vote> votes, XdcBlockHeader header)
@@ -315,4 +307,10 @@ internal class VotesManager : IVotesManager
             }
         }
     }
+}
+
+public class VoteThresholdArgs(QuorumCertificate qc, long round)
+{
+    public QuorumCertificate QuorumCertificate { get; } = qc;
+    public long Round { get; } = round;
 }
