@@ -18,11 +18,12 @@ namespace Nethermind.State.FlatCache;
 
 public class PersistedBigCache : IBigCache
 {
-    private byte[] _currentBlockNumberKey = Bytes.FromHexString("00000000");
+    private static byte[] _currentBlockNumberKey = Bytes.FromHexString("00000000");
     private StateId _currentState = new StateId(-1, Keccak.Zero);
 
     public StateId CurrentState => _currentState;
 
+    private readonly ISnapshottableKeyValueStore _snapshottableDb;
     private readonly IDb _db;
     private readonly IDb _writtenDb; // For statistic.
 
@@ -30,6 +31,8 @@ public class PersistedBigCache : IBigCache
 
     public PersistedBigCache([KeyFilter(DbNames.FlatCache)] IDb db, [KeyFilter(DbNames.WrittenFlatCache)] IDb writtenDb)
     {
+        if (db is not ISnapshottableKeyValueStore snapshottableDb) throw new ArgumentException("Db must be snapashottable");
+        _snapshottableDb = snapshottableDb;
         _db = db;
         _writtenDb = writtenDb;
 
@@ -40,59 +43,6 @@ public class PersistedBigCache : IBigCache
             ValueHash256 stateRoot = new ValueHash256(currentBlockNumberBytes[8..]);
             _currentState = new StateId(blockNumber, stateRoot);
         }
-    }
-
-    public bool TryGetValue(Address address, out Account? acc)
-    {
-        Span<byte> key = stackalloc byte[21];
-        Span<byte> value = _db.GetSpan(EncodeAccountKey(address, key));
-        try
-        {
-            if (value.IsEmpty || value.IsNull())
-            {
-                acc = null;
-                return false;
-            }
-
-            try
-            {
-                Rlp.ValueDecoderContext ctx = new Rlp.ValueDecoderContext(value[8..]);
-                acc = _accountDecoder.Decode(ref ctx);
-            }
-            catch (Exception)
-            {
-                Console.Error.WriteLine($"Failed to decode account, {value[8..].ToHexString()}");
-                throw;
-            }
-            return true;
-        }
-        finally
-        {
-            _db.DangerousReleaseMemory(value);
-        }
-    }
-
-    public IBigCache.IStorageReader GetStorageReader(Address address)
-    {
-        Span<byte> key = stackalloc byte[21];
-        Span<byte> selfDestructBytes = _db.GetSpan(EncodeAccountSelfDestructKey(address, key));
-        long selfDestructBlockNumber = -1;
-        try
-        {
-            if (selfDestructBytes.IsEmpty || selfDestructBytes.IsNull())
-            {
-            }
-            else
-            {
-                selfDestructBlockNumber = BinaryPrimitives.ReadInt64BigEndian(selfDestructBytes);
-            }
-        }
-        finally
-        {
-            _db.DangerousReleaseMemory(selfDestructBytes);
-        }
-
-        return new PersistentBigCacheStorageReader(_db, address, selfDestructBlockNumber);
     }
 
     private static Counter _selfDestructShortcut = Prometheus.Metrics.CreateCounter("flatcache_bigcache_selfdestruct_shortcut", "snapshot count");
@@ -176,7 +126,12 @@ public class PersistedBigCache : IBigCache
         _currentState = pickedSnapshot;
     }
 
-    private Span<byte> EncodeAccountKey(Address address, Span<byte> key)
+    public IBigCache.IBigCacheReader CreateReader()
+    {
+        return new PersistedBigCacheReader(_snapshottableDb.CreateSnapshot());
+    }
+
+    private static Span<byte> EncodeAccountKey(Address address, Span<byte> key)
     {
         if (key.Length < 21) throw new InvalidOperationException("Key length must be at least 21");
         address.Bytes.CopyTo(key);
@@ -184,7 +139,7 @@ public class PersistedBigCache : IBigCache
         return key[..21];
     }
 
-    private Span<byte> EncodeAccountSelfDestructKey(Address address, Span<byte> key)
+    private static Span<byte> EncodeAccountSelfDestructKey(Address address, Span<byte> key)
     {
         if (key.Length < 21) throw new InvalidOperationException("Key length must be at least 21");
         address.Bytes.CopyTo(key);
@@ -201,7 +156,7 @@ public class PersistedBigCache : IBigCache
         return key[..53];
     }
 
-    private class PersistentBigCacheStorageReader(IDb db, Address address, long selfDestructBlockNumber): IBigCache.IStorageReader
+    private class PersistentBigCacheStorageReader(IReadOnlyKeyValueStore db, Address address, long selfDestructBlockNumber): IBigCache.IStorageReader
     {
         public bool TryGetValue(in UInt256 index, out byte[]? value)
         {
@@ -227,9 +182,14 @@ public class PersistedBigCache : IBigCache
                 long blockNumber = BinaryPrimitives.ReadInt64BigEndian(bytes);
                 if (blockNumber < selfDestructBlockNumber)
                 {
+                    /**
                     _selfDestructShortcut.Inc();
                     value = StorageTree.ZeroBytes;
                     return true;
+                    */
+
+                    value = null; // Random invalid bblock
+                    return false;
                 }
 
                 Span<byte> remainingBytes = bytes[8..];
@@ -242,6 +202,86 @@ public class PersistedBigCache : IBigCache
             {
                 db.DangerousReleaseMemory(bytes);
             }
+        }
+    }
+
+    public class PersistedBigCacheReader : IBigCache.IBigCacheReader
+    {
+        AccountDecoder _accountDecoder = AccountDecoder.Instance;
+        private readonly IReadOnlySnapshot _snapshot;
+        private readonly StateId _currentState;
+
+        public PersistedBigCacheReader(IReadOnlySnapshot db)
+        {
+            _snapshot = db;
+
+            byte[]? currentBlockNumberBytes = db[_currentBlockNumberKey];
+            if (currentBlockNumberBytes is not null)
+            {
+                long blockNumber = BinaryPrimitives.ReadInt64BigEndian(currentBlockNumberBytes);
+                ValueHash256 stateRoot = new ValueHash256(currentBlockNumberBytes[8..]);
+                _currentState = new StateId(blockNumber, stateRoot);
+            }
+        }
+
+        public StateId CurrentState => _currentState;
+
+        public bool TryGetValue(Address address, out Account? acc)
+        {
+            Span<byte> key = stackalloc byte[21];
+            Span<byte> value = _snapshot.GetSpan(EncodeAccountKey(address, key));
+            try
+            {
+                if (value.IsEmpty || value.IsNull())
+                {
+                    acc = null;
+                    return false;
+                }
+
+                try
+                {
+                    Rlp.ValueDecoderContext ctx = new Rlp.ValueDecoderContext(value[8..]);
+                    acc = _accountDecoder.Decode(ref ctx);
+                }
+                catch (Exception)
+                {
+                    Console.Error.WriteLine($"Failed to decode account, {value[8..].ToHexString()}");
+                    throw;
+                }
+                return true;
+            }
+            finally
+            {
+                _snapshot.DangerousReleaseMemory(value);
+            }
+        }
+
+        public IBigCache.IStorageReader GetStorageReader(Address address)
+        {
+            Span<byte> key = stackalloc byte[21];
+            Span<byte> selfDestructBytes = _snapshot.GetSpan(EncodeAccountSelfDestructKey(address, key));
+            long selfDestructBlockNumber = -1;
+            try
+            {
+                if (selfDestructBytes.IsEmpty || selfDestructBytes.IsNull())
+                {
+                }
+                else
+                {
+                    selfDestructBlockNumber = BinaryPrimitives.ReadInt64BigEndian(selfDestructBytes);
+                }
+            }
+            finally
+            {
+                _snapshot.DangerousReleaseMemory(selfDestructBytes);
+            }
+
+            return new PersistentBigCacheStorageReader(_snapshot, address, selfDestructBlockNumber);
+        }
+
+        public void Dispose()
+        {
+            _snapshot.Dispose();
         }
     }
 }

@@ -34,7 +34,7 @@ public sealed class FlatCacheRepository
         int MaxInFlightCompactJob = 32,
         int CompactSize = 64,
         int Boundary = 128,
-        bool InlineCompaction = true
+        bool InlineCompaction = false
     )
     {
     }
@@ -168,7 +168,7 @@ public sealed class FlatCacheRepository
             if (blockNumber == 0) return;
             long startingBlockNumber = ((blockNumber - 1) / _compactSize) * _compactSize;
 
-            SnapshotBundle gatheredCache = GatherCache(stateId, startingBlockNumber);
+            using SnapshotBundle gatheredCache = GatherCache(stateId, startingBlockNumber);
             if (gatheredCache.SnapshotCount == 1) return;
 
             if (_logger.IsDebug) _logger.Debug($"Compacting {stateId}");
@@ -179,8 +179,6 @@ public sealed class FlatCacheRepository
                 if (_logger.IsDebug) _logger.Debug($"Compacted {gatheredCache.SnapshotCount} to {stateId}");
                 _compactedKnownStates[stateId] = snapshot;
             }
-
-            gatheredCache.Dispose();
         }
         catch (Exception e)
         {
@@ -196,13 +194,15 @@ public sealed class FlatCacheRepository
 
         if (_logger.IsTrace) _logger.Trace($"Gathering {baseBlock}. Earliest is {earliestExclusive}");
 
+        IBigCache.IBigCacheReader bigCacheReader = _bigCache.CreateReader();
+
         StateId current = baseBlock;
         while(_compactedKnownStates.TryGetValue(current, out var entry) || _inMemorySnapshotStore.TryGetValue(current, out entry))
         {
             Snapshot state = entry;
             if (_logger.IsTrace) _logger.Trace($"Got {state.From} -> {state.To}");
             knownStates.Add(state);
-            if (state.From.blockNumber <= _bigCache.CurrentState.blockNumber) break; // Or equal?
+            if (state.From.blockNumber <= bigCacheReader.CurrentState.blockNumber) break; // Or equal?
             if (state.From.blockNumber <= earliestExclusive) break;
             if (state.From == current) break; // Some test commit two block with the same id, so we dont know the parent anymore.
             current = state.From;
@@ -211,7 +211,7 @@ public sealed class FlatCacheRepository
         knownStates.Reverse();
 
         if (_logger.IsTrace) _logger.Trace($"Gathered {baseBlock}. Earliest is {earliestExclusive}, Got {knownStates.Count} known states, {_bigCache.CurrentState}");
-        return new SnapshotBundle(knownStates, _bigCache);
+        return new SnapshotBundle(knownStates, bigCacheReader);
     }
 
     public void RegisterKnownState(StateId startingBlock, StateId endBlock, Snapshot snapshot)

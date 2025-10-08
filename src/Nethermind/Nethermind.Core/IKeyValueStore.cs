@@ -84,6 +84,15 @@ namespace Nethermind.Core
         public ReadOnlySpan<byte> CurrentValue { get; }
     }
 
+    public interface ISnapshottableKeyValueStore : IKeyValueStore
+    {
+        IReadOnlySnapshot CreateSnapshot();
+    }
+
+    public interface IReadOnlySnapshot : IReadOnlyKeyValueStore, IDisposable
+    {
+    }
+
     [Flags]
     public enum ReadFlags
     {
