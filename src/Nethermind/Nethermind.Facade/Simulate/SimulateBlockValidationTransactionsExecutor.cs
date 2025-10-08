@@ -51,7 +51,7 @@ public class SimulateBlockValidationTransactionsExecutor(
 
             // For some reason, the logs from geth when processing the block is missing but not in the output from tracer.
             // this cause the receipt root to be different than us. So we simulate it here.
-            txReceipt.Logs = [];
+            // txReceipt.Logs = [];
         }
 
         block.Header.GasUsed = startingGasLeft - simulateState.TotalGasLeft;
