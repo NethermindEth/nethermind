@@ -135,7 +135,11 @@ internal class XdcHotStuff(
                 continue;
             }
 
-            votesManager.CastVote(currentHead, parent, epochSwitchInfo, spec);
+            Task voteTask = votesManager.CastVote(new BlockRoundInfo(currentHead.Hash, currentHead.ExtraConsensusData.BlockRound, currentHead.Number));
+
+            
+            votesManager.HandleVote();
+
         }
     }
 
