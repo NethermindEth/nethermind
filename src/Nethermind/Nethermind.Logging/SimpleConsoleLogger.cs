@@ -8,48 +8,44 @@ namespace Nethermind.Logging
     /// <summary>
     /// Just use before the logger is configured
     /// </summary>
-    public class SimpleConsoleLogger : InterfaceLogger
+    public class SimpleConsoleLogger(LogLevel logLevel = LogLevel.Trace, string dateFormat = "yyyy-MM-dd HH-mm-ss.ffff|") : InterfaceLogger
     {
-        private SimpleConsoleLogger()
-        {
-        }
-
-        public static SimpleConsoleLogger Instance { get; } = new SimpleConsoleLogger();
+        public static SimpleConsoleLogger Instance { get; } = new();
 
         public void Info(string text)
         {
-            WriteEntry(text);
+            if (IsInfo) WriteEntry(text);
         }
 
         public void Warn(string text)
         {
-            WriteEntry(text);
+            if (IsWarn) WriteEntry(text);
         }
 
         public void Debug(string text)
         {
-            WriteEntry(text);
+            if (IsDebug) WriteEntry(text);
         }
 
         public void Trace(string text)
         {
-            WriteEntry(text);
+            if (IsTrace) WriteEntry(text);
         }
 
         public void Error(string text, Exception ex = null)
         {
-            WriteEntry(text + " " + ex);
+            if (IsError) Console.Error.WriteLine(DateTime.Now.ToString(dateFormat) + text);
         }
 
-        private static void WriteEntry(string text)
+        private void WriteEntry(string text)
         {
-            Console.Error.WriteLine(DateTime.Now.ToString("yyyy-MM-dd HH-mm-ss.ffff|") + text);
+            Console.Out.WriteLine(DateTime.Now.ToString(dateFormat) + text);
         }
 
-        public bool IsInfo => true;
-        public bool IsWarn => true;
-        public bool IsDebug => true;
-        public bool IsTrace => true;
-        public bool IsError => true;
+        public bool IsInfo => logLevel >= LogLevel.Info;
+        public bool IsWarn => logLevel >= LogLevel.Warn;
+        public bool IsDebug => logLevel >= LogLevel.Debug;
+        public bool IsTrace => logLevel >= LogLevel.Trace;
+        public bool IsError => logLevel >= LogLevel.Error;
     }
 }
