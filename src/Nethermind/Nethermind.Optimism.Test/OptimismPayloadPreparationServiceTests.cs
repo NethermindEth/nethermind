@@ -73,7 +73,7 @@ public class OptimismPayloadPreparationServiceTests
                 gasLimitCalculator: Substitute.For<IGasLimitCalculator>(),
                 sealEngine: Substitute.For<ISealEngine>(),
                 timestamper: Substitute.For<ITimestamper>(),
-                miningConfig: Substitute.For<IBlocksConfig>(),
+                blocksConfig: Substitute.For<IBlocksConfig>(),
                 logManager: TestLogManager.Instance
             ),
             txPool: Substitute.For<ITxPool>(),
