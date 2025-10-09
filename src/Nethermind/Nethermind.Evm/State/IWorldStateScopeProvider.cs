@@ -32,6 +32,13 @@ public interface IWorldStateScopeProvider
         Account? Get(Address address);
 
         /// <summary>
+        /// Set account that was read from outside. Probably cached or precached somehow. This is done for performance reason
+        /// </summary>
+        /// <param name="address"></param>
+        /// <param name="account"></param>
+        void HintAccountRead(Address address, Account? account);
+
+        /// <summary>
         /// The code db
         /// </summary>
         ICodeDb CodeDb { get; }
@@ -72,21 +79,27 @@ public interface IWorldStateScopeProvider
     {
         Hash256 RootHash { get; }
 
-        byte[] Get(in UInt256 index);
+        byte[]? Get(in UInt256 index);
+
+        void HintGet(in UInt256 index, byte[]? value);
 
         /// <summary>
         /// Used by JS tracer. May not work on some database layout.
         /// </summary>
         /// <param name="hash"></param>
         /// <returns></returns>
-        byte[] Get(in ValueHash256 hash);
+        byte[]? Get(in ValueHash256 hash);
     }
 
     public interface IWorldStateWriteBatch : IDisposable
     {
         void Set(Address key, Account? account);
         IStorageWriteBatch CreateStorageWriteBatch(Address key, int estimatedEntries);
+
+        event EventHandler<AccountChangeEvent> OnAccountChanged;
     }
+
+    public record AccountChangeEvent(Address Address, Account? Account);
 
     public interface IStorageWriteBatch : IDisposable
     {

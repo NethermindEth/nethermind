@@ -31,8 +31,7 @@ public class StartMonitoring(
     ISyncConfig syncConfig,
     IServiceStopper serviceStopper,
     ILogManager logManager,
-    IMetricsConfig metricsConfig,
-    ChainHeadInfoProvider chainHeadInfoProvider
+    IMetricsConfig metricsConfig
 ) : IStep
 {
     private readonly ILogger _logger = logManager.GetClassLogger();
@@ -105,24 +104,12 @@ public class StartMonitoring(
     }
 
     private bool _isUpdatingDbMetrics = false;
-    private long _lastDbMetricsUpdate = 0;
     private void UpdateDbMetrics()
     {
         if (!Interlocked.Exchange(ref _isUpdatingDbMetrics, true))
         {
             try
             {
-                if (Environment.TickCount64 - _lastDbMetricsUpdate < 60_000)
-                {
-                    // Update max every minute
-                    return;
-                }
-                if (chainHeadInfoProvider.IsProcessingBlock)
-                {
-                    // Do not update db metrics while processing a block
-                    return;
-                }
-
                 foreach (KeyValuePair<string, IDbMeta> kv in dbTracker.GetAllDbMeta())
                 {
                     // Note: At the moment, the metric for a columns db is combined across column.
@@ -134,7 +121,6 @@ public class StartMonitoring(
                     Db.Metrics.DbReads[kv.Key] = dbMetric.TotalReads;
                     Db.Metrics.DbWrites[kv.Key] = dbMetric.TotalWrites;
                 }
-                _lastDbMetricsUpdate = Environment.TickCount64;
             }
             catch (Exception e)
             {

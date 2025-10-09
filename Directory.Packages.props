@@ -11,7 +11,7 @@
     <PackageVersion Include="BenchmarkDotNet" Version="0.15.2" />
     <PackageVersion Include="BenchmarkDotNet.Diagnostics.Windows" Version="0.15.2" />
     <PackageVersion Include="BouncyCastle.Cryptography" Version="2.6.2" />
-    <PackageVersion Include="Ckzg.Bindings" Version="2.1.5.1527" />
+    <PackageVersion Include="Ckzg.Bindings" Version="2.1.2.1502" />
     <PackageVersion Include="CommunityToolkit.HighPerformance" Version="8.4.0" />
     <PackageVersion Include="ConcurrentHashSet" Version="1.3.0" />
     <PackageVersion Include="Crc32.NET" Version="1.2.0" />
@@ -69,6 +69,7 @@
     <PackageVersion Include="Open.NAT.Core" Version="2.1.0.5" />
     <PackageVersion Include="PierTwo.Lantern.Discv5.WireProtocol" Version="1.0.0-preview.6" />
     <PackageVersion Include="Polly" Version="8.6.3" />
+    <PackageVersion Include="prometheus-net" Version="8.2.1" />
     <PackageVersion Include="prometheus-net.AspNetCore" Version="8.2.1" />
     <PackageVersion Include="Prometheus.Client.MetricPusher" Version="3.3.0" />
     <PackageVersion Include="Pyroscope" Version="0.12.0" />
