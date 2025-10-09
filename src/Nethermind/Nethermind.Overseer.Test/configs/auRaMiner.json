@@ -2,7 +2,6 @@
   "Init": {
     "EnableUnsecuredDevWallet": true,
     "KeepDevWalletInMemory": true,
-    "IsMining": true,
     "ChainSpecPath": "chainspec/auRa.json",
     "GenesisHash": "",
     "BaseDbPath": "aura",
@@ -26,5 +25,9 @@
   "Aura":
   {
     "ForceSealing": true
+  },
+  "Mining":
+  {
+    "Enabled": true
   }
 }
