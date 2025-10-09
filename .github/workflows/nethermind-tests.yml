@@ -57,6 +57,7 @@ jobs:
           - Nethermind.Consensus.Test
           - Nethermind.Core.Test
           - Nethermind.Db.Test
+          - Nethermind.Era.Test
           - Nethermind.Ethash.Test
           - Nethermind.EthStats.Test
           - Nethermind.Evm.Test

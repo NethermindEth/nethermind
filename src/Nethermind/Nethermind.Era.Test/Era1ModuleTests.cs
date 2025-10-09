@@ -295,10 +295,11 @@ public class Era1ModuleTests
     [TestCase(true, 0, 0, 0, null, 0)]
     [TestCase(false, 0, 0, 0, 1, 9999)]
     [TestCase(false, 0, 0, 2000, 2001, 9999)]
-    public async Task EraExportAndImport(bool fastSync, long start, long end, long headBlockNumber, long? expectedMinSuggestedBlock, long expectedMaxSuggestedBlock)
+    [CancelAfter(10000)]
+    public async Task EraExportAndImport(bool fastSync, long start, long end, long headBlockNumber, long? expectedMinSuggestedBlock, long expectedMaxSuggestedBlock, CancellationToken cancellationToken)
     {
         const int ChainLength = 10000;
-        await using IContainer outCtx = await EraTestModule.CreateExportedEraEnv(ChainLength);
+        await using IContainer outCtx = await EraTestModule.CreateExportedEraEnvWithCompleteBlockBuilder(ChainLength, cancellationToken: cancellationToken);
         string tmpDir = outCtx.ResolveTempDirPath();
         IBlockTree outTree = outCtx.Resolve<IBlockTree>();
 
@@ -313,7 +314,8 @@ public class Era1ModuleTests
             inTree.UpdateMainChain(new[] { headBlock }, true);
         }
 
-        await using IContainer inCtx = EraTestModule.BuildContainerBuilder()
+        await using IContainer inCtx = new ContainerBuilder()
+            .AddModule(new EraTestModule(useRealValidator: true))
             .AddSingleton<IBlockTree>(inTree)
             .AddSingleton<ISyncConfig>(new SyncConfig()
             {
