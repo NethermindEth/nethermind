@@ -16,10 +16,16 @@ namespace Nethermind.Core.Container;
 /// Utility that map between two type that act on keyed service.
 /// </summary>
 /// <param name="mapper"></param>
+/// <param name="isNewObject"></param>
 /// <typeparam name="TFrom"></typeparam>
 /// <typeparam name="TTo"></typeparam>
-public class KeyedMapperRegistrationSource<TFrom, TTo>(Func<TFrom, TTo> mapper, bool isNewObject) : IRegistrationSource where TFrom : notnull
+public class KeyedMapperRegistrationSource<TFrom, TTo>(Func<object, TFrom, TTo> mapper, bool isNewObject) : IRegistrationSource where TFrom : notnull
 {
+
+    public KeyedMapperRegistrationSource(Func<TFrom, TTo> mapper, bool isNewObject): this((_, from) => mapper(from), isNewObject)
+    {
+    }
+
     public IEnumerable<IComponentRegistration> RegistrationsFor(Service service, Func<Service, IEnumerable<ServiceRegistration>> registrationAccessor)
     {
         if (service is not KeyedService keyedService || keyedService.ServiceType != typeof(TTo))
@@ -33,7 +39,7 @@ public class KeyedMapperRegistrationSource<TFrom, TTo>(Func<TFrom, TTo> mapper, 
             new DelegateActivator(keyedService.ServiceType, (c, p) =>
             {
                 TFrom from = c.ResolveKeyed<TFrom>(keyedService.ServiceKey);
-                return mapper(from)!;
+                return mapper(keyedService.ServiceKey, from)!;
             }),
             new RootScopeLifetime(),
             InstanceSharing.Shared,

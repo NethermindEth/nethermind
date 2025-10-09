@@ -11,7 +11,7 @@ using IWriteBatch = Nethermind.Core.IWriteBatch;
 
 namespace Nethermind.Db.Rocks;
 
-public class ColumnDb : IDb
+public class ColumnDb : IDb, ISortedKeyValueStore
 {
     private readonly RocksDb _rocksDb;
     internal readonly DbOnTheRocks _mainDb;
@@ -150,5 +150,37 @@ public class ColumnDb : IDb
     public void DangerousReleaseMemory(in ReadOnlySpan<byte> span)
     {
         _mainDb.DangerousReleaseMemory(span);
+    }
+
+    public byte[]? FirstKey
+    {
+        get
+        {
+            ReadOptions readOptions = new();
+            using Iterator iterator = _mainDb.CreateIterator(readOptions, ch: _columnFamily);
+            iterator.SeekToFirst();
+            return iterator.Valid() ? iterator.GetKeySpan().ToArray() : null;
+        }
+    }
+
+    public byte[]? LastKey
+    {
+        get
+        {
+            ReadOptions readOptions = new();
+            using Iterator iterator = _mainDb.CreateIterator(readOptions, ch: _columnFamily);
+            iterator.SeekToLast();
+            return iterator.Valid() ? iterator.GetKeySpan().ToArray() : null;
+        }
+    }
+
+    public ISortedView GetViewBetween(ReadOnlySpan<byte> firstKey, ReadOnlySpan<byte> lastKey)
+    {
+        ReadOptions readOptions = new ReadOptions();
+        readOptions.SetIterateLowerBound(firstKey.ToArray());
+        readOptions.SetIterateUpperBound(lastKey.ToArray());
+
+        Iterator iterator = _mainDb.CreateIterator(readOptions, ch: _columnFamily);
+        return new RocksdbSortedView(iterator);
     }
 }
