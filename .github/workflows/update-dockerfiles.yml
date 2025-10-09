@@ -26,8 +26,8 @@ jobs:
           aspnet_tag=$runtime_version-noble
           aspnet_chiseled_tag=$runtime_version-noble-chiseled
           sdk_digest=$(skopeo inspect docker://mcr.microsoft.com/dotnet/sdk:$sdk_tag --no-tags | jq -r '.Digest')
-          aspnet_digest=$(skopeo inspect docker://mcr.microsoft.com/dotnet/aspnet:$aspnet_tag --no-tags | jq -r '.Digest')
-          aspnet_chiseled_digest=$(skopeo inspect docker://mcr.microsoft.com/dotnet/aspnet:$aspnet_chiseled_tag --no-tags | jq -r '.Digest')
+          # aspnet_digest=$(skopeo inspect docker://mcr.microsoft.com/dotnet/aspnet:$aspnet_tag --no-tags | jq -r '.Digest')
+          # aspnet_chiseled_digest=$(skopeo inspect docker://mcr.microsoft.com/dotnet/aspnet:$aspnet_chiseled_tag --no-tags | jq -r '.Digest')
           echo "$sdk_tag@$sdk_digest"
-          echo "$aspnet_tag@$aspnet_digest"
-          echo "$aspnet_chiseled_tag@$aspnet_chiseled_digest"
+          # echo "$aspnet_tag@$aspnet_digest"
+          # echo "$aspnet_chiseled_tag@$aspnet_chiseled_digest"
