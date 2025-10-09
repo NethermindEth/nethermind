@@ -36,11 +36,13 @@ jobs:
           echo "$aspnet_chiseled_tag@$aspnet_chiseled_digest"
 
           # Update Docker files
-          for file in "Dockerfile" "Dockerfile.chiseled" "scripts/build/Dockerfile"; do
-            sed -i "s|\(mcr\.microsoft\.com/dotnet/sdk:\)[^[:space:]]*|\1$sdk_tag@$sdk_digest|" "$file"
-          done
+          # for file in "Dockerfile" "Dockerfile.chiseled" "scripts/build/Dockerfile"; do
+          #   sed -i "s|\(mcr\.microsoft\.com/dotnet/sdk:\)[^[:space:]]*|\1$sdk_tag@$sdk_digest|" "$file"
+          # done
 
-          sed -i "s|\(mcr\.microsoft\.com/dotnet/aspnet:\)[^[:space:]]*|\1$aspnet_tag@$aspnet_digest|" Dockerfile
-          sed -i "s|\(mcr\.microsoft\.com/dotnet/aspnet:\)[^[:space:]]*|\1$aspnet_chiseled_tag@$aspnet_chiseled_digest|" Dockerfile.chiseled
+          aspnet_pattern="\(mcr\.microsoft\.com/dotnet/aspnet:\)[^[:space:]]*"
+
+          sed -i "s|$aspnet_pattern|\1$aspnet_tag@$aspnet_digest|" Dockerfile
+          sed -i "s|$aspnet_pattern|\1$aspnet_chiseled_tag@$aspnet_chiseled_digest|" Dockerfile.chiseled
 
           git diff
