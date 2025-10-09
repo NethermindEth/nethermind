@@ -113,7 +113,7 @@ public sealed class FlatCacheScopeProvider : IWorldStateScopeProvider, IPreBlock
             ref StorageTreeWrapper wrapper = ref CollectionsMarshal.GetValueRefOrAddDefault(_loadedStorages, address, out var exists);
             if (!exists)
             {
-                wrapper = new StorageTreeWrapper(baseScope.CreateStorageTree(address), snapshotBundle.GatherStorageCache(address), isReadOnly);
+                wrapper = new StorageTreeWrapper(baseScope.CreateStorageTree(address), snapshotBundle.GatherStorageCache(address), address, isReadOnly);
             }
 
             return wrapper;
@@ -154,6 +154,9 @@ public sealed class FlatCacheScopeProvider : IWorldStateScopeProvider, IPreBlock
     private sealed class StorageTreeWrapper(
         IWorldStateScopeProvider.IStorageTree baseStorageTree,
         StorageSnapshotBundle cache,
+#pragma warning disable CS9113 // Parameter is unread.
+        Address address,
+#pragma warning restore CS9113 // Parameter is unread.
         bool isReadOnly) : IWorldStateScopeProvider.IStorageTree
     {
         private static Counter _cacheHit = Metrics.CreateCounter("flatcache_storage_tree_cachehit", "hit rate", "cachehit");
@@ -169,6 +172,11 @@ public sealed class FlatCacheScopeProvider : IWorldStateScopeProvider, IPreBlock
             {
                 baseStorageTree.HintGet(index, value);
                 _cacheHitHit.Inc();
+                if ((value?.Length ?? 0) == 0)
+                {
+                    return StorageTree.ZeroBytes;
+                }
+
                 return value;
             }
 
