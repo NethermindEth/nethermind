@@ -84,9 +84,14 @@ public interface IWorldStateScopeProvider
 
     public interface IWorldStateWriteBatch : IDisposable
     {
+        public event EventHandler<AccountUpdated> OnAccountUpdated;
+
         void Set(Address key, Account? account);
+
         IStorageWriteBatch CreateStorageWriteBatch(Address key, int estimatedEntries);
     }
+
+    public record AccountUpdated(Address Address, Account? Account);
 
     public interface IStorageWriteBatch : IDisposable
     {
