@@ -36,9 +36,9 @@ jobs:
           echo "$aspnet_chiseled_tag@$aspnet_chiseled_digest"
 
           # Update Docker files
-          # for file in "Dockerfile" "Dockerfile.chiseled" "scripts/build/Dockerfile"; do
-          #   sed -i "s|\(mcr\.microsoft\.com/dotnet/sdk:\)[^[:space:]]*|\1$sdk_tag@$sdk_digest|" "$file"
-          # done
+          for file in "Dockerfile" "Dockerfile.chiseled" "scripts/build/Dockerfile"; do
+            sed -i "s|\(mcr\.microsoft\.com/dotnet/sdk:\)[^[:space:]]*|\1$sdk_tag@$sdk_digest|" "$file"
+          done
 
           aspnet_pattern="\(mcr\.microsoft\.com/dotnet/aspnet:\)[^[:space:]]*"
 
