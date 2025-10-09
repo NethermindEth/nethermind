@@ -42,3 +42,5 @@ jobs:
 
           sed -i "s|\(mcr\.microsoft\.com/dotnet/aspnet:\)[^[:space:]]*|\1$aspnet_tag@$aspnet_digest|" Dockerfile
           sed -i "s|\(mcr\.microsoft\.com/dotnet/aspnet:\)[^[:space:]]*|\1$aspnet_chiseled_tag@$aspnet_chiseled_digest|" Dockerfile.chiseled
+
+          git diff
