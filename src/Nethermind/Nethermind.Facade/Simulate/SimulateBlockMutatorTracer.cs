@@ -1,10 +1,9 @@
 // SPDX-FileCopyrightText: 2023 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System;
-using System.Collections.Generic;
 using Nethermind.Blockchain.Tracing;
 using Nethermind.Core;
+using Nethermind.Core.Crypto;
 using Nethermind.Evm.Tracing;
 using Nethermind.Facade.Proxy.Models.Simulate;
 
@@ -20,20 +19,20 @@ public class SimulateBlockMutatorTracer(bool isTracingLogs) : BlockTracerBase<Si
     {
         if (tx?.Hash is not null)
         {
-            return new(isTracingLogs, tx, (ulong)_currentBlock!.Number, _currentBlock!.Hash!, _currentBlock.Timestamp, _txIndex++);
+            return new(isTracingLogs, tx, (ulong)_currentBlock!.Number, Hash256.Zero, _currentBlock.Timestamp, _txIndex++);
         }
         return (SimulateTxMutatorTracer)NullTxTracer.Instance;
     }
 
     protected override SimulateCallResult OnEnd(SimulateTxMutatorTracer txTracer) => txTracer.TraceResult!;
 
-    private void ReapplyBlockHash()
+    public void ReapplyBlockHash(Hash256 hash)
     {
         foreach (SimulateCallResult simulateCallResult in TxTraces)
         {
             foreach (Log log in simulateCallResult.Logs)
             {
-                log.BlockHash = _currentBlock!.Hash!;
+                log.BlockHash = hash;
             }
         }
     }
@@ -43,11 +42,5 @@ public class SimulateBlockMutatorTracer(bool isTracingLogs) : BlockTracerBase<Si
         _txIndex = 0;
         _currentBlock = block;
         base.StartNewBlockTrace(block);
-    }
-
-    public override IReadOnlyCollection<SimulateCallResult> BuildResult()
-    {
-        ReapplyBlockHash();
-        return base.BuildResult();
     }
 }

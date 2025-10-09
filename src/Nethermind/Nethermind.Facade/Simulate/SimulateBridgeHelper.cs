@@ -139,6 +139,11 @@ public class SimulateBridgeHelper(IBlocksConfig blocksConfig, ISpecProvider spec
                 blockTree.SuggestBlock(processedBlock, BlockTreeSuggestOptions.ForceSetAsMain);
                 blockTree.UpdateHeadBlock(processedBlock.Hash!);
 
+                if (tracer is SimulateBlockMutatorTracer simulateTracer)
+                {
+                    simulateTracer.ReapplyBlockHash(processedBlock.Hash);
+                }
+
                 SimulateBlockResult<TTrace> blockResult = new(processedBlock, payload.ReturnFullTransactionObjects, specProvider)
                 {
                     Calls = [.. tracer.BuildResult()],

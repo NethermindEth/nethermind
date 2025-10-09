@@ -68,7 +68,7 @@ public abstract class BlockTracerBase<TTrace, TTracer> : IBlockTracer<TTrace> wh
 
     protected DisposableResettableList<TTrace> TxTraces { get; }
 
-    public virtual IReadOnlyCollection<TTrace> BuildResult() => TxTraces;
+    public IReadOnlyCollection<TTrace> BuildResult() => TxTraces;
 
     protected virtual void AddTrace(TTrace trace) => TxTraces.Add(trace);
 }

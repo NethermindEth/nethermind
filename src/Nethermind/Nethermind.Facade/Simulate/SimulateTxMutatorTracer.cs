@@ -81,7 +81,7 @@ public sealed class SimulateTxMutatorTracer : TxTracer
                 BlockHash = _currentBlockHash,
                 BlockNumber = _currentBlockNumber,
                 BlockTimestamp = _currentBlockTimestamp
-            })
+            }).ToList()
         };
     }
 
