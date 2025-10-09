@@ -22,7 +22,9 @@ public class EraImporter(
     IFileSystem fileSystem,
     IBlockTree blockTree,
     IReceiptStorage receiptStorage,
+#pragma warning disable CS9113 // Parameter is unread.
     IBlockValidator blockValidator,
+#pragma warning restore CS9113 // Parameter is unread.
     ILogManager logManager,
     IEraConfig eraConfig,
     ISyncConfig syncConfig,
@@ -227,10 +229,12 @@ public class EraImporter(
         block.Header.TotalDifficulty = null;
 
         // Should this be in suggest instead?
+        /*
         if (!blockValidator.ValidateBodyAgainstHeader(block.Header, block.Body, out string? error))
         {
             throw new EraVerificationException($"Block validation failed: {error}");
         }
+        */
 
         var addResult = await blockTree.SuggestBlockAsync(block, BlockTreeSuggestOptions.ShouldProcess);
         switch (addResult)

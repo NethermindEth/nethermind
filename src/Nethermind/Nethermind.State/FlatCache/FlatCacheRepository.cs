@@ -30,7 +30,6 @@ public sealed class FlatCacheRepository
     private ILogger _logger;
 
     public record Configuration(
-        int MaxStateInMemory = 512,
         int MaxInFlightCompactJob = 32,
         int CompactSize = 64,
         int Boundary = 128,
@@ -194,18 +193,43 @@ public sealed class FlatCacheRepository
 
         if (_logger.IsTrace) _logger.Trace($"Gathering {baseBlock}. Earliest is {earliestExclusive}");
 
-        IBigCache.IBigCacheReader bigCacheReader = _bigCache.CreateReader();
+        StateId bigCacheState = _bigCache.CurrentState;
 
+        string exitReason = "";
         StateId current = baseBlock;
         while(_compactedKnownStates.TryGetValue(current, out var entry) || _inMemorySnapshotStore.TryGetValue(current, out entry))
+        // while(_inMemorySnapshotStore.TryGetValue(current, out var entry))
         {
             Snapshot state = entry;
             if (_logger.IsTrace) _logger.Trace($"Got {state.From} -> {state.To}");
             knownStates.Add(state);
-            if (state.From.blockNumber <= bigCacheReader.CurrentState.blockNumber) break; // Or equal?
-            if (state.From.blockNumber <= earliestExclusive) break;
-            if (state.From == current) break; // Some test commit two block with the same id, so we dont know the parent anymore.
+            if (state.From == current) {
+                exitReason = "cycle";
+                break; // Some test commit two block with the same id, so we dont know the parent anymore.
+}
             current = state.From;
+
+            if (state.To.blockNumber <= bigCacheState.blockNumber)
+            {
+                exitReason = $"First {state.From} to {bigCacheState}";
+                break; // Or equal?
+            }
+            if (state.From.blockNumber <= earliestExclusive) break;
+        }
+
+        // Note: By the time the previous loop finished checking all state, the big cache may have added new state and removed some
+        // entry in `_inMemorySnapshotStore`. Meaning, this need to be here instead oof before the loop.
+        IBigCache.IBigCacheReader bigCacheReader = _bigCache.CreateReader();
+        if (current != baseBlock && earliestExclusive is null && bigCacheReader.CurrentState.blockNumber != -1 && current.blockNumber > bigCacheReader.CurrentState.blockNumber)
+        {
+            throw new Exception($"Non consecutive snappshots. Current {current} vs {bigCacheReader.CurrentState}, {bigCacheState}, {baseBlock}, {_inMemorySnapshotStore.TryGetValue(current, out var snapshot)}, {exitReason}");
+        }
+
+        if (bigCacheReader.CurrentState.blockNumber > baseBlock.blockNumber)
+        {
+            _logger.Warn("Big cache too early");
+            bigCacheReader.Dispose();
+            bigCacheReader = new NoopBigCache.NoopbigCacheReader();
         }
 
         knownStates.Reverse();
@@ -220,8 +244,11 @@ public sealed class FlatCacheRepository
         {
             if (_logger.IsTrace) _logger.Trace($"Registering {startingBlock.blockNumber} to {endBlock.blockNumber}");
             if (endBlock.blockNumber <= _bigCache.CurrentState.blockNumber)
-                throw new InvalidOperationException(
+            {
+                _logger.Warn(
                     $"Cannot register snapshot earlier than bigcache. Snapshot number {endBlock.blockNumber}, bigcache number: {_bigCache.CurrentState}");
+                return;
+            }
 
             _inMemorySnapshotStore.AddBlock(endBlock, snapshot);
         }

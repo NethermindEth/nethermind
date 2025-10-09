@@ -14,7 +14,7 @@ namespace Nethermind.Core.Test;
 /// <summary>
 /// MemDB with additional tools for testing purposes since you can't use NSubstitute with refstruct
 /// </summary>
-public class TestSortedMemDb : MemDb, ISortedKeyValueStore
+public class TestSortedMemDb : MemDb, ISortedKeyValueStore, ISnapshottableKeyValueStore
 {
     private SortedSet<byte[]> _sortedKeys = new SortedSet<byte[]>(Bytes.Comparer);
 
@@ -51,6 +51,23 @@ public class TestSortedMemDb : MemDb, ISortedKeyValueStore
         else
         {
             _sortedKeys.Add(key.ToArray());
+        }
+    }
+
+    public IReadOnlySnapshot CreateSnapshot()
+    {
+        return new Snapshot(this);
+    }
+
+    private class Snapshot(IReadOnlyKeyValueStore kv) : IReadOnlySnapshot
+    {
+        public void Dispose()
+        {
+        }
+
+        public byte[]? Get(scoped ReadOnlySpan<byte> key, ReadFlags flags = ReadFlags.None)
+        {
+            return kv.Get(key.ToArray(), flags);
         }
     }
 

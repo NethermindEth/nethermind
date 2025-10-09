@@ -272,23 +272,23 @@ public class DbConfig : IDbConfig
     public string? L1OriginDbAdditionalRocksDbOptions { get; set; }
 
 
-    public ulong FlatCacheDbWriteBufferSize { get; set; } = (ulong)64.MB();
+    public ulong FlatCacheDbWriteBufferSize { get; set; } = (ulong)512.MB();
+    public ulong FlatCacheDbWriteBufferNumber { get; set; } = 6;
     public string FlatCacheDbRocksDbOptions { get; set; } =
         // LZ4 seems to be slightly faster here
-        "compression=kLZ4Compression;" +
+        "compression=kNoCompression;" +
+        "bottommost_compression=kLZ4Compression;" +
+        "level0_file_num_compaction_trigger=2" +
 
         // MaxBytesForLevelMultiplier is 10 by default. Lowering this will deepens the LSM, which may reduce write
         // amplification (unless the LSM is too deep), at the expense of read performance. But then, you have bloom
         // filter anyway, and recently written keys are likely to be read and they tend to be at the top of the LSM
         // tree which means they are more cacheable, so at that point you are trading CPU for cacheability.
         // These two config make the LSM level to be no more than 3 until the database grow to about 250GB.
-        "max_bytes_for_level_multiplier=30;" +
-        "max_bytes_for_level_base=350000000;" +
+        "max_bytes_for_level_multiplier=10;" +
+        "max_bytes_for_level_base=2000000000;" +
 
-        // Multiply the target size of SST file by this much every level down, reduce number of file.
-        // Does not have much downside on hash based DB, but might disable some move optimization on db with
-        // blocknumber key, or halfpath/flatdb layout.
-        "target_file_size_multiplier=2;" +
+        "target_file_size_base=512000000;" +
 
         // This is basically useless on write only database. However, for halfpath with live pruning, flatdb, or
         // (maybe?) full sync where keys are deleted, replaced, or re-inserted, two memtable can merge together
@@ -296,12 +296,12 @@ public class DbConfig : IDbConfig
         "min_write_buffer_number_to_merge=2;" +
 
         // Default value is 16.
-        // So each block consist of several "restart" and each "restart" is BlockRestartInterval number of key.
+        // So each block consist of severalr"restart" and each "restart" is BlockRestartInterval number of key.
         // They key within the same restart is delta-encoded with the key before it. This mean a read will have to go
         // through potentially "BlockRestartInterval" number of key, probably. That is my understanding.
         // Reducing this is likely going to improve CPU usage at the cost of increased uncompressed size, which effect
         // cache utilization.
-        "block_based_table_factory.block_restart_interval=1;" +
+        "block_based_table_factory.block_restart_interval=4;" +
 
         // This adds a hashtable-like index per block (the 32kb block)
         // This reduce CPU and therefore latency under high block cache hit scenario.
@@ -310,7 +310,7 @@ public class DbConfig : IDbConfig
         "block_based_table_factory.data_block_hash_table_util_ratio=0.5;" +
 
         "block_based_table_factory.block_size=4000;" +
-        "block_based_table_factory.block_cache=512000000;" +
+        "block_based_table_factory.block_cache=2048000000;" +
         "block_based_table_factory.prepopulate_block_cache=kFlushOnly;" +
 
 
@@ -323,6 +323,8 @@ public class DbConfig : IDbConfig
 
         "block_based_table_factory={index_type=kBinarySearch;partition_filters=0;};" +
         "optimize_filters_for_hits=false;" +
+        "inplace_update_support=true;" +
+        "allow_concurrent_memtable_write=false;" +
 
         "";
 }
