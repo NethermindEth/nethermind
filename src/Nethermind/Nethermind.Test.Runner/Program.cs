@@ -94,6 +94,7 @@ internal class Program
         while (!string.IsNullOrWhiteSpace(input))
         {
             if (parseResult.GetValue(Options.BlockTest))
+            {
                 await RunBlockTest(input, source => new BlockchainTestsRunner(
                     source,
                     parseResult.GetValue(Options.Filter),
@@ -101,15 +102,24 @@ internal class Program
                     parseResult.GetValue(Options.TraceAlways),
                     !parseResult.GetValue(Options.ExcludeMemory),
                     parseResult.GetValue(Options.ExcludeStack)));
+            }
             else if (parseResult.GetValue(Options.EofTest))
-                RunEofTest(input, source => new EofTestsRunner(source, parseResult.GetValue(Options.Filter)));
+            {
+                RunEofTest(input, source => new EofTestsRunner(
+                    source,
+                    parseResult.GetValue(Options.Filter)));
+            }
             else
-                RunStateTest(input, source => new StateTestsRunner(source, whenTrace,
+            {
+                RunStateTest(input, source => new StateTestsRunner(
+                    source,
+                    whenTrace,
                     !parseResult.GetValue(Options.ExcludeMemory),
                     !parseResult.GetValue(Options.ExcludeStack),
                     chainId,
                     parseResult.GetValue(Options.Filter),
                     parseResult.GetValue(Options.EnableWarmup)));
+            }
 
 
             if (!parseResult.GetValue(Options.Stdin))

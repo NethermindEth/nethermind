@@ -3,11 +3,14 @@
 
 using System;
 using System.IO;
+using System.Text;
 using System.Text.Json;
+using Ethereum.Test.Base;
 using Nethermind.Blockchain.Tracing.GethStyle;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
+using Nethermind.Core.Specs;
 using Nethermind.Evm.Tracing;
 using Nethermind.Int256;
 
@@ -15,31 +18,26 @@ namespace Nethermind.Test.Runner;
 
 /// <summary>
 /// Streaming tracer for blockchain tests that writes all traces to stderr.
-/// Compatible with go-ethereum's blocktest tracing output format.
+/// Compatible with go-ethereum's block test tracing output format.
 /// Outputs consolidated traces across all blocks and transactions in a single stream.
 /// </summary>
-public class BlockchainTestStreamingTracer : IBlockTracer, IDisposable
+public class BlockchainTestStreamingTracer(GethTraceOptions options, Stream? output = null) : ITestBlockTracer, IDisposable
 {
-    private readonly TextWriter _output;
-    private readonly GethTraceOptions _options;
+    private static readonly byte[] _newLine = Encoding.UTF8.GetBytes(Environment.NewLine);
+    private readonly Stream _output = output ?? Console.OpenStandardError();
+    private readonly GethTraceOptions _options = options ?? throw new ArgumentNullException(nameof(options));
     private GethLikeTxFileTracer? _currentTxTracer;
 
     // Track metrics for test end marker
-    private int _transactionCount = 0;
-    private int _blockCount = 0;
-    private long _totalGasUsed = 0;
-
-    public BlockchainTestStreamingTracer(GethTraceOptions options, TextWriter? output = null)
-    {
-        _options = options ?? throw new ArgumentNullException(nameof(options));
-        _output = output ?? Console.Error;
-    }
+    private int _transactionCount;
+    private int _blockCount;
+    private long _totalGasUsed;
 
     public bool IsTracingRewards => false;
 
     public void ReportReward(Address author, string rewardType, UInt256 rewardValue)
     {
-        // Not tracing rewards in blocktest mode
+        // Not tracing rewards in block test mode
     }
 
     public void StartNewBlockTrace(Block block)
@@ -55,15 +53,14 @@ public class BlockchainTestStreamingTracer : IBlockTracer, IDisposable
 
     public void EndTxTrace()
     {
-        if (_currentTxTracer == null) return;
+        if (_currentTxTracer is null) return;
 
         try
         {
-            var trace = _currentTxTracer.BuildResult();
+            GethLikeTxTrace? trace = _currentTxTracer.BuildResult();
 
-            // Write final summary line for this transaction
-            using var stream = new MemoryStream();
-            using var writer = new Utf8JsonWriter(stream, new JsonWriterOptions { Indented = false });
+            // Write the final summary line for this transaction
+            using var writer = new Utf8JsonWriter(_output, new JsonWriterOptions { Indented = false });
 
             writer.WriteStartObject();
             writer.WritePropertyName("output");
@@ -73,7 +70,8 @@ public class BlockchainTestStreamingTracer : IBlockTracer, IDisposable
             writer.WriteEndObject();
 
             writer.Flush();
-            _output.WriteLine(System.Text.Encoding.UTF8.GetString(stream.ToArray()));
+
+            _output.Write(_newLine);
 
             // Track metrics for end marker
             _transactionCount++;
@@ -96,10 +94,9 @@ public class BlockchainTestStreamingTracer : IBlockTracer, IDisposable
     /// This MUST be the last line written to stderr for the test.
     /// Format: {"testEnd":{"name":"...","pass":bool,"fork":"...","v":1,...}}
     /// </summary>
-    public void WriteTestEndMarker(string testName, bool pass, string fork, TimeSpan? duration = null, Hash256? finalStateRoot = null)
+    public void TestFinished(string testName, bool pass, IReleaseSpec spec, TimeSpan? duration, Hash256? headStateRoot)
     {
-        using var stream = new MemoryStream();
-        using var writer = new Utf8JsonWriter(stream, new JsonWriterOptions
+        using var writer = new Utf8JsonWriter(_output, new JsonWriterOptions
         {
             Indented = false  // Critical: Single line for JSONL compliance
         });
@@ -111,7 +108,7 @@ public class BlockchainTestStreamingTracer : IBlockTracer, IDisposable
         // Required fields
         writer.WriteString("name", testName);
         writer.WriteBoolean("pass", pass);
-        writer.WriteString("fork", fork);
+        writer.WriteString("fork", spec.ToString());
         writer.WriteNumber("v", 1);
 
         // Optional fields (only if available)
@@ -127,25 +124,22 @@ public class BlockchainTestStreamingTracer : IBlockTracer, IDisposable
         if (_blockCount > 0)
             writer.WriteNumber("blocks", _blockCount);
 
-        if (finalStateRoot != null)
-            writer.WriteString("root", finalStateRoot.ToString());
+        if (headStateRoot is not null)
+            writer.WriteString("root", headStateRoot.ToString());
 
         writer.WriteEndObject(); // testEnd
         writer.WriteEndObject(); // root
 
         writer.Flush();
 
-        // Write single line with newline - MUST be last line in trace
-        _output.WriteLine(System.Text.Encoding.UTF8.GetString(stream.ToArray()));
+        // Write single line with newline - MUST be the last line in trace
+        _output.Write(_newLine);
         _output.Flush(); // Critical: ensure written before process exit
     }
 
     private void WriteTraceEntry(GethTxFileTraceEntry entry)
     {
-        if (entry is null) return;
-
-        using var stream = new MemoryStream();
-        using var writer = new Utf8JsonWriter(stream, new JsonWriterOptions { Indented = false });
+        using var writer = new Utf8JsonWriter(_output, new JsonWriterOptions { Indented = false });
 
         // Write trace entry (same format as GethLikeTxTraceJsonLinesConverter)
         writer.WriteStartObject();
@@ -154,7 +148,7 @@ public class BlockchainTestStreamingTracer : IBlockTracer, IDisposable
         writer.WriteNumberValue(entry.ProgramCounter);
 
         writer.WritePropertyName("op");
-        writer.WriteNumberValue((byte)entry.OpcodeRaw);
+        writer.WriteNumberValue((byte)entry.OpcodeRaw!);
 
         writer.WritePropertyName("gas");
         writer.WriteStringValue($"0x{entry.Gas:x}");
@@ -199,12 +193,12 @@ public class BlockchainTestStreamingTracer : IBlockTracer, IDisposable
         writer.WriteEndObject();
         writer.Flush();
 
-        _output.WriteLine(System.Text.Encoding.UTF8.GetString(stream.ToArray()));
+        _output.Write(_newLine);
     }
 
     public void Dispose()
     {
-        // Don't dispose Console.Error, but flush it
+        // Don't dispose of Console.Error, but flush it
         _output.Flush();
     }
 }

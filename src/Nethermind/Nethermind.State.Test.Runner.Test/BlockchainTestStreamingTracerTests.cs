@@ -3,37 +3,39 @@
 
 using System;
 using System.IO;
+using System.Linq;
 using System.Text;
 using Nethermind.Blockchain.Tracing.GethStyle;
 using Nethermind.Core;
-using Nethermind.Core.Crypto;
 using Nethermind.Core.Test.Builders;
+using Nethermind.Test.Runner;
 using NUnit.Framework;
 
-namespace Nethermind.Test.Runner.Test;
+namespace Nethermind.State.Test.Runner.Test;
 
 [TestFixture]
+[Parallelizable(ParallelScope.All)]
 public class BlockchainTestStreamingTracerTests
 {
     [Test]
     public void Tracer_writes_to_provided_output()
     {
         // Arrange
-        var output = new StringWriter();
+        using var output = new MemoryStream();
         var options = new GethTraceOptions();
         var tracer = new BlockchainTestStreamingTracer(options, output);
 
-        var block = Build.A.Block.WithNumber(1).TestObject;
-        var tx = Build.A.Transaction.WithValue(1).TestObject;
+        Block block = Build.A.Block.WithNumber(1).TestObject;
+        Transaction tx = Build.A.Transaction.WithValue(1).TestObject;
 
         // Act
         tracer.StartNewBlockTrace(block);
-        var txTracer = tracer.StartNewTxTrace(tx);
+        tracer.StartNewTxTrace(tx);
         tracer.EndTxTrace();
         tracer.EndBlockTrace();
 
         // Assert
-        var result = output.ToString();
+        var result = Encoding.UTF8.GetString(output.ToArray());
         Assert.That(result, Does.Contain("\"output\""));
         Assert.That(result, Does.Contain("\"gasUsed\""));
     }
@@ -42,13 +44,13 @@ public class BlockchainTestStreamingTracerTests
     public void Tracer_handles_multiple_transactions()
     {
         // Arrange
-        var output = new StringWriter();
+        using var output = new MemoryStream();
         var options = new GethTraceOptions();
         var tracer = new BlockchainTestStreamingTracer(options, output);
 
-        var block = Build.A.Block.WithNumber(1).TestObject;
-        var tx1 = Build.A.Transaction.WithValue(1).WithNonce(0).TestObject;
-        var tx2 = Build.A.Transaction.WithValue(2).WithNonce(1).TestObject;
+        Block block = Build.A.Block.WithNumber(1).TestObject;
+        Transaction tx1 = Build.A.Transaction.WithValue(1).WithNonce(0).TestObject;
+        Transaction tx2 = Build.A.Transaction.WithValue(2).WithNonce(1).TestObject;
 
         // Act
         tracer.StartNewBlockTrace(block);
@@ -62,32 +64,25 @@ public class BlockchainTestStreamingTracerTests
         tracer.EndBlockTrace();
 
         // Assert
-        var result = output.ToString();
+        var result = Encoding.UTF8.GetString(output.ToArray());
         var lines = result.Split(Environment.NewLine, StringSplitOptions.RemoveEmptyEntries);
 
         // Should have at least 2 summary lines (one per transaction)
-        int summaryLines = 0;
-        foreach (var line in lines)
-        {
-            if (line.Contains("\"gasUsed\""))
-                summaryLines++;
-        }
-
-        Assert.That(summaryLines, Is.EqualTo(2), "Should have 2 transaction summary lines");
+        Assert.That(lines.Count(l => l.Contains("\"gasUsed\"")), Is.EqualTo(2), "Should have 2 transaction summary lines");
     }
 
     [Test]
     public void Tracer_handles_multiple_blocks()
     {
         // Arrange
-        var output = new StringWriter();
+        using var output = new MemoryStream();
         var options = new GethTraceOptions();
         var tracer = new BlockchainTestStreamingTracer(options, output);
 
-        var block1 = Build.A.Block.WithNumber(1).TestObject;
-        var block2 = Build.A.Block.WithNumber(2).TestObject;
-        var tx1 = Build.A.Transaction.WithValue(1).TestObject;
-        var tx2 = Build.A.Transaction.WithValue(2).TestObject;
+        Block block1 = Build.A.Block.WithNumber(1).TestObject;
+        Block block2 = Build.A.Block.WithNumber(2).TestObject;
+        Transaction tx1 = Build.A.Transaction.WithValue(1).TestObject;
+        Transaction tx2 = Build.A.Transaction.WithValue(2).TestObject;
 
         // Act
         tracer.StartNewBlockTrace(block1);
@@ -101,25 +96,18 @@ public class BlockchainTestStreamingTracerTests
         tracer.EndBlockTrace();
 
         // Assert
-        var result = output.ToString();
+        var result = Encoding.UTF8.GetString(output.ToArray());
         var lines = result.Split(Environment.NewLine, StringSplitOptions.RemoveEmptyEntries);
 
         // Should have 2 summary lines (one per transaction across both blocks)
-        int summaryLines = 0;
-        foreach (var line in lines)
-        {
-            if (line.Contains("\"gasUsed\""))
-                summaryLines++;
-        }
-
-        Assert.That(summaryLines, Is.EqualTo(2), "Should have 2 transaction summary lines across both blocks");
+        Assert.That(lines.Count(l => l.Contains("\"gasUsed\"")), Is.EqualTo(2), "Should have 2 transaction summary lines across both blocks");
     }
 
     [Test]
     public void Tracer_disposes_cleanly()
     {
         // Arrange
-        var output = new StringWriter();
+        using var output = new MemoryStream();
         var options = new GethTraceOptions();
         var tracer = new BlockchainTestStreamingTracer(options, output);
 

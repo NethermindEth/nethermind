@@ -105,8 +105,7 @@ public abstract class GethLikeTxTracer<TEntry> : GethLikeTxTracer where TEntry :
 
     public override void SetOperationMemorySize(ulong newSize)
     {
-        if (CurrentTraceEntry is not null)
-            CurrentTraceEntry.UpdateMemorySize(newSize);
+        CurrentTraceEntry?.UpdateMemorySize(newSize);
     }
 
     public override void SetOperationStack(TraceStack stack)
