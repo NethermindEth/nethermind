@@ -6,10 +6,9 @@ using Nethermind.Core;
 using Nethermind.Core.BlockAccessLists;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
-using Nethermind.Evm.State;
 using Nethermind.Int256;
 
-namespace Nethermind.State;
+namespace Nethermind.Evm.State;
 
 public class TracedAccessWorldState(IWorldState innerWorldState) : WrappedWorldState(innerWorldState), IPreBlockCaches
 {

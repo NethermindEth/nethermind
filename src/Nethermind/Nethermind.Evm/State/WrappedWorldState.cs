@@ -11,7 +11,7 @@ using Nethermind.Evm.State;
 using Nethermind.Evm.Tracing.State;
 using Nethermind.Int256;
 
-namespace Nethermind.State;
+namespace Nethermind.Evm.State;
 
 public class WrappedWorldState(IWorldState innerWorldState) : IWorldState
 {

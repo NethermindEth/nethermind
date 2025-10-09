@@ -5,6 +5,7 @@ using System;
 using Nethermind.Core;
 using Nethermind.Logging;
 using Nethermind.Trie.Pruning;
+using Nethermind.Evm.State;
 
 namespace Nethermind.State.Healing;
 
