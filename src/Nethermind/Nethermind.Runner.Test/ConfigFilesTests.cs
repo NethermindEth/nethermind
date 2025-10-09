@@ -12,6 +12,7 @@ using Nethermind.Blockchain.Receipts;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Config;
 using Nethermind.Config.Test;
+using Nethermind.Consensus;
 using Nethermind.Db;
 using Nethermind.EthStats;
 using Nethermind.JsonRpc;
@@ -108,6 +109,7 @@ public class ConfigFilesTests : ConfigFileTestsBase
     public void Mining_defaults_are_correct(string configWildcard, bool defaultValue = false)
     {
         Test<IInitConfig, bool>(configWildcard, static c => c.IsMining, defaultValue);
+        Test<IMiningConfig, bool>(configWildcard, static c => c.Enabled, defaultValue);
     }
 
     [TestCase("*")]

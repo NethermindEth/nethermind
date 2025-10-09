@@ -1,7 +1,6 @@
 {
   "$schema": "https://raw.githubusercontent.com/NethermindEth/core-scripts/refs/heads/main/schemas/config.json",
   "Init": {
-    "IsMining": false,
     "ChainSpecPath": "chainspec/volta.json",
     "GenesisHash": "0xebd8b413ca7b7f84a8dd20d17519ce2b01954c74d94a0a739a3e416abe0e43e5",
     "BaseDbPath": "nethermind_db/volta",
@@ -34,5 +33,9 @@
   },
   "Merge": {
     "Enabled": false
+  },
+  "Mining":
+  {
+    "Enabled": true
   }
 }
