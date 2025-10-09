@@ -14,20 +14,33 @@ namespace Nethermind.Serialization.Rlp;
 public static class KeyValueStoreRlpExtensions
 {
     [SkipLocalsInit]
-    public static TItem? Get<TItem>(this IReadOnlyKeyValueStore db, long blockNumber, ValueHash256 hash, IRlpStreamDecoder<TItem> decoder,
-        ClockCache<ValueHash256, TItem> cache = null, RlpBehaviors rlpBehaviors = RlpBehaviors.None, bool shouldCache = true) where TItem : class
+    public static TItem? Get<TItem>(this IReadOnlyKeyValueStore db, long blockNumber, in ValueHash256 hash, IRlpStreamDecoder<TItem> decoder,
+        IClockCache<ValueHash256, TItem> cache = null, RlpBehaviors rlpBehaviors = RlpBehaviors.None, bool shouldCache = true) where TItem : class
     {
         Span<byte> dbKey = stackalloc byte[40];
-        KeyValueStoreExtensions.GetBlockNumPrefixedKey(blockNumber, hash, dbKey);
+        KeyValueStoreExtensions.GetBlockNumPrefixedKey(blockNumber, in hash, dbKey);
         return Get(db, hash, dbKey, decoder, cache, rlpBehaviors, shouldCache);
     }
 
-    public static TItem? Get<TItem>(this IReadOnlyKeyValueStore db, ValueHash256 key, IRlpStreamDecoder<TItem> decoder, ClockCache<ValueHash256, TItem> cache = null, RlpBehaviors rlpBehaviors = RlpBehaviors.None, bool shouldCache = true) where TItem : class
+    [SkipLocalsInit]
+    public static TItem? Get<TItem>(this IReadOnlyKeyValueStore db, long blockNumber, Hash256 hash, IRlpStreamDecoder<TItem> decoder,
+        IClockCache<Hash256AsKey, TItem> cache = null, RlpBehaviors rlpBehaviors = RlpBehaviors.None, bool shouldCache = true) where TItem : class
+    {
+        Span<byte> dbKey = stackalloc byte[40];
+        KeyValueStoreExtensions.GetBlockNumPrefixedKey(blockNumber, in hash.ValueHash256, dbKey);
+        return Get(db, hash, dbKey, decoder, cache, rlpBehaviors, shouldCache);
+    }
+
+    public static TItem? Get<TItem>(this IReadOnlyKeyValueStore db, in ValueHash256 key, IRlpStreamDecoder<TItem> decoder, IClockCache<ValueHash256, TItem> cache = null, RlpBehaviors rlpBehaviors = RlpBehaviors.None, bool shouldCache = true) where TItem : class
+    {
+        return Get(db, key, key.Bytes, decoder, cache, rlpBehaviors, shouldCache);
+    }
+    public static TItem? Get<TItem>(this IReadOnlyKeyValueStore db, Hash256 key, IRlpStreamDecoder<TItem> decoder, IClockCache<Hash256AsKey, TItem> cache = null, RlpBehaviors rlpBehaviors = RlpBehaviors.None, bool shouldCache = true) where TItem : class
     {
         return Get(db, key, key.Bytes, decoder, cache, rlpBehaviors, shouldCache);
     }
 
-    public static TItem? Get<TItem>(this IReadOnlyKeyValueStore db, long key, IRlpStreamDecoder<TItem>? decoder, ClockCache<long, TItem>? cache = null, RlpBehaviors rlpBehaviors = RlpBehaviors.None, bool shouldCache = true) where TItem : class
+    public static TItem? Get<TItem>(this IReadOnlyKeyValueStore db, long key, IRlpStreamDecoder<TItem>? decoder, IClockCache<long, TItem>? cache = null, RlpBehaviors rlpBehaviors = RlpBehaviors.None, bool shouldCache = true) where TItem : class
     {
         ReadOnlySpan<byte> keyDb = key.ToBigEndianSpanWithoutLeadingZeros(out _);
         return Get(db, key, keyDb, decoder, cache, rlpBehaviors, shouldCache);
@@ -38,7 +51,7 @@ public static class KeyValueStoreRlpExtensions
         TCacheKey cacheKey,
         ReadOnlySpan<byte> key,
         IRlpStreamDecoder<TItem> decoder,
-        ClockCache<TCacheKey, TItem> cache = null,
+        IClockCache<TCacheKey, TItem> cache = null,
         RlpBehaviors rlpBehaviors = RlpBehaviors.None,
         bool shouldCache = true
     ) where TItem : class

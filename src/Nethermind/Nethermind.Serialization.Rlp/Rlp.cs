@@ -1568,7 +1568,7 @@ namespace Nethermind.Serialization.Rlp
             }
 
             public T[] DecodeArray<T>(IRlpValueDecoder<T>? decoder = null, bool checkPositions = true,
-                T defaultElement = default)
+                T defaultElement = default, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
             {
                 if (decoder is null)
                 {
@@ -1590,7 +1590,7 @@ namespace Nethermind.Serialization.Rlp
                     }
                     else
                     {
-                        result[i] = decoder.Decode(ref this);
+                        result[i] = decoder.Decode(ref this, rlpBehaviors);
                     }
                 }
 
