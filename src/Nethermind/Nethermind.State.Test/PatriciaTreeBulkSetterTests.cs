@@ -195,6 +195,20 @@ public class PatriciaTreeBulkSetterTests
 
         yield return new TestCaseData(GenRandomOfLength(100), eraseList).SetName("delete");
 
+        yield return new TestCaseData(
+            new List<(Hash256 key, byte[] value)>()
+            {
+                (new Hash256("aaaa000000000000000000000000000000000000000000000000000000000000"), [1]),
+                (new Hash256("aaaabbbb00000000000000000000000000000000000000000000000000000000"), [1]),
+                (new Hash256("aaaacccc00000000000000000000000000000000000000000000000000000000"), [1]),
+            },
+            new List<(Hash256 key, byte[] value)>()
+            {
+                (new Hash256("aaaabbbb00000000000000000000000000000000000000000000000000000000"), [2]),
+                (new Hash256("aaaacccc00000000000000000000000000000000000000000000000000000000"), [1]),
+            }
+        ).SetName("extension head");
+
     }
 
     static byte[] MakeRandomValue(Random rng, bool canBeNull = true)
@@ -283,6 +297,35 @@ public class PatriciaTreeBulkSetterTests
         TestContext.Error.WriteLine($"Time is Baseline: {baselineTime}, Bulk: {newTime}");
         TestContext.Error.WriteLine($"Write count is Baseline: {baselineWriteCount}, Bulk: {newWriteCount}");
         newWriteCount.Should().BeLessOrEqualTo(baselineWriteCount);
+    }
+
+    [TestCaseSource(nameof(BulkSetTestGen))]
+    public void BulkSetRootHashUpdated(List<(Hash256 key, byte[] value)> existingItems, List<(Hash256 key, byte[] value)> items)
+    {
+        const bool recordDump = true;
+        (Hash256 root, TimeSpan baselineTime, long baselineWriteCount, string originalDump) = CalculateBaseline(existingItems, items, recordDump);
+
+        TestMemDb db = new TestMemDb();
+        IScopedTrieStore trieStore = new RawScopedTrieStore(db);
+        PatriciaTree pTree = new PatriciaTree(trieStore, LimboLogs.Instance);
+        pTree.RootHash = Keccak.EmptyTreeHash;
+
+        foreach (var existingItem in existingItems)
+        {
+            pTree.Set(existingItem.key.Bytes, existingItem.value);
+        }
+
+        pTree.UpdateRootHash();
+
+        using ArrayPoolList<PatriciaTree.BulkSetEntry> entries = new ArrayPoolList<PatriciaTree.BulkSetEntry>(items.Count);
+        foreach (var valueTuple in items)
+        {
+            entries.Add(new PatriciaTree.BulkSetEntry(valueTuple.key, valueTuple.value));
+        }
+
+        pTree.BulkSet(entries);
+        pTree.UpdateRootHash();
+        pTree.RootHash.Should().Be(root);
     }
 
     [TestCaseSource(nameof(BulkSetTestGen))]
