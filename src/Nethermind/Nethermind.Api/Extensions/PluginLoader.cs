@@ -19,11 +19,12 @@ namespace Nethermind.Api.Extensions;
 
 public class PluginLoader(string pluginPath, IFileSystem fileSystem, ILogger logger, params IReadOnlyList<Type> embedded) : IPluginLoader
 {
-    private readonly List<Type> _pluginTypes = [];
+    private readonly HashSet<Type> _pluginTypes = [];
+    private readonly List<Type> _orderedPluginTypes = [];
     private readonly IFileSystem _fileSystem = fileSystem ?? throw new ArgumentNullException(nameof(fileSystem));
     private readonly string _pluginsDirectory = pluginPath ?? throw new ArgumentNullException(nameof(pluginPath));
 
-    public IEnumerable<Type> PluginTypes => _pluginTypes;
+    public IEnumerable<Type> PluginTypes => _orderedPluginTypes;
 
     public void Load()
     {
@@ -31,7 +32,10 @@ public class PluginLoader(string pluginPath, IFileSystem fileSystem, ILogger log
         foreach (Type embeddedPlugin in embedded)
         {
             if (logger.IsInfo) logger.Info($"  Found plugin type {embeddedPlugin}");
-            _pluginTypes.Add(embeddedPlugin);
+            if (_pluginTypes.Add(embeddedPlugin))
+            {
+                _orderedPluginTypes.Add(embeddedPlugin);
+            }
         }
 
         string baseDir = string.Empty.GetApplicationResourcePath();
@@ -74,10 +78,10 @@ public class PluginLoader(string pluginPath, IFileSystem fileSystem, ILogger log
                 {
                     if (typeof(INethermindPlugin).IsAssignableFrom(type))
                     {
-                        if (!PluginTypes.Contains(type))
+                        if (_pluginTypes.Add(type))
                         {
                             if (logger.IsInfo) logger.Info($"  Found plugin type {pluginAssembly}");
-                            _pluginTypes.Add(type);
+                            _orderedPluginTypes.Add(type);
                         }
                     }
                 }
@@ -95,7 +99,7 @@ public class PluginLoader(string pluginPath, IFileSystem fileSystem, ILogger log
             .Select((name, index) => (name: name + "plugin", index))
             .ToDictionary(x => x.name, x => x.index, StringComparer.OrdinalIgnoreCase);
 
-        _pluginTypes.Sort((firstPlugin, secondPlugin) =>
+        _orderedPluginTypes.Sort((firstPlugin, secondPlugin) =>
         {
             bool firstHasPriority = pluginPriorities.TryGetValue(firstPlugin.Name, out int firstPriorityIndex);
             bool secondHasPriority = pluginPriorities.TryGetValue(secondPlugin.Name, out int secondPriorityIndex);
