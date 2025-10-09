@@ -84,6 +84,11 @@ public class TrieStoreScopeProvider : IWorldStateScopeProvider
             return account;
         }
 
+        public void HintGet(Address address, Account? account)
+        {
+            _loadedAccounts.TryAdd(address, account);
+        }
+
         public IWorldStateScopeProvider.ICodeDb CodeDb => _codeDb1;
 
         internal StateTree _backingStateTree;

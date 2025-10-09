@@ -32,6 +32,13 @@ public interface IWorldStateScopeProvider
         Account? Get(Address address);
 
         /// <summary>
+        /// Call when top level application read an account without going through this scope to reduce time during commit later.
+        /// </summary>
+        /// <param name="address"></param>
+        /// <param name="account"></param>
+        void HintGet(Address address, Account? account);
+
+        /// <summary>
         /// The code db
         /// </summary>
         ICodeDb CodeDb { get; }
@@ -73,6 +80,8 @@ public interface IWorldStateScopeProvider
         Hash256 RootHash { get; }
 
         byte[] Get(in UInt256 index);
+
+        void HintGet(in UInt256 index, byte[]? value);
 
         /// <summary>
         /// Used by JS tracer. May not work on some database layout.
