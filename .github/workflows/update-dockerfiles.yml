@@ -1,4 +1,4 @@
-name: Update Docker files
+name: Update Dockerfiles
 
 on:
   push:
@@ -7,42 +7,41 @@ on:
     - cron: "0 0 * * 0"
   workflow_dispatch:
 
-env:
-  DOTNET_VERSION: "9.0"
-
 jobs:
-  update-dockerfile:
-    name: Update Dockerfile
+  update-dockerfiles:
+    name: Update Dockerfiles
     runs-on: ubuntu-latest
     steps:
       - name: Check out repository
         uses: actions/checkout@v5
-      - name: Update Docker files
+
+      - name: Update Dockerfiles
+        env:
+          DOTNET_VERSION: "9.0"
         run: |
           # Get the latest .NET release information
-          manifest=$(curl -s https://dotnetcli.blob.core.windows.net/dotnet/release-metadata/${{ env.DOTNET_VERSION }}/releases.json)
+          manifest=$(curl -s https://dotnetcli.blob.core.windows.net/dotnet/release-metadata/$DOTNET_VERSION/releases.json)
           runtime_version=$(echo "$manifest" | jq -r '."latest-runtime"')
           sdk_version=$(echo "$manifest" | jq -r '."latest-sdk"')
 
-          # Get the digests for given tags
-          aspnet_tag=$runtime_version-noble
-          aspnet_chiseled_tag=$runtime_version-noble-chiseled
-          sdk_tag=$sdk_version-noble
-          aspnet_digest=$(skopeo inspect docker://mcr.microsoft.com/dotnet/aspnet:$aspnet_tag --no-tags | jq -r '.Digest')
-          aspnet_chiseled_digest=$(skopeo inspect docker://mcr.microsoft.com/dotnet/aspnet:$aspnet_chiseled_tag --no-tags | jq -r '.Digest')
-          sdk_digest=$(skopeo inspect docker://mcr.microsoft.com/dotnet/sdk:$sdk_tag --no-tags | jq -r '.Digest')
-          echo "$sdk_tag@$sdk_digest"
-          echo "$aspnet_tag@$aspnet_digest"
-          echo "$aspnet_chiseled_tag@$aspnet_chiseled_digest"
+          # Get the digests for the specified tags
+          runtime_chiseled_tag=$runtime_version-noble-chiseled
+          runtime_chiseled_digest=$(skopeo inspect docker://mcr.microsoft.com/dotnet/aspnet:$runtime_chiseled_tag --no-tags | jq -r '.Digest')
 
-          # Update Docker files
+          runtime_tag=$runtime_version-noble
+          runtime_digest=$(skopeo inspect docker://mcr.microsoft.com/dotnet/aspnet:$runtime_tag --no-tags | jq -r '.Digest')
+
+          sdk_tag=$sdk_version-noble
+          sdk_digest=$(skopeo inspect docker://mcr.microsoft.com/dotnet/sdk:$sdk_tag --no-tags | jq -r '.Digest')
+
+          # Update Dockerfiles
           for file in "Dockerfile" "Dockerfile.chiseled" "scripts/build/Dockerfile"; do
             sed -i "s|\(mcr\.microsoft\.com/dotnet/sdk:\)[^[:space:]]*|\1$sdk_tag@$sdk_digest|" "$file"
           done
 
-          aspnet_pattern="\(mcr\.microsoft\.com/dotnet/aspnet:\)[^[:space:]]*"
+          runtime_pattern="\(mcr\.microsoft\.com/dotnet/aspnet:\)[^[:space:]]*"
 
-          sed -i "s|$aspnet_pattern|\1$aspnet_tag@$aspnet_digest|" Dockerfile
-          sed -i "s|$aspnet_pattern|\1$aspnet_chiseled_tag@$aspnet_chiseled_digest|" Dockerfile.chiseled
+          sed -i "s|$runtime_pattern|\1$runtime_tag@$runtime_digest|" Dockerfile
+          sed -i "s|$runtime_pattern|\1$runtime_chiseled_tag@$runtime_chiseled_digest|" Dockerfile.chiseled
 
           git diff
