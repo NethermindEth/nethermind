@@ -214,7 +214,7 @@ public sealed class LogIndexService : ILogIndexService
 
     private void TrySetPivot(int? blockNumber)
     {
-        if (blockNumber is not { } num || num == 0)
+        if (blockNumber is not { } num || num is 0)
             return;
 
         if (_pivotSource.Task.IsCompleted)
@@ -225,6 +225,9 @@ public sealed class LogIndexService : ILogIndexService
 
         if (num > MaxTargetBlockNumber)
             num = Math.Min(MaxTargetBlockNumber, num);
+
+        if (num is 0)
+            return;
 
         if (GetBlockReceipts(num) == default)
             return;
