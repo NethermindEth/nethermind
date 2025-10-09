@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Collections.Generic;
 using Nethermind.Blockchain.Tracing;
 using Nethermind.Core;
 using Nethermind.Evm.Tracing;
@@ -26,7 +27,7 @@ public class SimulateBlockMutatorTracer(bool isTracingLogs) : BlockTracerBase<Si
 
     protected override SimulateCallResult OnEnd(SimulateTxMutatorTracer txTracer) => txTracer.TraceResult!;
 
-    public void ReapplyBlockHash()
+    private void ReapplyBlockHash()
     {
         foreach (SimulateCallResult simulateCallResult in TxTraces)
         {
@@ -42,5 +43,11 @@ public class SimulateBlockMutatorTracer(bool isTracingLogs) : BlockTracerBase<Si
         _txIndex = 0;
         _currentBlock = block;
         base.StartNewBlockTrace(block);
+    }
+
+    public override IReadOnlyCollection<SimulateCallResult> BuildResult()
+    {
+        ReapplyBlockHash();
+        return base.BuildResult();
     }
 }
