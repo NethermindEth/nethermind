@@ -29,9 +29,6 @@
   "Metrics": {
     "NodeName": "Volta"
   },
-  "Mining": {
-    "MinGasPrice": 1
-  },
   "Blocks": {
     "GasToken": "VT"
   },
