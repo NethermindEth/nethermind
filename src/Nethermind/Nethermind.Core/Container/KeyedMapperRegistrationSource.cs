@@ -16,7 +16,7 @@ namespace Nethermind.Core.Container;
 /// Utility that map between two type that act on keyed service.
 /// </summary>
 /// <param name="mapper"></param>
-/// <param name="isNewObject"></param>
+/// <param name="isNewObject">Set to true so that container take ownership of the returned object.</param>
 /// <typeparam name="TFrom"></typeparam>
 /// <typeparam name="TTo"></typeparam>
 public class KeyedMapperRegistrationSource<TFrom, TTo>(Func<object, TFrom, TTo> mapper, bool isNewObject) : IRegistrationSource where TFrom : notnull
