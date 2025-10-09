@@ -17,17 +17,24 @@ jobs:
     steps:
       - name: Check out repository
         uses: actions/checkout@v5
-      - name: Digest
+      - name: Update Docker files
         run: |
+          # Get the latest .NET release information
           manifest=$(curl -s https://dotnetcli.blob.core.windows.net/dotnet/release-metadata/${{ env.DOTNET_VERSION }}/releases.json)
           runtime_version=$(echo "$manifest" | jq -r '."latest-runtime"')
           sdk_version=$(echo "$manifest" | jq -r '."latest-sdk"')
-          sdk_tag=$sdk_version-noble
+
+          # Get the digests for given tags
           aspnet_tag=$runtime_version-noble
           aspnet_chiseled_tag=$runtime_version-noble-chiseled
-          sdk_digest=$(skopeo inspect docker://mcr.microsoft.com/dotnet/sdk:$sdk_tag --no-tags | jq -r '.Digest')
+          sdk_tag=$sdk_version-noble
           aspnet_digest=$(skopeo inspect docker://mcr.microsoft.com/dotnet/aspnet:$aspnet_tag --no-tags | jq -r '.Digest')
           aspnet_chiseled_digest=$(skopeo inspect docker://mcr.microsoft.com/dotnet/aspnet:$aspnet_chiseled_tag --no-tags | jq -r '.Digest')
+          sdk_digest=$(skopeo inspect docker://mcr.microsoft.com/dotnet/sdk:$sdk_tag --no-tags | jq -r '.Digest')
           echo "$sdk_tag@$sdk_digest"
           echo "$aspnet_tag@$aspnet_digest"
           echo "$aspnet_chiseled_tag@$aspnet_chiseled_digest"
+
+          # Update Docker files
+          sed -i "s|\(mcr\.microsoft\.com/dotnet/sdk:\)[^[:space:]]*|\1$sdk_tag@$sdk_digest|" Dockerfile
+          cat Dockerfile
