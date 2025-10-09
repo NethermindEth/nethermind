@@ -83,19 +83,13 @@ public abstract class BlockchainTestBase
         test.Network = ChainUtils.ResolveSpec(test.Network, test.ChainId);
         test.NetworkAfterTransition = ChainUtils.ResolveSpec(test.NetworkAfterTransition, test.ChainId);
 
-        List<(ForkActivation Activation, IReleaseSpec Spec)> transitions =
-            [((ForkActivation)0, test.GenesisSpec), ((ForkActivation)1, test.Network)]; // TODO: this thing took a lot of time to find after it was removed!, genesis block is always initialized with Frontier
+        List<(ForkActivation Activation, IReleaseSpec Spec)> transitions = [((ForkActivation)0, test.Network)];
         if (test.NetworkAfterTransition is not null)
         {
             transitions.Add((test.TransitionForkActivation!.Value, test.NetworkAfterTransition));
         }
 
         ISpecProvider specProvider = new CustomSpecProvider(test.ChainId, test.ChainId, transitions.ToArray());
-
-        if (test.ChainId != GnosisSpecProvider.Instance.ChainId && specProvider.GenesisSpec != Frontier.Instance)
-        {
-            Assert.Fail("Expected genesis spec to be Frontier for blockchain tests");
-        }
 
         if (test.Network is Cancun || test.NetworkAfterTransition is Cancun)
         {
