@@ -197,7 +197,10 @@ namespace Nethermind.Facade.Find
         // TODO: Do not use for single block after testing - scanning it will be usually faster
         private (int from, int to)? CanUseLogIndex(LogFilter filter, BlockHeader fromBlock, BlockHeader toBlock)
         {
-            if (!filter.UseIndex || _logIndexStorage?.Enabled != true || filter.AcceptsAnyBlock)
+            var tryUseIndex = filter.UseIndex;
+            filter.UseIndex = false;
+
+            if (!tryUseIndex || _logIndexStorage?.Enabled != true || filter.AcceptsAnyBlock)
                 return null;
 
             if (_logIndexStorage.GetMinBlockNumber() is not { } indexFrom || _logIndexStorage.GetMaxBlockNumber() is not { } indexTo)
@@ -208,7 +211,11 @@ namespace Nethermind.Facade.Find
                 Math.Min((int)toBlock.Number, indexTo)
             );
 
-            return range.from <= range.to ? range : null;
+            if (range.from > range.to)
+                return null;
+
+            filter.UseIndex = true;
+            return range;
         }
 
         private bool CanUseBloomDatabase(BlockHeader toBlock, BlockHeader fromBlock)

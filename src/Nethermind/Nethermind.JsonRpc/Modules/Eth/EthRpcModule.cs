@@ -18,6 +18,7 @@ using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
+using Nethermind.Db;
 using Nethermind.Evm;
 using Nethermind.Evm.Precompiles;
 using Nethermind.Facade;
@@ -65,7 +66,8 @@ public partial class EthRpcModule(
     IFeeHistoryOracle feeHistoryOracle,
     IProtocolsManager protocolsManager,
     IForkInfo forkInfo,
-    ulong? secondsPerSlot) : IEthRpcModule
+    ulong? secondsPerSlot,
+    ILogIndexConfig? logIndexConfig = null) : IEthRpcModule
 {
     protected readonly Encoding _messageEncoding = Encoding.UTF8;
     protected readonly IJsonRpcConfig _rpcConfig = rpcConfig ?? throw new ArgumentNullException(nameof(rpcConfig));
@@ -647,6 +649,19 @@ public partial class EthRpcModule(
                 {
                     logs.Dispose();
                     return ResultWrapper<IEnumerable<FilterLog>>.Fail($"Too many logs requested. Max logs per response is {_rpcConfig.MaxLogsPerResponse}.", ErrorCodes.LimitExceeded);
+                }
+            }
+
+            if (logIndexConfig?.VerifyRpcResponse is true && logFilter.UseIndex)
+            {
+                logFilter.UseIndex = false;
+                IEnumerable<FilterLog>? verifyLogs = _blockchainBridge.GetLogs(logFilter, fromBlockHeader, toBlockHeader, cancellationToken);
+
+                var verifyCount = verifyLogs.Count();
+                if (verifyCount != logs.Count) // TODO: check content also
+                {
+                    using ArrayPoolList<FilterLog> _ = logs;
+                    throw new InvalidOperationException($"Invalid logs count from index: {logs.Count}, expected: {verifyCount}");
                 }
             }
 
