@@ -33,9 +33,5 @@
   },
   "Merge": {
     "Enabled": false
-  },
-  "Mining":
-  {
-    "Enabled": true
   }
 }
