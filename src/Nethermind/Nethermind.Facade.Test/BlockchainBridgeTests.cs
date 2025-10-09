@@ -52,6 +52,7 @@ public class BlockchainBridgeTests
             .AddSingleton<IReceiptFinder>(_receiptStorage)
             .AddSingleton(_timestamper)
             .AddSingleton(Substitute.For<ILogFinder>())
+            .AddSingleton<IMiningConfig>(new MiningConfig { Enabled = false })
             .AddScoped(_transactionProcessor)
             .Build();
 
