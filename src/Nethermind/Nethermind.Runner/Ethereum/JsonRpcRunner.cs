@@ -7,6 +7,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Hosting;
+using Microsoft.AspNetCore.Server.Kestrel.Core;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting.Internal;
 using Microsoft.Extensions.Logging;
@@ -119,6 +120,11 @@ namespace Nethermind.Runner.Ethereum
                         configurer.Configure(s);
                     }
                     s.AddSingleton<ApplicationLifetime>();
+                    s.Configure<KestrelServerOptions>(options =>
+                    {
+                        options.AllowSynchronousIO = true;
+                    });
+
                     startup.ConfigureServices(s);
                 })
                 .UseUrls(urls)
