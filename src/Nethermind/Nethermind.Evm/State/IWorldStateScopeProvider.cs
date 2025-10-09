@@ -100,7 +100,7 @@ public interface IWorldStateScopeProvider
         IStorageWriteBatch CreateStorageWriteBatch(Address key, int estimatedEntries);
     }
 
-    public record AccountUpdated(Address Address, Account? Account);
+    public record AccountUpdated(Address Address, Account? Account) : EventArgs;
 
     public interface IStorageWriteBatch : IDisposable
     {
