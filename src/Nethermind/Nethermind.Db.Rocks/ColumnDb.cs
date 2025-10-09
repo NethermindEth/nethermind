@@ -176,11 +176,6 @@ public class ColumnDb : IDb, ISortedKeyValueStore
 
     public ISortedView GetViewBetween(ReadOnlySpan<byte> firstKey, ReadOnlySpan<byte> lastKey)
     {
-        ReadOptions readOptions = new ReadOptions();
-        readOptions.SetIterateLowerBound(firstKey.ToArray());
-        readOptions.SetIterateUpperBound(lastKey.ToArray());
-
-        Iterator iterator = _mainDb.CreateIterator(readOptions, ch: _columnFamily);
-        return new RocksdbSortedView(iterator);
+        return _mainDb.GetViewBetween(firstKey, lastKey, _columnFamily);
     }
 }

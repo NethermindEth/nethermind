@@ -1832,11 +1832,25 @@ public partial class DbOnTheRocks : IDb, ITunableDb, IReadOnlyNativeKeyValueStor
 
     public ISortedView GetViewBetween(ReadOnlySpan<byte> firstKey, ReadOnlySpan<byte> lastKey)
     {
-        ReadOptions readOptions = new ReadOptions();
-        readOptions.SetIterateLowerBound(firstKey.ToArray());
-        readOptions.SetIterateUpperBound(lastKey.ToArray());
+        return GetViewBetween(firstKey, lastKey, null);
+    }
 
-        Iterator iterator = CreateIterator(readOptions);
+    internal ISortedView GetViewBetween(ReadOnlySpan<byte> firstKey, ReadOnlySpan<byte> lastKey, ColumnFamilyHandle? cf)
+    {
+        ReadOptions readOptions = new ReadOptions();
+
+        unsafe
+        {
+            IntPtr iterateLowerBound = Marshal.AllocHGlobal(firstKey.Length);
+            firstKey.CopyTo(new Span<byte>(iterateLowerBound.ToPointer(), firstKey.Length));
+            Native.Instance.rocksdb_readoptions_set_iterate_lower_bound(readOptions.Handle, iterateLowerBound, (UIntPtr)firstKey.Length);
+
+            IntPtr iterateUpperBound = Marshal.AllocHGlobal(lastKey.Length);
+            lastKey.CopyTo(new Span<byte>(iterateUpperBound.ToPointer(), lastKey.Length));
+            Native.Instance.rocksdb_readoptions_set_iterate_upper_bound(readOptions.Handle, iterateUpperBound, (UIntPtr)lastKey.Length);
+        }
+
+        Iterator iterator = CreateIterator(readOptions, cf);
         return new RocksdbSortedView(iterator);
     }
 }
