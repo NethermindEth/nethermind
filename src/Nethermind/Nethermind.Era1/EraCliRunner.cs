@@ -39,7 +39,7 @@ public class EraCliRunner(
         }
         catch (Exception e) when (e is EraException)
         {
-            _logger.Error($"The export failed with the message: {e.Message}");
+            _logger.Error($"The export failed with the message: {e.Message}", e);
         }
         catch (Exception e)
         {
@@ -60,7 +60,7 @@ public class EraCliRunner(
         }
         catch (Exception e) when (e is EraException or EraImportException)
         {
-            _logger.Error($"The import failed with the message: {e.Message}");
+            _logger.Error($"The import failed with the message: {e.Message}", e);
         }
         catch (Exception e)
         {

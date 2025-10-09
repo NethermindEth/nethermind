@@ -162,6 +162,9 @@ public class PersistedBigCache : IBigCache
         {
             Span<byte> key = stackalloc byte[53];
             key = EncodeSlotKey(address, index, key);
+            /*
+             * 23445461
+             */
 
             Span<byte> bytes = db.GetSpan(key);
             try
@@ -182,11 +185,11 @@ public class PersistedBigCache : IBigCache
                 long blockNumber = BinaryPrimitives.ReadInt64BigEndian(bytes);
                 if (blockNumber < selfDestructBlockNumber)
                 {
-                    /**
+                    /*
                     _selfDestructShortcut.Inc();
                     value = StorageTree.ZeroBytes;
                     return true;
-                    */
+                    **/
 
                     value = null; // Random invalid bblock
                     return false;
@@ -195,7 +198,6 @@ public class PersistedBigCache : IBigCache
                 Span<byte> remainingBytes = bytes[8..];
                 Rlp.ValueDecoderContext ctx = new Rlp.ValueDecoderContext(remainingBytes);
                 value = ctx.DecodeByteArray();
-
                 return true;
             }
             finally
@@ -216,11 +218,15 @@ public class PersistedBigCache : IBigCache
             _snapshot = db;
 
             byte[]? currentBlockNumberBytes = db[_currentBlockNumberKey];
-            if (currentBlockNumberBytes is not null)
+            if (currentBlockNumberBytes is not null && currentBlockNumberBytes.Length > 0)
             {
                 long blockNumber = BinaryPrimitives.ReadInt64BigEndian(currentBlockNumberBytes);
                 ValueHash256 stateRoot = new ValueHash256(currentBlockNumberBytes[8..]);
                 _currentState = new StateId(blockNumber, stateRoot);
+            }
+            else
+            {
+                _currentState = new StateId(-1, ValueKeccak.Zero);
             }
         }
 

@@ -9,6 +9,7 @@ using Nethermind.Api.Steps;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Blockchain.Visitors;
+using Nethermind.Config;
 using Nethermind.Consensus.Processing;
 using Nethermind.Logging;
 using Nethermind.State;
@@ -22,6 +23,7 @@ namespace Nethermind.Init.Steps
         ISyncConfig syncConfig,
         IBlockProcessingQueue blockProcessingQueue,
         IBlockTree blockTree,
+        IProcessExitSource exitSource,
         ILogManager logManager
     ) : IStep
     {
@@ -31,7 +33,7 @@ namespace Nethermind.Init.Steps
         {
             if (initConfig.ProcessingEnabled)
             {
-                return RunBlockTreeInitTasks(cancellationToken);
+                return RunBlockTreeInitTasks(exitSource.Token);
             }
             else
             {

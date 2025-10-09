@@ -103,5 +103,6 @@ public interface IDbConfig : IConfig
     string? L1OriginDbAdditionalRocksDbOptions { get; set; }
 
     public ulong FlatCacheDbWriteBufferSize { get; set; }
+    public ulong FlatCacheDbWriteBufferNumber { get; set; }
     public string FlatCacheDbRocksDbOptions { get; set; }
 }
