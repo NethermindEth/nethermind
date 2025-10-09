@@ -22,7 +22,7 @@ namespace Nethermind.Core.Container;
 public class KeyedMapperRegistrationSource<TFrom, TTo>(Func<object, TFrom, TTo> mapper, bool isNewObject) : IRegistrationSource where TFrom : notnull
 {
 
-    public KeyedMapperRegistrationSource(Func<TFrom, TTo> mapper, bool isNewObject): this((_, from) => mapper(from), isNewObject)
+    public KeyedMapperRegistrationSource(Func<TFrom, TTo> mapper, bool isNewObject) : this((_, from) => mapper(from), isNewObject)
     {
     }
 

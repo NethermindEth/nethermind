@@ -80,7 +80,7 @@ namespace Nethermind.Core
     /// <summary>
     /// Represent a sorted view of a `ISortedKeyValueStore`.
     /// </summary>
-    public interface ISortedView: IDisposable
+    public interface ISortedView : IDisposable
     {
         public bool MoveNext();
         public ReadOnlySpan<byte> CurrentKey { get; }
