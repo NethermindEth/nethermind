@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
@@ -86,6 +86,7 @@ namespace Nethermind.TxPool
 
         public UInt256 GetLatestPendingNonce(Address address) => 0;
 
+        public AnnounceResult AnnounceTx(ValueHash256 txhash, Guid sessionId, Action request) => AnnounceResult.New;
 
         public event EventHandler<TxEventArgs> NewDiscovered
         {
