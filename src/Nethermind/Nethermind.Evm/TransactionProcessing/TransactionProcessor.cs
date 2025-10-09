@@ -40,6 +40,7 @@ namespace Nethermind.Evm.TransactionProcessing
         private readonly ICodeInfoRepository _codeInfoRepository;
         private SystemTransactionProcessor? _systemTransactionProcessor;
         private readonly ILogManager _logManager;
+        private readonly TracedAccessWorldState? _tracedAccessWorldState;
 
         [Flags]
         protected enum ExecutionOptions
@@ -93,6 +94,7 @@ namespace Nethermind.Evm.TransactionProcessing
             WorldState = worldState;
             VirtualMachine = virtualMachine;
             _codeInfoRepository = codeInfoRepository;
+            _tracedAccessWorldState = worldState as TracedAccessWorldState;
 
             Ecdsa = new EthereumEcdsa(specProvider.ChainId);
             _logManager = logManager;
@@ -248,11 +250,17 @@ namespace Nethermind.Evm.TransactionProcessing
             int refunds = 0;
             foreach (AuthorizationTuple authTuple in tx.AuthorizationList)
             {
-                Address authority = (authTuple.Authority ??= Ecdsa.RecoverAddress(authTuple));
+                authTuple.Authority ??= Ecdsa.RecoverAddress(authTuple);
+                Address authority = authTuple.Authority;
 
                 if (!IsValidForExecution(authTuple, accessTracker, out string? error))
                 {
                     if (Logger.IsDebug) Logger.Debug($"Delegation {authTuple} is invalid with error: {error}");
+
+                    if (_tracedAccessWorldState is not null && _tracedAccessWorldState.Enabled)
+                    {
+                        _tracedAccessWorldState.AddAccountRead(authority);
+                    }
                 }
                 else
                 {
