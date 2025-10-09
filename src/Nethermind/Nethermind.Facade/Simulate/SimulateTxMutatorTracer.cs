@@ -5,7 +5,6 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using Nethermind.Abi;
-using Nethermind.Blockchain.Tracing;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Evm;
@@ -17,7 +16,7 @@ using Log = Nethermind.Facade.Proxy.Models.Simulate.Log;
 
 namespace Nethermind.Facade.Simulate;
 
-public sealed class SimulateTxMutatorTracer : TxTracer, ITxLogsMutator
+public sealed class SimulateTxMutatorTracer : TxTracer
 {
     private static readonly Hash256 transferSignature =
         new AbiSignature("Transfer", AbiType.Address, AbiType.Address, AbiType.UInt256).Hash;
@@ -27,7 +26,7 @@ public sealed class SimulateTxMutatorTracer : TxTracer, ITxLogsMutator
     private readonly ulong _currentBlockNumber;
     private readonly ulong _currentBlockTimestamp;
     private readonly ulong _txIndex;
-    private ICollection<LogEntry>? _logsToMutate;
+    private readonly List<LogEntry> _logs;
     private readonly Transaction _tx;
 
     public SimulateTxMutatorTracer(bool isTracingTransfers, Transaction tx, ulong currentBlockNumber, Hash256 currentBlockHash,
@@ -40,14 +39,12 @@ public sealed class SimulateTxMutatorTracer : TxTracer, ITxLogsMutator
         _currentBlockTimestamp = currentBlockTimestamp;
         _txIndex = txIndex;
         IsTracingReceipt = true;
-        IsTracingActions = IsMutatingLogs = isTracingTransfers;
+        IsTracingLogs = true;
+        IsTracingActions = isTracingTransfers;
+        _logs = new();
     }
 
     public SimulateCallResult? TraceResult { get; set; }
-
-    public bool IsMutatingLogs { get; }
-
-    public void SetLogsToMutate(ICollection<LogEntry> logsToMutate) => _logsToMutate = logsToMutate;
 
     public override void ReportAction(long gas, UInt256 value, Address from, Address to, ReadOnlyMemory<byte> input, ExecutionType callType, bool isPrecompileCall = false)
     {
@@ -56,8 +53,14 @@ public sealed class SimulateTxMutatorTracer : TxTracer, ITxLogsMutator
         {
             var data = AbiEncoder.Instance.Encode(AbiEncodingStyle.Packed, new AbiSignature("", AbiType.UInt256),
                 value);
-            _logsToMutate?.Add(new LogEntry(Erc20Sender, data, [transferSignature, (Hash256)from.ToHash(), (Hash256)to.ToHash()]));
+            _logs?.Add(new LogEntry(Erc20Sender, data, [transferSignature, (Hash256)from.ToHash(), (Hash256)to.ToHash()]));
         }
+    }
+
+    public override void ReportLog(LogEntry log)
+    {
+        base.ReportLog(log);
+        _logs.Add(log);
     }
 
     public override void MarkAsSuccess(Address recipient, GasConsumed gasSpent, byte[] output, LogEntry[] logs, Hash256? stateRoot = null)
@@ -67,7 +70,7 @@ public sealed class SimulateTxMutatorTracer : TxTracer, ITxLogsMutator
             GasUsed = (ulong)gasSpent.SpentGas,
             ReturnData = output,
             Status = StatusCode.Success,
-            Logs = logs.Select((entry, i) => new Log
+            Logs = _logs.Select((entry, i) => new Log
             {
                 Address = entry.Address,
                 Topics = entry.Topics,
@@ -78,7 +81,7 @@ public sealed class SimulateTxMutatorTracer : TxTracer, ITxLogsMutator
                 BlockHash = _currentBlockHash,
                 BlockNumber = _currentBlockNumber,
                 BlockTimestamp = _currentBlockTimestamp
-            }).ToList()
+            })
         };
     }
 

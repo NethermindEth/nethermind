@@ -5,10 +5,3 @@ using System.Collections.Generic;
 using Nethermind.Core;
 
 namespace Nethermind.Blockchain.Tracing;
-
-public interface ITxLogsMutator
-{
-    bool IsMutatingLogs { get; }
-
-    void SetLogsToMutate(ICollection<LogEntry> logsToMutate);
-}
