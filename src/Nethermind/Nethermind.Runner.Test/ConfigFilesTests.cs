@@ -108,7 +108,6 @@ public class ConfigFilesTests : ConfigFileTestsBase
     [TestCase("^validators ^spaceneth", false)]
     public void Mining_defaults_are_correct(string configWildcard, bool defaultValue = false)
     {
-        Test<IInitConfig, bool>(configWildcard, static c => c.IsMining, defaultValue);
         Test<IMiningConfig, bool>(configWildcard, static c => c.Enabled, defaultValue);
     }
 
@@ -246,7 +245,7 @@ public class ConfigFilesTests : ConfigFileTestsBase
     [TestCase("*")]
     public void Migrations_are_not_enabled_by_default(string configWildcard)
     {
-        Test<IInitConfig, bool>(configWildcard, static c => c.ReceiptsMigration, false);
+        Test<IReceiptConfig, bool>(configWildcard, static c => c.ReceiptsMigration, false);
         Test<IBloomConfig, bool>(configWildcard, static c => c.Migration, false);
         Test<IBloomConfig, bool>(configWildcard, static c => c.MigrationStatistics, false);
     }
