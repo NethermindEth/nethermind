@@ -245,15 +245,15 @@ public partial class DbOnTheRocks : IDb, ITunableDb, IReadOnlyNativeKeyValueStor
 
         long totalSize = 0;
         fileMetadatas = fileMetadatas.TakeWhile(metadata =>
+        {
+            availableMemory -= (long)metadata.metadata.FileSize;
+            bool take = availableMemory > 0;
+            if (take)
             {
-                availableMemory -= (long)metadata.metadata.FileSize;
-                bool take = availableMemory > 0;
-                if (take)
-                {
-                    totalSize += (long)metadata.metadata.FileSize;
-                }
-                return take;
-            })
+                totalSize += (long)metadata.metadata.FileSize;
+            }
+            return take;
+        })
             // We reverse them again so that lower level goes last so that it is the freshest.
             // Not all of the available memory is actually available so we are probably over reading things.
             .Reverse()
@@ -694,8 +694,8 @@ public partial class DbOnTheRocks : IDb, ITunableDb, IReadOnlyNativeKeyValueStor
         fixed (byte* ptr = &MemoryMarshal.GetReference(key))
         {
             handle = cf is null
-                ? Native.Instance.rocksdb_get_pinned(db, read_options, ptr, skLength, out errPtr)
-                : Native.Instance.rocksdb_get_pinned_cf(db, read_options, cf.Handle, ptr, skLength, out errPtr);
+                        ? Native.Instance.rocksdb_get_pinned(db, read_options, ptr, skLength, out errPtr)
+                        : Native.Instance.rocksdb_get_pinned_cf(db, read_options, cf.Handle, ptr, skLength, out errPtr);
         }
 
         if (errPtr != IntPtr.Zero) ThrowRocksDbException(errPtr);
