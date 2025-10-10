@@ -53,9 +53,6 @@ jobs:
           # Get the number of modified files
           modified_count=$(git status --porcelain | wc -l)
           echo "modified-count=$modified_count" >> $GITHUB_OUTPUT
-          echo "runtime-tag=$runtime_tag" >> $GITHUB_OUTPUT
-          echo "runtime-chiseled-digest=$runtime_chiseled_digest" >> $GITHUB_OUTPUT
-          echo "sdk-tag=$sdk_tag" >> $GITHUB_OUTPUT
 
       - name: Create a pull request
         if: steps.update.outputs.modified-count != '0'
@@ -64,12 +61,11 @@ jobs:
         run: |
           head_branch=chore/update-dockerfiles-$GITHUB_RUN_NUMBER-$GITHUB_RUN_ATTEMPT
           body=$(cat <<'EOF'
-          Updated Dockerfiles to use the latest .NET ${{ env.DOTNET_VERSION }} SDK and runtime versions.
+          Updated Dockerfiles to use the latest versions of .NET ${{ env.DOTNET_VERSION }} SDK and runtime.
 
           To verify manually, see:
-          - https://mcr.microsoft.com/en-us/artifact/mar/dotnet/aspnet/tags/${{ steps.update.outputs.runtime-tag }}
-          - https://mcr.microsoft.com/en-us/artifact/mar/dotnet/aspnet/tags/${{ steps.update.outputs.runtime-chiseled-digest }}
-          - https://mcr.microsoft.com/en-us/artifact/mar/dotnet/sdk/tags/${{ steps.update.outputs.sdk-tag }}
+          - https://mcr.microsoft.com/en-us/artifact/mar/dotnet/aspnet/tags
+          - https://mcr.microsoft.com/en-us/artifact/mar/dotnet/sdk/tags
           EOF
           )
 
