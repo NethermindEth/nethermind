@@ -84,6 +84,11 @@ public class TrieStoreScopeProvider : IWorldStateScopeProvider
             return account;
         }
 
+        public void HintGet(Address address, Account? account)
+        {
+            _loadedAccounts.TryAdd(address, account);
+        }
+
         public IWorldStateScopeProvider.ICodeDb CodeDb => _codeDb1;
 
         internal StateTree _backingStateTree;
@@ -168,6 +173,8 @@ public class TrieStoreScopeProvider : IWorldStateScopeProvider
         private readonly Dictionary<AddressAsKey, Account?> _dirtyAccounts = new(estimatedAccountCount);
         private readonly ConcurrentQueue<(AddressAsKey, Hash256)> _dirtyStorageTree = new();
 
+        public event EventHandler<IWorldStateScopeProvider.AccountUpdated>? OnAccountUpdated;
+
         public void Set(Address key, Account? account)
         {
             _dirtyAccounts[key] = account;
@@ -185,38 +192,23 @@ public class TrieStoreScopeProvider : IWorldStateScopeProvider
 
         public void Dispose()
         {
-            Dictionary<AddressAsKey, Hash256> storageRootChange = new Dictionary<AddressAsKey, Hash256>();
-
             while (_dirtyStorageTree.TryDequeue(out var entry))
             {
                 (AddressAsKey key, Hash256 storageRoot) = entry;
                 ref Account? account = ref CollectionsMarshal.GetValueRefOrAddDefault(_dirtyAccounts, key, out bool exists);
                 if (!exists) account = scope.Get(key) ?? ThrowNullAccount(key);
 
-                storageRootChange[key] = storageRoot;
+                account = account!.WithChangedStorageRoot(storageRoot);
+                _dirtyAccounts[key] = account;
+                OnAccountUpdated?.Invoke(key, new IWorldStateScopeProvider.AccountUpdated(key, account));
+                if (logger.IsTrace) Trace(key, storageRoot, account);
             }
 
             using (var stateSetter = scope._backingStateTree.BeginSet(_dirtyAccounts.Count))
             {
                 foreach (var kv in _dirtyAccounts)
                 {
-                    Hash256? storageRoot = null;
-                    Account? account = kv.Value;
-                    if (account is not null)
-                    {
-                        if (!storageRootChange.TryGetValue(kv.Key, out storageRoot))
-                        {
-                            storageRoot = scope.Get(kv.Key)?.StorageRoot;
-                        }
-
-                        if (account.StorageRoot != storageRoot)
-                        {
-                            account = kv.Value.WithChangedStorageRoot(storageRoot);
-                        }
-                    }
-
-                    stateSetter.Set(kv.Key, account);
-                    if (logger.IsTrace) Trace(kv.Key, storageRoot, account);
+                    stateSetter.Set(kv.Key, kv.Value);
                 }
             }
 
