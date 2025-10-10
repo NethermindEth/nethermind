@@ -194,24 +194,35 @@ public abstract class BlockchainTestBase
                 {
                     // TODO: mimic the actual behaviour where block goes through validating sync manager?
                     correctRlp[i].Block.Header.IsPostMerge = correctRlp[i].Block.Difficulty == 0;
-                    if (!test.SealEngineUsed || blockValidator.ValidateSuggestedBlock(correctRlp[i].Block, parentHeader, out _))
+                    // Always validate consensus rules, regardless of seal engine
+                    // (seal validation is already conditional within the validator framework)
+                    if (blockValidator.ValidateSuggestedBlock(correctRlp[i].Block, parentHeader, out var _error))
                     {
+                        // Validation PASSED
+                        if (correctRlp[i].ExpectedException is not null)
+                        {
+                            Assert.Fail($"Expected block {correctRlp[i].Block.Hash} to fail with '{correctRlp[i].ExpectedException}', but it passed validation");
+                        }
                         blockTree.SuggestBlock(correctRlp[i].Block);
                     }
                     else
                     {
-                        if (correctRlp[i].ExpectedException is not null)
+                        // Validation FAILED
+                        if (correctRlp[i].ExpectedException is null)
                         {
-                            Assert.Fail($"Unexpected invalid block {correctRlp[i].Block.Hash}");
+                            Assert.Fail($"Unexpected invalid block {correctRlp[i].Block.Hash}: {_error}");
                         }
+                        // else: Expected to fail and did fail → this is correct behavior
                     }
                 }
                 catch (InvalidBlockException e)
                 {
-                    if (correctRlp[i].ExpectedException is not null)
+                    // Exception thrown during block processing
+                    if (correctRlp[i].ExpectedException is null)
                     {
                         Assert.Fail($"Unexpected invalid block {correctRlp[i].Block.Hash}: {e}");
                     }
+                    // else: Expected to fail and did fail via exception → this is correct behavior
                 }
                 catch (Exception e)
                 {
