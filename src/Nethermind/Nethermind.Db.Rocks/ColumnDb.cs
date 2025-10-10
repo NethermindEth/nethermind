@@ -193,7 +193,7 @@ public class ColumnDb : IDb, ISortedKeyValueStore
     {
         return _mainDb.GetViewBetween(firstKey, lastKey, _columnFamily);
     }
-    
+
     public IIterator GetIterator(bool isTailing = false)
     {
         return _mainDb.GetIterator(isTailing, _columnFamily);
