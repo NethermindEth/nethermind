@@ -97,16 +97,16 @@ namespace Nethermind.Facade
             return false;
         }
 
-        public (TxReceipt? Receipt, TxGasInfo? GasInfo, int LogIndexStart) GetReceiptAndGasInfo(Hash256 txHash)
+        public (TxReceipt? Receipt, ulong BlockTimestamp, TxGasInfo? GasInfo, int LogIndexStart) GetTxReceiptInfo(Hash256 txHash)
         {
             if (TryGetCanonicalTransaction(txHash, out Transaction? tx, out TxReceipt? txReceipt, out Block? block, out TxReceipt[]? txReceipts))
             {
                 int logIndexStart = txReceipts.GetBlockLogFirstIndex(txReceipt.Index);
                 IReleaseSpec spec = specProvider.GetSpec(block.Header);
-                return (txReceipt, tx.GetGasInfo(spec, block.Header), logIndexStart);
+                return (txReceipt, block.Timestamp, tx.GetGasInfo(spec, block.Header), logIndexStart);
             }
 
-            return (null, null, 0);
+            return (null, 0, null, 0);
         }
 
         public (TxReceipt? Receipt, Transaction Transaction, UInt256? baseFee) GetTransaction(Hash256 txHash, bool checkTxnPool = true) =>
@@ -254,6 +254,8 @@ namespace Nethermind.Facade
                 ? BaseFeeCalculator.Calculate(blockHeader, releaseSpec)
                 : blockHeader.BaseFeePerGas;
 
+            UInt256 blobBaseFee = UInt256.Zero;
+
             if (releaseSpec.IsEip4844Enabled)
             {
                 callHeader.BlobGasUsed = BlobGasCalculator.CalculateBlobGas(transaction);
@@ -261,7 +263,7 @@ namespace Nethermind.Facade
                     ? BlobGasCalculator.CalculateExcessBlobGas(blockHeader, releaseSpec)
                     : blockHeader.ExcessBlobGas;
 
-                if (transaction.Type is TxType.Blob && transaction.MaxFeePerBlobGas is null && BlobGasCalculator.TryCalculateFeePerBlobGas(callHeader, releaseSpec.BlobBaseFeeUpdateFraction, out UInt256 blobBaseFee))
+                if (transaction.Type is TxType.Blob && transaction.MaxFeePerBlobGas is null && BlobGasCalculator.TryCalculateFeePerBlobGas(callHeader, releaseSpec.BlobBaseFeeUpdateFraction, out blobBaseFee))
                 {
                     transaction.MaxFeePerBlobGas = blobBaseFee;
                 }
@@ -269,7 +271,7 @@ namespace Nethermind.Facade
             callHeader.MixHash = blockHeader.MixHash;
             callHeader.IsPostMerge = blockHeader.Difficulty == 0;
             transaction.Hash = transaction.CalculateHash();
-            BlockExecutionContext blockExecutionContext = new(callHeader, releaseSpec, releaseSpec.BlobBaseFeeUpdateFraction);
+            BlockExecutionContext blockExecutionContext = new(callHeader, releaseSpec, blobBaseFee);
             return components.TransactionProcessor.CallAndRestore(transaction, in blockExecutionContext, tracer);
         }
 

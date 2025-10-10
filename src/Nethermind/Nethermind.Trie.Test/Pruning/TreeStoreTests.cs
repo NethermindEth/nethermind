@@ -106,12 +106,12 @@ namespace Nethermind.Trie.Test.Pruning
                 using (var _ = fullTrieStore.BeginScope(baseBlock))
                 {
                     pt.Set(TestItem.KeccakA.BytesToArray(), TestItem.Keccaks[i].BytesToArray());
-                    using (ICommitter? committer = fullTrieStore.BeginStateBlockCommit(i + 1, trieNode))
+                    using (fullTrieStore.BeginStateBlockCommit(i + 1, trieNode))
                     {
                         pt.Commit();
                     }
 
-                    baseBlock = Build.A.BlockHeader.WithParent(baseBlock).WithStateRoot(pt.RootHash).TestObject;
+                    baseBlock = Build.A.BlockHeader.WithParentOptional(baseBlock).WithStateRoot(pt.RootHash).TestObject;
                 }
                 await Task.Yield();
                 fullTrieStore.WaitForPruning();
@@ -1089,12 +1089,12 @@ namespace Nethermind.Trie.Test.Pruning
                     topTree.Set(key1, [1, 2]);
                     topTree.Set(key2, [4, (byte)(i % 4)]);
 
-                    using (ICommitter committer = fullTrieStore.BeginStateBlockCommit(i, topTree.Root))
+                    using (fullTrieStore.BeginStateBlockCommit(i, topTree.Root))
                     {
                         topTree.Commit();
                     }
 
-                    baseBlock = Build.A.BlockHeader.WithParent(baseBlock).WithStateRoot(topTree.RootHash).TestObject;
+                    baseBlock = Build.A.BlockHeader.WithParentOptional(baseBlock).WithStateRoot(topTree.RootHash).TestObject;
                 }
 
                 fullTrieStore.WaitForPruning();

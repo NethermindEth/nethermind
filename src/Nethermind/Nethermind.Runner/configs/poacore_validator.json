@@ -1,8 +1,6 @@
 {
   "$schema": "https://raw.githubusercontent.com/NethermindEth/core-scripts/refs/heads/main/schemas/config.json",
   "Init": {
-    "StoreReceipts": false,
-    "IsMining": true,
     "ChainSpecPath": "chainspec/poacore.json",
     "GenesisHash": "0x39f02c003dde5b073b3f6e1700fc0b84b4877f6839bb23edadd3d2d82a488634",
     "BaseDbPath": "nethermind_db/poacore",
@@ -32,5 +30,13 @@
   },
   "Merge": {
     "Enabled": false
+  },
+  "Mining":
+  {
+    "Enabled": true
+  },
+  "Receipt":
+  {
+    "StoreReceipts": false
   }
 }

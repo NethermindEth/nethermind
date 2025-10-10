@@ -134,16 +134,16 @@ namespace Nethermind.Facade.Find
 
         private IEnumerable<FilterLog> FilterLogsWithBloomsIndex(LogFilter filter, BlockHeader fromBlock, BlockHeader toBlock, CancellationToken cancellationToken)
         {
-            Hash256? FindBlockHash(long blockNumber, CancellationToken token)
+            BlockHeader? FindBlockHeader(long blockNumber, CancellationToken token)
             {
                 token.ThrowIfCancellationRequested();
-                var blockHash = _blockFinder.FindBlockHash(blockNumber);
-                if (blockHash is null)
+                var block = _blockFinder.FindHeader(blockNumber);
+                if (block is null)
                 {
                     if (_logger.IsError) _logger.Error($"Could not find block {blockNumber} in database. eth_getLogs will return incomplete results.");
                 }
 
-                return blockHash;
+                return block;
             }
 
             IEnumerable<long> FilterBlocks(LogFilter f, long @from, long to, bool runParallel, CancellationToken token)
@@ -191,7 +191,7 @@ namespace Nethermind.Facade.Find
             }
 
             return filterBlocks
-                .SelectMany(blockNumber => FindLogsInBlock(filter, FindBlockHash(blockNumber, cancellationToken), blockNumber, cancellationToken));
+                .SelectMany(blockNumber => FindLogsInBlock(filter, FindBlockHeader(blockNumber, cancellationToken), cancellationToken));
         }
 
         // TODO: Do not use for single block after testing - scanning it will be usually faster
@@ -330,22 +330,22 @@ namespace Nethermind.Facade.Find
 
         private IEnumerable<FilterLog> FindLogsInBlock(LogFilter filter, BlockHeader block, CancellationToken cancellationToken) =>
             filter.Matches(block.Bloom)
-                ? FindLogsInBlock(filter, block.Hash, block.Number, cancellationToken)
+                ? FindLogsInBlock(filter, block.Hash, block.Number, block.Timestamp, cancellationToken)
                 : [];
 
-        private IEnumerable<FilterLog> FindLogsInBlock(LogFilter filter, Hash256? blockHash, long blockNumber, CancellationToken cancellationToken)
+        private IEnumerable<FilterLog> FindLogsInBlock(LogFilter filter, Hash256 blockHash, long blockNumber, ulong blockTimestamp, CancellationToken cancellationToken)
         {
             if (blockHash is not null)
             {
                 return _receiptFinder.TryGetReceiptsIterator(blockNumber, blockHash, out var iterator)
-                    ? FilterLogsInBlockLowMemoryAllocation(filter, ref iterator, cancellationToken)
-                    : FilterLogsInBlockHighMemoryAllocation(filter, blockHash, blockNumber, cancellationToken);
+                    ? FilterLogsInBlockLowMemoryAllocation(filter, ref iterator, blockTimestamp, cancellationToken)
+                    : FilterLogsInBlockHighMemoryAllocation(filter, blockHash, blockNumber, blockTimestamp, cancellationToken);
             }
 
             return Array.Empty<FilterLog>();
         }
 
-        private static IEnumerable<FilterLog> FilterLogsInBlockLowMemoryAllocation(LogFilter filter, ref ReceiptsIterator iterator, CancellationToken cancellationToken)
+        private static IEnumerable<FilterLog> FilterLogsInBlockLowMemoryAllocation(LogFilter filter, ref ReceiptsIterator iterator, ulong blockTimestamp, CancellationToken cancellationToken)
         {
             List<FilterLog> logList = null;
             try
@@ -375,6 +375,7 @@ namespace Nethermind.Facade.Find
                                 logList.Add(new FilterLog(
                                     logIndexInBlock,
                                     receipt.BlockNumber,
+                                    blockTimestamp,
                                     receipt.BlockHash.ToCommitment(),
                                     receipt.Index,
                                     receipt.TxHash.ToCommitment(),
@@ -404,7 +405,7 @@ namespace Nethermind.Facade.Find
             return logList ?? (IEnumerable<FilterLog>)[];
         }
 
-        private IEnumerable<FilterLog> FilterLogsInBlockHighMemoryAllocation(LogFilter filter, Hash256 blockHash, long blockNumber, CancellationToken cancellationToken)
+        private IEnumerable<FilterLog> FilterLogsInBlockHighMemoryAllocation(LogFilter filter, Hash256 blockHash, long blockNumber, ulong blockTimestamp, CancellationToken cancellationToken)
         {
             TxReceipt[]? GetReceipts(Hash256 hash, long number)
             {
@@ -457,7 +458,7 @@ namespace Nethermind.Facade.Find
                             if (filter.Accepts(log))
                             {
                                 RecoverReceiptsData(blockHash, receipts);
-                                yield return new FilterLog(logIndexInBlock, receipt, log);
+                                yield return new FilterLog(logIndexInBlock, receipt, log, blockTimestamp);
                             }
 
                             logIndexInBlock++;

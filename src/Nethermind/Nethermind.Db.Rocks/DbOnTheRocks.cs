@@ -29,7 +29,7 @@ using IWriteBatch = Nethermind.Core.IWriteBatch;
 
 namespace Nethermind.Db.Rocks;
 
-public partial class DbOnTheRocks : IDb, ITunableDb, IReadOnlyNativeKeyValueStore
+public partial class DbOnTheRocks : IDb, ITunableDb, IReadOnlyNativeKeyValueStore, ISortedKeyValueStore
 {
     protected ILogger _logger;
 
@@ -344,7 +344,7 @@ public partial class DbOnTheRocks : IDb, ITunableDb, IReadOnlyNativeKeyValueStor
         return value;
     }
 
-    public IDbMeta.DbMetric GatherMetric(bool includeSharedCache = false)
+    public IDbMeta.DbMetric GatherMetric(bool isUsingSharedCache = false)
     {
         if (_isDisposed)
         {
@@ -361,7 +361,7 @@ public partial class DbOnTheRocks : IDb, ITunableDb, IReadOnlyNativeKeyValueStor
         return new IDbMeta.DbMetric()
         {
             Size = GetSize(),
-            CacheSize = GetCacheSize(includeSharedCache),
+            CacheSize = GetCacheSize(isUsingSharedCache),
             IndexSize = GetIndexSize(),
             MemtableSize = GetMemtableSize(),
             TotalReads = _totalReads,
@@ -386,11 +386,11 @@ public partial class DbOnTheRocks : IDb, ITunableDb, IReadOnlyNativeKeyValueStor
         return 0;
     }
 
-    private long GetCacheSize(bool includeSharedCache = false)
+    private long GetCacheSize(bool isUsingSharedCache = false)
     {
         try
         {
-            if (!includeSharedCache)
+            if (isUsingSharedCache)
             {
                 // returning 0 as we are using shared cache.
                 return 0;
@@ -1043,6 +1043,11 @@ public partial class DbOnTheRocks : IDb, ITunableDb, IReadOnlyNativeKeyValueStor
         if (options.UpperBound is { } upperBound)
             readOptions.SetIterateUpperBound(upperBound);
 
+        return CreateIterator(readOptions, ch);
+    }
+
+    protected internal Iterator CreateIterator(ReadOptions readOptions, ColumnFamilyHandle? ch = null)
+    {
         try
         {
             return _db.NewIterator(ch, readOptions);
@@ -1925,5 +1930,49 @@ public partial class DbOnTheRocks : IDb, ITunableDb, IReadOnlyNativeKeyValueStor
                 Interlocked.Exchange(ref Iterator, null)?.Dispose();
             }
         }
+    }
+
+    public byte[]? FirstKey
+    {
+        get
+        {
+            using Iterator iterator = _db.NewIterator();
+            iterator.SeekToFirst();
+            return iterator.Valid() ? iterator.GetKeySpan().ToArray() : null;
+        }
+    }
+
+    public byte[]? LastKey
+    {
+        get
+        {
+            using Iterator iterator = _db.NewIterator();
+            iterator.SeekToLast();
+            return iterator.Valid() ? iterator.GetKeySpan().ToArray() : null;
+        }
+    }
+
+    public ISortedView GetViewBetween(ReadOnlySpan<byte> firstKey, ReadOnlySpan<byte> lastKey)
+    {
+        return GetViewBetween(firstKey, lastKey, null);
+    }
+
+    internal ISortedView GetViewBetween(ReadOnlySpan<byte> firstKey, ReadOnlySpan<byte> lastKey, ColumnFamilyHandle? cf)
+    {
+        ReadOptions readOptions = new ReadOptions();
+
+        unsafe
+        {
+            IntPtr iterateLowerBound = Marshal.AllocHGlobal(firstKey.Length);
+            firstKey.CopyTo(new Span<byte>(iterateLowerBound.ToPointer(), firstKey.Length));
+            Native.Instance.rocksdb_readoptions_set_iterate_lower_bound(readOptions.Handle, iterateLowerBound, (UIntPtr)firstKey.Length);
+
+            IntPtr iterateUpperBound = Marshal.AllocHGlobal(lastKey.Length);
+            lastKey.CopyTo(new Span<byte>(iterateUpperBound.ToPointer(), lastKey.Length));
+            Native.Instance.rocksdb_readoptions_set_iterate_upper_bound(readOptions.Handle, iterateUpperBound, (UIntPtr)lastKey.Length);
+        }
+
+        Iterator iterator = CreateIterator(readOptions, cf);
+        return new RocksdbSortedView(iterator);
     }
 }

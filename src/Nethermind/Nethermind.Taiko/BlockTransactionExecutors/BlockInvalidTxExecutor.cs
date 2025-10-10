@@ -66,7 +66,7 @@ public class BlockInvalidTxExecutor(ITransactionProcessorAdapter txProcessor, IW
             // only end the trace if the transaction was successful
             // so that we don't increment the receipt index for failed transactions
             receiptsTracer.EndTxTrace();
-            TransactionProcessed?.Invoke(this, new TxProcessedEventArgs(i, tx, receiptsTracer.LastReceipt));
+            TransactionProcessed?.Invoke(this, new TxProcessedEventArgs(i, tx, block.Header, receiptsTracer.LastReceipt));
             correctTransactions.Add(tx);
         }
 
