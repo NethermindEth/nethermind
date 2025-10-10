@@ -121,8 +121,8 @@ public sealed class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadS
             return NewPayloadV1Result.Invalid(null, $"Block {request} could not be parsed as a block: {decodingResult.Error}");
         }
 
-        Console.WriteLine("suggested block:");
-        Console.WriteLine(block.BlockAccessList);
+        // Console.WriteLine("suggested block:");
+        // Console.WriteLine(block.BlockAccessList);
 
         string requestStr = $"New Block:  {request}";
         if (_logger.IsInfo)
