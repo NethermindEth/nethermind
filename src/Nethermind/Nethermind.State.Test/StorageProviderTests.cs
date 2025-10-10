@@ -442,6 +442,58 @@ public class StorageProviderTests
     }
 
     [Test]
+    public void Selfdestruct_works_across_blocks()
+    {
+        Context ctx = new(setInitialState: false);
+        WorldState provider = BuildStorageProvider(ctx);
+
+        BlockHeader baseBlock = null;
+        using (provider.BeginScope(baseBlock))
+        {
+            provider.CreateAccountIfNotExists(TestItem.AddressA, 100);
+            provider.Set(new StorageCell(TestItem.AddressA, 100), [1]);
+            provider.Set(new StorageCell(TestItem.AddressA, 200), [2]);
+
+            provider.Commit(Frontier.Instance);
+            provider.CommitTree(0);
+
+            baseBlock = Build.A.BlockHeader.WithStateRoot(provider.StateRoot).TestObject;
+        }
+
+        Hash256 originalStateRoot = baseBlock.StateRoot;
+
+        using (provider.BeginScope(baseBlock))
+        {
+            provider.CreateAccountIfNotExists(TestItem.AddressA, 100);
+            provider.ClearStorage(TestItem.AddressA);
+            provider.Set(new StorageCell(TestItem.AddressA, 101), [10]);
+            provider.Set(new StorageCell(TestItem.AddressA, 200), [2]);
+
+            provider.Commit(Frontier.Instance);
+            provider.CommitTree(0);
+
+            baseBlock = Build.A.BlockHeader.WithParent(baseBlock).WithStateRoot(provider.StateRoot).TestObject;
+        }
+
+        baseBlock.StateRoot.Should().NotBe(originalStateRoot);
+
+        using (provider.BeginScope(baseBlock))
+        {
+            provider.CreateAccountIfNotExists(TestItem.AddressA, 100);
+            provider.ClearStorage(TestItem.AddressA);
+            provider.Set(new StorageCell(TestItem.AddressA, 100), [1]);
+            provider.Set(new StorageCell(TestItem.AddressA, 200), [2]);
+
+            provider.Commit(Frontier.Instance);
+            provider.CommitTree(0);
+
+            baseBlock = Build.A.BlockHeader.WithParent(baseBlock).WithStateRoot(provider.StateRoot).TestObject;
+        }
+
+        baseBlock.StateRoot.Should().Be(originalStateRoot);
+    }
+
+    [Test]
     public void Selfdestruct_persist_between_commit()
     {
         PreBlockCaches preBlockCaches = new PreBlockCaches();
@@ -460,7 +512,8 @@ public class StorageProviderTests
     [TestCase(1000)]
     public void Set_empty_value_for_storage_cell_without_read_clears_data(int numItems)
     {
-        IWorldState worldState = new WorldState(TestTrieStoreFactory.Build(new MemDb(), LimboLogs.Instance), Substitute.For<IDb>(), LogManager);
+        IWorldState worldState = new WorldState(
+            new TrieStoreScopeProvider(TestTrieStoreFactory.Build(new MemDb(), LimboLogs.Instance), new MemDb(), LimboLogs.Instance), LogManager);
 
         using var disposable = worldState.BeginScope(IWorldState.PreGenesis);
         worldState.CreateAccount(TestItem.AddressA, 1);
@@ -494,7 +547,8 @@ public class StorageProviderTests
     [Test]
     public void Set_empty_value_for_storage_cell_with_read_clears_data()
     {
-        IWorldState worldState = new WorldState(TestTrieStoreFactory.Build(new MemDb(), LimboLogs.Instance), Substitute.For<IDb>(), LogManager);
+        IWorldState worldState = new WorldState(
+            new TrieStoreScopeProvider(TestTrieStoreFactory.Build(new MemDb(), LimboLogs.Instance), new MemDb(), LimboLogs.Instance), LogManager);
 
         using var disposable = worldState.BeginScope(IWorldState.PreGenesis);
         worldState.CreateAccount(TestItem.AddressA, 1);
@@ -531,7 +585,16 @@ public class StorageProviderTests
 
         public Context(PreBlockCaches preBlockCaches = null, bool setInitialState = true)
         {
-            StateProvider = new WorldState(TestTrieStoreFactory.Build(new MemDb(), LimboLogs.Instance), Substitute.For<IDb>(), LogManager, preBlockCaches);
+            IWorldStateScopeProvider scopeProvider = new TrieStoreScopeProvider(
+                TestTrieStoreFactory.Build(new MemDb(), LimboLogs.Instance),
+                new MemDb(), LimboLogs.Instance);
+
+            if (preBlockCaches is not null)
+            {
+                scopeProvider = new PrewarmerScopeProvider(scopeProvider, preBlockCaches, populatePreBlockCache: true);
+            }
+
+            StateProvider = new WorldState(scopeProvider, LogManager);
             if (setInitialState)
             {
                 StateProvider.BeginScope(IWorldState.PreGenesis);
