@@ -442,6 +442,58 @@ public class StorageProviderTests
     }
 
     [Test]
+    public void Selfdestruct_works_across_blocks()
+    {
+        Context ctx = new(setInitialState: false);
+        WorldState provider = BuildStorageProvider(ctx);
+
+        BlockHeader baseBlock = null;
+        using (provider.BeginScope(baseBlock))
+        {
+            provider.CreateAccountIfNotExists(TestItem.AddressA, 100);
+            provider.Set(new StorageCell(TestItem.AddressA, 100), [1]);
+            provider.Set(new StorageCell(TestItem.AddressA, 200), [2]);
+
+            provider.Commit(Frontier.Instance);
+            provider.CommitTree(0);
+
+            baseBlock = Build.A.BlockHeader.WithStateRoot(provider.StateRoot).TestObject;
+        }
+
+        Hash256 originalStateRoot = baseBlock.StateRoot;
+
+        using (provider.BeginScope(baseBlock))
+        {
+            provider.CreateAccountIfNotExists(TestItem.AddressA, 100);
+            provider.ClearStorage(TestItem.AddressA);
+            provider.Set(new StorageCell(TestItem.AddressA, 101), [10]);
+            provider.Set(new StorageCell(TestItem.AddressA, 200), [2]);
+
+            provider.Commit(Frontier.Instance);
+            provider.CommitTree(0);
+
+            baseBlock = Build.A.BlockHeader.WithParent(baseBlock).WithStateRoot(provider.StateRoot).TestObject;
+        }
+
+        baseBlock.StateRoot.Should().NotBe(originalStateRoot);
+
+        using (provider.BeginScope(baseBlock))
+        {
+            provider.CreateAccountIfNotExists(TestItem.AddressA, 100);
+            provider.ClearStorage(TestItem.AddressA);
+            provider.Set(new StorageCell(TestItem.AddressA, 100), [1]);
+            provider.Set(new StorageCell(TestItem.AddressA, 200), [2]);
+
+            provider.Commit(Frontier.Instance);
+            provider.CommitTree(0);
+
+            baseBlock = Build.A.BlockHeader.WithParent(baseBlock).WithStateRoot(provider.StateRoot).TestObject;
+        }
+
+        baseBlock.StateRoot.Should().Be(originalStateRoot);
+    }
+
+    [Test]
     public void Selfdestruct_persist_between_commit()
     {
         PreBlockCaches preBlockCaches = new PreBlockCaches();

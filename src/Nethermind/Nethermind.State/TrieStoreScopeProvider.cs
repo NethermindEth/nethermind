@@ -242,7 +242,7 @@ public class TrieStoreScopeProvider : IWorldStateScopeProvider
         public void Clear()
         {
             if (_wasSetCalled) throw new InvalidOperationException("Must call clear first in a storage write batch");
-            _hasSelfDestruct = false;
+            _hasSelfDestruct = true;
         }
 
         public void Dispose()
