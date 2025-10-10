@@ -185,19 +185,42 @@ public abstract class BlockchainTestBase
 
             try
             {
-                // TODO: mimic the actual behaviour where block goes through validating sync manager?
+                // Mimic the actual behaviour where block goes through validating sync manager
                 correctRlp[i].Block.Header.IsPostMerge = correctRlp[i].Block.Difficulty == 0;
-                if (!test.SealEngineUsed || blockValidator.ValidateSuggestedBlock(correctRlp[i].Block, parentHeader, out var _error))
+
+                // Recalculate total difficulty as we don't trust total difficulty from test data
+                // This mimics the behavior in SyncServer.SyncBlock where TD is recalculated
+                if (parentHeader.TotalDifficulty is not null)
                 {
-                    blockTree.SuggestBlock(correctRlp[i].Block);
+                    correctRlp[i].Block.Header.TotalDifficulty = parentHeader.TotalDifficulty + correctRlp[i].Block.Header.Difficulty;
                 }
-                else
+
+                // Validate block structure first (mimics SyncServer validation)
+                if (!blockValidator.ValidateSuggestedBlock(correctRlp[i].Block, parentHeader, out var validationError))
                 {
                     if (correctRlp[i].ExpectedException is not null)
                     {
-                        Assert.Fail($"Unexpected invalid block {correctRlp[i].Block.Hash}");
+                        Assert.Fail($"Unexpected invalid block {correctRlp[i].Block.Hash}: {validationError}");
+                    }
+                    continue; // Skip invalid blocks
+                }
+
+                // Validate seal if seal engine is used (mimics SyncServer.ValidateSeal)
+                if (test.SealEngineUsed)
+                {
+                    ISealValidator sealValidator = container.Resolve<ISealValidator>();
+                    if (!sealValidator.ValidateSeal(correctRlp[i].Block.Header, true))
+                    {
+                        if (correctRlp[i].ExpectedException is not null)
+                        {
+                            Assert.Fail($"Unexpected invalid seal for block {correctRlp[i].Block.Hash}");
+                        }
+                        continue; // Skip blocks with invalid seals
                     }
                 }
+
+                // All validations passed, suggest the block
+                blockTree.SuggestBlock(correctRlp[i].Block);
             }
             catch (InvalidBlockException e)
             {
