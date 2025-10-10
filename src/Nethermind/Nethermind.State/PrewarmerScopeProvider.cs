@@ -77,6 +77,7 @@ public class PrewarmerScopeProvider(
             {
                 if (preBlockCache?.TryGetValue(addressAsKey, out Account? account) ?? false)
                 {
+                    baseScope.HintGet(address, account);
                     Metrics.IncrementStateTreeCacheHits();
                 }
                 else
@@ -86,6 +87,8 @@ public class PrewarmerScopeProvider(
                 return account;
             }
         }
+
+        public void HintGet(Address address, Account? account) => baseScope.HintGet(address, account);
 
         private Account? GetFromBaseTree(AddressAsKey address)
         {
@@ -122,6 +125,7 @@ public class PrewarmerScopeProvider(
             {
                 if (preBlockCache?.TryGetValue(storageCell, out byte[] value) ?? false)
                 {
+                    baseStorageTree.HintGet(index, value);
                     Db.Metrics.IncrementStorageTreeCache();
                 }
                 else
@@ -131,6 +135,8 @@ public class PrewarmerScopeProvider(
                 return value;
             }
         }
+
+        public void HintGet(in UInt256 index, byte[]? value) => baseStorageTree.HintGet(in index, value);
 
         private byte[] LoadFromTreeStorage(StorageCell storageCell)
         {
