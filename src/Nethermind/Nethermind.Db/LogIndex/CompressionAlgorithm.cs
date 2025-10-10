@@ -4,7 +4,7 @@
 using System;
 using System.Collections.Generic;
 using System.Runtime.CompilerServices;
-using static Nethermind.Db.TurboPFor;
+using static Nethermind.TurboPFor.TurboPFor;
 
 namespace Nethermind.Db;
 
