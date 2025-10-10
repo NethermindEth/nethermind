@@ -67,7 +67,7 @@ namespace Nethermind.Facade.Find
         }
 
         private BlockHeader FindHeader(BlockParameter blockParameter, string name) =>
-            _blockFinder.FindHeader(blockParameter) ?? throw new ResourceNotFoundException($"Block not found: {name} {blockParameter}");
+            _blockFinder.FindHeader(blockParameter, false) ?? throw new ResourceNotFoundException($"Block not found: {name} {blockParameter}");
 
         private BlockHeader FindHeader(int number) => FindHeader(new(number), $"{number}");
 
@@ -132,20 +132,20 @@ namespace Nethermind.Facade.Find
             return blocksToSearch > 1; // if we are searching only in 1 block skip bloom index altogether, this can be tweaked
         }
 
-        private IEnumerable<FilterLog> FilterLogsWithBloomsIndex(LogFilter filter, BlockHeader fromBlock, BlockHeader toBlock, CancellationToken cancellationToken)
+        private BlockHeader? FindBlockHeader(long blockNumber, CancellationToken token)
         {
-            BlockHeader? FindBlockHeader(long blockNumber, CancellationToken token)
+            token.ThrowIfCancellationRequested();
+            var block = _blockFinder.FindHeader(blockNumber);
+            if (block is null)
             {
-                token.ThrowIfCancellationRequested();
-                var block = _blockFinder.FindHeader(blockNumber);
-                if (block is null)
-                {
-                    if (_logger.IsError) _logger.Error($"Could not find block {blockNumber} in database. eth_getLogs will return incomplete results.");
-                }
-
-                return block;
+                if (_logger.IsError) _logger.Error($"Could not find block {blockNumber} in database. eth_getLogs will return incomplete results.");
             }
 
+            return block;
+        }
+
+        private IEnumerable<FilterLog> FilterLogsWithBloomsIndex(LogFilter filter, BlockHeader fromBlock, BlockHeader toBlock, CancellationToken cancellationToken)
+        {
             IEnumerable<long> FilterBlocks(LogFilter f, long @from, long to, bool runParallel, CancellationToken token)
             {
                 try
@@ -243,24 +243,10 @@ namespace Nethermind.Facade.Find
             return true;
         }
 
+        // TODO: merge common code with FilterLogsWithBloomsIndex
         private IEnumerable<FilterLog> FilterLogsUsingIndex(LogFilter filter, BlockHeader fromBlock, BlockHeader toBlock,
             CancellationToken cancellationToken)
         {
-            // TODO: merge common code with FilterLogsWithBloomsIndex
-
-            Hash256? FindBlockHash(long blockNumber, CancellationToken token)
-            {
-                token.ThrowIfCancellationRequested();
-                var blockHash = _blockFinder.FindBlockHash(blockNumber);
-                if (blockHash is null)
-                {
-                    if (_logger.IsError)
-                        _logger.Error($"Could not find block {blockNumber} in database. eth_getLogs will return incomplete results.");
-                }
-
-                return blockHash;
-            }
-
             IEnumerable<long> FilterBlocks(LogFilter f, long from, long to, bool runParallel, CancellationToken token)
             {
                 try
@@ -308,7 +294,7 @@ namespace Nethermind.Facade.Find
             }
 
             return filterBlocks
-                .SelectMany(blockNumber => FindLogsInBlock(filter, FindBlockHash(blockNumber, cancellationToken), blockNumber, cancellationToken));
+                .SelectMany(blockNumber => FindLogsInBlock(filter, FindBlockHeader(blockNumber, cancellationToken), cancellationToken));
         }
 
         private IEnumerable<FilterLog> FilterLogsIteratively(LogFilter filter, BlockHeader fromBlock, BlockHeader toBlock, CancellationToken cancellationToken)
@@ -328,9 +314,9 @@ namespace Nethermind.Facade.Find
             }
         }
 
-        private IEnumerable<FilterLog> FindLogsInBlock(LogFilter filter, BlockHeader block, CancellationToken cancellationToken) =>
-            filter.Matches(block.Bloom)
-                ? FindLogsInBlock(filter, block.Hash, block.Number, block.Timestamp, cancellationToken)
+        private IEnumerable<FilterLog> FindLogsInBlock(LogFilter filter, BlockHeader? block, CancellationToken cancellationToken) =>
+            block is not null && filter.Matches(block.Bloom!)
+                ? FindLogsInBlock(filter, block.Hash!, block.Number, block.Timestamp, cancellationToken)
                 : [];
 
         private IEnumerable<FilterLog> FindLogsInBlock(LogFilter filter, Hash256 blockHash, long blockNumber, ulong blockTimestamp, CancellationToken cancellationToken)
