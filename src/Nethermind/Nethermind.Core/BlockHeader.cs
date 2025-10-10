@@ -15,6 +15,14 @@ namespace Nethermind.Core;
 
 public static class Out
 {
+    public static void LogAlways(string log)
+    {
+        if (Environment.GetEnvironmentVariable("TRACE_SHOW_STACKTRACE") == "true")
+            Console.WriteLine(GetCallStackString());
+
+        Console.WriteLine(log);
+    }
+
     public static void Log(string log)
     {
         string? targetBlock = Environment.GetEnvironmentVariable("TARGET_BLOCK_NUMBER");

@@ -10,24 +10,38 @@ using Nethermind.Int256;
 
 namespace Nethermind.Evm;
 
-public readonly struct BlockExecutionContext(BlockHeader blockHeader, IReleaseSpec spec, in UInt256 blobBaseFee)
+public readonly struct BlockExecutionContext
 {
-    public readonly BlockHeader Header = blockHeader;
-    public readonly Address Coinbase = blockHeader.GasBeneficiary ?? Address.Zero;
-    public readonly ulong Number = (ulong)blockHeader.Number;
-    public readonly ulong GasLimit = (ulong)blockHeader.GasLimit;
-    public readonly ValueHash256 BlobBaseFee = blobBaseFee.ToValueHash();
-    public readonly IReleaseSpec Spec = spec;
+    public readonly BlockHeader Header;
+    public readonly Address Coinbase;
+    public readonly ulong Number;
+    public readonly ulong GasLimit;
+    public readonly ValueHash256 BlobBaseFee;
+    public readonly IReleaseSpec Spec;
 
     // Use the random value if post-merge; otherwise, use block difficulty.
-    public readonly ValueHash256 PrevRandao = blockHeader.IsPostMerge
-        ? (blockHeader.Random ?? Hash256.Zero).ValueHash256
-        : blockHeader.Difficulty.ToValueHash();
+    public readonly ValueHash256 PrevRandao;
 
-    public readonly bool IsGenesis = blockHeader.IsGenesis;
+    public readonly bool IsGenesis;
 
     public BlockExecutionContext(BlockHeader blockHeader, IReleaseSpec spec) : this(blockHeader, spec, GetBlobBaseFee(blockHeader, spec))
     {
+    }
+
+    public BlockExecutionContext(BlockHeader blockHeader, IReleaseSpec spec, in UInt256 blobBaseFee)
+    {
+        Out.Log($"transaction block execution context eip3860={spec.IsEip3860Enabled}");
+
+        Header = blockHeader;
+        Coinbase = blockHeader.GasBeneficiary ?? Address.Zero;
+        Number = (ulong)blockHeader.Number;
+        GasLimit = (ulong)blockHeader.GasLimit;
+        BlobBaseFee = blobBaseFee.ToValueHash();
+        Spec = spec;
+        PrevRandao = blockHeader.IsPostMerge
+            ? (blockHeader.Random ?? Hash256.Zero).ValueHash256
+            : blockHeader.Difficulty.ToValueHash();
+        IsGenesis = blockHeader.IsGenesis;
     }
 
     private static UInt256 GetBlobBaseFee(BlockHeader? blockHeader, IReleaseSpec spec) =>
