@@ -2,6 +2,12 @@ name: Assertoor tests
 
 on:
   workflow_dispatch:
+    inputs:
+      exclude:
+        description: Space-separated test names to exclude from retriveAllTests.py --exclude
+        type: string
+        required: false
+        default: pectra-dev verkle validator-lifecycle slashing mev big-calldata-tx
   workflow_run:
     workflows: ["Publish Docker image"]
     branches: [master]
@@ -40,7 +46,7 @@ jobs:
 
     - name: Run retriveAllTests.py script
       run: |
-        python assertoor-test/scripts/retriveAllTests/retriveAllTests.py --exclude "pectra-dev" "verkle" "validator-lifecycle" "slashing" "mev" "big-calldata-tx" > /tmp/output.txt
+        python assertoor-test/scripts/retriveAllTests/retriveAllTests.py --exclude ${{ inputs.exclude }} > /tmp/output.txt
         cat /tmp/output.txt
         chmod 777 /tmp/output.txt
         echo "ASSERTOOR_PARAMS_FILE=/tmp/output.txt" >> $GITHUB_ENV
