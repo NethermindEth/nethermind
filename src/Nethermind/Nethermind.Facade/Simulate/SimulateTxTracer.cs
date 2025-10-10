@@ -53,7 +53,18 @@ public sealed class SimulateTxTracer : TxTracer
         {
             var data = AbiEncoder.Instance.Encode(AbiEncodingStyle.Packed, new AbiSignature("", AbiType.UInt256),
                 value);
-            _logs.Add(new LogEntry(Erc20Sender, data, [transferSignature, (Hash256)from.ToHash(), (Hash256)to.ToHash()]));
+            _logs.Add(new LogEntry(Erc20Sender, data, [transferSignature, from.ToHash().ToHash256(), to.ToHash().ToHash256()]));
+        }
+    }
+
+    public override void ReportSelfDestruct(Address address, UInt256 balance, Address refundAddress)
+    {
+        base.ReportSelfDestruct(address, balance, refundAddress);
+        if (balance > UInt256.Zero)
+        {
+            var data = AbiEncoder.Instance.Encode(AbiEncodingStyle.Packed, new AbiSignature("", AbiType.UInt256),
+                balance);
+            _logs.Add(new LogEntry(Erc20Sender, data, [transferSignature, address.ToHash().ToHash256(), refundAddress.ToHash().ToHash256()]));
         }
     }
 
