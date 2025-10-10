@@ -18,7 +18,6 @@ using Nethermind.Crypto;
 using Nethermind.Logging;
 using Nethermind.Network.P2P;
 using Nethermind.Network.P2P.Messages;
-using Nethermind.Network.P2P.Subprotocols.Eth;
 using Nethermind.Network.P2P.Subprotocols.Eth.V62.Messages;
 using Nethermind.Network.P2P.Subprotocols.Eth.V65;
 using Nethermind.Network.P2P.Subprotocols.Eth.V65.Messages;
@@ -83,8 +82,6 @@ public class PooledTransactionsRequestingTests
             LimboLogs.Instance,
             new TransactionComparerProvider(specProvider, blockTree).GetDefaultComparer());
 
-        PooledTxsRequestor realPooledTxsRequestor = new(transactionPool, new TxPoolConfig(), specProvider);
-
         ISyncServer syncManager = Substitute.For<ISyncServer>();
         syncManager.Head.Returns(_genesisBlock.Header);
         syncManager.Genesis.Returns(_genesisBlock.Header);
@@ -98,7 +95,6 @@ public class PooledTransactionsRequestingTests
             syncManager,
             RunImmediatelyScheduler.Instance,
             transactionPool,
-            realPooledTxsRequestor,
             Substitute.For<IGossipPolicy>(),
             new ForkInfo(specProvider, syncManager),
             LimboLogs.Instance);
@@ -134,7 +130,6 @@ public class PooledTransactionsRequestingTests
             syncManager,
             RunImmediatelyScheduler.Instance,
             transactionPool,
-            realPooledTxsRequestor,
             _gossipPolicy,
             new ForkInfo(specProvider, syncManager),
             LimboLogs.Instance);

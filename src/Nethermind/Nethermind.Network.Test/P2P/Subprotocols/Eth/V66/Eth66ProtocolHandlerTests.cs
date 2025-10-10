@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Collections.Generic;
@@ -22,7 +22,6 @@ using Nethermind.Logging;
 using Nethermind.Network.P2P;
 using Nethermind.Network.P2P.Messages;
 using Nethermind.Network.P2P.Subprotocols;
-using Nethermind.Network.P2P.Subprotocols.Eth;
 using Nethermind.Network.P2P.Subprotocols.Eth.V62.Messages;
 using Nethermind.Network.P2P.Subprotocols.Eth.V65;
 using Nethermind.Network.P2P.Subprotocols.Eth.V65.Messages;
@@ -56,7 +55,6 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V66
         private IMessageSerializationService _svc = null!;
         private ISyncServer _syncManager = null!;
         private ITxPool _transactionPool = null!;
-        private IPooledTxsRequestor _pooledTxsRequestor = null!;
         private IGossipPolicy _gossipPolicy = null!;
         private ITimerFactory _timerFactory = null!;
         private ISpecProvider _specProvider = null!;
@@ -78,7 +76,6 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V66
             _session.When(s => s.DeliverMessage(Arg.Any<P2PMessage>())).Do(c => c.Arg<P2PMessage>().AddTo(_disposables));
             _syncManager = Substitute.For<ISyncServer>();
             _transactionPool = Substitute.For<ITxPool>();
-            _pooledTxsRequestor = Substitute.For<IPooledTxsRequestor>();
             _specProvider = Substitute.For<ISpecProvider>();
             _gossipPolicy = Substitute.For<IGossipPolicy>();
             _genesisBlock = Build.A.Block.Genesis.TestObject;
@@ -92,7 +89,6 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V66
                 _syncManager,
                 RunImmediatelyScheduler.Instance,
                 _transactionPool,
-                _pooledTxsRequestor,
                 _gossipPolicy,
                 new ForkInfo(_specProvider, _syncManager),
                 LimboLogs.Instance);
@@ -322,7 +318,6 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V66
                 _syncManager,
                 RunImmediatelyScheduler.Instance,
                 _transactionPool,
-                new PooledTxsRequestor(_transactionPool, new TxPoolConfig(), _specProvider),
                 _gossipPolicy,
                 new ForkInfo(_specProvider, _syncManager),
                 LimboLogs.Instance);

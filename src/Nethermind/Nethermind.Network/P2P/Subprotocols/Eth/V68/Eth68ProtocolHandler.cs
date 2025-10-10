@@ -1,53 +1,53 @@
-// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System;
-using System.Collections.Generic;
-using System.Diagnostics;
 using Nethermind.Consensus;
 using Nethermind.Consensus.Scheduler;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Extensions;
+using Nethermind.Core.Specs;
 using Nethermind.Logging;
 using Nethermind.Network.Contract.P2P;
+using Nethermind.Network.P2P.Subprotocols.Eth.V62.Messages;
 using Nethermind.Network.P2P.Subprotocols.Eth.V67;
 using Nethermind.Network.P2P.Subprotocols.Eth.V68.Messages;
 using Nethermind.Network.Rlpx;
 using Nethermind.Stats;
 using Nethermind.Synchronization;
 using Nethermind.TxPool;
+using System;
+using System.Collections.Generic;
+using System.Diagnostics;
 
 namespace Nethermind.Network.P2P.Subprotocols.Eth.V68;
 
-public class Eth68ProtocolHandler : Eth67ProtocolHandler
+public class Eth68ProtocolHandler(ISession session,
+    IMessageSerializationService serializer,
+    INodeStatsManager nodeStatsManager,
+    ISyncServer syncServer,
+    IBackgroundTaskScheduler backgroundTaskScheduler,
+    ITxPool txPool,
+    IGossipPolicy gossipPolicy,
+    IForkInfo forkInfo,
+    ILogManager logManager,
+    ITxPoolConfig txPoolConfig,
+    ISpecProvider specProvider,
+    ITxGossipPolicy? transactionsGossipPolicy = null
+    )
+    : Eth67ProtocolHandler(session, serializer, nodeStatsManager, syncServer, backgroundTaskScheduler, txPool, gossipPolicy, forkInfo, logManager, transactionsGossipPolicy)
 {
-    private readonly IPooledTxsRequestor _pooledTxsRequestor;
+    private readonly bool _blobSupportEnabled = txPoolConfig.BlobsSupport.IsEnabled();
+    private readonly long _configuredMaxTxSize = txPoolConfig.MaxTxSize ?? long.MaxValue;
 
-    private readonly Action<V66.Messages.GetPooledTransactionsMessage> _sendAction;
+    private readonly long _configuredMaxBlobTxSize = txPoolConfig.MaxBlobTxSize is null
+        ? long.MaxValue
+        : txPoolConfig.MaxBlobTxSize.Value + (long)specProvider.GetFinalMaxBlobGasPerBlock();
 
     public override string Name => "eth68";
 
     public override byte ProtocolVersion => EthVersions.Eth68;
-
-    public Eth68ProtocolHandler(ISession session,
-        IMessageSerializationService serializer,
-        INodeStatsManager nodeStatsManager,
-        ISyncServer syncServer,
-        IBackgroundTaskScheduler backgroundTaskScheduler,
-        ITxPool txPool,
-        IPooledTxsRequestor pooledTxsRequestor,
-        IGossipPolicy gossipPolicy,
-        IForkInfo forkInfo,
-        ILogManager logManager,
-        ITxGossipPolicy? transactionsGossipPolicy = null)
-        : base(session, serializer, nodeStatsManager, syncServer, backgroundTaskScheduler, txPool, pooledTxsRequestor, gossipPolicy, forkInfo, logManager, transactionsGossipPolicy)
-    {
-        _pooledTxsRequestor = pooledTxsRequestor;
-
-        // Capture Action once rather than per call
-        _sendAction = Send;
-    }
 
     public override void HandleMessage(ZeroPacket message)
     {
@@ -96,9 +96,72 @@ public class Eth68ProtocolHandler : Eth67ProtocolHandler
 
         long startTime = isTrace ? Stopwatch.GetTimestamp() : 0;
 
-        _pooledTxsRequestor.RequestTransactionsEth68(_sendAction, message.Hashes, message.Sizes, message.Types, Session.SessionId);
+        RequestTransactions(message.Hashes, message.Sizes, message.Types);
 
         if (isTrace) Logger.Trace($"OUT {Counter:D5} {nameof(NewPooledTransactionHashesMessage68)} to {Node:c} in {Stopwatch.GetElapsedTime(startTime).TotalMilliseconds}ms");
+    }
+
+    public void RequestTransactions(IOwnedReadOnlyList<Hash256> hashes, IOwnedReadOnlyList<int> sizes, IOwnedReadOnlyList<byte> types)
+    {
+        using ArrayPoolList<(Hash256 Hash, byte Type, int Size)> discoveredTxHashesAndSizes = AddMarkUnknownHashes(hashes.AsSpan(), sizes.AsSpan(), types.AsSpan());
+        if (discoveredTxHashesAndSizes.Count == 0)
+        {
+            hashes.Dispose();
+            sizes.Dispose();
+            types.Dispose();
+            return;
+        }
+
+        int packetSizeLeft = TransactionsMessage.MaxPacketSize;
+        ArrayPoolList<Hash256> hashesToRequest = new(discoveredTxHashesAndSizes.Count);
+
+        var discoveredCount = discoveredTxHashesAndSizes.Count;
+        var toRequestCount = 0;
+
+        foreach ((Hash256 hash, byte type, int size) in discoveredTxHashesAndSizes.AsSpan())
+        {
+            int txSize = size;
+            TxType txType = (TxType)type;
+
+            long maxSize = txType.SupportsBlobs() ? _configuredMaxBlobTxSize : _configuredMaxTxSize;
+            if (txSize > maxSize)
+                continue;
+
+            if (txSize > packetSizeLeft && toRequestCount > 0)
+            {
+                RequestPooledTransactions(hashesToRequest);
+                hashesToRequest = new ArrayPoolList<Hash256>(discoveredCount);
+                packetSizeLeft = TransactionsMessage.MaxPacketSize;
+                toRequestCount = 0;
+            }
+
+            if (_blobSupportEnabled || txType != TxType.Blob)
+            {
+                hashesToRequest.Add(hash);
+                packetSizeLeft -= txSize;
+                toRequestCount++;
+            }
+        }
+
+        RequestPooledTransactions(hashesToRequest);
+    }
+
+    private ArrayPoolList<(Hash256, byte, int)> AddMarkUnknownHashes(ReadOnlySpan<Hash256> hashes, ReadOnlySpan<int> sizes, ReadOnlySpan<byte> types)
+    {
+        ArrayPoolList<(Hash256, byte, int)> discoveredTxHashesAndSizes = new(hashes.Length);
+        for (int i = 0; i < hashes.Length; i++)
+        {
+            Hash256 hash = hashes[i];
+            if (!_txPool.IsKnown(hash) && !_txPool.ContainsTx(hash, (TxType)types[i]))
+            {
+                if (_txPool.AnnounceTx(hash, this) is AnnounceResult.New)
+                {
+                    discoveredTxHashesAndSizes.Add((hash, types[i], sizes[i]));
+                }
+            }
+        }
+
+        return discoveredTxHashesAndSizes;
     }
 
     protected override void SendNewTransactionCore(Transaction tx)

@@ -1,10 +1,6 @@
-// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System.Collections.Generic;
-using System.Diagnostics;
-using System.Threading;
-using System.Threading.Tasks;
 using Nethermind.Consensus;
 using Nethermind.Consensus.Scheduler;
 using Nethermind.Core;
@@ -19,6 +15,11 @@ using Nethermind.Network.Rlpx;
 using Nethermind.Stats;
 using Nethermind.Synchronization;
 using Nethermind.TxPool;
+using System;
+using System.Collections.Generic;
+using System.Diagnostics;
+using System.Threading;
+using System.Threading.Tasks;
 
 namespace Nethermind.Network.P2P.Subprotocols.Eth.V65
 {
@@ -32,13 +33,12 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V65
         ISyncServer syncServer,
         IBackgroundTaskScheduler backgroundTaskScheduler,
         ITxPool txPool,
-        IPooledTxsRequestor pooledTxsRequestor,
         IGossipPolicy gossipPolicy,
         IForkInfo forkInfo,
         ILogManager logManager,
         ITxGossipPolicy? transactionsGossipPolicy = null)
-        : Eth64ProtocolHandler(session, serializer, nodeStatsManager, syncServer, backgroundTaskScheduler, txPool,
-            gossipPolicy, forkInfo, logManager, transactionsGossipPolicy)
+        : Eth64ProtocolHandler(session, serializer, nodeStatsManager, syncServer, backgroundTaskScheduler, txPool, gossipPolicy, forkInfo, logManager, transactionsGossipPolicy),
+          IMessageHandler<ValueHash256>
     {
         public override string Name => "eth65";
 
@@ -51,6 +51,25 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V65
             int size = message.Content.ReadableBytes;
             switch (message.PacketType)
             {
+                case Eth65MessageCode.NewPooledTransactionHashes:
+                    if (CanReceiveTransactions)
+                    {
+                        using NewPooledTransactionHashesMessage newPooledTxMsg = Deserialize<NewPooledTransactionHashesMessage>(message.Content);
+                        ReportIn(newPooledTxMsg, size);
+                        Handle(newPooledTxMsg);
+                    }
+                    else
+                    {
+                        const string ignored = $"{nameof(NewPooledTransactionHashesMessage)} ignored, syncing";
+                        ReportIn(ignored, size);
+                    }
+
+                    break;
+                case Eth65MessageCode.GetPooledTransactions:
+                    GetPooledTransactionsMessage getPooledTxMsg = Deserialize<GetPooledTransactionsMessage>(message.Content);
+                    ReportIn(getPooledTxMsg, size);
+                    BackgroundTaskScheduler.ScheduleBackgroundTask(getPooledTxMsg, Handle);
+                    break;
                 case Eth65MessageCode.PooledTransactions:
                     if (CanReceiveTransactions)
                     {
@@ -61,25 +80,6 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V65
                     else
                     {
                         const string ignored = $"{nameof(PooledTransactionsMessage)} ignored, syncing";
-                        ReportIn(ignored, size);
-                    }
-
-                    break;
-                case Eth65MessageCode.GetPooledTransactions:
-                    GetPooledTransactionsMessage getPooledTxMsg = Deserialize<GetPooledTransactionsMessage>(message.Content);
-                    ReportIn(getPooledTxMsg, size);
-                    BackgroundTaskScheduler.ScheduleBackgroundTask(getPooledTxMsg, Handle);
-                    break;
-                case Eth65MessageCode.NewPooledTransactionHashes:
-                    if (CanReceiveTransactions)
-                    {
-                        NewPooledTransactionHashesMessage newPooledTxMsg = Deserialize<NewPooledTransactionHashesMessage>(message.Content);
-                        ReportIn(newPooledTxMsg, size);
-                        Handle(newPooledTxMsg);
-                    }
-                    else
-                    {
-                        const string ignored = $"{nameof(NewPooledTransactionHashesMessage)} ignored, syncing";
                         ReportIn(ignored, size);
                     }
 
@@ -95,7 +95,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V65
             long startTime = Stopwatch.GetTimestamp();
 
             TxPool.Metrics.PendingTransactionsHashesReceived += msg.Hashes.Count;
-            pooledTxsRequestor.RequestTransactions(Send, msg.Hashes, Session.SessionId);
+            RequestPooledTransactions(msg.Hashes);
 
             if (Logger.IsTrace)
                 Logger.Trace($"OUT {Counter:D5} {nameof(NewPooledTransactionHashesMessage)} to {Node:c} " +
@@ -149,6 +149,8 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V65
 
         protected override void SendNewTransactionsCore(IEnumerable<Transaction> txs, bool sendFullTx)
         {
+            void SendNewPooledTransactionMessage(IOwnedReadOnlyList<Hash256> hashes) => Send(new NewPooledTransactionHashesMessage(hashes));
+
             if (sendFullTx)
             {
                 base.SendNewTransactionsCore(txs, true);
@@ -182,10 +184,34 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V65
             }
         }
 
-        private void SendNewPooledTransactionMessage(IOwnedReadOnlyList<Hash256> hashes)
+        protected virtual void RequestPooledTransactions(IOwnedReadOnlyList<Hash256> hashes)
         {
-            NewPooledTransactionHashesMessage msg = new(hashes);
-            Send(msg);
+            ArrayPoolList<Hash256> newTxHashes = AddMarkUnknownHashes(hashes.AsSpan());
+            Send(new GetPooledTransactionsMessage(newTxHashes));
+        }
+
+        protected ArrayPoolList<Hash256> AddMarkUnknownHashes(ReadOnlySpan<Hash256> hashes)
+        {
+            ArrayPoolList<Hash256> discoveredTxHashes = new(hashes.Length);
+            for (int i = 0; i < hashes.Length; i++)
+            {
+                Hash256 hash = hashes[i];
+                if (!_txPool.IsKnown(hash))
+                {
+                    if (_txPool.AnnounceTx(hash, this) is AnnounceResult.New)
+                    {
+                        discoveredTxHashes.Add(hash);
+                    }
+                }
+            }
+
+            return discoveredTxHashes;
+        }
+
+        public virtual void HandleMessage(ValueHash256 txHash)
+        {
+            ArrayPoolList<Hash256> hashesToRetry = new(1) { new Hash256(txHash) };
+            RequestPooledTransactions(hashesToRetry);
         }
     }
 }

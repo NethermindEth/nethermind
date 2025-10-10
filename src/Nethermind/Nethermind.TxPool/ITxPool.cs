@@ -38,7 +38,7 @@ namespace Nethermind.TxPool
         void AddPeer(ITxPoolPeer peer);
         void RemovePeer(PublicKey nodeId);
         bool ContainsTx(Hash256 hash, TxType txType);
-        AnnounceResult AnnounceTx(ValueHash256 txhash, Guid sessionId, Action request);
+        AnnounceResult AnnounceTx(ValueHash256 txhash, IMessageHandler<ValueHash256> handler);
         AcceptTxResult SubmitTx(Transaction tx, TxHandlingOptions handlingOptions);
         bool RemoveTransaction(Hash256? hash);
         Transaction? GetBestTx();

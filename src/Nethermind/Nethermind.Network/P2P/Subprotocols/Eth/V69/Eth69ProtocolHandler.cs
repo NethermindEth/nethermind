@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: 2024 Demerzel Solutions Limited
+// SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
@@ -9,7 +9,7 @@ using Nethermind.Blockchain.Synchronization;
 using Nethermind.Consensus;
 using Nethermind.Consensus.Scheduler;
 using Nethermind.Core;
-
+using Nethermind.Core.Specs;
 using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.Network.Contract.P2P;
@@ -35,14 +35,15 @@ public class Eth69ProtocolHandler(
     ISyncServer syncServer,
     IBackgroundTaskScheduler backgroundTaskScheduler,
     ITxPool txPool,
-    IPooledTxsRequestor pooledTxsRequestor,
     IGossipPolicy gossipPolicy,
     IForkInfo forkInfo,
     IBlockFinder blockFinder,
     ILogManager logManager,
+    ITxPoolConfig txPoolConfig,
+    ISpecProvider specProvider,
     ITxGossipPolicy? transactionsGossipPolicy = null)
     : Eth68ProtocolHandler(session, serializer, nodeStatsManager, syncServer, backgroundTaskScheduler, txPool,
-        pooledTxsRequestor, gossipPolicy, forkInfo, logManager, transactionsGossipPolicy), ISyncPeer
+        gossipPolicy, forkInfo, logManager, txPoolConfig, specProvider, transactionsGossipPolicy), ISyncPeer
 {
     public override string Name => "eth69";
 

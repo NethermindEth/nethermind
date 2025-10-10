@@ -86,7 +86,7 @@ namespace Nethermind.TxPool
 
         public UInt256 GetLatestPendingNonce(Address address) => 0;
 
-        public AnnounceResult AnnounceTx(ValueHash256 txhash, Guid sessionId, Action request) => AnnounceResult.New;
+        public AnnounceResult AnnounceTx(ValueHash256 txhash, IMessageHandler<ValueHash256> handler) => AnnounceResult.New;
 
         public event EventHandler<TxEventArgs> NewDiscovered
         {

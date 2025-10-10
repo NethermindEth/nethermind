@@ -9,7 +9,6 @@ using Nethermind.Logging;
 using Nethermind.Network;
 using Nethermind.Network.Config;
 using Nethermind.Network.Contract.P2P;
-using Nethermind.Network.P2P.Subprotocols.Eth;
 using Nethermind.State;
 using Nethermind.State.SnapServer;
 using Nethermind.Stats.Model;
@@ -31,7 +30,6 @@ public class PseudoNetworkModule() : Module
             .AddSingleton<IPoSSwitcher>(NoPoS.Instance)
 
             .AddSingleton<IProtocolValidator, ProtocolValidator>()
-            .AddSingleton<IPooledTxsRequestor, PooledTxsRequestor>()
             .AddSingleton<IGossipPolicy>(Policy.FullGossip)
             .AddComposite<ITxGossipPolicy, CompositeTxGossipPolicy>()
 

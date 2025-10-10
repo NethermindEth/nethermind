@@ -36,7 +36,7 @@ namespace Nethermind.TxPool
     /// </summary>
     public class TxPool : ITxPool, IAsyncDisposable
     {
-        private readonly SimpleRetryCache<ValueHash256, Guid> _retryCache;
+        private readonly SimpleRetryCache<ValueHash256> _retryCache;
 
         private readonly IIncomingTxFilter[] _preHashFilters;
         private readonly IIncomingTxFilter[] _postHashFilters;
@@ -123,7 +123,7 @@ namespace Nethermind.TxPool
             _specProvider = _headInfo.SpecProvider;
             SupportsBlobs = _txPoolConfig.BlobsSupport != BlobsSupportMode.Disabled;
             _cts = new();
-            _retryCache = new SimpleRetryCache<ValueHash256, Guid>(logManager, requestingCacheSize: MemoryAllowance.TxHashCacheSize / 10, token: _cts.Token);
+            _retryCache = new SimpleRetryCache<ValueHash256>(logManager, requestingCacheSize: MemoryAllowance.TxHashCacheSize / 10, token: _cts.Token);
 
             MemoryAllowance.MemPoolSize = txPoolConfig.Size;
 
@@ -1128,7 +1128,7 @@ Db usage:
             block.DisposeAccountChanges();
         }
 
-        public AnnounceResult AnnounceTx(ValueHash256 txhash, Guid sessionId, Action request) => _retryCache.Announced(txhash, sessionId, request);
+        public AnnounceResult AnnounceTx(ValueHash256 txhash, IMessageHandler<ValueHash256> handler) => _retryCache.Announced(txhash, handler);
     }
 }
 

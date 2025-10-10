@@ -1,14 +1,11 @@
-// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System;
-using System.Diagnostics;
-using System.Threading;
-using System.Threading.Tasks;
 using Nethermind.Consensus;
 using Nethermind.Consensus.Scheduler;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
+using Nethermind.Core.Crypto;
 using Nethermind.Logging;
 using Nethermind.Network.Contract.P2P;
 using Nethermind.Network.P2P.Subprotocols.Eth.V65;
@@ -18,6 +15,10 @@ using Nethermind.Network.Rlpx;
 using Nethermind.Stats;
 using Nethermind.Synchronization;
 using Nethermind.TxPool;
+using System;
+using System.Diagnostics;
+using System.Threading;
+using System.Threading.Tasks;
 using GetPooledTransactionsMessage = Nethermind.Network.P2P.Subprotocols.Eth.V66.Messages.GetPooledTransactionsMessage;
 using PooledTransactionsMessage = Nethermind.Network.P2P.Subprotocols.Eth.V66.Messages.PooledTransactionsMessage;
 
@@ -32,8 +33,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V66
         private readonly MessageDictionary<GetBlockBodiesMessage, (OwnedBlockBodies, long)> _bodiesRequests66;
         private readonly MessageDictionary<GetNodeDataMessage, IOwnedReadOnlyList<byte[]>> _nodeDataRequests66;
         private readonly MessageDictionary<GetReceiptsMessage, (IOwnedReadOnlyList<TxReceipt[]>, long)> _receiptsRequests66;
-        private readonly IPooledTxsRequestor _pooledTxsRequestor;
-        private readonly Action<GetPooledTransactionsMessage> _sendAction;
+        private const int MaxNumberOfTxsInOneMsg = 256;
 
         public Eth66ProtocolHandler(ISession session,
             IMessageSerializationService serializer,
@@ -41,20 +41,16 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V66
             ISyncServer syncServer,
             IBackgroundTaskScheduler backgroundTaskScheduler,
             ITxPool txPool,
-            IPooledTxsRequestor pooledTxsRequestor,
             IGossipPolicy gossipPolicy,
             IForkInfo forkInfo,
             ILogManager logManager,
             ITxGossipPolicy? transactionsGossipPolicy = null)
-            : base(session, serializer, nodeStatsManager, syncServer, backgroundTaskScheduler, txPool, pooledTxsRequestor, gossipPolicy, forkInfo, logManager, transactionsGossipPolicy)
+            : base(session, serializer, nodeStatsManager, syncServer, backgroundTaskScheduler, txPool, gossipPolicy, forkInfo, logManager, transactionsGossipPolicy)
         {
             _headersRequests66 = new MessageDictionary<GetBlockHeadersMessage, IOwnedReadOnlyList<BlockHeader>>(Send);
             _bodiesRequests66 = new MessageDictionary<GetBlockBodiesMessage, (OwnedBlockBodies, long)>(Send);
             _nodeDataRequests66 = new MessageDictionary<GetNodeDataMessage, IOwnedReadOnlyList<byte[]>>(Send);
             _receiptsRequests66 = new MessageDictionary<GetReceiptsMessage, (IOwnedReadOnlyList<TxReceipt[]>, long)>(Send);
-            _pooledTxsRequestor = pooledTxsRequestor;
-            // Capture Action once rather than per call
-            _sendAction = Send;
         }
 
         public override string Name => "eth66";
@@ -196,11 +192,36 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V66
             long startTime = Stopwatch.GetTimestamp();
 
             TxPool.Metrics.PendingTransactionsHashesReceived += message.Hashes.Count;
-            _pooledTxsRequestor.RequestTransactionsEth66(_sendAction, message.Hashes, Session.SessionId);
+            RequestPooledTransactions(message.Hashes);
 
             if (isTrace)
                 Logger.Trace($"OUT {Counter:D5} {nameof(NewPooledTransactionHashesMessage)} to {Node:c} " +
                              $"in {Stopwatch.GetElapsedTime(startTime).TotalMilliseconds:N0}ms");
+        }
+
+        protected override void RequestPooledTransactions(IOwnedReadOnlyList<Hash256> hashes)
+        {
+            void RequestPooledTransactionsEth66(IOwnedReadOnlyList<Hash256> hashes) => Send(new GetPooledTransactionsMessage(hashes));
+
+            ArrayPoolList<Hash256> discoveredTxHashes = AddMarkUnknownHashes(hashes.AsSpan());
+
+            if (discoveredTxHashes.Count <= MaxNumberOfTxsInOneMsg)
+            {
+                RequestPooledTransactionsEth66(discoveredTxHashes);
+            }
+            else
+            {
+                using ArrayPoolList<Hash256> _ = discoveredTxHashes;
+
+                for (int start = 0; start < discoveredTxHashes.Count; start += MaxNumberOfTxsInOneMsg)
+                {
+                    var end = Math.Min(start + MaxNumberOfTxsInOneMsg, discoveredTxHashes.Count);
+
+                    ArrayPoolList<Hash256> hashesToRequest = new(end - start);
+                    hashesToRequest.AddRange(discoveredTxHashes.AsSpan()[start..end]);
+                    RequestPooledTransactionsEth66(hashesToRequest);
+                }
+            }
         }
 
         protected override async Task<IOwnedReadOnlyList<BlockHeader>> SendRequest(V62.Messages.GetBlockHeadersMessage message, CancellationToken token)
