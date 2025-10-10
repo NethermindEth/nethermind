@@ -1,21 +1,22 @@
 name: Update Dockerfiles
 
 on:
+  push:
+    branches: [feature/dockerfile-update]
   schedule:
-    - cron: '0 0 * * *'
+    - cron: "0 0 * * *"
   workflow_dispatch:
 
 permissions:
   contents: write
   pull-requests: write
 
-env:
-  DOTNET_VERSION: '9.0'
-
 jobs:
   update-dockerfiles:
     name: Update Dockerfiles
     runs-on: ubuntu-latest
+    env:
+      DOTNET_VERSION: "9.0"
     steps:
       - name: Check out repository
         uses: actions/checkout@v5
@@ -24,7 +25,7 @@ jobs:
         id: update
         run: |
           # Get the latest .NET release information
-          manifest=$(curl -s https://dotnetcli.blob.core.windows.net/dotnet/release-metadata/${{ env.DOTNET_VERSION }}/releases.json)
+          manifest=$(curl -s https://dotnetcli.blob.core.windows.net/dotnet/release-metadata/$DOTNET_VERSION/releases.json)
           runtime_version=$(echo "$manifest" | jq -r '."latest-runtime"')
           sdk_version=$(echo "$manifest" | jq -r '."latest-sdk"')
 
@@ -59,7 +60,7 @@ jobs:
         run: |
           head_branch=chore/update-dockerfiles-$GITHUB_RUN_NUMBER-$GITHUB_RUN_ATTEMPT
           body=$(cat <<'EOF'
-          Updated Dockerfiles to use the latest versions of .NET ${{ env.DOTNET_VERSION }} SDK and runtime.
+          Updated Dockerfiles to use the latest versions of .NET $DOTNET_VERSION SDK and runtime.
 
           To verify manually, see:
           - https://mcr.microsoft.com/en-us/artifact/mar/dotnet/aspnet/tags
