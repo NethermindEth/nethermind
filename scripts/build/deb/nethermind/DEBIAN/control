@@ -1,0 +1,9 @@
+Package: nethermind
+Version: -
+Architecture: amd64
+Section: net
+Priority: optional
+Maintainer: Demerzel Solutions Limited <devops@nethermind.io>
+Homepage: https://nethermind.io/nethermind-client
+Description: A robust execution client for Ethereum node operators.
+ The Nethermind Ethereum execution client, built on .NET, delivers industry-leading performance in syncing and tip-of-chain processing. With its modular design and plugin system, it offers extensibility and features for new chains. As one of the most adopted execution clients on Ethereum, Nethermind plays a crucial role in enhancing the diversity and resilience of the Ethereum ecosystem.
