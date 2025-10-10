@@ -19,6 +19,8 @@ using NUnit.Framework;
 
 namespace Nethermind.Blockchain.Test.Find;
 
+[Parallelizable(ParallelScope.All)]
+[FixtureLifeCycle(LifeCycle.InstancePerTestCase)]
 public class LogIndexStorageFilterTests
 {
     private record Ranges(Dictionary<Address, List<int>> Address, Dictionary<Hash256, List<int>>[] Topic)
