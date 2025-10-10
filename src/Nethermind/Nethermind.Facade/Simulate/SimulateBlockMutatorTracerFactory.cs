@@ -12,5 +12,5 @@ namespace Nethermind.Facade.Simulate;
 public class SimulateBlockMutatorTracerFactory : ISimulateBlockTracerFactory<SimulateCallResult>
 {
     public IBlockTracer<SimulateCallResult> CreateSimulateBlockTracer(bool isTracingLogs, IWorldState worldState, ISpecProvider spec, BlockHeader block) =>
-        new SimulateBlockMutatorTracer(isTracingLogs);
+        new SimulateBlockTracer(isTracingLogs);
 }
