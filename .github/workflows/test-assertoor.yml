@@ -40,7 +40,7 @@ jobs:
 
     - name: Run retriveAllTests.py script
       run: |
-        python assertoor-test/scripts/retriveAllTests/retriveAllTests.py --exclude "pectra-dev" "verkle" "validator-lifecycle" "slashing" "mev" > /tmp/output.txt
+        python assertoor-test/scripts/retriveAllTests/retriveAllTests.py --exclude "pectra-dev" "verkle" "validator-lifecycle" "slashing" "mev" "big-calldata-tx" > /tmp/output.txt
         cat /tmp/output.txt
         chmod 777 /tmp/output.txt
         echo "ASSERTOOR_PARAMS_FILE=/tmp/output.txt" >> $GITHUB_ENV
