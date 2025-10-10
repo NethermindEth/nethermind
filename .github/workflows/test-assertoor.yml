@@ -19,7 +19,6 @@ jobs:
       with:
         app-id: ${{ vars.APP_ID }}
         private-key: ${{ secrets.APP_PRIVATE_KEY }}
-        
     - name: Checkout this repository
       uses: actions/checkout@v5
       with:
@@ -30,11 +29,11 @@ jobs:
       with:
         repository: kamilchodola/assertoor-test
         path: assertoor-test
-        
+
     - name: Set up Python
-      uses: actions/setup-python@v6.1.1
+      uses: LizardByte/actions/actions/setup_python@master
       with:
-        python-version: '3.x'
+        python-version: '3.11'
 
     - name: Install dependencies
       run: pip install requests beautifulsoup4
@@ -57,17 +56,17 @@ jobs:
       run: |
         echo "ORG_NAME=${{ github.repository_owner }}" >> $GITHUB_ENV
         echo "REPO_NAME=${{ github.event.repository.name }}" >> $GITHUB_ENV
-        
+
     - name: Check if master branch and default additional_options
       id: check_conditions
       run: |
         ref="${{ github.ref }}"
-        
+
         if [[ $ref != refs/heads/* ]]; then
           ref="refs/heads/$ref"
         fi
 
-        if 
+        if
         [[ "$ref" == "refs/heads/master" ]]; then
           echo "skip_docker_build=true" >> $GITHUB_OUTPUT
         else
@@ -86,7 +85,7 @@ jobs:
               "dockerfile": "${{ steps.extract_dockerfile.outputs.dockerfile }}",
               "build-config": "${{ steps.extract_dockerfile.outputs.build-config }}"
            }'
-        
+
     - name: Wait for Docker Build Action to complete
       if: steps.check_conditions.outputs.skip_docker_build != 'true'
       env:
@@ -102,7 +101,7 @@ jobs:
         chmod +x main-repo/scripts/wait-for-workflow.sh
         ./main-repo/scripts/wait-for-workflow.sh
       working-directory: ${{ github.workspace }}
-        
+
     - name: Replace Placeholders in YAML
       run: |
         assertoor_params=$(cat ${{ env.ASSERTOOR_PARAMS_FILE}})
@@ -112,7 +111,7 @@ jobs:
           d
         }" main-repo/scripts/config/assertoor.yml
         cat main-repo/scripts/config/assertoor.yml
-      
+
     - name: Kurtosis Assertoor GitHub Action
       uses: ethpandaops/kurtosis-assertoor-github-action@v1
       with:
