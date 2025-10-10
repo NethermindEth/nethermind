@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2023 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using System.Collections.Generic;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
@@ -83,6 +84,21 @@ public static class StateOverridesExtensions
         AccountOverride accountOverride,
         Address address)
     {
+        // TODO: Error handling
+        if (accountOverride.MovePrecompileToAddress is not null)
+        {
+            if (!overridableCodeInfoRepository.GetCachedCodeInfo(address, currentSpec).IsPrecompile)
+            {
+                throw new ArgumentException($"Account {address} is not a precompile");
+            }
+
+            overridableCodeInfoRepository.SetCodeOverwrite(
+                currentSpec,
+                address,
+                CodeInfo.Empty,
+                accountOverride.MovePrecompileToAddress);
+        }
+
         if (accountOverride.Code is not null)
         {
             stateProvider.InsertCode(address, accountOverride.Code, currentSpec);
@@ -90,8 +106,7 @@ public static class StateOverridesExtensions
             overridableCodeInfoRepository.SetCodeOverwrite(
                 currentSpec,
                 address,
-                new CodeInfo(accountOverride.Code),
-                accountOverride.MovePrecompileToAddress);
+                new CodeInfo(accountOverride.Code));
         }
     }
 
