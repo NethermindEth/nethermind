@@ -16,7 +16,7 @@ using Log = Nethermind.Facade.Proxy.Models.Simulate.Log;
 
 namespace Nethermind.Facade.Simulate;
 
-public sealed class SimulateTxMutatorTracer : TxTracer
+public sealed class SimulateTxTracer : TxTracer
 {
     private static readonly Hash256 transferSignature =
         new AbiSignature("Transfer", AbiType.Address, AbiType.Address, AbiType.UInt256).Hash;
@@ -29,7 +29,7 @@ public sealed class SimulateTxMutatorTracer : TxTracer
     private readonly List<LogEntry> _logs;
     private readonly Transaction _tx;
 
-    public SimulateTxMutatorTracer(bool isTracingTransfers, Transaction tx, ulong currentBlockNumber, Hash256 currentBlockHash,
+    public SimulateTxTracer(bool isTracingTransfers, Transaction tx, ulong currentBlockNumber, Hash256 currentBlockHash,
         ulong currentBlockTimestamp, ulong txIndex)
     {
         // Note: Tx hash will be mutated as tx is modified while processing block
@@ -53,7 +53,7 @@ public sealed class SimulateTxMutatorTracer : TxTracer
         {
             var data = AbiEncoder.Instance.Encode(AbiEncodingStyle.Packed, new AbiSignature("", AbiType.UInt256),
                 value);
-            _logs?.Add(new LogEntry(Erc20Sender, data, [transferSignature, (Hash256)from.ToHash(), (Hash256)to.ToHash()]));
+            _logs.Add(new LogEntry(Erc20Sender, data, [transferSignature, (Hash256)from.ToHash(), (Hash256)to.ToHash()]));
         }
     }
 

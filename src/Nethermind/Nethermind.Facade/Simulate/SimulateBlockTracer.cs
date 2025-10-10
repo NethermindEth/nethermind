@@ -9,22 +9,23 @@ using Nethermind.Facade.Proxy.Models.Simulate;
 
 namespace Nethermind.Facade.Simulate;
 
-public class SimulateBlockMutatorTracer(bool isTracingLogs) : BlockTracerBase<SimulateCallResult, SimulateTxMutatorTracer>
+public class SimulateBlockTracer(bool isTracingLogs) : BlockTracerBase<SimulateCallResult, SimulateTxTracer>
 {
     private ulong _txIndex = 0;
 
-    private Block? _currentBlock;
+    private ulong _blockNumber;
+    private ulong _blockTimestamp;
 
-    protected override SimulateTxMutatorTracer OnStart(Transaction? tx)
+    protected override SimulateTxTracer OnStart(Transaction? tx)
     {
         if (tx?.Hash is not null)
         {
-            return new(isTracingLogs, tx, (ulong)_currentBlock!.Number, Hash256.Zero, _currentBlock.Timestamp, _txIndex++);
+            return new(isTracingLogs, tx, _blockNumber, Hash256.Zero, _blockTimestamp, _txIndex++);
         }
-        return (SimulateTxMutatorTracer)NullTxTracer.Instance;
+        return (SimulateTxTracer)NullTxTracer.Instance;
     }
 
-    protected override SimulateCallResult OnEnd(SimulateTxMutatorTracer txTracer) => txTracer.TraceResult!;
+    protected override SimulateCallResult OnEnd(SimulateTxTracer txTracer) => txTracer.TraceResult!;
 
     public void ReapplyBlockHash(Hash256 hash)
     {
@@ -40,7 +41,8 @@ public class SimulateBlockMutatorTracer(bool isTracingLogs) : BlockTracerBase<Si
     public override void StartNewBlockTrace(Block block)
     {
         _txIndex = 0;
-        _currentBlock = block;
+        _blockNumber = (ulong)block.Number;
+        _blockTimestamp = block.Timestamp;
         base.StartNewBlockTrace(block);
     }
 }

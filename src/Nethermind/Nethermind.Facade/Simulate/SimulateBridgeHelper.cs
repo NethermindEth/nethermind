@@ -139,7 +139,7 @@ public class SimulateBridgeHelper(IBlocksConfig blocksConfig, ISpecProvider spec
                 blockTree.SuggestBlock(processedBlock, BlockTreeSuggestOptions.ForceSetAsMain);
                 blockTree.UpdateHeadBlock(processedBlock.Hash!);
 
-                if (tracer is SimulateBlockMutatorTracer simulateTracer)
+                if (tracer is SimulateBlockTracer simulateTracer)
                 {
                     simulateTracer.ReapplyBlockHash(processedBlock.Hash);
                 }
