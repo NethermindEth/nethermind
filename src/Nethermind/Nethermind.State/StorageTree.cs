@@ -144,6 +144,10 @@ namespace Nethermind.State
             return Get(index, null);
         }
 
+        public void HintGet(in UInt256 index, byte[]? value)
+        {
+        }
+
         public byte[] Get(in ValueHash256 hash)
         {
             return GetArray(hash.Bytes, null);

@@ -32,6 +32,13 @@ public interface IWorldStateScopeProvider
         Account? Get(Address address);
 
         /// <summary>
+        /// Call when top level application read an account without going through this scope to reduce time during commit later.
+        /// </summary>
+        /// <param name="address"></param>
+        /// <param name="account"></param>
+        void HintGet(Address address, Account? account);
+
+        /// <summary>
         /// The code db
         /// </summary>
         ICodeDb CodeDb { get; }
@@ -74,6 +81,8 @@ public interface IWorldStateScopeProvider
 
         byte[] Get(in UInt256 index);
 
+        void HintGet(in UInt256 index, byte[]? value);
+
         /// <summary>
         /// Used by JS tracer. May not work on some database layout.
         /// </summary>
@@ -84,8 +93,23 @@ public interface IWorldStateScopeProvider
 
     public interface IWorldStateWriteBatch : IDisposable
     {
+        public event EventHandler<AccountUpdated> OnAccountUpdated;
+
         void Set(Address key, Account? account);
+
         IStorageWriteBatch CreateStorageWriteBatch(Address key, int estimatedEntries);
+    }
+
+    public class AccountUpdated(Address Address, Account? Account) : EventArgs
+    {
+        public Address Address { get; init; } = Address;
+        public Account? Account { get; init; } = Account;
+
+        public void Deconstruct(out Address Address, out Account? Account)
+        {
+            Address = this.Address;
+            Account = this.Account;
+        }
     }
 
     public interface IStorageWriteBatch : IDisposable
