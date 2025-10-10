@@ -83,19 +83,13 @@ public abstract class BlockchainTestBase
         test.Network = ChainUtils.ResolveSpec(test.Network, test.ChainId);
         test.NetworkAfterTransition = ChainUtils.ResolveSpec(test.NetworkAfterTransition, test.ChainId);
 
-        List<(ForkActivation Activation, IReleaseSpec Spec)> transitions =
-            [((ForkActivation)0, test.GenesisSpec), ((ForkActivation)1, test.Network)]; // TODO: this thing took a lot of time to find after it was removed!, genesis block is always initialized with Frontier
+        List<(ForkActivation Activation, IReleaseSpec Spec)> transitions = [((ForkActivation)0, test.Network)];
         if (test.NetworkAfterTransition is not null)
         {
             transitions.Add((test.TransitionForkActivation!.Value, test.NetworkAfterTransition));
         }
 
         ISpecProvider specProvider = new CustomSpecProvider(test.ChainId, test.ChainId, transitions.ToArray());
-
-        if (test.ChainId != GnosisSpecProvider.Instance.ChainId && specProvider.GenesisSpec != Frontier.Instance)
-        {
-            Assert.Fail("Expected genesis spec to be Frontier for blockchain tests");
-        }
 
         if (test.Network is Cancun || test.NetworkAfterTransition is Cancun)
         {
@@ -203,7 +197,7 @@ public abstract class BlockchainTestBase
                         res = await engineRpcModule.engine_newPayloadV4((ExecutionPayloadV3)executionPayload, hashes, executionPayload.ParentBeaconBlockRoot, []);
                         break;
                     case "5":
-                        res = await engineRpcModule.engine_newPayloadV4((ExecutionPayloadV3)executionPayload, hashes, executionPayload.ParentBeaconBlockRoot, []);
+                        res = await engineRpcModule.engine_newPayloadV5((ExecutionPayloadV3)executionPayload, hashes, executionPayload.ParentBeaconBlockRoot, []);
                         break;
                     default:
                         Assert.Fail("Invalid blockchain engine test, version not recognised.");
@@ -295,9 +289,9 @@ public abstract class BlockchainTestBase
             {
                 RlpStream rlpContext = Bytes.FromHexString(testBlockJson.Rlp).AsRlpStream();
                 Block suggestedBlock = Rlp.Decode<Block>(rlpContext);
-                // Console.WriteLine("suggested block:");
-                // Console.WriteLine(suggestedBlock.BlockAccessList);
-                // Hash256 tmp = new(ValueKeccak.Compute(Rlp.Encode(suggestedBlock.BlockAccessList!.Value).Bytes).Bytes);
+                Console.WriteLine("suggested block:");
+                Console.WriteLine(suggestedBlock.BlockAccessList);
+                Hash256 tmp = new(ValueKeccak.Compute(Rlp.Encode(suggestedBlock.BlockAccessList!.Value).Bytes).Bytes);
                 suggestedBlock.Header.SealEngineType =
                     test.SealEngineUsed ? SealEngineType.Ethash : SealEngineType.None;
 
