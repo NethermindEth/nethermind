@@ -7,6 +7,7 @@ using FluentAssertions;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Config;
+using Nethermind.Consensus.Processing;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Test.Builders;
@@ -28,7 +29,7 @@ public class WorldStateManagerTests
     [Test]
     public void ShouldProxyGlobalWorldState()
     {
-        IWorldState worldState = Substitute.For<IWorldState>();
+        IWorldStateScopeProvider worldState = Substitute.For<IWorldStateScopeProvider>();
         IPruningTrieStore trieStore = Substitute.For<IPruningTrieStore>();
         IDbProvider dbProvider = TestMemDbProvider.Init();
         WorldStateManager worldStateManager = new WorldStateManager(worldState, trieStore, dbProvider, LimboLogs.Instance);
@@ -39,7 +40,7 @@ public class WorldStateManagerTests
     [Test]
     public void ShouldProxyReorgBoundaryEvent()
     {
-        IWorldState worldState = Substitute.For<IWorldState>();
+        IWorldStateScopeProvider worldState = Substitute.For<IWorldStateScopeProvider>();
         IPruningTrieStore trieStore = Substitute.For<IPruningTrieStore>();
         IDbProvider dbProvider = TestMemDbProvider.Init();
         WorldStateManager worldStateManager = new WorldStateManager(worldState, trieStore, dbProvider, LimboLogs.Instance);
@@ -55,7 +56,7 @@ public class WorldStateManagerTests
     [TestCase(INodeStorage.KeyScheme.HalfPath, false)]
     public void ShouldNotSupportHashLookupOnHalfpath(INodeStorage.KeyScheme keyScheme, bool hashSupported)
     {
-        IWorldState worldState = Substitute.For<IWorldState>();
+        IWorldStateScopeProvider worldState = Substitute.For<IWorldStateScopeProvider>();
         IPruningTrieStore trieStore = Substitute.For<IPruningTrieStore>();
         IReadOnlyTrieStore readOnlyTrieStore = Substitute.For<IReadOnlyTrieStore>();
         trieStore.AsReadOnly().Returns(readOnlyTrieStore);
@@ -88,7 +89,7 @@ public class WorldStateManagerTests
                 .AddSingleton(blockTree)
                 .Build();
 
-            IWorldState worldState = ctx.Resolve<IWorldStateManager>().GlobalWorldState;
+            IWorldState worldState = ctx.Resolve<IMainProcessingContext>().WorldState;
 
             Hash256 stateRoot;
 

@@ -5,6 +5,7 @@ using System;
 using Autofac;
 using Autofac.Core;
 using Nethermind.Blockchain;
+using Nethermind.Core.Specs;
 using Nethermind.Evm.State;
 using Nethermind.Specs.ChainSpecStyle;
 
@@ -91,5 +92,15 @@ public static class ContainerBuilderExtensions
                 postProcessor(block, worldState);
             });
         });
+    }
+
+    public static ContainerBuilder WithGenesisPostProcessor(this ContainerBuilder builder,
+        Action<Block, IWorldState, ISpecProvider> postProcessor)
+    {
+        return builder.AddScoped<IGenesisPostProcessor, IWorldState, ISpecProvider>((worldState, specProvider) => new FunctionalGenesisPostProcessor(worldState,
+            (block, state) =>
+            {
+                postProcessor(block, state, specProvider);
+            }));
     }
 }

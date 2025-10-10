@@ -533,8 +533,16 @@ public class StorageProviderTests
 
         public Context(PreBlockCaches preBlockCaches = null, bool setInitialState = true)
         {
-            StateProvider = new WorldState(
-                new TrieStoreScopeProvider(TestTrieStoreFactory.Build(new MemDb(), LimboLogs.Instance), new MemDb(), LimboLogs.Instance), LogManager, preBlockCaches);
+            IWorldStateScopeProvider scopeProvider = new TrieStoreScopeProvider(
+                TestTrieStoreFactory.Build(new MemDb(), LimboLogs.Instance),
+                new MemDb(), LimboLogs.Instance);
+
+            if (preBlockCaches is not null)
+            {
+                scopeProvider = new PrewarmerScopeProvider(scopeProvider, preBlockCaches, populatePreBlockCache: true);
+            }
+
+            StateProvider = new WorldState(scopeProvider, LogManager);
             if (setInitialState)
             {
                 StateProvider.BeginScope(IWorldState.PreGenesis);
