@@ -24,6 +24,7 @@ public static class StateOverridesExtensions
     {
         if (overrides is not null)
         {
+            overridableCodeInfoRepository.ResetPrecompileOverrides();
             foreach ((Address address, AccountOverride accountOverride) in overrides)
             {
                 if (!state.TryGetAccount(address, out AccountStruct account))
@@ -84,7 +85,6 @@ public static class StateOverridesExtensions
         AccountOverride accountOverride,
         Address address)
     {
-        // TODO: Error handling
         if (accountOverride.MovePrecompileToAddress is not null)
         {
             if (!overridableCodeInfoRepository.GetCachedCodeInfo(address, currentSpec).IsPrecompile)
@@ -92,10 +92,9 @@ public static class StateOverridesExtensions
                 throw new ArgumentException($"Account {address} is not a precompile");
             }
 
-            overridableCodeInfoRepository.SetCodeOverwrite(
+            overridableCodeInfoRepository.MovePrecompile(
                 currentSpec,
                 address,
-                CodeInfo.Empty,
                 accountOverride.MovePrecompileToAddress);
         }
 

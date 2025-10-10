@@ -14,12 +14,15 @@ namespace Nethermind.State.OverridableEnv;
 
 public class OverridableCodeInfoRepository(ICodeInfoRepository codeInfoRepository) : IOverridableCodeInfoRepository
 {
-    private readonly Dictionary<Address, ICodeInfo> _codeOverwrites = new();
+    private readonly Dictionary<Address, ICodeInfo> _codeOverrides = new();
+    private readonly Dictionary<Address, (ICodeInfo codeInfo, Address initialAddr)> _precompileOverrides = new();
 
     public ICodeInfo GetCachedCodeInfo(Address codeSource, bool followDelegation, IReleaseSpec vmSpec, out Address? delegationAddress)
     {
         delegationAddress = null;
-        return _codeOverwrites.TryGetValue(codeSource, out ICodeInfo result)
+        if (_precompileOverrides.TryGetValue(codeSource, out var precompile)) return precompile.codeInfo;
+
+        return _codeOverrides.TryGetValue(codeSource, out ICodeInfo result)
             ? result
             : codeInfoRepository.GetCachedCodeInfo(codeSource, followDelegation, vmSpec, out delegationAddress);
     }
@@ -30,15 +33,15 @@ public class OverridableCodeInfoRepository(ICodeInfoRepository codeInfoRepositor
     public void SetCodeOverwrite(
         IReleaseSpec vmSpec,
         Address key,
-        ICodeInfo value,
-        Address? redirectAddress = null)
+        ICodeInfo value)
     {
-        if (redirectAddress is not null)
-        {
-            _codeOverwrites[redirectAddress] = this.GetCachedCodeInfo(key, vmSpec);
-        }
+        _codeOverrides[key] = value;
+    }
 
-        _codeOverwrites[key] = value;
+    public void MovePrecompile(IReleaseSpec vmSpec, Address precompileAddr, Address targetAddr)
+    {
+        _precompileOverrides[targetAddr] = (this.GetCachedCodeInfo(precompileAddr, vmSpec), precompileAddr);
+        _codeOverrides[precompileAddr] = CodeInfo.Empty;
     }
 
     public void SetDelegation(Address codeSource, Address authority, IReleaseSpec spec) =>
@@ -50,5 +53,13 @@ public class OverridableCodeInfoRepository(ICodeInfoRepository codeInfoRepositor
     public ValueHash256 GetExecutableCodeHash(Address address, IReleaseSpec spec) =>
         codeInfoRepository.GetExecutableCodeHash(address, spec);
 
-    public void ResetOverrides() => _codeOverwrites.Clear();
+    public void ResetOverrides() => _codeOverrides.Clear();
+    public void ResetPrecompileOverrides()
+    {
+        foreach (var (_, precompileInfo) in _precompileOverrides)
+        {
+            _codeOverrides.Remove(precompileInfo.initialAddr);
+        }
+        _precompileOverrides.Clear();
+    }
 }
