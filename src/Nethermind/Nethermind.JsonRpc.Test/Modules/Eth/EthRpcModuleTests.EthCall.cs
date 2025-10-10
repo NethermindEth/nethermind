@@ -24,6 +24,7 @@ using Nethermind.Evm.State;
 using Nethermind.Int256;
 using Newtonsoft.Json.Linq;
 using NUnit.Framework;
+using Nethermind.Abi;
 
 namespace Nethermind.JsonRpc.Test.Modules.Eth;
 
@@ -301,18 +302,29 @@ public partial class EthRpcModuleTests
     {
         using Context ctx = await Context.CreateWithLondonEnabled();
 
+        var abiEncoder = new AbiEncoder();
+        var errorSignature = new AbiSignature(
+            "Error",
+            AbiType.String
+        );
+        string errorMessage = "wrong-parameters";
+        byte[] encodedError = abiEncoder.Encode(
+            AbiEncodingStyle.IncludeSignature,  // Include the 0x08c379a0 selector
+            errorSignature,
+            errorMessage
+        );
+        string abiEncodedErrorMessage = encodedError.ToHexString(true);
+
         byte[] code = Prepare.EvmCode
-            .PushData(0)
-            .PushData(0)
-            .Op(Instruction.REVERT)
+            .RevertWithSolidityErrorEncoding(errorMessage)
             .Done;
 
         string dataStr = code.ToHexString();
         TransactionForRpc transaction = ctx.Test.JsonSerializer.Deserialize<TransactionForRpc>(
-            $"{{\"from\": \"0x32e4e4c7c5d1cea5db5f9202a9e4d99e56c91a24\", \"type\": \"0x2\", \"data\": \"{dataStr}\", \"gas\": 100000000}}");
+            $$"""{"from": "0x32e4e4c7c5d1cea5db5f9202a9e4d99e56c91a24", "type": "0x2", "data": "{{dataStr}}", "gas": 100000000}""");
         string serialized = await ctx.Test.TestEthRpc("eth_call", transaction);
         Assert.That(
-            serialized, Is.EqualTo("{\"jsonrpc\":\"2.0\",\"error\":{\"code\":-32000,\"message\":\"execution reverted\",\"data\":\"0x\"},\"id\":67}"));
+            serialized, Is.EqualTo($$"""{"jsonrpc":"2.0","error":{"code":3,"message":"execution reverted: {{errorMessage}}","data":"{{abiEncodedErrorMessage}}"},"id":67}"""));
     }
 
     [TestCase(
