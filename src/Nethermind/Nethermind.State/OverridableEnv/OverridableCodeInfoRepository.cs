@@ -41,7 +41,6 @@ public class OverridableCodeInfoRepository(ICodeInfoRepository codeInfoRepositor
     public void MovePrecompile(IReleaseSpec vmSpec, Address precompileAddr, Address targetAddr)
     {
         _precompileOverrides[targetAddr] = (this.GetCachedCodeInfo(precompileAddr, vmSpec), precompileAddr);
-        _codeOverrides[precompileAddr] = CodeInfo.Empty;
     }
 
     public void SetDelegation(Address codeSource, Address authority, IReleaseSpec spec) =>
