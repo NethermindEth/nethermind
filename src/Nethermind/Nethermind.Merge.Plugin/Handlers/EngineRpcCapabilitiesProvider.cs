@@ -9,21 +9,16 @@ using Nethermind.Merge.Plugin;
 
 namespace Nethermind.HealthChecks;
 
-public class EngineRpcCapabilitiesProvider : IRpcCapabilitiesProvider
+public class EngineRpcCapabilitiesProvider(ISpecProvider specProvider) : IRpcCapabilitiesProvider
 {
     private readonly ConcurrentDictionary<string, (bool Enabled, bool WarnIfMissing)> _capabilities = new();
 
-    private readonly ISpecProvider _specProvider;
 
-    public EngineRpcCapabilitiesProvider(ISpecProvider specProvider)
-    {
-        _specProvider = specProvider;
-    }
     public IReadOnlyDictionary<string, (bool Enabled, bool WarnIfMissing)> GetEngineCapabilities()
     {
         if (_capabilities.IsEmpty)
         {
-            IReleaseSpec spec = _specProvider.GetFinalSpec();
+            IReleaseSpec spec = specProvider.GetFinalSpec();
 
             // The Merge
             _capabilities[nameof(IEngineRpcModule.engine_exchangeTransitionConfigurationV1)] = (true, false);
@@ -53,6 +48,10 @@ public class EngineRpcCapabilitiesProvider : IRpcCapabilitiesProvider
             // Osaka
             _capabilities[nameof(IEngineRpcModule.engine_getPayloadV5)] = (spec.IsEip7594Enabled, spec.IsEip7594Enabled);
             _capabilities[nameof(IEngineRpcModule.engine_getBlobsV2)] = (spec.IsEip7594Enabled, false);
+
+            // Amsterdam
+            _capabilities[nameof(IEngineRpcModule.engine_getPayloadV6)] = (spec.IsEip7928Enabled, spec.IsEip7928Enabled);
+            _capabilities[nameof(IEngineRpcModule.engine_newPayloadV5)] = (spec.IsEip7928Enabled, spec.IsEip7928Enabled);
         }
 
         return _capabilities;
