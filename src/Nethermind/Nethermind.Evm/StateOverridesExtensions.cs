@@ -96,13 +96,15 @@ public static class StateOverridesExtensions
                 currentSpec,
                 address,
                 accountOverride.MovePrecompileToAddress);
+
+            stateProvider.InsertCode(address, CodeInfo.Empty.Code, currentSpec);
         }
 
         if (accountOverride.Code is not null)
         {
             stateProvider.InsertCode(address, accountOverride.Code, currentSpec);
 
-            overridableCodeInfoRepository.SetCodeOverwrite(
+            overridableCodeInfoRepository.SetCodeOverride(
                 currentSpec,
                 address,
                 new CodeInfo(accountOverride.Code));

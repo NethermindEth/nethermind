@@ -30,7 +30,7 @@ public class OverridableCodeInfoRepository(ICodeInfoRepository codeInfoRepositor
     public void InsertCode(ReadOnlyMemory<byte> code, Address codeOwner, IReleaseSpec spec) =>
         codeInfoRepository.InsertCode(code, codeOwner, spec);
 
-    public void SetCodeOverwrite(
+    public void SetCodeOverride(
         IReleaseSpec vmSpec,
         Address key,
         ICodeInfo value)
