@@ -18,8 +18,10 @@ namespace Nethermind.Facade.Simulate;
 
 public sealed class SimulateTxTracer : TxTracer
 {
-    private static readonly Hash256 transferSignature =
+    private static readonly Hash256 TransferSignature =
         new AbiSignature("Transfer", AbiType.Address, AbiType.Address, AbiType.UInt256).Hash;
+
+    private static readonly AbiSignature AbiTransferSignature = new("", AbiType.UInt256);
 
     private static readonly Address Erc20Sender = new("0xeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee");
     private readonly Hash256 _currentBlockHash;
@@ -51,9 +53,8 @@ public sealed class SimulateTxTracer : TxTracer
         base.ReportAction(gas, value, from, to, input, callType, isPrecompileCall);
         if (value > UInt256.Zero)
         {
-            var data = AbiEncoder.Instance.Encode(AbiEncodingStyle.Packed, new AbiSignature("", AbiType.UInt256),
-                value);
-            _logs.Add(new LogEntry(Erc20Sender, data, [transferSignature, from.ToHash().ToHash256(), to.ToHash().ToHash256()]));
+            var data = AbiEncoder.Instance.Encode(AbiEncodingStyle.Packed, AbiTransferSignature, value);
+            _logs.Add(new LogEntry(Erc20Sender, data, [TransferSignature, from.ToHash().ToHash256(), to.ToHash().ToHash256()]));
         }
     }
 
@@ -62,9 +63,8 @@ public sealed class SimulateTxTracer : TxTracer
         base.ReportSelfDestruct(address, balance, refundAddress);
         if (balance > UInt256.Zero)
         {
-            var data = AbiEncoder.Instance.Encode(AbiEncodingStyle.Packed, new AbiSignature("", AbiType.UInt256),
-                balance);
-            _logs.Add(new LogEntry(Erc20Sender, data, [transferSignature, address.ToHash().ToHash256(), refundAddress.ToHash().ToHash256()]));
+            var data = AbiEncoder.Instance.Encode(AbiEncodingStyle.Packed, AbiTransferSignature, balance);
+            _logs.Add(new LogEntry(Erc20Sender, data, [TransferSignature, address.ToHash().ToHash256(), refundAddress.ToHash().ToHash256()]));
         }
     }
 
