@@ -81,7 +81,7 @@ public sealed class FlatCacheScopeProvider : IWorldStateScopeProvider, IPreBlock
         {
             if (snapshotBundle.TryGetAccount(address, out var account))
             {
-                baseScope.HintAccountRead(address, account);
+                baseScope.HintGet(address, account);
                 _cacheHitHit.Inc();
                 return account;
             }
@@ -91,9 +91,9 @@ public sealed class FlatCacheScopeProvider : IWorldStateScopeProvider, IPreBlock
             return account;
         }
 
-        public void HintAccountRead(Address address, Account? account)
+        public void HintGet(Address address, Account? account)
         {
-            baseScope.HintAccountRead(address, account);
+            baseScope.HintGet(address, account);
             if (!isReadOnly) snapshotBundle.HintAccountRead(address, account);
         }
 
@@ -211,12 +211,18 @@ public sealed class FlatCacheScopeProvider : IWorldStateScopeProvider, IPreBlock
             _baseWriteBatch = baseWriteBatch;
             _snapshotBundle = snapshotBundle;
 
-            _baseWriteBatch.OnAccountChanged += BaseWriteBatchOnOnAccountChanged;
+            _baseWriteBatch.OnAccountUpdated += BaseWriteBatchOnOnAccountChanged;
         }
 
-        private void BaseWriteBatchOnOnAccountChanged(object? sender, IWorldStateScopeProvider.AccountChangeEvent e)
+        private void BaseWriteBatchOnOnAccountChanged(object? sender, IWorldStateScopeProvider.AccountUpdated e)
         {
             _changedValues[e.Address] = e.Account;
+        }
+
+        public event EventHandler<IWorldStateScopeProvider.AccountUpdated>? OnAccountUpdated
+        {
+            add => _baseWriteBatch.OnAccountUpdated += value;
+            remove => _baseWriteBatch.OnAccountUpdated -= value;
         }
 
         public void Set(Address key, Account account)
@@ -235,12 +241,6 @@ public sealed class FlatCacheScopeProvider : IWorldStateScopeProvider, IPreBlock
         {
             _changedStorage[key] = true;
             return new StorageWriteBatchWrapper(_baseWriteBatch.CreateStorageWriteBatch(key, estimatedEntries), _snapshotBundle.GatherStorageCache(key));
-        }
-
-        public event EventHandler<IWorldStateScopeProvider.AccountChangeEvent>? OnAccountChanged
-        {
-            add => _baseWriteBatch.OnAccountChanged += value;
-            remove => _baseWriteBatch.OnAccountChanged -= value;
         }
     }
 
