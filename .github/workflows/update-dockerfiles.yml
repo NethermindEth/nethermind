@@ -53,6 +53,9 @@ jobs:
           # Get the number of modified files
           modified_count=$(git status --porcelain | wc -l)
           echo "modified-count=$modified_count" >> $GITHUB_OUTPUT
+          echo "runtime-tag=$runtime_tag" >> $GITHUB_OUTPUT
+          echo "runtime-chiseled-digest=$runtime_chiseled_digest" >> $GITHUB_OUTPUT
+          echo "sdk-tag=$sdk_tag" >> $GITHUB_OUTPUT
 
       - name: Create a pull request
         if: steps.update.outputs.modified-count != '0'
@@ -64,8 +67,9 @@ jobs:
           Updated Dockerfiles to use the latest .NET ${{ env.DOTNET_VERSION }} SDK and runtime versions.
 
           To verify manually, see:
-          - https://mcr.microsoft.com/en-us/artifact/mar/dotnet/aspnet/tags
-          - https://mcr.microsoft.com/en-us/artifact/mar/dotnet/sdk/tags
+          - https://mcr.microsoft.com/en-us/artifact/mar/dotnet/aspnet/tags/${{ steps.update.outputs.runtime-tag }}
+          - https://mcr.microsoft.com/en-us/artifact/mar/dotnet/aspnet/tags/${{ steps.update.outputs.runtime-chiseled-digest }}
+          - https://mcr.microsoft.com/en-us/artifact/mar/dotnet/sdk/tags/${{ steps.update.outputs.sdk-tag }}
           EOF
           )
 
@@ -75,4 +79,4 @@ jobs:
           git add -A
           git commit -am "Update Dockerfiles"
           git push origin $head_branch
-          gh pr create -B $GITHUB_REF_NAME -H $head_branch -t "Update Dockerfiles" -b "$body"
+          gh pr create -B $GITHUB_REF_NAME -H $head_branch -t "Update Dockerfiles" -b "$body" -l .net -l devops
