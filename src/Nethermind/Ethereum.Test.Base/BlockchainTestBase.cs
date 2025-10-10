@@ -187,7 +187,9 @@ public abstract class BlockchainTestBase
             {
                 // TODO: mimic the actual behaviour where block goes through validating sync manager?
                 correctRlp[i].Block.Header.IsPostMerge = correctRlp[i].Block.Difficulty == 0;
-                if (!test.SealEngineUsed || blockValidator.ValidateSuggestedBlock(correctRlp[i].Block, parentHeader, out var _error))
+                // Always validate consensus rules, regardless of seal engine
+                // (seal validation is already conditional within the validator framework)
+                if (blockValidator.ValidateSuggestedBlock(correctRlp[i].Block, parentHeader, out var _error))
                 {
                     blockTree.SuggestBlock(correctRlp[i].Block);
                 }
