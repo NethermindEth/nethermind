@@ -21,10 +21,10 @@ using Nethermind.Core.Test.Builders;
 using Nethermind.Db.Rocks;
 using Nethermind.Db.Rocks.Config;
 using Nethermind.Logging;
+using Nethermind.TurboPForBindings;
 using NUnit.Framework;
 using NUnit.Framework.Interfaces;
 using static Nethermind.Db.LogIndexStorage;
-using TurboPForBindings = Nethermind.TurboPFor.TurboPFor;
 
 namespace Nethermind.Db.Test.LogIndex
 {
@@ -44,9 +44,9 @@ namespace Nethermind.Db.Test.LogIndex
         public static readonly TestFixtureData[] TestCases =
         [
             new(new TestData(10, 100) { Compression = CompressionAlgorithm.Best.Key }),
-            new(new TestData(5, 200) { Compression = nameof(TurboPForBindings.p4nd1enc128v32) }),
+            new(new TestData(5, 200) { Compression = nameof(TurboPFor.p4nd1enc128v32) }),
             new(new TestData(10, 100) { Compression = CompressionAlgorithm.Best.Key, ExtendedGetRanges = true }) { RunState = RunState.Explicit },
-            new(new TestData(100, 100) { Compression = nameof(TurboPForBindings.p4nd1enc128v32) }) { RunState = RunState.Explicit },
+            new(new TestData(100, 100) { Compression = nameof(TurboPFor.p4nd1enc128v32) }) { RunState = RunState.Explicit },
             new(new TestData(100, 200) { Compression = CompressionAlgorithm.Best.Key }) { RunState = RunState.Explicit }
         ];
 

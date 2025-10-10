@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using Nethermind.Config;
-using TurboPForBindings = Nethermind.TurboPFor.TurboPFor;
+using Nethermind.TurboPForBindings;
 
 namespace Nethermind.Db;
 
@@ -85,7 +85,7 @@ public interface ILogIndexConfig : IConfig
 
     [ConfigItem(
         Description = "Log index sync: compression algorithm to use for block numbers.",
-        DefaultValue = nameof(TurboPForBindings.p4nd1enc256v32) + " if supported, otherwise " + nameof(TurboPForBindings.p4nd1enc128v32),
+        DefaultValue = nameof(TurboPFor.p4nd1enc256v32) + " if supported, otherwise " + nameof(TurboPFor.p4nd1enc128v32),
         HiddenFromDocs = true
     )]
     string? CompressionAlgorithm { get; set; }
