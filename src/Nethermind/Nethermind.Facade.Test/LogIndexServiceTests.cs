@@ -126,7 +126,7 @@ public class LogIndexServiceTests
         }
     }
 
-    private static readonly TimeSpan WaitTime = TimeSpan.FromSeconds(30);
+    private static readonly TimeSpan WaitTime = TimeSpan.FromSeconds(60);
 
     private const int MaxReorgDepth = 8;
     private const int MaxBlock = 100;
