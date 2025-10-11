@@ -6,6 +6,7 @@ using Nethermind.Serialization.Rlp;
 using Nethermind.Xdc.Types;
 
 namespace Nethermind.Xdc.RLP;
+
 internal class XdcBlockInfoDecoder : IRlpValueDecoder<BlockRoundInfo>, IRlpStreamDecoder<BlockRoundInfo>
 {
     public BlockRoundInfo Decode(ref Rlp.ValueDecoderContext decoderContext, RlpBehaviors rlpBehaviors = RlpBehaviors.None)

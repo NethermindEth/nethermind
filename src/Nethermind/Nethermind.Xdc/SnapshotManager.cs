@@ -21,6 +21,7 @@ using System.Text;
 using System.Threading.Tasks;
 
 namespace Nethermind.Xdc;
+
 internal class SnapshotManager : ISnapshotManager
 {
 

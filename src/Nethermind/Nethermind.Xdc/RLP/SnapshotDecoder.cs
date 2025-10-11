@@ -12,6 +12,7 @@ using System.Text;
 using System.Threading.Tasks;
 
 namespace Nethermind.Xdc.RLP;
+
 internal class SnapshotDecoder : IRlpStreamDecoder<Snapshot>, IRlpValueDecoder<Snapshot>
 {
     public Snapshot Decode(ref Rlp.ValueDecoderContext decoderContext, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
