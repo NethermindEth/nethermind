@@ -195,9 +195,9 @@ public class TrieStoreScopeProvider : IWorldStateScopeProvider
             while (_dirtyStorageTree.TryDequeue(out var entry))
             {
                 (AddressAsKey key, Hash256 storageRoot) = entry;
-                ref Account? account = ref CollectionsMarshal.GetValueRefOrAddDefault(_dirtyAccounts, key, out bool exists);
-                if (!exists) account = scope.Get(key) ?? ThrowNullAccount(key);
-
+                if (!_dirtyAccounts.TryGetValue(key, out var account)) account = scope.Get(key);
+                if (account == null && storageRoot == Keccak.EmptyTreeHash) continue;
+                account ??= ThrowNullAccount(key);
                 account = account!.WithChangedStorageRoot(storageRoot);
                 _dirtyAccounts[key] = account;
                 OnAccountUpdated?.Invoke(key, new IWorldStateScopeProvider.AccountUpdated(key, account));

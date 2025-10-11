@@ -386,11 +386,7 @@ internal sealed class PersistentStorageProvider : PartialStorageProviderBase
     {
         base.ClearStorage(address);
 
-        // here it is important to make sure that we will not reuse the same tree when the contract is revived
-        // by means of CREATE 2 - notice that the cached trie may carry information about items that were not
-        // touched in this block, hence were not zeroed above
-        // TODO: how does it work with pruning?
-        _toUpdateRoots.Remove(address);
+        _toUpdateRoots.TryAdd(address, true);
 
         PerContractState state = GetOrCreateStorage(address);
         state.Clear();
