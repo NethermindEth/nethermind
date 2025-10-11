@@ -5,5 +5,9 @@ using System;
 
 namespace Nethermind.Core
 {
-    public interface IWriteBatch : IDisposable, IWriteOnlyKeyValueStore;
+    public interface IWriteBatch : IDisposable, IWriteOnlyKeyValueStore
+    {
+        void Merge(ReadOnlySpan<byte> key, ReadOnlySpan<byte> value, WriteFlags flags = WriteFlags.None);
+        void Clear();
+    }
 }
