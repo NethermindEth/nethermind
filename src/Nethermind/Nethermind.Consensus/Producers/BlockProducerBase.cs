@@ -34,7 +34,7 @@ namespace Nethermind.Consensus.Producers
     /// </summary>
     public abstract class BlockProducerBase : IBlockProducer
     {
-        private IBlockchainProcessor Processor { get; }
+        protected IBlockchainProcessor Processor { get; }
         protected IBlockTree BlockTree { get; }
         private ITimestamper Timestamper { get; }
 
