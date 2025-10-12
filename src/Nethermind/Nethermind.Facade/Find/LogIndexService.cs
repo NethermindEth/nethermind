@@ -108,7 +108,10 @@ public sealed class LogIndexService : ILogIndexService
     {
         // Do not start backward sync if the target is already reached
         if (!isForward && _logIndexStorage.GetMinBlockNumber() <= MinTargetBlockNumber)
+        {
             MarkCompleted(false);
+            return;
+        }
 
         _progressLoggers[isForward] = new(GetLogPrefix(isForward), _logManager);
         _stats[isForward] = new(_logIndexStorage);
@@ -187,7 +190,7 @@ public sealed class LogIndexService : ILogIndexService
 
     private void LogStats(bool isForward)
     {
-        LogIndexUpdateStats stats = _stats?[isForward];
+        LogIndexUpdateStats stats = _stats[isForward];
 
         if (stats is not { BlocksAdded: > 0 })
             return;
@@ -220,11 +223,8 @@ public sealed class LogIndexService : ILogIndexService
         if (_pivotSource.Task.IsCompleted)
             return;
 
-        if (num < MinTargetBlockNumber)
-            num = Math.Max(MinTargetBlockNumber, num);
-
-        if (num > MaxTargetBlockNumber)
-            num = Math.Min(MaxTargetBlockNumber, num);
+        num = Math.Max(MinTargetBlockNumber, num);
+        num = Math.Min(MaxTargetBlockNumber, num);
 
         if (num is 0)
             return;
@@ -328,7 +328,7 @@ public sealed class LogIndexService : ILogIndexService
         if ((isForward && !IsSeqAsc(batch)) || (!isForward && !IsSeqDesc(batch)))
             throw new($"{GetLogPrefix(isForward)}: non-ordered batch in queue: ({batch[0]} -> {batch[^1]}).");
 
-        return _logIndexStorage.Aggregate(batch, !isForward, _stats?[isForward]);
+        return _logIndexStorage.Aggregate(batch, !isForward, _stats[isForward]);
     }
 
     private async Task SetReceiptsAsync(LogIndexAggregate aggregate, bool isForward)
@@ -336,7 +336,7 @@ public sealed class LogIndexService : ILogIndexService
         if (GetNextBlockNumber(_logIndexStorage, isForward) is { } next && next != aggregate.FirstBlockNum)
             throw new($"{GetLogPrefix(isForward)}: non sequential batches: ({aggregate.FirstBlockNum} instead of {next}).");
 
-        await _logIndexStorage.SetReceiptsAsync(aggregate, !isForward, _stats?[isForward]);
+        await _logIndexStorage.SetReceiptsAsync(aggregate, !isForward, _stats[isForward]);
         LastUpdate = DateTimeOffset.Now;
 
         UpdateProgress();
@@ -413,7 +413,7 @@ public sealed class LogIndexService : ILogIndexService
                     continue;
                 }
 
-                _stats?[isForward].LoadingReceipts.Include(Stopwatch.GetElapsedTime(timestamp));
+                _stats[isForward].LoadingReceipts.Include(Stopwatch.GetElapsedTime(timestamp));
 
                 start = GetNextBlockNumber(batch[^1].BlockNumber, isForward);
                 await queue.WriteAsync(batch.ToArray(), CancellationToken);
