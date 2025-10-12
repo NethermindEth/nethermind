@@ -30,6 +30,7 @@ namespace Nethermind.Facade.Find
         private readonly IReceiptsRecovery _receiptsRecovery;
         private readonly int _maxBlockDepth;
         private readonly int _rpcConfigGetLogsThreads;
+        private readonly int _minBlocksToUseIndex;
         private readonly IBlockFinder _blockFinder;
         private readonly ILogger _logger;
         private readonly ILogIndexStorage _logIndexStorage;
@@ -41,7 +42,8 @@ namespace Nethermind.Facade.Find
             ILogManager? logManager,
             IReceiptsRecovery? receiptsRecovery,
             ILogIndexStorage? logIndexStorage,
-            int maxBlockDepth = 1000)
+            int maxBlockDepth = 1000,
+            int minBlocksToUseIndex = 32)
         {
             _blockFinder = blockFinder ?? throw new ArgumentNullException(nameof(blockFinder));
             _receiptFinder = receiptFinder ?? throw new ArgumentNullException(nameof(receiptFinder));
@@ -52,6 +54,7 @@ namespace Nethermind.Facade.Find
             _logger = logManager?.GetClassLogger<LogFinder>() ?? throw new ArgumentNullException(nameof(logManager));
             _maxBlockDepth = maxBlockDepth;
             _rpcConfigGetLogsThreads = Math.Max(1, Environment.ProcessorCount / 4);
+            _minBlocksToUseIndex = minBlocksToUseIndex;
         }
 
         public IEnumerable<FilterLog> FindLogs(LogFilter filter, CancellationToken cancellationToken = default)
@@ -193,7 +196,6 @@ namespace Nethermind.Facade.Find
                 .SelectMany(blockNumber => FindLogsInBlock(filter, FindBlockHeader(blockNumber, cancellationToken), cancellationToken));
         }
 
-        // TODO: Do not use for single block after testing - scanning it will be usually faster
         private (int from, int to)? CanUseLogIndex(LogFilter filter, BlockHeader fromBlock, BlockHeader toBlock)
         {
             var tryUseIndex = filter.UseIndex;
@@ -211,6 +213,9 @@ namespace Nethermind.Facade.Find
             );
 
             if (range.from > range.to)
+                return null;
+
+            if (range.to - range.from + 1 < _minBlocksToUseIndex)
                 return null;
 
             filter.UseIndex = true;

@@ -64,7 +64,8 @@ public class LogFinderTests
         _bloomStorage = new BloomStorage(new BloomConfig(), new MemDb(), new InMemoryDictionaryFileStoreFactory());
         _receiptsRecovery = Substitute.For<IReceiptsRecovery>();
         _logIndexStorage = Substitute.For<ILogIndexStorage>();
-        _logFinder = new(_blockTree, _receiptStorage, _receiptStorage, _bloomStorage, LimboLogs.Instance, _receiptsRecovery, _logIndexStorage);
+        _logFinder = new(_blockTree, _receiptStorage, _receiptStorage, _bloomStorage, LimboLogs.Instance, _receiptsRecovery,
+            _logIndexStorage, minBlocksToUseIndex: 1);
     }
 
     private void SetupHeadWithNoTransaction()
