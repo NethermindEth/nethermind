@@ -36,7 +36,7 @@ public class LogFinderTests
     private IBloomStorage _bloomStorage = null!;
     private IReceiptsRecovery _receiptsRecovery = null!;
     private Block _headTestBlock = null!;
-    private ILogIndexStorage? _logIndexStorage = null;
+    private ILogIndexStorage _logIndexStorage = null!;
 
     [SetUp]
     public void SetUp()
@@ -45,24 +45,26 @@ public class LogFinderTests
     }
 
     [TearDown]
-    public void TearDown()
+    public async Task TearDown()
     {
-        _bloomStorage?.Dispose();
+        _bloomStorage.Dispose();
+        await _logIndexStorage.DisposeAsync();
     }
 
-    private void SetUp(bool allowReceiptIterator)
+    private void SetUp(bool allowReceiptIterator, int chainLength = 5)
     {
         var specProvider = Substitute.For<ISpecProvider>();
         specProvider.GetSpec(Arg.Any<ForkActivation>()).IsEip155Enabled.Returns(true);
         _receiptStorage = new InMemoryReceiptStorage(allowReceiptIterator);
         _rawBlockTree = Build.A.BlockTree()
             .WithTransactions(_receiptStorage, LogsForBlockBuilder)
-            .OfChainLength(out _headTestBlock, 5)
+            .OfChainLength(out _headTestBlock, chainLength)
             .TestObject;
         _blockTree = _rawBlockTree;
         _bloomStorage = new BloomStorage(new BloomConfig(), new MemDb(), new InMemoryDictionaryFileStoreFactory());
         _receiptsRecovery = Substitute.For<IReceiptsRecovery>();
-        _logFinder = new LogFinder(_blockTree, _receiptStorage, _receiptStorage, _bloomStorage, LimboLogs.Instance, _receiptsRecovery, _logIndexStorage);
+        _logIndexStorage = Substitute.For<ILogIndexStorage>();
+        _logFinder = new(_blockTree, _receiptStorage, _receiptStorage, _bloomStorage, LimboLogs.Instance, _receiptsRecovery, _logIndexStorage);
     }
 
     private void SetupHeadWithNoTransaction()
@@ -289,7 +291,6 @@ public class LogFinderTests
         logs.Length.Should().Be(3);
     }
 
-
     public static IEnumerable ComplexFilterTestsData
     {
         get
@@ -344,6 +345,89 @@ public class LogFinderTests
         {
             action.Should().NotThrow();
         }
+    }
+
+    [TestCase("No intersection, left",
+        1, 2,
+        4, 6,
+        null, null
+    )]
+    [TestCase("No intersection, adjacent left",
+        1, 3,
+        4, 6,
+        null, null
+    )]
+    [TestCase("1 block intersection, left",
+        1, 4,
+        4, 6,
+        4, 4
+    )]
+    [TestCase("Partial intersection, left",
+        1, 5,
+        4, 6,
+        4, 5
+    )]
+    [TestCase("Full containment, border right",
+        1, 6,
+        4, 6,
+        4, 6
+    )]
+    [TestCase("Full containment",
+        1, 9,
+        4, 6,
+        4, 6
+    )]
+    [TestCase("Full containment, border left",
+        4, 9,
+        4, 6,
+        4, 6
+    )]
+    [TestCase("Partial intersection, right",
+        5, 9,
+        4, 6,
+        5, 6
+    )]
+    [TestCase("1 block intersection, right",
+        6, 9,
+        4, 6,
+        6, 6
+    )]
+    [TestCase("No intersection, adjacent right",
+        7, 9,
+        4, 6,
+        null, null
+    )]
+    [TestCase("No intersection, right",
+        8, 9,
+        4, 6,
+        null, null
+    )]
+    public void queries_intersected_range_from_log_index(string name,
+        int from, int to,
+        int indexFrom, int indexTo,
+        int? exFrom, int? exTo
+    )
+    {
+        SetUp(true, chainLength: 10);
+
+        _logIndexStorage.Enabled.Returns(true);
+        _logIndexStorage.GetMinBlockNumber().Returns(indexFrom);
+        _logIndexStorage.GetMaxBlockNumber().Returns(indexTo);
+
+        Address address = TestItem.AddressA;
+        BlockHeader fromHeader = Build.A.BlockHeader.WithNumber(from).TestObject;
+        BlockHeader toHeader = Build.A.BlockHeader.WithNumber(to).TestObject;
+        LogFilter filter = FilterBuilder.New()
+            .FromBlock(from).ToBlock(to)
+            .WithAddress(address)
+            .Build();
+
+        _ = _logFinder.FindLogs(filter, fromHeader, toHeader).ToArray();
+
+        if (exTo is not null && exFrom is not null)
+            _logIndexStorage.Received(1).GetBlockNumbersFor(address, exFrom.Value, exTo.Value);
+        else
+            _logIndexStorage.DidNotReceiveWithAnyArgs().GetBlockNumbersFor(Arg.Any<Address>(), Arg.Any<int>(), Arg.Any<int>());
     }
 
     private static FilterBuilder AllBlockFilter() => FilterBuilder.New().FromEarliestBlock().ToPendingBlock();

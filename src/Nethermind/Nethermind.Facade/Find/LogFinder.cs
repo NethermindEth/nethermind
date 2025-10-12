@@ -32,7 +32,7 @@ namespace Nethermind.Facade.Find
         private readonly int _rpcConfigGetLogsThreads;
         private readonly IBlockFinder _blockFinder;
         private readonly ILogger _logger;
-        private readonly ILogIndexStorage? _logIndexStorage;
+        private readonly ILogIndexStorage _logIndexStorage;
 
         public LogFinder(IBlockFinder? blockFinder,
             IReceiptFinder? receiptFinder,
@@ -48,7 +48,7 @@ namespace Nethermind.Facade.Find
             _receiptStorage = receiptStorage ?? throw new ArgumentNullException(nameof(receiptStorage)); ;
             _bloomStorage = bloomStorage ?? throw new ArgumentNullException(nameof(bloomStorage));
             _receiptsRecovery = receiptsRecovery ?? throw new ArgumentNullException(nameof(receiptsRecovery));
-            _logIndexStorage = logIndexStorage;
+            _logIndexStorage = logIndexStorage ?? throw new ArgumentNullException(nameof(logIndexStorage));
             _logger = logManager?.GetClassLogger<LogFinder>() ?? throw new ArgumentNullException(nameof(logManager));
             _maxBlockDepth = maxBlockDepth;
             _rpcConfigGetLogsThreads = Math.Max(1, Environment.ProcessorCount / 4);
@@ -97,7 +97,6 @@ namespace Nethermind.Facade.Find
                 return FilterLogsWithoutIndex(filter, fromBlock, toBlock, cancellationToken);
 
             // Combine results from regular scanning and index
-            // TODO: write tests for different scenarios!
             IEnumerable<FilterLog>? result = [];
 
             if (indexRange.from > fromBlock.Number)
@@ -200,7 +199,7 @@ namespace Nethermind.Facade.Find
             var tryUseIndex = filter.UseIndex;
             filter.UseIndex = false;
 
-            if (!tryUseIndex || _logIndexStorage?.Enabled != true || filter.AcceptsAnyBlock)
+            if (!tryUseIndex || !_logIndexStorage.Enabled || filter.AcceptsAnyBlock)
                 return null;
 
             if (_logIndexStorage.GetMinBlockNumber() is not { } indexFrom || _logIndexStorage.GetMaxBlockNumber() is not { } indexTo)
