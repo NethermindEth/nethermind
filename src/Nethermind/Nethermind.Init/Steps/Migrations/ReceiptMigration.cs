@@ -165,7 +165,7 @@ namespace Nethermind.Init.Steps.Migrations
 
             try
             {
-                int parallelism = _receiptConfig.LogIndexIOParallelism;
+                int parallelism = _receiptConfig.ReceiptsMigrationDegreeOfParallelism;
                 if (parallelism == 0)
                 {
                     parallelism = Environment.ProcessorCount;

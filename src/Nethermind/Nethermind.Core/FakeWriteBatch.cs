@@ -39,7 +39,7 @@ namespace Nethermind.Core
 
         public void Clear()
         {
-            throw new NotSupportedException("Cancelling is not supported by this implementation.");
+            throw new NotSupportedException("Clearing is not supported by this implementation.");
         }
     }
 }

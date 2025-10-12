@@ -26,7 +26,6 @@ using NUnit.Framework;
 
 namespace Nethermind.Blockchain.Test.Find;
 
-// TODO: tests with different LogIndexStorage states
 public class LogFinderTests
 {
     private IBlockTree _blockTree = null!;
@@ -45,7 +44,7 @@ public class LogFinderTests
     }
 
     [TearDown]
-    public async Task TearDown()
+    public async Task TearDownAsync()
     {
         _bloomStorage.Dispose();
         await _logIndexStorage.DisposeAsync();
@@ -64,8 +63,7 @@ public class LogFinderTests
         _bloomStorage = new BloomStorage(new BloomConfig(), new MemDb(), new InMemoryDictionaryFileStoreFactory());
         _receiptsRecovery = Substitute.For<IReceiptsRecovery>();
         _logIndexStorage = Substitute.For<ILogIndexStorage>();
-        _logFinder = new(_blockTree, _receiptStorage, _receiptStorage, _bloomStorage, LimboLogs.Instance, _receiptsRecovery,
-            _logIndexStorage, minBlocksToUseIndex: 1);
+        _logFinder = new(_blockTree, _receiptStorage, _receiptStorage, _bloomStorage, LimboLogs.Instance, _receiptsRecovery, _logIndexStorage);
     }
 
     private void SetupHeadWithNoTransaction()
@@ -423,6 +421,10 @@ public class LogFinderTests
             .WithAddress(address)
             .Build();
 
+        _logFinder = new(
+            _blockTree, _receiptStorage, _receiptStorage, _bloomStorage, LimboLogs.Instance, _receiptsRecovery,
+            _logIndexStorage, minBlocksToUseIndex: 1
+        );
         _ = _logFinder.FindLogs(filter, fromHeader, toHeader).ToArray();
 
         if (exTo is not null && exFrom is not null)

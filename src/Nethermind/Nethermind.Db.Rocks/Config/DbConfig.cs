@@ -270,14 +270,4 @@ public class DbConfig : IDbConfig
     public string L1OriginDbRocksDbOptions { get; set; } = "";
 
     public string? L1OriginDbAdditionalRocksDbOptions { get; set; }
-
-    // TODO: cleanup & optimize settings
-    public string? LogIndexStorageDbRocksDbOptions { get; set; } = "";
-    public string? LogIndexStorageDbAdditionalRocksDbOptions { get; set; } = "";
-    public string? LogIndexStorageDefaultDbRocksDbOptions { get; set; } = "";
-    public string? LogIndexStorageDefaultDbAdditionalRocksDbOptions { get; set; } = "";
-    public string? LogIndexStorageAddressesDbRocksDbOptions { get; set; } = "";
-    public string? LogIndexStorageAddressesDbAdditionalRocksDbOptions { get; set; } = "";
-    public string? LogIndexStorageTopicsDbRocksDbOptions { get; set; } = "";
-    public string? LogIndexStorageTopicsDbAdditionalRocksDbOptions { get; set; } = "";
 }

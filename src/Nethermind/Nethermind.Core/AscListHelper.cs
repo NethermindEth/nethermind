@@ -11,8 +11,10 @@ namespace Nethermind.Core;
 /// Helper class for fast operations with strictly increasing lists of integers.
 /// </summary>
 /// <remarks>
+/// Doesn't verify that parameters satisfy order requirement. <br/>
 /// Can reuse parameters as return values to minimize allocations.
 /// </remarks>
+// TODO: optimize memory usage/copying in *All methods?
 public static class AscListHelper
 {
     public static T IntersectTo<T>(T destination, IReadOnlyList<int> source1, IReadOnlyList<int> source2)
@@ -99,7 +101,6 @@ public static class AscListHelper
         return Union((IReadOnlyList<int>)source1, source2);
     }
 
-    // TODO: optimize memory usage/copying in *All methods?
     public static List<int> IntersectAll(IEnumerable<IReadOnlyList<int>> sources) =>
         sources.Aggregate<IReadOnlyList<int>, List<int>?>(null, (current, l) => current is null ? l.ToList() : Intersect(current, l)) ?? [];
 
@@ -111,4 +112,13 @@ public static class AscListHelper
 
     public static List<int> UnionAll(ICollection<List<int>> sources) =>
         sources.Count == 1 ? sources.First() : UnionAll(sources.AsEnumerable());
+
+    public static bool IsStrictlyAscending(IReadOnlyList<int> source)
+    {
+        int j = source.Count - 1;
+        if (j < 1) return true;
+        int ai = source[0], i = 1;
+        while (i <= j && ai < (ai = source[i])) i++;
+        return i > j;
+    }
 }

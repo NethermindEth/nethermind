@@ -6,7 +6,6 @@ using Nethermind.Blockchain.Receipts;
 using Nethermind.Consensus;
 using Nethermind.Core;
 using Nethermind.Crypto;
-using Nethermind.Db;
 using Nethermind.Db.Blooms;
 using Nethermind.State.Repositories;
 using Nethermind.TxPool;

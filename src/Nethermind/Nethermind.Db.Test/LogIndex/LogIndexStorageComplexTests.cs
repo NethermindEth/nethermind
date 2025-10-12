@@ -545,6 +545,7 @@ namespace Nethermind.Db.Test.LogIndex
                 await logIndexStorage.SetReceiptsAsync(batch, isBackwardsSync, totalStats);
             }
 
+#if DEBUG
             // Log statistics
             await TestContext.Out.WriteLineAsync(
                 $"""
@@ -554,6 +555,7 @@ namespace Nethermind.Db.Test.LogIndex
 
                  """
             );
+#endif
         }
 
         private static void VerifyReceipts(ILogIndexStorage logIndexStorage, TestData testData,
@@ -676,7 +678,7 @@ namespace Nethermind.Db.Test.LogIndex
                 {
                     if (addresses.Count != 0)
                     {
-                        var address = random.NextValue(addresses);
+                        var address = random.NextFrom(addresses);
                         var expectedNums = testData.AddressMap[address];
 
                         if (logIndexStorage.GetMinBlockNumber() is not { } min || logIndexStorage.GetMaxBlockNumber() is not { } max)
@@ -691,7 +693,7 @@ namespace Nethermind.Db.Test.LogIndex
 
                     if (topics.Count != 0)
                     {
-                        var (idx, topic) = random.NextValue(topics);
+                        var (idx, topic) = random.NextFrom(topics);
                         var expectedNums = testData.TopicMap[idx][topic];
 
                         if (logIndexStorage.GetMinBlockNumber() is not { } min || logIndexStorage.GetMaxBlockNumber() is not { } max)
@@ -728,6 +730,7 @@ namespace Nethermind.Db.Test.LogIndex
             var timestamp = Stopwatch.GetTimestamp();
             await logIndexStorage.CompactAsync();
 
+#if DEBUG
             // Log statistics
             await TestContext.Out.WriteLineAsync(
                 $"""
@@ -736,6 +739,7 @@ namespace Nethermind.Db.Test.LogIndex
 
                  """
             );
+#endif
         }
 
         public class TestData
@@ -744,7 +748,7 @@ namespace Nethermind.Db.Test.LogIndex
             private readonly int _blocksPerBatch;
             private readonly int _startNum;
 
-            // To avoid generating all the data just to display test cases
+            // Lazy avoids generating all the data just to display test cases in the runner
             private readonly Lazy<BlockReceipts[][]> _batches;
             public BlockReceipts[][] Batches => _batches.Value;
 
@@ -863,10 +867,10 @@ namespace Nethermind.Db.Test.LogIndex
                 LogEntry[] logs = Enumerable
                     .Repeat(0, random.Next(logsPerBlock.min, logsPerBlock.max + 1))
                     .Select(_ => Build.A.LogEntry
-                        .WithAddress(random.NextValue(addresses))
+                        .WithAddress(random.NextFrom(addresses))
                         .WithTopics(topics.Length == 0
                             ? []
-                            : Enumerable.Repeat(0, random.Next(4)).Select(_ => random.NextValue(topics)).ToArray()
+                            : Enumerable.Repeat(0, random.Next(4)).Select(_ => random.NextFrom(topics)).ToArray()
                         ).TestObject
                     ).ToArray();
 

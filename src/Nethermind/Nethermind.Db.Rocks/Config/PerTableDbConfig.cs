@@ -38,7 +38,7 @@ public class PerTableDbConfig : IRocksDbConfig
         foreach (var prefix in _prefixes)
         {
             string prefixed = string.Concat(prefix, propertyName);
-            if (GetPrefixedConfigProperty(type, prefixed) is null)
+            if (GetProperty(type, prefixed, caseSensitive: true) is null)
             {
                 throw new InvalidConfigurationException($"Configuration {propertyName} not available with prefix {prefix}. Add {prefix}{propertyName} to {nameof(IDbConfig)}.", -1);
             }
@@ -90,14 +90,13 @@ public class PerTableDbConfig : IRocksDbConfig
         Type type = dbConfig.GetType();
         PropertyInfo? propertyInfo;
 
-        // TODO: clarify if this can be case-insensitive
-        string val = (string)type.GetProperty(propertyName, BindingFlags.Public | BindingFlags.Instance)!.GetValue(dbConfig)!;
+        string val = (string)GetProperty(type, propertyName, caseSensitive: true)!.GetValue(dbConfig)!;
 
         foreach (var prefix in prefixes)
         {
             string prefixed = string.Concat(prefix, propertyName);
 
-            propertyInfo = GetPrefixedConfigProperty(type, prefixed);
+            propertyInfo = GetProperty(type, prefixed);
             if (propertyInfo is not null)
             {
                 string? valObj = (string?)propertyInfo.GetValue(dbConfig);
@@ -123,7 +122,7 @@ public class PerTableDbConfig : IRocksDbConfig
             {
                 string prefixed = string.Concat(prefix, propertyName);
 
-                propertyInfo = GetPrefixedConfigProperty(type, prefixed);
+                propertyInfo = GetProperty(type, prefixed);
                 if (propertyInfo is not null)
                 {
                     if (propertyInfo.PropertyType.CanBeAssignedNull())
@@ -148,7 +147,7 @@ public class PerTableDbConfig : IRocksDbConfig
             }
 
             // Use generic one even if its available
-            propertyInfo = GetPrefixedConfigProperty(type, propertyName);
+            propertyInfo = GetProperty(type, propertyName);
             return (T?)propertyInfo?.GetValue(dbConfig);
         }
         catch (Exception e)
@@ -157,8 +156,10 @@ public class PerTableDbConfig : IRocksDbConfig
         }
     }
 
-    private static PropertyInfo? GetPrefixedConfigProperty(Type type, string name)
+    private static PropertyInfo? GetProperty(Type type, string name, bool caseSensitive = false)
     {
-        return type.GetProperty(name, BindingFlags.IgnoreCase | BindingFlags.Public | BindingFlags.Instance);
+        BindingFlags flags = BindingFlags.Public | BindingFlags.Instance;
+        if (!caseSensitive) flags |= BindingFlags.IgnoreCase;
+        return type.GetProperty(name, flags);
     }
 }

@@ -21,7 +21,7 @@ namespace Nethermind.Db
         public bool CanDeleteFolder { get; set; } = true;
 
         public IMergeOperator? MergeOperator { get; set; }
-        public Dictionary<string, IMergeOperator>? MergeOperatorByColumn { get; set; }
+        public Dictionary<string, IMergeOperator>? MergeOperatorByColumnFamily { get; set; }
 
         public DbSettings Clone(string name, string path)
         {

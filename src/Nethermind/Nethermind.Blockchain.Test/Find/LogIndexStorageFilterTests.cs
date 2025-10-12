@@ -149,8 +149,6 @@ public class LogIndexStorageFilterTests
                     .Distinct().Order().ToList()
             );
 
-            // TODO: cases with the same topic on different positions
-
             yield return new TestCaseData(
                 "TopicA, -, TopicB or TopicC",
 

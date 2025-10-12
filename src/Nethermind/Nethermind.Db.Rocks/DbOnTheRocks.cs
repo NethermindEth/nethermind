@@ -160,7 +160,7 @@ public partial class DbOnTheRocks : IDb, ITunableDb, IReadOnlyNativeKeyValueStor
 
                     ColumnFamilyOptions options = new();
                     IRocksDbConfig columnConfig = _rocksDbConfigFactory.GetForDatabase(Name, columnFamily);
-                    IMergeOperator? mergeOperator = _settings.MergeOperatorByColumn?.GetValueOrDefault(enumColumnName);
+                    IMergeOperator? mergeOperator = _settings.MergeOperatorByColumnFamily?.GetValueOrDefault(enumColumnName);
                     BuildOptions(columnConfig, options, sharedCache, mergeOperator);
 
                     // "default" is a special column name with rocksdb, which is what previously not specifying column goes to
