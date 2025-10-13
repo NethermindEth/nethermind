@@ -188,7 +188,7 @@ namespace Nethermind.Monitoring.Metrics
             { nameof(ProductInfo.Version), ProductInfo.Version },
             { nameof(ProductInfo.Commit), ProductInfo.Commit },
             { nameof(ProductInfo.Runtime), ProductInfo.Runtime },
-            { nameof(ProductInfo.BuildTimestamp), ProductInfo.BuildTimestamp.ToUnixTimeSeconds().ToString() },
+            { nameof(ProductInfo.SourceDate), ProductInfo.SourceDate.ToUnixTimeSeconds().ToString() },
         };
 
         private static ObservableInstrument<double> CreateDiagnosticsMetricsObservableGauge(Meter meter, MemberInfo member, Func<double> observer)

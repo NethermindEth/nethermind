@@ -15,12 +15,13 @@ using Nethermind.Taiko.TaikoSpec;
 namespace Nethermind.Taiko;
 
 public class TaikoTransactionProcessor(
+    ITransactionProcessor.IBlobBaseFeeCalculator blobBaseFeeCalculator,
     ISpecProvider specProvider,
     IWorldState worldState,
     IVirtualMachine virtualMachine,
     ICodeInfoRepository? codeInfoRepository,
     ILogManager? logManager
-    ) : TransactionProcessorBase(specProvider, worldState, virtualMachine, codeInfoRepository, logManager)
+    ) : TransactionProcessorBase(blobBaseFeeCalculator, specProvider, worldState, virtualMachine, codeInfoRepository, logManager)
 {
     protected override TransactionResult ValidateStatic(Transaction tx, BlockHeader header, IReleaseSpec spec, ExecutionOptions opts,
         in IntrinsicGas intrinsicGas)
@@ -40,7 +41,7 @@ public class TaikoTransactionProcessor(
         UInt256 tipFees = (UInt256)spentGas * premiumPerGas;
         UInt256 baseFees = (UInt256)spentGas * header.BaseFeePerGas;
 
-        // If the account has been destroyed during the execution, the balance is already set 
+        // If the account has been destroyed during the execution, the balance is already set
         // as zero. So there is no need to create the account and pay the fees to the beneficiary,
         // except for the case when a restore is required due to a failure.
         bool gasBeneficiaryNotDestroyed = !substate.DestroyList.Contains(header.GasBeneficiary);

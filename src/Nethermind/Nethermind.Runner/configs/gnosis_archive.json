@@ -11,9 +11,6 @@
     "Enabled": true,
     "EnginePort": 8551
   },
-  "Mining": {
-    "MinGasPrice": "1000000000"
-  },
   "Blocks": {
     "SecondsPerSlot": 5,
     "BlockProductionTimeoutMs": 3000,

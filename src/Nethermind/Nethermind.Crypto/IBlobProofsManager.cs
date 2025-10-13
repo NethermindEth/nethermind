@@ -41,8 +41,13 @@ public interface IBlobProofsVerifier
 {
 
     bool ValidateLengths(ShardBlobNetworkWrapper blobs);
-    public bool ValidateHashes(ShardBlobNetworkWrapper blobs, byte[][] blobVersionedHashes)
+    public bool ValidateHashes(ShardBlobNetworkWrapper blobs, ReadOnlySpan<byte[]> blobVersionedHashes)
     {
+        if (blobs.Blobs.Length != blobVersionedHashes.Length)
+        {
+            return false;
+        }
+
         Span<byte> hash = stackalloc byte[Eip4844Constants.BytesPerBlobVersionedHash];
 
         for (int i = 0; i < blobVersionedHashes.Length; i++)

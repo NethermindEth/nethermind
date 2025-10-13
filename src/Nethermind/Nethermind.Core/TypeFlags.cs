@@ -6,17 +6,17 @@ namespace Nethermind.Core;
 /// <summary>
 /// Represents a flag interface that declares a static boolean property.
 /// By defining the property as static and using generic specialization at the JIT level,
-/// any conditional checks (e.g. if-branches) can be elided (i.e., removed), as the compiler 
+/// any conditional checks (e.g. if-branches) can be elided (i.e., removed), as the compiler
 /// can resolve the static value at compile-time rather than needing to evaluate it at runtime.
 /// </summary>
 public interface IFlag
 {
     /// <summary>
     /// Gets a value indicating whether this flag is active.
-    /// The JIT can specialize the implementation based on the static type, 
+    /// The JIT can specialize the implementation based on the static type,
     /// removing the need for run-time checks.
     /// </summary>
-    virtual static bool IsActive { get; }
+    static virtual bool IsActive { get; }
 }
 
 /// <summary>
