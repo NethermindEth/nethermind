@@ -21,9 +21,9 @@ namespace Nethermind.Era1;
 /// </summary>
 public class EraReader : IAsyncEnumerable<(Block, TxReceipt[])>, IDisposable
 {
-    private readonly ReceiptMessageDecoder _receiptDecoder = new();
-    private readonly BlockBodyDecoder _blockBodyDecoder = BlockBodyDecoder.Instance;
-    private readonly HeaderDecoder _headerDecoder = new();
+    protected readonly ReceiptMessageDecoder _receiptDecoder = new();
+    protected readonly BlockBodyDecoder _blockBodyDecoder = BlockBodyDecoder.Instance;
+    protected readonly HeaderDecoder _headerDecoder = new();
     private readonly E2StoreReader _fileReader;
 
     public long FirstBlock => _fileReader.First;
@@ -185,19 +185,19 @@ public class EraReader : IAsyncEnumerable<(Block, TxReceipt[])>, IDisposable
         return new EntryReadResult(block, receipts);
     }
 
-    private BlockBody DecodeBody(Memory<byte> buffer)
+    protected BlockBody DecodeBody(Memory<byte> buffer)
     {
         var ctx = new Rlp.ValueDecoderContext(buffer.Span);
         return _blockBodyDecoder.Decode(ref ctx)!;
     }
 
-    private BlockHeader DecodeHeader(Memory<byte> buffer)
+    protected BlockHeader DecodeHeader(Memory<byte> buffer)
     {
         var ctx = new Rlp.ValueDecoderContext(buffer.Span);
         return _headerDecoder.Decode(ref ctx)!;
     }
 
-    private TxReceipt[] DecodeReceipts(Memory<byte> buffer)
+    protected TxReceipt[] DecodeReceipts(Memory<byte> buffer)
     {
         Rlp.ValueDecoderContext ctx = new Rlp.ValueDecoderContext(buffer.Span);
         return RlpDecoderExtensions.DecodeArray(_receiptDecoder, ref ctx, RlpBehaviors.None);
@@ -210,7 +210,7 @@ public class EraReader : IAsyncEnumerable<(Block, TxReceipt[])>, IDisposable
 
     public void Dispose() => _fileReader.Dispose();
 
-    private struct EntryReadResult
+    protected struct EntryReadResult
     {
         public EntryReadResult(Block block, TxReceipt[] receipts)
         {

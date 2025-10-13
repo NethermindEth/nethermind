@@ -15,20 +15,13 @@ using Nethermind.Core.Crypto;
 using Nethermind.Core.Resettables;
 using Nethermind.Serialization.Rlp;
 using Snappier;
-namespace Nethermind.Era1;
+namespace Nethermind.EraE;
 
-public class E2StoreWriter : IDisposable
+public class E2StoreWriter : Era1.E2StoreWriter
 {
-    protected const int HeaderSize = 8;
-    protected readonly Stream _stream;
-    protected readonly IncrementalHash _checksumCalculator = IncrementalHash.CreateHash(HashAlgorithmName.SHA256);
+    private readonly Stream _stream;
 
-    public long Position => _stream.Position;
-
-    public E2StoreWriter(Stream stream)
-    {
-        _stream = stream;
-    }
+    public E2StoreWriter(Stream stream): base(stream) {}
 
     public async Task<int> WriteEntryAsSnappy(ushort type, Memory<byte> bytes, CancellationToken cancellation = default)
     {

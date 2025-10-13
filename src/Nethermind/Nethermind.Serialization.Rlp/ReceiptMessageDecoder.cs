@@ -13,10 +13,12 @@ namespace Nethermind.Serialization.Rlp
     public class ReceiptMessageDecoder : IRlpStreamDecoder<TxReceipt>, IRlpValueDecoder<TxReceipt>
     {
         private readonly bool _skipStateAndStatus;
+        private readonly bool _skipBloom;
 
-        public ReceiptMessageDecoder(bool skipStateAndStatus = false)
+        public ReceiptMessageDecoder(bool skipStateAndStatus = false, bool skipBloom = false)
         {
             _skipStateAndStatus = skipStateAndStatus;
+            _skipBloom = skipBloom;
         }
         public TxReceipt Decode(RlpStream rlpStream, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
         {
@@ -59,8 +61,8 @@ namespace Nethermind.Serialization.Rlp
                 txReceipt.PostTransactionState = firstItem.Length == 0 ? null : new Hash256(firstItem);
                 txReceipt.GasUsedTotal = (long)ctx.DecodeUBigInt();
             }
-
-            txReceipt.Bloom = ctx.DecodeBloom();
+            
+            if (!_skipBloom) txReceipt.Bloom = ctx.DecodeBloom();
 
             int lastCheck = ctx.ReadSequenceLength() + ctx.Position;
 
@@ -179,7 +181,9 @@ namespace Nethermind.Serialization.Rlp
             }
 
             rlpStream.Encode(item.GasUsedTotal);
-            rlpStream.Encode(item.Bloom);
+
+
+            if (!_skipBloom) rlpStream.Encode(item.Bloom);
 
             rlpStream.StartSequence(logsLength);
             LogEntry[] logs = item.Logs;
