@@ -14,23 +14,20 @@ using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Test;
 using Nethermind.Crypto;
-using Nethermind.Db;
 using Nethermind.Evm;
 using Nethermind.Evm.State;
-using Nethermind.Evm.Tracing;
 using Nethermind.Blockchain.Tracing.GethStyle;
 using Nethermind.Blockchain.Tracing;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Logging;
 using Nethermind.State;
-using Nethermind.Trie.Pruning;
 using Nethermind.Blockchain;
 
 namespace Evm.T8n;
 
 public static class T8nExecutor
 {
-    private static ILogManager _logManager = LimboLogs.Instance;
+    private static readonly ILogManager _logManager = LimboLogs.Instance;
 
     public static T8nExecutionResult Execute(T8nCommandArguments arguments)
     {
@@ -55,7 +52,7 @@ public static class T8nExecutor
             _logManager);
 
         stateProvider.CreateAccount(test.CurrentCoinbase, 0);
-        GeneralStateTestBase.InitializeTestState(test.Alloc, stateProvider, test.SpecProvider);
+        GeneralStateTestBase.InitializeTestState(test.Alloc, test.CurrentCoinbase, stateProvider, test.SpecProvider);
 
         Block block = test.ConstructBlock();
         var withdrawalProcessor = new WithdrawalProcessor(stateProvider, _logManager);
