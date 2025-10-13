@@ -50,7 +50,12 @@ public class EraExporter(
         return DoExport(destinationPath, from, to, cancellation: cancellation);
     }
 
-    private async Task DoExport(
+    protected virtual EraWriter GetWriter(string filePath, ISpecProvider specProvider)
+    {
+        return new EraWriter(fileSystem.File.Create(filePath), specProvider);
+    }
+
+    protected async Task DoExport(
         string destinationPath,
         long from,
         long to,
@@ -112,7 +117,7 @@ public class EraExporter(
                 destinationPath,
                 EraPathUtils.Filename(_networkName, epoch, Keccak.Zero));
 
-            using EraWriter eraWriter = new EraWriter(fileSystem.File.Create(filePath), specProvider);
+            EraWriter eraWriter = GetWriter(filePath, specProvider);
 
             for (var y = startingIndex; y < startingIndex + _era1Size && y <= to; y++)
             {
@@ -156,7 +161,7 @@ public class EraExporter(
         }
     }
 
-    private async Task WriteFileAsync(string path, ArrayPoolList<ValueHash256> hashes, ArrayPoolList<string> fileNames, CancellationToken cancellationToken)
+    protected async Task WriteFileAsync(string path, ArrayPoolList<ValueHash256> hashes, ArrayPoolList<string> fileNames, CancellationToken cancellationToken)
     {
         await using FileSystemStream stream = fileSystem.FileStream.New(path, FileMode.Create, FileAccess.Write, FileShare.None);
         await using StreamWriter writer = new(stream);

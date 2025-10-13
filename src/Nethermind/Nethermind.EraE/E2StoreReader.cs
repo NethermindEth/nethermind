@@ -11,7 +11,7 @@ public class E2StoreReader : Era1.E2StoreReader
     public E2StoreReader(string filePath) : base(filePath) {}
 
     // return tuple of header, body, receipts positions in the file
-    public (long headerPosition, long bodyPosition, long receiptsPosition, long? totalDifficultyPosition) BlockOffset(long blockNumber)
+    public new (long headerPosition, long bodyPosition, long receiptsPosition, long? totalDifficultyPosition) BlockOffset(long blockNumber)
     {
         EnsureIndexAvailable();
 
@@ -43,7 +43,7 @@ public class E2StoreReader : Era1.E2StoreReader
         );
     }
 
-    private void EnsureIndexAvailable()
+    protected override void EnsureIndexAvailable()
     {
         if (_startBlock != null) return;
 
@@ -68,7 +68,7 @@ public class E2StoreReader : Era1.E2StoreReader
         _startBlock = (long?)ReadUInt64(_fileLength - _indexLength);
     }
 
-    public long AccumulatorOffset
+    public override long AccumulatorOffset
     {
         get
         {

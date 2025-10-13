@@ -1,12 +1,10 @@
 // SPDX-FileCopyrightText: 2024 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System.Buffers;
 using System.Buffers.Binary;
 using System.IO.Compression;
 using System.Security.Cryptography;
 using CommunityToolkit.HighPerformance;
-using DotNetty.Buffers;
 using Microsoft.IO;
 using Microsoft.Win32.SafeHandles;
 using Nethermind.Core.Collections;
@@ -18,19 +16,19 @@ namespace Nethermind.Era1;
 
 public class E2StoreReader : IDisposable
 {
-    private const int HeaderSize = 8;
-    private const int IndexSectionCount = 8;
-    private const int IndexSectionStartBlock = 8;
-    private const int IndexOffsetSize = 8;
+    protected const int HeaderSize = 8;
+    protected const int IndexSectionCount = 8;
+    protected const int IndexSectionStartBlock = 8;
+    protected const int IndexOffsetSize = 8;
     private const int ValueSizeLimit = 1024 * 1024 * 50;
 
-    private readonly SafeFileHandle _file;
+    protected readonly SafeFileHandle _file;
 
     // Read these two value ahead of time instead of fetching the value everything it is needed to reduce
     // the page fault when looking up.
-    private long? _startBlock;
-    private long _blockCount;
-    private readonly long _fileLength;
+    protected long? _startBlock;
+    protected long _blockCount;
+    protected readonly long _fileLength;
 
     public E2StoreReader(string filePath)
     {
@@ -96,7 +94,7 @@ public class E2StoreReader : IDisposable
         _file.Dispose();
     }
 
-    public long BlockOffset(long blockNumber)
+    public virtual long BlockOffset(long blockNumber)
     {
         EnsureIndexAvailable();
 
@@ -115,7 +113,7 @@ public class E2StoreReader : IDisposable
         return _fileLength - indexSizeIncludingHeader + relativeOffset;
     }
 
-    private void EnsureIndexAvailable()
+    protected virtual void EnsureIndexAvailable()
     {
         if (_startBlock != null) return;
 
@@ -144,7 +142,7 @@ public class E2StoreReader : IDisposable
 
     public long LastBlock => First + _blockCount - 1;
 
-    public long AccumulatorOffset
+    public virtual long AccumulatorOffset
     {
         get
         {
@@ -191,14 +189,14 @@ public class E2StoreReader : IDisposable
         return BinaryPrimitives.ReadUInt32LittleEndian(buff);
     }
 
-    private long ReadInt64(long position)
+    protected long ReadInt64(long position)
     {
         Span<byte> buff = stackalloc byte[8];
         RandomAccess.Read(_file, buff, position);
         return BinaryPrimitives.ReadInt64LittleEndian(buff);
     }
 
-    private ulong ReadUInt64(long position)
+    protected ulong ReadUInt64(long position)
     {
         Span<byte> buff = stackalloc byte[8];
         RandomAccess.Read(_file, buff, position);

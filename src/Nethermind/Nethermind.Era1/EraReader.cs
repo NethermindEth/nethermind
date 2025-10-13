@@ -21,10 +21,10 @@ namespace Nethermind.Era1;
 /// </summary>
 public class EraReader : IAsyncEnumerable<(Block, TxReceipt[])>, IDisposable
 {
-    protected readonly ReceiptMessageDecoder _receiptDecoder = new();
+    protected readonly ReceiptMessageDecoder _receiptDecoder;
     protected readonly BlockBodyDecoder _blockBodyDecoder = BlockBodyDecoder.Instance;
     protected readonly HeaderDecoder _headerDecoder = new();
-    private readonly E2StoreReader _fileReader;
+    protected readonly E2StoreReader _fileReader;
 
     public long FirstBlock => _fileReader.First;
     public long LastBlock => _fileReader.LastBlock;
@@ -35,9 +35,10 @@ public class EraReader : IAsyncEnumerable<(Block, TxReceipt[])>, IDisposable
     }
 
 
-    public EraReader(E2StoreReader e2)
+    public EraReader(E2StoreReader e2, ReceiptMessageDecoder? receiptDecoder = null)
     {
         _fileReader = e2;
+        _receiptDecoder = receiptDecoder ?? new();
     }
 
     public async IAsyncEnumerator<(Block, TxReceipt[])> GetAsyncEnumerator(CancellationToken cancellation = default)
@@ -144,7 +145,7 @@ public class EraReader : IAsyncEnumerable<(Block, TxReceipt[])>, IDisposable
         return (result.Block, result.Receipts);
     }
 
-    private async Task<EntryReadResult> ReadBlockAndReceipts(long blockNumber, bool computeHeaderHash, CancellationToken cancellationToken)
+    protected virtual async Task<EntryReadResult> ReadBlockAndReceipts(long blockNumber, bool computeHeaderHash, CancellationToken cancellationToken)
     {
         if (blockNumber < _fileReader.First
             || blockNumber > _fileReader.First + _fileReader.BlockCount)

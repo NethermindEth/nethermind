@@ -10,7 +10,7 @@ using Nethermind.Merkleization;
 namespace Nethermind.Era1;
 
 // https://github.com/ethereum/portal-network-specs/blob/master/history/history-network.md#algorithms
-internal class AccumulatorCalculator : IDisposable
+public class AccumulatorCalculator : IDisposable
 {
     ArrayPoolList<ReadOnlyMemory<byte>> _roots;
 
@@ -35,7 +35,7 @@ internal class AccumulatorCalculator : IDisposable
         return new ValueHash256(MemoryMarshal.Cast<UInt256, byte>(MemoryMarshal.CreateSpan(ref root, 1)));
     }
 
-    internal void Clear() => _roots.Clear();
+    public void Clear() => _roots.Clear();
 
     public void Dispose() => _roots.Dispose();
 }

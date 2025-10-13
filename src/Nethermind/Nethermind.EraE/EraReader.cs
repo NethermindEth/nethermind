@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: 2023 Demerzel Solutions Limited
+// SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using Nethermind.Core;
@@ -11,22 +11,19 @@ namespace Nethermind.EraE;
 /// Main reader for erae file. Uses E2StoreReader which internally mmap the whole file. This reader is thread safe
 /// allowing multiple thread to read from it at the same time.
 /// </summary>
-public class EraReader : Era1.EraReader
+
+// set skipBloom to true, because EraE format omits that field in archive and we need to compute filter locally,
+// which is handled in an appropriate class later.
+public class EraReader(E2StoreReader e2) : Era1.EraReader(e2, new ReceiptMessageDecoder(skipBloom: true))
 {
-    // set skipBloom to true, because EraE format omits that field in archive and we need to compute filter locally,
-    // which is handled in an appropriate class later.
-    protected readonly ReceiptMessageDecoder _receiptDecoder = new(skipBloom: true);
 
-    public EraReader(E2StoreReader e2): base(e2)
-    {}
-
-    private async Task<EntryReadResult> ReadBlockAndReceipts(long blockNumber, bool computeHeaderHash, CancellationToken cancellationToken)
+    protected override async Task<EntryReadResult> ReadBlockAndReceipts(long blockNumber, bool computeHeaderHash, CancellationToken cancellationToken)
     {
         if (blockNumber < _fileReader.First
             || blockNumber > _fileReader.First + _fileReader.BlockCount)
             throw new ArgumentOutOfRangeException("Value is outside the range of the archive.", blockNumber, nameof(blockNumber));
-
-        (long headerPosition, long bodyPosition, long receiptsPosition, long? tdPositionOptional) = _fileReader.BlockOffset(blockNumber);
+        // cast to E2StoreReader to access the BlockOffset method which is overridden in EraE
+        (long headerPosition, long bodyPosition, long receiptsPosition, long? tdPositionOptional) = ((E2StoreReader)_fileReader).BlockOffset(blockNumber);
 
         (BlockHeader header, long _) = await _fileReader.ReadSnappyCompressedEntryAndDecode(
             headerPosition,
@@ -56,7 +53,7 @@ public class EraReader : Era1.EraReader
             header.TotalDifficulty = currentTotalDiffulty;
         }
 
-        Block block = new Block(header, body);
+        var block = new Block(header, body);
         return new EntryReadResult(block, receipts);
     }
 }
