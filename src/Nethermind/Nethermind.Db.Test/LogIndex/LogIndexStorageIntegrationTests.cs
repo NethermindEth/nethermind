@@ -122,10 +122,21 @@ namespace Nethermind.Db.Test.LogIndex
         }
 
         [OneTimeSetUp]
-        public static void OneTimeSetUp() => RemoveRootFolder();
+        // [OneTimeTearDown] // randomly causes DB failure
+        public static void RemoveRootFolder()
+        {
+            if (!Directory.Exists(nameof(LogIndexStorageIntegrationTests)))
+                return;
 
-        [OneTimeTearDown]
-        public static void OneTimeTearDown() => RemoveRootFolder();
+            try
+            {
+                Directory.Delete(nameof(LogIndexStorageIntegrationTests), true);
+            }
+            catch
+            {
+                // ignore
+            }
+        }
 
         [Combinatorial]
         public async Task Set_Get_Test(
@@ -733,21 +744,6 @@ namespace Nethermind.Db.Test.LogIndex
 
                      """
                 );
-            }
-        }
-
-        private static void RemoveRootFolder()
-        {
-            if (!Directory.Exists(nameof(LogIndexStorageIntegrationTests)))
-                return;
-
-            try
-            {
-                Directory.Delete(nameof(LogIndexStorageIntegrationTests), true);
-            }
-            catch
-            {
-                // ignore
             }
         }
 
