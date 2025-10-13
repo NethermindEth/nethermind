@@ -28,7 +28,7 @@ public class LightTransaction : Transaction
         GasBottleneck = fullTx.GasBottleneck;
         Timestamp = fullTx.Timestamp;
         PoolIndex = fullTx.PoolIndex;
-        ProofVersion = (fullTx.NetworkWrapper as ShardBlobNetworkWrapper)?.Version ?? default;
+        ProofVersion = fullTx.GetProofVersion();
         _size = fullTx.GetLength();
     }
 
@@ -63,7 +63,7 @@ public class LightTransaction : Transaction
         _size = size;
     }
 
-    public ProofVersion ProofVersion { get; set; }
+    public ProofVersion? ProofVersion { get; set; }
 
     public override ProofVersion? GetProofVersion() => ProofVersion;
 }
