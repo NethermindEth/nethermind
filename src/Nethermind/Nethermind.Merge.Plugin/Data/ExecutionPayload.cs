@@ -52,7 +52,7 @@ public class ExecutionPayload : IForkValidator, IExecutionPayloadParams, IExecut
 
     public ulong Timestamp { get; set; }
 
-    public byte[]? BlockAccessList { get; set; } = [];
+    public byte[]? BlockAccessList { get; set; }
 
     protected byte[][] _encodedTransactions = [];
 
@@ -127,7 +127,7 @@ public class ExecutionPayload : IForkValidator, IExecutionPayloadParams, IExecut
             Timestamp = block.Timestamp,
             BaseFeePerGas = block.BaseFeePerGas,
             Withdrawals = block.Withdrawals,
-            BlockAccessList = block.EncodedBlockAccessList!,
+            BlockAccessList = block.EncodedBlockAccessList,
         };
         executionPayload.SetTransactions(block.Transactions);
         return executionPayload;
