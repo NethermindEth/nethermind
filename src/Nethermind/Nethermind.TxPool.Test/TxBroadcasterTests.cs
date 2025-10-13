@@ -6,6 +6,7 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Runtime.CompilerServices;
 using System.Threading.Tasks;
+using FastEnumUtility;
 using FluentAssertions;
 using Nethermind.Blockchain;
 using Nethermind.Consensus;
@@ -730,26 +731,35 @@ public class TxBroadcasterTests
     }
 
     [Test]
-    public void should_broadcast_light_transactions_without_wrappers()
+    public void should_correctly_broadcast_light_transactions_without_wrappers([Values] ProofVersion proofVersion, [Values] bool versionMatches)
     {
         // Arrange
-        var mockChainHeadInfoProvider = Substitute.For<IChainHeadInfoProvider>();
-        mockChainHeadInfoProvider.CurrentProofVersion.Returns(ProofVersion.V0);
+        IChainHeadInfoProvider mockChainHeadInfoProvider = Substitute.For<IChainHeadInfoProvider>();
+        mockChainHeadInfoProvider.CurrentProofVersion.Returns(proofVersion);
+        IReleaseSpec spec = Substitute.For<IReleaseSpec>();
+        spec.BlobProofVersion.Returns(versionMatches ? proofVersion : GetInvalidVersion(proofVersion));
 
-        var gossipPolicy = new SpecDrivenTxGossipPolicy(mockChainHeadInfoProvider);
+        SpecDrivenTxGossipPolicy gossipPolicy = new(mockChainHeadInfoProvider);
 
-        var blobTransaction = Build.A.Transaction
-            .WithShardBlobTxTypeAndFields()
+        Transaction blobTransaction = Build.A.Transaction
+            .WithShardBlobTxTypeAndFields(spec: spec)
             .SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA)
             .TestObject;
 
-        var lightTransaction = new LightTransaction(blobTransaction);
+        LightTransaction lightTransaction = new(blobTransaction);
 
         // Act
         bool result = gossipPolicy.ShouldGossipTransaction(lightTransaction);
 
         // Assert
-        result.Should().BeTrue("LightTransaction from blob transaction should be gossiped when proof version matches.");
+        result.Should().Be(versionMatches, "LightTransaction from blob transaction should be gossiped when proof version matches.");
+
+        // Gets (version + 1) % (version + 1) - so next version round robin
+        ProofVersion GetInvalidVersion(ProofVersion version)
+        {
+            byte mod = (byte)(FastEnum.GetMaxValue<ProofVersion>() + 1);
+            return (ProofVersion)((byte)(version + 1) % mod);
+        }
     }
 
     private (IList<Transaction> expectedTxs, IList<Hash256> expectedHashes) GetTxsAndHashesExpectedToBroadcast(Transaction[] transactions, int expectedCountTotal)
