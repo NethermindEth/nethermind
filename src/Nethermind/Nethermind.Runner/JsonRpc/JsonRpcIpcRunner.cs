@@ -115,7 +115,7 @@ namespace Nethermind.Runner.JsonRpc
             }
             catch (Exception ex)
             {
-                if (_logger.IsWarn) _logger.Warn($"Failed to set restrictive permissions on IPC socket at {path}: {ex.Message}");
+                if (_logger.IsWarn) _logger.Warn($"Failed to set restrictive permissions on IPC socket at {path}: {ex}");
             }
         }
 
