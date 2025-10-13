@@ -64,4 +64,6 @@ public class LightTransaction : Transaction
     }
 
     public ProofVersion ProofVersion { get; set; }
+
+    public override ProofVersion? GetProofVersion() => ProofVersion;
 }

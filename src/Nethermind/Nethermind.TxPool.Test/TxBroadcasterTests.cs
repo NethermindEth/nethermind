@@ -731,7 +731,7 @@ public class TxBroadcasterTests
     }
 
     [Test]
-    public void should_correctly_broadcast_light_transactions_without_wrappers([Values] ProofVersion proofVersion, [Values] bool versionMatches)
+    public void can_correctly_broadcast_light_transactions_without_wrappers([Values] ProofVersion proofVersion, [Values] bool versionMatches)
     {
         // Arrange
         IChainHeadInfoProvider mockChainHeadInfoProvider = Substitute.For<IChainHeadInfoProvider>();
