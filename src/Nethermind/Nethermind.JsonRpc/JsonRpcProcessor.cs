@@ -380,11 +380,12 @@ public class JsonRpcProcessor : IJsonRpcProcessor
         bool isSuccess = localErrorResponse is null;
         if (!isSuccess)
         {
-            if (localErrorResponse?.Error?.SuppressWarning == false)
-            {
-                if (_logger.IsWarn) _logger.Warn($"Error response handling JsonRpc Id:{request.Id} Method:{request.Method} | Code: {localErrorResponse.Error.Code} Message: {localErrorResponse.Error.Message}");
-                if (_logger.IsTrace) _logger.Trace($"Error when handling {request} | {JsonSerializer.Serialize(localErrorResponse, EthereumJsonSerializer.JsonOptionsIndented)}");
-            }
+            // tmp
+            // if (localErrorResponse?.Error?.SuppressWarning == false)
+            // {
+            //     if (_logger.IsWarn) _logger.Warn($"Error response handling JsonRpc Id:{request.Id} Method:{request.Method} | Code: {localErrorResponse.Error.Code} Message: {localErrorResponse.Error.Message}");
+            //     if (_logger.IsTrace) _logger.Trace($"Error when handling {request} | {JsonSerializer.Serialize(localErrorResponse, EthereumJsonSerializer.JsonOptionsIndented)}");
+            // }
             Metrics.JsonRpcErrors++;
         }
         else
