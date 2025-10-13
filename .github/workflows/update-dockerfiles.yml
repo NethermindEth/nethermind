@@ -2,7 +2,7 @@ name: Update Dockerfiles
 
 on:
   schedule:
-    - cron: '0 0 * * *'
+    - cron: "0 0 * * *"
   workflow_dispatch:
 
 permissions:
@@ -13,11 +13,15 @@ jobs:
   update-dockerfiles:
     name: Update Dockerfiles
     runs-on: ubuntu-latest
-    env:
-      DOTNET_VERSION: '9.0'
     steps:
       - name: Check out repository
         uses: actions/checkout@v5
+
+      - name: Detect .NET version
+        id: version
+        run: |
+          dotnet_version=$(jq -r '.sdk.version' global.json | cut -d. -f1,2)
+          echo "DOTNET_VERSION=$dotnet_version" >> $GITHUB_ENV
 
       - name: Update Dockerfiles
         id: update
