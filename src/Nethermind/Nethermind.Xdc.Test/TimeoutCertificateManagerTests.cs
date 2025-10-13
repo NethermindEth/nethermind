@@ -11,8 +11,8 @@ using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Builders;
+using Nethermind.Consensus;
 using Nethermind.Crypto;
-using Nethermind.Xdc.RLP;
 using Nethermind.Xdc.Spec;
 using Nethermind.Xdc.Types;
 
@@ -136,10 +136,13 @@ public class TimeoutCertificateManagerTests
     private TimeoutCertificateManager BuildTimeoutCertificateManager()
     {
         return new TimeoutCertificateManager(
+            new XdcContext(),
             Substitute.For<ISnapshotManager>(),
             Substitute.For<IEpochSwitchManager>(),
             Substitute.For<ISpecProvider>(),
-            Substitute.For<IBlockTree>());
+            Substitute.For<IBlockTree>(),
+            Substitute.For<ISyncInfoManager>(),
+            Substitute.For<ISigner>());
     }
 
     private static TimeoutCertificate BuildTimeoutCertificate(PrivateKey[] keys, ulong round = 1, ulong gap = 0)
