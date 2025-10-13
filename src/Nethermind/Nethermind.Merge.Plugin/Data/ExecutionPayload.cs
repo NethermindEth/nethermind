@@ -127,7 +127,7 @@ public class ExecutionPayload : IForkValidator, IExecutionPayloadParams, IExecut
             Timestamp = block.Timestamp,
             BaseFeePerGas = block.BaseFeePerGas,
             Withdrawals = block.Withdrawals,
-            BlockAccessList = block.EncodedBlockAccessList,
+            BlockAccessList = block.EncodedBlockAccessList ?? (block.BlockAccessList is null ? null : Rlp.Encode<BlockAccessList>(block.BlockAccessList!.Value).Bytes),
         };
         executionPayload.SetTransactions(block.Transactions);
         return executionPayload;
