@@ -23,6 +23,12 @@
         "resolved": "1.22.1",
         "contentHash": "EfYANhAWqmWKoLwN6bxoiPZSOfJSO9lzX+UrU6GVhLhPub1Hd+5f0zL0/tggIA6mRz6Ebw2xCNcIsM4k+7NPng=="
       },
+      "Nethermind.TurboPForBindings": {
+        "type": "Direct",
+        "requested": "[1.0.0-preview.2, )",
+        "resolved": "1.0.0-preview.2",
+        "contentHash": "95jbQbdir9RSzukCKWa20UlqH0Ze1BP2AqhvuVqrREcA3OT+e3OOp76JIH38UXSzIhgyD7To/GjOZP8wgqXtaA=="
+      },
       "NLog.Targets.Seq": {
         "type": "Direct",
         "requested": "[4.0.2, )",
@@ -2370,6 +2376,12 @@
       }
     },
     "net9.0/linux-arm64": {
+      "Nethermind.TurboPForBindings": {
+        "type": "Direct",
+        "requested": "[1.0.0-preview.2, )",
+        "resolved": "1.0.0-preview.2",
+        "contentHash": "95jbQbdir9RSzukCKWa20UlqH0Ze1BP2AqhvuVqrREcA3OT+e3OOp76JIH38UXSzIhgyD7To/GjOZP8wgqXtaA=="
+      },
       "Grpc.Core": {
         "type": "Transitive",
         "resolved": "2.46.6",
@@ -2845,6 +2857,12 @@
       }
     },
     "net9.0/linux-x64": {
+      "Nethermind.TurboPForBindings": {
+        "type": "Direct",
+        "requested": "[1.0.0-preview.2, )",
+        "resolved": "1.0.0-preview.2",
+        "contentHash": "95jbQbdir9RSzukCKWa20UlqH0Ze1BP2AqhvuVqrREcA3OT+e3OOp76JIH38UXSzIhgyD7To/GjOZP8wgqXtaA=="
+      },
       "Grpc.Core": {
         "type": "Transitive",
         "resolved": "2.46.6",
@@ -3320,6 +3338,12 @@
       }
     },
     "net9.0/osx-arm64": {
+      "Nethermind.TurboPForBindings": {
+        "type": "Direct",
+        "requested": "[1.0.0-preview.2, )",
+        "resolved": "1.0.0-preview.2",
+        "contentHash": "95jbQbdir9RSzukCKWa20UlqH0Ze1BP2AqhvuVqrREcA3OT+e3OOp76JIH38UXSzIhgyD7To/GjOZP8wgqXtaA=="
+      },
       "Grpc.Core": {
         "type": "Transitive",
         "resolved": "2.46.6",
@@ -3795,6 +3819,12 @@
       }
     },
     "net9.0/osx-x64": {
+      "Nethermind.TurboPForBindings": {
+        "type": "Direct",
+        "requested": "[1.0.0-preview.2, )",
+        "resolved": "1.0.0-preview.2",
+        "contentHash": "95jbQbdir9RSzukCKWa20UlqH0Ze1BP2AqhvuVqrREcA3OT+e3OOp76JIH38UXSzIhgyD7To/GjOZP8wgqXtaA=="
+      },
       "Grpc.Core": {
         "type": "Transitive",
         "resolved": "2.46.6",
@@ -4270,6 +4300,12 @@
       }
     },
     "net9.0/win-x64": {
+      "Nethermind.TurboPForBindings": {
+        "type": "Direct",
+        "requested": "[1.0.0-preview.2, )",
+        "resolved": "1.0.0-preview.2",
+        "contentHash": "95jbQbdir9RSzukCKWa20UlqH0Ze1BP2AqhvuVqrREcA3OT+e3OOp76JIH38UXSzIhgyD7To/GjOZP8wgqXtaA=="
+      },
       "Grpc.Core": {
         "type": "Transitive",
         "resolved": "2.46.6",
