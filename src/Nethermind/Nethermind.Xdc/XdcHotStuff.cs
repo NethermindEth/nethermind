@@ -98,7 +98,6 @@ internal class XdcHotStuff(
         await foreach (RoundSignal newRoundSignal in _newRoundSignals.Reader.ReadAllAsync(_cancellationTokenSource.Token))
         {
             XdcBlockHeader currentHead = newRoundSignal.NewBlock ?? (XdcBlockHeader)blockTree.Head.Header;
-            XdcBlockHeader parent = (XdcBlockHeader)blockTree.FindHeader(currentHead.ParentHash);
 
             //TODO this is not the right way to get the current round
             IXdcReleaseSpec spec = specProvider.GetXdcSpec(currentHead, currentHead.ExtraConsensusData.BlockRound);
@@ -115,10 +114,14 @@ internal class XdcHotStuff(
                 //Next block must have a timestamp after current head + mine period
                 TimeSpan minimumMiningTime = DateTimeOffset.FromUnixTimeSeconds((long)currentHead.Timestamp + spec.MinePeriod) - DateTimeOffset.UtcNow;
 
-                
                 //If its my turn produce a block and broadcast after minimum wait time
                 //This should be done by PayloadPreparationService
-                Task<Block> blockProduction = blockBuilder.BuildBlock(currentHead, null, null, IBlockProducer.Flags.None, _cancellationTokenSource.Token);
+                Task<Block> blockProduction = blockBuilder.BuildBlock(currentHead, null, null, IBlockProducer.Flags.DontSeal, _cancellationTokenSource.Token);
+
+                await Task.Delay(minimumMiningTime > TimeSpan.Zero ? minimumMiningTime : TimeSpan.Zero);
+
+                BlockProduced?.Invoke(this, new BlockEventArgs(await blockProduction));
+                continue;
             }
 
             quorumCertificateManager.CommitCertificate(currentHead.ExtraConsensusData.QuorumCert);

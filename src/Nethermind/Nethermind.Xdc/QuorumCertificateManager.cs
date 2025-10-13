@@ -51,6 +51,9 @@ internal class QuorumCertificateManager : IQuorumCertificateManager
     private EthereumEcdsa _ethereumEcdsa = new EthereumEcdsa(0);
     private static QuorumCertificateDecoder QuorumCertificateDecoder = new();
 
+    public QuorumCertificate HighestKnownCertificate => _context.HighestQC;
+    public QuorumCertificate LockedCertificate => _context.LockQC;
+
     public void CommitCertificate(QuorumCertificate qc)
     {
         if (qc.ProposedBlockInfo.Round > _context.HighestQC.ProposedBlockInfo.Round)
