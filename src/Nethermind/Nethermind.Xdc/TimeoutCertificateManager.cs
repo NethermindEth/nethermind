@@ -3,41 +3,87 @@
 
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using System.Threading.Tasks;
 using Nethermind.Blockchain;
+using Nethermind.Consensus;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
 using Nethermind.Crypto;
 using Nethermind.Serialization.Rlp;
 using Nethermind.Xdc.RLP;
+using Nethermind.Xdc.Errors;
 using Nethermind.Xdc.Types;
 using Nethermind.Xdc.Spec;
 
 namespace Nethermind.Xdc;
 
-public class TimeoutCertificateManager(ISnapshotManager snapshotManager, IEpochSwitchManager epochSwitchManager, ISpecProvider specProvider, IBlockTree blockTree) : ITimeoutCertificateManager
+public class TimeoutCertificateManager(XdcContext context, ISnapshotManager snapshotManager, IEpochSwitchManager epochSwitchManager, ISpecProvider specProvider, IBlockTree blockTree, ISyncInfoManager syncInfoManager, ISigner signer) : ITimeoutCertificateManager
 {
+    private XdcContext _ctx = context;
     private ISnapshotManager _snapshotManager = snapshotManager;
     private IEpochSwitchManager _epochSwitchManager = epochSwitchManager;
     private ISpecProvider _specProvider = specProvider;
     private IBlockTree _blockTree = blockTree;
+    private ISyncInfoManager _syncInfoManager = syncInfoManager;
+    private ISigner _signer = signer;
+
     private EthereumEcdsa _ethereumEcdsa = new EthereumEcdsa(0);
     private static readonly TimeoutDecoder _timeoutDecoder = new();
+    private HashSet<Timeout> _timeouts = new HashSet<Timeout>();
 
     public void HandleTimeout(Timeout timeout)
     {
-        throw new NotImplementedException();
+        if (timeout.Round != _ctx.CurrentRound)
+        {
+            throw new CertificateValidationException(CertificateType.TimeoutCertificate, CertificateValidationFailure.InvalidRound);
+        }
+
+        _timeouts.Add(timeout);
+
+        BlockHeader header = _blockTree.Head?.Header;
+        if (header is not XdcBlockHeader xdcHeader)
+            throw new ArgumentException($"Only type of {nameof(XdcBlockHeader)} is allowed");
+        EpochSwitchInfo epochSwitchInfo = _epochSwitchManager.GetEpochSwitchInfo(xdcHeader, xdcHeader.Hash);
+        if (epochSwitchInfo is null)
+        {
+            throw new ConsensusHeaderDataExtractionException(nameof(EpochSwitchInfo));
+        }
+
+        IXdcReleaseSpec spec = _specProvider.GetXdcSpec(xdcHeader, timeout.Round);
+        var certThreshold = spec.CertThreshold;
+        if (_timeouts.Count >= epochSwitchInfo.Masternodes.Length * certThreshold)
+        {
+            // The original code passes the collected timeouts instead of using the global variable, check rase condition?
+            OnTimeoutPoolThresholdReached(timeout);
+        }
     }
 
-    public void OnCountdownTimer(DateTime time)
+    private void OnTimeoutPoolThresholdReached(Timeout timeout)
     {
-        throw new NotImplementedException();
+        Signature[] signatures = _timeouts.Select(t => t.Signature).ToArray();
+
+        var timeoutCertificate = new TimeoutCertificate(timeout.Round, signatures, timeout.GapNumber);
+
+        ProcessTimeoutCertificate(timeoutCertificate);
+
+        SyncInfo syncInfo = _syncInfoManager.GetSyncInfo();
+        //TODO: Broadcast syncInfo
     }
 
     public void ProcessTimeoutCertificate(TimeoutCertificate timeoutCertificate)
     {
-        throw new NotImplementedException();
+        if (timeoutCertificate.Round > _ctx.HighestTC.Round)
+        {
+            _ctx.HighestTC = timeoutCertificate;
+        }
+
+        if (timeoutCertificate.Round >= _ctx.CurrentRound)
+        {
+            //TODO Check how this new round is set
+            _ctx.SetNewRound(_blockTree, timeoutCertificate.Round + 1);
+        }
     }
 
     public bool VerifyTimeoutCertificate(TimeoutCertificate timeoutCertificate, out string errorMessage)
@@ -98,11 +144,73 @@ public class TimeoutCertificateManager(ISnapshotManager snapshotManager, IEpochS
         return true;
     }
 
+    public void OnCountdownTimer()
+    {
+        if (!AllowedToSend())
+            return;
+
+        SendTimeout();
+        _ctx.TimeoutCounter++;
+
+        var xdcHeader = (XdcBlockHeader)_blockTree.Head?.Header;
+        IXdcReleaseSpec spec = _specProvider.GetXdcSpec(xdcHeader!, _ctx.CurrentRound);
+
+        if (_ctx.TimeoutCounter % spec.TimeoutSyncThreshold == 0)
+        {
+            SyncInfo syncInfo = _syncInfoManager.GetSyncInfo();
+            //TODO: Broadcast syncInfo
+        }
+    }
+
+    private void SendTimeout()
+    {
+        ulong gapNumber = 0;
+        var currentHeader = (XdcBlockHeader)_blockTree.Head?.Header;
+        if (currentHeader is null) throw new InvalidOperationException("Failed to retrieve current header");
+        IXdcReleaseSpec spec = _specProvider.GetXdcSpec(currentHeader, _ctx.CurrentRound);
+        if (_epochSwitchManager.IsEpochSwitchAtRound(_ctx.CurrentRound, currentHeader, out ulong epochNumber))
+        {
+            ulong currentNumber = (ulong)currentHeader.Number + 1;
+            gapNumber = Math.Max(0, currentNumber - currentNumber % (ulong)spec.EpochLength - (ulong)spec.Gap);
+        }
+        else
+        {
+            EpochSwitchInfo epochSwitchInfo = _epochSwitchManager.GetEpochSwitchInfo(currentHeader, currentHeader.Hash);
+            if (epochSwitchInfo is null)
+                throw new ConsensusHeaderDataExtractionException(nameof(EpochSwitchInfo));
+
+            ulong currentNumber = (ulong)epochSwitchInfo.EpochSwitchBlockInfo.BlockNumber;
+            gapNumber = Math.Max(0, currentNumber - currentNumber % (ulong)spec.EpochLength - (ulong)spec.Gap);
+        }
+
+        ValueHash256 msgHash = ComputeTimeoutMsgHash(_ctx.CurrentRound, gapNumber);
+        Signature signedHash = _signer.Sign(msgHash);
+        var timeoutMsg = new Timeout(_ctx.CurrentRound, signedHash, gapNumber);
+        timeoutMsg.SetSigner(_signer.Address);
+
+        HandleTimeout(timeoutMsg);
+
+        //TODO: Broadcast _ctx.HighestTC
+    }
+
+    // Returns true if the signer is within the master node list
+    private bool AllowedToSend()
+    {
+        var currentHeader = (XdcBlockHeader)_blockTree.Head?.Header;
+        EpochSwitchInfo epochSwitchInfo = _epochSwitchManager.GetEpochSwitchInfo(currentHeader, currentHeader.Hash);
+        if (epochSwitchInfo is null)
+            return false;
+        foreach (Address masternode in epochSwitchInfo.Masternodes)
+            if (masternode == _signer.Address) return true;
+        return false;
+    }
+
     internal static ValueHash256 ComputeTimeoutMsgHash(ulong round, ulong gap)
     {
         var timeout = new Timeout(round, null, gap);
         Rlp encoded = _timeoutDecoder.Encode(timeout, RlpBehaviors.ForSealing);
         return Keccak.Compute(encoded.Bytes).ValueHash256;
     }
+
 }
 
