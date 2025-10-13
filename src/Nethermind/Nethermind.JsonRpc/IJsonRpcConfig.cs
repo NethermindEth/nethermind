@@ -53,7 +53,7 @@ public interface IJsonRpcConfig : IConfig
     [ConfigItem(Description = "The path to connect a UNIX domain socket over.")]
     string IpcUnixDomainSocketPath { get; set; }
 
-    [ConfigItem(Description = "Should Owner-only 600 (rw-------) access be applied to IPC socket file path.", DefaultValue = "true")]
+    [ConfigItem(Description = "Whether to set the IPC socket UNIX file permissions to owner-only (600).", DefaultValue = "true")]
     bool RestrictIpcSocketPermissions { get; set; }
 
     [ConfigItem(
