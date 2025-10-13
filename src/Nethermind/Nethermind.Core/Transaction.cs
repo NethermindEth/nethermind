@@ -333,11 +333,10 @@ namespace Nethermind.Core
             tx.AuthorizationList = AuthorizationList;
         }
 
-        public virtual ProofVersion? GetProofVersion() => SupportsBlobs
-            ? this is { NetworkWrapper: ShardBlobNetworkWrapper { Version: var version } }
+        public virtual ProofVersion? GetProofVersion() =>
+            SupportsBlobs && this is { NetworkWrapper: ShardBlobNetworkWrapper { Version: var version } }
                 ? version
-                : ProofVersion.V0
-            : null;
+                : null;
     }
 
     /// <summary>

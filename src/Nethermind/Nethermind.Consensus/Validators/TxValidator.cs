@@ -307,15 +307,12 @@ public sealed class MempoolBlobTxProofVersionValidator : ITxValidator
 
     public ValidationResult IsWellFormed(Transaction transaction, IReleaseSpec releaseSpec)
     {
-        if (transaction.SupportsBlobs)
-        {
-            ProofVersion? version = transaction.GetProofVersion();
-            return version is null
-                ? TxErrorMessages.InvalidTransactionForm
-                : ValidateProofVersion(version.Value, releaseSpec);
-        }
+        if (!transaction.SupportsBlobs) return ValidationResult.Success;
 
-        return ValidationResult.Success;
+        ProofVersion? version = transaction.GetProofVersion();
+        return version is null
+            ? TxErrorMessages.InvalidTransactionForm
+            : ValidateProofVersion(version.Value, releaseSpec);
 
         static ValidationResult ValidateProofVersion(ProofVersion txProofVersion, IReleaseSpec spec) =>
             txProofVersion != spec.BlobProofVersion ? TxErrorMessages.InvalidProofVersion : ValidationResult.Success;
