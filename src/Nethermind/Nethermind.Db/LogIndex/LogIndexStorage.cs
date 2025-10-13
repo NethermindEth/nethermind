@@ -316,6 +316,8 @@ namespace Nethermind.Db
                 if (_stopped)
                     return;
 
+                _stopped = true;
+
                 await _compactor.StopAsync(); // Need to wait, as releasing RocksDB during compaction will cause 0xC0000005
                 await _compressor.StopAsync(); // TODO: consider not waiting for compression queue to finish
 
@@ -326,8 +328,6 @@ namespace Nethermind.Db
             }
             finally
             {
-                _stopped = true;
-
                 _setReceiptsSemaphores[false].Release();
                 _setReceiptsSemaphores[true].Release();
             }
@@ -689,10 +689,13 @@ namespace Nethermind.Db
             return Task.CompletedTask;
         }
 
-        private static async ValueTask LockRunAsync(SemaphoreSlim semaphore)
+        private async ValueTask LockRunAsync(SemaphoreSlim semaphore)
         {
             if (!await semaphore.WaitAsync(TimeSpan.Zero, CancellationToken.None))
+            {
+                ThrowIfStopped();
                 throw new InvalidOperationException($"{nameof(LogIndexStorage)} does not support concurrent invocations in the same direction.");
+            }
         }
 
         public async Task ReorgFrom(BlockReceipts block)
