@@ -9,10 +9,11 @@ using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
 using Nethermind.Evm;
 using Nethermind.Evm.CodeAnalysis;
+using Nethermind.Evm.State;
 
 namespace Nethermind.State.OverridableEnv;
 
-public class OverridableCodeInfoRepository(ICodeInfoRepository codeInfoRepository) : IOverridableCodeInfoRepository
+public class OverridableCodeInfoRepository(ICodeInfoRepository codeInfoRepository, IWorldState worldState) : IOverridableCodeInfoRepository
 {
     private readonly Dictionary<Address, ICodeInfo> _codeOverrides = new();
     private readonly Dictionary<Address, (ICodeInfo codeInfo, Address initialAddr)> _precompileOverrides = new();
@@ -41,6 +42,7 @@ public class OverridableCodeInfoRepository(ICodeInfoRepository codeInfoRepositor
     public void MovePrecompile(IReleaseSpec vmSpec, Address precompileAddr, Address targetAddr)
     {
         _precompileOverrides[targetAddr] = (this.GetCachedCodeInfo(precompileAddr, vmSpec), precompileAddr);
+        _codeOverrides[precompileAddr] = new CodeInfo(worldState.GetCode(precompileAddr));
     }
 
     public void SetDelegation(Address codeSource, Address authority, IReleaseSpec spec) =>
