@@ -95,7 +95,6 @@ partial class LogIndexStorage
             return _processing.Completion;
         }
 
-        // TODO: optimize allocations
         private void CompressValue(int? topicIndex, byte[] dbKey)
         {
             try
@@ -123,7 +122,7 @@ partial class LogIndexStorage
                 var postfixBlock = GetValBlockNum(dbValue);
 
                 ReadOnlySpan<byte> key = ExtractKey(dbKey);
-                Span<byte> dbKeyComp = new byte[key.Length + BlockNumSize];
+                Span<byte> dbKeyComp = stackalloc byte[key.Length + BlockNumSize];
                 key.CopyTo(dbKeyComp);
                 SetKeyBlockNum(dbKeyComp[key.Length..], postfixBlock);
 
@@ -135,8 +134,12 @@ partial class LogIndexStorage
                 timestamp = Stopwatch.GetTimestamp();
                 using (IWriteBatch batch = db.StartWriteBatch())
                 {
+                    Span<byte> truncateOp = MergeOps.Create(
+                        MergeOp.TruncateOp, truncateBlock, stackalloc byte[MergeOps.Size]
+                    );
+
                     batch.PutSpan(dbKeyComp, dbValue);
-                    batch.Merge(dbKey, MergeOps.Create(MergeOp.TruncateOp, truncateBlock));
+                    batch.Merge(dbKey, truncateOp);
                 }
 
                 _stats.PuttingValues.Include(Stopwatch.GetElapsedTime(timestamp));

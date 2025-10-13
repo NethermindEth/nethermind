@@ -24,14 +24,16 @@ partial class LogIndexStorage
 
     private static class MergeOps
     {
+        public const int Size = BlockNumSize + 1;
+
         public static bool Is(MergeOp op, ReadOnlySpan<byte> operand)
         {
-            return operand.Length == BlockNumSize + 1 && operand[0] == (byte)op;
+            return operand.Length == Size && operand[0] == (byte)op;
         }
 
         public static bool Is(MergeOp op, ReadOnlySpan<byte> operand, out int fromBlock)
         {
-            if (operand.Length == BlockNumSize + 1 && operand[0] == (byte)op)
+            if (operand.Length == Size && operand[0] == (byte)op)
             {
                 fromBlock = GetValLastBlockNum(operand);
                 return true;
@@ -47,7 +49,7 @@ partial class LogIndexStorage
 
         public static Span<byte> Create(MergeOp op, int fromBlock, Span<byte> buffer)
         {
-            Span<byte> dbValue = buffer[..(BlockNumSize + 1)];
+            Span<byte> dbValue = buffer[..Size];
             dbValue[0] = (byte)op;
             SetValBlockNum(dbValue[1..], fromBlock);
             return dbValue;
@@ -56,7 +58,7 @@ partial class LogIndexStorage
         // TODO: use ArrayPool?
         public static Span<byte> Create(MergeOp op, int fromBlock)
         {
-            var buffer = new byte[BlockNumSize + 1];
+            var buffer = new byte[Size];
             return Create(op, fromBlock, buffer);
         }
 
