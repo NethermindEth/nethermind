@@ -8,7 +8,6 @@ using Nethermind.Blockchain;
 using Nethermind.Blockchain.Filters;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Config;
-using Nethermind.Consensus.Processing;
 using Nethermind.Consensus.Tracing;
 using Nethermind.Core;
 using Nethermind.Core.Timers;
@@ -33,7 +32,6 @@ using Nethermind.JsonRpc.Modules.Subscribe;
 using Nethermind.JsonRpc.Modules.Trace;
 using Nethermind.JsonRpc.Modules.TxPool;
 using Nethermind.JsonRpc.Modules.Web3;
-using Nethermind.Logging;
 using Nethermind.Network;
 using Nethermind.Network.Config;
 using Nethermind.Sockets;
@@ -54,6 +52,7 @@ public class RpcModules(IJsonRpcConfig jsonRpcConfig) : Module
             .AddSingleton<IRpcModuleProvider, RpcModuleProvider>()
             .AddSingleton<IJsonRpcLocalStats, JsonRpcLocalStats>()
             .AddSingleton<IWebSocketsManager, WebSocketsManager>()
+            .AddSingleton<ILogIndexBuilder, LogIndexBuilder>()
 
             // Smallish RPCs
             .AddSingleton<INetBridge, NetBridge>()
@@ -63,7 +62,6 @@ public class RpcModules(IJsonRpcConfig jsonRpcConfig) : Module
             .RegisterSingletonJsonRpcModule<IPersonalRpcModule, PersonalRpcModule>()
             .RegisterSingletonJsonRpcModule<IRpcRpcModule, RpcRpcModule>()
             .RegisterSingletonJsonRpcModule<ILogIndexRpcModule, LogIndexRpcModule>()
-            .AddSingleton<ILogIndexService, LogIndexService>() // TODO: relocate registration?
 
             // Txpool rpc
             .RegisterSingletonJsonRpcModule<ITxPoolRpcModule, TxPoolRpcModule>()

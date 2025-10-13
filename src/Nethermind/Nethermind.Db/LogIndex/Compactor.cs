@@ -12,6 +12,9 @@ namespace Nethermind.Db;
 
 partial class LogIndexStorage
 {
+    /// <summary>
+    /// Periodically forces background log index compaction for every N added blocks.
+    /// </summary>
     private interface ICompactor
     {
         CompactingStats GetAndResetStats();

@@ -15,14 +15,18 @@ namespace Nethermind.Db;
 
 partial class LogIndexStorage
 {
+    /// <summary>
+    /// Does background compression for keys with the number of blocks above the threshold.
+    /// </summary>
     private interface ICompressor
     {
         int MinLengthToCompress { get; }
-        PostMergeProcessingStats Stats { get; }
         PostMergeProcessingStats GetAndResetStats();
+
         bool TryEnqueue(int? topicIndex, ReadOnlySpan<byte> dbKey, ReadOnlySpan<byte> dbValue);
         Task EnqueueAsync(int? topicIndex, byte[] dbKey);
         Task WaitUntilEmptyAsync(TimeSpan waitTime = default, CancellationToken cancellationToken = default);
+
         void Start();
         Task StopAsync();
     }
@@ -31,21 +35,19 @@ partial class LogIndexStorage
     {
         public int MinLengthToCompress { get; }
 
-        // A lot of duplicates in case of a regular Channel
-        // TODO: find a better way to guarantee uniqueness?
+        // Used instead of a channel to prevent duplicates
         private readonly ConcurrentDictionary<byte[], bool> _compressQueue = new(Bytes.EqualityComparer);
         private readonly LogIndexStorage _storage;
         private readonly ILogger _logger;
-        private readonly ActionBlock<(int?, byte[])> _block;
+        private readonly ActionBlock<(int?, byte[])> _processing;
         private readonly ManualResetEventSlim _startEvent = new(false);
         private readonly ManualResetEventSlim _queueEmptyEvent = new(true); // TODO: fix event being used for both blocks
 
         private PostMergeProcessingStats _stats = new();
-        public PostMergeProcessingStats Stats => _stats;
 
         public PostMergeProcessingStats GetAndResetStats()
         {
-            _stats.QueueLength = _block.InputCount;
+            _stats.QueueLength = _processing.InputCount;
             return Interlocked.Exchange(ref _stats, new());
         }
 
@@ -57,7 +59,7 @@ partial class LogIndexStorage
             MinLengthToCompress = compressionDistance * BlockNumSize;
 
             if (parallelism < 1) throw new ArgumentException("Compression parallelism degree must be a positive value.", nameof(parallelism));
-            _block = new(x => CompressValue(x.Item1, x.Item2), new() { MaxDegreeOfParallelism = parallelism, BoundedCapacity = 10_000 });
+            _processing = new(x => CompressValue(x.Item1, x.Item2), new() { MaxDegreeOfParallelism = parallelism, BoundedCapacity = 10_000 });
         }
 
         public bool TryEnqueue(int? topicIndex, ReadOnlySpan<byte> dbKey, ReadOnlySpan<byte> dbValue)
@@ -69,7 +71,7 @@ partial class LogIndexStorage
             if (!_compressQueue.TryAdd(dbKeyArr, true))
                 return false;
 
-            if (_block.Post((topicIndex, dbKeyArr)))
+            if (_processing.Post((topicIndex, dbKeyArr)))
                 return true;
 
             _compressQueue.TryRemove(dbKeyArr, out _);
@@ -78,7 +80,7 @@ partial class LogIndexStorage
 
         public async Task EnqueueAsync(int? topicIndex, byte[] dbKey)
         {
-            await _block.SendAsync((topicIndex, dbKey));
+            await _processing.SendAsync((topicIndex, dbKey));
             _queueEmptyEvent.Reset();
         }
 
@@ -89,8 +91,8 @@ partial class LogIndexStorage
 
         public Task StopAsync()
         {
-            _block.Complete();
-            return _block.Completion;
+            _processing.Complete();
+            return _processing.Completion;
         }
 
         // TODO: optimize allocations
@@ -154,7 +156,7 @@ partial class LogIndexStorage
             {
                 _compressQueue.TryRemove(dbKey, out _);
 
-                if (_block.InputCount == 0) // TODO: take processing items into account
+                if (_processing.InputCount == 0) // TODO: take processing items into account
                     _queueEmptyEvent.Set();
             }
         }

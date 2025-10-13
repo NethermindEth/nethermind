@@ -48,14 +48,14 @@ public class LogIndexStorageFilterTests
         get
         {
             yield return new TestCaseData(
-                "AddressA",
+                "AddressA", // name
 
-                FilterBuilder.New()
+                FilterBuilder.New() // filter
                     .FromBlock(LogIndexFrom).ToBlock(LogIndexTo)
                     .WithAddress(TestItem.AddressA)
                     .Build(),
 
-                LogIndexRanges[TestItem.AddressA]
+                LogIndexRanges[TestItem.AddressA] // expected range
             );
 
             yield return new TestCaseData(
@@ -204,7 +204,7 @@ public class LogIndexStorageFilterTests
     }
 
     [TestCaseSource(nameof(LogIndexTestsData))]
-    public void Filter_Test(string name, LogFilter filter, List<int> expected)
+    public void calculates_correct_range_for_filter(string name, LogFilter filter, List<int> expected)
     {
         Assert.That(expected, Is.Not.Empty, "Unreliable test: no block numbers are selected.");
         Assert.That(expected, Has.Count.LessThan(LogIndexTo - LogIndexFrom + 1), "Unreliable test: all block numbers are selected.");

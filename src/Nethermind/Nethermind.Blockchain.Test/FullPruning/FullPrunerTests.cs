@@ -411,6 +411,11 @@ public class FullPrunerTests
                 _context.Set(key, value, flags);
             }
 
+            public void Merge(ReadOnlySpan<byte> key, ReadOnlySpan<byte> value, WriteFlags flags = WriteFlags.None)
+            {
+                _context.Merge(key, value, flags);
+            }
+
             public byte[]? Get(ReadOnlySpan<byte> key, ReadFlags flags = ReadFlags.None)
             {
                 return _context.Get(key, flags);

@@ -12,7 +12,7 @@ using Nethermind.JsonRpc.Modules.Eth;
 
 namespace Nethermind.JsonRpc.Modules.LogIndex;
 
-public class LogIndexRpcModule(ILogIndexStorage storage, ILogIndexService service, IBlockFinder blockFinder, IBlockchainBridge blockchainBridge) : ILogIndexRpcModule
+public class LogIndexRpcModule(ILogIndexStorage storage, ILogIndexBuilder builder, IBlockFinder blockFinder, IBlockchainBridge blockchainBridge) : ILogIndexRpcModule
 {
     public ResultWrapper<Dictionary<byte[], int[]>> logIndex_keys(LogIndexKeysRequest request)
     {
@@ -53,12 +53,12 @@ public class LogIndexRpcModule(ILogIndexStorage storage, ILogIndexService servic
             },
             Target = new()
             {
-                FromBlock = service.MinTargetBlockNumber,
-                ToBlock = service.MaxTargetBlockNumber
+                FromBlock = builder.MinTargetBlockNumber,
+                ToBlock = builder.MaxTargetBlockNumber
             },
-            IsRunning = service.IsRunning,
-            LastUpdate = service.LastUpdate,
-            LastError = service.LastError?.ToString(),
+            IsRunning = builder.IsRunning,
+            LastUpdate = builder.LastUpdate,
+            LastError = builder.LastError?.ToString(),
             DbSize = storage.GetDbSize()
         });
     }

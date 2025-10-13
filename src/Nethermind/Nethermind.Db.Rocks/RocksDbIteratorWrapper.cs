@@ -6,7 +6,7 @@ using System;
 
 namespace Nethermind.Db.Rocks;
 
-public class RocksDbIteratorWrapper(Iterator iterator) : IIterator
+public sealed class RocksDbIteratorWrapper(Iterator iterator) : IIterator
 {
     public void SeekToFirst() => iterator.SeekToFirst();
     public void Seek(ReadOnlySpan<byte> key) => iterator.Seek(key);

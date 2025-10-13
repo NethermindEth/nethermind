@@ -23,7 +23,7 @@ namespace Nethermind.Db
     [SuppressMessage("ReSharper", "PrivateFieldCanBeConvertedToLocalVariable")] // TODO: get rid of unused fields
     public partial class LogIndexStorage : ILogIndexStorage
     {
-        // Use values that we won't encounter during regular iteration
+        // Use values that we won't encounter in the middle of a regular iteration
         private static class SpecialKey
         {
             public static readonly byte[] Version = Enumerable.Repeat(byte.MaxValue, MaxDbKeyLength)
@@ -103,7 +103,7 @@ namespace Nethermind.Db
         private const int MaxKeyLength = Hash256.Size + 1; // Math.Max(Address.Size, Hash256.Size)
         private const int MaxDbKeyLength = MaxKeyLength + BlockNumSize;
 
-        // TODO: consider using ArrayPoolList just for `using` syntax
+        // TODO: switch to ArrayPoolList just for `using` syntax?
         private static readonly ArrayPool<byte> Pool = ArrayPool<byte>.Shared;
 
         private readonly IColumnsDb<LogIndexColumns> _rootDb;
@@ -1000,7 +1000,7 @@ namespace Nethermind.Db
             return decompressedBlockNumbers;
         }
 
-        // TODO: test on big-endian system?
+        // TODO: test on big-endian system
         private ReadOnlySpan<byte> Compress(Span<byte> data, Span<byte> buffer)
         {
             ReadOnlySpan<int> blockNumbers = MemoryMarshal.Cast<byte, int>(data);

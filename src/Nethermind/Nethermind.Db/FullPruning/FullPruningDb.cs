@@ -113,7 +113,7 @@ namespace Nethermind.Db.FullPruning
             _updateDuplicateWriteMetrics?.Invoke();
         }
 
-        private void DuplicateMerge(IDb db, ReadOnlySpan<byte> key, ReadOnlySpan<byte> value, WriteFlags flags)
+        private void DuplicateMerge(IWriteOnlyKeyValueStore db, ReadOnlySpan<byte> key, ReadOnlySpan<byte> value, WriteFlags flags)
         {
             db.Merge(key, value, flags);
             _updateDuplicateWriteMetrics?.Invoke();
@@ -264,6 +264,11 @@ namespace Nethermind.Db.FullPruning
                 _db.Duplicate(CloningDb, key, value, flags);
             }
 
+            public void Merge(ReadOnlySpan<byte> key, ReadOnlySpan<byte> value, WriteFlags flags = WriteFlags.None)
+            {
+                _db.Merge(key, value, flags);
+            }
+
             public IWriteBatch StartWriteBatch()
             {
                 return CloningDb.StartWriteBatch();
@@ -347,7 +352,8 @@ namespace Nethermind.Db.FullPruning
 
             public void Merge(ReadOnlySpan<byte> key, ReadOnlySpan<byte> value, WriteFlags flags = WriteFlags.None)
             {
-                throw new NotSupportedException("Merging is not supported by this implementation.");
+                _writeBatch.Merge(key, value, flags);
+                _db.DuplicateMerge(_clonedWriteBatch, key, value, flags);
             }
         }
 

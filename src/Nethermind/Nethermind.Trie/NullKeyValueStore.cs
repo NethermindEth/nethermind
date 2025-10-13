@@ -25,5 +25,10 @@ namespace Nethermind.Trie
         {
             throw new NotSupportedException();
         }
+
+        public void Merge(ReadOnlySpan<byte> key, ReadOnlySpan<byte> value, WriteFlags flags = WriteFlags.None)
+        {
+            throw new NotSupportedException();
+        }
     }
 }

@@ -13,7 +13,7 @@ public sealed class DisabledLogIndexStorage : ILogIndexStorage
 {
     public bool Enabled => false;
 
-    public Task FirstBlockAdded => Task.Delay(-1);
+    public Task FirstBlockAdded => Task.CompletedTask;
 
     public string GetDbSize() => "0 B";
 
