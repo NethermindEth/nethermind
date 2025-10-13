@@ -53,6 +53,9 @@ public interface IJsonRpcConfig : IConfig
     [ConfigItem(Description = "The path to connect a UNIX domain socket over.")]
     string IpcUnixDomainSocketPath { get; set; }
 
+    [ConfigItem(Description = "Should Owner-only access be applied to IPC socket.", DefaultValue = "true")]
+    bool RestrictIpcSocketPermissions { get; set; }
+
     [ConfigItem(
         Description = """
             An array of JSON-RPC namespaces to enable. For instance, `[debug,eth]`.
