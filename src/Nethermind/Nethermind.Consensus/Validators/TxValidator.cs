@@ -311,7 +311,7 @@ public sealed class MempoolBlobTxProofVersionValidator : ITxValidator
 
         ProofVersion? version = transaction.GetProofVersion();
         return version is null
-            ? TxErrorMessages.InvalidTransactionForm
+            ? transaction.NetworkWrapper is not null ? TxErrorMessages.InvalidTransactionForm : ValidationResult.Success
             : ValidateProofVersion(version.Value, releaseSpec);
 
         static ValidationResult ValidateProofVersion(ProofVersion txProofVersion, IReleaseSpec spec) =>
