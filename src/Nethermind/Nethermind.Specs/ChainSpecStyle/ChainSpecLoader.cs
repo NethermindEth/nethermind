@@ -258,6 +258,7 @@ public class ChainSpecLoader(IJsonSerializer serializer) : IChainSpecLoader
         chainSpec.CancunTimestamp = chainSpec.Parameters.Eip4844TransitionTimestamp;
         chainSpec.PragueTimestamp = chainSpec.Parameters.Eip7002TransitionTimestamp;
         chainSpec.OsakaTimestamp = chainSpec.Parameters.Eip7594TransitionTimestamp;
+        chainSpec.AmsterdamTimestamp = chainSpec.Parameters.Eip7928TransitionTimestamp;
 
         // TheMerge parameters
         chainSpec.MergeForkIdBlockNumber = chainSpec.Parameters.MergeForkIdTransition;
