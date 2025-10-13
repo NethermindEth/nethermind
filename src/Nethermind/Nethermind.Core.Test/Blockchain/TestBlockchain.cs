@@ -373,6 +373,11 @@ public class TestBlockchain : IDisposable
                 genesisBlockBuilder.WithEmptyRequestsHash();
             }
 
+            if (specProvider.GenesisSpec.BlockLevelAccessListsEnabled)
+            {
+                genesisBlockBuilder.WithBlockAccessListHash(Keccak.OfAnEmptySequenceRlp);
+            }
+
             Block genesisBlock = genesisBlockBuilder.TestObject;
 
             foreach (IGenesisPostProcessor genesisPostProcessor in postProcessors)
