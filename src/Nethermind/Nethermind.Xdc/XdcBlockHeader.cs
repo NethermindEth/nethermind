@@ -65,18 +65,6 @@ public class XdcBlockHeader : BlockHeader, IHashResolver
         set { _penaltiesAddress = value; }
     }
 
-    internal Address[] GetMasterNodesFromEpochSwitchHeader()
-    {
-        if (Validators == null)
-            throw new InvalidOperationException("Header has no validators.");
-        Address[] masterNodes = new Address[Validators.Length / 20];
-        for (int i = 0; i < masterNodes.Length; i++)
-        {
-            masterNodes[i] = new Address(Validators.AsSpan(i * 20, 20));
-        }
-        return masterNodes;
-    }
-
     private ExtraFieldsV2 _extraFieldsV2;
     public ExtraFieldsV2? ExtraConsensusData
     {

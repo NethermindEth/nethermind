@@ -98,34 +98,24 @@ internal static class Utils
 
         return Addresses;
     }
-    internal static bool TryGetExtraFields(XdcBlockHeader header, long switchBlock, out QuorumCert quorumCert, out ulong round, out Address[] masterNodes)
+    internal static bool TryGetExtraFields(XdcBlockHeader header, long switchBlock, out ExtraFieldsV2? consensusData, out Address[] masterNodes)
     {
         if (header.Number == switchBlock)
         {
             masterNodes = GetMasterNodesFromHeaderExtra(header);
-            quorumCert = default;
-            round = 0;
+            consensusData = default;
             return true;
         }
 
-        masterNodes = header.GetMasterNodesFromEpochSwitchHeader();
+        masterNodes = header.ValidatorsAddress.Value.ToArray();
+        consensusData = header.ExtraConsensusData;
 
-        if (!TryDecodeExtraFields(header, out ExtraFieldsV2 extraFields))
+        if (consensusData is null)
         {
-            quorumCert = default;
-            round = 0;
             return false;
         }
 
-        quorumCert = extraFields.QuorumCert;
-        round = extraFields.CurrentRound;
-
         return true;
-    }
-
-    private static bool TryDecodeExtraFields(XdcBlockHeader header, out ExtraFieldsV2 extraFields)
-    {
-        return (extraFields = RlpValueDecoderExtensions.Decode<ExtraFieldsV2>(new ExtraConsensusDataDecoder(), header.ExtraData.AsSpan<byte>())) is not null;
     }
 
     private static Address[] GetMasterNodesFromHeaderExtra(XdcBlockHeader header)
