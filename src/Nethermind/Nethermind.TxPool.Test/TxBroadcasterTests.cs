@@ -729,6 +729,29 @@ public class TxBroadcasterTests
                 : baseFeeThreshold);
     }
 
+    [Test]
+    public void should_broadcast_light_transactions_without_wrappers()
+    {
+        // Arrange
+        var mockChainHeadInfoProvider = Substitute.For<IChainHeadInfoProvider>();
+        mockChainHeadInfoProvider.CurrentProofVersion.Returns(ProofVersion.V0);
+
+        var gossipPolicy = new SpecDrivenTxGossipPolicy(mockChainHeadInfoProvider);
+
+        var blobTransaction = Build.A.Transaction
+            .WithShardBlobTxTypeAndFields()
+            .SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA)
+            .TestObject;
+
+        var lightTransaction = new LightTransaction(blobTransaction);
+
+        // Act
+        bool result = gossipPolicy.ShouldGossipTransaction(lightTransaction);
+
+        // Assert
+        result.Should().BeTrue("LightTransaction from blob transaction should be gossiped when proof version matches.");
+    }
+
     private (IList<Transaction> expectedTxs, IList<Hash256> expectedHashes) GetTxsAndHashesExpectedToBroadcast(Transaction[] transactions, int expectedCountTotal)
     {
         List<Transaction> expectedTxs = new();
