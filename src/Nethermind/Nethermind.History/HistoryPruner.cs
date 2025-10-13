@@ -29,6 +29,7 @@ public class HistoryPruner : IHistoryPruner
 {
     private const int MaxOptimisticSearchAttempts = 3;
     private const int LockWaitTimeoutMs = 100;
+    private const int SlotsPerEpoch = 32;
 
     // only one pruning and one searching thread at a time
     private readonly object _pruneLock = new();
@@ -45,6 +46,7 @@ public class HistoryPruner : IHistoryPruner
     private readonly IHistoryConfig _historyConfig;
     private readonly bool _enabled;
     private readonly long _epochLength;
+    private readonly long _pruningInterval;
     private readonly long _minHistoryRetentionEpochs;
     private readonly int _deletionProgressLoggingInterval;
     private readonly long _ancientBarrier;
@@ -83,7 +85,8 @@ public class HistoryPruner : IHistoryPruner
         _backgroundTaskScheduler = backgroundTaskScheduler;
         _historyConfig = historyConfig;
         _enabled = historyConfig.Enabled();
-        _epochLength = (long)blocksConfig.SecondsPerSlot * 32; // must be changed if slot length changes
+        _epochLength = (long)blocksConfig.SecondsPerSlot * SlotsPerEpoch; // must be changed if slot length changes
+        _pruningInterval = historyConfig.PruningInterval * SlotsPerEpoch;
         _minHistoryRetentionEpochs = specProvider.GenesisSpec.MinHistoryRetentionEpochs;
 
         CheckConfig();
@@ -336,7 +339,7 @@ public class HistoryPruner : IHistoryPruner
     {
         cutoffTimestamp = null;
 
-        if (!_enabled)
+        if (!_enabled || !PruningIntervalHasElapsed())
         {
             return false;
         }
@@ -349,6 +352,9 @@ public class HistoryPruner : IHistoryPruner
         cutoffTimestamp = CalculateCutoffTimestamp();
         return cutoffTimestamp is not null && (_lastPrunedTimestamp is null || cutoffTimestamp > _lastPrunedTimestamp);
     }
+
+    private bool PruningIntervalHasElapsed()
+        => _pruningInterval == 0 || _blockTree.Head!.Number % _pruningInterval == 0;
 
     private void PruneBlocksAndReceipts(ulong? cutoffTimestamp, CancellationToken cancellationToken)
     {

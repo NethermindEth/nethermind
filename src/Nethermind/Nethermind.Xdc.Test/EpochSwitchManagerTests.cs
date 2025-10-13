@@ -123,7 +123,7 @@ internal class EpochSwitchManagerTests
         proposedHeader.Number = (long)switchBlock;
         proposedHeader.ParentHash = parentHeader.Hash;
 
-        QuorumCert qc = new QuorumCert(new BlockRoundInfo(headerHash, round, parentHeader.Number), [TestItem.RandomSignatureA, TestItem.RandomSignatureB], gapNumber);
+        QuorumCertificate qc = new QuorumCertificate(new BlockRoundInfo(headerHash, round, parentHeader.Number), [TestItem.RandomSignatureA, TestItem.RandomSignatureB], gapNumber);
         ExtraFieldsV2 extraFieldsV2 = new ExtraFieldsV2(round - 1, qc);
         proposedHeader.ExtraConsensusData = extraFieldsV2;
 
@@ -161,7 +161,7 @@ internal class EpochSwitchManagerTests
         proposedHeader.Number = (long)switchBlock + 1;
         proposedHeader.ParentHash = parentHeader.Hash;
 
-        QuorumCert qc = new QuorumCert(new BlockRoundInfo(headerHash, round - 1, parentHeader.Number), [TestItem.RandomSignatureA, TestItem.RandomSignatureB], gapNumber);
+        QuorumCertificate qc = new QuorumCertificate(new BlockRoundInfo(headerHash, round - 1, parentHeader.Number), [TestItem.RandomSignatureA, TestItem.RandomSignatureB], gapNumber);
         ExtraFieldsV2 extraFieldsV2 = new ExtraFieldsV2(round, qc);
         proposedHeader.ExtraConsensusData = extraFieldsV2;
         // Act
@@ -196,7 +196,7 @@ internal class EpochSwitchManagerTests
         proposedHeader.Number = (long)switchBlock + 1;
         proposedHeader.ParentHash = parentHeader.Hash;
 
-        QuorumCert qc = new QuorumCert(new BlockRoundInfo(headerHash, round, parentHeader.Number), [TestItem.RandomSignatureA, TestItem.RandomSignatureB], gapNumber);
+        QuorumCertificate qc = new QuorumCertificate(new BlockRoundInfo(headerHash, round, parentHeader.Number), [TestItem.RandomSignatureA, TestItem.RandomSignatureB], gapNumber);
         ExtraFieldsV2 extraFieldsV2 = new ExtraFieldsV2(round - 1, qc);
         proposedHeader.ExtraConsensusData = extraFieldsV2;
         // Act
@@ -278,7 +278,7 @@ internal class EpochSwitchManagerTests
             .TestObject;
         parentHeader.Hash = headerHash;
         parentHeader.Number = (long)switchBlock - 1;
-        QuorumCert qc = new QuorumCert(new BlockRoundInfo(headerHash, parentRound, parentHeader.Number), [TestItem.RandomSignatureA, TestItem.RandomSignatureB], gapNumber);
+        QuorumCertificate qc = new QuorumCertificate(new BlockRoundInfo(headerHash, parentRound, parentHeader.Number), [TestItem.RandomSignatureA, TestItem.RandomSignatureB], gapNumber);
         ExtraFieldsV2 extraFieldsV2 = new ExtraFieldsV2(parentRound, qc);
         parentHeader.ExtraConsensusData = extraFieldsV2;
 
@@ -309,7 +309,7 @@ internal class EpochSwitchManagerTests
             .TestObject;
         parentHeader.Hash = headerHash;
         parentHeader.Number = (long)switchBlock - 1;
-        QuorumCert qc = new QuorumCert(new BlockRoundInfo(headerHash, parentRound, parentHeader.Number), [TestItem.RandomSignatureA, TestItem.RandomSignatureB], gapNumber);
+        QuorumCertificate qc = new QuorumCertificate(new BlockRoundInfo(headerHash, parentRound, parentHeader.Number), [TestItem.RandomSignatureA, TestItem.RandomSignatureB], gapNumber);
         ExtraFieldsV2 extraFieldsV2 = new ExtraFieldsV2(parentRound, qc);
         parentHeader.ExtraConsensusData = extraFieldsV2;
         bool result = _epochSwitchManager.IsEpochSwitchAtRound(currRound, parentHeader, out var epochNumber);
@@ -340,7 +340,7 @@ internal class EpochSwitchManagerTests
             .TestObject;
         parentHeader.Hash = headerHash;
         parentHeader.Number = (long)switchBlock - 1;
-        QuorumCert qc = new QuorumCert(new BlockRoundInfo(headerHash, parentRound, parentHeader.Number), [TestItem.RandomSignatureA, TestItem.RandomSignatureB], gapNumber);
+        QuorumCertificate qc = new QuorumCertificate(new BlockRoundInfo(headerHash, parentRound, parentHeader.Number), [TestItem.RandomSignatureA, TestItem.RandomSignatureB], gapNumber);
         ExtraFieldsV2 extraFieldsV2 = new ExtraFieldsV2(parentRound, qc);
         parentHeader.ExtraConsensusData = extraFieldsV2;
         bool result = _epochSwitchManager.IsEpochSwitchAtRound(currRound, parentHeader, out var epochNumber);
@@ -352,19 +352,28 @@ internal class EpochSwitchManagerTests
     [Test]
     public void GetEpochSwitchInfo_ShouldReturnNullIfHeaderIsNullAndParentIsNotInTree()
     {
+        var switchBlock = 10ul;
+        var epochLength = 4ul;
         var parentHash = Keccak.EmptyTreeHash;
         _tree.FindHeader(parentHash).Returns((XdcBlockHeader?)null);
+        XdcReleaseSpec releaseSpec = new()
+        {
+            EpochLength = (int)epochLength,
+            SwitchBlock = switchBlock,
+            V2Configs = [new V2ConfigParams()]
+        };
+        _config.GetSpec(Arg.Any<ForkActivation>()).Returns(releaseSpec);
         var result = _epochSwitchManager.GetEpochSwitchInfo(null, parentHash);
         Assert.That(result, Is.Null);
     }
     private byte[] FillExtraDataForTests(Address[] nextEpochCandidates)
     {
         var length = Address.Size * nextEpochCandidates?.Length ?? 0;
-        var extraData = new byte[32 + length + 65];
+        var extraData = new byte[XdcConstants.ExtraVanity + length + XdcConstants.ExtraSeal];
 
         for (int i = 0; i < nextEpochCandidates!.Length; i++)
         {
-            Array.Copy(nextEpochCandidates[i].Bytes, 0, extraData, 32 + i * Address.Size, Address.Size);
+            Array.Copy(nextEpochCandidates[i].Bytes, 0, extraData, XdcConstants.ExtraVanity + i * Address.Size, Address.Size);
         }
 
         return extraData;
@@ -380,7 +389,7 @@ internal class EpochSwitchManagerTests
         ulong expectedEpochNumber = blockNumber / epochLength;
 
         Address[] signers = [TestItem.AddressA, TestItem.AddressB];
-        EpochSwitchInfo expected = new([], signers, new BlockRoundInfo(hash256, 0, (long)blockNumber), null);
+        EpochSwitchInfo expected = new(signers, [], new BlockRoundInfo(hash256, 0, (long)blockNumber));
 
         XdcReleaseSpec releaseSpec = new()
         {

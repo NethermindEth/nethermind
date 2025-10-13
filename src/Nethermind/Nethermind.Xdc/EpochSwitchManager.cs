@@ -136,13 +136,13 @@ internal class EpochSwitchManager : IEpochSwitchManager
 
             iteratorHeader = null;
 
-            if (epochSwitchInfo.EpochSwitchParentBlockInfo is null)
+            if (epochSwitchInfo.EpochSwitchBlockInfo is null)
             {
                 break;
             }
 
-            iteratorHash = epochSwitchInfo.EpochSwitchParentBlockInfo.Hash;
-            iteratorBlockNumber = epochSwitchInfo.EpochSwitchParentBlockInfo.BlockNumber;
+            iteratorHash = epochSwitchInfo.EpochSwitchBlockInfo.Hash;
+            iteratorBlockNumber = epochSwitchInfo.EpochSwitchBlockInfo.BlockNumber;
 
             if (iteratorBlockNumber >= start.Number)
             {
@@ -156,7 +156,7 @@ internal class EpochSwitchManager : IEpochSwitchManager
 
     public EpochSwitchInfo? GetEpochSwitchInfo(XdcBlockHeader? header, Hash256 hash)
     {
-        if (_epochSwitches.TryGetValue(header.Hash, out var epochSwitchInfo) && epochSwitchInfo is not null)
+        if (header is not null && _epochSwitches.TryGetValue(header.Hash, out var epochSwitchInfo) && epochSwitchInfo is not null)
         {
             return epochSwitchInfo;
         }
@@ -179,7 +179,7 @@ internal class EpochSwitchManager : IEpochSwitchManager
             if (h.Number == 0)
             {
                 // genesis handling
-                epochSwitchInfo = new EpochSwitchInfo([], Utils.GetMasternodesFromGenesisHeader(_tree, header), new BlockRoundInfo(hash, 0, h.Number), null);
+                epochSwitchInfo = new EpochSwitchInfo(Utils.GetMasternodesFromGenesisHeader(_tree, header), [], new BlockRoundInfo(hash, 0, h.Number));
                 _epochSwitches[header.Hash] = epochSwitchInfo;
                 return epochSwitchInfo;
             }
@@ -208,11 +208,11 @@ internal class EpochSwitchManager : IEpochSwitchManager
                 stanbyNodes = Utils.RemoveItemFromArray(stanbyNodes, penalties);
             }
 
-            epochSwitchInfo = new EpochSwitchInfo(penalties, header.ValidatorsAddress.Value.ToArray(), new BlockInfo(h.Hash, consensusData.CurrentRound, h.Number), null);
+            epochSwitchInfo = new EpochSwitchInfo(header.ValidatorsAddress.Value.ToArray(), penalties, new BlockInfo(h.Hash, consensusData.CurrentRound, h.Number));
 
             if (consensusData.QuorumCert is not null)
             {
-                epochSwitchInfo.EpochSwitchParentBlockInfo = consensusData.QuorumCert.ProposedBlockInfo;
+                epochSwitchInfo.EpochSwitchBlockInfo = consensusData.QuorumCert.ProposedBlockInfo;
             }
 
             return _epochSwitches[header.Hash] = epochSwitchInfo;
@@ -232,7 +232,7 @@ internal class EpochSwitchManager : IEpochSwitchManager
 
         for (int i = 0; i < limit; i++)
         {
-            if ((epochSwitchInfo = GetEpochSwitchInfo(null, epochSwitchInfo.EpochSwitchParentBlockInfo.Hash)) is null)
+            if ((epochSwitchInfo = GetEpochSwitchInfo(null, epochSwitchInfo.EpochSwitchBlockInfo.Hash)) is null)
             {
                 return null;
             }
@@ -414,7 +414,7 @@ internal class EpochSwitchManager : IEpochSwitchManager
         return false;
     }
 
-    public EpochSwitchInfo? GetTimeoutCertificateEpochInfo(TimeoutCert timeoutCert)
+    public EpochSwitchInfo? GetTimeoutCertificateEpochInfo(TimeoutCertificate timeoutCert)
     {
         EpochSwitchInfo epochSwitchInfo = GetEpochSwitchInfo((XdcBlockHeader)_tree.Head.Header, _tree.Head.Header.Hash);
         if (epochSwitchInfo is null)
@@ -440,5 +440,14 @@ internal class EpochSwitchManager : IEpochSwitchManager
         }
 
         return GetEpochSwitchInfo(null, epochBlockInfo.Hash);
+    }
+
+    public BlockInfo? GetBlockByEpochNumber(ulong epochNumber)
+    {
+        if (TryGetBlockByEpochNumber(epochNumber, out var epochBlockInfo))
+        {
+            return epochBlockInfo;
+        }
+        return null;
     }
 }
