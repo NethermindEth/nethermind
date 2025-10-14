@@ -135,9 +135,6 @@ namespace Nethermind.Db
         /// </summary>
         private bool WasInitialized => _addressMinBlock is not null; // TODO: check other metadata values?
 
-        private readonly TaskCompletionSource _firstBlockAddedSource = new();
-        public Task FirstBlockAdded => _firstBlockAddedSource.Task;
-
         /// <summary>
         /// Guarantees initialization won't be run concurrently
         /// </summary>
@@ -189,9 +186,6 @@ namespace Nethermind.Db
 
             if (Enabled)
                 _compressor.Start();
-
-            if (WasInitialized)
-                _firstBlockAddedSource.SetResult();
         }
 
         private IColumnsDb<LogIndexColumns> CreateRootDb(IDbFactory dbFactory, bool reset)
@@ -916,9 +910,6 @@ namespace Nethermind.Db
                 stats?.CommitingBatch.Include(Stopwatch.GetElapsedTime(timestamp));
 
                 UpdateRanges(addressRange, topicRanges, isBackwardSync);
-
-                // Notify we have the first block
-                _firstBlockAddedSource.TrySetResult();
 
                 // Enqueue compaction if needed
                 _compactor.TryEnqueue();

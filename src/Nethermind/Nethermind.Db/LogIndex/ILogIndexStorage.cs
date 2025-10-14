@@ -49,13 +49,9 @@ public interface ILogIndexStorage : IAsyncDisposable, IStoppableService
 
     string GetDbSize();
 
-    Task FirstBlockAdded { get; }
-    Task CheckMigratedData();
-
     LogIndexAggregate Aggregate(IReadOnlyList<BlockReceipts> batch, bool isBackwardSync, LogIndexUpdateStats? stats = null);
     Task SetReceiptsAsync(IReadOnlyList<BlockReceipts> batch, bool isBackwardSync, LogIndexUpdateStats? stats = null);
     Task SetReceiptsAsync(LogIndexAggregate aggregate, LogIndexUpdateStats? stats = null);
     Task ReorgFrom(BlockReceipts block);
     Task CompactAsync(bool flush = false, int mergeIterations = 0, LogIndexUpdateStats? stats = null);
-    Task RecompactAsync(int maxUncompressedLength = -1, LogIndexUpdateStats? stats = null);
 }
