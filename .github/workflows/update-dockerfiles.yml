@@ -64,7 +64,7 @@ jobs:
         run: |
           head_branch=chore/update-dockerfiles-$GITHUB_RUN_NUMBER-$GITHUB_RUN_ATTEMPT
           body=$(cat <<'EOF'
-          Updated Dockerfiles to use the latest versions of .NET $DOTNET_VERSION SDK and runtime.
+          Updated Dockerfiles to use the latest versions of .NET ${DOTNET_VERSION} SDK and runtime.
 
           To verify manually, see:
           - https://mcr.microsoft.com/en-us/artifact/mar/dotnet/aspnet/tags
@@ -72,10 +72,6 @@ jobs:
           EOF
           )
 
-          git config user.name "$GITHUB_ACTOR"
-          git config user.email "$GITHUB_ACTOR@users.noreply.github.com"
-          git checkout -b $head_branch
-          git add -A
-          git commit -am "Update Dockerfiles"
-          git push origin $head_branch
-          gh pr create -B $GITHUB_REF_NAME -H $head_branch -t "Update Dockerfiles" -b "$body" -l .net -l devops
+
+          echo "$body"
+          #gh pr create -B $GITHUB_REF_NAME -H $head_branch -t "Update Dockerfiles" -b "$body" -l .net -l devops
