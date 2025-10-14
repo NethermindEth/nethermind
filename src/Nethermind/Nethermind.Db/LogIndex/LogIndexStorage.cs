@@ -157,8 +157,14 @@ namespace Nethermind.Db.LogIndex
             _maxReorgDepth = config.MaxReorgDepth;
 
             _logger = logManager.GetClassLogger<LogIndexStorage>();
-            _compressor = new Compressor(this, config.CompressionDistance, config.MaxCompressionParallelism);
-            _compactor = config.CompactionDistance > 0 ? new Compactor(this, _logger, config.CompactionDistance) : new NoOpCompactor();
+
+            _compressor = config.CompressionDistance > 0
+                ? new Compressor(this, config.CompressionDistance, config.MaxCompressionParallelism)
+                : new NoOpCompressor();
+
+            _compactor = config.CompactionDistance > 0
+                ? new Compactor(this, _logger, config.CompactionDistance)
+                : new NoOpCompactor();
 
             _mergeOperators = new()
             {
