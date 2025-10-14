@@ -131,7 +131,7 @@ public class LogIndexBuilderTests
     [SetUp]
     public void SetUp()
     {
-        _config = new LogIndexConfig { MaxReorgDepth = MaxReorgDepth, MaxBatchSize = BatchSize };
+        _config = new LogIndexConfig { Enabled = true, MaxReorgDepth = MaxReorgDepth, MaxBatchSize = BatchSize };
         _blockTree = Build.A.BlockTree().OfChainLength(MaxBlock + 1).BlockTree;
         _syncConfig = new SyncConfig { FastSync = true, SnapSync = true };
         _receiptStorage = Substitute.For<IReceiptStorage>();
