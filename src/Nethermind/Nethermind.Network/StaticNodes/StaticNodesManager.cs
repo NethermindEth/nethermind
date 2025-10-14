@@ -22,13 +22,10 @@ namespace Nethermind.Network.StaticNodes;
 
 public class StaticNodesManager(string staticNodesPath, ILogManager logManager) : IStaticNodesManager
 {
+    private readonly ILogger _logger = logManager.GetClassLogger();
     private ConcurrentDictionary<PublicKey, NetworkNode> _nodes = new();
 
-    private readonly ILogger _logger = logManager.GetClassLogger();
-
     public IEnumerable<NetworkNode> Nodes => _nodes.Values;
-
-    private static readonly char[] separator = ['\r', '\n'];
 
     public async Task InitAsync()
     {
@@ -52,12 +49,13 @@ public class StaticNodesManager(string staticNodesPath, ILogManager logManager) 
         }
 
         string data = await File.ReadAllTextAsync(staticNodesPath);
-        string[] nodes = GetNodes(data);
+        IEnumerable<string> nodes = INodeSource.ParseNodes(data);
+        var nodeCount = nodes.Count();
 
         if (_logger.IsInfo)
-            _logger.Info($"Loaded {nodes.Length} static nodes from {Path.GetFullPath(staticNodesPath)}");
+            _logger.Info($"Loaded {nodeCount} static nodes from {Path.GetFullPath(staticNodesPath)}");
 
-        if (nodes.Length != 0)
+        if (nodeCount != 0)
         {
             if (_logger.IsDebug) _logger.Debug($"Static nodes: {Environment.NewLine}{data}");
         }
@@ -78,21 +76,6 @@ public class StaticNodesManager(string staticNodesPath, ILogManager logManager) 
         }
 
         _nodes = new ConcurrentDictionary<PublicKey, NetworkNode>(networkNodes.ToDictionary(static n => n.NodeId, static n => n));
-    }
-
-    private static string[] GetNodes(string data)
-    {
-        string[] nodes;
-        try
-        {
-            nodes = JsonSerializer.Deserialize<string[]>(data) ?? [];
-        }
-        catch (JsonException)
-        {
-            nodes = data.Split(separator, StringSplitOptions.RemoveEmptyEntries);
-        }
-
-        return [.. nodes.Distinct()];
     }
 
     public async Task<bool> AddAsync(string enode, bool updateFile = true)

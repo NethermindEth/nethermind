@@ -6,7 +6,6 @@ using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
-using System.Net.Sockets;
 using System.Runtime.CompilerServices;
 using System.Text.Json;
 using System.Threading;
@@ -17,176 +16,160 @@ using Nethermind.Core.Crypto;
 using Nethermind.Logging;
 using Nethermind.Stats.Model;
 
-namespace Nethermind.Network
+namespace Nethermind.Network;
+
+public class TrustedNodesManager(string trustedNodesPath, ILogManager logManager) : ITrustedNodesManager
 {
-    public class TrustedNodesManager : ITrustedNodesManager
+    private ConcurrentDictionary<PublicKey, NetworkNode> _nodes = new();
+    private readonly ILogger _logger = logManager.GetClassLogger();
+    private readonly Channel<Node> _nodeChannel = Channel.CreateBounded<Node>(
+    new BoundedChannelOptions(1 << 16)  // capacity of 2^16 = 65536
     {
-        private ConcurrentDictionary<PublicKey, NetworkNode> _nodes = new();
-        private readonly string _trustedNodesPath;
-        private readonly ILogger _logger;
-        private readonly Channel<Node> _nodeChannel = Channel.CreateBounded<Node>(
-        new BoundedChannelOptions(1 << 16)  // capacity of 2^16 = 65536
-        {
-            // "Wait" to have writers wait until there is space.
-            FullMode = BoundedChannelFullMode.Wait
-        });
+        // "Wait" to have writers wait until there is space.
+        FullMode = BoundedChannelFullMode.Wait
+    });
 
-        public TrustedNodesManager(string trustedNodesPath, ILogManager logManager)
+    public IEnumerable<NetworkNode> Nodes => _nodes.Values;
+
+    public async Task InitAsync()
+    {
+        if (!File.Exists(trustedNodesPath))
         {
-            _trustedNodesPath = trustedNodesPath.GetApplicationResourcePath();
-            _logger = logManager.GetClassLogger();
+            if (_logger.IsDebug) _logger.Debug($"Trusted nodes file not found at {Path.GetFullPath(trustedNodesPath)}");
+            return;
         }
 
-        public IEnumerable<NetworkNode> Nodes => _nodes.Values;
+        string data = await File.ReadAllTextAsync(trustedNodesPath);
+        IEnumerable<string> nodes = INodeSource.ParseNodes(data);
+        ConcurrentDictionary<PublicKey, NetworkNode> temp = [];
 
-        public async Task InitAsync()
+        foreach (string n in nodes)
         {
-            if (!File.Exists(_trustedNodesPath))
+            NetworkNode node;
+
+            try
             {
-                if (_logger.IsDebug) _logger.Debug($"Trusted nodes file not found at: {_trustedNodesPath}");
-                return;
+                node = new(n);
+            }
+            catch (Exception ex)
+            {
+                if (_logger.IsError)
+                    _logger.Error($"Failed to parse '{n}' as a node", ex);
+
+                continue;
             }
 
-            var nodes = new ConcurrentDictionary<PublicKey, NetworkNode>();
+            temp.TryAdd(node.NodeId, node);
+        }
 
-            await foreach (string line in File.ReadLinesAsync(_trustedNodesPath))
-            {
-                if (string.IsNullOrWhiteSpace(line))
-                {
-                    continue;
-                }
-                try
-                {
-                    NetworkNode node = new NetworkNode(line);
-                    nodes.TryAdd(node.NodeId, node);
-                }
-                catch (Exception ex) when (ex is ArgumentException or SocketException)
-                {
-                    if (_logger.IsError)
-                    {
-                        _logger.Error($"Failed to parse '{line}' as a trusted node.", ex);
-                    }
-                }
-            }
+        if (_logger.IsInfo)
+            _logger.Info($"Loaded {temp.Count} trusted nodes from {Path.GetFullPath(trustedNodesPath)}");
 
+        if (_logger.IsDebug && !temp.IsEmpty)
+            _logger.Debug($"Trusted nodes:{Environment.NewLine}{string.Join(Environment.NewLine, temp.Values.Select(n => n.ToString()))}");
+
+        _nodes = temp;
+    }
+
+    // ---- INodeSource requirement: IAsyncEnumerable<Node> ----
+    public async IAsyncEnumerable<Node> DiscoverNodes([EnumeratorCancellation] CancellationToken cancellationToken)
+    {
+        // yield existing nodes.
+        foreach (NetworkNode netNode in _nodes.Values)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            yield return new Node(netNode) { IsTrusted = true };
+        }
+
+        // yield new nodes as they are added via the channel
+        await foreach (Node node in _nodeChannel.Reader.ReadAllAsync(cancellationToken))
+        {
+            yield return node;
+        }
+    }
+
+    public async Task<bool> AddAsync(Enode enode, bool updateFile = true)
+    {
+        NetworkNode networkNode = new(enode);
+        if (!_nodes.TryAdd(networkNode.NodeId, networkNode))
+        {
             if (_logger.IsInfo)
             {
-                _logger.Info($"Loaded {nodes.Count} trusted nodes from: {Path.GetFullPath(_trustedNodesPath)}");
-            }
-            if (_logger.IsDebug && !nodes.IsEmpty)
-            {
-                _logger.Debug("Trusted nodes:\n" + string.Join(Environment.NewLine, nodes.Values.Select(n => n.ToString())));
-            }
-
-            _nodes = nodes;
-        }
-
-
-        // ---- INodeSource requirement: IAsyncEnumerable<Node> ----
-        public async IAsyncEnumerable<Node> DiscoverNodes([EnumeratorCancellation] CancellationToken cancellationToken)
-        {
-            // yield existing nodes.
-            foreach (NetworkNode netNode in _nodes.Values)
-            {
-                cancellationToken.ThrowIfCancellationRequested();
-                yield return new Node(netNode) { IsTrusted = true };
-            }
-
-            // yield new nodes as they are added via the channel
-            await foreach (Node node in _nodeChannel.Reader.ReadAllAsync(cancellationToken))
-            {
-                yield return node;
-            }
-        }
-
-        public async Task<bool> AddAsync(Enode enode, bool updateFile = true)
-        {
-            NetworkNode networkNode = new NetworkNode(enode);
-            if (!_nodes.TryAdd(networkNode.NodeId, networkNode))
-            {
-                if (_logger.IsInfo)
-                {
-                    _logger.Info($"Trusted node was already added: {enode}");
-                }
-                return false;
-            }
-
-            if (_logger.IsInfo)
-            {
-                _logger.Info($"Trusted node added: {enode}");
-            }
-
-            // Publish the newly added node to the channel so DiscoverNodes will yield it.
-            Node newNode = new Node(networkNode) { IsTrusted = true };
-            await _nodeChannel.Writer.WriteAsync(newNode);
-
-            if (updateFile)
-            {
-                await SaveFileAsync();
-            }
-            return true;
-        }
-
-        public async Task<bool> RemoveAsync(Enode enode, bool updateFile = true)
-        {
-            NetworkNode networkNode = new(enode.ToString());
-            if (!_nodes.TryRemove(networkNode.NodeId, out _))
-            {
-                if (_logger.IsInfo)
-                {
-                    _logger.Info($"Trusted node was not found: {enode}");
-                }
-                return false;
-            }
-
-            if (_logger.IsInfo)
-            {
-                _logger.Info($"Trusted node was removed: {enode}");
-            }
-
-            if (updateFile)
-            {
-                await SaveFileAsync();
-            }
-
-            OnNodeRemoved(networkNode);
-
-            return true;
-        }
-
-        public bool IsTrusted(Enode enode)
-        {
-            if (enode.PublicKey is null)
-            {
-                return false;
-            }
-            if (_nodes.TryGetValue(enode.PublicKey, out NetworkNode storedNode))
-            {
-                // Compare not only the public key, but also the host and port.
-                return storedNode.Host == enode.HostIp?.ToString() && storedNode.Port == enode.Port;
+                _logger.Info($"Trusted node was already added: {enode}");
             }
             return false;
         }
 
-
-
-        // ---- INodeSource requirement: event EventHandler<NodeEventArgs> ----
-        public event EventHandler<NodeEventArgs>? NodeRemoved;
-
-        private void OnNodeRemoved(NetworkNode node)
+        if (_logger.IsInfo)
         {
-            Node nodeForEvent = new Node(node);
-            NodeRemoved?.Invoke(this, new NodeEventArgs(nodeForEvent));
+            _logger.Info($"Trusted node added: {enode}");
         }
 
+        // Publish the newly added node to the channel so DiscoverNodes will yield it.
+        Node newNode = new(networkNode) { IsTrusted = true };
+        await _nodeChannel.Writer.WriteAsync(newNode);
 
-        private async Task SaveFileAsync()
+        if (updateFile)
         {
-            IEnumerable<string> enodes = _nodes.Values.Select(n => n.ToString());
-            using (FileStream stream = File.Create(_trustedNodesPath))
+            await SaveFileAsync();
+        }
+        return true;
+    }
+
+    public async Task<bool> RemoveAsync(Enode enode, bool updateFile = true)
+    {
+        NetworkNode networkNode = new(enode.ToString());
+        if (!_nodes.TryRemove(networkNode.NodeId, out _))
+        {
+            if (_logger.IsInfo)
             {
-                await JsonSerializer.SerializeAsync(stream, enodes, new JsonSerializerOptions { WriteIndented = true });
+                _logger.Info($"Trusted node was not found: {enode}");
             }
+            return false;
         }
+
+        if (_logger.IsInfo)
+        {
+            _logger.Info($"Trusted node was removed: {enode}");
+        }
+
+        if (updateFile)
+        {
+            await SaveFileAsync();
+        }
+
+        OnNodeRemoved(networkNode);
+
+        return true;
+    }
+
+    public bool IsTrusted(Enode enode)
+    {
+        if (enode.PublicKey is null)
+        {
+            return false;
+        }
+        if (_nodes.TryGetValue(enode.PublicKey, out NetworkNode storedNode))
+        {
+            // Compare not only the public key, but also the host and port.
+            return storedNode.Host == enode.HostIp?.ToString() && storedNode.Port == enode.Port;
+        }
+        return false;
+    }
+
+    // ---- INodeSource requirement: event EventHandler<NodeEventArgs> ----
+    public event EventHandler<NodeEventArgs>? NodeRemoved;
+
+    private void OnNodeRemoved(NetworkNode node)
+    {
+        Node nodeForEvent = new(node);
+        NodeRemoved?.Invoke(this, new NodeEventArgs(nodeForEvent));
+    }
+
+    private async Task SaveFileAsync()
+    {
+        IEnumerable<string> enodes = _nodes.Values.Select(n => n.ToString());
+        using FileStream stream = File.Create(trustedNodesPath);
+        await JsonSerializer.SerializeAsync(stream, enodes, new JsonSerializerOptions { WriteIndented = true });
     }
 }
