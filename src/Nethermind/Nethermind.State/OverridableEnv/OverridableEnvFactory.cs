@@ -9,6 +9,7 @@ using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
 using Nethermind.Evm;
 using Nethermind.Evm.State;
+using Nethermind.Logging;
 
 namespace Nethermind.State.OverridableEnv;
 
@@ -44,7 +45,7 @@ public class OverridableEnvFactory(IWorldStateManager worldStateManager, ILifeti
 
             if (stateOverride is not null)
             {
-                overridableScope.WorldState.ApplyStateOverrides(_codeInfoRepository, stateOverride, specProvider.GetSpec(header), header.Number);
+                overridableScope.WorldState.ApplyStateOverrides(_codeInfoRepository, stateOverride, specProvider.GetSpec(header), header.Number, NullLogger.Instance);
                 header.StateRoot = overridableScope.WorldState.StateRoot;
             }
 
