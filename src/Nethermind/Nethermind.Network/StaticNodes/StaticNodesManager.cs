@@ -18,158 +18,167 @@ using Nethermind.Logging;
 using Nethermind.Serialization.Json;
 using Nethermind.Stats.Model;
 
-namespace Nethermind.Network.StaticNodes
+namespace Nethermind.Network.StaticNodes;
+
+public class StaticNodesManager(string staticNodesPath, ILogManager logManager) : IStaticNodesManager
 {
-    public class StaticNodesManager : IStaticNodesManager
+    private ConcurrentDictionary<PublicKey, NetworkNode> _nodes = new();
+
+    private readonly ILogger _logger = logManager.GetClassLogger();
+
+    public IEnumerable<NetworkNode> Nodes => _nodes.Values;
+
+    private static readonly char[] separator = ['\r', '\n'];
+
+    public async Task InitAsync()
     {
-        private ConcurrentDictionary<PublicKey, NetworkNode> _nodes = new();
-
-        private readonly string _staticNodesPath;
-        private readonly ILogger _logger;
-
-        public StaticNodesManager(string staticNodesPath, ILogManager logManager)
+        if (!File.Exists(staticNodesPath))
         {
-            _staticNodesPath = staticNodesPath.GetApplicationResourcePath();
-            _logger = logManager.GetClassLogger();
-        }
+            using Stream embeddedNodes = typeof(StaticNodesManager).Assembly.GetManifestResourceStream("static-nodes.json");
 
-        public IEnumerable<NetworkNode> Nodes => _nodes.Values;
-
-        private static readonly char[] separator = new[] { '\r', '\n' };
-
-        public async Task InitAsync()
-        {
-            if (!File.Exists(_staticNodesPath))
+            if (embeddedNodes is null)
             {
-                if (_logger.IsDebug) _logger.Debug($"Static nodes file was not found for path: {_staticNodesPath}");
-
+                if (_logger.IsWarn) _logger.Warn($"Static nodes resource was not found");
                 return;
             }
 
-            string data = await File.ReadAllTextAsync(_staticNodesPath);
-            string[] nodes = GetNodes(data);
-            if (_logger.IsInfo)
-                _logger.Info($"Loaded {nodes.Length} static nodes from file: {Path.GetFullPath(_staticNodesPath)}");
-            if (nodes.Length != 0)
-            {
-                if (_logger.IsDebug) _logger.Debug($"Static nodes: {Environment.NewLine}{data}");
-            }
+            // Create the directory if needed
+            Directory.CreateDirectory(Path.GetDirectoryName(staticNodesPath));
+            using Stream actualNodes = File.Create(staticNodesPath);
 
-            List<NetworkNode> networkNodes = new();
-            foreach (string? n in nodes)
-            {
-                try
-                {
-                    NetworkNode networkNode = new(n);
-                    networkNodes.Add(networkNode);
-                }
-                catch (Exception exception) when (exception is ArgumentException or SocketException)
-                {
-                    if (_logger.IsError) _logger.Error("Unable to process node. ", exception);
-                }
-            }
+            if (_logger.IsTrace) _logger.Trace($"Static nodes file was not found, creating one at {Path.GetFullPath(staticNodesPath)}");
 
-            _nodes = new ConcurrentDictionary<PublicKey, NetworkNode>(networkNodes.ToDictionary(static n => n.NodeId, static n => n));
+            await embeddedNodes.CopyToAsync(actualNodes);
         }
 
-        private static string[] GetNodes(string data)
+        string data = await File.ReadAllTextAsync(staticNodesPath);
+        string[] nodes = GetNodes(data);
+
+        if (_logger.IsInfo)
+            _logger.Info($"Loaded {nodes.Length} static nodes from {Path.GetFullPath(staticNodesPath)}");
+
+        if (nodes.Length != 0)
         {
-            string[] nodes;
+            if (_logger.IsDebug) _logger.Debug($"Static nodes: {Environment.NewLine}{data}");
+        }
+
+        List<NetworkNode> networkNodes = [];
+
+        foreach (string? n in nodes)
+        {
             try
             {
-                nodes = JsonSerializer.Deserialize<string[]>(data) ?? [];
+                NetworkNode networkNode = new(n);
+                networkNodes.Add(networkNode);
             }
-            catch (JsonException)
+            catch (Exception exception) when (exception is ArgumentException or SocketException)
             {
-                nodes = data.Split(separator, StringSplitOptions.RemoveEmptyEntries);
+                if (_logger.IsError) _logger.Error("Unable to process node.", exception);
             }
-
-            return nodes.Distinct().ToArray();
         }
 
-        public async Task<bool> AddAsync(string enode, bool updateFile = true)
+        _nodes = new ConcurrentDictionary<PublicKey, NetworkNode>(networkNodes.ToDictionary(static n => n.NodeId, static n => n));
+    }
+
+    private static string[] GetNodes(string data)
+    {
+        string[] nodes;
+        try
         {
-            NetworkNode networkNode = new(enode);
-            if (!_nodes.TryAdd(networkNode.NodeId, networkNode))
-            {
-                if (_logger.IsInfo) _logger.Info($"Static node was already added: {enode}");
-                return false;
-            }
-
-            if (_logger.IsInfo) _logger.Info($"Static node added: {enode}");
-            Node node = new(networkNode);
-            NodeAdded?.Invoke(this, new NodeEventArgs(node));
-            if (updateFile)
-            {
-                await SaveFileAsync();
-            }
-
-            return true;
+            nodes = JsonSerializer.Deserialize<string[]>(data) ?? [];
+        }
+        catch (JsonException)
+        {
+            nodes = data.Split(separator, StringSplitOptions.RemoveEmptyEntries);
         }
 
-        public async Task<bool> RemoveAsync(string enode, bool updateFile = true)
+        return [.. nodes.Distinct()];
+    }
+
+    public async Task<bool> AddAsync(string enode, bool updateFile = true)
+    {
+        NetworkNode networkNode = new(enode);
+        if (!_nodes.TryAdd(networkNode.NodeId, networkNode))
         {
-            NetworkNode networkNode = new(enode);
-            if (!_nodes.TryRemove(networkNode.NodeId, out _))
-            {
-                if (_logger.IsInfo) _logger.Info($"Static node was not found: {enode}");
-                return false;
-            }
-
-            if (_logger.IsInfo) _logger.Info($"Static node was removed: {enode}");
-            Node node = new(networkNode);
-            NodeRemoved?.Invoke(this, new NodeEventArgs(node));
-            if (updateFile)
-            {
-                await SaveFileAsync();
-            }
-
-            return true;
+            if (_logger.IsInfo) _logger.Info($"Static node was already added: {enode}");
+            return false;
         }
 
-        public bool IsStatic(string enode)
+        if (_logger.IsInfo) _logger.Info($"Static node added: {enode}");
+
+        Node node = new(networkNode);
+        NodeAdded?.Invoke(this, new NodeEventArgs(node));
+
+        if (updateFile)
         {
-            NetworkNode node = new(enode);
-            return _nodes.TryGetValue(node.NodeId, out NetworkNode staticNode) && string.Equals(staticNode.Host,
-                node.Host, StringComparison.OrdinalIgnoreCase);
+            await SaveFileAsync();
         }
 
-        private Task SaveFileAsync()
-            => File.WriteAllTextAsync(_staticNodesPath,
-                JsonSerializer.Serialize(_nodes.Select(static n => n.Value.ToString()), EthereumJsonSerializer.JsonOptionsIndented));
+        return true;
+    }
 
-        public async IAsyncEnumerable<Node> DiscoverNodes([EnumeratorCancellation] CancellationToken cancellationToken)
+    public async Task<bool> RemoveAsync(string enode, bool updateFile = true)
+    {
+        NetworkNode networkNode = new(enode);
+        if (!_nodes.TryRemove(networkNode.NodeId, out _))
         {
-            Channel<Node> ch = Channel.CreateBounded<Node>(128); // Some reasonably large value
+            if (_logger.IsInfo) _logger.Info($"Static node was not found: {enode}");
+            return false;
+        }
 
-            foreach (Node node in _nodes.Values.Select(n => new Node(n)))
+        if (_logger.IsInfo) _logger.Info($"Static node was removed: {enode}");
+        Node node = new(networkNode);
+        NodeRemoved?.Invoke(this, new NodeEventArgs(node));
+        if (updateFile)
+        {
+            await SaveFileAsync();
+        }
+
+        return true;
+    }
+
+    public bool IsStatic(string enode)
+    {
+        NetworkNode node = new(enode);
+        return _nodes.TryGetValue(node.NodeId, out NetworkNode staticNode) && string.Equals(staticNode.Host,
+            node.Host, StringComparison.OrdinalIgnoreCase);
+    }
+
+    private Task SaveFileAsync()
+        => File.WriteAllTextAsync(staticNodesPath,
+            JsonSerializer.Serialize(_nodes.Select(static n => n.Value.ToString()), EthereumJsonSerializer.JsonOptionsIndented));
+
+    public async IAsyncEnumerable<Node> DiscoverNodes([EnumeratorCancellation] CancellationToken cancellationToken)
+    {
+        Channel<Node> ch = Channel.CreateBounded<Node>(128); // Some reasonably large value
+
+        foreach (Node node in _nodes.Values.Select(n => new Node(n)))
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            yield return node;
+        }
+
+        void handler(object? _, NodeEventArgs args)
+        {
+            ch.Writer.TryWrite(args.Node);
+        }
+
+        try
+        {
+            NodeAdded += handler;
+
+            await foreach (Node node in ch.Reader.ReadAllAsync(cancellationToken))
             {
-                cancellationToken.ThrowIfCancellationRequested();
                 yield return node;
             }
-
-            void handler(object? _, NodeEventArgs args)
-            {
-                ch.Writer.TryWrite(args.Node);
-            }
-
-            try
-            {
-                NodeAdded += handler;
-
-                await foreach (Node node in ch.Reader.ReadAllAsync(cancellationToken))
-                {
-                    yield return node;
-                }
-            }
-            finally
-            {
-                NodeAdded -= handler;
-            }
         }
-
-        private event EventHandler<NodeEventArgs>? NodeAdded;
-
-        public event EventHandler<NodeEventArgs>? NodeRemoved;
+        finally
+        {
+            NodeAdded -= handler;
+        }
     }
+
+    private event EventHandler<NodeEventArgs>? NodeAdded;
+
+    public event EventHandler<NodeEventArgs>? NodeRemoved;
 }

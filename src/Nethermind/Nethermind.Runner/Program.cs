@@ -485,29 +485,33 @@ void ResolveDataDirectory(string? path, IInitConfig initConfig, IKeyStoreConfig 
     if (string.IsNullOrWhiteSpace(path))
     {
         initConfig.BaseDbPath ??= string.Empty.GetApplicationResourcePath("db");
-        keyStoreConfig.KeyStoreDirectory ??= string.Empty.GetApplicationResourcePath("keystore");
         initConfig.LogDirectory ??= string.Empty.GetApplicationResourcePath("logs");
+        initConfig.StaticNodesPath ??= string.Empty.GetApplicationResourcePath();
+        keyStoreConfig.KeyStoreDirectory ??= string.Empty.GetApplicationResourcePath("keystore");
     }
     else
     {
         string newDbPath = initConfig.BaseDbPath.GetApplicationResourcePath(path);
-        string newKeyStorePath = keyStoreConfig.KeyStoreDirectory.GetApplicationResourcePath(path);
         string newLogDirectory = initConfig.LogDirectory.GetApplicationResourcePath(path);
+        string staticNodesPath = initConfig.StaticNodesPath.GetApplicationResourcePath(path);
+        string newKeyStorePath = keyStoreConfig.KeyStoreDirectory.GetApplicationResourcePath(path);
         string newSnapshotPath = snapshotConfig.SnapshotDirectory.GetApplicationResourcePath(path);
+        
 
         if (logger.IsInfo)
         {
             logger.Info($"{nameof(initConfig.BaseDbPath)}: {Path.GetFullPath(newDbPath)}");
-            logger.Info($"{nameof(keyStoreConfig.KeyStoreDirectory)}: {Path.GetFullPath(newKeyStorePath)}");
             logger.Info($"{nameof(initConfig.LogDirectory)}: {Path.GetFullPath(newLogDirectory)}");
+            logger.Info($"{nameof(keyStoreConfig.KeyStoreDirectory)}: {Path.GetFullPath(newKeyStorePath)}");
 
             if (snapshotConfig.Enabled)
                 logger.Info($"{nameof(snapshotConfig.SnapshotDirectory)}: {Path.GetFullPath(newSnapshotPath)}");
         }
 
         initConfig.BaseDbPath = newDbPath;
-        keyStoreConfig.KeyStoreDirectory = newKeyStorePath;
         initConfig.LogDirectory = newLogDirectory;
+        initConfig.StaticNodesPath = staticNodesPath;
+        keyStoreConfig.KeyStoreDirectory = newKeyStorePath;
         snapshotConfig.SnapshotDirectory = newSnapshotPath;
     }
 }
