@@ -9,7 +9,7 @@ namespace Nethermind.Db.LogIndex;
 [ConfigCategory(Description = "Configuration of the log index behaviour.")]
 public class LogIndexConfig : ILogIndexConfig
 {
-    public bool Enabled { get; set; } = true;
+    public bool Enabled { get; set; } = false;
     public bool Reset { get; set; } = false;
 
     public int MaxReorgDepth { get; set; } = 64;
