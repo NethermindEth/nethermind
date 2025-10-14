@@ -33,6 +33,7 @@ namespace Nethermind.Db.Test.LogIndex
     // TODO: test for process crash via Thread.Abort
     // TODO: test for reorg out-of-order
     // TODO: test for concurrent reorg and backward sync
+    // TODO: test for background job failure
     [TestFixtureSource(nameof(TestCases))]
     [Parallelizable(ParallelScope.All)]
     [FixtureLifeCycle(LifeCycle.InstancePerTestCase)]
@@ -935,7 +936,7 @@ namespace Nethermind.Db.Test.LogIndex
             public int FailOnBlock { get; init; }
             public int FailOnCallN { get; init; }
 
-            private int _count = 0;
+            private int _count;
 
             protected override void SaveBlockNumbersByKey(IWriteBatch dbBatch, ReadOnlySpan<byte> key, IReadOnlyList<int> blockNums, bool isBackwardSync, LogIndexUpdateStats? stats)
             {

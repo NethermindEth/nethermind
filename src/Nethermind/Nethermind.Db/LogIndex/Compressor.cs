@@ -44,6 +44,7 @@ partial class LogIndexStorage
         private readonly ManualResetEventSlim _queueEmptyEvent = new(true);
         private readonly CancellationTokenSource _cts = new();
 
+        private int _processingCount = 0;
         private PostMergeProcessingStats _stats = new();
 
         public PostMergeProcessingStats GetAndResetStats()
@@ -90,11 +91,13 @@ partial class LogIndexStorage
 
         private void CompressValue(int? topicIndex, byte[] dbKey)
         {
+            if (_cts.IsCancellationRequested)
+                return;
+
+            Interlocked.Increment(ref _processingCount);
+
             try
             {
-                if (_cts.IsCancellationRequested)
-                    return;
-
                 _startEvent.Wait(_cts.Token);
 
                 var execTimestamp = Stopwatch.GetTimestamp();
@@ -159,7 +162,9 @@ partial class LogIndexStorage
             {
                 _compressQueue.TryRemove(dbKey, out _);
 
-                if (_processing.InputCount == 0) // TODO: take processing items into account
+                var processingCount = Interlocked.Decrement(ref _processingCount);
+
+                if (_processing.InputCount == 0 && processingCount == 0)
                     _queueEmptyEvent.Set();
             }
         }
