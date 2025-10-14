@@ -14,6 +14,7 @@ using Nethermind.Evm.State;
 using Nethermind.Evm.Tracing.State;
 using Nethermind.Int256;
 using Nethermind.Logging;
+using Prometheus;
 
 [assembly: InternalsVisibleTo("Ethereum.Test.Base")]
 [assembly: InternalsVisibleTo("Ethereum.Blockchain.Test")]
@@ -311,6 +312,9 @@ namespace Nethermind.State
             return ScopeProvider.HasRoot(header);
         }
 
+        private Counter _commitRootTime = Prometheus.Metrics.CreateCounter("worldstate_commit_time", "worldstate commit timke");
+        private Counter _commitRootStorageTime = Prometheus.Metrics.CreateCounter("worldstate_storage_commit_time", "worldstate commit timke");
+
         public void Commit(IReleaseSpec releaseSpec, IWorldStateTracer tracer, bool isGenesis = false, bool commitRoots = true)
         {
             DebugGuardInScope();
@@ -318,13 +322,17 @@ namespace Nethermind.State
             _persistentStorageProvider.Commit(tracer);
             _stateProvider.Commit(releaseSpec, tracer, commitRoots, isGenesis);
 
+            long sw = Stopwatch.GetTimestamp();
             if (commitRoots)
             {
                 using IWorldStateScopeProvider.IWorldStateWriteBatch writeBatch = _currentScope.StartWriteBatch(_stateProvider.ChangedAccountCount);
                 writeBatch.OnAccountUpdated += (_, updatedAccount) => _stateProvider.SetState(updatedAccount.Address, updatedAccount.Account);
+                long ssw = Stopwatch.GetTimestamp();
                 _persistentStorageProvider.FlushToTree(writeBatch);
+                _commitRootStorageTime.Inc(Stopwatch.GetTimestamp() - ssw);
                 _stateProvider.FlushToTree(writeBatch);
             }
+            _commitRootTime.Inc(Stopwatch.GetTimestamp() - sw);
         }
 
         public Snapshot TakeSnapshot(bool newTransactionStart = false)

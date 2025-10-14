@@ -60,4 +60,6 @@ rootCommand.SetAction(parseResult =>
     return 0;
 });
 
-return rootCommand.Parse(args).Invoke();
+CommandLineConfiguration cli = new(rootCommand);
+
+return cli.Invoke(args);

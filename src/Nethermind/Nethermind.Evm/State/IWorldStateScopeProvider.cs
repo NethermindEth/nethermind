@@ -79,7 +79,7 @@ public interface IWorldStateScopeProvider
     {
         Hash256 RootHash { get; }
 
-        byte[] Get(in UInt256 index);
+        byte[]? Get(in UInt256 index);
 
         void HintGet(in UInt256 index, byte[]? value);
 
@@ -88,7 +88,7 @@ public interface IWorldStateScopeProvider
         /// </summary>
         /// <param name="hash"></param>
         /// <returns></returns>
-        byte[] Get(in ValueHash256 hash);
+        byte[]? Get(in ValueHash256 hash);
     }
 
     public interface IWorldStateWriteBatch : IDisposable
