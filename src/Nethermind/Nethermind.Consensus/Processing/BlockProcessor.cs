@@ -98,11 +98,11 @@ public partial class BlockProcessor(
         ReceiptsTracer.StartNewBlockTrace(block);
 
         blockTransactionsExecutor.SetBlockExecutionContext(new BlockExecutionContext(block.Header, spec));
-
+        _stateProvider.Commit(spec, commitRoots: false);
         blockHashStore.ApplyBlockhashStateChanges(header, spec);
 
         StoreBeaconRoot(block, spec);
-        _stateProvider.Commit(spec, commitRoots: true);
+        _stateProvider.Commit(spec, commitRoots: false);
 
         TxReceipt[] receipts = blockTransactionsExecutor.ProcessTransactions(block, options, ReceiptsTracer, token);
 
