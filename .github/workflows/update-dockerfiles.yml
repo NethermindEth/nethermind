@@ -64,7 +64,7 @@ jobs:
         run: |
           head_branch=chore/update-dockerfiles-$GITHUB_RUN_NUMBER-$GITHUB_RUN_ATTEMPT
           body=$(cat <<'EOF'
-          Updated Dockerfiles to use the latest versions of .NET ${DOTNET_VERSION} SDK and runtime.
+          Updated Dockerfiles to use the latest versions of .NET ${{ env.DOTNET_VERSION }} SDK and runtime.
 
           To verify manually, see:
           - https://mcr.microsoft.com/en-us/artifact/mar/dotnet/aspnet/tags
