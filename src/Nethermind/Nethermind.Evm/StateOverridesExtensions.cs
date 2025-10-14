@@ -52,7 +52,7 @@ public static class StateOverridesExtensions
     {
         state.ApplyStateOverridesNoCommit(overridableCodeInfoRepository, overrides, spec);
 
-        state.Commit(spec);
+        state.Commit(spec, commitRoots: true);
         state.CommitTree(blockNumber);
         state.RecalculateStateRoot();
     }
