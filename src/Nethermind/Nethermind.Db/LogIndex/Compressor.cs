@@ -111,7 +111,7 @@ partial class LogIndexStorage
                     dbValue = _storage.RemoveReorgableBlocks(dbValue);
 
                 if (dbValue.Length < MinLengthToCompress)
-                    return; // TODO: check back later?
+                    return;
 
                 var truncateBlock = GetValLastBlockNum(dbValue);
 
