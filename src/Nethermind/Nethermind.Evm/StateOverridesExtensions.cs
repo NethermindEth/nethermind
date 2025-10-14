@@ -10,6 +10,7 @@ using Nethermind.Core.Specs;
 using Nethermind.Evm.CodeAnalysis;
 using Nethermind.Int256;
 using Nethermind.Evm.State;
+using Nethermind.Logging;
 
 namespace Nethermind.Evm;
 
@@ -20,7 +21,8 @@ public static class StateOverridesExtensions
         this IWorldState state,
         IOverridableCodeInfoRepository overridableCodeInfoRepository,
         Dictionary<Address, AccountOverride>? overrides,
-        IReleaseSpec spec)
+        IReleaseSpec spec,
+        ILogger logger)
     {
         if (overrides is not null)
         {
@@ -37,7 +39,8 @@ public static class StateOverridesExtensions
                     state.UpdateNonce(account, accountOverride, address);
                 }
 
-                state.UpdateCode(overridableCodeInfoRepository, spec, accountOverride, address);
+                logger.Error($"Updating code");
+                state.UpdateCode(overridableCodeInfoRepository, spec, accountOverride, address, logger);
                 state.UpdateState(accountOverride, address);
             }
         }
@@ -48,9 +51,10 @@ public static class StateOverridesExtensions
         IOverridableCodeInfoRepository overridableCodeInfoRepository,
         Dictionary<Address, AccountOverride>? overrides,
         IReleaseSpec spec,
-        long blockNumber)
+        long blockNumber,
+        ILogger logger)
     {
-        state.ApplyStateOverridesNoCommit(overridableCodeInfoRepository, overrides, spec);
+        state.ApplyStateOverridesNoCommit(overridableCodeInfoRepository, overrides, spec, logger);
 
         state.Commit(spec);
         state.CommitTree(blockNumber);
@@ -83,10 +87,12 @@ public static class StateOverridesExtensions
         IOverridableCodeInfoRepository overridableCodeInfoRepository,
         IReleaseSpec currentSpec,
         AccountOverride accountOverride,
-        Address address)
+        Address address,
+        ILogger logger)
     {
         if (accountOverride.MovePrecompileToAddress is not null)
         {
+            logger.Error($"Account overrides: {accountOverride.MovePrecompileToAddress}");
             if (!overridableCodeInfoRepository.GetCachedCodeInfo(address, currentSpec).IsPrecompile)
             {
                 throw new ArgumentException($"Account {address} is not a precompile");

@@ -26,7 +26,7 @@ using Transaction = Nethermind.Core.Transaction;
 
 namespace Nethermind.Facade.Simulate;
 
-public class SimulateBridgeHelper(IBlocksConfig blocksConfig, ISpecProvider specProvider)
+public class SimulateBridgeHelper(IBlocksConfig blocksConfig, ISpecProvider specProvider, ILogManager logManager)
 {
     private const ProcessingOptions SimulateProcessingOptions =
         ProcessingOptions.ForceProcessing
@@ -34,13 +34,15 @@ public class SimulateBridgeHelper(IBlocksConfig blocksConfig, ISpecProvider spec
         | ProcessingOptions.MarkAsProcessed
         | ProcessingOptions.StoreReceipts;
 
+    private ILogger _logger = logManager.GetClassLogger();
+
     private void PrepareState(
         BlockStateCall<TransactionWithSourceDetails> blockStateCall,
         IWorldState stateProvider,
         IOverridableCodeInfoRepository codeInfoRepository,
         IReleaseSpec releaseSpec)
     {
-        stateProvider.ApplyStateOverridesNoCommit(codeInfoRepository, blockStateCall.StateOverrides, releaseSpec);
+        stateProvider.ApplyStateOverridesNoCommit(codeInfoRepository, blockStateCall.StateOverrides, releaseSpec, _logger);
 
         IEnumerable<Address> senders = blockStateCall.Calls?.Select(static details => details.Transaction.SenderAddress) ?? [];
         IEnumerable<Address> targets = blockStateCall.Calls?.Select(static details => details.Transaction.To!) ?? [];
@@ -128,6 +130,7 @@ public class SimulateBridgeHelper(IBlocksConfig blocksConfig, ISpecProvider spec
                 env.SimulateRequestState.Validate = payload.Validation;
                 env.SimulateRequestState.BlobBaseFeeOverride = spec.IsEip4844Enabled ? blockCall.BlockOverrides?.BlobBaseFee : null;
 
+                _logger.Error($"Calling process");
                 (Block processedBlock, TxReceipt[] receipts) = env.BlockProcessor.ProcessOne(
                     callBlock,
                     processingFlags,

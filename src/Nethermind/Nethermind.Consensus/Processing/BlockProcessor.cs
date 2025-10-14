@@ -99,7 +99,8 @@ public partial class BlockProcessor(
 
         blockTransactionsExecutor.SetBlockExecutionContext(new BlockExecutionContext(block.Header, spec));
 
-        _stateProvider.Commit(spec, commitRoots: true);
+        _logger.Error($"Running block: {block.Number}, {block.Transactions.Length}");
+        _stateProvider.Commit(spec, commitRoots: true); // This commit?
         _stateProvider.RecalculateStateRoot();
         _logger.Error($"Before blockhash: {_stateProvider.StateRoot}");
         blockHashStore.ApplyBlockhashStateChanges(header, spec);
