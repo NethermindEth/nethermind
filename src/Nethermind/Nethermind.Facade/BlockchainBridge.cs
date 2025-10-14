@@ -8,6 +8,7 @@ using Nethermind.Blockchain;
 using Nethermind.Blockchain.Filters;
 using Nethermind.Blockchain.Find;
 using Nethermind.Blockchain.Receipts;
+using Nethermind.Blockchain.Synchronization;
 using Nethermind.Core;
 using Nethermind.Core.Attributes;
 using Nethermind.Core.Crypto;
@@ -21,9 +22,11 @@ using Block = Nethermind.Core.Block;
 using System.Threading;
 using Nethermind.Core.Specs;
 using Nethermind.Evm.TransactionProcessing;
+using Nethermind.Facade.Eth;
 using Nethermind.Facade.Filters;
 using Nethermind.State;
 using Nethermind.Config;
+using Nethermind.Db;
 using Nethermind.Facade.Find;
 using Nethermind.Facade.Proxy.Models.Simulate;
 using Nethermind.Facade.Simulate;
@@ -51,7 +54,9 @@ namespace Nethermind.Facade
         ILogFinder logFinder,
         ISpecProvider specProvider,
         IBlocksConfig blocksConfig,
-        IMiningConfig miningConfig)
+        IMiningConfig miningConfig,
+        IPruningConfig pruningConfig,
+        IEthSyncingInfo ethSyncingInfo)
         : IBlockchainBridge
     {
         private readonly SimulateBridgeHelper _simulateBridgeHelper = new(blocksConfig, specProvider);
@@ -380,9 +385,42 @@ namespace Nethermind.Facade
             stateReader.RunTreeVisitor(treeVisitor, stateRoot);
         }
 
-        public bool HasStateForBlock(BlockHeader baseBlock)
+        public bool HasStateForBlock(BlockHeader? baseBlock)
         {
-            return stateReader.HasStateForBlock(baseBlock);
+            if (baseBlock is null)
+            {
+                return false;
+            }
+
+            // For archive nodes (no pruning), return true only when fully synced
+            if (pruningConfig.Mode == PruningMode.None)
+            {
+                // Archive node should have all state, but only after initial sync is complete
+                return !ethSyncingInfo.IsSyncing();
+            }
+
+            // For nodes with pruning enabled, check if we're still in initial sync
+            if (ethSyncingInfo.IsSyncing())
+            {
+                // Conservative: don't claim we have state during initial sync
+                // This prevents race conditions during sync process
+                return false;
+            }
+
+            // Check if the requested block is within the pruning window
+            // We subtract 1 from the pruning boundary as a safety margin to account for:
+            // 1. Race conditions between checking state and accessing it
+            // 2. Blocks that might be pruned between the check and actual access
+            // This means we sacrifice 1 block of history but eliminate the race condition
+            long headNumber = blockTree.Head?.Number ?? 0;
+            long requestedNumber = baseBlock.Number;
+            int pruningBoundary = pruningConfig.PruningBoundary;
+
+            // Conservative check: subtract 1 from boundary to prevent returning true
+            // for blocks that are at the edge of being pruned
+            bool isWithinPruningWindow = (headNumber - requestedNumber) <= (pruningBoundary - 1);
+
+            return isWithinPruningWindow;
         }
 
         public IEnumerable<FilterLog> FindLogs(LogFilter filter, BlockHeader fromBlock, BlockHeader toBlock, CancellationToken cancellationToken = default)

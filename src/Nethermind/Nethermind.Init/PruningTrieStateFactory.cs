@@ -202,6 +202,11 @@ public class MainPruningTrieStoreFactory
             pruningConfig.PruningBoundary = 64;
         }
 
+        // Add 1 to the configured pruning boundary to compensate for the -1 safety margin
+        // applied in BlockchainBridge when checking if state is available. This ensures users
+        // get exactly the number of blocks they configure.
+        pruningConfig.PruningBoundary += 1;
+
         IDb stateDb = dbProvider.StateDb;
         IPersistenceStrategy persistenceStrategy;
         if (pruningConfig.Mode.IsMemory())

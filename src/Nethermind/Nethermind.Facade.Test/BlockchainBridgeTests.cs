@@ -9,11 +9,14 @@ using Autofac;
 using FluentAssertions;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Receipts;
+using Nethermind.Blockchain.Synchronization;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Test.Builders;
+using Nethermind.Db;
 using Nethermind.Evm.Tracing;
 using Nethermind.Evm.TransactionProcessing;
+using Nethermind.Facade.Eth;
 using Nethermind.Int256;
 using Nethermind.Specs;
 using NSubstitute;
@@ -36,6 +39,8 @@ public class BlockchainBridgeTests
     private IReceiptStorage _receiptStorage;
     private ITransactionProcessor _transactionProcessor;
     private ManualTimestamper _timestamper;
+    private IPruningConfig _pruningConfig;
+    private IEthSyncingInfo _ethSyncingInfo;
     private IContainer _container;
 
     [SetUp]
@@ -45,6 +50,8 @@ public class BlockchainBridgeTests
         _blockTree = Substitute.For<IBlockTree>();
         _receiptStorage = Substitute.For<IReceiptStorage>();
         _transactionProcessor = Substitute.For<ITransactionProcessor>();
+        _pruningConfig = Substitute.For<IPruningConfig>();
+        _ethSyncingInfo = Substitute.For<IEthSyncingInfo>();
 
         _container = new ContainerBuilder()
             .AddModule(new TestNethermindModule())
@@ -53,6 +60,8 @@ public class BlockchainBridgeTests
             .AddSingleton(_timestamper)
             .AddSingleton(Substitute.For<ILogFinder>())
             .AddSingleton<IMiningConfig>(new MiningConfig { Enabled = false })
+            .AddSingleton(_pruningConfig)
+            .AddSingleton(_ethSyncingInfo)
             .AddScoped(_transactionProcessor)
             .Build();
 
@@ -640,5 +649,115 @@ public class BlockchainBridgeTests
         }
 
         testFactory.Received().Create();
+    }
+
+    [Test]
+    public void HasStateForBlock_returns_false_for_null_header()
+    {
+        bool result = _blockchainBridge.HasStateForBlock(null);
+        result.Should().BeFalse();
+    }
+
+    [Test]
+    public void HasStateForBlock_archive_node_fully_synced_returns_true()
+    {
+        // Arrange
+        _pruningConfig.Mode.Returns(PruningMode.None);
+        _ethSyncingInfo.IsSyncing().Returns(false);
+        var header = Build.A.BlockHeader.WithNumber(100).TestObject;
+
+        // Act
+        bool result = _blockchainBridge.HasStateForBlock(header);
+
+        // Assert
+        result.Should().BeTrue();
+    }
+
+    [Test]
+    public void HasStateForBlock_archive_node_still_syncing_returns_false()
+    {
+        // Arrange
+        _pruningConfig.Mode.Returns(PruningMode.None);
+        _ethSyncingInfo.IsSyncing().Returns(true);
+        var header = Build.A.BlockHeader.WithNumber(100).TestObject;
+
+        // Act
+        bool result = _blockchainBridge.HasStateForBlock(header);
+
+        // Assert
+        result.Should().BeFalse();
+    }
+
+    [Test]
+    public void HasStateForBlock_pruning_node_still_syncing_returns_false()
+    {
+        // Arrange
+        _pruningConfig.Mode.Returns(PruningMode.Hybrid);
+        _pruningConfig.PruningBoundary.Returns(64);
+        _ethSyncingInfo.IsSyncing().Returns(true);
+        var header = Build.A.BlockHeader.WithNumber(100).TestObject;
+
+        // Act
+        bool result = _blockchainBridge.HasStateForBlock(header);
+
+        // Assert
+        result.Should().BeFalse();
+    }
+
+    [Test]
+    public void HasStateForBlock_pruning_node_block_within_window_returns_true()
+    {
+        // Arrange: Block within pruning window (64 - 1 safety margin = 63)
+        _pruningConfig.Mode.Returns(PruningMode.Hybrid);
+        _pruningConfig.PruningBoundary.Returns(64);
+        _ethSyncingInfo.IsSyncing().Returns(false);
+        var headBlock = Build.A.Block.WithNumber(1000).TestObject;
+        _blockTree.Head.Returns(headBlock);
+        // Request block at 1000 - 63 = 937 (within window: 1000 - 937 = 63 <= 63)
+        var header = Build.A.BlockHeader.WithNumber(937).TestObject;
+
+        // Act
+        bool result = _blockchainBridge.HasStateForBlock(header);
+
+        // Assert
+        result.Should().BeTrue();
+    }
+
+    [Test]
+    public void HasStateForBlock_pruning_node_block_outside_window_returns_false()
+    {
+        // Arrange: Block outside pruning window
+        _pruningConfig.Mode.Returns(PruningMode.Hybrid);
+        _pruningConfig.PruningBoundary.Returns(64);
+        _ethSyncingInfo.IsSyncing().Returns(false);
+        var headBlock = Build.A.Block.WithNumber(1000).TestObject;
+        _blockTree.Head.Returns(headBlock);
+        // Request block at 1000 - 64 = 936 (outside window: 1000 - 936 = 64 > 63)
+        var header = Build.A.BlockHeader.WithNumber(936).TestObject;
+
+        // Act
+        bool result = _blockchainBridge.HasStateForBlock(header);
+
+        // Assert
+        result.Should().BeFalse();
+    }
+
+    [Test]
+    public void HasStateForBlock_pruning_node_block_at_boundary_returns_true()
+    {
+        // Arrange: Block exactly at pruning boundary (with -1 safety margin)
+        _pruningConfig.Mode.Returns(PruningMode.Hybrid);
+        _pruningConfig.PruningBoundary.Returns(64);
+        _ethSyncingInfo.IsSyncing().Returns(false);
+        var headBlock = Build.A.Block.WithNumber(1000).TestObject;
+        _blockTree.Head.Returns(headBlock);
+        // Request block at 1000 - 63 = 937 (exactly at boundary: 1000 - 937 == 63)
+        var header = Build.A.BlockHeader.WithNumber(937).TestObject;
+
+        // Act
+        bool result = _blockchainBridge.HasStateForBlock(header);
+
+        // Assert
+        result.Should().BeTrue();
     }
 }
