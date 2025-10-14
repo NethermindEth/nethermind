@@ -241,7 +241,6 @@ jobs:
               --el-op-extra-flag Sync.DownloadBodiesInFastSync=false \
               --el-op-extra-flag Sync.DownloadReceiptsInFastSync=false \
               --el-op-extra-flag loggerConfigSource=/nethermind/data/logs/configs/customNLog.config \
-              --el-op-extra-flag Sync.VerifyTrieOnStateSyncFinished=true \
               "${OP_METRICS_FLAGS[@]}" \
               $extra_param
 
@@ -282,7 +281,6 @@ jobs:
               --el-l2-extra-flag Sync.DownloadBodiesInFastSync=false \
               --el-l2-extra-flag Sync.DownloadReceiptsInFastSync=false \
               --el-l2-extra-flag loggerConfigSource=/nethermind/data/logs/configs/customNLog.config \
-              --el-l2-extra-flag Sync.VerifyTrieOnStateSyncFinished=true \
               "${L2_METRICS_FLAGS[@]}" \
               $extra_param
 
@@ -308,7 +306,6 @@ jobs:
               --el-extra-flag Sync.DownloadBodiesInFastSync=false \
               --el-extra-flag Sync.DownloadReceiptsInFastSync=false \
               --el-extra-flag JsonRpc.EnabledModules=[Eth,Subscribe,Trace,TxPool,Web3,Personal,Proof,Net,Parity,Health,Rpc,Debug] \
-              --el-extra-flag Sync.VerifyTrieOnStateSyncFinished=true \
               --el-extra-flag loggerConfigSource=/nethermind/data/logs/configs/customNLog.config \
               --el-extra-flag Sync.SnapSync=true \
               "${GENERIC_METRICS_FLAGS[@]}" \
