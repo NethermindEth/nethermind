@@ -97,8 +97,8 @@ public partial class BlockProcessor(
         ReceiptsTracer.SetOtherTracer(blockTracer);
         ReceiptsTracer.StartNewBlockTrace(block);
 
-        blockTransactionsExecutor.SetBlockExecutionContext(new BlockExecutionContext(block.Header, spec));
         _stateProvider.Commit(spec, commitRoots: false);
+        blockTransactionsExecutor.SetBlockExecutionContext(new BlockExecutionContext(block.Header, spec));
         blockHashStore.ApplyBlockhashStateChanges(header, spec);
 
         StoreBeaconRoot(block, spec);
