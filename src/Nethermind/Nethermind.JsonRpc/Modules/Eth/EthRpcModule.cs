@@ -652,19 +652,6 @@ public partial class EthRpcModule(
                 }
             }
 
-            if (logIndexConfig?.VerifyRpcResponse is true && logFilter.UseIndex)
-            {
-                logFilter.UseIndex = false;
-                IEnumerable<FilterLog>? verifyLogs = _blockchainBridge.GetLogs(logFilter, fromBlockHeader, toBlockHeader, cancellationToken);
-
-                var verifyCount = verifyLogs.Count();
-                if (verifyCount != logs.Count) // TODO: check content also
-                {
-                    using ArrayPoolList<FilterLog> _ = logs;
-                    throw new InvalidOperationException($"Invalid logs count from index: {logs.Count}, expected: {verifyCount}");
-                }
-            }
-
             return ResultWrapper<IEnumerable<FilterLog>>.Success(logs);
         }
         catch (ResourceNotFoundException exception)

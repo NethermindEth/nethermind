@@ -96,14 +96,4 @@ public interface ILogIndexConfig : IConfig
         HiddenFromDocs = true
     )]
     bool DetailedLogs { get; set; }
-
-    // TODO: remove after testing
-    [ConfigItem(
-        Description =
-            "Whether to check that eth_getLogs response generated using index matches one generated without. " +
-            "Can significantly slow down eth_getLogs.",
-        DefaultValue = "false",
-        HiddenFromDocs = true
-    )]
-    bool VerifyRpcResponse { get; set; }
 }
