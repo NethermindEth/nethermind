@@ -9,7 +9,6 @@ namespace Nethermind.Db.LogIndex;
 /// <summary>
 /// Log index building statistics across some time range.
 /// </summary>
-// TODO: separate stats for forward and backwards sync
 public class LogIndexUpdateStats(ILogIndexStorage storage) : IFormattable
 {
     private long _blocksAdded;
