@@ -44,7 +44,7 @@ namespace Ethereum.Test.Base
         }
 
         [SetUp]
-        public void Setup()
+        public static void Setup()
         {
         }
 
@@ -68,15 +68,7 @@ namespace Ethereum.Test.Base
 
             test.Fork = ChainUtils.ResolveSpec(test.Fork, test.ChainId);
 
-            ISpecProvider specProvider =
-                new CustomSpecProvider(test.ChainId, test.ChainId,
-                    ((ForkActivation)0, test.GenesisSpec), // TODO: this thing took a lot of time to find after it was removed!, genesis block is always initialized with Frontier
-                    ((ForkActivation)1, test.Fork));
-
-            if (test.ChainId != GnosisSpecProvider.Instance.ChainId && specProvider.GenesisSpec != Frontier.Instance)
-            {
-                Assert.Fail("Expected genesis spec to be Frontier for blockchain tests");
-            }
+            ISpecProvider specProvider = new CustomSpecProvider(test.ChainId, test.ChainId, ((ForkActivation)0, test.Fork));
 
             IConfigProvider configProvider = new ConfigProvider();
             using IContainer container = new ContainerBuilder()
@@ -101,17 +93,19 @@ namespace Ethereum.Test.Base
                 test.CurrentNumber,
                 test.CurrentGasLimit,
                 test.CurrentTimestamp,
-                []);
-            header.BaseFeePerGas = test.Fork.IsEip1559Enabled ? test.CurrentBaseFee ?? _defaultBaseFeeForStateTest : UInt256.Zero;
-            header.StateRoot = test.PostHash;
+                [])
+            {
+                BaseFeePerGas = test.Fork.IsEip1559Enabled ? test.CurrentBaseFee ?? _defaultBaseFeeForStateTest : UInt256.Zero,
+                StateRoot = test.PostHash,
+                IsPostMerge = test.CurrentRandom is not null,
+                MixHash = test.CurrentRandom,
+                WithdrawalsRoot = test.CurrentWithdrawalsRoot,
+                ParentBeaconBlockRoot = test.CurrentBeaconRoot,
+                ExcessBlobGas = test.CurrentExcessBlobGas ?? (test.Fork is Cancun ? 0ul : null),
+                BlobGasUsed = BlobGasCalculator.CalculateBlobGas(test.Transaction),
+                RequestsHash = test.RequestsHash
+            };
             header.Hash = header.CalculateHash();
-            header.IsPostMerge = test.CurrentRandom is not null;
-            header.MixHash = test.CurrentRandom;
-            header.WithdrawalsRoot = test.CurrentWithdrawalsRoot;
-            header.ParentBeaconBlockRoot = test.CurrentBeaconRoot;
-            header.ExcessBlobGas = test.CurrentExcessBlobGas ?? (test.Fork is Cancun ? 0ul : null);
-            header.BlobGasUsed = BlobGasCalculator.CalculateBlobGas(test.Transaction);
-            header.RequestsHash = test.RequestsHash;
 
             Stopwatch stopwatch = Stopwatch.StartNew();
             IReleaseSpec? spec = specProvider.GetSpec((ForkActivation)test.CurrentNumber);
@@ -170,16 +164,18 @@ namespace Ethereum.Test.Base
             }
 
             List<string> differences = RunAssertions(test, stateProvider);
-            EthereumTestResult testResult = new(test.Name, test.ForkName, differences.Count == 0);
-            testResult.TimeInMs = stopwatch.Elapsed.TotalMilliseconds;
-            testResult.StateRoot = stateProvider.StateRoot;
+            EthereumTestResult testResult = new(test.Name, test.ForkName, differences.Count == 0)
+            {
+                TimeInMs = stopwatch.Elapsed.TotalMilliseconds,
+                StateRoot = stateProvider.StateRoot
+            };
 
             if (differences.Count > 0)
             {
                 _logger.Info($"\nDifferences from expected\n{string.Join("\n", differences)}");
             }
 
-            //            Assert.Zero(differences.Count, "differences");
+            Assert.That(differences, Is.Empty, "differences");
             return testResult;
         }
 
