@@ -96,4 +96,11 @@ public interface ILogIndexConfig : IConfig
         HiddenFromDocs = true
     )]
     bool DetailedLogs { get; set; }
+
+    [ConfigItem(
+        Description = "Whether to verify that eth_getLogs response generated using index matches one generated without.",
+        DefaultValue = "false",
+        HiddenFromDocs = true
+    )]
+    bool VerifyRpcResponse { get; set; }
 }
