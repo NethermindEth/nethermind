@@ -14,6 +14,7 @@ using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Core.Test.Container;
+using Nethermind.Db;
 using Nethermind.Evm;
 using Nethermind.Facade.Eth.RpcTransaction;
 using Nethermind.Init;
@@ -197,7 +198,23 @@ public partial class EthRpcModuleTests
     [Test]
     public async Task Eth_call_missing_state_after_fast_sync()
     {
-        using Context ctx = await Context.Create();
+        using Context ctx = await Context.Create(configurer: builder =>
+        {
+            builder.AddDecorator<IPruningConfig>((_, config) =>
+            {
+                config.Mode = PruningMode.Full;
+                config.PruningBoundary = 64;
+                return config;
+            });
+        });
+
+        // Create blocks to simulate a chain with head far ahead
+        for (int i = 0; i < 200; i++)
+        {
+            await ctx.Test.AddBlock();
+        }
+
+        // Request call on an old block (outside pruning boundary)
         LegacyTransactionForRpc transaction = new(new Transaction(), 1, Keccak.Zero, 1L)
         {
             From = TestItem.AddressA,
@@ -208,7 +225,7 @@ public partial class EthRpcModuleTests
         ctx.Test.StateDb.Clear();
 
         string serialized =
-            await ctx.Test.TestEthRpc("eth_call", transaction, "latest");
+            await ctx.Test.TestEthRpc("eth_call", transaction, "0x1");
         serialized.Should().StartWith("{\"jsonrpc\":\"2.0\",\"error\":{\"code\":-32002,");
     }
 
