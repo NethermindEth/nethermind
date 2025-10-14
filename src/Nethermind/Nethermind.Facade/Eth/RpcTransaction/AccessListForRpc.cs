@@ -104,11 +104,11 @@ public class AccessListForRpc
                     string propName = reader.GetString()!;
                     reader.Read(); // move to property value
 
-                    if (propName == nameof(Item.Address))
+                    if (string.Equals(propName, nameof(Item.Address), StringComparison.OrdinalIgnoreCase))
                     {
                         address = JsonSerializer.Deserialize<Address>(ref reader, options);
                     }
-                    else if (propName == nameof(Item.StorageKeys))
+                    else if (string.Equals(propName, nameof(Item.StorageKeys), StringComparison.OrdinalIgnoreCase))
                     {
                         if (reader.TokenType == JsonTokenType.Null)
                         {
