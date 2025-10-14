@@ -64,7 +64,7 @@ namespace Nethermind.Network.P2P.ProtocolHandlers
             {
                 int originalReaderIndex = data.ReaderIndex;
                 T result = _serializer.Deserialize<T>(data);
-                if (!data.IsReadable()) ThrowIncompleteDeserializationException(data, originalReaderIndex);
+                if (data.IsReadable()) ThrowIncompleteDeserializationException(data, originalReaderIndex);
                 return result;
             }
             catch (RlpException e)
