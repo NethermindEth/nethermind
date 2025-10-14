@@ -19,7 +19,7 @@ public class Filter : IJsonRpcParam
 
     public IEnumerable<object?>? Topics { get; set; }
 
-    public bool UseIndex { get; set; } = true; // TODO: remove after testing
+    public bool UseIndex { get; set; } = true;
 
     public void ReadJson(JsonElement filter, JsonSerializerOptions options)
     {

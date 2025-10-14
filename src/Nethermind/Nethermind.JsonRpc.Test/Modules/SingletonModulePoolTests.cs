@@ -19,7 +19,6 @@ using Nethermind.Facade.Eth;
 using Nethermind.JsonRpc.Modules.Eth.FeeHistory;
 using Nethermind.JsonRpc.Modules.Eth.GasPrice;
 using Nethermind.Config;
-using Nethermind.Db.LogIndex;
 using Nethermind.Network;
 using Nethermind.State;
 
@@ -56,8 +55,7 @@ namespace Nethermind.JsonRpc.Test.Modules
                 Substitute.For<IFeeHistoryOracle>(),
                 Substitute.For<IProtocolsManager>(),
                 new BlocksConfig(),
-                Substitute.For<IForkInfo>(),
-                Substitute.For<ILogIndexConfig>());
+                Substitute.For<IForkInfo>());
             return Task.CompletedTask;
         }
 

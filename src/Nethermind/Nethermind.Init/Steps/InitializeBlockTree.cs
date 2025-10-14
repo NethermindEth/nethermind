@@ -4,7 +4,6 @@
 using System.IO;
 using System.Threading;
 using System.Threading.Tasks;
-using Autofac;
 using Nethermind.Api;
 using Nethermind.Api.Steps;
 using Nethermind.Blockchain;
@@ -14,7 +13,6 @@ using Nethermind.Blockchain.Receipts;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Consensus;
 using Nethermind.Core;
-using Nethermind.Core.ServiceStopper;
 using Nethermind.Db;
 using Nethermind.Db.Blooms;
 using Nethermind.Facade.Find;
@@ -26,14 +24,12 @@ namespace Nethermind.Init.Steps
     [RunnerStepDependencies(typeof(InitTxTypesAndRlp), typeof(InitDatabase), typeof(SetupKeyStore))]
     public class InitializeBlockTree : IStep
     {
-        private readonly IServiceStopper _stopper;
         private readonly IBasicApi _get;
         private readonly IApiWithStores _set;
         private readonly INethermindApi _api;
 
-        public InitializeBlockTree(INethermindApi api, IServiceStopper stopper)
+        public InitializeBlockTree(INethermindApi api)
         {
-            _stopper = stopper;
             (_get, _set) = api.ForInit;
             _api = api;
         }

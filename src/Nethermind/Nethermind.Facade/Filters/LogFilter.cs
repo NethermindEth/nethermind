@@ -19,7 +19,7 @@ namespace Nethermind.Blockchain.Filters
         public TopicsFilter TopicsFilter { get; } = topicsFilter;
         public BlockParameter FromBlock { get; } = fromBlock;
         public BlockParameter ToBlock { get; } = toBlock;
-        public bool UseIndex { get; set; } = true; // TODO: remove after testing
+        public bool UseIndex { get; set; } = true;
 
         public bool AcceptsAnyBlock =>
             AddressFilter.Address == null &&

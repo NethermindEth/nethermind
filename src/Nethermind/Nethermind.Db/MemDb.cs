@@ -170,17 +170,17 @@ namespace Nethermind.Db
 
         public IIterator GetIterator(bool isTailing = false)
         {
-            throw new NotSupportedException();
+            throw new NotSupportedException("Iteration is not supported by this implementation.");
         }
 
         public IIterator GetIterator(ref IteratorOptions options)
         {
-            throw new NotSupportedException();
+            throw new NotSupportedException("Iteration is not supported by this implementation.");
         }
 
         public void Merge(ReadOnlySpan<byte> key, ReadOnlySpan<byte> value, WriteFlags flags = WriteFlags.None)
         {
-            throw new NotSupportedException();
+            throw new NotSupportedException("Merging is not supported by this implementation.");
         }
 
         private IEnumerable<KeyValuePair<byte[], byte[]?>> OrderedDb => _db.OrderBy(kvp => kvp.Key, Bytes.Comparer);

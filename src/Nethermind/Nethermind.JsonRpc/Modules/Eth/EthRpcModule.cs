@@ -18,7 +18,6 @@ using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
-using Nethermind.Db.LogIndex;
 using Nethermind.Evm;
 using Nethermind.Evm.Precompiles;
 using Nethermind.Facade;
@@ -66,8 +65,7 @@ public partial class EthRpcModule(
     IFeeHistoryOracle feeHistoryOracle,
     IProtocolsManager protocolsManager,
     IForkInfo forkInfo,
-    ulong? secondsPerSlot,
-    ILogIndexConfig? logIndexConfig = null) : IEthRpcModule
+    ulong? secondsPerSlot) : IEthRpcModule
 {
     protected readonly Encoding _messageEncoding = Encoding.UTF8;
     protected readonly IJsonRpcConfig _rpcConfig = rpcConfig ?? throw new ArgumentNullException(nameof(rpcConfig));

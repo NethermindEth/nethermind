@@ -90,17 +90,17 @@ namespace Nethermind.Db
 
         public IIterator GetIterator(bool isTailing = false)
         {
-            return _memDb.GetIterator(isTailing);
+            throw new NotSupportedException("Iteration is not supported by this implementation.");
         }
 
         public IIterator GetIterator(ref IteratorOptions options)
         {
-            return _memDb.GetIterator(ref options);
+            throw new NotSupportedException("Iteration is not supported by this implementation.");
         }
 
         public void Merge(ReadOnlySpan<byte> key, ReadOnlySpan<byte> value, WriteFlags flags = WriteFlags.None)
         {
-            throw new NotSupportedException();
+            _memDb.Merge(key, value, flags);
         }
     }
 }
