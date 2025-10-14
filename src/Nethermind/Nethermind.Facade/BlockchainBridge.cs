@@ -9,6 +9,7 @@ using Nethermind.Blockchain.Filters;
 using Nethermind.Blockchain.Find;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Blockchain.Synchronization;
+using Nethermind.Synchronization.ParallelSync;
 using Nethermind.Core;
 using Nethermind.Core.Attributes;
 using Nethermind.Core.Crypto;
@@ -399,10 +400,12 @@ namespace Nethermind.Facade
                 return !ethSyncingInfo.IsSyncing();
             }
 
-            // For nodes with pruning enabled, check if we're still in initial sync
-            if (ethSyncingInfo.IsSyncing())
+            // For nodes with pruning enabled, check if we're still syncing state
+            // Once state sync is complete (even if still downloading old bodies/receipts),
+            // we have all state up to the pruning boundary
+            if (ethSyncingInfo.SyncMode.HaveNotSyncedStateYet())
             {
-                // Conservative: don't claim we have state during initial sync
+                // Conservative: don't claim we have state during state sync
                 // This prevents race conditions during sync process
                 return false;
             }

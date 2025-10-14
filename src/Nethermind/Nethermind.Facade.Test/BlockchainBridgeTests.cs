@@ -28,6 +28,7 @@ using Nethermind.Evm;
 using Nethermind.Facade.Find;
 using Nethermind.Facade.Proxy.Models.Simulate;
 using Nethermind.Facade.Simulate;
+using Nethermind.Synchronization.ParallelSync;
 using NSubstitute.Core;
 
 namespace Nethermind.Facade.Test;
@@ -689,12 +690,12 @@ public class BlockchainBridgeTests
     }
 
     [Test]
-    public void HasStateForBlock_pruning_node_still_syncing_returns_false()
+    public void HasStateForBlock_pruning_node_still_syncing_state_returns_false()
     {
         // Arrange
         _pruningConfig.Mode.Returns(PruningMode.Hybrid);
         _pruningConfig.PruningBoundary.Returns(64);
-        _ethSyncingInfo.IsSyncing().Returns(true);
+        _ethSyncingInfo.SyncMode.Returns(SyncMode.StateNodes);
         var header = Build.A.BlockHeader.WithNumber(100).TestObject;
 
         // Act
@@ -710,7 +711,7 @@ public class BlockchainBridgeTests
         // Arrange: Block within pruning window (64 - 1 safety margin = 63)
         _pruningConfig.Mode.Returns(PruningMode.Hybrid);
         _pruningConfig.PruningBoundary.Returns(64);
-        _ethSyncingInfo.IsSyncing().Returns(false);
+        _ethSyncingInfo.SyncMode.Returns(SyncMode.Full);
         var headBlock = Build.A.Block.WithNumber(1000).TestObject;
         _blockTree.Head.Returns(headBlock);
         // Request block at 1000 - 63 = 937 (within window: 1000 - 937 = 63 <= 63)
@@ -729,7 +730,7 @@ public class BlockchainBridgeTests
         // Arrange: Block outside pruning window
         _pruningConfig.Mode.Returns(PruningMode.Hybrid);
         _pruningConfig.PruningBoundary.Returns(64);
-        _ethSyncingInfo.IsSyncing().Returns(false);
+        _ethSyncingInfo.SyncMode.Returns(SyncMode.Full);
         var headBlock = Build.A.Block.WithNumber(1000).TestObject;
         _blockTree.Head.Returns(headBlock);
         // Request block at 1000 - 64 = 936 (outside window: 1000 - 936 = 64 > 63)
@@ -748,10 +749,28 @@ public class BlockchainBridgeTests
         // Arrange: Block exactly at pruning boundary (with -1 safety margin)
         _pruningConfig.Mode.Returns(PruningMode.Hybrid);
         _pruningConfig.PruningBoundary.Returns(64);
-        _ethSyncingInfo.IsSyncing().Returns(false);
+        _ethSyncingInfo.SyncMode.Returns(SyncMode.Full);
         var headBlock = Build.A.Block.WithNumber(1000).TestObject;
         _blockTree.Head.Returns(headBlock);
         // Request block at 1000 - 63 = 937 (exactly at boundary: 1000 - 937 == 63)
+        var header = Build.A.BlockHeader.WithNumber(937).TestObject;
+
+        // Act
+        bool result = _blockchainBridge.HasStateForBlock(header);
+
+        // Assert
+        result.Should().BeTrue();
+    }
+
+    [Test]
+    public void HasStateForBlock_pruning_node_syncing_old_bodies_returns_true()
+    {
+        // Arrange: State sync is complete, but still downloading old bodies/receipts
+        _pruningConfig.Mode.Returns(PruningMode.Hybrid);
+        _pruningConfig.PruningBoundary.Returns(64);
+        _ethSyncingInfo.SyncMode.Returns(SyncMode.FastBodies);
+        var headBlock = Build.A.Block.WithNumber(1000).TestObject;
+        _blockTree.Head.Returns(headBlock);
         var header = Build.A.BlockHeader.WithNumber(937).TestObject;
 
         // Act
