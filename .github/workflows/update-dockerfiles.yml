@@ -31,24 +31,24 @@ jobs:
           sdk_version=$(echo "$manifest" | jq -r '."latest-sdk"')
 
           # Get the digests for the specified tags
-          runtime_chiseled_tag=$runtime_version-noble-chiseled
-          runtime_chiseled_digest=$(skopeo inspect docker://mcr.microsoft.com/dotnet/aspnet:$runtime_chiseled_tag --no-tags | jq -r '.Digest')
+          runtime_chiseled_tag=${runtime_version}-noble-chiseled
+          runtime_chiseled_digest=$(skopeo inspect docker://mcr.microsoft.com/dotnet/aspnet:${runtime_chiseled_tag} --no-tags | jq -r '.Digest')
 
-          runtime_tag=$runtime_version-noble
-          runtime_digest=$(skopeo inspect docker://mcr.microsoft.com/dotnet/aspnet:$runtime_tag --no-tags | jq -r '.Digest')
+          runtime_tag=${runtime_version}-noble
+          runtime_digest=$(skopeo inspect docker://mcr.microsoft.com/dotnet/aspnet:${runtime_tag} --no-tags | jq -r '.Digest')
 
-          sdk_tag=$sdk_version-noble
-          sdk_digest=$(skopeo inspect docker://mcr.microsoft.com/dotnet/sdk:$sdk_tag --no-tags | jq -r '.Digest')
+          sdk_tag=${sdk_version}-noble
+          sdk_digest=$(skopeo inspect docker://mcr.microsoft.com/dotnet/sdk:${sdk_tag} --no-tags | jq -r '.Digest')
 
           # Update Dockerfiles
           for file in "Dockerfile" "Dockerfile.chiseled" "scripts/build/Dockerfile"; do
-            sed -i "s|\(mcr\.microsoft\.com/dotnet/sdk:\)[^[:space:]]*|\1$sdk_tag@$sdk_digest|" "$file"
+            sed -i "s|\(mcr\.microsoft\.com/dotnet/sdk:\)[^[:space:]]*|\1${sdk_tag}@${sdk_digest}|" "$file"
           done
 
           runtime_pattern="\(mcr\.microsoft\.com/dotnet/aspnet:\)[^[:space:]]*"
 
-          sed -i "s|$runtime_pattern|\1$runtime_tag@$runtime_digest|" Dockerfile
-          sed -i "s|$runtime_pattern|\1$runtime_chiseled_tag@$runtime_chiseled_digest|" Dockerfile.chiseled
+          sed -i "s|${runtime_pattern}|\1${runtime_tag}@${runtime_digest}|" Dockerfile
+          sed -i "s|${runtime_pattern}|\1${runtime_chiseled_tag}@${runtime_chiseled_digest}|" Dockerfile.chiseled
 
           # Get the number of modified files
           file_count=$(git status --porcelain | wc -l)
@@ -60,7 +60,7 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           head_branch=chore/update-dockerfiles-$GITHUB_RUN_NUMBER-$GITHUB_RUN_ATTEMPT
-          body=$(cat <<'EOF'
+          body=$(cat <<EOF
           Updated Dockerfiles to use the latest versions of .NET $DOTNET_VERSION SDK and runtime.
 
           To verify manually, see:
