@@ -74,10 +74,10 @@ public class LogIndexBuilderTests
 
         public Task SetReceiptsAsync(IReadOnlyList<BlockReceipts> batch, bool isBackwardSync, LogIndexUpdateStats? stats = null)
         {
-            return SetReceiptsAsync(Aggregate(batch, isBackwardSync, stats), isBackwardSync, stats);
+            return SetReceiptsAsync(Aggregate(batch, isBackwardSync, stats), stats);
         }
 
-        public virtual Task SetReceiptsAsync(LogIndexAggregate aggregate, bool isBackwardSync, LogIndexUpdateStats? stats = null)
+        public virtual Task SetReceiptsAsync(LogIndexAggregate aggregate, LogIndexUpdateStats? stats = null)
         {
             var min = Math.Min(aggregate.FirstBlockNum, aggregate.LastBlockNum);
             var max = Math.Max(aggregate.FirstBlockNum, aggregate.LastBlockNum);
@@ -118,10 +118,10 @@ public class LogIndexBuilderTests
     {
         private int _callCount;
 
-        public override Task SetReceiptsAsync(LogIndexAggregate aggregate, bool isBackwardSync, LogIndexUpdateStats? stats = null)
+        public override Task SetReceiptsAsync(LogIndexAggregate aggregate, LogIndexUpdateStats? stats = null)
         {
             return Interlocked.Increment(ref _callCount) <= failAfter
-                ? base.SetReceiptsAsync(aggregate, isBackwardSync, stats)
+                ? base.SetReceiptsAsync(aggregate, stats)
                 : throw exception;
         }
     }

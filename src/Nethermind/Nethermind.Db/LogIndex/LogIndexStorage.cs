@@ -627,11 +627,15 @@ namespace Nethermind.Db
                 yield return blockNums[i];
         }
 
-        // TODO: optimize allocations
+        // TODO: optimize
         public LogIndexAggregate Aggregate(IReadOnlyList<BlockReceipts> batch, bool isBackwardSync, LogIndexUpdateStats? stats)
         {
             ThrowIfStopped();
             ThrowIfHasError();
+
+            // TODO: consider removing check to save time
+            if ((!isBackwardSync && !IsSeqAsc(batch)) || (isBackwardSync && !IsSeqDesc(batch)))
+                throw new ArgumentException($"Unexpected blocks batch order: ({batch[0]} to {batch[^1]}).");
 
             if (!IsBlockNewer(batch[^1].BlockNumber, isBackwardSync))
                 return new(batch);
@@ -859,13 +863,14 @@ namespace Nethermind.Db
             return counter;
         }
 
-        public async Task SetReceiptsAsync(LogIndexAggregate aggregate, bool isBackwardSync, LogIndexUpdateStats? stats = null)
+        public async Task SetReceiptsAsync(LogIndexAggregate aggregate, LogIndexUpdateStats? stats = null)
         {
             ThrowIfStopped();
             ThrowIfHasError();
 
             long totalTimestamp = Stopwatch.GetTimestamp();
 
+            var isBackwardSync = aggregate.LastBlockNum < aggregate.FirstBlockNum;
             SemaphoreSlim semaphore = _setReceiptsSemaphores[isBackwardSync];
             await LockRunAsync(semaphore);
 
@@ -918,7 +923,6 @@ namespace Nethermind.Db
                 // Enqueue compaction if needed
                 _compactor.TryEnqueue();
             }
-            // TODO: stop or block index on error?
             finally
             {
                 if (!wasInitialized)
@@ -934,11 +938,10 @@ namespace Nethermind.Db
             stats?.SetReceipts.Include(Stopwatch.GetElapsedTime(totalTimestamp));
         }
 
-        // batch is expected to be sorted, TODO: validate this is the case
         public Task SetReceiptsAsync(IReadOnlyList<BlockReceipts> batch, bool isBackwardSync, LogIndexUpdateStats? stats = null)
         {
             LogIndexAggregate aggregate = Aggregate(batch, isBackwardSync, stats);
-            return SetReceiptsAsync(aggregate, isBackwardSync, stats);
+            return SetReceiptsAsync(aggregate, stats);
         }
 
         // TODO: optimize allocations
@@ -1195,6 +1198,22 @@ namespace Nethermind.Db
             }
 
             return ~(left * BlockNumSize);
+        }
+
+        private static bool IsSeqAsc(IReadOnlyList<BlockReceipts> blocks)
+        {
+            int j = blocks.Count - 1;
+            int i = 1, d = blocks[0].BlockNumber;
+            while (i <= j && blocks[i].BlockNumber - i == d) i++;
+            return i > j;
+        }
+
+        private static bool IsSeqDesc(IReadOnlyList<BlockReceipts> blocks)
+        {
+            int j = blocks.Count - 1;
+            int i = 1, d = blocks[0].BlockNumber;
+            while (i <= j && blocks[i].BlockNumber + i == d) i++;
+            return i > j;
         }
     }
 }

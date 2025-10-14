@@ -13,7 +13,6 @@ namespace Nethermind.Db;
 
 public readonly record struct BlockReceipts(int BlockNumber, TxReceipt[] Receipts);
 
-// TODO: store sync direction?
 public struct LogIndexAggregate(int firstBlockNum, int lastBlockNum)
 {
     private Dictionary<Address, List<int>>? _address;
@@ -55,7 +54,7 @@ public interface ILogIndexStorage : IAsyncDisposable, IStoppableService
 
     LogIndexAggregate Aggregate(IReadOnlyList<BlockReceipts> batch, bool isBackwardSync, LogIndexUpdateStats? stats = null);
     Task SetReceiptsAsync(IReadOnlyList<BlockReceipts> batch, bool isBackwardSync, LogIndexUpdateStats? stats = null);
-    Task SetReceiptsAsync(LogIndexAggregate aggregate, bool isBackwardSync, LogIndexUpdateStats? stats = null);
+    Task SetReceiptsAsync(LogIndexAggregate aggregate, LogIndexUpdateStats? stats = null);
     Task ReorgFrom(BlockReceipts block);
     Task CompactAsync(bool flush = false, int mergeIterations = 0, LogIndexUpdateStats? stats = null);
     Task RecompactAsync(int maxUncompressedLength = -1, LogIndexUpdateStats? stats = null);

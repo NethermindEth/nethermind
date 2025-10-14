@@ -321,10 +321,6 @@ public sealed class LogIndexBuilder : ILogIndexBuilder
 
     private LogIndexAggregate Aggregate(IReadOnlyList<BlockReceipts> batch, bool isForward)
     {
-        // TODO: remove ordering check to save time?
-        if ((isForward && !IsSeqAsc(batch)) || (!isForward && !IsSeqDesc(batch)))
-            throw new($"{GetLogPrefix(isForward)}: non-ordered batch in queue: ({batch[0]} -> {batch[^1]}).");
-
         return _logIndexStorage.Aggregate(batch, !isForward, _stats[isForward]);
     }
 
@@ -333,7 +329,7 @@ public sealed class LogIndexBuilder : ILogIndexBuilder
         if (GetNextBlockNumber(_logIndexStorage, isForward) is { } next && next != aggregate.FirstBlockNum)
             throw new($"{GetLogPrefix(isForward)}: non sequential batches: ({aggregate.FirstBlockNum} instead of {next}).");
 
-        await _logIndexStorage.SetReceiptsAsync(aggregate, !isForward, _stats[isForward]);
+        await _logIndexStorage.SetReceiptsAsync(aggregate, _stats[isForward]);
         LastUpdate = DateTimeOffset.Now;
 
         UpdateProgress();
@@ -514,22 +510,6 @@ public sealed class LogIndexBuilder : ILogIndexBuilder
             return default;
 
         return new(i, receipts);
-    }
-
-    private static bool IsSeqAsc(IReadOnlyList<BlockReceipts> blocks)
-    {
-        int j = blocks.Count - 1;
-        int i = 1, d = blocks[0].BlockNumber;
-        while (i <= j && blocks[i].BlockNumber - i == d) i++;
-        return i > j;
-    }
-
-    private static bool IsSeqDesc(IReadOnlyList<BlockReceipts> blocks)
-    {
-        int j = blocks.Count - 1;
-        int i = 1, d = blocks[0].BlockNumber;
-        while (i <= j && blocks[i].BlockNumber + i == d) i++;
-        return i > j;
     }
 
     private static string GetLogPrefix(bool? isForward = null) => isForward switch

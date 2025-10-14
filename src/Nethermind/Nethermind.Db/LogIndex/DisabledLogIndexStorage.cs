@@ -53,7 +53,7 @@ public sealed class DisabledLogIndexStorage : ILogIndexStorage
         throw new NotSupportedException();
     }
 
-    public Task SetReceiptsAsync(LogIndexAggregate aggregate, bool isBackwardSync, LogIndexUpdateStats? stats = null)
+    public Task SetReceiptsAsync(LogIndexAggregate aggregate, LogIndexUpdateStats? stats = null)
     {
         throw new NotSupportedException();
     }
