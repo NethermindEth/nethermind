@@ -13,6 +13,7 @@ public abstract class BaseTxDecoder<T>(TxType txType, Func<T>? transactionFactor
 {
     private const int MaxDelayedHashTxnSize = 32768;
     private readonly Func<T> _createTransaction = transactionFactory ?? (static () => new T());
+    private static readonly RlpLimit TxDataRlpLimit = RlpLimit.For<Transaction>(nameof(Transaction.Data), (int)1.MiB());
 
     public TxType Type => txType;
 
@@ -132,7 +133,7 @@ public abstract class BaseTxDecoder<T>(TxType txType, Func<T>? transactionFactor
         transaction.GasLimit = rlpStream.DecodeLong();
         transaction.To = rlpStream.DecodeAddress();
         transaction.Value = rlpStream.DecodeUInt256();
-        transaction.Data = rlpStream.DecodeByteArray();
+        transaction.Data = rlpStream.DecodeByteArray(TxDataRlpLimit);
     }
 
     protected virtual void DecodeGasPrice(Transaction transaction, RlpStream rlpStream)
@@ -147,7 +148,7 @@ public abstract class BaseTxDecoder<T>(TxType txType, Func<T>? transactionFactor
         transaction.GasLimit = decoderContext.DecodeLong();
         transaction.To = decoderContext.DecodeAddress();
         transaction.Value = decoderContext.DecodeUInt256();
-        transaction.Data = decoderContext.DecodeByteArrayMemory();
+        transaction.Data = decoderContext.DecodeByteArrayMemory(TxDataRlpLimit);
     }
 
     protected virtual void DecodeGasPrice(Transaction transaction, ref Rlp.ValueDecoderContext decoderContext)
