@@ -310,6 +310,14 @@ public partial class EthRpcModuleTests
     }
 
     [Test]
+    public async Task Eth_get_filter_changes_too_big()
+    {
+        using Context ctx = await Context.Create();
+        string serialized2 = await ctx.Test.TestEthRpc("eth_getFilterChanges", ((UInt256)uint.MaxValue + 1).ToHexString(true));
+        Assert.That(serialized2, Is.EqualTo("{\"jsonrpc\":\"2.0\",\"error\":{\"code\":-32000,\"message\":\"Filter not found\"},\"id\":67}"));
+    }
+
+    [Test]
     public async Task Eth_uninstall_filter()
     {
         using Context ctx = await Context.Create();
