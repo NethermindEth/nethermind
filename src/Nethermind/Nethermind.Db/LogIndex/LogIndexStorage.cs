@@ -777,6 +777,7 @@ namespace Nethermind.Db
             }
         }
 
+        // TODO: refactor compaction to explicitly compress full range for each involved key
         public async Task CompactAsync(bool flush = false, int mergeIterations = 0, LogIndexUpdateStats? stats = null)
         {
             ThrowIfStopped();
@@ -788,9 +789,7 @@ namespace Nethermind.Db
             var timestamp = Stopwatch.GetTimestamp();
 
             if (flush)
-            {
                 DBColumns.ForEach(static db => db.Flush());
-            }
 
             for (var i = 0; i < mergeIterations; i++)
             {
@@ -810,51 +809,6 @@ namespace Nethermind.Db
 
             if (_logger.IsInfo)
                 _logger.Info($"Log index forced compaction finished in {Stopwatch.GetElapsedTime(timestamp)}, DB size: {GetDbSize()} {stats:d}");
-        }
-
-        public async Task RecompactAsync(int minLengthToCompress = -1, LogIndexUpdateStats? stats = null)
-        {
-            ThrowIfStopped();
-            ThrowIfHasError();
-
-            if (minLengthToCompress < 0)
-                minLengthToCompress = _compressor.MinLengthToCompress;
-
-            await CompactAsync(flush: true, mergeIterations: 2, stats: stats);
-
-            var timestamp = Stopwatch.GetTimestamp();
-            var addressCount = await QueueLargeKeysCompression(topicIndex: null, minLengthToCompress);
-            stats?.QueueingAddressCompression.Include(Stopwatch.GetElapsedTime(timestamp));
-
-            timestamp = Stopwatch.GetTimestamp();
-            var topicCount = 0;
-            for (var topicIndex = 0; topicIndex < _topicDbs.Length; topicIndex++)
-                topicCount += await QueueLargeKeysCompression(topicIndex, minLengthToCompress);
-            stats?.QueueingTopicCompression.Include(Stopwatch.GetElapsedTime(timestamp));
-
-            _logger.Info($"Queued keys for compaction: {addressCount:N0} address, {topicCount:N0} topic");
-
-            await _compressor.WaitUntilEmptyAsync(TimeSpan.FromSeconds(30));
-            await CompactAsync(flush: true, mergeIterations: 2, stats: stats);
-        }
-
-        private async Task<int> QueueLargeKeysCompression(int? topicIndex, int minLengthToCompress)
-        {
-            var counter = 0;
-
-            IDb db = GetDb(topicIndex);
-            using var addressIterator = db.GetIterator();
-            foreach (var (key, value) in Enumerate(addressIterator))
-            {
-                if (IsCompressed(value) || value.Length < minLengthToCompress)
-                    continue;
-
-                await _compressor.EnqueueAsync(topicIndex, key);
-
-                counter++;
-            }
-
-            return counter;
         }
 
         public async Task SetReceiptsAsync(LogIndexAggregate aggregate, LogIndexUpdateStats? stats = null)

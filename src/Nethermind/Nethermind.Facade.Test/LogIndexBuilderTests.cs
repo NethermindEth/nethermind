@@ -57,17 +57,7 @@ public class LogIndexBuilderTests
         public List<int> GetBlockNumbersFor(int index, Hash256 topic, int from, int to) =>
             throw new NotImplementedException();
 
-        public Dictionary<byte[], int[]> GetKeysFor(Address address, int from, int to, bool includeValues = false) =>
-            throw new NotImplementedException();
-
-        public Dictionary<byte[], int[]> GetKeysFor(int index, Hash256 topic, int from, int to, bool includeValues = false) =>
-            throw new NotImplementedException();
-
         public string GetDbSize() => 0L.SizeToString();
-
-        public Task FirstBlockAdded => Task.CompletedTask;
-
-        public Task CheckMigratedData() => Task.CompletedTask;
 
         public LogIndexAggregate Aggregate(IReadOnlyList<BlockReceipts> batch, bool isBackwardSync, LogIndexUpdateStats? stats = null) =>
             new(batch);
@@ -106,8 +96,6 @@ public class LogIndexBuilderTests
         public Task ReorgFrom(BlockReceipts block) => Task.CompletedTask;
 
         public Task CompactAsync(bool flush = false, int mergeIterations = 0, LogIndexUpdateStats? stats = null) => Task.CompletedTask;
-
-        public Task RecompactAsync(int maxUncompressedLength = -1, LogIndexUpdateStats? stats = null) => Task.CompletedTask;
 
         public Task StopAsync() => Task.CompletedTask;
 

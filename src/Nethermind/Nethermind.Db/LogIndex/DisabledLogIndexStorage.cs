@@ -31,16 +31,6 @@ public sealed class DisabledLogIndexStorage : ILogIndexStorage
         throw new NotSupportedException();
     }
 
-    public Dictionary<byte[], int[]> GetKeysFor(Address address, int from, int to, bool includeValues = false)
-    {
-        throw new NotSupportedException();
-    }
-
-    public Dictionary<byte[], int[]> GetKeysFor(int index, Hash256 topic, int from, int to, bool includeValues = false)
-    {
-        throw new NotSupportedException();
-    }
-
     public Task CheckMigratedData() => Task.CompletedTask;
 
     public LogIndexAggregate Aggregate(IReadOnlyList<BlockReceipts> batch, bool isBackwardSync, LogIndexUpdateStats? stats = null)
@@ -64,11 +54,6 @@ public sealed class DisabledLogIndexStorage : ILogIndexStorage
     }
 
     public Task CompactAsync(bool flush = false, int mergeIterations = 0, LogIndexUpdateStats? stats = null)
-    {
-        throw new NotSupportedException();
-    }
-
-    public Task RecompactAsync(int maxUncompressedLength = -1, LogIndexUpdateStats? stats = null)
     {
         throw new NotSupportedException();
     }

@@ -33,7 +33,6 @@ public struct LogIndexAggregate(int firstBlockNum, int lastBlockNum)
     public LogIndexAggregate(IReadOnlyList<BlockReceipts> batch) : this(batch[0].BlockNumber, batch[^1].BlockNumber) { }
 }
 
-// TODO: remove testing methods
 public interface ILogIndexStorage : IAsyncDisposable, IStoppableService
 {
     bool Enabled { get; }
@@ -43,9 +42,6 @@ public interface ILogIndexStorage : IAsyncDisposable, IStoppableService
 
     List<int> GetBlockNumbersFor(Address address, int from, int to);
     List<int> GetBlockNumbersFor(int index, Hash256 topic, int from, int to);
-
-    Dictionary<byte[], int[]> GetKeysFor(Address address, int from, int to, bool includeValues = false);
-    Dictionary<byte[], int[]> GetKeysFor(int index, Hash256 topic, int from, int to, bool includeValues = false);
 
     string GetDbSize();
 
