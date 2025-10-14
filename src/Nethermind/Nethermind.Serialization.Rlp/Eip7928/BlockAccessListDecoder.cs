@@ -19,17 +19,21 @@ public class BlockAccessListDecoder : IRlpValueDecoder<BlockAccessList>, IRlpStr
 
     public BlockAccessList Decode(ref Rlp.ValueDecoderContext ctx, RlpBehaviors rlpBehaviors)
     {
+        // var tmp = ctx.Data[ctx.Position..].ToArray();
+        // Console.WriteLine("bal:");
+        // Console.WriteLine(Bytes.ToHexString(tmp));
+
         AccountChanges[] accountChanges = ctx.DecodeArray(AccountChangesDecoder.Instance);
         if (accountChanges.Length > Eip7928Constants.MaxAccounts)
         {
             throw new RlpException("Number of accounts exceeded maximum.");
         }
 
-        Address lastAddress = Address.Zero;
+        Address? lastAddress = null;
         SortedDictionary<Address, AccountChanges> accountChangesMap = new(accountChanges.ToDictionary(a =>
         {
             Address address = a.Address;
-            if (address.CompareTo(lastAddress) <= 0)
+            if (lastAddress is not null && address.CompareTo(lastAddress) <= 0)
             {
                 throw new RlpException("Account changes were in incorrect order.");
             }
@@ -38,10 +42,10 @@ public class BlockAccessListDecoder : IRlpValueDecoder<BlockAccessList>, IRlpStr
         }, a => a));
         BlockAccessList blockAccessList = new(accountChangesMap);
 
-        if (!accountChanges.SequenceEqual(accountChangesMap.Values))
-        {
-            throw new RlpException("Accounts were in incorrect order.");
-        }
+        // if (!accountChanges.SequenceEqual(accountChangesMap.Values))
+        // {
+        //     throw new RlpException("Accounts were in incorrect order.");
+        // }
 
         return blockAccessList;
     }

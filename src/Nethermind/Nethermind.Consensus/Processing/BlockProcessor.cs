@@ -188,7 +188,6 @@ public partial class BlockProcessor
             else
             {
                 body.BlockAccessList = _tracedAccessWorldState.BlockAccessList;
-                _logger.Info(body.BlockAccessList.ToString());
                 block.EncodedBlockAccessList = Rlp.Encode(_tracedAccessWorldState.BlockAccessList).Bytes;
                 header.BlockAccessListHash = new(ValueKeccak.Compute(block.EncodedBlockAccessList).Bytes);
             }

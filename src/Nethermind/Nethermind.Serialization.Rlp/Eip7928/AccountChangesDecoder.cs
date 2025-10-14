@@ -61,7 +61,6 @@ public class AccountChangesDecoder : IRlpValueDecoder<AccountChanges>, IRlpStrea
         ushort? lastIndex = null;
         SortedList<ushort, BalanceChange> balanceChangesList = new(balanceChanges.ToDictionary(s =>
         {
-            Console.WriteLine("Decoding balance change: " + s.ToString());
             ushort index = s.BlockAccessIndex;
             if (lastIndex is not null && index <= lastIndex)
             {
