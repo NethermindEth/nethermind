@@ -71,9 +71,10 @@ public sealed class LogIndexBuilder : ILogIndexBuilder
         [false] = new(RunContinuationsAsynchronously),
         [true] = new(RunContinuationsAsynchronously),
     };
-    private readonly ConcurrentDictionary<bool, LogIndexUpdateStats> _stats = new();
 
-    public string Description => "log index service";
+    private LogIndexUpdateStats _stats;
+
+    public string Description => "log index builder";
 
     public Task BackwardSyncCompletion => _completions[false].Task;
 
@@ -95,6 +96,7 @@ public sealed class LogIndexBuilder : ILogIndexBuilder
         _logManager = logManager;
         _logger = logManager.GetClassLogger<LogIndexBuilder>();
         _pivotTask = _pivotSource.Task;
+        _stats = new(_logIndexStorage);
     }
 
     private void StartProcessing(bool isForward)
@@ -107,7 +109,6 @@ public sealed class LogIndexBuilder : ILogIndexBuilder
         }
 
         _progressLoggers[isForward] = new(GetLogPrefix(isForward), _logManager);
-        _stats[isForward] = new(_logIndexStorage);
 
         _processingQueues[isForward] = BuildQueue(isForward);
         _tasks.AddRange(
@@ -185,31 +186,29 @@ public sealed class LogIndexBuilder : ILogIndexBuilder
         await _logIndexStorage.DisposeAsync();
     }
 
-    private void LogStats(bool isForward)
+    private void LogStats()
     {
-        LogIndexUpdateStats stats = _stats[isForward];
+        LogIndexUpdateStats stats = _stats;
 
         if (stats is not { BlocksAdded: > 0 })
             return;
 
-        _stats[isForward] = new(_logIndexStorage);
+        _stats = new(_logIndexStorage);
 
         if (_logger.IsInfo)
         {
             _logger.Info(_config.DetailedLogs
-                    ? $"{GetLogPrefix(isForward)}: {stats:d}"
-                    : $"{GetLogPrefix(isForward)}: {stats}"
+                    ? $"{GetLogPrefix()}: {stats:d}"
+                    : $"{GetLogPrefix()}: {stats}"
             );
         }
     }
 
     private void LogProgress()
     {
+        LogStats();
         foreach ((var isForward, ProgressLogger progress) in _progressLoggers)
-        {
             progress.LogProgress(isForward);
-            LogStats(isForward);
-        }
     }
 
     private bool TrySetPivot(int? blockNumber)
@@ -308,7 +307,7 @@ public sealed class LogIndexBuilder : ILogIndexBuilder
 
     private LogIndexAggregate Aggregate(IReadOnlyList<BlockReceipts> batch, bool isForward)
     {
-        return _logIndexStorage.Aggregate(batch, !isForward, _stats[isForward]);
+        return _logIndexStorage.Aggregate(batch, !isForward, _stats);
     }
 
     private async Task SetReceiptsAsync(LogIndexAggregate aggregate, bool isForward)
@@ -316,7 +315,7 @@ public sealed class LogIndexBuilder : ILogIndexBuilder
         if (GetNextBlockNumber(_logIndexStorage, isForward) is { } next && next != aggregate.FirstBlockNum)
             throw new($"{GetLogPrefix(isForward)}: non sequential batches: ({aggregate.FirstBlockNum} instead of {next}).");
 
-        await _logIndexStorage.SetReceiptsAsync(aggregate, _stats[isForward]);
+        await _logIndexStorage.SetReceiptsAsync(aggregate, _stats);
         LastUpdate = DateTimeOffset.Now;
 
         UpdateProgress();
@@ -378,7 +377,7 @@ public sealed class LogIndexBuilder : ILogIndexBuilder
                     continue;
                 }
 
-                _stats[isForward].LoadingReceipts.Include(Stopwatch.GetElapsedTime(timestamp));
+                _stats.LoadingReceipts.Include(Stopwatch.GetElapsedTime(timestamp));
 
                 start = GetNextBlockNumber(batch[^1].BlockNumber, isForward);
                 await queue.WriteAsync(batch.ToArray(), CancellationToken);
@@ -389,8 +388,8 @@ public sealed class LogIndexBuilder : ILogIndexBuilder
             await HandleExceptionAsync(ex);
         }
 
-        if (_logger.IsInfo)
-            _logger.Info($"{GetLogPrefix(isForward)}: queueing completed.");
+        if (_logger.IsTrace)
+            _logger.Trace($"{GetLogPrefix(isForward)}: queueing completed.");
     }
 
     private void UpdateProgress()
