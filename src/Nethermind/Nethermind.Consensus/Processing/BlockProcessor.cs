@@ -100,10 +100,18 @@ public partial class BlockProcessor(
         blockTransactionsExecutor.SetBlockExecutionContext(new BlockExecutionContext(block.Header, spec));
 
         _stateProvider.Commit(spec, commitRoots: true);
-
+        _stateProvider.RecalculateStateRoot();
+        _logger.Error($"Before blockhash: {_stateProvider.StateRoot}");
         blockHashStore.ApplyBlockhashStateChanges(header, spec);
 
+        _stateProvider.Commit(spec, commitRoots: true);
+        _stateProvider.RecalculateStateRoot();
+        _logger.Error($"Before Beacon root: {_stateProvider.StateRoot}");
         StoreBeaconRoot(block, spec);
+
+        _stateProvider.Commit(spec, commitRoots: true);
+        _stateProvider.RecalculateStateRoot();
+        _logger.Error($"After beacon root: {_stateProvider.StateRoot}");
 
         TxReceipt[] receipts = blockTransactionsExecutor.ProcessTransactions(block, options, ReceiptsTracer, token);
 
