@@ -212,48 +212,35 @@ public sealed class LogIndexBuilder : ILogIndexBuilder
         }
     }
 
-    private void TrySetPivot(int? blockNumber)
+    private bool TrySetPivot(int? blockNumber)
     {
         if (blockNumber is not { } num || num is 0)
-            return;
+            return false;
 
         if (_pivotSource.Task.IsCompleted)
-            return;
+            return false;
 
         num = Math.Max(MinTargetBlockNumber, num);
         num = Math.Min(MaxTargetBlockNumber, num);
 
         if (num is 0)
-            return;
+            return false;
 
         if (GetBlockReceipts(num) == default)
-            return;
+            return false;
 
-        if (_pivotSource.TrySetResult(num))
-            _logger.Info($"{GetLogPrefix()}: using block {num} as pivot.");
+        if (!_pivotSource.TrySetResult(num))
+            return false;
+
+        _logger.Info($"{GetLogPrefix()}: using block {num} as pivot.");
+        return true;
     }
 
-    // TODO: add receipts to cache
     private void OnReceiptsInserted(object? sender, ReceiptsEventArgs args)
     {
-        // if (args.WasRemoved)
-        // {
-        //     _reorgChannel.Writer.TryWrite(new((int)args.BlockHeader.Number, args.TxReceipts));
-        //     return;
-        // }
-
-        //_logger.Info($"[TRACE] {nameof(OnReceiptsInserted)}: {args.BlockHeader.ToString(BlockHeader.Format.FullHashAndNumber)} [{args.TxReceipts.Length}]");
-
         var next = (int)args.BlockHeader.Number;
-        TrySetPivot(next);
-
-        // var (min, max) = (_logIndexStorage.GetMinBlockNumber(), _logIndexStorage.GetMaxBlockNumber());
-        //
-        // if (min is null || next < min)
-        //     _newBackwardBlockEvent.Set();
-        //
-        // if (max is null || next > max)
-        //     _newForwardBlockEvent.Set();
+        if (TrySetPivot(next))
+            _receiptStorage.AnyReceiptsInserted -= OnReceiptsInserted;
     }
 
     public int MaxTargetBlockNumber => (int)Math.Max(_blockTree.BestKnownNumber - MaxReorgDepth, 0);
@@ -335,10 +322,7 @@ public sealed class LogIndexBuilder : ILogIndexBuilder
         UpdateProgress();
 
         if (_logIndexStorage.GetMinBlockNumber() <= MinTargetBlockNumber)
-        {
-            _receiptStorage.AnyReceiptsInserted -= OnReceiptsInserted;
             MarkCompleted(false);
-        }
     }
 
     private async Task DoQueueBlocks(bool isForward)
@@ -389,19 +373,7 @@ public sealed class LogIndexBuilder : ILogIndexBuilder
 
                 if (batch.Length == 0)
                 {
-                    // next = isForward ? from : to - 1;
-                    //
-                    // var block = _blockTree.FindBlock((long)next);
-                    // var status = new
-                    // {
-                    //     Block = block,
-                    //     HasTransactions = block?.Header.HasTransactions,
-                    //     HasBlock = block == null ? (bool?)null : _receiptStorage.HasBlock(block.Number, block.Hash!),
-                    //     ReceiptsLength = block == null ? null : _receiptStorage.Get(block)?.Length,
-                    //     BestKnownNumber = _blockTree.BestKnownNumber
-                    // };
-                    // _logger.Info($"[TRACE] {GetLogPrefix(isForward)}: waiting for receipts of block {next}: {status}");
-
+                    // TODO: stop waiting immediately when receipts become available
                     await Task.Delay(NewBlockWaitTimeout, CancellationToken);
                     continue;
                 }
