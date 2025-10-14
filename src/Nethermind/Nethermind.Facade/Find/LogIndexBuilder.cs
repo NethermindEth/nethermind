@@ -20,7 +20,6 @@ using static System.Threading.Tasks.TaskCreationOptions;
 
 namespace Nethermind.Facade.Find;
 
-// TODO: move to correct namespace
 // TODO: reduce periodic logging
 public sealed class LogIndexBuilder : ILogIndexBuilder
 {

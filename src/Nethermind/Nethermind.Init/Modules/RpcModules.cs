@@ -52,7 +52,6 @@ public class RpcModules(IJsonRpcConfig jsonRpcConfig) : Module
             .AddSingleton<IRpcModuleProvider, RpcModuleProvider>()
             .AddSingleton<IJsonRpcLocalStats, JsonRpcLocalStats>()
             .AddSingleton<IWebSocketsManager, WebSocketsManager>()
-            .AddSingleton<ILogIndexBuilder, LogIndexBuilder>()
 
             // Smallish RPCs
             .AddSingleton<INetBridge, NetBridge>()

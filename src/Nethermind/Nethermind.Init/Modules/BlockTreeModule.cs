@@ -37,17 +37,17 @@ public class BlockTreeModule(IReceiptConfig receiptConfig, ILogIndexConfig logIn
             .AddSingleton<IChainLevelInfoRepository, ChainLevelInfoRepository>()
             .AddSingleton<IBlobTxStorage, BlobTxStorage>()
             .AddSingleton<IReceiptsRecovery, IEthereumEcdsa, ISpecProvider, IReceiptConfig>((ecdsa, specProvider, receiptConfig) =>
-                new ReceiptsRecovery(ecdsa, specProvider, !receiptConfig.CompactReceiptStore))
+                new ReceiptsRecovery(ecdsa, specProvider, !receiptConfig.CompactReceiptStore)
+            )
             .AddSingleton<IReceiptFinder, FullInfoReceiptFinder>()
             .AddSingleton<IHistoryPruner, HistoryPruner>()
 
             .AddSingleton<IBlockTree, BlockTree>()
             .Bind<IBlockFinder, IBlockTree>()
             .AddSingleton<ILogFinder, LogFinder>()
-            .AddSingleton<IReadOnlyBlockTree, IBlockTree>((bt) => bt.AsReadOnly())
+            .AddSingleton<IReadOnlyBlockTree, IBlockTree>((bt) => bt.AsReadOnly());
 
-            ;
-
+        builder.AddSingleton<ILogIndexBuilder, LogIndexBuilder>();
         if (logIndexConfig.Enabled)
         {
             builder.AddSingleton<ILogIndexStorage, LogIndexStorage>();
