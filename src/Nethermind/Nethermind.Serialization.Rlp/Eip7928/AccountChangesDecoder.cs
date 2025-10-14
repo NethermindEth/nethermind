@@ -131,6 +131,7 @@ public class AccountChangesDecoder : IRlpValueDecoder<AccountChanges>, IRlpStrea
     public void Encode(RlpStream stream, AccountChanges item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
     {
         stream.StartSequence(GetContentLength(item, rlpBehaviors));
+        Console.WriteLine("Encoding bal address " + item.Address);
         stream.Encode(item.Address);
         stream.EncodeArray([.. item.StorageChanges.Values], rlpBehaviors);
         stream.EncodeArray([.. item.StorageReads], rlpBehaviors);
