@@ -70,19 +70,21 @@ public class AccessListForRpc
             if (reader.TokenType != JsonTokenType.StartArray)
                 throw new JsonException("Expected start of array");
 
-            const int MaxItems = 1000;
-            const int MaxStorageKeysPerItem = 1000;
+            const int maxItems = 1000;
+            const int maxStorageKeysPerItem = 1000;
+            const int maxStorageKeys = 10000;
 
-            var items = new List<Item>(MaxItems);
+            var items = new List<Item>(maxItems);
             int itemCount = 0;
+            int storageItemsCount = 0;
 
             while (reader.Read())
             {
                 if (reader.TokenType == JsonTokenType.EndArray)
                     break;
 
-                if (itemCount >= MaxItems)
-                    throw new JsonException($"Access list cannot have more than {MaxItems} items.");
+                if (itemCount >= maxItems)
+                    throw new JsonException($"Access list cannot have more than {maxItems} items.");
 
                 if (reader.TokenType != JsonTokenType.StartObject)
                     throw new JsonException("Expected start of item object");
@@ -122,12 +124,16 @@ public class AccessListForRpc
                                 if (reader.TokenType == JsonTokenType.EndArray)
                                     break;
 
-                                if (keyCount >= MaxStorageKeysPerItem)
-                                    throw new JsonException($"An item cannot have more than {MaxStorageKeysPerItem} storage keys.");
+                                if (keyCount >= maxStorageKeysPerItem)
+                                    throw new JsonException($"An item cannot have more than {maxStorageKeysPerItem} storage keys.");
+
+                                if (storageItemsCount >= maxStorageKeys)
+                                    throw new JsonException($"Access List cannot have more than {maxStorageKeys} storage keys.");
 
                                 UInt256 key = JsonSerializer.Deserialize<UInt256>(ref reader, options);
                                 storageKeys.Add(key);
                                 keyCount++;
+                                storageItemsCount++;
                             }
                         }
                         else
