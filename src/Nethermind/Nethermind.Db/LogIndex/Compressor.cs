@@ -9,7 +9,6 @@ using System.Threading.Tasks;
 using System.Threading.Tasks.Dataflow;
 using Nethermind.Core;
 using Nethermind.Core.Extensions;
-using Nethermind.Logging;
 
 namespace Nethermind.Db;
 
@@ -38,11 +37,9 @@ partial class LogIndexStorage
         // Used instead of a channel to prevent duplicates
         private readonly ConcurrentDictionary<byte[], bool> _compressQueue = new(Bytes.EqualityComparer);
         private readonly LogIndexStorage _storage;
-        private readonly ILogger _logger;
         private readonly ActionBlock<(int?, byte[])> _processing;
         private readonly ManualResetEventSlim _startEvent = new(false);
         private readonly ManualResetEventSlim _queueEmptyEvent = new(true);
-        private readonly CancellationTokenSource _cts = new();
 
         private int _processingCount = 0;
         private PostMergeProcessingStats _stats = new();
@@ -53,10 +50,9 @@ partial class LogIndexStorage
             return Interlocked.Exchange(ref _stats, new());
         }
 
-        public Compressor(LogIndexStorage storage, ILogger logger, int compressionDistance, int parallelism)
+        public Compressor(LogIndexStorage storage, int compressionDistance, int parallelism)
         {
             _storage = storage;
-            _logger = logger;
 
             MinLengthToCompress = compressionDistance * BlockNumSize;
 
@@ -91,14 +87,17 @@ partial class LogIndexStorage
 
         private void CompressValue(int? topicIndex, byte[] dbKey)
         {
-            if (_cts.IsCancellationRequested)
+            if (_storage.HasBackgroundError)
                 return;
 
             Interlocked.Increment(ref _processingCount);
 
             try
             {
-                _startEvent.Wait(_cts.Token);
+                _startEvent.Wait();
+
+                if (_storage.HasBackgroundError)
+                    return;
 
                 var execTimestamp = Stopwatch.GetTimestamp();
                 IDb db = _storage.GetDb(topicIndex);
@@ -126,7 +125,7 @@ partial class LogIndexStorage
                 SetKeyBlockNum(dbKeyComp[key.Length..], postfixBlock);
 
                 timestamp = Stopwatch.GetTimestamp();
-                dbValue = _storage.CompressDbValue(dbValue);
+                dbValue = _storage.CompressDbValue(dbKey, dbValue);
                 _stats.CompressingValue.Include(Stopwatch.GetElapsedTime(timestamp));
 
                 // Put compressed value at a new key and clear the uncompressed one
@@ -153,7 +152,6 @@ partial class LogIndexStorage
             catch (Exception ex)
             {
                 _storage.OnBackgroundError<Compressor>(ex);
-                _cts.Cancel();
             }
             finally
             {
@@ -170,16 +168,14 @@ partial class LogIndexStorage
 
         public Task StopAsync()
         {
-            _cts.Cancel();
             _processing.Complete();
-            return _processing.Completion;
+            return _processing.Completion; // Wait for the compression queue to finish
         }
 
         public void Dispose()
         {
             _startEvent.Dispose();
             _queueEmptyEvent.Dispose();
-            _cts.Dispose();
         }
     }
 

@@ -14,8 +14,6 @@ partial class LogIndexStorage
     // TODO: tests for MergeOperator specifically
     private class MergeOperator(LogIndexStorage storage, ICompressor compressor, int? topicIndex) : IMergeOperator
     {
-        private readonly CancellationTokenSource _cts = new();
-
         private LogIndexUpdateStats _stats = new(storage);
         public LogIndexUpdateStats Stats => _stats;
         public LogIndexUpdateStats GetAndResetStats() => Interlocked.Exchange(ref _stats, new(storage));
@@ -32,8 +30,7 @@ partial class LogIndexStorage
             LogIndexStorage.IsBlockNewer(next, last, last, isBackwardSync);
 
         // Validate we are merging non-intersecting segments - to prevent data corruption
-        // TODO: remove as it's just a time-consuming validation?
-        private static void AddEnsureSorted(ArrayPoolList<byte> result, ReadOnlySpan<byte> value, bool isBackwards)
+        private static void AddEnsureSorted(ReadOnlySpan<byte> key, ArrayPoolList<byte> result, ReadOnlySpan<byte> value, bool isBackwards)
         {
             if (value.Length == 0)
                 return;
@@ -42,7 +39,7 @@ partial class LogIndexStorage
             var lastBlock = result.Count > 0 ? GetValLastBlockNum(result.AsSpan()) : (int?)null;
 
             if (!IsBlockNewer(next: nextBlock, last: lastBlock, isBackwards))
-                throw ValidationException($"Invalid order during merge: {lastBlock} -> {nextBlock} (backwards: {isBackwards}).");
+                throw new LogIndexStateException($"Invalid order during merge: {lastBlock} -> {nextBlock} (backwards: {isBackwards}).", key);
 
             result.AddRange(value);
         }
@@ -50,7 +47,7 @@ partial class LogIndexStorage
         // TODO: avoid array copying in case of a single value?
         private ArrayPoolList<byte>? Merge(ReadOnlySpan<byte> key, RocksDbMergeEnumerator enumerator, bool isPartial)
         {
-            if (_cts.IsCancellationRequested)
+            if (storage.HasBackgroundError)
                 return null;
 
             var success = false;
@@ -103,11 +100,11 @@ partial class LogIndexStorage
                     if (truncateAggregate is { } truncateBlock)
                         operand = MergeOps.ApplyTo(operand, MergeOp.TruncateOp, truncateBlock, isBackwards);
 
-                    AddEnsureSorted(result, operand, isBackwards);
+                    AddEnsureSorted(key, result, operand, isBackwards);
                 }
 
                 if (result.Count % BlockNumSize != 0)
-                    throw ValidationException("Invalid data length post-merge.");
+                    throw new LogIndexStateException($"Invalid data length post-merge: {result.Count}.", key);
 
                 compressor.TryEnqueue(topicIndex, key, result.AsSpan());
 
@@ -117,8 +114,6 @@ partial class LogIndexStorage
             catch (Exception exception)
             {
                 storage.OnBackgroundError<MergeOperator>(exception);
-                _cts.Cancel();
-
                 throw;
             }
             finally

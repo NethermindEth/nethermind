@@ -59,6 +59,9 @@ partial class LogIndexStorage
         // Not thread-safe
         public bool TryEnqueue()
         {
+            if (_cts.IsCancellationRequested)
+                return false;
+
             _lastAtMin ??= _storage.GetMinBlockNumber();
             _lastAtMax ??= _storage.GetMaxBlockNumber();
 

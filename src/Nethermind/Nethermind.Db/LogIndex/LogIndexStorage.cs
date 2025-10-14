@@ -127,7 +127,8 @@ namespace Nethermind.Db
         private int?[] _topicMinBlocks;
         private int?[] _topicMaxBlocks;
 
-        private Exception _lastError;
+        private Exception? _lastBackgroundError;
+        public bool HasBackgroundError => _lastBackgroundError is not null;
 
         /// <summary>
         /// Whether a first batch was already added.
@@ -164,7 +165,7 @@ namespace Nethermind.Db
             _maxReorgDepth = config.MaxReorgDepth;
 
             _logger = logManager.GetClassLogger<LogIndexStorage>();
-            _compressor = new Compressor(this, _logger, config.CompressionDistance, config.CompressionParallelism);
+            _compressor = new Compressor(this, config.CompressionDistance, config.CompressionParallelism);
             _compactor = config.CompactionDistance < 0 ? new Compactor(this, _logger, config.CompactionDistance) : new NoOpCompactor();
 
             _mergeOperators = new()
@@ -345,7 +346,7 @@ namespace Nethermind.Db
         // TODO: stop the storage?
         private void OnBackgroundError<TCaller>(Exception error)
         {
-            _lastError = error;
+            _lastBackgroundError = error;
 
             if (_logger.IsError)
                 _logger.Error($"Error in {typeof(TCaller).Name}", error);
@@ -353,7 +354,7 @@ namespace Nethermind.Db
 
         private void ThrowIfHasError()
         {
-            if (_lastError is {} error)
+            if (_lastBackgroundError is {} error)
                 ExceptionDispatchInfo.Throw(error);
         }
 
@@ -429,7 +430,7 @@ namespace Nethermind.Db
             else
             {
                 if (isReorg)
-                    throw ValidationException("Backwards sync does not support reorgs.");
+                    throw new ArgumentException("Backwards sync does not support reorgs.");
                 if (batchMin < lastMin)
                     min = SaveRangeBound(dbBatch, SpecialKey.MinBlockNum, batchMin);
             }
@@ -961,7 +962,7 @@ namespace Nethermind.Db
                 var timestamp = Stopwatch.GetTimestamp();
 
                 if (newValue is null or [])
-                    throw ValidationException($"No block numbers to save for {Convert.ToHexString(key)}.");
+                    throw new LogIndexStateException("No block numbers to save.", key);
 
                 dbBatch.Merge(dbKey, newValue); // TODO: consider using DisableWAL, but check FlushOnTooManyWrites
                 stats?.CallingMerge.Include(Stopwatch.GetElapsedTime(timestamp));
@@ -1032,10 +1033,6 @@ namespace Nethermind.Db
             return buffer[..length];
         }
 
-        // used for data validation, TODO: introduce custom exception type
-        // TODO: include key value when available
-        private static Exception ValidationException(string message) => new InvalidOperationException(message);
-
         public static int ReadCompressionMarker(ReadOnlySpan<byte> source) => -BinaryPrimitives.ReadInt32LittleEndian(source);
         public static void WriteCompressionMarker(Span<byte> source, int len) => BinaryPrimitives.WriteInt32LittleEndian(source, -len);
 
@@ -1063,7 +1060,7 @@ namespace Nethermind.Db
         public static int[] ReadBlockNums(ReadOnlySpan<byte> source)
         {
             if (source.Length % 4 != 0)
-                throw ValidationException("Invalid length for array of block numbers.");
+                throw new LogIndexStateException("Invalid length for array of block numbers.");
 
             var result = new int[source.Length / BlockNumSize];
             for (var i = 0; i < source.Length; i += BlockNumSize)
@@ -1083,12 +1080,12 @@ namespace Nethermind.Db
 
         private static IDb GetMetaDb(IColumnsDb<LogIndexColumns> rootDb) => rootDb.GetColumnDb(LogIndexColumns.Addresses);
 
-        private byte[] CompressDbValue(Span<byte> data)
+        private byte[] CompressDbValue(ReadOnlySpan<byte> key, Span<byte> data)
         {
             if (IsCompressed(data, out _))
-                throw ValidationException("Data is already compressed.");
+                throw new LogIndexStateException("Attempt to compress already compressed data.", key);
             if (data.Length % BlockNumSize != 0)
-                throw ValidationException("Invalid data length.");
+                throw new LogIndexStateException($"Invalid length of data to compress: {data.Length}.", key);
 
             var buffer = Pool.Rent(data.Length + BlockNumSize);
 

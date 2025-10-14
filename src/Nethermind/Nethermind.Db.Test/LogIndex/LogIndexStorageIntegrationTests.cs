@@ -28,9 +28,8 @@ using static Nethermind.Db.LogIndexStorage;
 
 namespace Nethermind.Db.Test.LogIndex
 {
-    // TODO: test for different block ranges intersection
     // TODO: run internal state verification for all/some tests
-    // TODO: test for process crash via Thread.Abort
+    // TODO: test for saving intersecting block ranges
     // TODO: test for reorg out-of-order
     // TODO: test for concurrent reorg and backward sync
     // TODO: test for background job failure
