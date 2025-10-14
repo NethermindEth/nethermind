@@ -67,7 +67,6 @@ namespace Nethermind.Consensus.Processing
                     if (token.IsCancellationRequested) break;
 
                     _tracedAccessWorldState?.BlockAccessList.IncrementBlockAccessIndex();
-                    Console.WriteLine($"Building block {i}, balIndex={(_tracedAccessWorldState is null ? "null" : _tracedAccessWorldState.BlockAccessList.Index)}");
                     TxAction action = ProcessTransaction(block, currentTx, i++, receiptsTracer, processingOptions, consideredTx);
                     if (action == TxAction.Stop) break;
 
