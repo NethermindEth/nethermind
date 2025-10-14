@@ -21,6 +21,7 @@ public interface INodeSource
     static IEnumerable<string> ParseNodes(string data)
     {
         string[] nodes;
+
         try
         {
             nodes = JsonSerializer.Deserialize<string[]>(data) ?? [];
