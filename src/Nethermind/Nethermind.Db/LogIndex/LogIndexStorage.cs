@@ -6,6 +6,7 @@ using System.ComponentModel.DataAnnotations;
 using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
 using System.Linq;
+using System.Runtime.ExceptionServices;
 using System.Runtime.InteropServices;
 using System.Text;
 using System.Threading;
@@ -125,6 +126,8 @@ namespace Nethermind.Db
         private int? _addressMinBlock;
         private int?[] _topicMinBlocks;
         private int?[] _topicMaxBlocks;
+
+        private Exception _lastError;
 
         /// <summary>
         /// Whether a first batch was already added.
@@ -339,6 +342,15 @@ namespace Nethermind.Db
                 throw new InvalidOperationException("Log index storage is stopped.");
         }
 
+        // TODO: stop the storage?
+        private void OnError(Exception error) => _lastError = error;
+
+        private void ThrowIfHasError()
+        {
+            if (_lastError is {} error)
+                ExceptionDispatchInfo.Throw(error);
+        }
+
         async ValueTask IAsyncDisposable.DisposeAsync()
         {
             if (_disposed)
@@ -346,12 +358,13 @@ namespace Nethermind.Db
 
             await StopAsync();
 
+            _disposed = true;
+
             _setReceiptsSemaphores[false].Dispose();
             _setReceiptsSemaphores[true].Dispose();
+            _compressor.Dispose();
             DBColumns.DisposeItems();
             _rootDb.Dispose();
-
-            _disposed = true;
         }
 
         private static int? LoadRangeBound(IDb db, byte[] key)
@@ -611,6 +624,7 @@ namespace Nethermind.Db
         public LogIndexAggregate Aggregate(IReadOnlyList<BlockReceipts> batch, bool isBackwardSync, LogIndexUpdateStats? stats)
         {
             ThrowIfStopped();
+            ThrowIfHasError();
 
             if (!IsBlockNewer(batch[^1].BlockNumber, isBackwardSync))
                 return new(batch);
@@ -701,6 +715,7 @@ namespace Nethermind.Db
         public async Task ReorgFrom(BlockReceipts block)
         {
             ThrowIfStopped();
+            ThrowIfHasError();
 
             if (!WasInitialized)
                 return;
@@ -760,6 +775,7 @@ namespace Nethermind.Db
         public async Task CompactAsync(bool flush = false, int mergeIterations = 0, LogIndexUpdateStats? stats = null)
         {
             ThrowIfStopped();
+            ThrowIfHasError();
 
             if (_logger.IsInfo)
                 _logger.Info($"Log index forced compaction started, DB size: {GetDbSize()}");
@@ -794,6 +810,7 @@ namespace Nethermind.Db
         public async Task RecompactAsync(int minLengthToCompress = -1, LogIndexUpdateStats? stats = null)
         {
             ThrowIfStopped();
+            ThrowIfHasError();
 
             if (minLengthToCompress < 0)
                 minLengthToCompress = _compressor.MinLengthToCompress;
@@ -838,6 +855,7 @@ namespace Nethermind.Db
         public async Task SetReceiptsAsync(LogIndexAggregate aggregate, bool isBackwardSync, LogIndexUpdateStats? stats = null)
         {
             ThrowIfStopped();
+            ThrowIfHasError();
 
             long totalTimestamp = Stopwatch.GetTimestamp();
 

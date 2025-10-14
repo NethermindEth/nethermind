@@ -18,7 +18,7 @@ partial class LogIndexStorage
     /// <summary>
     /// Does background compression for keys with the number of blocks above the threshold.
     /// </summary>
-    private interface ICompressor
+    private interface ICompressor: IDisposable
     {
         int MinLengthToCompress { get; }
         PostMergeProcessingStats GetAndResetStats();
@@ -41,7 +41,8 @@ partial class LogIndexStorage
         private readonly ILogger _logger;
         private readonly ActionBlock<(int?, byte[])> _processing;
         private readonly ManualResetEventSlim _startEvent = new(false);
-        private readonly ManualResetEventSlim _queueEmptyEvent = new(true); // TODO: fix event being used for both blocks
+        private readonly ManualResetEventSlim _queueEmptyEvent = new(true);
+        private readonly CancellationTokenSource _cts = new();
 
         private PostMergeProcessingStats _stats = new();
 
@@ -87,19 +88,14 @@ partial class LogIndexStorage
         public Task WaitUntilEmptyAsync(TimeSpan waitTime, CancellationToken cancellationToken) =>
             _queueEmptyEvent.WaitHandle.WaitOneAsync(waitTime, cancellationToken);
 
-        public void Start() => _startEvent.Set();
-
-        public Task StopAsync()
-        {
-            _processing.Complete();
-            return _processing.Completion;
-        }
-
         private void CompressValue(int? topicIndex, byte[] dbKey)
         {
             try
             {
-                _startEvent.Wait();
+                if (_cts.IsCancellationRequested)
+                    return;
+
+                _startEvent.Wait(_cts.Token);
 
                 var execTimestamp = Stopwatch.GetTimestamp();
                 IDb db = _storage.GetDb(topicIndex);
@@ -151,9 +147,13 @@ partial class LogIndexStorage
 
                 _stats.Execution.Include(Stopwatch.GetElapsedTime(execTimestamp));
             }
-            catch (Exception ex) // TODO: forward any error to storage or caller
+            catch (Exception ex)
             {
-                if (_logger.IsError) _logger.Error("Error during post-merge compression.", ex);
+                if (_logger.IsError)
+                    _logger.Error("Error during post-merge compression.", ex);
+
+                _storage.OnError(ex);
+                _cts.Cancel();
             }
             finally
             {
@@ -163,9 +163,25 @@ partial class LogIndexStorage
                     _queueEmptyEvent.Set();
             }
         }
+
+        public void Start() => _startEvent.Set();
+
+        public Task StopAsync()
+        {
+            _cts.Cancel();
+            _processing.Complete();
+            return _processing.Completion;
+        }
+
+        public void Dispose()
+        {
+            _startEvent.Dispose();
+            _queueEmptyEvent.Dispose();
+            _cts.Dispose();
+        }
     }
 
-    public class NoOpCompressor : ICompressor
+    public sealed class NoOpCompressor : ICompressor
     {
         public int MinLengthToCompress => 256;
         public PostMergeProcessingStats Stats { get; } = new();
@@ -175,5 +191,6 @@ partial class LogIndexStorage
         public Task WaitUntilEmptyAsync(TimeSpan waitTime, CancellationToken cancellationToken) => Task.CompletedTask;
         public void Start() { }
         public Task StopAsync() => Task.CompletedTask;
+        public void Dispose() { }
     }
 }

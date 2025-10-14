@@ -35,7 +35,7 @@ partial class LogIndexStorage
 
         // TODO: simplify concurrency handling
         private readonly AutoResetEvent _runOnceEvent = new(false);
-        private readonly CancellationTokenSource _cancellationSource = new();
+        private readonly CancellationTokenSource _cts = new();
         private readonly ManualResetEvent _compactionStartedEvent = new(false);
         private readonly ManualResetEvent _compactionEndedEvent = new(true);
         private readonly Task _compactionTask;
@@ -68,7 +68,6 @@ partial class LogIndexStorage
             if (_storage.GetMaxBlockNumber() is { } storageMax && storageMax > _lastAtMax)
                 uncompacted += storageMax - _lastAtMax.Value;
 
-            // TODO: cover other cases - space usage, RocksDB stats?
             if (uncompacted < _compactionDistance)
                 return false;
 
@@ -82,24 +81,24 @@ partial class LogIndexStorage
 
         public async Task StopAsync()
         {
-            await _cancellationSource.CancelAsync();
+            await _cts.CancelAsync();
             await _compactionEndedEvent.WaitOneAsync(CancellationToken.None);
         }
 
         public async Task<CompactingStats> ForceAsync()
         {
             // Wait for the previous one to finish
-            await _compactionEndedEvent.WaitOneAsync(_cancellationSource.Token);
+            await _compactionEndedEvent.WaitOneAsync(_cts.Token);
 
             _runOnceEvent.Set();
-            await _compactionStartedEvent.WaitOneAsync(100, _cancellationSource.Token);
-            await _compactionEndedEvent.WaitOneAsync(_cancellationSource.Token);
+            await _compactionStartedEvent.WaitOneAsync(100, _cts.Token);
+            await _compactionEndedEvent.WaitOneAsync(_cts.Token);
             return _stats;
         }
 
         private async Task DoCompactAsync()
         {
-            CancellationToken cancellation = _cancellationSource.Token;
+            CancellationToken cancellation = _cts.Token;
             while (!cancellation.IsCancellationRequested)
             {
                 try
@@ -123,10 +122,13 @@ partial class LogIndexStorage
                 {
                     return;
                 }
-                catch (Exception ex) // TODO: forward any error to storage or caller
+                catch (Exception ex)
                 {
                     if (_logger.IsError)
                         _logger.Error("Failed to compact log index", ex);
+
+                    _storage.OnError(ex);
+                    await _cts.CancelAsync();
                 }
                 finally
                 {
