@@ -99,12 +99,10 @@ public partial class BlockProcessor(
 
         blockTransactionsExecutor.SetBlockExecutionContext(new BlockExecutionContext(block.Header, spec));
 
-        _logger.Error($"Running block: {block.Number}, {block.Transactions.Length}");
-        _stateProvider.Commit(spec, commitRoots: true); // This commit?
-        _logger.Error($"Before blockhash: {_stateProvider.StateRoot}");
         blockHashStore.ApplyBlockhashStateChanges(header, spec);
 
         StoreBeaconRoot(block, spec);
+        _stateProvider.Commit(spec, commitRoots: false);
 
         TxReceipt[] receipts = blockTransactionsExecutor.ProcessTransactions(block, options, ReceiptsTracer, token);
 
