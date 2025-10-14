@@ -1084,13 +1084,18 @@ namespace Nethermind.Db
             if (data.Length % BlockNumSize != 0)
                 throw ValidationException("Invalid data length.");
 
-            // TODO: use same array as destination if possible
-            Span<byte> buffer = new byte[data.Length + BlockNumSize];
-            WriteCompressionMarker(buffer, data.Length / BlockNumSize);
-            ReadOnlySpan<byte> compressed = Compress(data, buffer[BlockNumSize..]);
+            var buffer = Pool.Rent(data.Length + BlockNumSize);
 
-            compressed = buffer[..(BlockNumSize + compressed.Length)];
-            return compressed.ToArray();
+            try
+            {
+                WriteCompressionMarker(buffer, data.Length / BlockNumSize);
+                var compressedLen = Compress(data, buffer.AsSpan(BlockNumSize..)).Length;
+                return buffer[..(BlockNumSize + compressedLen)];
+            }
+            finally
+            {
+                Pool.Return(buffer);
+            }
         }
 
         private int[] DecompressDbValue(ReadOnlySpan<byte> data)
