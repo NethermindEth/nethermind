@@ -9,6 +9,7 @@ using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Serialization.Rlp;
+using Nethermind.Specs.ChainSpecStyle;
 using Nethermind.Xdc.RLP;
 using Nethermind.Xdc.Spec;
 using Nethermind.Xdc.Types;
@@ -23,6 +24,45 @@ using System.Threading.Tasks;
 namespace Nethermind.Xdc.Test;
 internal class EpochSwitchManagerTests
 {
+    private static XdcBlockHeader CreateEpochSwitchBlock(IXdcReleaseSpec spec, ulong round, int blockNumber, Hash256 hash)
+    {
+        XdcBlockHeader header = Build.A.XdcBlockHeader()
+            .TestObject;
+        header.Hash = hash;
+        header.Number = (long)blockNumber + 1;
+        QuorumCertificate qc = new QuorumCertificate(new BlockRoundInfo(hash, round - 1, header.Number), [TestItem.RandomSignatureA, TestItem.RandomSignatureB], (ulong)spec.Gap);
+        ExtraFieldsV2 extraFieldsV2 = new ExtraFieldsV2((ulong)round + (ulong)spec.EpochLength, qc);
+        header.ExtraConsensusData = extraFieldsV2;
+        return header;
+    }
+
+    private static XdcBlockHeader CreateV2RegenesisBlock(IXdcReleaseSpec spec)
+    {
+        Address[] signers   = [TestItem.AddressA, TestItem.AddressB];
+
+        var header = (XdcBlockHeader)Build.A.XdcBlockHeader()
+            .WithNumber((long)spec.SwitchBlock)
+            .WithExtraData(FillExtraDataForTests(signers)) //2 master nodes
+            .WithParentHash(Keccak.EmptyTreeHash)
+            .TestObject;
+
+        header.PenaltiesAddress = [TestItem.AddressC];
+        return header;
+    }
+
+    private static byte[] FillExtraDataForTests(Address[] nextEpochCandidates)
+    {
+        var length = Address.Size * nextEpochCandidates?.Length ?? 0;
+        var extraData = new byte[XdcConstants.ExtraVanity + length + XdcConstants.ExtraSeal];
+
+        for (int i = 0; i < nextEpochCandidates!.Length; i++)
+        {
+            Array.Copy(nextEpochCandidates[i].Bytes, 0, extraData, XdcConstants.ExtraVanity + i * Address.Size, Address.Size);
+        }
+
+        return extraData;
+    }
+
     private IEpochSwitchManager _epochSwitchManager;
     private IBlockTree _tree = NSubstitute.Substitute.For<IBlockTree>();
     private ISpecProvider _config = NSubstitute.Substitute.For<ISpecProvider>();
@@ -48,7 +88,7 @@ internal class EpochSwitchManagerTests
             V2Configs = [new V2ConfigParams()]
         };
 
-        _config.GetSpec(Arg.Any<ForkActivation>()).Returns(releaseSpec);
+        _config.GetSpecInternal(Arg.Any<ForkActivation>()).Returns(releaseSpec);
 
         XdcBlockHeader header = Build.A.XdcBlockHeader()
             .TestObject;
@@ -76,7 +116,7 @@ internal class EpochSwitchManagerTests
             V2Configs = [new V2ConfigParams()]
         };
 
-        _config.GetSpec(Arg.Any<ForkActivation>()).Returns(releaseSpec);
+        _config.GetSpecInternal(Arg.Any<ForkActivation>()).Returns(releaseSpec);
 
         XdcBlockHeader header = Build.A.XdcBlockHeader()
             .TestObject;
@@ -108,7 +148,7 @@ internal class EpochSwitchManagerTests
             V2Configs = [new V2ConfigParams()]
         };
 
-        _config.GetSpec(Arg.Any<ForkActivation>()).Returns(releaseSpec);
+        _config.GetSpecInternal(Arg.Any<ForkActivation>()).Returns(releaseSpec);
 
 
         XdcBlockHeader parentHeader = Build.A.XdcBlockHeader()
@@ -151,7 +191,7 @@ internal class EpochSwitchManagerTests
             V2Configs = [new V2ConfigParams()],
             SwitchEpoch = 2
         };
-        _config.GetSpec(Arg.Any<ForkActivation>()).Returns(releaseSpec);
+        _config.GetSpecInternal(Arg.Any<ForkActivation>()).Returns(releaseSpec);
         XdcBlockHeader parentHeader = Build.A.XdcBlockHeader()
             .TestObject;
         parentHeader.Number = (long)switchBlock - 1;
@@ -186,7 +226,7 @@ internal class EpochSwitchManagerTests
             SwitchBlock = switchBlock,
             V2Configs = [new V2ConfigParams()]
         };
-        _config.GetSpec(Arg.Any<ForkActivation>()).Returns(releaseSpec);
+        _config.GetSpecInternal(Arg.Any<ForkActivation>()).Returns(releaseSpec);
         XdcBlockHeader parentHeader = Build.A.XdcBlockHeader()
             .TestObject;
         parentHeader.Number = (long)switchBlock - 1;
@@ -221,6 +261,7 @@ internal class EpochSwitchManagerTests
             V2Configs = [new V2ConfigParams()]
         };
         _config.GetSpec(Arg.Any<ForkActivation>()).Returns(releaseSpec);
+
         XdcBlockHeader parentHeader = Build.A.XdcBlockHeader()
             .TestObject;
         parentHeader.Hash = headerHash;
@@ -245,7 +286,7 @@ internal class EpochSwitchManagerTests
             SwitchBlock = switchBlock,
             V2Configs = [new V2ConfigParams()]
         };
-        _config.GetSpec(Arg.Any<ForkActivation>()).Returns(releaseSpec);
+        _config.GetSpecInternal(Arg.Any<ForkActivation>()).Returns(releaseSpec);
         XdcBlockHeader parentHeader = Build.A.XdcBlockHeader()
             .TestObject;
         parentHeader.Hash = headerHash;
@@ -273,7 +314,7 @@ internal class EpochSwitchManagerTests
             SwitchBlock = switchBlock,
             V2Configs = [new V2ConfigParams()]
         };
-        _config.GetSpec(Arg.Any<ForkActivation>()).Returns(releaseSpec);
+        _config.GetSpecInternal(Arg.Any<ForkActivation>()).Returns(releaseSpec);
         XdcBlockHeader parentHeader = Build.A.XdcBlockHeader()
             .TestObject;
         parentHeader.Hash = headerHash;
@@ -304,7 +345,7 @@ internal class EpochSwitchManagerTests
             V2Configs = [new V2ConfigParams()],
             SwitchEpoch = 2
         };
-        _config.GetSpec(Arg.Any<ForkActivation>()).Returns(releaseSpec);
+        _config.GetSpecInternal(Arg.Any<ForkActivation>()).Returns(releaseSpec);
         XdcBlockHeader parentHeader = Build.A.XdcBlockHeader()
             .TestObject;
         parentHeader.Hash = headerHash;
@@ -332,10 +373,11 @@ internal class EpochSwitchManagerTests
         XdcReleaseSpec releaseSpec = new()
         {
             EpochLength = (int)epochLength,
-            SwitchBlock = switchBlock,
+            SwitchBlock = 0,
             V2Configs = [new V2ConfigParams()]
         };
         _config.GetSpec(Arg.Any<ForkActivation>()).Returns(releaseSpec);
+
         XdcBlockHeader parentHeader = Build.A.XdcBlockHeader()
             .TestObject;
         parentHeader.Hash = headerHash;
@@ -356,27 +398,17 @@ internal class EpochSwitchManagerTests
         var epochLength = 4ul;
         var parentHash = Keccak.EmptyTreeHash;
         _tree.FindHeader(parentHash).Returns((XdcBlockHeader?)null);
+
         XdcReleaseSpec releaseSpec = new()
         {
             EpochLength = (int)epochLength,
             SwitchBlock = switchBlock,
             V2Configs = [new V2ConfigParams()]
         };
-        _config.GetSpec(Arg.Any<ForkActivation>()).Returns(releaseSpec);
-        var result = _epochSwitchManager.GetEpochSwitchInfo(null, parentHash);
+        _config.GetSpecInternal(Arg.Any<ForkActivation>()).Returns(releaseSpec);
+
+        var result = _epochSwitchManager.GetEpochSwitchInfo(parentHash);
         Assert.That(result, Is.Null);
-    }
-    private byte[] FillExtraDataForTests(Address[] nextEpochCandidates)
-    {
-        var length = Address.Size * nextEpochCandidates?.Length ?? 0;
-        var extraData = new byte[XdcConstants.ExtraVanity + length + XdcConstants.ExtraSeal];
-
-        for (int i = 0; i < nextEpochCandidates!.Length; i++)
-        {
-            Array.Copy(nextEpochCandidates[i].Bytes, 0, extraData, XdcConstants.ExtraVanity + i * Address.Size, Address.Size);
-        }
-
-        return extraData;
     }
 
     [Test]
@@ -389,7 +421,7 @@ internal class EpochSwitchManagerTests
         ulong expectedEpochNumber = blockNumber / epochLength;
 
         Address[] signers = [TestItem.AddressA, TestItem.AddressB];
-        EpochSwitchInfo expected = new(signers, [], new BlockRoundInfo(hash256, 0, (long)blockNumber));
+        EpochSwitchInfo expected = new(signers, [], [], new BlockRoundInfo(hash256, 0, (long)blockNumber));
 
         XdcReleaseSpec releaseSpec = new()
         {
@@ -397,7 +429,7 @@ internal class EpochSwitchManagerTests
             SwitchBlock = blockNumber,
             V2Configs = [new V2ConfigParams()]
         };
-        _config.GetSpec(Arg.Any<ForkActivation>()).Returns(releaseSpec);
+        _config.GetSpecInternal(Arg.Any<ForkActivation>()).Returns(releaseSpec);
 
         XdcBlockHeader header = Build.A.XdcBlockHeader()
             .TestObject;
@@ -406,10 +438,153 @@ internal class EpochSwitchManagerTests
         header.ExtraData = FillExtraDataForTests([TestItem.AddressA, TestItem.AddressB]);
 
         _tree.FindHeader((long)blockNumber).Returns(header);
-        var result = _epochSwitchManager.GetEpochSwitchInfo(header, header.Hash);
+        var result = _epochSwitchManager.GetEpochSwitchInfo(header);
         result.Should().BeEquivalentTo(expected);
     }
 
+    [Test]
+    public void GetEpochSwitchInfo_ShouldReturnEpochSwitchIfBlockIsAtEpoch()
+    {
+        long blockNumber = 10;
+        ulong epochLength = 5;
+        ulong expectedEpochNumber = (ulong)blockNumber / epochLength;
+
+        EpochSwitchInfo expected = new([TestItem.AddressA, TestItem.AddressB], [], [TestItem.AddressC], new BlockRoundInfo(TestItem.KeccakA, 0, blockNumber));
+
+        XdcReleaseSpec releaseSpec = new()
+        {
+            EpochLength = (int)epochLength,
+            SwitchBlock = (ulong)blockNumber,
+            V2Configs = [new V2ConfigParams()]
+        };
+        _config.GetSpecInternal(Arg.Any<ForkActivation>()).Returns(releaseSpec);
+
+        XdcBlockHeader header = Build.A.XdcBlockHeader()
+            .TestObject;
+        header.Number = (long)blockNumber;
+        header.ExtraData = FillExtraDataForTests([TestItem.AddressA, TestItem.AddressB]);
+        header.Hash = TestItem.KeccakA;
+        header.PenaltiesAddress = [TestItem.AddressC];
+
+        _snapshotManager.GetSnapshot(TestItem.KeccakA).Returns(new Snapshot((long)blockNumber, TestItem.KeccakA, [TestItem.AddressA, TestItem.AddressB, TestItem.AddressC]));
+        _tree.FindHeader((long)blockNumber).Returns(header);
+        _tree.FindHeader(header.Hash).Returns(header);
+
+        var result = _epochSwitchManager.GetEpochSwitchInfo(header.Hash);
+        Assert.That(result, Is.Not.Null);
+        result.Should().BeEquivalentTo(expected);
+    }
+
+    [Test]
+    public void GetEpochSwitchInfo_ShouldReturnEpochNumbersIfParentBlockIsAtEpoch()
+    {
+        long blockNumber = 10;
+        ulong epochLength = 5;
+        ulong expectedEpochNumber = (ulong)blockNumber / epochLength;
+
+        EpochSwitchInfo expected = new([TestItem.AddressA, TestItem.AddressB], [TestItem.AddressC], [TestItem.AddressD], new BlockRoundInfo(TestItem.KeccakA, 0, blockNumber));
+
+        XdcReleaseSpec releaseSpec = new()
+        {
+            EpochLength = (int)epochLength,
+            SwitchBlock = (ulong)blockNumber-1,
+            V2Configs = [new V2ConfigParams()]
+        };
+        _config.GetSpecInternal(Arg.Any<ForkActivation>()).Returns(releaseSpec);
+
+        // epoch switch block
+        XdcBlockHeader parentHeader = Build.A.XdcBlockHeader()
+            .TestObject;
+        parentHeader.Number = (long)blockNumber;
+        parentHeader.ExtraData = FillExtraDataForTests([TestItem.AddressA, TestItem.AddressB]);
+        parentHeader.Hash = TestItem.KeccakA;
+        parentHeader.PenaltiesAddress = [TestItem.AddressD];
+
+        // not epoch switch block
+        XdcBlockHeader header = Build.A.XdcBlockHeader()
+            .TestObject;
+        header.ParentHash = parentHeader.Hash;
+        header.Number = (long)blockNumber + 1;
+        header.Hash = TestItem.KeccakB;
+
+        _snapshotManager.GetSnapshot(TestItem.KeccakA).Returns(new Snapshot((long)blockNumber, TestItem.KeccakA, [TestItem.AddressA, TestItem.AddressB, TestItem.AddressC]));
+        _tree.FindHeader((long)blockNumber).Returns(parentHeader);
+        _tree.FindHeader(header.ParentHash).Returns(parentHeader);
+        _tree.FindHeader((long)blockNumber + 1).Returns(header);
+        _tree.FindHeader(header.Hash).Returns(header);
+
+        var result = _epochSwitchManager.GetEpochSwitchInfo(header.Hash);
+        Assert.That(result, Is.Not.Null);
+        result.Should().BeEquivalentTo(expected);
+    }
+
+    [Test]
+    public void GetEpochSwitchInfo_ShouldReturnNullIfBlockIsAtEpochAndSnapshotIsNull()
+    {
+        ulong blockNumber = 10;
+        ulong epochLength = 5;
+        ulong expectedEpochNumber = blockNumber / epochLength;
+        XdcReleaseSpec releaseSpec = new()
+        {
+            EpochLength = (int)epochLength,
+            SwitchBlock = blockNumber,
+            V2Configs = [new V2ConfigParams()]
+        };
+        _config.GetSpecInternal(Arg.Any<ForkActivation>()).Returns(releaseSpec);
+
+        XdcBlockHeader header = Build.A.XdcBlockHeader()
+            .TestObject;
+        header.Number = (long)blockNumber;
+        header.ExtraData = FillExtraDataForTests([TestItem.AddressA, TestItem.AddressB]);
+        header.Hash = TestItem.KeccakA;
+
+        _snapshotManager.GetSnapshot(TestItem.KeccakA).Returns((Snapshot)null!);
+
+        _tree.FindHeader((long)blockNumber).Returns(header);
+        _tree.FindHeader(header.Hash).Returns(header);
+
+        var result = _epochSwitchManager.GetEpochSwitchInfo(header.Hash);
+        Assert.That(result, Is.Null);
+    }
+
+    [Test]
+    public void GetCurrentEpochNumbers_ShouldReturnEpochNumbersIfAtEpoch()
+    {
+        long switchRound = 10;
+        long switchEpoch = 5;
+        long blockNumber = 11;
+        long epochLength = 5;
+        long expectedEpochNumber = blockNumber / epochLength;
+
+        XdcReleaseSpec releaseSpec = new()
+        {
+            EpochLength = (int)epochLength,
+            SwitchBlock = (ulong)0,
+            SwitchEpoch = (int)switchEpoch,
+            V2Configs = [new V2ConfigParams()]
+        };
+        _config.GetSpecInternal(Arg.Any<ForkActivation>()).Returns(releaseSpec);
+
+        // epoch switch block
+        XdcBlockHeader parentHeader = CreateEpochSwitchBlock(releaseSpec, (ulong)switchEpoch, (int)switchRound, TestItem.KeccakA);
+        // not epoch switch block
+        XdcBlockHeader header = Build.A.XdcBlockHeader()
+            .TestObject;
+        header.ParentHash = parentHeader.Hash;
+        header.Number = blockNumber;
+        header.Hash = TestItem.KeccakB;
+
+        _snapshotManager.GetSnapshot(TestItem.KeccakA).Returns(new Snapshot((long)blockNumber, TestItem.KeccakA, [TestItem.AddressA, TestItem.AddressB, TestItem.AddressC]));
+        _tree.FindHeader((long)blockNumber).Returns(header);
+        _tree.FindHeader(header.Hash).Returns(header);
+        _tree.FindHeader((long)blockNumber - 1).Returns(parentHeader);
+        _tree.FindHeader(parentHeader.Hash!).Returns(parentHeader);
+
+        var result = _epochSwitchManager.GetCurrentEpochNumbers((ulong)header.Number);
+        Assert.That(result, Is.Not.Null);
+        Assert.That(result?.epochNumber, Is.EqualTo(switchEpoch));
+        Assert.That(result?.currentCheckpointNumber, Is.EqualTo(blockNumber));
+    }
 
     [Test]
     public void GetCurrentEpochNumbers_ShouldReturnNullIfBlockNumberIsNotInTree()
@@ -423,38 +598,5 @@ internal class EpochSwitchManagerTests
         Assert.That(result, Is.Null);
     }
 
-    [Test]
-    public void GetCurrentEpochNumbers_ShouldReturnEpochNumbersIfBlockIsAtEpoch()
-    {
-        ulong blockNumber = 10;
-        ulong epochLength = 5;
-        ulong expectedEpochNumber = blockNumber / epochLength;
-        XdcReleaseSpec releaseSpec = new()
-        {
-            EpochLength = (int)epochLength,
-            SwitchBlock = blockNumber,
-            V2Configs = [new V2ConfigParams()]
-        };
-        _config.GetSpec(Arg.Any<ForkActivation>()).Returns(releaseSpec);
-        XdcBlockHeader parentHeader = Build.A.XdcBlockHeader()
-            .TestObject;
-        parentHeader.Number = (long)blockNumber - 1;
 
-        XdcBlockHeader header = Build.A.XdcBlockHeader()
-            .TestObject;
-        header.Number = (long)blockNumber;
-
-
-        _tree.FindHeader((long)blockNumber).Returns(header);
-        var result = _epochSwitchManager.GetCurrentEpochNumbers(blockNumber);
-        Assert.That(result, Is.Not.Null);
-        Assert.That(result.Value.epochNumber, Is.EqualTo(expectedEpochNumber));
-    }
-
-
-    [Test]
-    public void GetCurrentEpochNumbers_ShouldReturnNullIfBlockIsNotAtEpoch()
-    {
-
-    }
 }

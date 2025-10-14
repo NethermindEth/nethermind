@@ -125,7 +125,7 @@ internal static class Utils
         Address[] masterNodes = new Address[(header.ExtraData.Length - XdcConstants.ExtraVanity - XdcConstants.ExtraSeal) / Address.Size];
         for (int i = 0; i < masterNodes.Length; i++)
         {
-            masterNodes[i] = new Address(header.Validators.AsSpan(XdcConstants.ExtraVanity + i * Address.Size, Address.Size));
+            masterNodes[i] = new Address(header.ExtraData.AsSpan(XdcConstants.ExtraVanity + i * Address.Size, Address.Size));
         }
         return masterNodes;
     }

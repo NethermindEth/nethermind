@@ -183,7 +183,8 @@ internal class XdcSealValidatorTests
             .CalculateNextEpochMasternodes(Arg.Any<XdcBlockHeader>(), Arg.Any<IXdcReleaseSpec>())
             .Returns((epochCandidates.ToArray(), penalties.ToArray()));
         IEpochSwitchManager epochSwitchManager = Substitute.For<IEpochSwitchManager>();
-        epochSwitchManager.GetEpochSwitchInfo(Arg.Any<XdcBlockHeader>(), Arg.Any<Hash256>()).Returns(new EpochSwitchInfo(epochCandidates.ToArray(), [], new BlockRoundInfo(Hash256.Zero, 0, 0)));
+        epochSwitchManager.GetEpochSwitchInfo(Arg.Any<XdcBlockHeader>()).Returns(new EpochSwitchInfo(epochCandidates.ToArray(), [], [], new BlockRoundInfo(Hash256.Zero, 0, 0)));
+        epochSwitchManager.GetEpochSwitchInfo(Arg.Any<Hash256>()).Returns(new EpochSwitchInfo(epochCandidates.ToArray(), [], [], new BlockRoundInfo(Hash256.Zero, 0, 0)));
         XdcSealValidator validator = new XdcSealValidator(snapshotManager, epochSwitchManager, specProvider);
 
         Assert.That(validator.ValidateParams(parent, header), Is.EqualTo(expected));

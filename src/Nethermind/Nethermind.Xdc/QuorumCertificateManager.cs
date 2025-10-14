@@ -147,7 +147,7 @@ internal class QuorumCertificateManager : IQuorumCertificateManager
         if (qc.Signatures is null)
             throw new ArgumentException("QC must contain vote signatures.", nameof(qc));
 
-        EpochSwitchInfo epochSwitchInfo = _epochSwitchManager.GetEpochSwitchInfo(parentHeader, qc.ProposedBlockInfo.Hash);
+        EpochSwitchInfo epochSwitchInfo = _epochSwitchManager.GetEpochSwitchInfo(parentHeader) ?? _epochSwitchManager.GetEpochSwitchInfo(qc.ProposedBlockInfo.Hash);
         if (epochSwitchInfo is null)
         {
             error = $"Epoch switch info not found for header {parentHeader?.ToString(Format.FullHashAndNumber)}";

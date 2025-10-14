@@ -98,7 +98,7 @@ internal class XdcSealValidator(ISnapshotManager snapshotManager, IEpochSwitchMa
                 return false;
             }
             //TODO get masternodes from snapshot
-            EpochSwitchInfo epochSwitchInfo = epochSwitchManager.GetEpochSwitchInfo(xdcHeader, xdcHeader.ParentHash);
+            EpochSwitchInfo epochSwitchInfo = epochSwitchManager.GetEpochSwitchInfo(xdcHeader);
             masternodes = epochSwitchInfo.Masternodes;
             if (masternodes is null || masternodes.Length == 0)
                 throw new InvalidOperationException($"Snap shot returned no master nodes for header \n{xdcHeader.ToString()}");
