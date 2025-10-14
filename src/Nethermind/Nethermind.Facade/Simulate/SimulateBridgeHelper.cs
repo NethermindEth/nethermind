@@ -50,6 +50,7 @@ public class SimulateBridgeHelper(IBlocksConfig blocksConfig, ISpecProvider spec
         {
             stateProvider.CreateAccountIfNotExists(address, 0, 0);
         }
+        stateProvider.Commit(releaseSpec, commitRoots: false);
     }
 
     public SimulateOutput<TTrace> TrySimulate<TTrace>(
@@ -130,7 +131,6 @@ public class SimulateBridgeHelper(IBlocksConfig blocksConfig, ISpecProvider spec
                 env.SimulateRequestState.Validate = payload.Validation;
                 env.SimulateRequestState.BlobBaseFeeOverride = spec.IsEip4844Enabled ? blockCall.BlockOverrides?.BlobBaseFee : null;
 
-                _logger.Error($"Calling process");
                 (Block processedBlock, TxReceipt[] receipts) = env.BlockProcessor.ProcessOne(
                     callBlock,
                     processingFlags,
