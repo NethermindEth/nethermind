@@ -114,8 +114,6 @@ public class LogIndexBuilderTests
         }
     }
 
-    private static readonly TimeSpan WaitTime = TimeSpan.FromSeconds(60);
-
     private const int MaxReorgDepth = 8;
     private const int MaxBlock = 100;
     private const int MaxSyncBlock = MaxBlock - MaxReorgDepth;
@@ -168,6 +166,7 @@ public class LogIndexBuilderTests
 
     [Test]
     [Combinatorial]
+    [CancelAfter(60_000)]
     public async Task Should_SyncToBarrier(
         [Values(1, 10)] int minBarrier,
         [Values(1, 16, MaxBlock)] int batchSize,
@@ -178,7 +177,8 @@ public class LogIndexBuilderTests
             new[] { MaxSyncBlock / 2, MaxSyncBlock },
             new[] { 5, MaxSyncBlock - 5 }
         )]
-        int[] synced
+        int[] synced,
+        CancellationToken cancellation
     )
     {
         _config.MaxBatchSize = batchSize;
@@ -194,7 +194,7 @@ public class LogIndexBuilderTests
 
         LogIndexBuilder builder = GetService(storage);
 
-        Task completion = WaitBlocksAsync(storage, expectedMin, MaxSyncBlock);
+        Task completion = WaitBlocksAsync(storage, expectedMin, MaxSyncBlock, cancellation);
         await builder.StartAsync();
         await completion;
 
@@ -251,33 +251,34 @@ public class LogIndexBuilderTests
         }
     }
 
-    private static Task WaitMaxBlockAsync(TestLogIndexStorage storage, int blockNumber)
+    private static Task WaitMaxBlockAsync(TestLogIndexStorage storage, int blockNumber, CancellationToken cancellation)
     {
         if (storage.GetMaxBlockNumber() >= blockNumber)
             return Task.CompletedTask;
 
         return Wait.ForEventCondition<int>(
-            WaitTime,
+            cancellation,
             e => storage.NewMaxBlockNumber += e,
             e => storage.NewMaxBlockNumber -= e,
             e => e >= blockNumber
         );
     }
 
-    private static Task WaitMinBlockAsync(TestLogIndexStorage storage, int blockNumber)
+    private static Task WaitMinBlockAsync(TestLogIndexStorage storage, int blockNumber, CancellationToken cancellation)
     {
         if (storage.GetMinBlockNumber() <= blockNumber)
             return Task.CompletedTask;
 
         return Wait.ForEventCondition<int>(
-            WaitTime,
+            cancellation,
             e => storage.NewMinBlockNumber += e,
             e => storage.NewMinBlockNumber -= e,
             e => e <= blockNumber
         );
     }
 
-    private static Task WaitBlocksAsync(TestLogIndexStorage storage, int minBlock, int maxBlock) => Task.WhenAll(
-        WaitMinBlockAsync(storage, minBlock), WaitMaxBlockAsync(storage, maxBlock)
+    private static Task WaitBlocksAsync(TestLogIndexStorage storage, int minBlock, int maxBlock, CancellationToken cancellation) => Task.WhenAll(
+        WaitMinBlockAsync(storage, minBlock, cancellation),
+        WaitMaxBlockAsync(storage, maxBlock, cancellation)
     );
 }
