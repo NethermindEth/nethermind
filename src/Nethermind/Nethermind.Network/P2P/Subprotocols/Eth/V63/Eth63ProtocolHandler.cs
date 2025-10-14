@@ -56,9 +56,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V63
             switch (message.PacketType)
             {
                 case Eth63MessageCode.GetReceipts:
-                    GetReceiptsMessage getReceiptsMessage = Deserialize<GetReceiptsMessage>(message.Content);
-                    ReportIn(getReceiptsMessage, size);
-                    BackgroundTaskScheduler.ScheduleSyncServe(getReceiptsMessage, Handle);
+                    HandleInBackground<GetReceiptsMessage, ReceiptsMessage>(message, Handle);
                     break;
                 case Eth63MessageCode.Receipts:
                     ReceiptsMessage receiptsMessage = Deserialize<ReceiptsMessage>(message.Content);
@@ -66,9 +64,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V63
                     Handle(receiptsMessage, size);
                     break;
                 case Eth63MessageCode.GetNodeData:
-                    GetNodeDataMessage getNodeDataMessage = Deserialize<GetNodeDataMessage>(message.Content);
-                    ReportIn(getNodeDataMessage, size);
-                    BackgroundTaskScheduler.ScheduleSyncServe(getNodeDataMessage, Handle);
+                    HandleInBackground<GetNodeDataMessage, NodeDataMessage>(message, Handle);
                     break;
                 case Eth63MessageCode.NodeData:
                     NodeDataMessage nodeDataMessage = Deserialize<NodeDataMessage>(message.Content);

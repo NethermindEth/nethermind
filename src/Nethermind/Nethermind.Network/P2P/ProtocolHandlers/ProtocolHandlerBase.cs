@@ -6,10 +6,12 @@ using System.Diagnostics.CodeAnalysis;
 using System.Threading;
 using System.Threading.Tasks;
 using DotNetty.Buffers;
+using Nethermind.Consensus.Scheduler;
 using Nethermind.Core;
 using Nethermind.Logging;
 using Nethermind.Network.P2P.EventArg;
 using Nethermind.Network.P2P.Messages;
+using Nethermind.Network.P2P.Utils;
 using Nethermind.Network.Rlpx;
 using Nethermind.Serialization.Rlp;
 using Nethermind.Stats;
@@ -18,43 +20,66 @@ using Nethermind.Synchronization;
 
 namespace Nethermind.Network.P2P.ProtocolHandlers
 {
-    public abstract class ProtocolHandlerBase(
-        ISession session,
-        INodeStatsManager nodeStats,
-        IMessageSerializationService serializer,
-        ILogManager logManager)
-        : IProtocolHandler
+    public abstract class ProtocolHandlerBase : IProtocolHandler
     {
         public abstract string Name { get; }
         public bool IsPriority { get; set; }
-        protected INodeStatsManager StatsManager { get; } = nodeStats ?? throw new ArgumentNullException(nameof(nodeStats));
-        private readonly IMessageSerializationService _serializer = serializer ?? throw new ArgumentNullException(nameof(serializer));
-        protected internal ISession Session { get; } = session ?? throw new ArgumentNullException(nameof(session));
+        protected INodeStatsManager StatsManager { get; }
+        private readonly IMessageSerializationService _serializer;
+        protected internal ISession Session { get; }
         protected long Counter;
 
         private readonly TaskCompletionSource<MessageBase> _initCompletionSource = new();
 
-        protected internal ILogger Logger { get; } = logManager?.GetClassLogger<ProtocolHandlerBase>() ?? throw new ArgumentNullException(nameof(logManager));
+        protected ProtocolHandlerBase(ISession session,
+            INodeStatsManager nodeStats,
+            IMessageSerializationService serializer,
+            IBackgroundTaskScheduler backgroundTaskScheduler,
+            ILogManager logManager)
+        {
+            StatsManager = nodeStats ?? throw new ArgumentNullException(nameof(nodeStats));
+            _serializer = serializer ?? throw new ArgumentNullException(nameof(serializer));
+            Session = session ?? throw new ArgumentNullException(nameof(session));
+            Logger = logManager?.GetClassLogger<ProtocolHandlerBase>() ?? throw new ArgumentNullException(nameof(logManager));
+            BackgroundTaskScheduler = new BackgroundTaskSchedulerWrapper(this, backgroundTaskScheduler);
+        }
+
+        protected internal ILogger Logger { get; }
 
         protected abstract TimeSpan InitTimeout { get; }
 
+        protected BackgroundTaskSchedulerWrapper BackgroundTaskScheduler { get; }
+
         protected T Deserialize<T>(byte[] data) where T : P2PMessage
         {
+            var size = data.Length;
             try
             {
                 return _serializer.Deserialize<T>(data);
             }
+            catch (RlpLimitException e)
+            {
+                HandleRlpLimitException<T>(size, e);
+                throw;
+            }
             catch (RlpException e)
             {
-                HandleRlpException<T>(data.Length, e);
+                HandleRlpException<T>(size, e);
                 throw;
             }
         }
 
         private void HandleRlpException<T>(int dataLength, RlpException e) where T : P2PMessage
         {
-            if (Logger.IsDebug) Logger.Debug($"Failed to deserialize message {typeof(T).Name}, with exception {e}");
+            if (Logger.IsDebug) Logger.Debug($"Failed to deserialize message {typeof(T).Name} on session {Session}, with exception {e}");
             ReportIn($"{typeof(T).Name} - Deserialization exception", dataLength);
+        }
+
+        private void HandleRlpLimitException<T>(int dataLength, RlpLimitException e) where T : P2PMessage
+        {
+            Session.InitiateDisconnect(DisconnectReason.MessageLimitsBreached, e.Message);
+            if (Logger.IsDebug) Logger.Debug($"Failed to deserialize message {typeof(T).Name} on session {Session} due to rlp limits, with exception {e}");
+            ReportIn($"{typeof(T).Name} - Deserialization limit exception", dataLength);
         }
 
         protected T Deserialize<T>(IByteBuffer data) where T : P2PMessage
@@ -66,6 +91,11 @@ namespace Nethermind.Network.P2P.ProtocolHandlers
                 T result = _serializer.Deserialize<T>(data);
                 if (data.IsReadable()) ThrowIncompleteDeserializationException(data, originalReaderIndex);
                 return result;
+            }
+            catch (RlpLimitException e)
+            {
+                HandleRlpLimitException<T>(size, e);
+                throw;
             }
             catch (RlpException e)
             {
@@ -145,6 +175,22 @@ namespace Nethermind.Network.P2P.ProtocolHandlers
 
             if (NetworkDiagTracer.IsEnabled)
                 NetworkDiagTracer.ReportIncomingMessage(Session?.Node?.Address, Name, messageInfo, size);
+        }
+
+        protected void HandleInBackground<TReq, TRes>(ZeroPacket message, Func<TReq, CancellationToken, Task<TRes>> handle) where TReq : P2PMessage where TRes : P2PMessage =>
+            BackgroundTaskScheduler.ScheduleSyncServe(DeserializeAndReport<TReq>(message), handle);
+
+        protected void HandleInBackground<TReq, TRes>(ZeroPacket message, Func<TReq, CancellationToken, ValueTask<TRes>> handle) where TReq : P2PMessage where TRes : P2PMessage =>
+            BackgroundTaskScheduler.ScheduleSyncServe(DeserializeAndReport<TReq>(message), handle);
+
+        protected void HandleInBackground<TReq>(ZeroPacket message, Func<TReq, CancellationToken, ValueTask> handle) where TReq : P2PMessage =>
+            BackgroundTaskScheduler.ScheduleBackgroundTask(DeserializeAndReport<TReq>(message), handle);
+
+        private TReq DeserializeAndReport<TReq>(ZeroPacket message) where TReq : P2PMessage
+        {
+            TReq messageObject = Deserialize<TReq>(message.Content);
+            ReportIn(messageObject, message.Content.ReadableBytes);
+            return messageObject;
         }
 
         public abstract void Dispose();

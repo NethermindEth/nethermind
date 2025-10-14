@@ -27,7 +27,6 @@ public class NodeDataProtocolHandler : ZeroProtocolHandlerBase, INodeDataPeer
 {
     private readonly ISyncServer _syncServer;
     private readonly MessageQueue<GetNodeDataMessage, IOwnedReadOnlyList<byte[]>> _nodeDataRequests;
-    private readonly BackgroundTaskSchedulerWrapper _backgroundTaskScheduler;
 
     public override string Name => "nodedata1";
     protected override TimeSpan InitTimeout => Timeouts.Eth;
@@ -41,10 +40,9 @@ public class NodeDataProtocolHandler : ZeroProtocolHandlerBase, INodeDataPeer
         ISyncServer syncServer,
         IBackgroundTaskScheduler backgroundTaskScheduler,
         ILogManager logManager)
-        : base(session, statsManager, serializer, logManager)
+        : base(session, statsManager, serializer, backgroundTaskScheduler, logManager)
     {
         _syncServer = syncServer ?? throw new ArgumentNullException(nameof(syncServer));
-        _backgroundTaskScheduler = new BackgroundTaskSchedulerWrapper(this, backgroundTaskScheduler ?? throw new ArgumentNullException(nameof(backgroundTaskScheduler))); ;
         _nodeDataRequests = new MessageQueue<GetNodeDataMessage, IOwnedReadOnlyList<byte[]>>(Send);
     }
     public override void Init()
@@ -77,9 +75,7 @@ public class NodeDataProtocolHandler : ZeroProtocolHandlerBase, INodeDataPeer
         {
             case NodeDataMessageCode.GetNodeData:
                 {
-                    GetNodeDataMessage getNodeDataMessage = Deserialize<GetNodeDataMessage>(message.Content);
-                    ReportIn(getNodeDataMessage, size);
-                    _backgroundTaskScheduler.ScheduleSyncServe(getNodeDataMessage, Handle);
+                    HandleInBackground<GetNodeDataMessage, NodeDataMessage>(message, Handle);
                     break;
                 }
             case NodeDataMessageCode.NodeData:

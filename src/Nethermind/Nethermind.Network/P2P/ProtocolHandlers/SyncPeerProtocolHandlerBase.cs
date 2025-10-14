@@ -17,10 +17,12 @@ using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Int256;
 using Nethermind.Logging;
+using Nethermind.Network.P2P.Messages;
 using Nethermind.Network.P2P.Subprotocols.Eth.V62;
 using Nethermind.Network.P2P.Subprotocols.Eth.V62.Messages;
 using Nethermind.Network.P2P.Subprotocols.Eth.V63.Messages;
 using Nethermind.Network.P2P.Utils;
+using Nethermind.Network.Rlpx;
 using Nethermind.Serialization.Rlp;
 using Nethermind.Stats;
 using Nethermind.Stats.Model;
@@ -41,7 +43,6 @@ namespace Nethermind.Network.P2P.ProtocolHandlers
 
         public virtual bool IncludeInTxPool => true;
         protected ISyncServer SyncServer { get; }
-        protected BackgroundTaskSchedulerWrapper BackgroundTaskScheduler { get; }
 
         public long HeadNumber { get; set; }
         public Hash256 HeadHash { get; set; }
@@ -65,10 +66,9 @@ namespace Nethermind.Network.P2P.ProtocolHandlers
             INodeStatsManager statsManager,
             ISyncServer syncServer,
             IBackgroundTaskScheduler backgroundTaskScheduler,
-            ILogManager logManager) : base(session, statsManager, serializer, logManager)
+            ILogManager logManager) : base(session, statsManager, serializer, backgroundTaskScheduler, logManager)
         {
             SyncServer = syncServer ?? throw new ArgumentNullException(nameof(syncServer));
-            BackgroundTaskScheduler = new BackgroundTaskSchedulerWrapper(this, backgroundTaskScheduler ?? throw new ArgumentNullException(nameof(BackgroundTaskScheduler)));
             _timestamper = Timestamper.Default;
             _txDecoder = TxDecoder.Instance;
             _headersRequests = new MessageQueue<GetBlockHeadersMessage, IOwnedReadOnlyList<BlockHeader>>(Send);

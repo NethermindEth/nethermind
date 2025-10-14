@@ -31,7 +31,6 @@ namespace Nethermind.Network.P2P.Subprotocols.Snap
         private static readonly TrieNodesMessage EmptyTrieNodesMessage = new(ArrayPoolList<byte[]>.Empty());
 
         private ISnapServer? SyncServer { get; }
-        private BackgroundTaskSchedulerWrapper BackgroundTaskScheduler { get; }
         private bool ServingEnabled { get; }
 
         public override string Name => "snap1";
@@ -55,14 +54,13 @@ namespace Nethermind.Network.P2P.Subprotocols.Snap
             IBackgroundTaskScheduler backgroundTaskScheduler,
             ILogManager logManager,
             ISnapServer? snapServer = null)
-            : base(session, nodeStats, serializer, logManager)
+            : base(session, nodeStats, serializer, backgroundTaskScheduler, logManager)
         {
             _getAccountRangeRequests = new(Send);
             _getStorageRangeRequests = new(Send);
             _getByteCodesRequests = new(Send);
             _getTrieNodesRequests = new(Send);
             SyncServer = snapServer;
-            BackgroundTaskScheduler = new BackgroundTaskSchedulerWrapper(this, backgroundTaskScheduler);
             ServingEnabled = SyncServer is not null;
         }
 
@@ -93,9 +91,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Snap
                 case SnapMessageCode.GetAccountRange:
                     if (ShouldServeSnap(nameof(GetAccountRangeMessage)))
                     {
-                        GetAccountRangeMessage getAccountRangeMessage = Deserialize<GetAccountRangeMessage>(message.Content);
-                        ReportIn(getAccountRangeMessage, size);
-                        BackgroundTaskScheduler.ScheduleSyncServe(getAccountRangeMessage, Handle);
+                        HandleInBackground<GetAccountRangeMessage, AccountRangeMessage>(message, Handle);
                     }
 
                     break;
@@ -107,9 +103,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Snap
                 case SnapMessageCode.GetStorageRanges:
                     if (ShouldServeSnap(nameof(GetStorageRangeMessage)))
                     {
-                        GetStorageRangeMessage getStorageRangesMessage = Deserialize<GetStorageRangeMessage>(message.Content);
-                        ReportIn(getStorageRangesMessage, size);
-                        BackgroundTaskScheduler.ScheduleSyncServe(getStorageRangesMessage, Handle);
+                        HandleInBackground<GetStorageRangeMessage, StorageRangeMessage>(message, Handle);
                     }
 
                     break;
@@ -121,9 +115,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Snap
                 case SnapMessageCode.GetByteCodes:
                     if (ShouldServeSnap(nameof(GetByteCodesMessage)))
                     {
-                        GetByteCodesMessage getByteCodesMessage = Deserialize<GetByteCodesMessage>(message.Content);
-                        ReportIn(getByteCodesMessage, size);
-                        BackgroundTaskScheduler.ScheduleSyncServe(getByteCodesMessage, Handle);
+                        HandleInBackground<GetByteCodesMessage, ByteCodesMessage>(message, Handle);
                     }
 
                     break;
@@ -135,9 +127,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Snap
                 case SnapMessageCode.GetTrieNodes:
                     if (ShouldServeSnap(nameof(GetTrieNodes)))
                     {
-                        GetTrieNodesMessage getTrieNodesMessage = Deserialize<GetTrieNodesMessage>(message.Content);
-                        ReportIn(getTrieNodesMessage, size);
-                        BackgroundTaskScheduler.ScheduleSyncServe(getTrieNodesMessage, Handle);
+                        HandleInBackground<GetTrieNodesMessage, TrieNodesMessage>(message, Handle);
                     }
 
                     break;
