@@ -28,7 +28,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Snap
 {
     public class SnapProtocolHandler : ZeroProtocolHandlerBase, ISnapSyncPeer
     {
-        private static readonly TrieNodesMessage EmptyTrieNodesMessage = new TrieNodesMessage(ArrayPoolList<byte[]>.Empty());
+        private static readonly TrieNodesMessage EmptyTrieNodesMessage = new(ArrayPoolList<byte[]>.Empty());
 
         private ISnapServer? SyncServer { get; }
         private BackgroundTaskSchedulerWrapper BackgroundTaskScheduler { get; }

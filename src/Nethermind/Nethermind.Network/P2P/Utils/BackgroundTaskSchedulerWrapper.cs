@@ -7,6 +7,7 @@ using System.Threading.Tasks;
 using Nethermind.Consensus.Scheduler;
 using Nethermind.Network.P2P.Messages;
 using Nethermind.Network.P2P.ProtocolHandlers;
+using Nethermind.Serialization.Rlp;
 using Nethermind.Stats.Model;
 using Nethermind.Synchronization;
 
@@ -57,7 +58,15 @@ public class BackgroundTaskSchedulerWrapper(ProtocolHandlerBase handler, IBackgr
         }
         catch (Exception e)
         {
-            handler.Session.InitiateDisconnect(e is EthSyncException ? DisconnectReason.EthSyncException : DisconnectReason.BackgroundTaskFailure, e.Message);
+            DisconnectReason disconnectReason = e switch
+            {
+                EthSyncException => DisconnectReason.EthSyncException,
+                RlpLimitException => DisconnectReason.MessageLimitsBreached,
+                RlpException => DisconnectReason.BreachOfProtocol,
+                _ => DisconnectReason.BackgroundTaskFailure
+            };
+
+            handler.Session.InitiateDisconnect(disconnectReason, e.Message);
             if (handler.Logger.IsDebug) handler.Logger.Debug($"Failure running background task on session {handler.Session}, {e}");
         }
     }

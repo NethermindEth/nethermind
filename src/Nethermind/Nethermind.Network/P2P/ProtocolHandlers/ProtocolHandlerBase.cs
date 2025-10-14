@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Diagnostics.CodeAnalysis;
 using System.Threading;
 using System.Threading.Tasks;
 using DotNetty.Buffers;
@@ -13,6 +14,7 @@ using Nethermind.Network.Rlpx;
 using Nethermind.Serialization.Rlp;
 using Nethermind.Stats;
 using Nethermind.Stats.Model;
+using Nethermind.Synchronization;
 
 namespace Nethermind.Network.P2P.ProtocolHandlers
 {
@@ -44,10 +46,15 @@ namespace Nethermind.Network.P2P.ProtocolHandlers
             }
             catch (RlpException e)
             {
-                if (Logger.IsDebug) Logger.Debug($"Failed to deserialize message {typeof(T).Name}, with exception {e}");
-                ReportIn($"{typeof(T).Name} - Deserialization exception", data.Length);
+                HandleRlpException<T>(data.Length, e);
                 throw;
             }
+        }
+
+        private void HandleRlpException<T>(int dataLength, RlpException e) where T : P2PMessage
+        {
+            if (Logger.IsDebug) Logger.Debug($"Failed to deserialize message {typeof(T).Name}, with exception {e}");
+            ReportIn($"{typeof(T).Name} - Deserialization exception", dataLength);
         }
 
         protected T Deserialize<T>(IByteBuffer data) where T : P2PMessage
@@ -57,19 +64,24 @@ namespace Nethermind.Network.P2P.ProtocolHandlers
             {
                 int originalReaderIndex = data.ReaderIndex;
                 T result = _serializer.Deserialize<T>(data);
-                if (data.IsReadable())
-                {
-                    throw new IncompleteDeserializationException(
-                        $"Incomplete deserialization detected. Buffer is still readable. Read bytes: {data.ReaderIndex - originalReaderIndex}. Readable bytes: {data.ReadableBytes}");
-                }
+                if (!data.IsReadable()) ThrowIncompleteDeserializationException(data, originalReaderIndex);
                 return result;
+            }
+            catch (RlpLimitException e)
+            {
+                throw HandleRlpLimitException<T>(size, e);
             }
             catch (RlpException e)
             {
-                if (Logger.IsDebug) Logger.Debug($"Failed to deserialize message {typeof(T).Name}, with exception {e}");
-                ReportIn($"{typeof(T).Name} - Deserialization exception", size);
+                HandleRlpException<T>(size, e);
                 throw;
             }
+        }
+
+        [DoesNotReturn]
+        private static void ThrowIncompleteDeserializationException(IByteBuffer data, int originalReaderIndex)
+        {
+            throw new IncompleteDeserializationException($"Incomplete deserialization detected. Buffer is still readable. Read bytes: {data.ReaderIndex - originalReaderIndex}. Readable bytes: {data.ReadableBytes}");
         }
 
         protected internal void Send<T>(T message) where T : P2PMessage
@@ -78,7 +90,7 @@ namespace Nethermind.Network.P2P.ProtocolHandlers
             if (Logger.IsTrace) Logger.Trace($"{Counter} Sending {typeof(T).Name}");
             if (NetworkDiagTracer.IsEnabled)
             {
-                string messageString = message.ToString();
+                string messageString = message.ToString() ?? "";
                 int size = Session.DeliverMessage(message);
                 NetworkDiagTracer.ReportOutgoingMessage(Session.Node?.Address, Name, messageString, size);
             }
@@ -126,7 +138,7 @@ namespace Nethermind.Network.P2P.ProtocolHandlers
         {
             if (Logger.IsTrace || NetworkDiagTracer.IsEnabled)
             {
-                ReportIn(msg.ToString(), size);
+                ReportIn(msg.ToString() ?? "", size);
             }
         }
 
@@ -158,10 +170,5 @@ namespace Nethermind.Network.P2P.ProtocolHandlers
         public abstract event EventHandler<ProtocolEventArgs> SubprotocolRequested;
     }
 
-    public class IncompleteDeserializationException : Exception
-    {
-        public IncompleteDeserializationException(string msg) : base(msg)
-        {
-        }
-    }
+    public class IncompleteDeserializationException(string msg) : Exception(msg);
 }

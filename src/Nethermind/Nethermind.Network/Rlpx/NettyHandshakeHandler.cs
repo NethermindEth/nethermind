@@ -168,13 +168,13 @@ namespace Nethermind.Network.Rlpx
                 FrameCipher frameCipher = new(_handshake.Secrets.AesSecret);
                 context.Channel.Pipeline.AddLast(new ZeroFrameDecoder(frameCipher, macProcessor, _logManager));
                 if (_logger.IsTrace) _logger.Trace($"Registering {nameof(ZeroFrameEncoder)} for {RemoteId} @ {context.Channel.RemoteAddress}");
-                context.Channel.Pipeline.AddLast(new ZeroFrameEncoder(frameCipher, macProcessor, _logManager));
+                context.Channel.Pipeline.AddLast(new ZeroFrameEncoder(frameCipher, macProcessor));
             }
 
             if (_logger.IsTrace) _logger.Trace($"Registering {nameof(ZeroFrameMerger)} for {RemoteId} @ {context.Channel.RemoteAddress}");
             context.Channel.Pipeline.AddLast(new ZeroFrameMerger(_logManager));
             if (_logger.IsTrace) _logger.Trace($"Registering {nameof(ZeroPacketSplitter)} for {RemoteId} @ {context.Channel.RemoteAddress}");
-            context.Channel.Pipeline.AddLast(new ZeroPacketSplitter(_logManager));
+            context.Channel.Pipeline.AddLast(new ZeroPacketSplitter());
 
             PacketSender packetSender = new(_serializationService, _logManager, _sendLatency);
             if (_logger.IsTrace) _logger.Trace($"Registering {nameof(PacketSender)} for {_session.RemoteNodeId} @ {context.Channel.RemoteAddress}");

@@ -98,13 +98,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V63
 
         protected Task<NodeDataMessage> FulfillNodeDataRequest(GetNodeDataMessage msg, CancellationToken cancellationToken)
         {
-            if (msg.Hashes.Count > 4096)
-            {
-                throw new EthSyncException("Incoming node data request for more than 4096 nodes");
-            }
-
             IOwnedReadOnlyList<byte[]> nodeData = SyncServer.GetNodeData(msg.Hashes, cancellationToken);
-
             return Task.FromResult(new NodeDataMessage(nodeData));
         }
 

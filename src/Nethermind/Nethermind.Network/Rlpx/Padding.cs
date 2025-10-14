@@ -16,9 +16,6 @@ namespace Nethermind.Network.Rlpx
         public const int DefaultMaxFrameSize = BlockSize * 64;
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public static int CalculatePadding(int size)
-        {
-            return size % BlockSize == 0 ? 0 : BlockSize - size % BlockSize;
-        }
+        public static int CalculatePadding(int size) => size % BlockSize == 0 ? 0 : BlockSize - size % BlockSize;
     }
 }

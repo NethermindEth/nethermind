@@ -216,8 +216,8 @@ namespace Nethermind.Network.Test.Rlpx
 
             IChannelHandler decoder = new ZeroFrameDecoder(_frameCipherB, _macProcessorB, LimboLogs.Instance);
             IChannelHandler merger = new ZeroFrameMerger(LimboLogs.Instance);
-            IChannelHandler encoder = new ZeroFrameEncoder(_frameCipherA, _macProcessorA, LimboLogs.Instance);
-            IFramingAware splitter = new ZeroPacketSplitter(LimboLogs.Instance);
+            IChannelHandler encoder = new ZeroFrameEncoder(_frameCipherA, _macProcessorA);
+            IFramingAware splitter = new ZeroPacketSplitter();
 
             Assert.That(splitter.MaxFrameSize, Is.EqualTo(Frame.DefaultMaxFrameSize), "default max frame size");
 

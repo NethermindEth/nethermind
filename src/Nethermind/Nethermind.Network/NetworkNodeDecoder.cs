@@ -12,6 +12,8 @@ namespace Nethermind.Network
 {
     public class NetworkNodeDecoder : IRlpStreamDecoder<NetworkNode>, IRlpObjectDecoder<NetworkNode>
     {
+        private static readonly RlpLimit RlpLimit = RlpLimit.For<NetworkNode>(nameof(NetworkNode.HostIp), (int)1.KiB());
+
         static NetworkNodeDecoder()
         {
             Rlp.RegisterDecoder(typeof(NetworkNode), new NetworkNodeDecoder());
@@ -21,9 +23,9 @@ namespace Nethermind.Network
         {
             rlpStream.ReadSequenceLength();
 
-            PublicKey publicKey = new(rlpStream.DecodeByteArraySpan());
-            string ip = rlpStream.DecodeString();
-            int port = (int)rlpStream.DecodeByteArraySpan().ReadEthUInt64();
+            PublicKey publicKey = new(rlpStream.DecodeByteArraySpan(RlpLimit));
+            string ip = rlpStream.DecodeString(RlpLimit);
+            int port = (int)rlpStream.DecodeByteArraySpan(RlpLimit.L8).ReadEthUInt64();
             rlpStream.SkipItem();
             long reputation = 0L;
             try

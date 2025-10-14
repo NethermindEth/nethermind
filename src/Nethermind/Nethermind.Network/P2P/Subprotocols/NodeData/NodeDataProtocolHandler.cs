@@ -106,13 +106,7 @@ public class NodeDataProtocolHandler : ZeroProtocolHandlerBase, INodeDataPeer
 
     private NodeDataMessage FulfillNodeDataRequest(GetNodeDataMessage msg, CancellationToken cancellationToken)
     {
-        if (msg.Hashes.Count > 4096)
-        {
-            throw new EthSyncException("NODEDATA protocol: Incoming node data request for more than 4096 nodes");
-        }
-
         IOwnedReadOnlyList<byte[]?>? nodeData = _syncServer.GetNodeData(msg.Hashes, cancellationToken);
-
         return new NodeDataMessage(nodeData);
     }
 

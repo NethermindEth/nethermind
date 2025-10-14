@@ -319,10 +319,7 @@ namespace Nethermind.Network.P2P.ProtocolHandlers
         protected async Task<BlockBodiesMessage> Handle(GetBlockBodiesMessage request, CancellationToken cancellationToken)
         {
             using GetBlockBodiesMessage message = request;
-            if (Logger.IsTrace)
-            {
-                Logger.Trace($"Received bodies request of length {message.BlockHashes.Count} from {Session.Node:c}:");
-            }
+            if (Logger.IsTrace) Logger.Trace($"Received bodies request of length {message.BlockHashes.Count} from {Session.Node:c}:");
 
             long startTime = Stopwatch.GetTimestamp();
 
@@ -366,11 +363,6 @@ namespace Nethermind.Network.P2P.ProtocolHandlers
         protected async Task<ReceiptsMessage> Handle(GetReceiptsMessage msg, CancellationToken cancellationToken)
         {
             using var message = msg;
-            if (message.Hashes.Count > 512)
-            {
-                throw new EthSyncException("Incoming receipts request for more than 512 blocks");
-            }
-
             long startTime = Stopwatch.GetTimestamp();
             ReceiptsMessage resp = await FulfillReceiptsRequest(message, cancellationToken);
             if (Logger.IsTrace) Logger.Trace($"OUT {Counter:D5} Receipts to {Node:c} in {Stopwatch.GetElapsedTime(startTime).TotalMilliseconds:N0}ms");
