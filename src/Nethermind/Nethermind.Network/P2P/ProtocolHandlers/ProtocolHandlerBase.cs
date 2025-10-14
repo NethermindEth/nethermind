@@ -67,10 +67,6 @@ namespace Nethermind.Network.P2P.ProtocolHandlers
                 if (!data.IsReadable()) ThrowIncompleteDeserializationException(data, originalReaderIndex);
                 return result;
             }
-            catch (RlpLimitException e)
-            {
-                throw HandleRlpLimitException<T>(size, e);
-            }
             catch (RlpException e)
             {
                 HandleRlpException<T>(size, e);
