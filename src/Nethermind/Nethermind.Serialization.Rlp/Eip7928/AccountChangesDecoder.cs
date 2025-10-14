@@ -58,12 +58,12 @@ public class AccountChangesDecoder : IRlpValueDecoder<AccountChanges>, IRlpStrea
         }
 
         BalanceChange[] balanceChanges = ctx.DecodeArray(BalanceChangeDecoder.Instance);
-        ushort lastIndex = 0;
+        ushort? lastIndex = null;
         SortedList<ushort, BalanceChange> balanceChangesList = new(balanceChanges.ToDictionary(s =>
         {
             Console.WriteLine("Decoding balance change: " + s.ToString());
             ushort index = s.BlockAccessIndex;
-            if (index <= lastIndex)
+            if (lastIndex is not null && index <= lastIndex)
             {
                 Console.WriteLine($"Balance changes were in incorrect order. index={index}, lastIndex={lastIndex}");
                 throw new RlpException("Balance changes were in incorrect order.");
@@ -72,12 +72,12 @@ public class AccountChangesDecoder : IRlpValueDecoder<AccountChanges>, IRlpStrea
             return index;
         }, s => s));
 
-        lastIndex = 0;
+        lastIndex = null;
         NonceChange[] nonceChanges = ctx.DecodeArray(NonceChangeDecoder.Instance);
         SortedList<ushort, NonceChange> nonceChangesList = new(nonceChanges.ToDictionary(s =>
         {
             ushort index = s.BlockAccessIndex;
-            if (index <= lastIndex)
+            if (lastIndex is not null && index <= lastIndex)
             {
                 throw new RlpException("Nonce changes were in incorrect order.");
             }
@@ -92,11 +92,11 @@ public class AccountChangesDecoder : IRlpValueDecoder<AccountChanges>, IRlpStrea
             throw new RlpException("Number of code changes exceeded maximum.");
         }
 
-        lastIndex = 0;
+        lastIndex = null;
         SortedList<ushort, CodeChange> codeChangesList = new(codeChanges.ToDictionary(s =>
         {
             ushort index = s.BlockAccessIndex;
-            if (index <= lastIndex)
+            if (lastIndex is not null && index <= lastIndex)
             {
                 throw new RlpException("Code changes were in incorrect order.");
             }

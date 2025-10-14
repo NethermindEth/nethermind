@@ -3,7 +3,6 @@
 
 using System;
 using System.Collections.Generic;
-using System.Linq;
 using System.Runtime.CompilerServices;
 using System.Threading;
 using Nethermind.Blockchain.Tracing;
@@ -31,6 +30,7 @@ namespace Nethermind.Consensus.Processing
             ILogManager logManager)
             : IBlockProductionTransactionsExecutor
         {
+            private readonly TracedAccessWorldState? _tracedAccessWorldState = stateProvider as TracedAccessWorldState;
             private readonly ILogger _logger = logManager.GetClassLogger();
 
             protected EventHandler<TxProcessedEventArgs>? _transactionProcessed;
@@ -65,6 +65,7 @@ namespace Nethermind.Consensus.Processing
                     // Check if we have gone over time or the payload has been requested
                     if (token.IsCancellationRequested) break;
 
+                    _tracedAccessWorldState?.BlockAccessList.IncrementBlockAccessIndex();
                     TxAction action = ProcessTransaction(block, currentTx, i++, receiptsTracer, processingOptions, consideredTx);
                     if (action == TxAction.Stop) break;
 
@@ -78,13 +79,14 @@ namespace Nethermind.Consensus.Processing
                         }
                     }
                 }
+                _tracedAccessWorldState?.BlockAccessList.IncrementBlockAccessIndex();
 
                 block.Header.TxRoot = TxTrie.CalculateRoot(includedTx.AsSpan());
                 if (blockToProduce is not null)
                 {
-                    blockToProduce.Transactions = includedTx.ToArray();
+                    blockToProduce.Transactions = [.. includedTx];
                 }
-                return receiptsTracer.TxReceipts.ToArray();
+                return [.. receiptsTracer.TxReceipts];
             }
 
             private TxAction ProcessTransaction(
