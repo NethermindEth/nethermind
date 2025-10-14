@@ -111,15 +111,17 @@ partial class LogIndexStorage
                     _compactionEndedEvent.Reset();
                     _compactionStartedEvent.Set();
 
-                    if (_logger.IsTrace)
-                        _logger.Trace("Compacting log index");
+                    if (_logger.IsInfo)
+                        _logger.Info($"Log index: compaction started, DB size: {_storage.GetDbSize()}");
 
                     var timestamp = Stopwatch.GetTimestamp();
                     _storage._rootDb.Compact();
-                    _stats.Total.Include(Stopwatch.GetElapsedTime(timestamp));
 
-                    if (_logger.IsTrace)
-                        _logger.Trace($"Compacted log index in {Stopwatch.GetElapsedTime(timestamp)}");
+                    TimeSpan elapsed = Stopwatch.GetElapsedTime(timestamp);
+                    _stats.Total.Include(elapsed);
+
+                    if (_logger.IsInfo)
+                        _logger.Info($"Log index: compacted in {elapsed}, DB size: {_storage.GetDbSize()}");
                 }
                 catch (TaskCanceledException ex) when (ex.CancellationToken == cancellation)
                 {
