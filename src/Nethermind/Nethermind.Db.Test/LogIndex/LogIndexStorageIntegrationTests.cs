@@ -68,7 +68,7 @@ namespace Nethermind.Db.Test.LogIndex
             LogIndexConfig config = new()
             {
                 CompactionDistance = compactionDistance,
-                CompressionParallelism = compressionParallelism,
+                MaxCompressionParallelism = compressionParallelism,
                 MaxReorgDepth = maxReorgDepth,
                 CompressionAlgorithm = compressionAlgo ?? testData.Compression
             };

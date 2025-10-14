@@ -15,7 +15,7 @@ public interface ILogIndexConfig : IConfig
     public bool Enabled { get; set; }
 
     [ConfigItem(
-        Description = "Reset log index on startup if enabled.",
+        Description = "Log index is reset on startup if enabled.",
         DefaultValue = "false"
     )]
     public bool Reset { get; set; }
@@ -28,70 +28,70 @@ public interface ILogIndexConfig : IConfig
     public int MaxReorgDepth { get; set; } // TODO: take from chain config?
 
     [ConfigItem(
-        Description = "Log index sync: maximum blocks batch size.",
+        Description = "Maximum number of blocks with receipts to add to index per iteration.",
         DefaultValue = "256",
         HiddenFromDocs = true
     )]
-    public int SyncBatchSize { get; set; }
+    public int MaxBatchSize { get; set; }
 
     [ConfigItem(
-        Description = "Log index sync: maximum size of queue of blocks for aggregating.",
+        Description = "Maximum number of batches to queue for aggregation.",
         DefaultValue = "16",
         HiddenFromDocs = true
     )]
-    public int SyncAggregateBatchQueueSize { get; set; }
+    public int MaxAggregationQueueSize { get; set; }
 
     [ConfigItem(
-        Description = "Log index sync: maximum size of queue of batches for adding to storage.",
+        Description = "Maximum number of aggregated batches to queue for inclusion to the index.",
         DefaultValue = "16",
         HiddenFromDocs = true
     )]
-    public int SyncSaveBatchQueueSize { get; set; }
+    public int MaxSavingQueueSize { get; set; }
 
     [ConfigItem(
-        Description = "Log index sync: degree of parallelism for fetching receipts.",
+        Description = "Maximum degree of parallelism for fetching receipts.",
         DefaultValue = "Max(ProcessorCount / 2, 1)",
         HiddenFromDocs = true
     )]
-    public int SyncFetchBatchParallelism { get; set; }
+    public int MaxReceiptsParallelism { get; set; }
 
     [ConfigItem(
-        Description = "Log index sync: degree of parallelism for aggregating block batches.",
+        Description = "Maximum degree of parallelism for aggregating batches.",
         DefaultValue = "Max(ProcessorCount / 2, 1)",
         HiddenFromDocs = true
     )]
-    public int SyncAggregateParallelism { get; set; }
+    public int MaxAggregationParallelism { get; set; }
 
     [ConfigItem(
-        Description = "Log index sync: degree of parallelism for compressing sequential block numbers.",
+        Description = "Maximum degree of parallelism for compressing overgrown key values.",
         DefaultValue = "Max(ProcessorCount / 2, 1)",
         HiddenFromDocs = true
     )]
-    public int CompressionParallelism { get; set; }
+    public int MaxCompressionParallelism { get; set; }
 
     [ConfigItem(
-        Description = "Log index sync: minimum number of blocks in a single value to compress.",
+        Description = "Minimum number of blocks under a single key to compress.",
         DefaultValue = "128",
         HiddenFromDocs = true
     )]
     public int CompressionDistance { get; set; }
 
     [ConfigItem(
-        Description = "Log index sync: number of newly added blocks after which to run compaction.",
+        Description = "Number of newly added blocks after which to run DB compaction.",
         DefaultValue = "262,144",
         HiddenFromDocs = true
     )]
     public int CompactionDistance { get; set; }
 
     [ConfigItem(
-        Description = "Log index sync: compression algorithm to use for block numbers.",
+        Description = "Compression algorithm to use for block numbers.",
         DefaultValue = nameof(TurboPFor.p4nd1enc256v32) + " if supported, otherwise " + nameof(TurboPFor.p4nd1enc128v32),
         HiddenFromDocs = true
     )]
     string? CompressionAlgorithm { get; set; }
 
     [ConfigItem(
-        Description = "Log index sync: whether to show detailed stats in progress logs.",
+        Description = "Whether to show detailed stats in progress logs.",
         DefaultValue = "false",
         HiddenFromDocs = true
     )]

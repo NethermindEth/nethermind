@@ -258,8 +258,8 @@ public sealed class LogIndexBuilder : ILogIndexBuilder
             batch => Aggregate(batch, isForward),
             new()
             {
-                BoundedCapacity = _config.SyncAggregateBatchQueueSize,
-                MaxDegreeOfParallelism = _config.SyncAggregateParallelism,
+                BoundedCapacity = _config.MaxAggregationQueueSize,
+                MaxDegreeOfParallelism = _config.MaxAggregationParallelism,
                 CancellationToken = CancellationToken,
                 SingleProducerConstrained = true
             }
@@ -269,7 +269,7 @@ public sealed class LogIndexBuilder : ILogIndexBuilder
             aggr => SetReceiptsAsync(aggr, isForward),
             new()
             {
-                BoundedCapacity = _config.SyncSaveBatchQueueSize,
+                BoundedCapacity = _config.MaxSavingQueueSize,
                 MaxDegreeOfParallelism = 1,
                 CancellationToken = CancellationToken,
                 SingleProducerConstrained = true
@@ -346,7 +346,7 @@ public sealed class LogIndexBuilder : ILogIndexBuilder
                 }
             }
 
-            var buffer = new BlockReceipts[_config.SyncBatchSize];
+            var buffer = new BlockReceipts[_config.MaxBatchSize];
             while (!CancellationToken.IsCancellationRequested)
             {
                 if (!isForward && start < MinTargetBlockNumber)
@@ -357,7 +357,7 @@ public sealed class LogIndexBuilder : ILogIndexBuilder
                     return;
                 }
 
-                var batchSize = _config.SyncBatchSize;
+                var batchSize = _config.MaxBatchSize;
                 var end = isForward ? start + batchSize - 1 : start - batchSize + 1;
                 end = Math.Max(end, MinTargetBlockNumber);
                 end = Math.Min(end, MaxTargetBlockNumber);
@@ -455,7 +455,7 @@ public sealed class LogIndexBuilder : ILogIndexBuilder
         Parallel.For(from, to, new()
         {
             CancellationToken = token,
-            MaxDegreeOfParallelism = _config.SyncFetchBatchParallelism
+            MaxDegreeOfParallelism = _config.MaxReceiptsParallelism
         }, i =>
         {
             var bufferIndex = isForward ? i - from : to - 1 - i;

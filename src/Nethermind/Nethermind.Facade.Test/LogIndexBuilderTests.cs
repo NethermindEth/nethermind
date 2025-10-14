@@ -131,7 +131,7 @@ public class LogIndexBuilderTests
     [SetUp]
     public void SetUp()
     {
-        _config = new LogIndexConfig { MaxReorgDepth = MaxReorgDepth, SyncBatchSize = BatchSize };
+        _config = new LogIndexConfig { MaxReorgDepth = MaxReorgDepth, MaxBatchSize = BatchSize };
         _blockTree = Build.A.BlockTree().OfChainLength(MaxBlock + 1).BlockTree;
         _syncConfig = new SyncConfig { FastSync = true, SnapSync = true };
         _receiptStorage = Substitute.For<IReceiptStorage>();
@@ -181,7 +181,7 @@ public class LogIndexBuilderTests
         int[] synced
     )
     {
-        _config.SyncBatchSize = batchSize;
+        _config.MaxBatchSize = batchSize;
         _syncConfig.AncientReceiptsBarrier = minBarrier;
         Assert.That(_syncConfig.AncientReceiptsBarrierCalc, Is.EqualTo(minBarrier));
 

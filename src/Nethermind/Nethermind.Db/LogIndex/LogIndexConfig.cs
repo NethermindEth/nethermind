@@ -14,13 +14,13 @@ public class LogIndexConfig : ILogIndexConfig
 
     public int MaxReorgDepth { get; set; } = 64;
 
-    public int SyncBatchSize { get; set; } = 256;
-    public int SyncAggregateBatchQueueSize { get; set; } = 16;
-    public int SyncSaveBatchQueueSize { get; set; } = 16;
+    public int MaxBatchSize { get; set; } = 256;
+    public int MaxAggregationQueueSize { get; set; } = 16;
+    public int MaxSavingQueueSize { get; set; } = 16;
 
-    public int SyncFetchBatchParallelism { get; set; } = Math.Max(Environment.ProcessorCount / 2, 1);
-    public int SyncAggregateParallelism { get; set; } = Math.Max(Environment.ProcessorCount / 2, 1);
-    public int CompressionParallelism { get; set; } = Math.Max(Environment.ProcessorCount / 2, 1);
+    public int MaxReceiptsParallelism { get; set; } = Math.Max(Environment.ProcessorCount / 2, 1);
+    public int MaxAggregationParallelism { get; set; } = Math.Max(Environment.ProcessorCount / 2, 1);
+    public int MaxCompressionParallelism { get; set; } = Math.Max(Environment.ProcessorCount / 2, 1);
 
     public int CompressionDistance { get; set; } = 128;
     public int CompactionDistance { get; set; } = 262_144;
