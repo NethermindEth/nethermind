@@ -102,7 +102,7 @@ public partial class BlockProcessor(
         blockHashStore.ApplyBlockhashStateChanges(header, spec);
 
         StoreBeaconRoot(block, spec);
-        _stateProvider.Commit(spec, commitRoots: false);
+        _stateProvider.Commit(spec, commitRoots: true);
 
         TxReceipt[] receipts = blockTransactionsExecutor.ProcessTransactions(block, options, ReceiptsTracer, token);
 
