@@ -3,7 +3,7 @@
 
 using System;
 
-namespace Nethermind.Db;
+namespace Nethermind.Db.LogIndex;
 
 partial class LogIndexStorage
 {

@@ -9,7 +9,7 @@ using Nethermind.Blockchain.Filters.Topics;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
-using Nethermind.Db;
+using Nethermind.Db.LogIndex;
 
 namespace Nethermind.Facade.Find;
 

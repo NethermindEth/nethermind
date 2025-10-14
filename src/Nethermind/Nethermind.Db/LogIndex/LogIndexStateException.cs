@@ -3,7 +3,7 @@
 
 using System;
 
-namespace Nethermind.Db;
+namespace Nethermind.Db.LogIndex;
 
 public class LogIndexStateException(string message, ReadOnlySpan<byte> key = default) : Exception(message)
 {

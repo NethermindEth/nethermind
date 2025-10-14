@@ -14,7 +14,7 @@ using Nethermind.Core.Events;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
-using Nethermind.Db;
+using Nethermind.Db.LogIndex;
 using Nethermind.Facade.Find;
 using Nethermind.Logging;
 using NSubstitute;

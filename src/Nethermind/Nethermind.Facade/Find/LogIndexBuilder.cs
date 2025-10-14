@@ -13,7 +13,7 @@ using Nethermind.Blockchain;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Core;
-using Nethermind.Db;
+using Nethermind.Db.LogIndex;
 using Nethermind.Logging;
 using Timer = System.Timers.Timer;
 using static System.Threading.Tasks.TaskCreationOptions;

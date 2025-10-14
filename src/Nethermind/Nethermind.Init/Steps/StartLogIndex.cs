@@ -7,6 +7,7 @@ using Nethermind.Api;
 using Nethermind.Api.Steps;
 using Nethermind.Core.ServiceStopper;
 using Nethermind.Db;
+using Nethermind.Db.LogIndex;
 using Nethermind.Facade.Find;
 
 namespace Nethermind.Init.Steps

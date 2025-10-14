@@ -3,7 +3,7 @@
 
 using Nethermind.Blockchain.Filters;
 using Nethermind.Blockchain.Find;
-using Nethermind.Db;
+using Nethermind.Db.LogIndex;
 using Nethermind.Facade;
 using Nethermind.Facade.Find;
 using Nethermind.JsonRpc.Modules.Eth;

@@ -12,7 +12,7 @@ using Nethermind.Blockchain.Test.Builders;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Test.Builders;
-using Nethermind.Db;
+using Nethermind.Db.LogIndex;
 using Nethermind.Facade.Find;
 using NSubstitute;
 using NUnit.Framework;

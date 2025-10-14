@@ -4,7 +4,7 @@
 using Nethermind.Config;
 using Nethermind.TurboPForBindings;
 
-namespace Nethermind.Db;
+namespace Nethermind.Db.LogIndex;
 
 public interface ILogIndexConfig : IConfig
 {

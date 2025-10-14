@@ -16,7 +16,7 @@ using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Logging;
 
-namespace Nethermind.Db
+namespace Nethermind.Db.LogIndex
 {
     // TODO: test on big-endian system
     public partial class LogIndexStorage : ILogIndexStorage

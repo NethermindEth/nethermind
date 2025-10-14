@@ -3,7 +3,7 @@
 
 using System.Threading;
 
-namespace Nethermind.Db;
+namespace Nethermind.Db.LogIndex;
 
 public class AverageStats
 {

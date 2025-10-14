@@ -15,9 +15,9 @@ using Nethermind.Core.Specs;
 using Nethermind.Crypto;
 using Nethermind.Db;
 using Nethermind.Db.Blooms;
+using Nethermind.Db.LogIndex;
 using Nethermind.Facade.Find;
 using Nethermind.History;
-using Nethermind.Logging;
 using Nethermind.State.Repositories;
 using Nethermind.TxPool;
 

@@ -4,7 +4,7 @@
 using System;
 using Nethermind.Config;
 
-namespace Nethermind.Db;
+namespace Nethermind.Db.LogIndex;
 
 [ConfigCategory(Description = "Configuration of the log index behaviour.")]
 public class LogIndexConfig : ILogIndexConfig

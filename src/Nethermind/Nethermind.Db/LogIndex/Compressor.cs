@@ -10,7 +10,7 @@ using System.Threading.Tasks.Dataflow;
 using Nethermind.Core;
 using Nethermind.Core.Extensions;
 
-namespace Nethermind.Db;
+namespace Nethermind.Db.LogIndex;
 
 partial class LogIndexStorage
 {

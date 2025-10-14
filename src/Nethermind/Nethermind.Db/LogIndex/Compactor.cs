@@ -8,7 +8,7 @@ using System.Threading.Tasks;
 using Nethermind.Core.Extensions;
 using Nethermind.Logging;
 
-namespace Nethermind.Db;
+namespace Nethermind.Db.LogIndex;
 
 partial class LogIndexStorage
 {

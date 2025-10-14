@@ -9,7 +9,7 @@ using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.ServiceStopper;
 
-namespace Nethermind.Db;
+namespace Nethermind.Db.LogIndex;
 
 public readonly record struct BlockReceipts(int BlockNumber, TxReceipt[] Receipts);
 

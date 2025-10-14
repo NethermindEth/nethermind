@@ -4,7 +4,7 @@
 using System;
 using System.Threading;
 
-namespace Nethermind.Db;
+namespace Nethermind.Db.LogIndex;
 
 // TODO: separate stats for forward and backwards sync - should help with debugging
 public class LogIndexUpdateStats(ILogIndexStorage storage) : IFormattable

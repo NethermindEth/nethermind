@@ -6,7 +6,7 @@ using System.Diagnostics;
 using System.Threading;
 using Nethermind.Core.Collections;
 
-namespace Nethermind.Db;
+namespace Nethermind.Db.LogIndex;
 
 partial class LogIndexStorage
 {

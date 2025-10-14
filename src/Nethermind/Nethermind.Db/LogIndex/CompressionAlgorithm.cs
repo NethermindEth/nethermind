@@ -6,7 +6,7 @@ using System.Collections.Generic;
 using System.Runtime.CompilerServices;
 using static Nethermind.TurboPForBindings.TurboPFor;
 
-namespace Nethermind.Db;
+namespace Nethermind.Db.LogIndex;
 
 partial class LogIndexStorage
 {

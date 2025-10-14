@@ -7,7 +7,7 @@ using System.Threading.Tasks;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 
-namespace Nethermind.Db;
+namespace Nethermind.Db.LogIndex;
 
 public sealed class DisabledLogIndexStorage : ILogIndexStorage
 {
