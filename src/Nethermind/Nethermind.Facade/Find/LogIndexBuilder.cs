@@ -194,7 +194,7 @@ public sealed class LogIndexBuilder : ILogIndexBuilder
 
         _stats[isForward] = new(_logIndexStorage);
 
-        if (_logger.IsInfo) // TODO: log at debug/trace
+        if (_logger.IsInfo)
         {
             _logger.Info(_config.DetailedLogs
                     ? $"{GetLogPrefix(isForward)}: {stats:d}"

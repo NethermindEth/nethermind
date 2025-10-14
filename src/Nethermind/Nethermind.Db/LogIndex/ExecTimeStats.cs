@@ -6,6 +6,9 @@ using System.Threading;
 
 namespace Nethermind.Db.LogIndex;
 
+/// <summary>
+/// Aggregates average and total execution time of multiple executions of the same operation.
+/// </summary>
 public class ExecTimeStats
 {
     private long _totalTicks;

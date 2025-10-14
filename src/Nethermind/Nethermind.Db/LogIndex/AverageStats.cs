@@ -5,6 +5,9 @@ using System.Threading;
 
 namespace Nethermind.Db.LogIndex;
 
+/// <summary>
+/// Aggregates average of multiple incrementally-added values.
+/// </summary>
 public class AverageStats
 {
     private long _total;

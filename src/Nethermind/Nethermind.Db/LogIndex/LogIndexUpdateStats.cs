@@ -6,7 +6,10 @@ using System.Threading;
 
 namespace Nethermind.Db.LogIndex;
 
-// TODO: separate stats for forward and backwards sync - should help with debugging
+/// <summary>
+/// Log index building statistics across some time range.
+/// </summary>
+// TODO: separate stats for forward and backwards sync
 public class LogIndexUpdateStats(ILogIndexStorage storage) : IFormattable
 {
     private long _blocksAdded;
@@ -76,14 +79,14 @@ public class LogIndexUpdateStats(ILogIndexStorage storage) : IFormattable
         const string tab = "\t";
 
         return !string.Equals(format, "D", StringComparison.OrdinalIgnoreCase)
-            ? $"{MinBlockNumber:N0} - {MaxBlockNumber:N0} (blocks: +{_blocksAdded:N0} | txs: +{_txAdded:N0} | logs: +{_logsAdded:N0} | topics: +{_topicsAdded:N0})"
+            ? $"{MinBlockNumber:N0} - {MaxBlockNumber:N0} (blocks: +{BlocksAdded:N0} | txs: +{TxAdded:N0} | logs: +{LogsAdded:N0} | topics: +{TopicsAdded:N0})"
             : $"""
 
                {tab}Blocks: {MinBlockNumber:N0} - {MaxBlockNumber:N0} (+{_blocksAdded:N0})
 
-               {tab}Txs: +{_txAdded:N0}
-               {tab}Logs: +{_logsAdded:N0}
-               {tab}Topics: +{_topicsAdded:N0}
+               {tab}Txs: +{TxAdded:N0}
+               {tab}Logs: +{LogsAdded:N0}
+               {tab}Topics: +{TopicsAdded:N0}
 
                {tab}Loading receipts: {LoadingReceipts}
 
