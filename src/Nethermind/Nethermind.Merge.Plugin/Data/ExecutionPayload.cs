@@ -13,6 +13,7 @@ using Nethermind.State.Proofs;
 using System.Text.Json.Serialization;
 using Nethermind.Core.ExecutionRequest;
 using Nethermind.Core.BlockAccessLists;
+using Nethermind.Core.Extensions;
 
 namespace Nethermind.Merge.Plugin.Data;
 
@@ -111,6 +112,9 @@ public class ExecutionPayload : IForkValidator, IExecutionPayloadParams, IExecut
 
     protected static TExecutionPayload Create<TExecutionPayload>(Block block) where TExecutionPayload : ExecutionPayload, new()
     {
+        Console.WriteLine("Creating execution payload, encodedBal="
+            + (block.EncodedBlockAccessList is null ? "null" : Bytes.ToHexString(block.EncodedBlockAccessList))
+            + " AccountChangesLength=" + (block.BlockAccessList is null ? "null" : block.BlockAccessList.Value.GetAccountChanges().Count()));
         TExecutionPayload executionPayload = new()
         {
             BlockHash = block.Hash!,
@@ -177,12 +181,15 @@ public class ExecutionPayload : IForkValidator, IExecutionPayloadParams, IExecut
 
         if (BlockAccessList is not null)
         {
+            //tmp
+            Console.WriteLine("Decoding BAL from execution payload: " + Bytes.ToHexString(BlockAccessList));
             try
             {
                 blockAccessList = Rlp.Decode<BlockAccessList>(BlockAccessList);
             }
-            catch (RlpException)
+            catch (RlpException e)
             {
+                Console.Error.Write("Could not decode block access list from execution payload: " + e);
                 return new("Could not decode block access list.");
             }
         }
@@ -191,10 +198,7 @@ public class ExecutionPayload : IForkValidator, IExecutionPayloadParams, IExecut
         return new(block);
     }
 
-    protected virtual Hash256? BuildWithdrawalsRoot()
-    {
-        return Withdrawals is null ? null : new WithdrawalTrie(Withdrawals).RootHash;
-    }
+    protected virtual Hash256? BuildWithdrawalsRoot() => Withdrawals is null ? null : new WithdrawalTrie(Withdrawals).RootHash;
 
     protected Transaction[]? _transactions = null;
 
