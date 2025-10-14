@@ -18,6 +18,9 @@ using Nethermind.Consensus.Producers;
 using Nethermind.Consensus.Scheduler;
 using Nethermind.Core;
 using Nethermind.Core.Attributes;
+using Nethermind.Evm;
+using Nethermind.Evm.State;
+using Nethermind.Logging;
 using Nethermind.State;
 using Nethermind.TxPool;
 using Nethermind.Wallet;
@@ -33,6 +36,7 @@ namespace Nethermind.Init.Steps
     public class InitializeBlockchain(INethermindApi api, IChainHeadInfoProvider chainHeadInfoProvider) : IStep
     {
         private readonly INethermindApi _api = api;
+        private ILogManager _logManager = api.LogManager;
 
         public async Task Execute(CancellationToken _)
         {
