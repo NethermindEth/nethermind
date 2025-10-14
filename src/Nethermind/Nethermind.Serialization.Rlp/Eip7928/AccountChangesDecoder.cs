@@ -61,9 +61,11 @@ public class AccountChangesDecoder : IRlpValueDecoder<AccountChanges>, IRlpStrea
         ushort lastIndex = 0;
         SortedList<ushort, BalanceChange> balanceChangesList = new(balanceChanges.ToDictionary(s =>
         {
+            Console.WriteLine("Decoding balance change: " + s.ToString());
             ushort index = s.BlockAccessIndex;
             if (index <= lastIndex)
             {
+                Console.WriteLine($"Balance changes were in incorrect order. index={index}, lastIndex={lastIndex}");
                 throw new RlpException("Balance changes were in incorrect order.");
             }
             lastIndex = index;

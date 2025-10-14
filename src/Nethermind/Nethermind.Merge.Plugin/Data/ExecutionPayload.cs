@@ -112,9 +112,7 @@ public class ExecutionPayload : IForkValidator, IExecutionPayloadParams, IExecut
 
     protected static TExecutionPayload Create<TExecutionPayload>(Block block) where TExecutionPayload : ExecutionPayload, new()
     {
-        Console.WriteLine("Creating execution payload, encodedBal="
-            + (block.EncodedBlockAccessList is null ? "null" : Bytes.ToHexString(block.EncodedBlockAccessList))
-            + " AccountChangesLength=" + (block.BlockAccessList is null ? "null" : block.BlockAccessList.Value.GetAccountChanges().Count()));
+        Console.WriteLine("Created block access list:\n" +  (block.BlockAccessList is null ? "null" : block.BlockAccessList.ToString()));
         TExecutionPayload executionPayload = new()
         {
             BlockHash = block.Hash!,
@@ -182,7 +180,7 @@ public class ExecutionPayload : IForkValidator, IExecutionPayloadParams, IExecut
         if (BlockAccessList is not null)
         {
             //tmp
-            Console.WriteLine("Decoding BAL from execution payload: " + Bytes.ToHexString(BlockAccessList));
+            // Console.WriteLine("Decoding BAL from execution payload:\n" + Bytes.ToHexString(BlockAccessList));
             try
             {
                 blockAccessList = Rlp.Decode<BlockAccessList>(BlockAccessList);
