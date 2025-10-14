@@ -53,7 +53,6 @@ public class BalanceChangeDecoder : IRlpValueDecoder<BalanceChange>, IRlpStreamD
     public void Encode(RlpStream stream, BalanceChange item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
     {
         stream.StartSequence(GetContentLength(item, rlpBehaviors));
-        Console.WriteLine("Encoding balance change: " + item);
         stream.Encode(item.BlockAccessIndex);
         stream.Encode(item.PostBalance);
     }

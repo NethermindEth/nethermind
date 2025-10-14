@@ -81,7 +81,7 @@ namespace Nethermind.Consensus.Processing
                     }
                 }
                 _tracedAccessWorldState?.BlockAccessList.IncrementBlockAccessIndex();
-                Console.WriteLine($"Built block {i}, balIndex={(_tracedAccessWorldState is null ? "null" : _tracedAccessWorldState.BlockAccessList.Index)}");
+                // Console.WriteLine($"Built block {i}, balIndex={(_tracedAccessWorldState is null ? "null" : _tracedAccessWorldState.BlockAccessList.Index)}");
 
                 block.Header.TxRoot = TxTrie.CalculateRoot(includedTx.AsSpan());
                 if (blockToProduce is not null)

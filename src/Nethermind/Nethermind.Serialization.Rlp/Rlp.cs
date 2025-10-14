@@ -1724,18 +1724,20 @@ namespace Nethermind.Serialization.Rlp
 
         public static int LengthOf(int value) => LengthOf((long)value);
 
-        public static int LengthOf(ushort value)
-        {
-            if (value < 128)
-            {
-                return 1;
-            }
-            else
-            {
-                // everything has a length prefix
-                return 1 + sizeof(ushort) - (BitOperations.LeadingZeroCount(value) / 2);
-            }
-        }
+        // public static int LengthOf(ushort value)
+        // {
+        //     if (value < 128)
+        //     {
+        //         return 1;
+        //     }
+        //     else
+        //     {
+        //         // everything has a length prefix
+        //         return 1 + sizeof(ushort) - (BitOperations.LeadingZeroCount(value) / 2);
+        //     }
+        // }
+
+        public static int LengthOf(ushort value) => LengthOf((long)value);
 
         public static int LengthOf(Hash256? item) => item is null ? 1 : 33;
 
