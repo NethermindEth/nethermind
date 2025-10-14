@@ -134,6 +134,7 @@ public partial class BlockProcessor
         if (_tracedAccessWorldState is not null)
         {
             _tracedAccessWorldState.Enabled = spec.BlockLevelAccessListsEnabled;
+            _tracedAccessWorldState.BlockAccessList.ResetBlockAccessIndex();
         }
 
         StoreBeaconRoot(block, spec);

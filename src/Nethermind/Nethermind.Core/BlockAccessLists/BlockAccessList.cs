@@ -50,6 +50,12 @@ public struct BlockAccessList : IEquatable<BlockAccessList>, IJournal<int>
         Index++;
     }
 
+    public void ResetBlockAccessIndex()
+    {
+        _changes.Clear();
+        Index = 0;
+    }
+
     public void AddBalanceChange(Address address, UInt256 before, UInt256 after)
     {
         if (address == Address.SystemUser)
