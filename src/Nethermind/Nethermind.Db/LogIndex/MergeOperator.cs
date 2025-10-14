@@ -11,12 +11,14 @@ namespace Nethermind.Db;
 partial class LogIndexStorage
 {
     // TODO: check if success=false + paranoid_checks=true is better than throwing exception
-    // TODO: tests for MergeOperator specifically?
-    private class MergeOperator(ILogIndexStorage logIndexStorage, ICompressor compressor, int? topicIndex) : IMergeOperator
+    // TODO: tests for MergeOperator specifically
+    private class MergeOperator(LogIndexStorage storage, ICompressor compressor, int? topicIndex) : IMergeOperator
     {
-        private LogIndexUpdateStats _stats = new(logIndexStorage);
+        private readonly CancellationTokenSource _cts = new();
+
+        private LogIndexUpdateStats _stats = new(storage);
         public LogIndexUpdateStats Stats => _stats;
-        public LogIndexUpdateStats GetAndResetStats() => Interlocked.Exchange(ref _stats, new(logIndexStorage));
+        public LogIndexUpdateStats GetAndResetStats() => Interlocked.Exchange(ref _stats, new(storage));
 
         public string Name => $"{nameof(LogIndexStorage)}.{nameof(MergeOperator)}";
 
@@ -48,6 +50,9 @@ partial class LogIndexStorage
         // TODO: avoid array copying in case of a single value?
         private ArrayPoolList<byte>? Merge(ReadOnlySpan<byte> key, RocksDbMergeEnumerator enumerator, bool isPartial)
         {
+            if (_cts.IsCancellationRequested)
+                return null;
+
             var success = false;
             ArrayPoolList<byte>? result = null;
             var timestamp = Stopwatch.GetTimestamp();
@@ -108,6 +113,13 @@ partial class LogIndexStorage
 
                 success = true;
                 return result;
+            }
+            catch (Exception exception)
+            {
+                storage.OnBackgroundError<MergeOperator>(exception);
+                _cts.Cancel();
+
+                throw;
             }
             finally
             {

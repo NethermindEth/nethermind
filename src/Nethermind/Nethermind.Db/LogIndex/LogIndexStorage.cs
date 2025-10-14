@@ -343,7 +343,13 @@ namespace Nethermind.Db
         }
 
         // TODO: stop the storage?
-        private void OnError(Exception error) => _lastError = error;
+        private void OnBackgroundError<TCaller>(Exception error)
+        {
+            _lastError = error;
+
+            if (_logger.IsError)
+                _logger.Error($"Error in {typeof(TCaller).Name}", error);
+        }
 
         private void ThrowIfHasError()
         {

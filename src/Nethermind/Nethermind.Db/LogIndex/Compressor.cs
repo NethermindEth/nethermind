@@ -152,10 +152,7 @@ partial class LogIndexStorage
             }
             catch (Exception ex)
             {
-                if (_logger.IsError)
-                    _logger.Error("Error during post-merge compression.", ex);
-
-                _storage.OnError(ex);
+                _storage.OnBackgroundError<Compressor>(ex);
                 _cts.Cancel();
             }
             finally

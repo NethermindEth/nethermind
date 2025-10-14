@@ -124,10 +124,7 @@ partial class LogIndexStorage
                 }
                 catch (Exception ex)
                 {
-                    if (_logger.IsError)
-                        _logger.Error("Failed to compact log index", ex);
-
-                    _storage.OnError(ex);
+                    _storage.OnBackgroundError<Compactor>(ex);
                     await _cts.CancelAsync();
                 }
                 finally
