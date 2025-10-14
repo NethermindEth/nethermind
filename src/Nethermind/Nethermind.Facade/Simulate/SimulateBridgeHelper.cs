@@ -43,6 +43,7 @@ public class SimulateBridgeHelper(IBlocksConfig blocksConfig, ISpecProvider spec
         IReleaseSpec releaseSpec)
     {
         stateProvider.ApplyStateOverridesNoCommit(codeInfoRepository, blockStateCall.StateOverrides, releaseSpec, _logger);
+        stateProvider.Commit(releaseSpec, commitRoots: false);
 
         IEnumerable<Address> senders = blockStateCall.Calls?.Select(static details => details.Transaction.SenderAddress) ?? [];
         IEnumerable<Address> targets = blockStateCall.Calls?.Select(static details => details.Transaction.To!) ?? [];
@@ -50,7 +51,7 @@ public class SimulateBridgeHelper(IBlocksConfig blocksConfig, ISpecProvider spec
         {
             stateProvider.CreateAccountIfNotExists(address, 0, 0);
         }
-        stateProvider.Commit(releaseSpec, commitRoots: false);
+
     }
 
     public SimulateOutput<TTrace> TrySimulate<TTrace>(

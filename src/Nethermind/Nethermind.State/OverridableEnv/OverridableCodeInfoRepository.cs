@@ -42,7 +42,6 @@ public class OverridableCodeInfoRepository(ICodeInfoRepository codeInfoRepositor
     public void MovePrecompile(IReleaseSpec vmSpec, Address precompileAddr, Address targetAddr)
     {
         _precompileOverrides[targetAddr] = (this.GetCachedCodeInfo(precompileAddr, vmSpec), precompileAddr);
-        // TODO: fix
         _codeOverrides[precompileAddr] = new CodeInfo(worldState.GetCode(precompileAddr));
     }
 
