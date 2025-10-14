@@ -330,7 +330,7 @@ namespace Nethermind.Db
 
         private void ThrowIfHasError()
         {
-            if (_lastBackgroundError is {} error)
+            if (_lastBackgroundError is { } error)
                 ExceptionDispatchInfo.Throw(error);
         }
 

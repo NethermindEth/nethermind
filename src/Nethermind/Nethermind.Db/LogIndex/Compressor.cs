@@ -17,7 +17,7 @@ partial class LogIndexStorage
     /// <summary>
     /// Does background compression for keys with the number of blocks above the threshold.
     /// </summary>
-    private interface ICompressor: IDisposable
+    private interface ICompressor : IDisposable
     {
         int MinLengthToCompress { get; }
         PostMergeProcessingStats GetAndResetStats();
