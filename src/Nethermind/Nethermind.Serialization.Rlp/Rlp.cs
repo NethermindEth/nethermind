@@ -1854,7 +1854,9 @@ namespace Nethermind.Serialization.Rlp
         [StackTraceHidden]
         private static void ThrowCountOverLimit(int count, RlpLimit limit)
         {
-            throw new RlpLimitException($"Collection count {limit.CollectionExpression} of {count} is over limit {limit.Limit}");
+            throw new RlpLimitException(string.IsNullOrEmpty(limit.CollectionExpression)
+                ? $"Collection count of {count} is over limit {limit.Limit}"
+                : $"Collection count {limit.CollectionExpression} of {count} is over limit {limit.Limit}");
         }
     }
 
