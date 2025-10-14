@@ -795,7 +795,7 @@ public class StorageProviderTests
             IWorldStateScopeProvider.IStorageWriteBatch baseStorageBatch,
             Address address,
             WrittenData writtenData
-        ): IWorldStateScopeProvider.IStorageWriteBatch
+        ) : IWorldStateScopeProvider.IStorageWriteBatch
         {
             public void Dispose()
             {
