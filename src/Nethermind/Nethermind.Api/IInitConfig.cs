@@ -69,6 +69,9 @@ public interface IInitConfig : IConfig
     [ConfigItem(Description = "The maximum number of bad blocks observed on the network that will be stored on disk.", DefaultValue = "100")]
     long? BadBlocksStored { get; set; }
 
+    [ConfigItem(Description = "The path to the Nethermind data directory. Defaults to Nethermind's current directory.", DefaultValue = "null", HiddenFromDocs = true)]
+    string? DataDir { get; set; }
+
     [ConfigItem(Description = "[TECHNICAL] Disable garbage collector on newPayload", DefaultValue = "true", HiddenFromDocs = true)]
     bool DisableGcOnNewPayload { get; set; }
 

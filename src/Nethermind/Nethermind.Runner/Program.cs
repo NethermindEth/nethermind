@@ -486,19 +486,14 @@ void ResolveDataDirectory(string? path, IInitConfig initConfig, IKeyStoreConfig 
     {
         initConfig.BaseDbPath ??= string.Empty.GetApplicationResourcePath("db");
         initConfig.LogDirectory ??= string.Empty.GetApplicationResourcePath("logs");
-        initConfig.StaticNodesPath ??= string.Empty.GetApplicationResourcePath();
-        initConfig.TrustedNodesPath ??= string.Empty.GetApplicationResourcePath();
         keyStoreConfig.KeyStoreDirectory ??= string.Empty.GetApplicationResourcePath("keystore");
     }
     else
     {
         string newDbPath = initConfig.BaseDbPath.GetApplicationResourcePath(path);
         string newLogDirectory = initConfig.LogDirectory.GetApplicationResourcePath(path);
-        string staticNodesPath = initConfig.StaticNodesPath.GetApplicationResourcePath(path);
-        string trustedNodesPath = initConfig.TrustedNodesPath.GetApplicationResourcePath(path);
         string newKeyStorePath = keyStoreConfig.KeyStoreDirectory.GetApplicationResourcePath(path);
         string newSnapshotPath = snapshotConfig.SnapshotDirectory.GetApplicationResourcePath(path);
-        
 
         if (logger.IsInfo)
         {
@@ -511,9 +506,8 @@ void ResolveDataDirectory(string? path, IInitConfig initConfig, IKeyStoreConfig 
         }
 
         initConfig.BaseDbPath = newDbPath;
+        initConfig.DataDir = path;
         initConfig.LogDirectory = newLogDirectory;
-        initConfig.StaticNodesPath = staticNodesPath;
-        initConfig.TrustedNodesPath = trustedNodesPath;
         keyStoreConfig.KeyStoreDirectory = newKeyStorePath;
         snapshotConfig.SnapshotDirectory = newSnapshotPath;
     }
