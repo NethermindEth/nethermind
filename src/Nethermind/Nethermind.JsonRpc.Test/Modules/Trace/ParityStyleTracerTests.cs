@@ -79,10 +79,10 @@ public class ParityStyleTracerTests
 
     [TestCase(true)]
     [TestCase(false)]
-    public void Should_return_correct_block_reward(bool isPostMerge)
+    public async Task Should_return_correct_block_reward(bool isPostMerge)
     {
         Block block = Build.A.Block.WithParent(_blockTree!.Head!).TestObject;
-        _blockTree!.SuggestBlock(block).Should().Be(AddBlockResult.Added);
+        (await _blockTree!.SuggestBlockAsync(block)).Should().Be(AddBlockResult.Added);
         _poSSwitcher!.IsPostMerge(Arg.Any<BlockHeader>()).Returns(isPostMerge);
 
         ResultWrapper<IEnumerable<ParityTxTraceFromStore>> rpcResult = _traceRpcModule.trace_block(new BlockParameter(block.Number));
