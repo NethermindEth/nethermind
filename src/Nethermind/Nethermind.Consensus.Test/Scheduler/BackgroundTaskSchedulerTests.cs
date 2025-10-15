@@ -118,7 +118,7 @@ public class BackgroundTaskSchedulerTests
         executionCount.Should().Be(0);
 
         _branchProcessor.BlockProcessed += Raise.EventWith(new BlockProcessedEventArgs(null, null));
-        Assert.That(() => executionCount, Is.EqualTo(5).After(5000, 1));
+        Assert.That(() => executionCount, Is.EqualTo(5).After(1000, 10));
     }
 
     [Test]
