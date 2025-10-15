@@ -1,16 +1,19 @@
 // SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using Autofac.Features.AttributeFilters;
 using CkzgLib;
 using Nethermind.Core;
 using Nethermind.Core.Caching;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Messages;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Timers;
 using Nethermind.Crypto;
 using Nethermind.Int256;
 using Nethermind.Logging;
+using Nethermind.Network.Contract.Messages;
 using Nethermind.TxPool.Collections;
 using Nethermind.TxPool.Filters;
 using System;
@@ -21,8 +24,6 @@ using System.Runtime.CompilerServices;
 using System.Threading;
 using System.Threading.Channels;
 using System.Threading.Tasks;
-using Autofac.Features.AttributeFilters;
-using Nethermind.Core.Messages;
 using static Nethermind.TxPool.Collections.TxDistinctSortedPool;
 using ITimer = Nethermind.Core.Timers.ITimer;
 
@@ -36,7 +37,7 @@ namespace Nethermind.TxPool
     /// </summary>
     public class TxPool : ITxPool, IAsyncDisposable
     {
-        private readonly SimpleRetryCache<ValueHash256> _retryCache;
+        private readonly SimpleRetryCache<PooledTransactionRequestMessage, ValueHash256> _retryCache;
 
         private readonly IIncomingTxFilter[] _preHashFilters;
         private readonly IIncomingTxFilter[] _postHashFilters;
@@ -123,7 +124,7 @@ namespace Nethermind.TxPool
             _specProvider = _headInfo.SpecProvider;
             SupportsBlobs = _txPoolConfig.BlobsSupport != BlobsSupportMode.Disabled;
             _cts = new();
-            _retryCache = new SimpleRetryCache<ValueHash256>(logManager, requestingCacheSize: MemoryAllowance.TxHashCacheSize / 10, token: _cts.Token);
+            _retryCache = new SimpleRetryCache<PooledTransactionRequestMessage, ValueHash256>(logManager, requestingCacheSize: MemoryAllowance.TxHashCacheSize / 10, token: _cts.Token);
 
             MemoryAllowance.MemPoolSize = txPoolConfig.Size;
 
@@ -1128,7 +1129,7 @@ Db usage:
             block.DisposeAccountChanges();
         }
 
-        public AnnounceResult AnnounceTx(ValueHash256 txhash, IMessageHandler<ValueHash256> handler) => _retryCache.Announced(txhash, handler);
+        public AnnounceResult AnnounceTx(ValueHash256 txhash, IMessageHandler<PooledTransactionRequestMessage> retryHandler) => _retryCache.Announced(txhash, retryHandler);
     }
 }
 

@@ -1,8 +1,10 @@
 // SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using Nethermind.Core;
 using Nethermind.Core.Caching;
 using Nethermind.Logging;
+using Nethermind.Network.Contract.Messages;
 using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
@@ -11,20 +13,17 @@ using System.Threading.Tasks;
 
 namespace Nethermind.TxPool;
 
-public interface IMessageHandler<TMessage>
-{
-    void HandleMessage(TMessage message);
-}
 
-public class SimpleRetryCache<TResourceId>
+public class SimpleRetryCache<TMessage, TResourceId>
+    where TMessage : IResourceRequestMessage<TMessage, TResourceId>
     where TResourceId : struct, IEquatable<TResourceId>
 {
     private readonly int _timeoutMs;
     private readonly int _checkMs;
     private readonly int _requestingCacheSize;
 
-    private readonly ConcurrentDictionary<TResourceId, HashSet<IMessageHandler<TResourceId>>> _retryRequests = new();
-    private readonly ConcurrentQueue<(TResourceId ResourceId, DateTimeOffset Expires)> _expiringQueue = new();
+    private readonly ConcurrentDictionary<TResourceId, HashSet<IMessageHandler<TMessage>>> _retryRequests = new();
+    private readonly ConcurrentQueue<(TResourceId ResourceId, DateTimeOffset ExpiresAfter)> _expiringQueue = new();
     private readonly ClockKeyCache<TResourceId> _requestingResources;
     private readonly ILogger _logger;
 
@@ -47,7 +46,7 @@ public class SimpleRetryCache<TResourceId>
                 {
                     _expiringQueue.TryDequeue(out item);
 
-                    if (_retryRequests.TryRemove(item.ResourceId, out HashSet<IMessageHandler<TResourceId>>? requests))
+                    if (_retryRequests.TryRemove(item.ResourceId, out HashSet<IMessageHandler<TMessage>>? requests))
                     {
                         if (requests.Count > 0)
                         {
@@ -57,15 +56,15 @@ public class SimpleRetryCache<TResourceId>
                         if (_logger.IsTrace) _logger.Trace($"Sending retry requests for {item.ResourceId} after timeout");
 
 
-                        foreach (IMessageHandler<TResourceId> handler in requests)
+                        foreach (IMessageHandler<TMessage> retryHandler in requests)
                         {
                             try
                             {
-                                handler.HandleMessage(item.ResourceId);
+                                retryHandler.HandleMessage(TMessage.From(item.ResourceId));
                             }
                             catch (Exception ex)
                             {
-                                if (_logger.IsTrace) _logger.Error($"Failed to send retry request to {handler} for {item.ResourceId}", ex);
+                                if (_logger.IsTrace) _logger.Error($"Failed to send retry request to {retryHandler} for {item.ResourceId}", ex);
                             }
                         }
                     }
@@ -74,7 +73,7 @@ public class SimpleRetryCache<TResourceId>
         }, token);
     }
 
-    public AnnounceResult Announced(TResourceId resourceId, IMessageHandler<TResourceId> handler)
+    public AnnounceResult Announced(TResourceId resourceId, IMessageHandler<TMessage> retryHandler)
     {
         if (!_requestingResources.Contains(resourceId))
         {
@@ -82,7 +81,7 @@ public class SimpleRetryCache<TResourceId>
 
             _retryRequests.AddOrUpdate(resourceId, (resourceId) =>
             {
-                if (_logger.IsTrace) _logger.Trace($"Announced {resourceId} by {handler}: NEW");
+                if (_logger.IsTrace) _logger.Trace($"Announced {resourceId} by {retryHandler}: NEW");
 
                 _expiringQueue.Enqueue((resourceId, DateTimeOffset.UtcNow.AddMilliseconds(_timeoutMs)));
                 added = true;
@@ -90,16 +89,16 @@ public class SimpleRetryCache<TResourceId>
                 return [];
             }, (resourceId, dict) =>
             {
-                if (_logger.IsTrace) _logger.Trace($"Announced {resourceId} by {handler}: UPDATE");
+                if (_logger.IsTrace) _logger.Trace($"Announced {resourceId} by {retryHandler}: UPDATE");
 
-                dict.Add(handler);
+                dict.Add(retryHandler);
                 return dict;
             });
 
             return added ? AnnounceResult.New : AnnounceResult.Enqueued;
         }
 
-        if (_logger.IsTrace) _logger.Trace($"Announced {resourceId} by {handler}, but a retry is in progress already, immidietly firing");
+        if (_logger.IsTrace) _logger.Trace($"Announced {resourceId} by {retryHandler}, but a retry is in progress already, immidietly firing");
 
         return AnnounceResult.New;
     }
@@ -108,7 +107,7 @@ public class SimpleRetryCache<TResourceId>
     {
         if (_logger.IsTrace) _logger.Trace($"Received {resourceId}");
 
-        _retryRequests.TryRemove(resourceId, out HashSet<IMessageHandler<TResourceId>>? _);
+        _retryRequests.TryRemove(resourceId, out HashSet<IMessageHandler<TMessage>>? _);
     }
 }
 

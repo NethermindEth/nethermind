@@ -7,6 +7,7 @@ using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Logging;
+using Nethermind.Network.Contract.Messages;
 using Nethermind.Network.Contract.P2P;
 using Nethermind.Network.P2P.Subprotocols.Eth.V62.Messages;
 using Nethermind.Network.P2P.Subprotocols.Eth.V64;
@@ -38,7 +39,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V65
         ILogManager logManager,
         ITxGossipPolicy? transactionsGossipPolicy = null)
         : Eth64ProtocolHandler(session, serializer, nodeStatsManager, syncServer, backgroundTaskScheduler, txPool, gossipPolicy, forkInfo, logManager, transactionsGossipPolicy),
-          IMessageHandler<ValueHash256>
+          IMessageHandler<PooledTransactionRequestMessage>
     {
         public override string Name => "eth65";
 
@@ -208,9 +209,9 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V65
             return discoveredTxHashes;
         }
 
-        public virtual void HandleMessage(ValueHash256 txHash)
+        public virtual void HandleMessage(PooledTransactionRequestMessage message)
         {
-            ArrayPoolList<Hash256> hashesToRetry = new(1) { new Hash256(txHash) };
+            ArrayPoolList<Hash256> hashesToRetry = new(1) { new Hash256(message.TxHash) };
             RequestPooledTransactions(hashesToRetry);
         }
     }
