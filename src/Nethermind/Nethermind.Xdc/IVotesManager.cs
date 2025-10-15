@@ -9,5 +9,6 @@ internal interface IVotesManager
 {
     Task CastVote(BlockRoundInfo blockInfo);
     Task HandleVote(Vote vote);
+    Task OnReceiveVote(Vote vote);
     bool VerifyVotingRules(BlockRoundInfo blockInfo, QuorumCertificate qc);
 }

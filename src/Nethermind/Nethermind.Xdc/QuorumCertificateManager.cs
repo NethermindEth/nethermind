@@ -189,24 +189,13 @@ internal class QuorumCertificateManager : IQuorumCertificateManager
             return false;
         }
 
-        if (!ValidateBlockInfo(qc, parentHeader))
+        if (!BlockInfoValidator.ValidateBlockInfo(qc.ProposedBlockInfo, parentHeader))
         {
             error = "QC block data does not match header data.";
             return false;
         }
 
         error = null;
-        return true;
-    }
-
-    private bool ValidateBlockInfo(QuorumCertificate qc, XdcBlockHeader parentHeader)
-    {
-        if (qc.ProposedBlockInfo.BlockNumber != parentHeader.Number)
-            return false;
-        if (qc.ProposedBlockInfo.Hash != parentHeader.Hash)
-            return false;
-        if (qc.ProposedBlockInfo.Round != parentHeader.ExtraConsensusData.CurrentRound)
-            return false;
         return true;
     }
 }
