@@ -72,7 +72,7 @@ public class PooledTransactionsRequestingTests
         TestSingleReleaseSpecProvider specProvider = new(Osaka.Instance);
         IBlockTree blockTree = Build.A.BlockTree().WithoutSettingHead.WithSpecProvider(specProvider).TestObject;
 
-        TxPool.TxPool transactionPool = new(
+        TxPool.TxPool txPool = new(
             new EthereumEcdsa(specProvider.ChainId),
             new BlobTxStorage(),
             new ChainHeadInfoProvider(
@@ -94,7 +94,7 @@ public class PooledTransactionsRequestingTests
             new NodeStatsManager(_timerFactory, LimboLogs.Instance),
             syncManager,
             RunImmediatelyScheduler.Instance,
-            transactionPool,
+            txPool,
             Substitute.For<IGossipPolicy>(),
             new ForkInfo(specProvider, syncManager),
             LimboLogs.Instance);
@@ -104,14 +104,6 @@ public class PooledTransactionsRequestingTests
 
         Transaction tx = Build.A.Transaction.WithShardBlobTxTypeAndFields(1).WithMaxPriorityFeePerGas(1).WithGasLimit(100)
             .SignedAndResolved(new EthereumEcdsa(1), TestItem.PrivateKeyA).TestObject;
-
-        //transactionPool.AnnounceTx(Arg.Any<ValueHash256>(), Arg.Any<Guid>(), Arg.Any<Action>())
-        //    .Returns(AcceptTxResult.Accepted)
-        //    .AndDoes(s => transactionPool.Received((s.Args()[0] as Transaction).Hash));
-
-        //transactionPool.SubmitTx(Arg.Any<Transaction>(), Arg.Any<TxHandlingOptions>())
-        //    .Returns(AcceptTxResult.Accepted)
-        //    .AndDoes(s => transactionPool.Received((s.Args()[0] as Transaction).Hash));
 
         Hash256 _txHash = tx.CalculateHash();
         _txs = new(1) { tx };
@@ -129,7 +121,7 @@ public class PooledTransactionsRequestingTests
             new NodeStatsManager(_timerFactory, LimboLogs.Instance),
             syncManager,
             RunImmediatelyScheduler.Instance,
-            transactionPool,
+            txPool,
             _gossipPolicy,
             new ForkInfo(specProvider, syncManager),
             LimboLogs.Instance);
@@ -139,9 +131,6 @@ public class PooledTransactionsRequestingTests
         // Setup both handlers to receive status messages
         HandleIncomingStatusMessage(_handler);
         HandleIncomingStatusMessage(handler2);
-
-        // Mock transaction pool to not have the transaction
-        transactionPool.TryGetPendingTransaction(_txHash, out Arg.Any<Transaction>()).Returns(false);
 
         // Act - Send new pooled transaction hashes from both peers
         using NewPooledTransactionHashesMessage hashesMsg1 = new(new ArrayPoolList<Hash256>(1) { _txHash });
@@ -165,9 +154,7 @@ public class PooledTransactionsRequestingTests
     {
         await Task.Delay(Timeout);
 
-        _session2.Received(1).DeliverMessage(
-            Arg.Is<Network.P2P.Subprotocols.Eth.V66.Messages.GetPooledTransactionsMessage>(
-                m => m.EthMessage.Hashes.Contains(_txs[0].Hash)));
+        _session2.Received(1).DeliverMessage(Arg.Is<Network.P2P.Subprotocols.Eth.V66.Messages.GetPooledTransactionsMessage>(m => m.EthMessage.Hashes.Contains(_txs[0].Hash)));
     }
 
 
@@ -178,9 +165,7 @@ public class PooledTransactionsRequestingTests
         HandleZeroMessage(_handler, new Network.P2P.Subprotocols.Eth.V66.Messages.PooledTransactionsMessage(1111, new PooledTransactionsMessage(_txs)), Eth65MessageCode.PooledTransactions);
         await Task.Delay(Timeout);
 
-        _session2.Received(0).DeliverMessage(
-            Arg.Is<Network.P2P.Subprotocols.Eth.V66.Messages.GetPooledTransactionsMessage>(
-                m => m.EthMessage.Hashes.Contains(_txs[0].Hash)));
+        _session2.Received(0).DeliverMessage(Arg.Is<Network.P2P.Subprotocols.Eth.V66.Messages.GetPooledTransactionsMessage>(m => m.EthMessage.Hashes.Contains(_txs[0].Hash)));
     }
 
 
@@ -190,9 +175,7 @@ public class PooledTransactionsRequestingTests
         HandleZeroMessage(_handler, new Network.P2P.Subprotocols.Eth.V66.Messages.PooledTransactionsMessage(1111, new PooledTransactionsMessage(_txs)), Eth65MessageCode.PooledTransactions);
         await Task.Delay(Timeout);
 
-        _session2.Received(0).DeliverMessage(
-            Arg.Is<Network.P2P.Subprotocols.Eth.V66.Messages.GetPooledTransactionsMessage>(
-                m => m.EthMessage.Hashes.Contains(_txs[0].Hash)));
+        _session2.Received(0).DeliverMessage(Arg.Is<Network.P2P.Subprotocols.Eth.V66.Messages.GetPooledTransactionsMessage>(m => m.EthMessage.Hashes.Contains(_txs[0].Hash)));
     }
 
     private void HandleIncomingStatusMessage(Eth66ProtocolHandler handler)
