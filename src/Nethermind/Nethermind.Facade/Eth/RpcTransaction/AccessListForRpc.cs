@@ -101,7 +101,7 @@ public class AccessListForRpc
                     if (reader.TokenType != JsonTokenType.PropertyName)
                         throw new JsonException("Expected property name");
 
-                    string propName = reader.GetString()!;
+                    string propName = reader.GetString() ?? throw new JsonException("Property name cannot be null");
                     reader.Read(); // move to property value
 
                     if (string.Equals(propName, nameof(Item.Address), StringComparison.OrdinalIgnoreCase))
