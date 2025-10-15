@@ -16,23 +16,21 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V67;
 /// <summary>
 /// https://github.com/ethereum/EIPs/blob/master/EIPS/eip-4938.md
 /// </summary>
-public class Eth67ProtocolHandler : Eth66ProtocolHandler
+public class Eth67ProtocolHandler(
+    ISession session,
+    IMessageSerializationService serializer,
+    INodeStatsManager nodeStatsManager,
+    ISyncServer syncServer,
+    IBackgroundTaskScheduler backgroundTaskScheduler,
+    ITxPool txPool,
+    IPooledTxsRequestor pooledTxsRequestor,
+    IGossipPolicy gossipPolicy,
+    IForkInfo forkInfo,
+    ILogManager logManager,
+    ITxGossipPolicy? transactionsGossipPolicy = null)
+    : Eth66ProtocolHandler(session, serializer, nodeStatsManager, syncServer, backgroundTaskScheduler, txPool,
+        pooledTxsRequestor, gossipPolicy, forkInfo, logManager, transactionsGossipPolicy)
 {
-    public Eth67ProtocolHandler(ISession session,
-        IMessageSerializationService serializer,
-        INodeStatsManager nodeStatsManager,
-        ISyncServer syncServer,
-        IBackgroundTaskScheduler backgroundTaskScheduler,
-        ITxPool txPool,
-        IPooledTxsRequestor pooledTxsRequestor,
-        IGossipPolicy gossipPolicy,
-        IForkInfo forkInfo,
-        ILogManager logManager,
-        ITxGossipPolicy? transactionsGossipPolicy = null)
-        : base(session, serializer, nodeStatsManager, syncServer, backgroundTaskScheduler, txPool, pooledTxsRequestor, gossipPolicy, forkInfo, logManager, transactionsGossipPolicy)
-    {
-    }
-
     public override string Name => "eth67";
 
     public override byte ProtocolVersion => EthVersions.Eth67;

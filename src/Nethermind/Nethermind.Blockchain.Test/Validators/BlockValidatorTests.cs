@@ -14,6 +14,7 @@ using Nethermind.TxPool;
 using NSubstitute;
 using NUnit.Framework;
 using System.Collections.Generic;
+using FluentAssertions;
 
 namespace Nethermind.Blockchain.Test.Validators;
 
@@ -61,6 +62,23 @@ public class BlockValidatorTests
 
         bool result = blockValidator.ValidateSuggestedBlock(Build.A.Block.WithParent(parent).WithUncles(Build.A.BlockHeader.TestObject).TestObject, parent, out _);
         Assert.That(result, Is.False);
+    }
+
+    [Test, MaxTime(Timeout.MaxTestTime)]
+    public void When_do_not_check_uncle_when_orphaned()
+    {
+        TxValidator txValidator = new(TestBlockchainIds.ChainId);
+        ISpecProvider specProvider = new TestSpecProvider(Frontier.Instance);
+
+        BlockValidator blockValidator = new(txValidator, Always.Valid, Always.Invalid, specProvider, LimboLogs.Instance);
+
+        BlockHeader parent = Build.A.BlockHeader.TestObject;
+        Block block = Build.A.Block
+            .WithParent(parent)
+            .WithUncles(Build.A.BlockHeader.WithNumber(10).TestObject)
+            .TestObject;
+        blockValidator.ValidateSuggestedBlock(block, parent, out _).Should().Be(false);
+        blockValidator.ValidateOrphanedBlock(block, out _).Should().Be(true);
     }
 
     [Test]
