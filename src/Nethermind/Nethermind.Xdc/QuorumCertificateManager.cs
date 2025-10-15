@@ -184,7 +184,7 @@ internal class QuorumCertificateManager : IQuorumCertificateManager
             return false;
         }
 
-        long epochSwitchNumber = epochSwitchInfo.EpochSwitchBlockInfo.BlockNumber;
+        long epochSwitchNumber = epochSwitchInfo.EpochSwitchParentBlockInfo.BlockNumber;
         long gapNumber = epochSwitchNumber - (epochSwitchNumber % (long)spec.EpochLength) - (long)spec.Gap;
 
         if (epochSwitchNumber - (epochSwitchNumber % (long)spec.EpochLength) < (long)spec.Gap)
