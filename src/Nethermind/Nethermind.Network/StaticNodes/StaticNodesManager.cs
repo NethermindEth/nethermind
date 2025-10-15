@@ -49,33 +49,37 @@ public class StaticNodesManager(string staticNodesPath, ILogManager logManager) 
         }
 
         string data = await File.ReadAllTextAsync(staticNodesPath);
-        IEnumerable<string> nodes = INodeSource.ParseNodes(data);
-        var nodeCount = nodes.Count();
+        ISet<string> nodeSet = INodeSource.ParseNodes(data);
 
         if (_logger.IsInfo)
-            _logger.Info($"Loaded {nodeCount} static nodes from {Path.GetFullPath(staticNodesPath)}");
+            _logger.Info($"Loaded {nodeSet.Count} static nodes from {Path.GetFullPath(staticNodesPath)}");
 
-        if (nodeCount != 0)
+        if (nodeSet.Count != 0)
         {
             if (_logger.IsDebug) _logger.Debug($"Static nodes: {Environment.NewLine}{data}");
         }
 
-        List<NetworkNode> networkNodes = [];
+        List<NetworkNode> nodes = [];
 
-        foreach (string? n in nodes)
+        foreach (string? n in nodeSet)
         {
+            NetworkNode node;
+
             try
             {
-                NetworkNode networkNode = new(n);
-                networkNodes.Add(networkNode);
+                node = new(n);
             }
-            catch (Exception exception) when (exception is ArgumentException or SocketException)
+            catch (ArgumentException ex)
             {
-                if (_logger.IsError) _logger.Error("Unable to process node.", exception);
+                if (_logger.IsError) _logger.Error($"Failed to parse '{n}' as a node", ex);
+
+                continue;
             }
+
+            nodes.Add(node);
         }
 
-        _nodes = new ConcurrentDictionary<PublicKey, NetworkNode>(networkNodes.ToDictionary(static n => n.NodeId, static n => n));
+        _nodes = new ConcurrentDictionary<PublicKey, NetworkNode>(nodes.ToDictionary(static n => n.NodeId, static n => n));
     }
 
     public async Task<bool> AddAsync(string enode, bool updateFile = true)

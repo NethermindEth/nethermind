@@ -40,10 +40,10 @@ public class TrustedNodesManager(string trustedNodesPath, ILogManager logManager
         }
 
         string data = await File.ReadAllTextAsync(trustedNodesPath);
-        IEnumerable<string> nodes = INodeSource.ParseNodes(data);
-        ConcurrentDictionary<PublicKey, NetworkNode> temp = [];
+        ISet<string> nodeSet = INodeSource.ParseNodes(data);
+        ConcurrentDictionary<PublicKey, NetworkNode> nodes = [];
 
-        foreach (string n in nodes)
+        foreach (string n in nodeSet)
         {
             NetworkNode node;
 
@@ -51,7 +51,7 @@ public class TrustedNodesManager(string trustedNodesPath, ILogManager logManager
             {
                 node = new(n);
             }
-            catch (Exception ex)
+            catch (ArgumentException ex)
             {
                 if (_logger.IsError)
                     _logger.Error($"Failed to parse '{n}' as a node", ex);
@@ -59,16 +59,16 @@ public class TrustedNodesManager(string trustedNodesPath, ILogManager logManager
                 continue;
             }
 
-            temp.TryAdd(node.NodeId, node);
+            nodes.TryAdd(node.NodeId, node);
         }
 
         if (_logger.IsInfo)
-            _logger.Info($"Loaded {temp.Count} trusted nodes from {Path.GetFullPath(trustedNodesPath)}");
+            _logger.Info($"Loaded {nodes.Count} trusted nodes from {Path.GetFullPath(trustedNodesPath)}");
 
-        if (_logger.IsDebug && !temp.IsEmpty)
-            _logger.Debug($"Trusted nodes:{Environment.NewLine}{string.Join(Environment.NewLine, temp.Values.Select(n => n.ToString()))}");
+        if (_logger.IsDebug && !nodes.IsEmpty)
+            _logger.Debug($"Trusted nodes:{Environment.NewLine}{string.Join(Environment.NewLine, nodes.Values.Select(n => n.ToString()))}");
 
-        _nodes = temp;
+        _nodes = nodes;
     }
 
     // ---- INodeSource requirement: IAsyncEnumerable<Node> ----

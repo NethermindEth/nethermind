@@ -18,19 +18,19 @@ public interface INodeSource
 
     event EventHandler<NodeEventArgs> NodeRemoved;
 
-    static IEnumerable<string> ParseNodes(string data)
+    static ISet<string> ParseNodes(string data)
     {
-        string[] nodes;
+        ISet<string>? nodes;
 
         try
         {
-            nodes = JsonSerializer.Deserialize<string[]>(data) ?? [];
+            nodes = JsonSerializer.Deserialize<HashSet<string>>(data);
         }
         catch (JsonException)
         {
-            nodes = data.Split(separator, StringSplitOptions.RemoveEmptyEntries);
+            nodes = data.Split(separator, StringSplitOptions.RemoveEmptyEntries).ToHashSet();
         }
 
-        return nodes.Distinct();
+        return nodes;
     }
 }
