@@ -41,10 +41,6 @@ public class DebugRpcModule(
     private readonly BlockDecoder _blockDecoder = new();
     private readonly ulong _secondsPerSlot = blocksConfig.SecondsPerSlot;
 
-    private static bool HasStateForBlock(IBlockchainBridge blockchainBridge, BlockHeader header)
-    {
-        return blockchainBridge.HasStateForBlock(header);
-    }
 
     public ResultWrapper<ChainLevelForRpc> debug_getChainLevel(in long number)
     {
@@ -580,7 +576,7 @@ public class DebugRpcModule(
             error = GetFailureResult<TResult, BlockHeader>(searchResult, debugBridge.HaveNotSyncedHeadersYet());
             return null;
         }
-        if (!HasStateForBlock(blockchainBridge, header))
+        if (!blockchainBridge.HasStateForBlock(header))
         {
             error = GetStateFailureResult<TResult>(header);
             return null;
@@ -601,7 +597,7 @@ public class DebugRpcModule(
                 debugBridge.HaveNotSyncedHeadersYet());
             return null;
         }
-        if (!HasStateForBlock(blockchainBridge, header))
+        if (!blockchainBridge.HasStateForBlock(header))
         {
             error = GetStateFailureResult<TResult>(header);
             return null;
@@ -635,7 +631,7 @@ public class DebugRpcModule(
             return null;
         }
 
-        if (!HasStateForBlock(blockchainBridge, block.Header))
+        if (!blockchainBridge.HasStateForBlock(block.Header))
         {
             error = GetStateFailureResult<TResult>(block.Header);
             return null;

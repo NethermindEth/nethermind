@@ -2,23 +2,16 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using System.Collections.Generic;
 using System.Linq;
-using System.Text;
-using System.Threading;
 using System.Threading.Tasks;
 
-using Microsoft.Extensions.Logging;
 using Nethermind.Blockchain;
-using Nethermind.Config;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
 using Nethermind.Crypto;
 using Nethermind.Db;
-using Nethermind.Logging;
 using Nethermind.Serialization.Rlp;
-using Nethermind.Xdc;
 using Nethermind.Xdc.Errors;
 using Nethermind.Xdc.Spec;
 using Nethermind.Xdc.Types;
@@ -56,12 +49,12 @@ internal class QuorumCertificateManager : IQuorumCertificateManager
             _context.HighestQC = qc;
             SaveHighestQc(qc);
         }
-        
+
         var proposedBlockHeader = (XdcBlockHeader)_blockTree.FindHeader(qc.ProposedBlockInfo.Hash);
         if (proposedBlockHeader is null)
             throw new InvalidBlockException(proposedBlockHeader, "Proposed block header not found in chain");
 
-        //TODO this could be wrong way of fetching spec if a release spec is defined on a round basis 
+        //TODO this could be wrong way of fetching spec if a release spec is defined on a round basis
         IXdcReleaseSpec spec = _specProvider.GetXdcSpec(proposedBlockHeader);
 
         //Can only look for a QC in proposed block after the switch block
@@ -107,7 +100,7 @@ internal class QuorumCertificateManager : IQuorumCertificateManager
     private bool CommitBlock(IBlockTree chain, XdcBlockHeader proposedBlockHeader, ulong proposedRound, QuorumCertificate proposedQuorumCert)
     {
         IXdcReleaseSpec spec = _specProvider.GetXdcSpec(proposedBlockHeader);
-        //Can only commit a QC if the proposed block is at least 2 blocks after the switch block, since we want to check grand parent of proposed QC
+        //Can only commit a QC if the proposed block is at least 2 blocks after the switch block, since we want to check grandparent of proposed QC
         if ((proposedBlockHeader.Number - 2) <= spec.SwitchBlock)
             return false;
 
@@ -168,7 +161,7 @@ internal class QuorumCertificateManager : IQuorumCertificateManager
         }
 
         bool allValid = true;
-        Parallel.ForEach(uniqueSignatures, new ParallelOptions() { MaxDegreeOfParallelism = Environment.ProcessorCount }, (s, state) =>
+        Parallel.ForEach(uniqueSignatures, (s, state) =>
         {
             Address signer = _ethereumEcdsa.RecoverVoteSigner(new Vote(qc.ProposedBlockInfo, qc.GapNumber, s));
             if (!epochSwitchInfo.Masternodes.Contains(signer))

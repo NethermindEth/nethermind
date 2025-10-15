@@ -3,14 +3,8 @@
 
 using Nethermind.Blockchain;
 using Nethermind.Core;
-using Nethermind.Core.Crypto;
 using Nethermind.Xdc.Types;
 using System;
-using System.Collections.Concurrent;
-using System.Collections.Generic;
-using System.Linq;
-using System.Text;
-using System.Threading.Tasks;
 
 namespace Nethermind.Xdc;
 public class XdcContext
@@ -22,7 +16,7 @@ public class XdcContext
     public ulong HighestVotedRound { get; set; }
     public QuorumCertificate HighestQC { get; set; }
     public QuorumCertificate LockQC { get; set; }
-    public TimeoutCert HighestTC { get; set; }
+    public TimeoutCertificate HighestTC { get; set; }
     public BlockRoundInfo HighestCommitBlock { get; set; }
     public bool IsInitialized { get; set; } = false;
 

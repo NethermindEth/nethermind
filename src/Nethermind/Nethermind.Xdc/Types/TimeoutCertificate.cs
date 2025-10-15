@@ -3,12 +3,13 @@
 
 using Nethermind.Core.Crypto;
 using Nethermind.Serialization.Rlp;
+using Nethermind.Xdc.RLP;
 
 namespace Nethermind.Xdc.Types;
 
-public class TimeoutForSign(ulong round, ulong gapNumber)
+public class TimeoutCertificate(ulong round, Signature[] signatures, ulong gapNumber)
 {
     public ulong Round { get; set; } = round;
+    public Signature[] Signatures { get; set; } = signatures;
     public ulong GapNumber { get; set; } = gapNumber;
-    public Hash256 SigHash() => Keccak.Compute(Rlp.Encode(this).Bytes);
 }

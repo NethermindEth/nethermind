@@ -8,10 +8,10 @@ using Nethermind.Core.Specs;
 
 namespace Nethermind.Consensus
 {
-    public class TargetAdjustedGasLimitCalculator(ISpecProvider? specProvider, IBlocksConfig? miningConfig) : IGasLimitCalculator
+    public class TargetAdjustedGasLimitCalculator(ISpecProvider? specProvider, IBlocksConfig? blocksConfig) : IGasLimitCalculator
     {
         private readonly ISpecProvider _specProvider = specProvider ?? throw new ArgumentNullException(nameof(specProvider));
-        private readonly IBlocksConfig _blocksConfig = miningConfig ?? throw new ArgumentNullException(nameof(miningConfig));
+        private readonly IBlocksConfig _blocksConfig = blocksConfig ?? throw new ArgumentNullException(nameof(blocksConfig));
 
         public long GetGasLimit(BlockHeader parentHeader)
         {

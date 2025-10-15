@@ -61,4 +61,14 @@ public static class BlockExtensions
 
         return -1;
     }
+
+    /// <summary>
+    /// Disposes the AccountChanges ArrayPoolList if present, returning the pooled array.
+    /// This should be called when the block is no longer needed to prevent memory leaks.
+    /// </summary>
+    public static void DisposeAccountChanges(this Block block)
+    {
+        block.AccountChanges?.Dispose();
+        block.AccountChanges = null;
+    }
 }

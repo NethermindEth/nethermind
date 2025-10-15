@@ -165,9 +165,12 @@ namespace Nethermind.State.Proofs
                 foreach (int storageIndex in _storageNodeInfos[node.Keccak].StorageIndices)
                 {
                     Nibble childIndex = _fullStoragePaths[storageIndex][_pathTraversalIndex];
-                    Hash256 childHash = node.GetChildHash((byte)childIndex);
-                    if (childHash is not null)
+                    byte[] child = node.GetChildHashOrInlineValue((byte)childIndex);
+
+                    if (child?.Length == Hash256.Size)
                     {
+                        // If the length is 32 it's the hash of the child
+                        Hash256 childHash = new(child);
                         ref StorageNodeInfo? value = ref CollectionsMarshal.GetValueRefOrAddDefault(_storageNodeInfos, childHash, out bool exists);
                         if (!exists)
                         {
@@ -182,6 +185,11 @@ namespace Nethermind.State.Proofs
 
                         value.StorageIndices.Add(storageIndex);
                         _nodeToVisitFilter.Add(childHash);
+                    }
+                    else if (child is not null)
+                    {
+                        // Child is an inline node
+                        _accountProof.StorageProofs[storageIndex].Value = child;
                     }
                 }
             }
