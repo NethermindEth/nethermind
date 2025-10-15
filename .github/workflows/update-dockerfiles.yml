@@ -1,0 +1,78 @@
+name: Update Dockerfiles
+
+on:
+  schedule:
+    - cron: '0 0 * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  update-dockerfiles:
+    name: Update Dockerfiles
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v5
+
+      - name: Detect .NET version
+        run: |
+          dotnet_version=$(jq -r '.sdk.version' global.json | cut -d. -f1,2)
+          echo "DOTNET_VERSION=$dotnet_version" >> $GITHUB_ENV
+
+      - name: Update Dockerfiles
+        id: update
+        run: |
+          # Get the latest .NET release information
+          manifest=$(curl -s https://dotnetcli.blob.core.windows.net/dotnet/release-metadata/$DOTNET_VERSION/releases.json)
+          runtime_version=$(echo "$manifest" | jq -r '."latest-runtime"')
+          sdk_version=$(echo "$manifest" | jq -r '."latest-sdk"')
+
+          # Get the digests for the specified tags
+          runtime_chiseled_tag=${runtime_version}-noble-chiseled
+          runtime_chiseled_digest=$(skopeo inspect docker://mcr.microsoft.com/dotnet/aspnet:${runtime_chiseled_tag} --no-tags | jq -r '.Digest')
+
+          runtime_tag=${runtime_version}-noble
+          runtime_digest=$(skopeo inspect docker://mcr.microsoft.com/dotnet/aspnet:${runtime_tag} --no-tags | jq -r '.Digest')
+
+          sdk_tag=${sdk_version}-noble
+          sdk_digest=$(skopeo inspect docker://mcr.microsoft.com/dotnet/sdk:${sdk_tag} --no-tags | jq -r '.Digest')
+
+          # Update Dockerfiles
+          for file in "Dockerfile" "Dockerfile.chiseled" "scripts/build/Dockerfile"; do
+            sed -i "s|\(mcr\.microsoft\.com/dotnet/sdk:\)[^[:space:]]*|\1${sdk_tag}@${sdk_digest}|" "$file"
+          done
+
+          runtime_pattern="\(mcr\.microsoft\.com/dotnet/aspnet:\)[^[:space:]]*"
+
+          sed -i "s|${runtime_pattern}|\1${runtime_tag}@${runtime_digest}|" Dockerfile
+          sed -i "s|${runtime_pattern}|\1${runtime_chiseled_tag}@${runtime_chiseled_digest}|" Dockerfile.chiseled
+
+          # Get the number of modified files
+          file_count=$(git status --porcelain | wc -l)
+          echo "file-count=$file_count" >> $GITHUB_OUTPUT
+
+      - name: Create a pull request
+        if: steps.update.outputs.file-count != '0'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          head_branch=chore/update-dockerfiles-$GITHUB_RUN_NUMBER-$GITHUB_RUN_ATTEMPT
+          body=$(cat <<EOF
+          Updated Dockerfiles to use the latest versions of .NET $DOTNET_VERSION SDK and runtime.
+
+          To verify manually, see:
+          - https://mcr.microsoft.com/en-us/artifact/mar/dotnet/aspnet/tags
+          - https://mcr.microsoft.com/en-us/artifact/mar/dotnet/sdk/tags
+          EOF
+          )
+
+          git config user.name "$GITHUB_ACTOR"
+          git config user.email "$GITHUB_ACTOR@users.noreply.github.com"
+          git checkout -b $head_branch
+          git add -A
+          git commit -am "Update Dockerfiles"
+          git push origin $head_branch
+          gh pr create -B $GITHUB_REF_NAME -H $head_branch -t "Update Dockerfiles" -b "$body" -l .net -l devops

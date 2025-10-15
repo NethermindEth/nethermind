@@ -5,7 +5,6 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using Nethermind.Abi;
-using Nethermind.Blockchain.Tracing;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Evm;
@@ -17,20 +16,22 @@ using Log = Nethermind.Facade.Proxy.Models.Simulate.Log;
 
 namespace Nethermind.Facade.Simulate;
 
-public sealed class SimulateTxMutatorTracer : TxTracer, ITxLogsMutator
+public sealed class SimulateTxTracer : TxTracer
 {
-    private static readonly Hash256 transferSignature =
+    private static readonly Hash256 TransferSignature =
         new AbiSignature("Transfer", AbiType.Address, AbiType.Address, AbiType.UInt256).Hash;
+
+    private static readonly AbiSignature AbiTransferSignature = new("", AbiType.UInt256);
 
     private static readonly Address Erc20Sender = new("0xeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee");
     private readonly Hash256 _currentBlockHash;
     private readonly ulong _currentBlockNumber;
     private readonly ulong _currentBlockTimestamp;
     private readonly ulong _txIndex;
-    private ICollection<LogEntry>? _logsToMutate;
+    private readonly List<LogEntry> _logs;
     private readonly Transaction _tx;
 
-    public SimulateTxMutatorTracer(bool isTracingTransfers, Transaction tx, ulong currentBlockNumber, Hash256 currentBlockHash,
+    public SimulateTxTracer(bool isTracingTransfers, Transaction tx, ulong currentBlockNumber, Hash256 currentBlockHash,
         ulong currentBlockTimestamp, ulong txIndex)
     {
         // Note: Tx hash will be mutated as tx is modified while processing block
@@ -40,24 +41,37 @@ public sealed class SimulateTxMutatorTracer : TxTracer, ITxLogsMutator
         _currentBlockTimestamp = currentBlockTimestamp;
         _txIndex = txIndex;
         IsTracingReceipt = true;
-        IsTracingActions = IsMutatingLogs = isTracingTransfers;
+        IsTracingLogs = true;
+        IsTracingActions = isTracingTransfers;
+        _logs = new();
     }
 
     public SimulateCallResult? TraceResult { get; set; }
-
-    public bool IsMutatingLogs { get; }
-
-    public void SetLogsToMutate(ICollection<LogEntry> logsToMutate) => _logsToMutate = logsToMutate;
 
     public override void ReportAction(long gas, UInt256 value, Address from, Address to, ReadOnlyMemory<byte> input, ExecutionType callType, bool isPrecompileCall = false)
     {
         base.ReportAction(gas, value, from, to, input, callType, isPrecompileCall);
         if (value > UInt256.Zero)
         {
-            var data = AbiEncoder.Instance.Encode(AbiEncodingStyle.Packed, new AbiSignature("", AbiType.UInt256),
-                value);
-            _logsToMutate?.Add(new LogEntry(Erc20Sender, data, [transferSignature, (Hash256)from.ToHash(), (Hash256)to.ToHash()]));
+            var data = AbiEncoder.Instance.Encode(AbiEncodingStyle.Packed, AbiTransferSignature, value);
+            _logs.Add(new LogEntry(Erc20Sender, data, [TransferSignature, from.ToHash().ToHash256(), to.ToHash().ToHash256()]));
         }
+    }
+
+    public override void ReportSelfDestruct(Address address, UInt256 balance, Address refundAddress)
+    {
+        base.ReportSelfDestruct(address, balance, refundAddress);
+        if (balance > UInt256.Zero)
+        {
+            var data = AbiEncoder.Instance.Encode(AbiEncodingStyle.Packed, AbiTransferSignature, balance);
+            _logs.Add(new LogEntry(Erc20Sender, data, [TransferSignature, address.ToHash().ToHash256(), refundAddress.ToHash().ToHash256()]));
+        }
+    }
+
+    public override void ReportLog(LogEntry log)
+    {
+        base.ReportLog(log);
+        _logs.Add(log);
     }
 
     public override void MarkAsSuccess(Address recipient, GasConsumed gasSpent, byte[] output, LogEntry[] logs, Hash256? stateRoot = null)
@@ -67,7 +81,7 @@ public sealed class SimulateTxMutatorTracer : TxTracer, ITxLogsMutator
             GasUsed = (ulong)gasSpent.SpentGas,
             ReturnData = output,
             Status = StatusCode.Success,
-            Logs = logs.Select((entry, i) => new Log
+            Logs = _logs.Select((entry, i) => new Log
             {
                 Address = entry.Address,
                 Topics = entry.Topics,

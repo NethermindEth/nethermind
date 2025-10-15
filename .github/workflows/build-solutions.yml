@@ -34,9 +34,7 @@ jobs:
           cache-dependency-path: src/Nethermind/Nethermind.Runner/packages.lock.json
 
       - name: Install dependencies
-        run: |
-          dotnet restore src/Nethermind/${{ matrix.solution }}.slnx --locked-mode \
-            --lock-file-path src/Nethermind/Nethermind.Runner/packages.lock.json
+        run: dotnet restore src/Nethermind/${{ matrix.solution }}.slnx --locked-mode
 
       - name: Build ${{ matrix.solution }}.slnx
         run: dotnet build src/Nethermind/${{ matrix.solution }}.slnx -c ${{ matrix.config }} --no-restore

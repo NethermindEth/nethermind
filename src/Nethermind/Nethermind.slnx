@@ -49,7 +49,7 @@
     <Project Path="Nethermind.Consensus.Test/Nethermind.Consensus.Test.csproj" />
     <Project Path="Nethermind.Core.Test/Nethermind.Core.Test.csproj" />
     <Project Path="Nethermind.Db.Test/Nethermind.Db.Test.csproj" />
-    <Project Path="Nethermind.Era.Test/Nethermind.Era1.Test.csproj" />
+    <Project Path="Nethermind.Era1.Test/Nethermind.Era1.Test.csproj" />
     <Project Path="Nethermind.Ethash.Test/Nethermind.Ethash.Test.csproj" />
     <Project Path="Nethermind.EthStats.Test/Nethermind.EthStats.Test.csproj" />
     <Project Path="Nethermind.Evm.Test/Nethermind.Evm.Test.csproj" />

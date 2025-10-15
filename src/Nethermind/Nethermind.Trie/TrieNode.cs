@@ -1228,7 +1228,8 @@ namespace Nethermind.Trie
             }
             else
             {
-                if (data is null)
+                childOrRef = data;
+                if (childOrRef is null)
                 {
                     // Allows to load children in parallel
                     ValueRlpStream rlpStream = new ValueRlpStream(rlp);
@@ -1268,10 +1269,6 @@ namespace Nethermind.Trie
                                 break;
                             }
                     }
-                }
-                else
-                {
-                    childOrRef = data;
                 }
             }
 
@@ -1400,7 +1397,8 @@ namespace Nethermind.Trie
                 }
                 else
                 {
-                    if (data is null)
+                    childOrRef = data;
+                    if (childOrRef is null)
                     {
                         if (_currentStreamIndex.HasValue && _currentStreamIndex <= i)
                         {
@@ -1463,10 +1461,6 @@ namespace Nethermind.Trie
                                     break;
                                 }
                         }
-                    }
-                    else
-                    {
-                        childOrRef = data;
                     }
                 }
 
