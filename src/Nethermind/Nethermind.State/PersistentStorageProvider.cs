@@ -566,7 +566,7 @@ internal sealed class PersistentStorageProvider : PartialStorageProviderBase
         {
             _wasWritten = true;
 
-            // ✅ Track if this key is pre-hashed
+            // Track if this key is pre-hashed
             if (storageCell.IsHash)
             {
                 _preHashedKeys.Add(storageCell.Index);
@@ -649,7 +649,7 @@ internal sealed class PersistentStorageProvider : PartialStorageProviderBase
             int writes = 0;
             int skipped = 0;
 
-            // ✅ Move stackalloc OUTSIDE the loop
+            // Move stackalloc OUTSIDE the loop
             Span<byte> keyBuf = stackalloc byte[32];
 
             if (BlockChange.EstimatedSize < PatriciaTree.MinEntriesToParallelizeThreshold)
@@ -661,7 +661,7 @@ internal sealed class PersistentStorageProvider : PartialStorageProviderBase
                     {
                         BlockChange[kvp.Key] = new(after, after);
 
-                        // ✅ Check if key is pre-hashed
+                        // Check if key is pre-hashed
                         if (_preHashedKeys.Contains(kvp.Key))
                         {
                             // Key is already hashed - use it directly
@@ -693,7 +693,7 @@ internal sealed class PersistentStorageProvider : PartialStorageProviderBase
                     {
                         BlockChange[kvp.Key] = new(after, after);
 
-                        // ✅ Check if key is pre-hashed
+                        // Check if key is pre-hashed
                         if (_preHashedKeys.Contains(kvp.Key))
                         {
                             // Key is already hashed - use directly as ValueHash256
