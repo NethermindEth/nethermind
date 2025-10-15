@@ -91,7 +91,15 @@
     "eip7623TransitionTimestamp": "0x67c96e4c",
     "eip7702TransitionTimestamp": "0x67c96e4c",
     "eip4844FeeCollectorTransitionTimestamp": "0x67c96e4c",
-    "depositContractAddress": "0xb97036A26259B7147018913bD58a774cf91acf25",
+    "eip7594TransitionTimestamp": "0x68f74e4c",
+    "eip7823TransitionTimestamp": "0x68f74e4c",
+    "eip7825TransitionTimestamp": "0x68f74e4c",
+    "eip7883TransitionTimestamp": "0x68f74e4c",
+    "eip7918TransitionTimestamp": "0x68f74e4c",
+    "eip7934TransitionTimestamp": "0x68f74e4c",
+    "eip7939TransitionTimestamp": "0x68f74e4c",
+    "eip7951TransitionTimestamp": "0x68f74e4c",
+    "depositContractAddress": "0xb97036a26259b7147018913bd58a774cf91acf25",
     "blobSchedule": [
       {
         "name": "cancun",

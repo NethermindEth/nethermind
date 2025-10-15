@@ -12,6 +12,7 @@ using Nethermind.Blockchain.Receipts;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Config;
 using Nethermind.Config.Test;
+using Nethermind.Consensus;
 using Nethermind.Db;
 using Nethermind.EthStats;
 using Nethermind.JsonRpc;
@@ -107,7 +108,7 @@ public class ConfigFilesTests : ConfigFileTestsBase
     [TestCase("^validators ^spaceneth", false)]
     public void Mining_defaults_are_correct(string configWildcard, bool defaultValue = false)
     {
-        Test<IInitConfig, bool>(configWildcard, static c => c.IsMining, defaultValue);
+        Test<IMiningConfig, bool>(configWildcard, static c => c.Enabled, defaultValue);
     }
 
     [TestCase("*")]
@@ -244,7 +245,7 @@ public class ConfigFilesTests : ConfigFileTestsBase
     [TestCase("*")]
     public void Migrations_are_not_enabled_by_default(string configWildcard)
     {
-        Test<IInitConfig, bool>(configWildcard, static c => c.ReceiptsMigration, false);
+        Test<IReceiptConfig, bool>(configWildcard, static c => c.ReceiptsMigration, false);
         Test<IBloomConfig, bool>(configWildcard, static c => c.Migration, false);
         Test<IBloomConfig, bool>(configWildcard, static c => c.MigrationStatistics, false);
     }
@@ -349,7 +350,7 @@ public class ConfigFilesTests : ConfigFileTestsBase
 
     [TestCase("chiado", 17_000_000L, 5UL, 3000)]
     [TestCase("gnosis", 17_000_000L, 5UL, 3000)]
-    [TestCase("mainnet", 45_000_000L)]
+    [TestCase("mainnet", 60_000_000L)]
     [TestCase("sepolia", 60_000_000L)]
     [TestCase("holesky", 60_000_000L)]
     [TestCase("^chiado ^gnosis ^mainnet ^sepolia ^holesky")]

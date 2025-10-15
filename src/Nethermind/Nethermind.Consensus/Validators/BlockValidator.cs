@@ -72,7 +72,7 @@ public class BlockValidator(
         return ValidateBlockSize(block, spec, ref errorMessage) &&
                ValidateTransactions(block, spec, ref errorMessage) &&
                ValidateEip4844Fields(block, spec, ref errorMessage) &&
-               ValidateUncles(block, spec, validateHashes, ref errorMessage) &&
+               ValidateUncles<TOrphaned>(block, spec, validateHashes, ref errorMessage) &&
                ValidateHeader<TOrphaned>(block, parent, ref errorMessage) &&
                ValidateTxRootMatchesTxs(block, validateHashes, ref errorMessage) &&
                ValidateWithdrawals(block, spec, validateHashes, ref errorMessage);
@@ -90,7 +90,8 @@ public class BlockValidator(
         return blockHeaderValid;
     }
 
-    private bool ValidateUncles(Block block, IReleaseSpec spec, bool validateHashes, ref string? errorMessage)
+    private bool ValidateUncles<TOrphaned>(Block block, IReleaseSpec spec, bool validateHashes, ref string? errorMessage)
+        where TOrphaned : struct, IFlag
     {
         if (spec.MaximumUncleCount < block.Uncles.Length)
         {
@@ -106,7 +107,7 @@ public class BlockValidator(
             return false;
         }
 
-        if (block.Uncles.Length > 0 && !_unclesValidator.Validate(block.Header, block.Uncles))
+        if (typeof(TOrphaned) == typeof(OffFlag) && block.Uncles.Length > 0 && !_unclesValidator.Validate(block.Header, block.Uncles))
         {
             if (_logger.IsDebug) _logger.Debug($"{Invalid(block)} Invalid uncles");
             errorMessage = BlockErrorMessages.InvalidUncle;

@@ -1,31 +1,18 @@
 // SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using DotNetty.Codecs;
-using Google.Protobuf.WellKnownTypes;
-using Microsoft.Testing.Platform.Extensions.Messages;
-using Nethermind.Consensus;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Crypto;
-using Nethermind.Serialization.Rlp;
-using Nethermind.Xdc.RLP;
 using Nethermind.Xdc.Spec;
 using Nethermind.Xdc.Types;
 using NSubstitute;
-using NSubstitute.Core;
 using NUnit.Framework;
-using Org.BouncyCastle.Utilities.Encoders;
 using System;
 using System.Collections.Generic;
-using System.Collections.Immutable;
 using System.Linq;
-using System.Numerics;
-using System.Reflection.PortableExecutable;
-using System.Text;
-using System.Threading.Tasks;
 
 namespace Nethermind.Xdc.Test;
 internal class XdcSealValidatorTests
@@ -196,16 +183,13 @@ internal class XdcSealValidatorTests
             .CalculateNextEpochMasternodes(Arg.Any<XdcBlockHeader>(), Arg.Any<IXdcReleaseSpec>())
             .Returns((epochCandidates.ToArray(), penalties.ToArray()));
         IEpochSwitchManager epochSwitchManager = Substitute.For<IEpochSwitchManager>();
-        epochSwitchManager.GetEpochSwitchInfo(Arg.Any<XdcBlockHeader>(), Arg.Any<Hash256>()).Returns(new EpochSwitchInfo()
-        {
-            Masternodes = epochCandidates.ToArray()
-        });
+        epochSwitchManager.GetEpochSwitchInfo(Arg.Any<XdcBlockHeader>(), Arg.Any<Hash256>()).Returns(new EpochSwitchInfo(epochCandidates.ToArray(), [], new BlockRoundInfo(Hash256.Zero, 0, 0)));
         XdcSealValidator validator = new XdcSealValidator(snapshotManager, epochSwitchManager, specProvider);
 
         Assert.That(validator.ValidateParams(parent, header), Is.EqualTo(expected));
     }
 
-    private static QuorumCert CreateQc(BlockRoundInfo roundInfo, PrivateKey[] keys, ulong gapNumber)
+    private static QuorumCertificate CreateQc(BlockRoundInfo roundInfo, PrivateKey[] keys, ulong gapNumber)
     {
         EthereumEcdsa ecdsa = new EthereumEcdsa(0);
         QuorumCertificateDecoder qcEncoder = new QuorumCertificateDecoder();
@@ -213,6 +197,6 @@ internal class XdcSealValidatorTests
         //Fake the sigs by signing empty hash
         IEnumerable<Signature> signatures = keys.Select(k => ecdsa.Sign(k, Keccak.Compute(Hash256.Zero.Bytes)));
 
-        return new QuorumCert(roundInfo, signatures.ToArray(), gapNumber);
+        return new QuorumCertificate(roundInfo, signatures.ToArray(), gapNumber);
     }
 }

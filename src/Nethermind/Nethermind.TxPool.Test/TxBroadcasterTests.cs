@@ -6,6 +6,7 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Runtime.CompilerServices;
 using System.Threading.Tasks;
+using FastEnumUtility;
 using FluentAssertions;
 using Nethermind.Blockchain;
 using Nethermind.Consensus;
@@ -729,6 +730,38 @@ public class TxBroadcasterTests
             UInt256.MultiplyOverflow(baseFee, (UInt256)threshold, out UInt256 baseFeeThreshold)
                 ? overflow ? UInt256.MaxValue : lessAccurateBaseFeeThreshold
                 : baseFeeThreshold);
+    }
+
+    [Test]
+    public void can_correctly_broadcast_light_transactions_without_wrappers([Values] ProofVersion proofVersion, [Values] bool versionMatches)
+    {
+        // Arrange
+        IChainHeadInfoProvider mockChainHeadInfoProvider = Substitute.For<IChainHeadInfoProvider>();
+        mockChainHeadInfoProvider.CurrentProofVersion.Returns(proofVersion);
+        IReleaseSpec spec = Substitute.For<IReleaseSpec>();
+        spec.BlobProofVersion.Returns(versionMatches ? proofVersion : GetInvalidVersion(proofVersion));
+
+        SpecDrivenTxGossipPolicy gossipPolicy = new(mockChainHeadInfoProvider);
+
+        Transaction blobTransaction = Build.A.Transaction
+            .WithShardBlobTxTypeAndFields(spec: spec)
+            .SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA)
+            .TestObject;
+
+        LightTransaction lightTransaction = new(blobTransaction);
+
+        // Act
+        bool result = gossipPolicy.ShouldGossipTransaction(lightTransaction);
+
+        // Assert
+        result.Should().Be(versionMatches, "LightTransaction from blob transaction should be gossiped when proof version matches.");
+
+        // Gets (version + 1) % (version + 1) - so next version round robin
+        ProofVersion GetInvalidVersion(ProofVersion version)
+        {
+            byte mod = (byte)(FastEnum.GetMaxValue<ProofVersion>() + 1);
+            return (ProofVersion)((byte)(version + 1) % mod);
+        }
     }
 
     private (IList<Transaction> expectedTxs, IList<Hash256> expectedHashes) GetTxsAndHashesExpectedToBroadcast(Transaction[] transactions, int expectedCountTotal)
