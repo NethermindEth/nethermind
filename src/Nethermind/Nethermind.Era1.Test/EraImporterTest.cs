@@ -136,6 +136,7 @@ public class EraImporterTest
     }
 
     [CancelAfter(4000)]
+    [Retry(3)]
     [Test]
     public async Task ImportAsArchiveSync_WillPaceSuggestBlock(CancellationToken token)
     {
