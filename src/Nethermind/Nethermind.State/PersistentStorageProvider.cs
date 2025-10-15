@@ -504,9 +504,6 @@ internal sealed class PersistentStorageProvider : PartialStorageProviderBase
         private StorageTree? StorageTree;
         private DefaultableDictionary BlockChange = new DefaultableDictionary();
         private bool _wasWritten = false;
-
-        private readonly HashSet<UInt256> _preHashedKeys = new();
-
         private readonly Func<StorageCell, byte[]> _loadFromTreeStorageFunc;
         private readonly Address _address;
         private readonly PersistentStorageProvider _provider;
@@ -559,19 +556,11 @@ internal sealed class PersistentStorageProvider : PartialStorageProviderBase
         {
             StorageTree = new StorageTree(_provider._trieStore.GetTrieStore(_address), Keccak.EmptyTreeHash, _provider._logManager);
             BlockChange.ClearAndSetMissingAsDefault();
-            _preHashedKeys.Clear();
         }
 
         public void SaveChange(StorageCell storageCell, byte[] value)
         {
             _wasWritten = true;
-
-            // Track if this key is pre-hashed
-            if (storageCell.IsHash)
-            {
-                _preHashedKeys.Add(storageCell.Index);
-            }
-
             ref ChangeTrace valueChanges = ref BlockChange.GetValueRefOrAddDefault(storageCell.Index, out bool exists);
             if (!exists)
             {
@@ -648,10 +637,6 @@ internal sealed class PersistentStorageProvider : PartialStorageProviderBase
 
             int writes = 0;
             int skipped = 0;
-
-            // Move stackalloc OUTSIDE the loop
-            Span<byte> keyBuf = stackalloc byte[32];
-
             if (BlockChange.EstimatedSize < PatriciaTree.MinEntriesToParallelizeThreshold)
             {
                 foreach (var kvp in BlockChange)
@@ -660,20 +645,7 @@ internal sealed class PersistentStorageProvider : PartialStorageProviderBase
                     if (!Bytes.AreEqual(kvp.Value.Before, after) || kvp.Value.IsInitialValue)
                     {
                         BlockChange[kvp.Key] = new(after, after);
-
-                        // Check if key is pre-hashed
-                        if (_preHashedKeys.Contains(kvp.Key))
-                        {
-                            // Key is already hashed - use it directly
-                            kvp.Key.ToBigEndian(keyBuf);
-                            StorageTree.Set(new ValueHash256(keyBuf), after);
-                        }
-                        else
-                        {
-                            // Normal path - hash the slot index
-                            StorageTree.Set(kvp.Key, after);
-                        }
-
+                        StorageTree.Set(kvp.Key, after);
                         writes++;
                     }
                     else
@@ -686,6 +658,7 @@ internal sealed class PersistentStorageProvider : PartialStorageProviderBase
             {
                 using ArrayPoolList<PatriciaTree.BulkSetEntry> bulkWrite = new(BlockChange.EstimatedSize);
 
+                Span<byte> keyBuf = stackalloc byte[32];
                 foreach (var kvp in BlockChange)
                 {
                     byte[] after = kvp.Value.After;
@@ -693,19 +666,8 @@ internal sealed class PersistentStorageProvider : PartialStorageProviderBase
                     {
                         BlockChange[kvp.Key] = new(after, after);
 
-                        // Check if key is pre-hashed
-                        if (_preHashedKeys.Contains(kvp.Key))
-                        {
-                            // Key is already hashed - use directly as ValueHash256
-                            kvp.Key.ToBigEndian(keyBuf);
-                            bulkWrite.Add(StorageTree.CreateBulkSetEntry(new ValueHash256(keyBuf), after));
-                        }
-                        else
-                        {
-                            // Normal path - compute hash from slot index
-                            StorageTree.ComputeKeyWithLookup(kvp.Key, keyBuf);
-                            bulkWrite.Add(StorageTree.CreateBulkSetEntry(new ValueHash256(keyBuf), after));
-                        }
+                        StorageTree.ComputeKeyWithLookup(kvp.Key, keyBuf);
+                        bulkWrite.Add(StorageTree.CreateBulkSetEntry(new ValueHash256(keyBuf), after));
 
                         writes++;
                     }
