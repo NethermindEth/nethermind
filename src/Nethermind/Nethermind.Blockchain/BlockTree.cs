@@ -91,7 +91,7 @@ namespace Nethermind.Blockchain
 
         private long? _highestPersistedState;
 
-        public long BestKnownNumber { get; private set; }
+        public long BestKnownNumber { get; set; }
 
         public long BestKnownBeaconNumber { get; private set; }
 
@@ -106,6 +106,9 @@ namespace Nethermind.Blockchain
 
         private TaskCompletionSource? _taskCompletionSource;
 
+        private readonly long _genesisBlockNumber;
+
+
         public BlockTree(
             IBlockStore? blockStore,
             IHeaderStore? headerDb,
@@ -116,7 +119,8 @@ namespace Nethermind.Blockchain
             ISpecProvider? specProvider,
             IBloomStorage? bloomStorage,
             ISyncConfig? syncConfig,
-            ILogManager? logManager)
+            ILogManager? logManager,
+            long genesisBlockNumber = 0)
         {
             _logger = logManager?.GetClassLogger<BlockTree>() ?? throw new ArgumentNullException(nameof(logManager));
             _blockStore = blockStore ?? throw new ArgumentNullException(nameof(blockStore));
@@ -131,6 +135,8 @@ namespace Nethermind.Blockchain
                                         throw new ArgumentNullException(nameof(chainLevelInfoRepository));
             _oldestBlock = long.Min(syncConfig.AncientBodiesBarrierCalc, syncConfig.AncientReceiptsBarrierCalc);
 
+            _genesisBlockNumber = genesisBlockNumber;
+
             LoadSyncPivot();
 
             byte[]? deletePointer = _blockInfoDb.Get(DeletePointerAddressInDb);
@@ -142,7 +148,7 @@ namespace Nethermind.Blockchain
             // Need to be here because it still need to run even if there are no genesis to store the null entry.
             LoadLowestInsertedHeader();
 
-            ChainLevelInfo? genesisLevel = LoadLevel(0);
+            ChainLevelInfo? genesisLevel = LoadLevel(_genesisBlockNumber);
             if (genesisLevel is not null)
             {
                 BlockInfo genesisBlockInfo = genesisLevel.BlockInfos[0];
@@ -203,7 +209,7 @@ namespace Nethermind.Blockchain
                 throw new InvalidOperationException("An attempt to insert a block header without a known bloom.");
             }
 
-            if (header.Number == 0)
+            if (header.Number == _genesisBlockNumber)
             {
                 throw new InvalidOperationException("Genesis block should not be inserted.");
             }
@@ -405,7 +411,7 @@ namespace Nethermind.Blockchain
                 return AddBlockResult.CannotAccept;
             }
 
-            if (block.Number == 0)
+            if (block.Number == _genesisBlockNumber)
             {
                 throw new InvalidOperationException("Genesis block should not be inserted.");
             }
@@ -422,106 +428,113 @@ namespace Nethermind.Blockchain
             return AddBlockResult.Added;
         }
 
-        private AddBlockResult Suggest(Block? block, BlockHeader header, BlockTreeSuggestOptions options = BlockTreeSuggestOptions.ShouldProcess)
+    private AddBlockResult Suggest(Block? block, BlockHeader header, BlockTreeSuggestOptions options = BlockTreeSuggestOptions.ShouldProcess)
+    {
+        bool shouldProcess = options.ContainsFlag(BlockTreeSuggestOptions.ShouldProcess);
+        bool fillBeaconBlock = options.ContainsFlag(BlockTreeSuggestOptions.FillBeaconBlock);
+        bool setAsMain = options.ContainsFlag(BlockTreeSuggestOptions.ForceSetAsMain) ||
+                         !options.ContainsFlag(BlockTreeSuggestOptions.ForceDontSetAsMain) && !shouldProcess;
+
+        if (_logger.IsTrace) _logger.Trace($"Suggesting a new block. BestSuggestedBlock {BestSuggestedBody}, BestSuggestedBlock TD {BestSuggestedBody?.TotalDifficulty}, Block TD {block?.TotalDifficulty}, Head: {Head}, Head TD: {Head?.TotalDifficulty}, Block {block?.ToString(Block.Format.FullHashAndNumber)}. ShouldProcess: {shouldProcess}, TryProcessKnownBlock: {fillBeaconBlock}, SetAsMain {setAsMain}");
+
+    #if DEBUG
+        if (header.StateRoot is null && !header.IsGenesis)
         {
-            bool shouldProcess = options.ContainsFlag(BlockTreeSuggestOptions.ShouldProcess);
-            bool fillBeaconBlock = options.ContainsFlag(BlockTreeSuggestOptions.FillBeaconBlock);
-            bool setAsMain = options.ContainsFlag(BlockTreeSuggestOptions.ForceSetAsMain) ||
-                             !options.ContainsFlag(BlockTreeSuggestOptions.ForceDontSetAsMain) && !shouldProcess;
+            throw new InvalidDataException($"State root is null in {header.ToString(BlockHeader.Format.Short)}");
+        }
+    #endif
 
-            if (_logger.IsTrace) _logger.Trace($"Suggesting a new block. BestSuggestedBlock {BestSuggestedBody}, BestSuggestedBlock TD {BestSuggestedBody?.TotalDifficulty}, Block TD {block?.TotalDifficulty}, Head: {Head}, Head TD: {Head?.TotalDifficulty}, Block {block?.ToString(Block.Format.FullHashAndNumber)}. ShouldProcess: {shouldProcess}, TryProcessKnownBlock: {fillBeaconBlock}, SetAsMain {setAsMain}");
+        if (header.Hash is null)
+        {
+            throw new InvalidOperationException("An attempt to suggest a header with a null hash.");
+        }
 
-#if DEBUG
-            /* this is just to make sure that we do not fall into this trap when creating tests */
-            if (header.StateRoot is null && !header.IsGenesis)
+        if (!CanAcceptNewBlocks)
+        {
+            _logger.Info($"Rejecting block {header.ToString(BlockHeader.Format.FullHashAndNumber)} because the system cannot accept new blocks now.");
+            return AddBlockResult.CannotAccept;
+        }
+
+        if (_invalidBlocks.Contains(header.Hash))
+        {
+            _logger.Info($"Rejecting block {header.ToString(BlockHeader.Format.FullHashAndNumber)} because it is marked as invalid.");
+            return AddBlockResult.InvalidBlock;
+        }
+
+        bool isKnown = IsKnownBlock(header.Number, header.Hash);
+        if (isKnown && (BestSuggestedHeader?.Number ?? 0) >= header.Number)
+        {
+            _logger.Info($"Block {header.ToString(BlockHeader.Format.FullHashAndNumber)} is already known and not better than the current best suggested header.");
+            return AddBlockResult.AlreadyKnown;
+        }
+
+        bool parentExists = IsKnownBlock(header.Number - 1, header.ParentHash!) ||
+                            IsKnownBeaconBlock(header.Number - 1, header.ParentHash!);
+        if (!header.IsGenesis && !parentExists)
+        {
+            _logger.Info($"Block {header.ToString(BlockHeader.Format.FullHashAndNumber)} rejected due to missing parent block {header.ParentHash}.");
+            return AddBlockResult.UnknownParent;
+        }
+
+        _logger.Info($"Accepting block {header.ToString(BlockHeader.Format.FullHashAndNumber)}. Setting total difficulty.");
+        SetTotalDifficulty(header);
+
+        if (block is not null)
+        {
+            if (block.Hash is null)
             {
-                throw new InvalidDataException($"State root is null in {header.ToString(BlockHeader.Format.Short)}");
+                throw new InvalidOperationException("An attempt to suggest block with a null hash.");
             }
-#endif
+            _logger.Info($"Inserting block {block.ToString(Block.Format.FullHashAndNumber)} into block store.");
+            _blockStore.Insert(block);
+        }
 
-            if (header.Hash is null)
+        if (!isKnown)
+        {
+            _logger.Info($"Inserting header {header.ToString(BlockHeader.Format.FullHashAndNumber)} into header store.");
+            _headerStore.Insert(header);
+        }
+
+        if (!isKnown || fillBeaconBlock)
+        {
+            _logger.Info($"Updating level info for block {header.ToString(BlockHeader.Format.FullHashAndNumber)}. SetAsMain: {setAsMain}");
+            BlockInfo blockInfo = new(header.Hash, header.TotalDifficulty ?? 0);
+            UpdateOrCreateLevel(header.Number, blockInfo, setAsMain);
+            NewSuggestedBlock?.Invoke(this, new BlockEventArgs(block!));
+        }
+
+        if (header.IsGenesis)
+        {
+            _logger.Info($"Genesis block {header.ToString(BlockHeader.Format.FullHashAndNumber)} suggested and set.");
+            Genesis = header;
+            BestSuggestedHeader = header;
+        }
+
+        if (block is not null)
+        {
+            bool bestSuggestedImprovementSatisfied = BestSuggestedImprovementRequirementsSatisfied(header);
+            if (bestSuggestedImprovementSatisfied)
             {
-                throw new InvalidOperationException("An attempt to suggest a header with a null hash.");
-            }
+                _logger.Info($"New best suggested block found: {block.ToString(Block.Format.FullHashAndNumber)}");
+                BestSuggestedHeader = block.Header;
 
-            if (!CanAcceptNewBlocks)
-            {
-                return AddBlockResult.CannotAccept;
-            }
-
-            if (_invalidBlocks.Contains(header.Hash))
-            {
-                return AddBlockResult.InvalidBlock;
-            }
-
-            bool isKnown = IsKnownBlock(header.Number, header.Hash);
-            if (isKnown && (BestSuggestedHeader?.Number ?? 0) >= header.Number)
-            {
-                if (_logger.IsTrace) _logger.Trace($"Block {header.ToString(BlockHeader.Format.FullHashAndNumber)} already known.");
-                return AddBlockResult.AlreadyKnown;
-            }
-
-            bool parentExists = IsKnownBlock(header.Number - 1, header.ParentHash!) ||
-                                IsKnownBeaconBlock(header.Number - 1, header.ParentHash!);
-            if (!header.IsGenesis && !parentExists)
-            {
-                if (_logger.IsTrace) _logger.Trace($"Could not find parent ({header.ParentHash}) of block {header.Hash}");
-                return AddBlockResult.UnknownParent;
-            }
-
-            SetTotalDifficulty(header);
-
-            if (block is not null)
-            {
-                if (block.Hash is null)
-                {
-                    throw new InvalidOperationException("An attempt to suggest block with a null hash.");
-                }
-
-                _blockStore.Insert(block);
-            }
-
-            if (!isKnown)
-            {
-                _headerStore.Insert(header);
-            }
-
-            if (!isKnown || fillBeaconBlock)
-            {
-                BlockInfo blockInfo = new(header.Hash, header.TotalDifficulty ?? 0);
-                UpdateOrCreateLevel(header.Number, blockInfo, setAsMain);
-                NewSuggestedBlock?.Invoke(this, new BlockEventArgs(block!));
-            }
-
-            if (header.IsGenesis)
-            {
-                Genesis = header;
-                BestSuggestedHeader = header;
-            }
-
-            if (block is not null)
-            {
-                bool bestSuggestedImprovementSatisfied = BestSuggestedImprovementRequirementsSatisfied(header);
-                if (bestSuggestedImprovementSatisfied)
-                {
-                    if (_logger.IsTrace) _logger.Trace($"New best suggested block. PreviousBestSuggestedBlock {BestSuggestedBody}, BestSuggestedBlock TD {BestSuggestedBody?.TotalDifficulty}, Block TD {block?.TotalDifficulty}, Head: {Head}, Head: {Head?.TotalDifficulty}, Block {block?.ToString(Block.Format.FullHashAndNumber)}");
-                    BestSuggestedHeader = block.Header;
-
-                    if (block.IsPostMerge)
-                    {
-                        BestSuggestedBody = block;
-                    }
-                }
-
-                if (shouldProcess && (bestSuggestedImprovementSatisfied || header.IsGenesis || fillBeaconBlock))
+                if (block.IsPostMerge)
                 {
                     BestSuggestedBody = block;
-                    NewBestSuggestedBlock?.Invoke(this, new BlockEventArgs(block));
                 }
             }
 
-            return AddBlockResult.Added;
+            if (shouldProcess && (bestSuggestedImprovementSatisfied || header.IsGenesis || fillBeaconBlock))
+            {
+                _logger.Info($"Best suggested body updated to block {block.ToString(Block.Format.FullHashAndNumber)} with ShouldProcess = true.");
+                BestSuggestedBody = block;
+                NewBestSuggestedBlock?.Invoke(this, new BlockEventArgs(block));
+            }
         }
+
+        return AddBlockResult.Added;
+    }
+
 
         public AddBlockResult SuggestHeader(BlockHeader header)
         {
@@ -540,9 +553,17 @@ namespace Nethermind.Blockchain
 
         public AddBlockResult SuggestBlock(Block block, BlockTreeSuggestOptions options = BlockTreeSuggestOptions.ShouldProcess)
         {
-            if (Genesis is null && !block.IsGenesis)
+            // Allow suggesting genesis block at non-zero block number (Arbitrum)
+            if (Genesis is null)
             {
-                throw new InvalidOperationException("Block tree should be initialized with genesis before suggesting other blocks.");
+                if (block.Number == _genesisBlockNumber || block.IsGenesis)
+                {
+                    Genesis = block.Header;
+                }
+                else
+                {
+                    throw new InvalidOperationException("Block tree should be initialized with genesis before suggesting other blocks.");
+                }
             }
 
             return Suggest(block, block.Header, options);
@@ -1124,6 +1145,11 @@ namespace Nethermind.Blockchain
             }
         }
 
+        public void InitializeGenesisTree()
+        {
+            LoadSyncPivot();
+            RecalculateTreeLevels();
+        }
 
         public bool IsBetterThanHead(BlockHeader? header) =>
             header is not null // null is never better
@@ -1529,7 +1555,7 @@ namespace Nethermind.Blockchain
 
         private void SetTotalDifficulty(BlockHeader header)
         {
-            if (header.IsGenesis)
+            if (header.IsGenesis || header.Number == _genesisBlockNumber)
             {
                 header.TotalDifficulty = header.Difficulty;
                 if (_logger.IsTrace) _logger.Trace($"Genesis total difficulty is {header.TotalDifficulty}");
@@ -1553,7 +1579,7 @@ namespace Nethermind.Blockchain
             void SetTotalDifficultyDeep(BlockHeader current)
             {
                 Stack<BlockHeader> stack = new();
-                while (!current.IsGenesis && !current.IsNonZeroTotalDifficulty())
+                while (!current.IsGenesis && !current.IsNonZeroTotalDifficulty() && current.Number != _genesisBlockNumber)
                 {
                     (BlockInfo blockInfo, ChainLevelInfo level) = LoadInfo(current.Number, current.Hash, true);
                     if (level is null || blockInfo is null || blockInfo.TotalDifficulty == 0)
@@ -1570,7 +1596,7 @@ namespace Nethermind.Blockchain
                     }
                 }
 
-                if (current.IsGenesis)
+                if (current.IsGenesis || current.Number == _genesisBlockNumber)
                 {
                     current.TotalDifficulty = current.Difficulty;
                     BlockInfo blockInfo = new(current.Hash, current.Difficulty);

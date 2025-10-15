@@ -433,36 +433,48 @@ public sealed class BlockchainProcessor : IBlockchainProcessor, IBlockProcessing
     public Block? Process(Block suggestedBlock, ProcessingOptions options, IBlockTracer tracer, CancellationToken token, out string? error)
     {
         error = null;
+
+        _logger.Info($"[Process] Starting processing for block: {suggestedBlock?.ToString(Block.Format.FullHashAndNumber)}");
+
         if (!RunSimpleChecksAheadOfProcessing(suggestedBlock, options))
         {
+            _logger.Info($"[Process] Block failed pre-processing checks: {suggestedBlock?.ToString(Block.Format.FullHashAndNumber)}");
             return null;
         }
 
         UInt256 totalDifficulty = suggestedBlock.TotalDifficulty ?? 0;
-        if (_logger.IsTrace) _logger.Trace($"Total difficulty of block {suggestedBlock.ToString(Block.Format.Short)} is {totalDifficulty}");
+        if (_logger.IsTrace) _logger.Trace($"[Process] Total difficulty of block {suggestedBlock.ToString(Block.Format.Short)} is {totalDifficulty}");
 
         bool shouldProcess =
             suggestedBlock.IsGenesis
             || _blockTree.IsBetterThanHead(suggestedBlock.Header)
             || options.ContainsFlag(ProcessingOptions.ForceProcessing);
 
+        _logger.Info($"[Process] shouldProcess={shouldProcess}, isGenesis={suggestedBlock.IsGenesis}, isBetterThanHead={_blockTree.IsBetterThanHead(suggestedBlock.Header)}, force={options.ContainsFlag(ProcessingOptions.ForceProcessing)}");
+
         if (!shouldProcess)
         {
-            if (_logger.IsDebug) _logger.Debug($"Skipped processing of {suggestedBlock.ToString(Block.Format.FullHashAndNumber)}, Head = {_blockTree.Head?.Header?.ToString(BlockHeader.Format.Short)}, total diff = {totalDifficulty}, head total diff = {_blockTree.Head?.TotalDifficulty}");
+            _logger.Info($"[Process] Block skipped. Not genesis, not better than head, and ForceProcessing is not set.");
             return null;
         }
 
         bool readonlyChain = options.ContainsFlag(ProcessingOptions.ReadOnlyChain);
         if (!readonlyChain) _stats.CaptureStartStats();
 
+        _logger.Info($"[Process] Preparing processing branch...");
         using ProcessingBranch processingBranch = PrepareProcessingBranch(suggestedBlock, options);
+
+        _logger.Info($"[Process] Preparing blocks to process...");
         PrepareBlocksToProcess(suggestedBlock, options, processingBranch);
 
         _stopwatch.Restart();
+        _logger.Info($"[Process] Processing branch...");
         Block[]? processedBlocks = ProcessBranch(processingBranch, options, tracer, token, out error);
         _stopwatch.Stop();
+
         if (processedBlocks is null)
         {
+            _logger.Info($"[Process] Block processing returned null. Error: {error ?? "no error provided"}");
             return null;
         }
 
@@ -470,12 +482,12 @@ public sealed class BlockchainProcessor : IBlockchainProcessor, IBlockProcessing
         if (processedBlocks.Length > 0)
         {
             lastProcessed = processedBlocks[^1];
-            if (_logger.IsTrace) _logger.Trace($"Setting total on last processed to {lastProcessed.ToString(Block.Format.Short)}");
+            if (_logger.IsTrace) _logger.Trace($"[Process] Setting total on last processed block: {lastProcessed.ToString(Block.Format.Short)}");
             lastProcessed.Header.TotalDifficulty = suggestedBlock.TotalDifficulty;
         }
         else
         {
-            if (_logger.IsDebug) _logger.Debug($"Skipped processing of {suggestedBlock.ToString(Block.Format.FullHashAndNumber)}, last processed is null: {true}, processedBlocks.Length: {processedBlocks.Length}");
+            _logger.Info($"[Process] No blocks were actually processed (processedBlocks.Length == 0)");
         }
 
         if (!readonlyChain)
@@ -486,18 +498,20 @@ public sealed class BlockchainProcessor : IBlockchainProcessor, IBlockProcessing
             Metrics.RecoveryQueueSize = Math.Max(_queueCount - blockQueueCount - (IsProcessingBlock ? 1 : 0), 0);
             Metrics.ProcessingQueueSize = blockQueueCount;
             _stats.UpdateStats(lastProcessed, processingBranch.BaseBlock, blockProcessingTimeInMicrosecs);
+
+            _logger.Info($"[Process] Updated stats: time={blockProcessingTimeInMicrosecs}us, lastProcessed={lastProcessed?.ToString(Block.Format.Short) ?? "null"}");
         }
 
         bool updateHead = !options.ContainsFlag(ProcessingOptions.DoNotUpdateHead);
         if (updateHead)
         {
-            if (_logger.IsTrace) _logger.Trace($"Updating main chain: {lastProcessed}, blocks count: {processedBlocks.Length}");
+            _logger.Info($"[Process] Updating main chain with {processedBlocks.Length} blocks. Last block: {lastProcessed?.ToString(Block.Format.Short)}");
             _blockTree.UpdateMainChain(processingBranch.Blocks, true);
         }
 
         if ((options & ProcessingOptions.MarkAsProcessed) == ProcessingOptions.MarkAsProcessed)
         {
-            if (_logger.IsTrace) _logger.Trace($"Marked blocks as processed {lastProcessed}, blocks count: {processedBlocks.Length}");
+            _logger.Info($"[Process] Marking {processedBlocks.Length} blocks as processed.");
             _blockTree.MarkChainAsProcessed(processingBranch.Blocks);
         }
 
@@ -506,8 +520,11 @@ public sealed class BlockchainProcessor : IBlockchainProcessor, IBlockProcessing
             Metrics.BestKnownBlockNumber = _blockTree.BestKnownNumber;
         }
 
+        _logger.Info($"[Process] Completed block processing. Returning: {lastProcessed?.ToString(Block.Format.FullHashAndNumber) ?? "null"}");
+
         return lastProcessed;
     }
+
 
     public bool IsProcessingBlocks(ulong? maxProcessingInterval) =>
         _processorTask?.IsCompleted == false && _recoveryTask?.IsCompleted == false &&
@@ -808,65 +825,74 @@ public sealed class BlockchainProcessor : IBlockchainProcessor, IBlockProcessing
             => throw new InvalidOperationException($"Maximum size of branch reached ({MaxBranchSize}). This is unexpected.");
     }
 
-    [Todo(Improve.Refactor, "This probably can be made conditional (in DEBUG only)")]
     private bool RunSimpleChecksAheadOfProcessing(Block suggestedBlock, ProcessingOptions options)
     {
-        /* a bit hacky way to get the invalid branch out of the processing loop */
+        _logger.Info($"[PreCheck] Starting checks for block {suggestedBlock?.ToString(Block.Format.FullHashAndNumber)}");
+
         if (suggestedBlock.Number != 0 &&
             !_blockTree.IsKnownBlock(suggestedBlock.Number - 1, suggestedBlock.ParentHash))
         {
+            _logger.Info($"[PreCheck] Block has unknown parent. Block: {suggestedBlock.Number}, ParentHash: {suggestedBlock.ParentHash}");
             if (_logger.IsDebug) LogUnknownParentBlock(suggestedBlock);
             return false;
         }
 
+        // 2. Missing total difficulty
         if (suggestedBlock.Header.TotalDifficulty is null)
         {
+            _logger.Info($"[PreCheck] Block missing total difficulty. Block: {suggestedBlock.Number}, Hash: {suggestedBlock.Hash}");
             ThrowUnknownTotalDifficulty(suggestedBlock);
         }
 
+        // 3. Missing hash
         if (!options.ContainsFlag(ProcessingOptions.NoValidation) && suggestedBlock.Hash is null)
         {
+            _logger.Info($"[PreCheck] Block missing hash and NoValidation flag not set. Block: {suggestedBlock.Number}");
             ThrowUnknownBlockHash(suggestedBlock);
         }
 
+        // 4. Uncles missing hash
         BlockHeader[] uncles = suggestedBlock.Uncles;
         for (int i = 0; i < uncles.Length; i++)
         {
             if (uncles[i].Hash is null)
             {
+                _logger.Info($"[PreCheck] Uncle #{i} missing hash in block {suggestedBlock.Number}");
                 ThrowUnknownUncleHash(suggestedBlock, i);
             }
         }
 
+        _logger.Info($"[PreCheck] Block passed all checks: {suggestedBlock.Number}");
         return true;
 
-        // Uncommon logging and throws
+        // Internal logging / throws
 
         [MethodImpl(MethodImplOptions.NoInlining)]
         void LogUnknownParentBlock(Block suggestedBlock)
-            => _logger.Debug($"Skipping processing block {suggestedBlock.ToString(Block.Format.FullHashAndNumber)} with unknown parent");
+            => _logger.Debug($"[PreCheck] Skipping block {suggestedBlock.ToString(Block.Format.FullHashAndNumber)} due to unknown parent");
 
         [DoesNotReturn, StackTraceHidden]
         void ThrowUnknownTotalDifficulty(Block suggestedBlock)
         {
-            if (_logger.IsDebug) _logger.Debug($"Skipping processing block {suggestedBlock.ToString(Block.Format.FullHashAndNumber)} without total difficulty");
+            _logger.Info($"[PreCheck] Rejecting block {suggestedBlock.ToString(Block.Format.FullHashAndNumber)} — missing total difficulty");
             throw new InvalidOperationException("Block without total difficulty calculated was suggested for processing");
         }
 
         [DoesNotReturn, StackTraceHidden]
         void ThrowUnknownBlockHash(Block suggestedBlock)
         {
-            if (_logger.IsDebug) _logger.Debug($"Skipping processing block {suggestedBlock.ToString(Block.Format.FullHashAndNumber)} without calculated hash");
+            _logger.Info($"[PreCheck] Rejecting block {suggestedBlock.ToString(Block.Format.FullHashAndNumber)} — missing calculated hash");
             throw new InvalidOperationException("Block hash should be known at this stage if running in a validating mode");
         }
 
         [DoesNotReturn, StackTraceHidden]
         void ThrowUnknownUncleHash(Block suggestedBlock, int i)
         {
-            if (_logger.IsDebug) _logger.Debug($"Skipping processing block {suggestedBlock.ToString(Block.Format.FullHashAndNumber)} with null uncle hash ar {i}");
+            _logger.Info($"[PreCheck] Rejecting block {suggestedBlock.ToString(Block.Format.FullHashAndNumber)} — uncle[{i}] has null hash");
             throw new InvalidOperationException($"Uncle's {i} hash is null when processing block");
         }
     }
+
 
     public async ValueTask DisposeAsync()
     {
