@@ -4,7 +4,7 @@
     "cl": "lodestar",
     "cl_image": "chainsafe/lodestar:latest",
     "checkpoint-sync-url": "https://checkpoint-sync.hoodi.ethpandaops.io",
-    "timeout": 180,
+    "timeout": 300,
     "agent": "g6-standard-6"
   },
   {
@@ -12,7 +12,7 @@
     "cl": "lodestar",
     "cl_image": "chainsafe/lodestar:latest",
     "checkpoint-sync-url": "https://checkpoint-sync.holesky.ethpandaops.io/",
-    "timeout": 180,
+    "timeout": 600,
     "agent": "g6-standard-6"
   },
   {
@@ -20,7 +20,7 @@
     "cl": "lodestar",
     "cl_image": "chainsafe/lodestar:latest",
     "checkpoint-sync-url": "http://139.144.26.89:4000/",
-    "timeout": 180,
+    "timeout": 600,
     "agent": "g6-standard-6"
   },
   {
@@ -36,7 +36,7 @@
     "cl": "lodestar",
     "cl_image": "chainsafe/lodestar:latest",
     "checkpoint-sync-url": "https://checkpoint.gnosischain.com",
-    "timeout": 180,
+    "timeout": 600,
     "agent": "g6-standard-6"
   },
   {
@@ -44,7 +44,7 @@
     "cl": "lodestar",
     "cl_image": "chainsafe/lodestar:latest",
     "checkpoint-sync-url": "https://mainnet-checkpoint-sync.attestant.io/",
-    "timeout": 180,
+    "timeout": 600,
     "agent": "g6-standard-6"
   },
   {
@@ -52,7 +52,7 @@
     "cl": "",
     "cl_image": "",
     "checkpoint-sync-url": "",
-    "timeout": 180,
+    "timeout": 600,
     "agent": "g6-standard-6"
   },
   {
@@ -60,7 +60,7 @@
     "cl": "",
     "cl_image": "",
     "checkpoint-sync-url": "",
-    "timeout": 180,
+    "timeout": 600,
     "agent": "g6-standard-6"
   },
   {
@@ -68,7 +68,7 @@
     "cl": "",
     "cl_image": "",
     "checkpoint-sync-url": "",
-    "timeout": 180,
+    "timeout": 600,
     "agent": "g6-standard-6"
   },
   {
@@ -76,7 +76,7 @@
     "cl": "",
     "cl_image": "",
     "checkpoint-sync-url": "",
-    "timeout": 600,
+    "timeout": 2000,
     "agent": "g6-standard-8"
   },
   {
@@ -84,7 +84,7 @@
     "cl": "",
     "cl_image": "",
     "checkpoint-sync-url": "",
-    "timeout": 600,
+    "timeout": 2000,
     "agent": "g6-standard-16"
   },
   {
@@ -92,7 +92,7 @@
     "cl": "",
     "cl_image": "",
     "checkpoint-sync-url": "",
-    "timeout": 600,
+    "timeout": 2000,
     "agent": "g6-standard-6"
   },
   {
@@ -116,7 +116,7 @@
     "cl": "",
     "cl_image": "",
     "checkpoint-sync-url": "",
-    "timeout": 180,
+    "timeout": 600,
     "agent": "g6-standard-6"
   },
   {
@@ -124,7 +124,7 @@
     "cl": "",
     "cl_image": "",
     "checkpoint-sync-url": "",
-    "timeout": 180,
+    "timeout": 600,
     "agent": "g6-standard-6"
   },
   {
@@ -132,7 +132,7 @@
     "cl": "",
     "cl_image": "",
     "checkpoint-sync-url": "",
-    "timeout": 360,
+    "timeout": 600,
     "agent": "g6-standard-6"
   },
   {
@@ -140,7 +140,7 @@
     "cl": "",
     "cl_image": "",
     "checkpoint-sync-url": "",
-    "timeout": 180,
+    "timeout": 600,
     "agent": "g6-standard-6"
   }
 ]
