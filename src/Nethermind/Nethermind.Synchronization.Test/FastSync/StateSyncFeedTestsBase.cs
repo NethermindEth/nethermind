@@ -11,6 +11,7 @@ using FluentAssertions;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Config;
+using Nethermind.Consensus.Processing;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
@@ -170,6 +171,7 @@ public abstract class StateSyncFeedTestsBase
         Lazy<TreeSync> treeSync,
         Lazy<StateSyncFeed> stateSyncFeed,
         Lazy<SyncDispatcher<StateSyncBatch>> syncDispatcher,
+        Lazy<IBlockProcessingQueue> blockProcessingQueue,
         IBlockTree blockTree
     ) : IDisposable
     {
@@ -177,8 +179,9 @@ public abstract class StateSyncFeedTestsBase
         public ISyncPeerPool Pool => syncPeerPool.Value;
         public TreeSync TreeFeed => treeSync.Value;
         public StateSyncFeed Feed => stateSyncFeed.Value;
+        public IBlockProcessingQueue BlockProcessingQueue => blockProcessingQueue.Value;
 
-        private readonly AutoCancelTokenSource _autoCancelTokenSource = new AutoCancelTokenSource();
+        private readonly AutoCancelTokenSource _autoCancelTokenSource = new();
         public CancellationToken CancellationToken => _autoCancelTokenSource.Token;
 
         private bool _isDisposed;
@@ -192,6 +195,7 @@ public abstract class StateSyncFeedTestsBase
 
             (await blockTree.SuggestBlockAsync(newBlock)).Should().Be(AddBlockResult.Added);
             blockTree.UpdateMainChain([newBlock], false, true);
+            await BlockProcessingQueue.WaitForBlockProcessing(CancellationToken);
         }
 
         public void StartDispatcher(CancellationToken cancellationToken)
