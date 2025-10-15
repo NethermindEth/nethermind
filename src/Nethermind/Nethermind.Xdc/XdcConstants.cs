@@ -36,4 +36,6 @@ internal static class XdcConstants
 
     public static UInt256 DifficultyDefault = UInt256.One;
     public const int InMemorySignatures = 4096;
+
+    public const int MaxBlockDistance = 7; // Maximum allowed backward distance from the chain head
 }

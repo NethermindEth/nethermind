@@ -3,7 +3,6 @@
 
 using Nethermind.Blockchain;
 using Nethermind.Consensus;
-using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
@@ -11,69 +10,41 @@ using Nethermind.Core.Threading;
 using Nethermind.Crypto;
 using Nethermind.Logging;
 using Nethermind.Serialization.Rlp;
-using Nethermind.Trie;
-using Nethermind.Xdc;
-using Nethermind.Xdc.Errors;
 using Nethermind.Xdc.Spec;
 using Nethermind.Xdc.Types;
 using System;
-using System.Collections.Concurrent;
 using System.Collections.Generic;
-using System.Diagnostics;
 using System.Linq;
-using System.Text;
 using System.Threading.Tasks;
+
 namespace Nethermind.Xdc;
-internal class VotesManager : IVotesManager
+internal class VotesManager (
+    XdcContext context,
+    IBlockTree tree,
+    IEpochSwitchManager epochSwitchManager,
+    ISpecProvider specProvider,
+    ISigner signer,
+    IForensicsProcessor forensicsProcessor) : IVotesManager
 {
-    public VotesManager(
-        XdcContext context,
-        IBlockTree tree,
-        IEpochSwitchManager epochSwitchManager,
-        ISpecProvider xdcConfig,
-        ISigner signer,
-        IBlockInfoValidator blockInfoProcessor,
-        IForensicsProcessor forensicsProcessor,
-        ILogManager logManager)
-    {
-        Tree = tree;
-        EpochSwitchManager = epochSwitchManager;
-        _specProvider = xdcConfig;
-        _signer = signer;
-        BlockInfoProcessor = blockInfoProcessor;
-        Context = context;
-        ForensicsProcessor = forensicsProcessor;
-        _logger = logManager?.GetClassLogger() ?? NullLogger.Instance;
-    }
+    private IBlockTree _tree = tree;
+    private IEpochSwitchManager _epochSwitchManager = epochSwitchManager;
+    private XdcContext _ctx = context;
+    private IForensicsProcessor _forensicsProcessor = forensicsProcessor;
+    private ISpecProvider _specProvider = specProvider;
+    private ISigner _signer = signer;
+
     private VotePool _votePool => new();
-
-    public IBlockTree Tree { get; }
-    public IEpochSwitchManager EpochSwitchManager { get; }
-    public IBlockInfoValidator BlockInfoProcessor { get; }
-    public IMasternodesManager MasternodesManager { get; }
-    public XdcContext Context { get; }
-    public IForensicsProcessor ForensicsProcessor { get; }
-
-    public event EventHandler<VoteThresholdArgs>? RoundVoteThresholdReached;
-
-    private ILogger _logger;
-
-    private ISpecProvider _specProvider;
-
-    private ISigner _signer;
-
     private static VoteDecoder _voteDecoder = new();
     private static EthereumEcdsa _ethereumEcdsa = new(0);
 
-
     public Task CastVote(BlockRoundInfo blockInfo)
     {
-        EpochSwitchInfo epochSwitchInfo = EpochSwitchManager.GetEpochSwitchInfo(null, blockInfo.Hash);
+        EpochSwitchInfo epochSwitchInfo = _epochSwitchManager.GetEpochSwitchInfo(null, blockInfo.Hash);
         if (epochSwitchInfo is null)
             throw new ArgumentException($"Cannot find epoch info for block {blockInfo.Hash}",nameof(EpochSwitchInfo));
-        //Optimize this by fetching with block number and round only 
+        //Optimize this by fetching with block number and round only
 
-        XdcBlockHeader header = Tree.FindHeader(blockInfo.Hash) as XdcBlockHeader;
+        XdcBlockHeader header = _tree.FindHeader(blockInfo.Hash) as XdcBlockHeader;
         IXdcReleaseSpec spec = _specProvider.GetXdcSpec(header, blockInfo.Round);
         long epochSwitchNumber = epochSwitchInfo.EpochSwitchBlockInfo.BlockNumber;
         long gapNumber = Math.Max(0, epochSwitchNumber - epochSwitchNumber % spec.EpochLength - spec.Gap);
@@ -81,7 +52,7 @@ internal class VotesManager : IVotesManager
         var vote = new Vote(blockInfo, (ulong)gapNumber);
         Sign(vote);
 
-        Context.HighestVotedRound = blockInfo.Round;
+        _ctx.HighestVotedRound = blockInfo.Round;
 
         HandleVote(vote);
         //TODO Broadcast vote to peers
@@ -97,17 +68,13 @@ internal class VotesManager : IVotesManager
 
     public Task HandleVote(Vote vote)
     {
-        if ((vote.ProposedBlockInfo.Round != Context.CurrentRound) && (vote.ProposedBlockInfo.Round != Context.CurrentRound + 1))
+        if ((vote.ProposedBlockInfo.Round != _ctx.CurrentRound) && (vote.ProposedBlockInfo.Round != _ctx.CurrentRound + 1))
         {
             //We only care about votes for the current round or the next round
             return Task.CompletedTask;
         }
 
-        IReadOnlyCollection<Vote> roundVotes = _votePool.GetRoundVotes(vote.ProposedBlockInfo.Round);
-        _ = ForensicsProcessor.DetectEquivocationInVotePool(vote, roundVotes);
-        _ = ForensicsProcessor.ProcessVoteEquivocation(vote);
-
-        EpochSwitchInfo epochInfo = EpochSwitchManager.GetEpochSwitchInfo(null, vote.ProposedBlockInfo.Hash);
+        EpochSwitchInfo epochInfo = _epochSwitchManager.GetEpochSwitchInfo(null, vote.ProposedBlockInfo.Hash);
         if (epochInfo is null)
         {
             //Unknown epoch switch info, cannot process vote
@@ -118,21 +85,24 @@ internal class VotesManager : IVotesManager
             throw new InvalidOperationException($"Epoch has empty master node list for {vote.ProposedBlockInfo.Hash}");
         }
 
-        //TODO check for duplicate votes from the same signer
-
-        if (ValidateVote(vote, epochInfo))
+        if (!ValidateVote(vote, epochInfo))
         {
-
+            return Task.CompletedTask;
         }
-
+        //TODO check for duplicate votes from the same signer
         _votePool.Add(vote);
-        if (vote.ProposedBlockInfo.Round == Context.CurrentRound + 1)
+        IReadOnlyCollection<Vote> roundVotes = _votePool.GetRoundVotes(vote.ProposedBlockInfo.Round);
+        _ = _forensicsProcessor.DetectEquivocationInVotePool(vote, roundVotes);
+        _ = _forensicsProcessor.ProcessVoteEquivocation(vote);
+
+        if (vote.ProposedBlockInfo.Round == _ctx.CurrentRound + 1)
         {
             //This vote is for the next round, so no need to go further
             return Task.CompletedTask;
         }
-        //TODO Optimize this by fetching with block number and round only 
-        XdcBlockHeader proposedHeader = Tree.FindHeader(vote.ProposedBlockInfo.Hash) as XdcBlockHeader;
+
+        //TODO Optimize this by fetching with block number and round only
+        XdcBlockHeader proposedHeader = _tree.FindHeader(vote.ProposedBlockInfo.Hash) as XdcBlockHeader;
         if (proposedHeader is null)
         {
             //This is a vote for a block we have not seen yet, just return for now
@@ -144,8 +114,6 @@ internal class VotesManager : IVotesManager
 
         if (thresholdReached)
         {
-            BlockInfoProcessor.VerifyBlockInfo(vote.ProposedBlockInfo, null);
-
             EnsureVotesRecovered(roundVotes, proposedHeader);
 
             OnVotePoolThresholdReached(roundVotes, vote, proposedHeader, epochInfo);
@@ -163,11 +131,10 @@ internal class VotesManager : IVotesManager
         if (vote.Signer is null)
         {
             vote.Signer = _ethereumEcdsa.RecoverVoteSigner(vote);
-            if (vote.Signer is null)
-            {
-                return false;
-            }
+            if (vote.Signer is null) return false;
         }
+
+        return epochInfo.Masternodes.Any(masternode => masternode == vote.Signer);
     }
 
     private void OnVotePoolThresholdReached(IEnumerable<Vote> tally, Vote currVote, XdcBlockHeader proposedBlockHeader, EpochSwitchInfo epochInfo)
@@ -190,37 +157,62 @@ internal class VotesManager : IVotesManager
         {
             if (v.Signer is null)
             {
-                v.Signer = _ethereumEcdsa.RecoverVoteSigner(v);                
+                v.Signer = _ethereumEcdsa.RecoverVoteSigner(v);
             }
         });
     }
 
     public bool VerifyVotingRules(BlockRoundInfo blockInfo, QuorumCertificate qc)
     {
-        if (Context.CurrentRound <= Context.HighestVotedRound)
+        if (_ctx.CurrentRound <= _ctx.HighestVotedRound)
         {
             return false;
         }
 
-        if (blockInfo.Round != Context.CurrentRound)
+        if (blockInfo.Round != _ctx.CurrentRound)
         {
             return true;
         }
 
-        if (Context.LockQC is null)
+        if (_ctx.LockQC is null)
         {
             return true;
         }
 
-        if (qc.ProposedBlockInfo.Round > Context.LockQC.ProposedBlockInfo.Round)
+        if (qc.ProposedBlockInfo.Round > _ctx.LockQC.ProposedBlockInfo.Round)
         {
             return true;
         }
 
-        if (!isExtendingFromAncestor(blockInfo, blockInfo, Context.LockQC.ProposedBlockInfo))
+        if (!isExtendingFromAncestor(blockInfo, blockInfo, _ctx.LockQC.ProposedBlockInfo))
         {
             return false;
         }
+
+        return true;
+    }
+
+    public Task OnReceiveVote(Vote vote)
+    {
+        var voteBlockNumber = vote.ProposedBlockInfo.BlockNumber;
+        var currentBlockNumber = _tree.Head?.Number ?? throw new InvalidOperationException("Failed to get current block number");
+        if (Math.Abs(voteBlockNumber - currentBlockNumber) > XdcConstants.MaxBlockDistance)
+        {
+            // Discarded propagated vote, too far away
+            return Task.CompletedTask;
+        }
+
+        if (FilterVote(vote))
+        {
+            //TODO: Broadcast Vote
+            return HandleVote(vote);
+        }
+        return Task.CompletedTask;
+    }
+
+    private bool FilterVote(Vote vote)
+    {
+        if (vote.ProposedBlockInfo.Round < _ctx.CurrentRound) return false;
 
         return true;
     }
@@ -235,7 +227,7 @@ internal class VotesManager : IVotesManager
 
         for (int i = 0; i < blockNumDiff; i++)
         {
-            parentHeader = Tree.FindHeader(nextBlockHash) as XdcBlockHeader;
+            parentHeader = _tree.FindHeader(nextBlockHash) as XdcBlockHeader;
             if (parentHeader is null)
             {
                 return false;
