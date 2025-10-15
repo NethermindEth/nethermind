@@ -233,7 +233,7 @@ public class Eth68ProtocolHandlerTests
             Substitute.For<ISpecProvider>(),
             _txGossipPolicy);
 
-        int maxNumberOfTxsInOneMsg = sizeOfOneTx < TransactionsMessage.MaxPacketSize ? TransactionsMessage.MaxPacketSize / sizeOfOneTx : 1;
+        int maxNumberOfTxsInOneMsg = int.Min(sizeOfOneTx < TransactionsMessage.MaxPacketSize ? TransactionsMessage.MaxPacketSize / sizeOfOneTx : 1, 256);
         int messagesCount = numberOfTransactions / maxNumberOfTxsInOneMsg + (numberOfTransactions % maxNumberOfTxsInOneMsg == 0 ? 0 : 1);
 
         using ArrayPoolList<byte> types = new(numberOfTransactions);

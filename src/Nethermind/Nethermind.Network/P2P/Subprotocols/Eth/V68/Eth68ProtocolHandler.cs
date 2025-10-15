@@ -127,7 +127,7 @@ public class Eth68ProtocolHandler(ISession session,
             if (txSize > maxSize)
                 continue;
 
-            if (txSize > packetSizeLeft && toRequestCount > 0)
+            if ((txSize > packetSizeLeft || hashesToRequest.Count >= 256) && toRequestCount > 0)
             {
                 RequestPooledTransactions(hashesToRequest);
                 hashesToRequest = new ArrayPoolList<Hash256>(discoveredCount);
