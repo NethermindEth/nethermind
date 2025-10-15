@@ -133,7 +133,7 @@ namespace Nethermind.Blockchain
             _syncConfig = syncConfig ?? throw new ArgumentNullException(nameof(syncConfig));
             _chainLevelInfoRepository = chainLevelInfoRepository ??
                                         throw new ArgumentNullException(nameof(chainLevelInfoRepository));
-            _oldestBlock = long.Min(syncConfig.AncientBodiesBarrierCalc, syncConfig.AncientReceiptsBarrierCalc);
+            _oldestBlock = syncConfig.AncientBodiesBarrierCalc;
 
             _genesisBlockNumber = genesisBlockNumber;
 

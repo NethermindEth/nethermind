@@ -10,7 +10,6 @@ using FluentAssertions.Json;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
-using Nethermind.Core.Test.Blockchain;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Core.Test.Container;
 using Nethermind.Evm;
@@ -21,6 +20,7 @@ using Nethermind.Specs.Test;
 using Nethermind.Evm.State;
 using Newtonsoft.Json.Linq;
 using NUnit.Framework;
+using System.Text;
 
 namespace Nethermind.JsonRpc.Test.Modules.Eth;
 
@@ -230,18 +230,19 @@ public partial class EthRpcModuleTests
     {
         using Context ctx = await Context.CreateWithLondonEnabled();
 
+        string errorMessage = "wrong-calldatasize";
+        string encodedErrorMessage = Encoding.UTF8.GetBytes(errorMessage).ToHexString(true);
+
         byte[] code = Prepare.EvmCode
-            .PushData(0)
-            .PushData(0)
-            .Op(Instruction.REVERT)
+            .RevertWithSolidityErrorEncoding(errorMessage)
             .Done;
 
         string dataStr = code.ToHexString();
         TransactionForRpc transaction = ctx.Test.JsonSerializer.Deserialize<TransactionForRpc>(
-            $"{{\"from\": \"0x32e4e4c7c5d1cea5db5f9202a9e4d99e56c91a24\", \"type\": \"0x2\", \"data\": \"{dataStr}\", \"gas\": 100000000}}");
+            $$"""{"from": "0x32e4e4c7c5d1cea5db5f9202a9e4d99e56c91a24", "type": "0x2", "data": "{{dataStr}}", "gas": 100000000}""");
         string serialized = await ctx.Test.TestEthRpc("eth_estimateGas", transaction);
         Assert.That(
-            serialized, Is.EqualTo("{\"jsonrpc\":\"2.0\",\"error\":{\"code\":-32000,\"message\":\"execution reverted\"},\"id\":67}"));
+            serialized, Is.EqualTo($$"""{"jsonrpc":"2.0","error":{"code":3,"message":"execution reverted: {{errorMessage}}","data":"{{encodedErrorMessage}}"},"id":67}"""));
     }
 
     [Test]
@@ -373,12 +374,13 @@ public partial class EthRpcModuleTests
         byte[] code = Prepare.EvmCode
          .Op(Instruction.STOP)
          .Done;
-        TransactionForRpc transaction = new EIP1559TransactionForRpc(Build.A.Transaction
+        EIP1559TransactionForRpc transaction = new(Build.A.Transaction
             .WithNonce(123)
             .WithGasLimit(100000)
             .WithData(code)
             .SignedAndResolved(TestItem.PrivateKeyA)
             .TestObject);
+        transaction.GasPrice = null;
 
         string serialized = await ctx.Test.TestEthRpc("eth_estimateGas", transaction);
 
@@ -392,12 +394,14 @@ public partial class EthRpcModuleTests
     {
         using Context ctx = await Context.Create();
         byte[] code = [];
-        TransactionForRpc transaction = new EIP1559TransactionForRpc(Build.A.Transaction
+        EIP1559TransactionForRpc transaction = new(Build.A.Transaction
             .WithTo(TestItem.AddressB)
             .WithGasLimit(100000)
             .WithData(code)
             .SignedAndResolved(TestItem.PrivateKeyA)
             .TestObject);
+
+        transaction.GasPrice = null;
 
         string serialized = await ctx.Test.TestEthRpc("eth_estimateGas", transaction);
 

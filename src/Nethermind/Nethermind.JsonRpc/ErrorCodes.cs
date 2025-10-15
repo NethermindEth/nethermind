@@ -8,6 +8,11 @@ namespace Nethermind.JsonRpc
         public const int None = 0;
 
         /// <summary>
+        /// Execution reverted (Geth compatibility)
+        /// </summary>
+        public const int ExecutionReverted = 3;
+
+        /// <summary>
         /// Invalid JSON
         /// </summary>
         public const int ParseError = -32700;
