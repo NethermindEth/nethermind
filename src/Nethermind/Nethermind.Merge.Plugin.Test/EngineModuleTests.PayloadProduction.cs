@@ -220,18 +220,11 @@ public partial class EngineModuleTests
         }
 
         TimeSpan timeBudget = PayloadPreparationService.GetPayloadWaitForNonEmptyBlockMillisecondsDelay;
-        int expectedTxCount = 50;
-        if (txDelay != TimeSpan.Zero)
-        {
-            expectedTxCount = (int)((timeBudget - improveDelay) / txDelay);
-        }
+        int expectedTxCount = improveDelay > timeBudget
+            ? 0
+            : txDelay != TimeSpan.Zero ? (int)((timeBudget - improveDelay) / txDelay) : 50;
 
-        int maxWait = (int)(timeBudget - improveDelay).TotalMilliseconds - 1;
-        if (improveDelay > timeBudget)
-        {
-            expectedTxCount = 0;
-            maxWait = 0;
-        }
+        int maxWait = Math.Max(0, (int)(timeBudget - improveDelay).TotalMilliseconds - 1);
 
         await Task.Delay(timeBudget);
 
