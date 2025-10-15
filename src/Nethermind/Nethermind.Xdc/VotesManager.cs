@@ -75,7 +75,7 @@ internal class VotesManager (
         // Collect votes
         //TODO check for duplicate votes from the same signer when adding
         _votePool.Add(vote);
-        IReadOnlyCollection<Vote> roundVotes = _votePool.GetItems(vote.ProposedBlockInfo.Round, vote.ProposedBlockInfo.Hash);
+        IReadOnlyCollection<Vote> roundVotes = _votePool.GetItems(vote);
         _ = _forensicsProcessor.DetectEquivocationInVotePool(vote, roundVotes);
         _ = _forensicsProcessor.ProcessVoteEquivocation(vote);
 

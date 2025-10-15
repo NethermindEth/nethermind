@@ -14,7 +14,7 @@ public class XdcPool<T> where T: IXdcPoolItem
     private readonly Dictionary<(ulong Round, Hash256 Hash), ArrayPoolList<T>> _items = new();
     private readonly McsLock _lock = new();
 
-    public void Add(T item)
+    public long Add(T item)
     {
         using var lockRelease = _lock.Acquire();
         {
@@ -27,6 +27,7 @@ public class XdcPool<T> where T: IXdcPoolItem
             }
             if (!list.Contains(item))
                 list.Add(item);
+            return list.Count;
         }
     }
 
@@ -44,11 +45,12 @@ public class XdcPool<T> where T: IXdcPoolItem
         }
     }
 
-    public IReadOnlyCollection<T> GetItems(ulong round, Hash256 hash)
+    public IReadOnlyCollection<T> GetItems(T item)
     {
         using var lockRelease = _lock.Acquire();
         {
-            if (_items.TryGetValue((round, hash), out ArrayPoolList<T> list))
+            var key = item.PoolKey();
+            if (_items.TryGetValue(key, out ArrayPoolList<T> list))
             {
                 //Allocating a new array since it goes outside the lock
                 return list.ToArray();
@@ -57,11 +59,12 @@ public class XdcPool<T> where T: IXdcPoolItem
         }
     }
 
-    public long GetCount(ulong round, Hash256 hash)
+    public long GetCount(T item)
     {
         using var lockRelease = _lock.Acquire();
         {
-            if (_items.TryGetValue((round, hash), out ArrayPoolList<T> list))
+            var key = item.PoolKey();
+            if (_items.TryGetValue(key, out ArrayPoolList<T> list))
             {
                 return list.Count;
             }
