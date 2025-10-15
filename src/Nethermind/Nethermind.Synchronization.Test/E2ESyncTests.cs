@@ -167,11 +167,10 @@ public class E2ESyncTests(E2ESyncTests.DbMode dbMode, bool isPostMerge)
             .AddSingleton<ITestEnv, PreMergeTestEnv>()
             ;
 
-        ManualTimestamper timestamper;
-        if (isPostMerge)
+         if (isPostMerge)
         {
             // Activate configured mainnet future EIP
-            timestamper = new ManualTimestamper(new DateTime(2030, 1, 1, 0, 0, 0, DateTimeKind.Utc));
+            ManualTimestamper timestamper = new(new DateTime(2030, 1, 1, 0, 0, 0, DateTimeKind.Utc));
             builder
                 .AddModule(new TestMergeModule(configProvider.GetConfig<ITxPoolConfig>()))
                 .AddSingleton<ManualTimestamper>(timestamper) // Used by test code
@@ -181,7 +180,7 @@ public class E2ESyncTests(E2ESyncTests.DbMode dbMode, bool isPostMerge)
         else
         {
             // So that any EIP after the merge is not activated.
-            timestamper = ManualTimestamper.PreMerge;
+            ManualTimestamper timestamper = ManualTimestamper.PreMerge;
             builder
                 .AddSingleton<ManualTimestamper>(timestamper) // Used by test code
                 .AddSingleton<ITimestamper>(timestamper)
@@ -231,6 +230,7 @@ public class E2ESyncTests(E2ESyncTests.DbMode dbMode, bool isPostMerge)
             await serverCtx.BuildBlockWithCode([spam, spam, spam], cancellationToken);
         }
 
+        await serverCtx.WaitForBlockProcessing(cancellationToken);
         await serverCtx.StartNetwork(cancellationToken);
     }
 
@@ -410,7 +410,7 @@ public class E2ESyncTests(E2ESyncTests.DbMode dbMode, bool isPostMerge)
             blockProductionContext.Should().NotBeNull();
             blockProductionContext!.CurrentBestBlock.Should().NotBeNull();
 
-            blockTree.SuggestBlock(blockProductionContext.CurrentBestBlock!).Should().Be(AddBlockResult.Added);
+            (await blockTree.SuggestBlockAsync(blockProductionContext.CurrentBestBlock!)).Should().Be(AddBlockResult.Added);
 
             await newBlockTask;
         }
@@ -498,12 +498,7 @@ public class E2ESyncTests(E2ESyncTests.DbMode dbMode, bool isPostMerge)
 
         private async Task VerifyHeadWith(IContainer server, CancellationToken cancellationToken)
         {
-            if (!blockProcessingQueue.IsEmpty)
-            {
-                await Wait.ForEvent(cancellationToken,
-                    e => blockProcessingQueue.ProcessingQueueEmpty += e,
-                    e => blockProcessingQueue.ProcessingQueueEmpty -= e);
-            }
+            await WaitForBlockProcessing(cancellationToken);
 
             IBlockTree otherBlockTree = server.Resolve<IBlockTree>();
 
@@ -516,6 +511,16 @@ public class E2ESyncTests(E2ESyncTests.DbMode dbMode, bool isPostMerge)
                 worldStateManager.VerifyTrie(blockTree.Head!.Header, cancellationToken).Should().BeTrue();
             }
 #pragma warning restore CS0162 // Unreachable code detected
+        }
+
+        public async Task WaitForBlockProcessing(CancellationToken cancellationToken)
+        {
+            if (!blockProcessingQueue.IsEmpty)
+            {
+                await Wait.ForEvent(cancellationToken,
+                    e => blockProcessingQueue.ProcessingQueueEmpty += e,
+                    e => blockProcessingQueue.ProcessingQueueEmpty -= e);
+            }
         }
 
         private ValueTask VerifyAllBlocksAndReceipts(IContainer server, CancellationToken cancellationToken)
