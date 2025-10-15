@@ -1145,12 +1145,6 @@ namespace Nethermind.Blockchain
             }
         }
 
-        public void InitializeGenesisTree()
-        {
-            LoadSyncPivot();
-            RecalculateTreeLevels();
-        }
-
         public bool IsBetterThanHead(BlockHeader? header) =>
             header is not null // null is never better
             && ((header.IsGenesis && Genesis is null) // is genesis
