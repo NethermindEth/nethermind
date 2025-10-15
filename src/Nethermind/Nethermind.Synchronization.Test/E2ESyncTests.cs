@@ -96,7 +96,7 @@ public class E2ESyncTests(E2ESyncTests.DbMode dbMode, bool isPostMerge)
     /// <summary>
     /// Common code for all node
     /// </summary>
-    private IContainer CreateNode(PrivateKey nodeKey, Action<IConfigProvider, ChainSpec> configurer)
+    private async Task<IContainer> CreateNode(PrivateKey nodeKey, Func<IConfigProvider, ChainSpec, Task> configurer)
     {
         IConfigProvider configProvider = new ConfigProvider();
         var loader = new ChainSpecFileLoader(new EthereumJsonSerializer(), LimboTraceLogger.Instance);
@@ -138,7 +138,7 @@ public class E2ESyncTests(E2ESyncTests.DbMode dbMode, bool isPostMerge)
             mergeConfig.FinalTotalDifficulty = "10000";
         }
 
-        configurer.Invoke(configProvider, spec);
+        await configurer(configProvider, spec);
 
         switch (dbMode)
         {
@@ -193,16 +193,17 @@ public class E2ESyncTests(E2ESyncTests.DbMode dbMode, bool isPostMerge)
     [OneTimeSetUp]
     public async Task SetupServer()
     {
-        using CancellationTokenSource cancellationTokenSource = new CancellationTokenSource();
+        using CancellationTokenSource cancellationTokenSource = new();
         cancellationTokenSource.CancelAfter(SetupTimeout);
         CancellationToken cancellationToken = cancellationTokenSource.Token;
 
         PrivateKey serverKey = TestItem.PrivateKeyA;
         _serverKey = serverKey;
-        _server = CreateNode(serverKey, (cfg, spec) =>
+        _server = await CreateNode(serverKey, (cfg, spec) =>
         {
             INetworkConfig networkConfig = cfg.GetConfig<INetworkConfig>();
             networkConfig.P2PPort = AllocatePort();
+            return Task.CompletedTask;
         });
 
         SyncTestContext serverCtx = _server.Resolve<SyncTestContext>();
@@ -230,7 +231,6 @@ public class E2ESyncTests(E2ESyncTests.DbMode dbMode, bool isPostMerge)
             await serverCtx.BuildBlockWithCode([spam, spam, spam], cancellationToken);
         }
 
-        await serverCtx.WaitForBlockProcessing(cancellationToken);
         await serverCtx.StartNetwork(cancellationToken);
     }
 
@@ -247,10 +247,11 @@ public class E2ESyncTests(E2ESyncTests.DbMode dbMode, bool isPostMerge)
         using CancellationTokenSource cancellationTokenSource = new CancellationTokenSource().ThatCancelAfter(TestTimeout);
 
         PrivateKey clientKey = TestItem.PrivateKeyB;
-        await using IContainer client = CreateNode(clientKey, (cfg, spec) =>
+        await using IContainer client = await CreateNode(clientKey, (cfg, spec) =>
         {
             INetworkConfig networkConfig = cfg.GetConfig<INetworkConfig>();
             networkConfig.P2PPort = AllocatePort();
+            return Task.CompletedTask;
         });
 
         await client.Resolve<SyncTestContext>().SyncFromServer(_server, cancellationTokenSource.Token);
@@ -263,23 +264,30 @@ public class E2ESyncTests(E2ESyncTests.DbMode dbMode, bool isPostMerge)
         using CancellationTokenSource cancellationTokenSource = new CancellationTokenSource().ThatCancelAfter(TestTimeout);
 
         PrivateKey clientKey = TestItem.PrivateKeyC;
-        await using IContainer client = CreateNode(clientKey, (cfg, spec) =>
+        await using IContainer client = await CreateNode(clientKey, async (cfg, spec) =>
         {
             SyncConfig syncConfig = (SyncConfig)cfg.GetConfig<ISyncConfig>();
             syncConfig.FastSync = true;
 
-            IBlockTree serverBlockTree = _server.Resolve<IBlockTree>();
-            long serverHeadNumber = serverBlockTree.Head!.Number;
-            BlockHeader pivot = serverBlockTree.FindHeader(serverHeadNumber - HeadPivotDistance)!;
-            syncConfig.PivotHash = pivot.Hash!.ToString();
-            syncConfig.PivotNumber = pivot.Number.ToString();
-            syncConfig.PivotTotalDifficulty = pivot.TotalDifficulty!.Value.ToString();
+            await SetPivot(syncConfig, cancellationTokenSource.Token);
 
             INetworkConfig networkConfig = cfg.GetConfig<INetworkConfig>();
             networkConfig.P2PPort = AllocatePort();
         });
 
         await client.Resolve<SyncTestContext>().SyncFromServer(_server, cancellationTokenSource.Token);
+    }
+
+    private async Task SetPivot(SyncConfig syncConfig, CancellationToken cancellationToken)
+    {
+        IBlockProcessingQueue blockProcessingQueue = _server.Resolve<IBlockProcessingQueue>();
+        await WaitForBlockProcessing(blockProcessingQueue, cancellationToken);
+        IBlockTree serverBlockTree = _server.Resolve<IBlockTree>();
+        long serverHeadNumber = serverBlockTree.Head!.Number;
+        BlockHeader pivot = serverBlockTree.FindHeader(serverHeadNumber - HeadPivotDistance)!;
+        syncConfig.PivotHash = pivot.Hash!.ToString();
+        syncConfig.PivotNumber = pivot.Number.ToString();
+        syncConfig.PivotTotalDifficulty = pivot.TotalDifficulty!.Value.ToString();
     }
 
     [Test]
@@ -291,18 +299,13 @@ public class E2ESyncTests(E2ESyncTests.DbMode dbMode, bool isPostMerge)
         using CancellationTokenSource cancellationTokenSource = new CancellationTokenSource().ThatCancelAfter(TestTimeout);
 
         PrivateKey clientKey = TestItem.PrivateKeyD;
-        await using IContainer client = CreateNode(clientKey, (cfg, spec) =>
+        await using IContainer client = await CreateNode(clientKey, async (cfg, spec) =>
         {
             SyncConfig syncConfig = (SyncConfig)cfg.GetConfig<ISyncConfig>();
             syncConfig.FastSync = true;
             syncConfig.SnapSync = true;
 
-            IBlockTree serverBlockTree = _server.Resolve<IBlockTree>();
-            long serverHeadNumber = serverBlockTree.Head!.Number;
-            BlockHeader pivot = serverBlockTree.FindHeader(serverHeadNumber - HeadPivotDistance)!;
-            syncConfig.PivotHash = pivot.Hash!.ToString();
-            syncConfig.PivotNumber = pivot.Number.ToString();
-            syncConfig.PivotTotalDifficulty = pivot.TotalDifficulty!.Value.ToString();
+            await SetPivot(syncConfig, cancellationTokenSource.Token);
 
             INetworkConfig networkConfig = cfg.GetConfig<INetworkConfig>();
             networkConfig.P2PPort = AllocatePort();
@@ -498,7 +501,7 @@ public class E2ESyncTests(E2ESyncTests.DbMode dbMode, bool isPostMerge)
 
         private async Task VerifyHeadWith(IContainer server, CancellationToken cancellationToken)
         {
-            await WaitForBlockProcessing(cancellationToken);
+            await WaitForBlockProcessing(blockProcessingQueue, cancellationToken);
 
             IBlockTree otherBlockTree = server.Resolve<IBlockTree>();
 
@@ -511,16 +514,6 @@ public class E2ESyncTests(E2ESyncTests.DbMode dbMode, bool isPostMerge)
                 worldStateManager.VerifyTrie(blockTree.Head!.Header, cancellationToken).Should().BeTrue();
             }
 #pragma warning restore CS0162 // Unreachable code detected
-        }
-
-        public async Task WaitForBlockProcessing(CancellationToken cancellationToken)
-        {
-            if (!blockProcessingQueue.IsEmpty)
-            {
-                await Wait.ForEvent(cancellationToken,
-                    e => blockProcessingQueue.ProcessingQueueEmpty += e,
-                    e => blockProcessingQueue.ProcessingQueueEmpty -= e);
-            }
         }
 
         private ValueTask VerifyAllBlocksAndReceipts(IContainer server, CancellationToken cancellationToken)
@@ -619,6 +612,16 @@ public class E2ESyncTests(E2ESyncTests.DbMode dbMode, bool isPostMerge)
                 if (DisconnectFailure == null) throw; // Timeout without disconnect
                 Assert.Fail($"Disconnect detected. {DisconnectFailure}");
             }
+        }
+    }
+
+    public static async Task WaitForBlockProcessing(IBlockProcessingQueue blockProcessingQueue, CancellationToken cancellationToken)
+    {
+        if (!blockProcessingQueue.IsEmpty)
+        {
+            await Wait.ForEvent(cancellationToken,
+                e => blockProcessingQueue.ProcessingQueueEmpty += e,
+                e => blockProcessingQueue.ProcessingQueueEmpty -= e);
         }
     }
 }
