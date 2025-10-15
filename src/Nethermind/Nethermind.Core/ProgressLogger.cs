@@ -160,8 +160,7 @@ namespace Nethermind.Core
             _formatter = formatter;
         }
 
-        // TODO: should it actually ever be true?
-        public void LogProgress(bool resetCompletion = true)
+        public void LogProgress()
         {
             (long, long, long, long) reportState = (CurrentValue, TargetValue, CurrentQueued, _skipped);
             if (reportState != _lastReportState)
@@ -170,7 +169,7 @@ namespace Nethermind.Core
                 _lastReportState = reportState;
                 _logger.Info(reportString);
             }
-            SetMeasuringPoint(resetCompletion);
+            SetMeasuringPoint(resetCompletion: false);
         }
 
         private string DefaultFormatter()

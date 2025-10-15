@@ -25,7 +25,8 @@ namespace Nethermind.Db
         public byte[]? UpperBound { get; init; }
 
         /// <summary>
-        /// Whether to create a tailing operator.
+        /// If <c>false</c> will create a tailing operator,
+        /// otherwise will use a regular one.
         /// </summary>
         /// <remarks>https://github.com/facebook/rocksdb/wiki/Tailing-Iterator</remarks>
         public bool Ordered { get; init; }
