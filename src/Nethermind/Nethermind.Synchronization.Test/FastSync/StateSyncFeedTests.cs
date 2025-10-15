@@ -38,7 +38,7 @@ namespace Nethermind.Synchronization.Test.FastSync
 
         [Test]
         [TestCaseSource(nameof(Scenarios))]
-        [Repeat(3)]
+        [Repeat(TestRepeatCount)]
         public async Task Big_test((string Name, Action<StateTree, ITrieStore, IDb> SetupTree) testCase)
         {
             DbContext dbContext = new(_logger, _logManager)
