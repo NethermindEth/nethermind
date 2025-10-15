@@ -121,7 +121,7 @@ partial class LogIndexStorage
                     _stats.Total.Include(elapsed);
 
                     if (_logger.IsInfo)
-                        _logger.Info($"Log index: compacted in {elapsed}, DB size: {_storage.GetDbSize()}");
+                        _logger.Info($"Log index: compaction ended in {elapsed}, DB size: {_storage.GetDbSize()}");
                 }
                 catch (TaskCanceledException ex) when (ex.CancellationToken == cancellation)
                 {
