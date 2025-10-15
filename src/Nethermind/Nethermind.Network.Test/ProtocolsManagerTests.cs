@@ -10,6 +10,7 @@ using Nethermind.Consensus;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Specs;
 using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Core.Timers;
@@ -108,6 +109,7 @@ public class ProtocolsManagerTests
             _peerStorage = Substitute.For<INetworkStorage>();
             _syncPeerPool = Substitute.For<ISyncPeerPool>();
             _gossipPolicy = Substitute.For<IGossipPolicy>();
+            _gossipPolicy = Substitute.For<IGossipPolicy>();
             _manager = new ProtocolsManager(
                 _syncPeerPool,
                 _syncServer,
@@ -124,8 +126,8 @@ public class ProtocolsManagerTests
                 Substitute.For<IWorldStateManager>(),
                 _blockTree,
                 LimboLogs.Instance,
-                null!,
-                null!);
+                new TxPoolConfig { },
+                Substitute.For<ISpecProvider>());
         }
 
         public Context CreateIncomingSession()

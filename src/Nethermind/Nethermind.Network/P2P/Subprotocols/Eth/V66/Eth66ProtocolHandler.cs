@@ -205,6 +205,11 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V66
 
             ArrayPoolList<Hash256> discoveredTxHashes = AddMarkUnknownHashes(hashes.AsSpan());
 
+            if (discoveredTxHashes.Count == 0)
+            {
+                return;
+            }
+
             if (discoveredTxHashes.Count <= MaxNumberOfTxsInOneMsg)
             {
                 RequestPooledTransactionsEth66(discoveredTxHashes);

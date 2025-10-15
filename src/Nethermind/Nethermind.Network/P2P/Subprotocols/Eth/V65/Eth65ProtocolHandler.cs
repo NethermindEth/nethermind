@@ -188,6 +188,12 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V65
         protected virtual void RequestPooledTransactions(IOwnedReadOnlyList<Hash256> hashes)
         {
             ArrayPoolList<Hash256> newTxHashes = AddMarkUnknownHashes(hashes.AsSpan());
+
+            if (newTxHashes.Count == 0)
+            {
+                return;
+            }
+
             Send(new GetPooledTransactionsMessage(newTxHashes));
         }
 

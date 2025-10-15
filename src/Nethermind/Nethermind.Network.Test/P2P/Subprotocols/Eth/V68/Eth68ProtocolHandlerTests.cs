@@ -121,8 +121,7 @@ public class Eth68ProtocolHandlerTests
         HandleIncomingStatusMessage();
         HandleZeroMessage(msg, Eth68MessageCode.NewPooledTransactionHashes);
 
-        //_pooledTxsRequestor.Received(canGossipTransactions ? 1 : 0).RequestTransactionsEth68(Arg.Any<Action<GetPooledTransactionsMessage>>(),
-        //    Arg.Any<IOwnedReadOnlyList<Hash256>>(), Arg.Any<IOwnedReadOnlyList<int>>(), Arg.Any<IOwnedReadOnlyList<byte>>(), Arg.Any<Guid>());
+        _session.Received(canGossipTransactions && txCount != 0 ? 1 : 0).DeliverMessage(Arg.Any<GetPooledTransactionsMessage>());
     }
 
     [TestCase(true)]
@@ -159,8 +158,7 @@ public class Eth68ProtocolHandlerTests
         HandleIncomingStatusMessage();
         HandleZeroMessage(msg, Eth68MessageCode.NewPooledTransactionHashes);
 
-        //_pooledTxsRequestor.Received(1).RequestTransactionsEth68(Arg.Any<Action<GetPooledTransactionsMessage>>(),
-        //    Arg.Any<IOwnedReadOnlyList<Hash256>>(), Arg.Any<IOwnedReadOnlyList<int>>(), Arg.Any<IOwnedReadOnlyList<byte>>(), Arg.Any<Guid>());
+        _session.Received(1).DeliverMessage(Arg.Any<GetPooledTransactionsMessage>());
     }
 
     [TestCase(1)]

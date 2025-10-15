@@ -191,7 +191,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V65
             HandleIncomingStatusMessage();
             HandleZeroMessage(msg, Eth65MessageCode.NewPooledTransactionHashes);
 
-            // _session.Received(canGossipTransactions ? 1 : 0).RequestTransactions(Arg.Any<Action<GetPooledTransactionsMessage>>(), Arg.Any<IOwnedReadOnlyList<Hash256>>(), Arg.Any<Guid>());
+            _session.Received(canGossipTransactions ? 1 : 0).DeliverMessage(Arg.Any<GetPooledTransactionsMessage>());
         }
 
         private void HandleZeroMessage<T>(T msg, int messageCode) where T : MessageBase
