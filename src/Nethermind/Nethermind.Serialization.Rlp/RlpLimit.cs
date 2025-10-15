@@ -30,7 +30,7 @@ public record struct RlpLimit(int Limit, string TypeName, ReadOnlyMemory<char> P
     private string GenerateCollectionExpression() =>
         PropertyName.IsEmpty
             ? TypeName
-            : string.Concat(TypeName, ".", PropertyName.Span);
+            : $"{TypeName}.{PropertyName}";
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static RlpLimit For<T>(string propertyName, int limit) => new(limit, typeof(T).Name, propertyName.AsMemory());
