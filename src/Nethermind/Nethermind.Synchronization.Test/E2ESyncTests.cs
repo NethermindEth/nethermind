@@ -167,7 +167,7 @@ public class E2ESyncTests(E2ESyncTests.DbMode dbMode, bool isPostMerge)
             .AddSingleton<ITestEnv, PreMergeTestEnv>()
             ;
 
-         if (isPostMerge)
+        if (isPostMerge)
         {
             // Activate configured mainnet future EIP
             ManualTimestamper timestamper = new(new DateTime(2030, 1, 1, 0, 0, 0, DateTimeKind.Utc));
