@@ -304,7 +304,8 @@ public partial class DbOnTheRocks : IDb, ITunableDb, IReadOnlyNativeKeyValueStor
             // Don't kill tests checking corruption response
             if (!rocksDbException.Message.Equals("Corruption: test corruption", StringComparison.Ordinal))
             {
-                Environment.FailFast("Fast shutdown due to DB corruption. Please restart.");
+                _logger.Error($"Fast shutdown due to {Name} DB corruption. Please restart.");
+                Environment.Exit(ExitCodes.DbCorruption);
             }
         }
     }
