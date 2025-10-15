@@ -16,7 +16,7 @@ public record struct RlpLimit(int Limit, string TypeName, ReadOnlyMemory<char> P
     public static readonly RlpLimit L4 = new(4, "", ReadOnlyMemory<char>.Empty);
     public static readonly RlpLimit L8 = new(8, "", ReadOnlyMemory<char>.Empty);
     public static readonly RlpLimit L32 = new(32, "", ReadOnlyMemory<char>.Empty);
-    public static readonly RlpLimit L64 = new(65, "", ReadOnlyMemory<char>.Empty);
+    public static readonly RlpLimit L64 = new(64, "", ReadOnlyMemory<char>.Empty);
     public static readonly RlpLimit L65 = new(65, "", ReadOnlyMemory<char>.Empty);
 
     private string _collectionExpression;
