@@ -6,7 +6,7 @@ network = os.getenv("NETWORK")
 
 bad_logs = {"Exception": 1}
 good_logs = {"Processed": 0}
-required_count = {"Processed": 1000}
+required_count = {"Processed": 2000}
 
 if network not in {"joc-mainnet", "joc-testnet", "linea-mainnet", "linea-sepolia", "energyweb", "volta"}:
     good_logs["Synced Chain Head"] = 0
