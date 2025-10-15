@@ -78,7 +78,7 @@
     <PackageVersion Include="Shouldly" Version="4.3.0" />
     <PackageVersion Include="Snappier" Version="1.2.0" />
     <PackageVersion Include="Spectre.Console" Version="0.51.1" />
-    <PackageVersion Include="System.CommandLine" Version="2.0.0-rc.1.25451.107" />
+    <PackageVersion Include="System.CommandLine" Version="2.0.0-rc.2.25502.107" />
     <PackageVersion Include="System.Configuration.ConfigurationManager" Version="9.0.10" />
     <PackageVersion Include="System.IO.Pipelines" Version="9.0.10" />
     <PackageVersion Include="System.Linq.Async" Version="6.0.3" />
