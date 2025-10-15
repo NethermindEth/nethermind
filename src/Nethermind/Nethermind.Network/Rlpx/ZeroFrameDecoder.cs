@@ -7,14 +7,12 @@ using System.Runtime.CompilerServices;
 using DotNetty.Buffers;
 using DotNetty.Codecs;
 using DotNetty.Transport.Channels;
-using Nethermind.Logging;
 
 namespace Nethermind.Network.Rlpx
 {
-    public class ZeroFrameDecoder(IFrameCipher frameCipher, FrameMacProcessor frameMacProcessor, ILogManager logManager)
+    public class ZeroFrameDecoder(IFrameCipher frameCipher, FrameMacProcessor frameMacProcessor)
         : ByteToMessageDecoder
     {
-        private readonly ILogger _logger = logManager?.GetClassLogger<ZeroFrameDecoder>() ?? throw new ArgumentNullException(nameof(logManager));
         private readonly IFrameCipher _cipher = frameCipher ?? throw new ArgumentNullException(nameof(frameCipher));
         private readonly FrameMacProcessor _authenticator = frameMacProcessor ?? throw new ArgumentNullException(nameof(frameMacProcessor));
 

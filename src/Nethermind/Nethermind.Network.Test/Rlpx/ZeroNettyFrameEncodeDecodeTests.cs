@@ -43,7 +43,7 @@ public class ZeroNettyFrameEncodeDecodeTests
         ZeroPacketSplitter splitter = new();
         ZeroFrameEncoder encoder = new(frameCipher, macProcessor);
 
-        ZeroFrameDecoder decoder = new(frameCipher2, macProcessor2, LimboLogs.Instance);
+        ZeroFrameDecoder decoder = new(frameCipher2, macProcessor2);
         ZeroFrameMerger frameMerger = new(LimboLogs.Instance);
 
         IByteBuffer reDecoded = null;

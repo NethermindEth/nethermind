@@ -35,19 +35,5 @@ public record struct RlpLimit(int Limit, string TypeName, ReadOnlyMemory<char> P
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static RlpLimit For<T>(string propertyName, int limit) => new(limit, typeof(T).Name, propertyName.AsMemory());
 
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public static RlpLimit For<T>(
-        object property,
-        int limit,
-        [CallerArgumentExpression("property")] string? expr = null)
-    {
-        int dotIndex = expr?.LastIndexOf('.') ?? -1;
-        ReadOnlyMemory<char> propertyName = dotIndex >= 0
-            ? expr![(dotIndex + 1)..].AsMemory()
-            : expr.AsMemory();
-
-        return new RlpLimit(limit, typeof(T).Name, propertyName);
-    }
-
     public override string ToString() => CollectionExpression;
 }

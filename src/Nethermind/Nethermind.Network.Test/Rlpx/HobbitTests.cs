@@ -214,7 +214,7 @@ namespace Nethermind.Network.Test.Rlpx
                 throw new NotSupportedException();
             }
 
-            IChannelHandler decoder = new ZeroFrameDecoder(_frameCipherB, _macProcessorB, LimboLogs.Instance);
+            IChannelHandler decoder = new ZeroFrameDecoder(_frameCipherB, _macProcessorB);
             IChannelHandler merger = new ZeroFrameMerger(LimboLogs.Instance);
             IChannelHandler encoder = new ZeroFrameEncoder(_frameCipherA, _macProcessorA);
             IFramingAware splitter = new ZeroPacketSplitter();

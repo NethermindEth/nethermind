@@ -166,7 +166,7 @@ namespace Nethermind.Network.Rlpx
             using (FrameMacProcessor macProcessor = new(_session.RemoteNodeId, _handshake.Secrets))
             {
                 FrameCipher frameCipher = new(_handshake.Secrets.AesSecret);
-                context.Channel.Pipeline.AddLast(new ZeroFrameDecoder(frameCipher, macProcessor, _logManager));
+                context.Channel.Pipeline.AddLast(new ZeroFrameDecoder(frameCipher, macProcessor));
                 if (_logger.IsTrace) _logger.Trace($"Registering {nameof(ZeroFrameEncoder)} for {RemoteId} @ {context.Channel.RemoteAddress}");
                 context.Channel.Pipeline.AddLast(new ZeroFrameEncoder(frameCipher, macProcessor));
             }
