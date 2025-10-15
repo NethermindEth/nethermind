@@ -11,6 +11,7 @@ using Nethermind.Blockchain.Find;
 using Nethermind.Config;
 using Nethermind.Consensus;
 using Nethermind.Consensus.Scheduler;
+using Nethermind.Core.Crypto;
 using Nethermind.Db;
 using Nethermind.Logging;
 using Nethermind.Network.Contract.P2P;
@@ -142,16 +143,19 @@ namespace Nethermind.Network
                 registrations.TryRemove(session.SessionId, out _);
             }
 
+            PublicKey? handlerKey = null;
             if (_syncPeers.TryRemove(session.SessionId, out SyncPeerProtocolHandlerBase? removed) && removed is not null)
             {
                 _syncPool.RemovePeer(removed);
                 if (removed.Node?.Id is not null)
                 {
-                    _txPool.RemovePeer(removed.Node.Id);
+                    handlerKey = removed.Node.Id;
+                    _txPool.RemovePeer(handlerKey);
                 }
             }
 
-            if (session.Node?.Id is not null)
+            PublicKey sessionKey = session.Node?.Id;
+            if (sessionKey is not null && sessionKey != handlerKey)
             {
                 _txPool.RemovePeer(session.Node.Id);
             }
