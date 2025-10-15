@@ -5,5 +5,8 @@ using System;
 
 namespace Nethermind.Core
 {
-    public interface IWriteBatch : IDisposable, IWriteOnlyKeyValueStore;
+    public interface IWriteBatch : IDisposable, IWriteOnlyKeyValueStore
+    {
+        void Clear();
+    }
 }

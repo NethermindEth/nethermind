@@ -59,6 +59,7 @@ namespace Nethermind.Core
         }
 
         void Set(ReadOnlySpan<byte> key, byte[]? value, WriteFlags flags = WriteFlags.None);
+        void Merge(ReadOnlySpan<byte> key, ReadOnlySpan<byte> value, WriteFlags flags = WriteFlags.None);
 
         /// <summary>
         /// Some store keep the input array directly. (eg: CachingStore), and therefore passing the value by array

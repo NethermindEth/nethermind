@@ -574,6 +574,11 @@ namespace Nethermind.Trie.Test.Pruning
                 _db[key.ToArray()] = value;
             }
 
+            public void Merge(ReadOnlySpan<byte> key, ReadOnlySpan<byte> value, WriteFlags flags = WriteFlags.None)
+            {
+                throw new NotSupportedException("Merging is not supported by this implementation.");
+            }
+
             public byte[]? Get(ReadOnlySpan<byte> key, ReadFlags flags = ReadFlags.None)
             {
                 return _db[key.ToArray()];
@@ -600,6 +605,16 @@ namespace Nethermind.Trie.Test.Pruning
                 public void Set(ReadOnlySpan<byte> key, byte[]? value, WriteFlags flags = WriteFlags.None)
                 {
                     _inBatched[key.ToArray()] = value;
+                }
+
+                public void Merge(ReadOnlySpan<byte> key, ReadOnlySpan<byte> value, WriteFlags flags = WriteFlags.None)
+                {
+                    throw new NotSupportedException("Merging is not supported by this implementation.");
+                }
+
+                public void Clear()
+                {
+                    throw new NotSupportedException("Clearing is not supported by this implementation.");
                 }
             }
         }

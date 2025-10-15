@@ -66,6 +66,11 @@ public partial class DbOnTheRocks : IDb, ITunableDb, IReadOnlyNativeKeyValueStor
 
     private readonly DbSettings _settings;
 
+    // ReSharper disable once CollectionNeverQueried.Local
+    // Need to keep options from GC in case of merge operator applied, as they are used in callback
+    // TODO: find better way?
+    private readonly ConcurrentBag<OptionsHandle> _doNotGcOptions = [];
+
     private readonly IRocksDbConfig _perTableDbConfig;
     private ulong _maxBytesForLevelBase;
     private ulong _targetFileSizeBase;
@@ -143,7 +148,7 @@ public partial class DbOnTheRocks : IDb, ITunableDb, IReadOnlyNativeKeyValueStor
             // ReSharper disable once VirtualMemberCallInConstructor
             if (_logger.IsDebug) _logger.Debug($"Building options for {Name} DB");
             DbOptions = new DbOptions();
-            BuildOptions(_perTableDbConfig, DbOptions, sharedCache);
+            BuildOptions(_perTableDbConfig, DbOptions, sharedCache, _settings.MergeOperator);
 
             ColumnFamilies? columnFamilies = null;
             if (columnNames is not null)
@@ -155,7 +160,8 @@ public partial class DbOnTheRocks : IDb, ITunableDb, IReadOnlyNativeKeyValueStor
 
                     ColumnFamilyOptions options = new();
                     IRocksDbConfig columnConfig = _rocksDbConfigFactory.GetForDatabase(Name, columnFamily);
-                    BuildOptions(columnConfig, options, sharedCache);
+                    IMergeOperator? mergeOperator = _settings.MergeOperatorByColumnFamily?.GetValueOrDefault(enumColumnName);
+                    BuildOptions(columnConfig, options, sharedCache, mergeOperator);
 
                     // "default" is a special column name with rocksdb, which is what previously not specifying column goes to
                     if (columnFamily == "Default") columnFamily = "default";
@@ -447,7 +453,7 @@ public partial class DbOnTheRocks : IDb, ITunableDb, IReadOnlyNativeKeyValueStor
         return asDict;
     }
 
-    protected virtual void BuildOptions<T>(IRocksDbConfig dbConfig, Options<T> options, IntPtr? sharedCache) where T : Options<T>
+    protected virtual void BuildOptions<T>(IRocksDbConfig dbConfig, Options<T> options, IntPtr? sharedCache, IMergeOperator? mergeOperator) where T : Options<T>
     {
         // This section is about the table factory.. and block cache apparently.
         // This effect the format of the SST files and usually require resync to take effect.
@@ -575,6 +581,12 @@ public partial class DbOnTheRocks : IDb, ITunableDb, IReadOnlyNativeKeyValueStor
             {
                 Marshal.FreeHGlobal(optsPtr);
             }
+        }
+
+        if (mergeOperator is not null)
+        {
+            options.SetMergeOperator(new MergeOperatorAdapter(mergeOperator));
+            _doNotGcOptions.Add(options);
         }
 
         #endregion
@@ -893,6 +905,40 @@ public partial class DbOnTheRocks : IDb, ITunableDb, IReadOnlyNativeKeyValueStor
         SetWithColumnFamily(key, null, value, writeFlags);
     }
 
+    public void Merge(ReadOnlySpan<byte> key, ReadOnlySpan<byte> value, WriteFlags flags = WriteFlags.None)
+    {
+        ObjectDisposedException.ThrowIf(_isDisposing, this);
+
+        UpdateWriteMetrics();
+
+        try
+        {
+            _db.Merge(key, value, null, WriteFlagsToWriteOptions(flags));
+        }
+        catch (RocksDbSharpException e)
+        {
+            CreateMarkerIfCorrupt(e);
+            throw;
+        }
+    }
+
+    internal void MergeWithColumnFamily(ReadOnlySpan<byte> key, ColumnFamilyHandle? cf, ReadOnlySpan<byte> value, WriteFlags flags = WriteFlags.None)
+    {
+        ObjectDisposedException.ThrowIf(_isDisposing, this);
+
+        UpdateWriteMetrics();
+
+        try
+        {
+            _db.Merge(key, value, cf, WriteFlagsToWriteOptions(flags));
+        }
+        catch (RocksDbSharpException e)
+        {
+            CreateMarkerIfCorrupt(e);
+            throw;
+        }
+    }
+
     public void DangerousReleaseMemory(in ReadOnlySpan<byte> span)
     {
         if (!span.IsNullOrEmpty())
@@ -982,10 +1028,22 @@ public partial class DbOnTheRocks : IDb, ITunableDb, IReadOnlyNativeKeyValueStor
         return GetAllCore(iterator);
     }
 
-    protected internal Iterator CreateIterator(bool ordered = false, ColumnFamilyHandle? ch = null)
+    protected internal Iterator CreateIterator(bool ordered, ColumnFamilyHandle? ch = null)
+    {
+        return CreateIterator(new IteratorOptions { Ordered = ordered }, ch);
+    }
+
+    protected internal Iterator CreateIterator(IteratorOptions options, ColumnFamilyHandle? ch = null)
     {
         ReadOptions readOptions = new();
-        readOptions.SetTailing(!ordered);
+        readOptions.SetTailing(!options.Ordered);
+
+        if (options.LowerBound is { } lowerBound)
+            readOptions.SetIterateLowerBound(lowerBound);
+
+        if (options.UpperBound is { } upperBound)
+            readOptions.SetIterateUpperBound(upperBound);
+
         return CreateIterator(readOptions, ch);
     }
 
@@ -1222,6 +1280,13 @@ public partial class DbOnTheRocks : IDb, ITunableDb, IReadOnlyNativeKeyValueStor
             _reusableWriteBatch = batch;
         }
 
+        public void Clear()
+        {
+            ObjectDisposedException.ThrowIf(_dbOnTheRocks._isDisposed, _dbOnTheRocks);
+
+            _rocksBatch.Clear();
+        }
+
         public void Dispose()
         {
             ObjectDisposedException.ThrowIf(_dbOnTheRocks._isDisposed, _dbOnTheRocks);
@@ -1280,6 +1345,21 @@ public partial class DbOnTheRocks : IDb, ITunableDb, IReadOnlyNativeKeyValueStor
             Set(key, value, null, flags);
         }
 
+        public void Merge(ReadOnlySpan<byte> key, ReadOnlySpan<byte> value, WriteFlags flags = WriteFlags.None)
+        {
+            Merge(key, value, null, flags);
+        }
+
+        public void Merge(ReadOnlySpan<byte> key, ReadOnlySpan<byte> value, ColumnFamilyHandle? cf = null, WriteFlags flags = WriteFlags.None)
+        {
+            ObjectDisposedException.ThrowIf(_isDisposed, this);
+
+            _rocksBatch.Merge(key, value, cf);
+            _writeFlags = flags;
+
+            if ((flags & WriteFlags.DisableWAL) != 0) FlushOnTooManyWrites();
+        }
+
         private void FlushOnTooManyWrites()
         {
             if (Interlocked.Increment(ref _writeCount) % MaxWritesOnNoWal != 0) return;
@@ -1306,6 +1386,13 @@ public partial class DbOnTheRocks : IDb, ITunableDb, IReadOnlyNativeKeyValueStor
         InnerFlush(onlyWal);
     }
 
+    public void FlushWithColumnFamily(ColumnFamilyHandle familyHandle)
+    {
+        ObjectDisposedException.ThrowIf(_isDisposing, this);
+
+        InnerFlush(familyHandle);
+    }
+
     public virtual void Compact()
     {
         _db.CompactRange(Keccak.Zero.BytesToArray(), Keccak.MaxValue.BytesToArray());
@@ -1321,6 +1408,18 @@ public partial class DbOnTheRocks : IDb, ITunableDb, IReadOnlyNativeKeyValueStor
             {
                 _rocksDbNative.rocksdb_flush(_db.Handle, FlushOptions.DefaultFlushOptions.Handle);
             }
+        }
+        catch (RocksDbSharpException e)
+        {
+            CreateMarkerIfCorrupt(e);
+        }
+    }
+
+    private void InnerFlush(ColumnFamilyHandle columnFamilyHandle)
+    {
+        try
+        {
+            _rocksDbNative.rocksdb_flush_cf(_db.Handle, FlushOptions.DefaultFlushOptions.Handle, columnFamilyHandle.Handle);
         }
         catch (RocksDbSharpException e)
         {
@@ -1659,6 +1758,29 @@ public partial class DbOnTheRocks : IDb, ITunableDb, IReadOnlyNativeKeyValueStor
         };
     }
 
+    public IIterator GetIterator(bool ordered = false)
+    {
+        var iterator = CreateIterator(ordered);
+        return new RocksDbIteratorWrapper(iterator);
+    }
+
+    public IIterator GetIterator(ref IteratorOptions options)
+    {
+        return GetIterator(ref options, null);
+    }
+
+    public IIterator GetIterator(bool ordered, ColumnFamilyHandle familyHandle)
+    {
+        var options = new IteratorOptions { Ordered = ordered };
+        return GetIterator(ref options, familyHandle);
+    }
+
+    public IIterator GetIterator(ref IteratorOptions options, ColumnFamilyHandle? familyHandle)
+    {
+        var iterator = CreateIterator(options, familyHandle);
+        return new RocksDbIteratorWrapper(iterator);
+    }
+
     /// <summary>
     /// Iterators should not be kept for long as it will pin some memory block and sst file. This would show up as
     /// temporary higher disk usage or memory usage.
@@ -1776,10 +1898,10 @@ public partial class DbOnTheRocks : IDb, ITunableDb, IReadOnlyNativeKeyValueStor
             public void ClearIterators()
             {
                 if (_disposed) return;
-                if (Values is null) return;
-                foreach (IteratorHolder iterator in Values)
+                if (Values is not { } values) return;
+                foreach (IteratorHolder iterator in values)
                 {
-                    iterator.Dispose();
+                    iterator?.Dispose();
                 }
             }
 

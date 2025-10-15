@@ -47,9 +47,9 @@ namespace Nethermind.Core
             Interlocked.Add(ref _skipped, skipped);
         }
 
-        public void SetMeasuringPoint()
+        public void SetMeasuringPoint(bool resetCompletion = true)
         {
-            UtcEndTime = null;
+            if (resetCompletion) UtcEndTime = null;
 
             if (UtcStartTime is not null)
             {
@@ -160,7 +160,8 @@ namespace Nethermind.Core
             _formatter = formatter;
         }
 
-        public void LogProgress()
+        // TODO: should it actually ever be true?
+        public void LogProgress(bool resetCompletion = true)
         {
             (long, long, long, long) reportState = (CurrentValue, TargetValue, CurrentQueued, _skipped);
             if (reportState != _lastReportState)
@@ -169,7 +170,7 @@ namespace Nethermind.Core
                 _lastReportState = reportState;
                 _logger.Info(reportString);
             }
-            SetMeasuringPoint();
+            SetMeasuringPoint(resetCompletion);
         }
 
         private string DefaultFormatter()
