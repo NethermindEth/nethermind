@@ -74,7 +74,7 @@ public class AccessListForRpc
             const int maxStorageKeysPerItem = 1000;
             const int maxStorageKeys = 10000;
 
-            var items = new List<Item>(maxItems);
+            var items = new List<Item>();
             int itemCount = 0;
             int storageItemsCount = 0;
 
