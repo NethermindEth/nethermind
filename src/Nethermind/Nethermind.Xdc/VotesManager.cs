@@ -13,6 +13,7 @@ using Nethermind.Serialization.Rlp;
 using Nethermind.Xdc.Spec;
 using Nethermind.Xdc.Types;
 using System;
+using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Linq;
 using System.Threading.Tasks;
@@ -36,7 +37,7 @@ internal class VotesManager (
     private ISpecProvider _specProvider = specProvider;
     private ISigner _signer = signer;
 
-    private VotePool _votePool => new();
+    private XdcPool<Vote> _votePool = new();
     private static VoteDecoder _voteDecoder = new();
     private static EthereumEcdsa _ethereumEcdsa = new(0);
 
@@ -74,7 +75,7 @@ internal class VotesManager (
         // Collect votes
         //TODO check for duplicate votes from the same signer when adding
         _votePool.Add(vote);
-        IReadOnlyCollection<Vote> roundVotes = _votePool.GetRoundVotes(vote.ProposedBlockInfo.Round);
+        IReadOnlyCollection<Vote> roundVotes = _votePool.GetItems(vote.ProposedBlockInfo.Round, vote.ProposedBlockInfo.Hash);
         _ = _forensicsProcessor.DetectEquivocationInVotePool(vote, roundVotes);
         _ = _forensicsProcessor.ProcessVoteEquivocation(vote);
 
@@ -112,7 +113,7 @@ internal class VotesManager (
 
     public void EndRound(ulong round)
     {
-        _votePool.EndRoundVote(round);
+        _votePool.EndRound(round);
     }
 
     public bool VerifyVotingRules(BlockRoundInfo blockInfo, QuorumCertificate qc)
@@ -233,64 +234,5 @@ internal class VotesManager (
         _voteDecoder.Encode(stream, vote, RlpBehaviors.ForSealing);
         vote.Signature = _signer.Sign(stream.GetValueHash());
         vote.Signer = _signer.Address;
-    }
-
-    private class VotePool
-    {
-        private readonly Dictionary<ulong, ArrayPoolList<Vote>> _votes = new();
-        private readonly McsLock _lock = new();
-
-        public void Add(Vote vote)
-        {
-            using var lockRelease = _lock.Acquire();
-            {
-                if (!_votes.TryGetValue(vote.ProposedBlockInfo.Round, out var list))
-                {
-                    //128 should be enough to cover all master nodes and some extras
-                    list = new ArrayPoolList<Vote>(128);
-                    _votes[vote.ProposedBlockInfo.Round] = list;
-                }
-                list.Add(vote);
-            }
-        }
-
-        public void EndRoundVote(ulong round)
-        {
-            using var lockRelease = _lock.Acquire();
-            {
-                foreach (var key in _votes.Keys)
-                {
-                    if (key <= round && _votes.Remove(key, out ArrayPoolList<Vote> list))
-                    {
-                        list?.Dispose();
-                    }
-                }
-            }
-        }
-
-        public IReadOnlyCollection<Vote> GetRoundVotes(ulong round)
-        {
-            using var lockRelease = _lock.Acquire();
-            {
-                if (_votes.TryGetValue(round, out ArrayPoolList<Vote> list))
-                {
-                    //Allocating a new array since it goes outside of the lock
-                    return list.ToArray();
-                }
-                return [];
-            }
-        }
-
-        public long GetRoundCount(ulong round)
-        {
-            using var lockRelease = _lock.Acquire();
-            {
-                if (_votes.TryGetValue(round, out ArrayPoolList<Vote> list))
-                {
-                    return list.Count;
-                }
-                return 0;
-            }
-        }
     }
 }
