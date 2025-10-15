@@ -192,10 +192,19 @@ public abstract class BlockchainTestBase
                 parentHeader = blockTree.FindHeader(correctRlp[i].Block.ParentHash) ?? parentHeader;
 
                 // Validate block structure first (mimics SyncServer validation)
-                if (!test.SealEngineUsed || blockValidator.ValidateSuggestedBlock(correctRlp[i].Block, parentHeader, out var validationError))
+                if (blockValidator.ValidateSuggestedBlock(correctRlp[i].Block, parentHeader, out var validationError))
                 {
                     // All validations passed, suggest the block
                     blockTree.SuggestBlock(correctRlp[i].Block);
+                }
+                else
+                {
+                    if (correctRlp[i].ExpectedException is not null)
+                    {
+                        Assert.Fail($"Unexpected invalid block {correctRlp[i].Block.Hash}: {validationError}");
+                    }
+                }
+
                 if (correctRlp[i].Block.Hash is null)
                 {
                     Assert.Fail($"null hash in {test.Name} block {i}");
@@ -205,17 +214,6 @@ public abstract class BlockchainTestBase
                 {
                     // TODO: mimic the actual behaviour where block goes through validating sync manager?
                     correctRlp[i].Block.Header.IsPostMerge = correctRlp[i].Block.Difficulty == 0;
-                    if (!test.SealEngineUsed || blockValidator.ValidateSuggestedBlock(correctRlp[i].Block, parentHeader, out _))
-                    {
-                        blockTree.SuggestBlock(correctRlp[i].Block);
-                    }
-                    else
-                    {
-                        if (correctRlp[i].ExpectedException is not null)
-                        {
-                            Assert.Fail($"Unexpected invalid block {correctRlp[i].Block.Hash}");
-                        }
-                    }
                 }
                 catch (InvalidBlockException e)
                 {
@@ -223,7 +221,6 @@ public abstract class BlockchainTestBase
                     {
                         Assert.Fail($"Unexpected invalid block {correctRlp[i].Block.Hash}: {e}");
                     }
-                    continue; // Skip invalid blocks
                 }
                 catch (Exception e)
                 {
