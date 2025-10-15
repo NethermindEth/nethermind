@@ -74,7 +74,9 @@ public abstract class GethLikeTxTracer<TEntry> : GethLikeTxTracer where TEntry :
     public override void StartOperation(int pc, Instruction opcode, long gas, in ExecutionEnvironment env, int codeSection = 0, int functionDepth = 0)
     {
         if (CurrentTraceEntry is not null)
+        {
             AddTraceEntry(CurrentTraceEntry);
+        }
 
         CurrentTraceEntry = CreateTraceEntry(opcode);
         CurrentTraceEntry.Depth = env.GetGethTraceDepth();
@@ -86,27 +88,35 @@ public abstract class GethLikeTxTracer<TEntry> : GethLikeTxTracer where TEntry :
         _gasCostAlreadySetForCurrentOp = false;
     }
 
-    public override void ReportOperationError(EvmExceptionType error) => CurrentTraceEntry.Error = GetErrorDescription(error);
+    public override void ReportOperationError(EvmExceptionType error)
+    {
+        if (CurrentTraceEntry is not null)
+            CurrentTraceEntry.Error = GetErrorDescription(error);
+    }
 
     public override void ReportOperationRemainingGas(long gas)
     {
-        if (!_gasCostAlreadySetForCurrentOp)
+        if (!_gasCostAlreadySetForCurrentOp && CurrentTraceEntry is not null)
         {
             CurrentTraceEntry.GasCost = CurrentTraceEntry.Gas - gas;
             _gasCostAlreadySetForCurrentOp = true;
         }
     }
 
-    public override void SetOperationMemorySize(ulong newSize) => CurrentTraceEntry.UpdateMemorySize(newSize);
+    public override void SetOperationMemorySize(ulong newSize)
+    {
+        CurrentTraceEntry?.UpdateMemorySize(newSize);
+    }
 
     public override void SetOperationStack(TraceStack stack)
     {
-        CurrentTraceEntry.Stack = stack.ToHexWordList();
+        if (CurrentTraceEntry is not null)
+            CurrentTraceEntry.Stack = stack.ToHexWordList();
     }
 
     public override void SetOperationMemory(TraceMemory memoryTrace)
     {
-        if (IsTracingFullMemory)
+        if (IsTracingFullMemory && CurrentTraceEntry is not null)
             CurrentTraceEntry.Memory = memoryTrace.ToHexWordList();
     }
 
