@@ -9,51 +9,37 @@ docker run nethermindeth/send-blobs:latest --rpcurl http://localhost:8545 --blob
 
 ## Usage
 
+
+The tool can help with:
+
+- blob spamming with random data, from multiple accounts
+- sending files as blobs,
+- batch funds distribution
+
+Use "SendBlobs [command] --help" for more information about supported commands.
+
+The default fork for now is Prague, which means blob will be sent with V0 proofs. use `--fork Osaka` option to change it to V1.
+
+## Build
+
+```sh
+apt install libsnappy-dev dotnet-sdk-9.0 -y
+cd ./nethermind/tools/SendBlobs
+dotnet publish --sc -o .
+./SendBlobs
 ```
-Usage: SendBlobs [options] [command]
 
-Options:
-  --help                                 Show help information
-  --rpcurl <rpcUrl>                      Url of the Json RPC.
-  --bloboptions <blobOptions>            Options in format '10x1-2', '2x5-5' etc. for the blobs.
-  --privatekey <privateKey>              The key to use for sending blobs.
-  --keyfile <keyFile>                    File containing private keys that each blob tx will be send from.
-  --receiveraddress <receiverAddress>    Receiver address of the blobs.
-  --maxfeeperblobgas <maxFeePerBlobGas>  (Optional) Set the maximum fee per blob data.
-  --feemultiplier <feeMultiplier>        (Optional) A multiplier to use for gas fees.
-  --maxpriorityfee <maxPriorityFee>      (Optional) The maximum priority fee for each transaction.
-  --fork <fork>                          (Optional) Fork rules: Cancun/Prague/Osaka
+or via docker
 
-Commands:
-  distribute  Distribute funds from an address to a number of new addresses.
-  reclaim     Reclaim funds distributed from the 'distribute' command.
+```sh
+cd ./nethermind/ # repository root
+docker build . -f ./tools/SendBlobs/Dockerfile -t send-blobs
+docker run send-blobs
+```
 
+### Examples
 
-Use "SendBlobs [command] --help" for more information about a command.
-
-Usage: SendBlobs __distribute__ [options]
-
-Options:
-  --help                             Show help information
-  --rpcurl <rpcUrl>                  Url of the Json RPC.
-  --privatekey <privateKey>          The private key to distribute funds from.
-  --number <number>                  The number of new addresses/keys to make.
-  --keyfile <keyFile>                File where the newly generated keys are written.
-  --maxpriorityfee <maxPriorityFee>  (Optional) The maximum priority fee for each transaction.
-  --maxfee <maxFee>                  (Optional) The maxFeePerGas fee paid for each transaction.
-
-
-Usage: SendBlobs __reclaim__ [options]
-
-Options:
-  --help                               Show help information
-  --rpcurl <rpcUrl>                    Url of the Json RPC.
-  --receiveraddress <receiverAddress>  The address to send the funds to.
-  --keyfile <keyFile>                  File of the private keys to reclaim from.
-  --maxpriorityfee <maxPriorityFee>    (Optional) The maximum priority fee for each transaction.
-  --maxfee <maxFee>                    (Optional) The maxFeePerGas paid for each transaction.
-
-sh
+```sh
 ./SendBlobs  --rpcurl           http://localhost:8545 # url-that-does-not-require-auth-in-header
              --bloboptions      1000,5x6,100x2        # transaction count: just a number or a list of tx-count x blob-count
              --privatekey       0x0000..0000          # secret-key
@@ -83,10 +69,12 @@ sh
             --maxfeeperblobgas 10000 \
             --feemultiplier 4
 ```
+
 ## Blob options
+
+Issues/Options that can be intentionally added to simulate broken transactions:
+
 ```
-<<BrokenTxs
-Issues/Options that can be intentionally added:
   1    = 0 blobs
   2    = 1st blob has more blobs than allowed
   3    = 1st blob is shorten
@@ -108,30 +96,8 @@ Syntax:
          ^      tx count
            ^    blobs in every tx (optional, default to 1)
              ^  how it's broken (optional, tx is correct by default) or write true
-
-BrokenTxs
 ```
 
 ## Debug
 
-```
-For funding the private key used in the project launch settings, the address is:
-0x428a95ceb38b706fbfe74fa0144701cfc1c25ef7
-```
-
-## Build
-
-```sh
-apt install libsnappy-dev dotnet-sdk-7.0 -y
-cd ./nethermind/tools/SendBlobs
-dotnet publish --sc -o .
-./SendBlobs
-```
-
-or via docker
-
-```sh
-cd ./nethermind/ # repository root
-docker build . -f ./tools/SendBlobs/Dockerfile -t send-blobs
-docker run send-blobs ... # args samples above
-```
+For funding the private key used in the project launch settings, the address is: `0x428a95ceb38b706fbfe74fa0144701cfc1c25ef7`
