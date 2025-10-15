@@ -130,7 +130,9 @@ namespace Nethermind.Network
                 _logger.Debug($"{session.Direction} {session.Node:s} disconnected {e.DisconnectType} {e.DisconnectReason} {e.Details}");
             }
 
-            if (_hangingSatelliteProtocols.TryGetValue(session.Node, out ConcurrentDictionary<Guid, ProtocolHandlerBase>? registrations) && registrations is not null)
+            if (session.Node is not null
+                && _hangingSatelliteProtocols.TryGetValue(session.Node, out ConcurrentDictionary<Guid, ProtocolHandlerBase>? registrations)
+                && registrations is not null)
             {
                 registrations.TryRemove(session.SessionId, out _);
             }
