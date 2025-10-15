@@ -183,14 +183,14 @@ public abstract class StateSyncFeedTestsBase
 
         private bool _isDisposed;
 
-        public void SuggestBlocksWithUpdatedRootHash(Hash256 newRootHash)
+        public async Task SuggestBlocksWithUpdatedRootHash(Hash256 newRootHash)
         {
             Block newBlock = Build.A.Block
                 .WithParent(blockTree.BestSuggestedHeader!)
                 .WithStateRoot(newRootHash)
                 .TestObject;
 
-            blockTree.SuggestBlock(newBlock).Should().Be(AddBlockResult.Added);
+            (await blockTree.SuggestBlockAsync(newBlock)).Should().Be(AddBlockResult.Added);
             blockTree.UpdateMainChain([newBlock], false, true);
         }
 

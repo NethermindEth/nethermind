@@ -30,18 +30,15 @@ namespace Nethermind.Synchronization.Test.FastSync
     [TestFixture(4, 0)]
     [TestFixture(4, 100)]
     [Parallelizable(ParallelScope.Fixtures)]
-    public class StateSyncFeedTests : StateSyncFeedTestsBase
+    public class StateSyncFeedTests(int peerCount, int maxNodeLatency)
+        : StateSyncFeedTestsBase(peerCount, maxNodeLatency)
     {
         // Useful for set and forget run. But this test is taking a long time to have it set to other than 1.
         private const int TestRepeatCount = 1;
 
-        public StateSyncFeedTests(int peerCount, int maxNodeLatency) : base(peerCount, maxNodeLatency)
-        {
-        }
-
         [Test]
         [TestCaseSource(nameof(Scenarios))]
-        [Repeat(TestRepeatCount)]
+        [Repeat(3)]
         public async Task Big_test((string Name, Action<StateTree, ITrieStore, IDb> SetupTree) testCase)
         {
             DbContext dbContext = new(_logger, _logManager)
@@ -59,10 +56,7 @@ namespace Nethermind.Synchronization.Test.FastSync
             dbContext.CompareTrees("BEFORE FIRST SYNC", true);
 
             await using IContainer container = PrepareDownloader(dbContext, mock =>
-                mock.SetFilter(((MemDb)dbContext.RemoteStateDb).Keys.Take(((MemDb)dbContext.RemoteStateDb).Keys.Count - 4).Select(k =>
-                {
-                    return HashKey(k);
-                }).ToArray()));
+                mock.SetFilter(((MemDb)dbContext.RemoteStateDb).Keys.Take(((MemDb)dbContext.RemoteStateDb).Keys.Count - 4).Select(HashKey).ToArray()));
 
             SafeContext ctx = container.Resolve<SafeContext>();
             await ActivateAndWait(ctx);
@@ -80,7 +74,7 @@ namespace Nethermind.Synchronization.Test.FastSync
             dbContext.RemoteStateTree.UpdateRootHash();
             dbContext.RemoteStateTree.Commit();
 
-            ctx.SuggestBlocksWithUpdatedRootHash(dbContext.RemoteStateTree.RootHash);
+            await ctx.SuggestBlocksWithUpdatedRootHash(dbContext.RemoteStateTree.RootHash);
 
             ctx.Feed.FallAsleep();
             ctx.Pool.WakeUpAll();
@@ -100,7 +94,7 @@ namespace Nethermind.Synchronization.Test.FastSync
             dbContext.RemoteStateTree.UpdateRootHash();
             dbContext.RemoteStateTree.Commit();
 
-            ctx.SuggestBlocksWithUpdatedRootHash(dbContext.RemoteStateTree.RootHash);
+            await ctx.SuggestBlocksWithUpdatedRootHash(dbContext.RemoteStateTree.RootHash);
 
             ctx.Feed.FallAsleep();
             ctx.Pool.WakeUpAll();
@@ -249,7 +243,7 @@ namespace Nethermind.Synchronization.Test.FastSync
             ctx.Pool.WakeUpAll();
             ctx.Feed.FallAsleep();
 
-            ctx.SuggestBlocksWithUpdatedRootHash(dbContext.RemoteStateTree.RootHash);
+            await ctx.SuggestBlocksWithUpdatedRootHash(dbContext.RemoteStateTree.RootHash);
 
             foreach (SyncPeerMock mock in ctx.SyncPeerMocks)
             {
@@ -257,7 +251,6 @@ namespace Nethermind.Synchronization.Test.FastSync
             }
 
             await ActivateAndWait(ctx, TimeoutLength);
-
 
             dbContext.CompareTrees("END");
         }
