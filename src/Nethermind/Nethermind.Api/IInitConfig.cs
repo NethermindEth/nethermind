@@ -39,7 +39,6 @@ public interface IInitConfig : IConfig
     [ConfigItem(Description = "The hash of the genesis block. If not specified, the genesis block validity is not checked which is useful in the case of ad hoc test/private networks.", DefaultValue = "null")]
     string? GenesisHash { get; set; }
 
-Comment view+
     [ConfigItem(Description = "The network id. If not specified, taken from the chain spec file.", DefaultValue = "null")]
     ulong? NetworkId { get; set; }
 
