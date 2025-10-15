@@ -279,7 +279,8 @@ namespace Nethermind.Db.LogIndex
 
         private static void ForceMerge(IDb db)
         {
-            using IIterator iterator = db.GetIterator();
+            // Using tailing iterator may cause invalid merge order, TODO: raise an issue
+            using IIterator iterator = db.GetIterator(ordered: true);
 
             // Iterator seeking forces RocksDB to merge corresponding key values
             iterator.SeekToFirst();
@@ -517,7 +518,7 @@ namespace Nethermind.Db.LogIndex
                 ReadOnlySpan<byte> normalizedKey = ExtractKey(dbKey);
 
                 IDb? db = GetDb(topicIndex);
-                using IIterator iterator = db.GetIterator(true); // TODO: specify lower/upper bounds?
+                using IIterator iterator = db.GetIterator(ordered: true); // TODO: specify lower/upper bounds?
 
                 // Find the last index for the given key, starting at or before `from`
                 iterator.SeekForPrev(dbKey);

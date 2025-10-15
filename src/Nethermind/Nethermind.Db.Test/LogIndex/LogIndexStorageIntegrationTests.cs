@@ -759,14 +759,32 @@ namespace Nethermind.Db.Test.LogIndex
             private readonly Lazy<BlockReceipts[][]> _batches;
             public BlockReceipts[][] Batches => _batches.Value;
 
+            private List<Address>? _addresses;
+            private List<(int, Hash256)>? _topics;
+
             private readonly Lazy<IEnumerable<(int from, int to)>> _ranges;
             public IEnumerable<(int from, int to)> Ranges => _ranges.Value;
 
             public Dictionary<Address, HashSet<int>> AddressMap { get; private set; } = new();
             public Dictionary<int, Dictionary<Hash256, HashSet<int>>> TopicMap { get; private set; } = new();
 
-            public List<Address> Addresses { get; private set; }
-            public List<(int, Hash256)> Topics { get; private set; }
+            public List<Address> Addresses
+            {
+                get
+                {
+                    _ = Batches;
+                    return _addresses!;
+                }
+            }
+
+            public List<(int, Hash256)> Topics
+            {
+                get
+                {
+                    _ = Batches;
+                    return _topics!;
+                }
+            }
 
             public bool ExtendedGetRanges { get; init; }
             public string? Compression { get; init; }
@@ -776,10 +794,6 @@ namespace Nethermind.Db.Test.LogIndex
                 _batchCount = batchCount;
                 _blocksPerBatch = blocksPerBatch;
                 _startNum = startNum;
-
-                // Populated during GenerateBatches()
-                Addresses = null!;
-                Topics = null!;
 
                 _batches = new(() => GenerateBatches(random, batchCount, blocksPerBatch, startNum));
                 _ranges = new(() => ExtendedGetRanges ? GenerateExtendedRanges() : GenerateSimpleRanges());
@@ -832,8 +846,9 @@ namespace Nethermind.Db.Test.LogIndex
                 var maps = GenerateMaps(batches.SelectMany(b => b));
 
                 (AddressMap, TopicMap) = (maps.address, maps.topic);
-                (Addresses, Topics) = (maps.address.Keys.ToList(), maps.topic.SelectMany(byIdx => byIdx.Value.Select(byTpc => (byIdx.Key, byTpc.Key)))
-                    .ToList());
+
+                _addresses = maps.address.Keys.ToList();
+                _topics = maps.topic.SelectMany(byIdx => byIdx.Value.Select(byTpc => (byIdx.Key, byTpc.Key))).ToList();
 
                 return batches;
             }
