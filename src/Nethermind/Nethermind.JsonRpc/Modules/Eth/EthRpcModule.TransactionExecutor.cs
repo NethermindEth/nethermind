@@ -4,6 +4,7 @@
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
+using System.Text;
 using System.Threading;
 using Nethermind.Blockchain.Find;
 using Nethermind.Core;
@@ -109,12 +110,23 @@ namespace Nethermind.JsonRpc.Modules.Eth
 
             protected abstract ResultWrapper<TResult> ExecuteTx(BlockHeader header, Transaction tx, Dictionary<Address, AccountOverride>? stateOverride, CancellationToken token);
 
-            protected ResultWrapper<TResult> CreateResultWrapper(bool inputError, string? errorMessage, TResult? bodyData)
+            protected ResultWrapper<TResult> CreateResultWrapper(bool inputError, string? errorMessage, TResult? bodyData, bool executionReverted)
             {
-                if (inputError)
-                    return ResultWrapper<TResult>.Fail(errorMessage, ErrorCodes.InvalidInput);
-                if (errorMessage is not null)
+                if (inputError || errorMessage is not null)
+                {
+                    if (executionReverted)
+                    {
+                        if (bodyData is not null)
+                        {
+                            return ResultWrapper<TResult>.Fail("execution reverted: " + errorMessage, ErrorCodes.ExecutionReverted, bodyData);
+                        }
+
+                        var errorData = errorMessage is not null ? Encoding.UTF8.GetBytes(errorMessage).ToHexString(true) : null;
+                        return ResultWrapper<TResult, string?>.Fail("execution reverted: " + errorMessage, ErrorCodes.ExecutionReverted, errorData);
+                    }
+
                     return ResultWrapper<TResult>.Fail(errorMessage, ErrorCodes.InvalidInput, bodyData);
+                }
 
                 return ResultWrapper<TResult>.Success(bodyData);
             }
@@ -139,7 +151,7 @@ namespace Nethermind.JsonRpc.Modules.Eth
             {
                 CallOutput result = _blockchainBridge.Call(header, tx, stateOverride, token);
 
-                return CreateResultWrapper(result.InputError, result.Error, result.OutputData?.ToHexString(true));
+                return CreateResultWrapper(result.InputError, result.Error, result.OutputData?.ToHexString(true), result.ExecutionReverted);
             }
         }
 
@@ -152,7 +164,7 @@ namespace Nethermind.JsonRpc.Modules.Eth
             {
                 CallOutput result = _blockchainBridge.EstimateGas(header, tx, _errorMargin, stateOverride, token);
 
-                return CreateResultWrapper(result.InputError, result.Error, result.InputError || result.Error is not null ? null : (UInt256)result.GasSpent);
+                return CreateResultWrapper(result.InputError, result.Error, result.InputError || result.Error is not null ? null : (UInt256)result.GasSpent, result.ExecutionReverted);
             }
         }
 
@@ -167,7 +179,7 @@ namespace Nethermind.JsonRpc.Modules.Eth
                     accessList: AccessListForRpc.FromAccessList(result.AccessList ?? tx.AccessList),
                     gasUsed: GetResultGas(tx, result));
 
-                return CreateResultWrapper(result.InputError, result.Error, rpcAccessListResult);
+                return CreateResultWrapper(result.InputError, result.Error, rpcAccessListResult, result.ExecutionReverted);
             }
 
             private static UInt256 GetResultGas(Transaction transaction, CallOutput result)
