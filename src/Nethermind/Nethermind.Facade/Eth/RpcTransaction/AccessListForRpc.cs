@@ -76,7 +76,7 @@ public class AccessListForRpc
 
             var items = new List<Item>();
             int itemCount = 0;
-            int storageItemsCount = 0;
+            int totalItemStorageItemsCount = 0;
 
             while (reader.Read())
             {
@@ -117,23 +117,23 @@ public class AccessListForRpc
                         else if (reader.TokenType == JsonTokenType.StartArray)
                         {
                             storageKeys = new List<UInt256>();
-                            int keyCount = 0;
+                            int currentItemStorageItemsCount = 0;
 
                             while (reader.Read())
                             {
                                 if (reader.TokenType == JsonTokenType.EndArray)
                                     break;
 
-                                if (keyCount >= maxStorageKeysPerItem)
+                                if (currentItemStorageItemsCount >= maxStorageKeysPerItem)
                                     throw new JsonException($"An item cannot have more than {maxStorageKeysPerItem} storage keys.");
 
-                                if (storageItemsCount >= maxStorageKeys)
+                                if (totalItemStorageItemsCount >= maxStorageKeys)
                                     throw new JsonException($"Access List cannot have more than {maxStorageKeys} storage keys.");
 
                                 UInt256 key = JsonSerializer.Deserialize<UInt256>(ref reader, options);
                                 storageKeys.Add(key);
-                                keyCount++;
-                                storageItemsCount++;
+                                currentItemStorageItemsCount++;
+                                totalItemStorageItemsCount++;
                             }
                         }
                         else
