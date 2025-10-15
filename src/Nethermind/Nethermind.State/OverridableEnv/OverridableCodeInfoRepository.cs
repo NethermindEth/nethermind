@@ -54,7 +54,12 @@ public class OverridableCodeInfoRepository(ICodeInfoRepository codeInfoRepositor
     public ValueHash256 GetExecutableCodeHash(Address address, IReleaseSpec spec) =>
         codeInfoRepository.GetExecutableCodeHash(address, spec);
 
-    public void ResetOverrides() => _codeOverrides.Clear();
+    public void ResetOverrides()
+    {
+        _precompileOverrides.Clear();
+        _codeOverrides.Clear();
+    }
+
     public void ResetPrecompileOverrides()
     {
         foreach (var (_, precompileInfo) in _precompileOverrides)
