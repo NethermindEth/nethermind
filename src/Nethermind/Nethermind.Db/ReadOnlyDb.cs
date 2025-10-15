@@ -88,7 +88,7 @@ namespace Nethermind.Db
 
         public bool PreferWriteByArray => true; // Because of memdb buffer
 
-        public IIterator GetIterator(bool isTailing = false)
+        public IIterator GetIterator(bool ordered = false)
         {
             throw new NotSupportedException("Iteration is not supported by this implementation.");
         }

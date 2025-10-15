@@ -14,7 +14,7 @@ namespace Nethermind.Db
         IEnumerable<KeyValuePair<byte[], byte[]?>> GetAll(bool ordered = false);
         IEnumerable<byte[]> GetAllKeys(bool ordered = false);
         IEnumerable<byte[]> GetAllValues(bool ordered = false);
-        IIterator GetIterator(bool isTailing = false);
+        IIterator GetIterator(bool ordered = false);
         IIterator GetIterator(ref IteratorOptions options);
         public IReadOnlyDb CreateReadOnly(bool createInMemWriteStore) => new ReadOnlyDb(this, createInMemWriteStore);
     }
@@ -28,7 +28,7 @@ namespace Nethermind.Db
         /// Whether to create a tailing operator.
         /// </summary>
         /// <remarks>https://github.com/facebook/rocksdb/wiki/Tailing-Iterator</remarks>
-        public bool IsTailing { get; init; }
+        public bool Ordered { get; init; }
     }
 
     // Some metadata options

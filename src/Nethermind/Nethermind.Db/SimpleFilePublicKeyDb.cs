@@ -326,7 +326,7 @@ namespace Nethermind.Db
         {
         }
 
-        public IIterator GetIterator(bool isTailing = false)
+        public IIterator GetIterator(bool ordered = false)
         {
             throw new NotSupportedException("Iteration is not supported by this implementation.");
         }

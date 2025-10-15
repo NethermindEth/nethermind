@@ -125,7 +125,7 @@ namespace Nethermind.Db.Rpc
         {
         }
 
-        public IIterator GetIterator(bool isTailing = false)
+        public IIterator GetIterator(bool ordered = false)
         {
             throw new InvalidOperationException("RPC DB does not support iteration");
         }
