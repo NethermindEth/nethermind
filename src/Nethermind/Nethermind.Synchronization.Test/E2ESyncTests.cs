@@ -281,7 +281,7 @@ public class E2ESyncTests(E2ESyncTests.DbMode dbMode, bool isPostMerge)
     private async Task SetPivot(SyncConfig syncConfig, CancellationToken cancellationToken)
     {
         IBlockProcessingQueue blockProcessingQueue = _server.Resolve<IBlockProcessingQueue>();
-        await WaitForBlockProcessing(blockProcessingQueue, cancellationToken);
+        await blockProcessingQueue.WaitForBlockProcessing(cancellationToken);
         IBlockTree serverBlockTree = _server.Resolve<IBlockTree>();
         long serverHeadNumber = serverBlockTree.Head!.Number;
         BlockHeader pivot = serverBlockTree.FindHeader(serverHeadNumber - HeadPivotDistance)!;
@@ -501,7 +501,7 @@ public class E2ESyncTests(E2ESyncTests.DbMode dbMode, bool isPostMerge)
 
         private async Task VerifyHeadWith(IContainer server, CancellationToken cancellationToken)
         {
-            await WaitForBlockProcessing(blockProcessingQueue, cancellationToken);
+            await blockProcessingQueue.WaitForBlockProcessing(cancellationToken);
 
             IBlockTree otherBlockTree = server.Resolve<IBlockTree>();
 
@@ -612,16 +612,6 @@ public class E2ESyncTests(E2ESyncTests.DbMode dbMode, bool isPostMerge)
                 if (DisconnectFailure == null) throw; // Timeout without disconnect
                 Assert.Fail($"Disconnect detected. {DisconnectFailure}");
             }
-        }
-    }
-
-    public static async Task WaitForBlockProcessing(IBlockProcessingQueue blockProcessingQueue, CancellationToken cancellationToken)
-    {
-        if (!blockProcessingQueue.IsEmpty)
-        {
-            await Wait.ForEvent(cancellationToken,
-                e => blockProcessingQueue.ProcessingQueueEmpty += e,
-                e => blockProcessingQueue.ProcessingQueueEmpty -= e);
         }
     }
 }

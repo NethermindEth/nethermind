@@ -9,6 +9,7 @@ using FluentAssertions;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Find;
 using Nethermind.Consensus;
+using Nethermind.Consensus.Processing;
 using Nethermind.Core;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
@@ -30,6 +31,7 @@ public class ParityStyleTracerTests
     private IPoSSwitcher? _poSSwitcher;
     private ITraceRpcModule _traceRpcModule;
     private IContainer _container;
+    private IBlockProcessingQueue _blockProcessingQueue;
 
     [SetUp]
     public async Task Setup()
@@ -55,6 +57,8 @@ public class ParityStyleTracerTests
 
         await _container.Resolve<PseudoNethermindRunner>().StartBlockProcessing(default);
         _traceRpcModule = _container.Resolve<IRpcModuleFactory<ITraceRpcModule>>().Create();
+        _blockProcessingQueue = _container.Resolve<IBlockProcessingQueue>();
+
     }
 
     [TearDown]
@@ -82,7 +86,7 @@ public class ParityStyleTracerTests
     public async Task Should_return_correct_block_reward(bool isPostMerge)
     {
         Block block = Build.A.Block.WithParent(_blockTree!.Head!).TestObject;
-        (await _blockTree!.SuggestBlockAsync(block)).Should().Be(AddBlockResult.Added);
+        (await _blockTree!.SuggestBlockAsync(block, BlockTreeSuggestOptions.None)).Should().Be(AddBlockResult.Added);
         _poSSwitcher!.IsPostMerge(Arg.Any<BlockHeader>()).Returns(isPostMerge);
 
         ResultWrapper<IEnumerable<ParityTxTraceFromStore>> rpcResult = _traceRpcModule.trace_block(new BlockParameter(block.Number));
