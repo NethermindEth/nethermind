@@ -660,11 +660,12 @@ public class BlockchainBridgeTests
     }
 
     [Test]
-    public void HasStateForBlock_archive_node_fully_synced_returns_true()
+    public void HasStateForBlock_archive_node_requested_block_below_head_returns_true()
     {
         // Arrange
         _pruningConfig.Mode.Returns(PruningMode.None);
-        _ethSyncingInfo.IsSyncing().Returns(false);
+        var headBlock = Build.A.Block.WithNumber(1000).TestObject;
+        _blockTree.Head.Returns(headBlock);
         var header = Build.A.BlockHeader.WithNumber(100).TestObject;
 
         // Act
@@ -675,12 +676,29 @@ public class BlockchainBridgeTests
     }
 
     [Test]
-    public void HasStateForBlock_archive_node_still_syncing_returns_false()
+    public void HasStateForBlock_archive_node_requested_block_at_head_returns_true()
     {
         // Arrange
         _pruningConfig.Mode.Returns(PruningMode.None);
-        _ethSyncingInfo.IsSyncing().Returns(true);
-        var header = Build.A.BlockHeader.WithNumber(100).TestObject;
+        var headBlock = Build.A.Block.WithNumber(1000).TestObject;
+        _blockTree.Head.Returns(headBlock);
+        var header = Build.A.BlockHeader.WithNumber(1000).TestObject;
+
+        // Act
+        bool result = _blockchainBridge.HasStateForBlock(header);
+
+        // Assert
+        result.Should().BeTrue();
+    }
+
+    [Test]
+    public void HasStateForBlock_archive_node_requested_block_above_head_returns_false()
+    {
+        // Arrange
+        _pruningConfig.Mode.Returns(PruningMode.None);
+        var headBlock = Build.A.Block.WithNumber(1000).TestObject;
+        _blockTree.Head.Returns(headBlock);
+        var header = Build.A.BlockHeader.WithNumber(1001).TestObject;
 
         // Act
         bool result = _blockchainBridge.HasStateForBlock(header);

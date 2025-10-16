@@ -396,11 +396,13 @@ namespace Nethermind.Facade
                 return false;
             }
 
-            // For archive nodes (no pruning), return true only when fully synced
+            long headNumber = blockTree.Head?.Number ?? 0;
+            long requestedNumber = baseBlock.Number;
+
+            // For archive nodes (no pruning), check if requested block is <= current head
             if (pruningConfig.Mode == PruningMode.None)
             {
-                // Archive node should have all state, but only after initial sync is complete
-                return !ethSyncingInfo.IsSyncing();
+                return requestedNumber <= headNumber;
             }
 
             // For nodes with pruning enabled, check if we're still syncing state
@@ -418,8 +420,6 @@ namespace Nethermind.Facade
             // 1. Race conditions between checking state and accessing it
             // 2. Blocks that might be pruned between the check and actual access
             // This means we sacrifice 1 block of history but eliminate the race condition
-            long headNumber = blockTree.Head?.Number ?? 0;
-            long requestedNumber = baseBlock.Number;
             int pruningBoundary = pruningConfig.PruningBoundary;
 
             // Conservative check: subtract 1 from boundary to prevent returning true
