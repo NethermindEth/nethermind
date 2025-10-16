@@ -9,24 +9,16 @@ using System;
 
 namespace Nethermind.Network.P2P.Subprotocols.Eth.V62
 {
-    internal class TxFloodController
+    internal class TxFloodController(Eth62ProtocolHandler protocolHandler, ITimestamper timestamper, ILogger logger)
     {
         private DateTime _checkpoint = DateTime.UtcNow;
-        private readonly Eth62ProtocolHandler _protocolHandler;
-        private readonly ITimestamper _timestamper;
-        private readonly ILogger _logger;
+        private readonly Eth62ProtocolHandler _protocolHandler = protocolHandler ?? throw new ArgumentNullException(nameof(protocolHandler));
+        private readonly ITimestamper _timestamper = timestamper ?? throw new ArgumentNullException(nameof(timestamper));
         private readonly TimeSpan _checkInterval = TimeSpan.FromSeconds(60);
         private long _notAcceptedSinceLastCheck;
         private readonly Random _random = new();
 
         internal bool IsDowngraded { get; private set; }
-
-        public TxFloodController(Eth62ProtocolHandler protocolHandler, ITimestamper timestamper, ILogger logger)
-        {
-            _protocolHandler = protocolHandler ?? throw new ArgumentNullException(nameof(protocolHandler));
-            _timestamper = timestamper ?? throw new ArgumentNullException(nameof(timestamper));
-            _logger = logger;
-        }
 
         public void Report(AcceptTxResult accepted)
         {
@@ -41,7 +33,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62
 
                 if (accepted == AcceptTxResult.Invalid)
                 {
-                    if (_logger.IsDebug) _logger.Debug($"Disconnecting {_protocolHandler} due to invalid tx received");
+                    if (logger.IsDebug) logger.Debug($"Disconnecting {_protocolHandler} due to invalid tx received");
                     _protocolHandler.Disconnect(DisconnectReason.Other, $"invalid tx");
                     return;
                 }
@@ -49,12 +41,12 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62
                 _notAcceptedSinceLastCheck++;
                 if (!IsDowngraded && _notAcceptedSinceLastCheck / _checkInterval.TotalSeconds > 10)
                 {
-                    if (_logger.IsDebug) _logger.Debug($"Downgrading {_protocolHandler} due to tx flooding");
+                    if (logger.IsDebug) logger.Debug($"Downgrading {_protocolHandler} due to tx flooding");
                     IsDowngraded = true;
                 }
                 else if (_notAcceptedSinceLastCheck / _checkInterval.TotalSeconds > 100)
                 {
-                    if (_logger.IsDebug) _logger.Debug($"Disconnecting {_protocolHandler} due to tx flooding");
+                    if (logger.IsDebug) logger.Debug($"Disconnecting {_protocolHandler} due to tx flooding");
                     _protocolHandler.Disconnect(
                         DisconnectReason.TxFlooding,
                         $"tx flooding {_notAcceptedSinceLastCheck}/{_checkInterval.TotalSeconds > 100}");

@@ -67,23 +67,21 @@ public class Eth69ProtocolHandler(
         {
             case Eth69MessageCode.Status:
                 StatusMessage69 statusMsg = Deserialize<StatusMessage69>(message.Content);
-                base.ReportIn(statusMsg, size);
-                this.Handle(statusMsg);
+                ReportIn(statusMsg, size);
+                Handle(statusMsg);
                 break;
             case Eth69MessageCode.Receipts:
                 ReceiptsMessage69 receiptsMessage = Deserialize<ReceiptsMessage69>(message.Content);
-                base.ReportIn(receiptsMessage, size);
+                ReportIn(receiptsMessage, size);
                 base.Handle(receiptsMessage, size);
                 break;
             case Eth69MessageCode.GetReceipts:
-                GetReceiptsMessage getReceiptsMessage = Deserialize<GetReceiptsMessage>(message.Content);
-                ReportIn(getReceiptsMessage, size);
-                BackgroundTaskScheduler.ScheduleSyncServe(getReceiptsMessage, this.Handle);
+                HandleInBackground<GetReceiptsMessage, ReceiptsMessage69>(message, Handle);
                 break;
             case Eth69MessageCode.BlockRangeUpdate:
                 BlockRangeUpdateMessage blockRangeUpdateMsg = Deserialize<BlockRangeUpdateMessage>(message.Content);
                 ReportIn(blockRangeUpdateMsg, size);
-                this.Handle(blockRangeUpdateMsg);
+                Handle(blockRangeUpdateMsg);
                 break;
             default:
                 base.HandleMessage(message);
