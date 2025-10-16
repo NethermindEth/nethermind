@@ -4,81 +4,27 @@
 using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
-using System.IO;
 using System.Linq;
-using System.Net.Sockets;
 using System.Runtime.CompilerServices;
-using System.Text.Json;
 using System.Threading;
 using System.Threading.Channels;
 using System.Threading.Tasks;
 using Nethermind.Config;
 using Nethermind.Core.Crypto;
 using Nethermind.Logging;
-using Nethermind.Serialization.Json;
 using Nethermind.Stats.Model;
 
 namespace Nethermind.Network.StaticNodes;
 
-public class StaticNodesManager(string staticNodesPath, ILogManager logManager) : IStaticNodesManager
+public class StaticNodesManager(string staticNodesPath, ILogManager logManager) : NodesManager(staticNodesPath, logManager.GetClassLogger()), IStaticNodesManager
 {
-    private readonly ILogger _logger = logManager.GetClassLogger();
-    private ConcurrentDictionary<PublicKey, NetworkNode> _nodes = new();
-
     public IEnumerable<NetworkNode> Nodes => _nodes.Values;
 
     public async Task InitAsync()
     {
-        if (!File.Exists(staticNodesPath))
-        {
-            using Stream embeddedNodes = typeof(StaticNodesManager).Assembly.GetManifestResourceStream("static-nodes.json");
+        ConcurrentDictionary<PublicKey, NetworkNode> nodes = await ParseNodes("static-nodes.json");
 
-            if (embeddedNodes is null)
-            {
-                if (_logger.IsDebug) _logger.Debug("Static nodes resource was not found");
-                return;
-            }
-
-            // Create the directory if needed
-            Directory.CreateDirectory(Path.GetDirectoryName(staticNodesPath));
-            using Stream actualNodes = File.Create(staticNodesPath);
-
-            if (_logger.IsDebug) _logger.Debug($"Static nodes file was not found, creating one at {Path.GetFullPath(staticNodesPath)}");
-
-            await embeddedNodes.CopyToAsync(actualNodes);
-        }
-
-        string data = await File.ReadAllTextAsync(staticNodesPath);
-        IEnumerable<string> nodeSet = INodeSource.ParseNodes(data);
-        ConcurrentDictionary<PublicKey, NetworkNode> nodes = [];
-
-        foreach (string? n in nodeSet)
-        {
-            NetworkNode node;
-
-            try
-            {
-                node = new(n);
-            }
-            catch (ArgumentException ex)
-            {
-                if (_logger.IsError) _logger.Error($"Failed to parse '{n}' as a node", ex);
-
-                continue;
-            }
-
-            nodes.TryAdd(node.NodeId, node);
-        }
-
-        if (_logger.IsInfo)
-            _logger.Info($"Loaded {nodes.Count} static nodes from {Path.GetFullPath(staticNodesPath)}");
-
-        if (_logger.IsDebug && !nodes.IsEmpty)
-        {
-            var separator = $"{Environment.NewLine}  ";
-
-            if (_logger.IsDebug) _logger.Debug($"Static nodes:{separator}{string.Join(separator, nodes.Values.Select(n => n.ToString()))}");
-        }
+        LogNodeList("Static nodes", nodes);
 
         _nodes = nodes;
     }
@@ -131,10 +77,6 @@ public class StaticNodesManager(string staticNodesPath, ILogManager logManager) 
         return _nodes.TryGetValue(node.NodeId, out NetworkNode staticNode) && string.Equals(staticNode.Host,
             node.Host, StringComparison.OrdinalIgnoreCase);
     }
-
-    private Task SaveFileAsync()
-        => File.WriteAllTextAsync(staticNodesPath,
-            JsonSerializer.Serialize(_nodes.Select(static n => n.Value.ToString()), EthereumJsonSerializer.JsonOptionsIndented));
 
     public async IAsyncEnumerable<Node> DiscoverNodes([EnumeratorCancellation] CancellationToken cancellationToken)
     {
