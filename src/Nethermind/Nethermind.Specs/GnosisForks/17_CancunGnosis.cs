@@ -12,7 +12,9 @@ public class CancunGnosis : Cancun
     private static IReleaseSpec? _instance;
 
     private CancunGnosis()
-        => ToGnosisFork(this);
+    {
+        ToGnosisFork(this);
+    }
 
     public static void ToGnosisFork(Cancun spec)
     {
