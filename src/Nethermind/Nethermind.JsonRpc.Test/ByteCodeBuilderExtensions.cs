@@ -10,7 +10,7 @@ public static class ByteCodeBuilderExtensions
     public static Prepare RevertWithError(this Prepare prepare, string errorMessage)
     {
         byte[] errorBytes = Encoding.UTF8.GetBytes(errorMessage);
-        
+
         // Mimic the hive callme.eas %revert macro:
         // https://github.com/ethereum/hive/blob/master/cmd/hivechain/contracts/callme.eas
         // It stores the string at memory 0, then reverts with offset=(32-length), length=length
@@ -24,7 +24,7 @@ public static class ByteCodeBuilderExtensions
             .PushData(length)            // Length of string
             .PushData(offset)            // Offset = 32 - length (right-aligned)
             .Op(Instruction.REVERT);      // Revert
-            
+
         return prepare;
     }
 

@@ -233,7 +233,7 @@ public partial class EthRpcModuleTests
 
         string errorMessage = "wrong-calldatasize";
         string hexEncodedErrorMessage = Encoding.UTF8.GetBytes(errorMessage).ToHexString(true);
-        
+
         byte[] code = Prepare.EvmCode
             .RevertWithError(errorMessage)
             .Done;
@@ -246,7 +246,7 @@ public partial class EthRpcModuleTests
             serialized, Is.EqualTo($$"""{"jsonrpc":"2.0","error":{"code":3,"message":"execution reverted: {{errorMessage}}","data":"{{hexEncodedErrorMessage}}"},"id":67}"""));
     }
 
-        [Test]
+    [Test]
     public async Task Estimate_gas_with_abi_encoded_revert()
     {
         using Context ctx = await Context.CreateWithLondonEnabled();
