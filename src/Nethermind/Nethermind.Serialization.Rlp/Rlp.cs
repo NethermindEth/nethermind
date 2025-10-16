@@ -1770,15 +1770,7 @@ namespace Nethermind.Serialization.Rlp
             return LengthOfByteString(array.Count, array[0]);
         }
 
-        public static int LengthOf(ReadOnlySpan<byte> array)
-        {
-            if (array.Length == 0)
-            {
-                return 1;
-            }
-
-            return LengthOfByteString(array.Length, array[0]);
-        }
+        public static int LengthOf(ReadOnlySpan<byte> array) => array.Length == 0 ? 1 : LengthOfByteString(array.Length, array[0]);
 
         // Assumes that length is greater then 0
         public static int LengthOfByteString(int length, byte firstByte)
