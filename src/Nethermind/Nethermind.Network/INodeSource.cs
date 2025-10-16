@@ -12,15 +12,15 @@ namespace Nethermind.Network;
 
 public interface INodeSource
 {
-    private static readonly char[] separator = ['\r', '\n'];
+    private static readonly char[] _separator = ['\r', '\n'];
 
     IAsyncEnumerable<Node> DiscoverNodes(CancellationToken cancellationToken);
 
     event EventHandler<NodeEventArgs> NodeRemoved;
 
-    static ISet<string> ParseNodes(string data)
+    static IEnumerable<string> ParseNodes(string data)
     {
-        ISet<string>? nodes;
+        IEnumerable<string>? nodes;
 
         try
         {
@@ -28,9 +28,9 @@ public interface INodeSource
         }
         catch (JsonException)
         {
-            nodes = data.Split(separator, StringSplitOptions.RemoveEmptyEntries).ToHashSet();
+            nodes = data.Split(_separator, StringSplitOptions.RemoveEmptyEntries).ToHashSet();
         }
 
-        return nodes;
+        return nodes ?? [];
     }
 }

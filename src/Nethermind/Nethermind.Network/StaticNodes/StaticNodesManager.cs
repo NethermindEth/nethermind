@@ -35,7 +35,7 @@ public class StaticNodesManager(string staticNodesPath, ILogManager logManager) 
 
             if (embeddedNodes is null)
             {
-                if (_logger.IsWarn) _logger.Warn($"Static nodes resource was not found");
+                if (_logger.IsDebug) _logger.Debug("Static nodes resource was not found");
                 return;
             }
 
@@ -43,23 +43,14 @@ public class StaticNodesManager(string staticNodesPath, ILogManager logManager) 
             Directory.CreateDirectory(Path.GetDirectoryName(staticNodesPath));
             using Stream actualNodes = File.Create(staticNodesPath);
 
-            if (_logger.IsTrace) _logger.Trace($"Static nodes file was not found, creating one at {Path.GetFullPath(staticNodesPath)}");
+            if (_logger.IsDebug) _logger.Debug($"Static nodes file was not found, creating one at {Path.GetFullPath(staticNodesPath)}");
 
             await embeddedNodes.CopyToAsync(actualNodes);
         }
 
         string data = await File.ReadAllTextAsync(staticNodesPath);
-        ISet<string> nodeSet = INodeSource.ParseNodes(data);
-
-        if (_logger.IsInfo)
-            _logger.Info($"Loaded {nodeSet.Count} static nodes from {Path.GetFullPath(staticNodesPath)}");
-
-        if (nodeSet.Count != 0)
-        {
-            if (_logger.IsDebug) _logger.Debug($"Static nodes: {Environment.NewLine}{data}");
-        }
-
-        List<NetworkNode> nodes = [];
+        IEnumerable<string> nodeSet = INodeSource.ParseNodes(data);
+        ConcurrentDictionary<PublicKey, NetworkNode> nodes = [];
 
         foreach (string? n in nodeSet)
         {
@@ -76,10 +67,20 @@ public class StaticNodesManager(string staticNodesPath, ILogManager logManager) 
                 continue;
             }
 
-            nodes.Add(node);
+            nodes.TryAdd(node.NodeId, node);
         }
 
-        _nodes = new ConcurrentDictionary<PublicKey, NetworkNode>(nodes.ToDictionary(static n => n.NodeId, static n => n));
+        if (_logger.IsInfo)
+            _logger.Info($"Loaded {nodes.Count} static nodes from {Path.GetFullPath(staticNodesPath)}");
+
+        if (_logger.IsDebug && !nodes.IsEmpty)
+        {
+            var separator = $"{Environment.NewLine}  ";
+
+            if (_logger.IsDebug) _logger.Debug($"Static nodes:{separator}{string.Join(separator, nodes.Values.Select(n => n.ToString()))}");
+        }
+
+        _nodes = nodes;
     }
 
     public async Task<bool> AddAsync(string enode, bool updateFile = true)

@@ -1,4 +1,4 @@
-<Project Sdk="Microsoft.NET.Sdk">
+﻿<Project Sdk="Microsoft.NET.Sdk">
   <PropertyGroup>
     <Nullable>annotations</Nullable>
   </PropertyGroup>
@@ -26,6 +26,9 @@
     <None Remove="Whisper\**" />
     <EmbeddedResource Include="StaticNodes\static-nodes.json">
       <LogicalName>static-nodes.json</LogicalName>
+    </EmbeddedResource>
+    <EmbeddedResource Include="TrustedNodes\trusted-nodes.json">
+      <LogicalName>trusted-nodes.json</LogicalName>
     </EmbeddedResource>
   </ItemGroup>
 </Project>

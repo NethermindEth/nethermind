@@ -1,6 +1,11 @@
 // SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using Nethermind.Config;
+using Nethermind.Core.Crypto;
+using Nethermind.Logging;
+using Nethermind.Network.StaticNodes;
+using Nethermind.Stats.Model;
 using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
@@ -11,10 +16,6 @@ using System.Text.Json;
 using System.Threading;
 using System.Threading.Channels;
 using System.Threading.Tasks;
-using Nethermind.Config;
-using Nethermind.Core.Crypto;
-using Nethermind.Logging;
-using Nethermind.Stats.Model;
 
 namespace Nethermind.Network;
 
@@ -35,12 +36,25 @@ public class TrustedNodesManager(string trustedNodesPath, ILogManager logManager
     {
         if (!File.Exists(trustedNodesPath))
         {
-            if (_logger.IsDebug) _logger.Debug($"Trusted nodes file not found at {Path.GetFullPath(trustedNodesPath)}");
-            return;
+            using Stream embeddedNodes = typeof(StaticNodesManager).Assembly.GetManifestResourceStream("trusted-nodes.json");
+
+            if (embeddedNodes is null)
+            {
+                if (_logger.IsDebug) _logger.Debug("Trusted nodes resource was not found");
+                return;
+            }
+
+            // Create the directory if needed
+            Directory.CreateDirectory(Path.GetDirectoryName(trustedNodesPath));
+            using Stream actualNodes = File.Create(trustedNodesPath);
+
+            if (_logger.IsDebug) _logger.Debug($"Trusted nodes file was not found, creating one at {Path.GetFullPath(trustedNodesPath)}");
+
+            await embeddedNodes.CopyToAsync(actualNodes);
         }
 
         string data = await File.ReadAllTextAsync(trustedNodesPath);
-        ISet<string> nodeSet = INodeSource.ParseNodes(data);
+        IEnumerable<string> nodeSet = INodeSource.ParseNodes(data);
         ConcurrentDictionary<PublicKey, NetworkNode> nodes = [];
 
         foreach (string n in nodeSet)
@@ -66,7 +80,11 @@ public class TrustedNodesManager(string trustedNodesPath, ILogManager logManager
             _logger.Info($"Loaded {nodes.Count} trusted nodes from {Path.GetFullPath(trustedNodesPath)}");
 
         if (_logger.IsDebug && !nodes.IsEmpty)
-            _logger.Debug($"Trusted nodes:{Environment.NewLine}{string.Join(Environment.NewLine, nodes.Values.Select(n => n.ToString()))}");
+        {
+            var separator = $"{Environment.NewLine}  ";
+
+            _logger.Debug($"Trusted nodes:{separator}{string.Join(separator, nodes.Values.Select(n => n.ToString()))}");
+        }
 
         _nodes = nodes;
     }
