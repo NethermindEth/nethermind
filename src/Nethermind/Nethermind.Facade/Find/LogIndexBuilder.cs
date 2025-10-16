@@ -207,8 +207,8 @@ public sealed class LogIndexBuilder : ILogIndexBuilder
     private void LogProgress()
     {
         LogStats();
-        foreach ((var isForward, ProgressLogger progress) in _progressLoggers)
-            progress.LogProgress(isForward);
+        foreach ((_, ProgressLogger progress) in _progressLoggers)
+            progress.LogProgress();
     }
 
     private bool TrySetPivot(int? blockNumber)
