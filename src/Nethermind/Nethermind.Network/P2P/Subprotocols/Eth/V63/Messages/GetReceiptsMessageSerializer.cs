@@ -5,15 +5,18 @@ using DotNetty.Buffers;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Serialization.Rlp;
+using Nethermind.Stats.SyncLimits;
 
 namespace Nethermind.Network.P2P.Subprotocols.Eth.V63.Messages
 {
     public class GetReceiptsMessageSerializer : HashesMessageSerializer<GetReceiptsMessage>
     {
+        private static readonly RlpLimit RlpLimit = RlpLimit.For<GetReceiptsMessage>(nameof(GetReceiptsMessage.Hashes), NethermindSyncLimits.MaxReceiptFetch);
+
         public static GetReceiptsMessage Deserialize(byte[] bytes)
         {
             RlpStream rlpStream = bytes.AsRlpStream();
-            ArrayPoolList<Hash256>? hashes = rlpStream.DecodeArrayPoolList(static itemContext => itemContext.DecodeKeccak());
+            ArrayPoolList<Hash256>? hashes = rlpStream.DecodeArrayPoolList(static itemContext => itemContext.DecodeKeccak(), limit: RlpLimit);
             return new GetReceiptsMessage(hashes);
         }
 
@@ -25,7 +28,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V63.Messages
 
         public static GetReceiptsMessage Deserialize(RlpStream rlpStream)
         {
-            ArrayPoolList<Hash256>? hashes = HashesMessageSerializer<GetReceiptsMessage>.DeserializeHashesArrayPool(rlpStream);
+            ArrayPoolList<Hash256>? hashes = DeserializeHashesArrayPool(rlpStream, RlpLimit);
             return new GetReceiptsMessage(hashes);
         }
     }

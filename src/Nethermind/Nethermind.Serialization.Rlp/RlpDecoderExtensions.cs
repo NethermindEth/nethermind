@@ -11,12 +11,14 @@ namespace Nethermind.Serialization.Rlp
 {
     public static class RlpDecoderExtensions
     {
-        private readonly static SpanSource[] s_intPreEncodes = CreatePreEncodes();
+        private static readonly SpanSource[] s_intPreEncodes = CreatePreEncodes();
 
-        public static T[] DecodeArray<T>(this IRlpStreamDecoder<T> decoder, RlpStream rlpStream, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+        public static T[] DecodeArray<T>(this IRlpStreamDecoder<T> decoder, RlpStream rlpStream, RlpBehaviors rlpBehaviors = RlpBehaviors.None, RlpLimit? limit = null)
         {
             int checkPosition = rlpStream.ReadSequenceLength() + rlpStream.Position;
-            T[] result = new T[rlpStream.PeekNumberOfItemsRemaining(checkPosition)];
+            int length = rlpStream.PeekNumberOfItemsRemaining(checkPosition);
+            Rlp.GuardLimit(length, limit);
+            T[] result = new T[length];
             for (int i = 0; i < result.Length; i++)
             {
                 result[i] = decoder.Decode(rlpStream, rlpBehaviors);
@@ -25,10 +27,12 @@ namespace Nethermind.Serialization.Rlp
             return result;
         }
 
-        public static T[] DecodeArray<T>(this IRlpValueDecoder<T> decoder, ref Rlp.ValueDecoderContext decoderContext, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+        public static T[] DecodeArray<T>(this IRlpValueDecoder<T> decoder, ref Rlp.ValueDecoderContext decoderContext, RlpBehaviors rlpBehaviors = RlpBehaviors.None, RlpLimit? limit = null)
         {
             int checkPosition = decoderContext.ReadSequenceLength() + decoderContext.Position;
-            T[] result = new T[decoderContext.PeekNumberOfItemsRemaining(checkPosition)];
+            int length = decoderContext.PeekNumberOfItemsRemaining(checkPosition);
+            Rlp.GuardLimit(length, limit);
+            T[] result = new T[length];
             for (int i = 0; i < result.Length; i++)
             {
                 result[i] = decoder.Decode(ref decoderContext, rlpBehaviors);

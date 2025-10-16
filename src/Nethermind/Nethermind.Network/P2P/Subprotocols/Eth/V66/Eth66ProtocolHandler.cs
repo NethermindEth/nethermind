@@ -68,9 +68,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V66
             switch (message.PacketType)
             {
                 case Eth66MessageCode.GetBlockHeaders:
-                    GetBlockHeadersMessage getBlockHeadersMessage = Deserialize<GetBlockHeadersMessage>(message.Content);
-                    ReportIn(getBlockHeadersMessage, size);
-                    BackgroundTaskScheduler.ScheduleSyncServe(getBlockHeadersMessage, Handle);
+                    HandleInBackground<GetBlockHeadersMessage, BlockHeadersMessage>(message, Handle);
                     break;
                 case Eth66MessageCode.BlockHeaders:
                     BlockHeadersMessage headersMsg = Deserialize<BlockHeadersMessage>(message.Content);
@@ -78,9 +76,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V66
                     Handle(headersMsg, size);
                     break;
                 case Eth66MessageCode.GetBlockBodies:
-                    GetBlockBodiesMessage getBodiesMsg = Deserialize<GetBlockBodiesMessage>(message.Content);
-                    ReportIn(getBodiesMsg, size);
-                    BackgroundTaskScheduler.ScheduleSyncServe(getBodiesMsg, Handle);
+                    HandleInBackground<GetBlockBodiesMessage, BlockBodiesMessage>(message, Handle);
                     break;
                 case Eth66MessageCode.BlockBodies:
                     BlockBodiesMessage bodiesMsg = Deserialize<BlockBodiesMessage>(message.Content);
@@ -88,10 +84,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V66
                     HandleBodies(bodiesMsg, size);
                     break;
                 case Eth66MessageCode.GetPooledTransactions:
-                    GetPooledTransactionsMessage getPooledTxMsg
-                        = Deserialize<GetPooledTransactionsMessage>(message.Content);
-                    ReportIn(getPooledTxMsg, size);
-                    BackgroundTaskScheduler.ScheduleSyncServe(getPooledTxMsg, Handle);
+                    HandleInBackground<GetPooledTransactionsMessage, PooledTransactionsMessage>(message, Handle);
                     break;
                 case Eth66MessageCode.PooledTransactions:
                     if (CanReceiveTransactions)
@@ -109,9 +102,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V66
 
                     break;
                 case Eth66MessageCode.GetReceipts:
-                    GetReceiptsMessage getReceiptsMessage = Deserialize<GetReceiptsMessage>(message.Content);
-                    ReportIn(getReceiptsMessage, size);
-                    BackgroundTaskScheduler.ScheduleSyncServe(getReceiptsMessage, Handle);
+                    HandleInBackground<GetReceiptsMessage, ReceiptsMessage>(message, Handle);
                     break;
                 case Eth66MessageCode.Receipts:
                     ReceiptsMessage receiptsMessage = Deserialize<ReceiptsMessage>(message.Content);
@@ -119,9 +110,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V66
                     Handle(receiptsMessage, size);
                     break;
                 case Eth66MessageCode.GetNodeData:
-                    GetNodeDataMessage getNodeDataMessage = Deserialize<GetNodeDataMessage>(message.Content);
-                    ReportIn(getNodeDataMessage, size);
-                    BackgroundTaskScheduler.ScheduleSyncServe(getNodeDataMessage, Handle);
+                    HandleInBackground<GetNodeDataMessage, NodeDataMessage>(message, Handle);
                     break;
                 case Eth66MessageCode.NodeData:
                     NodeDataMessage nodeDataMessage = Deserialize<NodeDataMessage>(message.Content);

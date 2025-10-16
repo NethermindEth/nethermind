@@ -5,11 +5,13 @@ using DotNetty.Buffers;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Serialization.Rlp;
+using Nethermind.Stats.SyncLimits;
 
 namespace Nethermind.Network.P2P.Subprotocols.Eth.V62.Messages
 {
     public class TransactionsMessageSerializer : IZeroInnerMessageSerializer<TransactionsMessage>
     {
+        private static readonly RlpLimit RlpLimit = RlpLimit.For<TransactionsMessage>(nameof(TransactionsMessage.Transactions), NethermindSyncLimits.MaxHashesFetch);
         private readonly TxDecoder _decoder = TxDecoder.Instance;
 
         public void Serialize(IByteBuffer byteBuffer, TransactionsMessage message)
@@ -45,7 +47,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62.Messages
 
         public static IOwnedReadOnlyList<Transaction> DeserializeTxs(RlpStream rlpStream)
         {
-            return Rlp.DecodeArrayPool<Transaction>(rlpStream, RlpBehaviors.InMempoolForm);
+            return Rlp.DecodeArrayPool<Transaction>(rlpStream, RlpBehaviors.InMempoolForm, limit: RlpLimit);
         }
     }
 }

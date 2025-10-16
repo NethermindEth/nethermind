@@ -4,11 +4,13 @@
 using DotNetty.Buffers;
 using Nethermind.Core;
 using Nethermind.Serialization.Rlp;
+using Nethermind.Stats.SyncLimits;
 
 namespace Nethermind.Network.P2P.Subprotocols.Eth.V62.Messages
 {
     public class BlockHeadersMessageSerializer : IZeroInnerMessageSerializer<BlockHeadersMessage>
     {
+        private static readonly RlpLimit RlpLimit = RlpLimit.For<BlockHeadersMessage>(nameof(BlockHeadersMessage.BlockHeaders), NethermindSyncLimits.MaxHeaderFetch);
         private readonly HeaderDecoder _headerDecoder = new();
 
         public void Serialize(IByteBuffer byteBuffer, BlockHeadersMessage message)
@@ -44,7 +46,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62.Messages
         public static BlockHeadersMessage Deserialize(RlpStream rlpStream)
         {
             BlockHeadersMessage message = new();
-            message.BlockHeaders = Rlp.DecodeArrayPool<BlockHeader>(rlpStream);
+            message.BlockHeaders = Rlp.DecodeArrayPool<BlockHeader>(rlpStream, limit: RlpLimit);
             return message;
         }
     }

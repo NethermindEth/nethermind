@@ -4,7 +4,11 @@
 using System;
 using System.Buffers.Binary;
 using System.Collections.Generic;
+using System.Diagnostics;
+using System.Diagnostics.CodeAnalysis;
+using System.Linq.Expressions;
 using System.Numerics;
+using System.Reflection.Metadata;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using System.Text;
@@ -766,7 +770,7 @@ namespace Nethermind.Serialization.Rlp
                 return null;
             }
 
-            ReadOnlySpan<byte> theSpan = DecodeByteArraySpan();
+            ReadOnlySpan<byte> theSpan = DecodeByteArraySpan(RlpLimit.L32);
             byte[] keccakByte = new byte[32];
             theSpan.CopyTo(keccakByte.AsSpan(32 - theSpan.Length));
             return new Hash256(keccakByte);
@@ -804,7 +808,7 @@ namespace Nethermind.Serialization.Rlp
                 return byteValue;
             }
 
-            ReadOnlySpan<byte> byteSpan = DecodeByteArraySpan();
+            ReadOnlySpan<byte> byteSpan = DecodeByteArraySpan(RlpLimit.L32);
 
             if (byteSpan.Length > 32)
             {
@@ -828,7 +832,7 @@ namespace Nethermind.Serialization.Rlp
 
         public BigInteger DecodeUBigInt()
         {
-            ReadOnlySpan<byte> bytes = DecodeByteArraySpan();
+            ReadOnlySpan<byte> bytes = DecodeByteArraySpan(RlpLimit.L32);
             if (bytes.Length > 1 && bytes[0] == 0)
             {
                 RlpHelpers.ThrowNonCanonicalInteger(Position);
@@ -845,18 +849,18 @@ namespace Nethermind.Serialization.Rlp
             if (PeekByte() == 249)
             {
                 SkipBytes(5); // tks: skip 249 1 2 129 127 and read 256 bytes
-                bloomBytes = Read(256);
+                bloomBytes = Read(Bloom.ByteLength);
             }
             else
             {
-                bloomBytes = DecodeByteArraySpan();
+                bloomBytes = DecodeByteArraySpan(RlpLimit.Bloom);
                 if (bloomBytes.Length == 0)
                 {
                     return null;
                 }
             }
 
-            if (bloomBytes.Length != 256)
+            if (bloomBytes.Length != Bloom.ByteLength)
             {
                 throw new RlpException("Incorrect bloom RLP");
             }
@@ -923,11 +927,11 @@ namespace Nethermind.Serialization.Rlp
             return default;
         }
 
-        public T[] DecodeArray<T>(Func<RlpStream, T> decodeItem, bool checkPositions = true,
-            T defaultElement = default)
+        public T[] DecodeArray<T>(Func<RlpStream, T> decodeItem, bool checkPositions = true, T defaultElement = default, RlpLimit? limit = null)
         {
             int positionCheck = ReadSequenceLength() + Position;
-            int count = PeekNumberOfItemsRemaining(checkPositions ? positionCheck : (int?)null);
+            int count = PeekNumberOfItemsRemaining(checkPositions ? positionCheck : null);
+            Rlp.GuardLimit(count, limit);
             T[] result = new T[count];
             for (int i = 0; i < result.Length; i++)
             {
@@ -945,11 +949,11 @@ namespace Nethermind.Serialization.Rlp
             return result;
         }
 
-        public ArrayPoolList<T> DecodeArrayPoolList<T>(Func<RlpStream, T> decodeItem, bool checkPositions = true,
-            T defaultElement = default)
+        public ArrayPoolList<T> DecodeArrayPoolList<T>(Func<RlpStream, T> decodeItem, bool checkPositions = true, T defaultElement = default, RlpLimit? limit = null)
         {
             int positionCheck = ReadSequenceLength() + Position;
-            int count = PeekNumberOfItemsRemaining(checkPositions ? positionCheck : (int?)null);
+            int count = PeekNumberOfItemsRemaining(checkPositions ? positionCheck : null);
+            Rlp.GuardLimit(count, limit);
             var result = new ArrayPoolList<T>(count, count);
             for (int i = 0; i < result.Count; i++)
             {
@@ -967,9 +971,9 @@ namespace Nethermind.Serialization.Rlp
             return result;
         }
 
-        public string DecodeString()
+        public string DecodeString(RlpLimit? limit = null)
         {
-            ReadOnlySpan<byte> bytes = DecodeByteArraySpan();
+            ReadOnlySpan<byte> bytes = DecodeByteArraySpan(limit);
             return Encoding.UTF8.GetString(bytes);
         }
 
@@ -1039,7 +1043,7 @@ namespace Nethermind.Serialization.Rlp
 
         public uint DecodeUInt()
         {
-            ReadOnlySpan<byte> bytes = DecodeByteArraySpan();
+            ReadOnlySpan<byte> bytes = DecodeByteArraySpan(RlpLimit.L8);
             if (bytes.Length > 1 && bytes[0] == 0)
             {
                 RlpHelpers.ThrowNonCanonicalInteger(Position);
@@ -1127,7 +1131,7 @@ namespace Nethermind.Serialization.Rlp
 
         public ulong DecodeUlong()
         {
-            ReadOnlySpan<byte> bytes = DecodeByteArraySpan();
+            ReadOnlySpan<byte> bytes = DecodeByteArraySpan(RlpLimit.L8);
             if (bytes.Length > 1 && bytes[0] == 0)
             {
                 RlpHelpers.ThrowNonCanonicalInteger(Position);
@@ -1135,14 +1139,14 @@ namespace Nethermind.Serialization.Rlp
             return bytes.Length == 0 ? 0L : bytes.ReadEthUInt64();
         }
 
-        public byte[] DecodeByteArray() => Rlp.ByteSpanToArray(DecodeByteArraySpan());
+        public byte[] DecodeByteArray(RlpLimit? limit = null) => Rlp.ByteSpanToArray(DecodeByteArraySpan(limit));
 
-        public ArrayPoolList<byte> DecodeByteArrayPoolList() => Rlp.ByteSpanToArrayPool(DecodeByteArraySpan());
+        public ArrayPoolList<byte> DecodeByteArrayPoolList(RlpLimit? limit = null) => Rlp.ByteSpanToArrayPool(DecodeByteArraySpan(limit));
 
-        public ReadOnlySpan<byte> DecodeByteArraySpan()
+        public ReadOnlySpan<byte> DecodeByteArraySpan(RlpLimit? limit = null)
         {
             int prefix = ReadByte();
-            ReadOnlySpan<byte> span = RlpStream.SingleBytes;
+            ReadOnlySpan<byte> span = SingleBytes;
             if ((uint)prefix < (uint)span.Length)
             {
                 return span.Slice(prefix, 1);
@@ -1156,6 +1160,7 @@ namespace Nethermind.Serialization.Rlp
             if (prefix <= 183)
             {
                 int length = prefix - 128;
+                Rlp.GuardLimit(length, limit);
                 ReadOnlySpan<byte> buffer = Read(length);
                 if (buffer.Length == 1 && buffer[0] < 128)
                 {
@@ -1165,11 +1170,11 @@ namespace Nethermind.Serialization.Rlp
                 return buffer;
             }
 
-            return DecodeLargerByteArraySpan(prefix);
+            return DecodeLargerByteArraySpan(prefix, limit);
         }
 
         [MethodImpl(MethodImplOptions.NoInlining)]
-        private ReadOnlySpan<byte> DecodeLargerByteArraySpan(int prefix)
+        private ReadOnlySpan<byte> DecodeLargerByteArraySpan(int prefix, RlpLimit? limit = null)
         {
             if (prefix < 192)
             {
@@ -1184,6 +1189,7 @@ namespace Nethermind.Serialization.Rlp
                 {
                     RlpHelpers.ThrowUnexpectedLength(length);
                 }
+                Rlp.GuardLimit(length, limit);
 
                 return Read(length);
             }
@@ -1206,7 +1212,7 @@ namespace Nethermind.Serialization.Rlp
 
         public override string ToString() => $"[{nameof(RlpStream)}|{Position}/{Length}]";
 
-        public byte[][] DecodeByteArrays()
+        public byte[][] DecodeByteArrays(RlpLimit? limit = null)
         {
             int length = ReadSequenceLength();
             if (length is 0)
@@ -1215,6 +1221,7 @@ namespace Nethermind.Serialization.Rlp
             }
 
             int itemsCount = PeekNumberOfItemsRemaining(Position + length);
+            Rlp.GuardLimit(itemsCount, limit);
             byte[][] result = new byte[itemsCount][];
 
             for (int i = 0; i < itemsCount; i++)
@@ -1225,7 +1232,7 @@ namespace Nethermind.Serialization.Rlp
             return result;
         }
 
-        internal static ReadOnlySpan<byte> SingleBytes => new byte[128] { 0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47, 48, 49, 50, 51, 52, 53, 54, 55, 56, 57, 58, 59, 60, 61, 62, 63, 64, 65, 66, 67, 68, 69, 70, 71, 72, 73, 74, 75, 76, 77, 78, 79, 80, 81, 82, 83, 84, 85, 86, 87, 88, 89, 90, 91, 92, 93, 94, 95, 96, 97, 98, 99, 100, 101, 102, 103, 104, 105, 106, 107, 108, 109, 110, 111, 112, 113, 114, 115, 116, 117, 118, 119, 120, 121, 122, 123, 124, 125, 126, 127 };
-        internal static readonly byte[][] SingleByteArrays = new byte[128][] { [0], [1], [2], [3], [4], [5], [6], [7], [8], [9], [10], [11], [12], [13], [14], [15], [16], [17], [18], [19], [20], [21], [22], [23], [24], [25], [26], [27], [28], [29], [30], [31], [32], [33], [34], [35], [36], [37], [38], [39], [40], [41], [42], [43], [44], [45], [46], [47], [48], [49], [50], [51], [52], [53], [54], [55], [56], [57], [58], [59], [60], [61], [62], [63], [64], [65], [66], [67], [68], [69], [70], [71], [72], [73], [74], [75], [76], [77], [78], [79], [80], [81], [82], [83], [84], [85], [86], [87], [88], [89], [90], [91], [92], [93], [94], [95], [96], [97], [98], [99], [100], [101], [102], [103], [104], [105], [106], [107], [108], [109], [110], [111], [112], [113], [114], [115], [116], [117], [118], [119], [120], [121], [122], [123], [124], [125], [126], [127] };
+        internal static ReadOnlySpan<byte> SingleBytes => [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47, 48, 49, 50, 51, 52, 53, 54, 55, 56, 57, 58, 59, 60, 61, 62, 63, 64, 65, 66, 67, 68, 69, 70, 71, 72, 73, 74, 75, 76, 77, 78, 79, 80, 81, 82, 83, 84, 85, 86, 87, 88, 89, 90, 91, 92, 93, 94, 95, 96, 97, 98, 99, 100, 101, 102, 103, 104, 105, 106, 107, 108, 109, 110, 111, 112, 113, 114, 115, 116, 117, 118, 119, 120, 121, 122, 123, 124, 125, 126, 127];
+        internal static readonly byte[][] SingleByteArrays = [[0], [1], [2], [3], [4], [5], [6], [7], [8], [9], [10], [11], [12], [13], [14], [15], [16], [17], [18], [19], [20], [21], [22], [23], [24], [25], [26], [27], [28], [29], [30], [31], [32], [33], [34], [35], [36], [37], [38], [39], [40], [41], [42], [43], [44], [45], [46], [47], [48], [49], [50], [51], [52], [53], [54], [55], [56], [57], [58], [59], [60], [61], [62], [63], [64], [65], [66], [67], [68], [69], [70], [71], [72], [73], [74], [75], [76], [77], [78], [79], [80], [81], [82], [83], [84], [85], [86], [87], [88], [89], [90], [91], [92], [93], [94], [95], [96], [97], [98], [99], [100], [101], [102], [103], [104], [105], [106], [107], [108], [109], [110], [111], [112], [113], [114], [115], [116], [117], [118], [119], [120], [121], [122], [123], [124], [125], [126], [127]];
     }
 }

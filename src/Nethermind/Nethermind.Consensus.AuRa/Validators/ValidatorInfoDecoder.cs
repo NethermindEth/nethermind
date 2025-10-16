@@ -23,7 +23,9 @@ namespace Nethermind.Consensus.AuRa.Validators
 
             int addressesSequenceLength = rlpStream.ReadSequenceLength();
             int addressesCheck = rlpStream.Position + addressesSequenceLength;
-            Address[] addresses = new Address[addressesSequenceLength / Rlp.LengthOfAddressRlp];
+            var count = addressesSequenceLength / Rlp.LengthOfAddressRlp;
+            Rlp.GuardLimit(count);
+            Address[] addresses = new Address[count];
             int i = 0;
             while (rlpStream.Position < addressesCheck)
             {
