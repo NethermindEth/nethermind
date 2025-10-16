@@ -15,23 +15,17 @@ public class AccountChangesDecoder : IRlpValueDecoder<AccountChanges>, IRlpStrea
     private static AccountChangesDecoder? _instance = null;
     public static AccountChangesDecoder Instance => _instance ??= new();
 
+    private static readonly RlpLimit _slotsLimit = new(Eip7928Constants.MaxSlots, "", ReadOnlyMemory<char>.Empty);
+    private static readonly RlpLimit _txLimit = new(Eip7928Constants.MaxTxs, "", ReadOnlyMemory<char>.Empty);
+
     public AccountChanges Decode(ref Rlp.ValueDecoderContext ctx, RlpBehaviors rlpBehaviors)
     {
-        // var tmp = ctx.Data[ctx.Position..].ToArray();
-
-        // Console.WriteLine("account change uncut:");
-        // Console.WriteLine(Bytes.ToHexString(tmp));
-
         int length = ctx.ReadSequenceLength();
         int check = length + ctx.Position;
 
-        // tmp = tmp[..(length + 1)];
-        // Console.WriteLine("account change:" + length);
-        // Console.WriteLine(Bytes.ToHexString(tmp));
-
         Address address = ctx.DecodeAddress();
 
-        SlotChanges[] slotChanges = ctx.DecodeArray(SlotChangesDecoder.Instance);
+        SlotChanges[] slotChanges = ctx.DecodeArray(SlotChangesDecoder.Instance, true, default, _slotsLimit);
         byte[]? lastSlot = null;
         SortedDictionary<byte[], SlotChanges> slotChangesMap = new(slotChanges.ToDictionary(s =>
         {
@@ -44,7 +38,7 @@ public class AccountChangesDecoder : IRlpValueDecoder<AccountChanges>, IRlpStrea
             return slot;
         }, s => s), Bytes.Comparer);
 
-        StorageRead[] storageReads = ctx.DecodeArray(StorageReadDecoder.Instance);
+        StorageRead[] storageReads = ctx.DecodeArray(StorageReadDecoder.Instance, true, default, _slotsLimit);
         SortedSet<StorageRead> storageReadsList = [];
         StorageRead? lastRead = null;
         foreach (StorageRead storageRead in storageReads)
@@ -57,7 +51,7 @@ public class AccountChangesDecoder : IRlpValueDecoder<AccountChanges>, IRlpStrea
             lastRead = storageRead;
         }
 
-        BalanceChange[] balanceChanges = ctx.DecodeArray(BalanceChangeDecoder.Instance);
+        BalanceChange[] balanceChanges = ctx.DecodeArray(BalanceChangeDecoder.Instance, true, default, _txLimit);
         ushort? lastIndex = null;
         SortedList<ushort, BalanceChange> balanceChangesList = new(balanceChanges.ToDictionary(s =>
         {
@@ -72,7 +66,7 @@ public class AccountChangesDecoder : IRlpValueDecoder<AccountChanges>, IRlpStrea
         }, s => s));
 
         lastIndex = null;
-        NonceChange[] nonceChanges = ctx.DecodeArray(NonceChangeDecoder.Instance);
+        NonceChange[] nonceChanges = ctx.DecodeArray(NonceChangeDecoder.Instance, true, default, _txLimit);
         SortedList<ushort, NonceChange> nonceChangesList = new(nonceChanges.ToDictionary(s =>
         {
             ushort index = s.BlockAccessIndex;
@@ -84,13 +78,7 @@ public class AccountChangesDecoder : IRlpValueDecoder<AccountChanges>, IRlpStrea
             return index;
         }, s => s));
 
-        CodeChange[] codeChanges = ctx.DecodeArray(CodeChangeDecoder.Instance);
-
-        // max one code change per tx
-        if (codeChanges.Length > Eip7928Constants.MaxTxs)
-        {
-            throw new RlpException("Number of code changes exceeded maximum.");
-        }
+        CodeChange[] codeChanges = ctx.DecodeArray(CodeChangeDecoder.Instance, true, default, _txLimit);
 
         lastIndex = null;
         SortedList<ushort, CodeChange> codeChangesList = new(codeChanges.ToDictionary(s =>

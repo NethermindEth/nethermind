@@ -3,7 +3,6 @@
 
 using System;
 using Nethermind.Core.BlockAccessLists;
-using Nethermind.Core.Extensions;
 
 namespace Nethermind.Serialization.Rlp.Eip7928;
 
@@ -14,14 +13,8 @@ public class NonceChangeDecoder : IRlpValueDecoder<NonceChange>, IRlpStreamDecod
 
     public NonceChange Decode(ref Rlp.ValueDecoderContext ctx, RlpBehaviors rlpBehaviors)
     {
-        // var tmp = ctx.Data[ctx.Position..].ToArray();
-
         int length = ctx.ReadSequenceLength();
         int check = length + ctx.Position;
-
-        // tmp = tmp[..(length + 1)];
-        // Console.WriteLine("nonce change:" + length);
-        // Console.WriteLine(Bytes.ToHexString(tmp));
 
         NonceChange nonceChange = new()
         {

@@ -16,7 +16,7 @@ public class StorageReadDecoder : IRlpValueDecoder<StorageRead>, IRlpStreamDecod
 
     public StorageRead Decode(ref Rlp.ValueDecoderContext ctx, RlpBehaviors rlpBehaviors)
     {
-        byte[] key = ctx.DecodeByteArray();
+        byte[] key = ctx.DecodeByteArray(RlpLimit.L32);
         if (key.Length != 32)
         {
             throw new RlpException("Invalid storage key, should be 32 bytes.");

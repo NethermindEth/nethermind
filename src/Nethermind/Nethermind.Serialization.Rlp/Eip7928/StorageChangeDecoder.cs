@@ -3,7 +3,6 @@
 
 using System;
 using Nethermind.Core.BlockAccessLists;
-using Nethermind.Core.Extensions;
 
 namespace Nethermind.Serialization.Rlp.Eip7928;
 
@@ -14,17 +13,11 @@ public class StorageChangeDecoder : IRlpValueDecoder<StorageChange>, IRlpStreamD
 
     public StorageChange Decode(ref Rlp.ValueDecoderContext ctx, RlpBehaviors rlpBehaviors)
     {
-        // var tmp = ctx.Data[ctx.Position..].ToArray();
-
         int length = ctx.ReadSequenceLength();
         int check = length + ctx.Position;
 
-        // tmp = tmp[..(length + 1)];
-        // Console.WriteLine("storage change:" + length);
-        // Console.WriteLine(Bytes.ToHexString(tmp));
-
         ushort blockAccessIndex = ctx.DecodeUShort();
-        byte[] newValue = ctx.DecodeByteArray();
+        byte[] newValue = ctx.DecodeByteArray(RlpLimit.L32);
         if (newValue.Length != 32)
         {
             throw new RlpException("Invalid storage value, should be 32 bytes.");

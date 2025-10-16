@@ -12,33 +12,20 @@ public class SlotChangesDecoder : IRlpValueDecoder<SlotChanges>, IRlpStreamDecod
     private static SlotChangesDecoder? _instance = null;
     public static SlotChangesDecoder Instance => _instance ??= new();
 
+    private static readonly RlpLimit _codeLimit = new(Eip7928Constants.MaxCodeSize, "", ReadOnlyMemory<char>.Empty);
 
     public SlotChanges Decode(ref Rlp.ValueDecoderContext ctx, RlpBehaviors rlpBehaviors)
     {
-        // var tmp = ctx.Data[ctx.Position..].ToArray();
-
-        // Console.WriteLine("slot change uncut:");
-        // Console.WriteLine(Bytes.ToHexString(tmp));
-
         int length = ctx.ReadSequenceLength();
         int check = length + ctx.Position;
 
-        // tmp = tmp[..(length + 2)];
-        // Console.WriteLine("slot change:" + length);
-        // Console.WriteLine(Bytes.ToHexString(tmp));
-
-        byte[] slot = ctx.DecodeByteArray();
+        byte[] slot = ctx.DecodeByteArray(RlpLimit.L32);
         if (slot.Length != 32)
         {
             throw new RlpException("Invalid storage key, should be 32 bytes.");
         }
 
-        StorageChange[] changes = ctx.DecodeArray(StorageChangeDecoder.Instance);
-        if (changes.Length > Eip7928Constants.MaxSlots)
-        {
-            throw new RlpException("Number of slot changes exceeded maximum.");
-        }
-
+        StorageChange[] changes = ctx.DecodeArray(StorageChangeDecoder.Instance, true, default, _codeLimit);
         SlotChanges slotChanges = new()
         {
             Slot = slot,
