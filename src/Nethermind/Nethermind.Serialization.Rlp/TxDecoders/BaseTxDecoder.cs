@@ -11,8 +11,8 @@ namespace Nethermind.Serialization.Rlp.TxDecoders;
 public abstract class BaseTxDecoder<T>(TxType txType, Func<T>? transactionFactory = null)
     : ITxDecoder where T : Transaction, new()
 {
-    private const int MaxDelayedHashTxnSize = 32768;
-    private readonly Func<T> _createTransaction = transactionFactory ?? (static () => new T());
+    private const int MaxDelayedHashTxnSize = 1024;
+    private readonly Func<T> _createTransaction = transactionFactory ?? ObjectCreator<T>.Create;
 
     public TxType Type => txType;
 
@@ -38,15 +38,15 @@ public abstract class BaseTxDecoder<T>(TxType txType, Func<T>? transactionFactor
 
         if ((rlpBehaviors & RlpBehaviors.ExcludeHashes) == 0)
         {
-            CalculateHash(transaction, transactionSequence);
+            CalculateHash(transaction, transactionSequence, forceHashes: rlpBehaviors.HasFlag(RlpBehaviors.OnlyHashes));
         }
 
         return transaction;
     }
 
-    protected void CalculateHash(Transaction transaction, ReadOnlySpan<byte> transactionSequence)
+    public static void CalculateHash(Transaction transaction, ReadOnlySpan<byte> transactionSequence, bool forceHashes)
     {
-        if (transactionSequence.Length <= MaxDelayedHashTxnSize)
+        if (!forceHashes && transactionSequence.Length <= MaxDelayedHashTxnSize)
         {
             // Delay hash generation, as may be filtered as having too low gas etc
             transaction.SetPreHashNoLock(transactionSequence);
