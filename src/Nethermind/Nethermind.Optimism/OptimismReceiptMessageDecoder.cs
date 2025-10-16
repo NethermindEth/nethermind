@@ -49,7 +49,7 @@ public class OptimismReceiptMessageDecoder(bool isEncodedForTrie = false, bool s
         int logEntriesCheck = rlpStream.ReadSequenceLength() + rlpStream.Position;
 
         int numberOfReceipts = rlpStream.PeekNumberOfItemsRemaining(logEntriesCheck);
-        Rlp.GuardLimit(numberOfReceipts);
+        rlpStream.GuardLimit(numberOfReceipts);
         LogEntry[] entries = new LogEntry[numberOfReceipts];
         for (int i = 0; i < numberOfReceipts; i++)
         {

@@ -69,7 +69,7 @@ namespace Nethermind.Consensus.Clique
         {
             rlpStream.ReadSequenceLength();
             int length = rlpStream.DecodeInt();
-            Rlp.GuardLimit(length);
+            rlpStream.GuardLimit(length);
             SortedList<Address, long> signers = new(AddressComparer.Instance);
             for (int i = 0; i < length; i++)
             {
@@ -85,7 +85,7 @@ namespace Nethermind.Consensus.Clique
         {
             rlpStream.ReadSequenceLength();
             int length = rlpStream.DecodeInt();
-            Rlp.GuardLimit(length);
+            rlpStream.GuardLimit(length);
             List<Vote> votes = new(length);
             for (int i = 0; i < length; i++)
             {
@@ -103,7 +103,7 @@ namespace Nethermind.Consensus.Clique
         {
             rlpStream.ReadSequenceLength();
             int length = rlpStream.DecodeInt();
-            Rlp.GuardLimit(length);
+            rlpStream.GuardLimit(length);
             Dictionary<Address, Tally> tally = new(length);
             for (int i = 0; i < length; i++)
             {
