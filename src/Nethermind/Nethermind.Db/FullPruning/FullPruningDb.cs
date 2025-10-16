@@ -91,16 +91,6 @@ namespace Nethermind.Db.FullPruning
             }
         }
 
-        public void Merge(ReadOnlySpan<byte> key, ReadOnlySpan<byte> value, WriteFlags flags = WriteFlags.None)
-        {
-            _currentDb.Merge(key, value, flags); // we are writing to the main DB
-            IDb? cloningDb = _pruningContext?.CloningDb;
-            if (cloningDb is not null) // if pruning is in progress we are also writing to the secondary, copied DB
-            {
-                DuplicateMerge(cloningDb, key, value, flags);
-            }
-        }
-
         private void Duplicate(IWriteOnlyKeyValueStore db, ReadOnlySpan<byte> key, byte[]? value, WriteFlags flags)
         {
             db.Set(key, value, flags);
@@ -113,7 +103,7 @@ namespace Nethermind.Db.FullPruning
             _updateDuplicateWriteMetrics?.Invoke();
         }
 
-        private void DuplicateMerge(IWriteOnlyKeyValueStore db, ReadOnlySpan<byte> key, ReadOnlySpan<byte> value, WriteFlags flags)
+        private void DuplicateMerge(IMergeableKeyValueStore db, ReadOnlySpan<byte> key, ReadOnlySpan<byte> value, WriteFlags flags)
         {
             db.Merge(key, value, flags);
             _updateDuplicateWriteMetrics?.Invoke();
@@ -262,11 +252,6 @@ namespace Nethermind.Db.FullPruning
             public void Set(ReadOnlySpan<byte> key, byte[]? value, WriteFlags flags = WriteFlags.None)
             {
                 _db.Duplicate(CloningDb, key, value, flags);
-            }
-
-            public void Merge(ReadOnlySpan<byte> key, ReadOnlySpan<byte> value, WriteFlags flags = WriteFlags.None)
-            {
-                _db.Merge(key, value, flags);
             }
 
             public IWriteBatch StartWriteBatch()

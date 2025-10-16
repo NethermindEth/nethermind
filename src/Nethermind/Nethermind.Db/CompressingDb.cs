@@ -140,11 +140,6 @@ namespace Nethermind.Db
             public IEnumerable<byte[]> GetAllValues(bool ordered = false) =>
                 _wrapped.GetAllValues(ordered).Select(Decompress);
 
-            public void Merge(ReadOnlySpan<byte> key, ReadOnlySpan<byte> value, WriteFlags flags = WriteFlags.None)
-            {
-                _wrapped.Merge(key, value, flags);
-            }
-
             public void Remove(ReadOnlySpan<byte> key) => _wrapped.Remove(key);
 
             public bool KeyExists(ReadOnlySpan<byte> key) => _wrapped.KeyExists(key);
