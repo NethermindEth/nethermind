@@ -93,9 +93,6 @@ public class BlockBodyDecoder : IRlpValueDecoder<BlockBody>, IRlpStreamDecoder<B
 
     public BlockBody? DecodeUnwrapped(ref Rlp.ValueDecoderContext ctx, int lastPosition)
     {
-
-        // quite significant allocations (>0.5%) here based on a sample 3M blocks sync
-        // (just on these delegates)
         Transaction[] transactions = ctx.DecodeArray(_txDecoder);
         BlockHeader[] uncles = ctx.DecodeArray(_headerDecoder);
         Withdrawal[]? withdrawals = null;

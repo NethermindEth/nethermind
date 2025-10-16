@@ -10,6 +10,7 @@
     <TieredPGO>true</TieredPGO>
     <EnableUnsafeBinaryFormatterSerialization>false</EnableUnsafeBinaryFormatterSerialization>
     <EnableUnsafeUTF7Encoding>false</EnableUnsafeUTF7Encoding>
+    <PublishIISAssets>false</PublishIISAssets>
     <StaticWebAssetsEnabled>false</StaticWebAssetsEnabled>
     <UserSecretsId>03db39d0-4200-473e-9ff8-4a48d496381f</UserSecretsId>
   </PropertyGroup>
