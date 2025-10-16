@@ -429,6 +429,8 @@ RootCommand CreateRootCommand()
         BasicOptions.PluginsDirectory
     ];
 
+    rootCommand.Description = "Nethermind Ethereum execution client";
+
     var versionOption = (VersionOption)rootCommand.Children.SingleOrDefault(c => c is VersionOption);
 
     if (versionOption is not null)
