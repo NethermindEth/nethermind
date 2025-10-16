@@ -66,10 +66,10 @@ public partial class DbOnTheRocks : IDb, ITunableDb, IReadOnlyNativeKeyValueStor
 
     private readonly DbSettings _settings;
 
-    // ReSharper disable once CollectionNeverQueried.Local
     // Need to keep options from GC in case of merge operator applied, as they are used in callback
-    // TODO: find better way?
-    private readonly ConcurrentBag<OptionsHandle> _doNotGcOptions = [];
+    // ReSharper disable once CollectionNeverQueried.Local
+    private readonly List<OptionsHandle> _doNotGcOptions = [];
+    private readonly Lock _doNotGcOptionsLocker = new();
 
     private readonly IRocksDbConfig _perTableDbConfig;
     private ulong _maxBytesForLevelBase;
@@ -160,7 +160,7 @@ public partial class DbOnTheRocks : IDb, ITunableDb, IReadOnlyNativeKeyValueStor
 
                     ColumnFamilyOptions options = new();
                     IRocksDbConfig columnConfig = _rocksDbConfigFactory.GetForDatabase(Name, columnFamily);
-                    IMergeOperator? mergeOperator = _settings.MergeOperatorByColumnFamily?.GetValueOrDefault(enumColumnName);
+                    IMergeOperator? mergeOperator = _settings.ColumnsMergeOperators?.GetValueOrDefault(enumColumnName);
                     BuildOptions(columnConfig, options, sharedCache, mergeOperator);
 
                     // "default" is a special column name with rocksdb, which is what previously not specifying column goes to
@@ -586,7 +586,8 @@ public partial class DbOnTheRocks : IDb, ITunableDb, IReadOnlyNativeKeyValueStor
         if (mergeOperator is not null)
         {
             options.SetMergeOperator(new MergeOperatorAdapter(mergeOperator));
-            _doNotGcOptions.Add(options);
+            lock(_doNotGcOptionsLocker)
+                _doNotGcOptions.Add(options);
         }
 
         #endregion
