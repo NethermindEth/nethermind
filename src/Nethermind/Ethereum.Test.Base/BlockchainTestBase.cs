@@ -191,20 +191,6 @@ public abstract class BlockchainTestBase
                 // For tests with reorgs, find the actual parent header from block tree
                 parentHeader = blockTree.FindHeader(correctRlp[i].Block.ParentHash) ?? parentHeader;
 
-                // Validate block structure first (mimics SyncServer validation)
-                if (blockValidator.ValidateSuggestedBlock(correctRlp[i].Block, parentHeader, out var validationError))
-                {
-                    // All validations passed, suggest the block
-                    blockTree.SuggestBlock(correctRlp[i].Block);
-                }
-                else
-                {
-                    if (correctRlp[i].ExpectedException is not null)
-                    {
-                        Assert.Fail($"Unexpected invalid block {correctRlp[i].Block.Hash}: {validationError}");
-                    }
-                }
-
                 if (correctRlp[i].Block.Hash is null)
                 {
                     Assert.Fail($"null hash in {test.Name} block {i}");
@@ -212,8 +198,19 @@ public abstract class BlockchainTestBase
 
                 try
                 {
-                    // TODO: mimic the actual behaviour where block goes through validating sync manager?
-                    correctRlp[i].Block.Header.IsPostMerge = correctRlp[i].Block.Difficulty == 0;
+                    // Validate block structure first (mimics SyncServer validation)
+                    if (blockValidator.ValidateSuggestedBlock(correctRlp[i].Block, parentHeader, out var validationError))
+                    {
+                        // All validations passed, suggest the block
+                        blockTree.SuggestBlock(correctRlp[i].Block);
+                    }
+                    else
+                    {
+                        if (correctRlp[i].ExpectedException is not null)
+                        {
+                            Assert.Fail($"Unexpected invalid block {correctRlp[i].Block.Hash}: {validationError}");
+                        }
+                    }
                 }
                 catch (InvalidBlockException e)
                 {
