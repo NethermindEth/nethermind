@@ -12,9 +12,9 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V68.Messages
     public class NewPooledTransactionHashesMessageSerializer
         : IZeroMessageSerializer<NewPooledTransactionHashesMessage68>
     {
-        private static readonly RlpLimit TypesRlpLimit = RlpLimit.For<NewPooledTransactionHashesMessage68>(nameof(NewPooledTransactionHashesMessage68.Types), NethermindSyncLimits.MaxHashesFetch);
-        private static readonly RlpLimit SizesRlpLimit = RlpLimit.For<NewPooledTransactionHashesMessage68>(nameof(NewPooledTransactionHashesMessage68.Sizes), NethermindSyncLimits.MaxHashesFetch);
-        private static readonly RlpLimit HashesRlpLimit = RlpLimit.For<NewPooledTransactionHashesMessage68>(nameof(NewPooledTransactionHashesMessage68.Hashes), NethermindSyncLimits.MaxHashesFetch);
+        private static readonly RlpLimit TypesRlpLimit = RlpLimit.For<NewPooledTransactionHashesMessage68>(NethermindSyncLimits.MaxHashesFetch, nameof(NewPooledTransactionHashesMessage68.Types));
+        private static readonly RlpLimit SizesRlpLimit = RlpLimit.For<NewPooledTransactionHashesMessage68>(NethermindSyncLimits.MaxHashesFetch, nameof(NewPooledTransactionHashesMessage68.Sizes));
+        private static readonly RlpLimit HashesRlpLimit = RlpLimit.For<NewPooledTransactionHashesMessage68>(NethermindSyncLimits.MaxHashesFetch, nameof(NewPooledTransactionHashesMessage68.Hashes));
 
         public NewPooledTransactionHashesMessage68 Deserialize(IByteBuffer byteBuffer)
         {
