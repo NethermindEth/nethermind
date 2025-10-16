@@ -231,7 +231,7 @@ internal class EpochSwitchManagerTests
         };
         _config.GetSpecInternal(Arg.Any<ForkActivation>()).Returns(releaseSpec);
 
-        XdcBlockHeader chainHead = GetChainOfBlocks(_tree, _snapshotManager, releaseSpec, 100);
+        XdcBlockHeader chainHead = GetChainOfBlocks(_tree, _snapshotManager, releaseSpec, 99);
 
         XdcBlockHeader proposedHeader = Build.A.XdcBlockHeader()
             .TestObject;
@@ -245,8 +245,9 @@ internal class EpochSwitchManagerTests
         // Act
         bool result = _epochSwitchManager.IsEpochSwitchAtBlock(proposedHeader, out ulong epochNumber);
         // Assert
-        Assert.That(result, Is.True);
         Assert.That(chainHead.ExtraConsensusData!.CurrentRound, Is.LessThan(extraFieldsV2.CurrentRound));
+
+        Assert.That(result, Is.True);
         Assert.That((ulong)releaseSpec.SwitchEpoch + extraFieldsV2.CurrentRound / (ulong)releaseSpec.EpochLength, Is.EqualTo(epochNumber));
     }
 
@@ -263,7 +264,7 @@ internal class EpochSwitchManagerTests
         };
         _config.GetSpecInternal(Arg.Any<ForkActivation>()).Returns(releaseSpec);
 
-        XdcBlockHeader chainHead = GetChainOfBlocks(_tree, _snapshotManager, releaseSpec, 100);
+        XdcBlockHeader chainHead = GetChainOfBlocks(_tree, _snapshotManager, releaseSpec, 101);
 
         XdcBlockHeader proposedHeader = Build.A.XdcBlockHeader()
             .TestObject;
@@ -277,8 +278,9 @@ internal class EpochSwitchManagerTests
         // Act
         bool result = _epochSwitchManager.IsEpochSwitchAtBlock(proposedHeader, out ulong epochNumber);
         // Assert
-        Assert.That(result, Is.False);
         Assert.That(chainHead.ExtraConsensusData!.CurrentRound, Is.GreaterThan(extraFieldsV2.CurrentRound));
+
+        Assert.That(result, Is.False);
         Assert.That((ulong)releaseSpec.SwitchEpoch + extraFieldsV2.CurrentRound / (ulong)releaseSpec.EpochLength, Is.EqualTo(epochNumber));
     }
 
@@ -309,8 +311,9 @@ internal class EpochSwitchManagerTests
         // Act
         bool result = _epochSwitchManager.IsEpochSwitchAtBlock(proposedHeader, out ulong epochNumber);
         // Assert
-        Assert.That(result, Is.False);
         Assert.That(chainHead.ExtraConsensusData!.CurrentRound, Is.EqualTo(extraFieldsV2.CurrentRound));
+
+        Assert.That(result, Is.False);
         Assert.That((ulong)releaseSpec.SwitchEpoch + extraFieldsV2.CurrentRound / (ulong)releaseSpec.EpochLength, Is.EqualTo(epochNumber));
     }
 

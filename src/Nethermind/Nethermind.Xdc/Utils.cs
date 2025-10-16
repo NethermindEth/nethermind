@@ -23,7 +23,6 @@ using ZstdSharp.Unsafe;
 namespace Nethermind.Xdc;
 internal static class Utils
 {
-
     public static Address[] GetMasternodesFromGenesisHeader(IBlockTree chain, XdcBlockHeader genesisHeader)
     {
         if (genesisHeader == null)
@@ -42,7 +41,6 @@ internal static class Utils
 
         return masterNodes;
     }
-
 
     public static T[] RemoveItemFromArray<T>(T[] candidates, T[] penalties, int withMaxCap = int.MaxValue)
     {
@@ -71,33 +69,6 @@ internal static class Utils
         return result;
     }
 
-    internal static int Position(Address[] masternodes, Address signer)
-    {
-        return Array.BinarySearch(masternodes, signer);
-    }
-
-    internal static bool TryFindSigner(Address[] masternodes, Address signer, out int currentPosition)
-    {
-        return (currentPosition = Array.BinarySearch(masternodes, signer)) >= 0;
-    }
-
-    internal static Address[] ExtractAddressFromBytes(byte[] penalties)
-    {
-        if (penalties is null || penalties.Length < Address.Size)
-        {
-            return [];
-        }
-
-        var Addresses = new Address[penalties.Length / Address.Size];
-        for (int i = 0; i < penalties.Length; i++)
-        {
-            int startIndex = i * Address.Size;
-            var address = new Address(penalties[startIndex..(startIndex + Address.Size)]);
-            Addresses[i] = address;
-        }
-
-        return Addresses;
-    }
     internal static bool TryGetExtraFields(XdcBlockHeader header, long switchBlock, out ExtraFieldsV2? consensusData, out Address[] masterNodes)
     {
         if (header.Number == switchBlock)
