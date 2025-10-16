@@ -3,7 +3,7 @@
 
 namespace Nethermind.Network.Contract.Messages;
 
-public interface IResourceRequestMessage<TMessage, TResourceId>
+public interface IResourceRequestMessage<out TMessage, in TResourceId>
 {
     static abstract TMessage From(TResourceId resourceId);
 }

@@ -41,7 +41,7 @@ using PooledTransactionsMessage = Nethermind.Network.P2P.Subprotocols.Eth.V65.Me
 
 namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V66;
 
-[TestFixture, Parallelizable(ParallelScope.Self)]
+[TestFixture, Parallelizable(ParallelScope.Self), FixtureLifeCycle(LifeCycle.InstancePerTestCase)]
 public class PooledTransactionsRequestingTests
 {
     private ISession _session = null!;

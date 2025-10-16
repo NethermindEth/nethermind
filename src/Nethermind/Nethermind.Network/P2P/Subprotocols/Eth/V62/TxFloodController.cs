@@ -34,6 +34,18 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62
 
             if (!accepted)
             {
+                if (accepted == AcceptTxResult.Syncing)
+                {
+                    return;
+                }
+
+                if (accepted == AcceptTxResult.Invalid)
+                {
+                    if (_logger.IsDebug) _logger.Debug($"Disconnecting {_protocolHandler} due to invalid tx received");
+                    _protocolHandler.Disconnect(DisconnectReason.Other, $"invalid tx");
+                    return;
+                }
+
                 _notAcceptedSinceLastCheck++;
                 if (!IsDowngraded && _notAcceptedSinceLastCheck / _checkInterval.TotalSeconds > 10)
                 {
