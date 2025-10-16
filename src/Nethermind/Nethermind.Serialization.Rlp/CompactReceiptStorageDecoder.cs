@@ -129,7 +129,7 @@ namespace Nethermind.Serialization.Rlp
 
             decoderContext.SkipLength();
 
-            ReadOnlySpan<byte> firstItem = decoderContext.DecodeByteArraySpan();
+            ReadOnlySpan<byte> firstItem = decoderContext.DecodeByteArraySpan(RlpLimit.L32);
             if (firstItem.Length == 1)
             {
                 item.StatusCode = firstItem[0];
