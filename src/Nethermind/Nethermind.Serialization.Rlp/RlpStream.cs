@@ -930,7 +930,7 @@ namespace Nethermind.Serialization.Rlp
             return default;
         }
 
-        public T[] DecodeArray<T>(Func<RlpStream, T> decodeItem, bool checkPositions = true, T defaultElement = default, RlpLimit? limit = null)
+        public T[] DecodeArray<T>(Func<RlpStream, T> decodeItem, bool checkPositions = true, T defaultElement = default, RlpLimit limit = default)
         {
             int positionCheck = ReadSequenceLength() + Position;
             int count = PeekNumberOfItemsRemaining(checkPositions ? positionCheck : null);
@@ -952,7 +952,7 @@ namespace Nethermind.Serialization.Rlp
             return result;
         }
 
-        public ArrayPoolList<T> DecodeArrayPoolList<T>(Func<RlpStream, T> decodeItem, bool checkPositions = true, T defaultElement = default, RlpLimit? limit = null)
+        public ArrayPoolList<T> DecodeArrayPoolList<T>(Func<RlpStream, T> decodeItem, bool checkPositions = true, T defaultElement = default, RlpLimit limit = default)
         {
             int positionCheck = ReadSequenceLength() + Position;
             int count = PeekNumberOfItemsRemaining(checkPositions ? positionCheck : null);
@@ -974,7 +974,7 @@ namespace Nethermind.Serialization.Rlp
             return result;
         }
 
-        public string DecodeString(RlpLimit? limit = null)
+        public string DecodeString(RlpLimit limit = default)
         {
             ReadOnlySpan<byte> bytes = DecodeByteArraySpan(limit);
             return Encoding.UTF8.GetString(bytes);
@@ -1142,11 +1142,11 @@ namespace Nethermind.Serialization.Rlp
             return bytes.Length == 0 ? 0L : bytes.ReadEthUInt64();
         }
 
-        public byte[] DecodeByteArray(RlpLimit? limit = null) => Rlp.ByteSpanToArray(DecodeByteArraySpan(limit));
+        public byte[] DecodeByteArray(RlpLimit limit = default) => Rlp.ByteSpanToArray(DecodeByteArraySpan(limit));
 
-        public ArrayPoolList<byte> DecodeByteArrayPoolList(RlpLimit? limit = null) => Rlp.ByteSpanToArrayPool(DecodeByteArraySpan(limit));
+        public ArrayPoolList<byte> DecodeByteArrayPoolList(RlpLimit limit = default) => Rlp.ByteSpanToArrayPool(DecodeByteArraySpan(limit));
 
-        public ReadOnlySpan<byte> DecodeByteArraySpan(RlpLimit? limit = null)
+        public ReadOnlySpan<byte> DecodeByteArraySpan(RlpLimit limit = default)
         {
             int prefix = ReadByte();
             ReadOnlySpan<byte> span = SingleBytes;
@@ -1177,7 +1177,7 @@ namespace Nethermind.Serialization.Rlp
         }
 
         [MethodImpl(MethodImplOptions.NoInlining)]
-        private ReadOnlySpan<byte> DecodeLargerByteArraySpan(int prefix, RlpLimit? limit = null)
+        private ReadOnlySpan<byte> DecodeLargerByteArraySpan(int prefix, RlpLimit limit = default)
         {
             if (prefix < 192)
             {
@@ -1215,7 +1215,7 @@ namespace Nethermind.Serialization.Rlp
 
         public override string ToString() => $"[{nameof(RlpStream)}|{Position}/{Length}]";
 
-        public byte[][] DecodeByteArrays(RlpLimit? limit = null)
+        public byte[][] DecodeByteArrays(RlpLimit limit = default)
         {
             int length = ReadSequenceLength();
             if (length is 0)
@@ -1236,7 +1236,7 @@ namespace Nethermind.Serialization.Rlp
         }
 
         [StackTraceHidden]
-        public void GuardLimit(int count, RlpLimit? limit = null) =>
+        public void GuardLimit(int count, RlpLimit limit = default) =>
             Rlp.GuardLimit(count, Length - Position, limit);
     }
 }
