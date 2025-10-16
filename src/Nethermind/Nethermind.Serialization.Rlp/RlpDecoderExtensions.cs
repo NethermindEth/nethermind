@@ -17,7 +17,7 @@ namespace Nethermind.Serialization.Rlp
         {
             int checkPosition = rlpStream.ReadSequenceLength() + rlpStream.Position;
             int length = rlpStream.PeekNumberOfItemsRemaining(checkPosition);
-            Rlp.GuardLimit(length, limit);
+            rlpStream.GuardLimit(length, limit);
             T[] result = new T[length];
             for (int i = 0; i < result.Length; i++)
             {
@@ -31,7 +31,7 @@ namespace Nethermind.Serialization.Rlp
         {
             int checkPosition = decoderContext.ReadSequenceLength() + decoderContext.Position;
             int length = decoderContext.PeekNumberOfItemsRemaining(checkPosition);
-            Rlp.GuardLimit(length, limit);
+            decoderContext.GuardLimit(length, limit);
             T[] result = new T[length];
             for (int i = 0; i < result.Length; i++)
             {
