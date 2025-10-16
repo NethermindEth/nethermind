@@ -2,12 +2,13 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Collections.Generic;
 using Nethermind.Core.Specs;
 using Nethermind.Int256;
 
 namespace Nethermind.Specs.Test
 {
-    public class OverridableSpecProvider : ISpecProvider
+    public class OverridableSpecProvider : IForkAwareSpecProvider
     {
         public ISpecProvider SpecProvider { get; }
         private readonly Func<IReleaseSpec, ForkActivation, IReleaseSpec> _overrideAction;
@@ -46,5 +47,18 @@ namespace Nethermind.Specs.Test
         public string SealEngine => SpecProvider.SealEngine;
 
         public ForkActivation[] TransitionActivations => SpecProvider.TransitionActivations;
+
+        public IEnumerable<string> AvailableForks =>
+            SpecProvider is IForkAwareSpecProvider forkAware ? forkAware.AvailableForks : [];
+
+        public bool TryGetForkSpec(string forkName, out IReleaseSpec? spec)
+        {
+            if (SpecProvider is IForkAwareSpecProvider forkAware)
+            {
+                return forkAware.TryGetForkSpec(forkName, out spec);
+            }
+            spec = null;
+            return false;
+        }
     }
 }
