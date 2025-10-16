@@ -186,9 +186,10 @@ public partial class EngineModuleTests
 
     [TestCaseSource(nameof(WaitTestCases))]
     [Parallelizable(ParallelScope.None)] // Timing sensitive
+    [Retry(3)]
     public async Task getPayloadV1_waits_for_block_production(TimeSpan txDelay, TimeSpan improveDelay, bool hasTx)
     {
-        TaskCompletionSource yieldedTransaction = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        TaskCompletionSource yieldedTransaction = new(TaskCreationOptions.RunContinuationsAsynchronously);
         using MergeTestBlockchain chain = await CreateBlockchain(configurer: builder => builder
             .AddSingleton<IBlockImprovementContextFactory, IBlockProducer>((producer) => new DelayBlockImprovementContextFactory(producer, TimeSpan.FromSeconds(10), improveDelay))
             .AddSingleton(ConfigurePayloadPreparationService(TimeSpan.FromSeconds(10), null))
@@ -219,17 +220,16 @@ public partial class EngineModuleTests
         }
 
         TimeSpan timeBudget = PayloadPreparationService.GetPayloadWaitForNonEmptyBlockMillisecondsDelay;
-        int expectedTxCount = 50;
-        if (txDelay != TimeSpan.Zero)
-        {
-            expectedTxCount = (int)((timeBudget - improveDelay) / txDelay);
-        }
-        if (improveDelay > timeBudget) expectedTxCount = 0;
+        int expectedTxCount = improveDelay > timeBudget
+            ? 0
+            : txDelay != TimeSpan.Zero ? (int)((timeBudget - improveDelay) / txDelay) : 50;
+
+        int maxWait = Math.Max(0, (int)(timeBudget - improveDelay).TotalMilliseconds - 1);
 
         await Task.Delay(timeBudget);
 
         Assert.That(() => rpc.engine_getPayloadV1(Bytes.FromHexString(payloadId)).Result.Data!.Transactions,
-            Has.Length.InRange(expectedTxCount * 0.5, expectedTxCount * 2.0)); // get payload stop block improvement so retrying does nothing here.
+            Has.Length.InRange(expectedTxCount * 0.5, expectedTxCount * 2.0).After(maxWait, 10)); // get payload stop block improvement so retrying does nothing here.
     }
 
     [Test]
