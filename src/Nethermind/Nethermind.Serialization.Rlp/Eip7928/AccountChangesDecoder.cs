@@ -45,7 +45,7 @@ public class AccountChangesDecoder : IRlpValueDecoder<AccountChanges>, IRlpStrea
         }, s => s), Bytes.Comparer);
 
         StorageRead[] storageReads = ctx.DecodeArray(StorageReadDecoder.Instance);
-        SortedSet<StorageRead> storareReadsList = [];
+        SortedSet<StorageRead> storageReadsList = [];
         StorageRead? lastRead = null;
         foreach (StorageRead storageRead in storageReads)
         {
@@ -53,7 +53,7 @@ public class AccountChangesDecoder : IRlpValueDecoder<AccountChanges>, IRlpStrea
             {
                 throw new RlpException("Storage reads were in incorrect order.");
             }
-            storareReadsList.Add(storageRead);
+            storageReadsList.Add(storageRead);
             lastRead = storageRead;
         }
 
@@ -86,7 +86,8 @@ public class AccountChangesDecoder : IRlpValueDecoder<AccountChanges>, IRlpStrea
 
         CodeChange[] codeChanges = ctx.DecodeArray(CodeChangeDecoder.Instance);
 
-        if (codeChanges.Length > Eip7928Constants.MaxCodeChanges)
+        // max one code change per tx
+        if (codeChanges.Length > Eip7928Constants.MaxTxs)
         {
             throw new RlpException("Number of code changes exceeded maximum.");
         }
@@ -107,7 +108,7 @@ public class AccountChangesDecoder : IRlpValueDecoder<AccountChanges>, IRlpStrea
         {
             Address = address,
             StorageChanges = slotChangesMap,
-            StorageReads = storareReadsList,
+            StorageReads = storageReadsList,
             BalanceChanges = balanceChangesList,
             NonceChanges = nonceChangesList,
             CodeChanges = codeChangesList
