@@ -226,7 +226,7 @@ namespace Nethermind.Db.LogIndex
             {
                 IColumnsDb<LogIndexColumns> db = dbFactory.CreateColumnsDb<LogIndexColumns>(new("logIndexStorage", DbNames.LogIndex)
                 {
-                    MergeOperatorByColumnFamily = _mergeOperators.ToDictionary(x => $"{x.Key}", x => (IMergeOperator)x.Value)
+                    ColumnsMergeOperators = _mergeOperators.ToDictionary(x => $"{x.Key}", x => (IMergeOperator)x.Value)
                 });
 
                 return (db, GetMetaDb(db));

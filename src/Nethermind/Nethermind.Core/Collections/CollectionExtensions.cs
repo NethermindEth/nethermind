@@ -87,21 +87,6 @@ namespace Nethermind.Core.Collections
             return true;
         }
 
-        public static TValue GetOrAdd<TKey, TValue>(this Dictionary<TKey, TValue> dictionary, TKey key, Func<TKey, TValue> factory)
-            where TKey : notnull
-        {
-            if (dictionary.TryGetValue(key, out TValue? value))
-            {
-                return value;
-            }
-            else
-            {
-                value = factory(key);
-                dictionary.Add(key, value);
-                return value;
-            }
-        }
-
         private static class ClearCache<TKey, TValue> where TKey : notnull
         {
             public static readonly Action<ConcurrentDictionary<TKey, TValue>> Clear = CreateNoResizeClearExpression();
