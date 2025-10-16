@@ -36,14 +36,16 @@ internal class EpochSwitchManagerTests
     {
         int i = startRound;
         XdcBlockHeader block = CreateV2RegenesisBlock(spec);
-        do {
-            if (i != startRound) {
+        do
+        {
+            if (i != startRound)
+            {
                 block = GenNormalBlock(spec, block!);
             }
 
-            if((block.ExtraConsensusData?.CurrentRound ?? 0ul) % (ulong)spec.EpochLength == 0)
+            if ((block.ExtraConsensusData?.CurrentRound ?? 0ul) % (ulong)spec.EpochLength == 0)
             {
-                snapManager.GetSnapshot(block.Hash!).Returns(new Snapshot(block.Number, block.Hash!, [..StandbyAddresses, ..SignerAddresses]));
+                snapManager.GetSnapshot(block.Hash!).Returns(new Snapshot(block.Number, block.Hash!, [.. StandbyAddresses, .. SignerAddresses]));
             }
 
             tree.FindHeader(block.Hash!).Returns(block);
@@ -89,7 +91,7 @@ internal class EpochSwitchManagerTests
 
     private XdcBlockHeader CreateV2RegenesisBlock(IXdcReleaseSpec spec)
     {
-        Address[] signers   = [TestItem.AddressA, TestItem.AddressB];
+        Address[] signers = [TestItem.AddressA, TestItem.AddressB];
 
         var header = (XdcBlockHeader)Build.A.XdcBlockHeader()
             .WithNumber((long)spec.SwitchBlock)
@@ -768,7 +770,7 @@ internal class EpochSwitchManagerTests
         var headBlock = new Block(chainHead);
         _tree.Head.Returns(headBlock);
 
-        int expectedBlockNumber =  (int)(epochNumber * epochLength);
+        int expectedBlockNumber = (int)(epochNumber * epochLength);
 
         var result = _epochSwitchManager.GetBlockByEpochNumber(epochNumber);
 

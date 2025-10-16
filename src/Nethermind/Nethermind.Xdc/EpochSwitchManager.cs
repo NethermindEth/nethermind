@@ -45,7 +45,7 @@ internal class EpochSwitchManager : IEpochSwitchManager
             return true;
         }
 
-        if(header.ExtraConsensusData is null)
+        if (header.ExtraConsensusData is null)
         {
             epochNumber = 0;
             return false;
@@ -98,7 +98,7 @@ internal class EpochSwitchManager : IEpochSwitchManager
         return parentRound < epochStartRound;
     }
 
-    public (ulong currentCheckpointNumber, ulong epochNumber)? GetCurrentEpochNumbers(ulong blockNumber) 
+    public (ulong currentCheckpointNumber, ulong epochNumber)? GetCurrentEpochNumbers(ulong blockNumber)
     {
         var header = (XdcBlockHeader)_tree.FindHeader((long)blockNumber);
         if (header is null)
@@ -259,13 +259,13 @@ internal class EpochSwitchManager : IEpochSwitchManager
             return true;
         }
 
-        if(tempTCEpoch > epochRound)
+        if (tempTCEpoch > epochRound)
         {
             epochBlockInfo = null;
             return false;
         }
 
-        if(tempTCEpoch < (ulong)xdcSpec.SwitchEpoch)
+        if (tempTCEpoch < (ulong)xdcSpec.SwitchEpoch)
         {
             epochBlockInfo = null;
             return false;
@@ -289,7 +289,7 @@ internal class EpochSwitchManager : IEpochSwitchManager
 
         ulong closeEpochNum = 2ul;
 
-        if(closeEpochNum >= epochRound - tempTCEpoch)
+        if (closeEpochNum >= epochRound - tempTCEpoch)
         {
             var estBlockHeader = (XdcBlockHeader)_tree.FindHeader(estBlockNum);
             if (estBlockHeader is null)
@@ -320,7 +320,7 @@ internal class EpochSwitchManager : IEpochSwitchManager
     {
         var epochSwitchInCache = new List<BlockInfo>();
 
-        for(ulong r = estRound; r < estRound + (ulong)epoch; r++)
+        for (ulong r = estRound; r < estRound + (ulong)epoch; r++)
         {
             if (_round2EpochBlockInfo.TryGetValue(r, out BlockInfo blockInfo) && blockInfo is not null)
             {
@@ -332,7 +332,8 @@ internal class EpochSwitchManager : IEpochSwitchManager
         {
             epochBlockInfo = epochSwitchInCache[0];
             return true;
-        } else if (epochSwitchInCache.Count == 0)
+        }
+        else if (epochSwitchInCache.Count == 0)
         {
             epochBlockInfo = null;
             return false;
@@ -383,7 +384,8 @@ internal class EpochSwitchManager : IEpochSwitchManager
                 {
                     epochBlockInfo = new BlockInfo(header.Hash, round, header.Number);
                     return true;
-                } else
+                }
+                else
                 {
                     end = header.Number;
                     // trick to shorten the search
@@ -393,10 +395,12 @@ internal class EpochSwitchManager : IEpochSwitchManager
                         start = (long)estStart;
                     }
                 }
-            } else if (epochNum > tempTCEpoch)
+            }
+            else if (epochNum > tempTCEpoch)
             {
                 end = header.Number;
-            } else if (epochNum < tempTCEpoch)
+            }
+            else if (epochNum < tempTCEpoch)
             {
                 long nextStart = header.Number;
                 if (nextStart == start)
