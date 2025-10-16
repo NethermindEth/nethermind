@@ -87,7 +87,7 @@ public class Eth69ProtocolHandlerTests
             new ForkInfo(_specProvider, _syncManager),
             _blockFinder,
             LimboLogs.Instance,
-            new TxPoolConfig { },
+            Substitute.For<ITxPoolConfig>(),
             _specProvider,
             _txGossipPolicy);
         _handler.Init();

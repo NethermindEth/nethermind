@@ -126,7 +126,7 @@ public class ProtocolsManagerTests
                 Substitute.For<IWorldStateManager>(),
                 _blockTree,
                 LimboLogs.Instance,
-                new TxPoolConfig { },
+                Substitute.For<ITxPoolConfig>(),
                 Substitute.For<ISpecProvider>());
         }
 
