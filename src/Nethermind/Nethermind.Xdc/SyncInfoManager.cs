@@ -43,7 +43,7 @@ internal class SyncInfoManager : ISyncInfoManager
         {
             return false;
         }
-        var result =  _quorumCertificateManager.VerifyCertificate(syncInfo.HighestQuorumCert, null, out string error) &&
+        var result = _quorumCertificateManager.VerifyCertificate(syncInfo.HighestQuorumCert, null, out string error) &&
             _timeoutCertificateManager.VerifyTimeoutCertificate(syncInfo.HighestTimeoutCert, out error);
 
         if (!result)

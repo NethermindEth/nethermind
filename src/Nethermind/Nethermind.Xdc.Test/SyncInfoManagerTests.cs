@@ -61,14 +61,16 @@ internal class SyncInfoManagerTests
         var syncInfo = new SyncInfo(qc, tc);
 
         _quorumCertificateManager.When(x => x.CommitCertificate(Arg.Any<QuorumCertificate>()))
-                 .Do(x => {
+                 .Do(x =>
+                 {
                      QuorumCertificate arg = x.Arg<QuorumCertificate>();
-                    _context.HighestQC = arg;
+                     _context.HighestQC = arg;
                  });
 
 
         _timeoutCertificateManager.When(x => x.ProcessTimeoutCertificate(Arg.Any<TimeoutCertificate>()))
-                 .Do(x => {
+                 .Do(x =>
+                 {
                      TimeoutCertificate arg = x.Arg<TimeoutCertificate>();
                      _context.HighestTC = arg;
                  });
