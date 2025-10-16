@@ -6,6 +6,7 @@ using System.Collections.Generic;
 using System.Numerics;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
+using System.Threading.Tasks;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Threading;
@@ -188,10 +189,10 @@ public partial class PatriciaTree
                 jobs[nib] = (GetSpanOffset(originalEntriesArray, jobEntry), jobEntry.Length, nib, childPath, child, null);
             }
 
-            ParallelUnbalancedWork.For(0, TrieNode.BranchesCount,
+            Parallel.For(0, TrieNode.BranchesCount,
                 ParallelUnbalancedWork.DefaultOptions,
                 GetTraverseStack,
-                (i, workerTraverseStack) =>
+                (i, _, workerTraverseStack) =>
                 {
                     (int startIdx, int count, int nib, TreePath childPath, TrieNode child, TrieNode? outNode) = jobs[i];
 
@@ -209,7 +210,7 @@ public partial class PatriciaTree
                 TrieNode? child = jobs[i].currentChild;
                 TrieNode? newChild = jobs[i].newChild;
 
-                if (!ShouldUpdateChild(node, child, newChild)) continue;
+                if (!ShouldUpdateChild(originalNode, child, newChild)) continue;
 
                 if (newChild is null) hasRemove = true;
                 if (newChild is not null) nonNullChildCount++;
@@ -241,7 +242,7 @@ public partial class PatriciaTree
                     ? BulkSetOne(traverseStack, entries[startRange], ref path, child)
                     : BulkSet(in ctx, traverseStack, entries[startRange..endRange], sortBuffer[startRange..endRange], ref path, child, flipCount, flags);
 
-                if (!ShouldUpdateChild(node, child, newChild)) continue;
+                if (!ShouldUpdateChild(originalNode, child, newChild)) continue;
 
                 if (newChild is null) hasRemove = true;
                 if (newChild is not null) nonNullChildCount++;
@@ -256,7 +257,7 @@ public partial class PatriciaTree
         if (!hasRemove && nonNullChildCount == 0) return originalNode;
 
         if ((hasRemove || newBranch) && nonNullChildCount < 2)
-            node = MaybeCombineNode(ref path, node);
+            node = MaybeCombineNode(ref path, node, originalNode);
 
         return node;
     }

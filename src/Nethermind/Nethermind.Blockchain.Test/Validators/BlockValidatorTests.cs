@@ -14,6 +14,7 @@ using Nethermind.TxPool;
 using NSubstitute;
 using NUnit.Framework;
 using System.Collections.Generic;
+using FluentAssertions;
 
 namespace Nethermind.Blockchain.Test.Validators;
 
@@ -61,6 +62,23 @@ public class BlockValidatorTests
 
         bool result = blockValidator.ValidateSuggestedBlock(Build.A.Block.WithParent(parent).WithUncles(Build.A.BlockHeader.TestObject).TestObject, parent, out _);
         Assert.That(result, Is.False);
+    }
+
+    [Test, MaxTime(Timeout.MaxTestTime)]
+    public void When_do_not_check_uncle_when_orphaned()
+    {
+        TxValidator txValidator = new(TestBlockchainIds.ChainId);
+        ISpecProvider specProvider = new TestSpecProvider(Frontier.Instance);
+
+        BlockValidator blockValidator = new(txValidator, Always.Valid, Always.Invalid, specProvider, LimboLogs.Instance);
+
+        BlockHeader parent = Build.A.BlockHeader.TestObject;
+        Block block = Build.A.Block
+            .WithParent(parent)
+            .WithUncles(Build.A.BlockHeader.WithNumber(10).TestObject)
+            .TestObject;
+        blockValidator.ValidateSuggestedBlock(block, parent, out _).Should().Be(false);
+        blockValidator.ValidateOrphanedBlock(block, out _).Should().Be(true);
     }
 
     [Test]
@@ -189,41 +207,44 @@ public class BlockValidatorTests
         BlockHeader parent = Build.A.BlockHeader.TestObject;
 
         yield return new TestCaseData(
-        Build.A.Block.WithHeader(Build.A.BlockHeader.WithParent(parent).WithUnclesHash(Keccak.Zero).TestObject).TestObject,
-        parent,
-        Substitute.For<ISpecProvider>(),
-        "InvalidUnclesHash");
+            Build.A.Block.WithHeader(Build.A.BlockHeader.WithParent(parent).WithUnclesHash(Keccak.Zero).TestObject)
+                .TestObject,
+            parent,
+            Substitute.For<ISpecProvider>(),
+            "InvalidUnclesHash");
 
         yield return new TestCaseData(
-        Build.A.Block.WithHeader(Build.A.BlockHeader.WithParent(parent).WithTransactionsRoot(Keccak.Zero).TestObject).TestObject,
-        parent,
-        Substitute.For<ISpecProvider>(),
-        "InvalidTxRoot");
+            Build.A.Block
+                .WithHeader(Build.A.BlockHeader.WithParent(parent).WithTransactionsRoot(Keccak.Zero).TestObject)
+                .TestObject,
+            parent,
+            Substitute.For<ISpecProvider>(),
+            "InvalidTxRoot");
 
         yield return new TestCaseData(
-        Build.A.Block.WithBlobGasUsed(131072)
-            .WithParent(parent)
-        .WithExcessBlobGas(1)
-        .WithTransactions(
-            Build.A.Transaction.WithShardBlobTxTypeAndFields(1)
-            .WithMaxFeePerBlobGas(0)
-            .WithMaxFeePerGas(1000000)
-            .Signed()
-            .TestObject)
-        .TestObject,
-        parent,
-        new CustomSpecProvider(((ForkActivation)0, Cancun.Instance)),
-        "InsufficientMaxFeePerBlobGas");
+            Build.A.Block.WithBlobGasUsed(131072)
+                .WithParent(parent)
+                .WithExcessBlobGas(1)
+                .WithTransactions(
+                    Build.A.Transaction.WithShardBlobTxTypeAndFields(1)
+                        .WithMaxFeePerBlobGas(0)
+                        .WithMaxFeePerGas(1000000)
+                        .Signed()
+                        .TestObject)
+                .TestObject,
+            parent,
+            new CustomSpecProvider(((ForkActivation)0, Cancun.Instance)),
+            "InsufficientMaxFeePerBlobGas");
 
         yield return new TestCaseData(
-        Build.A.Block.WithParent(parent).WithEncodedSize(Eip7934Constants.DefaultMaxRlpBlockSize + 1).TestObject,
-        parent,
-        new CustomSpecProvider(((ForkActivation)0, Osaka.Instance)),
-        "ExceededBlockSizeLimit");
+            Build.A.Block.WithParent(parent).WithEncodedSize(Eip7934Constants.DefaultMaxRlpBlockSize + 1).TestObject,
+            parent,
+            new CustomSpecProvider(((ForkActivation)0, Osaka.Instance)),
+            "ExceededBlockSizeLimit");
     }
 
     [TestCaseSource(nameof(BadSuggestedBlocks))]
-    public void ValidateSuggestedBlock_SuggestedBlockIsInvalid_CorrectErrorIsSet(Block suggestedBlock, BlockHeader? parent, ISpecProvider specProvider, string expectedError)
+    public void ValidateSuggestedBlock_SuggestedBlockIsInvalid_CorrectErrorIsSet(Block suggestedBlock, BlockHeader parent, ISpecProvider specProvider, string expectedError)
     {
         TxValidator txValidator = new(TestBlockchainIds.ChainId);
         BlockValidator sut = new(txValidator, Always.Valid, Always.Valid, specProvider, LimboLogs.Instance);

@@ -515,13 +515,19 @@ public partial class EthRpcModule(
 
     public ResultWrapper<bool?> eth_uninstallFilter(UInt256 filterId)
     {
+        // Nethermind uses int for filter IDs, which is okay, but other clients use UInt256.
+        // If filterId is greater than int.MaxValue, it could not have been created by Nethermind.
+        // In that case, return false instead of throwing an internal cast error.
+        if (filterId > int.MaxValue)
+            return ResultWrapper<bool?>.Success(false);
+
         _blockchainBridge.UninstallFilter((int)filterId);
         return ResultWrapper<bool?>.Success(true);
     }
 
     public ResultWrapper<IEnumerable<object>> eth_getFilterChanges(UInt256 filterId)
     {
-        int id = (int)filterId;
+        int id = filterId <= int.MaxValue ? (int)filterId : -1;
         FilterType filterType = _blockchainBridge.GetFilterType(id);
         switch (filterType)
         {
@@ -529,19 +535,19 @@ public partial class EthRpcModule(
                 {
                     return _blockchainBridge.FilterExists(id)
                         ? ResultWrapper<IEnumerable<object>>.Success(_blockchainBridge.GetBlockFilterChanges(id))
-                        : ResultWrapper<IEnumerable<object>>.Fail($"Filter not found", ErrorCodes.InvalidInput);
+                        : ResultWrapper<IEnumerable<object>>.Fail("Filter not found", ErrorCodes.InvalidInput);
                 }
             case FilterType.PendingTransactionFilter:
                 {
                     return _blockchainBridge.FilterExists(id)
                         ? ResultWrapper<IEnumerable<object>>.Success(_blockchainBridge.GetPendingTransactionFilterChanges(id))
-                        : ResultWrapper<IEnumerable<object>>.Fail($"Filter not found", ErrorCodes.InvalidInput);
+                        : ResultWrapper<IEnumerable<object>>.Fail("Filter not found", ErrorCodes.InvalidInput);
                 }
             case FilterType.LogFilter:
                 {
                     return _blockchainBridge.FilterExists(id)
                         ? ResultWrapper<IEnumerable<object>>.Success(_blockchainBridge.GetLogFilterChanges(id).ToArray())
-                        : ResultWrapper<IEnumerable<object>>.Fail($"Filter not found", ErrorCodes.InvalidInput);
+                        : ResultWrapper<IEnumerable<object>>.Fail("Filter not found", ErrorCodes.InvalidInput);
                 }
             default:
                 {
@@ -776,14 +782,14 @@ public partial class EthRpcModule(
 
     public virtual ResultWrapper<ReceiptForRpc?> eth_getTransactionReceipt(Hash256 txHash)
     {
-        (TxReceipt? receipt, TxGasInfo? gasInfo, int logIndexStart) = _blockchainBridge.GetReceiptAndGasInfo(txHash);
+        (TxReceipt? receipt, ulong blockTimestamp, TxGasInfo? gasInfo, int logIndexStart) = _blockchainBridge.GetTxReceiptInfo(txHash);
         if (receipt is null || gasInfo is null)
         {
             return ResultWrapper<ReceiptForRpc>.Success(null);
         }
 
         if (_logger.IsTrace) _logger.Trace($"eth_getTransactionReceipt request {txHash}, result: {txHash}");
-        return ResultWrapper<ReceiptForRpc>.Success(new(txHash, receipt, gasInfo.Value, logIndexStart));
+        return ResultWrapper<ReceiptForRpc>.Success(new(txHash, receipt, blockTimestamp, gasInfo.Value, logIndexStart));
     }
 
     public virtual ResultWrapper<ReceiptForRpc[]?> eth_getBlockReceipts(BlockParameter blockParameter)

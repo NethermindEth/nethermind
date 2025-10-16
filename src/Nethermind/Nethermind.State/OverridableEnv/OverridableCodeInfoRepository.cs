@@ -9,41 +9,40 @@ using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
 using Nethermind.Evm;
 using Nethermind.Evm.CodeAnalysis;
+using Nethermind.Evm.State;
 
 namespace Nethermind.State.OverridableEnv;
 
-public class OverridableCodeInfoRepository(ICodeInfoRepository codeInfoRepository) : IOverridableCodeInfoRepository
+public class OverridableCodeInfoRepository(ICodeInfoRepository codeInfoRepository, IWorldState worldState) : IOverridableCodeInfoRepository
 {
-    private readonly Dictionary<Address, ICodeInfo> _codeOverwrites = new();
+    private readonly Dictionary<Address, ICodeInfo> _codeOverrides = new();
+    private readonly Dictionary<Address, (ICodeInfo codeInfo, Address initialAddr)> _precompileOverrides = new();
 
     public ICodeInfo GetCachedCodeInfo(Address codeSource, bool followDelegation, IReleaseSpec vmSpec, out Address? delegationAddress)
     {
         delegationAddress = null;
-        return _codeOverwrites.TryGetValue(codeSource, out ICodeInfo result)
+        if (_precompileOverrides.TryGetValue(codeSource, out var precompile)) return precompile.codeInfo;
+
+        return _codeOverrides.TryGetValue(codeSource, out ICodeInfo result)
             ? result
             : codeInfoRepository.GetCachedCodeInfo(codeSource, followDelegation, vmSpec, out delegationAddress);
     }
 
-    public bool IsPrecompile(Address address, IReleaseSpec spec) =>
-        _codeOverwrites.TryGetValue(address, out ICodeInfo result)
-            ? result.IsPrecompile
-            : codeInfoRepository.IsPrecompile(address, spec);
-
     public void InsertCode(ReadOnlyMemory<byte> code, Address codeOwner, IReleaseSpec spec) =>
         codeInfoRepository.InsertCode(code, codeOwner, spec);
 
-    public void SetCodeOverwrite(
+    public void SetCodeOverride(
         IReleaseSpec vmSpec,
         Address key,
-        ICodeInfo value,
-        Address? redirectAddress = null)
+        ICodeInfo value)
     {
-        if (redirectAddress is not null)
-        {
-            _codeOverwrites[redirectAddress] = this.GetCachedCodeInfo(key, vmSpec);
-        }
+        _codeOverrides[key] = value;
+    }
 
-        _codeOverwrites[key] = value;
+    public void MovePrecompile(IReleaseSpec vmSpec, Address precompileAddr, Address targetAddr)
+    {
+        _precompileOverrides[targetAddr] = (this.GetCachedCodeInfo(precompileAddr, vmSpec), precompileAddr);
+        _codeOverrides[precompileAddr] = new CodeInfo(worldState.GetCode(precompileAddr));
     }
 
     public void SetDelegation(Address codeSource, Address authority, IReleaseSpec spec) =>
@@ -55,5 +54,18 @@ public class OverridableCodeInfoRepository(ICodeInfoRepository codeInfoRepositor
     public ValueHash256 GetExecutableCodeHash(Address address, IReleaseSpec spec) =>
         codeInfoRepository.GetExecutableCodeHash(address, spec);
 
-    public void ResetOverrides() => _codeOverwrites.Clear();
+    public void ResetOverrides()
+    {
+        _precompileOverrides.Clear();
+        _codeOverrides.Clear();
+    }
+
+    public void ResetPrecompileOverrides()
+    {
+        foreach (var (_, precompileInfo) in _precompileOverrides)
+        {
+            _codeOverrides.Remove(precompileInfo.initialAddr);
+        }
+        _precompileOverrides.Clear();
+    }
 }

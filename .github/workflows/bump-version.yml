@@ -17,7 +17,7 @@ jobs:
     
     steps:
       - name: Check out repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       - name: Bump up the version
         id: version
@@ -35,7 +35,7 @@ jobs:
       - name: Create GitHub app token
         if: steps.version.outputs.needs_update == 'true'
         id: gh-app
-        uses: actions/create-github-app-token@v1
+        uses: actions/create-github-app-token@v2
         with:
           app-id: ${{ vars.APP_ID }}
           private-key: ${{ secrets.APP_PRIVATE_KEY }}

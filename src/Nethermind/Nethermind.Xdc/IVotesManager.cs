@@ -11,9 +11,9 @@ using System.Threading.Tasks;
 namespace Nethermind.Xdc;
 internal interface IVotesManager
 {
-    Task CastVote(BlockInfo blockInfo);
+    Task CastVote(BlockRoundInfo blockInfo);
     Task HandleVote(Vote vote);
     Task VerifyVotes(List<Vote> votes, XdcBlockHeader header);
-    bool VerifyVotingRules(BlockInfo blockInfo, QuorumCert qc);
+    bool VerifyVotingRules(BlockRoundInfo blockInfo, QuorumCertificate qc);
     List<Vote> GetVotes();
 }

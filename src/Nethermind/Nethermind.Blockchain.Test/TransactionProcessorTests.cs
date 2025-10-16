@@ -57,8 +57,7 @@ public class TransactionProcessorTests
     [SetUp]
     public void Setup()
     {
-        IWorldStateManager worldStateManager = TestWorldStateFactory.CreateForTest();
-        _stateProvider = worldStateManager.GlobalWorldState;
+        _stateProvider = TestWorldStateFactory.CreateForTest();
         _stateCloser = _stateProvider.BeginScope(IWorldState.PreGenesis);
         _stateProvider.CreateAccount(TestItem.AddressA, AccountBalance);
         _stateProvider.Commit(_specProvider.GenesisSpec);
@@ -67,7 +66,7 @@ public class TransactionProcessorTests
 
         EthereumCodeInfoRepository codeInfoRepository = new(_stateProvider);
         VirtualMachine virtualMachine = new(new TestBlockhashProvider(_specProvider), _specProvider, LimboLogs.Instance);
-        _transactionProcessor = new TransactionProcessor(_specProvider, _stateProvider, virtualMachine, codeInfoRepository, LimboLogs.Instance);
+        _transactionProcessor = new TransactionProcessor(BlobBaseFeeCalculator.Instance, _specProvider, _stateProvider, virtualMachine, codeInfoRepository, LimboLogs.Instance);
         _ethereumEcdsa = new EthereumEcdsa(_specProvider.ChainId);
     }
 

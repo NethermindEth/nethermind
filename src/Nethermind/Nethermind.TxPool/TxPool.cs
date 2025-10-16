@@ -22,6 +22,7 @@ using System.Threading;
 using System.Threading.Channels;
 using System.Threading.Tasks;
 using Autofac.Features.AttributeFilters;
+using Nethermind.Core.Messages;
 using static Nethermind.TxPool.Collections.TxDistinctSortedPool;
 using ITimer = Nethermind.Core.Timers.ITimer;
 
@@ -555,7 +556,7 @@ namespace Nethermind.TxPool
         {
             if (_txPoolConfig.ProofsTranslationEnabled
                 && tx is { SupportsBlobs: true, NetworkWrapper: ShardBlobNetworkWrapper { Version: ProofVersion.V0 } wrapper }
-                && _headInfo.CurrentProofVersion == ProofVersion.V1)
+                && _headInfo.CurrentProofVersion is ProofVersion.V1)
             {
                 using ArrayPoolList<byte[]> cellProofs = new(Ckzg.CellsPerExtBlob * wrapper.Blobs.Length);
 
@@ -725,7 +726,7 @@ namespace Nethermind.TxPool
 
                     if (!valid)
                     {
-                        MarkForEviction(tx, valid.AllowTxPoolReentrance);
+                        MarkForEviction(tx, valid.Error == TxErrorMessages.InvalidProofVersion);
                         continue;
                     }
 
@@ -1116,10 +1117,7 @@ Db usage:
         // Cleanup ArrayPoolList AccountChanges as they are not used anywhere else
         private static void DisposeBlockAccountChanges(Block block)
         {
-            if (block.AccountChanges is null) return;
-
-            block.AccountChanges.Dispose();
-            block.AccountChanges = null;
+            block.DisposeAccountChanges();
         }
     }
 }

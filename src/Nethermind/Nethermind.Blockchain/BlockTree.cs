@@ -129,7 +129,7 @@ namespace Nethermind.Blockchain
             _syncConfig = syncConfig ?? throw new ArgumentNullException(nameof(syncConfig));
             _chainLevelInfoRepository = chainLevelInfoRepository ??
                                         throw new ArgumentNullException(nameof(chainLevelInfoRepository));
-            _oldestBlock = long.Min(syncConfig.AncientBodiesBarrierCalc, syncConfig.AncientReceiptsBarrierCalc);
+            _oldestBlock = syncConfig.AncientBodiesBarrierCalc;
 
             LoadSyncPivot();
 
@@ -504,9 +504,7 @@ namespace Nethermind.Blockchain
                 bool bestSuggestedImprovementSatisfied = BestSuggestedImprovementRequirementsSatisfied(header);
                 if (bestSuggestedImprovementSatisfied)
                 {
-                    if (_logger.IsTrace)
-                        _logger.Trace(
-                            $"New best suggested block. PreviousBestSuggestedBlock {BestSuggestedBody}, BestSuggestedBlock TD {BestSuggestedBody?.TotalDifficulty}, Block TD {block?.TotalDifficulty}, Head: {Head}, Head: {Head?.TotalDifficulty}, Block {block?.ToString(Block.Format.FullHashAndNumber)}");
+                    if (_logger.IsTrace) _logger.Trace($"New best suggested block. PreviousBestSuggestedBlock {BestSuggestedBody}, BestSuggestedBlock TD {BestSuggestedBody?.TotalDifficulty}, Block TD {block?.TotalDifficulty}, Head: {Head}, Head: {Head?.TotalDifficulty}, Block {block?.ToString(Block.Format.FullHashAndNumber)}");
                     BestSuggestedHeader = block.Header;
 
                     if (block.IsPostMerge)

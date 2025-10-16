@@ -10,11 +10,11 @@
     "BlobsSupport": "Disabled"
   },
   "Sync": {
-    "FastSync": true,
-    "SnapSync": true,
-    "PivotNumber": 882786,
-    "PivotHash": "0x76e654042380ab94b86398fdb3515d7e699c7c070ffbbf6a49e581eb2b8f3f00",
-    "PivotTotalDifficulty": 0
+    "FastSync": false,
+    "SnapSync": false
+  },
+  "Pruning": {
+    "PruningBoundary": 1000
   },
   "JsonRpc": {
     "Enabled": true,

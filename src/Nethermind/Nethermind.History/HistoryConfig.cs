@@ -5,8 +5,7 @@ namespace Nethermind.History;
 
 public class HistoryConfig : IHistoryConfig
 {
-    public bool Enabled => Pruning != PruningModes.Disabled;
-
     public PruningModes Pruning { get; set; } = PruningModes.Disabled;
-    public long RetentionEpochs { get; set; } = 82125;
+    public uint RetentionEpochs { get; set; } = 82125;
+    public uint PruningInterval { get; set; } = 8;
 }

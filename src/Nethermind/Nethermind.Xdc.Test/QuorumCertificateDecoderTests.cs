@@ -16,20 +16,20 @@ internal class QuorumCertificateDecoderTests
     {
         get
         {
-            yield return new TestCaseData(new QuorumCert(new BlockInfo(Hash256.Zero, 1, 1), [new Signature(new byte[64], 0), new Signature(new byte[64], 0), new Signature(new byte[64], 0)], 0));
-            yield return new TestCaseData(new QuorumCert(new BlockInfo(Hash256.Zero, 1, 1), [], 0));
-            yield return new TestCaseData(new QuorumCert(new BlockInfo(Hash256.Zero, ulong.MaxValue, long.MaxValue), [], int.MaxValue));
+            yield return new TestCaseData(new QuorumCertificate(new BlockRoundInfo(Hash256.Zero, 1, 1), [new Signature(new byte[64], 0), new Signature(new byte[64], 0), new Signature(new byte[64], 0)], 0));
+            yield return new TestCaseData(new QuorumCertificate(new BlockRoundInfo(Hash256.Zero, 1, 1), [], 0));
+            yield return new TestCaseData(new QuorumCertificate(new BlockRoundInfo(Hash256.Zero, ulong.MaxValue, long.MaxValue), [], int.MaxValue));
         }
     }
 
     [TestCaseSource(nameof(QuorumCertificateCases))]
-    public void Encode_DifferentValues_IsEquivalentAfterReencoding(QuorumCert quorumCert)
+    public void Encode_DifferentValues_IsEquivalentAfterReencoding(QuorumCertificate quorumCert)
     {
         QuorumCertificateDecoder decoder = new();
         RlpStream stream = new RlpStream(decoder.GetLength(quorumCert));
         decoder.Encode(stream, quorumCert);
         stream.Position = 0;
-        QuorumCert decoded = decoder.Decode(stream);
+        QuorumCertificate decoded = decoder.Decode(stream);
 
         decoded.Should().BeEquivalentTo(quorumCert);
     }
@@ -38,12 +38,12 @@ internal class QuorumCertificateDecoderTests
     [TestCase(false)]
     public void Encode_UseBothRlpStreamAndValueDecoderContext_IsEquivalentAfterReencoding(bool useRlpStream)
     {
-        QuorumCert quorumCert = new(new BlockInfo(Hash256.Zero, 1, 1), [new Signature(new byte[64], 0), new Signature(new byte[64], 0), new Signature(new byte[64], 0)], 0);
+        QuorumCertificate quorumCert = new(new BlockRoundInfo(Hash256.Zero, 1, 1), [new Signature(new byte[64], 0), new Signature(new byte[64], 0), new Signature(new byte[64], 0)], 0);
         QuorumCertificateDecoder decoder = new();
         RlpStream stream = new RlpStream(decoder.GetLength(quorumCert));
         decoder.Encode(stream, quorumCert);
         stream.Position = 0;
-        QuorumCert decoded;
+        QuorumCertificate decoded;
         if (useRlpStream)
         {
             decoded = decoder.Decode(stream);

@@ -3,24 +3,18 @@
 
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Xdc.Spec;
 using Nethermind.Xdc.Types;
 using System;
+using System.Collections.Frozen;
 using System.Collections.Generic;
-using System.Linq;
-using System.Text;
-using System.Threading.Tasks;
+using System.Collections.Immutable;
+using System.Collections.ObjectModel;
 
 namespace Nethermind.Xdc;
-internal interface ISnapshotManager
+public interface ISnapshotManager
 {
-    ulong GetLastSignersCount();
-    bool TryGetSnapshot(long number, Hash256 hash, out Snapshot snapshot);
-    bool TryStoreSnapshot(Snapshot snapshot);
-    Address GetBlockSealer(BlockHeader header);
-    bool IsValidVote(Snapshot snapshot, Address address, bool authorize);
-    bool IsInTurn(Snapshot snapshot, long number, Address signer);
-    bool HasSignedRecently(Snapshot snapshot, long number, Address signer);
-    bool TryGetSnapshot(XdcBlockHeader header, out Snapshot snapshot);
-    void TryCacheSnapshot(Snapshot snapshot);
-    bool TryGetSnapshot(ulong gapNumber, bool isGapNumber, out Snapshot snap);
+    Snapshot? GetSnapshot(Hash256 hash);
+    void StoreSnapshot(Snapshot snapshot);
+    (Address[] Masternodes, Address[] PenalizedNodes) CalculateNextEpochMasternodes(XdcBlockHeader header, IXdcReleaseSpec spec);
 }
