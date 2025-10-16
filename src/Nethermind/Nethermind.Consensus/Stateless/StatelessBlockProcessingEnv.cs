@@ -41,8 +41,7 @@ public class StatelessBlockProcessingEnv(
     public IWorldState WorldState
     {
         get => _worldState ??= new WorldState(
-            new TrieStore(witness.NodeStorage, NoPruning.Instance, NoPersistence.Instance, new PruningConfig(),
-                logManager),
+            new RawTrieStore(witness.NodeStorage),
             witness.CodeDb, logManager);
     }
 
