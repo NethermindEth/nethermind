@@ -69,7 +69,6 @@ public class LegacyTransactionForRpc : TransactionForRpc, ITxTyped, IFromTransac
         Value = transaction.Value;
         Input = transaction.Data.AsArray();
         GasPrice = transaction.GasPrice;
-        ChainId = transaction.ChainId;
 
         Signature? signature = transaction.Signature;
         if (signature is null)
@@ -77,12 +76,14 @@ public class LegacyTransactionForRpc : TransactionForRpc, ITxTyped, IFromTransac
             R = UInt256.Zero;
             S = UInt256.Zero;
             V = 0;
+            ChainId = transaction.ChainId;
         }
         else
         {
             R = new UInt256(signature.R.Span, true);
             S = new UInt256(signature.S.Span, true);
             V = signature.V;
+            ChainId = transaction.ChainId ?? signature.ChainId;
         }
     }
 

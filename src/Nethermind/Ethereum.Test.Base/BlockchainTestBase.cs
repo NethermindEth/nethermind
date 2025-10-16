@@ -30,6 +30,7 @@ using Nethermind.Specs;
 using Nethermind.Specs.Forks;
 using Nethermind.Specs.Test;
 using Nethermind.Evm.State;
+using Nethermind.Evm.Tracing;
 using Nethermind.Init.Modules;
 using Nethermind.TxPool;
 using NUnit.Framework;
@@ -42,7 +43,8 @@ namespace Ethereum.Test.Base;
 public abstract class BlockchainTestBase
 {
     private static readonly ILogger _logger;
-    private static readonly ILogManager _logManager = new TestLogManager(LogLevel.Warn);
+    private static readonly ILogManager _logManager = new TestLogManager();
+    // private static ISealValidator Sealer { get; }
     private static DifficultyCalculatorWrapper DifficultyCalculator { get; }
 
     static BlockchainTestBase()
@@ -73,9 +75,9 @@ public abstract class BlockchainTestBase
         }
     }
 
-    protected async Task<EthereumTestResult> RunTest(BlockchainTest test, Stopwatch? stopwatch = null, bool failOnInvalidRlp = true)
+    protected async Task<EthereumTestResult> RunTest(BlockchainTest test, Stopwatch? stopwatch = null, bool failOnInvalidRlp = true, ITestBlockTracer? tracer = null)
     {
-        _logger.Info($"Running {test.Name}, Network: [{test.Network.Name}] at {DateTime.UtcNow:HH:mm:ss.ffffff}");
+        _logger.Info($"Running {test.Name}, Network: [{test.Network!.Name}] at {DateTime.UtcNow:HH:mm:ss.ffffff}");
         if (test.NetworkAfterTransition is not null)
             _logger.Info($"Network after transition: [{test.NetworkAfterTransition.Name}] at {test.TransitionForkActivation}");
         Assert.That(test.LoadFailure, Is.Null, "test data loading failure");
@@ -137,105 +139,119 @@ public abstract class BlockchainTestBase
         IEngineRpcModule engineRpcModule = container.Resolve<IEngineRpcModule>();
         blockchainProcessor.Start();
 
-        BlockHeader parentHeader;
-        // Genesis processing
-        using (stateProvider.BeginScope(null))
+        // Register tracer if provided for blocktest tracing
+        if (tracer is not null)
         {
-            InitializeTestState(test, stateProvider, specProvider);
-
-            stopwatch?.Start();
-
-            test.GenesisRlp ??= Rlp.Encode(new Block(JsonToEthereumTest.Convert(test.GenesisBlockHeader)));
-
-            Block genesisBlock = Rlp.Decode<Block>(test.GenesisRlp.Bytes);
-            // Console.WriteLine(genesisBlock.ToString(Block.Format.Full));
-            Assert.That(genesisBlock.Header.Hash, Is.EqualTo(new Hash256(test.GenesisBlockHeader.Hash)));
-
-            ManualResetEvent genesisProcessed = new(false);
-
-            blockTree.NewHeadBlock += (_, args) =>
-            {
-                if (args.Block.Number == 0)
-                {
-                    Assert.That(stateProvider.HasStateForBlock(genesisBlock.Header), Is.True);
-                    genesisProcessed.Set();
-                }
-            };
-
-            blockTree.SuggestBlock(genesisBlock);
-            genesisProcessed.WaitOne();
-            parentHeader = genesisBlock.Header;
-
-            // Dispose genesis block's AccountChanges
-            genesisBlock.DisposeAccountChanges();
+            blockchainProcessor.Tracers.Add(tracer);
         }
 
-        if (test.Blocks is not null)
+        try
         {
-            // blockchain test
-            parentHeader = SuggestBlocks(test, failOnInvalidRlp, blockValidator, blockTree, parentHeader);
-        }
-        else if (test.EngineNewPayloads is not null)
-        {
-            (ExecutionPayload, string[]?, string[]?, string?)[] payloads = [.. JsonToEthereumTest.Convert(test.EngineNewPayloads)];
-
-            // blockchain test engine
-            foreach ((ExecutionPayload executionPayload, string[]? blobVersionedHashes, string[]? validationError, string? newPayloadVersion) in payloads)
+            BlockHeader parentHeader;
+            // Genesis processing
+            using (stateProvider.BeginScope(null))
             {
-                ResultWrapper<PayloadStatusV1> res;
-                byte[]?[] hashes = blobVersionedHashes is null ? null : [.. blobVersionedHashes.Select(x => Bytes.FromHexString(x))];
+                InitializeTestState(test, stateProvider, specProvider);
 
-                switch (newPayloadVersion ?? "5")
+                stopwatch?.Start();
+
+                test.GenesisRlp ??= Rlp.Encode(new Block(JsonToEthereumTest.Convert(test.GenesisBlockHeader)));
+
+                Block genesisBlock = Rlp.Decode<Block>(test.GenesisRlp.Bytes);
+                // Console.WriteLine(genesisBlock.ToString(Block.Format.Full));
+                Assert.That(genesisBlock.Header.Hash, Is.EqualTo(new Hash256(test.GenesisBlockHeader.Hash)));
+
+                ManualResetEvent genesisProcessed = new(false);
+
+                blockTree.NewHeadBlock += (_, args) =>
                 {
-                    case "1":
-                        res = await engineRpcModule.engine_newPayloadV1(executionPayload);
-                        break;
-                    case "2":
-                        res = await engineRpcModule.engine_newPayloadV2(executionPayload);
-                        break;
-                    case "3":
-                        res = await engineRpcModule.engine_newPayloadV3((ExecutionPayloadV3)executionPayload, [], executionPayload.ParentBeaconBlockRoot);
-                        break;
-                    case "4":
-                        res = await engineRpcModule.engine_newPayloadV4((ExecutionPayloadV3)executionPayload, hashes, executionPayload.ParentBeaconBlockRoot, []);
-                        break;
-                    case "5":
-                        res = await engineRpcModule.engine_newPayloadV5((ExecutionPayloadV3)executionPayload, hashes, executionPayload.ParentBeaconBlockRoot, []);
-                        break;
-                    default:
-                        Assert.Fail("Invalid blockchain engine test, version not recognised.");
-                        break;
+                    if (args.Block.Number == 0)
+                    {
+                        Assert.That(stateProvider.HasStateForBlock(genesisBlock.Header), Is.True);
+                        genesisProcessed.Set();
+                    }
+                };
+
+                blockTree.SuggestBlock(genesisBlock);
+                genesisProcessed.WaitOne();
+                parentHeader = genesisBlock.Header;
+
+                // Dispose genesis block's AccountChanges
+                genesisBlock.DisposeAccountChanges();
+            }
+
+            if (test.Blocks is not null)
+            {
+                // blockchain test
+                parentHeader = SuggestBlocks(test, failOnInvalidRlp, blockValidator, blockTree, parentHeader);
+            }
+            else if (test.EngineNewPayloads is not null)
+            {
+                (ExecutionPayload, string[]?, string[]?, string?)[] payloads = [.. JsonToEthereumTest.Convert(test.EngineNewPayloads)];
+
+                // blockchain test engine
+                foreach ((ExecutionPayload executionPayload, string[]? blobVersionedHashes, string[]? validationError, string? newPayloadVersion) in payloads)
+                {
+                    ResultWrapper<PayloadStatusV1> res;
+                    byte[]?[] hashes = blobVersionedHashes is null ? null : [.. blobVersionedHashes.Select(x => Bytes.FromHexString(x))];
+
+                    switch (newPayloadVersion ?? "5")
+                    {
+                        case "1":
+                            res = await engineRpcModule.engine_newPayloadV1(executionPayload);
+                            break;
+                        case "2":
+                            res = await engineRpcModule.engine_newPayloadV2(executionPayload);
+                            break;
+                        case "3":
+                            res = await engineRpcModule.engine_newPayloadV3((ExecutionPayloadV3)executionPayload, [], executionPayload.ParentBeaconBlockRoot);
+                            break;
+                        case "4":
+                            res = await engineRpcModule.engine_newPayloadV4((ExecutionPayloadV3)executionPayload, hashes, executionPayload.ParentBeaconBlockRoot, []);
+                            break;
+                        case "5":
+                            res = await engineRpcModule.engine_newPayloadV5((ExecutionPayloadV3)executionPayload, hashes, executionPayload.ParentBeaconBlockRoot, []);
+                            break;
+                        default:
+                            Assert.Fail("Invalid blockchain engine test, version not recognised.");
+                            break;
+                    }
                 }
             }
+            else
+            {
+                Assert.Fail("Invalid blockchain test, did not contain blocks or new payloads.");
+            }
+
+            await blockchainProcessor.StopAsync(true);
+            stopwatch?.Stop();
+
+            IBlockCachePreWarmer? preWarmer = container.Resolve<MainProcessingContext>().LifetimeScope.ResolveOptional<IBlockCachePreWarmer>();
+
+            // Caches are cleared async, which is a problem as read for the MainWorldState with prewarmer is not correct if its not cleared.
+            preWarmer?.ClearCaches();
+
+            Block? headBlock = blockTree.RetrieveHeadBlock();
+            List<string> differences;
+            using (stateProvider.BeginScope(headBlock.Header))
+            {
+                differences = RunAssertions(test, blockTree.RetrieveHeadBlock(), stateProvider);
+            }
+
+            Assert.That(differences, Is.Empty, "differences");
+
+            return new EthereumTestResult
+            (
+                test.Name,
+                null,
+                differences.Count == 0
+            );
         }
-        else
+        catch (Exception)
         {
-            Assert.Fail("Invalid blockchain test, did not contain blocks or new payloads.");
+            await blockchainProcessor.StopAsync(true);
+            throw;
         }
-
-        await blockchainProcessor.StopAsync(true);
-        stopwatch?.Stop();
-
-        IBlockCachePreWarmer? preWarmer = container.Resolve<MainProcessingContext>().LifetimeScope.ResolveOptional<IBlockCachePreWarmer>();
-
-        // Caches are cleared async, which is a problem as read for the MainWorldState with prewarmer is not correct if its not cleared.
-        preWarmer?.ClearCaches();
-
-        Block? headBlock = blockTree.RetrieveHeadBlock();
-        List<string> differences;
-        using (stateProvider.BeginScope(headBlock.Header))
-        {
-            differences = RunAssertions(test, blockTree.RetrieveHeadBlock(), stateProvider);
-        }
-
-        Assert.That(differences, Is.Empty, "differences");
-
-        return new EthereumTestResult
-        (
-            test.Name,
-            null,
-            differences.Count == 0
-        );
     }
 
     private static BlockHeader SuggestBlocks(BlockchainTest test, bool failOnInvalidRlp, IBlockValidator blockValidator, IBlockTree blockTree, BlockHeader parentHeader)
@@ -243,45 +259,120 @@ public abstract class BlockchainTestBase
         List<(Block Block, string ExpectedException)> correctRlp = DecodeRlps(test, failOnInvalidRlp);
         for (int i = 0; i < correctRlp.Count; i++)
         {
-            if (correctRlp[i].Block.Hash is null)
+            BlockHeader parentHeader;
+            // Genesis processing
+            using (stateProvider.BeginScope(null))
             {
-                Assert.Fail($"null hash in {test.Name} block {i}");
+                InitializeTestState(test, stateProvider, specProvider);
+
+                stopwatch?.Start();
+
+                test.GenesisRlp ??= Rlp.Encode(new Block(JsonToEthereumTest.Convert(test.GenesisBlockHeader)));
+
+                Block genesisBlock = Rlp.Decode<Block>(test.GenesisRlp.Bytes);
+                Assert.That(genesisBlock.Header.Hash, Is.EqualTo(new Hash256(test.GenesisBlockHeader.Hash)));
+
+                ManualResetEvent genesisProcessed = new(false);
+
+                blockTree.NewHeadBlock += (_, args) =>
+                {
+                    if (args.Block.Number == 0)
+                    {
+                        Assert.That(stateProvider.HasStateForBlock(genesisBlock.Header), Is.EqualTo(true));
+                        genesisProcessed.Set();
+                    }
+                };
+
+                blockTree.SuggestBlock(genesisBlock);
+                genesisProcessed.WaitOne();
+                parentHeader = genesisBlock.Header;
+
+                // Dispose genesis block's AccountChanges
+                genesisBlock.DisposeAccountChanges();
             }
 
-            try
+            List<(Block Block, string ExpectedException)> correctRlp = DecodeRlps(test, failOnInvalidRlp);
+            for (int i = 0; i < correctRlp.Count; i++)
             {
-                // TODO: mimic the actual behaviour where block goes through validating sync manager?
-                correctRlp[i].Block.Header.IsPostMerge = correctRlp[i].Block.Difficulty == 0;
-                if (!test.SealEngineUsed || blockValidator.ValidateSuggestedBlock(correctRlp[i].Block, parentHeader, out var _error))
+                if (correctRlp[i].Block.Hash is null)
                 {
-                    blockTree.SuggestBlock(correctRlp[i].Block);
+                    Assert.Fail($"null hash in {test.Name} block {i}");
                 }
-                else
+
+                try
+                {
+                    // TODO: mimic the actual behaviour where block goes through validating sync manager?
+                    correctRlp[i].Block.Header.IsPostMerge = correctRlp[i].Block.Difficulty == 0;
+                    if (!test.SealEngineUsed || blockValidator.ValidateSuggestedBlock(correctRlp[i].Block, parentHeader, out _))
+                    {
+                        blockTree.SuggestBlock(correctRlp[i].Block);
+                    }
+                    else
+                    {
+                        if (correctRlp[i].ExpectedException is not null)
+                        {
+                            Assert.Fail($"Unexpected invalid block {correctRlp[i].Block.Hash}");
+                        }
+                    }
+                }
+                catch (InvalidBlockException e)
                 {
                     if (correctRlp[i].ExpectedException is not null)
                     {
-                        Assert.Fail($"Unexpected invalid block {correctRlp[i].Block.Hash}");
+                        Assert.Fail($"Unexpected invalid block {correctRlp[i].Block.Hash}: {e}");
                     }
                 }
-            }
-            catch (InvalidBlockException e)
-            {
-                if (correctRlp[i].ExpectedException is not null)
+                catch (Exception e)
                 {
-                    Assert.Fail($"Unexpected invalid block {correctRlp[i].Block.Hash}: {e}");
+                    Assert.Fail($"Unexpected exception during processing: {e}");
                 }
-            }
-            catch (Exception e)
-            {
-                Assert.Fail($"Unexpected exception during processing: {e}");
-            }
-            finally
-            {
-                // Dispose AccountChanges to prevent memory leaks in tests
-                correctRlp[i].Block.DisposeAccountChanges();
+                finally
+                {
+                    // Dispose AccountChanges to prevent memory leaks in tests
+                    correctRlp[i].Block.DisposeAccountChanges();
+                }
+
+                parentHeader = correctRlp[i].Block.Header;
             }
 
-            parentHeader = correctRlp[i].Block.Header;
+            // NOTE: Tracer removal must happen AFTER StopAsync to ensure all blocks are traced
+            // Blocks are queued asynchronously, so we need to wait for processing to complete
+            await blockchainProcessor.StopAsync(true);
+
+            stopwatch?.Stop();
+
+            IBlockCachePreWarmer? preWarmer = container.Resolve<MainProcessingContext>().LifetimeScope.ResolveOptional<IBlockCachePreWarmer>();
+            if (preWarmer is not null)
+            {
+                // Caches are cleared async, which is a problem as read for the MainWorldState with prewarmer is not correct if its not cleared.
+                preWarmer.ClearCaches();
+            }
+
+            Block? headBlock = blockTree.RetrieveHeadBlock();
+            List<string> differences;
+            using (stateProvider.BeginScope(headBlock.Header))
+            {
+                differences = RunAssertions(test, blockTree.RetrieveHeadBlock(), stateProvider);
+            }
+
+            bool testPassed = differences.Count == 0;
+
+            // Write test end marker if using streaming tracer (JSONL format)
+            // This must be done BEFORE removing tracer and BEFORE Assert to ensure marker is written even on failure
+            if (tracer is not null)
+            {
+                tracer.TestFinished(test.Name, testPassed, test.Network, stopwatch?.Elapsed, headBlock?.StateRoot);
+                blockchainProcessor.Tracers.Remove(tracer);
+            }
+
+            Assert.That(differences.Count, Is.Zero, "differences");
+
+            return new EthereumTestResult
+            (
+                test.Name,
+                null,
+                testPassed
+            );
         }
 
         return parentHeader;
@@ -289,13 +380,13 @@ public abstract class BlockchainTestBase
 
     private static List<(Block Block, string ExpectedException)> DecodeRlps(BlockchainTest test, bool failOnInvalidRlp)
     {
-        List<(Block Block, string ExpectedException)> correctRlp = [];
-        for (int i = 0; i < test.Blocks.Length; i++)
+        List<(Block Block, string ExpectedException)> correctRlp = new();
+        for (int i = 0; i < test.Blocks!.Length; i++)
         {
             TestBlockJson testBlockJson = test.Blocks[i];
             try
             {
-                RlpStream rlpContext = Bytes.FromHexString(testBlockJson.Rlp).AsRlpStream();
+                RlpStream rlpContext = Bytes.FromHexString(testBlockJson.Rlp!).AsRlpStream();
                 Block suggestedBlock = Rlp.Decode<Block>(rlpContext);
                 Console.WriteLine("suggested block:");
                 Console.WriteLine(suggestedBlock.BlockAccessList);
@@ -309,7 +400,7 @@ public abstract class BlockchainTestBase
 
                     for (int uncleIndex = 0; uncleIndex < suggestedBlock.Uncles.Length; uncleIndex++)
                     {
-                        Assert.That(suggestedBlock.Uncles[uncleIndex].Hash, Is.EqualTo(new Hash256(testBlockJson.UncleHeaders[uncleIndex].Hash)));
+                        Assert.That(suggestedBlock.Uncles[uncleIndex].Hash, Is.EqualTo(new Hash256(testBlockJson.UncleHeaders![uncleIndex].Hash)));
                     }
 
                     correctRlp.Add((suggestedBlock, testBlockJson.ExpectedException));
@@ -375,7 +466,7 @@ public abstract class BlockchainTestBase
     {
         if (test.PostStateRoot is not null)
         {
-            return test.PostStateRoot != stateProvider.StateRoot ? ["state root mismatch"] : [];
+            return test.PostStateRoot != stateProvider.StateRoot ? ["state root mismatch"] : Enumerable.Empty<string>().ToList();
         }
 
         TestBlockHeaderJson testHeaderJson = (test.Blocks?
@@ -395,7 +486,7 @@ public abstract class BlockchainTestBase
             }
         }
 
-        foreach ((Address acountAddress, AccountState accountState) in test.PostState)
+        foreach ((Address acountAddress, AccountState accountState) in test.PostState!)
         {
             int differencesBefore = differences.Count;
 
@@ -433,9 +524,9 @@ public abstract class BlockchainTestBase
             differencesBefore = differences.Count;
 
             KeyValuePair<UInt256, byte[]>[] clearedStorages = [];
-            if (test.Pre.ContainsKey(acountAddress))
+            if (test.Pre.TryGetValue(acountAddress, out AccountState? state))
             {
-                clearedStorages = [.. test.Pre[acountAddress].Storage.Where(s => !accountState.Storage.ContainsKey(s.Key))];
+                clearedStorages = state.Storage.Where(s => !accountState.Storage.ContainsKey(s.Key)).ToArray();
             }
 
             foreach (KeyValuePair<UInt256, byte[]> clearedStorage in clearedStorages)
