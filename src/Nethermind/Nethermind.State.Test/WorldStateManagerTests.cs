@@ -76,7 +76,7 @@ public class WorldStateManagerTests
     public void ShouldAnnounceReorgOnDispose()
     {
         int lastBlock = 256;
-        int reorgDepth = 129; // Default reorg depth with snap serving, includes safety margin for HasState checks in BlockchainBridge
+        int reorgDepth = 128; // Default reorg depth with snap serving
 
         IBlockTree blockTree = Substitute.For<IBlockTree>();
         IConfigProvider configProvider = new ConfigProvider();
