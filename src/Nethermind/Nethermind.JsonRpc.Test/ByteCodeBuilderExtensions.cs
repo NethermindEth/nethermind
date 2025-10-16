@@ -7,6 +7,27 @@ namespace Nethermind.JsonRpc.Test;
 
 public static class ByteCodeBuilderExtensions
 {
+    public static Prepare RevertWithError(this Prepare prepare, string errorMessage)
+    {
+        byte[] errorBytes = Encoding.UTF8.GetBytes(errorMessage);
+        
+        // Mimic the hive callme.eas %revert macro:
+        // https://github.com/ethereum/hive/blob/master/cmd/hivechain/contracts/callme.eas
+        // It stores the string at memory 0, then reverts with offset=(32-length), length=length
+        int length = errorBytes.Length;
+        int offset = 32 - length;
+
+        prepare
+            .PushData(errorBytes)        // Push the string
+            .PushData(0)                 // Memory offset 0
+            .Op(Instruction.MSTORE)      // Store in memory
+            .PushData(length)            // Length of string
+            .PushData(offset)            // Offset = 32 - length (right-aligned)
+            .Op(Instruction.REVERT);      // Revert
+            
+        return prepare;
+    }
+
     public static Prepare RevertWithSolidityErrorEncoding(this Prepare prepare, string errorMessage)
     {
         // based on https://docs.soliditylang.org/en/latest/control-structures.html#revert
