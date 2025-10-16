@@ -55,7 +55,7 @@ public class ReceiptMessageDecoder69(bool skipStateAndStatus = false) : IRlpStre
         int lastCheck = ctx.ReadSequenceLength() + ctx.Position;
 
         int numberOfReceipts = ctx.PeekNumberOfItemsRemaining(lastCheck);
-        Rlp.GuardLimit(numberOfReceipts);
+        ctx.GuardLimit(numberOfReceipts);
         LogEntry[] entries = new LogEntry[numberOfReceipts];
         for (int i = 0; i < numberOfReceipts; i++)
         {

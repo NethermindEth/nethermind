@@ -11,7 +11,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62.Messages
 {
     public class TransactionsMessageSerializer : IZeroInnerMessageSerializer<TransactionsMessage>
     {
-        private static readonly RlpLimit RlpLimit = RlpLimit.For<TransactionsMessage>(nameof(TransactionsMessage.Transactions), NethermindSyncLimits.MaxHashesFetch);
+        private static readonly RlpLimit RlpLimit = RlpLimit.For<TransactionsMessage>(NethermindSyncLimits.MaxHashesFetch, nameof(TransactionsMessage.Transactions));
         private readonly TxDecoder _decoder = TxDecoder.Instance;
 
         public void Serialize(IByteBuffer byteBuffer, TransactionsMessage message)
