@@ -856,7 +856,19 @@ namespace Nethermind.Evm.TransactionProcessing
             bool gasBeneficiaryNotDestroyed = !substate.DestroyList.Contains(header.GasBeneficiary);
             if (statusCode == StatusCode.Failure || gasBeneficiaryNotDestroyed)
             {
+                bool balTracingEnabled = _tracedAccessWorldState is not null && _tracedAccessWorldState.Enabled;
+                if (balTracingEnabled && fees == 0)
+                {
+                    // disable BAL tracing for special case of zero value transfer to coinbase
+                    _tracedAccessWorldState.Enabled = false;
+                }
+
                 WorldState.AddToBalanceAndCreateIfNotExists(header.GasBeneficiary!, fees, spec);
+
+                if (balTracingEnabled)
+                {
+                    _tracedAccessWorldState.Enabled = true;
+                }
             }
 
             UInt256 eip1559Fees = !tx.IsFree() ? header.BaseFeePerGas * (ulong)spentGas : UInt256.Zero;
