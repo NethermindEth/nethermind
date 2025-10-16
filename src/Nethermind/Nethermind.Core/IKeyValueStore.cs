@@ -59,7 +59,6 @@ namespace Nethermind.Core
         }
 
         void Set(ReadOnlySpan<byte> key, byte[]? value, WriteFlags flags = WriteFlags.None);
-        void Merge(ReadOnlySpan<byte> key, ReadOnlySpan<byte> value, WriteFlags flags = WriteFlags.None);
 
         /// <summary>
         /// Some store keep the input array directly. (eg: CachingStore), and therefore passing the value by array
@@ -68,6 +67,11 @@ namespace Nethermind.Core
         public bool PreferWriteByArray => false;
         void PutSpan(ReadOnlySpan<byte> key, ReadOnlySpan<byte> value, WriteFlags flags = WriteFlags.None) => Set(key, value.IsNull() ? null : value.ToArray(), flags);
         void Remove(ReadOnlySpan<byte> key) => Set(key, null);
+    }
+
+    public interface IMergeableKeyValueStore
+    {
+        void Merge(ReadOnlySpan<byte> key, ReadOnlySpan<byte> value, WriteFlags flags = WriteFlags.None);
     }
 
     public interface ISortedKeyValueStore : IKeyValueStore

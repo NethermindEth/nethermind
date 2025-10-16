@@ -61,11 +61,6 @@ namespace Nethermind.Db.Rpc
 
         public KeyValuePair<byte[], byte[]>[] this[byte[][] keys] => keys.Select(k => new KeyValuePair<byte[], byte[]>(k, GetThroughRpc(k))).ToArray();
 
-        public void Merge(ReadOnlySpan<byte> key, ReadOnlySpan<byte> value, WriteFlags flags = WriteFlags.None)
-        {
-            throw new InvalidOperationException("RPC DB does not support writes");
-        }
-
         public void Remove(ReadOnlySpan<byte> key)
         {
             throw new InvalidOperationException("RPC DB does not support writes");
