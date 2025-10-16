@@ -37,13 +37,14 @@ public class BlockchainTestsRunner(
                 continue;
             }
 
-        // Create a streaming tracer once for all tests if tracing is enabled
-        using BlockchainTestStreamingTracer? tracer = trace
-            ? new BlockchainTestStreamingTracer(new() { EnableMemory = traceMemory, DisableStack = traceNoStack })
-            : null;
+            // Create a streaming tracer once for all tests if tracing is enabled
+            using BlockchainTestStreamingTracer? tracer = trace
+                ? new BlockchainTestStreamingTracer(new() { EnableMemory = traceMemory, DisableStack = traceNoStack })
+                : null;
+
             BlockchainTest test = loadedTest as BlockchainTest;
 
-            if (_filter is not null && test.Name is not null && !Regex.Match(test.Name, $"^({_filter})").Success)
+            if (filter is not null && test.Name is not null && !Regex.Match(test.Name, $"^({filter})").Success)
                 continue;
             Setup();
 

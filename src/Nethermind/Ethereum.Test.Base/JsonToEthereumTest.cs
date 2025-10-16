@@ -306,7 +306,9 @@ namespace Ethereum.Test.Base
                 GenesisBlockHeader = testJson.GenesisBlockHeader,
                 Blocks = testJson.Blocks,
                 EngineNewPayloads = testJson.EngineNewPayloads,
-                Pre = testJson.Pre.ToDictionary(p => p.Key, p => p.Value)
+                // nullable for engine?
+                // Pre = testJson.Pre.ToDictionary(p => p.Key, p => p.Value)
+                Pre = testJson.Pre
             };
 
             HalfBlockchainTestJson half = testJson as HalfBlockchainTestJson;
