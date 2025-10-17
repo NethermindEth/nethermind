@@ -93,10 +93,7 @@ public abstract class BlockchainTestBase
 
         ISpecProvider specProvider = new CustomSpecProvider(test.ChainId, test.ChainId, transitions.ToArray());
 
-        if (test.ChainId != GnosisSpecProvider.Instance.ChainId && specProvider.GenesisSpec != Frontier.Instance)
-        {
-            Assert.Fail("Expected genesis spec to be Frontier for blockchain tests");
-        }
+        Assert.That(test.ChainId == GnosisSpecProvider.Instance.ChainId || specProvider.GenesisSpec == Frontier.Instance, "Expected genesis spec to be Frontier for blockchain tests");
 
         if (test.Network is Cancun || test.NetworkAfterTransition is Cancun)
         {
@@ -191,43 +188,40 @@ public abstract class BlockchainTestBase
                 // For tests with reorgs, find the actual parent header from block tree
                 parentHeader = blockTree.FindHeader(correctRlp[i].Block.ParentHash) ?? parentHeader;
 
-                if (correctRlp[i].Block.Hash is null)
-                {
-                    Assert.Fail($"null hash in {test.Name} block {i}");
-                }
+                Assert.That(correctRlp[i].Block.Hash is not null, $"null hash in {test.Name} block {i}");
 
                 bool expectsException = correctRlp[i].ExpectedException is not null;
-                string? validationError = null;
-                try
+                // Validate block structure first (mimics SyncServer validation)
+                if (blockValidator.ValidateSuggestedBlock(correctRlp[i].Block, parentHeader, out string? validationError))
                 {
-                    // Validate block structure first (mimics SyncServer validation)
-                    if (blockValidator.ValidateSuggestedBlock(correctRlp[i].Block, parentHeader, out validationError))
+                    Assert.That(expectsException, $"Expected block {correctRlp[i].Block.Hash} to fail with '{correctRlp[i].ExpectedException}', but it passed validation");
+                    try
                     {
-                        Assert.That(expectsException, $"Expected block {correctRlp[i].Block.Hash} to fail with '{correctRlp[i].ExpectedException}', but it passed validation");
                         // All validations passed, suggest the block
                         blockTree.SuggestBlock(correctRlp[i].Block);
+
                     }
-                    else
+                    catch (InvalidBlockException e)
                     {
-                        // Validation FAILED
-                        Assert.That(!expectsException, $"Unexpected invalid block {correctRlp[i].Block.Hash}: {validationError}");
-                        // else: Expected to fail and did fail → this is correct behavior
+                        // Exception thrown during block processing
+                        Assert.That(!expectsException, $"Unexpected invalid block {correctRlp[i].Block.Hash}: {validationError}, Exception: {e}");
+                        // else: Expected to fail and did fail via exception → this is correct behavior
+                    }
+                    catch (Exception e)
+                    {
+                        Assert.Fail($"Unexpected exception during processing: {e}");
+                    }
+                    finally
+                    {
+                        // Dispose AccountChanges to prevent memory leaks in tests
+                        correctRlp[i].Block.DisposeAccountChanges();
                     }
                 }
-                catch (InvalidBlockException)
+                else
                 {
-                    // Exception thrown during block processing
+                    // Validation FAILED
                     Assert.That(!expectsException, $"Unexpected invalid block {correctRlp[i].Block.Hash}: {validationError}");
-                    // else: Expected to fail and did fail via exception → this is correct behavior
-                }
-                catch (Exception e)
-                {
-                    Assert.Fail($"Unexpected exception during processing: {e}");
-                }
-                finally
-                {
-                    // Dispose AccountChanges to prevent memory leaks in tests
-                    correctRlp[i].Block.DisposeAccountChanges();
+                    // else: Expected to fail and did fail → this is correct behavior
                 }
 
                 parentHeader = correctRlp[i].Block.Header;
@@ -306,16 +300,10 @@ public abstract class BlockchainTestBase
                 if (testBlockJson.ExpectedException is null)
                 {
                     string invalidRlpMessage = $"Invalid RLP ({i}) {e}";
-                    if (failOnInvalidRlp)
-                    {
-                        Assert.Fail(invalidRlpMessage);
-                    }
-                    else
-                    {
-                        // ForgedTests don't have ExpectedException and at the same time have invalid rlps
-                        // Don't fail here. If test executed incorrectly will fail at last check
-                        _logger.Warn(invalidRlpMessage);
-                    }
+                    Assert.That(!failOnInvalidRlp, invalidRlpMessage);
+                    // ForgedTests don't have ExpectedException and at the same time have invalid rlps
+                    // Don't fail here. If test executed incorrectly will fail at last check
+                    _logger.Warn(invalidRlpMessage);
                 }
                 else
                 {
