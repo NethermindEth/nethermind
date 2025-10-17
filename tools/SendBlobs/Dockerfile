@@ -26,6 +26,5 @@ FROM mcr.microsoft.com/dotnet/runtime-deps:9.0-noble
 WORKDIR /nethermind
 
 COPY --from=build /out ./
-RUN apt update && apt install -y ca-certificates
 
 ENTRYPOINT ["./SendBlobs"]

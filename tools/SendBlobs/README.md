@@ -18,7 +18,7 @@ The tool can help with:
 
 Use "SendBlobs [command] --help" for more information about supported commands.
 
-The default fork for now is Prague, which means blob will be sent with V0 proofs. use `--fork Osaka` option to change it to V1.
+The default fork for now is Prague, which means blob will be sent with V0 proofs. Use `--fork Osaka` option to change it to V1. The default behavior may change post Osaka.
 
 ## Build
 
@@ -48,9 +48,12 @@ docker run send-blobs
              --feemultiplier    4                     # fee multiplier to compete with other txs in the pool, 4 by default
 
 # send 5 transactions, 1 blob each
-./SendBlobs --rpcurl http://localhost:8545 --bloboptions 5 \
-                                             0x0000000000000000000000000000000000000000000000000000000000000000 \
-                                             0x000000000000000000000000000000000000f1c1 10000 4
+./SendBlobs --rpcurl http://localhost:8545 \
+            --bloboptions 5 \
+            --privatekey 0x0000000000000000000000000000000000000000000000000000000000000000 \
+            --receiveraddress 0x000000000000000000000000000000000000f1c1 \
+            --maxfeeperblobgas 10000 \
+            --feemultiplier 4
 
 # send several transactions with 1 blob, with 6 blobs and than with 2 blobs
 ./SendBlobs --rpcurl http://localhost:8545
@@ -60,10 +63,10 @@ docker run send-blobs
             --maxfeeperblobgas 10000 \
             --feemultiplier 4
 
-#send a couple of transactions
+# send a couple of broken transactions
 
 ./SendBlobs --rpcurl http://localhost:8545 \
-            --bloboptions 2x4-1 \
+            --bloboptions 2x4-2 \
             --privatekey 0x0000000000000000000000000000000000000000000000000000000000000000 \
             --receiveraddress 0x0000000000000000000000000000000000000001 \
             --maxfeeperblobgas 10000 \
@@ -72,9 +75,9 @@ docker run send-blobs
 
 ## Blob options
 
-Issues/Options that can be intentionally added to simulate broken transactions:
+Issues that can be intentionally added to simulate broken transactions:
 
-```
+```txt
   1    = 0 blobs
   2    = 1st blob has more blobs than allowed
   3    = 1st blob is shorten
