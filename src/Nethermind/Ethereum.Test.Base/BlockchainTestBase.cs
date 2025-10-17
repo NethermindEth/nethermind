@@ -185,6 +185,12 @@ public abstract class BlockchainTestBase
             List<(Block Block, string ExpectedException)> correctRlp = DecodeRlps(test, failOnInvalidRlp);
             for (int i = 0; i < correctRlp.Count; i++)
             {
+                // Mimic the actual behaviour where block goes through validating sync manager
+                correctRlp[i].Block.Header.IsPostMerge = correctRlp[i].Block.Difficulty == 0;
+
+                // For tests with reorgs, find the actual parent header from block tree
+                parentHeader = blockTree.FindHeader(correctRlp[i].Block.ParentHash) ?? parentHeader;
+
                 if (correctRlp[i].Block.Hash is null)
                 {
                     Assert.Fail($"null hash in {test.Name} block {i}");
@@ -192,17 +198,14 @@ public abstract class BlockchainTestBase
 
                 try
                 {
-                    // TODO: mimic the actual behaviour where block goes through validating sync manager?
-                    correctRlp[i].Block.Header.IsPostMerge = correctRlp[i].Block.Difficulty == 0;
-                    // Always validate consensus rules, regardless of seal engine
-                    // (seal validation is already conditional within the validator framework)
-                    if (blockValidator.ValidateSuggestedBlock(correctRlp[i].Block, parentHeader, out var _error))
+                    // Validate block structure first (mimics SyncServer validation)
+                    if (blockValidator.ValidateSuggestedBlock(correctRlp[i].Block, parentHeader, out var validationError))
                     {
-                        // Validation PASSED
                         if (correctRlp[i].ExpectedException is not null)
                         {
                             Assert.Fail($"Expected block {correctRlp[i].Block.Hash} to fail with '{correctRlp[i].ExpectedException}', but it passed validation");
                         }
+                        // All validations passed, suggest the block
                         blockTree.SuggestBlock(correctRlp[i].Block);
                     }
                     else
@@ -210,7 +213,7 @@ public abstract class BlockchainTestBase
                         // Validation FAILED
                         if (correctRlp[i].ExpectedException is null)
                         {
-                            Assert.Fail($"Unexpected invalid block {correctRlp[i].Block.Hash}: {_error}");
+                            Assert.Fail($"Unexpected invalid block {correctRlp[i].Block.Hash}: {validationError}");
                         }
                         // else: Expected to fail and did fail → this is correct behavior
                     }

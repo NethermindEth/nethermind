@@ -10,7 +10,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62.Messages
 {
     public class GetBlockBodiesMessageSerializer : IZeroInnerMessageSerializer<GetBlockBodiesMessage>
     {
-        private static readonly RlpLimit RlpLimit = RlpLimit.For<GetBlockBodiesMessage>(nameof(GetBlockBodiesMessage.BlockHashes), NethermindSyncLimits.MaxBodyFetch);
+        private static readonly RlpLimit RlpLimit = RlpLimit.For<GetBlockBodiesMessage>(NethermindSyncLimits.MaxBodyFetch, nameof(GetBlockBodiesMessage.BlockHashes));
 
         public void Serialize(IByteBuffer byteBuffer, GetBlockBodiesMessage message)
         {
