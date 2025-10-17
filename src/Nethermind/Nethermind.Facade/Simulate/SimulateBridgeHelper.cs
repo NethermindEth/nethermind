@@ -38,6 +38,7 @@ public class SimulateBridgeHelper(IBlocksConfig blocksConfig, ISpecProvider spec
         BlockStateCall<TransactionWithSourceDetails> blockStateCall,
         IWorldState stateProvider,
         IOverridableCodeInfoRepository codeInfoRepository,
+        long blockNumber,
         IReleaseSpec releaseSpec)
     {
         stateProvider.ApplyStateOverridesNoCommit(codeInfoRepository, blockStateCall.StateOverrides, releaseSpec);
@@ -49,7 +50,8 @@ public class SimulateBridgeHelper(IBlocksConfig blocksConfig, ISpecProvider spec
             stateProvider.CreateAccountIfNotExists(address, 0, 0);
         }
 
-        stateProvider.Commit(releaseSpec, commitRoots: false);
+        stateProvider.Commit(releaseSpec, commitRoots: true);
+        stateProvider.CommitTree(blockNumber);
     }
 
     public SimulateOutput<TTrace> TrySimulate<TTrace>(
@@ -121,7 +123,7 @@ public class SimulateBridgeHelper(IBlocksConfig blocksConfig, ISpecProvider spec
                 BlockBody body = AssembleBody(calls, stateProvider, nonceCache, spec);
                 Block callBlock = new Block(callHeader, body);
 
-                PrepareState(blockCall, env.WorldState, env.CodeInfoRepository, spec);
+                PrepareState(blockCall, env.WorldState, env.CodeInfoRepository, callHeader.Number, spec);
 
                 ProcessingOptions processingFlags = payload.Validation
                     ? SimulateProcessingOptions
