@@ -389,13 +389,8 @@ namespace Nethermind.Facade
             stateReader.RunTreeVisitor(treeVisitor, stateRoot);
         }
 
-        public bool HasStateForBlock(BlockHeader? baseBlock)
+        public bool HasStateForBlock(BlockHeader baseBlock)
         {
-            if (baseBlock is null)
-            {
-                return false;
-            }
-
             long headNumber = blockTree.Head?.Number ?? 0;
             long requestedNumber = baseBlock.Number;
 

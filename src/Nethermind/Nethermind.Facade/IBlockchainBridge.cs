@@ -61,6 +61,6 @@ namespace Nethermind.Facade
         /// This conservative approach sacrifices 1 block of history to eliminate race conditions with pruning.
         /// This method is optimized for RPC calls and may return false negatives to prevent exceptions.
         /// </remarks>
-        bool HasStateForBlock(BlockHeader? baseBlock);
+        bool HasStateForBlock(BlockHeader baseBlock);
     }
 }
