@@ -8,43 +8,35 @@ using Nethermind.Consensus.Comparers;
 using Nethermind.Consensus.Processing;
 using Nethermind.Consensus.Processing.CensorshipDetector;
 using Nethermind.Consensus.Producers;
-using Nethermind.Consensus.Rewards;
 using Nethermind.Consensus.Scheduler;
 using Nethermind.Consensus.Validators;
 using Nethermind.Core;
 using Nethermind.Facade;
-using Nethermind.JsonRpc.Modules.Eth.GasPrice;
 using Nethermind.State;
 using Nethermind.TxPool;
 
 namespace Nethermind.Api
 {
-    public interface IApiWithBlockchain : IApiWithStores, IBlockchainBridgeFactory
+    public interface IApiWithBlockchain : IApiWithStores
     {
         (IApiWithStores GetFromApi, IApiWithBlockchain SetInApi) ForInit => (this, this);
         (IApiWithStores GetFromApi, IApiWithBlockchain SetInApi) ForBlockchain => (this, this);
         (IApiWithBlockchain GetFromApi, IApiWithBlockchain SetInApi) ForProducer => (this, this);
 
         CompositeBlockPreprocessorStep BlockPreprocessor { get; }
-        IGenesisPostProcessor GenesisPostProcessor { get; set; }
-        IBlockProcessingQueue? BlockProcessingQueue { get; set; }
+        IBlockProcessingQueue BlockProcessingQueue { get; }
         IBlockProducer? BlockProducer { get; set; }
         IBlockProducerRunner BlockProducerRunner { get; set; }
-
-        [SkipServiceCollection]
-        IBlockValidator BlockValidator { get; }
 
         IEnode? Enode { get; set; }
 
         IManualBlockProductionTrigger ManualBlockProductionTrigger { get; }
-        IRewardCalculatorSource RewardCalculatorSource { get; }
         ISealer Sealer { get; }
-        ISealValidator SealValidator { get; }
         ISealEngine SealEngine { get; }
         IStateReader? StateReader { get; }
 
         IWorldStateManager? WorldStateManager { get; }
-        IMainProcessingContext? MainProcessingContext { get; set; }
+        IMainProcessingContext MainProcessingContext { get; }
         ITxSender? TxSender { get; set; }
         INonceManager? NonceManager { get; set; }
         ITxPool? TxPool { get; set; }
@@ -66,9 +58,6 @@ namespace Nethermind.Api
         IBlockFinalizationManager? FinalizationManager { get; set; }
 
         IBlockProducerEnvFactory BlockProducerEnvFactory { get; }
-        IReadOnlyTxProcessingEnvFactory ReadOnlyTxProcessingEnvFactory { get; }
-
-        IGasPriceOracle GasPriceOracle { get; }
 
         IBlockProductionPolicy? BlockProductionPolicy { get; set; }
         IBackgroundTaskScheduler BackgroundTaskScheduler { get; set; }

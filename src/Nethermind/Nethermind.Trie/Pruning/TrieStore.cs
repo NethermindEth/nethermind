@@ -101,6 +101,8 @@ public sealed class TrieStore : ITrieStore, IPruningTrieStore
 
     public IScopedTrieStore GetTrieStore(Hash256? address) => new ScopedTrieStore(this, address);
 
+    private IScopedTrieStore GetTrieStoreForPruning(Hash256? address) => new ScopedTrieStore(new InPruningTrieStore(this), address);
+
     public long LastPersistedBlockNumber
     {
         get => _latestPersistedBlockNumber;
@@ -209,30 +211,30 @@ public sealed class TrieStore : ITrieStore, IPruningTrieStore
         }
     }
 
-    private void CommitAndInsertToDirtyNodes(long blockNumber, Hash256? address, ref TreePath path, in NodeCommitInfo nodeCommitInfo)
+    private TrieNode CommitAndInsertToDirtyNodes(long blockNumber, Hash256? address, ref TreePath path, TrieNode node)
     {
-        if (_logger.IsTrace) Trace(blockNumber, in nodeCommitInfo);
-        if (!nodeCommitInfo.IsEmptyBlockMarker && !nodeCommitInfo.Node.IsBoundaryProofNode)
+        if (_logger.IsTrace) Trace(blockNumber, in node);
+        if (!node.IsBoundaryProofNode)
         {
-            TrieNode node = nodeCommitInfo.Node;
-
             if (node.Keccak is null)
             {
                 ThrowUnknownHash(node);
             }
 
             if (IsInCommitBufferMode)
-                _commitBuffer.SaveOrReplaceInDirtyNodesCache(address, ref path, nodeCommitInfo, blockNumber);
+                node = _commitBuffer.SaveOrReplaceInDirtyNodesCache(address, ref path, node, blockNumber);
             else
-                SaveOrReplaceInDirtyNodesCache(address, ref path, nodeCommitInfo, blockNumber);
+                node = SaveOrReplaceInDirtyNodesCache(address, ref path, node, blockNumber);
 
             IncrementCommittedNodesCount();
         }
 
+        return node;
+
         [MethodImpl(MethodImplOptions.NoInlining)]
-        void Trace(long blockNumber, in NodeCommitInfo nodeCommitInfo)
+        void Trace(long blockNumber, in TrieNode node)
         {
-            _logger.Trace($"Committing {nodeCommitInfo} at {blockNumber}");
+            _logger.Trace($"Committing {node} at {blockNumber}");
         }
 
         [DoesNotReturn, StackTraceHidden]
@@ -284,48 +286,28 @@ public sealed class TrieStore : ITrieStore, IPruningTrieStore
     private TrieNode DirtyNodesFindCachedOrUnknown(TrieStoreDirtyNodesCache.Key key) =>
         GetDirtyNodeShard(key).FindCachedOrUnknown(key);
 
-    private void SaveOrReplaceInDirtyNodesCache(
+    private TrieNode SaveOrReplaceInDirtyNodesCache(
         Hash256? address,
         ref TreePath path,
-        NodeCommitInfo nodeCommitInfo,
+        TrieNode node,
         long blockNumber)
     {
-        TrieStoreDirtyNodesCache shard = _dirtyNodes[GetNodeShardIdx(path, nodeCommitInfo.Node.Keccak)];
-        SaveOrReplaceInDirtyNodesCache(shard, address, ref path, nodeCommitInfo, blockNumber);
+        TrieStoreDirtyNodesCache shard = _dirtyNodes[GetNodeShardIdx(path, node.Keccak)];
+        return SaveOrReplaceInDirtyNodesCache(shard, address, ref path, node, blockNumber);
     }
 
-    private void SaveOrReplaceInDirtyNodesCache(
+    private TrieNode SaveOrReplaceInDirtyNodesCache(
         TrieStoreDirtyNodesCache shard,
         Hash256? address,
         ref TreePath path,
-        NodeCommitInfo nodeCommitInfo,
+        TrieNode node,
         long blockNumber
     )
     {
-        TrieNode node = nodeCommitInfo.Node;
         TrieStoreDirtyNodesCache.Key key = new(address, path, node.Keccak);
         TrieNode cachedNodeCopy = shard.GetOrAdd(in key, new TrieStoreDirtyNodesCache.NodeRecord(node, blockNumber)).Node;
         if (!ReferenceEquals(cachedNodeCopy, node))
         {
-            // So what happen here is that the patricia trie was modified in a way that some of the trie nodes
-            // was re-generated, basically the value was modified back to a recently committed value that is still cached.
-            // This happen about 2.5% of the time at 4GB dirty cache and 16GB total cache.
-
-            Metrics.LoadedFromCacheNodesCount++;
-            // If the cached not is not persisted, we try to replace it in its parent to reduce duplicated
-            // nodes.
-            if (_logger.IsTrace) Trace(node, cachedNodeCopy);
-            cachedNodeCopy.ResolveKey(GetTrieStore(address), ref path, nodeCommitInfo.IsRoot);
-            if (node.Keccak != cachedNodeCopy.Keccak)
-            {
-                ThrowNodeIsNotSame(node, cachedNodeCopy);
-            }
-
-            if (!nodeCommitInfo.IsRoot)
-            {
-                nodeCommitInfo.NodeParent!.ReplaceChildRef(nodeCommitInfo.ChildPositionAtParent, cachedNodeCopy);
-            }
-
             Metrics.ReplacedNodesCount++;
         }
         else
@@ -333,15 +315,7 @@ public sealed class TrieStore : ITrieStore, IPruningTrieStore
             shard.IncrementMemory(node);
         }
 
-        [MethodImpl(MethodImplOptions.NoInlining)]
-        void Trace(TrieNode node, TrieNode cachedNodeCopy)
-        {
-            _logger.Trace($"Replacing {node} with its cached copy {cachedNodeCopy}.");
-        }
-
-        [DoesNotReturn, StackTraceHidden]
-        static void ThrowNodeIsNotSame(TrieNode node, TrieNode cachedNodeCopy) =>
-            throw new InvalidOperationException($"The hash of replacement node {cachedNodeCopy} is not the same as the original {node}.");
+        return cachedNodeCopy;
     }
 
     public IDisposable BeginScope(BlockHeader? baseBlock)
@@ -451,6 +425,7 @@ public sealed class TrieStore : ITrieStore, IPruningTrieStore
     private void FinishBlockCommit(BlockCommitSet set, TrieNode? root)
     {
         if (_logger.IsTrace) _logger.Trace($"Enqueued blocks {_commitSetQueue?.Count ?? 0}");
+        // Note: root is null when the state trie is empty. It will therefore make the block commit set not sealed.
         set.Seal(root);
         set.Prune();
 
@@ -951,7 +926,7 @@ public sealed class TrieStore : ITrieStore, IPruningTrieStore
 
         // The first CallRecursive stop at two level, yielding 256 node in parallelStartNodes, which is run concurrently
         TreePath path = TreePath.Empty;
-        commitSet.Root?.CallRecursively(TopLevelPersist, null, ref path, GetTrieStore(null), true, _logger, maxPathLength: parallelBoundaryPathLength);
+        commitSet.Root?.CallRecursively(TopLevelPersist, null, ref path, GetTrieStoreForPruning(null), true, _logger, maxPathLength: parallelBoundaryPathLength);
 
         // The amount of change in the subtrees are not balanced at all. So their writes areas buffered here
         // which get disposed in parallel instead of being disposed in `PersistNodeStartingFrom`.
@@ -1019,7 +994,7 @@ public sealed class TrieStore : ITrieStore, IPruningTrieStore
             }
         }
 
-        await tn.CallRecursivelyAsync(DoPersist, address2, ref path, GetTrieStore(address2), _logger);
+        await tn.CallRecursivelyAsync(DoPersist, address2, ref path, GetTrieStoreForPruning(address2), _logger);
         await disposeQueue.Writer.WriteAsync(writeBatch);
     }
 
@@ -1045,6 +1020,11 @@ public sealed class TrieStore : ITrieStore, IPruningTrieStore
     {
         return lastCommit < LastPersistedBlockNumber
                && lastCommit < LatestCommittedBlockNumber - _maxDepth;
+    }
+
+    private bool IsStillNeeded(long lastCommit)
+    {
+        return !IsNoLongerNeeded(lastCommit);
     }
 
     private void AnnounceReorgBoundaries()
@@ -1309,8 +1289,8 @@ public sealed class TrieStore : ITrieStore, IPruningTrieStore
             }
         }
 
-        public void CommitNode(ref TreePath path, NodeCommitInfo nodeCommitInfo) =>
-            trieStore.CommitAndInsertToDirtyNodes(blockNumber, address, ref path, nodeCommitInfo);
+        public TrieNode CommitNode(ref TreePath path, TrieNode node) =>
+            trieStore.CommitAndInsertToDirtyNodes(blockNumber, address, ref path, node);
 
         public bool TryRequestConcurrentQuota() => blockCommitter.TryRequestConcurrencyQuota();
 
@@ -1491,12 +1471,11 @@ public sealed class TrieStore : ITrieStore, IPruningTrieStore
 
         private TrieStoreDirtyNodesCache GetDirtyNodeShard(in TreePath path, Hash256 keccak) => _dirtyNodesBuffer[_trieStore.GetNodeShardIdx(path, keccak)];
 
-        public void SaveOrReplaceInDirtyNodesCache(Hash256? address, ref TreePath path, in NodeCommitInfo nodeCommitInfo, long blockNumber)
+        public TrieNode SaveOrReplaceInDirtyNodesCache(Hash256? address, ref TreePath path, in TrieNode node, long blockNumber)
         {
-            TrieNode node = nodeCommitInfo.Node;
             // Change the shard to the one from commit buffer.
             TrieStoreDirtyNodesCache shard = GetDirtyNodeShard(path, node.Keccak);
-            _trieStore.SaveOrReplaceInDirtyNodesCache(shard, address, ref path, nodeCommitInfo, blockNumber);
+            return _trieStore.SaveOrReplaceInDirtyNodesCache(shard, address, ref path, node, blockNumber);
         }
 
         public TrieNode FindCachedOrUnknown(TrieStoreDirtyNodesCache.Key key, bool isReadOnly)
@@ -1506,19 +1485,76 @@ public sealed class TrieStore : ITrieStore, IPruningTrieStore
             TrieStoreDirtyNodesCache mainShard = _trieStore._dirtyNodes[shardIdx];
 
             var hasInBuffer = bufferShard.TryGetValue(key, out TrieNode bufferNode);
-            if (!hasInBuffer && mainShard.TryGetValue(key, out TrieNode mainNode))
+            if (!hasInBuffer && mainShard.TryGetRecord(key, out TrieStoreDirtyNodesCache.NodeRecord nodeRecord))
             {
-                // Need to migrate the shard
-                bufferShard.GetOrAdd(key, new TrieStoreDirtyNodesCache.NodeRecord(mainNode, -1));
-                if (!isReadOnly) return mainNode;
+                if (_trieStore.IsStillNeeded(nodeRecord.LastCommit))
+                {
+                    var rlp = nodeRecord.Node.FullRlp;
+                    if (rlp.IsNull)
+                    {
+                        bufferShard.GetOrAdd(key, nodeRecord);
+                        if (!isReadOnly) return nodeRecord.Node;
+                    }
+                    else
+                    {
+                        // clone is as if it read only
+                        TrieNode node = nodeRecord.Node.Clone();
+                        if (nodeRecord.Node.IsSealed) node.Seal();
+                        if (nodeRecord.Node.IsPersisted) node.IsPersisted = true;
+                        node.Keccak = nodeRecord.Node.Keccak;
+                        bufferShard.GetOrAdd(key, nodeRecord);
+                        if (!isReadOnly) return nodeRecord.Node;
+                    }
+                }
             }
 
-            if (!isReadOnly && hasInBuffer)
+            if (hasInBuffer)
             {
-                return bufferNode;
+                if (!isReadOnly)
+                {
+                    return bufferNode;
+                }
+                else
+                {
+                    return _trieStore.CloneForReadOnly(key, bufferNode);
+                }
             }
 
             return isReadOnly ? bufferShard.FromCachedRlpOrUnknown(key) : bufferShard.FindCachedOrUnknown(key);
         }
+    }
+
+    internal TrieNode CloneForReadOnly(in TrieStoreDirtyNodesCache.Key key, TrieNode node)
+    {
+        // we returning a copy to avoid multithreaded access
+        var trieNode = new TrieNode(NodeType.Unknown, key.Keccak, node.FullRlp);
+        trieNode.ResolveNode(GetTrieStore(key.Address), key.Path);
+        trieNode.Keccak = key.Keccak;
+        return trieNode;
+    }
+
+    /// <summary>
+    /// Specific trie store used during memory pruning so that it does not attempt to get from commit buffer.
+    /// </summary>
+    /// <param name="baseTrieStore"></param>
+    private class InPruningTrieStore(TrieStore baseTrieStore) : IScopableTrieStore
+    {
+        public TrieNode FindCachedOrUnknown(Hash256? address, in TreePath path, Hash256 hash)
+        {
+            ArgumentNullException.ThrowIfNull(hash);
+
+            TrieStoreDirtyNodesCache.Key key = new TrieStoreDirtyNodesCache.Key(address, path, hash);
+            return baseTrieStore.FindCachedOrUnknown(key, false);
+        }
+
+        public ICommitter BeginCommit(Hash256? address, TrieNode? root, WriteFlags writeFlags) => NullCommitter.Instance;
+
+        public byte[]? LoadRlp(Hash256? address, in TreePath path, Hash256 hash, ReadFlags flags = ReadFlags.None) => baseTrieStore.LoadRlp(address, in path, hash, flags);
+
+        public byte[]? TryLoadRlp(Hash256? address, in TreePath path, Hash256 hash, ReadFlags flags = ReadFlags.None) => baseTrieStore.TryLoadRlp(address, in path, hash, flags);
+
+        public bool IsPersisted(Hash256? address, in TreePath path, in ValueHash256 keccak) => baseTrieStore.IsPersisted(address, in path, in keccak);
+
+        public INodeStorage.KeyScheme Scheme => baseTrieStore.Scheme;
     }
 }

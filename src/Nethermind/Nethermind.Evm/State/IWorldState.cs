@@ -97,6 +97,7 @@ public interface IWorldState : IJournal<Snapshot>, IReadOnlyStateProvider
 
     void CreateAccount(Address address, in UInt256 balance, in UInt256 nonce = default);
     void CreateAccountIfNotExists(Address address, in UInt256 balance, in UInt256 nonce = default);
+    void CreateEmptyAccountIfDeleted(Address address);
 
     /// <summary>
     /// Inserts the given smart contract code into the system at the specified address,
@@ -116,8 +117,6 @@ public interface IWorldState : IJournal<Snapshot>, IReadOnlyStateProvider
     bool AddToBalanceAndCreateIfNotExists(Address address, in UInt256 balanceChange, IReleaseSpec spec);
 
     void SubtractFromBalance(Address address, in UInt256 balanceChange, IReleaseSpec spec);
-
-    void UpdateStorageRoot(Address address, Hash256 storageRoot);
 
     void IncrementNonce(Address address, UInt256 delta);
 

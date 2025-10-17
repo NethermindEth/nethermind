@@ -7,16 +7,11 @@ using Nethermind.Network.P2P.Messages;
 
 namespace Nethermind.Network.P2P.Subprotocols.Eth.V62.Messages
 {
-    public class GetBlockBodiesMessage : P2PMessage
+    public class GetBlockBodiesMessage(IReadOnlyList<Hash256> blockHashes) : P2PMessage
     {
-        public IReadOnlyList<Hash256> BlockHashes { get; }
-        public override int PacketType { get; } = Eth62MessageCode.GetBlockBodies;
-        public override string Protocol { get; } = "eth";
-
-        public GetBlockBodiesMessage(IReadOnlyList<Hash256> blockHashes)
-        {
-            BlockHashes = blockHashes;
-        }
+        public IReadOnlyList<Hash256> BlockHashes { get; } = blockHashes;
+        public override int PacketType => Eth62MessageCode.GetBlockBodies;
+        public override string Protocol => "eth";
 
         public GetBlockBodiesMessage(params Hash256[] blockHashes) : this((IReadOnlyList<Hash256>)blockHashes)
         {

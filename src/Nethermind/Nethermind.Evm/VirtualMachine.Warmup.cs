@@ -63,7 +63,7 @@ public unsafe partial class VirtualMachine
             RunOpCodes<OffFlag>(vm, state, evmState, spec);
         }
 
-        TransactionProcessor processor = new(MainnetSpecProvider.Instance, state, vm, codeInfoRepository, lm);
+        TransactionProcessor processor = new(BlobBaseFeeCalculator.Instance, MainnetSpecProvider.Instance, state, vm, codeInfoRepository, lm);
         processor.SetBlockExecutionContext(new BlockExecutionContext(_header, spec));
 
         RunTransactions(processor, state, spec);
@@ -150,7 +150,7 @@ public unsafe partial class VirtualMachine
     {
         const int WarmUpIterations = 40;
 
-        OpCode[] opcodes = EvmInstructions.GenerateOpCodes<TTracingInst>(spec);
+        OpCode[] opcodes = vm.GenerateOpCodes<TTracingInst>(spec);
         ITxTracer txTracer = new FeesTracer();
         vm._txTracer = txTracer;
         EvmStack stack = new(0, txTracer, evmState.DataStack);

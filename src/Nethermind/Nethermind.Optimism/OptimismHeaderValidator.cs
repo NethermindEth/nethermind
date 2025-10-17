@@ -18,10 +18,10 @@ public class PreBedrockHeaderValidator(
     ISpecProvider? specProvider,
     ILogManager? logManager) : HeaderValidator(blockTree, sealValidator, specProvider, logManager)
 {
-    public override bool Validate(BlockHeader header, BlockHeader? parent, bool isUncle, [NotNullWhen(false)] out string? error)
+    protected override bool Validate<TOrphaned>(BlockHeader header, BlockHeader? parent, bool isUncle, out string? error)
     {
         error = null;
-        return ValidateParent(header, parent, ref error);
+        return typeof(TOrphaned) == typeof(OnFlag) || ValidateParent(header, parent, ref error);
     }
 }
 
@@ -37,11 +37,11 @@ public class OptimismHeaderValidator(
         new PreBedrockHeaderValidator(blockTree, sealValidator, specProvider, logManager),
         blockTree, specProvider, sealValidator, logManager)
 {
-    public override bool Validate(BlockHeader header, BlockHeader? parent, bool isUncle, out string? error)
+    protected override bool Validate<TOrphaned>(BlockHeader header, BlockHeader? parent, bool isUncle, out string? error)
     {
         if (specHelper.IsHolocene(header))
         {
-            if (!header.TryDecodeEIP1559Parameters(out var parameters, out var decodeError))
+            if (!header.TryDecodeEIP1559Parameters(out EIP1559Parameters parameters, out var decodeError))
             {
                 error = decodeError;
                 return false;
@@ -54,7 +54,7 @@ public class OptimismHeaderValidator(
             }
         }
 
-        return base.Validate(header, parent, isUncle, out error);
+        return base.Validate<TOrphaned>(header, parent, isUncle, out error);
     }
 
     protected override bool ValidateRequestsHash(BlockHeader header, IReleaseSpec spec, ref string? error)

@@ -10,6 +10,7 @@ using System.Text.RegularExpressions;
 using System.Threading;
 using System.Threading.Tasks;
 using FastEnumUtility;
+using Nethermind.Consensus.Scheduler;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
@@ -29,8 +30,9 @@ public class P2PProtocolHandler(
     PublicKey localNodeId,
     INodeStatsManager nodeStatsManager,
     IMessageSerializationService serializer,
+    IBackgroundTaskScheduler backgroundTaskScheduler,
     ILogManager logManager)
-    : ProtocolHandlerBase(session, nodeStatsManager, serializer, logManager), IPingSender, IP2PProtocolHandler
+    : ProtocolHandlerBase(session, nodeStatsManager, serializer, backgroundTaskScheduler, logManager), IPingSender, IP2PProtocolHandler
 {
     private TaskCompletionSource<Packet> _pongCompletionSource;
     private readonly INodeStatsManager _nodeStatsManager = nodeStatsManager ?? throw new ArgumentNullException(nameof(nodeStatsManager));
@@ -50,7 +52,7 @@ public class P2PProtocolHandler(
 
     public IReadOnlyList<Capability> AgreedCapabilities { get { return _agreedCapabilities; } }
     public IReadOnlyList<Capability> AvailableCapabilities { get { return _availableCapabilities; } }
-    private readonly List<Capability> _supportedCapabilities = new List<Capability>();
+    private readonly List<Capability> _supportedCapabilities = new();
 
     public int ListenPort { get; } = session.LocalPort;
     public PublicKey LocalNodeId { get; } = localNodeId;
@@ -346,4 +348,9 @@ public class P2PProtocolHandler(
         ProtocolInitialized = null;
         SubprotocolRequested = null;
     }
+
+    public IReadOnlyList<Capability> GetCapabilities() =>
+        _agreedCapabilities.Count > 0
+            ? _agreedCapabilities
+            : _supportedCapabilities;
 }

@@ -11,11 +11,13 @@ using Nethermind.Consensus.AuRa;
 using Nethermind.Consensus.AuRa.Config;
 using Nethermind.Consensus.AuRa.InitializationSteps;
 using Nethermind.Consensus.AuRa.Validators;
+using Nethermind.Consensus.Processing;
 using Nethermind.Consensus.Producers;
 using Nethermind.Consensus.Withdrawals;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
+using Nethermind.Core.Test.Container;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Int256;
 using Nethermind.Merge.AuRa.Contracts;
@@ -109,6 +111,11 @@ public class AuRaMergeEngineModuleTests : EngineModuleTests
                         provider.SealEngine = SealEngineType;
                     return specProvider;
                 })
+                .WithGenesisPostProcessor((block, state) =>
+                {
+                    block.Header.AuRaStep = 0;
+                    block.Header.AuRaSignature = new byte[65];
+                })
 
                 // Aura uses `AuRaNethermindApi` for initialization, so need to do some additional things here
                 // as normally, test blockchain don't use INethermindApi at all. Note: This test does not
@@ -125,6 +132,9 @@ public class AuRaMergeEngineModuleTests : EngineModuleTests
 
                 .AddSingleton<IBlockImprovementContextFactory, IBlockProducer, IMergeConfig>((blockProducer,
                     mergeConfig) => new BlockImprovementContextFactory(blockProducer, TimeSpan.FromSeconds(mergeConfig.SecondsPerSlot)))
+
+                // AuRa was never configured correctly in test.
+                .AddScoped<IBlockProcessor, BlockProcessor>()
 
                 .AddDecorator<AuRaNethermindApi>((ctx, api) =>
                 {

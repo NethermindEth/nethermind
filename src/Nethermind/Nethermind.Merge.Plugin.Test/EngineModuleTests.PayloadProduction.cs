@@ -12,9 +12,12 @@ using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
+using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
+using Nethermind.Core.Test.Container;
 using Nethermind.Core.Timers;
 using Nethermind.Crypto;
+using Nethermind.Evm.State;
 using Nethermind.Int256;
 using Nethermind.JsonRpc;
 using Nethermind.JsonRpc.Test;
@@ -40,6 +43,7 @@ using System.Security.Cryptography;
 using System.Threading;
 using System.Threading.Tasks;
 using ILogManager = Nethermind.Logging.ILogManager;
+using ITimer = Nethermind.Core.Timers.ITimer;
 
 namespace Nethermind.Merge.Plugin.Test;
 
@@ -69,11 +73,21 @@ public partial class EngineModuleTests
     [Obsolete]
     public async Task getPayloadV1_should_return_error_if_called_after_cleanup_timer()
     {
+        ITimer cancellationTimer = null!;
+
         MergeConfig mergeConfig = new() { SecondsPerSlot = 1, TerminalTotalDifficulty = "0" };
         TimeSpan timePerSlot = TimeSpan.FromMilliseconds(10);
         using MergeTestBlockchain chain = await CreateBlockchainWithImprovementContext(
             static ctx => new BlockImprovementContextFactory(ctx.Resolve<IBlockProducer>(), TimeSpan.FromSeconds(1)),
-            timePerSlot, mergeConfig);
+            timePerSlot, mergeConfig,
+            configurer: builder => builder
+                .UpdateSingleton<IPayloadPreparationService>((builder) => builder
+                    .AddSingleton<ITimerFactory>(new FunctionalTimerFactory((interval) =>
+                    {
+                        cancellationTimer = Substitute.For<ITimer>();
+                        return cancellationTimer;
+                    })))
+            );
 
         IEngineRpcModule rpc = chain.EngineRpcModule;
         Hash256 startingHead = chain.BlockTree.HeadHash;
@@ -86,6 +100,7 @@ public partial class EngineModuleTests
             .PayloadId!;
 
         await Task.Delay(PayloadPreparationService.SlotsPerOldPayloadCleanup * 2 * timePerSlot + timePerSlot);
+        cancellationTimer.Elapsed += Raise.Event();
 
         ResultWrapper<ExecutionPayload?> response = await rpc.engine_getPayloadV1(Bytes.FromHexString(payloadId));
 
@@ -174,9 +189,10 @@ public partial class EngineModuleTests
 
     [TestCaseSource(nameof(WaitTestCases))]
     [Parallelizable(ParallelScope.None)] // Timing sensitive
+    [Retry(3)]
     public async Task getPayloadV1_waits_for_block_production(TimeSpan txDelay, TimeSpan improveDelay, bool hasTx)
     {
-        TaskCompletionSource yieldedTransaction = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        TaskCompletionSource yieldedTransaction = new(TaskCreationOptions.RunContinuationsAsynchronously);
         using MergeTestBlockchain chain = await CreateBlockchain(configurer: builder => builder
             .AddSingleton<IBlockImprovementContextFactory, IBlockProducer>((producer) => new DelayBlockImprovementContextFactory(producer, TimeSpan.FromSeconds(10), improveDelay))
             .AddSingleton(ConfigurePayloadPreparationService(TimeSpan.FromSeconds(10), null))
@@ -207,17 +223,16 @@ public partial class EngineModuleTests
         }
 
         TimeSpan timeBudget = PayloadPreparationService.GetPayloadWaitForNonEmptyBlockMillisecondsDelay;
-        int expectedTxCount = 50;
-        if (txDelay != TimeSpan.Zero)
-        {
-            expectedTxCount = (int)((timeBudget - improveDelay) / txDelay);
-        }
-        if (improveDelay > timeBudget) expectedTxCount = 0;
+        int expectedTxCount = improveDelay > timeBudget
+            ? 0
+            : txDelay != TimeSpan.Zero ? (int)((timeBudget - improveDelay) / txDelay) : 50;
+
+        int maxWait = Math.Max(0, (int)(timeBudget - improveDelay).TotalMilliseconds - 1);
 
         await Task.Delay(timeBudget);
 
         Assert.That(() => rpc.engine_getPayloadV1(Bytes.FromHexString(payloadId)).Result.Data!.Transactions,
-            Has.Length.InRange(expectedTxCount * 0.5, expectedTxCount * 2.0)); // get payload stop block improvement so retrying does nothing here.
+            Has.Length.InRange(expectedTxCount * 0.5, expectedTxCount * 2.0).After(maxWait, 10)); // get payload stop block improvement so retrying does nothing here.
     }
 
     [Test]
@@ -464,17 +479,16 @@ public partial class EngineModuleTests
         Transaction tx2 = TxDecoder.Instance.Decode(new RlpStream(Bytes.FromHexString(tx2Hex)), RlpBehaviors.SkipTypedWrapping)!;
 
         MergeTestBlockchain blockchain = CreateBaseBlockchain();
-        blockchain.InitialStateMutator = state =>
-        {
-            state.CreateAccount(new Address("0xBC2Fd1637C49839aDB7Bb57F9851EAE3194A90f7"), (UInt256)1200482917041833040, 1);
-        };
-
         TimeSpan delay = TimeSpan.FromMilliseconds(10);
         TimeSpan timePerSlot = 1000 * delay;
         using MergeTestBlockchain chain = await blockchain.BuildMergeTestBlockchain(builder =>
         {
             builder
                 .AddSingleton<ISpecProvider>(SepoliaSpecProvider.Instance)
+                .WithGenesisPostProcessor((genesis, state) =>
+                {
+                    state.CreateAccount(new Address("0xBC2Fd1637C49839aDB7Bb57F9851EAE3194A90f7"), (UInt256)1200482917041833040, 1);
+                })
                 .AddSingleton(ConfigurePayloadPreparationService(timePerSlot, delay))
                 ;
 
@@ -534,7 +548,7 @@ public partial class EngineModuleTests
         chain.AddTransactions(BuildTransactions(chain, startingHead, TestItem.PrivateKeyC, TestItem.AddressA, 3, 10, out _, out _));
 
         IBlockImprovementContext cancelledContext = await cancelledContextTask;
-        improvementContextFactory.CreatedContexts.Should().HaveCount(2);
+        Assert.That(() => improvementContextFactory.CreatedContexts.Count, Is.EqualTo(2).After(1000, 10));
 
         ExecutionPayload getPayloadResult = (await rpc.engine_getPayloadV1(Bytes.FromHexString(payloadId))).Data!;
 
@@ -782,9 +796,12 @@ public partial class EngineModuleTests
     [TestCaseSource(nameof(OsakaTransitionInvalidatedTransactionsTestCaseSource))]
     public async Task Lightweight_transaction_validation_is_applied_on_new_head(Transaction tx, IReleaseSpec initialSpec, IReleaseSpec nextBlockSpec, bool isForked)
     {
-        using MergeTestBlockchain chain = CreateBaseBlockchain();
-        chain.GenesisBlockBuilder = Build.A.Block.Genesis.Genesis.WithTimestamp(1UL).WithGasLimit(Eip7825Constants.DefaultTxGasLimitCap * 2);
-        await chain.Build(new TestSpecProvider(initialSpec) { NextForkSpec = isForked ? nextBlockSpec : initialSpec });
+        using MergeTestBlockchain chain = await CreateBlockchain(configurer: builder => builder
+            .WithGenesisPostProcessor((genesis, state) =>
+            {
+                genesis.Header.GasLimit = Eip7825Constants.DefaultTxGasLimitCap * 2;
+            })
+            .AddSingleton<ISpecProvider>(new TestSpecProvider(initialSpec) { NextForkSpec = isForked ? nextBlockSpec : initialSpec }));
 
         IEngineRpcModule rpc = chain.EngineRpcModule;
         Hash256 blockHash = chain.BlockTree.HeadHash;

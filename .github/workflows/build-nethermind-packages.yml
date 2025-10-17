@@ -14,49 +14,63 @@ jobs:
       SCRIPTS_PATH: ${{ github.workspace }}/scripts/build
     steps:
       - name: Check out repository
-        uses: actions/checkout@v4
-      - name: Set up .NET
-        uses: actions/setup-dotnet@v4
+        uses: actions/checkout@v5
+
+      - name: Detect version
+        id: version
+        working-directory: src/Nethermind
+        run: |
+          sudo apt-get update && sudo apt-get install xmlstarlet -y --no-install-recommends
+          version_prefix=$(xmlstarlet sel -t -v "//Project/PropertyGroup/VersionPrefix" Directory.Build.props)
+          version_suffix=$(xmlstarlet sel -t -v "//Project/PropertyGroup/VersionSuffix" Directory.Build.props)
+          version=$([[ -n "$version_suffix" ]] && echo "$version_prefix-$version_suffix" || echo "$version_prefix")
+          echo "Detected version $version"
+          echo "PACKAGE_PREFIX=nethermind-$version-${GITHUB_SHA:0:8}" >> $GITHUB_ENV
+
       - name: Build Nethermind.Runner
-        id: build
         run: |
-          build_timestamp=$(date '+%s')
-          echo "build-timestamp=$build_timestamp" >> $GITHUB_OUTPUT
-          echo "commit-hash=${GITHUB_SHA:0:8}" >> $GITHUB_OUTPUT
-          $SCRIPTS_PATH/build.sh $GITHUB_SHA $build_timestamp
+          mkdir $GITHUB_WORKSPACE/$PUB_DIR
+
+          docker build . -t nethermind-build -f $SCRIPTS_PATH/Dockerfile \
+            --build-arg COMMIT_HASH=$GITHUB_SHA \
+            --build-arg SOURCE_DATE_EPOCH=$(git log -1 --format=%ct)
+
+          docker run --rm --mount type=bind,source=$GITHUB_WORKSPACE/$PUB_DIR,target=/output nethermind-build
+
       - name: Archive packages
-        env:
-          PACKAGE_PREFIX: nethermind-preview-${{ steps.build.outputs.commit-hash }}
-        run: |
-          echo "PACKAGE_PREFIX=$PACKAGE_PREFIX" >> $GITHUB_ENV
-          $SCRIPTS_PATH/archive.sh
-      - name: Upload Nethermind Linux x64 package
-        uses: actions/upload-artifact@v4
-        with:
-          name: ${{ env.PACKAGE_PREFIX }}-linux-x64-package
-          path: ${{ github.workspace }}/${{ env.PACKAGE_DIR }}/*linux-x64*
-          retention-days: ${{ env.PACKAGE_RETENTION }}
+        run: $SCRIPTS_PATH/archive.sh
+
       - name: Upload Nethermind Linux arm64 package
         uses: actions/upload-artifact@v4
         with:
           name: ${{ env.PACKAGE_PREFIX }}-linux-arm64-package
           path: ${{ github.workspace }}/${{ env.PACKAGE_DIR }}/*linux-arm64*
           retention-days: ${{ env.PACKAGE_RETENTION }}
-      - name: Upload Nethermind Windows x64 package
+
+      - name: Upload Nethermind Linux x64 package
         uses: actions/upload-artifact@v4
         with:
-          name: ${{ env.PACKAGE_PREFIX }}-windows-x64-package
-          path: ${{ github.workspace }}/${{ env.PACKAGE_DIR }}/*windows-x64*
+          name: ${{ env.PACKAGE_PREFIX }}-linux-x64-package
+          path: ${{ github.workspace }}/${{ env.PACKAGE_DIR }}/*linux-x64*
           retention-days: ${{ env.PACKAGE_RETENTION }}
+
+      - name: Upload Nethermind macOS arm64 package
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ env.PACKAGE_PREFIX }}-macos-arm64-package
+          path: ${{ github.workspace }}/${{ env.PACKAGE_DIR }}/*macos-arm64*
+          retention-days: ${{ env.PACKAGE_RETENTION }}
+
       - name: Upload Nethermind macOS x64 package
         uses: actions/upload-artifact@v4
         with:
           name: ${{ env.PACKAGE_PREFIX }}-macos-x64-package
           path: ${{ github.workspace }}/${{ env.PACKAGE_DIR }}/*macos-x64*
           retention-days: ${{ env.PACKAGE_RETENTION }}
-      - name: Upload Nethermind macOS arm64 package
+
+      - name: Upload Nethermind Windows x64 package
         uses: actions/upload-artifact@v4
         with:
-          name: ${{ env.PACKAGE_PREFIX }}-macos-arm64-package
-          path: ${{ github.workspace }}/${{ env.PACKAGE_DIR }}/*macos-arm64*
+          name: ${{ env.PACKAGE_PREFIX }}-windows-x64-package
+          path: ${{ github.workspace }}/${{ env.PACKAGE_DIR }}/*windows-x64*
           retention-days: ${{ env.PACKAGE_RETENTION }}

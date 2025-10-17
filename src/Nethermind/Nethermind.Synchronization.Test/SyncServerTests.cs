@@ -679,6 +679,8 @@ public class SyncServerTests
     }
 
     [Test]
+    [Retry(3)]
+    [Parallelizable(ParallelScope.None)]
     public void Broadcast_BlockRangeUpdate_when_latest_increased_enough()
     {
         Context ctx = new();
@@ -715,7 +717,7 @@ public class SyncServerTests
         localBlockTree.AddBranch(blocksCount * 2 / 3, splitBlockNumber: startBlock, splitVariant: 0);
         localBlockTree.AddBranch(blocksCount, splitBlockNumber: startBlock, splitVariant: 0);
 
-        var expectedUpdates = Enumerable.Range(startBlock + 1, blocksCount)
+        (long earliest, int latest)[] expectedUpdates = Enumerable.Range(startBlock + 1, blocksCount)
             .Where(x => x % frequency == 0)
             .Select(x => (earliest: localBlockTree.Genesis!.Number, latest: x))
             .ToArray()[^2..];
@@ -727,7 +729,7 @@ public class SyncServerTests
                     .Where(c => c.GetMethodInfo().Name == nameof(ISyncPeer.NotifyOfNewRange))
                     .Select(c => c.GetArguments().Cast<BlockHeader>().Select(b => b.Number).ToArray())
                     .Select(a => (earliest: a[0], latest: a[1])).ToArray()[^2..],
-                Is.EquivalentTo(expectedUpdates).After(5000, 100) // Wait for background notifications to finish
+                Is.EquivalentTo(expectedUpdates).After(15000, 50) // Wait for background notifications to finish
             );
         }
     }
@@ -767,7 +769,7 @@ public class SyncServerTests
             using (ICommitter committer = scopedTrieStore.BeginCommit(node))
             {
                 TreePath path = TreePath.Empty;
-                committer.CommitNode(ref path, new NodeCommitInfo(node));
+                committer.CommitNode(ref path, node);
             }
         }
 

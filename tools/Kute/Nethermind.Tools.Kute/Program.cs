@@ -17,15 +17,15 @@ using System.CommandLine;
 
 namespace Nethermind.Tools.Kute;
 
-static class Program
+public static class Program
 {
     public static async Task<int> Main(string[] args)
     {
         RootCommand rootCommand =
         [
-            Config.HostAddress,
             Config.JwtSecretFilePath,
             Config.MessagesFilePath,
+            Config.HostAddress,
             Config.ResponsesTraceFile,
             Config.MethodFilters,
             Config.MetricsReportFormatter,
@@ -33,7 +33,10 @@ static class Program
             Config.ConcurrentRequests,
             Config.ShowProgress,
             Config.UnwrapBatch,
-            Config.PrometheusPushGateway
+            Config.PrometheusPushGateway,
+            Config.PrometheusPushGatewayUser,
+            Config.PrometheusPushGatewayPassword,
+            Config.Labels,
         ];
         rootCommand.SetAction(async (parseResult, cancellationToken) =>
         {
@@ -44,9 +47,7 @@ static class Program
         });
         rootCommand.Description = "Send JSON RPC messages to an Ethereum node and report metrics.";
 
-        CommandLineConfiguration cli = new(rootCommand);
-
-        return await cli.InvokeAsync(args);
+        return await rootCommand.Parse(args).InvokeAsync();
     }
 
     private static IServiceProvider BuildServiceProvider(ParseResult parseResult)
@@ -67,7 +68,7 @@ static class Program
                 TimeSpan.FromSeconds(parseResult.GetValue(Config.AuthTtl))
             )
         );
-        collection.AddSingleton<IMessageProvider<JsonRpc>>(serviceProvider =>
+        collection.AddSingleton<IMessageProvider<JsonRpc>>(_ =>
         {
             FileMessageProvider ofStrings = new FileMessageProvider(parseResult.GetValue(Config.MessagesFilePath)!);
             JsonRpcMessageProvider ofJsonRpc = new JsonRpcMessageProvider(ofStrings);
@@ -86,7 +87,7 @@ static class Program
             new ComposedJsonRpcMethodFilter(
                 [..parseResult
                     .GetValue(Config.MethodFilters)!
-                    .Select(pattern => new PatternJsonRpcMethodFilter(pattern) as IJsonRpcMethodFilter)]
+                    .Select(IJsonRpcMethodFilter (pattern) => new PatternJsonRpcMethodFilter(pattern))]
             )
         );
         collection.AddSingleton<IJsonRpcSubmitter>(provider =>
@@ -117,18 +118,21 @@ static class Program
         {
             MemoryMetricsReporter memoryReporter = new MemoryMetricsReporter();
             ConsoleTotalReporter consoleReporter = new ConsoleTotalReporter(memoryReporter, provider.GetRequiredService<IMetricsReportFormatter>());
-            IMetricsReporter progresReporter = parseResult.GetValue(Config.ShowProgress)
+            IMetricsReporter progressReporter = parseResult.GetValue(Config.ShowProgress)
                 ? new ConsoleProgressReporter()
                 : new NullMetricsReporter();
 
+            Dictionary<string, string> labels = parseResult.GetValue(Config.Labels) ?? new();
             string? prometheusGateway = parseResult.GetValue(Config.PrometheusPushGateway);
+            string? prometheusGatewayUser = parseResult.GetValue(Config.PrometheusPushGatewayUser);
+            string? prometheusGatewayPassword = parseResult.GetValue(Config.PrometheusPushGatewayPassword);
             IMetricsReporter prometheusReporter = prometheusGateway is not null
-                ? new PrometheusPushGatewayMetricsReporter(prometheusGateway)
+                ? new PrometheusPushGatewayMetricsReporter(prometheusGateway, labels, prometheusGatewayUser, prometheusGatewayPassword)
                 : new NullMetricsReporter();
 
-            return new ComposedMetricsReporter([memoryReporter, progresReporter, consoleReporter, prometheusReporter]);
+            return new ComposedMetricsReporter(memoryReporter, progressReporter, consoleReporter, prometheusReporter);
         });
-        collection.AddSingleton<IAsyncProcessor>(provider =>
+        collection.AddSingleton<IAsyncProcessor>(_ =>
         {
             int concurrentRequests = parseResult.GetValue(Config.ConcurrentRequests);
             if (concurrentRequests > 1)

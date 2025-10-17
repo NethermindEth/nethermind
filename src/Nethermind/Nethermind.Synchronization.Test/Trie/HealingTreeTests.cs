@@ -29,6 +29,7 @@ using Nethermind.Trie.Pruning;
 using NSubstitute;
 using NUnit.Framework;
 using Nethermind.History;
+using Nethermind.Init.Modules;
 
 namespace Nethermind.Synchronization.Test.Trie;
 
@@ -41,14 +42,14 @@ public class HealingTreeTests
     [Test]
     public void get_state_tree_works()
     {
-        HealingStateTree stateTree = new(Substitute.For<ITrieStore>(), Substitute.For<INodeStorage>(), LimboLogs.Instance);
+        HealingStateTree stateTree = new(Substitute.For<ITrieStore>(), Substitute.For<INodeStorage>(), new Lazy<IPathRecovery>(), LimboLogs.Instance);
         stateTree.Get(stackalloc byte[] { 1, 2, 3 });
     }
 
     [Test]
     public void get_storage_tree_works()
     {
-        HealingStorageTree stateTree = new(Substitute.For<IScopedTrieStore>(), Substitute.For<INodeStorage>(), Keccak.EmptyTreeHash, LimboLogs.Instance, TestItem.AddressA, TestItem.KeccakA, null);
+        HealingStorageTree stateTree = new(Substitute.For<IScopedTrieStore>(), Substitute.For<INodeStorage>(), Keccak.EmptyTreeHash, LimboLogs.Instance, TestItem.AddressA, TestItem.KeccakA, new Lazy<IPathRecovery>());
         stateTree.Get(stackalloc byte[] { 1, 2, 3 });
     }
 
@@ -57,8 +58,7 @@ public class HealingTreeTests
     {
         static HealingStateTree CreateHealingStateTree(ITrieStore trieStore, INodeStorage nodeStorage, IPathRecovery recovery)
         {
-            HealingStateTree stateTree = new(trieStore, nodeStorage, LimboLogs.Instance);
-            stateTree.InitializeNetwork(recovery);
+            HealingStateTree stateTree = new(trieStore, nodeStorage, new Lazy<IPathRecovery>(recovery), LimboLogs.Instance);
             return stateTree;
         }
 
@@ -73,7 +73,7 @@ public class HealingTreeTests
         Hash256 addressPath = Keccak.Compute(TestItem.AddressA.Bytes);
         HealingStorageTree CreateHealingStorageTree(ITrieStore trieStore, INodeStorage nodeStorage, IPathRecovery recovery) =>
             new(trieStore.GetTrieStore(addressPath), nodeStorage, Keccak.EmptyTreeHash, LimboLogs.Instance, TestItem.AddressA,
-                _key, recovery);
+                _key, new Lazy<IPathRecovery>(recovery));
 
         TreePath path = TreePath.FromNibble([1, 2]);
         Hash256 fullPath = new Hash256("1200000000000000000000000000000000000000000000000000000000000000");
@@ -154,7 +154,7 @@ public class HealingTreeTests
 
         BlockHeader FillStorage(IContainer server)
         {
-            IWorldState mainWorldState = server.Resolve<AutoMainProcessingContext>().WorldState;
+            IWorldState mainWorldState = server.Resolve<MainProcessingContext>().WorldState;
             IBlockTree blockTree = server.Resolve<IBlockTree>();
 
             using var _ = mainWorldState.BeginScope(blockTree.Head?.Header);
@@ -208,7 +208,7 @@ public class HealingTreeTests
 
         void AssertStorage(IContainer client)
         {
-            IWorldState mainWorldState = client.Resolve<AutoMainProcessingContext>().WorldState;
+            IWorldState mainWorldState = client.Resolve<MainProcessingContext>().WorldState;
             using var _ = mainWorldState.BeginScope(baseBlock);
 
             for (int i = 0; i < 100; i++)

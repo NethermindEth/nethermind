@@ -27,9 +27,9 @@ jobs:
           - TxParser/TxParser.slnx
     steps:
       - name: Check out repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
       - name: Set up .NET
-        uses: actions/setup-dotnet@v4
+        uses: actions/setup-dotnet@v5
       - name: Build ${{ matrix.project }}
         working-directory: tools
         run: dotnet build ./${{ matrix.project }} -c ${{ matrix.config }}

@@ -48,10 +48,6 @@ public class SimulateBlockValidationTransactionsExecutor(
         {
             currentGasUsedTotal += txReceipt.GasUsed;
             txReceipt.GasUsedTotal = currentGasUsedTotal;
-
-            // For some reason, the logs from geth when processing the block is missing but not in the output from tracer.
-            // this cause the receipt root to be different than us. So we simulate it here.
-            txReceipt.Logs = [];
         }
 
         block.Header.GasUsed = startingGasLeft - simulateState.TotalGasLeft;
@@ -60,11 +56,5 @@ public class SimulateBlockValidationTransactionsExecutor(
         block.Header.TxRoot = TxTrie.CalculateRoot(block.Transactions);
 
         return result;
-    }
-
-    public event EventHandler<TxProcessedEventArgs>? TransactionProcessed
-    {
-        add => baseTransactionExecutor.TransactionProcessed += value;
-        remove => baseTransactionExecutor.TransactionProcessed -= value;
     }
 }

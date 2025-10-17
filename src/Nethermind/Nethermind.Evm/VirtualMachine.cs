@@ -7,7 +7,6 @@ using System.Diagnostics.CodeAnalysis;
 using System.Numerics;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
-using System.Runtime.Intrinsics;
 using System.Threading;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
@@ -32,7 +31,15 @@ namespace Nethermind.Evm;
 using unsafe OpCode = delegate*<VirtualMachine, ref EvmStack, ref long, ref int, EvmExceptionType>;
 using Int256;
 
-public sealed unsafe partial class VirtualMachine(
+public sealed unsafe class EthereumVirtualMachine(
+    IBlockhashProvider? blockHashProvider,
+    ISpecProvider? specProvider,
+    ILogManager? logManager
+) : VirtualMachine(blockHashProvider, specProvider, logManager)
+{
+}
+
+public unsafe partial class VirtualMachine(
     IBlockhashProvider? blockHashProvider,
     ISpecProvider? specProvider,
     ILogManager? logManager) : IVirtualMachine
@@ -68,23 +75,25 @@ public sealed unsafe partial class VirtualMachine(
     private readonly ValueHash256 _chainId = ((UInt256)specProvider.ChainId).ToValueHash();
 
     private readonly IBlockhashProvider _blockHashProvider = blockHashProvider ?? throw new ArgumentNullException(nameof(blockHashProvider));
-    private readonly ISpecProvider _specProvider = specProvider ?? throw new ArgumentNullException(nameof(specProvider));
-    private readonly ILogger _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
-    private readonly Stack<EvmState> _stateStack = new();
+    protected readonly ISpecProvider _specProvider = specProvider ?? throw new ArgumentNullException(nameof(specProvider));
+    protected readonly ILogger _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
+    protected readonly Stack<EvmState> _stateStack = new();
 
-    private IWorldState _worldState;
+    protected IWorldState _worldState;
     private (Address Address, bool ShouldDelete) _parityTouchBugAccount = (Address.FromNumber(3), false);
-    private ITxTracer _txTracer = NullTxTracer.Instance;
+
+    protected ITxTracer _txTracer = NullTxTracer.Instance;
 
     private ICodeInfoRepository _codeInfoRepository;
 
     private OpCode[] _opcodeMethods;
     private static long _txCount;
 
-    private EvmState _currentState;
-    private ReadOnlyMemory<byte>? _previousCallResult;
-    private UInt256 _previousCallOutputDestination;
+    protected EvmState _currentState;
+    protected ReadOnlyMemory<byte>? _previousCallResult;
+    protected UInt256 _previousCallOutputDestination;
 
+    public ILogger Logger => _logger;
     public ICodeInfoRepository CodeInfoRepository => _codeInfoRepository;
     public IReleaseSpec Spec => _blockExecutionContext.Spec;
     public ITxTracer TxTracer => _txTracer;
@@ -93,6 +102,7 @@ public sealed unsafe partial class VirtualMachine(
     public ReadOnlyMemory<byte> ReturnDataBuffer { get; set; } = Array.Empty<byte>();
     public object ReturnData { get; set; }
     public IBlockhashProvider BlockHashProvider => _blockHashProvider;
+    protected Stack<EvmState> StateStack => _stateStack;
 
     private BlockExecutionContext _blockExecutionContext;
     public void SetBlockExecutionContext(in BlockExecutionContext blockExecutionContext) => _blockExecutionContext = blockExecutionContext;
@@ -105,7 +115,7 @@ public sealed unsafe partial class VirtualMachine(
     /// </summary>
     public void SetTxExecutionContext(in TxExecutionContext txExecutionContext) => _txExecutionContext = txExecutionContext;
 
-    public EvmState EvmState { get => _currentState; private set => _currentState = value; }
+    public EvmState EvmState { get => _currentState; protected set => _currentState = value; }
     public int SectionIndex { get; set; }
     public int OpCodeCount { get; set; }
 
@@ -126,7 +136,7 @@ public sealed unsafe partial class VirtualMachine(
     /// <exception cref="EvmException">
     /// Thrown when an EVM-specific error occurs during execution.
     /// </exception>
-    public TransactionSubstate ExecuteTransaction<TTracingInst>(
+    public virtual TransactionSubstate ExecuteTransaction<TTracingInst>(
         EvmState evmState,
         IWorldState worldState,
         ITxTracer txTracer)
@@ -300,7 +310,7 @@ public sealed unsafe partial class VirtualMachine(
         }
     }
 
-    private void PrepareCreateData(EvmState previousState, ref ZeroPaddedSpan previousCallOutput)
+    protected void PrepareCreateData(EvmState previousState, ref ZeroPaddedSpan previousCallOutput)
     {
         _previousCallResult = previousState.Env.ExecutingAccount.Bytes;
         _previousCallOutputDestination = UInt256.Zero;
@@ -308,7 +318,7 @@ public sealed unsafe partial class VirtualMachine(
         previousCallOutput = ZeroPaddedSpan.Empty;
     }
 
-    private ZeroPaddedSpan HandleRegularReturn<TTracingInst>(scoped in CallResult callResult, EvmState previousState)
+    protected ZeroPaddedSpan HandleRegularReturn<TTracingInst>(scoped in CallResult callResult, EvmState previousState)
         where TTracingInst : struct, IFlag
     {
         ZeroPaddedSpan previousCallOutput;
@@ -336,7 +346,7 @@ public sealed unsafe partial class VirtualMachine(
         return previousCallOutput;
     }
 
-    private void HandleEofCreate(in CallResult callResult, EvmState previousState, long gasAvailableForCodeDeposit, ref bool previousStateSucceeded)
+    protected void HandleEofCreate(in CallResult callResult, EvmState previousState, long gasAvailableForCodeDeposit, ref bool previousStateSucceeded)
     {
         Address callCodeOwner = previousState.Env.ExecutingAccount;
         // ReturnCode was called with a container index and auxdata
@@ -384,7 +394,7 @@ public sealed unsafe partial class VirtualMachine(
         {
             // 4 - set state[new_address].code to the updated deploy container
             // push new_address onto the stack (already done before the ifs)
-            _codeInfoRepository.InsertCode(_worldState, bytecodeResultArray, callCodeOwner, spec);
+            _codeInfoRepository.InsertCode(bytecodeResultArray, callCodeOwner, spec);
             _currentState.GasAvailable -= codeDepositGasCost;
 
             if (_txTracer.IsTracingActions)
@@ -436,7 +446,7 @@ public sealed unsafe partial class VirtualMachine(
     /// <param name="previousStateSucceeded">
     /// A reference flag indicating whether the previous call frame executed successfully. This flag is set to false if the deposit fails.
     /// </param>
-    private void HandleLegacyCreate(
+    protected void HandleLegacyCreate(
         in CallResult callResult,
         EvmState previousState,
         long gasAvailableForCodeDeposit,
@@ -460,7 +470,7 @@ public sealed unsafe partial class VirtualMachine(
         {
             // Deposit the contract code into the repository.
             ReadOnlyMemory<byte> code = callResult.Output.Bytes;
-            _codeInfoRepository.InsertCode(_worldState, code, callCodeOwner, spec);
+            _codeInfoRepository.InsertCode(code, callCodeOwner, spec);
 
             // Deduct the gas cost for the code deposit from the current state's available gas.
             _currentState.GasAvailable -= codeDepositGasCost;
@@ -506,7 +516,7 @@ public sealed unsafe partial class VirtualMachine(
         }
     }
 
-    private TransactionSubstate PrepareTopLevelSubstate(scoped in CallResult callResult)
+    protected TransactionSubstate PrepareTopLevelSubstate(scoped in CallResult callResult)
     {
         return new TransactionSubstate(
             callResult.Output,
@@ -515,6 +525,7 @@ public sealed unsafe partial class VirtualMachine(
             _currentState.AccessTracker.Logs,
             callResult.ShouldRevert,
             isTracerConnected: _txTracer.IsTracing,
+            callResult.ExceptionType,
             _logger);
     }
 
@@ -535,7 +546,7 @@ public sealed unsafe partial class VirtualMachine(
     /// A reference to the output data buffer that will be updated with the reverted call's output,
     /// padded to match the expected length.
     /// </param>
-    private void HandleRevert(EvmState previousState, in CallResult callResult, ref ZeroPaddedSpan previousCallOutput)
+    protected void HandleRevert(EvmState previousState, in CallResult callResult, ref ZeroPaddedSpan previousCallOutput)
     {
         // Restore the world state to the snapshot taken before the execution of the call.
         _worldState.Restore(previousState.Snapshot);
@@ -585,7 +596,7 @@ public sealed unsafe partial class VirtualMachine(
     /// A <see cref="TransactionSubstate"/> if the failure occurs in the top-level call; otherwise, <c>null</c>
     /// to indicate that execution should continue with the parent call frame.
     /// </returns>
-    private TransactionSubstate HandleFailure<TTracingInst>(Exception failure, scoped ref ZeroPaddedSpan previousCallOutput, out bool shouldExit)
+    protected TransactionSubstate HandleFailure<TTracingInst>(Exception failure, scoped ref ZeroPaddedSpan previousCallOutput, out bool shouldExit)
         where TTracingInst : struct, IFlag
     {
         // Log the exception if trace logging is enabled.
@@ -659,7 +670,7 @@ public sealed unsafe partial class VirtualMachine(
     /// <param name="previousCallOutput">
     /// A reference to the buffer holding the previous call's output, which is cleared in preparation for the new call.
     /// </param>
-    private void PrepareNextCallFrame(in CallResult callResult, ref ZeroPaddedSpan previousCallOutput)
+    protected void PrepareNextCallFrame(in CallResult callResult, ref ZeroPaddedSpan previousCallOutput)
     {
         // Push the current execution state onto the state stack so it can be restored later.
         _stateStack.Push(_currentState);
@@ -692,7 +703,7 @@ public sealed unsafe partial class VirtualMachine(
     /// A <see cref="TransactionSubstate"/> instance if the failure occurred in a top-level call,
     /// otherwise <c>null</c> to indicate that execution should continue in the parent frame.
     /// </returns>
-    private TransactionSubstate HandleException(scoped in CallResult callResult, scoped ref ZeroPaddedSpan previousCallOutput, out bool shouldExit)
+    protected TransactionSubstate HandleException(scoped in CallResult callResult, scoped ref ZeroPaddedSpan previousCallOutput, out bool shouldExit)
     {
         // Cache the tracer to minimize repeated field accesses.
         ITxTracer txTracer = _txTracer;
@@ -752,7 +763,7 @@ public sealed unsafe partial class VirtualMachine(
     /// A <see cref="CallResult"/> containing the results of the precompile execution. In case of a failure,
     /// returns the default value of <see cref="CallResult"/>.
     /// </returns>
-    private CallResult ExecutePrecompile(EvmState currentState, bool isTracingActions, out Exception? failure)
+    protected virtual CallResult ExecutePrecompile(EvmState currentState, bool isTracingActions, out Exception? failure)
     {
         // Report the precompile action if tracing is enabled.
         if (isTracingActions)
@@ -801,7 +812,7 @@ public sealed unsafe partial class VirtualMachine(
     }
 
 
-    private void TraceTransactionActionStart(EvmState currentState)
+    protected void TraceTransactionActionStart(EvmState currentState)
     {
         _txTracer.ReportAction(currentState.GasAvailable,
             currentState.Env.Value,
@@ -844,17 +855,21 @@ public sealed unsafe partial class VirtualMachine(
                     _logger.Debug("Refreshing EVM instruction cache");
                 }
                 // Regenerate the non-traced opcode set to pick up any updated PGO optimized methods.
-                spec.EvmInstructionsNoTrace = EvmInstructions.GenerateOpCodes<TTracingInst>(spec);
+                spec.EvmInstructionsNoTrace = GenerateOpCodes<TTracingInst>(spec);
             }
             // Ensure the non-traced opcode set is generated and assign it to the _opcodeMethods field.
-            _opcodeMethods = (OpCode[])(spec.EvmInstructionsNoTrace ??= EvmInstructions.GenerateOpCodes<TTracingInst>(spec));
+            _opcodeMethods = (OpCode[])(spec.EvmInstructionsNoTrace ??= GenerateOpCodes<TTracingInst>(spec));
         }
         else
         {
             // For tracing-enabled execution, generate (if necessary) and cache the traced opcode set.
-            _opcodeMethods = (OpCode[])(spec.EvmInstructionsTraced ??= EvmInstructions.GenerateOpCodes<TTracingInst>(spec));
+            _opcodeMethods = (OpCode[])(spec.EvmInstructionsTraced ??= GenerateOpCodes<TTracingInst>(spec));
         }
     }
+
+    protected virtual OpCode[] GenerateOpCodes<TTracingInst>(IReleaseSpec spec)
+        where TTracingInst : struct, IFlag
+        => EvmInstructions.GenerateOpCodes<TTracingInst>(spec);
 
     /// <summary>
     /// Reports the final outcome of a transaction action to the transaction tracer, taking into account
@@ -870,7 +885,7 @@ public sealed unsafe partial class VirtualMachine(
     /// <param name="callResult">
     /// The result of the executed call, including output bytes, exception and revert flags, and additional metadata.
     /// </param>
-    private void TraceTransactionActionEnd(EvmState currentState, in CallResult callResult)
+    protected void TraceTransactionActionEnd(EvmState currentState, in CallResult callResult)
     {
         IReleaseSpec spec = BlockExecutionContext.Spec;
         // Calculate the gas cost required for depositing the contract code based on the length of the output.
@@ -939,7 +954,7 @@ public sealed unsafe partial class VirtualMachine(
         }
     }
 
-    private static bool UpdateGas(long gasCost, ref long gasAvailable)
+    protected static bool UpdateGas(long gasCost, ref long gasAvailable)
     {
         if (gasAvailable < gasCost)
         {
@@ -1043,7 +1058,7 @@ public sealed unsafe partial class VirtualMachine(
     /// of <c>TTracingInst.IsActive</c>.
     /// </remarks>
     [SkipLocalsInit]
-    private CallResult ExecuteCall<TTracingInst>(
+    protected CallResult ExecuteCall<TTracingInst>(
         ReadOnlyMemory<byte>? previousCallResult,
         ZeroPaddedSpan previousCallOutput,
         scoped in UInt256 previousCallOutputDestination)
@@ -1162,7 +1177,7 @@ public sealed unsafe partial class VirtualMachine(
     /// which minimizes overhead and allows aggressive inlining and compile-time optimizations.
     /// </remarks>
     [SkipLocalsInit]
-    private unsafe CallResult RunByteCode<TTracingInst, TCancelable>(
+    protected virtual unsafe CallResult RunByteCode<TTracingInst, TCancelable>(
         scoped ref EvmStack stack,
         long gasAvailable)
         where TTracingInst : struct, IFlag
@@ -1293,7 +1308,7 @@ public sealed unsafe partial class VirtualMachine(
 
     Revert:
         // Return a CallResult indicating a revert.
-        return new CallResult(null, (byte[])ReturnData, null, codeInfo.Version, shouldRevert: true);
+        return new CallResult(null, (byte[])ReturnData, null, codeInfo.Version, shouldRevert: true, exceptionType);
 
     OutOfGas:
         gasAvailable = 0;
