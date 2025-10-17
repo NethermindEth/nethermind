@@ -246,11 +246,15 @@ public struct BlockAccessList : IEquatable<BlockAccessList>, IJournal<int>
     {
         byte[] key = new byte[32];
         storageCell.Index.ToBigEndian(key);
+        AddStorageRead(storageCell.Address, key);
+    }
+
+    public void AddStorageRead(Address address, byte[] key)
+    {
         StorageRead storageRead = new()
         {
             Key = new(key)
         };
-        Address address = storageCell.Address;
 
         if (!_accountChanges.TryGetValue(address, out AccountChanges accountChanges))
         {
@@ -322,7 +326,8 @@ public struct BlockAccessList : IEquatable<BlockAccessList>, IJournal<int>
     public readonly int TakeSnapshot()
         => _changes.Count;
 
-    public readonly void Restore(int snapshot)
+    // todo: can simplify to wipe all balance, code, nonce changes?
+    public void Restore(int snapshot)
     {
         snapshot = int.Max(0, snapshot);
         while (_changes.Count > snapshot)
@@ -335,7 +340,7 @@ public struct BlockAccessList : IEquatable<BlockAccessList>, IJournal<int>
                     BalanceChange? previousBalance = change.PreviousValue is null ? null : (BalanceChange)change.PreviousValue;
                     SortedList<ushort, BalanceChange> balanceChanges = _accountChanges[change.Address].BalanceChanges;
 
-                    // balance could have gone bak to pre-tx value
+                    // balance could have gone back to pre-tx value
                     // so would already be removed
                     count = balanceChanges.Count;
                     if (count > 0 && balanceChanges.Last().Key == change.BlockAccessIndex)
@@ -371,6 +376,9 @@ public struct BlockAccessList : IEquatable<BlockAccessList>, IJournal<int>
                 case ChangeType.StorageChange:
                     StorageChange? previousStorage = change.PreviousValue is null ? null : (StorageChange)change.PreviousValue;
                     SlotChanges storageChanges = _accountChanges[change.Address].StorageChanges[change.Slot!];
+
+                    // replace change with read
+                    _accountChanges[change.Address].StorageReads.Add(new(Bytes32.Wrap(change.Slot!)));
 
                     storageChanges.Changes.RemoveAt(storageChanges.Changes.Count - 1);
                     if (previousStorage is not null)
