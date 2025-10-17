@@ -12,8 +12,8 @@ WORKDIR /nethermind
 
 COPY src/Nethermind src/Nethermind
 COPY Directory.*.props .
-COPY nuget.config .
 COPY global.json .
+COPY nuget.config .
 COPY scripts/build/build.sh .
 
 RUN chmod +x build.sh && ./build.sh $COMMIT_HASH
