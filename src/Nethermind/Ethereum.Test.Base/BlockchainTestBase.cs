@@ -197,10 +197,11 @@ public abstract class BlockchainTestBase
                 }
 
                 bool expectsException = correctRlp[i].ExpectedException is not null;
+                string? validationError = null;
                 try
                 {
                     // Validate block structure first (mimics SyncServer validation)
-                    if (blockValidator.ValidateSuggestedBlock(correctRlp[i].Block, parentHeader, out var validationError))
+                    if (blockValidator.ValidateSuggestedBlock(correctRlp[i].Block, parentHeader, out validationError))
                     {
                         Assert.That(expectsException, $"Expected block {correctRlp[i].Block.Hash} to fail with '{correctRlp[i].ExpectedException}', but it passed validation");
                         // All validations passed, suggest the block
@@ -213,7 +214,7 @@ public abstract class BlockchainTestBase
                         // else: Expected to fail and did fail → this is correct behavior
                     }
                 }
-                catch (InvalidBlockException e)
+                catch (InvalidBlockException)
                 {
                     // Exception thrown during block processing
                     Assert.That(!expectsException, $"Unexpected invalid block {correctRlp[i].Block.Hash}: {validationError}");
