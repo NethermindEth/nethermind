@@ -196,35 +196,27 @@ public abstract class BlockchainTestBase
                     Assert.Fail($"null hash in {test.Name} block {i}");
                 }
 
+                bool expectsException = correctRlp[i].ExpectedException is not null;
                 try
                 {
                     // Validate block structure first (mimics SyncServer validation)
                     if (blockValidator.ValidateSuggestedBlock(correctRlp[i].Block, parentHeader, out var validationError))
                     {
-                        if (correctRlp[i].ExpectedException is not null)
-                        {
-                            Assert.Fail($"Expected block {correctRlp[i].Block.Hash} to fail with '{correctRlp[i].ExpectedException}', but it passed validation");
-                        }
+                        Assert.That(expectsException, $"Expected block {correctRlp[i].Block.Hash} to fail with '{correctRlp[i].ExpectedException}', but it passed validation");
                         // All validations passed, suggest the block
                         blockTree.SuggestBlock(correctRlp[i].Block);
                     }
                     else
                     {
                         // Validation FAILED
-                        if (correctRlp[i].ExpectedException is null)
-                        {
-                            Assert.Fail($"Unexpected invalid block {correctRlp[i].Block.Hash}: {validationError}");
-                        }
+                        Assert.That(!expectsException, $"Unexpected invalid block {correctRlp[i].Block.Hash}: {validationError}");
                         // else: Expected to fail and did fail → this is correct behavior
                     }
                 }
                 catch (InvalidBlockException e)
                 {
                     // Exception thrown during block processing
-                    if (correctRlp[i].ExpectedException is null)
-                    {
-                        Assert.Fail($"Unexpected invalid block {correctRlp[i].Block.Hash}: {e}");
-                    }
+                    Assert.That(!expectsException, $"Unexpected invalid block {correctRlp[i].Block.Hash}: {validationError}");
                     // else: Expected to fail and did fail via exception → this is correct behavior
                 }
                 catch (Exception e)
