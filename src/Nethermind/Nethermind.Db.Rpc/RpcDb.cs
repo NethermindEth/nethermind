@@ -41,7 +41,7 @@ namespace Nethermind.Db.Rpc
         public long GetIndexSize() => 0;
         public long GetMemtableSize() => 0;
 
-        public string Name { get; } = "RpcDb";
+        public string Name => _dbName;
 
         public byte[] this[ReadOnlySpan<byte> key]
         {
