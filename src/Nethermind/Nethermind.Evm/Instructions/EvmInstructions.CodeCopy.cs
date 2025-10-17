@@ -10,6 +10,7 @@ using Nethermind.Evm.EvmObjectFormat;
 
 namespace Nethermind.Evm;
 using Int256;
+using Nethermind.Evm.State;
 
 internal static partial class EvmInstructions
 {
@@ -146,6 +147,8 @@ internal static partial class EvmInstructions
         // Deduct gas cost: cost for external code access plus memory expansion cost.
         gasAvailable -= spec.GetExtCodeCost() + GasCostOf.Memory * EvmCalculations.Div32Ceiling(in result, out bool outOfGas);
         if (outOfGas) goto OutOfGas;
+
+        (vm.WorldState as TracedAccessWorldState)?.AddAccountRead(address);
 
         // Charge gas for account access (considering hot/cold storage costs).
         if (!EvmCalculations.ChargeAccountAccessGas(ref gasAvailable, vm, address))
