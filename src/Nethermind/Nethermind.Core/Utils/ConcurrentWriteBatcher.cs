@@ -49,8 +49,7 @@ public class ConcurrentWriteBatcher : IWriteBatch
 
     public void Clear()
     {
-        if (_disposing)
-            throw new InvalidOperationException("Batch is already disposed.");
+        ThrowIfDisposed();
 
         foreach (IWriteBatch batch in _batches)
         {
@@ -88,4 +87,6 @@ public class ConcurrentWriteBatcher : IWriteBatch
 
         return currentBatch;
     }
+
+    private void ThrowIfDisposed() => ObjectDisposedException.ThrowIf(_disposing, this);
 }
