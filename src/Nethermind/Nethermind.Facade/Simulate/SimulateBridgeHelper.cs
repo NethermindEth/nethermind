@@ -19,7 +19,9 @@ using System.Diagnostics.CodeAnalysis;
 using System.Linq;
 using System.Runtime.InteropServices;
 using System.Threading;
+using Nethermind.Consensus;
 using Nethermind.Evm.State;
+using Nethermind.Logging;
 using Transaction = Nethermind.Core.Transaction;
 
 namespace Nethermind.Facade.Simulate;
@@ -46,6 +48,8 @@ public class SimulateBridgeHelper(IBlocksConfig blocksConfig, ISpecProvider spec
         {
             stateProvider.CreateAccountIfNotExists(address, 0, 0);
         }
+
+        stateProvider.Commit(releaseSpec, commitRoots: false);
     }
 
     public SimulateOutput<TTrace> TrySimulate<TTrace>(
@@ -137,9 +141,9 @@ public class SimulateBridgeHelper(IBlocksConfig blocksConfig, ISpecProvider spec
                 blockTree.SuggestBlock(processedBlock, BlockTreeSuggestOptions.ForceSetAsMain);
                 blockTree.UpdateHeadBlock(processedBlock.Hash!);
 
-                if (tracer is SimulateBlockMutatorTracer simulateTracer)
+                if (tracer is SimulateBlockTracer simulateTracer)
                 {
-                    simulateTracer.ReapplyBlockHash();
+                    simulateTracer.ReapplyBlockHash(processedBlock.Hash);
                 }
 
                 SimulateBlockResult<TTrace> blockResult = new(processedBlock, payload.ReturnFullTransactionObjects, specProvider)
@@ -253,9 +257,19 @@ public class SimulateBridgeHelper(IBlocksConfig blocksConfig, ISpecProvider spec
             requestsHash: parent.RequestsHash)
         {
             MixHash = parent.MixHash,
-            IsPostMerge = parent.Difficulty == 0,
             RequestsHash = parent.RequestsHash,
         };
+
+        if ((ForkActivation)result.Number >= specProvider.MergeBlockNumber)
+        {
+            result.Difficulty = UInt256.Zero;
+            result.IsPostMerge = true;
+        }
+        else
+        {
+            result.Difficulty = parent.Difficulty;
+            result.IsPostMerge = false;
+        }
 
         IReleaseSpec spec = specProvider.GetSpec(result);
 
@@ -274,7 +288,7 @@ public class SimulateBridgeHelper(IBlocksConfig blocksConfig, ISpecProvider spec
             result.BaseFeePerGas = 0;
         }
 
-        result.ExcessBlobGas = spec.IsEip4844Enabled ? BlobGasCalculator.CalculateExcessBlobGas(parent, spec) : (ulong?)0;
+        result.ExcessBlobGas = spec.IsEip4844Enabled ? BlobGasCalculator.CalculateExcessBlobGas(parent, spec) : null;
 
         block.BlockOverrides?.ApplyOverrides(result);
 

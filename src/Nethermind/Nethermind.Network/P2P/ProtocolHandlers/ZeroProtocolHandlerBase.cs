@@ -5,6 +5,7 @@ using System;
 using System.Threading;
 using System.Threading.Tasks;
 using DotNetty.Common.Utilities;
+using Nethermind.Consensus.Scheduler;
 using Nethermind.Core.Extensions;
 using Nethermind.Logging;
 using Nethermind.Network.Rlpx;
@@ -12,8 +13,13 @@ using Nethermind.Stats;
 
 namespace Nethermind.Network.P2P.ProtocolHandlers
 {
-    public abstract class ZeroProtocolHandlerBase(ISession session, INodeStatsManager nodeStats, IMessageSerializationService serializer, ILogManager logManager)
-        : ProtocolHandlerBase(session, nodeStats, serializer, logManager), IZeroProtocolHandler
+    public abstract class ZeroProtocolHandlerBase(
+        ISession session,
+        INodeStatsManager nodeStats,
+        IMessageSerializationService serializer,
+        IBackgroundTaskScheduler backgroundTaskScheduler,
+        ILogManager logManager)
+        : ProtocolHandlerBase(session, nodeStats, serializer, backgroundTaskScheduler, logManager), IZeroProtocolHandler
     {
         protected readonly INodeStats _nodeStats = nodeStats.GetOrAdd(session.Node);
 

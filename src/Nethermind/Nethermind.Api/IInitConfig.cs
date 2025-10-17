@@ -27,9 +27,6 @@ public interface IInitConfig : IConfig
     [ConfigItem(Description = "Whether to connect to newly discovered peers.", DefaultValue = "true")]
     bool PeerManagerEnabled { get; set; }
 
-    [ConfigItem(Description = "Whether to seal/mine new blocks.", DefaultValue = "false")]
-    bool IsMining { get; set; }
-
     [ConfigItem(Description = "The path to the chain spec file.", DefaultValue = "chainspec/foundation.json")]
     string ChainSpecPath { get; set; }
 
@@ -56,12 +53,6 @@ public interface IInitConfig : IConfig
 
     [ConfigItem(Description = "The logs format as `LogPath:LogLevel;*`", DefaultValue = "null")]
     string? LogRules { get; set; }
-
-    [ConfigItem(Description = "Moved to ReceiptConfig.", DefaultValue = "true", HiddenFromDocs = true)]
-    bool StoreReceipts { get; set; }
-
-    [ConfigItem(Description = "Moved to ReceiptConfig.", DefaultValue = "false", HiddenFromDocs = true)]
-    bool ReceiptsMigration { get; set; }
 
     [ConfigItem(Description = "The diagnostic mode.", DefaultValue = "None")]
     DiagnosticMode DiagnosticMode { get; set; }

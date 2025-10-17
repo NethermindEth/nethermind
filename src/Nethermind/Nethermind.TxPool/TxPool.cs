@@ -556,7 +556,7 @@ namespace Nethermind.TxPool
         {
             if (_txPoolConfig.ProofsTranslationEnabled
                 && tx is { SupportsBlobs: true, NetworkWrapper: ShardBlobNetworkWrapper { Version: ProofVersion.V0 } wrapper }
-                && _headInfo.CurrentProofVersion == ProofVersion.V1)
+                && _headInfo.CurrentProofVersion is ProofVersion.V1)
             {
                 using ArrayPoolList<byte[]> cellProofs = new(Ckzg.CellsPerExtBlob * wrapper.Blobs.Length);
 

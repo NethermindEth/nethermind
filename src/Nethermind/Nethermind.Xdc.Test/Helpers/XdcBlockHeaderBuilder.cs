@@ -63,9 +63,9 @@ public class XdcBlockHeaderBuilder : BlockHeaderBuilder
         QuorumCertificateDecoder qcEncoder = new QuorumCertificateDecoder();
         EthereumEcdsa ecdsa = new EthereumEcdsa(0);
         BlockRoundInfo blockRoundInfo = new BlockRoundInfo(Hash256.Zero, 1, 1);
-        QuorumCert quorumForSigning = new QuorumCert(blockRoundInfo, null, 450);
+        QuorumCertificate quorumForSigning = new QuorumCertificate(blockRoundInfo, null, 450);
         IEnumerable<Signature> signatures = keys.Select(k => ecdsa.Sign(k, Keccak.Compute(qcEncoder.Encode(quorumForSigning, RlpBehaviors.ForSealing).Bytes)));
-        QuorumCert quorumCert = new QuorumCert(blockRoundInfo, [.. signatures], 450);
+        QuorumCertificate quorumCert = new QuorumCertificate(blockRoundInfo, [.. signatures], 450);
         ExtraFieldsV2 extraFieldsV2 = new ExtraFieldsV2(1, quorumCert);
 
         EncodeExtraData(extraFieldsV2);

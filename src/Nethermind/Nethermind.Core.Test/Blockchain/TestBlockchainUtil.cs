@@ -113,6 +113,11 @@ public class TestBlockchainUtil(
         return txResults;
     }
 
+    public Task AddBlock(CancellationToken cancellationToken)
+    {
+        return AddBlock(AddBlockFlags.None, cancellationToken);
+    }
+
     public async Task<AcceptTxResult[]> AddBlockDoNotWaitForHead(bool mayMissTx, CancellationToken cancellationToken, params Transaction[] transactions)
     {
         AddBlockFlags flags = AddBlockFlags.DoNotWaitForHead;
