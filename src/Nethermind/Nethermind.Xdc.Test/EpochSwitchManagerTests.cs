@@ -409,7 +409,7 @@ internal class EpochSwitchManagerTests
         ExtraFieldsV2 extraFieldsV2 = new ExtraFieldsV2(chainHead.ExtraConsensusData!.CurrentRound + 1, qc);
         proposedHeader.ExtraConsensusData = extraFieldsV2;
 
-        ulong currentEpochNumber = ((ulong)releaseSpec.SwitchEpoch + extraFieldsV2.CurrentRound) / (ulong)releaseSpec.EpochLength;
+        ulong currentEpochNumber = (ulong)releaseSpec.SwitchEpoch + extraFieldsV2.CurrentRound / (ulong)releaseSpec.EpochLength;
         ulong currentEpochStartRound = currentEpochNumber * (ulong)releaseSpec.EpochLength;
 
         bool result = _epochSwitchManager.IsEpochSwitchAtRound(extraFieldsV2.CurrentRound, chainHead);
