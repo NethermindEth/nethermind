@@ -49,7 +49,7 @@ public class SimulateBridgeHelper(IBlocksConfig blocksConfig, ISpecProvider spec
             stateProvider.CreateAccountIfNotExists(address, 0, 0);
         }
 
-        stateProvider.Commit(releaseSpec, commitRoots: false);
+        stateProvider.Commit(releaseSpec, commitRoots: true);
     }
 
     public SimulateOutput<TTrace> TrySimulate<TTrace>(
