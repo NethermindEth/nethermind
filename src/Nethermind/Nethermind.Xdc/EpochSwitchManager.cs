@@ -386,12 +386,7 @@ internal class EpochSwitchManager : IEpochSwitchManager
 
         var epoch = (ulong)xdcSpec.EpochLength;
         ulong estBlockNumDiff = epoch * (epochNumber - targetEpoch);
-        long estBlockNum = epochSwitchInfo.EpochSwitchBlockInfo.BlockNumber - (long)estBlockNumDiff;
-
-        if (estBlockNum < xdcSpec.SwitchBlock)
-        {
-            estBlockNum = (long)xdcSpec.SwitchBlock;
-        }
+        long estBlockNum = Math.Max((long)xdcSpec.SwitchBlock, epochSwitchInfo.EpochSwitchBlockInfo.BlockNumber - (long)estBlockNumDiff);
 
         ulong closeEpochNum = 2ul;
 
