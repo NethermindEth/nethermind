@@ -6,6 +6,7 @@ using Nethermind.Xdc.Types;
 using System;
 
 namespace Nethermind.Xdc;
+
 public interface ITimeoutCertificateManager
 {
     void HandleTimeout(Timeout timeout);

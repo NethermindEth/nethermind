@@ -9,4 +9,5 @@ using System.Text;
 using System.Threading.Tasks;
 
 namespace Nethermind.Xdc.Types;
+
 public delegate byte[] SignFn(Address address, byte[] data);

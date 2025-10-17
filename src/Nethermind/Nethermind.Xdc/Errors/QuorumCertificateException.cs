@@ -10,6 +10,7 @@ using System.Text;
 using System.Threading.Tasks;
 
 namespace Nethermind.Xdc.Errors;
+
 internal class QuorumCertificateException : BlockchainException
 {
     public QuorumCertificateException(QuorumCertificate certificate, string message) : base(message)

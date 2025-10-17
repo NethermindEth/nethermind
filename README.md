@@ -94,7 +94,7 @@ For more info, see [Building Docker image](https://docs.nethermind.io/developers
 
 **Prerequisites**
 
-Install the [.NET SDK](https://aka.ms/dotnet/download).
+Install [.NET SDK](https://aka.ms/dotnet/download) 10 or later.
 
 **Clone the repository**
 
@@ -115,10 +115,10 @@ dotnet run -c release -- -c mainnet
 cd nethermind/src/Nethermind
 
 # Run Nethermind tests
-dotnet test Nethermind.slnx -c release
+dotnet test --solution Nethermind.slnx -c release
 
 # Run Ethereum Foundation tests
-dotnet test EthereumTests.slnx -c release
+dotnet test --solution EthereumTests.slnx -c release
 ```
 
 For more info, see [Building standalone binaries](https://docs.nethermind.io/developers/building-from-source#building-standalone-binaries).

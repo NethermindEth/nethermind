@@ -10,6 +10,7 @@ using Nethermind.Core.Specs;
 using Nethermind.Serialization.Rlp;
 
 namespace Nethermind.Era1;
+
 public class EraWriter : IDisposable
 {
     public const int MaxEra1Size = 8192;

@@ -15,6 +15,7 @@ using System.Collections.Generic;
 using System.Linq;
 
 namespace Nethermind.Xdc.Test;
+
 internal class XdcSealValidatorTests
 {
     [Test]
