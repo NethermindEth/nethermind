@@ -124,7 +124,7 @@ public sealed class LogIndexBuilder : ILogIndexBuilder
             if (!_config.Enabled)
                 return;
 
-            _receiptStorage.AnyReceiptsInserted += OnReceiptsInserted;
+            _receiptStorage.ReceiptsInserted += OnReceiptsInserted;
 
             TrySetPivot(_logIndexStorage.GetMaxBlockNumber());
             TrySetPivot((int)_blockTree.SyncPivot.BlockNumber);
@@ -239,7 +239,7 @@ public sealed class LogIndexBuilder : ILogIndexBuilder
     {
         var next = (int)args.BlockHeader.Number;
         if (TrySetPivot(next))
-            _receiptStorage.AnyReceiptsInserted -= OnReceiptsInserted;
+            _receiptStorage.ReceiptsInserted -= OnReceiptsInserted;
     }
 
     public int MaxTargetBlockNumber => (int)Math.Max(_blockTree.BestKnownNumber - MaxReorgDepth, 0);

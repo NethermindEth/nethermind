@@ -25,7 +25,7 @@ namespace Nethermind.Blockchain
         {
             _receiptStorage = receiptStorage ?? throw new ArgumentNullException(nameof(receiptStorage));
             _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
-            _receiptStorage.ReceiptsInserted += OnBlockAddedToMain;
+            _receiptStorage.NewCanonicalReceipts += OnBlockAddedToMain;
         }
 
         private void OnBlockAddedToMain(object sender, BlockReplacementEventArgs e)
@@ -55,7 +55,7 @@ namespace Nethermind.Blockchain
 
         public void Dispose()
         {
-            _receiptStorage.ReceiptsInserted -= OnBlockAddedToMain;
+            _receiptStorage.NewCanonicalReceipts -= OnBlockAddedToMain;
         }
     }
 }
