@@ -47,9 +47,6 @@ partial class LogIndexStorage
         // TODO: avoid array copying in case of a single value?
         private ArrayPoolList<byte>? Merge(ReadOnlySpan<byte> key, RocksDbMergeEnumerator enumerator, bool isPartial)
         {
-            if (storage.HasBackgroundError)
-                return null;
-
             var success = false;
             ArrayPoolList<byte>? result = null;
             var timestamp = Stopwatch.GetTimestamp();

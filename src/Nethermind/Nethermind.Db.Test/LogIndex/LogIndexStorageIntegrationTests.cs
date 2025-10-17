@@ -124,7 +124,7 @@ namespace Nethermind.Db.Test.LogIndex
         }
 
         [OneTimeSetUp]
-        // [OneTimeTearDown] // randomly causes DB failure
+        [OneTimeTearDown]
         public static void RemoveRootFolder()
         {
             if (!Directory.Exists(nameof(LogIndexStorageIntegrationTests)))

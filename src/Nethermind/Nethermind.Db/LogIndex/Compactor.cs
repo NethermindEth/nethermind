@@ -111,6 +111,9 @@ partial class LogIndexStorage
                     _compactionEndedEvent.Reset();
                     _compactionStartedEvent.Set();
 
+                    if (cancellation.IsCancellationRequested)
+                        return;
+
                     if (_logger.IsInfo)
                         _logger.Info($"Log index: compaction started, DB size: {_storage.GetDbSize()}");
 
@@ -123,7 +126,7 @@ partial class LogIndexStorage
                     if (_logger.IsInfo)
                         _logger.Info($"Log index: compaction ended in {elapsed}, DB size: {_storage.GetDbSize()}");
                 }
-                catch (TaskCanceledException ex) when (ex.CancellationToken == cancellation)
+                catch (OperationCanceledException ex) when (ex.CancellationToken == cancellation)
                 {
                     return;
                 }

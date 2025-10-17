@@ -152,41 +152,49 @@ namespace Nethermind.Db.LogIndex
 
         public LogIndexStorage(IDbFactory dbFactory, ILogManager logManager, ILogIndexConfig config)
         {
-            Enabled = config.Enabled;
-
-            _maxReorgDepth = config.MaxReorgDepth;
-
-            _logger = logManager.GetClassLogger<LogIndexStorage>();
-
-            _compressor = config.CompressionDistance > 0
-                ? new Compressor(this, config.CompressionDistance, config.MaxCompressionParallelism)
-                : new NoOpCompressor();
-
-            _compactor = config.CompactionDistance > 0
-                ? new Compactor(this, _logger, config.CompactionDistance)
-                : new NoOpCompactor();
-
-            _mergeOperators = new()
+            try
             {
-                { LogIndexColumns.Addresses, new(this, _compressor, topicIndex: null) },
-                { LogIndexColumns.Topics0, new(this, _compressor, topicIndex: 0) },
-                { LogIndexColumns.Topics1, new(this, _compressor, topicIndex: 1) },
-                { LogIndexColumns.Topics2, new(this, _compressor, topicIndex: 2) },
-                { LogIndexColumns.Topics3, new(this, _compressor, topicIndex: 3) }
-            };
+                Enabled = config.Enabled;
 
-            _rootDb = CreateRootDb(dbFactory, config.Reset);
-            _addressDb = _rootDb.GetColumnDb(LogIndexColumns.Addresses);
-            _topicDbs = _mergeOperators.Keys.Where(cl => $"{cl}".Contains("Topic")).Select(cl => _rootDb.GetColumnDb(cl)).ToArray();
-            _compressionAlgorithm = SelectCompressionAlgo(config.CompressionAlgorithm);
+                _maxReorgDepth = config.MaxReorgDepth;
 
-            _addressMaxBlock = LoadRangeBound(_addressDb, SpecialKey.MaxBlockNum);
-            _addressMinBlock = LoadRangeBound(_addressDb, SpecialKey.MinBlockNum);
-            _topicMaxBlocks = _topicDbs.Select(static db => LoadRangeBound(db, SpecialKey.MaxBlockNum)).ToArray();
-            _topicMinBlocks = _topicDbs.Select(static db => LoadRangeBound(db, SpecialKey.MinBlockNum)).ToArray();
+                _logger = logManager.GetClassLogger<LogIndexStorage>();
 
-            if (Enabled)
-                _compressor.Start();
+                _compressor = config.CompressionDistance > 0
+                    ? new Compressor(this, config.CompressionDistance, config.MaxCompressionParallelism)
+                    : new NoOpCompressor();
+
+                _compactor = config.CompactionDistance > 0
+                    ? new Compactor(this, _logger, config.CompactionDistance)
+                    : new NoOpCompactor();
+
+                _mergeOperators = new()
+                {
+                    { LogIndexColumns.Addresses, new(this, _compressor, topicIndex: null) },
+                    { LogIndexColumns.Topics0, new(this, _compressor, topicIndex: 0) },
+                    { LogIndexColumns.Topics1, new(this, _compressor, topicIndex: 1) },
+                    { LogIndexColumns.Topics2, new(this, _compressor, topicIndex: 2) },
+                    { LogIndexColumns.Topics3, new(this, _compressor, topicIndex: 3) }
+                };
+
+                _rootDb = CreateRootDb(dbFactory, config.Reset);
+                _addressDb = _rootDb.GetColumnDb(LogIndexColumns.Addresses);
+                _topicDbs = _mergeOperators.Keys.Where(cl => $"{cl}".Contains("Topic")).Select(cl => _rootDb.GetColumnDb(cl)).ToArray();
+                _compressionAlgorithm = SelectCompressionAlgo(config.CompressionAlgorithm);
+
+                _addressMaxBlock = LoadRangeBound(_addressDb, SpecialKey.MaxBlockNum);
+                _addressMinBlock = LoadRangeBound(_addressDb, SpecialKey.MinBlockNum);
+                _topicMaxBlocks = _topicDbs.Select(static db => LoadRangeBound(db, SpecialKey.MaxBlockNum)).ToArray();
+                _topicMinBlocks = _topicDbs.Select(static db => LoadRangeBound(db, SpecialKey.MinBlockNum)).ToArray();
+
+                if (Enabled)
+                    _compressor.Start();
+            }
+            catch // TODO: do not throw errors from constructor?
+            {
+                DisposeCore();
+                throw;
+            }
         }
 
         private IColumnsDb<LogIndexColumns> CreateRootDb(IDbFactory dbFactory, bool reset)
@@ -306,8 +314,9 @@ namespace Nethermind.Db.LogIndex
 
                 _stopped = true;
 
+                // Disposing RocksDB during any write operation will cause 0xC0000005
                 await Task.WhenAll(
-                    _compactor.StopAsync(), // Disposing RocksDB during compaction will cause 0xC0000005
+                    _compactor.StopAsync(),
                     _compressor.StopAsync()
                 );
 
@@ -350,11 +359,16 @@ namespace Nethermind.Db.LogIndex
 
             _disposed = true;
 
+            DisposeCore();
+        }
+
+        private void DisposeCore()
+        {
             _setReceiptsSemaphores[false].Dispose();
             _setReceiptsSemaphores[true].Dispose();
-            _compressor.Dispose();
-            DBColumns.DisposeItems();
-            _rootDb.Dispose();
+            _compressor?.Dispose();
+            DBColumns?.DisposeItems();
+            _rootDb?.Dispose();
         }
 
         private static int? LoadRangeBound(IDb db, byte[] key)
