@@ -30,7 +30,6 @@ using Nethermind.Specs;
 using Nethermind.Specs.Forks;
 using Nethermind.Specs.Test;
 using Nethermind.Evm.State;
-using Nethermind.Evm.Tracing;
 using Nethermind.Init.Modules;
 using Nethermind.TxPool;
 using NUnit.Framework;
@@ -194,7 +193,7 @@ public abstract class BlockchainTestBase
                 // Validate block structure first (mimics SyncServer validation)
                 if (blockValidator.ValidateSuggestedBlock(correctRlp[i].Block, parentHeader, out string? validationError))
                 {
-                    Assert.That(expectsException, $"Expected block {correctRlp[i].Block.Hash} to fail with '{correctRlp[i].ExpectedException}', but it passed validation");
+                    Assert.That(!expectsException, $"Expected block {correctRlp[i].Block.Hash} to fail with '{correctRlp[i].ExpectedException}', but it passed validation");
                     try
                     {
                         // All validations passed, suggest the block
@@ -204,7 +203,7 @@ public abstract class BlockchainTestBase
                     catch (InvalidBlockException e)
                     {
                         // Exception thrown during block processing
-                        Assert.That(!expectsException, $"Unexpected invalid block {correctRlp[i].Block.Hash}: {validationError}, Exception: {e}");
+                        Assert.That(expectsException, $"Unexpected invalid block {correctRlp[i].Block.Hash}: {validationError}, Exception: {e}");
                         // else: Expected to fail and did fail via exception → this is correct behavior
                     }
                     catch (Exception e)
@@ -220,7 +219,7 @@ public abstract class BlockchainTestBase
                 else
                 {
                     // Validation FAILED
-                    Assert.That(!expectsException, $"Unexpected invalid block {correctRlp[i].Block.Hash}: {validationError}");
+                    Assert.That(expectsException, $"Unexpected invalid block {correctRlp[i].Block.Hash}: {validationError}");
                     // else: Expected to fail and did fail → this is correct behavior
                 }
 
