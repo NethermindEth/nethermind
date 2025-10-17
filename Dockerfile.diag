@@ -18,9 +18,9 @@ COPY global.json .
 
 RUN arch=$([ "$TARGETARCH" = "amd64" ] && echo "x64" || echo "$TARGETARCH") && \
   dotnet add src/Nethermind/Nethermind.Runner package JetBrains.dotMemory.Console.linux-$arch \
-    --package-directory /tmp && \
+  --package-directory /tmp && \
   dotnet publish src/Nethermind/Nethermind.Runner -c $BUILD_CONFIG -a $arch -o /publish --no-self-contained \
-    -p:SourceRevisionId=$COMMIT_HASH
+  -p:SourceRevisionId=$COMMIT_HASH
 
 RUN dotnet tool install -g dotnet-dump && \
   dotnet tool install -g dotnet-gcdump && \
@@ -41,7 +41,8 @@ EXPOSE 8545 8551 30303
 COPY --from=build /publish .
 COPY --from=build /root/.dotnet/tools /opt/diag-tools
 COPY --from=build /tmp/jetbrains.dotmemory.console.*/**/tools /opt/diag-tools/dotmemory
+COPY scripts/diag-entrypoint.sh .
 
 ENV PATH="$PATH:/opt/diag-tools:/opt/diag-tools/dotmemory"
 
-ENTRYPOINT ["./nethermind"]
+ENTRYPOINT ["./diag-entrypoint.sh"]
