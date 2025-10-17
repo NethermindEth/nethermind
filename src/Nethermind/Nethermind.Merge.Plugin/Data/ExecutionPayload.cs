@@ -12,6 +12,8 @@ using Nethermind.Serialization.Rlp;
 using Nethermind.State.Proofs;
 using System.Text.Json.Serialization;
 using Nethermind.Core.ExecutionRequest;
+using Nethermind.Core.BlockAccessLists;
+using Nethermind.Core.Extensions;
 
 namespace Nethermind.Merge.Plugin.Data;
 
@@ -50,6 +52,8 @@ public class ExecutionPayload : IForkValidator, IExecutionPayloadParams, IExecut
     public Hash256 StateRoot { get; set; } = Keccak.Zero;
 
     public ulong Timestamp { get; set; }
+
+    public byte[]? BlockAccessList { get; set; }
 
     protected byte[][] _encodedTransactions = [];
 
@@ -108,6 +112,7 @@ public class ExecutionPayload : IForkValidator, IExecutionPayloadParams, IExecut
 
     protected static TExecutionPayload Create<TExecutionPayload>(Block block) where TExecutionPayload : ExecutionPayload, new()
     {
+        // Console.WriteLine("Created block access list:\n" +  (block.BlockAccessList is null ? "null" : block.BlockAccessList.ToString()));
         TExecutionPayload executionPayload = new()
         {
             BlockHash = block.Hash!,
@@ -124,6 +129,7 @@ public class ExecutionPayload : IForkValidator, IExecutionPayloadParams, IExecut
             Timestamp = block.Timestamp,
             BaseFeePerGas = block.BaseFeePerGas,
             Withdrawals = block.Withdrawals,
+            BlockAccessList = block.EncodedBlockAccessList ?? (block.BlockAccessList is null ? null : Rlp.Encode<BlockAccessList>(block.BlockAccessList!.Value).Bytes),
         };
         executionPayload.SetTransactions(block.Transactions);
         return executionPayload;
@@ -140,7 +146,7 @@ public class ExecutionPayload : IForkValidator, IExecutionPayloadParams, IExecut
         TransactionDecodingResult transactions = TryGetTransactions();
         if (transactions.Error is not null)
         {
-            return new BlockDecodingResult(transactions.Error);
+            return new(transactions.Error);
         }
 
         BlockHeader header = new(
@@ -166,15 +172,31 @@ public class ExecutionPayload : IForkValidator, IExecutionPayloadParams, IExecut
             TotalDifficulty = totalDifficulty,
             TxRoot = TxTrie.CalculateRoot(transactions.Transactions),
             WithdrawalsRoot = BuildWithdrawalsRoot(),
+            BlockAccessListHash = BlockAccessList is null || BlockAccessList.Length == 0 ? null : new(ValueKeccak.Compute(BlockAccessList).Bytes)
         };
 
-        return new BlockDecodingResult(new Block(header, transactions.Transactions, Array.Empty<BlockHeader>(), Withdrawals));
+        BlockAccessList? blockAccessList = null;
+
+        if (BlockAccessList is not null)
+        {
+            //tmp
+            // Console.WriteLine("Decoding BAL from execution payload:\n" + Bytes.ToHexString(BlockAccessList));
+            try
+            {
+                blockAccessList = Rlp.Decode<BlockAccessList>(BlockAccessList);
+            }
+            catch (RlpException e)
+            {
+                Console.Error.Write("Could not decode block access list from execution payload: " + e);
+                return new("Could not decode block access list.");
+            }
+        }
+
+        Block block = new(header, transactions.Transactions, Array.Empty<BlockHeader>(), Withdrawals, blockAccessList);
+        return new(block);
     }
 
-    protected virtual Hash256? BuildWithdrawalsRoot()
-    {
-        return Withdrawals is null ? null : new WithdrawalTrie(Withdrawals).RootHash;
-    }
+    protected virtual Hash256? BuildWithdrawalsRoot() => Withdrawals is null ? null : new WithdrawalTrie(Withdrawals).RootHash;
 
     protected Transaction[]? _transactions = null;
 

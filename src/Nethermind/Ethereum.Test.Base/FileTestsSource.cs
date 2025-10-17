@@ -34,6 +34,7 @@ namespace Ethereum.Test.Base
                     return [];
                 }
 
+                Console.WriteLine("loaded " + _fileName);
                 string json = File.ReadAllText(_fileName, Encoding.Default);
 
                 return testType switch

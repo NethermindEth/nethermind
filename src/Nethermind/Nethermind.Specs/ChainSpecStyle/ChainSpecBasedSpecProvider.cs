@@ -293,6 +293,8 @@ namespace Nethermind.Specs.ChainSpecStyle
 
             releaseSpec.IsRip7728Enabled = (chainSpec.Parameters.Rip7728TransitionTimestamp ?? ulong.MaxValue) <= releaseStartTimestamp;
 
+            releaseSpec.IsEip7928Enabled = (chainSpec.Parameters.Eip7928TransitionTimestamp ?? ulong.MaxValue) <= releaseStartTimestamp;
+
             foreach (IChainSpecEngineParameters item in _chainSpec.EngineChainSpecParametersProvider
                          .AllChainSpecParameters)
             {

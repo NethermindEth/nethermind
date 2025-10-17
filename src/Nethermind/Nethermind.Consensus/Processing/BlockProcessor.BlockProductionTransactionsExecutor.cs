@@ -31,6 +31,7 @@ namespace Nethermind.Consensus.Processing
             ILogManager logManager)
             : IBlockProductionTransactionsExecutor
         {
+            private readonly TracedAccessWorldState? _tracedAccessWorldState = stateProvider as TracedAccessWorldState;
             private readonly ILogger _logger = logManager.GetClassLogger();
 
             protected EventHandler<TxProcessedEventArgs>? _transactionProcessed;
@@ -65,6 +66,7 @@ namespace Nethermind.Consensus.Processing
                     // Check if we have gone over time or the payload has been requested
                     if (token.IsCancellationRequested) break;
 
+                    _tracedAccessWorldState?.BlockAccessList.IncrementBlockAccessIndex();
                     TxAction action = ProcessTransaction(block, currentTx, i++, receiptsTracer, processingOptions, consideredTx);
                     if (action == TxAction.Stop) break;
 
@@ -78,6 +80,8 @@ namespace Nethermind.Consensus.Processing
                         }
                     }
                 }
+                _tracedAccessWorldState?.BlockAccessList.IncrementBlockAccessIndex();
+                // Console.WriteLine($"Built block {i}, balIndex={(_tracedAccessWorldState is null ? "null" : _tracedAccessWorldState.BlockAccessList.Index)}");
 
                 block.Header.TxRoot = TxTrie.CalculateRoot(includedTx.AsSpan());
                 if (blockToProduce is not null)

@@ -34,6 +34,9 @@ using Nethermind.Evm.Tracing;
 using Nethermind.Init.Modules;
 using Nethermind.TxPool;
 using NUnit.Framework;
+using Nethermind.Merge.Plugin.Data;
+using Nethermind.Merge.Plugin;
+using Nethermind.JsonRpc;
 
 namespace Ethereum.Test.Base;
 
@@ -41,14 +44,12 @@ public abstract class BlockchainTestBase
 {
     private static readonly ILogger _logger;
     private static readonly ILogManager _logManager = new TestLogManager();
-    private static ISealValidator Sealer { get; }
+    // private static ISealValidator Sealer { get; }
     private static DifficultyCalculatorWrapper DifficultyCalculator { get; }
 
     static BlockchainTestBase()
     {
         DifficultyCalculator = new DifficultyCalculatorWrapper();
-        Sealer = new EthashSealValidator(_logManager, DifficultyCalculator, new CryptoRandom(), new Ethash(_logManager), Timestamper.Default); // temporarily keep reusing the same one as otherwise it would recreate cache for each test
-
         _logManager ??= LimboLogs.Instance;
         _logger = _logManager.GetClassLogger();
     }
@@ -84,19 +85,13 @@ public abstract class BlockchainTestBase
         test.Network = ChainUtils.ResolveSpec(test.Network, test.ChainId);
         test.NetworkAfterTransition = ChainUtils.ResolveSpec(test.NetworkAfterTransition, test.ChainId);
 
-        List<(ForkActivation Activation, IReleaseSpec Spec)> transitions =
-            [((ForkActivation)0, test.GenesisSpec), ((ForkActivation)1, test.Network)]; // TODO: this thing took a lot of time to find after it was removed!, genesis block is always initialized with Frontier
+        List<(ForkActivation Activation, IReleaseSpec Spec)> transitions = [((ForkActivation)0, test.Network)];
         if (test.NetworkAfterTransition is not null)
         {
             transitions.Add((test.TransitionForkActivation!.Value, test.NetworkAfterTransition));
         }
 
         ISpecProvider specProvider = new CustomSpecProvider(test.ChainId, test.ChainId, transitions.ToArray());
-
-        if (test.ChainId != GnosisSpecProvider.Instance.ChainId && specProvider.GenesisSpec != Frontier.Instance)
-        {
-            Assert.Fail("Expected genesis spec to be Frontier for blockchain tests");
-        }
 
         if (test.Network is Cancun || test.NetworkAfterTransition is Cancun)
         {
@@ -127,7 +122,8 @@ public abstract class BlockchainTestBase
         IConfigProvider configProvider = new ConfigProvider();
         // configProvider.GetConfig<IBlocksConfig>().PreWarmStateOnBlockProcessing = false;
         await using IContainer container = new ContainerBuilder()
-            .AddModule(new TestNethermindModule(configProvider))
+            .AddModule(new TestNethermindModule(configProvider)) // check if two different modules must be fixed together
+            .AddModule(new TestMergeModule(configProvider))
             .AddSingleton(specProvider)
             .AddSingleton(_logManager)
             .AddSingleton(rewardCalculator)
@@ -140,6 +136,7 @@ public abstract class BlockchainTestBase
         IBlockchainProcessor blockchainProcessor = mainBlockProcessingContext.BlockchainProcessor;
         IBlockTree blockTree = container.Resolve<IBlockTree>();
         IBlockValidator blockValidator = container.Resolve<IBlockValidator>();
+        IEngineRpcModule engineRpcModule = container.Resolve<IEngineRpcModule>();
         blockchainProcessor.Start();
 
         // Register tracer if provided for blocktest tracing
@@ -161,6 +158,7 @@ public abstract class BlockchainTestBase
                 test.GenesisRlp ??= Rlp.Encode(new Block(JsonToEthereumTest.Convert(test.GenesisBlockHeader)));
 
                 Block genesisBlock = Rlp.Decode<Block>(test.GenesisRlp.Bytes);
+                // Console.WriteLine(genesisBlock.ToString(Block.Format.Full));
                 Assert.That(genesisBlock.Header.Hash, Is.EqualTo(new Hash256(test.GenesisBlockHeader.Hash)));
 
                 ManualResetEvent genesisProcessed = new(false);
@@ -169,7 +167,7 @@ public abstract class BlockchainTestBase
                 {
                     if (args.Block.Number == 0)
                     {
-                        Assert.That(stateProvider.HasStateForBlock(genesisBlock.Header), Is.EqualTo(true));
+                        Assert.That(stateProvider.HasStateForBlock(genesisBlock.Header), Is.True);
                         genesisProcessed.Set();
                     }
                 };
@@ -182,62 +180,59 @@ public abstract class BlockchainTestBase
                 genesisBlock.DisposeAccountChanges();
             }
 
-            List<(Block Block, string ExpectedException)> correctRlp = DecodeRlps(test, failOnInvalidRlp);
-            for (int i = 0; i < correctRlp.Count; i++)
+            if (test.Blocks is not null)
             {
-                if (correctRlp[i].Block.Hash is null)
-                {
-                    Assert.Fail($"null hash in {test.Name} block {i}");
-                }
+                // blockchain test
+                parentHeader = SuggestBlocks(test, failOnInvalidRlp, blockValidator, blockTree, parentHeader);
+            }
+            else if (test.EngineNewPayloads is not null)
+            {
+                (ExecutionPayload, string[]?, string[]?, string?)[] payloads = [.. JsonToEthereumTest.Convert(test.EngineNewPayloads)];
 
-                try
+                // blockchain test engine
+                foreach ((ExecutionPayload executionPayload, string[]? blobVersionedHashes, string[]? validationError, string? newPayloadVersion) in payloads)
                 {
-                    // TODO: mimic the actual behaviour where block goes through validating sync manager?
-                    correctRlp[i].Block.Header.IsPostMerge = correctRlp[i].Block.Difficulty == 0;
-                    if (!test.SealEngineUsed || blockValidator.ValidateSuggestedBlock(correctRlp[i].Block, parentHeader, out _))
-                    {
-                        blockTree.SuggestBlock(correctRlp[i].Block);
-                    }
-                    else
-                    {
-                        if (correctRlp[i].ExpectedException is not null)
-                        {
-                            Assert.Fail($"Unexpected invalid block {correctRlp[i].Block.Hash}");
-                        }
-                    }
-                }
-                catch (InvalidBlockException e)
-                {
-                    if (correctRlp[i].ExpectedException is not null)
-                    {
-                        Assert.Fail($"Unexpected invalid block {correctRlp[i].Block.Hash}: {e}");
-                    }
-                }
-                catch (Exception e)
-                {
-                    Assert.Fail($"Unexpected exception during processing: {e}");
-                }
-                finally
-                {
-                    // Dispose AccountChanges to prevent memory leaks in tests
-                    correctRlp[i].Block.DisposeAccountChanges();
-                }
+                    ResultWrapper<PayloadStatusV1> res;
+                    byte[]?[] hashes = blobVersionedHashes is null ? null : [.. blobVersionedHashes.Select(x => Bytes.FromHexString(x))];
 
-                parentHeader = correctRlp[i].Block.Header;
+                    switch (newPayloadVersion ?? "5")
+                    {
+                        case "1":
+                            res = await engineRpcModule.engine_newPayloadV1(executionPayload);
+                            break;
+                        case "2":
+                            res = await engineRpcModule.engine_newPayloadV2(executionPayload);
+                            break;
+                        case "3":
+                            res = await engineRpcModule.engine_newPayloadV3((ExecutionPayloadV3)executionPayload, [], executionPayload.ParentBeaconBlockRoot);
+                            break;
+                        case "4":
+                            res = await engineRpcModule.engine_newPayloadV4((ExecutionPayloadV3)executionPayload, hashes, executionPayload.ParentBeaconBlockRoot, []);
+                            break;
+                        case "5":
+                            // this block is not found in stateProvider and blocktree
+                            res = await engineRpcModule.engine_newPayloadV5((ExecutionPayloadV3)executionPayload, hashes, executionPayload.ParentBeaconBlockRoot, []);
+                            break;
+                        default:
+                            Assert.Fail("Invalid blockchain engine test, version not recognised.");
+                            break;
+                    }
+                }
+            }
+            else
+            {
+                Assert.Fail("Invalid blockchain test, did not contain blocks or new payloads.");
             }
 
             // NOTE: Tracer removal must happen AFTER StopAsync to ensure all blocks are traced
             // Blocks are queued asynchronously, so we need to wait for processing to complete
             await blockchainProcessor.StopAsync(true);
-
             stopwatch?.Stop();
 
             IBlockCachePreWarmer? preWarmer = container.Resolve<MainProcessingContext>().LifetimeScope.ResolveOptional<IBlockCachePreWarmer>();
-            if (preWarmer is not null)
-            {
-                // Caches are cleared async, which is a problem as read for the MainWorldState with prewarmer is not correct if its not cleared.
-                preWarmer.ClearCaches();
-            }
+
+            // Caches are cleared async, which is a problem as read for the MainWorldState with prewarmer is not correct if its not cleared.
+            preWarmer?.ClearCaches();
 
             Block? headBlock = blockTree.RetrieveHeadBlock();
             List<string> differences;
@@ -256,13 +251,13 @@ public abstract class BlockchainTestBase
                 blockchainProcessor.Tracers.Remove(tracer);
             }
 
-            Assert.That(differences.Count, Is.Zero, "differences");
+            Assert.That(differences, Is.Empty, "differences");
 
             return new EthereumTestResult
             (
                 test.Name,
                 null,
-                testPassed
+                differences.Count == 0
             );
         }
         catch (Exception)
@@ -272,7 +267,55 @@ public abstract class BlockchainTestBase
         }
     }
 
-    private List<(Block Block, string ExpectedException)> DecodeRlps(BlockchainTest test, bool failOnInvalidRlp)
+    private static BlockHeader SuggestBlocks(BlockchainTest test, bool failOnInvalidRlp, IBlockValidator blockValidator, IBlockTree blockTree, BlockHeader parentHeader)
+    {
+        List<(Block Block, string ExpectedException)> correctRlp = DecodeRlps(test, failOnInvalidRlp);
+        for (int i = 0; i < correctRlp.Count; i++)
+        {
+            if (correctRlp[i].Block.Hash is null)
+            {
+                Assert.Fail($"null hash in {test.Name} block {i}");
+            }
+
+            try
+            {
+                // TODO: mimic the actual behaviour where block goes through validating sync manager?
+                correctRlp[i].Block.Header.IsPostMerge = correctRlp[i].Block.Difficulty == 0;
+                if (!test.SealEngineUsed || blockValidator.ValidateSuggestedBlock(correctRlp[i].Block, parentHeader, out _))
+                {
+                    blockTree.SuggestBlock(correctRlp[i].Block);
+                }
+                else
+                {
+                    if (correctRlp[i].ExpectedException is not null)
+                    {
+                        Assert.Fail($"Unexpected invalid block {correctRlp[i].Block.Hash}");
+                    }
+                }
+            }
+            catch (InvalidBlockException e)
+            {
+                if (correctRlp[i].ExpectedException is not null)
+                {
+                    Assert.Fail($"Unexpected invalid block {correctRlp[i].Block.Hash}: {e}");
+                }
+            }
+            catch (Exception e)
+            {
+                Assert.Fail($"Unexpected exception during processing: {e}");
+            }
+            finally
+            {
+                // Dispose AccountChanges to prevent memory leaks in tests
+                correctRlp[i].Block.DisposeAccountChanges();
+            }
+
+            parentHeader = correctRlp[i].Block.Header;
+        }
+        return parentHeader;
+    }
+
+    private static List<(Block Block, string ExpectedException)> DecodeRlps(BlockchainTest test, bool failOnInvalidRlp)
     {
         List<(Block Block, string ExpectedException)> correctRlp = new();
         for (int i = 0; i < test.Blocks!.Length; i++)
@@ -282,6 +325,9 @@ public abstract class BlockchainTestBase
             {
                 RlpStream rlpContext = Bytes.FromHexString(testBlockJson.Rlp!).AsRlpStream();
                 Block suggestedBlock = Rlp.Decode<Block>(rlpContext);
+                Console.WriteLine("suggested block:");
+                Console.WriteLine(suggestedBlock.BlockAccessList);
+                Hash256 tmp = new(ValueKeccak.Compute(Rlp.Encode(suggestedBlock.BlockAccessList!.Value).Bytes).Bytes);
                 suggestedBlock.Header.SealEngineType =
                     test.SealEngineUsed ? SealEngineType.Ethash : SealEngineType.None;
 
@@ -322,17 +368,20 @@ public abstract class BlockchainTestBase
 
         if (correctRlp.Count == 0)
         {
-            Assert.That(test.GenesisBlockHeader, Is.Not.Null);
-            Assert.That(test.LastBlockHash, Is.EqualTo(new Hash256(test.GenesisBlockHeader.Hash)));
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(test.GenesisBlockHeader, Is.Not.Null);
+                Assert.That(test.LastBlockHash, Is.EqualTo(new Hash256(test.GenesisBlockHeader.Hash)));
+            }
         }
 
         return correctRlp;
     }
 
-    private void InitializeTestState(BlockchainTest test, IWorldState stateProvider, ISpecProvider specProvider)
+    private static void InitializeTestState(BlockchainTest test, IWorldState stateProvider, ISpecProvider specProvider)
     {
         foreach (KeyValuePair<Address, AccountState> accountState in
-            ((IEnumerable<KeyValuePair<Address, AccountState>>)test.Pre ?? Array.Empty<KeyValuePair<Address, AccountState>>()))
+            (IEnumerable<KeyValuePair<Address, AccountState>>)test.Pre ?? Array.Empty<KeyValuePair<Address, AccountState>>())
         {
             foreach (KeyValuePair<UInt256, byte[]> storageItem in accountState.Value.Storage)
             {
@@ -350,7 +399,7 @@ public abstract class BlockchainTestBase
         stateProvider.Reset();
     }
 
-    private List<string> RunAssertions(BlockchainTest test, Block headBlock, IWorldState stateProvider)
+    private static List<string> RunAssertions(BlockchainTest test, Block headBlock, IWorldState stateProvider)
     {
         if (test.PostStateRoot is not null)
         {
@@ -361,7 +410,7 @@ public abstract class BlockchainTestBase
                                                  .Where(b => b.BlockHeader is not null)
                                                  .SingleOrDefault(b => new Hash256(b.BlockHeader.Hash) == headBlock.Hash)?.BlockHeader) ?? test.GenesisBlockHeader;
         BlockHeader testHeader = JsonToEthereumTest.Convert(testHeaderJson);
-        List<string> differences = new();
+        List<string> differences = [];
 
         IEnumerable<KeyValuePair<Address, AccountState>> deletedAccounts = test.Pre?
             .Where(pre => !(test.PostState?.ContainsKey(pre.Key) ?? false)) ?? Array.Empty<KeyValuePair<Address, AccountState>>();
@@ -374,7 +423,7 @@ public abstract class BlockchainTestBase
             }
         }
 
-        foreach ((Address acountAddress, AccountState accountState) in test.PostState!)
+        foreach ((Address accountAddress, AccountState accountState) in test.PostState!)
         {
             int differencesBefore = differences.Count;
 
@@ -384,60 +433,60 @@ public abstract class BlockchainTestBase
                 break;
             }
 
-            bool accountExists = stateProvider.AccountExists(acountAddress);
-            UInt256? balance = accountExists ? stateProvider.GetBalance(acountAddress) : null;
-            UInt256? nonce = accountExists ? stateProvider.GetNonce(acountAddress) : null;
+            bool accountExists = stateProvider.AccountExists(accountAddress);
+            UInt256? balance = accountExists ? stateProvider.GetBalance(accountAddress) : null;
+            UInt256? nonce = accountExists ? stateProvider.GetNonce(accountAddress) : null;
 
             if (accountState.Balance != balance)
             {
-                differences.Add($"{acountAddress} balance exp: {accountState.Balance}, actual: {balance}, diff: {(balance > accountState.Balance ? balance - accountState.Balance : accountState.Balance - balance)}");
+                differences.Add($"{accountAddress} balance exp: {accountState.Balance}, actual: {balance}, diff: {(balance > accountState.Balance ? balance - accountState.Balance : accountState.Balance - balance)}");
             }
 
             if (accountState.Nonce != nonce)
             {
-                differences.Add($"{acountAddress} nonce exp: {accountState.Nonce}, actual: {nonce}");
+                differences.Add($"{accountAddress} nonce exp: {accountState.Nonce}, actual: {nonce}");
             }
 
-            byte[] code = accountExists ? stateProvider.GetCode(acountAddress) : [];
+            byte[] code = accountExists ? stateProvider.GetCode(accountAddress) : [];
             if (!Bytes.AreEqual(accountState.Code, code))
             {
-                differences.Add($"{acountAddress} code exp: {accountState.Code?.Length}, actual: {code?.Length}");
+                differences.Add($"{accountAddress} code exp: {accountState.Code?.Length}, actual: {code?.Length}");
             }
 
             if (differences.Count != differencesBefore)
             {
-                _logger.Info($"ACCOUNT STATE ({acountAddress}) HAS DIFFERENCES");
+                _logger.Info($"ACCOUNT STATE ({accountAddress}) HAS DIFFERENCES");
             }
 
             differencesBefore = differences.Count;
 
             KeyValuePair<UInt256, byte[]>[] clearedStorages = [];
-            if (test.Pre.TryGetValue(acountAddress, out AccountState? state))
+            if (test.Pre.ContainsKey(accountAddress))
             {
-                clearedStorages = state.Storage.Where(s => !accountState.Storage.ContainsKey(s.Key)).ToArray();
+                clearedStorages = [.. test.Pre[accountAddress].Storage.Where(s => !accountState.Storage.ContainsKey(s.Key))];
             }
 
             foreach (KeyValuePair<UInt256, byte[]> clearedStorage in clearedStorages)
             {
-                ReadOnlySpan<byte> value = !stateProvider.AccountExists(acountAddress) ? Bytes.Empty : stateProvider.Get(new StorageCell(acountAddress, clearedStorage.Key));
+                ReadOnlySpan<byte> value = !stateProvider.AccountExists(accountAddress) ? Bytes.Empty : stateProvider.Get(new StorageCell(accountAddress, clearedStorage.Key));
                 if (!value.IsZero())
                 {
-                    differences.Add($"{acountAddress} storage[{clearedStorage.Key}] exp: 0x00, actual: {value.ToHexString(true)}");
+                    differences.Add($"{accountAddress} storage[{clearedStorage.Key}] exp: 0x00, actual: {value.ToHexString(true)}");
                 }
             }
 
             foreach (KeyValuePair<UInt256, byte[]> storageItem in accountState.Storage)
             {
-                ReadOnlySpan<byte> value = !stateProvider.AccountExists(acountAddress) ? Bytes.Empty : stateProvider.Get(new StorageCell(acountAddress, storageItem.Key));
+                ReadOnlySpan<byte> value = !stateProvider.AccountExists(accountAddress) ? Bytes.Empty : stateProvider.Get(new StorageCell(accountAddress, storageItem.Key));
                 if (!Bytes.AreEqual(storageItem.Value, value))
                 {
-                    differences.Add($"{acountAddress} storage[{storageItem.Key}] exp: {storageItem.Value.ToHexString(true)}, actual: {value.ToHexString(true)}");
+                    differences.Add($"{accountAddress} storage[{storageItem.Key}] exp: {storageItem.Value.ToHexString(true)}, actual: {value.ToHexString(true)}");
                 }
             }
 
             if (differences.Count != differencesBefore)
             {
-                _logger.Info($"ACCOUNT STORAGE ({acountAddress}) HAS DIFFERENCES");
+                _logger.Info($"ACCOUNT STORAGE ({accountAddress}) HAS DIFFERENCES");
             }
         }
 

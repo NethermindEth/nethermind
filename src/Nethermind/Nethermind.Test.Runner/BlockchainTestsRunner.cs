@@ -27,15 +27,23 @@ public class BlockchainTestsRunner(
     public async Task<IEnumerable<EthereumTestResult>> RunTestsAsync()
     {
         List<EthereumTestResult> testResults = new();
-        IEnumerable<BlockchainTest> tests = _testsSource.LoadTests<BlockchainTest>();
-
-        // Create a streaming tracer once for all tests if tracing is enabled
-        using BlockchainTestStreamingTracer? tracer = trace
-            ? new BlockchainTestStreamingTracer(new() { EnableMemory = traceMemory, DisableStack = traceNoStack })
-            : null;
-
-        foreach (BlockchainTest test in tests)
+        IEnumerable<EthereumTest> tests = _testsSource.LoadTests<EthereumTest>();
+        foreach (EthereumTest loadedTest in tests)
         {
+            if (loadedTest as FailedToLoadTest is not null)
+            {
+                WriteRed(loadedTest.LoadFailure);
+                testResults.Add(new EthereumTestResult(loadedTest.Name, loadedTest.LoadFailure));
+                continue;
+            }
+
+            // Create a streaming tracer once for all tests if tracing is enabled
+            using BlockchainTestStreamingTracer? tracer = trace
+                ? new BlockchainTestStreamingTracer(new() { EnableMemory = traceMemory, DisableStack = traceNoStack })
+                : null;
+
+            BlockchainTest test = loadedTest as BlockchainTest;
+
             if (filter is not null && test.Name is not null && !Regex.Match(test.Name, $"^({filter})").Success)
                 continue;
             Setup();

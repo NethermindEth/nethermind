@@ -14,7 +14,6 @@ using Nethermind.Evm.State;
 using Nethermind.Evm.Tracing.State;
 using Nethermind.Int256;
 using Nethermind.Logging;
-using Nethermind.Trie;
 using Nethermind.Trie.Pruning;
 
 [assembly: InternalsVisibleTo("Ethereum.Test.Base")]
@@ -198,30 +197,38 @@ namespace Nethermind.State
             DebugGuardInScope();
             return _stateProvider.InsertCode(address, codeHash, code, spec, isGenesis);
         }
-        public void AddToBalance(Address address, in UInt256 balanceChange, IReleaseSpec spec)
+        public void AddToBalance(Address address, in UInt256 balanceChange, IReleaseSpec spec, out UInt256 oldBalance)
         {
             DebugGuardInScope();
-            _stateProvider.AddToBalance(address, balanceChange, spec);
+            _stateProvider.AddToBalance(address, balanceChange, spec, out oldBalance);
+        }
+        public void AddToBalance(Address address, in UInt256 balanceChange, IReleaseSpec spec)
+            => AddToBalance(address, balanceChange, spec, out _);
+        public bool AddToBalanceAndCreateIfNotExists(Address address, in UInt256 balanceChange, IReleaseSpec spec, out UInt256 oldBalance)
+        {
+            DebugGuardInScope();
+            return _stateProvider.AddToBalanceAndCreateIfNotExists(address, balanceChange, spec, out oldBalance);
         }
         public bool AddToBalanceAndCreateIfNotExists(Address address, in UInt256 balanceChange, IReleaseSpec spec)
+            => AddToBalanceAndCreateIfNotExists(address, balanceChange, spec, out _);
+        public void SubtractFromBalance(Address address, in UInt256 balanceChange, IReleaseSpec spec, out UInt256 oldBalance)
         {
             DebugGuardInScope();
-            return _stateProvider.AddToBalanceAndCreateIfNotExists(address, balanceChange, spec);
+            _stateProvider.SubtractFromBalance(address, balanceChange, spec, out oldBalance);
         }
         public void SubtractFromBalance(Address address, in UInt256 balanceChange, IReleaseSpec spec)
-        {
-            DebugGuardInScope();
-            _stateProvider.SubtractFromBalance(address, balanceChange, spec);
-        }
+            => SubtractFromBalance(address, balanceChange, spec, out _);
         public void UpdateStorageRoot(Address address, Hash256 storageRoot)
         {
             DebugGuardInScope();
             _stateProvider.UpdateStorageRoot(address, storageRoot);
         }
         public void IncrementNonce(Address address, UInt256 delta)
+            => IncrementNonce(address, delta, out _);
+        public void IncrementNonce(Address address, UInt256 delta, out UInt256 oldNonce)
         {
             DebugGuardInScope();
-            _stateProvider.IncrementNonce(address, delta);
+            _stateProvider.IncrementNonce(address, delta, out oldNonce);
         }
         public void DecrementNonce(Address address, UInt256 delta)
         {
@@ -268,16 +275,16 @@ namespace Nethermind.State
 
         public bool IsInScope => _isInScope;
 
-        public ref readonly UInt256 GetBalance(Address address)
+        public UInt256 GetBalance(Address address)
         {
             DebugGuardInScope();
-            return ref _stateProvider.GetBalance(address);
+            return _stateProvider.GetBalance(address);
         }
 
         public ValueHash256 GetStorageRoot(Address address)
         {
             DebugGuardInScope();
-            if (address == null) throw new ArgumentNullException(nameof(address));
+            ArgumentNullException.ThrowIfNull(address);
             return _stateProvider.GetStorageRoot(address);
         }
 
@@ -293,10 +300,10 @@ namespace Nethermind.State
             return _stateProvider.GetCode(in codeHash);
         }
 
-        public ref readonly ValueHash256 GetCodeHash(Address address)
+        public ValueHash256 GetCodeHash(Address address)
         {
             DebugGuardInScope();
-            return ref _stateProvider.GetCodeHash(address);
+            return _stateProvider.GetCodeHash(address);
         }
 
         ValueHash256 IAccountStateProvider.GetCodeHash(Address address)
@@ -342,9 +349,9 @@ namespace Nethermind.State
             DebugGuardInScope();
             int persistentSnapshot = _persistentStorageProvider.TakeSnapshot(newTransactionStart);
             int transientSnapshot = _transientStorageProvider.TakeSnapshot(newTransactionStart);
-            Snapshot.Storage storageSnapshot = new Snapshot.Storage(persistentSnapshot, transientSnapshot);
+            Snapshot.Storage storageSnapshot = new(persistentSnapshot, transientSnapshot);
             int stateSnapshot = _stateProvider.TakeSnapshot();
-            return new Snapshot(storageSnapshot, stateSnapshot);
+            return new Snapshot(storageSnapshot, stateSnapshot, -1);
         }
 
         public void Restore(Snapshot snapshot)
@@ -358,7 +365,7 @@ namespace Nethermind.State
         internal void Restore(int state, int persistentStorage, int transientStorage)
         {
             DebugGuardInScope();
-            Restore(new Snapshot(new Snapshot.Storage(persistentStorage, transientStorage), state));
+            Restore(new Snapshot(new Snapshot.Storage(persistentStorage, transientStorage), state, -1));
         }
 
         public void SetNonce(Address address, in UInt256 nonce)

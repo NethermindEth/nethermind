@@ -12,6 +12,11 @@ using Nethermind.Consensus.Producers;
 using Nethermind.Core;
 using System.Threading;
 using Nethermind.Merge.Plugin.Test;
+using Nethermind.Specs.Forks;
+using Nethermind.Specs;
+using Nethermind.Core.Crypto;
+using Nethermind.JsonRpc;
+using Nethermind.Core.Extensions;
 
 namespace Nethermind.Shutter.Test;
 
@@ -114,6 +119,28 @@ public class ShutterIntegrationTests : BaseEngineModuleTests
         }
 
         Assert.That(Metrics.ShutterKeysMissed, Is.EqualTo(5));
+    }
+
+
+    // todo: move
+    [Test]
+    public async Task Can_construct_BAL()
+    {
+        using MergeTestBlockchain chain = await new MergeTestBlockchain().Build(new TestSpecProvider(Amsterdam.Instance));
+
+        Block genesis = chain.BlockFinder.FindGenesisBlock()!;
+        PayloadAttributes payloadAttributes =
+            new() { Timestamp = 12, PrevRandao = genesis.Header.Random!, SuggestedFeeRecipient = Address.Zero };
+
+        // we're using payloadService directly, because we can't use fcU for branch
+        string payloadId = chain.PayloadPreparationService!.StartPreparingPayload(genesis.Header, payloadAttributes)!;
+
+        await Task.Delay(1000);
+
+        ResultWrapper<GetPayloadV5Result?> getPayloadResult =
+            await chain.EngineRpcModule.engine_getPayloadV6(Bytes.FromHexString(payloadId));
+        var res = getPayloadResult.Data!;
+        Assert.That(res.ExecutionPayload.BlockAccessList, Is.Not.Null);
     }
 
 }

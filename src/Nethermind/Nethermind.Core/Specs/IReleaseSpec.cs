@@ -468,6 +468,8 @@ namespace Nethermind.Core.Specs
 
         public bool RequestsEnabled => ConsolidationRequestsEnabled || WithdrawalRequestsEnabled || DepositsEnabled;
 
+        bool BlockLevelAccessListsEnabled => IsEip7928Enabled;
+
         public bool IsEip7594Enabled { get; }
 
         /// <summary>
@@ -528,5 +530,10 @@ namespace Nethermind.Core.Specs
         /// RIP-7728: L1SLOAD precompile for reading L1 storage from L2
         /// </summary>
         public bool IsRip7728Enabled { get; }
+
+        /// <summary>
+        /// EIP-7928: Block-Level Access Lists
+        /// </summary>
+        public bool IsEip7928Enabled { get; }
     }
 }

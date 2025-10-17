@@ -51,6 +51,7 @@ namespace Nethermind.Evm.TransactionProcessing
         private SystemTransactionProcessor? _systemTransactionProcessor;
         private readonly ITransactionProcessor.IBlobBaseFeeCalculator _blobBaseFeeCalculator;
         private readonly ILogManager _logManager;
+        private readonly TracedAccessWorldState? _tracedAccessWorldState;
 
         [Flags]
         protected enum ExecutionOptions
@@ -106,6 +107,7 @@ namespace Nethermind.Evm.TransactionProcessing
             WorldState = worldState;
             VirtualMachine = virtualMachine;
             _codeInfoRepository = codeInfoRepository;
+            _tracedAccessWorldState = worldState as TracedAccessWorldState;
             _blobBaseFeeCalculator = blobBaseFeeCalculator;
 
             Ecdsa = new EthereumEcdsa(specProvider.ChainId);
@@ -163,7 +165,7 @@ namespace Nethermind.Evm.TransactionProcessing
 
             // restore is CallAndRestore - previous call, we will restore state after the execution
             bool restore = opts.HasFlag(ExecutionOptions.Restore);
-            // commit - is for standard execute, we will commit thee state after execution
+            // commit - is for standard execute, we will commit the state after execution
             // !commit - is for build up during block production, we won't commit state after each transaction to support rollbacks
             // we commit only after all block is constructed
             bool commit = opts.HasFlag(ExecutionOptions.Commit) || (!opts.HasFlag(ExecutionOptions.SkipValidation) && !spec.IsEip658Enabled);
@@ -268,11 +270,18 @@ namespace Nethermind.Evm.TransactionProcessing
             int refunds = 0;
             foreach (AuthorizationTuple authTuple in tx.AuthorizationList)
             {
-                Address authority = (authTuple.Authority ??= Ecdsa.RecoverAddress(authTuple));
+                authTuple.Authority ??= Ecdsa.RecoverAddress(authTuple);
+                Address authority = authTuple.Authority;
 
-                if (!IsValidForExecution(authTuple, accessTracker, out string? error))
+                AuthorizationTupleResult res = IsValidForExecution(authTuple, accessTracker, spec, out string? error);
+                if (res != AuthorizationTupleResult.Valid)
                 {
                     if (Logger.IsDebug) Logger.Debug($"Delegation {authTuple} is invalid with error: {error}");
+
+                    if (_tracedAccessWorldState is not null && _tracedAccessWorldState.Enabled && IncludeAccountRead(res))
+                    {
+                        _tracedAccessWorldState.AddAccountRead(authority);
+                    }
                 }
                 else
                 {
@@ -291,52 +300,66 @@ namespace Nethermind.Evm.TransactionProcessing
             }
 
             return refunds;
+        }
 
-            bool IsValidForExecution(
-                AuthorizationTuple authorizationTuple,
-                StackAccessTracker accessTracker,
-                [NotNullWhen(false)] out string? error)
+        private bool IncludeAccountRead(AuthorizationTupleResult res)
+            => res == AuthorizationTupleResult.IncorrectNonce || res == AuthorizationTupleResult.InvalidAsCodeDeployed;
+
+        private enum AuthorizationTupleResult
+        {
+            Valid,
+            IncorrectNonce,
+            InvalidNonce,
+            InvalidChainId,
+            InvalidSignature,
+            InvalidAsCodeDeployed
+        }
+
+        private AuthorizationTupleResult IsValidForExecution(
+            AuthorizationTuple authorizationTuple,
+            StackAccessTracker accessTracker,
+            IReleaseSpec spec,
+            [NotNullWhen(false)] out string? error)
+        {
+            if (authorizationTuple.ChainId != 0 && SpecProvider.ChainId != authorizationTuple.ChainId)
             {
-                if (authorizationTuple.ChainId != 0 && SpecProvider.ChainId != authorizationTuple.ChainId)
-                {
-                    error = $"Chain id ({authorizationTuple.ChainId}) does not match.";
-                    return false;
-                }
-
-                if (authorizationTuple.Nonce == ulong.MaxValue)
-                {
-                    error = $"Nonce ({authorizationTuple.Nonce}) must be less than 2**64 - 1.";
-                    return false;
-                }
-
-                UInt256 s = new(authorizationTuple.AuthoritySignature.SAsSpan, isBigEndian: true);
-                if (authorizationTuple.Authority is null
-                    || s > Secp256K1Curve.HalfN
-                    //V minus the offset can only be 1 or 0 since eip-155 does not apply to Setcode signatures
-                    || authorizationTuple.AuthoritySignature.V - Signature.VOffset > 1)
-                {
-                    error = "Bad signature.";
-                    return false;
-                }
-
-                accessTracker.WarmUp(authorizationTuple.Authority);
-
-                if (WorldState.HasCode(authorizationTuple.Authority) && !_codeInfoRepository.TryGetDelegation(authorizationTuple.Authority, spec, out _))
-                {
-                    error = $"Authority ({authorizationTuple.Authority}) has code deployed.";
-                    return false;
-                }
-
-                UInt256 authNonce = WorldState.GetNonce(authorizationTuple.Authority);
-                if (authNonce != authorizationTuple.Nonce)
-                {
-                    error = $"Skipping tuple in authorization_list because nonce is set to {authorizationTuple.Nonce}, but authority ({authorizationTuple.Authority}) has {authNonce}.";
-                    return false;
-                }
-
-                error = null;
-                return true;
+                error = $"Chain id ({authorizationTuple.ChainId}) does not match.";
+                return AuthorizationTupleResult.InvalidChainId;
             }
+
+            if (authorizationTuple.Nonce == ulong.MaxValue)
+            {
+                error = $"Nonce ({authorizationTuple.Nonce}) must be less than 2**64 - 1.";
+                return AuthorizationTupleResult.InvalidNonce;
+            }
+
+            UInt256 s = new(authorizationTuple.AuthoritySignature.SAsSpan, isBigEndian: true);
+            if (authorizationTuple.Authority is null
+                || s > Secp256K1Curve.HalfN
+                //V minus the offset can only be 1 or 0 since eip-155 does not apply to Setcode signatures
+                || authorizationTuple.AuthoritySignature.V - Signature.VOffset > 1)
+            {
+                error = "Bad signature.";
+                return AuthorizationTupleResult.InvalidSignature;
+            }
+
+            accessTracker.WarmUp(authorizationTuple.Authority);
+
+            if (WorldState.HasCode(authorizationTuple.Authority) && !_codeInfoRepository.TryGetDelegation(authorizationTuple.Authority, spec, out _))
+            {
+                error = $"Authority ({authorizationTuple.Authority}) has code deployed.";
+                return AuthorizationTupleResult.InvalidAsCodeDeployed;
+            }
+
+            UInt256 authNonce = WorldState.GetNonce(authorizationTuple.Authority);
+            if (authNonce != authorizationTuple.Nonce)
+            {
+                error = $"Skipping tuple in authorization_list because nonce is set to {authorizationTuple.Nonce}, but authority ({authorizationTuple.Authority}) has {authNonce}.";
+                return AuthorizationTupleResult.IncorrectNonce;
+            }
+
+            error = null;
+            return AuthorizationTupleResult.Valid;
         }
 
         protected virtual IReleaseSpec GetSpec(BlockHeader header) => VirtualMachine.BlockExecutionContext.Spec;
@@ -833,7 +856,19 @@ namespace Nethermind.Evm.TransactionProcessing
             bool gasBeneficiaryNotDestroyed = !substate.DestroyList.Contains(header.GasBeneficiary);
             if (statusCode == StatusCode.Failure || gasBeneficiaryNotDestroyed)
             {
+                bool balTracingEnabled = _tracedAccessWorldState is not null && _tracedAccessWorldState.Enabled;
+                if (balTracingEnabled && fees == 0)
+                {
+                    // disable BAL tracing for special case of zero value transfer to coinbase
+                    _tracedAccessWorldState.Enabled = false;
+                }
+
                 WorldState.AddToBalanceAndCreateIfNotExists(header.GasBeneficiary!, fees, spec);
+
+                if (balTracingEnabled)
+                {
+                    _tracedAccessWorldState.Enabled = true;
+                }
             }
 
             UInt256 eip1559Fees = !tx.IsFree() ? header.BaseFeePerGas * (ulong)spentGas : UInt256.Zero;
@@ -905,6 +940,7 @@ namespace Nethermind.Evm.TransactionProcessing
             spentGas = Math.Max(spentGas, floorGas);
 
             // If noValidation we didn't charge for gas, so do not refund
+            // report to tracer??
             if (!opts.HasFlag(ExecutionOptions.SkipValidation))
                 WorldState.AddToBalance(tx.SenderAddress!, (ulong)(tx.GasLimit - spentGas) * gasPrice, spec);
 

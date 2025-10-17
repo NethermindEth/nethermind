@@ -10,6 +10,7 @@ using Nethermind.Evm.EvmObjectFormat;
 
 namespace Nethermind.Evm;
 using Int256;
+using Nethermind.Evm.State;
 
 internal static partial class EvmInstructions
 {
@@ -150,6 +151,8 @@ internal static partial class EvmInstructions
         // Charge gas for account access (considering hot/cold storage costs).
         if (!EvmCalculations.ChargeAccountAccessGas(ref gasAvailable, vm, address))
             goto OutOfGas;
+
+        (vm.WorldState as TracedAccessWorldState)?.AddAccountRead(address);
 
         if (!result.IsZero)
         {
