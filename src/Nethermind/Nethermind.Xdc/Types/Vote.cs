@@ -7,7 +7,7 @@ using System.Text.Json.Serialization;
 
 namespace Nethermind.Xdc.Types;
 
-public class Vote(BlockRoundInfo proposedBlockInfo, ulong gapNumber, Signature signature = null): IXdcPoolItem
+public class Vote(BlockRoundInfo proposedBlockInfo, ulong gapNumber, Signature signature = null) : IXdcPoolItem
 {
     public BlockRoundInfo ProposedBlockInfo { get; set; } = proposedBlockInfo;
     public ulong GapNumber { get; set; } = gapNumber;

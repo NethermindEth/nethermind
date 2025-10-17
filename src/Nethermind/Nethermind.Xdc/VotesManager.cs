@@ -20,7 +20,7 @@ using System.Threading.Tasks;
 using Nethermind.Core;
 
 namespace Nethermind.Xdc;
-internal class VotesManager (
+internal class VotesManager(
     XdcContext context,
     IBlockTree tree,
     IEpochSwitchManager epochSwitchManager,
@@ -48,7 +48,7 @@ internal class VotesManager (
     {
         EpochSwitchInfo epochSwitchInfo = _epochSwitchManager.GetEpochSwitchInfo(null, blockInfo.Hash);
         if (epochSwitchInfo is null)
-            throw new ArgumentException($"Cannot find epoch info for block {blockInfo.Hash}",nameof(EpochSwitchInfo));
+            throw new ArgumentException($"Cannot find epoch info for block {blockInfo.Hash}", nameof(EpochSwitchInfo));
         //Optimize this by fetching with block number and round only
 
         XdcBlockHeader header = _tree.FindHeader(blockInfo.Hash) as XdcBlockHeader;
@@ -100,13 +100,13 @@ internal class VotesManager (
             throw new InvalidOperationException($"Epoch has empty master node list for {vote.ProposedBlockInfo.Hash}");
         }
 
-        double certThreshold =  _specProvider.GetXdcSpec(proposedHeader, vote.ProposedBlockInfo.Round).CertThreshold;
+        double certThreshold = _specProvider.GetXdcSpec(proposedHeader, vote.ProposedBlockInfo.Round).CertThreshold;
         bool thresholdReached = roundVotes.Count >= epochInfo.Masternodes.Length * certThreshold;
         if (thresholdReached)
         {
             if (!BlockInfoValidator.ValidateBlockInfo(vote.ProposedBlockInfo, proposedHeader)) return Task.CompletedTask;
 
-            if(!EnsureVotesRecovered(roundVotes, epochInfo.Masternodes, certThreshold, out Signature[] validSignatures)) return Task.CompletedTask;
+            if (!EnsureVotesRecovered(roundVotes, epochInfo.Masternodes, certThreshold, out Signature[] validSignatures)) return Task.CompletedTask;
 
             // At this point, the QC should be processed for this *round*.
             // Ensure this runs only once per round:

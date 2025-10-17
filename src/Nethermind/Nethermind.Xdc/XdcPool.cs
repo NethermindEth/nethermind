@@ -9,7 +9,7 @@ using Nethermind.Core.Threading;
 
 namespace Nethermind.Xdc;
 
-public class XdcPool<T> where T: IXdcPoolItem
+public class XdcPool<T> where T : IXdcPoolItem
 {
     private readonly Dictionary<(ulong Round, Hash256 Hash), ArrayPoolList<T>> _items = new();
     private readonly McsLock _lock = new();
