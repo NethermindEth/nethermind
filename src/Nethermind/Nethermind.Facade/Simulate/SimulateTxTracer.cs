@@ -50,6 +50,7 @@ public sealed class SimulateTxTracer : TxTracer
 
     public override void ReportAction(long gas, UInt256 value, Address from, Address to, ReadOnlyMemory<byte> input, ExecutionType callType, bool isPrecompileCall = false)
     {
+        if (callType == ExecutionType.DELEGATECALL) return;
         base.ReportAction(gas, value, from, to, input, callType, isPrecompileCall);
         if (value > UInt256.Zero)
         {
