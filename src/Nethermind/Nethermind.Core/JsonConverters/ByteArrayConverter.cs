@@ -75,7 +75,8 @@ public class ByteArrayConverter : JsonConverter<byte[]>
                     if (followStandardizationRules)
                         ThrowFormatException();
                 }
-            } else if (followStandardizationRules) ThrowFormatException();
+            }
+            else if (followStandardizationRules) ThrowFormatException();
         }
 
         // Compute total hex digit count (after prefix)
