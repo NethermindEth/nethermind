@@ -61,7 +61,7 @@ public class ColumnsDb<T> : DbOnTheRocks, IColumnsDb<T> where T : struct, Enum
         return keys;
     }
 
-    protected override void BuildOptions<O>(IRocksDbConfig dbConfig, Options<O> options, IntPtr? sharedCache, IMergeOperator? mergeOperator)
+    protected override void BuildOptions<TOptions>(IRocksDbConfig dbConfig, Options<TOptions> options, IntPtr? sharedCache, IMergeOperator? mergeOperator)
     {
         base.BuildOptions(dbConfig, options, sharedCache, mergeOperator);
         options.SetCreateMissingColumnFamilies();
