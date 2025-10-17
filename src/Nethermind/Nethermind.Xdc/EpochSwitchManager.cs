@@ -216,7 +216,7 @@ internal class EpochSwitchManager : IEpochSwitchManager
         return epochSwitchInfos.ToArray();
     }
 
-    private bool TryGetBlockInfoInCache(ulong estRound, ulong epoch, out BlockInfo epochBlockInfo)
+    private BlockInfo? GetBlockInfoInCache(ulong estRound, ulong epoch)
     {
         var epochSwitchInCache = new List<BlockInfo>();
 
@@ -230,13 +230,11 @@ internal class EpochSwitchManager : IEpochSwitchManager
 
         if (epochSwitchInCache.Count == 1)
         {
-            epochBlockInfo = epochSwitchInCache[0];
-            return true;
+            return epochSwitchInCache[0];
         }
         else if (epochSwitchInCache.Count == 0)
         {
-            epochBlockInfo = null;
-            return false;
+            return null;
         }
 
         foreach (var blockInfo in epochSwitchInCache)
@@ -248,13 +246,11 @@ internal class EpochSwitchManager : IEpochSwitchManager
             }
             if (header.Hash == blockInfo.Hash)
             {
-                epochBlockInfo = blockInfo;
-                return true;
+                return blockInfo;
             }
         }
 
-        epochBlockInfo = null;
-        return false;
+        return null;
     }
 
     private bool TryBinarySearchBlockByEpochNumber(ulong targetEpochNumber, long start, long end, ulong switchBlock, ulong epoch, IXdcReleaseSpec xdcSpec, out BlockInfo epochBlockInfo)
@@ -303,7 +299,7 @@ internal class EpochSwitchManager : IEpochSwitchManager
             {
                 end = header.Number;
             }
-            else if (epochNum < targetEpochNumber)
+            else 
             {
                 long nextStart = header.Number;
                 if (nextStart == start)
@@ -379,7 +375,8 @@ internal class EpochSwitchManager : IEpochSwitchManager
 
         ulong estRound = (targetEpoch - (ulong)xdcSpec.SwitchEpoch) * (ulong)xdcSpec.EpochLength;
 
-        if (TryGetBlockInfoInCache(estRound, (ulong)xdcSpec.EpochLength, out var epochBlockInfo))
+        var epochBlockInfo = GetBlockInfoInCache(estRound, (ulong)xdcSpec.EpochLength);
+        if(epochBlockInfo is not null)
         {
             return epochBlockInfo;
         }
