@@ -7,12 +7,15 @@ using System.Text.Json.Serialization;
 
 namespace Nethermind.Xdc.Types;
 
-public class Vote(BlockRoundInfo proposedBlockInfo, ulong gapNumber, Signature signature = null)
+public class Vote(BlockRoundInfo proposedBlockInfo, ulong gapNumber, Signature signature = null) : IXdcPoolItem
 {
     public BlockRoundInfo ProposedBlockInfo { get; set; } = proposedBlockInfo;
     public ulong GapNumber { get; set; } = gapNumber;
     public Signature? Signature { get; set; } = signature;
+    public Address? Signer { get; set; }
 
     public override string ToString() =>
         $"{ProposedBlockInfo.Round}:{GapNumber}:{ProposedBlockInfo.BlockNumber}";
+
+    public (ulong Round, Hash256 hash) PoolKey() => (ProposedBlockInfo.Round, ProposedBlockInfo.Hash);
 }

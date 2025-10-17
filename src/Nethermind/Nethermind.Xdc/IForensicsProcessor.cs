@@ -27,7 +27,7 @@ public interface IForensicsProcessor
 
     Task ProcessVoteEquivocation(Vote incomingVote);
 
-    Task DetectEquivocationInVotePool(Vote vote, List<Vote> votePool);
+    Task DetectEquivocationInVotePool(Vote vote, IEnumerable<Vote> votePool);
 
     Task SendVoteEquivocationProof(Vote vote1, Vote vote2, Address signer);
 }
