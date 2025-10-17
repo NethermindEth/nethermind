@@ -23,9 +23,16 @@ public class OverridableCodeInfoRepository(ICodeInfoRepository codeInfoRepositor
         delegationAddress = null;
         if (_precompileOverrides.TryGetValue(codeSource, out var precompile)) return precompile.codeInfo;
 
-        return _codeOverrides.TryGetValue(codeSource, out ICodeInfo result)
-            ? result
-            : codeInfoRepository.GetCachedCodeInfo(codeSource, followDelegation, vmSpec, out delegationAddress);
+        if (_codeOverrides.TryGetValue(codeSource, out ICodeInfo result))
+        {
+            if (!result.IsEmpty && CodeInfoRepository.TryGetDelegatedAddress(result.CodeSpan, out delegationAddress))
+            {
+                if (followDelegation)
+                    result = GetCachedCodeInfo(delegationAddress, false, vmSpec, out Address? _);
+            }
+            return result;
+        }
+        return codeInfoRepository.GetCachedCodeInfo(codeSource, followDelegation, vmSpec, out delegationAddress);
     }
 
     public void InsertCode(ReadOnlyMemory<byte> code, Address codeOwner, IReleaseSpec spec) =>
