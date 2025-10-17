@@ -20,7 +20,7 @@ public abstract class NodesManager(string path, ILogger logger)
     private static readonly char[] _separator = ['\r', '\n'];
 
     protected readonly ILogger _logger = logger;
-    protected ConcurrentDictionary<PublicKey, NetworkNode> _nodes;
+    protected ConcurrentDictionary<PublicKey, NetworkNode> _nodes = [];
 
     private void EnsureFile(string resource)
     {
