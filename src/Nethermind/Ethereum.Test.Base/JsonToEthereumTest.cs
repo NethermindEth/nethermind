@@ -264,15 +264,6 @@ namespace Ethereum.Test.Base
                 test.PostStateRoot = testJson.PostStateHash;
             }
 
-            // Parse seal engine - fixes bug where NoProof tests bypassed validation
-            test.SealEngineUsed = testJson.SealEngine switch
-            {
-                "Ethash" => true,
-                "NoProof" => false,
-                null => false,      // Default for tests without sealEngine field
-                _ => false          // Unknown seal engines treated as NoProof
-            };
-
             return test;
         }
 

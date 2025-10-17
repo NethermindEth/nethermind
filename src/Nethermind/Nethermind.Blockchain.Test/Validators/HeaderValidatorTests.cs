@@ -59,7 +59,6 @@ public class HeaderValidatorTests
     [Test, MaxTime(Timeout.MaxTestTime)]
     public void Valid_when_valid()
     {
-        _block.Header.SealEngineType = SealEngineType.None;
         bool result = _validator.Validate(_block.Header, _parentBlock.Header);
         if (!result)
         {
@@ -76,7 +75,6 @@ public class HeaderValidatorTests
     public void When_gas_limit_too_high()
     {
         _block.Header.GasLimit = _parentBlock.Header.GasLimit + (long)BigInteger.Divide(_parentBlock.Header.GasLimit, 1024);
-        _block.Header.SealEngineType = SealEngineType.None;
         _block.Header.Hash = _block.CalculateHash();
 
         bool result = _validator.Validate(_block.Header, _parentBlock.Header);
@@ -87,7 +85,6 @@ public class HeaderValidatorTests
     public void When_gas_limit_just_correct_high()
     {
         _block.Header.GasLimit = _parentBlock.Header.GasLimit + (long)BigInteger.Divide(_parentBlock.Header.GasLimit, 1024) - 1;
-        _block.Header.SealEngineType = SealEngineType.None;
         _block.Header.Hash = _block.CalculateHash();
 
         bool result = _validator.Validate(_block.Header, _parentBlock.Header);
@@ -98,7 +95,6 @@ public class HeaderValidatorTests
     public void When_gas_limit_just_correct_low()
     {
         _block.Header.GasLimit = _parentBlock.Header.GasLimit - (long)BigInteger.Divide(_parentBlock.Header.GasLimit, 1024) + 1;
-        _block.Header.SealEngineType = SealEngineType.None;
         _block.Header.Hash = _block.CalculateHash();
 
         bool result = _validator.Validate(_block.Header, _parentBlock.Header);
@@ -109,7 +105,6 @@ public class HeaderValidatorTests
     public void When_gas_limit_is_just_too_low()
     {
         _block.Header.GasLimit = _parentBlock.Header.GasLimit - (long)BigInteger.Divide(_parentBlock.Header.GasLimit, 1024);
-        _block.Header.SealEngineType = SealEngineType.None;
         _block.Header.Hash = _block.CalculateHash();
 
         bool result = _validator.Validate(_block.Header, _parentBlock.Header);
@@ -120,7 +115,6 @@ public class HeaderValidatorTests
     public void When_gas_used_above_gas_limit()
     {
         _block.Header.GasUsed = _parentBlock.Header.GasLimit + 1;
-        _block.Header.SealEngineType = SealEngineType.None;
         _block.Header.Hash = _block.CalculateHash();
 
         bool result = _validator.Validate(_block.Header, _parentBlock.Header);
@@ -131,7 +125,6 @@ public class HeaderValidatorTests
     public void When_no_parent_invalid()
     {
         _block.Header.ParentHash = Keccak.Zero;
-        _block.Header.SealEngineType = SealEngineType.None;
         _block.Header.Hash = _block.CalculateHash();
 
         bool result = _validator.Validate(_block.Header, _parentBlock.Header);
@@ -142,7 +135,6 @@ public class HeaderValidatorTests
     public void When_timestamp_same_as_parent()
     {
         _block.Header.Timestamp = _parentBlock.Header.Timestamp;
-        _block.Header.SealEngineType = SealEngineType.None;
         _block.Header.Hash = _block.CalculateHash();
 
         bool result = _validator.Validate(_block.Header, _parentBlock.Header);
@@ -153,7 +145,6 @@ public class HeaderValidatorTests
     public void When_extra_data_too_long()
     {
         _block.Header.ExtraData = new byte[33];
-        _block.Header.SealEngineType = SealEngineType.None;
         _block.Header.Hash = _block.CalculateHash();
 
         bool result = _validator.Validate(_block.Header, _parentBlock.Header);
@@ -164,7 +155,6 @@ public class HeaderValidatorTests
     public void When_incorrect_difficulty_then_invalid()
     {
         _block.Header.Difficulty = 1;
-        _block.Header.SealEngineType = SealEngineType.None;
         _block.Header.Hash = _block.CalculateHash();
 
         bool result = _validator.Validate(_block.Header, _parentBlock.Header);
@@ -175,7 +165,6 @@ public class HeaderValidatorTests
     public void When_incorrect_number_then_invalid()
     {
         _block.Header.Number += 1;
-        _block.Header.SealEngineType = SealEngineType.None;
         _block.Header.Hash = _block.CalculateHash();
 
         bool result = _validator.Validate(_block.Header, _parentBlock.Header);
@@ -216,7 +205,6 @@ public class HeaderValidatorTests
             .WithNumber(_parentBlock.Number + 1)
             .WithBaseFeePerGas(BaseFeeCalculator.Calculate(_parentBlock.Header, specProvider.GetSpec((ForkActivation)(_parentBlock.Number + 1))))
             .WithNonce(0).TestObject;
-        _block.Header.SealEngineType = SealEngineType.None;
         _block.Header.Hash = _block.CalculateHash();
 
         bool result = _validator.Validate(_block.Header, _parentBlock.Header);
@@ -237,7 +225,6 @@ public class HeaderValidatorTests
             .WithGasLimit(long.MaxValue)
             .WithNumber(_parentBlock.Number + 1)
             .WithNonce(0).TestObject;
-        _block.Header.SealEngineType = SealEngineType.None;
         _block.Header.Hash = _block.CalculateHash();
 
         bool result = _validator.Validate(_block.Header, _parentBlock.Header);
@@ -270,7 +257,6 @@ public class HeaderValidatorTests
     {
         _block.Header.Difficulty = 1;
         _block.Header.TotalDifficulty = null;
-        _block.Header.SealEngineType = SealEngineType.None;
         _block.Header.Hash = _block.CalculateHash();
 
         HeaderValidator validator = new HeaderValidator(_blockTree, Always.Valid, _specProvider, new OneLoggerLogManager(new(_testLogger)));
@@ -290,7 +276,6 @@ public class HeaderValidatorTests
     {
         _block.Header.Difficulty = 1;
         _block.Header.TotalDifficulty = 0;
-        _block.Header.SealEngineType = SealEngineType.None;
         _block.Header.Hash = _block.CalculateHash();
 
         {
@@ -390,7 +375,6 @@ public class HeaderValidatorTests
             .WithNumber(_parentBlock.Number + 1)
             .TestObject;
 
-        _block.Header.SealEngineType = SealEngineType.None;  // NoProof
         _block.Header.Hash = _block.CalculateHash();
 
         // Act: Validate the block
@@ -446,7 +430,6 @@ public class HeaderValidatorTests
             .WithNumber(_parentBlock.Number + 1)
             .TestObject;
 
-        _block.Header.SealEngineType = SealEngineType.None;
         _block.Header.Hash = _block.CalculateHash();
 
         // Act

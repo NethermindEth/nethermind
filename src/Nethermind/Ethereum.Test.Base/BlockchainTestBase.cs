@@ -289,9 +289,6 @@ public abstract class BlockchainTestBase
             {
                 RlpStream rlpContext = Bytes.FromHexString(testBlockJson.Rlp!).AsRlpStream();
                 Block suggestedBlock = Rlp.Decode<Block>(rlpContext);
-                suggestedBlock.Header.SealEngineType =
-                    test.SealEngineUsed ? SealEngineType.Ethash : SealEngineType.None;
-
                 if (testBlockJson.BlockHeader is not null)
                 {
                     Assert.That(suggestedBlock.Header.Hash, Is.EqualTo(new Hash256(testBlockJson.BlockHeader.Hash)));
