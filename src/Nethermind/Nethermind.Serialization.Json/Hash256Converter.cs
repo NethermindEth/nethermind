@@ -11,11 +11,11 @@ namespace Nethermind.Serialization.Json;
 
 public class Hash256Converter : JsonConverter<Hash256>
 {
-    private readonly bool _followStandardizationRules;
+    private readonly bool _strictHexFormat;
 
-    public Hash256Converter(bool followStandardizationRules = false)
+    public Hash256Converter(bool strictHexFormat = false)
     {
-        _followStandardizationRules = followStandardizationRules;
+        _strictHexFormat = strictHexFormat;
     }
 
     public override Hash256? Read(
@@ -24,7 +24,7 @@ public class Hash256Converter : JsonConverter<Hash256>
         JsonSerializerOptions options)
     {
 
-        byte[]? bytes = ByteArrayConverter.Convert(ref reader, _followStandardizationRules);
+        byte[]? bytes = ByteArrayConverter.Convert(ref reader, _strictHexFormat);
         return bytes is null ? null : new Hash256(bytes);
     }
 
@@ -39,7 +39,7 @@ public class Hash256Converter : JsonConverter<Hash256>
     // Methods needed to ser/de dictionary keys
     public override Hash256 ReadAsPropertyName(ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options)
     {
-        byte[]? bytes = ByteArrayConverter.Convert(ref reader, _followStandardizationRules);
+        byte[]? bytes = ByteArrayConverter.Convert(ref reader, _strictHexFormat);
         return bytes is null ? null! : new Hash256(bytes);
     }
 

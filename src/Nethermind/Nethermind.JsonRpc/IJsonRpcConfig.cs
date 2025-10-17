@@ -189,7 +189,7 @@ public interface IJsonRpcConfig : IConfig
     bool PreloadRpcModules { get; set; }
 
     [ConfigItem(
-        Description = "Follow the exact standardization rules. this will decrease compatibility with some types of requests",
-        DefaultValue = "false")]
-    bool FollowStandardizationRules { get; set; }
+        Description = "Follow the exact standardization rules for hash and block param. this will decrease compatibility with some requests",
+        DefaultValue = "true")]
+    bool StrictHexFormat { get; set; }
 }

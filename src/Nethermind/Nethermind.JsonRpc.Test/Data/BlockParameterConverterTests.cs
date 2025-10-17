@@ -39,9 +39,9 @@ namespace Nethermind.JsonRpc.Test.Data
         [TestCase("\"0xa\"", false)]
         [TestCase("\"0\"", true)]
         [TestCase("\"100\"", true)]
-        public void Cant_read_block_number_when_follow_standardization_rules(string input, bool throws)
+        public void Cant_read_block_number_when_strict_hex_format_is_enabled(string input, bool throws)
         {
-            EthereumJsonSerializer.FollowStandardizationRules = true;
+            EthereumJsonSerializer.StrictHexFormat = true;
             IJsonSerializer serializer = new EthereumJsonSerializer();
 
             Func<BlockParameter> action = () => serializer.Deserialize<BlockParameter>(input);

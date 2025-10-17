@@ -37,7 +37,7 @@ public class ApiBuilder
         _configProvider = configProvider ?? throw new ArgumentNullException(nameof(configProvider));
         _initConfig = configProvider.GetConfig<IInitConfig>();
         IJsonRpcConfig? jsonRpcConfig = configProvider.GetConfig<IJsonRpcConfig>();
-        EthereumJsonSerializer.FollowStandardizationRules = jsonRpcConfig.FollowStandardizationRules;
+        EthereumJsonSerializer.StrictHexFormat = jsonRpcConfig.StrictHexFormat;
         _jsonSerializer = new EthereumJsonSerializer(jsonRpcConfig.JsonSerializationMaxDepth);
         ChainSpec = LoadChainSpec(_jsonSerializer);
     }

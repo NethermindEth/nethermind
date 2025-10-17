@@ -11,11 +11,11 @@ namespace Nethermind.Serialization.Json;
 
 public class ValueHash256Converter : JsonConverter<ValueHash256>
 {
-    private readonly bool _followStandardizationRules;
+    private readonly bool _strictHexFormat;
 
-    public ValueHash256Converter(bool followStandardizationRules = false)
+    public ValueHash256Converter(bool strictHexFormat = false)
     {
-        _followStandardizationRules = followStandardizationRules;
+        _strictHexFormat = strictHexFormat;
     }
 
     public override ValueHash256 Read(
@@ -23,7 +23,7 @@ public class ValueHash256Converter : JsonConverter<ValueHash256>
         Type typeToConvert,
         JsonSerializerOptions options)
     {
-        byte[]? bytes = ByteArrayConverter.Convert(ref reader, _followStandardizationRules);
+        byte[]? bytes = ByteArrayConverter.Convert(ref reader, _strictHexFormat);
         return bytes is null ? null : new ValueHash256(bytes);
     }
 

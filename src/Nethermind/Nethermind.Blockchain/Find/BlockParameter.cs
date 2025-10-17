@@ -189,7 +189,7 @@ namespace Nethermind.JsonRpc.Data
             {
                 return BlockParameter.Latest;
             }
-            if (tokenType == JsonTokenType.Number & !EthereumJsonSerializer.FollowStandardizationRules)
+            if (tokenType == JsonTokenType.Number & !EthereumJsonSerializer.StrictHexFormat)
             {
                 return new BlockParameter(reader.GetInt64());
             }
@@ -249,7 +249,7 @@ namespace Nethermind.JsonRpc.Data
                 return new BlockParameter(value);
             }
 
-            if (!EthereumJsonSerializer.FollowStandardizationRules && Utf8Parser.TryParse(span, out value, out _))
+            if (!EthereumJsonSerializer.StrictHexFormat && Utf8Parser.TryParse(span, out value, out _))
             {
                 return new BlockParameter(value);
             }

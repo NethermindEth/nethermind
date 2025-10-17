@@ -96,33 +96,13 @@ namespace Nethermind.Serialization.Json
                     new JavaScriptObjectConverter(),
                     new PublicKeyConverter(),
                     new PublicKeyHashedConverter(),
-                    new ValueHash256Converter(_followStandardizationRules),
-                    new Hash256Converter(_followStandardizationRules),
+                    new ValueHash256Converter(_strictHexFormat),
+                    new Hash256Converter(_strictHexFormat),
                 }
             };
 
             result.Converters.AddRange(_additionalConverters);
             result.Converters.AddRange(converters ?? Array.Empty<JsonConverter>());
-            if (_followStandardizationRules)
-            {
-                result.TypeInfoResolver = new DefaultJsonTypeInfoResolver
-                {
-                    Modifiers =
-                    {
-                        ti =>
-                        {
-                            foreach (JsonPropertyInfo jsonPropertyInfo in ti.Properties)
-                            {
-                                if (jsonPropertyInfo.AttributeProvider!.IsDefined(typeof(SkipForStandardizationAttribute),
-                                        inherit: true))
-                                {
-                                    jsonPropertyInfo.ShouldSerialize = (_, _) => false;
-                                }
-                            }
-                        }
-                    }
-                };
-            }
             return result;
         }
 
@@ -135,15 +115,15 @@ namespace Nethermind.Serialization.Json
             JsonOptionsIndented = CreateOptions(indented: true);
         }
 
-        private static bool _followStandardizationRules;
-        public static bool FollowStandardizationRules
+        private static bool _strictHexFormat;
+        public static bool StrictHexFormat
         {
-            get => _followStandardizationRules;
+            get => _strictHexFormat;
             set
             {
-                if (_followStandardizationRules == value)
+                if (_strictHexFormat == value)
                     return;
-                _followStandardizationRules = value;
+                _strictHexFormat = value;
                 JsonOptions = CreateOptions(indented: false);
                 JsonOptionsIndented = CreateOptions(indented: true);
             }
