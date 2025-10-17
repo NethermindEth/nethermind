@@ -148,11 +148,10 @@ internal class EpochSwitchManagerTests
 
         header.Number = (long)switchBlock;
         // Act
-        bool result = _epochSwitchManager.IsEpochSwitchAtBlock(header, out ulong epochNumber);
+        bool result = _epochSwitchManager.IsEpochSwitchAtBlock(header);
         // Assert
 
         Assert.That(result, Is.True);
-        Assert.That(switchBlock / epochLength, Is.EqualTo(epochNumber));
     }
 
     [Test]
@@ -178,10 +177,9 @@ internal class EpochSwitchManagerTests
         header.ExtraData = Encoding.UTF8.GetBytes("InvalidExtraData");
 
         // Act
-        bool result = _epochSwitchManager.IsEpochSwitchAtBlock(header, out ulong epochNumber);
+        bool result = _epochSwitchManager.IsEpochSwitchAtBlock(header);
         // Assert
         Assert.That(result, Is.False);
-        Assert.That(epochNumber, Is.EqualTo(0));
     }
 
     [Test]
@@ -212,10 +210,9 @@ internal class EpochSwitchManagerTests
         proposedHeader.ExtraConsensusData = extraFieldsV2;
 
         // Act
-        bool result = _epochSwitchManager.IsEpochSwitchAtBlock(proposedHeader, out ulong epochNumber);
+        bool result = _epochSwitchManager.IsEpochSwitchAtBlock(proposedHeader);
         // Assert
         Assert.That(result, Is.True);
-        Assert.That(proposedHeader.Number / releaseSpec.EpochLength, Is.EqualTo(epochNumber));
     }
 
     [Test]
@@ -243,12 +240,11 @@ internal class EpochSwitchManagerTests
         ExtraFieldsV2 extraFieldsV2 = new ExtraFieldsV2(chainHead.ExtraConsensusData!.CurrentRound + 1, qc);
         proposedHeader.ExtraConsensusData = extraFieldsV2;
         // Act
-        bool result = _epochSwitchManager.IsEpochSwitchAtBlock(proposedHeader, out ulong epochNumber);
+        bool result = _epochSwitchManager.IsEpochSwitchAtBlock(proposedHeader);
         // Assert
         Assert.That(chainHead.ExtraConsensusData!.CurrentRound, Is.LessThan(extraFieldsV2.CurrentRound));
 
         Assert.That(result, Is.True);
-        Assert.That((ulong)releaseSpec.SwitchEpoch + extraFieldsV2.CurrentRound / (ulong)releaseSpec.EpochLength, Is.EqualTo(epochNumber));
     }
 
     [Test]
@@ -276,12 +272,11 @@ internal class EpochSwitchManagerTests
         ExtraFieldsV2 extraFieldsV2 = new ExtraFieldsV2(chainHead.ExtraConsensusData!.CurrentRound - 1, qc);
         proposedHeader.ExtraConsensusData = extraFieldsV2;
         // Act
-        bool result = _epochSwitchManager.IsEpochSwitchAtBlock(proposedHeader, out ulong epochNumber);
+        bool result = _epochSwitchManager.IsEpochSwitchAtBlock(proposedHeader);
         // Assert
         Assert.That(chainHead.ExtraConsensusData!.CurrentRound, Is.GreaterThan(extraFieldsV2.CurrentRound));
 
         Assert.That(result, Is.False);
-        Assert.That((ulong)releaseSpec.SwitchEpoch + extraFieldsV2.CurrentRound / (ulong)releaseSpec.EpochLength, Is.EqualTo(epochNumber));
     }
 
     [Test]
@@ -309,12 +304,11 @@ internal class EpochSwitchManagerTests
         ExtraFieldsV2 extraFieldsV2 = new ExtraFieldsV2(chainHead.ExtraConsensusData!.CurrentRound, qc);
         proposedHeader.ExtraConsensusData = extraFieldsV2;
         // Act
-        bool result = _epochSwitchManager.IsEpochSwitchAtBlock(proposedHeader, out ulong epochNumber);
+        bool result = _epochSwitchManager.IsEpochSwitchAtBlock(proposedHeader);
         // Assert
         Assert.That(chainHead.ExtraConsensusData!.CurrentRound, Is.EqualTo(extraFieldsV2.CurrentRound));
 
         Assert.That(result, Is.False);
-        Assert.That((ulong)releaseSpec.SwitchEpoch + extraFieldsV2.CurrentRound / (ulong)releaseSpec.EpochLength, Is.EqualTo(epochNumber));
     }
 
     [Test]
@@ -338,10 +332,9 @@ internal class EpochSwitchManagerTests
         parentHeader.Hash = headerHash;
         parentHeader.Number = (long)switchBlock;
 
-        bool result = _epochSwitchManager.IsEpochSwitchAtRound(currRound, parentHeader, out var epochNumber);
+        bool result = _epochSwitchManager.IsEpochSwitchAtRound(currRound, parentHeader);
         // Assert
         Assert.That(result, Is.True);
-        Assert.That((ulong)releaseSpec.SwitchEpoch + currRound / (ulong)releaseSpec.EpochLength, Is.EqualTo(epochNumber));
     }
 
     [Test]
@@ -364,7 +357,7 @@ internal class EpochSwitchManagerTests
         parentHeader.Number = (long)switchBlock - 1;
         parentHeader.ExtraConsensusData = null;
 
-        bool result = _epochSwitchManager.IsEpochSwitchAtRound(1, parentHeader, out var epochNumber);
+        bool result = _epochSwitchManager.IsEpochSwitchAtRound(1, parentHeader);
         // Assert
         Assert.That(result, Is.False);
     }
@@ -383,7 +376,7 @@ internal class EpochSwitchManagerTests
         _config.GetSpecInternal(Arg.Any<ForkActivation>()).Returns(releaseSpec);
         XdcBlockHeader chainHead = GetChainOfBlocks(_tree, _snapshotManager, releaseSpec, 101);
 
-        bool result = _epochSwitchManager.IsEpochSwitchAtRound(currRound, chainHead, out var epochNumber);
+        bool result = _epochSwitchManager.IsEpochSwitchAtRound(currRound, chainHead);
         // Assert
         Assert.That(result, Is.False);
         Assert.That(chainHead.ExtraConsensusData!.CurrentRound, Is.GreaterThan(currRound));
@@ -419,14 +412,13 @@ internal class EpochSwitchManagerTests
         ulong currentEpochNumber = ((ulong)releaseSpec.SwitchEpoch + extraFieldsV2.CurrentRound) / (ulong)releaseSpec.EpochLength;
         ulong currentEpochStartRound = currentEpochNumber * (ulong)releaseSpec.EpochLength;
 
-        bool result = _epochSwitchManager.IsEpochSwitchAtRound(extraFieldsV2.CurrentRound, chainHead, out var epochNumber);
+        bool result = _epochSwitchManager.IsEpochSwitchAtRound(extraFieldsV2.CurrentRound, chainHead);
 
         // Assert
         Assert.That(chainHead.ExtraConsensusData!.CurrentRound, Is.EqualTo(extraFieldsV2.CurrentRound - 1));
         Assert.That(currentEpochStartRound, Is.GreaterThan(chainHead.ExtraConsensusData!.CurrentRound));
         Assert.That(chainHead.ExtraConsensusData!.CurrentRound, Is.LessThan(extraFieldsV2.CurrentRound));
         Assert.That(result, Is.True);
-        Assert.That(currentEpochNumber, Is.EqualTo(epochNumber));
     }
 
     [Test]
@@ -459,14 +451,13 @@ internal class EpochSwitchManagerTests
         ulong currentEpochNumber = ((ulong)releaseSpec.SwitchEpoch + extraFieldsV2.CurrentRound) / (ulong)releaseSpec.EpochLength;
         ulong currentEpochStartRound = currentEpochNumber * (ulong)releaseSpec.EpochLength;
 
-        bool result = _epochSwitchManager.IsEpochSwitchAtRound(extraFieldsV2.CurrentRound, chainHead, out var epochNumber);
+        bool result = _epochSwitchManager.IsEpochSwitchAtRound(extraFieldsV2.CurrentRound, chainHead);
 
         // Assert
         Assert.That(chainHead.ExtraConsensusData!.CurrentRound, Is.EqualTo(extraFieldsV2.CurrentRound - 1));
         Assert.That(currentEpochStartRound, Is.EqualTo(chainHead.ExtraConsensusData!.CurrentRound));
         Assert.That(chainHead.ExtraConsensusData!.CurrentRound, Is.LessThan(extraFieldsV2.CurrentRound));
         Assert.That(result, Is.False);
-        Assert.That(currentEpochNumber, Is.EqualTo(epochNumber));
     }
 
     [Test]
@@ -499,14 +490,13 @@ internal class EpochSwitchManagerTests
         ulong currentEpochNumber = ((ulong)releaseSpec.SwitchEpoch + extraFieldsV2.CurrentRound) / (ulong)releaseSpec.EpochLength;
         ulong currentEpochStartRound = currentEpochNumber * (ulong)releaseSpec.EpochLength;
 
-        bool result = _epochSwitchManager.IsEpochSwitchAtRound(extraFieldsV2.CurrentRound, chainHead, out var epochNumber);
+        bool result = _epochSwitchManager.IsEpochSwitchAtRound(extraFieldsV2.CurrentRound, chainHead);
 
         // Assert
         Assert.That(chainHead.ExtraConsensusData!.CurrentRound, Is.EqualTo(extraFieldsV2.CurrentRound - 1));
         Assert.That(currentEpochStartRound, Is.LessThan(chainHead.ExtraConsensusData!.CurrentRound));
         Assert.That(chainHead.ExtraConsensusData!.CurrentRound, Is.LessThan(extraFieldsV2.CurrentRound));
         Assert.That(result, Is.False);
-        Assert.That(currentEpochNumber, Is.EqualTo(epochNumber));
     }
 
     [Test]
@@ -554,6 +544,8 @@ internal class EpochSwitchManagerTests
         header.Hash = hash256;
         header.Number = (long)blockNumber;
         header.ExtraData = FillExtraDataForTests([TestItem.AddressA, TestItem.AddressB]);
+
+        _snapshotManager.GetSnapshot(hash256).Returns(new Snapshot(header.Number, header.Hash!, signers));
 
         _tree.FindHeader((long)blockNumber).Returns(header);
         var result = _epochSwitchManager.GetEpochSwitchInfo(header);
@@ -644,95 +636,6 @@ internal class EpochSwitchManagerTests
 
         var result = _epochSwitchManager.GetEpochSwitchInfo(header.Hash);
         Assert.That(result, Is.Null);
-    }
-
-    [Test]
-    public void GetCurrentEpochNumbers_ShouldReturnEpochNumbersIfAtEpoch()
-    {
-        long switchEpoch = 50;
-        long blockNumber = 69;
-        long epochLength = 5;
-
-        long expectedEpochNumber = switchEpoch + blockNumber / epochLength;
-        long expectedBlockNumber = (blockNumber / epochLength) * epochLength;
-
-        XdcReleaseSpec releaseSpec = new()
-        {
-            EpochLength = (int)epochLength,
-            SwitchBlock = (ulong)0,
-            SwitchEpoch = (int)switchEpoch,
-            V2Configs = [new V2ConfigParams()]
-        };
-        _config.GetSpecInternal(Arg.Any<ForkActivation>()).Returns(releaseSpec);
-
-        XdcBlockHeader chainHead = GetChainOfBlocks(_tree, _snapshotManager, releaseSpec, 100);
-
-        var result = _epochSwitchManager.GetCurrentEpochNumbers((ulong)blockNumber);
-        Assert.That(result, Is.Not.Null);
-        Assert.That(result?.epochNumber, Is.EqualTo(expectedEpochNumber));
-        Assert.That(result?.currentCheckpointNumber, Is.EqualTo(expectedBlockNumber));
-    }
-
-    [Test]
-    public void GetCurrentEpochNumbers_ShouldReturnNullIfBlockNumberIsNotInTree()
-    {
-        ulong blockNumber = 23;
-
-        _tree.FindHeader((long)blockNumber).Returns((XdcBlockHeader?)null);
-
-        var result = _epochSwitchManager.GetCurrentEpochNumbers(blockNumber);
-
-        Assert.That(result, Is.Null);
-    }
-
-    [Test]
-    public void GetPreviousEpochSwitchInfoByHash_ReturnsNullIfNoEpochSwitchFound()
-    {
-        // Arrange
-        var switchBlock = 10ul;
-        var epochLength = 5ul;
-
-        XdcReleaseSpec releaseSpec = new()
-        {
-            EpochLength = (int)epochLength,
-            SwitchBlock = switchBlock,
-            V2Configs = [new V2ConfigParams()]
-        };
-
-        _config.GetSpecInternal(Arg.Any<ForkActivation>()).Returns(releaseSpec);
-
-        XdcBlockHeader header = Build.A.XdcBlockHeader()
-            .TestObject;
-
-        header.Hash = Keccak.Zero;
-        header.Number = (long)switchBlock;
-        // Act
-        var result = _epochSwitchManager.GetPreviousEpochSwitchInfoByHash(header.Hash, 256);
-        // Assert
-        Assert.That(result, Is.Null);
-    }
-
-    [Test]
-    public void GetPreviousEpochSwitchInfoByHash_ReturnsEpochSwitchAtDepth()
-    {
-        XdcReleaseSpec releaseSpec = new()
-        {
-            EpochLength = (int)3,
-            SwitchBlock = 0,
-            V2Configs = [new V2ConfigParams()]
-        };
-
-        _config.GetSpecInternal(Arg.Any<ForkActivation>()).Returns(releaseSpec);
-
-        XdcBlockHeader chainHead = GetChainOfBlocks(_tree, _snapshotManager, releaseSpec, 100);
-        var result = _epochSwitchManager.GetPreviousEpochSwitchInfoByHash(chainHead.Hash!, 8);
-
-
-        int numberOfEpochs = (int)(chainHead.ExtraConsensusData?.CurrentRound ?? 0) / (int)releaseSpec.EpochLength;
-        int expectedEpochAtDepth = numberOfEpochs - 8;
-        int expectedRound = expectedEpochAtDepth * releaseSpec.EpochLength;
-
-        Assert.That(result!.EpochSwitchBlockInfo.Round, Is.EqualTo(expectedRound));
     }
 
     [Test]

@@ -21,7 +21,7 @@ internal static class XdcConstants
     public const ulong NonceAuthVoteValue = 0xffffffffffffffff; // Magic nonce number to vote on adding a new signer
     public const ulong NonceDropVoteValue = 0x0000000000000000; // Magic nonce number to vote on removing a signer
 
-    public const ulong InMemoryEpochs = 5 * 900UL;   // Number of mapping from block to epoch switch infos to keep in memory
+    public const int InMemoryEpochs = 5 * 900;   // Number of mapping from block to epoch switch infos to keep in memory
 
     public const int InMemoryRound2Epochs = 65536;   // One epoch ~ 0.5h, 65536 epochs ~ 3.7y, ~10MB memory
 

@@ -53,7 +53,7 @@ internal class XdcSealValidator(ISnapshotManager snapshotManager, IEpochSwitchMa
 
         Address[] masternodes;
 
-        if (xdcHeader.IsEpochSwitch(xdcSpec))
+        if (epochSwitchManager.IsEpochSwitchAtBlock(xdcHeader))
         {
             if (xdcHeader.Nonce != XdcConstants.NonceDropVoteValue)
             {

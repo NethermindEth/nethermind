@@ -44,7 +44,7 @@ public class XdcBlockHeader : BlockHeader, IHashResolver
         {
             if (_validatorsAddress is not null)
                 return _validatorsAddress;
-            _validatorsAddress = ExtractAddresses(Validators);
+            _validatorsAddress = XdcExtensions.ExtractAddresses(Validators);
             return _validatorsAddress;
         }
         set { _validatorsAddress = value; }
@@ -59,7 +59,7 @@ public class XdcBlockHeader : BlockHeader, IHashResolver
         {
             if (_penaltiesAddress is not null)
                 return _penaltiesAddress;
-            _penaltiesAddress = ExtractAddresses(Penalties);
+            _penaltiesAddress = XdcExtensions.ExtractAddresses(Penalties);
             return _penaltiesAddress;
         }
         set { _penaltiesAddress = value; }
@@ -105,19 +105,6 @@ public class XdcBlockHeader : BlockHeader, IHashResolver
         ulong epochStart = extraFields.CurrentRound - extraFields.CurrentRound % (ulong)spec.EpochLength;
 
         return parentRound < epochStart;
-    }
-
-    private static ImmutableArray<Address>? ExtractAddresses(byte[]? data)
-    {
-        if (data is null || data.Length % Address.Size != 0)
-            return null;
-
-        Address[] addresses = new Address[data.Length / Address.Size];
-        for (int i = 0; i < addresses.Length; i++)
-        {
-            addresses[i] = new Address(data.AsSpan(i * Address.Size, Address.Size));
-        }
-        return addresses.ToImmutableArray();
     }
 
     public ValueHash256 CalculateHash()
