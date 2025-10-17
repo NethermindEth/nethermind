@@ -2,16 +2,17 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.IO;
+using FluentAssertions;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Test;
+using Nethermind.Core.Test.Container;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Logging;
 using Nethermind.Serialization.Json;
 using Nethermind.Specs.ChainSpecStyle;
 using Nethermind.Specs.Forks;
 using Nethermind.Evm.State;
-using Nethermind.State;
 using NSubstitute;
 using NUnit.Framework;
 
@@ -45,27 +46,51 @@ public class GenesisBuilderTests
         Assert.That(block.Hash!.ToString(), Is.EqualTo("0x1326aad1114b1f1c6a345b69ba4ba6f8ab6ce027d988aacd275ab596a047a547"));
     }
 
+    [Test, MaxTime(Timeout.MaxTestTime)]
+    public void Remove_ChainSpecAllocation_AfterPostProcessor()
+    {
+        string path = Path.Combine(TestContext.CurrentContext.WorkDirectory, "Specs/shanghai_from_genesis.json");
+        ChainSpec chainSpec = LoadChainSpec(path);
+
+        FunctionalGenesisPostProcessor genesisPostProcessor = new FunctionalGenesisPostProcessor((block) =>
+        {
+            chainSpec.Allocations.Should().NotBeNull();
+        });
+        (GenesisBuilder genesisLoader, IWorldState stateProvider) = BuildGenesisBuilder(chainSpec, genesisPostProcessor);
+
+        using var _ = stateProvider.BeginScope(IWorldState.PreGenesis);
+        genesisLoader.Build();
+        chainSpec.Allocations.Should().BeNull();
+    }
+
     private void AssertBlockHash(string expectedHash, string chainspecFilePath)
     {
         Block block = GetGenesisBlock(chainspecFilePath);
         Assert.That(block.Hash!.ToString(), Is.EqualTo(expectedHash));
     }
 
-    private Block GetGenesisBlock(string chainspecPath)
+    private (GenesisBuilder, IWorldState) BuildGenesisBuilder(ChainSpec chainSpec, IGenesisPostProcessor? genesisPostProcessor = null)
     {
-        string path = Path.Combine(TestContext.CurrentContext.WorkDirectory, chainspecPath);
-        ChainSpec chainSpec = LoadChainSpec(path);
         IWorldState stateProvider = TestWorldStateFactory.CreateForTest();
         ISpecProvider specProvider = Substitute.For<ISpecProvider>();
         specProvider.GetSpec(Arg.Any<ForkActivation>()).Returns(Berlin.Instance);
         ITransactionProcessor transactionProcessor = Substitute.For<ITransactionProcessor>();
-        IGenesisPostProcessor genesisPostProcessor = Substitute.For<IGenesisPostProcessor>();
+        genesisPostProcessor ??= Substitute.For<IGenesisPostProcessor>();
         GenesisBuilder genesisLoader = new(
             chainSpec,
             specProvider,
             stateProvider,
             transactionProcessor,
             genesisPostProcessor);
+
+        return (genesisLoader, stateProvider);
+    }
+
+    private Block GetGenesisBlock(string chainspecPath)
+    {
+        string path = Path.Combine(TestContext.CurrentContext.WorkDirectory, chainspecPath);
+        ChainSpec chainSpec = LoadChainSpec(path);
+        (GenesisBuilder genesisLoader, IWorldState stateProvider) = BuildGenesisBuilder(chainSpec);
 
         using var _ = stateProvider.BeginScope(IWorldState.PreGenesis);
         return genesisLoader.Build();
