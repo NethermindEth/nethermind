@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
@@ -23,7 +23,6 @@ using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.Network;
 using Nethermind.Network.P2P;
-using Nethermind.Network.P2P.Subprotocols.Eth;
 using Nethermind.Network.P2P.Subprotocols.Eth.V62.Messages;
 using Nethermind.Network.P2P.Subprotocols.Eth.V65.Messages;
 using Nethermind.Network.P2P.Subprotocols.Eth.V67;
@@ -520,10 +519,11 @@ public class TxBroadcasterTests
             Substitute.For<ISyncServer>(),
             RunImmediatelyScheduler.Instance,
             Substitute.For<ITxPool>(),
-            Substitute.For<IPooledTxsRequestor>(),
             Substitute.For<IGossipPolicy>(),
             Substitute.For<IForkInfo>(),
-            Substitute.For<ILogManager>());
+            Substitute.For<ILogManager>(),
+            Substitute.For<ITxPoolConfig>(),
+            Substitute.For<ISpecProvider>());
         _broadcaster.AddPeer(eth68Handler);
 
         Transaction localTx = Build.A.Transaction
@@ -548,7 +548,6 @@ public class TxBroadcasterTests
             Substitute.For<ISyncServer>(),
             RunImmediatelyScheduler.Instance,
             Substitute.For<ITxPool>(),
-            Substitute.For<IPooledTxsRequestor>(),
             Substitute.For<IGossipPolicy>(),
             Substitute.For<IForkInfo>(),
             Substitute.For<ILogManager>());
@@ -561,10 +560,11 @@ public class TxBroadcasterTests
             Substitute.For<ISyncServer>(),
             RunImmediatelyScheduler.Instance,
             Substitute.For<ITxPool>(),
-            Substitute.For<IPooledTxsRequestor>(),
             Substitute.For<IGossipPolicy>(),
             Substitute.For<IForkInfo>(),
-            Substitute.For<ILogManager>());
+            Substitute.For<ILogManager>(),
+            Substitute.For<ITxPoolConfig>(),
+            Substitute.For<ISpecProvider>());
 
         Transaction localTx = Build.A.Transaction
             .WithShardBlobTxTypeAndFields()
@@ -602,10 +602,11 @@ public class TxBroadcasterTests
             Substitute.For<ISyncServer>(),
             RunImmediatelyScheduler.Instance,
             Substitute.For<ITxPool>(),
-            Substitute.For<IPooledTxsRequestor>(),
             Substitute.For<IGossipPolicy>(),
             Substitute.For<IForkInfo>(),
-            Substitute.For<ILogManager>());
+            Substitute.For<ILogManager>(),
+            Substitute.For<ITxPoolConfig>(),
+            Substitute.For<ISpecProvider>());
 
         Transaction localTx = Build.A.Transaction
             .WithData(new byte[txSize])
@@ -656,10 +657,11 @@ public class TxBroadcasterTests
             Substitute.For<ISyncServer>(),
             RunImmediatelyScheduler.Instance,
             Substitute.For<ITxPool>(),
-            Substitute.For<IPooledTxsRequestor>(),
             Substitute.For<IGossipPolicy>(),
             Substitute.For<IForkInfo>(),
-            Substitute.For<ILogManager>());
+            Substitute.For<ILogManager>(),
+            Substitute.For<ITxPoolConfig>(),
+            Substitute.For<ISpecProvider>());
         _broadcaster.AddPeer(eth68Handler);
 
         Transaction localTx = Build.A.Transaction
