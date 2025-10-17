@@ -38,8 +38,8 @@ namespace Nethermind.Blockchain.Receipts
         private const int CacheSize = 64;
         private readonly LruCache<ValueHash256, TxReceipt[]> _receiptsCache = new(CacheSize, CacheSize, "receipts");
 
-        public event EventHandler<BlockReplacementEventArgs> ReceiptsInserted;
-        public event EventHandler<ReceiptsEventArgs>? AnyReceiptsInserted;
+        public event EventHandler<BlockReplacementEventArgs> NewCanonicalReceipts;
+        public event EventHandler<ReceiptsEventArgs>? ReceiptsInserted;
 
         public PersistentReceiptStorage(
             IColumnsDb<ReceiptsColumns> receiptsDb,
@@ -74,7 +74,7 @@ namespace Nethermind.Blockchain.Receipts
         private void BlockTreeOnBlockAddedToMain(object? sender, BlockReplacementEventArgs e)
         {
             EnsureCanonical(e.Block);
-            ReceiptsInserted?.Invoke(this, e);
+            NewCanonicalReceipts?.Invoke(this, e);
 
             // Dont block main loop
             Task.Run(() =>
@@ -290,7 +290,7 @@ namespace Nethermind.Blockchain.Receipts
                 EnsureCanonical(block, lastBlockNumber);
             }
 
-            AnyReceiptsInserted?.Invoke(this, new(block.Header, txReceipts));
+            ReceiptsInserted?.Invoke(this, new(block.Header, txReceipts));
         }
 
         public long MigratedBlockNumber

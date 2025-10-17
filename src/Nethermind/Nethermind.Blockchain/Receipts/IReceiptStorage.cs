@@ -21,11 +21,11 @@ namespace Nethermind.Blockchain.Receipts
         /// <summary>
         /// Receipts for a new main block are inserted
         /// </summary>
-        event EventHandler<BlockReplacementEventArgs> ReceiptsInserted;
+        event EventHandler<BlockReplacementEventArgs> NewCanonicalReceipts;
 
         /// <summary>
         /// Any receipts are inserted
         /// </summary>
-        event EventHandler<ReceiptsEventArgs> AnyReceiptsInserted;
+        event EventHandler<ReceiptsEventArgs> ReceiptsInserted;
     }
 }
