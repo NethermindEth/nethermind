@@ -148,7 +148,7 @@ public class CodeInfoRepository : ICodeInfoRepository
     /// Parses delegation code to extract the contained address.
     /// <b>Assumes </b><paramref name="code"/> <b>is delegation code!</b>
     /// </remarks>
-    private static bool TryGetDelegatedAddress(ReadOnlySpan<byte> code, [NotNullWhen(true)] out Address? address)
+    public static bool TryGetDelegatedAddress(ReadOnlySpan<byte> code, [NotNullWhen(true)] out Address? address)
     {
         if (Eip7702Constants.IsDelegatedCode(code))
         {

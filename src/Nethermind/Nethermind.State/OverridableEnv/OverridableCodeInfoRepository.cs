@@ -48,8 +48,17 @@ public class OverridableCodeInfoRepository(ICodeInfoRepository codeInfoRepositor
     public void SetDelegation(Address codeSource, Address authority, IReleaseSpec spec) =>
         codeInfoRepository.SetDelegation(codeSource, authority, spec);
 
-    public bool TryGetDelegation(Address address, IReleaseSpec vmSpec, [NotNullWhen(true)] out Address? delegatedAddress) =>
-        codeInfoRepository.TryGetDelegation(address, vmSpec, out delegatedAddress);
+    public bool TryGetDelegation(Address address, IReleaseSpec vmSpec,
+        [NotNullWhen(true)] out Address? delegatedAddress)
+    {
+        delegatedAddress = null;
+        if (_codeOverrides.TryGetValue(address, out var codeInfo))
+        {
+            return CodeInfoRepository.TryGetDelegatedAddress(codeInfo.CodeSpan, out delegatedAddress);
+        }
+        return codeInfoRepository.TryGetDelegation(address, vmSpec, out delegatedAddress);
+    }
+
 
     public ValueHash256 GetExecutableCodeHash(Address address, IReleaseSpec spec) =>
         codeInfoRepository.GetExecutableCodeHash(address, spec);
