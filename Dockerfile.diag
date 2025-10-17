@@ -45,4 +45,6 @@ COPY scripts/diag-entrypoint.sh .
 
 ENV PATH="$PATH:/opt/diag-tools:/opt/diag-tools/dotmemory"
 
+RUN chmod +x diag-entrypoint.sh
+
 ENTRYPOINT ["./diag-entrypoint.sh"]
