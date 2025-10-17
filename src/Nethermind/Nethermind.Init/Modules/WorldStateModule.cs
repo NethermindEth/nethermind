@@ -15,6 +15,7 @@ using Nethermind.JsonRpc.Modules.Admin;
 using Nethermind.Logging;
 using Nethermind.State;
 using Nethermind.Trie;
+using Nethermind.Trie.Pruning;
 
 namespace Nethermind.Init.Modules;
 
@@ -76,6 +77,7 @@ public class WorldStateModule(IInitConfig initConfig) : Module
 
             .Map<IWorldStateManager, PruningTrieStateFactoryOutput>((o) => o.WorldStateManager)
             .Map<IStateReader, IWorldStateManager>((m) => m.GlobalStateReader)
+            .Map<IPruningTrieStore, MainPruningTrieStoreFactory>((f) => f.PruningTrieStore)
 
             // Some admin rpc to trigger verify trie and pruning
             .Map<IPruningTrieStateAdminRpcModule, PruningTrieStateFactoryOutput>((m) => m.AdminRpcModule)

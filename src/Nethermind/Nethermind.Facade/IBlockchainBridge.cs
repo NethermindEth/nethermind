@@ -56,10 +56,12 @@ namespace Nethermind.Facade
         /// <param name="baseBlock">The block header to check state availability for.</param>
         /// <returns>True if state is likely available, false otherwise (conservative approach).</returns>
         /// <remarks>
-        /// For archive nodes (no pruning), returns true only when fully synced.
-        /// For pruning nodes, checks if the block is within the pruning window minus 1 block as a safety margin.
-        /// This conservative approach sacrifices 1 block of history to eliminate race conditions with pruning.
-        /// This method is optimized for RPC calls and may return false negatives to prevent exceptions.
+        /// This method handles multiple node configurations:
+        /// - Archive nodes (no pruning): State available from sync pivot onwards (not from genesis if snap/fast synced).
+        /// - Full pruning enabled: Tracks oldest state from last persisted block, sync pivot, and current pruning window.
+        /// - Memory pruning only: Uses pruning boundary with safety margin.
+        /// Always returns false during state sync to prevent race conditions.
+        /// This conservative approach may return false negatives to prevent RPC exceptions when state is unavailable.
         /// </remarks>
         bool HasStateForBlock(BlockHeader baseBlock);
     }
