@@ -8,6 +8,8 @@ using Nethermind.Blockchain;
 using Nethermind.Blockchain.Filters;
 using Nethermind.Blockchain.Find;
 using Nethermind.Blockchain.Receipts;
+using Nethermind.Blockchain.Synchronization;
+using Nethermind.Synchronization.ParallelSync;
 using Nethermind.Core;
 using Nethermind.Core.Attributes;
 using Nethermind.Core.Crypto;
@@ -16,14 +18,17 @@ using Nethermind.Int256;
 using Nethermind.Evm;
 using Nethermind.Evm.Tracing;
 using Nethermind.Trie;
+using Nethermind.Trie.Pruning;
 using Nethermind.TxPool;
 using Block = Nethermind.Core.Block;
 using System.Threading;
 using Nethermind.Core.Specs;
 using Nethermind.Evm.TransactionProcessing;
+using Nethermind.Facade.Eth;
 using Nethermind.Facade.Filters;
 using Nethermind.State;
 using Nethermind.Config;
+using Nethermind.Db;
 using Nethermind.Facade.Find;
 using Nethermind.Facade.Proxy.Models.Simulate;
 using Nethermind.Facade.Simulate;
@@ -51,7 +56,10 @@ namespace Nethermind.Facade
         ILogFinder logFinder,
         ISpecProvider specProvider,
         IBlocksConfig blocksConfig,
-        IMiningConfig miningConfig)
+        IMiningConfig miningConfig,
+        IPruningConfig pruningConfig,
+        IEthSyncingInfo ethSyncingInfo,
+        IPruningTrieStore pruningTrieStore)
         : IBlockchainBridge
     {
         private readonly SimulateBridgeHelper _simulateBridgeHelper = new(blocksConfig, specProvider);
@@ -385,7 +393,53 @@ namespace Nethermind.Facade
 
         public bool HasStateForBlock(BlockHeader baseBlock)
         {
-            return stateReader.HasStateForBlock(baseBlock);
+            long headNumber = blockTree.Head?.Number ?? 0;
+            long requestedNumber = baseBlock.Number;
+
+            // Conservative: don't claim we have state during state sync
+            // This prevents race conditions during the sync process for all node types
+            if (ethSyncingInfo.SyncMode.HaveNotSyncedStateYet())
+            {
+                return false;
+            }
+
+            // For archive nodes (no pruning), check if requested block is within available range
+            if (pruningConfig.Mode == PruningMode.None)
+            {
+                // Archive mode: but state only available from sync pivot onwards
+                // If node was snap/fast synced, state before pivot was never downloaded
+                long syncPivotBlock = blockTree.SyncPivot.BlockNumber;
+                return requestedNumber >= syncPivotBlock && requestedNumber <= headNumber;
+            }
+
+            // For nodes with pruning enabled, determine the oldest available state block
+            long oldestAvailableState;
+
+            if (pruningConfig.Mode.IsFull())
+            {
+                // Full pruning enabled: track oldest state from multiple sources
+                // 1. Last persisted block (from trie store persistence/full pruning operations)
+                // 2. Sync pivot (state before this was never downloaded)
+                // 3. Current pruning window (head - boundary)
+                long lastPersistedBlock = pruningTrieStore.LastPersistedBlockNumber;
+                long syncPivotBlock = blockTree.SyncPivot.BlockNumber;
+                long pruningWindowStart = headNumber - pruningConfig.PruningBoundary + 1; // +1 for safety margin
+
+                // State available from the maximum of these values (most restrictive)
+                oldestAvailableState = Math.Max(Math.Max(lastPersistedBlock, syncPivotBlock), pruningWindowStart);
+            }
+            else
+            {
+                // Memory pruning only: use pruning boundary with safety margin
+                // We subtract 1 from the pruning boundary as a safety margin to account for:
+                // 1. Race conditions between checking state and accessing it
+                // 2. Blocks that might be pruned between the check and actual access
+                int pruningBoundary = pruningConfig.PruningBoundary;
+                oldestAvailableState = headNumber - pruningBoundary + 1;
+            }
+
+            // Check if requested block is within available range
+            return requestedNumber >= oldestAvailableState && requestedNumber <= headNumber;
         }
 
         public IEnumerable<FilterLog> FindLogs(LogFilter filter, BlockHeader fromBlock, BlockHeader toBlock, CancellationToken cancellationToken = default)

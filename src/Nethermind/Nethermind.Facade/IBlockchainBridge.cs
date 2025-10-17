@@ -49,6 +49,20 @@ namespace Nethermind.Facade
 
         bool TryGetLogs(int filterId, out IEnumerable<FilterLog> filterLogs, CancellationToken cancellationToken = default);
         void RunTreeVisitor<TCtx>(ITreeVisitor<TCtx> treeVisitor, Hash256 stateRoot) where TCtx : struct, INodeContext<TCtx>;
-        bool HasStateForBlock(BlockHeader? baseBlock);
+
+        /// <summary>
+        /// Checks if state is available for the given block header using configuration-based logic to avoid race conditions.
+        /// </summary>
+        /// <param name="baseBlock">The block header to check state availability for.</param>
+        /// <returns>True if state is likely available, false otherwise (conservative approach).</returns>
+        /// <remarks>
+        /// This method handles multiple node configurations:
+        /// - Archive nodes (no pruning): State available from sync pivot onwards (not from genesis if snap/fast synced).
+        /// - Full pruning enabled: Tracks oldest state from last persisted block, sync pivot, and current pruning window.
+        /// - Memory pruning only: Uses pruning boundary with safety margin.
+        /// Always returns false during state sync to prevent race conditions.
+        /// This conservative approach may return false negatives to prevent RPC exceptions when state is unavailable.
+        /// </remarks>
+        bool HasStateForBlock(BlockHeader baseBlock);
     }
 }
