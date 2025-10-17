@@ -3,6 +3,7 @@
 
 using System;
 using System.Collections.Generic;
+using System.Data;
 using System.Linq;
 using Nethermind.Int256;
 
@@ -99,7 +100,8 @@ public struct BlockAccessList : IEquatable<BlockAccessList>, IJournal<int>
             {
                 Address = address,
                 Type = ChangeType.BalanceChange,
-                PreviousValue = balanceChanges.Last().Value
+                PreviousValue = balanceChanges.Last().Value,
+                BlockAccessIndex = Index
             });
 
             balanceChanges.RemoveAt(balanceChanges.Count - 1);
@@ -111,7 +113,8 @@ public struct BlockAccessList : IEquatable<BlockAccessList>, IJournal<int>
                 Address = address,
                 Type = ChangeType.BalanceChange,
                 PreviousValue = null,
-                PreTxBalance = before
+                PreTxBalance = before,
+                BlockAccessIndex = Index
             });
         }
 
@@ -325,13 +328,21 @@ public struct BlockAccessList : IEquatable<BlockAccessList>, IJournal<int>
         while (_changes.Count > snapshot)
         {
             Change change = _changes.Pop();
+            int count;
             switch (change.Type)
             {
                 case ChangeType.BalanceChange:
                     BalanceChange? previousBalance = change.PreviousValue is null ? null : (BalanceChange)change.PreviousValue;
                     SortedList<ushort, BalanceChange> balanceChanges = _accountChanges[change.Address].BalanceChanges;
 
-                    balanceChanges.RemoveAt(balanceChanges.Count - 1);
+                    // balance could have gone bak to pre-tx value
+                    // so would already be removed
+                    count = balanceChanges.Count;
+                    if (count > 0 && balanceChanges.Last().Key == change.BlockAccessIndex)
+                    {
+                        balanceChanges.RemoveAt(balanceChanges.Count - 1);
+                    }
+
                     if (previousBalance is not null)
                     {
                         balanceChanges.Add(Index, previousBalance.Value);
@@ -427,5 +438,6 @@ public struct BlockAccessList : IEquatable<BlockAccessList>, IJournal<int>
         public ChangeType Type { get; init; }
         public IIndexedChange? PreviousValue { get; init; }
         public UInt256? PreTxBalance { get; init; }
+        public ushort BlockAccessIndex { get; init; }
     }
 }
