@@ -189,7 +189,7 @@ public interface IJsonRpcConfig : IConfig
     bool PreloadRpcModules { get; set; }
 
     [ConfigItem(
-        Description = "Follow the exact standardization rules for hash and block param. this will decrease compatibility with some requests",
+        Description = "Enable strict parsing rules for Block Params and Hashas in RPC requests. this will decrease compatibility but increase compliance with the spec.",
         DefaultValue = "true")]
     bool StrictHexFormat { get; set; }
 }
