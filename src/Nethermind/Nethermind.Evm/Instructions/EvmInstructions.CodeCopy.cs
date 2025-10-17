@@ -148,11 +148,11 @@ internal static partial class EvmInstructions
         gasAvailable -= spec.GetExtCodeCost() + GasCostOf.Memory * EvmCalculations.Div32Ceiling(in result, out bool outOfGas);
         if (outOfGas) goto OutOfGas;
 
-        (vm.WorldState as TracedAccessWorldState)?.AddAccountRead(address);
-
         // Charge gas for account access (considering hot/cold storage costs).
         if (!EvmCalculations.ChargeAccountAccessGas(ref gasAvailable, vm, address))
             goto OutOfGas;
+
+        (vm.WorldState as TracedAccessWorldState)?.AddAccountRead(address);
 
         if (!result.IsZero)
         {
