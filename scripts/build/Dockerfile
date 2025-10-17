@@ -14,9 +14,9 @@ COPY src/Nethermind src/Nethermind
 COPY Directory.*.props .
 COPY global.json .
 COPY nuget.config .
-COPY scripts/build/build.sh .
+COPY --chmod=0755 scripts/build/build.sh .
 
-RUN chmod +x build.sh && ./build.sh $COMMIT_HASH
+RUN ./build.sh $COMMIT_HASH
 
 VOLUME /output
 
