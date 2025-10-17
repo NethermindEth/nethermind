@@ -187,4 +187,9 @@ public interface IJsonRpcConfig : IConfig
 
     [ConfigItem(Description = "Preload rpc modules. Useful in rpc provider to reduce latency on first request.", DefaultValue = "false")]
     bool PreloadRpcModules { get; set; }
+
+    [ConfigItem(
+        Description = "Follow the exact standardization rules. this will decrease compatibility with some types of requests",
+        DefaultValue = "false")]
+    bool FollowStandardizationRules { get; set; }
 }

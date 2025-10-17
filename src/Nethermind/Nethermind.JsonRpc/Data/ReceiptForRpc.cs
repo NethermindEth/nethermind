@@ -7,6 +7,7 @@ using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Evm;
 using Nethermind.Int256;
+using Nethermind.Serialization.Json;
 
 namespace Nethermind.JsonRpc.Data
 {
@@ -62,6 +63,7 @@ namespace Nethermind.JsonRpc.Data
         public LogEntryForRpc[] Logs { get; set; }
         public Bloom? LogsBloom { get; set; }
         public Hash256? Root { get; set; }
+        [SkipForStandardization]
         public long Status { get; set; }
         public string? Error { get; set; }
         public TxType Type { get; set; }
