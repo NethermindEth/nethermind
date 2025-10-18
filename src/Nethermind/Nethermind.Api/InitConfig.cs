@@ -18,6 +18,7 @@ namespace Nethermind.Api
         public string BaseDbPath { get; set; } = "db";
         public string LogFileName { get; set; } = "log.txt";
         public string? GenesisHash { get; set; }
+        public ulong? NetworkId { get; set; }
         public string StaticNodesPath { get; set; } = "Data/static-nodes.json";
         public string TrustedNodesPath { get; set; } = "Data/trusted-nodes.json";
         public string? KzgSetupPath { get; set; } = null;

@@ -70,6 +70,13 @@ public class ApiBuilder
 
         var loader = new ChainSpecFileLoader(ethereumJsonSerializer, _logger);
         ChainSpec chainSpec = loader.LoadEmbeddedOrFromFile(_initConfig.ChainSpecPath);
+
+        //overwriting NetworkId which is useful for some devnets (like bloatnet)
+        if (_initConfig.NetworkId is not null)
+        {
+            chainSpec.NetworkId = (ulong)_initConfig.NetworkId;
+        }
+
         return chainSpec;
     }
 
