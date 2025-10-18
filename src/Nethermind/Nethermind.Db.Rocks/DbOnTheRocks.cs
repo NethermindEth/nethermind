@@ -586,7 +586,7 @@ public partial class DbOnTheRocks : IDb, ITunableDb, IReadOnlyNativeKeyValueStor
         if (mergeOperator is not null)
         {
             options.SetMergeOperator(new MergeOperatorAdapter(mergeOperator));
-            lock(_doNotGcOptionsLocker)
+            lock (_doNotGcOptionsLocker)
                 _doNotGcOptions.Add(options);
         }
 

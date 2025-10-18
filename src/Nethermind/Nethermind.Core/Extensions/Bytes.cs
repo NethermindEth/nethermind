@@ -279,7 +279,7 @@ namespace Nethermind.Core.Extensions
 
             if (padding != 0)
             {
-                 result.AsSpan(bytes.Length, length - bytes.Length).Fill(padding);
+                result.AsSpan(bytes.Length, length - bytes.Length).Fill(padding);
             }
 
             return result;
