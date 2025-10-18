@@ -38,7 +38,7 @@ public class PerTableDbConfig : IRocksDbConfig
         foreach (var prefix in _prefixes)
         {
             string prefixed = string.Concat(prefix, propertyName);
-            if (GetProperty(type, prefixed) is null)
+            if (GetProperty(type, prefixed, caseSensitive: true) is null)
             {
                 throw new InvalidConfigurationException($"Configuration {propertyName} not available with prefix {prefix}. Add {prefix}{propertyName} to {nameof(IDbConfig)}.", -1);
             }
