@@ -1489,22 +1489,8 @@ public sealed class TrieStore : ITrieStore, IPruningTrieStore
             {
                 if (_trieStore.IsStillNeeded(nodeRecord.LastCommit))
                 {
-                    var rlp = nodeRecord.Node.FullRlp;
-                    if (rlp.IsNull)
-                    {
-                        bufferShard.GetOrAdd(key, nodeRecord);
-                        if (!isReadOnly) return nodeRecord.Node;
-                    }
-                    else
-                    {
-                        // clone is as if it read only
-                        TrieNode node = nodeRecord.Node.Clone();
-                        if (nodeRecord.Node.IsSealed) node.Seal();
-                        if (nodeRecord.Node.IsPersisted) node.IsPersisted = true;
-                        node.Keccak = nodeRecord.Node.Keccak;
-                        bufferShard.GetOrAdd(key, nodeRecord);
-                        if (!isReadOnly) return nodeRecord.Node;
-                    }
+                    bufferShard.GetOrAdd(key, nodeRecord);
+                    return nodeRecord.Node;
                 }
             }
 
