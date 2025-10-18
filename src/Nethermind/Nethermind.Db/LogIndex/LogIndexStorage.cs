@@ -357,6 +357,12 @@ namespace Nethermind.Db.LogIndex
 
             await StopAsync();
 
+            await _setReceiptsSemaphores[false].WaitAsync();
+            await _setReceiptsSemaphores[true].WaitAsync();
+
+            if (_disposed)
+                return;
+
             _disposed = true;
 
             DisposeCore();
