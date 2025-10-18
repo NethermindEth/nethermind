@@ -53,7 +53,7 @@ public abstract class NodesManager(string path, ILogger logger)
         {
             var separator = $"{Environment.NewLine}  ";
 
-            if (_logger.IsDebug) _logger.Debug($"{title}:{separator}{string.Join(separator, nodes.Values.Select(n => n.ToString()))}");
+            _logger.Debug($"{title}:{separator}{string.Join(separator, nodes.Values.Select(n => n.ToString()))}");
         }
     }
 
