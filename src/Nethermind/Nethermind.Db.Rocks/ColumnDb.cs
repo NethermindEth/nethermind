@@ -193,14 +193,4 @@ public class ColumnDb : IDb, ISortedKeyValueStore, IMergeableKeyValueStore
     {
         return _mainDb.GetViewBetween(firstKey, lastKey, _columnFamily);
     }
-
-    public IIterator GetIterator(bool ordered = false)
-    {
-        return _mainDb.GetIterator(ordered, _columnFamily);
-    }
-
-    public IIterator GetIterator(ref IteratorOptions options)
-    {
-        return _mainDb.GetIterator(ref options, _columnFamily);
-    }
 }

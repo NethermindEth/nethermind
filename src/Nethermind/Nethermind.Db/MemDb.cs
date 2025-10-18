@@ -168,16 +168,6 @@ namespace Nethermind.Db
             };
         }
 
-        public IIterator GetIterator(bool ordered = false)
-        {
-            throw new NotSupportedException("Iteration is not supported by this implementation.");
-        }
-
-        public IIterator GetIterator(ref IteratorOptions options)
-        {
-            throw new NotSupportedException("Iteration is not supported by this implementation.");
-        }
-
         private IEnumerable<KeyValuePair<byte[], byte[]?>> OrderedDb => _db.OrderBy(kvp => kvp.Key, Bytes.Comparer);
     }
 }

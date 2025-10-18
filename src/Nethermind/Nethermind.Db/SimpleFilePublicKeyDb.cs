@@ -325,15 +325,5 @@ namespace Nethermind.Db
         public void Dispose()
         {
         }
-
-        public IIterator GetIterator(bool ordered = false)
-        {
-            throw new NotSupportedException("Iteration is not supported by this implementation.");
-        }
-
-        public IIterator GetIterator(ref IteratorOptions options)
-        {
-            throw new NotSupportedException("Iteration is not supported by this implementation.");
-        }
     }
 }
