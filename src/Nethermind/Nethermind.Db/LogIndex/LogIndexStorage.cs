@@ -106,7 +106,21 @@ namespace Nethermind.Db.LogIndex
         private readonly IColumnsDb<LogIndexColumns> _rootDb;
         private readonly IDb _addressDb;
         private readonly IDb[] _topicDbs;
-        private IEnumerable<IDb> DBColumns => new[] { _addressDb }.Concat(_topicDbs);
+
+        private IEnumerable<IDb> DBColumns
+        {
+            get
+            {
+                if (_addressDb is not null)
+                    yield return _addressDb;
+
+                foreach (IDb topicDb in _topicDbs ?? [])
+                {
+                    if (topicDb is not null)
+                        yield return topicDb;
+                }
+            }
+        }
 
         private readonly ILogger _logger;
 
