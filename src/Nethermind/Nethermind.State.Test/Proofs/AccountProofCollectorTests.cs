@@ -307,8 +307,8 @@ namespace Nethermind.Store.Test.Proofs
             AccountProofCollector accountProofCollector = new(TestItem.AddressA, new[] { Bytes.FromHexString("0x0000000000000000000000000000000000000000000000000000000000000000"), Bytes.FromHexString("0x0000000000000000000000000000000000000000000000000000000000000001") });
             tree.Accept(accountProofCollector, tree.RootHash);
             AccountProof proof = accountProofCollector.BuildResult();
-            Assert.That(proof.StorageProofs[0].Key.ToHexString(true), Is.EqualTo("0x0000000000000000000000000000000000000000000000000000000000000000"));
-            Assert.That(proof.StorageProofs[1].Key.ToHexString(true), Is.EqualTo("0x0000000000000000000000000000000000000000000000000000000000000001"));
+            Assert.That(proof.StorageProofs![0].Key!.Value.ToString(true), Is.EqualTo("0x0000000000000000000000000000000000000000000000000000000000000000"));
+            Assert.That(proof.StorageProofs![1].Key!.Value.ToString(true), Is.EqualTo("0x0000000000000000000000000000000000000000000000000000000000000001"));
         }
 
         [Test]
@@ -750,7 +750,7 @@ storage: 10075208144087594565017167249218046892267736431914869828855077415926031
                 {
                     byte[] indexBytes = new byte[32];
                     addressesWithStorage[i].StorageCells[j].Index.ToBigEndian(indexBytes.AsSpan());
-                    accountProof.StorageProofs[j].Key.ToHexString().Should().Be(indexBytes.ToHexString(), $"{i} {j}");
+                    accountProof.StorageProofs[j].Key!.Value.ToString(false).Should().Be(indexBytes.ToHexString(), $"{i} {j}");
 
                     TrieNode node = new(NodeType.Unknown, accountProof.StorageProofs[j].Proof.Last());
                     node.ResolveNode(null, TreePath.Empty);
