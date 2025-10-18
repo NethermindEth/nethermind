@@ -128,7 +128,7 @@ namespace Nethermind.JsonRpc.Test.Modules
             }));
 
             _blockTree.BlockAddedToMain += Raise.EventWith(new object(), blockReplacementEventArgs);
-            _receiptStorage.ReceiptsInserted += Raise.EventWith(new object(), blockReplacementEventArgs);
+            _receiptStorage.NewCanonicalReceipts += Raise.EventWith(new object(), blockReplacementEventArgs);
             manualResetEvent.WaitOne(TimeSpan.FromMilliseconds(1000)).Should().Be(shouldReceiveResult);
 
             subscriptionId = newHeadSubscription.Id;
@@ -148,7 +148,7 @@ namespace Nethermind.JsonRpc.Test.Modules
             }));
 
             _blockTree.BlockAddedToMain += Raise.EventWith(new object(), blockEventArgs);
-            _receiptStorage.ReceiptsInserted += Raise.EventWith(new object(), blockEventArgs);
+            _receiptStorage.NewCanonicalReceipts += Raise.EventWith(new object(), blockEventArgs);
             semaphoreSlim.Wait(TimeSpan.FromMilliseconds(500));
 
             subscriptionId = logsSubscription.Id;
@@ -769,7 +769,7 @@ namespace Nethermind.JsonRpc.Test.Modules
 
             BlockReplacementEventArgs blockEventArgs = new(block);
             _blockTree.BlockAddedToMain += Raise.EventWith(new object(), blockEventArgs);
-            _receiptStorage.ReceiptsInserted += Raise.EventWith(new object(), blockEventArgs);
+            _receiptStorage.NewCanonicalReceipts += Raise.EventWith(new object(), blockEventArgs);
             manualResetEvent.WaitOne(TimeSpan.FromMilliseconds(200));
 
             jsonRpcResults.Count.Should().Be(1);
@@ -949,7 +949,7 @@ namespace Nethermind.JsonRpc.Test.Modules
                 {
                     BlockReplacementEventArgs eventArgs = new(Build.A.Block.TestObject);
                     blockTree.BlockAddedToMain += Raise.EventWith(eventArgs);
-                    _receiptStorage.ReceiptsInserted += Raise.EventWith(new object(), eventArgs);
+                    _receiptStorage.NewCanonicalReceipts += Raise.EventWith(new object(), eventArgs);
                 }
             });
 
@@ -1204,7 +1204,7 @@ namespace Nethermind.JsonRpc.Test.Modules
             }));
 
             _blockTree.BlockAddedToMain += Raise.EventWith(new object(), blockEventArgs);
-            _receiptStorage.ReceiptsInserted += Raise.EventWith(new object(), blockEventArgs);
+            _receiptStorage.NewCanonicalReceipts += Raise.EventWith(new object(), blockEventArgs);
             manualResetEvent.WaitOne(TimeSpan.FromMilliseconds(2000));
 
             jsonRpcResults.Count.Should().Be(1);

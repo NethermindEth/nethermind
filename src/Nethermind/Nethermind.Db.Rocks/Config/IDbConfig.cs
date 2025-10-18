@@ -101,4 +101,17 @@ public interface IDbConfig : IConfig
 
     string L1OriginDbRocksDbOptions { get; set; }
     string? L1OriginDbAdditionalRocksDbOptions { get; set; }
+
+    string logIndexStorageDbRocksDbOptions { get; set; }
+    string logIndexStorageDbAdditionalRocksDbOptions { get; set; }
+    string logIndexStorageAddressesDbRocksDbOptions { get; set; }
+    string logIndexStorageAddressesDbAdditionalRocksDbOptions { get; set; }
+    string logIndexStorageTopics0DbRocksDbOptions { get; set; }
+    string logIndexStorageTopics0DbAdditionalRocksDbOptions { get; set; }
+    string logIndexStorageTopics1DbRocksDbOptions { get; set; }
+    string logIndexStorageTopics1DbAdditionalRocksDbOptions { get; set; }
+    string logIndexStorageTopics2DbRocksDbOptions { get; set; }
+    string logIndexStorageTopics2DbAdditionalRocksDbOptions { get; set; }
+    string logIndexStorageTopics3DbRocksDbOptions { get; set; }
+    string logIndexStorageTopics3DbAdditionalRocksDbOptions { get; set; }
 }

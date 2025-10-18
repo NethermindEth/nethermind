@@ -29,10 +29,20 @@ namespace Nethermind.Db
             GC.SuppressFinalize(this);
         }
 
+        public void Clear()
+        {
+            _currentItems.Clear();
+        }
+
         public void Set(ReadOnlySpan<byte> key, byte[]? value, WriteFlags flags = WriteFlags.None)
         {
             _currentItems[key.ToArray()] = value;
             _writeFlags = flags;
+        }
+
+        public void Merge(ReadOnlySpan<byte> key, ReadOnlySpan<byte> value, WriteFlags flags = WriteFlags.None)
+        {
+            throw new NotSupportedException("Merging is not supported by this implementation.");
         }
     }
 }

@@ -270,4 +270,17 @@ public class DbConfig : IDbConfig
     public string L1OriginDbRocksDbOptions { get; set; } = "";
 
     public string? L1OriginDbAdditionalRocksDbOptions { get; set; }
+
+    public string logIndexStorageDbRocksDbOptions { get; set; } = "";
+    public string logIndexStorageDbAdditionalRocksDbOptions { get; set; } = "";
+    public string logIndexStorageAddressesDbRocksDbOptions { get; set; } = "";
+    public string logIndexStorageAddressesDbAdditionalRocksDbOptions { get; set; } = "";
+    public string logIndexStorageTopics0DbRocksDbOptions { get; set; } = "";
+    public string logIndexStorageTopics0DbAdditionalRocksDbOptions { get; set; } = "";
+    public string logIndexStorageTopics1DbRocksDbOptions { get; set; } = "";
+    public string logIndexStorageTopics1DbAdditionalRocksDbOptions { get; set; } = "";
+    public string logIndexStorageTopics2DbRocksDbOptions { get; set; } = "";
+    public string logIndexStorageTopics2DbAdditionalRocksDbOptions { get; set; } = "";
+    public string logIndexStorageTopics3DbRocksDbOptions { get; set; } = "";
+    public string logIndexStorageTopics3DbAdditionalRocksDbOptions { get; set; } = "";
 }

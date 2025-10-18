@@ -3,6 +3,7 @@
 
 using System;
 using System.Collections.Concurrent;
+using System.Diagnostics;
 using System.Threading;
 
 namespace Nethermind.Core.Utils;
@@ -40,6 +41,23 @@ public class ConcurrentWriteBatcher : IWriteBatch
         ReturnWriteBatch(currentBatch);
     }
 
+    public void Merge(ReadOnlySpan<byte> key, ReadOnlySpan<byte> value, WriteFlags flags = WriteFlags.None)
+    {
+        IWriteBatch currentBatch = RentWriteBatch();
+        currentBatch.Merge(key, value, flags);
+        ReturnWriteBatch(currentBatch);
+    }
+
+    public void Clear()
+    {
+        ThrowIfDisposed();
+
+        foreach (IWriteBatch batch in _batches)
+        {
+            batch.Clear();
+        }
+    }
+
     public void Set(ReadOnlySpan<byte> key, byte[]? value, WriteFlags flags = WriteFlags.None)
     {
         IWriteBatch currentBatch = RentWriteBatch();
@@ -70,4 +88,7 @@ public class ConcurrentWriteBatcher : IWriteBatch
 
         return currentBatch;
     }
+
+    [StackTraceHidden]
+    private void ThrowIfDisposed() => ObjectDisposedException.ThrowIf(_disposing, this);
 }
