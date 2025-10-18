@@ -3,6 +3,7 @@
 
 using System;
 using System.Collections.Concurrent;
+using System.Diagnostics;
 using System.Threading;
 
 namespace Nethermind.Core.Utils;
@@ -88,5 +89,6 @@ public class ConcurrentWriteBatcher : IWriteBatch
         return currentBatch;
     }
 
+    [StackTraceHidden]
     private void ThrowIfDisposed() => ObjectDisposedException.ThrowIf(_disposing, this);
 }
