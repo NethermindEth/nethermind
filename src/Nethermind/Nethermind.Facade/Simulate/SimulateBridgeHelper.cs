@@ -120,10 +120,10 @@ public class SimulateBridgeHelper(IBlocksConfig blocksConfig, ISpecProvider spec
                     .Select((c) => c.HadGasLimitInRequest)
                     .ToArray();
 
+                PrepareState(blockCall, env.WorldState, env.CodeInfoRepository, callHeader.Number, spec);
+
                 BlockBody body = AssembleBody(calls, stateProvider, nonceCache, spec);
                 Block callBlock = new Block(callHeader, body);
-
-                PrepareState(blockCall, env.WorldState, env.CodeInfoRepository, callHeader.Number, spec);
 
                 ProcessingOptions processingFlags = payload.Validation
                     ? SimulateProcessingOptions
