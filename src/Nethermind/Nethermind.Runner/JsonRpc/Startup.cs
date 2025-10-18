@@ -215,7 +215,7 @@ public class Startup : IStartup
                         using (result)
                         {
                             await using Stream stream = jsonRpcConfig.BufferResponses ? RecyclableStream.GetStream("http") : null;
-                            CountingWriter resultWriter = stream is not null ? new CountingStreamPipeWriter(stream) : new CountingPipeWriter(ctx.Response.BodyWriter);
+                            CountingWriter resultWriter = stream is not null ? new CountingStreamPipeWriter(stream) : new CountingStreamPipeWriter(ctx.Response.Body);
                             try
                             {
                                 ctx.Response.ContentType = "application/json";
