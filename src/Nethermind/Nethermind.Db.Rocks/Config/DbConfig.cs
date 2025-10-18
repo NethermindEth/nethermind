@@ -271,16 +271,16 @@ public class DbConfig : IDbConfig
 
     public string? L1OriginDbAdditionalRocksDbOptions { get; set; }
 
-    public string LogIndexStorageDbRocksDbOptions { get; set; } = "";
-    public string LogIndexStorageDbAdditionalRocksDbOptions { get; set; } = "";
-    public string LogIndexStorageAddressesDbRocksDbOptions { get; set; } = "";
-    public string LogIndexStorageAddressesDbAdditionalRocksDbOptions { get; set; } = "";
-    public string LogIndexStorageTopics0DbRocksDbOptions { get; set; } = "";
-    public string LogIndexStorageTopics0DbAdditionalRocksDbOptions { get; set; } = "";
-    public string LogIndexStorageTopics1DbRocksDbOptions { get; set; } = "";
-    public string LogIndexStorageTopics1DbAdditionalRocksDbOptions { get; set; } = "";
-    public string LogIndexStorageTopics2DbRocksDbOptions { get; set; } = "";
-    public string LogIndexStorageTopics2DbAdditionalRocksDbOptions { get; set; } = "";
-    public string LogIndexStorageTopics3DbRocksDbOptions { get; set; } = "";
-    public string LogIndexStorageTopics3DbAdditionalRocksDbOptions { get; set; } = "";
+    public string logIndexStorageDbRocksDbOptions { get; set; } = "";
+    public string logIndexStorageDbAdditionalRocksDbOptions { get; set; } = "";
+    public string logIndexStorageAddressesDbRocksDbOptions { get; set; } = "";
+    public string logIndexStorageAddressesDbAdditionalRocksDbOptions { get; set; } = "";
+    public string logIndexStorageTopics0DbRocksDbOptions { get; set; } = "";
+    public string logIndexStorageTopics0DbAdditionalRocksDbOptions { get; set; } = "";
+    public string logIndexStorageTopics1DbRocksDbOptions { get; set; } = "";
+    public string logIndexStorageTopics1DbAdditionalRocksDbOptions { get; set; } = "";
+    public string logIndexStorageTopics2DbRocksDbOptions { get; set; } = "";
+    public string logIndexStorageTopics2DbAdditionalRocksDbOptions { get; set; } = "";
+    public string logIndexStorageTopics3DbRocksDbOptions { get; set; } = "";
+    public string logIndexStorageTopics3DbAdditionalRocksDbOptions { get; set; } = "";
 }
