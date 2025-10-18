@@ -104,7 +104,7 @@ public class SimulateBridgeHelper(IBlocksConfig blocksConfig, ISpecProvider spec
 
         if (payload.BlockStateCalls is not null)
         {
-            Dictionary<Address, UInt256> nonceCache = new();
+            Dictionary<Address, UInt64> nonceCache = new();
             IBlockTracer cancellationBlockTracer = tracer.WithCancellation(cancellationToken);
 
             foreach (BlockStateCall<TransactionWithSourceDetails> blockCall in payload.BlockStateCalls)
@@ -165,7 +165,7 @@ public class SimulateBridgeHelper(IBlocksConfig blocksConfig, ISpecProvider spec
     private BlockBody AssembleBody(
         TransactionWithSourceDetails[] calls,
         IWorldState stateProvider,
-        Dictionary<Address, UInt256> nonceCache,
+        Dictionary<Address, UInt64> nonceCache,
         IReleaseSpec spec)
     {
         Transaction[] transactions = calls
@@ -210,19 +210,19 @@ public class SimulateBridgeHelper(IBlocksConfig blocksConfig, ISpecProvider spec
     private Transaction CreateTransaction(
         TransactionWithSourceDetails transactionDetails,
         IWorldState stateProvider,
-        Dictionary<Address, UInt256> nonceCache)
+        Dictionary<Address, UInt64> nonceCache)
     {
         Transaction? transaction = transactionDetails.Transaction;
         transaction.SenderAddress ??= Address.Zero;
 
         if (!transactionDetails.HadNonceInRequest)
         {
-            ref UInt256 cachedNonce = ref CollectionsMarshal.GetValueRefOrAddDefault(nonceCache, transaction.SenderAddress, out bool exist);
+            ref UInt64 cachedNonce = ref CollectionsMarshal.GetValueRefOrAddDefault(nonceCache, transaction.SenderAddress, out bool exist);
             if (!exist)
             {
                 if (stateProvider.TryGetAccount(transaction.SenderAddress, out AccountStruct test))
                 {
-                    cachedNonce = test.Nonce;
+                    cachedNonce = test.Nonce.ToUInt64(null);
                 }
                 // else // Todo think if we shall create account here
             }

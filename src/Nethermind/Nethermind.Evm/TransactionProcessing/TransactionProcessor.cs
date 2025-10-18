@@ -561,7 +561,14 @@ namespace Nethermind.Evm.TransactionProcessing
                 return TransactionResult.WrongTransactionNonce;
             }
 
-            WorldState.IncrementNonce(tx.SenderAddress);
+            if (!validate)
+            {
+                UInt256 nonce = WorldState.GetNonce(tx.SenderAddress);
+                if (nonce == UInt64.MaxValue) WorldState.SetNonce(tx.SenderAddress, 0);
+                else WorldState.IncrementNonce(tx.SenderAddress);
+            }
+            else WorldState.IncrementNonce(tx.SenderAddress);
+
             return TransactionResult.Ok;
         }
 
