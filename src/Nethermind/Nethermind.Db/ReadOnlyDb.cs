@@ -87,15 +87,5 @@ namespace Nethermind.Db
         public void DangerousReleaseMemory(in ReadOnlySpan<byte> span) { }
 
         public bool PreferWriteByArray => true; // Because of memdb buffer
-
-        public IIterator GetIterator(bool ordered = false)
-        {
-            throw new NotSupportedException("Iteration is not supported by this implementation.");
-        }
-
-        public IIterator GetIterator(ref IteratorOptions options)
-        {
-            throw new NotSupportedException("Iteration is not supported by this implementation.");
-        }
     }
 }

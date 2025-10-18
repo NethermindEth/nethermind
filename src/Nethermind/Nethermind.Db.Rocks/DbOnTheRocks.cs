@@ -1029,22 +1029,10 @@ public partial class DbOnTheRocks : IDb, ITunableDb, IReadOnlyNativeKeyValueStor
         return GetAllCore(iterator);
     }
 
-    protected internal Iterator CreateIterator(bool ordered, ColumnFamilyHandle? ch = null)
-    {
-        return CreateIterator(new IteratorOptions { Ordered = ordered }, ch);
-    }
-
-    protected internal Iterator CreateIterator(IteratorOptions options, ColumnFamilyHandle? ch = null)
+    protected internal Iterator CreateIterator(bool ordered = false, ColumnFamilyHandle? ch = null)
     {
         ReadOptions readOptions = new();
-        readOptions.SetTailing(!options.Ordered);
-
-        if (options.LowerBound is { } lowerBound)
-            readOptions.SetIterateLowerBound(lowerBound);
-
-        if (options.UpperBound is { } upperBound)
-            readOptions.SetIterateUpperBound(upperBound);
-
+        readOptions.SetTailing(!ordered);
         return CreateIterator(readOptions, ch);
     }
 
@@ -1757,29 +1745,6 @@ public partial class DbOnTheRocks : IDb, ITunableDb, IReadOnlyNativeKeyValueStor
             { "max_bytes_for_level_base", 4.MiB().ToString() },
             { "target_file_size_base", 1.MiB().ToString() },
         };
-    }
-
-    public IIterator GetIterator(bool ordered = false)
-    {
-        var iterator = CreateIterator(ordered);
-        return new RocksDbIteratorWrapper(iterator);
-    }
-
-    public IIterator GetIterator(ref IteratorOptions options)
-    {
-        return GetIterator(ref options, null);
-    }
-
-    public IIterator GetIterator(bool ordered, ColumnFamilyHandle familyHandle)
-    {
-        var options = new IteratorOptions { Ordered = ordered };
-        return GetIterator(ref options, familyHandle);
-    }
-
-    public IIterator GetIterator(ref IteratorOptions options, ColumnFamilyHandle? familyHandle)
-    {
-        var iterator = CreateIterator(options, familyHandle);
-        return new RocksDbIteratorWrapper(iterator);
     }
 
     /// <summary>

@@ -176,16 +176,6 @@ namespace Nethermind.Db
                 if (_wrapped is ITunableDb tunable)
                     tunable.Tune(type);
             }
-
-            public IIterator GetIterator(bool ordered = false)
-            {
-                return _wrapped.GetIterator(ordered);
-            }
-
-            public IIterator GetIterator(ref IteratorOptions options)
-            {
-                return _wrapped.GetIterator(ref options);
-            }
         }
     }
 }
