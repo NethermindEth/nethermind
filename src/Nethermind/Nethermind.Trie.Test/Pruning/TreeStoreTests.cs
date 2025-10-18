@@ -3,6 +3,7 @@
 
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using System.Threading.Tasks;
 using FluentAssertions;
 using Nethermind.Core;
@@ -604,12 +605,13 @@ namespace Nethermind.Trie.Test.Pruning
 
                 public void Merge(ReadOnlySpan<byte> key, ReadOnlySpan<byte> value, WriteFlags flags = WriteFlags.None)
                 {
-                    throw new NotSupportedException("Merging is not supported by this implementation.");
+                    var keyArr = key.ToArray();
+                    _inBatched[keyArr] = (_inBatched.GetValueOrDefault(keyArr) ?? []).Concat(value.ToArray()).ToArray();
                 }
 
                 public void Clear()
                 {
-                    throw new NotSupportedException("Clearing is not supported by this implementation.");
+                    _inBatched.Clear();
                 }
             }
         }
