@@ -7,6 +7,7 @@ using Nethermind.Xdc.Types;
 using System;
 
 namespace Nethermind.Xdc;
+
 public class XdcContext
 {
     public Address Leader { get; set; }

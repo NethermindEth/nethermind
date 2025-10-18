@@ -17,5 +17,5 @@ public class Vote(BlockRoundInfo proposedBlockInfo, ulong gapNumber, Signature s
     public override string ToString() =>
         $"{ProposedBlockInfo.Round}:{GapNumber}:{ProposedBlockInfo.BlockNumber}";
 
-    public (ulong Round, Hash256 hash) PoolKey() => (ProposedBlockInfo.Round, ProposedBlockInfo.Hash);
+    public (ulong, Hash256) PoolKey() => (ProposedBlockInfo.Round, ProposedBlockInfo.Hash);
 }

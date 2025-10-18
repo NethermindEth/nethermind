@@ -9,7 +9,7 @@ namespace Nethermind.Xdc;
 public interface ITimeoutCertificateManager
 {
     void HandleTimeout(Timeout timeout);
-    void OnCountdownTimer(DateTime time);
+    void OnCountdownTimer();
     void ProcessTimeoutCertificate(TimeoutCertificate timeoutCertificate);
     bool VerifyTimeoutCertificate(TimeoutCertificate timeoutCertificate, out string errorMessage);
 }
