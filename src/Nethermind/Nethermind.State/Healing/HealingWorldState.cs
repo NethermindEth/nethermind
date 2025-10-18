@@ -11,11 +11,12 @@ namespace Nethermind.State.Healing;
 public class HealingWorldState(
     ITrieStore trieStore,
     INodeStorage nodeStorage,
-    IKeyValueStoreWithBatching? codeDb,
+    IKeyValueStoreWithBatching codeDb,
     Lazy<IPathRecovery> pathRecovery,
-    ILogManager? logManager,
+    Lazy<ICodeRecovery> codeRecovery,
+    ILogManager logManager,
     PreBlockCaches? preBlockCaches = null,
     bool populatePreBlockCache = true)
-    : WorldState(trieStore, codeDb, logManager, new HealingStateTree(trieStore, nodeStorage, pathRecovery, logManager), new HealingStorageTreeFactory(nodeStorage, pathRecovery), preBlockCaches, populatePreBlockCache)
+    : WorldState(trieStore, new HealingCodeDb(codeDb, codeRecovery), logManager, new HealingStateTree(trieStore, nodeStorage, pathRecovery, logManager), new HealingStorageTreeFactory(nodeStorage, pathRecovery), preBlockCaches, populatePreBlockCache)
 {
 }
