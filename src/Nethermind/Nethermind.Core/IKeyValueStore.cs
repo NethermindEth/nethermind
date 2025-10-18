@@ -87,6 +87,7 @@ namespace Nethermind.Core
     /// </summary>
     public interface ISortedView : IDisposable
     {
+        public bool StartBefore(ReadOnlySpan<byte> value);
         public bool MoveNext();
         public ReadOnlySpan<byte> CurrentKey { get; }
         public ReadOnlySpan<byte> CurrentValue { get; }
