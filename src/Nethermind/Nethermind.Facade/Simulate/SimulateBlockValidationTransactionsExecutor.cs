@@ -37,7 +37,7 @@ public class SimulateBlockValidationTransactionsExecutor(
         long startingGasLeft = simulateState.TotalGasLeft;
         if (!simulateState.Validate)
         {
-            processingOptions |= ProcessingOptions.ForceProcessing | ProcessingOptions.DoNotVerifyNonce | ProcessingOptions.NoValidation;
+            processingOptions |= ProcessingOptions.ForceProcessing | ProcessingOptions.NoValidation;
         }
 
         var result = baseTransactionExecutor.ProcessTransactions(block, processingOptions, receiptsTracer, token);
