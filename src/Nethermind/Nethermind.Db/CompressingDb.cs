@@ -135,7 +135,7 @@ namespace Nethermind.Db
                 .Select(static kvp => new KeyValuePair<byte[], byte[]>(kvp.Key, Decompress(kvp.Value)));
 
             public IEnumerable<byte[]> GetAllKeys(bool ordered = false) =>
-                _wrapped.GetAllKeys(ordered).Select(Decompress);
+                _wrapped.GetAllKeys(ordered);
 
             public IEnumerable<byte[]> GetAllValues(bool ordered = false) =>
                 _wrapped.GetAllValues(ordered).Select(Decompress);

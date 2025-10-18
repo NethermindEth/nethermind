@@ -51,6 +51,7 @@ public sealed class SimulateTxTracer : TxTracer
     public override void ReportAction(long gas, UInt256 value, Address from, Address to, ReadOnlyMemory<byte> input, ExecutionType callType, bool isPrecompileCall = false)
     {
         base.ReportAction(gas, value, from, to, input, callType, isPrecompileCall);
+        if (callType == ExecutionType.DELEGATECALL) return;
         if (value > UInt256.Zero)
         {
             var data = AbiEncoder.Instance.Encode(AbiEncodingStyle.Packed, AbiTransferSignature, value);
