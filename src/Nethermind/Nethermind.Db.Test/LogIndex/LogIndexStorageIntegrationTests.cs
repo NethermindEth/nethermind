@@ -124,7 +124,7 @@ namespace Nethermind.Db.Test.LogIndex
         }
 
         [OneTimeSetUp]
-        [OneTimeTearDown]
+        //[OneTimeTearDown] // Causes dispose issues, seems to be executed out-of-order
         public static void RemoveRootFolder()
         {
             if (!Directory.Exists(nameof(LogIndexStorageIntegrationTests)))
