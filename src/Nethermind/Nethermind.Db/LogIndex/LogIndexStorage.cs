@@ -44,6 +44,9 @@ namespace Nethermind.Db.LogIndex
 
             // Any ordered prefix seeking will end on it.
             public static readonly byte[] ForwardMerge = Enumerable.Repeat(byte.MaxValue, BlockNumSize).ToArray();
+
+            // Exclusive upper bound for iterator seek, so that ForwardMerge will be the last key
+            public static readonly byte[] UpperBound = Enumerable.Repeat(byte.MaxValue, BlockNumSize).Concat([byte.MinValue]).ToArray();
         }
 
         private struct DbBatches : IDisposable
@@ -125,6 +128,7 @@ namespace Nethermind.Db.LogIndex
         private readonly ILogger _logger;
 
         private readonly int _maxReorgDepth;
+        private readonly int _compressionDistance;
 
         private readonly Dictionary<LogIndexColumns, MergeOperator> _mergeOperators;
         private readonly ICompressor _compressor;
@@ -171,6 +175,7 @@ namespace Nethermind.Db.LogIndex
                 Enabled = config.Enabled;
 
                 _maxReorgDepth = config.MaxReorgDepth;
+                _compressionDistance = config.CompressionDistance;
 
                 _logger = logManager.GetClassLogger<LogIndexStorage>();
 
@@ -301,16 +306,8 @@ namespace Nethermind.Db.LogIndex
 
         private static void ForceMerge(IDb db)
         {
-            // Using tailing iterator may cause invalid merge order, TODO: raise an issue
-            using IIterator iterator = db.GetIterator(ordered: true);
-
-            // Iterator seeking forces RocksDB to merge corresponding key values
-            iterator.SeekToFirst();
-            while (iterator.Valid())
-            {
-                _ = iterator.Value();
-                iterator.Next();
-            }
+            // Fetching RocksDB key values forces it to merge corresponding parts
+            db.GetAllValues().ForEach(static _ => { });
         }
 
         public async Task StopAsync()
@@ -514,11 +511,11 @@ namespace Nethermind.Db.LogIndex
         private List<int> GetBlockNumbersFor(int? topicIndex, byte[] key, int from, int to)
         {
             // TODO: use ArrayPoolList?
-            var result = new List<int>(128);
+            var result = new List<int>(Math.Max(1, _compressionDistance));
 
-            IterateBlockNumbersFor(topicIndex, key, from, to, iterator =>
+            IterateBlockNumbersFor(topicIndex, key, from, to, view =>
             {
-                var value = iterator.Value().ToArray();
+                var value = view.CurrentValue.ToArray(); // TODO: remove ToArray
                 foreach (var block in EnumerateBlockNumbers(value, from))
                 {
                     if (block > to)
@@ -535,11 +532,10 @@ namespace Nethermind.Db.LogIndex
 
         private void IterateBlockNumbersFor(
             int? topicIndex, byte[] key, int from, int to,
-            Func<IIterator, bool> callback
+            Func<ISortedView, bool> callback
         )
         {
             var timestamp = Stopwatch.GetTimestamp();
-            byte[] dbKeyBuffer = null;
 
             try
             {
@@ -547,42 +543,31 @@ namespace Nethermind.Db.LogIndex
                 if (from < 0) from = 0;
                 if (to < from) return;
 
-                dbKeyBuffer = Pool.Rent(MaxDbKeyLength);
-                ReadOnlySpan<byte> dbKey = CreateDbKey(key, from, dbKeyBuffer);
-                ReadOnlySpan<byte> normalizedKey = ExtractKey(dbKey);
+                IDb db = GetDb(topicIndex);
+                ISortedKeyValueStore? sortedDb = db as ISortedKeyValueStore
+                    ?? throw new NotSupportedException($"{db.GetType().Name} DB does not support sorted lookups.");
 
-                IDb? db = GetDb(topicIndex);
-                using IIterator iterator = db.GetIterator(ordered: true); // TODO: specify lower/upper bounds?
+                ReadOnlySpan<byte> startKey = CreateDbKey(key, from, stackalloc byte[MaxDbKeyLength]);
+                ReadOnlySpan<byte> fromKey = CreateDbKey(key, SpecialPostfix.BackwardMerge, stackalloc byte[MaxDbKeyLength]);
+                ReadOnlySpan<byte> toKey = CreateDbKey(key, SpecialPostfix.UpperBound, stackalloc byte[MaxDbKeyLength]);
 
-                // Find the last index for the given key, starting at or before `from`
-                iterator.SeekForPrev(dbKey);
+                using ISortedView view = sortedDb.GetViewBetween(fromKey, toKey);
 
-                // Otherwise, find the first index for the given key
-                if (!IsInKeyBounds(iterator, normalizedKey))
+                var isValid = view.StartBefore(startKey) || view.MoveNext();
+
+                while (isValid)
                 {
-                    iterator.SeekToFirst();
-                    iterator.Seek(key);
-                }
-
-                while (IsInKeyBounds(iterator, normalizedKey))
-                {
-                    if (!callback(iterator))
+                    if (!callback(view))
                         return;
 
-                    iterator.Next();
+                    isValid = view.MoveNext() && view.CurrentKey.StartsWith(key);
                 }
             }
             finally
             {
-                if (dbKeyBuffer != null) Pool.Return(dbKeyBuffer);
-
-                if (_logger.IsTrace) _logger.Trace($"{nameof(IterateBlockNumbersFor)}({Convert.ToHexString(key)}, {from}, {to}) in {Stopwatch.GetElapsedTime(timestamp)}");
+                if (_logger.IsTrace)
+                    _logger.Trace($"{nameof(IterateBlockNumbersFor)}({Convert.ToHexString(key)}, {from}, {to}) in {Stopwatch.GetElapsedTime(timestamp)}");
             }
-        }
-
-        private static bool IsInKeyBounds(IIterator iterator, ReadOnlySpan<byte> key)
-        {
-            return iterator.Valid() && ExtractKey(iterator.Key()).SequenceEqual(key);
         }
 
         private IEnumerable<int> EnumerateBlockNumbers(byte[] data, int from)
@@ -898,6 +883,18 @@ namespace Nethermind.Db.LogIndex
             SetKeyBlockNum(buffer[key.Length..], blockNumber);
 
             var length = key.Length + BlockNumSize;
+            return buffer[..length];
+        }
+
+        /// <summary>
+        /// Generates a key consisting of the <c>key || block-number</c> byte array.
+        /// </summary>/
+        private static ReadOnlySpan<byte> CreateDbKey(ReadOnlySpan<byte> key, ReadOnlySpan<byte> blockNumber, Span<byte> buffer)
+        {
+            key = WriteKey(key, buffer);
+            blockNumber.CopyTo(buffer[key.Length..]);
+
+            var length = key.Length + blockNumber.Length;
             return buffer[..length];
         }
 
