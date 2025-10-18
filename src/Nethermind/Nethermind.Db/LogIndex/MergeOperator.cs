@@ -111,7 +111,7 @@ partial class LogIndexStorage
             catch (Exception exception)
             {
                 storage.OnBackgroundError<MergeOperator>(exception);
-                throw;
+                return null;
             }
             finally
             {
