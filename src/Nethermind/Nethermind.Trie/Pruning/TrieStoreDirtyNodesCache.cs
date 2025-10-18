@@ -334,6 +334,12 @@ internal class TrieStoreDirtyNodesCache
             }
             else if (_trieStore.IsNoLongerNeeded(lastCommit))
             {
+                // Unpersisted node may still get referred by other unpersisted node. This is rare but can happen.
+                // eg: Oscillating value that never get into part of persisted state.
+                // So we prune persisted here so that the persisted reference in this node
+                // can get GC.
+                node.PrunePersistedRecursively(1);
+
                 RemoveNodeFromCache(key, node, ref Metrics.DeepPrunedPersistedNodesCount);
                 continue;
             }
