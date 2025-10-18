@@ -321,22 +321,58 @@ public sealed class TrieStore : ITrieStore, IPruningTrieStore
     public IDisposable BeginScope(BlockHeader? baseBlock)
     {
         _scopeLock.Enter();
-        if (_pruningLock.TryEnter())
+        while (true)
         {
-            // When in non commit buffer mode, FindCachedOrUnknown can also modify the dirty cache which has
-            // a notable performance benefit. So we try to clear the buffer before.
-            FlushCommitBufferNoLock();
-
-            return new Reactive.AnonymousDisposable(() =>
+            if (_pruningLock.TryEnter())
             {
-                _pruningLock.Exit();
-                _scopeLock.Exit();
-            });
+                // When in non commit buffer mode, FindCachedOrUnknown can also modify the dirty cache which has
+                // a notable performance benefit. So we try to clear the buffer before.
+                FlushCommitBufferNoLock();
+
+                return new Reactive.AnonymousDisposable(() =>
+                {
+                    _pruningLock.Exit();
+                    _scopeLock.Exit();
+                });
+            }
+            else
+            {
+                // _dirtyNodesLock was not acquired, likely due to memory pruning.
+                // Will continue with commit buffer.
+                if (_commitBuffer is null)
+                {
+                    // Cutoff point is the point at which the pruning would persist node.
+                    // Node before the cutoff point may be removed so we ignore them in commit buffer.
+                    long pruneCutoffPoint = _pruneCutoffPoint;
+                    if (pruneCutoffPoint == -1)
+                    {
+                        // If its -1, then the pruning have not decided yet what is the cutoff point.
+                        // So we spin and try again.
+                        Thread.SpinWait(100);
+                        continue;
+                    }
+                    else
+                    {
+                        CommitBuffer cachedCommitBuffer = _commitBufferUnused;
+                        if (cachedCommitBuffer is not null)
+                        {
+                            cachedCommitBuffer.Reset(pruneCutoffPoint);
+                            _commitBuffer = cachedCommitBuffer;
+                        }
+                        else
+                        {
+                            _commitBuffer = new CommitBuffer(this, pruneCutoffPoint);
+                        }
+                        break;
+                    }
+                }
+                else
+                {
+                    break;
+                }
+            }
         }
 
-        // _dirtyNodesLock was not acquired, likely due to memory pruning.
-        // Will continue with commit buffer.
-        if (_commitBuffer is null) _commitBuffer = _commitBufferUnused ?? new CommitBuffer(this);
         if (_commitBuffer.CommitCount >= _maxBufferedCommitCount)
         {
             // Prevent commit buffer from becoming too large.
@@ -581,6 +617,7 @@ public sealed class TrieStore : ITrieStore, IPruningTrieStore
         catch (Exception e)
         {
             if (_logger.IsError) _logger.Error("Pruning failed with exception.", e);
+            _pruneCutoffPoint = -1;
         }
     }
 
@@ -615,6 +652,11 @@ public sealed class TrieStore : ITrieStore, IPruningTrieStore
         }
 
         Action<TreePath, Hash256?, TrieNode> persistedNodeRecorder = shouldTrackPastKey ? _persistedNodeRecorder : _persistedNodeRecorderNoop;
+        if (candidateSets.Count > 0)
+        {
+            // This is set early as the persist may take some time before best persisted node pointer is set.
+            _pruneCutoffPoint = candidateSets[^1].BlockNumber;
+        }
 
         for (int index = 0; index < candidateSets.Count; index++)
         {
@@ -871,6 +913,7 @@ public sealed class TrieStore : ITrieStore, IPruningTrieStore
     private long _latestPersistedBlockNumber;
 
     private BlockCommitter? _currentBlockCommitter = null;
+    private long _pruneCutoffPoint;
 
     private long LatestCommittedBlockNumber { get; set; }
     public INodeStorage.KeyScheme Scheme => _nodeStorage.Scheme;
@@ -1429,13 +1472,15 @@ public sealed class TrieStore : ITrieStore, IPruningTrieStore
         private readonly TrieStoreDirtyNodesCache[] _dirtyNodesBuffer;
         private readonly TrieStore _trieStore;
         private readonly ILogger _logger;
+        private long _cutOffPoint;
 
         public int CommitCount => _commitSetQueueBuffer.Count;
 
-        public CommitBuffer(TrieStore trieStore)
+        public CommitBuffer(TrieStore trieStore, long cutOffPoint)
         {
             _trieStore = trieStore;
             _logger = trieStore._logger;
+            _cutOffPoint = cutOffPoint;
             _dirtyNodesBuffer = new TrieStoreDirtyNodesCache[trieStore._dirtyNodes.Length];
             for (int i = 0; i < trieStore._shardedDirtyNodeCount; i++)
             {
@@ -1498,7 +1543,7 @@ public sealed class TrieStore : ITrieStore, IPruningTrieStore
 
             if (!hasInBuffer && mainShard.TryGetRecord(key, out TrieStoreDirtyNodesCache.NodeRecord nodeRecord))
             {
-                if (_trieStore.IsStillNeeded(nodeRecord.LastCommit))
+                if (nodeRecord.LastCommit >= _cutOffPoint)
                 {
                     var rlp = nodeRecord.Node.FullRlp;
                     if (rlp.IsNull)
@@ -1520,6 +1565,15 @@ public sealed class TrieStore : ITrieStore, IPruningTrieStore
             }
 
             return hasInBuffer ? bufferNode : bufferShard.FindCachedOrUnknown(key);
+        }
+
+        public void Reset(long cutOffpoint)
+        {
+            _cutOffPoint = cutOffpoint;
+            foreach (TrieStoreDirtyNodesCache trieStoreDirtyNodesCache in _dirtyNodesBuffer)
+            {
+                trieStoreDirtyNodesCache.Clear();
+            }
         }
     }
 
