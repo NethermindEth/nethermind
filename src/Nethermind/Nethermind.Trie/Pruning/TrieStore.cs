@@ -1460,7 +1460,6 @@ public sealed class TrieStore : ITrieStore, IPruningTrieStore
             int count = 0;
             while (_commitSetQueueBuffer.TryDequeue(out BlockCommitSet commitSet))
             {
-                _trieStore._commitSetQueue.Enqueue(commitSet);
                 _trieStore.PushToMainCommitSetQueue(commitSet);
                 count++;
             }
@@ -1485,6 +1484,18 @@ public sealed class TrieStore : ITrieStore, IPruningTrieStore
             TrieStoreDirtyNodesCache mainShard = _trieStore._dirtyNodes[shardIdx];
 
             var hasInBuffer = bufferShard.TryGetValue(key, out TrieNode bufferNode);
+
+            if (isReadOnly)
+            {
+                // Note: do not mutate bufferShard in read only mode.
+                if (hasInBuffer)
+                {
+                    return _trieStore.CloneForReadOnly(key, bufferNode);
+                }
+
+                return mainShard.FromCachedRlpOrUnknown(key);
+            }
+
             if (!hasInBuffer && mainShard.TryGetRecord(key, out TrieStoreDirtyNodesCache.NodeRecord nodeRecord))
             {
                 if (_trieStore.IsStillNeeded(nodeRecord.LastCommit))
@@ -1493,7 +1504,7 @@ public sealed class TrieStore : ITrieStore, IPruningTrieStore
                     if (rlp.IsNull)
                     {
                         bufferShard.GetOrAdd(key, nodeRecord);
-                        if (!isReadOnly) return nodeRecord.Node;
+                        return nodeRecord.Node;
                     }
                     else
                     {
@@ -1503,24 +1514,12 @@ public sealed class TrieStore : ITrieStore, IPruningTrieStore
                         if (nodeRecord.Node.IsPersisted) node.IsPersisted = true;
                         node.Keccak = nodeRecord.Node.Keccak;
                         bufferShard.GetOrAdd(key, nodeRecord);
-                        if (!isReadOnly) return nodeRecord.Node;
+                        return nodeRecord.Node;
                     }
                 }
             }
 
-            if (hasInBuffer)
-            {
-                if (!isReadOnly)
-                {
-                    return bufferNode;
-                }
-                else
-                {
-                    return _trieStore.CloneForReadOnly(key, bufferNode);
-                }
-            }
-
-            return isReadOnly ? bufferShard.FromCachedRlpOrUnknown(key) : bufferShard.FindCachedOrUnknown(key);
+            return hasInBuffer ? bufferNode : bufferShard.FindCachedOrUnknown(key);
         }
     }
 
