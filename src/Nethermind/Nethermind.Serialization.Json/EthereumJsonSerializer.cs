@@ -9,6 +9,7 @@ using System.IO.Pipelines;
 using System.Text.Encodings.Web;
 using System.Text.Json;
 using System.Text.Json.Serialization;
+using System.Text.Json.Serialization.Metadata;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Core.Collections;
@@ -60,7 +61,7 @@ namespace Nethermind.Serialization.Json
 
         private static JsonSerializerOptions CreateOptions(bool indented, IEnumerable<JsonConverter> converters = null, int maxDepth = DefaultMaxDepth)
         {
-            var options = new JsonSerializerOptions
+            var result = new JsonSerializerOptions
             {
                 WriteIndented = indented,
                 NewLine = "\n",
@@ -95,13 +96,14 @@ namespace Nethermind.Serialization.Json
                     new JavaScriptObjectConverter(),
                     new PublicKeyConverter(),
                     new PublicKeyHashedConverter(),
+                    new ValueHash256Converter(_strictHexFormat),
+                    new Hash256Converter(_strictHexFormat),
                 }
             };
 
-            options.Converters.AddRange(_additionalConverters);
-            options.Converters.AddRange(converters ?? Array.Empty<JsonConverter>());
-
-            return options;
+            result.Converters.AddRange(_additionalConverters);
+            result.Converters.AddRange(converters ?? Array.Empty<JsonConverter>());
+            return result;
         }
 
         private static readonly List<JsonConverter> _additionalConverters = new();
@@ -111,6 +113,20 @@ namespace Nethermind.Serialization.Json
 
             JsonOptions = CreateOptions(indented: false);
             JsonOptionsIndented = CreateOptions(indented: true);
+        }
+
+        private static bool _strictHexFormat;
+        public static bool StrictHexFormat
+        {
+            get => _strictHexFormat;
+            set
+            {
+                if (_strictHexFormat == value)
+                    return;
+                _strictHexFormat = value;
+                JsonOptions = CreateOptions(indented: false);
+                JsonOptionsIndented = CreateOptions(indented: true);
+            }
         }
 
         public static JsonSerializerOptions JsonOptions { get; private set; } = CreateOptions(indented: false);

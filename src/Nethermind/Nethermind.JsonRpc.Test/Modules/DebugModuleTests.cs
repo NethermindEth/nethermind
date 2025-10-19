@@ -125,7 +125,7 @@ public class DebugModuleTests
         debugBridge.GetBlock(new BlockParameter((long)0)).Returns(blk);
 
         DebugRpcModule rpcModule = CreateDebugRpcModule(debugBridge);
-        using var response = await RpcTest.TestRequest<IDebugRpcModule>(rpcModule, "debug_getRawHeader", 0) as JsonRpcSuccessResponse;
+        using var response = await RpcTest.TestRequest<IDebugRpcModule>(rpcModule, "debug_getRawHeader", "0x") as JsonRpcSuccessResponse;
         Assert.That((byte[]?)response?.Result, Is.EqualTo(rlp.Bytes));
     }
 
@@ -152,7 +152,7 @@ public class DebugModuleTests
         localDebugBridge.GetBlockRlp(new BlockParameter(1)).Returns(rlp.Bytes);
 
         DebugRpcModule rpcModule = CreateDebugRpcModule(localDebugBridge);
-        using var response = await RpcTest.TestRequest<IDebugRpcModule>(rpcModule, "debug_getRawBlock", 1) as JsonRpcSuccessResponse;
+        using var response = await RpcTest.TestRequest<IDebugRpcModule>(rpcModule, "debug_getRawBlock", "0x1") as JsonRpcSuccessResponse;
 
         Assert.That((byte[]?)response?.Result, Is.EqualTo(rlp.Bytes));
     }
@@ -188,7 +188,7 @@ public class DebugModuleTests
         debugBridge.GetBlockRlp(new BlockParameter(1)).ReturnsNull();
 
         DebugRpcModule rpcModule = CreateDebugRpcModule(debugBridge);
-        using var response = await RpcTest.TestRequest<IDebugRpcModule>(rpcModule, "debug_getRawBlock", 1) as JsonRpcErrorResponse;
+        using var response = await RpcTest.TestRequest<IDebugRpcModule>(rpcModule, "debug_getRawBlock", "0x1") as JsonRpcErrorResponse;
 
         Assert.That(response?.Error?.Code, Is.EqualTo(-32001));
     }
