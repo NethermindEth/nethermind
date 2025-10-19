@@ -217,7 +217,7 @@ public class SimulateBridgeHelper(IBlocksConfig blocksConfig, ISpecProvider spec
 
         if (!transactionDetails.HadNonceInRequest)
         {
-            ref UInt64 cachedNonce = ref CollectionsMarshal.GetValueRefOrAddDefault(nonceCache, transaction.SenderAddress, out bool exist);
+            ref ulong cachedNonce = ref CollectionsMarshal.GetValueRefOrAddDefault(nonceCache, transaction.SenderAddress, out bool exist);
             if (!exist)
             {
                 if (stateProvider.TryGetAccount(transaction.SenderAddress, out AccountStruct test))
