@@ -89,24 +89,6 @@ public class XdcBlockHeader : BlockHeader, IHashResolver
         set { _extraFieldsV2 = value; }
     }
 
-    public bool IsEpochSwitch(IXdcReleaseSpec spec)
-    {
-        if (spec.SwitchBlock == this.Number)
-        {
-            return true;
-        }
-        ExtraFieldsV2? extraFields = ExtraConsensusData;
-        if (extraFields is null)
-        {
-            //Should this throw instead?
-            return false;
-        }
-        ulong parentRound = extraFields.QuorumCert.ProposedBlockInfo.Round;
-        ulong epochStart = extraFields.CurrentRound - extraFields.CurrentRound % (ulong)spec.EpochLength;
-
-        return parentRound < epochStart;
-    }
-
     public ValueHash256 CalculateHash()
     {
         KeccakRlpStream rlpStream = new KeccakRlpStream();
