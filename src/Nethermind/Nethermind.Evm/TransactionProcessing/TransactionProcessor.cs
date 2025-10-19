@@ -562,8 +562,7 @@ namespace Nethermind.Evm.TransactionProcessing
                 return TransactionResult.WrongTransactionNonce;
             }
 
-            UInt256 newNonce = nonce + 1;
-            if (!validate) newNonce.Mod(ulong.MaxValue, out newNonce);
+            UInt256 newNonce = validate || nonce < ulong.MaxValue ? nonce + 1 : 0;
             WorldState.SetNonce(tx.SenderAddress, newNonce);
 
             return TransactionResult.Ok;

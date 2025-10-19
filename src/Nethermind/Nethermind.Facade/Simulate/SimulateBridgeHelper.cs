@@ -165,7 +165,7 @@ public class SimulateBridgeHelper(IBlocksConfig blocksConfig, ISpecProvider spec
     private BlockBody AssembleBody(
         TransactionWithSourceDetails[] calls,
         IWorldState stateProvider,
-        Dictionary<Address, UInt64> nonceCache,
+        Dictionary<Address, ulong> nonceCache,
         IReleaseSpec spec)
     {
         Transaction[] transactions = calls
@@ -210,7 +210,7 @@ public class SimulateBridgeHelper(IBlocksConfig blocksConfig, ISpecProvider spec
     private Transaction CreateTransaction(
         TransactionWithSourceDetails transactionDetails,
         IWorldState stateProvider,
-        Dictionary<Address, UInt64> nonceCache)
+        Dictionary<Address, ulong> nonceCache)
     {
         Transaction? transaction = transactionDetails.Transaction;
         transaction.SenderAddress ??= Address.Zero;
@@ -258,7 +258,7 @@ public class SimulateBridgeHelper(IBlocksConfig blocksConfig, ISpecProvider spec
             [],
             requestsHash: parent.RequestsHash)
         {
-            MixHash = parent.MixHash,
+            MixHash = Hash256.Zero,
             RequestsHash = parent.RequestsHash,
         };
 
