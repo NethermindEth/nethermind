@@ -28,7 +28,7 @@ namespace Nethermind.Xdc;
 internal class QuorumCertificateManager : IQuorumCertificateManager
 {
     public QuorumCertificateManager(
-        XdcContext context,
+        IXdcConsensusContext context,
         IBlockTree chain,
         IDb qcDb,
         ISpecProvider xdcConfig,
@@ -41,7 +41,7 @@ internal class QuorumCertificateManager : IQuorumCertificateManager
         _epochSwitchManager = epochSwitchManager;
     }
 
-    private XdcContext _context { get; }
+    private IXdcConsensusContext _context { get; }
     private IBlockTree _blockTree;
     private readonly IDb _qcDb;
     private readonly static VoteDecoder _voteDecoder = new();
@@ -52,7 +52,7 @@ internal class QuorumCertificateManager : IQuorumCertificateManager
     private static QuorumCertificateDecoder QuorumCertificateDecoder = new();
 
     public QuorumCertificate HighestKnownCertificate => _context.HighestQC;
-    public QuorumCertificate LockedCertificate => _context.LockQC;
+    public QuorumCertificate LockCertificate => _context.LockQC;
 
     public void CommitCertificate(QuorumCertificate qc)
     {
@@ -104,7 +104,7 @@ internal class QuorumCertificateManager : IQuorumCertificateManager
         //Exception in the voting rule described in the whitepaper
         //https://xdcf.cdn.prismic.io/xdcf/876fd551-96c0-41e8-9a9a-437620cc1fee_XDPoS2.0_whitepaper.pdf
         if (_context.LockQC.ProposedBlockInfo.Round < header.ExtraConsensusData.QuorumCert.ProposedBlockInfo.Round)
-        {            
+        {
             return true;
         }
 

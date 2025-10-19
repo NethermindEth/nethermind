@@ -26,7 +26,7 @@ public class QuorumCertificateManagerTest
     public void VerifyCertificate_CertificateIsNull_ThrowsArgumentNullException()
     {
         var quorumCertificateManager = new QuorumCertificateManager(
-            new XdcContext(),
+            new XdcConsensusContext(),
             Substitute.For<IBlockTree>(),
             Substitute.For<IDb>(),
             Substitute.For<ISpecProvider>(),
@@ -39,7 +39,7 @@ public class QuorumCertificateManagerTest
     public void VerifyCertificate_HeaderIsNull_ThrowsArgumentNullException()
     {
         var quorumCertificateManager = new QuorumCertificateManager(
-            new XdcContext(),
+            new XdcConsensusContext(),
             Substitute.For<IBlockTree>(),
             Substitute.For<IDb>(),
             Substitute.For<ISpecProvider>(),
@@ -90,7 +90,7 @@ public class QuorumCertificateManagerTest
         xdcReleaseSpec.CertThreshold.Returns(0.667);
         specProvider.GetSpec(Arg.Any<ForkActivation>()).Returns(xdcReleaseSpec);
         var quorumCertificateManager = new QuorumCertificateManager(
-            new XdcContext(),
+            new XdcConsensusContext(),
             Substitute.For<IBlockTree>(),
             Substitute.For<IDb>(),
             specProvider,
@@ -120,5 +120,33 @@ public class QuorumCertificateManagerTest
             return ecdsa.Sign(k, stream.GetValueHash());
         }).ToArray();
         return signatures.ToArray();
+    }
+
+    [Test]
+    public void VerifyVotingRule()
+    {
+        var quorumCertificateManager = new QuorumCertificateManager(
+            new XdcConsensusContext(),
+            Substitute.For<IBlockTree>(),
+            Substitute.For<IDb>(),
+            Substitute.For<ISpecProvider>(),
+            Substitute.For<IEpochSwitchManager>());
+
+        quorumCertificateManager.
+
+        XdcBlockHeader header = Build.A.XdcBlockHeader()
+            .WithExtraConsensusData(
+                Build.A.XdcExtraConsensusData()
+                    .WithBlockRound(5)
+                    .WithQuorumCert(
+                        Build.A.QuorumCertificate()
+                            .WithRoundInfo(Build.A.BlockRoundInfo().WithRound(4).TestObject)
+                            .TestObject)
+                    .TestObject)
+            .TestObject;
+
+        bool result = quorumCertificateManager.VerifyVotingRule();
+
+        Assert.That(result, Is.True);
     }
 }
