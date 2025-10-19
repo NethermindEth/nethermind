@@ -26,5 +26,5 @@ internal class XdcSealerTests
         // Assert
         Assert.That(sealedHeader.Validator, Is.Not.Null);
         Assert.That(sealedHeader.Validator!.Length, Is.EqualTo(Signature.Size));
-    }   
+    }
 }
