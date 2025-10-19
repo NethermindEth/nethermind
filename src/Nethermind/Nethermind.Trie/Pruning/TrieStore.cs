@@ -99,9 +99,18 @@ public sealed class TrieStore : ITrieStore, IPruningTrieStore
         _dirtyNodes = new TrieStoreDirtyNodesCache[_shardedDirtyNodeCount];
         _dirtyNodesTasks = new Task[_shardedDirtyNodeCount];
         _persistedHashes = new ConcurrentDictionary<HashAndTinyPath, Hash256?>[_shardedDirtyNodeCount];
+
+        int keepTopLevelNode = -1;
+        if (_pastKeyTrackingEnabled && _deleteOldNodes)
+        {
+            // Node of top level or equal to this is not pruned via memory pruning. This is to prevent not deleting top level
+            // nodes when child nodes was deleted. Also reduce chances of faulty state check.
+            keepTopLevelNode = (_shardBit / 4) - 1;
+        }
+
         for (int i = 0; i < _shardedDirtyNodeCount; i++)
         {
-            _dirtyNodes[i] = new TrieStoreDirtyNodesCache(this, !_nodeStorage.RequirePath, (_shardBit / 4) - 1, _logger);
+            _dirtyNodes[i] = new TrieStoreDirtyNodesCache(this, !_nodeStorage.RequirePath, keepTopLevelNode, _logger);
             _persistedHashes[i] = new ConcurrentDictionary<HashAndTinyPath, Hash256>();
         }
 

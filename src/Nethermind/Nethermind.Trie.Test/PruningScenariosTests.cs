@@ -1001,6 +1001,30 @@ namespace Nethermind.Trie.Test
             }
         }
 
+        [TestCase(10)]
+        [TestCase(64)]
+        [TestCase(100)]
+        public void Can_ContinueCommittingEvenWhenPruning_WithKeyTracking(int maxDepth)
+        {
+            PruningContext ctx = PruningContext.InMemoryWithPastKeyTracking
+                .WithMaxDepth(maxDepth)
+                .TurnOnPrune();
+
+            using ArrayPoolList<Hash256> stateRoots = new ArrayPoolList<Hash256>(256);
+            for (int i = 0; i < 256; i++)
+            {
+                ctx
+                    .SetAccountBalance(0, (UInt256)i)
+                    .CommitAndWaitForPruning();
+                stateRoots.Add(ctx.CurrentStateRoot);
+            }
+
+            for (int i = 0; i < 256; i++)
+            {
+                ctx.VerifyNodeInCache(stateRoots[i], i >= 255 - maxDepth);
+            }
+        }
+
         [TestCase(100, 50, false)]
         [TestCase(100, 150, true)]
         public async Task Can_ContinueEvenWhenPruningIsBlocked(int maxBufferedCommit, int blockCount, bool isBlocked)
