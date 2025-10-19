@@ -101,7 +101,7 @@ internal class XdcHotStuff(
 
             //TODO this is not the right way to get the current round
             IXdcReleaseSpec spec = specProvider.GetXdcSpec(currentHead, currentHead.ExtraConsensusData.BlockRound);
-            
+
             //TODO Technically we have to apply timeout exponents from spec, but they are always 1
             Task timeoutTask = Task.Delay(TimeSpan.FromSeconds(spec.TimeoutPeriod));
 
@@ -157,13 +157,13 @@ internal class XdcHotStuff(
         if (epochSwitchManager.IsEpochSwitchAtRound((ulong)currentRound, currentHead, out _))
         {
             //TODO calculate master nodes based on the current round
-            
+
         }
         else
         {
             epochSwitchInfo = epochSwitchManager.GetEpochSwitchInfo(currentHead, null);
         }
-        
+
         int myIndex = Array.IndexOf(epochSwitchInfo.Masternodes, signer.Address);
         if (myIndex < 0)
             return false;
@@ -204,7 +204,7 @@ internal class XdcHotStuff(
         if (_logger.IsInfo)
         {
             _logger.Info($"Current round {lastRound} finished in {_roundCount.CurrentRoundStartTime - lastRoundStart}");
-            _logger.Info($"Starting next round { _roundCount.CurrentRound }");
+            _logger.Info($"Starting next round {_roundCount.CurrentRound}");
         }
     }
 
@@ -244,7 +244,7 @@ internal class XdcHotStuff(
         {
             CurrentRound = round;
             CurrentRoundStartTime = DateTime.UtcNow;
-        }   
+        }
     }
 
 }
