@@ -69,7 +69,6 @@ public partial class DbOnTheRocks : IDb, ITunableDb, IReadOnlyNativeKeyValueStor
     // Need to keep options from GC in case of merge operator applied, as they are used in callback
     // ReSharper disable once CollectionNeverQueried.Local
     private readonly List<OptionsHandle> _doNotGcOptions = [];
-    private readonly Lock _doNotGcOptionsLocker = new();
 
     private readonly IRocksDbConfig _perTableDbConfig;
     private ulong _maxBytesForLevelBase;
@@ -586,7 +585,7 @@ public partial class DbOnTheRocks : IDb, ITunableDb, IReadOnlyNativeKeyValueStor
         if (mergeOperator is not null)
         {
             options.SetMergeOperator(new MergeOperatorAdapter(mergeOperator));
-            lock (_doNotGcOptionsLocker)
+            lock (_doNotGcOptions)
                 _doNotGcOptions.Add(options);
         }
 
