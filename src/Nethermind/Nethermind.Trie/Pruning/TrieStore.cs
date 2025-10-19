@@ -264,7 +264,7 @@ public sealed class TrieStore : ITrieStore, IPruningTrieStore
         }
         else
         {
-            return hash.GetHashCode() % _shardedDirtyNodeCount;
+            return (int)((uint)hash.GetHashCode() % _shardedDirtyNodeCount);
         }
     }
 
