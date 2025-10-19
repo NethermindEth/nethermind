@@ -132,6 +132,6 @@ internal class QuorumCertificateDecoder : IRlpValueDecoder<QuorumCertificate>, I
 
     private static int SignaturesLength(QuorumCertificate item)
     {
-        return Rlp.LengthOfSequence(Signature.Size) * (item.Signatures != null ? item.Signatures.Length : 0);
+        return Rlp.LengthOfSequence(Signature.Size) * (item.Signatures is not null ? item.Signatures.Length : 0);
     }
 }

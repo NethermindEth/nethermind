@@ -67,7 +67,7 @@ public class XdcBlockHeader : BlockHeader, IHashResolver
 
     internal Address[] GetMasterNodesFromEpochSwitchHeader()
     {
-        if (Validators == null)
+        if (Validators is null)
             throw new InvalidOperationException("Header has no validators.");
         Address[] masterNodes = new Address[Validators.Length / 20];
         for (int i = 0; i < masterNodes.Length; i++)
@@ -88,7 +88,7 @@ public class XdcBlockHeader : BlockHeader, IHashResolver
             if (ExtraData is null || ExtraData.Length == 0)
                 return null;
 
-            if (_extraFieldsV2 == null)
+            if (_extraFieldsV2 is null)
             {
                 //Check V2 consensus version in ExtraData field.
                 if (ExtraData.Length < 3 || ExtraData[0] != 2)
