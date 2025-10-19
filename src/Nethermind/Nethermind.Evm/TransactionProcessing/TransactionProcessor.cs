@@ -555,19 +555,16 @@ namespace Nethermind.Evm.TransactionProcessing
         protected virtual TransactionResult IncrementNonce(Transaction tx, BlockHeader header, IReleaseSpec spec, ITxTracer tracer, ExecutionOptions opts)
         {
             bool validate = !opts.HasFlag(ExecutionOptions.SkipValidation);
-            if (validate && tx.Nonce != WorldState.GetNonce(tx.SenderAddress!))
+            UInt256 nonce = WorldState.GetNonce(tx.SenderAddress);
+            if (validate && tx.Nonce != nonce)
             {
                 TraceLogInvalidTx(tx, $"WRONG_TRANSACTION_NONCE: {tx.Nonce} (expected {WorldState.GetNonce(tx.SenderAddress)})");
                 return TransactionResult.WrongTransactionNonce;
             }
 
-            if (!validate)
-            {
-                UInt256 nonce = WorldState.GetNonce(tx.SenderAddress);
-                if (nonce == UInt64.MaxValue) WorldState.SetNonce(tx.SenderAddress, 0);
-                else WorldState.IncrementNonce(tx.SenderAddress);
-            }
-            else WorldState.IncrementNonce(tx.SenderAddress);
+            UInt256 newNonce = nonce + 1;
+            if (!validate) newNonce.Mod(ulong.MaxValue, out newNonce);
+            WorldState.SetNonce(tx.SenderAddress, newNonce);
 
             return TransactionResult.Ok;
         }
