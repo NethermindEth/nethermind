@@ -28,6 +28,7 @@ internal class TrieStoreDirtyNodesCache
     private readonly bool _storeByHash;
     private readonly ConcurrentDictionary<Key, NodeRecord> _byKeyObjectCache;
     private readonly ConcurrentDictionary<Hash256AsKey, NodeRecord> _byHashObjectCache;
+    private readonly int _keyTopLevel;
 
     public long Count => _count;
     public long DirtyCount => _dirtyCount;
@@ -36,7 +37,7 @@ internal class TrieStoreDirtyNodesCache
 
     public readonly long KeyMemoryUsage;
 
-    public TrieStoreDirtyNodesCache(TrieStore trieStore, bool storeByHash, ILogger logger)
+    public TrieStoreDirtyNodesCache(TrieStore trieStore, bool storeByHash, int keyTopLevel, ILogger logger)
     {
         _trieStore = trieStore;
         _logger = logger;
@@ -44,6 +45,7 @@ internal class TrieStoreDirtyNodesCache
         // we will use a map with hash as its key instead of the full Key to reduce memory usage.
         _storeByHash = storeByHash;
         // NOTE: DirtyNodesCache is already sharded.
+        _keyTopLevel = keyTopLevel;
         int concurrencyLevel = Math.Min(Environment.ProcessorCount * 4, 32);
         int initialBuckets = TrieStore.HashHelpers.GetPrime(Math.Max(31, concurrencyLevel));
         if (_storeByHash)
@@ -195,22 +197,7 @@ internal class TrieStoreDirtyNodesCache
         {
             lastCommit = arg.LastCommit;
         }
-
-        TrieNode node = current.Node;
-        if (node.IsPersisted && !arg.Node.IsPersisted)
-        {
-            // This code path happens around 0.8% of the time at 4GB of dirty cache and 16GB total cache.
-            //
-            // If the cache node is persisted, we replace it completely.
-            // This is because although very rare, it is possible that this node is persisted, but its child is not
-            // persisted. This can happen when a path is not replaced with another node, but its child is and hence,
-            // the child is removed, but the parent is not and remain in the cache as persisted node.
-            // Additionally, it may hold a reference to its child which is marked as persisted eventhough it was
-            // deleted from the cached map.
-            node = arg.Node;
-        }
-
-        return new NodeRecord(node, lastCommit);
+        return new NodeRecord(current.Node, lastCommit);
     }
 
     public void IncrementMemory(TrieNode node)
@@ -327,6 +314,14 @@ internal class TrieStoreDirtyNodesCache
 
                     if (_trieStore.IsNoLongerNeeded(lastCommit))
                     {
+                        if (!_storeByHash && key.Address == null)
+                        {
+                            if (key.Path.Length <= _keyTopLevel)
+                                // Do not remove top level persisted node. This is so that it always get
+                                // removed via key removal and not due to memory limitation.
+                                continue;
+                        }
+
                         RemoveNodeFromCache(key, node, ref Metrics.PrunedPersistedNodesCount);
                         continue;
                     }

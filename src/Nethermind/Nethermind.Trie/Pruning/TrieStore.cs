@@ -2,7 +2,9 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Buffers.Binary;
 using System.Collections.Concurrent;
+using System.ComponentModel;
 using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
 using System.Linq;
@@ -85,13 +87,21 @@ public sealed class TrieStore : ITrieStore, IPruningTrieStore
         _maxBufferedCommitCount = pruningConfig.MaxBufferedCommitCount;
 
         _shardBit = pruningConfig.DirtyNodeShardBit;
+        if (_shardBit > 32)
+        {
+            throw new InvalidEnumArgumentException($"{nameof(pruningConfig.DirtyNodeShardBit)} must be less than 32");
+        }
+        if (_shardBit % 4 != 0)
+        {
+            throw new InvalidEnumArgumentException($"{nameof(pruningConfig.DirtyNodeShardBit)} must be divisible by 4");
+        }
         _shardedDirtyNodeCount = 1 << _shardBit;
         _dirtyNodes = new TrieStoreDirtyNodesCache[_shardedDirtyNodeCount];
         _dirtyNodesTasks = new Task[_shardedDirtyNodeCount];
         _persistedHashes = new ConcurrentDictionary<HashAndTinyPath, Hash256?>[_shardedDirtyNodeCount];
         for (int i = 0; i < _shardedDirtyNodeCount; i++)
         {
-            _dirtyNodes[i] = new TrieStoreDirtyNodesCache(this, !_nodeStorage.RequirePath, _logger);
+            _dirtyNodes[i] = new TrieStoreDirtyNodesCache(this, !_nodeStorage.RequirePath, (_shardBit / 4) - 1, _logger);
             _persistedHashes[i] = new ConcurrentDictionary<HashAndTinyPath, Hash256>();
         }
 
@@ -241,18 +251,24 @@ public sealed class TrieStore : ITrieStore, IPruningTrieStore
         static void ThrowUnknownHash(TrieNode node) => throw new TrieStoreException($"The hash of {node} should be known at the time of committing.");
     }
 
-    private int GetNodeShardIdx(in TreePath path, Hash256 hash)
+    private int GetNodeShardIdx(Hash256? addr, in TreePath path, Hash256 hash)
     {
-        // When enabled, the shard have dictionaries for tracking past path hash also.
-        // So the same path need to be in the same shard for the remove logic to work.
-        uint hashCode = (uint)(_pastKeyTrackingEnabled
-            ? path.GetHashCode()
-            : hash.GetHashCode());
-
-        return (int)(hashCode % _shardedDirtyNodeCount);
+        if (_pastKeyTrackingEnabled)
+        {
+            // The whole tree must be partitioned in a way that the child and parent node is located in the same
+            // partition so that we dont have case where the child was deleted via key removal but the parent was not
+            // due to parent no longer in cache.
+            // Top level state tree node are handle specially where it is never removed due to memory limit.
+            var asInt = BinaryPrimitives.ReadUInt32BigEndian(addr is null ? path.Span : addr.Bytes);
+            return (int)(asInt >> (32 - _shardBit));
+        }
+        else
+        {
+            return hash.GetHashCode() % _shardedDirtyNodeCount;
+        }
     }
 
-    private TrieStoreDirtyNodesCache GetDirtyNodeShard(in TrieStoreDirtyNodesCache.Key key) => _dirtyNodes[GetNodeShardIdx(key.Path, key.Keccak)];
+    private TrieStoreDirtyNodesCache GetDirtyNodeShard(in TrieStoreDirtyNodesCache.Key key) => _dirtyNodes[GetNodeShardIdx(key.Address, key.Path, key.Keccak)];
 
     private long NodesCount()
     {
@@ -292,7 +308,7 @@ public sealed class TrieStore : ITrieStore, IPruningTrieStore
         TrieNode node,
         long blockNumber)
     {
-        TrieStoreDirtyNodesCache shard = _dirtyNodes[GetNodeShardIdx(path, node.Keccak)];
+        TrieStoreDirtyNodesCache shard = _dirtyNodes[GetNodeShardIdx(address, path, node.Keccak)];
         return SaveOrReplaceInDirtyNodesCache(shard, address, ref path, node, blockNumber);
     }
 
@@ -682,7 +698,7 @@ public sealed class TrieStore : ITrieStore, IPruningTrieStore
     {
         if (treePath.Length <= TinyTreePath.MaxNibbleLength)
         {
-            int shardIdx = GetNodeShardIdx(treePath, tn.Keccak);
+            int shardIdx = GetNodeShardIdx(address, treePath, tn.Keccak);
 
             HashAndTinyPath key = new(address, new TinyTreePath(treePath));
 
@@ -1439,7 +1455,7 @@ public sealed class TrieStore : ITrieStore, IPruningTrieStore
             _dirtyNodesBuffer = new TrieStoreDirtyNodesCache[trieStore._dirtyNodes.Length];
             for (int i = 0; i < trieStore._shardedDirtyNodeCount; i++)
             {
-                _dirtyNodesBuffer[i] = new TrieStoreDirtyNodesCache(trieStore, !trieStore._nodeStorage.RequirePath, trieStore._logger);
+                _dirtyNodesBuffer[i] = new TrieStoreDirtyNodesCache(trieStore, !trieStore._nodeStorage.RequirePath, 0, trieStore._logger);
             }
         }
 
@@ -1469,18 +1485,18 @@ public sealed class TrieStore : ITrieStore, IPruningTrieStore
             if (_logger.IsDebug) _logger.Debug($"Flushed {count} commit buffers in {elapsed.Milliseconds}ms");
         }
 
-        private TrieStoreDirtyNodesCache GetDirtyNodeShard(in TreePath path, Hash256 keccak) => _dirtyNodesBuffer[_trieStore.GetNodeShardIdx(path, keccak)];
+        private TrieStoreDirtyNodesCache GetDirtyNodeShard(Hash256 address, in TreePath path, Hash256 keccak) => _dirtyNodesBuffer[_trieStore.GetNodeShardIdx(address, path, keccak)];
 
         public TrieNode SaveOrReplaceInDirtyNodesCache(Hash256? address, ref TreePath path, in TrieNode node, long blockNumber)
         {
             // Change the shard to the one from commit buffer.
-            TrieStoreDirtyNodesCache shard = GetDirtyNodeShard(path, node.Keccak);
+            TrieStoreDirtyNodesCache shard = GetDirtyNodeShard(address, path, node.Keccak);
             return _trieStore.SaveOrReplaceInDirtyNodesCache(shard, address, ref path, node, blockNumber);
         }
 
         public TrieNode FindCachedOrUnknown(TrieStoreDirtyNodesCache.Key key, bool isReadOnly)
         {
-            int shardIdx = _trieStore.GetNodeShardIdx(key.Path, key.Keccak);
+            int shardIdx = _trieStore.GetNodeShardIdx(key.Address, key.Path, key.Keccak);
             TrieStoreDirtyNodesCache bufferShard = _dirtyNodesBuffer[shardIdx];
             TrieStoreDirtyNodesCache mainShard = _trieStore._dirtyNodes[shardIdx];
 
