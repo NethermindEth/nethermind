@@ -69,7 +69,7 @@ namespace Nethermind.Core
         void Remove(ReadOnlySpan<byte> key) => Set(key, null);
     }
 
-    public interface IMergeableKeyValueStore
+    public interface IMergeableKeyValueStore : IWriteOnlyKeyValueStore
     {
         void Merge(ReadOnlySpan<byte> key, ReadOnlySpan<byte> value, WriteFlags flags = WriteFlags.None);
     }
