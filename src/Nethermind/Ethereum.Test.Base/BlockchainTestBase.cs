@@ -215,7 +215,13 @@ public abstract class BlockchainTestBase
                             break;
                         default:
                             Assert.Fail("Invalid blockchain engine test, version not recognised.");
-                            break;
+                            continue;
+                    }
+
+                    if (res.Result.ResultType == ResultType.Success)
+                    {
+                        ForkchoiceStateV1 fcuState = new(executionPayload.BlockHash, executionPayload.BlockHash, executionPayload.BlockHash);
+                        await engineRpcModule.engine_forkchoiceUpdatedV3(fcuState);
                     }
                 }
             }
@@ -238,7 +244,7 @@ public abstract class BlockchainTestBase
             List<string> differences;
             using (stateProvider.BeginScope(headBlock.Header))
             {
-                differences = RunAssertions(test, blockTree.RetrieveHeadBlock(), stateProvider);
+                differences = RunAssertions(test, headBlock, stateProvider);
             }
 
             bool testPassed = differences.Count == 0;
@@ -406,10 +412,6 @@ public abstract class BlockchainTestBase
             return test.PostStateRoot != stateProvider.StateRoot ? ["state root mismatch"] : Enumerable.Empty<string>().ToList();
         }
 
-        TestBlockHeaderJson testHeaderJson = (test.Blocks?
-                                                 .Where(b => b.BlockHeader is not null)
-                                                 .SingleOrDefault(b => new Hash256(b.BlockHeader.Hash) == headBlock.Hash)?.BlockHeader) ?? test.GenesisBlockHeader;
-        BlockHeader testHeader = JsonToEthereumTest.Convert(testHeaderJson);
         List<string> differences = [];
 
         IEnumerable<KeyValuePair<Address, AccountState>> deletedAccounts = test.Pre?
@@ -490,30 +492,39 @@ public abstract class BlockchainTestBase
             }
         }
 
-        BigInteger gasUsed = headBlock.Header.GasUsed;
-        if ((testHeader?.GasUsed ?? 0) != gasUsed)
-        {
-            differences.Add($"GAS USED exp: {testHeader?.GasUsed ?? 0}, actual: {gasUsed}");
-        }
+        TestBlockHeaderJson? testHeaderJson = test.Blocks?
+                                                 .Where(b => b.BlockHeader is not null)
+                                                 .SingleOrDefault(b => new Hash256(b.BlockHeader.Hash) == headBlock.Hash)?.BlockHeader;
 
-        if (headBlock.Transactions.Any() && testHeader.Bloom.ToString() != headBlock.Header.Bloom.ToString())
+        if (testHeaderJson is not null)
         {
-            differences.Add($"BLOOM exp: {testHeader.Bloom}, actual: {headBlock.Header.Bloom}");
-        }
+            BlockHeader testHeader = JsonToEthereumTest.Convert(testHeaderJson);
 
-        if (testHeader.StateRoot != stateProvider.StateRoot)
-        {
-            differences.Add($"STATE ROOT exp: {testHeader.StateRoot}, actual: {stateProvider.StateRoot}");
-        }
+            BigInteger gasUsed = headBlock.Header.GasUsed;
+            if ((testHeader?.GasUsed ?? 0) != gasUsed)
+            {
+                differences.Add($"GAS USED exp: {testHeader?.GasUsed ?? 0}, actual: {gasUsed}");
+            }
 
-        if (testHeader.TxRoot != headBlock.Header.TxRoot)
-        {
-            differences.Add($"TRANSACTIONS ROOT exp: {testHeader.TxRoot}, actual: {headBlock.Header.TxRoot}");
-        }
+            if (headBlock.Transactions.Length != 0 && testHeader.Bloom.ToString() != headBlock.Header.Bloom.ToString())
+            {
+                differences.Add($"BLOOM exp: {testHeader.Bloom}, actual: {headBlock.Header.Bloom}");
+            }
 
-        if (testHeader.ReceiptsRoot != headBlock.Header.ReceiptsRoot)
-        {
-            differences.Add($"RECEIPT ROOT exp: {testHeader.ReceiptsRoot}, actual: {headBlock.Header.ReceiptsRoot}");
+            if (testHeader.StateRoot != stateProvider.StateRoot)
+            {
+                differences.Add($"STATE ROOT exp: {testHeader.StateRoot}, actual: {stateProvider.StateRoot}");
+            }
+
+            if (testHeader.TxRoot != headBlock.Header.TxRoot)
+            {
+                differences.Add($"TRANSACTIONS ROOT exp: {testHeader.TxRoot}, actual: {headBlock.Header.TxRoot}");
+            }
+
+            if (testHeader.ReceiptsRoot != headBlock.Header.ReceiptsRoot)
+            {
+                differences.Add($"RECEIPT ROOT exp: {testHeader.ReceiptsRoot}, actual: {headBlock.Header.ReceiptsRoot}");
+            }
         }
 
         if (test.LastBlockHash != headBlock.Hash)
