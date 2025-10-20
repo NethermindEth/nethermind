@@ -14,6 +14,7 @@ using System.Threading;
 using System.Threading.Tasks;
 
 namespace Nethermind.Xdc;
+
 internal class XdcSealer(ISigner signer) : ISealer
 {
     private static XdcHeaderDecoder _xdcHeaderDecoder = new XdcHeaderDecoder();
