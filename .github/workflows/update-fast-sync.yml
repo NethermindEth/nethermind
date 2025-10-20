@@ -34,12 +34,12 @@ jobs:
         env:
           GH_TOKEN: ${{ steps.gh-app.outputs.token }}
         run: |
-          head_branch=feature/fast-sync-config-${{ github.run_number }}-${{ github.run_attempt }}
-          git config user.name "${{ github.actor }}"
-          git config user.email "${{ github.actor }}@users.noreply.github.com"
+          head_branch=feature/fast-sync-config-$GITHUB_RUN_NUMBER-$GITHUB_RUN_ATTEMPT
+          git config user.name "$GITHUB_ACTOR"
+          git config user.email "$GITHUB_ACTOR@users.noreply.github.com"
           git checkout -b $head_branch
           git add -A
           git commit -am "Auto-update fast sync settings"
           git push origin $head_branch
-          gh pr create -B master -H $head_branch -t "Auto-update fast sync settings" \
+          gh pr create -B $GITHUB_REF_NAME -H $head_branch -t "Auto-update fast sync settings" \
             -b "Updated fast sync settings in config files" -l configuration -l sync
