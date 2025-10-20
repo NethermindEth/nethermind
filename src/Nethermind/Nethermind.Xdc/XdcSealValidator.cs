@@ -29,6 +29,8 @@ internal class XdcSealValidator(ISnapshotManager snapshotManager, IEpochSwitchMa
         return ValidateParams(parent, header, out _);
     }
 
+
+
     public bool ValidateParams(BlockHeader parent, BlockHeader header, out string error)
     {
         if (header is not XdcBlockHeader xdcHeader)
