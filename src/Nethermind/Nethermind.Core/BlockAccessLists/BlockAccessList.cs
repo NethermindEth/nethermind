@@ -313,6 +313,12 @@ public struct BlockAccessList : IEquatable<BlockAccessList>, IJournal<int>
             {
                 storageChanges.Changes.RemoveAt(storageChanges.Changes.Count - 1);
             }
+
+            if (storageChanges.Changes.Count == 0)
+            {
+                accountChanges.StorageChanges.Remove([..key]);
+            }
+
             accountChanges.StorageReads.Add(new(Bytes32.Wrap(storageKey)));
             return;
         }
