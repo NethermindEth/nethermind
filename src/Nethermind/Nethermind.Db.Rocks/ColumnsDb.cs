@@ -142,7 +142,7 @@ public class ColumnsDb<T> : DbOnTheRocks, IColumnsDb<T> where T : struct, Enum
 
         public void Merge(ReadOnlySpan<byte> key, ReadOnlySpan<byte> value, WriteFlags flags = WriteFlags.None)
         {
-            _writeBatch._writeBatch.Merge(key, value, flags);
+            _writeBatch._writeBatch.Merge(key, value, _column._columnFamily, flags);
         }
     }
 }

@@ -3,7 +3,6 @@
 
 using System;
 using System.Collections.Concurrent;
-using System.Diagnostics;
 using System.Threading;
 
 namespace Nethermind.Core.Utils;
@@ -50,12 +49,7 @@ public class ConcurrentWriteBatcher : IWriteBatch
 
     public void Clear()
     {
-        ThrowIfDisposed();
-
-        foreach (IWriteBatch batch in _batches)
-        {
-            batch.Clear();
-        }
+        throw new NotSupportedException($"{nameof(ConcurrentWriteBatcher)} can not be cancelled.");
     }
 
     public void Set(ReadOnlySpan<byte> key, byte[]? value, WriteFlags flags = WriteFlags.None)
@@ -88,7 +82,4 @@ public class ConcurrentWriteBatcher : IWriteBatch
 
         return currentBatch;
     }
-
-    [StackTraceHidden]
-    private void ThrowIfDisposed() => ObjectDisposedException.ThrowIf(_disposing, this);
 }
