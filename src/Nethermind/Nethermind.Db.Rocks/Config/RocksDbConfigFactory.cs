@@ -11,10 +11,27 @@ namespace Nethermind.Db.Rocks.Config;
 public class RocksDbConfigFactory(IDbConfig dbConfig, IPruningConfig pruningConfig, IHardwareInfo hardwareInfo, ILogManager logManager) : IRocksDbConfigFactory
 {
     private readonly ILogger _logger = logManager.GetClassLogger<IRocksDbConfigFactory>();
-    private bool _maxOpenFilesLogged;
 
     public IRocksDbConfig GetForDatabase(string databaseName, string? columnName)
     {
+        // Automatically adjust MaxOpenFiles if not configured
+        if (dbConfig.MaxOpenFiles is null && hardwareInfo.MaxOpenFilesLimit.HasValue)
+        {
+            int systemLimit = hardwareInfo.MaxOpenFilesLimit.Value;
+            // Estimate ~15 databases (can vary by configuration, but this is a reasonable estimate)
+            // Reserve some file descriptors for the system and other operations (like network sockets)
+            // Use a conservative approach: systemLimit / 20 per database
+            // This accounts for ~15 databases plus safety margin for non-DB file descriptors
+            int perDbLimit = Math.Max(256, systemLimit / 20);
+
+            if (_logger.IsInfo)
+            {
+                _logger.Info($"Detected system open files limit of {systemLimit}. Setting MaxOpenFiles to {perDbLimit} per database.");
+            }
+
+            dbConfig.MaxOpenFiles = perDbLimit;
+        }
+
         IRocksDbConfig rocksDbConfig = new PerTableDbConfig(dbConfig, databaseName, columnName);
         if (databaseName.StartsWith("State"))
         {
@@ -63,25 +80,6 @@ public class RocksDbConfigFactory(IDbConfig dbConfig, IPruningConfig pruningConf
                 }
             }
 
-        }
-
-        // Automatically adjust MaxOpenFiles if not configured
-        if (rocksDbConfig.MaxOpenFiles is null && hardwareInfo.MaxOpenFilesLimit.HasValue)
-        {
-            int systemLimit = hardwareInfo.MaxOpenFilesLimit.Value;
-            // Estimate ~15 databases (can vary by configuration, but this is a reasonable estimate)
-            // Reserve some file descriptors for the system and other operations (like network sockets)
-            // Use a conservative approach: systemLimit / 20 per database
-            // This accounts for ~15 databases plus safety margin for non-DB file descriptors
-            int perDbLimit = Math.Max(256, systemLimit / 20);
-
-            if (!_maxOpenFilesLogged && _logger.IsInfo)
-            {
-                _logger.Info($"Detected system open files limit of {systemLimit}. Setting MaxOpenFiles to {perDbLimit} per database.");
-                _maxOpenFilesLogged = true;
-            }
-
-            rocksDbConfig = new MaxOpenFilesAdjustedRocksdbConfig(rocksDbConfig, perDbLimit);
         }
 
         return rocksDbConfig;
