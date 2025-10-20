@@ -5,11 +5,11 @@
     <ContinuousIntegrationBuild Condition="'$(CI)' == 'true'">true</ContinuousIntegrationBuild>
     <InvariantGlobalization>true</InvariantGlobalization>
     <LangVersion>13.0</LangVersion>
-    <NuGetAuditMode>direct</NuGetAuditMode>
     <SatelliteResourceLanguages>en</SatelliteResourceLanguages>
     <TargetFramework>net10.0</TargetFramework>
-    <!--<TreatWarningsAsErrors>true</TreatWarningsAsErrors>-->
+    <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
     <UseArtifactsOutput>true</UseArtifactsOutput>
+    <WarningsNotAsErrors>NU1901;NU1902;NU1903</WarningsNotAsErrors>
   </PropertyGroup>
 
   <PropertyGroup Label="ProductInfo">
