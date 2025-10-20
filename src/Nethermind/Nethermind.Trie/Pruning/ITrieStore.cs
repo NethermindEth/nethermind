@@ -52,12 +52,6 @@ namespace Nethermind.Trie.Pruning
         // Acquire lock, then persist and flush cache.
         // Used for full pruning operation that change underlying node storage.
         TrieStore.StableLockScope PrepareStableState(CancellationToken cancellationToken);
-
-        /// <summary>
-        /// Gets the block number of the last persisted block.
-        /// Used to track the oldest available state after full pruning operations.
-        /// </summary>
-        long LastPersistedBlockNumber { get; }
     }
 
     /// <summary>

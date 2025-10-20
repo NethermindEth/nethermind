@@ -60,6 +60,4 @@ public class TestRawTrieStore(INodeStorage nodeStorage, bool isReadOnly = false)
             pruneLockScope = pruneLockScope,
         };
     }
-
-    public long LastPersistedBlockNumber => 0;
 }

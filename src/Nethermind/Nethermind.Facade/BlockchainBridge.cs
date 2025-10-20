@@ -18,7 +18,6 @@ using Nethermind.Int256;
 using Nethermind.Evm;
 using Nethermind.Evm.Tracing;
 using Nethermind.Trie;
-using Nethermind.Trie.Pruning;
 using Nethermind.TxPool;
 using Block = Nethermind.Core.Block;
 using System.Threading;
@@ -58,8 +57,7 @@ namespace Nethermind.Facade
         IBlocksConfig blocksConfig,
         IMiningConfig miningConfig,
         IPruningConfig pruningConfig,
-        IEthSyncingInfo ethSyncingInfo,
-        IPruningTrieStore pruningTrieStore)
+        IEthSyncingInfo ethSyncingInfo)
         : IBlockchainBridge
     {
         private readonly SimulateBridgeHelper _simulateBridgeHelper = new(blocksConfig, specProvider);
@@ -403,40 +401,31 @@ namespace Nethermind.Facade
                 return false;
             }
 
-            // For archive nodes (no pruning), check if requested block is within available range
+            // Archive nodes: no pruning, keep all state from snap sync point forward
             if (pruningConfig.Mode == PruningMode.None)
             {
-                // Archive mode: but state only available from sync pivot onwards
-                // If node was snap/fast synced, state before pivot was never downloaded
-                long syncPivotBlock = blockTree.SyncPivot.BlockNumber;
-                return requestedNumber >= syncPivotBlock && requestedNumber <= headNumber;
+                // For archive nodes that were snap synced, check the lowest inserted header
+                // We use LowestInsertedHeader (not SyncPivot) because SyncPivot moves forward over time
+                // as finalized blocks progress, while LowestInsertedHeader remains at the original starting point
+                long? lowestInsertedBlockNumber = blockTree.LowestInsertedHeader?.Number;
+                if (lowestInsertedBlockNumber.HasValue && lowestInsertedBlockNumber > 0 && requestedNumber < lowestInsertedBlockNumber)
+                {
+                    return false;  // State was never synced before the lowest inserted header
+                }
+
+                // For archive nodes, state is available for all blocks from snap sync point to head
+                return requestedNumber <= headNumber;
             }
 
-            // For nodes with pruning enabled, determine the oldest available state block
-            long oldestAvailableState;
-
-            if (pruningConfig.Mode.IsFull())
-            {
-                // Full pruning enabled: track oldest state from multiple sources
-                // 1. Last persisted block (from trie store persistence/full pruning operations)
-                // 2. Sync pivot (state before this was never downloaded)
-                // 3. Current pruning window (head - boundary)
-                long lastPersistedBlock = pruningTrieStore.LastPersistedBlockNumber;
-                long syncPivotBlock = blockTree.SyncPivot.BlockNumber;
-                long pruningWindowStart = headNumber - pruningConfig.PruningBoundary + 1; // +1 for safety margin
-
-                // State available from the maximum of these values (most restrictive)
-                oldestAvailableState = Math.Max(Math.Max(lastPersistedBlock, syncPivotBlock), pruningWindowStart);
-            }
-            else
-            {
-                // Memory pruning only: use pruning boundary with safety margin
-                // We subtract 1 from the pruning boundary as a safety margin to account for:
-                // 1. Race conditions between checking state and accessing it
-                // 2. Blocks that might be pruned between the check and actual access
-                int pruningBoundary = pruningConfig.PruningBoundary;
-                oldestAvailableState = headNumber - pruningBoundary + 1;
-            }
+            // Pruning nodes: calculate oldest available state based on pruning boundary
+            // This is conservative but correct for all pruning node configurations:
+            // - Memory pruning: respects the configured boundary
+            // - Full pruning: also uses pruning boundary (persisted state within this window)
+            // - Hybrid: combination of both
+            // We add 1 for safety margin to account for:
+            // 1. Race conditions between checking state and accessing it
+            // 2. Blocks that might be pruned between the check and actual access
+            long oldestAvailableState = headNumber - pruningConfig.PruningBoundary + 1;
 
             // Check if requested block is within available range
             return requestedNumber >= oldestAvailableState && requestedNumber <= headNumber;
