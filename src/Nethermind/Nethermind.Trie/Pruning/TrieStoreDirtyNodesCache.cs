@@ -353,6 +353,7 @@ internal class TrieStoreDirtyNodesCache
                             {
                                 // Do not remove top level persisted node. This is so that it always get
                                 // removed via key removal and not due to memory limitation.
+                                node.PrunePersistedRecursively(1);
                                 totalMemory += node.GetMemorySize(false) + KeyMemoryUsage;
                                 totalNode++;
                                 continue;

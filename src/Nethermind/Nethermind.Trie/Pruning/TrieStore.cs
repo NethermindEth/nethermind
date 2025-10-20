@@ -242,9 +242,7 @@ public sealed class TrieStore : ITrieStore, IPruningTrieStore
             if (IsInCommitBufferMode)
                 node = _commitBuffer.SaveOrReplaceInDirtyNodesCache(address, ref path, node, blockNumber);
             else
-            {
                 node = SaveOrReplaceInDirtyNodesCache(address, ref path, node, blockNumber);
-            }
 
             IncrementCommittedNodesCount();
         }
@@ -265,6 +263,8 @@ public sealed class TrieStore : ITrieStore, IPruningTrieStore
     {
         if (_pastKeyTrackingEnabled)
         {
+            if (_shardBit == 0) return 0;
+
             // The whole tree must be partitioned in a way that the child and parent node is located in the same
             // partition so that we dont have case where the child was deleted via key removal but the parent was not
             // due to parent no longer in cache.
@@ -1468,14 +1468,6 @@ public sealed class TrieStore : ITrieStore, IPruningTrieStore
             for (int i = 0; i < trieStore._shardedDirtyNodeCount; i++)
             {
                 _dirtyNodesBuffer[i] = new TrieStoreDirtyNodesCache(trieStore, !trieStore._nodeStorage.RequirePath, 0, trieStore._logger, isForCommitBuffer: true);
-            }
-        }
-
-        public void Reset()
-        {
-            for (int i = 0; i < _trieStore._shardedDirtyNodeCount; i++)
-            {
-                _dirtyNodesBuffer[i].Clear();
             }
         }
 
