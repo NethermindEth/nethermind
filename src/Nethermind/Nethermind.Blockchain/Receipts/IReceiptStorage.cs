@@ -21,7 +21,7 @@ namespace Nethermind.Blockchain.Receipts
         /// <summary>
         /// Receipts for canonical chain changed.
         /// </summary>
-        event EventHandler<BlockReplacementEventArgs> NewCanonicalReceipts;
+        event EventHandler<BlockReplacementEventArgs>? NewCanonicalReceipts;
 
         /// <summary>
         /// Receipts for any block are inserted.
@@ -29,6 +29,6 @@ namespace Nethermind.Blockchain.Receipts
         /// <remarks>
         /// This is invoked for both canonical and non-canonical blocks.
         /// </remarks>
-        event EventHandler<ReceiptsEventArgs> ReceiptsInserted;
+        event EventHandler<ReceiptsEventArgs>? ReceiptsInserted;
     }
 }

@@ -38,7 +38,7 @@ public class PerTableDbConfig : IRocksDbConfig
         foreach (var prefix in _prefixes)
         {
             string prefixed = string.Concat(prefix, propertyName);
-            if (GetProperty(type, prefixed, caseSensitive: true) is null)
+            if (GetProperty(type, prefixed) is null)
             {
                 throw new InvalidConfigurationException($"Configuration {propertyName} not available with prefix {prefix}. Add {prefix}{propertyName} to {nameof(IDbConfig)}.", -1);
             }
@@ -90,7 +90,7 @@ public class PerTableDbConfig : IRocksDbConfig
         Type type = dbConfig.GetType();
         PropertyInfo? propertyInfo;
 
-        string val = (string)GetProperty(type, propertyName, caseSensitive: true)!.GetValue(dbConfig)!;
+        string val = (string)GetProperty(type, propertyName)!.GetValue(dbConfig)!;
 
         foreach (var prefix in prefixes)
         {
@@ -156,10 +156,6 @@ public class PerTableDbConfig : IRocksDbConfig
         }
     }
 
-    private static PropertyInfo? GetProperty(Type type, string name, bool caseSensitive = false)
-    {
-        BindingFlags flags = BindingFlags.Public | BindingFlags.Instance;
-        if (!caseSensitive) flags |= BindingFlags.IgnoreCase;
-        return type.GetProperty(name, flags);
-    }
+    private static PropertyInfo? GetProperty(Type type, string name) =>
+        type.GetProperty(name, BindingFlags.Public | BindingFlags.Instance | BindingFlags.IgnoreCase);
 }
