@@ -55,7 +55,7 @@ internal class XdcBlockProducer : BlockProducerBase
 
         //TODO maybe some sanity checks here for round and hash
 
-        byte[] extra = [2, .._extraConsensusDataDecoder.Encode(new ExtraFieldsV2(currentRound, highestCert)).Bytes];
+        byte[] extra = [2, .. _extraConsensusDataDecoder.Encode(new ExtraFieldsV2(currentRound, highestCert)).Bytes];
 
         Address blockAuthor = sealer.Address;
         XdcBlockHeader xdcBlockHeader = new(
