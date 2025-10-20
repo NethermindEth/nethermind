@@ -108,7 +108,6 @@ namespace Nethermind.Blockchain
 
         private readonly long _genesisBlockNumber;
 
-
         public BlockTree(
             IBlockStore? blockStore,
             IHeaderStore? headerDb,
