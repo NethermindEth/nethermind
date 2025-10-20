@@ -4,7 +4,6 @@
 using Nethermind.Core;
 using Nethermind.Core.Caching;
 using Nethermind.Logging;
-using Nethermind.Network.Contract.Messages;
 using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
@@ -13,9 +12,8 @@ using System.Threading.Tasks;
 
 namespace Nethermind.TxPool;
 
-
 public class SimpleRetryCache<TMessage, TResourceId>
-    where TMessage : IResourceRequestMessage<TMessage, TResourceId>
+    where TMessage : INew<TResourceId, TMessage>
     where TResourceId : struct, IEquatable<TResourceId>
 {
     private readonly int _timeoutMs;

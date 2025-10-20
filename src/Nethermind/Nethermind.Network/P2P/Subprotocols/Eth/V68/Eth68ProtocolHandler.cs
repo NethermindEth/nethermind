@@ -77,15 +77,15 @@ public class Eth68ProtocolHandler(ISession session,
 
     private void Handle(NewPooledTransactionHashesMessage68 msg)
     {
-        using var message = msg;
-        bool isTrace = Logger.IsTrace;
+        using NewPooledTransactionHashesMessage68 message = msg;
+
         if (message.Hashes.Count != message.Types.Count || message.Hashes.Count != message.Sizes.Count)
         {
             string errorMessage = $"Wrong format of {nameof(NewPooledTransactionHashesMessage68)} message. " +
                                   $"Hashes count: {message.Hashes.Count} " +
                                   $"Types count: {message.Types.Count} " +
                                   $"Sizes count: {message.Sizes.Count}";
-            if (isTrace) Logger.Trace(errorMessage);
+            if (Logger.IsTrace) Logger.Trace(errorMessage);
 
             throw new SubprotocolException(errorMessage);
         }
@@ -94,43 +94,47 @@ public class Eth68ProtocolHandler(ISession session,
 
         AddNotifiedTransactions(message.Hashes);
 
-        long startTime = isTrace ? Stopwatch.GetTimestamp() : 0;
+        long startTime = Logger.IsTrace ? Stopwatch.GetTimestamp() : 0;
 
-        RequestTransactions(message.Hashes, message.Sizes, message.Types);
+        RequestPooledTransactions(message.Hashes, message.Sizes, message.Types);
 
-        if (isTrace) Logger.Trace($"OUT {Counter:D5} {nameof(NewPooledTransactionHashesMessage68)} to {Node:c} in {Stopwatch.GetElapsedTime(startTime).TotalMilliseconds}ms");
+        if (Logger.IsTrace) Logger.Trace($"OUT {Counter:D5} {nameof(NewPooledTransactionHashesMessage68)} to {Node:c} in {Stopwatch.GetElapsedTime(startTime).TotalMilliseconds}ms");
     }
 
-    public void RequestTransactions(IOwnedReadOnlyList<Hash256> hashes, IOwnedReadOnlyList<int> sizes, IOwnedReadOnlyList<byte> types)
+    protected void RequestPooledTransactions(IOwnedReadOnlyList<Hash256> hashes, IOwnedReadOnlyList<int> sizes, IOwnedReadOnlyList<byte> types)
     {
-        using ArrayPoolList<(Hash256 Hash, byte Type, int Size)> discoveredTxHashesAndSizes = AddMarkUnknownHashes(hashes.AsSpan(), sizes.AsSpan(), types.AsSpan());
-        if (discoveredTxHashesAndSizes.Count == 0)
+        using ArrayPoolList<int> newTxHashesIndexes = AddMarkUnknownHashes(hashes.AsSpan());
+
+        if (newTxHashesIndexes.Count == 0)
         {
             hashes.Dispose();
             sizes.Dispose();
             types.Dispose();
-            discoveredTxHashesAndSizes.Dispose();
+            newTxHashesIndexes.Dispose();
+
             return;
         }
 
         int packetSizeLeft = TransactionsMessage.MaxPacketSize;
-        ArrayPoolList<Hash256> hashesToRequest = new(discoveredTxHashesAndSizes.Count);
+        ArrayPoolList<Hash256> hashesToRequest = new(newTxHashesIndexes.Count);
 
-        var discoveredCount = discoveredTxHashesAndSizes.Count;
-        var toRequestCount = 0;
+        int discoveredCount = newTxHashesIndexes.Count;
+        int toRequestCount = 0;
 
-        foreach ((Hash256 hash, byte type, int size) in discoveredTxHashesAndSizes.AsSpan())
+        foreach (int index in newTxHashesIndexes.AsSpan())
         {
-            int txSize = size;
-            TxType txType = (TxType)type;
+            Hash256 hash = hashes[index];
+            int txSize = sizes[index];
+            TxType txType = (TxType)types[index];
 
-            long maxSize = txType.SupportsBlobs() ? _configuredMaxBlobTxSize : _configuredMaxTxSize;
-            if (txSize > maxSize)
+            long maxTxSize = txType.SupportsBlobs() ? _configuredMaxBlobTxSize : _configuredMaxTxSize;
+
+            if (txSize > maxTxSize)
                 continue;
 
-            if ((txSize > packetSizeLeft || hashesToRequest.Count >= 256) && toRequestCount > 0)
+            if ((txSize > packetSizeLeft && toRequestCount > 0) || toRequestCount >= 256)
             {
-                RequestPooledTransactions(hashesToRequest);
+                Send(V66.Messages.GetPooledTransactionsMessage.New(hashesToRequest));
                 hashesToRequest = new ArrayPoolList<Hash256>(discoveredCount);
                 packetSizeLeft = TransactionsMessage.MaxPacketSize;
                 toRequestCount = 0;
@@ -144,20 +148,27 @@ public class Eth68ProtocolHandler(ISession session,
             }
         }
 
-        RequestPooledTransactions(hashesToRequest);
+        if (hashesToRequest.Count is not 0)
+        {
+            Send(V66.Messages.GetPooledTransactionsMessage.New(hashesToRequest));
+        }
+        else
+        {
+            hashesToRequest.Dispose();
+        }
     }
 
-    private ArrayPoolList<(Hash256, byte, int)> AddMarkUnknownHashes(ReadOnlySpan<Hash256> hashes, ReadOnlySpan<int> sizes, ReadOnlySpan<byte> types)
+    private ArrayPoolList<int> AddMarkUnknownHashes(ReadOnlySpan<Hash256> hashes)
     {
-        ArrayPoolList<(Hash256, byte, int)> discoveredTxHashesAndSizes = new(hashes.Length);
+        ArrayPoolList<int> discoveredTxHashesAndSizes = new(hashes.Length);
         for (int i = 0; i < hashes.Length; i++)
         {
             Hash256 hash = hashes[i];
-            if (!_txPool.IsKnown(hash) && !_txPool.ContainsTx(hash, (TxType)types[i]))
+            if (!_txPool.IsKnown(hash))
             {
                 if (_txPool.AnnounceTx(hash, this) is AnnounceResult.New)
                 {
-                    discoveredTxHashesAndSizes.Add((hash, types[i], sizes[i]));
+                    discoveredTxHashesAndSizes.Add(i);
                 }
             }
         }

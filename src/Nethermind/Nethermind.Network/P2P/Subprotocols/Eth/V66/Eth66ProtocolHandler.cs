@@ -5,7 +5,6 @@ using Nethermind.Consensus;
 using Nethermind.Consensus.Scheduler;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
-using Nethermind.Core.Crypto;
 using Nethermind.Logging;
 using Nethermind.Network.Contract.P2P;
 using Nethermind.Network.P2P.Subprotocols.Eth.V65;
@@ -16,7 +15,6 @@ using Nethermind.Stats;
 using Nethermind.Synchronization;
 using Nethermind.TxPool;
 using System;
-using System.Diagnostics;
 using System.Threading;
 using System.Threading.Tasks;
 using GetPooledTransactionsMessage = Nethermind.Network.P2P.Subprotocols.Eth.V66.Messages.GetPooledTransactionsMessage;
@@ -33,7 +31,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V66
         private readonly MessageDictionary<GetBlockBodiesMessage, (OwnedBlockBodies, long)> _bodiesRequests66;
         private readonly MessageDictionary<GetNodeDataMessage, IOwnedReadOnlyList<byte[]>> _nodeDataRequests66;
         private readonly MessageDictionary<GetReceiptsMessage, (IOwnedReadOnlyList<TxReceipt[]>, long)> _receiptsRequests66;
-        private const int MaxNumberOfTxsInOneMsg = 256;
+
 
         public Eth66ProtocolHandler(ISession session,
             IMessageSerializationService serializer,
@@ -85,8 +83,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V66
                 case Eth66MessageCode.PooledTransactions:
                     if (CanReceiveTransactions)
                     {
-                        PooledTransactionsMessage pooledTxMsg
-                            = Deserialize<PooledTransactionsMessage>(message.Content);
+                        PooledTransactionsMessage pooledTxMsg = Deserialize<PooledTransactionsMessage>(message.Content);
                         ReportIn(pooledTxMsg, size);
                         Handle(pooledTxMsg.EthMessage);
                     }
@@ -174,49 +171,8 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V66
             _receiptsRequests66.Handle(msg.RequestId, (msg.EthMessage.TxReceipts, size), size);
         }
 
-        protected override void Handle(NewPooledTransactionHashesMessage msg)
-        {
-            using var message = msg;
-            bool isTrace = Logger.IsTrace;
-            long startTime = Stopwatch.GetTimestamp();
+        protected override void Handle(NewPooledTransactionHashesMessage message) => RequestPooledTransactions<GetPooledTransactionsMessage>(message.Hashes);
 
-            TxPool.Metrics.PendingTransactionsHashesReceived += message.Hashes.Count;
-            RequestPooledTransactions(message.Hashes);
-
-            if (isTrace)
-                Logger.Trace($"OUT {Counter:D5} {nameof(NewPooledTransactionHashesMessage)} to {Node:c} " +
-                             $"in {Stopwatch.GetElapsedTime(startTime).TotalMilliseconds:N0}ms");
-        }
-
-        protected override void RequestPooledTransactions(IOwnedReadOnlyList<Hash256> hashes)
-        {
-            void RequestPooledTransactionsEth66(IOwnedReadOnlyList<Hash256> hashes) => Send(new GetPooledTransactionsMessage(hashes));
-
-            ArrayPoolList<Hash256> discoveredTxHashes = AddMarkUnknownHashes(hashes.AsSpan());
-
-            if (discoveredTxHashes.Count == 0)
-            {
-                return;
-            }
-
-            if (discoveredTxHashes.Count <= MaxNumberOfTxsInOneMsg)
-            {
-                RequestPooledTransactionsEth66(discoveredTxHashes);
-            }
-            else
-            {
-                using ArrayPoolList<Hash256> _ = discoveredTxHashes;
-
-                for (int start = 0; start < discoveredTxHashes.Count; start += MaxNumberOfTxsInOneMsg)
-                {
-                    var end = Math.Min(start + MaxNumberOfTxsInOneMsg, discoveredTxHashes.Count);
-
-                    ArrayPoolList<Hash256> hashesToRequest = new(end - start);
-                    hashesToRequest.AddRange(discoveredTxHashes.AsSpan()[start..end]);
-                    RequestPooledTransactionsEth66(hashesToRequest);
-                }
-            }
-        }
 
         protected override async Task<IOwnedReadOnlyList<BlockHeader>> SendRequest(V62.Messages.GetBlockHeadersMessage message, CancellationToken token)
         {

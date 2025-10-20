@@ -3,7 +3,6 @@
 
 using Nethermind.Core;
 using Nethermind.Logging;
-using Nethermind.Network.Contract.Messages;
 using NSubstitute;
 using NUnit.Framework;
 using System;
@@ -15,10 +14,10 @@ namespace Nethermind.TxPool.Test;
 [TestFixture]
 public class SimpleRetryCacheTests
 {
-    public readonly struct ResourceRequestMessage : IResourceRequestMessage<ResourceRequestMessage, int>
+    public readonly struct ResourceRequestMessage : INew<int, ResourceRequestMessage>
     {
         public int Resource { get; init; }
-        public static ResourceRequestMessage From(int resourceId) => new() { Resource = resourceId };
+        public static ResourceRequestMessage New(int resourceId) => new() { Resource = resourceId };
     }
 
     public interface ITestHandler : IMessageHandler<ResourceRequestMessage>;
