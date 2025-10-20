@@ -3,7 +3,6 @@
 
 using Nethermind.Int256;
 using System.Runtime.CompilerServices;
-[assembly: InternalsVisibleTo("Nethermind.Xdc.Test")]
 
 namespace Nethermind.Core.Specs
 {

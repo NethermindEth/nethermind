@@ -141,7 +141,7 @@ internal class EpochSwitchManagerTests
             V2Configs = [new V2ConfigParams()]
         };
 
-        _config.GetSpecInternal(Arg.Any<ForkActivation>()).Returns(releaseSpec);
+        _config.GetSpec(Arg.Any<ForkActivation>()).Returns(releaseSpec);
 
         XdcBlockHeader header = Build.A.XdcBlockHeader()
             .TestObject;
@@ -168,7 +168,7 @@ internal class EpochSwitchManagerTests
             V2Configs = [new V2ConfigParams()]
         };
 
-        _config.GetSpecInternal(Arg.Any<ForkActivation>()).Returns(releaseSpec);
+        _config.GetSpec(Arg.Any<ForkActivation>()).Returns(releaseSpec);
 
         XdcBlockHeader header = Build.A.XdcBlockHeader()
             .TestObject;
@@ -195,7 +195,7 @@ internal class EpochSwitchManagerTests
             V2Configs = [new V2ConfigParams()]
         };
 
-        _config.GetSpecInternal(Arg.Any<ForkActivation>()).Returns(releaseSpec);
+        _config.GetSpec(Arg.Any<ForkActivation>()).Returns(releaseSpec);
 
         XdcBlockHeader chainHead = GetChainOfBlocks(_tree, _snapshotManager, releaseSpec, 100);
 
@@ -226,7 +226,7 @@ internal class EpochSwitchManagerTests
             V2Configs = [new V2ConfigParams()],
             SwitchEpoch = 2
         };
-        _config.GetSpecInternal(Arg.Any<ForkActivation>()).Returns(releaseSpec);
+        _config.GetSpec(Arg.Any<ForkActivation>()).Returns(releaseSpec);
 
         XdcBlockHeader chainHead = GetChainOfBlocks(_tree, _snapshotManager, releaseSpec, 99);
 
@@ -258,7 +258,7 @@ internal class EpochSwitchManagerTests
             V2Configs = [new V2ConfigParams()],
             SwitchEpoch = 2
         };
-        _config.GetSpecInternal(Arg.Any<ForkActivation>()).Returns(releaseSpec);
+        _config.GetSpec(Arg.Any<ForkActivation>()).Returns(releaseSpec);
 
         XdcBlockHeader chainHead = GetChainOfBlocks(_tree, _snapshotManager, releaseSpec, 101);
 
@@ -290,7 +290,7 @@ internal class EpochSwitchManagerTests
             V2Configs = [new V2ConfigParams()],
             SwitchEpoch = 2
         };
-        _config.GetSpecInternal(Arg.Any<ForkActivation>()).Returns(releaseSpec);
+        _config.GetSpec(Arg.Any<ForkActivation>()).Returns(releaseSpec);
 
         XdcBlockHeader chainHead = GetChainOfBlocks(_tree, _snapshotManager, releaseSpec, 100);
 
@@ -350,7 +350,7 @@ internal class EpochSwitchManagerTests
             SwitchBlock = switchBlock,
             V2Configs = [new V2ConfigParams()]
         };
-        _config.GetSpecInternal(Arg.Any<ForkActivation>()).Returns(releaseSpec);
+        _config.GetSpec(Arg.Any<ForkActivation>()).Returns(releaseSpec);
         XdcBlockHeader parentHeader = Build.A.XdcBlockHeader()
             .TestObject;
         parentHeader.Hash = headerHash;
@@ -373,7 +373,7 @@ internal class EpochSwitchManagerTests
             SwitchBlock = 0,
             V2Configs = [new V2ConfigParams()]
         };
-        _config.GetSpecInternal(Arg.Any<ForkActivation>()).Returns(releaseSpec);
+        _config.GetSpec(Arg.Any<ForkActivation>()).Returns(releaseSpec);
         XdcBlockHeader chainHead = GetChainOfBlocks(_tree, _snapshotManager, releaseSpec, 101);
 
         bool result = _epochSwitchManager.IsEpochSwitchAtRound(currRound, chainHead);
@@ -394,7 +394,7 @@ internal class EpochSwitchManagerTests
             SwitchEpoch = 2
         };
 
-        _config.GetSpecInternal(Arg.Any<ForkActivation>()).Returns(releaseSpec);
+        _config.GetSpec(Arg.Any<ForkActivation>()).Returns(releaseSpec);
 
         // 99 is chosen so that parent round is less than epoch start round
         XdcBlockHeader chainHead = GetChainOfBlocks(_tree, _snapshotManager, releaseSpec, 99);
@@ -433,7 +433,7 @@ internal class EpochSwitchManagerTests
             SwitchEpoch = 2
         };
 
-        _config.GetSpecInternal(Arg.Any<ForkActivation>()).Returns(releaseSpec);
+        _config.GetSpec(Arg.Any<ForkActivation>()).Returns(releaseSpec);
 
         // 101 is chosen that parent is at epoch and child is not at epoch
         XdcBlockHeader chainHead = GetChainOfBlocks(_tree, _snapshotManager, releaseSpec, 100);
@@ -472,7 +472,7 @@ internal class EpochSwitchManagerTests
             SwitchEpoch = 2
         };
 
-        _config.GetSpecInternal(Arg.Any<ForkActivation>()).Returns(releaseSpec);
+        _config.GetSpec(Arg.Any<ForkActivation>()).Returns(releaseSpec);
 
         // Create chain head at round 101 so that parent round is greater than epoch start round
         XdcBlockHeader chainHead = GetChainOfBlocks(_tree, _snapshotManager, releaseSpec, 101);
@@ -513,7 +513,7 @@ internal class EpochSwitchManagerTests
             SwitchBlock = switchBlock,
             V2Configs = [new V2ConfigParams()]
         };
-        _config.GetSpecInternal(Arg.Any<ForkActivation>()).Returns(releaseSpec);
+        _config.GetSpec(Arg.Any<ForkActivation>()).Returns(releaseSpec);
 
         var result = _epochSwitchManager.GetEpochSwitchInfo(parentHash);
         Assert.That(result, Is.Null);
@@ -537,7 +537,7 @@ internal class EpochSwitchManagerTests
             SwitchBlock = blockNumber,
             V2Configs = [new V2ConfigParams()]
         };
-        _config.GetSpecInternal(Arg.Any<ForkActivation>()).Returns(releaseSpec);
+        _config.GetSpec(Arg.Any<ForkActivation>()).Returns(releaseSpec);
 
         XdcBlockHeader header = Build.A.XdcBlockHeader()
             .TestObject;
@@ -562,7 +562,7 @@ internal class EpochSwitchManagerTests
             SwitchBlock = (ulong)0,
             V2Configs = [new V2ConfigParams()]
         };
-        _config.GetSpecInternal(Arg.Any<ForkActivation>()).Returns(releaseSpec);
+        _config.GetSpec(Arg.Any<ForkActivation>()).Returns(releaseSpec);
 
         XdcBlockHeader chainHead = GetChainOfBlocks(_tree, _snapshotManager, releaseSpec, 100);
         var parentHeader = (XdcBlockHeader)_tree.FindHeader(chainHead.ParentHash!)!;
@@ -590,7 +590,7 @@ internal class EpochSwitchManagerTests
             SwitchBlock = 0,
             V2Configs = [new V2ConfigParams()]
         };
-        _config.GetSpecInternal(Arg.Any<ForkActivation>()).Returns(releaseSpec);
+        _config.GetSpec(Arg.Any<ForkActivation>()).Returns(releaseSpec);
 
         // 101 is chosen that parent is at epoch and child is not at epoch
         XdcBlockHeader chainHead = GetChainOfBlocks(_tree, _snapshotManager, releaseSpec, (int)blockNumber + 1);
@@ -621,7 +621,7 @@ internal class EpochSwitchManagerTests
             SwitchBlock = blockNumber,
             V2Configs = [new V2ConfigParams()]
         };
-        _config.GetSpecInternal(Arg.Any<ForkActivation>()).Returns(releaseSpec);
+        _config.GetSpec(Arg.Any<ForkActivation>()).Returns(releaseSpec);
 
         XdcBlockHeader header = Build.A.XdcBlockHeader()
             .TestObject;
@@ -649,7 +649,7 @@ internal class EpochSwitchManagerTests
             SwitchBlock = 0,
             V2Configs = [new V2ConfigParams()]
         };
-        _config.GetSpecInternal(Arg.Any<ForkActivation>()).Returns(releaseSpec);
+        _config.GetSpec(Arg.Any<ForkActivation>()).Returns(releaseSpec);
         _tree.FindHeader(Arg.Any<long>()).Returns((XdcBlockHeader?)null);
         // Act
         var result = _epochSwitchManager.GetBlockByEpochNumber(epochNumber);
@@ -669,7 +669,7 @@ internal class EpochSwitchManagerTests
             SwitchBlock = 0,
             V2Configs = [new V2ConfigParams()]
         };
-        _config.GetSpecInternal(Arg.Any<ForkActivation>()).Returns(releaseSpec);
+        _config.GetSpec(Arg.Any<ForkActivation>()).Returns(releaseSpec);
 
         XdcBlockHeader chainHead = GetChainOfBlocks(_tree, _snapshotManager, releaseSpec, 100);
 
