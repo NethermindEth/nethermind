@@ -85,7 +85,7 @@ public struct BlockAccessList : IEquatable<BlockAccessList>, IJournal<int>
         SortedList<ushort, BalanceChange> balanceChanges = accountChanges.BalanceChanges;
 
         // balance change edge case
-        if (!HasChangedDuringTx(address, before, after))
+        if (!HasBalanceChangedDuringTx(address, before, after))
         {
             if (balanceChanges.Count != 0 && balanceChanges.Last().Key == Index)
             {
@@ -220,7 +220,7 @@ public struct BlockAccessList : IEquatable<BlockAccessList>, IJournal<int>
         {
             Span<byte> key = new byte[32];
             storageIndex.ToBigEndian(key);
-            StorageChange(accountChanges, key, after);
+            StorageChange(accountChanges, key, before, after);
         }
     }
 
@@ -238,7 +238,7 @@ public struct BlockAccessList : IEquatable<BlockAccessList>, IJournal<int>
         {
             Span<byte> key = new byte[32];
             storageCell.Index.ToBigEndian(key);
-            StorageChange(accountChanges, key, after.AsSpan());
+            StorageChange(accountChanges, key, before.AsSpan(), after.AsSpan());
         }
     }
 
@@ -287,11 +287,11 @@ public struct BlockAccessList : IEquatable<BlockAccessList>, IJournal<int>
         accountChanges.CodeChanges.Clear();
     }
 
-    private void StorageChange(AccountChanges accountChanges, in ReadOnlySpan<byte> key, in ReadOnlySpan<byte> value)
+    private void StorageChange(AccountChanges accountChanges, in ReadOnlySpan<byte> key, in ReadOnlySpan<byte> before, in ReadOnlySpan<byte> after)
     {
         Span<byte> newValue = stackalloc byte[32];
         newValue.Clear();
-        value.CopyTo(newValue[(32 - value.Length)..]);
+        after.CopyTo(newValue[(32 - after.Length)..]);
         StorageChange storageChange = new()
         {
             BlockAccessIndex = Index,
@@ -305,11 +305,24 @@ public struct BlockAccessList : IEquatable<BlockAccessList>, IJournal<int>
         {
             storageChanges = new(storageKey);
         }
-        else if (storageChanges.Changes is not [] && storageChanges.Changes[^1].BlockAccessIndex == Index)
+
+        // storage change edge case
+        if (!HasStorageChangedDuringTx(accountChanges.Address, [..key], before, after))
+        {
+            if (storageChanges.Changes is not [] && storageChanges.Changes[^1].BlockAccessIndex == Index)
+            {
+                storageChanges.Changes.RemoveAt(storageChanges.Changes.Count - 1);
+            }
+            accountChanges.StorageReads.Add(new(Bytes32.Wrap(storageKey)));
+            return;
+        }
+
+        if (storageChanges.Changes is not [] && storageChanges.Changes[^1].BlockAccessIndex == Index)
         {
             previousStorage = storageChanges.Changes[^1];
             storageChanges.Changes.RemoveAt(storageChanges.Changes.Count - 1);
         }
+
         storageChanges.Changes.Add(storageChange);
         accountChanges.StorageChanges[storageKey] = storageChanges;
         _changes.Push(new()
@@ -317,7 +330,8 @@ public struct BlockAccessList : IEquatable<BlockAccessList>, IJournal<int>
             Address = accountChanges.Address,
             Slot = storageKey,
             Type = ChangeType.StorageChange,
-            PreviousValue = previousStorage
+            PreviousValue = previousStorage,
+            PreTxStorage = [.. before]
         });
 
         accountChanges.StorageReads.Remove(new(Bytes32.Wrap(storageKey)));
@@ -398,7 +412,7 @@ public struct BlockAccessList : IEquatable<BlockAccessList>, IJournal<int>
     public override readonly string? ToString()
         => "[\n" + string.Join(",\n", [.. _accountChanges.Values.Select(account => account.ToString())]) + "\n]";
 
-    private readonly bool HasChangedDuringTx(Address address, UInt256 beforeInstr, UInt256 afterInstr)
+    private readonly bool HasBalanceChangedDuringTx(Address address, UInt256 beforeInstr, UInt256 afterInstr)
     {
         AccountChanges accountChanges = _accountChanges[address];
         int count = accountChanges.BalanceChanges.Count;
@@ -429,7 +443,41 @@ public struct BlockAccessList : IEquatable<BlockAccessList>, IJournal<int>
             }
         }
 
-        throw new Exception("Error calculting pre tx balance");
+        throw new Exception("Error calculating pre tx balance");
+    }
+
+    private readonly bool HasStorageChangedDuringTx(Address address, byte[] key, in ReadOnlySpan<byte> beforeInstr, in ReadOnlySpan<byte> afterInstr)
+    {
+        AccountChanges accountChanges = _accountChanges[address];
+        int count = accountChanges.StorageChanges.Count;
+
+        if (count == 0)
+        {
+            // first storage change of block
+            // return storage prior to this instruction
+            return beforeInstr != afterInstr;
+        }
+
+        foreach (StorageChange storageChange in accountChanges.StorageChanges[key].Changes.AsEnumerable().Reverse())
+        {
+            if (storageChange.BlockAccessIndex != Index)
+            {
+                // storage changed in previous tx in block
+                return storageChange.NewValue.Unwrap().AsSpan() != afterInstr;
+            }
+        }
+
+        // balance only changed within this transaction
+        foreach (Change change in _changes)
+        {
+            if (change.Type == ChangeType.StorageChange && change.Address == address && change.Slot == key.AsSpan() && change.PreviousValue is null)
+            {
+                // first change of this transaction & block
+                return (change.PreTxStorage ?? []).AsSpan() != afterInstr;
+            }
+        }
+
+        throw new Exception("Error calculating pre tx balance");
     }
 
     private enum ChangeType
@@ -446,6 +494,7 @@ public struct BlockAccessList : IEquatable<BlockAccessList>, IJournal<int>
         public ChangeType Type { get; init; }
         public IIndexedChange? PreviousValue { get; init; }
         public UInt256? PreTxBalance { get; init; }
+        public byte[]? PreTxStorage { get; init; }
         public ushort BlockAccessIndex { get; init; }
     }
 }
