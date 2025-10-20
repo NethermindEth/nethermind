@@ -155,7 +155,6 @@ public abstract class BlockchainTestBase
                 test.GenesisRlp ??= Rlp.Encode(new Block(JsonToEthereumTest.Convert(test.GenesisBlockHeader)));
 
                 Block genesisBlock = Rlp.Decode<Block>(test.GenesisRlp.Bytes);
-                // Console.WriteLine(genesisBlock.ToString(Block.Format.Full));
                 Assert.That(genesisBlock.Header.Hash, Is.EqualTo(new Hash256(test.GenesisBlockHeader.Hash)));
 
                 ManualResetEvent genesisProcessed = new(false);
@@ -328,7 +327,7 @@ public abstract class BlockchainTestBase
 
     private static List<(Block Block, string ExpectedException)> DecodeRlps(BlockchainTest test, bool failOnInvalidRlp)
     {
-        List<(Block Block, string ExpectedException)> correctRlp = new();
+        List<(Block Block, string ExpectedException)> correctRlp = [];
         for (int i = 0; i < test.Blocks!.Length; i++)
         {
             TestBlockJson testBlockJson = test.Blocks[i];
@@ -354,16 +353,10 @@ public abstract class BlockchainTestBase
                 if (testBlockJson.ExpectedException is null)
                 {
                     string invalidRlpMessage = $"Invalid RLP ({i}) {e}";
-                    if (failOnInvalidRlp)
-                    {
-                        Assert.Fail(invalidRlpMessage);
-                    }
-                    else
-                    {
-                        // ForgedTests don't have ExpectedException and at the same time have invalid rlps
-                        // Don't fail here. If test executed incorrectly will fail at last check
-                        _logger.Warn(invalidRlpMessage);
-                    }
+                    Assert.That(!failOnInvalidRlp, invalidRlpMessage);
+                    // ForgedTests don't have ExpectedException and at the same time have invalid rlps
+                    // Don't fail here. If test executed incorrectly will fail at last check
+                    _logger.Warn(invalidRlpMessage);
                 }
                 else
                 {
