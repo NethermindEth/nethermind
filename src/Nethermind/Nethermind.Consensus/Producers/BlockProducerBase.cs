@@ -108,44 +108,32 @@ namespace Nethermind.Consensus.Producers
 
         protected virtual Task<Block?> TryProduceNewBlock(CancellationToken token, BlockHeader? parentHeader, IBlockTracer? blockTracer = null, PayloadAttributes? payloadAttributes = null, IBlockProducer.Flags flags = IBlockProducer.Flags.None)
         {
-            Console.WriteLine($"[BlockProducerBase] TryProduceNewBlock START. Parent: {parentHeader?.Number}");
-
             if (parentHeader is null)
             {
-                Console.WriteLine($"[BlockProducerBase] Parent is NULL - returning null");
                 if (Logger.IsWarn) Logger.Warn("Preparing new block - parent header is null");
             }
             else
             {
                 bool dontSeal = (flags & IBlockProducer.Flags.DontSeal) != 0;
-                Console.WriteLine($"[BlockProducerBase] Checking CanSeal for block {parentHeader.Number + 1}...");
-
                 if (dontSeal || Sealer.CanSeal(parentHeader.Number + 1, parentHeader.Hash))
                 {
-                    Console.WriteLine($"[BlockProducerBase] CanSeal returned TRUE, calling ProduceNewBlock");
                     Interlocked.Exchange(ref Metrics.CanProduceBlocks, 1);
                     return ProduceNewBlock(parentHeader, token, blockTracer, payloadAttributes, flags);
                 }
                 else
                 {
-                    Console.WriteLine($"[BlockProducerBase] CanSeal returned FALSE - cannot produce block");
                     Interlocked.Exchange(ref Metrics.CanProduceBlocks, 0);
                 }
             }
 
-            Console.WriteLine($"[BlockProducerBase] Returning NULL");
             Metrics.FailedBlockSeals++;
             return Task.FromResult((Block?)null);
         }
 
         private Task<Block?> ProduceNewBlock(BlockHeader parent, CancellationToken token, IBlockTracer? blockTracer, PayloadAttributes? payloadAttributes = null, IBlockProducer.Flags flags = IBlockProducer.Flags.None)
         {
-            Console.WriteLine($"[BlockProducerBase] ProduceNewBlock START. Checking HasStateForBlock({parent.Number})...");
-
             if (StateProvider.HasStateForBlock(parent))
             {
-                Console.WriteLine($"[BlockProducerBase] HasStateForBlock returned TRUE - preparing block");
-
                 Block block = PrepareBlock(parent, payloadAttributes, flags);
                 if (PreparedBlockCanBeMined(block))
                 {
@@ -193,10 +181,6 @@ namespace Nethermind.Consensus.Producers
                         }), CancellationToken.None);
                     }
                 }
-            }
-            else
-            {
-                Console.WriteLine($"[BlockProducerBase] HasStateForBlock returned FALSE - no state for parent block!");
             }
 
             return Task.FromResult((Block?)null);

@@ -21,28 +21,19 @@ public class StandardBlockProducerRunner(IBlockProductionTrigger trigger, IBlock
 
     private void OnTriggerBlockProduction(object? sender, BlockProductionEventArgs e)
     {
-        Console.WriteLine($"[Runner] OnTriggerBlockProduction CALLED! Parent: {e.ParentHeader?.Number}");
         BlockHeader? parent = blockTree.GetProducedBlockParent(e.ParentHeader);
         e.BlockProductionTask = TryProduceAndAnnounceNewBlock(e.CancellationToken, parent, e.BlockTracer, e.PayloadAttributes);
-        Console.WriteLine($"[Runner] Task set successfully");
     }
 
     private async Task<Block?> TryProduceAndAnnounceNewBlock(CancellationToken token, BlockHeader? parentHeader, IBlockTracer? blockTracer = null, PayloadAttributes? payloadAttributes = null)
     {
-        Console.WriteLine($"[Runner] TryProduceAndAnnounceNewBlock START. Parent: {parentHeader?.Number}");
-
         using CancellationTokenSource tokenSource = CancellationTokenSource.CreateLinkedTokenSource(token, _producerCancellationToken!.Token);
         token = tokenSource.Token;
 
         Block? block = null;
         try
         {
-            Console.WriteLine($"[Runner] Calling blockProducer.BuildBlock...");
-
             block = await blockProducer.BuildBlock(parentHeader, blockTracer, payloadAttributes, IBlockProducer.Flags.None, token);
-
-            Console.WriteLine($"[Runner] blockProducer.BuildBlock returned: {(block == null ? "NULL" : $"block {block.Number}")}");
-
             if (block is not null)
             {
                 _lastProducedBlockDateTime = DateTime.UtcNow;
@@ -51,13 +42,11 @@ public class StandardBlockProducerRunner(IBlockProductionTrigger trigger, IBlock
         }
         catch (Exception e) when (e is not TaskCanceledException)
         {
-            Console.WriteLine($"[Runner] EXCEPTION in TryProduceAndAnnounceNewBlock: {e.Message}");
             if (Logger.IsError) Logger.Error("Failed to produce block", e);
             Metrics.FailedBlockSeals++;
             throw;
         }
 
-        Console.WriteLine($"[Runner] TryProduceAndAnnounceNewBlock END. Returning: {(block == null ? "NULL" : $"block {block.Number}")}");
         return block;
     }
 
@@ -65,9 +54,6 @@ public class StandardBlockProducerRunner(IBlockProductionTrigger trigger, IBlock
     {
         _producerCancellationToken = new CancellationTokenSource();
         _isRunning = true;
-
-        Console.WriteLine($"[Runner] Subscribing to trigger instance: {trigger.GetHashCode()}");
-
         trigger.TriggerBlockProduction += OnTriggerBlockProduction;
         _lastProducedBlockDateTime = DateTime.UtcNow;
     }

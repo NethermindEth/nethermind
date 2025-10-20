@@ -6,17 +6,11 @@ using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Core;
 using Nethermind.Evm.Tracing;
-using Nethermind.Logging;
 
 namespace Nethermind.Consensus.Producers
 {
     public class BuildBlocksWhenRequested : IManualBlockProductionTrigger
     {
-        public BuildBlocksWhenRequested()
-        {
-            Console.WriteLine($"[BuildBlocksWhenRequested] NEW INSTANCE CREATED: {GetHashCode()}");
-        }
-
         public event EventHandler<BlockProductionEventArgs>? TriggerBlockProduction;
 
         public Task<Block?> BuildBlock(
@@ -25,22 +19,8 @@ namespace Nethermind.Consensus.Producers
             IBlockTracer? blockTracer = null,
             PayloadAttributes? payloadAttributes = null)
         {
-            int subscriberCount = TriggerBlockProduction?.GetInvocationList()?.Length ?? 0;
-            Console.WriteLine($"[BuildBlocksWhenRequested] BuildBlock called. Subscribers: {subscriberCount}, Parent: {parentHeader?.Number}");
-
             BlockProductionEventArgs args = new(parentHeader, cancellationToken, blockTracer, payloadAttributes);
-
-            if (subscriberCount > 0)
-            {
-                Console.WriteLine($"[BuildBlocksWhenRequested] Invoking event with {subscriberCount} subscribers...");
-                TriggerBlockProduction?.Invoke(this, args);
-                Console.WriteLine($"[BuildBlocksWhenRequested] Event invoked. Task is {(args.BlockProductionTask == null ? "NULL" : "SET")}");
-            }
-            else
-            {
-                Console.WriteLine($"[BuildBlocksWhenRequested] NO SUBSCRIBERS - cannot produce block!");
-            }
-
+            TriggerBlockProduction?.Invoke(this, args);
             return args.BlockProductionTask;
         }
     }
