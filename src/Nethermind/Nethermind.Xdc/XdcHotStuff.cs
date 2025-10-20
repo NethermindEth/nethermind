@@ -116,11 +116,20 @@ internal class XdcHotStuff(
 
                 //If its my turn produce a block and broadcast after minimum wait time
                 //This should be done by PayloadPreparationService
-                Task<Block> blockProduction = blockBuilder.BuildBlock(currentHead, null, null, IBlockProducer.Flags.DontSeal, _cancellationTokenSource.Token);
+                Task<Block> blockProduction = blockBuilder.BuildBlock(currentHead, null, null, IBlockProducer.Flags.None, _cancellationTokenSource.Token);
+                
+                Task minWaitTask = Task.Delay(minimumMiningTime > TimeSpan.Zero ? minimumMiningTime : TimeSpan.Zero);
 
-                await Task.Delay(minimumMiningTime > TimeSpan.Zero ? minimumMiningTime : TimeSpan.Zero);
+                Task firstDone = await Task.WhenAny(blockProduction, timeoutTask);
 
-                BlockProduced?.Invoke(this, new BlockEventArgs(await blockProduction));
+                if (firstDone == timeoutTask)
+                {
+                    //TODO Trigger timeout
+                }
+                else 
+                {
+                    BlockProduced?.Invoke(this, new BlockEventArgs(await blockProduction));
+                }
                 continue;
             }
 
@@ -145,10 +154,6 @@ internal class XdcHotStuff(
 
 
         }
-    }
-    private Task WaitForSignal()
-    {
-
     }
 
     private bool IsMyTurn(XdcBlockHeader currentHead, Address[] masterNodes, long currentRound, IXdcReleaseSpec spec)
