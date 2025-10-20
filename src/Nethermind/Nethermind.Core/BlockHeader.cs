@@ -80,7 +80,6 @@ public class BlockHeader
 
     public bool HasTransactions => (TxRoot is not null && TxRoot != Keccak.EmptyTreeHash);
 
-    public string SealEngineType { get; set; } = Core.SealEngineType.Ethash;
     public bool IsPostMerge { get; set; }
 
     public string ToString(string indent)
