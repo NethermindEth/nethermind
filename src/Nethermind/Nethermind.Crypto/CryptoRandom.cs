@@ -11,7 +11,6 @@ namespace Nethermind.Crypto
     public class CryptoRandom : ICryptoRandom
     {
         private readonly RandomNumberGenerator _secureRandom = RandomNumberGenerator.Create();
-        private readonly Random _random = new();
 
         public void GenerateRandomBytes(Span<byte> bytes)
         {
@@ -28,7 +27,14 @@ namespace Nethermind.Crypto
         [RequiresSecurityReview("There should be no unsecured method in a class that suggests security")]
         public int NextInt(int max)
         {
-            return _random.Next(max);
+            // Use cryptographically secure RNG; preserve Random.Next behavior for non-positive max
+            // (Random.Next(0) returns 0; negatives throw). This keeps compatibility.
+            if (max <= 0)
+            {
+                return 0;
+            }
+
+            return RandomNumberGenerator.GetInt32(max);
         }
 
         public void Dispose()
