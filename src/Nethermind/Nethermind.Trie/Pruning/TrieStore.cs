@@ -562,27 +562,29 @@ public sealed class TrieStore : ITrieStore, IPruningTrieStore
         var state = CaptureCurrentState();
         if ((_pruningStrategy.ShouldPruneDirtyNode(state) || _pruningStrategy.ShouldPrunePersistedNode(state)) && _pruningTask.IsCompleted)
         {
-            _pruningTask = Task.Run(() =>
-            {
-                using (var _ = _pruningLock.EnterScope())
-                {
-                    if (_pruningStrategy.ShouldPruneDirtyNode(CaptureCurrentState()))
-                    {
-                        PersistAndPruneDirtyCache();
-                    }
-
-                    if (_pruningStrategy.ShouldPrunePersistedNode(CaptureCurrentState()))
-                    {
-                        PrunePersistedNodes();
-                    }
-                }
-
-                TryExitCommitBufferMode();
-            });
+            _pruningTask = Task.Run(SyncPruneCheck);
         }
     }
 
-    internal void PersistAndPruneDirtyCache()
+    internal void SyncPruneCheck()
+    {
+        using (var _ = _pruningLock.EnterScope())
+        {
+            if (_pruningStrategy.ShouldPruneDirtyNode(CaptureCurrentState()))
+            {
+                PersistAndPruneDirtyCache();
+            }
+
+            if (_pruningStrategy.ShouldPrunePersistedNode(CaptureCurrentState()))
+            {
+                PrunePersistedNodes();
+            }
+        }
+
+        TryExitCommitBufferMode();
+    }
+
+    private void PersistAndPruneDirtyCache()
     {
         try
         {
@@ -784,7 +786,7 @@ public sealed class TrieStore : ITrieStore, IPruningTrieStore
     /// <summary>
     /// Only prune persisted nodes. This method attempt to pick only some shard for pruning.
     /// </summary>
-    internal void PrunePersistedNodes()
+    private void PrunePersistedNodes()
     {
         try
         {

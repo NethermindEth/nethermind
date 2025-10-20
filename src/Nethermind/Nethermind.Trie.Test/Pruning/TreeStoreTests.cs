@@ -1185,13 +1185,14 @@ namespace Nethermind.Trie.Test.Pruning
             if (_scheme == INodeStorage.KeyScheme.Hash) Assert.Ignore("Not applicable for hash");
 
             MemDb memDb = new();
+            TestPruningStrategy testPruningStrategy = new TestPruningStrategy(
+                shouldPrune: false,
+                deleteObsoleteKeys: true
+            );
 
             TrieStore fullTrieStore = CreateTrieStore(
                 kvStore: memDb,
-                pruningStrategy: new TestPruningStrategy(
-                    shouldPrune: false,
-                    deleteObsoleteKeys: true
-                ),
+                pruningStrategy: testPruningStrategy,
                 persistenceStrategy: No.Persistence,
                 pruningConfig: new PruningConfig()
                 {
@@ -1221,7 +1222,11 @@ namespace Nethermind.Trie.Test.Pruning
                     WriteRandomData(i);
                 }
             }
-            fullTrieStore.PersistAndPruneDirtyCache();
+            fullTrieStore.WaitForPruning();
+
+            testPruningStrategy.ShouldPruneEnabled = true;
+            fullTrieStore.SyncPruneCheck();
+            testPruningStrategy.ShouldPruneEnabled = false;
 
             for (int i = 10; i < 15; i++)
             {
@@ -1238,7 +1243,11 @@ namespace Nethermind.Trie.Test.Pruning
                     WriteRandomData(i * 10);
                 }
             }
-            fullTrieStore.PersistAndPruneDirtyCache();
+            fullTrieStore.WaitForPruning();
+
+            testPruningStrategy.ShouldPruneEnabled = true;
+            fullTrieStore.SyncPruneCheck();
+            testPruningStrategy.ShouldPruneEnabled = false;
 
             for (int i = 15; i < 20; i++)
             {
@@ -1247,12 +1256,14 @@ namespace Nethermind.Trie.Test.Pruning
                     WriteRandomData(i);
                 }
             }
+            fullTrieStore.WaitForPruning();
 
-            fullTrieStore.PrunePersistedNodes();
+            testPruningStrategy.ShouldPrunePersistedEnabled = true;
+            fullTrieStore.SyncPruneCheck();
             fullTrieStore.CachedNodesCount.Should().Be(45);
 
-            fullTrieStore.PersistAndPruneDirtyCache();
-            fullTrieStore.PrunePersistedNodes();
+            testPruningStrategy.ShouldPruneEnabled = true;
+            fullTrieStore.SyncPruneCheck();
             fullTrieStore.CachedNodesCount.Should().Be(14);
         }
 
