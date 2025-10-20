@@ -82,7 +82,8 @@ public class EraStore : IEraStore
         int maxEraSize,
         ISet<ValueHash256>? trustedAcccumulators,
         string directory,
-        int verifyConcurrency = 0
+        int verifyConcurrency = 0,
+        string checksumsFileName = EraExporter.ChecksumsFileName
     )
     {
         _specProvider = specProvider;
@@ -94,7 +95,7 @@ public class EraStore : IEraStore
         _verifyConcurrency = verifyConcurrency;
 
         // Geth behaviour seems to be to always read the checksum and fail when its missing.
-        _checksums = fileSystem.File.ReadAllLines(Path.Join(directory, EraExporter.ChecksumsFileName))
+        _checksums = fileSystem.File.ReadAllLines(Path.Join(directory, checksumsFileName))
             .Select(static (chk) => EraPathUtils.ExtractHashFromAccumulatorAndCheckSumEntry(chk))
             .ToArray();
 

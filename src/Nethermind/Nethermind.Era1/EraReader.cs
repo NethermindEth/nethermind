@@ -50,7 +50,7 @@ public class EraReader : IAsyncEnumerable<(Block, TxReceipt[])>, IDisposable
         }
     }
 
-    private IEnumerable<long> EnumerateBlockNumber()
+    protected IEnumerable<long> EnumerateBlockNumber()
     {
         long blockNumber = _fileReader.First;
         while (blockNumber <= _fileReader.LastBlock)
@@ -67,7 +67,7 @@ public class EraReader : IAsyncEnumerable<(Block, TxReceipt[])>, IDisposable
     /// </summary>
     /// <param name="cancellation"></param>
     /// <returns>Returns <see cref="true"/> if the expected accumulator matches, and <see cref="false"/> if there is no match.</returns>
-    public async Task<ValueHash256> VerifyContent(ISpecProvider specProvider, IBlockValidator blockValidator, int verifyConcurrency = 0, CancellationToken cancellation = default)
+    public virtual async Task<ValueHash256> VerifyContent(ISpecProvider specProvider, IBlockValidator blockValidator, int verifyConcurrency = 0, CancellationToken cancellation = default)
     {
         ArgumentNullException.ThrowIfNull(specProvider);
         if (verifyConcurrency == 0) verifyConcurrency = Environment.ProcessorCount;
@@ -124,7 +124,7 @@ public class EraReader : IAsyncEnumerable<(Block, TxReceipt[])>, IDisposable
         return accumulator;
     }
 
-    public ValueHash256 ReadAccumulator()
+    public virtual ValueHash256 ReadAccumulator()
     {
         _ = _fileReader.ReadEntryAndDecode<ValueHash256>(
             _fileReader.AccumulatorOffset,

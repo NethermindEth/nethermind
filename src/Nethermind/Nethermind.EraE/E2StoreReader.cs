@@ -2,16 +2,31 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 namespace Nethermind.EraE;
 
-public class E2StoreReader : Era1.E2StoreReader 
+
+public struct BlockOffset(
+    long headerPosition, 
+    long bodyPosition, 
+    long receiptsPosition, 
+    long? totalDifficultyPosition,
+    long? proofPosition
+)
+{
+    public long HeaderPosition = headerPosition;
+    public long BodyPosition = bodyPosition;
+    public long ReceiptsPosition = receiptsPosition;
+    public long? TotalDifficultyPosition = totalDifficultyPosition;
+    public long? ProofPosition = proofPosition;
+}
+
+
+public class E2StoreReader(string filePath) : Era1.E2StoreReader(filePath)
 {
     private const int IndexSectionComponentsCount = 8;
     private long _componentsCount;
     private long _indexLength;
 
-    public E2StoreReader(string filePath) : base(filePath) {}
-
     // return tuple of header, body, receipts positions in the file
-    public new (long headerPosition, long bodyPosition, long receiptsPosition, long? totalDifficultyPosition) BlockOffset(long blockNumber)
+    public new BlockOffset BlockOffset(long blockNumber)
     {
         EnsureIndexAvailable();
 
@@ -34,12 +49,18 @@ public class E2StoreReader : Era1.E2StoreReader
             totalDifficultyPosition = indexPosition + tdRelativeOffset;
         }
         
-        
-        return (
+        long? proofPosition = null;
+        if (_componentsCount > 4) {
+            long proofRelativeOffset = ReadInt64(_fileLength - offsetLocation + IndexOffsetSize * 4);
+            proofPosition = indexPosition + proofRelativeOffset;
+        }
+
+        return new BlockOffset(
             indexPosition + headerRelativeOffset, 
             indexPosition + bodyRelativeOffset, 
             indexPosition + receiptsRelativeOffset,
-            totalDifficultyPosition
+            totalDifficultyPosition,
+            proofPosition
         );
     }
 

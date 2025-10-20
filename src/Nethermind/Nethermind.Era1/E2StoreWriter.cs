@@ -19,7 +19,7 @@ namespace Nethermind.Era1;
 
 public class E2StoreWriter : IDisposable
 {
-    protected const int HeaderSize = 8;
+    internal const int HeaderSize = 8;
     protected readonly Stream _stream;
     protected readonly IncrementalHash _checksumCalculator = IncrementalHash.CreateHash(HashAlgorithmName.SHA256);
 
