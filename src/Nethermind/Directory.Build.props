@@ -6,7 +6,7 @@
     <SourceDateEpoch>$(SOURCE_DATE_EPOCH)</SourceDateEpoch>
     <SourceDateEpoch Condition="'$(SourceDateEpoch)' == ''">$([System.DateTimeOffset]::UtcNow.ToUnixTimeSeconds())</SourceDateEpoch>
     <VersionPrefix>1.35.0</VersionPrefix>
-    <VersionSuffix>rc</VersionSuffix>
+    <VersionSuffix></VersionSuffix>
   </PropertyGroup>
 
   <ItemGroup Label="AssemblyCustomMetadata">
