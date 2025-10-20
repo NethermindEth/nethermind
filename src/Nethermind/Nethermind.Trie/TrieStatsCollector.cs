@@ -58,10 +58,13 @@ namespace Nethermind.Trie
             }
         }
 
-        public TrieStatsCollector(IKeyValueStore codeKeyValueStore, ILogManager logManager, CancellationToken cancellationToken = default)
+        public bool ExpectAccounts { get; }
+
+        public TrieStatsCollector(IKeyValueStore codeKeyValueStore, ILogManager logManager, CancellationToken cancellationToken = default, bool expectAccounts = true)
         {
             _codeKeyValueStore = codeKeyValueStore ?? throw new ArgumentNullException(nameof(codeKeyValueStore));
             _logger = logManager.GetClassLogger();
+            ExpectAccounts = expectAccounts;
             _cancellationToken = cancellationToken;
         }
 

@@ -1268,9 +1268,86 @@ namespace Nethermind.Trie.Test.Pruning
         }
 
         [Test]
-        public void Will_NotDeleteNodeIfParentNotDeleted()
+        public void Will_HaveConsistentState_AfterPrune()
         {
+            MemDb memDb = new MemDb(writeDelay: 5, readDelay: 0);
+            TestPruningStrategy testPruningStrategy = new TestPruningStrategy(
+                shouldPrune: false,
+                deleteObsoleteKeys: true
+            );
 
+            TrieStore fullTrieStore = CreateTrieStore(
+                kvStore: memDb,
+                pruningStrategy: testPruningStrategy,
+                persistenceStrategy: No.Persistence,
+                pruningConfig: new PruningConfig()
+                {
+                    PruningBoundary = 4,
+                    PrunePersistedNodePortion = 0.1,
+                    DirtyNodeShardBit = 8, // More shard this time
+                    MaxBufferedCommitCount = 20,
+                    PrunePersistedNodeMinimumTarget = 0,
+                    TrackPastKeys = true
+                });
+
+            PatriciaTree ptree = new PatriciaTree(fullTrieStore.GetTrieStore(null), LimboLogs.Instance);
+
+            void WriteRandomData(int seed)
+            {
+                ptree.Set(Keccak.Compute(seed.ToBigEndianByteArray()).Bytes, Keccak.Compute(seed.ToBigEndianByteArray()).BytesToArray());
+                ptree.Set(Keccak.Compute((seed * 10000).ToBigEndianByteArray()).Bytes, Keccak.Compute(seed.ToBigEndianByteArray()).BytesToArray());
+                ptree.Commit();
+            }
+
+            HashSet<Hash256> rootsToTests = new HashSet<Hash256>();
+            void VerifyAllTrie()
+            {
+                PatriciaTree readOnlyPTree = new PatriciaTree(fullTrieStore.AsReadOnly().GetTrieStore(null), LimboLogs.Instance);
+                MemDb stubCodeDb = new MemDb();
+                foreach (Hash256 rootsToTest in rootsToTests)
+                {
+                    if (!fullTrieStore.HasRoot(rootsToTest)) continue;
+                    TrieStatsCollector collector = new TrieStatsCollector(stubCodeDb, LimboLogs.Instance, expectAccounts: false);
+                    ptree.Accept(collector, rootHash: rootsToTest);
+                    collector.Stats.MissingNodes.Should().Be(0);
+
+                    collector = new TrieStatsCollector(stubCodeDb, LimboLogs.Instance, expectAccounts: false);
+                    readOnlyPTree.Accept(collector, rootHash: rootsToTest);
+                    collector.Stats.MissingNodes.Should().Be(0);
+                }
+            }
+
+            for (int i = 0; i < 1000; i++)
+            {
+                int seed = i % 27;
+                Hash256 parentRoot = ptree.RootHash ?? Keccak.EmptyTreeHash;
+                using (fullTrieStore.BeginBlockCommit(i))
+                {
+                    ptree.RootHash = parentRoot;
+                    WriteRandomData(seed);
+                    rootsToTests.Add(ptree.RootHash);
+                }
+
+                // Branches sometimes
+                if ((i / 20) % 2 == 0)
+                {
+                    using (fullTrieStore.BeginBlockCommit(i))
+                    {
+                        ptree.RootHash = parentRoot;
+                        WriteRandomData(seed * 10);
+                        rootsToTests.Add(ptree.RootHash);
+                    }
+                }
+
+                // Persist sometimes
+                testPruningStrategy.ShouldPruneEnabled = i % 31 == 0;
+                testPruningStrategy.ShouldPrunePersistedEnabled = i % 9 == 0;
+                fullTrieStore.SyncPruneCheck();
+                testPruningStrategy.ShouldPruneEnabled = false;
+                testPruningStrategy.ShouldPrunePersistedEnabled = false;
+
+                VerifyAllTrie();
+            }
         }
     }
 }
