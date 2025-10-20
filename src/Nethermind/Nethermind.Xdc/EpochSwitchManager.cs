@@ -124,7 +124,8 @@ internal class EpochSwitchManager : IEpochSwitchManager
         if (header.Number == xdcSpec.SwitchBlock)
         {
             masterNodes = XdcExtensions.ExtractAddresses(header.ExtraData[XdcConstants.ExtraVanity..^XdcConstants.ExtraSeal]).Value.ToArray();
-        } else
+        }
+        else
         {
             if (header.ExtraConsensusData is null)
             {
@@ -299,7 +300,7 @@ internal class EpochSwitchManager : IEpochSwitchManager
             {
                 end = header.Number;
             }
-            else 
+            else
             {
                 long nextStart = header.Number;
                 if (nextStart == start)
@@ -376,7 +377,7 @@ internal class EpochSwitchManager : IEpochSwitchManager
         ulong estRound = (targetEpoch - (ulong)xdcSpec.SwitchEpoch) * (ulong)xdcSpec.EpochLength;
 
         var epochBlockInfo = GetBlockInfoInCache(estRound, (ulong)xdcSpec.EpochLength);
-        if(epochBlockInfo is not null)
+        if (epochBlockInfo is not null)
         {
             return epochBlockInfo;
         }
@@ -409,7 +410,7 @@ internal class EpochSwitchManager : IEpochSwitchManager
             }
         }
 
-        if(!TryBinarySearchBlockByEpochNumber(targetEpoch, estBlockNum, epochSwitchInfo.EpochSwitchBlockInfo.BlockNumber, (ulong)xdcSpec.SwitchBlock, (ulong)xdcSpec.EpochLength, xdcSpec, out epochBlockInfo))
+        if (!TryBinarySearchBlockByEpochNumber(targetEpoch, estBlockNum, epochSwitchInfo.EpochSwitchBlockInfo.BlockNumber, (ulong)xdcSpec.SwitchBlock, (ulong)xdcSpec.EpochLength, xdcSpec, out epochBlockInfo))
         {
             return null;
         }
