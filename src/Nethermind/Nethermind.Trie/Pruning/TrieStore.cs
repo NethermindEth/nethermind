@@ -51,7 +51,7 @@ public sealed class TrieStore : ITrieStore, IPruningTrieStore
     // Small optimization to not re-create CommitBuffer
     private CommitBuffer? _commitBufferUnused = null;
 
-    private bool IsInCommitBufferMode => _commitBuffer is not null;
+    internal bool IsInCommitBufferMode => _commitBuffer is not null;
 
     // Only one scope can be active at the same time. Any mutation to trieStore as part of block processing need to
     // acquire _scopeLock.
@@ -242,7 +242,9 @@ public sealed class TrieStore : ITrieStore, IPruningTrieStore
             if (IsInCommitBufferMode)
                 node = _commitBuffer.SaveOrReplaceInDirtyNodesCache(address, ref path, node, blockNumber);
             else
+            {
                 node = SaveOrReplaceInDirtyNodesCache(address, ref path, node, blockNumber);
+            }
 
             IncrementCommittedNodesCount();
         }
@@ -568,6 +570,8 @@ public sealed class TrieStore : ITrieStore, IPruningTrieStore
 
     internal void SyncPruneCheck()
     {
+        TryExitCommitBufferMode();
+
         using (var _ = _pruningLock.EnterScope())
         {
             if (_pruningStrategy.ShouldPruneDirtyNode(CaptureCurrentState()))
@@ -580,11 +584,9 @@ public sealed class TrieStore : ITrieStore, IPruningTrieStore
                 PrunePersistedNodes();
             }
         }
-
-        TryExitCommitBufferMode();
     }
 
-    private void PersistAndPruneDirtyCache()
+    internal void PersistAndPruneDirtyCache()
     {
         try
         {
@@ -786,7 +788,7 @@ public sealed class TrieStore : ITrieStore, IPruningTrieStore
     /// <summary>
     /// Only prune persisted nodes. This method attempt to pick only some shard for pruning.
     /// </summary>
-    private void PrunePersistedNodes()
+    internal void PrunePersistedNodes()
     {
         try
         {
@@ -1465,7 +1467,15 @@ public sealed class TrieStore : ITrieStore, IPruningTrieStore
             _dirtyNodesBuffer = new TrieStoreDirtyNodesCache[trieStore._dirtyNodes.Length];
             for (int i = 0; i < trieStore._shardedDirtyNodeCount; i++)
             {
-                _dirtyNodesBuffer[i] = new TrieStoreDirtyNodesCache(trieStore, !trieStore._nodeStorage.RequirePath, 0, trieStore._logger);
+                _dirtyNodesBuffer[i] = new TrieStoreDirtyNodesCache(trieStore, !trieStore._nodeStorage.RequirePath, 0, trieStore._logger, isForCommitBuffer: true);
+            }
+        }
+
+        public void Reset()
+        {
+            for (int i = 0; i < _trieStore._shardedDirtyNodeCount; i++)
+            {
+                _dirtyNodesBuffer[i].Clear();
             }
         }
 
@@ -1480,7 +1490,7 @@ public sealed class TrieStore : ITrieStore, IPruningTrieStore
             long startTime = Stopwatch.GetTimestamp();
             Parallel.For(0, _trieStore._shardedDirtyNodeCount, (i) =>
             {
-                _dirtyNodesBuffer[i].CopyTo(_trieStore._dirtyNodes[i]);
+                _dirtyNodesBuffer[i].FlushCommitBuffer(_trieStore._dirtyNodes[i]);
             });
 
             int count = 0;
@@ -1510,47 +1520,43 @@ public sealed class TrieStore : ITrieStore, IPruningTrieStore
             TrieStoreDirtyNodesCache mainShard = _trieStore._dirtyNodes[shardIdx];
 
             var hasInBuffer = bufferShard.TryGetValue(key, out TrieNode bufferNode);
+            if (isReadOnly)
+            {
+                if (hasInBuffer)
+                {
+                    return _trieStore.CloneForReadOnly(key, bufferNode);
+                }
+
+                return mainShard.FromCachedRlpOrUnknown(key);
+            }
+
             if (!hasInBuffer && mainShard.TryGetRecord(key, out TrieStoreDirtyNodesCache.NodeRecord nodeRecord))
             {
                 if (_trieStore.IsStillNeeded(nodeRecord.LastCommit))
                 {
-                    var rlp = nodeRecord.Node.FullRlp;
-                    if (rlp.IsNull)
-                    {
-                        bufferShard.GetOrAdd(key, nodeRecord);
-                        if (!isReadOnly) return nodeRecord.Node;
-                    }
-                    else
-                    {
-                        // clone is as if it read only
-                        TrieNode node = nodeRecord.Node.Clone();
-                        if (nodeRecord.Node.IsSealed) node.Seal();
-                        if (nodeRecord.Node.IsPersisted) node.IsPersisted = true;
-                        node.Keccak = nodeRecord.Node.Keccak;
-                        bufferShard.GetOrAdd(key, nodeRecord);
-                        if (!isReadOnly) return nodeRecord.Node;
-                    }
+                    bufferShard.GetOrAdd(key, new TrieStoreDirtyNodesCache.NodeRecord(nodeRecord.Node, -1));
+                    return nodeRecord.Node;
                 }
             }
 
             if (hasInBuffer)
             {
-                if (!isReadOnly)
-                {
-                    return bufferNode;
-                }
-                else
-                {
-                    return _trieStore.CloneForReadOnly(key, bufferNode);
-                }
+                return bufferNode;
             }
-
-            return isReadOnly ? bufferShard.FromCachedRlpOrUnknown(key) : bufferShard.FindCachedOrUnknown(key);
+            else
+                return bufferShard.FindCachedOrUnknown(key);
         }
     }
 
     internal TrieNode CloneForReadOnly(in TrieStoreDirtyNodesCache.Key key, TrieNode node)
     {
+        if (node!.FullRlp.IsNull)
+        {
+            // // this happens in SyncProgressResolver
+            // throw new InvalidAsynchronousStateException("Read only trie store is trying to read a transient node.");
+            return new TrieNode(NodeType.Unknown, key.Keccak);
+        }
+
         // we returning a copy to avoid multithreaded access
         var trieNode = new TrieNode(NodeType.Unknown, key.Keccak, node.FullRlp);
         trieNode.ResolveNode(GetTrieStore(key.Address), key.Path);

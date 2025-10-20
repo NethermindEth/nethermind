@@ -3,6 +3,7 @@
 
 using System;
 using System.Collections.Generic;
+using System.Threading;
 using System.Threading.Tasks;
 using FluentAssertions;
 using Nethermind.Core;
@@ -1222,11 +1223,7 @@ namespace Nethermind.Trie.Test.Pruning
                     WriteRandomData(i);
                 }
             }
-            fullTrieStore.WaitForPruning();
-
-            testPruningStrategy.ShouldPruneEnabled = true;
-            fullTrieStore.SyncPruneCheck();
-            testPruningStrategy.ShouldPruneEnabled = false;
+            fullTrieStore.PersistAndPruneDirtyCache();
 
             for (int i = 10; i < 15; i++)
             {
@@ -1243,11 +1240,7 @@ namespace Nethermind.Trie.Test.Pruning
                     WriteRandomData(i * 10);
                 }
             }
-            fullTrieStore.WaitForPruning();
-
-            testPruningStrategy.ShouldPruneEnabled = true;
-            fullTrieStore.SyncPruneCheck();
-            testPruningStrategy.ShouldPruneEnabled = false;
+            fullTrieStore.PersistAndPruneDirtyCache();
 
             for (int i = 15; i < 20; i++)
             {
@@ -1258,17 +1251,17 @@ namespace Nethermind.Trie.Test.Pruning
             }
             fullTrieStore.WaitForPruning();
 
-            testPruningStrategy.ShouldPrunePersistedEnabled = true;
-            fullTrieStore.SyncPruneCheck();
+            fullTrieStore.PrunePersistedNodes();
             fullTrieStore.CachedNodesCount.Should().Be(45);
 
-            testPruningStrategy.ShouldPruneEnabled = true;
-            fullTrieStore.SyncPruneCheck();
+            fullTrieStore.PersistAndPruneDirtyCache();
+            fullTrieStore.PrunePersistedNodes();
             fullTrieStore.CachedNodesCount.Should().Be(14);
         }
 
-        [Test]
-        public void Will_HaveConsistentState_AfterPrune()
+        [TestCase(27, 1000, 31, 7)]
+        [TestCase(27, 1000, 2, 2)]
+        public void Will_HaveConsistentState_AfterPrune(int possibleSeed, int totalBlock, int snapshotInterval, int prunePersistedInterval)
         {
             MemDb memDb = new MemDb(writeDelay: 5, readDelay: 0);
             TestPruningStrategy testPruningStrategy = new TestPruningStrategy(
@@ -1296,6 +1289,7 @@ namespace Nethermind.Trie.Test.Pruning
             {
                 ptree.Set(Keccak.Compute(seed.ToBigEndianByteArray()).Bytes, Keccak.Compute(seed.ToBigEndianByteArray()).BytesToArray());
                 ptree.Set(Keccak.Compute((seed * 10000).ToBigEndianByteArray()).Bytes, Keccak.Compute(seed.ToBigEndianByteArray()).BytesToArray());
+                ptree.Set(TestItem.KeccakA.Bytes, Keccak.Compute(seed.ToBigEndianByteArray()).BytesToArray());
                 ptree.Commit();
             }
 
@@ -1317,37 +1311,166 @@ namespace Nethermind.Trie.Test.Pruning
                 }
             }
 
-            for (int i = 0; i < 1000; i++)
+            BlockHeader baseBlock = Build.A.BlockHeader.WithStateRoot(Keccak.EmptyTreeHash).TestObject;
+            for (int i = 0; i < totalBlock; i++)
             {
-                int seed = i % 27;
+                int seed = i % possibleSeed;
                 Hash256 parentRoot = ptree.RootHash ?? Keccak.EmptyTreeHash;
-                using (fullTrieStore.BeginBlockCommit(i))
+                using (fullTrieStore.BeginScope(baseBlock))
                 {
-                    ptree.RootHash = parentRoot;
-                    WriteRandomData(seed);
-                    rootsToTests.Add(ptree.RootHash);
+                    using (fullTrieStore.BeginBlockCommit(i))
+                    {
+                        ptree.RootHash = parentRoot;
+                        WriteRandomData(seed);
+                        rootsToTests.Add(ptree.RootHash);
+                    }
                 }
 
                 // Branches sometimes
                 if ((i / 20) % 2 == 0)
                 {
-                    using (fullTrieStore.BeginBlockCommit(i))
+                    using (fullTrieStore.BeginScope(baseBlock))
                     {
-                        ptree.RootHash = parentRoot;
-                        WriteRandomData(seed * 10);
-                        rootsToTests.Add(ptree.RootHash);
+                        using (fullTrieStore.BeginBlockCommit(i))
+                        {
+                            ptree.RootHash = parentRoot;
+                            WriteRandomData(seed * 10);
+                            rootsToTests.Add(ptree.RootHash);
+                        }
                     }
                 }
 
                 // Persist sometimes
-                testPruningStrategy.ShouldPruneEnabled = i % 31 == 0;
-                testPruningStrategy.ShouldPrunePersistedEnabled = i % 9 == 0;
+                testPruningStrategy.ShouldPruneEnabled = i % snapshotInterval == 0;
+                testPruningStrategy.ShouldPrunePersistedEnabled = i % prunePersistedInterval == 0;
                 fullTrieStore.SyncPruneCheck();
                 testPruningStrategy.ShouldPruneEnabled = false;
                 testPruningStrategy.ShouldPrunePersistedEnabled = false;
 
                 VerifyAllTrie();
+                baseBlock = Build.A.BlockHeader.WithParent(baseBlock).WithStateRoot(ptree.RootHash).TestObject;
             }
+        }
+
+        [Test]
+        public async Task Will_Persist_ReCommittedPersistedNode_FromCommitBuffer()
+        {
+            int pruningBoundary = 4;
+
+            ManualResetEvent writeBlocker = new ManualResetEvent(true);
+            TestMemDb memDb = new();
+            memDb.WriteFunc = (k, v) =>
+            {
+                writeBlocker.WaitOne();
+                return true;
+            };
+            TestPruningStrategy testPruningStrategy = new TestPruningStrategy(
+                shouldPrune: false,
+                deleteObsoleteKeys: true
+            );
+
+            TrieStore fullTrieStore = CreateTrieStore(
+                kvStore: memDb,
+                pruningStrategy: testPruningStrategy,
+                persistenceStrategy: No.Persistence,
+                pruningConfig: new PruningConfig()
+                {
+                    PruningBoundary = pruningBoundary,
+                    PrunePersistedNodePortion = 1.0,
+                    DirtyNodeShardBit = 4,
+                    MaxBufferedCommitCount = 1,
+                    TrackPastKeys = true
+                });
+
+            PatriciaTree ptree = new PatriciaTree(fullTrieStore.GetTrieStore(null), LimboLogs.Instance);
+
+            void WriteRandomData(int seed)
+            {
+                ptree.Set(TestItem.KeccakA.Bytes, Keccak.Compute(seed.ToBigEndianByteArray()).BytesToArray());
+                ptree.Commit();
+            }
+
+            Hash256 persistedRootHash = null;
+            int persistedBlockNumber = 5;
+
+            for (int i = 0; i < 10; i++)
+            {
+                using (fullTrieStore.BeginBlockCommit(i))
+                {
+                    if (i == 0)
+                    {
+                        ptree.Set(Keccak.Compute(10000.ToBigEndianByteArray()).Bytes, Keccak.Compute(i.ToBigEndianByteArray()).BytesToArray());
+                    }
+                    WriteRandomData(i);
+
+                    if (i == persistedBlockNumber)
+                    {
+                        persistedRootHash = ptree.RootHash;
+                    }
+                }
+            }
+
+            // Persisted nodes should be from block 5
+            fullTrieStore.PersistAndPruneDirtyCache();
+            fullTrieStore.LastPersistedBlockNumber.Should().Be(persistedBlockNumber);
+
+            // Write a bit more
+            for (int i = 10; i < 12; i++)
+            {
+                using (fullTrieStore.BeginBlockCommit(i))
+                {
+                    WriteRandomData(i);
+                }
+            }
+
+            // Block writes
+            writeBlocker.Reset();
+
+            // Background pruning
+            Task persistTask = Task.Run(() =>
+            {
+                testPruningStrategy.ShouldPruneEnabled = true;
+                fullTrieStore.SyncPruneCheck();
+                testPruningStrategy.ShouldPruneEnabled = false;
+            });
+            Thread.Sleep(100);
+
+            // Bring block 5's node to block 12
+            // This is done in commit buffer.
+            using (fullTrieStore.BeginScope(Build.A.BlockHeader.WithStateRoot(ptree.RootHash).TestObject))
+            {
+                fullTrieStore.IsInCommitBufferMode.Should().BeTrue();
+                using (fullTrieStore.BeginBlockCommit(12))
+                {
+                    WriteRandomData(5);
+                    ptree.RootHash.Should().Be(persistedRootHash);
+                }
+            }
+
+            writeBlocker.Set();
+
+            await persistTask;
+
+            // Write a bit more
+            for (int i = 13; i < 13 + pruningBoundary; i++)
+            {
+                using (fullTrieStore.BeginBlockCommit(i))
+                {
+                    WriteRandomData(i);
+                }
+            }
+
+            // Persisted nodes should be from block 12
+            testPruningStrategy.ShouldPruneEnabled = true;
+            fullTrieStore.SyncPruneCheck();
+            testPruningStrategy.ShouldPruneEnabled = false;
+            fullTrieStore.LastPersistedBlockNumber.Should().Be(12);
+
+            fullTrieStore.PrunePersistedNodes();
+
+            TrieStatsCollector collector = new TrieStatsCollector(new MemDb(), SimpleConsoleLogManager.Instance, expectAccounts: false);
+            ptree.Accept(collector, rootHash: persistedRootHash);
+            collector.Stats.MissingNodes.Should().Be(0);
         }
     }
 }
