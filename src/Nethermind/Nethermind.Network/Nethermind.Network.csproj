@@ -1,4 +1,4 @@
-<Project Sdk="Microsoft.NET.Sdk">
+﻿<Project Sdk="Microsoft.NET.Sdk">
   <PropertyGroup>
     <Nullable>annotations</Nullable>
   </PropertyGroup>
@@ -18,20 +18,16 @@
   </ItemGroup>
   <ItemGroup>
     <Compile Remove="Swarm\**" />
-  </ItemGroup>
-  <ItemGroup>
     <EmbeddedResource Remove="Swarm\**" />
-  </ItemGroup>
-  <ItemGroup>
     <None Remove="Swarm\**" />
-  </ItemGroup>
-  <ItemGroup>
     <Compile Remove="Whisper\**" />
-  </ItemGroup>
-  <ItemGroup>
     <EmbeddedResource Remove="Whisper\**" />
-  </ItemGroup>
-  <ItemGroup>
     <None Remove="Whisper\**" />
+    <EmbeddedResource Include="StaticNodes\static-nodes.json">
+      <LogicalName>static-nodes.json</LogicalName>
+    </EmbeddedResource>
+    <EmbeddedResource Include="TrustedNodes\trusted-nodes.json">
+      <LogicalName>trusted-nodes.json</LogicalName>
+    </EmbeddedResource>
   </ItemGroup>
 </Project>

@@ -7,6 +7,7 @@ using System.Threading.Tasks;
 using Nethermind.Consensus.Scheduler;
 using Nethermind.Network.P2P.Messages;
 using Nethermind.Network.P2P.ProtocolHandlers;
+using Nethermind.Serialization.Rlp;
 using Nethermind.Stats.Model;
 using Nethermind.Synchronization;
 
@@ -19,33 +20,27 @@ namespace Nethermind.Network.P2P.Utils;
 /// <param name="backgroundTaskScheduler"></param>
 public class BackgroundTaskSchedulerWrapper(ProtocolHandlerBase handler, IBackgroundTaskScheduler backgroundTaskScheduler)
 {
-    internal void ScheduleSyncServe<TReq, TRes>(TReq request, Func<TReq, CancellationToken, Task<TRes>> fulfillFunc) where TRes : P2PMessage
-    {
+    internal void ScheduleSyncServe<TReq, TRes>(TReq request, Func<TReq, CancellationToken, Task<TRes>> fulfillFunc) where TRes : P2PMessage =>
         ScheduleBackgroundTask((request, fulfillFunc), BackgroundSyncSender);
-    }
 
-    internal void ScheduleSyncServe<TReq, TRes>(TReq request, Func<TReq, CancellationToken, ValueTask<TRes>> fulfillFunc) where TRes : P2PMessage
-    {
+    internal void ScheduleSyncServe<TReq, TRes>(TReq request, Func<TReq, CancellationToken, ValueTask<TRes>> fulfillFunc) where TRes : P2PMessage =>
         ScheduleBackgroundTask((request, fulfillFunc), BackgroundSyncSenderValueTask);
-    }
 
-    internal void ScheduleBackgroundTask<TReq>(TReq request, Func<TReq, CancellationToken, ValueTask> fulfillFunc)
-    {
+    internal void ScheduleBackgroundTask<TReq>(TReq request, Func<TReq, CancellationToken, ValueTask> fulfillFunc) =>
         backgroundTaskScheduler.ScheduleTask((request, fulfillFunc), BackgroundTaskFailureHandlerValueTask);
-    }
 
-    // I just don't want to create a closure.. so this happens.
+    // I just don't want to create a closure... so this happens.
     private async ValueTask BackgroundSyncSender<TReq, TRes>(
         (TReq Request, Func<TReq, CancellationToken, Task<TRes>> FullfillFunc) input, CancellationToken cancellationToken) where TRes : P2PMessage
     {
-        TRes response = await input.FullfillFunc.Invoke(input.Request, cancellationToken);
+        TRes response = await input.FullfillFunc(input.Request, cancellationToken);
         handler.Send(response);
     }
 
     private async ValueTask BackgroundSyncSenderValueTask<TReq, TRes>(
         (TReq Request, Func<TReq, CancellationToken, ValueTask<TRes>> FullfillFunc) input, CancellationToken cancellationToken) where TRes : P2PMessage
     {
-        TRes response = await input.FullfillFunc.Invoke(input.Request, cancellationToken);
+        TRes response = await input.FullfillFunc(input.Request, cancellationToken);
         handler.Send(response);
     }
 
@@ -53,11 +48,19 @@ public class BackgroundTaskSchedulerWrapper(ProtocolHandlerBase handler, IBackgr
     {
         try
         {
-            await input.BackgroundTask.Invoke(input.Request, cancellationToken);
+            await input.BackgroundTask(input.Request, cancellationToken);
         }
         catch (Exception e)
         {
-            handler.Session.InitiateDisconnect(e is EthSyncException ? DisconnectReason.EthSyncException : DisconnectReason.BackgroundTaskFailure, e.Message);
+            DisconnectReason disconnectReason = e switch
+            {
+                EthSyncException => DisconnectReason.EthSyncException,
+                RlpLimitException => DisconnectReason.MessageLimitsBreached,
+                RlpException => DisconnectReason.BreachOfProtocol,
+                _ => DisconnectReason.BackgroundTaskFailure
+            };
+
+            handler.Session.InitiateDisconnect(disconnectReason, e.Message);
             if (handler.Logger.IsDebug) handler.Logger.Debug($"Failure running background task on session {handler.Session}, {e}");
         }
     }
