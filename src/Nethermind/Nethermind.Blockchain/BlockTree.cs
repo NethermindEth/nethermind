@@ -546,17 +546,9 @@ namespace Nethermind.Blockchain
 
         public AddBlockResult SuggestBlock(Block block, BlockTreeSuggestOptions options = BlockTreeSuggestOptions.ShouldProcess)
         {
-            // Allow suggesting genesis block at non-zero block number (Arbitrum)
-            if (Genesis is null)
+            if (Genesis is null && !block.IsGenesis)
             {
-                if (block.Number == _genesisBlockNumber || block.IsGenesis)
-                {
-                    Genesis = block.Header;
-                }
-                else
-                {
-                    throw new InvalidOperationException("Block tree should be initialized with genesis before suggesting other blocks.");
-                }
+                throw new InvalidOperationException("Block tree should be initialized with genesis before suggesting other blocks.");
             }
 
             return Suggest(block, block.Header, options);
@@ -1543,7 +1535,7 @@ namespace Nethermind.Blockchain
 
         private void SetTotalDifficulty(BlockHeader header)
         {
-            if (header.IsGenesis || header.Number == _genesisBlockNumber)
+            if (header.IsGenesis)
             {
                 header.TotalDifficulty = header.Difficulty;
                 if (_logger.IsTrace) _logger.Trace($"Genesis total difficulty is {header.TotalDifficulty}");
@@ -1567,7 +1559,7 @@ namespace Nethermind.Blockchain
             void SetTotalDifficultyDeep(BlockHeader current)
             {
                 Stack<BlockHeader> stack = new();
-                while (!current.IsGenesis && !current.IsNonZeroTotalDifficulty() && current.Number != _genesisBlockNumber)
+                while (!current.IsGenesis && !current.IsNonZeroTotalDifficulty())
                 {
                     (BlockInfo blockInfo, ChainLevelInfo level) = LoadInfo(current.Number, current.Hash, true);
                     if (level is null || blockInfo is null || blockInfo.TotalDifficulty == 0)
@@ -1584,7 +1576,7 @@ namespace Nethermind.Blockchain
                     }
                 }
 
-                if (current.IsGenesis || current.Number == _genesisBlockNumber)
+                if (current.IsGenesis)
                 {
                     current.TotalDifficulty = current.Difficulty;
                     BlockInfo blockInfo = new(current.Hash, current.Difficulty);
