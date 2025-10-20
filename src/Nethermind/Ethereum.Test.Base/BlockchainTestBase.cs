@@ -187,43 +187,7 @@ public abstract class BlockchainTestBase
             }
             else if (test.EngineNewPayloads is not null)
             {
-                (ExecutionPayload, string[]?, string[]?, string?)[] payloads = [.. JsonToEthereumTest.Convert(test.EngineNewPayloads)];
-
-                // blockchain test engine
-                foreach ((ExecutionPayload executionPayload, string[]? blobVersionedHashes, string[]? validationError, string? newPayloadVersion) in payloads)
-                {
-                    ResultWrapper<PayloadStatusV1> res;
-                    byte[]?[] hashes = blobVersionedHashes is null ? null : [.. blobVersionedHashes.Select(x => Bytes.FromHexString(x))];
-
-                    switch (newPayloadVersion ?? "5")
-                    {
-                        case "1":
-                            res = await engineRpcModule.engine_newPayloadV1(executionPayload);
-                            break;
-                        case "2":
-                            res = await engineRpcModule.engine_newPayloadV2(executionPayload);
-                            break;
-                        case "3":
-                            res = await engineRpcModule.engine_newPayloadV3((ExecutionPayloadV3)executionPayload, [], executionPayload.ParentBeaconBlockRoot);
-                            break;
-                        case "4":
-                            res = await engineRpcModule.engine_newPayloadV4((ExecutionPayloadV3)executionPayload, hashes, executionPayload.ParentBeaconBlockRoot, []);
-                            break;
-                        case "5":
-                            // this block is not found in stateProvider and blocktree
-                            res = await engineRpcModule.engine_newPayloadV5((ExecutionPayloadV3)executionPayload, hashes, executionPayload.ParentBeaconBlockRoot, []);
-                            break;
-                        default:
-                            Assert.Fail("Invalid blockchain engine test, version not recognised.");
-                            continue;
-                    }
-
-                    if (res.Result.ResultType == ResultType.Success)
-                    {
-                        ForkchoiceStateV1 fcuState = new(executionPayload.BlockHash, executionPayload.BlockHash, executionPayload.BlockHash);
-                        await engineRpcModule.engine_forkchoiceUpdatedV3(fcuState);
-                    }
-                }
+                RunNewPayloads(test.EngineNewPayloads, engineRpcModule);
             }
             else
             {
@@ -319,6 +283,47 @@ public abstract class BlockchainTestBase
             parentHeader = correctRlp[i].Block.Header;
         }
         return parentHeader;
+    }
+
+    private async static void RunNewPayloads(TestEngineNewPayloadsJson[]? newPayloads, IEngineRpcModule engineRpcModule)
+    {
+        (ExecutionPayload, string[]?, string[]?, string?)[] payloads = [.. JsonToEthereumTest.Convert(newPayloads)];
+
+        // blockchain test engine
+        foreach ((ExecutionPayload executionPayload, string[]? blobVersionedHashes, string[]? validationError, string? newPayloadVersion) in payloads)
+        {
+            ResultWrapper<PayloadStatusV1> res;
+            byte[]?[] hashes = blobVersionedHashes is null ? null : [.. blobVersionedHashes.Select(x => Bytes.FromHexString(x))];
+
+            switch (newPayloadVersion ?? "5")
+            {
+                case "1":
+                    res = await engineRpcModule.engine_newPayloadV1(executionPayload);
+                    break;
+                case "2":
+                    res = await engineRpcModule.engine_newPayloadV2(executionPayload);
+                    break;
+                case "3":
+                    res = await engineRpcModule.engine_newPayloadV3((ExecutionPayloadV3)executionPayload, [], executionPayload.ParentBeaconBlockRoot);
+                    break;
+                case "4":
+                    res = await engineRpcModule.engine_newPayloadV4((ExecutionPayloadV3)executionPayload, hashes, executionPayload.ParentBeaconBlockRoot, []);
+                    break;
+                case "5":
+                    // this block is not found in stateProvider and blocktree
+                    res = await engineRpcModule.engine_newPayloadV5((ExecutionPayloadV3)executionPayload, hashes, executionPayload.ParentBeaconBlockRoot, []);
+                    break;
+                default:
+                    Assert.Fail("Invalid blockchain engine test, version not recognised.");
+                    continue;
+            }
+
+            if (res.Result.ResultType == ResultType.Success)
+            {
+                ForkchoiceStateV1 fcuState = new(executionPayload.BlockHash, executionPayload.BlockHash, executionPayload.BlockHash);
+                await engineRpcModule.engine_forkchoiceUpdatedV3(fcuState);
+            }
+        }
     }
 
     private static List<(Block Block, string ExpectedException)> DecodeRlps(BlockchainTest test, bool failOnInvalidRlp)
