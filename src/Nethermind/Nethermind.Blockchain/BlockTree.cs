@@ -306,7 +306,7 @@ namespace Nethermind.Blockchain
                     throw new InvalidOperationException("An attempt to insert a block header without a known bloom.");
                 }
 
-                if (header.Number == 0)
+                if (header.Number == _genesisBlockNumber)
                 {
                     throw new InvalidOperationException("Genesis block should not be inserted.");
                 }
@@ -1183,7 +1183,7 @@ namespace Nethermind.Blockchain
 
             if (forceUpdateHeadBlock || block.IsGenesis || HeadImprovementRequirementsSatisfied(block.Header))
             {
-                if (block.Number == 0)
+                if (block.Number == _genesisBlockNumber)
                 {
                     Genesis = block.Header;
                 }
@@ -1413,7 +1413,7 @@ namespace Nethermind.Blockchain
         /// <returns></returns>
         private bool ShouldCache(long number)
         {
-            return number == 0L || Head is null || number >= Head.Number - BlockStore.CacheSize;
+            return number == _genesisBlockNumber || Head is null || number >= Head.Number - BlockStore.CacheSize;
         }
 
         public ChainLevelInfo? FindLevel(long number)
