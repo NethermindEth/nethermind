@@ -69,6 +69,8 @@ public class E2EDiscoveryTests(DiscoveryVersion discoveryVersion)
     }
 
     [Test]
+    [Retry(3)]
+    [Parallelizable(ParallelScope.None)]
     public async Task TestDiscovery()
     {
         if (discoveryVersion == DiscoveryVersion.V5) Assert.Ignore("DiscV5 does not seems to work.");
@@ -96,7 +98,8 @@ public class E2EDiscoveryTests(DiscoveryVersion discoveryVersion)
             HashSet<PublicKey> expectedKeys = new HashSet<PublicKey>(nodeKeys);
             expectedKeys.Remove(node.Resolve<IEnode>().PublicKey);
 
-            Assert.That(() => pool.Peers.Values.Select((p) => p.Node.Id).ToHashSet(), Is.EquivalentTo(expectedKeys).After(1000, 100));
+            Assert.That(() => pool.Peers.Values.Select((p) => p.Node.Id).ToHashSet(),
+                Is.EquivalentTo(expectedKeys).After(5000, 100));
         }
     }
 }

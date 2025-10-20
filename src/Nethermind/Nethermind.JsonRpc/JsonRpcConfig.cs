@@ -74,4 +74,5 @@ public class JsonRpcConfig : IJsonRpcConfig
     public bool EnablePerMethodMetrics { get; set; } = false;
     public int FiltersTimeout { get; set; } = 900000;
     public bool PreloadRpcModules { get; set; }
+    public bool StrictHexFormat { get; set; } = true;
 };

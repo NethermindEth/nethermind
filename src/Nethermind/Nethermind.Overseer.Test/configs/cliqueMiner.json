@@ -2,7 +2,6 @@
   "Init": {
     "EnableUnsecuredDevWallet": true,
     "KeepDevWalletInMemory": true,
-    "IsMining": true,
     "ChainSpecPath": "chainspec/clique.json",
     "GenesisHash": "",
     "BaseDbPath": "clique",
@@ -22,5 +21,9 @@
     "WriteBufferNumber": 6,
     "BlockCacheSize": 67108864,
     "CacheIndexAndFilterBlocks": false
+  },
+  "Mining":
+  {
+    "Enabled": true
   }
 }

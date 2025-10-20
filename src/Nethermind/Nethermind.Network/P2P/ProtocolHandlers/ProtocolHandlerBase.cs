@@ -2,17 +2,21 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Diagnostics.CodeAnalysis;
 using System.Threading;
 using System.Threading.Tasks;
 using DotNetty.Buffers;
+using Nethermind.Consensus.Scheduler;
 using Nethermind.Core;
 using Nethermind.Logging;
 using Nethermind.Network.P2P.EventArg;
 using Nethermind.Network.P2P.Messages;
+using Nethermind.Network.P2P.Utils;
 using Nethermind.Network.Rlpx;
 using Nethermind.Serialization.Rlp;
 using Nethermind.Stats;
 using Nethermind.Stats.Model;
+using Nethermind.Synchronization;
 
 namespace Nethermind.Network.P2P.ProtocolHandlers
 {
@@ -25,34 +29,57 @@ namespace Nethermind.Network.P2P.ProtocolHandlers
         protected internal ISession Session { get; }
         protected long Counter;
 
-        private readonly TaskCompletionSource<MessageBase> _initCompletionSource;
+        private readonly TaskCompletionSource<MessageBase> _initCompletionSource = new();
 
-        protected ProtocolHandlerBase(ISession session, INodeStatsManager nodeStats, IMessageSerializationService serializer, ILogManager logManager)
+        protected ProtocolHandlerBase(ISession session,
+            INodeStatsManager nodeStats,
+            IMessageSerializationService serializer,
+            IBackgroundTaskScheduler backgroundTaskScheduler,
+            ILogManager logManager)
         {
-            Logger = logManager?.GetClassLogger<ProtocolHandlerBase>() ?? throw new ArgumentNullException(nameof(logManager));
             StatsManager = nodeStats ?? throw new ArgumentNullException(nameof(nodeStats));
-            Session = session ?? throw new ArgumentNullException(nameof(session));
-
             _serializer = serializer ?? throw new ArgumentNullException(nameof(serializer));
-            _initCompletionSource = new TaskCompletionSource<MessageBase>();
+            Session = session ?? throw new ArgumentNullException(nameof(session));
+            Logger = logManager?.GetClassLogger<ProtocolHandlerBase>() ?? throw new ArgumentNullException(nameof(logManager));
+            BackgroundTaskScheduler = new BackgroundTaskSchedulerWrapper(this, backgroundTaskScheduler);
         }
 
         protected internal ILogger Logger { get; }
 
         protected abstract TimeSpan InitTimeout { get; }
 
+        protected BackgroundTaskSchedulerWrapper BackgroundTaskScheduler { get; }
+
         protected T Deserialize<T>(byte[] data) where T : P2PMessage
         {
+            var size = data.Length;
             try
             {
                 return _serializer.Deserialize<T>(data);
             }
-            catch (RlpException e)
+            catch (RlpLimitException e)
             {
-                if (Logger.IsDebug) Logger.Debug($"Failed to deserialize message {typeof(T).Name}, with exception {e}");
-                ReportIn($"{typeof(T).Name} - Deserialization exception", data.Length);
+                HandleRlpLimitException<T>(size, e);
                 throw;
             }
+            catch (RlpException e)
+            {
+                HandleRlpException<T>(size, e);
+                throw;
+            }
+        }
+
+        private void HandleRlpException<T>(int dataLength, RlpException e) where T : P2PMessage
+        {
+            if (Logger.IsDebug) Logger.Debug($"Failed to deserialize message {typeof(T).Name} on session {Session}, with exception {e}");
+            ReportIn($"{typeof(T).Name} - Deserialization exception", dataLength);
+        }
+
+        private void HandleRlpLimitException<T>(int dataLength, RlpLimitException e) where T : P2PMessage
+        {
+            Session.InitiateDisconnect(DisconnectReason.MessageLimitsBreached, e.Message);
+            if (Logger.IsDebug) Logger.Debug($"Failed to deserialize message {typeof(T).Name} on session {Session} due to rlp limits, with exception {e}");
+            ReportIn($"{typeof(T).Name} - Deserialization limit exception", dataLength);
         }
 
         protected T Deserialize<T>(IByteBuffer data) where T : P2PMessage
@@ -62,19 +89,25 @@ namespace Nethermind.Network.P2P.ProtocolHandlers
             {
                 int originalReaderIndex = data.ReaderIndex;
                 T result = _serializer.Deserialize<T>(data);
-                if (data.IsReadable())
-                {
-                    throw new IncompleteDeserializationException(
-                        $"Incomplete deserialization detected. Buffer is still readable. Read bytes: {data.ReaderIndex - originalReaderIndex}. Readable bytes: {data.ReadableBytes}");
-                }
+                if (data.IsReadable()) ThrowIncompleteDeserializationException(data, originalReaderIndex);
                 return result;
+            }
+            catch (RlpLimitException e)
+            {
+                HandleRlpLimitException<T>(size, e);
+                throw;
             }
             catch (RlpException e)
             {
-                if (Logger.IsDebug) Logger.Debug($"Failed to deserialize message {typeof(T).Name}, with exception {e}");
-                ReportIn($"{typeof(T).Name} - Deserialization exception", size);
+                HandleRlpException<T>(size, e);
                 throw;
             }
+        }
+
+        [DoesNotReturn]
+        private static void ThrowIncompleteDeserializationException(IByteBuffer data, int originalReaderIndex)
+        {
+            throw new IncompleteDeserializationException($"Incomplete deserialization detected. Buffer is still readable. Read bytes: {data.ReaderIndex - originalReaderIndex}. Readable bytes: {data.ReadableBytes}");
         }
 
         protected internal void Send<T>(T message) where T : P2PMessage
@@ -131,7 +164,7 @@ namespace Nethermind.Network.P2P.ProtocolHandlers
         {
             if (Logger.IsTrace || NetworkDiagTracer.IsEnabled)
             {
-                ReportIn(msg.ToString(), size);
+                ReportIn(msg.ToString() ?? "", size);
             }
         }
 
@@ -142,6 +175,22 @@ namespace Nethermind.Network.P2P.ProtocolHandlers
 
             if (NetworkDiagTracer.IsEnabled)
                 NetworkDiagTracer.ReportIncomingMessage(Session?.Node?.Address, Name, messageInfo, size);
+        }
+
+        protected void HandleInBackground<TReq, TRes>(ZeroPacket message, Func<TReq, CancellationToken, Task<TRes>> handle) where TReq : P2PMessage where TRes : P2PMessage =>
+            BackgroundTaskScheduler.ScheduleSyncServe(DeserializeAndReport<TReq>(message), handle);
+
+        protected void HandleInBackground<TReq, TRes>(ZeroPacket message, Func<TReq, CancellationToken, ValueTask<TRes>> handle) where TReq : P2PMessage where TRes : P2PMessage =>
+            BackgroundTaskScheduler.ScheduleSyncServe(DeserializeAndReport<TReq>(message), handle);
+
+        protected void HandleInBackground<TReq>(ZeroPacket message, Func<TReq, CancellationToken, ValueTask> handle) where TReq : P2PMessage =>
+            BackgroundTaskScheduler.ScheduleBackgroundTask(DeserializeAndReport<TReq>(message), handle);
+
+        private TReq DeserializeAndReport<TReq>(ZeroPacket message) where TReq : P2PMessage
+        {
+            TReq messageObject = Deserialize<TReq>(message.Content);
+            ReportIn(messageObject, message.Content.ReadableBytes);
+            return messageObject;
         }
 
         public abstract void Dispose();
@@ -163,10 +212,5 @@ namespace Nethermind.Network.P2P.ProtocolHandlers
         public abstract event EventHandler<ProtocolEventArgs> SubprotocolRequested;
     }
 
-    public class IncompleteDeserializationException : Exception
-    {
-        public IncompleteDeserializationException(string msg) : base(msg)
-        {
-        }
-    }
+    public class IncompleteDeserializationException(string msg) : Exception(msg);
 }

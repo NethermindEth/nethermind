@@ -97,16 +97,16 @@ namespace Nethermind.Facade
             return false;
         }
 
-        public (TxReceipt? Receipt, TxGasInfo? GasInfo, int LogIndexStart) GetReceiptAndGasInfo(Hash256 txHash)
+        public (TxReceipt? Receipt, ulong BlockTimestamp, TxGasInfo? GasInfo, int LogIndexStart) GetTxReceiptInfo(Hash256 txHash)
         {
             if (TryGetCanonicalTransaction(txHash, out Transaction? tx, out TxReceipt? txReceipt, out Block? block, out TxReceipt[]? txReceipts))
             {
                 int logIndexStart = txReceipts.GetBlockLogFirstIndex(txReceipt.Index);
                 IReleaseSpec spec = specProvider.GetSpec(block.Header);
-                return (txReceipt, tx.GetGasInfo(spec, block.Header), logIndexStart);
+                return (txReceipt, block.Timestamp, tx.GetGasInfo(spec, block.Header), logIndexStart);
             }
 
-            return (null, null, 0);
+            return (null, 0, null, 0);
         }
 
         public (TxReceipt? Receipt, Transaction Transaction, UInt256? baseFee) GetTransaction(Hash256 txHash, bool checkTxnPool = true) =>
@@ -135,7 +135,8 @@ namespace Nethermind.Facade
                 Error = ConstructError(tryCallResult, callOutputTracer.Error),
                 GasSpent = callOutputTracer.GasSpent,
                 OutputData = callOutputTracer.ReturnValue,
-                InputError = !tryCallResult.TransactionExecuted
+                InputError = !tryCallResult.TransactionExecuted,
+                ExecutionReverted = tryCallResult.EvmExceptionType == EvmExceptionType.Revert,
             };
         }
 
@@ -170,7 +171,9 @@ namespace Nethermind.Facade
             {
                 Error = error,
                 GasSpent = estimate,
-                InputError = !tryCallResult.TransactionExecuted || err is not null
+                OutputData = estimateGasTracer.ReturnValue,
+                InputError = !tryCallResult.TransactionExecuted || err is not null,
+                ExecutionReverted = tryCallResult.EvmExceptionType == EvmExceptionType.Revert
             };
         }
 
@@ -196,7 +199,7 @@ namespace Nethermind.Facade
                 OperationGas = callOutputTracer.OperationGas,
                 OutputData = callOutputTracer.ReturnValue,
                 InputError = !tryCallResult.TransactionExecuted,
-                AccessList = accessTxTracer.AccessList
+                AccessList = accessTxTracer.AccessList,
             };
         }
 
@@ -399,7 +402,7 @@ namespace Nethermind.Facade
         {
             var error = txResult switch
             {
-                { TransactionExecuted: true } when txResult.EvmExceptionType is not EvmExceptionType.None => txResult.EvmExceptionType.GetEvmExceptionDescription(),
+                { TransactionExecuted: true } when txResult.EvmExceptionType is not (EvmExceptionType.None or EvmExceptionType.Revert) => txResult.EvmExceptionType.GetEvmExceptionDescription(),
                 { TransactionExecuted: true } when tracerError is not null => tracerError,
                 { TransactionExecuted: false, Error: not null } => txResult.Error,
                 _ => null

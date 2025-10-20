@@ -26,11 +26,9 @@ using Nethermind.Crypto;
 using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.Serialization.Rlp;
-using Nethermind.Specs;
 using Nethermind.Specs.Forks;
 using Nethermind.Specs.Test;
 using Nethermind.Evm.State;
-using Nethermind.Evm.Tracing;
 using Nethermind.Init.Modules;
 using Nethermind.TxPool;
 using NUnit.Framework;
@@ -44,7 +42,6 @@ public abstract class BlockchainTestBase
 {
     private static readonly ILogger _logger;
     private static readonly ILogManager _logManager = new TestLogManager();
-    // private static ISealValidator Sealer { get; }
     private static DifficultyCalculatorWrapper DifficultyCalculator { get; }
 
     static BlockchainTestBase()
@@ -122,7 +119,7 @@ public abstract class BlockchainTestBase
         IConfigProvider configProvider = new ConfigProvider();
         // configProvider.GetConfig<IBlocksConfig>().PreWarmStateOnBlockProcessing = false;
         await using IContainer container = new ContainerBuilder()
-            .AddModule(new TestNethermindModule(configProvider)) // check if two different modules must be fixed together
+            .AddModule(new TestNethermindModule(configProvider))
             .AddModule(new TestMergeModule(configProvider))
             .AddSingleton(specProvider)
             .AddSingleton(_logManager)
@@ -242,42 +239,46 @@ public abstract class BlockchainTestBase
         List<(Block Block, string ExpectedException)> correctRlp = DecodeRlps(test, failOnInvalidRlp);
         for (int i = 0; i < correctRlp.Count; i++)
         {
-            if (correctRlp[i].Block.Hash is null)
-            {
-                Assert.Fail($"null hash in {test.Name} block {i}");
-            }
+            // Mimic the actual behaviour where block goes through validating sync manager
+            correctRlp[i].Block.Header.IsPostMerge = correctRlp[i].Block.Difficulty == 0;
 
-            try
+            // For tests with reorgs, find the actual parent header from block tree
+            parentHeader = blockTree.FindHeader(correctRlp[i].Block.ParentHash) ?? parentHeader;
+
+            Assert.That(correctRlp[i].Block.Hash, Is.Not.Null, $"null hash in {test.Name} block {i}");
+
+            bool expectsException = correctRlp[i].ExpectedException is not null;
+            // Validate block structure first (mimics SyncServer validation)
+            if (blockValidator.ValidateSuggestedBlock(correctRlp[i].Block, parentHeader, out string? validationError))
             {
-                // TODO: mimic the actual behaviour where block goes through validating sync manager?
-                correctRlp[i].Block.Header.IsPostMerge = correctRlp[i].Block.Difficulty == 0;
-                if (!test.SealEngineUsed || blockValidator.ValidateSuggestedBlock(correctRlp[i].Block, parentHeader, out _))
+                Assert.That(!expectsException, $"Expected block {correctRlp[i].Block.Hash} to fail with '{correctRlp[i].ExpectedException}', but it passed validation");
+                try
                 {
+                    // All validations passed, suggest the block
                     blockTree.SuggestBlock(correctRlp[i].Block);
+
                 }
-                else
+                catch (InvalidBlockException e)
                 {
-                    if (correctRlp[i].ExpectedException is not null)
-                    {
-                        Assert.Fail($"Unexpected invalid block {correctRlp[i].Block.Hash}");
-                    }
+                    // Exception thrown during block processing
+                    Assert.That(expectsException, $"Unexpected invalid block {correctRlp[i].Block.Hash}: {validationError}, Exception: {e}");
+                    // else: Expected to fail and did fail via exception → this is correct behavior
                 }
-            }
-            catch (InvalidBlockException e)
-            {
-                if (correctRlp[i].ExpectedException is not null)
+                catch (Exception e)
                 {
-                    Assert.Fail($"Unexpected invalid block {correctRlp[i].Block.Hash}: {e}");
+                    Assert.Fail($"Unexpected exception during processing: {e}");
+                }
+                finally
+                {
+                    // Dispose AccountChanges to prevent memory leaks in tests
+                    correctRlp[i].Block.DisposeAccountChanges();
                 }
             }
-            catch (Exception e)
+            else
             {
-                Assert.Fail($"Unexpected exception during processing: {e}");
-            }
-            finally
-            {
-                // Dispose AccountChanges to prevent memory leaks in tests
-                correctRlp[i].Block.DisposeAccountChanges();
+                // Validation FAILED
+                Assert.That(expectsException, $"Unexpected invalid block {correctRlp[i].Block.Hash}: {validationError}");
+                // else: Expected to fail and did fail → this is correct behavior
             }
 
             parentHeader = correctRlp[i].Block.Header;
@@ -335,8 +336,6 @@ public abstract class BlockchainTestBase
             {
                 RlpStream rlpContext = Bytes.FromHexString(testBlockJson.Rlp!).AsRlpStream();
                 Block suggestedBlock = Rlp.Decode<Block>(rlpContext);
-                suggestedBlock.Header.SealEngineType =
-                    test.SealEngineUsed ? SealEngineType.Ethash : SealEngineType.None;
 
                 if (testBlockJson.BlockHeader is not null)
                 {

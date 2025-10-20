@@ -14,13 +14,12 @@ namespace Nethermind.Api
         public bool DiscoveryEnabled { get; set; } = true;
         public bool ProcessingEnabled { get; set; } = true;
         public bool PeerManagerEnabled { get; set; } = true;
-        public bool IsMining { get; set; } = false;
         public string ChainSpecPath { get; set; } = "chainspec/foundation.json";
         public string BaseDbPath { get; set; } = "db";
         public string LogFileName { get; set; } = "log.txt";
         public string? GenesisHash { get; set; }
-        public string StaticNodesPath { get; set; } = "Data/static-nodes.json";
-        public string TrustedNodesPath { get; set; } = "Data/trusted-nodes.json";
+        public string StaticNodesPath { get; set; } = "static-nodes.json";
+        public string TrustedNodesPath { get; set; } = "trusted-nodes.json";
         public string? KzgSetupPath { get; set; } = null;
         public string LogDirectory { get; set; } = "logs";
         public string? LogRules { get; set; } = null;
@@ -29,7 +28,7 @@ namespace Nethermind.Api
         public DiagnosticMode DiagnosticMode { get; set; } = DiagnosticMode.None;
         public DumpOptions AutoDump { get; set; } = DumpOptions.Default;
 
-        public string RpcDbUrl { get; set; } = String.Empty;
+        public string RpcDbUrl { get; set; } = string.Empty;
         public long? MemoryHint { get; set; }
         public long? BadBlocksStored { get; set; } = 100;
         public bool DisableGcOnNewPayload { get; set; } = true;
@@ -40,6 +39,7 @@ namespace Nethermind.Api
         public int BackgroundTaskConcurrency { get; set; } = 2;
         public int BackgroundTaskMaxNumber { get; set; } = 1024;
         public bool InRunnerTest { get; set; } = false;
+        public string? DataDir { get; set; }
 
         [Obsolete("Use DiagnosticMode with MemDb instead")]
         public bool UseMemDb

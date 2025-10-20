@@ -7,9 +7,11 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Numerics;
 using Autofac.Features.AttributeFilters;
+using Nethermind.Blockchain.Find;
 using Nethermind.Config;
 using Nethermind.Consensus;
 using Nethermind.Consensus.Scheduler;
+using Nethermind.Core.Crypto;
 using Nethermind.Db;
 using Nethermind.Logging;
 using Nethermind.Network.Contract.P2P;
@@ -71,6 +73,8 @@ namespace Nethermind.Network
         private readonly HashSet<Capability> _capabilities = DefaultCapabilities.ToHashSet();
         private readonly IBackgroundTaskScheduler _backgroundTaskScheduler;
         private readonly ISnapServer? _snapServer;
+        private readonly IBlockFinder _blockFinder;
+
         public ProtocolsManager(
             ISyncPeerPool syncPeerPool,
             ISyncServer syncServer,
@@ -86,6 +90,7 @@ namespace Nethermind.Network
             IForkInfo forkInfo,
             IGossipPolicy gossipPolicy,
             IWorldStateManager worldStateManager,
+            IBlockFinder blockFinder,
             ILogManager logManager,
             ITxGossipPolicy? transactionsGossipPolicy = null)
         {
@@ -105,6 +110,7 @@ namespace Nethermind.Network
             _txGossipPolicy = transactionsGossipPolicy ?? ShouldGossip.Instance;
             _logManager = logManager ?? throw new ArgumentNullException(nameof(logManager));
             _snapServer = worldStateManager.SnapServer;
+            _blockFinder = blockFinder ?? throw new ArgumentNullException(nameof(blockFinder));
             _logger = _logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
 
             _protocolFactories = GetProtocolFactories();
@@ -123,23 +129,36 @@ namespace Nethermind.Network
             ISession session = (ISession)sender;
             session.Initialized -= SessionInitialized;
             session.Disconnected -= SessionDisconnected;
+            _sessions.TryRemove(session.SessionId, out _);
 
-            if (_syncPeers.TryRemove(session.SessionId, out var removed))
+            if (_logger.IsDebug && session.BestStateReached == SessionState.Initialized)
             {
-                _syncPool.RemovePeer(removed);
-                _txPool.RemovePeer(removed.Node.Id);
-                if (session.BestStateReached == SessionState.Initialized)
-                {
-                    if (_logger.IsDebug) _logger.Debug($"{session.Direction} {session.Node:s} disconnected {e.DisconnectType} {e.DisconnectReason} {e.Details}");
-                }
+                _logger.Debug($"{session.Direction} {session.Node:s} disconnected {e.DisconnectType} {e.DisconnectReason} {e.Details}");
             }
 
-            if (_hangingSatelliteProtocols.TryGetValue(session.Node, out var registrations))
+            if (session.Node is not null
+                && _hangingSatelliteProtocols.TryGetValue(session.Node, out ConcurrentDictionary<Guid, ProtocolHandlerBase>? registrations)
+                && registrations is not null)
             {
                 registrations.TryRemove(session.SessionId, out _);
             }
 
-            _sessions.TryRemove(session.SessionId, out session);
+            PublicKey? handlerKey = null;
+            if (_syncPeers.TryRemove(session.SessionId, out SyncPeerProtocolHandlerBase? removed) && removed is not null)
+            {
+                _syncPool.RemovePeer(removed);
+                if (removed.Node?.Id is not null)
+                {
+                    handlerKey = removed.Node.Id;
+                    _txPool.RemovePeer(handlerKey);
+                }
+            }
+
+            PublicKey sessionKey = session.Node?.Id;
+            if (sessionKey is not null && sessionKey != handlerKey)
+            {
+                _txPool.RemovePeer(session.Node.Id);
+            }
         }
 
         private void SessionInitialized(object sender, EventArgs e)
@@ -195,7 +214,7 @@ namespace Nethermind.Network
             {
                 [Protocol.P2P] = (session, _) =>
                 {
-                    P2PProtocolHandler handler = new(session, _rlpxHost.LocalNodeId, _stats, _serializer, _logManager);
+                    P2PProtocolHandler handler = new(session, _rlpxHost.LocalNodeId, _stats, _serializer, _backgroundTaskScheduler, _logManager);
                     session.PingSender = handler;
                     InitP2PProtocol(session, handler);
 
@@ -208,7 +227,7 @@ namespace Nethermind.Network
                         66 => new Eth66ProtocolHandler(session, _serializer, _stats, _syncServer, _backgroundTaskScheduler, _txPool, _pooledTxsRequestor, _gossipPolicy, _forkInfo, _logManager, _txGossipPolicy),
                         67 => new Eth67ProtocolHandler(session, _serializer, _stats, _syncServer, _backgroundTaskScheduler, _txPool, _pooledTxsRequestor, _gossipPolicy, _forkInfo, _logManager, _txGossipPolicy),
                         68 => new Eth68ProtocolHandler(session, _serializer, _stats, _syncServer, _backgroundTaskScheduler, _txPool, _pooledTxsRequestor, _gossipPolicy, _forkInfo, _logManager, _txGossipPolicy),
-                        69 => new Eth69ProtocolHandler(session, _serializer, _stats, _syncServer, _backgroundTaskScheduler, _txPool, _pooledTxsRequestor, _gossipPolicy, _forkInfo, _logManager, _txGossipPolicy),
+                        69 => new Eth69ProtocolHandler(session, _serializer, _stats, _syncServer, _backgroundTaskScheduler, _txPool, _pooledTxsRequestor, _gossipPolicy, _forkInfo, _blockFinder, _logManager, _txGossipPolicy),
                         _ => throw new NotSupportedException($"Eth protocol version {version} is not supported.")
                     };
 

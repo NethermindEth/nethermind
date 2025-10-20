@@ -78,6 +78,9 @@ public class XdcBlockHeader : BlockHeader, IHashResolver
     }
 
     private ExtraFieldsV2 _extraFieldsV2;
+    /// <summary>
+    /// Consensus data that must be included in a V2 block, which contains the quorum certificate and round information. 
+    /// </summary>
     public ExtraFieldsV2? ExtraConsensusData
     {
         get
@@ -88,7 +91,7 @@ public class XdcBlockHeader : BlockHeader, IHashResolver
             if (_extraFieldsV2 == null)
             {
                 //Check V2 consensus version in ExtraData field.
-                if (ExtraData.Length < 3 || ExtraData[0] != 2)
+                if (ExtraData.Length < 3 || ExtraData[0] != XdcConstants.ConsensusVersion)
                     return null;
                 Rlp.ValueDecoderContext valueDecoderContext = new Rlp.ValueDecoderContext(ExtraData.AsSpan(1));
                 _extraFieldsV2 = _extraConsensusDataDecoder.Decode(ref valueDecoderContext);
