@@ -91,7 +91,7 @@ namespace Nethermind.Blockchain
 
         private long? _highestPersistedState;
 
-        public long BestKnownNumber { get; set; }
+        public long BestKnownNumber { get; private set; }
 
         public long BestKnownBeaconNumber { get; private set; }
 
