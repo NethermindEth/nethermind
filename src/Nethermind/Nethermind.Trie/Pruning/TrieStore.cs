@@ -99,6 +99,8 @@ public sealed class TrieStore : ITrieStore, IPruningTrieStore
         _dirtyNodes = new TrieStoreDirtyNodesCache[_shardedDirtyNodeCount];
         _dirtyNodesTasks = new Task[_shardedDirtyNodeCount];
         _persistedHashes = new ConcurrentDictionary<HashAndTinyPath, Hash256?>[_shardedDirtyNodeCount];
+        _deleteOldNodes = _pruningStrategy.DeleteObsoleteKeys;
+        _pastKeyTrackingEnabled = pruningConfig.TrackPastKeys && nodeStorage.RequirePath;
 
         int keepTopLevelNode = -1;
         if (_pastKeyTrackingEnabled && _deleteOldNodes)
@@ -113,9 +115,6 @@ public sealed class TrieStore : ITrieStore, IPruningTrieStore
             _dirtyNodes[i] = new TrieStoreDirtyNodesCache(this, !_nodeStorage.RequirePath, keepTopLevelNode, _logger);
             _persistedHashes[i] = new ConcurrentDictionary<HashAndTinyPath, Hash256>();
         }
-
-        _deleteOldNodes = _pruningStrategy.DeleteObsoleteKeys;
-        _pastKeyTrackingEnabled = pruningConfig.TrackPastKeys && nodeStorage.RequirePath;
     }
 
     public IScopedTrieStore GetTrieStore(Hash256? address) => new ScopedTrieStore(this, address);
@@ -583,7 +582,7 @@ public sealed class TrieStore : ITrieStore, IPruningTrieStore
         }
     }
 
-    private void PersistAndPruneDirtyCache()
+    internal void PersistAndPruneDirtyCache()
     {
         try
         {
@@ -785,7 +784,7 @@ public sealed class TrieStore : ITrieStore, IPruningTrieStore
     /// <summary>
     /// Only prune persisted nodes. This method attempt to pick only some shard for pruning.
     /// </summary>
-    private void PrunePersistedNodes()
+    internal void PrunePersistedNodes()
     {
         try
         {

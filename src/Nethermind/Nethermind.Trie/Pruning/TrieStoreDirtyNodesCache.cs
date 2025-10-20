@@ -317,9 +317,13 @@ internal class TrieStoreDirtyNodesCache
                         if (!_storeByHash && key.Address == null)
                         {
                             if (key.Path.Length <= _keyTopLevel)
+                            {
                                 // Do not remove top level persisted node. This is so that it always get
                                 // removed via key removal and not due to memory limitation.
+                                totalMemory += node.GetMemorySize(false) + KeyMemoryUsage;
+                                totalNode++;
                                 continue;
+                            }
                         }
 
                         RemoveNodeFromCache(key, node, ref Metrics.PrunedPersistedNodesCount);

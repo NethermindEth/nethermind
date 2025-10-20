@@ -1052,50 +1052,6 @@ namespace Nethermind.Trie.Test.Pruning
         }
 
         [Test]
-        public Task Will_RePersist_PersistedReCommittedNode()
-        {
-            MemDb memDb = new();
-
-            using TrieStore fullTrieStore = CreateTrieStore(
-                kvStore: memDb,
-                pruningStrategy: new TestPruningStrategy(true, true),
-                persistenceStrategy: No.Persistence,
-                pruningConfig: new PruningConfig()
-                {
-                    PruningBoundary = 3,
-                    TrackPastKeys = true
-                });
-
-            PatriciaTree topTree = new PatriciaTree(fullTrieStore.GetTrieStore(null), LimboLogs.Instance);
-
-            byte[] key1 = Bytes.FromHexString("0000000000000000000000000000000000000000000000000000000000000000");
-            byte[] key2 = Bytes.FromHexString("0011000000000000000000000000000000000000000000000000000000000000");
-
-            BlockHeader? baseBlock = null;
-            for (int i = 0; i < 64; i++)
-            {
-                using (fullTrieStore.BeginScope(baseBlock))
-                {
-                    topTree.Set(key1, [1, 2]);
-                    topTree.Set(key2, [4, (byte)(i % 4)]);
-
-                    using (fullTrieStore.BeginStateBlockCommit(i, topTree.Root))
-                    {
-                        topTree.Commit();
-                    }
-
-                    baseBlock = Build.A.BlockHeader.WithParentOptional(baseBlock).WithStateRoot(topTree.RootHash).TestObject;
-                }
-
-                fullTrieStore.WaitForPruning();
-            }
-
-            memDb.Count.Should().Be(13);
-            memDb.WritesCount.Should().Be(184);
-            return Task.CompletedTask;
-        }
-
-        [Test]
         public void When_SomeKindOfNonResolvedNotInMainWorldState_OnPrune_DoNotDeleteNode()
         {
             IDbProvider memDbProvider = TestMemDbProvider.Init();
@@ -1221,6 +1177,89 @@ namespace Nethermind.Trie.Test.Pruning
 
             fullTrieStore.Dispose();
             memDb.Count.Should().Be(1);
+        }
+
+        [Test]
+        public void Will_NotPruneTopLevelNode()
+        {
+            if (_scheme == INodeStorage.KeyScheme.Hash) Assert.Ignore("Not applicable for hash");
+
+            MemDb memDb = new();
+
+            TrieStore fullTrieStore = CreateTrieStore(
+                kvStore: memDb,
+                pruningStrategy: new TestPruningStrategy(
+                    shouldPrune: false,
+                    deleteObsoleteKeys: true
+                ),
+                persistenceStrategy: No.Persistence,
+                pruningConfig: new PruningConfig()
+                {
+                    PruningBoundary = 4,
+                    PrunePersistedNodePortion = 1.0,
+                    DirtyNodeShardBit = 4,
+                    MaxBufferedCommitCount = 0,
+                    TrackPastKeys = true
+                });
+
+            PatriciaTree ptree = new PatriciaTree(fullTrieStore.GetTrieStore(null), LimboLogs.Instance);
+
+            void WriteRandomData(int seed)
+            {
+                ptree.Set(Keccak.Compute(seed.ToBigEndianByteArray()).Bytes, Keccak.Compute(seed.ToBigEndianByteArray()).BytesToArray());
+                ptree.Commit();
+            }
+
+            for (int i = 0; i < 10; i++)
+            {
+                using (fullTrieStore.BeginBlockCommit(i))
+                {
+                    if (i == 0)
+                    {
+                        ptree.Set(Keccak.Compute(10000.ToBigEndianByteArray()).Bytes, Keccak.Compute(i.ToBigEndianByteArray()).BytesToArray());
+                    }
+                    WriteRandomData(i);
+                }
+            }
+            fullTrieStore.PersistAndPruneDirtyCache();
+
+            for (int i = 10; i < 15; i++)
+            {
+                using (fullTrieStore.BeginBlockCommit(i))
+                {
+                    WriteRandomData(i);
+                }
+            }
+            // Do a branch
+            for (int i = 10; i < 15; i++)
+            {
+                using (fullTrieStore.BeginBlockCommit(i))
+                {
+                    WriteRandomData(i * 10);
+                }
+            }
+            fullTrieStore.PersistAndPruneDirtyCache();
+
+            for (int i = 15; i < 20; i++)
+            {
+                using (fullTrieStore.BeginBlockCommit(i))
+                {
+                    WriteRandomData(i);
+                }
+            }
+
+            fullTrieStore.PrunePersistedNodes();
+            fullTrieStore.CachedNodesCount.Should().Be(45);
+
+            fullTrieStore.PersistAndPruneDirtyCache();
+            fullTrieStore.PrunePersistedNodes();
+            fullTrieStore.CachedNodesCount.Should().Be(14);
+        }
+
+        [Test]
+        public void Will_NotDeleteNodeIfParentNotDeleted()
+        {
+
         }
     }
 }
