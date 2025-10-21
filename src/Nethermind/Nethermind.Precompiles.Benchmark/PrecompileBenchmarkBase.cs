@@ -6,6 +6,7 @@ using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using BenchmarkDotNet.Attributes;
+using Nethermind.Core;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.Evm.Precompiles;
@@ -31,7 +32,7 @@ namespace Nethermind.Precompiles.Benchmark
             public string Name { get; } = name;
 
             public long Gas(IReleaseSpec releaseSpec) =>
-                precompile.BaseGasCost(releaseSpec) + precompile.DataGasCost(Bytes, releaseSpec);
+                precompile.BaseGasCost(releaseSpec) + precompile.DataGasCost(Bytes, releaseSpec).Data;
 
             public override string ToString() => Name;
         }
@@ -76,7 +77,10 @@ namespace Nethermind.Precompiles.Benchmark
             => Bytes.FromHexString(line.Split(',')[0]);
 
         [Benchmark(Baseline = true)]
-        public (ReadOnlyMemory<byte>, bool) Baseline()
-            => Input.Precompile.Run(Input.Bytes, Cancun.Instance);
+        public (byte[], bool) Baseline()
+        {
+            Result<byte[]> result = Input.Precompile.Run(Input.Bytes, Cancun.Instance);
+            return (result.Data!, result.ResultType == ResultType.Success);
+        }
     }
 }
