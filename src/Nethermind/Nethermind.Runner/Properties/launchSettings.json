@@ -35,13 +35,6 @@
         "ASPNETCORE_ENVIRONMENT": "Development"
       }
     },
-    "Holesky": {
-      "commandName": "Project",
-      "commandLineArgs": "-c holesky --data-dir .data",
-      "environmentVariables": {
-        "ASPNETCORE_ENVIRONMENT": "Development"
-      }
-    },
     "Hoodi": {
       "commandName": "Project",
       "commandLineArgs": "-c hoodi --data-dir .data",
