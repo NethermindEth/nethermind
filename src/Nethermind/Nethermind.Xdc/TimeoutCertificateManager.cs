@@ -31,7 +31,7 @@ public class TimeoutCertificateManager(XdcContext context, ISnapshotManager snap
 
     private EthereumEcdsa _ethereumEcdsa = new EthereumEcdsa(0);
     private static readonly TimeoutDecoder _timeoutDecoder = new();
-    private HashSet<Timeout> _timeouts = new HashSet<Timeout>();
+    private XdcPool<Timeout> _timeouts = new ();
 
     public void HandleTimeout(Timeout timeout)
     {
@@ -40,7 +40,7 @@ public class TimeoutCertificateManager(XdcContext context, ISnapshotManager snap
             throw new CertificateValidationException(CertificateType.TimeoutCertificate, CertificateValidationFailure.InvalidRound);
         }
 
-        _timeouts.Add(timeout);
+        var count = _timeouts.Add(timeout);
 
         BlockHeader header = _blockTree.Head?.Header;
         if (header is not XdcBlockHeader xdcHeader)
@@ -53,7 +53,7 @@ public class TimeoutCertificateManager(XdcContext context, ISnapshotManager snap
 
         IXdcReleaseSpec spec = _specProvider.GetXdcSpec(xdcHeader, timeout.Round);
         var certThreshold = spec.CertThreshold;
-        if (_timeouts.Count >= epochSwitchInfo.Masternodes.Length * certThreshold)
+        if (count >= epochSwitchInfo.Masternodes.Length * certThreshold)
         {
             // The original code passes the collected timeouts instead of using the global variable, check rase condition?
             OnTimeoutPoolThresholdReached(timeout);
@@ -62,7 +62,7 @@ public class TimeoutCertificateManager(XdcContext context, ISnapshotManager snap
 
     private void OnTimeoutPoolThresholdReached(Timeout timeout)
     {
-        Signature[] signatures = _timeouts.Select(t => t.Signature).ToArray();
+        Signature[] signatures = _timeouts.GetItems(timeout).Select(t => t.Signature).ToArray();
 
         var timeoutCertificate = new TimeoutCertificate(timeout.Round, signatures, timeout.GapNumber);
 
@@ -186,7 +186,7 @@ public class TimeoutCertificateManager(XdcContext context, ISnapshotManager snap
         ValueHash256 msgHash = ComputeTimeoutMsgHash(_ctx.CurrentRound, gapNumber);
         Signature signedHash = _signer.Sign(msgHash);
         var timeoutMsg = new Timeout(_ctx.CurrentRound, signedHash, gapNumber);
-        timeoutMsg.SetSigner(_signer.Address);
+        timeoutMsg.Signer = _signer.Address;
 
         HandleTimeout(timeoutMsg);
 
@@ -213,4 +213,3 @@ public class TimeoutCertificateManager(XdcContext context, ISnapshotManager snap
     }
 
 }
-
