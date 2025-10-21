@@ -1,6 +1,10 @@
 // SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using Nethermind.Config;
+using Nethermind.Core.Crypto;
+using Nethermind.Logging;
+using Nethermind.Serialization.Json;
 using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
@@ -8,10 +12,6 @@ using System.IO;
 using System.Linq;
 using System.Text.Json;
 using System.Threading.Tasks;
-using Nethermind.Config;
-using Nethermind.Core.Crypto;
-using Nethermind.Logging;
-using Nethermind.Serialization.Json;
 
 namespace Nethermind.Network;
 
@@ -25,7 +25,38 @@ public abstract class NodesManager(string path, ILogger logger)
     private void EnsureFile(string resource)
     {
         if (File.Exists(path))
+        {
             return;
+        }
+        else // For backward compatibility. To be removed in future versions.
+        {
+            string oldPath = Path.GetFullPath(string.Empty.GetApplicationResourcePath($"Data/{resource}"));
+
+            if (File.Exists(oldPath))
+            {
+                var moved = true;
+
+                try
+                {
+                    File.Move(oldPath, path, false);
+                }
+                catch (Exception ex)
+                {
+                    moved = false;
+
+                    if (_logger.IsWarn)
+                        _logger.Warn($"Failed to move {oldPath} to {Path.GetFullPath(path)}: {ex.Message}\n  {resource} is ignored and will not be used");
+                }
+
+                if (moved)
+                {
+                    if (_logger.IsWarn)
+                        _logger.Warn($"{oldPath} has been moved to {Path.GetFullPath(path)}");
+
+                    return;
+                }
+            }
+        }
 
         // Create the directory if needed
         Directory.CreateDirectory(Path.GetDirectoryName(path));
