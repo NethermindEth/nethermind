@@ -47,10 +47,13 @@ public class TimeoutCertificateManagerTests
         XdcBlockHeader header = Build.A.XdcBlockHeader().TestObject;
         blockTree.FindHeader(Arg.Any<long>()).Returns(header);
         var tcManager = new TimeoutCertificateManager(
+            new XdcContext(),
             snapshotManager,
             Substitute.For<IEpochSwitchManager>(),
             Substitute.For<ISpecProvider>(),
-            blockTree);
+            blockTree,
+            Substitute.For<ISyncInfoManager>(),
+            Substitute.For<ISigner>());
 
         var ok = tcManager.VerifyTimeoutCertificate(tc, out var err);
         Assert.That(ok, Is.False);
@@ -68,10 +71,13 @@ public class TimeoutCertificateManagerTests
         XdcBlockHeader header = Build.A.XdcBlockHeader().TestObject;
         blockTree.FindHeader(Arg.Any<long>()).Returns(header);
         var tcManager = new TimeoutCertificateManager(
+            new XdcContext(),
             snapshotManager,
             Substitute.For<IEpochSwitchManager>(),
             Substitute.For<ISpecProvider>(),
-            blockTree);
+            blockTree,
+            Substitute.For<ISyncInfoManager>(),
+            Substitute.For<ISigner>());
 
         var ok = tcManager.VerifyTimeoutCertificate(tc, out var err);
         Assert.That(ok, Is.False);
@@ -128,7 +134,12 @@ public class TimeoutCertificateManagerTests
         blockTree.Head.Returns(new Block(header, new BlockBody()));
         blockTree.FindHeader(Arg.Any<long>()).Returns(header);
 
-        var tcManager = new TimeoutCertificateManager(snapshotManager, epochSwitchManager, specProvider, blockTree);
+        var context = new XdcContext();
+        ISyncInfoManager syncInfoManager = Substitute.For<ISyncInfoManager>();
+        ISigner signer = Substitute.For<ISigner>();
+
+        var tcManager = new TimeoutCertificateManager(context, snapshotManager, epochSwitchManager, specProvider,
+            blockTree, syncInfoManager, signer);
 
         Assert.That(tcManager.VerifyTimeoutCertificate(timeoutCertificate, out _), Is.EqualTo(expected));
     }

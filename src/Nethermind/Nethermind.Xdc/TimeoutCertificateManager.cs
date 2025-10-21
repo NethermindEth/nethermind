@@ -31,7 +31,7 @@ public class TimeoutCertificateManager(XdcContext context, ISnapshotManager snap
 
     private EthereumEcdsa _ethereumEcdsa = new EthereumEcdsa(0);
     private static readonly TimeoutDecoder _timeoutDecoder = new();
-    private XdcPool<Timeout> _timeouts = new ();
+    private XdcPool<Timeout> _timeouts = new();
 
     public Task HandleTimeout(Timeout timeout)
     {
@@ -183,7 +183,7 @@ public class TimeoutCertificateManager(XdcContext context, ISnapshotManager snap
 
     private bool FilterTimeout(Timeout timeout)
     {
-        if(timeout.Round < _ctx.CurrentRound) return false;
+        if (timeout.Round < _ctx.CurrentRound) return false;
         Snapshot snapshot = _snapshotManager.GetSnapshotByGapNumber(_blockTree, timeout.GapNumber);
         if (snapshot is null || snapshot.NextEpochCandidates.Length == 0) return false;
 
