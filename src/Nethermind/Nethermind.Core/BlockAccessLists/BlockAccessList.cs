@@ -487,7 +487,7 @@ public struct BlockAccessList : IEquatable<BlockAccessList>, IJournal<int>
 
         foreach (StorageChange storageChange in accountChanges.StorageChanges[key].Changes.AsEnumerable().Reverse())
         {
-            Console.WriteLine("storage change = " + storageChange.ToString());
+            Console.WriteLine($"index={Index} storage change = {storageChange.ToString()}");
             if (storageChange.BlockAccessIndex != Index)
             {
                 // storage changed in previous tx in block
@@ -499,9 +499,9 @@ public struct BlockAccessList : IEquatable<BlockAccessList>, IJournal<int>
         foreach (Change change in _changes)
         {
             // tmp
-            if (change.Type == ChangeType.StorageChange && change.Address == address)
+            if (change.Type == ChangeType.StorageChange && change.Address == address && Enumerable.SequenceEqual(change.Slot!, key))
             {
-                Console.WriteLine($"found change with slot={change.Slot} current={key} pretx={(change.PreTxStorage is null ? "null" : Bytes.ToHexString(change.PreTxStorage))} afterInstr={Bytes.ToHexString(afterInstr.ToArray())} previousvalue={change.PreviousValue}");
+                Console.WriteLine($"found change with pretx={(change.PreTxStorage is null ? "null" : Bytes.ToHexString(change.PreTxStorage))} afterInstr={Bytes.ToHexString(afterInstr.ToArray())} previousvalue={(change.PreviousValue is null ? "null" : change.PreviousValue)}");
             }
             if (change.Type == ChangeType.StorageChange && change.Address == address && Enumerable.SequenceEqual(change.Slot!, key) && change.PreviousValue is null)
             {
