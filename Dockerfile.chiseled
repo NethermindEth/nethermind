@@ -1,7 +1,7 @@
 # SPDX-FileCopyrightText: 2024 Demerzel Solutions Limited
 # SPDX-License-Identifier: LGPL-3.0-only
 
-FROM --platform=$BUILDPLATFORM mcr.microsoft.com/dotnet/sdk:9.0.305-noble@sha256:802e64ab9e113bdfa5d476ae00c7b40ab5c42da1792731c41a47f43bc4e74bdb AS build
+FROM --platform=$BUILDPLATFORM mcr.microsoft.com/dotnet/sdk:9.0.306-noble@sha256:d88e637d15248531967111fba05c6725ad45ea1dace3d35d8cfe2c4d4094e25d AS build
 
 ARG BUILD_CONFIG=release
 ARG CI=true
@@ -28,7 +28,7 @@ RUN cd /publish && \
   mkdir logs && \
   mkdir nethermind_db
 
-FROM mcr.microsoft.com/dotnet/aspnet:9.0.9-noble-chiseled@sha256:337593691c082d42622df10ae86bb2dc5467be6313ff79d4ab4e91a063516600
+FROM mcr.microsoft.com/dotnet/aspnet:9.0.10-noble-chiseled@sha256:4df4493cf27cedbfdbed5333bab1651792f7fc105d4c6c4469b3adc039ed5d64
 
 WORKDIR /nethermind
 

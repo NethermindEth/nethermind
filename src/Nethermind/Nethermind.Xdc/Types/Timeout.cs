@@ -9,8 +9,9 @@ using Nethermind.Xdc.RLP;
 
 namespace Nethermind.Xdc.Types;
 
-public class Timeout(ulong round, Signature? signature, ulong gapNumber)
+public class Timeout(ulong round, Signature? signature, ulong gapNumber) : IXdcPoolItem
 {
+    private readonly TimeoutDecoder _decoder = new();
     private Address signer;
 
     public ulong Round { get; set; } = round;
@@ -20,4 +21,5 @@ public class Timeout(ulong round, Signature? signature, ulong gapNumber)
     public override string ToString() => $"{Round}:{GapNumber}";
 
     public void SetSigner(Address signer) => this.signer = signer;
+    public (ulong Round, Hash256 hash) PoolKey() => (Round, Keccak.Compute(_decoder.Encode(this, RlpBehaviors.ForSealing).Bytes));
 }

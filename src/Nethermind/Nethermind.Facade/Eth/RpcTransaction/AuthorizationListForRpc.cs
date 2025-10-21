@@ -79,7 +79,7 @@ public class AuthorizationListForRpc : IEnumerable<RpcAuthTuple>
         return GetEnumerator();
     }
 
-    private class JsonConverter : JsonConverter<AuthorizationListForRpc>
+    public class JsonConverter : JsonConverter<AuthorizationListForRpc>
     {
         public override AuthorizationListForRpc? Read(ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options)
         {

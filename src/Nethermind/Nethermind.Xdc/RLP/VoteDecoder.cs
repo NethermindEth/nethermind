@@ -78,6 +78,17 @@ public class VoteDecoder : IRlpValueDecoder<Vote>, IRlpStreamDecoder<Vote>
         stream.Encode(item.GapNumber);
     }
 
+    public Rlp Encode(Vote item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+    {
+        if (item is null)
+            return Rlp.OfEmptySequence;
+
+        RlpStream rlpStream = new(GetLength(item, rlpBehaviors));
+        Encode(rlpStream, item, rlpBehaviors);
+
+        return new Rlp(rlpStream.Data.ToArray());
+    }
+
     public int GetLength(Vote item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
     {
         return Rlp.LengthOfSequence(GetContentLength(item, rlpBehaviors));

@@ -31,9 +31,6 @@ public class GenesisBuilder(
         Block genesis = chainSpec.Genesis;
         Preallocate(genesis);
 
-        // we no longer need the allocations - 0.5MB RAM, 9000 objects for mainnet
-        chainSpec.Allocations = null;
-
         foreach (IGenesisPostProcessor postProcessor in postProcessors)
         {
             postProcessor.PostProcess(genesis);
@@ -48,6 +45,9 @@ public class GenesisBuilder(
         }
 
         genesis.Header.Hash = genesis.Header.CalculateHash();
+
+        // we no longer need the allocations - 0.5MB RAM, 9000 objects for mainnet
+        chainSpec.Allocations = null;
 
         return genesis;
     }

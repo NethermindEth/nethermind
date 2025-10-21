@@ -91,7 +91,7 @@ public class XdcBlockHeader : BlockHeader, IHashResolver
             if (_extraFieldsV2 == null)
             {
                 //Check V2 consensus version in ExtraData field.
-                if (ExtraData.Length < 3 || ExtraData[0] != 2)
+                if (ExtraData.Length < 3 || ExtraData[0] != XdcConstants.ConsensusVersion)
                     return null;
                 Rlp.ValueDecoderContext valueDecoderContext = new Rlp.ValueDecoderContext(ExtraData.AsSpan(1));
                 _extraFieldsV2 = _extraConsensusDataDecoder.Decode(ref valueDecoderContext);

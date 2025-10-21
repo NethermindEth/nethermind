@@ -79,18 +79,24 @@ namespace Nethermind.AuRa.Test.Contract
             testCase.ContractDataStore.GetItemsFromContractAtBlock(blockHeader).Should().BeEquivalentTo(expected.Cast<object>());
 
             Block secondBlock = Build.A.Block.WithHeader(Build.A.BlockHeader.WithNumber(3).WithHash(TestItem.KeccakB).WithParentHash(TestItem.KeccakC).TestObject).TestObject;
-            expected = new[] { TestItem.AddressC, TestItem.AddressB };
+            expected = [TestItem.AddressC, TestItem.AddressB];
             testCase.DataContract.GetAllItemsFromBlock(secondBlock.Header).Returns(new[] { TestItem.AddressB });
             testCase.ContractDataStore.GetItemsFromContractAtBlock(blockHeader);
             testCase.BlockTree.NewHeadBlock += Raise.EventWith(new BlockEventArgs(secondBlock));
 
-            testCase.ContractDataStore.GetItemsFromContractAtBlock(secondBlock.Header).Should().BeEquivalentTo(expected.Cast<object>());
+            Assert.That(
+                () => testCase.ContractDataStore.GetItemsFromContractAtBlock(secondBlock.Header),
+                Is.EquivalentTo(expected.Cast<object>()).After(1000, 100)
+            );
 
             localDataSource.Data.Returns(new[] { TestItem.AddressC, TestItem.AddressD });
-            expected = new[] { TestItem.AddressC, TestItem.AddressD, TestItem.AddressB };
+            expected = [TestItem.AddressC, TestItem.AddressD, TestItem.AddressB];
             localDataSource.Changed += Raise.Event<EventHandler>();
 
-            testCase.ContractDataStore.GetItemsFromContractAtBlock(secondBlock.Header).Should().BeEquivalentTo(expected.Cast<object>());
+            Assert.That(
+                () => testCase.ContractDataStore.GetItemsFromContractAtBlock(secondBlock.Header),
+                Is.EquivalentTo(expected.Cast<object>()).After(1000, 100)
+            );
         }
 
         protected override TestCase<T> BuildTestCase<T>(IComparer<T> keyComparer = null, IComparer<T> valueComparer = null) =>

@@ -7,18 +7,13 @@ using Nethermind.Logging;
 
 namespace Nethermind.Network.Discovery;
 
-public abstract class NettyDiscoveryBaseHandler : SimpleChannelInboundHandler<DatagramPacket>
+public abstract class NettyDiscoveryBaseHandler(ILogManager? logManager) : SimpleChannelInboundHandler<DatagramPacket>
 {
-    private readonly ILogger _logger;
+    private readonly ILogger _logger = logManager?.GetClassLogger<NettyDiscoveryBaseHandler>() ?? throw new ArgumentNullException(nameof(logManager));
 
     // https://github.com/ethereum/devp2p/blob/master/discv4.md#wire-protocol
     // https://github.com/ethereum/devp2p/blob/master/discv5/discv5-wire.md#udp-communication
     protected const int MaxPacketSize = 1280;
-
-    protected NettyDiscoveryBaseHandler(ILogManager? logManager)
-    {
-        _logger = logManager?.GetClassLogger<NettyDiscoveryBaseHandler>() ?? throw new ArgumentNullException(nameof(logManager));
-    }
 
     public override void ChannelRead(IChannelHandlerContext ctx, object msg)
     {
