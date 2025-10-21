@@ -487,7 +487,7 @@ public struct BlockAccessList : IEquatable<BlockAccessList>, IJournal<int>
             }
         }
 
-        throw new Exception("Error calculating pre tx balance");
+        throw new Exception("Error calculating pre tx storage");
     }
 
     private enum ChangeType
