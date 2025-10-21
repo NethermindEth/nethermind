@@ -55,25 +55,25 @@ public class QuorumCertificateManagerTest
         //Base valid control case
         PrivateKey[] keys = keyBuilder.Generate(20).ToArray();
         IEnumerable<Address> masterNodes = keys.Select(k => k.Address);
-        yield return new TestCaseData(CreateQc(new BlockRoundInfo(headerBuilder.TestObject.Hash!, 1, 1), 0, keys), headerBuilder, keys.Select(k => k.Address), true);
+        yield return new TestCaseData(XdcTestHelper.CreateQc(new BlockRoundInfo(headerBuilder.TestObject.Hash!, 1, 1), 0, keys), headerBuilder, keys.Select(k => k.Address), true);
 
         //Not enough signatures
-        yield return new TestCaseData(CreateQc(new BlockRoundInfo(headerBuilder.TestObject.Hash!, 1, 1), 0, keys.Take(13).ToArray()), headerBuilder, keys.Select(k => k.Address), false);
+        yield return new TestCaseData(XdcTestHelper.CreateQc(new BlockRoundInfo(headerBuilder.TestObject.Hash!, 1, 1), 0, keys.Take(13).ToArray()), headerBuilder, keys.Select(k => k.Address), false);
 
         //1 Vote is not master node
-        yield return new TestCaseData(CreateQc(new BlockRoundInfo(headerBuilder.TestObject.Hash!, 1, 1), 0, keys), headerBuilder, keys.Skip(1).Select(k => k.Address), false);
+        yield return new TestCaseData(XdcTestHelper.CreateQc(new BlockRoundInfo(headerBuilder.TestObject.Hash!, 1, 1), 0, keys), headerBuilder, keys.Skip(1).Select(k => k.Address), false);
 
         //Wrong gap number
-        yield return new TestCaseData(CreateQc(new BlockRoundInfo(headerBuilder.TestObject.Hash!, 1, 1), 1, keys), headerBuilder, masterNodes, false);
+        yield return new TestCaseData(XdcTestHelper.CreateQc(new BlockRoundInfo(headerBuilder.TestObject.Hash!, 1, 1), 1, keys), headerBuilder, masterNodes, false);
 
         //Wrong block number in QC
-        yield return new TestCaseData(CreateQc(new BlockRoundInfo(headerBuilder.TestObject.Hash!, 1, 2), 0, keys), headerBuilder, masterNodes, false);
+        yield return new TestCaseData(XdcTestHelper.CreateQc(new BlockRoundInfo(headerBuilder.TestObject.Hash!, 1, 2), 0, keys), headerBuilder, masterNodes, false);
 
         //Wrong hash in QC
-        yield return new TestCaseData(CreateQc(new BlockRoundInfo(Hash256.Zero, 1, 1), 0, keys), headerBuilder, masterNodes, false);
+        yield return new TestCaseData(XdcTestHelper.CreateQc(new BlockRoundInfo(Hash256.Zero, 1, 1), 0, keys), headerBuilder, masterNodes, false);
 
         //Wrong round number in QC
-        yield return new TestCaseData(CreateQc(new BlockRoundInfo(headerBuilder.TestObject.Hash!, 0, 1), 0, keys), headerBuilder, masterNodes, false);
+        yield return new TestCaseData(XdcTestHelper.CreateQc(new BlockRoundInfo(headerBuilder.TestObject.Hash!, 0, 1), 0, keys), headerBuilder, masterNodes, false);
     }
 
     [TestCaseSource(nameof(QcCases))]
@@ -97,28 +97,5 @@ public class QuorumCertificateManagerTest
             epochSwitchManager);
 
         Assert.That(quorumCertificateManager.VerifyCertificate(quorumCert, xdcBlockHeaderBuilder.TestObject, out _), Is.EqualTo(expected));
-    }
-
-    private static QuorumCertificate CreateQc(BlockRoundInfo roundInfo, ulong gapNumber, PrivateKey[] keys)
-    {
-        EthereumEcdsa ecdsa = new EthereumEcdsa(0);
-        var qcEncoder = new VoteDecoder();
-
-        IEnumerable<Signature> signatures = CreateVoteSignatures(roundInfo, gapNumber, keys);
-
-        return new QuorumCertificate(roundInfo, signatures.ToArray(), gapNumber);
-    }
-
-    private static Signature[] CreateVoteSignatures(BlockRoundInfo roundInfo, ulong gapnumber, PrivateKey[] keys)
-    {
-        EthereumEcdsa ecdsa = new EthereumEcdsa(0);
-        var encoder = new VoteDecoder();
-        IEnumerable<Signature> signatures = keys.Select(k =>
-        {
-            var stream = new KeccakRlpStream();
-            encoder.Encode(stream, new Vote(roundInfo, gapnumber), RlpBehaviors.ForSealing);
-            return ecdsa.Sign(k, stream.GetValueHash());
-        }).ToArray();
-        return signatures.ToArray();
     }
 }
