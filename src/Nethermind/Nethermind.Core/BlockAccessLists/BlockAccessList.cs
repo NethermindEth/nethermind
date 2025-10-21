@@ -485,7 +485,7 @@ public struct BlockAccessList : IEquatable<BlockAccessList>, IJournal<int>
         {
             // first storage change of block
             // return storage prior to this instruction
-            return beforeInstr != afterInstr;
+            return !Enumerable.SequenceEqual(beforeInstr.ToArray(), afterInstr.ToArray());
         }
 
         foreach (StorageChange storageChange in accountChanges.StorageChanges[key].Changes.AsEnumerable().Reverse())
@@ -494,7 +494,7 @@ public struct BlockAccessList : IEquatable<BlockAccessList>, IJournal<int>
             if (storageChange.BlockAccessIndex != Index)
             {
                 // storage changed in previous tx in block
-                return storageChange.NewValue.Unwrap().AsSpan() != afterInstr;
+                return !Enumerable.SequenceEqual(storageChange.NewValue.Unwrap(), afterInstr.ToArray());
             }
         }
 
@@ -508,11 +508,10 @@ public struct BlockAccessList : IEquatable<BlockAccessList>, IJournal<int>
             }
             if (change.Type == ChangeType.StorageChange && change.Address == address && Enumerable.SequenceEqual(change.Slot!, key) && change.PreviousValue is null)
             {
-                Console.WriteLine($"has changed = {change.PreTxStorage is null || change.PreTxStorage.AsSpan() != afterInstr}");
-                Console.WriteLine($"has changed 2 = {change.PreTxStorage is null || !Enumerable.SequenceEqual(change.PreTxStorage, afterInstr.ToArray())}");
+                Console.WriteLine($"has changed = {change.PreTxStorage is null || !Enumerable.SequenceEqual(change.PreTxStorage, afterInstr.ToArray())}");
 
                 // first change of this transaction & block
-                return change.PreTxStorage is null || change.PreTxStorage.AsSpan() != afterInstr;
+                return change.PreTxStorage is null || !Enumerable.SequenceEqual(change.PreTxStorage, afterInstr.ToArray());
             }
         }
 
