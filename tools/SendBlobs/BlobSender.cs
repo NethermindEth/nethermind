@@ -7,6 +7,7 @@ using Nethermind.Consensus;
 using Nethermind.Core.Crypto;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
+using Nethermind.Core.Extensions;
 using Nethermind.Crypto;
 using Nethermind.Evm;
 using Nethermind.Facade.Proxy.Models;
@@ -77,7 +78,10 @@ internal class BlobSender
         }
 
         string? chainIdString = await _rpcClient.Post<string>("eth_chainId") ?? "1";
-        ulong chainId = HexConvert.ToUInt64(chainIdString);
+        // Parse hex or decimal chain id to ulong using core utilities
+        ulong chainId = chainIdString!.StartsWith("0x", StringComparison.OrdinalIgnoreCase)
+            ? Bytes.FromHexString(chainIdString).AsSpan().ReadEthUInt64()
+            : Convert.ToUInt64(chainIdString);
 
         foreach (PrivateKey privateKey in privateKeys)
         {
@@ -87,7 +91,8 @@ internal class BlobSender
                 _logger.Error("Unable to get nonce");
                 return;
             }
-            ulong nonce = HexConvert.ToUInt64(nonceString);
+            // Nonce is returned as hex; convert safely
+            ulong nonce = Bytes.FromHexString(nonceString!).AsSpan().ReadEthUInt64();
 
             signers.Add(new(new Signer(chainId, privateKey, _logManager), nonce));
         }
@@ -221,7 +226,9 @@ internal class BlobSender
         }
 
         string? chainIdString = await _rpcClient.Post<string>("eth_chainId") ?? "1";
-        ulong chainId = HexConvert.ToUInt64(chainIdString);
+        ulong chainId = chainIdString!.StartsWith("0x", StringComparison.OrdinalIgnoreCase)
+            ? Bytes.FromHexString(chainIdString).AsSpan().ReadEthUInt64()
+            : Convert.ToUInt64(chainIdString);
 
 
         string? nonceString = await _rpcClient.Post<string>("eth_getTransactionCount", privateKey.Address, "latest");
@@ -230,7 +237,7 @@ internal class BlobSender
             _logger.Error("Unable to get nonce");
             return;
         }
-        ulong nonce = HexConvert.ToUInt64(nonceString);
+        ulong nonce = Bytes.FromHexString(nonceString!).AsSpan().ReadEthUInt64();
 
         Signer signer = new(chainId, privateKey, _logManager);
 
@@ -280,7 +287,8 @@ internal class BlobSender
         if (defaultMaxPriorityFeePerGas is null)
         {
             string? maxPriorityFeePerGasRes = await _rpcClient.Post<string>("eth_maxPriorityFeePerGas") ?? "1";
-            result.maxPriorityFeePerGas = HexConvert.ToUInt256(maxPriorityFeePerGasRes);
+            // RPC returns hex; use unified UInt256 parsing path
+            result.maxPriorityFeePerGas = new UInt256(Bytes.FromHexString(maxPriorityFeePerGasRes!));
         }
         else
         {
