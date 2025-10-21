@@ -57,7 +57,7 @@ public class PointEvaluationPrecompileTests
     public void Test_PointEvaluationPrecompile_Has_Specific_Constant_Gas_Cost(byte[] input)
     {
         const long fixedGasCost = 50000;
-        long gasSpent = PointEvaluationPrecompile.Instance.DataGasCost(input, Cancun.Instance) +
+        long gasSpent = PointEvaluationPrecompile.Instance.DataGasCost(input, Cancun.Instance).Data +
                         PointEvaluationPrecompile.Instance.BaseGasCost(Cancun.Instance);
         gasSpent.Should().Be(fixedGasCost);
     }

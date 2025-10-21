@@ -24,19 +24,19 @@ public class EcRecoverPrecompile : IPrecompile<EcRecoverPrecompile>
 
     public static string Name => "ECREC";
 
-    public long DataGasCost(ReadOnlyMemory<byte> inputData, IReleaseSpec releaseSpec) => 0L;
+    public Result<long> DataGasCost(ReadOnlyMemory<byte> inputData, IReleaseSpec releaseSpec) => 0L;
 
     public long BaseGasCost(IReleaseSpec releaseSpec) => 3000L;
 
     private readonly byte[] _zero31 = new byte[31];
 
-    public (byte[], bool) Run(ReadOnlyMemory<byte> inputData, IReleaseSpec releaseSpec)
+    public Result<byte[]> Run(ReadOnlyMemory<byte> inputData, IReleaseSpec releaseSpec)
     {
         Metrics.EcRecoverPrecompile++;
         return inputData.Length >= 128 ? RunInternal(inputData.Span) : RunInternal(inputData);
     }
 
-    private (byte[], bool) RunInternal(ReadOnlyMemory<byte> inputData)
+    private Result<byte[]> RunInternal(ReadOnlyMemory<byte> inputData)
     {
         Span<byte> inputDataSpan = stackalloc byte[128];
         inputData.Span[..Math.Min(128, inputData.Length)]
@@ -45,7 +45,7 @@ public class EcRecoverPrecompile : IPrecompile<EcRecoverPrecompile>
         return RunInternal(inputDataSpan);
     }
 
-    private (byte[], bool) RunInternal(ReadOnlySpan<byte> inputDataSpan)
+    private Result<byte[]> RunInternal(ReadOnlySpan<byte> inputDataSpan)
     {
         ReadOnlySpan<byte> vBytes = inputDataSpan.Slice(32, 32);
 
@@ -53,24 +53,24 @@ public class EcRecoverPrecompile : IPrecompile<EcRecoverPrecompile>
         // TEST: CALLCODEEcrecoverV_prefixedf0_d1g0v0
         if (!Bytes.AreEqual(_zero31, vBytes[..31]))
         {
-            return ([], true);
+            return Array.Empty<byte>();
         }
 
         byte v = vBytes[31];
         if (v != 27 && v != 28)
         {
-            return ([], true);
+            return Array.Empty<byte>();
         }
 
         Span<byte> publicKey = stackalloc byte[65];
         if (!EthereumEcdsa.RecoverAddressRaw(inputDataSpan.Slice(64, 64), Signature.GetRecoveryId(v),
                 inputDataSpan[..32], publicKey))
         {
-            return ([], true);
+            return Array.Empty<byte>();
         }
 
         byte[] result = ValueKeccak.Compute(publicKey.Slice(1, 64)).ToByteArray();
         result.AsSpan(0, 12).Clear();
-        return (result, true);
+        return result;
     }
 }

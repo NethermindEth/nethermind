@@ -54,7 +54,7 @@ public class ModExpPrecompile : IPrecompile<ModExpPrecompile>
     /// <param name="inputData"></param>
     /// <param name="releaseSpec"></param>
     /// <returns>Gas cost of the MODEXP operation in the context of EIP2565</returns>
-    public long DataGasCost(ReadOnlyMemory<byte> inputData, IReleaseSpec releaseSpec)
+    public Result<long> DataGasCost(ReadOnlyMemory<byte> inputData, IReleaseSpec releaseSpec)
     {
         if (!releaseSpec.IsEip2565Enabled)
         {
@@ -72,7 +72,7 @@ public class ModExpPrecompile : IPrecompile<ModExpPrecompile>
         }
         catch (OverflowException)
         {
-            return long.MaxValue;
+            return Errors.Overflow;
         }
     }
 
@@ -227,7 +227,7 @@ public class ModExpPrecompile : IPrecompile<ModExpPrecompile>
         return (0, uint.MaxValue, 0);
     }
 
-    public unsafe (byte[], bool) Run(ReadOnlyMemory<byte> inputData, IReleaseSpec releaseSpec)
+    public unsafe Result<byte[]> Run(ReadOnlyMemory<byte> inputData, IReleaseSpec releaseSpec)
     {
         Metrics.ModExpPrecompile++;
 
@@ -237,11 +237,11 @@ public class ModExpPrecompile : IPrecompile<ModExpPrecompile>
                 : GetInputLengthsShort(inputSpan);
 
         if (ExceedsMaxInputSize(releaseSpec, baseLength, expLength, modulusLength))
-            return IPrecompile.Failure;
+            return Errors.InvalidInputLength;
 
         // if both are 0, then expLength can be huge, which leads to a potential buffer too big exception
         if (baseLength == 0 && modulusLength == 0)
-            return (Bytes.Empty, true);
+            return Bytes.Empty;
 
         using var modulusInt = mpz_t.Create();
 
@@ -253,7 +253,7 @@ public class ModExpPrecompile : IPrecompile<ModExpPrecompile>
         }
 
         if (Gmp.mpz_sgn(modulusInt) == 0)
-            return (new byte[modulusLength], true);
+            return new byte[modulusLength];
 
         using var baseInt = mpz_t.Create();
         using var expInt = mpz_t.Create();
@@ -282,7 +282,7 @@ public class ModExpPrecompile : IPrecompile<ModExpPrecompile>
         fixed (byte* ptr = &MemoryMarshal.GetArrayDataReference(result))
             Gmp.mpz_export((nint)(ptr + offset), out _, 1, 1, 1, nuint.Zero, powmResult);
 
-        return (result, true);
+        return result;
     }
 
     /// <summary>
@@ -294,7 +294,7 @@ public class ModExpPrecompile : IPrecompile<ModExpPrecompile>
     /// <returns></returns>
     private static ulong MultComplexity(uint baseLength, uint modulusLength, bool isEip7883Enabled)
     {
-        // Pick the larger of the two  
+        // Pick the larger of the two
         uint max = baseLength > modulusLength ? baseLength : modulusLength;
 
         // Compute ceil(max/8) via a single add + shift

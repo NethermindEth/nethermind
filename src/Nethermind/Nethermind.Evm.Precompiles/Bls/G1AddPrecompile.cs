@@ -5,7 +5,6 @@ using System;
 using System.Runtime.CompilerServices;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
-using Nethermind.Evm.Precompiles;
 using G1 = Nethermind.Crypto.Bls.P1;
 
 namespace Nethermind.Evm.Precompiles.Bls;
@@ -27,38 +26,30 @@ public class G1AddPrecompile : IPrecompile<G1AddPrecompile>
 
     public long BaseGasCost(IReleaseSpec releaseSpec) => 375L;
 
-    public long DataGasCost(ReadOnlyMemory<byte> inputData, IReleaseSpec releaseSpec) => 0L;
+    public Result<long> DataGasCost(ReadOnlyMemory<byte> inputData, IReleaseSpec releaseSpec) => 0L;
 
     [SkipLocalsInit]
-    public (byte[], bool) Run(ReadOnlyMemory<byte> inputData, IReleaseSpec releaseSpec)
+    public Result<byte[]> Run(ReadOnlyMemory<byte> inputData, IReleaseSpec releaseSpec)
     {
         Metrics.BlsG1AddPrecompile++;
 
         const int expectedInputLength = 2 * BlsConst.LenG1;
-        if (inputData.Length != expectedInputLength)
-        {
-            return IPrecompile.Failure;
-        }
+        if (inputData.Length != expectedInputLength) return Errors.InvalidInputLength;
 
         G1 x = new(stackalloc long[G1.Sz]);
         G1 y = new(stackalloc long[G1.Sz]);
-        if (!x.TryDecodeRaw(inputData[..BlsConst.LenG1].Span) || !y.TryDecodeRaw(inputData[BlsConst.LenG1..].Span))
-        {
-            return IPrecompile.Failure;
-        }
+        string? error = x.TryDecodeRaw(inputData[..BlsConst.LenG1].Span);
+        if (error is not Errors.NoError) return error;
+
+        error = y.TryDecodeRaw(inputData[BlsConst.LenG1..].Span);
+        if (error is not Errors.NoError) return error;
 
         // adding to infinity point has no effect
-        if (x.IsInf())
-        {
-            return (inputData[BlsConst.LenG1..].ToArray(), true);
-        }
+        if (x.IsInf()) return inputData[BlsConst.LenG1..].ToArray();
 
-        if (y.IsInf())
-        {
-            return (inputData[..BlsConst.LenG1].ToArray(), true);
-        }
+        if (y.IsInf()) return inputData[..BlsConst.LenG1].ToArray();
 
         G1 res = x.Add(y);
-        return (res.EncodeRaw(), true);
+        return res.EncodeRaw();
     }
 }

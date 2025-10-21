@@ -95,5 +95,5 @@ public class Eip7823Tests
     }
 
     private static long TestGas(byte[] input, IReleaseSpec spec)
-        => ModExpPrecompile.Instance.DataGasCost(input, spec);
+        => ModExpPrecompile.Instance.DataGasCost(input, spec).Data;
 }

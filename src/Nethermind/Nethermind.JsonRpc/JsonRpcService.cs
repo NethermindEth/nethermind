@@ -242,7 +242,7 @@ public class JsonRpcService : IJsonRpcService
             return GetErrorResponse(methodName, ErrorCodes.InternalError, errorMessage, null, request.Id, returnAction);
         }
 
-        Result? result = resultWrapper.Result;
+        Result result = resultWrapper.Result;
 
         return result.ResultType != ResultType.Success
             ? GetErrorResponse(methodName, resultWrapper.ErrorCode, result.Error, resultWrapper.Data, request.Id, returnAction, resultWrapper.IsTemporary)

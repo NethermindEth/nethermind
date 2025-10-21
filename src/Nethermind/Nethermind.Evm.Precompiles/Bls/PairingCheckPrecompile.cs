@@ -29,17 +29,14 @@ public class PairingCheckPrecompile : IPrecompile<PairingCheckPrecompile>
 
     public long BaseGasCost(IReleaseSpec releaseSpec) => 37700L;
 
-    public long DataGasCost(ReadOnlyMemory<byte> inputData, IReleaseSpec releaseSpec) => 32600L * (inputData.Length / PairSize);
+    public Result<long> DataGasCost(ReadOnlyMemory<byte> inputData, IReleaseSpec releaseSpec) => 32600L * (inputData.Length / PairSize);
 
     [SkipLocalsInit]
-    public (byte[], bool) Run(ReadOnlyMemory<byte> inputData, IReleaseSpec releaseSpec)
+    public Result<byte[]> Run(ReadOnlyMemory<byte> inputData, IReleaseSpec releaseSpec)
     {
         Metrics.BlsPairingCheckPrecompile++;
 
-        if (inputData.Length % PairSize > 0 || inputData.Length == 0)
-        {
-            return IPrecompile.Failure;
-        }
+        if (inputData.Length % PairSize > 0 || inputData.Length == 0) return Errors.InvalidInputLength;
 
         G1 x = new(stackalloc long[G1.Sz]);
         G2 y = new(stackalloc long[G2.Sz]);
@@ -52,19 +49,16 @@ public class PairingCheckPrecompile : IPrecompile<PairingCheckPrecompile>
         {
             int offset = i * PairSize;
 
-            if (!x.TryDecodeRaw(inputData[offset..(offset + BlsConst.LenG1)].Span) ||
-                !(BlsConst.DisableSubgroupChecks || x.InGroup()) ||
-                !y.TryDecodeRaw(inputData[(offset + BlsConst.LenG1)..(offset + PairSize)].Span) ||
-                !(BlsConst.DisableSubgroupChecks || y.InGroup()))
-            {
-                return IPrecompile.Failure;
-            }
+            string? error = x.TryDecodeRaw(inputData[offset..(offset + BlsConst.LenG1)].Span);
+            if (error is not Errors.NoError) return error;
+            if (!(BlsConst.DisableSubgroupChecks || x.InGroup())) return Errors.G1PointSubgroup;
+
+            error = y.TryDecodeRaw(inputData[(offset + BlsConst.LenG1)..(offset + PairSize)].Span);
+            if (error is not Errors.NoError) return error;
+            if (!(BlsConst.DisableSubgroupChecks || y.InGroup())) return Errors.G2PointSubgroup;
 
             // x == inf || y == inf -> e(x, y) = 1
-            if (x.IsInf() || y.IsInf())
-            {
-                continue;
-            }
+            if (x.IsInf() || y.IsInf()) continue;
 
             // acc *= e(x, y)
             p.MillerLoop(y, x);
@@ -73,11 +67,8 @@ public class PairingCheckPrecompile : IPrecompile<PairingCheckPrecompile>
 
         // e(x_0, y_0) * e(x_1, y_1) * ... == 1
         byte[] res = new byte[32];
-        if (acc.FinalExp().IsOne())
-        {
-            res[31] = 1;
-        }
+        if (acc.FinalExp().IsOne()) res[31] = 1;
 
-        return (res, true);
+        return res;
     }
 }

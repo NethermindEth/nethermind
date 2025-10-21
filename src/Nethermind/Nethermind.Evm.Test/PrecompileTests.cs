@@ -36,7 +36,7 @@ public abstract class PrecompileTests<T> where T : PrecompileTests<T>, IPrecompi
         if (this is not T) throw new InvalidOperationException($"Misconfigured tests! Type {GetType()} must be {typeof(T)}");
 
         IPrecompile precompile = T.Precompile();
-        long gas = precompile.BaseGasCost(Prague.Instance) + precompile.DataGasCost(testCase.Input, Prague.Instance);
+        long gas = precompile.BaseGasCost(Prague.Instance) + precompile.DataGasCost(testCase.Input, Prague.Instance).Data;
         (byte[] output, bool success) = precompile.Run(testCase.Input, Prague.Instance);
 
         using (Assert.EnterMultipleScope())

@@ -27,31 +27,28 @@ public class MapFp2ToG2Precompile : IPrecompile<MapFp2ToG2Precompile>
 
     public long BaseGasCost(IReleaseSpec releaseSpec) => 23800L;
 
-    public long DataGasCost(ReadOnlyMemory<byte> inputData, IReleaseSpec releaseSpec) => 0L;
+    public Result<long> DataGasCost(ReadOnlyMemory<byte> inputData, IReleaseSpec releaseSpec) => 0L;
 
     [SkipLocalsInit]
-    public (byte[], bool) Run(ReadOnlyMemory<byte> inputData, IReleaseSpec releaseSpec)
+    public Result<byte[]> Run(ReadOnlyMemory<byte> inputData, IReleaseSpec releaseSpec)
     {
         Metrics.BlsMapFp2ToG2Precompile++;
 
         const int expectedInputLength = 2 * BlsConst.LenFp;
-        if (inputData.Length != expectedInputLength)
-        {
-            return IPrecompile.Failure;
-        }
+        if (inputData.Length != expectedInputLength) return Errors.InvalidInputLength;
 
         G2 res = new(stackalloc long[G2.Sz]);
-        if (!BlsExtensions.ValidRawFp(inputData.Span[..BlsConst.LenFp]) ||
-            !BlsExtensions.ValidRawFp(inputData.Span[BlsConst.LenFp..]))
-        {
-            return IPrecompile.Failure;
-        }
+        string? error = BlsExtensions.ValidRawFp(inputData.Span[..BlsConst.LenFp]);
+        if (error is not Errors.NoError) return error;
+
+        error = BlsExtensions.ValidRawFp(inputData.Span[BlsConst.LenFp..]);
+        if (error is not Errors.NoError) return error;
 
         // map field point to G2
         ReadOnlySpan<byte> fp0 = inputData[BlsConst.LenFpPad..BlsConst.LenFp].Span;
         ReadOnlySpan<byte> fp1 = inputData[(BlsConst.LenFp + BlsConst.LenFpPad)..].Span;
         res.MapTo(fp0, fp1);
 
-        return (res.EncodeRaw(), true);
+        return res.EncodeRaw();
     }
 }

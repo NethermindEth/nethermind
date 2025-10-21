@@ -11,16 +11,14 @@ namespace Nethermind.Evm.Precompiles
     {
         static virtual Address Address => Address.Zero;
         static virtual string Name => string.Empty;
-
         long BaseGasCost(IReleaseSpec releaseSpec);
+        Result<long> DataGasCost(ReadOnlyMemory<byte> inputData, IReleaseSpec releaseSpec);
 
-        long DataGasCost(ReadOnlyMemory<byte> inputData, IReleaseSpec releaseSpec);
-
-        // N.B. returns byte array so that inputData cannot be returned
+        // N.B. returns a byte array so that inputData cannot be returned
         // this can lead to the wrong value being returned due to the cache modifying inputData
-        (byte[], bool) Run(ReadOnlyMemory<byte> inputData, IReleaseSpec releaseSpec);
+        Result<byte[]> Run(ReadOnlyMemory<byte> inputData, IReleaseSpec releaseSpec);
 
-        protected static (byte[], bool) Failure { get; } = (Array.Empty<byte>(), false);
+        protected static (byte[], bool) Failure { get; } = ([], false);
     }
 
 

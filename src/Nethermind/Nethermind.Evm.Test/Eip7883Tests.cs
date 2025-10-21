@@ -21,7 +21,7 @@ public class Eip7883Tests
         ReadOnlyMemory<byte> inputData = PrepareInput(test.BaseLength, test.ExpLength, test.ModulusLength);
 
         IReleaseSpec? spec = test.FusakaEnabled ? Osaka.Instance : Prague.Instance;
-        long gas = ModExpPrecompile.Instance.DataGasCost(inputData, spec);
+        long gas = ModExpPrecompile.Instance.DataGasCost(inputData, spec).Data;
         gas.Should().Be(test.Result);
     }
 

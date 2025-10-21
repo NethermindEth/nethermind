@@ -20,7 +20,7 @@ namespace Nethermind.Blockchain;
 public class CachedCodeInfoRepository(
     IPrecompileProvider precompileProvider,
     ICodeInfoRepository baseCodeInfoRepository,
-    ConcurrentDictionary<PreBlockCaches.PrecompileCacheKey, (byte[], bool)>? precompileCache) : ICodeInfoRepository
+    ConcurrentDictionary<PreBlockCaches.PrecompileCacheKey, Result<byte[]>>? precompileCache) : ICodeInfoRepository
 {
     private readonly FrozenDictionary<AddressAsKey, PrecompileInfo> _cachedPrecompile = precompileCache is null
         ? precompileProvider.GetPrecompiles()
@@ -60,13 +60,13 @@ public class CachedCodeInfoRepository(
 
     private static PrecompileInfo CreateCachedPrecompile(
         in KeyValuePair<AddressAsKey, PrecompileInfo> originalPrecompile,
-        ConcurrentDictionary<PreBlockCaches.PrecompileCacheKey, (byte[], bool)> cache) =>
-        new PrecompileInfo(new CachedPrecompile(originalPrecompile.Key.Value, originalPrecompile.Value.Precompile!, cache));
+        ConcurrentDictionary<PreBlockCaches.PrecompileCacheKey, Result<byte[]>> cache) =>
+        new(new CachedPrecompile(originalPrecompile.Key.Value, originalPrecompile.Value.Precompile!, cache));
 
     private class CachedPrecompile(
         Address address,
         IPrecompile precompile,
-        ConcurrentDictionary<PreBlockCaches.PrecompileCacheKey, (byte[], bool)> cache) : IPrecompile
+        ConcurrentDictionary<PreBlockCaches.PrecompileCacheKey, Result<byte[]>> cache) : IPrecompile
     {
         public static Address Address => Address.Zero;
 
@@ -74,12 +74,12 @@ public class CachedCodeInfoRepository(
 
         public long BaseGasCost(IReleaseSpec releaseSpec) => precompile.BaseGasCost(releaseSpec);
 
-        public long DataGasCost(ReadOnlyMemory<byte> inputData, IReleaseSpec releaseSpec) => precompile.DataGasCost(inputData, releaseSpec);
+        public Result<long> DataGasCost(ReadOnlyMemory<byte> inputData, IReleaseSpec releaseSpec) => precompile.DataGasCost(inputData, releaseSpec);
 
-        public (byte[], bool) Run(ReadOnlyMemory<byte> inputData, IReleaseSpec releaseSpec)
+        public Result<byte[]> Run(ReadOnlyMemory<byte> inputData, IReleaseSpec releaseSpec)
         {
             PreBlockCaches.PrecompileCacheKey key = new(address, inputData);
-            if (!cache.TryGetValue(key, out (byte[], bool) result))
+            if (!cache.TryGetValue(key, out Result<byte[]> result))
             {
                 result = precompile.Run(inputData, releaseSpec);
                 // we need to rebuild the key with data copy as the data can be changed by VM processing

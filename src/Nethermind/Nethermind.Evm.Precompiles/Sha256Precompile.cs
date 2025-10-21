@@ -24,16 +24,15 @@ public class Sha256Precompile : IPrecompile<Sha256Precompile>
 
     public long BaseGasCost(IReleaseSpec releaseSpec) => 60L;
 
-    public long DataGasCost(ReadOnlyMemory<byte> inputData, IReleaseSpec releaseSpec) =>
+    public Result<long> DataGasCost(ReadOnlyMemory<byte> inputData, IReleaseSpec releaseSpec) =>
         12L * EvmCalculations.Div32Ceiling((ulong)inputData.Length);
 
-    public (byte[], bool) Run(ReadOnlyMemory<byte> inputData, IReleaseSpec releaseSpec)
+    public Result<byte[]> Run(ReadOnlyMemory<byte> inputData, IReleaseSpec releaseSpec)
     {
         Metrics.Sha256Precompile++;
 
         byte[] output = new byte[SHA256.HashSizeInBytes];
         bool success = SHA256.TryHashData(inputData.Span, output, out int bytesWritten);
-
-        return (output, success && bytesWritten == SHA256.HashSizeInBytes);
+        return success && bytesWritten == SHA256.HashSizeInBytes ? output : Errors.Failed;
     }
 }

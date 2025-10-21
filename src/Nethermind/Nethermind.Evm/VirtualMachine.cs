@@ -791,7 +791,7 @@ public unsafe partial class VirtualMachine(
                 goto Failure;
             }
 
-            // If running a precompile on a top-level call frame and it fails, assign a general execution failure.
+            // If running a precompile on a top-level call frame, and it fails, assign a general execution failure.
             if (currentState.IsPrecompile && currentState.IsTopLevel)
             {
                 failure = PrecompileExecutionFailureException;
@@ -977,11 +977,11 @@ public unsafe partial class VirtualMachine(
         UInt256 transferValue = state.Env.TransferValue;
         long gasAvailable = state.GasAvailable;
 
-        IPrecompile precompile = ((PrecompileInfo)state.Env.CodeInfo).Precompile;
+        IPrecompile precompile = ((PrecompileInfo)state.Env.CodeInfo).Precompile!;
 
         IReleaseSpec spec = BlockExecutionContext.Spec;
         long baseGasCost = precompile.BaseGasCost(spec);
-        long dataGasCost = precompile.DataGasCost(callData, spec);
+        Result<long> dataGasCost = precompile.DataGasCost(callData, spec);
 
         bool wasCreated = _worldState.AddToBalanceAndCreateIfNotExists(state.Env.ExecutingAccount, transferValue, spec);
 
@@ -1001,7 +1001,12 @@ public unsafe partial class VirtualMachine(
             _parityTouchBugAccount.ShouldDelete = true;
         }
 
-        if (!UpdateGas(checked(baseGasCost + dataGasCost), ref gasAvailable))
+        if (!dataGasCost)
+        {
+            return new(default, false, 0, true, EvmExceptionType.PrecompileFailure);
+        }
+
+        if (!UpdateGas(checked(baseGasCost + dataGasCost.Data), ref gasAvailable))
         {
             return new(default, false, 0, true, EvmExceptionType.OutOfGas);
         }
@@ -1010,9 +1015,9 @@ public unsafe partial class VirtualMachine(
 
         try
         {
-            (ReadOnlyMemory<byte> output, bool success) = precompile.Run(callData, spec);
-            CallResult callResult = new(output, precompileSuccess: success, fromVersion: 0, shouldRevert: !success);
-            return callResult;
+            Result<byte[]> output = precompile.Run(callData, spec);
+            bool success = output;
+            return new(success ? output.Data : [], precompileSuccess: success, fromVersion: 0, shouldRevert: !success, exceptionType: !success ? EvmExceptionType.PrecompileFailure : EvmExceptionType.None);
         }
         catch (DllNotFoundException exception)
         {
@@ -1022,8 +1027,7 @@ public unsafe partial class VirtualMachine(
         catch (Exception exception)
         {
             if (_logger.IsError) _logger.Error($"Precompiled contract ({precompile.GetType()}) execution exception", exception);
-            CallResult callResult = new(output: default, precompileSuccess: false, fromVersion: 0, shouldRevert: true);
-            return callResult;
+            return new(output: default, precompileSuccess: false, fromVersion: 0, shouldRevert: true);
         }
     }
 

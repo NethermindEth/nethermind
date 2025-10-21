@@ -38,19 +38,19 @@ public class L1SloadPrecompileTests
     {
         // Input too short
         var input = new byte[L1PrecompileConstants.AddressBytes]; // Only address
-        Assert.That(_precompile.DataGasCost(input, _spec), Is.EqualTo(0L));
+        Assert.That(_precompile.DataGasCost(input, _spec).Data, Is.EqualTo(0L));
 
         // Input too long
         var expectedLength = L1PrecompileConstants.AddressBytes + L1PrecompileConstants.StorageKeyBytes + L1PrecompileConstants.BlockNumberBytes;
         var longInput = new byte[expectedLength + 32]; // Extra 32 bytes
-        Assert.That(_precompile.DataGasCost(longInput, _spec), Is.EqualTo(0L));
+        Assert.That(_precompile.DataGasCost(longInput, _spec).Data, Is.EqualTo(0L));
     }
 
     [Test]
     public void DataGasCost_With_Valid_Input_Should_Calculate_Correctly()
     {
         var input = CreateValidInput(Address.FromNumber(123), (UInt256)1, (UInt256)1000);
-        Assert.That(_precompile.DataGasCost(input, _spec), Is.EqualTo(L1PrecompileConstants.PerLoadGasCost));
+        Assert.That(_precompile.DataGasCost(input, _spec).Data, Is.EqualTo(L1PrecompileConstants.PerLoadGasCost));
     }
 
     [Test]
