@@ -83,41 +83,30 @@ public class SimulateTxExecutor<TTrace>(IBlockchainBridge blockchainBridge, IBlo
         {
             if (legacy.GasPrice is not null)
             {
-                rpcTransaction = new LegacyTransactionForRpc
-                {
-                    Nonce = legacy.Nonce,
-                    To = legacy.To,
-                    From = legacy.From,
-                    Gas = legacy.Gas,
-                    Value = legacy.Value,
-                    Input = legacy.Input,
-                    GasPrice = legacy.GasPrice,
-                    ChainId = legacy.ChainId,
-                    V = legacy.V,
-                    R = legacy.R,
-                    S = legacy.S,
-                };
+                legacy = new LegacyTransactionForRpc();
             }
             else if (rpcTransaction is not EIP1559TransactionForRpc)
             {
-                rpcTransaction = new EIP1559TransactionForRpc
+                legacy = new EIP1559TransactionForRpc
                 {
-                    Nonce = legacy.Nonce,
-                    To = legacy.To,
-                    From = legacy.From,
-                    Gas = legacy.Gas,
-                    Value = legacy.Value,
-                    Input = legacy.Input,
-                    GasPrice = legacy.GasPrice,
-                    ChainId = legacy.ChainId,
-                    V = legacy.V,
-                    R = legacy.R,
-                    S = legacy.S,
                     AccessList = rpcTransaction is AccessListTransactionForRpc accessListTx
                         ? accessListTx.AccessList
                         : null
                 };
             }
+            legacy.Nonce = legacy.Nonce;
+            legacy.To = legacy.To;
+            legacy.From = legacy.From;
+            legacy.Gas = legacy.Gas;
+            legacy.Value = legacy.Value;
+            legacy.Input = legacy.Input;
+            legacy.GasPrice = legacy.GasPrice;
+            legacy.ChainId = legacy.ChainId;
+            legacy.V = legacy.V;
+            legacy.R = legacy.R;
+            legacy.S = legacy.S;
+
+            return legacy;
         }
 
         return rpcTransaction;
