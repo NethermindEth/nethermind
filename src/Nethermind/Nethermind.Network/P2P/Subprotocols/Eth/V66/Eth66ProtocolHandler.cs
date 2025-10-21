@@ -5,7 +5,9 @@ using Nethermind.Consensus;
 using Nethermind.Consensus.Scheduler;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
+using Nethermind.Core.Crypto;
 using Nethermind.Logging;
+using Nethermind.Network.Contract.Messages;
 using Nethermind.Network.Contract.P2P;
 using Nethermind.Network.P2P.Subprotocols.Eth.V65;
 using Nethermind.Network.P2P.Subprotocols.Eth.V65.Messages;
@@ -264,6 +266,12 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V66
             messageQueue.Send(request);
 
             return HandleResponse(request, speedType, describeRequestFunc, token);
+        }
+
+        public override void HandleMessage(PooledTransactionRequestMessage message)
+        {
+            ArrayPoolList<Hash256> hashesToRetry = new(1) { new Hash256(message.TxHash) };
+            RequestPooledTransactions<GetPooledTransactionsMessage>(hashesToRetry);
         }
     }
 }
