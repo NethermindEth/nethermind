@@ -75,9 +75,12 @@ internal class XdcBlockProducer : BlockProducerBase
 
         xdcBlockHeader.Timestamp = parent.Timestamp + (ulong)spec.MinePeriod;
 
-        parent.Difficulty = 1;
+        xdcBlockHeader.Difficulty = 1;
+        xdcBlockHeader.TotalDifficulty = 1;
 
         xdcBlockHeader.BaseFeePerGas = BaseFeeCalculator.Calculate(parent, spec);
+
+        xdcBlockHeader.MixHash = Hash256.Zero;
 
         if (epochSwitchManager.IsEpochSwitch(xdcBlockHeader, out _))
         {

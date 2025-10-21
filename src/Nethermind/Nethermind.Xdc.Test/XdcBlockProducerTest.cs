@@ -32,13 +32,10 @@ internal class XdcBlockProducerTest
         ISpecProvider specProvider = Substitute.For<ISpecProvider>();
         IXdcReleaseSpec xdcReleaseSpec = Substitute.For<IXdcReleaseSpec>();
         xdcReleaseSpec.MinePeriod.Returns(2);
+        xdcReleaseSpec.EpochLength.Returns(900);
+        xdcReleaseSpec.GasLimitBoundDivisor.Returns(1);
         specProvider.GetSpec(Arg.Any<ForkActivation>()).Returns(xdcReleaseSpec);
-
         var epochManager = Substitute.For<IEpochSwitchManager>();
-        ISealer sealer = Substitute.For<ISealer>();
-        sealer.CanSeal(Arg.Any<long>(), Arg.Any<Hash256>()).Returns(true);
-        sealer.Address.Returns(TestItem.AddressA);
-
         IWorldState stateProvider = Substitute.For<IWorldState>();
         stateProvider.HasStateForBlock(Arg.Any<BlockHeader>()).Returns(true);
 
@@ -46,6 +43,8 @@ internal class XdcBlockProducerTest
         epochManager
             .GetEpochSwitchInfo(Arg.Any<XdcBlockHeader>(), Arg.Any<Hash256>())
             .Returns(new Types.EpochSwitchInfo(masterNodes.Select(m=>m.Address).ToArray(), [], new Types.BlockRoundInfo(Hash256.Zero, 0, 0)));
+
+        ISealer sealer = new XdcSealer(new Signer(0, new ProtectedPrivateKey(masterNodes[1], ""), NullLogManager.Instance));
 
         XdcBlockHeader parent = Build.A.XdcBlockHeader().TestObject;
 
@@ -71,7 +70,12 @@ internal class XdcBlockProducerTest
             Substitute.For<ILogManager>(),
             Substitute.For<IDifficultyCalculator>(),
             Substitute.For<IBlocksConfig>());
+        XdcHeaderValidator headerValidator = new XdcHeaderValidator(Substitute.For<IBlockTree>(), new XdcSealValidator(Substitute.For<ISnapshotManager>(), epochManager, specProvider), specProvider, NullLogManager.Instance);
 
         Block? block = await producer.BuildBlock(parent);
+
+        Assert.That(block, Is.Not.Null);
+        bool actual = headerValidator.Validate(block.Header, parent, false, out string? error);
+        Assert.That(actual, Is.True);
     }
 }

@@ -66,7 +66,7 @@ public class XdcHeaderValidator(IBlockTree blockTree, ISealValidator sealValidat
     protected override bool ValidateSeal(BlockHeader header, BlockHeader parent, bool isUncle, ref string? error)
     {
         if (_sealValidator is XdcSealValidator xdcSealValidator)
-            return xdcSealValidator.ValidateParams(header, parent, out error);
+            return xdcSealValidator.ValidateParams(parent, header, out error);
 
         if (!_sealValidator.ValidateParams(parent, header, isUncle))
         {

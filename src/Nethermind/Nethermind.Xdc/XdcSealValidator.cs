@@ -87,12 +87,14 @@ internal class XdcSealValidator(ISnapshotManager snapshotManager, IEpochSwitchMa
         }
         else
         {
-            if (xdcHeader.Validators?.Length != 0)
+            if (xdcHeader.Validators is not null &&
+                xdcHeader.Validators.Length != 0)
             {
                 error = "Validators are not empty in non-epoch switch header.";
                 return false;
             }
-            if (xdcHeader.Penalties?.Length != 0)
+            if (xdcHeader.Penalties is not null &&
+                xdcHeader.Penalties?.Length != 0)
             {
                 error = "Penalties are not empty in non-epoch switch header.";
                 return false;
