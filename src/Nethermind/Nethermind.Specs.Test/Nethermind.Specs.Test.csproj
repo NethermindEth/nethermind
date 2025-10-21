@@ -21,7 +21,6 @@
     <Content Include="Specs\genesis_test.json">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </Content>
-    <Content Include="Specs\holesky_missing_deposit_contract.json" />
   </ItemGroup>
 
   <ItemGroup>
