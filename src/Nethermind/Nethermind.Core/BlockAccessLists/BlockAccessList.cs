@@ -319,6 +319,7 @@ public struct BlockAccessList : IEquatable<BlockAccessList>, IJournal<int>
         // storage change edge case
         if (!HasStorageChangedDuringTx(accountChanges.Address, storageKey, before, after))
         {
+            Console.WriteLine($"unchanged! {accountChanges.Address} {Bytes.ToHexString(storageKey)}");
             if (storageChanges.Changes is not [] && storageChanges.Changes[^1].BlockAccessIndex == Index)
             {
                 _changes.Push(new()
@@ -328,12 +329,14 @@ public struct BlockAccessList : IEquatable<BlockAccessList>, IJournal<int>
                     PreviousValue = storageChanges.Changes[^1],
                     BlockAccessIndex = Index
                 });
+                Console.WriteLine($"removing change: {storageChanges.Changes[^1]}");
 
                 storageChanges.Changes.RemoveAt(storageChanges.Changes.Count - 1);
             }
 
             if (storageChanges.Changes.Count == 0)
             {
+                Console.WriteLine($"changes empty, removing");
                 accountChanges.StorageChanges.Remove(storageKey);
             }
 
@@ -505,6 +508,9 @@ public struct BlockAccessList : IEquatable<BlockAccessList>, IJournal<int>
             }
             if (change.Type == ChangeType.StorageChange && change.Address == address && Enumerable.SequenceEqual(change.Slot!, key) && change.PreviousValue is null)
             {
+                Console.WriteLine($"has changed = {change.PreTxStorage is null || change.PreTxStorage.AsSpan() != afterInstr}");
+                Console.WriteLine($"has changed 2 = {change.PreTxStorage is null || !Enumerable.SequenceEqual(change.PreTxStorage, afterInstr.ToArray())}");
+
                 // first change of this transaction & block
                 return change.PreTxStorage is null || change.PreTxStorage.AsSpan() != afterInstr;
             }
