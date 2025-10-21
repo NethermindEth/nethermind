@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2024 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using System.Linq;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
@@ -53,7 +54,23 @@ public class TaikoTransactionProcessor(
                 floorGas);
         }
 
-        return 0;
+        long spentGas = tx.GasLimit;
+        var codeInsertRefund = (GasCostOf.NewAccount - GasCostOf.PerAuthBaseCost) * codeInsertRefunds;
+        spentGas -= unspentGas;
+
+        long totalToRefund = codeInsertRefund;
+        if (!substate.ShouldRevert)
+            totalToRefund += substate.Refund + substate.DestroyList.Count * RefundOf.Destroy(spec.IsEip3529Enabled);
+        long actualRefund = CalculateClaimableRefund(spentGas, totalToRefund, spec);
+
+        if (Logger.IsTrace)
+            Logger.Trace("Refunding unused gas of " + unspentGas + " and refund of " + actualRefund);
+        spentGas -= actualRefund;
+
+        long operationGas = spentGas;
+        spentGas = Math.Max(spentGas, floorGas);
+
+        return new GasConsumed(spentGas, operationGas);
     }
 
     protected override void PayFees(Transaction tx, BlockHeader header, IReleaseSpec spec, ITxTracer tracer,
