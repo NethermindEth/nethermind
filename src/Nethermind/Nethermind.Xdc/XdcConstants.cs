@@ -28,6 +28,8 @@ internal static class XdcConstants
 
     public const long TargetGasLimit = 84000000; // XDC default gas limit per block
 
+    public const byte ConsensusVersion = 0x02;
+
     // --- Compile-time constants ---
     public const int InMemorySnapshots = 128;       // Number of recent vote snapshots to keep in memory
     public const int BlockSignersCacheLimit = 9000;

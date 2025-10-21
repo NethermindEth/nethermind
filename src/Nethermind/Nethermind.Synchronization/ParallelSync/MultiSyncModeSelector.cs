@@ -420,8 +420,7 @@ namespace Nethermind.Synchronization.ParallelSync
                     (nameof(postPivotPeerAvailable), postPivotPeerAvailable),
                     (nameof(notReachedFullSyncTransition), notReachedFullSyncTransition),
                     (nameof(notInAStickyFullSync), notInAStickyFullSync),
-                    (nameof(stateNotDownloadedYet), stateNotDownloadedYet),
-                    (nameof(longRangeCatchUp), longRangeCatchUp),
+                    ($"{nameof(stateNotDownloadedYet)}||${longRangeCatchUp}", stateNotDownloadedYet || longRangeCatchUp),
                     (nameof(notNeedToWaitForHeaders), notNeedToWaitForHeaders));
             }
 
@@ -608,8 +607,7 @@ namespace Nethermind.Synchronization.ParallelSync
                     (nameof(hasFastSyncBeenActive), hasFastSyncBeenActive),
                     (nameof(hasAnyPostPivotPeer), hasAnyPostPivotPeer),
                     ($"{nameof(notInFastSync)}||{nameof(stickyStateNodes)}", notInFastSync || stickyStateNodes),
-                    (nameof(stateNotDownloadedYet), stateNotDownloadedYet),
-                    (nameof(longRangeCatchUp), longRangeCatchUp),
+                    ($"{nameof(stateNotDownloadedYet)}||{nameof(longRangeCatchUp)}", stateNotDownloadedYet || longRangeCatchUp),
                     (nameof(notInAStickyFullSync), notInAStickyFullSync),
                     (nameof(notNeedToWaitForHeaders), notNeedToWaitForHeaders));
             }
