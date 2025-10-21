@@ -81,7 +81,8 @@ public class TracedAccessWorldState(IWorldState innerWorldState) : WrappedWorldS
     {
         if (Enabled)
         {
-            BlockAccessList.AddCodeChange(address, code.ToArray());
+            byte[] oldCode = _innerWorldState.GetCode(address) ?? [];
+            BlockAccessList.AddCodeChange(address, oldCode, code.ToArray());
         }
         return _innerWorldState.InsertCode(address, codeHash, code, spec, isGenesis);
     }

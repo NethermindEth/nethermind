@@ -130,7 +130,7 @@ public struct BlockAccessList : IEquatable<BlockAccessList>, IJournal<int>
         balanceChanges.Add(balanceChange.BlockAccessIndex, balanceChange);
     }
 
-    public void AddCodeChange(Address address, byte[] after)
+    public void AddCodeChange(Address address, byte[] before, byte[] after)
     {
         CodeChange codeChange = new()
         {
@@ -142,6 +142,13 @@ public struct BlockAccessList : IEquatable<BlockAccessList>, IJournal<int>
         {
             accountChanges = new(address);
             _accountChanges.Add(address, accountChanges);
+        }
+
+        // need more complex logic like for storage & balance changes?
+        if (Enumerable.SequenceEqual(before, after))
+        {
+            Console.WriteLine("code deployed already the same");
+            return;
         }
 
         SortedList<ushort, CodeChange> codeChanges = accountChanges.CodeChanges;
