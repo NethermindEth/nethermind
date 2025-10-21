@@ -29,12 +29,7 @@ namespace Nethermind.Crypto
         {
             // Use cryptographically secure RNG; preserve Random.Next behavior for non-positive max
             // (Random.Next(0) returns 0; negatives throw). This keeps compatibility.
-            if (max <= 0)
-            {
-                return 0;
-            }
-
-            return RandomNumberGenerator.GetInt32(max);
+            return max <= 0 ? 0 : RandomNumberGenerator.GetInt32(max);
         }
 
         public void Dispose()
