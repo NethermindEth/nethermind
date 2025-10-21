@@ -233,7 +233,7 @@ public class TimeoutCertificateManager(XdcContext context, ISnapshotManager snap
         EpochSwitchInfo epochSwitchInfo = _epochSwitchManager.GetEpochSwitchInfo(currentHeader, currentHeader.Hash);
         if (epochSwitchInfo is null)
             return false;
-        return epochSwitchInfo.Masternodes.Any(x => x == _signer.Address);
+        return epochSwitchInfo.Masternodes.Contains(_signer.Address);
     }
 
     internal static ValueHash256 ComputeTimeoutMsgHash(ulong round, ulong gap)
