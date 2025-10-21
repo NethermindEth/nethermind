@@ -22,14 +22,15 @@ public class HeaderStore : IHeaderStore
 
     private readonly IDb _headerDb;
     private readonly IDb _blockNumberDb;
-    protected virtual IHeaderDecoder _headerDecoder { get; } = new HeaderDecoder();
+    private readonly IHeaderDecoder _headerDecoder;
     private readonly ClockCache<ValueHash256, BlockHeader> _headerCache =
         new(CacheSize);
 
-    public HeaderStore([KeyFilter(DbNames.Headers)] IDb headerDb, [KeyFilter(DbNames.BlockNumbers)] IDb blockNumberDb)
+    public HeaderStore([KeyFilter(DbNames.Headers)] IDb headerDb, [KeyFilter(DbNames.BlockNumbers)] IDb blockNumberDb, IHeaderDecoder? decoder = null)
     {
         _headerDb = headerDb;
         _blockNumberDb = blockNumberDb;
+        _headerDecoder = decoder ?? new HeaderDecoder();
     }
 
     public void Insert(BlockHeader header)
