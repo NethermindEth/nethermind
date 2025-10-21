@@ -173,7 +173,7 @@ public class ByteArrayConverter : JsonConverter<byte[]>
     private static void ThrowFormatException() => throw new FormatException();
 
     [DoesNotReturn, StackTraceHidden]
-    private static Exception ThrowInvalidOperationException() => throw new InvalidOperationException();
+    private static void ThrowInvalidOperationException() => throw new InvalidOperationException();
 
     public override void Write(
         Utf8JsonWriter writer,
@@ -249,7 +249,12 @@ public class ByteArrayConverter : JsonConverter<byte[]>
 
     public override byte[] ReadAsPropertyName(ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options)
     {
-        return Convert(ref reader) ?? throw ThrowInvalidOperationException();
+        byte[]? result = Convert(ref reader);
+
+        if (result is null)
+            ThrowInvalidOperationException();
+
+        return result;
     }
 
     public override void WriteAsPropertyName(Utf8JsonWriter writer, byte[] value, JsonSerializerOptions options)
