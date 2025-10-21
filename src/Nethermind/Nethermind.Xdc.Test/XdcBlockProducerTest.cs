@@ -42,7 +42,7 @@ internal class XdcBlockProducerTest
         PrivateKey[] masterNodes = XdcTestHelper.GeneratePrivateKeys(108);
         epochManager
             .GetEpochSwitchInfo(Arg.Any<XdcBlockHeader>(), Arg.Any<Hash256>())
-            .Returns(new Types.EpochSwitchInfo(masterNodes.Select(m=>m.Address).ToArray(), [], new Types.BlockRoundInfo(Hash256.Zero, 0, 0)));
+            .Returns(new Types.EpochSwitchInfo(masterNodes.Select(m => m.Address).ToArray(), [], new Types.BlockRoundInfo(Hash256.Zero, 0, 0)));
 
         ISealer sealer = new XdcSealer(new Signer(0, new ProtectedPrivateKey(masterNodes[1], ""), NullLogManager.Instance));
 
