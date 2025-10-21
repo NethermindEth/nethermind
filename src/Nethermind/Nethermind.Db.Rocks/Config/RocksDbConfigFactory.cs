@@ -23,11 +23,11 @@ public class RocksDbConfigFactory(IDbConfig dbConfig, IPruningConfig pruningConf
             if (dbConfig.MaxOpenFiles is null && hardwareInfo.MaxOpenFilesLimit.HasValue)
             {
                 int systemLimit = hardwareInfo.MaxOpenFilesLimit.Value;
-                // Estimate ~15 databases (can vary by configuration, but this is a reasonable estimate)
-                // Reserve some file descriptors for the system and other operations (like network sockets)
-                // Use a conservative approach: systemLimit / 20 per database
-                // This accounts for ~15 databases plus safety margin for non-DB file descriptors
-                int perDbLimit = Math.Max(256, systemLimit / 20);
+                // Apply 80% of system limit as safety margin to account for:
+                // - Multiple databases (~15) each using this limit
+                // - System operations and network sockets
+                // - Other file descriptors needed by the application
+                int perDbLimit = Math.Max(256, (int)(systemLimit * 0.8));
 
                 if (_logger.IsInfo)
                 {

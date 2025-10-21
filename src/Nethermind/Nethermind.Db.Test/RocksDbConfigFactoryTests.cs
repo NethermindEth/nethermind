@@ -65,8 +65,8 @@ public class RocksDbConfigFactoryTests
         var dbConfig = new DbConfig();
         var factory = new RocksDbConfigFactory(dbConfig, new PruningConfig(), new TestHardwareInfo(0, 10000), LimboLogs.Instance);
         IRocksDbConfig config = factory.GetForDatabase("State0", null);
-        // With system limit of 10000, should set per-db limit to 10000/20 = 500
-        config.MaxOpenFiles.Should().Be(500);
+        // With system limit of 10000, should set per-db limit to 10000 * 0.8 = 8000
+        config.MaxOpenFiles.Should().Be(8000);
     }
 
     [Test]
@@ -97,7 +97,7 @@ public class RocksDbConfigFactoryTests
         // Very low system limit (e.g., 1000) should still give minimum of 256
         var factory = new RocksDbConfigFactory(dbConfig, new PruningConfig(), new TestHardwareInfo(0, 1000), LimboLogs.Instance);
         IRocksDbConfig config = factory.GetForDatabase("State0", null);
-        // With system limit of 1000, would be 1000/20 = 50, but minimum is 256
-        config.MaxOpenFiles.Should().Be(256);
+        // With system limit of 1000, would be 1000 * 0.8 = 800
+        config.MaxOpenFiles.Should().Be(800);
     }
 }
