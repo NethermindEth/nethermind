@@ -303,11 +303,12 @@ public struct BlockAccessList : IEquatable<BlockAccessList>, IJournal<int>
 
         if (!accountChanges.StorageChanges.TryGetValue(storageKey, out SlotChanges storageChanges))
         {
-            storageChanges = new(storageKey);
+            accountChanges.StorageChanges.Add(storageKey, new(storageKey));
+            storageChanges = accountChanges.StorageChanges[storageKey];
         }
 
         // storage change edge case
-        if (!HasStorageChangedDuringTx(accountChanges.Address, [..key], before, after))
+        if (!HasStorageChangedDuringTx(accountChanges.Address, storageKey, before, after))
         {
             if (storageChanges.Changes is not [] && storageChanges.Changes[^1].BlockAccessIndex == Index)
             {
@@ -330,7 +331,7 @@ public struct BlockAccessList : IEquatable<BlockAccessList>, IJournal<int>
         }
 
         storageChanges.Changes.Add(storageChange);
-        accountChanges.StorageChanges[storageKey] = storageChanges;
+        // accountChanges.StorageChanges[storageKey] = storageChanges;
         _changes.Push(new()
         {
             Address = accountChanges.Address,
@@ -455,7 +456,7 @@ public struct BlockAccessList : IEquatable<BlockAccessList>, IJournal<int>
     private readonly bool HasStorageChangedDuringTx(Address address, byte[] key, in ReadOnlySpan<byte> beforeInstr, in ReadOnlySpan<byte> afterInstr)
     {
         AccountChanges accountChanges = _accountChanges[address];
-        int count = accountChanges.StorageChanges.Count;
+        int count = accountChanges.StorageChanges[key].Changes.Count;
 
         if (count == 0)
         {
@@ -479,7 +480,7 @@ public struct BlockAccessList : IEquatable<BlockAccessList>, IJournal<int>
             if (change.Type == ChangeType.StorageChange && change.Address == address && change.Slot == key.AsSpan() && change.PreviousValue is null)
             {
                 // first change of this transaction & block
-                return (change.PreTxStorage ?? []).AsSpan() != afterInstr;
+                return change.PreTxStorage is null || change.PreTxStorage.AsSpan() != afterInstr;
             }
         }
 
