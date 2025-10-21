@@ -238,7 +238,7 @@ public class TimeoutCertificateManager(XdcContext context, ISnapshotManager snap
 
     internal static ValueHash256 ComputeTimeoutMsgHash(ulong round, ulong gap)
     {
-        Timeout timeout = new (round, null, gap);
+        Timeout timeout = new(round, null, gap);
         KeccakRlpStream stream = new KeccakRlpStream();
         _timeoutDecoder.Encode(stream, timeout, RlpBehaviors.ForSealing);
         return stream.GetValueHash();
