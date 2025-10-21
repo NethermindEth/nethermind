@@ -110,4 +110,7 @@ public interface INetworkConfig : IConfig
 
     [ConfigItem(DefaultValue = "true", Description = "Enable Enr discovery", HiddenFromDocs = true)]
     bool EnableEnrDiscovery { get; set; }
+
+    [ConfigItem(DefaultValue = "true", Description = "Whether to enable peer diversity scoring to ensure better distribution of connections across different client types and network conditions.")]
+    bool EnablePeerDiversityScoring { get; set; }
 }

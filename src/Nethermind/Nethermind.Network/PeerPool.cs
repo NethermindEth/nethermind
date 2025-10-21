@@ -32,6 +32,7 @@ namespace Nethermind.Network
         private readonly INetworkConfig _networkConfig;
         private readonly ILogger _logger;
         private readonly ITrustedNodesManager _trustedNodesManager;
+        private readonly IPeerDiversityService _diversityService;
 
         public ConcurrentDictionary<PublicKeyAsKey, Peer> ActivePeers { get; } = new();
         public ConcurrentDictionary<PublicKeyAsKey, Peer> Peers { get; } = new();
@@ -54,6 +55,7 @@ namespace Nethermind.Network
             INodeStatsManager nodeStatsManager,
             [KeyFilter(DbNames.PeersDb)] INetworkStorage peerStorage,
             INetworkConfig networkConfig,
+            IPeerDiversityService diversityService,
             ILogManager logManager,
             ITrustedNodesManager trustedNodesManager)
 
@@ -62,6 +64,7 @@ namespace Nethermind.Network
             _stats = nodeStatsManager ?? throw new ArgumentNullException(nameof(nodeStatsManager));
             _peerStorage = peerStorage ?? throw new ArgumentNullException(nameof(peerStorage));
             _networkConfig = networkConfig ?? throw new ArgumentNullException(nameof(networkConfig));
+            _diversityService = diversityService ?? throw new ArgumentNullException(nameof(diversityService));
             _peerStorage.StartBatch();
             _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
             _trustedNodesManager = trustedNodesManager ?? throw new ArgumentNullException(nameof(trustedNodesManager));
@@ -96,6 +99,12 @@ namespace Nethermind.Network
                     $"Adding a {(arg.Node.IsBootnode ? "bootnode" : "stored")} candidate peer {arg.Node:s}");
             }
             Peer peer = new(arg.Node, _stats.GetOrAdd(arg.Node));
+
+            if (_diversityService.IsEnabled)
+            {
+                peer.DiversityScore = _diversityService.GetDiversityScore(arg.Node.Id);
+            }
+
             if (arg.Node.IsStatic)
             {
                 arg.Statics.TryAdd(arg.Node.Id, peer);
@@ -110,6 +119,11 @@ namespace Nethermind.Network
             Node node = new(arg.Node) { IsTrusted = _trustedNodesManager.IsTrusted(arg.Node.Enode) };
 
             Peer peer = new(node, _stats.GetOrAdd(node));
+
+            if (_diversityService.IsEnabled)
+            {
+                peer.DiversityScore = _diversityService.GetDiversityScore(node.Id);
+            }
 
             PeerAdded?.Invoke(this, new PeerEventArgs(peer));
             return peer;

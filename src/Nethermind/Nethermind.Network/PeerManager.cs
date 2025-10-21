@@ -36,8 +36,10 @@ namespace Nethermind.Network
         private readonly IRlpxHost _rlpxHost;
         private readonly INodeStatsManager _stats;
         private readonly ManualResetEventSlim _peerUpdateRequested = new(false);
-        private readonly PeerComparer _peerComparer = new();
+        private readonly PeerComparer _peerComparerByReputation = new(useDiversityScoring: false);
+        private readonly PeerComparer _peerComparerByDiversity = new(useDiversityScoring: true);
         private readonly IPeerPool _peerPool;
+        private readonly IPeerDiversityService _diversityService;
         private readonly Lock _lock = new();
         private readonly List<PeerStats> _candidates;
         private readonly RateLimiter _outgoingConnectionRateLimiter;
@@ -64,12 +66,14 @@ namespace Nethermind.Network
             IPeerPool peerPool,
             INodeStatsManager stats,
             INetworkConfig networkConfig,
+            IPeerDiversityService diversityService,
             ILogManager logManager)
         {
             _logger = logManager.GetClassLogger();
             _rlpxHost = rlpxHost ?? throw new ArgumentNullException(nameof(rlpxHost));
             _stats = stats ?? throw new ArgumentNullException(nameof(stats));
             _networkConfig = networkConfig ?? throw new ArgumentNullException(nameof(networkConfig));
+            _diversityService = diversityService ?? throw new ArgumentNullException(nameof(diversityService));
             _outgoingConnectParallelism = networkConfig.NumConcurrentOutgoingConnects;
             if (_outgoingConnectParallelism == 0)
             {
@@ -488,9 +492,39 @@ namespace Nethermind.Network
                 if (node is null) continue;
 
                 node.CurrentReputation = peer.Stats.CurrentNodeReputation(nowUTC);
+
+                // Calculate diversity score for all candidates
+                if (_diversityService.IsEnabled)
+                {
+                    peer.DiversityScore = _diversityService.GetDiversityScore(node.Id);
+                }
             }
 
-            _currentSelection.Candidates.Sort(_peerComparer);
+            // Apply diversity scoring to half the pool to prevent attack scenarios
+            // The other half uses reputation-based scoring
+            if (_diversityService.IsEnabled && _currentSelection.Candidates.Count > 0)
+            {
+                int halfSize = _currentSelection.Candidates.Count / 2;
+
+                // Sort by diversity score for the first half
+                _currentSelection.Candidates.Sort(_peerComparerByDiversity);
+
+                // Take the top diversity-scored peers
+                List<Peer> diversityPool = _currentSelection.Candidates.GetRange(0, halfSize);
+
+                // Sort the remaining by reputation
+                List<Peer> reputationPool = _currentSelection.Candidates.GetRange(halfSize, _currentSelection.Candidates.Count - halfSize);
+                reputationPool.Sort(_peerComparerByReputation);
+
+                // Combine: diversity-based first, then reputation-based
+                _currentSelection.Candidates.Clear();
+                _currentSelection.Candidates.AddRange(diversityPool);
+                _currentSelection.Candidates.AddRange(reputationPool);
+            }
+            else
+            {
+                _currentSelection.Candidates.Sort(_peerComparerByReputation);
+            }
 
             foreach (var currentSelectionCounter in _currentSelection.Counters)
             {

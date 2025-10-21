@@ -655,13 +655,18 @@ namespace Nethermind.Network.Test
                 TestNodeSource = new TestNodeSource();
                 CompositeNodeSource nodeSources = new(NodesLoader, DiscoveryApp, StaticNodesManager, TestNodeSource);
                 ITrustedNodesManager trustedNodesManager = Substitute.For<ITrustedNodesManager>();
-                PeerPool = new PeerPool(nodeSources, Stats, Storage, NetworkConfig, LimboLogs.Instance, trustedNodesManager);
-                CreatePeerManager();
+                IPeerDiversityService diversityService = Substitute.For<IPeerDiversityService>();
+                diversityService.IsEnabled.Returns(false);
+                diversityService.GetDiversityScore(Arg.Any<PublicKey>()).Returns(0);
+                PeerPool = new PeerPool(nodeSources, Stats, Storage, NetworkConfig, diversityService, LimboLogs.Instance, trustedNodesManager);
+                CreatePeerManager(diversityService);
             }
 
-            public void CreatePeerManager()
+            public void CreatePeerManager(IPeerDiversityService diversityService = null)
             {
-                PeerManager = new PeerManager(RlpxPeer, PeerPool, Stats, NetworkConfig, LimboLogs.Instance);
+                diversityService ??= Substitute.For<IPeerDiversityService>();
+                diversityService.IsEnabled.Returns(false);
+                PeerManager = new PeerManager(RlpxPeer, PeerPool, Stats, NetworkConfig, diversityService, LimboLogs.Instance);
             }
 
             public void SetupPersistedPeers(int count)

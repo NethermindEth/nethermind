@@ -58,6 +58,13 @@ public class DiscoveryModule(IInitConfig initConfig, INetworkConfig networkConfi
             .Bind<INodeSource, NodesLoader>()
             .AddComposite<INodeSource, CompositeNodeSource>()
 
+            // Peer diversity scoring
+            .AddSingleton<IPeerDiversityService, IDbProvider, ILogManager>((dbProvider, logManager) =>
+            {
+                IDb metadataDb = dbProvider.MetadataDb;
+                return new PeerDiversityService(metadataDb, networkConfig.EnablePeerDiversityScoring, logManager);
+            })
+
             // The actual thing that uses the INodeSource(s)
             .AddSingleton<IPeerPool, PeerPool>()
             .AddSingleton<IPeerManager, PeerManager>()

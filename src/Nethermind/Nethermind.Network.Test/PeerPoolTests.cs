@@ -23,6 +23,10 @@ public class PeerPoolTests
         var trustedNodesManager = Substitute.For<ITrustedNodesManager>();
 
         TestNodeSource nodeSource = new TestNodeSource();
+        IPeerDiversityService diversityService = Substitute.For<IPeerDiversityService>();
+        diversityService.IsEnabled.Returns(false);
+        diversityService.GetDiversityScore(Arg.Any<PublicKey>()).Returns(0);
+
         PeerPool pool = new PeerPool(
             nodeSource,
             Substitute.For<INodeStatsManager>(),
@@ -32,6 +36,7 @@ public class PeerPoolTests
                 MaxActivePeers = 5,
                 MaxCandidatePeerCount = 10
             },
+            diversityService,
             LimboLogs.Instance,
             trustedNodesManager);
 
