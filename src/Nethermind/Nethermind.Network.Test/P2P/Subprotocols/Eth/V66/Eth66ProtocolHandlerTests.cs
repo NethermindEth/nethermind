@@ -40,7 +40,6 @@ using BlockHeadersMessage = Nethermind.Network.P2P.Subprotocols.Eth.V62.Messages
 using GetBlockBodiesMessage = Nethermind.Network.P2P.Subprotocols.Eth.V62.Messages.GetBlockBodiesMessage;
 using GetBlockHeadersMessage = Nethermind.Network.P2P.Subprotocols.Eth.V62.Messages.GetBlockHeadersMessage;
 using GetNodeDataMessage = Nethermind.Network.P2P.Subprotocols.Eth.V63.Messages.GetNodeDataMessage;
-using GetPooledTransactionsMessage = Nethermind.Network.P2P.Subprotocols.Eth.V65.Messages.GetPooledTransactionsMessage;
 using GetReceiptsMessage = Nethermind.Network.P2P.Subprotocols.Eth.V63.Messages.GetReceiptsMessage;
 using NodeDataMessage = Nethermind.Network.P2P.Subprotocols.Eth.V63.Messages.NodeDataMessage;
 using PooledTransactionsMessage = Nethermind.Network.P2P.Subprotocols.Eth.V65.Messages.PooledTransactionsMessage;
@@ -200,8 +199,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V66
         [Test]
         public void Can_handle_get_pooled_transactions()
         {
-            using var msg65 = new GetPooledTransactionsMessage(new[] { Keccak.Zero, TestItem.KeccakA }.ToPooledList());
-            using var msg66 = new Network.P2P.Subprotocols.Eth.V66.Messages.GetPooledTransactionsMessage(1111, msg65);
+            using var msg66 = new Network.P2P.Subprotocols.Eth.V66.Messages.GetPooledTransactionsMessage(new[] { Keccak.Zero, TestItem.KeccakA }.ToPooledList());
 
             HandleIncomingStatusMessage();
             HandleZeroMessage(msg66, Eth66MessageCode.GetPooledTransactions);

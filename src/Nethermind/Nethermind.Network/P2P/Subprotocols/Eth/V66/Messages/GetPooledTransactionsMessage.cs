@@ -17,9 +17,5 @@ public class GetPooledTransactionsMessage : Eth66Message<V65.Messages.GetPooledT
     {
     }
 
-    public GetPooledTransactionsMessage(long requestId, V65.Messages.GetPooledTransactionsMessage ethMessage) : base(requestId, ethMessage)
-    {
-    }
-
     public static GetPooledTransactionsMessage New(IOwnedReadOnlyList<Hash256> arg) => new(arg);
 }

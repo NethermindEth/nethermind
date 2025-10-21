@@ -31,9 +31,9 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62
         protected readonly ITxPool _txPool;
         private readonly IGossipPolicy _gossipPolicy;
         private readonly ITxGossipPolicy _txGossipPolicy;
-        private readonly Func<(IOwnedReadOnlyList<Transaction> txs, int startIndex), CancellationToken, ValueTask> _handleSlow;
         private LruKeyCache<Hash256AsKey>? _lastBlockNotificationCache;
         private LruKeyCache<Hash256AsKey> LastBlockNotificationCache => _lastBlockNotificationCache ??= new(10, "LastBlockNotificationCache");
+        private readonly Func<(IOwnedReadOnlyList<Transaction> txs, int startIndex), CancellationToken, ValueTask> _handleSlow;
 
         public Eth62ProtocolHandler(ISession session,
             IMessageSerializationService serializer,
@@ -50,7 +50,6 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62
             _txPool = txPool ?? throw new ArgumentNullException(nameof(txPool));
             _gossipPolicy = gossipPolicy ?? throw new ArgumentNullException(nameof(gossipPolicy));
             _txGossipPolicy = transactionsGossipPolicy ?? TxPool.ShouldGossip.Instance;
-
             _handleSlow = HandleSlow;
 
             EnsureGossipPolicy();
