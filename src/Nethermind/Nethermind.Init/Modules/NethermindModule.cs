@@ -53,7 +53,7 @@ public class NethermindModule(ChainSpec chainSpec, IConfigProvider configProvide
             .AddModule(new RpcModules(configProvider.GetConfig<IJsonRpcConfig>()))
             .AddModule(new EraModule())
             .AddSource(new ConfigRegistrationSource())
-            .AddModule(new BlockProcessingModule(configProvider.GetConfig<IInitConfig>()))
+            .AddModule(new BlockProcessingModule(configProvider.GetConfig<IInitConfig>(), configProvider.GetConfig<IBlocksConfig>()))
             .AddModule(new BlockTreeModule(configProvider.GetConfig<IReceiptConfig>()))
             .AddSingleton<ISpecProvider, ChainSpecBasedSpecProvider>()
 

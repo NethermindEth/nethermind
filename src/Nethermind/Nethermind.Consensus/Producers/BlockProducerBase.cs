@@ -189,8 +189,13 @@ namespace Nethermind.Consensus.Producers
         protected virtual Task<Block> SealBlock(Block block, BlockHeader parent, CancellationToken token) =>
             Sealer.SealBlock(block, token);
 
-        protected virtual Block? ProcessPreparedBlock(Block block, IBlockTracer? blockTracer, CancellationToken token = default) =>
-            Processor.Process(block, ProcessingOptions.ProducingBlock, blockTracer ?? NullBlockTracer.Instance, token);
+        protected virtual Block? ProcessPreparedBlock(Block block, IBlockTracer? blockTracer,
+            CancellationToken token = default)
+        {
+            if (_blocksConfig.BuildBlocksOnMainState)
+                return Processor.Process(block, ProcessingOptions.NoValidation | ProcessingOptions.StoreReceipts | ProcessingOptions.DoNotUpdateHead, blockTracer ?? NullBlockTracer.Instance, token);
+            return Processor.Process(block, ProcessingOptions.ProducingBlock, blockTracer ?? NullBlockTracer.Instance, token);
+        }
 
         private bool PreparedBlockCanBeMined(Block? block)
         {

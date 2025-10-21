@@ -55,5 +55,8 @@ public interface IBlocksConfig : IConfig
     [ConfigItem(Description = "The ticker that gas rewards are denominated in for processing logs", DefaultValue = "ETH", HiddenFromDocs = true)]
     string GasToken { get; set; }
 
+    [ConfigItem(Description = "Builds blocks on main (non-readonly) state", DefaultValue = "false", HiddenFromDocs = true)]
+    bool BuildBlocksOnMainState { get; set; }
+
     byte[] GetExtraDataBytes();
 }
