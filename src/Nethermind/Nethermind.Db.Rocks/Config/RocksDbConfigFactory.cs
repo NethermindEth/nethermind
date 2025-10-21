@@ -19,7 +19,7 @@ public class RocksDbConfigFactory(IDbConfig dbConfig, IPruningConfig pruningConf
         if (!_maxOpenFilesInitialized)
         {
             _maxOpenFilesInitialized = true;
-            
+
             if (dbConfig.MaxOpenFiles is null && hardwareInfo.MaxOpenFilesLimit.HasValue)
             {
                 int systemLimit = hardwareInfo.MaxOpenFilesLimit.Value;
