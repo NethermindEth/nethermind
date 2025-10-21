@@ -3,12 +3,12 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using Nethermind.Xdc.Types;
-using System;
+using System.Threading.Tasks;
 
 namespace Nethermind.Xdc;
 public interface ITimeoutCertificateManager
 {
-    void HandleTimeout(Timeout timeout);
+    Task HandleTimeout(Timeout timeout);
     void OnCountdownTimer();
     void ProcessTimeoutCertificate(TimeoutCertificate timeoutCertificate);
     bool VerifyTimeoutCertificate(TimeoutCertificate timeoutCertificate, out string errorMessage);

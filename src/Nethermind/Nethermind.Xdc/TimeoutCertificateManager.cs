@@ -33,36 +33,37 @@ public class TimeoutCertificateManager(XdcContext context, ISnapshotManager snap
     private static readonly TimeoutDecoder _timeoutDecoder = new();
     private XdcPool<Timeout> _timeouts = new ();
 
-    public void HandleTimeout(Timeout timeout)
+    public Task HandleTimeout(Timeout timeout)
     {
         if (timeout.Round != _ctx.CurrentRound)
         {
-            throw new CertificateValidationException(CertificateType.TimeoutCertificate, CertificateValidationFailure.InvalidRound);
+            // Not interested in processing timeout for round different from the current one
+            return Task.CompletedTask;
         }
 
         var count = _timeouts.Add(timeout);
+        var collectedTimeouts = _timeouts.GetItems(timeout);
 
-        BlockHeader header = _blockTree.Head?.Header;
-        if (header is not XdcBlockHeader xdcHeader)
-            throw new ArgumentException($"Only type of {nameof(XdcBlockHeader)} is allowed");
+        var xdcHeader = _blockTree.Head?.Header as XdcBlockHeader;
         EpochSwitchInfo epochSwitchInfo = _epochSwitchManager.GetEpochSwitchInfo(xdcHeader, xdcHeader.Hash);
         if (epochSwitchInfo is null)
         {
-            throw new ConsensusHeaderDataExtractionException(nameof(EpochSwitchInfo));
+            // Failed to get epoch switch info, cannot process timeout
+            return Task.CompletedTask;
         }
 
         IXdcReleaseSpec spec = _specProvider.GetXdcSpec(xdcHeader, timeout.Round);
         var certThreshold = spec.CertThreshold;
         if (count >= epochSwitchInfo.Masternodes.Length * certThreshold)
         {
-            // The original code passes the collected timeouts instead of using the global variable, check rase condition?
-            OnTimeoutPoolThresholdReached(timeout);
+            OnTimeoutPoolThresholdReached(collectedTimeouts, timeout);
         }
+        return Task.CompletedTask;
     }
 
-    private void OnTimeoutPoolThresholdReached(Timeout timeout)
+    private void OnTimeoutPoolThresholdReached(IEnumerable<Timeout> timeouts, Timeout timeout)
     {
-        Signature[] signatures = _timeouts.GetItems(timeout).Select(t => t.Signature).ToArray();
+        Signature[] signatures = timeouts.Select(t => t.Signature).ToArray();
 
         var timeoutCertificate = new TimeoutCertificate(timeout.Round, signatures, timeout.GapNumber);
 
@@ -106,9 +107,7 @@ public class TimeoutCertificateManager(XdcContext context, ISnapshotManager snap
         var nextEpochCandidates = new HashSet<Address>(snapshot.NextEpochCandidates);
 
         var signatures = new HashSet<Signature>(timeoutCertificate.Signatures);
-        BlockHeader header = _blockTree.Head?.Header;
-        if (header is not XdcBlockHeader xdcHeader)
-            throw new InvalidOperationException($"Only type of {nameof(XdcBlockHeader)} is allowed");
+        var xdcHeader = _blockTree.Head?.Header as XdcBlockHeader;
         IXdcReleaseSpec spec = _specProvider.GetXdcSpec(xdcHeader, timeoutCertificate.Round);
         EpochSwitchInfo epochInfo = _epochSwitchManager.GetTimeoutCertificateEpochInfo(timeoutCertificate);
         if (epochInfo is null)
@@ -152,7 +151,7 @@ public class TimeoutCertificateManager(XdcContext context, ISnapshotManager snap
         SendTimeout();
         _ctx.TimeoutCounter++;
 
-        var xdcHeader = (XdcBlockHeader)_blockTree.Head?.Header;
+        var xdcHeader = _blockTree.Head?.Header as XdcBlockHeader;
         IXdcReleaseSpec spec = _specProvider.GetXdcSpec(xdcHeader!, _ctx.CurrentRound);
 
         if (_ctx.TimeoutCounter % spec.TimeoutSyncThreshold == 0)
@@ -160,6 +159,40 @@ public class TimeoutCertificateManager(XdcContext context, ISnapshotManager snap
             SyncInfo syncInfo = _syncInfoManager.GetSyncInfo();
             //TODO: Broadcast syncInfo
         }
+    }
+
+    public Task OnReceiveTimeout(Timeout timeout)
+    {
+        var currentBlock = _blockTree.Head ?? throw new InvalidOperationException("Failed to get current block");
+        var currentHeader = currentBlock.Header as XdcBlockHeader;
+        var currentBlockNumber = currentBlock.Number;
+        var epochLenth = _specProvider.GetXdcSpec(currentHeader, timeout.Round).EpochLength;
+        if (Math.Abs((long)timeout.GapNumber - currentBlockNumber) > 3 * epochLenth)
+        {
+            // Discarded propagated timeout, too far away
+            return Task.CompletedTask;
+        }
+
+        if (FilterTimeout(timeout))
+        {
+            //TODO: Broadcast Timeout
+            return HandleTimeout(timeout);
+        }
+        return Task.CompletedTask;
+    }
+
+    private bool FilterTimeout(Timeout timeout)
+    {
+        if(timeout.Round < _ctx.CurrentRound) return false;
+        Snapshot snapshot = _snapshotManager.GetSnapshotByGapNumber(_blockTree, timeout.GapNumber);
+        if (snapshot is null || snapshot.NextEpochCandidates.Length == 0) return false;
+
+        // Verify msg signature
+        ValueHash256 timeoutMsgHash = ComputeTimeoutMsgHash(timeout.Round, timeout.GapNumber);
+        Address signer = _ethereumEcdsa.RecoverAddress(timeout.Signature, in timeoutMsgHash);
+        timeout.Signer = signer;
+
+        return snapshot.NextEpochCandidates.Contains(signer);
     }
 
     private void SendTimeout()
@@ -200,9 +233,7 @@ public class TimeoutCertificateManager(XdcContext context, ISnapshotManager snap
         EpochSwitchInfo epochSwitchInfo = _epochSwitchManager.GetEpochSwitchInfo(currentHeader, currentHeader.Hash);
         if (epochSwitchInfo is null)
             return false;
-        foreach (Address masternode in epochSwitchInfo.Masternodes)
-            if (masternode == _signer.Address) return true;
-        return false;
+        return epochSwitchInfo.Masternodes.Any(x => x == _signer.Address);
     }
 
     internal static ValueHash256 ComputeTimeoutMsgHash(ulong round, ulong gap)
