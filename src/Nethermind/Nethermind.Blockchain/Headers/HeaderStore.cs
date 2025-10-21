@@ -22,7 +22,7 @@ public class HeaderStore : IHeaderStore
 
     private readonly IDb _headerDb;
     private readonly IDb _blockNumberDb;
-    private readonly HeaderDecoder _headerDecoder = new();
+    protected virtual IHeaderDecoder _headerDecoder { get; } = new HeaderDecoder();
     private readonly ClockCache<ValueHash256, BlockHeader> _headerCache =
         new(CacheSize);
 
