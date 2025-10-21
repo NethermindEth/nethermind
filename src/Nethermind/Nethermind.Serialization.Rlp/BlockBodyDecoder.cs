@@ -10,7 +10,7 @@ public class BlockBodyDecoder : IRlpValueDecoder<BlockBody>, IRlpStreamDecoder<B
 {
     private readonly TxDecoder _txDecoder = TxDecoder.Instance;
     private readonly IHeaderDecoder _headerDecoder;
-    private readonly WithdrawalDecoder _withdrawalDecoderDecoder  = new ();
+    private readonly WithdrawalDecoder _withdrawalDecoderDecoder = new();
 
     private static BlockBodyDecoder? _instance = null;
     public static BlockBodyDecoder Instance => _instance ??= new BlockBodyDecoder();
