@@ -24,7 +24,7 @@ public class SimpleRetryCacheTests
 
 
     private CancellationTokenSource _cancellationTokenSource;
-    private SimpleRetryCache<ResourceRequestMessage, int> cache;
+    private RetryCache<ResourceRequestMessage, int> cache;
 
     private readonly int Timeout = 3000;
 
@@ -109,7 +109,7 @@ public class SimpleRetryCacheTests
 
         await Task.Delay(Timeout, _cancellationTokenSource.Token);
 
-        request.DidNotReceive().HandleMessage(ResourceRequestMessage.From(1));
+        request.DidNotReceive().HandleMessage(ResourceRequestMessage.New(1));
     }
 
     [Test]

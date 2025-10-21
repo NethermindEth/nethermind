@@ -87,5 +87,6 @@
     <PackageVersion Include="TestableIO.System.IO.Abstractions.Wrappers" Version="22.0.16" />
     <PackageVersion Include="Websocket.Client" Version="5.3.0" />
     <PackageVersion Include="ZstdSharp.Port" Version="0.8.6" />
+    <PackageVersion Include="Collections.Pooled" Version="1.0.82" />
   </ItemGroup>
 </Project>

@@ -6,6 +6,7 @@
 
   <ItemGroup>
     <PackageReference Include="NonBlocking" />
+    <PackageReference Include="Collections.Pooled" />
   </ItemGroup>
 
   <ItemGroup>

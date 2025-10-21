@@ -1,18 +1,18 @@
 // SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using Collections.Pooled;
 using Nethermind.Core;
 using Nethermind.Core.Caching;
 using Nethermind.Logging;
 using System;
 using System.Collections.Concurrent;
-using System.Collections.Generic;
 using System.Threading;
 using System.Threading.Tasks;
 
 namespace Nethermind.TxPool;
 
-public class SimpleRetryCache<TMessage, TResourceId>
+public class RetryCache<TMessage, TResourceId>
     where TMessage : INew<TResourceId, TMessage>
     where TResourceId : struct, IEquatable<TResourceId>
 {
@@ -20,12 +20,12 @@ public class SimpleRetryCache<TMessage, TResourceId>
     private readonly int _checkMs;
     private readonly int _requestingCacheSize;
 
-    private readonly ConcurrentDictionary<TResourceId, HashSet<IMessageHandler<TMessage>>> _retryRequests = new();
+    private readonly ConcurrentDictionary<TResourceId, PooledSet<IMessageHandler<TMessage>>> _retryRequests = new();
     private readonly ConcurrentQueue<(TResourceId ResourceId, DateTimeOffset ExpiresAfter)> _expiringQueue = new();
     private readonly ClockKeyCache<TResourceId> _requestingResources;
     private readonly ILogger _logger;
 
-    public SimpleRetryCache(ILogManager logManager, int timeoutMs = 2500, int requestingCacheSize = 1024, CancellationToken token = default)
+    public RetryCache(ILogManager logManager, int timeoutMs = 2500, int requestingCacheSize = 1024, CancellationToken token = default)
     {
         _logger = logManager.GetClassLogger();
 
@@ -44,7 +44,7 @@ public class SimpleRetryCache<TMessage, TResourceId>
                 {
                     _expiringQueue.TryDequeue(out item);
 
-                    if (_retryRequests.TryRemove(item.ResourceId, out HashSet<IMessageHandler<TMessage>>? requests))
+                    if (_retryRequests.TryRemove(item.ResourceId, out PooledSet<IMessageHandler<TMessage>>? requests))
                     {
                         if (requests.Count > 0)
                         {
@@ -58,7 +58,7 @@ public class SimpleRetryCache<TMessage, TResourceId>
                         {
                             try
                             {
-                                retryHandler.HandleMessage(TMessage.From(item.ResourceId));
+                                retryHandler.HandleMessage(TMessage.New(item.ResourceId));
                             }
                             catch (Exception ex)
                             {
@@ -105,7 +105,7 @@ public class SimpleRetryCache<TMessage, TResourceId>
     {
         if (_logger.IsTrace) _logger.Trace($"Received {resourceId}");
 
-        _retryRequests.TryRemove(resourceId, out HashSet<IMessageHandler<TMessage>>? _);
+        _retryRequests.TryRemove(resourceId, out PooledSet<IMessageHandler<TMessage>>? _);
     }
 }
 
