@@ -28,7 +28,6 @@ internal static class DBSizeGenerator
         [
             "mainnet",
             "sepolia",
-            "holesky",
             "gnosis",
             "chiado",
             "energyweb",
