@@ -5,6 +5,7 @@ using System;
 using System.Collections.Generic;
 using System.Data;
 using System.Linq;
+using Nethermind.Core.Extensions;
 using Nethermind.Int256;
 
 namespace Nethermind.Core.BlockAccessLists;
@@ -89,6 +90,14 @@ public struct BlockAccessList : IEquatable<BlockAccessList>, IJournal<int>
         {
             if (balanceChanges.Count != 0 && balanceChanges.Last().Key == Index)
             {
+                _changes.Push(new()
+                {
+                    Address = address,
+                    Type = ChangeType.BalanceChange,
+                    PreviousValue = balanceChanges.Last().Value,
+                    BlockAccessIndex = Index
+                });
+
                 balanceChanges.RemoveAt(balanceChanges.Count - 1);
             }
             return;
@@ -312,6 +321,14 @@ public struct BlockAccessList : IEquatable<BlockAccessList>, IJournal<int>
         {
             if (storageChanges.Changes is not [] && storageChanges.Changes[^1].BlockAccessIndex == Index)
             {
+                _changes.Push(new()
+                {
+                    Address = accountChanges.Address,
+                    Type = ChangeType.StorageChange,
+                    PreviousValue = storageChanges.Changes[^1],
+                    BlockAccessIndex = Index
+                });
+
                 storageChanges.Changes.RemoveAt(storageChanges.Changes.Count - 1);
             }
 
@@ -477,9 +494,14 @@ public struct BlockAccessList : IEquatable<BlockAccessList>, IJournal<int>
             }
         }
 
-        // balance only changed within this transaction
+        // storage only changed within this transaction
         foreach (Change change in _changes)
         {
+            // tmp
+            if (change.Type == ChangeType.StorageChange && change.Address == address && change.Slot == key.AsSpan())
+            {
+                Console.WriteLine($"found change with pretx={(change.PreTxStorage is null ? "null" : Bytes.ToHexString(change.PreTxStorage))} afterInstr={Bytes.ToHexString(afterInstr.ToArray())} previousvalue={change.PreviousValue}");
+            }
             if (change.Type == ChangeType.StorageChange && change.Address == address && change.Slot == key.AsSpan() && change.PreviousValue is null)
             {
                 // first change of this transaction & block
