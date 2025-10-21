@@ -769,9 +769,18 @@ namespace Nethermind.Network
 
             if (!session.Node.IsStatic && ActivePeersCount >= MaxActivePeers + MaxActivePeerMargin)
             {
-                if (_logger.IsTrace) _logger.Trace($"Initiating disconnect with {session} {DisconnectReason.HardLimitTooManyPeers} {DisconnectType.Local}");
-                session.InitiateDisconnect(DisconnectReason.HardLimitTooManyPeers, $"{ActivePeersCount}");
-                return;
+                // If diversity scoring is enabled, check if this peer has a higher diversity score
+                // than the lowest diversity peer and make room if needed
+                if (_diversityService.IsEnabled && TryMakeRoomForHigherDiversityPeer(session))
+                {
+                    // Successfully made room, continue with adding this peer
+                }
+                else
+                {
+                    if (_logger.IsTrace) _logger.Trace($"Initiating disconnect with {session} {DisconnectReason.HardLimitTooManyPeers} {DisconnectType.Local}");
+                    session.InitiateDisconnect(DisconnectReason.HardLimitTooManyPeers, $"{ActivePeersCount}");
+                    return;
+                }
             }
 
             try
@@ -787,6 +796,46 @@ namespace Nethermind.Network
         }
 
         #endregion
+
+        private bool TryMakeRoomForHigherDiversityPeer(ISession incomingSession)
+        {
+            // Calculate diversity score for the incoming peer
+            long incomingDiversityScore = _diversityService.GetDiversityScore(incomingSession.RemoteNodeId);
+
+            // Get all active non-static peers sorted by diversity score
+            Peer[] activePeers = _peerPool.ActivePeers.Values
+                .Where(p => !p.Node.IsStatic && IsConnected(p))
+                .OrderBy(p => p.DiversityScore)
+                .ToArray();
+
+            if (activePeers.Length == 0)
+            {
+                return false;
+            }
+
+            // Only consider replacing the lower half of peers to prevent constant churn
+            int lowerHalfSize = activePeers.Length / 2;
+            if (lowerHalfSize == 0)
+            {
+                return false;
+            }
+
+            // Check if the incoming peer has a higher diversity score than the lowest peer
+            Peer lowestDiversityPeer = activePeers[0];
+            if (incomingDiversityScore > lowestDiversityPeer.DiversityScore)
+            {
+                if (_logger.IsDebug)
+                    _logger.Debug($"Disconnecting peer {lowestDiversityPeer.Node:s} (diversity: {lowestDiversityPeer.DiversityScore}) to make room for higher diversity peer (diversity: {incomingDiversityScore})");
+
+                // Disconnect the lowest diversity peer to make room
+                lowestDiversityPeer.InSession?.InitiateDisconnect(DisconnectReason.TooManyPeers, "making room for higher diversity peer");
+                lowestDiversityPeer.OutSession?.InitiateDisconnect(DisconnectReason.TooManyPeers, "making room for higher diversity peer");
+
+                return true;
+            }
+
+            return false;
+        }
 
         private bool CanConnectToPeer(Peer peer)
         {
