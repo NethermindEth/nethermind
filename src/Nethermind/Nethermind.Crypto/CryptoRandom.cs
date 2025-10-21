@@ -24,7 +24,6 @@ namespace Nethermind.Crypto
             return bytes;
         }
 
-        [RequiresSecurityReview("There should be no unsecured method in a class that suggests security")]
         public int NextInt(int max)
         {
             // Use cryptographically secure RNG; preserve Random.Next behavior for non-positive max
