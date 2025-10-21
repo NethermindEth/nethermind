@@ -68,8 +68,9 @@ namespace Nethermind.Consensus.Clique
         private static SortedList<Address, long> DecodeSigners(RlpStream rlpStream)
         {
             rlpStream.ReadSequenceLength();
-            SortedList<Address, long> signers = new SortedList<Address, long>(AddressComparer.Instance);
             int length = rlpStream.DecodeInt();
+            rlpStream.GuardLimit(length);
+            SortedList<Address, long> signers = new(AddressComparer.Instance);
             for (int i = 0; i < length; i++)
             {
                 Address signer = rlpStream.DecodeAddress();
@@ -83,8 +84,9 @@ namespace Nethermind.Consensus.Clique
         private static List<Vote> DecodeVotes(RlpStream rlpStream)
         {
             rlpStream.ReadSequenceLength();
-            List<Vote> votes = new List<Vote>();
             int length = rlpStream.DecodeInt();
+            rlpStream.GuardLimit(length);
+            List<Vote> votes = new(length);
             for (int i = 0; i < length; i++)
             {
                 Address signer = rlpStream.DecodeAddress();
@@ -100,8 +102,9 @@ namespace Nethermind.Consensus.Clique
         private static Dictionary<Address, Tally> DecodeTally(RlpStream rlpStream)
         {
             rlpStream.ReadSequenceLength();
-            Dictionary<Address, Tally> tally = new Dictionary<Address, Tally>();
             int length = rlpStream.DecodeInt();
+            rlpStream.GuardLimit(length);
+            Dictionary<Address, Tally> tally = new(length);
             for (int i = 0; i < length; i++)
             {
                 Address address = rlpStream.DecodeAddress();
