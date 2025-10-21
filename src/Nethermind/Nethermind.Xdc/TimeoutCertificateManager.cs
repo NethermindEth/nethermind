@@ -41,7 +41,7 @@ public class TimeoutCertificateManager(XdcContext context, ISnapshotManager snap
             return Task.CompletedTask;
         }
 
-        var count = _timeouts.Add(timeout);
+        _timeouts.Add(timeout);
         var collectedTimeouts = _timeouts.GetItems(timeout);
 
         var xdcHeader = _blockTree.Head?.Header as XdcBlockHeader;
@@ -54,7 +54,7 @@ public class TimeoutCertificateManager(XdcContext context, ISnapshotManager snap
 
         IXdcReleaseSpec spec = _specProvider.GetXdcSpec(xdcHeader, timeout.Round);
         var certThreshold = spec.CertThreshold;
-        if (count >= epochSwitchInfo.Masternodes.Length * certThreshold)
+        if (collectedTimeouts.Count >= epochSwitchInfo.Masternodes.Length * certThreshold)
         {
             OnTimeoutPoolThresholdReached(collectedTimeouts, timeout);
         }
@@ -238,9 +238,10 @@ public class TimeoutCertificateManager(XdcContext context, ISnapshotManager snap
 
     internal static ValueHash256 ComputeTimeoutMsgHash(ulong round, ulong gap)
     {
-        var timeout = new Timeout(round, null, gap);
-        Rlp encoded = _timeoutDecoder.Encode(timeout, RlpBehaviors.ForSealing);
-        return Keccak.Compute(encoded.Bytes).ValueHash256;
+        Timeout timeout = new (round, null, gap);
+        KeccakRlpStream stream = new KeccakRlpStream();
+        _timeoutDecoder.Encode(stream, timeout, RlpBehaviors.ForSealing);
+        return stream.GetValueHash();
     }
 
 }
