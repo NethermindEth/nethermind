@@ -10,6 +10,7 @@ using Nethermind.Specs.Forks;
 using Nethermind.JsonRpc.Client;
 using Nethermind.Serialization.Json;
 using Nethermind.Specs;
+using Nethermind.Core.Extensions;
 
 namespace SendBlobs;
 
@@ -202,7 +203,9 @@ internal static class SetupCli
                 SimpleConsoleLogManager.Instance.GetClassLogger());
 
             string? chainIdString = await rpcClient.Post<string>("eth_chainId") ?? "1";
-            ulong chainId = HexConvert.ToUInt64(chainIdString);
+            ulong chainId = chainIdString!.StartsWith("0x", StringComparison.OrdinalIgnoreCase)
+                ? Bytes.FromHexString(chainIdString).AsSpan().ReadEthUInt64()
+                : Convert.ToUInt64(chainIdString);
 
             Signer signer = new(chainId, new PrivateKey(parseResult.GetValue(privateKeyOption)!),
                 SimpleConsoleLogManager.Instance);
@@ -264,7 +267,9 @@ internal static class SetupCli
                 SimpleConsoleLogManager.Instance.GetClassLogger());
 
             string? chainIdString = await rpcClient.Post<string>("eth_chainId") ?? "1";
-            ulong chainId = HexConvert.ToUInt64(chainIdString);
+            ulong chainId = chainIdString!.StartsWith("0x", StringComparison.OrdinalIgnoreCase)
+                ? Bytes.FromHexString(chainIdString).AsSpan().ReadEthUInt64()
+                : Convert.ToUInt64(chainIdString);
 
             FundsDistributor distributor = new(rpcClient, chainId, parseResult.GetValue(keyFileOption), SimpleConsoleLogManager.Instance);
             IEnumerable<string> hashes = await distributor.ReclaimFunds(
