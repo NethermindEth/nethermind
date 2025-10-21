@@ -1,4 +1,4 @@
-<Project Sdk="Microsoft.NET.Sdk">
+﻿<Project Sdk="Microsoft.NET.Sdk">
 
   <Import Project="../tests.props" />
 
@@ -21,9 +21,9 @@
     <Content Include="Specs\genesis_test.json">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </Content>
-  </ItemGroup>
-
-  <ItemGroup>
+    <None Update="Specs\hoodi_no_deposit_contract.json">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
     <None Update="Specs\posdao.json">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </None>
