@@ -19,7 +19,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V66
             Hash256 b = new("0x00000000000000000000000000000000000000000000000000000000feedbeef");
             Hash256[] keys = { a, b };
 
-            using GetPooledTransactionsMessage message = new(keys.ToPooledList());
+            using GetPooledTransactionsMessage message = new(keys.ToPooledList()) { RequestId = 1111 };
 
             GetPooledTransactionsMessageSerializer serializer = new();
 
